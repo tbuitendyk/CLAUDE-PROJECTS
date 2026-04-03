@@ -19,9 +19,12 @@ OUT = Path(__file__).parent / "kjv.json"
 
 SOURCES = [
     # Format: [{abbrev, name/book, chapters: [["verse",...],...]}, ...]
+    # Note: this file has a UTF-8 BOM — decoded with utf-8-sig below
     "https://raw.githubusercontent.com/thiagobodruk/bible/master/json/en_kjv.json",
-    # Alternate mirror with same format
-    "https://raw.githubusercontent.com/scrollmapper/bible_databases/master/json/kjv.json",
+    # Flat verse format: [{b, c, v, t}, ...]
+    "https://raw.githubusercontent.com/scrollmapper/bible_databases/master/json/t_kjv.json",
+    # Another chapters-array mirror
+    "https://raw.githubusercontent.com/jadenzaleski/bible-json/main/KJV/KJV.json",
 ]
 
 
@@ -82,7 +85,9 @@ def download() -> None:
                 url, headers={"User-Agent": "kjv-mcp-setup/1.0"}
             )
             with urllib.request.urlopen(req, timeout=30) as resp:
-                raw = json.loads(resp.read().decode("utf-8"))
+                content = resp.read()
+            # utf-8-sig strips BOM if present, harmless if not
+            raw = json.loads(content.decode("utf-8-sig"))
         except Exception as exc:
             print(f"  Failed: {exc}")
             continue
