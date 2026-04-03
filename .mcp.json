@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "kjv-bible": {
+      "command": "python",
+      "args": ["server.py"],
+      "cwd": "/home/user/Claude-1"
+    }
+  }
+}
