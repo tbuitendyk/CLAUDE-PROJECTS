@@ -114,6 +114,8 @@ if __name__ == "__main__":
         time.sleep(2)  # Give internal MCP server time to start
         print("Internal MCP server ready", flush=True)
 
+        BASE_URL = os.environ.get("BASE_URL", "").rstrip("/")
+
         # ── Public-facing ASGI proxy ────────────────────────────────────────
         async def _send_json(send, body: dict, status: int = 200):
             raw = json.dumps(body).encode()
@@ -121,6 +123,13 @@ if __name__ == "__main__":
                         "headers": [[b"content-type", b"application/json"],
                                     [b"content-length", str(len(raw)).encode()]]})
             await send({"type": "http.response.body", "body": raw})
+
+        async def _send_redirect(send, location: str):
+            loc = location.encode()
+            await send({"type": "http.response.start", "status": 302,
+                        "headers": [[b"location", loc],
+                                    [b"content-length", b"0"]]})
+            await send({"type": "http.response.body", "body": b""})
 
         class ProxyApp:
             """Auth + health wrapper that proxies to the internal MCP server."""
@@ -138,6 +147,7 @@ if __name__ == "__main__":
 
                 path = scope.get("path", "")
                 method = scope.get("method", "GET")
+                qs_raw = scope.get("query_string", b"").decode()
 
                 # CORS preflight
                 if method == "OPTIONS":
@@ -151,6 +161,42 @@ if __name__ == "__main__":
                 # Health probe — no auth
                 if path == "/health":
                     await _send_json(send, {"status": "ok"})
+                    return
+
+                # ── Minimal OAuth 2.0 server (for Claude.ai connector) ──────
+                if path == "/.well-known/oauth-authorization-server":
+                    issuer = BASE_URL or f"http://localhost:{PUBLIC_PORT}"
+                    await _send_json(send, {
+                        "issuer": issuer,
+                        "authorization_endpoint": f"{issuer}/authorize",
+                        "token_endpoint": f"{issuer}/token",
+                        "response_types_supported": ["code"],
+                        "grant_types_supported": ["authorization_code"],
+                        "code_challenge_methods_supported": ["S256", "plain"],
+                    })
+                    return
+
+                if path == "/authorize":
+                    import urllib.parse as _up
+                    params = dict(_up.parse_qsl(qs_raw))
+                    redirect_uri = params.get("redirect_uri", "")
+                    state = params.get("state", "")
+                    # Use the API_KEY itself as the authorization code
+                    code = API_KEY if API_KEY else "open"
+                    sep = "&" if "?" in redirect_uri else "?"
+                    location = f"{redirect_uri}{sep}code={_up.quote(code, safe='')}"
+                    if state:
+                        location += f"&state={_up.quote(state, safe='')}"
+                    await _send_redirect(send, location)
+                    return
+
+                if path == "/token" and method == "POST":
+                    # Exchange any code for our static bearer token
+                    await _send_json(send, {
+                        "access_token": API_KEY if API_KEY else "open",
+                        "token_type": "bearer",
+                        "expires_in": 315360000,  # ~10 years
+                    })
                     return
 
                 # Bearer auth
@@ -179,10 +225,9 @@ if __name__ == "__main__":
                 fwd_headers["host"] = f"localhost:{INTERNAL_PORT}"  # must match MCP server's bound port
                 fwd_headers.setdefault("accept", "application/json, text/event-stream")
 
-                qs = scope.get("query_string", b"").decode()
                 url = f"http://127.0.0.1:{INTERNAL_PORT}{path}"
-                if qs:
-                    url += f"?{qs}"
+                if qs_raw:
+                    url += f"?{qs_raw}"
 
                 # Stream the response back
                 async with httpx.AsyncClient(timeout=60.0) as client:
