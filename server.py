@@ -102,20 +102,7 @@ if __name__ == "__main__":
         mcp_thread = threading.Thread(target=_run_mcp, daemon=True)
         mcp_thread.start()
 
-        # Wait for internal server to be ready (poll for up to 15 s)
-        print(f"Waiting for internal MCP server on port {INTERNAL_PORT}...",
-              flush=True)
-        for _ in range(30):
-            try:
-                import urllib.request
-                urllib.request.urlopen(
-                    f"http://127.0.0.1:{INTERNAL_PORT}/health", timeout=0.5)
-                break
-            except Exception:
-                time.sleep(0.5)
-        else:
-            # /health may not exist — just wait a fixed time
-            time.sleep(3)
+        time.sleep(2)  # Give internal MCP server time to start
         print("Internal MCP server ready", flush=True)
 
         # ── Public-facing ASGI proxy ────────────────────────────────────────
