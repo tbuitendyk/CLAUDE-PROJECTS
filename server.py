@@ -130,4 +130,5 @@ if __name__ == "__main__":
 
                 await mcp_asgi(scope, receive, send)
 
-        uvicorn.run(RootApp(), host=host, port=port)
+        uvicorn.run(RootApp(), host=host, port=port,
+                    proxy_headers=True, forwarded_allow_ips="*")
