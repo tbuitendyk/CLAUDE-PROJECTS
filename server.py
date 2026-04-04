@@ -86,19 +86,21 @@ if __name__ == "__main__":
         host = os.environ.get("HOST", "0.0.0.0")
         port = int(os.environ.get("PORT", 8000))
 
-        # Disable the MCP SDK's built-in DNS-rebinding host check.
+        # Replace TransportSecurityMiddleware with a no-op so Railway's
+        # proxy Host header doesn't get rejected (we handle auth ourselves).
         try:
-            import types
             import mcp.server.transport_security as _ts
-            _attrs = [x for x in dir(_ts) if not x.startswith("__")]
-            print(f"transport_security module attrs: {_attrs}", flush=True)
-            for _attr in _attrs:
-                _obj = getattr(_ts, _attr, None)
-                if isinstance(_obj, types.FunctionType):
-                    setattr(_ts, _attr, lambda *a, **kw: True)
-                    print(f"Patched: {_attr}", flush=True)
+
+            class _AllowAllHosts:
+                def __init__(self, app, settings=None, **kwargs):
+                    self.app = app
+                async def __call__(self, scope, receive, send):
+                    await self.app(scope, receive, send)
+
+            _ts.TransportSecurityMiddleware = _AllowAllHosts
+            print("TransportSecurityMiddleware patched to allow all hosts", flush=True)
         except Exception as _e:
-            print(f"transport_security patch error: {_e}", flush=True)
+            print(f"Security patch error: {_e}", flush=True)
 
         # Build the MCP ASGI app
         mcp_asgi = mcp.streamable_http_app()
