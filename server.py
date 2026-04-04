@@ -137,6 +137,16 @@ if __name__ == "__main__":
                     return
 
                 path = scope.get("path", "")
+                method = scope.get("method", "GET")
+
+                # CORS preflight
+                if method == "OPTIONS":
+                    await send({"type": "http.response.start", "status": 204,
+                                "headers": [[b"access-control-allow-origin", b"*"],
+                                            [b"access-control-allow-methods", b"GET, POST, OPTIONS"],
+                                            [b"access-control-allow-headers", b"*"]]})
+                    await send({"type": "http.response.body", "body": b""})
+                    return
 
                 # Health probe — no auth
                 if path == "/health":
@@ -169,7 +179,6 @@ if __name__ == "__main__":
                 fwd_headers["host"] = f"localhost:{INTERNAL_PORT}"  # must match MCP server's bound port
                 fwd_headers.setdefault("accept", "application/json, text/event-stream")
 
-                method = scope.get("method", "GET")
                 qs = scope.get("query_string", b"").decode()
                 url = f"http://127.0.0.1:{INTERNAL_PORT}{path}"
                 if qs:
