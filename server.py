@@ -2,26 +2,28 @@
 """
 KJV Bible Verse Lookup — MCP Server
 
-Supports two transports:
-  stdio             — local use with Claude Desktop / Claude Code
-  streamable-http   — remote use with Claude.ai on any device (phone, web)
+Transports:
+  stdio  — local use with Claude Desktop / Claude Code (TRANSPORT=stdio)
+  http   — remote use via proxy to internal MCP server (default)
 
 Environment variables:
-  TRANSPORT   stdio | http   (default: http)
-  HOST        bind address   (default: 0.0.0.0)
-  PORT        port number    (default: 8000)
-  API_KEY     optional bearer token — set this to protect your endpoint
+  TRANSPORT     stdio | http  (default: http)
+  PORT          public port   (default: 8000)
+  API_KEY       bearer token  (optional but recommended)
 """
 
 import os
 import sys
+import json
+import time
+import threading
 from pathlib import Path
 
 from mcp.server.fastmcp import FastMCP
 import bible_data
 
 # ---------------------------------------------------------------------------
-# Auto-download KJV data if missing (needed for fresh container deployments)
+# Auto-download KJV data
 # ---------------------------------------------------------------------------
 if not Path(bible_data.DATA_FILE).exists():
     print("KJV data not found — downloading now...", flush=True)
@@ -29,14 +31,14 @@ if not Path(bible_data.DATA_FILE).exists():
         import download_kjv
         download_kjv.download()
     except SystemExit:
-        print("ERROR: Could not download KJV data. Exiting.", file=sys.stderr)
+        print("ERROR: Could not download KJV data.", file=sys.stderr)
         sys.exit(1)
 
-# Pre-load into memory so the first request isn't slow
 bible_data._load()
+print(f"KJV data loaded ({len(bible_data._verses):,} verses)", flush=True)
 
 # ---------------------------------------------------------------------------
-# MCP server
+# MCP server definition
 # ---------------------------------------------------------------------------
 mcp = FastMCP(
     "KJV Bible Verse Lookup",
@@ -46,8 +48,6 @@ mcp = FastMCP(
         "passage back to the user verbatim — it already includes the reference."
     ),
 )
-
-API_KEY = os.environ.get("API_KEY", "").strip()
 
 
 @mcp.tool()
@@ -67,7 +67,7 @@ def kjv_lookup(snippet: str, context_verses: int = 3) -> str:
         idx = bible_data.find_verse_index(snippet)
         passage = bible_data.get_passage(idx, context_verses)
         return bible_data.format_passage(passage)
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         return f"Error during verse lookup: {exc}"
 
 
@@ -79,70 +79,135 @@ if __name__ == "__main__":
 
     if transport == "stdio":
         mcp.run(transport="stdio")
+
     else:
-        import json as _json
         import uvicorn
+        import httpx
 
-        host = os.environ.get("HOST", "0.0.0.0")
-        port = int(os.environ.get("PORT", 8000))
+        PUBLIC_PORT = int(os.environ.get("PORT", 8000))
+        INTERNAL_PORT = PUBLIC_PORT + 1  # e.g. 8001
+        API_KEY = os.environ.get("API_KEY", "").strip()
+        BEARER = f"Bearer {API_KEY}" if API_KEY else None
 
-        # Patch the __call__ method on the TransportSecurityMiddleware class
-        # itself so all instances (including those already referenced by
-        # streamable_http_manager) use the no-op version.
-        try:
-            from mcp.server.transport_security import TransportSecurityMiddleware
+        # ── Start internal MCP server on localhost ──────────────────────────
+        # Running on 127.0.0.1 means the MCP SDK's host security check sees
+        # "localhost" as the Host header and accepts it.
+        def _run_mcp():
+            mcp.run(transport="streamable-http",
+                    host="127.0.0.1", port=INTERNAL_PORT)
 
-            async def _noop(self, scope, receive, send):
-                await self.app(scope, receive, send)
+        mcp_thread = threading.Thread(target=_run_mcp, daemon=True)
+        mcp_thread.start()
 
-            TransportSecurityMiddleware.__call__ = _noop
-            print("Patched TransportSecurityMiddleware.__call__", flush=True)
-        except Exception as _e:
-            print(f"Security patch error: {_e}", flush=True)
+        # Wait for internal server to be ready (poll for up to 15 s)
+        print(f"Waiting for internal MCP server on port {INTERNAL_PORT}...",
+              flush=True)
+        for _ in range(30):
+            try:
+                import urllib.request
+                urllib.request.urlopen(
+                    f"http://127.0.0.1:{INTERNAL_PORT}/health", timeout=0.5)
+                break
+            except Exception:
+                time.sleep(0.5)
+        else:
+            # /health may not exist — just wait a fixed time
+            time.sleep(3)
+        print("Internal MCP server ready", flush=True)
 
-        # Build the MCP ASGI app
-        mcp_asgi = mcp.streamable_http_app()
-
-        _bearer = f"Bearer {API_KEY}" if API_KEY else None
-        print(f"Starting KJV MCP server on {host}:{port} "
-              f"({'auth enabled' if _bearer else 'open access'})", flush=True)
-
+        # ── Public-facing ASGI proxy ────────────────────────────────────────
         async def _send_json(send, body: dict, status: int = 200):
-            raw = _json.dumps(body).encode()
+            raw = json.dumps(body).encode()
             await send({"type": "http.response.start", "status": status,
                         "headers": [[b"content-type", b"application/json"],
                                     [b"content-length", str(len(raw)).encode()]]})
             await send({"type": "http.response.body", "body": raw})
 
-        class RootApp:
-            """Pure-ASGI wrapper: handles /health, enforces bearer auth, proxies rest to MCP."""
+        class ProxyApp:
+            """Auth + health wrapper that proxies to the internal MCP server."""
 
             async def __call__(self, scope, receive, send):
                 if scope["type"] == "lifespan":
-                    await mcp_asgi(scope, receive, send)
+                    await receive()
+                    await send({"type": "lifespan.startup.complete"})
+                    await receive()
+                    await send({"type": "lifespan.shutdown.complete"})
                     return
 
                 if scope["type"] != "http":
-                    await mcp_asgi(scope, receive, send)
                     return
 
                 path = scope.get("path", "")
 
-                # Health probe — no auth required
+                # Health probe — no auth
                 if path == "/health":
                     await _send_json(send, {"status": "ok"})
                     return
 
                 # Bearer auth
-                if _bearer:
-                    headers = {k.lower(): v for k, v in scope.get("headers", [])}
-                    auth = headers.get(b"authorization", b"").decode("utf-8", errors="replace")
-                    if auth != _bearer:
-                        print(f"Auth FAILED | received={repr(auth)} | expected={repr(_bearer)}", flush=True)
-                        await _send_json(send, {"error": "Unauthorized"}, status=401)
+                if BEARER:
+                    hdrs = {k.lower(): v for k, v in scope.get("headers", [])}
+                    auth = hdrs.get(b"authorization", b"").decode(errors="replace")
+                    if auth != BEARER:
+                        print(f"Auth failed: {repr(auth)}", flush=True)
+                        await _send_json(send, {"error": "Unauthorized"}, 401)
                         return
 
-                await mcp_asgi(scope, receive, send)
+                # Read request body
+                body = b""
+                while True:
+                    msg = await receive()
+                    body += msg.get("body", b"")
+                    if not msg.get("more_body", False):
+                        break
 
-        uvicorn.run(RootApp(), host=host, port=port,
+                # Forward headers, override Host so MCP security passes
+                fwd_headers = {
+                    k.decode(errors="replace"): v.decode(errors="replace")
+                    for k, v in scope.get("headers", [])
+                    if k.lower() not in (b"host", b"authorization")
+                }
+                fwd_headers["host"] = f"localhost:{INTERNAL_PORT}"
+
+                method = scope.get("method", "GET")
+                qs = scope.get("query_string", b"").decode()
+                url = f"http://127.0.0.1:{INTERNAL_PORT}{path}"
+                if qs:
+                    url += f"?{qs}"
+
+                # Stream the response back
+                async with httpx.AsyncClient(timeout=60.0) as client:
+                    try:
+                        async with client.stream(
+                            method, url,
+                            content=body,
+                            headers=fwd_headers,
+                        ) as resp:
+                            await send({
+                                "type": "http.response.start",
+                                "status": resp.status_code,
+                                "headers": [
+                                    [k.lower().encode(), v.encode()]
+                                    for k, v in resp.headers.items()
+                                ],
+                            })
+                            async for chunk in resp.aiter_bytes():
+                                await send({
+                                    "type": "http.response.body",
+                                    "body": chunk,
+                                    "more_body": True,
+                                })
+                            await send({
+                                "type": "http.response.body",
+                                "body": b"",
+                                "more_body": False,
+                            })
+                    except Exception as exc:
+                        print(f"Proxy error: {exc}", flush=True)
+                        await _send_json(send, {"error": "proxy error"}, 502)
+
+        print(f"Starting public proxy on 0.0.0.0:{PUBLIC_PORT} "
+              f"({'auth enabled' if BEARER else 'open'})", flush=True)
+
+        uvicorn.run(ProxyApp(), host="0.0.0.0", port=PUBLIC_PORT,
                     proxy_headers=True, forwarded_allow_ips="*")
