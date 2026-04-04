@@ -47,7 +47,7 @@ mcp = FastMCP(
     ),
 )
 
-API_KEY = os.environ.get("API_KEY", "")
+API_KEY = os.environ.get("API_KEY", "").strip()
 
 
 @mcp.tool()
