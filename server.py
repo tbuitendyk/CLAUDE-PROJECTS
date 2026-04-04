@@ -86,19 +86,17 @@ if __name__ == "__main__":
         host = os.environ.get("HOST", "0.0.0.0")
         port = int(os.environ.get("PORT", 8000))
 
-        # Replace TransportSecurityMiddleware with a no-op so Railway's
-        # proxy Host header doesn't get rejected (we handle auth ourselves).
+        # Patch the __call__ method on the TransportSecurityMiddleware class
+        # itself so all instances (including those already referenced by
+        # streamable_http_manager) use the no-op version.
         try:
-            import mcp.server.transport_security as _ts
+            from mcp.server.transport_security import TransportSecurityMiddleware
 
-            class _AllowAllHosts:
-                def __init__(self, app, settings=None, **kwargs):
-                    self.app = app
-                async def __call__(self, scope, receive, send):
-                    await self.app(scope, receive, send)
+            async def _noop(self, scope, receive, send):
+                await self.app(scope, receive, send)
 
-            _ts.TransportSecurityMiddleware = _AllowAllHosts
-            print("TransportSecurityMiddleware patched to allow all hosts", flush=True)
+            TransportSecurityMiddleware.__call__ = _noop
+            print("Patched TransportSecurityMiddleware.__call__", flush=True)
         except Exception as _e:
             print(f"Security patch error: {_e}", flush=True)
 
