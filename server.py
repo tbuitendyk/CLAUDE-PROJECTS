@@ -100,19 +100,23 @@ if __name__ == "__main__":
         app.mount("/", app=mcp_app)
 
         if API_KEY:
+            _expected = f"Bearer {API_KEY}"
+            print(f"Auth enabled. Key length={len(API_KEY)}, expected header length={len(_expected)}", flush=True)
+
             class BearerAuthMiddleware(BaseHTTPMiddleware):
                 async def dispatch(self, request, call_next):
                     if request.url.path == "/health":
                         return await call_next(request)
                     auth = request.headers.get("Authorization", "")
-                    if auth != f"Bearer {API_KEY}":
+                    if auth != _expected:
+                        print(f"Auth FAILED: received={repr(auth)} expected={repr(_expected)}", flush=True)
                         return JSONResponse(
                             {"error": "Unauthorized"}, status_code=401
                         )
                     return await call_next(request)
 
             app.add_middleware(BearerAuthMiddleware)
-            print(f"Starting KJV MCP server on {host}:{port} (auth enabled)")
+            print(f"Starting KJV MCP server on {host}:{port} (auth enabled)", flush=True)
         else:
             print(
                 f"Starting KJV MCP server on {host}:{port} "
