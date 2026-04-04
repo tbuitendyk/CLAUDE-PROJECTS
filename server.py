@@ -93,11 +93,16 @@ if __name__ == "__main__":
         # Running on 127.0.0.1 means the MCP SDK's host security check sees
         # "localhost" as the Host header and accepts it.
         def _run_mcp():
-            # mcp.run() reads PORT from env — override it so the internal
-            # server binds to INTERNAL_PORT, not the public PORT.
-            os.environ["PORT"] = str(INTERNAL_PORT)
+            import asyncio
+            import uvicorn as _uvi
             print(f"Internal MCP starting on port {INTERNAL_PORT}", flush=True)
-            mcp.run(transport="streamable-http")
+            config = _uvi.Config(
+                mcp.streamable_http_app(),
+                host="127.0.0.1",
+                port=INTERNAL_PORT,
+                log_level="warning",
+            )
+            asyncio.run(_uvi.Server(config).serve())
 
         mcp_thread = threading.Thread(target=_run_mcp, daemon=True)
         mcp_thread.start()
