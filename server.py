@@ -86,11 +86,21 @@ if __name__ == "__main__":
         host = os.environ.get("HOST", "0.0.0.0")
         port = int(os.environ.get("PORT", 8000))
 
-        # Build the MCP ASGI app — try disabling host checking if supported
+        # Disable the MCP SDK's built-in DNS-rebinding host check —
+        # we run behind Railway's TLS proxy and handle auth ourselves.
         try:
-            mcp_asgi = mcp.streamable_http_app(allowed_hosts=["*"])
-        except TypeError:
-            mcp_asgi = mcp.streamable_http_app()
+            import mcp.server.transport_security as _ts
+            for _fn in ("validate_host", "check_host", "is_valid_host",
+                        "validate_host_header", "verify_host"):
+                if hasattr(_ts, _fn):
+                    setattr(_ts, _fn, lambda *a, **kw: True)
+                    print(f"Patched transport security: {_fn}", flush=True)
+                    break
+        except Exception as _e:
+            print(f"transport_security patch skipped: {_e}", flush=True)
+
+        # Build the MCP ASGI app
+        mcp_asgi = mcp.streamable_http_app()
 
         _bearer = f"Bearer {API_KEY}" if API_KEY else None
         print(f"Starting KJV MCP server on {host}:{port} "
@@ -131,13 +141,7 @@ if __name__ == "__main__":
                         await _send_json(send, {"error": "Unauthorized"}, status=401)
                         return
 
-                # Strip Host header down to bare hostname:port so FastMCP's
-                # TrustedHostMiddleware doesn't reject Railway's proxy headers.
-                clean_headers = [
-                    (k, v) for k, v in scope.get("headers", [])
-                    if k.lower() != b"host"
-                ] + [(b"host", b"localhost")]
-                await mcp_asgi({**scope, "headers": clean_headers}, receive, send)
+                await mcp_asgi(scope, receive, send)
 
         uvicorn.run(RootApp(), host=host, port=port,
                     proxy_headers=True, forwarded_allow_ips="*")
