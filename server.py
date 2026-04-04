@@ -163,6 +163,7 @@ if __name__ == "__main__":
                     if k.lower() not in (b"host", b"authorization")
                 }
                 fwd_headers["host"] = f"localhost:{INTERNAL_PORT}"  # must match MCP server's bound port
+                fwd_headers.setdefault("accept", "application/json, text/event-stream")
 
                 method = scope.get("method", "GET")
                 qs = scope.get("query_string", b"").decode()
