@@ -50,7 +50,7 @@ def _load() -> list:
                         "verse": verse_idx + 1,
                         "text": text.strip(),
                     })
-    elif isinstance(raw, list) and raw and "t" in raw[0]:
+    elif isinstance(raw, list) and raw and ("t" in raw[0] or "text" in raw[0]):
         # flat format with book name lookup needed — skip, handled below
         for entry in raw:
             verses.append({
