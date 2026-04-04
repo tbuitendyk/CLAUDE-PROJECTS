@@ -93,8 +93,7 @@ if __name__ == "__main__":
         # Running on 127.0.0.1 means the MCP SDK's host security check sees
         # "localhost" as the Host header and accepts it.
         def _run_mcp():
-            mcp.run(transport="streamable-http",
-                    host="127.0.0.1", port=INTERNAL_PORT)
+            mcp.run(transport="streamable-http", port=INTERNAL_PORT)
 
         mcp_thread = threading.Thread(target=_run_mcp, daemon=True)
         mcp_thread.start()
