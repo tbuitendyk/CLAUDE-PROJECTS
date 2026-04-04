@@ -128,7 +128,13 @@ if __name__ == "__main__":
                         await _send_json(send, {"error": "Unauthorized"}, status=401)
                         return
 
-                await mcp_asgi(scope, receive, send)
+                # Strip Host header down to bare hostname:port so FastMCP's
+                # TrustedHostMiddleware doesn't reject Railway's proxy headers.
+                clean_headers = [
+                    (k, v) for k, v in scope.get("headers", [])
+                    if k.lower() != b"host"
+                ] + [(b"host", f"{host}:{port}".encode())]
+                await mcp_asgi({**scope, "headers": clean_headers}, receive, send)
 
         uvicorn.run(RootApp(), host=host, port=port,
                     proxy_headers=True, forwarded_allow_ips="*")
