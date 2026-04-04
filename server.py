@@ -96,8 +96,12 @@ if __name__ == "__main__":
             import asyncio
             import uvicorn as _uvi
             print(f"Internal MCP starting on port {INTERNAL_PORT}", flush=True)
+            try:
+                _app = mcp.streamable_http_app(stateless_http=True)
+            except TypeError:
+                _app = mcp.streamable_http_app()
             config = _uvi.Config(
-                mcp.streamable_http_app(),
+                _app,
                 host="127.0.0.1",
                 port=INTERNAL_PORT,
                 log_level="warning",
