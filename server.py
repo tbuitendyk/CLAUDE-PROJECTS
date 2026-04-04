@@ -93,7 +93,11 @@ if __name__ == "__main__":
         # Running on 127.0.0.1 means the MCP SDK's host security check sees
         # "localhost" as the Host header and accepts it.
         def _run_mcp():
-            mcp.run(transport="streamable-http", port=INTERNAL_PORT)
+            # mcp.run() reads PORT from env — override it so the internal
+            # server binds to INTERNAL_PORT, not the public PORT.
+            os.environ["PORT"] = str(INTERNAL_PORT)
+            print(f"Internal MCP starting on port {INTERNAL_PORT}", flush=True)
+            mcp.run(transport="streamable-http")
 
         mcp_thread = threading.Thread(target=_run_mcp, daemon=True)
         mcp_thread.start()
@@ -166,7 +170,7 @@ if __name__ == "__main__":
                     for k, v in scope.get("headers", [])
                     if k.lower() not in (b"host", b"authorization")
                 }
-                fwd_headers["host"] = f"localhost:{INTERNAL_PORT}"
+                fwd_headers["host"] = f"localhost:{INTERNAL_PORT}"  # must match MCP server's bound port
 
                 method = scope.get("method", "GET")
                 qs = scope.get("query_string", b"").decode()
