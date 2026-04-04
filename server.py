@@ -86,8 +86,11 @@ if __name__ == "__main__":
         host = os.environ.get("HOST", "0.0.0.0")
         port = int(os.environ.get("PORT", 8000))
 
-        # Build the MCP ASGI app directly from FastMCP
-        mcp_asgi = mcp.streamable_http_app()
+        # Build the MCP ASGI app — try disabling host checking if supported
+        try:
+            mcp_asgi = mcp.streamable_http_app(allowed_hosts=["*"])
+        except TypeError:
+            mcp_asgi = mcp.streamable_http_app()
 
         _bearer = f"Bearer {API_KEY}" if API_KEY else None
         print(f"Starting KJV MCP server on {host}:{port} "
@@ -133,7 +136,7 @@ if __name__ == "__main__":
                 clean_headers = [
                     (k, v) for k, v in scope.get("headers", [])
                     if k.lower() != b"host"
-                ] + [(b"host", f"{host}:{port}".encode())]
+                ] + [(b"host", b"localhost")]
                 await mcp_asgi({**scope, "headers": clean_headers}, receive, send)
 
         uvicorn.run(RootApp(), host=host, port=port,
