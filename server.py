@@ -80,47 +80,54 @@ if __name__ == "__main__":
     if transport == "stdio":
         mcp.run(transport="stdio")
     else:
+        import json as _json
         import uvicorn
-        from starlette.middleware.base import BaseHTTPMiddleware
-        from starlette.responses import JSONResponse
-        from starlette.routing import Route
-        from starlette.applications import Starlette
 
         host = os.environ.get("HOST", "0.0.0.0")
         port = int(os.environ.get("PORT", 8000))
 
-        # Get the MCP ASGI app and mount it alongside a /health route
-        mcp_app = mcp.streamable_http_app()
+        # Build the MCP ASGI app directly from FastMCP
+        mcp_asgi = mcp.streamable_http_app()
 
-        async def health(request):
-            return JSONResponse({"status": "ok"})
+        _bearer = f"Bearer {API_KEY}" if API_KEY else None
+        print(f"Starting KJV MCP server on {host}:{port} "
+              f"({'auth enabled' if _bearer else 'open access'})", flush=True)
 
-        # Starlette app: /health returns 200, everything else goes to MCP
-        app = Starlette(routes=[Route("/health", health)])
-        app.mount("/", app=mcp_app)
+        async def _send_json(send, body: dict, status: int = 200):
+            raw = _json.dumps(body).encode()
+            await send({"type": "http.response.start", "status": status,
+                        "headers": [[b"content-type", b"application/json"],
+                                    [b"content-length", str(len(raw)).encode()]]})
+            await send({"type": "http.response.body", "body": raw})
 
-        if API_KEY:
-            _expected = f"Bearer {API_KEY}"
-            print(f"Auth enabled. Key length={len(API_KEY)}, expected header length={len(_expected)}", flush=True)
+        class RootApp:
+            """Pure-ASGI wrapper: handles /health, enforces bearer auth, proxies rest to MCP."""
 
-            class BearerAuthMiddleware(BaseHTTPMiddleware):
-                async def dispatch(self, request, call_next):
-                    if request.url.path == "/health":
-                        return await call_next(request)
-                    auth = request.headers.get("Authorization", "")
-                    if auth != _expected:
-                        print(f"Auth FAILED: received={repr(auth)} expected={repr(_expected)}", flush=True)
-                        return JSONResponse(
-                            {"error": "Unauthorized"}, status_code=401
-                        )
-                    return await call_next(request)
+            async def __call__(self, scope, receive, send):
+                if scope["type"] == "lifespan":
+                    await mcp_asgi(scope, receive, send)
+                    return
 
-            app.add_middleware(BearerAuthMiddleware)
-            print(f"Starting KJV MCP server on {host}:{port} (auth enabled)", flush=True)
-        else:
-            print(
-                f"Starting KJV MCP server on {host}:{port} "
-                "(no API_KEY set — open access)"
-            )
+                if scope["type"] != "http":
+                    await mcp_asgi(scope, receive, send)
+                    return
 
-        uvicorn.run(app, host=host, port=port)
+                path = scope.get("path", "")
+
+                # Health probe — no auth required
+                if path == "/health":
+                    await _send_json(send, {"status": "ok"})
+                    return
+
+                # Bearer auth
+                if _bearer:
+                    headers = {k.lower(): v for k, v in scope.get("headers", [])}
+                    auth = headers.get(b"authorization", b"").decode("utf-8", errors="replace")
+                    if auth != _bearer:
+                        print(f"Auth FAILED | received={repr(auth)} | expected={repr(_bearer)}", flush=True)
+                        await _send_json(send, {"error": "Unauthorized"}, status=401)
+                        return
+
+                await mcp_asgi(scope, receive, send)
+
+        uvicorn.run(RootApp(), host=host, port=port)
