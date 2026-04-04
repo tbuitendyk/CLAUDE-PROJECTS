@@ -50,15 +50,6 @@ mcp = FastMCP(
 API_KEY = os.environ.get("API_KEY", "")
 
 
-def _check_auth() -> str | None:
-    """Return an error string if auth fails, else None."""
-    if not API_KEY:
-        return None  # no key configured — open access
-    # FastMCP does not expose request headers directly; auth is enforced at
-    # the transport layer via middleware added below when running HTTP.
-    return None
-
-
 @mcp.tool()
 def kjv_lookup(snippet: str, context_verses: int = 3) -> str:
     """Find the closest matching KJV verse and return it with context.
@@ -89,16 +80,30 @@ if __name__ == "__main__":
     if transport == "stdio":
         mcp.run(transport="stdio")
     else:
+        import uvicorn
+        from starlette.middleware.base import BaseHTTPMiddleware
+        from starlette.responses import JSONResponse
+        from starlette.routing import Route
+        from starlette.applications import Starlette
+
         host = os.environ.get("HOST", "0.0.0.0")
         port = int(os.environ.get("PORT", 8000))
 
-        if API_KEY:
-            # Wrap the ASGI app with simple bearer-token middleware
-            from starlette.middleware.base import BaseHTTPMiddleware
-            from starlette.responses import JSONResponse
+        # Get the MCP ASGI app and mount it alongside a /health route
+        mcp_app = mcp.streamable_http_app()
 
+        async def health(request):
+            return JSONResponse({"status": "ok"})
+
+        # Starlette app: /health returns 200, everything else goes to MCP
+        app = Starlette(routes=[Route("/health", health)])
+        app.mount("/", app=mcp_app)
+
+        if API_KEY:
             class BearerAuthMiddleware(BaseHTTPMiddleware):
                 async def dispatch(self, request, call_next):
+                    if request.url.path == "/health":
+                        return await call_next(request)
                     auth = request.headers.get("Authorization", "")
                     if auth != f"Bearer {API_KEY}":
                         return JSONResponse(
@@ -106,19 +111,12 @@ if __name__ == "__main__":
                         )
                     return await call_next(request)
 
-            app = mcp.streamable_http_app()
             app.add_middleware(BearerAuthMiddleware)
-
-            import uvicorn
             print(f"Starting KJV MCP server on {host}:{port} (auth enabled)")
-            uvicorn.run(app, host=host, port=port)
         else:
             print(
                 f"Starting KJV MCP server on {host}:{port} "
                 "(no API_KEY set — open access)"
             )
-            mcp.run(
-                transport="streamable-http",
-                host=host,
-                port=port,
-            )
+
+        uvicorn.run(app, host=host, port=port)
