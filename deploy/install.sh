@@ -47,6 +47,12 @@ echo ""
 
 # ── 1. System packages ──────────────────────────────────────────────────────
 echo "--- Installing system packages ---"
+# Remove any stale backports entries that cause apt-get update to fail on
+# Debian 12 machines upgraded from or configured with Debian 11 repos.
+sed -i '/bullseye-backports/d' /etc/apt/sources.list 2>/dev/null || true
+find /etc/apt/sources.list.d/ -name "*.list" \
+    -exec sed -i '/bullseye-backports/d' {} \; 2>/dev/null || true
+
 apt-get update -qq
 apt-get install -y --no-install-recommends \
     python3 python3-venv python3-pip \
