@@ -51,31 +51,30 @@ echo "--- Installing system packages ---"
 CODENAME=$(. /etc/os-release && echo "$VERSION_CODENAME")
 echo "    Detected Debian: $CODENAME"
 
-# Ensure backports is available — needed on Debian 11 for Python 3.11
-# Use a dedicated file so we don't mangle the main sources.list
-if [[ "$CODENAME" == "bullseye" ]]; then
-    echo "deb http://deb.debian.org/debian bullseye-backports main" \
-        > /etc/apt/sources.list.d/kjv-backports.list
-fi
-
 apt-get update -qq
-apt-get install -y --no-install-recommends nginx certbot git curl
+apt-get install -y --no-install-recommends nginx certbot git curl gnupg
 
 # Install Python 3.11 — required by the mcp package (needs Python >= 3.10).
 # On Debian 12 (bookworm) python3.11 is in the main repo.
-# On Debian 11 (bullseye) it's in backports.
+# On Debian 11 (bullseye) backports are retired; use Sury's Python repo.
 if ! command -v python3.11 &>/dev/null; then
     echo "    Installing Python 3.11..."
     if [[ "$CODENAME" == "bullseye" ]]; then
-        apt-get install -y -t bullseye-backports python3.11 python3.11-venv
-    else
-        apt-get install -y python3.11 python3.11-venv
+        echo "    Adding Sury Python repo for Debian 11..."
+        curl -fsSL https://packages.sury.org/python/apt.gpg \
+            | gpg --dearmor -o /etc/apt/trusted.gpg.d/sury-python.gpg
+        echo "deb https://packages.sury.org/python/ bullseye main" \
+            > /etc/apt/sources.list.d/sury-python.list
+        apt-get update -qq
     fi
+    apt-get install -y python3.11 python3.11-venv
 else
     echo "    Python 3.11 already installed: $(python3.11 --version)"
-    # Ensure venv module is present
     apt-get install -y python3.11-venv 2>/dev/null || true
 fi
+
+# Allow git to operate on the install directory regardless of who owns it
+git config --global --add safe.directory "$INSTALL_DIR" 2>/dev/null || true
 
 # ── 2. Dedicated system user ────────────────────────────────────────────────
 echo "--- Creating system user '$SERVICE_USER' ---"
