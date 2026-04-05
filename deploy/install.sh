@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# KJV MCP Server — Debian 12 installer
+# KJV MCP Server — Debian 11/12 installer
 # Run as root: bash install.sh <your-domain> [api-key]
 #
 # Designed for servers where ports 80 and 443 are already in use.
@@ -7,7 +7,7 @@
 # SSL certificate is obtained using the DNS-01 challenge — no port 80 needed.
 #
 # What this script does:
-#   1. Installs system packages (Python 3, nginx, certbot, git)
+#   1. Installs system packages (Python 3.11+, nginx, certbot, git)
 #   2. Creates a dedicated 'kjvmcp' system user
 #   3. Clones/updates the repo to /opt/kjv-mcp
 #   4. Creates a Python virtualenv and installs requirements
@@ -47,17 +47,35 @@ echo ""
 
 # ── 1. System packages ──────────────────────────────────────────────────────
 echo "--- Installing system packages ---"
-# Remove any stale backports entries that cause apt-get update to fail on
-# Debian 12 machines upgraded from or configured with Debian 11 repos.
-sed -i '/bullseye-backports/d' /etc/apt/sources.list 2>/dev/null || true
-find /etc/apt/sources.list.d/ -name "*.list" \
-    -exec sed -i '/bullseye-backports/d' {} \; 2>/dev/null || true
+
+CODENAME=$(. /etc/os-release && echo "$VERSION_CODENAME")
+echo "    Detected Debian: $CODENAME"
+
+# Ensure backports is available — needed on Debian 11 for Python 3.11
+# Use a dedicated file so we don't mangle the main sources.list
+if [[ "$CODENAME" == "bullseye" ]]; then
+    echo "deb http://deb.debian.org/debian bullseye-backports main" \
+        > /etc/apt/sources.list.d/kjv-backports.list
+fi
 
 apt-get update -qq
-apt-get install -y --no-install-recommends \
-    python3 python3-venv python3-pip \
-    nginx certbot \
-    git curl
+apt-get install -y --no-install-recommends nginx certbot git curl
+
+# Install Python 3.11 — required by the mcp package (needs Python >= 3.10).
+# On Debian 12 (bookworm) python3.11 is in the main repo.
+# On Debian 11 (bullseye) it's in backports.
+if ! command -v python3.11 &>/dev/null; then
+    echo "    Installing Python 3.11..."
+    if [[ "$CODENAME" == "bullseye" ]]; then
+        apt-get install -y -t bullseye-backports python3.11 python3.11-venv
+    else
+        apt-get install -y python3.11 python3.11-venv
+    fi
+else
+    echo "    Python 3.11 already installed: $(python3.11 --version)"
+    # Ensure venv module is present
+    apt-get install -y python3.11-venv 2>/dev/null || true
+fi
 
 # ── 2. Dedicated system user ────────────────────────────────────────────────
 echo "--- Creating system user '$SERVICE_USER' ---"
@@ -78,9 +96,9 @@ fi
 chown -R "$SERVICE_USER:$SERVICE_USER" "$INSTALL_DIR"
 
 # ── 4. Python virtualenv ────────────────────────────────────────────────────
-echo "--- Setting up Python virtualenv ---"
+echo "--- Setting up Python virtualenv (python3.11) ---"
 if [[ ! -d "$INSTALL_DIR/venv" ]]; then
-    python3 -m venv "$INSTALL_DIR/venv"
+    python3.11 -m venv "$INSTALL_DIR/venv"
 fi
 "$INSTALL_DIR/venv/bin/pip" install --quiet --upgrade pip
 "$INSTALL_DIR/venv/bin/pip" install --quiet -r "$INSTALL_DIR/requirements.txt"
