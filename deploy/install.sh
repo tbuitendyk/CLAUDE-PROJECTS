@@ -51,23 +51,34 @@ echo "--- Installing system packages ---"
 CODENAME=$(. /etc/os-release && echo "$VERSION_CODENAME")
 echo "    Detected Debian: $CODENAME"
 
+# Remove any leftover broken repo files from previous install attempts
+rm -f /etc/apt/sources.list.d/sury-python.list
+rm -f /etc/apt/trusted.gpg.d/sury-python.gpg
+
 apt-get update -qq
 apt-get install -y --no-install-recommends nginx certbot git curl gnupg
 
 # Install Python 3.11 — required by the mcp package (needs Python >= 3.10).
 # On Debian 12 (bookworm) python3.11 is in the main repo.
-# On Debian 11 (bullseye) backports are retired; use Sury's Python repo.
+# On Debian 11 (bullseye) backports and third-party repos are unreliable;
+# compile from source if not already present.
 if ! command -v python3.11 &>/dev/null; then
-    echo "    Installing Python 3.11..."
-    if [[ "$CODENAME" == "bullseye" ]]; then
-        echo "    Adding Sury Python repo for Debian 11..."
-        curl -fsSL https://packages.sury.org/python/apt.gpg \
-            | gpg --dearmor -o /etc/apt/trusted.gpg.d/sury-python.gpg
-        echo "deb https://packages.sury.org/python/ bullseye main" \
-            > /etc/apt/sources.list.d/sury-python.list
-        apt-get update -qq
+    if [[ "$CODENAME" == "bookworm" ]]; then
+        echo "    Installing Python 3.11 from Debian 12 repo..."
+        apt-get install -y python3.11 python3.11-venv
+    else
+        echo "    Python 3.11 not found."
+        echo "    On Debian 11, compile it first then re-run this installer:"
+        echo ""
+        echo "      apt-get install -y build-essential libssl-dev zlib1g-dev libbz2-dev \\"
+        echo "          libreadline-dev libsqlite3-dev wget libncurses5-dev xz-utils \\"
+        echo "          libffi-dev liblzma-dev"
+        echo "      cd /tmp && wget https://www.python.org/ftp/python/3.11.9/Python-3.11.9.tgz"
+        echo "      tar xzf Python-3.11.9.tgz && cd Python-3.11.9"
+        echo "      ./configure --enable-optimizations && make -j\$(nproc) && make altinstall"
+        echo ""
+        exit 1
     fi
-    apt-get install -y python3.11 python3.11-venv
 else
     echo "    Python 3.11 already installed: $(python3.11 --version)"
     apt-get install -y python3.11-venv 2>/dev/null || true
