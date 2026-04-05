@@ -2,6 +2,10 @@
 # KJV MCP Server — Debian 12 installer
 # Run as root: bash install.sh <your-domain> [api-key]
 #
+# Designed for servers where ports 80 and 443 are already in use.
+# The MCP server is exposed on port 8443 (HTTPS) via nginx.
+# SSL certificate is obtained using the DNS-01 challenge — no port 80 needed.
+#
 # What this script does:
 #   1. Installs system packages (Python 3, nginx, certbot, git)
 #   2. Creates a dedicated 'kjvmcp' system user
@@ -10,17 +14,17 @@
 #   5. Downloads the KJV Bible data
 #   6. Writes /etc/kjv-mcp/env (environment variables)
 #   7. Installs and starts the systemd service
-#   8. Installs the nginx config and obtains an SSL certificate
+#   8. Installs the nginx config on port 8443
+#   9. Walks you through DNS-01 certificate issuance
 
 set -euo pipefail
 
-# ── Arguments ──────────────────────────────────────────────────────────────
 DOMAIN="${1:-}"
 API_KEY="${2:-}"
 
 if [[ -z "$DOMAIN" ]]; then
     echo "Usage: bash install.sh <your-domain> [api-key]"
-    echo "  e.g. bash install.sh kjv.example.com my-secret-key"
+    echo "  e.g. bash install.sh kjv.buitendyk.ca my-secret-key"
     exit 1
 fi
 
@@ -37,6 +41,7 @@ ENV_FILE="/etc/kjv-mcp/env"
 
 echo "=== KJV MCP Server Installer ==="
 echo "Domain  : $DOMAIN"
+echo "Port    : 8443 (nginx SSL, won't touch 80/443)"
 echo "API key : ${API_KEY:-<none — server will be open>}"
 echo ""
 
@@ -45,7 +50,7 @@ echo "--- Installing system packages ---"
 apt-get update -qq
 apt-get install -y --no-install-recommends \
     python3 python3-venv python3-pip \
-    nginx certbot python3-certbot-nginx \
+    nginx certbot \
     git curl
 
 # ── 2. Dedicated system user ────────────────────────────────────────────────
@@ -93,7 +98,7 @@ chown root:"$SERVICE_USER" /etc/kjv-mcp
 cat > "$ENV_FILE" <<EOF
 TRANSPORT=http
 PORT=8000
-BASE_URL=https://${DOMAIN}
+BASE_URL=https://${DOMAIN}:8443
 API_KEY=${API_KEY}
 EOF
 
@@ -109,44 +114,75 @@ systemctl restart kjv-mcp
 echo "    Service status:"
 systemctl status kjv-mcp --no-pager -l | head -20
 
-# ── 8. nginx + SSL ──────────────────────────────────────────────────────────
-echo "--- Configuring nginx ---"
-# Install config with the real domain substituted in
+# ── 8. Firewall — open port 8443 ───────────────────────────────────────────
+echo "--- Opening port 8443 in firewall ---"
+if command -v ufw &>/dev/null && ufw status | grep -q "Status: active"; then
+    ufw allow 8443/tcp comment "KJV MCP Server"
+    echo "    ufw: port 8443 allowed."
+else
+    echo "    ufw not active — ensure port 8443 is open in your firewall/iptables."
+fi
+
+# ── 9. nginx config (port 8443, no cert yet) ────────────────────────────────
+echo "--- Installing nginx config for port 8443 ---"
+
+# Install config with the domain substituted in — but without ssl lines for now
 sed "s/YOUR_DOMAIN/${DOMAIN}/g" \
     "$INSTALL_DIR/deploy/nginx-kjv-mcp.conf" \
     > /etc/nginx/sites-available/kjv-mcp
 
-# Disable default site if still enabled
-rm -f /etc/nginx/sites-enabled/default
+rm -f /etc/nginx/sites-enabled/default 2>/dev/null || true
 ln -sf /etc/nginx/sites-available/kjv-mcp /etc/nginx/sites-enabled/kjv-mcp
 
-# Validate config before reloading
-nginx -t
-systemctl reload nginx
+# Make sure nginx itself is running (on no default ports — just ours)
+systemctl enable nginx
+systemctl start nginx || true   # may fail until cert exists — that's OK
 
-echo "--- Obtaining SSL certificate for $DOMAIN ---"
-echo "    (Make sure DNS for $DOMAIN points to this server's public IP first!)"
-certbot --nginx -d "$DOMAIN" --non-interactive --agree-tos \
-    --register-unsafely-without-email \
-    --redirect
+# ── 9. SSL certificate via DNS-01 ───────────────────────────────────────────
+echo ""
+echo "==================================================================="
+echo " SSL Certificate — DNS-01 Challenge"
+echo "==================================================================="
+echo ""
+echo " Because ports 80 and 443 are in use, we use the DNS challenge."
+echo " certbot will ask you to add a TXT record to your DNS."
+echo ""
+echo " Have your DNS management console open and ready."
+echo " Press ENTER to start, or Ctrl-C to do it manually later."
+echo "==================================================================="
+read -r
 
-systemctl reload nginx
+certbot certonly \
+    --manual \
+    --preferred-challenges dns \
+    -d "$DOMAIN" \
+    --agree-tos \
+    --register-unsafely-without-email
+
+# Now reload nginx with the cert in place
+nginx -t && systemctl reload nginx
 
 # ── Done ────────────────────────────────────────────────────────────────────
 echo ""
 echo "=== Installation complete ==="
 echo ""
-echo "MCP server URL : https://${DOMAIN}/mcp"
-echo "Health check   : https://${DOMAIN}/health"
+echo "MCP server URL : https://${DOMAIN}:8443/mcp"
+echo "Health check   : https://${DOMAIN}:8443/health"
 if [[ -n "$API_KEY" ]]; then
 echo "API key        : $API_KEY"
 fi
 echo ""
 echo "Useful commands:"
-echo "  sudo systemctl status kjv-mcp       # service status"
-echo "  sudo journalctl -u kjv-mcp -f       # live logs"
-echo "  sudo systemctl restart kjv-mcp      # restart"
-echo "  sudo nano /etc/kjv-mcp/env          # edit env vars"
+echo "  sudo systemctl status kjv-mcp        # service status"
+echo "  sudo journalctl -u kjv-mcp -f        # live logs"
+echo "  sudo systemctl restart kjv-mcp       # restart"
+echo "  sudo nano /etc/kjv-mcp/env           # edit env vars"
 echo ""
-echo "To update to the latest code:"
+echo "Test it:"
+echo "  curl https://${DOMAIN}:8443/health"
+echo ""
+echo "Update to latest code:"
 echo "  sudo bash ${INSTALL_DIR}/deploy/update.sh"
+echo ""
+echo "Certificate renewal (add to cron or run manually every ~60 days):"
+echo "  sudo certbot renew --manual --preferred-challenges dns"
