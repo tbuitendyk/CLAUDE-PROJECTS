@@ -1,87 +1,154 @@
 #!/bin/sh
-# QNAP Setup Script
+# QNAP Setup Script — SSH Reverse Tunnel
 # Run as root on the QNAP via SSH
 # Compatible with ash/sh (no bash required)
 set -eu
 
-echo "=== QNAP WireGuard Setup ==="
+echo "=== QNAP SSH Reverse Tunnel Setup ==="
 
-# 1. Check for / install WireGuard
-if command -v wg >/dev/null 2>&1; then
-    echo "WireGuard is already installed."
+# Configuration
+VPS_USER="tunnel-qnap"
+KEY_FILE="/root/.ssh/id_tunnel_vps"
+TUNNEL_SCRIPT="/opt/tunnel-smb.sh"
+MONITOR_SCRIPT="/opt/tunnel-monitor.sh"
+
+# 1. Generate SSH key pair for the tunnel (if not present)
+if [ ! -f "$KEY_FILE" ]; then
+    echo "Generating SSH key pair for tunnel..."
+    mkdir -p /root/.ssh
+    chmod 700 /root/.ssh
+    ssh-keygen -t ed25519 -f "$KEY_FILE" -N "" -C "qnap-tunnel"
+    echo ""
+    echo "=============================================="
+    echo "=== QNAP Public Key (add to VPS)          ==="
+    echo "=============================================="
+    cat "${KEY_FILE}.pub"
+    echo "=============================================="
+    echo ""
+    echo "Add this key to the VPS file:"
+    echo "  /home/tunnel-qnap/.ssh/authorized_keys"
+    echo ""
 else
-    echo "WireGuard not found. Attempting install via opkg (Entware)..."
-    if command -v opkg >/dev/null 2>&1; then
-        opkg update
-        opkg install wireguard-tools kmod-wireguard
-    else
-        echo ""
-        echo "ERROR: Neither wg nor opkg found."
-        echo "Install WireGuard manually on your QNAP first:"
-        echo "  Option A: Install Entware from the QNAP App Center, then run this script again."
-        echo "  Option B: Install the QVPN Service app and enable WireGuard."
-        echo "  Option C: Manually compile/install wireguard-tools."
-        exit 1
+    echo "SSH key already exists at $KEY_FILE"
+    printf "Public key: "
+    cat "${KEY_FILE}.pub"
+fi
+
+# 2. Get VPS IP
+printf "Enter the VPS public IP address: "
+read VPS_IP
+
+# 3. Test SSH connectivity
+echo "Testing SSH connection to $VPS_IP..."
+echo "(If this is the first connection, type 'yes' to accept the host key)"
+if ssh -i "$KEY_FILE" -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new \
+   "${VPS_USER}@${VPS_IP}" "echo connected" 2>/dev/null; then
+    echo "SSH connection successful."
+else
+    echo ""
+    echo "WARNING: SSH connection failed."
+    echo "Make sure you've added the public key above to the VPS first."
+    echo "The tunnel script will be created anyway — fix the key and start it manually."
+fi
+
+# 4. Create the tunnel script
+cat > "$TUNNEL_SCRIPT" << SCRIPT_EOF
+#!/bin/sh
+# SSH reverse tunnel: forward VPS:445 -> QNAP:445 (SMB)
+exec ssh -i "$KEY_FILE" \\
+    -o ServerAliveInterval=30 \\
+    -o ServerAliveCountMax=3 \\
+    -o ExitOnForwardFailure=yes \\
+    -o StrictHostKeyChecking=accept-new \\
+    -N \\
+    -R 0.0.0.0:445:127.0.0.1:445 \\
+    "${VPS_USER}@${VPS_IP}"
+SCRIPT_EOF
+chmod +x "$TUNNEL_SCRIPT"
+echo "Created tunnel script: $TUNNEL_SCRIPT"
+
+# 5. Create a monitor script that restarts the tunnel if it drops
+cat > "$MONITOR_SCRIPT" << 'MONITOR_HEADER'
+#!/bin/sh
+# Monitor and restart the SMB tunnel if it drops
+TUNNEL_SCRIPT="TUNNEL_PLACEHOLDER"
+PIDFILE="/var/run/tunnel-smb.pid"
+LOGFILE="/var/log/tunnel-smb.log"
+
+start_tunnel() {
+    if [ -f "$PIDFILE" ] && kill -0 "$(cat "$PIDFILE")" 2>/dev/null; then
+        return 0
     fi
-fi
+    echo "$(date): Starting SMB tunnel..." >> "$LOGFILE"
+    $TUNNEL_SCRIPT >> "$LOGFILE" 2>&1 &
+    echo $! > "$PIDFILE"
+}
 
-# 2. Generate keys (if not already present)
-KEY_DIR="/etc/wireguard"
-mkdir -p "$KEY_DIR"
+stop_tunnel() {
+    if [ -f "$PIDFILE" ]; then
+        kill "$(cat "$PIDFILE")" 2>/dev/null || true
+        rm -f "$PIDFILE"
+        echo "$(date): Tunnel stopped." >> "$LOGFILE"
+    fi
+}
 
-if [ ! -f "$KEY_DIR/privatekey" ]; then
-    echo "Generating WireGuard key pair..."
-    wg genkey | tee "$KEY_DIR/privatekey" | wg pubkey > "$KEY_DIR/publickey"
-    chmod 600 "$KEY_DIR/privatekey"
-    echo ""
-    echo "=== QNAP Public Key (give this to the VPS config) ==="
-    cat "$KEY_DIR/publickey"
-    echo "========================================================"
-    echo ""
+case "${1:-start}" in
+    start)
+        start_tunnel
+        ;;
+    stop)
+        stop_tunnel
+        ;;
+    restart)
+        stop_tunnel
+        sleep 2
+        start_tunnel
+        ;;
+    monitor)
+        # Run in a loop, restarting if the tunnel dies
+        while true; do
+            start_tunnel
+            # Wait for tunnel process to exit
+            wait "$(cat "$PIDFILE")" 2>/dev/null || true
+            echo "$(date): Tunnel exited, restarting in 10s..." >> "$LOGFILE"
+            sleep 10
+        done
+        ;;
+    *)
+        echo "Usage: $0 {start|stop|restart|monitor}"
+        exit 1
+        ;;
+esac
+MONITOR_HEADER
+
+# Replace placeholder with actual tunnel script path
+sed -i "s|TUNNEL_PLACEHOLDER|$TUNNEL_SCRIPT|" "$MONITOR_SCRIPT"
+chmod +x "$MONITOR_SCRIPT"
+echo "Created monitor script: $MONITOR_SCRIPT"
+
+# 6. Start the tunnel
+echo ""
+echo "Starting tunnel..."
+$MONITOR_SCRIPT monitor &
+sleep 3
+
+# Check if it's running
+if [ -f /var/run/tunnel-smb.pid ] && kill -0 "$(cat /var/run/tunnel-smb.pid)" 2>/dev/null; then
+    echo "Tunnel is running! (PID: $(cat /var/run/tunnel-smb.pid))"
 else
-    echo "Keys already exist in $KEY_DIR"
-    printf "QNAP Public Key: "
-    cat "$KEY_DIR/publickey"
-fi
-
-# 3. Install the WireGuard config
-if [ ! -f "$KEY_DIR/wg0.conf" ]; then
-    QNAP_PRIVKEY=$(cat "$KEY_DIR/privatekey")
-
-    printf "Enter the VPS public IP address: "
-    read VPS_IP
-    printf "Enter the VPS's WireGuard public key: "
-    read VPS_PUBKEY
-
-    SCRIPT_DIR=$(dirname "$0")
-    sed -e "s|QNAP_PRIVATE_KEY|$QNAP_PRIVKEY|" \
-        -e "s|VPS_PUBLIC_KEY|$VPS_PUBKEY|" \
-        -e "s|VPS_PUBLIC_IP|$VPS_IP|" \
-        "$SCRIPT_DIR/wg0.conf" > "$KEY_DIR/wg0.conf"
-
-    chmod 600 "$KEY_DIR/wg0.conf"
-    echo "Config written to $KEY_DIR/wg0.conf"
-else
-    echo "Config already exists at $KEY_DIR/wg0.conf -- skipping."
-fi
-
-# 4. Start WireGuard
-if command -v systemctl >/dev/null 2>&1; then
-    systemctl enable wg-quick@wg0 2>/dev/null || true
-    systemctl start wg-quick@wg0
-else
-    echo "No systemd detected -- starting WireGuard with wg-quick..."
-    wg-quick up wg0
-    echo ""
-    echo "NOTE: WireGuard won't auto-start on reboot without systemd."
-    echo "Add the following to your QNAP's autorun.sh (or equivalent):"
-    echo "  wg-quick up wg0"
-    echo ""
-    echo "On QNAP, you can enable autorun scripts via:"
-    echo "  Control Panel > Hardware > General > Run user defined processes (autorun.sh)"
+    echo "WARNING: Tunnel may not have started. Check /var/log/tunnel-smb.log"
 fi
 
 echo ""
 echo "=== Setup Complete ==="
-echo "Check status with: wg show"
-echo "Test connectivity with: ping 10.0.0.1"
+echo ""
+echo "Commands:"
+echo "  Start:   $MONITOR_SCRIPT monitor &"
+echo "  Stop:    $MONITOR_SCRIPT stop"
+echo "  Restart: $MONITOR_SCRIPT restart"
+echo "  Logs:    cat /var/log/tunnel-smb.log"
+echo ""
+echo "Add this to your startup script for persistence across reboots:"
+echo "  $MONITOR_SCRIPT monitor &"
+echo ""
+echo "Test from any machine: smb://YOUR_VPS_IP/"
