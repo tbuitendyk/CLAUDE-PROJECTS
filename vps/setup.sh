@@ -20,6 +20,25 @@ else
     echo "GatewayPorts yes" >> "$SSHD_CONFIG"
 fi
 
+# Allow the tunnel user to forward privileged ports (below 1024)
+if ! grep -q "Match User tunnel-qnap" "$SSHD_CONFIG"; then
+    cat >> "$SSHD_CONFIG" << 'SSHD_EOF'
+
+# Allow tunnel-qnap to bind privileged ports for SMB forwarding
+Match User tunnel-qnap
+    PermitOpen any
+    AllowTcpForwarding remote
+SSHD_EOF
+    echo "Added Match block for tunnel-qnap."
+fi
+
+# Allow non-root users to bind privileged ports via sysctl
+if ! grep -q "^net.ipv4.ip_unprivileged_port_start=0" /etc/sysctl.conf; then
+    echo "net.ipv4.ip_unprivileged_port_start=0" >> /etc/sysctl.conf
+    sysctl -w net.ipv4.ip_unprivileged_port_start=0
+    echo "Enabled unprivileged binding to all ports."
+fi
+
 # Create a dedicated user for the tunnel (no shell, no home)
 if ! id tunnel-qnap >/dev/null 2>&1; then
     useradd -r -s /usr/sbin/nologin -M tunnel-qnap
@@ -48,21 +67,13 @@ fi
 systemctl restart sshd
 echo "sshd restarted with GatewayPorts enabled."
 
-# 2. Firewall — allow TCP 445 inbound and redirect to 44500
-# The SSH tunnel binds to port 44500 (non-privileged) on the VPS.
-# iptables redirects incoming port 445 to 44500.
-echo "Configuring iptables..."
+# 2. Firewall — allow TCP 445 inbound
+echo "Checking iptables for port 445..."
 if ! iptables -C INPUT -p tcp --dport 445 -j ACCEPT 2>/dev/null; then
     iptables -A INPUT -p tcp --dport 445 -j ACCEPT
     echo "Added iptables rule to allow TCP 445."
-fi
-if ! iptables -C INPUT -p tcp --dport 44500 -j ACCEPT 2>/dev/null; then
-    iptables -A INPUT -p tcp --dport 44500 -j ACCEPT
-    echo "Added iptables rule to allow TCP 44500."
-fi
-if ! iptables -t nat -C PREROUTING -p tcp --dport 445 -j REDIRECT --to-port 44500 2>/dev/null; then
-    iptables -t nat -A PREROUTING -p tcp --dport 445 -j REDIRECT --to-port 44500
-    echo "Added NAT redirect: 445 -> 44500."
+else
+    echo "TCP 445 already allowed."
 fi
 
 # Persist iptables rules
@@ -79,7 +90,6 @@ echo ""
 echo "Next steps:"
 echo "  1. Add the QNAP's SSH public key to /home/tunnel-qnap/.ssh/authorized_keys"
 echo "  2. Run the QNAP setup script on the QNAP"
-echo "  3. The QNAP will connect and forward VPS:44500 -> QNAP:445"
-echo "  4. iptables redirects external port 445 -> 44500"
+echo "  3. The QNAP will connect and forward VPS:445 -> QNAP:445"
 echo ""
 echo "IMPORTANT: Make sure your VPS firewall allows TCP 445 inbound."
