@@ -1,19 +1,17 @@
-#!/usr/bin/env bash
+#!/bin/sh
 # QNAP Setup Script
 # Run as root on the QNAP via SSH
-set -euo pipefail
+# Compatible with ash/sh (no bash required)
+set -eu
 
 echo "=== QNAP WireGuard Setup ==="
 
 # 1. Check for / install WireGuard
-# QNAP may have WireGuard via QVPN, Entware (opkg), or manual install.
-# Adjust this section based on your QNAP's package manager.
-
-if command -v wg &>/dev/null; then
+if command -v wg >/dev/null 2>&1; then
     echo "WireGuard is already installed."
 else
     echo "WireGuard not found. Attempting install via opkg (Entware)..."
-    if command -v opkg &>/dev/null; then
+    if command -v opkg >/dev/null 2>&1; then
         opkg update
         opkg install wireguard-tools kmod-wireguard
     else
@@ -42,34 +40,37 @@ if [ ! -f "$KEY_DIR/privatekey" ]; then
     echo ""
 else
     echo "Keys already exist in $KEY_DIR"
-    echo "QNAP Public Key: $(cat "$KEY_DIR/publickey")"
+    printf "QNAP Public Key: "
+    cat "$KEY_DIR/publickey"
 fi
 
 # 3. Install the WireGuard config
 if [ ! -f "$KEY_DIR/wg0.conf" ]; then
     QNAP_PRIVKEY=$(cat "$KEY_DIR/privatekey")
 
-    read -rp "Enter the VPS public IP address: " VPS_IP
-    read -rp "Enter the VPS's WireGuard public key: " VPS_PUBKEY
+    printf "Enter the VPS public IP address: "
+    read VPS_IP
+    printf "Enter the VPS's WireGuard public key: "
+    read VPS_PUBKEY
 
+    SCRIPT_DIR=$(dirname "$0")
     sed -e "s|QNAP_PRIVATE_KEY|$QNAP_PRIVKEY|" \
         -e "s|VPS_PUBLIC_KEY|$VPS_PUBKEY|" \
         -e "s|VPS_PUBLIC_IP|$VPS_IP|" \
-        "$(dirname "$0")/wg0.conf" > "$KEY_DIR/wg0.conf"
+        "$SCRIPT_DIR/wg0.conf" > "$KEY_DIR/wg0.conf"
 
     chmod 600 "$KEY_DIR/wg0.conf"
     echo "Config written to $KEY_DIR/wg0.conf"
 else
-    echo "Config already exists at $KEY_DIR/wg0.conf — skipping."
+    echo "Config already exists at $KEY_DIR/wg0.conf -- skipping."
 fi
 
 # 4. Start WireGuard
-# Note: QNAP may not have systemd. Use wg-quick directly.
-if command -v systemctl &>/dev/null; then
+if command -v systemctl >/dev/null 2>&1; then
     systemctl enable wg-quick@wg0 2>/dev/null || true
     systemctl start wg-quick@wg0
 else
-    echo "No systemd detected — starting WireGuard with wg-quick..."
+    echo "No systemd detected -- starting WireGuard with wg-quick..."
     wg-quick up wg0
     echo ""
     echo "NOTE: WireGuard won't auto-start on reboot without systemd."
