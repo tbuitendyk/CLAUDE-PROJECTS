@@ -54,14 +54,16 @@ fi
 # 4. Create the tunnel script
 cat > "$TUNNEL_SCRIPT" << SCRIPT_EOF
 #!/bin/sh
-# SSH reverse tunnel: forward VPS:445 -> QNAP:445 (SMB)
+# SSH reverse tunnel: forward VPS:44500 -> QNAP:445 (SMB)
+# Port 44500 is used because only root can bind to ports below 1024.
+# An iptables PREROUTING rule on the VPS redirects 445 -> 44500.
 exec ssh -i "$KEY_FILE" \\
     -o ServerAliveInterval=30 \\
     -o ServerAliveCountMax=3 \\
     -o ExitOnForwardFailure=yes \\
     -o StrictHostKeyChecking=accept-new \\
     -N \\
-    -R 0.0.0.0:445:127.0.0.1:445 \\
+    -R 0.0.0.0:44500:127.0.0.1:445 \\
     "${VPS_USER}@${VPS_IP}"
 SCRIPT_EOF
 chmod +x "$TUNNEL_SCRIPT"

@@ -48,21 +48,29 @@ fi
 systemctl restart sshd
 echo "sshd restarted with GatewayPorts enabled."
 
-# 2. Firewall — allow TCP 445 inbound
-echo "Checking iptables for port 445..."
+# 2. Firewall — allow TCP 445 inbound and redirect to 44500
+# The SSH tunnel binds to port 44500 (non-privileged) on the VPS.
+# iptables redirects incoming port 445 to 44500.
+echo "Configuring iptables..."
 if ! iptables -C INPUT -p tcp --dport 445 -j ACCEPT 2>/dev/null; then
     iptables -A INPUT -p tcp --dport 445 -j ACCEPT
     echo "Added iptables rule to allow TCP 445."
+fi
+if ! iptables -C INPUT -p tcp --dport 44500 -j ACCEPT 2>/dev/null; then
+    iptables -A INPUT -p tcp --dport 44500 -j ACCEPT
+    echo "Added iptables rule to allow TCP 44500."
+fi
+if ! iptables -t nat -C PREROUTING -p tcp --dport 445 -j REDIRECT --to-port 44500 2>/dev/null; then
+    iptables -t nat -A PREROUTING -p tcp --dport 445 -j REDIRECT --to-port 44500
+    echo "Added NAT redirect: 445 -> 44500."
+fi
 
-    # Persist iptables rules
-    if command -v netfilter-persistent >/dev/null 2>&1; then
-        netfilter-persistent save
-    else
-        echo "NOTE: Install iptables-persistent to keep this rule across reboots:"
-        echo "  apt-get install -y iptables-persistent"
-    fi
+# Persist iptables rules
+if command -v netfilter-persistent >/dev/null 2>&1; then
+    netfilter-persistent save
 else
-    echo "TCP 445 already allowed."
+    echo "NOTE: Install iptables-persistent to keep rules across reboots:"
+    echo "  apt-get install -y iptables-persistent"
 fi
 
 echo ""
@@ -71,6 +79,7 @@ echo ""
 echo "Next steps:"
 echo "  1. Add the QNAP's SSH public key to /home/tunnel-qnap/.ssh/authorized_keys"
 echo "  2. Run the QNAP setup script on the QNAP"
-echo "  3. The QNAP will connect and forward VPS:445 -> QNAP:445"
+echo "  3. The QNAP will connect and forward VPS:44500 -> QNAP:445"
+echo "  4. iptables redirects external port 445 -> 44500"
 echo ""
 echo "IMPORTANT: Make sure your VPS firewall allows TCP 445 inbound."
