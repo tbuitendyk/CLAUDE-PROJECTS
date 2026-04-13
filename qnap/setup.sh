@@ -67,72 +67,25 @@ SCRIPT_EOF
 chmod +x "$TUNNEL_SCRIPT"
 echo "Created tunnel script: $TUNNEL_SCRIPT"
 
-# 5. Create a monitor script that restarts the tunnel if it drops
+# 5. Create a cron-based monitor script (called every minute by crond)
 cat > "$MONITOR_SCRIPT" << 'MONITOR_HEADER'
 #!/bin/sh
-# Monitor and restart the SMB tunnel if it drops
+# Called by cron every minute. Starts tunnel if not running.
 TUNNEL_SCRIPT="TUNNEL_PLACEHOLDER"
 PIDFILE="/var/run/tunnel-smb.pid"
 LOGFILE="/var/log/tunnel-smb.log"
 
-is_tunnel_alive() {
-    [ -f "$PIDFILE" ] || return 1
+if [ -f "$PIDFILE" ]; then
     PID=$(cat "$PIDFILE")
-    [ -n "$PID" ] || return 1
-    kill -0 "$PID" 2>/dev/null || return 1
-    # Verify it's actually our SSH process, not a recycled PID
-    grep -q "ssh" /proc/"$PID"/cmdline 2>/dev/null || return 1
-    return 0
-}
-
-start_tunnel() {
-    if is_tunnel_alive; then
-        return 0
+    if [ -n "$PID" ] && kill -0 "$PID" 2>/dev/null && grep -q "ssh" /proc/"$PID"/cmdline 2>/dev/null; then
+        exit 0
     fi
-    echo "$(date): Starting SMB tunnel..." >> "$LOGFILE"
-    $TUNNEL_SCRIPT >> "$LOGFILE" 2>&1 &
-    echo $! > "$PIDFILE"
-}
+fi
 
-stop_tunnel() {
-    if [ -f "$PIDFILE" ]; then
-        kill "$(cat "$PIDFILE")" 2>/dev/null || true
-        rm -f "$PIDFILE"
-        echo "$(date): Tunnel stopped." >> "$LOGFILE"
-    fi
-}
-
-case "${1:-start}" in
-    start)
-        start_tunnel
-        ;;
-    stop)
-        stop_tunnel
-        ;;
-    restart)
-        stop_tunnel
-        sleep 2
-        start_tunnel
-        ;;
-    monitor)
-        # Poll-based monitor: check every 30 seconds if tunnel is alive
-        echo "$(date): Monitor started (PID $$)." >> "$LOGFILE"
-        while true; do
-            if ! is_tunnel_alive; then
-                echo "$(date): Tunnel not running, starting..." >> "$LOGFILE"
-                # Clean up stale PID
-                rm -f "$PIDFILE"
-                $TUNNEL_SCRIPT >> "$LOGFILE" 2>&1 &
-                echo $! > "$PIDFILE"
-            fi
-            sleep 30
-        done
-        ;;
-    *)
-        echo "Usage: $0 {start|stop|restart|monitor}"
-        exit 1
-        ;;
-esac
+echo "$(date): Tunnel not running, starting..." >> "$LOGFILE"
+rm -f "$PIDFILE"
+$TUNNEL_SCRIPT >> "$LOGFILE" 2>&1 &
+echo $! > "$PIDFILE"
 MONITOR_HEADER
 
 # Replace placeholder with actual tunnel script path
@@ -140,10 +93,18 @@ sed -i "s|TUNNEL_PLACEHOLDER|$TUNNEL_SCRIPT|" "$MONITOR_SCRIPT"
 chmod +x "$MONITOR_SCRIPT"
 echo "Created monitor script: $MONITOR_SCRIPT"
 
-# 6. Start the tunnel
-echo ""
-echo "Starting tunnel..."
-$MONITOR_SCRIPT monitor &
+# 6. Add cron job to /etc/config/crontab (persists across QNAP reboots)
+CRONTAB="/etc/config/crontab"
+if ! grep -q "tunnel-monitor" "$CRONTAB"; then
+    echo "* * * * * /opt/tunnel-monitor.sh >> /var/log/tunnel-smb.log 2>&1" >> "$CRONTAB"
+    crontab "$CRONTAB"
+    echo "Added cron job for tunnel monitor."
+else
+    echo "Cron job already exists."
+fi
+
+# 7. Run it now
+$MONITOR_SCRIPT
 sleep 3
 
 # Check if it's running
@@ -156,13 +117,12 @@ fi
 echo ""
 echo "=== Setup Complete ==="
 echo ""
-echo "Commands:"
-echo "  Start:   $MONITOR_SCRIPT monitor &"
-echo "  Stop:    $MONITOR_SCRIPT stop"
-echo "  Restart: $MONITOR_SCRIPT restart"
-echo "  Logs:    cat /var/log/tunnel-smb.log"
+echo "The tunnel is managed by cron (every 60 seconds)."
+echo "If the tunnel dies, cron restarts it automatically."
 echo ""
-echo "Add this to your startup script for persistence across reboots:"
-echo "  $MONITOR_SCRIPT monitor &"
+echo "Logs: cat /var/log/tunnel-smb.log"
+echo ""
+echo "Ensure your QNAP startup script includes the /opt symlink restore:"
+echo "  ln -sf /share/CACHEDEV3_DATA/.opt /opt"
 echo ""
 echo "Test from any machine: smb://YOUR_VPS_IP/"
