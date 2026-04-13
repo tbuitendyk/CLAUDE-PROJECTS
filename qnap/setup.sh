@@ -75,8 +75,18 @@ TUNNEL_SCRIPT="TUNNEL_PLACEHOLDER"
 PIDFILE="/var/run/tunnel-smb.pid"
 LOGFILE="/var/log/tunnel-smb.log"
 
+is_tunnel_alive() {
+    [ -f "$PIDFILE" ] || return 1
+    PID=$(cat "$PIDFILE")
+    [ -n "$PID" ] || return 1
+    kill -0 "$PID" 2>/dev/null || return 1
+    # Verify it's actually our SSH process, not a recycled PID
+    grep -q "ssh" /proc/"$PID"/cmdline 2>/dev/null || return 1
+    return 0
+}
+
 start_tunnel() {
-    if [ -f "$PIDFILE" ] && kill -0 "$(cat "$PIDFILE")" 2>/dev/null; then
+    if is_tunnel_alive; then
         return 0
     fi
     echo "$(date): Starting SMB tunnel..." >> "$LOGFILE"
@@ -105,13 +115,17 @@ case "${1:-start}" in
         start_tunnel
         ;;
     monitor)
-        # Run in a loop, restarting if the tunnel dies
+        # Poll-based monitor: check every 30 seconds if tunnel is alive
+        echo "$(date): Monitor started (PID $$)." >> "$LOGFILE"
         while true; do
-            start_tunnel
-            # Wait for tunnel process to exit
-            wait "$(cat "$PIDFILE")" 2>/dev/null || true
-            echo "$(date): Tunnel exited, restarting in 10s..." >> "$LOGFILE"
-            sleep 10
+            if ! is_tunnel_alive; then
+                echo "$(date): Tunnel not running, starting..." >> "$LOGFILE"
+                # Clean up stale PID
+                rm -f "$PIDFILE"
+                $TUNNEL_SCRIPT >> "$LOGFILE" 2>&1 &
+                echo $! > "$PIDFILE"
+            fi
+            sleep 30
         done
         ;;
     *)
