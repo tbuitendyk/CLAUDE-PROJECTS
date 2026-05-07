@@ -1,0 +1,53 @@
+# Postfix transport map: recipient domain -> relay transport.
+#
+# Domains listed here are sent via the Brevo smarthost. Everything not in this
+# file falls through to Postfix's default transport (direct delivery).
+#
+# Format:
+#   recipient.domain     relay:[smtp-relay.brevo.com]:587
+#   .recipient.domain    relay:[smtp-relay.brevo.com]:587   (matches subdomains)
+#
+# After editing, regenerate the .db and reload Postfix:
+#   sudo postmap /etc/postfix/transport_brevo
+#   sudo postfix reload
+
+# --- Microsoft consumer mail (outlook.com / hotmail / live / msn family) ---
+outlook.com         relay:[smtp-relay.brevo.com]:587
+outlook.co.uk       relay:[smtp-relay.brevo.com]:587
+outlook.fr          relay:[smtp-relay.brevo.com]:587
+outlook.de          relay:[smtp-relay.brevo.com]:587
+outlook.it          relay:[smtp-relay.brevo.com]:587
+outlook.es          relay:[smtp-relay.brevo.com]:587
+outlook.jp          relay:[smtp-relay.brevo.com]:587
+outlook.com.au      relay:[smtp-relay.brevo.com]:587
+outlook.com.br      relay:[smtp-relay.brevo.com]:587
+
+hotmail.com         relay:[smtp-relay.brevo.com]:587
+hotmail.co.uk       relay:[smtp-relay.brevo.com]:587
+hotmail.fr          relay:[smtp-relay.brevo.com]:587
+hotmail.de          relay:[smtp-relay.brevo.com]:587
+hotmail.it          relay:[smtp-relay.brevo.com]:587
+hotmail.es          relay:[smtp-relay.brevo.com]:587
+hotmail.com.ar      relay:[smtp-relay.brevo.com]:587
+hotmail.com.br      relay:[smtp-relay.brevo.com]:587
+hotmail.com.mx      relay:[smtp-relay.brevo.com]:587
+
+live.com            relay:[smtp-relay.brevo.com]:587
+live.co.uk          relay:[smtp-relay.brevo.com]:587
+live.fr             relay:[smtp-relay.brevo.com]:587
+live.de             relay:[smtp-relay.brevo.com]:587
+live.it             relay:[smtp-relay.brevo.com]:587
+live.com.au         relay:[smtp-relay.brevo.com]:587
+live.ca             relay:[smtp-relay.brevo.com]:587
+
+msn.com             relay:[smtp-relay.brevo.com]:587
+passport.com        relay:[smtp-relay.brevo.com]:587
+windowslive.com     relay:[smtp-relay.brevo.com]:587
+
+# --- Microsoft 365 default tenant domain (covers all *.onmicrosoft.com) ---
+.onmicrosoft.com    relay:[smtp-relay.brevo.com]:587
+
+# --- Office 365 custom domains (auto-promoted by scripts/auto-promote.sh) ---
+# Lines below this marker may be appended automatically. Manual entries are
+# fine too; format is identical.
+# AUTO-PROMOTED ENTRIES BELOW
