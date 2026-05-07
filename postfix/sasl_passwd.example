@@ -1,0 +1,19 @@
+# Postfix SASL password map for the Brevo smarthost.
+#
+# Copy this file to /etc/postfix/sasl_passwd, replace the placeholders with
+# the values from Brevo's "SMTP & API -> SMTP" page, set mode 600, then run
+# postmap. The installer (scripts/install.sh) does all of that for you if the
+# real file already exists with real values.
+#
+#   sudo cp postfix/sasl_passwd.example /etc/postfix/sasl_passwd
+#   sudo chmod 600 /etc/postfix/sasl_passwd
+#   sudo $EDITOR /etc/postfix/sasl_passwd     # paste real login + key
+#   sudo postmap /etc/postfix/sasl_passwd
+#
+# Format:
+#   <next-hop>   <login>:<smtp-key>
+#
+# The next-hop must match the value used in transport_brevo, including the
+# square brackets and port.
+
+[smtp-relay.brevo.com]:587   YOUR_BREVO_LOGIN@smtp-brevo.com:YOUR_BREVO_SMTP_KEY

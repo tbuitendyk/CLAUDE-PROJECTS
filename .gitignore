@@ -1,0 +1,19 @@
+# Real SASL credentials (Brevo SMTP key) -- only the .example template is tracked.
+postfix/sasl_passwd
+postfix/sasl_passwd.db
+
+# Postmap output for any tracked file (rebuilt on the mail VM at install time).
+postfix/*.db
+
+# Local overrides not meant for the repo.
+postfix/transport_brevo.local
+postfix/*.local
+
+# Editor / OS noise.
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Log dumps if anyone runs healthcheck.sh into a file in the repo.
+*.log
