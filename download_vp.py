@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Download the Reina-Valera Purificada 1602 (RVP) Bible text and save as rvp.json.
+Download the Valera Purificada 1602 (VP) Bible text and save as vp.json.
 
 Source: llromerorr/TextosBiblicos on GitHub
 Format: plain-text .txt files, one per book
@@ -15,7 +15,7 @@ import sys
 import urllib.request
 from pathlib import Path
 
-OUT = Path(__file__).parent / "rvp.json"
+OUT = Path(__file__).parent / "vp.json"
 API_URL  = "https://api.github.com/repos/llromerorr/TextosBiblicos/contents/V1602P"
 RAW_BASE = "https://raw.githubusercontent.com/llromerorr/TextosBiblicos/main/V1602P"
 
@@ -28,7 +28,7 @@ def _fetch(url: str) -> bytes:
 
 def download() -> None:
     if OUT.exists():
-        print(f"rvp.json already exists at {OUT} — delete it to re-download.")
+        print(f"vp.json already exists at {OUT} — delete it to re-download.")
         return
 
     print("Fetching file list from GitHub...")

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Bible Verse Lookup — MCP Server (KJV + Reina-Valera Purificada 1602)
+Bible Verse Lookup — MCP Server (KJV + Valera Purificada 1602)
 
 Transports:
   stdio  — local use with Claude Desktop / Claude Code (TRANSPORT=stdio)
@@ -40,18 +40,18 @@ print(f"KJV data loaded ({len(bible_data._cache[str(bible_data.DATA_FILE)]):,} v
 # ---------------------------------------------------------------------------
 # Auto-download RVP data
 # ---------------------------------------------------------------------------
-if not Path(bible_data.RVP_FILE).exists():
+if not Path(bible_data.VP_FILE).exists():
     print("RVP data not found — downloading now...", flush=True)
     try:
-        import download_rvp
-        download_rvp.download()
+        import download_vp
+        download_vp.download()
     except SystemExit:
         print("WARNING: Could not download RVP data — Spanish tool unavailable.", flush=True)
 
-_rvp_available = Path(bible_data.RVP_FILE).exists()
-if _rvp_available:
-    bible_data._load(bible_data.RVP_FILE)
-    print(f"RVP data loaded ({len(bible_data._cache[str(bible_data.RVP_FILE)]):,} verses)", flush=True)
+_vp_available = Path(bible_data.VP_FILE).exists()
+if _vp_available:
+    bible_data._load(bible_data.VP_FILE)
+    print(f"RVP data loaded ({len(bible_data._cache[str(bible_data.VP_FILE)]):,} verses)", flush=True)
 
 # ---------------------------------------------------------------------------
 # MCP server definition
@@ -60,8 +60,8 @@ mcp = FastMCP(
     "Bible Verse Lookup",
     instructions=(
         "Use kjv_lookup to find any KJV Bible verse by a partial text snippet "
-        "and retrieve it with surrounding context. Use rvp_lookup for the same "
-        "in Spanish (Reina-Valera Purificada 1602). Always pass the returned "
+        "and retrieve it with surrounding context. Use vp_lookup for the same "
+        "in Spanish (Valera Purificada 1602). Always pass the returned "
         "passage back to the user verbatim — it already includes the reference."
     ),
 )
@@ -89,8 +89,8 @@ def kjv_lookup(snippet: str, context_verses: int = 3) -> str:
 
 
 @mcp.tool()
-def rvp_lookup(snippet: str, context_verses: int = 3) -> str:
-    """Find the closest matching verse in the Reina-Valera Purificada 1602 (Spanish) and return it with context.
+def vp_lookup(snippet: str, context_verses: int = 3) -> str:
+    """Find the closest matching verse in the Valera Purificada 1602 (Spanish) and return it with context.
 
     Args:
         snippet: Any partial or complete Spanish verse text to search for.
@@ -101,11 +101,11 @@ def rvp_lookup(snippet: str, context_verses: int = 3) -> str:
         The passage as plain text — one verse per paragraph, with the full
         passage reference on the last line.
     """
-    if not _rvp_available:
+    if not _vp_available:
         return "Error: RVP Spanish Bible data is not available on this server."
     try:
-        idx = bible_data.find_verse_index(snippet, bible_data.RVP_FILE)
-        passage = bible_data.get_passage(idx, context_verses, bible_data.RVP_FILE)
+        idx = bible_data.find_verse_index(snippet, bible_data.VP_FILE)
+        passage = bible_data.get_passage(idx, context_verses, bible_data.VP_FILE)
         return bible_data.format_passage(passage)
     except Exception as exc:
         return f"Error during verse lookup: {exc}"
@@ -173,10 +173,10 @@ if __name__ == "__main__":
 
         def _lookup_page(q: str, n: int, v: str, result: str) -> str:
             q_esc = q.replace('"', "&quot;")
-            lang = "es" if v == "rvp" else "en"
-            title = "Búsqueda de Versículos (RVP 1602)" if v == "rvp" else "KJV Bible Verse Lookup"
-            placeholder = "Escriba un fragmento de versículo…" if v == "rvp" else "Enter a verse snippet…"
-            btn = "Buscar" if v == "rvp" else "Look up"
+            lang = "es" if v == "vp" else "en"
+            title = "Búsqueda de Versículos (VP 1602)" if v == "vp" else "KJV Bible Verse Lookup"
+            placeholder = "Escriba un fragmento de versículo…" if v == "vp" else "Enter a verse snippet…"
+            btn = "Buscar" if v == "vp" else "Look up"
             if result:
                 lines = result.split("\n\n")
                 reference = lines[-1] if lines else ""
@@ -187,7 +187,7 @@ if __name__ == "__main__":
                 body = ""
             ver_opts = (
                 f'<option value="kjv"{"selected" if v=="kjv" else ""}>English — KJV</option>'
-                f'<option value="rvp"{"selected" if v=="rvp" else ""}>Español — RVP 1602</option>'
+                f'<option value="vp"{"selected" if v=="rvp" else ""}>Español — VP 1602</option>'
             )
             ctx_opts = "".join(
                 f'<option value="{i}"{"selected" if i==n else ""}>{i}</option>'
@@ -265,7 +265,7 @@ if __name__ == "__main__":
                     except ValueError:
                         n = 3
 
-                    data_file = bible_data.RVP_FILE if v == "rvp" else bible_data.DATA_FILE
+                    data_file = bible_data.VP_FILE if v == "vp" else bible_data.DATA_FILE
                     result = ""
                     if q:
                         try:

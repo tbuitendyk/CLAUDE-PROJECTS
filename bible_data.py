@@ -12,7 +12,7 @@ except ImportError:
     _USE_RAPIDFUZZ = False
 
 DATA_FILE = Path(__file__).parent / "kjv.json"
-RVP_FILE  = Path(__file__).parent / "rvp.json"
+VP_FILE   = Path(__file__).parent / "vp.json"
 
 _cache: dict = {}  # {str(path): [verses]}
 
