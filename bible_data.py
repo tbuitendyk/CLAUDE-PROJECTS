@@ -2,6 +2,7 @@
 
 import json
 import re
+import unicodedata
 from pathlib import Path
 
 try:
@@ -167,7 +168,10 @@ _VP_BOOKS: dict[str, str] = {
 
 
 def _normalize(text: str) -> str:
-    return re.sub(r"[^\w\s]", "", text.lower())
+    # Decompose accented chars (é→e+´) then drop the accent marks, then lowercase and strip punctuation
+    nfd = unicodedata.normalize("NFD", text.lower())
+    no_accents = "".join(c for c in nfd if unicodedata.category(c) != "Mn")
+    return re.sub(r"[^\w\s]", "", no_accents)
 
 
 def _load(data_file: Path = None) -> list:
