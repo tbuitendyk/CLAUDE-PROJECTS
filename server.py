@@ -171,7 +171,7 @@ if __name__ == "__main__":
                                     [b"content-length", b"0"]]})
             await send({"type": "http.response.body", "body": b""})
 
-        def _lookup_page(q: str, n: int, v: str, result: str) -> str:
+        def _lookup_page(q: str, n: int, v: str, result: str, action: str = "/lookup") -> str:
             q_esc = q.replace('"', "&quot;")
             lang = "es" if v == "vp" else "en"
             title = "Búsqueda de Versículos (VP 1602)" if v == "vp" else "KJV Bible Verse Lookup"
@@ -212,7 +212,7 @@ if __name__ == "__main__":
 </head>
 <body>
 <h1>{title}</h1>
-<form method="get" action="/busca">
+<form method="get" action="{action}">
   <input name="q" type="text" placeholder="{placeholder}" value="{q_esc}" required>
   <select name="v">{ver_opts}</select>
   <select name="n">{ctx_opts}</select>
@@ -255,14 +255,12 @@ if __name__ == "__main__":
                     return
 
                 # ── Browser-friendly verse lookup ───────────────────────────
-                if path == "/busca":
+                if path in ("/lookup", "/busca"):
                     import urllib.parse as _up
                     params = dict(_up.parse_qsl(qs_raw))
                     q = params.get("q", "").strip()
-                    # Default version from hostname: vp.* → VP, everything else → KJV
-                    raw_hdrs = {k: val for k, val in scope.get("headers", [])}
-                    host = raw_hdrs.get(b"host", b"").decode(errors="replace").split(":")[0]
-                    default_v = "vp" if host.startswith("vp.") else "kjv"
+                    # /busca defaults to VP; /lookup defaults to KJV
+                    default_v = "vp" if path == "/busca" else "kjv"
                     v = params.get("v", default_v).lower()
                     try:
                         n = max(0, min(int(params.get("n", "3")), 25))
@@ -278,7 +276,7 @@ if __name__ == "__main__":
                             result = bible_data.format_passage(passage)
                         except Exception as exc:
                             result = f"Error: {exc}"
-                    html = _lookup_page(q, n, v, result)
+                    html = _lookup_page(q, n, v, result, path)
 
                     raw = html.encode()
                     await send({"type": "http.response.start", "status": 200,
