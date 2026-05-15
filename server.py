@@ -191,7 +191,7 @@ if __name__ == "__main__":
             )
             ctx_opts = "".join(
                 f'<option value="{i}"{"selected" if i==n else ""}>{i}</option>'
-                for i in range(0, 11)
+                for i in range(0, 26)
             )
             return f"""<!DOCTYPE html>
 <html lang="{lang}">
@@ -261,7 +261,7 @@ if __name__ == "__main__":
                     q = params.get("q", "").strip()
                     v = params.get("v", "kjv").lower()
                     try:
-                        n = max(0, min(int(params.get("n", "3")), 20))
+                        n = max(0, min(int(params.get("n", "3")), 25))
                     except ValueError:
                         n = 3
 
