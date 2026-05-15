@@ -209,14 +209,30 @@ def _load(data_file: Path = None) -> list:
     return verses
 
 
+def _all_words_match(query_words: list, verse_words: set) -> bool:
+    """True if every query word is found in verse_words.
+
+    For words of 5+ characters, also accepts a verse word that shares the
+    same first 4 characters — catches Spanish/English inflections such as
+    'libras' matching 'líbranos', or 'deliver' matching 'delivereth'.
+    """
+    for qw in query_words:
+        if qw in verse_words:
+            continue
+        if len(qw) >= 5 and any(vw.startswith(qw[:4]) for vw in verse_words):
+            continue
+        return False
+    return True
+
+
 def find_verse_by_all_words(snippet: str, data_file: Path = None) -> int:
     """Return index of the first verse containing every word in snippet, or -1."""
     verses = _load(data_file)
-    words = set(_normalize(snippet).split())
+    words = _normalize(snippet).split()
     if not words:
         return -1
     for i, v in enumerate(verses):
-        if words.issubset(set(_normalize(v["text"]).split())):
+        if _all_words_match(words, set(_normalize(v["text"]).split())):
             return i
     return -1
 
