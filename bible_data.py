@@ -223,7 +223,7 @@ def _all_words_match(query_words: list, verse_words: set) -> bool:
     for qw in query_words:
         if qw in verse_words:
             continue
-        if len(qw) >= 5 and any(vw.startswith(qw[:4]) for vw in verse_words):
+        if len(qw) >= 4 and any(vw.startswith(qw[:4]) for vw in verse_words):
             continue
         return False
     return True
