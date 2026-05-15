@@ -16,6 +16,155 @@ VP_FILE   = Path(__file__).parent / "vp.json"
 
 _cache: dict = {}  # {str(path): [verses]}
 
+# ---------------------------------------------------------------------------
+# Book name alias tables — maps lowercase/abbreviated names to the canonical
+# form stored in each translation's JSON file.
+# ---------------------------------------------------------------------------
+
+_KJV_BOOKS: dict[str, str] = {
+    # Old Testament
+    "genesis": "Genesis", "gen": "Genesis", "gn": "Genesis",
+    "exodus": "Exodus", "ex": "Exodus", "exo": "Exodus", "exod": "Exodus",
+    "leviticus": "Leviticus", "lev": "Leviticus", "lv": "Leviticus",
+    "numbers": "Numbers", "num": "Numbers", "nm": "Numbers",
+    "deuteronomy": "Deuteronomy", "deut": "Deuteronomy", "deu": "Deuteronomy", "dt": "Deuteronomy",
+    "joshua": "Joshua", "josh": "Joshua", "jos": "Joshua",
+    "judges": "Judges", "judg": "Judges", "jdg": "Judges",
+    "ruth": "Ruth", "ru": "Ruth",
+    "1 samuel": "1 Samuel", "1sam": "1 Samuel", "1sa": "1 Samuel", "i samuel": "1 Samuel",
+    "2 samuel": "2 Samuel", "2sam": "2 Samuel", "2sa": "2 Samuel", "ii samuel": "2 Samuel",
+    "1 kings": "1 Kings", "1kgs": "1 Kings", "1ki": "1 Kings", "i kings": "1 Kings",
+    "2 kings": "2 Kings", "2kgs": "2 Kings", "2ki": "2 Kings", "ii kings": "2 Kings",
+    "1 chronicles": "1 Chronicles", "1chr": "1 Chronicles", "1ch": "1 Chronicles",
+    "2 chronicles": "2 Chronicles", "2chr": "2 Chronicles", "2ch": "2 Chronicles",
+    "ezra": "Ezra", "ezr": "Ezra",
+    "nehemiah": "Nehemiah", "neh": "Nehemiah",
+    "esther": "Esther", "est": "Esther", "esth": "Esther",
+    "job": "Job",
+    "psalms": "Psalms", "psalm": "Psalms", "ps": "Psalms", "psa": "Psalms",
+    "proverbs": "Proverbs", "prov": "Proverbs", "pro": "Proverbs", "pr": "Proverbs",
+    "ecclesiastes": "Ecclesiastes", "eccl": "Ecclesiastes", "ecc": "Ecclesiastes",
+    "song of solomon": "Song of Solomon", "song": "Song of Solomon",
+    "song of songs": "Song of Solomon", "sos": "Song of Solomon", "canticles": "Song of Solomon",
+    "isaiah": "Isaiah", "isa": "Isaiah",
+    "jeremiah": "Jeremiah", "jer": "Jeremiah",
+    "lamentations": "Lamentations", "lam": "Lamentations",
+    "ezekiel": "Ezekiel", "ezek": "Ezekiel", "eze": "Ezekiel",
+    "daniel": "Daniel", "dan": "Daniel",
+    "hosea": "Hosea", "hos": "Hosea",
+    "joel": "Joel",
+    "amos": "Amos",
+    "obadiah": "Obadiah", "oba": "Obadiah", "ob": "Obadiah",
+    "jonah": "Jonah", "jon": "Jonah",
+    "micah": "Micah", "mic": "Micah",
+    "nahum": "Nahum", "nah": "Nahum",
+    "habakkuk": "Habakkuk", "hab": "Habakkuk",
+    "zephaniah": "Zephaniah", "zeph": "Zephaniah", "zep": "Zephaniah",
+    "haggai": "Haggai", "hag": "Haggai",
+    "zechariah": "Zechariah", "zech": "Zechariah", "zec": "Zechariah",
+    "malachi": "Malachi", "mal": "Malachi",
+    # New Testament
+    "matthew": "Matthew", "matt": "Matthew", "mt": "Matthew",
+    "mark": "Mark", "mk": "Mark",
+    "luke": "Luke", "lk": "Luke",
+    "john": "John", "jn": "John", "joh": "John",
+    "acts": "Acts", "ac": "Acts",
+    "romans": "Romans", "rom": "Romans",
+    "1 corinthians": "1 Corinthians", "1cor": "1 Corinthians", "1co": "1 Corinthians",
+    "2 corinthians": "2 Corinthians", "2cor": "2 Corinthians", "2co": "2 Corinthians",
+    "galatians": "Galatians", "gal": "Galatians",
+    "ephesians": "Ephesians", "eph": "Ephesians",
+    "philippians": "Philippians", "phil": "Philippians", "php": "Philippians",
+    "colossians": "Colossians", "col": "Colossians",
+    "1 thessalonians": "1 Thessalonians", "1thess": "1 Thessalonians", "1th": "1 Thessalonians",
+    "2 thessalonians": "2 Thessalonians", "2thess": "2 Thessalonians", "2th": "2 Thessalonians",
+    "1 timothy": "1 Timothy", "1tim": "1 Timothy", "1ti": "1 Timothy",
+    "2 timothy": "2 Timothy", "2tim": "2 Timothy", "2ti": "2 Timothy",
+    "titus": "Titus", "tit": "Titus",
+    "philemon": "Philemon", "phlm": "Philemon", "phm": "Philemon",
+    "hebrews": "Hebrews", "heb": "Hebrews",
+    "james": "James", "jas": "James",
+    "1 peter": "1 Peter", "1pet": "1 Peter", "1pe": "1 Peter",
+    "2 peter": "2 Peter", "2pet": "2 Peter", "2pe": "2 Peter",
+    "1 john": "1 John", "1jn": "1 John",
+    "2 john": "2 John", "2jn": "2 John",
+    "3 john": "3 John", "3jn": "3 John",
+    "jude": "Jude",
+    "revelation": "Revelation", "rev": "Revelation", "apoc": "Revelation",
+}
+
+_VP_BOOKS: dict[str, str] = {
+    # Old Testament (Spanish)
+    "genesis": "Génesis", "gen": "Génesis", "gn": "Génesis", "génesis": "Génesis",
+    "exodo": "Éxodo", "ex": "Éxodo", "éxodo": "Éxodo", "exodus": "Éxodo",
+    "levitico": "Levítico", "lev": "Levítico", "levítico": "Levítico",
+    "numeros": "Números", "num": "Números", "números": "Números",
+    "deuteronomio": "Deuteronomio", "deut": "Deuteronomio", "dt": "Deuteronomio",
+    "josue": "Josué", "jos": "Josué", "josué": "Josué",
+    "jueces": "Jueces", "jue": "Jueces",
+    "rut": "Rut", "ru": "Rut",
+    "1 samuel": "1 Samuel", "1sam": "1 Samuel", "1sa": "1 Samuel",
+    "2 samuel": "2 Samuel", "2sam": "2 Samuel", "2sa": "2 Samuel",
+    "1 reyes": "1 Reyes", "1re": "1 Reyes", "1r": "1 Reyes",
+    "2 reyes": "2 Reyes", "2re": "2 Reyes", "2r": "2 Reyes",
+    "1 cronicas": "1 Crónicas", "1cr": "1 Crónicas", "1 crónicas": "1 Crónicas",
+    "2 cronicas": "2 Crónicas", "2cr": "2 Crónicas",
+    "esdras": "Esdras", "esd": "Esdras",
+    "nehemias": "Nehemías", "neh": "Nehemías", "nehemías": "Nehemías",
+    "ester": "Ester", "est": "Ester",
+    "job": "Job",
+    "salmos": "Salmos", "sal": "Salmos", "ps": "Salmos", "sl": "Salmos",
+    "proverbios": "Proverbios", "prov": "Proverbios", "pr": "Proverbios",
+    "eclesiastes": "Eclesiastés", "ecl": "Eclesiastés", "eclesiastés": "Eclesiastés",
+    "ecclesiastes": "Eclesiastés",
+    "cantares": "Cantares", "cnt": "Cantares", "ct": "Cantares",
+    "isaias": "Isaías", "isa": "Isaías", "is": "Isaías", "isaías": "Isaías",
+    "jeremias": "Jeremías", "jer": "Jeremías", "jeremías": "Jeremías",
+    "lamentaciones": "Lamentaciones", "lam": "Lamentaciones",
+    "ezequiel": "Ezequiel", "eze": "Ezequiel", "ez": "Ezequiel",
+    "daniel": "Daniel", "dan": "Daniel",
+    "oseas": "Oseas", "os": "Oseas",
+    "joel": "Joel",
+    "amos": "Amós", "amós": "Amós",
+    "abdias": "Abdías", "abd": "Abdías", "abdías": "Abdías",
+    "jonas": "Jonás", "jon": "Jonás", "jonás": "Jonás",
+    "miqueas": "Miqueas", "miq": "Miqueas",
+    "nahum": "Nahúm", "nah": "Nahúm", "nahúm": "Nahúm",
+    "habacuc": "Habacuc", "hab": "Habacuc",
+    "sofonias": "Sofonías", "sof": "Sofonías", "sofonías": "Sofonías",
+    "hageo": "Hageo", "hag": "Hageo",
+    "zacarias": "Zacarías", "zac": "Zacarías", "zacarías": "Zacarías",
+    "malaquias": "Malaquías", "mal": "Malaquías", "malaquías": "Malaquías",
+    # New Testament (Spanish)
+    "mateo": "Mateo", "mt": "Mateo",
+    "marcos": "Marcos", "mr": "Marcos", "mc": "Marcos",
+    "lucas": "Lucas", "lc": "Lucas",
+    "juan": "Juan", "jn": "Juan",
+    "hechos": "Hechos", "hch": "Hechos",
+    "romanos": "Romanos", "rom": "Romanos",
+    "1 corintios": "1 Corintios", "1cor": "1 Corintios", "1co": "1 Corintios",
+    "2 corintios": "2 Corintios", "2cor": "2 Corintios", "2co": "2 Corintios",
+    "galatas": "Gálatas", "gal": "Gálatas", "gálatas": "Gálatas",
+    "efesios": "Efesios", "ef": "Efesios",
+    "filipenses": "Filipenses", "fil": "Filipenses",
+    "colosenses": "Colosenses", "col": "Colosenses",
+    "1 tesalonicenses": "1 Tesalonicenses", "1ts": "1 Tesalonicenses",
+    "2 tesalonicenses": "2 Tesalonicenses", "2ts": "2 Tesalonicenses",
+    "1 timoteo": "1 Timoteo", "1tim": "1 Timoteo",
+    "2 timoteo": "2 Timoteo", "2tim": "2 Timoteo",
+    "tito": "Tito", "tit": "Tito",
+    "filemon": "Filemón", "flm": "Filemón", "filemón": "Filemón",
+    "hebreos": "Hebreos", "heb": "Hebreos",
+    "santiago": "Santiago", "stg": "Santiago",
+    "1 pedro": "1 Pedro", "1pe": "1 Pedro",
+    "2 pedro": "2 Pedro", "2pe": "2 Pedro",
+    "1 juan": "1 Juan", "1jn": "1 Juan",
+    "2 juan": "2 Juan", "2jn": "2 Juan",
+    "3 juan": "3 Juan", "3jn": "3 Juan",
+    "judas": "Judas", "jud": "Judas",
+    "apocalipsis": "Apocalipsis", "ap": "Apocalipsis",
+}
+
 
 def _normalize(text: str) -> str:
     return re.sub(r"[^\w\s]", "", text.lower())
@@ -58,6 +207,33 @@ def _load(data_file: Path = None) -> list:
 
     _cache[key] = verses
     return verses
+
+
+def find_verse_by_all_words(snippet: str, data_file: Path = None) -> int:
+    """Return index of the first verse containing every word in snippet, or -1."""
+    verses = _load(data_file)
+    words = set(_normalize(snippet).split())
+    if not words:
+        return -1
+    for i, v in enumerate(verses):
+        if words.issubset(set(_normalize(v["text"]).split())):
+            return i
+    return -1
+
+
+def find_verse_by_reference(book: str, chapter: int, verse: int,
+                             data_file: Path = None) -> int:
+    """Return index of verse matching book/chapter/verse, or -1."""
+    verses = _load(data_file)
+    aliases = _VP_BOOKS if (data_file is not None and data_file == VP_FILE) else _KJV_BOOKS
+    key = re.sub(r"\s+", " ", book.lower().strip())
+    canonical = aliases.get(key, book).lower()
+    for i, v in enumerate(verses):
+        if (v["book"].lower() == canonical
+                and v["chapter"] == chapter
+                and v["verse"] == verse):
+            return i
+    return -1
 
 
 def find_verse_index(snippet: str, data_file: Path = None) -> int:

@@ -13,10 +13,13 @@ Environment variables:
 """
 
 import os
+import re
 import sys
 import json
 import time
 import threading
+import urllib.request
+import urllib.parse
 from pathlib import Path
 
 from mcp.server.fastmcp import FastMCP
@@ -67,6 +70,87 @@ mcp = FastMCP(
 )
 
 
+# ---------------------------------------------------------------------------
+# Web-search fallback — infer a Bible reference from search results
+# ---------------------------------------------------------------------------
+
+# Matches references like "John 3:16", "1 Cor 13:4", "Salmos 23:1"
+_REF_PAT = re.compile(
+    r'\b(\d\s+)?'                        # optional leading number (1, 2, 3)
+    r'([A-Za-záéíóúüñÁÉÍÓÚÜÑ]+'         # book name (may include accented chars)
+    r'(?:\s+(?:of\s+)?[A-Za-z]+)?)'      # optional "of Solomon" etc.
+    r'\s+(\d{1,3}):(\d{1,3})\b',
+    re.IGNORECASE,
+)
+
+
+def _web_search_reference(snippet: str, lang: str = "en"):
+    """
+    Query DuckDuckGo Instant Answer API for snippet + 'Bible verse'.
+    Returns (book_str, chapter, verse) if a reference is found, else None.
+    """
+    if lang == "es":
+        q = f'Biblia versículo "{snippet}"'
+    else:
+        q = f'KJV Bible verse "{snippet}"'
+
+    url = (
+        "https://api.duckduckgo.com/?format=json&no_redirect=1&skip_disambig=1&q="
+        + urllib.parse.quote(q)
+    )
+    try:
+        req = urllib.request.Request(
+            url, headers={"User-Agent": "BibleLookupBot/1.0"}
+        )
+        with urllib.request.urlopen(req, timeout=8) as resp:
+            data = json.loads(resp.read())
+
+        # Gather all text fields from the DDG response
+        parts = [
+            data.get("Answer", ""),
+            data.get("AbstractText", ""),
+            data.get("AbstractSource", ""),
+        ]
+        for topic in data.get("RelatedTopics", []):
+            if isinstance(topic, dict):
+                parts.append(topic.get("Text", ""))
+
+        combined = " ".join(parts)
+        m = _REF_PAT.search(combined)
+        if m:
+            num = (m.group(1) or "").strip()
+            book = ((num + " " + m.group(2)).strip() if num else m.group(2)).strip()
+            return (book, int(m.group(3)), int(m.group(4)))
+    except Exception:
+        pass
+    return None
+
+
+def _lookup(snippet: str, data_file=None, lang: str = "en") -> int:
+    """
+    Three-stage verse lookup:
+      1. All-words exact match in local data (highest precision).
+      2. Web search → parse reference → local reference lookup.
+      3. Fuzzy match fallback (original behaviour).
+    Returns the verse index to pass to get_passage().
+    """
+    # Stage 1
+    idx = bible_data.find_verse_by_all_words(snippet, data_file)
+    if idx != -1:
+        return idx
+
+    # Stage 2
+    ref = _web_search_reference(snippet, lang)
+    if ref:
+        book, ch, v = ref
+        idx = bible_data.find_verse_by_reference(book, ch, v, data_file)
+        if idx != -1:
+            return idx
+
+    # Stage 3
+    return bible_data.find_verse_index(snippet, data_file)
+
+
 @mcp.tool()
 def kjv_lookup(snippet: str, context_verses: int = 3) -> str:
     """Find the closest matching KJV verse and return it with context.
@@ -81,7 +165,7 @@ def kjv_lookup(snippet: str, context_verses: int = 3) -> str:
         passage reference (e.g. "John 3:14-18") on the last line.
     """
     try:
-        idx = bible_data.find_verse_index(snippet)
+        idx = _lookup(snippet, lang="en")
         passage = bible_data.get_passage(idx, context_verses)
         return bible_data.format_passage(passage)
     except Exception as exc:
@@ -102,9 +186,9 @@ def vp_lookup(snippet: str, context_verses: int = 3) -> str:
         passage reference on the last line.
     """
     if not _vp_available:
-        return "Error: RVP Spanish Bible data is not available on this server."
+        return "Error: VP 1602 Spanish Bible data is not available on this server."
     try:
-        idx = bible_data.find_verse_index(snippet, bible_data.VP_FILE)
+        idx = _lookup(snippet, bible_data.VP_FILE, lang="es")
         passage = bible_data.get_passage(idx, context_verses, bible_data.VP_FILE)
         return bible_data.format_passage(passage)
     except Exception as exc:
