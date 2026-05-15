@@ -187,7 +187,7 @@ if __name__ == "__main__":
                 body = ""
             ver_opts = (
                 f'<option value="kjv"{"selected" if v=="kjv" else ""}>English — KJV</option>'
-                f'<option value="vp"{"selected" if v=="rvp" else ""}>Español — VP 1602</option>'
+                f'<option value="vp"{"selected" if v=="vp" else ""}>Español — VP 1602</option>'
             )
             ctx_opts = "".join(
                 f'<option value="{i}"{"selected" if i==n else ""}>{i}</option>'
@@ -212,7 +212,7 @@ if __name__ == "__main__":
 </head>
 <body>
 <h1>{title}</h1>
-<form method="get" action="/lookup">
+<form method="get" action="/busca">
   <input name="q" type="text" placeholder="{placeholder}" value="{q_esc}" required>
   <select name="v">{ver_opts}</select>
   <select name="n">{ctx_opts}</select>
@@ -255,7 +255,7 @@ if __name__ == "__main__":
                     return
 
                 # ── Browser-friendly verse lookup ───────────────────────────
-                if path == "/lookup":
+                if path == "/busca":
                     import urllib.parse as _up
                     params = dict(_up.parse_qsl(qs_raw))
                     q = params.get("q", "").strip()
