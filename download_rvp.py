@@ -39,14 +39,15 @@ def download() -> None:
         sys.exit(1)
 
     txt_files = sorted(
-        [f["name"] for f in listing if f["name"].endswith(".txt")],
-        key=lambda n: int(n.split("_")[0]),
+        [f for f in listing if f["name"].endswith(".txt")],
+        key=lambda f: int(f["name"].split("_")[0]),
     )
     print(f"Found {len(txt_files)} book files.")
 
     verses = []
-    for filename in txt_files:
-        url = f"{RAW_BASE}/{filename}"
+    for file_info in txt_files:
+        filename = file_info["name"]
+        url = file_info["download_url"]  # use the exact URL GitHub provides
         try:
             content = _fetch(url).decode("utf-8")
         except Exception as exc:
