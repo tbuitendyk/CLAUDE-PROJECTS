@@ -131,6 +131,46 @@ if __name__ == "__main__":
                                     [b"content-length", b"0"]]})
             await send({"type": "http.response.body", "body": b""})
 
+        def _lookup_page(q: str, n: int, result: str) -> str:
+            q_esc = q.replace('"', "&quot;")
+            if result:
+                lines = result.split("\n\n")
+                reference = lines[-1] if lines else ""
+                verses = lines[:-1]
+                body = "".join(f"<p>{v}</p>" for v in verses if v.strip())
+                body += f'<p class="ref">{reference}</p>'
+            else:
+                body = ""
+            return f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>KJV Bible Verse Lookup</title>
+<style>
+  body {{ font-family: Georgia, serif; max-width: 700px; margin: 2rem auto; padding: 0 1rem; background: #fdf6e3; color: #333; }}
+  h1 {{ font-size: 1.4rem; color: #5a3e1b; }}
+  form {{ display: flex; flex-wrap: wrap; gap: .5rem; margin-bottom: 1.5rem; }}
+  input[name=q] {{ flex: 1; min-width: 200px; padding: .4rem .6rem; font-size: 1rem; border: 1px solid #ccc; border-radius: 4px; }}
+  select {{ padding: .4rem; border: 1px solid #ccc; border-radius: 4px; }}
+  button {{ padding: .4rem 1rem; background: #5a3e1b; color: #fff; border: none; border-radius: 4px; cursor: pointer; font-size: 1rem; }}
+  p {{ line-height: 1.7; margin: .6rem 0; }}
+  p.ref {{ font-style: italic; color: #5a3e1b; margin-top: 1rem; font-size: .95rem; }}
+</style>
+</head>
+<body>
+<h1>KJV Bible Verse Lookup</h1>
+<form method="get" action="/lookup">
+  <input name="q" type="text" placeholder="Enter a verse snippet…" value="{q_esc}" required>
+  <select name="n">
+    {''.join(f'<option value="{i}"{"selected" if i==n else ""}>{i} verses context</option>' for i in range(0,11))}
+  </select>
+  <button type="submit">Look up</button>
+</form>
+{body}
+</body>
+</html>"""
+
         class ProxyApp:
             """Auth + health wrapper that proxies to the internal MCP server."""
 
@@ -161,6 +201,34 @@ if __name__ == "__main__":
                 # Health probe — no auth
                 if path == "/health":
                     await _send_json(send, {"status": "ok"})
+                    return
+
+                # ── Browser-friendly verse lookup ───────────────────────────
+                if path == "/lookup":
+                    import urllib.parse as _up
+                    params = dict(_up.parse_qsl(qs_raw))
+                    q = params.get("q", "").strip()
+                    try:
+                        n = max(0, min(int(params.get("n", "3")), 20))
+                    except ValueError:
+                        n = 3
+
+                    if not q:
+                        html = _lookup_page("", n, "")
+                    else:
+                        try:
+                            idx = bible_data.find_verse_index(q)
+                            passage = bible_data.get_passage(idx, n)
+                            result = bible_data.format_passage(passage)
+                        except Exception as exc:
+                            result = f"Error: {exc}"
+                        html = _lookup_page(q, n, result)
+
+                    raw = html.encode()
+                    await send({"type": "http.response.start", "status": 200,
+                                "headers": [[b"content-type", b"text/html; charset=utf-8"],
+                                            [b"content-length", str(len(raw)).encode()]]})
+                    await send({"type": "http.response.body", "body": raw})
                     return
 
                 # ── Minimal OAuth 2.0 server (for Claude.ai connector) ──────
