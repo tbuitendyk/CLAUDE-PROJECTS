@@ -355,7 +355,8 @@ if __name__ == "__main__":
                     result = ""
                     if q:
                         try:
-                            idx = bible_data.find_verse_index(q, data_file)
+                            lang = "es" if v == "vp" else "en"
+                            idx = _lookup(q, data_file, lang)
                             passage = bible_data.get_passage(idx, n, data_file)
                             result = bible_data.format_passage(passage)
                         except Exception as exc:
