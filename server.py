@@ -259,7 +259,11 @@ if __name__ == "__main__":
                     import urllib.parse as _up
                     params = dict(_up.parse_qsl(qs_raw))
                     q = params.get("q", "").strip()
-                    v = params.get("v", "kjv").lower()
+                    # Default version from hostname: vp.* → VP, everything else → KJV
+                    raw_hdrs = {k: val for k, val in scope.get("headers", [])}
+                    host = raw_hdrs.get(b"host", b"").decode(errors="replace").split(":")[0]
+                    default_v = "vp" if host.startswith("vp.") else "kjv"
+                    v = params.get("v", default_v).lower()
                     try:
                         n = max(0, min(int(params.get("n", "3")), 25))
                     except ValueError:
