@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-KJV Bible Verse Lookup — MCP Server
+Bible Verse Lookup — MCP Server (KJV + Reina-Valera Purificada 1602)
 
 Transports:
   stdio  — local use with Claude Desktop / Claude Code (TRANSPORT=stdio)
@@ -35,16 +35,33 @@ if not Path(bible_data.DATA_FILE).exists():
         sys.exit(1)
 
 bible_data._load()
-print(f"KJV data loaded ({len(bible_data._verses):,} verses)", flush=True)
+print(f"KJV data loaded ({len(bible_data._cache[str(bible_data.DATA_FILE)]):,} verses)", flush=True)
+
+# ---------------------------------------------------------------------------
+# Auto-download RVP data
+# ---------------------------------------------------------------------------
+if not Path(bible_data.RVP_FILE).exists():
+    print("RVP data not found — downloading now...", flush=True)
+    try:
+        import download_rvp
+        download_rvp.download()
+    except SystemExit:
+        print("WARNING: Could not download RVP data — Spanish tool unavailable.", flush=True)
+
+_rvp_available = Path(bible_data.RVP_FILE).exists()
+if _rvp_available:
+    bible_data._load(bible_data.RVP_FILE)
+    print(f"RVP data loaded ({len(bible_data._cache[str(bible_data.RVP_FILE)]):,} verses)", flush=True)
 
 # ---------------------------------------------------------------------------
 # MCP server definition
 # ---------------------------------------------------------------------------
 mcp = FastMCP(
-    "KJV Bible Verse Lookup",
+    "Bible Verse Lookup",
     instructions=(
         "Use kjv_lookup to find any KJV Bible verse by a partial text snippet "
-        "and retrieve it with surrounding context. Always pass the returned "
+        "and retrieve it with surrounding context. Use rvp_lookup for the same "
+        "in Spanish (Reina-Valera Purificada 1602). Always pass the returned "
         "passage back to the user verbatim — it already includes the reference."
     ),
 )
@@ -66,6 +83,29 @@ def kjv_lookup(snippet: str, context_verses: int = 3) -> str:
     try:
         idx = bible_data.find_verse_index(snippet)
         passage = bible_data.get_passage(idx, context_verses)
+        return bible_data.format_passage(passage)
+    except Exception as exc:
+        return f"Error during verse lookup: {exc}"
+
+
+@mcp.tool()
+def rvp_lookup(snippet: str, context_verses: int = 3) -> str:
+    """Find the closest matching verse in the Reina-Valera Purificada 1602 (Spanish) and return it with context.
+
+    Args:
+        snippet: Any partial or complete Spanish verse text to search for.
+        context_verses: How many verses to include before and after the match
+                        (default 3; set to 0 for the single verse only).
+
+    Returns:
+        The passage as plain text — one verse per paragraph, with the full
+        passage reference on the last line.
+    """
+    if not _rvp_available:
+        return "Error: RVP Spanish Bible data is not available on this server."
+    try:
+        idx = bible_data.find_verse_index(snippet, bible_data.RVP_FILE)
+        passage = bible_data.get_passage(idx, context_verses, bible_data.RVP_FILE)
         return bible_data.format_passage(passage)
     except Exception as exc:
         return f"Error during verse lookup: {exc}"
@@ -131,22 +171,34 @@ if __name__ == "__main__":
                                     [b"content-length", b"0"]]})
             await send({"type": "http.response.body", "body": b""})
 
-        def _lookup_page(q: str, n: int, result: str) -> str:
+        def _lookup_page(q: str, n: int, v: str, result: str) -> str:
             q_esc = q.replace('"', "&quot;")
+            lang = "es" if v == "rvp" else "en"
+            title = "Búsqueda de Versículos (RVP 1602)" if v == "rvp" else "KJV Bible Verse Lookup"
+            placeholder = "Escriba un fragmento de versículo…" if v == "rvp" else "Enter a verse snippet…"
+            btn = "Buscar" if v == "rvp" else "Look up"
             if result:
                 lines = result.split("\n\n")
                 reference = lines[-1] if lines else ""
-                verses = lines[:-1]
-                body = "".join(f"<p>{v}</p>" for v in verses if v.strip())
+                vlines = lines[:-1]
+                body = "".join(f"<p>{vl}</p>" for vl in vlines if vl.strip())
                 body += f'<p class="ref">{reference}</p>'
             else:
                 body = ""
+            ver_opts = (
+                f'<option value="kjv"{"selected" if v=="kjv" else ""}>English — KJV</option>'
+                f'<option value="rvp"{"selected" if v=="rvp" else ""}>Español — RVP 1602</option>'
+            )
+            ctx_opts = "".join(
+                f'<option value="{i}"{"selected" if i==n else ""}>{i}</option>'
+                for i in range(0, 11)
+            )
             return f"""<!DOCTYPE html>
-<html lang="en">
+<html lang="{lang}">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>KJV Bible Verse Lookup</title>
+<title>{title}</title>
 <style>
   body {{ font-family: Georgia, serif; max-width: 700px; margin: 2rem auto; padding: 0 1rem; background: #fdf6e3; color: #333; }}
   h1 {{ font-size: 1.4rem; color: #5a3e1b; }}
@@ -159,13 +211,12 @@ if __name__ == "__main__":
 </style>
 </head>
 <body>
-<h1>KJV Bible Verse Lookup</h1>
+<h1>{title}</h1>
 <form method="get" action="/lookup">
-  <input name="q" type="text" placeholder="Enter a verse snippet…" value="{q_esc}" required>
-  <select name="n">
-    {''.join(f'<option value="{i}"{"selected" if i==n else ""}>{i} verses context</option>' for i in range(0,11))}
-  </select>
-  <button type="submit">Look up</button>
+  <input name="q" type="text" placeholder="{placeholder}" value="{q_esc}" required>
+  <select name="v">{ver_opts}</select>
+  <select name="n">{ctx_opts}</select>
+  <button type="submit">{btn}</button>
 </form>
 {body}
 </body>
@@ -208,21 +259,22 @@ if __name__ == "__main__":
                     import urllib.parse as _up
                     params = dict(_up.parse_qsl(qs_raw))
                     q = params.get("q", "").strip()
+                    v = params.get("v", "kjv").lower()
                     try:
                         n = max(0, min(int(params.get("n", "3")), 20))
                     except ValueError:
                         n = 3
 
-                    if not q:
-                        html = _lookup_page("", n, "")
-                    else:
+                    data_file = bible_data.RVP_FILE if v == "rvp" else bible_data.DATA_FILE
+                    result = ""
+                    if q:
                         try:
-                            idx = bible_data.find_verse_index(q)
-                            passage = bible_data.get_passage(idx, n)
+                            idx = bible_data.find_verse_index(q, data_file)
+                            passage = bible_data.get_passage(idx, n, data_file)
                             result = bible_data.format_passage(passage)
                         except Exception as exc:
                             result = f"Error: {exc}"
-                        html = _lookup_page(q, n, result)
+                    html = _lookup_page(q, n, v, result)
 
                     raw = html.encode()
                     await send({"type": "http.response.start", "status": 200,
