@@ -213,32 +213,62 @@ def _load(data_file: Path = None) -> list:
     return verses
 
 
-def _all_words_match(query_words: list, verse_words: set) -> bool:
-    """True if every query word is found in verse_words.
+def _match_word(qw: str, verse_words: set) -> float:
+    """Score how well a query word matches any word in a verse (0.0–1.0).
 
-    For words of 5+ characters, also accepts a verse word that shares the
-    same first 4 characters — catches Spanish/English inflections such as
-    'libras' matching 'líbranos', or 'deliver' matching 'delivereth'.
+    Returns 1.0 for an exact match. For words of 4+ characters, scans verse
+    words for the longest common leading-character run and scores it as
+    common_len / len(qw). Short words (< 4 chars) require an exact match.
+    A score of 0.70 or above is treated as a successful match.
     """
-    for qw in query_words:
-        if qw in verse_words:
-            continue
-        if len(qw) >= 5 and any(vw.startswith(qw[:5]) for vw in verse_words):
-            continue
-        return False
-    return True
+    if qw in verse_words:
+        return 1.0
+    if len(qw) < 4:
+        return 0.0
+    best = 0.0
+    for vw in verse_words:
+        n = 0
+        for a, b in zip(qw, vw):
+            if a == b:
+                n += 1
+            else:
+                break
+        if n >= 4:
+            best = max(best, n / len(qw))
+    return best
+
+
+_MATCH_THRESHOLD = 0.70  # minimum per-word score to count as a match
 
 
 def find_verse_by_all_words(snippet: str, data_file: Path = None) -> int:
-    """Return index of the first verse containing every word in snippet, or -1."""
+    """Return the index of the best-scoring verse where every query word
+    meets _MATCH_THRESHOLD, or -1 if none qualifies.
+
+    Scoring is proportional to how much of each query word is matched, so
+    longer shared prefixes rank higher — e.g. 'libras' scores 5/6 = 0.83
+    against 'libranos' but only 4/6 = 0.67 against 'libro', correctly
+    preferring Matthew 6:13 over Deuteronomy 29:21.
+    """
     verses = _load(data_file)
     words = _normalize(snippet).split()
     if not words:
         return -1
+    best_idx, best_total = -1, -1.0
     for i, v in enumerate(verses):
-        if _all_words_match(words, set(_normalize(v["text"]).split())):
-            return i
-    return -1
+        vwords = set(_normalize(v["text"]).split())
+        total = 0.0
+        ok = True
+        for qw in words:
+            s = _match_word(qw, vwords)
+            if s < _MATCH_THRESHOLD:
+                ok = False
+                break
+            total += s
+        if ok and total > best_total:
+            best_total = total
+            best_idx = i
+    return best_idx
 
 
 def find_verse_by_reference(book: str, chapter: int, verse: int,
