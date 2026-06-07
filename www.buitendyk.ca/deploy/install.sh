@@ -65,19 +65,30 @@ cat <<EOF
 ==============================================================================
 Install complete. Remaining manual steps:
 
-  1. Make sure TLS certificates exist for ${SITE_NAME} (and the bare
-     "buitendyk.ca" domain, which redirects to it) at the paths referenced
-     in nginx/${NGINX_CONF_NAME} -- e.g. via:
-         sudo certbot --nginx -d www.buitendyk.ca -d buitendyk.ca
+  1. This box routes HTTPS through an SNI-based stream proxy in
+     /etc/nginx/nginx.conf (the "map \$ssl_preread_server_name \$backend"
+     block) -- the vhost in this config listens on 127.0.0.1:4432 and
+     expects that block to forward both "buitendyk.ca" and
+     "www.buitendyk.ca" there, e.g.:
+         buitendyk.ca       127.0.0.1:4432;
+         www.buitendyk.ca   127.0.0.1:4432;
+     Add those two lines to the map (pick a free port if 4432 collides
+     with something else), then 'sudo nginx -t && sudo systemctl reload nginx'.
 
-  2. Make sure DNS for both buitendyk.ca and www.buitendyk.ca points at
-     this VPS.
+  2. Get a TLS certificate covering both hostnames at the paths referenced
+     in nginx/${NGINX_CONF_NAME} -- follow whatever process you already use
+     for this VPS's other certs (see /etc/letsencrypt/live/ and
+     'sudo certbot certificates' for examples, e.g. the kjv.buitendyk.ca
+     cert covers multiple subdomains on one certificate the same way).
 
-  3. The dubber control panel at https://www.buitendyk.ca/dubber/ needs the
+  3. Make sure DNS for both buitendyk.ca and www.buitendyk.ca points at
+     this VPS's public IP.
+
+  4. The dubber control panel at https://www.buitendyk.ca/dubber/ needs the
      youtube-spanish-dubber service running locally on 127.0.0.1:8088 --
      see ../youtube-spanish-dubber/README.md if it isn't set up yet.
 
-  4. Visit https://www.buitendyk.ca/dubber/ and click "Sign in" to test the
+  5. Visit https://www.buitendyk.ca/dubber/ and click "Sign in" to test the
      Basic Auth gate with the credentials you just created.
 ==============================================================================
 EOF
