@@ -6,7 +6,13 @@ python-dotenv==1.0.1
 requests==2.32.3
 
 # YouTube download + caption retrieval
-yt-dlp==2024.12.13
+# Unlike the other deps below, this one is intentionally NOT pinned to an exact
+# version: YouTube frequently changes its player/signature internals, and
+# yt-dlp ships frequent point releases purely to keep extraction working.
+# An exact pin here goes stale within weeks and starts failing with errors
+# like "Requested format is not available" / "nsig extraction failed". Always
+# install/upgrade to the latest: pip install -U yt-dlp
+yt-dlp>=2024.12.13
 
 # Free Microsoft Edge neural text-to-speech (no API key/account needed)
 edge-tts==6.1.19
