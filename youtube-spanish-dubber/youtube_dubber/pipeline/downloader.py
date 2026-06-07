@@ -93,7 +93,11 @@ def download_video(url: str, work_dir: Path) -> VideoInfo:
 
 
 def download_caption(url: str, lang: str, work_dir: Path, auto: bool) -> Optional[Path]:
-    """Download a single caption track as VTT. Returns the file path, or None."""
+    """Download a single caption track as VTT. Returns the file path, or None
+    if the track doesn't exist on YouTube -- or if the download itself fails
+    (e.g. a transient rate limit or network error). Callers treat both cases
+    identically: fall back to the next-best transcript source rather than
+    failing the whole job over a single caption track."""
     opts = {
         "quiet": True,
         "no_warnings": True,
@@ -105,32 +109,13 @@ def download_caption(url: str, lang: str, work_dir: Path, auto: bool) -> Optiona
         "outtmpl": str(work_dir / "captions.%(ext)s"),
         "extractor_args": _EXTRACTOR_ARGS,
     }
-    with yt_dlp.YoutubeDL(opts) as ydl:
-        ydl.download([url])
+    try:
+        with yt_dlp.YoutubeDL(opts) as ydl:
+            ydl.download([url])
+    except yt_dlp.utils.DownloadError as exc:
+        log.warning("Caption download failed (lang=%s, auto=%s): %s", lang, auto, exc)
+        return None
 
     for candidate in work_dir.glob("captions*.vtt"):
         return candidate
     return None
-
-
-def download_audio(url: str, work_dir: Path) -> Path:
-    """Download audio-only track (used for Whisper transcription fallback)."""
-    out_template = str(work_dir / "audio.%(ext)s")
-    opts = {
-        "quiet": True,
-        "no_warnings": True,
-        "format": "ba/b",
-        "outtmpl": out_template,
-        "postprocessors": [{
-            "key": "FFmpegExtractAudio",
-            "preferredcodec": "wav",
-            "preferredquality": "192",
-        }],
-        "extractor_args": _EXTRACTOR_ARGS,
-    }
-    with yt_dlp.YoutubeDL(opts) as ydl:
-        ydl.download([url])
-
-    for candidate in work_dir.glob("audio*.wav"):
-        return candidate
-    raise FileNotFoundError("yt-dlp did not produce an audio file")

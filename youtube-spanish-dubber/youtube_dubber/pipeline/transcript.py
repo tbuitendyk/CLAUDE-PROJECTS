@@ -16,7 +16,7 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-from . import downloader, subtitles, translator
+from . import downloader, ffmpeg_utils, subtitles, translator
 from .models import Segment
 
 log = logging.getLogger(__name__)
@@ -32,7 +32,9 @@ def _read_vtt(path: Path) -> list[Segment]:
     return subtitles.parse_cues(path.read_text(encoding="utf-8", errors="ignore"))
 
 
-def obtain_spanish_segments(url: str, info: dict, work_dir: Path, target_language: str) -> TranscriptResult:
+def obtain_spanish_segments(
+    url: str, info: dict, work_dir: Path, target_language: str, video_path: Path
+) -> TranscriptResult:
     from ..config import settings
 
     es_codes = settings.spanish_caption_codes
@@ -69,9 +71,14 @@ def obtain_spanish_segments(url: str, info: dict, work_dir: Path, target_languag
         )
 
     # 4. Nothing usable exists -- transcribe the audio ourselves with Whisper.
+    # Extract the audio from the video we already downloaded rather than asking
+    # YouTube for it again -- this fallback then needs no further YouTube
+    # requests at all, so it isn't affected by the rate limits / network errors
+    # that may be why we ended up here in the first place.
     from . import speech_to_text  # imported lazily: heavy (loads ML model)
 
-    audio_path = downloader.download_audio(url, work_dir)
+    audio_path = work_dir / "audio.wav"
+    ffmpeg_utils.to_standard_wav(video_path, audio_path)
     stt_segments, detected_language = speech_to_text.transcribe(audio_path)
     translated = translator.translate_segments(
         stt_segments, from_code=detected_language, to_code=target_language

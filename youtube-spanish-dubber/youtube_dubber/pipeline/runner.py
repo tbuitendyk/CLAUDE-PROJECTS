@@ -35,7 +35,9 @@ def run(source_url: str, target_language: str, work_dir: Path, on_progress: Prog
     source = downloader.download_video(source_url, work_dir)
 
     on_progress("transcript", "Acquiring a Spanish transcript...")
-    result = transcript.obtain_spanish_segments(source_url, info, work_dir, target_language)
+    result = transcript.obtain_spanish_segments(
+        source_url, info, work_dir, target_language, Path(source.video_path)
+    )
     on_progress("transcript", f"Transcript ready via: {result.source} ({len(result.segments)} lines)")
 
     on_progress("synthesizing", f"Synthesizing Spanish narration with voice '{settings.tts_voice}'...")
