@@ -19,7 +19,7 @@ log = logging.getLogger(__name__)
 
 def probe(url: str) -> dict:
     """Return yt-dlp's info dict without downloading anything."""
-    opts = {"quiet": True, "no_warnings": True, "skip_download": True}
+    opts = {"quiet": True, "no_warnings": True, "skip_download": True, "format": "bv*+ba/b"}
     with yt_dlp.YoutubeDL(opts) as ydl:
         return ydl.extract_info(url, download=False)
 
