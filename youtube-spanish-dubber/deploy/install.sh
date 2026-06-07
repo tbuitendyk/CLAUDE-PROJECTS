@@ -36,6 +36,7 @@ echo "==> Syncing project files to ${INSTALL_DIR}"
 rsync -a --delete \
   --exclude '.git' --exclude '.venv' --exclude 'data' --exclude 'secrets' --exclude '__pycache__' \
   "${REPO_DIR}/" "${INSTALL_DIR}/"
+chown -R "${SERVICE_USER}:${SERVICE_USER}" "${INSTALL_DIR}"
 
 echo "==> Creating Python virtualenv and installing dependencies (this can take a while)"
 sudo -u "${SERVICE_USER}" python3 -m venv "${INSTALL_DIR}/.venv"
