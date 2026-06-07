@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import logging
 import re
+from typing import Optional
 
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, field_validator
@@ -35,7 +36,7 @@ app = FastAPI(
 
 class JobCreateRequest(BaseModel):
     url: str
-    target_language: str | None = None
+    target_language: Optional[str] = None
 
     @field_validator("url")
     @classmethod
