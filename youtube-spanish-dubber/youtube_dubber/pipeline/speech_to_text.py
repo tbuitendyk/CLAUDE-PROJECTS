@@ -41,7 +41,18 @@ def transcribe(audio_path: Path) -> tuple[list[Segment], str]:
     """
     model = _get_model()
     with _lock:  # CTranslate2 models are not safe for concurrent inference
-        segments_iter, info = model.transcribe(str(audio_path), vad_filter=True)
+        segments_iter, info = model.transcribe(
+            str(audio_path),
+            vad_filter=True,
+            # faster-whisper can spiral into repeating the same phrase over and
+            # over once it stumbles on one -- condition_on_previous_text=True
+            # (the default) feeds that bad output back in as context for the
+            # next chunk, compounding it. Disabling that, plus penalizing
+            # repeated tokens/n-grams directly, keeps it from looping.
+            condition_on_previous_text=False,
+            repetition_penalty=1.1,
+            no_repeat_ngram_size=3,
+        )
         segments = [
             Segment(start=seg.start, end=seg.end, text=seg.text.strip())
             for seg in segments_iter
