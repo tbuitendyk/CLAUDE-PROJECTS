@@ -101,7 +101,7 @@ ssh -L 8080:localhost:8080 you@your-vps
 Then, on the VPS, run the authorization as the service user:
 
 ```bash
-sudo -u dubber /opt/youtube-dubber/.venv/bin/python -m youtube_dubber.cli authorize
+cd /opt/youtube-dubber && sudo -u dubber ./.venv/bin/python -m youtube_dubber.cli authorize
 ```
 
 It prints a URL — open it in the browser on your local machine (the SSH
@@ -182,8 +182,8 @@ List recent jobs: `curl http://127.0.0.1:8088/jobs`
 The optional CLI wraps the same API for convenience:
 
 ```bash
-sudo -u dubber /opt/youtube-dubber/.venv/bin/python -m youtube_dubber.cli submit "https://youtu.be/XXXXXXXXXXX"
-sudo -u dubber /opt/youtube-dubber/.venv/bin/python -m youtube_dubber.cli status a1b2c3d4e5f6
+cd /opt/youtube-dubber && sudo -u dubber ./.venv/bin/python -m youtube_dubber.cli submit "https://youtu.be/XXXXXXXXXXX"
+sudo -u dubber ./.venv/bin/python -m youtube_dubber.cli status a1b2c3d4e5f6
 ```
 
 ## Notes, limits & tuning

@@ -94,7 +94,7 @@ Install complete. Remaining manual steps (see README.md for full detail):
   2. Run the ONE-TIME interactive authorization as the '${SERVICE_USER}' user
      (do this over an SSH session with a browser you can reach, e.g. via
      'ssh -L 8080:localhost:8080' port forwarding):
-         sudo -u ${SERVICE_USER} ${INSTALL_DIR}/.venv/bin/python -m youtube_dubber.cli authorize
+         cd ${INSTALL_DIR} && sudo -u ${SERVICE_USER} ./.venv/bin/python -m youtube_dubber.cli authorize
 
      This writes a refresh token to ${INSTALL_DIR}/secrets/token.json so the
      service can upload videos unattended afterwards.
