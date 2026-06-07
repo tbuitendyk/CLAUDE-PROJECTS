@@ -12,6 +12,10 @@ applicable) deployment instructions.
   auto-generated one, or a freshly transcribed one), and publishes the
   result to your own YouTube channel — built entirely from free,
   open-source tools.
+- [`www.buitendyk.ca/`](www.buitendyk.ca/) — the static portal site for
+  `https://www.buitendyk.ca`, tying together the tools and projects hosted
+  on this VPS (Bible lookup tools, docs, and a control-panel sub-page for
+  the YouTube Spanish Dubber, gated behind HTTP Basic Auth).
 
 To add a new project, create a new top-level directory for it (with its own
 README, dependencies, etc.) and list it here.

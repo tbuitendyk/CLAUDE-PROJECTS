@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Spanish Video Dubber &mdash; buitendyk.ca</title>
+  <meta name="description" content="Submit an English YouTube video, generate a Spanish voice-over, and publish it to a YouTube channel.">
+  <link rel="stylesheet" href="/assets/style.css">
+</head>
+<body>
+  <header class="site-header">
+    <div class="inner">
+      <a class="brand" href="/">buitendyk<span>.ca</span></a>
+      <nav class="breadcrumb"><a href="/">home</a> &rsaquo; dubber</nav>
+    </div>
+  </header>
+
+  <main>
+    <section class="hero">
+      <h1>Spanish Video Dubber</h1>
+      <p>
+        Give it an English-language YouTube video; it produces a Spanish
+        voice-over (from an existing transcript, an auto-generated one, or a
+        freshly transcribed one) and publishes the result to the channel this
+        service is authorized for. See how it works in the
+        <a href="https://github.com/tbuitendyk/CLAUDE-PROJECTS/tree/main/youtube-spanish-dubber" target="_blank" rel="noopener">project README</a>.
+      </p>
+    </section>
+
+    <div class="panel">
+      <div id="auth-status" class="status-line">
+        <span class="dot locked" id="auth-dot"></span>
+        <span id="auth-text">Checking access&hellip;</span>
+        <button class="btn secondary" id="signin-btn" type="button" style="margin-left:auto;">Sign in</button>
+      </div>
+      <p class="hint">
+        Submitting a dub publishes a real video to a real YouTube channel, so this
+        action is locked behind the same site credentials used elsewhere on
+        buitendyk.ca. Sign in to enable the button below.
+      </p>
+    </div>
+
+    <form class="panel" id="dub-form">
+      <div class="field">
+        <label for="video-url">English source video URL (YouTube)</label>
+        <input type="url" id="video-url" name="url" placeholder="https://www.youtube.com/watch?v=&hellip;" required>
+      </div>
+
+      <div class="field">
+        <label for="target-lang">Target language / voice locale</label>
+        <select id="target-lang" name="target_language">
+          <option value="es">Spanish &mdash; es (server default voice)</option>
+          <option value="es-ES">Spanish (Spain) &mdash; es-ES</option>
+          <option value="es-MX">Spanish (Mexico) &mdash; es-MX</option>
+          <option value="es-419">Spanish (Latin America) &mdash; es-419</option>
+        </select>
+        <p class="hint">
+          The destination YouTube channel is fixed: it's whichever channel was
+          authorized when the dubber service ran its one-time YouTube sign-in
+          on the server (see the project README's "YouTube authorization" step).
+        </p>
+      </div>
+
+      <button class="btn ghosted" id="submit-btn" type="submit" disabled>Start dubbing</button>
+      <span class="hint" id="form-message"></span>
+    </form>
+
+    <div id="job-list"></div>
+  </main>
+
+  <footer class="site-footer">
+    buitendyk.ca &mdash; self-hosted on a personal VPS, built with free &amp; open-source tools.
+  </footer>
+
+  <script src="/dubber/dubber.js"></script>
+</body>
+</html>
