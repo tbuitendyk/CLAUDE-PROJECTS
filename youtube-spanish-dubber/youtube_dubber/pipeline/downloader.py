@@ -59,7 +59,7 @@ def download_video(url: str, work_dir: Path) -> VideoInfo:
     opts = {
         "quiet": True,
         "no_warnings": True,
-        "format": "bv*[ext=mp4]+ba[ext=m4a]/b[ext=mp4]/best",
+        "format": "bv*[ext=mp4]+ba[ext=m4a]/bv*+ba/b[ext=mp4]/best",
         "outtmpl": out_template,
         "merge_output_format": "mp4",
     }
