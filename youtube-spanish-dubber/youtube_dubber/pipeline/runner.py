@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Callable
 
 from ..config import settings
-from . import downloader, transcript, tts, uploader, video
+from . import downloader, transcript, translator, tts, uploader, video
 
 log = logging.getLogger(__name__)
 
@@ -57,8 +57,14 @@ def run(source_url: str, target_language: str, work_dir: Path, on_progress: Prog
     )
 
     on_progress("uploading", "Uploading the dubbed video to your YouTube channel...")
-    title = f"{settings.title_prefix}{source.title}"[:100]
-    description = f"{source.description}{settings.description_suffix}".strip()
+    source_lang = source.original_language or "en"
+    translated_title = translator.translate_text(source.title, from_code=source_lang, to_code=target_language)
+    title = f"{settings.title_prefix}{translated_title} ({source.title})"[:100]
+    translated_description = (
+        translator.translate_text(source.description, from_code=source_lang, to_code=target_language)
+        if source.description else ""
+    )
+    description = f"{translated_description}{settings.description_suffix}".strip()
     video_id = uploader.upload_video(dubbed_path, title=title, description=description)
 
     video_url = f"https://youtu.be/{video_id}"
