@@ -1,0 +1,7 @@
+# Project-specific ignores (generic Python/venv patterns live in the repo root .gitignore).
+
+# Runtime data: job database, downloaded videos, generated audio, etc.
+data/
+
+# Secrets: OAuth client secret + cached refresh token. NEVER commit these.
+secrets/

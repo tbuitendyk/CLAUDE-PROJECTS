@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Installs the YouTube Spanish Dubber service on a Debian/Ubuntu VPS.
 #
-# Usage (run from inside the cloned repo, as a user with sudo):
+# Usage (run from inside this sub-project directory, as a user with sudo):
+#   cd claude-projects/youtube-spanish-dubber
 #   sudo bash deploy/install.sh
 #
 # What it does:
