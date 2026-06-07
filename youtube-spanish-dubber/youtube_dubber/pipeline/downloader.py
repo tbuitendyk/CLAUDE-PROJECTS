@@ -16,10 +16,22 @@ from .models import VideoInfo
 
 log = logging.getLogger(__name__)
 
+# YouTube now requires a "PO Token" for most player clients (web/tv/ios); without
+# one, the only formats yt-dlp can use return HTTP 403 on download. android_vr is
+# exempt from that requirement, so force it rather than standing up a companion
+# PO-token-provider service. https://github.com/yt-dlp/yt-dlp-wiki/blob/master/PO%20Token%20Guide.md
+_EXTRACTOR_ARGS = {"youtube": {"player_client": ["android_vr"]}}
+
 
 def probe(url: str) -> dict:
     """Return yt-dlp's info dict without downloading anything."""
-    opts = {"quiet": True, "no_warnings": True, "skip_download": True, "format": "bv*+ba/b"}
+    opts = {
+        "quiet": True,
+        "no_warnings": True,
+        "skip_download": True,
+        "format": "bv*+ba/b",
+        "extractor_args": _EXTRACTOR_ARGS,
+    }
     with yt_dlp.YoutubeDL(opts) as ydl:
         return ydl.extract_info(url, download=False)
 
@@ -62,6 +74,7 @@ def download_video(url: str, work_dir: Path) -> VideoInfo:
         "format": "bv*[ext=mp4]+ba[ext=m4a]/bv*+ba/b[ext=mp4]/best",
         "outtmpl": out_template,
         "merge_output_format": "mp4",
+        "extractor_args": _EXTRACTOR_ARGS,
     }
     with yt_dlp.YoutubeDL(opts) as ydl:
         info = ydl.extract_info(url, download=True)
@@ -90,6 +103,7 @@ def download_caption(url: str, lang: str, work_dir: Path, auto: bool) -> Optiona
         "subtitleslangs": [lang],
         "subtitlesformat": "vtt",
         "outtmpl": str(work_dir / "captions.%(ext)s"),
+        "extractor_args": _EXTRACTOR_ARGS,
     }
     with yt_dlp.YoutubeDL(opts) as ydl:
         ydl.download([url])
@@ -112,6 +126,7 @@ def download_audio(url: str, work_dir: Path) -> Path:
             "preferredcodec": "wav",
             "preferredquality": "192",
         }],
+        "extractor_args": _EXTRACTOR_ARGS,
     }
     with yt_dlp.YoutubeDL(opts) as ydl:
         ydl.download([url])
