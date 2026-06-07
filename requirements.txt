@@ -1,0 +1,24 @@
+# All free / open-source, no paid API keys required.
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+pydantic==2.10.4
+python-dotenv==1.0.1
+requests==2.32.3
+
+# YouTube download + caption retrieval
+yt-dlp==2024.12.13
+
+# Free Microsoft Edge neural text-to-speech (no API key/account needed)
+edge-tts==6.1.19
+
+# Free, fully offline machine translation
+argostranslate==1.9.6
+
+# Free, local speech-to-text fallback (used only when no captions exist at all)
+faster-whisper==1.1.0
+
+# Free official Google client libraries for the YouTube Data API v3
+google-api-python-client==2.156.0
+google-auth==2.37.0
+google-auth-httplib2==0.2.0
+google-auth-oauthlib==1.2.1

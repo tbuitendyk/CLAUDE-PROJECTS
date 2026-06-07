@@ -1,0 +1,11 @@
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Runtime data: job database, downloaded videos, generated audio, etc.
+data/
+
+# Secrets: OAuth client secret + cached refresh token. NEVER commit these.
+secrets/
+.env

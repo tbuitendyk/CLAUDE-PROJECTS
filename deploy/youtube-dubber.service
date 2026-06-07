@@ -1,0 +1,24 @@
+[Unit]
+Description=YouTube Spanish Dubber service
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=dubber
+Group=dubber
+WorkingDirectory=/opt/youtube-dubber
+EnvironmentFile=/opt/youtube-dubber/.env
+ExecStart=/opt/youtube-dubber/.venv/bin/uvicorn youtube_dubber.app:app --host ${DUBBER_HOST} --port ${DUBBER_PORT}
+Restart=on-failure
+RestartSec=10
+
+# Hardening (relaxed enough to allow downloading/encoding into WorkingDirectory)
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+ReadWritePaths=/opt/youtube-dubber
+
+[Install]
+WantedBy=multi-user.target
