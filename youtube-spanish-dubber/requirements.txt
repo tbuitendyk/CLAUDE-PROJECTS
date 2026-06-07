@@ -15,7 +15,12 @@ requests==2.32.3
 yt-dlp>=2024.12.13
 
 # Free Microsoft Edge neural text-to-speech (no API key/account needed)
-edge-tts==6.1.19
+# Same deal as yt-dlp above: this talks to an undocumented Microsoft endpoint
+# gated by a "Sec-MS-GEC" security token whose generation Microsoft tweaks
+# periodically, breaking older client versions with 403 "Invalid response
+# status" errors. Don't pin to an exact version -- always upgrade to latest:
+# pip install -U edge-tts
+edge-tts>=6.1.19
 
 # Free, fully offline machine translation
 argostranslate==1.9.6
