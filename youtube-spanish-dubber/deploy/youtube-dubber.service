@@ -13,11 +13,14 @@ ExecStart=/opt/youtube-dubber/.venv/bin/uvicorn youtube_dubber.app:app --host ${
 Restart=on-failure
 RestartSec=10
 
-# Hardening (relaxed enough to allow downloading/encoding into WorkingDirectory)
+# Hardening (relaxed enough to allow downloading/encoding into WorkingDirectory,
+# and to let libraries like Argos Translate / faster-whisper / torch create
+# their cache dirs under the service user's own home, e.g. /home/dubber/.local
+# and /home/dubber/.cache -- ProtectHome=true would hide /home/* entirely and
+# crash the app on startup with "Permission denied: '/home/dubber'")
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=full
-ProtectHome=true
 ReadWritePaths=/opt/youtube-dubber
 
 [Install]
