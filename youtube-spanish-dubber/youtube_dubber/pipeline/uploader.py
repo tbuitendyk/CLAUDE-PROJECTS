@@ -64,9 +64,10 @@ def run_authorization_flow() -> None:
         )
 
     flow = InstalledAppFlow.from_client_secrets_file(str(secrets_file), SCOPES)
-    # Fixed port so it matches the SSH port-forward documented in the README
-    # (the VPS has no browser, so the consent flow has to be tunneled out).
-    creds = flow.run_local_server(port=8080)
+    # Fixed port so it matches the SSH port-forward documented in the README,
+    # and open_browser=False because the VPS is headless -- trying to launch
+    # one raises webbrowser.Error instead of falling back to printing the URL.
+    creds = flow.run_local_server(port=8080, open_browser=False)
     settings.youtube_token_file.parent.mkdir(parents=True, exist_ok=True)
     settings.youtube_token_file.write_text(creds.to_json(), encoding="utf-8")
     log.info("Saved YouTube credentials to %s", settings.youtube_token_file)
