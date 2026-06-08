@@ -14,6 +14,7 @@ from typing import Callable
 
 from ..config import settings
 from . import downloader, transcript, translator, tts, uploader, video
+from .models import Segment
 
 log = logging.getLogger(__name__)
 
@@ -24,9 +25,22 @@ def _noop(stage: str, message: str) -> None:
     log.info("[%s] %s", stage, message)
 
 
-def run(source_url: str, target_language: str, work_dir: Path, on_progress: ProgressFn = _noop) -> dict:
+def run(
+    source_url: str,
+    target_language: str,
+    work_dir: Path,
+    on_progress: ProgressFn = _noop,
+    transcript_override: list[Segment] | None = None,
+) -> dict:
     """Run the full pipeline. Returns a result dict with at least
-    `youtube_video_id` and `youtube_video_url` on success."""
+    `youtube_video_id` and `youtube_video_url` on success.
+
+    `transcript_override`, when given, replaces the normal transcript
+    acquisition stage outright -- it's how a "preview transcript first" pass
+    that the user then hand-edited gets used verbatim for the actual dub,
+    instead of the pipeline re-acquiring and re-translating from scratch (and
+    potentially landing on different lines than the ones they reviewed).
+    """
 
     on_progress("probing", "Looking up video metadata and available captions...")
     info = downloader.probe(source_url)
@@ -34,15 +48,22 @@ def run(source_url: str, target_language: str, work_dir: Path, on_progress: Prog
     on_progress("downloading", f"Downloading source video: {info.get('title')!r}")
     source = downloader.download_video(source_url, work_dir)
 
-    on_progress("transcript", "Acquiring a Spanish transcript...")
-    result = transcript.obtain_spanish_segments(
-        source_url, info, work_dir, target_language, Path(source.video_path)
-    )
-    on_progress("transcript", f"Transcript ready via: {result.source} ({len(result.segments)} lines)")
+    if transcript_override is not None:
+        on_progress("transcript", f"Using your edited transcript ({len(transcript_override)} lines)...")
+        segments = transcript_override
+        transcript_source = "edited transcript from preview"
+    else:
+        on_progress("transcript", "Acquiring a Spanish transcript...")
+        result = transcript.obtain_spanish_segments(
+            source_url, info, work_dir, target_language, Path(source.video_path)
+        )
+        on_progress("transcript", f"Transcript ready via: {result.source} ({len(result.segments)} lines)")
+        segments = result.segments
+        transcript_source = result.source
 
     on_progress("synthesizing", f"Synthesizing Spanish narration with voice '{settings.tts_voice}'...")
     narration_path = tts.synthesize_track(
-        result.segments,
+        segments,
         total_duration=source.duration or _probe_duration_fallback(source.video_path),
         voice=settings.tts_voice,
         rate=settings.tts_rate,
@@ -59,7 +80,7 @@ def run(source_url: str, target_language: str, work_dir: Path, on_progress: Prog
     on_progress("uploading", "Uploading the dubbed video to your YouTube channel...")
     source_lang = source.original_language or "en"
     translated_title = translator.translate_text(source.title, from_code=source_lang, to_code=target_language)
-    title = f"{settings.title_prefix}{translated_title} ({source.title})"[:100]
+    title = f"{settings.title_prefix.rstrip()} {translated_title} ({source.title})"[:100]
     translated_description = (
         translator.translate_text(source.description, from_code=source_lang, to_code=target_language)
         if source.description else ""
@@ -73,7 +94,7 @@ def run(source_url: str, target_language: str, work_dir: Path, on_progress: Prog
     return {
         "youtube_video_id": video_id,
         "youtube_video_url": video_url,
-        "transcript_source": result.source,
+        "transcript_source": transcript_source,
         "title": title,
     }
 

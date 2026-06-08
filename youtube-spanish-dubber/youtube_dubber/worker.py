@@ -16,6 +16,7 @@ import traceback
 from . import db
 from .config import settings
 from .pipeline import runner
+from .pipeline.models import Segment
 
 log = logging.getLogger(__name__)
 
@@ -27,6 +28,25 @@ def _make_progress_fn(job_id: str):
         log.info("[job %s] (%s) %s", job_id, stage, message)
         db.update_job(job_id, stage=stage, progress=message)
     return on_progress
+
+
+def _load_transcript_override(raw: str | None) -> list[Segment] | None:
+    """Decode a job's saved `transcript_overrides` JSON (start/end/text rows
+    from a hand-edited preview) into Segments ready for the TTS stage, or
+    None if there's nothing usable -- so a fresh transcript gets acquired."""
+    if not raw:
+        return None
+    try:
+        rows = json.loads(raw)
+    except ValueError:
+        log.warning("Job has malformed transcript_overrides JSON; ignoring it")
+        return None
+    segments = [
+        Segment(start=float(row["start"]), end=float(row["end"]), text=text)
+        for row in rows
+        if (text := str(row.get("text") or "").strip())
+    ]
+    return segments or None
 
 
 def _process(job: db.Job) -> None:
@@ -44,7 +64,11 @@ def _process(job: db.Job) -> None:
                 error=None,
             )
         else:
-            result = runner.run(job.source_url, job.target_language, work_dir, on_progress=on_progress)
+            transcript_override = _load_transcript_override(job.transcript_overrides)
+            result = runner.run(
+                job.source_url, job.target_language, work_dir,
+                on_progress=on_progress, transcript_override=transcript_override,
+            )
             db.update_job(
                 job.id,
                 status="done",

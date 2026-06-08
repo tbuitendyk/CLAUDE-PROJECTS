@@ -28,6 +28,14 @@
   let authenticated = false;
   const pollTimers = new Map(); // job id -> setInterval handle
 
+  // The most recently rendered transcript preview, plus whatever edits the
+  // visitor has saved against it: { url, targetLanguage, lines: [{start, end, text}] }.
+  // When "Start dubbing" is submitted for the same video and language, these
+  // lines are sent along as `transcript_overrides` so the dub speaks exactly
+  // what was reviewed (and possibly hand-corrected) rather than a freshly
+  // re-acquired and re-translated transcript that might differ.
+  let previewState = null;
+
   function setAuthState(state, text) {
     authDot.className = "dot " + state;
     authText.textContent = text;
@@ -66,7 +74,7 @@
     return `${m}:${String(s).padStart(2, "0")}`;
   }
 
-  function renderTranscriptPreview(result) {
+  function renderTranscriptPreview(result, sourceUrl, targetLanguage) {
     const wrap = document.createElement("div");
     wrap.className = "transcript-preview";
 
@@ -87,6 +95,15 @@
 
     const hasOriginal = rows.some((row) => row.original_text != null);
 
+    // This becomes the saved/editable record for this preview -- see
+    // `previewState` above for how "Start dubbing" picks it back up.
+    const state = {
+      url: sourceUrl,
+      targetLanguage: targetLanguage,
+      lines: rows.map((row) => ({ start: row.start, end: row.end, text: row.translated_text || "" })),
+    };
+    previewState = state;
+
     const table = document.createElement("table");
     table.className = "transcript-table";
 
@@ -94,7 +111,7 @@
     const headRow = document.createElement("tr");
     const headings = ["Time"];
     if (hasOriginal) headings.push("Original");
-    headings.push("Spanish");
+    headings.push("Spanish (editable)");
     headings.forEach((label) => {
       const th = document.createElement("th");
       th.textContent = label;
@@ -104,7 +121,7 @@
     table.appendChild(thead);
 
     const tbody = document.createElement("tbody");
-    rows.forEach((row) => {
+    rows.forEach((row, index) => {
       const tr = document.createElement("tr");
 
       const timeCell = document.createElement("td");
@@ -121,14 +138,51 @@
 
       const esCell = document.createElement("td");
       esCell.className = "transcript-translated";
-      esCell.textContent = row.translated_text || "";
+
+      const editRow = document.createElement("div");
+      editRow.className = "transcript-edit";
+
+      const textarea = document.createElement("textarea");
+      textarea.value = row.translated_text || "";
+      textarea.setAttribute("aria-label", `Edit the Spanish line at ${formatTimestamp(row.start)}`);
+
+      const saveBtn = document.createElement("button");
+      saveBtn.type = "button";
+      saveBtn.className = "btn secondary transcript-save";
+      saveBtn.textContent = "Save";
+
+      const resetSaveLabel = () => {
+        window.clearTimeout(saveBtn._resetTimer);
+        saveBtn.textContent = "Save";
+        esCell.classList.remove("saved");
+      };
+
+      textarea.addEventListener("input", resetSaveLabel);
+      saveBtn.addEventListener("click", () => {
+        state.lines[index].text = textarea.value;
+        esCell.classList.add("saved");
+        saveBtn.textContent = "Saved ✓";
+        window.clearTimeout(saveBtn._resetTimer);
+        saveBtn._resetTimer = window.setTimeout(() => { saveBtn.textContent = "Save"; }, 1500);
+      });
+
+      editRow.appendChild(textarea);
+      editRow.appendChild(saveBtn);
+      esCell.appendChild(editRow);
       tr.appendChild(esCell);
 
       tbody.appendChild(tr);
     });
     table.appendChild(tbody);
-
     wrap.appendChild(table);
+
+    const editHint = document.createElement("p");
+    editHint.className = "hint";
+    editHint.textContent = "Tweak any Spanish line above and click its Save button. Saved " +
+      "lines for this same video and language are used automatically -- in place of a fresh " +
+      "translation -- the next time you click “Start dubbing”.";
+    wrap.appendChild(editHint);
+
     return wrap;
   }
 
@@ -163,7 +217,7 @@
 
     if (job.mode === "preview") {
       if (job.status === "done" && job.result) {
-        card.appendChild(renderTranscriptPreview(job.result));
+        card.appendChild(renderTranscriptPreview(job.result, job.source_url, job.target_language));
       }
     } else if (job.status === "done" && job.youtube_video_url) {
       const wrap = document.createElement("div");
@@ -220,7 +274,16 @@
     }
     const targetLanguage = document.getElementById("target-lang").value;
 
-    formMessage.textContent = mode === "preview" ? "Submitting transcript preview…" : "Submitting…";
+    const payload = { url: url, target_language: targetLanguage, mode: mode };
+    let usingSavedEdits = false;
+    if (mode === "dub" && previewState && previewState.url === url && previewState.targetLanguage === targetLanguage) {
+      payload.transcript_overrides = previewState.lines;
+      usingSavedEdits = true;
+    }
+
+    formMessage.textContent = mode === "preview"
+      ? "Submitting transcript preview…"
+      : (usingSavedEdits ? "Submitting — using your saved transcript edits for this video…" : "Submitting…");
     submitBtn.disabled = true;
     previewBtn.disabled = true;
 
@@ -229,7 +292,7 @@
         method: "POST",
         credentials: "same-origin",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url: url, target_language: targetLanguage, mode: mode }),
+        body: JSON.stringify(payload),
       });
       const data = await res.json().catch(() => null);
 
@@ -242,7 +305,9 @@
 
       formMessage.textContent = mode === "preview"
         ? `Queued transcript preview as job ${data.id}. Tracking progress below.`
-        : `Queued as job ${data.id}. Tracking progress below.`;
+        : (usingSavedEdits
+            ? `Queued as job ${data.id} — it will use your saved transcript edits. Tracking progress below.`
+            : `Queued as job ${data.id}. Tracking progress below.`);
       if (mode !== "preview") form.reset();
       renderJob(data);
       pollJob(data.id);

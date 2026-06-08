@@ -2,13 +2,20 @@
 
 Endpoints
 ---------
-POST /jobs           {"url": "<youtube url>", "target_language": "es", "mode": "dub"}
+POST /jobs           {"url": "<youtube url>", "target_language": "es", "mode": "dub",
+                      "transcript_overrides": [{"start": 0.0, "end": 4.2, "text": "..."}]}
                      -> create a job. mode "dub" (default) runs the full
                      pipeline and publishes to YouTube; mode "preview" stops
                      after acquiring/translating the transcript and returns
                      the original-language and Spanish text side by side as
                      `result`, for diagnosing transcription vs. translation
                      quality without the slow synthesis/mux/upload stages.
+                     `transcript_overrides` is optional and only consulted in
+                     "dub" mode: when present, it replaces the normal
+                     transcript-acquisition stage outright with these exact
+                     timed lines -- e.g. a "preview transcript first" result
+                     the user reviewed and hand-edited -- so the dub says
+                     precisely what was approved.
 GET  /jobs           list recent jobs
 GET  /jobs/{id}      fetch a single job's status/progress/result
 GET  /healthz        liveness check
@@ -40,10 +47,21 @@ app = FastAPI(
 )
 
 
+class TranscriptOverrideLine(BaseModel):
+    """One hand-edited line from a "preview transcript first" pass, carried
+    over verbatim into the dub so the narration says exactly what was
+    reviewed (and possibly corrected) -- not a freshly re-acquired transcript
+    that might land on different lines entirely."""
+    start: float
+    end: float
+    text: str
+
+
 class JobCreateRequest(BaseModel):
     url: str
     target_language: Optional[str] = None
     mode: str = "dub"
+    transcript_overrides: Optional[list[TranscriptOverrideLine]] = None
 
     @field_validator("url")
     @classmethod
@@ -75,7 +93,8 @@ def healthz() -> dict:
 
 @app.post("/jobs", status_code=201)
 def create_job(payload: JobCreateRequest) -> dict:
-    job = db.create_job(payload.url, payload.target_language, mode=payload.mode)
+    overrides = [line.model_dump() for line in payload.transcript_overrides] if payload.transcript_overrides else None
+    job = db.create_job(payload.url, payload.target_language, mode=payload.mode, transcript_overrides=overrides)
     return job.to_dict()
 
 

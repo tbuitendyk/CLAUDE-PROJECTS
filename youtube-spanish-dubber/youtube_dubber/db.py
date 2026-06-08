@@ -28,6 +28,7 @@ CREATE TABLE IF NOT EXISTS jobs (
     progress TEXT,
     error TEXT,
     result TEXT,
+    transcript_overrides TEXT,
     youtube_video_id TEXT,
     youtube_video_url TEXT,
     created_at TEXT NOT NULL,
@@ -40,6 +41,7 @@ CREATE TABLE IF NOT EXISTS jobs (
 _MIGRATIONS = (
     "ALTER TABLE jobs ADD COLUMN mode TEXT NOT NULL DEFAULT 'dub'",
     "ALTER TABLE jobs ADD COLUMN result TEXT",
+    "ALTER TABLE jobs ADD COLUMN transcript_overrides TEXT",
 )
 
 # Lifecycle: queued -> running -> done
@@ -68,6 +70,7 @@ class Job:
     progress: Optional[str] = None
     error: Optional[str] = None
     result: Optional[str] = None
+    transcript_overrides: Optional[str] = None
     youtube_video_id: Optional[str] = None
     youtube_video_url: Optional[str] = None
     created_at: str = field(default_factory=_now)
@@ -79,12 +82,14 @@ class Job:
 
     def to_dict(self) -> dict[str, Any]:
         data = asdict(self)
-        # `result` is stored as a JSON string; hand callers a real object.
-        if data["result"]:
-            try:
-                data["result"] = json.loads(data["result"])
-            except ValueError:
-                pass
+        # `result`/`transcript_overrides` are stored as JSON strings; hand
+        # callers real objects.
+        for key in ("result", "transcript_overrides"):
+            if data[key]:
+                try:
+                    data[key] = json.loads(data[key])
+                except ValueError:
+                    pass
         return data
 
 
@@ -111,23 +116,29 @@ def init_db() -> None:
                 conn.execute(migration)
 
 
-def create_job(source_url: str, target_language: str | None = None, mode: str = "dub") -> Job:
+def create_job(
+    source_url: str,
+    target_language: str | None = None,
+    mode: str = "dub",
+    transcript_overrides: list[dict] | None = None,
+) -> Job:
     job = Job(
         id=uuid.uuid4().hex[:12],
         source_url=source_url,
         target_language=target_language or settings.target_language,
         mode=mode,
+        transcript_overrides=json.dumps(transcript_overrides) if transcript_overrides else None,
     )
     with _connect() as conn:
         conn.execute(
             """INSERT INTO jobs
                (id, source_url, target_language, mode, status, stage, progress, error, result,
-                youtube_video_id, youtube_video_url, created_at, updated_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                transcript_overrides, youtube_video_id, youtube_video_url, created_at, updated_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 job.id, job.source_url, job.target_language, job.mode, job.status, job.stage,
-                job.progress, job.error, job.result, job.youtube_video_id, job.youtube_video_url,
-                job.created_at, job.updated_at,
+                job.progress, job.error, job.result, job.transcript_overrides,
+                job.youtube_video_id, job.youtube_video_url, job.created_at, job.updated_at,
             ),
         )
     return job

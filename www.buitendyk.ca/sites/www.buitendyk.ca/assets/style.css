@@ -283,6 +283,48 @@ footer.site-footer {
   white-space: nowrap;
 }
 
+.transcript-table .transcript-translated {
+  min-width: 16rem;
+}
+
+.transcript-edit {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.4rem;
+}
+
+.transcript-edit textarea {
+  width: 100%;
+  min-height: 3.2em;
+  resize: vertical;
+  padding: 0.45rem 0.6rem;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 0.85rem;
+  line-height: 1.4;
+}
+.transcript-edit textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.transcript-edit .btn.transcript-save {
+  padding: 0.35rem 0.85rem;
+  font-size: 0.78rem;
+}
+
+.transcript-translated.saved textarea {
+  border-color: var(--good);
+}
+.transcript-translated.saved .btn.transcript-save {
+  border-color: var(--good);
+  color: var(--good);
+}
+
 .hint {
   font-size: 0.82rem;
   color: var(--text-dim);
