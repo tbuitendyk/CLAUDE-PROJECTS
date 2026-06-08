@@ -139,18 +139,18 @@
     thead.appendChild(headRow);
     table.appendChild(thead);
 
-    // Keeps each Spanish textarea's height matched to its Original cell's
-    // rendered height -- so the edit box "goes down as far as" the English
-    // text beside it, including as the page resizes and text rewraps.
-    const heightSyncMap = hasOriginal && typeof ResizeObserver !== "undefined" ? new Map() : null;
-    const heightObserver = heightSyncMap
-      ? new ResizeObserver((entries) => {
-          for (const entry of entries) {
-            const textarea = heightSyncMap.get(entry.target);
-            if (textarea) textarea.style.height = `${Math.ceil(entry.target.getBoundingClientRect().height)}px`;
-          }
-        })
-      : null;
+    // Sizes a Spanish textarea to fit its own content (no inner scrollbar --
+    // translations commonly run longer than the English they came from, so
+    // simply matching the Original cell's height isn't enough to show it all)
+    // while never going shorter than the Original cell beside it, so the box
+    // still "goes down at least as far as" the English text when its own
+    // content happens to be shorter.
+    function syncTextareaHeight(textarea, origText) {
+      const minHeight = origText ? Math.ceil(origText.getBoundingClientRect().height) : 0;
+      textarea.style.height = `${Math.max(minHeight, textarea.scrollHeight)}px`;
+    }
+
+    const editPairs = []; // { textarea, origText } -- origText is null when there's no Original column
 
     const tbody = document.createElement("tbody");
     rows.forEach((row, index) => {
@@ -167,9 +167,10 @@
         origCell.className = "transcript-original";
         // The text lives in its own block so its measured height reflects
         // only its own content/column-width -- NOT the row's height. (If we
-        // observed the <td> itself, growing the textarea would grow the row,
-        // which stretches the <td>, which would re-trigger the observer --
-        // an infinite feedback loop that blew the box up to full-page height.)
+        // measured the <td> itself, growing the textarea would grow the row,
+        // which stretches the <td>, which would feed back into the textarea
+        // height again -- an infinite loop that once blew a box up to
+        // full-page height.)
         origText = document.createElement("div");
         origText.textContent = row.original_text || "";
         origCell.appendChild(origText);
@@ -185,11 +186,7 @@
       const textarea = document.createElement("textarea");
       textarea.value = row.translated_text || "";
       textarea.setAttribute("aria-label", `Edit the Spanish line at ${formatTimestamp(row.start)}`);
-
-      if (origText && heightObserver) {
-        heightSyncMap.set(origText, textarea);
-        heightObserver.observe(origText);
-      }
+      editPairs.push({ textarea, origText });
 
       const saveBtn = document.createElement("button");
       saveBtn.type = "button";
@@ -202,7 +199,10 @@
         esCell.classList.remove("saved");
       };
 
-      textarea.addEventListener("input", resetSaveLabel);
+      textarea.addEventListener("input", () => {
+        resetSaveLabel();
+        syncTextareaHeight(textarea, origText);
+      });
       saveBtn.addEventListener("click", () => {
         state.lines[index].text = textarea.value;
         esCell.classList.add("saved");
@@ -220,6 +220,24 @@
     });
     table.appendChild(tbody);
     wrap.appendChild(table);
+
+    // Initial sizing pass, once the table has actually been laid out (so
+    // scrollHeight/getBoundingClientRect reflect real wrapped-text heights).
+    window.requestAnimationFrame(() => {
+      editPairs.forEach(({ textarea, origText }) => syncTextareaHeight(textarea, origText));
+    });
+
+    // Re-sync as the page resizes and Original cells rewrap to new widths.
+    if (hasOriginal && typeof ResizeObserver !== "undefined") {
+      const pairByOrigText = new Map(editPairs.map((pair) => [pair.origText, pair]));
+      const resizeObserver = new ResizeObserver((entries) => {
+        for (const entry of entries) {
+          const pair = pairByOrigText.get(entry.target);
+          if (pair) syncTextareaHeight(pair.textarea, pair.origText);
+        }
+      });
+      editPairs.forEach(({ origText }) => { if (origText) resizeObserver.observe(origText); });
+    }
 
     const editHint = document.createElement("p");
     editHint.className = "hint";

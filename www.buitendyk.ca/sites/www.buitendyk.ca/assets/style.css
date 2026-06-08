@@ -315,7 +315,10 @@ footer.site-footer {
   flex: 1;
   min-width: 0;
   min-height: 3.2em;
-  resize: vertical;
+  /* Height is set in JS to fit the line's own (often-longer) translation,
+     with the Original cell's height as a floor -- so no inner scrollbar and
+     no manual resize handle needed. */
+  overflow: hidden;
   padding: 0.45rem 0.6rem;
   border-radius: 8px;
   border: 1px solid var(--border);
