@@ -22,10 +22,12 @@ CREATE TABLE IF NOT EXISTS jobs (
     id TEXT PRIMARY KEY,
     source_url TEXT NOT NULL,
     target_language TEXT NOT NULL,
+    mode TEXT NOT NULL DEFAULT 'dub',
     status TEXT NOT NULL,
     stage TEXT,
     progress TEXT,
     error TEXT,
+    result TEXT,
     youtube_video_id TEXT,
     youtube_video_url TEXT,
     created_at TEXT NOT NULL,
@@ -33,9 +35,22 @@ CREATE TABLE IF NOT EXISTS jobs (
 );
 """
 
+# Columns added after the initial release. CREATE TABLE IF NOT EXISTS won't
+# retrofit them onto an existing database, so add any that are missing.
+_MIGRATIONS = (
+    "ALTER TABLE jobs ADD COLUMN mode TEXT NOT NULL DEFAULT 'dub'",
+    "ALTER TABLE jobs ADD COLUMN result TEXT",
+)
+
 # Lifecycle: queued -> running -> done
 #                            \-> failed
 TERMINAL_STATUSES = {"done", "failed"}
+
+# What a job does once claimed: "dub" runs the full pipeline and publishes to
+# YouTube; "preview" stops after acquiring/translating the transcript so the
+# original-language and Spanish text can be compared without the slow
+# synthesis/mux/upload stages.
+JOB_MODES = {"dub", "preview"}
 
 
 def _now() -> str:
@@ -47,10 +62,12 @@ class Job:
     id: str
     source_url: str
     target_language: str
+    mode: str = "dub"
     status: str = "queued"
     stage: Optional[str] = None
     progress: Optional[str] = None
     error: Optional[str] = None
+    result: Optional[str] = None
     youtube_video_id: Optional[str] = None
     youtube_video_url: Optional[str] = None
     created_at: str = field(default_factory=_now)
@@ -61,7 +78,14 @@ class Job:
         return cls(**{key: row[key] for key in row.keys()})
 
     def to_dict(self) -> dict[str, Any]:
-        return asdict(self)
+        data = asdict(self)
+        # `result` is stored as a JSON string; hand callers a real object.
+        if data["result"]:
+            try:
+                data["result"] = json.loads(data["result"])
+            except ValueError:
+                pass
+        return data
 
 
 @contextmanager
@@ -80,23 +104,29 @@ def init_db() -> None:
     settings.ensure_dirs()
     with _connect() as conn:
         conn.execute(SCHEMA)
+        existing = {row["name"] for row in conn.execute("PRAGMA table_info(jobs)")}
+        for migration in _MIGRATIONS:
+            column = migration.split("ADD COLUMN ")[1].split()[0]
+            if column not in existing:
+                conn.execute(migration)
 
 
-def create_job(source_url: str, target_language: str | None = None) -> Job:
+def create_job(source_url: str, target_language: str | None = None, mode: str = "dub") -> Job:
     job = Job(
         id=uuid.uuid4().hex[:12],
         source_url=source_url,
         target_language=target_language or settings.target_language,
+        mode=mode,
     )
     with _connect() as conn:
         conn.execute(
             """INSERT INTO jobs
-               (id, source_url, target_language, status, stage, progress, error,
+               (id, source_url, target_language, mode, status, stage, progress, error, result,
                 youtube_video_id, youtube_video_url, created_at, updated_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
-                job.id, job.source_url, job.target_language, job.status, job.stage,
-                job.progress, job.error, job.youtube_video_id, job.youtube_video_url,
+                job.id, job.source_url, job.target_language, job.mode, job.status, job.stage,
+                job.progress, job.error, job.result, job.youtube_video_id, job.youtube_video_url,
                 job.created_at, job.updated_at,
             ),
         )
