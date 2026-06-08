@@ -39,10 +39,10 @@ MAX_TEMPO = 1.6
 # words are on screen", which is often much shorter than the natural pause
 # before the next line begins -- sizing to the cue alone makes the narration
 # race to fit a tight window, finish early, then sit in silence until the
-# next cue's start time arrives. Targeting most of the *actual* gap between
-# lines instead lets each clip speak at a natural pace with only a small,
-# even breathing gap, rather than alternating between rushed and idle.
-NARRATION_FILL_FRACTION = 0.95
+# next cue's start time arrives. Targeting the *entire* gap between lines
+# instead lets each clip speak at a natural pace with no idle silence between
+# them, rather than alternating between rushed and idle.
+NARRATION_FILL_FRACTION = 1.0
 
 
 async def _synthesize(text: str, voice: str, rate: str, out_path: Path) -> None:
