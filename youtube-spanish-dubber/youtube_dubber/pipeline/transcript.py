@@ -21,6 +21,55 @@ from .models import Segment
 
 log = logging.getLogger(__name__)
 
+# Individual caption cues (and Whisper utterances) are often short phrases --
+# a few words spanning a couple of seconds. Synthesizing and timing each one
+# separately produces a dub that comes out as a string of disconnected, rushed
+# bursts with awkward pauses between them. Combining consecutive segments into
+# longer, sentence-or-paragraph-scale chunks (roughly five times a typical
+# cue's length) before synthesis lets the narration speak in a natural,
+# continuous cadence instead, and gives the per-clip time-fitting in tts.py
+# more text to stretch across each slot -- so it's far less likely to hit the
+# speaking-rate clamps that leave a clip finishing short of (or over) its slot.
+MERGE_TARGET_DURATION = 15.0
+
+# Don't merge across pauses longer than this (e.g. musical interludes, scene
+# changes with no speech) -- bridging a long silent stretch with continuous
+# narration would drift the dub noticeably out of step with on-screen action.
+MERGE_MAX_GAP = 4.0
+
+
+def merge_segments(
+    segments: list[Segment],
+    target_duration: float = MERGE_TARGET_DURATION,
+    max_gap: float = MERGE_MAX_GAP,
+) -> list[Segment]:
+    """Combine consecutive segments into longer ones spanning roughly
+    `target_duration` seconds each, concatenating their text in order.
+
+    A merged segment's `start`/`end` span its first/last sub-segment, so
+    downstream timing and fitting (tts.py) keep working unchanged -- they just
+    see fewer, longer lines to place and pace.
+    """
+    if not segments:
+        return []
+
+    merged: list[Segment] = []
+    chunk = [segments[0]]
+    for seg in segments[1:]:
+        gap = seg.start - chunk[-1].end
+        spanned = chunk[-1].end - chunk[0].start
+        if gap > max_gap or spanned >= target_duration:
+            merged.append(_merge_chunk(chunk))
+            chunk = [seg]
+        else:
+            chunk.append(seg)
+    merged.append(_merge_chunk(chunk))
+    return merged
+
+
+def _merge_chunk(chunk: list[Segment]) -> Segment:
+    return Segment(start=chunk[0].start, end=chunk[-1].end, text=" ".join(s.text for s in chunk))
+
 
 class TranscriptResult:
     """The final Spanish segments plus, where translation happened, the
@@ -63,7 +112,7 @@ def obtain_spanish_segments(
         path = downloader.download_caption(url, code, work_dir, auto=False)
         if path:
             return TranscriptResult(
-                _read_vtt(path), f"existing manual Spanish captions ({code})", original_language=code
+                merge_segments(_read_vtt(path)), f"existing manual Spanish captions ({code})", original_language=code
             )
 
     # 2. Auto-generated Spanish captions.
@@ -72,7 +121,7 @@ def obtain_spanish_segments(
         path = downloader.download_caption(url, code, work_dir, auto=True)
         if path:
             return TranscriptResult(
-                _read_vtt(path), f"existing auto-generated Spanish captions ({code})", original_language=code
+                merge_segments(_read_vtt(path)), f"existing auto-generated Spanish captions ({code})", original_language=code
             )
 
     # 3. Any other-language caption track, then translate.
@@ -83,7 +132,7 @@ def obtain_spanish_segments(
         path = downloader.download_caption(url, code, work_dir, auto=auto)
         if not path:
             continue
-        segments = _read_vtt(path)
+        segments = merge_segments(_read_vtt(path))
         if not segments:
             continue
         kind = "auto-generated" if auto else "manual"
@@ -103,6 +152,7 @@ def obtain_spanish_segments(
     audio_path = work_dir / "audio.wav"
     ffmpeg_utils.to_standard_wav(video_path, audio_path)
     stt_segments, detected_language = speech_to_text.transcribe(audio_path)
+    stt_segments = merge_segments(stt_segments)
     translated = translator.translate_segments(
         stt_segments, from_code=detected_language, to_code=target_language
     )

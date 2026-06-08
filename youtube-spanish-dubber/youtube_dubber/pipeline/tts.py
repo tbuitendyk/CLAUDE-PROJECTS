@@ -11,8 +11,11 @@ For each caption segment we:
      starts -- not just its own (often much shorter) caption window --
      clamped to a sane speaking-rate range so it doesn't sound chipmunked or,
      conversely, race ahead and then sit in silence, and
-  3. stitch every clip together into one narration track spanning the whole
-     video, so the dub stays roughly in sync with on-screen action and cuts.
+  3. glue every clip together back to back -- with no silence wedged between
+     them -- into one continuous narration track spanning the whole video,
+     padded only at the very start (until the first line begins) and the very
+     end (after the last line finishes), so the dub speaks naturally with no
+     dead air in the middle.
 
 Per-segment fitting alone can't be perfect -- some lines are clamped to the
 speaking-rate range and over/underrun their slot, and those small drifts
@@ -137,24 +140,34 @@ def _fit_to_duration(track_path: Path, total_duration: float, work_dir: Path) ->
 
 
 def _build_timeline(placed: list[tuple[float, float, Path]], total_duration: float, work_dir: Path) -> Path:
-    """Concatenate clips in chronological order, inserting silence to keep
-    each one anchored close to its original start time and avoid overlap."""
+    """Glue clips together back to back, in chronological order, with no
+    silence between them.
+
+    An earlier version anchored each clip to its own cue's start time and
+    plugged the resulting gaps with silence -- but per-segment fitting can't
+    be perfect (lines clamped to the speaking-rate range routinely finish
+    short of their slot), so that left the narration full of distracting dead
+    air between lines. Playing every clip immediately after the previous one
+    instead guarantees zero gaps in the middle of the track; the only silence
+    left is the natural lead-in before the first line starts and the tail
+    after the last one ends. `_fit_to_duration` (below) then nudges the whole
+    track's tempo so it still starts and ends exactly with the video.
+    """
     placed = sorted(placed, key=lambda item: item[0])
     silence_dir = work_dir / "tts_clips" / "silence"
     silence_dir.mkdir(parents=True, exist_ok=True)
 
     timeline: list[Path] = []
     cursor = 0.0
-    for n, (start, duration, path) in enumerate(placed):
-        gap = start - cursor
-        if gap > 0.05:
-            silence_path = silence_dir / f"gap_{n:04d}.wav"
-            ffmpeg_utils.generate_silence(silence_path, gap)
-            timeline.append(silence_path)
-            cursor += gap
-        # If this clip would overlap the previous one (because it had to be
-        # slowed down to MAX_TEMPO and still ran long), it simply plays back
-        # to back -- still far better than truncating speech.
+
+    lead_in = placed[0][0]
+    if lead_in > 0.05:
+        lead_path = silence_dir / "lead_in.wav"
+        ffmpeg_utils.generate_silence(lead_path, lead_in)
+        timeline.append(lead_path)
+        cursor += lead_in
+
+    for _, duration, path in placed:
         timeline.append(path)
         cursor += duration
 
