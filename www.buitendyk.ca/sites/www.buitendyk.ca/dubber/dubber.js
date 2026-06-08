@@ -224,6 +224,22 @@
     // Initial sizing pass, once the table has actually been laid out (so
     // scrollHeight/getBoundingClientRect reflect real wrapped-text heights).
     window.requestAnimationFrame(() => {
+      // The Save button rides alongside the textarea in the same flex row, so
+      // it eats into the textarea's share of the Spanish column -- without
+      // correction the textarea ends up narrower than the Original column
+      // (forcing more wrapping, i.e. a *taller* box) even though the column
+      // itself is wider. Measure the button's real rendered footprint and feed
+      // it to the col-width calc() below so the *textarea* -- not just its
+      // column -- ends up ~20% wider than the Original text.
+      if (hasOriginal) {
+        const sampleBtn = table.querySelector(".transcript-save");
+        const sampleRow = table.querySelector(".transcript-edit");
+        if (sampleBtn && sampleRow) {
+          const gap = parseFloat(getComputedStyle(sampleRow).columnGap) || 0;
+          const footprint = sampleBtn.getBoundingClientRect().width + gap;
+          table.style.setProperty("--save-btn-footprint", `${footprint}px`);
+        }
+      }
       editPairs.forEach(({ textarea, origText }) => syncTextareaHeight(textarea, origText));
     });
 

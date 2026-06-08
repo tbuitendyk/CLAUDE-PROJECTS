@@ -290,13 +290,21 @@ footer.site-footer {
   white-space: nowrap;
 }
 
-/* Fixed time column; Spanish gets ~20% more of the remaining width than
-   Original (S = 1.2*E and E+S = 1  =>  E ~= 0.4545, S ~= 0.5455). Its
-   translated text tends to run longer, so the extra room means less
-   scrolling inside the edit boxes. */
+/* Fixed time column; Spanish *textarea* should end up ~20% wider than the
+   Original text block (S = 1.2*E and E+S = 1  =>  E ~= 0.4545, S ~= 0.5455).
+   But the Save button rides in the same flex row as the textarea, eating
+   `--save-btn-footprint` (button + gap, measured in JS) out of the Spanish
+   column -- left uncorrected, the *textarea* would end up narrower than
+   Original despite its column being wider, forcing extra wrapping (i.e. a
+   taller box, the opposite of the goal). So: split (pool - footprint) in the
+   20% ratio between Original and the textarea's share, then hand the
+   footprint back to the translated column so the textarea still gets it.
+   Original = (pool - footprint) * 0.4545
+   Translated = pool * 0.5455 + footprint * 0.4545
+   (sums back to `pool`; textarea = Translated - footprint = (pool - footprint) * 0.5455 = 1.2 * Original) */
 .transcript-table col.col-time { width: 4rem; }
-.transcript-table.has-original col.col-original { width: calc((100% - 4rem) * 0.4545); }
-.transcript-table.has-original col.col-translated { width: calc((100% - 4rem) * 0.5455); }
+.transcript-table.has-original col.col-original { width: calc((100% - 4rem - var(--save-btn-footprint, 4.5rem)) * 0.4545); }
+.transcript-table.has-original col.col-translated { width: calc((100% - 4rem) * 0.5455 + var(--save-btn-footprint, 4.5rem) * 0.4545); }
 .transcript-table:not(.has-original) col.col-translated { width: calc(100% - 4rem); }
 
 .transcript-table .transcript-original,
