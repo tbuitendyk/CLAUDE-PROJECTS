@@ -23,9 +23,27 @@ log = logging.getLogger(__name__)
 
 
 class TranscriptResult:
-    def __init__(self, segments: list[Segment], source: str):
+    """The final Spanish segments plus, where translation happened, the
+    original-language segments and language code they were translated from --
+    so a diagnostic view can show both sides and reveal whether quality issues
+    come from transcription or from translation.
+
+    `original_segments`/`original_language` are None when the Spanish text
+    came directly from an existing Spanish caption track (nothing was
+    translated, so there is nothing to compare it against).
+    """
+
+    def __init__(
+        self,
+        segments: list[Segment],
+        source: str,
+        original_segments: list[Segment] | None = None,
+        original_language: str | None = None,
+    ):
         self.segments = segments
         self.source = source
+        self.original_segments = original_segments
+        self.original_language = original_language
 
 
 def _read_vtt(path: Path) -> list[Segment]:
@@ -44,14 +62,18 @@ def obtain_spanish_segments(
     if code:
         path = downloader.download_caption(url, code, work_dir, auto=False)
         if path:
-            return TranscriptResult(_read_vtt(path), f"existing manual Spanish captions ({code})")
+            return TranscriptResult(
+                _read_vtt(path), f"existing manual Spanish captions ({code})", original_language=code
+            )
 
     # 2. Auto-generated Spanish captions.
     code = downloader.available_caption_language(info, es_codes, auto=True)
     if code:
         path = downloader.download_caption(url, code, work_dir, auto=True)
         if path:
-            return TranscriptResult(_read_vtt(path), f"existing auto-generated Spanish captions ({code})")
+            return TranscriptResult(
+                _read_vtt(path), f"existing auto-generated Spanish captions ({code})", original_language=code
+            )
 
     # 3. Any other-language caption track, then translate.
     for auto in (False, True):
@@ -67,7 +89,8 @@ def obtain_spanish_segments(
         kind = "auto-generated" if auto else "manual"
         translated = translator.translate_segments(segments, from_code=code, to_code=target_language)
         return TranscriptResult(
-            translated, f"translated from {kind} {code} captions to {target_language}"
+            translated, f"translated from {kind} {code} captions to {target_language}",
+            original_segments=segments, original_language=code,
         )
 
     # 4. Nothing usable exists -- transcribe the audio ourselves with Whisper.
@@ -86,4 +109,5 @@ def obtain_spanish_segments(
     return TranscriptResult(
         translated,
         f"freshly transcribed with Whisper ({detected_language}) and translated to {target_language}",
+        original_segments=stt_segments, original_language=detected_language,
     )
