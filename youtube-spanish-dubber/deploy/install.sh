@@ -34,7 +34,8 @@ mkdir -p "${INSTALL_DIR}"
 
 echo "==> Syncing project files to ${INSTALL_DIR}"
 rsync -a --delete \
-  --exclude '.git' --exclude '.venv' --exclude 'data' --exclude 'secrets' --exclude '__pycache__' \
+  --exclude '.git' --exclude '.venv' --exclude 'data' --exclude 'secrets' \
+  --exclude '__pycache__' --exclude '.env' \
   "${REPO_DIR}/" "${INSTALL_DIR}/"
 chown -R "${SERVICE_USER}:${SERVICE_USER}" "${INSTALL_DIR}"
 
