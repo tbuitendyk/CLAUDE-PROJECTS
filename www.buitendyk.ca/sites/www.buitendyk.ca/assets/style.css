@@ -1,11 +1,11 @@
 /* buitendyk.ca -- shared styles. Plain CSS, no build step, no third-party
    fonts/CDNs (keeps the site fast, free, and dependency-free).
 
-   Cache-busting: pages link this as /assets/style.css?v=N. Bump N in every
-   <link> that references it (see index.html and dubber/index.html) whenever
-   you change this file -- nginx sends no cache-control headers, so browsers
-   fall back to aggressive heuristic caching that even hard-refreshes can
-   fail to bypass otherwise. */
+   Cache-busting: pages link this as /assets/style.css?v=N, and dubber/index.html
+   loads dubber/dubber.js?v=N the same way. Bump the relevant N in every tag
+   that references the file you're changing whenever you change it -- nginx
+   sends no cache-control headers, so browsers fall back to aggressive
+   heuristic caching that even hard-refreshes can fail to bypass otherwise. */
 
 :root {
   --bg: #0f1320;
