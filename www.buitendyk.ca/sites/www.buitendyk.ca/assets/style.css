@@ -1,5 +1,11 @@
 /* buitendyk.ca -- shared styles. Plain CSS, no build step, no third-party
-   fonts/CDNs (keeps the site fast, free, and dependency-free). */
+   fonts/CDNs (keeps the site fast, free, and dependency-free).
+
+   Cache-busting: pages link this as /assets/style.css?v=N. Bump N in every
+   <link> that references it (see index.html and dubber/index.html) whenever
+   you change this file -- nginx sends no cache-control headers, so browsers
+   fall back to aggressive heuristic caching that even hard-refreshes can
+   fail to bypass otherwise. */
 
 :root {
   --bg: #0f1320;
@@ -284,11 +290,13 @@ footer.site-footer {
   white-space: nowrap;
 }
 
-/* Fixed time column; Original gets ~20% more of the remaining width than
-   Spanish. */
+/* Fixed time column; Spanish gets ~20% more of the remaining width than
+   Original (S = 1.2*E and E+S = 1  =>  E ~= 0.4545, S ~= 0.5455). Its
+   translated text tends to run longer, so the extra room means less
+   scrolling inside the edit boxes. */
 .transcript-table col.col-time { width: 4rem; }
-.transcript-table.has-original col.col-original { width: calc((100% - 4rem) * 0.5455); }
-.transcript-table.has-original col.col-translated { width: calc((100% - 4rem) * 0.4545); }
+.transcript-table.has-original col.col-original { width: calc((100% - 4rem) * 0.4545); }
+.transcript-table.has-original col.col-translated { width: calc((100% - 4rem) * 0.5455); }
 .transcript-table:not(.has-original) col.col-translated { width: calc(100% - 4rem); }
 
 .transcript-table .transcript-original,
