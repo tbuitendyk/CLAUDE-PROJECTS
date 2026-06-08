@@ -106,10 +106,13 @@
 
     const table = document.createElement("table");
     table.className = "transcript-table";
+    table.classList.toggle("has-original", hasOriginal);
 
-    // Fixed layout + <col> widths so the Original and Spanish columns end up
-    // the same width -- the editable textareas then show roughly as much text
-    // as the original blurbs do, without excessive scrolling either side.
+    // Fixed layout + <col> widths: a narrow time column, then Original and
+    // Spanish sharing the rest with Spanish ~20% wider (its text tends to run
+    // longer, and the extra room cuts down on textarea scrollbars). A
+    // ResizeObserver below keeps each textarea's height matched to its
+    // Original cell's rendered height.
     const colgroup = document.createElement("colgroup");
     const timeCol = document.createElement("col");
     timeCol.className = "col-time";
@@ -137,6 +140,19 @@
     thead.appendChild(headRow);
     table.appendChild(thead);
 
+    // Keeps each Spanish textarea's height matched to its Original cell's
+    // rendered height -- so the edit box "goes down as far as" the English
+    // text beside it, including as the page resizes and text rewraps.
+    const heightSyncMap = hasOriginal && typeof ResizeObserver !== "undefined" ? new Map() : null;
+    const heightObserver = heightSyncMap
+      ? new ResizeObserver((entries) => {
+          for (const entry of entries) {
+            const textarea = heightSyncMap.get(entry.target);
+            if (textarea) textarea.style.height = `${Math.ceil(entry.target.getBoundingClientRect().height)}px`;
+          }
+        })
+      : null;
+
     const tbody = document.createElement("tbody");
     rows.forEach((row, index) => {
       const tr = document.createElement("tr");
@@ -146,8 +162,9 @@
       timeCell.textContent = formatTimestamp(row.start);
       tr.appendChild(timeCell);
 
+      let origCell = null;
       if (hasOriginal) {
-        const origCell = document.createElement("td");
+        origCell = document.createElement("td");
         origCell.className = "transcript-original";
         origCell.textContent = row.original_text || "";
         tr.appendChild(origCell);
@@ -162,6 +179,11 @@
       const textarea = document.createElement("textarea");
       textarea.value = row.translated_text || "";
       textarea.setAttribute("aria-label", `Edit the Spanish line at ${formatTimestamp(row.start)}`);
+
+      if (origCell && heightObserver) {
+        heightSyncMap.set(origCell, textarea);
+        heightObserver.observe(origCell);
+      }
 
       const saveBtn = document.createElement("button");
       saveBtn.type = "button";
