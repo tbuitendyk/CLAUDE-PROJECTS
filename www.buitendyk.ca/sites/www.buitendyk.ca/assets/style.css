@@ -259,6 +259,7 @@ footer.site-footer {
 
 .transcript-table {
   width: 100%;
+  table-layout: fixed;
   border-collapse: collapse;
   margin-top: 0.5rem;
   font-size: 0.85rem;
@@ -283,8 +284,13 @@ footer.site-footer {
   white-space: nowrap;
 }
 
+/* Fixed time column; Original and Spanish columns split the rest equally so
+   the editable textareas show roughly as much text as the original blurbs. */
+.transcript-table col.col-time { width: 4rem; }
+
+.transcript-table .transcript-original,
 .transcript-table .transcript-translated {
-  min-width: 16rem;
+  overflow-wrap: anywhere;
 }
 
 .transcript-edit {

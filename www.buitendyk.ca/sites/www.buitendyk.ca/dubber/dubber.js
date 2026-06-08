@@ -107,6 +107,23 @@
     const table = document.createElement("table");
     table.className = "transcript-table";
 
+    // Fixed layout + <col> widths so the Original and Spanish columns end up
+    // the same width -- the editable textareas then show roughly as much text
+    // as the original blurbs do, without excessive scrolling either side.
+    const colgroup = document.createElement("colgroup");
+    const timeCol = document.createElement("col");
+    timeCol.className = "col-time";
+    colgroup.appendChild(timeCol);
+    if (hasOriginal) {
+      const originalCol = document.createElement("col");
+      originalCol.className = "col-original";
+      colgroup.appendChild(originalCol);
+    }
+    const translatedCol = document.createElement("col");
+    translatedCol.className = "col-translated";
+    colgroup.appendChild(translatedCol);
+    table.appendChild(colgroup);
+
     const thead = document.createElement("thead");
     const headRow = document.createElement("tr");
     const headings = ["Time"];
