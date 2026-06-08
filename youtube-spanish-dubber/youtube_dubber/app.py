@@ -2,7 +2,13 @@
 
 Endpoints
 ---------
-POST /jobs           {"url": "<youtube url>", "target_language": "es"}  -> create a job
+POST /jobs           {"url": "<youtube url>", "target_language": "es", "mode": "dub"}
+                     -> create a job. mode "dub" (default) runs the full
+                     pipeline and publishes to YouTube; mode "preview" stops
+                     after acquiring/translating the transcript and returns
+                     the original-language and Spanish text side by side as
+                     `result`, for diagnosing transcription vs. translation
+                     quality without the slow synthesis/mux/upload stages.
 GET  /jobs           list recent jobs
 GET  /jobs/{id}      fetch a single job's status/progress/result
 GET  /healthz        liveness check
@@ -37,6 +43,7 @@ app = FastAPI(
 class JobCreateRequest(BaseModel):
     url: str
     target_language: Optional[str] = None
+    mode: str = "dub"
 
     @field_validator("url")
     @classmethod
@@ -44,6 +51,13 @@ class JobCreateRequest(BaseModel):
         value = value.strip()
         if not _YOUTUBE_URL_RE.match(value):
             raise ValueError("Must be a youtube.com or youtu.be video URL")
+        return value
+
+    @field_validator("mode")
+    @classmethod
+    def _validate_mode(cls, value: str) -> str:
+        if value not in db.JOB_MODES:
+            raise ValueError(f"mode must be one of {sorted(db.JOB_MODES)}")
         return value
 
 
@@ -61,7 +75,7 @@ def healthz() -> dict:
 
 @app.post("/jobs", status_code=201)
 def create_job(payload: JobCreateRequest) -> dict:
-    job = db.create_job(payload.url, payload.target_language)
+    job = db.create_job(payload.url, payload.target_language, mode=payload.mode)
     return job.to_dict()
 
 
