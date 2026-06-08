@@ -78,6 +78,54 @@ def run(source_url: str, target_language: str, work_dir: Path, on_progress: Prog
     }
 
 
+def preview_transcript(source_url: str, target_language: str, work_dir: Path, on_progress: ProgressFn = _noop) -> dict:
+    """Run only the transcript-acquisition stages (probe, download, transcript
+    + translation) and return the original-language and Spanish text side by
+    side, line by line -- skipping narration synthesis, muxing and uploading.
+
+    This lets you check whether a poor dub would be due to bad transcription
+    or bad translation before spending the time on a full (much slower) run.
+    """
+
+    on_progress("probing", "Looking up video metadata and available captions...")
+    info = downloader.probe(source_url)
+
+    on_progress("downloading", f"Downloading source video: {info.get('title')!r}")
+    source = downloader.download_video(source_url, work_dir)
+
+    on_progress("transcript", "Acquiring a transcript and translating it to Spanish...")
+    result = transcript.obtain_spanish_segments(
+        source_url, info, work_dir, target_language, Path(source.video_path)
+    )
+
+    if result.original_segments is not None:
+        rows = [
+            {
+                "start": orig.start,
+                "end": orig.end,
+                "original_text": orig.text,
+                "translated_text": trans.text,
+            }
+            for orig, trans in zip(result.original_segments, result.segments)
+        ]
+    else:
+        # The transcript was already in Spanish (existing Spanish captions) --
+        # nothing was translated, so there's only one column to show.
+        rows = [
+            {"start": seg.start, "end": seg.end, "original_text": None, "translated_text": seg.text}
+            for seg in result.segments
+        ]
+
+    on_progress("done", f"Transcript preview ready via: {result.source} ({len(rows)} lines)")
+
+    return {
+        "title": source.title,
+        "transcript_source": result.source,
+        "original_language": result.original_language,
+        "rows": rows,
+    }
+
+
 def _probe_duration_fallback(video_path: str) -> float:
     from . import ffmpeg_utils
     return ffmpeg_utils.probe_duration(Path(video_path))
