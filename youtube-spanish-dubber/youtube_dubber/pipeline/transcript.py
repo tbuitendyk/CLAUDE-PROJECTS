@@ -14,6 +14,7 @@ of which path was used (surfaced in job progress for transparency).
 from __future__ import annotations
 
 import logging
+import re
 from pathlib import Path
 
 from . import downloader, ffmpeg_utils, subtitles, translator
@@ -32,10 +33,56 @@ log = logging.getLogger(__name__)
 # speaking-rate clamps that leave a clip finishing short of (or over) its slot.
 MERGE_TARGET_DURATION = 15.0
 
+# Once a chunk reaches the target length, keep absorbing segments looking for
+# a clean sentence/clause break -- but give up and cut anyway after this much
+# extra, so a transcript with little or no punctuation can't grow one giant
+# chunk that swallows the rest of the video.
+MERGE_MAX_EXTENSION = 12.0
+
 # Don't merge across pauses longer than this (e.g. musical interludes, scene
 # changes with no speech) -- bridging a long silent stretch with continuous
 # narration would drift the dub noticeably out of step with on-screen action.
 MERGE_MAX_GAP = 4.0
+
+_TERMINAL_PUNCTUATION = ".,;:!?…"
+_SENTENCE_END_RE = re.compile(r"[.!?…]['\"¿¡)\]]?$")
+_CLAUSE_END_RE = re.compile(r"[,;:]['\")\]]?$")
+
+# Gaps between consecutive cues that we treat as evidence of a sentence (resp.
+# clause) boundary when a cue's text doesn't already end in punctuation -- see
+# _ensure_terminal_punctuation.
+_SENTENCE_PAUSE = 0.6
+_CLAUSE_PAUSE = 0.3
+
+
+def _ensure_terminal_punctuation(segments: list[Segment]) -> list[Segment]:
+    """Mark likely sentence/clause boundaries with punctuation when a cue's
+    text doesn't already end in any.
+
+    Caption tracks (especially YouTube's auto-generated ones) and raw STT
+    output frequently arrive as an unbroken stream of lowercase words with no
+    punctuation at all -- which leaves the translator with no signal for where
+    Spanish sentences and clauses should begin and end, so it tends to produce
+    one long, breathless run-on rather than properly punctuated prose.
+
+    Speakers naturally pause between sentences, and more briefly between
+    clauses; the silence between consecutive cues is a reasonable stand-in for
+    that. Treating a long pause as a sentence end (period) and a shorter one
+    as a clause break (comma) -- only where a cue doesn't already carry its
+    own punctuation -- gives the translator real boundaries to translate
+    around, so the Spanish it produces comes out properly punctuated too.
+    """
+    out: list[Segment] = []
+    for idx, seg in enumerate(segments):
+        text = seg.text.rstrip()
+        if text and text[-1] not in _TERMINAL_PUNCTUATION:
+            gap = segments[idx + 1].start - seg.end if idx + 1 < len(segments) else _SENTENCE_PAUSE
+            if gap >= _SENTENCE_PAUSE:
+                text += "."
+            elif gap >= _CLAUSE_PAUSE:
+                text += ","
+        out.append(Segment(start=seg.start, end=seg.end, text=text))
+    return out
 
 
 def merge_segments(
@@ -46,6 +93,16 @@ def merge_segments(
     """Combine consecutive segments into longer ones spanning roughly
     `target_duration` seconds each, concatenating their text in order.
 
+    Cutting a chunk the moment it reaches the target length would often slice
+    straight through the middle of a sentence -- and the small breath the TTS
+    naturally takes between chunks then lands somewhere it doesn't belong,
+    which is exactly the "pause in the wrong place" effect that makes chopped-
+    up narration sound unnatural. So once a chunk is long enough, we keep
+    absorbing segments until one of them actually *ends* a sentence (or,
+    failing that, a clause) -- so chunk breaks line up with natural breaks in
+    the speech -- giving up after MERGE_MAX_EXTENSION of overrun so a
+    transcript with no punctuation at all still gets cut to a sane size.
+
     A merged segment's `start`/`end` span its first/last sub-segment, so
     downstream timing and fitting (tts.py) keep working unchanged -- they just
     see fewer, longer lines to place and pace.
@@ -53,17 +110,32 @@ def merge_segments(
     if not segments:
         return []
 
+    segments = _ensure_terminal_punctuation(segments)
+
     merged: list[Segment] = []
-    chunk = [segments[0]]
-    for seg in segments[1:]:
-        gap = seg.start - chunk[-1].end
-        spanned = chunk[-1].end - chunk[0].start
-        if gap > max_gap or spanned >= target_duration:
-            merged.append(_merge_chunk(chunk))
-            chunk = [seg]
-        else:
-            chunk.append(seg)
-    merged.append(_merge_chunk(chunk))
+    start = 0
+    n = len(segments)
+    while start < n:
+        end = start
+        clause_cut: int | None = None
+        for k in range(start, n):
+            if k > start and segments[k].start - segments[k - 1].end > max_gap:
+                break
+            end = k
+            spanned = segments[k].end - segments[start].start
+            if spanned < target_duration:
+                continue
+            text = segments[k].text.strip()
+            if _SENTENCE_END_RE.search(text):
+                break
+            if clause_cut is None and _CLAUSE_END_RE.search(text):
+                clause_cut = k
+            if spanned >= target_duration + MERGE_MAX_EXTENSION:
+                if clause_cut is not None:
+                    end = clause_cut
+                break
+        merged.append(_merge_chunk(segments[start:end + 1]))
+        start = end + 1
     return merged
 
 
