@@ -109,8 +109,7 @@
     table.classList.toggle("has-original", hasOriginal);
 
     // Fixed layout + <col> widths: a narrow time column, then Original and
-    // Spanish sharing the rest with Spanish ~20% wider (its text tends to run
-    // longer, and the extra room cuts down on textarea scrollbars). A
+    // Spanish sharing the rest with Original ~20% wider (see style.css). A
     // ResizeObserver below keeps each textarea's height matched to its
     // Original cell's rendered height.
     const colgroup = document.createElement("colgroup");

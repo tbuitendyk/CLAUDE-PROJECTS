@@ -284,12 +284,11 @@ footer.site-footer {
   white-space: nowrap;
 }
 
-/* Fixed time column; the Spanish column gets ~20% more of the remaining
-   width than Original (its translated text tends to run longer, and the
-   extra room means less scrolling inside the edit boxes). */
+/* Fixed time column; Original gets ~20% more of the remaining width than
+   Spanish. */
 .transcript-table col.col-time { width: 4rem; }
-.transcript-table.has-original col.col-original { width: calc((100% - 4rem) * 0.4545); }
-.transcript-table.has-original col.col-translated { width: calc((100% - 4rem) * 0.5455); }
+.transcript-table.has-original col.col-original { width: calc((100% - 4rem) * 0.5455); }
+.transcript-table.has-original col.col-translated { width: calc((100% - 4rem) * 0.4545); }
 .transcript-table:not(.has-original) col.col-translated { width: calc(100% - 4rem); }
 
 .transcript-table .transcript-original,
