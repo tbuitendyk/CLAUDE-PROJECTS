@@ -31,8 +31,8 @@ log = logging.getLogger(__name__)
 # Clamp how much we're willing to speed up/slow down synthesized speech to
 # match its target duration. Outside this range dubs start to sound
 # unnatural, so we'd rather drift slightly out of sync than butcher the audio.
-MIN_TEMPO = 0.75
-MAX_TEMPO = 1.6
+MIN_TEMPO = 0.8
+MAX_TEMPO = 1.2
 
 # How much of the time until the *next* line starts a clip is allowed to
 # stretch into. A caption cue's own start/end window only covers "while these
