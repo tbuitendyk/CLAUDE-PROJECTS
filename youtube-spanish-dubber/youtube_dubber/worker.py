@@ -6,6 +6,7 @@ better processing one dub at a time than thrashing on several concurrently.
 """
 from __future__ import annotations
 
+import json
 import logging
 import shutil
 import threading
@@ -32,16 +33,27 @@ def _process(job: db.Job) -> None:
     work_dir = db.job_work_dir(job.id)
     on_progress = _make_progress_fn(job.id)
     try:
-        result = runner.run(job.source_url, job.target_language, work_dir, on_progress=on_progress)
-        db.update_job(
-            job.id,
-            status="done",
-            stage="done",
-            progress=f"Published: {result['youtube_video_url']}",
-            youtube_video_id=result["youtube_video_id"],
-            youtube_video_url=result["youtube_video_url"],
-            error=None,
-        )
+        if job.mode == "preview":
+            result = runner.preview_transcript(job.source_url, job.target_language, work_dir, on_progress=on_progress)
+            db.update_job(
+                job.id,
+                status="done",
+                stage="done",
+                progress=f"Transcript preview ready via: {result['transcript_source']}",
+                result=json.dumps(result),
+                error=None,
+            )
+        else:
+            result = runner.run(job.source_url, job.target_language, work_dir, on_progress=on_progress)
+            db.update_job(
+                job.id,
+                status="done",
+                stage="done",
+                progress=f"Published: {result['youtube_video_url']}",
+                youtube_video_id=result["youtube_video_id"],
+                youtube_video_url=result["youtube_video_url"],
+                error=None,
+            )
     except Exception as exc:  # noqa: BLE001 -- surface any failure on the job record
         log.exception("Job %s failed", job.id)
         db.update_job(
