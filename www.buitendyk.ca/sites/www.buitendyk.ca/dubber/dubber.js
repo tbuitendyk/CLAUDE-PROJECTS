@@ -162,11 +162,18 @@
       timeCell.textContent = formatTimestamp(row.start);
       tr.appendChild(timeCell);
 
-      let origCell = null;
+      let origText = null;
       if (hasOriginal) {
-        origCell = document.createElement("td");
+        const origCell = document.createElement("td");
         origCell.className = "transcript-original";
-        origCell.textContent = row.original_text || "";
+        // The text lives in its own block so its measured height reflects
+        // only its own content/column-width -- NOT the row's height. (If we
+        // observed the <td> itself, growing the textarea would grow the row,
+        // which stretches the <td>, which would re-trigger the observer --
+        // an infinite feedback loop that blew the box up to full-page height.)
+        origText = document.createElement("div");
+        origText.textContent = row.original_text || "";
+        origCell.appendChild(origText);
         tr.appendChild(origCell);
       }
 
@@ -180,9 +187,9 @@
       textarea.value = row.translated_text || "";
       textarea.setAttribute("aria-label", `Edit the Spanish line at ${formatTimestamp(row.start)}`);
 
-      if (origCell && heightObserver) {
-        heightSyncMap.set(origCell, textarea);
-        heightObserver.observe(origCell);
+      if (origText && heightObserver) {
+        heightSyncMap.set(origText, textarea);
+        heightObserver.observe(origText);
       }
 
       const saveBtn = document.createElement("button");
