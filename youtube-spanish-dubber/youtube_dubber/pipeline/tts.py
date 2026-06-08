@@ -7,12 +7,13 @@ variants (e.g. es-ES-AlvaroNeural, es-MX-JorgeNeural).
 
 For each caption segment we:
   1. synthesize speech for the (Spanish) text,
-  2. time-stretch it with ffmpeg so it fits the original cue's time window
-     (clamped to a sane speaking-rate range so it doesn't sound chipmunked
-     or, conversely, leave huge gaps), and
-  3. stitch every clip together -- with silence filling the gaps -- into one
-     narration track spanning the whole video, so the dub stays roughly in
-     sync with on-screen action and cuts.
+  2. time-stretch it with ffmpeg so it fills most of the gap until the next
+     line starts -- not just its own (often much shorter) caption window --
+     clamped to a sane speaking-rate range so it doesn't sound chipmunked or,
+     conversely, race ahead and then sit in silence, and
+  3. stitch every clip together -- with a small silence gap between each --
+     into one narration track spanning the whole video, so the dub stays
+     roughly in sync with on-screen action and cuts.
 """
 from __future__ import annotations
 
@@ -28,10 +29,20 @@ from .models import Segment
 log = logging.getLogger(__name__)
 
 # Clamp how much we're willing to speed up/slow down synthesized speech to
-# match the original cue's duration. Outside this range dubs start to sound
+# match its target duration. Outside this range dubs start to sound
 # unnatural, so we'd rather drift slightly out of sync than butcher the audio.
 MIN_TEMPO = 0.75
 MAX_TEMPO = 1.6
+
+# How much of the time until the *next* line starts a clip is allowed to
+# stretch into. A caption cue's own start/end window only covers "while these
+# words are on screen", which is often much shorter than the natural pause
+# before the next line begins -- sizing to the cue alone makes the narration
+# race to fit a tight window, finish early, then sit in silence until the
+# next cue's start time arrives. Targeting most of the *actual* gap between
+# lines instead lets each clip speak at a natural pace with only a small,
+# even breathing gap, rather than alternating between rushed and idle.
+NARRATION_FILL_FRACTION = 0.95
 
 
 async def _synthesize(text: str, voice: str, rate: str, out_path: Path) -> None:
@@ -75,7 +86,9 @@ def synthesize_track(
         if raw_duration <= 0:
             continue
 
-        target_duration = seg.duration if seg.duration > 0.2 else raw_duration
+        next_start = segments[idx + 1].start if idx + 1 < len(segments) else total_duration
+        slot = max(next_start - seg.start, seg.duration)
+        target_duration = slot * NARRATION_FILL_FRACTION if slot > 0.2 else raw_duration
         tempo = max(MIN_TEMPO, min(MAX_TEMPO, raw_duration / target_duration))
 
         fitted_path = clips_dir / f"seg_{idx:04d}.wav"
