@@ -61,7 +61,18 @@
         </p>
       </div>
 
-      <button class="btn ghosted" id="submit-btn" type="submit" disabled>Start dubbing</button>
+      <div class="field" style="display:flex; gap:0.75rem; flex-wrap:wrap; align-items:center; margin-bottom:0;">
+        <button class="btn ghosted" id="submit-btn" type="submit" disabled>Start dubbing</button>
+        <button class="btn secondary ghosted" id="preview-btn" type="button" disabled>Preview transcript only</button>
+      </div>
+      <p class="hint">
+        Not sure the result will sound right? <strong>Preview transcript only</strong> runs
+        just the cheap diagnostic stages &mdash; fetching or transcribing the
+        original-language text, then translating it &mdash; and shows both side by
+        side, line by line, so you can tell whether a problem is in the
+        transcription or the translation before spending the time on a full
+        narration/upload run.
+      </p>
       <span class="hint" id="form-message"></span>
     </form>
 

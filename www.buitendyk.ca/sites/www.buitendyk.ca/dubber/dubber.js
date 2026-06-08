@@ -20,6 +20,7 @@
   const authText = document.getElementById("auth-text");
   const signinBtn = document.getElementById("signin-btn");
   const submitBtn = document.getElementById("submit-btn");
+  const previewBtn = document.getElementById("preview-btn");
   const form = document.getElementById("dub-form");
   const formMessage = document.getElementById("form-message");
   const jobList = document.getElementById("job-list");
@@ -33,6 +34,8 @@
     authenticated = state === "unlocked";
     submitBtn.disabled = !authenticated;
     submitBtn.classList.toggle("ghosted", !authenticated);
+    previewBtn.disabled = !authenticated;
+    previewBtn.classList.toggle("ghosted", !authenticated);
     signinBtn.style.display = authenticated ? "none" : "";
   }
 
@@ -56,6 +59,79 @@
     checkAuth();
   });
 
+  function formatTimestamp(seconds) {
+    const total = Math.max(0, Math.round(seconds || 0));
+    const m = Math.floor(total / 60);
+    const s = total % 60;
+    return `${m}:${String(s).padStart(2, "0")}`;
+  }
+
+  function renderTranscriptPreview(result) {
+    const wrap = document.createElement("div");
+    wrap.className = "transcript-preview";
+
+    const summary = document.createElement("div");
+    summary.className = "hint";
+    summary.textContent = `Source: ${result.transcript_source}` +
+      (result.original_language ? ` · original language: ${result.original_language}` : "");
+    wrap.appendChild(summary);
+
+    const rows = result.rows || [];
+    if (!rows.length) {
+      const empty = document.createElement("div");
+      empty.className = "hint";
+      empty.textContent = "No transcript lines were produced.";
+      wrap.appendChild(empty);
+      return wrap;
+    }
+
+    const hasOriginal = rows.some((row) => row.original_text != null);
+
+    const table = document.createElement("table");
+    table.className = "transcript-table";
+
+    const thead = document.createElement("thead");
+    const headRow = document.createElement("tr");
+    const headings = ["Time"];
+    if (hasOriginal) headings.push("Original");
+    headings.push("Spanish");
+    headings.forEach((label) => {
+      const th = document.createElement("th");
+      th.textContent = label;
+      headRow.appendChild(th);
+    });
+    thead.appendChild(headRow);
+    table.appendChild(thead);
+
+    const tbody = document.createElement("tbody");
+    rows.forEach((row) => {
+      const tr = document.createElement("tr");
+
+      const timeCell = document.createElement("td");
+      timeCell.className = "transcript-time";
+      timeCell.textContent = formatTimestamp(row.start);
+      tr.appendChild(timeCell);
+
+      if (hasOriginal) {
+        const origCell = document.createElement("td");
+        origCell.className = "transcript-original";
+        origCell.textContent = row.original_text || "";
+        tr.appendChild(origCell);
+      }
+
+      const esCell = document.createElement("td");
+      esCell.className = "transcript-translated";
+      esCell.textContent = row.translated_text || "";
+      tr.appendChild(esCell);
+
+      tbody.appendChild(tr);
+    });
+    table.appendChild(tbody);
+
+    wrap.appendChild(table);
+    return wrap;
+  }
+
   function renderJob(job) {
     let card = document.getElementById(`job-${job.id}`);
     if (!card) {
@@ -72,7 +148,8 @@
     idLabel.textContent = `Job ${job.id} — `;
     const stage = document.createElement("span");
     stage.className = "job-stage";
-    stage.textContent = job.stage || job.status;
+    const stagePrefix = job.mode === "preview" ? "[preview] " : "";
+    stage.textContent = stagePrefix + (job.stage || job.status);
     headline.appendChild(idLabel);
     headline.appendChild(stage);
     card.appendChild(headline);
@@ -84,7 +161,11 @@
       card.appendChild(progress);
     }
 
-    if (job.status === "done" && job.youtube_video_url) {
+    if (job.mode === "preview") {
+      if (job.status === "done" && job.result) {
+        card.appendChild(renderTranscriptPreview(job.result));
+      }
+    } else if (job.status === "done" && job.youtube_video_url) {
       const wrap = document.createElement("div");
       wrap.style.marginTop = "0.5rem";
       const link = document.createElement("a");
@@ -129,22 +210,26 @@
     tick();
   }
 
-  form.addEventListener("submit", async (event) => {
-    event.preventDefault();
+  async function submitJob(mode) {
     if (!authenticated) return;
 
     const url = document.getElementById("video-url").value.trim();
+    if (!url) {
+      formMessage.textContent = "Enter a video URL first.";
+      return;
+    }
     const targetLanguage = document.getElementById("target-lang").value;
 
-    formMessage.textContent = "Submitting…";
+    formMessage.textContent = mode === "preview" ? "Submitting transcript preview…" : "Submitting…";
     submitBtn.disabled = true;
+    previewBtn.disabled = true;
 
     try {
       const res = await fetch(`${API_BASE}/jobs`, {
         method: "POST",
         credentials: "same-origin",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url: url, target_language: targetLanguage }),
+        body: JSON.stringify({ url: url, target_language: targetLanguage, mode: mode }),
       });
       const data = await res.json().catch(() => null);
 
@@ -155,15 +240,27 @@
         return;
       }
 
-      formMessage.textContent = `Queued as job ${data.id}. Tracking progress below.`;
-      form.reset();
+      formMessage.textContent = mode === "preview"
+        ? `Queued transcript preview as job ${data.id}. Tracking progress below.`
+        : `Queued as job ${data.id}. Tracking progress below.`;
+      if (mode !== "preview") form.reset();
       renderJob(data);
       pollJob(data.id);
     } catch (err) {
       formMessage.textContent = "Couldn't reach the dubber service.";
     } finally {
       submitBtn.disabled = !authenticated;
+      previewBtn.disabled = !authenticated;
     }
+  }
+
+  form.addEventListener("submit", (event) => {
+    event.preventDefault();
+    submitJob("dub");
+  });
+
+  previewBtn.addEventListener("click", () => {
+    submitJob("preview");
   });
 
   checkAuth();
