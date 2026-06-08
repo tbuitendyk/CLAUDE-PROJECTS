@@ -8,6 +8,7 @@ dependency.
 from __future__ import annotations
 
 import re
+import string
 
 from .models import Segment
 
@@ -16,6 +17,10 @@ _TIMECODE_RE = re.compile(
 )
 _TAG_RE = re.compile(r"</?[^>]+>")
 _POSITIONING_RE = re.compile(r"^(NOTE|STYLE|Kind:|Language:).*", re.IGNORECASE)
+# YouTube auto-captions denote non-speech audio events ("[Music]", "[Applause]",
+# "[inaudible]", ...) with bracketed tags. They aren't spoken words -- left in,
+# they get translated ("[música]") and read aloud verbatim by the TTS voice.
+_SOUND_DESCRIPTOR_RE = re.compile(r"\[[^\]]*\]")
 
 
 def _to_seconds(h: str, m: str, s: str, frac: str) -> float:
@@ -44,6 +49,7 @@ def parse_cues(raw_text: str) -> list[Segment]:
             line = lines[i].strip()
             if not _POSITIONING_RE.match(line):
                 line = _TAG_RE.sub("", line)
+                line = _SOUND_DESCRIPTOR_RE.sub("", line).strip()
                 if line:
                     text_lines.append(line)
             i += 1
@@ -55,18 +61,45 @@ def parse_cues(raw_text: str) -> list[Segment]:
     return _merge_overlaps(_dedupe(segments))
 
 
+def _norm_word(word: str) -> str:
+    return word.lower().strip(string.punctuation)
+
+
+def _word_overlap(prev_words: list[str], next_words: list[str]) -> int:
+    """Length of the longest run where the tail of `prev_words` equals the
+    head of `next_words` (case/punctuation-insensitive) -- i.e. how many of
+    the next cue's leading words are just a repeat of the previous cue's
+    trailing words."""
+    max_k = min(len(prev_words), len(next_words))
+    for k in range(max_k, 0, -1):
+        if [_norm_word(w) for w in prev_words[-k:]] == [_norm_word(w) for w in next_words[:k]]:
+            return k
+    return 0
+
+
 def _dedupe(segments: list[Segment]) -> list[Segment]:
-    """YouTube auto-captions repeat the trailing words of the previous cue
-    (rolling captions). Drop cues that are pure substrings/duplicates of the
-    immediately preceding one to avoid synthesizing the same words twice."""
+    """YouTube's rolling auto-captions show a sliding window of the spoken
+    text, so consecutive cues commonly share a chunk of words -- e.g. one cue
+    ends "...comes from Martin Luther." and the next begins "today comes from
+    Martin Luther. He invented...". Strip however many of each cue's leading
+    words are just a repeat of the previous cue's tail, keeping only the new
+    words, so the synthesized narration doesn't say everything twice."""
     cleaned: list[Segment] = []
     for seg in segments:
-        if cleaned and (seg.text == cleaned[-1].text or cleaned[-1].text.endswith(seg.text)):
+        if not cleaned:
+            cleaned.append(seg)
             continue
-        if cleaned and seg.text.startswith(cleaned[-1].text):
-            cleaned[-1] = Segment(start=cleaned[-1].start, end=seg.end, text=seg.text)
-            continue
-        cleaned.append(seg)
+        prev = cleaned[-1]
+        prev_words = prev.text.split()
+        seg_words = seg.text.split()
+        overlap = _word_overlap(prev_words, seg_words)
+        remainder = seg_words[overlap:]
+        if not remainder:
+            # This cue is wholly contained in the previous cue's tail --
+            # extend its time range rather than adding an empty/duplicate cue.
+            cleaned[-1] = Segment(start=prev.start, end=max(prev.end, seg.end), text=prev.text)
+        else:
+            cleaned.append(Segment(start=seg.start, end=seg.end, text=" ".join(remainder)))
     return cleaned
 
 
