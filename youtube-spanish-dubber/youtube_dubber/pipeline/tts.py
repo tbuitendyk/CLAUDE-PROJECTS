@@ -7,13 +7,18 @@ variants (e.g. es-ES-AlvaroNeural, es-MX-JorgeNeural).
 
 For each caption segment we:
   1. synthesize speech for the (Spanish) text,
-  2. time-stretch it with ffmpeg so it fills most of the gap until the next
-     line starts -- not just its own (often much shorter) caption window --
+  2. time-stretch it with ffmpeg so it fills the gap until the next line
+     starts -- not just its own (often much shorter) caption window --
      clamped to a sane speaking-rate range so it doesn't sound chipmunked or,
      conversely, race ahead and then sit in silence, and
-  3. stitch every clip together -- with a small silence gap between each --
-     into one narration track spanning the whole video, so the dub stays
-     roughly in sync with on-screen action and cuts.
+  3. stitch every clip together into one narration track spanning the whole
+     video, so the dub stays roughly in sync with on-screen action and cuts.
+
+Per-segment fitting alone can't be perfect -- some lines are clamped to the
+speaking-rate range and over/underrun their slot, and those small drifts
+accumulate over a long video. As a final pass, the whole assembled track
+gets one gentle, uniform tempo nudge so it starts and ends exactly with the
+video regardless of how it drifted in the middle (see _fit_to_duration).
 """
 from __future__ import annotations
 
@@ -101,7 +106,34 @@ def synthesize_track(
     if not placed:
         raise RuntimeError("No speech segments were synthesized; cannot build a dub track")
 
-    return _build_timeline(placed, total_duration, work_dir)
+    track_path = _build_timeline(placed, total_duration, work_dir)
+    return _fit_to_duration(track_path, total_duration, work_dir)
+
+
+def _fit_to_duration(track_path: Path, total_duration: float, work_dir: Path) -> Path:
+    """Final alignment pass: nudge the *whole* assembled track's tempo so it
+    starts and ends exactly with the video, regardless of how per-segment
+    fitting drifted along the way.
+
+    Per-segment fitting keeps each line roughly anchored to its own moment,
+    but small overruns/underruns (especially ones pinned at MIN_TEMPO/
+    MAX_TEMPO because a line genuinely couldn't fit its slot) accumulate --
+    left alone, the narration would end before or after the video does.
+    Spreading that accumulated drift across the entire track as one gentle,
+    uniform speed change is far less perceptible than it showing up as a
+    growing desync or a mistimed ending.
+    """
+    actual_duration = ffmpeg_utils.probe_duration(track_path)
+    if actual_duration <= 0 or total_duration <= 0:
+        return track_path
+
+    global_tempo = max(MIN_TEMPO, min(MAX_TEMPO, actual_duration / total_duration))
+    if abs(global_tempo - 1.0) < 0.005:
+        return track_path
+
+    fitted_path = work_dir / "narration_aligned.wav"
+    ffmpeg_utils.to_standard_wav(track_path, fitted_path, atempo=global_tempo)
+    return fitted_path
 
 
 def _build_timeline(placed: list[tuple[float, float, Path]], total_duration: float, work_dir: Path) -> Path:
