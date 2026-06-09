@@ -261,6 +261,16 @@ footer.site-footer {
 .job-card .job-error { color: var(--bad); white-space: pre-wrap; }
 .job-card a.job-link { font-weight: 600; }
 
+/* Cancel button beside a still-queued job: compact, warning-toned. */
+.job-card .btn.job-cancel {
+  padding: 0.3rem 0.8rem;
+  font-size: 0.8rem;
+  border-color: var(--warn);
+  color: var(--warn);
+  background: transparent;
+}
+.job-card .btn.job-cancel:hover { background: rgba(240, 185, 77, 0.1); }
+
 .transcript-preview { margin-top: 0.75rem; }
 
 .transcript-table {

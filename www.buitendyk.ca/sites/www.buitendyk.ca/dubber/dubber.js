@@ -52,6 +52,7 @@
       const res = await fetch(`${API_BASE}/healthz`, { credentials: "same-origin" });
       if (res.ok) {
         setAuthState("unlocked", "Signed in — dubbing is enabled.");
+        loadExistingJobs();
       } else if (res.status === 401 || res.status === 403) {
         setAuthState("locked", "Sign in to enable dubbing.");
       } else {
@@ -267,6 +268,22 @@
     stage.textContent = stagePrefix + (job.stage || job.status);
     headline.appendChild(idLabel);
     headline.appendChild(stage);
+
+    // A still-queued job hasn't been claimed by the worker yet, so it's safe
+    // to cancel outright. (Running jobs are mid-pipeline and can't be stopped
+    // from here -- see the DELETE /jobs endpoint.)
+    if (job.status === "queued") {
+      const cancelBtn = document.createElement("button");
+      cancelBtn.type = "button";
+      cancelBtn.className = "btn secondary job-cancel";
+      cancelBtn.textContent = "Cancel";
+      cancelBtn.style.marginLeft = "auto";
+      cancelBtn.addEventListener("click", () => cancelJob(job.id, cancelBtn));
+      headline.style.display = "flex";
+      headline.style.alignItems = "center";
+      headline.style.gap = "0.5rem";
+      headline.appendChild(cancelBtn);
+    }
     card.appendChild(headline);
 
     if (job.progress) {
@@ -303,6 +320,8 @@
     return card;
   }
 
+  const TERMINAL = new Set(["done", "failed", "cancelled"]);
+
   function pollJob(jobId) {
     if (pollTimers.has(jobId)) return;
 
@@ -312,7 +331,7 @@
         if (!res.ok) return;
         const job = await res.json();
         renderJob(job);
-        if (job.status === "done" || job.status === "failed") {
+        if (TERMINAL.has(job.status)) {
           clearInterval(pollTimers.get(jobId));
           pollTimers.delete(jobId);
         }
@@ -323,6 +342,67 @@
 
     pollTimers.set(jobId, setInterval(tick, POLL_INTERVAL_MS));
     tick();
+  }
+
+  async function cancelJob(jobId, button) {
+    if (button) {
+      button.disabled = true;
+      button.textContent = "Cancelling…";
+    }
+    try {
+      const res = await fetch(`${API_BASE}/jobs/${jobId}`, {
+        method: "DELETE",
+        credentials: "same-origin",
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        // 409: the worker claimed it first, so it's running now. Re-render
+        // from the returned state so the (now ineligible) button disappears.
+        if (button) {
+          button.disabled = false;
+          button.textContent = "Cancel";
+        }
+        const detail = data && (data.detail || data.message);
+        if (res.status === 409) {
+          // Refresh this job so its card reflects the real (running/…) state.
+          pollJob(jobId);
+        } else if (formMessage) {
+          formMessage.textContent = `Couldn't cancel job ${jobId}: ` +
+            (typeof detail === "string" ? detail : `HTTP ${res.status}`);
+        }
+        return;
+      }
+      // Cancelled: stop polling and re-render the card as cancelled.
+      if (pollTimers.has(jobId)) {
+        clearInterval(pollTimers.get(jobId));
+        pollTimers.delete(jobId);
+      }
+      if (data) renderJob(data);
+    } catch (err) {
+      if (button) {
+        button.disabled = false;
+        button.textContent = "Cancel";
+      }
+    }
+  }
+
+  // On sign-in, surface jobs that already exist on the server (e.g. a queued
+  // job left from an earlier visit) so they can be tracked -- and cancelled --
+  // without having to be the one who submitted them this session.
+  async function loadExistingJobs() {
+    try {
+      const res = await fetch(`${API_BASE}/jobs`, { credentials: "same-origin" });
+      if (!res.ok) return;
+      const jobs = await res.json();
+      if (!Array.isArray(jobs)) return;
+      // Render oldest-first so prepend() leaves newest on top, matching submit order.
+      jobs.slice().reverse().forEach((job) => {
+        renderJob(job);
+        if (!TERMINAL.has(job.status)) pollJob(job.id);
+      });
+    } catch (err) {
+      /* non-fatal: the panel still works for newly submitted jobs */
+    }
   }
 
   async function submitJob(mode) {

@@ -18,6 +18,8 @@ POST /jobs           {"url": "<youtube url>", "target_language": "es", "mode": "
                      precisely what was approved.
 GET  /jobs           list recent jobs
 GET  /jobs/{id}      fetch a single job's status/progress/result
+DELETE /jobs/{id}    cancel a still-queued job (a job that's already running
+                     can't be cancelled here -- restart the service for that)
 GET  /healthz        liveness check
 """
 from __future__ import annotations
@@ -109,3 +111,28 @@ def get_job(job_id: str) -> dict:
     if job is None:
         raise HTTPException(status_code=404, detail="Job not found")
     return job.to_dict()
+
+
+@app.delete("/jobs/{job_id}")
+def cancel_job(job_id: str) -> dict:
+    """Cancel a job that's still waiting in the queue.
+
+    Only `queued` jobs can be cancelled: the worker processes one job at a
+    time, so a `running` job is already mid-pipeline and would need the
+    service restarted to stop. We return 409 in that case rather than
+    pretending to cancel something we can't actually interrupt.
+    """
+    job = db.get_job(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Job not found")
+    if db.cancel_queued_job(job_id):
+        cancelled = db.get_job(job_id)
+        return cancelled.to_dict() if cancelled else job.to_dict()
+    # The conditional update didn't fire: the job left the queue first.
+    raise HTTPException(
+        status_code=409,
+        detail=(
+            f"Job is '{job.status}' and can no longer be cancelled. "
+            "A job that's already running must be stopped by restarting the service."
+        ),
+    )

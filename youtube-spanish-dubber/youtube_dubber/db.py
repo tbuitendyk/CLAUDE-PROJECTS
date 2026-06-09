@@ -46,7 +46,8 @@ _MIGRATIONS = (
 
 # Lifecycle: queued -> running -> done
 #                            \-> failed
-TERMINAL_STATUSES = {"done", "failed"}
+#            queued -> cancelled  (operator cancelled it before it was claimed)
+TERMINAL_STATUSES = {"done", "failed", "cancelled"}
 
 # What a job does once claimed: "dub" runs the full pipeline and publishes to
 # YouTube; "preview" stops after acquiring/translating the transcript so the
@@ -166,6 +167,25 @@ def update_job(job_id: str, **fields: Any) -> None:
     values = [*fields.values(), job_id]
     with _connect() as conn:
         conn.execute(f"UPDATE jobs SET {columns} WHERE id = ?", values)
+
+
+def cancel_queued_job(job_id: str) -> bool:
+    """Atomically cancel a job *iff* it's still queued.
+
+    Returns True if it was cancelled, False if it wasn't in a cancellable
+    state (already running, done, failed or already cancelled). The
+    `AND status = 'queued'` guard makes this safe against the race where the
+    worker claims the job between the caller's status check and this update --
+    only one of the two writes can win.
+    """
+    with _connect() as conn:
+        cur = conn.execute(
+            "UPDATE jobs SET status = 'cancelled', stage = 'cancelled', "
+            "progress = 'Cancelled by operator', updated_at = ? "
+            "WHERE id = ? AND status = 'queued'",
+            (_now(), job_id),
+        )
+        return cur.rowcount > 0
 
 
 def claim_next_job() -> Optional[Job]:
