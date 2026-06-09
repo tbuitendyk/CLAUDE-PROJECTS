@@ -28,6 +28,17 @@ argostranslate==1.9.6
 # Free, local speech-to-text fallback (used only when no captions exist at all)
 faster-whisper==1.1.0
 
+# Linguistic rechunking: spaCy splits the transcript at real sentence/clause
+# boundaries (see pipeline/rechunker.py) so chunks fall on complete thoughts
+# instead of mid-sentence pauses. Pure CPU, no torch/CUDA -- deliberately
+# avoided the transformer punctuation models here, which drag in multi-GB CUDA
+# wheels. The two small language models (~13-15 MB each) are pinned to 3.8.x to
+# stay compatible with the spaCy range below; the rechunker degrades to
+# punctuation-only boundaries if a model is ever missing.
+spacy>=3.8.0,<3.9.0
+https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl
+https://github.com/explosion/spacy-models/releases/download/es_core_news_sm-3.8.0/es_core_news_sm-3.8.0-py3-none-any.whl
+
 # Free official Google client libraries for the YouTube Data API v3
 google-api-python-client==2.156.0
 google-auth==2.37.0

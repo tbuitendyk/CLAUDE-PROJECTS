@@ -14,6 +14,7 @@ from pathlib import Path
 from faster_whisper import WhisperModel
 
 from .models import Segment
+from .rechunker import TimedWord
 
 log = logging.getLogger(__name__)
 
@@ -34,10 +35,15 @@ def _get_model() -> WhisperModel:
     return _model
 
 
-def transcribe(audio_path: Path) -> tuple[list[Segment], str]:
+def transcribe(audio_path: Path) -> tuple[list[Segment], str, list[TimedWord]]:
     """Transcribe an audio file in its original language.
 
-    Returns (segments, detected_language_code).
+    Returns (segments, detected_language_code, words). `words` is a flat
+    per-word stream with individual timestamps -- the rechunker uses these to
+    place chunk breaks at the exact word where a thought ends (and to read the
+    real pauses *between words*, far finer than cue-level gaps, when inferring
+    punctuation). It's empty if word timing wasn't produced, in which case the
+    rechunker interpolates timing from the segments instead.
     """
     model = _get_model()
     with _lock:  # CTranslate2 models are not safe for concurrent inference
@@ -52,14 +58,21 @@ def transcribe(audio_path: Path) -> tuple[list[Segment], str]:
             condition_on_previous_text=False,
             repetition_penalty=1.1,
             no_repeat_ngram_size=3,
+            # Per-word timestamps feed the rechunker's thought-boundary cutting.
+            word_timestamps=True,
         )
-        segments = [
-            Segment(start=seg.start, end=seg.end, text=seg.text.strip())
-            for seg in segments_iter
-            if seg.text.strip()
-        ]
+        segments: list[Segment] = []
+        words: list[TimedWord] = []
+        for seg in segments_iter:
+            if not seg.text.strip():
+                continue
+            segments.append(Segment(start=seg.start, end=seg.end, text=seg.text.strip()))
+            for w in (seg.words or []):
+                token = w.word.strip()
+                if token:
+                    words.append(TimedWord(start=w.start, end=w.end, text=token))
     log.info(
-        "Whisper transcribed %d segments, detected language=%s (p=%.2f)",
-        len(segments), info.language, info.language_probability,
+        "Whisper transcribed %d segments (%d timed words), detected language=%s (p=%.2f)",
+        len(segments), len(words), info.language, info.language_probability,
     )
-    return segments, info.language
+    return segments, info.language, words
