@@ -301,8 +301,8 @@ footer.site-footer {
    (~21px) is subtracted -- verified by rendering this stylesheet in headless
    Chromium and measuring the actual line-box widths. */
 .transcript-table col.col-time { width: 4rem; }
-.transcript-table.has-original col.col-original { width: 41%; }
-.transcript-table.has-original col.col-translated { width: 52%; }
+.transcript-table.has-original col.col-original { width: 44%; }
+.transcript-table.has-original col.col-translated { width: 49%; }
 .transcript-table:not(.has-original) col.col-translated { width: calc(100% - 4rem); }
 
 .transcript-table .transcript-original,
