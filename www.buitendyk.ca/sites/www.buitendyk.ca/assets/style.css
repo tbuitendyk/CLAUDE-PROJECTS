@@ -344,8 +344,18 @@ footer.site-footer {
   font-size: 0.78rem;
 }
 
+.transcript-translated.dirty textarea {
+  border-color: var(--warn);
+  background: rgba(240, 185, 77, 0.07);
+}
+.transcript-translated.dirty .btn.transcript-save {
+  border-color: var(--warn);
+  color: var(--warn);
+}
+
 .transcript-translated.saved textarea {
   border-color: var(--good);
+  background: rgba(87, 209, 139, 0.06);
 }
 .transcript-translated.saved .btn.transcript-save {
   border-color: var(--good);

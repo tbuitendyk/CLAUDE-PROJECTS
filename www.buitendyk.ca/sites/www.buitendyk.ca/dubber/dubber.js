@@ -193,18 +193,16 @@
       saveBtn.className = "btn secondary transcript-save";
       saveBtn.textContent = "Save";
 
-      const resetSaveLabel = () => {
+      textarea.addEventListener("input", () => {
         window.clearTimeout(saveBtn._resetTimer);
         saveBtn.textContent = "Save";
         esCell.classList.remove("saved");
-      };
-
-      textarea.addEventListener("input", () => {
-        resetSaveLabel();
+        esCell.classList.add("dirty");
         syncTextareaHeight(textarea, origText);
       });
       saveBtn.addEventListener("click", () => {
         state.lines[index].text = textarea.value;
+        esCell.classList.remove("dirty");
         esCell.classList.add("saved");
         saveBtn.textContent = "Saved ✓";
         window.clearTimeout(saveBtn._resetTimer);
