@@ -58,6 +58,12 @@ def transcribe(audio_path: Path) -> tuple[list[Segment], str, list[TimedWord]]:
             condition_on_previous_text=False,
             repetition_penalty=1.1,
             no_repeat_ngram_size=3,
+            # Nudge the decoder toward properly punctuated, capitalised output
+            # by seeding it with a clean example. (We keep
+            # condition_on_previous_text=False above to avoid the repetition
+            # spiral, which limits this prompt's reach to the opening window --
+            # the rechunker's own punctuation restoration carries the rest.)
+            initial_prompt="The following is a clear, well-punctuated transcript with proper capitalization.",
             # Per-word timestamps feed the rechunker's thought-boundary cutting.
             word_timestamps=True,
         )

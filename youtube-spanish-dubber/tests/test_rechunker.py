@@ -68,6 +68,28 @@ def test_big_gap_forces_a_cut():
     assert spans[0] == (0, 4)  # cut right before the silence
 
 
+def test_discourse_openers_segment_a_run_on_with_no_pauses():
+    # A fast speaker: zero pauses between words, no punctuation -- the pause
+    # rules alone would find nothing. "okay" (a strong opener) must still start
+    # a new sentence; the period lands on the word before it.
+    text = "luther was a monk okay so he had a crisis"
+    words = [TimedWord(i * 0.4, i * 0.4 + 0.4, t) for i, t in enumerate(text.split())]
+    restored = rechunker.restore_punctuation(words)
+    joined = " ".join(w.text for w in restored)
+    assert "monk." in joined          # sentence broken before "okay"
+    assert "Okay" in joined           # opener capitalised as a new sentence start
+    assert restored[0].text == "Luther"  # first word always capitalised
+
+
+def test_midsentence_opener_word_not_oversplit():
+    # "now" here is mid-phrase ("right now"), with no pause -> must NOT break.
+    text = "he is leaving right now for the church"
+    words = [TimedWord(i * 0.4, i * 0.4 + 0.4, t) for i, t in enumerate(text.split())]
+    restored = rechunker.restore_punctuation(words)
+    joined = " ".join(w.text for w in restored)
+    assert "right. Now" not in joined and "right, Now" not in joined
+
+
 def test_tiny_chunk_merges_back():
     words = [TimedWord(i * 1.0, i * 1.0 + 1.0, f"w{i}") for i in range(5)]
     score = [rechunker._NONE] * 5

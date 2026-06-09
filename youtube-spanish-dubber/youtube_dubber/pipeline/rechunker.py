@@ -71,6 +71,14 @@ _DISCOURSE_OPENERS = {
     "basically", "look", "see", "right", "listen",
 }
 
+# A subset that is almost never mid-sentence -- safe to treat as a sentence
+# start even with no pause at all (the key signal for a fast, low-pause speaker
+# the pause-based rules can't otherwise segment). The rest of _DISCOURSE_OPENERS
+# ("so", "now", "well", "right"...) DO occur mid-sentence ("right now", "he was
+# so angry"), so they only force a break when a small real pause backs them up.
+_STRONG_OPENERS = {"okay", "ok", "alright", "allright", "anyway", "anyhow"}
+_OPENER_MIN_PAUSE = 0.12
+
 
 @dataclass
 class TimedWord:
@@ -128,15 +136,18 @@ def restore_punctuation(words: list[TimedWord]) -> list[TimedWord]:
     pauses, in place of a heavy ML restorer.
 
     Only applied when the stream looks under-punctuated, so we never clobber
-    punctuation a caption track or Whisper already provided. A gap longer than
-    `_SENTENCE_PAUSE` after a word is treated as a sentence end (period + the
-    next word capitalised); a shorter-but-notable gap as a clause break
-    (comma). It's not perfect, but driven by real per-word timing it is a clear
-    step up from the old per-cue guess, and it gives spaCy the anchors it needs
-    to find real boundaries downstream.
+    punctuation a caption track or Whisper already provided. Two signals drive
+    it: (1) a gap longer than `_SENTENCE_PAUSE` after a word -> sentence end
+    (period + next word capitalised), a shorter-but-notable gap -> clause break
+    (comma); and (2) a following discourse opener ("okay", "alright", "so",
+    "now"...) -> sentence end *without* needing a pause, which is what lets a
+    fast, run-on speaker (who gives the pause rules nothing to work with) still
+    get segmented. It's not a grammar model, but it gives spaCy real anchors to
+    find boundaries downstream.
     """
     out: list[TimedWord] = []
     start_of_sentence = True
+    n = len(words)
     for idx, w in enumerate(words):
         text = w.text
         if start_of_sentence and text[:1].islower():
@@ -144,8 +155,12 @@ def restore_punctuation(words: list[TimedWord]) -> list[TimedWord]:
 
         ends_sentence = False
         if text[-1:] not in _ANY_TERMINAL:
-            gap = (words[idx + 1].start - w.end) if idx + 1 < len(words) else _SENTENCE_PAUSE
-            if gap >= _SENTENCE_PAUSE:
+            gap = (words[idx + 1].start - w.end) if idx + 1 < n else _SENTENCE_PAUSE
+            nxt = words[idx + 1].text.lower().strip(_ANY_TERMINAL) if idx + 1 < n else ""
+            opener_break = nxt in _STRONG_OPENERS or (
+                nxt in _DISCOURSE_OPENERS and gap >= _OPENER_MIN_PAUSE
+            )
+            if gap >= _SENTENCE_PAUSE or opener_break:
                 text += "."
                 ends_sentence = True
             elif gap >= _CLAUSE_PAUSE:
