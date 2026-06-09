@@ -290,17 +290,19 @@ footer.site-footer {
   white-space: nowrap;
 }
 
-/* Fixed time column; the rest is split so the Spanish column -- and, because
-   its textarea now spans the column's full width (the Save button sits on its
-   own line beneath, not beside it), the *editable box itself* -- ends up ~20%
-   wider than the Original text block (S = 1.2*E and E+S = 1  =>  E ~= 0.4545,
-   S ~= 0.5455). Keeping the button out of the textarea's row is what makes
-   this a plain static split: no JS-measured footprint, nothing to get out of
-   sync, and the box can't come out narrower than English the way it did when
-   the button shared its row and ate into its width. */
+/* Column widths. NOTE: under `table-layout: fixed`, Chromium silently IGNORES
+   any <col> width that contains a percentage inside calc() -- e.g.
+   `calc((100% - 4rem) * 0.4545)` collapses to an equal split (measured: a dead
+   1.000 ratio). That no-op is exactly why the Spanish column kept coming out
+   the same width as English for so long. Plain percentages ARE honored, so use
+   those: a slim time column, then Original ~41% / Spanish ~52%. That ~1.27
+   column ratio leaves the Spanish *textarea's* usable text width ~20% wider
+   than the English block even after the textarea's own padding+border
+   (~21px) is subtracted -- verified by rendering this stylesheet in headless
+   Chromium and measuring the actual line-box widths. */
 .transcript-table col.col-time { width: 4rem; }
-.transcript-table.has-original col.col-original { width: calc((100% - 4rem) * 0.4545); }
-.transcript-table.has-original col.col-translated { width: calc((100% - 4rem) * 0.5455); }
+.transcript-table.has-original col.col-original { width: 41%; }
+.transcript-table.has-original col.col-translated { width: 52%; }
 .transcript-table:not(.has-original) col.col-translated { width: calc(100% - 4rem); }
 
 .transcript-table .transcript-original,
