@@ -32,12 +32,17 @@ faster-whisper==1.1.0
 # boundaries (see pipeline/rechunker.py) so chunks fall on complete thoughts
 # instead of mid-sentence pauses. Pure CPU, no torch/CUDA -- deliberately
 # avoided the transformer punctuation models here, which drag in multi-GB CUDA
-# wheels. The two small language models (~13-15 MB each) are pinned to 3.8.x to
-# stay compatible with the spaCy range below; the rechunker degrades to
-# punctuation-only boundaries if a model is ever missing.
-spacy>=3.8.0,<3.9.0
-https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl
-https://github.com/explosion/spacy-models/releases/download/es_core_news_sm-3.8.0/es_core_news_sm-3.8.0-py3-none-any.whl
+# wheels. The rechunker degrades to punctuation-only boundaries if a model is
+# ever missing.
+#
+# Pinned to the spaCy 3.7 line on purpose: 3.8+ requires Python >= 3.10 (its
+# thinc>=8.3.12 dep has no cp39 wheel), but the target VPS runs Python 3.9, so
+# 3.8 falls back to a from-source build that fails. 3.7.x ships prebuilt cp39
+# wheels and supports Python 3.7-3.12. The two small language models (~13-15 MB
+# each) must match that line (3.7.x).
+spacy>=3.7.2,<3.8.0
+https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.7.1/en_core_web_sm-3.7.1-py3-none-any.whl
+https://github.com/explosion/spacy-models/releases/download/es_core_news_sm-3.7.0/es_core_news_sm-3.7.0-py3-none-any.whl
 
 # Free official Google client libraries for the YouTube Data API v3
 google-api-python-client==2.156.0
