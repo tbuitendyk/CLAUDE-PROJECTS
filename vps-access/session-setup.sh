@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 # Claude Code environment-side setup: wires this session up to the VPS.
 #
-# Run automatically at session start (add `bash vps-access/session-setup.sh`
-# to the environment's setup script at claude.ai/code), or manually at any
-# time. Reads its inputs from environment variables configured as secrets on
-# the Claude Code environment:
+# PASTE THIS SCRIPT'S BODY into the environment's setup-script field at
+# claude.ai/code (do NOT reference it by repo path -- this file lives only on
+# the claude/vps-access branch, but the setup script must run on every branch;
+# see README.md). It then runs at the start of every session. Reads its inputs
+# from environment variables configured as secrets on the Claude Code environment:
 #
 #   VPS_SSH_PRIVATE_KEY_B64   (required) base64 of the claude-deploy private
 #                             key: `base64 -w0 claude_deploy_key`
