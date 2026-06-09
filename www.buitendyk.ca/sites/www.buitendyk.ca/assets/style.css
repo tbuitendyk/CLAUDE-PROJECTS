@@ -290,21 +290,17 @@ footer.site-footer {
   white-space: nowrap;
 }
 
-/* Fixed time column; Spanish *textarea* should end up ~20% wider than the
-   Original text block (S = 1.2*E and E+S = 1  =>  E ~= 0.4545, S ~= 0.5455).
-   But the Save button rides in the same flex row as the textarea, eating
-   `--save-btn-footprint` (button + gap, measured in JS) out of the Spanish
-   column -- left uncorrected, the *textarea* would end up narrower than
-   Original despite its column being wider, forcing extra wrapping (i.e. a
-   taller box, the opposite of the goal). So: split (pool - footprint) in the
-   20% ratio between Original and the textarea's share, then hand the
-   footprint back to the translated column so the textarea still gets it.
-   Original = (pool - footprint) * 0.4545
-   Translated = pool * 0.5455 + footprint * 0.4545
-   (sums back to `pool`; textarea = Translated - footprint = (pool - footprint) * 0.5455 = 1.2 * Original) */
+/* Fixed time column; the rest is split so the Spanish column -- and, because
+   its textarea now spans the column's full width (the Save button sits on its
+   own line beneath, not beside it), the *editable box itself* -- ends up ~20%
+   wider than the Original text block (S = 1.2*E and E+S = 1  =>  E ~= 0.4545,
+   S ~= 0.5455). Keeping the button out of the textarea's row is what makes
+   this a plain static split: no JS-measured footprint, nothing to get out of
+   sync, and the box can't come out narrower than English the way it did when
+   the button shared its row and ate into its width. */
 .transcript-table col.col-time { width: 4rem; }
-.transcript-table.has-original col.col-original { width: calc((100% - 4rem - var(--save-btn-footprint, 4.5rem)) * 0.4545); }
-.transcript-table.has-original col.col-translated { width: calc((100% - 4rem) * 0.5455 + var(--save-btn-footprint, 4.5rem) * 0.4545); }
+.transcript-table.has-original col.col-original { width: calc((100% - 4rem) * 0.4545); }
+.transcript-table.has-original col.col-translated { width: calc((100% - 4rem) * 0.5455); }
 .transcript-table:not(.has-original) col.col-translated { width: calc(100% - 4rem); }
 
 .transcript-table .transcript-original,
@@ -314,14 +310,13 @@ footer.site-footer {
 
 .transcript-edit {
   display: flex;
-  flex-direction: row;
-  align-items: flex-start;
-  gap: 0.5rem;
+  flex-direction: column;
+  align-items: flex-end; /* Save button hugs the right edge, beneath the box */
+  gap: 0.4rem;
 }
 
 .transcript-edit textarea {
-  flex: 1;
-  min-width: 0;
+  width: 100%; /* full column width -- nothing shares this row anymore */
   min-height: 3.2em;
   /* Height is set in JS to fit the line's own (often-longer) translation,
      with the Original cell's height as a floor -- so no inner scrollbar and
