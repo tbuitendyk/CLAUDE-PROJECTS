@@ -173,14 +173,59 @@ def restore_punctuation(words: list[TimedWord]) -> list[TimedWord]:
     return out
 
 
-def restore_with_model(words: list[TimedWord]):  # pragma: no cover - optional hook
-    """Placeholder for an optional transformer-based punctuation/truecasing
-    restorer (e.g. a CPU ONNX model). Intentionally not wired up: the mainstream
-    options pull in torch + multi-GB CUDA wheels, which is a poor trade for a
-    CPU-only VPS. Left as a single, isolated swap-in point should a future need
-    justify the footprint. Returns None so callers fall back to the heuristic.
+def _normalize_word(s: str) -> str:
+    return re.sub(r"[^\w]", "", s).lower()
+
+
+def restore_with_model(words: list[TimedWord]) -> "list[TimedWord] | None":
+    """Restore punctuation/casing with the grammar-based ONNX model (CPU, no
+    torch -- see punctuation_onnx), mapping the result back onto the original
+    word timings.
+
+    Returns a new TimedWord list (same timings, restored text) or None if the
+    model is disabled/unavailable, or if the restored token stream doesn't line
+    up 1:1 with the input -- in which case the caller falls back to the pause/
+    opener heuristic. Never raises into the pipeline.
     """
-    return None
+    if not words:
+        return None
+    try:
+        from . import punctuation_onnx
+
+        sentences = punctuation_onnx.restore_sentences(" ".join(w.text for w in words))
+    except Exception:  # pragma: no cover - defensive; model path must never break the run
+        return None
+    if not sentences:
+        return None
+
+    # Flatten to (token, is_last_word_of_sentence). The model keeps word order
+    # and the words themselves -- it only adds punctuation/casing and sentence
+    # splits -- so this should align 1:1 with `words`.
+    out_words: list[tuple[str, bool]] = []
+    for sent in sentences:
+        toks = sent.split()
+        for i, tok in enumerate(toks):
+            out_words.append((tok, i == len(toks) - 1))
+
+    if len(out_words) != len(words):
+        log.info(
+            "Punctuation model produced %d words vs %d input; falling back to heuristic.",
+            len(out_words), len(words),
+        )
+        return None
+
+    restored: list[TimedWord] = []
+    for w, (tok, is_sentence_end) in zip(words, out_words):
+        if _normalize_word(tok) != _normalize_word(w.text):
+            log.info("Punctuation model alignment drift (%r vs %r); falling back to heuristic.", tok, w.text)
+            return None
+        text = tok
+        # Guarantee the boundary the model intended is visible to break_scores.
+        if is_sentence_end and text[-1:] not in _ANY_TERMINAL:
+            text += "."
+        restored.append(TimedWord(start=w.start, end=w.end, text=text))
+    log.info("Punctuation model restored %d words into %d sentences.", len(words), len(sentences))
+    return restored
 
 
 # --------------------------------------------------------------------------

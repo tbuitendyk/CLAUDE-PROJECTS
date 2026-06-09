@@ -22,10 +22,11 @@ POST /jobs {"url": "https://youtube.com/watch?v=..."}
           machine-translated to Spanish         (yt-dlp + Argos Translate)
        d. nothing exists -> transcribe audio    (faster-whisper)
           from scratch, then translate          (Argos Translate)
- 2b. Rechunk into natural "thought units":       (spaCy + rechunker.py)
-       restore punctuation if missing, then cut
-       at sentence/clause boundaries (not mid-
-       sentence pauses), sized for clean TTS
+ 2b. Rechunk into natural "thought units":       (ONNX punct model + spaCy)
+       restore punctuation on run-on/unpunctuated
+       transcripts (CPU ONNX model, no torch;
+       heuristic fallback), then cut at sentence/
+       clause boundaries, sized for clean TTS
  3. Synthesize Spanish speech per caption line, (edge-tts)
     time-stretched to match each line's slot    (ffmpeg atempo)
  4. Mux the new narration onto the video        (ffmpeg)
@@ -45,6 +46,7 @@ and you poll `GET /jobs/{id}` for status and the final video link.
 | Translation | [Argos Translate](https://github.com/argosopentech/argos-translate) | MIT | Fully offline, no rate limits |
 | Speech-to-text fallback | [faster-whisper](https://github.com/SYSTRAN/faster-whisper) | MIT | Runs locally on CPU |
 | Sentence/clause chunking | [spaCy](https://spacy.io/) | MIT | CPU-only, no torch; small en/es models |
+| Punctuation restoration | [onnxruntime](https://onnxruntime.ai/) + [punct_cap_seg](https://huggingface.co/1-800-BAD-CODE) | MIT / Apache-2.0 | CPU ONNX, no torch; optional, heuristic fallback |
 | Text-to-speech | [edge-tts](https://github.com/rany2/edge-tts) | GPL-3.0 | Free Microsoft neural voices, no API key |
 | Audio/video processing | [ffmpeg](https://ffmpeg.org/) | LGPL/GPL | Industry standard |
 | Publishing | [YouTube Data API v3](https://developers.google.com/youtube/v3) | Free quota | 10,000 units/day; an upload costs 1,600 (~6/day free) |
@@ -237,6 +239,7 @@ youtube_dubber/
     transcript.py   Decides which transcript source to use (see flow above)
     speech_to_text.py  faster-whisper fallback transcription (+ word timings)
     rechunker.py    Punctuation restore + spaCy sentence/clause rechunking
+    punctuation_onnx.py  Torch-free ONNX grammar punctuation/casing restorer
     translator.py   Argos Translate wrapper
     tts.py          edge-tts synthesis + time-alignment to captions
     ffmpeg_utils.py Low-level ffmpeg/ffprobe helpers

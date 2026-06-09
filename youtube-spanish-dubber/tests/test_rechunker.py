@@ -156,6 +156,42 @@ def test_empty_input():
     assert rechunker.chunk([], language="en", words=[]) == []
 
 
+# --- the ONNX model hook: alignment + fallback (model output is mocked, so
+# these run without the real model / network) -------------------------------
+def _words(text):
+    return [TimedWord(i * 0.4, i * 0.4 + 0.4, t) for i, t in enumerate(text.split())]
+
+
+def test_restore_with_model_maps_punctuation_onto_timings(monkeypatch):
+    words = _words("martin luther started the reformation he nailed his theses")
+    # Mock the model: returns punctuated, truecased, segmented sentences.
+    import youtube_dubber.pipeline.punctuation_onnx as po
+    monkeypatch.setattr(
+        po, "restore_sentences",
+        lambda text: ["Martin Luther started the reformation.", "He nailed his theses."],
+    )
+    out = rechunker.restore_with_model(words)
+    assert out is not None
+    assert len(out) == len(words)                       # 1:1 timing preserved
+    assert out[0].text == "Martin" and out[0].start == words[0].start
+    assert out[4].text == "reformation."                # sentence break carried
+    assert out[1].text == "Luther"                      # truecasing applied
+
+
+def test_restore_with_model_falls_back_on_word_count_drift(monkeypatch):
+    words = _words("hello world")
+    import youtube_dubber.pipeline.punctuation_onnx as po
+    monkeypatch.setattr(po, "restore_sentences", lambda text: ["Hello brave new world."])
+    assert rechunker.restore_with_model(words) is None  # 4 != 2 -> heuristic
+
+
+def test_restore_with_model_falls_back_when_model_absent(monkeypatch):
+    words = _words("hello world")
+    import youtube_dubber.pipeline.punctuation_onnx as po
+    monkeypatch.setattr(po, "restore_sentences", lambda text: None)
+    assert rechunker.restore_with_model(words) is None
+
+
 if __name__ == "__main__":
     # Convenience: show the actual chunking of the reference transcript.
     if not HAVE_SPACY:

@@ -51,6 +51,17 @@ class Settings:
     whisper_device: str = os.getenv("DUBBER_WHISPER_DEVICE", "cpu")
     whisper_compute_type: str = os.getenv("DUBBER_WHISPER_COMPUTE_TYPE", "int8")
 
+    # --- Grammar-based punctuation restoration (rechunker.py) ---
+    # A CPU ONNX model (no torch) that restores punctuation/casing on run-on,
+    # unpunctuated transcripts so chunks can break at real sentence/clause
+    # boundaries. Optional: if disabled or the model can't load, the rechunker
+    # falls back to the pause/discourse-opener heuristic. Default model is the
+    # English-only one (~smaller); override the repo for other languages.
+    punctuation_model_enabled: bool = _bool("DUBBER_PUNCTUATION_MODEL_ENABLED", True)
+    punctuation_model_repo: str = os.getenv("DUBBER_PUNCTUATION_MODEL_REPO", "1-800-BAD-CODE/punct_cap_seg_en")
+    punctuation_model_spe: str = os.getenv("DUBBER_PUNCTUATION_MODEL_SPE", "spe_32k_lc_en.model")
+    punctuation_model_onnx: str = os.getenv("DUBBER_PUNCTUATION_MODEL_ONNX", "punct_cap_seg_en.onnx")
+
     # --- Dubbing mix ---
     # "replace": new Spanish track replaces the original audio entirely.
     # "duck": original audio is kept underneath at low volume (telenovela style).

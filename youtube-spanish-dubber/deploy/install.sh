@@ -79,6 +79,19 @@ for frm, to in wanted:
 print("Done. Add more pairs later via the same pattern, or `argospm install translate-XX_YY`.")
 PYEOF
 
+echo "==> Pre-downloading the punctuation model (optional CPU ONNX model, no torch)"
+# Best-effort: warms the HuggingFace cache and verifies the model loads, so the
+# first preview isn't slow. If it fails (no network, disk, etc.) the service
+# still works -- the rechunker just falls back to its punctuation heuristic.
+sudo -u "${SERVICE_USER}" env PYTHONPATH="${INSTALL_DIR}" "${INSTALL_DIR}/.venv/bin/python" - <<'PYEOF' \
+  || echo "    (punctuation model unavailable -- rechunker will use its heuristic fallback; not fatal)"
+from youtube_dubber.pipeline import punctuation_onnx
+out = punctuation_onnx.restore_sentences(
+    "this is a quick self test of the punctuation model okay it seems to be working"
+)
+print("    Punctuation model self-test:", out if out else "(unavailable -> heuristic fallback)")
+PYEOF
+
 echo "==> Installing systemd unit"
 cp "${INSTALL_DIR}/deploy/youtube-dubber.service" /etc/systemd/system/youtube-dubber.service
 systemctl daemon-reload

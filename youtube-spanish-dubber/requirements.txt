@@ -44,6 +44,18 @@ spacy>=3.7.2,<3.8.0
 https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.7.1/en_core_web_sm-3.7.1-py3-none-any.whl
 https://github.com/explosion/spacy-models/releases/download/es_core_news_sm-3.7.0/es_core_news_sm-3.7.0-py3-none-any.whl
 
+# Grammar-based punctuation restoration on run-on transcripts (a fast speaker
+# whose captions/Whisper output have no punctuation defeats the pause-based
+# heuristic). Runs a small ONNX model on CPU via onnxruntime + numpy -- NO
+# torch/CUDA (see pipeline/punctuation_onnx.py, a torch-free port of the
+# Apache-2.0 `punctuators` inference). The model (~English punct/cap/seg) is
+# fetched from HuggingFace on first use / at deploy time. Entirely optional:
+# the rechunker falls back to its heuristic if any of this is missing.
+onnxruntime>=1.16,<2.0
+sentencepiece>=0.2.0
+huggingface-hub>=0.23,<1.0
+pyyaml>=6.0
+
 # Free official Google client libraries for the YouTube Data API v3
 google-api-python-client==2.156.0
 google-auth==2.37.0
