@@ -90,6 +90,29 @@ def test_midsentence_opener_word_not_oversplit():
     assert "right. Now" not in joined and "right, Now" not in joined
 
 
+def test_augment_steps_back_over_conjunction():
+    # Pause occurs AFTER "and" -- the period must land on the word BEFORE "and",
+    # and "and" must be capitalised to open the new sentence.
+    # "went to the door and [pause] he launched" -> "went to the door. And he launched"
+    labels = ["went", "to", "the", "door", "and", "he", "launched"]
+    words = []
+    t = 0.0
+    for label in labels:
+        words.append(TimedWord(t, t + 0.4, label))
+        t += 0.4
+        if label == "and":
+            t += 0.65  # sentence-length pause after "and"
+    # Extend to exceed _RUNON_SECONDS so augment kicks in
+    while t < 10.0:
+        words.append(TimedWord(t, t + 0.4, "filler"))
+        t += 0.4
+    out = rechunker.augment_runon_punctuation(words)
+    door_idx = next(i for i, w in enumerate(out) if w.text.startswith("door"))
+    and_idx = door_idx + 1
+    assert out[door_idx].text == "door.", out[door_idx].text    # period on "door"
+    assert out[and_idx].text == "And", out[and_idx].text        # "and" capitalised
+
+
 def test_augment_fills_runon_with_pauses():
     # 8.6s of words, zero punctuation, with one clear sentence-length pause
     # after word 9 -> a period there, capitalising the next word.

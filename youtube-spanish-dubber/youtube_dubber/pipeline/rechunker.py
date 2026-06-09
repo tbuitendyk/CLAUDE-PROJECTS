@@ -88,6 +88,11 @@ _DISCOURSE_OPENERS = {
 _STRONG_OPENERS = {"okay", "ok", "alright", "allright", "anyway", "anyhow"}
 _OPENER_MIN_PAUSE = 0.12
 
+# Coordinating conjunctions that cannot grammatically end a sentence. When the
+# pause-based restorer would place a sentence-end mark after one of these, it
+# steps back one word instead: "...door and." becomes "...door. And..."
+_CLAUSE_STARTERS = {"and", "but", "or", "nor", "so", "yet", "for"}
+
 
 @dataclass
 class TimedWord:
@@ -277,12 +282,23 @@ def augment_runon_punctuation(words: list[TimedWord]) -> list[TimedWord]:
             gap = words[idx + 1].start - words[idx].end
             nxt = words[idx + 1].text.lower().strip(_ANY_TERMINAL)
             if gap >= _SENTENCE_PAUSE or nxt in _STRONG_OPENERS:
-                out[idx] = TimedWord(w.start, w.end, w.text + ".")
-                follow = out[idx + 1]
-                if follow.text[:1].islower():
-                    out[idx + 1] = TimedWord(
-                        follow.start, follow.end, follow.text[:1].upper() + follow.text[1:]
-                    )
+                bare = w.text.lower().strip(_ANY_TERMINAL)
+                if (bare in _CLAUSE_STARTERS
+                        and idx > run_start
+                        and out[idx - 1].text[-1:] not in _ANY_TERMINAL):
+                    # Conjunction at a pause boundary: step back one word so the
+                    # cut lands after the prior word, not on the "and/but/or".
+                    # "...church door and." → "...church door. And..."
+                    prev = out[idx - 1]
+                    out[idx - 1] = TimedWord(prev.start, prev.end, prev.text + ".")
+                    out[idx] = TimedWord(w.start, w.end, w.text[:1].upper() + w.text[1:])
+                else:
+                    out[idx] = TimedWord(w.start, w.end, w.text + ".")
+                    follow = out[idx + 1]
+                    if follow.text[:1].islower():
+                        out[idx + 1] = TimedWord(
+                            follow.start, follow.end, follow.text[:1].upper() + follow.text[1:]
+                        )
             elif gap >= _CLAUSE_PAUSE:
                 out[idx] = TimedWord(w.start, w.end, w.text + ",")
     return out
@@ -530,6 +546,14 @@ def chunk(
             is_last = idx == len(spans) - 1
             gap_after = float("inf") if is_last else stream[spans[idx + 1][0]].start - stream[e].end
             ends_sentence = score[e] >= _SENTENCE or gap_after >= _SENTENCE_PAUSE or is_last
-            text += "." if ends_sentence else ","
+            # A conjunction at the span boundary means the thought continues --
+            # always use a comma so "...door and," rather than "...door and."
+            last_bare = stream[e].text.lower().strip(_ANY_TERMINAL)
+            if last_bare in _CLAUSE_STARTERS:
+                text += ","
+            elif ends_sentence:
+                text += "."
+            else:
+                text += ","
         out.append(Segment(start=stream[s].start, end=stream[e].end, text=text))
     return out
