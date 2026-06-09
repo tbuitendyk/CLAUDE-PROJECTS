@@ -83,6 +83,15 @@ echo "==> Installing systemd unit"
 cp "${INSTALL_DIR}/deploy/youtube-dubber.service" /etc/systemd/system/youtube-dubber.service
 systemctl daemon-reload
 
+# On a re-deploy the service is already running old code from before the rsync;
+# restart it so the new code/deps take effect. Skipped on a first install
+# (service not yet active -- it still needs the one-time YouTube authorization
+# below before it can start).
+if systemctl is-active --quiet youtube-dubber; then
+  echo "==> Restarting the running service to pick up the new code"
+  systemctl restart youtube-dubber
+fi
+
 cat <<EOF
 
 ==============================================================================
