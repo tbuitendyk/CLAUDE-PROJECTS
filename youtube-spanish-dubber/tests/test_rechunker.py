@@ -90,6 +90,59 @@ def test_midsentence_opener_word_not_oversplit():
     assert "right. Now" not in joined and "right, Now" not in joined
 
 
+def test_augment_fills_runon_with_pauses():
+    # 8.6s of words, zero punctuation, with one clear sentence-length pause
+    # after word 9 -> a period there, capitalising the next word.
+    words = []
+    t = 0.0
+    for i in range(20):
+        words.append(TimedWord(t, t + 0.4, f"word{i}"))
+        t += 0.4
+        if i == 9:
+            t += 0.6  # a sentence-length silence
+    out = rechunker.augment_runon_punctuation(words)
+    assert out[9].text.endswith(".")
+    assert out[10].text[0].isupper()
+
+
+def test_augment_leaves_well_punctuated_text_alone():
+    # Densely punctuated input has no run longer than the threshold -> untouched.
+    words = rechunker.words_from_segments([
+        Segment(0.0, 6.0, "Hello there."),
+        Segment(6.0, 12.0, "How are you?"),
+    ])
+    out = rechunker.augment_runon_punctuation(words)
+    assert [w.text for w in out] == [w.text for w in words]
+
+
+def test_forced_cut_lands_on_the_longest_breath():
+    # 30s of words, no punctuation, but a 0.8s breath after word 25. With no
+    # sentence/clause boundary, the over-long chunk must break at that breath.
+    words = []
+    t = 0.0
+    for i in range(60):
+        words.append(TimedWord(t, t + 0.5, f"w{i}"))
+        t += 0.5
+        if i == 25:
+            t += 0.8
+    score = [rechunker._NONE] * len(words)
+    spans = rechunker._assemble(words, score, 3.0, 11.0, 20.0, 4.0)
+    assert spans[0][1] == 25  # cut right before the breath, not at the 20s wall
+
+
+def test_every_chunk_ends_with_terminal_punctuation(monkeypatch):
+    # Un-punctuated, pause-less stream -> still, every emitted chunk must end on
+    # a mark (comma for continuations, period for the final/sentence-end chunk).
+    import youtube_dubber.pipeline.punctuation_onnx as po
+    monkeypatch.setattr(po, "restore_sentences", lambda text: None)  # no model in CI
+    words = [TimedWord(i * 0.5, i * 0.5 + 0.5, f"w{i}") for i in range(120)]
+    segs = rechunker.chunk([], language="en", words=words)
+    assert segs
+    for s in segs:
+        assert s.text[-1] in rechunker._ANY_TERMINAL, s.text
+    assert segs[-1].text[-1] in ".!?…"  # the last chunk is a full stop
+
+
 def test_tiny_chunk_merges_back():
     words = [TimedWord(i * 1.0, i * 1.0 + 1.0, f"w{i}") for i in range(5)]
     score = [rechunker._NONE] * 5

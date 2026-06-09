@@ -60,6 +60,15 @@ _NONE = 0
 _SENTENCE_PAUSE = 0.55
 _CLAUSE_PAUSE = 0.28
 
+# A clear breath to fall back on when an un-punctuated run-on must be cut and no
+# sentence/clause boundary is available: cut at the longest such pause in the
+# window rather than at an arbitrary word.
+_BREATH_PAUSE = 0.35
+# A stretch of speech this long with no punctuation at all is treated as a
+# run-on the source failed to segment; augment_runon_punctuation fills in marks
+# from word pauses inside it (and only inside it).
+_RUNON_SECONDS = 8.0
+
 _SENTENCE_END_RE = re.compile(r"[.!?…][\"')\]]?$")
 _CLAUSE_END_RE = re.compile(r"[,;:][\"')\]]?$")
 _ANY_TERMINAL = ".,;:!?…"
@@ -232,6 +241,53 @@ def restore_with_model(words: list[TimedWord]) -> "list[TimedWord] | None":
     return restored
 
 
+def augment_runon_punctuation(words: list[TimedWord]) -> list[TimedWord]:
+    """Fill sentence/clause punctuation into long *un-punctuated run-ons* only,
+    leaving already-punctuated regions exactly as the source produced them.
+
+    Whisper usually punctuates well, but on a fast speaker it occasionally emits
+    a long unbroken stretch with no marks at all. Globally the transcript still
+    looks well-punctuated, so the full restorer (gated on overall density) never
+    runs -- yet that one stretch gives the boundary detector nothing to grab, so
+    it gets force-cut mid-thought. Here we find each span between existing marks
+    that runs longer than `_RUNON_SECONDS` and, *within that span only*, add a
+    period at sentence-length pauses (capitalising what follows) or before a
+    strong discourse opener, and a comma at shorter notable pauses. It never
+    touches a word that already carries punctuation, so well-formed output is
+    preserved.
+    """
+    n = len(words)
+    if n == 0:
+        return words
+    out = [TimedWord(w.start, w.end, w.text) for w in words]
+
+    # Words that already end a sentence/clause split the stream into runs; a run
+    # longer than the threshold is a run-on we augment between its endpoints.
+    marks = [-1] + [i for i, w in enumerate(words) if w.text[-1:] in _ANY_TERMINAL] + [n - 1]
+    for a, b in zip(marks, marks[1:]):
+        run_start, run_last = a + 1, b
+        if run_start >= run_last:
+            continue
+        if words[run_last].end - words[run_start].start < _RUNON_SECONDS:
+            continue
+        for idx in range(run_start, run_last):  # never touch the marked word at b
+            w = out[idx]
+            if w.text[-1:] in _ANY_TERMINAL:
+                continue
+            gap = words[idx + 1].start - words[idx].end
+            nxt = words[idx + 1].text.lower().strip(_ANY_TERMINAL)
+            if gap >= _SENTENCE_PAUSE or nxt in _STRONG_OPENERS:
+                out[idx] = TimedWord(w.start, w.end, w.text + ".")
+                follow = out[idx + 1]
+                if follow.text[:1].islower():
+                    out[idx + 1] = TimedWord(
+                        follow.start, follow.end, follow.text[:1].upper() + follow.text[1:]
+                    )
+            elif gap >= _CLAUSE_PAUSE:
+                out[idx] = TimedWord(w.start, w.end, w.text + ",")
+    return out
+
+
 # --------------------------------------------------------------------------
 # Boundary detection (spaCy when available, else punctuation-only)
 # --------------------------------------------------------------------------
@@ -347,12 +403,21 @@ def _assemble(words, score, target_min, target_soft, target_hard, max_gap):
     spans: list[tuple[int, int]] = []
     start = 0
     i = 0
-    best_clause = None  # latest clause-or-better break seen, as a fallback cut
+    best_clause = None       # latest clause-or-better break seen, as a fallback cut
+    best_gap_idx = None      # word before the longest pause seen, as a last resort
+    best_gap_size = 0.0
     while i < n:
         dur = words[i].end - words[start].start
         sc = score[i]
         next_gap = (words[i + 1].start - words[i].end) if i + 1 < n else float("inf")
         big_gap = next_gap > max_gap  # a long silence is a hard boundary, any size
+
+        # Remember the longest inter-word pause once the chunk is big enough to
+        # end: for an un-punctuated run-on with no sentence/clause boundary, a
+        # breath is a far more natural cut than an arbitrary word at the limit.
+        if i + 1 < n and dur >= target_min and next_gap > best_gap_size:
+            best_gap_size = next_gap
+            best_gap_idx = i
 
         cut = None
         if sc >= _SENTENCE and dur >= target_min:
@@ -362,7 +427,12 @@ def _assemble(words, score, target_min, target_soft, target_hard, max_gap):
         elif big_gap:
             cut = i                                   # never bridge a long silence
         elif dur >= target_hard or i == n - 1:
-            cut = best_clause if (best_clause is not None and best_clause >= start) else i
+            if best_clause is not None and best_clause >= start:
+                cut = best_clause                     # fall back to a clause break
+            elif best_gap_idx is not None and best_gap_idx >= start and best_gap_size >= _BREATH_PAUSE:
+                cut = best_gap_idx                    # else cut at the longest breath
+            else:
+                cut = i                               # else an arbitrary hard cut
 
         if cut is None:
             if sc >= _CLAUSE and dur >= target_min:
@@ -374,6 +444,8 @@ def _assemble(words, score, target_min, target_soft, target_hard, max_gap):
         start = cut + 1
         i = cut + 1
         best_clause = None
+        best_gap_idx = None
+        best_gap_size = 0.0
     return _merge_short(spans, words, target_min, target_hard, max_gap)
 
 
@@ -437,12 +509,27 @@ def chunk(
         restored = restore_with_model(stream)
         stream = restored if restored is not None else restore_punctuation(stream)
 
+    # Fill punctuation into any long un-punctuated run-on the source left behind
+    # (common with Whisper on a fast speaker) so the boundary detector has marks
+    # to cut on there too; a no-op on already-punctuated stretches.
+    stream = augment_runon_punctuation(stream)
+
     score = break_scores(stream, language)
     spans = _assemble(stream, score, target_min, target_soft, target_hard, max_gap)
 
     out: list[Segment] = []
-    for s, e in spans:
+    for idx, (s, e) in enumerate(spans):
         text = " ".join(w.text for w in stream[s:e + 1]).strip()
-        if text:
-            out.append(Segment(start=stream[s].start, end=stream[e].end, text=text))
+        if not text:
+            continue
+        # Guarantee every chunk ends on a mark so the translator/TTS get a clean
+        # prosodic boundary: a period when the cut is a real sentence end (or a
+        # long silence follows, or it's the final chunk), otherwise a comma to
+        # signal the thought continues into the next chunk.
+        if text[-1] not in _ANY_TERMINAL:
+            is_last = idx == len(spans) - 1
+            gap_after = float("inf") if is_last else stream[spans[idx + 1][0]].start - stream[e].end
+            ends_sentence = score[e] >= _SENTENCE or gap_after >= _SENTENCE_PAUSE or is_last
+            text += "." if ends_sentence else ","
+        out.append(Segment(start=stream[s].start, end=stream[e].end, text=text))
     return out
