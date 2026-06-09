@@ -1,12 +1,16 @@
-"""Acquire a Spanish transcript for a video, trying the cheapest options first.
+"""Acquire a Spanish transcript for a video.
 
-Order of preference (cheapest / highest-fidelity first):
+Order of preference (highest-fidelity first):
   1. An existing manually-created Spanish caption track.
-  2. An existing auto-generated Spanish caption track.
-  3. Any existing caption track (manual, then auto-generated) in another
-     language, machine-translated to Spanish.
-  4. As a last resort: transcribe the audio from scratch with a local
-     Whisper model, then machine-translate that transcript to Spanish.
+  2. Transcribe the audio with a local Whisper model, then translate to
+     Spanish.  Whisper produces properly punctuated, capitalised output
+     natively -- vastly cleaner input for the rechunker than YouTube's
+     auto-generated captions, which arrive as an unpunctuated lowercase
+     stream and defeat the punctuation-aware boundary detection.
+  3. An existing auto-generated Spanish caption track (fallback if Whisper
+     fails for any reason -- lower quality but no local compute needed).
+  4. Any existing caption track in another language, machine-translated to
+     Spanish (last resort).
 
 Returns both the resulting Spanish segments and a human-readable description
 of which path was used (surfaced in job progress for transparency).
@@ -75,7 +79,31 @@ def obtain_spanish_segments(
                 f"existing manual Spanish captions ({code})", original_language=code
             )
 
-    # 2. Auto-generated Spanish captions.
+    # 2. Whisper transcription -- preferred over auto-generated captions because
+    # it produces punctuated, capitalised output natively (the rechunker's
+    # punctuation-aware boundary detection then works on real sentences instead
+    # of fighting a lowercase unpunctuated stream). Extract audio from the video
+    # we already downloaded so no extra YouTube request is needed.
+    from . import speech_to_text  # imported lazily: heavy (loads ML model)
+
+    try:
+        audio_path = work_dir / "audio.wav"
+        ffmpeg_utils.to_standard_wav(video_path, audio_path)
+        stt_segments, detected_language, stt_words = speech_to_text.transcribe(audio_path)
+        stt_segments = rechunker.chunk(stt_segments, language=detected_language, words=stt_words)
+        translated = translator.translate_segments(
+            stt_segments, from_code=detected_language, to_code=target_language
+        )
+        return TranscriptResult(
+            translated,
+            f"freshly transcribed with Whisper ({detected_language}) and translated to {target_language}",
+            original_segments=stt_segments, original_language=detected_language,
+        )
+    except Exception as exc:
+        log.warning("Whisper transcription failed (%s); falling back to caption tracks.", exc)
+
+    # 3. Auto-generated Spanish captions (fallback: no local compute, but arrives
+    # as an unpunctuated lowercase stream that limits rechunker quality).
     code = downloader.available_caption_language(info, es_codes, auto=True)
     if code:
         path = downloader.download_caption(url, code, work_dir, auto=True)
@@ -85,7 +113,7 @@ def obtain_spanish_segments(
                 f"existing auto-generated Spanish captions ({code})", original_language=code
             )
 
-    # 3. Any other-language caption track, then translate.
+    # 4. Any other-language caption track, then translate.
     for auto in (False, True):
         code = downloader.any_caption_language(info, auto=auto)
         if not code:
@@ -95,8 +123,7 @@ def obtain_spanish_segments(
             continue
         # Rechunk in the *source* language before translating, so chunk breaks
         # fall at the source's thought boundaries and the translator sees whole
-        # thoughts (it produces far better Spanish from a complete clause than
-        # from a fragment sliced mid-sentence).
+        # thoughts (far better Spanish from a complete clause than a fragment).
         segments = rechunker.chunk(_read_vtt(path), language=code)
         if not segments:
             continue
@@ -107,22 +134,6 @@ def obtain_spanish_segments(
             original_segments=segments, original_language=code,
         )
 
-    # 4. Nothing usable exists -- transcribe the audio ourselves with Whisper.
-    # Extract the audio from the video we already downloaded rather than asking
-    # YouTube for it again -- this fallback then needs no further YouTube
-    # requests at all, so it isn't affected by the rate limits / network errors
-    # that may be why we ended up here in the first place.
-    from . import speech_to_text  # imported lazily: heavy (loads ML model)
-
-    audio_path = work_dir / "audio.wav"
-    ffmpeg_utils.to_standard_wav(video_path, audio_path)
-    stt_segments, detected_language, stt_words = speech_to_text.transcribe(audio_path)
-    stt_segments = rechunker.chunk(stt_segments, language=detected_language, words=stt_words)
-    translated = translator.translate_segments(
-        stt_segments, from_code=detected_language, to_code=target_language
-    )
-    return TranscriptResult(
-        translated,
-        f"freshly transcribed with Whisper ({detected_language}) and translated to {target_language}",
-        original_segments=stt_segments, original_language=detected_language,
+    raise RuntimeError(
+        "No transcript source available: Whisper failed and no usable caption tracks were found."
     )

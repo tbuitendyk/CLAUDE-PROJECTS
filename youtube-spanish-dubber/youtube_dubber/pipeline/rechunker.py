@@ -174,7 +174,11 @@ def restore_punctuation(words: list[TimedWord]) -> list[TimedWord]:
 
 
 def _normalize_word(s: str) -> str:
-    return re.sub(r"[^\w]", "", s).lower()
+    # Strip sentencepiece special tokens (e.g. <unk> for hyphens/OOV chars)
+    # before comparing, so "co<unk>bishop," and "co-bishop" both reduce to
+    # "cobishop" and don't trigger a false alignment-drift fallback.
+    s = re.sub(r"<[^>]+>", "", s)
+    return re.sub(r"[^a-z]", "", s.lower())
 
 
 def restore_with_model(words: list[TimedWord]) -> "list[TimedWord] | None":
