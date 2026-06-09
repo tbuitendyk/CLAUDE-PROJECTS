@@ -73,7 +73,16 @@ At [claude.ai/code](https://claude.ai/code) → your environment for this repo
 | Secret `VPS_SSH_PRIVATE_KEY_B64` | output of step 3(a) |
 | Secret `VPS_SSH_HOST_KEY` | output of step 3(b) |
 | Network policy | must allow outbound SSH (port 22) — the proxied/limited policies only pass HTTP(S) |
-| Setup script | add: `bash vps-access/session-setup.sh` |
+| Setup script | **paste the contents of `session-setup.sh` directly** (see note) |
+
+> **Why paste, not reference by path?** This kit lives only on the
+> `claude/vps-access` branch, but the environment's setup script runs in
+> *every* session regardless of which branch it checks out (dubber work,
+> portal work, etc.). If the setup script said `bash vps-access/session-setup.sh`,
+> it would fail on every branch that doesn't carry this folder. Pasting the
+> script body directly into the environment's setup-script field makes SSH
+> access work from any session with no dependency on a repo file. `session-setup.sh`
+> in this folder is the canonical, version-controlled copy to paste from.
 
 ### 5. Test in a fresh session
 
