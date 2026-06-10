@@ -203,6 +203,55 @@ curl -fsS -X POST "$BASE" "${H[@]}" -d '{"action":"restart-dubber"}'
 
 Each returns JSON: `{ok, action, exit_code, stdout, stderr}`.
 
+## TODO: automate certificate renewal (retire the quarterly chore)
+
+**Current state.** Every cert (kjv/bible/vp, www + buitendyk.ca, docs.\*, and
+the new deploy.\*) is issued by **manual DNS-01**. DNS is self-hosted on two
+boxes edited **by hand in parallel** — BIND on an Oracle Cloud Linux VM, and
+Microsoft DNS on a Windows Server 2008 R2 VM. Neither is a master; there is no
+AXFR between them. Manual DNS-01 can't auto-renew, which is the every-90-days
+task. Two viable ways to fix it:
+
+### Option 1 — HTTP-01, by reclaiming port 80 for nginx (simplest end state)
+
+Today host `:80` is held by VirtualBox NAT (forwarded into a guest), so the host
+nginx can't answer ACME HTTP-01 challenges. If nginx instead **owns `:80` and
+reverse-proxies to the guest by Host header**, then `certbot --nginx` (or
+`--webroot`) auto-renews every cert with no DNS involvement.
+
+- **Reclaim the port:** drop the `host:80 → guest:80` VBox NAT forward; make the
+  guest reachable another way (host-only/internal network with nginx →
+  `guest_ip:80`, or NAT the guest to a non-80 host port and proxy to it); let
+  nginx `listen 80` with a server block per hostname.
+- **Pros:** simplest renewals, no TSIG/RFC2136, no DNS-server changes; bonus
+  HTTP→HTTPS redirects and central L7 routing.
+- **Cons:** production rework of VirtualBox networking — the guest currently on
+  `:80` must stay reachable, so it needs a careful maintenance window.
+
+### Option 2 — automated DNS-01 via RFC2136 against the BIND box
+
+Keep DNS-01, but let certbot write the `_acme-challenge` TXT itself.
+
+- Run **certbot-dns-rfc2136** pointed at the BIND (Oracle Linux) box with a TSIG
+  key; add `--deploy-hook "systemctl reload nginx"`.
+- Because the two DNS servers are hand-synced with **no AXFR**, don't require the
+  Windows box to take dynamic updates. Instead **CNAME each
+  `_acme-challenge.<host>`** (added once, by hand, on both servers — fits the
+  current workflow) to a name in a small zone the BIND box is authoritative for
+  and accepts dynamic updates on — the standard acme-challenge delegation trick.
+  certbot then updates **only** BIND; the Windows box is never touched.
+- Open BIND's `:53` to the IONOS VPS, add an `update-policy` granting the TSIG
+  key rights to just the challenge names.
+- **Pros:** no change to port 80 / VirtualBox; works with the current TLS
+  topology as-is.
+- **Cons:** TSIG + BIND `update-policy` + a one-time CNAME per host; more moving
+  parts than Option 1.
+
+**Recommendation.** If you're open to reworking the port-80 / VirtualBox routing,
+Option 1 is the cleaner long-term shape. If `:80` must stay forwarded to the
+guest, Option 2 automates renewals without touching it. Either retrofits all
+existing certs, ending the manual cycle.
+
 ## Revoking access
 
 ```bash
