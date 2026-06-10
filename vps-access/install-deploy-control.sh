@@ -117,10 +117,13 @@ if [[ "$NGINX_LIVE" -eq 0 ]]; then
      (the 'map \$ssl_preread_server_name \$backend' block):
          ${HOSTNAME_FQDN}   127.0.0.1:4433;
 
-  3. TLS cert (mirror however you issue the other certs), e.g. webroot:
-         certbot certonly --webroot -w /var/www/html -d ${HOSTNAME_FQDN} \\
-             --deploy-hook "systemctl reload nginx"
-     The --deploy-hook makes renewals reload nginx automatically (hands-off).
+  3. TLS cert. Your existing certs use MANUAL DNS-01, so the consistent
+     command is:
+         certbot certonly --manual --preferred-challenges dns -d ${HOSTNAME_FQDN}
+     (add the printed _acme-challenge TXT record at your DNS host, then enter).
+     NOTE: manual DNS-01 does NOT auto-renew. For hands-off renewal, switch to
+     a DNS-API plugin (e.g. certbot-dns-ionos) and add
+     --deploy-hook "systemctl reload nginx". See README "Cert automation".
 
   4. Re-run this script:  sudo bash vps-access/install-deploy-control.sh
      This time it'll find the cert, enable the vhost, and reload nginx.

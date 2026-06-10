@@ -158,8 +158,23 @@ It installs + starts the local service (safe — loopback only), prints a
 generated **bearer token once**, and then either enables the nginx vhost (if a
 cert is already present) or stops and lists the remaining manual steps: a DNS
 record for `deploy.buitendyk.ca`, a line in the `nginx.conf` SNI stream map,
-and a certbot cert with `--deploy-hook "systemctl reload nginx"`. Re-run the
-script after those and it finishes the nginx side.
+and a TLS cert (see below). Re-run the script after those and it finishes the
+nginx side.
+
+### Cert automation
+
+The existing certs on this box use `authenticator = manual` + DNS-01 (verified
+via `/etc/letsencrypt/renewal/*.conf`): a TXT record is created by hand each
+renewal, which is why they need quarterly attention — **manual DNS-01 cannot
+auto-renew.** Two ways forward for `deploy.buitendyk.ca`:
+
+* **Match the current setup (manual, unblocks today):**
+  `certbot certonly --manual --preferred-challenges dns -d deploy.buitendyk.ca`
+* **Automate (the real fix):** if the DNS host has an API, use its certbot DNS
+  plugin (e.g. `certbot-dns-ionos`) so certbot writes the TXT record itself,
+  add `--deploy-hook "systemctl reload nginx"`, and the cert renews hands-off.
+  The same plugin can retrofit the three existing certs, retiring the quarterly
+  chore entirely.
 
 ### Configure the Claude Code environment
 
