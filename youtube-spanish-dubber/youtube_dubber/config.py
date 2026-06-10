@@ -112,6 +112,10 @@ class Settings:
     # Ignore detected regions the recognizer is less sure about than this (0..1);
     # low-confidence boxes are usually logos/textures, not real text to translate.
     thumbnail_ocr_min_confidence: float = float(os.getenv("DUBBER_THUMBNAIL_OCR_MIN_CONFIDENCE", "0.5"))
+    # Font for re-rendered in-image text. Empty = autodetect a serif/"Roman" face
+    # (DejaVuSerif), a closer match to stylized thumbnail titles than sans. Point
+    # it at a .ttf to use a specific display font.
+    thumbnail_text_font: str = os.getenv("DUBBER_THUMBNAIL_TEXT_FONT", "")
 
     # --- Worker ---
     poll_interval_seconds: float = float(os.getenv("DUBBER_POLL_INTERVAL", "5"))

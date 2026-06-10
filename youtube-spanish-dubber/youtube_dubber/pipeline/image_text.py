@@ -24,6 +24,29 @@ from .models import TextRegion
 
 log = logging.getLogger(__name__)
 
+# Thumbnail titles are usually a serif/"Roman" display face, so re-render in a
+# serif (DejaVuSerif ships with fonts-dejavu-core, installed by deploy) rather
+# than the banner's sans -- a closer match than Arial-like sans. Overridable
+# via DUBBER_THUMBNAIL_TEXT_FONT.
+_SERIF_FONT_CANDIDATES = (
+    "/usr/share/fonts/truetype/dejavu/DejaVuSerif-Bold.ttf",
+    "/usr/share/fonts/truetype/liberation/LiberationSerif-Bold.ttf",
+    "/usr/share/fonts/truetype/freefont/FreeSerifBold.ttf",
+    "/usr/share/fonts/dejavu/DejaVuSerif-Bold.ttf",
+)
+
+# Cap how much the rendered title is vertically stretched to fill its box -- the
+# original's letters are tall/condensed, so some stretch matches the look, but
+# too much turns it into taffy.
+_MAX_VERTICAL_STRETCH = 1.7
+
+# Short Spanish function words kept lowercase inside a Title-Cased line (unless
+# they're the first word) so re-cased titles read naturally ("Salvación por la
+# Sola Fe", not "Salvación Por La Sola Fe").
+_ES_LOWERCASE_WORDS = frozenset(
+    "de del la el los las un una unos unas y o u e a en con sin por para que su al lo".split()
+)
+
 
 def localize_image_file(
     src: Path,
@@ -95,13 +118,71 @@ def detect_and_translate(
     pairs: list[tuple[TextRegion, str]] = []
     for region in ocr_onnx.detect_text_regions(image, min_confidence=min_confidence):
         try:
-            translated = translator.translate_text(region.text, from_code, to_code)
+            translated = _translate_preserving_case(region.text, from_code, to_code)
         except Exception as exc:  # noqa: BLE001 -- e.g. no language package
             log.warning("Skipping a thumbnail text region (%s)", exc)
             continue
         if translated and translated.strip() and translated.strip() != region.text.strip():
             pairs.append((region, translated.strip()))
     return pairs
+
+
+def _translate_preserving_case(text: str, from_code: str, to_code: str) -> str:
+    """Translate `text`, but feed the translator a lowercased copy and re-apply
+    the original's casing style afterwards.
+
+    Machine-translation models handle ordinary lowercase far better than the
+    Title-Case / ALL-CAPS that thumbnail titles use -- given "Salvation by Faith
+    Alone?" Argos leaves words half-translated, but "salvation by faith alone?"
+    comes out clean. We then restore the look: ALL CAPS -> ALL CAPS, Title Case
+    -> Title Case (Spanish function words kept lowercase), else sentence case."""
+    translated = translator.translate_text(text.lower(), from_code, to_code)
+    return _apply_case_style(translated, text)
+
+
+def _apply_case_style(translated: str, original: str) -> str:
+    letters = [c for c in original if c.isalpha()]
+    if not letters:
+        return translated
+    if all(c.isupper() for c in letters):
+        return translated.upper()
+
+    words = [w for w in original.split() if any(c.isalpha() for c in w)]
+
+    def _starts_upper(word: str) -> bool:
+        return next((c.isupper() for c in word if c.isalpha()), False)
+
+    # Title Case if (nearly) every word starts uppercase ("by"/"the" may not).
+    if words and sum(_starts_upper(w) for w in words) >= max(2, len(words) - 1):
+        return _title_case_es(translated)
+    return _sentence_case(translated)
+
+
+def _title_case_es(text: str) -> str:
+    """Title-case `text`, keeping short Spanish function words lowercase (except
+    the first word) and leaving any leading ¿/¡/quote punctuation in place."""
+    out = []
+    for index, word in enumerate(text.split(" ")):
+        lead = ""
+        rest = word
+        while rest and not rest[0].isalnum():  # ¿ ¡ " ( ...
+            lead += rest[0]
+            rest = rest[1:]
+        if not rest:
+            out.append(word)
+            continue
+        if index > 0 and rest.lower() in _ES_LOWERCASE_WORDS:
+            out.append(lead + rest.lower())
+        else:
+            out.append(lead + rest[:1].upper() + rest[1:].lower())
+    return " ".join(out)
+
+
+def _sentence_case(text: str) -> str:
+    for index, char in enumerate(text):
+        if char.isalpha():
+            return text[:index] + char.upper() + text[index + 1:]
+    return text
 
 
 def render_translations(image, pairs: list[tuple[TextRegion, str]]):
@@ -112,8 +193,6 @@ def render_translations(image, pairs: list[tuple[TextRegion, str]]):
     preview UI. Returns the original image unchanged when nothing renders."""
     if not pairs:
         return image, 0
-
-    from PIL import ImageDraw
 
     canvas = image.convert("RGB").copy()
 
@@ -129,10 +208,9 @@ def render_translations(image, pairs: list[tuple[TextRegion, str]]):
 
     canvas = _remove_regions(canvas, [r for r, _ in pairs])
 
-    draw = ImageDraw.Draw(canvas)
     replaced = 0
     for region, translated in pairs:
-        if _render_region(draw, region, translated):
+        if _render_region(canvas, region, translated):
             replaced += 1
 
     if replaced == 0:
@@ -143,37 +221,88 @@ def render_translations(image, pairs: list[tuple[TextRegion, str]]):
 # --- appearance estimation -------------------------------------------------
 
 def _estimate_colors(arr, bbox):
-    """Estimate (text_color, stroke_color) for a region from its pixels.
+    """Estimate the original text's (fill_colour, outline_colour) from its box.
 
-    Heuristic: text is usually the minority of pixels in its box, so the box's
-    median colour approximates the background; the pixels farthest from that
-    median approximate the text. The stroke is then chosen black or white --
-    whichever contrasts the text -- so the re-rendered Spanish stays legible
-    even if the inpainted background isn't a perfect match."""
+    Thumbnail titles are usually a coloured glyph with a contrasting outline
+    (here: white letters with a red outline). The fill is the *interior* of the
+    strokes and the outline is the thin *edge ring* around them -- a distinction
+    of geometry, not pixel count (a thick outline on thin serif strokes has more
+    pixels than the core). A distance transform of the text mask separates them:
+    pixels deep inside the strokes are the fill, pixels at the edge are the
+    outline. If there's really only one text colour, the outline falls back to
+    plain black/white contrast so the Spanish stays legible against the
+    (imperfect) inpainted background."""
     import numpy as np
 
     x0, y0, x1, y1 = bbox
     h, w = arr.shape[:2]
     x0, y0 = max(0, x0), max(0, y0)
     x1, y1 = min(w, x1), min(h, y1)
-    crop = arr[y0:y1, x0:x1].reshape(-1, 3) if x1 > x0 and y1 > y0 else None
-    if crop is None or crop.size == 0:
+    if x1 <= x0 or y1 <= y0:
         return (255, 255, 255), (0, 0, 0)
+    crop = arr[y0:y1, x0:x1]
 
-    background = np.median(crop, axis=0)
-    distance = np.linalg.norm(crop.astype(np.float32) - background, axis=1)
-    # Top quartile of "distance from background" ~= the text strokes.
-    cutoff = np.percentile(distance, 75)
-    foreground_pixels = crop[distance >= cutoff]
-    if foreground_pixels.size:
-        text_color = np.median(foreground_pixels, axis=0)
-    else:  # near-uniform box: fall back to the inverse of the background
-        text_color = 255 - background
+    background = np.median(crop.reshape(-1, 3), axis=0)
+    distance = np.linalg.norm(crop.astype(np.float32) - background, axis=2)  # H x W
+    text_mask = _foreground_mask(distance)
+    if int(text_mask.sum()) < 8:  # near-uniform box: inverse of the background
+        fill = tuple(int(c) for c in (255 - background))
+        return fill, _contrasting(fill)
 
-    fill = tuple(int(c) for c in text_color)
-    luminance = 0.299 * fill[0] + 0.587 * fill[1] + 0.114 * fill[2]
-    stroke = (0, 0, 0) if luminance > 140 else (255, 255, 255)
-    return fill, stroke
+    return _fill_and_outline(crop, text_mask)
+
+
+def _foreground_mask(distance):
+    """0/1 H×W mask of text pixels (far from the box's background colour). An
+    Otsu threshold on the distance adapts to however much of the box the text
+    fills -- a flat percentile would swallow background when the text is sparse."""
+    import numpy as np
+
+    try:
+        import cv2
+
+        dist_u8 = np.clip(distance, 0, 255).astype(np.uint8)
+        threshold, _mask = cv2.threshold(dist_u8, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+        return distance >= max(threshold, 1.0)
+    except Exception:  # noqa: BLE001 -- no opencv: high-percentile fallback
+        return distance >= np.percentile(distance, 80)
+
+
+def _fill_and_outline(crop, text_mask):
+    """Split the text pixels into the stroke interior (fill) and the edge ring
+    (outline) via a distance transform, and return their median colours. Falls
+    back to a single colour + contrasting outline when opencv is unavailable or
+    the text has no distinct outline."""
+    import numpy as np
+
+    try:
+        import cv2
+
+        depth = cv2.distanceTransform((text_mask.astype(np.uint8)) * 255, cv2.DIST_L2, 3)
+        max_depth = float(depth.max())
+        if max_depth >= 2.0:
+            core = text_mask & (depth >= max(2.0, 0.5 * max_depth))   # interior -> fill
+            edge = text_mask & (depth <= 1.5)                          # ring -> outline
+            if int(core.sum()) >= 8 and int(edge.sum()) >= 8:
+                fill = tuple(int(c) for c in np.median(crop[core], axis=0))
+                outline = tuple(int(c) for c in np.median(crop[edge], axis=0))
+                if _colour_distance(fill, outline) >= 45:
+                    return fill, outline
+                return fill, _contrasting(fill)
+    except Exception:  # noqa: BLE001 -- no opencv / degenerate: single colour
+        pass
+
+    fill = tuple(int(c) for c in np.median(crop[text_mask], axis=0))
+    return fill, _contrasting(fill)
+
+
+def _contrasting(colour):
+    luminance = 0.299 * colour[0] + 0.587 * colour[1] + 0.114 * colour[2]
+    return (0, 0, 0) if luminance > 140 else (255, 255, 255)
+
+
+def _colour_distance(a, b):
+    return ((a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2 + (a[2] - b[2]) ** 2) ** 0.5
 
 
 # --- removal ---------------------------------------------------------------
@@ -258,40 +387,75 @@ def _flat_fill_regions(image, regions: list[TextRegion]):
 
 # --- rendering -------------------------------------------------------------
 
-def _render_region(draw, region: TextRegion, text: str) -> bool:
-    """Draw `text` into `region`'s box, sized to fit, with a contrasting outline.
-    Returns False (rendering skipped) if no usable font was found."""
-    from . import thumbnail  # reuse the same DejaVu lookup the banner uses
+def _find_text_font() -> Optional[str]:
+    """The serif/"Roman" face to re-render thumbnail text in (closer to the
+    stylized titles than sans). Honours DUBBER_THUMBNAIL_TEXT_FONT, then known
+    serif paths, then falls back to the banner's sans lookup."""
+    preferred = ""
+    try:
+        from ..config import settings
+        preferred = settings.thumbnail_text_font
+    except Exception:  # noqa: BLE001 -- config import shouldn't fail callers
+        pass
+    for path in ([preferred] if preferred else []) + list(_SERIF_FONT_CANDIDATES):
+        if path and Path(path).exists():
+            return path
+    from . import thumbnail
+    return thumbnail._find_font()
 
-    font_path = thumbnail._find_font()
+
+def _render_region(canvas, region: TextRegion, text: str) -> bool:
+    """Draw `text` into `region`'s box: sized to fit, in a serif face, with the
+    detected fill + outline colours, and vertically stretched to fill the box
+    (matching the original's tall letters). Returns False if no font was found."""
+    font_path = _find_text_font()
     if not font_path:
         return False
 
-    from PIL import ImageFont
+    from PIL import Image, ImageDraw, ImageFont
 
     x0, y0, x1, y1 = region.bbox
     box_w, box_h = max(1, x1 - x0), max(1, y1 - y0)
+    fill = tuple(region.fill_color or (255, 255, 255))
+    stroke = tuple(region.stroke_color or (0, 0, 0))
+    measure = ImageDraw.Draw(Image.new("RGB", (1, 1)))
 
-    # Largest font size whose rendered text fits ~95% of the box, bounded by the
-    # box height. Coarse-to-fine search keeps it cheap for a handful of regions.
+    # Largest font size whose text fits within the box (both axes). Coarse-to-
+    # fine; the vertical stretch below then fills whatever height is left over.
     size = max(8, box_h)
-    fnt = ImageFont.truetype(font_path, size)
     while size > 8:
-        left, top, right, bottom = draw.textbbox((0, 0), text, font=fnt)
-        if (right - left) <= box_w * 0.95 and (bottom - top) <= box_h * 0.98:
+        fnt = ImageFont.truetype(font_path, size)
+        stroke_w = max(1, size // 16)
+        left, top, right, bottom = measure.textbbox((0, 0), text, font=fnt, stroke_width=stroke_w)
+        if (right - left) <= box_w * 0.97 and (bottom - top) <= box_h * 0.98:
             break
         size -= 2
-        fnt = ImageFont.truetype(font_path, size)
-
-    left, top, right, bottom = draw.textbbox((0, 0), text, font=fnt)
+    fnt = ImageFont.truetype(font_path, size)
+    stroke_w = max(1, size // 16)
+    left, top, right, bottom = measure.textbbox((0, 0), text, font=fnt, stroke_width=stroke_w)
     text_w, text_h = right - left, bottom - top
-    # Centre the text in the original box; offset by the bbox origin so the
-    # glyphs sit where we measured them.
-    x = x0 + (box_w - text_w) / 2 - left
-    y = y0 + (box_h - text_h) / 2 - top
+    if text_w <= 0 or text_h <= 0:
+        return False
 
-    fill = region.fill_color or (255, 255, 255)
-    stroke = region.stroke_color or (0, 0, 0)
-    stroke_width = max(1, size // 16)
-    draw.text((x, y), text, font=fnt, fill=fill, stroke_width=stroke_width, stroke_fill=stroke)
+    # Render the title to its own transparent tile so it can be stretched/placed
+    # as a unit (rather than drawn straight onto the canvas).
+    tile = Image.new("RGBA", (text_w + 2 * stroke_w, text_h + 2 * stroke_w), (0, 0, 0, 0))
+    ImageDraw.Draw(tile).text(
+        (stroke_w - left, stroke_w - top), text, font=fnt,
+        fill=fill + (255,), stroke_width=stroke_w, stroke_fill=stroke + (255,),
+    )
+    tile = tile.crop(tile.getbbox() or (0, 0, tile.width, tile.height))
+
+    # Vertical stretch: when width was the binding constraint the glyphs are
+    # shorter than the box, so stretch them up toward the box height (capped) to
+    # match the original's tall lettering.
+    tile_w, tile_h = tile.size
+    target_h = int(min(box_h * 0.98, tile_h * _MAX_VERTICAL_STRETCH))
+    if target_h > tile_h:
+        tile = tile.resize((tile_w, target_h), Image.LANCZOS)
+
+    tile_w, tile_h = tile.size
+    px = x0 + (box_w - tile_w) // 2
+    py = y0 + (box_h - tile_h) // 2
+    canvas.paste(tile, (px, py), tile)
     return True

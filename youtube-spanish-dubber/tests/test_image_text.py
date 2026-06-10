@@ -128,6 +128,33 @@ def test_remove_regions_inpaints_strokes_not_the_whole_box():
     assert changed > 0.5
 
 
+def test_translate_preserving_case_titlecases_with_es_stopwords(monkeypatch):
+    # Translator gets the lowercased input; we restore the Title-Case look with
+    # Spanish function words ("por", "la") kept lowercase.
+    monkeypatch.setattr(image_text.translator, "translate_text", lambda t, f, to: "salvación por la sola fe?")
+    out = image_text._translate_preserving_case("Salvation by Faith Alone?", "en", "es")
+    assert out == "Salvación por la Sola Fe?"
+
+
+def test_apply_case_style_all_caps_and_sentence():
+    assert image_text._apply_case_style("hola mundo", "HELLO WORLD") == "HOLA MUNDO"
+    assert image_text._apply_case_style("hola mundo", "hello world") == "Hola mundo"
+
+
+def test_estimate_colors_detects_fill_and_outline():
+    pytest.importorskip("cv2")
+    # Dark background with sparse white "letters" each outlined in a thin red
+    # edge (white core larger than the red, as in a real outlined font).
+    arr = np.full((100, 500, 3), (20, 20, 30), dtype=np.uint8)
+    for cx in range(50, 450, 90):
+        arr[30:70, cx:cx + 28] = (200, 30, 30)         # red outline block
+        arr[33:67, cx + 3:cx + 25] = (245, 245, 245)   # white core (interior, larger)
+
+    fill, outline = image_text._estimate_colors(arr, (40, 25, 470, 75))
+    assert min(fill) > 180                                          # fill ~ white
+    assert outline[0] > 110 and max(outline[1], outline[2]) < 110   # outline ~ red
+
+
 def test_estimate_colors_picks_contrasting_stroke():
     # White text on a dark box -> light fill, so the stroke should be dark.
     arr = np.zeros((50, 200, 3), dtype=np.uint8)
