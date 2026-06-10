@@ -489,3 +489,80 @@ footer.site-footer {
   color: var(--text-dim);
   margin-top: 0.5rem;
 }
+
+/* --- Thumbnail preview / approval (dubber sub-page) --- */
+.thumbnail-panel .service-title { margin-bottom: 0.75rem; }
+
+/* Original vs generated, side by side; stacks on narrow screens. */
+.thumb-compare {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+.thumb-figure {
+  margin: 0;
+  flex: 1 1 280px;
+  min-width: 0;
+}
+.thumb-figure img.thumb-img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+}
+.thumb-figure figcaption {
+  margin-top: 0.4rem;
+  font-size: 0.8rem;
+  color: var(--text-dim);
+  text-align: center;
+}
+/* The approved (generated) image gets a green frame so it's clear which one
+   will be applied to the upload. */
+.thumb-figure.approved img.thumb-img { border-color: var(--good); }
+.thumb-figure.approved figcaption { color: var(--good); }
+
+/* Per-region edit rows: original text -> editable Spanish. */
+.thumb-regions {
+  margin-top: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.thumb-region {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+.thumb-region-original {
+  flex: 0 1 35%;
+  min-width: 0;
+  color: var(--text-dim);
+  font-size: 0.9rem;
+  word-break: break-word;
+}
+.thumb-region-arrow { color: var(--text-dim); flex-shrink: 0; }
+.thumb-region-input {
+  flex: 1 1 40%;
+  min-width: 0;
+  padding: 0.5rem 0.65rem;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  font-size: 0.95rem;
+}
+.thumb-region-input:focus { outline: none; border-color: var(--accent); }
+
+.thumb-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  margin-top: 1rem;
+}
+.thumb-message { margin-top: 0; }
+.thumb-message.good { color: var(--good); }
+.thumb-message.bad { color: var(--bad); }

@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Spanish Video Dubber &mdash; buitendyk.ca</title>
   <meta name="description" content="Submit an English YouTube video, generate a Spanish voice-over, and publish it to a YouTube channel.">
-  <link rel="stylesheet" href="/assets/style.css?v=12">
+  <link rel="stylesheet" href="/assets/style.css?v=13">
 </head>
 <body>
   <header class="site-header">
@@ -62,9 +62,19 @@
       </div>
 
       <div class="field" style="display:flex; gap:0.75rem; flex-wrap:wrap; align-items:center; margin-bottom:0;">
+        <button class="btn secondary ghosted" id="thumbnail-btn" type="button" disabled>Preview thumbnail</button>
         <button class="btn secondary ghosted" id="preview-btn" type="button" disabled>Preview transcript first</button>
         <button class="btn ghosted" id="submit-btn" type="submit" disabled>Start dubbing</button>
       </div>
+      <p class="hint">
+        <strong>Preview thumbnail</strong> fetches just the video's thumbnail (no
+        full download) and shows it next to a Spanish version &mdash; the text
+        baked into the image is detected and translated, with the
+        &ldquo;Versi&oacute;n Espa&ntilde;ol&rdquo; banner added on top. You can
+        correct any translated line and, once it looks right, mark it to be used
+        for the upload. It's optional: skip it and the dub generates one
+        automatically.
+      </p>
       <p class="hint">
         Not sure the result will sound right? <strong>Preview transcript first</strong> runs
         just the cheap diagnostic stages &mdash; fetching or transcribing the
@@ -78,6 +88,11 @@
       </p>
       <span class="hint" id="form-message"></span>
     </form>
+
+    <!-- Thumbnail preview/approval step. Hidden until "Preview thumbnail" is
+         clicked; dubber.js fills it with the original-vs-generated images, the
+         editable per-region translations, and the "use this" approval. -->
+    <div class="panel thumbnail-panel" id="thumbnail-panel" style="display:none;"></div>
 
     <!-- Operator service controls: kept low-key and below the main form. JS
          toggles visibility with the auth state (see dubber.js setAuthState). -->
@@ -104,6 +119,6 @@
     buitendyk.ca &mdash; self-hosted on a personal VPS, built with free &amp; open-source tools.
   </footer>
 
-  <script src="/dubber/dubber.js?v=7"></script>
+  <script src="/dubber/dubber.js?v=8"></script>
 </body>
 </html>
