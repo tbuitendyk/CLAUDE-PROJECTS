@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Spanish Video Dubber &mdash; buitendyk.ca</title>
   <meta name="description" content="Submit an English YouTube video, generate a Spanish voice-over, and publish it to a YouTube channel.">
-  <link rel="stylesheet" href="/assets/style.css?v=10">
+  <link rel="stylesheet" href="/assets/style.css?v=11">
 </head>
 <body>
   <header class="site-header">
@@ -38,20 +38,6 @@
         action is locked behind the same site credentials used elsewhere on
         buitendyk.ca. Sign in to enable the button below.
       </p>
-
-      <!-- Operator control, only meaningful once signed in. JS toggles its
-           visibility with the auth state (see dubber.js setAuthState). -->
-      <div id="service-controls" style="display:none; margin-top:1rem; border-top:1px solid var(--border); padding-top:1rem;">
-        <div style="display:flex; align-items:center; gap:0.75rem; flex-wrap:wrap;">
-          <button class="btn danger" id="restart-btn" type="button">Restart Dubber service</button>
-          <span class="hint" id="restart-message" style="margin-top:0;"></span>
-        </div>
-        <p class="hint">
-          Restarts the dubbing service: frees its memory and stops any job that's
-          currently running. Use it if a job looks wedged or the server is low on
-          memory. Queued jobs are kept and resume after the restart.
-        </p>
-      </div>
     </div>
 
     <form class="panel" id="dub-form">
@@ -92,6 +78,24 @@
       </p>
       <span class="hint" id="form-message"></span>
     </form>
+
+    <!-- Operator service controls: kept low-key and below the main form. JS
+         toggles visibility with the auth state (see dubber.js setAuthState). -->
+    <div class="panel" id="service-controls" style="display:none;">
+      <div class="service-row">
+        <div class="service-info">
+          <div class="service-title">Service</div>
+          <p class="hint" style="margin-top:0.2rem;">
+            Restart the dubbing service &mdash; frees its memory and stops any job
+            that's currently running. Queued jobs are kept and resume afterward.
+          </p>
+        </div>
+        <div class="service-action">
+          <button class="btn danger small" id="restart-btn" type="button">Restart Dubber service</button>
+          <span class="hint" id="restart-message" style="margin-top:0;"></span>
+        </div>
+      </div>
+    </div>
 
     <div id="job-list"></div>
   </main>

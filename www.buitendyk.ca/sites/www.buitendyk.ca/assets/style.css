@@ -230,6 +230,33 @@ footer.site-footer {
 }
 .btn.danger:hover { background: rgba(240, 104, 104, 0.1); }
 
+/* Compact button variant for low-key/secondary spots. */
+.btn.small { padding: 0.45rem 0.9rem; font-size: 0.85rem; }
+
+/* Operator service controls panel -- description on the left, the (discreet)
+   restart action pushed to the right. Stacks on narrow screens. */
+.service-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+.service-info { min-width: 0; }
+.service-title {
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--text-dim);
+}
+.service-action {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  flex-shrink: 0;
+}
+
 /* "Ghosted" = visible but inert until the visitor authenticates */
 .btn[disabled],
 .btn.ghosted {
