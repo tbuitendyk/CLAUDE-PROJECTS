@@ -36,6 +36,41 @@ def probe_duration(path: Path) -> float:
         return 0.0
 
 
+def audio_window_plan(total_seconds: float, window_seconds: float) -> list[tuple[float, float]]:
+    """Split a [0, total) timeline into consecutive (start, duration) windows of
+    at most `window_seconds`, the last covering the remainder.
+
+    Returns a single full-length window when windowing is disabled
+    (`window_seconds` <= 0) or unnecessary (audio already shorter than a window),
+    and an empty list for non-positive `total_seconds`. Used to feed Whisper one
+    time-window at a time so the whole audio is never decoded into RAM at once.
+    """
+    if total_seconds <= 0:
+        return []
+    if window_seconds <= 0 or total_seconds <= window_seconds:
+        return [(0.0, total_seconds)]
+    plan: list[tuple[float, float]] = []
+    start = 0.0
+    while start < total_seconds - 1e-6:
+        plan.append((start, min(window_seconds, total_seconds - start)))
+        start += window_seconds
+    return plan
+
+
+def extract_audio_window(src: Path, dst: Path, start: float, duration: float) -> None:
+    """Write [start, start+duration) of `src` to `dst` as a standalone WAV in the
+    standard mono/24kHz/16-bit PCM format. `-ss`/`-t` before `-i` keeps the seek
+    fast and (for PCM) sample-accurate, so windows tile the audio with no gaps."""
+    cmd = [
+        "ffmpeg", "-y",
+        "-ss", f"{start:.3f}", "-t", f"{duration:.3f}",
+        "-i", str(src),
+        "-ar", str(SAMPLE_RATE), "-ac", str(CHANNELS),
+        "-c:a", "pcm_s16le", str(dst),
+    ]
+    _run(cmd)
+
+
 def to_standard_wav(src: Path, dst: Path, atempo: float | None = None) -> None:
     """Re-encode `src` to the standard mono/24kHz/16-bit PCM format, optionally
     applying a tempo (speed) change. ffmpeg's `atempo` only supports 0.5-2.0

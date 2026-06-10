@@ -50,6 +50,12 @@ class Settings:
     whisper_model_size: str = os.getenv("DUBBER_WHISPER_MODEL", "small")
     whisper_device: str = os.getenv("DUBBER_WHISPER_DEVICE", "cpu")
     whisper_compute_type: str = os.getenv("DUBBER_WHISPER_COMPUTE_TYPE", "int8")
+    # faster-whisper decodes the *entire* audio file into RAM before it starts,
+    # so a long video's waveform alone can blow the memory budget. Transcribe in
+    # time-windows of at most this many seconds (each extracted to a temp file
+    # and released before the next) so the resident audio stays bounded no matter
+    # the video length. 0 disables windowing (always single-pass).
+    whisper_chunk_seconds: int = int(os.getenv("DUBBER_WHISPER_CHUNK_SECONDS", "600"))
 
     # --- Grammar-based punctuation restoration (rechunker.py) ---
     # A CPU ONNX model (no torch) that restores punctuation/casing on run-on,
