@@ -85,9 +85,26 @@ class Settings:
         "\n\n---\nVoz en español generada automáticamente a partir del video original.",
     )
 
+    # --- Thumbnail branding ---
+    # Reuse the source video's own thumbnail for the dub (so the re-upload is
+    # visually recognisable as the same video) with a small, consistent banner
+    # overlaid. The branded image is applied via the YouTube API after upload.
+    # Note: custom thumbnails require a phone-verified YouTube channel; if that
+    # call fails the dub still publishes, just with YouTube's auto-thumbnail.
+    thumbnail_enabled: bool = _bool("DUBBER_THUMBNAIL_ENABLED", True)
+    thumbnail_banner_text: str = os.getenv("DUBBER_THUMBNAIL_BANNER_TEXT", "Versión Español")
+    # Optional explicit TrueType font for the banner; empty = autodetect DejaVu
+    # (installed by deploy/install.sh) or fall back to skipping the banner.
+    thumbnail_font: str = os.getenv("DUBBER_THUMBNAIL_FONT", "")
+
     # --- Worker ---
     poll_interval_seconds: float = float(os.getenv("DUBBER_POLL_INTERVAL", "5"))
     keep_work_dirs: bool = _bool("DUBBER_KEEP_WORK_DIRS", False)
+    # Free the heavy ML models (Whisper / Argos / ONNX punctuation) once the
+    # queue drains, so an idle service doesn't sit on hundreds of MB of resident
+    # model memory (and its CTranslate2/onnxruntime thread pools) indefinitely.
+    # They reload lazily on the next job.
+    release_models_when_idle: bool = _bool("DUBBER_RELEASE_MODELS_WHEN_IDLE", True)
 
     def ensure_dirs(self) -> None:
         self.data_dir.mkdir(parents=True, exist_ok=True)

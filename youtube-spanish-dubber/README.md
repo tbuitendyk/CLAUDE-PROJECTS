@@ -48,6 +48,7 @@ and you poll `GET /jobs/{id}` for status and the final video link.
 | Sentence/clause chunking | [spaCy](https://spacy.io/) | MIT | CPU-only, no torch; small en/es models |
 | Punctuation restoration | [onnxruntime](https://onnxruntime.ai/) + [punct_cap_seg](https://huggingface.co/1-800-BAD-CODE) | MIT / Apache-2.0 | CPU ONNX, no torch; optional, heuristic fallback |
 | Text-to-speech | [edge-tts](https://github.com/rany2/edge-tts) | GPL-3.0 | Free Microsoft neural voices, no API key |
+| Thumbnail branding | [Pillow](https://python-pillow.org/) | HPND (MIT-like) | Reuse + brand the source thumbnail ("Versión Español"); CPU, tiny |
 | Audio/video processing | [ffmpeg](https://ffmpeg.org/) | LGPL/GPL | Industry standard |
 | Publishing | [YouTube Data API v3](https://developers.google.com/youtube/v3) | Free quota | 10,000 units/day; an upload costs 1,600 (~6/day free) |
 | Web service | [FastAPI](https://fastapi.tiangolo.com/) + [Uvicorn](https://www.uvicorn.org/) | MIT | |
@@ -212,6 +213,21 @@ sudo -u dubber ./.venv/bin/python -m youtube_dubber.cli status a1b2c3d4e5f6
   intermediate audio clips, final mux) is deleted after the job finishes.
   Set `DUBBER_KEEP_WORK_DIRS=true` in `.env` to keep them for debugging
   (under `/opt/youtube-dubber/data/jobs/<job_id>/`).
+- **Thumbnail**: the dub keeps the *original* video's thumbnail with a small
+  "Versión Español" banner (configurable via `DUBBER_THUMBNAIL_*`), drawn with
+  Pillow and set after upload. Custom thumbnails require a **phone-verified**
+  YouTube channel — if yours isn't verified the dub still publishes, just with
+  YouTube's auto-generated thumbnail (logged, never fatal).
+- **Memory / RAM**: the heavy ML models (Whisper, Argos, ONNX punctuation) are
+  freed when the queue goes idle (`DUBBER_RELEASE_MODELS_WHEN_IDLE=true`) so an
+  idle service doesn't hold hundreds of MB indefinitely. The systemd unit also
+  sets `MemoryHigh`/`MemoryMax` so the dubber can never starve other workloads
+  on the box (tune them in `deploy/youtube-dubber.service` for your host).
+- **Restarting / stuck jobs**: `POST /admin/restart` (also a button in the web
+  panel) restarts the service — the catch-all reset that frees model memory and
+  stops a wedged running job. On startup any job still marked `running` (left
+  over from a restart/crash) is reconciled to `failed: interrupted`, so nothing
+  lingers as perpetually "running".
 - **Re-authorizing**: if you ever need to re-run the OAuth flow (e.g. you
   revoked access), just delete `secrets/token.json` and re-run
   `python -m youtube_dubber.cli authorize`.
@@ -242,9 +258,10 @@ youtube_dubber/
     punctuation_onnx.py  Torch-free ONNX grammar punctuation/casing restorer
     translator.py   Argos Translate wrapper
     tts.py          edge-tts synthesis + time-alignment to captions
+    thumbnail.py    Reuse + brand the source thumbnail ("Versión Español") via ffmpeg
     ffmpeg_utils.py Low-level ffmpeg/ffprobe helpers
     video.py        Final audio/video muxing
-    uploader.py     YouTube Data API v3 OAuth + resumable upload
+    uploader.py     YouTube Data API v3 OAuth + resumable upload (+ thumbnail set)
 deploy/
   install.sh        Debian/Ubuntu installer
   youtube-dubber.service   systemd unit

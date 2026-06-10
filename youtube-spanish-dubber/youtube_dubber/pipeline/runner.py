@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Callable
 
 from ..config import settings
-from . import downloader, transcript, translator, tts, uploader, video
+from . import downloader, thumbnail, transcript, translator, tts, uploader, video
 from .models import Segment
 
 log = logging.getLogger(__name__)
@@ -47,6 +47,10 @@ def run(
 
     on_progress("downloading", f"Downloading source video: {info.get('title')!r}")
     source = downloader.download_video(source_url, work_dir)
+
+    # Brand the original thumbnail now (cheap, local); we set it on the upload
+    # at the end. Best-effort: any failure just leaves YouTube's auto-thumbnail.
+    branded_thumbnail = _brand_thumbnail(source, work_dir, on_progress)
 
     if transcript_override is not None:
         on_progress("transcript", f"Using your edited transcript ({len(transcript_override)} lines)...")
@@ -87,6 +91,10 @@ def run(
     )
     description = f"{translated_description}{settings.description_suffix}".strip()
     video_id = uploader.upload_video(dubbed_path, title=title, description=description)
+
+    if branded_thumbnail is not None:
+        on_progress("uploading", "Applying the branded thumbnail...")
+        uploader.set_thumbnail(video_id, branded_thumbnail)
 
     video_url = f"https://youtu.be/{video_id}"
     on_progress("done", f"Published: {video_url}")
@@ -145,6 +153,25 @@ def preview_transcript(source_url: str, target_language: str, work_dir: Path, on
         "original_language": result.original_language,
         "rows": rows,
     }
+
+
+def _brand_thumbnail(source, work_dir: Path, on_progress: ProgressFn):
+    """Produce a branded copy of the source thumbnail, or None if disabled /
+    unavailable. Fully defensive -- a thumbnail is a nice-to-have, never a
+    reason to fail (or even noisily warn within) the dub."""
+    if not settings.thumbnail_enabled or not source.thumbnail_path:
+        return None
+    try:
+        on_progress("downloading", "Branding the thumbnail with the Spanish banner...")
+        return thumbnail.brand_thumbnail(
+            Path(source.thumbnail_path),
+            work_dir / "thumbnail_es.jpg",
+            text=settings.thumbnail_banner_text,
+            font=settings.thumbnail_font,
+        )
+    except Exception as exc:  # noqa: BLE001 -- best effort
+        log.warning("Thumbnail branding skipped (%s)", exc)
+        return None
 
 
 def _probe_duration_fallback(video_path: str) -> float:

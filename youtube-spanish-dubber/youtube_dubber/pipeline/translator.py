@@ -47,6 +47,14 @@ def _resolve(from_code: str, to_code: str):
     return translation
 
 
+def clear_cache() -> None:
+    """Drop the cached translation models when the worker goes idle. Each
+    language pair is a separate CTranslate2 model held in memory, so an idle
+    service can otherwise sit on several of them; they reload lazily."""
+    with _lock:
+        _cache.clear()
+
+
 def translate_text(text: str, from_code: str, to_code: str) -> str:
     if from_code.split("-")[0] == to_code.split("-")[0]:
         return text

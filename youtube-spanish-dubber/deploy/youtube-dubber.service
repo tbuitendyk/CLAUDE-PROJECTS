@@ -10,8 +10,20 @@ Group=dubber
 WorkingDirectory=/opt/youtube-dubber
 EnvironmentFile=/opt/youtube-dubber/.env
 ExecStart=/opt/youtube-dubber/.venv/bin/uvicorn youtube_dubber.app:app --host ${DUBBER_HOST} --port ${DUBBER_PORT}
-Restart=on-failure
-RestartSec=10
+# Restart=always (not just on-failure) so the in-app "Restart Dubber service"
+# button can work by cleanly exiting the process and letting systemd respawn it.
+Restart=always
+RestartSec=3
+
+# --- Resource limits ---------------------------------------------------------
+# This host (16 GB) also runs two VirtualBox VMs allocated 6 GB each, so ~12 GB
+# is spoken for; leaving the host OS + nginx + VBox overhead its share, the
+# dubber gets ~2.5 GB. Capping it here means a heavy job (or leaked model
+# memory) can NEVER starve those VMs: the cgroup throttles + reclaims at
+# MemoryHigh and hard-stops the service at MemoryMax (systemd then restarts it,
+# freeing the RAM). Tune these to your host's RAM / VM split, then re-deploy.
+MemoryHigh=2G
+MemoryMax=2560M
 
 # Hardening (relaxed enough to allow downloading/encoding into WorkingDirectory,
 # and to let libraries like Argos Translate / faster-whisper / torch create

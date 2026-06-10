@@ -26,7 +26,8 @@ SERVICE_USER="dubber"
 echo "==> Installing system packages (ffmpeg, python3-venv, ...)"
 apt-get update -qq
 apt-get install -y --no-install-recommends \
-  ffmpeg python3 python3-venv python3-pip rsync ca-certificates
+  ffmpeg python3 python3-venv python3-pip rsync ca-certificates \
+  fonts-dejavu-core   # TrueType font Pillow uses for the "Versión Español" thumbnail banner
 
 echo "==> Creating service user '${SERVICE_USER}' and ${INSTALL_DIR}"
 id -u "${SERVICE_USER}" &>/dev/null || useradd --system --create-home --shell /usr/sbin/nologin "${SERVICE_USER}"

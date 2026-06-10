@@ -65,6 +65,28 @@ def test_cancelled_is_terminal():
     assert "cancelled" in db.TERMINAL_STATUSES
 
 
+def test_reset_orphaned_running_jobs(fresh_db):
+    # A job left 'running' by a previous crash/restart, plus a healthy queued one.
+    orphan = db.create_job("https://youtu.be/orphan", "es")
+    db.update_job(orphan.id, status="running", stage="muxing")
+    queued = db.create_job("https://youtu.be/queued", "es")
+
+    reset = db.reset_orphaned_running_jobs()
+    assert reset == 1
+
+    reloaded = db.get_job(orphan.id)
+    assert reloaded.status == "failed"
+    assert reloaded.stage == "interrupted"
+    assert "Interrupted" in (reloaded.error or "")
+    # The queued job is untouched and still claimable.
+    assert db.get_job(queued.id).status == "queued"
+
+
+def test_reset_orphaned_running_jobs_noop_when_none(fresh_db):
+    db.create_job("https://youtu.be/queued", "es")
+    assert db.reset_orphaned_running_jobs() == 0
+
+
 # --- HTTP layer ------------------------------------------------------------
 def test_delete_endpoint_cancels_then_409s(fresh_db, monkeypatch):
     fastapi_testclient = pytest.importorskip("fastapi.testclient")
@@ -93,3 +115,20 @@ def test_delete_endpoint_cancels_then_409s(fresh_db, monkeypatch):
     # Unknown id -> 404.
     missing = client.delete("/jobs/nope")
     assert missing.status_code == 404
+
+
+def test_admin_restart_endpoint(fresh_db, monkeypatch):
+    fastapi_testclient = pytest.importorskip("fastapi.testclient")
+    app_module = pytest.importorskip("youtube_dubber.app")
+
+    monkeypatch.setattr(app_module.worker, "start_background", lambda: None)
+    # Don't actually tear the test process down -- just record that a restart
+    # was scheduled.
+    called = {}
+    monkeypatch.setattr(app_module, "_schedule_self_exit", lambda *a, **k: called.setdefault("hit", True))
+    client = fastapi_testclient.TestClient(app_module.app)
+
+    res = client.post("/admin/restart")
+    assert res.status_code == 200
+    assert res.json()["status"] == "restarting"
+    assert called.get("hit") is True

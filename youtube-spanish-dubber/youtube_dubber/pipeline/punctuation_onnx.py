@@ -165,6 +165,16 @@ def _get_model(repo_id: str, spe: str, onnx: str) -> Optional["_OnnxPunctuator"]
     return _model
 
 
+def release_model() -> None:
+    """Drop the cached ONNX punctuation session + tokenizer when the worker
+    goes idle so they don't stay resident between jobs. A previously failed
+    load is left flagged (nothing to free, and no point retrying every idle
+    cycle); a successful one reloads lazily on the next use."""
+    global _model
+    with _lock:
+        _model = None
+
+
 def restore_sentences(text: str) -> Optional[list[str]]:
     """Restore punctuation/casing and split `text` into sentences, or return
     None if the model is disabled/unavailable or inference fails (the caller

@@ -20,12 +20,16 @@ GET  /jobs           list recent jobs
 GET  /jobs/{id}      fetch a single job's status/progress/result
 DELETE /jobs/{id}    cancel a still-queued job (a job that's already running
                      can't be cancelled here -- restart the service for that)
+POST /admin/restart  restart the service (frees model memory, kills a running
+                     job): the process exits cleanly and systemd respawns it
 GET  /healthz        liveness check
 """
 from __future__ import annotations
 
 import logging
+import os
 import re
+import threading
 from typing import Optional
 
 from fastapi import FastAPI, HTTPException
@@ -84,8 +88,21 @@ class JobCreateRequest(BaseModel):
 @app.on_event("startup")
 def _on_startup() -> None:
     db.init_db()
+    # A fresh process can't have anything actually running -- reconcile any
+    # `running` rows left over from a previous restart/crash so the queue
+    # reflects reality (and abandoned jobs don't linger as "stuck").
+    reset = db.reset_orphaned_running_jobs()
+    if reset:
+        log.info("Reset %d orphaned 'running' job(s) left over from a previous run", reset)
     worker.start_background()
     log.info("Service ready on http://%s:%s", settings.host, settings.port)
+
+
+def _schedule_self_exit(delay: float = 0.4) -> None:
+    """Exit the process shortly after returning the HTTP response; the systemd
+    unit (Restart=always) respawns it. Isolated into its own function so tests
+    can stub it out instead of actually tearing the process down."""
+    threading.Timer(delay, lambda: os._exit(0)).start()
 
 
 @app.get("/healthz")
@@ -136,3 +153,19 @@ def cancel_job(job_id: str) -> dict:
             "A job that's already running must be stopped by restarting the service."
         ),
     )
+
+
+@app.post("/admin/restart")
+def restart_service() -> dict:
+    """Restart the dubber service.
+
+    The single in-process worker keeps the heavy ML models (Whisper / Argos /
+    ONNX) resident, and a wedged job can only be stopped by tearing the process
+    down -- so "restart" is the operator's catch-all reset: it frees that
+    memory and kills any running job. We exit cleanly and let systemd
+    (Restart=always) respawn us; on the way back up, startup reconciles any
+    job that was mid-flight (see `_on_startup`).
+    """
+    log.warning("Restart requested via /admin/restart; exiting for systemd to respawn.")
+    _schedule_self_exit()
+    return {"status": "restarting"}

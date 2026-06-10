@@ -66,7 +66,8 @@ def any_caption_language(info: dict, auto: bool) -> Optional[str]:
 
 
 def download_video(url: str, work_dir: Path) -> VideoInfo:
-    """Download the best available muxed (or mux-able) video+audio as MP4."""
+    """Download the best available muxed (or mux-able) video+audio as MP4,
+    plus the source thumbnail (so the dub can reuse/brand it)."""
     out_template = str(work_dir / "source.%(ext)s")
     opts = {
         "quiet": True,
@@ -74,6 +75,9 @@ def download_video(url: str, work_dir: Path) -> VideoInfo:
         "format": "bv*[ext=mp4]+ba[ext=m4a]/bv*+ba/b[ext=mp4]/best",
         "outtmpl": out_template,
         "merge_output_format": "mp4",
+        # Save the thumbnail alongside the video. Best-effort: yt-dlp just skips
+        # it if the video has none, and a missing thumbnail never fails a job.
+        "writethumbnail": True,
         "extractor_args": _EXTRACTOR_ARGS,
     }
     with yt_dlp.YoutubeDL(opts) as ydl:
@@ -89,7 +93,24 @@ def download_video(url: str, work_dir: Path) -> VideoInfo:
         duration=float(info.get("duration") or 0.0),
         original_language=info.get("language"),
         video_path=str(path),
+        thumbnail_path=_find_thumbnail(work_dir, path),
     )
+
+
+# Thumbnail extensions yt-dlp may save (it picks whatever the site serves).
+_THUMBNAIL_EXTS = (".jpg", ".jpeg", ".png", ".webp")
+
+
+def _find_thumbnail(work_dir: Path, video_path: Path) -> Optional[str]:
+    """Locate the thumbnail yt-dlp saved next to the video (e.g. `source.webp`),
+    ignoring the video file itself. Returns its path, or None if none was
+    written."""
+    for candidate in sorted(work_dir.glob("source.*")):
+        if candidate == video_path:
+            continue
+        if candidate.suffix.lower() in _THUMBNAIL_EXTS:
+            return str(candidate)
+    return None
 
 
 def download_caption(url: str, lang: str, work_dir: Path, auto: bool) -> Optional[Path]:

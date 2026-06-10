@@ -25,3 +25,6 @@ class VideoInfo:
     duration: float
     original_language: str | None
     video_path: str
+    # Path to the source video's downloaded thumbnail image, if one was saved
+    # (used to brand and reuse it for the dub). None if unavailable.
+    thumbnail_path: str | None = None

@@ -35,6 +35,15 @@ def _get_model() -> WhisperModel:
     return _model
 
 
+def release_model() -> None:
+    """Drop the cached Whisper model so its native memory (hundreds of MB) and
+    CTranslate2 thread pool are freed when the worker goes idle. It reloads
+    lazily on the next transcription."""
+    global _model
+    with _lock:
+        _model = None
+
+
 def transcribe(audio_path: Path) -> tuple[list[Segment], str, list[TimedWord]]:
     """Transcribe an audio file in its original language.
 

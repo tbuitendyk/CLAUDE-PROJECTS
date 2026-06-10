@@ -188,6 +188,27 @@ def cancel_queued_job(job_id: str) -> bool:
         return cur.rowcount > 0
 
 
+def reset_orphaned_running_jobs() -> int:
+    """Mark any jobs still flagged `running` as failed/interrupted.
+
+    The worker processes one job at a time, in-process, so on a fresh start
+    nothing is actually running -- any surviving `running` row is the residue
+    of a job that a restart or crash cut off mid-pipeline. Reconciling them on
+    startup keeps the queue honest and stops abandoned jobs from showing as
+    perpetually 'running' (the "stuck jobs" seen after a restart). Returns the
+    number of rows reset.
+    """
+    with _connect() as conn:
+        cur = conn.execute(
+            "UPDATE jobs SET status = 'failed', stage = 'interrupted', "
+            "progress = 'Interrupted by a service restart', "
+            "error = 'Interrupted by a service restart before it finished.', "
+            "updated_at = ? WHERE status = 'running'",
+            (_now(),),
+        )
+        return cur.rowcount
+
+
 def claim_next_job() -> Optional[Job]:
     """Atomically pick the oldest queued job and mark it running."""
     with _connect() as conn:

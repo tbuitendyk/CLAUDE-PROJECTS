@@ -110,3 +110,27 @@ def upload_video(
     video_id = response["id"]
     log.info("Uploaded video https://youtu.be/%s", video_id)
     return video_id
+
+
+def set_thumbnail(video_id: str, thumbnail_path: Path) -> bool:
+    """Set a custom thumbnail on an already-uploaded video. Returns True on
+    success.
+
+    Best-effort by design: custom thumbnails require a phone-verified YouTube
+    channel, so a 403 here is expected and benign on an unverified channel --
+    we log it and return False rather than failing the dub, which has already
+    published successfully (YouTube just keeps its auto-generated thumbnail).
+    """
+    try:
+        creds = _load_credentials()
+        youtube = build(API_SERVICE_NAME, API_VERSION, credentials=creds, cache_discovery=False)
+        media = MediaFileUpload(str(thumbnail_path), mimetype="image/jpeg")
+        youtube.thumbnails().set(videoId=video_id, media_body=media).execute()
+        log.info("Set custom thumbnail on https://youtu.be/%s", video_id)
+        return True
+    except Exception as exc:  # noqa: BLE001 -- never fail a published dub over a thumbnail
+        log.warning(
+            "Couldn't set custom thumbnail on %s (%s). Custom thumbnails need a "
+            "verified channel; leaving YouTube's auto-generated one.", video_id, exc
+        )
+        return False
