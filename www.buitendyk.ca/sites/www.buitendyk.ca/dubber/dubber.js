@@ -254,6 +254,46 @@
     return wrap;
   }
 
+  // --- Job progress bar helpers ------------------------------------------
+  // The dubber reports progress_pct (0-100) alongside the stage/message; these
+  // turn it into a bar that keeps moving through the slow stages.
+  function jobPercent(job) {
+    if (typeof job.progress_pct === "number") return Math.max(0, Math.min(100, job.progress_pct));
+    return job.status === "done" ? 100 : 0;
+  }
+
+  function progressState(job) {
+    if (job.status === "done") return "done";
+    if (job.status === "failed") return "failed";
+    if (job.status === "cancelled") return "cancelled";
+    if (job.status === "running") return "running";
+    return "queued";
+  }
+
+  function formatElapsed(job) {
+    const start = Date.parse(job.created_at);
+    if (isNaN(start)) return "";
+    const endRaw = TERMINAL.has(job.status) ? Date.parse(job.updated_at) : Date.now();
+    const end = isNaN(endRaw) ? Date.now() : endRaw;
+    const secs = Math.max(0, Math.round((end - start) / 1000));
+    const m = Math.floor(secs / 60);
+    const s = secs % 60;
+    return `${m}:${String(s).padStart(2, "0")}`;
+  }
+
+  function buildProgressBar(job) {
+    const wrap = document.createElement("div");
+    wrap.className = "job-progress " + progressState(job);
+    const track = document.createElement("div");
+    track.className = "job-progress-track";
+    const fill = document.createElement("div");
+    fill.className = "job-progress-fill";
+    fill.style.width = jobPercent(job) + "%";
+    track.appendChild(fill);
+    wrap.appendChild(track);
+    return wrap;
+  }
+
   function renderJob(job) {
     let card = document.getElementById(`job-${job.id}`);
     if (!card) {
@@ -265,6 +305,9 @@
     card.textContent = "";
 
     const headline = document.createElement("div");
+    headline.className = "job-headline";
+
+    const left = document.createElement("span");
     const idLabel = document.createElement("span");
     idLabel.className = "job-id";
     idLabel.textContent = `Job ${job.id} — `;
@@ -272,31 +315,59 @@
     stage.className = "job-stage";
     const stagePrefix = job.mode === "preview" ? "[preview] " : "";
     stage.textContent = stagePrefix + (job.stage || job.status);
-    headline.appendChild(idLabel);
-    headline.appendChild(stage);
+    left.appendChild(idLabel);
+    left.appendChild(stage);
+    headline.appendChild(left);
 
-    // A still-queued job hasn't been claimed by the worker yet, so it's safe
-    // to cancel outright. (Running jobs are mid-pipeline and can't be stopped
-    // from here -- see the DELETE /jobs endpoint.)
+    const right = document.createElement("span");
+    right.className = "job-headline-right";
+
+    // Percent readout for jobs that are working or have a meaningful figure.
+    if (job.status === "running" || job.status === "done" ||
+        (job.status === "failed" && typeof job.progress_pct === "number")) {
+      const pct = document.createElement("span");
+      pct.className = "job-pct";
+      pct.textContent = Math.round(jobPercent(job)) + "%";
+      right.appendChild(pct);
+    }
+
+    // A still-queued job hasn't been claimed by the worker yet, so it's safe to
+    // cancel outright. (Running jobs are mid-pipeline; see the DELETE endpoint.)
     if (job.status === "queued") {
       const cancelBtn = document.createElement("button");
       cancelBtn.type = "button";
       cancelBtn.className = "btn secondary job-cancel";
       cancelBtn.textContent = "Cancel";
-      cancelBtn.style.marginLeft = "auto";
       cancelBtn.addEventListener("click", () => cancelJob(job.id, cancelBtn));
-      headline.style.display = "flex";
-      headline.style.alignItems = "center";
-      headline.style.gap = "0.5rem";
-      headline.appendChild(cancelBtn);
+      right.appendChild(cancelBtn);
     }
+    headline.appendChild(right);
     card.appendChild(headline);
+
+    // Progress bar -- skipped only for a finished preview, which renders its
+    // transcript table instead.
+    if (!(job.mode === "preview" && job.status === "done")) {
+      card.appendChild(buildProgressBar(job));
+    }
 
     if (job.progress) {
       const progress = document.createElement("div");
-      progress.className = "hint";
+      progress.className = "hint job-detail";
       progress.textContent = job.progress;
       card.appendChild(progress);
+    }
+
+    // Elapsed time while active; final duration once finished (dub jobs only --
+    // a preview is quick and shows its table instead).
+    if (job.status === "running" || job.status === "queued" ||
+        (TERMINAL.has(job.status) && job.mode !== "preview")) {
+      const elapsed = formatElapsed(job);
+      if (elapsed) {
+        const meta = document.createElement("div");
+        meta.className = "job-meta";
+        meta.textContent = (TERMINAL.has(job.status) ? "took " : "elapsed ") + elapsed;
+        card.appendChild(meta);
+      }
     }
 
     if (job.mode === "preview") {

@@ -297,6 +297,82 @@ footer.site-footer {
 .job-card .job-error { color: var(--bad); white-space: pre-wrap; }
 .job-card a.job-link { font-weight: 600; }
 
+/* Job headline: id + stage on the left, percent + cancel on the right. */
+.job-headline {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+.job-headline-right {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-shrink: 0;
+}
+.job-pct {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  font-size: 0.85rem;
+  color: var(--text-dim);
+}
+.job-detail { margin-top: 0.5rem; }
+.job-meta {
+  margin-top: 0.35rem;
+  font-size: 0.78rem;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Progress bar. */
+.job-progress { margin-top: 0.6rem; }
+.job-progress-track {
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--border);
+  overflow: hidden;
+}
+.job-progress-fill {
+  height: 100%;
+  width: 0;
+  border-radius: inherit;
+  background: var(--accent);
+  transition: width 0.6s ease;
+}
+/* Running: animated barber-pole stripes so the bar reads as alive even when the
+   percent is momentarily static (e.g. a long ffmpeg mux between polls). */
+.job-progress.running .job-progress-fill {
+  background-image: linear-gradient(45deg,
+    rgba(255, 255, 255, 0.22) 25%, transparent 25%,
+    transparent 50%, rgba(255, 255, 255, 0.22) 50%,
+    rgba(255, 255, 255, 0.22) 75%, transparent 75%, transparent);
+  background-size: 1rem 1rem;
+  animation: job-progress-stripes 1s linear infinite;
+}
+@keyframes job-progress-stripes {
+  from { background-position: 0 0; }
+  to   { background-position: 1rem 0; }
+}
+.job-progress.done .job-progress-fill { background: var(--good); }
+.job-progress.failed .job-progress-fill { background: var(--bad); }
+.job-progress.cancelled .job-progress-fill { background: var(--text-dim); }
+/* Queued: a faint sheen sweeping the empty track signals "waiting in line". */
+.job-progress.queued .job-progress-track {
+  background-image: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.07), transparent);
+  background-size: 40% 100%;
+  background-repeat: no-repeat;
+  animation: job-progress-wait 1.6s ease-in-out infinite;
+}
+@keyframes job-progress-wait {
+  from { background-position: -40% 0; }
+  to   { background-position: 140% 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .job-progress.running .job-progress-fill,
+  .job-progress.queued .job-progress-track { animation: none; }
+}
+
 /* Cancel button beside a still-queued job: compact, warning-toned. */
 .job-card .btn.job-cancel {
   padding: 0.3rem 0.8rem;
