@@ -4,7 +4,7 @@
 # Prereq: run setup-claude-access.sh FIRST -- this builds on the claude-deploy
 # user, the /usr/local/sbin/claude-deploy helper, and its sudoers rule.
 #
-# Usage (as root, from a checkout of the claude/vps-access branch):
+# Usage (as root, from a checkout of the vps-access branch):
 #   sudo bash vps-access/install-deploy-control.sh
 #
 # What it does, in order of increasing blast radius:

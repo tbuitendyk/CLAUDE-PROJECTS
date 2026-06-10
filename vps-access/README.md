@@ -21,6 +21,23 @@ The SSH user (`claude-deploy`), its `/usr/local/sbin/claude-deploy` helper, and
 the sudoers gating are the shared foundation both paths use. Set those up first
 (`setup-claude-access.sh`), then add the HTTPS endpoint on top.
 
+## Repo layout (one branch per project)
+
+The monorepo is split so each project has its own branch — pick the matching
+branch per session:
+
+| Branch | Holds | Deployed by |
+|---|---|---|
+| `dubber` | `youtube-spanish-dubber/` — the dubbing service (backend) | `deploy-dubber` |
+| `website` | `www.buitendyk.ca/` — the portal, incl. the dubber's web UI at `/dubber/` | `deploy-website` |
+| `vps-access` | this tooling (helper, deploy-control, nginx, installers) | applied by hand (see install steps) |
+
+`deploy-website` and `deploy-dubber` each fetch + hard-reset the deploy checkout
+to their own branch before running its `install.sh`, so a deploy is a single
+call that always ships the latest of the correct branch. Note the dubber spans
+two branches: its **backend** is on `dubber`, its **web UI** is on `website`
+(served by the portal) — so a UI-only change deploys via `deploy-website`.
+
 ## The security model in one paragraph
 
 Claude sessions connect as a dedicated **`claude-deploy`** user — key-only
@@ -58,8 +75,8 @@ git) and `claude_deploy_key.pub` (public).
 
 ```bash
 cd /root/claude-projects
-git fetch origin claude/youtube-spanish-voiceover-QH2I2
-git reset --hard origin/claude/youtube-spanish-voiceover-QH2I2
+git fetch origin vps-access
+git reset --hard origin/vps-access
 sudo bash vps-access/setup-claude-access.sh "$(cat /path/to/claude_deploy_key.pub)"
 ```
 
@@ -93,7 +110,7 @@ At [claude.ai/code](https://claude.ai/code) → your environment for this repo
 | Setup script | **paste the contents of `session-setup.sh` directly** (see note) |
 
 > **Why paste, not reference by path?** This kit lives only on the
-> `claude/vps-access` branch, but the environment's setup script runs in
+> `vps-access` branch, but the environment's setup script runs in
 > *every* session regardless of which branch it checks out (dubber work,
 > portal work, etc.). If the setup script said `bash vps-access/session-setup.sh`,
 > it would fail on every branch that doesn't carry this folder. Pasting the
@@ -115,11 +132,25 @@ You should see the dubber + nginx health.
 
 ```bash
 ssh vps 'journalctl -u youtube-dubber -n 100'        # read logs (no sudo)
-ssh vps 'sudo claude-deploy sync claude/youtube-spanish-voiceover-QH2I2'
-ssh vps 'sudo claude-deploy deploy-website'
-ssh vps 'sudo claude-deploy deploy-dubber'
+ssh vps 'sudo claude-deploy deploy-website'          # syncs the 'website' branch, then deploys
+ssh vps 'sudo claude-deploy deploy-dubber'           # syncs the 'dubber' branch, then deploys
 ssh vps 'sudo claude-deploy restart-dubber'          # also kills a RUNNING dub job
+ssh vps 'sudo claude-deploy sync vps-access'         # refresh the infra checkout
 ssh vps 'sudo claude-deploy status'
+```
+
+### Updating this helper
+
+`setup-claude-access.sh` writes `/usr/local/sbin/claude-deploy`, so after
+editing the helper on the `vps-access` branch, re-apply it **as root** on the
+box (idempotent; note the `claude-deploy` user itself can't run setup — only a
+real admin/root SSH session can):
+
+```bash
+# as root on the VPS:
+cd /root/claude-projects
+git fetch origin vps-access && git reset --hard origin/vps-access
+sudo bash vps-access/setup-claude-access.sh "$(cat /home/claude-deploy/.ssh/authorized_keys)"
 ```
 
 ---
@@ -146,7 +177,7 @@ cloud session → curl https://deploy.buitendyk.ca/run  (Bearer token)
 | `nginx/deploy.buitendyk.ca.conf` | TLS vhost + rate limit, proxies to the local service |
 | `install-deploy-control.sh` | installs all of the above; **won't touch nginx until a cert exists** |
 
-### Install (as root, from a `claude/vps-access` checkout)
+### Install (as root, from a `vps-access` checkout)
 
 Prereq: `setup-claude-access.sh` has already run (creates the user + helper).
 
@@ -195,10 +226,10 @@ BASE="https://deploy.buitendyk.ca/run"
 H=(-H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json")
 
 curl -fsS -X POST "$BASE" "${H[@]}" -d '{"action":"status"}'
-curl -fsS -X POST "$BASE" "${H[@]}" -d '{"action":"sync","branch":"claude/youtube-spanish-voiceover-QH2I2"}'
-curl -fsS -X POST "$BASE" "${H[@]}" -d '{"action":"deploy-website"}'
-curl -fsS -X POST "$BASE" "${H[@]}" -d '{"action":"deploy-dubber"}'
+curl -fsS -X POST "$BASE" "${H[@]}" -d '{"action":"deploy-website"}'   # self-syncs the 'website' branch
+curl -fsS -X POST "$BASE" "${H[@]}" -d '{"action":"deploy-dubber"}'    # self-syncs the 'dubber' branch
 curl -fsS -X POST "$BASE" "${H[@]}" -d '{"action":"restart-dubber"}'
+curl -fsS -X POST "$BASE" "${H[@]}" -d '{"action":"sync","branch":"vps-access"}'   # only to refresh infra tooling
 ```
 
 Each returns JSON: `{ok, action, exit_code, stdout, stderr}`.

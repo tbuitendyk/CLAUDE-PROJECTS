@@ -3,7 +3,7 @@
 #
 # PASTE THIS SCRIPT'S BODY into the environment's setup-script field at
 # claude.ai/code (do NOT reference it by repo path -- this file lives only on
-# the claude/vps-access branch, but the setup script must run on every branch;
+# the vps-access branch, but the setup script must run on every branch;
 # see README.md). It then runs at the start of every session. Reads its inputs
 # from environment variables configured as secrets on the Claude Code environment:
 #

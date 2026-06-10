@@ -73,19 +73,38 @@ set -euo pipefail
 
 REPO_DIR="/root/claude-projects"
 
+# Each product project lives on its own branch; a deploy syncs to that branch
+# before running its installer, so deploys are single-call and always current.
+BRANCH_WEBSITE="website"
+BRANCH_DUBBER="dubber"
+
 usage() {
   cat >&2 <<USAGE
 Usage: sudo claude-deploy <command>
 
   sync <branch>     fetch <branch> from origin and hard-reset the checkout
                     at ${REPO_DIR} to match it (discards local changes)
-  deploy-website    run www.buitendyk.ca/deploy/install.sh
-  deploy-dubber     run youtube-spanish-dubber/deploy/install.sh
+  deploy-website    sync the '${BRANCH_WEBSITE}' branch, then run
+                    www.buitendyk.ca/deploy/install.sh
+  deploy-dubber     sync the '${BRANCH_DUBBER}' branch, then run
+                    youtube-spanish-dubber/deploy/install.sh
   restart-dubber    restart the youtube-dubber service (also the way to
                     kill a RUNNING dub job; queued jobs cancel via the UI)
-  status            service health: youtube-dubber, nginx, nginx -t
+  status            checkout branch/commit + service health (dubber, nginx)
 USAGE
   exit 1
+}
+
+# Fetch a branch and hard-reset the deploy checkout to it. Shared by `sync`
+# (any validated branch) and by the deploy actions (their own fixed branch),
+# so a deploy always runs the latest of the correct branch in one call.
+sync_to() {
+  local branch="$1"
+  cd "$REPO_DIR"
+  git fetch origin "$branch"
+  git checkout -f -B "$branch" "origin/$branch"
+  git reset --hard "origin/$branch"
+  echo "Now at ${branch}: $(git log --oneline -1)"
 }
 
 cmd="${1:-}"
@@ -99,16 +118,14 @@ case "$cmd" in
       echo "Refusing suspicious branch name: $branch" >&2
       exit 1
     fi
-    cd "$REPO_DIR"
-    git fetch origin "$branch"
-    git checkout -f -B "$branch" "origin/$branch"
-    git reset --hard "origin/$branch"
-    echo "Now at: $(git log --oneline -1)"
+    sync_to "$branch"
     ;;
   deploy-website)
+    sync_to "$BRANCH_WEBSITE"
     bash "$REPO_DIR/www.buitendyk.ca/deploy/install.sh"
     ;;
   deploy-dubber)
+    sync_to "$BRANCH_DUBBER"
     bash "$REPO_DIR/youtube-spanish-dubber/deploy/install.sh"
     ;;
   restart-dubber)
@@ -117,6 +134,10 @@ case "$cmd" in
     systemctl status youtube-dubber --no-pager | head -8
     ;;
   status)
+    if [[ -d "$REPO_DIR/.git" ]]; then
+      echo "checkout: $(git -C "$REPO_DIR" rev-parse --abbrev-ref HEAD 2>/dev/null) @ $(git -C "$REPO_DIR" log --oneline -1 2>/dev/null)"
+      echo "---"
+    fi
     systemctl status youtube-dubber --no-pager | head -8 || true
     echo "---"
     systemctl status nginx --no-pager | head -5 || true
