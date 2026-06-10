@@ -16,14 +16,22 @@ Restart=always
 RestartSec=3
 
 # --- Resource limits ---------------------------------------------------------
-# This host (16 GB) also runs two VirtualBox VMs allocated 6 GB each, so ~12 GB
-# is spoken for; leaving the host OS + nginx + VBox overhead its share, the
-# dubber gets ~2.5 GB. Capping it here means a heavy job (or leaked model
-# memory) can NEVER starve those VMs: the cgroup throttles + reclaims at
-# MemoryHigh and hard-stops the service at MemoryMax (systemd then restarts it,
-# freeing the RAM). Tune these to your host's RAM / VM split, then re-deploy.
-MemoryHigh=2G
-MemoryMax=2560M
+# This host (16 GB) also runs two VirtualBox VMs allocated 6 GB each (~12 GB
+# spoken for), so the dubber must stay bounded enough not to starve them.
+#
+# IMPORTANT: MemoryHigh is a *throttle*, NOT a kill. If it sits below a job's
+# real working set, the kernel throttles the cgroup into a crawl and the job
+# HANGS instead of finishing -- a Whisper transcription did exactly that, pinned
+# at MemoryHigh=2G and burning CPU for ~12 h without completing. So MemoryHigh
+# now sits ABOVE the heavy (Whisper) path's working set: it only trims excess
+# page cache, never throttles the compute. MemoryMax is the hard ceiling --
+# exceed it and the cgroup restarts the service (freeing the RAM) rather than
+# letting it grow into the VMs. Headroom math: 16 - 12 (VMs) - ~0.5 (host) leaves
+# ~3.5 GB; the dubber realistically peaks ~2.5 GB mid-job and drops at idle
+# (models are released), so this ceiling is a safety net, not a reservation.
+# Tune to your host's RAM / VM split, then re-deploy.
+MemoryHigh=3G
+MemoryMax=3584M
 
 # Hardening (relaxed enough to allow downloading/encoding into WorkingDirectory,
 # and to let libraries like Argos Translate / faster-whisper / torch create
