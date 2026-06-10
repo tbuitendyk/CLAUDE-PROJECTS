@@ -311,6 +311,18 @@ _NLP_CACHE: dict[str, object] = {}
 _SPACY_MODELS = {"en": "en_core_web_sm", "es": "es_core_news_sm"}
 
 
+def release_models() -> None:
+    """Drop the cached spaCy NLP models.
+
+    They're process-lifetime singletons (one per source language) loaded only
+    for boundary detection during rechunking. Freeing them once a rechunk is
+    done -- both within a job, before the translation model loads, and when the
+    worker goes idle -- keeps them from stacking with the Whisper / punctuation /
+    translation models and inflating the job's resident set. They reload lazily
+    on the next chunk()."""
+    _NLP_CACHE.clear()
+
+
 def _load_nlp(language: str | None):
     """Lazily load (and cache) a small spaCy model for the source language.
     Returns None when spaCy or the model isn't installed -- callers then fall

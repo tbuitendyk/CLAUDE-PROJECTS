@@ -20,10 +20,23 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
+from .. import memory
 from . import downloader, ffmpeg_utils, rechunker, subtitles, translator
 from .models import Segment
 
 log = logging.getLogger(__name__)
+
+
+def _release_rechunk_models() -> None:
+    """Free the rechunk stage's models -- the ONNX punctuation session and the
+    spaCy NLP models -- and return their memory to the OS. Called once a rechunk
+    is done so they don't stay resident (stacking with the translation model)
+    through the rest of the stage. They reload lazily if needed again."""
+    from . import punctuation_onnx  # lazy: avoids importing onnxruntime eagerly
+
+    punctuation_onnx.release_model()
+    rechunker.release_models()
+    memory.release_to_os()
 
 # Caption cues and raw Whisper utterances arrive as short, often sentence-
 # fragmenting phrases. Rechunking them into natural "thought units" (whole
@@ -100,7 +113,16 @@ def obtain_spanish_segments(
             audio_path,
             on_progress=lambda f: _report(f"Transcribing audio with Whisper… {int(f * 100)}%", min(0.9, f * 0.9)),
         )
+        # Transcription is the stage's memory peak: the Whisper model plus the
+        # fully-decoded audio waveform. Neither is needed past this point, so
+        # drop them now -- before the punctuation/spaCy/translation models load --
+        # so they don't stack on top and push the job's resident set past the
+        # cgroup throttle line. Whisper reloads lazily on the next job.
+        speech_to_text.release_model()
+        memory.release_to_os()
+
         stt_segments = rechunker.chunk(stt_segments, language=detected_language, words=stt_words)
+        _release_rechunk_models()  # free punctuation + spaCy before translating
         # Whisper drove 0..0.9 of the stage; translation drives the final
         # 0.9..0.99 (the band's end is filled by the caller once it's all done).
         _report(f"Translating {len(stt_segments)} lines to {target_language}…", 0.9)
@@ -118,6 +140,10 @@ def obtain_spanish_segments(
         )
     except Exception as exc:
         log.warning("Whisper transcription failed (%s); falling back to caption tracks.", exc)
+        # Whisper may have loaded before failing; free it so it doesn't sit
+        # resident through the caption-based fallback paths below.
+        speech_to_text.release_model()
+        memory.release_to_os()
 
     # 3. Auto-generated Spanish captions (fallback: no local compute, but arrives
     # as an unpunctuated lowercase stream that limits rechunker quality).
@@ -144,6 +170,7 @@ def obtain_spanish_segments(
         segments = rechunker.chunk(_read_vtt(path), language=code)
         if not segments:
             continue
+        _release_rechunk_models()  # free punctuation + spaCy before translating
         kind = "auto-generated" if auto else "manual"
         # No Whisper here, so translation is the whole slow part of the stage:
         # drive most of the band (0.05..0.99) off its line count.

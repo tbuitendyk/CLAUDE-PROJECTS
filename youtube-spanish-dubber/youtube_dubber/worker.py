@@ -6,8 +6,6 @@ better processing one dub at a time than thrashing on several concurrently.
 """
 from __future__ import annotations
 
-import ctypes
-import gc
 import json
 import logging
 import shutil
@@ -16,7 +14,7 @@ import time
 import traceback
 from importlib import import_module
 
-from . import db, progress
+from . import db, memory, progress
 from .config import settings
 from .pipeline import runner
 from .pipeline.models import Segment
@@ -27,22 +25,15 @@ _stop_event = threading.Event()
 
 # Heavy models are cached as process-lifetime singletons in these pipeline
 # modules. Each exposes a release hook so the worker can drop them when idle.
+# (The pipeline also releases them per-stage *within* a job -- see
+# transcript.py -- so they don't stack; this is the catch-all for whatever is
+# still resident once the queue drains.)
 _RELEASE_HOOKS = (
     ("speech_to_text", "release_model"),  # faster-whisper / CTranslate2
     ("translator", "clear_cache"),        # Argos Translate (per-pair CTranslate2)
     ("punctuation_onnx", "release_model"),  # onnxruntime session
+    ("rechunker", "release_models"),      # spaCy NLP models
 )
-
-
-def _malloc_trim() -> None:
-    """Hand freed heap back to the OS. CPython/glibc keep freed arenas around
-    (especially with many threads, as CTranslate2/onnxruntime spawn), so RSS
-    can stay high after we've dropped the model objects -- malloc_trim forces
-    the return so the host (and its other VMs) actually gets the RAM back."""
-    try:
-        ctypes.CDLL("libc.so.6").malloc_trim(0)
-    except Exception:  # noqa: BLE001 -- non-glibc / unavailable: best effort
-        pass
 
 
 def release_idle_memory() -> None:
@@ -59,8 +50,7 @@ def release_idle_memory() -> None:
             getattr(module, fn_name)()
         except Exception as exc:  # noqa: BLE001 -- optional dep missing, etc.
             log.debug("Idle model release skipped for %s (%s)", module_name, exc)
-    gc.collect()
-    _malloc_trim()
+    memory.release_to_os()
     log.info("Released cached models; service is idle.")
 
 

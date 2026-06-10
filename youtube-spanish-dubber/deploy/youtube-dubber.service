@@ -23,12 +23,18 @@ RestartSec=3
 # real working set, the kernel throttles the cgroup into a crawl and the job
 # HANGS instead of finishing -- a Whisper transcription did exactly that, pinned
 # at MemoryHigh=2G and burning CPU for ~12 h without completing. So MemoryHigh
-# now sits ABOVE the heavy (Whisper) path's working set: it only trims excess
-# page cache, never throttles the compute. MemoryMax is the hard ceiling --
-# exceed it and the cgroup restarts the service (freeing the RAM) rather than
-# letting it grow into the VMs. Headroom math: 16 - 12 (VMs) - ~0.5 (host) leaves
-# ~3.5 GB; the dubber realistically peaks ~2.5 GB mid-job and drops at idle
-# (models are released), so this ceiling is a safety net, not a reservation.
+# must stay ABOVE the working set: it only trims excess page cache, never
+# throttles the compute.
+#
+# Keeping the working set BELOW this line is mostly the pipeline's job, not the
+# ceiling's: the heavy models (Whisper, ONNX punctuation, spaCy, Argos) used to
+# stack -- each stays cached as a singleton -- so a single dub's resident set
+# grew past 3 GB and the kernel throttled it into the same crawl. The pipeline
+# now releases each model the moment its stage finishes, *within* the job (see
+# transcript.py / memory.release_to_os), so the set peaks at one stage's models
+# (~1.5 GB) rather than the sum. MemoryMax is the hard ceiling -- exceed it and
+# the cgroup restarts the service (freeing the RAM) rather than letting it grow
+# into the VMs. Headroom math: 16 - 12 (VMs) - ~0.5 (host) leaves ~3.5 GB.
 # Tune to your host's RAM / VM split, then re-deploy.
 MemoryHigh=3G
 MemoryMax=3584M
