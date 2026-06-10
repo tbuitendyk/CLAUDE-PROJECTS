@@ -12,6 +12,7 @@ import logging
 from pathlib import Path
 from typing import Callable
 
+from .. import progress
 from ..config import settings
 from . import downloader, thumbnail, transcript, translator, tts, uploader, video
 from .models import Segment
@@ -62,11 +63,22 @@ def run(
         transcript_source = "edited transcript from preview"
     else:
         on_progress("transcript", "Acquiring a Spanish transcript...")
-        result = transcript.obtain_spanish_segments(
-            source_url, info, work_dir, target_language, Path(source.video_path),
-            report=lambda message, fraction: on_progress("transcript", message, fraction=fraction),
-        )
-        on_progress("transcript", f"Transcript ready via: {result.source} ({len(result.segments)} lines)")
+        # The transcript stage is long and largely silent (model load, VAD,
+        # caption translation). A heartbeat eases the bar forward throughout so
+        # it never freezes; real sub-progress signals re-anchor it (see
+        # progress.StageHeartbeat). Seed it so the creep starts immediately,
+        # before the first internal signal.
+        with progress.StageHeartbeat(
+            lambda message, fraction: on_progress("transcript", message, fraction=fraction)
+        ) as heartbeat:
+            heartbeat.report("Acquiring a Spanish transcript...", 0.0)
+            result = transcript.obtain_spanish_segments(
+                source_url, info, work_dir, target_language, Path(source.video_path),
+                report=heartbeat.report,
+            )
+        # Heartbeat stopped: fill the band (fraction=1.0) so the bar lands at the
+        # transcript band's end rather than snapping back to its start.
+        on_progress("transcript", f"Transcript ready via: {result.source} ({len(result.segments)} lines)", fraction=1.0)
         segments = result.segments
         transcript_source = result.source
 
@@ -137,10 +149,14 @@ def preview_transcript(source_url: str, target_language: str, work_dir: Path, on
     )
 
     on_progress("transcript", "Acquiring a transcript and translating it to Spanish...")
-    result = transcript.obtain_spanish_segments(
-        source_url, info, work_dir, target_language, Path(source.video_path),
-        report=lambda message, fraction: on_progress("transcript", message, fraction=fraction),
-    )
+    with progress.StageHeartbeat(
+        lambda message, fraction: on_progress("transcript", message, fraction=fraction)
+    ) as heartbeat:
+        heartbeat.report("Acquiring a transcript and translating it to Spanish...", 0.0)
+        result = transcript.obtain_spanish_segments(
+            source_url, info, work_dir, target_language, Path(source.video_path),
+            report=heartbeat.report,
+        )
 
     if result.original_segments is not None:
         rows = [
@@ -177,7 +193,10 @@ def _brand_thumbnail(source, work_dir: Path, on_progress: ProgressFn):
     if not settings.thumbnail_enabled or not source.thumbnail_path:
         return None
     try:
-        on_progress("downloading", "Branding the thumbnail with the Spanish banner...")
+        # fraction=1.0 keeps the bar parked at the download band's end (the
+        # download just finished there); without it this would reset to the
+        # band start and visibly jump the bar backward before the transcript.
+        on_progress("downloading", "Branding the thumbnail with the Spanish banner...", fraction=1.0)
         return thumbnail.brand_thumbnail(
             Path(source.thumbnail_path),
             work_dir / "thumbnail_es.jpg",

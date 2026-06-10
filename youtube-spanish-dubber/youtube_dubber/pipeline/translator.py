@@ -63,11 +63,27 @@ def translate_text(text: str, from_code: str, to_code: str) -> str:
         return translation.translate(text)
 
 
-def translate_segments(segments: list[Segment], from_code: str, to_code: str) -> list[Segment]:
+def translate_segments(
+    segments: list[Segment],
+    from_code: str,
+    to_code: str,
+    on_progress: "Callable[[int, int], None] | None" = None,
+) -> list[Segment]:
+    """Translate each segment in turn. `on_progress`, if given, is called as
+    (lines_done, lines_total) after each line -- translation runs entirely on
+    the CPU line by line and is the whole of the transcript stage for caption-
+    based videos, so surfacing it keeps the progress bar moving through it
+    instead of sitting silent."""
     if from_code.split("-")[0] == to_code.split("-")[0]:
         return segments
 
     translated: list[Segment] = []
-    for seg in segments:
+    total = len(segments)
+    for index, seg in enumerate(segments, start=1):
         translated.append(Segment(start=seg.start, end=seg.end, text=translate_text(seg.text, from_code, to_code)))
+        if on_progress is not None:
+            try:
+                on_progress(index, total)
+            except Exception:  # noqa: BLE001 -- progress is best-effort
+                pass
     return translated

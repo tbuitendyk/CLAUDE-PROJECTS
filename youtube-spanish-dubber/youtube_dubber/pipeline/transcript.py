@@ -101,9 +101,15 @@ def obtain_spanish_segments(
             on_progress=lambda f: _report(f"Transcribing audio with Whisper… {int(f * 100)}%", min(0.9, f * 0.9)),
         )
         stt_segments = rechunker.chunk(stt_segments, language=detected_language, words=stt_words)
-        _report(f"Translating {len(stt_segments)} lines to {target_language}…", 0.92)
+        # Whisper drove 0..0.9 of the stage; translation drives the final
+        # 0.9..0.99 (the band's end is filled by the caller once it's all done).
+        _report(f"Translating {len(stt_segments)} lines to {target_language}…", 0.9)
         translated = translator.translate_segments(
-            stt_segments, from_code=detected_language, to_code=target_language
+            stt_segments, from_code=detected_language, to_code=target_language,
+            on_progress=lambda done, total: _report(
+                f"Translating to {target_language}… line {done}/{total}",
+                0.9 + 0.09 * (done / total if total else 1.0),
+            ),
         )
         return TranscriptResult(
             translated,
@@ -139,7 +145,15 @@ def obtain_spanish_segments(
         if not segments:
             continue
         kind = "auto-generated" if auto else "manual"
-        translated = translator.translate_segments(segments, from_code=code, to_code=target_language)
+        # No Whisper here, so translation is the whole slow part of the stage:
+        # drive most of the band (0.05..0.99) off its line count.
+        translated = translator.translate_segments(
+            segments, from_code=code, to_code=target_language,
+            on_progress=lambda done, total: _report(
+                f"Translating {kind} {code} captions to {target_language}… line {done}/{total}",
+                0.05 + 0.94 * (done / total if total else 1.0),
+            ),
+        )
         return TranscriptResult(
             translated, f"translated from {kind} {code} captions to {target_language}",
             original_segments=segments, original_language=code,
