@@ -108,4 +108,112 @@ def detect_text_regions(image, min_confidence: float = 0.0) -> list[TextRegion]:
         if not text.strip() or score < min_confidence:
             continue
         regions.append(TextRegion(polygon=polygon, text=text, confidence=score))
-    return regions
+    return _merge_line_regions(regions)
+
+
+def _merge_line_regions(regions: list[TextRegion]) -> list[TextRegion]:
+    """Merge detections that sit on the same text line and overlap (or nearly
+    touch) horizontally into a single region spanning their union.
+
+    Detectors routinely split one stylized title -- "Salvation by Faith Alone?"
+    -- into several boxes. Translating and re-rendering each piece on its own
+    gives mismatched font sizes, text that collides where the boxes overlap, and
+    poor translations of the half-phrases (Argos mangles "n by Faith Alone?").
+    Merging same-line pieces first means one coherent line is translated and
+    drawn once, in one box, at one size."""
+    if len(regions) < 2:
+        return regions
+
+    boxes = [r.bbox for r in regions]
+
+    # Union-find: group every pair that reads as the same line.
+    parent = list(range(len(regions)))
+
+    def find(i: int) -> int:
+        while parent[i] != i:
+            parent[i] = parent[parent[i]]
+            i = parent[i]
+        return i
+
+    for i in range(len(regions)):
+        for j in range(i + 1, len(regions)):
+            if _same_line_adjacent(boxes[i], boxes[j]):
+                parent[find(i)] = find(j)
+
+    groups: dict[int, list[int]] = {}
+    for i in range(len(regions)):
+        groups.setdefault(find(i), []).append(i)
+
+    merged: list[TextRegion] = []
+    for members in groups.values():
+        if len(members) == 1:
+            merged.append(regions[members[0]])
+            continue
+        members.sort(key=lambda i: boxes[i][0])  # reading order, left to right
+        x0 = min(boxes[i][0] for i in members)
+        y0 = min(boxes[i][1] for i in members)
+        x1 = max(boxes[i][2] for i in members)
+        y1 = max(boxes[i][3] for i in members)
+        merged.append(
+            TextRegion(
+                polygon=[(float(x0), float(y0)), (float(x1), float(y0)),
+                         (float(x1), float(y1)), (float(x0), float(y1))],
+                text=_join_line_texts([regions[i].text for i in members],
+                                      [boxes[i] for i in members]),
+                confidence=min(regions[i].confidence for i in members),
+            )
+        )
+
+    # Stable human reading order: top to bottom, then left to right.
+    merged.sort(key=lambda r: (r.bbox[1], r.bbox[0]))
+    return merged
+
+
+def _same_line_adjacent(a: tuple, b: tuple) -> bool:
+    """Do boxes `a` and `b` belong to the same run of title text -- i.e. they
+    sit on the same line (vertical overlap) and overlap or nearly touch
+    horizontally (gap under ~0.6 line-heights)?"""
+    ax0, ay0, ax1, ay1 = a
+    bx0, by0, bx1, by1 = b
+    vertical_overlap = min(ay1, by1) - max(ay0, by0)
+    if vertical_overlap <= 0:
+        return False
+    shorter = min(ay1 - ay0, by1 - by0) or 1
+    if vertical_overlap / shorter < 0.5:
+        return False
+    avg_height = (((ay1 - ay0) + (by1 - by0)) / 2) or 1
+    gap = max(bx0 - ax1, ax0 - bx1)  # >0 is a horizontal gap; <=0 is overlap
+    return gap <= 0.6 * avg_height
+
+
+def _join_line_texts(texts: list[str], boxes: list[tuple]) -> str:
+    """Join same-line fragments left to right. Where two boxes physically
+    overlap, the recogniser usually duplicated the shared boundary characters
+    ("Salvation" + "n by Faith Alone?"), so de-duplicate that overlap to
+    reconstruct the original ("Salvation by Faith Alone?"); otherwise join with
+    a space."""
+    result = texts[0].strip()
+    for index in range(1, len(texts)):
+        nxt = texts[index].strip()
+        if not nxt:
+            continue
+        if not result:
+            result = nxt
+            continue
+        overlaps = boxes[index][0] < boxes[index - 1][2]  # starts before the previous box ends
+        if overlaps:
+            result += nxt[_shared_affix_len(result, nxt):]
+        else:
+            result += " " + nxt
+    return result
+
+
+def _shared_affix_len(left: str, right: str, max_k: int = 12) -> int:
+    """Length of the largest suffix of `left` that equals a prefix of `right`
+    (case-insensitive), capped at `max_k` -- the over-segmentation overlap to
+    drop when stitching two fragments. 0 if there's no shared run."""
+    left_l, right_l = left.lower(), right.lower()
+    for k in range(min(len(left_l), len(right_l), max_k), 0, -1):
+        if left_l[-k:] == right_l[:k]:
+            return k
+    return 0
