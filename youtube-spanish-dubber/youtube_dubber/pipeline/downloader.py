@@ -12,7 +12,7 @@ from typing import Callable, Optional
 
 import yt_dlp
 
-from .models import VideoInfo
+from .models import ThumbnailSource, VideoInfo
 
 log = logging.getLogger(__name__)
 
@@ -117,6 +117,43 @@ def download_video(
         original_language=info.get("language"),
         video_path=str(path),
         thumbnail_path=_find_thumbnail(work_dir, path),
+    )
+
+
+def fetch_thumbnail(url: str, work_dir: Path) -> Optional[ThumbnailSource]:
+    """Download only the source video's thumbnail (no video/audio) plus the bit
+    of metadata the preview needs. Returns None if no thumbnail could be saved.
+
+    This is what makes the thumbnail-approval step cheap enough to run the
+    instant a URL is pasted: `skip_download` means yt-dlp fetches just the
+    info + the thumbnail image, not the (large, slow) media streams the full
+    `download_video` pulls."""
+    opts = {
+        "quiet": True,
+        "no_warnings": True,
+        "skip_download": True,
+        "writethumbnail": True,
+        "outtmpl": str(work_dir / "thumb.%(ext)s"),
+        "extractor_args": _EXTRACTOR_ARGS,
+    }
+    try:
+        with yt_dlp.YoutubeDL(opts) as ydl:
+            info = ydl.extract_info(url, download=True)
+    except yt_dlp.utils.DownloadError as exc:
+        log.warning("Thumbnail fetch failed for %s: %s", url, exc)
+        return None
+
+    thumb = next(
+        (str(p) for p in sorted(work_dir.glob("thumb.*")) if p.suffix.lower() in _THUMBNAIL_EXTS),
+        None,
+    )
+    if thumb is None:
+        return None
+    return ThumbnailSource(
+        thumbnail_path=thumb,
+        title=info.get("title") or info["id"],
+        original_language=info.get("language"),
+        video_id=info["id"],
     )
 
 

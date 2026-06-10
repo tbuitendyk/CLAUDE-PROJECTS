@@ -30,6 +30,7 @@ CREATE TABLE IF NOT EXISTS jobs (
     error TEXT,
     result TEXT,
     transcript_overrides TEXT,
+    thumbnail_override TEXT,
     youtube_video_id TEXT,
     youtube_video_url TEXT,
     created_at TEXT NOT NULL,
@@ -44,6 +45,7 @@ _MIGRATIONS = (
     "ALTER TABLE jobs ADD COLUMN result TEXT",
     "ALTER TABLE jobs ADD COLUMN transcript_overrides TEXT",
     "ALTER TABLE jobs ADD COLUMN progress_pct REAL",
+    "ALTER TABLE jobs ADD COLUMN thumbnail_override TEXT",
 )
 
 # Lifecycle: queued -> running -> done
@@ -75,6 +77,10 @@ class Job:
     error: Optional[str] = None
     result: Optional[str] = None
     transcript_overrides: Optional[str] = None
+    # An approved/edited final thumbnail image (base64 data-URI) to use verbatim
+    # for the upload instead of auto-generating one -- the thumbnail analogue of
+    # transcript_overrides. Stored but kept out of API listings (see to_dict).
+    thumbnail_override: Optional[str] = None
     youtube_video_id: Optional[str] = None
     youtube_video_url: Optional[str] = None
     created_at: str = field(default_factory=_now)
@@ -94,6 +100,9 @@ class Job:
                     data[key] = json.loads(data[key])
                 except ValueError:
                     pass
+        # The thumbnail override is a full base64 image -- too big to splash
+        # through every job listing. Expose only whether one is set.
+        data["has_thumbnail_override"] = bool(data.pop("thumbnail_override", None))
         return data
 
 
@@ -125,6 +134,7 @@ def create_job(
     target_language: str | None = None,
     mode: str = "dub",
     transcript_overrides: list[dict] | None = None,
+    thumbnail_override: str | None = None,
 ) -> Job:
     job = Job(
         id=uuid.uuid4().hex[:12],
@@ -132,16 +142,18 @@ def create_job(
         target_language=target_language or settings.target_language,
         mode=mode,
         transcript_overrides=json.dumps(transcript_overrides) if transcript_overrides else None,
+        thumbnail_override=thumbnail_override,
     )
     with _connect() as conn:
         conn.execute(
             """INSERT INTO jobs
                (id, source_url, target_language, mode, status, stage, progress, error, result,
-                transcript_overrides, youtube_video_id, youtube_video_url, created_at, updated_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                transcript_overrides, thumbnail_override, youtube_video_id, youtube_video_url,
+                created_at, updated_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 job.id, job.source_url, job.target_language, job.mode, job.status, job.stage,
-                job.progress, job.error, job.result, job.transcript_overrides,
+                job.progress, job.error, job.result, job.transcript_overrides, job.thumbnail_override,
                 job.youtube_video_id, job.youtube_video_url, job.created_at, job.updated_at,
             ),
         )

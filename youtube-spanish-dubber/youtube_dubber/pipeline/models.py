@@ -62,3 +62,16 @@ class TextRegion:
         xs = [p[0] for p in self.polygon]
         ys = [p[1] for p in self.polygon]
         return (int(min(xs)), int(min(ys)), int(round(max(xs))), int(round(max(ys))))
+
+
+@dataclass
+class ThumbnailSource:
+    """Just enough about a source video to preview its branded thumbnail without
+    downloading the video itself (downloader.fetch_thumbnail) -- the image plus
+    the bits the localiser/UI need: a title, the source language to translate
+    from, and the id."""
+
+    thumbnail_path: str
+    title: str
+    original_language: str | None
+    video_id: str

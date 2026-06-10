@@ -68,24 +68,49 @@ def localize_image(
 
     The original image is returned untouched (replaced=0) when there is nothing
     to do. This is the reusable core both the thumbnail and a future video frame
-    pass call."""
-    regions = ocr_onnx.detect_text_regions(image, min_confidence=min_confidence)
-    if not regions:
+    pass call -- it is just `detect_and_translate` followed by
+    `render_translations`, split out so the interactive thumbnail preview can
+    sit between the two (show the auto-translations, let them be edited, then
+    render the approved text)."""
+    pairs = detect_and_translate(image, from_code, to_code, min_confidence=min_confidence)
+    if not pairs:
         return image, 0
+    return render_translations(image, pairs)
 
-    # Translate each region; keep only those that yielded genuinely new text.
-    # (A name, a number or an already-Spanish word often translates to itself --
-    # re-rendering those just risks degrading a region for no gain.)
-    pending: list[tuple[TextRegion, str]] = []
-    for region in regions:
+
+def detect_and_translate(
+    image,
+    from_code: str,
+    to_code: str,
+    *,
+    min_confidence: float = 0.5,
+) -> list[tuple[TextRegion, str]]:
+    """Detect text in `image` and translate each confidently-recognised region
+    to `to_code`, returning `(region, translated_text)` pairs.
+
+    Only regions whose translation is genuinely new are kept: a name, a number
+    or an already-Spanish word often translates to itself, and re-rendering
+    those just risks degrading a region for no gain. Never raises -- an
+    untranslatable region is skipped."""
+    pairs: list[tuple[TextRegion, str]] = []
+    for region in ocr_onnx.detect_text_regions(image, min_confidence=min_confidence):
         try:
             translated = translator.translate_text(region.text, from_code, to_code)
         except Exception as exc:  # noqa: BLE001 -- e.g. no language package
             log.warning("Skipping a thumbnail text region (%s)", exc)
             continue
         if translated and translated.strip() and translated.strip() != region.text.strip():
-            pending.append((region, translated.strip()))
-    if not pending:
+            pairs.append((region, translated.strip()))
+    return pairs
+
+
+def render_translations(image, pairs: list[tuple[TextRegion, str]]):
+    """Return `(rendered_image, replaced_count)`: a copy of `image` with each
+    `(region, text)` pair's original text painted out and `text` drawn in its
+    place. `pairs` carries whatever translations the caller settled on -- the
+    automatic ones from `detect_and_translate`, or ones a user edited in the
+    preview UI. Returns the original image unchanged when nothing renders."""
+    if not pairs:
         return image, 0
 
     from PIL import ImageDraw
@@ -98,15 +123,15 @@ def localize_image(
     import numpy as np
 
     arr = np.asarray(canvas)
-    for region, _translated in pending:
+    for region, _translated in pairs:
         fill, stroke = _estimate_colors(arr, region.bbox)
         region.fill_color, region.stroke_color = fill, stroke
 
-    canvas = _remove_regions(canvas, [r for r, _ in pending])
+    canvas = _remove_regions(canvas, [r for r, _ in pairs])
 
     draw = ImageDraw.Draw(canvas)
     replaced = 0
-    for region, translated in pending:
+    for region, translated in pairs:
         if _render_region(draw, region, translated):
             replaced += 1
 

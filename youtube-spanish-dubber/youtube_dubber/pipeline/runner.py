@@ -43,6 +43,7 @@ def run(
     work_dir: Path,
     on_progress: ProgressFn = _noop,
     transcript_override: list[Segment] | None = None,
+    thumbnail_override: Path | None = None,
 ) -> dict:
     """Run the full pipeline. Returns a result dict with at least
     `youtube_video_id` and `youtube_video_url` on success.
@@ -63,10 +64,15 @@ def run(
         on_progress=lambda f: on_progress("downloading", f"Downloading source video… {int(f * 100)}%", fraction=f),
     )
 
-    # Localise + brand the original thumbnail now (local); we set it on the
-    # upload at the end. Best-effort: any failure just leaves YouTube's
-    # auto-thumbnail.
-    branded_thumbnail = _brand_thumbnail(source, target_language, work_dir, on_progress)
+    # The thumbnail we'll set on the upload at the end. A `thumbnail_override`
+    # is one the user already previewed/edited and approved (banner baked in),
+    # so it's used verbatim -- otherwise we localise + brand the source
+    # thumbnail now (local, best-effort: any failure just leaves YouTube's
+    # auto-thumbnail).
+    if thumbnail_override is not None:
+        branded_thumbnail = thumbnail_override
+    else:
+        branded_thumbnail = _brand_thumbnail(source, target_language, work_dir, on_progress)
 
     if transcript_override is not None:
         on_progress("transcript", f"Using your edited transcript ({len(transcript_override)} lines)...")

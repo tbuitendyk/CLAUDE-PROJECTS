@@ -15,7 +15,18 @@ POST /jobs           {"url": "<youtube url>", "target_language": "es", "mode": "
                      transcript-acquisition stage outright with these exact
                      timed lines -- e.g. a "preview transcript first" result
                      the user reviewed and hand-edited -- so the dub says
-                     precisely what was approved.
+                     precisely what was approved. `thumbnail_override` (a
+                     base64 data-URI) similarly carries an approved/edited
+                     thumbnail to use verbatim instead of auto-generating one.
+POST /thumbnail/preview  {"url": "<youtube url>", "target_language": "es"}
+                     -> fetch ONLY the source thumbnail (no video) and return
+                     it next to the generated (text-translated + branded)
+                     version, with per-region translations as editable fields.
+                     Cheap enough to run the moment a URL is pasted.
+POST /thumbnail/render   {"original": "<data-uri>", "regions": [{"polygon":..,
+                      "translation": ".."}], "banner_text": ".."}
+                     -> re-render the thumbnail from edited translations (the
+                     "edit the text" loop); returns the new generated image.
 GET  /jobs           list recent jobs
 GET  /jobs/{id}      fetch a single job's status/progress/result
 DELETE /jobs/{id}    cancel a still-queued job (a job that's already running
@@ -53,6 +64,13 @@ app = FastAPI(
 )
 
 
+def _require_youtube_url(value: str) -> str:
+    value = value.strip()
+    if not _YOUTUBE_URL_RE.match(value):
+        raise ValueError("Must be a youtube.com or youtu.be video URL")
+    return value
+
+
 class TranscriptOverrideLine(BaseModel):
     """One hand-edited line from a "preview transcript first" pass, carried
     over verbatim into the dub so the narration says exactly what was
@@ -68,14 +86,15 @@ class JobCreateRequest(BaseModel):
     target_language: Optional[str] = None
     mode: str = "dub"
     transcript_overrides: Optional[list[TranscriptOverrideLine]] = None
+    # A thumbnail the user previewed/edited and approved (base64 data-URI),
+    # used verbatim for the upload instead of auto-generating one. Only
+    # consulted in "dub" mode.
+    thumbnail_override: Optional[str] = None
 
     @field_validator("url")
     @classmethod
     def _validate_url(cls, value: str) -> str:
-        value = value.strip()
-        if not _YOUTUBE_URL_RE.match(value):
-            raise ValueError("Must be a youtube.com or youtu.be video URL")
-        return value
+        return _require_youtube_url(value)
 
     @field_validator("mode")
     @classmethod
@@ -83,6 +102,37 @@ class JobCreateRequest(BaseModel):
         if value not in db.JOB_MODES:
             raise ValueError(f"mode must be one of {sorted(db.JOB_MODES)}")
         return value
+
+
+class ThumbnailPreviewRequest(BaseModel):
+    """Ask for the side-by-side original-vs-generated thumbnail for a URL,
+    before any dub is started -- cheap because only the thumbnail is fetched,
+    not the video."""
+    url: str
+    target_language: Optional[str] = None
+
+    @field_validator("url")
+    @classmethod
+    def _validate_url(cls, value: str) -> str:
+        return _require_youtube_url(value)
+
+
+class ThumbnailRegionEdit(BaseModel):
+    """One text region echoed back from a preview, with the translation the
+    user settled on. `polygon` locates it (from the preview's `regions`); the
+    server re-renders that text in place rather than re-detecting."""
+    polygon: list[list[float]]
+    translation: str
+    text: Optional[str] = None
+
+
+class ThumbnailRenderRequest(BaseModel):
+    """Re-render a thumbnail from edited regions (the "edit the text" loop).
+    `original` is the unmodified source thumbnail (data-URI) echoed back so the
+    server stays stateless between edits."""
+    original: str
+    regions: list[ThumbnailRegionEdit] = []
+    banner_text: Optional[str] = None
 
 
 @app.on_event("startup")
@@ -110,11 +160,92 @@ def healthz() -> dict:
     return {"status": "ok"}
 
 
+def _validated_thumbnail_override(raw: Optional[str]) -> Optional[str]:
+    """Accept an approved-thumbnail data-URI only if it actually decodes to an
+    image, so a malformed override is rejected up front rather than silently
+    dropped deep in the pipeline."""
+    if not raw:
+        return None
+    from .pipeline import thumbnail_preview
+
+    try:
+        thumbnail_preview.data_uri_to_image(raw)
+    except Exception as exc:  # noqa: BLE001 -- surface as a 422 to the caller
+        raise HTTPException(status_code=422, detail="thumbnail_override is not a valid image") from exc
+    return raw
+
+
 @app.post("/jobs", status_code=201)
 def create_job(payload: JobCreateRequest) -> dict:
     overrides = [line.model_dump() for line in payload.transcript_overrides] if payload.transcript_overrides else None
-    job = db.create_job(payload.url, payload.target_language, mode=payload.mode, transcript_overrides=overrides)
+    thumbnail_override = _validated_thumbnail_override(payload.thumbnail_override)
+    job = db.create_job(
+        payload.url, payload.target_language, mode=payload.mode,
+        transcript_overrides=overrides, thumbnail_override=thumbnail_override,
+    )
     return job.to_dict()
+
+
+@app.post("/thumbnail/preview")
+def thumbnail_preview(payload: ThumbnailPreviewRequest) -> dict:
+    """Fetch just the source thumbnail and return it alongside the generated
+    (translated + branded) version, plus the per-region translations as
+    editable fields. Fast: no video is downloaded. The client then either
+    approves `generated` (submitting it back as `thumbnail_override` on POST
+    /jobs) or edits the regions and calls POST /thumbnail/render."""
+    import tempfile
+    from pathlib import Path
+
+    from PIL import Image
+
+    from .pipeline import downloader, thumbnail_preview as tp
+
+    target = payload.target_language or settings.target_language
+    with tempfile.TemporaryDirectory() as tmp:
+        source = downloader.fetch_thumbnail(payload.url, Path(tmp))
+        if source is None:
+            raise HTTPException(status_code=422, detail="Couldn't fetch a thumbnail for that video")
+        with Image.open(source.thumbnail_path) as opened:
+            original = opened.convert("RGB")
+        generated, regions = tp.generate_preview(
+            original,
+            from_code=(source.original_language or "en"),
+            to_code=target,
+            min_confidence=settings.thumbnail_ocr_min_confidence,
+            banner_text=settings.thumbnail_banner_text,
+            font=settings.thumbnail_font,
+        )
+        result = {
+            "video_id": source.video_id,
+            "title": source.title,
+            "source_language": source.original_language or "en",
+            "banner_text": settings.thumbnail_banner_text,
+            "original": tp.image_to_data_uri(original),
+            "generated": tp.image_to_data_uri(generated),
+            "regions": regions,
+        }
+    return result
+
+
+@app.post("/thumbnail/render")
+def thumbnail_render(payload: ThumbnailRenderRequest) -> dict:
+    """Re-render a thumbnail from edited region translations and return the new
+    generated image -- the live update behind the "edit the text" controls."""
+    from .pipeline import thumbnail_preview as tp
+
+    try:
+        image = tp.data_uri_to_image(payload.original)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=422, detail="`original` is not a valid image") from exc
+
+    banner = settings.thumbnail_banner_text if payload.banner_text is None else payload.banner_text
+    generated = tp.render_edited(
+        image,
+        [region.model_dump() for region in payload.regions],
+        banner_text=banner,
+        font=settings.thumbnail_font,
+    )
+    return {"generated": tp.image_to_data_uri(generated)}
 
 
 @app.get("/jobs")

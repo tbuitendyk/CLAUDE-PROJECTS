@@ -85,6 +85,25 @@ def _load_transcript_override(raw: str | None) -> list[Segment] | None:
     return segments or None
 
 
+def _materialize_thumbnail_override(raw: str | None, work_dir):
+    """Decode a job's approved thumbnail (base64 data-URI) to a JPEG in the work
+    dir and return its path, or None if there's nothing usable. The image was
+    finalised in the preview (translated text + banner already baked in), so the
+    pipeline uses it as-is."""
+    if not raw:
+        return None
+    try:
+        from .pipeline import thumbnail_preview
+
+        image = thumbnail_preview.data_uri_to_image(raw)
+        path = work_dir / "thumbnail_override.jpg"
+        image.save(path, "JPEG", quality=90)
+        return path
+    except Exception as exc:  # noqa: BLE001 -- a bad override just falls back to auto
+        log.warning("Ignoring unusable thumbnail_override (%s)", exc)
+        return None
+
+
 def _process(job: db.Job) -> None:
     work_dir = db.job_work_dir(job.id)
     on_progress = _make_progress_fn(job.id)
@@ -102,9 +121,11 @@ def _process(job: db.Job) -> None:
             )
         else:
             transcript_override = _load_transcript_override(job.transcript_overrides)
+            thumbnail_override = _materialize_thumbnail_override(job.thumbnail_override, work_dir)
             result = runner.run(
                 job.source_url, job.target_language, work_dir,
                 on_progress=on_progress, transcript_override=transcript_override,
+                thumbnail_override=thumbnail_override,
             )
             db.update_job(
                 job.id,

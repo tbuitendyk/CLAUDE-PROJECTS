@@ -97,6 +97,24 @@ def test_progress_pct_persists_and_round_trips(fresh_db):
     assert reloaded.to_dict()["progress_pct"] == 63.5
 
 
+def test_thumbnail_override_stored_but_hidden_from_listing(fresh_db):
+    uri = "data:image/jpeg;base64,QUJD"
+    job = db.create_job("https://youtu.be/abc123", "es", thumbnail_override=uri)
+
+    reloaded = db.get_job(job.id)
+    assert reloaded.thumbnail_override == uri  # persisted for the worker to use
+
+    # ...but the big blob is not splashed through the API; only a flag is.
+    data = reloaded.to_dict()
+    assert "thumbnail_override" not in data
+    assert data["has_thumbnail_override"] is True
+
+
+def test_no_thumbnail_override_reports_false(fresh_db):
+    job = db.create_job("https://youtu.be/abc123", "es")
+    assert db.get_job(job.id).to_dict()["has_thumbnail_override"] is False
+
+
 # --- HTTP layer ------------------------------------------------------------
 def test_delete_endpoint_cancels_then_409s(fresh_db, monkeypatch):
     fastapi_testclient = pytest.importorskip("fastapi.testclient")
@@ -142,3 +160,45 @@ def test_admin_restart_endpoint(fresh_db, monkeypatch):
     assert res.status_code == 200
     assert res.json()["status"] == "restarting"
     assert called.get("hit") is True
+
+
+def test_create_job_rejects_bad_thumbnail_override(fresh_db, monkeypatch):
+    fastapi_testclient = pytest.importorskip("fastapi.testclient")
+    app_module = pytest.importorskip("youtube_dubber.app")
+    pytest.importorskip("PIL.Image")
+
+    monkeypatch.setattr(app_module.worker, "start_background", lambda: None)
+    client = fastapi_testclient.TestClient(app_module.app)
+
+    res = client.post("/jobs", json={
+        "url": "https://youtu.be/abc123",
+        "thumbnail_override": "data:image/jpeg;base64,not-an-image",
+    })
+    assert res.status_code == 422
+
+
+def test_thumbnail_render_endpoint(fresh_db, monkeypatch):
+    import base64
+    import io
+
+    fastapi_testclient = pytest.importorskip("fastapi.testclient")
+    app_module = pytest.importorskip("youtube_dubber.app")
+    PIL_Image = pytest.importorskip("PIL.Image")
+    from youtube_dubber.pipeline import thumbnail
+    if thumbnail._find_font() is None:
+        pytest.skip("no DejaVu font installed")
+
+    monkeypatch.setattr(app_module.worker, "start_background", lambda: None)
+    client = fastapi_testclient.TestClient(app_module.app)
+
+    buffer = io.BytesIO()
+    PIL_Image.new("RGB", (640, 360), (15, 15, 15)).save(buffer, "JPEG")
+    original = "data:image/jpeg;base64," + base64.b64encode(buffer.getvalue()).decode()
+
+    res = client.post("/thumbnail/render", json={
+        "original": original,
+        "regions": [{"polygon": [[40, 140], [600, 140], [600, 230], [40, 230]], "translation": "HOLA"}],
+        "banner_text": "Versión Español",
+    })
+    assert res.status_code == 200
+    assert res.json()["generated"].startswith("data:image/jpeg;base64,")

@@ -47,41 +47,56 @@ def brand_thumbnail(src: Path, out: Path, text: str, font: str = "") -> Optional
         return None
     if not text.strip():
         return None
+    try:
+        from PIL import Image
+
+        branded = brand_image(Image.open(src), text, font=font)
+        if branded is None:
+            return None
+        branded.save(out, "JPEG", quality=90)
+    except Exception as exc:  # noqa: BLE001 -- best effort; never fail the dub
+        log.warning("Thumbnail branding failed (%s); skipping custom thumbnail.", exc)
+        return None
+    return out if out.exists() else None
+
+
+def brand_image(base, text: str, font: str = ""):
+    """Overlay the banner on an in-memory image and return a new RGB image, or
+    None if it couldn't be drawn (no usable font / empty text). This is the
+    rendering core `brand_thumbnail` saves to disk; the thumbnail-preview
+    endpoint reuses it to brand an already-localised image in memory."""
+    if not text.strip():
+        return None
     font_path = _find_font(font)
     if not font_path:
         log.warning("No usable font for the thumbnail banner; skipping branding.")
         return None
 
-    try:
-        from PIL import Image, ImageDraw, ImageFont
+    from PIL import Image, ImageDraw, ImageFont
 
-        base = Image.open(src).convert("RGBA")
-        width, height = base.size
+    base = base.convert("RGBA")
+    width, height = base.size
 
-        font_size = max(14, height // 18)
-        fnt = ImageFont.truetype(font_path, font_size)
+    font_size = max(14, height // 18)
+    fnt = ImageFont.truetype(font_path, font_size)
 
-        overlay = Image.new("RGBA", base.size, (0, 0, 0, 0))
-        draw = ImageDraw.Draw(overlay)
+    overlay = Image.new("RGBA", base.size, (0, 0, 0, 0))
+    draw = ImageDraw.Draw(overlay)
 
-        # Measure the text, then size a padded banner around it.
-        left, top, right, bottom = draw.textbbox((0, 0), text, font=fnt)
-        text_w, text_h = right - left, bottom - top
-        pad = max(6, height // 60)
-        margin = max(8, height // 36)
+    # Measure the text, then size a padded banner around it.
+    left, top, right, bottom = draw.textbbox((0, 0), text, font=fnt)
+    text_w, text_h = right - left, bottom - top
+    pad = max(6, height // 60)
+    margin = max(8, height // 36)
 
-        x0 = margin
-        y1 = height - margin
-        x1 = min(width - margin, x0 + text_w + 2 * pad)
-        y0 = y1 - (text_h + 2 * pad)
-        radius = max(4, pad)
+    x0 = margin
+    y1 = height - margin
+    x1 = min(width - margin, x0 + text_w + 2 * pad)
+    y0 = y1 - (text_h + 2 * pad)
+    radius = max(4, pad)
 
-        draw.rounded_rectangle([x0, y0, x1, y1], radius=radius, fill=(0, 0, 0, 150))
-        # Offset by the bbox origin so the glyphs sit squarely inside the pad.
-        draw.text((x0 + pad - left, y0 + pad - top), text, font=fnt, fill=(255, 255, 255, 245))
+    draw.rounded_rectangle([x0, y0, x1, y1], radius=radius, fill=(0, 0, 0, 150))
+    # Offset by the bbox origin so the glyphs sit squarely inside the pad.
+    draw.text((x0 + pad - left, y0 + pad - top), text, font=fnt, fill=(255, 255, 255, 245))
 
-        Image.alpha_composite(base, overlay).convert("RGB").save(out, "JPEG", quality=90)
-    except Exception as exc:  # noqa: BLE001 -- best effort; never fail the dub
-        log.warning("Thumbnail branding failed (%s); skipping custom thumbnail.", exc)
-        return None
-    return out if out.exists() else None
+    return Image.alpha_composite(base, overlay).convert("RGB")
