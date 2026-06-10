@@ -128,17 +128,30 @@ def test_remove_regions_inpaints_strokes_not_the_whole_box():
     assert changed > 0.5
 
 
-def test_translate_preserving_case_titlecases_with_es_stopwords(monkeypatch):
+def test_translate_preserving_case_titlecases_and_adds_opening_mark(monkeypatch):
     # Translator gets the lowercased input; we restore the Title-Case look with
-    # Spanish function words ("por", "la") kept lowercase.
+    # Spanish function words ("por", "la") kept lowercase, and add the opening ¿.
     monkeypatch.setattr(image_text.translator, "translate_text", lambda t, f, to: "salvación por la sola fe?")
     out = image_text._translate_preserving_case("Salvation by Faith Alone?", "en", "es")
-    assert out == "Salvación por la Sola Fe?"
+    assert out == "¿Salvación por la Sola Fe?"
 
 
 def test_apply_case_style_all_caps_and_sentence():
     assert image_text._apply_case_style("hola mundo", "HELLO WORLD") == "HOLA MUNDO"
     assert image_text._apply_case_style("hola mundo", "hello world") == "Hola mundo"
+
+
+def test_spanish_opening_marks():
+    assert image_text._add_spanish_opening_marks("Sólo por la Fe?") == "¿Sólo por la Fe?"
+    assert image_text._add_spanish_opening_marks("Increíble!") == "¡Increíble!"
+    assert image_text._add_spanish_opening_marks("¿Ya existe?") == "¿Ya existe?"   # not doubled
+    assert image_text._add_spanish_opening_marks("Una afirmación.") == "Una afirmación."  # untouched
+
+
+def test_opening_mark_only_for_spanish(monkeypatch):
+    # A non-Spanish target must not get the inverted mark.
+    monkeypatch.setattr(image_text.translator, "translate_text", lambda t, f, to: "is it real?")
+    assert image_text._translate_preserving_case("Is It Real?", "es", "en") == "Is It Real?"
 
 
 def test_estimate_colors_detects_fill_and_outline():

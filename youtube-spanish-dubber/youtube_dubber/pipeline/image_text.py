@@ -137,7 +137,22 @@ def _translate_preserving_case(text: str, from_code: str, to_code: str) -> str:
     comes out clean. We then restore the look: ALL CAPS -> ALL CAPS, Title Case
     -> Title Case (Spanish function words kept lowercase), else sentence case."""
     translated = translator.translate_text(text.lower(), from_code, to_code)
-    return _apply_case_style(translated, text)
+    recased = _apply_case_style(translated, text)
+    if to_code.split("-")[0] == "es":
+        recased = _add_spanish_opening_marks(recased)
+    return recased
+
+
+def _add_spanish_opening_marks(text: str) -> str:
+    """Spanish opens questions/exclamations with ¿/¡, but the English source
+    only has the closing ?/! and Argos doesn't add the opener. For a thumbnail
+    title (a single phrase) add the opening mark when it's missing."""
+    stripped = text.strip()
+    if stripped.endswith("?") and "¿" not in stripped:
+        return "¿" + stripped
+    if stripped.endswith("!") and "¡" not in stripped:
+        return "¡" + stripped
+    return text
 
 
 def _apply_case_style(translated: str, original: str) -> str:
