@@ -105,6 +105,29 @@ def test_localize_image_file_writes_jpeg_when_replaced(tmp_path, monkeypatch):
         assert img.format == "JPEG" and img.size == (640, 360)
 
 
+def test_remove_regions_inpaints_strokes_not_the_whole_box():
+    pytest.importorskip("cv2")
+    from PIL import ImageDraw
+
+    # A smooth gradient background (a stand-in for a real photo, which is locally
+    # smooth) with a bright horizontal "stroke" of text drawn into it.
+    ramp = np.linspace(90, 150, 400, dtype=np.uint8)
+    img = Image.fromarray(np.dstack([np.tile(ramp, (120, 1))] * 3), "RGB")
+    ImageDraw.Draw(img).rectangle([60, 50, 340, 70], fill=(255, 255, 255))
+    src = np.asarray(img).copy()
+
+    region = TextRegion(polygon=[(40, 30), (360, 30), (360, 90), (40, 90)], text="x")
+    out = np.asarray(image_text._remove_regions(img, [region]))
+
+    # Background well above the stroke (still inside the box) stays intact --
+    # the old whole-box fill would have smeared it.
+    bg = (np.abs(src[30:45, 40:360].astype(int) - out[30:45, 40:360].astype(int)).max(2) <= 3).mean()
+    assert bg > 0.7
+    # The stroke itself was painted out (changed from white).
+    changed = (np.abs(src[55:66, 90:310].astype(int) - out[55:66, 90:310].astype(int)).max(2) > 10).mean()
+    assert changed > 0.5
+
+
 def test_estimate_colors_picks_contrasting_stroke():
     # White text on a dark box -> light fill, so the stroke should be dark.
     arr = np.zeros((50, 200, 3), dtype=np.uint8)

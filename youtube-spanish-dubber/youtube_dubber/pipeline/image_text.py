@@ -179,21 +179,31 @@ def _estimate_colors(arr, bbox):
 # --- removal ---------------------------------------------------------------
 
 def _remove_regions(image, regions: list[TextRegion]):
-    """Paint the original text out of `image`. Prefers opencv's inpainting (it
-    reconstructs the background from surrounding pixels, so gradients/photos stay
-    intact); falls back to flat-filling each box with its estimated background
-    colour when opencv isn't available."""
+    """Paint the original text out of `image` with opencv inpainting.
+
+    Crucially we mask only the *glyph strokes*, not each text's whole bounding
+    box: inpainting a big rectangle of mostly-background reconstructs a visible
+    smear, whereas inpainting just the thin letters lets opencv fill them from
+    the real surrounding pixels, leaving the background between/around the
+    letters untouched. Falls back to flat-filling the boxes when opencv/numpy
+    aren't available."""
     try:
         import cv2
         import numpy as np
 
         rgb = np.asarray(image)
-        mask = np.zeros(rgb.shape[:2], dtype=np.uint8)
+        h, w = rgb.shape[:2]
+        mask = np.zeros((h, w), dtype=np.uint8)
         for region in regions:
-            pts = np.array([[int(x), int(y)] for x, y in region.polygon], dtype=np.int32)
-            cv2.fillPoly(mask, [pts], 255)
-        # Dilate so anti-aliased edges of the old glyphs are covered too.
-        mask = cv2.dilate(mask, np.ones((5, 5), np.uint8), iterations=2)
+            x0, y0, x1, y1 = region.bbox
+            x0, y0 = max(0, x0), max(0, y0)
+            x1, y1 = min(w, x1), min(h, y1)
+            if x1 <= x0 or y1 <= y0:
+                continue
+            sub = mask[y0:y1, x0:x1]
+            np.maximum(sub, _stroke_mask(rgb[y0:y1, x0:x1]), out=sub)
+        # Grow the strokes a little so anti-aliased glyph edges are covered too.
+        mask = cv2.dilate(mask, np.ones((3, 3), np.uint8), iterations=2)
         bgr = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
         inpainted = cv2.inpaint(bgr, mask, inpaintRadius=3, flags=cv2.INPAINT_TELEA)
         from PIL import Image
@@ -202,6 +212,28 @@ def _remove_regions(image, regions: list[TextRegion]):
     except Exception as exc:  # noqa: BLE001 -- no opencv / numpy: flat-fill fallback
         log.debug("Inpainting unavailable (%s); flat-filling text boxes instead.", exc)
         return _flat_fill_regions(image, regions)
+
+
+def _stroke_mask(crop):
+    """Return a 0/255 mask of the glyph strokes within a text box `crop`
+    (H x W x 3 RGB). Text is the minority of pixels that stand out from the
+    box's median (background) colour; an Otsu threshold on each pixel's distance
+    from that median separates strokes from background adaptively per box.
+
+    Guards the degenerate case (a very busy box where Otsu would flag most of
+    it) by masking the whole box -- better to inpaint it than to leave the old
+    text ghosting through the new one."""
+    import cv2
+    import numpy as np
+
+    flat = crop.reshape(-1, 3).astype(np.float32)
+    background = np.median(flat, axis=0)
+    distance = np.linalg.norm(crop.astype(np.float32) - background, axis=2)
+    dist_u8 = np.clip(distance, 0, 255).astype(np.uint8)
+    _thresh, stroke = cv2.threshold(dist_u8, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    if stroke.mean() > 0.6 * 255:  # Otsu split most of the box -> cover it all
+        stroke[:] = 255
+    return stroke
 
 
 def _flat_fill_regions(image, regions: list[TextRegion]):
