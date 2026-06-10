@@ -1,0 +1,24 @@
+[Unit]
+Description=deploy-control: scoped HTTPS deploy endpoint for the claude-deploy helper
+After=network.target
+
+[Service]
+Type=simple
+User=claude-deploy
+Group=claude-deploy
+EnvironmentFile=/etc/deploy-control/env
+ExecStart=/usr/bin/python3 /opt/deploy-control/server.py
+Restart=on-failure
+RestartSec=2
+
+# Deliberately LIGHT sandboxing. This service's whole job is to shell out to
+# `sudo claude-deploy`, which rsyncs to /var/www and /opt and restarts services.
+# Two consequences:
+#   * NoNewPrivileges MUST stay false (the default) or sudo can't elevate.
+#   * ProtectSystem=strict / ReadOnlyPaths would break deploys that write
+#     outside this unit's tree, so they're intentionally omitted.
+# PrivateTmp is safe and free, so keep that one.
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

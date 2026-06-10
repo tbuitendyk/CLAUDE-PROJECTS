@@ -1,8 +1,25 @@
 # VPS access for Claude Code sessions
 
-Scoped SSH access from Claude Code (web) sessions to the production VPS
-(`homsionos01.homeandofficemicro.com`), so the dev → deploy → test → read-logs
-cycle happens in one place instead of by copy-paste relay.
+Scoped access from Claude Code cloud sessions to the production VPS, so the
+dev → deploy → test cycle happens in one place instead of by copy-paste relay.
+
+> ## ⚠️ Which mechanism to use
+>
+> **SSH does not work from Claude Code cloud sessions.** Their egress is forced
+> through an HTTP/HTTPS proxy; raw SSH on port 22 is dropped at the TCP layer
+> (verified by socket probe: 80/443 connect instantly, 22 times out). So the
+> SSH kit below (`setup-claude-access.sh` + `session-setup.sh`) **cannot be
+> driven from a cloud session.** It's still useful for *you* SSHing from your
+> own workstation, and it builds the `claude-deploy` user + helper that the
+> HTTPS path reuses.
+>
+> **The live mechanism for Claude is the HTTPS deploy-control endpoint** —
+> see [HTTPS deploy endpoint](#https-deploy-endpoint-the-cloud-path) below.
+> HTTPS sails through the proxy, so a cloud session can reach it with `curl`.
+
+The SSH user (`claude-deploy`), its `/usr/local/sbin/claude-deploy` helper, and
+the sudoers gating are the shared foundation both paths use. Set those up first
+(`setup-claude-access.sh`), then add the HTTPS endpoint on top.
 
 ## The security model in one paragraph
 
@@ -84,13 +101,17 @@ At [claude.ai/code](https://claude.ai/code) → your environment for this repo
 > access work from any session with no dependency on a repo file. `session-setup.sh`
 > in this folder is the canonical, version-controlled copy to paste from.
 
-### 5. Test in a fresh session
+### 5. Test from your workstation
 
-Start a new Claude Code session on this repo and ask Claude to run
-`ssh vps 'sudo claude-deploy status'`. You'll get a permission prompt showing
-the exact command; approve it and you should see the dubber + nginx health.
+From your own machine (NOT a cloud session — SSH can't egress from those):
 
-## Day-to-day usage
+```bash
+ssh -i claude_deploy_key claude-deploy@homsionos01.homeandofficemicro.com 'sudo claude-deploy status'
+```
+
+You should see the dubber + nginx health.
+
+## Day-to-day SSH usage (from your workstation)
 
 ```bash
 ssh vps 'journalctl -u youtube-dubber -n 100'        # read logs (no sudo)
@@ -101,16 +122,86 @@ ssh vps 'sudo claude-deploy restart-dubber'          # also kills a RUNNING dub 
 ssh vps 'sudo claude-deploy status'
 ```
 
-## Revoking access
+---
 
-Any one of these is sufficient; do all three to be thorough:
+## HTTPS deploy endpoint (the cloud path)
+
+This is what a Claude Code **cloud session** uses, since SSH can't get out but
+HTTPS can. It fronts the *same* `claude-deploy` helper with a tiny local
+service + nginx, reachable at `https://deploy.buitendyk.ca/run`.
+
+```
+cloud session → curl https://deploy.buitendyk.ca/run  (Bearer token)
+              → nginx (TLS + rate limit)
+              → 127.0.0.1:8090 deploy-control service  (runs as claude-deploy)
+              → sudo claude-deploy <action>
+```
+
+### Components (all in `vps-access/`)
+
+| File | Role |
+|---|---|
+| `deploy-control/server.py` | ~120-line stdlib service; bearer auth, action whitelist, runs the helper |
+| `deploy-control/deploy-control.service` | systemd unit; runs as `claude-deploy`, reads the token from `/etc/deploy-control/env` |
+| `nginx/deploy.buitendyk.ca.conf` | TLS vhost + rate limit, proxies to the local service |
+| `install-deploy-control.sh` | installs all of the above; **won't touch nginx until a cert exists** |
+
+### Install (as root, from a `claude/vps-access` checkout)
+
+Prereq: `setup-claude-access.sh` has already run (creates the user + helper).
+
+```bash
+sudo bash vps-access/install-deploy-control.sh
+```
+
+It installs + starts the local service (safe — loopback only), prints a
+generated **bearer token once**, and then either enables the nginx vhost (if a
+cert is already present) or stops and lists the remaining manual steps: a DNS
+record for `deploy.buitendyk.ca`, a line in the `nginx.conf` SNI stream map,
+and a certbot cert with `--deploy-hook "systemctl reload nginx"`. Re-run the
+script after those and it finishes the nginx side.
+
+### Configure the Claude Code environment
+
+Add the token as an env var (the only secret needed for this path):
+
+```
+DEPLOY_API_TOKEN=<the token the installer printed>
+```
+
+Set **Network access** to allow `deploy.buitendyk.ca` (Custom + the default
+package list, or Full). No setup script or SSH key is needed for this path.
+
+### How Claude calls it
+
+```bash
+TOKEN="$DEPLOY_API_TOKEN"
+BASE="https://deploy.buitendyk.ca/run"
+H=(-H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json")
+
+curl -fsS -X POST "$BASE" "${H[@]}" -d '{"action":"status"}'
+curl -fsS -X POST "$BASE" "${H[@]}" -d '{"action":"sync","branch":"claude/youtube-spanish-voiceover-QH2I2"}'
+curl -fsS -X POST "$BASE" "${H[@]}" -d '{"action":"deploy-website"}'
+curl -fsS -X POST "$BASE" "${H[@]}" -d '{"action":"deploy-dubber"}'
+curl -fsS -X POST "$BASE" "${H[@]}" -d '{"action":"restart-dubber"}'
+```
+
+Each returns JSON: `{ok, action, exit_code, stdout, stderr}`.
+
+## Revoking access
 
 ```bash
 # on the VPS, as root:
+# -- HTTPS path --
+systemctl disable --now deploy-control.service
+rm -f /etc/systemd/system/deploy-control.service /etc/nginx/sites-enabled/deploy.buitendyk.ca.conf
+rm -rf /opt/deploy-control /etc/deploy-control
+systemctl daemon-reload && nginx -t && systemctl reload nginx
+# -- SSH path / shared foundation --
 userdel -r claude-deploy
 rm -f /etc/sudoers.d/claude-deploy /usr/local/sbin/claude-deploy \
       /etc/ssh/sshd_config.d/claude-deploy.conf
 ```
 
-…and delete the `VPS_SSH_PRIVATE_KEY_B64` secret from the Claude Code
-environment.
+…and delete the `DEPLOY_API_TOKEN` (and any `VPS_SSH_*`) secrets from the
+Claude Code environment.
