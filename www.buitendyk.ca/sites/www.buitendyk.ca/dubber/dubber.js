@@ -24,6 +24,9 @@
   const form = document.getElementById("dub-form");
   const formMessage = document.getElementById("form-message");
   const jobList = document.getElementById("job-list");
+  const serviceControls = document.getElementById("service-controls");
+  const restartBtn = document.getElementById("restart-btn");
+  const restartMessage = document.getElementById("restart-message");
 
   let authenticated = false;
   const pollTimers = new Map(); // job id -> setInterval handle
@@ -45,6 +48,9 @@
     previewBtn.disabled = !authenticated;
     previewBtn.classList.toggle("ghosted", !authenticated);
     signinBtn.style.display = authenticated ? "none" : "";
+    // The "Restart Dubber service" control is an operator action -- only show
+    // it once signed in (same gate as the dubbing buttons).
+    if (serviceControls) serviceControls.style.display = authenticated ? "block" : "none";
   }
 
   async function checkAuth() {
@@ -468,6 +474,70 @@
   previewBtn.addEventListener("click", () => {
     submitJob("preview");
   });
+
+  // --- Restart Dubber service --------------------------------------------
+  // POSTs to the service's /admin/restart endpoint, which exits the process so
+  // systemd respawns it. That's the catch-all reset: it frees the service's
+  // memory and stops any running job. The endpoint sits behind the same Basic
+  // Auth as the rest of /dubber/api/, so only signed-in operators can hit it.
+
+  async function waitForServiceBack(attempt) {
+    attempt = attempt || 0;
+    try {
+      const res = await fetch(`${API_BASE}/healthz`, { credentials: "same-origin" });
+      if (res.ok) {
+        restartMessage.textContent = "Service restarted ✓";
+        restartBtn.disabled = false;
+        restartBtn.classList.remove("ghosted");
+        window.setTimeout(() => { restartMessage.textContent = ""; }, 3000);
+        // Any job left 'running' is reconciled on startup -- refresh the list.
+        loadExistingJobs();
+        return;
+      }
+    } catch (err) {
+      /* upstream still down (proxy 502 / connection refused) -- keep waiting */
+    }
+    if (attempt < 12) {
+      window.setTimeout(() => waitForServiceBack(attempt + 1), 1500);
+    } else {
+      restartMessage.textContent = "Service is taking longer than expected to come back — check the server.";
+      restartBtn.disabled = false;
+      restartBtn.classList.remove("ghosted");
+    }
+  }
+
+  async function restartService() {
+    if (!authenticated) return;
+    const ok = window.confirm(
+      "Restart the dubber service now?\n\n" +
+      "This frees the server's memory and STOPS any job that is currently " +
+      "running. Queued jobs are kept and resume afterward."
+    );
+    if (!ok) return;
+
+    restartBtn.disabled = true;
+    restartBtn.classList.add("ghosted");
+    restartMessage.textContent = "Restarting…";
+    try {
+      const res = await fetch(`${API_BASE}/admin/restart`, {
+        method: "POST",
+        credentials: "same-origin",
+      });
+      if (!res.ok) {
+        restartMessage.textContent = `Restart request failed (HTTP ${res.status}).`;
+        restartBtn.disabled = false;
+        restartBtn.classList.remove("ghosted");
+        return;
+      }
+    } catch (err) {
+      /* The process can drop the connection as it exits before the response
+         is read; that's expected -- fall through and wait for it to come back. */
+    }
+    restartMessage.textContent = "Restarting — the service will be back in a few seconds…";
+    window.setTimeout(() => waitForServiceBack(0), 4000);
+  }
+
+  if (restartBtn) restartBtn.addEventListener("click", restartService);
 
   checkAuth();
 })();

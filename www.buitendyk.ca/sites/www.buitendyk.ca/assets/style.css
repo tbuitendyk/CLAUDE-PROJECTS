@@ -221,6 +221,15 @@ footer.site-footer {
   color: var(--accent);
 }
 
+/* Danger-toned outline button (e.g. "Restart Dubber service") -- a real,
+   disruptive action, so it reads as a warning rather than a primary CTA. */
+.btn.danger {
+  background: transparent;
+  color: var(--bad);
+  border-color: var(--bad);
+}
+.btn.danger:hover { background: rgba(240, 104, 104, 0.1); }
+
 /* "Ghosted" = visible but inert until the visitor authenticates */
 .btn[disabled],
 .btn.ghosted {
