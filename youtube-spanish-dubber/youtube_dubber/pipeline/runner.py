@@ -12,9 +12,19 @@ import logging
 from pathlib import Path
 from typing import Callable
 
-from .. import progress
+from .. import memory, progress
 from ..config import settings
-from . import downloader, thumbnail, transcript, translator, tts, uploader, video
+from . import (
+    downloader,
+    image_text,
+    ocr_onnx,
+    thumbnail,
+    transcript,
+    translator,
+    tts,
+    uploader,
+    video,
+)
 from .models import Segment
 
 log = logging.getLogger(__name__)
@@ -53,9 +63,10 @@ def run(
         on_progress=lambda f: on_progress("downloading", f"Downloading source video… {int(f * 100)}%", fraction=f),
     )
 
-    # Brand the original thumbnail now (cheap, local); we set it on the upload
-    # at the end. Best-effort: any failure just leaves YouTube's auto-thumbnail.
-    branded_thumbnail = _brand_thumbnail(source, work_dir, on_progress)
+    # Localise + brand the original thumbnail now (local); we set it on the
+    # upload at the end. Best-effort: any failure just leaves YouTube's
+    # auto-thumbnail.
+    branded_thumbnail = _brand_thumbnail(source, target_language, work_dir, on_progress)
 
     if transcript_override is not None:
         on_progress("transcript", f"Using your edited transcript ({len(transcript_override)} lines)...")
@@ -186,26 +197,53 @@ def preview_transcript(source_url: str, target_language: str, work_dir: Path, on
     }
 
 
-def _brand_thumbnail(source, work_dir: Path, on_progress: ProgressFn):
-    """Produce a branded copy of the source thumbnail, or None if disabled /
-    unavailable. Fully defensive -- a thumbnail is a nice-to-have, never a
-    reason to fail (or even noisily warn within) the dub."""
+def _brand_thumbnail(source, target_language: str, work_dir: Path, on_progress: ProgressFn):
+    """Produce the dub's thumbnail: translate any text baked into the source
+    thumbnail in place, then overlay the Spanish banner on top of that ("keep
+    both"). Returns the finished image path, or None if disabled / unavailable.
+
+    Fully defensive at every step -- a thumbnail is a nice-to-have, never a
+    reason to fail (or even noisily warn within) the dub. Each step degrades on
+    its own: if OCR localisation isn't possible we still brand the original; if
+    branding isn't possible we still return the localised image."""
     if not settings.thumbnail_enabled or not source.thumbnail_path:
         return None
+    original = Path(source.thumbnail_path)
+    localized: Path | None = None
     try:
         # fraction=1.0 keeps the bar parked at the download band's end (the
         # download just finished there); without it this would reset to the
         # band start and visibly jump the bar backward before the transcript.
+        if settings.thumbnail_translate_text_enabled:
+            on_progress("downloading", "Translating text in the thumbnail...", fraction=1.0)
+            localized = image_text.localize_image_file(
+                original,
+                work_dir / "thumbnail_localized.jpg",
+                from_code=(source.original_language or "en"),
+                to_code=target_language,
+                min_confidence=settings.thumbnail_ocr_min_confidence,
+            )
+
         on_progress("downloading", "Branding the thumbnail with the Spanish banner...", fraction=1.0)
-        return thumbnail.brand_thumbnail(
-            Path(source.thumbnail_path),
+        branded = thumbnail.brand_thumbnail(
+            localized or original,
             work_dir / "thumbnail_es.jpg",
             text=settings.thumbnail_banner_text,
             font=settings.thumbnail_font,
         )
+        # If the banner couldn't render but we did translate the text, the
+        # localised image is still an improvement worth keeping.
+        return branded or localized
     except Exception as exc:  # noqa: BLE001 -- best effort
         log.warning("Thumbnail branding skipped (%s)", exc)
-        return None
+        return localized
+    finally:
+        # The OCR model is only used here, once per job, and is heavy enough
+        # that it shouldn't linger through transcription/TTS. Release it now
+        # (per-stage), mirroring how transcript.py frees its models between
+        # stages so a dub's resident memory doesn't stack.
+        ocr_onnx.release_model()
+        memory.release_to_os()
 
 
 def _probe_duration_fallback(video_path: str) -> float:

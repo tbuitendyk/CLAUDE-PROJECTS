@@ -63,6 +63,20 @@ sentencepiece>=0.2.0
 huggingface-hub>=0.23,<1.0
 pyyaml>=6.0
 
+# In-place thumbnail text localisation (pipeline/ocr_onnx.py + image_text.py):
+# detect the text baked into the source thumbnail, translate it and re-render
+# the Spanish in place (the corner banner is still overlaid on top). RapidOCR
+# runs the PP-OCR detection + recognition models as plain ONNX graphs on the
+# onnxruntime above -- NO torch/Paddle/CUDA, and the (small, ~15 MB) models are
+# bundled in the wheel, so it stays fully offline. It pulls in opencv-python +
+# numpy; opencv is used here to inpaint the old text out, and needs libGL/glib
+# at runtime, which deploy/install.sh installs (libgl1, libglib2.0-0). The
+# wrapper is universal (py3-none-any) and its deps ship cp39 wheels (the VPS
+# runs Python 3.9). Ranged, not exact-pinned, since RapidOCR ships frequent
+# point releases; the wrapper degrades to "keep the original text" if a release
+# ever changes the result shape, so a drift can't break the dub.
+rapidocr-onnxruntime>=1.3.0,<2.0.0
+
 # Free official Google client libraries for the YouTube Data API v3
 google-api-python-client==2.156.0
 google-auth==2.37.0

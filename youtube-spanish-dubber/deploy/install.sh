@@ -27,7 +27,13 @@ echo "==> Installing system packages (ffmpeg, python3-venv, ...)"
 apt-get update -qq
 apt-get install -y --no-install-recommends \
   ffmpeg python3 python3-venv python3-pip rsync ca-certificates \
-  fonts-dejavu-core   # TrueType font Pillow uses for the "Versión Español" thumbnail banner
+  fonts-dejavu-core \
+  libgl1 libglib2.0-0
+  # fonts-dejavu-core: TrueType font Pillow uses for the "Versión Español"
+  #   thumbnail banner.
+  # libgl1 + libglib2.0-0: shared libs opencv-python needs at import time (it is
+  #   pulled in by rapidocr-onnxruntime for in-thumbnail text localisation; the
+  #   headless server has no X11, so these provide libGL.so.1 / libgthread).
 
 echo "==> Creating service user '${SERVICE_USER}' and ${INSTALL_DIR}"
 id -u "${SERVICE_USER}" &>/dev/null || useradd --system --create-home --shell /usr/sbin/nologin "${SERVICE_USER}"
@@ -91,6 +97,19 @@ out = punctuation_onnx.restore_sentences(
     "this is a quick self test of the punctuation model okay it seems to be working"
 )
 print("    Punctuation model self-test:", out if out else "(unavailable -> heuristic fallback)")
+PYEOF
+
+echo "==> Pre-warming the thumbnail OCR model (optional CPU ONNX model, no torch)"
+# Best-effort: loads RapidOCR's bundled ONNX detection/recognition sessions so
+# the first dub's thumbnail text localisation isn't slow, and verifies opencv
+# imports (its libGL/glib system libs were installed above). If anything fails
+# (deps, disk, etc.) the service still works -- the thumbnail just keeps its
+# original text plus the banner.
+sudo -u "${SERVICE_USER}" env PYTHONPATH="${INSTALL_DIR}" "${INSTALL_DIR}/.venv/bin/python" - <<'PYEOF' \
+  || echo "    (thumbnail OCR unavailable -- thumbnails keep their original text; not fatal)"
+from youtube_dubber.pipeline import ocr_onnx
+engine = ocr_onnx._get_engine()
+print("    Thumbnail OCR self-test:", "ready" if engine is not None else "(unavailable -> keep original text)")
 PYEOF
 
 echo "==> Installing systemd unit"

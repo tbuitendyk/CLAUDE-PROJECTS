@@ -9,8 +9,6 @@ from __future__ import annotations
 import logging
 import threading
 
-import argostranslate.translate
-
 from .models import Segment
 
 log = logging.getLogger(__name__)
@@ -20,6 +18,11 @@ _cache: dict[tuple[str, str], object] = {}
 
 
 def _resolve(from_code: str, to_code: str):
+    # Imported lazily (like the other heavy pipeline deps) so this module is
+    # importable -- and unit-testable -- without argostranslate installed; the
+    # import only matters when an actual translation is performed.
+    import argostranslate.translate
+
     key = (from_code, to_code)
     if key in _cache:
         return _cache[key]

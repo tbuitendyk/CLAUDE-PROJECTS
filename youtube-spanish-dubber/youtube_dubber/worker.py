@@ -32,6 +32,7 @@ _RELEASE_HOOKS = (
     ("speech_to_text", "release_model"),  # faster-whisper / CTranslate2
     ("translator", "clear_cache"),        # Argos Translate (per-pair CTranslate2)
     ("punctuation_onnx", "release_model"),  # onnxruntime session
+    ("ocr_onnx", "release_model"),        # onnxruntime OCR sessions (thumbnail)
     ("rechunker", "release_models"),      # spaCy NLP models
 )
 

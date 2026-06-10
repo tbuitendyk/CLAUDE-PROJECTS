@@ -102,6 +102,16 @@ class Settings:
     # Optional explicit TrueType font for the banner; empty = autodetect DejaVu
     # (installed by deploy/install.sh) or fall back to skipping the banner.
     thumbnail_font: str = os.getenv("DUBBER_THUMBNAIL_FONT", "")
+    # In-place text localisation: detect the (English/source-language) text baked
+    # into the thumbnail image, translate it and re-render the Spanish in place
+    # -- *then* the banner above is still overlaid on top ("keep both"). Needs
+    # the ONNX OCR stack (rapidocr-onnxruntime + opencv, see pipeline/ocr_onnx.py
+    # + image_text.py). Fully optional and best-effort: if the stack is missing
+    # or no text is found, the thumbnail just keeps its original text + banner.
+    thumbnail_translate_text_enabled: bool = _bool("DUBBER_THUMBNAIL_TRANSLATE_TEXT", True)
+    # Ignore detected regions the recognizer is less sure about than this (0..1);
+    # low-confidence boxes are usually logos/textures, not real text to translate.
+    thumbnail_ocr_min_confidence: float = float(os.getenv("DUBBER_THUMBNAIL_OCR_MIN_CONFIDENCE", "0.5"))
 
     # --- Worker ---
     poll_interval_seconds: float = float(os.getenv("DUBBER_POLL_INTERVAL", "5"))
