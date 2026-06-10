@@ -87,6 +87,16 @@ def test_reset_orphaned_running_jobs_noop_when_none(fresh_db):
     assert db.reset_orphaned_running_jobs() == 0
 
 
+def test_progress_pct_persists_and_round_trips(fresh_db):
+    job = db.create_job("https://youtu.be/abc123", "es")
+    assert job.to_dict()["progress_pct"] is None  # nothing reported yet
+
+    db.update_job(job.id, stage="synthesizing", progress="line 5/10", progress_pct=63.5)
+    reloaded = db.get_job(job.id)
+    assert reloaded.progress_pct == 63.5
+    assert reloaded.to_dict()["progress_pct"] == 63.5
+
+
 # --- HTTP layer ------------------------------------------------------------
 def test_delete_endpoint_cancels_then_409s(fresh_db, monkeypatch):
     fastapi_testclient = pytest.importorskip("fastapi.testclient")

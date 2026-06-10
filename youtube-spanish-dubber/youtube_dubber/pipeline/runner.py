@@ -18,10 +18,11 @@ from .models import Segment
 
 log = logging.getLogger(__name__)
 
-ProgressFn = Callable[[str, str], None]
+# (stage, message, fraction=None) -- fraction is optional within-stage 0..1.
+ProgressFn = Callable[..., None]
 
 
-def _noop(stage: str, message: str) -> None:
+def _noop(stage: str, message: str, fraction: float | None = None) -> None:
     log.info("[%s] %s", stage, message)
 
 
@@ -46,7 +47,10 @@ def run(
     info = downloader.probe(source_url)
 
     on_progress("downloading", f"Downloading source video: {info.get('title')!r}")
-    source = downloader.download_video(source_url, work_dir)
+    source = downloader.download_video(
+        source_url, work_dir,
+        on_progress=lambda f: on_progress("downloading", f"Downloading source video… {int(f * 100)}%", fraction=f),
+    )
 
     # Brand the original thumbnail now (cheap, local); we set it on the upload
     # at the end. Best-effort: any failure just leaves YouTube's auto-thumbnail.
@@ -59,7 +63,8 @@ def run(
     else:
         on_progress("transcript", "Acquiring a Spanish transcript...")
         result = transcript.obtain_spanish_segments(
-            source_url, info, work_dir, target_language, Path(source.video_path)
+            source_url, info, work_dir, target_language, Path(source.video_path),
+            report=lambda message, fraction: on_progress("transcript", message, fraction=fraction),
         )
         on_progress("transcript", f"Transcript ready via: {result.source} ({len(result.segments)} lines)")
         segments = result.segments
@@ -72,6 +77,9 @@ def run(
         voice=settings.tts_voice,
         rate=settings.tts_rate,
         work_dir=work_dir,
+        on_line=lambda i, n: on_progress(
+            "synthesizing", f"Synthesizing narration — line {i}/{n}…", fraction=(i / n if n else None)
+        ),
     )
 
     on_progress("muxing", f"Combining narration with the source video (mode={settings.audio_mode})...")
@@ -90,7 +98,10 @@ def run(
         if source.description else ""
     )
     description = f"{translated_description}{settings.description_suffix}".strip()
-    video_id = uploader.upload_video(dubbed_path, title=title, description=description)
+    video_id = uploader.upload_video(
+        dubbed_path, title=title, description=description,
+        on_progress=lambda f: on_progress("uploading", f"Uploading to YouTube… {int(f * 100)}%", fraction=f),
+    )
 
     if branded_thumbnail is not None:
         on_progress("uploading", "Applying the branded thumbnail...")
@@ -120,11 +131,15 @@ def preview_transcript(source_url: str, target_language: str, work_dir: Path, on
     info = downloader.probe(source_url)
 
     on_progress("downloading", f"Downloading source video: {info.get('title')!r}")
-    source = downloader.download_video(source_url, work_dir)
+    source = downloader.download_video(
+        source_url, work_dir,
+        on_progress=lambda f: on_progress("downloading", f"Downloading source video… {int(f * 100)}%", fraction=f),
+    )
 
     on_progress("transcript", "Acquiring a transcript and translating it to Spanish...")
     result = transcript.obtain_spanish_segments(
-        source_url, info, work_dir, target_language, Path(source.video_path)
+        source_url, info, work_dir, target_language, Path(source.video_path),
+        report=lambda message, fraction: on_progress("transcript", message, fraction=fraction),
     )
 
     if result.original_segments is not None:

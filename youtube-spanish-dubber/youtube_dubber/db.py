@@ -26,6 +26,7 @@ CREATE TABLE IF NOT EXISTS jobs (
     status TEXT NOT NULL,
     stage TEXT,
     progress TEXT,
+    progress_pct REAL,
     error TEXT,
     result TEXT,
     transcript_overrides TEXT,
@@ -42,6 +43,7 @@ _MIGRATIONS = (
     "ALTER TABLE jobs ADD COLUMN mode TEXT NOT NULL DEFAULT 'dub'",
     "ALTER TABLE jobs ADD COLUMN result TEXT",
     "ALTER TABLE jobs ADD COLUMN transcript_overrides TEXT",
+    "ALTER TABLE jobs ADD COLUMN progress_pct REAL",
 )
 
 # Lifecycle: queued -> running -> done
@@ -69,6 +71,7 @@ class Job:
     status: str = "queued"
     stage: Optional[str] = None
     progress: Optional[str] = None
+    progress_pct: Optional[float] = None
     error: Optional[str] = None
     result: Optional[str] = None
     transcript_overrides: Optional[str] = None

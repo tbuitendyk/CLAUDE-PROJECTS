@@ -68,17 +68,28 @@ def synthesize_track(
     voice: str,
     rate: str,
     work_dir: Path,
+    on_line: "Callable[[int, int], None] | None" = None,
 ) -> Path:
     """Build a single Spanish narration WAV aligned to `segments` timing.
 
     The result spans exactly `total_duration` seconds (silence-padded) so it
     can be muxed directly against the source video.
+
+    `on_line`, if given, is called as (line_number, total_lines) before each
+    line is synthesized -- this is typically the longest stage, so it drives
+    the progress bar line by line.
     """
     clips_dir = work_dir / "tts_clips"
     clips_dir.mkdir(parents=True, exist_ok=True)
 
+    total_lines = len(segments)
     placed: list[tuple[float, float, Path]] = []  # (start, fitted_duration, path)
     for idx, seg in enumerate(segments):
+        if on_line is not None:
+            try:
+                on_line(idx + 1, total_lines)
+            except Exception:  # noqa: BLE001 -- progress is best-effort
+                pass
         text = seg.text.strip()
         if not text:
             continue

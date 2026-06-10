@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Optional
+from typing import Callable, Optional
 
 import yt_dlp
 
@@ -65,9 +65,30 @@ def any_caption_language(info: dict, auto: bool) -> Optional[str]:
     return None
 
 
-def download_video(url: str, work_dir: Path) -> VideoInfo:
+def _download_progress_hook(on_progress: "Callable[[float], None]"):
+    """Adapt yt-dlp's progress dict to a simple 0..1 fraction callback. yt-dlp
+    fires this per file (video, then audio), so the fraction resets once between
+    them -- still a steadily-advancing signal within the download stage. Never
+    lets a progress error interrupt the download."""
+    def hook(d: dict) -> None:
+        if d.get("status") != "downloading":
+            return
+        total = d.get("total_bytes") or d.get("total_bytes_estimate")
+        done = d.get("downloaded_bytes") or 0
+        if total:
+            try:
+                on_progress(min(0.99, done / total))
+            except Exception:  # noqa: BLE001 -- progress is best-effort
+                pass
+    return hook
+
+
+def download_video(
+    url: str, work_dir: Path, on_progress: "Optional[Callable[[float], None]]" = None
+) -> VideoInfo:
     """Download the best available muxed (or mux-able) video+audio as MP4,
-    plus the source thumbnail (so the dub can reuse/brand it)."""
+    plus the source thumbnail (so the dub can reuse/brand it). `on_progress`,
+    if given, receives the download completion fraction (0..1)."""
     out_template = str(work_dir / "source.%(ext)s")
     opts = {
         "quiet": True,
@@ -80,6 +101,8 @@ def download_video(url: str, work_dir: Path) -> VideoInfo:
         "writethumbnail": True,
         "extractor_args": _EXTRACTOR_ARGS,
     }
+    if on_progress is not None:
+        opts["progress_hooks"] = [_download_progress_hook(on_progress)]
     with yt_dlp.YoutubeDL(opts) as ydl:
         info = ydl.extract_info(url, download=True)
         path = Path(ydl.prepare_filename(info))

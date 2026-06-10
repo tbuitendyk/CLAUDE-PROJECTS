@@ -63,10 +63,15 @@ def _read_vtt(path: Path) -> list[Segment]:
 
 
 def obtain_spanish_segments(
-    url: str, info: dict, work_dir: Path, target_language: str, video_path: Path
+    url: str, info: dict, work_dir: Path, target_language: str, video_path: Path,
+    report: "Callable[[str, float], None] | None" = None,
 ) -> TranscriptResult:
+    """`report`, if given, is called as (message, fraction) to surface fine
+    progress *within* the transcript stage (0..1) -- chiefly the Whisper
+    transcription, which is the slow part when a video has no usable captions."""
     from ..config import settings
 
+    _report = report or (lambda message, fraction: None)
     es_codes = settings.spanish_caption_codes
 
     # 1. Manual Spanish captions.
@@ -89,8 +94,14 @@ def obtain_spanish_segments(
     try:
         audio_path = work_dir / "audio.wav"
         ffmpeg_utils.to_standard_wav(video_path, audio_path)
-        stt_segments, detected_language, stt_words = speech_to_text.transcribe(audio_path)
+        # Whisper drives the first ~90% of the transcript stage; translation the
+        # rest. (seg fraction is audio-position from speech_to_text.transcribe.)
+        stt_segments, detected_language, stt_words = speech_to_text.transcribe(
+            audio_path,
+            on_progress=lambda f: _report(f"Transcribing audio with Whisper… {int(f * 100)}%", min(0.9, f * 0.9)),
+        )
         stt_segments = rechunker.chunk(stt_segments, language=detected_language, words=stt_words)
+        _report(f"Translating {len(stt_segments)} lines to {target_language}…", 0.92)
         translated = translator.translate_segments(
             stt_segments, from_code=detected_language, to_code=target_language
         )

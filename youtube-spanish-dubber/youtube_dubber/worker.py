@@ -16,7 +16,7 @@ import time
 import traceback
 from importlib import import_module
 
-from . import db
+from . import db, progress
 from .config import settings
 from .pipeline import runner
 from .pipeline.models import Segment
@@ -65,9 +65,13 @@ def release_idle_memory() -> None:
 
 
 def _make_progress_fn(job_id: str):
-    def on_progress(stage: str, message: str) -> None:
+    def on_progress(stage: str, message: str, fraction: float | None = None) -> None:
         log.info("[job %s] (%s) %s", job_id, stage, message)
-        db.update_job(job_id, stage=stage, progress=message)
+        fields = {"stage": stage, "progress": message}
+        pct = progress.overall_percent(stage, fraction)
+        if pct is not None:
+            fields["progress_pct"] = pct
+        db.update_job(job_id, **fields)
     return on_progress
 
 
@@ -101,6 +105,7 @@ def _process(job: db.Job) -> None:
                 status="done",
                 stage="done",
                 progress=f"Transcript preview ready via: {result['transcript_source']}",
+                progress_pct=100.0,
                 result=json.dumps(result),
                 error=None,
             )
@@ -115,6 +120,7 @@ def _process(job: db.Job) -> None:
                 status="done",
                 stage="done",
                 progress=f"Published: {result['youtube_video_url']}",
+                progress_pct=100.0,
                 youtube_video_id=result["youtube_video_id"],
                 youtube_video_url=result["youtube_video_url"],
                 error=None,

@@ -44,7 +44,9 @@ def release_model() -> None:
         _model = None
 
 
-def transcribe(audio_path: Path) -> tuple[list[Segment], str, list[TimedWord]]:
+def transcribe(
+    audio_path: Path, on_progress: "Callable[[float], None] | None" = None
+) -> tuple[list[Segment], str, list[TimedWord]]:
     """Transcribe an audio file in its original language.
 
     Returns (segments, detected_language_code, words). `words` is a flat
@@ -53,6 +55,10 @@ def transcribe(audio_path: Path) -> tuple[list[Segment], str, list[TimedWord]]:
     real pauses *between words*, far finer than cue-level gaps, when inferring
     punctuation). It's empty if word timing wasn't produced, in which case the
     rechunker interpolates timing from the segments instead.
+
+    `on_progress`, if given, is called with the fraction of audio transcribed
+    so far (0..1) as faster-whisper yields segments -- this is the longest part
+    of the transcript stage, so it drives the progress bar through it.
     """
     model = _get_model()
     with _lock:  # CTranslate2 models are not safe for concurrent inference
@@ -76,9 +82,17 @@ def transcribe(audio_path: Path) -> tuple[list[Segment], str, list[TimedWord]]:
             # Per-word timestamps feed the rechunker's thought-boundary cutting.
             word_timestamps=True,
         )
+        total = float(getattr(info, "duration", 0.0) or 0.0)
         segments: list[Segment] = []
         words: list[TimedWord] = []
         for seg in segments_iter:
+            # faster-whisper decodes lazily: a segment is produced only as this
+            # loop advances, so reporting here tracks real transcription progress.
+            if on_progress is not None and total > 0:
+                try:
+                    on_progress(min(0.99, seg.end / total))
+                except Exception:  # noqa: BLE001 -- progress is best-effort
+                    pass
             if not seg.text.strip():
                 continue
             segments.append(Segment(start=seg.start, end=seg.end, text=seg.text.strip()))

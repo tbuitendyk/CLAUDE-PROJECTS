@@ -80,8 +80,12 @@ def upload_video(
     tags: list[str] | None = None,
     privacy_status: str | None = None,
     category_id: str | None = None,
+    on_progress: "Callable[[float], None] | None" = None,
 ) -> str:
-    """Upload `video_path` to the authorized channel. Returns the new video ID."""
+    """Upload `video_path` to the authorized channel. Returns the new video ID.
+
+    `on_progress`, if given, receives the upload completion fraction (0..1) as
+    the resumable upload streams its chunks."""
     creds = _load_credentials()
     youtube = build(API_SERVICE_NAME, API_VERSION, credentials=creds, cache_discovery=False)
 
@@ -106,6 +110,11 @@ def upload_video(
         status, response = request.next_chunk()
         if status:
             log.info("Upload progress: %d%%", int(status.progress() * 100))
+            if on_progress is not None:
+                try:
+                    on_progress(min(0.99, status.progress()))
+                except Exception:  # noqa: BLE001 -- progress is best-effort
+                    pass
 
     video_id = response["id"]
     log.info("Uploaded video https://youtu.be/%s", video_id)
