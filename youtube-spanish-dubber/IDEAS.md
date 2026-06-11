@@ -16,6 +16,13 @@ items land.
 - **TTS base-rate tuning** — settled on `-5%` as the code default
   (`config.tts_rate`), tuned by ear against the anchored timeline. `.env`
   override removed so the code default is the single source of truth.
+- **Re-thumbnail an existing video** — standalone tool to push a translated
+  thumbnail onto an already-published video on the connected channel, no re-dub.
+  Backend: `POST /thumbnail/apply` (`app.py`) parses the target ID and calls
+  `uploader.set_thumbnail` (now with opt-in `raise_on_error` so the tool reports
+  why a set was refused). UI (`website` branch): a third control box with its own
+  target-URL field + "Update thumbnail", reusing a refactored
+  `makeThumbnailEditor` widget (one factory, two instances: dub + re-thumbnail).
 
 ## Queue
 
@@ -40,24 +47,6 @@ items land.
   music/ambience could keep playing under the narration instead of going dead.
 - Likely an `audio_mode` / mux change: mix the source audio bed under the
   Spanish narration rather than fully replacing it.
-
-### 3. "Re-thumbnail an existing video" control box
-- Standalone tool to push a translated thumbnail onto an **already-published**
-  video on the connected channel — independent of dubbing.
-- **UI (website branch):** third control box, between the top controls and the
-  SERVICE box — "Target video URL (Connected YouTube channel)" + "Update
-  thumbnail". Source image comes from the existing "English source video URL"
-  field; reuse the current preview / edit-the-text widget.
-- **Backend (this branch):** most of it already exists — generation + edit loop
-  is `POST /thumbnail/preview` and `POST /thumbnail/render`; pushing an image is
-  `uploader.set_thumbnail`. New piece is one thin endpoint, e.g.
-  `POST /thumbnail/apply {target_url, thumbnail}` → parse the video ID →
-  `set_thumbnail`.
-- **Constraints to design for:** the target video must be owned by the connected
-  channel and the channel phone-verified — surface a clear "not your video / not
-  verified" error rather than failing silently. `thumbnails.set` accepts the
-  `youtube.upload` scope we already hold, so likely **no re-consent** needed
-  (confirm when building).
 
 ## Confirmed behavior (reference, not a task)
 
