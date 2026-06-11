@@ -295,42 +295,34 @@ def _analyze_region(arr, bbox) -> "_RegionStyle":
         fill = tuple(int(c) for c in np.median(crop.reshape(-1, 3), axis=0))
         return _RegionStyle(fill, _contrasting(fill), False, (0, 0, 0), None, box)
 
-    ch, cw = crop.shape[:2]
-    # Local-contrast text detection: a median blur wide enough to swallow the
-    # strokes approximates the local background (banner OR smoothed scene); the
-    # pixels far from it are the ink (the letters' fill + outline). The kernel
-    # scales with the text height (strokes are ~h/6, and the kernel must exceed
-    # twice that or thick strokes survive as holes).
-    kernel = min(51, max(5, int(round(ch * 0.45)) | 1))
-    background = cv2.medianBlur(crop, kernel)
-    diff = np.linalg.norm(crop.astype(np.float32) - background.astype(np.float32), axis=2)
-    _t, ink_u8 = cv2.threshold(
-        np.clip(diff, 0, 255).astype(np.uint8), 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU
-    )
+    ch = crop.shape[0]
+    # Find the letters as the *thin marks* in the box, with a morphological
+    # top-hat: a structuring element bigger than the strokes but smaller than the
+    # banner removes the thick stuff (banner, wall, scene), leaving the strokes.
+    # Whichever of light-on-dark / dark-on-light has more energy is the text, so
+    # its own colour is read straight off the strokes -- no background model,
+    # no polarity guessing (which is what kept flipping white<->black).
+    gray = cv2.cvtColor(crop, cv2.COLOR_RGB2GRAY)
+    ksize = max(15, int(round(ch * 0.4)) | 1)
+    element = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (ksize, ksize))
+    light = cv2.morphologyEx(gray, cv2.MORPH_TOPHAT, element)    # thin light marks
+    dark = cv2.morphologyEx(gray, cv2.MORPH_BLACKHAT, element)   # thin dark marks
+    hat = light if int(light.sum()) >= int(dark.sum()) else dark
+    _t, ink_u8 = cv2.threshold(hat, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
     ink = ink_u8 > 0
     if int(ink.sum()) < 12:  # nothing that reads as text
         fill = tuple(int(c) for c in np.median(crop.reshape(-1, 3), axis=0))
         return _RegionStyle(fill, _contrasting(fill), False, (0, 0, 0), None, box)
 
-    # Fill = stroke interior, outline = the thin edge ring (kept only if it's a
-    # genuinely different colour from the fill).
+    # Fill colour = the median of the stroke interiors.
     depth = cv2.distanceTransform(ink_u8, cv2.DIST_L2, 3)
-    max_depth = float(depth.max())
-    core = ink & (depth >= max(2.0, 0.5 * max_depth))
+    core = ink & (depth >= max(1.5, 0.5 * float(depth.max())))
     interior = core if int(core.sum()) >= 8 else ink
     fill = tuple(int(c) for c in np.median(crop[interior], axis=0))
-    outline = None
-    edge = ink & (depth <= 1.5)
-    if int(edge.sum()) >= 8:
-        candidate = tuple(int(c) for c in np.median(crop[edge], axis=0))
-        if _colour_distance(fill, candidate) >= 45:
-            outline = candidate
 
     # Banner vs scene: how uniform is the background *behind* the letters? Sample
-    # outside the ink, its anti-aliased halo, AND any pixel close to the text
-    # colour -- high-contrast text (white on black) spreads a bright halo wider
-    # than a few px, and those leaked pixels would otherwise inflate a clean
-    # banner's spread and make it read as a scene.
+    # outside the strokes, their halo, and any near-fill pixels (a high-contrast
+    # halo would otherwise inflate a clean banner's spread).
     halo = cv2.dilate(ink_u8, np.ones((5, 5), np.uint8), iterations=2) > 0
     near_text = np.linalg.norm(crop.astype(np.float32) - np.array(fill, np.float32), axis=2) < 60
     bg_pixels = crop[~(halo | near_text)].reshape(-1, 3)
@@ -341,10 +333,8 @@ def _analyze_region(arr, bbox) -> "_RegionStyle":
         banner_std, banner_color = 999.0, (0, 0, 0)
     has_banner = banner_std < _BANNER_STD_MAX
 
-    # On a scene the new text needs a contrasting outline to stay legible even if
-    # the source had none; on a banner the banner itself supplies the contrast.
-    if outline is None and not has_banner:
-        outline = _contrasting(fill)
+    # The banner supplies contrast; on a scene the new text needs an outline.
+    outline = None if has_banner else _contrasting(fill)
     return _RegionStyle(fill, outline, has_banner, banner_color, ink, box)
 
 
@@ -367,10 +357,6 @@ def _foreground_mask(distance):
 def _contrasting(colour):
     luminance = 0.299 * colour[0] + 0.587 * colour[1] + 0.114 * colour[2]
     return (0, 0, 0) if luminance > 140 else (255, 255, 255)
-
-
-def _colour_distance(a, b):
-    return ((a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2 + (a[2] - b[2]) ** 2) ** 0.5
 
 
 # --- font matching ---------------------------------------------------------
