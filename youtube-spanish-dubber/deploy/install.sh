@@ -248,32 +248,29 @@ Install complete. Remaining manual steps (see README.md for full detail):
 EOF
 
 # === TEMP DIAGNOSTIC (remove after one run) =================================
-# Read-only format probe, run as the service user with the box's real cookies +
-# IP -- the conditions a cloud session can't reproduce (it gets bot-walled). Kept
-# as the LAST output so it survives the deploy endpoint's tail-truncated reply.
+# The format probe showed android_vr/ios return only storyboards, while
+# default/tv expose the full ladder and resolve to 1080p. Listing != downloading,
+# though: confirm the tv/default media URLs actually fetch (don't 403 at the
+# PO-token gate) before flipping the live client config. Downloads a small
+# low-res format fully -- same client/format provenance as 1080p, so a 403 would
+# bite identically -- and reports OK + size or the error. Run as the service user
+# with the box's cookies/IP; kept LAST so it survives the tail-truncated reply.
 ( set +e
   DIAG_URL="https://www.youtube.com/watch?v=Dj5OYkgDtHU"
   DIAG_CK="${INSTALL_DIR}/secrets/youtube_cookies.txt"
   DIAG_YT="${INSTALL_DIR}/bin/yt-dlp"
   DIAG_PL="${INSTALL_DIR}/yt-dlp-plugins"
-  echo "########## [DIAG] yt-dlp format probe ##########"
-  echo "yt-dlp version: $(${DIAG_YT} --version 2>&1)"
-  if [ -f "${DIAG_CK}" ]; then
-    echo "cookies: present, $(wc -l < "${DIAG_CK}") lines, $(( ( $(date +%s) - $(stat -c %Y "${DIAG_CK}") ) / 86400 )) days old"
-  else
-    echo "cookies: MISSING at ${DIAG_CK}"
-  fi
-  for C in android_vr default web tv ios; do
+  echo "########## [DIAG2] real-download test (does the media 403?) ##########"
+  for C in default tv web; do
     if [ "$C" = "default" ]; then EA=""; else EA="--extractor-args youtube:player_client=${C}"; fi
-    echo "===== client=${C} : available formats (best 20) ====="
+    echo "===== client=${C}: full download of the smallest video format ====="
+    rm -f /tmp/diag_${C}.* 2>/dev/null
     sudo -u "${SERVICE_USER}" "${DIAG_YT}" --no-warnings --plugin-dirs "${DIAG_PL}" \
-        --cookies "${DIAG_CK}" ${EA} --list-formats "${DIAG_URL}" 2>&1 \
-        | grep -vE 'Downloading|Extracting URL|Available formats' | tail -20
-    echo "----- client=${C} : does our selector resolve? -----"
-    sudo -u "${SERVICE_USER}" "${DIAG_YT}" --no-warnings --plugin-dirs "${DIAG_PL}" \
-        --cookies "${DIAG_CK}" ${EA} -f "bv*[ext=mp4]+ba[ext=m4a]/bv*+ba/b[ext=mp4]/b" \
-        --simulate --print "selector -> %(format_id)s (%(ext)s, %(resolution)s)" "${DIAG_URL}" 2>&1 | tail -1
+        --cookies "${DIAG_CK}" ${EA} -f "bv*[height<=240]/w" \
+        -o "/tmp/diag_${C}.%(ext)s" "${DIAG_URL}" 2>&1 | grep -iE 'error|403|forbidden|destination|download' | tail -4
+    echo "    -> result: $(ls -lh /tmp/diag_${C}.* 2>/dev/null | awk '{print $5,$NF}' | tr '\n' ' ' || echo '(no file)')"
+    rm -f /tmp/diag_${C}.* 2>/dev/null
   done
-  echo "########## [DIAG] end ##########"
+  echo "########## [DIAG2] end ##########"
 ) || true
 # === END TEMP DIAGNOSTIC ====================================================
