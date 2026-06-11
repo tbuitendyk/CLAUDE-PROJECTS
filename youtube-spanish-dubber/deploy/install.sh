@@ -160,12 +160,17 @@ systemctl daemon-reload
 # The PO-token provider must be up before a dub downloads; start/restart it now
 # (it has no one-time setup, unlike the dubber service below).
 echo "==> Starting the PO-token provider"
-systemctl enable --now bgutil-pot
-systemctl restart bgutil-pot
-sleep 1
-systemctl is-active --quiet bgutil-pot \
-  && echo "    bgutil-pot: running on 127.0.0.1:4416" \
-  || echo "    WARNING: bgutil-pot failed to start -- downloads may 403 (run: journalctl -u bgutil-pot)"
+systemctl enable bgutil-pot >/dev/null 2>&1 || true
+systemctl restart bgutil-pot || true
+sleep 2
+if systemctl is-active --quiet bgutil-pot; then
+  echo "    bgutil-pot: running on 127.0.0.1:4416"
+else
+  echo "    WARNING: bgutil-pot failed to start -- diagnosing (downloads may 403):"
+  { file "${INSTALL_DIR}/bin/bgutil-pot" 2>&1 || true; } | sed 's/^/      file: /'
+  { sudo -u "${SERVICE_USER}" "${INSTALL_DIR}/bin/bgutil-pot" --version 2>&1 | head -n 3 || true; } | sed 's/^/      run:  /'
+  { journalctl -u bgutil-pot --no-pager -n 12 2>&1 || true; } | sed 's/^/      log:  /'
+fi
 
 # On a re-deploy the service is already running old code from before the rsync;
 # restart it so the new code/deps take effect. Skipped on a first install
