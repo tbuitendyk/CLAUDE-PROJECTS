@@ -128,17 +128,31 @@ def mux_replace_audio(video_path: Path, audio_path: Path, dst: Path) -> None:
     _run(cmd)
 
 
-def mux_duck_audio(video_path: Path, audio_path: Path, dst: Path, original_volume: float) -> None:
-    """Output = original audio (lowered) mixed under the new narration."""
-    filter_complex = (
-        f"[0:a]volume={original_volume:.3f}[orig];"
-        f"[1:a]volume=1.0[dub];"
-        f"[orig][dub]amix=inputs=2:duration=longest:dropout_transition=0[aout]"
+def duck_filter_complex(bed_volume: float) -> str:
+    """ffmpeg filter graph: keep the original audio as a bed under the narration.
+
+    Both streams are first normalised to a common format. The original is held
+    at `bed_volume` and *sidechain-compressed by the narration* -- so it dips
+    automatically while the narration speaks and rises back to `bed_volume`
+    during the pauses the anchored timeline preserves -- then mixed with the
+    narration (kept at full level), with a limiter to stop the sum clipping."""
+    return (
+        "[0:a]aresample=48000,aformat=channel_layouts=stereo,"
+        f"volume={bed_volume:.3f}[bed];"
+        "[1:a]aresample=48000,aformat=channel_layouts=stereo,asplit=2[dub][sc];"
+        "[bed][sc]sidechaincompress=threshold=0.04:ratio=8:attack=20:release=350:makeup=1[ducked];"
+        "[ducked][dub]amix=inputs=2:duration=longest:dropout_transition=0:normalize=0,"
+        "alimiter=limit=0.98[aout]"
     )
+
+
+def mux_duck_audio(video_path: Path, audio_path: Path, dst: Path, original_volume: float) -> None:
+    """Output = the original audio kept as a music/ambience bed under the new
+    narration, ducked under speech and swelling back in the pauses."""
     cmd = [
         "ffmpeg", "-y",
         "-i", str(video_path), "-i", str(audio_path),
-        "-filter_complex", filter_complex,
+        "-filter_complex", duck_filter_complex(original_volume),
         "-map", "0:v:0", "-map", "[aout]",
         "-c:v", "copy", "-c:a", "aac", "-b:a", "160k",
         "-shortest", str(dst),

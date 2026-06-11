@@ -23,6 +23,11 @@ items land.
   why a set was refused). UI (`website` branch): a third control box with its own
   target-URL field + "Update thumbnail", reusing a refactored
   `makeThumbnailEditor` widget (one factory, two instances: dub + re-thumbnail).
+- **Background music under preserved pauses** — `audio_mode` now defaults to
+  `"duck"`: `ffmpeg_utils.duck_filter_complex` keeps the source audio as a bed
+  (`DUBBER_DUCK_VOLUME`, default 0.40) that sidechain-compresses under the
+  narration and rises back in the anchored timeline's pauses. Tunable bed level;
+  `audio_mode=replace` restores full replacement.
 
 ## Queue
 
@@ -41,12 +46,6 @@ items land.
   detection), how to track a text region across frames so the overlay doesn't
   flicker/jitter, and how this interacts with the existing mux step in
   `runner.py`.
-
-### 2. Background music under preserved pauses
-- Now that real pauses survive as silence (anchored timeline), the source
-  music/ambience could keep playing under the narration instead of going dead.
-- Likely an `audio_mode` / mux change: mix the source audio bed under the
-  Spanish narration rather than fully replacing it.
 
 ## Confirmed behavior (reference, not a task)
 

@@ -76,10 +76,13 @@ class Settings:
     punctuation_model_onnx: str = os.getenv("DUBBER_PUNCTUATION_MODEL_ONNX", "punct_cap_seg_en.onnx")
 
     # --- Dubbing mix ---
-    # "replace": new Spanish track replaces the original audio entirely.
-    # "duck": original audio is kept underneath at low volume (telenovela style).
-    audio_mode: str = os.getenv("DUBBER_AUDIO_MODE", "replace")
-    duck_original_volume: float = float(os.getenv("DUBBER_DUCK_VOLUME", "0.12"))
+    # "duck": keep the original audio as a music/ambience bed under the Spanish
+    #   narration -- it sidechain-ducks under speech and swells back up in the
+    #   pauses the anchored timeline preserves (documentary/telenovela style).
+    # "replace": the new Spanish track replaces the original audio entirely.
+    audio_mode: str = os.getenv("DUBBER_AUDIO_MODE", "duck")
+    # Baseline level of that bed (its volume in the pauses, before ducking).
+    duck_original_volume: float = float(os.getenv("DUBBER_DUCK_VOLUME", "0.40"))
 
     # --- YouTube upload ---
     youtube_client_secrets_file: Path = field(
