@@ -132,6 +132,13 @@ class Settings:
     # (DejaVuSerif), a closer match to stylized thumbnail titles than sans. Point
     # it at a .ttf to use a specific display font.
     thumbnail_text_font: str = os.getenv("DUBBER_THUMBNAIL_TEXT_FONT", "")
+    # Serif-vs-sans is detected from the source glyphs' stroke-width modulation
+    # (image_text). Clean sans renders ~0.15 and serif ~0.5, but real thumbnail
+    # text (scene background, outlines, JPEG) inflates sans up toward ~0.55 --
+    # overlapping serif -- so this cut sits above that observed sans ceiling to
+    # bias toward sans (the common thumbnail face); only clearly-modulated text
+    # reads serif. Raise it to lean more sans, lower to catch more serif.
+    thumbnail_serif_threshold: float = float(os.getenv("DUBBER_THUMBNAIL_SERIF_THRESHOLD", "0.62"))
 
     # --- Worker ---
     poll_interval_seconds: float = float(os.getenv("DUBBER_POLL_INTERVAL", "5"))

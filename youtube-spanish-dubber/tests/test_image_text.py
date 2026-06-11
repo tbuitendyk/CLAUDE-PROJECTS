@@ -178,6 +178,17 @@ def test_estimate_colors_picks_contrasting_stroke():
     assert stroke == (0, 0, 0)      # dark outline for contrast
 
 
+def test_estimate_colors_survives_text_dominant_box():
+    pytest.importorskip("cv2")
+    # A box the bold title fills most of: a whole-box median would land on the
+    # white text and invert fill/outline; sampling the dark surround keeps the
+    # fill white.
+    arr = np.full((60, 200, 3), (15, 15, 15), dtype=np.uint8)  # dark surround
+    arr[8:52, 10:190] = (245, 245, 245)                        # big white text
+    fill, _stroke = image_text._estimate_colors(arr, (5, 5, 195, 55))
+    assert min(fill) > 150  # fill recovered as WHITE, not inverted to dark
+
+
 # --- font matching (serif vs sans detection) -------------------------------
 # These render real glyphs, so they need opencv + the DejaVu serif/sans bold
 # faces on the box (both ship with fonts-dejavu-core). Skipped cleanly without
@@ -218,23 +229,39 @@ def _source_arr(font_path, text, size=110):
 
 
 @needs_fonts
-def test_font_reference_modulation_serif_exceeds_sans():
-    serif = image_text._font_reference_modulation(_DEJAVU_SERIF)
-    sans = image_text._font_reference_modulation(_DEJAVU_SANS)
-    assert serif is not None and sans is not None
-    assert serif > sans  # serif modulates thick/thin; sans is near-uniform
+def test_stroke_modulation_serif_exceeds_sans():
+    from PIL import ImageDraw, ImageFont
+
+    def mod_of(font_path):
+        img = Image.new("L", (1100, 200), 0)
+        fnt = ImageFont.truetype(font_path, 96)
+        ImageDraw.Draw(img).text((12, 10), "Salvation Es Tu", font=fnt, fill=255)
+        return image_text._stroke_width_modulation(np.asarray(img) > 64)
+
+    # The discriminating signal: serif modulates thick/thin, sans is near-uniform.
+    assert mod_of(_DEJAVU_SERIF) > mod_of(_DEJAVU_SANS)
 
 
 @needs_fonts
 def test_estimate_font_family_detects_sans_source():
+    # A clean heavy-sans render sits well below the threshold -> sans.
     arr = _source_arr(_DEJAVU_SANS, "IS YOUR SALVATION")
     assert image_text._estimate_font_family(arr, (0, 0, arr.shape[1], arr.shape[0])) == "sans"
 
 
-@needs_fonts
-def test_estimate_font_family_detects_serif_source():
-    arr = _source_arr(_DEJAVU_SERIF, "Salvation Secure")
-    assert image_text._estimate_font_family(arr, (0, 0, arr.shape[1], arr.shape[0])) == "serif"
+def test_estimate_font_family_threshold(monkeypatch):
+    # The serif/sans call is an absolute cut at settings.thumbnail_serif_threshold
+    # (default 0.62), biased toward sans because real thumbnails inflate the score.
+    monkeypatch.setattr(image_text, "_region_glyph_mask", lambda arr, bbox: np.ones((20, 20), bool))
+    monkeypatch.setattr(image_text, "_stroke_width_modulation", lambda mask: 0.30)
+    assert image_text._estimate_font_family(None, (0, 0, 20, 20)) == "sans"
+    monkeypatch.setattr(image_text, "_stroke_width_modulation", lambda mask: 0.80)
+    assert image_text._estimate_font_family(None, (0, 0, 20, 20)) == "serif"
+
+
+def test_estimate_font_family_undetectable_defaults_sans(monkeypatch):
+    monkeypatch.setattr(image_text, "_region_glyph_mask", lambda arr, bbox: None)
+    assert image_text._estimate_font_family(None, (0, 0, 20, 20)) == "sans"
 
 
 @needs_fonts

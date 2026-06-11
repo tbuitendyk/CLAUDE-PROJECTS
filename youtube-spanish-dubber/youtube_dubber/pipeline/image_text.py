@@ -15,7 +15,6 @@ the caller carries on. It never raises on a bad image.
 """
 from __future__ import annotations
 
-import functools
 import logging
 from pathlib import Path
 from typing import Optional
@@ -245,6 +244,32 @@ def render_translations(image, pairs: list[tuple[TextRegion, str]]):
 
 # --- appearance estimation -------------------------------------------------
 
+def _estimate_background(arr, bbox):
+    """Background colour sampled from a frame *just outside* the text box rather
+    than the box's own median.
+
+    Thumbnail titles are big and fill most of their box, so a whole-box median
+    often lands on the *text* colour -- which then inverts the fill/outline
+    estimate: the title reads as background and its dark outline as the 'fill'
+    (white-on-dark titles came out dark-on-light). The surrounding ring is
+    reliably the real background. Falls back to the box median when the box hugs
+    the image edge and there's nothing outside to sample."""
+    import numpy as np
+
+    x0, y0, x1, y1 = bbox
+    h, w = arr.shape[:2]
+    pad = max(6, (y1 - y0) // 3)
+    ox0, oy0 = max(0, x0 - pad), max(0, y0 - pad)
+    ox1, oy1 = min(w, x1 + pad), min(h, y1 + pad)
+    outer = arr[oy0:oy1, ox0:ox1]
+    keep = np.ones(outer.shape[:2], dtype=bool)
+    keep[y0 - oy0:y1 - oy0, x0 - ox0:x1 - ox0] = False  # drop the inner text box
+    ring = outer[keep]
+    if ring.shape[0] < 30:
+        return np.median(arr[y0:y1, x0:x1].reshape(-1, 3), axis=0)
+    return np.median(ring.reshape(-1, 3), axis=0)
+
+
 def _estimate_colors(arr, bbox):
     """Estimate the original text's (fill_colour, outline_colour) from its box.
 
@@ -267,7 +292,7 @@ def _estimate_colors(arr, bbox):
         return (255, 255, 255), (0, 0, 0)
     crop = arr[y0:y1, x0:x1]
 
-    background = np.median(crop.reshape(-1, 3), axis=0)
+    background = _estimate_background(arr, (x0, y0, x1, y1))
     distance = np.linalg.norm(crop.astype(np.float32) - background, axis=2)  # H x W
     text_mask = _foreground_mask(distance)
     if int(text_mask.sum()) < 8:  # near-uniform box: inverse of the background
@@ -395,45 +420,31 @@ def _stroke_width_modulation(mask) -> Optional[float]:
     return float(widths.std() / mean) if mean > 0 else None
 
 
-@functools.lru_cache(maxsize=8)
-def _font_reference_modulation(font_path: str) -> Optional[float]:
-    """Stroke modulation of a sample rendered in `font_path` -- the reference a
-    source region is matched against, so the serif/sans call needs no hand-tuned
-    threshold (pick whichever reference the source sits nearer). Cached per
-    font."""
-    if not font_path:
-        return None
-    import numpy as np
-
-    try:
-        from PIL import Image, ImageDraw, ImageFont
-
-        fnt = ImageFont.truetype(font_path, 96)
-    except Exception:  # noqa: BLE001 -- missing font: no reference
-        return None
-    img = Image.new("L", (1100, 200), 0)
-    ImageDraw.Draw(img).text((12, 10), "Salvation Es Tu Secure", font=fnt, fill=255)
-    return _stroke_width_modulation(np.asarray(img) > 64)
-
-
 def _estimate_font_family(arr, bbox) -> str:
     """Classify the source text as "serif" or "sans" from its glyph strokes, so
-    the translation is re-rendered in a matching face rather than a fixed one.
+    the translation is re-rendered in a matching face.
 
-    Falls back to "serif" when it can't tell (the stylised 'Roman' titles this
-    started with), or to a coarse absolute cut when no reference font is on the
-    box to compare against."""
+    Stroke-width modulation separates the two on clean renders (serif tapers
+    thick stems into thin serifs ~0.5; heavy sans hold a uniform stroke ~0.15),
+    but real thumbnail text -- scene background, outlines, JPEG -- inflates the
+    measured value well above a clean render's, overlapping serif's range. So we
+    cut at an absolute threshold tuned to real thumbnails
+    (settings.thumbnail_serif_threshold, default 0.62), biased toward sans (the
+    common thumbnail face): only clearly-modulated text reads serif.
+    Undetectable -> sans, the safer common case."""
     mask = _region_glyph_mask(arr, bbox)
     if mask is None:
-        return "serif"
+        return "sans"
     source = _stroke_width_modulation(mask)
     if source is None:
-        return "serif"
-    serif_ref = _font_reference_modulation(_find_text_font("serif") or "")
-    sans_ref = _font_reference_modulation(_find_text_font("sans") or "")
-    if serif_ref is None or sans_ref is None:
-        return "sans" if source < 0.32 else "serif"
-    return "serif" if abs(source - serif_ref) <= abs(source - sans_ref) else "sans"
+        return "sans"
+    threshold = 0.62
+    try:
+        from ..config import settings
+        threshold = settings.thumbnail_serif_threshold
+    except Exception:  # noqa: BLE001 -- config import shouldn't fail callers
+        pass
+    return "serif" if source >= threshold else "sans"
 
 
 # --- removal ---------------------------------------------------------------
