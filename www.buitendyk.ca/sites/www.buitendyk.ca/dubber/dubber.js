@@ -781,16 +781,6 @@
           const orig = document.createElement("span");
           orig.className = "thumb-region-original";
           orig.textContent = region.text;
-          // Show which face the detector matched for this line (and its raw
-          // stroke-modulation score) so a serif/sans mismatch is visible.
-          if (region.font_family) {
-            const tag = document.createElement("span");
-            tag.textContent = " [" + region.font_family +
-              (region.modulation != null ? " " + region.modulation : "") + "]";
-            tag.style.color = "var(--text-dim)";
-            tag.style.fontSize = "0.82em";
-            orig.appendChild(tag);
-          }
           row.appendChild(orig);
 
           const arrow = document.createElement("span");
