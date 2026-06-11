@@ -42,15 +42,26 @@ def generate_preview(
     localized, _replaced = image_text.render_translations(image, pairs)
     generated = _brand(localized, banner_text, font)
 
-    regions = [
-        {
-            "polygon": [[float(x), float(y)] for x, y in region.polygon],
-            "box": list(region.bbox),
-            "text": region.text,
-            "translation": translated,
-        }
-        for region, translated in pairs
-    ]
+    # `render_translations` tagged each region with the serif/sans family it
+    # detected from the source glyphs; echo that (and the raw modulation score)
+    # back so the UI can show what was matched -- and so a mismatch is diagnosable
+    # rather than invisible.
+    import numpy as np
+
+    source = np.asarray(image.convert("RGB"))
+    regions = []
+    for region, translated in pairs:
+        modulation = image_text._stroke_width_modulation(image_text._region_glyph_mask(source, region.bbox))
+        regions.append(
+            {
+                "polygon": [[float(x), float(y)] for x, y in region.polygon],
+                "box": list(region.bbox),
+                "text": region.text,
+                "translation": translated,
+                "font_family": region.font_family,
+                "modulation": round(modulation, 3) if modulation is not None else None,
+            }
+        )
     return generated, regions
 
 

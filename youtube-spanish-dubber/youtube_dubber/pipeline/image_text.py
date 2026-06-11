@@ -333,9 +333,11 @@ def _colour_distance(a, b):
 # --- font matching ---------------------------------------------------------
 
 def _region_glyph_mask(arr, bbox):
-    """0/1 mask of the source text's strokes within `bbox` -- the same
-    background-distance + Otsu approach the colour estimators use, reused here
-    to judge the typeface. None if the box is too small."""
+    """0/1 mask of the source text's strokes within `bbox`, cleaned of the
+    background texture / JPEG speckle that would otherwise inflate the stroke-
+    width measurement: a light (resolution-scaled) median blur, an opening, then
+    keep only the large connected components (the letters), dropping specks.
+    None if the box is too small."""
     import numpy as np
 
     x0, y0, x1, y1 = bbox
@@ -345,9 +347,26 @@ def _region_glyph_mask(arr, bbox):
     if x1 - x0 < 6 or y1 - y0 < 6:
         return None
     crop = arr[y0:y1, x0:x1]
-    background = np.median(crop.reshape(-1, 3), axis=0)
-    distance = np.linalg.norm(crop.astype(np.float32) - background, axis=2)
-    return _foreground_mask(distance)
+    try:
+        import cv2
+
+        kernel = min(9, max(3, (min(crop.shape[:2]) // 40) | 1))  # odd, ~2.5% of height
+        smoothed = cv2.medianBlur(crop, kernel)
+    except Exception:  # noqa: BLE001 -- no opencv: judge the crop as-is
+        cv2 = None
+        smoothed = crop
+    background = np.median(smoothed.reshape(-1, 3), axis=0)
+    distance = np.linalg.norm(smoothed.astype(np.float32) - background, axis=2)
+    mask = _foreground_mask(distance)
+    if cv2 is None:
+        return mask
+    m = cv2.morphologyEx(mask.astype(np.uint8), cv2.MORPH_OPEN, np.ones((3, 3), np.uint8))
+    count, labels, stats, _ = cv2.connectedComponentsWithStats(m, 8)
+    if count > 1:
+        areas = stats[1:, cv2.CC_STAT_AREA]
+        keep = np.where(areas >= 0.05 * areas.max())[0] + 1
+        m = np.isin(labels, keep).astype(np.uint8)
+    return m > 0
 
 
 def _stroke_width_modulation(mask) -> Optional[float]:
