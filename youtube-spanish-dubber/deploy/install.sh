@@ -188,9 +188,15 @@ if sudo -u "${SERVICE_USER}" "${INSTALL_DIR}/bin/bgutil-pot" --version >/dev/nul
     || echo "    WARNING: bgutil-pot installed but inactive -- see: journalctl -u bgutil-pot"
 else
   echo "    bgutil-pot can't run here (needs OpenSSL 3 / libssl.so.3 -- e.g. Debian 11)."
-  echo "    Skipping it; restricting yt-dlp to PO-token-exempt clients instead."
+  echo "    Skipping it; restricting yt-dlp to the token-exempt 'android_vr' client instead."
   systemctl disable --now bgutil-pot >/dev/null 2>&1 || true
-  printf '[Service]\nEnvironment=DUBBER_YTDLP_PLAYER_CLIENTS=tv,web_embedded,android_vr\n' \
+  # android_vr alone is the reliable token-free path on a provider-less box: it
+  # needs no PO token and consistently returns a downloadable muxable format.
+  # Widening this to tv,web_embedded made yt-dlp prefer their higher-quality
+  # formats -- which ARE PO-token-gated here -- so it skipped them and failed
+  # with "Requested format is not available". Keep it to the one client that
+  # works until the provider (Debian 12 + OpenSSL 3) can mint tokens.
+  printf '[Service]\nEnvironment=DUBBER_YTDLP_PLAYER_CLIENTS=android_vr\n' \
     > "${DROPIN_DIR}/10-no-pot.conf"
 fi
 systemctl daemon-reload

@@ -116,9 +116,10 @@ class Settings:
     )
     # Optional comma-separated YouTube player_client list to restrict yt-dlp to.
     # Left empty when the PO-token provider is up (yt-dlp uses its full, higher-
-    # quality default clients); install.sh sets it to the token-exempt clients
-    # (tv,web_embedded,android_vr) on boxes where the provider can't run, so some
-    # videos still download without tokens.
+    # quality default clients); install.sh pins it to the token-exempt 'android_vr'
+    # client on boxes where the provider can't run, so videos still download
+    # without tokens (it's the one client that reliably returns a muxable format
+    # token-free -- tv/web_embedded look token-exempt but their formats are gated).
     ytdlp_player_clients: str = os.getenv("DUBBER_YTDLP_PLAYER_CLIENTS", "")
     upload_privacy_status: str = os.getenv("DUBBER_UPLOAD_PRIVACY", "unlisted")
     upload_category_id: str = os.getenv("DUBBER_UPLOAD_CATEGORY", "22")
