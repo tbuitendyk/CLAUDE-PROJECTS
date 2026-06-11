@@ -43,6 +43,7 @@ echo "==> Syncing project files to ${INSTALL_DIR}"
 rsync -a --delete \
   --exclude '.git' --exclude '.venv' --exclude 'data' --exclude 'secrets' \
   --exclude '__pycache__' --exclude '.env' --exclude 'bin' --exclude 'yt-dlp-plugins' \
+  --exclude 'node' --exclude 'pot-provider' \
   "${REPO_DIR}/" "${INSTALL_DIR}/"
 chown -R "${SERVICE_USER}:${SERVICE_USER}" "${INSTALL_DIR}"
 
@@ -51,64 +52,67 @@ sudo -u "${SERVICE_USER}" python3 -m venv "${INSTALL_DIR}/.venv"
 sudo -u "${SERVICE_USER}" "${INSTALL_DIR}/.venv/bin/pip" install --upgrade pip wheel
 sudo -u "${SERVICE_USER}" "${INSTALL_DIR}/.venv/bin/pip" install -r "${INSTALL_DIR}/requirements.txt"
 
-echo "==> Installing the standalone yt-dlp binary (pinned)"
+echo "==> Installing the latest standalone yt-dlp binary"
 # yt-dlp must track YouTube's changes, but its current releases also dropped
 # Python 3.9 -- so we run the self-contained yt-dlp_linux build (it bundles its
 # own Python) as a subprocess (youtube_dubber/pipeline/downloader.py),
 # independent of the .venv. Excluded from the rsync --delete above so it
-# survives between deploys.
-#
-# PINNED to 2025.10.14 on purpose. This provider-less box can only use the
-# token-free android_vr client, and the newer build (2026.06.09) returns no
-# usable android_vr formats here -> downloads fail "Requested format is not
-# available". 2025.10.14 is the last version android_vr pulls cleanly with (it
-# ran in production for days). The durable fix is the Debian 12 box with the
-# PO-token provider, where "latest" works at full quality -- unpin it there.
-YTDLP_VERSION="2025.10.14"
+# survives between deploys. We fetch "latest" because the PO-token provider
+# (below) pairs with current yt-dlp; the token framework + plugin API move
+# quickly, and an older binary won't register the provider plugin.
 mkdir -p "${INSTALL_DIR}/bin"
 curl -fsSL -o "${INSTALL_DIR}/bin/yt-dlp" \
-  "https://github.com/yt-dlp/yt-dlp/releases/download/${YTDLP_VERSION}/yt-dlp_linux"
+  https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_linux
 chmod +x "${INSTALL_DIR}/bin/yt-dlp"
 chown "${SERVICE_USER}:${SERVICE_USER}" "${INSTALL_DIR}/bin/yt-dlp"
-echo "    yt-dlp $(sudo -u "${SERVICE_USER}" "${INSTALL_DIR}/bin/yt-dlp" --version) (pinned ${YTDLP_VERSION})"
+echo "    yt-dlp $(sudo -u "${SERVICE_USER}" "${INSTALL_DIR}/bin/yt-dlp" --version)"
 
-echo "==> Installing the bgutil PO-token provider + yt-dlp plugin"
-# 2026 YouTube requires a "Proof of Origin" token for most formats; without one,
-# downloads 403 or return no formats. A small localhost provider mints tokens and
-# a yt-dlp plugin hands them over. We use the standalone Rust build (jim60105) --
-# a single binary + plugin, no Node/Docker -- to match the yt-dlp binary above.
-# https://github.com/jim60105/bgutil-ytdlp-pot-provider-rs
-POT_REPO="jim60105/bgutil-ytdlp-pot-provider-rs"
-POT_RELEASE="https://github.com/${POT_REPO}/releases/latest/download"
-POT_JSON="$(curl -fsSL "https://api.github.com/repos/${POT_REPO}/releases/latest" || true)"
-echo "    available linux provider assets:"
-echo "${POT_JSON}" | grep -oE '"name": *"[^"]*[Ll]inux[^"]*"' | sed -E 's/.*"name": *"([^"]*)".*/      \1/' || true
-# Prefer a static musl x86_64 build: this box's OpenSSL is too old (1.1) for the
-# glibc build, which needs libssl.so.3.
-POT_URL="$(echo "${POT_JSON}" | grep -oE 'https://[^"]*' \
-  | grep -iE 'bgutil-pot.*(x86_64|amd64).*musl|x86_64-unknown-linux-musl' | head -n1 || true)"
-if [ -z "${POT_URL}" ]; then
-  echo "    (no musl build found -- falling back to the glibc build, which needs libssl3)"
-  POT_URL="${POT_RELEASE}/bgutil-pot-linux-x86_64"
+echo "==> Installing the Node-based PO-token provider + yt-dlp plugin"
+# 2026 YouTube requires a "Proof of Origin" token for real formats; without one
+# the player response is storyboards-only and the media URLs 403. A localhost
+# provider mints tokens and a yt-dlp plugin hands them over. We run the
+# Brainicism *Node* provider rather than the Rust build: Node bundles its own TLS
+# (BoringSSL), so it runs on this box's OpenSSL 1.1 -- the Rust binary needs
+# OpenSSL 3 / libssl.so.3, which Debian 11 doesn't have. Verified end to end on
+# this box: provider + yt-dlp default clients + NO cookies -> full format ladder
+# and clean downloads. https://github.com/Brainicism/bgutil-ytdlp-pot-provider
+PROVIDER_TAG="1.3.1"
+
+# Portable Node 20 (>=20 required by the provider). The official linux-x64 build
+# needs only glibc >= 2.28 (Debian 11 has 2.31). Kept across deploys.
+NODE_DIR="${INSTALL_DIR}/node"
+if [ ! -x "${NODE_DIR}/bin/node" ]; then
+  echo "    fetching portable Node 20"
+  NODE_TARBALL="$(curl -fsSL https://nodejs.org/dist/latest-v20.x/SHASUMS256.txt \
+    | grep -oE 'node-v20[0-9.]+-linux-x64\.tar\.xz' | head -n1)"
+  curl -fsSL -o /tmp/node.tar.xz "https://nodejs.org/dist/latest-v20.x/${NODE_TARBALL}"
+  rm -rf "${NODE_DIR}"; mkdir -p "${NODE_DIR}"
+  tar -xJf /tmp/node.tar.xz -C "${NODE_DIR}" --strip-components=1
+  rm -f /tmp/node.tar.xz
 fi
-echo "    downloading: ${POT_URL}"
-curl -fsSL -o "${INSTALL_DIR}/bin/bgutil-pot" "${POT_URL}"
-chmod +x "${INSTALL_DIR}/bin/bgutil-pot"
-chown "${SERVICE_USER}:${SERVICE_USER}" "${INSTALL_DIR}/bin/bgutil-pot"
+echo "    node $(${NODE_DIR}/bin/node -v)"
 
-# Plugin: extract its `yt_dlp_plugins` package directly into the plugin dir the
-# app points yt-dlp at (DUBBER_YTDLP_PLUGIN_DIRS), wherever it sits in the zip.
+# Build the provider server once (clone tag -> npm ci -> tsc). Kept across deploys.
+PROVIDER_DIR="${INSTALL_DIR}/pot-provider"
+if [ ! -f "${PROVIDER_DIR}/server/build/main.js" ]; then
+  echo "    building the bgutil provider (${PROVIDER_TAG})"
+  rm -rf "${PROVIDER_DIR}"
+  git clone --quiet --depth 1 --single-branch --branch "${PROVIDER_TAG}" \
+    https://github.com/Brainicism/bgutil-ytdlp-pot-provider.git "${PROVIDER_DIR}"
+  ( cd "${PROVIDER_DIR}/server" \
+      && PATH="${NODE_DIR}/bin:${PATH}" npm ci >/dev/null 2>&1 \
+      && PATH="${NODE_DIR}/bin:${PATH}" npx tsc >/dev/null 2>&1 ) \
+    && echo "    provider built" || echo "    WARNING: provider build failed -- see journalctl after deploy"
+fi
+chown -R "${SERVICE_USER}:${SERVICE_USER}" "${NODE_DIR}" "${PROVIDER_DIR}"
+
+# The matching yt-dlp plugin, in the layout the binary needs: --plugin-dirs ROOT
+# searches ROOT/*/yt_dlp_plugins, so install the package UNDER a subdir (bgutil/).
+# (Putting yt_dlp_plugins directly in ROOT silently loads nothing on modern yt-dlp.)
 PLUGIN_DIR="${INSTALL_DIR}/yt-dlp-plugins"
-PLUGIN_TMP="$(mktemp -d)"
-curl -fsSL -o "${PLUGIN_TMP}/plugin.zip" "${POT_RELEASE}/bgutil-ytdlp-pot-provider-rs.zip"
-"${INSTALL_DIR}/.venv/bin/python" -c \
-  "import sys,zipfile; zipfile.ZipFile(sys.argv[1]).extractall(sys.argv[2])" \
-  "${PLUGIN_TMP}/plugin.zip" "${PLUGIN_TMP}/unzipped"
-PKG="$(dirname "$(find "${PLUGIN_TMP}/unzipped" -type d -name yt_dlp_plugins | head -n1)")"
-rm -rf "${PLUGIN_DIR}"
-mkdir -p "${PLUGIN_DIR}"
-cp -r "${PKG}/yt_dlp_plugins" "${PLUGIN_DIR}/"
-rm -rf "${PLUGIN_TMP}"
+rm -rf "${PLUGIN_DIR}"; mkdir -p "${PLUGIN_DIR}"
+sudo -u "${SERVICE_USER}" "${INSTALL_DIR}/.venv/bin/pip" install --quiet --no-deps \
+  --target "${PLUGIN_DIR}/bgutil" "bgutil-ytdlp-pot-provider==${PROVIDER_TAG}"
 chown -R "${SERVICE_USER}:${SERVICE_USER}" "${PLUGIN_DIR}"
 
 echo "==> Preparing config (.env) and secrets directory"
@@ -177,36 +181,28 @@ cp "${INSTALL_DIR}/deploy/youtube-dubber.service" /etc/systemd/system/youtube-du
 cp "${INSTALL_DIR}/deploy/bgutil-pot.service" /etc/systemd/system/bgutil-pot.service
 systemctl daemon-reload
 
-# The provider's prebuilt binary needs OpenSSL 3 (libssl.so.3); older boxes
-# (Debian 11) ship only 1.1 and can't run it. So adapt: if it runs, enable it and
-# let the app use yt-dlp's full (token-requiring) clients; if it can't, skip it
-# (no restart loop) and pin the app to the PO-token-exempt clients via a drop-in,
-# so some videos still download without a provider. Debian 12+ gets the former.
-echo "==> Configuring the PO-token provider"
+# The Node provider runs on this box (its own TLS), so always enable it and let
+# the app use yt-dlp's default clients -- no token-exempt fallback. Remove any
+# stale drop-in from the old "no provider here" era.
+echo "==> Enabling the PO-token provider service"
 DROPIN_DIR="/etc/systemd/system/youtube-dubber.service.d"
-mkdir -p "${DROPIN_DIR}"
-if sudo -u "${SERVICE_USER}" "${INSTALL_DIR}/bin/bgutil-pot" --version >/dev/null 2>&1; then
-  rm -f "${DROPIN_DIR}/10-no-pot.conf"
-  systemctl enable bgutil-pot >/dev/null 2>&1 || true
-  systemctl restart bgutil-pot || true
-  sleep 2
-  systemctl is-active --quiet bgutil-pot \
-    && echo "    bgutil-pot running on 127.0.0.1:4416 (full-quality clients enabled)" \
-    || echo "    WARNING: bgutil-pot installed but inactive -- see: journalctl -u bgutil-pot"
-else
-  echo "    bgutil-pot can't run here (needs OpenSSL 3 / libssl.so.3 -- e.g. Debian 11)."
-  echo "    Skipping it; restricting yt-dlp to the token-exempt 'android_vr' client instead."
-  systemctl disable --now bgutil-pot >/dev/null 2>&1 || true
-  # android_vr alone is the reliable token-free path on a provider-less box: it
-  # needs no PO token and consistently returns a downloadable muxable format.
-  # Widening this to tv,web_embedded made yt-dlp prefer their higher-quality
-  # formats -- which ARE PO-token-gated here -- so it skipped them and failed
-  # with "Requested format is not available". Keep it to the one client that
-  # works until the provider (Debian 12 + OpenSSL 3) can mint tokens.
-  printf '[Service]\nEnvironment=DUBBER_YTDLP_PLAYER_CLIENTS=android_vr\n' \
-    > "${DROPIN_DIR}/10-no-pot.conf"
-fi
+rm -f "${DROPIN_DIR}/10-no-pot.conf"
+systemctl enable bgutil-pot >/dev/null 2>&1 || true
+systemctl restart bgutil-pot || true
+sleep 3
 systemctl daemon-reload
+if systemctl is-active --quiet bgutil-pot; then
+  echo "    bgutil-pot running on 127.0.0.1:4416"
+  # Non-fatal end-to-end self-test: count real (non-storyboard) formats a token
+  # unlocks for a sample video. >0 means the provider chain is healthy.
+  SAMPLE="https://www.youtube.com/watch?v=Dj5OYkgDtHU"
+  N=$(sudo -u "${SERVICE_USER}" "${INSTALL_DIR}/bin/yt-dlp" --no-warnings \
+        --plugin-dirs "${PLUGIN_DIR}" -J --skip-download "${SAMPLE}" 2>/dev/null \
+        | "${INSTALL_DIR}/.venv/bin/python" -c "import sys,json;d=json.load(sys.stdin);print(sum(1 for f in d.get('formats',[]) if f.get('vcodec') not in (None,'none') or f.get('acodec') not in (None,'none')))" 2>/dev/null || echo 0)
+  echo "    provider self-test: ${N:-0} real formats for the sample video (0 = problem)"
+else
+  echo "    WARNING: bgutil-pot inactive -- downloads will fail. See: journalctl -u bgutil-pot"
+fi
 
 # On a re-deploy the service is already running old code from before the rsync;
 # restart it so the new code/deps take effect. Skipped on a first install
@@ -246,62 +242,3 @@ Install complete. Remaining manual steps (see README.md for full detail):
               -d '{"url": "https://www.youtube.com/watch?v=XXXXXXXXXXX"}'
 ==============================================================================
 EOF
-
-# === TEMP PoC (remove after): Node-based PO-token provider, end to end ========
-# Proves the whole chain on THIS box before we wire it in permanently: portable
-# Node 20 -> build the Brainicism provider -> run it on :4416 -> yt-dlp mints a
-# token via the plugin and actually downloads the video that 403s today. All in
-# /tmp, non-fatal, cleaned up. Kept LAST so its output survives tail-truncation.
-( set +e
-  echo "########## [POC] Node PO-token provider end-to-end ##########"
-  echo "glibc: $(ldd --version 2>&1 | head -1)"
-  T=/tmp/potpoc; rm -rf "$T"; mkdir -p "$T"
-  # 1) portable Node 20 (bundles its own TLS -> no system OpenSSL 3 needed)
-  NT=$(curl -fsSL https://nodejs.org/dist/latest-v20.x/SHASUMS256.txt 2>/dev/null | grep -oE 'node-v20[0-9.]+-linux-x64\.tar\.xz' | head -1)
-  echo "node tarball: ${NT:-<none>}"
-  curl -fsSL -o "$T/node.tar.xz" "https://nodejs.org/dist/latest-v20.x/${NT}" && tar -xJf "$T/node.tar.xz" -C "$T"
-  export PATH="$T/${NT%.tar.xz}/bin:$PATH"
-  echo "node: $(node -v 2>&1)  npm: $(npm -v 2>&1)"
-  # 2) build the provider server (pinned tag)
-  git clone --quiet --depth 1 --single-branch --branch 1.3.1 https://github.com/Brainicism/bgutil-ytdlp-pot-provider.git "$T/prov" 2>&1 | tail -1
-  ( cd "$T/prov/server" && if npm ci >"$T/npm.log" 2>&1 && npx tsc >"$T/tsc.log" 2>&1; then echo "build: OK"; else echo "build: FAILED"; tail -4 "$T/npm.log" "$T/tsc.log" 2>/dev/null | sed 's/^/   /'; fi )
-  # 3) start it on 4416 (clear any squatter from a previous PoC run first)
-  fuser -k 4416/tcp >/dev/null 2>&1 || pkill -f 'build/main.js' >/dev/null 2>&1; sleep 1
-  ( cd "$T/prov/server" && nohup node build/main.js --port 4416 >"$T/server.log" 2>&1 & echo $! >"$T/pid" )
-  sleep 5
-  echo "server log:"; tail -2 "$T/server.log" 2>/dev/null | sed 's/^/   /'
-  # 4a) the LATEST yt-dlp binary (the pinned 2025.10.14 predates this plugin's API)
-  curl -fsSL -o "$T/ytdlp" https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_linux && chmod +x "$T/ytdlp"
-  echo "yt-dlp (latest): $($T/ytdlp --version 2>&1)"
-  # 4b) plugin version-matched to the server, in the CORRECT layout:
-  #     --plugin-dirs ROOT searches ROOT/*/yt_dlp_plugins, so install under ROOT/bgutil.
-  "${INSTALL_DIR}/.venv/bin/pip" install --quiet --no-deps --target "$T/pd/bgutil" "bgutil-ytdlp-pot-provider==1.3.1" >"$T/pip.log" 2>&1 && echo "plugin: installed 1.3.1" || { echo "plugin: FAILED"; tail -3 "$T/pip.log" | sed 's/^/   /'; }
-  CK="${INSTALL_DIR}/secrets/youtube_cookies.txt"
-  URL="https://www.youtube.com/watch?v=Dj5OYkgDtHU"
-  CNT='import sys,json
-try:
-  d=json.load(sys.stdin); fs=d.get("formats",[])
-  print(sum(1 for f in fs if f.get("vcodec")not in(None,"none") or f.get("acodec")not in(None,"none")))
-except Exception as e: print("ERR")'
-  # 5) provider ON. Compare cookies vs NO cookies across clients: count REAL
-  #    (non-storyboard) formats, and if any, try a small real download (wa/w).
-  for MODE in nocookies cookies; do
-    CKARG=""; [ "$MODE" = cookies ] && CKARG="--cookies $CK"
-    for C in default web tv mweb; do
-      N=$("$T/ytdlp" --no-warnings --plugin-dirs "$T/pd" $CKARG \
-            --extractor-args "youtube:player_client=${C}" -J --skip-download "$URL" 2>/dev/null \
-            | python3 -c "$CNT")
-      DL="-"
-      if [ "$N" != "0" ] && [ "$N" != "ERR" ] && [ -n "$N" ]; then
-        "$T/ytdlp" --no-warnings --plugin-dirs "$T/pd" $CKARG \
-           --extractor-args "youtube:player_client=${C}" -f "wa/w" -o "$T/o.%(ext)s" "$URL" >/dev/null 2>&1 \
-           && DL="OK $(ls -lh $T/o.* 2>/dev/null | awk '{print $5}' | head -1)" || DL="DL-FAIL"
-        rm -f "$T"/o.* 2>/dev/null
-      fi
-      printf '   %-10s client=%-8s real_formats=%-4s download=%s\n' "$MODE" "$C" "$N" "$DL"
-    done
-  done
-  kill "$(cat $T/pid 2>/dev/null)" 2>/dev/null; rm -rf "$T"
-  echo "########## [POC] end ##########"
-) || true
-# === END TEMP PoC ============================================================

@@ -1,19 +1,22 @@
 [Unit]
 Description=bgutil PO-token provider for yt-dlp (localhost only)
-Documentation=https://github.com/jim60105/bgutil-ytdlp-pot-provider-rs
+Documentation=https://github.com/Brainicism/bgutil-ytdlp-pot-provider
 After=network-online.target
 Wants=network-online.target
 
 [Service]
-# Mints YouTube "Proof of Origin" tokens that yt-dlp needs to download most 2026
-# formats. Bound to loopback only -- nothing is exposed off the box.
+# Mints YouTube "Proof of Origin" tokens that yt-dlp needs to get real formats
+# and download them in 2026. The Brainicism provider is a Node server; Node
+# bundles its own TLS, so it runs on this box's OpenSSL 1.1 (the Rust build needs
+# OpenSSL 3). Bound to loopback; deploy/install.sh builds it at pot-provider/.
 User=dubber
 Group=dubber
-ExecStart=/opt/youtube-dubber/bin/bgutil-pot server --host 127.0.0.1 --port 4416
+WorkingDirectory=/opt/youtube-dubber/pot-provider/server
+ExecStart=/opt/youtube-dubber/node/bin/node /opt/youtube-dubber/pot-provider/server/build/main.js --port 4416
 Restart=always
 RestartSec=3
-# Light hardening only -- the provider may need a writable cache, so we avoid
-# ProtectSystem/ProtectHome that could silently break it.
+# Light hardening only -- the provider needs a writable cache (PrivateTmp gives
+# it an isolated /tmp), so we avoid ProtectSystem/ProtectHome that could break it.
 NoNewPrivileges=true
 PrivateTmp=true
 

@@ -17,6 +17,7 @@ def fake_settings(monkeypatch, tmp_path):
         ytdlp_bin=tmp_path / "yt-dlp",
         ytdlp_plugin_dirs=tmp_path / "plugins",
         ytdlp_player_clients="",
+        youtube_use_cookies=True,
         youtube_cookies_file=tmp_path / "cookies.txt",
     )
     monkeypatch.setattr(downloader, "settings", fake)
@@ -50,11 +51,18 @@ def test_base_cmd_omits_cookies_when_the_file_is_absent(fake_settings):
     assert "--cookies" not in downloader._base_cmd()
 
 
-def test_base_cmd_adds_cookies_when_present(fake_settings):
+def test_base_cmd_adds_cookies_when_enabled_and_present(fake_settings):
     fake_settings.youtube_cookies_file.write_text("# Netscape HTTP Cookie File\n")
     cmd = downloader._base_cmd()
     assert "--cookies" in cmd
     assert str(fake_settings.youtube_cookies_file) in cmd
+
+
+def test_base_cmd_omits_cookies_when_disabled_even_if_present(fake_settings):
+    # Default posture: the PO-token provider is the trust signal, cookies off.
+    fake_settings.youtube_use_cookies = False
+    fake_settings.youtube_cookies_file.write_text("# Netscape HTTP Cookie File\n")
+    assert "--cookies" not in downloader._base_cmd()
 
 
 def test_binary_falls_back_to_path_when_not_installed(fake_settings):

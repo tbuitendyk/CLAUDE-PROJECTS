@@ -42,22 +42,25 @@ def _binary() -> str:
 
 def _base_cmd() -> list[str]:
     """yt-dlp plus the args every call shares: terse output, our plugin directory
-    (the PO-token provider plugin) and the cookies file when present.
+    (the PO-token provider plugin) and -- only when explicitly enabled -- a
+    cookies file.
 
     With the provider minting Proof-of-Origin tokens, we let yt-dlp use its
-    default player clients -- restricting to the token-exempt clients would just
-    forgo the formats the tokens unlock (and is what left some videos with "no
-    formats" / others 403'ing)."""
+    default player clients (restricting them just forgoes the formats the tokens
+    unlock) and we do NOT pass cookies by default: a throwaway account's cookies
+    push yt-dlp onto authenticated clients that return storyboards-only for
+    videos that account doesn't own. The token is the trust signal instead."""
     cmd = [_binary(), "--no-warnings", "--no-playlist"]
     plugin_dirs = settings.ytdlp_plugin_dirs
     if plugin_dirs and Path(plugin_dirs).exists():
         cmd += ["--plugin-dirs", str(plugin_dirs)]
     clients = (settings.ytdlp_player_clients or "").strip()
-    if clients:  # set only where the PO-token provider can't run (token-exempt fallback)
+    if clients:  # optional: pin a specific client for debugging
         cmd += ["--extractor-args", f"youtube:player_client={clients}"]
-    cookies = settings.youtube_cookies_file
-    if cookies and Path(cookies).exists():
-        cmd += ["--cookies", str(cookies)]
+    if settings.youtube_use_cookies:
+        cookies = settings.youtube_cookies_file
+        if cookies and Path(cookies).exists():
+            cmd += ["--cookies", str(cookies)]
     return cmd
 
 

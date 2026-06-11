@@ -94,11 +94,15 @@ class Settings:
         default_factory=lambda: _path("DUBBER_YT_TOKEN_FILE", "./secrets/token.json")
     )
     # Cookies (Netscape "cookies.txt" format) for yt-dlp's *download* side.
-    # YouTube increasingly bot-checks datacenter IPs ("Sign in to confirm you're
-    # not a bot"); a cookies export from a signed-in session is yt-dlp's
-    # recommended remedy. Optional -- if the file is absent, extraction runs
-    # without cookies (and may hit the bot wall). Distinct from the OAuth upload
+    # OFF by default: with the PO-token provider running, the token is the trust
+    # signal, and supplying a *throwaway* account's cookies actively backfires --
+    # yt-dlp routes to authenticated clients (web_creator) that return only
+    # storyboards for videos that account doesn't own ("Requested format is not
+    # available"). Enable only if you have cookies from an account that should be
+    # used for extraction (e.g. to reach age-restricted/members content); the
+    # provider alone handles ordinary bot-checks. Distinct from the OAuth upload
     # token above; yt-dlp can't use OAuth for extraction.
+    youtube_use_cookies: bool = _bool("DUBBER_YT_USE_COOKIES", False)
     youtube_cookies_file: Path = field(
         default_factory=lambda: _path("DUBBER_YT_COOKIES_FILE", "./secrets/youtube_cookies.txt")
     )
@@ -115,11 +119,9 @@ class Settings:
         default_factory=lambda: _path("DUBBER_YTDLP_PLUGIN_DIRS", "./yt-dlp-plugins")
     )
     # Optional comma-separated YouTube player_client list to restrict yt-dlp to.
-    # Left empty when the PO-token provider is up (yt-dlp uses its full, higher-
-    # quality default clients); install.sh pins it to the token-exempt 'android_vr'
-    # client on boxes where the provider can't run, so videos still download
-    # without tokens (it's the one client that reliably returns a muxable format
-    # token-free -- tv/web_embedded look token-exempt but their formats are gated).
+    # Left empty by default: with the PO-token provider up, yt-dlp's default
+    # clients return the full ladder and download cleanly. Set it only to pin a
+    # specific client for debugging.
     ytdlp_player_clients: str = os.getenv("DUBBER_YTDLP_PLAYER_CLIENTS", "")
     upload_privacy_status: str = os.getenv("DUBBER_UPLOAD_PRIVACY", "unlisted")
     upload_category_id: str = os.getenv("DUBBER_UPLOAD_CATEGORY", "22")
