@@ -90,6 +90,15 @@ class Settings:
     youtube_token_file: Path = field(
         default_factory=lambda: _path("DUBBER_YT_TOKEN_FILE", "./secrets/token.json")
     )
+    # Cookies (Netscape "cookies.txt" format) for yt-dlp's *download* side.
+    # YouTube increasingly bot-checks datacenter IPs ("Sign in to confirm you're
+    # not a bot"); a cookies export from a signed-in session is yt-dlp's
+    # recommended remedy. Optional -- if the file is absent, extraction runs
+    # without cookies (and may hit the bot wall). Distinct from the OAuth upload
+    # token above; yt-dlp can't use OAuth for extraction.
+    youtube_cookies_file: Path = field(
+        default_factory=lambda: _path("DUBBER_YT_COOKIES_FILE", "./secrets/youtube_cookies.txt")
+    )
     upload_privacy_status: str = os.getenv("DUBBER_UPLOAD_PRIVACY", "unlisted")
     upload_category_id: str = os.getenv("DUBBER_UPLOAD_CATEGORY", "22")
     title_prefix: str = os.getenv("DUBBER_TITLE_PREFIX", "[ES] ")

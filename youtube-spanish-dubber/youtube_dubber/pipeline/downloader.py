@@ -12,6 +12,7 @@ from typing import Callable, Optional
 
 import yt_dlp
 
+from ..config import settings
 from .models import ThumbnailSource, VideoInfo
 
 log = logging.getLogger(__name__)
@@ -23,6 +24,19 @@ log = logging.getLogger(__name__)
 _EXTRACTOR_ARGS = {"youtube": {"player_client": ["android_vr"]}}
 
 
+def _with_cookies(opts: dict) -> dict:
+    """Attach a cookies file to yt-dlp opts when one is configured and present.
+
+    YouTube increasingly bot-checks datacenter IPs ("Sign in to confirm you're
+    not a bot"); supplying cookies from a signed-in session is yt-dlp's
+    recommended remedy. Optional -- with no file on disk the opts are unchanged
+    (and extraction may hit the bot wall)."""
+    cookies = settings.youtube_cookies_file
+    if cookies and Path(cookies).exists():
+        opts["cookiefile"] = str(cookies)
+    return opts
+
+
 def probe(url: str) -> dict:
     """Return yt-dlp's info dict without downloading anything."""
     opts = {
@@ -32,7 +46,7 @@ def probe(url: str) -> dict:
         "format": "bv*+ba/b",
         "extractor_args": _EXTRACTOR_ARGS,
     }
-    with yt_dlp.YoutubeDL(opts) as ydl:
+    with yt_dlp.YoutubeDL(_with_cookies(opts)) as ydl:
         return ydl.extract_info(url, download=False)
 
 
@@ -103,7 +117,7 @@ def download_video(
     }
     if on_progress is not None:
         opts["progress_hooks"] = [_download_progress_hook(on_progress)]
-    with yt_dlp.YoutubeDL(opts) as ydl:
+    with yt_dlp.YoutubeDL(_with_cookies(opts)) as ydl:
         info = ydl.extract_info(url, download=True)
         path = Path(ydl.prepare_filename(info))
         if not path.exists():
@@ -142,7 +156,7 @@ def fetch_thumbnail(url: str, work_dir: Path) -> Optional[ThumbnailSource]:
         "extractor_args": _EXTRACTOR_ARGS,
     }
     try:
-        with yt_dlp.YoutubeDL(opts) as ydl:
+        with yt_dlp.YoutubeDL(_with_cookies(opts)) as ydl:
             info = ydl.extract_info(url, download=True)
     except yt_dlp.utils.DownloadError as exc:
         log.warning("Thumbnail fetch failed for %s: %s", url, exc)
@@ -196,7 +210,7 @@ def download_caption(url: str, lang: str, work_dir: Path, auto: bool) -> Optiona
         "extractor_args": _EXTRACTOR_ARGS,
     }
     try:
-        with yt_dlp.YoutubeDL(opts) as ydl:
+        with yt_dlp.YoutubeDL(_with_cookies(opts)) as ydl:
             ydl.download([url])
     except yt_dlp.utils.DownloadError as exc:
         log.warning("Caption download failed (lang=%s, auto=%s): %s", lang, auto, exc)
