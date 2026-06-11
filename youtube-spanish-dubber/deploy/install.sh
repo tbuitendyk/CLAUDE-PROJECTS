@@ -94,16 +94,16 @@ echo "    node $(${NODE_DIR}/bin/node -v)"
 
 # Build the provider server once (clone tag -> npm ci -> tsc). Kept across deploys.
 PROVIDER_DIR="${INSTALL_DIR}/pot-provider"
-if [ ! -f "${PROVIDER_DIR}/server/build/main.js" ]; then
-  echo "    building the bgutil provider (${PROVIDER_TAG})"
-  rm -rf "${PROVIDER_DIR}"
-  git clone --quiet --depth 1 --single-branch --branch "${PROVIDER_TAG}" \
-    https://github.com/Brainicism/bgutil-ytdlp-pot-provider.git "${PROVIDER_DIR}"
-  ( cd "${PROVIDER_DIR}/server" \
-      && PATH="${NODE_DIR}/bin:${PATH}" npm ci >/dev/null 2>&1 \
-      && PATH="${NODE_DIR}/bin:${PATH}" npx tsc >/dev/null 2>&1 ) \
-    && echo "    provider built" || echo "    WARNING: provider build failed -- see journalctl after deploy"
-fi
+rm -rf "${PROVIDER_DIR}"   # TEMP-DIAG: force a clean, visible rebuild
+echo "    building the bgutil provider (${PROVIDER_TAG})"
+git clone --quiet --depth 1 --single-branch --branch "${PROVIDER_TAG}" \
+  https://github.com/Brainicism/bgutil-ytdlp-pot-provider.git "${PROVIDER_DIR}"
+( set +e +o pipefail; cd "${PROVIDER_DIR}/server"
+  export PATH="${NODE_DIR}/bin:${PATH}"
+  echo "    npm ci:"; npm ci 2>&1 | tail -6 | sed 's/^/      /'
+  echo "    tsc:";    npx tsc 2>&1 | tail -6 | sed 's/^/      /'
+) || true
+echo "    build/main.js: $([ -f "${PROVIDER_DIR}/server/build/main.js" ] && echo PRESENT || echo MISSING)"
 chown -R "${SERVICE_USER}:${SERVICE_USER}" "${NODE_DIR}" "${PROVIDER_DIR}"
 
 # The matching yt-dlp plugin, in the layout the binary needs: --plugin-dirs ROOT
@@ -203,7 +203,14 @@ if systemctl is-active --quiet bgutil-pot; then
         | "${INSTALL_DIR}/.venv/bin/python" -c "import sys,json;d=json.load(sys.stdin);print(sum(1 for f in d.get('formats',[]) if f.get('vcodec') not in (None,'none') or f.get('acodec') not in (None,'none')))" 2>/dev/null || echo 0)
   echo "    provider self-test: ${N:-0} real formats for the sample video (0 = problem)"
 else
-  echo "    WARNING: bgutil-pot inactive -- downloads will fail. See: journalctl -u bgutil-pot"
+  echo "    WARNING: bgutil-pot inactive -- downloads will fail."
+  echo "    --- systemctl status ---"
+  systemctl status bgutil-pot --no-pager -l 2>&1 | tail -10 | sed 's/^/      /'
+  echo "    --- journal ---"
+  journalctl -u bgutil-pot -n 20 --no-pager 2>&1 | tail -20 | sed 's/^/      /'
+  echo "    --- manual run (as ${SERVICE_USER}) ---"
+  ( cd "${PROVIDER_DIR}/server" 2>/dev/null && timeout 6 sudo -u "${SERVICE_USER}" \
+      "${NODE_DIR}/bin/node" build/main.js --port 4416 2>&1 | head -8 | sed 's/^/      /' ) || true
 fi
 
 # On a re-deploy the service is already running old code from before the rsync;
