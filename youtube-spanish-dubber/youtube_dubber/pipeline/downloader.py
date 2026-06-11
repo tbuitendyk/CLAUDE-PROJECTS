@@ -17,11 +17,13 @@ from .models import ThumbnailSource, VideoInfo
 
 log = logging.getLogger(__name__)
 
-# YouTube now requires a "PO Token" for most player clients (web/tv/ios); without
-# one, the only formats yt-dlp can use return HTTP 403 on download. android_vr is
-# exempt from that requirement, so force it rather than standing up a companion
-# PO-token-provider service. https://github.com/yt-dlp/yt-dlp-wiki/blob/master/PO%20Token%20Guide.md
-_EXTRACTOR_ARGS = {"youtube": {"player_client": ["android_vr"]}}
+# Which YouTube player clients yt-dlp asks for formats from. android_vr is
+# PO-token-exempt and works unauthenticated, but it intermittently returns *no*
+# usable format for some videos ("Requested format is not available"). Now that
+# we ship cookies (see _with_cookies), the cookie-authenticated clients are good
+# fallbacks, so list several: yt-dlp gathers formats from all of them and picks
+# the best that actually downloads. https://github.com/yt-dlp/yt-dlp/wiki/Extractors
+_EXTRACTOR_ARGS = {"youtube": {"player_client": ["android_vr", "tv", "web_safari"]}}
 
 
 def _with_cookies(opts: dict) -> dict:
@@ -44,6 +46,9 @@ def probe(url: str) -> dict:
         "no_warnings": True,
         "skip_download": True,
         "format": "bv*+ba/b",
+        # Probing only reads metadata + caption availability, never a stream, so
+        # don't let format selection abort it if a client returns no formats.
+        "ignore_no_formats_error": True,
         "extractor_args": _EXTRACTOR_ARGS,
     }
     with yt_dlp.YoutubeDL(_with_cookies(opts)) as ydl:
