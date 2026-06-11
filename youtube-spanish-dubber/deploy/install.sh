@@ -170,20 +170,30 @@ cp "${INSTALL_DIR}/deploy/youtube-dubber.service" /etc/systemd/system/youtube-du
 cp "${INSTALL_DIR}/deploy/bgutil-pot.service" /etc/systemd/system/bgutil-pot.service
 systemctl daemon-reload
 
-# The PO-token provider must be up before a dub downloads; start/restart it now
-# (it has no one-time setup, unlike the dubber service below).
-echo "==> Starting the PO-token provider"
-systemctl enable bgutil-pot >/dev/null 2>&1 || true
-systemctl restart bgutil-pot || true
-sleep 2
-if systemctl is-active --quiet bgutil-pot; then
-  echo "    bgutil-pot: running on 127.0.0.1:4416"
+# The provider's prebuilt binary needs OpenSSL 3 (libssl.so.3); older boxes
+# (Debian 11) ship only 1.1 and can't run it. So adapt: if it runs, enable it and
+# let the app use yt-dlp's full (token-requiring) clients; if it can't, skip it
+# (no restart loop) and pin the app to the PO-token-exempt clients via a drop-in,
+# so some videos still download without a provider. Debian 12+ gets the former.
+echo "==> Configuring the PO-token provider"
+DROPIN_DIR="/etc/systemd/system/youtube-dubber.service.d"
+mkdir -p "${DROPIN_DIR}"
+if sudo -u "${SERVICE_USER}" "${INSTALL_DIR}/bin/bgutil-pot" --version >/dev/null 2>&1; then
+  rm -f "${DROPIN_DIR}/10-no-pot.conf"
+  systemctl enable bgutil-pot >/dev/null 2>&1 || true
+  systemctl restart bgutil-pot || true
+  sleep 2
+  systemctl is-active --quiet bgutil-pot \
+    && echo "    bgutil-pot running on 127.0.0.1:4416 (full-quality clients enabled)" \
+    || echo "    WARNING: bgutil-pot installed but inactive -- see: journalctl -u bgutil-pot"
 else
-  echo "    WARNING: bgutil-pot failed to start -- diagnosing (downloads may 403):"
-  { file "${INSTALL_DIR}/bin/bgutil-pot" 2>&1 || true; } | sed 's/^/      file: /'
-  { sudo -u "${SERVICE_USER}" "${INSTALL_DIR}/bin/bgutil-pot" --version 2>&1 | head -n 3 || true; } | sed 's/^/      run:  /'
-  { journalctl -u bgutil-pot --no-pager -n 12 2>&1 || true; } | sed 's/^/      log:  /'
+  echo "    bgutil-pot can't run here (needs OpenSSL 3 / libssl.so.3 -- e.g. Debian 11)."
+  echo "    Skipping it; restricting yt-dlp to PO-token-exempt clients instead."
+  systemctl disable --now bgutil-pot >/dev/null 2>&1 || true
+  printf '[Service]\nEnvironment=DUBBER_YTDLP_PLAYER_CLIENTS=tv,web_embedded,android_vr\n' \
+    > "${DROPIN_DIR}/10-no-pot.conf"
 fi
+systemctl daemon-reload
 
 # On a re-deploy the service is already running old code from before the rsync;
 # restart it so the new code/deps take effect. Skipped on a first install

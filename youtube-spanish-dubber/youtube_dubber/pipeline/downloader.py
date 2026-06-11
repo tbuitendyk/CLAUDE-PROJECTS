@@ -52,6 +52,9 @@ def _base_cmd() -> list[str]:
     plugin_dirs = settings.ytdlp_plugin_dirs
     if plugin_dirs and Path(plugin_dirs).exists():
         cmd += ["--plugin-dirs", str(plugin_dirs)]
+    clients = (settings.ytdlp_player_clients or "").strip()
+    if clients:  # set only where the PO-token provider can't run (token-exempt fallback)
+        cmd += ["--extractor-args", f"youtube:player_client={clients}"]
     cookies = settings.youtube_cookies_file
     if cookies and Path(cookies).exists():
         cmd += ["--cookies", str(cookies)]

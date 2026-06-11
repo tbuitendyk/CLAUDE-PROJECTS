@@ -16,15 +16,23 @@ def fake_settings(monkeypatch, tmp_path):
     fake = SimpleNamespace(
         ytdlp_bin=tmp_path / "yt-dlp",
         ytdlp_plugin_dirs=tmp_path / "plugins",
+        ytdlp_player_clients="",
         youtube_cookies_file=tmp_path / "cookies.txt",
     )
     monkeypatch.setattr(downloader, "settings", fake)
     return fake
 
 
-def test_base_cmd_does_not_force_player_clients(fake_settings):
-    # With the PO-token provider, yt-dlp uses its default (full-quality) clients.
+def test_base_cmd_does_not_force_player_clients_by_default(fake_settings):
+    # Empty -> yt-dlp uses its default (full-quality) clients (provider supplies tokens).
     assert "--extractor-args" not in downloader._base_cmd()
+
+
+def test_base_cmd_restricts_clients_when_configured(fake_settings):
+    fake_settings.ytdlp_player_clients = "tv,web_embedded,android_vr"
+    cmd = downloader._base_cmd()
+    assert "--extractor-args" in cmd
+    assert cmd[cmd.index("--extractor-args") + 1] == "youtube:player_client=tv,web_embedded,android_vr"
 
 
 def test_base_cmd_adds_plugin_dir_when_present(fake_settings):
