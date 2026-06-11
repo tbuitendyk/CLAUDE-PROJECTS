@@ -55,6 +55,7 @@ class TextRegion:
     # can reason about or override how the replacement text is drawn.
     fill_color: tuple[int, int, int] | None = None    # the (translated) text colour
     stroke_color: tuple[int, int, int] | None = None   # outline drawn for contrast
+    font_family: str | None = None   # "serif"/"sans", detected from the source glyphs
 
     @property
     def bbox(self) -> tuple[int, int, int, int]:

@@ -15,6 +15,7 @@ the caller carries on. It never raises on a bad image.
 """
 from __future__ import annotations
 
+import functools
 import logging
 from pathlib import Path
 from typing import Optional
@@ -24,15 +25,23 @@ from .models import TextRegion
 
 log = logging.getLogger(__name__)
 
-# Thumbnail titles are usually a serif/"Roman" display face, so re-render in a
-# serif (DejaVuSerif ships with fonts-dejavu-core, installed by deploy) rather
-# than the banner's sans -- a closer match than Arial-like sans. Overridable
-# via DUBBER_THUMBNAIL_TEXT_FONT.
+# Re-render thumbnail text in a face that matches the *source* one. The titles
+# vary -- some are a serif/"Roman" display face, many are a heavy sans/grotesque
+# -- so rather than pin one font (and mis-match the other half), we detect serif
+# vs sans from the source glyphs (_estimate_font_family) and pick from these.
+# Bold throughout: thumbnail titles essentially always are. DejaVu ships with
+# fonts-dejavu-core (installed by deploy); DUBBER_THUMBNAIL_TEXT_FONT overrides.
 _SERIF_FONT_CANDIDATES = (
     "/usr/share/fonts/truetype/dejavu/DejaVuSerif-Bold.ttf",
     "/usr/share/fonts/truetype/liberation/LiberationSerif-Bold.ttf",
     "/usr/share/fonts/truetype/freefont/FreeSerifBold.ttf",
     "/usr/share/fonts/dejavu/DejaVuSerif-Bold.ttf",
+)
+_SANS_FONT_CANDIDATES = (
+    "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+    "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+    "/usr/share/fonts/truetype/freefont/FreeSansBold.ttf",
+    "/usr/share/fonts/dejavu/DejaVuSans-Bold.ttf",
 )
 
 # Cap how much the rendered title is vertically stretched to fill its box -- the
@@ -220,6 +229,7 @@ def render_translations(image, pairs: list[tuple[TextRegion, str]]):
     for region, _translated in pairs:
         fill, stroke = _estimate_colors(arr, region.bbox)
         region.fill_color, region.stroke_color = fill, stroke
+        region.font_family = _estimate_font_family(arr, region.bbox)
 
     canvas = _remove_regions(canvas, [r for r, _ in pairs])
 
@@ -320,6 +330,93 @@ def _colour_distance(a, b):
     return ((a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2 + (a[2] - b[2]) ** 2) ** 0.5
 
 
+# --- font matching ---------------------------------------------------------
+
+def _region_glyph_mask(arr, bbox):
+    """0/1 mask of the source text's strokes within `bbox` -- the same
+    background-distance + Otsu approach the colour estimators use, reused here
+    to judge the typeface. None if the box is too small."""
+    import numpy as np
+
+    x0, y0, x1, y1 = bbox
+    h, w = arr.shape[:2]
+    x0, y0 = max(0, x0), max(0, y0)
+    x1, y1 = min(w, x1), min(h, y1)
+    if x1 - x0 < 6 or y1 - y0 < 6:
+        return None
+    crop = arr[y0:y1, x0:x1]
+    background = np.median(crop.reshape(-1, 3), axis=0)
+    distance = np.linalg.norm(crop.astype(np.float32) - background, axis=2)
+    return _foreground_mask(distance)
+
+
+def _stroke_width_modulation(mask) -> Optional[float]:
+    """Coefficient of variation of stroke widths in a 0/1 glyph mask.
+
+    Serif/"Roman" display faces modulate thick stems against thin serifs and
+    hairlines (high CoV, ~0.5 for DejaVu Serif); heavy sans/grotesques hold a
+    near-uniform stroke (low CoV, ~0.15). Stroke widths are read off the
+    distance transform's ridge (skeleton) pixels -- their value is the stroke
+    half-width there. Returns None when the mask is too sparse to judge."""
+    import numpy as np
+
+    try:
+        import cv2
+    except Exception:  # noqa: BLE001 -- no opencv: can't measure, caller defaults
+        return None
+    m = (np.asarray(mask).astype(np.uint8)) * 255
+    if int((m > 0).sum()) < 40:
+        return None
+    dist = cv2.distanceTransform(m, cv2.DIST_L2, 3)
+    ridge = (dist >= cv2.dilate(dist, np.ones((3, 3), np.float32)) - 1e-3) & (dist >= 1.0)
+    widths = dist[ridge]
+    if widths.size < 12:
+        return None
+    mean = float(widths.mean())
+    return float(widths.std() / mean) if mean > 0 else None
+
+
+@functools.lru_cache(maxsize=8)
+def _font_reference_modulation(font_path: str) -> Optional[float]:
+    """Stroke modulation of a sample rendered in `font_path` -- the reference a
+    source region is matched against, so the serif/sans call needs no hand-tuned
+    threshold (pick whichever reference the source sits nearer). Cached per
+    font."""
+    if not font_path:
+        return None
+    import numpy as np
+
+    try:
+        from PIL import Image, ImageDraw, ImageFont
+
+        fnt = ImageFont.truetype(font_path, 96)
+    except Exception:  # noqa: BLE001 -- missing font: no reference
+        return None
+    img = Image.new("L", (1100, 200), 0)
+    ImageDraw.Draw(img).text((12, 10), "Salvation Es Tu Secure", font=fnt, fill=255)
+    return _stroke_width_modulation(np.asarray(img) > 64)
+
+
+def _estimate_font_family(arr, bbox) -> str:
+    """Classify the source text as "serif" or "sans" from its glyph strokes, so
+    the translation is re-rendered in a matching face rather than a fixed one.
+
+    Falls back to "serif" when it can't tell (the stylised 'Roman' titles this
+    started with), or to a coarse absolute cut when no reference font is on the
+    box to compare against."""
+    mask = _region_glyph_mask(arr, bbox)
+    if mask is None:
+        return "serif"
+    source = _stroke_width_modulation(mask)
+    if source is None:
+        return "serif"
+    serif_ref = _font_reference_modulation(_find_text_font("serif") or "")
+    sans_ref = _font_reference_modulation(_find_text_font("sans") or "")
+    if serif_ref is None or sans_ref is None:
+        return "sans" if source < 0.32 else "serif"
+    return "serif" if abs(source - serif_ref) <= abs(source - sans_ref) else "sans"
+
+
 # --- removal ---------------------------------------------------------------
 
 def _remove_regions(image, regions: list[TextRegion]):
@@ -402,17 +499,20 @@ def _flat_fill_regions(image, regions: list[TextRegion]):
 
 # --- rendering -------------------------------------------------------------
 
-def _find_text_font() -> Optional[str]:
-    """The serif/"Roman" face to re-render thumbnail text in (closer to the
-    stylized titles than sans). Honours DUBBER_THUMBNAIL_TEXT_FONT, then known
-    serif paths, then falls back to the banner's sans lookup."""
+def _find_text_font(family: str = "serif") -> Optional[str]:
+    """A bold face in `family` ("serif" or "sans") to re-render thumbnail text
+    in -- matched to the source by `_estimate_font_family`. An explicit
+    DUBBER_THUMBNAIL_TEXT_FONT overrides detection entirely (forces that one
+    font); otherwise we use the known serif/sans paths, then fall back to the
+    banner's sans lookup."""
     preferred = ""
     try:
         from ..config import settings
         preferred = settings.thumbnail_text_font
     except Exception:  # noqa: BLE001 -- config import shouldn't fail callers
         pass
-    for path in ([preferred] if preferred else []) + list(_SERIF_FONT_CANDIDATES):
+    candidates = _SANS_FONT_CANDIDATES if family == "sans" else _SERIF_FONT_CANDIDATES
+    for path in ([preferred] if preferred else []) + list(candidates):
         if path and Path(path).exists():
             return path
     from . import thumbnail
@@ -420,10 +520,11 @@ def _find_text_font() -> Optional[str]:
 
 
 def _render_region(canvas, region: TextRegion, text: str) -> bool:
-    """Draw `text` into `region`'s box: sized to fit, in a serif face, with the
-    detected fill + outline colours, and vertically stretched to fill the box
-    (matching the original's tall letters). Returns False if no font was found."""
-    font_path = _find_text_font()
+    """Draw `text` into `region`'s box: sized to fit, in a face matching the
+    source's serif/sans family, with the detected fill + outline colours, and
+    vertically stretched to fill the box (matching the original's tall letters).
+    Returns False if no font was found."""
+    font_path = _find_text_font(region.font_family or "serif")
     if not font_path:
         return False
 

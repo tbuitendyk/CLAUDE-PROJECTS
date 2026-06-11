@@ -176,3 +176,70 @@ def test_estimate_colors_picks_contrasting_stroke():
     fill, stroke = image_text._estimate_colors(arr, (0, 0, 200, 50))
     assert min(fill) > 150          # recovered a light text colour
     assert stroke == (0, 0, 0)      # dark outline for contrast
+
+
+# --- font matching (serif vs sans detection) -------------------------------
+# These render real glyphs, so they need opencv + the DejaVu serif/sans bold
+# faces on the box (both ship with fonts-dejavu-core). Skipped cleanly without
+# them, like the rest of the heavy-pipeline suite.
+from pathlib import Path as _Path  # noqa: E402
+
+_DEJAVU_SERIF = "/usr/share/fonts/truetype/dejavu/DejaVuSerif-Bold.ttf"
+_DEJAVU_SANS = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
+
+
+def _has_cv2_and_fonts() -> bool:
+    try:
+        import cv2  # noqa: F401
+    except Exception:
+        return False
+    return _Path(_DEJAVU_SERIF).exists() and _Path(_DEJAVU_SANS).exists()
+
+
+needs_fonts = pytest.mark.skipif(
+    not _has_cv2_and_fonts(), reason="needs opencv + DejaVu serif/sans bold fonts"
+)
+
+
+def _source_arr(font_path, text, size=110):
+    """A thumbnail-like crop: noisy coloured background, white glyphs with a red
+    outline -- the conditions _estimate_font_family must see through."""
+    from PIL import ImageDraw, ImageFont
+
+    rng = np.random.default_rng(0)
+    base = np.full((170, 1000, 3), (110, 90, 60), dtype=np.int16)
+    base = np.clip(base + rng.integers(-15, 16, base.shape), 0, 255).astype(np.uint8)
+    pim = Image.fromarray(base)
+    fnt = ImageFont.truetype(font_path, size)
+    ImageDraw.Draw(pim).text(
+        (12, 8), text, font=fnt, fill=(255, 255, 255), stroke_width=6, stroke_fill=(200, 40, 40)
+    )
+    return np.asarray(pim)
+
+
+@needs_fonts
+def test_font_reference_modulation_serif_exceeds_sans():
+    serif = image_text._font_reference_modulation(_DEJAVU_SERIF)
+    sans = image_text._font_reference_modulation(_DEJAVU_SANS)
+    assert serif is not None and sans is not None
+    assert serif > sans  # serif modulates thick/thin; sans is near-uniform
+
+
+@needs_fonts
+def test_estimate_font_family_detects_sans_source():
+    arr = _source_arr(_DEJAVU_SANS, "IS YOUR SALVATION")
+    assert image_text._estimate_font_family(arr, (0, 0, arr.shape[1], arr.shape[0])) == "sans"
+
+
+@needs_fonts
+def test_estimate_font_family_detects_serif_source():
+    arr = _source_arr(_DEJAVU_SERIF, "Salvation Secure")
+    assert image_text._estimate_font_family(arr, (0, 0, arr.shape[1], arr.shape[0])) == "serif"
+
+
+@needs_fonts
+def test_render_region_uses_the_detected_family():
+    # render_translations should tag each region with the source's family, and
+    # _render_region should pull the matching font for it.
+    assert image_text._find_text_font("sans").lower().find("sans") != -1
+    assert image_text._find_text_font("serif").lower().find("serif") != -1
