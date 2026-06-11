@@ -29,6 +29,9 @@
   const restartMessage = document.getElementById("restart-message");
   const thumbnailBtn = document.getElementById("thumbnail-btn");
   const thumbnailPanel = document.getElementById("thumbnail-panel");
+  const rethumbBtn = document.getElementById("rethumb-btn");
+  const rethumbPreview = document.getElementById("rethumb-preview");
+  const rethumbMessage = document.getElementById("rethumb-message");
 
   let authenticated = false;
   const pollTimers = new Map(); // job id -> setInterval handle
@@ -41,14 +44,11 @@
   // re-acquired and re-translated transcript that might differ.
   let previewState = null;
 
-  // The most recent thumbnail preview generated for the current video, and
-  // whether it's been marked for use:
+  // The thumbnail preview state now lives inside each makeThumbnailEditor
+  // instance (the dub-flow and re-thumbnail editors defined near the bottom):
   //   { url, targetLanguage, original, generated, regions, bannerText, approved }
-  // When "Start dubbing" runs for the same video+language and `approved` is
-  // true, `generated` (the exact image shown -- translated text + banner baked
-  // in) is sent as `thumbnail_override` so the upload uses it verbatim instead
-  // of the pipeline auto-generating one.
-  let thumbnailState = null;
+  // For the dub flow, an approved `generated` image is read back by submitJob
+  // (via dubThumbEditor.getState) and sent as `thumbnail_override`.
 
   function setAuthState(state, text) {
     authDot.className = "dot " + state;
@@ -60,6 +60,10 @@
     previewBtn.classList.toggle("ghosted", !authenticated);
     thumbnailBtn.disabled = !authenticated;
     thumbnailBtn.classList.toggle("ghosted", !authenticated);
+    if (rethumbBtn) {
+      rethumbBtn.disabled = !authenticated;
+      rethumbBtn.classList.toggle("ghosted", !authenticated);
+    }
     signinBtn.style.display = authenticated ? "none" : "";
     // The "Restart Dubber service" control is an operator action -- only show
     // it once signed in (same gate as the dubbing buttons).
@@ -512,9 +516,10 @@
       usingSavedEdits = true;
     }
     let usingThumbnail = false;
-    if (mode === "dub" && thumbnailState && thumbnailState.approved &&
-        thumbnailState.url === url && thumbnailState.targetLanguage === targetLanguage) {
-      payload.thumbnail_override = thumbnailState.generated;
+    const dubThumb = dubThumbEditor.getState();
+    if (mode === "dub" && dubThumb && dubThumb.approved &&
+        dubThumb.url === url && dubThumb.targetLanguage === targetLanguage) {
+      payload.thumbnail_override = dubThumb.generated;
       usingThumbnail = true;
     }
 
@@ -548,7 +553,7 @@
             : `Queued as job ${data.id}. Tracking progress below.`)) + thumbNote;
       if (mode !== "preview") {
         form.reset();
-        resetThumbnailPreview();
+        dubThumbEditor.reset();
       }
       renderJob(data);
       pollJob(data.id);
@@ -633,266 +638,355 @@
 
   if (restartBtn) restartBtn.addEventListener("click", restartService);
 
-  // --- Thumbnail preview / approval --------------------------------------
-  // Fetches only the source thumbnail (no video) and shows it beside a Spanish
-  // version: text baked into the image is detected, translated and re-rendered,
-  // with the banner added on top. The per-region translations are editable;
-  // once approved, the exact image shown is carried into the dub as
-  // `thumbnail_override` (see submitJob). Entirely optional.
+  // --- Thumbnail editor (shared) -----------------------------------------
+  // A reusable preview/edit widget over /thumbnail/preview + /thumbnail/render:
+  // shows the source thumbnail beside a Spanish version (baked-in text detected,
+  // translated and re-rendered, banner on top), with the per-region translations
+  // editable. Two instances use it -- the dub flow (an approved image is carried
+  // into the upload as `thumbnail_override`, read by submitJob) and the
+  // standalone re-thumbnail tool (an approved image is pushed onto an existing
+  // video via /thumbnail/apply). Each scopes its DOM lookups to its own panel so
+  // the two never collide.
+  function makeThumbnailEditor(opts) {
+    let state = null;
 
-  function resetThumbnailPreview() {
-    thumbnailState = null;
-    if (thumbnailPanel) {
-      thumbnailPanel.style.display = "none";
-      thumbnailPanel.textContent = "";
+    function getState() { return state; }
+
+    function reset() {
+      state = null;
+      if (opts.panel) {
+        opts.panel.style.display = "none";
+        opts.panel.textContent = "";
+      }
     }
+
+    function setMessage(text, kind) {
+      const msg = opts.panel.querySelector(".thumb-message");
+      if (!msg) return;
+      msg.textContent = text || "";
+      msg.className = "hint thumb-message" + (kind ? " " + kind : "");
+    }
+
+    function markApproved() {
+      const fig = opts.panel.querySelector(".thumb-generated-figure");
+      if (fig) fig.classList.add("approved");
+    }
+
+    function figure(label, src) {
+      const fig = document.createElement("figure");
+      fig.className = "thumb-figure";
+      const img = document.createElement("img");
+      img.className = "thumb-img";
+      img.src = src;
+      img.alt = label + " thumbnail";
+      const cap = document.createElement("figcaption");
+      cap.textContent = label;
+      fig.appendChild(img);
+      fig.appendChild(cap);
+      return fig;
+    }
+
+    async function preview() {
+      if (!authenticated) return;
+      const url = opts.getSourceUrl();
+      if (!url) {
+        opts.onMissingSource();
+        return;
+      }
+      const targetLanguage = opts.getTargetLanguage();
+
+      const restore = opts.trigger.textContent;
+      opts.trigger.disabled = true;
+      opts.trigger.textContent = "Fetching thumbnail…";
+      opts.panel.style.display = "block";
+      opts.panel.textContent = "";
+      const loading = document.createElement("p");
+      loading.className = "hint";
+      loading.textContent = "Fetching the thumbnail and generating the Spanish version… " +
+        "(the first one can take a few seconds while the text models warm up).";
+      opts.panel.appendChild(loading);
+
+      try {
+        const res = await fetch(`${API_BASE}/thumbnail/preview`, {
+          method: "POST",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ url: url, target_language: targetLanguage }),
+        });
+        const data = await res.json().catch(() => null);
+        if (!res.ok) {
+          const detail = data && (data.detail || data.message);
+          opts.panel.textContent = "";
+          const err = document.createElement("p");
+          err.className = "hint";
+          err.textContent = "Couldn't generate a thumbnail preview: " +
+            (typeof detail === "string" ? detail : `HTTP ${res.status}`);
+          opts.panel.appendChild(err);
+          return;
+        }
+        state = {
+          url: url,
+          targetLanguage: targetLanguage,
+          original: data.original,
+          generated: data.generated,
+          regions: data.regions || [],
+          bannerText: data.banner_text || "",
+          approved: false,
+        };
+        render(data);
+      } catch (err) {
+        opts.panel.textContent = "";
+        const e = document.createElement("p");
+        e.className = "hint";
+        e.textContent = "Couldn't reach the dubber service.";
+        opts.panel.appendChild(e);
+      } finally {
+        opts.trigger.disabled = !authenticated;
+        opts.trigger.textContent = restore;
+      }
+    }
+
+    function render(data) {
+      opts.panel.textContent = "";
+
+      const title = document.createElement("div");
+      title.className = "service-title";
+      title.textContent = opts.title;
+      opts.panel.appendChild(title);
+
+      const compare = document.createElement("div");
+      compare.className = "thumb-compare";
+      compare.appendChild(figure("Original", data.original));
+      const generatedFig = figure("Spanish version", data.generated);
+      generatedFig.classList.add("thumb-generated-figure");
+      compare.appendChild(generatedFig);
+      opts.panel.appendChild(compare);
+
+      const regions = data.regions || [];
+      const inputs = []; // { polygon, input }
+
+      if (regions.length) {
+        const intro = document.createElement("p");
+        intro.className = "hint";
+        intro.textContent = "Detected text and its translation. Edit any line, then " +
+          "re-render to preview your changes.";
+        opts.panel.appendChild(intro);
+
+        const list = document.createElement("div");
+        list.className = "thumb-regions";
+        regions.forEach((region) => {
+          const row = document.createElement("div");
+          row.className = "thumb-region";
+
+          const orig = document.createElement("span");
+          orig.className = "thumb-region-original";
+          orig.textContent = region.text;
+          row.appendChild(orig);
+
+          const arrow = document.createElement("span");
+          arrow.className = "thumb-region-arrow";
+          arrow.textContent = "→";
+          row.appendChild(arrow);
+
+          const input = document.createElement("input");
+          input.type = "text";
+          input.className = "thumb-region-input";
+          input.value = region.translation;
+          input.setAttribute("aria-label", `Spanish text for “${region.text}”`);
+          input.addEventListener("input", markDirty);
+          row.appendChild(input);
+
+          inputs.push({ polygon: region.polygon, input: input });
+          list.appendChild(row);
+        });
+        opts.panel.appendChild(list);
+      } else {
+        const none = document.createElement("p");
+        none.className = "hint";
+        none.textContent = "No text was detected in the thumbnail to translate — only the " +
+          "banner will be added.";
+        opts.panel.appendChild(none);
+      }
+
+      const actions = document.createElement("div");
+      actions.className = "thumb-actions";
+
+      if (regions.length) {
+        const rerenderBtn = document.createElement("button");
+        rerenderBtn.type = "button";
+        rerenderBtn.className = "btn secondary";
+        rerenderBtn.textContent = "Re-render with edits";
+        rerenderBtn.addEventListener("click", () => rerender(inputs, rerenderBtn));
+        actions.appendChild(rerenderBtn);
+      }
+
+      const actionBtn = document.createElement("button");
+      actionBtn.type = "button";
+      actionBtn.className = "btn thumb-action";
+      actionBtn.textContent = opts.actionLabel;
+      actionBtn.addEventListener("click", () =>
+        opts.onAction({ state: state, button: actionBtn, setMessage: setMessage, markApproved: markApproved }));
+      actions.appendChild(actionBtn);
+
+      const msg = document.createElement("span");
+      msg.className = "hint thumb-message";
+      actions.appendChild(msg);
+
+      opts.panel.appendChild(actions);
+    }
+
+    // An edit invalidates the rendered image: drop approval and disable the
+    // action until a re-render, so what's used always matches the edited text.
+    function markDirty() {
+      if (state) state.approved = false;
+      const actionBtn = opts.panel.querySelector(".thumb-action");
+      if (actionBtn) actionBtn.disabled = true;
+      const fig = opts.panel.querySelector(".thumb-generated-figure");
+      if (fig) fig.classList.remove("approved");
+      setMessage("You have unrendered edits — click “Re-render with edits” to preview them.");
+    }
+
+    async function rerender(inputs, button) {
+      if (!state) return;
+      const regions = inputs.map(({ polygon, input }) => ({
+        polygon: polygon,
+        translation: input.value,
+      }));
+      const restore = button.textContent;
+      button.disabled = true;
+      button.textContent = "Rendering…";
+      setMessage("Rendering…");
+      try {
+        const res = await fetch(`${API_BASE}/thumbnail/render`, {
+          method: "POST",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            original: state.original,
+            regions: regions,
+            banner_text: state.bannerText,
+          }),
+        });
+        const data = await res.json().catch(() => null);
+        if (!res.ok || !data || !data.generated) {
+          setMessage("Couldn't re-render the thumbnail.", "bad");
+          return;
+        }
+        state.generated = data.generated;
+        const img = opts.panel.querySelector(".thumb-generated-figure img");
+        if (img) img.src = data.generated;
+        const actionBtn = opts.panel.querySelector(".thumb-action");
+        if (actionBtn) actionBtn.disabled = false;
+        setMessage("Updated. Use it as is, or keep editing.");
+      } catch (err) {
+        setMessage("Couldn't reach the dubber service.", "bad");
+      } finally {
+        button.disabled = false;
+        button.textContent = restore;
+      }
+    }
+
+    return { preview: preview, reset: reset, getState: getState };
   }
 
-  function setThumbnailMessage(text, kind) {
-    const msg = document.getElementById("thumb-message");
-    if (!msg) return;
-    msg.textContent = text || "";
-    msg.className = "hint thumb-message" + (kind ? " " + kind : "");
+  // The dub flow's editor: approving carries the exact image into the upload as
+  // `thumbnail_override` (read by submitJob). Optional -- skip it and the
+  // pipeline auto-generates one.
+  const dubThumbEditor = makeThumbnailEditor({
+    panel: thumbnailPanel,
+    trigger: thumbnailBtn,
+    title: "Thumbnail preview",
+    actionLabel: "Use this thumbnail for the dub",
+    getSourceUrl: () => document.getElementById("video-url").value.trim(),
+    getTargetLanguage: () => document.getElementById("target-lang").value,
+    onMissingSource: () => { formMessage.textContent = "Enter a video URL first."; },
+    onAction: ({ state, setMessage, markApproved }) => {
+      state.approved = true;
+      markApproved();
+      setMessage("✓ This thumbnail will be used when you start dubbing this video.", "good");
+    },
+  });
+  thumbnailBtn.addEventListener("click", () => dubThumbEditor.preview());
+
+  // --- Re-thumbnail an existing video ------------------------------------
+  // The same generate/translate/edit widget, but the approved image is pushed
+  // straight onto an existing video on the connected channel via
+  // /thumbnail/apply, instead of being held for an upload.
+  function setRethumbMessage(text, kind) {
+    if (!rethumbMessage) return;
+    rethumbMessage.textContent = text || "";
+    rethumbMessage.className = "hint" + (kind ? " thumb-message " + kind : "");
   }
 
-  function thumbFigure(label, src) {
-    const fig = document.createElement("figure");
-    fig.className = "thumb-figure";
-    const img = document.createElement("img");
-    img.className = "thumb-img";
-    img.src = src;
-    img.alt = label + " thumbnail";
-    const cap = document.createElement("figcaption");
-    cap.textContent = label;
-    fig.appendChild(img);
-    fig.appendChild(cap);
-    return fig;
-  }
-
-  async function previewThumbnail() {
-    if (!authenticated) return;
-    const url = document.getElementById("video-url").value.trim();
-    if (!url) {
-      formMessage.textContent = "Enter a video URL first.";
+  async function applyThumbnailToTarget({ state, button, setMessage, markApproved }) {
+    const target = document.getElementById("rethumb-url").value.trim();
+    if (!target) {
+      setMessage("Enter the target video URL above first.", "bad");
       return;
     }
-    const targetLanguage = document.getElementById("target-lang").value;
-
-    const restore = thumbnailBtn.textContent;
-    thumbnailBtn.disabled = true;
-    thumbnailBtn.textContent = "Fetching thumbnail…";
-    thumbnailPanel.style.display = "block";
-    thumbnailPanel.textContent = "";
-    const loading = document.createElement("p");
-    loading.className = "hint";
-    loading.textContent = "Fetching the thumbnail and generating the Spanish version… " +
-      "(the first one can take a few seconds while the text models warm up).";
-    thumbnailPanel.appendChild(loading);
-
+    const restore = button.textContent;
+    button.disabled = true;
+    button.textContent = "Applying…";
+    setMessage("Pushing the thumbnail to the target video…");
     try {
-      const res = await fetch(`${API_BASE}/thumbnail/preview`, {
+      const res = await fetch(`${API_BASE}/thumbnail/apply`, {
         method: "POST",
         credentials: "same-origin",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url: url, target_language: targetLanguage }),
+        body: JSON.stringify({ target_url: target, thumbnail: state.generated }),
       });
       const data = await res.json().catch(() => null);
       if (!res.ok) {
         const detail = data && (data.detail || data.message);
-        thumbnailPanel.textContent = "";
-        const err = document.createElement("p");
-        err.className = "hint";
-        err.textContent = "Couldn't generate a thumbnail preview: " +
-          (typeof detail === "string" ? detail : `HTTP ${res.status}`);
-        thumbnailPanel.appendChild(err);
+        setMessage("Couldn't update the thumbnail: " +
+          (typeof detail === "string" ? detail : `HTTP ${res.status}`), "bad");
         return;
       }
-      thumbnailState = {
-        url: url,
-        targetLanguage: targetLanguage,
-        original: data.original,
-        generated: data.generated,
-        regions: data.regions || [],
-        bannerText: data.banner_text || "",
-        approved: false,
-      };
-      renderThumbnailPreview(data);
+      markApproved();
+      setMessage("✓ Updated the thumbnail on " + (data.video_url || "the target video") + ".", "good");
     } catch (err) {
-      thumbnailPanel.textContent = "";
-      const e = document.createElement("p");
-      e.className = "hint";
-      e.textContent = "Couldn't reach the dubber service.";
-      thumbnailPanel.appendChild(e);
-    } finally {
-      thumbnailBtn.disabled = !authenticated;
-      thumbnailBtn.textContent = restore;
-    }
-  }
-
-  function renderThumbnailPreview(data) {
-    thumbnailPanel.textContent = "";
-
-    const title = document.createElement("div");
-    title.className = "service-title";
-    title.textContent = "Thumbnail preview";
-    thumbnailPanel.appendChild(title);
-
-    const compare = document.createElement("div");
-    compare.className = "thumb-compare";
-    compare.appendChild(thumbFigure("Original", data.original));
-    const generatedFig = thumbFigure("Spanish version", data.generated);
-    generatedFig.id = "thumb-generated-figure";
-    compare.appendChild(generatedFig);
-    thumbnailPanel.appendChild(compare);
-
-    const regions = data.regions || [];
-    const inputs = []; // { polygon, input }
-
-    if (regions.length) {
-      const intro = document.createElement("p");
-      intro.className = "hint";
-      intro.textContent = "Detected text and its translation. Edit any line, then " +
-        "re-render to preview your changes.";
-      thumbnailPanel.appendChild(intro);
-
-      const list = document.createElement("div");
-      list.className = "thumb-regions";
-      regions.forEach((region) => {
-        const row = document.createElement("div");
-        row.className = "thumb-region";
-
-        const orig = document.createElement("span");
-        orig.className = "thumb-region-original";
-        orig.textContent = region.text;
-        row.appendChild(orig);
-
-        const arrow = document.createElement("span");
-        arrow.className = "thumb-region-arrow";
-        arrow.textContent = "→";
-        row.appendChild(arrow);
-
-        const input = document.createElement("input");
-        input.type = "text";
-        input.className = "thumb-region-input";
-        input.value = region.translation;
-        input.setAttribute("aria-label", `Spanish text for “${region.text}”`);
-        input.addEventListener("input", markThumbnailDirty);
-        row.appendChild(input);
-
-        inputs.push({ polygon: region.polygon, input: input });
-        list.appendChild(row);
-      });
-      thumbnailPanel.appendChild(list);
-    } else {
-      const none = document.createElement("p");
-      none.className = "hint";
-      none.textContent = "No text was detected in the thumbnail to translate — only the " +
-        "banner will be added.";
-      thumbnailPanel.appendChild(none);
-    }
-
-    const actions = document.createElement("div");
-    actions.className = "thumb-actions";
-
-    if (regions.length) {
-      const rerenderBtn = document.createElement("button");
-      rerenderBtn.type = "button";
-      rerenderBtn.className = "btn secondary";
-      rerenderBtn.id = "thumb-rerender";
-      rerenderBtn.textContent = "Re-render with edits";
-      rerenderBtn.addEventListener("click", () => rerenderThumbnail(inputs, rerenderBtn));
-      actions.appendChild(rerenderBtn);
-    }
-
-    const approveBtn = document.createElement("button");
-    approveBtn.type = "button";
-    approveBtn.className = "btn";
-    approveBtn.id = "thumb-approve";
-    approveBtn.textContent = "Use this thumbnail for the dub";
-    approveBtn.addEventListener("click", approveThumbnail);
-    actions.appendChild(approveBtn);
-
-    const msg = document.createElement("span");
-    msg.className = "hint thumb-message";
-    msg.id = "thumb-message";
-    actions.appendChild(msg);
-
-    thumbnailPanel.appendChild(actions);
-  }
-
-  // An edit invalidates the rendered image: drop approval and require a
-  // re-render, so the image that gets used always matches the edited text.
-  function markThumbnailDirty() {
-    if (thumbnailState) thumbnailState.approved = false;
-    const approveBtn = document.getElementById("thumb-approve");
-    if (approveBtn) approveBtn.disabled = true;
-    const fig = document.getElementById("thumb-generated-figure");
-    if (fig) fig.classList.remove("approved");
-    setThumbnailMessage("You have unrendered edits — click “Re-render with edits” to preview them.");
-  }
-
-  async function rerenderThumbnail(inputs, button) {
-    if (!thumbnailState) return;
-    const regions = inputs.map(({ polygon, input }) => ({
-      polygon: polygon,
-      translation: input.value,
-    }));
-    const restore = button.textContent;
-    button.disabled = true;
-    button.textContent = "Rendering…";
-    setThumbnailMessage("Rendering…");
-    try {
-      const res = await fetch(`${API_BASE}/thumbnail/render`, {
-        method: "POST",
-        credentials: "same-origin",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          original: thumbnailState.original,
-          regions: regions,
-          banner_text: thumbnailState.bannerText,
-        }),
-      });
-      const data = await res.json().catch(() => null);
-      if (!res.ok || !data || !data.generated) {
-        setThumbnailMessage("Couldn't re-render the thumbnail.", "bad");
-        return;
-      }
-      thumbnailState.generated = data.generated;
-      const img = document.querySelector("#thumb-generated-figure img");
-      if (img) img.src = data.generated;
-      const approveBtn = document.getElementById("thumb-approve");
-      if (approveBtn) approveBtn.disabled = false;
-      setThumbnailMessage("Updated. Use it as is, or keep editing.");
-    } catch (err) {
-      setThumbnailMessage("Couldn't reach the dubber service.", "bad");
+      setMessage("Couldn't reach the dubber service.", "bad");
     } finally {
       button.disabled = false;
       button.textContent = restore;
     }
   }
 
-  function approveThumbnail() {
-    if (!thumbnailState) return;
-    thumbnailState.approved = true;
-    const fig = document.getElementById("thumb-generated-figure");
-    if (fig) fig.classList.add("approved");
-    setThumbnailMessage("✓ This thumbnail will be used when you start dubbing this video.", "good");
+  const rethumbEditor = makeThumbnailEditor({
+    panel: rethumbPreview,
+    trigger: rethumbBtn,
+    title: "New thumbnail preview",
+    actionLabel: "Apply to the target video",
+    getSourceUrl: () => document.getElementById("video-url").value.trim(),
+    getTargetLanguage: () => document.getElementById("target-lang").value,
+    onMissingSource: () => setRethumbMessage("Enter the English source video URL (above) first.", "bad"),
+    onAction: applyThumbnailToTarget,
+  });
+  if (rethumbBtn) {
+    rethumbBtn.addEventListener("click", () => {
+      const target = document.getElementById("rethumb-url").value.trim();
+      if (!target) {
+        rethumbEditor.reset();
+        setRethumbMessage("Enter the target video URL first.", "bad");
+        return;
+      }
+      setRethumbMessage("");
+      rethumbEditor.preview();
+    });
   }
 
-  thumbnailBtn.addEventListener("click", previewThumbnail);
-
-  // A different video or language makes any existing thumbnail preview stale --
-  // clear it so the panel never shows a thumbnail that won't actually be used.
-  function maybeResetStaleThumbnail() {
-    if (!thumbnailState) return;
+  // A different source video or language makes any rendered preview stale --
+  // clear both editors so neither shows a thumbnail that no longer matches.
+  function maybeResetStaleThumbnails() {
     const url = document.getElementById("video-url").value.trim();
     const lang = document.getElementById("target-lang").value;
-    if (url !== thumbnailState.url || lang !== thumbnailState.targetLanguage) {
-      resetThumbnailPreview();
-    }
+    [dubThumbEditor, rethumbEditor].forEach((editor) => {
+      const st = editor.getState();
+      if (st && (url !== st.url || lang !== st.targetLanguage)) editor.reset();
+    });
   }
-  document.getElementById("video-url").addEventListener("input", maybeResetStaleThumbnail);
-  document.getElementById("target-lang").addEventListener("change", maybeResetStaleThumbnail);
+  document.getElementById("video-url").addEventListener("input", maybeResetStaleThumbnails);
+  document.getElementById("target-lang").addEventListener("change", maybeResetStaleThumbnails);
 
   checkAuth();
 })();

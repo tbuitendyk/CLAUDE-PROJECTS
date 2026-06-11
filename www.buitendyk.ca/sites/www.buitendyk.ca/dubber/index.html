@@ -94,6 +94,29 @@
          editable per-region translations, and the "use this" approval. -->
     <div class="panel thumbnail-panel" id="thumbnail-panel" style="display:none;"></div>
 
+    <!-- Standalone re-thumbnail tool: generate a Spanish thumbnail from the
+         English source URL above and push it onto an existing video on the
+         connected channel, without re-dubbing. dubber.js gates the button on
+         auth and fills #rethumb-preview with the same preview/edit widget. -->
+    <div class="panel" id="rethumb-panel">
+      <div class="service-title">Update an existing video's thumbnail</div>
+      <p class="hint" style="margin-top:0.2rem;">
+        Generate a Spanish thumbnail from the <strong>English source video URL</strong>
+        above and apply it to a video already published on the connected channel
+        &mdash; no re-dub needed. Same detect-translate-and-edit step as the dub
+        thumbnail; the result is pushed straight to the target video.
+      </p>
+      <div class="field" style="margin-top:0.75rem;">
+        <label for="rethumb-url">Target video URL (connected YouTube channel)</label>
+        <input type="url" id="rethumb-url" placeholder="https://www.youtube.com/watch?v=&hellip;">
+      </div>
+      <div class="field" style="display:flex; gap:0.75rem; flex-wrap:wrap; align-items:center; margin-bottom:0;">
+        <button class="btn secondary ghosted" id="rethumb-btn" type="button" disabled>Update thumbnail</button>
+        <span class="hint" id="rethumb-message" style="margin-top:0;"></span>
+      </div>
+      <div class="thumbnail-panel" id="rethumb-preview" style="display:none; margin-top:1rem;"></div>
+    </div>
+
     <!-- Operator service controls: kept low-key and below the main form. JS
          toggles visibility with the auth state (see dubber.js setAuthState). -->
     <div class="panel" id="service-controls" style="display:none;">
@@ -119,6 +142,6 @@
     buitendyk.ca &mdash; self-hosted on a personal VPS, built with free &amp; open-source tools.
   </footer>
 
-  <script src="/dubber/dubber.js?v=8"></script>
+  <script src="/dubber/dubber.js?v=9"></script>
 </body>
 </html>
