@@ -246,3 +246,40 @@ Install complete. Remaining manual steps (see README.md for full detail):
               -d '{"url": "https://www.youtube.com/watch?v=XXXXXXXXXXX"}'
 ==============================================================================
 EOF
+
+# === TEMP PoC (remove after): Node-based PO-token provider, end to end ========
+# Proves the whole chain on THIS box before we wire it in permanently: portable
+# Node 20 -> build the Brainicism provider -> run it on :4416 -> yt-dlp mints a
+# token via the plugin and actually downloads the video that 403s today. All in
+# /tmp, non-fatal, cleaned up. Kept LAST so its output survives tail-truncation.
+( set +e
+  echo "########## [POC] Node PO-token provider end-to-end ##########"
+  echo "glibc: $(ldd --version 2>&1 | head -1)"
+  T=/tmp/potpoc; rm -rf "$T"; mkdir -p "$T"
+  # 1) portable Node 20 (bundles its own TLS -> no system OpenSSL 3 needed)
+  NT=$(curl -fsSL https://nodejs.org/dist/latest-v20.x/SHASUMS256.txt 2>/dev/null | grep -oE 'node-v20[0-9.]+-linux-x64\.tar\.xz' | head -1)
+  echo "node tarball: ${NT:-<none>}"
+  curl -fsSL -o "$T/node.tar.xz" "https://nodejs.org/dist/latest-v20.x/${NT}" && tar -xJf "$T/node.tar.xz" -C "$T"
+  export PATH="$T/${NT%.tar.xz}/bin:$PATH"
+  echo "node: $(node -v 2>&1)  npm: $(npm -v 2>&1)"
+  # 2) build the provider server (pinned tag)
+  git clone --quiet --depth 1 --single-branch --branch 1.3.1 https://github.com/Brainicism/bgutil-ytdlp-pot-provider.git "$T/prov" 2>&1 | tail -1
+  ( cd "$T/prov/server" && if npm ci >"$T/npm.log" 2>&1 && npx tsc >"$T/tsc.log" 2>&1; then echo "build: OK"; else echo "build: FAILED"; tail -4 "$T/npm.log" "$T/tsc.log" 2>/dev/null | sed 's/^/   /'; fi )
+  # 3) start it on 4416
+  ( cd "$T/prov/server" && nohup node build/main.js --port 4416 >"$T/server.log" 2>&1 & echo $! >"$T/pid" )
+  sleep 5
+  echo "server log:"; tail -3 "$T/server.log" 2>/dev/null | sed 's/^/   /'
+  # 4) install the matching yt-dlp plugin into a temp plugin dir
+  "${INSTALL_DIR}/.venv/bin/pip" install --quiet --no-deps --target "$T/plugin" bgutil-ytdlp-pot-provider >"$T/pip.log" 2>&1 && echo "plugin: installed" || { echo "plugin: FAILED"; tail -3 "$T/pip.log" | sed 's/^/   /'; }
+  # 5) the real test: download the video that 403s today, default clients + token
+  echo "=== yt-dlp download WITH provider (default clients) ==="
+  "${INSTALL_DIR}/bin/yt-dlp" -v --plugin-dirs "$T/plugin" \
+     --cookies "${INSTALL_DIR}/secrets/youtube_cookies.txt" \
+     -f "bv*[height<=360]+ba/b[height<=360]/w" -o "$T/out.%(ext)s" \
+     "https://www.youtube.com/watch?v=Dj5OYkgDtHU" 2>&1 \
+     | grep -iE 'PO Token|GetPOT|bgutil|fetching|403|forbidden|Downloading [0-9]+ format|Destination|Merging|ERROR' | tail -14
+  echo "RESULT FILE: $(ls -lh $T/out.* 2>/dev/null | awk '{print $5, $NF}' | tr '\n' ' ' || echo NONE)"
+  kill "$(cat $T/pid 2>/dev/null)" 2>/dev/null; rm -rf "$T"
+  echo "########## [POC] end ##########"
+) || true
+# === END TEMP PoC ============================================================
