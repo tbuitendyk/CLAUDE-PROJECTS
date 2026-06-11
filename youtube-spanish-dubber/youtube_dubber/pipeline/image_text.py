@@ -295,20 +295,23 @@ def _analyze_region(arr, bbox) -> "_RegionStyle":
         fill = tuple(int(c) for c in np.median(crop.reshape(-1, 3), axis=0))
         return _RegionStyle(fill, _contrasting(fill), False, (0, 0, 0), None, box)
 
-    ch = crop.shape[0]
-    # Find the letters as the *thin marks* in the box, with a morphological
-    # top-hat: a structuring element bigger than the strokes but smaller than the
-    # banner removes the thick stuff (banner, wall, scene), leaving the strokes.
-    # Whichever of light-on-dark / dark-on-light has more energy is the text, so
-    # its own colour is read straight off the strokes -- no background model,
-    # no polarity guessing (which is what kept flipping white<->black).
-    gray = cv2.cvtColor(crop, cv2.COLOR_RGB2GRAY)
-    ksize = max(15, int(round(ch * 0.4)) | 1)
-    element = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (ksize, ksize))
-    light = cv2.morphologyEx(gray, cv2.MORPH_TOPHAT, element)    # thin light marks
-    dark = cv2.morphologyEx(gray, cv2.MORPH_BLACKHAT, element)   # thin dark marks
-    hat = light if int(light.sum()) >= int(dark.sum()) else dark
-    _t, ink_u8 = cv2.threshold(hat, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    ch, cw = crop.shape[:2]
+    # Background = the box's border ring (the letters' immediate surround). The
+    # letters are simply what differs from it -- which excludes the banner AND
+    # the same-coloured counters inside letters (the holes in A/R/O), leaving the
+    # strokes. The border is reliably background even when a bold title fills the
+    # box (the text is interior, not at the edge), and it makes no assumption
+    # about colours or polarity -- which is what kept flipping white<->black.
+    band = max(2, int(round(min(ch, cw) * 0.12)))
+    ring = np.concatenate([
+        crop[:band].reshape(-1, 3), crop[-band:].reshape(-1, 3),
+        crop[:, :band].reshape(-1, 3), crop[:, -band:].reshape(-1, 3),
+    ])
+    border_bg = np.median(ring.astype(np.float32), axis=0)
+    dist = np.linalg.norm(crop.astype(np.float32) - border_bg, axis=2)
+    _t, ink_u8 = cv2.threshold(
+        np.clip(dist, 0, 255).astype(np.uint8), 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU
+    )
     ink = ink_u8 > 0
     if int(ink.sum()) < 12:  # nothing that reads as text
         fill = tuple(int(c) for c in np.median(crop.reshape(-1, 3), axis=0))
