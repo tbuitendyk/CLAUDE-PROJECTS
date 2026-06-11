@@ -121,14 +121,18 @@ def upload_video(
     return video_id
 
 
-def set_thumbnail(video_id: str, thumbnail_path: Path) -> bool:
+def set_thumbnail(video_id: str, thumbnail_path: Path, raise_on_error: bool = False) -> bool:
     """Set a custom thumbnail on an already-uploaded video. Returns True on
     success.
 
-    Best-effort by design: custom thumbnails require a phone-verified YouTube
+    Best-effort by default: custom thumbnails require a phone-verified YouTube
     channel, so a 403 here is expected and benign on an unverified channel --
     we log it and return False rather than failing the dub, which has already
     published successfully (YouTube just keeps its auto-generated thumbnail).
+
+    `raise_on_error=True` re-raises instead of swallowing, for callers that need
+    to tell the user *why* it failed (e.g. the standalone re-thumbnail tool,
+    where a 403/404 is the whole answer, not a benign fallback).
     """
     try:
         creds = _load_credentials()
@@ -142,4 +146,6 @@ def set_thumbnail(video_id: str, thumbnail_path: Path) -> bool:
             "Couldn't set custom thumbnail on %s (%s). Custom thumbnails need a "
             "verified channel; leaving YouTube's auto-generated one.", video_id, exc
         )
+        if raise_on_error:
+            raise
         return False

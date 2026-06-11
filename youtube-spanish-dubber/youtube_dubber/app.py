@@ -27,6 +27,12 @@ POST /thumbnail/render   {"original": "<data-uri>", "regions": [{"polygon":..,
                       "translation": ".."}], "banner_text": ".."}
                      -> re-render the thumbnail from edited translations (the
                      "edit the text" loop); returns the new generated image.
+POST /thumbnail/apply    {"target_url": "<youtube url>", "thumbnail": "<data-uri>"}
+                     -> push an approved thumbnail (from the preview/render
+                     loop) onto an EXISTING video on the connected channel.
+                     Standalone re-thumbnail tool, independent of dubbing; the
+                     target must be a video the authorized channel owns, on a
+                     phone-verified account.
 GET  /jobs           list recent jobs
 GET  /jobs/{id}      fetch a single job's status/progress/result
 DELETE /jobs/{id}    cancel a still-queued job (a job that's already running
@@ -56,6 +62,8 @@ _YOUTUBE_URL_RE = re.compile(
     r"^https?://(www\.)?(youtube\.com/(watch\?v=|shorts/|live/)|youtu\.be/)[\w\-]+",
     re.IGNORECASE,
 )
+# Pulls the 11-char video ID out of any of the URL shapes we accept.
+_VIDEO_ID_RE = re.compile(r"(?:v=|youtu\.be/|shorts/|live/)([\w\-]{11})")
 
 app = FastAPI(
     title="YouTube Spanish Dubber",
@@ -69,6 +77,14 @@ def _require_youtube_url(value: str) -> str:
     if not _YOUTUBE_URL_RE.match(value):
         raise ValueError("Must be a youtube.com or youtu.be video URL")
     return value
+
+
+def _extract_video_id(url: str) -> str:
+    """Pull the video ID from an (already URL-validated) YouTube link."""
+    match = _VIDEO_ID_RE.search(url)
+    if not match:
+        raise HTTPException(status_code=422, detail="Couldn't find a video ID in that URL")
+    return match.group(1)
 
 
 class TranscriptOverrideLine(BaseModel):
@@ -133,6 +149,19 @@ class ThumbnailRenderRequest(BaseModel):
     original: str
     regions: list[ThumbnailRegionEdit] = []
     banner_text: Optional[str] = None
+
+
+class ThumbnailApplyRequest(BaseModel):
+    """Push an approved thumbnail (data-URI from the preview/render loop) onto an
+    existing video on the connected channel. `target_url` is the video to
+    re-thumbnail; it must belong to the authorized channel."""
+    target_url: str
+    thumbnail: str
+
+    @field_validator("target_url")
+    @classmethod
+    def _validate_url(cls, value: str) -> str:
+        return _require_youtube_url(value)
 
 
 @app.on_event("startup")
@@ -246,6 +275,54 @@ def thumbnail_render(payload: ThumbnailRenderRequest) -> dict:
         font=settings.thumbnail_font,
     )
     return {"generated": tp.image_to_data_uri(generated)}
+
+
+@app.post("/thumbnail/apply")
+def thumbnail_apply(payload: ThumbnailApplyRequest) -> dict:
+    """Push an approved thumbnail onto an existing video on the connected
+    channel -- the standalone "re-thumbnail a published video" action.
+
+    The image is whatever the client approved from the /thumbnail/preview +
+    /thumbnail/render loop (same data-URI shape as `thumbnail_override`). The
+    target must be a video the authorized channel owns, on a phone-verified
+    account; we surface YouTube's refusal reason rather than failing silently.
+    """
+    import tempfile
+    from pathlib import Path
+
+    from googleapiclient.errors import HttpError
+
+    from .pipeline import thumbnail_preview as tp, uploader
+
+    video_id = _extract_video_id(payload.target_url)
+    try:
+        image = tp.data_uri_to_image(payload.thumbnail).convert("RGB")
+    except Exception as exc:  # noqa: BLE001 -- surface as a 422 to the caller
+        raise HTTPException(status_code=422, detail="`thumbnail` is not a valid image") from exc
+
+    with tempfile.TemporaryDirectory() as tmp:
+        thumb_path = Path(tmp) / "thumbnail.jpg"
+        image.save(thumb_path, "JPEG", quality=95)
+        try:
+            uploader.set_thumbnail(video_id, thumb_path, raise_on_error=True)
+        except HttpError as exc:
+            status = getattr(getattr(exc, "resp", None), "status", None)
+            if status == 403:
+                detail = (
+                    "YouTube refused the thumbnail. Custom thumbnails need a phone-verified "
+                    "channel, and you can only set one on a video your connected channel owns."
+                )
+            elif status == 404:
+                detail = "No video with that ID was found on your connected channel."
+            else:
+                detail = f"YouTube rejected the thumbnail (HTTP {status})."
+            raise HTTPException(status_code=502, detail=detail) from exc
+        except Exception as exc:  # noqa: BLE001 -- e.g. missing/expired credentials
+            raise HTTPException(
+                status_code=502, detail="Couldn't set the thumbnail; check the service logs."
+            ) from exc
+
+    return {"video_id": video_id, "video_url": f"https://youtu.be/{video_id}", "status": "updated"}
 
 
 @app.get("/jobs")
