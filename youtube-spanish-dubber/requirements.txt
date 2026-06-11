@@ -5,17 +5,14 @@ pydantic==2.10.4
 python-dotenv==1.0.1
 requests==2.32.3
 
-# YouTube download + caption retrieval
-# Unlike the other deps below, this one is intentionally NOT pinned to an exact
-# version: YouTube frequently changes its player/signature internals, and
-# yt-dlp ships frequent point releases purely to keep extraction working.
-# An exact pin here goes stale within weeks and starts failing with errors
-# like "Requested format is not available" / "nsig extraction failed". Always
-# install/upgrade to the latest: pip install -U yt-dlp
-yt-dlp>=2024.12.13
+# YouTube download + caption retrieval is handled by the *standalone* yt-dlp
+# binary (the self-contained yt-dlp_linux release), NOT a pip dependency: its
+# current releases need a newer Python than this box runs, so deploy/install.sh
+# fetches the latest binary and youtube_dubber/pipeline/downloader.py shells out
+# to it. That keeps extraction current independent of this venv's Python.
 
 # Free Microsoft Edge neural text-to-speech (no API key/account needed)
-# Same deal as yt-dlp above: this talks to an undocumented Microsoft endpoint
+# Like yt-dlp, this talks to an undocumented Microsoft endpoint
 # gated by a "Sec-MS-GEC" security token whose generation Microsoft tweaks
 # periodically, breaking older client versions with 403 "Invalid response
 # status" errors. Don't pin to an exact version -- always upgrade to latest:

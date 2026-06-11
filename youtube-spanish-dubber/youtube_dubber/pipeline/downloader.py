@@ -1,59 +1,85 @@
-"""yt-dlp based downloading of source video, audio and captions.
+"""YouTube downloading via the standalone yt-dlp binary.
 
-yt-dlp is free/open-source and is the most reliable way to pull a video,
-its audio track and any available (manual or auto-generated) captions for
-a given language directly from YouTube.
+We invoke yt-dlp as a *separate process* -- the self-contained ``yt-dlp_linux``
+release, which bundles its own Python -- rather than importing it as a library.
+yt-dlp must be kept current to track YouTube's constant changes, but its recent
+releases need a newer Python than this service runs on (yt-dlp dropped Python
+3.9 after that version reached end-of-life). Shelling out to the standalone
+binary decouples the two, so extraction can always be the newest build.
+``deploy/install.sh`` drops the latest binary at ``<install>/bin/yt-dlp`` on
+every deploy.
 """
 from __future__ import annotations
 
+import json
 import logging
+import re
+import subprocess
 from pathlib import Path
 from typing import Callable, Optional
-
-import yt_dlp
 
 from ..config import settings
 from .models import ThumbnailSource, VideoInfo
 
 log = logging.getLogger(__name__)
 
-# Which YouTube player clients yt-dlp asks for formats from. As of 2026 most
-# clients' format URLs require a "PO Token" or they 403 on download; the ones
-# that DON'T are `tv` (when cookies are passed -- see _with_cookies), plus
-# `web_embedded` and `android_vr`. Listing only these keeps yt-dlp from picking a
-# token-gated format. NOTE: this only helps with a *current* yt-dlp -- a stale
-# build (e.g. one capped by an old Python) can't handle 2026 YouTube regardless.
+# YouTube player clients yt-dlp requests formats from. As of 2026 most clients'
+# format URLs require a "PO Token" or they 403 on download; the token-exempt ones
+# are `tv` (when cookies are passed), `web_embedded` and `android_vr`. Listing
+# only these keeps yt-dlp from selecting a token-gated (403-ing) format.
 # https://github.com/yt-dlp/yt-dlp/wiki/PO-Token-Guide
-_EXTRACTOR_ARGS = {"youtube": {"player_client": ["tv", "web_embedded", "android_vr"]}}
+_PLAYER_CLIENTS = "tv,web_embedded,android_vr"
+
+# Thumbnail extensions yt-dlp may save (it picks whatever the site serves).
+_THUMBNAIL_EXTS = (".jpg", ".jpeg", ".png", ".webp")
+
+_PERCENT_RE = re.compile(r"\[download\]\s+([0-9.]+)%")
 
 
-def _with_cookies(opts: dict) -> dict:
-    """Attach a cookies file to yt-dlp opts when one is configured and present.
+class DownloadError(RuntimeError):
+    """A yt-dlp invocation failed; carries a trimmed reason for the caller."""
 
-    YouTube increasingly bot-checks datacenter IPs ("Sign in to confirm you're
-    not a bot"); supplying cookies from a signed-in session is yt-dlp's
-    recommended remedy. Optional -- with no file on disk the opts are unchanged
-    (and extraction may hit the bot wall)."""
+
+def _binary() -> str:
+    """The yt-dlp binary to invoke: the configured standalone build if present,
+    else whatever ``yt-dlp`` is on PATH."""
+    configured = Path(settings.ytdlp_bin)
+    return str(configured) if configured.exists() else "yt-dlp"
+
+
+def _base_cmd() -> list[str]:
+    """yt-dlp plus the args every call shares: terse output, the token-exempt
+    player clients, and the cookies file when one is present."""
+    cmd = [
+        _binary(),
+        "--no-warnings",
+        "--no-playlist",
+        "--extractor-args", f"youtube:player_client={_PLAYER_CLIENTS}",
+    ]
     cookies = settings.youtube_cookies_file
     if cookies and Path(cookies).exists():
-        opts["cookiefile"] = str(cookies)
-    return opts
+        cmd += ["--cookies", str(cookies)]
+    return cmd
+
+
+def _clean_error(text: str) -> str:
+    """Pull the most useful line out of yt-dlp's stderr for surfacing to a user."""
+    lines = [ln.strip() for ln in (text or "").splitlines() if ln.strip()]
+    errors = [ln for ln in lines if "ERROR" in ln.upper()]
+    chosen = (errors or lines or [""])[-1]
+    return chosen[len("ERROR:"):].strip() if chosen.upper().startswith("ERROR:") else chosen
 
 
 def probe(url: str) -> dict:
-    """Return yt-dlp's info dict without downloading anything."""
-    opts = {
-        "quiet": True,
-        "no_warnings": True,
-        "skip_download": True,
-        "format": "bv*+ba/b",
-        # Probing only reads metadata + caption availability, never a stream, so
-        # don't let format selection abort it if a client returns no formats.
-        "ignore_no_formats_error": True,
-        "extractor_args": _EXTRACTOR_ARGS,
-    }
-    with yt_dlp.YoutubeDL(_with_cookies(opts)) as ydl:
-        return ydl.extract_info(url, download=False)
+    """Return yt-dlp's info dict (JSON) for `url` without downloading anything.
+
+    Reads only metadata + caption availability, so format selection is told not
+    to abort if a client returns no downloadable formats."""
+    cmd = _base_cmd() + ["--dump-single-json", "--skip-download", "--ignore-no-formats-error", url]
+    result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    if result.returncode != 0 or not result.stdout.strip():
+        raise DownloadError(_clean_error(result.stderr) or "yt-dlp could not read that video")
+    return json.loads(result.stdout)
 
 
 def available_caption_language(info: dict, codes: tuple[str, ...], auto: bool) -> Optional[str]:
@@ -85,49 +111,31 @@ def any_caption_language(info: dict, auto: bool) -> Optional[str]:
     return None
 
 
-def _download_progress_hook(on_progress: "Callable[[float], None]"):
-    """Adapt yt-dlp's progress dict to a simple 0..1 fraction callback. yt-dlp
-    fires this per file (video, then audio), so the fraction resets once between
-    them -- still a steadily-advancing signal within the download stage. Never
-    lets a progress error interrupt the download."""
-    def hook(d: dict) -> None:
-        if d.get("status") != "downloading":
-            return
-        total = d.get("total_bytes") or d.get("total_bytes_estimate")
-        done = d.get("downloaded_bytes") or 0
-        if total:
-            try:
-                on_progress(min(0.99, done / total))
-            except Exception:  # noqa: BLE001 -- progress is best-effort
-                pass
-    return hook
-
-
 def download_video(
     url: str, work_dir: Path, on_progress: "Optional[Callable[[float], None]]" = None
 ) -> VideoInfo:
-    """Download the best available muxed (or mux-able) video+audio as MP4,
-    plus the source thumbnail (so the dub can reuse/brand it). `on_progress`,
-    if given, receives the download completion fraction (0..1)."""
-    out_template = str(work_dir / "source.%(ext)s")
-    opts = {
-        "quiet": True,
-        "no_warnings": True,
-        "format": "bv*[ext=mp4]+ba[ext=m4a]/bv*+ba/b[ext=mp4]/best",
-        "outtmpl": out_template,
-        "merge_output_format": "mp4",
-        # Save the thumbnail alongside the video. Best-effort: yt-dlp just skips
-        # it if the video has none, and a missing thumbnail never fails a job.
-        "writethumbnail": True,
-        "extractor_args": _EXTRACTOR_ARGS,
-    }
-    if on_progress is not None:
-        opts["progress_hooks"] = [_download_progress_hook(on_progress)]
-    with yt_dlp.YoutubeDL(_with_cookies(opts)) as ydl:
-        info = ydl.extract_info(url, download=True)
-        path = Path(ydl.prepare_filename(info))
-        if not path.exists():
-            path = path.with_suffix(".mp4")
+    """Download the best available muxed (or mux-able) video+audio as MP4, plus
+    the source thumbnail (so the dub can reuse/brand it) and the metadata sidecar.
+    `on_progress`, if given, receives the download completion fraction (0..1)."""
+    cmd = _base_cmd() + [
+        "--format", "bv*[ext=mp4]+ba[ext=m4a]/bv*+ba/b[ext=mp4]/b",
+        "--merge-output-format", "mp4",
+        "--write-thumbnail",
+        "--write-info-json",
+        "--no-part",
+        "--newline",
+        "--output", str(work_dir / "source.%(ext)s"),
+        url,
+    ]
+    _download_with_progress(cmd, on_progress)
+
+    info_path = work_dir / "source.info.json"
+    if not info_path.exists():
+        raise DownloadError("yt-dlp produced no metadata for the download")
+    info = json.loads(info_path.read_text(encoding="utf-8"))
+    video_path = _find_output_video(work_dir)
+    if video_path is None:
+        raise DownloadError("yt-dlp did not produce a video file")
 
     return VideoInfo(
         id=info["id"],
@@ -135,44 +143,64 @@ def download_video(
         description=info.get("description") or "",
         duration=float(info.get("duration") or 0.0),
         original_language=info.get("language"),
-        video_path=str(path),
-        thumbnail_path=_find_thumbnail(work_dir, path),
+        video_path=str(video_path),
+        thumbnail_path=_find_thumbnail(work_dir, video_path),
     )
+
+
+def _download_with_progress(cmd: list[str], on_progress: "Optional[Callable[[float], None]]") -> None:
+    """Run a yt-dlp download, streaming its `[download] NN.N%` lines to
+    `on_progress`. Raises DownloadError (with the tail of the output) on failure."""
+    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
+    tail: list[str] = []
+    assert proc.stdout is not None
+    for line in proc.stdout:
+        tail.append(line)
+        if len(tail) > 50:
+            del tail[0]
+        if on_progress is not None:
+            match = _PERCENT_RE.search(line)
+            if match:
+                try:
+                    on_progress(min(0.99, float(match.group(1)) / 100.0))
+                except Exception:  # noqa: BLE001 -- progress is best-effort
+                    pass
+    if proc.wait() != 0:
+        raise DownloadError(_clean_error("".join(tail)) or "yt-dlp download failed")
+
+
+def _find_output_video(work_dir: Path) -> Optional[Path]:
+    """Locate the muxed video yt-dlp wrote (source.mp4, or .mkv/.webm if a merge
+    fell back), ignoring the thumbnail and info-json sidecars."""
+    for ext in (".mp4", ".mkv", ".webm"):
+        candidate = work_dir / f"source{ext}"
+        if candidate.exists():
+            return candidate
+    for candidate in sorted(work_dir.glob("source.*")):
+        if candidate.suffix.lower() in _THUMBNAIL_EXTS or candidate.name.endswith(".info.json"):
+            continue
+        return candidate
+    return None
 
 
 def fetch_thumbnail(url: str, work_dir: Path) -> Optional[ThumbnailSource]:
     """Download only the source video's thumbnail (no video/audio) plus the bit
-    of metadata the preview needs. Returns None if no thumbnail could be saved.
-
-    This is what makes the thumbnail-approval step cheap enough to run the
-    instant a URL is pasted: `skip_download` means yt-dlp fetches just the
-    info + the thumbnail image, not the (large, slow) media streams the full
-    `download_video` pulls.
-
-    Returns None only when extraction succeeded but the video had no thumbnail
-    image; a fetch/extraction failure (bot check, unavailable video, an
-    aged-out extractor, ...) re-raises so the caller can report the real
-    reason rather than a blank 'no thumbnail'."""
-    opts = {
-        "quiet": True,
-        "no_warnings": True,
-        "skip_download": True,
-        "writethumbnail": True,
-        # We only want the thumbnail image + a little metadata, never a media
-        # stream -- so don't let format selection abort the extraction. Some
-        # player clients return no matching downloadable format ("Requested
-        # format is not available"); that's irrelevant here, the thumbnail is
-        # written regardless.
-        "ignore_no_formats_error": True,
-        "outtmpl": str(work_dir / "thumb.%(ext)s"),
-        "extractor_args": _EXTRACTOR_ARGS,
-    }
-    try:
-        with yt_dlp.YoutubeDL(_with_cookies(opts)) as ydl:
-            info = ydl.extract_info(url, download=True)
-    except yt_dlp.utils.DownloadError as exc:
-        log.warning("Thumbnail fetch failed for %s: %s", url, exc)
-        raise
+    of metadata the preview needs. Returns None when extraction succeeded but the
+    video had no thumbnail; raises DownloadError on a fetch failure (bot check,
+    unavailable video, ...) so the caller can report the real reason."""
+    cmd = _base_cmd() + [
+        "--skip-download", "--write-thumbnail", "--write-info-json",
+        # We only want the thumbnail image + a little metadata, never a stream,
+        # so don't let format selection abort when a client returns no formats.
+        "--ignore-no-formats-error",
+        "--output", str(work_dir / "thumb.%(ext)s"),
+        url,
+    ]
+    result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    if result.returncode != 0:
+        message = _clean_error(result.stderr) or "thumbnail fetch failed"
+        log.warning("Thumbnail fetch failed for %s: %s", url, message)
+        raise DownloadError(message)
 
     thumb = next(
         (str(p) for p in sorted(work_dir.glob("thumb.*")) if p.suffix.lower() in _THUMBNAIL_EXTS),
@@ -180,24 +208,21 @@ def fetch_thumbnail(url: str, work_dir: Path) -> Optional[ThumbnailSource]:
     )
     if thumb is None:
         return None
+    info_path = work_dir / "thumb.info.json"
+    info = json.loads(info_path.read_text(encoding="utf-8")) if info_path.exists() else {}
     return ThumbnailSource(
         thumbnail_path=thumb,
-        title=info.get("title") or info["id"],
+        title=info.get("title") or info.get("id") or "",
         original_language=info.get("language"),
-        video_id=info["id"],
+        video_id=info.get("id") or "",
     )
-
-
-# Thumbnail extensions yt-dlp may save (it picks whatever the site serves).
-_THUMBNAIL_EXTS = (".jpg", ".jpeg", ".png", ".webp")
 
 
 def _find_thumbnail(work_dir: Path, video_path: Path) -> Optional[str]:
     """Locate the thumbnail yt-dlp saved next to the video (e.g. `source.webp`),
-    ignoring the video file itself. Returns its path, or None if none was
-    written."""
+    ignoring the video file and the info-json. Returns its path, or None."""
     for candidate in sorted(work_dir.glob("source.*")):
-        if candidate == video_path:
+        if candidate == video_path or candidate.name.endswith(".info.json"):
             continue
         if candidate.suffix.lower() in _THUMBNAIL_EXTS:
             return str(candidate)
@@ -205,29 +230,25 @@ def _find_thumbnail(work_dir: Path, video_path: Path) -> Optional[str]:
 
 
 def download_caption(url: str, lang: str, work_dir: Path, auto: bool) -> Optional[Path]:
-    """Download a single caption track as VTT. Returns the file path, or None
-    if the track doesn't exist on YouTube -- or if the download itself fails
-    (e.g. a transient rate limit or network error). Callers treat both cases
-    identically: fall back to the next-best transcript source rather than
-    failing the whole job over a single caption track."""
-    opts = {
-        "quiet": True,
-        "no_warnings": True,
-        "skip_download": True,
-        "writesubtitles": not auto,
-        "writeautomaticsub": auto,
-        "subtitleslangs": [lang],
-        "subtitlesformat": "vtt",
-        "outtmpl": str(work_dir / "captions.%(ext)s"),
-        "extractor_args": _EXTRACTOR_ARGS,
-    }
-    try:
-        with yt_dlp.YoutubeDL(_with_cookies(opts)) as ydl:
-            ydl.download([url])
-    except yt_dlp.utils.DownloadError as exc:
-        log.warning("Caption download failed (lang=%s, auto=%s): %s", lang, auto, exc)
+    """Download a single caption track as VTT. Returns the file path, or None if
+    the track doesn't exist -- or the download fails (a transient error). Callers
+    treat both the same: fall back to the next-best transcript source rather than
+    failing the whole job over one caption track."""
+    cmd = _base_cmd() + [
+        "--skip-download",
+        "--write-auto-subs" if auto else "--write-subs",
+        "--sub-langs", lang,
+        "--sub-format", "vtt",
+        "--ignore-no-formats-error",
+        "--output", str(work_dir / "captions.%(ext)s"),
+        url,
+    ]
+    result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    if result.returncode != 0:
+        log.warning(
+            "Caption download failed (lang=%s, auto=%s): %s", lang, auto, _clean_error(result.stderr)
+        )
         return None
-
     for candidate in work_dir.glob("captions*.vtt"):
         return candidate
     return None

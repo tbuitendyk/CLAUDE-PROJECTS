@@ -26,7 +26,7 @@ SERVICE_USER="dubber"
 echo "==> Installing system packages (ffmpeg, python3-venv, ...)"
 apt-get update -qq
 apt-get install -y --no-install-recommends \
-  ffmpeg python3 python3-venv python3-pip rsync ca-certificates \
+  ffmpeg python3 python3-venv python3-pip rsync ca-certificates curl \
   fonts-dejavu-core \
   libgl1 libglib2.0-0
   # fonts-dejavu-core: TrueType font Pillow uses for the "Versión Español"
@@ -42,7 +42,7 @@ mkdir -p "${INSTALL_DIR}"
 echo "==> Syncing project files to ${INSTALL_DIR}"
 rsync -a --delete \
   --exclude '.git' --exclude '.venv' --exclude 'data' --exclude 'secrets' \
-  --exclude '__pycache__' --exclude '.env' \
+  --exclude '__pycache__' --exclude '.env' --exclude 'bin' \
   "${REPO_DIR}/" "${INSTALL_DIR}/"
 chown -R "${SERVICE_USER}:${SERVICE_USER}" "${INSTALL_DIR}"
 
@@ -50,12 +50,20 @@ echo "==> Creating Python virtualenv and installing dependencies (this can take 
 sudo -u "${SERVICE_USER}" python3 -m venv "${INSTALL_DIR}/.venv"
 sudo -u "${SERVICE_USER}" "${INSTALL_DIR}/.venv/bin/pip" install --upgrade pip wheel
 sudo -u "${SERVICE_USER}" "${INSTALL_DIR}/.venv/bin/pip" install -r "${INSTALL_DIR}/requirements.txt"
-# yt-dlp's YouTube extraction breaks whenever Google shifts something
-# server-side; the only durable fix is running its newest release. A plain
-# `-r` above won't bump a yt-dlp that already satisfies the requirements floor
-# (and the .venv persists across deploys), so force the latest on every deploy.
-# This is the documented remedy -- see the note in requirements.txt.
-sudo -u "${SERVICE_USER}" "${INSTALL_DIR}/.venv/bin/pip" install --upgrade yt-dlp
+
+echo "==> Installing the latest standalone yt-dlp binary"
+# yt-dlp must track YouTube's constant changes, but its current releases need a
+# newer Python than this box runs (3.9 was dropped after EOL). The self-contained
+# yt-dlp_linux build bundles its own Python, so fetch the latest on every deploy
+# and run it as a subprocess (youtube_dubber/pipeline/downloader.py) -- keeping
+# extraction current independent of the .venv. Excluded from the rsync --delete
+# above so it survives between deploys.
+mkdir -p "${INSTALL_DIR}/bin"
+curl -fsSL -o "${INSTALL_DIR}/bin/yt-dlp" \
+  https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_linux
+chmod +x "${INSTALL_DIR}/bin/yt-dlp"
+chown "${SERVICE_USER}:${SERVICE_USER}" "${INSTALL_DIR}/bin/yt-dlp"
+echo "    yt-dlp $(sudo -u "${SERVICE_USER}" "${INSTALL_DIR}/bin/yt-dlp" --version)"
 
 echo "==> Preparing config (.env) and secrets directory"
 mkdir -p "${INSTALL_DIR}/secrets" "${INSTALL_DIR}/data"

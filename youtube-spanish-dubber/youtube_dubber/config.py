@@ -102,6 +102,11 @@ class Settings:
     youtube_cookies_file: Path = field(
         default_factory=lambda: _path("DUBBER_YT_COOKIES_FILE", "./secrets/youtube_cookies.txt")
     )
+    # Path to the standalone yt-dlp binary. We invoke yt-dlp as a separate
+    # process -- the self-contained yt-dlp_linux release that bundles its own
+    # Python -- so extraction stays current independent of this service's Python.
+    # deploy/install.sh drops the latest at <install>/bin/yt-dlp each deploy.
+    ytdlp_bin: Path = field(default_factory=lambda: _path("DUBBER_YTDLP_BIN", "./bin/yt-dlp"))
     upload_privacy_status: str = os.getenv("DUBBER_UPLOAD_PRIVACY", "unlisted")
     upload_category_id: str = os.getenv("DUBBER_UPLOAD_CATEGORY", "22")
     title_prefix: str = os.getenv("DUBBER_TITLE_PREFIX", "[ES] ")
