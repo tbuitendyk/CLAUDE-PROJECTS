@@ -203,14 +203,18 @@ if systemctl is-active --quiet bgutil-pot; then
         | "${INSTALL_DIR}/.venv/bin/python" -c "import sys,json;d=json.load(sys.stdin);print(sum(1 for f in d.get('formats',[]) if f.get('vcodec') not in (None,'none') or f.get('acodec') not in (None,'none')))" 2>/dev/null || echo 0)
   echo "    provider self-test: ${N:-0} real formats for the sample video (0 = problem)"
 else
-  echo "    WARNING: bgutil-pot inactive -- downloads will fail."
-  echo "    --- systemctl status ---"
-  systemctl status bgutil-pot --no-pager -l 2>&1 | tail -10 | sed 's/^/      /'
-  echo "    --- journal ---"
-  journalctl -u bgutil-pot -n 20 --no-pager 2>&1 | tail -20 | sed 's/^/      /'
-  echo "    --- manual run (as ${SERVICE_USER}) ---"
-  ( cd "${PROVIDER_DIR}/server" 2>/dev/null && timeout 6 sudo -u "${SERVICE_USER}" \
-      "${NODE_DIR}/bin/node" build/main.js --port 4416 2>&1 | head -8 | sed 's/^/      /' ) || true
+  echo "    WARNING: bgutil-pot inactive -- diagnosing."
+  set +e +o pipefail
+  systemctl stop bgutil-pot >/dev/null 2>&1
+  echo "    --- journal (last 12) ---"
+  journalctl -u bgutil-pot -n 12 --no-pager 2>&1 | tail -12 | sed 's/^/      /'
+  echo "    --- manual run as ${SERVICE_USER}, 6s timeout ---"
+  ( cd "${PROVIDER_DIR}/server" && timeout 6 sudo -u "${SERVICE_USER}" \
+      "${NODE_DIR}/bin/node" build/main.js --port 4416 ) >/tmp/srv.out 2>&1
+  echo "    node exit code: $?  (124 = timed out = server stayed up = GOOD)"
+  head -12 /tmp/srv.out | sed 's/^/      /'
+  rm -f /tmp/srv.out
+  set -e -o pipefail
 fi
 
 # On a re-deploy the service is already running old code from before the rsync;
