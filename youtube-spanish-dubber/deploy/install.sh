@@ -71,8 +71,21 @@ echo "==> Installing the bgutil PO-token provider + yt-dlp plugin"
 # a yt-dlp plugin hands them over. We use the standalone Rust build (jim60105) --
 # a single binary + plugin, no Node/Docker -- to match the yt-dlp binary above.
 # https://github.com/jim60105/bgutil-ytdlp-pot-provider-rs
-POT_RELEASE="https://github.com/jim60105/bgutil-ytdlp-pot-provider-rs/releases/latest/download"
-curl -fsSL -o "${INSTALL_DIR}/bin/bgutil-pot" "${POT_RELEASE}/bgutil-pot-linux-x86_64"
+POT_REPO="jim60105/bgutil-ytdlp-pot-provider-rs"
+POT_RELEASE="https://github.com/${POT_REPO}/releases/latest/download"
+POT_JSON="$(curl -fsSL "https://api.github.com/repos/${POT_REPO}/releases/latest" || true)"
+echo "    available linux provider assets:"
+echo "${POT_JSON}" | grep -oE '"name": *"[^"]*[Ll]inux[^"]*"' | sed -E 's/.*"name": *"([^"]*)".*/      \1/' || true
+# Prefer a static musl x86_64 build: this box's OpenSSL is too old (1.1) for the
+# glibc build, which needs libssl.so.3.
+POT_URL="$(echo "${POT_JSON}" | grep -oE 'https://[^"]*' \
+  | grep -iE 'bgutil-pot.*(x86_64|amd64).*musl|x86_64-unknown-linux-musl' | head -n1 || true)"
+if [ -z "${POT_URL}" ]; then
+  echo "    (no musl build found -- falling back to the glibc build, which needs libssl3)"
+  POT_URL="${POT_RELEASE}/bgutil-pot-linux-x86_64"
+fi
+echo "    downloading: ${POT_URL}"
+curl -fsSL -o "${INSTALL_DIR}/bin/bgutil-pot" "${POT_URL}"
 chmod +x "${INSTALL_DIR}/bin/bgutil-pot"
 chown "${SERVICE_USER}:${SERVICE_USER}" "${INSTALL_DIR}/bin/bgutil-pot"
 
