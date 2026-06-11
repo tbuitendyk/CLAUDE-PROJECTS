@@ -278,17 +278,28 @@ EOF
   "${INSTALL_DIR}/.venv/bin/pip" install --quiet --no-deps --target "$T/pd/bgutil" "bgutil-ytdlp-pot-provider==1.3.1" >"$T/pip.log" 2>&1 && echo "plugin: installed 1.3.1" || { echo "plugin: FAILED"; tail -3 "$T/pip.log" | sed 's/^/   /'; }
   CK="${INSTALL_DIR}/secrets/youtube_cookies.txt"
   URL="https://www.youtube.com/watch?v=Dj5OYkgDtHU"
-  # 5) sweep clients WITH the provider: which one lists real media AND downloads
-  #    (bestaudio = small) without 403? web_creator (auto-picked w/ cookies) only
-  #    gives storyboards for a non-owned video, so we must force a good client.
-  for C in tv default web mweb web_safari android_vr; do
-    echo "----- client=${C} -----"
-    "$T/ytdlp" -v --plugin-dirs "$T/pd" --cookies "$CK" \
-       --extractor-args "youtube:player_client=${C}" -f "ba/wa/w" \
-       -o "$T/o.%(ext)s" "$URL" 2>&1 \
-       | grep -iE 'Generating a .*PO Token|403|forbidden|Downloading 1 format|Destination|not available|ERROR:' | tail -4
-    echo "   -> $(ls -lh $T/o.* 2>/dev/null | awk '{print "DOWNLOADED", $5, $NF}' | tr '\n' ' ' || echo 'no file')"
-    rm -f "$T"/o.* 2>/dev/null
+  CNT='import sys,json
+try:
+  d=json.load(sys.stdin); fs=d.get("formats",[])
+  print(sum(1 for f in fs if f.get("vcodec")not in(None,"none") or f.get("acodec")not in(None,"none")))
+except Exception as e: print("ERR")'
+  # 5) provider ON. Compare cookies vs NO cookies across clients: count REAL
+  #    (non-storyboard) formats, and if any, try a small real download (wa/w).
+  for MODE in nocookies cookies; do
+    CKARG=""; [ "$MODE" = cookies ] && CKARG="--cookies $CK"
+    for C in default web tv mweb; do
+      N=$("$T/ytdlp" --no-warnings --plugin-dirs "$T/pd" $CKARG \
+            --extractor-args "youtube:player_client=${C}" -J --skip-download "$URL" 2>/dev/null \
+            | python3 -c "$CNT")
+      DL="-"
+      if [ "$N" != "0" ] && [ "$N" != "ERR" ] && [ -n "$N" ]; then
+        "$T/ytdlp" --no-warnings --plugin-dirs "$T/pd" $CKARG \
+           --extractor-args "youtube:player_client=${C}" -f "wa/w" -o "$T/o.%(ext)s" "$URL" >/dev/null 2>&1 \
+           && DL="OK $(ls -lh $T/o.* 2>/dev/null | awk '{print $5}' | head -1)" || DL="DL-FAIL"
+        rm -f "$T"/o.* 2>/dev/null
+      fi
+      printf '   %-10s client=%-8s real_formats=%-4s download=%s\n' "$MODE" "$C" "$N" "$DL"
+    done
   done
   kill "$(cat $T/pid 2>/dev/null)" 2>/dev/null; rm -rf "$T"
   echo "########## [POC] end ##########"
