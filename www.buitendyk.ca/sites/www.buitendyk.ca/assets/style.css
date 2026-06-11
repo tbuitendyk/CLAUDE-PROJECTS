@@ -249,6 +249,15 @@ footer.site-footer {
   letter-spacing: 0.1em;
   color: var(--text-dim);
 }
+/* Header for each top-level control box (dub / re-thumbnail / service). */
+.box-title {
+  font-size: 1rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--accent);
+  margin-bottom: 1rem;
+}
 .service-action {
   display: flex;
   align-items: center;

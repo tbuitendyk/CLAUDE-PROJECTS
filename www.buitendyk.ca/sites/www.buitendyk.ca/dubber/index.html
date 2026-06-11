@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Spanish Video Dubber &mdash; buitendyk.ca</title>
   <meta name="description" content="Submit an English YouTube video, generate a Spanish voice-over, and publish it to a YouTube channel.">
-  <link rel="stylesheet" href="/assets/style.css?v=13">
+  <link rel="stylesheet" href="/assets/style.css?v=14">
 </head>
 <body>
   <header class="site-header">
@@ -41,6 +41,7 @@
     </div>
 
     <form class="panel" id="dub-form">
+      <div class="box-title">New video dubbing project</div>
       <div class="field">
         <label for="video-url">English source video URL (YouTube)</label>
         <input type="url" id="video-url" name="url" placeholder="https://www.youtube.com/watch?v=&hellip;" required>
@@ -99,7 +100,7 @@
          connected channel, without re-dubbing. dubber.js gates the button on
          auth and fills #rethumb-preview with the same preview/edit widget. -->
     <div class="panel" id="rethumb-panel">
-      <div class="service-title">Update an existing video's thumbnail</div>
+      <div class="box-title">Update an existing video's thumbnail</div>
       <p class="hint" style="margin-top:0.2rem;">
         Generate a Spanish thumbnail from the <strong>English source video URL</strong>
         above and apply it to a video already published on the connected channel
@@ -122,7 +123,7 @@
     <div class="panel" id="service-controls" style="display:none;">
       <div class="service-row">
         <div class="service-info">
-          <div class="service-title">Service</div>
+          <div class="box-title">Control dubbing service</div>
           <p class="hint" style="margin-top:0.2rem;">
             Restart the dubbing service &mdash; frees its memory and stops any job
             that's currently running. Queued jobs are kept and resume afterward.
