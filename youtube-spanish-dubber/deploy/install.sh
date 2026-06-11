@@ -26,9 +26,11 @@ SERVICE_USER="dubber"
 echo "==> Installing system packages (ffmpeg, python3-venv, ...)"
 apt-get update -qq
 apt-get install -y --no-install-recommends \
-  ffmpeg python3 python3-venv python3-pip rsync ca-certificates curl \
+  ffmpeg python3 python3-venv python3-pip rsync ca-certificates curl psmisc \
   fonts-dejavu-core \
   libgl1 libglib2.0-0
+  # psmisc: provides `fuser`, used to free port 4416 before (re)starting the
+  #   PO-token provider so a stale holder can't wedge it (EADDRINUSE).
   # fonts-dejavu-core: TrueType font Pillow uses for the "Versión Español"
   #   thumbnail banner.
   # libgl1 + libglib2.0-0: shared libs opencv-python needs at import time (it is
@@ -94,16 +96,16 @@ echo "    node $(${NODE_DIR}/bin/node -v)"
 
 # Build the provider server once (clone tag -> npm ci -> tsc). Kept across deploys.
 PROVIDER_DIR="${INSTALL_DIR}/pot-provider"
-rm -rf "${PROVIDER_DIR}"   # TEMP-DIAG: force a clean, visible rebuild
-echo "    building the bgutil provider (${PROVIDER_TAG})"
-git clone --quiet --depth 1 --single-branch --branch "${PROVIDER_TAG}" \
-  https://github.com/Brainicism/bgutil-ytdlp-pot-provider.git "${PROVIDER_DIR}"
-( set +e +o pipefail; cd "${PROVIDER_DIR}/server"
-  export PATH="${NODE_DIR}/bin:${PATH}"
-  echo "    npm ci:"; npm ci 2>&1 | tail -6 | sed 's/^/      /'
-  echo "    tsc:";    npx tsc 2>&1 | tail -6 | sed 's/^/      /'
-) || true
-echo "    build/main.js: $([ -f "${PROVIDER_DIR}/server/build/main.js" ] && echo PRESENT || echo MISSING)"
+if [ ! -f "${PROVIDER_DIR}/server/build/main.js" ]; then
+  echo "    building the bgutil provider (${PROVIDER_TAG})"
+  rm -rf "${PROVIDER_DIR}"
+  git clone --quiet --depth 1 --single-branch --branch "${PROVIDER_TAG}" \
+    https://github.com/Brainicism/bgutil-ytdlp-pot-provider.git "${PROVIDER_DIR}"
+  ( cd "${PROVIDER_DIR}/server" \
+      && PATH="${NODE_DIR}/bin:${PATH}" npm ci >/dev/null 2>&1 \
+      && PATH="${NODE_DIR}/bin:${PATH}" npx tsc >/dev/null 2>&1 ) \
+    && echo "    provider built" || echo "    WARNING: provider build failed"
+fi
 chown -R "${SERVICE_USER}:${SERVICE_USER}" "${NODE_DIR}" "${PROVIDER_DIR}"
 
 # The matching yt-dlp plugin, in the layout the binary needs: --plugin-dirs ROOT
@@ -189,6 +191,12 @@ systemctl daemon-reload
 echo "==> Enabling the PO-token provider service"
 DROPIN_DIR="/etc/systemd/system/youtube-dubber.service.d"
 rm -f "${DROPIN_DIR}/10-no-pot.conf"
+# Free port 4416 of any stale holder before (re)starting, or the new instance
+# hits EADDRINUSE and exits. Stop our own unit, then kill anything still bound.
+systemctl stop bgutil-pot >/dev/null 2>&1 || true
+fuser -k 4416/tcp >/dev/null 2>&1 || true
+pkill -f 'server/build/main.js --port 4416' >/dev/null 2>&1 || true
+sleep 1
 systemctl enable bgutil-pot >/dev/null 2>&1 || true
 systemctl restart bgutil-pot || true
 sleep 3
@@ -203,18 +211,7 @@ if systemctl is-active --quiet bgutil-pot; then
         | "${INSTALL_DIR}/.venv/bin/python" -c "import sys,json;d=json.load(sys.stdin);print(sum(1 for f in d.get('formats',[]) if f.get('vcodec') not in (None,'none') or f.get('acodec') not in (None,'none')))" 2>/dev/null || echo 0)
   echo "    provider self-test: ${N:-0} real formats for the sample video (0 = problem)"
 else
-  echo "    WARNING: bgutil-pot inactive -- diagnosing."
-  set +e +o pipefail
-  systemctl stop bgutil-pot >/dev/null 2>&1
-  echo "    --- journal (last 12) ---"
-  journalctl -u bgutil-pot -n 12 --no-pager 2>&1 | tail -12 | sed 's/^/      /'
-  echo "    --- manual run as ${SERVICE_USER}, 6s timeout ---"
-  ( cd "${PROVIDER_DIR}/server" && timeout 6 sudo -u "${SERVICE_USER}" \
-      "${NODE_DIR}/bin/node" build/main.js --port 4416 ) >/tmp/srv.out 2>&1
-  echo "    node exit code: $?  (124 = timed out = server stayed up = GOOD)"
-  head -12 /tmp/srv.out | sed 's/^/      /'
-  rm -f /tmp/srv.out
-  set -e -o pipefail
+  echo "    WARNING: bgutil-pot inactive -- downloads will fail. See: journalctl -u bgutil-pot"
 fi
 
 # On a re-deploy the service is already running old code from before the rsync;
