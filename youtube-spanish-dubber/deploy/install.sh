@@ -42,7 +42,7 @@ mkdir -p "${INSTALL_DIR}"
 echo "==> Syncing project files to ${INSTALL_DIR}"
 rsync -a --delete \
   --exclude '.git' --exclude '.venv' --exclude 'data' --exclude 'secrets' \
-  --exclude '__pycache__' --exclude '.env' --exclude 'bin' \
+  --exclude '__pycache__' --exclude '.env' --exclude 'bin' --exclude 'yt-dlp-plugins' \
   "${REPO_DIR}/" "${INSTALL_DIR}/"
 chown -R "${SERVICE_USER}:${SERVICE_USER}" "${INSTALL_DIR}"
 
@@ -64,6 +64,32 @@ curl -fsSL -o "${INSTALL_DIR}/bin/yt-dlp" \
 chmod +x "${INSTALL_DIR}/bin/yt-dlp"
 chown "${SERVICE_USER}:${SERVICE_USER}" "${INSTALL_DIR}/bin/yt-dlp"
 echo "    yt-dlp $(sudo -u "${SERVICE_USER}" "${INSTALL_DIR}/bin/yt-dlp" --version)"
+
+echo "==> Installing the bgutil PO-token provider + yt-dlp plugin"
+# 2026 YouTube requires a "Proof of Origin" token for most formats; without one,
+# downloads 403 or return no formats. A small localhost provider mints tokens and
+# a yt-dlp plugin hands them over. We use the standalone Rust build (jim60105) --
+# a single binary + plugin, no Node/Docker -- to match the yt-dlp binary above.
+# https://github.com/jim60105/bgutil-ytdlp-pot-provider-rs
+POT_RELEASE="https://github.com/jim60105/bgutil-ytdlp-pot-provider-rs/releases/latest/download"
+curl -fsSL -o "${INSTALL_DIR}/bin/bgutil-pot" "${POT_RELEASE}/bgutil-pot-linux-x86_64"
+chmod +x "${INSTALL_DIR}/bin/bgutil-pot"
+chown "${SERVICE_USER}:${SERVICE_USER}" "${INSTALL_DIR}/bin/bgutil-pot"
+
+# Plugin: extract its `yt_dlp_plugins` package directly into the plugin dir the
+# app points yt-dlp at (DUBBER_YTDLP_PLUGIN_DIRS), wherever it sits in the zip.
+PLUGIN_DIR="${INSTALL_DIR}/yt-dlp-plugins"
+PLUGIN_TMP="$(mktemp -d)"
+curl -fsSL -o "${PLUGIN_TMP}/plugin.zip" "${POT_RELEASE}/bgutil-ytdlp-pot-provider-rs.zip"
+"${INSTALL_DIR}/.venv/bin/python" -c \
+  "import sys,zipfile; zipfile.ZipFile(sys.argv[1]).extractall(sys.argv[2])" \
+  "${PLUGIN_TMP}/plugin.zip" "${PLUGIN_TMP}/unzipped"
+PKG="$(dirname "$(find "${PLUGIN_TMP}/unzipped" -type d -name yt_dlp_plugins | head -n1)")"
+rm -rf "${PLUGIN_DIR}"
+mkdir -p "${PLUGIN_DIR}"
+cp -r "${PKG}/yt_dlp_plugins" "${PLUGIN_DIR}/"
+rm -rf "${PLUGIN_TMP}"
+chown -R "${SERVICE_USER}:${SERVICE_USER}" "${PLUGIN_DIR}"
 
 echo "==> Preparing config (.env) and secrets directory"
 mkdir -p "${INSTALL_DIR}/secrets" "${INSTALL_DIR}/data"
@@ -126,9 +152,20 @@ engine = ocr_onnx._get_engine()
 print("    Thumbnail OCR self-test:", "ready" if engine is not None else "(unavailable -> keep original text)")
 PYEOF
 
-echo "==> Installing systemd unit"
+echo "==> Installing systemd units"
 cp "${INSTALL_DIR}/deploy/youtube-dubber.service" /etc/systemd/system/youtube-dubber.service
+cp "${INSTALL_DIR}/deploy/bgutil-pot.service" /etc/systemd/system/bgutil-pot.service
 systemctl daemon-reload
+
+# The PO-token provider must be up before a dub downloads; start/restart it now
+# (it has no one-time setup, unlike the dubber service below).
+echo "==> Starting the PO-token provider"
+systemctl enable --now bgutil-pot
+systemctl restart bgutil-pot
+sleep 1
+systemctl is-active --quiet bgutil-pot \
+  && echo "    bgutil-pot: running on 127.0.0.1:4416" \
+  || echo "    WARNING: bgutil-pot failed to start -- downloads may 403 (run: journalctl -u bgutil-pot)"
 
 # On a re-deploy the service is already running old code from before the rsync;
 # restart it so the new code/deps take effect. Skipped on a first install

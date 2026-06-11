@@ -15,17 +15,27 @@ from youtube_dubber.pipeline import downloader
 def fake_settings(monkeypatch, tmp_path):
     fake = SimpleNamespace(
         ytdlp_bin=tmp_path / "yt-dlp",
+        ytdlp_plugin_dirs=tmp_path / "plugins",
         youtube_cookies_file=tmp_path / "cookies.txt",
     )
     monkeypatch.setattr(downloader, "settings", fake)
     return fake
 
 
-def test_base_cmd_uses_only_token_exempt_clients(fake_settings):
+def test_base_cmd_does_not_force_player_clients(fake_settings):
+    # With the PO-token provider, yt-dlp uses its default (full-quality) clients.
+    assert "--extractor-args" not in downloader._base_cmd()
+
+
+def test_base_cmd_adds_plugin_dir_when_present(fake_settings):
+    fake_settings.ytdlp_plugin_dirs.mkdir()
     cmd = downloader._base_cmd()
-    assert "--extractor-args" in cmd
-    arg = cmd[cmd.index("--extractor-args") + 1]
-    assert arg == "youtube:player_client=tv,web_embedded,android_vr"
+    assert "--plugin-dirs" in cmd
+    assert str(fake_settings.ytdlp_plugin_dirs) in cmd
+
+
+def test_base_cmd_omits_plugin_dir_when_absent(fake_settings):
+    assert "--plugin-dirs" not in downloader._base_cmd()
 
 
 def test_base_cmd_omits_cookies_when_the_file_is_absent(fake_settings):

@@ -107,6 +107,13 @@ class Settings:
     # Python -- so extraction stays current independent of this service's Python.
     # deploy/install.sh drops the latest at <install>/bin/yt-dlp each deploy.
     ytdlp_bin: Path = field(default_factory=lambda: _path("DUBBER_YTDLP_BIN", "./bin/yt-dlp"))
+    # Directory holding the yt-dlp PO-token provider plugin (its `yt_dlp_plugins`
+    # package). 2026 YouTube needs a Proof-of-Origin token for most formats; the
+    # plugin fetches one from the local bgutil provider (bgutil-pot.service) so
+    # downloads don't 403 / return no formats. install.sh populates this.
+    ytdlp_plugin_dirs: Path = field(
+        default_factory=lambda: _path("DUBBER_YTDLP_PLUGIN_DIRS", "./yt-dlp-plugins")
+    )
     upload_privacy_status: str = os.getenv("DUBBER_UPLOAD_PRIVACY", "unlisted")
     upload_category_id: str = os.getenv("DUBBER_UPLOAD_CATEGORY", "22")
     title_prefix: str = os.getenv("DUBBER_TITLE_PREFIX", "[ES] ")

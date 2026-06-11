@@ -23,13 +23,6 @@ from .models import ThumbnailSource, VideoInfo
 
 log = logging.getLogger(__name__)
 
-# YouTube player clients yt-dlp requests formats from. As of 2026 most clients'
-# format URLs require a "PO Token" or they 403 on download; the token-exempt ones
-# are `tv` (when cookies are passed), `web_embedded` and `android_vr`. Listing
-# only these keeps yt-dlp from selecting a token-gated (403-ing) format.
-# https://github.com/yt-dlp/yt-dlp/wiki/PO-Token-Guide
-_PLAYER_CLIENTS = "tv,web_embedded,android_vr"
-
 # Thumbnail extensions yt-dlp may save (it picks whatever the site serves).
 _THUMBNAIL_EXTS = (".jpg", ".jpeg", ".png", ".webp")
 
@@ -48,14 +41,17 @@ def _binary() -> str:
 
 
 def _base_cmd() -> list[str]:
-    """yt-dlp plus the args every call shares: terse output, the token-exempt
-    player clients, and the cookies file when one is present."""
-    cmd = [
-        _binary(),
-        "--no-warnings",
-        "--no-playlist",
-        "--extractor-args", f"youtube:player_client={_PLAYER_CLIENTS}",
-    ]
+    """yt-dlp plus the args every call shares: terse output, our plugin directory
+    (the PO-token provider plugin) and the cookies file when present.
+
+    With the provider minting Proof-of-Origin tokens, we let yt-dlp use its
+    default player clients -- restricting to the token-exempt clients would just
+    forgo the formats the tokens unlock (and is what left some videos with "no
+    formats" / others 403'ing)."""
+    cmd = [_binary(), "--no-warnings", "--no-playlist"]
+    plugin_dirs = settings.ytdlp_plugin_dirs
+    if plugin_dirs and Path(plugin_dirs).exists():
+        cmd += ["--plugin-dirs", str(plugin_dirs)]
     cookies = settings.youtube_cookies_file
     if cookies and Path(cookies).exists():
         cmd += ["--cookies", str(cookies)]
