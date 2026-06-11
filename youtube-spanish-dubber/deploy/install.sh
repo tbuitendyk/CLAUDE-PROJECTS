@@ -269,15 +269,20 @@ EOF
   ( cd "$T/prov/server" && nohup node build/main.js --port 4416 >"$T/server.log" 2>&1 & echo $! >"$T/pid" )
   sleep 5
   echo "server log:"; tail -3 "$T/server.log" 2>/dev/null | sed 's/^/   /'
-  # 4) install the matching yt-dlp plugin into a temp plugin dir
-  "${INSTALL_DIR}/.venv/bin/pip" install --quiet --no-deps --target "$T/plugin" bgutil-ytdlp-pot-provider >"$T/pip.log" 2>&1 && echo "plugin: installed" || { echo "plugin: FAILED"; tail -3 "$T/pip.log" | sed 's/^/   /'; }
+  # 4a) use the LATEST yt-dlp binary here (the pinned 2025.10.14 may be too old
+  #     for the current plugin -- which is why it registered no PO provider).
+  curl -fsSL -o "$T/ytdlp" https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_linux && chmod +x "$T/ytdlp"
+  echo "yt-dlp (latest): $($T/ytdlp --version 2>&1)"
+  # 4b) install the plugin, version-matched to the server (1.3.1), into a plugin dir
+  "${INSTALL_DIR}/.venv/bin/pip" install --quiet --no-deps --target "$T/plugin" "bgutil-ytdlp-pot-provider==1.3.1" >"$T/pip.log" 2>&1 && echo "plugin: installed 1.3.1" || { echo "plugin: FAILED"; tail -3 "$T/pip.log" | sed 's/^/   /'; }
+  echo "plugin layout: $(find "$T/plugin/yt_dlp_plugins" -name '*.py' 2>/dev/null | sed "s#$T/plugin/##" | tr '\n' ' ')"
   # 5) the real test: download the video that 403s today, default clients + token
-  echo "=== yt-dlp download WITH provider (default clients) ==="
-  "${INSTALL_DIR}/bin/yt-dlp" -v --plugin-dirs "$T/plugin" \
+  echo "=== yt-dlp(latest) download WITH provider (default clients) ==="
+  "$T/ytdlp" -v --plugin-dirs "$T/plugin" \
      --cookies "${INSTALL_DIR}/secrets/youtube_cookies.txt" \
      -f "bv*[height<=360]+ba/b[height<=360]/w" -o "$T/out.%(ext)s" \
      "https://www.youtube.com/watch?v=Dj5OYkgDtHU" 2>&1 \
-     | grep -iE 'PO Token|GetPOT|bgutil|fetching|403|forbidden|Downloading [0-9]+ format|Destination|Merging|ERROR' | tail -14
+     | grep -iE 'plugin|PO Token|GetPOT|bgutil|fetching pot|403|forbidden|Downloading [0-9]+ format|Destination|Merging|ERROR|Traceback' | tail -18
   echo "RESULT FILE: $(ls -lh $T/out.* 2>/dev/null | awk '{print $5, $NF}' | tr '\n' ' ' || echo NONE)"
   kill "$(cat $T/pid 2>/dev/null)" 2>/dev/null; rm -rf "$T"
   echo "########## [POC] end ##########"
