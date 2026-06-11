@@ -51,19 +51,26 @@ sudo -u "${SERVICE_USER}" python3 -m venv "${INSTALL_DIR}/.venv"
 sudo -u "${SERVICE_USER}" "${INSTALL_DIR}/.venv/bin/pip" install --upgrade pip wheel
 sudo -u "${SERVICE_USER}" "${INSTALL_DIR}/.venv/bin/pip" install -r "${INSTALL_DIR}/requirements.txt"
 
-echo "==> Installing the latest standalone yt-dlp binary"
-# yt-dlp must track YouTube's constant changes, but its current releases need a
-# newer Python than this box runs (3.9 was dropped after EOL). The self-contained
-# yt-dlp_linux build bundles its own Python, so fetch the latest on every deploy
-# and run it as a subprocess (youtube_dubber/pipeline/downloader.py) -- keeping
-# extraction current independent of the .venv. Excluded from the rsync --delete
-# above so it survives between deploys.
+echo "==> Installing the standalone yt-dlp binary (pinned)"
+# yt-dlp must track YouTube's changes, but its current releases also dropped
+# Python 3.9 -- so we run the self-contained yt-dlp_linux build (it bundles its
+# own Python) as a subprocess (youtube_dubber/pipeline/downloader.py),
+# independent of the .venv. Excluded from the rsync --delete above so it
+# survives between deploys.
+#
+# PINNED to 2025.10.14 on purpose. This provider-less box can only use the
+# token-free android_vr client, and the newer build (2026.06.09) returns no
+# usable android_vr formats here -> downloads fail "Requested format is not
+# available". 2025.10.14 is the last version android_vr pulls cleanly with (it
+# ran in production for days). The durable fix is the Debian 12 box with the
+# PO-token provider, where "latest" works at full quality -- unpin it there.
+YTDLP_VERSION="2025.10.14"
 mkdir -p "${INSTALL_DIR}/bin"
 curl -fsSL -o "${INSTALL_DIR}/bin/yt-dlp" \
-  https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_linux
+  "https://github.com/yt-dlp/yt-dlp/releases/download/${YTDLP_VERSION}/yt-dlp_linux"
 chmod +x "${INSTALL_DIR}/bin/yt-dlp"
 chown "${SERVICE_USER}:${SERVICE_USER}" "${INSTALL_DIR}/bin/yt-dlp"
-echo "    yt-dlp $(sudo -u "${SERVICE_USER}" "${INSTALL_DIR}/bin/yt-dlp" --version)"
+echo "    yt-dlp $(sudo -u "${SERVICE_USER}" "${INSTALL_DIR}/bin/yt-dlp" --version) (pinned ${YTDLP_VERSION})"
 
 echo "==> Installing the bgutil PO-token provider + yt-dlp plugin"
 # 2026 YouTube requires a "Proof of Origin" token for most formats; without one,
