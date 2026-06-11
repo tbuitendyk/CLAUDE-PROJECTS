@@ -152,6 +152,12 @@ def fetch_thumbnail(url: str, work_dir: Path) -> Optional[ThumbnailSource]:
         "no_warnings": True,
         "skip_download": True,
         "writethumbnail": True,
+        # We only want the thumbnail image + a little metadata, never a media
+        # stream -- so don't let format selection abort the extraction. Some
+        # player clients return no matching downloadable format ("Requested
+        # format is not available"); that's irrelevant here, the thumbnail is
+        # written regardless.
+        "ignore_no_formats_error": True,
         "outtmpl": str(work_dir / "thumb.%(ext)s"),
         "extractor_args": _EXTRACTOR_ARGS,
     }
