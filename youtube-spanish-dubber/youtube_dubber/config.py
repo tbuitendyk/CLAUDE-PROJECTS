@@ -44,10 +44,9 @@ class Settings:
 
     # --- Text-to-speech (edge-tts: free Microsoft neural voices, no API key) ---
     tts_voice: str = os.getenv("DUBBER_TTS_VOICE", "es-ES-AlvaroNeural")
-    # Base synthesis rate. Spanish runs ~15-25% longer than English, so a modest
-    # bump means fewer lines need post-stretching to fit -- and a faster *voice*
-    # sounds more natural than time-stretching the audio afterwards.
-    tts_rate: str = os.getenv("DUBBER_TTS_RATE", "+6%")
+    # Base synthesis rate. Tuned by ear against the anchored timeline; -5%
+    # reads more naturally than the default pace for this voice.
+    tts_rate: str = os.getenv("DUBBER_TTS_RATE", "-5%")
     # Cap on post-synthesis speed-up for a line that would otherwise overrun the
     # gap before the next line (1.0 = never speed up). Past ~1.3 speech sounds
     # rushed; anything that still won't fit is absorbed by the timeline's

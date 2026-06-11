@@ -13,17 +13,27 @@ items land.
   ("catch up in the pauses") instead of accumulating drift. Replaced the old
   back-to-back assembly that drifted seconds ahead/behind. Tunable via
   `DUBBER_TTS_RATE` and `DUBBER_TTS_MAX_TEMPO`.
+- **TTS base-rate tuning** — settled on `-5%` as the code default
+  (`config.tts_rate`), tuned by ear against the anchored timeline. `.env`
+  override removed so the code default is the single source of truth.
 
 ## Queue
 
-### 1. TTS base-rate tuning (in progress)
-- Test sync at the current `-5%` (set in `/opt/youtube-dubber/.env`), then decide
-  whether to move toward `0%` / `+3%`.
-- Preferred end state — single source of truth: comment out `DUBBER_TTS_RATE` in
-  `.env` so the code default (`config.tts_rate`) governs, then set that default
-  to the agreed value and commit. (Deploys preserve `.env` — `install.sh` rsyncs
-  with `--exclude .env`; both systemd `EnvironmentFile=` and `load_dotenv()`
-  honor `#` comments, so the var falls back to the code default.)
+### 1. 🔭 Big Fix — translate in-video (frame) text, not just the thumbnail
+- Today only the thumbnail's baked-in text gets translated/localized
+  (`pipeline/thumbnail.py` + ONNX scene-text OCR). Source videos often have
+  on-screen text *during playback* (titles, captions, callouts, lower-thirds)
+  that stays in English in the dub.
+- Likely shape: reuse the thumbnail OCR/translate/inpaint pipeline
+  (`image_text.py`, `thumbnail.py`) but applied per-frame (or per-shot) across
+  the video rather than to a single still image — detect text regions, OCR,
+  translate, inpaint, overlay the Spanish text, for the span the text is on
+  screen.
+- Open questions to scope before starting: cost/perf of running OCR across a
+  full video (sampling strategy — keyframes vs. every frame vs. scene-cut
+  detection), how to track a text region across frames so the overlay doesn't
+  flicker/jitter, and how this interacts with the existing mux step in
+  `runner.py`.
 
 ### 2. Background music under preserved pauses
 - Now that real pauses survive as silence (anchored timeline), the source
@@ -48,10 +58,6 @@ items land.
   verified" error rather than failing silently. `thumbnails.set` accepts the
   `youtube.upload` scope we already hold, so likely **no re-consent** needed
   (confirm when building).
-
-### 4. ⚠️ Big Fix — PENDING CAPTURE
-- Discussed earlier in conversation; **details not yet recorded.** Awaiting a
-  one-line reminder to capture it accurately, then this slot gets filled in.
 
 ## Confirmed behavior (reference, not a task)
 
