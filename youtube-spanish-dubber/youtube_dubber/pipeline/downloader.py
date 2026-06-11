@@ -17,13 +17,14 @@ from .models import ThumbnailSource, VideoInfo
 
 log = logging.getLogger(__name__)
 
-# Which YouTube player clients yt-dlp asks for formats from. android_vr is
-# PO-token-exempt and works unauthenticated, but it intermittently returns *no*
-# usable format for some videos ("Requested format is not available"). Now that
-# we ship cookies (see _with_cookies), the cookie-authenticated clients are good
-# fallbacks, so list several: yt-dlp gathers formats from all of them and picks
-# the best that actually downloads. https://github.com/yt-dlp/yt-dlp/wiki/Extractors
-_EXTRACTOR_ARGS = {"youtube": {"player_client": ["android_vr", "tv", "web_safari"]}}
+# Which YouTube player clients yt-dlp asks for formats from. As of 2026 most
+# clients' format URLs require a "PO Token" or they 403 on download; the ones
+# that DON'T are `tv` (when cookies are passed -- see _with_cookies), plus
+# `web_embedded` and `android_vr`. Listing only these keeps yt-dlp from picking a
+# token-gated format. NOTE: this only helps with a *current* yt-dlp -- a stale
+# build (e.g. one capped by an old Python) can't handle 2026 YouTube regardless.
+# https://github.com/yt-dlp/yt-dlp/wiki/PO-Token-Guide
+_EXTRACTOR_ARGS = {"youtube": {"player_client": ["tv", "web_embedded", "android_vr"]}}
 
 
 def _with_cookies(opts: dict) -> dict:
