@@ -127,7 +127,12 @@ def fetch_thumbnail(url: str, work_dir: Path) -> Optional[ThumbnailSource]:
     This is what makes the thumbnail-approval step cheap enough to run the
     instant a URL is pasted: `skip_download` means yt-dlp fetches just the
     info + the thumbnail image, not the (large, slow) media streams the full
-    `download_video` pulls."""
+    `download_video` pulls.
+
+    Returns None only when extraction succeeded but the video had no thumbnail
+    image; a fetch/extraction failure (bot check, unavailable video, an
+    aged-out extractor, ...) re-raises so the caller can report the real
+    reason rather than a blank 'no thumbnail'."""
     opts = {
         "quiet": True,
         "no_warnings": True,
@@ -141,7 +146,7 @@ def fetch_thumbnail(url: str, work_dir: Path) -> Optional[ThumbnailSource]:
             info = ydl.extract_info(url, download=True)
     except yt_dlp.utils.DownloadError as exc:
         log.warning("Thumbnail fetch failed for %s: %s", url, exc)
-        return None
+        raise
 
     thumb = next(
         (str(p) for p in sorted(work_dir.glob("thumb.*")) if p.suffix.lower() in _THUMBNAIL_EXTS),

@@ -87,6 +87,19 @@ def _extract_video_id(url: str) -> str:
     return match.group(1)
 
 
+def _youtube_fetch_detail(exc: Exception) -> str:
+    """Trim yt-dlp's error into something a user can act on -- it's the only
+    window we have into *why* an extraction failed (a bot check, an unavailable
+    video, an aged-out extractor, ...), so surface it instead of a blank 'no
+    thumbnail'."""
+    msg = " ".join(str(exc).split())
+    if msg.upper().startswith("ERROR:"):
+        msg = msg[len("ERROR:"):].strip()
+    if len(msg) > 300:
+        msg = msg[:300] + "…"
+    return f"Couldn't fetch that video from YouTube: {msg}" if msg else "Couldn't fetch that video from YouTube."
+
+
 class TranscriptOverrideLine(BaseModel):
     """One hand-edited line from a "preview transcript first" pass, carried
     over verbatim into the dub so the narration says exactly what was
@@ -231,9 +244,12 @@ def thumbnail_preview(payload: ThumbnailPreviewRequest) -> dict:
 
     target = payload.target_language or settings.target_language
     with tempfile.TemporaryDirectory() as tmp:
-        source = downloader.fetch_thumbnail(payload.url, Path(tmp))
+        try:
+            source = downloader.fetch_thumbnail(payload.url, Path(tmp))
+        except Exception as exc:  # noqa: BLE001 -- surface the real upstream reason
+            raise HTTPException(status_code=502, detail=_youtube_fetch_detail(exc)) from exc
         if source is None:
-            raise HTTPException(status_code=422, detail="Couldn't fetch a thumbnail for that video")
+            raise HTTPException(status_code=422, detail="That video has no thumbnail image to fetch.")
         with Image.open(source.thumbnail_path) as opened:
             original = opened.convert("RGB")
         generated, regions = tp.generate_preview(
