@@ -50,6 +50,12 @@ echo "==> Creating Python virtualenv and installing dependencies (this can take 
 sudo -u "${SERVICE_USER}" python3 -m venv "${INSTALL_DIR}/.venv"
 sudo -u "${SERVICE_USER}" "${INSTALL_DIR}/.venv/bin/pip" install --upgrade pip wheel
 sudo -u "${SERVICE_USER}" "${INSTALL_DIR}/.venv/bin/pip" install -r "${INSTALL_DIR}/requirements.txt"
+# yt-dlp's YouTube extraction breaks whenever Google shifts something
+# server-side; the only durable fix is running its newest release. A plain
+# `-r` above won't bump a yt-dlp that already satisfies the requirements floor
+# (and the .venv persists across deploys), so force the latest on every deploy.
+# This is the documented remedy -- see the note in requirements.txt.
+sudo -u "${SERVICE_USER}" "${INSTALL_DIR}/.venv/bin/pip" install --upgrade yt-dlp
 
 echo "==> Preparing config (.env) and secrets directory"
 mkdir -p "${INSTALL_DIR}/secrets" "${INSTALL_DIR}/data"
