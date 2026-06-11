@@ -105,29 +105,6 @@ def test_localize_image_file_writes_jpeg_when_replaced(tmp_path, monkeypatch):
         assert img.format == "JPEG" and img.size == (640, 360)
 
 
-def test_remove_regions_inpaints_strokes_not_the_whole_box():
-    pytest.importorskip("cv2")
-    from PIL import ImageDraw
-
-    # A smooth gradient background (a stand-in for a real photo, which is locally
-    # smooth) with a bright horizontal "stroke" of text drawn into it.
-    ramp = np.linspace(90, 150, 400, dtype=np.uint8)
-    img = Image.fromarray(np.dstack([np.tile(ramp, (120, 1))] * 3), "RGB")
-    ImageDraw.Draw(img).rectangle([60, 50, 340, 70], fill=(255, 255, 255))
-    src = np.asarray(img).copy()
-
-    region = TextRegion(polygon=[(40, 30), (360, 30), (360, 90), (40, 90)], text="x")
-    out = np.asarray(image_text._remove_regions(img, [region]))
-
-    # Background well above the stroke (still inside the box) stays intact --
-    # the old whole-box fill would have smeared it.
-    bg = (np.abs(src[30:45, 40:360].astype(int) - out[30:45, 40:360].astype(int)).max(2) <= 3).mean()
-    assert bg > 0.7
-    # The stroke itself was painted out (changed from white).
-    changed = (np.abs(src[55:66, 90:310].astype(int) - out[55:66, 90:310].astype(int)).max(2) > 10).mean()
-    assert changed > 0.5
-
-
 def test_translate_preserving_case_titlecases_and_adds_opening_mark(monkeypatch):
     # Translator gets the lowercased input; we restore the Title-Case look with
     # Spanish function words ("por", "la") kept lowercase, and add the opening ¿.
@@ -152,41 +129,6 @@ def test_opening_mark_only_for_spanish(monkeypatch):
     # A non-Spanish target must not get the inverted mark.
     monkeypatch.setattr(image_text.translator, "translate_text", lambda t, f, to: "is it real?")
     assert image_text._translate_preserving_case("Is It Real?", "es", "en") == "Is It Real?"
-
-
-def test_estimate_colors_detects_fill_and_outline():
-    pytest.importorskip("cv2")
-    # Dark background with sparse white "letters" each outlined in a thin red
-    # edge (white core larger than the red, as in a real outlined font).
-    arr = np.full((100, 500, 3), (20, 20, 30), dtype=np.uint8)
-    for cx in range(50, 450, 90):
-        arr[30:70, cx:cx + 28] = (200, 30, 30)         # red outline block
-        arr[33:67, cx + 3:cx + 25] = (245, 245, 245)   # white core (interior, larger)
-
-    fill, outline = image_text._estimate_colors(arr, (40, 25, 470, 75))
-    assert min(fill) > 180                                          # fill ~ white
-    assert outline[0] > 110 and max(outline[1], outline[2]) < 110   # outline ~ red
-
-
-def test_estimate_colors_picks_contrasting_stroke():
-    # White text on a dark box -> light fill, so the stroke should be dark.
-    arr = np.zeros((50, 200, 3), dtype=np.uint8)
-    arr[:, :] = (20, 20, 20)
-    arr[15:35, 20:180] = (250, 250, 250)  # the "text"
-    fill, stroke = image_text._estimate_colors(arr, (0, 0, 200, 50))
-    assert min(fill) > 150          # recovered a light text colour
-    assert stroke == (0, 0, 0)      # dark outline for contrast
-
-
-def test_estimate_colors_survives_text_dominant_box():
-    pytest.importorskip("cv2")
-    # A box the bold title fills most of: a whole-box median would land on the
-    # white text and invert fill/outline; sampling the dark surround keeps the
-    # fill white.
-    arr = np.full((60, 200, 3), (15, 15, 15), dtype=np.uint8)  # dark surround
-    arr[8:52, 10:190] = (245, 245, 245)                        # big white text
-    fill, _stroke = image_text._estimate_colors(arr, (5, 5, 195, 55))
-    assert min(fill) > 150  # fill recovered as WHITE, not inverted to dark
 
 
 # --- font matching (serif vs sans detection) -------------------------------
@@ -226,6 +168,83 @@ def _source_arr(font_path, text, size=110):
         (12, 8), text, font=fnt, fill=(255, 255, 255), stroke_width=6, stroke_fill=(200, 40, 40)
     )
     return np.asarray(pim)
+
+
+def _titled(bg, text, fill, outline=None, size=110):
+    """Render `text` (DejaVu sans bold) onto a background array."""
+    from PIL import ImageDraw, ImageFont
+
+    pim = Image.fromarray(np.ascontiguousarray(bg))
+    fnt = ImageFont.truetype(_DEJAVU_SANS, size)
+    kw = dict(fill=fill)
+    if outline:
+        kw.update(stroke_width=5, stroke_fill=outline)
+    ImageDraw.Draw(pim).text((14, 10), text, font=fnt, **kw)
+    return np.asarray(pim)
+
+
+def _black_banner(h=150, w=900):
+    return np.zeros((h, w, 3), dtype=np.uint8)
+
+
+def _bookshelf(h=150, w=900):
+    rng = np.random.default_rng(7)
+    img = np.zeros((h, w, 3), dtype=np.uint8)
+    x = 0
+    while x < w:
+        bw = int(rng.integers(20, 55))
+        img[:, x:x + bw] = rng.integers(30, 200, 3)
+        x += bw
+    return img
+
+
+def _full_region(arr):
+    h, w = arr.shape[:2]
+    return TextRegion(polygon=[(0, 0), (w, 0), (w, h), (0, h)], text="SALVATION")
+
+
+@needs_fonts
+def test_analyze_region_banner_white_text():
+    style = image_text._analyze_region(_titled(_black_banner(), "SALVATION", (255, 255, 255)), (0, 0, 900, 150))
+    assert style.has_banner
+    assert max(style.banner_color) < 35   # banner ~ black
+    assert min(style.fill) > 200          # text ~ white
+
+
+@needs_fonts
+def test_analyze_region_banner_salmon_text():
+    style = image_text._analyze_region(_titled(_black_banner(), "SEGURO", (242, 138, 120)), (0, 0, 900, 150))
+    assert style.has_banner and max(style.banner_color) < 35
+    assert style.fill[0] > 190 and style.fill[1] < 200 and style.fill[2] < 200  # ~ salmon
+
+
+@needs_fonts
+def test_analyze_region_scene_is_not_a_banner():
+    arr = _titled(_bookshelf(), "SALVATION", (255, 255, 255), outline=(8, 8, 8))
+    style = image_text._analyze_region(arr, (0, 0, 900, 150))
+    assert not style.has_banner
+    assert min(style.fill) > 180  # still reads the white text
+
+
+@needs_fonts
+def test_render_translations_repaints_banner_not_a_block():
+    arr = _titled(_black_banner(), "SALVATION", (255, 255, 255))
+    out, replaced = image_text.render_translations(Image.fromarray(arr), [(_full_region(arr), "SALVACION")])
+    assert replaced == 1
+    out_arr = np.asarray(out)
+    # The banner (majority of the region) stays ~black -- not a wrong-colour block
+    # (the bug repainted it grey/salmon) -- with white text drawn on top.
+    assert np.median(out_arr.reshape(-1, 3), axis=0).max() < 40
+    assert out_arr.max() > 200
+
+
+@needs_fonts
+def test_render_translations_preserves_scene():
+    arr = _titled(_bookshelf(), "SALVATION", (255, 255, 255), outline=(8, 8, 8))
+    out, replaced = image_text.render_translations(Image.fromarray(arr), [(_full_region(arr), "SALVACION")])
+    assert replaced == 1
+    # The scene's variance survives (a flat block would collapse it).
+    assert float(np.asarray(out).reshape(-1, 3).std(axis=0).mean()) > 35
 
 
 @needs_fonts

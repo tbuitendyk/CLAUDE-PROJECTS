@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Optional
+from typing import NamedTuple, Optional
 
 from . import ocr_onnx, translator
 from .models import TextRegion
@@ -47,6 +47,24 @@ _SANS_FONT_CANDIDATES = (
 # original's letters are tall/condensed, so some stretch matches the look, but
 # too much turns it into taffy.
 _MAX_VERTICAL_STRETCH = 1.7
+
+# Background-colour spread (mean per-channel std, behind the letters) below which
+# a text region is treated as sitting on a flat *banner* -- rebuilt as a solid
+# rectangle of that colour -- rather than a varied *scene*, whose strokes we
+# inpaint away instead so the picture shows through. Solid banners measure ~10,
+# busy scenes ~50.
+_BANNER_STD_MAX = 30.0
+
+
+class _RegionStyle(NamedTuple):
+    """How one source text region should be reproduced, read from the letters
+    themselves (not from any assumed background box)."""
+    fill: tuple                 # the text colour
+    outline: Optional[tuple]    # outline colour, or None for no outline
+    has_banner: bool            # text sits on a ~uniform banner (vs a scene)
+    banner_color: tuple         # that banner's colour (meaningful iff has_banner)
+    ink: object                 # 0/1 glyph mask over `box` (for scene inpaint), or None
+    box: tuple                  # clamped (x0, y0, x1, y1) matching `ink`
 
 # Short Spanish function words kept lowercase inside a Title-Cased line (unless
 # they're the first word) so re-cased titles read naturally ("Salvación por la
@@ -219,18 +237,26 @@ def render_translations(image, pairs: list[tuple[TextRegion, str]]):
 
     canvas = image.convert("RGB").copy()
 
-    # Estimate appearance from the *original* pixels before we paint anything
-    # out, then remove the originals in one pass (so inpainting fills from clean
-    # neighbours, not from text we are about to overwrite).
+    # Read each region's style (colours + banner-or-scene) from the *original*
+    # pixels, before we touch the canvas.
     import numpy as np
 
     arr = np.asarray(canvas)
+    styles = []
     for region, _translated in pairs:
-        fill, stroke = _estimate_colors(arr, region.bbox)
-        region.fill_color, region.stroke_color = fill, stroke
+        style = _analyze_region(arr, region.bbox)
+        region.fill_color = style.fill
+        region.stroke_color = style.outline
         region.font_family = _estimate_font_family(arr, region.bbox)
+        styles.append(style)
 
-    canvas = _remove_regions(canvas, [r for r, _ in pairs])
+    # Rebuild the background where the old text was: scene regions get just their
+    # strokes inpainted (the picture shows through); banner regions get repainted
+    # as a flat rectangle of the banner colour (covering the old text cleanly).
+    canvas = _erase_scene_text(canvas, [(s.box, s.ink) for s in styles if not s.has_banner])
+    for style in styles:
+        if style.has_banner:
+            _paint_banner(canvas, style.box, style.banner_color)
 
     replaced = 0
     for region, translated in pairs:
@@ -242,64 +268,84 @@ def render_translations(image, pairs: list[tuple[TextRegion, str]]):
     return canvas, replaced
 
 
-# --- appearance estimation -------------------------------------------------
+# --- region analysis -------------------------------------------------------
 
-def _estimate_background(arr, bbox):
-    """Background colour sampled from a frame *just outside* the text box rather
-    than the box's own median.
+def _analyze_region(arr, bbox) -> "_RegionStyle":
+    """Work out how to reproduce a source text region, reading everything from
+    the *letters* (found by local contrast) rather than assuming a background
+    box -- so it holds whether or not there's a banner, and at any colours.
 
-    Thumbnail titles are big and fill most of their box, so a whole-box median
-    often lands on the *text* colour -- which then inverts the fill/outline
-    estimate: the title reads as background and its dark outline as the 'fill'
-    (white-on-dark titles came out dark-on-light). The surrounding ring is
-    reliably the real background. Falls back to the box median when the box hugs
-    the image edge and there's nothing outside to sample."""
-    import numpy as np
-
-    x0, y0, x1, y1 = bbox
-    h, w = arr.shape[:2]
-    pad = max(6, (y1 - y0) // 3)
-    ox0, oy0 = max(0, x0 - pad), max(0, y0 - pad)
-    ox1, oy1 = min(w, x1 + pad), min(h, y1 + pad)
-    outer = arr[oy0:oy1, ox0:ox1]
-    keep = np.ones(outer.shape[:2], dtype=bool)
-    keep[y0 - oy0:y1 - oy0, x0 - ox0:x1 - ox0] = False  # drop the inner text box
-    ring = outer[keep]
-    if ring.shape[0] < 30:
-        return np.median(arr[y0:y1, x0:x1].reshape(-1, 3), axis=0)
-    return np.median(ring.reshape(-1, 3), axis=0)
-
-
-def _estimate_colors(arr, bbox):
-    """Estimate the original text's (fill_colour, outline_colour) from its box.
-
-    Thumbnail titles are usually a coloured glyph with a contrasting outline
-    (here: white letters with a red outline). The fill is the *interior* of the
-    strokes and the outline is the thin *edge ring* around them -- a distinction
-    of geometry, not pixel count (a thick outline on thin serif strokes has more
-    pixels than the core). A distance transform of the text mask separates them:
-    pixels deep inside the strokes are the fill, pixels at the edge are the
-    outline. If there's really only one text colour, the outline falls back to
-    plain black/white contrast so the Spanish stays legible against the
-    (imperfect) inpainted background."""
+    Returns text fill/outline colours, whether the text sits on a near-uniform
+    banner (and that banner's colour), and the glyph mask (for inpainting when
+    it doesn't)."""
     import numpy as np
 
     x0, y0, x1, y1 = bbox
     h, w = arr.shape[:2]
     x0, y0 = max(0, x0), max(0, y0)
     x1, y1 = min(w, x1), min(h, y1)
-    if x1 <= x0 or y1 <= y0:
-        return (255, 255, 255), (0, 0, 0)
+    box = (x0, y0, x1, y1)
+    if x1 - x0 < 6 or y1 - y0 < 6:
+        return _RegionStyle((255, 255, 255), (0, 0, 0), False, (0, 0, 0), None, box)
     crop = arr[y0:y1, x0:x1]
 
-    background = _estimate_background(arr, (x0, y0, x1, y1))
-    distance = np.linalg.norm(crop.astype(np.float32) - background, axis=2)  # H x W
-    text_mask = _foreground_mask(distance)
-    if int(text_mask.sum()) < 8:  # near-uniform box: inverse of the background
-        fill = tuple(int(c) for c in (255 - background))
-        return fill, _contrasting(fill)
+    try:
+        import cv2
+    except Exception:  # noqa: BLE001 -- no opencv: light fallback, treat as scene
+        fill = tuple(int(c) for c in np.median(crop.reshape(-1, 3), axis=0))
+        return _RegionStyle(fill, _contrasting(fill), False, (0, 0, 0), None, box)
 
-    return _fill_and_outline(crop, text_mask)
+    ch, cw = crop.shape[:2]
+    # Local-contrast text detection: a median blur wide enough to swallow the
+    # strokes approximates the local background (banner OR smoothed scene); the
+    # pixels far from it are the ink (the letters' fill + outline). The kernel
+    # scales with the text height (strokes are ~h/6, and the kernel must exceed
+    # twice that or thick strokes survive as holes).
+    kernel = min(51, max(5, int(round(ch * 0.45)) | 1))
+    background = cv2.medianBlur(crop, kernel)
+    diff = np.linalg.norm(crop.astype(np.float32) - background.astype(np.float32), axis=2)
+    _t, ink_u8 = cv2.threshold(
+        np.clip(diff, 0, 255).astype(np.uint8), 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU
+    )
+    ink = ink_u8 > 0
+    if int(ink.sum()) < 12:  # nothing that reads as text
+        fill = tuple(int(c) for c in np.median(crop.reshape(-1, 3), axis=0))
+        return _RegionStyle(fill, _contrasting(fill), False, (0, 0, 0), None, box)
+
+    # Fill = stroke interior, outline = the thin edge ring (kept only if it's a
+    # genuinely different colour from the fill).
+    depth = cv2.distanceTransform(ink_u8, cv2.DIST_L2, 3)
+    max_depth = float(depth.max())
+    core = ink & (depth >= max(2.0, 0.5 * max_depth))
+    interior = core if int(core.sum()) >= 8 else ink
+    fill = tuple(int(c) for c in np.median(crop[interior], axis=0))
+    outline = None
+    edge = ink & (depth <= 1.5)
+    if int(edge.sum()) >= 8:
+        candidate = tuple(int(c) for c in np.median(crop[edge], axis=0))
+        if _colour_distance(fill, candidate) >= 45:
+            outline = candidate
+
+    # Banner vs scene: how uniform is the background *behind* the letters? Sample
+    # outside the ink, its anti-aliased halo, AND any pixel close to the text
+    # colour -- high-contrast text (white on black) spreads a bright halo wider
+    # than a few px, and those leaked pixels would otherwise inflate a clean
+    # banner's spread and make it read as a scene.
+    halo = cv2.dilate(ink_u8, np.ones((5, 5), np.uint8), iterations=2) > 0
+    near_text = np.linalg.norm(crop.astype(np.float32) - np.array(fill, np.float32), axis=2) < 60
+    bg_pixels = crop[~(halo | near_text)].reshape(-1, 3)
+    if bg_pixels.shape[0] >= 20:
+        banner_std = float(bg_pixels.std(axis=0).mean())
+        banner_color = tuple(int(c) for c in np.median(bg_pixels, axis=0))
+    else:
+        banner_std, banner_color = 999.0, (0, 0, 0)
+    has_banner = banner_std < _BANNER_STD_MAX
+
+    # On a scene the new text needs a contrasting outline to stay legible even if
+    # the source had none; on a banner the banner itself supplies the contrast.
+    if outline is None and not has_banner:
+        outline = _contrasting(fill)
+    return _RegionStyle(fill, outline, has_banner, banner_color, ink, box)
 
 
 def _foreground_mask(distance):
@@ -316,34 +362,6 @@ def _foreground_mask(distance):
         return distance >= max(threshold, 1.0)
     except Exception:  # noqa: BLE001 -- no opencv: high-percentile fallback
         return distance >= np.percentile(distance, 80)
-
-
-def _fill_and_outline(crop, text_mask):
-    """Split the text pixels into the stroke interior (fill) and the edge ring
-    (outline) via a distance transform, and return their median colours. Falls
-    back to a single colour + contrasting outline when opencv is unavailable or
-    the text has no distinct outline."""
-    import numpy as np
-
-    try:
-        import cv2
-
-        depth = cv2.distanceTransform((text_mask.astype(np.uint8)) * 255, cv2.DIST_L2, 3)
-        max_depth = float(depth.max())
-        if max_depth >= 2.0:
-            core = text_mask & (depth >= max(2.0, 0.5 * max_depth))   # interior -> fill
-            edge = text_mask & (depth <= 1.5)                          # ring -> outline
-            if int(core.sum()) >= 8 and int(edge.sum()) >= 8:
-                fill = tuple(int(c) for c in np.median(crop[core], axis=0))
-                outline = tuple(int(c) for c in np.median(crop[edge], axis=0))
-                if _colour_distance(fill, outline) >= 45:
-                    return fill, outline
-                return fill, _contrasting(fill)
-    except Exception:  # noqa: BLE001 -- no opencv / degenerate: single colour
-        pass
-
-    fill = tuple(int(c) for c in np.median(crop[text_mask], axis=0))
-    return fill, _contrasting(fill)
 
 
 def _contrasting(colour):
@@ -447,32 +465,26 @@ def _estimate_font_family(arr, bbox) -> str:
     return "serif" if source >= threshold else "sans"
 
 
-# --- removal ---------------------------------------------------------------
+# --- background reconstruction ---------------------------------------------
 
-def _remove_regions(image, regions: list[TextRegion]):
-    """Paint the original text out of `image` with opencv inpainting.
-
-    Crucially we mask only the *glyph strokes*, not each text's whole bounding
-    box: inpainting a big rectangle of mostly-background reconstructs a visible
-    smear, whereas inpainting just the thin letters lets opencv fill them from
-    the real surrounding pixels, leaving the background between/around the
-    letters untouched. Falls back to flat-filling the boxes when opencv/numpy
-    aren't available."""
+def _erase_scene_text(image, items):
+    """Inpaint just the glyph strokes of the *scene* regions, so the real
+    picture shows through where the old text was (rather than smearing a whole
+    rectangle). `items` is a list of `(box, ink_mask)`; a None mask is skipped.
+    Returns the image unchanged when there's nothing to erase or opencv is
+    missing."""
+    items = [(box, ink) for box, ink in items if ink is not None]
+    if not items:
+        return image
     try:
         import cv2
         import numpy as np
 
         rgb = np.asarray(image)
-        h, w = rgb.shape[:2]
-        mask = np.zeros((h, w), dtype=np.uint8)
-        for region in regions:
-            x0, y0, x1, y1 = region.bbox
-            x0, y0 = max(0, x0), max(0, y0)
-            x1, y1 = min(w, x1), min(h, y1)
-            if x1 <= x0 or y1 <= y0:
-                continue
+        mask = np.zeros(rgb.shape[:2], dtype=np.uint8)
+        for (x0, y0, x1, y1), ink in items:
             sub = mask[y0:y1, x0:x1]
-            np.maximum(sub, _stroke_mask(rgb[y0:y1, x0:x1]), out=sub)
+            np.maximum(sub, (np.asarray(ink).astype(np.uint8)) * 255, out=sub)
         # Grow the strokes a little so anti-aliased glyph edges are covered too.
         mask = cv2.dilate(mask, np.ones((3, 3), np.uint8), iterations=2)
         bgr = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
@@ -480,50 +492,17 @@ def _remove_regions(image, regions: list[TextRegion]):
         from PIL import Image
 
         return Image.fromarray(cv2.cvtColor(inpainted, cv2.COLOR_BGR2RGB))
-    except Exception as exc:  # noqa: BLE001 -- no opencv / numpy: flat-fill fallback
-        log.debug("Inpainting unavailable (%s); flat-filling text boxes instead.", exc)
-        return _flat_fill_regions(image, regions)
+    except Exception as exc:  # noqa: BLE001 -- no opencv: leave the background as-is
+        log.debug("Scene-text inpainting unavailable (%s); leaving background.", exc)
+        return image
 
 
-def _stroke_mask(crop):
-    """Return a 0/255 mask of the glyph strokes within a text box `crop`
-    (H x W x 3 RGB). Text is the minority of pixels that stand out from the
-    box's median (background) colour; an Otsu threshold on each pixel's distance
-    from that median separates strokes from background adaptively per box.
-
-    Guards the degenerate case (a very busy box where Otsu would flag most of
-    it) by masking the whole box -- better to inpaint it than to leave the old
-    text ghosting through the new one."""
-    import cv2
-    import numpy as np
-
-    flat = crop.reshape(-1, 3).astype(np.float32)
-    background = np.median(flat, axis=0)
-    distance = np.linalg.norm(crop.astype(np.float32) - background, axis=2)
-    dist_u8 = np.clip(distance, 0, 255).astype(np.uint8)
-    _thresh, stroke = cv2.threshold(dist_u8, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-    if stroke.mean() > 0.6 * 255:  # Otsu split most of the box -> cover it all
-        stroke[:] = 255
-    return stroke
-
-
-def _flat_fill_regions(image, regions: list[TextRegion]):
-    """Pillow-only fallback: cover each region's box with the median colour of a
-    thin frame just outside it (a rough background sample)."""
-    import numpy as np
+def _paint_banner(image, box, color):
+    """Repaint the banner a text line sits on as a flat rectangle of `color`,
+    covering the old text so the new text draws straight onto a clean banner."""
     from PIL import ImageDraw
 
-    arr = np.asarray(image)
-    h, w = arr.shape[:2]
-    draw = ImageDraw.Draw(image)
-    for region in regions:
-        x0, y0, x1, y1 = region.bbox
-        pad = 4
-        fx0, fy0 = max(0, x0 - pad), max(0, y0 - pad)
-        fx1, fy1 = min(w, x1 + pad), min(h, y1 + pad)
-        frame = arr[fy0:fy1, fx0:fx1].reshape(-1, 3)
-        bg = tuple(int(c) for c in np.median(frame, axis=0)) if frame.size else (0, 0, 0)
-        draw.rectangle([x0, y0, x1, y1], fill=bg)
+    ImageDraw.Draw(image).rectangle(list(box), fill=tuple(int(c) for c in color))
     return image
 
 
@@ -551,9 +530,9 @@ def _find_text_font(family: str = "serif") -> Optional[str]:
 
 def _render_region(canvas, region: TextRegion, text: str) -> bool:
     """Draw `text` into `region`'s box: sized to fit, in a face matching the
-    source's serif/sans family, with the detected fill + outline colours, and
-    vertically stretched to fill the box (matching the original's tall letters).
-    Returns False if no font was found."""
+    source's serif/sans family, with the detected fill colour and (when the
+    source had one) outline, vertically stretched to fill the box. Returns False
+    if no font was found."""
     font_path = _find_text_font(region.font_family or "serif")
     if not font_path:
         return False
@@ -563,21 +542,23 @@ def _render_region(canvas, region: TextRegion, text: str) -> bool:
     x0, y0, x1, y1 = region.bbox
     box_w, box_h = max(1, x1 - x0), max(1, y1 - y0)
     fill = tuple(region.fill_color or (255, 255, 255))
-    stroke = tuple(region.stroke_color or (0, 0, 0))
+    stroke = tuple(region.stroke_color) if region.stroke_color is not None else None
     measure = ImageDraw.Draw(Image.new("RGB", (1, 1)))
+
+    def stroke_width(size: int) -> int:
+        return max(1, size // 16) if stroke is not None else 0
 
     # Largest font size whose text fits within the box (both axes). Coarse-to-
     # fine; the vertical stretch below then fills whatever height is left over.
     size = max(8, box_h)
     while size > 8:
         fnt = ImageFont.truetype(font_path, size)
-        stroke_w = max(1, size // 16)
-        left, top, right, bottom = measure.textbbox((0, 0), text, font=fnt, stroke_width=stroke_w)
+        left, top, right, bottom = measure.textbbox((0, 0), text, font=fnt, stroke_width=stroke_width(size))
         if (right - left) <= box_w * 0.97 and (bottom - top) <= box_h * 0.98:
             break
         size -= 2
     fnt = ImageFont.truetype(font_path, size)
-    stroke_w = max(1, size // 16)
+    stroke_w = stroke_width(size)
     left, top, right, bottom = measure.textbbox((0, 0), text, font=fnt, stroke_width=stroke_w)
     text_w, text_h = right - left, bottom - top
     if text_w <= 0 or text_h <= 0:
@@ -588,7 +569,8 @@ def _render_region(canvas, region: TextRegion, text: str) -> bool:
     tile = Image.new("RGBA", (text_w + 2 * stroke_w, text_h + 2 * stroke_w), (0, 0, 0, 0))
     ImageDraw.Draw(tile).text(
         (stroke_w - left, stroke_w - top), text, font=fnt,
-        fill=fill + (255,), stroke_width=stroke_w, stroke_fill=stroke + (255,),
+        fill=fill + (255,), stroke_width=stroke_w,
+        stroke_fill=(stroke + (255,)) if stroke is not None else None,
     )
     tile = tile.crop(tile.getbbox() or (0, 0, tile.width, tile.height))
 
