@@ -110,8 +110,10 @@ chown -R "${SERVICE_USER}:${SERVICE_USER}" "${NODE_DIR}" "${PROVIDER_DIR}"
 # searches ROOT/*/yt_dlp_plugins, so install the package UNDER a subdir (bgutil/).
 # (Putting yt_dlp_plugins directly in ROOT silently loads nothing on modern yt-dlp.)
 PLUGIN_DIR="${INSTALL_DIR}/yt-dlp-plugins"
-rm -rf "${PLUGIN_DIR}"; mkdir -p "${PLUGIN_DIR}"
-sudo -u "${SERVICE_USER}" "${INSTALL_DIR}/.venv/bin/pip" install --quiet --no-deps \
+rm -rf "${PLUGIN_DIR}"; mkdir -p "${PLUGIN_DIR}/bgutil"
+# Run pip as root into the root-owned plugin dir (it's just files; the service
+# reads them after the chown below), then hand the whole tree to the service user.
+"${INSTALL_DIR}/.venv/bin/pip" install --quiet --no-deps \
   --target "${PLUGIN_DIR}/bgutil" "bgutil-ytdlp-pot-provider==${PROVIDER_TAG}"
 chown -R "${SERVICE_USER}:${SERVICE_USER}" "${PLUGIN_DIR}"
 
