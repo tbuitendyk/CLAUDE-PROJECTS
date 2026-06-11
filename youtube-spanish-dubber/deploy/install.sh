@@ -278,15 +278,18 @@ EOF
   "${INSTALL_DIR}/.venv/bin/pip" install --quiet --no-deps --target "$T/pd/bgutil" "bgutil-ytdlp-pot-provider==1.3.1" >"$T/pip.log" 2>&1 && echo "plugin: installed 1.3.1" || { echo "plugin: FAILED"; tail -3 "$T/pip.log" | sed 's/^/   /'; }
   CK="${INSTALL_DIR}/secrets/youtube_cookies.txt"
   URL="https://www.youtube.com/watch?v=Dj5OYkgDtHU"
-  # 5a) what formats are actually available now that the token is in play?
-  echo "=== list-formats WITH provider/token ==="
-  "$T/ytdlp" --no-warnings --plugin-dirs "$T/pd" --cookies "$CK" --list-formats "$URL" 2>&1 \
-     | grep -vE 'Downloading|Extracting|storyboard|mhtml' | tail -22
-  # 5b) the 403 killer: actually download bestaudio (small) end-to-end
-  echo "=== download bestaudio WITH provider (does it still 403?) ==="
-  "$T/ytdlp" -v --plugin-dirs "$T/pd" --cookies "$CK" -f ba -o "$T/out.%(ext)s" "$URL" 2>&1 \
-     | grep -iE 'PO Token Providers|Generating a|bgutil HTTP|403|forbidden|Downloading 1 format|Destination|100%|ERROR' | tail -12
-  echo "RESULT FILE: $(ls -lh $T/out.* 2>/dev/null | awk '{print $5, $NF}' | tr '\n' ' ' || echo NONE)"
+  # 5) sweep clients WITH the provider: which one lists real media AND downloads
+  #    (bestaudio = small) without 403? web_creator (auto-picked w/ cookies) only
+  #    gives storyboards for a non-owned video, so we must force a good client.
+  for C in tv default web mweb web_safari android_vr; do
+    echo "----- client=${C} -----"
+    "$T/ytdlp" -v --plugin-dirs "$T/pd" --cookies "$CK" \
+       --extractor-args "youtube:player_client=${C}" -f "ba/wa/w" \
+       -o "$T/o.%(ext)s" "$URL" 2>&1 \
+       | grep -iE 'Generating a .*PO Token|403|forbidden|Downloading 1 format|Destination|not available|ERROR:' | tail -4
+    echo "   -> $(ls -lh $T/o.* 2>/dev/null | awk '{print "DOWNLOADED", $5, $NF}' | tr '\n' ' ' || echo 'no file')"
+    rm -f "$T"/o.* 2>/dev/null
+  done
   kill "$(cat $T/pid 2>/dev/null)" 2>/dev/null; rm -rf "$T"
   echo "########## [POC] end ##########"
 ) || true
