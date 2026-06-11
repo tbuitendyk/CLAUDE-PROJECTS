@@ -246,3 +246,34 @@ Install complete. Remaining manual steps (see README.md for full detail):
               -d '{"url": "https://www.youtube.com/watch?v=XXXXXXXXXXX"}'
 ==============================================================================
 EOF
+
+# === TEMP DIAGNOSTIC (remove after one run) =================================
+# Read-only format probe, run as the service user with the box's real cookies +
+# IP -- the conditions a cloud session can't reproduce (it gets bot-walled). Kept
+# as the LAST output so it survives the deploy endpoint's tail-truncated reply.
+( set +e
+  DIAG_URL="https://www.youtube.com/watch?v=Dj5OYkgDtHU"
+  DIAG_CK="${INSTALL_DIR}/secrets/youtube_cookies.txt"
+  DIAG_YT="${INSTALL_DIR}/bin/yt-dlp"
+  DIAG_PL="${INSTALL_DIR}/yt-dlp-plugins"
+  echo "########## [DIAG] yt-dlp format probe ##########"
+  echo "yt-dlp version: $(${DIAG_YT} --version 2>&1)"
+  if [ -f "${DIAG_CK}" ]; then
+    echo "cookies: present, $(wc -l < "${DIAG_CK}") lines, $(( ( $(date +%s) - $(stat -c %Y "${DIAG_CK}") ) / 86400 )) days old"
+  else
+    echo "cookies: MISSING at ${DIAG_CK}"
+  fi
+  for C in android_vr default web tv ios; do
+    if [ "$C" = "default" ]; then EA=""; else EA="--extractor-args youtube:player_client=${C}"; fi
+    echo "===== client=${C} : available formats (best 20) ====="
+    sudo -u "${SERVICE_USER}" "${DIAG_YT}" --no-warnings --plugin-dirs "${DIAG_PL}" \
+        --cookies "${DIAG_CK}" ${EA} --list-formats "${DIAG_URL}" 2>&1 \
+        | grep -vE 'Downloading|Extracting URL|Available formats' | tail -20
+    echo "----- client=${C} : does our selector resolve? -----"
+    sudo -u "${SERVICE_USER}" "${DIAG_YT}" --no-warnings --plugin-dirs "${DIAG_PL}" \
+        --cookies "${DIAG_CK}" ${EA} -f "bv*[ext=mp4]+ba[ext=m4a]/bv*+ba/b[ext=mp4]/b" \
+        --simulate --print "selector -> %(format_id)s (%(ext)s, %(resolution)s)" "${DIAG_URL}" 2>&1 | tail -1
+  done
+  echo "########## [DIAG] end ##########"
+) || true
+# === END TEMP DIAGNOSTIC ====================================================
