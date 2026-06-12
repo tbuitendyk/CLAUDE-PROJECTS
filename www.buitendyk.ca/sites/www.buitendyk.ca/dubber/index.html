@@ -118,24 +118,6 @@
       <div class="thumbnail-panel" id="rethumb-preview" style="display:none; margin-top:1rem;"></div>
     </div>
 
-    <!-- Operator service controls: kept low-key and below the main form. JS
-         toggles visibility with the auth state (see dubber.js setAuthState). -->
-    <div class="panel" id="service-controls" style="display:none;">
-      <div class="service-row">
-        <div class="service-info">
-          <div class="box-title">Control dubbing service</div>
-          <p class="hint" style="margin-top:0.2rem;">
-            Restart the dubbing service &mdash; frees its memory and stops any job
-            that's currently running. Queued jobs are kept and resume afterward.
-          </p>
-        </div>
-        <div class="service-action">
-          <button class="btn danger small" id="restart-btn" type="button">Restart Dubber service</button>
-          <span class="hint" id="restart-message" style="margin-top:0;"></span>
-        </div>
-      </div>
-    </div>
-
     <!-- Redub a completed project: re-narrate one of our own finished videos
          from a saved (and possibly hand-fixed) transcript, same language, over
          its kept music/SFX, as a new upload. dubber.js gates on auth, fills the
@@ -173,6 +155,25 @@
         it, fix any line and save (then redub above to apply), or download it.
       </p>
       <div id="library-list" style="margin-top:0.75rem;"></div>
+    </div>
+
+    <!-- Operator service controls: the last control box, just above the job
+         history. JS toggles visibility with the auth state (dubber.js
+         setAuthState). -->
+    <div class="panel" id="service-controls" style="display:none;">
+      <div class="service-row">
+        <div class="service-info">
+          <div class="box-title">Control dubbing service</div>
+          <p class="hint" style="margin-top:0.2rem;">
+            Restart the dubbing service &mdash; frees its memory and stops any job
+            that's currently running. Queued jobs are kept and resume afterward.
+          </p>
+        </div>
+        <div class="service-action">
+          <button class="btn danger small" id="restart-btn" type="button">Restart Dubber service</button>
+          <span class="hint" id="restart-message" style="margin-top:0;"></span>
+        </div>
+      </div>
     </div>
 
     <div id="job-list"></div>
