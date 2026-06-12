@@ -31,6 +31,42 @@ def test_instrumental_bed_returns_none_when_unavailable(monkeypatch, tmp_path):
     assert separate.instrumental_bed(tmp_path / "src.mp4", tmp_path) is None
 
 
+class _IdentityModel:
+    """A fake onnx session whose output stem == input spec, so each chunk is just
+    stft->istft -- the streamed output must then reconstruct the input."""
+
+    def get_inputs(self):
+        return [SimpleNamespace(name="input")]
+
+    def run(self, _outputs, feeds):
+        return [next(iter(feeds.values()))]
+
+
+def test_streaming_overlap_save_reconstructs_without_seams():
+    # Streaming feeds the separator small blocks (never the whole signal -> flat
+    # memory). With an identity model the output must equal the input everywhere;
+    # any overlap-save seam would show up as an error spike at a chunk boundary.
+    t = np.arange(200000)
+    sig = 0.2 * np.sin(2 * np.pi * 0.05 * t) + 0.1 * np.sin(2 * np.pi * 0.17 * t)
+    x = np.stack([sig, np.roll(sig, 1000)]).astype(np.float32)
+
+    pos = {"i": 0}
+
+    def read_block(n):
+        blk = x[:, pos["i"]:pos["i"] + n]
+        pos["i"] += blk.shape[1]
+        return blk
+
+    outs: list = []
+    produced = separate._separate_stream(
+        _IdentityModel(), read_block, lambda a: outs.append(a.copy()), None, x.shape[1]
+    )
+    y = np.concatenate(outs, axis=1)
+    assert produced == x.shape[1]
+    assert y.shape == x.shape
+    assert float(np.abs(y - x).max()) < 1e-3
+
+
 def test_mux_music_uses_bed_when_present(monkeypatch):
     calls = {}
     monkeypatch.setattr(ffmpeg_utils, "mux_music_bed",
