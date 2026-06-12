@@ -654,3 +654,82 @@ footer.site-footer {
   overflow-y: auto;
   padding-right: 0.4rem;
 }
+
+/* --- Dubber: library state chips, activity log, lookup banner, radios ---- */
+
+/* One entry per (video, language); the chip shows its lifecycle state:
+   draft -> published -> published-with-pending-edits (redub in progress). */
+.chip {
+  display: inline-block;
+  padding: 0.1rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  vertical-align: middle;
+  margin-right: 0.35rem;
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+.chip.draft { color: var(--accent); border-color: var(--accent); }
+.chip.published { color: var(--good); border-color: var(--good); }
+.chip.pending { color: var(--warn); border-color: var(--warn); }
+
+.library-links { font-size: 0.85rem; margin-top: 0.2rem; }
+.library-links a { color: var(--text-dim); text-decoration: underline; }
+.library-links a:hover { color: var(--accent); }
+.library-head-buttons {
+  display: flex;
+  gap: 0.5rem;
+  flex-shrink: 0;
+  align-items: center;
+}
+
+/* Privacy / thumbnail-source radio rows. */
+.radio-row { display: flex; gap: 1.25rem; flex-wrap: wrap; align-items: center; }
+.radio-row label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.92rem;
+  color: var(--text);
+  cursor: pointer;
+  margin: 0;
+}
+.radio-row input[type="radio"] { accent-color: var(--accent); margin: 0; }
+.radio-row .radio-hint { color: var(--text-dim); font-size: 0.82rem; }
+.radio-row.inline { gap: 0.9rem; }
+
+/* The URL re-entry banner: this video is already in the library. */
+.lookup-banner {
+  margin-top: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  border-radius: 8px;
+}
+.lookup-banner a { color: var(--accent); }
+
+/* The permanent activity log: one timestamped line per action. */
+#event-list {
+  max-height: 50vh;
+  overflow-y: auto;
+  font-size: 0.88rem;
+}
+.event-line {
+  padding: 0.3rem 0;
+  border-bottom: 1px solid var(--border);
+  word-break: break-word;
+}
+.event-line:last-child { border-bottom: none; }
+.event-time {
+  color: var(--text-dim);
+  font-size: 0.8rem;
+  margin-right: 0.6rem;
+  white-space: nowrap;
+}
+.event-action { font-weight: 600; }
+.event-title { color: var(--text-dim); }
+.event-detail { color: var(--text-dim); font-size: 0.82rem; }
+.event-line a { color: var(--accent); word-break: break-all; }

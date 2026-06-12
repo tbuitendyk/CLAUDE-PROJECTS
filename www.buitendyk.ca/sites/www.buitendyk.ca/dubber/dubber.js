@@ -5,10 +5,16 @@
  * Auth (see ../../nginx/www.buitendyk.ca.conf). The browser's native auth
  * prompt -- triggered the first time a request gets a 401 -- is the "sign
  * in"; once credentials are cached for this origin, every request below
- * (including the actual job submission) carries them automatically. Until
- * that happens, the submit button stays visibly present but "ghosted"
- * (disabled + dimmed) so visitors can see what the tool does without being
- * able to trigger a real upload.
+ * carries them automatically.
+ *
+ * The mental model (matches the backend's library):
+ *  - The LIBRARY holds one entry per (source video, language), ever: draft ->
+ *    published -> published-with-pending-edits (a redub in progress).
+ *  - Saves (transcript lines, thumbnail) write the entry's draft server-side,
+ *    so edits survive reloads; "Start dubbing" speaks what the library holds.
+ *  - The ACTIVITY LOG is permanent and append-only: one timestamped line per
+ *    action, never any transcript content. Live progress cards appear above
+ *    it only while a job is queued/running.
  */
 (function () {
   "use strict";
@@ -23,65 +29,100 @@
   const previewBtn = document.getElementById("preview-btn");
   const form = document.getElementById("dub-form");
   const formMessage = document.getElementById("form-message");
+  const lookupBanner = document.getElementById("lookup-banner");
   const jobList = document.getElementById("job-list");
   const serviceControls = document.getElementById("service-controls");
   const restartBtn = document.getElementById("restart-btn");
   const restartMessage = document.getElementById("restart-message");
   const thumbnailBtn = document.getElementById("thumbnail-btn");
   const thumbnailPanel = document.getElementById("thumbnail-panel");
+  const transcriptPanel = document.getElementById("transcript-panel");
   const rethumbBtn = document.getElementById("rethumb-btn");
+  const rethumbTarget = document.getElementById("rethumb-target");
+  const rethumbOtherUrl = document.getElementById("rethumb-other-url");
   const rethumbPreview = document.getElementById("rethumb-preview");
   const rethumbMessage = document.getElementById("rethumb-message");
-  const redubPanel = document.getElementById("redub-panel");
-  const redubUrl = document.getElementById("redub-url");
-  const redubTranscript = document.getElementById("redub-transcript");
-  const redubBtn = document.getElementById("redub-btn");
-  const redubMessage = document.getElementById("redub-message");
   const libraryPanel = document.getElementById("library-panel");
   const libraryList = document.getElementById("library-list");
+  const logPanel = document.getElementById("log-panel");
+  const eventList = document.getElementById("event-list");
 
   let authenticated = false;
   const pollTimers = new Map(); // job id -> setInterval handle
+  let libraryItems = [];        // project summaries from GET /projects
+  let currentProject = null;    // the entry matching the form's URL + language
 
-  // The most recently rendered transcript preview, plus whatever edits the
-  // visitor has saved against it: { url, targetLanguage, lines: [{start, end, text}] }.
-  // When "Start dubbing" is submitted for the same video and language, these
-  // lines are sent along as `transcript_overrides` so the dub speaks exactly
-  // what was reviewed (and possibly hand-corrected) rather than a freshly
-  // re-acquired and re-translated transcript that might differ.
-  let previewState = null;
+  // --- Small helpers -------------------------------------------------------
 
-  // The thumbnail preview state now lives inside each makeThumbnailEditor
-  // instance (the dub-flow and re-thumbnail editors defined near the bottom):
-  //   { url, targetLanguage, original, generated, regions, bannerText, approved }
-  // For the dub flow, an approved `generated` image is read back by submitJob
-  // (via dubThumbEditor.getState) and sent as `thumbnail_override`.
+  function videoIdOf(urlOrId) {
+    const value = (urlOrId || "").trim();
+    if (/^[\w\-]{11}$/.test(value)) return value;
+    const match = value.match(/(?:v=|youtu\.be\/|shorts\/|live\/)([\w\-]{11})/);
+    return match ? match[1] : null;
+  }
+
+  function formUrl() { return document.getElementById("video-url").value.trim(); }
+  function formLang() { return document.getElementById("target-lang").value; }
+  function formPrivacy() {
+    const checked = document.querySelector('#privacy-radios input[name="privacy"]:checked');
+    return checked ? checked.value : "unlisted";
+  }
+
+  async function api(path, options) {
+    const res = await fetch(`${API_BASE}${path}`, Object.assign({ credentials: "same-origin" }, options || {}));
+    const data = await res.json().catch(() => null);
+    if (!res.ok) {
+      const detail = data && (data.detail || data.message);
+      const err = new Error(typeof detail === "string" ? detail : `HTTP ${res.status}`);
+      err.status = res.status;
+      throw err;
+    }
+    return data;
+  }
+
+  function apiJson(path, method, body) {
+    return api(path, {
+      method: method,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  }
+
+  // Every button press leaves a line in the permanent log. Server-backed
+  // actions log themselves; this records the client-side-only ones.
+  function logClientEvent(action, videoTitle, detail) {
+    apiJson("/events", "POST", {
+      action: action,
+      video_title: videoTitle || null,
+      detail: detail || null,
+    }).then(loadEvents).catch(() => { /* best-effort */ });
+  }
+
+  // Get-or-create THE library entry for the form's video + language (needed
+  // before the first draft save for a brand-new video).
+  async function ensureProject(url, lang) {
+    if (currentProject && videoIdOf(url) === currentProject.source_video_id &&
+        lang === currentProject.target_language) {
+      return currentProject;
+    }
+    currentProject = await apiJson("/projects", "POST", { url: url, target_language: lang });
+    return currentProject;
+  }
 
   function setAuthState(state, text) {
     authDot.className = "dot " + state;
     authText.textContent = text;
     authenticated = state === "unlocked";
-    submitBtn.disabled = !authenticated;
-    submitBtn.classList.toggle("ghosted", !authenticated);
-    previewBtn.disabled = !authenticated;
-    previewBtn.classList.toggle("ghosted", !authenticated);
-    thumbnailBtn.disabled = !authenticated;
-    thumbnailBtn.classList.toggle("ghosted", !authenticated);
-    if (rethumbBtn) {
-      rethumbBtn.disabled = !authenticated;
-      rethumbBtn.classList.toggle("ghosted", !authenticated);
-    }
+    [submitBtn, previewBtn, thumbnailBtn, rethumbBtn].forEach((btn) => {
+      if (!btn) return;
+      btn.disabled = !authenticated;
+      btn.classList.toggle("ghosted", !authenticated);
+    });
     signinBtn.style.display = authenticated ? "none" : "";
-    // The "Restart Dubber service" control is an operator action -- only show
-    // it once signed in (same gate as the dubbing buttons).
+    // Operator features share the same auth gate.
     if (serviceControls) serviceControls.style.display = authenticated ? "block" : "none";
-    // Redub + transcripts library are operator features too -- same auth gate.
-    if (redubPanel) redubPanel.style.display = authenticated ? "block" : "none";
     if (libraryPanel) libraryPanel.style.display = authenticated ? "block" : "none";
-    if (redubBtn) {
-      redubBtn.disabled = !authenticated;
-      redubBtn.classList.toggle("ghosted", !authenticated);
-    }
+    if (logPanel) logPanel.style.display = authenticated ? "block" : "none";
   }
 
   async function checkAuth() {
@@ -90,7 +131,8 @@
       if (res.ok) {
         setAuthState("unlocked", "Signed in — dubbing is enabled.");
         loadExistingJobs();
-        loadTranscripts();
+        loadLibrary();
+        loadEvents();
       } else if (res.status === 401 || res.status === 403) {
         setAuthState("locked", "Sign in to enable dubbing.");
       } else {
@@ -113,16 +155,84 @@
     return `${m}:${String(s).padStart(2, "0")}`;
   }
 
-  // THE transcript-editing layout -- the timestamp / Original / Spanish-textarea
-  // / per-line Save table -- extracted so the "Preview transcript first" result
-  // and the Transcripts library render the IDENTICAL thing (one code path, no
-  // drift). `rows` are {start, end, original_text, translated_text};
-  // `onSaveLine(index, value)` runs when a line's Save is clicked -- return a
-  // Promise for server-backed saves (the button walks Saving… -> Saved ✓, or
-  // flags a failure) or return nothing for synchronous in-memory saves (the
-  // preview), which show Saved ✓ immediately. Returns { element, readLines }:
-  // readLines() yields the rows with the textareas' CURRENT values (for e.g.
-  // download).
+  // --- URL re-entry: recognise a video the library already knows ----------
+
+  let lookupTimer = null;
+
+  function refreshLookup() {
+    window.clearTimeout(lookupTimer);
+    lookupTimer = window.setTimeout(doLookup, 350);
+  }
+
+  async function doLookup() {
+    currentProject = null;
+    lookupBanner.style.display = "none";
+    lookupBanner.textContent = "";
+    const url = formUrl();
+    if (!authenticated || !videoIdOf(url)) return;
+    try {
+      const summary = await api(`/projects/lookup?url=${encodeURIComponent(url)}&target_language=${encodeURIComponent(formLang())}`);
+      currentProject = summary;
+      renderLookupBanner(summary);
+    } catch (err) {
+      /* 404 = a new video; nothing to show */
+    }
+  }
+
+  function renderLookupBanner(entry) {
+    lookupBanner.textContent = "";
+    const label = entry.source_title || entry.title || entry.source_video_id;
+    const strong = document.createElement("strong");
+    if (entry.state === "draft") {
+      strong.textContent = `“${label}” is already in the library as a draft`;
+      lookupBanner.appendChild(strong);
+      lookupBanner.appendChild(document.createTextNode(
+        entry.line_count
+          ? ` — its saved transcript (${entry.line_count} lines)${entry.has_thumbnail ? " and thumbnail" : ""} will be used when you start dubbing. `
+          : ". "
+      ));
+    } else {
+      strong.textContent = `“${label}” is already dubbed`;
+      lookupBanner.appendChild(strong);
+      lookupBanner.appendChild(document.createTextNode(" ("));
+      const link = document.createElement("a");
+      link.href = entry.target_url;
+      link.target = "_blank";
+      link.rel = "noopener";
+      link.textContent = "watch the dub";
+      lookupBanner.appendChild(link);
+      lookupBanner.appendChild(document.createTextNode(
+        entry.state === "published_pending"
+          ? ") — it has unapplied edits (a redub in progress). Dubbing again publishes a NEW video and repoints the entry. "
+          : ") — dubbing again counts as a redub: a NEW video is published and the entry repoints to it. "
+      ));
+    }
+    if (entry.line_count) {
+      const open = document.createElement("a");
+      open.href = "#";
+      open.textContent = "Open its saved transcript";
+      open.addEventListener("click", (e) => {
+        e.preventDefault();
+        openProjectTranscriptCard(entry.id);
+      });
+      lookupBanner.appendChild(open);
+      lookupBanner.appendChild(document.createTextNode("."));
+    }
+    lookupBanner.style.display = "block";
+  }
+
+  document.getElementById("video-url").addEventListener("input", () => {
+    refreshLookup();
+    maybeResetStaleThumbnail();
+  });
+  document.getElementById("target-lang").addEventListener("change", () => {
+    refreshLookup();
+    maybeResetStaleThumbnail();
+  });
+
+  // --- THE transcript-editing table (shared by preview card + library) ----
+  // `rows` are {start, end, original_text, translated_text}; `onSaveLine`
+  // returns a Promise for server-backed saves. Returns { element, readLines }.
   function buildTranscriptTable(rows, onSaveLine) {
     const hasOriginal = rows.some((row) => row.original_text != null);
 
@@ -130,10 +240,6 @@
     table.className = "transcript-table";
     table.classList.toggle("has-original", hasOriginal);
 
-    // Fixed layout + <col> widths: a narrow time column, then Original and
-    // Spanish sharing the rest with Spanish ~20% wider (see style.css). A
-    // ResizeObserver below keeps each textarea's height matched to its
-    // Original cell's rendered height.
     const colgroup = document.createElement("colgroup");
     const timeCol = document.createElement("col");
     timeCol.className = "col-time";
@@ -161,18 +267,14 @@
     thead.appendChild(headRow);
     table.appendChild(thead);
 
-    // Sizes a Spanish textarea to fit its own content (no inner scrollbar --
-    // translations commonly run longer than the English they came from, so
-    // simply matching the Original cell's height isn't enough to show it all)
-    // while never going shorter than the Original cell beside it, so the box
-    // still "goes down at least as far as" the English text when its own
-    // content happens to be shorter.
+    // Sizes a Spanish textarea to fit its own content while never going
+    // shorter than the Original cell beside it.
     function syncTextareaHeight(textarea, origText) {
       const minHeight = origText ? Math.ceil(origText.getBoundingClientRect().height) : 0;
       textarea.style.height = `${Math.max(minHeight, textarea.scrollHeight)}px`;
     }
 
-    const editPairs = []; // { textarea, origText } -- origText is null when there's no Original column
+    const editPairs = []; // { textarea, origText }
 
     const tbody = document.createElement("tbody");
     rows.forEach((row, index) => {
@@ -187,12 +289,9 @@
       if (hasOriginal) {
         const origCell = document.createElement("td");
         origCell.className = "transcript-original";
-        // The text lives in its own block so its measured height reflects
-        // only its own content/column-width -- NOT the row's height. (If we
-        // measured the <td> itself, growing the textarea would grow the row,
-        // which stretches the <td>, which would feed back into the textarea
-        // height again -- an infinite loop that once blew a box up to
-        // full-page height.)
+        // The text lives in its own block so its measured height reflects only
+        // its own content -- measuring the <td> would feed back into the
+        // textarea height (a layout loop).
         origText = document.createElement("div");
         origText.textContent = row.original_text || "";
         origCell.appendChild(origText);
@@ -234,8 +333,6 @@
       saveBtn.addEventListener("click", () => {
         const outcome = onSaveLine(index, textarea.value);
         if (outcome && typeof outcome.then === "function") {
-          // Server-backed save (the library): show progress, and on failure
-          // keep the line dirty so the fix isn't silently lost.
           saveBtn.disabled = true;
           saveBtn.textContent = "Saving…";
           outcome.then(
@@ -261,13 +358,10 @@
     });
     table.appendChild(tbody);
 
-    // Initial sizing pass, once the table has actually been laid out (so
-    // scrollHeight/getBoundingClientRect reflect real wrapped-text heights).
     window.requestAnimationFrame(() => {
       editPairs.forEach(({ textarea, origText }) => syncTextareaHeight(textarea, origText));
     });
 
-    // Re-sync as the page resizes and Original cells rewrap to new widths.
     if (hasOriginal && typeof ResizeObserver !== "undefined") {
       const pairByOrigText = new Map(editPairs.map((pair) => [pair.origText, pair]));
       const resizeObserver = new ResizeObserver((entries) => {
@@ -290,77 +384,117 @@
     };
   }
 
-  function renderTranscriptPreview(result, sourceUrl, targetLanguage) {
-    const wrap = document.createElement("div");
-    wrap.className = "transcript-preview";
+  // --- TRANSCRIPT PREVIEW card (under the project form) -------------------
+  // One card, reused by: a finished "Preview transcript first" run, and
+  // "Open its saved transcript" from the lookup banner. Per-line Save writes
+  // the project's draft on the server; Revert to default restores the machine
+  // transcript and closes the card. The card otherwise stays open -- even
+  // through a publish; edits made then become the next redub's draft.
+  function closeTranscriptCard() {
+    transcriptPanel.style.display = "none";
+    transcriptPanel.textContent = "";
+  }
 
-    const summary = document.createElement("div");
-    summary.className = "hint";
-    summary.textContent = `Source: ${result.transcript_source}` +
-      (result.original_language ? ` · original language: ${result.original_language}` : "");
-    wrap.appendChild(summary);
+  function renderTranscriptCard(meta) {
+    // meta: { rows, sourceUrl, targetLanguage, summaryText }
+    transcriptPanel.textContent = "";
+    transcriptPanel.style.display = "block";
 
-    const rows = result.rows || [];
+    const title = document.createElement("div");
+    title.className = "service-title";
+    title.textContent = "Transcript preview";
+    transcriptPanel.appendChild(title);
+
+    if (meta.summaryText) {
+      const summary = document.createElement("div");
+      summary.className = "hint";
+      summary.textContent = meta.summaryText;
+      transcriptPanel.appendChild(summary);
+    }
+
+    const rows = meta.rows || [];
     if (!rows.length) {
       const empty = document.createElement("div");
       empty.className = "hint";
       empty.textContent = "No transcript lines were produced.";
-      wrap.appendChild(empty);
-      return wrap;
+      transcriptPanel.appendChild(empty);
+      return;
     }
 
-    // This becomes the saved/editable record for this preview -- see
-    // `previewState` above for how "Start dubbing" picks it back up.
-    const state = {
-      url: sourceUrl,
-      targetLanguage: targetLanguage,
-      lines: rows.map((row) => ({ start: row.start, end: row.end, text: row.translated_text || "" })),
-    };
-    previewState = state;
-
-    // The table itself is THE shared transcript-editing layout (see
-    // buildTranscriptTable); here a line's Save records the edit into this
-    // preview's in-memory state, which "Start dubbing" picks back up.
-    const built = buildTranscriptTable(rows, (index, value) => {
-      state.lines[index].text = value;
+    const built = buildTranscriptTable(rows, () => {
+      // A line's Save commits the WHOLE current set as the project draft (the
+      // server preserves the original-language side regardless).
+      return ensureProject(meta.sourceUrl, meta.targetLanguage).then((project) =>
+        apiJson(`/projects/${project.id}/transcript`, "PUT", { rows: built.readLines() })
+      ).then((updated) => {
+        currentProject = updated;
+        loadLibrary();
+        loadEvents();
+      });
     });
-    wrap.appendChild(built.element);
 
-    const editHint = document.createElement("p");
-    editHint.className = "hint";
-    editHint.textContent = "Tweak any Spanish line above and click its Save button. Saved " +
-      "lines for this same video and language are used automatically -- in place of a fresh " +
-      "translation -- the next time you click “Start dubbing”.";
-    wrap.appendChild(editHint);
+    const scroll = document.createElement("div");
+    scroll.className = "library-transcript-scroll";
+    scroll.appendChild(built.element);
+    transcriptPanel.appendChild(scroll);
 
-    return wrap;
+    const actions = document.createElement("div");
+    actions.className = "thumb-actions";
+
+    const revertBtn = document.createElement("button");
+    revertBtn.type = "button";
+    revertBtn.className = "btn secondary";
+    revertBtn.textContent = "Revert to default";
+    revertBtn.addEventListener("click", async () => {
+      revertBtn.disabled = true;
+      try {
+        if (currentProject && currentProject.id) {
+          await api(`/projects/${currentProject.id}/transcript/revert`, { method: "POST" });
+        }
+        closeTranscriptCard();
+        loadLibrary();
+        loadEvents();
+      } catch (err) {
+        revertBtn.disabled = false;
+      }
+    });
+    actions.appendChild(revertBtn);
+
+    const hint = document.createElement("span");
+    hint.className = "hint";
+    hint.style.marginTop = "0";
+    hint.textContent = "Each line's Save stores the draft in the library — “Start dubbing” " +
+      "speaks the saved lines verbatim. Revert discards your edits and closes this card.";
+    actions.appendChild(hint);
+    transcriptPanel.appendChild(actions);
   }
 
-  // --- Job progress bar helpers ------------------------------------------
-  // The dubber reports progress_pct (0-100) alongside the stage/message; these
-  // turn it into a bar that keeps moving through the slow stages.
+  async function openProjectTranscriptCard(projectId) {
+    try {
+      const project = await api(`/projects/${projectId}`);
+      currentProject = project;
+      renderTranscriptCard({
+        rows: project.rows,
+        sourceUrl: project.source_url,
+        targetLanguage: project.target_language,
+        summaryText: `${project.source_title || project.title || project.source_video_id}` +
+          ` · ${project.line_count} lines · saved in the library`,
+      });
+      transcriptPanel.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    } catch (err) {
+      formMessage.textContent = "Couldn't load that project's transcript.";
+    }
+  }
+
+  // --- Job progress (live status only) -------------------------------------
   function jobPercent(job) {
     if (typeof job.progress_pct === "number") return Math.max(0, Math.min(100, job.progress_pct));
     return job.status === "done" ? 100 : 0;
   }
 
   function progressState(job) {
-    if (job.status === "done") return "done";
-    if (job.status === "failed") return "failed";
-    if (job.status === "cancelled") return "cancelled";
     if (job.status === "running") return "running";
     return "queued";
-  }
-
-  function formatElapsed(job) {
-    const start = Date.parse(job.created_at);
-    if (isNaN(start)) return "";
-    const endRaw = TERMINAL.has(job.status) ? Date.parse(job.updated_at) : Date.now();
-    const end = isNaN(endRaw) ? Date.now() : endRaw;
-    const secs = Math.max(0, Math.round((end - start) / 1000));
-    const m = Math.floor(secs / 60);
-    const s = secs % 60;
-    return `${m}:${String(s).padStart(2, "0")}`;
   }
 
   function buildProgressBar(job) {
@@ -376,7 +510,20 @@
     return wrap;
   }
 
+  const TERMINAL = new Set(["done", "failed", "cancelled"]);
+
+  function removeJobCard(jobId) {
+    const card = document.getElementById(`job-${jobId}`);
+    if (card) card.remove();
+  }
+
+  // Render a live progress card -- ONLY for jobs still queued/running.
+  // Finished work shows up as activity-log lines instead.
   function renderJob(job) {
+    if (TERMINAL.has(job.status)) {
+      removeJobCard(job.id);
+      return;
+    }
     let card = document.getElementById(`job-${job.id}`);
     if (!card) {
       card = document.createElement("div");
@@ -404,17 +551,13 @@
     const right = document.createElement("span");
     right.className = "job-headline-right";
 
-    // Percent readout for jobs that are working or have a meaningful figure.
-    if (job.status === "running" || job.status === "done" ||
-        (job.status === "failed" && typeof job.progress_pct === "number")) {
+    if (job.status === "running") {
       const pct = document.createElement("span");
       pct.className = "job-pct";
       pct.textContent = Math.round(jobPercent(job)) + "%";
       right.appendChild(pct);
     }
 
-    // A still-queued job hasn't been claimed by the worker yet, so it's safe to
-    // cancel outright. (Running jobs are mid-pipeline; see the DELETE endpoint.)
     if (job.status === "queued") {
       const cancelBtn = document.createElement("button");
       cancelBtn.type = "button";
@@ -426,11 +569,7 @@
     headline.appendChild(right);
     card.appendChild(headline);
 
-    // Progress bar -- skipped only for a finished preview, which renders its
-    // transcript table instead.
-    if (!(job.mode === "preview" && job.status === "done")) {
-      card.appendChild(buildProgressBar(job));
-    }
+    card.appendChild(buildProgressBar(job));
 
     if (job.progress) {
       const progress = document.createElement("div");
@@ -439,47 +578,46 @@
       card.appendChild(progress);
     }
 
-    // Elapsed time while active; final duration once finished (dub jobs only --
-    // a preview is quick and shows its table instead).
-    if (job.status === "running" || job.status === "queued" ||
-        (TERMINAL.has(job.status) && job.mode !== "preview")) {
-      const elapsed = formatElapsed(job);
-      if (elapsed) {
-        const meta = document.createElement("div");
-        meta.className = "job-meta";
-        meta.textContent = (TERMINAL.has(job.status) ? "took " : "elapsed ") + elapsed;
-        card.appendChild(meta);
-      }
-    }
-
-    if (job.mode === "preview") {
-      if (job.status === "done" && job.result) {
-        card.appendChild(renderTranscriptPreview(job.result, job.source_url, job.target_language));
-      }
-    } else if (job.status === "done" && job.youtube_video_url) {
-      const wrap = document.createElement("div");
-      wrap.style.marginTop = "0.5rem";
-      const link = document.createElement("a");
-      link.className = "job-link";
-      link.href = job.youtube_video_url;
-      link.target = "_blank";
-      link.rel = "noopener";
-      link.textContent = `Published → ${job.youtube_video_url}`;
-      wrap.appendChild(link);
-      card.appendChild(wrap);
-    }
-
-    if (job.status === "failed" && job.error) {
-      const err = document.createElement("div");
-      err.className = "job-error";
-      err.textContent = job.error.split("\n")[0];
-      card.appendChild(err);
+    const start = Date.parse(job.created_at);
+    if (!isNaN(start)) {
+      const secs = Math.max(0, Math.round((Date.now() - start) / 1000));
+      const meta = document.createElement("div");
+      meta.className = "job-meta";
+      meta.textContent = `elapsed ${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, "0")}`;
+      card.appendChild(meta);
     }
 
     return card;
   }
 
-  const TERMINAL = new Set(["done", "failed", "cancelled"]);
+  function handleTerminalJob(job) {
+    removeJobCard(job.id);
+    loadEvents();
+    loadLibrary();
+    if (job.status === "failed" && job.error) {
+      formMessage.textContent = `Job ${job.id} failed: ${job.error.split("\n")[0]}`;
+    }
+    if (job.mode === "preview" && job.status === "done" && job.result) {
+      currentProject = null; // the entry just gained rows; refetch on demand
+      renderTranscriptCard({
+        rows: job.result.rows,
+        sourceUrl: job.source_url,
+        targetLanguage: job.target_language,
+        summaryText: `Source: ${job.result.transcript_source}` +
+          (job.result.original_language ? ` · original language: ${job.result.original_language}` : ""),
+      });
+    }
+    if (job.mode !== "preview" && job.status === "done") {
+      // Publish finished: the preview cards' job is done; close them. Edits
+      // made after this point land on the entry as the next redub's draft.
+      closeTranscriptCard();
+      dubThumbEditor.reset();
+      refreshLookup();
+      if (job.youtube_video_url) {
+        formMessage.textContent = `Published: ${job.youtube_video_url} — see the library and log below.`;
+      }
+    }
+  }
 
   function pollJob(jobId) {
     if (pollTimers.has(jobId)) return;
@@ -489,13 +627,12 @@
         const res = await fetch(`${API_BASE}/jobs/${jobId}`, { credentials: "same-origin" });
         if (!res.ok) return;
         const job = await res.json();
-        renderJob(job);
         if (TERMINAL.has(job.status)) {
           clearInterval(pollTimers.get(jobId));
           pollTimers.delete(jobId);
-          // A finished dub adds (or a redub refreshes) a transcript -- pull the
-          // library so the new entry shows without a page reload.
-          if (job.status === "done") loadTranscripts();
+          handleTerminalJob(job);
+        } else {
+          renderJob(job);
         }
       } catch (err) {
         /* transient network hiccup — keep polling */
@@ -518,28 +655,25 @@
       });
       const data = await res.json().catch(() => null);
       if (!res.ok) {
-        // 409: the worker claimed it first, so it's running now. Re-render
-        // from the returned state so the (now ineligible) button disappears.
         if (button) {
           button.disabled = false;
           button.textContent = "Cancel";
         }
-        const detail = data && (data.detail || data.message);
         if (res.status === 409) {
-          // Refresh this job so its card reflects the real (running/…) state.
-          pollJob(jobId);
+          pollJob(jobId); // it started running; show the live card
         } else if (formMessage) {
+          const detail = data && (data.detail || data.message);
           formMessage.textContent = `Couldn't cancel job ${jobId}: ` +
             (typeof detail === "string" ? detail : `HTTP ${res.status}`);
         }
         return;
       }
-      // Cancelled: stop polling and re-render the card as cancelled.
       if (pollTimers.has(jobId)) {
         clearInterval(pollTimers.get(jobId));
         pollTimers.delete(jobId);
       }
-      if (data) renderJob(data);
+      removeJobCard(jobId);
+      loadEvents();
     } catch (err) {
       if (button) {
         button.disabled = false;
@@ -548,85 +682,54 @@
     }
   }
 
-  // On sign-in, surface jobs that already exist on the server (e.g. a queued
-  // job left from an earlier visit) so they can be tracked -- and cancelled --
-  // without having to be the one who submitted them this session.
+  // Surface still-active jobs from earlier visits (queued/running only --
+  // finished history lives in the activity log).
   async function loadExistingJobs() {
     try {
       const res = await fetch(`${API_BASE}/jobs`, { credentials: "same-origin" });
       if (!res.ok) return;
       const jobs = await res.json();
       if (!Array.isArray(jobs)) return;
-      // Render oldest-first so prepend() leaves newest on top, matching submit order.
       jobs.slice().reverse().forEach((job) => {
-        renderJob(job);
-        if (!TERMINAL.has(job.status)) pollJob(job.id);
+        if (!TERMINAL.has(job.status)) {
+          renderJob(job);
+          pollJob(job.id);
+        }
       });
     } catch (err) {
-      /* non-fatal: the panel still works for newly submitted jobs */
+      /* non-fatal */
     }
   }
 
   async function submitJob(mode) {
     if (!authenticated) return;
 
-    const url = document.getElementById("video-url").value.trim();
+    const url = formUrl();
     if (!url) {
       formMessage.textContent = "Enter a video URL first.";
       return;
     }
-    const targetLanguage = document.getElementById("target-lang").value;
-
+    const targetLanguage = formLang();
     const payload = { url: url, target_language: targetLanguage, mode: mode };
-    let usingSavedEdits = false;
-    if (mode === "dub" && previewState && previewState.url === url && previewState.targetLanguage === targetLanguage) {
-      payload.transcript_overrides = previewState.lines;
-      usingSavedEdits = true;
-    }
-    let usingThumbnail = false;
-    const dubThumb = dubThumbEditor.getState();
-    if (mode === "dub" && dubThumb && dubThumb.approved &&
-        dubThumb.url === url && dubThumb.targetLanguage === targetLanguage) {
-      payload.thumbnail_override = dubThumb.generated;
-      usingThumbnail = true;
-    }
+    if (mode === "dub") payload.privacy = formPrivacy();
 
+    const hasDraft = currentProject && (currentProject.line_count > 0 || currentProject.has_thumbnail);
     formMessage.textContent = mode === "preview"
       ? "Submitting transcript preview…"
-      : (usingSavedEdits ? "Submitting — using your saved transcript edits for this video…" : "Submitting…");
+      : (hasDraft ? "Submitting — the library's saved draft will be used…" : "Submitting…");
     submitBtn.disabled = true;
     previewBtn.disabled = true;
 
     try {
-      const res = await fetch(`${API_BASE}/jobs`, {
-        method: "POST",
-        credentials: "same-origin",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-      const data = await res.json().catch(() => null);
-
-      if (!res.ok) {
-        const detail = data && (data.detail || data.message);
-        const message = typeof detail === "string" ? detail : JSON.stringify(detail || `HTTP ${res.status}`);
-        formMessage.textContent = `Couldn't submit the job: ${message}`;
-        return;
-      }
-
-      const thumbNote = usingThumbnail ? " Your approved thumbnail will be applied." : "";
-      formMessage.textContent = (mode === "preview"
+      const data = await apiJson("/jobs", "POST", payload);
+      formMessage.textContent = mode === "preview"
         ? `Queued transcript preview as job ${data.id}. Tracking progress below.`
-        : (usingSavedEdits
-            ? `Queued as job ${data.id} — it will use your saved transcript edits. Tracking progress below.`
-            : `Queued as job ${data.id}. Tracking progress below.`)) + thumbNote;
-      if (mode !== "preview") {
-        form.reset();
-        dubThumbEditor.reset();
-      }
+        : `Queued as job ${data.id} (${payload.privacy}). Tracking progress below.`;
       renderJob(data);
       pollJob(data.id);
+      loadEvents();
     } catch (err) {
-      formMessage.textContent = "Couldn't reach the dubber service.";
+      formMessage.textContent = `Couldn't submit the job: ${err.message}`;
     } finally {
       submitBtn.disabled = !authenticated;
       previewBtn.disabled = !authenticated;
@@ -642,11 +745,7 @@
     submitJob("preview");
   });
 
-  // --- Restart Dubber service --------------------------------------------
-  // POSTs to the service's /admin/restart endpoint, which exits the process so
-  // systemd respawns it. That's the catch-all reset: it frees the service's
-  // memory and stops any running job. The endpoint sits behind the same Basic
-  // Auth as the rest of /dubber/api/, so only signed-in operators can hit it.
+  // --- Restart Dubber service ----------------------------------------------
 
   async function waitForServiceBack(attempt) {
     attempt = attempt || 0;
@@ -657,12 +756,12 @@
         restartBtn.disabled = false;
         restartBtn.classList.remove("ghosted");
         window.setTimeout(() => { restartMessage.textContent = ""; }, 3000);
-        // Any job left 'running' is reconciled on startup -- refresh the list.
         loadExistingJobs();
+        loadEvents();
         return;
       }
     } catch (err) {
-      /* upstream still down (proxy 502 / connection refused) -- keep waiting */
+      /* upstream still down -- keep waiting */
     }
     if (attempt < 12) {
       window.setTimeout(() => waitForServiceBack(attempt + 1), 1500);
@@ -697,8 +796,7 @@
         return;
       }
     } catch (err) {
-      /* The process can drop the connection as it exits before the response
-         is read; that's expected -- fall through and wait for it to come back. */
+      /* the process drops the connection as it exits; expected */
     }
     restartMessage.textContent = "Restarting — the service will be back in a few seconds…";
     window.setTimeout(() => waitForServiceBack(0), 4000);
@@ -706,15 +804,11 @@
 
   if (restartBtn) restartBtn.addEventListener("click", restartService);
 
-  // --- Thumbnail editor (shared) -----------------------------------------
-  // A reusable preview/edit widget over /thumbnail/preview + /thumbnail/render:
-  // shows the source thumbnail beside a Spanish version (baked-in text detected,
-  // translated and re-rendered, banner on top), with the per-region translations
-  // editable. Two instances use it -- the dub flow (an approved image is carried
-  // into the upload as `thumbnail_override`, read by submitJob) and the
-  // standalone re-thumbnail tool (an approved image is pushed onto an existing
-  // video via /thumbnail/apply). Each scopes its DOM lookups to its own panel so
-  // the two never collide.
+  // --- Thumbnail editor (shared widget) ------------------------------------
+  // A preview/edit widget over /thumbnail/preview + /thumbnail/render. Two
+  // instances: the dub flow (Save -> stored on the library entry) and the
+  // re-thumbnail tool (Apply -> pushed onto an existing video). Both get a
+  // "Revert to default" that discards and closes the card.
   function makeThumbnailEditor(opts) {
     let state = null;
 
@@ -775,23 +869,8 @@
       opts.panel.appendChild(loading);
 
       try {
-        const res = await fetch(`${API_BASE}/thumbnail/preview`, {
-          method: "POST",
-          credentials: "same-origin",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ url: url, target_language: targetLanguage }),
-        });
-        const data = await res.json().catch(() => null);
-        if (!res.ok) {
-          const detail = data && (data.detail || data.message);
-          opts.panel.textContent = "";
-          const err = document.createElement("p");
-          err.className = "hint";
-          err.textContent = "Couldn't generate a thumbnail preview: " +
-            (typeof detail === "string" ? detail : `HTTP ${res.status}`);
-          opts.panel.appendChild(err);
-          return;
-        }
+        const data = await apiJson("/thumbnail/preview", "POST",
+          { url: url, target_language: targetLanguage });
         state = {
           url: url,
           targetLanguage: targetLanguage,
@@ -806,7 +885,7 @@
         opts.panel.textContent = "";
         const e = document.createElement("p");
         e.className = "hint";
-        e.textContent = "Couldn't reach the dubber service.";
+        e.textContent = "Couldn't generate a thumbnail preview: " + err.message;
         opts.panel.appendChild(e);
       } finally {
         opts.trigger.disabled = !authenticated;
@@ -831,7 +910,7 @@
       opts.panel.appendChild(compare);
 
       const regions = data.regions || [];
-      const inputs = []; // { polygon, input }
+      const inputs = []; // { polygon, input, fontSelect, colorInput }
 
       if (regions.length) {
         const intro = document.createElement("p");
@@ -865,8 +944,6 @@
           input.addEventListener("input", markDirty);
           row.appendChild(input);
 
-          // Per-line font + colour overrides. They pre-fill with what the
-          // detector matched; correct them when it guessed wrong, then re-render.
           const style = document.createElement("span");
           style.className = "thumb-region-style";
 
@@ -931,6 +1008,14 @@
         opts.onAction({ state: state, button: actionBtn, setMessage: setMessage, markApproved: markApproved }));
       actions.appendChild(actionBtn);
 
+      const revertBtn = document.createElement("button");
+      revertBtn.type = "button";
+      revertBtn.className = "btn secondary";
+      revertBtn.textContent = "Revert to default";
+      revertBtn.addEventListener("click", () =>
+        opts.onRevert({ state: state, button: revertBtn, reset: reset }));
+      actions.appendChild(revertBtn);
+
       const msg = document.createElement("span");
       msg.className = "hint thumb-message";
       actions.appendChild(msg);
@@ -938,8 +1023,6 @@
       opts.panel.appendChild(actions);
     }
 
-    // An edit invalidates the rendered image: drop approval and disable the
-    // action until a re-render, so what's used always matches the edited text.
     function markDirty() {
       if (state) state.approved = false;
       const actionBtn = opts.panel.querySelector(".thumb-action");
@@ -954,26 +1037,20 @@
       const regions = inputs.map(({ polygon, input, fontSelect, colorInput }) => ({
         polygon: polygon,
         translation: input.value,
-        font_family: fontSelect ? fontSelect.value : "auto",  // "auto" -> server auto-detects
-        fill_color: colorInput ? colorInput.value : null,     // "#rrggbb"
+        font_family: fontSelect ? fontSelect.value : "auto",
+        fill_color: colorInput ? colorInput.value : null,
       }));
       const restore = button.textContent;
       button.disabled = true;
       button.textContent = "Rendering…";
       setMessage("Rendering…");
       try {
-        const res = await fetch(`${API_BASE}/thumbnail/render`, {
-          method: "POST",
-          credentials: "same-origin",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            original: state.original,
-            regions: regions,
-            banner_text: state.bannerText,
-          }),
+        const data = await apiJson("/thumbnail/render", "POST", {
+          original: state.original,
+          regions: regions,
+          banner_text: state.bannerText,
         });
-        const data = await res.json().catch(() => null);
-        if (!res.ok || !data || !data.generated) {
+        if (!data || !data.generated) {
           setMessage("Couldn't re-render the thumbnail.", "bad");
           return;
         }
@@ -982,9 +1059,9 @@
         if (img) img.src = data.generated;
         const actionBtn = opts.panel.querySelector(".thumb-action");
         if (actionBtn) actionBtn.disabled = false;
-        setMessage("Updated. Use it as is, or keep editing.");
+        setMessage("Updated. Save it as is, or keep editing.");
       } catch (err) {
-        setMessage("Couldn't reach the dubber service.", "bad");
+        setMessage("Couldn't re-render the thumbnail: " + err.message, "bad");
       } finally {
         button.disabled = false;
         button.textContent = restore;
@@ -994,39 +1071,121 @@
     return { preview: preview, reset: reset, getState: getState };
   }
 
-  // The dub flow's editor: approving carries the exact image into the upload as
-  // `thumbnail_override` (read by submitJob). Optional -- skip it and the
-  // pipeline auto-generates one.
+  // The dub flow's editor: Save stores the image on the library entry (the
+  // dub then uses it automatically); Revert to default clears any saved
+  // thumbnail and closes the card (the pipeline auto-generates one again).
   const dubThumbEditor = makeThumbnailEditor({
     panel: thumbnailPanel,
     trigger: thumbnailBtn,
     title: "Thumbnail preview",
-    actionLabel: "Use this thumbnail for the dub",
-    getSourceUrl: () => document.getElementById("video-url").value.trim(),
-    getTargetLanguage: () => document.getElementById("target-lang").value,
+    actionLabel: "Save",
+    getSourceUrl: formUrl,
+    getTargetLanguage: formLang,
     onMissingSource: () => { formMessage.textContent = "Enter a video URL first."; },
-    onAction: ({ state, setMessage, markApproved }) => {
-      state.approved = true;
-      markApproved();
-      setMessage("✓ This thumbnail will be used when you start dubbing this video.", "good");
+    onAction: async ({ state, button, setMessage, markApproved }) => {
+      const restore = button.textContent;
+      button.disabled = true;
+      button.textContent = "Saving…";
+      try {
+        const project = await ensureProject(state.url, state.targetLanguage);
+        const updated = await apiJson(`/projects/${project.id}/thumbnail`, "PUT",
+          { thumbnail: state.generated });
+        currentProject = Object.assign({}, currentProject, updated);
+        state.approved = true;
+        markApproved();
+        setMessage("✓ Saved to the library — it will be used when you dub this video.", "good");
+        loadLibrary();
+        loadEvents();
+      } catch (err) {
+        setMessage("Couldn't save the thumbnail: " + err.message, "bad");
+      } finally {
+        button.disabled = false;
+        button.textContent = restore;
+      }
+    },
+    onRevert: async ({ state, button, reset }) => {
+      button.disabled = true;
+      try {
+        if (currentProject && currentProject.id && currentProject.has_thumbnail) {
+          await apiJson(`/projects/${currentProject.id}/thumbnail`, "PUT", { thumbnail: null });
+          currentProject.has_thumbnail = false;
+          loadLibrary();
+          loadEvents();
+        } else {
+          logClientEvent("Thumbnail preview closed",
+            state ? state.url : null, "reverted to default");
+        }
+      } catch (err) { /* still close */ }
+      reset();
     },
   });
   thumbnailBtn.addEventListener("click", () => dubThumbEditor.preview());
 
-  // --- Re-thumbnail an existing video ------------------------------------
-  // The same generate/translate/edit widget, but the approved image is pushed
-  // straight onto an existing video on the connected channel via
-  // /thumbnail/apply, instead of being held for an upload.
+  function maybeResetStaleThumbnail() {
+    const st = dubThumbEditor.getState();
+    if (st && (formUrl() !== st.url || formLang() !== st.targetLanguage)) dubThumbEditor.reset();
+  }
+
+  // --- Update an existing video's thumbnail (generalized) ------------------
+  // Target = one of our published dubs (dropdown). The new thumbnail comes
+  // from the entry's source video, the dub itself, or any other link.
+
   function setRethumbMessage(text, kind) {
     if (!rethumbMessage) return;
     rethumbMessage.textContent = text || "";
     rethumbMessage.className = "hint" + (kind ? " thumb-message " + kind : "");
   }
 
+  function rethumbEntry() {
+    return libraryItems.find((it) => it.id === rethumbTarget.value) || null;
+  }
+
+  function rethumbSourceChoice() {
+    const checked = document.querySelector('#rethumb-source-radios input[name="rethumb-source"]:checked');
+    return checked ? checked.value : "source";
+  }
+
+  function rethumbFromUrl() {
+    const entry = rethumbEntry();
+    const choice = rethumbSourceChoice();
+    if (choice === "other") return rethumbOtherUrl.value.trim() || null;
+    if (!entry) return null;
+    if (choice === "dub") return entry.target_url;
+    return entry.source_url;
+  }
+
+  document.querySelectorAll('#rethumb-source-radios input[name="rethumb-source"]').forEach((radio) => {
+    radio.addEventListener("change", () => {
+      rethumbOtherUrl.style.display = rethumbSourceChoice() === "other" ? "block" : "none";
+    });
+  });
+
+  function populateRethumbTargets() {
+    const prev = rethumbTarget.value;
+    rethumbTarget.textContent = "";
+    const published = libraryItems.filter((it) => it.target_url);
+    if (!published.length) {
+      const opt = document.createElement("option");
+      opt.value = "";
+      opt.textContent = "No published dubs yet";
+      rethumbTarget.appendChild(opt);
+      rethumbTarget.disabled = true;
+      return;
+    }
+    rethumbTarget.disabled = false;
+    published.forEach((it) => {
+      const opt = document.createElement("option");
+      opt.value = it.id;
+      opt.textContent = it.title || it.source_title || it.target_video_id;
+      if (it.id === prev) opt.selected = true;
+      rethumbTarget.appendChild(opt);
+    });
+  }
+
   async function applyThumbnailToTarget({ state, button, setMessage, markApproved }) {
-    const target = document.getElementById("rethumb-url").value.trim();
-    if (!target) {
-      setMessage("Enter the target video URL above first.", "bad");
+    const entry = rethumbEntry();
+    if (!entry || !entry.target_url) {
+      setMessage("Pick a published dub as the target first.", "bad");
       return;
     }
     const restore = button.textContent;
@@ -1034,23 +1193,13 @@
     button.textContent = "Applying…";
     setMessage("Pushing the thumbnail to the target video…");
     try {
-      const res = await fetch(`${API_BASE}/thumbnail/apply`, {
-        method: "POST",
-        credentials: "same-origin",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ target_url: target, thumbnail: state.generated }),
-      });
-      const data = await res.json().catch(() => null);
-      if (!res.ok) {
-        const detail = data && (data.detail || data.message);
-        setMessage("Couldn't update the thumbnail: " +
-          (typeof detail === "string" ? detail : `HTTP ${res.status}`), "bad");
-        return;
-      }
+      const data = await apiJson("/thumbnail/apply", "POST",
+        { target_url: entry.target_url, thumbnail: state.generated });
       markApproved();
       setMessage("✓ Updated the thumbnail on " + (data.video_url || "the target video") + ".", "good");
+      loadEvents();
     } catch (err) {
-      setMessage("Couldn't reach the dubber service.", "bad");
+      setMessage("Couldn't update the thumbnail: " + err.message, "bad");
     } finally {
       button.disabled = false;
       button.textContent = restore;
@@ -1062,17 +1211,29 @@
     trigger: rethumbBtn,
     title: "New thumbnail preview",
     actionLabel: "Apply to the target video",
-    getSourceUrl: () => document.getElementById("video-url").value.trim(),
-    getTargetLanguage: () => document.getElementById("target-lang").value,
-    onMissingSource: () => setRethumbMessage("Enter the English source video URL (above) first.", "bad"),
+    getSourceUrl: rethumbFromUrl,
+    getTargetLanguage: () => {
+      const entry = rethumbEntry();
+      return entry ? entry.target_language : formLang();
+    },
+    onMissingSource: () => setRethumbMessage(
+      rethumbSourceChoice() === "other"
+        ? "Enter the video link to take the thumbnail from."
+        : "Pick a published dub as the target first.", "bad"),
     onAction: applyThumbnailToTarget,
+    onRevert: ({ reset }) => {
+      const entry = rethumbEntry();
+      logClientEvent("Thumbnail update cancelled",
+        entry ? (entry.title || entry.source_title) : null);
+      reset();
+    },
   });
   if (rethumbBtn) {
     rethumbBtn.addEventListener("click", () => {
-      const target = document.getElementById("rethumb-url").value.trim();
-      if (!target) {
+      const entry = rethumbEntry();
+      if (!entry || !entry.target_url) {
         rethumbEditor.reset();
-        setRethumbMessage("Enter the target video URL first.", "bad");
+        setRethumbMessage("Pick a published dub as the target first.", "bad");
         return;
       }
       setRethumbMessage("");
@@ -1080,131 +1241,34 @@
     });
   }
 
-  // A different source video or language makes any rendered preview stale --
-  // clear both editors so neither shows a thumbnail that no longer matches.
-  function maybeResetStaleThumbnails() {
-    const url = document.getElementById("video-url").value.trim();
-    const lang = document.getElementById("target-lang").value;
-    [dubThumbEditor, rethumbEditor].forEach((editor) => {
-      const st = editor.getState();
-      if (st && (url !== st.url || lang !== st.targetLanguage)) editor.reset();
-    });
-  }
-  document.getElementById("video-url").addEventListener("input", maybeResetStaleThumbnails);
-  document.getElementById("target-lang").addEventListener("change", maybeResetStaleThumbnails);
+  // --- Dub projects library -------------------------------------------------
 
-  // --- Transcripts library + Redub ---------------------------------------
-  // The library lists every completed dub's stored transcript (GET /transcripts),
-  // lets you read/fix lines (GET + PUT /transcripts/{id}) or download them, and
-  // feeds the redub picker. Redub re-narrates one of our own finished videos from
-  // a saved transcript -- same language, over its kept music/SFX -- by POSTing a
-  // normal /jobs with the transcript supplied as transcript_overrides.
+  const STATE_LABELS = {
+    draft: { text: "Draft — not published", className: "chip draft" },
+    published: { text: "Published", className: "chip published" },
+    published_pending: { text: "Redub in progress — unapplied edits", className: "chip pending" },
+  };
 
-  let libraryItems = [];
-
-  async function loadTranscripts() {
+  async function loadLibrary() {
     if (!authenticated) return;
     try {
-      const res = await fetch(`${API_BASE}/transcripts`, { credentials: "same-origin" });
-      if (!res.ok) return;
-      const items = await res.json();
+      const items = await api("/projects");
       if (!Array.isArray(items)) return;
       libraryItems = items;
       renderLibrary(items);
-      populateRedubSelect(items);
+      populateRethumbTargets();
     } catch (err) {
       /* non-fatal */
     }
   }
-
-  function populateRedubSelect(items) {
-    const prev = redubTranscript.value;
-    redubTranscript.textContent = "";
-    if (!items.length) {
-      const opt = document.createElement("option");
-      opt.value = "";
-      opt.textContent = "No saved transcripts yet — dub a video first";
-      redubTranscript.appendChild(opt);
-      redubTranscript.disabled = true;
-      return;
-    }
-    redubTranscript.disabled = false;
-    const placeholder = document.createElement("option");
-    placeholder.value = "";
-    placeholder.textContent = "Choose a saved transcript…";
-    redubTranscript.appendChild(placeholder);
-    items.forEach((it) => {
-      const opt = document.createElement("option");
-      opt.value = it.id;
-      opt.textContent = `${it.title} (${it.line_count} lines)`;
-      if (it.id === prev) opt.selected = true;
-      redubTranscript.appendChild(opt);
-    });
-  }
-
-  // Selecting a transcript pre-fills the video URL with that project's published
-  // link (editable) -- a redub usually targets the very video the transcript made.
-  redubTranscript.addEventListener("change", () => {
-    const item = libraryItems.find((it) => it.id === redubTranscript.value);
-    if (item && item.youtube_video_url && !redubUrl.value.trim()) {
-      redubUrl.value = item.youtube_video_url;
-    }
-  });
-
-  function setRedubMessage(text, kind) {
-    redubMessage.textContent = text || "";
-    redubMessage.className = "hint" + (kind ? " " + kind : "");
-  }
-
-  async function submitRedub() {
-    if (!authenticated) return;
-    const id = redubTranscript.value;
-    const url = redubUrl.value.trim();
-    if (!id) { setRedubMessage("Pick a saved transcript first.", "bad"); return; }
-    if (!url) { setRedubMessage("Enter the video link from your channel.", "bad"); return; }
-
-    redubBtn.disabled = true;
-    setRedubMessage("Loading the transcript…");
-    try {
-      const tRes = await fetch(`${API_BASE}/transcripts/${id}`, { credentials: "same-origin" });
-      const t = await tRes.json().catch(() => null);
-      if (!tRes.ok || !t || !Array.isArray(t.rows) || !t.rows.length) {
-        setRedubMessage("Couldn't load that transcript.", "bad");
-        return;
-      }
-      const overrides = t.rows
-        .filter((r) => r.translated_text && r.translated_text.trim())
-        .map((r) => ({ start: r.start, end: r.end, text: r.translated_text }));
-      setRedubMessage("Submitting redub…");
-      const res = await fetch(`${API_BASE}/jobs`, {
-        method: "POST",
-        credentials: "same-origin",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url: url, target_language: t.target_language, mode: "dub", transcript_overrides: overrides }),
-      });
-      const data = await res.json().catch(() => null);
-      if (!res.ok) {
-        const detail = data && (data.detail || data.message);
-        setRedubMessage("Couldn't start the redub: " + (typeof detail === "string" ? detail : `HTTP ${res.status}`), "bad");
-        return;
-      }
-      setRedubMessage(`Redub queued as job ${data.id} — tracking it below.`, "good");
-      renderJob(data);
-      pollJob(data.id);
-    } catch (err) {
-      setRedubMessage("Couldn't reach the dubber service.", "bad");
-    } finally {
-      redubBtn.disabled = !authenticated;
-    }
-  }
-  redubBtn.addEventListener("click", submitRedub);
 
   function renderLibrary(items) {
     libraryList.textContent = "";
     if (!items.length) {
       const empty = document.createElement("p");
       empty.className = "hint";
-      empty.textContent = "No transcripts yet — they appear here automatically once a dub finishes.";
+      empty.textContent = "No projects yet — previewing a transcript, saving a thumbnail, or " +
+        "dubbing a video creates its entry here automatically.";
       libraryList.appendChild(empty);
       return;
     }
@@ -1220,25 +1284,59 @@
 
     const name = document.createElement("div");
     name.className = "library-name";
-    if (item.youtube_video_url) {
-      const a = document.createElement("a");
-      a.href = item.youtube_video_url; a.target = "_blank"; a.rel = "noopener";
-      a.textContent = item.title;
-      name.appendChild(a);
-    } else {
-      name.textContent = item.title;
-    }
+
+    const chipInfo = STATE_LABELS[item.state] || STATE_LABELS.draft;
+    const chip = document.createElement("span");
+    chip.className = chipInfo.className;
+    chip.textContent = chipInfo.text;
+    name.appendChild(chip);
+
+    const label = document.createElement("span");
+    label.textContent = " " + (item.source_title || item.title || item.source_video_id);
+    name.appendChild(label);
+
     const meta = document.createElement("span");
     meta.className = "library-meta";
-    meta.textContent = ` ${item.line_count} lines · ${item.target_language}`;
+    const bits = [`${item.line_count} lines`, item.target_language];
+    if (item.voice) bits.push(item.voice);
+    if (item.has_thumbnail) bits.push("custom thumbnail");
+    if (item.has_bed) bits.push("audio bed cached");
+    meta.textContent = ` ${bits.join(" · ")}`;
     name.appendChild(meta);
+
+    const links = document.createElement("div");
+    links.className = "library-links";
+    const srcLink = document.createElement("a");
+    srcLink.href = item.source_url; srcLink.target = "_blank"; srcLink.rel = "noopener";
+    srcLink.textContent = "source video";
+    links.appendChild(srcLink);
+    if (item.target_url) {
+      links.appendChild(document.createTextNode(" · "));
+      const dubLink = document.createElement("a");
+      dubLink.href = item.target_url; dubLink.target = "_blank"; dubLink.rel = "noopener";
+      dubLink.textContent = "published dub";
+      links.appendChild(dubLink);
+    }
+    name.appendChild(links);
     head.appendChild(name);
+
+    const headBtns = document.createElement("div");
+    headBtns.className = "library-head-buttons";
 
     const openBtn = document.createElement("button");
     openBtn.type = "button";
     openBtn.className = "btn secondary small";
     openBtn.textContent = "View / edit";
-    head.appendChild(openBtn);
+    headBtns.appendChild(openBtn);
+
+    const deleteBtn = document.createElement("button");
+    deleteBtn.type = "button";
+    deleteBtn.className = "btn danger small";
+    deleteBtn.textContent = "Delete";
+    deleteBtn.addEventListener("click", () => deleteEntry(item, deleteBtn));
+    headBtns.appendChild(deleteBtn);
+
+    head.appendChild(headBtns);
     row.appendChild(head);
 
     const body = document.createElement("div");
@@ -1253,58 +1351,61 @@
       openBtn.textContent = open ? "Hide" : "View / edit";
       if (open && !loaded) {
         loaded = true;
-        await openTranscript(item.id, body);
+        await openEntryBody(item, body);
       }
     });
     return row;
   }
 
-  async function openTranscript(id, body) {
-    body.textContent = "Loading…";
-    let data;
+  async function deleteEntry(item, button) {
+    const label = item.source_title || item.title || item.source_video_id;
+    const ok = window.confirm(
+      `Delete “${label}” from the library?\n\n` +
+      "Its transcript (including the original-language text) and cached audio " +
+      "bed are removed for good. The published YouTube video itself is NOT " +
+      "touched — channel cleanup stays manual."
+    );
+    if (!ok) return;
+    button.disabled = true;
     try {
-      const res = await fetch(`${API_BASE}/transcripts/${id}`, { credentials: "same-origin" });
-      data = await res.json().catch(() => null);
-      if (!res.ok || !data) { body.textContent = "Couldn't load the transcript."; return; }
-    } catch (err) { body.textContent = "Couldn't reach the dubber service."; return; }
+      await api(`/projects/${item.id}`, { method: "DELETE" });
+      if (currentProject && currentProject.id === item.id) currentProject = null;
+      loadLibrary();
+      loadEvents();
+      refreshLookup();
+    } catch (err) {
+      button.disabled = false;
+      formMessage.textContent = `Couldn't delete that entry: ${err.message}`;
+    }
+  }
+
+  async function openEntryBody(item, body) {
+    body.textContent = "Loading…";
+    let project;
+    try {
+      project = await api(`/projects/${item.id}`);
+    } catch (err) {
+      body.textContent = "Couldn't load the project.";
+      return;
+    }
 
     body.textContent = "";
-    const rows = Array.isArray(data.rows) ? data.rows : [];
+    const rows = Array.isArray(project.rows) ? project.rows : [];
     if (!rows.length) {
       const empty = document.createElement("p");
       empty.className = "hint";
-      empty.textContent = "This transcript has no lines.";
+      empty.textContent = "No transcript yet — run “Preview transcript first” or a dub to fill it.";
       body.appendChild(empty);
       return;
     }
 
-    // The library's persisted state. A line's Save commits THAT line: its row
-    // is updated here and the whole set PUT back (the API replaces the
-    // transcript wholesale). Edits not yet saved stay local-only -- the same
-    // per-line semantics as the transcript preview.
-    const serverRows = rows.map((r) => ({
-      start: r.start,
-      end: r.end,
-      original_text: r.original_text != null ? r.original_text : null,
-      translated_text: r.translated_text || "",
-    }));
+    // Same shared table as the preview card; a line's Save PUTs the whole
+    // current set back as the entry's working transcript.
+    const built = buildTranscriptTable(rows, () =>
+      apiJson(`/projects/${item.id}/transcript`, "PUT", { rows: built.readLines() })
+        .then(() => { loadLibrary(); loadEvents(); })
+    );
 
-    // Same shared table as "Preview transcript first" -- identical layout by
-    // construction (buildTranscriptTable), just with a server-backed Save.
-    const built = buildTranscriptTable(rows, (index, value) => {
-      serverRows[index] = Object.assign({}, serverRows[index], { translated_text: value });
-      return fetch(`${API_BASE}/transcripts/${id}`, {
-        method: "PUT",
-        credentials: "same-origin",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ rows: serverRows }),
-      }).then((res) => {
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      });
-    });
-
-    // Long transcripts scroll inside the box instead of stretching the page;
-    // the rows themselves are exactly the preview's table.
     const scroll = document.createElement("div");
     scroll.className = "library-transcript-scroll";
     scroll.appendChild(built.element);
@@ -1312,17 +1413,76 @@
 
     const actions = document.createElement("div");
     actions.className = "library-actions";
+
+    // Redub: a fresh upload from the ORIGINAL source video speaking the saved
+    // transcript, reusing the voice, thumbnail and cached audio bed. The entry
+    // repoints to the new upload; the old dub stays on the channel for manual
+    // cleanup.
+    const redubBtn = document.createElement("button");
+    redubBtn.type = "button";
+    redubBtn.className = "btn small";
+    redubBtn.textContent = item.target_url ? "Redub" : "Dub from this draft";
+
+    const privacyWrap = document.createElement("span");
+    privacyWrap.className = "radio-row inline";
+    const radioName = `redub-privacy-${item.id}`;
+    [["unlisted", "Unlisted", true], ["public", "Public", false]].forEach(([value, text, checked]) => {
+      const radioLabel = document.createElement("label");
+      const radio = document.createElement("input");
+      radio.type = "radio";
+      radio.name = radioName;
+      radio.value = value;
+      radio.checked = checked;
+      radioLabel.appendChild(radio);
+      radioLabel.appendChild(document.createTextNode(" " + text));
+      privacyWrap.appendChild(radioLabel);
+    });
+
+    redubBtn.addEventListener("click", async () => {
+      const checked = body.querySelector(`input[name="${radioName}"]:checked`);
+      const privacy = checked ? checked.value : "unlisted";
+      const label = item.source_title || item.title || item.source_video_id;
+      const ok = window.confirm(
+        `${item.target_url ? "Redub" : "Dub"} “${label}” as ${privacy}?\n\n` +
+        "This publishes a NEW video from the original source, speaking the " +
+        "saved transcript." + (item.target_url
+          ? " The library entry will point at the new upload; the old dub " +
+            "stays on the channel until you remove it yourself."
+          : "")
+      );
+      if (!ok) return;
+      redubBtn.disabled = true;
+      try {
+        const job = await apiJson(`/projects/${item.id}/redub`, "POST", { privacy: privacy });
+        formMessage.textContent = `Queued ${item.target_url ? "redub" : "dub"} as job ${job.id} (${privacy}). Tracking progress below.`;
+        renderJob(job);
+        pollJob(job.id);
+        loadEvents();
+      } catch (err) {
+        formMessage.textContent = `Couldn't start the redub: ${err.message}`;
+      } finally {
+        redubBtn.disabled = false;
+      }
+    });
+
+    actions.appendChild(redubBtn);
+    actions.appendChild(privacyWrap);
+
     const dlBtn = document.createElement("button");
     dlBtn.type = "button";
     dlBtn.className = "btn secondary small";
     dlBtn.textContent = "Download .txt";
-    dlBtn.addEventListener("click", () => downloadTranscript(data.title || id, built.readLines()));
+    dlBtn.addEventListener("click", () => {
+      downloadTranscript(project.source_title || project.title || item.id, built.readLines());
+      logClientEvent("Transcript downloaded", project.source_title || project.title);
+    });
     actions.appendChild(dlBtn);
+
     const hint = document.createElement("span");
     hint.className = "hint";
     hint.style.marginTop = "0";
-    hint.textContent = "Each line's Save stores the fix in the library — pick this transcript " +
-      "in “Redub completed project” above to apply it.";
+    hint.textContent = "Each line's Save stores the edit on this entry; edited published " +
+      "entries show as “Redub in progress” until you redub.";
     actions.appendChild(hint);
     body.appendChild(actions);
   }
@@ -1336,6 +1496,90 @@
     document.body.appendChild(a); a.click(); document.body.removeChild(a);
     URL.revokeObjectURL(a.href);
   }
+
+  // --- Activity log (permanent, append-only) -------------------------------
+
+  let lastEventsRefresh = 0;
+
+  async function loadEvents() {
+    if (!authenticated) return;
+    lastEventsRefresh = Date.now();
+    try {
+      const events = await api("/events?limit=200");
+      if (!Array.isArray(events)) return;
+      renderEvents(events);
+    } catch (err) {
+      /* non-fatal */
+    }
+  }
+
+  function formatEventTime(iso) {
+    const date = new Date(iso);
+    if (isNaN(date.getTime())) return iso || "";
+    return date.toLocaleString(undefined, {
+      year: "numeric", month: "short", day: "numeric",
+      hour: "2-digit", minute: "2-digit",
+    });
+  }
+
+  function renderEvents(events) {
+    eventList.textContent = "";
+    if (!events.length) {
+      const empty = document.createElement("p");
+      empty.className = "hint";
+      empty.textContent = "Nothing yet — every action lands here, permanently.";
+      eventList.appendChild(empty);
+      return;
+    }
+    events.forEach((event) => {
+      const line = document.createElement("div");
+      line.className = "event-line";
+
+      const time = document.createElement("span");
+      time.className = "event-time";
+      time.textContent = formatEventTime(event.created_at);
+      line.appendChild(time);
+
+      const action = document.createElement("span");
+      action.className = "event-action";
+      action.textContent = event.action;
+      line.appendChild(action);
+
+      if (event.video_title) {
+        const title = document.createElement("span");
+        title.className = "event-title";
+        title.textContent = " — " + event.video_title;
+        line.appendChild(title);
+      }
+
+      if (event.detail) {
+        line.appendChild(document.createTextNode(" "));
+        if (/^https?:\/\//.test(event.detail)) {
+          const link = document.createElement("a");
+          link.href = event.detail;
+          link.target = "_blank";
+          link.rel = "noopener";
+          link.textContent = event.detail;
+          line.appendChild(link);
+        } else {
+          const detail = document.createElement("span");
+          detail.className = "event-detail";
+          detail.textContent = `(${event.detail})`;
+          line.appendChild(detail);
+        }
+      }
+
+      eventList.appendChild(line);
+    });
+  }
+
+  // While any job is live, keep the log gently fresh (the worker writes
+  // "Published"/"failed" lines from its side).
+  window.setInterval(() => {
+    if (authenticated && pollTimers.size > 0 && Date.now() - lastEventsRefresh > 12000) {
+      loadEvents();
+    }
+  }, 6000);
 
   checkAuth();
 })();

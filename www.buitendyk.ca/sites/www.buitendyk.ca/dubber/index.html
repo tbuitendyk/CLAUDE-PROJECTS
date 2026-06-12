@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Spanish Video Dubber &mdash; buitendyk.ca</title>
   <meta name="description" content="Submit an English YouTube video, generate a Spanish voice-over, and publish it to a YouTube channel.">
-  <link rel="stylesheet" href="/assets/style.css?v=17">
+  <link rel="stylesheet" href="/assets/style.css?v=18">
 </head>
 <body>
   <header class="site-header">
@@ -45,6 +45,9 @@
       <div class="field">
         <label for="video-url">English source video URL (YouTube)</label>
         <input type="url" id="video-url" name="url" placeholder="https://www.youtube.com/watch?v=&hellip;" required>
+        <!-- Filled by dubber.js when the URL matches an existing library entry
+             (matched server-side by video ID + language, so it survives reloads). -->
+        <div class="lookup-banner hint" id="lookup-banner" style="display:none;"></div>
       </div>
 
       <div class="field">
@@ -62,6 +65,15 @@
         </p>
       </div>
 
+      <div class="field">
+        <label>Publish the dub as</label>
+        <div class="radio-row" id="privacy-radios">
+          <label><input type="radio" name="privacy" value="unlisted" checked> Unlisted
+            <span class="radio-hint">&mdash; viewable by link only; polish first, go Public on a redub</span></label>
+          <label><input type="radio" name="privacy" value="public"> Public</label>
+        </div>
+      </div>
+
       <div class="field" style="display:flex; gap:0.75rem; flex-wrap:wrap; align-items:center; margin-bottom:0;">
         <button class="btn secondary ghosted" id="thumbnail-btn" type="button" disabled>Preview thumbnail</button>
         <button class="btn secondary ghosted" id="preview-btn" type="button" disabled>Preview transcript first</button>
@@ -71,95 +83,78 @@
         <strong>Preview thumbnail</strong> fetches just the video's thumbnail (no
         full download) and shows it next to a Spanish version &mdash; the text
         baked into the image is detected and translated, with the
-        &ldquo;Versi&oacute;n Espa&ntilde;ol&rdquo; banner added on top. You can
-        correct any translated line and, once it looks right, mark it to be used
-        for the upload. It's optional: skip it and the dub generates one
-        automatically.
+        &ldquo;Versi&oacute;n Espa&ntilde;ol&rdquo; banner added on top. Correct
+        any line and <strong>Save</strong>: saved thumbnails live with the
+        project in the library and are used automatically when you dub.
       </p>
       <p class="hint">
-        Not sure the result will sound right? <strong>Preview transcript first</strong> runs
-        just the cheap diagnostic stages &mdash; fetching or transcribing the
-        original-language text, then translating it &mdash; and shows both side by
-        side, line by line, so you can tell whether a problem is in the
-        transcription or the translation before spending the time on a full
-        narration/upload run. Each Spanish line is editable: tweak it and hit
-        its <strong>Save</strong> button, and if you then click
-        <strong>Start dubbing</strong> for the same video, the dub will speak
-        your saved lines verbatim instead of retranslating from scratch.
+        <strong>Preview transcript first</strong> runs just the cheap diagnostic
+        stages &mdash; fetching or transcribing the original-language text, then
+        translating it &mdash; and opens both side by side below. Each Spanish
+        line is editable; <strong>Save</strong> stores it as the project's draft
+        in the library (so it survives reloads), and <strong>Start
+        dubbing</strong> speaks the saved draft verbatim.
       </p>
       <span class="hint" id="form-message"></span>
     </form>
 
-    <!-- Thumbnail preview/approval step. Hidden until "Preview thumbnail" is
-         clicked; dubber.js fills it with the original-vs-generated images, the
-         editable per-region translations, and the "use this" approval. -->
+    <!-- Thumbnail preview/approval card. Opens under the project form when
+         "Preview thumbnail" is clicked; stays open through a publish. Save
+         stores the image on the library entry; Revert to default discards it
+         and closes the card. -->
     <div class="panel thumbnail-panel" id="thumbnail-panel" style="display:none;"></div>
 
-    <!-- Standalone re-thumbnail tool: generate a Spanish thumbnail from the
-         English source URL above and push it onto an existing video on the
-         connected channel, without re-dubbing. dubber.js gates the button on
-         auth and fills #rethumb-preview with the same preview/edit widget. -->
+    <!-- Transcript preview card: the TRANSCRIPT PREVIEW analogue of the
+         thumbnail card above. Opens when a "Preview transcript first" run
+         completes; per-line Save writes the project's draft; Revert to default
+         restores the machine transcript and closes the card. -->
+    <div class="panel" id="transcript-panel" style="display:none;"></div>
+
+    <!-- Generalized re-thumbnail tool: pick one of our published dubs as the
+         target, take the thumbnail from its source video, from the dub itself,
+         or from any other video link, edit, then apply -- no re-dub needed. -->
     <div class="panel" id="rethumb-panel">
       <div class="box-title">Update an existing video's thumbnail</div>
       <p class="hint" style="margin-top:0.2rem;">
-        Generate a Spanish thumbnail from the <strong>English source video URL</strong>
-        above and apply it to a video already published on the connected channel
-        &mdash; no re-dub needed. Same detect-translate-and-edit step as the dub
-        thumbnail; the result is pushed straight to the target video.
+        Pick one of your published dubs, choose where the new thumbnail comes
+        from, edit the detected text, and apply it &mdash; no re-dub needed.
       </p>
       <div class="field" style="margin-top:0.75rem;">
-        <label for="rethumb-url">Target video URL (connected YouTube channel)</label>
-        <input type="url" id="rethumb-url" placeholder="https://www.youtube.com/watch?v=&hellip;">
+        <label for="rethumb-target">Target video (your published dubs)</label>
+        <select id="rethumb-target"></select>
+      </div>
+      <div class="field">
+        <label>Thumbnail comes from</label>
+        <div class="radio-row" id="rethumb-source-radios">
+          <label><input type="radio" name="rethumb-source" value="source" checked> The source video</label>
+          <label><input type="radio" name="rethumb-source" value="dub"> The dub itself</label>
+          <label><input type="radio" name="rethumb-source" value="other"> Another video link</label>
+        </div>
+        <input type="url" id="rethumb-other-url" placeholder="https://www.youtube.com/watch?v=&hellip;"
+               style="display:none; margin-top:0.5rem;">
       </div>
       <div class="field" style="display:flex; gap:0.75rem; flex-wrap:wrap; align-items:center; margin-bottom:0;">
-        <button class="btn secondary ghosted" id="rethumb-btn" type="button" disabled>Update thumbnail</button>
+        <button class="btn secondary ghosted" id="rethumb-btn" type="button" disabled>Preview new thumbnail</button>
         <span class="hint" id="rethumb-message" style="margin-top:0;"></span>
       </div>
       <div class="thumbnail-panel" id="rethumb-preview" style="display:none; margin-top:1rem;"></div>
     </div>
 
-    <!-- Redub a completed project: re-narrate one of our own finished videos
-         from a saved (and possibly hand-fixed) transcript, same language, over
-         its kept music/SFX, as a new upload. dubber.js gates on auth, fills the
-         transcript picker from the library, and submits it as a /jobs override. -->
-    <div class="panel" id="redub-panel" style="display:none;">
-      <div class="box-title">Redub completed project</div>
-      <p class="hint" style="margin-top:0.2rem;">
-        Re-dub one of <strong>your own finished videos</strong> from a saved
-        transcript &mdash; recreates the spoken track in the same language over the
-        original music &amp; sound effects, and uploads it as a new video. Need to
-        correct a line first? Fix it in the <strong>Transcripts library</strong>
-        below, then redub.
-      </p>
-      <div class="field" style="margin-top:0.75rem;">
-        <label for="redub-transcript">Saved transcript</label>
-        <select id="redub-transcript"></select>
-      </div>
-      <div class="field">
-        <label for="redub-url">Video link (from your channel)</label>
-        <input type="url" id="redub-url" placeholder="https://www.youtube.com/watch?v=&hellip;">
-      </div>
-      <div class="field" style="display:flex; gap:0.75rem; flex-wrap:wrap; align-items:center; margin-bottom:0;">
-        <button class="btn ghosted" id="redub-btn" type="button" disabled>Redub this video</button>
-        <span class="hint" id="redub-message" style="margin-top:0;"></span>
-      </div>
-    </div>
-
-    <!-- Transcripts library: every completed dub's timestamped transcript,
-         listed by generated video name. View, fix lines + save, or download.
-         dubber.js fills #library-list from GET /transcripts. -->
+    <!-- The library: every dub project regardless of state -- drafts,
+         published, and published-with-pending-edits (a redub in progress).
+         One entry per (video, language), with its transcript, thumbnail,
+         voice and links. dubber.js fills #library-list from GET /projects. -->
     <div class="panel" id="library-panel" style="display:none;">
-      <div class="box-title">Transcripts library</div>
+      <div class="box-title">Dub projects library</div>
       <p class="hint" style="margin-top:0.2rem;">
-        Every dubbed video keeps its timestamped transcript here. Open one to read
-        it, fix any line and save (then redub above to apply), or download it.
+        One entry per video and language &mdash; drafts and published dubs alike.
+        Open one to read or fix its transcript (the original-language text is
+        kept forever), redub it after edits, or delete it for good.
       </p>
       <div id="library-list" style="margin-top:0.75rem;"></div>
     </div>
 
-    <!-- Operator service controls: the last control box, just above the job
-         history. JS toggles visibility with the auth state (dubber.js
-         setAuthState). -->
+    <!-- Operator service controls. -->
     <div class="panel" id="service-controls" style="display:none;">
       <div class="service-row">
         <div class="service-info">
@@ -176,13 +171,22 @@
       </div>
     </div>
 
+    <!-- Live status: progress cards for jobs that are still queued/running.
+         Finished work moves to the activity log below (and the library). -->
     <div id="job-list"></div>
+
+    <!-- The permanent activity log: one timestamped line per action, building
+         forever. Publishing a video stops its new lines; old ones stay. -->
+    <div class="panel" id="log-panel" style="display:none;">
+      <div class="box-title">Activity log</div>
+      <div id="event-list" style="margin-top:0.5rem;"></div>
+    </div>
   </main>
 
   <footer class="site-footer">
     buitendyk.ca &mdash; self-hosted on a personal VPS, built with free &amp; open-source tools.
   </footer>
 
-  <script src="/dubber/dubber.js?v=14"></script>
+  <script src="/dubber/dubber.js?v=15"></script>
 </body>
 </html>
