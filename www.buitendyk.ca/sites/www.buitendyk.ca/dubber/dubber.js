@@ -1579,13 +1579,14 @@
     });
   }
 
-  // While any job is live, keep the log gently fresh (the worker writes
-  // "Published"/"failed" lines from its side).
+  // The log auto-refreshes once per minute whenever signed in -- server-side
+  // lines (worker publishes/failures, one-shot maintenance passes) appear
+  // without a reload. Action handlers still refresh immediately on top.
   window.setInterval(() => {
-    if (authenticated && pollTimers.size > 0 && Date.now() - lastEventsRefresh > 12000) {
+    if (authenticated && Date.now() - lastEventsRefresh > 55000) {
       loadEvents();
     }
-  }, 6000);
+  }, 60000);
 
   checkAuth();
 })();
