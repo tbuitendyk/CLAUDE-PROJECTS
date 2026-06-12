@@ -606,6 +606,10 @@
         summaryText: `Source: ${job.result.transcript_source}` +
           (job.result.original_language ? ` · original language: ${job.result.original_language}` : ""),
       });
+      // The card opens up top (under the project form, beside the thumbnail
+      // card's spot) -- bring it into view since the user was likely watching
+      // the progress card further down.
+      transcriptPanel.scrollIntoView({ behavior: "smooth", block: "nearest" });
     }
     if (job.mode !== "preview" && job.status === "done") {
       // Publish finished: the preview cards' job is done; close them. Edits
