@@ -327,6 +327,15 @@ def _process(job: db.Job) -> None:
 
 def loop() -> None:
     log.info("Dubbing worker started (poll interval: %ss)", settings.poll_interval_seconds)
+    # One-shot, operator-directed library maintenance runs BEFORE the queue is
+    # touched, so its heavy STT passes never overlap a dub job's memory use.
+    # Flag-guarded inside; a failure just retries on the next restart.
+    try:
+        from . import maintenance
+
+        maintenance.run_pending()
+    except Exception:  # noqa: BLE001 -- the queue must start regardless
+        log.exception("Library maintenance pass failed; it will retry on the next restart")
     did_work = False
     while not _stop_event.is_set():
         job = db.claim_next_job()

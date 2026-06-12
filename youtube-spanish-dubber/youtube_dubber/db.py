@@ -1059,6 +1059,20 @@ def backfill_original_transcripts() -> int:
     return repaired
 
 
+def confirm_published_state(project_id: str) -> Optional[Project]:
+    """Maintenance helper: accept the entry's CURRENT content as its published
+    content -- the publish fingerprint is re-taken from the rows + thumbnail as
+    they stand, so the entry derives back to 'published' (no pending-edits
+    flag). Draft entries (no published dub) are left untouched."""
+    project = get_project(project_id)
+    if project is None or not project.target_video_id:
+        return project
+    return update_project(
+        project_id,
+        published_fingerprint=_fingerprint(project.rows_list(), project.thumbnail),
+    )
+
+
 def project_bed_path(project_id: str) -> Path:
     """Where a project's cached speech-removed bed lives (encoded once, reused
     by every redub)."""
