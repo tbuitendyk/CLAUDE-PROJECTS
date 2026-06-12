@@ -1059,109 +1059,18 @@ def backfill_original_transcripts() -> int:
     return repaired
 
 
-def backfill_missing_transcripts() -> int:
-    """Third one-shot repair: reconstruct transcripts for library entries that
-    have NO rows at all.
-
-    Dubs that predate transcript retention stored nothing in the jobs table's
-    `transcript` column, so their migrated entries came out empty -- but the
-    lines actually spoken usually survive elsewhere: the dub job's
-    `transcript_overrides` (the user's edited lines, fed to TTS verbatim)
-    and/or a preview job's bilingual result rows. Rebuild each empty entry
-    from the newest spoken set, restore the source-language column from the
-    oldest bilingual donor, and capture source_rows/acquired_rows. Published
-    entries keep their state (the publish fingerprint moves with the repair).
-    One-shot, meta-flag guarded. Returns the number of entries rebuilt."""
-    with _connect() as conn:
-        if conn.execute("SELECT 1 FROM meta WHERE key = 'missing_transcripts_backfilled'").fetchone():
-            return 0
-        job_rows = conn.execute("SELECT * FROM jobs ORDER BY created_at ASC").fetchall()
-    jobs = [Job.from_row(row) for row in job_rows]
-    published_by_vid = {j.youtube_video_id: j for j in jobs if j.youtube_video_id}
-
-    def _loads(raw: str | None) -> list[dict]:
-        try:
-            return json.loads(raw) if raw else []
-        except ValueError:
-            return []
-
-    # Per (source video, language): `spoken[kind]` keeps the NEWEST row set of
-    # each kind (jobs are scanned oldest-first, so later sets overwrite);
-    # `donor` keeps the OLDEST bilingual set (truest original English).
-    spoken: dict[tuple[str, str], dict[str, list[dict]]] = {}
-    donors: dict[tuple[str, str], list[dict]] = {}
-    for job in jobs:
-        key_id = _root_source_id(job, published_by_vid)
-        if not key_id:
-            continue
-        key = (key_id, job.target_language)
-
-        transcript_rows = _loads(job.transcript)
-        if transcript_rows:
-            spoken.setdefault(key, {})["transcript"] = transcript_rows
-            if any(r.get("original_text") for r in transcript_rows):
-                donors.setdefault(key, transcript_rows)
-
-        override_rows = [
-            {"start": r.get("start"), "end": r.get("end"),
-             "original_text": None, "translated_text": r.get("text") or ""}
-            for r in _loads(job.transcript_overrides)
-            if (r.get("text") or "").strip()
-        ]
-        if override_rows:
-            spoken.setdefault(key, {})["overrides"] = override_rows
-
-        if job.mode == "preview":
-            preview_rows = (_loads(job.result) or {}).get("rows") if job.result else None
-            preview_rows = preview_rows if isinstance(preview_rows, list) else []
-            if preview_rows:
-                spoken.setdefault(key, {})["preview"] = preview_rows
-                if any(r.get("original_text") for r in preview_rows):
-                    donors.setdefault(key, preview_rows)
-
-    rebuilt = 0
-    for project in list_projects():
-        if project.rows_list():
-            continue  # this pass only fills EMPTY entries
-        key = (project.source_video_id, project.target_language)
-        kinds = spoken.get(key) or {}
-        # What was actually narrated, by fidelity: a retained dub transcript,
-        # else the edited override lines, else the machine preview.
-        base = kinds.get("transcript") or kinds.get("overrides") or kinds.get("preview")
-        if not base:
-            continue
-        donor = donors.get(key)
-        rows = fill_original_texts(base, donor) if donor else [dict(r) for r in base]
-
-        fields: dict[str, Any] = {"rows": json.dumps(rows)}
-        if not project.acquired_rows:
-            fields["acquired_rows"] = json.dumps(donor or rows)
-        if not project.source_rows and donor:
-            source_rows = [
-                {"start": r.get("start"), "end": r.get("end"), "text": r["original_text"]}
-                for r in donor
-                if r.get("original_text")
-            ]
-            if source_rows:
-                fields["source_rows"] = json.dumps(source_rows)
-        # A data repair is not a user edit: a published entry stays published.
-        if project.state in ("published", "published_pending") and project.target_video_id:
-            fields["published_fingerprint"] = _fingerprint(rows, project.thumbnail)
-        update_project(project.id, **fields)
-        rebuilt += 1
-        record_event(
-            "Library repaired: transcript recovered",
-            video_title=project.source_title or project.title,
-            project_id=project.id,
-            detail=f"{len(rows)} lines",
-        )
-
-    with _connect() as conn:
-        conn.execute(
-            "INSERT OR REPLACE INTO meta (key, value) VALUES ('missing_transcripts_backfilled', ?)",
-            (_now(),),
-        )
-    return rebuilt
+def confirm_published_state(project_id: str) -> Optional[Project]:
+    """Maintenance helper: accept the entry's CURRENT content as its published
+    content -- the publish fingerprint is re-taken from the rows + thumbnail as
+    they stand, so the entry derives back to 'published' (no pending-edits
+    flag). Draft entries (no published dub) are left untouched."""
+    project = get_project(project_id)
+    if project is None or not project.target_video_id:
+        return project
+    return update_project(
+        project_id,
+        published_fingerprint=_fingerprint(project.rows_list(), project.thumbnail),
+    )
 
 
 def project_bed_path(project_id: str) -> Path:
