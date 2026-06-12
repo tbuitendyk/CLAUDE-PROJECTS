@@ -181,7 +181,7 @@
 
   function renderLookupBanner(entry) {
     lookupBanner.textContent = "";
-    const label = entry.source_title || entry.title || entry.source_video_id;
+    const label = entry.title || entry.source_title || entry.source_video_id;
     const strong = document.createElement("strong");
     if (entry.state === "draft") {
       strong.textContent = `“${label}” is already in the library as a draft`;
@@ -477,7 +477,7 @@
         rows: project.rows,
         sourceUrl: project.source_url,
         targetLanguage: project.target_language,
-        summaryText: `${project.source_title || project.title || project.source_video_id}` +
+        summaryText: `${project.title || project.source_title || project.source_video_id}` +
           ` · ${project.line_count} lines · saved in the library`,
       });
       transcriptPanel.scrollIntoView({ behavior: "smooth", block: "nearest" });
@@ -1296,7 +1296,7 @@
     name.appendChild(chip);
 
     const label = document.createElement("span");
-    label.textContent = " " + (item.source_title || item.title || item.source_video_id);
+    label.textContent = " " + (item.title || item.source_title || item.source_video_id);
     name.appendChild(label);
 
     const meta = document.createElement("span");
@@ -1364,7 +1364,7 @@
   }
 
   async function deleteEntry(item, button) {
-    const label = item.source_title || item.title || item.source_video_id;
+    const label = item.title || item.source_title || item.source_video_id;
     const ok = window.confirm(
       `Delete “${label}” from the library?\n\n` +
       "Its transcript (including the original-language text) and cached audio " +
@@ -1447,7 +1447,7 @@
     redubBtn.addEventListener("click", async () => {
       const checked = body.querySelector(`input[name="${radioName}"]:checked`);
       const privacy = checked ? checked.value : "unlisted";
-      const label = item.source_title || item.title || item.source_video_id;
+      const label = item.title || item.source_title || item.source_video_id;
       const ok = window.confirm(
         `${item.target_url ? "Redub" : "Dub"} “${label}” as ${privacy}?\n\n` +
         "This publishes a NEW video from the original source, speaking the " +
@@ -1479,8 +1479,8 @@
     dlBtn.className = "btn secondary small";
     dlBtn.textContent = "Download .txt";
     dlBtn.addEventListener("click", () => {
-      downloadTranscript(project.source_title || project.title || item.id, built.readLines());
-      logClientEvent("Transcript downloaded", project.source_title || project.title);
+      downloadTranscript(project.title || project.source_title || item.id, built.readLines());
+      logClientEvent("Transcript downloaded", project.title || project.source_title);
     });
     actions.appendChild(dlBtn);
 
