@@ -118,6 +118,10 @@ def run(
     # None and video.mux falls back to a narration-only ("replace") mix.
     bed_path = None
     if settings.audio_mode == "music":
+        # Free the transcript/TTS model singletons before the memory-heavy
+        # separation so it doesn't stack on top of them and hit the cgroup memory
+        # cap. They reload lazily if something later needs them (title translation).
+        _release_heavy_models()
         # Separation runs for minutes with long silent gaps (decoding the whole
         # track, loading the model) before the first chunk reports -- so drive it
         # through a heartbeat (like the transcript stage) to keep the bar moving,
@@ -275,6 +279,26 @@ def _brand_thumbnail(source, target_language: str, work_dir: Path, on_progress: 
         # stages so a dub's resident memory doesn't stack.
         ocr_onnx.release_model()
         memory.release_to_os()
+
+
+def _release_heavy_models() -> None:
+    """Drop the transcript/TTS model singletons (Whisper, Argos, spaCy, the ONNX
+    sessions) before the memory-heavy separation step so it doesn't stack on top
+    of them and hit the service's memory cap. Best-effort; each reloads lazily if
+    needed afterward."""
+    from importlib import import_module
+
+    for module_name, fn_name in (
+        ("speech_to_text", "release_model"),
+        ("punctuation_onnx", "release_model"),
+        ("rechunker", "release_models"),
+        ("translator", "clear_cache"),
+    ):
+        try:
+            getattr(import_module(f".{module_name}", __package__), fn_name)()
+        except Exception:  # noqa: BLE001 -- best effort
+            pass
+    memory.release_to_os()
 
 
 def _probe_duration_fallback(video_path: str) -> float:

@@ -19,6 +19,23 @@ if [[ $EUID -ne 0 ]]; then
   exit 1
 fi
 
+# TEMP-DIAG: snapshot the currently-running service BEFORE we restart it (the
+# restart near the end of this script ends any in-flight job), so a stuck/slow
+# run can be inspected. Captured now; printed at the end so it lands inside the
+# deploy endpoint's tail-truncated reply.
+PREDEPLOY_SNAP="$(
+  set +e
+  PID=$(systemctl show -p MainPID --value youtube-dubber 2>/dev/null)
+  echo "service MainPID: ${PID:-?}"
+  if [ -n "${PID}" ] && [ "${PID}" != "0" ]; then
+    grep -E 'VmRSS|VmHWM|Threads' "/proc/${PID}/status" 2>/dev/null
+    echo "thread states (R=run, D=uninterruptible-io, S=sleep):"
+    ps -L -o stat= -p "${PID}" 2>/dev/null | sort | uniq -c
+    echo "busiest threads:"
+    ps -L -o pid,tid,pcpu,cputime,comm -p "${PID}" 2>/dev/null | sort -k3 -rn | head -6
+  fi
+)"
+
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 INSTALL_DIR="/opt/youtube-dubber"
 SERVICE_USER="dubber"
@@ -241,6 +258,10 @@ if systemctl is-active --quiet youtube-dubber; then
   echo "==> Restarting the running service to pick up the new code"
   systemctl restart youtube-dubber
 fi
+
+echo "########## [PREDEPLOY snapshot — the service this deploy just replaced] ##########"
+echo "${PREDEPLOY_SNAP}"
+echo "########## [PREDEPLOY snapshot] end ##########"
 
 cat <<EOF
 

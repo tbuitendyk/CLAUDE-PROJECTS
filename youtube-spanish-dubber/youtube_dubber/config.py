@@ -97,6 +97,11 @@ class Settings:
     separator_model_path: Path = field(
         default_factory=lambda: _path("DUBBER_SEPARATOR_MODEL", "./models/uvr_mdx_inst.onnx")
     )
+    # How many CPU threads the separator's onnxruntime session may use. Capped
+    # low on purpose: the default (one per core) spawned ~50 threads + per-thread
+    # memory arenas and pinned the service at its memory ceiling. A handful is
+    # plenty and keeps separation within the cgroup budget.
+    separator_threads: int = int(os.getenv("DUBBER_SEPARATOR_THREADS", "4"))
 
     # --- YouTube upload ---
     youtube_client_secrets_file: Path = field(

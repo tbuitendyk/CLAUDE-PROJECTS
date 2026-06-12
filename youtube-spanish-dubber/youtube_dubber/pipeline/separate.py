@@ -167,8 +167,18 @@ def instrumental_bed(
         import onnxruntime as ort
 
         mix = _decode_stereo_f32(source_media)
+        # The box is memory-capped. onnxruntime's defaults -- a worker thread and
+        # a memory arena per core -- ballooned to 51 threads pinned at the cgroup
+        # ceiling, so separation thrashed. Pin to a few threads and drop the CPU
+        # arena/mem-pattern so it stays in budget (and, with less thread thrash,
+        # runs faster too).
+        so = ort.SessionOptions()
+        so.intra_op_num_threads = max(1, int(settings.separator_threads))
+        so.inter_op_num_threads = 1
+        so.enable_cpu_mem_arena = False
+        so.enable_mem_pattern = False
         session = ort.InferenceSession(
-            str(settings.separator_model_path), providers=["CPUExecutionProvider"]
+            str(settings.separator_model_path), sess_options=so, providers=["CPUExecutionProvider"]
         )
         instrumental = _separate(mix, session, on_progress)
         out = work_dir / "instrumental.wav"
