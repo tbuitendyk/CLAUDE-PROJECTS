@@ -216,6 +216,7 @@ def init_db() -> None:
             if column not in existing:
                 conn.execute(migration)
     migrate_legacy_projects()
+    backfill_original_transcripts()
 
 
 def create_job(
@@ -619,17 +620,25 @@ def fill_original_texts(rows: list[dict], donor_rows: list[dict]) -> list[dict]:
     """Restore the source-language column on rows that lost it (a redub override
     carries only the narrated text). Donor rows are matched by start time --
     redub overrides inherit their times from the library rows, so this is exact
-    in practice; rows with no match just stay target-only."""
+    in practice. When the sets are the same length, rows still missing after
+    time-matching fall back to position (the timings may have been nudged in an
+    edit); odd-sized leftovers just stay target-only."""
     by_start: dict[float, str] = {}
+
+    def donor_text(donor: dict) -> str | None:
+        return donor.get("original_text") if "original_text" in donor else donor.get("text")
+
     for donor in donor_rows:
-        text = donor.get("original_text") if "original_text" in donor else donor.get("text")
+        text = donor_text(donor)
         if text:
             by_start[round(float(donor.get("start", 0.0)), 2)] = text
     out = []
-    for row in rows:
+    for index, row in enumerate(rows):
         row = dict(row)
         if not row.get("original_text"):
             match = by_start.get(round(float(row.get("start", 0.0)), 2))
+            if match is None and len(rows) == len(donor_rows):
+                match = donor_text(donor_rows[index])
             if match:
                 row["original_text"] = match
         out.append(row)
@@ -797,6 +806,20 @@ def _legacy_source_title(title: str | None) -> str | None:
     return match.group(1).strip() if match else None
 
 
+def _root_source_id(job: "Job", published_by_vid: dict[str, "Job"]) -> str | None:
+    """Walk a redub-of-our-own-dub chain back to the TRUE source video: a job
+    whose source URL points at another job's published video was a redub of
+    that dub, so it belongs to the original's entry."""
+    seen: set[str] = set()
+    current = job
+    while True:
+        source_id = naming.extract_video_id(current.source_url)
+        if source_id is None or source_id not in published_by_vid or source_id in seen:
+            return source_id
+        seen.add(source_id)
+        current = published_by_vid[source_id]
+
+
 def migrate_legacy_projects() -> int:
     """Build the projects library + action log from the pre-library `jobs` rows.
 
@@ -815,19 +838,9 @@ def migrate_legacy_projects() -> int:
     jobs = [Job.from_row(row) for row in job_rows]
     published_by_vid = {j.youtube_video_id: j for j in jobs if j.youtube_video_id}
 
-    def root_source_id(job: Job) -> str | None:
-        seen: set[str] = set()
-        current = job
-        while True:
-            source_id = naming.extract_video_id(current.source_url)
-            if source_id is None or source_id not in published_by_vid or source_id in seen:
-                return source_id
-            seen.add(source_id)
-            current = published_by_vid[source_id]
-
     groups: dict[tuple[str, str], list[Job]] = {}
     for job in jobs:
-        source_id = root_source_id(job)
+        source_id = _root_source_id(job, published_by_vid)
         if source_id:
             groups.setdefault((source_id, job.target_language), []).append(job)
 
@@ -905,6 +918,111 @@ def migrate_legacy_projects() -> int:
             "INSERT OR REPLACE INTO meta (key, value) VALUES ('projects_migrated', ?)", (_now(),)
         )
     return created
+
+
+def backfill_original_transcripts() -> int:
+    """Second one-shot repair: restore the source-language column on library
+    entries that came out of the legacy migration target-only.
+
+    The first migration only mined *dub* jobs' stored transcripts for the
+    original text -- but for a "preview first, edit, then dub" project the
+    bilingual rows live in the PREVIEW job's result (the dub itself ran from
+    Spanish-only overrides, and early dubs predate transcript retention). This
+    pass mines those preview results (and any bilingual dub transcripts) as
+    donors, fills `original_text` + the immutable `source_rows` (and the
+    pristine `acquired_rows`, so Revert can't drop the English again), and
+    recovers missing source titles. Published entries keep their state: a data
+    repair is not a user edit, so the publish fingerprint is moved with the
+    rows rather than flagging a phantom redub-in-progress. Returns the number
+    of entries repaired."""
+    with _connect() as conn:
+        if conn.execute("SELECT 1 FROM meta WHERE key = 'originals_backfilled'").fetchone():
+            return 0
+        job_rows = conn.execute("SELECT * FROM jobs ORDER BY created_at ASC").fetchall()
+    jobs = [Job.from_row(row) for row in job_rows]
+    published_by_vid = {j.youtube_video_id: j for j in jobs if j.youtube_video_id}
+
+    # donors[(source video, language)] -> oldest bilingual row set we can find;
+    # titles[...] -> a source title recovered from a preview result.
+    donors: dict[tuple[str, str], list[dict]] = {}
+    titles: dict[tuple[str, str], str] = {}
+    for job in jobs:
+        rows: list[dict] = []
+        title: str | None = None
+        if job.transcript:
+            try:
+                rows = json.loads(job.transcript)
+            except ValueError:
+                rows = []
+        elif job.mode == "preview" and job.result:
+            try:
+                result = json.loads(job.result)
+                rows = result.get("rows") or []
+                title = result.get("title")
+            except ValueError:
+                rows = []
+        if not rows or not any(r.get("original_text") for r in rows):
+            continue
+        source_id = _root_source_id(job, published_by_vid)
+        if not source_id:
+            continue
+        key = (source_id, job.target_language)
+        donors.setdefault(key, rows)
+        if title:
+            titles.setdefault(key, title)
+
+    repaired = 0
+    for project in list_projects():
+        key = (project.source_video_id, project.target_language)
+        donor = donors.get(key)
+        fields: dict[str, Any] = {}
+
+        rows = project.rows_list()
+        if donor and rows and not all(r.get("original_text") for r in rows):
+            filled = fill_original_texts(rows, donor)
+            if any(r.get("original_text") for r in filled):
+                fields["rows"] = json.dumps(filled)
+                rows = filled
+
+        acquired = project.acquired_rows_list()
+        if donor and acquired and not all(r.get("original_text") for r in acquired):
+            filled = fill_original_texts(acquired, donor)
+            if any(r.get("original_text") for r in filled):
+                fields["acquired_rows"] = json.dumps(filled)
+
+        if donor and not project.source_rows:
+            source_rows = [
+                {"start": r.get("start"), "end": r.get("end"), "text": r["original_text"]}
+                for r in donor
+                if r.get("original_text")
+            ]
+            if source_rows:
+                fields["source_rows"] = json.dumps(source_rows)
+
+        if not project.source_title and titles.get(key):
+            fields["source_title"] = titles[key]
+
+        if not fields:
+            continue
+        # Repairing data isn't a user edit: keep a published entry published by
+        # moving its publish fingerprint along with the repaired rows.
+        if "rows" in fields and project.state == "published":
+            fields["published_fingerprint"] = _fingerprint(rows, project.thumbnail)
+        update_project(project.id, **fields)
+        repaired += 1
+        record_event(
+            "Library repaired: original-language transcript restored"
+            if "rows" in fields or "source_rows" in fields
+            else "Library repaired: source title restored",
+            video_title=fields.get("source_title") or project.source_title or project.title,
+            project_id=project.id,
+        )
+
+    with _connect() as conn:
+        conn.execute(
+            "INSERT OR REPLACE INTO meta (key, value) VALUES ('originals_backfilled', ?)", (_now(),)
+        )
+    return repaired
 
 
 def project_bed_path(project_id: str) -> Path:

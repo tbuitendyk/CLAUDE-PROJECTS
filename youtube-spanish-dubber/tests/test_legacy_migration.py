@@ -26,11 +26,12 @@ def fresh_db(tmp_path, monkeypatch):
         ensure_dirs=lambda: None,
     )
     monkeypatch.setattr(db, "settings", fake)
-    # init_db() triggers the migration; build the legacy rows first, so create
-    # bare tables without migrating by initialising, then clearing the flag.
+    # init_db() triggers the migrations; build the legacy rows first, so create
+    # bare tables without migrating by initialising, then clearing the flags.
     db.init_db()
     with db._connect() as conn:
         conn.execute("DELETE FROM meta WHERE key = 'projects_migrated'")
+        conn.execute("DELETE FROM meta WHERE key = 'originals_backfilled'")
     return fake
 
 
@@ -128,3 +129,68 @@ def test_failed_only_videos_do_not_become_entries(fresh_db):
     db.update_job(job.id, status="failed", error="boom")
     assert db.migrate_legacy_projects() == 0
     assert db.list_projects() == []
+
+
+# --- Second repair pass: originals recovered from PREVIEW job results --------
+
+def _legacy_preview(url, rows, title, created_at):
+    """A finished old-style transcript preview: bilingual rows live in the
+    job's result JSON (not the transcript column)."""
+    job = db.create_job(url, "es", mode="preview")
+    db.update_job(job.id, status="done", result=json.dumps(
+        {"title": title, "transcript_source": "whisper (en)", "original_language": "en", "rows": rows}
+    ))
+    with db._connect() as conn:
+        conn.execute("UPDATE jobs SET created_at = ?, updated_at = ? WHERE id = ?",
+                     (created_at, created_at, job.id))
+    return job
+
+
+def test_backfill_restores_originals_from_preview_results(fresh_db):
+    # The real-world shape: a bilingual preview, then a dub from edited
+    # overrides whose stored transcript is Spanish-only. The first migration
+    # finds no bilingual DUB transcript, so the entry comes out target-only.
+    _legacy_preview(f"https://www.youtube.com/watch?v={SRC}",
+                    _bilingual_rows(), "Hello World", "2026-01-01T00:00:00+00:00")
+    _legacy_dub(f"https://www.youtube.com/watch?v={SRC}", DUB1,
+                _target_only_rows(), "[ES] Hola", "2026-01-02T00:00:00+00:00")
+    db.migrate_legacy_projects()
+    project = db.list_projects()[0]
+    assert not any(r.get("original_text") for r in project.rows_list())  # the reported bug
+
+    assert db.backfill_original_transcripts() == 1
+
+    repaired = db.get_project(project.id)
+    rows = repaired.rows_list()
+    assert [r["original_text"] for r in rows] == ["Hello", "World"]
+    assert [r["translated_text"] for r in rows] == ["Hola v2", "Mundo v2"]  # edits kept
+    assert [r["text"] for r in repaired.source_rows_list()] == ["Hello", "World"]
+    # Acquired rows repaired too, so Revert can't drop the English again.
+    assert all(r.get("original_text") for r in repaired.acquired_rows_list())
+    assert repaired.source_title == "Hello World"  # recovered from the preview
+    # A data repair is NOT a user edit: the entry stays published.
+    assert repaired.state == "published"
+    assert any(e["action"].startswith("Library repaired") for e in db.list_events())
+
+
+def test_backfill_falls_back_to_position_when_times_were_nudged(fresh_db):
+    donor = [
+        {"start": 0.0, "end": 2.0, "original_text": "Hello", "translated_text": "Hola"},
+        {"start": 2.0, "end": 4.0, "original_text": "World", "translated_text": "Mundo"},
+    ]
+    nudged = [
+        {"start": 0.1, "end": 2.0, "original_text": None, "translated_text": "Hola v2"},
+        {"start": 2.2, "end": 4.0, "original_text": None, "translated_text": "Mundo v2"},
+    ]
+    filled = db.fill_original_texts(nudged, donor)
+    assert [r["original_text"] for r in filled] == ["Hello", "World"]
+
+
+def test_backfill_runs_once(fresh_db):
+    _legacy_preview(f"https://www.youtube.com/watch?v={SRC}",
+                    _bilingual_rows(), "Hello World", "2026-01-01T00:00:00+00:00")
+    _legacy_dub(f"https://www.youtube.com/watch?v={SRC}", DUB1,
+                _target_only_rows(), "[ES] Hola", "2026-01-02T00:00:00+00:00")
+    db.migrate_legacy_projects()
+    assert db.backfill_original_transcripts() == 1
+    assert db.backfill_original_transcripts() == 0  # meta-flag guarded
