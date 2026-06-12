@@ -17,7 +17,10 @@ def test_duck_filter_ducks_the_original_under_the_narration():
     # back in the pauses), then mixed with the full narration and limited so the
     # summed signal can't clip.
     assert "[bed][sc]sidechaincompress=" in graph and "[ducked]" in graph
-    assert "[ducked][dub]amix=" in graph and "normalize=0" in graph
+    # amix mixes the two; we avoid the 'normalize' option (ffmpeg >= 4.4 only --
+    # Debian 11 has 4.3) and undo amix's default 1/n halving with volume=2.
+    assert "[ducked][dub]amix=" in graph and "normalize" not in graph
+    assert "volume=2.0" in graph
     assert "alimiter=" in graph and graph.rstrip().endswith("[aout]")
 
 

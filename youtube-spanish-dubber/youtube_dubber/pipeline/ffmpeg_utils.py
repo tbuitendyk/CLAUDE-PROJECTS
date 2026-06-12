@@ -141,8 +141,12 @@ def duck_filter_complex(bed_volume: float) -> str:
         f"volume={bed_volume:.3f}[bed];"
         "[1:a]aresample=48000,aformat=channel_layouts=stereo,asplit=2[dub][sc];"
         "[bed][sc]sidechaincompress=threshold=0.04:ratio=8:attack=20:release=350:makeup=1[ducked];"
-        "[ducked][dub]amix=inputs=2:duration=longest:dropout_transition=0:normalize=0,"
-        "alimiter=limit=0.98[aout]"
+        # amix's 'normalize' option only exists in ffmpeg >= 4.4; Debian 11 ships
+        # 4.3 and errors on it. So let amix apply its default 1/n scaling (which
+        # halves both inputs) and undo it with volume=2 -- identical to
+        # normalize=0 while the streams overlap -- then limit the sum vs clipping.
+        "[ducked][dub]amix=inputs=2:duration=longest:dropout_transition=0,"
+        "volume=2.0,alimiter=limit=0.98[aout]"
     )
 
 

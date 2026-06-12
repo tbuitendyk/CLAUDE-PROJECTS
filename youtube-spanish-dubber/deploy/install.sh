@@ -252,20 +252,3 @@ Install complete. Remaining manual steps (see README.md for full detail):
               -d '{"url": "https://www.youtube.com/watch?v=XXXXXXXXXXX"}'
 ==============================================================================
 EOF
-
-# === TEMP-DIAG: dump the most recent failed job's stored error =============
-( set +e
-  echo "########## [JOBERR] ##########"
-  "${INSTALL_DIR}/.venv/bin/python" - <<'PY'
-import sqlite3
-con = sqlite3.connect("/opt/youtube-dubber/data/jobs.sqlite3")
-con.row_factory = sqlite3.Row
-rows = con.execute("select id,status,stage,progress_pct,error from jobs "
-                   "where status='failed' order by updated_at desc limit 2").fetchall()
-for r in rows:
-    print("---- job", r["id"], "status", r["status"], "stage", r["stage"], "pct", r["progress_pct"])
-    print((r["error"] or "(no error stored)")[-2500:])
-PY
-  echo "########## [JOBERR] end ##########"
-) || true
-# === END TEMP-DIAG =========================================================
