@@ -1301,6 +1301,8 @@
     if (item.voice) bits.push(item.voice);
     if (item.has_thumbnail) bits.push("custom thumbnail");
     if (item.has_bed) bits.push("audio bed cached");
+    // Last-modified stamp; the server already lists entries newest-first by it.
+    if (item.updated_at) bits.push("updated " + formatEventTime(item.updated_at));
     meta.textContent = ` ${bits.join(" · ")}`;
     name.appendChild(meta);
 
