@@ -265,6 +265,12 @@ def _on_startup() -> None:
     if reset:
         log.info("Reset %d orphaned 'running' job(s) left over from a previous run", reset)
     worker.start_background()
+    # One-time fix: load live published title/thumbnail onto entries missing
+    # them. Runs in the background (it hits YouTube) so it never delays
+    # readiness, and is meta-flag guarded so it only does real work once.
+    threading.Thread(
+        target=worker.backfill_published_metadata, name="published-metadata-backfill", daemon=True
+    ).start()
     log.info("Service ready on http://%s:%s", settings.host, settings.port)
 
 
