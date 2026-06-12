@@ -210,6 +210,80 @@ def _finish_preview(job: db.Job, project: db.Project | None, result: dict) -> No
     )
 
 
+_PUBLISHED_METADATA_FLAG = "published_metadata_backfilled"
+
+
+def _fetch_published_metadata(video_id: str) -> tuple[str | None, str | None]:
+    """Fetch a published video's current title and thumbnail (as a data-URI)
+    from YouTube. Module-level so tests can stub it. Lazy imports keep yt-dlp /
+    PIL out of the lean import path."""
+    import tempfile
+    from pathlib import Path
+
+    from PIL import Image
+
+    from . import naming
+    from .pipeline import downloader, thumbnail_preview as tp
+
+    with tempfile.TemporaryDirectory() as tmp:
+        source = downloader.fetch_thumbnail(naming.watch_url(video_id), Path(tmp))
+        if source is None:
+            return None, None
+        thumbnail = None
+        if source.thumbnail_path:
+            with Image.open(source.thumbnail_path) as image:
+                thumbnail = tp.image_to_data_uri(image.convert("RGB"))
+        return (source.title or None), thumbnail
+
+
+def backfill_published_metadata() -> int:
+    """One-time fix: load the live published title + thumbnail onto library
+    entries that are published but missing either. Runs once (meta-flag guarded),
+    best-effort per entry; a transient YouTube failure leaves the flag unset so
+    the remaining entries are retried on the next restart. Returns how many
+    entries were filled."""
+    if db.get_meta(_PUBLISHED_METADATA_FLAG):
+        return 0
+    targets = [
+        p for p in db.list_projects()
+        if p.target_video_id and (not p.title or not p.thumbnail)
+    ]
+    if not targets:
+        db.set_meta(_PUBLISHED_METADATA_FLAG)
+        return 0
+
+    filled = 0
+    failures = 0
+    for project in targets:
+        try:
+            title, thumbnail = _fetch_published_metadata(project.target_video_id)
+            if not title and not thumbnail:
+                log.warning("Published video %s returned no title/thumbnail; skipping",
+                            project.target_video_id)
+                failures += 1
+                continue
+            db.set_published_metadata(
+                project.id,
+                title=title if not project.title else None,
+                thumbnail=thumbnail if not project.thumbnail else None,
+            )
+            db.record_event(
+                "Library repaired: loaded published title & thumbnail",
+                video_title=title or project.title, project_id=project.id,
+            )
+            filled += 1
+        except Exception as exc:  # noqa: BLE001 -- best effort; retried next restart
+            log.warning("Couldn't load published metadata for %s (%s)",
+                        project.target_video_id, exc)
+            failures += 1
+
+    if failures == 0:
+        db.set_meta(_PUBLISHED_METADATA_FLAG)
+    log.info("Backfilled published title/thumbnail onto %d entr(ies); %d failed",
+             filled, failures)
+    return filled
+
+
 def _process(job: db.Job) -> None:
     work_dir = db.job_work_dir(job.id)
     on_progress = _make_progress_fn(job.id)

@@ -109,3 +109,59 @@ def test_finish_preview_stores_draft_transcript(fresh_db):
     assert entry.rows_list() == _bilingual_rows()
     assert entry.acquired_rows_list() == _bilingual_rows()  # the revert target
     assert db.list_events()[0]["action"] == "Transcript preview ready"
+
+
+# --- One-time published-metadata backfill -----------------------------------
+
+def test_backfill_published_metadata_loads_title_and_thumbnail(fresh_db, monkeypatch):
+    project = db.upsert_project("srcVID00001", "es")
+    # Published, but the legacy entry has no title and no thumbnail.
+    db.mark_project_published(project.id, "dubVID00001", "", _bilingual_rows(), None, None, None)
+    assert not db.get_project(project.id).title
+    assert not db.get_project(project.id).thumbnail
+
+    monkeypatch.setattr(worker, "_fetch_published_metadata",
+                        lambda vid: ("[ES] Hola (Hello World)", "data:image/jpeg;base64,xyz"))
+
+    assert worker.backfill_published_metadata() == 1
+
+    repaired = db.get_project(project.id)
+    assert repaired.title == "[ES] Hola (Hello World)"
+    assert repaired.thumbnail == "data:image/jpeg;base64,xyz"
+    # Loading the live thumbnail is a repair, not an edit -> still published.
+    assert repaired.state == "published"
+    assert any(e["action"].startswith("Library repaired: loaded published") for e in db.list_events())
+
+
+def test_backfill_published_metadata_runs_once(fresh_db, monkeypatch):
+    project = db.upsert_project("srcVID00001", "es")
+    db.mark_project_published(project.id, "dubVID00001", "", _bilingual_rows(), None, None, None)
+    monkeypatch.setattr(worker, "_fetch_published_metadata", lambda vid: ("T", "data:x"))
+    assert worker.backfill_published_metadata() == 1
+    assert db.get_meta(worker._PUBLISHED_METADATA_FLAG)
+    assert worker.backfill_published_metadata() == 0  # flag-guarded
+
+
+def test_backfill_retries_when_fetch_fails(fresh_db, monkeypatch):
+    project = db.upsert_project("srcVID00001", "es")
+    db.mark_project_published(project.id, "dubVID00001", "", _bilingual_rows(), None, None, None)
+
+    def boom(vid):
+        raise RuntimeError("bot check")
+    monkeypatch.setattr(worker, "_fetch_published_metadata", boom)
+
+    assert worker.backfill_published_metadata() == 0
+    # No flag set -> a later restart retries.
+    assert db.get_meta(worker._PUBLISHED_METADATA_FLAG) is None
+
+
+def test_backfill_skips_entries_that_already_have_both(fresh_db, monkeypatch):
+    project = db.upsert_project("srcVID00001", "es")
+    db.mark_project_published(project.id, "dubVID00001", "Has title",
+                              _bilingual_rows(), "data:image/jpeg;base64,have", None, None)
+    called = []
+    monkeypatch.setattr(worker, "_fetch_published_metadata",
+                        lambda vid: called.append(vid) or ("x", "y"))
+    assert worker.backfill_published_metadata() == 0
+    assert called == []  # nothing was missing, so YouTube was never hit
+    assert db.get_meta(worker._PUBLISHED_METADATA_FLAG)

@@ -747,6 +747,27 @@ def store_acquired_transcript(project_id: str, rows: list[dict]) -> Optional[Pro
     return update_project(project_id, **fields)
 
 
+def set_published_metadata(project_id: str, title: str | None = None, thumbnail: str | None = None) -> Optional[Project]:
+    """One-time repair: load a published video's real title and/or thumbnail onto
+    its library entry, filling only what's missing. Loading the actual published
+    thumbnail is a data repair, not a user edit, so a published entry stays
+    published -- its publish fingerprint moves with the thumbnail rather than
+    flagging a phantom redub-in-progress."""
+    project = get_project(project_id)
+    if project is None:
+        return None
+    fields: dict[str, Any] = {}
+    if title and not project.title:
+        fields["title"] = title
+    if thumbnail and not project.thumbnail:
+        fields["thumbnail"] = thumbnail
+        if project.state == "published":
+            fields["published_fingerprint"] = _fingerprint(project.rows_list(), thumbnail)
+    if not fields:
+        return project
+    return update_project(project_id, **fields)
+
+
 def delete_project(project_id: str) -> Optional[Project]:
     """Remove an entry (any state). Returns the deleted row so the caller can
     clean up its cached bed file."""
@@ -761,6 +782,19 @@ def delete_project(project_id: str) -> Optional[Project]:
 # --------------------------------------------------------------------------
 # Action log (permanent, append-only)
 # --------------------------------------------------------------------------
+
+def get_meta(key: str) -> Optional[str]:
+    with _connect() as conn:
+        row = conn.execute("SELECT value FROM meta WHERE key = ?", (key,)).fetchone()
+    return row["value"] if row else None
+
+
+def set_meta(key: str, value: str | None = None) -> None:
+    with _connect() as conn:
+        conn.execute(
+            "INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)", (key, value or _now())
+        )
+
 
 def record_event(
     action: str,
