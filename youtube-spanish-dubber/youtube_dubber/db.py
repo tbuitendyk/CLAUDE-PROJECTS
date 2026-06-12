@@ -31,6 +31,8 @@ CREATE TABLE IF NOT EXISTS jobs (
     result TEXT,
     transcript_overrides TEXT,
     thumbnail_override TEXT,
+    transcript TEXT,
+    title TEXT,
     youtube_video_id TEXT,
     youtube_video_url TEXT,
     created_at TEXT NOT NULL,
@@ -46,6 +48,10 @@ _MIGRATIONS = (
     "ALTER TABLE jobs ADD COLUMN transcript_overrides TEXT",
     "ALTER TABLE jobs ADD COLUMN progress_pct REAL",
     "ALTER TABLE jobs ADD COLUMN thumbnail_override TEXT",
+    # The finished dub's timestamped transcript (original + target text) and the
+    # generated video title -- retained for the transcripts library + redub.
+    "ALTER TABLE jobs ADD COLUMN transcript TEXT",
+    "ALTER TABLE jobs ADD COLUMN title TEXT",
 )
 
 # Lifecycle: queued -> running -> done
@@ -81,6 +87,11 @@ class Job:
     # for the upload instead of auto-generating one -- the thumbnail analogue of
     # transcript_overrides. Stored but kept out of API listings (see to_dict).
     thumbnail_override: Optional[str] = None
+    # The finished dub's timestamped transcript (JSON: rows of start/end/
+    # original_text/translated_text) and the generated video title. Retained on
+    # every dub for the transcripts library + redub. Big, so kept out of listings.
+    transcript: Optional[str] = None
+    title: Optional[str] = None
     youtube_video_id: Optional[str] = None
     youtube_video_url: Optional[str] = None
     created_at: str = field(default_factory=_now)
@@ -103,6 +114,9 @@ class Job:
         # The thumbnail override is a full base64 image -- too big to splash
         # through every job listing. Expose only whether one is set.
         data["has_thumbnail_override"] = bool(data.pop("thumbnail_override", None))
+        # The transcript is large (every line); keep it out of job listings and
+        # expose only whether one exists. The transcripts API serves it in full.
+        data["has_transcript"] = bool(data.pop("transcript", None))
         return data
 
 
@@ -172,6 +186,68 @@ def list_jobs(limit: int = 50) -> list[Job]:
             "SELECT * FROM jobs ORDER BY created_at DESC LIMIT ?", (limit,)
         ).fetchall()
     return [Job.from_row(row) for row in rows]
+
+
+def list_transcripts(limit: int = 100) -> list[dict[str, Any]]:
+    """Lightweight listing for the transcripts library: jobs that have a stored
+    transcript, newest first, with the generated video name + line count (not the
+    full transcript text)."""
+    with _connect() as conn:
+        rows = conn.execute(
+            "SELECT id, title, target_language, youtube_video_url, transcript, created_at "
+            "FROM jobs WHERE transcript IS NOT NULL ORDER BY created_at DESC LIMIT ?",
+            (limit,),
+        ).fetchall()
+    out: list[dict[str, Any]] = []
+    for row in rows:
+        try:
+            line_count = len(json.loads(row["transcript"]))
+        except (ValueError, TypeError):
+            line_count = 0
+        out.append({
+            "id": row["id"],
+            "title": row["title"] or row["youtube_video_url"] or row["id"],
+            "target_language": row["target_language"],
+            "youtube_video_url": row["youtube_video_url"],
+            "line_count": line_count,
+            "created_at": row["created_at"],
+        })
+    return out
+
+
+def get_transcript(job_id: str) -> Optional[dict[str, Any]]:
+    """Full transcript (rows + metadata) for one job, or None if it has none."""
+    with _connect() as conn:
+        row = conn.execute(
+            "SELECT id, title, target_language, youtube_video_url, source_url, transcript "
+            "FROM jobs WHERE id = ?",
+            (job_id,),
+        ).fetchone()
+    if not row or not row["transcript"]:
+        return None
+    try:
+        rows = json.loads(row["transcript"])
+    except ValueError:
+        rows = []
+    return {
+        "id": row["id"],
+        "title": row["title"] or row["id"],
+        "target_language": row["target_language"],
+        "youtube_video_url": row["youtube_video_url"],
+        "source_url": row["source_url"],
+        "rows": rows,
+    }
+
+
+def set_transcript(job_id: str, rows: list[dict]) -> bool:
+    """Replace a job's stored transcript (the library's edit/fix). Returns False
+    if the job doesn't exist."""
+    with _connect() as conn:
+        cur = conn.execute(
+            "UPDATE jobs SET transcript = ?, updated_at = ? WHERE id = ?",
+            (json.dumps(rows), _now(), job_id),
+        )
+        return cur.rowcount > 0
 
 
 def update_job(job_id: str, **fields: Any) -> None:

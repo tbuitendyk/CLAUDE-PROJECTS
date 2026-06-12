@@ -182,6 +182,21 @@ class ThumbnailApplyRequest(BaseModel):
         return _require_youtube_url(value)
 
 
+class TranscriptRow(BaseModel):
+    """One timestamped transcript line. `original_text` is the source-language
+    text (None for already-target captions / overrides); `translated_text` is
+    what gets narrated."""
+    start: float
+    end: float
+    original_text: Optional[str] = None
+    translated_text: str
+
+
+class TranscriptUpdateRequest(BaseModel):
+    """A hand-fixed transcript saved back to the library before a redub."""
+    rows: list[TranscriptRow]
+
+
 @app.on_event("startup")
 def _on_startup() -> None:
     db.init_db()
@@ -382,6 +397,31 @@ def cancel_job(job_id: str) -> dict:
             "A job that's already running must be stopped by restarting the service."
         ),
     )
+
+
+@app.get("/transcripts")
+def list_transcripts(limit: int = 100) -> list[dict]:
+    """The transcripts library: finished dubs that retained a transcript, newest
+    first, by generated video name (no full text -- see /transcripts/{id})."""
+    return db.list_transcripts(limit=limit)
+
+
+@app.get("/transcripts/{job_id}")
+def get_transcript(job_id: str) -> dict:
+    """The full timestamped transcript (rows + metadata) for one job."""
+    data = db.get_transcript(job_id)
+    if data is None:
+        raise HTTPException(status_code=404, detail="No transcript stored for that job")
+    return data
+
+
+@app.put("/transcripts/{job_id}")
+def update_transcript(job_id: str, payload: TranscriptUpdateRequest) -> dict:
+    """Save a hand-fixed transcript back to the library (used before a redub)."""
+    rows = [row.model_dump() for row in payload.rows]
+    if not db.set_transcript(job_id, rows):
+        raise HTTPException(status_code=404, detail="Job not found")
+    return {"id": job_id, "rows": rows, "saved": True}
 
 
 @app.post("/admin/restart")

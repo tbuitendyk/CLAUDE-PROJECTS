@@ -79,6 +79,11 @@ def run(
         on_progress("transcript", f"Using your edited transcript ({len(transcript_override)} lines)...")
         segments = transcript_override
         transcript_source = "edited transcript from preview"
+        # An override carries only the (target-language) lines we'll narrate.
+        transcript_rows = [
+            {"start": s.start, "end": s.end, "original_text": None, "translated_text": s.text}
+            for s in segments
+        ]
     else:
         on_progress("transcript", "Acquiring a Spanish transcript...")
         # The transcript stage is long and largely silent (model load, VAD,
@@ -99,6 +104,18 @@ def run(
         on_progress("transcript", f"Transcript ready via: {result.source} ({len(result.segments)} lines)", fraction=1.0)
         segments = result.segments
         transcript_source = result.source
+        # Keep both columns when a translation happened, so the library shows
+        # source vs target; otherwise (already-target captions) just the target.
+        if result.original_segments is not None:
+            transcript_rows = [
+                {"start": o.start, "end": o.end, "original_text": o.text, "translated_text": t.text}
+                for o, t in zip(result.original_segments, result.segments)
+            ]
+        else:
+            transcript_rows = [
+                {"start": s.start, "end": s.end, "original_text": None, "translated_text": s.text}
+                for s in result.segments
+            ]
 
     on_progress("synthesizing", f"Synthesizing Spanish narration with voice '{settings.tts_voice}'...")
     narration_path = tts.synthesize_track(
@@ -173,6 +190,7 @@ def run(
         "youtube_video_url": video_url,
         "transcript_source": transcript_source,
         "title": title,
+        "transcript": transcript_rows,
     }
 
 

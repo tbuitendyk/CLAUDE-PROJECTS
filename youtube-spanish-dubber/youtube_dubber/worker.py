@@ -135,6 +135,10 @@ def _process(job: db.Job) -> None:
                 progress_pct=100.0,
                 youtube_video_id=result["youtube_video_id"],
                 youtube_video_url=result["youtube_video_url"],
+                # Retain the timestamped transcript + generated title for the
+                # transcripts library and redub.
+                transcript=json.dumps(result["transcript"]) if result.get("transcript") else None,
+                title=result.get("title"),
                 error=None,
             )
     except Exception as exc:  # noqa: BLE001 -- surface any failure on the job record
