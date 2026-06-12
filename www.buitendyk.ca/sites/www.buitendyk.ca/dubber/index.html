@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Spanish Video Dubber &mdash; buitendyk.ca</title>
   <meta name="description" content="Submit an English YouTube video, generate a Spanish voice-over, and publish it to a YouTube channel.">
-  <link rel="stylesheet" href="/assets/style.css?v=15">
+  <link rel="stylesheet" href="/assets/style.css?v=16">
 </head>
 <body>
   <header class="site-header">
@@ -136,6 +136,45 @@
       </div>
     </div>
 
+    <!-- Redub a completed project: re-narrate one of our own finished videos
+         from a saved (and possibly hand-fixed) transcript, same language, over
+         its kept music/SFX, as a new upload. dubber.js gates on auth, fills the
+         transcript picker from the library, and submits it as a /jobs override. -->
+    <div class="panel" id="redub-panel" style="display:none;">
+      <div class="box-title">Redub completed project</div>
+      <p class="hint" style="margin-top:0.2rem;">
+        Re-dub one of <strong>your own finished videos</strong> from a saved
+        transcript &mdash; recreates the spoken track in the same language over the
+        original music &amp; sound effects, and uploads it as a new video. Need to
+        correct a line first? Fix it in the <strong>Transcripts library</strong>
+        below, then redub.
+      </p>
+      <div class="field" style="margin-top:0.75rem;">
+        <label for="redub-transcript">Saved transcript</label>
+        <select id="redub-transcript"></select>
+      </div>
+      <div class="field">
+        <label for="redub-url">Video link (from your channel)</label>
+        <input type="url" id="redub-url" placeholder="https://www.youtube.com/watch?v=&hellip;">
+      </div>
+      <div class="field" style="display:flex; gap:0.75rem; flex-wrap:wrap; align-items:center; margin-bottom:0;">
+        <button class="btn ghosted" id="redub-btn" type="button" disabled>Redub this video</button>
+        <span class="hint" id="redub-message" style="margin-top:0;"></span>
+      </div>
+    </div>
+
+    <!-- Transcripts library: every completed dub's timestamped transcript,
+         listed by generated video name. View, fix lines + save, or download.
+         dubber.js fills #library-list from GET /transcripts. -->
+    <div class="panel" id="library-panel" style="display:none;">
+      <div class="box-title">Transcripts library</div>
+      <p class="hint" style="margin-top:0.2rem;">
+        Every dubbed video keeps its timestamped transcript here. Open one to read
+        it, fix any line and save (then redub above to apply), or download it.
+      </p>
+      <div id="library-list" style="margin-top:0.75rem;"></div>
+    </div>
+
     <div id="job-list"></div>
   </main>
 
@@ -143,6 +182,6 @@
     buitendyk.ca &mdash; self-hosted on a personal VPS, built with free &amp; open-source tools.
   </footer>
 
-  <script src="/dubber/dubber.js?v=12"></script>
+  <script src="/dubber/dubber.js?v=13"></script>
 </body>
 </html>

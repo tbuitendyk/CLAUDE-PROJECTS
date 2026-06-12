@@ -32,6 +32,13 @@
   const rethumbBtn = document.getElementById("rethumb-btn");
   const rethumbPreview = document.getElementById("rethumb-preview");
   const rethumbMessage = document.getElementById("rethumb-message");
+  const redubPanel = document.getElementById("redub-panel");
+  const redubUrl = document.getElementById("redub-url");
+  const redubTranscript = document.getElementById("redub-transcript");
+  const redubBtn = document.getElementById("redub-btn");
+  const redubMessage = document.getElementById("redub-message");
+  const libraryPanel = document.getElementById("library-panel");
+  const libraryList = document.getElementById("library-list");
 
   let authenticated = false;
   const pollTimers = new Map(); // job id -> setInterval handle
@@ -68,6 +75,13 @@
     // The "Restart Dubber service" control is an operator action -- only show
     // it once signed in (same gate as the dubbing buttons).
     if (serviceControls) serviceControls.style.display = authenticated ? "block" : "none";
+    // Redub + transcripts library are operator features too -- same auth gate.
+    if (redubPanel) redubPanel.style.display = authenticated ? "block" : "none";
+    if (libraryPanel) libraryPanel.style.display = authenticated ? "block" : "none";
+    if (redubBtn) {
+      redubBtn.disabled = !authenticated;
+      redubBtn.classList.toggle("ghosted", !authenticated);
+    }
   }
 
   async function checkAuth() {
@@ -76,6 +90,7 @@
       if (res.ok) {
         setAuthState("unlocked", "Signed in — dubbing is enabled.");
         loadExistingJobs();
+        loadTranscripts();
       } else if (res.status === 401 || res.status === 403) {
         setAuthState("locked", "Sign in to enable dubbing.");
       } else {
@@ -428,6 +443,9 @@
         if (TERMINAL.has(job.status)) {
           clearInterval(pollTimers.get(jobId));
           pollTimers.delete(jobId);
+          // A finished dub adds (or a redub refreshes) a transcript -- pull the
+          // library so the new entry shows without a page reload.
+          if (job.status === "done") loadTranscripts();
         }
       } catch (err) {
         /* transient network hiccup — keep polling */
@@ -1024,6 +1042,251 @@
   }
   document.getElementById("video-url").addEventListener("input", maybeResetStaleThumbnails);
   document.getElementById("target-lang").addEventListener("change", maybeResetStaleThumbnails);
+
+  // --- Transcripts library + Redub ---------------------------------------
+  // The library lists every completed dub's stored transcript (GET /transcripts),
+  // lets you read/fix lines (GET + PUT /transcripts/{id}) or download them, and
+  // feeds the redub picker. Redub re-narrates one of our own finished videos from
+  // a saved transcript -- same language, over its kept music/SFX -- by POSTing a
+  // normal /jobs with the transcript supplied as transcript_overrides.
+
+  let libraryItems = [];
+
+  async function loadTranscripts() {
+    if (!authenticated) return;
+    try {
+      const res = await fetch(`${API_BASE}/transcripts`, { credentials: "same-origin" });
+      if (!res.ok) return;
+      const items = await res.json();
+      if (!Array.isArray(items)) return;
+      libraryItems = items;
+      renderLibrary(items);
+      populateRedubSelect(items);
+    } catch (err) {
+      /* non-fatal */
+    }
+  }
+
+  function populateRedubSelect(items) {
+    const prev = redubTranscript.value;
+    redubTranscript.textContent = "";
+    if (!items.length) {
+      const opt = document.createElement("option");
+      opt.value = "";
+      opt.textContent = "No saved transcripts yet — dub a video first";
+      redubTranscript.appendChild(opt);
+      redubTranscript.disabled = true;
+      return;
+    }
+    redubTranscript.disabled = false;
+    const placeholder = document.createElement("option");
+    placeholder.value = "";
+    placeholder.textContent = "Choose a saved transcript…";
+    redubTranscript.appendChild(placeholder);
+    items.forEach((it) => {
+      const opt = document.createElement("option");
+      opt.value = it.id;
+      opt.textContent = `${it.title} (${it.line_count} lines)`;
+      if (it.id === prev) opt.selected = true;
+      redubTranscript.appendChild(opt);
+    });
+  }
+
+  // Selecting a transcript pre-fills the video URL with that project's published
+  // link (editable) -- a redub usually targets the very video the transcript made.
+  redubTranscript.addEventListener("change", () => {
+    const item = libraryItems.find((it) => it.id === redubTranscript.value);
+    if (item && item.youtube_video_url && !redubUrl.value.trim()) {
+      redubUrl.value = item.youtube_video_url;
+    }
+  });
+
+  function setRedubMessage(text, kind) {
+    redubMessage.textContent = text || "";
+    redubMessage.className = "hint" + (kind ? " " + kind : "");
+  }
+
+  async function submitRedub() {
+    if (!authenticated) return;
+    const id = redubTranscript.value;
+    const url = redubUrl.value.trim();
+    if (!id) { setRedubMessage("Pick a saved transcript first.", "bad"); return; }
+    if (!url) { setRedubMessage("Enter the video link from your channel.", "bad"); return; }
+
+    redubBtn.disabled = true;
+    setRedubMessage("Loading the transcript…");
+    try {
+      const tRes = await fetch(`${API_BASE}/transcripts/${id}`, { credentials: "same-origin" });
+      const t = await tRes.json().catch(() => null);
+      if (!tRes.ok || !t || !Array.isArray(t.rows) || !t.rows.length) {
+        setRedubMessage("Couldn't load that transcript.", "bad");
+        return;
+      }
+      const overrides = t.rows
+        .filter((r) => r.translated_text && r.translated_text.trim())
+        .map((r) => ({ start: r.start, end: r.end, text: r.translated_text }));
+      setRedubMessage("Submitting redub…");
+      const res = await fetch(`${API_BASE}/jobs`, {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: url, target_language: t.target_language, mode: "dub", transcript_overrides: overrides }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        const detail = data && (data.detail || data.message);
+        setRedubMessage("Couldn't start the redub: " + (typeof detail === "string" ? detail : `HTTP ${res.status}`), "bad");
+        return;
+      }
+      setRedubMessage(`Redub queued as job ${data.id} — tracking it below.`, "good");
+      renderJob(data);
+      pollJob(data.id);
+    } catch (err) {
+      setRedubMessage("Couldn't reach the dubber service.", "bad");
+    } finally {
+      redubBtn.disabled = !authenticated;
+    }
+  }
+  redubBtn.addEventListener("click", submitRedub);
+
+  function renderLibrary(items) {
+    libraryList.textContent = "";
+    if (!items.length) {
+      const empty = document.createElement("p");
+      empty.className = "hint";
+      empty.textContent = "No transcripts yet — they appear here automatically once a dub finishes.";
+      libraryList.appendChild(empty);
+      return;
+    }
+    items.forEach((item) => libraryList.appendChild(renderLibraryRow(item)));
+  }
+
+  function renderLibraryRow(item) {
+    const row = document.createElement("div");
+    row.className = "library-item";
+
+    const head = document.createElement("div");
+    head.className = "library-head";
+
+    const name = document.createElement("div");
+    name.className = "library-name";
+    if (item.youtube_video_url) {
+      const a = document.createElement("a");
+      a.href = item.youtube_video_url; a.target = "_blank"; a.rel = "noopener";
+      a.textContent = item.title;
+      name.appendChild(a);
+    } else {
+      name.textContent = item.title;
+    }
+    const meta = document.createElement("span");
+    meta.className = "library-meta";
+    meta.textContent = ` ${item.line_count} lines · ${item.target_language}`;
+    name.appendChild(meta);
+    head.appendChild(name);
+
+    const openBtn = document.createElement("button");
+    openBtn.type = "button";
+    openBtn.className = "btn secondary small";
+    openBtn.textContent = "View / edit";
+    head.appendChild(openBtn);
+    row.appendChild(head);
+
+    const body = document.createElement("div");
+    body.className = "library-body";
+    body.style.display = "none";
+    row.appendChild(body);
+
+    let loaded = false;
+    openBtn.addEventListener("click", async () => {
+      const open = body.style.display === "none";
+      body.style.display = open ? "block" : "none";
+      openBtn.textContent = open ? "Hide" : "View / edit";
+      if (open && !loaded) {
+        loaded = true;
+        await openTranscript(item.id, body);
+      }
+    });
+    return row;
+  }
+
+  async function openTranscript(id, body) {
+    body.textContent = "Loading…";
+    let data;
+    try {
+      const res = await fetch(`${API_BASE}/transcripts/${id}`, { credentials: "same-origin" });
+      data = await res.json().catch(() => null);
+      if (!res.ok || !data) { body.textContent = "Couldn't load the transcript."; return; }
+    } catch (err) { body.textContent = "Couldn't reach the dubber service."; return; }
+
+    body.textContent = "";
+    const rows = Array.isArray(data.rows) ? data.rows : [];
+    const inputs = [];
+
+    const list = document.createElement("div");
+    list.className = "transcript-rows";
+    rows.forEach((r) => {
+      const line = document.createElement("div");
+      line.className = "transcript-row";
+      const ts = document.createElement("span");
+      ts.className = "transcript-ts";
+      ts.textContent = formatTimestamp(r.start);
+      line.appendChild(ts);
+      if (r.original_text) {
+        const orig = document.createElement("span");
+        orig.className = "transcript-orig";
+        orig.textContent = r.original_text;
+        line.appendChild(orig);
+      }
+      const input = document.createElement("input");
+      input.type = "text";
+      input.className = "transcript-input";
+      input.value = r.translated_text || "";
+      line.appendChild(input);
+      inputs.push({ start: r.start, end: r.end, original_text: r.original_text || null, input: input });
+      list.appendChild(line);
+    });
+    body.appendChild(list);
+
+    const actions = document.createElement("div");
+    actions.className = "library-actions";
+    const saveBtn = document.createElement("button");
+    saveBtn.type = "button"; saveBtn.className = "btn secondary small"; saveBtn.textContent = "Save fixes";
+    const dlBtn = document.createElement("button");
+    dlBtn.type = "button"; dlBtn.className = "btn secondary small"; dlBtn.textContent = "Download .txt";
+    const msg = document.createElement("span"); msg.className = "hint"; msg.style.marginTop = "0";
+    actions.appendChild(saveBtn); actions.appendChild(dlBtn); actions.appendChild(msg);
+    body.appendChild(actions);
+
+    saveBtn.addEventListener("click", async () => {
+      const out = inputs.map((it) => ({
+        start: it.start, end: it.end, original_text: it.original_text, translated_text: it.input.value,
+      }));
+      saveBtn.disabled = true; msg.textContent = "Saving…"; msg.className = "hint";
+      try {
+        const res = await fetch(`${API_BASE}/transcripts/${id}`, {
+          method: "PUT", credentials: "same-origin",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ rows: out }),
+        });
+        msg.textContent = res.ok ? "Saved. Redub above to apply." : "Couldn't save.";
+        msg.className = "hint" + (res.ok ? " good" : " bad");
+      } catch (err) {
+        msg.textContent = "Couldn't reach the service."; msg.className = "hint bad";
+      } finally { saveBtn.disabled = false; }
+    });
+
+    dlBtn.addEventListener("click", () => downloadTranscript(data.title || id, inputs));
+  }
+
+  function downloadTranscript(title, inputs) {
+    const lines = inputs.map((it) => `[${formatTimestamp(it.start)} → ${formatTimestamp(it.end)}] ${it.input.value}`);
+    const blob = new Blob([lines.join("\n") + "\n"], { type: "text/plain" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = (title || "transcript").replace(/[^\w.-]+/g, "_").slice(0, 80) + ".txt";
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    URL.revokeObjectURL(a.href);
+  }
 
   checkAuth();
 })();
