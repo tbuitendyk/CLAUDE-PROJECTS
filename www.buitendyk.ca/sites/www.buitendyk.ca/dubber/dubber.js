@@ -768,8 +768,9 @@
       if (regions.length) {
         const intro = document.createElement("p");
         intro.className = "hint";
-        intro.textContent = "Detected text and its translation. Edit any line, then " +
-          "re-render to preview your changes.";
+        intro.textContent = "Detected text and its translation. Edit the text, font, or " +
+          "colour of any line (the font/colour pre-fill with what was detected — change them " +
+          "if it guessed wrong), then re-render to preview your changes.";
         opts.panel.appendChild(intro);
 
         const list = document.createElement("div");
@@ -796,7 +797,41 @@
           input.addEventListener("input", markDirty);
           row.appendChild(input);
 
-          inputs.push({ polygon: region.polygon, input: input });
+          // Per-line font + colour overrides. They pre-fill with what the
+          // detector matched; correct them when it guessed wrong, then re-render.
+          const style = document.createElement("span");
+          style.className = "thumb-region-style";
+
+          const fontSelect = document.createElement("select");
+          fontSelect.className = "thumb-region-font";
+          [["auto", "Auto font"], ["serif", "Serif"], ["sans", "Sans-serif"]].forEach(([val, label]) => {
+            const opt = document.createElement("option");
+            opt.value = val;
+            opt.textContent = label;
+            fontSelect.appendChild(opt);
+          });
+          fontSelect.value = (region.font_family === "serif" || region.font_family === "sans")
+            ? region.font_family : "auto";
+          fontSelect.setAttribute("aria-label", `Font for “${region.text}”`);
+          fontSelect.addEventListener("change", markDirty);
+          style.appendChild(fontSelect);
+
+          const colorInput = document.createElement("input");
+          colorInput.type = "color";
+          colorInput.className = "thumb-region-color";
+          colorInput.value = /^#[0-9a-fA-F]{6}$/.test(region.fill_color || "")
+            ? region.fill_color : "#ffffff";
+          colorInput.title = "Text colour";
+          colorInput.setAttribute("aria-label", `Text colour for “${region.text}”`);
+          colorInput.addEventListener("input", markDirty);
+          style.appendChild(colorInput);
+
+          row.appendChild(style);
+
+          inputs.push({
+            polygon: region.polygon, input: input,
+            fontSelect: fontSelect, colorInput: colorInput,
+          });
           list.appendChild(row);
         });
         opts.panel.appendChild(list);
@@ -848,9 +883,11 @@
 
     async function rerender(inputs, button) {
       if (!state) return;
-      const regions = inputs.map(({ polygon, input }) => ({
+      const regions = inputs.map(({ polygon, input, fontSelect, colorInput }) => ({
         polygon: polygon,
         translation: input.value,
+        font_family: fontSelect ? fontSelect.value : "auto",  // "auto" -> server auto-detects
+        fill_color: colorInput ? colorInput.value : null,     // "#rrggbb"
       }));
       const restore = button.textContent;
       button.disabled = true;

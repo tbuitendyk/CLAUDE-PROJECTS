@@ -564,6 +564,36 @@ footer.site-footer {
   font-size: 0.95rem;
 }
 .thumb-region-input:focus { outline: none; border-color: var(--accent); }
+/* Per-line font + colour overrides, sitting after the translation input. */
+.thumb-region-style {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex: 0 0 auto;
+}
+.thumb-region-font {
+  padding: 0.45rem 0.5rem;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+.thumb-region-font:focus { outline: none; border-color: var(--accent); }
+.thumb-region-color {
+  width: 2.2rem;
+  height: 2.2rem;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.thumb-region-color::-webkit-color-swatch-wrapper { padding: 3px; }
+.thumb-region-color::-webkit-color-swatch { border: none; border-radius: 5px; }
+.thumb-region-color::-moz-color-swatch { border: none; border-radius: 5px; }
 
 .thumb-actions {
   display: flex;
