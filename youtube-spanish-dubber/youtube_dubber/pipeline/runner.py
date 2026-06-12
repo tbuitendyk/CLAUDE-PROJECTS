@@ -118,13 +118,21 @@ def run(
     # None and video.mux falls back to a narration-only ("replace") mix.
     bed_path = None
     if settings.audio_mode == "music":
-        on_progress("muxing", "Removing the original speech (keeping music & sound effects)…")
-        bed_path = separate.instrumental_bed(
-            Path(source.video_path), work_dir,
-            on_progress=lambda f: on_progress(
-                "muxing", f"Removing the original speech… {int(f * 100)}%", fraction=f
-            ),
-        )
+        # Separation runs for minutes with long silent gaps (decoding the whole
+        # track, loading the model) before the first chunk reports -- so drive it
+        # through a heartbeat (like the transcript stage) to keep the bar moving,
+        # with the real per-chunk fraction re-anchoring it.
+        with progress.StageHeartbeat(
+            lambda message, fraction: on_progress("separating", message, fraction=fraction)
+        ) as heartbeat:
+            heartbeat.report("Removing the original speech (keeping music & sound effects)…", 0.0)
+            bed_path = separate.instrumental_bed(
+                Path(source.video_path), work_dir,
+                on_progress=lambda f: heartbeat.report(
+                    f"Removing the original speech… {int(f * 100)}%", f
+                ),
+            )
+        on_progress("separating", "Original speech removed; mixing the bed…", fraction=1.0)
         memory.release_to_os()  # free the separation model + audio buffers
 
     on_progress("muxing", f"Combining narration with the source video (mode={settings.audio_mode})...")

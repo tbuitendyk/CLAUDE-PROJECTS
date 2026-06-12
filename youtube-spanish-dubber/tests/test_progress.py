@@ -6,7 +6,7 @@ from youtube_dubber import progress
 
 def test_known_stage_without_fraction_parks_at_band_start():
     assert progress.overall_percent("downloading") == 3.0
-    assert progress.overall_percent("synthesizing") == 45.0
+    assert progress.overall_percent("synthesizing") == 42.0
 
 
 def test_fraction_interpolates_within_band():
@@ -17,14 +17,21 @@ def test_fraction_interpolates_within_band():
 
 
 def test_fraction_is_clamped():
-    assert progress.overall_percent("synthesizing", -2) == 45.0   # clamped to 0
-    assert progress.overall_percent("synthesizing", 5) == 82.0    # clamped to 1
+    assert progress.overall_percent("synthesizing", -2) == 42.0   # clamped to 0
+    assert progress.overall_percent("synthesizing", 5) == 66.0    # clamped to 1
+
+
+def test_separating_band_interpolates():
+    # "music" mode's heavy separation stage gets a real, readable band.
+    assert progress.overall_percent("separating", 0.0) == 66.0
+    assert progress.overall_percent("separating", 0.5) == 77.0
+    assert progress.overall_percent("separating", 1.0) == 88.0
 
 
 def test_done_is_100_and_bands_are_monotonic():
     assert progress.overall_percent("done") == 100.0
     # Each band starts where the previous ends -> the bar never jumps backward.
-    order = ["probing", "downloading", "transcript", "synthesizing", "muxing", "uploading", "done"]
+    order = ["probing", "downloading", "transcript", "synthesizing", "separating", "muxing", "uploading", "done"]
     ends = [progress.STAGE_BANDS[s][1] for s in order]
     assert ends == sorted(ends)
     for s in order:

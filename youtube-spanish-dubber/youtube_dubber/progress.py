@@ -29,9 +29,14 @@ STAGE_BANDS: dict[str, tuple[float, float]] = {
     "queued": (0.0, 0.0),
     "probing": (1.0, 3.0),
     "downloading": (3.0, 15.0),
-    "transcript": (15.0, 45.0),
-    "synthesizing": (45.0, 82.0),
-    "muxing": (82.0, 90.0),
+    "transcript": (15.0, 42.0),
+    "synthesizing": (42.0, 66.0),
+    # "separating" only runs in "music" mode (remove the source speech) -- a heavy
+    # ML step, so it gets a real band. In other modes it's skipped and the bar
+    # steps from synthesizing straight to muxing (a small forward hop, fine since
+    # those modes' muxing is quick).
+    "separating": (66.0, 88.0),
+    "muxing": (88.0, 90.0),
     "uploading": (90.0, 99.0),
     "done": (100.0, 100.0),
 }
