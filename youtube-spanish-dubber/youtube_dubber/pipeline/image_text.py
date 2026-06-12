@@ -245,9 +245,18 @@ def render_translations(image, pairs: list[tuple[TextRegion, str]]):
     styles = []
     for region, _translated in pairs:
         style = _analyze_region(arr, region.bbox)
-        region.fill_color = style.fill
-        region.stroke_color = style.outline
-        region.font_family = _estimate_font_family(arr, region.bbox)
+        # Respect caller-supplied overrides (the preview UI's font/colour pickers);
+        # auto-detect only what wasn't chosen. Background reconstruction below
+        # always uses the analysed style, independent of these.
+        if region.font_family is None:
+            region.font_family = _estimate_font_family(arr, region.bbox)
+        if region.fill_color is None:
+            region.fill_color = style.fill
+        if region.stroke_color is None:
+            # Outline keeps the text legible on a scene; derive it from the final
+            # fill so a hand-picked colour still gets a contrasting edge. None on a
+            # banner -- the flat colour already supplies the contrast.
+            region.stroke_color = None if style.has_banner else _contrasting(region.fill_color)
         styles.append(style)
 
     # Rebuild the background where the old text was: scene regions get just their

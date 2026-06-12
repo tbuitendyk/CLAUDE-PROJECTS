@@ -91,3 +91,45 @@ def test_render_edited_skips_blank_translations(_font_or_skip):
         banner_text="",
     )
     assert out is src
+
+
+def test_colour_and_font_helpers():
+    assert thumbnail_preview._rgb_to_hex((255, 0, 128)) == "#ff0080"
+    assert thumbnail_preview._rgb_to_hex(None) is None
+    assert thumbnail_preview._hex_to_rgb("#ff0080") == (255, 0, 128)
+    assert thumbnail_preview._hex_to_rgb("ff0080") == (255, 0, 128)  # bare, no '#'
+    assert thumbnail_preview._hex_to_rgb("not-a-colour") is None
+    assert thumbnail_preview._hex_to_rgb(None) is None
+    assert thumbnail_preview._normalize_font_family("Serif") == "serif"
+    assert thumbnail_preview._normalize_font_family("sans") == "sans"
+    assert thumbnail_preview._normalize_font_family("auto") is None
+    assert thumbnail_preview._normalize_font_family(None) is None
+
+
+def test_generate_preview_reports_detected_style_for_pickers(_font_or_skip, monkeypatch):
+    # The preview must echo the detected font + colour so the UI pickers pre-fill.
+    monkeypatch.setattr(
+        ocr_onnx, "detect_text_regions",
+        lambda image, min_confidence=0.0: [_region("HELLO WORLD")],
+    )
+    monkeypatch.setattr(image_text.translator, "translate_text", lambda t, f, to: "HOLA MUNDO")
+    src = Image.new("RGB", (640, 360), (180, 30, 30))
+    _generated, regions = thumbnail_preview.generate_preview(src, "en", "es", banner_text="")
+    region = regions[0]
+    assert region["font_family"] in ("serif", "sans")
+    fill = region["fill_color"]
+    assert isinstance(fill, str) and fill.startswith("#") and len(fill) == 7
+
+
+def test_render_edited_honours_colour_and_font_override(_font_or_skip):
+    # A hand-picked fill colour must actually paint the rendered glyphs.
+    src = Image.new("RGB", (640, 360), (15, 15, 15))
+    poly = [[40, 140], [600, 140], [600, 230], [40, 230]]
+    out = thumbnail_preview.render_edited(
+        src,
+        [{"polygon": poly, "translation": "VERDE", "fill_color": "#00ff00", "font_family": "sans"}],
+        banner_text="",
+    )
+    region = np.asarray(out)[140:230, 40:600].reshape(-1, 3)
+    green = (region[:, 1] > 180) & (region[:, 0] < 80) & (region[:, 2] < 80)
+    assert int(green.sum()) > 20  # the chosen green shows up in the rendered text

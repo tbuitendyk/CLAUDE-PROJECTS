@@ -17,11 +17,45 @@ from __future__ import annotations
 import base64
 import io
 import logging
+from typing import Optional
 
 from . import image_text, thumbnail
 from .models import TextRegion
 
 log = logging.getLogger(__name__)
+
+
+def _rgb_to_hex(rgb) -> Optional[str]:
+    """(r, g, b) -> "#rrggbb" for an <input type=color>; None if unusable."""
+    if not rgb:
+        return None
+    try:
+        r, g, b = (max(0, min(255, int(c))) for c in tuple(rgb)[:3])
+    except Exception:  # noqa: BLE001 -- a malformed colour just means "no default"
+        return None
+    return f"#{r:02x}{g:02x}{b:02x}"
+
+
+def _hex_to_rgb(value) -> Optional[tuple]:
+    """"#rrggbb" (from the colour picker) -> (r, g, b); None if absent/invalid,
+    so the caller falls back to auto-detecting the source colour."""
+    if not isinstance(value, str):
+        return None
+    s = value.strip().lstrip("#")
+    if len(s) != 6:
+        return None
+    try:
+        return (int(s[0:2], 16), int(s[2:4], 16), int(s[4:6], 16))
+    except ValueError:
+        return None
+
+
+def _normalize_font_family(value) -> Optional[str]:
+    """Accept only the families the renderer knows ("serif"/"sans"); anything
+    else ("auto", "", None) means auto-detect."""
+    if isinstance(value, str) and value.strip().lower() in ("serif", "sans"):
+        return value.strip().lower()
+    return None
 
 
 def generate_preview(
@@ -58,7 +92,10 @@ def generate_preview(
                 "box": list(region.bbox),
                 "text": region.text,
                 "translation": translated,
+                # What the auto-detector chose, so the preview UI's pickers can
+                # pre-fill (and a user can correct what it got wrong).
                 "font_family": region.font_family,
+                "fill_color": _rgb_to_hex(region.fill_color),
                 "modulation": round(modulation, 3) if modulation is not None else None,
             }
         )
@@ -81,6 +118,9 @@ def render_edited(image, regions: list[dict], *, banner_text: str = "", font: st
                 TextRegion(
                     polygon=[(float(x), float(y)) for x, y in polygon],
                     text=str(region.get("text") or ""),
+                    # Per-region overrides from the UI pickers; None -> auto-detect.
+                    font_family=_normalize_font_family(region.get("font_family")),
+                    fill_color=_hex_to_rgb(region.get("fill_color")),
                 ),
                 translation,
             )

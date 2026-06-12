@@ -153,6 +153,11 @@ class ThumbnailRegionEdit(BaseModel):
     polygon: list[list[float]]
     translation: str
     text: Optional[str] = None
+    # Optional per-region overrides from the preview UI's pickers. `font_family`
+    # is "serif"/"sans" (anything else -> auto-detect); `fill_color` is a
+    # "#rrggbb" hex string (absent/invalid -> auto-detect the source colour).
+    font_family: Optional[str] = None
+    fill_color: Optional[str] = None
 
 
 class ThumbnailRenderRequest(BaseModel):
