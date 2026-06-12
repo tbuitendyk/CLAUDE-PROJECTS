@@ -13,8 +13,9 @@ import threading
 import time
 import traceback
 from importlib import import_module
+from pathlib import Path
 
-from . import db, memory, progress
+from . import db, memory, naming, progress
 from .config import settings
 from .pipeline import runner
 from .pipeline.models import Segment
@@ -104,43 +105,132 @@ def _materialize_thumbnail_override(raw: str | None, work_dir):
         return None
 
 
+def _job_project(job: db.Job) -> db.Project | None:
+    """The library entry a job belongs to: the one it was created against, or
+    (legacy jobs / direct API calls) THE entry for its source video + language."""
+    if job.project_id:
+        project = db.get_project(job.project_id)
+        if project is not None:
+            return project
+    source_id = naming.extract_video_id(job.source_url)
+    if source_id is None:
+        return None
+    project = db.upsert_project(source_id, job.target_language)
+    db.update_job(job.id, project_id=project.id)
+    return project
+
+
+def _cache_bed(project: db.Project, bed_source: str | None) -> None:
+    """Compress a freshly separated bed into the project's permanent cache (so
+    separation never runs again for this project). Best-effort: a dub that
+    already published must not fail over its cache."""
+    if not bed_source or not Path(bed_source).exists():
+        return
+    try:
+        from .pipeline import ffmpeg_utils
+
+        dst = ffmpeg_utils.encode_bed_cache(Path(bed_source), db.project_bed_path(project.id))
+        db.update_project(project.id, bed_path=str(dst))
+        log.info("Cached the music/SFX bed for project %s at %s", project.id, dst)
+    except Exception as exc:  # noqa: BLE001
+        log.warning("Couldn't cache the separated bed for project %s (%s)", project.id, exc)
+
+
+def _finish_dub(job: db.Job, project: db.Project | None, result: dict) -> None:
+    """Persist a successful publish on both the job row and the library entry."""
+    rows = result.get("transcript") or []
+    if project is not None:
+        # Re-fetch: the entry may have gained rows/edits since the job started
+        # (the job ran from its own snapshot; the entry kept living).
+        project = db.get_project(project.id) or project
+        # A redub's override rows carry only the narrated text; restore the
+        # immutable source-language column from the entry so the library never
+        # holds a target-only transcript.
+        donor = project.source_rows_list() or project.rows_list()
+        if donor and not all(r.get("original_text") for r in rows):
+            rows = db.fill_original_texts(rows, donor)
+        _cache_bed(project, result.get("bed_source_path"))
+        if result.get("source_title") and not project.source_title:
+            db.update_project(project.id, source_title=result["source_title"])
+        db.mark_project_published(
+            project.id,
+            target_video_id=result["youtube_video_id"],
+            title=result.get("title") or "",
+            rows=rows,
+            thumbnail=job.thumbnail_override,
+            voice=result.get("voice"),
+            privacy=job.privacy,
+        )
+    db.update_job(
+        job.id,
+        status="done",
+        stage="done",
+        progress=f"Published: {result['youtube_video_url']}",
+        progress_pct=100.0,
+        youtube_video_id=result["youtube_video_id"],
+        youtube_video_url=result["youtube_video_url"],
+        # Retain the timestamped transcript + generated title for the
+        # transcripts library and redub.
+        transcript=json.dumps(rows) if rows else None,
+        title=result.get("title"),
+        error=None,
+    )
+    db.record_event(
+        "Published",
+        video_title=result.get("title") or result.get("source_title"),
+        project_id=project.id if project else None,
+        job_id=job.id,
+        detail=result["youtube_video_url"],
+    )
+
+
+def _finish_preview(job: db.Job, project: db.Project | None, result: dict) -> None:
+    """A finished transcript preview becomes the entry's draft transcript (the
+    library is the home of every transcript, drafts included)."""
+    if project is not None:
+        if result.get("title") and not project.source_title:
+            db.update_project(project.id, source_title=result["title"])
+        if result.get("rows"):
+            db.store_acquired_transcript(project.id, result["rows"])
+    db.update_job(
+        job.id,
+        status="done",
+        stage="done",
+        progress=f"Transcript preview ready via: {result['transcript_source']}",
+        progress_pct=100.0,
+        result=json.dumps(result),
+        error=None,
+    )
+    db.record_event(
+        "Transcript preview ready",
+        video_title=result.get("title"),
+        project_id=project.id if project else None,
+        job_id=job.id,
+        detail=result.get("transcript_source"),
+    )
+
+
 def _process(job: db.Job) -> None:
     work_dir = db.job_work_dir(job.id)
     on_progress = _make_progress_fn(job.id)
+    project = _job_project(job)
     try:
         if job.mode == "preview":
             result = runner.preview_transcript(job.source_url, job.target_language, work_dir, on_progress=on_progress)
-            db.update_job(
-                job.id,
-                status="done",
-                stage="done",
-                progress=f"Transcript preview ready via: {result['transcript_source']}",
-                progress_pct=100.0,
-                result=json.dumps(result),
-                error=None,
-            )
+            _finish_preview(job, project, result)
         else:
             transcript_override = _load_transcript_override(job.transcript_overrides)
             thumbnail_override = _materialize_thumbnail_override(job.thumbnail_override, work_dir)
+            cached_bed = Path(project.bed_path) if project and project.bed_path else None
             result = runner.run(
                 job.source_url, job.target_language, work_dir,
                 on_progress=on_progress, transcript_override=transcript_override,
                 thumbnail_override=thumbnail_override,
+                privacy=job.privacy,
+                voice=job.voice or (project.voice if project else None),
+                cached_bed=cached_bed,
             )
-            db.update_job(
-                job.id,
-                status="done",
-                stage="done",
-                progress=f"Published: {result['youtube_video_url']}",
-                progress_pct=100.0,
-                youtube_video_id=result["youtube_video_id"],
-                youtube_video_url=result["youtube_video_url"],
-                # Retain the timestamped transcript + generated title for the
-                # transcripts library and redub.
-                transcript=json.dumps(result["transcript"]) if result.get("transcript") else None,
-                title=result.get("title"),
-                error=None,
-            )
+            _finish_dub(job, project, result)
     except Exception as exc:  # noqa: BLE001 -- surface any failure on the job record
         log.exception("Job %s failed", job.id)
         db.update_job(
@@ -148,6 +238,13 @@ def _process(job: db.Job) -> None:
             status="failed",
             stage="failed",
             error=f"{exc}\n\n{traceback.format_exc()[-4000:]}",
+        )
+        db.record_event(
+            "Dub failed" if job.mode != "preview" else "Transcript preview failed",
+            video_title=(project.source_title if project else None) or job.source_url,
+            project_id=project.id if project else None,
+            job_id=job.id,
+            detail=str(exc).split("\n")[0][:300],
         )
     finally:
         if not settings.keep_work_dirs:

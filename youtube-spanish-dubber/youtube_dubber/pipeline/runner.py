@@ -12,7 +12,7 @@ import logging
 from pathlib import Path
 from typing import Callable
 
-from .. import memory, progress
+from .. import memory, naming, progress
 from ..config import settings
 from . import (
     downloader,
@@ -45,6 +45,9 @@ def run(
     on_progress: ProgressFn = _noop,
     transcript_override: list[Segment] | None = None,
     thumbnail_override: Path | None = None,
+    privacy: str | None = None,
+    voice: str | None = None,
+    cached_bed: Path | None = None,
 ) -> dict:
     """Run the full pipeline. Returns a result dict with at least
     `youtube_video_id` and `youtube_video_url` on success.
@@ -54,7 +57,11 @@ def run(
     that the user then hand-edited gets used verbatim for the actual dub,
     instead of the pipeline re-acquiring and re-translating from scratch (and
     potentially landing on different lines than the ones they reviewed).
-    """
+
+    `privacy`/`voice` override the global upload-privacy and TTS-voice settings
+    for this job. `cached_bed` is a previously separated music/SFX bed for this
+    project: when it exists, the (slow, lossy-if-repeated) speech-separation
+    stage is skipped outright and the bed is reused as-is."""
 
     on_progress("probing", "Looking up video metadata and available captions...")
     info = downloader.probe(source_url)
@@ -117,11 +124,12 @@ def run(
                 for s in result.segments
             ]
 
-    on_progress("synthesizing", f"Synthesizing Spanish narration with voice '{settings.tts_voice}'...")
+    tts_voice = voice or settings.tts_voice
+    on_progress("synthesizing", f"Synthesizing Spanish narration with voice '{tts_voice}'...")
     narration_path = tts.synthesize_track(
         segments,
         total_duration=source.duration or _probe_duration_fallback(source.video_path),
-        voice=settings.tts_voice,
+        voice=tts_voice,
         rate=settings.tts_rate,
         work_dir=work_dir,
         on_line=lambda i, n: on_progress(
@@ -130,31 +138,39 @@ def run(
     )
 
     # In "music" mode, first strip the original speech from the source audio so
-    # the narration sits over a clean music+SFX bed (the heavy ML step). It
-    # degrades gracefully: if separation is unavailable or fails, bed_path is
-    # None and video.mux falls back to a narration-only ("replace") mix.
+    # the narration sits over a clean music+SFX bed (the heavy ML step). A
+    # cached bed from this project's first dub skips that entirely -- separation
+    # runs once per project, ever. It degrades gracefully: if separation is
+    # unavailable or fails, bed_path is None and video.mux falls back to a
+    # narration-only ("replace") mix.
     bed_path = None
+    freshly_separated = False
     if settings.audio_mode == "music":
-        # Free the transcript/TTS model singletons before the memory-heavy
-        # separation so it doesn't stack on top of them and hit the cgroup memory
-        # cap. They reload lazily if something later needs them (title translation).
-        _release_heavy_models()
-        # Separation runs for minutes with long silent gaps (decoding the whole
-        # track, loading the model) before the first chunk reports -- so drive it
-        # through a heartbeat (like the transcript stage) to keep the bar moving,
-        # with the real per-chunk fraction re-anchoring it.
-        with progress.StageHeartbeat(
-            lambda message, fraction: on_progress("separating", message, fraction=fraction)
-        ) as heartbeat:
-            heartbeat.report("Removing the original speech (keeping music & sound effects)…", 0.0)
-            bed_path = separate.instrumental_bed(
-                Path(source.video_path), work_dir,
-                on_progress=lambda f: heartbeat.report(
-                    f"Removing the original speech… {int(f * 100)}%", f
-                ),
-            )
-        on_progress("separating", "Original speech removed; mixing the bed…", fraction=1.0)
-        memory.release_to_os()  # free the separation model + audio buffers
+        if cached_bed is not None and cached_bed.exists():
+            on_progress("separating", "Reusing this project's saved music & sound-effects bed…", fraction=1.0)
+            bed_path = cached_bed
+        else:
+            # Free the transcript/TTS model singletons before the memory-heavy
+            # separation so it doesn't stack on top of them and hit the cgroup memory
+            # cap. They reload lazily if something later needs them (title translation).
+            _release_heavy_models()
+            # Separation runs for minutes with long silent gaps (decoding the whole
+            # track, loading the model) before the first chunk reports -- so drive it
+            # through a heartbeat (like the transcript stage) to keep the bar moving,
+            # with the real per-chunk fraction re-anchoring it.
+            with progress.StageHeartbeat(
+                lambda message, fraction: on_progress("separating", message, fraction=fraction)
+            ) as heartbeat:
+                heartbeat.report("Removing the original speech (keeping music & sound effects)…", 0.0)
+                bed_path = separate.instrumental_bed(
+                    Path(source.video_path), work_dir,
+                    on_progress=lambda f: heartbeat.report(
+                        f"Removing the original speech… {int(f * 100)}%", f
+                    ),
+                )
+            freshly_separated = bed_path is not None
+            on_progress("separating", "Original speech removed; mixing the bed…", fraction=1.0)
+            memory.release_to_os()  # free the separation model + audio buffers
 
     on_progress("muxing", f"Combining narration with the source video (mode={settings.audio_mode})...")
     dubbed_path = work_dir / "dubbed.mp4"
@@ -166,8 +182,12 @@ def run(
 
     on_progress("uploading", "Uploading the dubbed video to your YouTube channel...")
     source_lang = source.original_language or "en"
-    translated_title = translator.translate_text(source.title, from_code=source_lang, to_code=target_language)
-    title = f"{settings.title_prefix.rstrip()} {translated_title} ({source.title})"[:100]
+    # Scrub any tag a previous dub already added before translating/composing,
+    # so a title can never come out double-tagged ("[Versión Español] [Versión
+    # Español] ..."), no matter what the source video was.
+    source_title = naming.strip_title_tag(source.title, settings.title_prefix)
+    translated_title = translator.translate_text(source_title, from_code=source_lang, to_code=target_language)
+    title = naming.compose_title(translated_title, source_title, settings.title_prefix)
     translated_description = (
         translator.translate_text(source.description, from_code=source_lang, to_code=target_language)
         if source.description else ""
@@ -175,6 +195,7 @@ def run(
     description = f"{translated_description}{settings.description_suffix}".strip()
     video_id = uploader.upload_video(
         dubbed_path, title=title, description=description,
+        privacy_status=privacy,
         on_progress=lambda f: on_progress("uploading", f"Uploading to YouTube… {int(f * 100)}%", fraction=f),
     )
 
@@ -190,7 +211,13 @@ def run(
         "youtube_video_url": video_url,
         "transcript_source": transcript_source,
         "title": title,
+        "source_title": source.title,
+        "source_video_id": source.id,
+        "voice": tts_voice,
         "transcript": transcript_rows,
+        # A freshly separated bed lives in the (about-to-be-deleted) work dir;
+        # the worker encodes it into the project's cache before cleanup.
+        "bed_source_path": str(bed_path) if freshly_separated else None,
     }
 
 
@@ -244,6 +271,7 @@ def preview_transcript(source_url: str, target_language: str, work_dir: Path, on
 
     return {
         "title": source.title,
+        "source_video_id": source.id,
         "transcript_source": result.source,
         "original_language": result.original_language,
         "rows": rows,

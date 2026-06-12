@@ -7,6 +7,7 @@ restarts) and atomic "claim the next pending job" semantics for free.
 from __future__ import annotations
 
 import json
+import logging
 import sqlite3
 import uuid
 from contextlib import contextmanager
@@ -15,6 +16,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterator, Optional
 
+from . import naming
 from .config import settings
 
 SCHEMA = """
@@ -40,6 +42,61 @@ CREATE TABLE IF NOT EXISTS jobs (
 );
 """
 
+# The dub-projects library: ONE row per (source video, target language), ever.
+# It accumulates everything a project needs to be re-opened or redubbed: the
+# clean source/target video IDs, the language + voice used, the immutable
+# source-language rows, the current (editable) bilingual rows, the pristine
+# acquired rows ("Revert to default"), the saved thumbnail and the cached
+# speech-removed music/SFX bed. `state` walks draft -> published ->
+# published_pending (a published entry with unapplied edits = redub in
+# progress) -> published.
+PROJECTS_SCHEMA = """
+CREATE TABLE IF NOT EXISTS projects (
+    id TEXT PRIMARY KEY,
+    source_video_id TEXT NOT NULL,
+    target_language TEXT NOT NULL,
+    state TEXT NOT NULL DEFAULT 'draft',
+    source_title TEXT,
+    title TEXT,
+    target_video_id TEXT,
+    voice TEXT,
+    privacy TEXT,
+    source_rows TEXT,
+    acquired_rows TEXT,
+    rows TEXT,
+    thumbnail TEXT,
+    bed_path TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    published_fingerprint TEXT,
+    UNIQUE (source_video_id, target_language)
+);
+"""
+
+# The permanent, append-only action log: one timestamped line per user
+# operation (and per pipeline milestone), with the video title when known.
+# Never carries transcript content.
+EVENTS_SCHEMA = """
+CREATE TABLE IF NOT EXISTS events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    created_at TEXT NOT NULL,
+    action TEXT NOT NULL,
+    video_title TEXT,
+    project_id TEXT,
+    job_id TEXT,
+    detail TEXT
+);
+"""
+
+# One-shot flags (e.g. "the legacy jobs -> projects migration already ran") so
+# best-effort backfills don't resurrect rows the operator since deleted.
+META_SCHEMA = """
+CREATE TABLE IF NOT EXISTS meta (
+    key TEXT PRIMARY KEY,
+    value TEXT
+);
+"""
+
 # Columns added after the initial release. CREATE TABLE IF NOT EXISTS won't
 # retrofit them onto an existing database, so add any that are missing.
 _MIGRATIONS = (
@@ -52,7 +109,15 @@ _MIGRATIONS = (
     # generated video title -- retained for the transcripts library + redub.
     "ALTER TABLE jobs ADD COLUMN transcript TEXT",
     "ALTER TABLE jobs ADD COLUMN title TEXT",
+    # Per-job upload privacy (public/unlisted), TTS voice, and the library
+    # project the job belongs to.
+    "ALTER TABLE jobs ADD COLUMN privacy TEXT",
+    "ALTER TABLE jobs ADD COLUMN voice TEXT",
+    "ALTER TABLE jobs ADD COLUMN project_id TEXT",
 )
+
+PROJECT_STATES = {"draft", "published", "published_pending"}
+PRIVACY_VALUES = {"public", "unlisted", "private"}
 
 # Lifecycle: queued -> running -> done
 #                            \-> failed
@@ -92,6 +157,12 @@ class Job:
     # every dub for the transcripts library + redub. Big, so kept out of listings.
     transcript: Optional[str] = None
     title: Optional[str] = None
+    # Per-job upload privacy ("public"/"unlisted"; None -> the global setting),
+    # TTS voice (None -> the global setting) and the library project this job
+    # belongs to.
+    privacy: Optional[str] = None
+    voice: Optional[str] = None
+    project_id: Optional[str] = None
     youtube_video_id: Optional[str] = None
     youtube_video_url: Optional[str] = None
     created_at: str = field(default_factory=_now)
@@ -136,11 +207,15 @@ def init_db() -> None:
     settings.ensure_dirs()
     with _connect() as conn:
         conn.execute(SCHEMA)
+        conn.execute(PROJECTS_SCHEMA)
+        conn.execute(EVENTS_SCHEMA)
+        conn.execute(META_SCHEMA)
         existing = {row["name"] for row in conn.execute("PRAGMA table_info(jobs)")}
         for migration in _MIGRATIONS:
             column = migration.split("ADD COLUMN ")[1].split()[0]
             if column not in existing:
                 conn.execute(migration)
+    migrate_legacy_projects()
 
 
 def create_job(
@@ -149,6 +224,9 @@ def create_job(
     mode: str = "dub",
     transcript_overrides: list[dict] | None = None,
     thumbnail_override: str | None = None,
+    privacy: str | None = None,
+    voice: str | None = None,
+    project_id: str | None = None,
 ) -> Job:
     job = Job(
         id=uuid.uuid4().hex[:12],
@@ -157,17 +235,21 @@ def create_job(
         mode=mode,
         transcript_overrides=json.dumps(transcript_overrides) if transcript_overrides else None,
         thumbnail_override=thumbnail_override,
+        privacy=privacy,
+        voice=voice,
+        project_id=project_id,
     )
     with _connect() as conn:
         conn.execute(
             """INSERT INTO jobs
                (id, source_url, target_language, mode, status, stage, progress, error, result,
-                transcript_overrides, thumbnail_override, youtube_video_id, youtube_video_url,
-                created_at, updated_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                transcript_overrides, thumbnail_override, privacy, voice, project_id,
+                youtube_video_id, youtube_video_url, created_at, updated_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 job.id, job.source_url, job.target_language, job.mode, job.status, job.stage,
                 job.progress, job.error, job.result, job.transcript_overrides, job.thumbnail_override,
+                job.privacy, job.voice, job.project_id,
                 job.youtube_video_id, job.youtube_video_url, job.created_at, job.updated_at,
             ),
         )
@@ -322,3 +404,512 @@ def job_work_dir(job_id: str) -> Path:
     path = settings.data_dir / "jobs" / job_id
     path.mkdir(parents=True, exist_ok=True)
     return path
+
+
+# --------------------------------------------------------------------------
+# Dub-projects library
+# --------------------------------------------------------------------------
+
+def _fingerprint(rows: list[dict] | None, thumbnail: str | None) -> str:
+    """A stable digest of an entry's publishable content (transcript + thumbnail).
+    The entry's state is derived by comparing this against the fingerprint taken
+    at its last publish -- so manually undoing an edit returns a published entry
+    to 'published' instead of leaving a stale 'pending edits' flag."""
+    import hashlib
+
+    payload = json.dumps({"rows": rows or [], "thumbnail": thumbnail or ""}, sort_keys=True)
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+@dataclass
+class Project:
+    """One library entry: a dub project for (source video, target language)."""
+
+    id: str
+    source_video_id: str
+    target_language: str
+    state: str = "draft"
+    source_title: Optional[str] = None
+    title: Optional[str] = None
+    target_video_id: Optional[str] = None
+    voice: Optional[str] = None
+    privacy: Optional[str] = None
+    # JSON columns: `source_rows` is the immutable source-language transcript
+    # ([{start, end, text}], write-once); `acquired_rows` is the pristine
+    # machine-acquired bilingual set ("Revert to default" restores it);
+    # `rows` is the current working bilingual set.
+    source_rows: Optional[str] = None
+    acquired_rows: Optional[str] = None
+    rows: Optional[str] = None
+    thumbnail: Optional[str] = None
+    bed_path: Optional[str] = None
+    created_at: str = field(default_factory=_now)
+    updated_at: str = field(default_factory=_now)
+    # Digest of (rows, thumbnail) as of the last successful publish; `state`
+    # derives from comparing it to the current content (see _derive_state).
+    published_fingerprint: Optional[str] = None
+
+    @classmethod
+    def from_row(cls, row: sqlite3.Row) -> "Project":
+        return cls(**{key: row[key] for key in row.keys()})
+
+    def rows_list(self) -> list[dict]:
+        try:
+            return json.loads(self.rows) if self.rows else []
+        except ValueError:
+            return []
+
+    def source_rows_list(self) -> list[dict]:
+        try:
+            return json.loads(self.source_rows) if self.source_rows else []
+        except ValueError:
+            return []
+
+    def acquired_rows_list(self) -> list[dict]:
+        try:
+            return json.loads(self.acquired_rows) if self.acquired_rows else []
+        except ValueError:
+            return []
+
+    def summary(self) -> dict[str, Any]:
+        """Listing shape: everything but the big payloads (rows, thumbnail)."""
+        return {
+            "id": self.id,
+            "source_video_id": self.source_video_id,
+            "source_url": naming.watch_url(self.source_video_id),
+            "target_video_id": self.target_video_id,
+            "target_url": naming.watch_url(self.target_video_id) if self.target_video_id else None,
+            "target_language": self.target_language,
+            "state": self.state,
+            "source_title": self.source_title,
+            "title": self.title,
+            "voice": self.voice,
+            "privacy": self.privacy,
+            "line_count": len(self.rows_list()),
+            "has_thumbnail": bool(self.thumbnail),
+            "has_bed": bool(self.bed_path),
+            "created_at": self.created_at,
+            "updated_at": self.updated_at,
+        }
+
+    def full(self) -> dict[str, Any]:
+        data = self.summary()
+        data["rows"] = self.rows_list()
+        data["source_rows"] = self.source_rows_list()
+        data["thumbnail"] = self.thumbnail
+        return data
+
+
+_PROJECT_COLUMNS = (
+    "id", "source_video_id", "target_language", "state", "source_title", "title",
+    "target_video_id", "voice", "privacy", "source_rows", "acquired_rows", "rows",
+    "thumbnail", "bed_path", "created_at", "updated_at", "published_fingerprint",
+)
+
+# `published_fingerprint` arrived with the projects table itself, but keep the
+# ALTER in the retrofit list so a database that predates it (or future columns)
+# gains it on startup, same pattern as the jobs table.
+_PROJECT_MIGRATIONS = (
+    "ALTER TABLE projects ADD COLUMN published_fingerprint TEXT",
+)
+
+
+def _ensure_project_columns(conn: sqlite3.Connection) -> None:
+    existing = {row["name"] for row in conn.execute("PRAGMA table_info(projects)")}
+    for migration in _PROJECT_MIGRATIONS:
+        column = migration.split("ADD COLUMN ")[1].split()[0]
+        if column not in existing:
+            conn.execute(migration)
+
+
+def _derive_state(project: Project) -> str:
+    """draft until first publish; then published vs published_pending by
+    comparing the current content fingerprint to the one taken at publish."""
+    if not project.target_video_id:
+        return "draft"
+    current = _fingerprint(project.rows_list(), project.thumbnail)
+    return "published" if current == (project.published_fingerprint or "") else "published_pending"
+
+
+def upsert_project(
+    source_video_id: str,
+    target_language: str,
+    source_title: str | None = None,
+    voice: str | None = None,
+) -> Project:
+    """Get-or-create THE entry for (source video, language). Never duplicates;
+    a later call can only fill in a missing source title / voice."""
+    with _connect() as conn:
+        _ensure_project_columns(conn)
+        row = conn.execute(
+            "SELECT * FROM projects WHERE source_video_id = ? AND target_language = ?",
+            (source_video_id, target_language),
+        ).fetchone()
+        if row:
+            project = Project.from_row(row)
+            updates: dict[str, Any] = {}
+            if source_title and not project.source_title:
+                updates["source_title"] = source_title
+            if voice and not project.voice:
+                updates["voice"] = voice
+            if updates:
+                updates["updated_at"] = _now()
+                columns = ", ".join(f"{key} = ?" for key in updates)
+                conn.execute(f"UPDATE projects SET {columns} WHERE id = ?", [*updates.values(), project.id])
+                for key, value in updates.items():
+                    setattr(project, key, value)
+            return project
+        project = Project(
+            id=uuid.uuid4().hex[:12],
+            source_video_id=source_video_id,
+            target_language=target_language,
+            source_title=source_title,
+            voice=voice,
+        )
+        conn.execute(
+            f"INSERT INTO projects ({', '.join(_PROJECT_COLUMNS)}) "
+            f"VALUES ({', '.join('?' for _ in _PROJECT_COLUMNS)})",
+            tuple(getattr(project, column) for column in _PROJECT_COLUMNS),
+        )
+    return project
+
+
+def get_project(project_id: str) -> Optional[Project]:
+    with _connect() as conn:
+        _ensure_project_columns(conn)
+        row = conn.execute("SELECT * FROM projects WHERE id = ?", (project_id,)).fetchone()
+    return Project.from_row(row) if row else None
+
+
+def find_project(source_video_id: str, target_language: str) -> Optional[Project]:
+    with _connect() as conn:
+        _ensure_project_columns(conn)
+        row = conn.execute(
+            "SELECT * FROM projects WHERE source_video_id = ? AND target_language = ?",
+            (source_video_id, target_language),
+        ).fetchone()
+    return Project.from_row(row) if row else None
+
+
+def list_projects() -> list[Project]:
+    with _connect() as conn:
+        _ensure_project_columns(conn)
+        rows = conn.execute("SELECT * FROM projects ORDER BY updated_at DESC").fetchall()
+    return [Project.from_row(row) for row in rows]
+
+
+def update_project(project_id: str, **fields: Any) -> Optional[Project]:
+    """Set columns, then re-derive `state` from content vs the published
+    fingerprint (callers never write `state` directly)."""
+    project = get_project(project_id)
+    if project is None:
+        return None
+    for key, value in fields.items():
+        setattr(project, key, value)
+    project.state = _derive_state(project)
+    project.updated_at = _now()
+    fields = dict(fields, state=project.state, updated_at=project.updated_at)
+    columns = ", ".join(f"{key} = ?" for key in fields)
+    with _connect() as conn:
+        conn.execute(f"UPDATE projects SET {columns} WHERE id = ?", [*fields.values(), project_id])
+    return project
+
+
+def fill_original_texts(rows: list[dict], donor_rows: list[dict]) -> list[dict]:
+    """Restore the source-language column on rows that lost it (a redub override
+    carries only the narrated text). Donor rows are matched by start time --
+    redub overrides inherit their times from the library rows, so this is exact
+    in practice; rows with no match just stay target-only."""
+    by_start: dict[float, str] = {}
+    for donor in donor_rows:
+        text = donor.get("original_text") if "original_text" in donor else donor.get("text")
+        if text:
+            by_start[round(float(donor.get("start", 0.0)), 2)] = text
+    out = []
+    for row in rows:
+        row = dict(row)
+        if not row.get("original_text"):
+            match = by_start.get(round(float(row.get("start", 0.0)), 2))
+            if match:
+                row["original_text"] = match
+        out.append(row)
+    return out
+
+
+def set_project_transcript(project_id: str, rows: list[dict]) -> Optional[Project]:
+    """Save edited rows into the entry (the uniform "Save"). Edits only ever
+    touch the target side: the stored rows' original_text always wins over
+    whatever the client echoed back, so the source language is preserved no
+    matter what. A published entry with changed content derives to
+    published_pending (= redub in progress)."""
+    project = get_project(project_id)
+    if project is None:
+        return None
+    merged = fill_original_texts(
+        [
+            {
+                "start": float(row.get("start", 0.0)),
+                "end": float(row.get("end", 0.0)),
+                "original_text": None,  # repopulated from the stored rows below
+                "translated_text": str(row.get("translated_text") or ""),
+            }
+            for row in rows
+        ],
+        project.rows_list() or project.source_rows_list(),
+    )
+    return update_project(project_id, rows=json.dumps(merged))
+
+
+def revert_project_transcript(project_id: str) -> Optional[Project]:
+    """"Revert to default": the working rows go back to the pristine
+    machine-acquired set."""
+    project = get_project(project_id)
+    if project is None or not project.acquired_rows:
+        return project
+    return update_project(project_id, rows=project.acquired_rows)
+
+
+def set_project_thumbnail(project_id: str, thumbnail: str | None) -> Optional[Project]:
+    """Save (or, with None, revert-to-default) the entry's thumbnail."""
+    return update_project(project_id, thumbnail=thumbnail)
+
+
+def mark_project_published(
+    project_id: str,
+    target_video_id: str,
+    title: str,
+    rows: list[dict],
+    thumbnail: str | None,
+    voice: str | None,
+    privacy: str | None,
+) -> Optional[Project]:
+    """Record a successful publish: the entry now points at the new upload, the
+    published content is fingerprinted (so state derives back to 'published'),
+    and the immutable source-language rows are captured on first publish."""
+    project = get_project(project_id)
+    if project is None:
+        return None
+    fields: dict[str, Any] = {
+        "target_video_id": target_video_id,
+        "title": title,
+        "rows": json.dumps(rows),
+        "thumbnail": thumbnail,
+        "published_fingerprint": _fingerprint(rows, thumbnail),
+    }
+    if voice:
+        fields["voice"] = voice
+    if privacy:
+        fields["privacy"] = privacy
+    if not project.acquired_rows:
+        fields["acquired_rows"] = json.dumps(rows)
+    if not project.source_rows:
+        source_rows = [
+            {"start": r.get("start"), "end": r.get("end"), "text": r["original_text"]}
+            for r in rows
+            if r.get("original_text")
+        ]
+        if source_rows:
+            fields["source_rows"] = json.dumps(source_rows)
+    return update_project(project_id, **fields)
+
+
+def store_acquired_transcript(project_id: str, rows: list[dict]) -> Optional[Project]:
+    """Keep a freshly machine-acquired bilingual transcript (a finished preview):
+    it becomes the working rows -- and the write-once pristine/source copies --
+    only where the entry doesn't already have them, so it never clobbers edits."""
+    project = get_project(project_id)
+    if project is None:
+        return None
+    fields: dict[str, Any] = {}
+    if not project.acquired_rows:
+        fields["acquired_rows"] = json.dumps(rows)
+    if not project.rows:
+        fields["rows"] = json.dumps(rows)
+    if not project.source_rows:
+        source_rows = [
+            {"start": r.get("start"), "end": r.get("end"), "text": r["original_text"]}
+            for r in rows
+            if r.get("original_text")
+        ]
+        if source_rows:
+            fields["source_rows"] = json.dumps(source_rows)
+    if not fields:
+        return project
+    return update_project(project_id, **fields)
+
+
+def delete_project(project_id: str) -> Optional[Project]:
+    """Remove an entry (any state). Returns the deleted row so the caller can
+    clean up its cached bed file."""
+    project = get_project(project_id)
+    if project is None:
+        return None
+    with _connect() as conn:
+        conn.execute("DELETE FROM projects WHERE id = ?", (project_id,))
+    return project
+
+
+# --------------------------------------------------------------------------
+# Action log (permanent, append-only)
+# --------------------------------------------------------------------------
+
+def record_event(
+    action: str,
+    video_title: str | None = None,
+    project_id: str | None = None,
+    job_id: str | None = None,
+    detail: str | None = None,
+    created_at: str | None = None,
+) -> None:
+    """Append one line to the permanent action log. Best-effort by design: a
+    log line must never break the user action it describes."""
+    try:
+        with _connect() as conn:
+            conn.execute(
+                "INSERT INTO events (created_at, action, video_title, project_id, job_id, detail) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                (created_at or _now(), action, video_title, project_id, job_id, detail),
+            )
+    except sqlite3.Error:
+        logging.getLogger(__name__).warning("Couldn't record log event %r", action)
+
+
+def list_events(limit: int = 200) -> list[dict[str, Any]]:
+    with _connect() as conn:
+        rows = conn.execute(
+            "SELECT * FROM events ORDER BY id DESC LIMIT ?", (limit,)
+        ).fetchall()
+    return [dict(row) for row in rows]
+
+
+# --------------------------------------------------------------------------
+# One-shot legacy migration: jobs -> projects (+ log backfill)
+# --------------------------------------------------------------------------
+
+def _legacy_source_title(title: str | None) -> str | None:
+    """Best effort: the historical title format is "<tag> <translated> (<original>)",
+    so the trailing parenthetical is the source title."""
+    import re
+
+    if not title:
+        return None
+    match = re.search(r"\(([^()]+)\)\s*$", title)
+    return match.group(1).strip() if match else None
+
+
+def migrate_legacy_projects() -> int:
+    """Build the projects library + action log from the pre-library `jobs` rows.
+
+    Runs once (a meta flag guards re-runs so deleted entries stay deleted).
+    Redub chains are resolved to their true origin: a job whose source URL
+    points at another job's *published* video was a redub of our own dub, so it
+    belongs to the original source's entry -- that also lets us repair its
+    target-only transcript by pulling the source-language column from its
+    ancestor. Returns the number of entries created."""
+    with _connect() as conn:
+        if conn.execute("SELECT 1 FROM meta WHERE key = 'projects_migrated'").fetchone():
+            return 0
+        job_rows = conn.execute(
+            "SELECT * FROM jobs WHERE mode = 'dub' ORDER BY created_at ASC"
+        ).fetchall()
+    jobs = [Job.from_row(row) for row in job_rows]
+    published_by_vid = {j.youtube_video_id: j for j in jobs if j.youtube_video_id}
+
+    def root_source_id(job: Job) -> str | None:
+        seen: set[str] = set()
+        current = job
+        while True:
+            source_id = naming.extract_video_id(current.source_url)
+            if source_id is None or source_id not in published_by_vid or source_id in seen:
+                return source_id
+            seen.add(source_id)
+            current = published_by_vid[source_id]
+
+    groups: dict[tuple[str, str], list[Job]] = {}
+    for job in jobs:
+        source_id = root_source_id(job)
+        if source_id:
+            groups.setdefault((source_id, job.target_language), []).append(job)
+
+    created = 0
+    for (source_id, language), group in groups.items():
+        done_jobs = [j for j in group if j.status == "done" and j.youtube_video_id]
+        transcript_jobs = [j for j in group if j.transcript]
+        if not done_jobs and not transcript_jobs:
+            continue
+
+        def rows_of(job: Job) -> list[dict]:
+            try:
+                return json.loads(job.transcript) if job.transcript else []
+            except ValueError:
+                return []
+
+        newest_rows: list[dict] = rows_of(transcript_jobs[-1]) if transcript_jobs else []
+        # The oldest transcript carrying the source-language column is the donor
+        # for entries whose newest (redub) transcript is target-only.
+        donor_rows: list[dict] = []
+        for job in transcript_jobs:
+            rows = rows_of(job)
+            if any(r.get("original_text") for r in rows):
+                donor_rows = rows
+                break
+        if newest_rows and donor_rows and not any(r.get("original_text") for r in newest_rows):
+            newest_rows = fill_original_texts(newest_rows, donor_rows)
+
+        newest_done = done_jobs[-1] if done_jobs else None
+        title = (newest_done.title if newest_done else None) or (
+            transcript_jobs[-1].title if transcript_jobs else None
+        )
+        project = upsert_project(
+            source_id, language,
+            source_title=_legacy_source_title(title),
+            voice=getattr(settings, "tts_voice", None),
+        )
+        source_rows = [
+            {"start": r.get("start"), "end": r.get("end"), "text": r["original_text"]}
+            for r in (donor_rows or newest_rows)
+            if r.get("original_text")
+        ]
+        update_project(
+            project.id,
+            title=title,
+            target_video_id=newest_done.youtube_video_id if newest_done else None,
+            rows=json.dumps(newest_rows) if newest_rows else None,
+            acquired_rows=json.dumps(donor_rows or newest_rows) if (donor_rows or newest_rows) else None,
+            source_rows=json.dumps(source_rows) if source_rows else None,
+            privacy=newest_done.privacy if newest_done else None,
+            # The migrated content IS the published content -- fingerprint it so
+            # the entry derives to 'published', not a phantom 'pending edits'.
+            published_fingerprint=_fingerprint(newest_rows, None) if newest_done else None,
+        )
+        created += 1
+        # Tie the legacy jobs to their entry + backfill the action log with the
+        # lifecycle we can still reconstruct, at the original timestamps.
+        for job in group:
+            update_job(job.id, project_id=project.id)
+            label = title or job.title or job.source_url
+            record_event("Dub started", video_title=label, project_id=project.id,
+                         job_id=job.id, created_at=job.created_at)
+            if job.status == "done" and job.youtube_video_url:
+                record_event("Published", video_title=label, project_id=project.id, job_id=job.id,
+                             detail=job.youtube_video_url, created_at=job.updated_at)
+            elif job.status == "failed":
+                record_event("Dub failed", video_title=label, project_id=project.id,
+                             job_id=job.id, created_at=job.updated_at)
+            elif job.status == "cancelled":
+                record_event("Dub cancelled", video_title=label, project_id=project.id,
+                             job_id=job.id, created_at=job.updated_at)
+
+    with _connect() as conn:
+        conn.execute(
+            "INSERT OR REPLACE INTO meta (key, value) VALUES ('projects_migrated', ?)", (_now(),)
+        )
+    return created
+
+
+def project_bed_path(project_id: str) -> Path:
+    """Where a project's cached speech-removed bed lives (encoded once, reused
+    by every redub)."""
+    beds = settings.data_dir / "beds"
+    beds.mkdir(parents=True, exist_ok=True)
+    return beds / f"{project_id}.opus"

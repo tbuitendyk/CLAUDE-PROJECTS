@@ -52,7 +52,7 @@ from typing import Optional
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, field_validator
 
-from . import db, worker
+from . import db, naming, worker
 from .config import settings
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -62,8 +62,6 @@ _YOUTUBE_URL_RE = re.compile(
     r"^https?://(www\.)?(youtube\.com/(watch\?v=|shorts/|live/)|youtu\.be/)[\w\-]+",
     re.IGNORECASE,
 )
-# Pulls the 11-char video ID out of any of the URL shapes we accept.
-_VIDEO_ID_RE = re.compile(r"(?:v=|youtu\.be/|shorts/|live/)([\w\-]{11})")
 
 app = FastAPI(
     title="YouTube Spanish Dubber",
@@ -80,11 +78,11 @@ def _require_youtube_url(value: str) -> str:
 
 
 def _extract_video_id(url: str) -> str:
-    """Pull the video ID from an (already URL-validated) YouTube link."""
-    match = _VIDEO_ID_RE.search(url)
-    if not match:
+    """Pull the clean video ID from an (already URL-validated) YouTube link."""
+    video_id = naming.extract_video_id(url)
+    if not video_id:
         raise HTTPException(status_code=422, detail="Couldn't find a video ID in that URL")
-    return match.group(1)
+    return video_id
 
 
 def _youtube_fetch_detail(exc: Exception) -> str:
@@ -119,6 +117,11 @@ class JobCreateRequest(BaseModel):
     # used verbatim for the upload instead of auto-generating one. Only
     # consulted in "dub" mode.
     thumbnail_override: Optional[str] = None
+    # Per-job upload privacy ("public"/"unlisted"/"private"; None -> the global
+    # DUBBER_UPLOAD_PRIVACY setting) and TTS voice (None -> the project's voice,
+    # then the global setting).
+    privacy: Optional[str] = None
+    voice: Optional[str] = None
 
     @field_validator("url")
     @classmethod
@@ -130,6 +133,13 @@ class JobCreateRequest(BaseModel):
     def _validate_mode(cls, value: str) -> str:
         if value not in db.JOB_MODES:
             raise ValueError(f"mode must be one of {sorted(db.JOB_MODES)}")
+        return value
+
+    @field_validator("privacy")
+    @classmethod
+    def _validate_privacy(cls, value: Optional[str]) -> Optional[str]:
+        if value is not None and value not in db.PRIVACY_VALUES:
+            raise ValueError(f"privacy must be one of {sorted(db.PRIVACY_VALUES)}")
         return value
 
 
@@ -197,6 +207,54 @@ class TranscriptUpdateRequest(BaseModel):
     rows: list[TranscriptRow]
 
 
+class ProjectUpsertRequest(BaseModel):
+    """Get-or-create THE library entry for (source video, language) -- the UI
+    calls this before its first draft save for a new video."""
+    url: str
+    target_language: Optional[str] = None
+
+    @field_validator("url")
+    @classmethod
+    def _validate_url(cls, value: str) -> str:
+        return _require_youtube_url(value)
+
+
+class ProjectThumbnailRequest(BaseModel):
+    """Save (or, with null, revert-to-default) an entry's thumbnail."""
+    thumbnail: Optional[str] = None
+
+
+class RedubRequest(BaseModel):
+    """Re-dub a library entry from its saved transcript: new upload from the
+    ORIGINAL source video, reusing the entry's voice, thumbnail and cached
+    music/SFX bed."""
+    privacy: Optional[str] = None
+
+    @field_validator("privacy")
+    @classmethod
+    def _validate_privacy(cls, value: Optional[str]) -> Optional[str]:
+        if value is not None and value not in db.PRIVACY_VALUES:
+            raise ValueError(f"privacy must be one of {sorted(db.PRIVACY_VALUES)}")
+        return value
+
+
+class EventCreateRequest(BaseModel):
+    """A client-side-only button press recorded into the permanent action log
+    (server-backed actions log themselves)."""
+    action: str
+    video_title: Optional[str] = None
+    project_id: Optional[str] = None
+    detail: Optional[str] = None
+
+    @field_validator("action")
+    @classmethod
+    def _validate_action(cls, value: str) -> str:
+        value = value.strip()
+        if not value or len(value) > 120:
+            raise ValueError("action must be 1-120 characters")
+        return value
+
+
 @app.on_event("startup")
 def _on_startup() -> None:
     db.init_db()
@@ -241,10 +299,50 @@ def _validated_thumbnail_override(raw: Optional[str]) -> Optional[str]:
 def create_job(payload: JobCreateRequest) -> dict:
     overrides = [line.model_dump() for line in payload.transcript_overrides] if payload.transcript_overrides else None
     thumbnail_override = _validated_thumbnail_override(payload.thumbnail_override)
+
+    # Every job belongs to THE library entry for its (source video, language).
+    # A dub with no explicit overrides picks up the entry's saved draft --
+    # transcript and thumbnail -- automatically, so saved edits survive page
+    # reloads and "Start dubbing" always speaks what the library holds.
+    # (A URL we can't pull a clean 11-char ID from still dubs -- it just isn't
+    # tracked in the library.)
+    language = payload.target_language or settings.target_language
+    video_id = naming.extract_video_id(payload.url)
+    project = db.upsert_project(video_id, language) if video_id else None
+    used_draft = []
+    if payload.mode == "dub" and project is not None:
+        if overrides is None:
+            saved_rows = project.rows_list()
+            if saved_rows:
+                overrides = [
+                    {"start": r["start"], "end": r["end"], "text": r["translated_text"]}
+                    for r in saved_rows
+                    if (r.get("translated_text") or "").strip()
+                ] or None
+                if overrides:
+                    used_draft.append("transcript")
+        if thumbnail_override is None and project.thumbnail:
+            thumbnail_override = project.thumbnail
+            used_draft.append("thumbnail")
+
     job = db.create_job(
-        payload.url, payload.target_language, mode=payload.mode,
+        payload.url, language, mode=payload.mode,
         transcript_overrides=overrides, thumbnail_override=thumbnail_override,
+        privacy=payload.privacy, voice=payload.voice,
+        project_id=project.id if project else None,
     )
+
+    label = (project.source_title or project.title if project else None) or payload.url
+    project_id = project.id if project else None
+    if payload.mode == "preview":
+        db.record_event("Transcript preview started", video_title=label,
+                        project_id=project_id, job_id=job.id)
+    else:
+        action = "Redub started" if project and project.target_video_id else "Dub started"
+        detail_bits = [f"privacy: {payload.privacy}" if payload.privacy else None,
+                       f"using saved {' + '.join(used_draft)}" if used_draft else None]
+        db.record_event(action, video_title=label, project_id=project_id, job_id=job.id,
+                        detail=", ".join(bit for bit in detail_bits if bit) or None)
     return job.to_dict()
 
 
@@ -358,6 +456,8 @@ def thumbnail_apply(payload: ThumbnailApplyRequest) -> dict:
                 status_code=502, detail="Couldn't set the thumbnail; check the service logs."
             ) from exc
 
+    db.record_event("Thumbnail applied", video_title=payload.target_url,
+                    detail=f"https://youtu.be/{video_id}")
     return {"video_id": video_id, "video_url": f"https://youtu.be/{video_id}", "status": "updated"}
 
 
@@ -388,6 +488,8 @@ def cancel_job(job_id: str) -> dict:
         raise HTTPException(status_code=404, detail="Job not found")
     if db.cancel_queued_job(job_id):
         cancelled = db.get_job(job_id)
+        db.record_event("Job cancelled", video_title=job.title or job.source_url,
+                        project_id=job.project_id, job_id=job.id)
         return cancelled.to_dict() if cancelled else job.to_dict()
     # The conditional update didn't fire: the job left the queue first.
     raise HTTPException(
@@ -424,6 +526,149 @@ def update_transcript(job_id: str, payload: TranscriptUpdateRequest) -> dict:
     return {"id": job_id, "rows": rows, "saved": True}
 
 
+# --------------------------------------------------------------------------
+# Dub-projects library + permanent action log
+# --------------------------------------------------------------------------
+
+@app.get("/projects")
+def list_projects() -> list[dict]:
+    """The library: every dub project regardless of state (draft / published /
+    published with pending edits), newest activity first. Summaries only -- the
+    big payloads (rows, thumbnail) come from GET /projects/{id}."""
+    return [project.summary() for project in db.list_projects()]
+
+
+@app.get("/projects/lookup")
+def lookup_project(url: str, target_language: Optional[str] = None) -> dict:
+    """THE entry for a (video, language) -- how a re-entered URL is recognised
+    server-side, surviving page reloads. 404 when the video is new."""
+    video_id = naming.extract_video_id(url)
+    if not video_id:
+        raise HTTPException(status_code=422, detail="Couldn't find a video ID in that URL")
+    project = db.find_project(video_id, target_language or settings.target_language)
+    if project is None:
+        raise HTTPException(status_code=404, detail="No project for that video and language")
+    return project.summary()
+
+
+@app.post("/projects", status_code=201)
+def upsert_project(payload: ProjectUpsertRequest) -> dict:
+    project = db.upsert_project(
+        _extract_video_id(payload.url), payload.target_language or settings.target_language
+    )
+    return project.full()
+
+
+@app.get("/projects/{project_id}")
+def get_project(project_id: str) -> dict:
+    project = db.get_project(project_id)
+    if project is None:
+        raise HTTPException(status_code=404, detail="Project not found")
+    return project.full()
+
+
+@app.put("/projects/{project_id}/transcript")
+def save_project_transcript(project_id: str, payload: TranscriptUpdateRequest) -> dict:
+    """The uniform transcript "Save": edited rows become the entry's working
+    set (a draft, or pending edits on a published entry = redub in progress).
+    Only the target side is writable; the stored source language always wins."""
+    project = db.set_project_transcript(project_id, [row.model_dump() for row in payload.rows])
+    if project is None:
+        raise HTTPException(status_code=404, detail="Project not found")
+    db.record_event("Transcript edits saved", video_title=project.source_title or project.title,
+                    project_id=project.id)
+    return project.full()
+
+
+@app.post("/projects/{project_id}/transcript/revert")
+def revert_project_transcript(project_id: str) -> dict:
+    """"Revert to default": the working rows go back to the pristine
+    machine-acquired transcript."""
+    project = db.revert_project_transcript(project_id)
+    if project is None:
+        raise HTTPException(status_code=404, detail="Project not found")
+    db.record_event("Transcript reverted to default",
+                    video_title=project.source_title or project.title, project_id=project.id)
+    return project.full()
+
+
+@app.put("/projects/{project_id}/thumbnail")
+def save_project_thumbnail(project_id: str, payload: ProjectThumbnailRequest) -> dict:
+    """Save an approved thumbnail into the entry -- or, with thumbnail=null,
+    revert to default (the pipeline auto-generates one again)."""
+    thumbnail = _validated_thumbnail_override(payload.thumbnail)
+    project = db.set_project_thumbnail(project_id, thumbnail)
+    if project is None:
+        raise HTTPException(status_code=404, detail="Project not found")
+    db.record_event(
+        "Thumbnail saved" if thumbnail else "Thumbnail reverted to default",
+        video_title=project.source_title or project.title, project_id=project.id,
+    )
+    return project.summary()
+
+
+@app.delete("/projects/{project_id}")
+def delete_project(project_id: str) -> dict:
+    """Remove a library entry in any state (a perfect-forever transcript, or a
+    video gone from the channel), along with its cached audio bed. Published
+    videos themselves are never touched -- channel cleanup stays manual."""
+    project = db.delete_project(project_id)
+    if project is None:
+        raise HTTPException(status_code=404, detail="Project not found")
+    if project.bed_path:
+        from pathlib import Path
+
+        Path(project.bed_path).unlink(missing_ok=True)
+    db.record_event("Library entry deleted", video_title=project.source_title or project.title,
+                    project_id=project.id)
+    return {"id": project.id, "deleted": True}
+
+
+@app.post("/projects/{project_id}/redub", status_code=201)
+def redub_project(project_id: str, payload: RedubRequest) -> dict:
+    """Redub from the library entry: a fresh upload built from the ORIGINAL
+    source video, narrating the entry's current transcript, reusing its voice,
+    saved thumbnail and cached music/SFX bed. The entry itself never
+    duplicates -- on success its target link moves to the new upload."""
+    project = db.get_project(project_id)
+    if project is None:
+        raise HTTPException(status_code=404, detail="Project not found")
+    rows = project.rows_list()
+    overrides = [
+        {"start": r["start"], "end": r["end"], "text": r["translated_text"]}
+        for r in rows
+        if (r.get("translated_text") or "").strip()
+    ]
+    if not overrides:
+        raise HTTPException(status_code=422, detail="This project has no transcript to redub from")
+    job = db.create_job(
+        naming.watch_url(project.source_video_id), project.target_language, mode="dub",
+        transcript_overrides=overrides, thumbnail_override=project.thumbnail,
+        privacy=payload.privacy, voice=project.voice, project_id=project.id,
+    )
+    db.record_event(
+        "Redub started", video_title=project.source_title or project.title,
+        project_id=project.id, job_id=job.id,
+        detail=f"privacy: {payload.privacy}" if payload.privacy else None,
+    )
+    return job.to_dict()
+
+
+@app.get("/events")
+def get_events(limit: int = 200) -> list[dict]:
+    """The permanent, append-only action log: one timestamped line per user
+    operation, with the video title when known -- and never any transcript
+    content. Publishing stops a video's new lines; it never removes old ones."""
+    return db.list_events(limit=limit)
+
+
+@app.post("/events", status_code=201)
+def create_event(payload: EventCreateRequest) -> dict:
+    db.record_event(payload.action, video_title=payload.video_title,
+                    project_id=payload.project_id, detail=payload.detail)
+    return {"recorded": True}
+
+
 @app.post("/admin/restart")
 def restart_service() -> dict:
     """Restart the dubber service.
@@ -436,5 +681,6 @@ def restart_service() -> dict:
     job that was mid-flight (see `_on_startup`).
     """
     log.warning("Restart requested via /admin/restart; exiting for systemd to respawn.")
+    db.record_event("Service restarted")
     _schedule_self_exit()
     return {"status": "restarting"}

@@ -116,6 +116,27 @@ def concat_wavs(paths: list[Path], dst: Path) -> None:
     list_file.unlink(missing_ok=True)
 
 
+def encode_bed_cache(src: Path, dst: Path) -> Path:
+    """Compress a freshly separated music/SFX bed (PCM WAV, ~635 MB/hour) into
+    the project's permanent cache. Opus at 192k stereo is perceptually
+    transparent for a bed mixed at reduced volume under narration, ~10x smaller
+    -- and it's encoded exactly ONCE per project, so there's no cumulative
+    generation loss across redubs. Falls back to AAC if libopus is missing."""
+    try:
+        _run([
+            "ffmpeg", "-y", "-i", str(src),
+            "-c:a", "libopus", "-b:a", "192k", str(dst),
+        ])
+        return dst
+    except RuntimeError:
+        fallback = dst.with_suffix(".m4a")
+        _run([
+            "ffmpeg", "-y", "-i", str(src),
+            "-c:a", "aac", "-b:a", "256k", str(fallback),
+        ])
+        return fallback
+
+
 def mux_replace_audio(video_path: Path, audio_path: Path, dst: Path) -> None:
     """Output = original video stream + new narration as the sole audio track."""
     cmd = [
