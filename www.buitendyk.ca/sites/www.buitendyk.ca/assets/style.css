@@ -645,40 +645,12 @@ footer.site-footer {
   margin-top: 0.75rem;
   flex-wrap: wrap;
 }
-.transcript-rows {
-  display: flex;
-  flex-direction: column;
-  gap: 0.4rem;
-  max-height: 22rem;
+/* The library renders the SAME .transcript-table as the transcript preview
+   (see dubber.js buildTranscriptTable); only this scroll wrapper is its own,
+   so a 100+ line transcript scrolls inside the box instead of stretching the
+   page. The right padding keeps the Save buttons clear of the scrollbar. */
+.library-transcript-scroll {
+  max-height: 60vh;
   overflow-y: auto;
+  padding-right: 0.4rem;
 }
-.transcript-row {
-  display: flex;
-  align-items: center;
-  gap: 0.6rem;
-  flex-wrap: wrap;
-}
-.transcript-ts {
-  flex: 0 0 auto;
-  color: var(--text-dim);
-  font-variant-numeric: tabular-nums;
-  font-size: 0.8rem;
-}
-.transcript-orig {
-  flex: 0 1 30%;
-  min-width: 0;
-  color: var(--text-dim);
-  font-size: 0.85rem;
-  word-break: break-word;
-}
-.transcript-input {
-  flex: 1 1 40%;
-  min-width: 0;
-  padding: 0.4rem 0.55rem;
-  border-radius: 8px;
-  border: 1px solid var(--border);
-  background: var(--bg);
-  color: var(--text);
-  font-size: 0.9rem;
-}
-.transcript-input:focus { outline: none; border-color: var(--accent); }

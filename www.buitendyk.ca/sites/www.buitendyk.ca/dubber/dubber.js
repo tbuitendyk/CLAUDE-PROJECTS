@@ -113,35 +113,18 @@
     return `${m}:${String(s).padStart(2, "0")}`;
   }
 
-  function renderTranscriptPreview(result, sourceUrl, targetLanguage) {
-    const wrap = document.createElement("div");
-    wrap.className = "transcript-preview";
-
-    const summary = document.createElement("div");
-    summary.className = "hint";
-    summary.textContent = `Source: ${result.transcript_source}` +
-      (result.original_language ? ` · original language: ${result.original_language}` : "");
-    wrap.appendChild(summary);
-
-    const rows = result.rows || [];
-    if (!rows.length) {
-      const empty = document.createElement("div");
-      empty.className = "hint";
-      empty.textContent = "No transcript lines were produced.";
-      wrap.appendChild(empty);
-      return wrap;
-    }
-
+  // THE transcript-editing layout -- the timestamp / Original / Spanish-textarea
+  // / per-line Save table -- extracted so the "Preview transcript first" result
+  // and the Transcripts library render the IDENTICAL thing (one code path, no
+  // drift). `rows` are {start, end, original_text, translated_text};
+  // `onSaveLine(index, value)` runs when a line's Save is clicked -- return a
+  // Promise for server-backed saves (the button walks Saving… -> Saved ✓, or
+  // flags a failure) or return nothing for synchronous in-memory saves (the
+  // preview), which show Saved ✓ immediately. Returns { element, readLines }:
+  // readLines() yields the rows with the textareas' CURRENT values (for e.g.
+  // download).
+  function buildTranscriptTable(rows, onSaveLine) {
     const hasOriginal = rows.some((row) => row.original_text != null);
-
-    // This becomes the saved/editable record for this preview -- see
-    // `previewState` above for how "Start dubbing" picks it back up.
-    const state = {
-      url: sourceUrl,
-      targetLanguage: targetLanguage,
-      lines: rows.map((row) => ({ start: row.start, end: row.end, text: row.translated_text || "" })),
-    };
-    previewState = state;
 
     const table = document.createElement("table");
     table.className = "transcript-table";
@@ -239,13 +222,34 @@
         esCell.classList.add("dirty");
         syncTextareaHeight(textarea, origText);
       });
-      saveBtn.addEventListener("click", () => {
-        state.lines[index].text = textarea.value;
+
+      function markSaved() {
         esCell.classList.remove("dirty");
         esCell.classList.add("saved");
         saveBtn.textContent = "Saved ✓";
         window.clearTimeout(saveBtn._resetTimer);
         saveBtn._resetTimer = window.setTimeout(() => { saveBtn.textContent = "Save"; }, 1500);
+      }
+
+      saveBtn.addEventListener("click", () => {
+        const outcome = onSaveLine(index, textarea.value);
+        if (outcome && typeof outcome.then === "function") {
+          // Server-backed save (the library): show progress, and on failure
+          // keep the line dirty so the fix isn't silently lost.
+          saveBtn.disabled = true;
+          saveBtn.textContent = "Saving…";
+          outcome.then(
+            () => { saveBtn.disabled = false; markSaved(); },
+            () => {
+              saveBtn.disabled = false;
+              saveBtn.textContent = "Couldn't save — retry";
+              esCell.classList.remove("saved");
+              esCell.classList.add("dirty");
+            }
+          );
+        } else {
+          markSaved();
+        }
       });
 
       editRow.appendChild(textarea);
@@ -256,7 +260,6 @@
       tbody.appendChild(tr);
     });
     table.appendChild(tbody);
-    wrap.appendChild(table);
 
     // Initial sizing pass, once the table has actually been laid out (so
     // scrollHeight/getBoundingClientRect reflect real wrapped-text heights).
@@ -275,6 +278,53 @@
       });
       editPairs.forEach(({ origText }) => { if (origText) resizeObserver.observe(origText); });
     }
+
+    return {
+      element: table,
+      readLines: () => rows.map((row, i) => ({
+        start: row.start,
+        end: row.end,
+        original_text: row.original_text != null ? row.original_text : null,
+        translated_text: editPairs[i].textarea.value,
+      })),
+    };
+  }
+
+  function renderTranscriptPreview(result, sourceUrl, targetLanguage) {
+    const wrap = document.createElement("div");
+    wrap.className = "transcript-preview";
+
+    const summary = document.createElement("div");
+    summary.className = "hint";
+    summary.textContent = `Source: ${result.transcript_source}` +
+      (result.original_language ? ` · original language: ${result.original_language}` : "");
+    wrap.appendChild(summary);
+
+    const rows = result.rows || [];
+    if (!rows.length) {
+      const empty = document.createElement("div");
+      empty.className = "hint";
+      empty.textContent = "No transcript lines were produced.";
+      wrap.appendChild(empty);
+      return wrap;
+    }
+
+    // This becomes the saved/editable record for this preview -- see
+    // `previewState` above for how "Start dubbing" picks it back up.
+    const state = {
+      url: sourceUrl,
+      targetLanguage: targetLanguage,
+      lines: rows.map((row) => ({ start: row.start, end: row.end, text: row.translated_text || "" })),
+    };
+    previewState = state;
+
+    // The table itself is THE shared transcript-editing layout (see
+    // buildTranscriptTable); here a line's Save records the edit into this
+    // preview's in-memory state, which "Start dubbing" picks back up.
+    const built = buildTranscriptTable(rows, (index, value) => {
+      state.lines[index].text = value;
+    });
+    wrap.appendChild(built.element);
 
     const editHint = document.createElement("p");
     editHint.className = "hint";
@@ -1220,67 +1270,66 @@
 
     body.textContent = "";
     const rows = Array.isArray(data.rows) ? data.rows : [];
-    const inputs = [];
+    if (!rows.length) {
+      const empty = document.createElement("p");
+      empty.className = "hint";
+      empty.textContent = "This transcript has no lines.";
+      body.appendChild(empty);
+      return;
+    }
 
-    const list = document.createElement("div");
-    list.className = "transcript-rows";
-    rows.forEach((r) => {
-      const line = document.createElement("div");
-      line.className = "transcript-row";
-      const ts = document.createElement("span");
-      ts.className = "transcript-ts";
-      ts.textContent = formatTimestamp(r.start);
-      line.appendChild(ts);
-      if (r.original_text) {
-        const orig = document.createElement("span");
-        orig.className = "transcript-orig";
-        orig.textContent = r.original_text;
-        line.appendChild(orig);
-      }
-      const input = document.createElement("input");
-      input.type = "text";
-      input.className = "transcript-input";
-      input.value = r.translated_text || "";
-      line.appendChild(input);
-      inputs.push({ start: r.start, end: r.end, original_text: r.original_text || null, input: input });
-      list.appendChild(line);
+    // The library's persisted state. A line's Save commits THAT line: its row
+    // is updated here and the whole set PUT back (the API replaces the
+    // transcript wholesale). Edits not yet saved stay local-only -- the same
+    // per-line semantics as the transcript preview.
+    const serverRows = rows.map((r) => ({
+      start: r.start,
+      end: r.end,
+      original_text: r.original_text != null ? r.original_text : null,
+      translated_text: r.translated_text || "",
+    }));
+
+    // Same shared table as "Preview transcript first" -- identical layout by
+    // construction (buildTranscriptTable), just with a server-backed Save.
+    const built = buildTranscriptTable(rows, (index, value) => {
+      serverRows[index] = Object.assign({}, serverRows[index], { translated_text: value });
+      return fetch(`${API_BASE}/transcripts/${id}`, {
+        method: "PUT",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ rows: serverRows }),
+      }).then((res) => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      });
     });
-    body.appendChild(list);
+
+    // Long transcripts scroll inside the box instead of stretching the page;
+    // the rows themselves are exactly the preview's table.
+    const scroll = document.createElement("div");
+    scroll.className = "library-transcript-scroll";
+    scroll.appendChild(built.element);
+    body.appendChild(scroll);
 
     const actions = document.createElement("div");
     actions.className = "library-actions";
-    const saveBtn = document.createElement("button");
-    saveBtn.type = "button"; saveBtn.className = "btn secondary small"; saveBtn.textContent = "Save fixes";
     const dlBtn = document.createElement("button");
-    dlBtn.type = "button"; dlBtn.className = "btn secondary small"; dlBtn.textContent = "Download .txt";
-    const msg = document.createElement("span"); msg.className = "hint"; msg.style.marginTop = "0";
-    actions.appendChild(saveBtn); actions.appendChild(dlBtn); actions.appendChild(msg);
+    dlBtn.type = "button";
+    dlBtn.className = "btn secondary small";
+    dlBtn.textContent = "Download .txt";
+    dlBtn.addEventListener("click", () => downloadTranscript(data.title || id, built.readLines()));
+    actions.appendChild(dlBtn);
+    const hint = document.createElement("span");
+    hint.className = "hint";
+    hint.style.marginTop = "0";
+    hint.textContent = "Each line's Save stores the fix in the library — pick this transcript " +
+      "in “Redub completed project” above to apply it.";
+    actions.appendChild(hint);
     body.appendChild(actions);
-
-    saveBtn.addEventListener("click", async () => {
-      const out = inputs.map((it) => ({
-        start: it.start, end: it.end, original_text: it.original_text, translated_text: it.input.value,
-      }));
-      saveBtn.disabled = true; msg.textContent = "Saving…"; msg.className = "hint";
-      try {
-        const res = await fetch(`${API_BASE}/transcripts/${id}`, {
-          method: "PUT", credentials: "same-origin",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ rows: out }),
-        });
-        msg.textContent = res.ok ? "Saved. Redub above to apply." : "Couldn't save.";
-        msg.className = "hint" + (res.ok ? " good" : " bad");
-      } catch (err) {
-        msg.textContent = "Couldn't reach the service."; msg.className = "hint bad";
-      } finally { saveBtn.disabled = false; }
-    });
-
-    dlBtn.addEventListener("click", () => downloadTranscript(data.title || id, inputs));
   }
 
-  function downloadTranscript(title, inputs) {
-    const lines = inputs.map((it) => `[${formatTimestamp(it.start)} → ${formatTimestamp(it.end)}] ${it.input.value}`);
-    const blob = new Blob([lines.join("\n") + "\n"], { type: "text/plain" });
+  function downloadTranscript(title, lines) {
+    const text = lines.map((r) => `[${formatTimestamp(r.start)} → ${formatTimestamp(r.end)}] ${r.translated_text}`);
+    const blob = new Blob([text.join("\n") + "\n"], { type: "text/plain" });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
     a.download = (title || "transcript").replace(/[^\w.-]+/g, "_").slice(0, 80) + ".txt";
