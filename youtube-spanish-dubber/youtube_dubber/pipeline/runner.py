@@ -18,6 +18,7 @@ from . import (
     downloader,
     image_text,
     ocr_onnx,
+    separate,
     thumbnail,
     transcript,
     translator,
@@ -111,11 +112,27 @@ def run(
         ),
     )
 
+    # In "music" mode, first strip the original speech from the source audio so
+    # the narration sits over a clean music+SFX bed (the heavy ML step). It
+    # degrades gracefully: if separation is unavailable or fails, bed_path is
+    # None and video.mux falls back to a narration-only ("replace") mix.
+    bed_path = None
+    if settings.audio_mode == "music":
+        on_progress("muxing", "Removing the original speech (keeping music & sound effects)…")
+        bed_path = separate.instrumental_bed(
+            Path(source.video_path), work_dir,
+            on_progress=lambda f: on_progress(
+                "muxing", f"Removing the original speech… {int(f * 100)}%", fraction=f
+            ),
+        )
+        memory.release_to_os()  # free the separation model + audio buffers
+
     on_progress("muxing", f"Combining narration with the source video (mode={settings.audio_mode})...")
     dubbed_path = work_dir / "dubbed.mp4"
+    bed_volume = settings.music_bed_volume if settings.audio_mode == "music" else settings.duck_original_volume
     video.mux(
         Path(source.video_path), narration_path, dubbed_path,
-        mode=settings.audio_mode, duck_volume=settings.duck_original_volume,
+        mode=settings.audio_mode, duck_volume=bed_volume, bed_path=bed_path,
     )
 
     on_progress("uploading", "Uploading the dubbed video to your YouTube channel...")

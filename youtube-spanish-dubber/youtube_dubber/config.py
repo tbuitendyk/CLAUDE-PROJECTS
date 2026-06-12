@@ -76,13 +76,27 @@ class Settings:
     punctuation_model_onnx: str = os.getenv("DUBBER_PUNCTUATION_MODEL_ONNX", "punct_cap_seg_en.onnx")
 
     # --- Dubbing mix ---
-    # "duck": keep the original audio as a music/ambience bed under the Spanish
-    #   narration -- it sidechain-ducks under speech and swells back up in the
-    #   pauses the anchored timeline preserves (documentary/telenovela style).
+    # "music": remove the source-language *speech* from the original audio (ML
+    #   source separation, pipeline/separate.py) and keep the music + sound
+    #   effects as a bed under the Spanish narration -- no ducking artefacts, the
+    #   competing voice is simply gone. Falls back to "replace" if the separator
+    #   model isn't available. (Default.)
+    # "duck": keep the *whole* original audio as a bed and sidechain-duck it under
+    #   the narration (older approach; the source speech bleeds through the dips).
     # "replace": the new Spanish track replaces the original audio entirely.
-    audio_mode: str = os.getenv("DUBBER_AUDIO_MODE", "duck")
-    # Baseline level of that bed (its volume in the pauses, before ducking).
+    audio_mode: str = os.getenv("DUBBER_AUDIO_MODE", "music")
+    # Level of the original-audio bed under the narration. In "duck" mode it's the
+    # baseline level before ducking; "music" mode uses music_bed_volume instead.
     duck_original_volume: float = float(os.getenv("DUBBER_DUCK_VOLUME", "0.40"))
+    # Level of the speech-removed music/SFX bed in "music" mode (louder than the
+    # duck baseline -- the point is to let the music & effects come through).
+    music_bed_volume: float = float(os.getenv("DUBBER_MUSIC_BED_VOLUME", "0.70"))
+    # MDX-Net ONNX model that separates vocals (speech) from music/SFX for "music"
+    # mode -- onnxruntime + numpy only, no torch. deploy/install.sh downloads it;
+    # if it's absent, "music" mode degrades gracefully to "replace".
+    separator_model_path: Path = field(
+        default_factory=lambda: _path("DUBBER_SEPARATOR_MODEL", "./models/uvr_mdx_inst.onnx")
+    )
 
     # --- YouTube upload ---
     youtube_client_secrets_file: Path = field(

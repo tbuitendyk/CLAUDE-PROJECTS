@@ -162,3 +162,26 @@ def mux_duck_audio(video_path: Path, audio_path: Path, dst: Path, original_volum
         "-shortest", str(dst),
     ]
     _run(cmd)
+
+
+def mux_music_bed(video_path: Path, narration_path: Path, bed_path: Path, dst: Path, bed_volume: float) -> None:
+    """Output = the speech-removed instrumental (`bed_path`: music + SFX, no
+    original voice) under the new narration, mixed at a fixed level -- no
+    sidechain ducking, since the competing speech is already gone. The bed sits
+    at `bed_volume`; amix halves both inputs (1/n) so we restore with volume=2
+    (ffmpeg-4.3-safe -- no 'normalize' option), then limit the sum vs clipping."""
+    filter_complex = (
+        f"[2:a]aresample=48000,aformat=channel_layouts=stereo,volume={bed_volume:.3f}[bed];"
+        "[1:a]aresample=48000,aformat=channel_layouts=stereo[dub];"
+        "[bed][dub]amix=inputs=2:duration=longest:dropout_transition=0,"
+        "volume=2.0,alimiter=limit=0.98[aout]"
+    )
+    cmd = [
+        "ffmpeg", "-y",
+        "-i", str(video_path), "-i", str(narration_path), "-i", str(bed_path),
+        "-filter_complex", filter_complex,
+        "-map", "0:v:0", "-map", "[aout]",
+        "-c:v", "copy", "-c:a", "aac", "-b:a", "160k",
+        "-shortest", str(dst),
+    ]
+    _run(cmd)

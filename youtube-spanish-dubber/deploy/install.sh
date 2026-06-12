@@ -45,7 +45,7 @@ echo "==> Syncing project files to ${INSTALL_DIR}"
 rsync -a --delete \
   --exclude '.git' --exclude '.venv' --exclude 'data' --exclude 'secrets' \
   --exclude '__pycache__' --exclude '.env' --exclude 'bin' --exclude 'yt-dlp-plugins' \
-  --exclude 'node' --exclude 'pot-provider' \
+  --exclude 'node' --exclude 'pot-provider' --exclude 'models' \
   "${REPO_DIR}/" "${INSTALL_DIR}/"
 chown -R "${SERVICE_USER}:${SERVICE_USER}" "${INSTALL_DIR}"
 
@@ -118,6 +118,25 @@ rm -rf "${PLUGIN_DIR}"; mkdir -p "${PLUGIN_DIR}/bgutil"
 "${INSTALL_DIR}/.venv/bin/pip" install --quiet --no-deps \
   --target "${PLUGIN_DIR}/bgutil" "bgutil-ytdlp-pot-provider==${PROVIDER_TAG}"
 chown -R "${SERVICE_USER}:${SERVICE_USER}" "${PLUGIN_DIR}"
+
+echo "==> Installing the speech-separation model (MDX-Net ONNX, for 'music' audio mode)"
+# Removes the source-language speech from the original audio (keeping music/SFX)
+# so the Spanish narration sits over a clean bed -- onnxruntime + numpy only, no
+# torch (pipeline/separate.py). ~64 MB; kept across deploys (excluded from rsync
+# --delete). Non-fatal: if the download fails, 'music' mode falls back to 'replace'.
+MODELS_DIR="${INSTALL_DIR}/models"
+SEP_MODEL="${MODELS_DIR}/uvr_mdx_inst.onnx"
+mkdir -p "${MODELS_DIR}"
+if [ ! -f "${SEP_MODEL}" ]; then
+  if curl -fsSL -o "${SEP_MODEL}" \
+      "https://github.com/TRvlvr/model_repo/releases/download/all_public_uvr_models/UVR-MDX-NET-Inst_HQ_3.onnx"; then
+    echo "    downloaded $(du -h "${SEP_MODEL}" | cut -f1)"
+  else
+    echo "    WARNING: separator model download failed -- 'music' mode will fall back to 'replace'"
+    rm -f "${SEP_MODEL}"
+  fi
+fi
+chown -R "${SERVICE_USER}:${SERVICE_USER}" "${MODELS_DIR}"
 
 echo "==> Preparing config (.env) and secrets directory"
 mkdir -p "${INSTALL_DIR}/secrets" "${INSTALL_DIR}/data"
