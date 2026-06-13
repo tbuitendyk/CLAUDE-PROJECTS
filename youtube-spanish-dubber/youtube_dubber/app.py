@@ -149,6 +149,8 @@ class ThumbnailPreviewRequest(BaseModel):
     not the video."""
     url: str
     target_language: Optional[str] = None
+    # Restore graphics the text wipe removed (strikethroughs, slashes, stickers).
+    preserve_overlays: bool = False
 
     @field_validator("url")
     @classmethod
@@ -177,6 +179,9 @@ class ThumbnailRenderRequest(BaseModel):
     original: str
     regions: list[ThumbnailRegionEdit] = []
     banner_text: Optional[str] = None
+    # The "Auto-preserve original graphics" toggle: restore strikethroughs/
+    # slashes/stickers the text wipe removed.
+    preserve_overlays: bool = False
 
 
 class ThumbnailApplyRequest(BaseModel):
@@ -383,6 +388,7 @@ def thumbnail_preview(payload: ThumbnailPreviewRequest) -> dict:
             min_confidence=settings.thumbnail_ocr_min_confidence,
             banner_text=settings.thumbnail_banner_text,
             font=settings.thumbnail_font,
+            preserve_overlays=payload.preserve_overlays,
         )
         result = {
             "video_id": source.video_id,
@@ -413,6 +419,7 @@ def thumbnail_render(payload: ThumbnailRenderRequest) -> dict:
         [region.model_dump() for region in payload.regions],
         banner_text=banner,
         font=settings.thumbnail_font,
+        preserve_overlays=payload.preserve_overlays,
     )
     return {"generated": tp.image_to_data_uri(generated)}
 

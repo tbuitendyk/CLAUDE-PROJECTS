@@ -75,6 +75,69 @@ def _read_vtt(path: Path) -> list[Segment]:
     return subtitles.parse_cues(path.read_text(encoding="utf-8", errors="ignore"))
 
 
+def _source_caption_code(info: dict, es_codes: tuple[str, ...]) -> "tuple[str, bool] | None":
+    """A non-Spanish caption code to use as the ORIGINAL-language column when the
+    dub script came straight from existing Spanish captions. Prefers the video's
+    declared original language, then English, then any other track; manual before
+    auto. Returns (code, is_auto) or None."""
+    es_prefixes = {c.split("-")[0] for c in es_codes}
+    preferred = []
+    original = (info.get("language") or "").strip()
+    if original and original.split("-")[0] not in es_prefixes:
+        preferred.append(original)
+    preferred.append("en")
+    for auto in (False, True):
+        bucket = info.get("automatic_captions" if auto else "subtitles") or {}
+        # The preferred originals first, then any other non-Spanish track.
+        for code in preferred + [c for c in bucket if c.split("-")[0] not in es_prefixes]:
+            if code in bucket and bucket[code]:
+                return code, auto
+    return None
+
+
+def _align_originals(target: list[Segment], source_cues: list[Segment]) -> list[Segment] | None:
+    """Project source-language caption cues onto the (already rechunked) Spanish
+    segments by time overlap: each Spanish segment gets the source text whose
+    cues overlap its [start, end] window, joined in time order. One Segment per
+    target, same order (so the runner can zip them). None if nothing overlapped
+    (the tracks aren't time-aligned, or the source was empty)."""
+    if not target or not source_cues:
+        return None
+    out: list[Segment] = []
+    any_text = False
+    for seg in target:
+        parts = []
+        for cue in source_cues:
+            if min(seg.end, cue.end) - max(seg.start, cue.start) > 0 and (cue.text or "").strip():
+                parts.append((cue.start, cue.text.strip()))
+        text = " ".join(t for _, t in sorted(parts)).strip()
+        any_text = any_text or bool(text)
+        out.append(Segment(seg.start, seg.end, text))
+    return out if any_text else None
+
+
+def _fill_source_column(
+    url: str, info: dict, work_dir: Path, es_codes: tuple[str, ...], spanish: list[Segment],
+) -> "tuple[list[Segment], str] | None":
+    """Best-effort original-language column for a Spanish-captions dub: fetch a
+    non-Spanish caption track and align it to `spanish`. Returns (original
+    segments, source language code) or None. The dub still speaks `spanish`; this
+    is for display/review only, so any failure just leaves the column empty."""
+    try:
+        found = _source_caption_code(info, es_codes)
+        if not found:
+            return None
+        code, auto = found
+        path = downloader.download_caption(url, code, work_dir, auto=auto)
+        if not path:
+            return None
+        originals = _align_originals(spanish, _read_vtt(path))
+        return (originals, code) if originals else None
+    except Exception as exc:  # noqa: BLE001 -- the original column is a nice-to-have
+        log.warning("Couldn't fetch the source-language column for the Spanish captions (%s)", exc)
+        return None
+
+
 def obtain_spanish_segments(
     url: str, info: dict, work_dir: Path, target_language: str, video_path: Path,
     report: "Callable[[str, float], None] | None" = None,
@@ -87,14 +150,22 @@ def obtain_spanish_segments(
     _report = report or (lambda message, fraction: None)
     es_codes = settings.spanish_caption_codes
 
-    # 1. Manual Spanish captions.
+    # 1. Manual Spanish captions. These make the best dub script (human-authored),
+    # so we use them verbatim -- but they leave no original-language column. Fill
+    # one from a source-language caption track (display/review only; the dub still
+    # speaks the Spanish) so the library always keeps the original text.
     code = downloader.available_caption_language(info, es_codes, auto=False)
     if code:
         path = downloader.download_caption(url, code, work_dir, auto=False)
         if path:
+            spanish = rechunker.chunk(_read_vtt(path), language=code)
+            filled = _fill_source_column(url, info, work_dir, es_codes, spanish)
+            originals, src_lang = filled if filled else (None, code)
             return TranscriptResult(
-                rechunker.chunk(_read_vtt(path), language=code),
-                f"existing manual Spanish captions ({code})", original_language=code
+                spanish,
+                f"existing manual Spanish captions ({code})"
+                + (f" + {src_lang} captions for the original column" if filled else ""),
+                original_segments=originals, original_language=src_lang,
             )
 
     # 2. Whisper transcription -- preferred over auto-generated captions because

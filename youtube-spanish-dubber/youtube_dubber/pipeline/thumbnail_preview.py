@@ -66,14 +66,17 @@ def generate_preview(
     min_confidence: float = 0.5,
     banner_text: str = "",
     font: str = "",
+    preserve_overlays: bool = False,
 ):
     """Localise `image` and brand it, returning `(generated_image, regions)`.
 
     `regions` is one dict per replaced run of text -- its polygon, box, the
     original `text` and the automatic `translation` -- which the UI shows as
-    editable fields and echoes back (possibly edited) to `render_edited`."""
+    editable fields and echoes back (possibly edited) to `render_edited`.
+    `preserve_overlays` restores graphics (strikethroughs etc.) the text wipe
+    removed."""
     pairs = image_text.detect_and_translate(image, from_code, to_code, min_confidence=min_confidence)
-    localized, _replaced = image_text.render_translations(image, pairs)
+    localized, _replaced = image_text.render_translations(image, pairs, preserve_overlays=preserve_overlays)
     generated = _brand(localized, banner_text, font)
 
     # `render_translations` tagged each region with the serif/sans family it
@@ -102,11 +105,13 @@ def generate_preview(
     return generated, regions
 
 
-def render_edited(image, regions: list[dict], *, banner_text: str = "", font: str = ""):
+def render_edited(image, regions: list[dict], *, banner_text: str = "", font: str = "",
+                  preserve_overlays: bool = False):
     """Re-render `image` from edited regions and brand it. Each region dict
     carries the `polygon` (echoed back from `generate_preview`) and the user's
     `translation`; this re-runs the remove + draw + banner so the preview
-    reflects their edits without re-detecting (which could drift)."""
+    reflects their edits without re-detecting (which could drift).
+    `preserve_overlays` restores graphics (strikethroughs etc.) the wipe removed."""
     pairs: list[tuple[TextRegion, str]] = []
     for region in regions:
         translation = str(region.get("translation") or "").strip()
@@ -125,7 +130,7 @@ def render_edited(image, regions: list[dict], *, banner_text: str = "", font: st
                 translation,
             )
         )
-    rendered, _replaced = image_text.render_translations(image, pairs)
+    rendered, _replaced = image_text.render_translations(image, pairs, preserve_overlays=preserve_overlays)
     return _brand(rendered, banner_text, font)
 
 

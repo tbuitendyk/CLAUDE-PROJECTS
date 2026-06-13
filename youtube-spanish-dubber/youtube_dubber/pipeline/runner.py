@@ -303,6 +303,7 @@ def _brand_thumbnail(source, target_language: str, work_dir: Path, on_progress: 
                 from_code=(source.original_language or "en"),
                 to_code=target_language,
                 min_confidence=settings.thumbnail_ocr_min_confidence,
+                preserve_overlays=settings.thumbnail_preserve_overlays,
             )
 
         on_progress("downloading", "Branding the thumbnail with the Spanish banner...", fraction=1.0)

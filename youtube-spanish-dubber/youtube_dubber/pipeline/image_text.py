@@ -81,6 +81,7 @@ def localize_image_file(
     to_code: str,
     *,
     min_confidence: float = 0.5,
+    preserve_overlays: bool = False,
 ) -> Optional[Path]:
     """Read `src`, localise its text to `to_code`, and write the result to `out`
     (JPEG). Returns `out` if at least one text region was actually replaced, or
@@ -93,7 +94,8 @@ def localize_image_file(
         with Image.open(src) as opened:
             base = opened.convert("RGB")
         localized, replaced = localize_image(
-            base, from_code, to_code, min_confidence=min_confidence
+            base, from_code, to_code, min_confidence=min_confidence,
+            preserve_overlays=preserve_overlays,
         )
         if replaced == 0:
             return None
@@ -110,6 +112,7 @@ def localize_image(
     to_code: str,
     *,
     min_confidence: float = 0.5,
+    preserve_overlays: bool = False,
 ):
     """Return `(localized_image, replaced_count)` for a PIL image: a copy with
     every confidently-detected text region translated to `to_code` and
@@ -120,11 +123,14 @@ def localize_image(
     pass call -- it is just `detect_and_translate` followed by
     `render_translations`, split out so the interactive thumbnail preview can
     sit between the two (show the auto-translations, let them be edited, then
-    render the approved text)."""
+    render the approved text).
+
+    `preserve_overlays`: see render_translations -- restore non-text, non-
+    background graphics (a strikethrough, a sticker) that the text wipe removed."""
     pairs = detect_and_translate(image, from_code, to_code, min_confidence=min_confidence)
     if not pairs:
         return image, 0
-    return render_translations(image, pairs)
+    return render_translations(image, pairs, preserve_overlays=preserve_overlays)
 
 
 def detect_and_translate(
@@ -226,12 +232,17 @@ def _sentence_case(text: str) -> str:
     return text
 
 
-def render_translations(image, pairs: list[tuple[TextRegion, str]]):
+def render_translations(image, pairs: list[tuple[TextRegion, str]], *, preserve_overlays: bool = False):
     """Return `(rendered_image, replaced_count)`: a copy of `image` with each
     `(region, text)` pair's original text painted out and `text` drawn in its
     place. `pairs` carries whatever translations the caller settled on -- the
     automatic ones from `detect_and_translate`, or ones a user edited in the
-    preview UI. Returns the original image unchanged when nothing renders."""
+    preview UI. Returns the original image unchanged when nothing renders.
+
+    `preserve_overlays`: after rendering, restore graphics that overlaid the
+    original text but are neither text nor background -- a strikethrough, a red
+    slash, a sticker -- which the text wipe otherwise removes. General by design
+    (it keys on colour, not on any specific decoration); see _restore_overlays."""
     if not pairs:
         return image, 0
 
@@ -267,6 +278,10 @@ def render_translations(image, pairs: list[tuple[TextRegion, str]]):
         if style.has_banner:
             _paint_banner(canvas, style.box, style.banner_color)
 
+    # The reconstructed background (old text removed, no new text yet) -- the
+    # reference _restore_overlays uses to tell "overlay graphic" from "background".
+    background = canvas.copy()
+
     replaced = 0
     for region, translated in pairs:
         if _render_region(canvas, region, translated):
@@ -274,7 +289,72 @@ def render_translations(image, pairs: list[tuple[TextRegion, str]]):
 
     if replaced == 0:
         return image, 0
+
+    if preserve_overlays:
+        boxes_fills = [(region.bbox, tuple(region.fill_color or (255, 255, 255))) for region, _ in pairs]
+        canvas = _restore_overlays(image, canvas, background, boxes_fills)
     return canvas, replaced
+
+
+def _restore_overlays(
+    original, final_canvas, background, boxes_fills,
+    *, text_dist: float = 90.0, bg_dist: float = 70.0, min_area_frac: float = 0.002,
+):
+    """Composite back the graphics that overlaid the original text -- a
+    strikethrough, a red slash, a sticker -- which the text wipe removed.
+
+    General, not decoration-specific: within each replaced region, an "overlay"
+    pixel is one in the ORIGINAL that is far in colour from BOTH the text fill
+    (so the old letters themselves are excluded) AND the reconstructed background
+    (so the banner/scene is excluded) -- which leaves exactly the foreign-coloured
+    graphics. Those original pixels are pasted onto the final image, on top of the
+    new translated text, so e.g. the red slash crosses "Siempre Salvo" the way it
+    crossed "Always Saved". A connected-components area filter drops speckle so
+    JPEG/halo noise isn't resurrected. Best-effort: any failure returns the
+    rendered image unchanged."""
+    try:
+        import numpy as np
+        from PIL import Image
+
+        orig_u8 = np.asarray(original.convert("RGB"))
+        orig = orig_u8.astype(np.float32)
+        bg = np.asarray(background.convert("RGB")).astype(np.float32)
+        out = np.asarray(final_canvas.convert("RGB")).copy()
+        height, width = out.shape[:2]
+        try:
+            import cv2
+        except Exception:  # noqa: BLE001 -- without opencv we keep the raw mask
+            cv2 = None
+
+        restored = False
+        for (x0, y0, x1, y1), fill in boxes_fills:
+            x0, y0 = max(0, int(x0)), max(0, int(y0))
+            x1, y1 = min(width, int(x1)), min(height, int(y1))
+            if x1 - x0 < 4 or y1 - y0 < 4:
+                continue
+            o = orig[y0:y1, x0:x1]
+            b = bg[y0:y1, x0:x1]
+            fillv = np.array(tuple(fill)[:3], np.float32)
+            far_text = np.linalg.norm(o - fillv, axis=2) > text_dist     # not the old letters
+            far_bg = np.linalg.norm(o - b, axis=2) > bg_dist             # not the background
+            mask = far_text & far_bg
+            if not mask.any():
+                continue
+            if cv2 is not None:
+                m = mask.astype(np.uint8)
+                m = cv2.morphologyEx(m, cv2.MORPH_OPEN, np.ones((3, 3), np.uint8))
+                count, labels, stats, _ = cv2.connectedComponentsWithStats(m, 8)
+                min_area = max(16, int(min_area_frac * (x1 - x0) * (y1 - y0)))
+                keep = [i for i in range(1, count) if stats[i, cv2.CC_STAT_AREA] >= min_area]
+                if not keep:
+                    continue
+                mask = np.isin(labels, keep)
+            out[y0:y1, x0:x1][mask] = orig_u8[y0:y1, x0:x1][mask]
+            restored = True
+        return Image.fromarray(out) if restored else final_canvas
+    except Exception as exc:  # noqa: BLE001 -- overlay restore is a nice-to-have
+        log.warning("Overlay restore skipped (%s)", exc)
+        return final_canvas
 
 
 # --- region analysis -------------------------------------------------------

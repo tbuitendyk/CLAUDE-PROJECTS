@@ -210,6 +210,13 @@ class Settings:
     # bias toward sans (the common thumbnail face); only clearly-modulated text
     # reads serif. Raise it to lean more sans, lower to catch more serif.
     thumbnail_serif_threshold: float = float(os.getenv("DUBBER_THUMBNAIL_SERIF_THRESHOLD", "0.62"))
+    # After translating in-image text, restore graphics that overlaid the
+    # original text but are neither text nor background -- a strikethrough, a red
+    # slash, a sticker -- which the text wipe otherwise removes (image_text.
+    # _restore_overlays). The editor exposes this per-render as a toggle; this is
+    # the default for the dub's AUTO-generated thumbnail. Off by default (it's a
+    # heuristic that can occasionally resurrect a halo artifact).
+    thumbnail_preserve_overlays: bool = _bool("DUBBER_THUMBNAIL_PRESERVE_OVERLAYS", False)
 
     # --- Worker ---
     poll_interval_seconds: float = float(os.getenv("DUBBER_POLL_INTERVAL", "5"))
