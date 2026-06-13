@@ -283,8 +283,8 @@ def render_translations(image, pairs: list[tuple[TextRegion, str]], *, preserve_
     background = canvas.copy()
 
     replaced = 0
-    for region, translated in pairs:
-        if _render_region(canvas, region, translated):
+    for (region, translated), style in zip(pairs, styles):
+        if _render_region(canvas, region, translated, style):
             replaced += 1
 
     if replaced == 0:
@@ -606,11 +606,17 @@ def _find_text_font(family: str = "serif") -> Optional[str]:
     return thumbnail._find_font()
 
 
-def _render_region(canvas, region: TextRegion, text: str) -> bool:
+def _render_region(canvas, region: TextRegion, text: str, style=None) -> bool:
     """Draw `text` into `region`'s box: sized to fit, in a face matching the
     source's serif/sans family, with the detected fill colour and (when the
     source had one) outline, vertically stretched to fill the box. Returns False
-    if no font was found."""
+    if no font was found.
+
+    For a banner region, repaint the banner SOLID and sized to the actual
+    rendered text (which is taller/longer than the source's, especially in
+    Spanish) before drawing -- the original tight-to-source banner left the new
+    text spilling onto the surrounding colour; this keeps it fully on a clean
+    banner (and gives the overlay-restore pass a clean base)."""
     font_path = _find_text_font(region.font_family or "serif")
     if not font_path:
         return False
@@ -663,5 +669,24 @@ def _render_region(canvas, region: TextRegion, text: str) -> bool:
     tile_w, tile_h = tile.size
     px = x0 + (box_w - tile_w) // 2
     py = y0 + (box_h - tile_h) // 2
+
+    # For a banner region, repaint it SOLID over the union of the source box and
+    # the (often larger) rendered-text rectangle, plus a little padding -- so the
+    # new text sits fully on a clean banner instead of spilling onto the
+    # surrounding colour, and the band is tall/wide enough to hold it.
+    if style is not None and getattr(style, "has_banner", False):
+        from PIL import ImageDraw
+
+        width, height = canvas.size
+        pad_x = max(3, int(round(tile_h * 0.18)))
+        pad_y = max(2, int(round(tile_h * 0.12)))
+        bx0 = max(0, min(x0, px) - pad_x)
+        by0 = max(0, min(y0, py) - pad_y)
+        bx1 = min(width, max(x1, px + tile_w) + pad_x)
+        by1 = min(height, max(y1, py + tile_h) + pad_y)
+        ImageDraw.Draw(canvas).rectangle(
+            [bx0, by0, bx1, by1], fill=tuple(int(c) for c in style.banner_color)
+        )
+
     canvas.paste(tile, (px, py), tile)
     return True

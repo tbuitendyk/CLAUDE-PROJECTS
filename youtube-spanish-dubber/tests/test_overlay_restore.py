@@ -85,3 +85,28 @@ def test_speck_noise_is_filtered_out():
         assert tuple(arr[15, 30]) != (0, 220, 0)
     except Exception:
         pass
+
+
+def test_banner_repaint_covers_the_rendered_text_solidly():
+    from youtube_dubber.pipeline import image_text
+    from youtube_dubber.pipeline.models import TextRegion
+
+    if image_text._find_text_font("sans") is None:
+        pytest.skip("no usable font installed")
+
+    yellow = (240, 220, 30)
+    img = Image.fromarray(np.full((60, 400, 3), yellow, dtype=np.uint8))
+    region = TextRegion(polygon=[(20, 18), (120, 18), (120, 42), (20, 42)],
+                        text="Once", fill_color=(10, 10, 10), font_family="sans")
+    style = image_text._RegionStyle(
+        fill=(10, 10, 10), outline=None, has_banner=True, banner_color=yellow,
+        ink=None, box=region.bbox,
+    )
+    ok = image_text._render_region(img, region, "Una Vez Salvo Siempre", style)
+    assert ok
+    arr = np.asarray(img)
+    band = arr[20:42, 20:380]
+    is_yellowish = (band[:, :, 0] > 180) & (band[:, :, 1] > 160) & (band[:, :, 2] < 120)
+    is_darkish = band.sum(axis=2) < 200
+    assert (is_yellowish | is_darkish).mean() > 0.97  # only banner-or-text, no spill
+    assert is_darkish.any()  # the text actually drew
