@@ -263,11 +263,9 @@ def render_translations(image, pairs: list[tuple[TextRegion, str]], *, preserve_
             region.font_family = _estimate_font_family(arr, region.bbox)
         if region.fill_color is None:
             region.fill_color = style.fill
-        if region.stroke_color is None:
-            # Outline keeps the text legible on a scene; derive it from the final
-            # fill so a hand-picked colour still gets a contrasting edge. None on a
-            # banner -- the flat colour already supplies the contrast.
-            region.stroke_color = None if style.has_banner else _contrasting(region.fill_color)
+        # No auto outline. Thumbnail titles are solid-colour text; drawing a
+        # contrasting halo (white around solid-black letters) just looks bad.
+        # A stroke is used only if a caller explicitly set region.stroke_color.
         styles.append(style)
 
     # Rebuild the background where the old text was: scene regions get just their
