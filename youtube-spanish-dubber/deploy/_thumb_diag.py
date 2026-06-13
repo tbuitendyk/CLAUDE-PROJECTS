@@ -154,13 +154,10 @@ def main() -> None:
     print(f"==THUMBDIAG== rendered {rendered.size}; {len(pairs)} regions flags={flags}")
 
     if str(__import__("os").environ.get("THUMB_DIAG_IMG", "1")) == "1":
-        # Tight, higher-res crop of the TOP line (region 0) so the yellow band's
-        # fit around the letters is legible.
-        crop = rendered.crop((90, 120, 1190, 365))
-        w = 440
-        crop = crop.resize((w, int(crop.height * w / crop.width)))
-        buf = io.BytesIO(); crop.save(buf, "JPEG", quality=42)
-        print("==THUMBDIAG_B64 line0==", base64.b64encode(buf.getvalue()).decode("ascii"))
+        # Whole thumbnail, low-res, for a final holistic check of all 3 lines.
+        crop = rendered.resize((260, int(rendered.height * 260 / rendered.width)))
+        buf = io.BytesIO(); crop.save(buf, "JPEG", quality=27)
+        print("==THUMBDIAG_B64 full==", base64.b64encode(buf.getvalue()).decode("ascii"))
 
 
 if __name__ == "__main__":
