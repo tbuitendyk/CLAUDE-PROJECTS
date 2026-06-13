@@ -109,3 +109,20 @@ def test_probe_client_formats_reports_each(fake_settings, monkeypatch):
                         lambda url, client: {"web": 0, "mweb": 7}.get(client, 0))
     results = dict(downloader.probe_client_formats("https://youtu.be/x"))
     assert results["web"] == 0 and results["mweb"] == 7
+
+
+def test_default_first_ladder_prefers_unpinned_when_default_works(fake_settings, monkeypatch):
+    # The real-world case (video 15D9iZqs8sQ): pinned clients return 0, the
+    # unpinned default returns formats via its full cascade (android_vr).
+    fake_settings.ytdlp_client_ladder = "default,web,mweb,web_safari,tv"
+    monkeypatch.setattr(downloader, "_probe_formats",
+                        lambda url, client: 27 if client == "default" else 0)
+    downloader.ensure_working_client("https://youtu.be/15D9iZqs8sQ")
+    # Resolved to default -> NO player_client pin (full cascade preserved).
+    assert "--extractor-args" not in downloader._base_cmd()
+
+
+def test_missing_pot_extractor_arg_toggle(fake_settings):
+    assert "youtube:formats=missing_pot" not in " ".join(downloader._base_cmd())
+    fake_settings.ytdlp_include_missing_pot = True
+    assert "youtube:formats=missing_pot" in downloader._base_cmd()

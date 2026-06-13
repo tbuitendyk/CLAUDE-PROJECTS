@@ -91,6 +91,9 @@ def _base_cmd(client=_UNSET) -> list[str]:
         cmd += ["--plugin-dirs", str(plugin_dirs)]
     chosen = _effective_client() if client is _UNSET else client
     cmd += _client_extractor_args(chosen)
+    if getattr(settings, "ytdlp_include_missing_pot", False):
+        # Surface PO-token-gated formats even without a validated token.
+        cmd += ["--extractor-args", "youtube:formats=missing_pot"]
     if settings.youtube_use_cookies:
         cookies = settings.youtube_cookies_file
         if cookies and Path(cookies).exists():

@@ -143,14 +143,22 @@ class Settings:
     ytdlp_player_clients: str = os.getenv("DUBBER_YTDLP_PLAYER_CLIENTS", "")
     # The player clients the downloader tries, in order, to auto-resolve a
     # working one (the first that returns real, non-storyboard formats) the first
-    # time it extracts -- then caches it for the rest of the process. YouTube
-    # binds the provider's PO token to a specific client and periodically changes
-    # which default client yields formats; probing this ladder self-heals across
-    # those changes. "web" leads because the bgutil gvs token binds to it;
-    # "default" (no pin) is the final fallback. Ignored if a hard pin is set.
+    # time it extracts -- then caches it for the rest of the process. CRUCIAL:
+    # "default" (no pin) leads, because pinning a single client RESTRICTS yt-dlp
+    # to only that client, whereas the default runs its full client cascade --
+    # including the token-exempt android_vr client that returns formats when the
+    # web/tv clients (which need a GVS PO token) come back empty. The narrower
+    # pins are only fallbacks for the rare video the default can't serve. Ignored
+    # if a hard pin is set.
     ytdlp_client_ladder: str = os.getenv(
-        "DUBBER_YTDLP_CLIENT_LADDER", "web,mweb,web_safari,tv,default"
+        "DUBBER_YTDLP_CLIENT_LADDER", "default,web,mweb,web_safari,tv"
     )
+    # Include formats that require a PO token even when one isn't validated
+    # (yt-dlp's `formats=missing_pot`). For the occasional video whose only
+    # formats are GVS-token-gated and the token isn't accepted, this surfaces
+    # them anyway. Off by default (those URLs may 403 on download); turn on to
+    # rescue token-gated videos.
+    ytdlp_include_missing_pot: bool = _bool("DUBBER_YTDLP_INCLUDE_MISSING_POT", False)
     # When a job's extraction fails, automatically capture a full verbose yt-dlp
     # diagnostic (cookies state, per-client format counts, the complete -v trace)
     # to data/diagnostics/ so GET /diagnostics/last can serve it. On while
