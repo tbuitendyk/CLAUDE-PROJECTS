@@ -977,8 +977,31 @@
     // "Auto-preserve original graphics": restore strikethroughs/slashes/stickers
     // the text wipe removes. Per-editor, applied on the next preview/re-render.
     let preserveOverlays = false;
+    // The live per-region input controls of the rendered card (set by render),
+    // read by getEditState() to capture the exact saved field contents/colours.
+    let currentInputs = [];
 
     function getState() { return state; }
+
+    // The editor's full saved state -- source image, banner, overlay flag, and
+    // each region's CURRENT translation/font/colour from the live inputs -- so
+    // re-opening can restore the exact editable interface (openSaved).
+    function getEditState() {
+      if (!state) return null;
+      return {
+        url: state.url,
+        original: state.original,
+        banner_text: state.bannerText,
+        preserve_overlays: preserveOverlays,
+        regions: currentInputs.map(({ polygon, input, text, fontSelect, colorInput }) => ({
+          polygon: polygon,
+          text: text,
+          translation: input.value,
+          font_family: fontSelect ? fontSelect.value : "auto",
+          fill_color: colorInput ? colorInput.value : null,
+        })),
+      };
+    }
 
     function reset() {
       state = null;
@@ -1096,7 +1119,8 @@
       opts.panel.appendChild(compare);
 
       const regions = data.regions || [];
-      const inputs = []; // { polygon, input, fontSelect, colorInput }
+      const inputs = []; // { polygon, input, text, fontSelect, colorInput }
+      currentInputs = inputs;  // exposed to getEditState()
 
       if (regions.length) {
         const intro = document.createElement("p");
@@ -1160,7 +1184,7 @@
           row.appendChild(style);
 
           inputs.push({
-            polygon: region.polygon, input: input,
+            polygon: region.polygon, input: input, text: region.text,
             fontSelect: fontSelect, colorInput: colorInput,
           });
           list.appendChild(row);
@@ -1191,7 +1215,8 @@
       actionBtn.className = "btn thumb-action";
       actionBtn.textContent = opts.actionLabel;
       actionBtn.addEventListener("click", () =>
-        opts.onAction({ state: state, button: actionBtn, setMessage: setMessage, markApproved: markApproved }));
+        opts.onAction({ state: state, button: actionBtn, setMessage: setMessage,
+                        markApproved: markApproved, getEditState: getEditState }));
       actions.appendChild(actionBtn);
 
       const revertBtn = document.createElement("button");
@@ -1332,7 +1357,36 @@
       opts.panel.appendChild(actions);
     }
 
-    return { preview: preview, reset: reset, getState: getState, showSaved: showSaved, hide: hide };
+    // Re-open the FULL editable interface from a saved edit state -- the source
+    // image, your saved Spanish image, and your exact edited translations/fonts/
+    // colours -- with no re-fetch or re-detect. Everything is editable; saving
+    // again overwrites. `editState.generated` is the saved thumbnail to show.
+    function openSaved(editState) {
+      if (!editState || !opts.panel) return;
+      opts.panel.style.display = "block";
+      expandContaining(opts.panel);
+      preserveOverlays = !!editState.preserve_overlays;
+      state = {
+        url: editState.url || opts.getSourceUrl(),
+        targetLanguage: opts.getTargetLanguage(),
+        original: editState.original,
+        generated: editState.generated,
+        regions: editState.regions || [],
+        bannerText: editState.banner_text || "",
+        approved: true,
+      };
+      render({
+        original: editState.original,
+        generated: editState.generated,
+        regions: editState.regions || [],
+      });
+      markApproved();
+    }
+
+    return {
+      preview: preview, reset: reset, getState: getState, getEditState: getEditState,
+      showSaved: showSaved, openSaved: openSaved, hide: hide,
+    };
   }
 
   // The dub flow's editor: Save stores the image on the library entry (the
@@ -1348,14 +1402,16 @@
     onMissingSource: () => { formMessage.textContent = "Enter a video URL first."; },
     onClose: () => logClientEvent("Thumbnail preview closed",
       currentProject ? (currentProject.title || currentProject.source_title) : null),
-    onAction: async ({ state, button, setMessage, markApproved }) => {
+    onAction: async ({ state, button, setMessage, markApproved, getEditState }) => {
       const restore = button.textContent;
       button.disabled = true;
       button.textContent = "Saving…";
       try {
         const project = await ensureProject(state.url, state.targetLanguage);
+        // Save the image AND the editor state (regions/fonts/colours) so
+        // re-opening restores the exact editable interface.
         const updated = await apiJson(`/projects/${project.id}/thumbnail`, "PUT",
-          { thumbnail: state.generated });
+          { thumbnail: state.generated, edit_state: getEditState() });
         currentProject = Object.assign({}, currentProject, updated);
         state.approved = true;
         markApproved();
@@ -1392,14 +1448,22 @@
   // editable. Falls back to a fresh conversion when nothing is saved.
   thumbnailBtn.addEventListener("click", async () => {
     const entry = await currentEntry();
-    let savedThumbnail = null;
     if (entry && entry.has_thumbnail) {
       try {
         const project = await api(`/projects/${entry.id}`);
-        savedThumbnail = project.thumbnail || null;
-      } catch (err) { /* fall back to a fresh conversion */ }
+        // Best: restore the full saved editor state (your translations, fonts,
+        // colours) instantly, no re-fetch.
+        if (project.thumbnail_edit && Array.isArray(project.thumbnail_edit.regions)) {
+          dubThumbEditor.openSaved(
+            Object.assign({}, project.thumbnail_edit, { generated: project.thumbnail }));
+          return;
+        }
+        // Legacy saved thumbnail (image only): re-fetch the source for the
+        // original + editable regions, but show your saved image as the Spanish side.
+        if (project.thumbnail) { dubThumbEditor.preview(project.thumbnail); return; }
+      } catch (err) { /* fall through to a fresh conversion */ }
     }
-    dubThumbEditor.preview(savedThumbnail);
+    dubThumbEditor.preview();
   });
 
   function maybeResetStaleThumbnail() {
