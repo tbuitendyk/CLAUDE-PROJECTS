@@ -154,18 +154,12 @@ def main() -> None:
     print(f"==THUMBDIAG== rendered {rendered.size}; {len(pairs)} regions flags={flags}")
 
     if str(__import__("os").environ.get("THUMB_DIAG_IMG", "1")) == "1":
-        from PIL import Image as _Im
-        # The whole title area (where all 3 lines live), source over render.
-        band = (0, 95, image.width, 705)
-        top = image.crop(band)
-        rtop = rendered.crop(band)
-        w = 280
-        a = top.resize((w, int(top.height * w / top.width)))
-        b = rtop.resize((w, int(rtop.height * w / rtop.width)))
-        stacked = _Im.new("RGB", (w, a.height + b.height + 4), (255, 0, 255))
-        stacked.paste(a, (0, 0)); stacked.paste(b, (0, a.height + 4))
-        buf = io.BytesIO(); stacked.save(buf, "JPEG", quality=30)
-        print("==THUMBDIAG_B64 stacked==", base64.b64encode(buf.getvalue()).decode("ascii"))
+        # Render only (the source layout is already known); the full title area.
+        crop = rendered.crop((0, 95, image.width, 705))
+        w = 300
+        crop = crop.resize((w, int(crop.height * w / crop.width)))
+        buf = io.BytesIO(); crop.save(buf, "JPEG", quality=32)
+        print("==THUMBDIAG_B64 render==", base64.b64encode(buf.getvalue()).decode("ascii"))
 
 
 if __name__ == "__main__":
