@@ -1377,21 +1377,11 @@
       reset();
     },
   });
-  // Preview thumbnail: if a thumbnail is already saved for this video, re-open
-  // it in the sub-card (no YouTube re-fetch / regenerate); otherwise generate.
-  thumbnailBtn.addEventListener("click", async () => {
-    const entry = await currentEntry();
-    if (entry && entry.has_thumbnail) {
-      try {
-        const project = await api(`/projects/${entry.id}`);
-        if (project.thumbnail) {
-          dubThumbEditor.showSaved(project.thumbnail);
-          return;
-        }
-      } catch (err) { /* fall through to generate */ }
-    }
-    dubThumbEditor.preview();
-  });
+  // Preview thumbnail: always (re)generate the full editable interface from the
+  // source video's thumbnail -- even when one is already saved -- so the user
+  // gets the same controls as first use and can make more changes. The saved
+  // thumbnail stays on the entry until they Save a new one.
+  thumbnailBtn.addEventListener("click", () => dubThumbEditor.preview());
 
   function maybeResetStaleThumbnail() {
     const st = dubThumbEditor.getState();
