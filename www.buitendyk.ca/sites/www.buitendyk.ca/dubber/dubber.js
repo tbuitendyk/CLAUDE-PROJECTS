@@ -46,6 +46,10 @@
   const libraryList = document.getElementById("library-list");
   const logPanel = document.getElementById("log-panel");
   const eventList = document.getElementById("event-list");
+  const diagnoseBtn = document.getElementById("diagnose-btn");
+  const diagnoseLastBtn = document.getElementById("diagnose-last-btn");
+  const diagnoseMessage = document.getElementById("diagnose-message");
+  const diagnoseOutput = document.getElementById("diagnose-output");
 
   let authenticated = false;
   const pollTimers = new Map(); // job id -> setInterval handle
@@ -858,6 +862,60 @@
   }
 
   if (restartBtn) restartBtn.addEventListener("click", restartService);
+
+  // --- Extraction diagnostics --------------------------------------------
+  // Runs a full verbose yt-dlp probe (GET /diagnostics/extraction) and shows
+  // the report; "Show last" pulls the most recent capture (incl. the worker's
+  // auto-capture after a failed job).
+  function showDiagnostic(text) {
+    if (!diagnoseOutput) return;
+    diagnoseOutput.textContent = text || "";
+    diagnoseOutput.style.display = text ? "block" : "none";
+  }
+
+  async function runDiagnostic() {
+    if (!authenticated) return;
+    const url = formUrl();
+    diagnoseBtn.disabled = true;
+    if (diagnoseLastBtn) diagnoseLastBtn.disabled = true;
+    diagnoseMessage.textContent = "Probing extraction (this takes ~10–60s)…";
+    showDiagnostic("");
+    try {
+      const path = url
+        ? `/diagnostics/extraction?url=${encodeURIComponent(url)}`
+        : "/diagnostics/extraction";
+      const data = await api(path);
+      const summary = data.working_client
+        ? `Working client: ${data.working_client}. `
+        : "No client returned real formats. ";
+      diagnoseMessage.textContent = summary +
+        `cookies ${data.cookies_enabled ? "on" : "off"}` +
+        (data.cookies_enabled ? ` (file ${data.cookies_present ? "present" : "MISSING"})` : "") + ".";
+      showDiagnostic(data.report);
+    } catch (err) {
+      diagnoseMessage.textContent = "Diagnostic failed: " + err.message;
+    } finally {
+      diagnoseBtn.disabled = false;
+      if (diagnoseLastBtn) diagnoseLastBtn.disabled = false;
+    }
+  }
+
+  async function showLastDiagnostic() {
+    if (!authenticated) return;
+    diagnoseMessage.textContent = "Loading last capture…";
+    try {
+      const data = await api("/diagnostics/last");
+      diagnoseMessage.textContent = "Most recent capture:";
+      showDiagnostic(data.report);
+    } catch (err) {
+      diagnoseMessage.textContent = err.status === 404
+        ? "Nothing captured yet — run a diagnostic or trigger a job that fails."
+        : "Couldn't load the last diagnostic: " + err.message;
+    }
+  }
+
+  if (diagnoseBtn) diagnoseBtn.addEventListener("click", runDiagnostic);
+  if (diagnoseLastBtn) diagnoseLastBtn.addEventListener("click", showLastDiagnostic);
 
   // --- Thumbnail editor (shared widget) ------------------------------------
   // A preview/edit widget over /thumbnail/preview + /thumbnail/render. Two

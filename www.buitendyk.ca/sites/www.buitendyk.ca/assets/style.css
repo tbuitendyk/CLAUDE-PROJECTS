@@ -751,3 +751,20 @@ footer.site-footer {
   border-radius: 6px;
 }
 .card-close:hover { color: var(--text); background: var(--bg-elevated); }
+
+/* Extraction-diagnostic output: monospaced, scrollable, copy-friendly. */
+.diag-output {
+  margin-top: 0.9rem;
+  max-height: 60vh;
+  overflow: auto;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.75rem 0.9rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.78rem;
+  line-height: 1.4;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--text-dim);
+}

@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Spanish Video Dubber &mdash; buitendyk.ca</title>
   <meta name="description" content="Submit an English YouTube video, generate a Spanish voice-over, and publish it to a YouTube channel.">
-  <link rel="stylesheet" href="/assets/style.css?v=19">
+  <link rel="stylesheet" href="/assets/style.css?v=20">
 </head>
 <body>
   <header class="site-header">
@@ -169,6 +169,25 @@
           <span class="hint" id="restart-message" style="margin-top:0;"></span>
         </div>
       </div>
+      <!-- Extraction diagnostics: runs a full verbose yt-dlp probe and shows
+           cookies state, per-client format counts and the complete -v trace so
+           a YouTube bot-check can be diagnosed exactly. -->
+      <div class="service-row" style="margin-top:1rem; border-top:1px solid var(--border); padding-top:1rem;">
+        <div class="service-info">
+          <div class="box-title">Diagnose extraction</div>
+          <p class="hint" style="margin-top:0.2rem;">
+            Probe YouTube extraction and capture the full verbose trace &mdash; why
+            downloads are (or aren't) getting real formats. Uses the source URL
+            above if set, otherwise a sample video.
+          </p>
+        </div>
+        <div class="service-action">
+          <button class="btn secondary small" id="diagnose-btn" type="button">Run diagnostic</button>
+          <button class="btn secondary small" id="diagnose-last-btn" type="button">Show last</button>
+          <span class="hint" id="diagnose-message" style="margin-top:0;"></span>
+        </div>
+      </div>
+      <pre id="diagnose-output" class="diag-output" style="display:none;"></pre>
     </div>
 
     <!-- Live status: progress cards for jobs that are still queued/running.
@@ -187,6 +206,6 @@
     buitendyk.ca &mdash; self-hosted on a personal VPS, built with free &amp; open-source tools.
   </footer>
 
-  <script src="/dubber/dubber.js?v=21"></script>
+  <script src="/dubber/dubber.js?v=22"></script>
 </body>
 </html>
