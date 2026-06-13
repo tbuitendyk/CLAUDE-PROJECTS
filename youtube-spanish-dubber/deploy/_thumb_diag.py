@@ -60,10 +60,18 @@ def _analyze_verbose(arr, bbox):
     core = ink & (depth >= max(1.5, 0.5 * float(depth.max())))
     interior = core if int(core.sum()) >= 8 else ink
     fill = tuple(int(c) for c in np.median(crop[interior], axis=0)) if int(ink.sum()) else (0, 0, 0)
+    # Tight ink box (absolute) -- where the source glyphs actually are, vs the
+    # looser OCR bbox (which here also caught the decorative filigree).
+    ys, xs = np.where(ink)
+    if ys.size:
+        info_ink = (x0 + int(xs.min()), y0 + int(ys.min()),
+                    x0 + int(xs.max()) + 1, y0 + int(ys.max()) + 1)
+    else:
+        info_ink = None
     halo = cv2.dilate(ink_u8, np.ones((5, 5), np.uint8), iterations=2) > 0
     near_text = np.linalg.norm(crop.astype(np.float32) - np.array(fill, np.float32), axis=2) < 60
     bg_pixels = crop[~(halo | near_text)].reshape(-1, 3)
-    info = {"fill": fill, "n_bg": int(bg_pixels.shape[0])}
+    info = {"fill": fill, "n_bg": int(bg_pixels.shape[0]), "ink_box": info_ink}
     if bg_pixels.shape[0] >= 20:
         bgf = bg_pixels.astype(np.float32)
         median = np.median(bgf, axis=0)
@@ -144,15 +152,16 @@ def main() -> None:
     # rendered band) rides along if it fits.
     if str(__import__("os").environ.get("THUMB_DIAG_IMG", "1")) == "1":
         from PIL import Image as _Im
-        th = image.height // 3
-        top = image.crop((0, 0, image.width, th))
-        rtop = rendered.crop((0, 0, rendered.width, rendered.height // 3))
+        # The whole title area (where all 3 lines live), source over render.
+        band = (0, 95, image.width, 705)
+        top = image.crop(band)
+        rtop = rendered.crop(band)
         w = 300
         a = top.resize((w, int(top.height * w / top.width)))
         b = rtop.resize((w, int(rtop.height * w / rtop.width)))
         stacked = _Im.new("RGB", (w, a.height + b.height + 4), (255, 0, 255))
         stacked.paste(a, (0, 0)); stacked.paste(b, (0, a.height + 4))
-        buf = io.BytesIO(); stacked.save(buf, "JPEG", quality=35)
+        buf = io.BytesIO(); stacked.save(buf, "JPEG", quality=33)
         print("==THUMBDIAG_B64 stacked==", base64.b64encode(buf.getvalue()).decode("ascii"))
 
     print("==THUMBDIAG== rendered size:", rendered.size)
@@ -164,7 +173,7 @@ def main() -> None:
         print(f"  [{i}]{flag} bbox={region.bbox} {region.text!r}->{translated!r}")
         print(f"      banner_color={style.banner_color} fill={style.fill} "
               f"font={region.font_family} std={info.get('banner_std')} "
-              f"cov40={info.get('cover@40')} cov55={info.get('cover@55')} nbg={info.get('n_bg')}")
+              f"cov40={info.get('cover@40')} ink_box={info.get('ink_box')}")
 
 
 if __name__ == "__main__":
