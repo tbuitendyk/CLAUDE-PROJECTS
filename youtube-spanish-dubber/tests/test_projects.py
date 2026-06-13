@@ -173,3 +173,35 @@ def test_summary_keeps_big_payloads_out(fresh_db):
     assert summary["line_count"] == 2
     full = db.get_project(project.id).full()
     assert len(full["rows"]) == 2 and full["thumbnail"].startswith("data:")
+
+
+def test_thumbnail_edit_state_round_trips(fresh_db):
+    project = db.upsert_project("dQw4w9WgXcQ", "es")
+    edit = {
+        "original": "data:image/jpeg;base64,SRC",
+        "banner_text": "Versión Español",
+        "preserve_overlays": True,
+        "regions": [
+            {"polygon": [[0, 0], [10, 0], [10, 5], [0, 5]], "text": "Always Saved",
+             "translation": "Siempre Salvo", "font_family": "serif", "fill_color": "#ff0000"},
+        ],
+    }
+    db.set_project_thumbnail(project.id, "data:image/jpeg;base64,GEN", edit_state=edit)
+
+    full = db.get_project(project.id).full()
+    assert full["thumbnail"] == "data:image/jpeg;base64,GEN"
+    assert full["thumbnail_edit"]["preserve_overlays"] is True
+    assert full["thumbnail_edit"]["regions"][0]["fill_color"] == "#ff0000"
+    assert full["thumbnail_edit"]["regions"][0]["translation"] == "Siempre Salvo"
+
+
+def test_thumbnail_revert_clears_edit_state(fresh_db):
+    project = db.upsert_project("dQw4w9WgXcQ", "es")
+    db.set_project_thumbnail(project.id, "data:image/jpeg;base64,GEN",
+                             edit_state={"regions": [{"translation": "x"}]})
+    assert db.get_project(project.id).thumbnail_edit is not None
+    db.set_project_thumbnail(project.id, None)  # revert
+    reverted = db.get_project(project.id)
+    assert reverted.thumbnail is None
+    assert reverted.thumbnail_edit is None
+    assert reverted.full()["thumbnail_edit"] is None

@@ -65,6 +65,7 @@ CREATE TABLE IF NOT EXISTS projects (
     acquired_rows TEXT,
     rows TEXT,
     thumbnail TEXT,
+    thumbnail_edit TEXT,
     bed_path TEXT,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
@@ -443,6 +444,11 @@ class Project:
     acquired_rows: Optional[str] = None
     rows: Optional[str] = None
     thumbnail: Optional[str] = None
+    # The thumbnail editor's saved state (JSON): the source image, banner text,
+    # the overlay-preserve flag and the per-region edits (translation, font,
+    # colour) -- so re-opening restores the exact editable interface, not a fresh
+    # auto-conversion. None when no custom thumbnail / a legacy auto one.
+    thumbnail_edit: Optional[str] = None
     bed_path: Optional[str] = None
     created_at: str = field(default_factory=_now)
     updated_at: str = field(default_factory=_now)
@@ -498,20 +504,25 @@ class Project:
         data["rows"] = self.rows_list()
         data["source_rows"] = self.source_rows_list()
         data["thumbnail"] = self.thumbnail
+        try:
+            data["thumbnail_edit"] = json.loads(self.thumbnail_edit) if self.thumbnail_edit else None
+        except ValueError:
+            data["thumbnail_edit"] = None
         return data
 
 
 _PROJECT_COLUMNS = (
     "id", "source_video_id", "target_language", "state", "source_title", "title",
     "target_video_id", "voice", "privacy", "source_rows", "acquired_rows", "rows",
-    "thumbnail", "bed_path", "created_at", "updated_at", "published_fingerprint",
+    "thumbnail", "thumbnail_edit", "bed_path", "created_at", "updated_at", "published_fingerprint",
 )
 
-# `published_fingerprint` arrived with the projects table itself, but keep the
-# ALTER in the retrofit list so a database that predates it (or future columns)
-# gains it on startup, same pattern as the jobs table.
+# Columns added after the projects table's first release. CREATE TABLE IF NOT
+# EXISTS won't retrofit them, so add any missing on startup (same pattern as the
+# jobs table). published_fingerprint is repeated harmlessly for old databases.
 _PROJECT_MIGRATIONS = (
     "ALTER TABLE projects ADD COLUMN published_fingerprint TEXT",
+    "ALTER TABLE projects ADD COLUMN thumbnail_edit TEXT",
 )
 
 
@@ -678,9 +689,18 @@ def revert_project_transcript(project_id: str) -> Optional[Project]:
     return update_project(project_id, rows=project.acquired_rows)
 
 
-def set_project_thumbnail(project_id: str, thumbnail: str | None) -> Optional[Project]:
-    """Save (or, with None, revert-to-default) the entry's thumbnail."""
-    return update_project(project_id, thumbnail=thumbnail)
+def set_project_thumbnail(
+    project_id: str, thumbnail: str | None, edit_state: dict | None = None
+) -> Optional[Project]:
+    """Save (or, with None, revert-to-default) the entry's thumbnail. `edit_state`
+    is the editor's saved state (source image, banner, overlay flag, per-region
+    translation/font/colour) so re-opening restores the exact editable interface;
+    it's cleared along with the thumbnail on a revert."""
+    return update_project(
+        project_id,
+        thumbnail=thumbnail,
+        thumbnail_edit=json.dumps(edit_state) if (thumbnail and edit_state) else None,
+    )
 
 
 def mark_project_published(

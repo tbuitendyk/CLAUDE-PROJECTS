@@ -225,8 +225,11 @@ class ProjectUpsertRequest(BaseModel):
 
 
 class ProjectThumbnailRequest(BaseModel):
-    """Save (or, with null, revert-to-default) an entry's thumbnail."""
+    """Save (or, with null, revert-to-default) an entry's thumbnail. `edit_state`
+    is the editor's full saved state (source image, banner text, overlay flag,
+    per-region translation/font/colour) so re-opening restores it exactly."""
     thumbnail: Optional[str] = None
+    edit_state: Optional[dict] = None
 
 
 class RedubRequest(BaseModel):
@@ -610,7 +613,7 @@ def save_project_thumbnail(project_id: str, payload: ProjectThumbnailRequest) ->
     """Save an approved thumbnail into the entry -- or, with thumbnail=null,
     revert to default (the pipeline auto-generates one again)."""
     thumbnail = _validated_thumbnail_override(payload.thumbnail)
-    project = db.set_project_thumbnail(project_id, thumbnail)
+    project = db.set_project_thumbnail(project_id, thumbnail, edit_state=payload.edit_state)
     if project is None:
         raise HTTPException(status_code=404, detail="Project not found")
     db.record_event(
