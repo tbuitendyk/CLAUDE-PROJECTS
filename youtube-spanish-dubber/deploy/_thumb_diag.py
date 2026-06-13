@@ -154,12 +154,13 @@ def main() -> None:
     print(f"==THUMBDIAG== rendered {rendered.size}; {len(pairs)} regions flags={flags}")
 
     if str(__import__("os").environ.get("THUMB_DIAG_IMG", "1")) == "1":
-        # Render only (the source layout is already known); the full title area.
-        crop = rendered.crop((0, 95, image.width, 705))
-        w = 240
+        # Tight, higher-res crop of the TOP line (region 0) so the yellow band's
+        # fit around the letters is legible.
+        crop = rendered.crop((90, 120, 1190, 365))
+        w = 440
         crop = crop.resize((w, int(crop.height * w / crop.width)))
-        buf = io.BytesIO(); crop.save(buf, "JPEG", quality=28)
-        print("==THUMBDIAG_B64 render==", base64.b64encode(buf.getvalue()).decode("ascii"))
+        buf = io.BytesIO(); crop.save(buf, "JPEG", quality=42)
+        print("==THUMBDIAG_B64 line0==", base64.b64encode(buf.getvalue()).decode("ascii"))
 
 
 if __name__ == "__main__":
