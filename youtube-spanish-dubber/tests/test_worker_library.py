@@ -165,3 +165,22 @@ def test_backfill_skips_entries_that_already_have_both(fresh_db, monkeypatch):
     assert worker.backfill_published_metadata() == 0
     assert called == []  # nothing was missing, so YouTube was never hit
     assert db.get_meta(worker._PUBLISHED_METADATA_FLAG)
+
+
+# --- Friendly error surfacing -----------------------------------------------
+
+def test_friendly_error_maps_bot_check():
+    msg = worker._friendly_error(RuntimeError(
+        "[youtube] Vp7bRixUFak: Sign in to confirm you're not a bot. Use --cookies"))
+    assert "bot-check" in msg.lower()
+    assert "redeploy" in msg.lower() or "cookies" in msg.lower()
+
+
+def test_friendly_error_maps_no_formats():
+    msg = worker._friendly_error(RuntimeError("ERROR: Requested format is not available"))
+    assert "no downloadable formats" in msg.lower()
+
+
+def test_friendly_error_passes_through_unknown_first_line():
+    msg = worker._friendly_error(RuntimeError("Some other failure\nwith a second line"))
+    assert msg == "Some other failure"

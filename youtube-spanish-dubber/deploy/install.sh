@@ -95,7 +95,20 @@ echo "==> Installing the Node-based PO-token provider + yt-dlp plugin"
 # OpenSSL 3 / libssl.so.3, which Debian 11 doesn't have. Verified end to end on
 # this box: provider + yt-dlp default clients + NO cookies -> full format ladder
 # and clean downloads. https://github.com/Brainicism/bgutil-ytdlp-pot-provider
-PROVIDER_TAG="1.3.1"
+#
+# Track the LATEST release rather than a fixed tag: YouTube periodically changes
+# its token scheme and an outdated provider silently stops unlocking real
+# formats (the "0 real formats / Sign in to confirm you're not a bot" failure).
+# We resolve the newest published version from GitHub and rebuild when it
+# changes (see the .built-tag sentinel below); on any resolution failure we fall
+# back to a known-good pin so a flaky network can't break the deploy.
+PROVIDER_TAG_FALLBACK="1.3.1"
+PROVIDER_TAG="$(curl -fsSL --max-time 20 \
+  https://api.github.com/repos/Brainicism/bgutil-ytdlp-pot-provider/releases/latest 2>/dev/null \
+  | grep -oE '"tag_name"[[:space:]]*:[[:space:]]*"[^"]+"' | head -n1 \
+  | grep -oE '[0-9]+\.[0-9]+(\.[0-9]+)?' | head -n1 || true)"
+PROVIDER_TAG="${PROVIDER_TAG:-$PROVIDER_TAG_FALLBACK}"
+echo "    targeting bgutil provider version ${PROVIDER_TAG}"
 
 # Portable Node 20 (>=20 required by the provider). The official linux-x64 build
 # needs only glibc >= 2.28 (Debian 11 has 2.31). Kept across deploys.
@@ -111,17 +124,34 @@ if [ ! -x "${NODE_DIR}/bin/node" ]; then
 fi
 echo "    node $(${NODE_DIR}/bin/node -v)"
 
-# Build the provider server once (clone tag -> npm ci -> tsc). Kept across deploys.
+# Build the provider server. Kept across deploys, but REBUILT when the target
+# version changes -- a `.built-tag` sentinel records what's currently built, so
+# bumping PROVIDER_TAG actually takes effect (the old code rebuilt only when the
+# build was missing, so a stale provider survived every redeploy). Built in a
+# scratch dir and swapped in only on success, so a failed clone/build keeps the
+# existing working provider rather than leaving a half-built one.
 PROVIDER_DIR="${INSTALL_DIR}/pot-provider"
-if [ ! -f "${PROVIDER_DIR}/server/build/main.js" ]; then
+BUILT_TAG_FILE="${PROVIDER_DIR}/.built-tag"
+NEED_PROVIDER_BUILD=0
+[ -f "${PROVIDER_DIR}/server/build/main.js" ] || NEED_PROVIDER_BUILD=1
+[ -f "${BUILT_TAG_FILE}" ] && [ "$(cat "${BUILT_TAG_FILE}" 2>/dev/null)" = "${PROVIDER_TAG}" ] || NEED_PROVIDER_BUILD=1
+if [ "${NEED_PROVIDER_BUILD}" = 1 ]; then
   echo "    building the bgutil provider (${PROVIDER_TAG})"
-  rm -rf "${PROVIDER_DIR}"
-  git clone --quiet --depth 1 --single-branch --branch "${PROVIDER_TAG}" \
-    https://github.com/Brainicism/bgutil-ytdlp-pot-provider.git "${PROVIDER_DIR}"
-  ( cd "${PROVIDER_DIR}/server" \
-      && PATH="${NODE_DIR}/bin:${PATH}" npm ci >/dev/null 2>&1 \
-      && PATH="${NODE_DIR}/bin:${PATH}" npx tsc >/dev/null 2>&1 ) \
-    && echo "    provider built" || echo "    WARNING: provider build failed"
+  PROVIDER_NEW="${INSTALL_DIR}/pot-provider.new"
+  rm -rf "${PROVIDER_NEW}"
+  if git clone --quiet --depth 1 --single-branch --branch "${PROVIDER_TAG}" \
+        https://github.com/Brainicism/bgutil-ytdlp-pot-provider.git "${PROVIDER_NEW}" \
+     && ( cd "${PROVIDER_NEW}/server" \
+            && PATH="${NODE_DIR}/bin:${PATH}" npm ci >/dev/null 2>&1 \
+            && PATH="${NODE_DIR}/bin:${PATH}" npx tsc >/dev/null 2>&1 ); then
+    rm -rf "${PROVIDER_DIR}"
+    mv "${PROVIDER_NEW}" "${PROVIDER_DIR}"
+    echo "${PROVIDER_TAG}" > "${BUILT_TAG_FILE}"
+    echo "    provider built (${PROVIDER_TAG})"
+  else
+    rm -rf "${PROVIDER_NEW}"
+    echo "    WARNING: provider build failed; keeping the existing build"
+  fi
 fi
 chown -R "${SERVICE_USER}:${SERVICE_USER}" "${NODE_DIR}" "${PROVIDER_DIR}"
 
@@ -131,9 +161,17 @@ chown -R "${SERVICE_USER}:${SERVICE_USER}" "${NODE_DIR}" "${PROVIDER_DIR}"
 PLUGIN_DIR="${INSTALL_DIR}/yt-dlp-plugins"
 rm -rf "${PLUGIN_DIR}"; mkdir -p "${PLUGIN_DIR}/bgutil"
 # Run pip as root into the root-owned plugin dir (it's just files; the service
-# reads them after the chown below), then hand the whole tree to the service user.
-"${INSTALL_DIR}/.venv/bin/pip" install --quiet --no-deps \
-  --target "${PLUGIN_DIR}/bgutil" "bgutil-ytdlp-pot-provider==${PROVIDER_TAG}"
+# reads them after the chown below), then hand the whole tree to the service
+# user. The plugin must match the server it talks to: pin to the resolved
+# version, but fall back to the newest on PyPI if that exact one isn't published
+# yet -- and never abort the deploy over it (the `if !` keeps `set -e` happy).
+if ! "${INSTALL_DIR}/.venv/bin/pip" install --quiet --no-deps \
+      --target "${PLUGIN_DIR}/bgutil" "bgutil-ytdlp-pot-provider==${PROVIDER_TAG}" 2>/dev/null; then
+  echo "    plugin ${PROVIDER_TAG} not on PyPI; installing the latest available"
+  "${INSTALL_DIR}/.venv/bin/pip" install --quiet --no-deps \
+    --target "${PLUGIN_DIR}/bgutil" "bgutil-ytdlp-pot-provider" \
+    || echo "    WARNING: plugin install failed"
+fi
 chown -R "${SERVICE_USER}:${SERVICE_USER}" "${PLUGIN_DIR}"
 
 echo "==> Installing the speech-separation model (MDX-Net ONNX, for 'music' audio mode)"

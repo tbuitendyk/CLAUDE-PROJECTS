@@ -307,22 +307,44 @@ def _process(job: db.Job) -> None:
             _finish_dub(job, project, result)
     except Exception as exc:  # noqa: BLE001 -- surface any failure on the job record
         log.exception("Job %s failed", job.id)
+        friendly = _friendly_error(exc)
         db.update_job(
             job.id,
             status="failed",
             stage="failed",
-            error=f"{exc}\n\n{traceback.format_exc()[-4000:]}",
+            error=f"{friendly}\n\n{exc}\n\n{traceback.format_exc()[-4000:]}",
         )
         db.record_event(
             "Dub failed" if job.mode != "preview" else "Transcript preview failed",
             video_title=(project.source_title if project else None) or job.source_url,
             project_id=project.id if project else None,
             job_id=job.id,
-            detail=str(exc).split("\n")[0][:300],
+            detail=friendly,
         )
     finally:
         if not settings.keep_work_dirs:
             shutil.rmtree(work_dir, ignore_errors=True)
+
+
+def _friendly_error(exc: Exception) -> str:
+    """Turn a raw pipeline/yt-dlp error into a short, actionable line for the
+    activity log and the job's headline error. Falls back to the first line of
+    the original message for anything we don't specifically recognise."""
+    message = str(exc)
+    low = message.lower()
+    if "not a bot" in low or "sign in to confirm" in low or "confirm you're not a bot" in low:
+        return (
+            "YouTube blocked the download with a bot-check. The Proof-of-Origin token "
+            "provider isn't returning valid tokens — redeploy the dubber to rebuild it "
+            "(it now tracks the latest provider), or enable cookies (DUBBER_YT_USE_COOKIES)."
+        )
+    if "requested format is not available" in low:
+        return (
+            "YouTube returned no downloadable formats (usually the token provider is "
+            "stale or cookies are routing to the wrong client). Redeploy to rebuild the "
+            "token provider."
+        )
+    return message.split("\n")[0][:300]
 
 
 def loop() -> None:
