@@ -690,17 +690,29 @@ def revert_project_transcript(project_id: str) -> Optional[Project]:
 
 
 def set_project_thumbnail(
-    project_id: str, thumbnail: str | None, edit_state: dict | None = None
+    project_id: str, thumbnail: str | None, edit_state: dict | None = None,
+    as_published: bool = False,
 ) -> Optional[Project]:
     """Save (or, with None, revert-to-default) the entry's thumbnail. `edit_state`
     is the editor's saved state (source image, banner, overlay flag, per-region
     translation/font/colour) so re-opening restores the exact editable interface;
-    it's cleared along with the thumbnail on a revert."""
-    return update_project(
-        project_id,
-        thumbnail=thumbnail,
-        thumbnail_edit=json.dumps(edit_state) if (thumbnail and edit_state) else None,
-    )
+    it's cleared along with the thumbnail on a revert.
+
+    `as_published`: the thumbnail was just pushed onto the LIVE video (the
+    re-thumbnail tool), so it IS the published thumbnail -- move the publish
+    fingerprint with it so the entry stays 'published' rather than deriving to a
+    false 'redub in progress'. (A staged dub-flow Save leaves this False, which
+    correctly flags pending until the next dub.)"""
+    project = get_project(project_id)
+    if project is None:
+        return None
+    fields: dict[str, Any] = {
+        "thumbnail": thumbnail,
+        "thumbnail_edit": json.dumps(edit_state) if (thumbnail and edit_state) else None,
+    }
+    if as_published and project.target_video_id:
+        fields["published_fingerprint"] = _fingerprint(project.rows_list(), thumbnail)
+    return update_project(project_id, **fields)
 
 
 def mark_project_published(

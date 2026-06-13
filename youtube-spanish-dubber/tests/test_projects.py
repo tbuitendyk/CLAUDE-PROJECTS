@@ -205,3 +205,29 @@ def test_thumbnail_revert_clears_edit_state(fresh_db):
     assert reverted.thumbnail is None
     assert reverted.thumbnail_edit is None
     assert reverted.full()["thumbnail_edit"] is None
+
+
+def test_thumbnail_apply_as_published_stays_published(fresh_db):
+    # The re-thumbnail tool pushes a thumbnail to the LIVE video and persists it.
+    project = db.upsert_project("dQw4w9WgXcQ", "es")
+    db.mark_project_published(project.id, "tgt12345678", "t", _rows(), None, None, None)
+    assert db.get_project(project.id).state == "published"
+
+    db.set_project_thumbnail(
+        project.id, "data:image/jpeg;base64,LIVE",
+        edit_state={"regions": [{"translation": "Hola", "fill_color": "#ff0000"}]},
+        as_published=True,
+    )
+    entry = db.get_project(project.id)
+    # Persisted AND still published (not a false 'redub in progress').
+    assert entry.thumbnail == "data:image/jpeg;base64,LIVE"
+    assert entry.state == "published"
+    assert entry.full()["thumbnail_edit"]["regions"][0]["fill_color"] == "#ff0000"
+
+
+def test_dub_flow_thumbnail_save_flags_pending(fresh_db):
+    # A staged (not-yet-published) thumbnail Save still flags pending.
+    project = db.upsert_project("dQw4w9WgXcQ", "es")
+    db.mark_project_published(project.id, "tgt12345678", "t", _rows(), None, None, None)
+    db.set_project_thumbnail(project.id, "data:image/jpeg;base64,STAGED")  # as_published=False
+    assert db.get_project(project.id).state == "published_pending"
