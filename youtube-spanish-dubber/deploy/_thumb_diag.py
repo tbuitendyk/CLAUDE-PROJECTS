@@ -156,9 +156,9 @@ def main() -> None:
     if str(__import__("os").environ.get("THUMB_DIAG_IMG", "1")) == "1":
         # Render only (the source layout is already known); the full title area.
         crop = rendered.crop((0, 95, image.width, 705))
-        w = 300
+        w = 240
         crop = crop.resize((w, int(crop.height * w / crop.width)))
-        buf = io.BytesIO(); crop.save(buf, "JPEG", quality=32)
+        buf = io.BytesIO(); crop.save(buf, "JPEG", quality=28)
         print("==THUMBDIAG_B64 render==", base64.b64encode(buf.getvalue()).decode("ascii"))
 
 
