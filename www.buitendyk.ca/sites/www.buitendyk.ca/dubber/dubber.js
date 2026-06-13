@@ -815,12 +815,42 @@
     }
   }
 
+  // The library entry for the form's current URL + language, or null. Reuses a
+  // matching `currentProject` if we have it; otherwise does a fresh lookup --
+  // so "Preview …" buttons can detect an already-saved transcript/thumbnail and
+  // just re-open it instead of queueing a regenerate.
+  async function currentEntry() {
+    const url = formUrl();
+    if (!authenticated || !videoIdOf(url)) return null;
+    const lang = formLang();
+    if (currentProject && currentProject.id &&
+        videoIdOf(url) === currentProject.source_video_id &&
+        lang === currentProject.target_language) {
+      return currentProject;
+    }
+    try {
+      const summary = await api(
+        `/projects/lookup?url=${encodeURIComponent(url)}&target_language=${encodeURIComponent(lang)}`);
+      currentProject = summary;
+      return summary;
+    } catch (err) {
+      return null;  // 404 = new video, nothing saved
+    }
+  }
+
   form.addEventListener("submit", (event) => {
     event.preventDefault();
     submitJob("dub");
   });
 
-  previewBtn.addEventListener("click", () => {
+  // Preview transcript: if the library already has this video's transcript,
+  // re-open it in the sub-card instead of queueing a fresh preview job.
+  previewBtn.addEventListener("click", async () => {
+    const entry = await currentEntry();
+    if (entry && entry.line_count > 0) {
+      openProjectTranscriptCard(entry.id);
+      return;
+    }
     submitJob("preview");
   });
 
@@ -1347,7 +1377,21 @@
       reset();
     },
   });
-  thumbnailBtn.addEventListener("click", () => dubThumbEditor.preview());
+  // Preview thumbnail: if a thumbnail is already saved for this video, re-open
+  // it in the sub-card (no YouTube re-fetch / regenerate); otherwise generate.
+  thumbnailBtn.addEventListener("click", async () => {
+    const entry = await currentEntry();
+    if (entry && entry.has_thumbnail) {
+      try {
+        const project = await api(`/projects/${entry.id}`);
+        if (project.thumbnail) {
+          dubThumbEditor.showSaved(project.thumbnail);
+          return;
+        }
+      } catch (err) { /* fall through to generate */ }
+    }
+    dubThumbEditor.preview();
+  });
 
   function maybeResetStaleThumbnail() {
     const st = dubThumbEditor.getState();

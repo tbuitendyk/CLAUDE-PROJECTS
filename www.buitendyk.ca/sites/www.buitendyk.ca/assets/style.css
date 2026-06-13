@@ -88,8 +88,11 @@ main {
 
 .hero p {
   color: var(--text-dim);
-  max-width: 60ch;
+  /* Width tuned so the intro wraps to ~3 lines; text-wrap: balance then evens
+     their lengths (degrades to ordinary ragged wrapping on older browsers). */
+  max-width: 80ch;
   margin: 0;
+  text-wrap: balance;
 }
 
 .section-title {
