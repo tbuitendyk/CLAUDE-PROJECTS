@@ -1597,10 +1597,12 @@
         return;
       }
       setRethumbMessage("");
-      // For "source video" / "the dub itself", start from the dub's CURRENT
-      // in-use thumbnail (your saved text + colours), editable -- not a fresh
-      // re-OCR that would mangle it. "Another link" stays a fresh conversion.
-      if (rethumbSourceChoice() !== "other" && entry.has_thumbnail) {
+      // "The source video": show the dub's CURRENT in-use thumbnail (your saved
+      // text/colours) as the editable Spanish side -- not a fresh re-OCR that
+      // would mangle it. "The dub itself" and "Another link" are fresh
+      // conversions FROM that source (e.g. to re-render clean text over the
+      // dub's current thumbnail), so the chosen source loads on the left.
+      if (rethumbSourceChoice() === "source" && entry.has_thumbnail) {
         try {
           const project = await api(`/projects/${entry.id}`);
           if (project.thumbnail_edit && Array.isArray(project.thumbnail_edit.regions)) {
