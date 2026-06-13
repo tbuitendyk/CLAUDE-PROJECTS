@@ -129,15 +129,6 @@ def main() -> None:
         pairs = image_text.detect_and_translate(image, src_code, dst_code)
 
     arr = np.asarray(image.convert("RGB"))
-    print(f"==THUMBDIAG== {len(pairs)} region(s):")
-    for i, (region, translated) in enumerate(pairs):
-        style = image_text._analyze_region(arr, region.bbox)
-        info = _analyze_verbose(arr, region.bbox)
-        print(f"  [{i}] bbox={region.bbox} text={region.text!r} -> {translated!r}")
-        print(f"      style.has_banner={style.has_banner} style.banner_color={style.banner_color} "
-              f"style.fill={style.fill} region.fill={region.fill_color} font={region.font_family}")
-        print(f"      verbose={info}")
-
     banner_text = (edit or {}).get("banner_text") or ""
     preserve = bool((edit or {}).get("preserve_overlays"))
     rendered = tp.render_edited(image, [
@@ -146,15 +137,34 @@ def main() -> None:
          "fill_color": tp._rgb_to_hex(r.fill_color)} for r, t in pairs
     ], banner_text=banner_text, preserve_overlays=preserve)
 
+    # The deploy reply keeps only the LAST ~8000 chars of stdout, so print the
+    # (optional, budget-permitting) base64 image FIRST and the compact text
+    # classification LAST -- the text is what diagnoses banner-vs-scene and is
+    # guaranteed to survive; one small stacked image (source title band over the
+    # rendered band) rides along if it fits.
+    if str(__import__("os").environ.get("THUMB_DIAG_IMG", "1")) == "1":
+        from PIL import Image as _Im
+        th = image.height // 3
+        top = image.crop((0, 0, image.width, th))
+        rtop = rendered.crop((0, 0, rendered.width, rendered.height // 3))
+        w = 300
+        a = top.resize((w, int(top.height * w / top.width)))
+        b = rtop.resize((w, int(rtop.height * w / rtop.width)))
+        stacked = _Im.new("RGB", (w, a.height + b.height + 4), (255, 0, 255))
+        stacked.paste(a, (0, 0)); stacked.paste(b, (0, a.height + 4))
+        buf = io.BytesIO(); stacked.save(buf, "JPEG", quality=35)
+        print("==THUMBDIAG_B64 stacked==", base64.b64encode(buf.getvalue()).decode("ascii"))
+
     print("==THUMBDIAG== rendered size:", rendered.size)
-    # Previews last (survive reply truncation). Source + render, plus a tight
-    # crop of the title band so the banner sizing is legible.
-    top = image.crop((0, 0, image.width, image.height // 3))
-    rtop = rendered.crop((0, 0, rendered.width, rendered.height // 3))
-    print("==THUMBDIAG_B64 source==", _b64_preview(image, 360, 45))
-    print("==THUMBDIAG_B64 source_top==", _b64_preview(top, 480, 55))
-    print("==THUMBDIAG_B64 rendered==", _b64_preview(rendered, 360, 45))
-    print("==THUMBDIAG_B64 rendered_top==", _b64_preview(rtop, 480, 55))
+    print(f"==THUMBDIAG== {len(pairs)} region(s) [banner=B scene=S]:")
+    for i, (region, translated) in enumerate(pairs):
+        style = image_text._analyze_region(arr, region.bbox)
+        info = _analyze_verbose(arr, region.bbox) or {}
+        flag = "B" if style.has_banner else "S"
+        print(f"  [{i}]{flag} bbox={region.bbox} {region.text!r}->{translated!r}")
+        print(f"      banner_color={style.banner_color} fill={style.fill} "
+              f"font={region.font_family} std={info.get('banner_std')} "
+              f"cov40={info.get('cover@40')} cov55={info.get('cover@55')} nbg={info.get('n_bg')}")
 
 
 if __name__ == "__main__":
