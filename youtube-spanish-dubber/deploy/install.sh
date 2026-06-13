@@ -332,16 +332,3 @@ Install complete. Remaining manual steps (see README.md for full detail):
               -d '{"url": "https://www.youtube.com/watch?v=XXXXXXXXXXX"}'
 ==============================================================================
 EOF
-
-# TEMP-DIAG: inspect the saved thumbnail's title-region classification + render
-# on the real server image, since a cloud session can't fetch the thumbnail
-# itself. Placed LAST so its stdout lands in the deploy endpoint's tail-kept
-# reply (only the final ~8000 chars survive). Removed once the banner sizing is
-# verified. Non-fatal.
-if [ -f "${INSTALL_DIR}/deploy/_thumb_diag.py" ]; then
-  echo "########## [THUMB-DIAG] ##########"
-  ( cd "${INSTALL_DIR}" && sudo -u "${SERVICE_USER}" env PYTHONPATH="${INSTALL_DIR}" \
-      "${INSTALL_DIR}/.venv/bin/python" "${INSTALL_DIR}/deploy/_thumb_diag.py" 2>&1 ) \
-    || echo "    (thumb-diag could not run)"
-  echo "########## [THUMB-DIAG] end ##########"
-fi

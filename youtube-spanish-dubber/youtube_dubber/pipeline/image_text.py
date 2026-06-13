@@ -425,23 +425,35 @@ def _analyze_region(arr, bbox) -> "_RegionStyle":
     halo = cv2.dilate(ink_u8, np.ones((5, 5), np.uint8), iterations=2) > 0
     near_text = np.linalg.norm(crop.astype(np.float32) - np.array(fill, np.float32), axis=2) < 60
     bg_pixels = crop[~(halo | near_text)].reshape(-1, 3)
-    if bg_pixels.shape[0] >= 20:
-        bgf = bg_pixels.astype(np.float32)
-        median = np.median(bgf, axis=0)
-        banner_std = float(bg_pixels.std(axis=0).mean())
-        banner_color = tuple(int(c) for c in median)
-        coverage = float((np.linalg.norm(bgf - median, axis=1) < _BANNER_COVER_DIST).mean())
-    else:
-        banner_std, banner_color, coverage = 999.0, (0, 0, 0), 0.0
-    # A flat banner is either low-spread overall, OR one dominant colour covers
-    # most of the background (a highlight band with a few foreign pixels that
-    # inflate the std). The second test rescues a clear highlight that the std
-    # cutoff alone misreads as a busy scene.
-    has_banner = banner_std < _BANNER_STD_MAX or coverage >= _BANNER_COVER_MIN
+    has_banner, banner_color = _bg_is_banner(bg_pixels)
 
     # The banner supplies contrast; on a scene the new text needs an outline.
     outline = None if has_banner else _contrasting(fill)
     return _RegionStyle(fill, outline, has_banner, banner_color, ink, box)
+
+
+def _bg_is_banner(bg_pixels) -> tuple[bool, tuple]:
+    """Decide, from the pixels sampled *behind the letters*, whether a text
+    region sits on a flat banner (rebuild it as a solid rectangle) or a busy
+    scene (inpaint the strokes and let the picture through). Returns
+    `(has_banner, banner_color)`.
+
+    A banner qualifies two ways: the spread is low overall (a clean flat band),
+    OR one dominant colour still covers most of the background even though the
+    plain std is higher -- a real highlight band with a minority of foreign
+    pixels (a decorative flourish, a sliver of scene the OCR box caught) that
+    inflates the std just past the flat cutoff. The coverage test is what keeps
+    a clear highlight from being misread as a scene and left un-repainted."""
+    import numpy as np
+
+    if bg_pixels.shape[0] < 20:
+        return False, (0, 0, 0)
+    bgf = bg_pixels.astype(np.float32)
+    median = np.median(bgf, axis=0)
+    std = float(bg_pixels.std(axis=0).mean())
+    coverage = float((np.linalg.norm(bgf - median, axis=1) < _BANNER_COVER_DIST).mean())
+    has_banner = std < _BANNER_STD_MAX or coverage >= _BANNER_COVER_MIN
+    return has_banner, tuple(int(c) for c in median)
 
 
 def _foreground_mask(distance):

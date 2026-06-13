@@ -87,6 +87,33 @@ def test_speck_noise_is_filtered_out():
         pass
 
 
+def test_highlight_with_foreign_minority_is_still_a_banner():
+    """A solid highlight whose behind-the-letters background has a minority of
+    foreign-coloured pixels (a flourish, a sliver of scene the OCR box caught)
+    inflates the plain std past the flat-banner cutoff -- the real "Once Saved"
+    yellow measured 31.7, just over 30, and so was wrongly treated as a busy
+    scene and never repainted, leaving the longer Spanish title spilling off the
+    source-sized band. The dominant-colour coverage test must still call it a
+    banner so the band is rebuilt to back the translated text."""
+    yellow = np.array((240, 220, 30), np.uint8)
+    far = np.array((250, 245, 235), np.uint8)   # cream apron at the box edge
+    bg = np.repeat(yellow[None, :], 1000, axis=0)
+    bg[:250] = far                               # 25% foreign -> std climbs past 30
+    std = float(bg.std(axis=0).mean())
+    has_banner, banner_color = image_text._bg_is_banner(bg)
+    assert std > image_text._BANNER_STD_MAX      # std alone would say "scene"
+    assert has_banner is True                    # ...but coverage rescues it
+    # The band colour is the dominant yellow, not the foreign minority.
+    assert banner_color[2] < 120 and banner_color[0] > 180
+
+
+def test_busy_scene_is_not_mistaken_for_a_banner():
+    rng = np.random.default_rng(0)
+    bg = rng.integers(0, 256, size=(2000, 3), dtype=np.uint8)
+    has_banner, _ = image_text._bg_is_banner(bg)
+    assert has_banner is False
+
+
 def test_banner_repaint_covers_the_rendered_text_solidly():
     from youtube_dubber.pipeline import image_text
     from youtube_dubber.pipeline.models import TextRegion
