@@ -20,16 +20,18 @@ def fake(tmp_path, monkeypatch):
         youtube_cookies_file=str(tmp_path / "cookies.txt"),
         ytdlp_player_clients="",
         ytdlp_client_ladder="web,mweb,default",
+        ytdlp_proxy="",
     )
     monkeypatch.setattr(diagnostics, "settings", settings)
     # Keep the downloader's own settings consistent for client_ladder().
     monkeypatch.setattr(downloader, "settings", SimpleNamespace(
         ytdlp_player_clients="", ytdlp_client_ladder="web,mweb,default",
-        ytdlp_plugin_dirs="/nope", ytdlp_bin="/nope/yt-dlp",
+        ytdlp_plugin_dirs="/nope", ytdlp_bin="/nope/yt-dlp", ytdlp_proxy="",
         youtube_use_cookies=True, youtube_cookies_file=str(tmp_path / "cookies.txt"),
     ))
     monkeypatch.setattr(diagnostics, "_yt_dlp_version", lambda: "2026.06.09")
-    monkeypatch.setattr(diagnostics, "verbose_probe", lambda url, **k: "VERBOSE-TRACE-HERE")
+    monkeypatch.setattr(diagnostics, "verbose_probe",
+                        lambda url, **k: ("VERBOSE-TRACE-HERE", ["[pot] gvs token", "403 Forbidden"]))
     return settings
 
 
@@ -42,9 +44,11 @@ def test_report_assembles_and_persists(fake, monkeypatch):
     assert data["working_client"] == "mweb"
     assert data["cookies_enabled"] is True and data["cookies_present"] is True
     assert data["per_client"][1] == {"client": "mweb", "real_formats": 12}
-    # The human-readable report carries the key facts + the verbose trace.
+    # The human-readable report carries the key facts, key lines + verbose trace.
     assert "WORKING client: mweb" in data["report"]
     assert "VERBOSE-TRACE-HERE" in data["report"]
+    assert "403 Forbidden" in data["report"]          # key line surfaced
+    assert data["key_lines"] == ["[pot] gvs token", "403 Forbidden"]
     # Persisted for GET /diagnostics/last.
     assert diagnostics.last_report() == data["report"]
 
@@ -80,3 +84,18 @@ def test_worker_classifies_extraction_failures():
     assert worker._looks_like_extraction_failure(RuntimeError("Sign in to confirm you're not a bot"))
     assert worker._looks_like_extraction_failure(RuntimeError("Requested format is not available"))
     assert not worker._looks_like_extraction_failure(RuntimeError("disk full while writing mux"))
+
+
+def test_key_lines_filters_high_signal():
+    debug = "\n".join([
+        "[debug] Loading cookies",
+        "[youtube] Downloading tv player API JSON",
+        "[youtube] [pot] Fetching GVS PO Token for tv client",
+        "WARNING: Some tv client https formats have been skipped",
+        "ERROR: unrelated noise about widgets",
+        "[debug] Sorting formats",
+    ])
+    keys = diagnostics._key_lines(debug)
+    assert any("po token" in k.lower() for k in keys)
+    assert any("skipped" in k.lower() for k in keys)
+    assert "[debug] Loading cookies" in keys  # 'cookie' is a key hint

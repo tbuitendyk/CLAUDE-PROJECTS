@@ -83,6 +83,9 @@ def _base_cmd(client=_UNSET) -> list[str]:
     for videos that account doesn't own. Pass `client` to force a specific one
     (the resolver does this while probing the ladder)."""
     cmd = [_binary(), "--no-warnings", "--no-playlist"]
+    proxy = (getattr(settings, "ytdlp_proxy", "") or "").strip()
+    if proxy:  # route extraction through a clean/residential egress
+        cmd += ["--proxy", proxy]
     plugin_dirs = settings.ytdlp_plugin_dirs
     if plugin_dirs and Path(plugin_dirs).exists():
         cmd += ["--plugin-dirs", str(plugin_dirs)]

@@ -23,7 +23,15 @@ from .pipeline import downloader
 log = logging.getLogger(__name__)
 
 SAMPLE_URL = "https://www.youtube.com/watch?v=Dj5OYkgDtHU"
-_MAX_VERBOSE_CHARS = 20000
+_MAX_VERBOSE_CHARS = 16000
+
+# High-signal substrings: the -v lines that actually explain a streaming/format
+# failure (token attach, client downgrade, 403, sign-in wall, skipped formats).
+_KEY_LINE_HINTS = (
+    "po token", "pot ", "[pot", "gvs", "sign in", "not a bot", "403", "forbidden",
+    "player api", "downgrad", "nsig", "n function", "visitor", "cookie", "drm",
+    "formats", "skipping", "skipped", "no formats", "requested format", "warning", "error",
+)
 
 
 def _diag_dir() -> Path:
@@ -43,22 +51,35 @@ def _yt_dlp_version() -> str:
         return "unknown"
 
 
-def verbose_probe(url: str, client: str | None = None, timeout: int = 200) -> str:
-    """Full ``yt-dlp -v -J --skip-download`` output (stdout+stderr) for `url`
-    using the effective (or given) player client -- the complete trace of an
-    extraction attempt. Capped to the last ~20k chars."""
+def _key_lines(debug: str) -> list[str]:
+    """The high-signal -v lines (token/format/403/sign-in) pulled out of the
+    full trace so the actual reason isn't buried."""
+    out = []
+    for line in debug.splitlines():
+        low = line.lower()
+        if any(hint in low for hint in _KEY_LINE_HINTS):
+            out.append(line.strip())
+    return out
+
+
+def verbose_probe(url: str, client: str | None = None, timeout: int = 200) -> tuple[str, list[str]]:
+    """Run ``yt-dlp -v -J --skip-download`` for `url` using the effective (or
+    given) player client and return (debug_trace_tail, key_lines). The ``-v``
+    debug goes to STDERR (the JSON result goes to stdout and is discarded here),
+    so this captures the *reasons* -- token attach, client downgrade, 403,
+    skipped formats -- not the giant metadata dump."""
     chosen = client if client is not None else downloader._effective_client()
     cmd = downloader._base_cmd(client=chosen) + ["-v", "-J", "--skip-download", "--ignore-no-formats-error", url]
     try:
         result = subprocess.run(
-            cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, timeout=timeout
+            cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True, timeout=timeout
         )
-        out = result.stdout or ""
+        debug = result.stderr or ""
     except subprocess.TimeoutExpired:
-        out = f"(diagnostic probe timed out after {timeout}s)"
+        return f"(diagnostic probe timed out after {timeout}s)", []
     except Exception as exc:  # noqa: BLE001
-        out = f"(diagnostic probe failed to run: {exc})"
-    return out[-_MAX_VERBOSE_CHARS:]
+        return f"(diagnostic probe failed to run: {exc})", []
+    return debug[-_MAX_VERBOSE_CHARS:], _key_lines(debug)
 
 
 def report(url: str | None = None) -> dict:
@@ -68,19 +89,21 @@ def report(url: str | None = None) -> dict:
     url = url or SAMPLE_URL
     cookies_enabled = bool(getattr(settings, "youtube_use_cookies", False))
     cookies_present = bool(cookies_enabled and Path(settings.youtube_cookies_file).exists())
+    proxy = (getattr(settings, "ytdlp_proxy", "") or "").strip()
     pin = (settings.ytdlp_player_clients or "").strip()
     per_client = downloader.probe_client_formats(url)
     working = next((c for c, n in per_client if n > 0), None)
-    verbose = verbose_probe(url)
+    debug, key_lines = verbose_probe(url)
 
     lines = [
-        f"=== extraction diagnostic ===",
-        f"url:               {url}",
-        f"yt-dlp:            {_yt_dlp_version()}",
-        f"cookies enabled:   {cookies_enabled}" + (
+        "=== extraction diagnostic ===",
+        f"url:                {url}",
+        f"yt-dlp:             {_yt_dlp_version()}",
+        f"cookies enabled:    {cookies_enabled}" + (
             "" if not cookies_enabled else f" (file present: {cookies_present})"),
+        f"proxy:              {proxy or '(none — direct)'}",
         f"hard-pinned client: {pin or '(none — auto-resolve)'}",
-        f"client ladder:     {', '.join(downloader.client_ladder())}",
+        f"client ladder:      {', '.join(downloader.client_ladder())}",
         "",
         "per-client real (non-storyboard) format counts:",
     ]
@@ -89,11 +112,15 @@ def report(url: str | None = None) -> dict:
     lines.append("")
     lines.append(
         f"=> WORKING client: {working or 'default'}" if working is not None
-        else "=> NO client returned real formats."
+        else "=> NO client returned real formats (metadata may still extract; the "
+             "media streams are the problem)."
     )
     lines.append("")
-    lines.append(f"--- full verbose trace ({'effective client' if not pin else pin}) ---")
-    lines.append(verbose)
+    lines.append("--- key trace lines (token / format / 403 / sign-in) ---")
+    lines.extend(key_lines or ["(no high-signal lines matched)"])
+    lines.append("")
+    lines.append("--- full verbose trace (stderr tail) ---")
+    lines.append(debug)
     text = "\n".join(lines)
 
     try:
@@ -106,9 +133,11 @@ def report(url: str | None = None) -> dict:
         "yt_dlp_version": _yt_dlp_version(),
         "cookies_enabled": cookies_enabled,
         "cookies_present": cookies_present,
+        "proxy": proxy or None,
         "pinned_client": pin or None,
         "working_client": working,
         "per_client": [{"client": c or "default", "real_formats": n} for c, n in per_client],
+        "key_lines": key_lines,
         "report": text,
     }
 

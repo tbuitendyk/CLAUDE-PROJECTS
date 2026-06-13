@@ -157,6 +157,11 @@ class Settings:
     # debugging YouTube extraction; set false to skip the (one extra yt-dlp run)
     # cost once things are healthy.
     capture_extraction_diagnostics: bool = _bool("DUBBER_CAPTURE_EXTRACTION_DIAGNOSTICS", True)
+    # Optional proxy for ALL yt-dlp extraction (e.g. http://user:pass@host:port or
+    # socks5://host:port). YouTube serves metadata to flagged datacenter IPs but
+    # withholds the media streams ("tv_downgraded" / no formats); routing
+    # extraction through a residential/clean egress is the cure. Empty = direct.
+    ytdlp_proxy: str = os.getenv("DUBBER_YTDLP_PROXY", "")
     upload_privacy_status: str = os.getenv("DUBBER_UPLOAD_PRIVACY", "unlisted")
     upload_category_id: str = os.getenv("DUBBER_UPLOAD_CATEGORY", "22")
     title_prefix: str = os.getenv("DUBBER_TITLE_PREFIX", "[ES] ")
