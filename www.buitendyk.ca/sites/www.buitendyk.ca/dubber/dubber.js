@@ -1020,7 +1020,12 @@
       return fig;
     }
 
-    async function preview() {
+    // `savedGenerated`, if given (a data-URI), is shown as the Spanish side
+    // instead of the fresh auto-conversion -- so re-opening a video with a saved
+    // thumbnail brings back YOUR adjusted image next to the English original,
+    // still fully editable. (The editable region fields are the freshly detected
+    // ones; re-rendering regenerates from those.)
+    async function preview(savedGenerated) {
       if (!authenticated) return;
       const url = opts.getSourceUrl();
       if (!url) {
@@ -1044,16 +1049,19 @@
       try {
         const data = await apiJson("/thumbnail/preview", "POST",
           { url: url, target_language: targetLanguage, preserve_overlays: preserveOverlays });
+        const generated = savedGenerated || data.generated;
         state = {
           url: url,
           targetLanguage: targetLanguage,
           original: data.original,
-          generated: data.generated,
+          generated: generated,
           regions: data.regions || [],
           bannerText: data.banner_text || "",
-          approved: false,
+          approved: !!savedGenerated,  // the saved image is already the approved one
         };
-        render(data);
+        // Show the saved image (when present) as the Spanish side.
+        render(Object.assign({}, data, { generated: generated }));
+        if (savedGenerated) markApproved();
       } catch (err) {
         opts.panel.textContent = "";
         const e = document.createElement("p");
@@ -1377,11 +1385,22 @@
       reset();
     },
   });
-  // Preview thumbnail: always (re)generate the full editable interface from the
-  // source video's thumbnail -- even when one is already saved -- so the user
-  // gets the same controls as first use and can make more changes. The saved
-  // thumbnail stays on the entry until they Save a new one.
-  thumbnailBtn.addEventListener("click", () => dubThumbEditor.preview());
+  // Preview thumbnail: open the full editable interface from the source video's
+  // thumbnail (original + editable regions). If a thumbnail is already saved for
+  // this video, show YOUR saved (adjusted) image as the Spanish side instead of
+  // a fresh auto-conversion, so re-opening brings your work back -- still
+  // editable. Falls back to a fresh conversion when nothing is saved.
+  thumbnailBtn.addEventListener("click", async () => {
+    const entry = await currentEntry();
+    let savedThumbnail = null;
+    if (entry && entry.has_thumbnail) {
+      try {
+        const project = await api(`/projects/${entry.id}`);
+        savedThumbnail = project.thumbnail || null;
+      } catch (err) { /* fall back to a fresh conversion */ }
+    }
+    dubThumbEditor.preview(savedThumbnail);
+  });
 
   function maybeResetStaleThumbnail() {
     const st = dubThumbEditor.getState();
