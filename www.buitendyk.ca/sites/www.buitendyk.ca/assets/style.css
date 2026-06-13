@@ -90,7 +90,7 @@ main {
   color: var(--text-dim);
   /* Width tuned so the intro wraps to ~3 lines; text-wrap: balance then evens
      their lengths (degrades to ordinary ragged wrapping on older browsers). */
-  max-width: 80ch;
+  max-width: 92ch;
   margin: 0;
   text-wrap: balance;
 }

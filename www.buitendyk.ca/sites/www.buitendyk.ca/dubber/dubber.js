@@ -921,6 +921,10 @@
     if (!diagnoseOutput) return;
     diagnoseOutput.textContent = text || "";
     diagnoseOutput.style.display = text ? "block" : "none";
+    if (text) {
+      // An 'X' to close the capture window again (after Run diagnostic / Show last).
+      addCardCloseButton(diagnoseOutput, () => showDiagnostic(""));
+    }
   }
 
   async function runDiagnostic() {
