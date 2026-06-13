@@ -149,12 +149,9 @@ def main() -> None:
     # classification already in hand from earlier rounds, this round prioritises
     # the IMAGE: print compact one-line-per-region text FIRST, then the base64
     # LAST so it lands in the retained tail.
-    print(f"==THUMBDIAG== rendered size: {rendered.size}; {len(pairs)} region(s):")
-    for i, (region, translated) in enumerate(pairs):
-        style = image_text._analyze_region(arr, region.bbox)
-        flag = "B" if style.has_banner else "S"
-        print(f"  [{i}]{flag} {region.text!r}->{translated!r} "
-              f"banner={style.banner_color} fill={region.fill_color}")
+    flags = " ".join(("B" if image_text._analyze_region(arr, r.bbox).has_banner else "S")
+                      for r, _ in pairs)
+    print(f"==THUMBDIAG== rendered {rendered.size}; {len(pairs)} regions flags={flags}")
 
     if str(__import__("os").environ.get("THUMB_DIAG_IMG", "1")) == "1":
         from PIL import Image as _Im
@@ -162,12 +159,12 @@ def main() -> None:
         band = (0, 95, image.width, 705)
         top = image.crop(band)
         rtop = rendered.crop(band)
-        w = 300
+        w = 280
         a = top.resize((w, int(top.height * w / top.width)))
         b = rtop.resize((w, int(rtop.height * w / rtop.width)))
         stacked = _Im.new("RGB", (w, a.height + b.height + 4), (255, 0, 255))
         stacked.paste(a, (0, 0)); stacked.paste(b, (0, a.height + 4))
-        buf = io.BytesIO(); stacked.save(buf, "JPEG", quality=33)
+        buf = io.BytesIO(); stacked.save(buf, "JPEG", quality=30)
         print("==THUMBDIAG_B64 stacked==", base64.b64encode(buf.getvalue()).decode("ascii"))
 
 
