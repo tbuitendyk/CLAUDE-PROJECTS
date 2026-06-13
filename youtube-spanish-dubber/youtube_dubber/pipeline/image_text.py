@@ -55,6 +55,15 @@ _MAX_VERTICAL_STRETCH = 1.7
 # busy scenes ~50.
 _BANNER_STD_MAX = 30.0
 
+# A second, more robust banner signal: the fraction of the behind-the-letters
+# background that clusters tightly (within this RGB distance) around its dominant
+# colour. A solid highlight band scores very high here even when a few foreign
+# pixels -- a decorative flourish, a sliver of scene at the OCR box's edge --
+# inflate the plain std just past _BANNER_STD_MAX. (Measured 0.75 on the real
+# "Once Saved" yellow highlight that std alone, at 31.7, wrongly called a scene.)
+_BANNER_COVER_DIST = 40.0
+_BANNER_COVER_MIN = 0.6
+
 
 class _RegionStyle(NamedTuple):
     """How one source text region should be reproduced, read from the letters
@@ -417,11 +426,18 @@ def _analyze_region(arr, bbox) -> "_RegionStyle":
     near_text = np.linalg.norm(crop.astype(np.float32) - np.array(fill, np.float32), axis=2) < 60
     bg_pixels = crop[~(halo | near_text)].reshape(-1, 3)
     if bg_pixels.shape[0] >= 20:
+        bgf = bg_pixels.astype(np.float32)
+        median = np.median(bgf, axis=0)
         banner_std = float(bg_pixels.std(axis=0).mean())
-        banner_color = tuple(int(c) for c in np.median(bg_pixels, axis=0))
+        banner_color = tuple(int(c) for c in median)
+        coverage = float((np.linalg.norm(bgf - median, axis=1) < _BANNER_COVER_DIST).mean())
     else:
-        banner_std, banner_color = 999.0, (0, 0, 0)
-    has_banner = banner_std < _BANNER_STD_MAX
+        banner_std, banner_color, coverage = 999.0, (0, 0, 0), 0.0
+    # A flat banner is either low-spread overall, OR one dominant colour covers
+    # most of the background (a highlight band with a few foreign pixels that
+    # inflate the std). The second test rescues a clear highlight that the std
+    # cutoff alone misreads as a busy scene.
+    has_banner = banner_std < _BANNER_STD_MAX or coverage >= _BANNER_COVER_MIN
 
     # The banner supplies contrast; on a scene the new text needs an outline.
     outline = None if has_banner else _contrasting(fill)
