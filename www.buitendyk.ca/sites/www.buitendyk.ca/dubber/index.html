@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Spanish Video Dubber &mdash; buitendyk.ca</title>
   <meta name="description" content="Submit an English YouTube video, generate a Spanish voice-over, and publish it to a YouTube channel.">
-  <link rel="stylesheet" href="/assets/style.css?v=21">
+  <link rel="stylesheet" href="/assets/style.css?v=22">
 </head>
 <body>
   <header class="site-header">
@@ -19,10 +19,9 @@
     <section class="hero">
       <h1>Spanish Video Dubber</h1>
       <p>
-        Give it an English-language YouTube video; it produces a Spanish
-        voice-over (from an existing transcript, an auto-generated one, or a
-        freshly transcribed one) and publishes the result to the channel this
-        service is authorized for. See how it works in the
+        Give it an English-language YouTube video and it generates a Spanish voice-over &mdash;
+        from existing captions, an auto-generated transcript, or a fresh transcription &mdash; then
+        publishes the result to the connected channel. See how it works in the
         <a href="https://github.com/tbuitendyk/CLAUDE-PROJECTS/tree/dubber/youtube-spanish-dubber" target="_blank" rel="noopener">project README</a>.
       </p>
     </section>
@@ -40,172 +39,194 @@
       </p>
     </div>
 
-    <form class="panel" id="dub-form">
-      <div class="box-title">New video dubbing project</div>
-      <div class="field">
-        <label for="video-url">English source video URL (YouTube)</label>
-        <input type="url" id="video-url" name="url" placeholder="https://www.youtube.com/watch?v=&hellip;" required>
-        <!-- Filled by dubber.js when the URL matches an existing library entry
-             (matched server-side by video ID + language, so it survives reloads). -->
-        <div class="lookup-banner hint" id="lookup-banner" style="display:none;"></div>
-      </div>
-
-      <div class="field">
-        <label for="target-lang">Target language / voice locale</label>
-        <select id="target-lang" name="target_language">
-          <option value="es">Spanish &mdash; es (server default voice)</option>
-          <option value="es-ES">Spanish (Spain) &mdash; es-ES</option>
-          <option value="es-MX">Spanish (Mexico) &mdash; es-MX</option>
-          <option value="es-419">Spanish (Latin America) &mdash; es-419</option>
-        </select>
-        <p class="hint">
-          The destination YouTube channel is fixed: it's whichever channel was
-          authorized when the dubber service ran its one-time YouTube sign-in
-          on the server (see the project README's "YouTube authorization" step).
-        </p>
-      </div>
-
-      <div class="field">
-        <label>Publish the dub as</label>
-        <div class="radio-row" id="privacy-radios">
-          <label><input type="radio" name="privacy" value="unlisted" checked> Unlisted
-            <span class="radio-hint">&mdash; viewable by link only; polish first, go Public on a redub</span></label>
-          <label><input type="radio" name="privacy" value="public"> Public</label>
-        </div>
-      </div>
-
-      <div class="field" style="display:flex; gap:0.75rem; flex-wrap:wrap; align-items:center; margin-bottom:0;">
-        <button class="btn secondary ghosted" id="thumbnail-btn" type="button" disabled>Preview thumbnail</button>
-        <button class="btn secondary ghosted" id="preview-btn" type="button" disabled>Preview transcript first</button>
-        <button class="btn ghosted" id="submit-btn" type="submit" disabled>Start dubbing</button>
-      </div>
-      <p class="hint">
-        <strong>Preview thumbnail</strong> fetches just the video's thumbnail (no
-        full download) and shows it next to a Spanish version &mdash; the text
-        baked into the image is detected and translated, with the
-        &ldquo;Versi&oacute;n Espa&ntilde;ol&rdquo; banner added on top. Correct
-        any line and <strong>Save</strong>: saved thumbnails live with the
-        project in the library and are used automatically when you dub.
-      </p>
-      <p class="hint">
-        <strong>Preview transcript first</strong> runs just the cheap diagnostic
-        stages &mdash; fetching or transcribing the original-language text, then
-        translating it &mdash; and opens both side by side below. Each Spanish
-        line is editable; <strong>Save</strong> stores it as the project's draft
-        in the library (so it survives reloads), and <strong>Start
-        dubbing</strong> speaks the saved draft verbatim.
-      </p>
-      <span class="hint" id="form-message"></span>
-    </form>
-
-    <!-- Thumbnail preview/approval card. Opens under the project form when
-         "Preview thumbnail" is clicked; stays open through a publish. Save
-         stores the image on the library entry; Revert to default discards it
-         and closes the card. -->
-    <div class="panel thumbnail-panel" id="thumbnail-panel" style="display:none;"></div>
-
-    <!-- Transcript preview card: the TRANSCRIPT PREVIEW analogue of the
-         thumbnail card above. Opens when a "Preview transcript first" run
-         completes; per-line Save writes the project's draft; Revert to default
-         restores the machine transcript and closes the card. -->
-    <div class="panel" id="transcript-panel" style="display:none;"></div>
-
-    <!-- Generalized re-thumbnail tool: pick one of our published dubs as the
-         target, take the thumbnail from its source video, from the dub itself,
-         or from any other video link, edit, then apply -- no re-dub needed. -->
-    <div class="panel" id="rethumb-panel">
-      <div class="box-title">Update an existing video's thumbnail</div>
-      <p class="hint" style="margin-top:0.2rem;">
-        Pick one of your published dubs, choose where the new thumbnail comes
-        from, edit the detected text, and apply it &mdash; no re-dub needed.
-      </p>
-      <div class="field" style="margin-top:0.75rem;">
-        <label for="rethumb-target">Target video (your published dubs)</label>
-        <select id="rethumb-target"></select>
-      </div>
-      <div class="field">
-        <label>Thumbnail comes from</label>
-        <div class="radio-row" id="rethumb-source-radios">
-          <label><input type="radio" name="rethumb-source" value="source" checked> The source video</label>
-          <label><input type="radio" name="rethumb-source" value="dub"> The dub itself</label>
-          <label><input type="radio" name="rethumb-source" value="other"> Another video link</label>
-        </div>
-        <input type="url" id="rethumb-other-url" placeholder="https://www.youtube.com/watch?v=&hellip;"
-               style="display:none; margin-top:0.5rem;">
-      </div>
-      <div class="field" style="display:flex; gap:0.75rem; flex-wrap:wrap; align-items:center; margin-bottom:0;">
-        <button class="btn secondary ghosted" id="rethumb-btn" type="button" disabled>Preview new thumbnail</button>
-        <span class="hint" id="rethumb-message" style="margin-top:0;"></span>
-      </div>
-      <div class="thumbnail-panel" id="rethumb-preview" style="display:none; margin-top:1rem;"></div>
-    </div>
-
-    <!-- The library: every dub project regardless of state -- drafts,
-         published, and published-with-pending-edits (a redub in progress).
-         One entry per (video, language), with its transcript, thumbnail,
-         voice and links. dubber.js fills #library-list from GET /projects. -->
-    <div class="panel" id="library-panel" style="display:none;">
-      <div class="box-title">Dub projects library</div>
-      <p class="hint" style="margin-top:0.2rem;">
-        One entry per video and language &mdash; drafts and published dubs alike.
-        Open one to read or fix its transcript (the original-language text is
-        kept forever), redub it after edits, or delete it for good.
-      </p>
-      <div id="library-list" style="margin-top:0.75rem;"></div>
-    </div>
-
-    <!-- Operator service controls. -->
-    <div class="panel" id="service-controls" style="display:none;">
-      <div class="service-row">
-        <div class="service-info">
-          <div class="box-title">Control dubbing service</div>
-          <p class="hint" style="margin-top:0.2rem;">
-            Restart the dubbing service &mdash; frees its memory and stops any job
-            that's currently running. Queued jobs are kept and resume afterward.
-          </p>
-        </div>
-        <div class="service-action">
-          <button class="btn danger small" id="restart-btn" type="button">Restart Dubber service</button>
-          <span class="hint" id="restart-message" style="margin-top:0;"></span>
-        </div>
-      </div>
-      <!-- Extraction diagnostics: runs a full verbose yt-dlp probe and shows
-           cookies state, per-client format counts and the complete -v trace so
-           a YouTube bot-check can be diagnosed exactly. -->
-      <div class="service-row" style="margin-top:1rem; border-top:1px solid var(--border); padding-top:1rem;">
-        <div class="service-info">
-          <div class="box-title">Diagnose extraction</div>
-          <p class="hint" style="margin-top:0.2rem;">
-            Probe YouTube extraction and capture the full verbose trace &mdash; why
-            downloads are (or aren't) getting real formats. Uses the source URL
-            above if set, otherwise a sample video.
-          </p>
-        </div>
-        <div class="service-action">
-          <button class="btn secondary small" id="diagnose-btn" type="button">Run diagnostic</button>
-          <button class="btn secondary small" id="diagnose-last-btn" type="button">Show last</button>
-          <span class="hint" id="diagnose-message" style="margin-top:0;"></span>
-        </div>
-      </div>
-      <pre id="diagnose-output" class="diag-output" style="display:none;"></pre>
-    </div>
-
-    <!-- Live status: progress cards for jobs that are still queued/running.
-         Finished work moves to the activity log below (and the library). -->
+    <!-- Live status: progress cards for jobs still queued/running. Moved to the
+         top (under sign-in) so the active job is always in view; finished work
+         moves to the activity log and the library. -->
     <div id="job-list"></div>
 
-    <!-- The permanent activity log: one timestamped line per action, building
-         forever. Publishing a video stops its new lines; old ones stay. -->
-    <div class="panel" id="log-panel" style="display:none;">
-      <div class="box-title">Activity log</div>
-      <div id="event-list" style="margin-top:0.5rem;"></div>
-    </div>
+    <!-- Each section below is collapsible: it shows its header only, click to
+         expand, click again to collapse (dubber.js wires .section-header). -->
+
+    <!-- NEW VIDEO DUBBING PROJECT -- includes its two sub-cards (thumbnail +
+         transcript preview), so collapsing the section hides them too. -->
+    <section class="panel collapsible collapsed" id="project-panel">
+      <button type="button" class="section-header">
+        <span class="box-title">New video dubbing project</span>
+        <span class="chevron" aria-hidden="true">&#9656;</span>
+      </button>
+      <div class="section-body">
+        <form id="dub-form">
+          <div class="field">
+            <label for="video-url">English source video URL (YouTube)</label>
+            <input type="url" id="video-url" name="url" placeholder="https://www.youtube.com/watch?v=&hellip;" required>
+            <!-- Filled by dubber.js when the URL matches an existing library entry
+                 (matched server-side by video ID + language, so it survives reloads). -->
+            <div class="lookup-banner hint" id="lookup-banner" style="display:none;"></div>
+          </div>
+
+          <div class="field">
+            <label for="target-lang">Target language / voice locale</label>
+            <select id="target-lang" name="target_language">
+              <option value="es">Spanish &mdash; es (server default voice)</option>
+              <option value="es-ES">Spanish (Spain) &mdash; es-ES</option>
+              <option value="es-MX">Spanish (Mexico) &mdash; es-MX</option>
+              <option value="es-419">Spanish (Latin America) &mdash; es-419</option>
+            </select>
+            <p class="hint">
+              The destination YouTube channel is fixed: it's whichever channel was
+              authorized when the dubber service ran its one-time YouTube sign-in
+              on the server (see the project README's "YouTube authorization" step).
+            </p>
+          </div>
+
+          <div class="field">
+            <label>Publish the dub as</label>
+            <div class="radio-row" id="privacy-radios">
+              <label><input type="radio" name="privacy" value="unlisted" checked> Unlisted
+                <span class="radio-hint">&mdash; viewable by link only; polish first, go Public on a redub</span></label>
+              <label><input type="radio" name="privacy" value="public"> Public</label>
+            </div>
+          </div>
+
+          <div class="field" style="display:flex; gap:0.75rem; flex-wrap:wrap; align-items:center; margin-bottom:0;">
+            <button class="btn secondary ghosted" id="thumbnail-btn" type="button" disabled>Preview thumbnail</button>
+            <button class="btn secondary ghosted" id="preview-btn" type="button" disabled>Preview transcript first</button>
+            <button class="btn ghosted" id="submit-btn" type="submit" disabled>Start dubbing</button>
+          </div>
+          <p class="hint">
+            <strong>Preview thumbnail</strong> fetches just the video's thumbnail (no
+            full download) and shows it next to a Spanish version &mdash; the text
+            baked into the image is detected and translated, with the
+            &ldquo;Versi&oacute;n Espa&ntilde;ol&rdquo; banner added on top. Correct
+            any line and <strong>Save</strong>: saved thumbnails live with the
+            project in the library and are used automatically when you dub.
+          </p>
+          <p class="hint">
+            <strong>Preview transcript first</strong> runs just the cheap diagnostic
+            stages &mdash; fetching or transcribing the original-language text, then
+            translating it &mdash; and opens both side by side below. Each Spanish
+            line is editable; <strong>Save</strong> stores it as the project's draft
+            in the library (so it survives reloads), and <strong>Start
+            dubbing</strong> speaks the saved draft verbatim.
+          </p>
+          <span class="hint" id="form-message"></span>
+        </form>
+
+        <!-- Thumbnail preview/approval sub-card. Opens under the form when
+             "Preview thumbnail" is clicked; Save stores it on the library entry. -->
+        <div class="panel thumbnail-panel" id="thumbnail-panel" style="display:none;"></div>
+
+        <!-- Transcript preview sub-card: opens when "Preview transcript first"
+             finishes; per-line Save writes the project's draft. -->
+        <div class="panel" id="transcript-panel" style="display:none;"></div>
+      </div>
+    </section>
+
+    <!-- UPDATE AN EXISTING VIDEO'S THUMBNAIL -->
+    <section class="panel collapsible collapsed" id="rethumb-panel">
+      <button type="button" class="section-header">
+        <span class="box-title">Update an existing video's thumbnail</span>
+        <span class="chevron" aria-hidden="true">&#9656;</span>
+      </button>
+      <div class="section-body">
+        <p class="hint" style="margin-top:0;">
+          Pick one of your published dubs, choose where the new thumbnail comes
+          from, edit the detected text, and apply it &mdash; no re-dub needed.
+        </p>
+        <div class="field" style="margin-top:0.75rem;">
+          <label for="rethumb-target">Target video (your published dubs)</label>
+          <select id="rethumb-target"></select>
+        </div>
+        <div class="field">
+          <label>Thumbnail comes from</label>
+          <div class="radio-row" id="rethumb-source-radios">
+            <label><input type="radio" name="rethumb-source" value="source" checked> The source video</label>
+            <label><input type="radio" name="rethumb-source" value="dub"> The dub itself</label>
+            <label><input type="radio" name="rethumb-source" value="other"> Another video link</label>
+          </div>
+          <input type="url" id="rethumb-other-url" placeholder="https://www.youtube.com/watch?v=&hellip;"
+                 style="display:none; margin-top:0.5rem;">
+        </div>
+        <div class="field" style="display:flex; gap:0.75rem; flex-wrap:wrap; align-items:center; margin-bottom:0;">
+          <button class="btn secondary ghosted" id="rethumb-btn" type="button" disabled>Preview new thumbnail</button>
+          <span class="hint" id="rethumb-message" style="margin-top:0;"></span>
+        </div>
+        <div class="thumbnail-panel" id="rethumb-preview" style="display:none; margin-top:1rem;"></div>
+      </div>
+    </section>
+
+    <!-- DUB PROJECTS LIBRARY -->
+    <section class="panel collapsible collapsed" id="library-panel" style="display:none;">
+      <button type="button" class="section-header">
+        <span class="box-title">Dub projects library</span>
+        <span class="chevron" aria-hidden="true">&#9656;</span>
+      </button>
+      <div class="section-body">
+        <p class="hint" style="margin-top:0;">
+          One entry per video and language &mdash; drafts and published dubs alike.
+          Open one to read or fix its transcript (the original-language text is
+          kept forever), redub it after edits, or delete it for good.
+        </p>
+        <div id="library-list" style="margin-top:0.75rem;"></div>
+      </div>
+    </section>
+
+    <!-- CONTROL DUBBING SERVICE (with Diagnose extraction as an integral part) -->
+    <section class="panel collapsible collapsed" id="service-controls" style="display:none;">
+      <button type="button" class="section-header">
+        <span class="box-title">Control dubbing service</span>
+        <span class="chevron" aria-hidden="true">&#9656;</span>
+      </button>
+      <div class="section-body">
+        <div class="service-row">
+          <div class="service-info">
+            <p class="hint" style="margin-top:0;">
+              Restart the dubbing service &mdash; frees its memory and stops any job
+              that's currently running. Queued jobs are kept and resume afterward.
+            </p>
+          </div>
+          <div class="service-action">
+            <button class="btn danger small" id="restart-btn" type="button">Restart Dubber service</button>
+            <span class="hint" id="restart-message" style="margin-top:0;"></span>
+          </div>
+        </div>
+        <!-- Extraction diagnostics: a full verbose yt-dlp probe (cookies state,
+             per-client format counts, the -v trace) to diagnose a bot-check. -->
+        <div class="service-row" style="margin-top:1rem; border-top:1px solid var(--border); padding-top:1rem;">
+          <div class="service-info">
+            <div class="box-title">Diagnose extraction</div>
+            <p class="hint" style="margin-top:0.2rem;">
+              Probe YouTube extraction and capture the full verbose trace &mdash; why
+              downloads are (or aren't) getting real formats. Uses the source URL
+              above if set, otherwise a sample video.
+            </p>
+          </div>
+          <div class="service-action">
+            <button class="btn secondary small" id="diagnose-btn" type="button">Run diagnostic</button>
+            <button class="btn secondary small" id="diagnose-last-btn" type="button">Show last</button>
+            <span class="hint" id="diagnose-message" style="margin-top:0;"></span>
+          </div>
+        </div>
+        <pre id="diagnose-output" class="diag-output" style="display:none;"></pre>
+      </div>
+    </section>
+
+    <!-- ACTIVITY LOG -->
+    <section class="panel collapsible collapsed" id="log-panel" style="display:none;">
+      <button type="button" class="section-header">
+        <span class="box-title">Activity log</span>
+        <span class="chevron" aria-hidden="true">&#9656;</span>
+      </button>
+      <div class="section-body">
+        <div id="event-list" style="margin-top:0.5rem;"></div>
+      </div>
+    </section>
   </main>
 
   <footer class="site-footer">
     buitendyk.ca &mdash; self-hosted on a personal VPS, built with free &amp; open-source tools.
   </footer>
 
-  <script src="/dubber/dubber.js?v=23"></script>
+  <script src="/dubber/dubber.js?v=24"></script>
 </body>
 </html>

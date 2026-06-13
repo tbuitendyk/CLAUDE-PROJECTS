@@ -153,6 +153,25 @@
     checkAuth();
   });
 
+  // --- Collapsible sections ------------------------------------------------
+  // Each .collapsible section shows its header only; clicking the header
+  // toggles its body. Default collapsed (set in the HTML).
+  document.querySelectorAll(".collapsible .section-header").forEach((header) => {
+    header.addEventListener("click", () => {
+      const section = header.closest(".collapsible");
+      if (section) section.classList.toggle("collapsed");
+    });
+  });
+
+  // Expand whichever collapsible section contains `el` (so a sub-card the JS
+  // opens -- a thumbnail/transcript preview -- isn't hidden behind a collapsed
+  // header).
+  function expandContaining(el) {
+    if (!el) return;
+    const section = el.closest(".collapsible");
+    if (section) section.classList.remove("collapsed");
+  }
+
   function formatTimestamp(seconds) {
     const total = Math.max(0, Math.round(seconds || 0));
     const m = Math.floor(total / 60);
@@ -446,6 +465,7 @@
     // meta: { rows, sourceUrl, targetLanguage, summaryText }
     transcriptPanel.textContent = "";
     transcriptPanel.style.display = "block";
+    expandContaining(transcriptPanel);  // don't let a collapsed section hide it
 
     // 'X' hides the card but keeps the saved draft -- re-entering the URL
     // re-opens it (see maybeAutoOpenSavedCards).
@@ -983,6 +1003,7 @@
       opts.trigger.disabled = true;
       opts.trigger.textContent = "Fetching thumbnail…";
       opts.panel.style.display = "block";
+      expandContaining(opts.panel);
       opts.panel.textContent = "";
       const loading = document.createElement("p");
       loading.className = "hint";
@@ -1233,6 +1254,7 @@
         approved: true, savedOnly: true,
       };
       opts.panel.style.display = "block";
+      expandContaining(opts.panel);
       opts.panel.textContent = "";
       addCardCloseButton(opts.panel, () => {
         hide();
