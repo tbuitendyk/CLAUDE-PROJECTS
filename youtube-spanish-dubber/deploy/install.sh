@@ -255,6 +255,18 @@ engine = ocr_onnx._get_engine()
 print("    Thumbnail OCR self-test:", "ready" if engine is not None else "(unavailable -> keep original text)")
 PYEOF
 
+# TEMP-DIAG: inspect the saved thumbnail's title-region classification + render
+# on the real server image, since a cloud session can't fetch the thumbnail
+# itself. Prints to stdout (returned by the deploy endpoint). Removed once the
+# banner sizing is verified. Non-fatal.
+if [ -f "${INSTALL_DIR}/deploy/_thumb_diag.py" ]; then
+  echo "########## [THUMB-DIAG] ##########"
+  sudo -u "${SERVICE_USER}" env PYTHONPATH="${INSTALL_DIR}" \
+    "${INSTALL_DIR}/.venv/bin/python" "${INSTALL_DIR}/deploy/_thumb_diag.py" 2>&1 \
+    || echo "    (thumb-diag could not run)"
+  echo "########## [THUMB-DIAG] end ##########"
+fi
+
 echo "==> Installing systemd units"
 cp "${INSTALL_DIR}/deploy/youtube-dubber.service" /etc/systemd/system/youtube-dubber.service
 cp "${INSTALL_DIR}/deploy/bgutil-pot.service" /etc/systemd/system/bgutil-pot.service
