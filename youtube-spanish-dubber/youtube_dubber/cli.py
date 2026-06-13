@@ -40,7 +40,15 @@ def _cmd_status(args: argparse.Namespace) -> None:
 def _cmd_check_extraction(args: argparse.Namespace) -> None:
     """Probe each player client in the ladder against a sample video and report
     which return real (non-storyboard) formats -- the deploy self-test and the
-    operator's go-to when downloads start failing the bot-check."""
+    operator's go-to when downloads start failing the bot-check. With
+    --verbose, print the full diagnostic (cookies state + the complete yt-dlp -v
+    trace), the same report GET /diagnostics/extraction returns."""
+    if getattr(args, "verbose", False):
+        from . import diagnostics
+
+        print(diagnostics.report(args.url)["report"])
+        return
+
     from .pipeline import downloader
 
     url = args.url or "https://www.youtube.com/watch?v=Dj5OYkgDtHU"
@@ -56,7 +64,8 @@ def _cmd_check_extraction(args: argparse.Namespace) -> None:
               f"(set DUBBER_YTDLP_PLAYER_CLIENTS={best} to lock it in)")
     else:
         print("No player client returned real formats -- the token provider, "
-              "cookies, or the box's IP is the problem, not the client.")
+              "cookies, or the box's IP is the problem, not the client. "
+              "Re-run with --verbose for the full yt-dlp -v trace.")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -78,6 +87,8 @@ def main(argv: list[str] | None = None) -> int:
         "check-extraction", help="Probe which yt-dlp player client returns real formats"
     )
     check_parser.add_argument("url", nargs="?", default=None, help="Video URL (default: a sample)")
+    check_parser.add_argument("--verbose", "-v", action="store_true",
+                              help="Print the full diagnostic incl. the yt-dlp -v trace")
     check_parser.set_defaults(func=_cmd_check_extraction)
 
     args = parser.parse_args(argv)

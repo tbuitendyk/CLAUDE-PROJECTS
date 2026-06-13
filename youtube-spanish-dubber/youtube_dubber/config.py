@@ -151,6 +151,12 @@ class Settings:
     ytdlp_client_ladder: str = os.getenv(
         "DUBBER_YTDLP_CLIENT_LADDER", "web,mweb,web_safari,tv,default"
     )
+    # When a job's extraction fails, automatically capture a full verbose yt-dlp
+    # diagnostic (cookies state, per-client format counts, the complete -v trace)
+    # to data/diagnostics/ so GET /diagnostics/last can serve it. On while
+    # debugging YouTube extraction; set false to skip the (one extra yt-dlp run)
+    # cost once things are healthy.
+    capture_extraction_diagnostics: bool = _bool("DUBBER_CAPTURE_EXTRACTION_DIAGNOSTICS", True)
     upload_privacy_status: str = os.getenv("DUBBER_UPLOAD_PRIVACY", "unlisted")
     upload_category_id: str = os.getenv("DUBBER_UPLOAD_CATEGORY", "22")
     title_prefix: str = os.getenv("DUBBER_TITLE_PREFIX", "[ES] ")

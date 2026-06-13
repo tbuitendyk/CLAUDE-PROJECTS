@@ -321,9 +321,30 @@ def _process(job: db.Job) -> None:
             job_id=job.id,
             detail=friendly,
         )
+        # Capture a full verbose extraction diagnostic so we can see exactly why
+        # (served by GET /diagnostics/last). Best-effort; only for the bot-check /
+        # no-formats family, where the trace is the whole answer.
+        if settings.capture_extraction_diagnostics and _looks_like_extraction_failure(exc):
+            try:
+                from . import diagnostics
+
+                diagnostics.capture_failure(job.source_url, job.id)
+                log.info("Captured extraction diagnostic for failed job %s", job.id)
+            except Exception:  # noqa: BLE001
+                log.warning("Couldn't capture extraction diagnostic for job %s", job.id)
     finally:
         if not settings.keep_work_dirs:
             shutil.rmtree(work_dir, ignore_errors=True)
+
+
+def _looks_like_extraction_failure(exc: Exception) -> bool:
+    """True for the YouTube extraction failures whose verbose trace is worth
+    auto-capturing (bot-check, no/unavailable formats, sign-in walls)."""
+    low = str(exc).lower()
+    return any(s in low for s in (
+        "not a bot", "sign in to confirm", "requested format is not available",
+        "no formats", "unable to download", "fetch that video", "po token", "extractor",
+    ))
 
 
 def _friendly_error(exc: Exception) -> str:

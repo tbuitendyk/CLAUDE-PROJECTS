@@ -675,6 +675,29 @@ def create_event(payload: EventCreateRequest) -> dict:
     return {"recorded": True}
 
 
+@app.get("/diagnostics/extraction")
+def diagnostics_extraction(url: Optional[str] = None) -> dict:
+    """Run a full verbose extraction probe NOW and return the diagnostic: cookies
+    state, per-client real-format counts, and the complete yt-dlp -v trace. The
+    operator's window into exactly why downloads are failing the bot-check.
+    Operator-gated by the same Basic Auth as the rest of /dubber/api/."""
+    from . import diagnostics
+
+    return diagnostics.report(url)
+
+
+@app.get("/diagnostics/last")
+def diagnostics_last() -> dict:
+    """The most recently captured extraction diagnostic (a fresh probe via
+    /diagnostics/extraction, or the auto-capture from the last failed job)."""
+    from . import diagnostics
+
+    text = diagnostics.last_report()
+    if text is None:
+        raise HTTPException(status_code=404, detail="No extraction diagnostic captured yet")
+    return {"report": text}
+
+
 @app.post("/admin/restart")
 def restart_service() -> dict:
     """Restart the dubber service.

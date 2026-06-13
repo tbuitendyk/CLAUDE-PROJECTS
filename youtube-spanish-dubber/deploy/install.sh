@@ -194,7 +194,8 @@ fi
 chown -R "${SERVICE_USER}:${SERVICE_USER}" "${MODELS_DIR}"
 
 echo "==> Preparing config (.env) and secrets directory"
-mkdir -p "${INSTALL_DIR}/secrets" "${INSTALL_DIR}/data"
+# data/diagnostics holds the extraction-diagnostic captures (GET /diagnostics/*).
+mkdir -p "${INSTALL_DIR}/secrets" "${INSTALL_DIR}/data" "${INSTALL_DIR}/data/diagnostics"
 if [[ ! -f "${INSTALL_DIR}/.env" ]]; then
   cp "${INSTALL_DIR}/deploy/env.example" "${INSTALL_DIR}/.env"
   echo "    Created ${INSTALL_DIR}/.env from the example -- review and edit it."
