@@ -277,13 +277,14 @@ sleep 3
 systemctl daemon-reload
 if systemctl is-active --quiet bgutil-pot; then
   echo "    bgutil-pot running on 127.0.0.1:4416"
-  # Non-fatal end-to-end self-test: count real (non-storyboard) formats a token
-  # unlocks for a sample video. >0 means the provider chain is healthy.
-  SAMPLE="https://www.youtube.com/watch?v=Dj5OYkgDtHU"
-  N=$(sudo -u "${SERVICE_USER}" "${INSTALL_DIR}/bin/yt-dlp" --no-warnings \
-        --plugin-dirs "${PLUGIN_DIR}" -J --skip-download "${SAMPLE}" 2>/dev/null \
-        | "${INSTALL_DIR}/.venv/bin/python" -c "import sys,json;d=json.load(sys.stdin);print(sum(1 for f in d.get('formats',[]) if f.get('vcodec') not in (None,'none') or f.get('acodec') not in (None,'none')))" 2>/dev/null || echo 0)
-  echo "    provider self-test: ${N:-0} real formats for the sample video (0 = problem)"
+  # Non-fatal end-to-end self-test: probe each player client in the ladder and
+  # report which return real (non-storyboard) formats. This is the same resolver
+  # the service uses at runtime, so the deploy output names the client that
+  # works (or shows that none do -> token/cookies/IP problem, not the client).
+  echo "    extraction self-test (per yt-dlp player client):"
+  ( cd "${INSTALL_DIR}" && sudo -u "${SERVICE_USER}" "${INSTALL_DIR}/.venv/bin/python" \
+      -m youtube_dubber.cli check-extraction 2>&1 ) | sed 's/^/      /' \
+    || echo "      (self-test could not run)"
 else
   echo "    WARNING: bgutil-pot inactive -- downloads will fail. See: journalctl -u bgutil-pot"
 fi

@@ -1,8 +1,10 @@
 """Operator CLI for one-off/manual tasks that shouldn't run inside the service.
 
-    python -m youtube_dubber.cli authorize        one-time YouTube OAuth setup
-    python -m youtube_dubber.cli submit <url>     enqueue a job via the local API
-    python -m youtube_dubber.cli status <job_id>  check a job's status
+    python -m youtube_dubber.cli authorize             one-time YouTube OAuth setup
+    python -m youtube_dubber.cli submit <url>          enqueue a job via the local API
+    python -m youtube_dubber.cli status <job_id>       check a job's status
+    python -m youtube_dubber.cli check-extraction [url] probe which yt-dlp player
+                                                        client returns real formats
 """
 from __future__ import annotations
 
@@ -35,6 +37,28 @@ def _cmd_status(args: argparse.Namespace) -> None:
     print(json.dumps(resp.json(), indent=2))
 
 
+def _cmd_check_extraction(args: argparse.Namespace) -> None:
+    """Probe each player client in the ladder against a sample video and report
+    which return real (non-storyboard) formats -- the deploy self-test and the
+    operator's go-to when downloads start failing the bot-check."""
+    from .pipeline import downloader
+
+    url = args.url or "https://www.youtube.com/watch?v=Dj5OYkgDtHU"
+    print(f"Probing yt-dlp player clients for {url}")
+    best = None
+    for client, count in downloader.probe_client_formats(url):
+        label = client or "default"
+        print(f"  {label:14s} -> {count} real formats")
+        if best is None and count > 0:
+            best = client
+    if best is not None:
+        print(f"Working player client: {best or 'default'} "
+              f"(set DUBBER_YTDLP_PLAYER_CLIENTS={best} to lock it in)")
+    else:
+        print("No player client returned real formats -- the token provider, "
+              "cookies, or the box's IP is the problem, not the client.")
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="youtube-dubber")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -49,6 +73,12 @@ def main(argv: list[str] | None = None) -> int:
     status_parser = sub.add_parser("status", help="Check a job's status")
     status_parser.add_argument("job_id")
     status_parser.set_defaults(func=_cmd_status)
+
+    check_parser = sub.add_parser(
+        "check-extraction", help="Probe which yt-dlp player client returns real formats"
+    )
+    check_parser.add_argument("url", nargs="?", default=None, help="Video URL (default: a sample)")
+    check_parser.set_defaults(func=_cmd_check_extraction)
 
     args = parser.parse_args(argv)
     args.func(args)

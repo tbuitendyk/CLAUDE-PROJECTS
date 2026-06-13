@@ -33,6 +33,17 @@ class DownloadError(RuntimeError):
     """A yt-dlp invocation failed; carries a trimmed reason for the caller."""
 
 
+# The yt-dlp player client to use is resolved ONCE per process (see
+# ensure_working_client): YouTube binds the provider's PO token to a specific
+# client, and the default client set periodically stops yielding real formats
+# ("Sign in to confirm you're not a bot" / storyboards-only). Rather than pin a
+# client that will itself go stale, we try a ladder and cache the first that
+# returns real formats. `None` = not resolved yet; "" = use yt-dlp's default.
+_UNSET = object()
+_resolved_client: Optional[str] = None
+_resolve_attempted = False
+
+
 def _binary() -> str:
     """The yt-dlp binary to invoke: the configured standalone build if present,
     else whatever ``yt-dlp`` is on PATH."""
@@ -40,28 +51,122 @@ def _binary() -> str:
     return str(configured) if configured.exists() else "yt-dlp"
 
 
-def _base_cmd() -> list[str]:
-    """yt-dlp plus the args every call shares: terse output, our plugin directory
-    (the PO-token provider plugin) and -- only when explicitly enabled -- a
-    cookies file.
+def _client_extractor_args(client: str) -> list[str]:
+    """`--extractor-args` to pin a yt-dlp player client, or [] for the default.
+    "" / "default" mean "don't pin -- use yt-dlp's own client set"."""
+    name = (client or "").strip()
+    if not name or name.lower() == "default":
+        return []
+    return ["--extractor-args", f"youtube:player_client={name}"]
 
-    With the provider minting Proof-of-Origin tokens, we let yt-dlp use its
-    default player clients (restricting them just forgoes the formats the tokens
-    unlock) and we do NOT pass cookies by default: a throwaway account's cookies
-    push yt-dlp onto authenticated clients that return storyboards-only for
-    videos that account doesn't own. The token is the trust signal instead."""
+
+def _effective_client() -> str:
+    """The player client a normal call should use: an operator hard-pin
+    (DUBBER_YTDLP_PLAYER_CLIENTS) wins; otherwise the resolved working client;
+    otherwise "" (yt-dlp default)."""
+    pin = (settings.ytdlp_player_clients or "").strip()
+    if pin:
+        return pin
+    return _resolved_client or ""
+
+
+def _base_cmd(client=_UNSET) -> list[str]:
+    """yt-dlp plus the args every call shares: terse output, our plugin directory
+    (the PO-token provider plugin), the player-client pin, and -- only when
+    explicitly enabled -- a cookies file.
+
+    The provider mints Proof-of-Origin tokens; YouTube binds them to a specific
+    player client, so we pin the resolved working client (see
+    ensure_working_client) rather than let yt-dlp roam its default set, where the
+    token may not be attached. Cookies stay OFF by default: a throwaway account's
+    cookies push yt-dlp onto authenticated clients that return storyboards-only
+    for videos that account doesn't own. Pass `client` to force a specific one
+    (the resolver does this while probing the ladder)."""
     cmd = [_binary(), "--no-warnings", "--no-playlist"]
     plugin_dirs = settings.ytdlp_plugin_dirs
     if plugin_dirs and Path(plugin_dirs).exists():
         cmd += ["--plugin-dirs", str(plugin_dirs)]
-    clients = (settings.ytdlp_player_clients or "").strip()
-    if clients:  # optional: pin a specific client for debugging
-        cmd += ["--extractor-args", f"youtube:player_client={clients}"]
+    chosen = _effective_client() if client is _UNSET else client
+    cmd += _client_extractor_args(chosen)
     if settings.youtube_use_cookies:
         cookies = settings.youtube_cookies_file
         if cookies and Path(cookies).exists():
             cmd += ["--cookies", str(cookies)]
     return cmd
+
+
+def count_real_formats(info: dict) -> int:
+    """Number of real (non-storyboard) formats in a yt-dlp info dict -- a format
+    with an actual audio or video codec. 0 means the extraction came back
+    storyboards-only (the bot-check / stale-token symptom)."""
+    return sum(
+        1 for fmt in (info.get("formats") or [])
+        if fmt.get("vcodec") not in (None, "none") or fmt.get("acodec") not in (None, "none")
+    )
+
+
+def client_ladder() -> list[str]:
+    """The ordered player clients to try when resolving a working one.
+    DUBBER_YTDLP_CLIENT_LADDER overrides; "web" leads because the bgutil
+    provider's gvs PO token binds to it."""
+    raw = (settings.ytdlp_client_ladder or "").strip()
+    ladder = [c.strip() for c in raw.split(",") if c.strip()]
+    return ladder or ["default"]
+
+
+def _probe_formats(url: str, client: str) -> int:
+    """Real-format count yt-dlp sees for `url` using `client` (0 on any failure:
+    bot-check, no formats, timeout). The signal the resolver picks a client on."""
+    cmd = _base_cmd(client=client) + ["-J", "--skip-download", "--ignore-no-formats-error", url]
+    try:
+        result = subprocess.run(
+            cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=150
+        )
+        if result.returncode != 0 or not result.stdout.strip():
+            return 0
+        return count_real_formats(json.loads(result.stdout))
+    except Exception:  # noqa: BLE001 -- a failed probe just means "this client doesn't work"
+        return 0
+
+
+def probe_client_formats(url: str) -> list[tuple[str, int]]:
+    """(client, real-format count) for every ladder client -- the diagnostic the
+    deploy self-test / `cli check-extraction` prints."""
+    return [(client, _probe_formats(url, client)) for client in client_ladder()]
+
+
+def resolve_working_client(url: str) -> Optional[str]:
+    """The first ladder client that returns real formats for `url`, or None if
+    none do."""
+    for client in client_ladder():
+        if _probe_formats(url, client) > 0:
+            return client
+    return None
+
+
+def ensure_working_client(url: str) -> None:
+    """Resolve and cache the player client to use for the rest of this process,
+    once. No-op if an operator pinned DUBBER_YTDLP_PLAYER_CLIENTS, or if already
+    attempted. Best-effort: if nothing in the ladder works we leave the default
+    in place and let the real call surface the error."""
+    global _resolved_client, _resolve_attempted
+    if (settings.ytdlp_player_clients or "").strip() or _resolve_attempted:
+        return
+    _resolve_attempted = True
+    chosen = resolve_working_client(url)
+    if chosen is not None:
+        _resolved_client = chosen
+        log.info("Resolved yt-dlp player client %r (it returns real formats)", chosen or "default")
+    else:
+        log.warning("No player client in the ladder returned formats for %s; using yt-dlp's default", url)
+
+
+def reset_resolved_client() -> None:
+    """Forget the cached client so the next extraction re-resolves (tests / a
+    forced retry)."""
+    global _resolved_client, _resolve_attempted
+    _resolved_client = None
+    _resolve_attempted = False
 
 
 def _clean_error(text: str) -> str:
@@ -77,6 +182,7 @@ def probe(url: str) -> dict:
 
     Reads only metadata + caption availability, so format selection is told not
     to abort if a client returns no downloadable formats."""
+    ensure_working_client(url)
     cmd = _base_cmd() + ["--dump-single-json", "--skip-download", "--ignore-no-formats-error", url]
     result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     if result.returncode != 0 or not result.stdout.strip():
@@ -119,6 +225,7 @@ def download_video(
     """Download the best available muxed (or mux-able) video+audio as MP4, plus
     the source thumbnail (so the dub can reuse/brand it) and the metadata sidecar.
     `on_progress`, if given, receives the download completion fraction (0..1)."""
+    ensure_working_client(url)
     cmd = _base_cmd() + [
         "--format", "bv*[ext=mp4]+ba[ext=m4a]/bv*+ba/b[ext=mp4]/b",
         "--merge-output-format", "mp4",
@@ -190,6 +297,7 @@ def fetch_thumbnail(url: str, work_dir: Path) -> Optional[ThumbnailSource]:
     of metadata the preview needs. Returns None when extraction succeeded but the
     video had no thumbnail; raises DownloadError on a fetch failure (bot check,
     unavailable video, ...) so the caller can report the real reason."""
+    ensure_working_client(url)
     cmd = _base_cmd() + [
         "--skip-download", "--write-thumbnail", "--write-info-json",
         # We only want the thumbnail image + a little metadata, never a stream,

@@ -137,11 +137,20 @@ class Settings:
     ytdlp_plugin_dirs: Path = field(
         default_factory=lambda: _path("DUBBER_YTDLP_PLUGIN_DIRS", "./yt-dlp-plugins")
     )
-    # Optional comma-separated YouTube player_client list to restrict yt-dlp to.
-    # Left empty by default: with the PO-token provider up, yt-dlp's default
-    # clients return the full ladder and download cleanly. Set it only to pin a
-    # specific client for debugging.
+    # Optional comma-separated YouTube player_client list to HARD-pin yt-dlp to.
+    # Empty by default. When set it overrides the auto-resolver below; use it to
+    # force a specific client (debugging, or to lock in a known-good one).
     ytdlp_player_clients: str = os.getenv("DUBBER_YTDLP_PLAYER_CLIENTS", "")
+    # The player clients the downloader tries, in order, to auto-resolve a
+    # working one (the first that returns real, non-storyboard formats) the first
+    # time it extracts -- then caches it for the rest of the process. YouTube
+    # binds the provider's PO token to a specific client and periodically changes
+    # which default client yields formats; probing this ladder self-heals across
+    # those changes. "web" leads because the bgutil gvs token binds to it;
+    # "default" (no pin) is the final fallback. Ignored if a hard pin is set.
+    ytdlp_client_ladder: str = os.getenv(
+        "DUBBER_YTDLP_CLIENT_LADDER", "web,mweb,web_safari,tv,default"
+    )
     upload_privacy_status: str = os.getenv("DUBBER_UPLOAD_PRIVACY", "unlisted")
     upload_category_id: str = os.getenv("DUBBER_UPLOAD_CATEGORY", "22")
     title_prefix: str = os.getenv("DUBBER_TITLE_PREFIX", "[ES] ")
