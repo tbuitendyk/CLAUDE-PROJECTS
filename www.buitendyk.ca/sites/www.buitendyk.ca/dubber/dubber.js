@@ -1531,7 +1531,7 @@
     });
   }
 
-  async function applyThumbnailToTarget({ state, button, setMessage, markApproved }) {
+  async function applyThumbnailToTarget({ state, button, setMessage, markApproved, getEditState }) {
     const entry = rethumbEntry();
     if (!entry || !entry.target_url) {
       setMessage("Pick a published dub as the target first.", "bad");
@@ -1544,8 +1544,19 @@
     try {
       const data = await apiJson("/thumbnail/apply", "POST",
         { target_url: entry.target_url, thumbnail: state.generated });
+      // Persist the image AND the editor state (text/fonts/colours) onto the
+      // library entry, marked as_published since it's now live on YouTube -- so
+      // reloading restores exactly these attributes and the entry stays published.
+      try {
+        await apiJson(`/projects/${entry.id}/thumbnail`, "PUT",
+          { thumbnail: state.generated, edit_state: getEditState(), as_published: true });
+        loadLibrary();
+      } catch (saveErr) {
+        setMessage("Applied to YouTube, but couldn't save the attributes: " + saveErr.message, "bad");
+      }
       markApproved();
-      setMessage("✓ Updated the thumbnail on " + (data.video_url || "the target video") + ".", "good");
+      setMessage("✓ Updated the thumbnail on " + (data.video_url || "the target video") +
+        " and saved its attributes.", "good");
       loadEvents();
     } catch (err) {
       setMessage("Couldn't update the thumbnail: " + err.message, "bad");
