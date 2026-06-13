@@ -51,6 +51,7 @@
   const pollTimers = new Map(); // job id -> setInterval handle
   let libraryItems = [];        // project summaries from GET /projects
   let currentProject = null;    // the entry matching the form's URL + language
+  let autoOpenedFor = null;     // project id whose saved cards we already auto-opened
 
   // --- Small helpers -------------------------------------------------------
 
@@ -169,14 +170,56 @@
     lookupBanner.style.display = "none";
     lookupBanner.textContent = "";
     const url = formUrl();
-    if (!authenticated || !videoIdOf(url)) return;
+    if (!authenticated || !videoIdOf(url)) {
+      autoOpenedFor = null;  // URL cleared/invalid -> re-entering later re-opens
+      return;
+    }
     try {
       const summary = await api(`/projects/lookup?url=${encodeURIComponent(url)}&target_language=${encodeURIComponent(formLang())}`);
       currentProject = summary;
       renderLookupBanner(summary);
+      maybeAutoOpenSavedCards(summary);
     } catch (err) {
-      /* 404 = a new video; nothing to show */
+      autoOpenedFor = null;  // 404 = a new video; nothing saved to re-open
     }
+  }
+
+  // Re-entering an English source URL the library already knows re-opens its
+  // saved cards: the transcript preview card (from the saved draft) and the
+  // thumbnail preview card (showing the saved image). Guarded by
+  // `autoOpenedFor` so a card the user X-closes stays closed until they switch
+  // to a different URL and come back.
+  function maybeAutoOpenSavedCards(summary) {
+    if (!summary || summary.id === autoOpenedFor) return;
+    autoOpenedFor = summary.id;
+    if (!summary.line_count && !summary.has_thumbnail) return;
+    api(`/projects/${summary.id}`).then((project) => {
+      if (project.rows && project.rows.length) {
+        currentProject = project;
+        renderTranscriptCard({
+          rows: project.rows,
+          sourceUrl: project.source_url,
+          targetLanguage: project.target_language,
+          summaryText: `${project.title || project.source_title || project.source_video_id}` +
+            ` · ${project.line_count} lines · saved in the library`,
+        });
+      }
+      if (project.thumbnail) dubThumbEditor.showSaved(project.thumbnail);
+    }).catch(() => { /* non-fatal */ });
+  }
+
+  // An 'X' close control in a card's top-right: hides the card without
+  // discarding what's saved (distinct from "Revert to default").
+  function addCardCloseButton(panel, onClose) {
+    panel.style.position = "relative";
+    const x = document.createElement("button");
+    x.type = "button";
+    x.className = "card-close";
+    x.setAttribute("aria-label", "Close");
+    x.textContent = "×";
+    x.addEventListener("click", onClose);
+    panel.appendChild(x);
+    return x;
   }
 
   function renderLookupBanner(entry) {
@@ -399,6 +442,14 @@
     // meta: { rows, sourceUrl, targetLanguage, summaryText }
     transcriptPanel.textContent = "";
     transcriptPanel.style.display = "block";
+
+    // 'X' hides the card but keeps the saved draft -- re-entering the URL
+    // re-opens it (see maybeAutoOpenSavedCards).
+    addCardCloseButton(transcriptPanel, () => {
+      closeTranscriptCard();
+      logClientEvent("Transcript preview closed",
+        currentProject ? (currentProject.title || currentProject.source_title) : null);
+    });
 
     const title = document.createElement("div");
     title.className = "service-title";
@@ -826,6 +877,12 @@
       }
     }
 
+    // Hide the card without discarding it (the saved thumbnail stays on the
+    // library entry). Re-entering the URL re-opens it via showSaved.
+    function hide() {
+      if (opts.panel) opts.panel.style.display = "none";
+    }
+
     function setMessage(text, kind) {
       const msg = opts.panel.querySelector(".thumb-message");
       if (!msg) return;
@@ -899,6 +956,11 @@
 
     function render(data) {
       opts.panel.textContent = "";
+
+      addCardCloseButton(opts.panel, () => {
+        hide();
+        if (opts.onClose) opts.onClose(state);
+      });
 
       const title = document.createElement("div");
       title.className = "service-title";
@@ -1072,7 +1134,57 @@
       }
     }
 
-    return { preview: preview, reset: reset, getState: getState };
+    // Re-open the card showing a thumbnail already saved on the library entry,
+    // without re-fetching from YouTube. Read-only-ish: the saved image plus
+    // Revert-to-default and the 'X'; "Preview thumbnail" re-fetches to re-edit.
+    function showSaved(dataUri) {
+      if (!dataUri || !opts.panel) return;
+      state = {
+        url: opts.getSourceUrl(), targetLanguage: opts.getTargetLanguage(),
+        original: null, generated: dataUri, regions: [], bannerText: "",
+        approved: true, savedOnly: true,
+      };
+      opts.panel.style.display = "block";
+      opts.panel.textContent = "";
+      addCardCloseButton(opts.panel, () => {
+        hide();
+        if (opts.onClose) opts.onClose(state);
+      });
+
+      const title = document.createElement("div");
+      title.className = "service-title";
+      title.textContent = opts.title;
+      opts.panel.appendChild(title);
+
+      const compare = document.createElement("div");
+      compare.className = "thumb-compare";
+      const fig = figure("Spanish version (saved)", dataUri);
+      fig.classList.add("thumb-generated-figure", "approved");
+      compare.appendChild(fig);
+      opts.panel.appendChild(compare);
+
+      const note = document.createElement("p");
+      note.className = "hint";
+      note.textContent = "This thumbnail is saved with the project and applied automatically " +
+        "when you dub. Click “Preview thumbnail” to re-edit it.";
+      opts.panel.appendChild(note);
+
+      const actions = document.createElement("div");
+      actions.className = "thumb-actions";
+      const revertBtn = document.createElement("button");
+      revertBtn.type = "button";
+      revertBtn.className = "btn secondary";
+      revertBtn.textContent = "Revert to default";
+      revertBtn.addEventListener("click", () =>
+        opts.onRevert({ state: state, button: revertBtn, reset: reset }));
+      actions.appendChild(revertBtn);
+      const msg = document.createElement("span");
+      msg.className = "hint thumb-message";
+      actions.appendChild(msg);
+      opts.panel.appendChild(actions);
+    }
+
+    return { preview: preview, reset: reset, getState: getState, showSaved: showSaved, hide: hide };
   }
 
   // The dub flow's editor: Save stores the image on the library entry (the
@@ -1086,6 +1198,8 @@
     getSourceUrl: formUrl,
     getTargetLanguage: formLang,
     onMissingSource: () => { formMessage.textContent = "Enter a video URL first."; },
+    onClose: () => logClientEvent("Thumbnail preview closed",
+      currentProject ? (currentProject.title || currentProject.source_title) : null),
     onAction: async ({ state, button, setMessage, markApproved }) => {
       const restore = button.textContent;
       button.disabled = true;

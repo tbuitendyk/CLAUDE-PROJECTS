@@ -733,3 +733,21 @@ footer.site-footer {
 .event-title { color: var(--text-dim); }
 .event-detail { color: var(--text-dim); font-size: 0.82rem; }
 .event-line a { color: var(--accent); word-break: break-all; }
+
+/* Card 'X' close control (thumbnail + transcript preview cards). Hides the
+   card without discarding what's saved; the card re-opens when its source URL
+   is entered again. */
+.card-close {
+  position: absolute;
+  top: 0.55rem;
+  right: 0.7rem;
+  background: transparent;
+  border: none;
+  color: var(--text-dim);
+  font-size: 1.5rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 0.35rem;
+  border-radius: 6px;
+}
+.card-close:hover { color: var(--text); background: var(--bg-elevated); }
