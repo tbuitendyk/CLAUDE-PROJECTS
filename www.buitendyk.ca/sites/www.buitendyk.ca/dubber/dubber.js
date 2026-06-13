@@ -1578,7 +1578,7 @@
     },
   });
   if (rethumbBtn) {
-    rethumbBtn.addEventListener("click", () => {
+    rethumbBtn.addEventListener("click", async () => {
       const entry = rethumbEntry();
       if (!entry || !entry.target_url) {
         rethumbEditor.reset();
@@ -1586,6 +1586,20 @@
         return;
       }
       setRethumbMessage("");
+      // For "source video" / "the dub itself", start from the dub's CURRENT
+      // in-use thumbnail (your saved text + colours), editable -- not a fresh
+      // re-OCR that would mangle it. "Another link" stays a fresh conversion.
+      if (rethumbSourceChoice() !== "other" && entry.has_thumbnail) {
+        try {
+          const project = await api(`/projects/${entry.id}`);
+          if (project.thumbnail_edit && Array.isArray(project.thumbnail_edit.regions)) {
+            rethumbEditor.openSaved(
+              Object.assign({}, project.thumbnail_edit, { generated: project.thumbnail }));
+            return;
+          }
+          if (project.thumbnail) { rethumbEditor.preview(project.thumbnail); return; }
+        } catch (err) { /* fall through to a fresh conversion */ }
+      }
       rethumbEditor.preview();
     });
   }
