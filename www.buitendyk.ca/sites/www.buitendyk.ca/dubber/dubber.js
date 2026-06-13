@@ -924,6 +924,9 @@
   // "Revert to default" that discards and closes the card.
   function makeThumbnailEditor(opts) {
     let state = null;
+    // "Auto-preserve original graphics": restore strikethroughs/slashes/stickers
+    // the text wipe removes. Per-editor, applied on the next preview/re-render.
+    let preserveOverlays = false;
 
     function getState() { return state; }
 
@@ -989,7 +992,7 @@
 
       try {
         const data = await apiJson("/thumbnail/preview", "POST",
-          { url: url, target_language: targetLanguage });
+          { url: url, target_language: targetLanguage, preserve_overlays: preserveOverlays });
         state = {
           url: url,
           targetLanguage: targetLanguage,
@@ -1118,7 +1121,7 @@
       if (regions.length) {
         const rerenderBtn = document.createElement("button");
         rerenderBtn.type = "button";
-        rerenderBtn.className = "btn secondary";
+        rerenderBtn.className = "btn secondary thumb-rerender";
         rerenderBtn.textContent = "Re-render with edits";
         rerenderBtn.addEventListener("click", () => rerender(inputs, rerenderBtn));
         actions.appendChild(rerenderBtn);
@@ -1145,6 +1148,32 @@
       actions.appendChild(msg);
 
       opts.panel.appendChild(actions);
+
+      // "Auto-preserve original graphics" toggle: restores strikethroughs /
+      // slashes / stickers the text wipe removed. General (keys on colour, not a
+      // specific decoration); flipping it re-renders so the effect is immediate.
+      const overlayRow = document.createElement("label");
+      overlayRow.className = "thumb-overlay-toggle";
+      const overlayBox = document.createElement("input");
+      overlayBox.type = "checkbox";
+      overlayBox.checked = preserveOverlays;
+      overlayBox.addEventListener("change", () => {
+        preserveOverlays = overlayBox.checked;
+        const rerenderBtn = opts.panel.querySelector(".thumb-rerender");
+        if (rerenderBtn) rerender(inputs, rerenderBtn);
+        else preview();  // no editable regions -> re-fetch with the flag
+      });
+      overlayRow.appendChild(overlayBox);
+      overlayRow.appendChild(document.createTextNode(
+        " Auto-preserve original graphics (strikethroughs, slashes, stickers)"));
+      opts.panel.appendChild(overlayRow);
+
+      const overlayHint = document.createElement("p");
+      overlayHint.className = "hint";
+      overlayHint.style.marginTop = "0.2rem";
+      overlayHint.textContent = "Restores coloured marks the text replacement wiped out. " +
+        "General-purpose and best-effort — if a thumbnail looks worse with it, turn it off.";
+      opts.panel.appendChild(overlayHint);
     }
 
     function markDirty() {
@@ -1173,6 +1202,7 @@
           original: state.original,
           regions: regions,
           banner_text: state.bannerText,
+          preserve_overlays: preserveOverlays,
         });
         if (!data || !data.generated) {
           setMessage("Couldn't re-render the thumbnail.", "bad");
