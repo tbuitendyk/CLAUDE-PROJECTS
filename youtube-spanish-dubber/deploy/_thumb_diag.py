@@ -145,11 +145,17 @@ def main() -> None:
          "fill_color": tp._rgb_to_hex(r.fill_color)} for r, t in pairs
     ], banner_text=banner_text, preserve_overlays=preserve)
 
-    # The deploy reply keeps only the LAST ~8000 chars of stdout, so print the
-    # (optional, budget-permitting) base64 image FIRST and the compact text
-    # classification LAST -- the text is what diagnoses banner-vs-scene and is
-    # guaranteed to survive; one small stacked image (source title band over the
-    # rendered band) rides along if it fits.
+    # The deploy reply keeps only the LAST ~8000 chars of stdout. With the full
+    # classification already in hand from earlier rounds, this round prioritises
+    # the IMAGE: print compact one-line-per-region text FIRST, then the base64
+    # LAST so it lands in the retained tail.
+    print(f"==THUMBDIAG== rendered size: {rendered.size}; {len(pairs)} region(s):")
+    for i, (region, translated) in enumerate(pairs):
+        style = image_text._analyze_region(arr, region.bbox)
+        flag = "B" if style.has_banner else "S"
+        print(f"  [{i}]{flag} {region.text!r}->{translated!r} "
+              f"banner={style.banner_color} fill={region.fill_color}")
+
     if str(__import__("os").environ.get("THUMB_DIAG_IMG", "1")) == "1":
         from PIL import Image as _Im
         # The whole title area (where all 3 lines live), source over render.
@@ -163,17 +169,6 @@ def main() -> None:
         stacked.paste(a, (0, 0)); stacked.paste(b, (0, a.height + 4))
         buf = io.BytesIO(); stacked.save(buf, "JPEG", quality=33)
         print("==THUMBDIAG_B64 stacked==", base64.b64encode(buf.getvalue()).decode("ascii"))
-
-    print("==THUMBDIAG== rendered size:", rendered.size)
-    print(f"==THUMBDIAG== {len(pairs)} region(s) [banner=B scene=S]:")
-    for i, (region, translated) in enumerate(pairs):
-        style = image_text._analyze_region(arr, region.bbox)
-        info = _analyze_verbose(arr, region.bbox) or {}
-        flag = "B" if style.has_banner else "S"
-        print(f"  [{i}]{flag} bbox={region.bbox} {region.text!r}->{translated!r}")
-        print(f"      banner_color={style.banner_color} fill={style.fill} "
-              f"font={region.font_family} std={info.get('banner_std')} "
-              f"cov40={info.get('cover@40')} ink_box={info.get('ink_box')}")
 
 
 if __name__ == "__main__":
