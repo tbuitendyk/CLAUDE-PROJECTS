@@ -261,8 +261,8 @@ PYEOF
 # banner sizing is verified. Non-fatal.
 if [ -f "${INSTALL_DIR}/deploy/_thumb_diag.py" ]; then
   echo "########## [THUMB-DIAG] ##########"
-  sudo -u "${SERVICE_USER}" env PYTHONPATH="${INSTALL_DIR}" \
-    "${INSTALL_DIR}/.venv/bin/python" "${INSTALL_DIR}/deploy/_thumb_diag.py" 2>&1 \
+  ( cd "${INSTALL_DIR}" && sudo -u "${SERVICE_USER}" env PYTHONPATH="${INSTALL_DIR}" \
+      "${INSTALL_DIR}/.venv/bin/python" "${INSTALL_DIR}/deploy/_thumb_diag.py" 2>&1 ) \
     || echo "    (thumb-diag could not run)"
   echo "########## [THUMB-DIAG] end ##########"
 fi
