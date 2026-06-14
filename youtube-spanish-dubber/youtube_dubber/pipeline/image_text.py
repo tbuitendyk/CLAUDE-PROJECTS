@@ -24,6 +24,11 @@ from .models import TextRegion
 
 log = logging.getLogger(__name__)
 
+# Opt-in diagnostics: when set to a list, _render_region appends the geometry it
+# computed (box, tile, position, banner rect) for each region. None in normal
+# operation -- a deploy-time diagnostic flips it on to inspect the real layout.
+_RENDER_DEBUG = None
+
 # Re-render thumbnail text in a face that matches the *source* one. The titles
 # vary -- some are a serif/"Roman" display face, many are a heavy sans/grotesque
 # -- so rather than pin one font (and mis-match the other half), we detect serif
@@ -700,6 +705,7 @@ def _render_region(canvas, region: TextRegion, text: str, style=None) -> bool:
     # the (often larger) rendered-text rectangle, plus a little padding -- so the
     # new text sits fully on a clean banner instead of spilling onto the
     # surrounding colour, and the band is tall/wide enough to hold it.
+    band = None
     if style is not None and getattr(style, "has_banner", False):
         from PIL import ImageDraw
 
@@ -710,9 +716,14 @@ def _render_region(canvas, region: TextRegion, text: str, style=None) -> bool:
         by0 = max(0, min(y0, py) - pad_y)
         bx1 = min(width, max(x1, px + tile_w) + pad_x)
         by1 = min(height, max(y1, py + tile_h) + pad_y)
+        band = (bx0, by0, bx1, by1)
         ImageDraw.Draw(canvas).rectangle(
-            [bx0, by0, bx1, by1], fill=tuple(int(c) for c in style.banner_color)
+            list(band), fill=tuple(int(c) for c in style.banner_color)
         )
+
+    if _RENDER_DEBUG is not None:  # opt-in diagnostics sink; None in production
+        _RENDER_DEBUG.append({"text": text, "box": (x0, y0, x1, y1), "size": size,
+                              "tile": (tile_w, tile_h), "pos": (px, py), "band": band})
 
     canvas.paste(tile, (px, py), tile)
     return True
