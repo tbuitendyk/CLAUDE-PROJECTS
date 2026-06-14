@@ -24,6 +24,10 @@ IDS = [
     "LJ54oRIM-ZI", "Qsjv4lx991s", "5wVonZ1S2Ss", "JzqDV91AFPo", "iKFJ5BMF8a4",
     "WO84pEY6Kgw", "z84QJzWlRJc", "9QajY-g8q8g", "-hjuxRDqBmc", "wcV-lZHPFTE",
 ]
+# "report" -> cheap text report on all 10 (translations, fills, banner flags).
+# "pairs"  -> emit one high-res original|render pair per deploy, rotating via the
+#             counter file (so 10 deploys cover all 10).
+MODE = "report"
 CACHE = Path("data/diagnostics")
 COUNTER = CACHE / "_counter"
 FONT = image_text._find_text_font("sans")
@@ -95,15 +99,7 @@ def main() -> None:
             print(f"  [{i}] {vid} ERROR\n{traceback.format_exc()}")
     print("  render:", " ".join(status))
 
-    counter = 0
-    if COUNTER.exists():
-        try:
-            counter = int(COUNTER.read_text().strip())
-        except Exception:  # noqa: BLE001
-            counter = 0
-    COUNTER.write_text(str((counter + 1) % 11))
-
-    if counter == 0:
+    if MODE == "report":
         # Text report across all 10 -- cheap, spots most defects (fill≈banner
         # inversions, missing/odd regions, translation misses).
         for i, vid in enumerate(IDS):
@@ -113,12 +109,17 @@ def main() -> None:
                 continue
             print(f"[{i}] {vid}: {len(rows)} region(s)")
             for text, tr, fill, banner, bcol in rows:
-                flag = ""
-                if banner and _dist(fill, bcol) < 70:
-                    flag = " <!fill≈banner>"
+                flag = " <!fill~banner>" if banner and _dist(fill, bcol) < 70 else ""
                 print(f"   {text!r}->{tr!r} fill={fill} {'B' if banner else 'S'} bcol={bcol}{flag}")
     else:
-        idx = counter - 1
+        counter = 0
+        if COUNTER.exists():
+            try:
+                counter = int(COUNTER.read_text().strip())
+            except Exception:  # noqa: BLE001
+                counter = 0
+        COUNTER.write_text(str((counter + 1) % 10))
+        idx = counter
         im, orig, vid = renders.get(idx), origs.get(idx), IDS[idx]
         if im is None or orig is None:
             print(f"  pair[{idx}] unavailable"); return
