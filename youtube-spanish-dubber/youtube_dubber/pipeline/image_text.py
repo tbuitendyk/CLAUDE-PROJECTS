@@ -283,9 +283,9 @@ def render_translations(image, pairs: list[tuple[TextRegion, str]], *, preserve_
     canvas = _erase_scene_text(canvas, [(s.box, s.ink) for s in styles if not s.has_banner])
     for style in styles:
         if style.has_banner:
-            ink_box = _ink_bbox(style) or style.box
-            pad = max(2, int(round((ink_box[3] - ink_box[1]) * 0.12)))
-            _paint_banner(canvas, ink_box, style.banner_color, pad=pad)
+            text_box = _text_band_bbox(style) or _ink_bbox(style) or style.box
+            pad = max(2, int(round((text_box[3] - text_box[1]) * 0.12)))
+            _paint_banner(canvas, text_box, style.banner_color, pad=pad)
 
     # The reconstructed background (old text removed, no new text yet) -- the
     # reference _restore_overlays uses to tell "overlay graphic" from "background".
@@ -634,6 +634,56 @@ def _paint_banner(image, box, color, pad=0):
     rect = [max(0, x0 - pad), max(0, y0 - pad), min(w, x1 + pad), min(h, y1 + pad)]
     ImageDraw.Draw(image).rectangle(rect, fill=tuple(int(c) for c in color))
     return image
+
+
+def _text_band_bbox(style):
+    """Absolute (x0, y0, x1, y1) covering the source line's TEXT, excluding a
+    decorative ornament (e.g. a filigree scroll) that sits in its own row-band
+    above or below the letters. Used to wipe the old text without flattening
+    those decorations -- a solid pre-fill of the whole (loose, tall) ink box
+    erased the scroll above "A Documentary Film".
+
+    The ink is split into contiguous row-bands; the heaviest is the text. Other
+    bands are kept only if they're close to it OR carry substantial ink mass --
+    so descenders/serifs a hair below the line stay, but a small ornament a clear
+    gap away is dropped. None when there's no usable mask."""
+    import numpy as np
+
+    ink = getattr(style, "ink", None)
+    if ink is None:
+        return None
+    m = np.asarray(ink)
+    if m.ndim != 2 or not m.any():
+        return None
+    rows = m.sum(axis=1)
+    active = rows >= max(1.0, 0.03 * float(rows.max()))
+    bands, start = [], None
+    for y, a in enumerate(list(active) + [False]):
+        if a and start is None:
+            start = y
+        elif not a and start is not None:
+            bands.append((start, y, float(rows[start:y].sum())))
+            start = None
+    if not bands:
+        return None
+    max_mass = max(b[2] for b in bands)
+    main = max(bands, key=lambda b: b[2])
+    lo, hi = main[0], main[1]
+    gap_tol = max(8, int(0.25 * (hi - lo)))
+    keep = [main]
+    for b in bands:
+        if b is main:
+            continue
+        gap = (lo - b[1]) if b[1] <= lo else (b[0] - hi if b[0] >= hi else 0)
+        if gap <= gap_tol or b[2] >= 0.15 * max_mass:
+            keep.append(b)
+    r0, r1 = min(b[0] for b in keep), max(b[1] for b in keep)
+    cols = m[r0:r1].sum(axis=0)
+    xs = np.where(cols >= max(1.0, 0.03 * float(cols.max())))[0]
+    if xs.size == 0:
+        return None
+    bx0, by0 = style.box[0], style.box[1]
+    return (bx0 + int(xs.min()), by0 + r0, bx0 + int(xs.max()) + 1, by0 + r1)
 
 
 def _ink_bbox(style):
