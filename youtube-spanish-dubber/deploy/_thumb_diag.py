@@ -1,0 +1,63 @@
+"""TEMP diagnostic: locate the BOTTOM filigree (the scroll ornament above "A
+Documentary Film") and find which region's band/pre-fill erases it in the
+Spanish render. Prints region boxes + tight ink boxes, then a bottom-area crop
+(source over render) LAST so it survives the deploy reply tail.
+Usage: PYTHONPATH=/opt/youtube-dubber python deploy/_thumb_diag.py [VIDEO_ID]
+"""
+from __future__ import annotations
+
+import base64
+import io
+import sys
+from pathlib import Path
+
+import numpy as np
+
+from youtube_dubber.pipeline import image_text, thumbnail_preview as tp
+
+VIDEO_ID = sys.argv[1] if len(sys.argv) > 1 else "JVN7NXqwjro"
+CACHE = Path("data/diagnostics") / f"src_{VIDEO_ID}.jpg"
+
+
+def main() -> None:
+    from PIL import Image
+    if CACHE.exists():
+        image = Image.open(CACHE).convert("RGB")
+    else:
+        import tempfile
+        from youtube_dubber.pipeline import downloader
+        with tempfile.TemporaryDirectory() as d:
+            src = downloader.fetch_thumbnail(f"https://www.youtube.com/watch?v={VIDEO_ID}", Path(d))
+            image = Image.open(src.thumbnail_path).convert("RGB")
+        CACHE.parent.mkdir(parents=True, exist_ok=True)
+        image.save(CACHE, "JPEG", quality=92)
+
+    pairs = image_text.detect_and_translate(image, "en", "es")
+    arr = np.asarray(image.convert("RGB"))
+    for i, (region, translated) in enumerate(pairs):
+        style = image_text._analyze_region(arr, region.bbox)
+        ink_box = image_text._ink_bbox(style)
+        print(f"  [{i}] {region.text!r}->{translated!r} box={region.bbox} ink_box={ink_box} "
+              f"banner={style.has_banner}")
+
+    rendered, _ = image_text.render_translations(image, pairs, preserve_overlays=False)
+    rendered = tp._brand(rendered, "Versión Español", "")
+
+    # Bottom strip: source over render, so the missing filigree is obvious.
+    band = (0, 530, image.width, 705)
+    a = image.crop(band); b = rendered.crop(band)
+    w = 300
+    a = a.resize((w, int(a.height * w / a.width)))
+    b = b.resize((w, int(b.height * w / b.width)))
+    stacked = Image.new("RGB", (w, a.height + b.height + 3), (255, 0, 255))
+    stacked.paste(a, (0, 0)); stacked.paste(b, (0, a.height + 3))
+    buf = io.BytesIO(); stacked.save(buf, "JPEG", quality=34)
+    print("==DIAG_B64 bottom==", base64.b64encode(buf.getvalue()).decode("ascii"))
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except Exception as exc:  # noqa: BLE001
+        import traceback
+        print("==DIAG== ERROR:", exc); traceback.print_exc()
