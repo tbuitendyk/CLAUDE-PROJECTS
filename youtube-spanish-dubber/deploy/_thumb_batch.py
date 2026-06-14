@@ -62,7 +62,12 @@ def main() -> None:
         d = ImageDraw.Draw(sheet)
         d.rectangle([x, y, x + 16, y + 18], fill=(0, 0, 0))
         d.text((x + 3, y + 1), str(i), font=font, fill=(255, 255, 0))
-    buf = io.BytesIO(); sheet.save(buf, "JPEG", quality=24)
+    # Cap the encoded size so the base64 fits the ~8000-char deploy reply tail.
+    for q in (30, 24, 20, 16, 12, 9, 7):
+        buf = io.BytesIO(); sheet.save(buf, "JPEG", quality=q)
+        if buf.tell() < 4200:
+            break
+    print(f"  sheet bytes={buf.tell()} q={q}")
     print("==BATCH_B64 sheet==", base64.b64encode(buf.getvalue()).decode("ascii"))
 
 
