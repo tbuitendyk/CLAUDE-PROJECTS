@@ -43,8 +43,13 @@ def main() -> None:
             status.append(f"{i}:FAIL({type(exc).__name__})")
     print("  fetch:", " ".join(status))
 
-    # 5x2 contact sheet (originals) as base64 LAST, to confirm the set.
-    cols, cw, ch, pad = 5, 150, 84, 2
+    # 5x2 contact sheet (originals) as base64 LAST, to confirm the set. Kept
+    # small to fit the deploy reply tail; index-labelled so cells are referable.
+    from PIL import ImageDraw, ImageFont
+    from youtube_dubber.pipeline import image_text
+    fp = image_text._find_text_font("sans")
+    font = ImageFont.truetype(fp, 16) if fp else ImageFont.load_default()
+    cols, cw, ch, pad = 5, 104, 58, 2
     rows = (len(IDS) + cols - 1) // cols
     sheet = Image.new("RGB", (cols * cw + (cols + 1) * pad, rows * ch + (rows + 1) * pad), (25, 25, 25))
     for i in range(len(IDS)):
@@ -52,8 +57,12 @@ def main() -> None:
         if im is None:
             continue
         r, c = divmod(i, cols)
-        sheet.paste(im.resize((cw, ch)), (pad + c * (cw + pad), pad + r * (ch + pad)))
-    buf = io.BytesIO(); sheet.save(buf, "JPEG", quality=28)
+        x, y = pad + c * (cw + pad), pad + r * (ch + pad)
+        sheet.paste(im.resize((cw, ch)), (x, y))
+        d = ImageDraw.Draw(sheet)
+        d.rectangle([x, y, x + 16, y + 18], fill=(0, 0, 0))
+        d.text((x + 3, y + 1), str(i), font=font, fill=(255, 255, 0))
+    buf = io.BytesIO(); sheet.save(buf, "JPEG", quality=24)
     print("==BATCH_B64 sheet==", base64.b64encode(buf.getvalue()).decode("ascii"))
 
 
