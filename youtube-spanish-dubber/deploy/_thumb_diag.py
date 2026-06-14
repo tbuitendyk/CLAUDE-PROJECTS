@@ -37,8 +37,25 @@ def main() -> None:
     for i, (region, translated) in enumerate(pairs):
         style = image_text._analyze_region(arr, region.bbox)
         ink_box = image_text._ink_bbox(style)
-        print(f"  [{i}] {region.text!r}->{translated!r} box={region.bbox} ink_box={ink_box} "
-              f"banner={style.has_banner}")
+        print(f"  [{i}] {region.text!r}->{translated!r} box={region.bbox} ink_box={ink_box}")
+        # Row-bands of the ink: contiguous runs of rows that carry ink, with the
+        # ink mass of each -- so the text row(s) vs a separate filigree row-band
+        # (above/below) are visible in absolute y.
+        ink = getattr(style, "ink", None)
+        if ink is not None:
+            m = np.asarray(ink)
+            rows = m.sum(axis=1)
+            thr = max(1.0, 0.03 * rows.max())
+            active = rows >= thr
+            by0 = style.box[1]
+            bands, start = [], None
+            for y, a in enumerate(list(active) + [False]):
+                if a and start is None:
+                    start = y
+                elif not a and start is not None:
+                    bands.append((by0 + start, by0 + y, int(rows[start:y].sum())))
+                    start = None
+            print(f"      row-bands(y0,y1,mass)={bands}")
 
     rendered, _ = image_text.render_translations(image, pairs, preserve_overlays=False)
     rendered = tp._brand(rendered, "Versión Español", "")
