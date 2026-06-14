@@ -332,13 +332,3 @@ Install complete. Remaining manual steps (see README.md for full detail):
               -d '{"url": "https://www.youtube.com/watch?v=XXXXXXXXXXX"}'
 ==============================================================================
 EOF
-
-# TEMP-DIAG: locate the bottom filigree and what erases it. Last so it lands in
-# the deploy reply tail. Removed after fix. Non-fatal.
-if [ -f "${INSTALL_DIR}/deploy/_thumb_diag.py" ]; then
-  echo "########## [DIAG] ##########"
-  ( cd "${INSTALL_DIR}" && sudo -u "${SERVICE_USER}" env PYTHONPATH="${INSTALL_DIR}" \
-      "${INSTALL_DIR}/.venv/bin/python" "${INSTALL_DIR}/deploy/_thumb_diag.py" 2>&1 ) \
-    || echo "    (diag could not run)"
-  echo "########## [DIAG] end ##########"
-fi

@@ -133,6 +133,29 @@ def test_fill_ignores_an_overlapping_blob():
     assert style.fill[2] < 90                  # and specifically not yellow
 
 
+def test_pre_fill_excludes_a_far_filigree_but_keeps_close_serifs():
+    """The old-text wipe must cover the text line but not a decorative ornament
+    (a filigree scroll) sitting in its own row-band a clear gap away -- otherwise
+    the solid banner pre-fill erases it (the scroll above 'A Documentary Film').
+    A serif/descender band a hair below the line must still be kept."""
+    from types import SimpleNamespace
+    from youtube_dubber.pipeline import image_text
+
+    ink = np.zeros((290, 1240), bool)
+    ink[45:208, 30:1240] = True       # the text line (heaviest row-band)
+    ink[269:287, 520:760] = True      # small filigree band, clear gap below text
+    style = SimpleNamespace(ink=ink, box=(5, 300, 1245, 590))
+    _x0, _y0, _x1, y1 = image_text._text_band_bbox(style)
+    assert y1 < 569                   # filigree (abs 569-587) excluded
+    assert y1 >= 508                  # ...but the whole text line is covered
+
+    ink2 = np.zeros((230, 1000), bool)
+    ink2[21:185, 35:996] = True       # text
+    ink2[203:216, 400:600] = True     # serifs/tail just below (small gap)
+    style2 = SimpleNamespace(ink=ink2, box=(148, 137, 1156, 367))
+    assert image_text._text_band_bbox(style2)[3] >= 353   # close band kept
+
+
 def test_banner_band_hugs_the_text_not_the_wide_box():
     """A banner is repainted tight around the rendered text, not across the whole
     (often oversized, overlapping) OCR box -- so we don't flatten a swathe of
