@@ -54,8 +54,8 @@ def main() -> None:
 
     # Whole thumbnail this round (geometry already captured); image LAST so it
     # survives the reply tail.
-    crop = rendered.resize((300, int(rendered.height * 300 / rendered.width)))
-    buf = io.BytesIO(); crop.save(buf, "JPEG", quality=28)
+    crop = rendered.resize((240, int(rendered.height * 240 / rendered.width)))
+    buf = io.BytesIO(); crop.save(buf, "JPEG", quality=26)
     print("==DIAG_B64 full==", base64.b64encode(buf.getvalue()).decode("ascii"))
 
 
