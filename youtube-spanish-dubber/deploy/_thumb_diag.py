@@ -60,16 +60,9 @@ def main() -> None:
     rendered, _ = image_text.render_translations(image, pairs, preserve_overlays=False)
     rendered = tp._brand(rendered, "Versión Español", "")
 
-    # Bottom strip: source over render, so the missing filigree is obvious.
-    band = (0, 530, image.width, 705)
-    a = image.crop(band); b = rendered.crop(band)
-    w = 300
-    a = a.resize((w, int(a.height * w / a.width)))
-    b = b.resize((w, int(b.height * w / b.width)))
-    stacked = Image.new("RGB", (w, a.height + b.height + 3), (255, 0, 255))
-    stacked.paste(a, (0, 0)); stacked.paste(b, (0, a.height + 3))
-    buf = io.BytesIO(); stacked.save(buf, "JPEG", quality=34)
-    print("==DIAG_B64 bottom==", base64.b64encode(buf.getvalue()).decode("ascii"))
+    crop = rendered.resize((240, int(rendered.height * 240 / rendered.width)))
+    buf = io.BytesIO(); crop.save(buf, "JPEG", quality=26)
+    print("==DIAG_B64 full==", base64.b64encode(buf.getvalue()).decode("ascii"))
 
 
 if __name__ == "__main__":
