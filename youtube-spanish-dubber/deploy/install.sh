@@ -332,3 +332,15 @@ Install complete. Remaining manual steps (see README.md for full detail):
               -d '{"url": "https://www.youtube.com/watch?v=XXXXXXXXXXX"}'
 ==============================================================================
 EOF
+
+# TEMP-DIAG: reproduce the fresh "Preview new thumbnail" render on the real
+# server image (a cloud session can't fetch the thumbnail itself). Last in the
+# script so its stdout lands in the deploy reply's tail-kept window. Non-fatal;
+# removed once the fresh render looks right.
+if [ -f "${INSTALL_DIR}/deploy/_thumb_diag.py" ]; then
+  echo "########## [DIAG] ##########"
+  ( cd "${INSTALL_DIR}" && sudo -u "${SERVICE_USER}" env PYTHONPATH="${INSTALL_DIR}" \
+      "${INSTALL_DIR}/.venv/bin/python" "${INSTALL_DIR}/deploy/_thumb_diag.py" 2>&1 ) \
+    || echo "    (diag could not run)"
+  echo "########## [DIAG] end ##########"
+fi
