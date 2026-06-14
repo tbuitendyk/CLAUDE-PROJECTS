@@ -24,11 +24,6 @@ from .models import TextRegion
 
 log = logging.getLogger(__name__)
 
-# Opt-in diagnostics: when set to a list, _render_region appends the geometry it
-# computed (box, tile, position, banner rect) for each region. None in normal
-# operation -- a deploy-time diagnostic flips it on to inspect the real layout.
-_RENDER_DEBUG = None
-
 # Re-render thumbnail text in a face that matches the *source* one. The titles
 # vary -- some are a serif/"Roman" display face, many are a heavy sans/grotesque
 # -- so rather than pin one font (and mis-match the other half), we detect serif
@@ -420,15 +415,29 @@ def _analyze_region(arr, bbox) -> "_RegionStyle":
         fill = tuple(int(c) for c in np.median(crop.reshape(-1, 3), axis=0))
         return _RegionStyle(fill, _contrasting(fill), False, (0, 0, 0), None, box)
 
-    # Fill colour = the median of the THIN stroke pixels. Letters are thin
-    # everywhere, so they dominate this set; a fat solid blob the OCR box happens
-    # to overlap (a neighbouring highlight band whose box overran into this one)
-    # is thick, contributing only its thin perimeter -- so the fill comes out the
-    # letters' colour, not the blob's. (Sampling the thick *core* instead made a
-    # title whose box overlapped the yellow band above it read as yellow text.)
+    # Fill colour = the median of the letters' stroke interiors. Two hazards to
+    # avoid: (1) a fat solid blob the OCR box overran onto -- a neighbouring
+    # highlight band whose box overlapped this one -- which reads as one huge,
+    # far-deeper-than-a-letter component and would hijack the fill (a title over
+    # the yellow band above it came out yellow); (2) an outlined glyph, whose
+    # thin outline must NOT be mistaken for the body colour. So: drop blob-like
+    # components (depth far above the typical letter), then read the THICK core
+    # of what remains (the letter body, not its outline).
     depth = cv2.distanceTransform(ink_u8, cv2.DIST_L2, 3)
-    thin = ink & (depth >= 1.0) & (depth <= 3.0)
-    interior = thin if int(thin.sum()) >= 8 else ink
+    fill_ink = ink_u8
+    n_comp, labels, _stats, _c = cv2.connectedComponentsWithStats(ink_u8, 8)
+    if n_comp > 2:
+        comp_depth = [float(depth[labels == i].max()) for i in range(1, n_comp)]
+        med = float(np.median(comp_depth))
+        drop = [i for i in range(1, n_comp) if comp_depth[i - 1] > max(10.0, 2.5 * med)]
+        if drop:
+            kept = (ink_u8 * ~np.isin(labels, drop)).astype(np.uint8)
+            if int((kept > 0).sum()) >= 12:
+                fill_ink = kept
+    fdepth = cv2.distanceTransform(fill_ink, cv2.DIST_L2, 3)
+    fink = fill_ink > 0
+    core = fink & (fdepth >= max(1.5, 0.5 * float(fdepth.max())))
+    interior = core if int(core.sum()) >= 8 else fink
     fill = tuple(int(c) for c in np.median(crop[interior], axis=0))
 
     # Banner vs scene: how uniform is the background *behind* the letters? Sample
@@ -739,7 +748,6 @@ def _render_region(canvas, region: TextRegion, text: str, style=None) -> bool:
     # both flattens a swathe of background and (because lines are drawn in order)
     # lets the next line's band clobber this one's text. A band that hugs the
     # actual letters backs them cleanly and stays clear of its neighbours.
-    band = None
     if style is not None and getattr(style, "has_banner", False):
         from PIL import ImageDraw
 
@@ -750,14 +758,9 @@ def _render_region(canvas, region: TextRegion, text: str, style=None) -> bool:
         by0 = max(0, py - pad_y)
         bx1 = min(width, px + tile_w + pad_x)
         by1 = min(height, py + tile_h + pad_y)
-        band = (bx0, by0, bx1, by1)
         ImageDraw.Draw(canvas).rectangle(
-            list(band), fill=tuple(int(c) for c in style.banner_color)
+            [bx0, by0, bx1, by1], fill=tuple(int(c) for c in style.banner_color)
         )
-
-    if _RENDER_DEBUG is not None:  # opt-in diagnostics sink; None in production
-        _RENDER_DEBUG.append({"text": text, "box": (x0, y0, x1, y1), "size": size,
-                              "tile": (tile_w, tile_h), "pos": (px, py), "band": band})
 
     canvas.paste(tile, (px, py), tile)
     return True

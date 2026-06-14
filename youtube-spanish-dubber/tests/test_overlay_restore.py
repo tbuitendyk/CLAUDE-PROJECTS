@@ -114,6 +114,51 @@ def test_busy_scene_is_not_mistaken_for_a_banner():
     assert has_banner is False
 
 
+def test_fill_ignores_an_overlapping_blob():
+    """When a title's OCR box overruns onto a neighbouring solid block (the yellow
+    highlight band of the line above reads as one huge, deep component), the fill
+    must come from the letters, not that fat blob -- otherwise the translated
+    title renders in the blob's colour (the real "¿Siempre Salvado?" came out
+    yellow)."""
+    from youtube_dubber.pipeline import image_text
+
+    light = (250, 244, 230)
+    h, w = 120, 360
+    crop = np.full((h, w, 3), light, np.uint8)
+    crop[6:40, 10:350] = (245, 222, 30)        # fat foreign (yellow) blob up top
+    for cx in range(30, w - 30, 26):           # black letter strokes below
+        crop[60:104, cx:cx + 9] = (15, 15, 15)
+    style = image_text._analyze_region(crop, (0, 0, w, h))
+    assert sum(style.fill) < 200               # dark letters, not the yellow blob
+    assert style.fill[2] < 90                  # and specifically not yellow
+
+
+def test_banner_band_hugs_the_text_not_the_wide_box():
+    """A banner is repainted tight around the rendered text, not across the whole
+    (often oversized, overlapping) OCR box -- so we don't flatten a swathe of
+    background and the next line's band can't reach back over this one."""
+    from youtube_dubber.pipeline import image_text
+    from youtube_dubber.pipeline.models import TextRegion
+
+    if image_text._find_text_font("sans") is None:
+        pytest.skip("no usable font installed")
+    gray, yellow = (100, 100, 100), (240, 220, 30)
+    canvas = Image.fromarray(np.full((100, 600, 3), gray, np.uint8))
+    region = TextRegion(polygon=[(10, 20), (590, 20), (590, 80), (10, 80)],
+                        text="HI", fill_color=(10, 10, 10), font_family="sans")
+    style = image_text._RegionStyle(fill=(10, 10, 10), outline=None, has_banner=True,
+                                    banner_color=yellow, ink=None, box=(10, 20, 590, 80))
+    assert image_text._render_region(canvas, region, "HOLA", style)
+    arr = np.asarray(canvas)
+
+    def is_yellow(px):
+        return px[0] > 180 and px[1] > 160 and px[2] < 120
+    # The far edges of the wide box keep their original background (band is tight).
+    assert not is_yellow(arr[50, 20]) and not is_yellow(arr[50, 580])
+    # ...but a band was painted around the centred text.
+    assert is_yellow(arr[50, 300]) or (arr[50, 300].sum() < 200)
+
+
 def test_banner_repaint_covers_the_rendered_text_solidly():
     from youtube_dubber.pipeline import image_text
     from youtube_dubber.pipeline.models import TextRegion
