@@ -53,22 +53,42 @@ def _render(i, vid, original):
     return out, len(pairs)
 
 
-def _emit(img, budget=4400):
-    for q in (60, 50, 42, 34, 28, 22, 17, 13, 10, 8):
-        buf = io.BytesIO(); img.convert("RGB").save(buf, "JPEG", quality=q)
-        if buf.tell() < budget:
-            break
-    return buf.tell(), q, base64.b64encode(buf.getvalue()).decode("ascii")
+def _emit(img, budget=5200):
+    """Encode to base64 guaranteed under `budget` bytes -- drop quality first,
+    then downscale, so a detailed image still fits the deploy reply tail."""
+    cur = img.convert("RGB")
+    for scale in (1.0, 0.85, 0.72, 0.6, 0.5, 0.4):
+        im = cur if scale == 1.0 else cur.resize(
+            (max(1, int(cur.width * scale)), max(1, int(cur.height * scale))))
+        for q in (60, 48, 38, 30, 23, 17, 12, 9):
+            buf = io.BytesIO(); im.save(buf, "JPEG", quality=q)
+            if buf.tell() < budget:
+                return buf.tell(), q, round(scale, 2), base64.b64encode(buf.getvalue()).decode("ascii")
+    return buf.tell(), q, 0.4, base64.b64encode(buf.getvalue()).decode("ascii")
+
+
+def _dist(a, b):
+    return int(sum((int(x) - int(y)) ** 2 for x, y in zip(a, b)) ** 0.5)
 
 
 def main() -> None:
+    import numpy as np
     CACHE.mkdir(parents=True, exist_ok=True)
-    renders, status = {}, []
+    renders, origs, info, status = {}, {}, {}, []
     for i, vid in enumerate(IDS):
         try:
             orig = _original(i, vid)
+            origs[i] = orig
             out, n = _render(i, vid, orig)
             renders[i] = out
+            # per-region analysis for the text report
+            arr = np.asarray(orig.convert("RGB"))
+            pairs = image_text.detect_and_translate(orig, "en", "es")
+            rows = []
+            for region, tr in pairs:
+                st = image_text._analyze_region(arr, region.bbox)
+                rows.append((region.text, tr, st.fill, st.has_banner, st.banner_color))
+            info[i] = rows
             status.append(f"{i}:{n}r")
         except Exception:  # noqa: BLE001
             status.append(f"{i}:ERR")
@@ -84,38 +104,31 @@ def main() -> None:
     COUNTER.write_text(str((counter + 1) % 11))
 
     if counter == 0:
-        # Overview: 5x2 contact sheet of the 10 renders, labelled.
-        cols, cw, ch, pad = 5, 150, 84, 2
-        rows = (len(IDS) + cols - 1) // cols
-        sheet = Image.new("RGB", (cols * cw + (cols + 1) * pad, rows * ch + (rows + 1) * pad), (25, 25, 25))
-        for i in range(len(IDS)):
-            im = renders.get(i)
-            if im is None:
+        # Text report across all 10 -- cheap, spots most defects (fill≈banner
+        # inversions, missing/odd regions, translation misses).
+        for i, vid in enumerate(IDS):
+            rows = info.get(i)
+            if rows is None:
+                print(f"[{i}] {vid}: (no render)")
                 continue
-            r, c = divmod(i, cols)
-            x, y = pad + c * (cw + pad), pad + r * (ch + pad)
-            sheet.paste(im.resize((cw, ch)), (x, y))
-            d = ImageDraw.Draw(sheet)
-            d.rectangle([x, y, x + 15, y + 17], fill=(0, 0, 0))
-            d.text((x + 3, y + 1), str(i), font=_font(15), fill=(255, 255, 0))
-        n, q, b64 = _emit(sheet)
-        print(f"  overview bytes={n} q={q}")
-        print("==BATCH_B64 overview==", b64)
+            print(f"[{i}] {vid}: {len(rows)} region(s)")
+            for text, tr, fill, banner, bcol in rows:
+                flag = ""
+                if banner and _dist(fill, bcol) < 70:
+                    flag = " <!fill≈banner>"
+                print(f"   {text!r}->{tr!r} fill={fill} {'B' if banner else 'S'} bcol={bcol}{flag}")
     else:
         idx = counter - 1
-        im = renders.get(idx)
-        vid = IDS[idx]
-        if im is None:
-            print(f"  pair[{idx}] unavailable")
-            return
-        orig = _original(idx, vid)
+        im, orig, vid = renders.get(idx), origs.get(idx), IDS[idx]
+        if im is None or orig is None:
+            print(f"  pair[{idx}] unavailable"); return
         w = 384
         a = orig.resize((w, int(orig.height * w / orig.width)))
         b = im.resize((w, int(im.height * w / im.width)))
         pair = Image.new("RGB", (2 * w + 6, a.height + 2), (0, 0, 0))
         pair.paste(a, (0, 1)); pair.paste(b, (w + 6, 1))
-        n, q, b64 = _emit(pair, budget=5200)
-        print(f"  pair[{idx}] {vid} bytes={n} q={q}")
+        n, q, sc, b64 = _emit(pair)
+        print(f"  pair[{idx}] {vid} bytes={n} q={q} scale={sc}")
         print(f"==BATCH_B64 pair{idx}==", b64)
 
 
