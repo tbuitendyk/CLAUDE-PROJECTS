@@ -20,13 +20,12 @@ IDS = [
     "WO84pEY6Kgw", "z84QJzWlRJc", "9QajY-g8q8g", "-hjuxRDqBmc", "wcV-lZHPFTE",
 ]
 CACHE = Path("data/diagnostics")
-OUT = Path("/tmp/thumb_artifacts/thumbs")
 
 
 def main() -> None:
     CACHE.mkdir(parents=True, exist_ok=True)
-    OUT.mkdir(parents=True, exist_ok=True)
-    thumbs = []
+    thumbs = {}
+    status = []
     for i, vid in enumerate(IDS):
         cf = CACHE / f"orig_{vid}.jpg"
         try:
@@ -38,29 +37,23 @@ def main() -> None:
                         f"https://www.youtube.com/watch?v={vid}", Path(d))
                     img = Image.open(src.thumbnail_path).convert("RGB")
                 img.save(cf, "JPEG", quality=92)
-            # viewing-res copy for the git transfer
-            w = 720
-            v = img.resize((w, int(img.height * w / img.width))) if img.width > w else img
-            v.save(OUT / f"{i:02d}_{vid}_orig.jpg", "JPEG", quality=82)
-            thumbs.append((vid, img))
-            print(f"  [{i}] {vid} OK {img.size}")
+            thumbs[i] = img
+            status.append(f"{i}:OK")
         except Exception as exc:  # noqa: BLE001
-            print(f"  [{i}] {vid} FAIL {exc}")
+            status.append(f"{i}:FAIL({type(exc).__name__})")
+    print("  fetch:", " ".join(status))
 
-    # Low-res 2x5 contact sheet as a base64 fallback so the set is confirmable
-    # even if the git transfer doesn't work.
-    cols, cw, ch, pad = 2, 150, 84, 3
+    # 5x2 contact sheet (originals) as base64 LAST, to confirm the set.
+    cols, cw, ch, pad = 5, 150, 84, 2
     rows = (len(IDS) + cols - 1) // cols
-    sheet = Image.new("RGB", (cols * cw + (cols + 1) * pad, rows * ch + (rows + 1) * pad), (30, 30, 30))
-    by_id = {v: im for v, im in thumbs}
-    for i, vid in enumerate(IDS):
-        im = by_id.get(vid)
+    sheet = Image.new("RGB", (cols * cw + (cols + 1) * pad, rows * ch + (rows + 1) * pad), (25, 25, 25))
+    for i in range(len(IDS)):
+        im = thumbs.get(i)
         if im is None:
             continue
-        cell = im.resize((cw, ch))
         r, c = divmod(i, cols)
-        sheet.paste(cell, (pad + c * (cw + pad), pad + r * (ch + pad)))
-    buf = io.BytesIO(); sheet.save(buf, "JPEG", quality=30)
+        sheet.paste(im.resize((cw, ch)), (pad + c * (cw + pad), pad + r * (ch + pad)))
+    buf = io.BytesIO(); sheet.save(buf, "JPEG", quality=28)
     print("==BATCH_B64 sheet==", base64.b64encode(buf.getvalue()).decode("ascii"))
 
 
