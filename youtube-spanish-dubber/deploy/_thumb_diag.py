@@ -52,20 +52,11 @@ def main() -> None:
     rendered, _ = image_text.render_translations(image, pairs, preserve_overlays=False)
     rendered = tp._brand(rendered, "Versión Español", "")
 
-    if os.environ.get("DIAG_IMG", "1") == "1":
-        # Both top lines, so the overlap (region 1 clobbering region 0) and the
-        # region-1 text colour are both visible. Image FIRST, geometry LAST.
-        crop = rendered.crop((40, 110, 1240, 560))
-        w = 320
-        crop = crop.resize((w, int(crop.height * w / crop.width)))
-        buf = io.BytesIO(); crop.save(buf, "JPEG", quality=30)
-        print("==DIAG_B64 lines==", base64.b64encode(buf.getvalue()).decode("ascii"))
-
-    for i, (region, translated) in enumerate(pairs):
-        style = image_text._analyze_region(arr, region.bbox)
-        dbg = image_text._RENDER_DEBUG[i] if i < len(image_text._RENDER_DEBUG) else {}
-        print(f"  [{i}] {region.text!r}->{translated!r} fill={style.fill} font={region.font_family}")
-        print(f"      box={dbg.get('box')} pos={dbg.get('pos')} tile={dbg.get('tile')} band={dbg.get('band')}")
+    # Whole thumbnail this round (geometry already captured); image LAST so it
+    # survives the reply tail.
+    crop = rendered.resize((300, int(rendered.height * 300 / rendered.width)))
+    buf = io.BytesIO(); crop.save(buf, "JPEG", quality=28)
+    print("==DIAG_B64 full==", base64.b64encode(buf.getvalue()).decode("ascii"))
 
 
 if __name__ == "__main__":
