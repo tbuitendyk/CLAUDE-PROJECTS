@@ -288,7 +288,9 @@ def render_translations(image, pairs: list[tuple[TextRegion, str]], *, preserve_
     canvas = _erase_scene_text(canvas, [(s.box, s.ink) for s in styles if not s.has_banner])
     for style in styles:
         if style.has_banner:
-            _paint_banner(canvas, style.box, style.banner_color)
+            ink_box = _ink_bbox(style) or style.box
+            pad = max(2, int(round((ink_box[3] - ink_box[1]) * 0.12)))
+            _paint_banner(canvas, ink_box, style.banner_color, pad=pad)
 
     # The reconstructed background (old text removed, no new text yet) -- the
     # reference _restore_overlays uses to tell "overlay graphic" from "background".
@@ -418,10 +420,15 @@ def _analyze_region(arr, bbox) -> "_RegionStyle":
         fill = tuple(int(c) for c in np.median(crop.reshape(-1, 3), axis=0))
         return _RegionStyle(fill, _contrasting(fill), False, (0, 0, 0), None, box)
 
-    # Fill colour = the median of the stroke interiors.
+    # Fill colour = the median of the THIN stroke pixels. Letters are thin
+    # everywhere, so they dominate this set; a fat solid blob the OCR box happens
+    # to overlap (a neighbouring highlight band whose box overran into this one)
+    # is thick, contributing only its thin perimeter -- so the fill comes out the
+    # letters' colour, not the blob's. (Sampling the thick *core* instead made a
+    # title whose box overlapped the yellow band above it read as yellow text.)
     depth = cv2.distanceTransform(ink_u8, cv2.DIST_L2, 3)
-    core = ink & (depth >= max(1.5, 0.5 * float(depth.max())))
-    interior = core if int(core.sum()) >= 8 else ink
+    thin = ink & (depth >= 1.0) & (depth <= 3.0)
+    interior = thin if int(thin.sum()) >= 8 else ink
     fill = tuple(int(c) for c in np.median(crop[interior], axis=0))
 
     # Banner vs scene: how uniform is the background *behind* the letters? Sample
@@ -606,13 +613,38 @@ def _erase_scene_text(image, items):
         return image
 
 
-def _paint_banner(image, box, color):
+def _paint_banner(image, box, color, pad=0):
     """Repaint the banner a text line sits on as a flat rectangle of `color`,
-    covering the old text so the new text draws straight onto a clean banner."""
+    covering the old text so the new text draws straight onto a clean banner.
+    `box` should be tight to the old text (not the loose OCR box) so we don't
+    flatten a swathe of background -- `pad` adds a small margin around it."""
     from PIL import ImageDraw
 
-    ImageDraw.Draw(image).rectangle(list(box), fill=tuple(int(c) for c in color))
+    w, h = image.size
+    x0, y0, x1, y1 = box
+    rect = [max(0, x0 - pad), max(0, y0 - pad), min(w, x1 + pad), min(h, y1 + pad)]
+    ImageDraw.Draw(image).rectangle(rect, fill=tuple(int(c) for c in color))
     return image
+
+
+def _ink_bbox(style):
+    """Tight (x0, y0, x1, y1) bounding box, in image coordinates, of a region's
+    source glyph ink (`style.ink` laid over `style.box`), or None when there's no
+    usable mask. Much tighter than the loose OCR box -- which for these thumbnails
+    overruns onto neighbouring lines -- so banners are rebuilt only where text
+    actually was, not across the whole (overlapping) box."""
+    import numpy as np
+
+    ink = getattr(style, "ink", None)
+    if ink is None:
+        return None
+    mask = np.asarray(ink)
+    if mask.ndim != 2 or not mask.any():
+        return None
+    ys, xs = np.where(mask)
+    bx0, by0 = style.box[0], style.box[1]
+    return (bx0 + int(xs.min()), by0 + int(ys.min()),
+            bx0 + int(xs.max()) + 1, by0 + int(ys.max()) + 1)
 
 
 # --- rendering -------------------------------------------------------------
@@ -701,10 +733,12 @@ def _render_region(canvas, region: TextRegion, text: str, style=None) -> bool:
     px = x0 + (box_w - tile_w) // 2
     py = y0 + (box_h - tile_h) // 2
 
-    # For a banner region, repaint it SOLID over the union of the source box and
-    # the (often larger) rendered-text rectangle, plus a little padding -- so the
-    # new text sits fully on a clean banner instead of spilling onto the
-    # surrounding colour, and the band is tall/wide enough to hold it.
+    # For a banner region, repaint it SOLID tight around the RENDERED text plus a
+    # little padding -- NOT around the loose OCR box. The boxes on these
+    # thumbnails overrun onto the neighbouring line, so sizing the band to the box
+    # both flattens a swathe of background and (because lines are drawn in order)
+    # lets the next line's band clobber this one's text. A band that hugs the
+    # actual letters backs them cleanly and stays clear of its neighbours.
     band = None
     if style is not None and getattr(style, "has_banner", False):
         from PIL import ImageDraw
@@ -712,10 +746,10 @@ def _render_region(canvas, region: TextRegion, text: str, style=None) -> bool:
         width, height = canvas.size
         pad_x = max(3, int(round(tile_h * 0.18)))
         pad_y = max(2, int(round(tile_h * 0.12)))
-        bx0 = max(0, min(x0, px) - pad_x)
-        by0 = max(0, min(y0, py) - pad_y)
-        bx1 = min(width, max(x1, px + tile_w) + pad_x)
-        by1 = min(height, max(y1, py + tile_h) + pad_y)
+        bx0 = max(0, px - pad_x)
+        by0 = max(0, py - pad_y)
+        bx1 = min(width, px + tile_w + pad_x)
+        by1 = min(height, py + tile_h + pad_y)
         band = (bx0, by0, bx1, by1)
         ImageDraw.Draw(canvas).rectangle(
             list(band), fill=tuple(int(c) for c in style.banner_color)

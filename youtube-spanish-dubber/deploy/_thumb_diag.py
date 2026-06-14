@@ -53,13 +53,13 @@ def main() -> None:
     rendered = tp._brand(rendered, "Versión Español", "")
 
     if os.environ.get("DIAG_IMG", "1") == "1":
-        # Tight crop of the TOP line so the band fit is legible (image FIRST,
-        # geometry LAST so the numbers always survive the reply tail).
-        crop = rendered.crop((90, 105, 1190, 365))
-        w = 340
+        # Both top lines, so the overlap (region 1 clobbering region 0) and the
+        # region-1 text colour are both visible. Image FIRST, geometry LAST.
+        crop = rendered.crop((40, 110, 1240, 560))
+        w = 320
         crop = crop.resize((w, int(crop.height * w / crop.width)))
-        buf = io.BytesIO(); crop.save(buf, "JPEG", quality=32)
-        print("==DIAG_B64 line0==", base64.b64encode(buf.getvalue()).decode("ascii"))
+        buf = io.BytesIO(); crop.save(buf, "JPEG", quality=30)
+        print("==DIAG_B64 lines==", base64.b64encode(buf.getvalue()).decode("ascii"))
 
     for i, (region, translated) in enumerate(pairs):
         style = image_text._analyze_region(arr, region.bbox)
