@@ -45,15 +45,17 @@ def main():
 
     src = edit.get("original")
     image = tp.data_uri_to_image(src) if src else Image.open(CACHE / "orig_JVN7NXqwjro.jpg").convert("RGB")
-    rendered = tp.render_edited(
-        image, edit["regions"],
-        banner_text=edit.get("banner_text") or "",
-        preserve_overlays=True,
-    )
-    crop = rendered.crop((80, 150, image.width - 60, 340))   # the "Una Vez Salvo" banner, tight
-    w = 460
-    crop = crop.resize((w, int(crop.height * w / crop.width)))
-    _emit(crop, "user")
+    bt = edit.get("banner_text") or ""
+    clean = tp.render_edited(image, edit["regions"], banner_text=bt, preserve_overlays=False)
+    pres = tp.render_edited(image, edit["regions"], banner_text=bt, preserve_overlays=True)
+    box = (80, 150, image.width - 60, 345)                    # the "Una Vez Salvo" banner
+    w = 380
+    cc = clean.crop(box); cp = pres.crop(box)
+    cc = cc.resize((w, int(cc.height * w / cc.width)))
+    cp = cp.resize((w, int(cp.height * w / cp.width)))
+    sheet = Image.new("RGB", (w, cc.height + cp.height + 4), (255, 0, 255))
+    sheet.paste(cc, (0, 0)); sheet.paste(cp, (0, cc.height + 4))
+    _emit(sheet, "user")
 
 
 if __name__ == "__main__":
