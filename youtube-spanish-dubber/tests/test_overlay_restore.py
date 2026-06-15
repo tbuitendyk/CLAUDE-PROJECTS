@@ -205,3 +205,21 @@ def test_banner_repaint_covers_the_rendered_text_solidly():
     is_darkish = band.sum(axis=2) < 200
     assert (is_yellowish | is_darkish).mean() > 0.97  # only banner-or-text, no spill
     assert is_darkish.any()  # the text actually drew
+
+
+def test_overlay_restore_excludes_original_text_via_ink_mask():
+    """On a scene, the colour test alone can mis-read the fill and resurrect the
+    old letters. Passing the glyph ink mask must keep them out (while a true
+    overlay, which extends past the strokes, would still come back)."""
+    w, h = 60, 30
+    scene = (90, 110, 130)
+    original = np.full((h, w, 3), scene, np.uint8)
+    original[10:20, 8:52] = (255, 255, 255)        # old white English letters
+    ink = np.zeros((h, w), np.uint8)
+    ink[10:20, 8:52] = 1
+    out = image_text._restore_overlays(
+        Image.fromarray(original), _solid(w, h, scene), _solid(w, h, scene),
+        [((0, 0, w, h), (10, 10, 10), ink)],       # fill mis-detected as dark
+    )
+    arr = np.asarray(out)
+    assert (arr > 200).all(axis=2).mean() < 0.02   # white letters NOT restored

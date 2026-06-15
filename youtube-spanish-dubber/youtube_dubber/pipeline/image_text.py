@@ -439,13 +439,16 @@ def render_translations(image, pairs: list[tuple[TextRegion, str]], *, preserve_
         return image, 0
 
     if preserve_overlays:
-        boxes_fills = [(region.bbox, tuple(region.fill_color or (255, 255, 255))) for region, _ in pairs]
-        canvas = _restore_overlays(image, canvas, background, boxes_fills)
+        items = [
+            (style.box, tuple(region.fill_color or style.fill or (255, 255, 255)), style.ink)
+            for (region, _), style in zip(pairs, styles)
+        ]
+        canvas = _restore_overlays(image, canvas, background, items)
     return canvas, replaced
 
 
 def _restore_overlays(
-    original, final_canvas, background, boxes_fills,
+    original, final_canvas, background, items,
     *, text_dist: float = 90.0, bg_dist: float = 70.0, min_area_frac: float = 0.002,
 ):
     """Composite back the graphics that overlaid the original text -- a
@@ -459,7 +462,13 @@ def _restore_overlays(
     new translated text, so e.g. the red slash crosses "Siempre Salvo" the way it
     crossed "Always Saved". A connected-components area filter drops speckle so
     JPEG/halo noise isn't resurrected. Best-effort: any failure returns the
-    rendered image unchanged."""
+    rendered image unchanged.
+
+    `items` are `(box, fill)` or `(box, fill, ink_mask)`. The glyph `ink_mask`
+    (the original text's own strokes) is excluded from restoration -- otherwise
+    text on a busy *scene*, where the colour test alone can't tell old letters
+    from a foreign graphic, gets resurrected on top of the translation. A real
+    overlay (a slash, an arrow) extends beyond the glyph strokes, so it survives."""
     try:
         import numpy as np
         from PIL import Image
@@ -475,9 +484,11 @@ def _restore_overlays(
             cv2 = None
 
         restored = False
-        for (x0, y0, x1, y1), fill in boxes_fills:
-            x0, y0 = max(0, int(x0)), max(0, int(y0))
-            x1, y1 = min(width, int(x1)), min(height, int(y1))
+        for item in items:
+            (bx0, by0, bx1, by1), fill = item[0], item[1]
+            ink = item[2] if len(item) > 2 else None
+            x0, y0 = max(0, int(bx0)), max(0, int(by0))
+            x1, y1 = min(width, int(bx1)), min(height, int(by1))
             if x1 - x0 < 4 or y1 - y0 < 4:
                 continue
             o = orig[y0:y1, x0:x1]
@@ -486,6 +497,13 @@ def _restore_overlays(
             far_text = np.linalg.norm(o - fillv, axis=2) > text_dist     # not the old letters
             far_bg = np.linalg.norm(o - b, axis=2) > bg_dist             # not the background
             mask = far_text & far_bg
+            # Never restore the original text's own strokes -- excluding the
+            # (dilated) glyph mask keeps a scene's old letters from coming back.
+            if ink is not None and cv2 is not None:
+                im = np.asarray(ink).astype(np.uint8)
+                if im.shape == mask.shape:
+                    im = cv2.dilate(im * 255, np.ones((3, 3), np.uint8), iterations=2)
+                    mask = mask & (im == 0)
             if not mask.any():
                 continue
             if cv2 is not None:
