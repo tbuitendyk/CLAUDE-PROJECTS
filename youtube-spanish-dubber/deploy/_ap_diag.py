@@ -1,27 +1,40 @@
-"""TEMP: verify the ink-keyed cleanup removes the old-letter dots below the banner
-(without touching the slash). Renders the saved edit for JVN7NXqwjro with preserve
-ON; tight crop of the banner + the cream below it. Removed after.
+"""TEMP generality check for the ink-keyed off-banner cleanup: render banner
+thumbnails (#0,#2,#4,#8) with preserve ON and confirm no new inpaint smudges and
+graphics still transfer. Removed after.
 """
 from __future__ import annotations
 
 import base64
 import io
+import tempfile
 from pathlib import Path
 
 from PIL import Image
 
-from youtube_dubber import db
-from youtube_dubber.pipeline import thumbnail_preview as tp
+from youtube_dubber.pipeline import image_text, downloader
 
 CACHE = Path("data/diagnostics")
+VIDS = ["LJ54oRIM-ZI", "5wVonZ1S2Ss", "iKFJ5BMF8a4", "-hjuxRDqBmc"]
 
 
-def _emit(img, name, budget=5000):
+def _load(vid):
+    cf = CACHE / f"orig_{vid}.jpg"
+    if cf.exists():
+        return Image.open(cf).convert("RGB")
+    with tempfile.TemporaryDirectory() as d:
+        src = downloader.fetch_thumbnail(f"https://www.youtube.com/watch?v={vid}", Path(d))
+        img = Image.open(src.thumbnail_path).convert("RGB")
+    CACHE.mkdir(parents=True, exist_ok=True)
+    img.save(cf, "JPEG", quality=92)
+    return img
+
+
+def _emit(img, name, budget=4700):
     cur = img.convert("RGB")
     for scale in (1.0, 0.85, 0.72, 0.6, 0.5, 0.4):
         im = cur if scale == 1.0 else cur.resize(
             (max(1, int(cur.width * scale)), max(1, int(cur.height * scale))))
-        for q in (70, 55, 45, 35, 27, 20, 14, 10):
+        for q in (60, 45, 35, 25, 18, 12, 9):
             buf = io.BytesIO(); im.save(buf, "JPEG", quality=q)
             if buf.tell() < budget:
                 print(f"  {name} bytes={buf.tell()} q={q} scale={scale}")
@@ -30,18 +43,17 @@ def _emit(img, name, budget=5000):
 
 
 def main():
-    p = next((x for x in db.list_projects()
-              if x.source_video_id == "JVN7NXqwjro" and x.target_language == "es"), None)
-    edit = (p.full() or {}).get("thumbnail_edit") if p else None
-    if not edit or not edit.get("regions"):
-        print("  no saved edit"); return
-    image = tp.data_uri_to_image(edit["original"]) if edit.get("original") \
-        else Image.open(CACHE / "orig_JVN7NXqwjro.jpg").convert("RGB")
-    pres = tp.render_edited(image, edit["regions"],
-                           banner_text=edit.get("banner_text") or "", preserve_overlays=True)
-    crop = pres.crop((70, 150, image.width - 50, 420))   # banner + cream below + slash top
-    w = 500
-    _emit(crop.resize((w, int(crop.height * w / crop.width))), "dots")
+    rs = []
+    for vid in VIDS:
+        A = _load(vid)
+        pairs = image_text.detect_and_translate(A, "en", "es")
+        B, _ = image_text.render_translations(A, pairs, preserve_overlays=True)
+        rs.append(B.resize((260, int(B.height * 260 / B.width))))
+    sheet = Image.new("RGB", (260, sum(r.height for r in rs) + 6), (255, 0, 255))
+    y = 0
+    for r in rs:
+        sheet.paste(r, (0, y)); y += r.height + 2
+    _emit(sheet, "reg")
 
 
 if __name__ == "__main__":
