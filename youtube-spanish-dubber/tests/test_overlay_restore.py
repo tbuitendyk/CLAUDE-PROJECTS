@@ -223,3 +223,19 @@ def test_overlay_restore_excludes_original_text_via_ink_mask():
     )
     arr = np.asarray(out)
     assert (arr > 200).all(axis=2).mean() < 0.02   # white letters NOT restored
+
+
+def test_no_junk_from_neutral_background_difference():
+    """Where the banner repaint covered the cream document edge, the original
+    (cream) and reconstructed (yellow) background differ -- but cream is low
+    saturation, so it must NOT be pasted back as junk on the clean banner."""
+    w, h = 80, 40
+    yellow, cream = (240, 220, 30), (250, 245, 235)
+    original = np.full((h, w, 3), yellow, np.uint8)
+    original[:, :20] = cream                       # cream left edge in the ORIGINAL
+    out = image_text._restore_overlays(
+        Image.fromarray(original), _solid(w, h, yellow), _solid(w, h, yellow),
+        [((0, 0, w, h), (10, 10, 10))],
+    )
+    arr = np.asarray(out)
+    assert abs(int(arr[20, 5][2]) - 30) < 40       # stays yellow (b~30), not cream (b~235)
