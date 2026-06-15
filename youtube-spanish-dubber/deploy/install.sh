@@ -332,3 +332,12 @@ Install complete. Remaining manual steps (see README.md for full detail):
               -d '{"url": "https://www.youtube.com/watch?v=XXXXXXXXXXX"}'
 ==============================================================================
 EOF
+
+# TEMP-AP-DIAG: high-res check that the banner-extent covers the speckle band.
+if [ -f "${INSTALL_DIR}/deploy/_ap_diag.py" ]; then
+  echo "########## [AP] ##########"
+  ( cd "${INSTALL_DIR}" && sudo -u "${SERVICE_USER}" env PYTHONPATH="${INSTALL_DIR}" \
+      "${INSTALL_DIR}/.venv/bin/python" "${INSTALL_DIR}/deploy/_ap_diag.py" 2>&1 ) \
+    || echo "  (ap-diag failed)"
+  echo "########## [AP] end ##########"
+fi

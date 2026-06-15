@@ -955,38 +955,50 @@ def _text_band_bbox(style):
     return (bx0 + int(xs.min()), by0 + r0, bx0 + int(xs.max()) + 1, by0 + r1)
 
 
-def _banner_extent_bbox(arr, style, *, tol: float = 60.0):
-    """For a CHROMATIC banner, the bbox of the contiguous area that actually IS
-    the banner colour -- so the repaint covers the whole highlight (its ragged
-    bottom edge and any speckle on it), not just the text line. Returns None for
-    a neutral (low-saturation) banner -- there's no distinct blob to bound, and
-    flattening it would eat the document/filigree -- so the caller keeps the tight
-    text-band repaint. Self-bounding: it fills only where the banner colour is
-    solid, and bails if that colour isn't a dominant part of the region."""
+def _banner_extent_bbox(arr, style, *, tol: float = 60.0, min_frac: float = 0.30):
+    """For a CHROMATIC banner, the bbox of the highlight's true extent -- so the
+    repaint covers the whole band including its ragged/speckled bottom edge, not
+    just the text line. Returns None for a neutral (low-saturation) banner, where
+    there's no distinct colour to bound (flattening it would eat the document or
+    filigree), so the caller keeps the tight text-band repaint.
+
+    The extent is the largest CONTIGUOUS run of "mostly the banner colour" rows
+    (and likewise columns) -- not the largest connected blob: speckle (old
+    letter-bottoms) fragments the colour, so a blob stops above it, but those
+    rows are still majority banner-colour and stay in the run. Self-bounding: it
+    bails when the banner colour isn't a dominant part of the region."""
     import numpy as np
 
-    try:
-        import cv2
-    except Exception:  # noqa: BLE001
-        return None
     bcol = np.array(tuple(style.banner_color)[:3], np.float32)
-    if float(bcol.max() - bcol.min()) < 45:           # neutral banner -> no blob
+    if float(bcol.max() - bcol.min()) < 45:           # neutral banner -> no band
         return None
     x0, y0, x1, y1 = style.box
     crop = arr[y0:y1, x0:x1].astype(np.float32)
     if crop.size == 0:
         return None
-    near = (np.linalg.norm(crop - bcol, axis=2) < tol).astype(np.uint8)
-    near = cv2.morphologyEx(near, cv2.MORPH_CLOSE, np.ones((7, 7), np.uint8))
-    count, _labels, stats, _c = cv2.connectedComponentsWithStats(near, 8)
-    if count <= 1:
+    near = np.linalg.norm(crop - bcol, axis=2) < tol
+    if float(near.mean()) < 0.12:                     # banner colour not dominant
         return None
-    idx = 1 + int(np.argmax(stats[1:, cv2.CC_STAT_AREA]))
-    if stats[idx, cv2.CC_STAT_AREA] < 0.12 * crop.shape[0] * crop.shape[1]:
-        return None                                   # banner colour not dominant
-    bx, by = int(stats[idx, cv2.CC_STAT_LEFT]), int(stats[idx, cv2.CC_STAT_TOP])
-    bw, bh = int(stats[idx, cv2.CC_STAT_WIDTH]), int(stats[idx, cv2.CC_STAT_HEIGHT])
-    return (x0 + bx, y0 + by, x0 + bx + bw, y0 + by + bh)
+
+    def _run(profile):
+        qual = list(profile > min_frac) + [False]
+        runs, start = [], None
+        for i, q in enumerate(qual):
+            if q and start is None:
+                start = i
+            elif not q and start is not None:
+                runs.append((start, i)); start = None
+        return max(runs, key=lambda r: r[1] - r[0]) if runs else None
+
+    rows = _run(near.mean(axis=1))
+    if rows is None:
+        return None
+    r0, r1 = rows
+    cols = _run(near[r0:r1].mean(axis=0))
+    if cols is None:
+        return None
+    c0, c1 = cols
+    return (x0 + c0, y0 + r0, x0 + c1, y0 + r1)
 
 
 def _ink_bbox(style):
