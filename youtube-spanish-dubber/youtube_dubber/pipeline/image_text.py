@@ -502,7 +502,8 @@ def render_translations(image, pairs: list[tuple[TextRegion, str]], *, preserve_
 
     if preserve_overlays:
         items = [
-            (style.box, tuple(region.fill_color or style.fill or (255, 255, 255)), style.ink)
+            (style.box, tuple(region.fill_color or style.fill or (255, 255, 255)),
+             style.ink, style.banner_color)
             for (region, _), style in zip(pairs, styles)
         ]
         canvas = _restore_overlays(image, canvas, background, items)
@@ -555,6 +556,7 @@ def _restore_overlays(
         for item in items:
             (bx0, by0, bx1, by1), fill = item[0], item[1]
             ink = item[2] if len(item) > 2 else None
+            banner = item[3] if len(item) > 3 else None
             x0, y0 = max(0, int(bx0)), max(0, int(by0))
             x1, y1 = min(width, int(bx1)), min(height, int(by1))
             if x1 - x0 < 4 or y1 - y0 < 4:
@@ -570,9 +572,13 @@ def _restore_overlays(
                 im = np.asarray(ink)
                 if im.shape == o.shape[:2] and im.any():
                     letter = np.median(o[im > 0], axis=0).astype(np.float32)
-            # Banner colour = the reconstructed background's dominant colour (one
-            # colour, used only for its hue -- not a per-pixel reference).
-            bcol = np.median(bg_u8[y0:y1, x0:x1].reshape(-1, 3).astype(np.float32), axis=0)
+            # Banner colour: the detected banner colour when available (a clean,
+            # saturated yellow), else the reconstructed background's median. Used
+            # only for its hue/saturation -- not as a per-pixel reference.
+            if banner is not None:
+                bcol = np.array(tuple(banner)[:3], np.float32)
+            else:
+                bcol = np.median(bg_u8[y0:y1, x0:x1].reshape(-1, 3).astype(np.float32), axis=0)
             bhsv = cv2.cvtColor(bcol.astype(np.uint8).reshape(1, 1, 3), cv2.COLOR_RGB2HSV)[0, 0]
             banner_hue, banner_sat = float(bhsv[0]), float(bhsv[1]) / 255.0
 
