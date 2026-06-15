@@ -503,7 +503,7 @@ def render_translations(image, pairs: list[tuple[TextRegion, str]], *, preserve_
     if preserve_overlays:
         items = [
             (style.box, tuple(region.fill_color or style.fill or (255, 255, 255)),
-             style.ink, style.banner_color)
+             style.ink, style.banner_color, _text_band_bbox(style) or style.box)
             for (region, _), style in zip(pairs, styles)
         ]
         canvas = _restore_overlays(image, canvas, background, items)
@@ -557,6 +557,7 @@ def _restore_overlays(
             (bx0, by0, bx1, by1), fill = item[0], item[1]
             ink = item[2] if len(item) > 2 else None
             banner = item[3] if len(item) > 3 else None
+            clip = item[4] if len(item) > 4 else None       # restrict to the text line
             x0, y0 = max(0, int(bx0)), max(0, int(by0))
             x1, y1 = min(width, int(bx1)), min(height, int(by1))
             if x1 - x0 < 4 or y1 - y0 < 4:
@@ -591,6 +592,18 @@ def _restore_overlays(
             else:                              # neutral banner -> any saturated colour
                 foreign = saturated
             mask = foreign & not_old & changed
+            # Restrict to this region's own text line (+ a little), so an
+            # oversized OCR box that overlaps a neighbour's banner can't pull
+            # that neighbour's saturated edge pixels in as junk.
+            if clip is not None:
+                cx0, cy0, cx1, cy1 = clip
+                pad = max(6, int(round((cy1 - cy0) * 0.18)))
+                cm = np.zeros(o.shape[:2], dtype=bool)
+                ry0 = max(0, int(cy0) - pad - y0); ry1 = min(y1 - y0, int(cy1) + pad - y0)
+                rx0 = max(0, int(cx0) - pad - x0); rx1 = min(x1 - x0, int(cx1) + pad - x0)
+                if ry1 > ry0 and rx1 > rx0:
+                    cm[ry0:ry1, rx0:rx1] = True
+                mask &= cm
             if not mask.any():
                 continue
             m = cv2.morphologyEx(mask.astype(np.uint8), cv2.MORPH_CLOSE, np.ones((3, 3), np.uint8))
