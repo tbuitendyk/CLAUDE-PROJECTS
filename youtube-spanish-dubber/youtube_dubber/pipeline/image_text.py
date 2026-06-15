@@ -484,9 +484,18 @@ def render_translations(image, pairs: list[tuple[TextRegion, str]], *, preserve_
     canvas = _erase_scene_text(canvas, [(s.box, s.ink) for s in styles if not s.has_banner])
     for style in styles:
         if style.has_banner:
-            text_box = _text_band_bbox(style) or _ink_bbox(style) or style.box
-            pad = max(2, int(round((text_box[3] - text_box[1]) * 0.12)))
-            _paint_banner(canvas, text_box, style.banner_color, pad=pad)
+            # For a CHROMATIC banner (a yellow highlight) repaint over its true
+            # colour-extent, so the whole highlight -- including its ragged bottom
+            # edge and any speckle on it -- comes out clean, not just the text
+            # line. A neutral (cream/white) banner has no distinct blob, so it
+            # keeps the tight text-band repaint that protects nearby decoration.
+            extent = _banner_extent_bbox(arr, style)
+            if extent is not None:
+                _paint_banner(canvas, extent, style.banner_color, pad=1)
+            else:
+                text_box = _text_band_bbox(style) or _ink_bbox(style) or style.box
+                pad = max(2, int(round((text_box[3] - text_box[1]) * 0.12)))
+                _paint_banner(canvas, text_box, style.banner_color, pad=pad)
 
     # The reconstructed background (old text removed, no new text yet) -- the
     # reference _restore_overlays uses to tell "overlay graphic" from "background".
@@ -513,7 +522,7 @@ def render_translations(image, pairs: list[tuple[TextRegion, str]], *, preserve_
 def _restore_overlays(
     original, final_canvas, background, items,
     *, text_dist: float = 80.0, sat_min: float = 0.30, hue_min: float = 15.0,
-    diff_min: float = 45.0, min_area_frac: float = 0.0015,
+    diff_min: float = 45.0, min_area_frac: float = 0.0015, alpha: float = 0.72,
 ):
     """Transfer a coloured graphic that overlaid the original text -- a
     strikethrough, a red slash, a sticker -- onto the rendered translation.
@@ -613,7 +622,12 @@ def _restore_overlays(
             if not keep:
                 continue
             mask = np.isin(labels, keep)
-            out[y0:y1, x0:x1][mask] = orig_u8[y0:y1, x0:x1][mask]
+            # Blend (not stamp) the restored mark so the translated text reads
+            # through it, instead of being painted over opaquely.
+            region_out = out[y0:y1, x0:x1]
+            src = orig_u8[y0:y1, x0:x1][mask].astype(np.float32)
+            dst = region_out[mask].astype(np.float32)
+            region_out[mask] = (alpha * src + (1.0 - alpha) * dst).astype(np.uint8)
             restored = True
         return Image.fromarray(out) if restored else final_canvas
     except Exception as exc:  # noqa: BLE001 -- overlay restore is a nice-to-have
@@ -939,6 +953,40 @@ def _text_band_bbox(style):
         return None
     bx0, by0 = style.box[0], style.box[1]
     return (bx0 + int(xs.min()), by0 + r0, bx0 + int(xs.max()) + 1, by0 + r1)
+
+
+def _banner_extent_bbox(arr, style, *, tol: float = 60.0):
+    """For a CHROMATIC banner, the bbox of the contiguous area that actually IS
+    the banner colour -- so the repaint covers the whole highlight (its ragged
+    bottom edge and any speckle on it), not just the text line. Returns None for
+    a neutral (low-saturation) banner -- there's no distinct blob to bound, and
+    flattening it would eat the document/filigree -- so the caller keeps the tight
+    text-band repaint. Self-bounding: it fills only where the banner colour is
+    solid, and bails if that colour isn't a dominant part of the region."""
+    import numpy as np
+
+    try:
+        import cv2
+    except Exception:  # noqa: BLE001
+        return None
+    bcol = np.array(tuple(style.banner_color)[:3], np.float32)
+    if float(bcol.max() - bcol.min()) < 45:           # neutral banner -> no blob
+        return None
+    x0, y0, x1, y1 = style.box
+    crop = arr[y0:y1, x0:x1].astype(np.float32)
+    if crop.size == 0:
+        return None
+    near = (np.linalg.norm(crop - bcol, axis=2) < tol).astype(np.uint8)
+    near = cv2.morphologyEx(near, cv2.MORPH_CLOSE, np.ones((7, 7), np.uint8))
+    count, _labels, stats, _c = cv2.connectedComponentsWithStats(near, 8)
+    if count <= 1:
+        return None
+    idx = 1 + int(np.argmax(stats[1:, cv2.CC_STAT_AREA]))
+    if stats[idx, cv2.CC_STAT_AREA] < 0.12 * crop.shape[0] * crop.shape[1]:
+        return None                                   # banner colour not dominant
+    bx, by = int(stats[idx, cv2.CC_STAT_LEFT]), int(stats[idx, cv2.CC_STAT_TOP])
+    bw, bh = int(stats[idx, cv2.CC_STAT_WIDTH]), int(stats[idx, cv2.CC_STAT_HEIGHT])
+    return (x0 + bx, y0 + by, x0 + bx + bw, y0 + by + bh)
 
 
 def _ink_bbox(style):
