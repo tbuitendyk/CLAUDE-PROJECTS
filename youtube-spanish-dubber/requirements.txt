@@ -45,8 +45,12 @@ faster-whisper==1.1.0
 # wheels and supports Python 3.7-3.12. The two small language models (~13-15 MB
 # each) must match that line (3.7.x).
 spacy>=3.7.2,<3.8.0
-https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.7.1/en_core_web_sm-3.7.1-py3-none-any.whl
-https://github.com/explosion/spacy-models/releases/download/es_core_news_sm-3.7.0/es_core_news_sm-3.7.0-py3-none-any.whl
+# The two language models (en_core_web_sm 3.7.1, es_core_news_sm 3.7.0) are NOT
+# pinned here: as direct GitHub-release URLs pip re-downloads them on every
+# deploy, and a flaky/0-byte download from github then aborts the whole install.
+# They're optional (rechunker falls back to punctuation-only boundaries without
+# them), so install.sh fetches them best-effort instead -- skipped if already
+# present, tolerated if the download fails.
 
 # Grammar-based punctuation restoration on run-on transcripts (a fast speaker
 # whose captions/Whisper output have no punctuation defeats the pause-based

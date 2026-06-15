@@ -19,62 +19,6 @@ if [[ $EUID -ne 0 ]]; then
   exit 1
 fi
 
-# TEMP-LOGS: capture the exact 403 reason behind the thumbnail refusal. At the
-# TOP so it runs even if a later install step fails. Output is small -> survives
-# the deploy reply's tail.
-echo "########## [LOGS] ##########"
-journalctl -u youtube-dubber --no-pager --since "8 hours ago" 2>/dev/null \
-  | grep -iE "custom thumbnail|thumbnail/apply|forbidden| 403 |HttpError|reason|insufficient|verif|owner|invalid_grant" \
-  | tail -20
-echo "########## [LOGS] end ##########"
-
-# TEMP-CHANCHECK: who is authorized vs who owns the target video?
-echo "########## [CHANCHECK] ##########"
-( cd /opt/youtube-dubber && sudo -u dubber env PYTHONPATH=/opt/youtube-dubber \
-    ./.venv/bin/python - <<'PYEOF'
-try:
-    from youtube_dubber.pipeline.uploader import _load_credentials, API_SERVICE_NAME, API_VERSION
-    from googleapiclient.discovery import build
-    yt = build(API_SERVICE_NAME, API_VERSION, credentials=_load_credentials(), cache_discovery=False)
-    try:
-        ch = yt.channels().list(part="id,snippet", mine=True).execute()
-        for i in ch.get("items", []):
-            print("AUTH_CHANNEL id=%s title=%r" % (i["id"], i["snippet"]["title"]))
-        if not ch.get("items"):
-            print("AUTH_CHANNEL: none returned")
-    except Exception as e:
-        print("channels.list(mine) failed (likely scope):", repr(e)[:180])
-    try:
-        v = yt.videos().list(part="snippet", id="Q9FNTNmIdi0").execute()
-        for i in v.get("items", []):
-            print("VIDEO_OWNER channelId=%s title=%r" % (i["snippet"]["channelId"], i["snippet"]["channelTitle"]))
-        if not v.get("items"):
-            print("VIDEO Q9FNTNmIdi0: not found / not visible to this token")
-    except Exception as e:
-        print("videos.list failed:", repr(e)[:180])
-except Exception as e:
-    print("CHANCHECK error:", repr(e)[:280])
-PYEOF
-) 2>&1 | sed 's/^/  /'
-echo "########## [CHANCHECK] end ##########"
-
-# TEMP-DIAG: snapshot the currently-running service BEFORE we restart it (the
-# restart near the end of this script ends any in-flight job), so a stuck/slow
-# run can be inspected. Captured now; printed at the end so it lands inside the
-# deploy endpoint's tail-truncated reply.
-PREDEPLOY_SNAP="$(
-  set +e
-  PID=$(systemctl show -p MainPID --value youtube-dubber 2>/dev/null)
-  echo "service MainPID: ${PID:-?}"
-  if [ -n "${PID}" ] && [ "${PID}" != "0" ]; then
-    grep -E 'VmRSS|VmHWM|Threads' "/proc/${PID}/status" 2>/dev/null
-    echo "thread states (R=run, D=uninterruptible-io, S=sleep):"
-    ps -L -o stat= -p "${PID}" 2>/dev/null | sort | uniq -c
-    echo "busiest threads:"
-    ps -L -o pid,tid,pcpu,cputime,comm -p "${PID}" 2>/dev/null | sort -k3 -rn | head -6
-  fi
-)"
-
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 INSTALL_DIR="/opt/youtube-dubber"
 SERVICE_USER="dubber"
@@ -109,6 +53,28 @@ echo "==> Creating Python virtualenv and installing dependencies (this can take 
 sudo -u "${SERVICE_USER}" python3 -m venv "${INSTALL_DIR}/.venv"
 sudo -u "${SERVICE_USER}" "${INSTALL_DIR}/.venv/bin/pip" install --upgrade pip wheel
 sudo -u "${SERVICE_USER}" "${INSTALL_DIR}/.venv/bin/pip" install -r "${INSTALL_DIR}/requirements.txt"
+
+echo "==> Installing the spaCy sentence-boundary models (optional, best-effort)"
+# en_core_web_sm / es_core_news_sm give the rechunker real sentence boundaries
+# (pipeline/rechunker.py). They are NOT in requirements.txt: as direct
+# GitHub-release URLs pip re-downloads them every deploy, and a flaky/0-byte
+# GitHub download aborts the whole `pip install -r` under `set -e`. So fetch them
+# here instead -- skipped if already importable, and tolerated (no abort) if the
+# download fails, since the rechunker degrades to punctuation-only boundaries.
+SPACY_MODELS=(
+  "en_core_web_sm https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.7.1/en_core_web_sm-3.7.1-py3-none-any.whl"
+  "es_core_news_sm https://github.com/explosion/spacy-models/releases/download/es_core_news_sm-3.7.0/es_core_news_sm-3.7.0-py3-none-any.whl"
+)
+for entry in "${SPACY_MODELS[@]}"; do
+  name="${entry%% *}"; url="${entry#* }"
+  if sudo -u "${SERVICE_USER}" "${INSTALL_DIR}/.venv/bin/python" -c "import ${name}" 2>/dev/null; then
+    echo "    ${name} already present"
+  elif sudo -u "${SERVICE_USER}" "${INSTALL_DIR}/.venv/bin/pip" install --quiet "${url}"; then
+    echo "    installed ${name}"
+  else
+    echo "    WARNING: ${name} download failed -- rechunker will use punctuation-only boundaries"
+  fi
+done
 
 echo "==> Installing the latest standalone yt-dlp binary"
 # yt-dlp must track YouTube's changes, but its current releases also dropped
@@ -337,10 +303,6 @@ if systemctl is-active --quiet youtube-dubber; then
   echo "==> Restarting the running service to pick up the new code"
   systemctl restart youtube-dubber
 fi
-
-echo "########## [PREDEPLOY snapshot — the service this deploy just replaced] ##########"
-echo "${PREDEPLOY_SNAP}"
-echo "########## [PREDEPLOY snapshot] end ##########"
 
 cat <<EOF
 
