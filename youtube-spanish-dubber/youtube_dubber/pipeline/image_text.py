@@ -267,9 +267,12 @@ def _group_line_blocks(lines: list[TextRegion]) -> list[list[TextRegion]]:
             runs.append([r])
     blocks: list[list[TextRegion]] = []
     for run in runs:
-        words = sum(len(r.text.split()) for r in run)
-        if len(run) >= 3 and words / len(run) <= 1.6:
-            blocks.append(run)                    # a word-stacked phrase
+        counts = [len(r.text.split()) for r in run]
+        # A word-stacked phrase is several lines, NONE of which is itself a
+        # multi-word phrase (so "A Documentary Film" next to a separate quote
+        # isn't swept in), and mostly one word per line.
+        if len(run) >= 3 and max(counts) <= 2 and sum(counts) / len(run) <= 1.5:
+            blocks.append(run)
         else:
             blocks.extend([r] for r in run)       # keep lines independent
     return blocks
