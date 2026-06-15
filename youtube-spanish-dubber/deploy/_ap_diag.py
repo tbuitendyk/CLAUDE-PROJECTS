@@ -50,8 +50,8 @@ def main():
         banner_text=edit.get("banner_text") or "",
         preserve_overlays=True,
     )
-    crop = rendered.crop((0, 110, image.width, 610))
-    w = 380
+    crop = rendered.crop((80, 150, image.width - 60, 340))   # the "Una Vez Salvo" banner, tight
+    w = 460
     crop = crop.resize((w, int(crop.height * w / crop.width)))
     _emit(crop, "user")
 
