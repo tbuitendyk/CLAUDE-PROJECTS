@@ -482,6 +482,8 @@ def render_translations(image, pairs: list[tuple[TextRegion, str]], *, preserve_
     # strokes inpainted (the picture shows through); banner regions get repainted
     # as a flat rectangle of the banner colour (covering the old text cleanly).
     canvas = _erase_scene_text(canvas, [(s.box, s.ink) for s in styles if not s.has_banner])
+    width, height = canvas.size
+    outside_ink = []          # banner old-text strokes that fell past the banner
     for style in styles:
         if style.has_banner:
             # For a CHROMATIC banner (a yellow highlight) repaint over its true
@@ -497,10 +499,22 @@ def render_translations(image, pairs: list[tuple[TextRegion, str]], *, preserve_
                 # the old letters can dip below the solid colour; both must go.
                 box = (min(extent[0], text_box[0]), min(extent[1], text_box[1]),
                        max(extent[2], text_box[2]), max(extent[3], text_box[3]))
-                _paint_banner(canvas, box, style.banner_color, pad=1)
+                pad = 1
             else:
+                box = text_box
                 pad = max(2, int(round((text_box[3] - text_box[1]) * 0.12)))
-                _paint_banner(canvas, text_box, style.banner_color, pad=pad)
+            _paint_banner(canvas, box, style.banner_color, pad=pad)
+            painted = (max(0, box[0] - pad), max(0, box[1] - pad),
+                       min(width, box[2] + pad), min(height, box[3] + pad))
+            ink_out = _ink_outside(style, painted)
+            if ink_out is not None:
+                outside_ink.append((style.box, ink_out))
+    # Old letters that poked PAST the banner onto the surrounding background
+    # (translated text lands differently than the original, so letter-bottoms are
+    # left behind on the cream) -- inpaint them. Keyed on the ink mask, so it only
+    # touches where old letters were, never a preserved overlay like a slash.
+    if outside_ink:
+        canvas = _erase_scene_text(canvas, outside_ink)
 
     # The reconstructed background (old text removed, no new text yet) -- the
     # reference _restore_overlays uses to tell "overlay graphic" from "background".
@@ -1018,6 +1032,29 @@ def _banner_extent_bbox(arr, style, *, tol: float = 60.0, min_frac: float = 0.30
         return None
     c0, c1 = cols
     return (x0 + c0, y0 + r0, x0 + c1, y0 + r1)
+
+
+def _ink_outside(style, painted_box):
+    """The region's source glyph ink that falls OUTSIDE `painted_box` (the
+    repainted banner) -- old letters that extended past the banner onto the
+    surrounding background. Returns the 0/1 mask over `style.box` (so it can be
+    inpainted away), or None if there's nothing left outside."""
+    import numpy as np
+
+    ink = getattr(style, "ink", None)
+    if ink is None:
+        return None
+    mask = np.asarray(ink)
+    if mask.ndim != 2 or not mask.any():
+        return None
+    out = mask.copy()
+    bx0, by0 = style.box[0], style.box[1]
+    px0, py0, px1, py1 = painted_box
+    ry0, ry1 = max(0, int(py0) - by0), min(out.shape[0], int(py1) - by0)
+    rx0, rx1 = max(0, int(px0) - bx0), min(out.shape[1], int(px1) - bx0)
+    if ry1 > ry0 and rx1 > rx0:
+        out[ry0:ry1, rx0:rx1] = 0           # covered by the banner repaint
+    return out if out.any() else None
 
 
 def _ink_bbox(style):
