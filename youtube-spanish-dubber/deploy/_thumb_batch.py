@@ -25,9 +25,10 @@ IDS = [
     "WO84pEY6Kgw", "z84QJzWlRJc", "9QajY-g8q8g", "-hjuxRDqBmc", "wcV-lZHPFTE",
 ]
 # "report" -> cheap text report on all 10 (translations, fills, banner flags).
-# "pairs"  -> emit one high-res original|render pair per deploy, rotating via the
-#             counter file (so 10 deploys cover all 10).
-MODE = "report"
+# "pairs"  -> emit one high-res original|render pair per deploy, rotating through
+#             FOCUS via the counter file.
+MODE = "pairs"
+FOCUS = [6, 3, 0, 8, 1, 9, 2, 5, 4, 7]
 CACHE = Path("data/diagnostics")
 COUNTER = CACHE / "_counter"
 FONT = image_text._find_text_font("sans")
@@ -118,8 +119,8 @@ def main() -> None:
                 counter = int(COUNTER.read_text().strip())
             except Exception:  # noqa: BLE001
                 counter = 0
-        COUNTER.write_text(str((counter + 1) % 10))
-        idx = counter
+        COUNTER.write_text(str((counter + 1) % len(FOCUS)))
+        idx = FOCUS[counter % len(FOCUS)]
         im, orig, vid = renders.get(idx), origs.get(idx), IDS[idx]
         if im is None or orig is None:
             print(f"  pair[{idx}] unavailable"); return
