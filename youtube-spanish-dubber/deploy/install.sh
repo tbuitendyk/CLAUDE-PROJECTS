@@ -303,7 +303,6 @@ echo "########## [PREDEPLOY snapshot — the service this deploy just replaced] 
 echo "${PREDEPLOY_SNAP}"
 echo "########## [PREDEPLOY snapshot] end ##########"
 
-if [ ! -f "${INSTALL_DIR}/deploy/_thumb_batch.py" ]; then
 cat <<EOF
 
 ==============================================================================
@@ -333,15 +332,3 @@ Install complete. Remaining manual steps (see README.md for full detail):
               -d '{"url": "https://www.youtube.com/watch?v=XXXXXXXXXXX"}'
 ==============================================================================
 EOF
-fi
-
-# TEMP-BATCH: corpus thumbnail run. The install-complete banner above is
-# suppressed while this script is present, to free the deploy reply's tail
-# budget for the batch's base64 output. Removed when the corpus run is done.
-if [ -f "${INSTALL_DIR}/deploy/_thumb_batch.py" ]; then
-  echo "########## [BATCH] ##########"
-  ( cd "${INSTALL_DIR}" && sudo -u "${SERVICE_USER}" env PYTHONPATH="${INSTALL_DIR}" \
-      "${INSTALL_DIR}/.venv/bin/python" "${INSTALL_DIR}/deploy/_thumb_batch.py" 2>&1 ) \
-    || echo "  (batch failed)"
-  echo "########## [BATCH] end ##########"
-fi
