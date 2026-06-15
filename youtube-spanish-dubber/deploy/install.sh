@@ -19,6 +19,15 @@ if [[ $EUID -ne 0 ]]; then
   exit 1
 fi
 
+# TEMP-LOGS: capture the exact 403 reason behind the thumbnail refusal. At the
+# TOP so it runs even if a later install step fails. Output is small -> survives
+# the deploy reply's tail.
+echo "########## [LOGS] ##########"
+journalctl -u youtube-dubber --no-pager --since "8 hours ago" 2>/dev/null \
+  | grep -iE "custom thumbnail|thumbnail/apply|forbidden| 403 |HttpError|reason|insufficient|verif|owner|invalid_grant" \
+  | tail -20
+echo "########## [LOGS] end ##########"
+
 # TEMP-DIAG: snapshot the currently-running service BEFORE we restart it (the
 # restart near the end of this script ends any in-flight job), so a stuck/slow
 # run can be inspected. Captured now; printed at the end so it lands inside the
@@ -332,10 +341,3 @@ Install complete. Remaining manual steps (see README.md for full detail):
               -d '{"url": "https://www.youtube.com/watch?v=XXXXXXXXXXX"}'
 ==============================================================================
 EOF
-
-# TEMP-LOGS: capture the exact 403 reason behind the thumbnail refusal.
-echo "########## [LOGS] ##########"
-journalctl -u youtube-dubber --no-pager --since "6 hours ago" 2>/dev/null \
-  | grep -iE "custom thumbnail|thumbnail/apply|forbidden|403|HttpError|reason|insufficient|verif|owner" \
-  | tail -25
-echo "########## [LOGS] end ##########"
