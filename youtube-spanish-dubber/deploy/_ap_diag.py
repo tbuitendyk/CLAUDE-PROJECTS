@@ -1,29 +1,19 @@
-"""TEMP: reproduce the ACTUAL product path -- fetch JVN fresh + fresh detect +
-render_translations (what 'Another video link' does), not the saved edit. Print
-region 0's box/ink/text-band/extent and where the dots land, and emit a high-res
-crop with those boxes drawn. Removed after the dots are actually gone.
+"""TEMP: render the USER's saved edit and capture the ACTUAL painted banner box,
+then draw it over the result so we can see exactly where the repaint reaches vs.
+where the dots are. Removed after.
 """
 from __future__ import annotations
 
 import base64
 import io
-import tempfile
 from pathlib import Path
 
-import numpy as np
 from PIL import Image, ImageDraw
 
-from youtube_dubber.pipeline import image_text, downloader
+from youtube_dubber import db
+from youtube_dubber.pipeline import image_text, thumbnail_preview as tp
 
 CACHE = Path("data/diagnostics")
-VID = "JVN7NXqwjro"
-
-
-def _fetch():
-    # Fetch fresh, like the product (don't reuse a possibly-different cache).
-    with tempfile.TemporaryDirectory() as d:
-        src = downloader.fetch_thumbnail(f"https://www.youtube.com/watch?v={VID}", Path(d))
-        return Image.open(src.thumbnail_path).convert("RGB")
 
 
 def _emit(img, name, budget=5000):
@@ -40,23 +30,24 @@ def _emit(img, name, budget=5000):
 
 
 def main():
-    A = _fetch()
-    print("  fresh size:", A.size)
-    pairs = image_text.detect_and_translate(A, "en", "es")
-    arr = np.asarray(A.convert("RGB"))
-    region = pairs[0][0]
-    style = image_text._analyze_region(arr, region.bbox)
-    print(f"  r0 box={region.bbox} ink={image_text._ink_bbox(style)} "
-          f"textband={image_text._text_band_bbox(style)} extent={image_text._banner_extent_bbox(arr, style)}")
-    B, _ = image_text.render_translations(A, pairs, preserve_overlays=True)
-    draw = ImageDraw.Draw(B)
-    draw.rectangle(list(region.bbox), outline=(255, 0, 0), width=3)        # OCR box (red)
-    ib = image_text._ink_bbox(style)
-    if ib:
-        draw.rectangle(list(ib), outline=(0, 120, 255), width=2)           # ink box (blue)
-    crop = B.crop((70, 150, A.width - 50, 430))
-    w = 500
-    _emit(crop.resize((w, int(crop.height * w / crop.width))), "fresh")
+    p = next((x for x in db.list_projects()
+              if x.source_video_id == "JVN7NXqwjro" and x.target_language == "es"), None)
+    edit = (p.full() or {}).get("thumbnail_edit") if p else None
+    if not edit or not edit.get("regions"):
+        print("  no saved edit"); return
+    image = tp.data_uri_to_image(edit["original"]) if edit.get("original") \
+        else Image.open(CACHE / "orig_JVN7NXqwjro.jpg").convert("RGB")
+    image_text._RECON_DEBUG = []
+    pres = tp.render_edited(image, edit["regions"],
+                           banner_text=edit.get("banner_text") or "", preserve_overlays=True)
+    dbg = image_text._RECON_DEBUG
+    print("  painted banners:", dbg[:3])
+    draw = ImageDraw.Draw(pres)
+    if dbg:
+        draw.rectangle(list(dbg[0]["painted"]), outline=(255, 0, 0), width=3)   # painted box (red)
+    crop = pres.crop((60, 130, image.width - 40, 430))
+    w = 520
+    _emit(crop.resize((w, int(crop.height * w / crop.width))), "paint")
 
 
 if __name__ == "__main__":

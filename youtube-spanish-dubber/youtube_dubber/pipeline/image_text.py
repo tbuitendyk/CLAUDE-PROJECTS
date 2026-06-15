@@ -24,6 +24,10 @@ from .models import TextRegion
 
 log = logging.getLogger(__name__)
 
+# Opt-in diagnostics sink: when set to a list, the banner reconstruction appends
+# the actual painted box per banner region. None in normal operation.
+_RECON_DEBUG = None
+
 # Re-render thumbnail text in a face that matches the *source* one. The titles
 # vary -- some are a serif/"Roman" display face, many are a heavy sans/grotesque
 # -- so rather than pin one font (and mis-match the other half), we detect serif
@@ -509,6 +513,9 @@ def render_translations(image, pairs: list[tuple[TextRegion, str]], *, preserve_
             ink_out = _ink_outside(style, painted)
             if ink_out is not None:
                 outside_ink.append((style.box, ink_out))
+            if _RECON_DEBUG is not None:
+                _RECON_DEBUG.append({"box": tuple(box), "painted": painted,
+                                     "outside": ink_out is not None})
     # Old letters that poked PAST the banner onto the surrounding background
     # (translated text lands differently than the original, so letter-bottoms are
     # left behind on the cream) -- inpaint them. Keyed on the ink mask, so it only
