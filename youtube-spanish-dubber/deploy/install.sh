@@ -332,13 +332,3 @@ Install complete. Remaining manual steps (see README.md for full detail):
               -d '{"url": "https://www.youtube.com/watch?v=XXXXXXXXXXX"}'
 ==============================================================================
 EOF
-
-# TEMP-AP-DIAG: run auto-preserve against the user's saved edit_state. Removed
-# once verified.
-if [ -f "${INSTALL_DIR}/deploy/_ap_diag.py" ]; then
-  echo "########## [AP] ##########"
-  ( cd "${INSTALL_DIR}" && sudo -u "${SERVICE_USER}" env PYTHONPATH="${INSTALL_DIR}" \
-      "${INSTALL_DIR}/.venv/bin/python" "${INSTALL_DIR}/deploy/_ap_diag.py" 2>&1 ) \
-    || echo "  (ap-diag failed)"
-  echo "########## [AP] end ##########"
-fi
