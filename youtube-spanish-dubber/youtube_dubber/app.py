@@ -466,6 +466,12 @@ def thumbnail_apply(payload: ThumbnailApplyRequest) -> dict:
                     "YouTube refused the thumbnail. Custom thumbnails need a phone-verified "
                     "channel, and you can only set one on a video your connected channel owns."
                 )
+                # Turn the opaque 403 into a concrete reason where we can: name the
+                # authorized channel vs the video's owner (the common wrong-channel /
+                # Brand-Account re-auth). Best-effort -- stays silent without readonly scope.
+                hint = uploader.diagnose_thumbnail_failure(video_id)
+                if hint:
+                    detail = f"{detail} {hint}"
             elif status == 404:
                 detail = "No video with that ID was found on your connected channel."
             else:

@@ -25,7 +25,18 @@ from ..config import settings
 
 log = logging.getLogger(__name__)
 
-SCOPES = ["https://www.googleapis.com/auth/youtube.upload"]
+# Upload is all the dub pipeline needs to publish. youtube.readonly is added
+# purely for *diagnostics*: it lets the service read back which channel it's
+# authorized as and who owns a target video, so an opaque 403 on a thumbnail
+# becomes a clear "you authorized as channel A, but that video belongs to
+# channel B -- re-authorize as B" message (the common Brand-Account mix-up,
+# where one Google login manages several channels). Read-only: it can't change
+# anything. Takes effect only after a fresh `authorize`; existing upload-only
+# tokens keep working for uploads, the diagnostics just stay quiet until re-auth.
+AUTHORIZATION_SCOPES = [
+    "https://www.googleapis.com/auth/youtube.upload",
+    "https://www.googleapis.com/auth/youtube.readonly",
+]
 API_SERVICE_NAME = "youtube"
 API_VERSION = "v3"
 
@@ -35,7 +46,12 @@ def _load_credentials() -> Credentials:
     creds: Credentials | None = None
 
     if token_file.exists():
-        creds = Credentials.from_authorized_user_file(str(token_file), SCOPES)
+        # Load with the scopes recorded in the token file, NOT AUTHORIZATION_SCOPES:
+        # the saved token only carries what was granted at authorize time, and
+        # forcing a broader scope here would make the token refresh re-request a
+        # scope the token never had (breaking refresh). Broadened scopes take
+        # effect only after the next `authorize` writes a new token.
+        creds = Credentials.from_authorized_user_file(str(token_file))
 
     if creds and creds.valid:
         return creds
@@ -53,6 +69,11 @@ def _load_credentials() -> Credentials:
     )
 
 
+def _youtube():
+    """Build an authenticated YouTube Data API client from the saved token."""
+    return build(API_SERVICE_NAME, API_VERSION, credentials=_load_credentials(), cache_discovery=False)
+
+
 def run_authorization_flow() -> None:
     """Interactive, one-time OAuth2 authorization (run manually, not by the worker)."""
     secrets_file = settings.youtube_client_secrets_file
@@ -63,7 +84,7 @@ def run_authorization_flow() -> None:
             "for an OAuth client of type 'Desktop app' and place it there."
         )
 
-    flow = InstalledAppFlow.from_client_secrets_file(str(secrets_file), SCOPES)
+    flow = InstalledAppFlow.from_client_secrets_file(str(secrets_file), AUTHORIZATION_SCOPES)
     # Fixed port so it matches the SSH port-forward documented in the README,
     # and open_browser=False because the VPS is headless -- trying to launch
     # one raises webbrowser.Error instead of falling back to printing the URL.
@@ -149,3 +170,64 @@ def set_thumbnail(video_id: str, thumbnail_path: Path, raise_on_error: bool = Fa
         if raise_on_error:
             raise
         return False
+
+
+def authorized_channel() -> "tuple[str, str] | None":
+    """Best-effort: return (channel_id, channel_title) for the channel the saved
+    token is authorized as, or None if it can't be read (e.g. the token predates
+    the youtube.readonly scope -- re-authorize to enable). Never raises."""
+    try:
+        resp = _youtube().channels().list(part="snippet", mine=True).execute()
+        items = resp.get("items") or []
+        if items:
+            return items[0]["id"], items[0]["snippet"]["title"]
+    except Exception as exc:  # noqa: BLE001 -- diagnostics must never raise
+        log.info(
+            "Couldn't read the authorized channel identity (%s). Re-authorize so the "
+            "token carries the youtube.readonly scope to enable channel diagnostics.",
+            exc,
+        )
+    return None
+
+
+def video_owner(video_id: str) -> "tuple[str, str] | None":
+    """Best-effort: return (channel_id, channel_title) of the channel that owns
+    `video_id`, or None if it can't be read. Never raises."""
+    try:
+        resp = _youtube().videos().list(part="snippet", id=video_id).execute()
+        items = resp.get("items") or []
+        if items:
+            snippet = items[0]["snippet"]
+            return snippet["channelId"], snippet.get("channelTitle", "")
+    except Exception as exc:  # noqa: BLE001 -- diagnostics must never raise
+        log.info("Couldn't read the owner of video %s (%s).", video_id, exc)
+    return None
+
+
+def diagnose_thumbnail_failure(video_id: str) -> "str | None":
+    """Turn YouTube's opaque 403 on a thumbnail into a human explanation by
+    comparing the authorized channel against the target video's owner. Returns a
+    one-line hint, or None when identity can't be read (token lacks the readonly
+    scope) so the caller falls back to generic guidance. Never raises."""
+    auth = authorized_channel()
+    owner = video_owner(video_id)
+    if auth and owner:
+        if auth[0] != owner[0]:
+            return (
+                f"The service is authorized as channel '{auth[1]}' ({auth[0]}), but that "
+                f"video belongs to '{owner[1]}' ({owner[0]}). Re-run the 'authorize' step "
+                "and pick the owning channel -- watch for Brand Accounts, since one Google "
+                "login can manage several channels."
+            )
+        return (
+            f"The service is authorized as the video's own channel ('{auth[1]}'), so the "
+            "refusal is something else -- most likely the channel isn't enabled for custom "
+            "thumbnails (verify it at youtube.com/verify)."
+        )
+    if auth and not owner:
+        return (
+            f"The service is authorized as channel '{auth[1]}' ({auth[0]}), and video "
+            f"{video_id} isn't visible to it -- it's likely owned by a different channel, "
+            "so re-authorize as the owning channel."
+        )
+    return None
