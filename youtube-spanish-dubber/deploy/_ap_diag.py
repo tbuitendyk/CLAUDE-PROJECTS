@@ -51,15 +51,11 @@ def main():
     print("  regions:", [r.text for r, _ in pairs])
     Bc, _ = image_text.render_translations(A, pairs, preserve_overlays=False)
     Bp, _ = image_text.render_translations(A, pairs, preserve_overlays=True)
-    band = (0, 110, A.width, 610)         # both title lines
-    crops = [A.crop(band), Bc.crop(band), Bp.crop(band)]
-    w = 340
-    rs = [c.resize((w, int(c.height * w / c.width))) for c in crops]
-    sheet = Image.new("RGB", (w, sum(r.height for r in rs) + 6), (255, 0, 255))
-    y = 0
-    for r in rs:
-        sheet.paste(r, (0, y)); y += r.height + 3
-    _emit(sheet, "cmp")
+    # B-preserve, title area only, at higher res so the slash + any junk are clear.
+    crop = Bp.crop((0, 110, A.width, 610))
+    w = 380
+    crop = crop.resize((w, int(crop.height * w / crop.width)))
+    _emit(crop, "bp", budget=4800)
 
 
 if __name__ == "__main__":
