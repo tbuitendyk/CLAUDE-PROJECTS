@@ -38,12 +38,7 @@ def main():
         print("  no saved edit"); return
     image = tp.data_uri_to_image(edit["original"]) if edit.get("original") \
         else Image.open(CACHE / "orig_JVN7NXqwjro.jpg").convert("RGB")
-    rendered = tp.render_edited(image, edit["regions"],
-                               banner_text=edit.get("banner_text") or "", preserve_overlays=True)
-
-    # Instrument region 0 (the yellow banner line): where do the extents land?
     import numpy as np
-    from PIL import ImageDraw
     from youtube_dubber.pipeline import image_text
     from youtube_dubber.pipeline.models import TextRegion
     arr = np.asarray(image.convert("RGB"))
@@ -51,14 +46,19 @@ def main():
     region = TextRegion(polygon=[(float(x), float(y)) for x, y in r0["polygon"]], text=r0.get("text") or "")
     style = image_text._analyze_region(arr, region.bbox)
     ext = image_text._banner_extent_bbox(arr, style)
-    print(f"  box={region.bbox} banner={style.banner_color} has_banner={style.has_banner}")
-    print(f"  extent={ext} ink={image_text._ink_bbox(style)} textband={image_text._text_band_bbox(style)}")
-    if ext:
-        ImageDraw.Draw(rendered).rectangle(list(ext), outline=(255, 0, 0), width=3)
+    tb = image_text._text_band_bbox(style)
+    union = (min(ext[0], tb[0]), min(ext[1], tb[1]), max(ext[2], tb[2]), max(ext[3], tb[3])) if ext else tb
+    print(f"  extent={ext} textband={tb} UNION={union}")
 
-    crop = rendered.crop((90, 150, image.width - 70, 345))
-    w = 520
-    _emit(crop.resize((w, int(crop.height * w / crop.width))), "band")
+    clean = tp.render_edited(image, edit["regions"], banner_text=edit.get("banner_text") or "", preserve_overlays=False)
+    pres = tp.render_edited(image, edit["regions"], banner_text=edit.get("banner_text") or "", preserve_overlays=True)
+    box = (90, 150, image.width - 70, 365)
+    w = 460
+    cc = clean.crop(box); cp = pres.crop(box)
+    cc = cc.resize((w, int(cc.height * w / cc.width))); cp = cp.resize((w, int(cp.height * w / cp.width)))
+    sheet = Image.new("RGB", (w, cc.height + cp.height + 4), (255, 0, 255))
+    sheet.paste(cc, (0, 0)); sheet.paste(cp, (0, cc.height + 4))
+    _emit(sheet, "band")
 
 
 if __name__ == "__main__":
