@@ -28,6 +28,36 @@ journalctl -u youtube-dubber --no-pager --since "8 hours ago" 2>/dev/null \
   | tail -20
 echo "########## [LOGS] end ##########"
 
+# TEMP-CHANCHECK: who is authorized vs who owns the target video?
+echo "########## [CHANCHECK] ##########"
+( cd /opt/youtube-dubber && sudo -u dubber env PYTHONPATH=/opt/youtube-dubber \
+    ./.venv/bin/python - <<'PYEOF'
+try:
+    from youtube_dubber.pipeline.uploader import _load_credentials, API_SERVICE_NAME, API_VERSION
+    from googleapiclient.discovery import build
+    yt = build(API_SERVICE_NAME, API_VERSION, credentials=_load_credentials(), cache_discovery=False)
+    try:
+        ch = yt.channels().list(part="id,snippet", mine=True).execute()
+        for i in ch.get("items", []):
+            print("AUTH_CHANNEL id=%s title=%r" % (i["id"], i["snippet"]["title"]))
+        if not ch.get("items"):
+            print("AUTH_CHANNEL: none returned")
+    except Exception as e:
+        print("channels.list(mine) failed (likely scope):", repr(e)[:180])
+    try:
+        v = yt.videos().list(part="snippet", id="Q9FNTNmIdi0").execute()
+        for i in v.get("items", []):
+            print("VIDEO_OWNER channelId=%s title=%r" % (i["snippet"]["channelId"], i["snippet"]["channelTitle"]))
+        if not v.get("items"):
+            print("VIDEO Q9FNTNmIdi0: not found / not visible to this token")
+    except Exception as e:
+        print("videos.list failed:", repr(e)[:180])
+except Exception as e:
+    print("CHANCHECK error:", repr(e)[:280])
+PYEOF
+) 2>&1 | sed 's/^/  /'
+echo "########## [CHANCHECK] end ##########"
+
 # TEMP-DIAG: snapshot the currently-running service BEFORE we restart it (the
 # restart near the end of this script ends any in-flight job), so a stuck/slow
 # run can be inspected. Captured now; printed at the end so it lands inside the
