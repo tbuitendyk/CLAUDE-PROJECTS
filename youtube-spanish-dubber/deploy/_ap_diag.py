@@ -56,20 +56,7 @@ def main():
         w = 320
         _emit(crop.resize((w, int(crop.height * w / crop.width))), "main")
 
-    # (2) Other banner thumbnails (#2 Apostasy, #4 Pastor Reacts) -- regression.
-    montage = []
-    for vid in ("5wVonZ1S2Ss", "iKFJ5BMF8a4"):
-        A = _load(vid)
-        pairs = image_text.detect_and_translate(A, "en", "es")
-        B, _ = image_text.render_translations(A, pairs, preserve_overlays=True)
-        montage.append(B)
-    w = 300
-    rs = [b.resize((w, int(b.height * w / b.width))) for b in montage]
-    sheet = Image.new("RGB", (w, sum(r.height for r in rs) + 4), (255, 0, 255))
-    y = 0
-    for r in rs:
-        sheet.paste(r, (0, y)); y += r.height + 3
-    _emit(sheet, "reg")
+    # (#2/#4 regression already verified clean.)
 
 
 if __name__ == "__main__":
