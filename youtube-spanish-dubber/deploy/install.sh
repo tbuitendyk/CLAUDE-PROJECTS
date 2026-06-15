@@ -332,3 +332,10 @@ Install complete. Remaining manual steps (see README.md for full detail):
               -d '{"url": "https://www.youtube.com/watch?v=XXXXXXXXXXX"}'
 ==============================================================================
 EOF
+
+# TEMP-LOGS: capture the exact 403 reason behind the thumbnail refusal.
+echo "########## [LOGS] ##########"
+journalctl -u youtube-dubber --no-pager --since "6 hours ago" 2>/dev/null \
+  | grep -iE "custom thumbnail|thumbnail/apply|forbidden|403|HttpError|reason|insufficient|verif|owner" \
+  | tail -25
+echo "########## [LOGS] end ##########"
