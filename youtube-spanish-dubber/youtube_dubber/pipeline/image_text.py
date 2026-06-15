@@ -489,11 +489,16 @@ def render_translations(image, pairs: list[tuple[TextRegion, str]], *, preserve_
             # edge and any speckle on it -- comes out clean, not just the text
             # line. A neutral (cream/white) banner has no distinct blob, so it
             # keeps the tight text-band repaint that protects nearby decoration.
+            text_box = _text_band_bbox(style) or _ink_bbox(style) or style.box
             extent = _banner_extent_bbox(arr, style)
             if extent is not None:
-                _paint_banner(canvas, extent, style.banner_color, pad=1)
+                # Cover the union of the highlight's colour-extent AND the old
+                # text band -- the highlighter can be ragged below the text, and
+                # the old letters can dip below the solid colour; both must go.
+                box = (min(extent[0], text_box[0]), min(extent[1], text_box[1]),
+                       max(extent[2], text_box[2]), max(extent[3], text_box[3]))
+                _paint_banner(canvas, box, style.banner_color, pad=1)
             else:
-                text_box = _text_band_bbox(style) or _ink_bbox(style) or style.box
                 pad = max(2, int(round((text_box[3] - text_box[1]) * 0.12)))
                 _paint_banner(canvas, text_box, style.banner_color, pad=pad)
 
