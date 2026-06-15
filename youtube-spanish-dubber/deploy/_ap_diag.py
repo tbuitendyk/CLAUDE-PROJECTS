@@ -52,8 +52,8 @@ def main():
         image = tp.data_uri_to_image(edit["original"]) if edit.get("original") else _load("JVN7NXqwjro")
         rendered = tp.render_edited(image, edit["regions"],
                                     banner_text=edit.get("banner_text") or "", preserve_overlays=True)
-        crop = rendered.crop((40, 95, image.width - 20, 705))
-        w = 320
+        crop = rendered.crop((40, 55, image.width - 20, 370))   # top filigree + banner
+        w = 380
         _emit(crop.resize((w, int(crop.height * w / crop.width))), "main")
 
     # (#2/#4 regression already verified clean.)
