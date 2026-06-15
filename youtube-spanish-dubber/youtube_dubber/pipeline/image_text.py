@@ -520,13 +520,14 @@ def render_translations(image, pairs: list[tuple[TextRegion, str]], *, preserve_
              style.ink, style.banner_color, _text_band_bbox(style) or style.box)
             for (region, _), style in zip(pairs, styles)
         ]
-        canvas = _restore_overlays(image, canvas, background, items)
+        banner_colors = [s.banner_color for s in styles if s.has_banner]
+        canvas = _restore_overlays(image, canvas, background, items, banner_colors=banner_colors)
     return canvas, replaced
 
 
 def _restore_overlays(
-    original, final_canvas, background, items,
-    *, text_dist: float = 80.0, sat_min: float = 0.30, hue_min: float = 15.0,
+    original, final_canvas, background, items, *, banner_colors=None,
+    text_dist: float = 80.0, sat_min: float = 0.30, hue_min: float = 15.0,
     diff_min: float = 45.0, min_area_frac: float = 0.0015, alpha: float = 0.72,
 ):
     """Transfer a coloured graphic that overlaid the original text -- a
@@ -605,6 +606,13 @@ def _restore_overlays(
                 foreign = saturated & (hue_d > hue_min)
             else:                              # neutral banner -> any saturated colour
                 foreign = saturated
+            # A foreign mark must not match ANY region's banner colour -- a
+            # neighbouring banner's saturated edge (the yellow band above) is part
+            # of a banner, not a graphic to transfer.
+            if banner_colors:
+                for bc in banner_colors:
+                    bcv = np.array(tuple(bc)[:3], np.float32)
+                    foreign &= np.linalg.norm(o - bcv, axis=2) > text_dist
             mask = foreign & not_old & changed
             # Restrict to this region's own text line (+ a little), so an
             # oversized OCR box that overlaps a neighbour's banner can't pull
