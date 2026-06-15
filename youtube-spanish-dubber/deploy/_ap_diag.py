@@ -50,15 +50,10 @@ def main():
     union = (min(ext[0], tb[0]), min(ext[1], tb[1]), max(ext[2], tb[2]), max(ext[3], tb[3])) if ext else tb
     print(f"  extent={ext} textband={tb} UNION={union}")
 
-    clean = tp.render_edited(image, edit["regions"], banner_text=edit.get("banner_text") or "", preserve_overlays=False)
     pres = tp.render_edited(image, edit["regions"], banner_text=edit.get("banner_text") or "", preserve_overlays=True)
-    box = (90, 150, image.width - 70, 365)
-    w = 460
-    cc = clean.crop(box); cp = pres.crop(box)
-    cc = cc.resize((w, int(cc.height * w / cc.width))); cp = cp.resize((w, int(cp.height * w / cp.width)))
-    sheet = Image.new("RGB", (w, cc.height + cp.height + 4), (255, 0, 255))
-    sheet.paste(cc, (0, 0)); sheet.paste(cp, (0, cc.height + 4))
-    _emit(sheet, "band")
+    crop = pres.crop((40, 120, image.width - 20, 580))   # banner + slash line
+    w = 360
+    _emit(crop.resize((w, int(crop.height * w / crop.width))), "full")
 
 
 if __name__ == "__main__":
