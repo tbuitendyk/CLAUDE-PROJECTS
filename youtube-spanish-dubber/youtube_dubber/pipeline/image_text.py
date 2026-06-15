@@ -511,7 +511,8 @@ def render_translations(image, pairs: list[tuple[TextRegion, str]], *, preserve_
 
 def _restore_overlays(
     original, final_canvas, background, items,
-    *, text_dist: float = 90.0, bg_dist: float = 70.0, min_area_frac: float = 0.002,
+    *, text_dist: float = 80.0, bg_dist: float = 55.0, sat_min: float = 55.0,
+    min_area_frac: float = 0.0015,
 ):
     """Composite back the graphics that overlaid the original text -- a
     strikethrough, a red slash, a sticker -- which the text wipe removed.
@@ -555,24 +556,31 @@ def _restore_overlays(
                 continue
             o = orig[y0:y1, x0:x1]
             b = bg[y0:y1, x0:x1]
-            fillv = np.array(tuple(fill)[:3], np.float32)
-            far_text = np.linalg.norm(o - fillv, axis=2) > text_dist     # not the old letters
-            far_bg = np.linalg.norm(o - b, axis=2) > bg_dist             # not the background
-            mask = far_text & far_bg
-            # Never restore the original text's own strokes -- excluding the
-            # (dilated) glyph mask keeps a scene's old letters from coming back.
-            if ink is not None and cv2 is not None:
-                im = np.asarray(ink).astype(np.uint8)
-                if im.shape == mask.shape:
-                    im = cv2.dilate(im * 255, np.ones((3, 3), np.uint8), iterations=2)
-                    mask = mask & (im == 0)
+            # The OLD letters' actual colour, sampled from the glyph ink -- robust
+            # even when the passed `fill` was mis-detected (a scene title). The
+            # slash differs from this, so it isn't mistaken for a letter (and,
+            # unlike a hard ink mask, this keeps the slash where it crosses them).
+            letter = np.array(tuple(fill)[:3], np.float32)
+            if ink is not None:
+                im = np.asarray(ink)
+                if im.shape == o.shape[:2] and im.any():
+                    letter = np.median(o[im > 0], axis=0).astype(np.float32)
+            not_letter = np.linalg.norm(o - letter, axis=2) > text_dist   # not the old text
+            far_bg = np.linalg.norm(o - b, axis=2) > bg_dist              # not the background
+            # A graphic worth preserving is a *saturated foreign colour* (a red
+            # slash, a coloured sticker), NOT a neutral tone. This is what stops
+            # the cream/white document edges (low saturation, covered by the
+            # banner repaint) from being pasted back as junk on a clean banner.
+            sat = o.max(axis=2) - o.min(axis=2)
+            colored = sat > sat_min
+            mask = not_letter & far_bg & colored
             if not mask.any():
                 continue
             if cv2 is not None:
                 m = mask.astype(np.uint8)
-                m = cv2.morphologyEx(m, cv2.MORPH_OPEN, np.ones((3, 3), np.uint8))
+                m = cv2.morphologyEx(m, cv2.MORPH_CLOSE, np.ones((3, 3), np.uint8))
                 count, labels, stats, _ = cv2.connectedComponentsWithStats(m, 8)
-                min_area = max(16, int(min_area_frac * (x1 - x0) * (y1 - y0)))
+                min_area = max(24, int(min_area_frac * (x1 - x0) * (y1 - y0)))
                 keep = [i for i in range(1, count) if stats[i, cv2.CC_STAT_AREA] >= min_area]
                 if not keep:
                     continue
