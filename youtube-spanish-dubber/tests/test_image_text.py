@@ -331,3 +331,37 @@ def test_detect_and_translate_groups_then_translates_phrase(monkeypatch):
     assert seen == ["this guy"]                 # one phrase, lowercased for MT
     # ALL-CAPS source -> ALL-CAPS translation, as one merged line.
     assert len(pairs) == 1 and pairs[0][1] == "ESTE TIPO"
+
+
+def test_group_line_blocks_groups_word_stacked_phrase():
+    # Four single words stacked vertically, aligned -> one block.
+    lines = [_reg(0, 0, 80, 40, "THIS"), _reg(0, 45, 80, 85, "GUY"),
+             _reg(0, 90, 90, 130, "RIGHT"), _reg(0, 135, 80, 175, "HERE")]
+    blocks = image_text._group_line_blocks(lines)
+    assert len(blocks) == 1 and len(blocks[0]) == 4
+    # Two lines of real (multi-word) text are NOT grouped into one phrase.
+    titled = [_reg(0, 0, 200, 40, "Once Saved"), _reg(0, 45, 200, 85, "Always Saved?")]
+    assert len(image_text._group_line_blocks(titled)) == 2
+
+
+def test_redistribute_phrase_hands_back_one_word_per_line():
+    block = [_reg(0, 0, 80, 40, "THIS"), _reg(0, 45, 80, 85, "GUY"),
+             _reg(0, 90, 80, 130, "RIGHT"), _reg(0, 135, 80, 175, "HERE")]
+    out = image_text._redistribute_phrase(block, "ESTE TIPO JUSTO AQUÍ")
+    assert [t for _, t in out] == ["ESTE", "TIPO", "JUSTO", "AQUÍ"]
+
+
+def test_detect_and_translate_stacked_phrase(monkeypatch):
+    regs = [_reg(0, 0, 80, 40, "THIS"), _reg(0, 45, 80, 85, "GUY"),
+            _reg(0, 90, 80, 130, "RIGHT"), _reg(0, 135, 80, 175, "HERE")]
+    monkeypatch.setattr(ocr_onnx, "detect_text_regions", lambda *a, **k: regs)
+    seen = []
+
+    def fake_translate(text, frm, to):
+        seen.append(text)
+        return "este tipo justo aquí"
+
+    monkeypatch.setattr(image_text.translator, "translate_text", fake_translate)
+    pairs = image_text.detect_and_translate(Image.new("RGB", (120, 180)), "en", "es")
+    assert seen == ["this guy right here"]          # whole phrase, once
+    assert [t for _, t in pairs] == ["ESTE", "TIPO", "JUSTO", "AQUÍ"]

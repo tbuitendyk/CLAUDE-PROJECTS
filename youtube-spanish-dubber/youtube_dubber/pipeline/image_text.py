@@ -164,18 +164,28 @@ def detect_and_translate(
     just risks degrading a region for no gain. Never raises -- an untranslatable
     line is skipped."""
     regions = ocr_onnx.detect_text_regions(image, min_confidence=min_confidence)
+    lines = [_merge_line_regions(line) for line in _group_text_lines(regions)]
     pairs: list[tuple[TextRegion, str]] = []
-    for line in _group_text_lines(regions):
-        region = _merge_line_regions(line)
-        if not region.text.strip():
+    for block in _group_line_blocks(lines):
+        # A multi-line block is a word-stacked phrase ("THIS"/"GUY"/"RIGHT"/
+        # "HERE"): translate it whole for the right meaning, then hand each line
+        # back its share of the translation so the stacked layout is preserved.
+        full = " ".join(r.text.strip() for r in block if r.text.strip())
+        if not full:
             continue
         try:
-            translated = _translate_preserving_case(region.text, from_code, to_code)
+            translated = _translate_preserving_case(full, from_code, to_code)
         except Exception as exc:  # noqa: BLE001 -- e.g. no language package
             log.warning("Skipping a thumbnail text line (%s)", exc)
             continue
-        if translated and translated.strip() and translated.strip() != region.text.strip():
-            pairs.append((region, translated.strip()))
+        if not (translated and translated.strip()) or translated.strip() == full:
+            continue
+        if len(block) == 1:
+            pairs.append((block[0], translated.strip()))
+        else:
+            for region, part in _redistribute_phrase(block, translated.strip()):
+                if part.strip():
+                    pairs.append((region, part.strip()))
     return pairs
 
 
@@ -230,6 +240,68 @@ def _merge_line_regions(line: list[TextRegion]) -> TextRegion:
         fill_color=agreed("fill_color"),
         stroke_color=agreed("stroke_color"),
     )
+
+
+def _group_line_blocks(lines: list[TextRegion]) -> list[list[TextRegion]]:
+    """Group line-regions into blocks. Consecutive lines that are tightly stacked
+    and horizontally aligned form a candidate block; a block is kept whole (to be
+    translated as one phrase) only when it's clearly a *word-stacked* title --
+    several lines, few words each ("THIS"/"GUY"/"RIGHT"/"HERE"). Ordinary
+    multi-word stacked titles (two lines of real text) are left as independent
+    lines, since translating those line-by-line already reads fine."""
+    runs: list[list[TextRegion]] = []
+    for r in lines:
+        if not runs:
+            runs.append([r])
+            continue
+        prev = runs[-1][-1]
+        px0, py0, px1, py1 = prev.bbox
+        x0, y0, x1, y1 = r.bbox
+        gap = y0 - py1
+        overlap = min(px1, x1) - max(px0, x0)
+        aligned = overlap > 0.3 * max(1, min(px1 - px0, x1 - x0))
+        close = gap < 0.8 * max(1, py1 - py0)
+        if aligned and close:
+            runs[-1].append(r)
+        else:
+            runs.append([r])
+    blocks: list[list[TextRegion]] = []
+    for run in runs:
+        words = sum(len(r.text.split()) for r in run)
+        if len(run) >= 3 and words / len(run) <= 1.6:
+            blocks.append(run)                    # a word-stacked phrase
+        else:
+            blocks.extend([r] for r in run)       # keep lines independent
+    return blocks
+
+
+def _redistribute_phrase(block: list[TextRegion], translated: str) -> list[tuple[TextRegion, str]]:
+    """Hand the words of a translated phrase back to the block's stacked lines so
+    the layout is preserved. With at least one translated word per line it's a
+    near 1:1 hand-back (in reading order); when the translation has fewer words
+    than lines, the trailing lines are merged into the last filled one so no
+    original (untranslated) line is left showing."""
+    words = translated.split()
+    n, m = len(words), len(block)
+    if n == 0:
+        return []
+    if n < m:
+        out = [(block[k], words[k]) for k in range(n - 1)]
+        rest = _merge_line_regions(block[n - 1:])
+        out.append((rest, " ".join(words[n - 1:])))
+        return out
+    src = [max(1, len(r.text.split())) for r in block]
+    total = sum(src)
+    out, idx = [], 0
+    for k, region in enumerate(block):
+        if k == m - 1:
+            cnt = n - idx
+        else:
+            cnt = max(1, round(n * src[k] / total))
+            cnt = min(cnt, n - idx - (m - 1 - k))   # leave >=1 word per remaining line
+        out.append((region, " ".join(words[idx:idx + cnt])))
+        idx += cnt
+    return out
 
 
 def _translate_preserving_case(text: str, from_code: str, to_code: str) -> str:
