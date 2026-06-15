@@ -149,23 +149,87 @@ def detect_and_translate(
     *,
     min_confidence: float = 0.5,
 ) -> list[tuple[TextRegion, str]]:
-    """Detect text in `image` and translate each confidently-recognised region
-    to `to_code`, returning `(region, translated_text)` pairs.
+    """Detect text in `image`, group the detected fragments into reading-order
+    lines, and translate each *line* (not each fragment) to `to_code`, returning
+    `(merged_region, translated_text)` pairs.
 
-    Only regions whose translation is genuinely new are kept: a name, a number
-    or an already-Spanish word often translates to itself, and re-rendering
-    those just risks degrading a region for no gain. Never raises -- an
-    untranslatable region is skipped."""
+    Grouping first is what makes the translation read correctly: thumbnail OCR
+    often returns a title as several boxes ("THIS" "GUY" "RIGHT" "HERE"), and
+    translating those in isolation mangles the meaning ("RIGHT" -> "DERECHO"
+    instead of "justo"). Merged and translated as a phrase, the line comes out
+    natural and is re-rendered centred in the line's combined space.
+
+    Only lines whose translation is genuinely new are kept: a name, a number or
+    an already-Spanish word often translates to itself, and re-rendering those
+    just risks degrading a region for no gain. Never raises -- an untranslatable
+    line is skipped."""
+    regions = ocr_onnx.detect_text_regions(image, min_confidence=min_confidence)
     pairs: list[tuple[TextRegion, str]] = []
-    for region in ocr_onnx.detect_text_regions(image, min_confidence=min_confidence):
+    for line in _group_text_lines(regions):
+        region = _merge_line_regions(line)
+        if not region.text.strip():
+            continue
         try:
             translated = _translate_preserving_case(region.text, from_code, to_code)
         except Exception as exc:  # noqa: BLE001 -- e.g. no language package
-            log.warning("Skipping a thumbnail text region (%s)", exc)
+            log.warning("Skipping a thumbnail text line (%s)", exc)
             continue
         if translated and translated.strip() and translated.strip() != region.text.strip():
             pairs.append((region, translated.strip()))
     return pairs
+
+
+def _group_text_lines(regions: list[TextRegion]) -> list[list[TextRegion]]:
+    """Group detector regions into reading-order lines. Two fragments are on the
+    same line when their vertical spans overlap by more than half the shorter
+    one's height; within a line they're ordered left-to-right, and lines run
+    top-to-bottom. So a phrase split across several boxes on one line is handled
+    as a unit, while genuinely separate lines stay separate."""
+    items = [(r, *r.bbox) for r in regions]            # (region, x0, y0, x1, y1)
+    items.sort(key=lambda t: (t[2], t[1]))             # top-to-bottom, then left
+    lines: list[list[tuple]] = []
+    for it in items:
+        _, x0, y0, x1, y1 = it
+        h = max(1, y1 - y0)
+        for line in lines:
+            ly0 = min(t[2] for t in line)
+            ly1 = max(t[4] for t in line)
+            overlap = min(y1, ly1) - max(y0, ly0)
+            if overlap > 0.5 * min(h, ly1 - ly0):
+                line.append(it)
+                break
+        else:
+            lines.append([it])
+    grouped = [[t[0] for t in sorted(line, key=lambda t: t[1])] for line in lines]
+    grouped.sort(key=lambda line: min(r.bbox[1] for r in line))
+    return grouped
+
+
+def _merge_line_regions(line: list[TextRegion]) -> TextRegion:
+    """Combine a line's fragments into one `TextRegion`: text joined left-to-
+    right, geometry the union bounding rectangle. Appearance overrides (font,
+    colour) are carried only when every fragment agrees, else left None so the
+    renderer auto-detects from the (now line-wide) pixels."""
+    if len(line) == 1:
+        return line[0]
+    x0 = min(r.bbox[0] for r in line)
+    y0 = min(r.bbox[1] for r in line)
+    x1 = max(r.bbox[2] for r in line)
+    y1 = max(r.bbox[3] for r in line)
+    text = " ".join(r.text.strip() for r in line if r.text.strip())
+
+    def agreed(attr):
+        vals = {getattr(r, attr) for r in line}
+        return next(iter(vals)) if len(vals) == 1 else None
+
+    return TextRegion(
+        polygon=[(x0, y0), (x1, y0), (x1, y1), (x0, y1)],
+        text=text,
+        confidence=min((r.confidence for r in line), default=1.0),
+        font_family=agreed("font_family"),
+        fill_color=agreed("fill_color"),
+        stroke_color=agreed("stroke_color"),
+    )
 
 
 def _translate_preserving_case(text: str, from_code: str, to_code: str) -> str:

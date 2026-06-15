@@ -291,3 +291,43 @@ def test_render_region_uses_the_detected_family():
     # _render_region should pull the matching font for it.
     assert image_text._find_text_font("sans").lower().find("sans") != -1
     assert image_text._find_text_font("serif").lower().find("serif") != -1
+
+
+def _reg(x0, y0, x1, y1, text):
+    return TextRegion(polygon=[(x0, y0), (x1, y0), (x1, y1), (x0, y1)], text=text)
+
+
+def test_group_text_lines_merges_same_row_fragments():
+    # Four boxes on one row (same y span) -> one line, ordered left-to-right.
+    regs = [_reg(300, 20, 360, 60, "HERE"), _reg(0, 20, 60, 60, "THIS"),
+            _reg(100, 22, 180, 58, "GUY"), _reg(200, 20, 280, 60, "RIGHT")]
+    lines = image_text._group_text_lines(regs)
+    assert len(lines) == 1
+    assert [r.text for r in lines[0]] == ["THIS", "GUY", "RIGHT", "HERE"]
+    merged = image_text._merge_line_regions(lines[0])
+    assert merged.text == "THIS GUY RIGHT HERE"
+    assert merged.bbox == (0, 20, 360, 60)
+
+
+def test_group_text_lines_keeps_separate_rows():
+    regs = [_reg(0, 0, 200, 40, "WHERE"), _reg(0, 60, 200, 100, "FROM?")]
+    lines = image_text._group_text_lines(regs)
+    assert [[(r.text) for r in ln] for ln in lines] == [["WHERE"], ["FROM?"]]
+
+
+def test_detect_and_translate_groups_then_translates_phrase(monkeypatch):
+    # The detector returns per-word boxes; the translator should receive the
+    # whole line, not each word in isolation.
+    regs = [_reg(0, 0, 60, 40, "THIS"), _reg(70, 0, 140, 40, "GUY")]
+    monkeypatch.setattr(ocr_onnx, "detect_text_regions", lambda *a, **k: regs)
+    seen = []
+
+    def fake_translate(text, frm, to):
+        seen.append(text)
+        return "ESTE TIPO"
+
+    monkeypatch.setattr(image_text.translator, "translate_text", fake_translate)
+    pairs = image_text.detect_and_translate(Image.new("RGB", (200, 60)), "en", "es")
+    assert seen == ["this guy"]                 # one phrase, lowercased for MT
+    # ALL-CAPS source -> ALL-CAPS translation, as one merged line.
+    assert len(pairs) == 1 and pairs[0][1] == "ESTE TIPO"
