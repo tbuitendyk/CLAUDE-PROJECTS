@@ -365,3 +365,13 @@ def test_detect_and_translate_stacked_phrase(monkeypatch):
     pairs = image_text.detect_and_translate(Image.new("RGB", (120, 180)), "en", "es")
     assert seen == ["this guy right here"]          # whole phrase, once
     assert [t for _, t in pairs] == ["ESTE", "TIPO", "JUSTO", "AQUÍ"]
+
+
+def test_unglue_splits_glued_tokens_preserving_case(monkeypatch):
+    fake = {"thefinalblow": ["the", "final", "blow"], "soteriology": ["soteriology"],
+            "howyoulive": ["how", "you", "live"]}
+    monkeypatch.setattr(image_text, "_split_word", lambda t: fake.get(t, [t]))
+    assert image_text._unglue("THEFINALBLOW?") == "THE FINAL BLOW?"      # caps kept, ? kept
+    assert image_text._unglue("SOTERIOLOGY") == "SOTERIOLOGY"            # real word untouched
+    assert image_text._unglue("Howyoulive") == "How you live"           # title-ish
+    assert image_text._unglue("the cat") == "the cat"                   # short tokens untouched

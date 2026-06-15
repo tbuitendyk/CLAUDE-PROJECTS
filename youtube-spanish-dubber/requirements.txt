@@ -79,3 +79,8 @@ google-api-python-client==2.156.0
 google-auth==2.37.0
 google-auth-httplib2==0.2.0
 google-auth-oauthlib==1.2.1
+
+# Re-splits words the OCR recogniser glued together in stylised thumbnail titles
+# ("THEFINALBLOW" -> "the final blow") so they can be translated (image_text._unglue).
+# Pure-Python with a bundled word-frequency list -- no network, no native deps.
+wordninja==2.0.0

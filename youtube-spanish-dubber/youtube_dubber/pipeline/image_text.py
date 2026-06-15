@@ -173,6 +173,7 @@ def detect_and_translate(
         full = " ".join(r.text.strip() for r in block if r.text.strip())
         if not full:
             continue
+        full = _unglue(full)
         try:
             translated = _translate_preserving_case(full, from_code, to_code)
         except Exception as exc:  # noqa: BLE001 -- e.g. no language package
@@ -305,6 +306,42 @@ def _redistribute_phrase(block: list[TextRegion], translated: str) -> list[tuple
         out.append((region, " ".join(words[idx:idx + cnt])))
         idx += cnt
     return out
+
+
+def _split_word(token_lower: str) -> list[str]:
+    """Split a glued lowercase token into words. Uses `wordninja` (a small word-
+    frequency segmenter) when installed; without it, returns the token whole.
+    Isolated so tests can inject a deterministic splitter."""
+    try:
+        import wordninja
+        return list(wordninja.split(token_lower))
+    except Exception:  # noqa: BLE001 -- not installed / failed: leave it glued
+        return [token_lower]
+
+
+def _unglue(text: str) -> str:
+    """Re-insert spaces into tokens the recogniser glued together
+    ("THEFINALBLOW" -> "THE FINAL BLOW"), so the translator can read them. Only
+    long, all-letter tokens are touched (a real single word like "SOTERIOLOGY"
+    splits to itself and is left alone), and the original token's case is kept."""
+    out: list[str] = []
+    for token in text.split():
+        i, j = 0, len(token)
+        while i < j and not token[i].isalpha():
+            i += 1
+        while j > i and not token[j - 1].isalpha():
+            j -= 1
+        lead, core, trail = token[:i], token[i:j], token[j:]
+        if len(core) >= 8 and core.isalpha():
+            pieces = _split_word(core.lower())
+            if len(pieces) >= 2:
+                if core.isupper():
+                    pieces = [p.upper() for p in pieces]
+                elif core[:1].isupper():
+                    pieces = [pieces[0].capitalize()] + pieces[1:]
+                core = " ".join(pieces)
+        out.append(lead + core + trail)
+    return " ".join(out)
 
 
 def _translate_preserving_case(text: str, from_code: str, to_code: str) -> str:
