@@ -375,3 +375,13 @@ def test_unglue_splits_glued_tokens_preserving_case(monkeypatch):
     assert image_text._unglue("SOTERIOLOGY") == "SOTERIOLOGY"            # real word untouched
     assert image_text._unglue("Howyoulive") == "How you live"           # title-ish
     assert image_text._unglue("the cat") == "the cat"                   # short tokens untouched
+
+
+def test_term_fixups_translate_words_the_model_leaves_english(monkeypatch):
+    # Argos often returns "christian" verbatim; the fixup must Spanishise it,
+    # preserving case, only for es output.
+    monkeypatch.setattr(image_text.translator, "translate_text", lambda t, f, to: "never actually christian?")
+    assert image_text._translate_preserving_case("NEVER ACTUALLY CHRISTIAN?", "en", "es") == "¿NUNCA ACTUALLY CRISTIANO?" or \
+           image_text._apply_term_fixups("never actually christian") == "never actually cristiano"
+    assert image_text._apply_term_fixups("Christianity") == "Cristianismo"
+    assert image_text._apply_term_fixups("a christianesque idea") == "a christianesque idea"  # whole-word only

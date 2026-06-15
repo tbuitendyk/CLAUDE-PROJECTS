@@ -356,8 +356,33 @@ def _translate_preserving_case(text: str, from_code: str, to_code: str) -> str:
     translated = translator.translate_text(text.lower(), from_code, to_code)
     recased = _apply_case_style(translated, text)
     if to_code.split("-")[0] == "es":
+        recased = _apply_term_fixups(recased)
         recased = _add_spanish_opening_marks(recased)
     return recased
+
+
+# Words the offline model reliably leaves untranslated (it reads them as proper
+# nouns) -> their Spanish form. Applied whole-word, case-preserving, to es output.
+_TERM_FIXUPS = {
+    "christian": "cristiano", "christians": "cristianos",
+    "christianity": "cristianismo",
+}
+
+
+def _apply_term_fixups(text: str) -> str:
+    import re
+
+    def repl(match):
+        word = match.group(0)
+        rep = _TERM_FIXUPS[word.lower()]
+        if word.isupper():
+            return rep.upper()
+        if word[:1].isupper():
+            return rep.capitalize()
+        return rep
+
+    pattern = re.compile(r"\b(" + "|".join(map(re.escape, _TERM_FIXUPS)) + r")\b", re.I)
+    return pattern.sub(repl, text)
 
 
 def _add_spanish_opening_marks(text: str) -> str:
