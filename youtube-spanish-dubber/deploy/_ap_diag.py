@@ -40,7 +40,22 @@ def main():
         else Image.open(CACHE / "orig_JVN7NXqwjro.jpg").convert("RGB")
     rendered = tp.render_edited(image, edit["regions"],
                                banner_text=edit.get("banner_text") or "", preserve_overlays=True)
-    # Tight on the "Una Vez Salvo" banner + just below it (where the speckle was).
+
+    # Instrument region 0 (the yellow banner line): where do the extents land?
+    import numpy as np
+    from PIL import ImageDraw
+    from youtube_dubber.pipeline import image_text
+    from youtube_dubber.pipeline.models import TextRegion
+    arr = np.asarray(image.convert("RGB"))
+    r0 = edit["regions"][0]
+    region = TextRegion(polygon=[(float(x), float(y)) for x, y in r0["polygon"]], text=r0.get("text") or "")
+    style = image_text._analyze_region(arr, region.bbox)
+    ext = image_text._banner_extent_bbox(arr, style)
+    print(f"  box={region.bbox} banner={style.banner_color} has_banner={style.has_banner}")
+    print(f"  extent={ext} ink={image_text._ink_bbox(style)} textband={image_text._text_band_bbox(style)}")
+    if ext:
+        ImageDraw.Draw(rendered).rectangle(list(ext), outline=(255, 0, 0), width=3)
+
     crop = rendered.crop((90, 150, image.width - 70, 345))
     w = 520
     _emit(crop.resize((w, int(crop.height * w / crop.width))), "band")
