@@ -977,7 +977,13 @@ def _banner_extent_bbox(arr, style, *, tol: float = 60.0, min_frac: float = 0.30
     bcol = np.array(tuple(style.banner_color)[:3], np.float32)
     if float(bcol.max() - bcol.min()) < 45:           # neutral banner -> no band
         return None
-    x0, y0, x1, y1 = style.box
+    # Search a margin BEYOND the OCR box: the highlighter's ragged edge often
+    # spills past the box, and the density run below self-limits to the colour.
+    bx0, by0, bx1, by1 = style.box
+    h, w = arr.shape[:2]
+    my = int(round((by1 - by0) * 0.30)); mx = int(round((bx1 - bx0) * 0.05))
+    x0, y0 = max(0, bx0 - mx), max(0, by0 - my)
+    x1, y1 = min(w, bx1 + mx), min(h, by1 + my)
     crop = arr[y0:y1, x0:x1].astype(np.float32)
     if crop.size == 0:
         return None
