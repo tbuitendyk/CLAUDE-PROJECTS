@@ -16,7 +16,7 @@ from PIL import Image
 
 from youtube_dubber.pipeline import image_text, downloader
 
-VID = "JVN7NXqwjro"
+VID = "JzqDV91AFPo"   # #3 painting/scene -- check no resurrection/junk with preserve
 CACHE = Path("data/diagnostics")
 
 
@@ -51,10 +51,10 @@ def main():
     print("  regions:", [r.text for r, _ in pairs])
     Bc, _ = image_text.render_translations(A, pairs, preserve_overlays=False)
     Bp, _ = image_text.render_translations(A, pairs, preserve_overlays=True)
-    # B-preserve, title area only, at higher res so the slash + any junk are clear.
-    crop = Bp.crop((0, 110, A.width, 610))
+    # B-preserve full (scene case): verify the painting text isn't resurrected
+    # and no scene junk is pasted.
     w = 380
-    crop = crop.resize((w, int(crop.height * w / crop.width)))
+    crop = Bp.resize((w, int(Bp.height * w / Bp.width)))
     _emit(crop, "bp", budget=4800)
 
 
