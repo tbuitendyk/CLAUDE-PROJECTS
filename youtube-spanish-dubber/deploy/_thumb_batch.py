@@ -28,7 +28,7 @@ IDS = [
 # "pairs"  -> emit one high-res original|render pair per deploy, rotating through
 #             FOCUS via the counter file.
 MODE = "pairs"
-FOCUS = [8]
+FOCUS = [2]
 CACHE = Path("data/diagnostics")
 COUNTER = CACHE / "_counter"
 FONT = image_text._find_text_font("sans")
