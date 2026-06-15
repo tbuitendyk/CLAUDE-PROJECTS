@@ -443,6 +443,7 @@ def thumbnail_apply(payload: ThumbnailApplyRequest) -> dict:
     import tempfile
     from pathlib import Path
 
+    from google.auth.exceptions import RefreshError
     from googleapiclient.errors import HttpError
 
     from .pipeline import thumbnail_preview as tp, uploader
@@ -470,6 +471,17 @@ def thumbnail_apply(payload: ThumbnailApplyRequest) -> dict:
             else:
                 detail = f"YouTube rejected the thumbnail (HTTP {status})."
             raise HTTPException(status_code=502, detail=detail) from exc
+        except RefreshError as exc:
+            # invalid_grant: the saved OAuth token expired or was revoked -- the
+            # whole YouTube connection is down (uploads fail too), not just this.
+            # Tokens expire after 7 days while the OAuth consent screen is in
+            # "Testing"; re-authorize, and set it to "In production" to stop it.
+            raise HTTPException(
+                status_code=502,
+                detail="YouTube authorization has expired or been revoked. Re-run the one-time "
+                       "'authorize' step on the server, and set the OAuth consent screen to "
+                       "'In production' (Testing-mode tokens expire after 7 days).",
+            ) from exc
         except Exception as exc:  # noqa: BLE001 -- e.g. missing/expired credentials
             raise HTTPException(
                 status_code=502, detail="Couldn't set the thumbnail; check the service logs."

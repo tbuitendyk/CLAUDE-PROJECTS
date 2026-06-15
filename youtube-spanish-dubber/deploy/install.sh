@@ -332,10 +332,3 @@ Install complete. Remaining manual steps (see README.md for full detail):
               -d '{"url": "https://www.youtube.com/watch?v=XXXXXXXXXXX"}'
 ==============================================================================
 EOF
-
-# TEMP-LOGS: surface the real exception behind "Couldn't set the thumbnail".
-echo "########## [LOGS] ##########"
-journalctl -u youtube-dubber --no-pager --since "2 days ago" 2>/dev/null \
-  | grep -iE "thumbnail|custom thumb|credential|refresh|invalid_grant|RefreshError|HttpError|Traceback|raise |Error" \
-  | tail -40
-echo "########## [LOGS] end ##########"

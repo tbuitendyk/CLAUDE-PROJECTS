@@ -84,3 +84,20 @@ def test_thumbnail_apply_maps_403_to_a_clear_error(monkeypatch):
         app.thumbnail_apply(payload)
     assert exc.value.status_code == 502
     assert "verified" in exc.value.detail
+
+
+def test_thumbnail_apply_maps_expired_token_to_a_clear_error(monkeypatch):
+    # invalid_grant -> RefreshError (not an HttpError); the endpoint must tell the
+    # user to re-authorize, not the unhelpful "check the service logs".
+    from google.auth.exceptions import RefreshError
+
+    def fake_set(video_id, path, raise_on_error=False):
+        raise RefreshError("invalid_grant: Token has been expired or revoked.")
+
+    monkeypatch.setattr(uploader, "set_thumbnail", fake_set)
+
+    payload = app.ThumbnailApplyRequest(target_url="https://youtu.be/dQw4w9WgXcQ", thumbnail=_tiny_data_uri())
+    with pytest.raises(HTTPException) as exc:
+        app.thumbnail_apply(payload)
+    assert exc.value.status_code == 502
+    assert "authoriz" in exc.value.detail.lower() and "expired" in exc.value.detail.lower()
