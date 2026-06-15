@@ -511,40 +511,45 @@ def render_translations(image, pairs: list[tuple[TextRegion, str]], *, preserve_
 
 def _restore_overlays(
     original, final_canvas, background, items,
-    *, text_dist: float = 80.0, bg_dist: float = 55.0, sat_min: float = 55.0,
-    min_area_frac: float = 0.0015,
+    *, text_dist: float = 80.0, sat_min: float = 0.30, hue_min: float = 15.0,
+    diff_min: float = 45.0, min_area_frac: float = 0.0015,
 ):
-    """Composite back the graphics that overlaid the original text -- a
-    strikethrough, a red slash, a sticker -- which the text wipe removed.
+    """Transfer a coloured graphic that overlaid the original text -- a
+    strikethrough, a red slash, a sticker -- onto the rendered translation.
 
-    General, not decoration-specific: within each replaced region, an "overlay"
-    pixel is one in the ORIGINAL that is far in colour from BOTH the text fill
-    (so the old letters themselves are excluded) AND the reconstructed background
-    (so the banner/scene is excluded) -- which leaves exactly the foreign-coloured
-    graphics. Those original pixels are pasted onto the final image, on top of the
-    new translated text, so e.g. the red slash crosses "Siempre Salvo" the way it
-    crossed "Always Saved". A connected-components area filter drops speckle so
-    JPEG/halo noise isn't resurrected. Best-effort: any failure returns the
-    rendered image unchanged.
+    The model is "find what's in the source (A) but missing from the rendered
+    target (B), and add it to B" -- so the comparison reference is the ACTUAL
+    rendered `final_canvas`, not a rebuilt background. A pixel transfers only when
+    ALL of these hold, which is what keeps a clean banner clean:
+      * it differs from B (something B doesn't already have);
+      * it is NOT the old text (far from the letters' colour, sampled from `ink`);
+      * it is a *foreign colour*: saturated AND, when the banner itself is
+        chromatic, a different HUE than the banner. This is the crucial test --
+        the anti-aliased EDGES of the old black letters on a yellow banner are
+        saturated and differ from a flat repaint, but they share the banner's
+        hue, so they are NOT pasted back as ghost lettering; a red slash is a
+        different hue, so it is.
+    A connected-components area filter drops speckle. Needs opencv for the hue
+    test; without it, or on any error, the rendered image is returned unchanged.
 
-    `items` are `(box, fill)` or `(box, fill, ink_mask)`. The glyph `ink_mask`
-    (the original text's own strokes) is excluded from restoration -- otherwise
-    text on a busy *scene*, where the colour test alone can't tell old letters
-    from a foreign graphic, gets resurrected on top of the translation. A real
-    overlay (a slash, an arrow) extends beyond the glyph strokes, so it survives."""
+    `items` are `(box, fill)` or `(box, fill, ink_mask)`."""
     try:
         import numpy as np
         from PIL import Image
 
-        orig_u8 = np.asarray(original.convert("RGB"))
-        orig = orig_u8.astype(np.float32)
-        bg = np.asarray(background.convert("RGB")).astype(np.float32)
-        out = np.asarray(final_canvas.convert("RGB")).copy()
-        height, width = out.shape[:2]
         try:
             import cv2
-        except Exception:  # noqa: BLE001 -- without opencv we keep the raw mask
-            cv2 = None
+        except Exception:  # noqa: BLE001 -- hue test needs opencv; skip safely
+            return final_canvas
+
+        orig_u8 = np.asarray(original.convert("RGB"))
+        fin_u8 = np.asarray(final_canvas.convert("RGB"))
+        bg_u8 = np.asarray(background.convert("RGB"))
+        out = fin_u8.copy()
+        height, width = out.shape[:2]
+        orig = orig_u8.astype(np.float32)
+        fin = fin_u8.astype(np.float32)
+        hsv = cv2.cvtColor(orig_u8, cv2.COLOR_RGB2HSV)        # H:0-179, S:0-255
 
         restored = False
         for item in items:
@@ -555,36 +560,40 @@ def _restore_overlays(
             if x1 - x0 < 4 or y1 - y0 < 4:
                 continue
             o = orig[y0:y1, x0:x1]
-            b = bg[y0:y1, x0:x1]
-            # The OLD letters' actual colour, sampled from the glyph ink -- robust
-            # even when the passed `fill` was mis-detected (a scene title). The
-            # slash differs from this, so it isn't mistaken for a letter (and,
-            # unlike a hard ink mask, this keeps the slash where it crosses them).
+            f = fin[y0:y1, x0:x1]
+            hue = hsv[y0:y1, x0:x1, 0].astype(np.float32)
+            sat = hsv[y0:y1, x0:x1, 1].astype(np.float32) / 255.0
+            # OLD letters' actual colour from the ink (robust to a mis-detected
+            # fill), so a slash crossing them isn't mistaken for a letter.
             letter = np.array(tuple(fill)[:3], np.float32)
             if ink is not None:
                 im = np.asarray(ink)
                 if im.shape == o.shape[:2] and im.any():
                     letter = np.median(o[im > 0], axis=0).astype(np.float32)
-            not_letter = np.linalg.norm(o - letter, axis=2) > text_dist   # not the old text
-            far_bg = np.linalg.norm(o - b, axis=2) > bg_dist              # not the background
-            # A graphic worth preserving is a *saturated foreign colour* (a red
-            # slash, a coloured sticker), NOT a neutral tone. This is what stops
-            # the cream/white document edges (low saturation, covered by the
-            # banner repaint) from being pasted back as junk on a clean banner.
-            sat = o.max(axis=2) - o.min(axis=2)
-            colored = sat > sat_min
-            mask = not_letter & far_bg & colored
+            # Banner colour = the reconstructed background's dominant colour (one
+            # colour, used only for its hue -- not a per-pixel reference).
+            bcol = np.median(bg_u8[y0:y1, x0:x1].reshape(-1, 3).astype(np.float32), axis=0)
+            bhsv = cv2.cvtColor(bcol.astype(np.uint8).reshape(1, 1, 3), cv2.COLOR_RGB2HSV)[0, 0]
+            banner_hue, banner_sat = float(bhsv[0]), float(bhsv[1]) / 255.0
+
+            not_old = np.linalg.norm(o - letter, axis=2) > text_dist
+            changed = np.linalg.norm(o - f, axis=2) > diff_min
+            saturated = sat > sat_min
+            if banner_sat > sat_min:           # chromatic banner -> different hue
+                hue_d = np.minimum(np.abs(hue - banner_hue), 180.0 - np.abs(hue - banner_hue))
+                foreign = saturated & (hue_d > hue_min)
+            else:                              # neutral banner -> any saturated colour
+                foreign = saturated
+            mask = foreign & not_old & changed
             if not mask.any():
                 continue
-            if cv2 is not None:
-                m = mask.astype(np.uint8)
-                m = cv2.morphologyEx(m, cv2.MORPH_CLOSE, np.ones((3, 3), np.uint8))
-                count, labels, stats, _ = cv2.connectedComponentsWithStats(m, 8)
-                min_area = max(24, int(min_area_frac * (x1 - x0) * (y1 - y0)))
-                keep = [i for i in range(1, count) if stats[i, cv2.CC_STAT_AREA] >= min_area]
-                if not keep:
-                    continue
-                mask = np.isin(labels, keep)
+            m = cv2.morphologyEx(mask.astype(np.uint8), cv2.MORPH_CLOSE, np.ones((3, 3), np.uint8))
+            count, labels, stats, _ = cv2.connectedComponentsWithStats(m, 8)
+            min_area = max(24, int(min_area_frac * (x1 - x0) * (y1 - y0)))
+            keep = [i for i in range(1, count) if stats[i, cv2.CC_STAT_AREA] >= min_area]
+            if not keep:
+                continue
+            mask = np.isin(labels, keep)
             out[y0:y1, x0:x1][mask] = orig_u8[y0:y1, x0:x1][mask]
             restored = True
         return Image.fromarray(out) if restored else final_canvas
