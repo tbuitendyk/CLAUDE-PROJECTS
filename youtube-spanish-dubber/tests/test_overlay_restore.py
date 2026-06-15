@@ -239,3 +239,21 @@ def test_no_junk_from_neutral_background_difference():
     )
     arr = np.asarray(out)
     assert abs(int(arr[20, 5][2]) - 30) < 40       # stays yellow (b~30), not cream (b~235)
+
+
+def test_overlay_skips_a_neighbouring_banner_colour():
+    """An oversized box can overlap a neighbouring banner; its saturated colour
+    (a yellow band edge) must NOT transfer onto a cream banner -- but a red slash
+    (not any banner's colour) must."""
+    w, h = 80, 40
+    cream = (245, 242, 232)
+    original = np.full((h, w, 3), cream, np.uint8)
+    original[5:15, 10:70] = (240, 220, 30)        # neighbour banner's yellow edge
+    original[25:30, 5:75] = (220, 20, 20)         # the red slash
+    out = image_text._restore_overlays(
+        Image.fromarray(original), _solid(w, h, cream), _solid(w, h, cream),
+        [((0, 0, w, h), (10, 10, 10))], banner_colors=[(240, 220, 30), cream],
+    )
+    arr = np.asarray(out)
+    assert abs(int(arr[10, 40][2]) - 232) < 45     # yellow NOT pasted (stays cream)
+    assert arr[27, 40][0] > 120 and arr[27, 40][2] < 115   # red slash IS pasted
