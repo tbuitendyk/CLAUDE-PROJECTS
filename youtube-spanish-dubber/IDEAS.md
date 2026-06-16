@@ -83,17 +83,25 @@ items land.
   a common target before concatenation (a `pipeline/video.py` helper alongside
   `mux`). The intro keeps its own audio; the dub's audio resumes after it (the
   intro is **not** itself dubbed).
-- **Open questions to scope first:**
-  - **Published videos can't have their file swapped.** YouTube has no
-    replace-media API, so changing the intro on an *already-published* dub means
-    a re-upload (new video id) — or the add/remove/swap is only offered while the
-    dub is still unlisted/draft. Decide which.
-  - **Disk growth:** keeping every pre-intro master indefinitely costs storage —
-    needs a retention policy (or make master-persistence opt-in per dub).
-  - **UI (website branch):** per-completed-dub controls to set / clear / change
-    the intro, plus an intro library (paste unlisted link, name it). Flag as
-    `website`-branch work that drives new backend endpoints here (e.g.
-    `POST /dub/{id}/intro`, `DELETE /dub/{id}/intro`).
+- **Decided behavior:**
+  - **Every publish/republish is a new YouTube video id.** YouTube has no
+    replace-media API, and we lean into that rather than fight it: intros (and
+    re-dubs) can be swapped in/out at *any* stage, and each republish — whether
+    or not it also includes fresh transcript dubbing — mints a brand-new video.
+    Workflow incentive that follows: keep a dub unlisted/draft and only go
+    **public once the whole package (dub + intro) is right**, since going public
+    is a one-shot per id.
+  - **Retention: keep every pre-intro master for now — no auto-deletion.**
+    Surface a small **"total space used" status line** under the dubbing-service
+    control (UI, `website` branch) backed by a backend usage stat, so growth is
+    visible. Reclaim space **manually** by deleting masters for videos we know
+    we'll never re-dub — no retention policy/TTL needed yet.
+  - **UI + endpoints (`website` branch drives new backend here):** per-completed
+    dub controls to set / clear / change the intro; an intro library (paste an
+    unlisted link, name it); and a master-library view showing per-item size +
+    delete. New backend endpoints, e.g. `POST /dub/{id}/intro`,
+    `DELETE /dub/{id}/intro`, a library usage/stat endpoint for the space line,
+    and a delete-master endpoint.
 
 ## Confirmed behavior (reference, not a task)
 
