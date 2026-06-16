@@ -47,6 +47,54 @@ items land.
   flicker/jitter, and how this interacts with the existing mux step in
   `runner.py`.
 
+### 2. 🎬 Intro clips — add / remove / swap an intro on a completed dub
+- **Goal:** record short intro clips and be able to attach one to the front of
+  any *already-completed* dub — and later change it or strip it back off —
+  **without re-dubbing**, and without corrupting the dub's own timeline so
+  subsequent transcript edits still line up.
+- **Intro ingestion via YouTube:** the intros are recorded, uploaded to YouTube
+  as **unlisted/private** videos, and supplied by link. The server fetches the
+  media with the existing yt-dlp downloader (`pipeline/downloader.py`) — reuses
+  the infra we already have and avoids a separate file-upload path. Each fetched
+  intro is cached (the media + its **measured exact duration**) keyed by the
+  YouTube id, so reusing the same intro across dubs is cheap.
+- **What must be persisted, per dub (the crux):**
+  1. **The pre-intro master.** Today the finished dub lives at
+     `work_dir/dubbed.mp4` and the work dir is deleted after upload. To
+     add/remove/swap an intro later we must keep that master (dub *before* any
+     intro is prepended) on the server — encode it into the project cache the
+     way a freshly separated bed already is (`runner.run` → `bed_source_path`),
+     keyed by job / source video id.
+  2. **The current intro state + its exact length.** Store which intro is
+     attached (the cached intro id) **and its precise duration** — or "none".
+- **Why the length matters:** the dub's transcript runs on the *anchored
+  timeline* (each line at its real timestamp; see "Recently shipped"). That
+  timeline is relative to the **master** (starts at 0). The intro is a *separate
+  prepend of known length L*, never baked into the transcript timings. So:
+  - **Remove** = re-export the master alone (or drop the leading L).
+  - **Swap** = concat a different intro (L′) onto the same master.
+  - **Transcript edit** = re-render the master at offset 0, then re-apply the
+    currently-selected intro. Edits never have to know the intro exists; the
+    stored L is what translates master-time ↔ published-time (e.g. for any UI
+    timeline or chapter markers on the published video).
+- **The real engineering cost — normalize-then-concat:** an intro recorded on a
+  phone almost never matches the dub's resolution / fps / codec / audio sample
+  rate, so a raw concat glitches. The intro (and/or both) must be re-encoded to
+  a common target before concatenation (a `pipeline/video.py` helper alongside
+  `mux`). The intro keeps its own audio; the dub's audio resumes after it (the
+  intro is **not** itself dubbed).
+- **Open questions to scope first:**
+  - **Published videos can't have their file swapped.** YouTube has no
+    replace-media API, so changing the intro on an *already-published* dub means
+    a re-upload (new video id) — or the add/remove/swap is only offered while the
+    dub is still unlisted/draft. Decide which.
+  - **Disk growth:** keeping every pre-intro master indefinitely costs storage —
+    needs a retention policy (or make master-persistence opt-in per dub).
+  - **UI (website branch):** per-completed-dub controls to set / clear / change
+    the intro, plus an intro library (paste unlisted link, name it). Flag as
+    `website`-branch work that drives new backend endpoints here (e.g.
+    `POST /dub/{id}/intro`, `DELETE /dub/{id}/intro`).
+
 ## Confirmed behavior (reference, not a task)
 
 - A best-shot branded thumbnail is **auto-generated and attached to every dub**
