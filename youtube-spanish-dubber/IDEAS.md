@@ -31,21 +31,73 @@ items land.
 
 ## Queue
 
-### 1. 🔭 Big Fix — translate in-video (frame) text, not just the thumbnail
-- Today only the thumbnail's baked-in text gets translated/localized
-  (`pipeline/thumbnail.py` + ONNX scene-text OCR). Source videos often have
-  on-screen text *during playback* (titles, captions, callouts, lower-thirds)
-  that stays in English in the dub.
-- Likely shape: reuse the thumbnail OCR/translate/inpaint pipeline
-  (`image_text.py`, `thumbnail.py`) but applied per-frame (or per-shot) across
-  the video rather than to a single still image — detect text regions, OCR,
-  translate, inpaint, overlay the Spanish text, for the span the text is on
-  screen.
-- Open questions to scope before starting: cost/perf of running OCR across a
-  full video (sampling strategy — keyframes vs. every frame vs. scene-cut
-  detection), how to track a text region across frames so the overlay doesn't
-  flicker/jitter, and how this interacts with the existing mux step in
-  `runner.py`.
+### 1. 🔭 Big feature — translate in-video text (presentation overheads: scripture + notes)
+- **Goal.** Source videos here are largely *teaching/presentation* content:
+  full-screen overhead **slides** showing scripture passages and speaker notes
+  that stay in the source language in the dub. Detect that on-screen text,
+  translate it, and render it back into the video in the target language, so a
+  Spanish viewer reads the slides in Spanish. Today only the *thumbnail's* baked
+  text is localized (`pipeline/thumbnail.py` + `image_text.py` + ONNX OCR).
+- **Scope it to slides first.** General moving frame text (lower-thirds, motion
+  callouts) is a harder, later extension. Presentation slides are the tractable,
+  high-value 80%: a slide is static for seconds and is usually high-contrast text
+  on a plain background.
+- **Why slides are tractable — don't OCR every frame.** Detect slide *changes*
+  and OCR one representative frame per slide, then hold the translated overlay
+  for that slide's whole span. No per-frame tracking / flicker.
+- **Pipeline (reuses the thumbnail localization stack):**
+  1. *Segment by slide.* Sample frames at ~1–2 fps; detect transitions
+     (frame-difference / scene-cut, e.g. ffmpeg `select=gt(scene,…)` or SSIM);
+     group into `[start,end]` segments; pick a sharp representative frame each;
+     skip segments with little/no text (talking-head shots).
+  2. *Detect + OCR* the representative frame — reuse `ocr_onnx` + `image_text`
+     grouping (already proven on thumbnails).
+  3. *Classify* each region: scripture reference / scripture body / other.
+  4. *Translate or substitute* (below).
+  5. *Re-render in place* — reuse `image_text` paint-out + re-render to build one
+     translated overlay image per slide, fitted to the slide's text box.
+  6. *Composite* each overlay over its time span and mux.
+- **The scripture win (domain-specific, the standout).** Scripture should NOT be
+  machine-translated — substitute the *canonical* target-language text:
+  - Detect a reference on the slide (regex `Book chap:verse[-range]`, multi-book
+    names + abbreviations). References are short and OCR-reliable → a strong anchor.
+  - If only verse text shows (no visible reference), fuzzy-match it against a
+    full-text Bible index to recover the reference (works even when the slide uses
+    NIV/ESV wording — same verse).
+  - Fetch the official target-language passage (e.g. Spanish **Valera**) and render
+    *that* + the translated reference. Accurate Scripture, not garbled MT.
+  - Dev convenience: the `kjv-bible` MCP in this workspace (`kjv_lookup` /
+    `vp_lookup`, KJV ↔ Valera Purificada) is exactly the matcher/source to
+    prototype with. **Production needs the texts bundled offline** (the service's
+    network is GitHub-only). KJV is public domain; **check licensing** before
+    bundling a specific Spanish edition (Reina-Valera 1909 is public domain;
+    confirm Valera Purificada terms).
+  - Other text (titles, notes) → existing Argos MT + `_apply_term_fixups`.
+- **Big architectural cost — this forces a video re-encode.** The dub currently
+  *copies* the video stream (`-c:v copy`, instant). Burning overlays means
+  re-encoding the whole video — exactly the cost the intro feature hit on a 4K/AV1
+  master. So: opt-in per dub; reuse the intro work's lessons (output H.264,
+  resolution-cap to bound time, be codec-aware); expect this to be the slow, heavy
+  mode.
+  - *Cheaper alternative to record:* emit the slide translations as a separate
+    soft **subtitle/caption track** (or a synced sidecar) instead of burning them
+    in — no re-encode, much cheaper, though it doesn't replace the slide text
+    visually. Possible Phase 0.
+- **Review/correct UI (`website` branch), like the thumbnail editor.** OCR +
+  translation + scripture-matching can all err, so a per-slide review card (each
+  detected slide, its regions, the proposed target text, scripture matches flagged
+  for confirm) lets the operator fix before committing. High value given the
+  accuracy stakes (Scripture especially).
+- **Phasing.**
+  - P0 (optional, cheap): slide-text → soft subtitle track, no re-encode.
+  - P1: slide-detect + OCR + MT overlay (notes/titles), re-encode — prove the pipeline.
+  - P2: scripture reference/body detection + canonical target-Bible substitution.
+  - P3: per-slide review/correct UI.
+- **Open questions to scope:** slide-change thresholds + sample rate; OCR
+  accuracy / false-positives on non-slide frames; re-encode cost / resolution cap
+  / codec (tie to the intro lessons); offline Bible data + licensing; text-fit for
+  longer/shorter target verses; interaction with the anchored audio timeline
+  (independent, video-side) and the intro overlay/concat step.
 
 ### 2. 🎬 Intro clips — add / remove / swap an intro on a completed dub
 - **Goal:** record short intro clips and be able to attach one to the front of
