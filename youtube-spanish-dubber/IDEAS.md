@@ -28,6 +28,33 @@ items land.
   (`DUBBER_DUCK_VOLUME`, default 0.40) that sidechain-compresses under the
   narration and rises back in the anchored timeline's pauses. Tunable bed level;
   `audio_mode=replace` restores full replacement.
+- **Intro clips library** — record short intros (unlisted YouTube links), fetch
+  + cache them with their exact measured length, and attach/swap/remove one on a
+  completed dub without re-dubbing (`intros` table, `pipeline.ffmpeg_utils
+  .prepend_intro`, `POST/DELETE /projects/{id}/intro`). Every (re)publish mints a
+  new video id (YouTube has no replace-media API). See item 2 for the remaining
+  UI work.
+- **Decouple dub from publish (+ unified intro publish).** A dub no longer has to
+  publish: `runner.run(publish=False)` builds and returns the master without
+  uploading, and a new `remaster` job mode caches it as the library entry's
+  pre-intro master without minting a video — the **Dub / Redub** ("prepare only")
+  half of the new control model. Publishing is one shared path
+  (`worker._publish_master`, factored out of the old intro-republish): **Dub &
+  publish** / **Redub & publish** build the master then prepend the chosen intro
+  (carried on the job as `intro_id`, pre-filled to the entry's current intro so a
+  republish retains it) and upload in a single job, while **Publish current cut**
+  (the existing intro-republish) uploads the saved master as-is. Endpoints:
+  `POST /jobs` (`mode=remaster`, `intro_id`), `POST /projects/{id}/redub`
+  (`publish`, `intro_id`).
+- **Persistent "pending dub" (green) state.** Edited-but-not-yet-dubbed
+  transcript lines are greened against a baseline that now lives server-side: a
+  `dubbed_rows` column snapshots the transcript each master was dubbed from
+  (written on every finished dub/remaster), so the colouring survives closing and
+  re-opening a project across the library. Exposed as `pending_dub` (project
+  summary) and `dubbed_rows` (full payload); when no baseline is recorded yet it
+  falls back to the publish state so nothing is falsely flagged. `pending_dub`
+  (edits vs master) and `published_pending` (master vs live video) are now
+  independent, which the decouple makes meaningful.
 
 ## Queue
 
@@ -99,61 +126,33 @@ items land.
   longer/shorter target verses; interaction with the anchored audio timeline
   (independent, video-side) and the intro overlay/concat step.
 
-### 2. 🎬 Intro clips — add / remove / swap an intro on a completed dub
-- **Goal:** record short intro clips and be able to attach one to the front of
-  any *already-completed* dub — and later change it or strip it back off —
-  **without re-dubbing**, and without corrupting the dub's own timeline so
-  subsequent transcript edits still line up.
-- **Intro ingestion via YouTube:** the intros are recorded, uploaded to YouTube
-  as **unlisted/private** videos, and supplied by link. The server fetches the
-  media with the existing yt-dlp downloader (`pipeline/downloader.py`) — reuses
-  the infra we already have and avoids a separate file-upload path. Each fetched
-  intro is cached (the media + its **measured exact duration**) keyed by the
-  YouTube id, so reusing the same intro across dubs is cheap.
-- **What must be persisted, per dub (the crux):**
-  1. **The pre-intro master.** Today the finished dub lives at
-     `work_dir/dubbed.mp4` and the work dir is deleted after upload. To
-     add/remove/swap an intro later we must keep that master (dub *before* any
-     intro is prepended) on the server — encode it into the project cache the
-     way a freshly separated bed already is (`runner.run` → `bed_source_path`),
-     keyed by job / source video id.
-  2. **The current intro state + its exact length.** Store which intro is
-     attached (the cached intro id) **and its precise duration** — or "none".
-- **Why the length matters:** the dub's transcript runs on the *anchored
-  timeline* (each line at its real timestamp; see "Recently shipped"). That
-  timeline is relative to the **master** (starts at 0). The intro is a *separate
-  prepend of known length L*, never baked into the transcript timings. So:
-  - **Remove** = re-export the master alone (or drop the leading L).
-  - **Swap** = concat a different intro (L′) onto the same master.
-  - **Transcript edit** = re-render the master at offset 0, then re-apply the
-    currently-selected intro. Edits never have to know the intro exists; the
-    stored L is what translates master-time ↔ published-time (e.g. for any UI
-    timeline or chapter markers on the published video).
-- **The real engineering cost — normalize-then-concat:** an intro recorded on a
-  phone almost never matches the dub's resolution / fps / codec / audio sample
-  rate, so a raw concat glitches. The intro (and/or both) must be re-encoded to
-  a common target before concatenation (a `pipeline/video.py` helper alongside
-  `mux`). The intro keeps its own audio; the dub's audio resumes after it (the
-  intro is **not** itself dubbed).
-- **Decided behavior:**
-  - **Every publish/republish is a new YouTube video id.** YouTube has no
-    replace-media API, and we lean into that rather than fight it: intros (and
-    re-dubs) can be swapped in/out at *any* stage, and each republish — whether
-    or not it also includes fresh transcript dubbing — mints a brand-new video.
-    Workflow incentive that follows: keep a dub unlisted/draft and only go
-    **public once the whole package (dub + intro) is right**, since going public
-    is a one-shot per id.
-  - **Retention: keep every pre-intro master for now — no auto-deletion.**
-    Surface a small **"total space used" status line** under the dubbing-service
-    control (UI, `website` branch) backed by a backend usage stat, so growth is
-    visible. Reclaim space **manually** by deleting masters for videos we know
-    we'll never re-dub — no retention policy/TTL needed yet.
-  - **UI + endpoints (`website` branch drives new backend here):** per-completed
-    dub controls to set / clear / change the intro; an intro library (paste an
-    unlisted link, name it); and a master-library view showing per-item size +
-    delete. New backend endpoints, e.g. `POST /dub/{id}/intro`,
-    `DELETE /dub/{id}/intro`, a library usage/stat endpoint for the space line,
-    and a delete-master endpoint.
+### 2. 🎛️ Unified dub/publish control model — UI (`website` branch)
+The backend for this landed (see "Recently shipped": decouple + persistent
+green); this item is the remaining **website-branch** UI that drives it. The
+intro media/concat/persistence stack and the master/intro endpoints are all
+done — what's left is presenting the control model consistently.
+- **One control model, identical wording in both places** — the top "new job"
+  section and each library entry share an **intro** selector (`No intro` / saved
+  intros, pre-filled to the entry's current intro) and a **Publish as**
+  Unlisted/Public choice, with buttons:
+  - New-job section: **Dub** (`POST /jobs mode=remaster` — prepare master, no
+    publish) and **Dub & publish** (`mode=dub` + `intro_id` — dub → intro →
+    publish in one).
+  - Library entry: **Redub** (`/redub publish=false`), **Redub & publish**
+    (`/redub publish=true` + `intro_id`, defaulting the selector to the current
+    intro so it's retained), and **Publish current cut** (the existing
+    `POST/DELETE /projects/{id}/intro` — publish the saved master as-is with the
+    chosen intro, no re-dub). Privacy lives only on the publishing buttons.
+  - Naming mirrors across sections (**Dub ↔ Redub**, **Dub & publish ↔ Redub &
+    publish**); the library adds **Publish current cut** because it has a master.
+- **Render persistent green from the new fields.** Drop the session-only diff and
+  green each transcript row whose narration differs from its `dubbed_rows`
+  baseline (both in `GET /projects/{id}`); show the list-level dot from
+  `pending_dub` in the summary. Treat the two flags as independent: `pending_dub`
+  = edits not yet dubbed (green); `published_pending` = master not yet published.
+- **Still to surface:** a master-library view with per-item size + delete and the
+  **"total space used"** status line (backend `GET /library/usage` already
+  exists) so kept-master growth is visible; reclaim space manually (no TTL yet).
 
 ## Confirmed behavior (reference, not a task)
 
