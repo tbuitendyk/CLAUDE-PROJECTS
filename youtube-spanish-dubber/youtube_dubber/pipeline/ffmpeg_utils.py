@@ -104,85 +104,62 @@ def _available_encoders() -> "set[str]":
     return _ENCODERS_CACHE
 
 
-def _intro_encoder_for(codec: str) -> "tuple[str, list[str]]":
-    """Pick an encoder (and fast, visually-clean settings) to re-encode the SHORT
-    intro to match the master's video codec -- a concatenated track can't switch
-    codecs mid-stream, so the intro must be the master's codec. Raises a clear
-    error for a codec this ffmpeg can't encode, rather than producing a bad file."""
-    table = {
-        "h264": (["libx264"], ["-preset", "veryfast", "-crf", "20"]),
-        "hevc": (["libx265"], ["-preset", "veryfast", "-crf", "23"]),
-        "vp9":  (["libvpx-vp9"], ["-b:v", "0", "-crf", "32", "-deadline", "good", "-cpu-used", "5", "-row-mt", "1"]),
-        "vp8":  (["libvpx"], ["-b:v", "1M", "-deadline", "good", "-cpu-used", "5"]),
-        "av1":  (["libsvtav1", "libaom-av1"], []),
+def _fast_encoder_for(codec: str) -> "tuple[str, list[str]] | None":
+    """An encoder (+ fast, memory-safe settings) that can re-encode the SHORT
+    intro to match the master's codec cheaply, or None if there isn't one.
+
+    A concatenated track can't switch codecs mid-stream, so the no-re-encode join
+    needs the intro in the master's codec. Where that's cheap (H.264/HEVC/VP9, or
+    AV1 *via SVT-AV1*) we do it. AV1 with only libaom-av1 is deliberately excluded
+    -- libaom is far too slow/memory-heavy to encode a (possibly 4K) intro on a
+    small VPS (it OOM-failed in practice) -- so those masters take the bounded
+    re-encode path instead."""
+    options = {
+        "h264": [("libx264", ["-preset", "veryfast", "-crf", "20"])],
+        "hevc": [("libx265", ["-preset", "veryfast", "-crf", "23"])],
+        "h265": [("libx265", ["-preset", "veryfast", "-crf", "23"])],
+        "vp9":  [("libvpx-vp9", ["-b:v", "0", "-crf", "32", "-deadline", "good", "-cpu-used", "6", "-row-mt", "1"])],
+        "vp8":  [("libvpx", ["-b:v", "1M", "-deadline", "good", "-cpu-used", "6"])],
+        "av1":  [("libsvtav1", ["-preset", "8", "-crf", "34"])],
     }
-    if codec not in table:
-        raise RuntimeError(f"Can't add an intro to a '{codec or 'unknown'}'-encoded video (unsupported codec).")
-    encoders, extra = table[codec]
     available = _available_encoders()
-    for encoder in encoders:
+    for encoder, args in options.get(codec, []):
         if encoder in available:
-            if encoder == "libsvtav1":
-                extra = ["-preset", "8", "-crf", "34"]
-            elif encoder == "libaom-av1":
-                extra = ["-cpu-used", "6", "-crf", "34", "-b:v", "0"]
-            return encoder, extra
-    raise RuntimeError(
-        f"This server's ffmpeg has no encoder for '{codec}' video (need one of {encoders}); "
-        "can't add an intro to it."
+            return encoder, args
+    return None
+
+
+def _conform_filter(width: int, height: int, fps: float) -> str:
+    """A video filter that fits a source into width x height (preserving aspect,
+    letter/pillar-boxed on black), squares the pixels, sets the frame rate and a
+    standard pixel format -- so two clips can be concatenated cleanly."""
+    return (
+        f"scale={width}:{height}:force_original_aspect_ratio=decrease,"
+        f"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2,setsar=1,fps={fps:.4f},format=yuv420p"
     )
 
 
-def prepend_intro(intro_path: Path, master_path: Path, dst: Path) -> Path:
-    """Concatenate `intro_path` in front of `master_path` into `dst` WITHOUT
-    re-encoding the (potentially long) master.
-
-    A recorded intro almost never matches the dub's resolution / fps / codec, and
-    a concatenated track can't switch codecs mid-stream, so we re-encode only the
-    *short* intro to conform to the master -- the master's video codec (the master
-    is the already-published dub file, so its codec is whatever the source was:
-    H.264, VP9, AV1 ...), geometry, frame rate and audio format. Then both parts
-    are wrapped to Matroska by stream copy and joined with the concat *demuxer*
-    (which re-bases the second segment's timestamps), remuxing to MP4 -- still
-    copy, so the master is never re-encoded.
-
-    Why this shape:
-    - The concat *filter* re-encodes the whole master -> hours on a small VPS.
-    - The MP4 concat *demuxer* (or the concat: protocol) copy leaves non-monotonic
-      timestamps -> a file YouTube rejects as "could not be processed".
-    - MPEG-TS framing only carries H.264/H.265, not VP9/AV1 -> fails on those.
-    Matroska + the concat demuxer is codec-agnostic and yields a clean,
-    monotonic-timestamp file (verified by a full-decode pass in the tests).
-    YouTube re-transcodes on upload, smoothing the single seam."""
-    width, height, fps = probe_video_params(master_path)
-    if width <= 0 or height <= 0:
-        raise RuntimeError(f"Couldn't read video dimensions from {master_path}")
-    fps = fps if fps > 0 else 30.0
-    sample_rate, channels = _probe_audio_params(master_path)
-    encoder, encoder_args = _intro_encoder_for(probe_video_codec(master_path))
-
+def _prepend_keep_master(
+    intro_path: Path, master_path: Path, dst: Path,
+    width: int, height: int, fps: float, sample_rate: int, channels: int,
+    encoder: str, encoder_args: "list[str]",
+) -> Path:
+    """Fast join: re-encode ONLY the short intro to the master's codec/geometry,
+    then concatenate via Matroska + the concat demuxer with stream copy -- so the
+    master is never re-encoded. Codec-agnostic and clean-timestamped."""
     work = dst.parent
     conformed = work / "intro_conformed.mkv"
     master_mkv = work / "master_seg.mkv"
 
-    # 1) Conform ONLY the short intro to the master (its codec, geometry, fps and
-    #    audio format; scaled to fit, letter/pillar-boxed on black, square pixels).
-    vf = (
-        f"scale={width}:{height}:force_original_aspect_ratio=decrease,"
-        f"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2,setsar=1,fps={fps:.4f},format=yuv420p"
-    )
     _run([
         "ffmpeg", "-y", "-i", str(intro_path),
-        "-vf", vf,
+        "-vf", _conform_filter(width, height, fps),
         "-c:v", encoder, *encoder_args, "-pix_fmt", "yuv420p",
         "-c:a", "aac", "-ar", str(sample_rate), "-ac", str(channels), "-b:a", "160k",
         str(conformed),
     ])
-
-    # 2) Wrap the master to Matroska by stream copy (no re-encode).
     _run(["ffmpeg", "-y", "-i", str(master_path), "-c", "copy", str(master_mkv)])
 
-    # 3) Concat demuxer (re-bases timestamps) -> MP4, still copy.
     def _q(p: Path) -> str:
         return str(p.resolve()).replace("'", "'\\''")
 
@@ -199,6 +176,70 @@ def prepend_intro(intro_path: Path, master_path: Path, dst: Path) -> Path:
         for tmp in (conformed, master_mkv, list_file):
             tmp.unlink(missing_ok=True)
     return dst
+
+
+def _prepend_reencode(
+    intro_path: Path, master_path: Path, dst: Path,
+    width: int, height: int, fps: float, max_height: int = 1080,
+) -> Path:
+    """Compatibility join: re-encode BOTH parts to H.264 with the concat filter,
+    capped to `max_height` (so a 4K master doesn't take hours). Used only when the
+    master's codec has no cheap encoder for the fast path (e.g. AV1 with only
+    libaom). Slower (it re-encodes the master) but always produces a standard,
+    valid file; YouTube re-transcodes on upload anyway."""
+    target_h = min(height, max_height) // 2 * 2
+    target_w = max(2, round(width * target_h / height / 2) * 2)
+    conform = _conform_filter(target_w, target_h, fps)
+    filter_complex = (
+        f"[0:v]{conform}[v0];[0:a]aresample=48000,aformat=channel_layouts=stereo[a0];"
+        f"[1:v]{conform}[v1];[1:a]aresample=48000,aformat=channel_layouts=stereo[a1];"
+        "[v0][a0][v1][a1]concat=n=2:v=1:a=1[v][a]"
+    )
+    _run([
+        "ffmpeg", "-y", "-i", str(intro_path), "-i", str(master_path),
+        "-filter_complex", filter_complex, "-map", "[v]", "-map", "[a]",
+        "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p",
+        "-c:a", "aac", "-b:a", "160k", "-movflags", "+faststart", str(dst),
+    ])
+    return dst
+
+
+def prepend_intro(intro_path: Path, master_path: Path, dst: Path,
+                  on_progress: "Callable[[str], None] | None" = None) -> Path:
+    """Concatenate `intro_path` in front of `master_path` into `dst`.
+
+    A recorded intro almost never matches the dub's resolution / fps / codec, and
+    a concatenated track can't switch codecs mid-stream. The master is the already-
+    published dub file, whose codec is whatever the source was (H.264, VP9, AV1 ...).
+
+    Two strategies (see the helpers):
+    - Fast (no master re-encode): conform only the short intro to the master's
+      codec and join via Matroska + the concat demuxer. Used when the codec has a
+      cheap encoder -- seconds, full quality.
+    - Bounded re-encode to H.264 (<= 1080p): for codecs with no cheap encoder on
+      this box (notably AV1 with only libaom). Slower (re-encodes the master) but
+      always valid.
+
+    Earlier failures this avoids: the concat *filter* at the master's full (4K)
+    resolution -> hours; the MP4/concat-protocol copy -> non-monotonic timestamps
+    YouTube rejects; the MPEG-TS path -> H.264-only; encoding the intro as AV1 with
+    libaom -> OOM."""
+    width, height, fps = probe_video_params(master_path)
+    if width <= 0 or height <= 0:
+        raise RuntimeError(f"Couldn't read video dimensions from {master_path}")
+    fps = fps if fps > 0 else 30.0
+    sample_rate, channels = _probe_audio_params(master_path)
+
+    fast = _fast_encoder_for(probe_video_codec(master_path))
+    if fast is not None:
+        if on_progress:
+            on_progress("Adding the intro to the front of the video…")
+        return _prepend_keep_master(
+            intro_path, master_path, dst, width, height, fps, sample_rate, channels, *fast
+        )
+    if on_progress:
+        on_progress("Re-encoding for this video's format — this can take several minutes…")
+    return _prepend_reencode(intro_path, master_path, dst, width, height, fps)
 
 
 def audio_window_plan(total_seconds: float, window_seconds: float) -> list[tuple[float, float]]:

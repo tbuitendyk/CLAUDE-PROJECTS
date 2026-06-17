@@ -332,9 +332,11 @@ def _process_intro(job: db.Job, project: db.Project | None, work_dir, on_progres
         intro_file = Path(intro.file_path)
         if not intro_file.exists():
             raise RuntimeError("The selected intro's media is missing on the server; re-add it.")
-        on_progress("muxing", "Adding the intro to the front of the video…")
         upload_file = work_dir / "with_intro.mp4"
-        ffmpeg_utils.prepend_intro(intro_file, master, upload_file)
+        ffmpeg_utils.prepend_intro(
+            intro_file, master, upload_file,
+            on_progress=lambda msg: on_progress("muxing", msg),
+        )
     else:
         on_progress("muxing", "Preparing the video without an intro…")
         upload_file = master

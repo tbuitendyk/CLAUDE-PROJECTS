@@ -66,7 +66,7 @@ def test_process_intro_prepends_and_publishes(fresh_db, monkeypatch):
 
     seen: dict = {}
 
-    def fake_prepend(intro_path, master_path, dst):
+    def fake_prepend(intro_path, master_path, dst, on_progress=None):
         Path(dst).write_bytes(b"joined")
         seen["prepended"] = (Path(intro_path).name, Path(master_path).name)
         return dst
