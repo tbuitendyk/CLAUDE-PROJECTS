@@ -57,39 +57,70 @@ def probe_video_params(path: Path) -> tuple[int, int, float]:
     return width, height, fps
 
 
+def _probe_audio_params(path: Path) -> tuple[int, int]:
+    """(sample_rate, channels) of a video's first audio stream; (48000, 2) on
+    failure."""
+    cmd = [
+        "ffprobe", "-v", "error", "-select_streams", "a:0",
+        "-show_entries", "stream=sample_rate,channels",
+        "-of", "default=noprint_wrappers=1:nokey=1", str(path),
+    ]
+    result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    lines = [ln.strip() for ln in result.stdout.splitlines() if ln.strip()]
+    try:
+        return int(lines[0]), int(lines[1])
+    except (ValueError, IndexError):
+        return 48000, 2
+
+
 def prepend_intro(intro_path: Path, master_path: Path, dst: Path) -> Path:
-    """Concatenate `intro_path` in front of `master_path` into `dst`.
+    """Concatenate `intro_path` in front of `master_path` into `dst` WITHOUT
+    re-encoding the (potentially long) master.
 
     A recorded intro almost never matches the dubbed video's resolution / fps /
-    codec, so a raw concat would glitch. Both streams are conformed to the
-    master's geometry (scaled to fit, letter/pillar-boxed on black, square
-    pixels, the master's frame rate) and a common audio format, then joined with
-    the concat filter and re-encoded once. The scale/pad is a no-op for the
-    master (it already has those dimensions); only the intro is reshaped."""
+    codec, so it can't be concatenated raw. So we re-encode only the *short* intro
+    to conform exactly to the master (H.264/AAC at the master's geometry, frame
+    rate and audio format), then join the two with the concat demuxer using
+    stream copy -- the master's video/audio pass through untouched, exactly as the
+    dub's own mux never re-encodes the video. Re-encoding the whole master here
+    instead (the obvious filter-concat) takes *hours* on a small VPS for a
+    full-length video. YouTube re-transcodes on upload, smoothing any minor
+    codec-parameter difference at the single join."""
     width, height, fps = probe_video_params(master_path)
     if width <= 0 or height <= 0:
         raise RuntimeError(f"Couldn't read video dimensions from {master_path}")
     fps = fps if fps > 0 else 30.0
-    conform = (
+    sample_rate, channels = _probe_audio_params(master_path)
+
+    # 1) Conform ONLY the intro to the master (scaled to fit, letter/pillar-boxed
+    #    on black, square pixels, the master's fps; audio to the master's format).
+    conformed = dst.parent / "intro_conformed.mp4"
+    vf = (
         f"scale={width}:{height}:force_original_aspect_ratio=decrease,"
         f"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2,setsar=1,fps={fps:.4f},format=yuv420p"
     )
-    filter_complex = (
-        f"[0:v]{conform}[v0];[0:a]aresample=48000,aformat=channel_layouts=stereo[a0];"
-        f"[1:v]{conform}[v1];[1:a]aresample=48000,aformat=channel_layouts=stereo[a1];"
-        "[v0][a0][v1][a1]concat=n=2:v=1:a=1[v][a]"
-    )
-    cmd = [
-        "ffmpeg", "-y",
-        "-i", str(intro_path), "-i", str(master_path),
-        "-filter_complex", filter_complex,
-        "-map", "[v]", "-map", "[a]",
-        "-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
-        "-c:a", "aac", "-b:a", "160k",
-        "-movflags", "+faststart",
-        str(dst),
-    ]
-    _run(cmd)
+    _run([
+        "ffmpeg", "-y", "-i", str(intro_path),
+        "-vf", vf,
+        "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p",
+        "-c:a", "aac", "-ar", str(sample_rate), "-ac", str(channels), "-b:a", "160k",
+        "-movflags", "+faststart", str(conformed),
+    ])
+
+    # 2) Concat (demuxer) with stream copy -- the master is NOT re-encoded.
+    def _q(p: Path) -> str:
+        return str(p.resolve()).replace("'", "'\\''")
+
+    list_file = dst.parent / "intro_concat.txt"
+    list_file.write_text(f"file '{_q(conformed)}'\nfile '{_q(master_path)}'\n", encoding="utf-8")
+    try:
+        _run([
+            "ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", str(list_file),
+            "-c", "copy", "-movflags", "+faststart", str(dst),
+        ])
+    finally:
+        list_file.unlink(missing_ok=True)
+        conformed.unlink(missing_ok=True)
     return dst
 
 
