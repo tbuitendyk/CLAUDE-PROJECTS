@@ -37,6 +37,12 @@ apt-get install -y --no-install-recommends \
   #   pulled in by rapidocr-onnxruntime for in-thumbnail text localisation; the
   #   headless server has no X11, so these provide libGL.so.1 / libgthread).
 
+# Which video encoders this ffmpeg has -- the intro-prepend re-encodes the short
+# intro to match the master's codec (h264/vp9/av1...), so it needs the matching
+# encoder. Logged so a missing one is obvious in the deploy output.
+echo "    ffmpeg video encoders present: $(ffmpeg -hide_banner -encoders 2>/dev/null \
+  | grep -oE 'libx264|libx265|libvpx-vp9|libsvtav1|libaom-av1' | sort -u | tr '\n' ' ')"
+
 echo "==> Creating service user '${SERVICE_USER}' and ${INSTALL_DIR}"
 id -u "${SERVICE_USER}" &>/dev/null || useradd --system --create-home --shell /usr/sbin/nologin "${SERVICE_USER}"
 mkdir -p "${INSTALL_DIR}"

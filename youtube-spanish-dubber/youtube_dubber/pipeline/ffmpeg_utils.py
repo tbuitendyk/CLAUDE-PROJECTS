@@ -73,38 +73,100 @@ def _probe_audio_params(path: Path) -> tuple[int, int]:
         return 48000, 2
 
 
+def probe_video_codec(path: Path) -> str:
+    """The codec name of a video's first video stream (e.g. "h264", "vp9",
+    "av1"); "" on failure."""
+    cmd = [
+        "ffprobe", "-v", "error", "-select_streams", "v:0",
+        "-show_entries", "stream=codec_name",
+        "-of", "default=noprint_wrappers=1:nokey=1", str(path),
+    ]
+    result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    return result.stdout.strip()
+
+
+_ENCODERS_CACHE: "set[str] | None" = None
+
+
+def _available_encoders() -> "set[str]":
+    """The encoder names this ffmpeg build provides (parsed from `-encoders`),
+    cached for the process."""
+    global _ENCODERS_CACHE
+    if _ENCODERS_CACHE is None:
+        try:
+            out = subprocess.run(
+                ["ffmpeg", "-hide_banner", "-encoders"],
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+            ).stdout
+        except Exception:  # noqa: BLE001
+            out = ""
+        _ENCODERS_CACHE = {token for token in out.split() if token}
+    return _ENCODERS_CACHE
+
+
+def _intro_encoder_for(codec: str) -> "tuple[str, list[str]]":
+    """Pick an encoder (and fast, visually-clean settings) to re-encode the SHORT
+    intro to match the master's video codec -- a concatenated track can't switch
+    codecs mid-stream, so the intro must be the master's codec. Raises a clear
+    error for a codec this ffmpeg can't encode, rather than producing a bad file."""
+    table = {
+        "h264": (["libx264"], ["-preset", "veryfast", "-crf", "20"]),
+        "hevc": (["libx265"], ["-preset", "veryfast", "-crf", "23"]),
+        "vp9":  (["libvpx-vp9"], ["-b:v", "0", "-crf", "32", "-deadline", "good", "-cpu-used", "5", "-row-mt", "1"]),
+        "vp8":  (["libvpx"], ["-b:v", "1M", "-deadline", "good", "-cpu-used", "5"]),
+        "av1":  (["libsvtav1", "libaom-av1"], []),
+    }
+    if codec not in table:
+        raise RuntimeError(f"Can't add an intro to a '{codec or 'unknown'}'-encoded video (unsupported codec).")
+    encoders, extra = table[codec]
+    available = _available_encoders()
+    for encoder in encoders:
+        if encoder in available:
+            if encoder == "libsvtav1":
+                extra = ["-preset", "8", "-crf", "34"]
+            elif encoder == "libaom-av1":
+                extra = ["-cpu-used", "6", "-crf", "34", "-b:v", "0"]
+            return encoder, extra
+    raise RuntimeError(
+        f"This server's ffmpeg has no encoder for '{codec}' video (need one of {encoders}); "
+        "can't add an intro to it."
+    )
+
+
 def prepend_intro(intro_path: Path, master_path: Path, dst: Path) -> Path:
     """Concatenate `intro_path` in front of `master_path` into `dst` WITHOUT
     re-encoding the (potentially long) master.
 
-    A recorded intro almost never matches the dubbed video's resolution / fps /
-    codec, so it can't be concatenated raw. So we re-encode only the *short* intro
-    to conform to the master (H.264/AAC at the master's geometry, frame rate and
-    audio format), then join via MPEG-TS: each part is wrapped to TS by stream
-    copy (which carries SPS/PPS in-band and re-bases timestamps per segment), the
-    TS streams are concatenated, and the result is remuxed to MP4 -- still stream
+    A recorded intro almost never matches the dub's resolution / fps / codec, and
+    a concatenated track can't switch codecs mid-stream, so we re-encode only the
+    *short* intro to conform to the master -- the master's video codec (the master
+    is the already-published dub file, so its codec is whatever the source was:
+    H.264, VP9, AV1 ...), geometry, frame rate and audio format. Then both parts
+    are wrapped to Matroska by stream copy and joined with the concat *demuxer*
+    (which re-bases the second segment's timestamps), remuxing to MP4 -- still
     copy, so the master is never re-encoded.
 
-    Why not the simpler routes:
+    Why this shape:
     - The concat *filter* re-encodes the whole master -> hours on a small VPS.
-    - The MP4 concat *demuxer* with stream copy puts the master's frames under the
-      intro's stream metadata with non-monotonic timestamps -> a file YouTube
-      rejects as "could not be processed". TS framing + the concat demuxer's
-      per-segment timestamp re-basing avoids both (verified by a clean full-decode
-      pass in the tests). YouTube re-transcodes on upload, smoothing the seam."""
+    - The MP4 concat *demuxer* (or the concat: protocol) copy leaves non-monotonic
+      timestamps -> a file YouTube rejects as "could not be processed".
+    - MPEG-TS framing only carries H.264/H.265, not VP9/AV1 -> fails on those.
+    Matroska + the concat demuxer is codec-agnostic and yields a clean,
+    monotonic-timestamp file (verified by a full-decode pass in the tests).
+    YouTube re-transcodes on upload, smoothing the single seam."""
     width, height, fps = probe_video_params(master_path)
     if width <= 0 or height <= 0:
         raise RuntimeError(f"Couldn't read video dimensions from {master_path}")
     fps = fps if fps > 0 else 30.0
     sample_rate, channels = _probe_audio_params(master_path)
+    encoder, encoder_args = _intro_encoder_for(probe_video_codec(master_path))
 
     work = dst.parent
-    conformed = work / "intro_conformed.mp4"
-    intro_ts = work / "intro_seg.ts"
-    master_ts = work / "master_seg.ts"
+    conformed = work / "intro_conformed.mkv"
+    master_mkv = work / "master_seg.mkv"
 
-    # 1) Conform ONLY the short intro to the master (scaled to fit, letter/pillar-
-    #    boxed on black, square pixels, the master's fps; audio to its format).
+    # 1) Conform ONLY the short intro to the master (its codec, geometry, fps and
+    #    audio format; scaled to fit, letter/pillar-boxed on black, square pixels).
     vf = (
         f"scale={width}:{height}:force_original_aspect_ratio=decrease,"
         f"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2,setsar=1,fps={fps:.4f},format=yuv420p"
@@ -112,35 +174,29 @@ def prepend_intro(intro_path: Path, master_path: Path, dst: Path) -> Path:
     _run([
         "ffmpeg", "-y", "-i", str(intro_path),
         "-vf", vf,
-        "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p",
+        "-c:v", encoder, *encoder_args, "-pix_fmt", "yuv420p",
         "-c:a", "aac", "-ar", str(sample_rate), "-ac", str(channels), "-b:a", "160k",
         str(conformed),
     ])
 
-    # 2) Wrap each part as MPEG-TS by stream copy (no master re-encode).
-    for src, ts in ((conformed, intro_ts), (master_path, master_ts)):
-        _run([
-            "ffmpeg", "-y", "-i", str(src),
-            "-c", "copy", "-bsf:v", "h264_mp4toannexb", "-f", "mpegts", str(ts),
-        ])
+    # 2) Wrap the master to Matroska by stream copy (no re-encode).
+    _run(["ffmpeg", "-y", "-i", str(master_path), "-c", "copy", str(master_mkv)])
 
-    # 3) Concatenate the TS segments with the concat *demuxer* (which re-bases the
-    #    second segment's timestamps for monotonic DTS, unlike the concat:
-    #    protocol) and remux to MP4 -- still copy, so the master isn't re-encoded.
+    # 3) Concat demuxer (re-bases timestamps) -> MP4, still copy.
     def _q(p: Path) -> str:
         return str(p.resolve()).replace("'", "'\\''")
 
     list_file = work / "intro_concat.txt"
-    list_file.write_text(f"file '{_q(intro_ts)}'\nfile '{_q(master_ts)}'\n", encoding="utf-8")
+    list_file.write_text(f"file '{_q(conformed)}'\nfile '{_q(master_mkv)}'\n", encoding="utf-8")
     try:
         _run([
             "ffmpeg", "-y", "-fflags", "+genpts",
             "-f", "concat", "-safe", "0", "-i", str(list_file),
-            "-c", "copy", "-bsf:a", "aac_adtstoasc",
-            "-avoid_negative_ts", "make_zero", "-movflags", "+faststart", str(dst),
+            "-c", "copy", "-avoid_negative_ts", "make_zero",
+            "-movflags", "+faststart", str(dst),
         ])
     finally:
-        for tmp in (conformed, intro_ts, master_ts, list_file):
+        for tmp in (conformed, master_mkv, list_file):
             tmp.unlink(missing_ok=True)
     return dst
 
