@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Spanish Video Dubber &mdash; buitendyk.ca</title>
   <meta name="description" content="Submit an English YouTube video, generate a Spanish voice-over, and publish it to a YouTube channel.">
-  <link rel="stylesheet" href="/assets/style.css?v=24">
+  <link rel="stylesheet" href="/assets/style.css?v=25">
 </head>
 <body>
   <header class="site-header">
@@ -87,10 +87,23 @@
             </div>
           </div>
 
+          <div class="field">
+            <label for="new-intro">Intro (for &ldquo;Dub &amp; publish&rdquo;)</label>
+            <select id="new-intro">
+              <option value="">&mdash; No intro &mdash;</option>
+            </select>
+            <p class="hint">
+              Prepended to the front when you <strong>Dub &amp; publish</strong>. Add or record
+              clips in the &ldquo;Intro clips&rdquo; section above. Ignored by <strong>Dub</strong>
+              (which prepares the master without publishing).
+            </p>
+          </div>
+
           <div class="field" style="display:flex; gap:0.75rem; flex-wrap:wrap; align-items:center; margin-bottom:0;">
             <button class="btn secondary ghosted" id="thumbnail-btn" type="button" disabled>Preview thumbnail</button>
             <button class="btn secondary ghosted" id="preview-btn" type="button" disabled>Preview transcript first</button>
-            <button class="btn ghosted" id="submit-btn" type="submit" disabled>Start dubbing</button>
+            <button class="btn secondary ghosted" id="dub-prepare-btn" type="button" disabled>Dub</button>
+            <button class="btn ghosted" id="submit-btn" type="submit" disabled>Dub &amp; publish</button>
           </div>
           <p class="hint">
             <strong>Preview thumbnail</strong> fetches just the video's thumbnail (no
@@ -105,8 +118,10 @@
             stages &mdash; fetching or transcribing the original-language text, then
             translating it &mdash; and opens both side by side below. Each Spanish
             line is editable; <strong>Save</strong> stores it as the project's draft
-            in the library (so it survives reloads), and <strong>Start
-            dubbing</strong> speaks the saved draft verbatim.
+            in the library (so it survives reloads), and <strong>Dub</strong> /
+            <strong>Dub &amp; publish</strong> speak the saved draft verbatim.
+            Edited lines stay <span style="color:var(--good);">green</span> until you
+            (re)dub them.
           </p>
           <span class="hint" id="form-message"></span>
         </form>
@@ -269,6 +284,6 @@
     buitendyk.ca &mdash; self-hosted on a personal VPS, built with free &amp; open-source tools.
   </footer>
 
-  <script src="/dubber/dubber.js?v=34"></script>
+  <script src="/dubber/dubber.js?v=35"></script>
 </body>
 </html>

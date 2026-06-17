@@ -496,6 +496,34 @@ footer.site-footer {
   color: var(--good);
 }
 
+/* "Pending dub": a line whose narration differs from the master it was last
+   dubbed from -- edited but not yet (re)dubbed. Derived from the saved
+   dubbed_rows baseline, so the green persists across reloads (unlike the
+   transient .saved feedback). A clear left accent makes it scannable down a
+   long transcript. */
+.transcript-translated.pending-dub textarea {
+  border-color: var(--good);
+  border-left: 3px solid var(--good);
+  background: rgba(87, 209, 139, 0.09);
+}
+.transcript-translated.pending-dub .btn.transcript-save {
+  border-color: var(--good);
+  color: var(--good);
+}
+
+/* The three-button dub/publish row in a library entry (Dub/Redub, & publish,
+   Publish current cut). */
+.entry-controls .entry-control-buttons {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  align-items: center;
+  width: 100%;
+  margin-top: 0.35rem;
+}
+/* The at-a-glance list flag: this entry has edits not yet dubbed. */
+.chip.dubpending { color: var(--good); border-color: var(--good); }
+
 .hint {
   font-size: 0.82rem;
   color: var(--text-dim);

@@ -27,6 +27,8 @@
   const signinBtn = document.getElementById("signin-btn");
   const submitBtn = document.getElementById("submit-btn");
   const previewBtn = document.getElementById("preview-btn");
+  const dubPrepareBtn = document.getElementById("dub-prepare-btn");
+  const newIntroSelect = document.getElementById("new-intro");
   const form = document.getElementById("dub-form");
   const formMessage = document.getElementById("form-message");
   const lookupBanner = document.getElementById("lookup-banner");
@@ -127,7 +129,7 @@
     authDot.className = "dot " + state;
     authText.textContent = text;
     authenticated = state === "unlocked";
-    [submitBtn, previewBtn, thumbnailBtn, rethumbBtn].forEach((btn) => {
+    [submitBtn, previewBtn, dubPrepareBtn, thumbnailBtn, rethumbBtn].forEach((btn) => {
       if (!btn) return;
       btn.disabled = !authenticated;
       btn.classList.toggle("ghosted", !authenticated);
@@ -233,6 +235,7 @@
         currentProject = project;
         renderTranscriptCard({
           rows: project.rows,
+          baselineRows: project.dubbed_rows,
           sourceUrl: project.source_url,
           targetLanguage: project.target_language,
           summaryText: `${project.title || project.source_title || project.source_video_id}` +
@@ -311,8 +314,27 @@
   // --- THE transcript-editing table (shared by preview card + library) ----
   // `rows` are {start, end, original_text, translated_text}; `onSaveLine`
   // returns a Promise for server-backed saves. Returns { element, readLines }.
-  function buildTranscriptTable(rows, onSaveLine) {
+  function buildTranscriptTable(rows, onSaveLine, baselineRows) {
     const hasOriginal = rows.some((row) => row.original_text != null);
+
+    // The transcript the current master was dubbed from (project.dubbed_rows).
+    // A line whose narration differs from its baseline is "pending dub" and gets
+    // greened -- persistently, because it's derived from saved data, so the
+    // colouring survives closing and re-opening the entry. With no baseline
+    // (never dubbed) nothing is greened; the list chip carries the coarse state.
+    const baseline = Array.isArray(baselineRows) ? baselineRows : [];
+    const hasBaseline = baseline.length > 0;
+    const norm = (s) => (s || "").trim();
+    const baselineByStart = new Map(
+      baseline.map((r) => [Math.round((r.start || 0) * 100) / 100, norm(r.translated_text)])
+    );
+    // undefined -> no baseline at all (never green); null -> baseline exists but
+    // this line is new to it (always pending); string -> the dubbed narration.
+    function baselineFor(row) {
+      if (!hasBaseline) return undefined;
+      const key = Math.round((row.start || 0) * 100) / 100;
+      return baselineByStart.has(key) ? baselineByStart.get(key) : null;
+    }
 
     const table = document.createElement("table");
     table.className = "transcript-table";
@@ -387,6 +409,16 @@
       textarea.setAttribute("aria-label", `Edit the Spanish line at ${formatTimestamp(row.start)}`);
       editPairs.push({ textarea, origText });
 
+      // "Pending dub" (green) = this line's narration differs from the dubbed
+      // baseline. Shown on render and re-evaluated on each save, so it persists.
+      const baseText = baselineFor(row);
+      const pendingNow = () => {
+        if (baseText === undefined) return false;  // never dubbed -> no per-line green
+        if (baseText === null) return true;         // a line the master never had
+        return norm(textarea.value) !== baseText;
+      };
+      if (pendingNow()) esCell.classList.add("pending-dub");
+
       const saveBtn = document.createElement("button");
       saveBtn.type = "button";
       saveBtn.className = "btn secondary transcript-save";
@@ -395,14 +427,15 @@
       textarea.addEventListener("input", () => {
         window.clearTimeout(saveBtn._resetTimer);
         saveBtn.textContent = "Save";
-        esCell.classList.remove("saved");
+        // Mid-edit shows amber (unsaved); green is recomputed once it's saved.
+        esCell.classList.remove("saved", "pending-dub");
         esCell.classList.add("dirty");
         syncTextareaHeight(textarea, origText);
       });
 
       function markSaved() {
-        esCell.classList.remove("dirty");
-        esCell.classList.add("saved");
+        esCell.classList.remove("dirty", "saved");
+        esCell.classList.toggle("pending-dub", pendingNow());
         saveBtn.textContent = "Saved ✓";
         window.clearTimeout(saveBtn._resetTimer);
         saveBtn._resetTimer = window.setTimeout(() => { saveBtn.textContent = "Save"; }, 1500);
@@ -518,7 +551,7 @@
         loadLibrary();
         loadEvents();
       });
-    });
+    }, meta.baselineRows);
 
     const scroll = document.createElement("div");
     scroll.className = "library-transcript-scroll";
@@ -562,6 +595,7 @@
       currentProject = project;
       renderTranscriptCard({
         rows: project.rows,
+        baselineRows: project.dubbed_rows,
         sourceUrl: project.source_url,
         targetLanguage: project.target_language,
         summaryText: `${project.title || project.source_title || project.source_video_id}` +
@@ -793,6 +827,8 @@
     }
   }
 
+  // mode: "preview" (transcript only), "remaster" (Dub — prepare the master, no
+  // publish) or "dub" (Dub & publish — prepare then upload, with the chosen intro).
   async function submitJob(mode) {
     if (!authenticated) return;
 
@@ -803,20 +839,37 @@
     }
     const targetLanguage = formLang();
     const payload = { url: url, target_language: targetLanguage, mode: mode };
-    if (mode === "dub") payload.privacy = formPrivacy();
+
+    if (mode === "dub") {
+      payload.privacy = formPrivacy();
+      const introId = (newIntroSelect && newIntroSelect.value) || null;
+      if (introId) payload.intro_id = introId;
+      const introName = introId ? (introItems.find((i) => i.id === introId) || {}).name : null;
+      const ok = window.confirm(
+        `Dub & publish this video as ${payload.privacy} ` +
+        `${introId ? `with the intro “${introName}”` : "with no intro"}?\n\n` +
+        "This builds the dub and uploads a NEW video to the connected channel."
+      );
+      if (!ok) return;
+    }
 
     const hasDraft = currentProject && (currentProject.line_count > 0 || currentProject.has_thumbnail);
     formMessage.textContent = mode === "preview"
       ? "Submitting transcript preview…"
-      : (hasDraft ? "Submitting — the library's saved draft will be used…" : "Submitting…");
+      : (mode === "remaster"
+          ? (hasDraft ? "Preparing the dub (no publish) from the saved draft…" : "Preparing the dub (no publish)…")
+          : (hasDraft ? "Submitting — the library's saved draft will be used…" : "Submitting…"));
     submitBtn.disabled = true;
     previewBtn.disabled = true;
+    if (dubPrepareBtn) dubPrepareBtn.disabled = true;
 
     try {
       const data = await apiJson("/jobs", "POST", payload);
       formMessage.textContent = mode === "preview"
         ? `Queued transcript preview as job ${data.id}. Tracking progress below.`
-        : `Queued as job ${data.id} (${payload.privacy}). Tracking progress below.`;
+        : (mode === "remaster"
+            ? `Queued dub (prepare only) as job ${data.id}. Tracking progress below.`
+            : `Queued as job ${data.id} (${payload.privacy}). Tracking progress below.`);
       renderJob(data);
       pollJob(data.id);
       loadEvents();
@@ -825,6 +878,7 @@
     } finally {
       submitBtn.disabled = !authenticated;
       previewBtn.disabled = !authenticated;
+      if (dubPrepareBtn) dubPrepareBtn.disabled = !authenticated;
     }
   }
 
@@ -855,6 +909,10 @@
     event.preventDefault();
     submitJob("dub");
   });
+
+  // "Dub" = prepare the master without publishing (the new-job analogue of the
+  // library's Redub). "Dub & publish" stays on the form's submit button above.
+  if (dubPrepareBtn) dubPrepareBtn.addEventListener("click", () => submitJob("remaster"));
 
   // Preview transcript: if the library already has this video's transcript,
   // re-open it in the sub-card instead of queueing a fresh preview job.
@@ -1680,6 +1738,16 @@
     chip.textContent = chipInfo.text;
     name.appendChild(chip);
 
+    // A green "edits to dub" flag when the working transcript is ahead of the
+    // master (mirrors the green transcript lines, at a glance across the list).
+    if (item.pending_dub && item.has_master) {
+      const dubChip = document.createElement("span");
+      dubChip.className = "chip dubpending";
+      dubChip.textContent = "Edits to dub";
+      name.appendChild(document.createTextNode(" "));
+      name.appendChild(dubChip);
+    }
+
     const label = document.createElement("span");
     label.textContent = " " + (item.title || item.source_title || item.source_video_id);
     name.appendChild(label);
@@ -1800,7 +1868,8 @@
     // current set back as the entry's working transcript.
     const built = buildTranscriptTable(rows, () =>
       apiJson(`/projects/${item.id}/transcript`, "PUT", { rows: built.readLines() })
-        .then(() => { loadLibrary(); loadEvents(); })
+        .then(() => { loadLibrary(); loadEvents(); }),
+      project.dubbed_rows
     );
 
     const scroll = document.createElement("div");
@@ -1808,62 +1877,9 @@
     scroll.appendChild(built.element);
     body.appendChild(scroll);
 
+    // Save-state row: download + a note explaining the green lines.
     const actions = document.createElement("div");
     actions.className = "library-actions";
-
-    // Redub: a fresh upload from the ORIGINAL source video speaking the saved
-    // transcript, reusing the voice, thumbnail and cached audio bed. The entry
-    // repoints to the new upload; the old dub stays on the channel for manual
-    // cleanup.
-    const redubBtn = document.createElement("button");
-    redubBtn.type = "button";
-    redubBtn.className = "btn small";
-    redubBtn.textContent = item.target_url ? "Redub" : "Dub from this draft";
-
-    const privacyWrap = document.createElement("span");
-    privacyWrap.className = "radio-row inline";
-    const radioName = `redub-privacy-${item.id}`;
-    [["unlisted", "Unlisted", true], ["public", "Public", false]].forEach(([value, text, checked]) => {
-      const radioLabel = document.createElement("label");
-      const radio = document.createElement("input");
-      radio.type = "radio";
-      radio.name = radioName;
-      radio.value = value;
-      radio.checked = checked;
-      radioLabel.appendChild(radio);
-      radioLabel.appendChild(document.createTextNode(" " + text));
-      privacyWrap.appendChild(radioLabel);
-    });
-
-    redubBtn.addEventListener("click", async () => {
-      const checked = body.querySelector(`input[name="${radioName}"]:checked`);
-      const privacy = checked ? checked.value : "unlisted";
-      const label = item.title || item.source_title || item.source_video_id;
-      const ok = window.confirm(
-        `${item.target_url ? "Redub" : "Dub"} “${label}” as ${privacy}?\n\n` +
-        "This publishes a NEW video from the original source, speaking the " +
-        "saved transcript." + (item.target_url
-          ? " The library entry will point at the new upload; the old dub " +
-            "stays on the channel until you remove it yourself."
-          : "")
-      );
-      if (!ok) return;
-      redubBtn.disabled = true;
-      try {
-        const job = await apiJson(`/projects/${item.id}/redub`, "POST", { privacy: privacy });
-        formMessage.textContent = `Queued ${item.target_url ? "redub" : "dub"} as job ${job.id} (${privacy}). Tracking progress below.`;
-        renderJob(job);
-        pollJob(job.id);
-        loadEvents();
-      } catch (err) {
-        formMessage.textContent = `Couldn't start the redub: ${err.message}`;
-      } finally {
-        redubBtn.disabled = false;
-      }
-    });
-
-    actions.appendChild(redubBtn);
-    actions.appendChild(privacyWrap);
 
     const dlBtn = document.createElement("button");
     dlBtn.type = "button";
@@ -1878,14 +1894,17 @@
     const hint = document.createElement("span");
     hint.className = "hint";
     hint.style.marginTop = "0";
-    hint.textContent = "Each line's Save stores the edit on this entry; edited published " +
-      "entries show as “Redub in progress” until you redub.";
+    hint.textContent = "Each line's Save stores the edit on this entry. Green lines are edits " +
+      "not yet dubbed into the master — they stay green across reloads until you (re)dub.";
     actions.appendChild(hint);
     body.appendChild(actions);
 
+    // The unified dub/publish controls. Kept in .intro-control-wrap so
+    // refreshIntroControl can rebuild just this block when the intro library
+    // changes, leaving any unsaved transcript edits above untouched.
     const introWrap = document.createElement("div");
     introWrap.className = "intro-control-wrap";
-    introWrap.appendChild(buildIntroControl(item));
+    introWrap.appendChild(buildEntryControls(item));
     body.appendChild(introWrap);
   }
 
@@ -1897,38 +1916,35 @@
     if (!wrap) return;
     await loadIntros();
     const fresh = libraryItems.find((it) => it.id === item.id) || item;
-    wrap.replaceChildren(buildIntroControl(fresh));
+    wrap.replaceChildren(buildEntryControls(fresh));
   }
 
-  // The intro control for one library entry: pick an intro (or None) and
-  // republish the saved master with it prepended -- a new video each time.
-  function buildIntroControl(item) {
+  // The unified dub/publish controls for one library entry: a shared intro
+  // selector + privacy, and three buttons that mirror the new-job section's
+  // wording -- Dub/Redub (prepare the master, no publish), Dub/Redub & publish
+  // (prepare then upload with the chosen intro), and Publish current cut
+  // (upload the saved master as-is, no re-dub).
+  function buildEntryControls(item) {
     const block = document.createElement("div");
-    block.className = "library-actions";
+    block.className = "library-actions entry-controls";
     block.style.borderTop = "1px solid var(--border)";
     block.style.marginTop = "0.75rem";
     block.style.paddingTop = "0.75rem";
 
-    if (!item.has_master) {
-      const h = document.createElement("span");
-      h.className = "hint";
-      h.style.marginTop = "0";
-      h.textContent = "Intro: available once this project has a saved master — dub or redub it " +
-        "once (dubs now store the master automatically), then reopen this to attach an intro.";
-      block.appendChild(h);
-      return block;
-    }
+    const published = !!item.target_url;
+    const label = item.title || item.source_title || item.source_video_id;
 
-    const label = document.createElement("span");
-    label.className = "hint";
-    label.style.marginTop = "0";
-    label.textContent = "Intro:";
-    block.appendChild(label);
+    // --- shared: intro selector (pre-set to the entry's current intro) ---
+    const introLabel = document.createElement("span");
+    introLabel.className = "hint";
+    introLabel.style.marginTop = "0";
+    introLabel.textContent = "Intro:";
+    block.appendChild(introLabel);
 
     const select = document.createElement("select");
     const noneOpt = document.createElement("option");
     noneOpt.value = "";
-    noneOpt.textContent = "— None —";
+    noneOpt.textContent = "— No intro —";
     select.appendChild(noneOpt);
     introItems.forEach((intro) => {
       const opt = document.createElement("option");
@@ -1939,9 +1955,16 @@
     });
     block.appendChild(select);
 
+    // --- shared: privacy ---
+    const privacyLabel = document.createElement("span");
+    privacyLabel.className = "hint";
+    privacyLabel.style.marginTop = "0";
+    privacyLabel.textContent = "Publish as:";
+    block.appendChild(privacyLabel);
+
     const privacyWrap = document.createElement("span");
     privacyWrap.className = "radio-row inline";
-    const radioName = `intro-privacy-${item.id}`;
+    const radioName = `publish-privacy-${item.id}`;
     [["unlisted", "Unlisted", item.privacy !== "public"],
      ["public", "Public", item.privacy === "public"]].forEach(([value, text, checked]) => {
       const radioLabel = document.createElement("label");
@@ -1956,55 +1979,111 @@
     });
     block.appendChild(privacyWrap);
 
-    const applyBtn = document.createElement("button");
-    applyBtn.type = "button";
-    applyBtn.className = "btn small";
-    applyBtn.textContent = "Apply & republish";
-    applyBtn.addEventListener("click", async () => {
-      const introId = select.value;
+    function selectedPrivacy() {
       const checked = block.querySelector(`input[name="${radioName}"]:checked`);
-      const privacy = checked ? checked.value : "unlisted";
-      const label2 = item.title || item.source_title || item.source_video_id;
-      const introName2 = introId ? (introItems.find((i) => i.id === introId) || {}).name : null;
+      return checked ? checked.value : "unlisted";
+    }
+    function selectedIntroId() { return select.value || null; }
+    function introNameOf(id) {
+      const i = id ? introItems.find((x) => x.id === id) : null;
+      return i ? i.name : null;
+    }
+
+    const btnRow = document.createElement("div");
+    btnRow.className = "entry-control-buttons";
+
+    // --- Dub / Redub: prepare the master, do NOT publish ---
+    const prepareBtn = document.createElement("button");
+    prepareBtn.type = "button";
+    prepareBtn.className = "btn secondary small";
+    prepareBtn.textContent = published ? "Redub" : "Dub";
+
+    // --- Dub & publish / Redub & publish ---
+    const publishBtn = document.createElement("button");
+    publishBtn.type = "button";
+    publishBtn.className = "btn small";
+    publishBtn.textContent = published ? "Redub & publish" : "Dub & publish";
+
+    async function runRedub(publish) {
+      const privacy = selectedPrivacy();
+      const introId = selectedIntroId();
+      if (publish) {
+        const ok = window.confirm(
+          `${published ? "Redub" : "Dub"} & publish “${label}” as ${privacy} ` +
+          `${introId ? `with the intro “${introNameOf(introId)}”` : "with no intro"}?\n\n` +
+          "This dubs the saved transcript and uploads a NEW video (new YouTube id)." +
+          (published ? " The previous upload stays on the channel until you remove it." : "")
+        );
+        if (!ok) return;
+      }
+      prepareBtn.disabled = publishBtn.disabled = true;
+      try {
+        const job = await apiJson(`/projects/${item.id}/redub`, "POST",
+          publish ? { publish: true, privacy: privacy, intro_id: introId } : { publish: false });
+        formMessage.textContent = publish
+          ? `Queued ${published ? "redub" : "dub"} & publish as job ${job.id} (${privacy}). Tracking progress above.`
+          : `Queued ${published ? "redub" : "dub"} (prepare only) as job ${job.id}. Tracking progress above.`;
+        renderJob(job); pollJob(job.id); loadEvents();
+      } catch (err) {
+        formMessage.textContent = `Couldn't start: ${err.message}`;
+      } finally {
+        prepareBtn.disabled = publishBtn.disabled = false;
+      }
+    }
+    prepareBtn.addEventListener("click", () => runRedub(false));
+    publishBtn.addEventListener("click", () => runRedub(true));
+    btnRow.appendChild(prepareBtn);
+    btnRow.appendChild(publishBtn);
+
+    // --- Publish current cut: upload the saved master as-is (no re-dub) ---
+    const publishCutBtn = document.createElement("button");
+    publishCutBtn.type = "button";
+    publishCutBtn.className = "btn small";
+    publishCutBtn.textContent = "Publish current cut";
+    if (!item.has_master) {
+      publishCutBtn.disabled = true;
+      publishCutBtn.title = "Available once this project has a saved master — Dub or Redub it once.";
+    }
+    publishCutBtn.addEventListener("click", async () => {
+      const privacy = selectedPrivacy();
+      const introId = selectedIntroId();
       const ok = window.confirm(
-        `Republish “${label2}” ${introId ? `with the intro “${introName2}”` : "with NO intro"} ` +
-        `as ${privacy}?\n\n` +
-        "This uploads a NEW video (a new YouTube id) built from the saved master. The " +
-        "previous upload stays on the channel until you remove it yourself."
+        `Publish the current master of “${label}” ` +
+        `${introId ? `with the intro “${introNameOf(introId)}”` : "with no intro"} as ${privacy}?\n\n` +
+        "No re-dub: uploads the saved master as-is as a NEW video (new YouTube id). " +
+        "The previous upload stays on the channel until you remove it."
       );
       if (!ok) return;
-      applyBtn.disabled = true;
+      publishCutBtn.disabled = true;
       try {
-        let job;
-        if (introId) {
-          job = await apiJson(`/projects/${item.id}/intro`, "POST",
-            { intro_id: introId, privacy: privacy });
-        } else {
-          job = await api(`/projects/${item.id}/intro`, { method: "DELETE" });
-        }
-        formMessage.textContent = `Queued intro republish as job ${job.id}. Tracking progress above.`;
-        renderJob(job);
-        pollJob(job.id);
-        loadEvents();
+        const job = introId
+          ? await apiJson(`/projects/${item.id}/intro`, "POST", { intro_id: introId, privacy: privacy })
+          : await api(`/projects/${item.id}/intro`, { method: "DELETE" });
+        formMessage.textContent = `Queued publish (current cut) as job ${job.id}. Tracking progress above.`;
+        renderJob(job); pollJob(job.id); loadEvents();
       } catch (err) {
-        formMessage.textContent = `Couldn't republish with the intro: ${err.message}`;
+        formMessage.textContent = `Couldn't publish: ${err.message}`;
       } finally {
-        applyBtn.disabled = false;
+        publishCutBtn.disabled = !item.has_master;
       }
     });
-    block.appendChild(applyBtn);
+    btnRow.appendChild(publishCutBtn);
+    block.appendChild(btnRow);
 
+    // --- explanatory note ---
     const note = document.createElement("span");
     note.className = "hint";
     note.style.marginTop = "0";
+    const bits = [
+      `${published ? "Redub" : "Dub"} rebuilds the master from the saved transcript; ` +
+      "“& publish” then uploads it, while “Publish current cut” republishes the saved master without re-dubbing.",
+    ];
     if (item.intro_id) {
       const cur = introItems.find((i) => i.id === item.intro_id);
-      note.textContent = cur
-        ? `Currently carrying “${cur.name}” (${formatDuration(item.intro_duration)}).`
-        : "An intro is attached (it may have been deleted from the library).";
-    } else {
-      note.textContent = "No intro attached. Removing republishes the bare master.";
+      bits.push(cur ? `Currently carrying “${cur.name}” (${formatDuration(item.intro_duration)}).`
+                    : "An intro is attached (it may have been deleted from the library).");
     }
+    note.textContent = bits.join(" ");
     block.appendChild(note);
 
     return block;
@@ -2045,7 +2124,27 @@
     }
   }
 
+  // Keep the new-job form's intro dropdown in sync with the intro library, so a
+  // freshly-added clip is selectable for "Dub & publish" without a page reload.
+  function populateNewIntroSelect() {
+    if (!newIntroSelect) return;
+    const prev = newIntroSelect.value;
+    newIntroSelect.textContent = "";
+    const none = document.createElement("option");
+    none.value = "";
+    none.textContent = "— No intro —";
+    newIntroSelect.appendChild(none);
+    introItems.forEach((intro) => {
+      const opt = document.createElement("option");
+      opt.value = intro.id;
+      opt.textContent = `${intro.name} (${formatDuration(intro.duration)})`;
+      newIntroSelect.appendChild(opt);
+    });
+    newIntroSelect.value = prev;  // preserve the selection if it still exists
+  }
+
   function renderIntros() {
+    populateNewIntroSelect();
     if (!introList) return;
     introList.textContent = "";
     if (!introItems.length) {
