@@ -23,6 +23,51 @@ REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 INSTALL_DIR="/opt/youtube-dubber"
 SERVICE_USER="dubber"
 
+# TEMP-INTRO-DIAG: capture why the intro-republish job is stuck. Captured at the
+# TOP (before this script restarts the service and kills the job), printed at the
+# END so it survives the deploy reply's tail truncation.
+INTRO_DIAG="$(
+  set +e
+  echo "### ffmpeg processes (etime = elapsed wall time):"
+  ps -eo pid,etime,pcpu,pmem,rss,args 2>/dev/null | grep -i '[f]fmpeg' | head -8
+  echo "### jobs + project + intro (from sqlite):"
+  sudo -u "${SERVICE_USER}" "${INSTALL_DIR}/.venv/bin/python" - <<'PYEOF'
+import sqlite3
+try:
+    c = sqlite3.connect("/opt/youtube-dubber/data/jobs.sqlite3"); c.row_factory = sqlite3.Row
+    rows = c.execute("SELECT id,mode,status,stage,progress,progress_pct,created_at,updated_at,project_id "
+                     "FROM jobs WHERE status IN ('running','queued') OR mode='intro' "
+                     "ORDER BY created_at DESC LIMIT 6").fetchall()
+    for r in rows:
+        print(f"  job {r['id']} mode={r['mode']} status={r['status']} stage={r['stage']} pct={r['progress_pct']}")
+        print(f"    progress={r['progress']!r}")
+        print(f"    created={r['created_at']} updated={r['updated_at']} project={r['project_id']}")
+    for pid in {r['project_id'] for r in rows if r['project_id']}:
+        p = c.execute("SELECT id,master_path,intro_id,intro_duration,target_video_id FROM projects WHERE id=?", (pid,)).fetchone()
+        if p:
+            print(f"  project {p['id']} master={p['master_path']} intro_id={p['intro_id']} dur={p['intro_duration']} target={p['target_video_id']}")
+            if p['intro_id']:
+                i = c.execute("SELECT id,file_path,duration FROM intros WHERE id=?", (p['intro_id'],)).fetchone()
+                if i: print(f"    intro {i['id']} file={i['file_path']} dur={i['duration']}")
+except Exception as e:
+    print("  DBERR", repr(e)[:200])
+PYEOF
+  echo "### masters / intros on disk:"
+  ls -lh /opt/youtube-dubber/data/masters/ 2>/dev/null | tail -6
+  ls -lh /opt/youtube-dubber/data/intros/ 2>/dev/null | tail -6
+  echo "### master ffprobe (codec/dims/fps/duration):"
+  for m in /opt/youtube-dubber/data/masters/*.mp4; do
+    [ -f "$m" ] || continue
+    echo "  $(basename "$m"):"
+    ffprobe -v error -select_streams v:0 -show_entries stream=codec_name,width,height,r_frame_rate \
+      -show_entries format=duration -of default=noprint_wrappers=1 "$m" 2>&1 | sed 's/^/    /'
+  done
+  echo "### worker log (last 10h, intro/ffmpeg/upload/errors):"
+  journalctl -u youtube-dubber --no-pager --since '10 hours ago' 2>/dev/null \
+    | grep -iE 'intro|prepend|with_intro|Adding the intro|Uploading to YouTube|republish|Traceback|Error|ffmpeg|upload_video|\[job ' \
+    | tail -45
+)"
+
 echo "==> Installing system packages (ffmpeg, python3-venv, ...)"
 apt-get update -qq
 apt-get install -y --no-install-recommends \
@@ -333,3 +378,7 @@ Install complete. Remaining manual steps (see README.md for full detail):
               -d '{"url": "https://www.youtube.com/watch?v=XXXXXXXXXXX"}'
 ==============================================================================
 EOF
+
+echo "########## [INTRO-DIAG] ##########"
+echo "${INTRO_DIAG}"
+echo "########## [INTRO-DIAG] end ##########"
