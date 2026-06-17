@@ -79,22 +79,32 @@ def prepend_intro(intro_path: Path, master_path: Path, dst: Path) -> Path:
 
     A recorded intro almost never matches the dubbed video's resolution / fps /
     codec, so it can't be concatenated raw. So we re-encode only the *short* intro
-    to conform exactly to the master (H.264/AAC at the master's geometry, frame
-    rate and audio format), then join the two with the concat demuxer using
-    stream copy -- the master's video/audio pass through untouched, exactly as the
-    dub's own mux never re-encodes the video. Re-encoding the whole master here
-    instead (the obvious filter-concat) takes *hours* on a small VPS for a
-    full-length video. YouTube re-transcodes on upload, smoothing any minor
-    codec-parameter difference at the single join."""
+    to conform to the master (H.264/AAC at the master's geometry, frame rate and
+    audio format), then join via MPEG-TS: each part is wrapped to TS by stream
+    copy (which carries SPS/PPS in-band and re-bases timestamps per segment), the
+    TS streams are concatenated, and the result is remuxed to MP4 -- still stream
+    copy, so the master is never re-encoded.
+
+    Why not the simpler routes:
+    - The concat *filter* re-encodes the whole master -> hours on a small VPS.
+    - The MP4 concat *demuxer* with stream copy puts the master's frames under the
+      intro's stream metadata with non-monotonic timestamps -> a file YouTube
+      rejects as "could not be processed". TS framing + the concat demuxer's
+      per-segment timestamp re-basing avoids both (verified by a clean full-decode
+      pass in the tests). YouTube re-transcodes on upload, smoothing the seam."""
     width, height, fps = probe_video_params(master_path)
     if width <= 0 or height <= 0:
         raise RuntimeError(f"Couldn't read video dimensions from {master_path}")
     fps = fps if fps > 0 else 30.0
     sample_rate, channels = _probe_audio_params(master_path)
 
-    # 1) Conform ONLY the intro to the master (scaled to fit, letter/pillar-boxed
-    #    on black, square pixels, the master's fps; audio to the master's format).
-    conformed = dst.parent / "intro_conformed.mp4"
+    work = dst.parent
+    conformed = work / "intro_conformed.mp4"
+    intro_ts = work / "intro_seg.ts"
+    master_ts = work / "master_seg.ts"
+
+    # 1) Conform ONLY the short intro to the master (scaled to fit, letter/pillar-
+    #    boxed on black, square pixels, the master's fps; audio to its format).
     vf = (
         f"scale={width}:{height}:force_original_aspect_ratio=decrease,"
         f"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2,setsar=1,fps={fps:.4f},format=yuv420p"
@@ -104,23 +114,34 @@ def prepend_intro(intro_path: Path, master_path: Path, dst: Path) -> Path:
         "-vf", vf,
         "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p",
         "-c:a", "aac", "-ar", str(sample_rate), "-ac", str(channels), "-b:a", "160k",
-        "-movflags", "+faststart", str(conformed),
+        str(conformed),
     ])
 
-    # 2) Concat (demuxer) with stream copy -- the master is NOT re-encoded.
+    # 2) Wrap each part as MPEG-TS by stream copy (no master re-encode).
+    for src, ts in ((conformed, intro_ts), (master_path, master_ts)):
+        _run([
+            "ffmpeg", "-y", "-i", str(src),
+            "-c", "copy", "-bsf:v", "h264_mp4toannexb", "-f", "mpegts", str(ts),
+        ])
+
+    # 3) Concatenate the TS segments with the concat *demuxer* (which re-bases the
+    #    second segment's timestamps for monotonic DTS, unlike the concat:
+    #    protocol) and remux to MP4 -- still copy, so the master isn't re-encoded.
     def _q(p: Path) -> str:
         return str(p.resolve()).replace("'", "'\\''")
 
-    list_file = dst.parent / "intro_concat.txt"
-    list_file.write_text(f"file '{_q(conformed)}'\nfile '{_q(master_path)}'\n", encoding="utf-8")
+    list_file = work / "intro_concat.txt"
+    list_file.write_text(f"file '{_q(intro_ts)}'\nfile '{_q(master_ts)}'\n", encoding="utf-8")
     try:
         _run([
-            "ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", str(list_file),
-            "-c", "copy", "-movflags", "+faststart", str(dst),
+            "ffmpeg", "-y", "-fflags", "+genpts",
+            "-f", "concat", "-safe", "0", "-i", str(list_file),
+            "-c", "copy", "-bsf:a", "aac_adtstoasc",
+            "-avoid_negative_ts", "make_zero", "-movflags", "+faststart", str(dst),
         ])
     finally:
-        list_file.unlink(missing_ok=True)
-        conformed.unlink(missing_ok=True)
+        for tmp in (conformed, intro_ts, master_ts, list_file):
+            tmp.unlink(missing_ok=True)
     return dst
 
 
