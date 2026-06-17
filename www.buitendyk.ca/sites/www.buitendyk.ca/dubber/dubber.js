@@ -235,7 +235,7 @@
         currentProject = project;
         renderTranscriptCard({
           rows: project.rows,
-          baselineRows: project.dubbed_rows,
+          baselineRows: dubBaseline(project),
           sourceUrl: project.source_url,
           targetLanguage: project.target_language,
           summaryText: `${project.title || project.source_title || project.source_video_id}` +
@@ -312,6 +312,15 @@
   });
 
   // --- THE transcript-editing table (shared by preview card + library) ----
+  // The persisted per-line baseline the editor greens against: dubbed_rows once
+  // a project has been dubbed, else the pristine machine transcript
+  // (acquired_rows) so hand-edits on a never-dubbed draft still show green.
+  function dubBaseline(project) {
+    const dubbed = Array.isArray(project.dubbed_rows) ? project.dubbed_rows : [];
+    if (dubbed.length) return dubbed;
+    return Array.isArray(project.acquired_rows) ? project.acquired_rows : [];
+  }
+
   // `rows` are {start, end, original_text, translated_text}; `onSaveLine`
   // returns a Promise for server-backed saves. Returns { element, readLines }.
   function buildTranscriptTable(rows, onSaveLine, baselineRows) {
@@ -595,7 +604,7 @@
       currentProject = project;
       renderTranscriptCard({
         rows: project.rows,
-        baselineRows: project.dubbed_rows,
+        baselineRows: dubBaseline(project),
         sourceUrl: project.source_url,
         targetLanguage: project.target_language,
         summaryText: `${project.title || project.source_title || project.source_video_id}` +
@@ -723,6 +732,8 @@
       currentProject = null; // the entry just gained rows; refetch on demand
       renderTranscriptCard({
         rows: job.result.rows,
+        // A fresh machine transcript: green any line edited away from it.
+        baselineRows: job.result.rows,
         sourceUrl: job.source_url,
         targetLanguage: job.target_language,
         summaryText: `Source: ${job.result.transcript_source}` +
@@ -1865,11 +1876,13 @@
     }
 
     // Same shared table as the preview card; a line's Save PUTs the whole
-    // current set back as the entry's working transcript.
+    // current set back as the entry's working transcript. Deliberately does NOT
+    // reload the library afterward -- that rebuilds the list and would collapse
+    // this open editor. The saved line greens via markSaved (vs the baseline)
+    // and stays open; the list chips refresh on the next natural load.
     const built = buildTranscriptTable(rows, () =>
-      apiJson(`/projects/${item.id}/transcript`, "PUT", { rows: built.readLines() })
-        .then(() => { loadLibrary(); loadEvents(); }),
-      project.dubbed_rows
+      apiJson(`/projects/${item.id}/transcript`, "PUT", { rows: built.readLines() }),
+      dubBaseline(project)
     );
 
     const scroll = document.createElement("div");
