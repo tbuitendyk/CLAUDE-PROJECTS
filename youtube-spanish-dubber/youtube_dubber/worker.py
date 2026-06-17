@@ -56,11 +56,15 @@ def release_idle_memory() -> None:
     log.info("Released cached models; service is idle.")
 
 
-def _make_progress_fn(job_id: str):
+def _make_progress_fn(job_id: str, mode: str = "dub"):
+    # Intro-republish jobs get their own progress bands (mux then upload) so the
+    # bar starts near 0 instead of inheriting a dub's near-done "muxing" band.
+    bands = progress.INTRO_STAGE_BANDS if mode == "intro" else None
+
     def on_progress(stage: str, message: str, fraction: float | None = None) -> None:
         log.info("[job %s] (%s) %s", job_id, stage, message)
         fields = {"stage": stage, "progress": message}
-        pct = progress.overall_percent(stage, fraction)
+        pct = progress.overall_percent(stage, fraction, bands=bands)
         if pct is not None:
             fields["progress_pct"] = pct
         db.update_job(job_id, **fields)
@@ -335,7 +339,7 @@ def _process_intro(job: db.Job, project: db.Project | None, work_dir, on_progres
         upload_file = work_dir / "with_intro.mp4"
         ffmpeg_utils.prepend_intro(
             intro_file, master, upload_file,
-            on_progress=lambda msg: on_progress("muxing", msg),
+            on_progress=lambda msg, frac=None: on_progress("muxing", msg, fraction=frac),
         )
     else:
         on_progress("muxing", "Preparing the video without an intro…")
@@ -403,7 +407,7 @@ def _finish_intro(job: db.Job, project: db.Project | None, result: dict) -> None
 
 def _process(job: db.Job) -> None:
     work_dir = db.job_work_dir(job.id)
-    on_progress = _make_progress_fn(job.id)
+    on_progress = _make_progress_fn(job.id, job.mode)
     project = _job_project(job)
     try:
         if job.mode == "preview":

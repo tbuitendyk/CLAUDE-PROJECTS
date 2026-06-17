@@ -41,13 +41,27 @@ STAGE_BANDS: dict[str, tuple[float, float]] = {
     "done": (100.0, 100.0),
 }
 
+# Intro-republish jobs (mode="intro") have a different work profile than a full
+# dub: just the (optionally long, re-encoding) intro mux, then the upload. They
+# get their own bands so the bar starts near 0 and tracks those two phases --
+# instead of inheriting a dub's tiny "muxing" band (88-90%) and looking frozen
+# near "done" for the minutes a master re-encode can take.
+INTRO_STAGE_BANDS: dict[str, tuple[float, float]] = {
+    "starting": (0.0, 0.0),
+    "muxing": (0.0, 70.0),
+    "uploading": (70.0, 99.0),
+    "done": (100.0, 100.0),
+}
 
-def overall_percent(stage: str, fraction: Optional[float] = None) -> Optional[float]:
+
+def overall_percent(stage: str, fraction: Optional[float] = None,
+                    bands: Optional[dict[str, tuple[float, float]]] = None) -> Optional[float]:
     """Overall completion (0-100) for `stage`, optionally interpolated by an
-    in-stage `fraction` (0..1). Returns None for stages not on the bar
-    (e.g. 'starting', 'failed', 'cancelled', 'interrupted') so the caller can
-    leave the last known percent untouched rather than resetting it."""
-    band = STAGE_BANDS.get(stage)
+    in-stage `fraction` (0..1). `bands` selects the stage->band map (defaults to
+    the full-dub `STAGE_BANDS`; pass `INTRO_STAGE_BANDS` for intro jobs). Returns
+    None for stages not on the bar (e.g. 'failed', 'cancelled', 'interrupted') so
+    the caller can leave the last known percent untouched rather than resetting."""
+    band = (bands or STAGE_BANDS).get(stage)
     if band is None:
         return None
     start, end = band

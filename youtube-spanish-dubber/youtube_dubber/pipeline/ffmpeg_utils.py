@@ -9,7 +9,9 @@ from __future__ import annotations
 
 import logging
 import subprocess
+import tempfile
 from pathlib import Path
+from typing import Callable, Optional
 
 log = logging.getLogger(__name__)
 
@@ -22,6 +24,36 @@ def _run(cmd: list[str]) -> None:
     result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     if result.returncode != 0:
         raise RuntimeError(f"Command failed ({' '.join(cmd)}):\n{result.stderr[-4000:]}")
+
+
+def _run_with_progress(cmd: list[str], total_seconds: float,
+                       on_fraction: "Callable[[float], None]") -> None:
+    """Run an ffmpeg command that includes ``-progress pipe:1 -nostats``, parsing
+    its ``out_time=`` lines to call ``on_fraction(0..1)`` as it encodes. Raises
+    like ``_run`` on a non-zero exit -- stderr is captured to a temp file so it
+    can't deadlock the stdout progress pipe."""
+    log.debug("Running (with progress): %s", " ".join(cmd))
+    with tempfile.TemporaryFile(mode="w+") as errf:
+        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=errf, text=True, bufsize=1)
+        assert proc.stdout is not None
+        for line in proc.stdout:
+            if not line.startswith("out_time="):
+                continue
+            stamp = line[len("out_time="):].strip()  # HH:MM:SS.ffffff (or "N/A")
+            try:
+                hours, minutes, seconds = stamp.split(":")
+                elapsed = int(hours) * 3600 + int(minutes) * 60 + float(seconds)
+            except ValueError:
+                continue
+            if total_seconds > 0:
+                try:
+                    on_fraction(max(0.0, min(0.99, elapsed / total_seconds)))
+                except Exception:  # noqa: BLE001 -- progress is best-effort
+                    pass
+        proc.wait()
+        if proc.returncode != 0:
+            errf.seek(0)
+            raise RuntimeError(f"Command failed ({' '.join(cmd)}):\n{errf.read()[-4000:]}")
 
 
 def probe_duration(path: Path) -> float:
@@ -181,12 +213,14 @@ def _prepend_keep_master(
 def _prepend_reencode(
     intro_path: Path, master_path: Path, dst: Path,
     width: int, height: int, fps: float, max_height: int = 1080,
+    on_progress: "Optional[Callable[[str, Optional[float]], None]]" = None,
 ) -> Path:
     """Compatibility join: re-encode BOTH parts to H.264 with the concat filter,
     capped to `max_height` (so a 4K master doesn't take hours). Used only when the
     master's codec has no cheap encoder for the fast path (e.g. AV1 with only
     libaom). Slower (it re-encodes the master) but always produces a standard,
-    valid file; YouTube re-transcodes on upload anyway."""
+    valid file; YouTube re-transcodes on upload anyway. Streams encode progress
+    via `on_progress` when given (this is the long step)."""
     target_h = min(height, max_height) // 2 * 2
     target_w = max(2, round(width * target_h / height / 2) * 2)
     conform = _conform_filter(target_w, target_h, fps)
@@ -195,17 +229,25 @@ def _prepend_reencode(
         f"[1:v]{conform}[v1];[1:a]aresample=48000,aformat=channel_layouts=stereo[a1];"
         "[v0][a0][v1][a1]concat=n=2:v=1:a=1[v][a]"
     )
-    _run([
+    cmd = [
         "ffmpeg", "-y", "-i", str(intro_path), "-i", str(master_path),
         "-filter_complex", filter_complex, "-map", "[v]", "-map", "[a]",
         "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p",
-        "-c:a", "aac", "-b:a", "160k", "-movflags", "+faststart", str(dst),
-    ])
+        "-c:a", "aac", "-b:a", "160k", "-movflags", "+faststart",
+    ]
+    if on_progress is not None:
+        total = probe_duration(intro_path) + probe_duration(master_path)
+        _run_with_progress(
+            cmd + ["-progress", "pipe:1", "-nostats", str(dst)], total,
+            lambda f: on_progress(f"Re-encoding for this video's format… {int(f * 100)}%", f),
+        )
+    else:
+        _run(cmd + [str(dst)])
     return dst
 
 
 def prepend_intro(intro_path: Path, master_path: Path, dst: Path,
-                  on_progress: "Callable[[str], None] | None" = None) -> Path:
+                  on_progress: "Optional[Callable[[str, Optional[float]], None]]" = None) -> Path:
     """Concatenate `intro_path` in front of `master_path` into `dst`.
 
     A recorded intro almost never matches the dub's resolution / fps / codec, and
@@ -224,6 +266,10 @@ def prepend_intro(intro_path: Path, master_path: Path, dst: Path,
     resolution -> hours; the MP4/concat-protocol copy -> non-monotonic timestamps
     YouTube rejects; the MPEG-TS path -> H.264-only; encoding the intro as AV1 with
     libaom -> OOM."""
+    def _report(message: str, fraction: "Optional[float]" = None) -> None:
+        if on_progress is not None:
+            on_progress(message, fraction)
+
     width, height, fps = probe_video_params(master_path)
     if width <= 0 or height <= 0:
         raise RuntimeError(f"Couldn't read video dimensions from {master_path}")
@@ -232,14 +278,12 @@ def prepend_intro(intro_path: Path, master_path: Path, dst: Path,
 
     fast = _fast_encoder_for(probe_video_codec(master_path))
     if fast is not None:
-        if on_progress:
-            on_progress("Adding the intro to the front of the video…")
+        _report("Adding the intro to the front of the video…")
         return _prepend_keep_master(
             intro_path, master_path, dst, width, height, fps, sample_rate, channels, *fast
         )
-    if on_progress:
-        on_progress("Re-encoding for this video's format — this can take several minutes…")
-    return _prepend_reencode(intro_path, master_path, dst, width, height, fps)
+    _report("Re-encoding for this video's format — this can take several minutes…", 0.0)
+    return _prepend_reencode(intro_path, master_path, dst, width, height, fps, on_progress=on_progress)
 
 
 def audio_window_plan(total_seconds: float, window_seconds: float) -> list[tuple[float, float]]:

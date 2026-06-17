@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -83,11 +84,31 @@ def test_reencode_path_when_no_fast_encoder(tmp_path, monkeypatch):
     # Simulate this server: AV1 master but no SVT-AV1 -> no fast encoder -> compat.
     monkeypatch.setattr(fu, "_available_encoders", lambda: {"libx264"})
 
-    fu.prepend_intro(intro, master, out)
+    calls = []
+    fu.prepend_intro(intro, master, out, on_progress=lambda msg, frac=None: calls.append((msg, frac)))
 
     assert fu.probe_video_codec(out) == "h264"  # re-encoded to a safe, valid format
     assert 5.4 < fu.probe_duration(out) < 6.6
     assert _decode_errors(out) == ""
+    # The re-encode path reports progress (starting at fraction 0.0) so the bar
+    # isn't frozen for the duration.
+    assert any("Re-encoding" in msg and frac == 0.0 for msg, frac in calls)
+
+
+def test_run_with_progress_parses_out_time_to_fractions():
+    fracs = []
+    script = (
+        "import sys\n"
+        "for t in ['00:00:01.000', '00:00:02.000', '00:00:04.000']:\n"
+        "    sys.stdout.write('out_time=%s\\n' % t)\n"
+    )
+    fu._run_with_progress([sys.executable, "-c", script], total_seconds=8.0, on_fraction=fracs.append)
+    assert fracs == [0.125, 0.25, 0.5]
+
+
+def test_run_with_progress_raises_on_nonzero_exit():
+    with pytest.raises(RuntimeError):
+        fu._run_with_progress([sys.executable, "-c", "import sys; sys.exit(3)"], 1.0, lambda f: None)
 
 
 def test_reencode_path_caps_4k_to_1080p(tmp_path, monkeypatch):

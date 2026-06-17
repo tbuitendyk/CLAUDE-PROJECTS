@@ -39,6 +39,19 @@ def test_done_is_100_and_bands_are_monotonic():
         assert start <= end
 
 
+def test_intro_bands_start_near_zero_and_track_mux_then_upload():
+    bands = progress.INTRO_STAGE_BANDS
+    # The mux step (often a multi-minute re-encode) owns the first 70% -- so the
+    # bar starts near 0 and creeps, instead of parking at a dub's 88% "muxing".
+    assert progress.overall_percent("muxing", 0.0, bands=bands) == 0.0
+    assert progress.overall_percent("muxing", 0.5, bands=bands) == 35.0
+    assert progress.overall_percent("muxing", 1.0, bands=bands) == 70.0
+    # Upload owns the rest.
+    assert progress.overall_percent("uploading", 0.0, bands=bands) == 70.0
+    assert progress.overall_percent("uploading", 1.0, bands=bands) == 99.0
+    assert progress.overall_percent("done", bands=bands) == 100.0
+
+
 def test_unknown_stage_returns_none_so_percent_is_left_untouched():
     # 'starting', 'failed', 'cancelled', 'interrupted' shouldn't reset the bar.
     for stage in ("starting", "failed", "cancelled", "interrupted", "???"):
