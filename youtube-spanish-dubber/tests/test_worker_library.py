@@ -4,6 +4,7 @@ redub rows, and a finished preview lands as the entry's draft transcript."""
 from __future__ import annotations
 
 import json
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -112,6 +113,95 @@ def test_finish_dub_records_the_dubbed_baseline(fresh_db):
     edited[0]["translated_text"] = "Hola v2"
     db.set_project_transcript(entry.id, edited)
     assert db.get_project(entry.id).pending_dub() is True
+
+
+def test_finish_remaster_caches_master_without_publishing(fresh_db, tmp_path):
+    # "Dub" / "Redub" with no publish: the master + baseline are saved, working
+    # rows are seeded, but nothing is uploaded and the entry stays a draft.
+    project = db.upsert_project("srcVID00001", "es")
+    job = db.create_job(SRC_URL, "es", mode="remaster", project_id=project.id)
+    dubbed = tmp_path / "dubbed.mp4"
+    dubbed.write_bytes(b"video")
+    result = {
+        "youtube_video_id": None, "youtube_video_url": None,
+        "title": "[ES] Hola (Hello World)", "description": "Hola desc\n\nVídeo original: x",
+        "source_title": "Hello World", "voice": "es-ES-AlvaroNeural",
+        "transcript": _bilingual_rows(), "dubbed_path": str(dubbed),
+        "bed_source_path": None, "thumbnail_path": None,
+    }
+    worker._finish_remaster(job, project, result)
+
+    entry = db.get_project(project.id)
+    assert entry.target_video_id is None and entry.state == "draft"   # not published
+    assert Path(entry.master_path).exists()                            # master cached
+    assert entry.rows_list() == _bilingual_rows()                      # working rows seeded
+    assert entry.dubbed_rows_list() == _bilingual_rows()
+    assert entry.pending_dub() is False                                # just dubbed -> in sync
+    assert entry.description.startswith("Hola desc")
+    assert entry.source_title == "Hello World"
+    assert db.get_job(job.id).status == "done"
+    assert db.list_events()[0]["action"] == "Dub prepared (not published)"
+
+
+def test_remaster_redub_clears_green_but_keeps_published_video(fresh_db, tmp_path):
+    # A no-publish redub catches the master up to the edits (green clears) without
+    # touching the live video -- which then correctly reads "not yet published".
+    project = db.upsert_project("srcVID00001", "es")
+    db.mark_project_published(project.id, "LIVEvid0001", "t", _bilingual_rows(), None, None, "unlisted")
+    db.set_project_dubbed_rows(project.id, _bilingual_rows())
+    edited = _bilingual_rows()
+    edited[0]["translated_text"] = "Hola v2"
+    db.set_project_transcript(project.id, edited)
+    assert db.get_project(project.id).pending_dub() is True
+
+    dubbed = tmp_path / "d.mp4"
+    dubbed.write_bytes(b"v2")
+    job = db.create_job(SRC_URL, "es", mode="remaster", project_id=project.id)
+    result = {
+        "youtube_video_id": None, "youtube_video_url": None,
+        "title": "t", "description": "d", "source_title": "Hello World", "voice": None,
+        "transcript": [
+            {"start": 0.0, "end": 2.0, "original_text": None, "translated_text": "Hola v2"},
+            {"start": 2.0, "end": 4.0, "original_text": None, "translated_text": "Mundo"},
+        ],
+        "dubbed_path": str(dubbed), "bed_source_path": None, "thumbnail_path": None,
+    }
+    worker._finish_remaster(job, db.get_project(project.id), result)
+
+    entry = db.get_project(project.id)
+    assert entry.target_video_id == "LIVEvid0001"     # published video unchanged
+    assert entry.pending_dub() is False               # green cleared (master caught up)
+    assert [r["translated_text"] for r in entry.dubbed_rows_list()] == ["Hola v2", "Mundo"]
+    assert entry.state == "published_pending"          # ...but still not republished
+
+
+def test_process_remaster_runs_pipeline_without_uploading(fresh_db, monkeypatch, tmp_path):
+    from youtube_dubber.pipeline import runner
+
+    project = db.upsert_project("srcVID00001", "es")
+    job = db.create_job(SRC_URL, "es", mode="remaster", project_id=project.id)
+    dubbed = tmp_path / "dub.mp4"
+    dubbed.write_bytes(b"v")
+    captured: dict = {}
+
+    def fake_run(*args, publish=True, **kwargs):
+        captured["publish"] = publish
+        return {
+            "youtube_video_id": None, "youtube_video_url": None,
+            "title": "[ES] t", "description": "d", "source_title": "Hello World",
+            "voice": "es-ES-AlvaroNeural", "transcript": _bilingual_rows(),
+            "dubbed_path": str(dubbed), "bed_source_path": None, "thumbnail_path": None,
+        }
+
+    monkeypatch.setattr(runner, "run", fake_run)
+    worker._process(job)
+
+    assert captured["publish"] is False               # dispatched as a no-upload run
+    entry = db.get_project(project.id)
+    assert entry.target_video_id is None
+    assert Path(entry.master_path).exists()
+    assert entry.dubbed_rows_list() == _bilingual_rows()
+    assert db.get_job(job.id).status == "done"
 
 
 def test_finish_preview_stores_draft_transcript(fresh_db):

@@ -48,9 +48,18 @@ def run(
     privacy: str | None = None,
     voice: str | None = None,
     cached_bed: Path | None = None,
+    publish: bool = True,
 ) -> dict:
     """Run the full pipeline. Returns a result dict with at least
-    `youtube_video_id` and `youtube_video_url` on success.
+    `youtube_video_id` and `youtube_video_url` on success (both None when
+    `publish` is False -- see below).
+
+    `publish=False` runs everything up to and including the muxed master but
+    stops short of uploading: the finished master (`dubbed_path`), its branded
+    thumbnail (`thumbnail_path`) and the composed title/description come back so
+    the caller can persist the master and publish it later (the "prepare a dub
+    without publishing" path). The default keeps the historical behaviour --
+    produce and upload in one go.
 
     `transcript_override`, when given, replaces the normal transcript
     acquisition stage outright -- it's how a "preview transcript first" pass
@@ -180,7 +189,9 @@ def run(
         mode=settings.audio_mode, duck_volume=bed_volume, bed_path=bed_path,
     )
 
-    on_progress("uploading", "Uploading the dubbed video to your YouTube channel...")
+    # Compose the localized title/description now -- needed whether we upload here
+    # or hand the master back unpublished (a prepared master still stores them for
+    # its later publish).
     source_lang = source.original_language or "en"
     # Scrub any tag a previous dub already added before translating/composing,
     # so a title can never come out double-tagged ("[Versión Español] [Versión
@@ -197,18 +208,24 @@ def run(
     # a blank line for spacing. Carried on the stored description too, so redubs
     # and intro-republishes keep it.
     description = f"{description}\n\n{naming.original_video_credit(target_language, source.id)}"
-    video_id = uploader.upload_video(
-        dubbed_path, title=title, description=description,
-        privacy_status=privacy,
-        on_progress=lambda f: on_progress("uploading", f"Uploading to YouTube… {int(f * 100)}%", fraction=f),
-    )
 
-    if branded_thumbnail is not None:
-        on_progress("uploading", "Applying the branded thumbnail...")
-        uploader.set_thumbnail(video_id, branded_thumbnail)
+    video_id = video_url = None
+    if publish:
+        on_progress("uploading", "Uploading the dubbed video to your YouTube channel...")
+        video_id = uploader.upload_video(
+            dubbed_path, title=title, description=description,
+            privacy_status=privacy,
+            on_progress=lambda f: on_progress("uploading", f"Uploading to YouTube… {int(f * 100)}%", fraction=f),
+        )
 
-    video_url = f"https://youtu.be/{video_id}"
-    on_progress("done", f"Published: {video_url}")
+        if branded_thumbnail is not None:
+            on_progress("uploading", "Applying the branded thumbnail...")
+            uploader.set_thumbnail(video_id, branded_thumbnail)
+
+        video_url = f"https://youtu.be/{video_id}"
+        on_progress("done", f"Published: {video_url}")
+    else:
+        on_progress("done", "Master prepared (not published yet).")
 
     return {
         "youtube_video_id": video_id,
@@ -227,6 +244,9 @@ def run(
         # the project's pre-intro master (so an intro can be added later) before
         # the work dir is cleaned up.
         "dubbed_path": str(dubbed_path),
+        # The branded thumbnail (work dir): a prepare-only run keeps it so a later
+        # publish from this master can still apply it.
+        "thumbnail_path": str(branded_thumbnail) if branded_thumbnail else None,
     }
 
 

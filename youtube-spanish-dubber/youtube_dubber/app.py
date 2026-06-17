@@ -236,10 +236,13 @@ class ProjectThumbnailRequest(BaseModel):
 
 
 class RedubRequest(BaseModel):
-    """Re-dub a library entry from its saved transcript: new upload from the
-    ORIGINAL source video, reusing the entry's voice, thumbnail and cached
-    music/SFX bed."""
+    """Re-dub a library entry from its saved transcript, reusing the entry's
+    voice, thumbnail and cached music/SFX bed. `publish=True` (the default)
+    uploads the result as a new video; `publish=False` only refreshes the saved
+    master from the edited transcript and leaves publishing for later (the
+    "Redub" vs "Redub & publish" split)."""
     privacy: Optional[str] = None
+    publish: bool = True
 
     @field_validator("privacy")
     @classmethod
@@ -353,7 +356,7 @@ def create_job(payload: JobCreateRequest) -> dict:
     video_id = naming.extract_video_id(payload.url)
     project = db.upsert_project(video_id, language) if video_id else None
     used_draft = []
-    if payload.mode == "dub" and project is not None:
+    if payload.mode in ("dub", "remaster") and project is not None:
         if overrides is None:
             saved_rows = project.rows_list()
             if saved_rows:
@@ -381,8 +384,10 @@ def create_job(payload: JobCreateRequest) -> dict:
         db.record_event("Transcript preview started", video_title=label,
                         project_id=project_id, job_id=job.id)
     else:
-        action = "Redub started" if project and project.target_video_id else "Dub started"
-        detail_bits = [f"privacy: {payload.privacy}" if payload.privacy else None,
+        published = bool(project and project.target_video_id)
+        verb = "Redub" if published else "Dub"
+        action = f"{verb} (no publish) started" if payload.mode == "remaster" else f"{verb} started"
+        detail_bits = [f"privacy: {payload.privacy}" if payload.privacy and payload.mode != "remaster" else None,
                        f"using saved {' + '.join(used_draft)}" if used_draft else None]
         db.record_event(action, video_title=label, project_id=project_id, job_id=job.id,
                         detail=", ".join(bit for bit in detail_bits if bit) or None)
@@ -707,15 +712,18 @@ def redub_project(project_id: str, payload: RedubRequest) -> dict:
     ]
     if not overrides:
         raise HTTPException(status_code=422, detail="This project has no transcript to redub from")
+    mode = "dub" if payload.publish else "remaster"
     job = db.create_job(
-        naming.watch_url(project.source_video_id), project.target_language, mode="dub",
+        naming.watch_url(project.source_video_id), project.target_language, mode=mode,
         transcript_overrides=overrides, thumbnail_override=project.thumbnail,
-        privacy=payload.privacy, voice=project.voice, project_id=project.id,
+        privacy=payload.privacy if payload.publish else None,
+        voice=project.voice, project_id=project.id,
     )
     db.record_event(
-        "Redub started", video_title=project.source_title or project.title,
+        "Redub started" if payload.publish else "Redub (no publish) started",
+        video_title=project.source_title or project.title,
         project_id=project.id, job_id=job.id,
-        detail=f"privacy: {payload.privacy}" if payload.privacy else None,
+        detail=f"privacy: {payload.privacy}" if (payload.privacy and payload.publish) else None,
     )
     return job.to_dict()
 

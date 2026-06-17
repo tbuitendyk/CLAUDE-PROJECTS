@@ -217,6 +217,57 @@ def _finish_dub(job: db.Job, project: db.Project | None, result: dict) -> None:
     )
 
 
+def _finish_remaster(job: db.Job, project: db.Project | None, result: dict) -> None:
+    """Persist a prepared-but-unpublished dub: cache its master + bed and record
+    the transcript it was dubbed from (so edits afterward green correctly), but
+    do NOT upload or move the entry's published video. The entry keeps pointing
+    at whatever is live (if anything); the refreshed master sits ready for a
+    later "publish current cut"."""
+    rows = result.get("transcript") or []
+    if project is not None:
+        project = db.get_project(project.id) or project
+        # A redub's override rows are target-only; restore the source column.
+        donor = project.source_rows_list() or project.rows_list()
+        if donor and not all(r.get("original_text") for r in rows):
+            rows = db.fill_original_texts(rows, donor)
+        _cache_bed(project, result.get("bed_source_path"))
+        _cache_master(project, result.get("dubbed_path"))
+        # A first dub (no prior transcript) seeds the entry's working/pristine
+        # rows; a redub already has them and store_acquired_transcript won't
+        # clobber the edits we just dubbed.
+        if rows:
+            db.store_acquired_transcript(project.id, rows)
+        # The master was just dubbed from `rows`: that's the green baseline.
+        db.set_project_dubbed_rows(project.id, rows)
+        updates: dict = {}
+        if result.get("description"):
+            updates["description"] = result["description"]
+        if result.get("title") and not project.title:
+            updates["title"] = result["title"]
+        if result.get("source_title") and not project.source_title:
+            updates["source_title"] = result["source_title"]
+        if result.get("voice") and not project.voice:
+            updates["voice"] = result["voice"]
+        if updates:
+            db.update_project(project.id, **updates)
+    db.update_job(
+        job.id,
+        status="done",
+        stage="done",
+        progress="Master prepared (not published).",
+        progress_pct=100.0,
+        transcript=json.dumps(rows) if rows else None,
+        title=result.get("title"),
+        error=None,
+    )
+    db.record_event(
+        "Dub prepared (not published)",
+        video_title=(project.source_title or project.title) if project else None,
+        project_id=project.id if project else None,
+        job_id=job.id,
+    )
+
+
 def _finish_preview(job: db.Job, project: db.Project | None, result: dict) -> None:
     """A finished transcript preview becomes the entry's draft transcript (the
     library is the home of every transcript, drafts included)."""
@@ -428,6 +479,9 @@ def _process(job: db.Job) -> None:
             result = _process_intro(job, project, work_dir, on_progress)
             _finish_intro(job, project, result)
         else:
+            # "dub" publishes the new master immediately; "remaster" prepares it
+            # and stops -- same pipeline, just no upload.
+            publish = job.mode != "remaster"
             transcript_override = _load_transcript_override(job.transcript_overrides)
             thumbnail_override = _materialize_thumbnail_override(job.thumbnail_override, work_dir)
             cached_bed = Path(project.bed_path) if project and project.bed_path else None
@@ -438,8 +492,12 @@ def _process(job: db.Job) -> None:
                 privacy=job.privacy,
                 voice=job.voice or (project.voice if project else None),
                 cached_bed=cached_bed,
+                publish=publish,
             )
-            _finish_dub(job, project, result)
+            if publish:
+                _finish_dub(job, project, result)
+            else:
+                _finish_remaster(job, project, result)
     except Exception as exc:  # noqa: BLE001 -- surface any failure on the job record
         log.exception("Job %s failed", job.id)
         friendly = _friendly_error(exc)
@@ -450,9 +508,8 @@ def _process(job: db.Job) -> None:
             error=f"{friendly}\n\n{exc}\n\n{traceback.format_exc()[-4000:]}",
         )
         db.record_event(
-            {"preview": "Transcript preview failed", "intro": "Intro republish failed"}.get(
-                job.mode, "Dub failed"
-            ),
+            {"preview": "Transcript preview failed", "intro": "Intro republish failed",
+             "remaster": "Dub prep failed"}.get(job.mode, "Dub failed"),
             video_title=(project.source_title if project else None) or job.source_url,
             project_id=project.id if project else None,
             job_id=job.id,

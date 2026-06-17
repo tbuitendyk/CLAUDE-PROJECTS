@@ -150,10 +150,12 @@ PRIVACY_VALUES = {"public", "unlisted", "private"}
 TERMINAL_STATUSES = {"done", "failed", "cancelled"}
 
 # What a job does once claimed: "dub" runs the full pipeline and publishes to
-# YouTube; "preview" stops after acquiring/translating the transcript so the
-# original-language and Spanish text can be compared without the slow
-# synthesis/mux/upload stages.
-JOB_MODES = {"dub", "preview", "intro"}
+# YouTube; "remaster" runs the same pipeline but stops after the master is built
+# (prepare a dub without publishing); "preview" stops after acquiring/translating
+# the transcript so the original-language and Spanish text can be compared without
+# the slow synthesis/mux/upload stages; "intro" (re)publishes an existing master
+# with an intro prepended.
+JOB_MODES = {"dub", "remaster", "preview", "intro"}
 
 
 def _now() -> str:
