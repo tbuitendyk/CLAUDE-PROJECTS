@@ -29,6 +29,31 @@ def watch_url(video_id: str) -> str:
     return f"https://www.youtube.com/watch?v={video_id}"
 
 
+# "Original video" rendered in each target language (keyed by base code, so
+# "es-MX"/"es-419" all resolve to "es"). Curated for the languages the service
+# dubs into -- short labels machine-translate unreliably -- with an English
+# fallback for anything not listed.
+_ORIGINAL_VIDEO_LABEL = {
+    "en": "Original video",
+    "es": "Vídeo original",
+    "fr": "Vidéo originale",
+    "pt": "Vídeo original",
+    "de": "Originalvideo",
+    "it": "Video originale",
+}
+
+
+def original_video_label(target_language: str) -> str:
+    base = (target_language or "").split("-")[0].lower()
+    return _ORIGINAL_VIDEO_LABEL.get(base, _ORIGINAL_VIDEO_LABEL["en"])
+
+
+def original_video_credit(target_language: str, source_id: str) -> str:
+    """The "<Original video>: <link>" line appended to every published
+    description, with the label in the dub's target language."""
+    return f"{original_video_label(target_language)}: {watch_url(source_id)}"
+
+
 def strip_title_tag(text: str, tag: str) -> str:
     """Remove every leading occurrence of `tag` (e.g. "[Versión Español]") from
     `text` -- the guard that keeps a redub from stacking tags ("[Versión

@@ -22,6 +22,24 @@ def test_extract_video_id_drops_extraneous_url_data(url, expected):
     assert naming.extract_video_id(url) == expected
 
 
+@pytest.mark.parametrize("target,label", [
+    ("es", "Vídeo original"),
+    ("es-MX", "Vídeo original"),   # regional variants resolve to the base code
+    ("es-419", "Vídeo original"),
+    ("fr", "Vidéo originale"),
+    ("de", "Originalvideo"),
+    ("jp", "Original video"),      # unlisted language falls back to English
+    ("", "Original video"),
+])
+def test_original_video_label_is_localised(target, label):
+    assert naming.original_video_label(target) == label
+
+
+def test_original_video_credit_is_label_plus_link():
+    assert naming.original_video_credit("es", "dQw4w9WgXcQ") == \
+        "Vídeo original: https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+
+
 def test_watch_url_is_canonical():
     assert naming.watch_url("dQw4w9WgXcQ") == "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
 

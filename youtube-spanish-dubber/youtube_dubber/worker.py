@@ -345,11 +345,18 @@ def _process_intro(job: db.Job, project: db.Project | None, work_dir, on_progres
         on_progress("muxing", "Preparing the video without an intro…")
         upload_file = master
 
+    # Ensure the "Original video: <link>" credit is on the description (idempotent
+    # -- a dub published post-credit already carries it; an older one won't).
+    description = project.description or ""
+    credit = naming.original_video_credit(project.target_language, project.source_video_id)
+    if credit not in description:
+        description = f"{description}\n\n{credit}".strip()
+
     on_progress("uploading", "Uploading the new video to YouTube…")
     video_id = uploader.upload_video(
         upload_file,
         title=project.title or "",
-        description=project.description or "",
+        description=description,
         privacy_status=job.privacy or project.privacy,
         on_progress=lambda f: on_progress("uploading", f"Uploading to YouTube… {int(f * 100)}%", fraction=f),
     )

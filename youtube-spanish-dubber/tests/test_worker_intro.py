@@ -93,7 +93,9 @@ def test_process_intro_prepends_and_publishes(fresh_db, monkeypatch):
     assert seen["prepended"][0] == "introAAAA.mp4"
     assert seen["uploaded"]["exists"] is True
     assert seen["uploaded"]["title"] == "My Title"
-    assert seen["uploaded"]["description"] == "desc"
+    # The stored description plus the appended "Original video" credit.
+    assert seen["uploaded"]["description"].startswith("desc")
+    assert "Vídeo original: https://www.youtube.com/watch?v=vid00000004" in seen["uploaded"]["description"]
     assert seen["uploaded"]["privacy"] == "public"  # the job override wins over the entry
 
     worker._finish_intro(job, proj, result)

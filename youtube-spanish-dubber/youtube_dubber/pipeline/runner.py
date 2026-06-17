@@ -193,6 +193,10 @@ def run(
         if source.description else ""
     )
     description = f"{translated_description}{settings.description_suffix}".strip()
+    # Credit the original at the very bottom (target-language label + link), after
+    # a blank line for spacing. Carried on the stored description too, so redubs
+    # and intro-republishes keep it.
+    description = f"{description}\n\n{naming.original_video_credit(target_language, source.id)}"
     video_id = uploader.upload_video(
         dubbed_path, title=title, description=description,
         privacy_status=privacy,
