@@ -36,6 +36,63 @@ def probe_duration(path: Path) -> float:
         return 0.0
 
 
+def probe_video_params(path: Path) -> tuple[int, int, float]:
+    """(width, height, fps) of a video's first video stream; (0, 0, 0.0) on
+    failure. fps is parsed from ffprobe's r_frame_rate (e.g. "30000/1001")."""
+    cmd = [
+        "ffprobe", "-v", "error", "-select_streams", "v:0",
+        "-show_entries", "stream=width,height,r_frame_rate",
+        "-of", "default=noprint_wrappers=1:nokey=1", str(path),
+    ]
+    result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    lines = [ln.strip() for ln in result.stdout.splitlines() if ln.strip()]
+    if len(lines) < 3:
+        return 0, 0, 0.0
+    try:
+        width, height = int(lines[0]), int(lines[1])
+        num, _, den = lines[2].partition("/")
+        fps = float(num) / float(den) if den and float(den) else float(num)
+    except (ValueError, ZeroDivisionError):
+        return 0, 0, 0.0
+    return width, height, fps
+
+
+def prepend_intro(intro_path: Path, master_path: Path, dst: Path) -> Path:
+    """Concatenate `intro_path` in front of `master_path` into `dst`.
+
+    A recorded intro almost never matches the dubbed video's resolution / fps /
+    codec, so a raw concat would glitch. Both streams are conformed to the
+    master's geometry (scaled to fit, letter/pillar-boxed on black, square
+    pixels, the master's frame rate) and a common audio format, then joined with
+    the concat filter and re-encoded once. The scale/pad is a no-op for the
+    master (it already has those dimensions); only the intro is reshaped."""
+    width, height, fps = probe_video_params(master_path)
+    if width <= 0 or height <= 0:
+        raise RuntimeError(f"Couldn't read video dimensions from {master_path}")
+    fps = fps if fps > 0 else 30.0
+    conform = (
+        f"scale={width}:{height}:force_original_aspect_ratio=decrease,"
+        f"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2,setsar=1,fps={fps:.4f},format=yuv420p"
+    )
+    filter_complex = (
+        f"[0:v]{conform}[v0];[0:a]aresample=48000,aformat=channel_layouts=stereo[a0];"
+        f"[1:v]{conform}[v1];[1:a]aresample=48000,aformat=channel_layouts=stereo[a1];"
+        "[v0][a0][v1][a1]concat=n=2:v=1:a=1[v][a]"
+    )
+    cmd = [
+        "ffmpeg", "-y",
+        "-i", str(intro_path), "-i", str(master_path),
+        "-filter_complex", filter_complex,
+        "-map", "[v]", "-map", "[a]",
+        "-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
+        "-c:a", "aac", "-b:a", "160k",
+        "-movflags", "+faststart",
+        str(dst),
+    ]
+    _run(cmd)
+    return dst
+
+
 def audio_window_plan(total_seconds: float, window_seconds: float) -> list[tuple[float, float]]:
     """Split a [0, total) timeline into consecutive (start, duration) windows of
     at most `window_seconds`, the last covering the remainder.

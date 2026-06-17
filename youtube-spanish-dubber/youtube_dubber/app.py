@@ -249,6 +249,32 @@ class RedubRequest(BaseModel):
         return value
 
 
+class IntroCreateRequest(BaseModel):
+    """Add a recorded intro to the library from its unlisted YouTube link. The
+    server fetches the clip once and measures its exact length."""
+    url: str
+    name: Optional[str] = None
+
+    @field_validator("url")
+    @classmethod
+    def _validate_url(cls, value: str) -> str:
+        return _require_youtube_url(value)
+
+
+class ProjectIntroRequest(BaseModel):
+    """Attach/change the intro prepended to a project's published video. Enqueues
+    a republish (a new video id). `privacy` overrides the entry's saved value."""
+    intro_id: str
+    privacy: Optional[str] = None
+
+    @field_validator("privacy")
+    @classmethod
+    def _validate_privacy(cls, value: Optional[str]) -> Optional[str]:
+        if value is not None and value not in db.PRIVACY_VALUES:
+            raise ValueError(f"privacy must be one of {sorted(db.PRIVACY_VALUES)}")
+        return value
+
+
 class EventCreateRequest(BaseModel):
     """A client-side-only button press recorded into the permanent action log
     (server-backed actions log themselves)."""
@@ -653,10 +679,12 @@ def delete_project(project_id: str) -> dict:
     project = db.delete_project(project_id)
     if project is None:
         raise HTTPException(status_code=404, detail="Project not found")
-    if project.bed_path:
-        from pathlib import Path
+    from pathlib import Path
 
+    if project.bed_path:
         Path(project.bed_path).unlink(missing_ok=True)
+    if project.master_path:
+        Path(project.master_path).unlink(missing_ok=True)
     db.record_event("Library entry deleted", video_title=project.source_title or project.title,
                     project_id=project.id)
     return {"id": project.id, "deleted": True}
@@ -688,6 +716,104 @@ def redub_project(project_id: str, payload: RedubRequest) -> dict:
         "Redub started", video_title=project.source_title or project.title,
         project_id=project.id, job_id=job.id,
         detail=f"privacy: {payload.privacy}" if payload.privacy else None,
+    )
+    return job.to_dict()
+
+
+# --------------------------------------------------------------------------
+# Intro clips (record an intro -> attach/remove/swap it on a published dub)
+# --------------------------------------------------------------------------
+
+@app.get("/intros")
+def list_intros() -> list[dict]:
+    """The intro library: every recorded intro clip (name, source link, exact
+    duration), newest first."""
+    return [intro.to_dict() for intro in db.list_intros()]
+
+
+@app.post("/intros", status_code=201)
+def add_intro(payload: IntroCreateRequest) -> dict:
+    """Add an intro from its unlisted YouTube link: the server fetches the clip
+    once, caches it and measures its exact length."""
+    from . import intros as intros_service
+    from .pipeline import downloader
+
+    try:
+        intro = intros_service.ingest_intro(payload.url, name=payload.name)
+    except downloader.DownloadError as exc:
+        raise HTTPException(status_code=502, detail=f"Couldn't fetch that intro from YouTube: {exc}") from exc
+    return intro.to_dict()
+
+
+@app.delete("/intros/{intro_id}")
+def remove_intro(intro_id: str) -> dict:
+    """Delete an intro and its cached media, detaching it from any project that
+    was using it (their next publish drops it)."""
+    from . import intros as intros_service
+
+    intro = intros_service.delete_intro(intro_id)
+    if intro is None:
+        raise HTTPException(status_code=404, detail="Intro not found")
+    return {"id": intro.id, "deleted": True}
+
+
+@app.get("/library/usage")
+def library_usage() -> dict:
+    """Disk used by the kept artefacts (pre-intro masters, cached beds, intro
+    clips) -- the data behind the 'space used' status line. Reclaim space by
+    deleting projects/intros you'll never reuse."""
+    return db.library_usage()
+
+
+@app.post("/projects/{project_id}/intro", status_code=201)
+def attach_project_intro(project_id: str, payload: ProjectIntroRequest) -> dict:
+    """Attach (or change) the intro on a project and republish: prepends the
+    intro to the saved pre-intro master and uploads a NEW video (a new id every
+    time -- YouTube can't swap a published video's file). Async, via the job
+    queue. Requires a saved master (re-dub once if the project predates it)."""
+    project = db.get_project(project_id)
+    if project is None:
+        raise HTTPException(status_code=404, detail="Project not found")
+    if not project.master_path:
+        raise HTTPException(
+            status_code=409,
+            detail="This project has no saved pre-intro master yet. Re-dub it once, then add an intro.",
+        )
+    intro = db.get_intro(payload.intro_id)
+    if intro is None:
+        raise HTTPException(status_code=404, detail="Intro not found")
+    db.set_project_intro(project_id, intro.id, intro.duration)
+    job = db.create_job(
+        naming.watch_url(project.source_video_id), project.target_language,
+        mode="intro", privacy=payload.privacy, project_id=project.id,
+    )
+    db.record_event(
+        "Intro republish queued", video_title=project.source_title or project.title,
+        project_id=project.id, job_id=job.id, detail=intro.name,
+    )
+    return job.to_dict()
+
+
+@app.delete("/projects/{project_id}/intro", status_code=201)
+def detach_project_intro(project_id: str) -> dict:
+    """Remove the intro from a project and republish the bare master as a NEW
+    video. Async, via the job queue."""
+    project = db.get_project(project_id)
+    if project is None:
+        raise HTTPException(status_code=404, detail="Project not found")
+    if not project.master_path:
+        raise HTTPException(
+            status_code=409,
+            detail="This project has no saved pre-intro master to republish.",
+        )
+    db.clear_project_intro(project_id)
+    job = db.create_job(
+        naming.watch_url(project.source_video_id), project.target_language,
+        mode="intro", privacy=project.privacy, project_id=project.id,
+    )
+    db.record_event(
+        "Intro removal queued", video_title=project.source_title or project.title,
+        project_id=project.id, job_id=job.id,
     )
     return job.to_dict()
 

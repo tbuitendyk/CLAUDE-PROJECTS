@@ -211,6 +211,7 @@ def run(
         "youtube_video_url": video_url,
         "transcript_source": transcript_source,
         "title": title,
+        "description": description,
         "source_title": source.title,
         "source_video_id": source.id,
         "voice": tts_voice,
@@ -218,6 +219,10 @@ def run(
         # A freshly separated bed lives in the (about-to-be-deleted) work dir;
         # the worker encodes it into the project's cache before cleanup.
         "bed_source_path": str(bed_path) if freshly_separated else None,
+        # The finished dub itself, also in the work dir: the worker persists it as
+        # the project's pre-intro master (so an intro can be added later) before
+        # the work dir is cleaned up.
+        "dubbed_path": str(dubbed_path),
     }
 
 

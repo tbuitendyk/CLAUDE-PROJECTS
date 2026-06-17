@@ -67,10 +67,33 @@ CREATE TABLE IF NOT EXISTS projects (
     thumbnail TEXT,
     thumbnail_edit TEXT,
     bed_path TEXT,
+    master_path TEXT,
+    description TEXT,
+    intro_id TEXT,
+    intro_duration REAL,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
     published_fingerprint TEXT,
     UNIQUE (source_video_id, target_language)
+);
+"""
+
+# Recorded intro clips: short bumpers the operator uploads (unlisted) to YouTube
+# and supplies by link. We fetch the media once (yt-dlp), measure its exact
+# duration, and cache it on disk keyed by `id`; a project can then have one
+# prepended to its pre-intro master and be republished as a new video. The
+# duration is the load-bearing bit: it's stored on the project (intro_duration)
+# so removal/replacement never disturbs the transcript's anchored timeline.
+INTROS_SCHEMA = """
+CREATE TABLE IF NOT EXISTS intros (
+    id TEXT PRIMARY KEY,
+    name TEXT,
+    source_url TEXT NOT NULL,
+    youtube_id TEXT,
+    file_path TEXT NOT NULL,
+    duration REAL NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
 );
 """
 
@@ -129,7 +152,7 @@ TERMINAL_STATUSES = {"done", "failed", "cancelled"}
 # YouTube; "preview" stops after acquiring/translating the transcript so the
 # original-language and Spanish text can be compared without the slow
 # synthesis/mux/upload stages.
-JOB_MODES = {"dub", "preview"}
+JOB_MODES = {"dub", "preview", "intro"}
 
 
 def _now() -> str:
@@ -209,6 +232,7 @@ def init_db() -> None:
     with _connect() as conn:
         conn.execute(SCHEMA)
         conn.execute(PROJECTS_SCHEMA)
+        conn.execute(INTROS_SCHEMA)
         conn.execute(EVENTS_SCHEMA)
         conn.execute(META_SCHEMA)
         existing = {row["name"] for row in conn.execute("PRAGMA table_info(jobs)")}
@@ -216,6 +240,7 @@ def init_db() -> None:
             column = migration.split("ADD COLUMN ")[1].split()[0]
             if column not in existing:
                 conn.execute(migration)
+        _ensure_project_columns(conn)
     migrate_legacy_projects()
     backfill_original_transcripts()
 
@@ -450,6 +475,17 @@ class Project:
     # auto-conversion. None when no custom thumbnail / a legacy auto one.
     thumbnail_edit: Optional[str] = None
     bed_path: Optional[str] = None
+    # The pre-intro master: the finished dub video before any intro is prepended,
+    # persisted past the job's work dir so an intro can be attached/removed/swapped
+    # later without re-dubbing. `description` is the published description, kept so
+    # an intro-republish re-uploads with the same metadata. `intro_id` is the
+    # currently-attached intro (-> intros table) or None; `intro_duration` is its
+    # exact length in seconds (0 when no intro), so removal/replacement leaves the
+    # transcript's anchored timeline -- which is relative to the master -- untouched.
+    master_path: Optional[str] = None
+    description: Optional[str] = None
+    intro_id: Optional[str] = None
+    intro_duration: Optional[float] = None
     created_at: str = field(default_factory=_now)
     updated_at: str = field(default_factory=_now)
     # Digest of (rows, thumbnail) as of the last successful publish; `state`
@@ -495,6 +531,9 @@ class Project:
             "line_count": len(self.rows_list()),
             "has_thumbnail": bool(self.thumbnail),
             "has_bed": bool(self.bed_path),
+            "has_master": bool(self.master_path),
+            "intro_id": self.intro_id,
+            "intro_duration": self.intro_duration or 0.0,
             "created_at": self.created_at,
             "updated_at": self.updated_at,
         }
@@ -514,7 +553,8 @@ class Project:
 _PROJECT_COLUMNS = (
     "id", "source_video_id", "target_language", "state", "source_title", "title",
     "target_video_id", "voice", "privacy", "source_rows", "acquired_rows", "rows",
-    "thumbnail", "thumbnail_edit", "bed_path", "created_at", "updated_at", "published_fingerprint",
+    "thumbnail", "thumbnail_edit", "bed_path", "master_path", "description",
+    "intro_id", "intro_duration", "created_at", "updated_at", "published_fingerprint",
 )
 
 # Columns added after the projects table's first release. CREATE TABLE IF NOT
@@ -523,6 +563,10 @@ _PROJECT_COLUMNS = (
 _PROJECT_MIGRATIONS = (
     "ALTER TABLE projects ADD COLUMN published_fingerprint TEXT",
     "ALTER TABLE projects ADD COLUMN thumbnail_edit TEXT",
+    "ALTER TABLE projects ADD COLUMN master_path TEXT",
+    "ALTER TABLE projects ADD COLUMN description TEXT",
+    "ALTER TABLE projects ADD COLUMN intro_id TEXT",
+    "ALTER TABLE projects ADD COLUMN intro_duration REAL",
 )
 
 
@@ -1111,3 +1155,157 @@ def project_bed_path(project_id: str) -> Path:
     beds = settings.data_dir / "beds"
     beds.mkdir(parents=True, exist_ok=True)
     return beds / f"{project_id}.opus"
+
+
+def project_master_path(project_id: str) -> Path:
+    """Where a project's pre-intro master video lives (the finished dub before any
+    intro), kept so an intro can be attached/removed/swapped without re-dubbing."""
+    masters = settings.data_dir / "masters"
+    masters.mkdir(parents=True, exist_ok=True)
+    return masters / f"{project_id}.mp4"
+
+
+def intro_file_path(intro_id: str) -> Path:
+    """Where a recorded intro clip's cached media lives (fetched once from its
+    unlisted YouTube link)."""
+    intros = settings.data_dir / "intros"
+    intros.mkdir(parents=True, exist_ok=True)
+    return intros / f"{intro_id}.mp4"
+
+
+def set_project_master(project_id: str, path: str | Path) -> Optional[Project]:
+    return update_project(project_id, master_path=str(path))
+
+
+def set_project_intro(project_id: str, intro_id: str, duration: float) -> Optional[Project]:
+    """Attach an intro to a project (its exact length is stored so removal /
+    replacement never disturbs the master-relative transcript timeline)."""
+    return update_project(project_id, intro_id=intro_id, intro_duration=float(duration or 0.0))
+
+
+def clear_project_intro(project_id: str) -> Optional[Project]:
+    return update_project(project_id, intro_id=None, intro_duration=0.0)
+
+
+# --------------------------------------------------------------------------
+# Recorded intro clips
+# --------------------------------------------------------------------------
+
+@dataclass
+class Intro:
+    id: str
+    source_url: str
+    file_path: str
+    name: Optional[str] = None
+    youtube_id: Optional[str] = None
+    duration: float = 0.0
+    created_at: str = field(default_factory=_now)
+    updated_at: str = field(default_factory=_now)
+
+    @classmethod
+    def from_row(cls, row: sqlite3.Row) -> "Intro":
+        return cls(**{key: row[key] for key in row.keys()})
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "id": self.id,
+            "name": self.name or self.youtube_id or self.id,
+            "source_url": self.source_url,
+            "youtube_id": self.youtube_id,
+            "duration": self.duration,
+            "created_at": self.created_at,
+            "updated_at": self.updated_at,
+        }
+
+
+_INTRO_COLUMNS = (
+    "id", "name", "source_url", "youtube_id", "file_path", "duration", "created_at", "updated_at",
+)
+
+
+def create_intro(
+    source_url: str, file_path: str | Path, duration: float,
+    name: str | None = None, youtube_id: str | None = None, intro_id: str | None = None,
+) -> Intro:
+    intro = Intro(
+        id=intro_id or uuid.uuid4().hex[:12],
+        source_url=source_url,
+        file_path=str(file_path),
+        name=name,
+        youtube_id=youtube_id,
+        duration=float(duration or 0.0),
+    )
+    with _connect() as conn:
+        conn.execute(INTROS_SCHEMA)
+        conn.execute(
+            f"INSERT INTO intros ({', '.join(_INTRO_COLUMNS)}) "
+            f"VALUES ({', '.join('?' for _ in _INTRO_COLUMNS)})",
+            tuple(getattr(intro, column) for column in _INTRO_COLUMNS),
+        )
+    return intro
+
+
+def get_intro(intro_id: str) -> Optional[Intro]:
+    with _connect() as conn:
+        conn.execute(INTROS_SCHEMA)
+        row = conn.execute("SELECT * FROM intros WHERE id = ?", (intro_id,)).fetchone()
+    return Intro.from_row(row) if row else None
+
+
+def list_intros() -> list[Intro]:
+    with _connect() as conn:
+        conn.execute(INTROS_SCHEMA)
+        rows = conn.execute("SELECT * FROM intros ORDER BY created_at DESC").fetchall()
+    return [Intro.from_row(row) for row in rows]
+
+
+def delete_intro(intro_id: str) -> Optional[Intro]:
+    """Remove an intro and detach it from any project currently using it. Returns
+    the deleted row so the caller can unlink its cached media file."""
+    intro = get_intro(intro_id)
+    if intro is None:
+        return None
+    with _connect() as conn:
+        conn.execute("DELETE FROM intros WHERE id = ?", (intro_id,))
+        conn.execute(
+            "UPDATE projects SET intro_id = NULL, intro_duration = 0, updated_at = ? "
+            "WHERE intro_id = ?",
+            (_now(), intro_id),
+        )
+    return intro
+
+
+def _human_bytes(n: int) -> str:
+    size = float(n)
+    for unit in ("B", "KB", "MB", "GB"):
+        if size < 1024:
+            return f"{int(size)} B" if unit == "B" else f"{size:.1f} {unit}"
+        size /= 1024
+    return f"{size:.1f} TB"
+
+
+def library_usage() -> dict[str, Any]:
+    """Disk used by the artefacts the library keeps forever -- pre-intro masters,
+    cached music/SFX beds and intro clips -- for the 'space used' status line.
+    Reclaimed by deleting projects/intros we'll never reuse."""
+    def dir_usage(path: Path) -> tuple[int, int]:
+        if not path.exists():
+            return 0, 0
+        total = count = 0
+        for entry in path.glob("*"):
+            if entry.is_file():
+                total += entry.stat().st_size
+                count += 1
+        return total, count
+
+    masters_bytes, masters_count = dir_usage(settings.data_dir / "masters")
+    beds_bytes, beds_count = dir_usage(settings.data_dir / "beds")
+    intros_bytes, intros_count = dir_usage(settings.data_dir / "intros")
+    total = masters_bytes + beds_bytes + intros_bytes
+    return {
+        "total_bytes": total,
+        "total_human": _human_bytes(total),
+        "masters": {"bytes": masters_bytes, "count": masters_count},
+        "beds": {"bytes": beds_bytes, "count": beds_count},
+        "intros": {"bytes": intros_bytes, "count": intros_count},
+    }
