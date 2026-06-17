@@ -1740,9 +1740,15 @@
       const open = body.style.display === "none";
       body.style.display = open ? "block" : "none";
       openBtn.textContent = open ? "Hide" : "View / edit";
-      if (open && !loaded) {
-        loaded = true;
-        await openEntryBody(item, body);
+      if (open) {
+        if (!loaded) {
+          loaded = true;
+          await openEntryBody(item, body);
+        }
+        // Re-pull the intro library and rebuild just this entry's intro dropdown
+        // so a newly-added intro is selectable without a full page reload (the
+        // transcript table is left untouched, preserving any unsaved edits).
+        refreshIntroControl(item, body);
       }
     });
     return row;
@@ -1877,7 +1883,21 @@
     actions.appendChild(hint);
     body.appendChild(actions);
 
-    body.appendChild(buildIntroControl(item));
+    const introWrap = document.createElement("div");
+    introWrap.className = "intro-control-wrap";
+    introWrap.appendChild(buildIntroControl(item));
+    body.appendChild(introWrap);
+  }
+
+  // Re-pull the intro library and rebuild one entry's intro dropdown in place, so
+  // an intro added/removed since the entry was opened becomes selectable without
+  // a page reload. No-op for entries with no intro section (e.g. no transcript).
+  async function refreshIntroControl(item, body) {
+    const wrap = body.querySelector(".intro-control-wrap");
+    if (!wrap) return;
+    await loadIntros();
+    const fresh = libraryItems.find((it) => it.id === item.id) || item;
+    wrap.replaceChildren(buildIntroControl(fresh));
   }
 
   // The intro control for one library entry: pick an intro (or None) and
