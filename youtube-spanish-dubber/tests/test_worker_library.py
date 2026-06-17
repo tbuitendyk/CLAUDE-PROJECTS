@@ -91,6 +91,29 @@ def test_finish_dub_restores_source_column_on_redub_rows(fresh_db):
     assert json.loads(db.get_job(job.id).transcript)[0]["original_text"] == "Hello"
 
 
+def test_finish_dub_records_the_dubbed_baseline(fresh_db):
+    # A finished dub snapshots the rows it baked into the master, so later edits
+    # derive "pending dub" (green) against it -- and that survives a re-open.
+    project = db.upsert_project("srcVID00001", "es")
+    job = db.create_job(SRC_URL, "es", project_id=project.id)
+    result = {
+        "youtube_video_id": "dubVID00001",
+        "youtube_video_url": "https://youtu.be/dubVID00001",
+        "title": "t", "source_title": "Hello World", "voice": None,
+        "transcript": _bilingual_rows(), "bed_source_path": None,
+    }
+    worker._finish_dub(job, project, result)
+
+    entry = db.get_project(project.id)
+    assert entry.dubbed_rows_list() == _bilingual_rows()
+    assert entry.pending_dub() is False
+
+    edited = _bilingual_rows()
+    edited[0]["translated_text"] = "Hola v2"
+    db.set_project_transcript(entry.id, edited)
+    assert db.get_project(entry.id).pending_dub() is True
+
+
 def test_finish_preview_stores_draft_transcript(fresh_db):
     project = db.upsert_project("srcVID00001", "es")
     job = db.create_job(SRC_URL, "es", mode="preview", project_id=project.id)

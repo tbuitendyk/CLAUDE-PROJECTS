@@ -231,3 +231,49 @@ def test_dub_flow_thumbnail_save_flags_pending(fresh_db):
     db.mark_project_published(project.id, "tgt12345678", "t", _rows(), None, None, None)
     db.set_project_thumbnail(project.id, "data:image/jpeg;base64,STAGED")  # as_published=False
     assert db.get_project(project.id).state == "published_pending"
+
+
+# --- Persistent "pending dub" (green) tracking -------------------------------
+
+def test_pending_dub_tracks_edits_against_the_dubbed_baseline(fresh_db):
+    project = db.upsert_project("dQw4w9WgXcQ", "es")
+    db.mark_project_published(
+        project.id, target_video_id="tgt12345678", title="t",
+        rows=_rows(), thumbnail=None, voice=None, privacy="unlisted",
+    )
+    # Record the master's transcript baseline (what a finished dub does).
+    db.set_project_dubbed_rows(project.id, _rows())
+    project = db.get_project(project.id)
+    assert project.pending_dub() is False
+    assert project.summary()["pending_dub"] is False
+    assert project.full()["dubbed_rows"] == _rows()
+
+    # An edit moves the working rows ahead of the baseline -> pending dub.
+    edited = _rows()
+    edited[0]["translated_text"] = "Hola editado"
+    db.set_project_transcript(project.id, edited)
+    project = db.get_project(project.id)
+    assert project.pending_dub() is True
+    assert project.summary()["pending_dub"] is True
+    # The baseline is untouched by an edit -- only a redub advances it.
+    assert project.dubbed_rows_list() == _rows()
+
+    # Re-dubbing the edited transcript advances the baseline -> back in sync.
+    db.set_project_dubbed_rows(project.id, project.rows_list())
+    assert db.get_project(project.id).pending_dub() is False
+
+
+def test_pending_dub_falls_back_to_publish_state_without_a_baseline(fresh_db):
+    # Legacy entries (and brand-new drafts) have no recorded dubbed baseline; the
+    # flag then follows the publish state so it's never falsely green.
+    project = db.upsert_project("dQw4w9WgXcQ", "es")
+    db.store_acquired_transcript(project.id, _rows())  # a draft transcript, never dubbed
+    assert db.get_project(project.id).pending_dub() is True   # undubbed draft
+
+    db.mark_project_published(project.id, "tgt12345678", "t", _rows(), None, None, None)
+    assert db.get_project(project.id).pending_dub() is False  # published & in sync
+
+    edited = _rows()
+    edited[0]["translated_text"] = "x"
+    db.set_project_transcript(project.id, edited)
+    assert db.get_project(project.id).pending_dub() is True   # published_pending

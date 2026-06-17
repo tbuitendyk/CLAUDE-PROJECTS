@@ -184,11 +184,15 @@ def _finish_dub(job: db.Job, project: db.Project | None, result: dict) -> None:
         # The freshly published dub was uploaded WITHOUT any intro, so reflect
         # that on the entry (a previously-attached intro no longer applies to this
         # new master) and keep the published description for a later intro-republish.
+        # `dubbed_rows` snapshots the transcript just baked into the master: the
+        # baseline later edits derive "pending dub" (green) against, so that
+        # colouring persists across a close/re-open rather than resetting.
         db.update_project(
             project.id,
             description=result.get("description"),
             intro_id=None,
             intro_duration=0.0,
+            dubbed_rows=json.dumps(rows),
         )
     db.update_job(
         job.id,

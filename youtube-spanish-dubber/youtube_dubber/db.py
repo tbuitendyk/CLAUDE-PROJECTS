@@ -64,6 +64,7 @@ CREATE TABLE IF NOT EXISTS projects (
     source_rows TEXT,
     acquired_rows TEXT,
     rows TEXT,
+    dubbed_rows TEXT,
     thumbnail TEXT,
     thumbnail_edit TEXT,
     bed_path TEXT,
@@ -437,6 +438,19 @@ def job_work_dir(job_id: str) -> Path:
 # Dub-projects library
 # --------------------------------------------------------------------------
 
+def _dub_signature(rows: list[dict] | None) -> list[tuple]:
+    """The narration-affecting shape of a transcript: each line's timing and the
+    text that gets spoken. Two transcripts with the same signature dub
+    identically, so this is what "has this been re-dubbed since?" compares (it
+    ignores the source-language column, which never changes the narration)."""
+    return [
+        (round(float(row.get("start", 0.0)), 2),
+         round(float(row.get("end", 0.0)), 2),
+         str(row.get("translated_text") or "").strip())
+        for row in (rows or [])
+    ]
+
+
 def _fingerprint(rows: list[dict] | None, thumbnail: str | None) -> str:
     """A stable digest of an entry's publishable content (transcript + thumbnail).
     The entry's state is derived by comparing this against the fingerprint taken
@@ -468,6 +482,12 @@ class Project:
     source_rows: Optional[str] = None
     acquired_rows: Optional[str] = None
     rows: Optional[str] = None
+    # The transcript baked into the current master (`master_path`): a snapshot of
+    # `rows` taken every time a (re)dub renders the master. Edits move `rows`
+    # ahead of this until the next dub, which is exactly the "edited but not yet
+    # dubbed" set the UI greens -- persisted here so that colouring survives a
+    # close/re-open instead of living only in the browser session.
+    dubbed_rows: Optional[str] = None
     thumbnail: Optional[str] = None
     # The thumbnail editor's saved state (JSON): the source image, banner text,
     # the overlay-preserve flag and the per-region edits (translation, font,
@@ -514,6 +534,27 @@ class Project:
         except ValueError:
             return []
 
+    def dubbed_rows_list(self) -> list[dict]:
+        try:
+            return json.loads(self.dubbed_rows) if self.dubbed_rows else []
+        except ValueError:
+            return []
+
+    def pending_dub(self) -> bool:
+        """True when the working transcript holds narration that the current
+        master hasn't been dubbed with yet -- i.e. there are edits the UI should
+        green. Compared line-by-line against the stored dubbed baseline; when
+        that baseline is absent (never dubbed, or a legacy entry from before it
+        was recorded) we fall back to the publish state, so an in-sync published
+        entry isn't falsely flagged and a draft/pending one still is."""
+        rows = self.rows_list()
+        if not rows:
+            return False
+        dubbed = self.dubbed_rows_list()
+        if dubbed:
+            return _dub_signature(rows) != _dub_signature(dubbed)
+        return self.state != "published"
+
     def summary(self) -> dict[str, Any]:
         """Listing shape: everything but the big payloads (rows, thumbnail)."""
         return {
@@ -529,6 +570,9 @@ class Project:
             "voice": self.voice,
             "privacy": self.privacy,
             "line_count": len(self.rows_list()),
+            # Whether the working transcript has edits not yet dubbed into the
+            # master -- the list-level "pending dub" (green) flag.
+            "pending_dub": self.pending_dub(),
             "has_thumbnail": bool(self.thumbnail),
             "has_bed": bool(self.bed_path),
             "has_master": bool(self.master_path),
@@ -542,6 +586,9 @@ class Project:
         data = self.summary()
         data["rows"] = self.rows_list()
         data["source_rows"] = self.source_rows_list()
+        # The transcript the current master was dubbed from: the editor greens
+        # each working row whose narration differs from its baseline here.
+        data["dubbed_rows"] = self.dubbed_rows_list()
         data["thumbnail"] = self.thumbnail
         try:
             data["thumbnail_edit"] = json.loads(self.thumbnail_edit) if self.thumbnail_edit else None
@@ -553,7 +600,7 @@ class Project:
 _PROJECT_COLUMNS = (
     "id", "source_video_id", "target_language", "state", "source_title", "title",
     "target_video_id", "voice", "privacy", "source_rows", "acquired_rows", "rows",
-    "thumbnail", "thumbnail_edit", "bed_path", "master_path", "description",
+    "dubbed_rows", "thumbnail", "thumbnail_edit", "bed_path", "master_path", "description",
     "intro_id", "intro_duration", "created_at", "updated_at", "published_fingerprint",
 )
 
@@ -567,6 +614,10 @@ _PROJECT_MIGRATIONS = (
     "ALTER TABLE projects ADD COLUMN description TEXT",
     "ALTER TABLE projects ADD COLUMN intro_id TEXT",
     "ALTER TABLE projects ADD COLUMN intro_duration REAL",
+    # The transcript baked into the current pre-intro master -- the baseline the
+    # UI greens edited-but-not-yet-dubbed lines against, persisted so that
+    # "pending dub" colouring survives closing and re-opening a project.
+    "ALTER TABLE projects ADD COLUMN dubbed_rows TEXT",
 )
 
 
@@ -1175,6 +1226,13 @@ def intro_file_path(intro_id: str) -> Path:
 
 def set_project_master(project_id: str, path: str | Path) -> Optional[Project]:
     return update_project(project_id, master_path=str(path))
+
+
+def set_project_dubbed_rows(project_id: str, rows: list[dict]) -> Optional[Project]:
+    """Record the transcript a freshly rendered master was dubbed from, so later
+    edits derive "pending dub" against it (and the UI can green just the changed
+    lines). Called on every (re)dub that rebuilds the master."""
+    return update_project(project_id, dubbed_rows=json.dumps(rows or []))
 
 
 def set_project_intro(project_id: str, intro_id: str, duration: float) -> Optional[Project]:
