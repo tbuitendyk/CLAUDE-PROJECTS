@@ -106,6 +106,68 @@ def test_process_intro_prepends_and_publishes(fresh_db, monkeypatch):
     assert done.status == "done" and done.youtube_video_id == "NEWvideo002"
 
 
+def test_process_dub_with_intro_prepends_then_publishes(fresh_db, monkeypatch, tmp_path):
+    # "Dub & publish" with an intro chosen: one job builds the master (unpublished
+    # in the runner), prepends the intro, uploads, applies the branded thumbnail
+    # and leaves the intro attached.
+    from youtube_dubber.pipeline import ffmpeg_utils, runner, uploader
+
+    project = db.upsert_project("vid00000008", "es")
+    intro = db.create_intro(
+        "https://youtu.be/i", str(db.intro_file_path("introBBBB")), 5.0, intro_id="introBBBB",
+    )
+    Path(intro.file_path).write_bytes(b"intro-bytes")
+
+    dubbed = tmp_path / "dubbed.mp4"
+    dubbed.write_bytes(b"master")
+    thumb = tmp_path / "thumb.jpg"
+    thumb.write_bytes(b"jpg")
+    seen: dict = {}
+
+    def fake_run(*args, publish=True, **kwargs):
+        seen["run_publish"] = publish  # dub-with-intro must build the master unpublished
+        return {
+            "youtube_video_id": None, "youtube_video_url": None,
+            "title": "[ES] Title", "description": "Desc\n\nVídeo original: x",
+            "source_title": "Hello", "source_video_id": "vid00000008",
+            "voice": "es-ES-AlvaroNeural",
+            "transcript": [{"start": 0, "end": 1, "original_text": "Hi", "translated_text": "Hola"}],
+            "dubbed_path": str(dubbed), "bed_source_path": None, "thumbnail_path": str(thumb),
+        }
+
+    def fake_prepend(intro_path, master_path, dst, on_progress=None):
+        Path(dst).write_bytes(b"joined")
+        seen["prepended"] = (Path(intro_path).name, Path(master_path).name)
+        return dst
+
+    def fake_upload(path, title, description, privacy_status, on_progress=None):
+        seen["upload"] = {"name": Path(path).name, "exists": Path(path).exists(),
+                          "title": title, "privacy": privacy_status}
+        return "DUBINTRO01"
+
+    monkeypatch.setattr(runner, "run", fake_run)
+    monkeypatch.setattr(ffmpeg_utils, "prepend_intro", fake_prepend)
+    monkeypatch.setattr(uploader, "upload_video", fake_upload)
+    monkeypatch.setattr(uploader, "set_thumbnail", lambda vid, path: seen.update(thumb=Path(path).name))
+
+    job = db.create_job(db.naming.watch_url("vid00000008"), "es", mode="dub",
+                        project_id=project.id, privacy="public", intro_id="introBBBB")
+    worker._process(job)
+
+    assert seen["run_publish"] is False
+    assert seen["prepended"][0] == "introBBBB.mp4"
+    assert seen["upload"]["name"] == "with_intro.mp4"   # the joined file, not the bare master
+    assert seen["upload"]["title"] == "[ES] Title"
+    assert seen["upload"]["privacy"] == "public"
+    assert seen["thumb"] == "thumb.jpg"                 # branded thumbnail applied
+
+    entry = db.get_project(project.id)
+    assert entry.target_video_id == "DUBINTRO01" and entry.state == "published"
+    assert entry.intro_id == "introBBBB" and (entry.intro_duration or 0) == 5.0  # intro stays attached
+    done = db.get_job(job.id)
+    assert done.status == "done" and done.youtube_video_id == "DUBINTRO01"
+
+
 def test_process_intro_removed_uploads_the_bare_master(fresh_db, monkeypatch):
     from youtube_dubber.pipeline import uploader
 

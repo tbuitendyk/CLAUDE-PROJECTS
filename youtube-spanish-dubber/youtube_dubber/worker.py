@@ -155,8 +155,14 @@ def _cache_master(project: db.Project, dubbed_path: str | None) -> None:
         log.warning("Couldn't save the pre-intro master for project %s (%s)", project.id, exc)
 
 
-def _finish_dub(job: db.Job, project: db.Project | None, result: dict) -> None:
-    """Persist a successful publish on both the job row and the library entry."""
+def _finish_dub(job: db.Job, project: db.Project | None, result: dict,
+                applied_intro: "db.Intro | None" = None) -> None:
+    """Persist a successful publish on both the job row and the library entry.
+
+    `applied_intro` is the intro that was prepended to this publish (the
+    "Dub & publish with an intro" path); None means the master was uploaded
+    bare, which clears any previously-attached intro since it no longer
+    describes the new video."""
     rows = result.get("transcript") or []
     if project is not None:
         # Re-fetch: the entry may have gained rows/edits since the job started
@@ -181,17 +187,18 @@ def _finish_dub(job: db.Job, project: db.Project | None, result: dict) -> None:
             voice=result.get("voice"),
             privacy=job.privacy,
         )
-        # The freshly published dub was uploaded WITHOUT any intro, so reflect
-        # that on the entry (a previously-attached intro no longer applies to this
-        # new master) and keep the published description for a later intro-republish.
-        # `dubbed_rows` snapshots the transcript just baked into the master: the
-        # baseline later edits derive "pending dub" (green) against, so that
-        # colouring persists across a close/re-open rather than resetting.
+        # Record the intro this publish actually carried: an intro the operator
+        # chose for "Dub & publish" stays attached, while a bare upload clears any
+        # previously-attached intro (it no longer describes the new master). Keep
+        # the published description for a later intro-republish. `dubbed_rows`
+        # snapshots the transcript just baked into the master: the baseline later
+        # edits derive "pending dub" (green) against, so that colouring persists
+        # across a close/re-open rather than resetting.
         db.update_project(
             project.id,
             description=result.get("description"),
-            intro_id=None,
-            intro_duration=0.0,
+            intro_id=applied_intro.id if applied_intro else None,
+            intro_duration=applied_intro.duration if applied_intro else 0.0,
             dubbed_rows=json.dumps(rows),
         )
     db.update_job(
@@ -368,24 +375,38 @@ def backfill_published_metadata() -> int:
     return filled
 
 
-def _process_intro(job: db.Job, project: db.Project | None, work_dir, on_progress) -> dict:
-    """(Re)publish a project from its saved pre-intro master, with the project's
-    currently-attached intro prepended (or none). Builds the upload file, uploads
-    it as a NEW video (YouTube has no replace-media API -- a new id every time),
-    and re-applies the saved thumbnail. Reuses the dub's transcript + thumbnail
-    unchanged; only the intro and the resulting video id move."""
+def _apply_thumbnail(video_id: str, thumbnail, work_dir) -> None:
+    """Set a video's thumbnail from either a ready JPEG path (a freshly branded
+    dub) or a stored data-URI (an entry's saved thumbnail). Best-effort: a
+    publish stands even if the channel can't take a custom thumbnail."""
+    if not thumbnail:
+        return
+    from .pipeline import uploader
+
+    try:
+        thumb_path = thumbnail if isinstance(thumbnail, Path) else _materialize_thumbnail_override(thumbnail, work_dir)
+        if thumb_path is not None:
+            uploader.set_thumbnail(video_id, thumb_path)
+    except Exception as exc:  # noqa: BLE001
+        log.warning("Couldn't set the thumbnail on publish %s (%s)", video_id, exc)
+
+
+def _publish_master(
+    *, master_path, title, description, thumbnail, intro,
+    source_video_id, target_language, privacy, work_dir, on_progress,
+) -> dict:
+    """Publish a pre-intro master as a NEW YouTube video (YouTube has no
+    replace-media API -- a new id every time), optionally prepending `intro`
+    first. Shared by the intro-republish path (metadata from the entry) and the
+    dub-and-publish path (metadata fresh from the pipeline)."""
     from .pipeline import ffmpeg_utils, uploader
 
-    if project is None or not project.master_path or not Path(project.master_path).exists():
+    master = Path(master_path)
+    if not master.exists():
         raise RuntimeError(
             "This project has no saved pre-intro master to publish from. Re-dub it "
             "once (so the master is stored) before adding or changing an intro."
         )
-    master = Path(project.master_path)
-
-    intro = db.get_intro(project.intro_id) if project.intro_id else None
-    if project.intro_id and intro is None:
-        raise RuntimeError("The selected intro no longer exists.")
 
     if intro is not None:
         intro_file = Path(intro.file_path)
@@ -401,36 +422,56 @@ def _process_intro(job: db.Job, project: db.Project | None, work_dir, on_progres
         upload_file = master
 
     # Ensure the "Original video: <link>" credit is on the description (idempotent
-    # -- a dub published post-credit already carries it; an older one won't).
-    description = project.description or ""
-    credit = naming.original_video_credit(project.target_language, project.source_video_id)
+    # -- a freshly composed dub description already carries it; an older stored
+    # one may not).
+    description = description or ""
+    credit = naming.original_video_credit(target_language, source_video_id)
     if credit not in description:
         description = f"{description}\n\n{credit}".strip()
 
     on_progress("uploading", "Uploading the new video to YouTube…")
     video_id = uploader.upload_video(
         upload_file,
-        title=project.title or "",
+        title=title or "",
         description=description,
-        privacy_status=job.privacy or project.privacy,
+        privacy_status=privacy,
         on_progress=lambda f: on_progress("uploading", f"Uploading to YouTube… {int(f * 100)}%", fraction=f),
     )
-
-    # Re-apply the saved custom thumbnail (best-effort -- the publish stands even
-    # if the channel can't set a custom thumbnail).
-    if project.thumbnail:
-        try:
-            thumb = _materialize_thumbnail_override(project.thumbnail, work_dir)
-            if thumb is not None:
-                uploader.set_thumbnail(video_id, thumb)
-        except Exception as exc:  # noqa: BLE001
-            log.warning("Couldn't set the thumbnail on intro-republish %s (%s)", video_id, exc)
+    _apply_thumbnail(video_id, thumbnail, work_dir)
 
     return {
         "youtube_video_id": video_id,
         "youtube_video_url": f"https://youtu.be/{video_id}",
         "had_intro": intro is not None,
     }
+
+
+def _process_intro(job: db.Job, project: db.Project | None, work_dir, on_progress) -> dict:
+    """(Re)publish a project from its saved pre-intro master, with the project's
+    currently-attached intro prepended (or none) -- the "Publish current cut"
+    path. Reuses the dub's transcript + thumbnail unchanged; only the intro and
+    the resulting video id move."""
+    if project is None or not project.master_path or not Path(project.master_path).exists():
+        raise RuntimeError(
+            "This project has no saved pre-intro master to publish from. Re-dub it "
+            "once (so the master is stored) before adding or changing an intro."
+        )
+    intro = db.get_intro(project.intro_id) if project.intro_id else None
+    if project.intro_id and intro is None:
+        raise RuntimeError("The selected intro no longer exists.")
+
+    return _publish_master(
+        master_path=project.master_path,
+        title=project.title or "",
+        description=project.description or "",
+        thumbnail=project.thumbnail,
+        intro=intro,
+        source_video_id=project.source_video_id,
+        target_language=project.target_language,
+        privacy=job.privacy or project.privacy,
+        work_dir=work_dir,
+        on_progress=on_progress,
+    )
 
 
 def _finish_intro(job: db.Job, project: db.Project | None, result: dict) -> None:
@@ -479,9 +520,15 @@ def _process(job: db.Job) -> None:
             result = _process_intro(job, project, work_dir, on_progress)
             _finish_intro(job, project, result)
         else:
-            # "dub" publishes the new master immediately; "remaster" prepares it
-            # and stops -- same pipeline, just no upload.
+            # "dub" publishes the new master; "remaster" prepares it and stops.
+            # A "dub" with an intro selected can't publish from inside the runner
+            # (the intro must be prepended first), so it produces the master
+            # unpublished here too, then publishes via the shared helper.
             publish = job.mode != "remaster"
+            intro = db.get_intro(job.intro_id) if (publish and job.intro_id) else None
+            if publish and job.intro_id and intro is None:
+                raise RuntimeError("The selected intro no longer exists.")
+            run_publishes = publish and intro is None  # bare publish stays inside runner
             transcript_override = _load_transcript_override(job.transcript_overrides)
             thumbnail_override = _materialize_thumbnail_override(job.thumbnail_override, work_dir)
             cached_bed = Path(project.bed_path) if project and project.bed_path else None
@@ -492,12 +539,28 @@ def _process(job: db.Job) -> None:
                 privacy=job.privacy,
                 voice=job.voice or (project.voice if project else None),
                 cached_bed=cached_bed,
-                publish=publish,
+                publish=run_publishes,
             )
-            if publish:
+            if not publish:
+                _finish_remaster(job, project, result)
+            elif intro is None:
                 _finish_dub(job, project, result)
             else:
-                _finish_remaster(job, project, result)
+                # Prepend the chosen intro to the just-built master and publish.
+                published = _publish_master(
+                    master_path=result["dubbed_path"],
+                    title=result.get("title") or "",
+                    description=result.get("description") or "",
+                    thumbnail=Path(result["thumbnail_path"]) if result.get("thumbnail_path") else None,
+                    intro=intro,
+                    source_video_id=result.get("source_video_id") or naming.extract_video_id(job.source_url),
+                    target_language=job.target_language,
+                    privacy=job.privacy or (project.privacy if project else None),
+                    work_dir=work_dir, on_progress=on_progress,
+                )
+                result["youtube_video_id"] = published["youtube_video_id"]
+                result["youtube_video_url"] = published["youtube_video_url"]
+                _finish_dub(job, project, result, applied_intro=intro)
     except Exception as exc:  # noqa: BLE001 -- surface any failure on the job record
         log.exception("Job %s failed", job.id)
         friendly = _friendly_error(exc)

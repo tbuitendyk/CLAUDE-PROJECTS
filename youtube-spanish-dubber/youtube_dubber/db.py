@@ -139,6 +139,10 @@ _MIGRATIONS = (
     "ALTER TABLE jobs ADD COLUMN privacy TEXT",
     "ALTER TABLE jobs ADD COLUMN voice TEXT",
     "ALTER TABLE jobs ADD COLUMN project_id TEXT",
+    # The intro to prepend when a dub publishes ("Dub & publish" with an intro
+    # selected); None = publish with no intro. Lets one job do dub -> intro ->
+    # publish, instead of a separate intro-republish afterward.
+    "ALTER TABLE jobs ADD COLUMN intro_id TEXT",
 )
 
 PROJECT_STATES = {"draft", "published", "published_pending"}
@@ -190,6 +194,9 @@ class Job:
     privacy: Optional[str] = None
     voice: Optional[str] = None
     project_id: Optional[str] = None
+    # The intro to prepend when this dub publishes (None = no intro). Only a
+    # publishing "dub" job consults it.
+    intro_id: Optional[str] = None
     youtube_video_id: Optional[str] = None
     youtube_video_url: Optional[str] = None
     created_at: str = field(default_factory=_now)
@@ -257,6 +264,7 @@ def create_job(
     privacy: str | None = None,
     voice: str | None = None,
     project_id: str | None = None,
+    intro_id: str | None = None,
 ) -> Job:
     job = Job(
         id=uuid.uuid4().hex[:12],
@@ -268,18 +276,19 @@ def create_job(
         privacy=privacy,
         voice=voice,
         project_id=project_id,
+        intro_id=intro_id,
     )
     with _connect() as conn:
         conn.execute(
             """INSERT INTO jobs
                (id, source_url, target_language, mode, status, stage, progress, error, result,
-                transcript_overrides, thumbnail_override, privacy, voice, project_id,
+                transcript_overrides, thumbnail_override, privacy, voice, project_id, intro_id,
                 youtube_video_id, youtube_video_url, created_at, updated_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 job.id, job.source_url, job.target_language, job.mode, job.status, job.stage,
                 job.progress, job.error, job.result, job.transcript_overrides, job.thumbnail_override,
-                job.privacy, job.voice, job.project_id,
+                job.privacy, job.voice, job.project_id, job.intro_id,
                 job.youtube_video_id, job.youtube_video_url, job.created_at, job.updated_at,
             ),
         )

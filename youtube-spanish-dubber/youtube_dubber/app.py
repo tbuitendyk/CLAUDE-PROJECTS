@@ -122,6 +122,9 @@ class JobCreateRequest(BaseModel):
     # then the global setting).
     privacy: Optional[str] = None
     voice: Optional[str] = None
+    # The intro to prepend when this dub publishes ("Dub & publish" with an intro
+    # chosen); None = publish with no intro. Only consulted in "dub" mode.
+    intro_id: Optional[str] = None
 
     @field_validator("url")
     @classmethod
@@ -240,9 +243,12 @@ class RedubRequest(BaseModel):
     voice, thumbnail and cached music/SFX bed. `publish=True` (the default)
     uploads the result as a new video; `publish=False` only refreshes the saved
     master from the edited transcript and leaves publishing for later (the
-    "Redub" vs "Redub & publish" split)."""
+    "Redub" vs "Redub & publish" split). `intro_id` is the intro to prepend on a
+    publishing redub (None = no intro); the UI pre-fills it with the entry's
+    current intro so "Redub & publish" retains it by default."""
     privacy: Optional[str] = None
     publish: bool = True
+    intro_id: Optional[str] = None
 
     @field_validator("privacy")
     @classmethod
@@ -355,6 +361,11 @@ def create_job(payload: JobCreateRequest) -> dict:
     language = payload.target_language or settings.target_language
     video_id = naming.extract_video_id(payload.url)
     project = db.upsert_project(video_id, language) if video_id else None
+    # An intro only applies to a publishing dub; validate it up front so the
+    # caller gets a clean 404 rather than a failed job.
+    intro_id = payload.intro_id if payload.mode == "dub" else None
+    if intro_id and db.get_intro(intro_id) is None:
+        raise HTTPException(status_code=404, detail="Intro not found")
     used_draft = []
     if payload.mode in ("dub", "remaster") and project is not None:
         if overrides is None:
@@ -376,6 +387,7 @@ def create_job(payload: JobCreateRequest) -> dict:
         transcript_overrides=overrides, thumbnail_override=thumbnail_override,
         privacy=payload.privacy, voice=payload.voice,
         project_id=project.id if project else None,
+        intro_id=intro_id,
     )
 
     label = (project.source_title or project.title if project else None) or payload.url
@@ -713,11 +725,14 @@ def redub_project(project_id: str, payload: RedubRequest) -> dict:
     if not overrides:
         raise HTTPException(status_code=422, detail="This project has no transcript to redub from")
     mode = "dub" if payload.publish else "remaster"
+    intro_id = payload.intro_id if payload.publish else None
+    if intro_id and db.get_intro(intro_id) is None:
+        raise HTTPException(status_code=404, detail="Intro not found")
     job = db.create_job(
         naming.watch_url(project.source_video_id), project.target_language, mode=mode,
         transcript_overrides=overrides, thumbnail_override=project.thumbnail,
         privacy=payload.privacy if payload.publish else None,
-        voice=project.voice, project_id=project.id,
+        voice=project.voice, project_id=project.id, intro_id=intro_id,
     )
     db.record_event(
         "Redub started" if payload.publish else "Redub (no publish) started",
