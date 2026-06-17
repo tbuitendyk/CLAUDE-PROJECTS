@@ -597,6 +597,10 @@ class Project:
         data = self.summary()
         data["rows"] = self.rows_list()
         data["source_rows"] = self.source_rows_list()
+        # The pristine machine-acquired transcript: the editor uses it as the
+        # green baseline before a project has ever been dubbed (no dubbed_rows
+        # yet), so hand-edits still show as "pending dub" on a draft.
+        data["acquired_rows"] = self.acquired_rows_list()
         # The transcript the current master was dubbed from: the editor greens
         # each working row whose narration differs from its baseline here.
         data["dubbed_rows"] = self.dubbed_rows_list()
