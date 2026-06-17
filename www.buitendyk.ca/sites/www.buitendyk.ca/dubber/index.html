@@ -154,6 +154,37 @@
       </div>
     </section>
 
+    <!-- INTRO CLIPS -->
+    <section class="panel collapsible collapsed" id="intros-panel" style="display:none;">
+      <button type="button" class="section-header">
+        <span class="box-title">Intro clips</span>
+        <span class="chevron" aria-hidden="true">&#9656;</span>
+      </button>
+      <div class="section-body">
+        <p class="hint" style="margin-top:0;">
+          Record a short intro, upload it to YouTube as <strong>unlisted</strong>, and paste its
+          link here. It's fetched once and its exact length measured. You can then prepend it to
+          any finished dub from that dub's entry in the library below &mdash; and add, change, or
+          remove it later without re-dubbing. Each change republishes as a <em>new</em> video
+          (YouTube can't swap a published video's file), so go Public only once the whole package
+          looks right.
+        </p>
+        <div class="field" style="margin-top:0.75rem;">
+          <label for="intro-url">Unlisted intro video URL (YouTube)</label>
+          <input type="url" id="intro-url" placeholder="https://www.youtube.com/watch?v=&hellip;">
+        </div>
+        <div class="field">
+          <label for="intro-name">Name (optional)</label>
+          <input type="text" id="intro-name" placeholder="e.g. Channel bumper">
+        </div>
+        <div class="field" style="display:flex; gap:0.75rem; align-items:center; margin-bottom:0;">
+          <button class="btn secondary" id="intro-add-btn" type="button">Add intro</button>
+          <span class="hint" id="intro-message" style="margin-top:0;"></span>
+        </div>
+        <div id="intro-list" style="margin-top:1rem;"></div>
+      </div>
+    </section>
+
     <!-- DUB PROJECTS LIBRARY -->
     <section class="panel collapsible collapsed" id="library-panel" style="display:none;">
       <button type="button" class="section-header">
@@ -187,6 +218,18 @@
           <div class="service-action">
             <button class="btn danger small" id="restart-btn" type="button">Restart Dubber service</button>
             <span class="hint" id="restart-message" style="margin-top:0;"></span>
+          </div>
+        </div>
+        <!-- Library storage: disk used by the kept artefacts (pre-intro masters,
+             cached beds, intro clips). Masters are kept forever so an intro can be
+             added later; reclaim space by deleting projects/intros you won't reuse. -->
+        <div class="service-row" style="margin-top:1rem; border-top:1px solid var(--border); padding-top:1rem;">
+          <div class="service-info">
+            <div class="box-title">Library storage</div>
+            <p class="hint" id="usage-line" style="margin-top:0.2rem;">Checking&hellip;</p>
+          </div>
+          <div class="service-action">
+            <button class="btn secondary small" id="usage-refresh-btn" type="button">Refresh</button>
           </div>
         </div>
         <!-- Extraction diagnostics: a full verbose yt-dlp probe (cookies state,
@@ -226,6 +269,6 @@
     buitendyk.ca &mdash; self-hosted on a personal VPS, built with free &amp; open-source tools.
   </footer>
 
-  <script src="/dubber/dubber.js?v=32"></script>
+  <script src="/dubber/dubber.js?v=33"></script>
 </body>
 </html>

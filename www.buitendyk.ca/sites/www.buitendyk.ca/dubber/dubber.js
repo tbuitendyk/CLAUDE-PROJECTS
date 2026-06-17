@@ -50,10 +50,19 @@
   const diagnoseLastBtn = document.getElementById("diagnose-last-btn");
   const diagnoseMessage = document.getElementById("diagnose-message");
   const diagnoseOutput = document.getElementById("diagnose-output");
+  const introsPanel = document.getElementById("intros-panel");
+  const introUrl = document.getElementById("intro-url");
+  const introName = document.getElementById("intro-name");
+  const introAddBtn = document.getElementById("intro-add-btn");
+  const introMessage = document.getElementById("intro-message");
+  const introList = document.getElementById("intro-list");
+  const usageLine = document.getElementById("usage-line");
+  const usageRefreshBtn = document.getElementById("usage-refresh-btn");
 
   let authenticated = false;
   const pollTimers = new Map(); // job id -> setInterval handle
   let libraryItems = [];        // project summaries from GET /projects
+  let introItems = [];          // recorded intros from GET /intros
   let currentProject = null;    // the entry matching the form's URL + language
   let autoOpenedFor = null;     // project id whose saved cards we already auto-opened
 
@@ -126,6 +135,7 @@
     signinBtn.style.display = authenticated ? "none" : "";
     // Operator features share the same auth gate.
     if (serviceControls) serviceControls.style.display = authenticated ? "block" : "none";
+    if (introsPanel) introsPanel.style.display = authenticated ? "block" : "none";
     if (libraryPanel) libraryPanel.style.display = authenticated ? "block" : "none";
     if (logPanel) logPanel.style.display = authenticated ? "block" : "none";
   }
@@ -137,6 +147,8 @@
         setAuthState("unlocked", "Signed in — dubbing is enabled.");
         loadExistingJobs();
         loadLibrary();
+        loadIntros();
+        loadUsage();
         loadEvents();
       } else if (res.status === 401 || res.status === 403) {
         setAuthState("locked", "Sign in to enable dubbing.");
@@ -669,6 +681,7 @@
     removeJobCard(job.id);
     loadEvents();
     loadLibrary();
+    loadUsage();  // a finished dub stores a new master; storage may have grown
     if (job.status === "failed" && job.error) {
       formMessage.textContent = `Job ${job.id} failed: ${job.error.split("\n")[0]}`;
     }
@@ -1863,6 +1876,118 @@
       "entries show as “Redub in progress” until you redub.";
     actions.appendChild(hint);
     body.appendChild(actions);
+
+    body.appendChild(buildIntroControl(item));
+  }
+
+  // The intro control for one library entry: pick an intro (or None) and
+  // republish the saved master with it prepended -- a new video each time.
+  function buildIntroControl(item) {
+    const block = document.createElement("div");
+    block.className = "library-actions";
+    block.style.borderTop = "1px solid var(--border)";
+    block.style.marginTop = "0.75rem";
+    block.style.paddingTop = "0.75rem";
+
+    if (!item.has_master) {
+      const h = document.createElement("span");
+      h.className = "hint";
+      h.style.marginTop = "0";
+      h.textContent = "Intro: available once this project has a saved master — dub or redub it " +
+        "once (dubs now store the master automatically), then reopen this to attach an intro.";
+      block.appendChild(h);
+      return block;
+    }
+
+    const label = document.createElement("span");
+    label.className = "hint";
+    label.style.marginTop = "0";
+    label.textContent = "Intro:";
+    block.appendChild(label);
+
+    const select = document.createElement("select");
+    const noneOpt = document.createElement("option");
+    noneOpt.value = "";
+    noneOpt.textContent = "— None —";
+    select.appendChild(noneOpt);
+    introItems.forEach((intro) => {
+      const opt = document.createElement("option");
+      opt.value = intro.id;
+      opt.textContent = `${intro.name} (${formatDuration(intro.duration)})`;
+      if (intro.id === item.intro_id) opt.selected = true;
+      select.appendChild(opt);
+    });
+    block.appendChild(select);
+
+    const privacyWrap = document.createElement("span");
+    privacyWrap.className = "radio-row inline";
+    const radioName = `intro-privacy-${item.id}`;
+    [["unlisted", "Unlisted", item.privacy !== "public"],
+     ["public", "Public", item.privacy === "public"]].forEach(([value, text, checked]) => {
+      const radioLabel = document.createElement("label");
+      const radio = document.createElement("input");
+      radio.type = "radio";
+      radio.name = radioName;
+      radio.value = value;
+      radio.checked = checked;
+      radioLabel.appendChild(radio);
+      radioLabel.appendChild(document.createTextNode(" " + text));
+      privacyWrap.appendChild(radioLabel);
+    });
+    block.appendChild(privacyWrap);
+
+    const applyBtn = document.createElement("button");
+    applyBtn.type = "button";
+    applyBtn.className = "btn small";
+    applyBtn.textContent = "Apply & republish";
+    applyBtn.addEventListener("click", async () => {
+      const introId = select.value;
+      const checked = block.querySelector(`input[name="${radioName}"]:checked`);
+      const privacy = checked ? checked.value : "unlisted";
+      const label2 = item.title || item.source_title || item.source_video_id;
+      const introName2 = introId ? (introItems.find((i) => i.id === introId) || {}).name : null;
+      const ok = window.confirm(
+        `Republish “${label2}” ${introId ? `with the intro “${introName2}”` : "with NO intro"} ` +
+        `as ${privacy}?\n\n` +
+        "This uploads a NEW video (a new YouTube id) built from the saved master. The " +
+        "previous upload stays on the channel until you remove it yourself."
+      );
+      if (!ok) return;
+      applyBtn.disabled = true;
+      try {
+        let job;
+        if (introId) {
+          job = await apiJson(`/projects/${item.id}/intro`, "POST",
+            { intro_id: introId, privacy: privacy });
+        } else {
+          job = await api(`/projects/${item.id}/intro`, { method: "DELETE" });
+        }
+        formMessage.textContent = `Queued intro republish as job ${job.id}. Tracking progress above.`;
+        renderJob(job);
+        pollJob(job.id);
+        loadEvents();
+      } catch (err) {
+        formMessage.textContent = `Couldn't republish with the intro: ${err.message}`;
+      } finally {
+        applyBtn.disabled = false;
+      }
+    });
+    block.appendChild(applyBtn);
+
+    const note = document.createElement("span");
+    note.className = "hint";
+    note.style.marginTop = "0";
+    if (item.intro_id) {
+      const cur = introItems.find((i) => i.id === item.intro_id);
+      note.textContent = cur
+        ? `Currently carrying “${cur.name}” (${formatDuration(item.intro_duration)}).`
+        : "An intro is attached (it may have been deleted from the library).";
+    } else {
+      note.textContent = "No intro attached. Removing republishes the bare master.";
+    }
+    block.appendChild(note);
+
+    return block;
   }
 
   function downloadTranscript(title, lines) {
@@ -1874,6 +1999,146 @@
     document.body.appendChild(a); a.click(); document.body.removeChild(a);
     URL.revokeObjectURL(a.href);
   }
+
+  // --- Intro clips ---------------------------------------------------------
+
+  function formatDuration(seconds) {
+    const s = Math.round(Number(seconds) || 0);
+    return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+  }
+
+  function setIntroMessage(text, kind) {
+    if (!introMessage) return;
+    introMessage.textContent = text || "";
+    introMessage.className = "hint" + (kind ? " thumb-message " + kind : "");
+  }
+
+  async function loadIntros() {
+    if (!authenticated) return;
+    try {
+      const items = await api("/intros");
+      if (!Array.isArray(items)) return;
+      introItems = items;
+      renderIntros();
+    } catch (err) {
+      /* non-fatal */
+    }
+  }
+
+  function renderIntros() {
+    if (!introList) return;
+    introList.textContent = "";
+    if (!introItems.length) {
+      const empty = document.createElement("p");
+      empty.className = "hint";
+      empty.textContent = "No intros yet — add one above. Saved intros appear as options " +
+        "on each dubbed project in the library below.";
+      introList.appendChild(empty);
+      return;
+    }
+    introItems.forEach((intro) => {
+      const row = document.createElement("div");
+      row.className = "library-item";
+
+      const head = document.createElement("div");
+      head.className = "library-head";
+
+      const name = document.createElement("div");
+      name.className = "library-name";
+      const label = document.createElement("span");
+      label.textContent = intro.name;
+      name.appendChild(label);
+
+      const meta = document.createElement("span");
+      meta.className = "library-meta";
+      meta.textContent = ` ${formatDuration(intro.duration)}`;
+      name.appendChild(meta);
+
+      if (intro.source_url) {
+        const links = document.createElement("div");
+        links.className = "library-links";
+        const a = document.createElement("a");
+        a.href = intro.source_url; a.target = "_blank"; a.rel = "noopener";
+        a.textContent = "intro video";
+        links.appendChild(a);
+        name.appendChild(links);
+      }
+      head.appendChild(name);
+
+      const btns = document.createElement("div");
+      btns.className = "library-head-buttons";
+      const del = document.createElement("button");
+      del.type = "button";
+      del.className = "btn danger small";
+      del.textContent = "Delete";
+      del.addEventListener("click", () => deleteIntro(intro, del));
+      btns.appendChild(del);
+      head.appendChild(btns);
+
+      row.appendChild(head);
+      introList.appendChild(row);
+    });
+  }
+
+  async function addIntro() {
+    const url = (introUrl.value || "").trim();
+    const name = (introName.value || "").trim();
+    if (!url) {
+      setIntroMessage("Paste the unlisted intro's YouTube link first.", "bad");
+      return;
+    }
+    introAddBtn.disabled = true;
+    setIntroMessage("Fetching the intro from YouTube (this downloads the clip)…");
+    try {
+      const intro = await apiJson("/intros", "POST", { url: url, name: name || null });
+      introUrl.value = "";
+      introName.value = "";
+      setIntroMessage(`✓ Added “${intro.name}” (${formatDuration(intro.duration)}).`, "good");
+      loadIntros();
+      loadUsage();
+      loadEvents();
+    } catch (err) {
+      setIntroMessage("Couldn't add that intro: " + err.message, "bad");
+    } finally {
+      introAddBtn.disabled = false;
+    }
+  }
+
+  async function deleteIntro(intro, button) {
+    const ok = window.confirm(
+      `Delete the intro “${intro.name}”?\n\n` +
+      "It's removed from the library and detached from any project currently using it " +
+      "(their next republish drops it). Videos already published with it are NOT changed."
+    );
+    if (!ok) return;
+    button.disabled = true;
+    try {
+      await api(`/intros/${intro.id}`, { method: "DELETE" });
+      loadIntros();
+      loadLibrary();  // a project may have just been detached from it
+      loadUsage();
+      loadEvents();
+    } catch (err) {
+      button.disabled = false;
+      setIntroMessage("Couldn't delete that intro: " + err.message, "bad");
+    }
+  }
+
+  async function loadUsage() {
+    if (!authenticated || !usageLine) return;
+    try {
+      const u = await api("/library/usage");
+      const plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
+      usageLine.textContent = `${u.total_human} total — ` +
+        `${plural(u.masters.count, "master")}, ${plural(u.intros.count, "intro")}, ` +
+        `${plural(u.beds.count, "audio bed")}.`;
+    } catch (err) {
+      usageLine.textContent = "Couldn't read storage usage.";
+    }
+  }
+
+  if (introAddBtn) introAddBtn.addEventListener("click", addIntro);
+  if (usageRefreshBtn) usageRefreshBtn.addEventListener("click", loadUsage);
 
   // --- Activity log (permanent, append-only) -------------------------------
 
