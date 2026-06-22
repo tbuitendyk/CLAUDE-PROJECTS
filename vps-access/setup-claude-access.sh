@@ -138,6 +138,14 @@ case "$cmd" in
       echo "checkout: $(git -C "$REPO_DIR" rev-parse --abbrev-ref HEAD 2>/dev/null) @ $(git -C "$REPO_DIR" log --oneline -1 2>/dev/null)"
       echo "---"
     fi
+    echo "load:$(cut -d' ' -f1-3 /proc/loadavg)   $(uptime -p 2>/dev/null)"
+    free -h
+    df -h / 2>/dev/null
+    echo "--- top memory (RSS) consumers ---"
+    ps -eo rss,pid,user,comm --sort=-rss 2>/dev/null | head -9
+    echo "--- VirtualBox guests (host RSS) ---"
+    ps -eo rss,pid,args --sort=-rss 2>/dev/null | grep -iE '[V]BoxHeadless' | cut -c1-140 | head -6 || true
+    echo "---"
     systemctl status youtube-dubber --no-pager | head -8 || true
     echo "---"
     systemctl status nginx --no-pager | head -5 || true
