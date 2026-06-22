@@ -64,7 +64,10 @@ echo "==> Installing and starting the systemd service"
 install -o root -g root -m 644 "${REPO_DIR}/vps-access/deploy-control/deploy-control.service" \
   /etc/systemd/system/deploy-control.service
 systemctl daemon-reload
-systemctl enable --now deploy-control.service
+systemctl enable deploy-control.service
+# restart (not just --now) so re-running this installer loads an updated
+# server.py into the running process; brief blip on a low-traffic endpoint.
+systemctl restart deploy-control.service
 sleep 1
 if curl -fsS "http://127.0.0.1:${PORT}/healthz" >/dev/null; then
   echo "    Local service healthy on 127.0.0.1:${PORT}."

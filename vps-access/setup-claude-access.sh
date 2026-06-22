@@ -91,6 +91,7 @@ Usage: sudo claude-deploy <command>
   restart-dubber    restart the youtube-dubber service (also the way to
                     kill a RUNNING dub job; queued jobs cancel via the UI)
   status            checkout branch/commit + service health (dubber, nginx)
+  maint-report      read-only triage: disk hogs, memory/swap, process/agent load
 USAGE
   exit 1
 }
@@ -152,6 +153,41 @@ case "$cmd" in
     echo "---"
     nginx -t
     ;;
+  maint-report)
+    # Read-only maintenance triage: disk hogs, memory/swap, and process/agent
+    # load. Makes NO changes (no deletes, no swapon, no service changes) -- it
+    # inspects and reports; any fix stays a manual root step or its own separate,
+    # reviewed action. Keep it read-only.
+    set +e +o pipefail
+    echo "===== host ====="
+    echo "load:$(cut -d' ' -f1-3 /proc/loadavg)  cores:$(nproc)  $(uptime -p)"
+    free -h
+    sw="$(swapon --show 2>/dev/null)"; echo "swap: ${sw:-<none configured>}"
+    echo
+    echo "===== memory: top RSS ====="
+    ps -eo rss,pid,user,comm --sort=-rss 2>/dev/null | head -10
+    echo
+    echo "===== protection/backup agent ====="
+    ps -eo pid,user,args 2>/dev/null | grep -iE '[a]cronis|[a]ctive[-_ ]?protect|[c]yber[-_ ]?protect|[/ ]mms( |$)|[b]ackup' | cut -c1-120 | head -6
+    systemctl list-units --type=service --state=running 2>/dev/null | awk '{print $1}' | grep -iE 'acronis|protect|backup|mms|cyber' || echo "(no obviously-named agent unit)"
+    echo
+    echo "===== virtualbox guests ====="
+    if command -v VBoxManage >/dev/null 2>&1; then
+      VBoxManage list runningvms 2>/dev/null | sed 's/^/running: /'
+      mf="$(VBoxManage list systemproperties 2>/dev/null | sed -n 's/^Default machine folder:[[:space:]]*//p')"
+      echo "machine folder: ${mf:-<unknown>}"
+      [ -n "$mf" ] && [ -d "$mf" ] && timeout 25 du -shx "$mf"/*/ 2>/dev/null | sort -h
+    else
+      echo "VBoxManage not in PATH"
+    fi
+    echo
+    echo "===== disk: root fs ====="
+    journalctl --disk-usage 2>/dev/null
+    timeout 12 du -shx /var/log /tmp /var/cache/apt/archives 2>/dev/null
+    df -h / 2>/dev/null
+    echo "-- largest dirs on / (depth 1; capped 25s) --"
+    timeout 25 du -xhd1 / 2>/dev/null | sort -h | tail -12 || echo "(du timed out)"
+    ;;
   *)
     usage
     ;;
@@ -200,8 +236,9 @@ Done. Summary of what ${DEPLOY_USER} can now do:
   - SSH in with the key you provided (password login disabled)
   - Read service logs:        journalctl -u youtube-dubber -n 100
   - Read anything world-readable (like any unprivileged user)
-  - Exactly five root actions, via:  sudo claude-deploy <command>
+  - Exactly six root actions, via:  sudo claude-deploy <command>
       sync <branch> | deploy-website | deploy-dubber | restart-dubber | status
+      | maint-report (read-only diagnostics)
   - Nothing else with elevated rights. Mail, certs, databases, other sites:
     untouchable.
 

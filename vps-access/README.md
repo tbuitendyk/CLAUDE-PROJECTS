@@ -44,8 +44,8 @@ Claude sessions connect as a dedicated **`claude-deploy`** user — key-only
 login, locked password, no port/agent forwarding. That user can read service
 logs (`journalctl`) and anything world-readable, and can run **exactly one
 command as root**: `sudo claude-deploy <action>`, a root-owned helper script
-with a fixed five-action menu (`sync`, `deploy-website`, `deploy-dubber`,
-`restart-dubber`, `status`). Nothing else on the box — mail server, certs,
+with a fixed six-action menu (`sync`, `deploy-website`, `deploy-dubber`,
+`restart-dubber`, `status`, `maint-report`). Nothing else on the box — mail server, certs,
 databases, other sites — is reachable with elevated rights. On top of that,
 every SSH command Claude runs goes through the normal Claude Code permission
 prompt, so you see and approve each one before it executes (as long as you
@@ -229,6 +229,7 @@ curl -fsS -X POST "$BASE" "${H[@]}" -d '{"action":"status"}'
 curl -fsS -X POST "$BASE" "${H[@]}" -d '{"action":"deploy-website"}'   # self-syncs the 'website' branch
 curl -fsS -X POST "$BASE" "${H[@]}" -d '{"action":"deploy-dubber"}'    # self-syncs the 'dubber' branch
 curl -fsS -X POST "$BASE" "${H[@]}" -d '{"action":"restart-dubber"}'
+curl -fsS -X POST "$BASE" "${H[@]}" -d '{"action":"maint-report"}'     # read-only host diagnostics (disk/mem/agent)
 curl -fsS -X POST "$BASE" "${H[@]}" -d '{"action":"sync","branch":"vps-access"}'   # only to refresh infra tooling
 ```
 

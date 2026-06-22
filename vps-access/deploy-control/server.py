@@ -17,7 +17,7 @@ Security posture
   it lives in /etc/deploy-control/env (root:claude-deploy 640) on the box and
   as the DEPLOY_API_TOKEN env var on the Claude Code environment.
 * Runs as the unprivileged `claude-deploy` user. The ONLY elevated thing it can
-  do is `sudo -n /usr/local/sbin/claude-deploy <action>`, whose five fixed
+  do is `sudo -n /usr/local/sbin/claude-deploy <action>`, whose six fixed
   actions and sudoers rule were installed by setup-claude-access.sh. It cannot
   run arbitrary commands: `action` is whitelist-checked and the `sync` branch
   is regex-validated before the helper (which validates again) ever sees it.
@@ -42,7 +42,7 @@ import sys
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 HELPER = "/usr/local/sbin/claude-deploy"
-ACTIONS = {"status", "sync", "deploy-website", "deploy-dubber", "restart-dubber"}
+ACTIONS = {"status", "sync", "deploy-website", "deploy-dubber", "restart-dubber", "maint-report"}
 # Mirrors the guard inside the helper: a defensible branch name, nothing that
 # could smuggle extra tokens onto the command line.
 BRANCH_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._/-]*$")

@@ -19,7 +19,7 @@ through the HTTPS endpoint:
 
 - `POST https://deploy.buitendyk.ca/run` — header `Authorization: Bearer $DEPLOY_API_TOKEN` (in env)
 - Body `{"action":"<action>"}` (+ `"branch":"<name>"` for `sync`)
-- Actions: `status`, `sync`, `deploy-website`, `deploy-dubber`, `restart-dubber`
+- Actions: `status`, `sync`, `deploy-website`, `deploy-dubber`, `restart-dubber`, `maint-report` (read-only host diagnostics)
 - `deploy-website` / `deploy-dubber` **self-sync their branch** from origin, then
   run its `deploy/install.sh` (the dubber installer auto-restarts the service).
   `sync` is for refreshing the `vps-access` checkout / inspection. `status`
