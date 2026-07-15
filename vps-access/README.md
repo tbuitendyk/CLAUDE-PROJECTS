@@ -235,6 +235,8 @@ curl -fsS -X POST "$BASE" "${H[@]}" -d '{"action":"deploy-dubber"}'    # self-sy
 curl -fsS -X POST "$BASE" "${H[@]}" -d '{"action":"restart-dubber"}'
 curl -fsS -X POST "$BASE" "${H[@]}" -d '{"action":"maint-report"}'     # read-only host diagnostics (disk/mem/agent)
 curl -fsS -X POST "$BASE" "${H[@]}" -d '{"action":"run-script","script":"smoke.sh"}'  # committed scripts in vps-access/scripts/ only
+curl -fsS -X POST "$BASE" "${H[@]}" -d '{"action":"run-script","script":"delete-branch.sh"}'                              # list stale claude/* branches
+curl -fsS -X POST "$BASE" "${H[@]}" -d '{"action":"run-script","script":"delete-branch.sh","arg":"claude/old-x"}'         # delete one
 curl -fsS -X POST "$BASE" "${H[@]}" -d '{"action":"sync","branch":"vps-access"}'   # only to refresh infra tooling
 ```
 

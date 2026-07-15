@@ -93,10 +93,11 @@ Usage: sudo claude-deploy <command>
                     kill a RUNNING dub job; queued jobs cancel via the UI)
   status            checkout branch/commit + service health (dubber, nginx)
   maint-report      read-only triage: disk hogs, memory/swap, process/agent load
-  run-script <name> sync the '${BRANCH_INFRA}' branch, then run
-                    vps-access/scripts/<name> as root. Version-controlled
-                    scripts from that fixed directory ONLY -- never inline
-                    commands.
+  run-script <name> [arg]
+                    sync the '${BRANCH_INFRA}' branch, then run
+                    vps-access/scripts/<name> as root, passing the optional
+                    validated <arg> as \$1. Version-controlled scripts from that
+                    fixed directory ONLY -- never inline commands.
 USAGE
   exit 1
 }
@@ -203,14 +204,21 @@ case "$cmd" in
       echo "Refusing suspicious script name: $name" >&2
       exit 1
     fi
+    # Optional single argument passed to the script as "$1". Validated (no
+    # spaces/metacharacters) so it stays data, not a command.
+    arg="${3:-}"
+    if [[ -n "$arg" && ! "$arg" =~ ^[A-Za-z0-9][A-Za-z0-9._/-]*$ ]]; then
+      echo "Refusing suspicious script argument: $arg" >&2
+      exit 1
+    fi
     sync_to "$BRANCH_INFRA"
     script="$REPO_DIR/vps-access/scripts/$name"
     if [[ ! -f "$script" ]]; then
       echo "No such script: vps-access/scripts/$name (on branch $BRANCH_INFRA)" >&2
       exit 1
     fi
-    echo "== running scripts/$name =="
-    bash "$script"
+    echo "== running scripts/$name ${arg:+($arg)} =="
+    bash "$script" "$arg"
     ;;
   *)
     usage

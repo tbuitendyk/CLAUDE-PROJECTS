@@ -29,6 +29,7 @@ Request / response
   POST /run   {"action": "status"}                      -> run an action
               {"action": "sync", "branch": "claude/x"}  -> sync requires branch
               {"action": "run-script", "script": "x.sh"} -> repo script by name
+              {"action": "run-script", "script": "x.sh", "arg": "y"} -> ...with one arg
   GET  /healthz                                          -> {"ok": true} (no auth)
 
   200/500 JSON: {ok, action, exit_code, stdout, stderr}
@@ -53,6 +54,10 @@ BRANCH_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._/-]*$")
 # Stricter than BRANCH_RE: no slashes, so a name can only select a file inside
 # the helper's fixed scripts directory (the helper re-validates too).
 SCRIPT_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
+# Optional single argument to a script: branch-name-shaped (slashes allowed),
+# no shell metacharacters/spaces. Passed positionally as $1, never interpreted
+# as a command. The helper re-validates.
+ARG_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._/-]*$")
 MAX_BODY = 4096
 # Deploys (apt, rsync, service restarts) can run a while; give them room but
 # still bound it so a wedged command can't pin a worker forever.
@@ -132,6 +137,12 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(400, {"ok": False, "error": "run-script requires a valid 'script'"})
                 return
             cmd.append(script)
+            arg = str(data.get("arg", ""))
+            if arg:
+                if not ARG_RE.match(arg):
+                    self._send(400, {"ok": False, "error": "run-script 'arg' is invalid"})
+                    return
+                cmd.append(arg)
 
         sys.stderr.write(f"deploy-control: running {action}"
                          + (f" {cmd[-1]}" if action in ("sync", "run-script") else "") + "\n")

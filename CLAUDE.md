@@ -19,12 +19,18 @@ through the HTTPS endpoint:
 
 - `POST https://deploy.buitendyk.ca/run` — header `Authorization: Bearer $DEPLOY_API_TOKEN` (in env)
 - Body `{"action":"<action>"}` (+ `"branch":"<name>"` for `sync`)
-- Actions: `status`, `sync`, `deploy-website`, `deploy-dubber`, `restart-dubber`, `maint-report` (read-only host diagnostics), `run-script` (+ `"script":"<name>"`)
+- Actions: `status`, `sync`, `deploy-website`, `deploy-dubber`, `restart-dubber`, `maint-report` (read-only host diagnostics), `run-script` (+ `"script":"<name>"`, optional `"arg":"<value>"`)
 - `run-script` executes a committed script from `vps-access/scripts/` as root
-  (self-syncs this branch first). Flow: write the script → commit & push here →
-  call `run-script`. Names are regex-validated, no inline commands, ~8 KB output
-  cap, 15-min timeout. Destructive scripts need explicit user sign-off first —
-  see `vps-access/scripts/README.md`.
+  (self-syncs this branch first), passing an optional validated `arg` as `$1`.
+  Flow: write the script → commit & push here → call `run-script`. Names/args
+  are regex-validated, no inline commands, ~8 KB output cap, 15-min timeout.
+  Destructive scripts need explicit user sign-off first — see
+  `vps-access/scripts/README.md`.
+- `scripts/delete-branch.sh` lists (no arg) / deletes (`claude/*` branch arg)
+  stale session branches on CLAUDE-PROJECTS. Needs `GITHUB_BRANCH_TOKEN`
+  (fine-grained PAT, this repo only, Contents:write) in `/etc/deploy-control/env`;
+  refuses the real branches + default. This is how branch cleanup happens from a
+  cloud/phone session (the git-proxy blocks branch deletes directly).
 - `deploy-website` / `deploy-dubber` **self-sync their branch** from origin, then
   run its `deploy/install.sh` (the dubber installer auto-restarts the service).
   `sync` is for refreshing the `vps-access` checkout / inspection. `status`
