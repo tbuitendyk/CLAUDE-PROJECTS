@@ -1,0 +1,10 @@
+# Postfix TLS policy map.
+#
+# Force STARTTLS for the Brevo next-hop without forcing TLS for every other
+# direct delivery (which would break delivery to hosts that don't offer it).
+#
+# After editing:
+#   sudo postmap /etc/postfix/tls_policy
+#   sudo postfix reload
+
+[smtp-relay.brevo.com]:587   encrypt
