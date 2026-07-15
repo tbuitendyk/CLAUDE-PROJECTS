@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "kjv-bible-local": {
+      "command": "python",
+      "args": ["server.py"],
+      "cwd": "/home/user/Claude-1",
+      "env": {
+        "TRANSPORT": "stdio"
+      }
+    }
+  }
+}

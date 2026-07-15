@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: kjv-bible-mcp
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    envVars:
+      - key: TRANSPORT
+        value: http
+      - key: PORT
+        value: "8000"
+      - key: API_KEY
+        generateValue: true   # Render auto-generates a secret value
+    healthCheckPath: /mcp
