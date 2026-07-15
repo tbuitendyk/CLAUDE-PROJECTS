@@ -19,7 +19,12 @@ through the HTTPS endpoint:
 
 - `POST https://deploy.buitendyk.ca/run` — header `Authorization: Bearer $DEPLOY_API_TOKEN` (in env)
 - Body `{"action":"<action>"}` (+ `"branch":"<name>"` for `sync`)
-- Actions: `status`, `sync`, `deploy-website`, `deploy-dubber`, `restart-dubber`, `maint-report` (read-only host diagnostics)
+- Actions: `status`, `sync`, `deploy-website`, `deploy-dubber`, `restart-dubber`, `maint-report` (read-only host diagnostics), `run-script` (+ `"script":"<name>"`)
+- `run-script` executes a committed script from `vps-access/scripts/` as root
+  (self-syncs this branch first). Flow: write the script → commit & push here →
+  call `run-script`. Names are regex-validated, no inline commands, ~8 KB output
+  cap, 15-min timeout. Destructive scripts need explicit user sign-off first —
+  see `vps-access/scripts/README.md`.
 - `deploy-website` / `deploy-dubber` **self-sync their branch** from origin, then
   run its `deploy/install.sh` (the dubber installer auto-restarts the service).
   `sync` is for refreshing the `vps-access` checkout / inspection. `status`

@@ -44,17 +44,21 @@ Claude sessions connect as a dedicated **`claude-deploy`** user — key-only
 login, locked password, no port/agent forwarding. That user can read service
 logs (`journalctl`) and anything world-readable, and can run **exactly one
 command as root**: `sudo claude-deploy <action>`, a root-owned helper script
-with a fixed six-action menu (`sync`, `deploy-website`, `deploy-dubber`,
-`restart-dubber`, `status`, `maint-report`). Nothing else on the box — mail server, certs,
+with a fixed seven-action menu (`sync`, `deploy-website`, `deploy-dubber`,
+`restart-dubber`, `status`, `maint-report`, `run-script`). Nothing else on the box — mail server, certs,
 databases, other sites — is reachable with elevated rights. On top of that,
 every SSH command Claude runs goes through the normal Claude Code permission
 prompt, so you see and approve each one before it executes (as long as you
 stay in the default permission mode and don't allowlist `ssh`).
 
 One honest caveat: `sync` + `deploy-*` runs whatever is on the git branch as
-root (the `install.sh` scripts). That was already true of the manual workflow
-— the real trust boundary is the branch content, which you review as commits
-and approve as commands.
+root (the `install.sh` scripts), and `run-script` runs whatever is committed
+under `vps-access/scripts/` as root. That was already true of the manual
+workflow — the real trust boundary is the branch content, which you review as
+commits and approve as commands. `run-script` deliberately accepts only a
+validated *name* resolved inside that fixed directory — never inline commands —
+so the reviewed commit remains the only way code reaches the box. Conventions
+for scripts: `vps-access/scripts/README.md`.
 
 ## Setup
 
@@ -230,6 +234,7 @@ curl -fsS -X POST "$BASE" "${H[@]}" -d '{"action":"deploy-website"}'   # self-sy
 curl -fsS -X POST "$BASE" "${H[@]}" -d '{"action":"deploy-dubber"}'    # self-syncs the 'dubber' branch
 curl -fsS -X POST "$BASE" "${H[@]}" -d '{"action":"restart-dubber"}'
 curl -fsS -X POST "$BASE" "${H[@]}" -d '{"action":"maint-report"}'     # read-only host diagnostics (disk/mem/agent)
+curl -fsS -X POST "$BASE" "${H[@]}" -d '{"action":"run-script","script":"smoke.sh"}'  # committed scripts in vps-access/scripts/ only
 curl -fsS -X POST "$BASE" "${H[@]}" -d '{"action":"sync","branch":"vps-access"}'   # only to refresh infra tooling
 ```
 

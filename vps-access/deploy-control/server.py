@@ -17,15 +17,18 @@ Security posture
   it lives in /etc/deploy-control/env (root:claude-deploy 640) on the box and
   as the DEPLOY_API_TOKEN env var on the Claude Code environment.
 * Runs as the unprivileged `claude-deploy` user. The ONLY elevated thing it can
-  do is `sudo -n /usr/local/sbin/claude-deploy <action>`, whose six fixed
+  do is `sudo -n /usr/local/sbin/claude-deploy <action>`, whose seven fixed
   actions and sudoers rule were installed by setup-claude-access.sh. It cannot
-  run arbitrary commands: `action` is whitelist-checked and the `sync` branch
-  is regex-validated before the helper (which validates again) ever sees it.
+  run arbitrary commands: `action` is whitelist-checked, and the `sync` branch
+  and `run-script` name are regex-validated before the helper (which validates
+  again) ever sees them. run-script executes only version-controlled scripts
+  from vps-access/scripts/ -- never inline commands from the request.
 
 Request / response
 ------------------
   POST /run   {"action": "status"}                      -> run an action
               {"action": "sync", "branch": "claude/x"}  -> sync requires branch
+              {"action": "run-script", "script": "x.sh"} -> repo script by name
   GET  /healthz                                          -> {"ok": true} (no auth)
 
   200/500 JSON: {ok, action, exit_code, stdout, stderr}
@@ -42,10 +45,14 @@ import sys
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 HELPER = "/usr/local/sbin/claude-deploy"
-ACTIONS = {"status", "sync", "deploy-website", "deploy-dubber", "restart-dubber", "maint-report"}
+ACTIONS = {"status", "sync", "deploy-website", "deploy-dubber", "restart-dubber",
+           "maint-report", "run-script"}
 # Mirrors the guard inside the helper: a defensible branch name, nothing that
 # could smuggle extra tokens onto the command line.
 BRANCH_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._/-]*$")
+# Stricter than BRANCH_RE: no slashes, so a name can only select a file inside
+# the helper's fixed scripts directory (the helper re-validates too).
+SCRIPT_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 MAX_BODY = 4096
 # Deploys (apt, rsync, service restarts) can run a while; give them room but
 # still bound it so a wedged command can't pin a worker forever.
@@ -119,9 +126,15 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(400, {"ok": False, "error": "sync requires a valid 'branch'"})
                 return
             cmd.append(branch)
+        elif action == "run-script":
+            script = str(data.get("script", ""))
+            if not SCRIPT_RE.match(script):
+                self._send(400, {"ok": False, "error": "run-script requires a valid 'script'"})
+                return
+            cmd.append(script)
 
         sys.stderr.write(f"deploy-control: running {action}"
-                         + (f" {cmd[-1]}" if action == 'sync' else "") + "\n")
+                         + (f" {cmd[-1]}" if action in ("sync", "run-script") else "") + "\n")
         try:
             proc = subprocess.run(cmd, capture_output=True, text=True, timeout=COMMAND_TIMEOUT)
         except subprocess.TimeoutExpired:

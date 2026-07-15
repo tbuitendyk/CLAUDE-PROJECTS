@@ -77,6 +77,7 @@ REPO_DIR="/root/claude-projects"
 # before running its installer, so deploys are single-call and always current.
 BRANCH_WEBSITE="website"
 BRANCH_DUBBER="dubber"
+BRANCH_INFRA="vps-access"
 
 usage() {
   cat >&2 <<USAGE
@@ -92,6 +93,10 @@ Usage: sudo claude-deploy <command>
                     kill a RUNNING dub job; queued jobs cancel via the UI)
   status            checkout branch/commit + service health (dubber, nginx)
   maint-report      read-only triage: disk hogs, memory/swap, process/agent load
+  run-script <name> sync the '${BRANCH_INFRA}' branch, then run
+                    vps-access/scripts/<name> as root. Version-controlled
+                    scripts from that fixed directory ONLY -- never inline
+                    commands.
 USAGE
   exit 1
 }
@@ -188,6 +193,25 @@ case "$cmd" in
     echo "-- largest dirs on / (depth 1; capped 25s) --"
     timeout 25 du -xhd1 / 2>/dev/null | sort -h | tail -12 || echo "(du timed out)"
     ;;
+  run-script)
+    name="${2:-}"
+    [[ -n "$name" ]] || usage
+    # Script names come from a Claude session: validate hard. No slashes and
+    # no leading dash, so the name can only select a file inside the fixed
+    # scripts directory -- never traverse out of it.
+    if [[ ! "$name" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]; then
+      echo "Refusing suspicious script name: $name" >&2
+      exit 1
+    fi
+    sync_to "$BRANCH_INFRA"
+    script="$REPO_DIR/vps-access/scripts/$name"
+    if [[ ! -f "$script" ]]; then
+      echo "No such script: vps-access/scripts/$name (on branch $BRANCH_INFRA)" >&2
+      exit 1
+    fi
+    echo "== running scripts/$name =="
+    bash "$script"
+    ;;
   *)
     usage
     ;;
@@ -236,9 +260,10 @@ Done. Summary of what ${DEPLOY_USER} can now do:
   - SSH in with the key you provided (password login disabled)
   - Read service logs:        journalctl -u youtube-dubber -n 100
   - Read anything world-readable (like any unprivileged user)
-  - Exactly six root actions, via:  sudo claude-deploy <command>
+  - Exactly seven root actions, via:  sudo claude-deploy <command>
       sync <branch> | deploy-website | deploy-dubber | restart-dubber | status
       | maint-report (read-only diagnostics)
+      | run-script <name> (version-controlled scripts in vps-access/scripts/ only)
   - Nothing else with elevated rights. Mail, certs, databases, other sites:
     untouchable.
 
