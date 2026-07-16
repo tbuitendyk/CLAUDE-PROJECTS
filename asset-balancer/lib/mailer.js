@@ -136,6 +136,104 @@ async function sendAlertEvents(events) {
   }
 }
 
+// Full-profile status report, sent on demand regardless of breach state —
+// all balances, values, allocations, and the currency basket. Doubles as a
+// live test of the whole comms path (email + WhatsApp).
+async function sendStatusReport(profile, view) {
+  const { assets, totals } = view;
+  const idx = profile.index_asset.toUpperCase();
+  const ts = new Date().toISOString().slice(0, 16).replace('T', ' ');
+  const money = (n) =>
+    n == null ? '—' : n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+  const lines = [];
+  lines.push(`Profile "${profile.name}" status — ${ts} UTC`);
+  lines.push('');
+  if (totals.basket != null) {
+    const unitPct = (totals.basket - 1) * 100;
+    lines.push(
+      `Currency basket: ${totals.basket.toFixed(8)} (${unitPct >= 0 ? '+' : ''}${unitPct.toFixed(4)}% units)`
+    );
+  } else {
+    lines.push('Currency basket: — (no targets set yet)');
+  }
+  lines.push(
+    `Value (${idx}): ${fmt(totals.totalRel)}` +
+      (totals.growthPct != null
+        ? ` (${totals.growthPct >= 0 ? '+' : ''}${totals.growthPct.toFixed(2)}% since start)`
+        : '') +
+      ` · $${money(totals.totalUsd)} USD`
+  );
+  const breached = assets.filter((a) => a.breached && !a.is_index).length;
+  lines.push(
+    `Notifications: ${profile.alerts_enabled ? 'enabled' : 'DISABLED'} · state ${profile.notify_state || 'armed'} · ` +
+      `threshold ${profile.threshold_pct}% of target · ${breached} asset(s) over threshold`
+  );
+  lines.push('');
+  lines.push('Assets:');
+  const ordered = [...assets].sort(
+    (a, b) => (b.is_index ? 1 : 0) - (a.is_index ? 1 : 0) || (b.valueUsd || 0) - (a.valueUsd || 0)
+  );
+  for (const a of ordered) {
+    const sym = a.symbol.toUpperCase() + (a.is_index ? ' (index)' : '');
+    const drift =
+      a.driftRelPct != null
+        ? `${a.driftRelPct >= 0 ? '+' : ''}${a.driftRelPct.toFixed(1)}%${a.breached ? ' OVER' : ''}`
+        : '—';
+    lines.push(
+      `- ${sym}: qty ${fmtQty(a.quantity)} · value $${money(a.valueUsd)}` +
+        (a.actualPct != null ? ` (${a.actualPct.toFixed(2)}% of pool)` : '') +
+        ` · target ${a.target_pct || 0}% · drift ${drift}`
+    );
+  }
+  const text = lines.join('\n');
+
+  const recipients = parseRecipients(profile);
+  const emails = recipients.map((r) => (r.email || '').trim()).filter(Boolean);
+  const result = { emailedTo: [], whatsappOk: 0, whatsappFailed: [], errors: [] };
+
+  if (emails.length > 0 && emailConfigured()) {
+    try {
+      await transporter.sendMail({
+        from: fromHeader(),
+        to: emails.join(', '),
+        subject: `[Asset Balancer] ${profile.name} status (${ts} UTC)`,
+        text,
+      });
+      result.emailedTo = emails;
+    } catch (err) {
+      result.errors.push(`email: ${err.message}`);
+    }
+  } else if (emails.length > 0) {
+    result.errors.push('email: SMTP not configured on the server');
+  }
+
+  for (const r of recipients) {
+    if (!r.whatsapp_phone || !r.whatsapp_key) continue;
+    const notice =
+      `Asset Balancer: status report for "${profile.name}" — basket ` +
+      `${totals.basket != null ? totals.basket.toFixed(8) : 'n/a'}, total $${money(totals.totalUsd)}.` +
+      (r.email ? ' Full report emailed to you.' : '');
+    try {
+      await sendWhatsApp(r.whatsapp_phone, r.whatsapp_key, notice);
+      result.whatsappOk++;
+    } catch (err) {
+      result.whatsappFailed.push(r.whatsapp_phone);
+      result.errors.push(`WhatsApp ${r.whatsapp_phone}: ${err.message}`);
+    }
+  }
+
+  db.prepare('INSERT INTO alert_log (profile_id, message, ts, emailed) VALUES (?, ?, ?, ?)').run(
+    profile.id,
+    `Status report requested — email to [${result.emailedTo.join(', ') || 'none'}], ` +
+      `WhatsApp ok ${result.whatsappOk}, failed ${result.whatsappFailed.length}` +
+      (result.errors.length ? ` | ${result.errors.join(' | ')}` : ''),
+    Date.now(),
+    result.emailedTo.length > 0 ? 1 : 0
+  );
+  return result;
+}
+
 async function sendTestEmail() {
   if (!emailConfigured() || !config.alertEmailTo) {
     throw new Error('SMTP or ALERT_EMAIL_TO not configured');
@@ -148,4 +246,11 @@ async function sendTestEmail() {
   });
 }
 
-module.exports = { sendAlertEvents, sendTestEmail, emailConfigured, buildText, fromHeader };
+module.exports = {
+  sendAlertEvents,
+  sendStatusReport,
+  sendTestEmail,
+  emailConfigured,
+  buildText,
+  fromHeader,
+};

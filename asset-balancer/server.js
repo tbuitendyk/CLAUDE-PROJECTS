@@ -4,7 +4,7 @@ const express = require('express');
 const config = require('./lib/config');
 const db = require('./lib/db');
 const { pollProfiles, setTargets, computeBasket, rearmAfterUpload } = require('./lib/balancer');
-const { sendAlertEvents, sendTestEmail, emailConfigured } = require('./lib/mailer');
+const { sendAlertEvents, sendStatusReport, sendTestEmail, emailConfigured } = require('./lib/mailer');
 const { searchCoins, supportedFiats, fiatCode } = require('./lib/pricing');
 const { visionConfigured, parseHoldingsScreenshot } = require('./lib/vision');
 const { startScheduler } = require('./lib/scheduler');
@@ -148,12 +148,10 @@ app.delete('/api/profiles/:id', (req, res) => {
   res.json({ ok: true });
 });
 
-// Full state for one profile: assets with latest prices, actual vs target
-// allocation, relative drift; pool totals; currency basket; alert history.
-app.get('/api/profiles/:id/state', (req, res) => {
-  const profile = db.prepare('SELECT * FROM profiles WHERE id = ?').get(req.params.id);
-  if (!profile) return res.status(404).json({ error: 'not found' });
-
+// Assets with latest prices, actual vs target allocation, relative drift,
+// plus pool totals and the currency basket. Shared by the state endpoint
+// and the status-report email.
+function buildProfileView(profile) {
   const latest = db.prepare(
     'SELECT usd_price, rel_price, ts FROM price_history WHERE asset_id = ? ORDER BY ts DESC LIMIT 1'
   );
@@ -209,6 +207,15 @@ app.get('/api/profiles/:id/state', (req, res) => {
     initialRel: first ? first.total_rel : null,
     growthPct: first && first.total_rel > 0 && totalRel > 0 ? (totalRel / first.total_rel - 1) * 100 : null,
   };
+  return { assets, totals };
+}
+
+// Full state for one profile: assets with latest prices, actual vs target
+// allocation, relative drift; pool totals; currency basket; alert history.
+app.get('/api/profiles/:id/state', (req, res) => {
+  const profile = db.prepare('SELECT * FROM profiles WHERE id = ?').get(req.params.id);
+  if (!profile) return res.status(404).json({ error: 'not found' });
+  const { assets, totals } = buildProfileView(profile);
 
   const snapshots = db
     .prepare(
@@ -302,6 +309,26 @@ app.post('/api/profiles/:id/poll', async (req, res) => {
     const { events } = await pollProfiles({ force: true, profileId: Number(req.params.id), manual: true });
     if (events.length > 0) await sendAlertEvents(events);
     res.json({ ok: true, notifications: events.length });
+  } catch (err) {
+    res.status(502).json({ error: err.message });
+  }
+});
+
+// On-demand full status report to the profile's recipients (email + a
+// WhatsApp notice), regardless of breach state. Doubles as a comms test.
+app.post('/api/profiles/:id/email-status', async (req, res) => {
+  const profile = db.prepare('SELECT * FROM profiles WHERE id = ?').get(req.params.id);
+  if (!profile) return res.status(404).json({ error: 'not found' });
+  let recipients = [];
+  try {
+    recipients = JSON.parse(profile.recipients || '[]');
+  } catch {}
+  if (!recipients.some((r) => r.email || (r.whatsapp_phone && r.whatsapp_key))) {
+    return res.status(400).json({ error: 'No recipients configured on this profile' });
+  }
+  try {
+    const result = await sendStatusReport(profile, buildProfileView(profile));
+    res.json({ ok: true, ...result });
   } catch (err) {
     res.status(502).json({ error: err.message });
   }

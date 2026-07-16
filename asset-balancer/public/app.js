@@ -372,6 +372,23 @@ $('#n-enabled').addEventListener('change', async () => {
 });
 
 // detail actions
+$('#d-status').addEventListener('click', async () => {
+  $('#d-status').disabled = true;
+  try {
+    const r = await api(`/profiles/${state.selectedId}/email-status`, { method: 'POST' });
+    const parts = [];
+    parts.push(r.emailedTo.length ? `Email sent to ${r.emailedTo.join(', ')}` : 'No email sent');
+    parts.push(`WhatsApp: ${r.whatsappOk} sent${r.whatsappFailed.length ? `, ${r.whatsappFailed.length} FAILED` : ''}`);
+    if (r.errors && r.errors.length) parts.push(r.errors.join(' | '));
+    alert(parts.join('\n'));
+    await refresh();
+  } catch (err) {
+    alert(`Status report failed: ${err.message}`);
+  } finally {
+    $('#d-status').disabled = false;
+  }
+});
+
 $('#d-poll').addEventListener('click', async () => {
   $('#d-poll').disabled = true;
   try {
