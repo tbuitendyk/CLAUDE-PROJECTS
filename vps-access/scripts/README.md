@@ -31,3 +31,15 @@ branches on CLAUDE-PROJECTS. It needs `GITHUB_BRANCH_TOKEN` in
 `/etc/deploy-control/env` — a fine-grained PAT scoped to **this repo only,
 Contents: write**. It refuses the real project branches and the default branch,
 and only ever touches `claude/*`.
+
+`send-test-email.sh [recipient]` -- **internal** routing test. Verifies a local
+mailbox (RCPT callout via the trusted loopback path) then sends one test email
+from the host. Accepts a bare local-part (domain defaults to
+`homeandofficemicro.com`) or a full address. On an unknown mailbox it probes
+likely spelling variants, lists the valid ones, and does **not** send.
+
+`send-external-test.sh [from_mailbox]` -- **external** routing test. Sends out
+through the mail server to Port25's `check-auth@verifier.port25.com` reflector,
+which emails an SPF/DKIM/DMARC report back to the From address -- the reply's
+inbound delivery via the public IP is the routing test. Read the report in the
+From mailbox (defaults to `theodor@homeandofficemicro.com`).
