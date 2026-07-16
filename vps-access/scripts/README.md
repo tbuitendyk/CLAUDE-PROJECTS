@@ -26,6 +26,13 @@ Rules for every script in this directory:
 
 `smoke.sh` is a harmless end-to-end test of the mechanism.
 
+`configure-balancer-email.sh` points the asset balancer at the same
+authenticated submission path `mail-test.sh` uses (mail VM `192.168.56.129:587`
+as `support@homeandofficemicro.com`): copies the password on-box from
+`SUPPORT_SMTP_PASSWORD` in `/etc/deploy-control/env` into
+`/etc/asset-balancer/env`, restarts the service, and sends a test email
+through the app. Idempotent.
+
 `deploy-balancer.sh` deploys the asset balancer from the `balancer` branch:
 syncs a dedicated checkout (`~/deploy-balancer`) and runs
 `asset-balancer/deploy/install.sh` (installs/updates the `asset-balancer`
