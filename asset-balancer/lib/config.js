@@ -28,6 +28,10 @@ module.exports = {
     secure: process.env.SMTP_SECURE === 'true',
     user: process.env.SMTP_USER || '',
     pass: process.env.SMTP_PASS || '',
+    // For internal mail servers with self-signed certs (e.g. the iRedMail VM
+    // reached over the host-only network) -- same trust decision the
+    // mail-test.sh script makes.
+    allowSelfSigned: process.env.SMTP_ALLOW_SELF_SIGNED === 'true',
   },
 
   coingeckoBase: process.env.COINGECKO_BASE || 'https://api.coingecko.com/api/v3',

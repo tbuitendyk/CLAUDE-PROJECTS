@@ -9,6 +9,7 @@ if (config.smtp.host && config.smtp.user) {
     port: config.smtp.port,
     secure: config.smtp.secure,
     auth: { user: config.smtp.user, pass: config.smtp.pass },
+    tls: config.smtp.allowSelfSigned ? { rejectUnauthorized: false } : undefined,
   });
 }
 
