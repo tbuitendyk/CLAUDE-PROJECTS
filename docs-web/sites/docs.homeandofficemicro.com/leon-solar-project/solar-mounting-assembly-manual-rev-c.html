@@ -1,0 +1,1042 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Assembly Manual · Solar Mounting Structure · Bodega · Rev. C</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400&family=Geist:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --paper: #F4EFE3; --paper-light: #FAF6EB; --ink: #1C1C1C;
+    --ink-soft: #4A4A47; --ink-faint: #8B8779; --navy: #1E3A5F;
+    --oxblood: #8B3A1F; --rule: #B8B0A0; --grid: rgba(28,28,28,0.04);
+    --steel: #C7CBD1; --alu: #E3DFCE; --glass: #2E4A6B;
+    --concrete: #DDD6C4; --epdm: #3A3A38;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0; background: var(--paper); color: var(--ink);
+    font-family: 'Geist', ui-sans-serif, system-ui, sans-serif;
+    font-size: 16px; line-height: 1.6; -webkit-font-smoothing: antialiased;
+  }
+  body {
+    background-image:
+      linear-gradient(var(--grid) 1px, transparent 1px),
+      linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+    background-size: 24px 24px; background-position: -1px -1px;
+  }
+  .page { max-width: 960px; margin: 0 auto; padding: 40px 24px 80px; }
+  h1 {
+    font-family: 'Newsreader', serif; font-weight: 500;
+    font-size: clamp(1.65rem, 5vw, 2.25rem); line-height: 1.15;
+    letter-spacing: -0.015em; margin: 0 0 6px;
+    border-top: 3px double var(--ink); padding-top: 18px;
+  }
+  h2 {
+    font-family: 'Newsreader', serif; font-weight: 500; font-size: 1.45rem;
+    letter-spacing: -0.01em; margin: 52px 0 6px;
+    border-bottom: 1px solid var(--rule); padding-bottom: 8px;
+  }
+  h3 {
+    font-family: 'Newsreader', serif; font-weight: 600; font-size: 1.12rem;
+    margin: 32px 0 6px; color: var(--ink);
+  }
+  a { color: var(--navy); }
+  table {
+    width: 100%; border-collapse: collapse; margin: 12px 0;
+    font-size: 0.9rem; background: var(--paper-light);
+  }
+  th, td {
+    padding: 8px 10px; text-align: left;
+    border-bottom: 1px solid var(--rule); vertical-align: top;
+  }
+  th {
+    font-family: 'JetBrains Mono', monospace; font-size: 0.7rem;
+    letter-spacing: 0.08em; text-transform: uppercase;
+    color: var(--ink-soft); font-weight: 500;
+    border-bottom: 1.5px solid var(--ink);
+  }
+  code {
+    font-family: 'JetBrains Mono', monospace; font-size: 0.86em;
+    background: rgba(28,28,28,0.06); padding: 1px 5px; border-radius: 2px;
+  }
+  ul, ol { padding-left: 26px; }
+  li { margin-bottom: 6px; }
+  hr { border: none; height: 1px; background: var(--rule); margin: 40px 0; }
+  blockquote {
+    margin: 18px 0; padding: 12px 18px; background: #E8EDF4;
+    border-left: 4px solid var(--navy); border-radius: 2px;
+  }
+  .docnav {
+    font-family: 'JetBrains Mono', monospace; font-size: 0.72rem;
+    letter-spacing: 0.08em; text-transform: uppercase;
+    color: var(--ink-faint); margin-bottom: 24px;
+  }
+  .docnav a { color: var(--oxblood); text-decoration: none; }
+  .docnav a:hover { text-decoration: underline; }
+  .colophon {
+    margin-top: 80px; padding-top: 24px; border-top: 1px solid var(--rule);
+    font-family: 'JetBrains Mono', monospace; font-size: 0.72rem;
+    letter-spacing: 0.05em; color: var(--ink-faint); text-align: center;
+  }
+
+  /* ---- drawing frames ---- */
+  .fig {
+    background: var(--paper-light); border: 1px solid var(--rule);
+    border-radius: 2px; padding: 16px 16px 10px; margin: 22px 0;
+  }
+  .fig svg { width: 100%; height: auto; display: block; }
+  .fig svg * { vector-effect: non-scaling-stroke; }
+  .figcap {
+    font-family: 'JetBrains Mono', monospace; font-size: 0.7rem;
+    letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-soft);
+    border-top: 1px solid var(--rule); margin-top: 12px; padding-top: 8px;
+    display: flex; justify-content: space-between; flex-wrap: wrap; gap: 4px 16px;
+  }
+  .figcap .dno { color: var(--oxblood); font-weight: 700; }
+
+  /* ---- svg element classes ---- */
+  svg text { font-family: 'JetBrains Mono', monospace; fill: var(--ink-soft); }
+  svg .lbl-big { fill: var(--ink); font-weight: 500; }
+  svg .dim { fill: var(--navy); }
+  svg .dimline { stroke: var(--navy); stroke-width: 1; fill: none; }
+  svg .leader { stroke: var(--oxblood); stroke-width: 1; fill: none; }
+  svg .outline { stroke: var(--ink); stroke-width: 1.4; fill: none; }
+  svg .thin { stroke: var(--ink-soft); stroke-width: 0.8; fill: none; }
+  svg .hid { stroke: var(--ink-faint); stroke-width: 1; fill: none; stroke-dasharray: 6 5; }
+  svg .cl { stroke: var(--oxblood); stroke-width: 0.8; fill: none; stroke-dasharray: 14 4 3 4; }
+  svg .steel { fill: var(--steel); stroke: var(--ink); stroke-width: 1.3; }
+  svg .steel2 { fill: #B4BAC2; stroke: var(--ink); stroke-width: 1.3; }
+  svg .alu { fill: var(--alu); stroke: var(--ink); stroke-width: 1.3; }
+  svg .glass { fill: var(--glass); fill-opacity: 0.28; stroke: var(--navy); stroke-width: 1.2; }
+  svg .glassline { stroke: var(--navy); stroke-width: 0.6; opacity: 0.45; }
+  svg .conc { fill: var(--concrete); stroke: var(--ink-soft); stroke-width: 1; }
+  svg .epdm { fill: var(--epdm); stroke: var(--ink); stroke-width: 1; }
+  svg .anchor-dot { fill: var(--oxblood); stroke: none; }
+  svg .bub circle { fill: var(--paper-light); stroke: var(--oxblood); stroke-width: 1.6; }
+  svg .bub text {
+    fill: var(--oxblood); font-weight: 700; text-anchor: middle;
+  }
+  svg .hatch { stroke: var(--ink-faint); stroke-width: 0.7; }
+
+  /* ---- parts table ---- */
+  .parts td { vertical-align: middle; }
+  .parts .thumb {
+    width: 132px; min-width: 132px; background: var(--paper);
+    border: 1px solid var(--rule); border-radius: 2px; display: block;
+  }
+  .parts .pcode {
+    font-family: 'JetBrains Mono', monospace; font-weight: 700;
+    color: var(--oxblood); font-size: 1.05rem; white-space: nowrap;
+  }
+  .qty { font-family: 'JetBrains Mono', monospace; white-space: nowrap; }
+
+  .stepnum {
+    font-family: 'JetBrains Mono', monospace; font-weight: 700;
+    color: var(--oxblood);
+  }
+  @media print {
+    body { background: white; }
+    .fig, table, blockquote { break-inside: avoid; }
+    h2 { break-after: avoid; }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+  <nav class="docnav">
+    <a href="./">↑ index</a> &nbsp;·&nbsp;
+    plan: <a href="solar-mounting-structure-bodega-rev-c.html">Mounting Structure — Rev. C</a> &nbsp;·&nbsp;
+    wiring: <a href="solar-wiring-diagram-rev-b.html">Solar Hybrid Wiring — Rev. B</a> &nbsp;·&nbsp;
+    calc: <a href="calc.py">calc.py</a>
+  </nav>
+
+<h1>Illustrated Assembly Manual — Bodega Solar Mounting</h1>
+<h2 style="margin-top:0;border-bottom:none;">16 × LONGi 650 W · 2 rows (30° / 10°) · companion to Rev. C</h2>
+
+<table>
+<tbody>
+<tr><td><strong>Document</strong></td><td>Assembly_Manual_Bodega_Mounting_RevC (visual companion — the engineering record is <a href="solar-mounting-structure-bodega-rev-c.html">Rev. C</a>; where they disagree, Rev. C governs)</td></tr>
+<tr><td><strong>Drawings</strong></td><td>D-01…D-09. Structure drawings D-01–D-05 are <strong>true to scale</strong> (drawn in real millimetre coordinates); details D-06–D-09 are enlarged, marked "NTS".</td></tr>
+<tr><td><strong>Component codes</strong></td><td>Every part carries a letter code <span style="font-family:'JetBrains Mono',monospace;color:var(--oxblood);font-weight:700;">A–V</span> (I and O unused), constant across all drawings and the parts index (§2). Suffix 1 = 30° row part, 2 = 10° row part.</td></tr>
+<tr><td><strong>Pictures</strong></td><td>Parts index illustrations are schematic line drawings (assembly-manual style), not photographs — proportions indicative, dimensions authoritative.</td></tr>
+</tbody>
+</table>
+
+<blockquote><strong>Before you drill anything:</strong> the three §16 field checks in Rev. C are still open — measure real vigueta centers, verify the 60 mm capa at a pilot hole, confirm concrete at the east wall top. Drawings here show the <em>designed</em> ≈760 mm vigueta spacing.</blockquote>
+
+<h2>1. Drawings</h2>
+<h3>D-01 — Roof plan, complete array (scale: true)</h3>
+<div class="fig">
+<svg viewBox="-780 -640 10620 6280" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="To-scale roof plan of the 16-panel array">
+  <!-- roof slab -->
+  <rect x="0" y="0" width="9140" height="4820" fill="var(--paper)" stroke="var(--ink)" stroke-width="2"/>
+
+  <!-- vigueta bands (N-S), designed positions -->
+  <g class="conc" fill-opacity="0.9" stroke-width="0.6">
+    <rect x="0"    y="0" width="110" height="4820"/>
+    <rect x="705"  y="0" width="110" height="4820"/>
+    <rect x="1465" y="0" width="110" height="4820"/>
+    <rect x="2225" y="0" width="110" height="4820"/>
+    <rect x="2985" y="0" width="110" height="4820"/>
+    <rect x="3745" y="0" width="110" height="4820"/>
+    <rect x="4505" y="0" width="110" height="4820"/>
+    <rect x="5265" y="0" width="110" height="4820"/>
+    <rect x="6025" y="0" width="110" height="4820"/>
+    <rect x="6785" y="0" width="110" height="4820"/>
+    <rect x="7545" y="0" width="110" height="4820"/>
+    <rect x="8305" y="0" width="110" height="4820"/>
+  </g>
+  <text x="8360" y="5010" font-size="140" text-anchor="middle">viguetas V1–V12 (N–S, under deck)</text>
+
+  <!-- rafter centerlines R1..R9 -->
+  <g class="cl">
+    <line x1="0" y1="-60" x2="0" y2="4880"/><line x1="1142.5" y1="-60" x2="1142.5" y2="4880"/>
+    <line x1="2285" y1="-60" x2="2285" y2="4880"/><line x1="3427.5" y1="-60" x2="3427.5" y2="4880"/>
+    <line x1="4570" y1="-60" x2="4570" y2="4880"/><line x1="5712.5" y1="-60" x2="5712.5" y2="4880"/>
+    <line x1="6855" y1="-60" x2="6855" y2="4880"/><line x1="7997.5" y1="-60" x2="7997.5" y2="4880"/>
+    <line x1="9140" y1="-60" x2="9140" y2="4880"/>
+  </g>
+  <g font-size="150" text-anchor="middle" fill="var(--oxblood)">
+    <text x="0" y="-90">R1</text><text x="1142.5" y="-90">R2</text><text x="2285" y="-90">R3</text>
+    <text x="3427.5" y="-90">R4</text><text x="4570" y="-90">R5</text><text x="5712.5" y="-90">R6</text>
+    <text x="6855" y="-90">R7</text><text x="7997.5" y="-90">R8</text><text x="9140" y="-90">R9</text>
+  </g>
+
+  <!-- E-W ties (E), 38 wide, at the four anchor lines -->
+  <g class="steel2">
+    <rect x="0" y="316"  width="9140" height="38"/>
+    <rect x="0" y="1709" width="9140" height="38"/>
+    <rect x="0" y="2849" width="9140" height="38"/>
+    <rect x="0" y="4407" width="9140" height="38"/>
+  </g>
+
+  <!-- rafter bases (A1 / A2), 51 wide -->
+  <g class="steel">
+    <rect x="-25.5" y="276" width="51" height="1512"/><rect x="1117" y="276" width="51" height="1512"/>
+    <rect x="2259.5" y="276" width="51" height="1512"/><rect x="3402" y="276" width="51" height="1512"/>
+    <rect x="4544.5" y="276" width="51" height="1512"/><rect x="5687" y="276" width="51" height="1512"/>
+    <rect x="6829.5" y="276" width="51" height="1512"/><rect x="7972" y="276" width="51" height="1512"/>
+    <rect x="9114.5" y="276" width="51" height="1512"/>
+    <rect x="-25.5" y="2807" width="51" height="1679"/><rect x="1117" y="2807" width="51" height="1679"/>
+    <rect x="2259.5" y="2807" width="51" height="1679"/><rect x="3402" y="2807" width="51" height="1679"/>
+    <rect x="4544.5" y="2807" width="51" height="1679"/><rect x="5687" y="2807" width="51" height="1679"/>
+    <rect x="6829.5" y="2807" width="51" height="1679"/><rect x="7972" y="2807" width="51" height="1679"/>
+    <rect x="9114.5" y="2807" width="51" height="1679"/>
+  </g>
+
+  <!-- anchors (J): every vigueta crossing on every tie + east wall-line pair -->
+  <g class="anchor-dot">
+    <circle cx="55" cy="335" r="42"/><circle cx="760" cy="335" r="42"/><circle cx="1520" cy="335" r="42"/><circle cx="2280" cy="335" r="42"/><circle cx="3040" cy="335" r="42"/><circle cx="3800" cy="335" r="42"/><circle cx="4560" cy="335" r="42"/><circle cx="5320" cy="335" r="42"/><circle cx="6080" cy="335" r="42"/><circle cx="6840" cy="335" r="42"/><circle cx="7600" cy="335" r="42"/><circle cx="8360" cy="335" r="42"/><circle cx="8960" cy="335" r="42"/><circle cx="9110" cy="335" r="42"/>
+    <circle cx="55" cy="1728" r="42"/><circle cx="760" cy="1728" r="42"/><circle cx="1520" cy="1728" r="42"/><circle cx="2280" cy="1728" r="42"/><circle cx="3040" cy="1728" r="42"/><circle cx="3800" cy="1728" r="42"/><circle cx="4560" cy="1728" r="42"/><circle cx="5320" cy="1728" r="42"/><circle cx="6080" cy="1728" r="42"/><circle cx="6840" cy="1728" r="42"/><circle cx="7600" cy="1728" r="42"/><circle cx="8360" cy="1728" r="42"/><circle cx="8960" cy="1728" r="42"/><circle cx="9110" cy="1728" r="42"/>
+    <circle cx="55" cy="2868" r="42"/><circle cx="760" cy="2868" r="42"/><circle cx="1520" cy="2868" r="42"/><circle cx="2280" cy="2868" r="42"/><circle cx="3040" cy="2868" r="42"/><circle cx="3800" cy="2868" r="42"/><circle cx="4560" cy="2868" r="42"/><circle cx="5320" cy="2868" r="42"/><circle cx="6080" cy="2868" r="42"/><circle cx="6840" cy="2868" r="42"/><circle cx="7600" cy="2868" r="42"/><circle cx="8360" cy="2868" r="42"/><circle cx="8960" cy="2868" r="42"/><circle cx="9110" cy="2868" r="42"/>
+    <circle cx="55" cy="4426" r="42"/><circle cx="760" cy="4426" r="42"/><circle cx="1520" cy="4426" r="42"/><circle cx="2280" cy="4426" r="42"/><circle cx="3040" cy="4426" r="42"/><circle cx="3800" cy="4426" r="42"/><circle cx="4560" cy="4426" r="42"/><circle cx="5320" cy="4426" r="42"/><circle cx="6080" cy="4426" r="42"/><circle cx="6840" cy="4426" r="42"/><circle cx="7600" cy="4426" r="42"/><circle cx="8360" cy="4426" r="42"/><circle cx="8960" cy="4426" r="42"/><circle cx="9110" cy="4426" r="42"/>
+  </g>
+
+  <!-- rails (K), 40 wide, x -80..9220 -->
+  <g class="alu">
+    <rect x="-80" y="405"  width="9300" height="40"/>
+    <rect x="-80" y="1618" width="9300" height="40"/>
+    <rect x="-80" y="2938" width="9300" height="40"/>
+    <rect x="-80" y="4316" width="9300" height="40"/>
+  </g>
+  <g font-size="130" text-anchor="end">
+    <text x="9080" y="380">rail 30N · y=4395</text>
+    <text x="9080" y="1593">rail 30S · y=3182</text>
+    <text x="9080" y="2913">rail 10N · y=1862</text>
+    <text x="9080" y="4291">rail 10S · y=484</text>
+  </g>
+
+  <!-- splice marks (L) at x=4770 (N rails) and x=4370 (S rails) -->
+  <g stroke="var(--oxblood)" stroke-width="2">
+    <line x1="4740" y1="385" x2="4800" y2="465"/><line x1="4800" y1="385" x2="4740" y2="465"/>
+    <line x1="4340" y1="1598" x2="4400" y2="1678"/><line x1="4400" y1="1598" x2="4340" y2="1678"/>
+    <line x1="4740" y1="2918" x2="4800" y2="2998"/><line x1="4800" y1="2918" x2="4740" y2="2998"/>
+    <line x1="4340" y1="4296" x2="4400" y2="4376"/><line x1="4400" y1="4296" x2="4340" y2="4376"/>
+  </g>
+
+  <!-- mid-clamp positions (M): panel joints on every rail -->
+  <g fill="var(--navy)" stroke="var(--ink)" stroke-width="0.5">
+    <rect x="1078" y="395" width="60" height="60"/><rect x="2232" y="395" width="60" height="60"/><rect x="3386" y="395" width="60" height="60"/><rect x="4540" y="395" width="60" height="60"/><rect x="5694" y="395" width="60" height="60"/><rect x="6848" y="395" width="60" height="60"/><rect x="8002" y="395" width="60" height="60"/>
+    <rect x="1078" y="1608" width="60" height="60"/><rect x="2232" y="1608" width="60" height="60"/><rect x="3386" y="1608" width="60" height="60"/><rect x="4540" y="1608" width="60" height="60"/><rect x="5694" y="1608" width="60" height="60"/><rect x="6848" y="1608" width="60" height="60"/><rect x="8002" y="1608" width="60" height="60"/>
+    <rect x="1078" y="2928" width="60" height="60"/><rect x="2232" y="2928" width="60" height="60"/><rect x="3386" y="2928" width="60" height="60"/><rect x="4540" y="2928" width="60" height="60"/><rect x="5694" y="2928" width="60" height="60"/><rect x="6848" y="2928" width="60" height="60"/><rect x="8002" y="2928" width="60" height="60"/>
+    <rect x="1078" y="4306" width="60" height="60"/><rect x="2232" y="4306" width="60" height="60"/><rect x="3386" y="4306" width="60" height="60"/><rect x="4540" y="4306" width="60" height="60"/><rect x="5694" y="4306" width="60" height="60"/><rect x="6848" y="4306" width="60" height="60"/><rect x="8002" y="4306" width="60" height="60"/>
+  </g>
+  <!-- end-clamp positions (N) at array ends -->
+  <g fill="var(--oxblood)" stroke="var(--ink)" stroke-width="0.5">
+    <rect x="-56" y="395" width="50" height="60"/><rect x="9182" y="395" width="50" height="60"/>
+    <rect x="-56" y="1608" width="50" height="60"/><rect x="9182" y="1608" width="50" height="60"/>
+    <rect x="-56" y="2928" width="50" height="60"/><rect x="9182" y="2928" width="50" height="60"/>
+    <rect x="-56" y="4306" width="50" height="60"/><rect x="9182" y="4306" width="50" height="60"/>
+  </g>
+
+  <!-- panels: P1-P3 and P9-P11 shown glazed; the rest outline-only for clarity -->
+  <g class="glass">
+    <rect x="-36" y="0" width="1134" height="2063"/>
+    <rect x="1118" y="0" width="1134" height="2063"/>
+    <rect x="2272" y="0" width="1134" height="2063"/>
+    <rect x="-36" y="2474" width="1134" height="2346"/>
+    <rect x="1118" y="2474" width="1134" height="2346"/>
+    <rect x="2272" y="2474" width="1134" height="2346"/>
+  </g>
+  <g class="glassline">
+    <line x1="342"  y1="0" x2="342"  y2="2063"/><line x1="720"  y1="0" x2="720"  y2="2063"/>
+    <line x1="1496" y1="0" x2="1496" y2="2063"/><line x1="1874" y1="0" x2="1874" y2="2063"/>
+    <line x1="2650" y1="0" x2="2650" y2="2063"/><line x1="3028" y1="0" x2="3028" y2="2063"/>
+    <line x1="342"  y1="2474" x2="342"  y2="4820"/><line x1="720"  y1="2474" x2="720"  y2="4820"/>
+    <line x1="1496" y1="2474" x2="1496" y2="4820"/><line x1="1874" y1="2474" x2="1874" y2="4820"/>
+    <line x1="2650" y1="2474" x2="2650" y2="4820"/><line x1="3028" y1="2474" x2="3028" y2="4820"/>
+  </g>
+  <g class="thin" stroke-dasharray="20 14">
+    <rect x="3426" y="0" width="1134" height="2063" fill="none"/><rect x="4580" y="0" width="1134" height="2063" fill="none"/>
+    <rect x="5734" y="0" width="1134" height="2063" fill="none"/><rect x="6888" y="0" width="1134" height="2063" fill="none"/>
+    <rect x="3426" y="2474" width="1134" height="2346" fill="none"/><rect x="4580" y="2474" width="1134" height="2346" fill="none"/>
+    <rect x="5734" y="2474" width="1134" height="2346" fill="none"/><rect x="6888" y="2474" width="1134" height="2346" fill="none"/>
+  </g>
+  <text x="5540" y="1010" font-size="150" fill="var(--ink-faint)">P4…P8 — outline only, structure shown</text>
+  <text x="5540" y="3690" font-size="150" fill="var(--ink-faint)">P12…P16 — outline only</text>
+  <text x="530" y="1010" font-size="170" fill="#FAF6EB" font-weight="700">P1</text>
+  <text x="530" y="3690" font-size="170" fill="#FAF6EB" font-weight="700">P9</text>
+
+  <!-- row / gap labels -->
+  <text x="4570" y="230" font-size="170" text-anchor="middle" class="lbl-big">30° ROW (north) — P1…P8, panels slope up to the north</text>
+  <text x="4570" y="2310" font-size="150" text-anchor="middle" fill="var(--oxblood)">gap 411 — walkway / shadow band</text>
+  <text x="4570" y="4740" font-size="170" text-anchor="middle" class="lbl-big">10° ROW (south) — P9…P16</text>
+
+  <!-- dimensions -->
+  <g class="dimline">
+    <line x1="0" y1="-40" x2="0" y2="-450"/><line x1="9140" y1="-40" x2="9140" y2="-450"/>
+    <line x1="0" y1="-410" x2="9140" y2="-410"/>
+    <line x1="-60" y1="-350" x2="60" y2="-470"/><line x1="9080" y1="-350" x2="9200" y2="-470"/>
+    <line x1="1142.5" y1="-40" x2="1142.5" y2="-230"/>
+    <line x1="0" y1="-190" x2="1142.5" y2="-190"/>
+    <line x1="-60" y1="-130" x2="60" y2="-250"/><line x1="1082.5" y1="-130" x2="1202.5" y2="-250"/>
+    <line x1="-40" y1="0" x2="-450" y2="0"/><line x1="-40" y1="4820" x2="-450" y2="4820"/>
+    <line x1="-410" y1="0" x2="-410" y2="4820"/>
+    <line x1="-470" y1="-60" x2="-350" y2="60"/><line x1="-470" y1="4760" x2="-350" y2="4880"/>
+    <line x1="9180" y1="2063" x2="9560" y2="2063"/><line x1="9180" y1="2474" x2="9560" y2="2474"/>
+    <line x1="9520" y1="2063" x2="9520" y2="2474"/>
+    <line x1="9460" y1="2123" x2="9580" y2="2003"/><line x1="9460" y1="2534" x2="9580" y2="2414"/>
+    <line x1="2280" y1="4860" x2="2280" y2="5150"/><line x1="3040" y1="4860" x2="3040" y2="5150"/>
+    <line x1="2280" y1="5110" x2="3040" y2="5110"/>
+  </g>
+  <text x="4570" y="-490" font-size="180" text-anchor="middle" class="dim">9140</text>
+  <text x="571" y="-280" font-size="150" text-anchor="middle" class="dim">1142.5 typ ×8</text>
+  <text x="-500" y="2410" font-size="180" text-anchor="middle" class="dim" transform="rotate(-90 -500 2410)">4820</text>
+  <text x="9620" y="2320" font-size="150" class="dim">411</text>
+  <text x="2660" y="5290" font-size="150" text-anchor="middle" class="dim">≈760 — MEASURE ON SITE</text>
+  <text x="-60" y="5010" font-size="130">array overhangs roof 36 each side (panel edge x = −36 / 9176); rails cantilever 80 past R1/R9</text>
+
+  <!-- north arrow + scale bar -->
+  <g transform="translate(-560,-500)">
+    <line x1="0" y1="120" x2="0" y2="-40" stroke="var(--ink)" stroke-width="2"/>
+    <path d="M0,-60 L-45,40 L0,15 L45,40 Z" fill="var(--ink)"/>
+    <text x="0" y="270" font-size="160" text-anchor="middle" class="lbl-big">N</text>
+  </g>
+  <g transform="translate(5600,5220)">
+    <rect x="0" y="0" width="500" height="60" fill="var(--ink)"/>
+    <rect x="500" y="0" width="500" height="60" fill="none" stroke="var(--ink)" stroke-width="1.5"/>
+    <text x="0" y="200" font-size="130" text-anchor="middle">0</text>
+    <text x="500" y="200" font-size="130" text-anchor="middle">500</text>
+    <text x="1000" y="200" font-size="130" text-anchor="middle">1000 mm</text>
+  </g>
+
+  <!-- letter-code bubbles -->
+  <g class="bub" font-size="180">
+    <line class="leader" x1="5310" y1="1090" x2="5695" y2="1250"/>
+    <circle cx="5240" cy="1060" r="150"/><text x="5240" y="1125">A1</text>
+    <line class="leader" x1="5310" y1="3560" x2="5700" y2="3700"/>
+    <circle cx="5240" cy="3530" r="150"/><text x="5240" y="3595">A2</text>
+    <line class="leader" x1="9560" y1="2868" x2="9160" y2="2868"/>
+    <circle cx="9710" cy="2868" r="150"/><text x="9710" y="2933">E</text>
+    <line class="leader" x1="6460" y1="220" x2="6550" y2="410"/>
+    <circle cx="6350" cy="170" r="150"/><text x="6350" y="235">K</text>
+    <line class="leader" x1="8490" y1="170" x2="8360" y2="300"/>
+    <circle cx="8600" cy="120" r="150"/><text x="8600" y="185">J</text>
+    <line class="leader" x1="1685" y1="1180" x2="1685" y2="1180"/>
+    <circle cx="1685" cy="1060" r="150"/><text x="1685" y="1125">R</text>
+    <line class="leader" x1="4370" y1="1900" x2="4370" y2="1700"/>
+    <circle cx="4370" cy="2050" r="150"/><text x="4370" y="2115">L</text>
+    <line class="leader" x1="8180" y1="4570" x2="8050" y2="4380"/>
+    <circle cx="8260" cy="4700" r="150"/><text x="8260" y="4765">M</text>
+    <line class="leader" x1="9480" y1="3260" x2="9220" y2="2990"/>
+    <circle cx="9590" cy="3380" r="150"/><text x="9590" y="3445">N</text>
+    <line class="leader" x1="6100" y1="3010" x2="6100" y2="2890"/>
+    <circle cx="6100" cy="3160" r="150"/><text x="6100" y="3225">H</text>
+  </g>
+  <text x="6300" y="3400" font-size="120">tie butt-joint + fish plate H</text>
+  <text x="6300" y="3560" font-size="120">— land at a rafter station</text>
+</svg>
+<div class="figcap"><span><span class="dno">D-01</span> ROOF PLAN — panels P4–P8 / P12–P16 drawn as outlines so the steel shows</span><span>SCALE: TRUE (mm grid) · N UP</span></div>
+</div>
+<h3>D-02 — Cross-section, looking west (scale: true)</h3>
+<div class="fig">
+<svg viewBox="-620 -1800 5940 2440" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="To-scale cross-section of both rows">
+  <!-- roof slab: top of losa at z=-38 (structure datum z=0 is TOP OF TIE) -->
+  <rect x="-300" y="38" width="5420" height="290" class="conc"/>
+  <g class="hatch">
+    <line x1="-260" y1="328" x2="30" y2="38"/><line x1="240" y1="328" x2="530" y2="38"/>
+    <line x1="740" y1="328" x2="1030" y2="38"/><line x1="1240" y1="328" x2="1530" y2="38"/>
+    <line x1="1740" y1="328" x2="2030" y2="38"/><line x1="2240" y1="328" x2="2530" y2="38"/>
+    <line x1="2740" y1="328" x2="3030" y2="38"/><line x1="3240" y1="328" x2="3530" y2="38"/>
+    <line x1="3740" y1="328" x2="4030" y2="38"/><line x1="4240" y1="328" x2="4530" y2="38"/>
+    <line x1="4740" y1="328" x2="5030" y2="38"/>
+  </g>
+  <text x="2300" y="205" font-size="100">losa — anchors only over vigueta lines (D-07)</text>
+
+  <!-- ===== 30-degree row (north, left) ===== -->
+  <!-- anchor rods -->
+  <g stroke="var(--oxblood)" stroke-width="2.5">
+    <line x1="335" y1="-45" x2="335" y2="160"/><line x1="1728" y1="-45" x2="1728" y2="160"/>
+    <line x1="2868" y1="-45" x2="2868" y2="160"/><line x1="4426" y1="-45" x2="4426" y2="160"/>
+  </g>
+  <!-- ties -->
+  <g class="steel2">
+    <rect x="316" y="0" width="38" height="38"/><rect x="1709" y="0" width="38" height="38"/>
+    <rect x="2849" y="0" width="38" height="38"/><rect x="4407" y="0" width="38" height="38"/>
+  </g>
+  <!-- bases -->
+  <rect x="276" y="-51" width="1512" height="51" class="steel"/>
+  <rect x="2807" y="-51" width="1679" height="51" class="steel"/>
+  <!-- posts -->
+  <rect x="399.5"  y="-1097" width="51" height="1046" class="steel"/>
+  <rect x="1612.5" y="-397"  width="51" height="346"  class="steel"/>
+  <rect x="2932.5" y="-387"  width="51" height="336"  class="steel"/>
+  <rect x="4310.5" y="-144"  width="51" height="93"   class="steel"/>
+  <!-- chords -->
+  <path d="M338.4,-1206 L1724.6,-406 L1724.6,-347.1 L338.4,-1147.1 Z" class="steel"/>
+  <path d="M2859.5,-455.4 L4434.5,-177.6 L4434.5,-125.8 L2859.5,-403.6 Z" class="steel"/>
+  <!-- rails (cross-sections) -->
+  <rect x="405"  y="-1196" width="40" height="40" class="alu"/>
+  <rect x="1618" y="-496"  width="40" height="40" class="alu"/>
+  <rect x="2938" y="-478"  width="40" height="40" class="alu"/>
+  <rect x="4316" y="-235"  width="40" height="40" class="alu"/>
+  <!-- panels -->
+  <path d="M0,-1441 L2063,-250 L2063,-215.4 L0,-1406.4 Z" class="glass"/>
+  <path d="M2474,-564 L4820,-150 L4820,-119.5 L2474,-533.5 Z" class="glass"/>
+
+  <!-- row / orientation labels -->
+  <text x="-560" y="-1560" font-size="150" class="lbl-big">N ←</text>
+  <text x="5080" y="-1560" font-size="150" class="lbl-big" text-anchor="end">→ S</text>
+  <text x="700" y="-1560" font-size="140">30° ROW — rafter type 1</text>
+  <text x="2950" y="-1560" font-size="140">10° ROW — type 2</text>
+
+  <!-- dimensions -->
+  <g class="dimline">
+    <line x1="-40" y1="0" x2="-380" y2="0"/><line x1="-40" y1="-1441" x2="-380" y2="-1441"/>
+    <line x1="-340" y1="0" x2="-340" y2="-1441"/>
+    <line x1="2063" y1="-680" x2="2063" y2="-980"/><line x1="2474" y1="-680" x2="2474" y2="-980"/>
+    <line x1="2063" y1="-940" x2="2474" y2="-940"/>
+    <line x1="5120" y1="0" x2="5340" y2="0"/><line x1="4860" y1="-150" x2="5340" y2="-150"/>
+    <line x1="5300" y1="0" x2="5300" y2="-150"/>
+    <line x1="4860" y1="-564" x2="5340" y2="-564"/>
+  </g>
+  <text x="-400" y="-700" font-size="140" class="dim" text-anchor="middle" transform="rotate(-90 -400 -700)">1441</text>
+  <text x="2268" y="-1030" font-size="140" class="dim" text-anchor="middle">411</text>
+  <text x="5370" y="-40" font-size="130" class="dim">150 low edge</text>
+  <text x="5370" y="-540" font-size="130" class="dim">564</text>
+  <g class="dimline"><line x1="2080" y1="-280" x2="2230" y2="-390"/></g>
+  <text x="2250" y="-410" font-size="120" class="dim">250 low edge</text>
+  <text x="2500" y="-1680" font-size="110" text-anchor="middle">z = 0 datum = TOP OF TIE — losa surface 38 below</text>
+
+  <!-- angle arcs -->
+  <path d="M 1890,-350 A 173,173 0 0 0 1790,-390" class="dimline"/>
+  <text x="1980" y="-380" font-size="130" class="dim" text-anchor="end">30°</text>
+  <path d="M 4640,-182 A 186,186 0 0 0 4610,-215" class="dimline"/>
+  <text x="4600" y="-250" font-size="130" class="dim">10°</text>
+
+  <!-- scale bar -->
+  <g transform="translate(2500,470)">
+    <rect x="0" y="0" width="250" height="40" fill="var(--ink)"/>
+    <rect x="250" y="0" width="250" height="40" fill="none" stroke="var(--ink)" stroke-width="1.5"/>
+    <text x="0" y="140" font-size="100" text-anchor="middle">0</text>
+    <text x="500" y="140" font-size="100" text-anchor="middle">500 mm</text>
+  </g>
+
+  <!-- letter bubbles -->
+  <g class="bub" font-size="135">
+    <line class="leader" x1="890" y1="-1010" x2="1000" y2="-905"/>
+    <circle cx="830" cy="-1065" r="110"/><text x="830" y="-1020">R</text>
+    <line class="leader" x1="430" y1="-1430" x2="428" y2="-1210"/>
+    <circle cx="430" cy="-1545" r="110"/><text x="430" y="-1500">K</text>
+    <line class="leader" x1="1240" y1="-660" x2="1180" y2="-740"/>
+    <circle cx="1300" cy="-600" r="110"/><text x="1300" y="-555">D</text>
+    <line class="leader" x1="580" y1="-600" x2="452" y2="-600"/>
+    <circle cx="690" cy="-600" r="110"/><text x="690" y="-555">C1</text>
+    <line class="leader" x1="1500" y1="-190" x2="1610" y2="-230"/>
+    <circle cx="1390" cy="-170" r="110"/><text x="1390" y="-125">B1</text>
+    <line class="leader" x1="880" y1="130" x2="880" y2="-20"/>
+    <circle cx="880" cy="240" r="110"/><text x="880" y="285">A1</text>
+    <line class="leader" x1="1728" y1="260" x2="1728" y2="45"/>
+    <circle cx="1728" cy="370" r="110"/><text x="1728" y="415">E</text>
+    <line class="leader" x1="450" y1="260" x2="340" y2="110"/>
+    <circle cx="500" cy="370" r="110"/><text x="500" y="415">J</text>
+    <line class="leader" x1="3120" y1="-580" x2="2970" y2="-400"/>
+    <circle cx="3170" cy="-640" r="110"/><text x="3170" y="-595">C2</text>
+    <line class="leader" x1="4210" y1="-290" x2="4320" y2="-140"/>
+    <circle cx="4160" cy="-345" r="110"/><text x="4160" y="-300">B2</text>
+    <line class="leader" x1="3650" y1="200" x2="3650" y2="-20"/>
+    <circle cx="3650" cy="310" r="110"/><text x="3650" y="355">A2</text>
+  </g>
+</svg>
+<div class="figcap"><span><span class="dno">D-02</span> CROSS-SECTION LOOKING WEST — one rafter of each type, panels and rails on</span><span>SCALE: TRUE · z DATUM = TOP OF TIE</span></div>
+</div>
+<h3>D-03 — Rafter type 1 (30° row), fabrication drawing — make 9 identical (±3 mm)</h3>
+<div class="fig">
+<svg viewBox="-320 -1480 2180 1990" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="30 degree rafter fabrication drawing">
+  <!-- centerlines -->
+  <g class="cl">
+    <line x1="150" y1="80" x2="150" y2="-1250"/>
+    <line x1="1362" y1="80" x2="1362" y2="-560"/>
+  </g>
+  <!-- base -->
+  <rect x="0" y="-51" width="1512" height="51" class="steel"/>
+  <!-- posts, tops mitered 30 deg to mate chord underside -->
+  <path d="M124.5,-51 L124.5,-1111.8 L175.5,-1082.4 L175.5,-51 Z" class="steel"/>
+  <path d="M1336.5,-51 L1336.5,-411.8 L1387.5,-382.4 L1387.5,-51 Z" class="steel"/>
+  <!-- chord -->
+  <path d="M63.4,-1206 L1448.6,-406 L1448.6,-347.1 L63.4,-1147.1 Z" class="steel"/>
+  <!-- seat tabs G on chord top at rail lines -->
+  <path d="M124,-1216.9 L176,-1186.9 L178.5,-1181.5 L126.5,-1211.5 Z" class="steel2"/>
+  <path d="M1336,-517.3 L1388,-487.3 L1390.5,-481.9 L1338.5,-511.9 Z" class="steel2"/>
+
+  <!-- dimensions: base + post positions -->
+  <g class="dimline">
+    <line x1="0" y1="20" x2="0" y2="290"/><line x1="1512" y1="20" x2="1512" y2="290"/>
+    <line x1="0" y1="250" x2="1512" y2="250"/>
+    <line x1="150" y1="20" x2="150" y2="150"/><line x1="1362" y1="20" x2="1362" y2="150"/>
+    <line x1="0" y1="110" x2="1512" y2="110"/>
+    <line x1="-60" y1="-51" x2="-260" y2="-51"/><line x1="-60" y1="-1097" x2="-260" y2="-1097"/>
+    <line x1="-220" y1="-51" x2="-220" y2="-1097"/>
+    <line x1="1572" y1="-51" x2="1772" y2="-51"/><line x1="1447" y1="-397" x2="1772" y2="-397"/>
+    <line x1="1732" y1="-51" x2="1732" y2="-397"/>
+    <line x1="3.4" y1="-1310" x2="1388.6" y2="-510"/>
+    <line x1="63.4" y1="-1226" x2="-8" y2="-1350"/><line x1="1448.6" y1="-426" x2="1377" y2="-550"/>
+  </g>
+  <text x="756" y="330" font-size="52" class="dim" text-anchor="middle">1512</text>
+  <text x="75" y="90" font-size="44" class="dim" text-anchor="middle">150</text>
+  <text x="756" y="90" font-size="44" class="dim" text-anchor="middle">1212 (rail spacing, horiz)</text>
+  <text x="1437" y="90" font-size="44" class="dim" text-anchor="middle">150</text>
+  <text x="-280" y="-560" font-size="52" class="dim" text-anchor="middle" transform="rotate(-90 -280 -560)">1046</text>
+  <text x="1755" y="-210" font-size="52" class="dim">346</text>
+  <text x="740" y="-990" font-size="52" class="dim" text-anchor="middle" transform="rotate(-30 740 -990)">chord 1600</text>
+
+  <!-- TOS leaders -->
+  <g class="dimline"><line x1="150" y1="-1156" x2="480" y2="-1290"/><line x1="1362" y1="-456" x2="1700" y2="-620"/></g>
+  <text x="500" y="-1300" font-size="44" class="dim">TOS z=1156 at rail 30N ℄</text>
+  <text x="1850" y="-680" font-size="44" class="dim" text-anchor="end">TOS z=456 at rail 30S ℄</text>
+
+  <!-- 30 deg angle -->
+  <g class="hid"><line x1="1448.6" y1="-406" x2="1050" y2="-406"/></g>
+  <path d="M 1148,-406 A 300,300 0 0 1 1188,-556" class="dimline"/>
+  <text x="1075" y="-490" font-size="52" class="dim">30°</text>
+
+  <!-- weld note -->
+  <g class="leader"><path d="M580,-175 L400,-120 L180,-70" fill="none"/></g>
+  <text x="260" y="-160" font-size="42">4 mm fillet all around (typ. 4 joints)</text>
+  <text x="0" y="450" font-size="42" fill="var(--ink-soft)">Miter both post tops at 30°. Chord overhangs each post ℄ by 100 along the slope. Jig the first frame flat, clone ×8.</text>
+
+  <!-- bubbles -->
+  <g class="bub" font-size="56">
+    <line class="leader" x1="530" y1="-130" x2="600" y2="-30"/>
+    <circle cx="490" cy="-160" r="56"/><text x="490" y="-140">A1</text>
+    <line class="leader" x1="1245" y1="-260" x2="1340" y2="-230"/>
+    <circle cx="1190" cy="-275" r="56"/><text x="1190" y="-255">B1</text>
+    <line class="leader" x1="255" y1="-700" x2="128" y2="-700"/>
+    <circle cx="310" cy="-700" r="56"/><text x="310" y="-680">C1</text>
+    <line class="leader" x1="830" y1="-660" x2="770" y2="-745"/>
+    <circle cx="870" cy="-620" r="56"/><text x="870" y="-600">D</text>
+    <line class="leader" x1="300" y1="-1245" x2="165" y2="-1205"/>
+    <circle cx="355" cy="-1260" r="56"/><text x="355" y="-1240">G</text>
+  </g>
+</svg>
+<div class="figcap"><span><span class="dno">D-03</span> RAFTER TYPE 1 — 30° ROW · PTR 51×51×3.0 · QTY 9</span><span>SCALE: TRUE · DIMS mm</span></div>
+</div>
+
+<h3>D-04 — Rafter type 2 (10° row), fabrication drawing — make 9 identical (±3 mm)</h3>
+<div class="fig">
+<svg viewBox="-320 -720 2360 1220" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="10 degree rafter fabrication drawing">
+  <g class="cl">
+    <line x1="150" y1="80" x2="150" y2="-520"/>
+    <line x1="1529" y1="80" x2="1529" y2="-300"/>
+  </g>
+  <rect x="0" y="-51" width="1679" height="51" class="steel"/>
+  <path d="M124.5,-51 L124.5,-390.7 L175.5,-381.7 L175.5,-51 Z" class="steel"/>
+  <path d="M1503.5,-51 L1503.5,-147.7 L1554.5,-138.7 L1554.5,-51 Z" class="steel"/>
+  <path d="M51.5,-455.4 L1627.5,-177.6 L1627.5,-125.8 L51.5,-403.6 Z" class="steel"/>
+  <!-- seat tabs G -->
+  <path d="M124,-460 L176,-450.8 L177,-445 L125,-454.2 Z" class="steel2"/>
+  <path d="M1503,-216.9 L1555,-207.7 L1556,-201.9 L1504,-211.1 Z" class="steel2"/>
+
+  <g class="dimline">
+    <line x1="0" y1="20" x2="0" y2="290"/><line x1="1679" y1="20" x2="1679" y2="290"/>
+    <line x1="0" y1="250" x2="1679" y2="250"/>
+    <line x1="150" y1="20" x2="150" y2="150"/><line x1="1529" y1="20" x2="1529" y2="150"/>
+    <line x1="0" y1="110" x2="1679" y2="110"/>
+    <line x1="-60" y1="-51" x2="-260" y2="-51"/><line x1="-60" y1="-387" x2="-260" y2="-387"/>
+    <line x1="-220" y1="-51" x2="-220" y2="-387"/>
+    <line x1="1739" y1="-51" x2="1939" y2="-51"/><line x1="1614" y1="-144" x2="1939" y2="-144"/>
+    <line x1="1899" y1="-51" x2="1899" y2="-144"/>
+    <line x1="34.1" y1="-553.9" x2="1610.1" y2="-276.1"/>
+    <line x1="51.5" y1="-475" x2="16" y2="-590"/><line x1="1627.5" y1="-197" x2="1592" y2="-312"/>
+  </g>
+  <text x="839" y="330" font-size="52" class="dim" text-anchor="middle">1679</text>
+  <text x="75" y="90" font-size="44" class="dim" text-anchor="middle">150</text>
+  <text x="839" y="90" font-size="44" class="dim" text-anchor="middle">1379 (rail spacing, horiz)</text>
+  <text x="1604" y="90" font-size="44" class="dim" text-anchor="middle">150</text>
+  <text x="-280" y="-215" font-size="52" class="dim" text-anchor="middle" transform="rotate(-90 -280 -215)">336</text>
+  <text x="1965" y="-80" font-size="52" class="dim">93</text>
+  <text x="800" y="-480" font-size="52" class="dim" text-anchor="middle" transform="rotate(-10 800 -480)">chord 1600</text>
+
+  <g class="dimline"><line x1="150" y1="-438" x2="430" y2="-620"/><line x1="1529" y1="-195" x2="1810" y2="-390"/></g>
+  <text x="450" y="-630" font-size="44" class="dim">TOS z=438 at rail 10N ℄</text>
+  <text x="2030" y="-430" font-size="44" class="dim" text-anchor="end">TOS z=195 at rail 10S ℄</text>
+
+  <g class="hid"><line x1="1627.5" y1="-177.6" x2="1200" y2="-177.6"/></g>
+  <path d="M 1290,-177.6 A 340,340 0 0 1 1282,-236" class="dimline"/>
+  <text x="1180" y="-235" font-size="52" class="dim">10°</text>
+
+  <text x="0" y="440" font-size="42" fill="var(--ink-soft)">Miter both post tops at 10°. Chord overhangs each post ℄ by 100. Note the stub front post — only 93 mm.</text>
+
+  <g class="bub" font-size="56">
+    <line class="leader" x1="600" y1="-140" x2="680" y2="-30"/>
+    <circle cx="560" cy="-170" r="56"/><text x="560" y="-150">A2</text>
+    <line class="leader" x1="1400" y1="-230" x2="1505" y2="-120"/>
+    <circle cx="1350" cy="-255" r="56"/><text x="1350" y="-235">B2</text>
+    <line class="leader" x1="290" y1="-290" x2="170" y2="-250"/>
+    <circle cx="345" cy="-305" r="56"/><text x="345" y="-285">C2</text>
+    <line class="leader" x1="900" y1="-420" x2="850" y2="-330"/>
+    <circle cx="930" cy="-475" r="56"/><text x="930" y="-455">D</text>
+    <line class="leader" x1="1160" y1="-450" x2="1505" y2="-215"/>
+    <circle cx="1140" cy="-500" r="56"/><text x="1140" y="-480">G</text>
+  </g>
+</svg>
+<div class="figcap"><span><span class="dno">D-04</span> RAFTER TYPE 2 — 10° ROW · PTR 51×51×3.0 · QTY 9</span><span>SCALE: TRUE · DIMS mm</span></div>
+</div>
+<h3>D-05 — E–W elevation at the rear-post line, 30° row (scale: true)</h3>
+<div class="fig">
+<svg viewBox="-360 -1420 9980 1980" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="East-west elevation showing posts, rail and X bracing">
+  <!-- tie (runs 90 mm north of this plane - hidden line) -->
+  <rect x="0" y="0" width="9140" height="38" class="hid" fill="var(--steel)" fill-opacity="0.25"/>
+  <text x="20" y="545" font-size="130" fill="var(--ink-faint)">tie E — 90 mm behind this plane; every rafter base end welded to it</text>
+
+  <!-- X braces, bays R2-R3 and R7-R8 -->
+  <path d="M1155.1,-55.75 L2297.6,-1063.75 L2272.4,-1092.25 L1129.9,-84.25 Z" class="steel2"/>
+  <path d="M2297.6,-84.25 L1155.1,-1092.25 L1129.9,-1063.75 L2272.4,-55.75 Z" class="steel2"/>
+  <path d="M6867.6,-55.75 L8010.1,-1063.75 L7984.9,-1092.25 L6842.4,-84.25 Z" class="steel2"/>
+  <path d="M8010.1,-84.25 L6867.6,-1092.25 L6842.4,-1063.75 L7984.9,-55.75 Z" class="steel2"/>
+
+  <!-- bases (sections) and posts -->
+  <g class="steel">
+    <rect x="-25.5" y="-51" width="51" height="51"/><rect x="1117" y="-51" width="51" height="51"/><rect x="2259.5" y="-51" width="51" height="51"/><rect x="3402" y="-51" width="51" height="51"/><rect x="4544.5" y="-51" width="51" height="51"/><rect x="5687" y="-51" width="51" height="51"/><rect x="6829.5" y="-51" width="51" height="51"/><rect x="7972" y="-51" width="51" height="51"/><rect x="9114.5" y="-51" width="51" height="51"/>
+    <rect x="-25.5" y="-1097" width="51" height="1046"/><rect x="1117" y="-1097" width="51" height="1046"/><rect x="2259.5" y="-1097" width="51" height="1046"/><rect x="3402" y="-1097" width="51" height="1046"/><rect x="4544.5" y="-1097" width="51" height="1046"/><rect x="5687" y="-1097" width="51" height="1046"/><rect x="6829.5" y="-1097" width="51" height="1046"/><rect x="7972" y="-1097" width="51" height="1046"/><rect x="9114.5" y="-1097" width="51" height="1046"/>
+  </g>
+  <!-- chord sections on post tops -->
+  <g class="steel2">
+    <rect x="-25.5" y="-1156" width="51" height="59"/><rect x="1117" y="-1156" width="51" height="59"/><rect x="2259.5" y="-1156" width="51" height="59"/><rect x="3402" y="-1156" width="51" height="59"/><rect x="4544.5" y="-1156" width="51" height="59"/><rect x="5687" y="-1156" width="51" height="59"/><rect x="6829.5" y="-1156" width="51" height="59"/><rect x="7972" y="-1156" width="51" height="59"/><rect x="9114.5" y="-1156" width="51" height="59"/>
+  </g>
+  <!-- rail 30N over everything -->
+  <rect x="-80" y="-1196" width="9300" height="40" class="alu"/>
+  <!-- splice mark at x=4770 -->
+  <g stroke="var(--oxblood)" stroke-width="2">
+    <line x1="4730" y1="-1216" x2="4810" y2="-1136"/><line x1="4810" y1="-1216" x2="4730" y2="-1136"/>
+  </g>
+  <text x="4770" y="-1270" font-size="120" text-anchor="middle" fill="var(--oxblood)">splice L @ x=4770</text>
+
+  <!-- rafter labels -->
+  <g font-size="140" text-anchor="middle" fill="var(--oxblood)">
+    <text x="0" y="420">R1</text><text x="1142.5" y="420">R2</text><text x="2285" y="420">R3</text>
+    <text x="3427.5" y="420">R4</text><text x="4570" y="420">R5</text><text x="5712.5" y="420">R6</text>
+    <text x="6855" y="420">R7</text><text x="7997.5" y="420">R8</text><text x="9140" y="420">R9</text>
+  </g>
+
+  <!-- dims -->
+  <g class="dimline">
+    <line x1="0" y1="-1250" x2="0" y2="-1400"/><line x1="1142.5" y1="-1250" x2="1142.5" y2="-1400"/>
+    <line x1="0" y1="-1360" x2="1142.5" y2="-1360"/>
+    <line x1="-120" y1="-51" x2="-300" y2="-51"/><line x1="-120" y1="-1097" x2="-300" y2="-1097"/>
+    <line x1="-260" y1="-51" x2="-260" y2="-1097"/>
+  </g>
+  <text x="571" y="-1420" font-size="140" class="dim" text-anchor="middle">1142.5</text>
+  <text x="-320" y="-540" font-size="140" class="dim" text-anchor="middle" transform="rotate(-90 -320 -540)">1046</text>
+  <text x="1700" y="-480" font-size="130" class="dim" transform="rotate(-41.5 1700 -480)">F1 = 1549</text>
+
+  <!-- bubbles -->
+  <g class="bub" font-size="150">
+    <line class="leader" x1="3560" y1="-620" x2="3430" y2="-620"/>
+    <circle cx="3680" cy="-620" r="120"/><text x="3680" y="-570">C1</text>
+    <line class="leader" x1="5850" y1="-1295" x2="5720" y2="-1185"/>
+    <circle cx="5960" cy="-1330" r="120"/><text x="5960" y="-1280">K</text>
+    <line class="leader" x1="7640" y1="-620" x2="7480" y2="-570"/>
+    <circle cx="7760" cy="-640" r="120"/><text x="7760" y="-590">F1</text>
+    <line class="leader" x1="3160" y1="-1290" x2="3420" y2="-1140"/>
+    <circle cx="3040" cy="-1300" r="120"/><text x="3040" y="-1250">D</text>
+    <line class="leader" x1="5450" y1="130" x2="5700" y2="-25"/>
+    <circle cx="5330" cy="160" r="120"/><text x="5330" y="210">A1</text>
+    <line class="leader" x1="8620" y1="200" x2="8620" y2="30"/>
+    <circle cx="8620" cy="310" r="120"/><text x="8620" y="360">E</text>
+  </g>
+</svg>
+<div class="figcap"><span><span class="dno">D-05</span> REAR-POST ELEVATION, 30° ROW — braced bays R2–R3 &amp; R7–R8. 10° row identical pattern: posts C2 (336), braces F2 = 1191</span><span>SCALE: TRUE</span></div>
+</div>
+<h3>D-06 — Rail-to-steel seat, exploded (×36 places)</h3>
+<div class="fig">
+<svg viewBox="0 0 800 640" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Exploded rail seat detail">
+  <line x1="300" y1="20" x2="300" y2="600" class="cl"/>
+  <!-- rail profile K -->
+  <g class="alu">
+    <rect x="240" y="40" width="45" height="80"/>
+    <rect x="315" y="40" width="45" height="80"/>
+    <rect x="285" y="58" width="30" height="44"/>
+    <rect x="218" y="104" width="22" height="16"/>
+    <rect x="360" y="104" width="22" height="16"/>
+  </g>
+  <text x="300" y="30" font-size="17" text-anchor="middle">top T-slot (clamps M/N go here)</text>
+  <text x="392" y="118" font-size="17">bottom channel — head P in, rotate 90°</text>
+
+  <!-- T-bolt P -->
+  <rect x="270" y="170" width="60" height="16" class="steel2"/>
+  <rect x="292" y="186" width="16" height="104" class="steel2"/>
+  <g class="hatch"><line x1="292" y1="250" x2="308" y2="258"/><line x1="292" y1="262" x2="308" y2="270"/><line x1="292" y1="274" x2="308" y2="282"/></g>
+
+  <!-- EPDM Q -->
+  <rect x="225" y="320" width="150" height="10" class="epdm"/>
+
+  <!-- seat tab G with slot -->
+  <g class="steel2">
+    <rect x="215" y="360" width="70" height="12"/>
+    <rect x="315" y="360" width="70" height="12"/>
+    <rect x="215" y="372" width="12" height="34"/>
+  </g>
+  <text x="392" y="372" font-size="17">slot 9×20 (±10 adjust E–W)</text>
+
+  <!-- flange nut (with P) -->
+  <rect x="272" y="436" width="56" height="20" class="steel2"/>
+  <line x1="291" y1="436" x2="291" y2="456" class="thin"/><line x1="309" y1="436" x2="309" y2="456" class="thin"/>
+  <rect x="264" y="456" width="72" height="6" class="steel2"/>
+
+  <!-- chord D -->
+  <rect x="224" y="500" width="152" height="110" class="steel"/>
+  <rect x="238" y="514" width="124" height="96" fill="var(--paper-light)" stroke="var(--ink-soft)" stroke-width="0.8"/>
+  <g class="leader"><path d="M180,505 L224,505" fill="none"/><path d="M420,505 L376,505" fill="none"/></g>
+  <text x="60" y="498" font-size="16">2×30 stitch</text>
+  <text x="60" y="516" font-size="16">fillet / side</text>
+  <text x="424" y="510" font-size="16">weld tab to chord top face</text>
+
+  <!-- bubbles -->
+  <g class="bub" font-size="22">
+    <line class="leader" x1="480" y1="70" x2="362" y2="70"/>
+    <circle cx="502" cy="70" r="21"/><text x="502" y="78">K</text>
+    <line class="leader" x1="480" y1="178" x2="332" y2="178"/>
+    <circle cx="502" cy="178" r="21"/><text x="502" y="186">P</text>
+    <line class="leader" x1="480" y1="325" x2="377" y2="325"/>
+    <circle cx="502" cy="325" r="21"/><text x="502" y="333">Q</text>
+    <line class="leader" x1="150" y1="366" x2="213" y2="366"/>
+    <circle cx="128" cy="366" r="21"/><text x="128" y="374">G</text>
+    <line class="leader" x1="480" y1="560" x2="378" y2="560"/>
+    <circle cx="502" cy="560" r="21"/><text x="502" y="568">D</text>
+  </g>
+  <text x="20" y="606" font-size="16" fill="var(--oxblood)">⚠ verify channel fit with 2 sample bolts before buying 44 (Rev. C §16.4)</text>
+  <text x="20" y="628" font-size="16" fill="var(--oxblood)">EPDM wherever aluminum meets steel — no exceptions</text>
+</svg>
+<div class="figcap"><span><span class="dno">D-06</span> RAIL SEAT — EXPLODED · M8×25 A2 T-BOLT + SERRATED FLANGE NUT</span><span>NTS (ENLARGED)</span></div>
+</div>
+
+<h3>D-07 — Roof anchor at a vigueta crossing (×52 places)</h3>
+<div class="fig">
+<svg viewBox="0 0 800 580" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Anchor section through capa into vigueta">
+  <!-- capa -->
+  <rect x="40" y="240" width="700" height="90" class="conc"/>
+  <g class="hatch">
+    <line x1="60" y1="330" x2="150" y2="240"/><line x1="140" y1="330" x2="230" y2="240"/>
+    <line x1="220" y1="330" x2="310" y2="240"/><line x1="300" y1="330" x2="360" y2="270"/>
+    <line x1="470" y1="320" x2="550" y2="240"/><line x1="540" y1="330" x2="630" y2="240"/>
+    <line x1="620" y1="330" x2="710" y2="240"/>
+  </g>
+  <!-- bovedilla blocks -->
+  <g class="conc" fill-opacity="0.7">
+    <rect x="40" y="330" width="315" height="140"/>
+    <rect x="425" y="330" width="315" height="140"/>
+  </g>
+  <rect x="80" y="355" width="100" height="90" fill="var(--paper-light)" stroke="var(--ink-soft)" stroke-width="0.7"/>
+  <rect x="215" y="355" width="100" height="90" fill="var(--paper-light)" stroke="var(--ink-soft)" stroke-width="0.7"/>
+  <rect x="465" y="355" width="100" height="90" fill="var(--paper-light)" stroke="var(--ink-soft)" stroke-width="0.7"/>
+  <rect x="600" y="355" width="100" height="90" fill="var(--paper-light)" stroke="var(--ink-soft)" stroke-width="0.7"/>
+  <!-- vigueta -->
+  <path d="M355,330 L425,330 L425,470 L455,470 L455,500 L325,500 L325,470 L355,470 Z" class="conc" fill-opacity="1"/>
+  <circle cx="370" cy="487" r="5" fill="var(--ink)"/><circle cx="390" cy="487" r="5" fill="var(--ink)"/><circle cx="410" cy="487" r="5" fill="var(--ink)"/>
+
+  <!-- epoxy + rod -->
+  <rect x="376" y="240" width="28" height="135" fill="var(--oxblood)" fill-opacity="0.3" stroke="none"/>
+  <rect x="382" y="120" width="16" height="255" class="steel2"/>
+  <g class="hatch"><line x1="382" y1="330" x2="398" y2="340"/><line x1="382" y1="348" x2="398" y2="358"/><line x1="382" y1="308" x2="398" y2="318"/></g>
+  <!-- tie + hardware -->
+  <rect x="361" y="183" width="58" height="57" class="steel"/>
+  <rect x="366" y="177" width="48" height="6" class="steel2"/>
+  <rect x="372" y="157" width="36" height="20" class="steel2"/>
+  <!-- sealant fillets -->
+  <path d="M361,240 L343,240 Q357,232 361,226 Z" fill="var(--epdm)"/>
+  <path d="M419,240 L437,240 Q423,232 419,226 Z" fill="var(--epdm)"/>
+
+  <!-- dims / notes -->
+  <g class="dimline">
+    <line x1="560" y1="240" x2="620" y2="240"/><line x1="560" y1="330" x2="620" y2="330"/>
+    <line x1="600" y1="240" x2="600" y2="330"/>
+    <line x1="470" y1="240" x2="500" y2="240"/><line x1="440" y1="375" x2="500" y2="375"/>
+    <line x1="484" y1="240" x2="484" y2="375"/>
+  </g>
+  <line x1="330" y1="390" x2="450" y2="390" class="cl"/>
+  <text x="626" y="292" font-size="17" class="dim">capa 60 [verify]</text>
+  <text x="500" y="315" font-size="19" class="dim">embed 90</text>
+  <text x="440" y="404" font-size="17" fill="var(--oxblood)">hard drill stop 100 — NEVER deeper</text>
+  <text x="100" y="415" font-size="18" fill="var(--oxblood)" font-weight="700">bovedilla:</text>
+  <text x="100" y="437" font-size="17" fill="var(--oxblood)">no anchors, no point loads</text>
+  <text x="140" y="540" font-size="15">prestressing strands sit at the BOTTOM — the 100 stop keeps ≥70 clear</text>
+  <text x="40" y="40" font-size="17">hole Ø12 SDS · brush ×2, blow ×2, repeat · inject epoxy</text>
+  <text x="40" y="64" font-size="17">full cure, then proof-test 3 per tie @ 4 kN</text>
+
+  <g class="bub" font-size="22">
+    <line class="leader" x1="330" y1="150" x2="380" y2="165"/>
+    <circle cx="308" cy="143" r="21"/><text x="308" y="151">J</text>
+    <line class="leader" x1="480" y1="205" x2="421" y2="205"/>
+    <circle cx="502" cy="205" r="21"/><text x="502" y="213">E</text>
+    <line class="leader" x1="290" y1="255" x2="345" y2="238"/>
+    <circle cx="268" cy="260" r="21"/><text x="268" y="268">V</text>
+  </g>
+</svg>
+<div class="figcap"><span><span class="dno">D-07</span> CHEMICAL ANCHOR — 10 mm ROD, TIE-TO-VIGUETA · EAST WALL LINE GETS 2 PER TIE (REV. C §6.3b)</span><span>NTS (ENLARGED)</span></div>
+</div>
+
+<h3>D-08 — Panel clamps on rail (M ×28 · N ×8)</h3>
+<div class="fig">
+<svg viewBox="0 0 800 430" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Mid clamp and end clamp sections">
+  <!-- ============ mid clamp, left ============ -->
+  <!-- rail -->
+  <g class="alu">
+    <rect x="100" y="200" width="90" height="80"/>
+    <rect x="210" y="200" width="90" height="80"/>
+    <rect x="190" y="216" width="20" height="64"/>
+  </g>
+  <!-- panel frames + glass -->
+  <g class="steel" fill="#D8D4C6">
+    <rect x="60" y="140" width="120" height="60"/>
+    <rect x="220" y="140" width="120" height="60"/>
+  </g>
+  <rect x="72" y="152" width="96" height="36" fill="var(--paper-light)" stroke="var(--ink-soft)" stroke-width="0.7"/>
+  <rect x="232" y="152" width="96" height="36" fill="var(--paper-light)" stroke="var(--ink-soft)" stroke-width="0.7"/>
+  <rect x="60" y="132" width="120" height="8" class="glass"/>
+  <rect x="220" y="132" width="120" height="8" class="glass"/>
+  <!-- clamp -->
+  <rect x="156" y="108" width="88" height="16" class="steel2"/>
+  <rect x="194" y="124" width="12" height="90" class="steel2"/>
+  <g class="dimline"><line x1="180" y1="90" x2="180" y2="60"/><line x1="220" y1="90" x2="220" y2="60"/><line x1="180" y1="70" x2="220" y2="70"/></g>
+  <text x="200" y="50" font-size="17" class="dim" text-anchor="middle">gap 20 [A — measure clamp]</text>
+  <text x="200" y="320" font-size="18" text-anchor="middle">MID CLAMP — 30 mm frames only</text>
+  <text x="200" y="344" font-size="17" text-anchor="middle" class="dim">M8 · 12–16 N·m · overlap 10–12</text>
+
+  <!-- ============ end clamp, right ============ -->
+  <g class="alu">
+    <rect x="380" y="200" width="75" height="80"/>
+    <rect x="475" y="200" width="105" height="80"/>
+    <rect x="455" y="216" width="20" height="64"/>
+  </g>
+  <g class="steel" fill="#D8D4C6"><rect x="500" y="140" width="140" height="60"/></g>
+  <rect x="512" y="152" width="116" height="36" fill="var(--paper-light)" stroke="var(--ink-soft)" stroke-width="0.7"/>
+  <rect x="500" y="132" width="140" height="8" class="glass"/>
+  <!-- end clamp body: base on rail, wall, lip over frame -->
+  <g class="steel2">
+    <rect x="420" y="186" width="70" height="14"/>
+    <rect x="478" y="128" width="12" height="58"/>
+    <rect x="478" y="116" width="76" height="16"/>
+    <rect x="459" y="140" width="12" height="46"/>
+  </g>
+  <text x="520" y="320" font-size="18" text-anchor="middle">END CLAMP — row ends ×8</text>
+  <text x="520" y="344" font-size="17" text-anchor="middle" class="dim">never over a drain hole · never touch glass</text>
+
+  <g class="bub" font-size="22">
+    <line class="leader" x1="140" y1="94" x2="165" y2="108"/>
+    <circle cx="122" cy="88" r="21"/><text x="122" y="96">M</text>
+    <line class="leader" x1="580" y1="100" x2="540" y2="116"/>
+    <circle cx="602" cy="96" r="21"/><text x="602" y="104">N</text>
+    <line class="leader" x1="42" y1="160" x2="60" y2="160"/>
+    <circle cx="26" cy="160" r="21" transform="translate(-5 0)"/><text x="21" y="168">R</text>
+    <line class="leader" x1="330" y1="250" x2="298" y2="250"/>
+    <circle cx="352" cy="250" r="21"/><text x="352" y="258">K</text>
+  </g>
+</svg>
+<div class="figcap"><span><span class="dno">D-08</span> CLAMP SECTIONS — EPLMCN230B (30 mm) MID · EPLECN230/35B END · 35 mm MID CLAMPS DO NOT FIT</span><span>NTS (ENLARGED)</span></div>
+</div>
+
+<h3>D-09 — Grounding &amp; bonding points</h3>
+<div class="fig">
+<svg viewBox="0 0 800 320" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Grounding lug, splice jumper and module ground detail">
+  <!-- module frame corner with ground hardware U -->
+  <g class="steel" fill="#D8D4C6"><rect x="60" y="40" width="110" height="26"/></g>
+  <rect x="60" y="32" width="110" height="8" class="glass"/>
+  <circle cx="110" cy="53" r="8" fill="none" stroke="var(--ink)" stroke-width="1.4"/>
+  <g stroke="var(--ink)" stroke-width="1">
+    <line x1="102" y1="45" x2="118" y2="61"/><line x1="118" y1="45" x2="102" y2="61"/>
+  </g>
+  <text x="185" y="50" font-size="16">Ø4.2 marked ground hole —</text>
+  <text x="185" y="68" font-size="16">toothed washer bites anodizing</text>
+
+  <!-- rail run with splice + jumper -->
+  <rect x="60" y="180" width="680" height="44" class="alu"/>
+  <line x1="400" y1="180" x2="400" y2="224" stroke="var(--ink)" stroke-width="1.6"/>
+  <rect x="340" y="190" width="120" height="24" class="steel2" fill-opacity="0.85"/>
+  <!-- copper daisy chain -->
+  <path d="M110,62 C 100,120 118,150 132,172" fill="none" stroke="#8C5A2B" stroke-width="2.5"/>
+  <rect x="122" y="168" width="24" height="14" class="steel2"/>
+  <path d="M320,176 C 345,120 455,120 480,176" fill="none" stroke="#8C5A2B" stroke-width="2.5"/>
+  <rect x="306" y="170" width="24" height="14" class="steel2"/>
+  <rect x="470" y="170" width="24" height="14" class="steel2"/>
+  <path d="M146,175 C 200,150 260,150 306,172" fill="none" stroke="#8C5A2B" stroke-width="2.5"/>
+  <path d="M494,175 C 560,150 640,150 700,176" fill="none" stroke="#8C5A2B" stroke-width="2.5"/>
+  <rect x="690" y="170" width="24" height="14" class="steel2"/>
+  <text x="740" y="160" font-size="15" text-anchor="end">→ EGC with PV circuit, per Wiring Rev. B</text>
+  <text x="60" y="260" font-size="16">12 AWG bare Cu daisy-chain: every module frame (U) → every rail (lug S) → structure (1 lug/row) → EGC. Jumper T across EVERY splice L.</text>
+  <text x="60" y="284" font-size="16" class="dim">QC: frame-to-EGC continuity &lt; 1 Ω at the farthest module.</text>
+
+  <g class="bub" font-size="20">
+    <line class="leader" x1="80" y1="100" x2="105" y2="62"/>
+    <circle cx="66" cy="106" r="19"/><text x="66" y="113">U</text>
+    <line class="leader" x1="240" y1="120" x2="230" y2="152"/>
+    <circle cx="244" cy="102" r="19"/><text x="244" y="109">T</text>
+    <line class="leader" x1="530" y1="120" x2="488" y2="172"/>
+    <circle cx="544" cy="110" r="19"/><text x="544" y="117">S</text>
+    <line class="leader" x1="400" y1="260" x2="400" y2="216"/>
+    <circle cx="400" cy="278" r="19"/><text x="400" y="285">L</text>
+    <line class="leader" x1="660" y1="250" x2="660" y2="226"/>
+    <circle cx="660" cy="268" r="19"/><text x="660" y="275">K</text>
+  </g>
+</svg>
+<div class="figcap"><span><span class="dno">D-09</span> GROUNDING — ONE SYSTEM, ONE N–G BOND (SITE SCHEME, WIRING REV. B §11)</span><span>NTS (SCHEMATIC)</span></div>
+</div>
+<h2>2. Parts index — every letter code, illustrated</h2>
+<p>Quantities are <strong>installed</strong>; buy quantity in parentheses where Rev. C §9/§13 carries spares. Steel parts A–H are cut from PTR/ángulo/solera stock (13 × PTR 51×51 + 9 × PTR 38×38 tramos 6.10 m, §13.2). Illustrations are schematic — dimensions in the spec column govern.</p>
+
+<table class="parts">
+<thead><tr><th>Code</th><th>Picture</th><th>Component</th><th>Spec / cut size (mm)</th><th>Qty</th><th>See</th></tr></thead>
+<tbody>
+
+<tr><td class="pcode">A1</td><td>
+<svg class="thumb" viewBox="0 0 120 90"><path d="M18,36 L52,36 L96,14 L62,14 Z" class="steel2"/><path d="M52,36 L96,14 L96,48 L52,70 Z" class="steel"/><rect x="18" y="36" width="34" height="34" class="steel"/><rect x="23" y="41" width="24" height="24" fill="var(--paper)" stroke="var(--ink-soft)" stroke-width="0.7"/><text x="60" y="84" font-size="9" text-anchor="middle">PTR 51×51 × 1512</text></svg>
+</td><td>Rafter base, 30° row</td><td>PTR 51×51×3.0 (cal. 11) × <strong>1512</strong>, ends square</td><td class="qty">9</td><td>D-03</td></tr>
+
+<tr><td class="pcode">A2</td><td>
+<svg class="thumb" viewBox="0 0 120 90"><path d="M14,36 L50,36 L100,14 L64,14 Z" class="steel2"/><path d="M50,36 L100,14 L100,48 L50,70 Z" class="steel"/><rect x="14" y="36" width="36" height="34" class="steel"/><rect x="19" y="41" width="26" height="24" fill="var(--paper)" stroke="var(--ink-soft)" stroke-width="0.7"/><text x="60" y="84" font-size="9" text-anchor="middle">PTR 51×51 × 1679</text></svg>
+</td><td>Rafter base, 10° row</td><td>PTR 51×51×3.0 × <strong>1679</strong>, ends square</td><td class="qty">9</td><td>D-04</td></tr>
+
+<tr><td class="pcode">B1</td><td>
+<svg class="thumb" viewBox="0 0 120 90"><path d="M44,34 L70,26 L88,32 L62,40 Z" class="steel2"/><path d="M44,34 L62,40 L62,76 L44,76 Z" class="steel"/><path d="M62,40 L88,32 L88,70 L62,76 Z" class="steel"/><text x="60" y="88" font-size="9" text-anchor="middle">×346 · top mitred 30°</text></svg>
+</td><td>Front post, 30° row</td><td>PTR 51×51×3.0 × <strong>346</strong>; bottom square, top mitred 30°</td><td class="qty">9</td><td>D-03</td></tr>
+
+<tr><td class="pcode">B2</td><td>
+<svg class="thumb" viewBox="0 0 120 90"><path d="M44,52 L70,48 L88,53 L62,57 Z" class="steel2"/><path d="M44,52 L62,57 L62,76 L44,76 Z" class="steel"/><path d="M62,57 L88,53 L88,72 L62,76 Z" class="steel"/><text x="60" y="88" font-size="9" text-anchor="middle">×93 stub · mitred 10°</text></svg>
+</td><td>Front post, 10° row (stub)</td><td>PTR 51×51×3.0 × <strong>93</strong>; top mitred 10°</td><td class="qty">9</td><td>D-04</td></tr>
+
+<tr><td class="pcode">C1</td><td>
+<svg class="thumb" viewBox="0 0 120 90"><path d="M40,16 L66,8 L84,14 L58,22 Z" class="steel2"/><path d="M40,16 L58,22 L58,78 L40,78 Z" class="steel"/><path d="M58,22 L84,14 L84,72 L58,78 Z" class="steel"/><text x="60" y="88" font-size="9" text-anchor="middle">×1046 · mitred 30°</text></svg>
+</td><td>Rear post, 30° row</td><td>PTR 51×51×3.0 × <strong>1046</strong>; top mitred 30°</td><td class="qty">9</td><td>D-03, D-05</td></tr>
+
+<tr><td class="pcode">C2</td><td>
+<svg class="thumb" viewBox="0 0 120 90"><path d="M42,36 L68,30 L86,36 L60,42 Z" class="steel2"/><path d="M42,36 L60,42 L60,78 L42,78 Z" class="steel"/><path d="M60,42 L86,36 L86,72 L60,78 Z" class="steel"/><text x="60" y="88" font-size="9" text-anchor="middle">×336 · mitred 10°</text></svg>
+</td><td>Rear post, 10° row</td><td>PTR 51×51×3.0 × <strong>336</strong>; top mitred 10°</td><td class="qty">9</td><td>D-04</td></tr>
+
+<tr><td class="pcode">D</td><td>
+<svg class="thumb" viewBox="0 0 120 90"><path d="M12,42 L56,42 L104,20 L60,20 Z" class="steel2"/><path d="M56,42 L104,20 L104,50 L56,72 Z" class="steel"/><rect x="12" y="42" width="44" height="30" class="steel"/><rect x="17" y="47" width="32" height="20" fill="var(--paper)" stroke="var(--ink-soft)" stroke-width="0.7"/><text x="60" y="86" font-size="9" text-anchor="middle">PTR 51×51 × 1600</text></svg>
+</td><td>Chord (both rows)</td><td>PTR 51×51×3.0 × <strong>1600</strong>, ends square; carries seat tabs G</td><td class="qty">18</td><td>D-03, D-04</td></tr>
+
+<tr><td class="pcode">E</td><td>
+<svg class="thumb" viewBox="0 0 120 90"><path d="M8,50 L94,50 L112,40 L26,40 Z" class="steel2"/><path d="M94,50 L112,40 L112,54 L94,64 Z" class="steel"/><rect x="8" y="50" width="86" height="14" class="steel"/><rect x="44" y="46" width="16" height="5" class="steel2"/><text x="60" y="84" font-size="9" text-anchor="middle">PTR 38×38 × 9140 (2 pc)</text></svg>
+</td><td>E–W tie / anchored sleeper</td><td>PTR 38×38×3.0 × <strong>9140</strong> = 6100 + 3040 butt-welded with fish plate H; drilled at every vigueta crossing</td><td class="qty">4</td><td>D-01, D-02, D-07</td></tr>
+
+<tr><td class="pcode">F1</td><td>
+<svg class="thumb" viewBox="0 0 120 90"><path d="M14,72 L88,20 L98,30 L24,82 Z" class="steel"/><path d="M10,76 L20,66 L28,74 L18,84 Z" class="steel2"/><path d="M84,16 L94,6 L102,14 L92,24 Z" class="steel2"/><text x="60" y="88" font-size="9" text-anchor="middle">38×38 × 1549 · ends coped</text></svg>
+</td><td>X-brace diagonal, 30° row</td><td>PTR 38×38×3.0 × <strong>1549</strong>; ends coped/flattened to post faces</td><td class="qty">4</td><td>D-05</td></tr>
+
+<tr><td class="pcode">F2</td><td>
+<svg class="thumb" viewBox="0 0 120 90"><path d="M16,66 L90,32 L96,44 L22,78 Z" class="steel"/><path d="M12,70 L22,62 L28,70 L18,78 Z" class="steel2"/><path d="M86,28 L96,20 L102,28 L92,36 Z" class="steel2"/><text x="60" y="88" font-size="9" text-anchor="middle">38×38 × 1191 · ends coped</text></svg>
+</td><td>X-brace diagonal, 10° row</td><td>PTR 38×38×3.0 × <strong>1191</strong>; ends coped/flattened</td><td class="qty">4</td><td>D-05 note</td></tr>
+
+<tr><td class="pcode">G</td><td>
+<svg class="thumb" viewBox="0 0 120 90"><path d="M28,32 L36,32 L36,58 L80,58 L80,66 L28,66 Z" class="steel2"/><path d="M36,32 L52,24 L52,52 L36,58 Z" fill="var(--steel)" stroke="var(--ink)" stroke-width="1"/><path d="M36,58 L52,52 L96,52 L80,58 Z" fill="var(--steel)" stroke="var(--ink)" stroke-width="1"/><rect x="50" y="60" width="18" height="4" rx="2" fill="var(--paper)" stroke="var(--ink)" stroke-width="0.8"/><text x="60" y="84" font-size="9" text-anchor="middle">ángulo 38×38×4.8 × 60</text></svg>
+</td><td>Rail seat tab</td><td>Ángulo 38×38×4.8 × <strong>60</strong>, slot 9×20; welded to chord top at rail lines</td><td class="qty">36</td><td>D-06</td></tr>
+
+<tr><td class="pcode">H</td><td>
+<svg class="thumb" viewBox="0 0 120 90"><path d="M18,56 L70,56 L100,40 L48,40 Z" class="steel2"/><path d="M18,56 L18,64 L70,64 L70,56 Z" class="steel"/><path d="M70,64 L100,48 L100,40 L70,56 Z" class="steel"/><text x="60" y="84" font-size="9" text-anchor="middle">solera 51×4.8 × 150</text></svg>
+</td><td>Tie fish plate</td><td>Solera 51×4.8 × <strong>150</strong>, over the tie butt joint — land joint at a rafter station</td><td class="qty">4</td><td>D-01</td></tr>
+
+<tr><td class="pcode">J</td><td>
+<svg class="thumb" viewBox="0 0 120 90"><rect x="30" y="14" width="8" height="60" class="steel2"/><line x1="30" y1="30" x2="38" y2="34" class="hatch"/><line x1="30" y1="40" x2="38" y2="44" class="hatch"/><line x1="30" y1="50" x2="38" y2="54" class="hatch"/><line x1="30" y1="60" x2="38" y2="64" class="hatch"/><rect x="24" y="18" width="20" height="9" class="steel"/><rect x="22" y="30" width="24" height="4" class="steel"/><rect x="62" y="24" width="26" height="46" rx="4" class="conc"/><path d="M70,24 L70,10 L78,10 L78,24" fill="none" stroke="var(--ink)" stroke-width="1.2"/><text x="60" y="86" font-size="9" text-anchor="middle">rod 10Ø×120 + epoxy</text></svg>
+</td><td>Roof anchor set</td><td>Varilla roscada 10 mm (3/8") A2/galv. × 120 + nut + 30 fender washer + injection epoxy (Hilti HY-200 / Sika AnchorFix / Fischer FIS V class)</td><td class="qty">52 (58 rods, 2–3 cartridges)</td><td>D-07, D-01</td></tr>
+
+<tr><td class="pcode">K</td><td>
+<svg class="thumb" viewBox="0 0 120 90"><path d="M20,34 L60,34 L98,20 L58,20 Z" class="alu" fill-opacity="0.6"/><path d="M60,62 L98,48 L98,20 L60,34 Z" class="alu" fill-opacity="0.6"/><rect x="20" y="34" width="12" height="22" class="alu"/><rect x="48" y="34" width="12" height="22" class="alu"/><rect x="32" y="39" width="16" height="12" class="alu"/><rect x="14" y="52" width="8" height="6" class="alu"/><rect x="58" y="52" width="8" height="6" class="alu"/><text x="60" y="84" font-size="9" text-anchor="middle">Vektor "8" × 5400</text></svg>
+</td><td>Aluminum rail, Epcom Vektor "8"</td><td>Anodized rail × <strong>5400</strong>; cut 4×4850 + 4×4450 → four 9300 runs; offcuts to Phase 2. ⚠ measure profile before cutting (§16.4)</td><td class="qty">8 sticks</td><td>D-01, D-05, D-06</td></tr>
+
+<tr><td class="pcode">L</td><td>
+<svg class="thumb" viewBox="0 0 120 90"><path d="M30,40 L74,40 L96,30 L52,30 Z" class="alu" fill-opacity="0.7"/><path d="M74,40 L96,30 L96,52 L74,62 Z" class="alu"/><rect x="30" y="40" width="44" height="22" class="alu"/><rect x="36" y="45" width="32" height="12" fill="var(--paper)" stroke="var(--ink-soft)" stroke-width="0.7"/><text x="60" y="84" font-size="9" text-anchor="middle">EPLSCN201B</text></svg>
+</td><td>Rail splice connector</td><td>EPLSCN201B, one per run @ x=4770 (N rails) / x=4370 (S rails), 200 from R5</td><td class="qty">4</td><td>D-01, D-05, D-09</td></tr>
+
+<tr><td class="pcode">M</td><td>
+<svg class="thumb" viewBox="0 0 120 90"><rect x="32" y="22" width="56" height="10" class="steel2"/><rect x="56" y="32" width="8" height="28" class="steel2"/><rect x="24" y="44" width="28" height="16" fill="#D8D4C6" stroke="var(--ink)" stroke-width="1"/><rect x="68" y="44" width="28" height="16" fill="#D8D4C6" stroke="var(--ink)" stroke-width="1"/><text x="60" y="84" font-size="9" text-anchor="middle">EPLMCN230B — 30 mm</text></svg>
+</td><td>Mid clamp, <strong>30 mm</strong></td><td>EPLMCN230B + M8 hardware; torque 12–16 N·m. ⚠ agotado at Geravolt — Syscom dealer / ML. 35 mm clamps DO NOT fit</td><td class="qty">28 (buy 30)</td><td>D-08, D-01</td></tr>
+
+<tr><td class="pcode">N</td><td>
+<svg class="thumb" viewBox="0 0 120 90"><path d="M40,60 L40,26 L82,26 L82,36 L50,36 L50,60 Z" class="steel2"/><rect x="28" y="60" width="44" height="9" class="steel2"/><circle cx="45" cy="50" r="5" fill="var(--paper)" stroke="var(--ink)" stroke-width="1"/><rect x="84" y="40" width="24" height="14" fill="#D8D4C6" stroke="var(--ink)" stroke-width="1"/><text x="60" y="84" font-size="9" text-anchor="middle">EPLECN230/35B</text></svg>
+</td><td>End clamp 30/35 (dual)</td><td>EPLECN230/35B + M8 hardware; row ends; overlap 10–12 on frame</td><td class="qty">8 (buy 10)</td><td>D-08, D-01</td></tr>
+
+<tr><td class="pcode">P</td><td>
+<svg class="thumb" viewBox="0 0 120 90"><rect x="16" y="34" width="14" height="24" class="steel2"/><rect x="30" y="41" width="46" height="10" class="steel2"/><line x1="46" y1="41" x2="50" y2="51" class="hatch"/><line x1="56" y1="41" x2="60" y2="51" class="hatch"/><line x1="66" y1="41" x2="70" y2="51" class="hatch"/><rect x="82" y="36" width="18" height="20" class="steel"/><rect x="79" y="56" width="24" height="5" class="steel"/><text x="60" y="84" font-size="9" text-anchor="middle">M8×25 A2 + flange nut</text></svg>
+</td><td>T-slot bolt + serrated flange nut</td><td>M8 × 25 A2-70 "cabeza de martillo" for solar rail; ⚠ buy 2 samples first, verify channel fit</td><td class="qty">36 (buy 44)</td><td>D-06</td></tr>
+
+<tr><td class="pcode">Q</td><td>
+<svg class="thumb" viewBox="0 0 120 90"><rect x="24" y="34" width="66" height="20" rx="3" class="epdm"/><line x1="34" y1="54" x2="44" y2="34" stroke="var(--paper)" stroke-width="1" opacity="0.5"/><line x1="52" y1="54" x2="62" y2="34" stroke="var(--paper)" stroke-width="1" opacity="0.5"/><line x1="70" y1="54" x2="80" y2="34" stroke="var(--paper)" stroke-width="1" opacity="0.5"/><text x="60" y="84" font-size="9" text-anchor="middle">EPDM 3 × 50 × 60</text></svg>
+</td><td>EPDM isolation pad</td><td>3 mm × 50 × 60 — under EVERY rail seat; no bare aluminum on steel, ever</td><td class="qty">36 (buy 40)</td><td>D-06</td></tr>
+
+<tr><td class="pcode">R</td><td>
+<svg class="thumb" viewBox="0 0 120 90"><rect x="14" y="14" width="92" height="62" class="glass" fill-opacity="0.45"/><rect x="14" y="14" width="92" height="62" fill="none" stroke="var(--ink)" stroke-width="2"/><line x1="45" y1="14" x2="45" y2="76" class="glassline"/><line x1="76" y1="14" x2="76" y2="76" class="glassline"/><line x1="14" y1="45" x2="106" y2="45" class="glassline"/><text x="60" y="88" font-size="9" text-anchor="middle">2382 × 1134 × 30 · 28.5 kg</text></svg>
+</td><td>PV module</td><td>LONGi LR7-72HVHF-650M Hi-MO X10 Guardian; portrait ONLY, clamp long side @ 491 from ends, never drill frame, 2-person lift</td><td class="qty">16</td><td>D-01, D-02, D-08</td></tr>
+
+<tr><td class="pcode">S</td><td>
+<svg class="thumb" viewBox="0 0 120 90"><rect x="40" y="40" width="38" height="24" class="steel2"/><circle cx="59" cy="36" r="8" class="steel"/><line x1="53" y1="30" x2="65" y2="42" class="thin"/><circle cx="48" cy="52" r="4" fill="var(--paper)" stroke="var(--ink)" stroke-width="1"/><path d="M14,52 L44,52" stroke="#8C5A2B" stroke-width="3" fill="none"/><text x="60" y="84" font-size="9" text-anchor="middle">lay-in lug 12–6 AWG</text></svg>
+</td><td>Grounding lug</td><td>Tin-plated lay-in lug w/ star washer; 4 rails + 1 per row structure</td><td class="qty">6 (buy 12)</td><td>D-09</td></tr>
+
+<tr><td class="pcode">T</td><td>
+<svg class="thumb" viewBox="0 0 120 90"><path d="M22,62 C 40,26 80,26 98,62" fill="none" stroke="#8C5A2B" stroke-width="3"/><circle cx="22" cy="64" r="7" fill="none" stroke="var(--ink)" stroke-width="2"/><circle cx="98" cy="64" r="7" fill="none" stroke="var(--ink)" stroke-width="2"/><text x="60" y="86" font-size="9" text-anchor="middle">12 AWG Cu × 150, lugged</text></svg>
+</td><td>Splice bonding jumper</td><td>12 AWG Cu × 150, lug both ends — across every rail splice L (splice not assumed conductive)</td><td class="qty">4</td><td>D-09</td></tr>
+
+<tr><td class="pcode">U</td><td>
+<svg class="thumb" viewBox="0 0 120 90"><circle cx="40" cy="46" r="13" fill="none" stroke="var(--ink)" stroke-width="1.5"/><g stroke="var(--ink)" stroke-width="1.2"><line x1="40" y1="29" x2="40" y2="35"/><line x1="40" y1="57" x2="40" y2="63"/><line x1="23" y1="46" x2="29" y2="46"/><line x1="51" y1="46" x2="57" y2="46"/><line x1="28" y1="34" x2="32" y2="38"/><line x1="48" y1="54" x2="52" y2="58"/><line x1="52" y1="34" x2="48" y2="38"/><line x1="32" y1="54" x2="28" y2="58"/></g><rect x="70" y="34" width="18" height="11" class="steel2"/><rect x="74" y="45" width="10" height="24" class="steel2"/><text x="60" y="86" font-size="9" text-anchor="middle">M4/M5 + toothed washer</text></svg>
+</td><td>Module ground hardware</td><td>M4/M5 bolt + toothed/star washer at the frame's Ø4.2 marked ground hole (washer must bite through anodizing)</td><td class="qty">16 sets</td><td>D-09</td></tr>
+
+<tr><td class="pcode">V</td><td>
+<svg class="thumb" viewBox="0 0 120 90"><rect x="30" y="30" width="26" height="46" rx="4" class="conc"/><path d="M40,30 L36,12 L46,12 L43,30 Z" fill="var(--ink-soft)"/><circle cx="84" cy="56" r="15" fill="none" stroke="var(--ink)" stroke-width="2.5"/><circle cx="84" cy="56" r="6" fill="none" stroke="var(--ink)" stroke-width="1"/><text x="60" y="86" font-size="9" text-anchor="middle">PU sealant + butyl tape</text></svg>
+</td><td>Sealant</td><td>Butyl tape + PU (Sikaflex-1A class) — every anchor penetration and tie contact point</td><td class="qty">2 tubes + roll</td><td>D-07</td></tr>
+
+</tbody>
+</table>
+<h2>3. Assembly sequence (codes + drawings)</h2>
+<p>Condensed from Rev. C §14 — that section carries the full QC gates. Torques and test loads get written into the QC sheet as you go.</p>
+<ol>
+<li><span class="stepnum">01 · SURVEY</span> — Tape-measure real vigueta centers, chalk all 12 lines + the 9 rafter lines R1–R9 and 4 tie lines of <strong>D-01</strong>. Pilot-hole the capa, verify 60 mm. Buy 2 sample T-bolts <span class="pcode" style="font-size:0.9rem">P</span> and check the rail channel (<strong>D-06</strong>).</li>
+<li><span class="stepnum">02 · CUT</span> — Cut all steel per the parts index (A–H). Keep the two rows' parts in separate marked piles — B2/C2 look like offcuts.</li>
+<li><span class="stepnum">03 · WELD</span> — Jig + weld rafter #1 per <strong>D-03</strong>, verify TOS diagonals, then clone: 9 × type 1, 9 × type 2 (<strong>D-04</strong>). Weld seat tabs <span class="pcode" style="font-size:0.9rem">G</span> on the chords. Test coupons before real joints (4 mm fillets). Prime + paint everything.</li>
+<li><span class="stepnum">04 · ANCHOR</span> — Lay the 4 ties <span class="pcode" style="font-size:0.9rem">E</span> on their lines; drill Ø12 at every vigueta crossing + the east wall-line pairs (<strong>D-07</strong>, <strong>D-01</strong>); clean, inject, set rods <span class="pcode" style="font-size:0.9rem">J</span>. Full cure → proof-test 3 per tie @ 4 kN. Bed contact points in sealant <span class="pcode" style="font-size:0.9rem">V</span>, torque down.</li>
+<li><span class="stepnum">05 · ERECT</span> — 10° row first: set rafters on R1–R9, base ends on ties, plumb, square by diagonals (±5 mm / 9.14 m), fillet-weld bases to ties, cold-galv the welds. Repeat 30° row. Weld X-braces <span class="pcode" style="font-size:0.9rem">F1/F2</span> in bays R2–R3 and R7–R8 (<strong>D-05</strong>).</li>
+<li><span class="stepnum">06 · RAIL</span> — String-line each seat plane to ±3 mm, shim on tabs only. Set rails <span class="pcode" style="font-size:0.9rem">K</span> on pads <span class="pcode" style="font-size:0.9rem">Q</span>, T-bolts <span class="pcode" style="font-size:0.9rem">P</span> finger-tight; splices <span class="pcode" style="font-size:0.9rem">L</span> at the D-01 stations; verify 9300 overall + 80 cantilevers; torque.</li>
+<li><span class="stepnum">07 · PANEL</span> — South row first, west→east. Two people. Leap-frog connect each panel <em>before</em> setting its neighbor. Clamps <span class="pcode" style="font-size:0.9rem">M/N</span> per <strong>D-08</strong>: 12–16 N·m, 10–12 overlap, clear of drain holes.</li>
+<li><span class="stepnum">08 · GROUND</span> — Everything in <strong>D-09</strong>: <span class="pcode" style="font-size:0.9rem">U</span> at each frame, lugs <span class="pcode" style="font-size:0.9rem">S</span>, jumpers <span class="pcode" style="font-size:0.9rem">T</span>, continuity &lt; 1 Ω. Then the wiring plan (Rev. B) takes over.</li>
+</ol>
+
+<blockquote><strong>Hold points (do not pass):</strong> anchor cure + proof test before any structure load · 35 mm mid clamps do not grip these 30 mm frames · nothing bears on bovedilla · never step on modules.</blockquote>
+
+  <div class="colophon">
+    ASSEMBLY MANUAL · BODEGA ROOF · 16 × LR7-72HVHF-650M · CODES A–V · D-01…D-09 · GOVERNED BY REV. C
+  </div>
+</div>
+</body>
+</html>
