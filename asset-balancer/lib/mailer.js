@@ -2,6 +2,7 @@ const nodemailer = require('nodemailer');
 const config = require('./config');
 const db = require('./db');
 const { sendWhatsApp } = require('./whatsapp');
+const { indexLabelForProfile } = require('./balancer');
 
 let transporter = null;
 if (config.smtp.host && config.smtp.user) {
@@ -47,7 +48,7 @@ function parseRecipients(profile) {
 
 function buildText(event) {
   const { profile, alerts, indexNote } = event;
-  const idx = profile.index_asset.toUpperCase();
+  const idx = indexLabelForProfile(profile.id);
 
   const lines = alerts.map((al) => {
     const sym = al.asset.symbol.toUpperCase();
@@ -141,7 +142,7 @@ async function sendAlertEvents(events) {
 // live test of the whole comms path (email + WhatsApp).
 async function sendStatusReport(profile, view) {
   const { assets, totals } = view;
-  const idx = profile.index_asset.toUpperCase();
+  const idx = indexLabelForProfile(profile.id);
   const ts = new Date().toISOString().slice(0, 16).replace('T', ' ');
   const money = (n) =>
     n == null ? '—' : n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });

@@ -29,11 +29,11 @@
           <ul id="profile-list"></ul>
           <form id="profile-form" class="stack">
             <input id="pf-name" placeholder="Profile name" required>
-            <input id="pf-index" placeholder="Index asset (usd, bitcoin, ...)" value="usd">
             <label>Threshold % <input id="pf-threshold" type="number" step="0.1" min="0.1" value="5"></label>
             <label>Poll every (min) <input id="pf-poll" type="number" min="1" value="15"></label>
             <button type="submit">Add profile</button>
           </form>
+          <p class="muted" style="font-size:.78rem">The index currency is set later by checkmarking one asset as the tethered index.</p>
         </div>
 
         <div class="card grow" id="detail-card">
@@ -51,6 +51,12 @@
             <p id="d-meta" class="muted"></p>
             <div id="d-summary" class="summary"></div>
 
+            <div class="settings-row">
+              <label>Threshold % <input id="s-threshold" type="number" step="0.1" min="0.1"></label>
+              <label>Poll every (min) <input id="s-poll" type="number" min="1"></label>
+              <button id="s-save" class="ghost">Save settings</button>
+            </div>
+
             <h3>Assets</h3>
             <p id="alloc-warning" class="warn-text hidden"></p>
             <div class="table-wrap">
@@ -64,11 +70,28 @@
 
             <div id="targets-editor" class="hidden">
               <h3>New target allocations</h3>
-              <p class="muted">Targets must total 100% (tethered index asset included). Saving takes a fresh unit snapshot and resets the currency basket to 1.00000000.</p>
+              <p class="muted">Targets must total 100% (tethered index asset included). The currency basket stays continuous across the change — only trading moves it.</p>
               <div id="t-rows"></div>
               <p id="t-sum" class="muted"></p>
+              <label class="toggle-row"><input type="checkbox" id="t-reset"> Start a fresh basket track record at 1.0 (instead of continuing)</label>
               <button id="t-save">Save targets</button>
               <button id="t-cancel" class="ghost">Cancel</button>
+            </div>
+
+            <div id="flow-section">
+              <h3>Deposit / withdraw</h3>
+              <p class="muted">Record external money in or out. Enter a signed change per asset (e.g. <code>+5000</code> deposited, <code>-0.05</code> withdrawn). The currency basket and value performance stay continuous — deposits and withdrawals are not counted as gains.</p>
+              <div id="flow-rows"></div>
+              <input id="flow-note" placeholder="Note (optional, e.g. monthly savings)" class="flow-note">
+              <div>
+                <button id="flow-save">Record deposit / withdrawal</button>
+              </div>
+              <div class="table-wrap">
+                <table id="flow-table">
+                  <thead><tr><th>When</th><th>Change</th><th>Note</th></tr></thead>
+                  <tbody></tbody>
+                </table>
+              </div>
             </div>
             <form id="asset-form" class="inline">
               <input id="a-search" placeholder="Search coin (e.g. ethereum)" autocomplete="off">
@@ -112,7 +135,7 @@
             <div class="table-wrap">
               <table id="snap-table">
                 <thead>
-                  <tr><th>When</th><th>Basket</th><th>Total (index)</th><th>Total (USD)</th></tr>
+                  <tr><th>When</th><th>Basket</th><th>Value index</th><th>Total (index)</th><th>Total (USD)</th></tr>
                 </thead>
                 <tbody></tbody>
               </table>

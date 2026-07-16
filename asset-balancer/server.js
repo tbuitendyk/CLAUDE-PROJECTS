@@ -3,7 +3,15 @@ const path = require('path');
 const express = require('express');
 const config = require('./lib/config');
 const db = require('./lib/db');
-const { pollProfiles, setTargets, computeBasket, rearmAfterUpload } = require('./lib/balancer');
+const {
+  pollProfiles,
+  setTargets,
+  recordFlow,
+  computeBasket,
+  computeValueIndex,
+  indexLabel,
+  rearmAfterUpload,
+} = require('./lib/balancer');
 const { sendAlertEvents, sendStatusReport, sendTestEmail, emailConfigured } = require('./lib/mailer');
 const { searchCoins, supportedFiats, fiatCode } = require('./lib/pricing');
 const { visionConfigured, parseHoldingsScreenshot } = require('./lib/vision');
@@ -85,15 +93,14 @@ app.get('/api/profiles', (req, res) => {
 });
 
 app.post('/api/profiles', (req, res) => {
-  const { name, index_asset, threshold_pct, poll_minutes } = req.body || {};
+  // The index currency is derived from the tethered (checkmarked) asset, not
+  // set here. index_asset stays at its column default for legacy rows.
+  const { name, threshold_pct, poll_minutes } = req.body || {};
   if (!name) return res.status(400).json({ error: 'name required' });
   const info = db
-    .prepare(
-      'INSERT INTO profiles (name, index_asset, threshold_pct, poll_minutes, created_at) VALUES (?, ?, ?, ?, ?)'
-    )
+    .prepare('INSERT INTO profiles (name, threshold_pct, poll_minutes, created_at) VALUES (?, ?, ?, ?)')
     .run(
       name,
-      (index_asset || 'usd').toLowerCase().trim(),
       Number(threshold_pct) > 0 ? Number(threshold_pct) : 5,
       Number(poll_minutes) >= 1 ? Math.round(Number(poll_minutes)) : config.defaultPollMinutes,
       Date.now()
@@ -129,10 +136,9 @@ app.patch('/api/profiles/:id', (req, res) => {
   }
 
   db.prepare(
-    'UPDATE profiles SET name = ?, index_asset = ?, threshold_pct = ?, poll_minutes = ?, enabled = ?, alerts_enabled = ?, recipients = ? WHERE id = ?'
+    'UPDATE profiles SET name = ?, threshold_pct = ?, poll_minutes = ?, enabled = ?, alerts_enabled = ?, recipients = ? WHERE id = ?'
   ).run(
     b.name ?? profile.name,
-    (b.index_asset ?? profile.index_asset).toLowerCase().trim(),
     Number(b.threshold_pct) > 0 ? Number(b.threshold_pct) : profile.threshold_pct,
     Number(b.poll_minutes) >= 1 ? Math.round(Number(b.poll_minutes)) : profile.poll_minutes,
     b.enabled === undefined ? profile.enabled : b.enabled ? 1 : 0,
@@ -193,19 +199,17 @@ function buildProfileView(profile) {
     a.alertActive = activeAlerts.has(a.id);
   }
 
-  // Growth relative to the profile's very first valued snapshot.
-  const first = db
-    .prepare(
-      'SELECT total_rel FROM profile_snapshots WHERE profile_id = ? AND total_rel > 0 ORDER BY ts LIMIT 1'
-    )
-    .get(profile.id);
+  // Chained indexes: basket (unit growth) and value index (value growth),
+  // both continuous across target changes and deposits/withdrawals.
+  const valueIndex = computeValueIndex(profile, totalRel);
   const totals = {
     totalUsd,
     totalRel,
     targetTotal,
-    basket: computeBasket(rawAssets),
-    initialRel: first ? first.total_rel : null,
-    growthPct: first && first.total_rel > 0 && totalRel > 0 ? (totalRel / first.total_rel - 1) * 100 : null,
+    indexLabel: indexLabel(rawAssets),
+    basket: computeBasket(rawAssets, profile.basket_base),
+    valueIndex,
+    growthPct: valueIndex != null ? (valueIndex - 1) * 100 : null,
   };
   return { assets, totals };
 }
@@ -219,7 +223,7 @@ app.get('/api/profiles/:id/state', (req, res) => {
 
   const snapshots = db
     .prepare(
-      'SELECT ts, total_usd, total_rel, basket, quantities FROM profile_snapshots WHERE profile_id = ? ORDER BY ts DESC LIMIT 48'
+      'SELECT ts, total_usd, total_rel, basket, value_index, quantities FROM profile_snapshots WHERE profile_id = ? ORDER BY ts DESC LIMIT 48'
     )
     .all(profile.id)
     .reverse();
@@ -228,7 +232,11 @@ app.get('/api/profiles/:id/state', (req, res) => {
     .prepare('SELECT * FROM alert_log WHERE profile_id = ? ORDER BY ts DESC LIMIT 50')
     .all(profile.id);
 
-  res.json({ profile, assets, alertLog, totals, snapshots });
+  const flows = db
+    .prepare('SELECT ts, deltas, note FROM flows WHERE profile_id = ? ORDER BY ts DESC LIMIT 20')
+    .all(profile.id);
+
+  res.json({ profile, assets, alertLog, totals, snapshots, flows });
 });
 
 // ---- assets -----------------------------------------------------------------
@@ -345,13 +353,32 @@ app.post('/api/profiles/:id/import-complete', (req, res) => {
 
 // Set new target allocations: the deliberate decision to change the mix.
 // Body: {targets: [{asset_id, target_pct}, ...]} covering every asset,
-// totalling 100. Resets the currency basket to 1.00000000.
+// totalling 100, plus optional reset_basket. Chain-linked by default so the
+// currency basket stays continuous; reset_basket starts a fresh track record.
 app.post('/api/profiles/:id/targets', (req, res) => {
   const profile = db.prepare('SELECT * FROM profiles WHERE id = ?').get(req.params.id);
   if (!profile) return res.status(404).json({ error: 'not found' });
+  const body = req.body || {};
   try {
-    setTargets(profile.id, (req.body || {}).targets || []);
+    setTargets(profile.id, body.targets || [], { resetBasket: Boolean(body.reset_basket) });
     res.json({ ok: true });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// Record a deposit or withdrawal: per-asset signed quantity deltas that keep
+// the currency basket and value index continuous (external money is not
+// performance). Body: {deltas: [{asset_id, delta}], note}. A poll follows so
+// the pool re-values immediately.
+app.post('/api/profiles/:id/flow', async (req, res) => {
+  const profile = db.prepare('SELECT * FROM profiles WHERE id = ?').get(req.params.id);
+  if (!profile) return res.status(404).json({ error: 'not found' });
+  const body = req.body || {};
+  try {
+    const result = await recordFlow(profile.id, body.deltas || [], body.note);
+    await pollProfiles({ force: true, profileId: profile.id }).catch(() => {});
+    res.json({ ok: true, ...result });
   } catch (err) {
     res.status(400).json({ error: err.message });
   }

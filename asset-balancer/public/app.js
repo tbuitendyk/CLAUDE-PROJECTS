@@ -93,7 +93,6 @@ $('#profile-form').addEventListener('submit', async (e) => {
     method: 'POST',
     body: {
       name: $('#pf-name').value,
-      index_asset: $('#pf-index').value || 'usd',
       threshold_pct: Number($('#pf-threshold').value),
       poll_minutes: Number($('#pf-poll').value),
     },
@@ -173,20 +172,24 @@ function renderDetail() {
   $('#detail').classList.toggle('hidden', !d);
   if (!d) return;
 
-  const { profile, assets, alertLog, totals, snapshots } = d;
+  const { profile, assets, alertLog, totals, snapshots, flows } = d;
   $('#d-name').textContent = profile.name;
   const polled = profile.last_polled_at
     ? new Date(profile.last_polled_at).toLocaleString()
     : 'never';
+  const idx = (totals && totals.indexLabel) || 'USD';
   $('#d-meta').textContent =
-    `Index: ${profile.index_asset} · threshold ${profile.threshold_pct}% of target · ` +
+    `Index: ${idx} (tethered asset) · threshold ${profile.threshold_pct}% of target · ` +
     `polls every ${profile.poll_minutes} min · last poll: ${polled}`;
 
+  // Editable threshold / poll settings.
+  $('#s-threshold').value = profile.threshold_pct;
+  $('#s-poll').value = profile.poll_minutes;
+
   // Overall performance, two lines: (1) currency basket — unit growth,
-  // (2) value in index-asset terms with growth since start.
+  // (2) value in the index currency with growth since start.
   const summary = $('#d-summary');
   summary.innerHTML = '';
-  const idx = profile.index_asset.toUpperCase();
   const line1 = document.createElement('div');
   line1.className = 'perf-line';
   if (totals && totals.basket != null) {
@@ -273,9 +276,26 @@ function renderDetail() {
     tr.innerHTML =
       `<td>${new Date(s.ts).toLocaleString()}</td>` +
       `<td>${s.basket != null ? s.basket.toFixed(8) : '—'}</td>` +
+      `<td>${s.value_index != null ? s.value_index.toFixed(6) : '—'}</td>` +
       `<td>${fmtNum(s.total_rel)}</td>` +
       `<td>$${fmtMoney(s.total_usd)}</td>`;
     snapBody.appendChild(tr);
+  }
+
+  // deposit / withdraw: one signed input per asset, plus flow history
+  renderFlowRows(assets);
+  const flowBody = $('#flow-table tbody');
+  flowBody.innerHTML = '';
+  for (const f of flows || []) {
+    let deltas = [];
+    try { deltas = JSON.parse(f.deltas); } catch {}
+    const change = deltas
+      .map((d) => `${d.delta >= 0 ? '+' : ''}${d.delta} ${d.symbol.toUpperCase()}`)
+      .join(', ');
+    const tr = document.createElement('tr');
+    tr.innerHTML =
+      `<td>${new Date(f.ts).toLocaleString()}</td><td>${change}</td><td>${f.note ? f.note.replace(/[<>]/g, '') : ''}</td>`;
+    flowBody.appendChild(tr);
   }
 
   // screenshot import (only when the server has an Anthropic API key)
@@ -435,13 +455,17 @@ function updateTargetSum() {
 }
 
 $('#t-save').addEventListener('click', async () => {
-  const targets = [...document.querySelectorAll('#t-rows input')].map((input) => ({
+  const targets = [...document.querySelectorAll('#t-rows input[data-asset-id]')].map((input) => ({
     asset_id: Number(input.dataset.assetId),
     target_pct: Number(input.value) || 0,
   }));
   try {
-    await api(`/profiles/${state.selectedId}/targets`, { method: 'POST', body: { targets } });
+    await api(`/profiles/${state.selectedId}/targets`, {
+      method: 'POST',
+      body: { targets, reset_basket: $('#t-reset').checked },
+    });
     $('#targets-editor').classList.add('hidden');
+    $('#t-reset').checked = false;
     await refresh();
   } catch (err) {
     alert(err.message);
@@ -450,6 +474,70 @@ $('#t-save').addEventListener('click', async () => {
 
 $('#t-cancel').addEventListener('click', () => {
   $('#targets-editor').classList.add('hidden');
+});
+
+// Edit threshold / poll interval on an existing profile.
+$('#s-save').addEventListener('click', async () => {
+  try {
+    await api(`/profiles/${state.selectedId}`, {
+      method: 'PATCH',
+      body: {
+        threshold_pct: Number($('#s-threshold').value),
+        poll_minutes: Number($('#s-poll').value),
+      },
+    });
+    await refresh();
+  } catch (err) {
+    alert(err.message);
+  }
+});
+
+// ---- deposit / withdraw ----
+
+function renderFlowRows(assets) {
+  const box = $('#flow-rows');
+  box.innerHTML = '';
+  for (const a of assets) {
+    const row = document.createElement('label');
+    row.className = 'flow-row';
+    const name = document.createElement('span');
+    name.textContent = a.symbol.toUpperCase() + (a.is_index ? ' ⚓' : '');
+    const input = document.createElement('input');
+    input.type = 'number';
+    input.step = 'any';
+    input.placeholder = '+deposit / -withdraw';
+    input.dataset.assetId = a.id;
+    input.className = 'flow-input';
+    row.append(name, input);
+    box.appendChild(row);
+  }
+}
+
+$('#flow-save').addEventListener('click', async () => {
+  const deltas = [...document.querySelectorAll('#flow-rows .flow-input')]
+    .map((input) => ({ asset_id: Number(input.dataset.assetId), delta: Number(input.value) || 0 }))
+    .filter((d) => d.delta !== 0);
+  if (deltas.length === 0) {
+    alert('Enter at least one non-zero deposit or withdrawal.');
+    return;
+  }
+  const summary = deltas
+    .map((d) => {
+      const a = state.detail.assets.find((x) => x.id === d.asset_id);
+      return `${d.delta >= 0 ? '+' : ''}${d.delta} ${(a ? a.symbol : '').toUpperCase()}`;
+    })
+    .join(', ');
+  if (!confirm(`Record this flow?\n\n${summary}\n\nThe basket and value performance stay continuous — this is not counted as a gain.`)) return;
+  try {
+    await api(`/profiles/${state.selectedId}/flow`, {
+      method: 'POST',
+      body: { deltas, note: $('#flow-note').value.trim() || undefined },
+    });
+    $('#flow-note').value = '';
+    await refresh();
+  } catch (err) {
+    alert(err.message);
+  }
 });
 
 $('#d-delete').addEventListener('click', async () => {
