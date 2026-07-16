@@ -1,0 +1,1061 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Solar PV Mounting Structure · Bodega Roof · Rev. C</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400&family=Geist:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --paper: #F4EFE3; --paper-light: #FAF6EB; --ink: #1C1C1C;
+    --ink-soft: #4A4A47; --ink-faint: #8B8779; --navy: #1E3A5F;
+    --oxblood: #8B3A1F; --rule: #B8B0A0; --grid: rgba(28,28,28,0.04);
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0; background: var(--paper); color: var(--ink);
+    font-family: 'Geist', ui-sans-serif, system-ui, sans-serif;
+    font-size: 16px; line-height: 1.6; -webkit-font-smoothing: antialiased;
+  }
+  body {
+    background-image:
+      linear-gradient(var(--grid) 1px, transparent 1px),
+      linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+    background-size: 24px 24px; background-position: -1px -1px;
+  }
+  .page { max-width: 860px; margin: 0 auto; padding: 40px 24px 80px; }
+  h1 {
+    font-family: 'Newsreader', serif; font-weight: 500;
+    font-size: clamp(1.65rem, 5vw, 2.25rem); line-height: 1.15;
+    letter-spacing: -0.015em; margin: 0 0 6px;
+    border-top: 3px double var(--ink); padding-top: 18px;
+  }
+  h2 {
+    font-family: 'Newsreader', serif; font-weight: 500; font-size: 1.45rem;
+    letter-spacing: -0.01em; margin: 52px 0 6px;
+    border-bottom: 1px solid var(--rule); padding-bottom: 8px;
+  }
+  h3 {
+    font-family: 'Newsreader', serif; font-weight: 600; font-size: 1.12rem;
+    margin: 32px 0 6px; color: var(--ink);
+  }
+  a { color: var(--navy); }
+  table {
+    width: 100%; border-collapse: collapse; margin: 12px 0;
+    font-size: 0.9rem; background: var(--paper-light);
+  }
+  th, td {
+    padding: 8px 10px; text-align: left;
+    border-bottom: 1px solid var(--rule); vertical-align: top;
+  }
+  th {
+    font-family: 'JetBrains Mono', monospace; font-size: 0.7rem;
+    letter-spacing: 0.08em; text-transform: uppercase;
+    color: var(--ink-soft); font-weight: 500;
+    border-bottom: 1.5px solid var(--ink);
+  }
+  code {
+    font-family: 'JetBrains Mono', monospace; font-size: 0.86em;
+    background: rgba(28,28,28,0.06); padding: 1px 5px; border-radius: 2px;
+  }
+  pre {
+    background: var(--paper-light); border: 1px solid var(--rule);
+    border-radius: 2px; padding: 14px 16px; overflow-x: auto;
+    line-height: 1.35;
+  }
+  pre code {
+    background: none; padding: 0;
+    font-size: 0.78rem; white-space: pre;
+  }
+  ul, ol { padding-left: 26px; }
+  li { margin-bottom: 6px; }
+  hr { border: none; height: 1px; background: var(--rule); margin: 40px 0; }
+  blockquote {
+    margin: 18px 0; padding: 12px 18px; background: #E8EDF4;
+    border-left: 4px solid var(--navy); border-radius: 2px;
+  }
+  .docnav {
+    font-family: 'JetBrains Mono', monospace; font-size: 0.72rem;
+    letter-spacing: 0.08em; text-transform: uppercase;
+    color: var(--ink-faint); margin-bottom: 24px;
+  }
+  .docnav a { color: var(--oxblood); text-decoration: none; }
+  .docnav a:hover { text-decoration: underline; }
+  .colophon {
+    margin-top: 80px; padding-top: 24px; border-top: 1px solid var(--rule);
+    font-family: 'JetBrains Mono', monospace; font-size: 0.72rem;
+    letter-spacing: 0.05em; color: var(--ink-faint); text-align: center;
+  }
+  @media print {
+    body { background: white; }
+    pre, table { break-inside: avoid; }
+    h2 { break-after: avoid; }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+  <nav class="docnav">
+    <a href="./">↑ index</a> &nbsp;·&nbsp;
+    companion: <a href="solar-wiring-diagram-rev-b.html">Solar Hybrid Wiring — Rev. B</a> &nbsp;·&nbsp;
+    calc: <a href="calc.py">calc.py</a> &nbsp;·&nbsp;
+    source: <a href="Solar_Mounting_Structure_Bodega_16x650W_RevC.md">markdown</a>
+  </nav>
+<h1>Solar PV Mounting Structure — Bodega Roof</h1>
+<h2>16 × LONGi Hi-MO X10 Guardian Anti-Dust LR7-72HVHF-650M — Rev. C</h2>
+<table>
+<thead>
+<tr>
+<th></th>
+<th></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Document</strong></td>
+<td>Solar_Mounting_Structure_Bodega_16x650W_RevC</td>
+</tr>
+<tr>
+<td><strong>Date</strong></td>
+<td>2026-07-15</td>
+</tr>
+<tr>
+<td><strong>Status</strong></td>
+<td>FOR CONSTRUCTION — survey substantially closed (§6.3); three field verifications remain in §16 before drilling</td>
+</tr>
+<tr>
+<td><strong>Companion docs</strong></td>
+<td>Solar Hybrid Wiring — León Install — Rev. B; Solar_Subplan_CFE_Victron_ServicePanel_RevB</td>
+</tr>
+<tr>
+<td><strong>Scope</strong></td>
+<td>Structural mounting of 16 panels (Phase 1) on the bodega roof: steel understructure, aluminum rail system, all interfaces, fasteners, grounding/bonding of the array. Electrical stringing/wiring is out of scope except for interface notes (§12).</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Verification legend used throughout:</strong>
+- <strong>[V]</strong> — verified against a primary source (LONGi datasheet 20240927 V01, LONGi DG Installation Manual V19 draft, GERAVOLT product listings retrieved 2026‑07‑15)
+- <strong>[C]</strong> — calculated from [V] inputs; calculation shown or referenced in §15
+- <strong>[A]</strong> — assumption or from-memory value; must be confirmed before the affected step (all [A] items are also collected in §16)</p>
+<hr />
+<h2>1. Scope &amp; design basis</h2>
+<h3>1.1 The array</h3>
+<table>
+<thead>
+<tr>
+<th>Item</th>
+<th>Value</th>
+<th>Src</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Module</td>
+<td>LONGi LR7-72HVHF-650M, Hi-MO X10 Guardian Anti-Dust</td>
+<td>[V]</td>
+</tr>
+<tr>
+<td>Module dimensions</td>
+<td>2382 × 1134 × 30 mm, 28.5 kg</td>
+<td>[V]</td>
+</tr>
+<tr>
+<td>Electrical (STC)</td>
+<td>650 W, Voc 53.90 V, Isc 15.29 A, Vmp 44.56 V, Imp 14.59 A</td>
+<td>[V]</td>
+</tr>
+<tr>
+<td>Module mech. limits (test)</td>
+<td>+5400 Pa front / −2400 Pa rear</td>
+<td>[V]</td>
+</tr>
+<tr>
+<td>Module mech. limits (design)</td>
+<td>+3600 / −1600 Pa (test = design × 1.5 safety factor, per manual)</td>
+<td>[V]</td>
+</tr>
+<tr>
+<td>Count / power</td>
+<td>16 modules, 10.40 kWp</td>
+<td>—</td>
+</tr>
+<tr>
+<td>Orientation</td>
+<td>Portrait (long axis up-slope), facing south</td>
+<td>[V] mandatory, see §2</td>
+</tr>
+<tr>
+<td>Layout</td>
+<td>2 rows × 8 modules: north row @ 30° tilt, south row @ 10° tilt</td>
+<td>per site plan</td>
+</tr>
+</tbody>
+</table>
+<h3>1.2 The roof</h3>
+<table>
+<thead>
+<tr>
+<th>Item</th>
+<th>Value</th>
+<th>Src</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Plan dimensions</td>
+<td>9.14 m (E–W) × 4.82 m (N–S)</td>
+<td>site measurement</td>
+</tr>
+<tr>
+<td>Deck construction</td>
+<td><strong>Vigueta y bovedilla</strong> (owner-confirmed 2026-07-15). Vigueta direction, spacing, and capa de compresión thickness still to be surveyed — §16.1a.</td>
+<td>[V owner] / [A survey]</td>
+</tr>
+<tr>
+<td>Added mass, complete system</td>
+<td>≈ 1,003 kg total ≈ 22.8 kg/m² averaged over the roof (concentrated at 18 rafter bases)</td>
+<td>[C]</td>
+</tr>
+</tbody>
+</table>
+<h3>1.3 Load design basis</h3>
+<p>The structure is sized so that <strong>the module reaches its own design load limit before any steel, aluminum, or anchor element does.</strong> Envelope pressure normal to panel plane:</p>
+<table>
+<thead>
+<tr>
+<th>Case</th>
+<th>Pressure</th>
+<th>Basis</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Uplift (suction)</td>
+<td><strong>−1.6 kPa</strong> (163 kgf/m²)</td>
+<td>= module design uplift limit [V]. Site cross-check: q = 0.613·V² at V = 140 km/h (38.9 m/s) gives 0.93 kPa dynamic; with net force coefficient 1.5–1.7 for an open tilted panel → ≈ 1.4–1.6 kPa. The 140 km/h regional velocity and Cf range are <strong>[A]</strong> engineering values from memory of CFE MDOC-order magnitudes, chosen conservative for the Bajío; the module-limit envelope governs regardless.</td>
+</tr>
+<tr>
+<td>Downforce</td>
+<td>+1.7 kPa (wind 1.6 + dead 0.11)</td>
+<td>[C]; module design downforce limit is 3.6 kPa [V] — not approached by wind; would only matter under hail loading/point loads.</td>
+</tr>
+<tr>
+<td>Dead</td>
+<td>Panel 10.55 kg/m² of panel + steel/rail self-weight</td>
+<td>[V]/[C]</td>
+</tr>
+</tbody>
+</table>
+<p>All member and anchor demands in §15 derive from this envelope. This is a self-build design rationale, not a stamped engineering calculation; if a formal check is ever needed (permits, insurance), a local structural engineer should verify against CFE MDOC wind provisions for the exact site.</p>
+<hr />
+<h2>2. Governing manufacturer requirements — all [V] from LONGi DG Installation Manual V19</h2>
+<p>These are warranty conditions. Every one is designed-in below; do not deviate during build.</p>
+<ol>
+<li><strong>Anti-Dust (anti-soiling) modules must be mounted in portrait orientation</strong> and must <strong>not</strong> be clamped on the short edge. (The planned layout complies — and is the only compliant option.)</li>
+<li><strong>Clamp position on the long frame:</strong> permitted only within bands measured from the module ends — <strong>250–350, 350–450, or 450–550 mm.</strong> This design places clamps at <strong>491 mm</strong> from each end (inside the 450–550 band, coincident with the module's outer bolt-hole line at 1400 mm spacing per datasheet [V]). ⚠ <em>The manual's table mapping each band to its exact load rating did not extract legibly from the PDF; that the 450–550/bolt-line position carries the full ±5400/2400 rating is a reasoned inference [A] — confirm with LONGi/GERAVOLT support (§16).</em></li>
+<li><strong>Minimum gap between adjoining modules ≥ 10 mm</strong> (thermal). Design uses ~20 mm (mid-clamp width, to be confirmed §16).</li>
+<li><strong>Distance from module frame to roof surface ≥ 10 cm</strong> (fire rating / ventilation). <em>The original sketch's 9 cm south stub violates this; corrected to 150 mm minimum in this design (§3.3).</em></li>
+<li>Clamps: length ≥ 50 mm, overlap onto frame 10–12 mm, must never touch the glass, must not block the frame <strong>drain holes</strong>.</li>
+<li>Clamp bolt torque: <strong>M8 = 12–16 N·m</strong> (M6 = 8–12 N·m).</li>
+<li><strong>Never drill the module frame</strong>; do not scratch the anodizing except at the designated grounding point.</li>
+<li>Grounding via the Ø4.2 mm marked grounding holes on the rear frame (or a listed third-party grounding device); recommended conductor 12 AWG copper; toothed/star washer must penetrate the anodizing.</li>
+<li>Portrait wiring uses <strong>leap-frog</strong> (adjacent modules rotated 180°); 72-cell type requires <strong>≥ 1.4 m</strong> cable reach. Datasheet cable is +400 / −200 mm (customizable to ±1400 mm) — <strong>check the leads on the delivered panels before finalizing wiring plan</strong> (§12, §16).</li>
+</ol>
+<hr />
+<h2>3. Array layout &amp; geometry</h2>
+<h3>3.1 Coordinate system (used for every dimension in this document)</h3>
+<ul>
+<li><strong>x</strong> = 0 at the <strong>west</strong> roof edge, positive east, 0 → 9140 mm.</li>
+<li><strong>y</strong> = 0 at the <strong>south</strong> roof edge, positive north, 0 → 4820 mm.</li>
+<li><strong>z</strong> = 0 at roof surface, positive up.</li>
+<li>All dimensions in <strong>mm</strong> unless noted.</li>
+</ul>
+<h3>3.2 Two discrepancies in the site sketch, resolved</h3>
+<ol>
+<li><strong>Inter-row gap is 411 mm, not 500 mm.</strong> The sketch labels a "50 cm espacio de sombra," but the roof only closes dimensionally with 411 mm: 4820 − 2063 (30° row projection) − 2346 (10° row projection) = <strong>411.3 mm</strong> [C]. The sketch's own side-view "41 cm" annotation matches reality; the "50 cm" label does not. This design fixes both rows flush to the north and south roof edges with the 411 mm gap between.</li>
+<li><strong>The 9 cm south edge height violates the LONGi ≥ 10 cm rule</strong> (§2 item 4). Corrected: 10° row low edge at <strong>150 mm</strong>, 30° row low edge at <strong>250 mm</strong> (the extra 100 mm on the 30° row buys shading margin, §3.4).</li>
+</ol>
+<h3>3.3 Row geometry summary [C]</h3>
+<table>
+<thead>
+<tr>
+<th></th>
+<th>30° row (north)</th>
+<th>10° row (south)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Modules</td>
+<td>8 portrait</td>
+<td>8 portrait</td>
+</tr>
+<tr>
+<td>Row footprint (y)</td>
+<td>y = 2757 → 4820 (depth 2062.9)</td>
+<td>y = 0 → 2345.8</td>
+</tr>
+<tr>
+<td>Panel low edge z</td>
+<td>250</td>
+<td>150</td>
+</tr>
+<tr>
+<td>Panel high edge z</td>
+<td>1441</td>
+<td>564</td>
+</tr>
+<tr>
+<td>Rise across panel</td>
+<td>1191</td>
+<td>414</td>
+</tr>
+<tr>
+<td>Rail lines (y, at clamp line 491 mm from panel ends)</td>
+<td><strong>y = 3182 and y = 4395</strong></td>
+<td><strong>y = 484 and y = 1862</strong></td>
+</tr>
+<tr>
+<td>Rail spacing (slope / horizontal)</td>
+<td>1400 / 1212</td>
+<td>1400 / 1379</td>
+</tr>
+<tr>
+<td>Top-of-steel z at rail lines (rail height 40 mm [A] deducted)</td>
+<td>456 (front) / 1156 (rear)</td>
+<td>195 (front) / 438 (rear)</td>
+</tr>
+</tbody>
+</table>
+<p>Array width (E–W): 8 × 1134 + 7 × 20 = <strong>9212 mm</strong> on a 9140 mm roof → <strong>36 mm overhang each side</strong> [C]. Structurally trivial; rails cantilever 80 mm past the end rafters.</p>
+<h3>3.4 Winter shading check [C — noon-plane approximation]</h3>
+<p>León ≈ 21.12° N → winter-solstice solar-noon altitude ≈ <strong>45.4°</strong>. Height differential from 10°-row north edge (z = 564) down to 30°-row south edge (z = 250) is 314 mm; noon shadow = 314/tan 45.4° ≈ <strong>309 mm &lt; 411 mm gap → clear at midday all year.</strong> Grazing of the 30° row's bottom edge begins when solar altitude drops below ≈ <strong>37.3°</strong>, i.e., roughly the first/last ~1.5–2 h of winter days (approximate; off-noon azimuth ignored). With half-cut cells and 3 bypass diodes [V] this costs little energy and is accepted. (This margin is <em>why</em> the 30° row sits on 250 mm stubs instead of 150.)</p>
+<h3>3.5 Plan view (not to scale)</h3>
+<pre><code>        N ↑                      x=0                                x=9140
+  y=4820 ┌──┬──────┬──────┬──────┬──────┬──────┬──────┬──────┬──────┬──┐
+         │  R1  R2 │  R3  │  R4  │  R5  │  R6  │  R7  │  R8  │  R9     │
+         │  ═══════════════ rail 30N @ y=4395 ═══════════════════════  │   30° ROW
+         │  P1 │ P2 │ P3 │ P4 │ P5 │ P6 │ P7 │ P8   (portrait)         │   8 × 650 W
+         │  ═══════════════ rail 30S @ y=3182 ═══════════════════════  │
+  y=2757 ├────────────────────────────────────────────────────────────┤
+         │                gap 411 mm  (walkway / shadow)               │
+  y=2346 ├────────────────────────────────────────────────────────────┤
+         │  ═══════════════ rail 10N @ y=1862 ═══════════════════════  │   10° ROW
+         │  P9 │ P10│ P11│ P12│ P13│ P14│ P15│ P16                     │   8 × 650 W
+         │  ═══════════════ rail 10S @ y= 484 ═══════════════════════  │
+  y=0    └────────────────────────────────────────────────────────────┘
+            R1…R9 = rafter lines, x = 0, 1142.5, 2285, 3427.5, 4570,
+                                      5712.5, 6855, 7997.5, 9140
+</code></pre>
+<h3>3.6 Side elevation, looking west (not to scale)</h3>
+<pre><code>      N ←                                                          → S
+                 30° ROW                        gap             10° ROW
+        z=1441 ✦
+              ╱ panel 2382 on slope
+        ▒▒▒▒╱  rail
+          ┃╱ chord (PTR 51×51)                        z=564 ✦
+    1046┃┃                                                 ╱▒▒╱ 10°
+   post ┃┃         346┃                        336┃      ╱    93┃
+        ┻┷━━━base━━━━━┷┓250 low edge      z=150 ┏┷━━base━━━━━━━┷┓
+   ═════╧══════════════╧═══════roof════════════╧═══════════════╧═════
+        y=4545      y=3032                   y=2012          y=334
+        anchor…150 in from each base end; posts under rail lines
+</code></pre>
+<hr />
+<h2>4. Setting-out dimensions (mark these on the roof)</h2>
+<p>Rafter lines (x): <strong>0 · 1142.5 · 2285 · 3427.5 · 4570 · 5712.5 · 6855 · 7997.5 · 9140</strong> (9 lines, 8 equal bays of 1142.5). Chalk-line all nine, then the four base bands below.</p>
+<table>
+<thead>
+<tr>
+<th>Element</th>
+<th>y from south edge</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>10° row base, south end</td>
+<td>334</td>
+<td>base runs y 334 → 2012</td>
+</tr>
+<tr>
+<td>10° row anchor line, front</td>
+<td>≈ 394</td>
+<td>60 mm in from base end</td>
+</tr>
+<tr>
+<td>10° row front posts / rail 10S</td>
+<td>484</td>
+<td>posts directly under rail</td>
+</tr>
+<tr>
+<td>10° row rear posts / rail 10N</td>
+<td>1862</td>
+<td></td>
+</tr>
+<tr>
+<td>10° row anchor line, rear</td>
+<td>≈ 1952</td>
+<td></td>
+</tr>
+<tr>
+<td>30° row base, south end</td>
+<td>3032</td>
+<td>base runs y 3032 → 4545</td>
+</tr>
+<tr>
+<td>30° row anchor line, front</td>
+<td>≈ 3092</td>
+<td></td>
+</tr>
+<tr>
+<td>30° row front posts / rail 30S</td>
+<td>3182</td>
+<td></td>
+</tr>
+<tr>
+<td>30° row rear posts / rail 30N</td>
+<td>4395</td>
+<td></td>
+</tr>
+<tr>
+<td>30° row anchor line, rear</td>
+<td>≈ 4485</td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<p>Layout tolerance: rafter lines ±5 mm; rail lines ±5 mm in y; TOS elevations ±3 mm between adjacent rafters (rail must not be forced into a curve).</p>
+<hr />
+<h2>5. Steel structure</h2>
+<h3>5.1 Material [A — confirm at purchase]</h3>
+<p><strong>PTR (perfil tubular) ASTM A500 Grado B or C</strong>, or the unbranded commercial equivalent sold at León steel yards (Aceros/DEACERO distributors). All member checks in §15 pass with large margins even at a conservative Fy = 250 MPa, so uncertified commercial PTR is acceptable <em>for this load level</em>. Buy straight stock; reject bent or heavily rusted tramos.</p>
+<table>
+<thead>
+<tr>
+<th>Use</th>
+<th>Section</th>
+<th>Cal.</th>
+<th>Wall</th>
+<th>Mass</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Rafter members (base, posts, chord)</td>
+<td><strong>PTR 51 × 51 mm (2" × 2")</strong></td>
+<td>cal. 11</td>
+<td>3.0 mm</td>
+<td>4.52 kg/m [C]</td>
+</tr>
+<tr>
+<td>E–W ties and X-bracing</td>
+<td><strong>PTR 38 × 38 mm (1½" × 1½")</strong></td>
+<td>cal. 11</td>
+<td>3.0 mm</td>
+<td>3.30 kg/m [C]</td>
+</tr>
+<tr>
+<td>Rail seat tabs</td>
+<td>Ángulo 38 × 38 × 4.8 mm (1½" × 3/16")</td>
+<td>—</td>
+<td>—</td>
+<td></td>
+</tr>
+<tr>
+<td>Anchor tabs</td>
+<td>Solera 51 × 4.8 mm (2" × 3/16")</td>
+<td>—</td>
+<td>—</td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<p>Cal. 11 (3.0 mm) chosen deliberately over cal. 14 (1.9 mm): the structural demand would pass either, but 3.0 mm wall is far more forgiving for flux-core welding (burn-through margin) and gives corrosion life.</p>
+<h3>5.2 Rafter design</h3>
+<p>Each of the <strong>18 rafters</strong> (9 per row) is a welded right-triangle frame. The two posts sit <strong>directly under the two rail lines</strong>, so panel loads pass through the chord into the posts in pure compression — the chord carries essentially no bending from panel loads [C, §15.3].</p>
+<p><strong>Cut list per rafter [C]:</strong></p>
+<table>
+<thead>
+<tr>
+<th>Member</th>
+<th>30° row (×9)</th>
+<th>10° row (×9)</th>
+<th>End cuts</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Base</td>
+<td>1512</td>
+<td>1679</td>
+<td>square both ends</td>
+</tr>
+<tr>
+<td>Front post</td>
+<td>346</td>
+<td>93</td>
+<td>bottom square; <strong>top mitered</strong> 30°/10° to mate chord underside</td>
+</tr>
+<tr>
+<td>Rear post</td>
+<td>1046</td>
+<td>336</td>
+<td>bottom square; <strong>top mitered</strong> 30°/10°</td>
+</tr>
+<tr>
+<td>Chord</td>
+<td>1600</td>
+<td>1600</td>
+<td>square both ends (overhangs each post 100 mm along slope)</td>
+</tr>
+</tbody>
+</table>
+<p>Assembly geometry per rafter: posts land on the base <strong>150 mm in from each base end</strong>, spaced 1212 mm (30°) / 1379 mm (10°) apart on the base. Chord sits on the mitered post tops with its <strong>top face at the TOS elevations of §3.3</strong>; chord centerline crosses post centerlines at the rail lines. Build a jig: tack the first rafter on a flat surface against blocks, verify TOS diagonal measurements, then use it as the template for the other eight. Frames within a row must be identical to ±3 mm or the rails won't seat.</p>
+<h3>5.3 Ties and bracing</h3>
+<ul>
+<li><strong>E–W ties (4 total):</strong> PTR 38×38 × 9140 running the full row width at the four §4 anchor lines — these are the <strong>anchored sleepers</strong> of §6: drilled at every vigueta crossing, chemically anchored, with every rafter base end landing on and fillet-welded (both sides) to a tie. Each tie fabricated from one 6100 tramo + one 3040 piece, butt-welded with a 150 mm fish plate (solera); land the joint at a rafter station. Ties square the array, carry all vertical load into the viguetas, and resist E–W drag. Bending check §15.4a.</li>
+<li><strong>X-bracing (8 diagonals):</strong> in the vertical E–W plane of the <strong>rear posts</strong>, bays R2–R3 and R7–R8, both rows. PTR 38×38, lengths <strong>1549 mm</strong> (30° row, ×4) and <strong>1191 mm</strong> (10° row, ×4) [C], ends coped/flattened to the post faces. The rails brace the top plane; these two braced bays per row stop E–W racking of the posts.</li>
+</ul>
+<h3>5.4 Welding notes</h3>
+<ul>
+<li>Process: FCAW-S (flux-core, gasless) as available; 0.9 mm (0.035") E71T-GS/-11 class wire. Run test coupons on cal. 11 offcuts and destructive-bend them before touching the real frames; set the machine from the coupons, not from a chart. (Any parameter numbers here would be machine-specific — deliberately not specified.)</li>
+<li>Grind mill scale and any galvanic coating 15 mm back from every joint before welding.</li>
+<li>Post-to-base and chord-to-post: <strong>4 mm fillet, all-around</strong> where the joint is accessible.</li>
+<li>Seat tabs and anchor tabs: 2 × 30 mm stitch fillets per side minimum.</li>
+<li>Weld sequence: alternate sides to control distortion; check each rafter against the jig after full welding, before paint.</li>
+</ul>
+<hr />
+<h2>6. Roof interface — vigueta y bovedilla (confirmed)</h2>
+<p>Deck is beam-and-block: prestressed concrete <strong>viguetas</strong> spanning N–S across the 4.82 m dimension (confirmed by owner photos, 2026-07-15: vigueta ends bear on the long walls; cement-block bovedilla), with a <strong>capa de compresión reported at 60 mm</strong> by the builders [A — verify at first pilot hole]. Two absolute rules follow:</p>
+<ol>
+<li><strong>Nothing anchors into, and nothing bears point loads on, bovedilla.</strong> Bovedilla (cement or polystyrene block) has no reliable capacity.</li>
+<li><strong>Anchors go into vigueta top flanges</strong> (or, as a surveyed fallback, into a confirmed ≥ 50 mm reinforced capa). Prestressing strands sit in the <em>bottom</em> of the vigueta; drilling is restricted to the top ~70–80 mm with a depth stop so strands are never approached [A — standard practice; confirm max depth with the vigueta type if identifiable, §16.1b].</li>
+</ol>
+<h3>6.1 Load path — ties become the anchored sleepers</h3>
+<p>The four E–W ties (§5.3) run <strong>perpendicular to the viguetas</strong> and become the anchorage members: each tie is drilled and chemically anchored <strong>at every vigueta crossing</strong> (~12–13 anchors per tie line), and every rafter base end lands on and is fillet-welded to a tie. Rafter loads therefore enter the ties at the 9 rafter stations and exit into viguetas at ~730 mm centers — no rafter-grid-to-vigueta-grid alignment problem, and per-anchor demand drops well below the Rev. A tab scheme.</p>
+<p>Consequences:
+- The whole structure bears <strong>only</strong> on the anchored ties; bases float ~38 mm (tie height) above the losa. All §3.3/§4 z-elevations now reference <strong>top-of-tie</strong>; absolute heights above the losa increase by 38 mm (favorable for the §2 ≥ 10 cm rule; shading geometry unchanged since both rows rise equally). Post and chord cut lengths in §5.2 are unaffected.
+- Anchor demand [C, §15.4a]: worst single-point tie reaction ≈ 2.4 kN down / 1.9 kN up at a rafter station; with anchors at every crossing the governing single-anchor design tension is taken conservatively as <strong>2.0 kN (≈ 205 kgf)</strong>, shear ≤ 1.1 kN.</p>
+<h3>6.2 Anchor specification</h3>
+<table>
+<thead>
+<tr>
+<th>Item</th>
+<th>Spec</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Anchor</td>
+<td><strong>Chemical:</strong> 10 mm (3/8") varilla roscada, A2 stainless or hot-galvanized, set in injection epoxy/hybrid mortar (Hilti HIT-HY 200 / RE 500, Sika AnchorFix-3001, Fischer FIS V class)</td>
+</tr>
+<tr>
+<td>Embedment</td>
+<td><strong>90 mm total over vigueta lines</strong>: through the 60 mm capa, 30 mm into the vigueta top. <strong>Hard drill-depth stop at 100 mm.</strong> (A ~130 mm vigueta keeps strands ≥ ~70 mm below the drill tip — comfortable, but the stop rule stands.)</td>
+</tr>
+<tr>
+<td>Hole</td>
+<td>12 mm, SDS; prep per epoxy card — brush ×2, blow ×2, repeat (hole cleaning is the entire strength of a chemical anchor)</td>
+</tr>
+<tr>
+<td>Count</td>
+<td>12 vigueta crossings + 1 east-wall anchorage point per tie = <strong>52</strong> + 10% spares</td>
+</tr>
+<tr>
+<td>If steel is struck while drilling</td>
+<td>stop, abandon hole, move 50 mm along the tie, patch</td>
+</tr>
+<tr>
+<td>Cure</td>
+<td>full manufacturer cure time before any structure load — no exceptions</td>
+</tr>
+<tr>
+<td>Fallback</td>
+<td>with the 60 mm capa confirmed, capa-only anchors (embed 45–50 mm, never breaking through) calculate to ≈ 3–4 kN allowable cone capacity [C, generic f'c] — acceptable for isolated misses at half design value; vigueta lines remain primary [A — engineer sign-off if used widely]</td>
+</tr>
+<tr>
+<td>Proof test</td>
+<td><strong>3 anchors per tie line to 4 kN (≈ 2× design)</strong> with lever/scale rig after cure, before erecting rafters</td>
+</tr>
+</tbody>
+</table>
+<h3>6.3 Vigueta survey — RESULTS (owner photos + builder report, 2026-07-15)</h3>
+<table>
+<thead>
+<tr>
+<th>Finding</th>
+<th>Value</th>
+<th>Src</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Span direction</td>
+<td>N–S (bearing on the 9.14 m walls) — matches design assumption</td>
+<td>[V photos]</td>
+</tr>
+<tr>
+<td>Count</td>
+<td><strong>12 viguetas</strong>; westernmost alongside the west wall</td>
+<td>[V owner]</td>
+</tr>
+<tr>
+<td>East edge</td>
+<td><strong>No vigueta</strong> — final bovedilla course bears directly on the east brick wall</td>
+<td>[V owner/photos]</td>
+</tr>
+<tr>
+<td>Implied average spacing</td>
+<td>≈ <strong>760 mm</strong> center-to-center (11 bays over ~8.4 m) — passes the §15.4a ≤ 800 mm check</td>
+<td>[C — derived from count, <strong>not measured</strong>: measure actual centers and chalk every line before drilling]</td>
+</tr>
+<tr>
+<td>Capa de compresión</td>
+<td>60 mm, builder-reported</td>
+<td>[A — verify with a depth gauge at the first pilot hole before committing the pattern]</td>
+</tr>
+<tr>
+<td>Bovedilla type</td>
+<td>cement block (ribbed) — more robust than polystyrene to incidental load, still never anchored or point-loaded</td>
+<td>[V photos]</td>
+</tr>
+</tbody>
+</table>
+<h3>6.3b East-end anchorage — MANDATORY DETAIL (new in Rev. C)</h3>
+<p>Rafter <strong>R9 sits at x = 9140, on the east wall line — beyond the last vigueta.</strong> A tie left unanchored past vigueta 12 would cantilever ~0.6–0.7 m under R9's load: M ≈ 2.4 kN × 0.65 m = 1.56 kN·m → <strong>343 MPa on 38×38 — fails outright</strong> [C]. Therefore each of the four ties gets <strong>2 anchors within 150 mm of the east wall line</strong>, set into the concrete over the wall bearing (dala/cadena de cerramiento or the wall-top capa band — the wall line has solid bearing beneath it by definition; the exterior photos show a cast perimeter band consistent with a cerramiento [A — confirm visually at the wall top before drilling]). With the end anchored, R9's load passes essentially straight into the east wall — the strongest support on the roof. Mirror-check the west end: vigueta 1 runs at the west wall, so R1 anchors normally at that crossing; add the wall-line pair there too if vigueta 1 sits &gt; 200 mm inboard of R1.</p>
+<h3>6.4 Work protection &amp; sealing</h3>
+<ul>
+<li>Walk boards over bovedilla zones during all roof work; concentrated loads (people, stacked panels, welder) stage over vigueta lines only.</li>
+<li>Seal every anchor penetration through the impermeabilizante: butyl + PU (Sikaflex-1A class) under tie contact points and around each rod; re-coat locally.</li>
+</ul>
+<hr />
+<h2>7. Aluminum rail system (Epcom Vektor "8")</h2>
+<h3>7.1 Parts — GERAVOLT SKUs [V, retrieved 2026-07-15]</h3>
+<table>
+<thead>
+<tr>
+<th>Qty</th>
+<th>SKU</th>
+<th>Item</th>
+<th>Status at Geravolt</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>8</td>
+<td>EPL-SR8-... / VEKTOR rail</td>
+<td><strong>Rail "8" anodized aluminum, 5400 mm</strong></td>
+<td>5400 sold within kits; bare 2700 (EPL-SR8-2700BLK) listed. Buy 5400s loose via WhatsApp quote — they sell kit components separately.</td>
+</tr>
+<tr>
+<td>4</td>
+<td>EPLSCN201B</td>
+<td>Splice connector, rail "8"</td>
+<td>listed ($22.45) — <em>agotado</em> at doc date</td>
+</tr>
+<tr>
+<td>30</td>
+<td><strong>EPLMCN230B</strong></td>
+<td><strong>Mid clamp 30 mm</strong></td>
+<td>⚠ <em>agotado</em> at doc date — see below</td>
+</tr>
+<tr>
+<td>10</td>
+<td>EPLECN230/35B</td>
+<td>End clamp 30/35 mm (dual)</td>
+<td><strong>in stock</strong> ($21.46)</td>
+</tr>
+</tbody>
+</table>
+<p>⚠ <strong>The module frame is 30 mm.</strong> The in-stock 8-panel kit (KIT8PVEKTOR8R) is specified for <strong>35 mm</strong> modules — its mid clamps will not grip a 30 mm frame. Do not buy the kit; buy components. EPLMCN230B is an Epcom/Syscom part — source via any Syscom dealer or MercadoLibre if GERAVOLT can't restock. <strong>35 mm mid clamps are not an acceptable substitute.</strong></p>
+<h3>7.2 Rail runs and cut schedule [C]</h3>
+<p>Four runs of <strong>9300 mm</strong>, each from two 5400 sticks. Rails span x = −80 → 9220 (80 mm cantilever past R1/R9 — fine). All splices land 200 mm from rafter R5 (x = 4570), staggered between the paired rails of each row:</p>
+<table>
+<thead>
+<tr>
+<th>Run</th>
+<th>Piece 1 (west)</th>
+<th>Piece 2 (east)</th>
+<th>Splice at x</th>
+<th>Offcuts</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Rails 30N and 10N</td>
+<td>4850</td>
+<td>4450</td>
+<td>4770 (200 E of R5)</td>
+<td>550 + 950</td>
+</tr>
+<tr>
+<td>Rails 30S and 10S</td>
+<td>4450</td>
+<td>4850</td>
+<td>4370 (200 W of R5)</td>
+<td>950 + 550</td>
+</tr>
+</tbody>
+</table>
+<p>Offcuts: 4 × (550 + 950) = <strong>6.0 m of rail banked for Phase 2</strong> (house roof).</p>
+<p><strong>Before cutting:</strong> dry-fit one full row. The 9300 figure assumes a 20 mm mid-clamp gap [A] and ~40 mm of rail beyond the outer panel edge per end for end clamps. Measure the actual mid clamp; recompute row width as 8 × 1134 + 7 × (clamp width) + 2 × (end-clamp seat); cut to that.</p>
+<h3>7.3 Panel positions and clamp lines [C]</h3>
+<p>Panels centered on the roof: panel 1 west edge at x = −36. Mid-clamp (joint) centers at x = <strong>1108 · 2262 · 3416 · 4570 · 5724 · 6878 · 8032</strong>. Note joint 4 (x = 4570) sits exactly on rafter R5 — no physical conflict (clamps use the rail's top channel, the structure attaches below), but <strong>offset the rail-to-steel T-bolt at R5 by 60 mm west</strong> so the two bolts aren't stacked.</p>
+<p>Clamp rules recap from §2: mids torqued 12–16 N·m (M8) [V]; end clamps same; overlap on frame 10–12 mm [V]; never over a drain hole [V].</p>
+<hr />
+<h2>8. Rail-to-steel interface (36 seats: 9 rafters × 2 rails × 2 rows)</h2>
+<p><strong>Primary detail — welded seat tab (recommended; you own the welder, and the Epcom L-foot EPLFFN202B is agotado):</strong></p>
+<pre><code>        rail &quot;8&quot; (aluminum)
+   ┌────────────────────────┐
+   │   bottom T-channel     │ ← M8×25 A2 T-slot bolt, head in channel
+   └───────────┬────────────┘
+        ▓▓▓▓▓▓▓▓▓▓▓▓          ← EPDM pad 3 mm, 50 × 60 (galvanic isolation)
+   ────═════════╧═════════──── ← ángulo 38×38×4.8 × 60 long, slot 9×20 mm
+        ╲ 2×30 mm stitch ╱       welded to chord top face
+   ═══════ PTR 51×51 chord ═══
+</code></pre>
+<ul>
+<li>One tab per rafter/rail crossing, welded on the chord top face at the rail line, slot running E–W (gives ±10 mm y-adjustment).</li>
+<li><strong>M8 × 25 A2-70 stainless T-slot bolt</strong> ("tornillo cabeza de martillo para riel solar") dropped/rotated into the rail's bottom channel, down through EPDM and slot, <strong>A2 serrated flange nut</strong> below. Torque to the T-bolt maker's spec (typically high-teens N·m [A]).</li>
+<li>⚠ Verify the Vektor "8" bottom-channel dimensions against the T-bolt head profile <strong>before</strong> ordering 40 bolts — buy 2 samples first (§16.4). If the profile has no usable bottom channel, fall back to side-channel T-bolts or the Epcom L-foot when restocked.</li>
+<li>Galvanic pairs: stainless-on-aluminum (bolt/rail) is acceptable; aluminum-on-carbon-steel is the pair the EPDM pad exists to separate — no bare rail may touch bare or painted steel directly.</li>
+</ul>
+<hr />
+<h2>9. Fastener &amp; hardware schedule</h2>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>Item</th>
+<th>Spec</th>
+<th>Qty (incl. spares)</th>
+<th>Where</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>F1</td>
+<td>Roof anchors</td>
+<td>10 mm varilla roscada A2/galv. × 120 mm + injection epoxy (2–3 cartridges) per §6.2; nuts + 30 mm fender washers</td>
+<td>58 rods</td>
+<td>ties @ every vigueta crossing</td>
+</tr>
+<tr>
+<td>F2</td>
+<td>T-slot bolts</td>
+<td>M8 × 25, A2-70 stainless, hammer-head for solar rail</td>
+<td>44</td>
+<td>rail seats (36) + spares</td>
+</tr>
+<tr>
+<td>F3</td>
+<td>Flange nuts</td>
+<td>M8 serrated, A2</td>
+<td>44</td>
+<td>with F2</td>
+</tr>
+<tr>
+<td>F4</td>
+<td>EPDM pads</td>
+<td>3 mm × 50 × 60</td>
+<td>40</td>
+<td>under every rail seat</td>
+</tr>
+<tr>
+<td>F5</td>
+<td>Mid clamps</td>
+<td>EPLMCN230B, <strong>30 mm</strong>, with M8 hardware</td>
+<td>30</td>
+<td>28 used</td>
+</tr>
+<tr>
+<td>F6</td>
+<td>End clamps</td>
+<td>EPLECN230/35B, with M8 hardware</td>
+<td>10</td>
+<td>8 used</td>
+</tr>
+<tr>
+<td>F7</td>
+<td>Rail splices</td>
+<td>EPLSCN201B + hardware</td>
+<td>4</td>
+<td>one per run</td>
+</tr>
+<tr>
+<td>F8</td>
+<td>Grounding lugs</td>
+<td>Tin-plated lay-in lug, 12–6 AWG, w/ star washer</td>
+<td>12</td>
+<td>rails ×4, structure ×2, spares</td>
+</tr>
+<tr>
+<td>F9</td>
+<td>Splice bonding jumpers</td>
+<td>12 AWG Cu, 150 mm, lugged both ends</td>
+<td>4</td>
+<td>across each rail splice (unless splice is verified as listed for bonding — it is not assumed to be)</td>
+</tr>
+<tr>
+<td>F10</td>
+<td>Module ground hardware</td>
+<td>M4/M5 bolt + toothed washer sets at frame Ø4.2 ground holes (or listed grounding clamps)</td>
+<td>16 sets</td>
+<td>per LONGi §2.8</td>
+</tr>
+<tr>
+<td>F11</td>
+<td>Sealant</td>
+<td>Butyl tape + PU sealant (Sikaflex-1A class)</td>
+<td>2 tubes + roll</td>
+<td>anchor penetrations</td>
+</tr>
+</tbody>
+</table>
+<p>All exposed hardware stainless A2 minimum. Clamp torques per §2 item 6; anchor torques per anchor card; record torques in the QC sheet (§14).</p>
+<hr />
+<h2>10. Corrosion protection</h2>
+<ol>
+<li>After weld QC: wire-wheel welds and mill scale, degrease.</li>
+<li><strong>Primario alquidálico anticorrosivo</strong> (or epoxy primer), 1 coat all steel, brush into weld toes.</li>
+<li><strong>Esmalte</strong> topcoat × 2 (color per preference; light gray reflects heat).</li>
+<li>Cold-galvanizing spray on any field welds/drill cuts made after painting.</li>
+<li>EPDM at every aluminum/steel contact (§8); no exceptions.</li>
+<li>Annual visual: weld toes, anchor points, rail seats. León's dry climate is favorable; the coating system above is the long-life budget option, and hot-dip galvanizing is deliberately skipped as disproportionate at this scale.</li>
+</ol>
+<hr />
+<h2>11. Grounding &amp; bonding</h2>
+<p>Interfaces with the site scheme in <em>Solar Hybrid Wiring — Rev. B</em> (single N–G bond at the LuxPower N-PE Connect; containers as grounding electrode).</p>
+<ol>
+<li><strong>Modules:</strong> ground each frame at its Ø4.2 mm marked hole with toothed hardware penetrating the anodizing, 12 AWG bare Cu daisy-chain per row [V — LONGi §2.8]. Do not drill new holes [V].</li>
+<li><strong>Rails:</strong> bond each of the 4 rails to the row ground conductor via lay-in lug (F8); jumper across every splice (F9) — anodized rail joints are not assumed conductive.</li>
+<li><strong>Steel structure:</strong> bond each row's structure (one lug per row on a ground-cleaned spot) to the same conductor.</li>
+<li><strong>Home run:</strong> array EGC routes with the PV circuit conductors to the equipment grounding system per Rev. B. The array ground is <em>not</em> a separate electrode — one grounding system, one N–G bond, as already established for the site.</li>
+</ol>
+<hr />
+<h2>12. Wiring interface notes (electrical plan owns the rest)</h2>
+<ul>
+<li>Portrait → <strong>leap-frog wiring</strong> [V]: adjacent modules rotated 180° so junction boxes alternate; 72-cell modules need ≥ 1.4 m lead reach [V]. Delivered leads are +400/−200 mm standard [V datasheet] — <strong>measure the actual leads on arrival</strong>; if leap-frog reach fails at the 1134 mm pitch, order MC4 extension jumpers (Geravolt stocks 1 m pairs) or specify ±1400 mm leads at purchase [V datasheet option].</li>
+<li>Anticipated stringing for the SNA-US-12K: 8S per MPPT (one row per MPPT), 16 panels = 2 strings. String Voc cold-corrected must clear the inverter's PV input limit — carried in the electrical doc, not here.</li>
+<li>Route strings along the rear rail in UV-rated ties/clips [V manual: UV-resistant fixing, min bend radius 43 mm]; drip loops at row ends; keep connectors off the roof surface [V].</li>
+</ul>
+<hr />
+<h2>13. Consolidated bill of materials</h2>
+<h3>13.1 GERAVOLT / solar-specific</h3>
+<table>
+<thead>
+<tr>
+<th>Item</th>
+<th>Qty</th>
+<th>Ref</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Rail "8" Vektor 5400 mm</td>
+<td>8</td>
+<td>§7.1</td>
+</tr>
+<tr>
+<td>Splice EPLSCN201B</td>
+<td>4</td>
+<td></td>
+</tr>
+<tr>
+<td>Mid clamp 30 mm EPLMCN230B</td>
+<td>30</td>
+<td>⚠ sourcing, §16.3</td>
+</tr>
+<tr>
+<td>End clamp EPLECN230/35B</td>
+<td>10</td>
+<td>in stock</td>
+</tr>
+<tr>
+<td>MC4 extensions (contingency)</td>
+<td>4 pr</td>
+<td>§12</td>
+</tr>
+</tbody>
+</table>
+<h3>13.2 Steel yard (León)</h3>
+<table>
+<thead>
+<tr>
+<th>Item</th>
+<th>Qty</th>
+<th>≈ Mass</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>PTR 51×51 cal. 11, tramo 6.10 m</td>
+<td>13</td>
+<td>358 kg</td>
+</tr>
+<tr>
+<td>PTR 38×38 cal. 11, tramo 6.10 m</td>
+<td>9</td>
+<td>181 kg</td>
+</tr>
+<tr>
+<td>Ángulo 38×38×4.8, 6.10 m</td>
+<td>1</td>
+<td>(36 × 60 mm tabs)</td>
+</tr>
+<tr>
+<td>Solera 51×4.8, 6.10 m</td>
+<td>1</td>
+<td>(tie fish plates; anchor tabs deleted in Rev. B)</td>
+</tr>
+<tr>
+<td>Primer + esmalte + thinner</td>
+<td>4 L + 4 L</td>
+<td></td>
+</tr>
+<tr>
+<td>Cutting discs, flap discs, FCAW wire 0.9 mm</td>
+<td>—</td>
+<td>~2 spools</td>
+</tr>
+</tbody>
+</table>
+<h3>13.3 Ferretería / tornillería</h3>
+<p>Everything in §9 (F1–F11), plus: 12 AWG bare Cu ~30 m, chalk line, string line, anchor drill bit per anchor card.</p>
+<h3>13.4 Cut summary [C]</h3>
+<ul>
+<li>51×51: 9× {1512, 346, 1046, 1600} + 9× {1679, 93, 336, 1600} — total 73.9 m</li>
+<li>38×38: 4 × (6100 + 3040) ties + 4 × 1549 + 4 × 1191 diagonals — total 47.8 m</li>
+<li>Rail: 4 × 4850 + 4 × 4450 from 8 × 5400 (offcuts 4 × 550 + 4 × 950 → Phase 2)</li>
+</ul>
+<hr />
+<h2>14. Assembly sequence &amp; QC</h2>
+<ol>
+<li><strong>Vigueta survey per §6.3</strong> — map direction/spacing/capa, chalk the lines (gating). Buy steel; buy 2 sample T-bolts; verify §16.4.</li>
+<li>Fabricate rafter jig; weld rafter #1; check against §5.2 cut list and TOS diagonals; weld remaining 17.</li>
+<li>Weld seat tabs (36) and anchor tabs (36) on the bench. Prime + paint everything.</li>
+<li>Chalk the §4 grid over the vigueta map. Drill the four <strong>ties</strong> at every vigueta crossing, clean holes per epoxy card, set rods, full cure, then <strong>proof-test per §6.2</strong> before anything sits on them. Bed tie contact points in sealant.</li>
+<li>Set 10° row rafters on lines R1–R9 with base ends on the ties, plumb posts, square the row by diagonals (±5 mm over 9.14 m), fillet-weld base ends to ties (cold-galv the welds). Repeat for 30° row. Weld X-bracing in bays R2–R3 and R7–R8.</li>
+<li>String-line each rail seat plane: TOS within ±3 mm rafter-to-rafter. Shim under seat tabs (stainless shims) only — never pull the rail down to a low seat.</li>
+<li>Set rails on EPDM pads, T-bolts finger-tight; install splices at §7.2 stations; verify 9300 overall and 80 mm cantilevers; torque seats.</li>
+<li>Panels, south row first, west to east: set panel, leap-frog connect <em>before</em> placing its neighbor, clamp per §2 (mid 12–16 N·m). End clamps last. Verify no drain hole is blocked and clamp overlap is 10–12 mm on every clamp — spot-check with a scribed gauge block.</li>
+<li>Grounding/bonding per §11; continuity-test frame-to-EGC &lt; 1 Ω at the farthest module.</li>
+<li>QC sheet (file with this doc): every torque, anchor test loads, TOS survey, continuity readings, photos of each splice and 4 random clamps.</li>
+</ol>
+<p>Two-person minimum for panel setting (28.5 kg, sail area); never in wind; never step on modules [V].</p>
+<hr />
+<h2>15. Calculation appendix</h2>
+<p>Full script: <code>calc.py</code> (companion file, reproduces every [C] number).</p>
+<p><strong>15.1 Loads.</strong> Envelope ±1.6 kPa normal to panel (§1.3). Rafter spacing 1142.5 mm; tributary per rail contact 1.361 m² → <strong>2.18 kN (222 kgf) per contact</strong>, 4.35 kN normal per rafter.</p>
+<p><strong>15.2 Anchor demand.</strong> Vertical uplift per rafter = 4.35·cos θ − dead (0.53 kN): 30° → 3.24 kN; 10° → 3.76 kN. Per anchor (2/rafter) with 1.5 eccentricity/prying factor: <strong>2.43 / 2.82 kN design tension</strong>; shear ≤ 1.09 kN. Proof test at 5 kN ≈ 1.8× worst design.</p>
+<p><strong>15.3 Members (51×51×3: A = 576 mm², Z = 8,708 mm³, r = 19.6 mm).</strong> Chord bending from panel loads ≈ 0 (loads enter at posts); governing chord case is a 1 kN construction point load mid-span → 40 MPa vs 150 MPa allowable (conservative Fy 250 basis). Rear post (1046 mm): KL/r = 53, demand 7.6 MPa vs Euler 695 MPa — compression is trivial. 38×38 ties/braces are stiffness/robustness members; demands are far below capacity.</p>
+<p><strong>15.4a Tie bending (Rev. B, updated Rev. C).</strong> Worst rafter station load mid-way between anchors at the surveyed ≈ 760 mm spacing: downforce 2.4 kN → M = PL/4 = 0.46 kN·m → <strong>100 MPa</strong> on 38×38 (Z = 4,546 mm³); uplift 1.9 kN → 79 MPa. Both &lt; 150 MPa allowable ✓ (rule stands: re-run if measured spacing &gt; 800 mm). <strong>East cantilever (Rev. C):</strong> unanchored, 2.4 kN at 0.65 m → 343 MPa — fails; resolved by the §6.3b wall-line anchor pair, which reduces the moment at R9 to ≈ 0.</p>
+<p><strong>15.4 Rail.</strong> w = 1.91 kN/m per rail; continuous over 1.1425 m spans: M ≈ wL²/10 = 0.249 kN·m → ~71 MPa at an assumed Z = 3.5 cm³ [A] vs ~140 MPa allowable for 6005-T5. Margin ≈ 2×; the operative justification is that Epcom's own Vektor kits (rated 136 km/h, 20–45°) support at comparable spacing. Do not exceed 1.15 m rafter spacing without a verified rail section modulus.</p>
+<p><strong>15.5 Shading.</strong> §3.4; noon-plane approximation, azimuth off-noon ignored — adequate for a go/no-go on the 411 mm gap.</p>
+<p><strong>Stated limits of this appendix:</strong> wind velocity/Cf are conservative assumptions [A], not a site MDOC determination; anchor capacities are product-generic pending the chosen anchor's data card [A]; this is a self-build rationale, not a stamped calc.</p>
+<hr />
+<h2>16. Open items — CLOSE BEFORE BUILD</h2>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>Item</th>
+<th>Blocks</th>
+<th>Status</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>Roof deck construction</td>
+<td>—</td>
+<td><strong>CLOSED 2026-07-15</strong> — vigueta y bovedilla, owner-confirmed</td>
+</tr>
+<tr>
+<td>1a</td>
+<td>Vigueta survey</td>
+<td>—</td>
+<td><strong>SUBSTANTIALLY CLOSED 2026-07-15</strong> (§6.3). Residual field checks before drilling: (i) tape-measure actual vigueta centers and chalk all 12 lines — the 760 mm figure is derived, not measured; (ii) verify 60 mm capa with a depth gauge at the first pilot hole; (iii) confirm concrete (dala/cerramiento) at the east wall top for §6.3b</td>
+</tr>
+<tr>
+<td>1b</td>
+<td>Drill-depth rule</td>
+<td>§6.2</td>
+<td>CLOSED — 90 mm embed / 100 mm stop over vigueta lines per confirmed 60 mm capa; strand clearance ample</td>
+</tr>
+<tr>
+<td>2</td>
+<td>LONGi confirmation that clamp band 450–550 mm (bolt-hole line) carries full ±5400/2400 Pa for LR7-72HVHF</td>
+<td>§2.2 (design proceeds on reasoned inference)</td>
+<td>OPEN — one WhatsApp/email to Geravolt or LONGi support</td>
+</tr>
+<tr>
+<td>3</td>
+<td>Source 30 mm mid clamps EPLMCN230B (agotado at Geravolt at doc date)</td>
+<td>§7 purchase</td>
+<td>OPEN — Syscom dealer / MercadoLibre / restock</td>
+</tr>
+<tr>
+<td>4</td>
+<td>Vektor "8" rail: actual profile height, bottom-channel dims (T-bolt fit), mid-clamp width</td>
+<td>§3.3 TOS values (±few mm), §7.2 cut length, §8 bolts</td>
+<td>OPEN — measure on 2 sample pieces before bulk cut/order</td>
+</tr>
+<tr>
+<td>5</td>
+<td>Anchor proof test, 3 per tie line @ 4 kN after cure</td>
+<td>§6.2, §14.4</td>
+<td>pending #1a</td>
+</tr>
+<tr>
+<td>6</td>
+<td>Delivered panel lead length vs leap-frog reach</td>
+<td>§12</td>
+<td>check at delivery</td>
+</tr>
+<tr>
+<td>7</td>
+<td>Optional: formal CFE MDOC wind determination by local engineer</td>
+<td>§1.3 (design is conservative without it)</td>
+<td>optional</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<p><strong>Revision history</strong></p>
+<table>
+<thead>
+<tr>
+<th>Rev</th>
+<th>Date</th>
+<th>Change</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>A</td>
+<td>2026-07-15</td>
+<td>Initial issue for review; roof deck unknown</td>
+</tr>
+<tr>
+<td>B</td>
+<td>2026-07-15</td>
+<td>Deck confirmed vigueta y bovedilla. §6 rewritten: E–W ties become anchored sleepers, chemical anchors (10 mm epoxy rods) at every vigueta crossing, 80 mm depth-stop rule; rafter-base anchor tabs deleted; structure floats 38 mm on ties (all z now top-of-tie referenced); tie bending check added (§15.4a); assembly sequence and open items updated.</td>
+</tr>
+<tr>
+<td>C</td>
+<td>2026-07-15</td>
+<td>Survey results incorporated (photos + builder report): 12 viguetas N–S, ≈ 760 mm implied spacing, 60 mm capa, cement bovedilla, <strong>no east-edge vigueta</strong>. Embed revised to 90 mm / 100 mm stop; §6.3b mandatory east-wall-line anchor pair added (unanchored cantilever fails, §15.4a); anchor count fixed at 52 + spares; capa-only fallback upgraded per 60 mm capa.</td>
+</tr>
+</tbody>
+</table>
+<p><em>Calculations reproducible via companion <code>calc.py</code>. Field changes log here and roll into Rev. D.</em></p>
+  <div class="colophon">
+    REV. C · BODEGA ROOF · 16 × LR7-72HVHF-650M · 10.40 kWp · FOR CONSTRUCTION (§16 CHECKS PENDING)
+  </div>
+</div>
+</body>
+</html>
