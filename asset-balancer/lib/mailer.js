@@ -117,6 +117,14 @@ async function sendAlertEvents(events) {
         await sendWhatsApp(r.whatsapp_phone, r.whatsapp_key, notice);
       } catch (err) {
         console.error(`WhatsApp notice failed for profile ${profile.id}:`, err.message);
+        // Surface the failure in the on-screen alert log so a dead key or
+        // wrong phone format is visible without shell diagnostics.
+        logStmt.run(
+          profile.id,
+          `WhatsApp notice to ${r.whatsapp_phone} FAILED: ${err.message}`,
+          Date.now(),
+          0
+        );
       }
     }
 
