@@ -7,11 +7,11 @@ applicable) deployment instructions.
 ## Projects
 
 - [`asset-balancer/`](asset-balancer/) — a manual asset-rebalancing watcher:
-  profiles of assets priced against an index asset, organized into sets;
-  polls CoinGecko on a schedule, tracks relative-value drift against
-  recorded baselines, and emails a rebalance signal when assets in a set
-  drift apart past a threshold. Web UI served at
-  `https://www.buitendyk.ca/balancer/`.
+  profiles of assets with target allocation percentages, valued against an
+  index asset; polls CoinGecko on a schedule and emails the corrective
+  market trades when an asset's actual share drifts past its threshold
+  (relative to target). Tracks a "currency basket" of unit growth. Web UI
+  served at `https://www.buitendyk.ca/balancer/`.
 - [`youtube-spanish-dubber/`](youtube-spanish-dubber/) — a self-hosted
   service for a Debian VPS that takes a YouTube video URL, produces a
   Spanish voice-over of it (from an existing transcript, an

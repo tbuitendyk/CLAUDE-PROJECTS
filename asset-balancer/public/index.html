@@ -43,7 +43,7 @@
               <h2 id="d-name"></h2>
               <div class="detail-actions">
                 <button id="d-poll">Poll now</button>
-                <button id="d-rebalance" class="warn">Rebalanced (reset baselines)</button>
+                <button id="d-targets" class="warn">Set new targets</button>
                 <button id="d-delete" class="danger">Delete profile</button>
               </div>
             </div>
@@ -55,10 +55,19 @@
             <div class="table-wrap">
               <table id="asset-table">
                 <thead>
-                  <tr><th>Symbol</th><th>Target %</th><th>Quantity</th><th>Price (USD)</th><th>Value (USD)</th><th>Actual %</th><th>Drift</th><th></th></tr>
+                  <tr><th title="Tethered index asset (priced 1:1 with the index)">Index</th><th>Symbol</th><th>Target %</th><th>Quantity</th><th>Price (USD)</th><th>Value (USD)</th><th>Actual %</th><th>Drift vs target</th><th></th></tr>
                 </thead>
                 <tbody></tbody>
               </table>
+            </div>
+
+            <div id="targets-editor" class="hidden">
+              <h3>New target allocations</h3>
+              <p class="muted">Targets must total 100% (tethered index asset included). Saving takes a fresh unit snapshot and resets the currency basket to 1.00000000.</p>
+              <div id="t-rows"></div>
+              <p id="t-sum" class="muted"></p>
+              <button id="t-save">Save targets</button>
+              <button id="t-cancel" class="ghost">Cancel</button>
             </div>
             <form id="asset-form" class="inline">
               <input id="a-search" placeholder="Search coin (e.g. ethereum)" autocomplete="off">
@@ -81,19 +90,11 @@
               </div>
             </div>
 
-            <h3>Sets</h3>
-            <div id="set-list"></div>
-            <form id="set-form" class="stack">
-              <input id="s-name" placeholder="Set name">
-              <div id="s-members" class="checkboxes"></div>
-              <button type="submit">Add set</button>
-            </form>
-
             <h3>Value history</h3>
             <div class="table-wrap">
               <table id="snap-table">
                 <thead>
-                  <tr><th>When</th><th>Total (USD)</th><th>Total (index)</th><th>Growth</th></tr>
+                  <tr><th>When</th><th>Basket</th><th>Total (index)</th><th>Total (USD)</th></tr>
                 </thead>
                 <tbody></tbody>
               </table>

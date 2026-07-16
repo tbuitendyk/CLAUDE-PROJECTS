@@ -95,12 +95,16 @@ th { color: var(--muted); font-weight: 500; font-size: .78rem; }
 .search-results div:hover { background: var(--bg); }
 .checkboxes { display: flex; flex-wrap: wrap; gap: .35rem .9rem; font-size: .85rem; }
 .checkboxes label { justify-content: flex-start; }
-.set {
-  border: 1px solid var(--border); border-radius: 8px;
-  padding: .6rem .8rem; margin-bottom: .5rem;
+td.center { text-align: center; }
+tr.breached td { background: color-mix(in srgb, var(--danger) 10%, transparent); }
+.target-row {
+  display: flex; align-items: center; gap: .6rem; justify-content: flex-start;
+  padding: .25rem 0; color: var(--text); font-size: .9rem;
 }
-.set .set-head { display: flex; justify-content: space-between; align-items: center; }
-.set .alert-badge { color: var(--danger); font-weight: 600; font-size: .8rem; }
+.target-row span { min-width: 90px; }
+.target-row input { width: 90px; }
+#targets-editor { border: 1px solid var(--warn); border-radius: 8px; padding: .75rem 1rem; margin: 1rem 0; }
+#targets-editor button { margin-right: .5rem; }
 .import-row {
   display: flex; align-items: center; gap: .6rem;
   padding: .35rem 0; font-size: .88rem; justify-content: flex-start;

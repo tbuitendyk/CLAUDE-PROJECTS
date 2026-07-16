@@ -1,32 +1,38 @@
 # Asset Balancer
 
 A manual asset-rebalancing watcher with a web UI. You define **profiles** —
-each one a group of assets priced against an **index asset** (USD, BTC,
-anything CoinGecko knows) — and organize those assets into **sets**. The app
-polls market prices on a schedule (default every 15 minutes), keeps a history
-of each asset's value relative to the index, and when any two assets in the
-same set drift apart by more than the profile's **threshold percentage**
-(relative to their recorded baselines), it emails you a rebalance signal.
-
-You then rebalance manually — the app never touches your funds — and click
-**"Rebalanced"** to accept current prices as the new baseline.
+each one a flat pool of assets priced against an **index asset** (USD, BTC,
+anything CoinGecko knows) — and give every asset a **target percentage** of
+the pool, totalling 100. The app polls market prices on a schedule (default
+every 15 minutes) and emails you the exact corrective market trades when an
+asset's actual share drifts too far from its target. The app never touches
+your funds: you execute the trades on the exchange, screenshot the balances,
+and import the screenshot to set the new quantities.
 
 ## How the math works
 
-- Every asset's *relative price* = its USD price ÷ the index asset's USD
-  price. (If the index is `usd`, relative price is just the USD price.)
-- When an asset is first added (or after a rebalance), its current relative
-  price is stored as its **baseline**.
-- Each poll, for every pair of assets `A, B` in the same set the app computes:
-
-  ```
-  divergence = (relA / baselineA) / (relB / baselineB) − 1
-  ```
-
-  i.e. how far A and B have drifted *apart* since the baseline. If
-  `|divergence| ≥ threshold%`, that's a rebalance signal → email.
-- Signals don't repeat every poll: a pair alerts once and re-arms only after
-  it converges back under half the threshold, or after you reset baselines.
+- Every asset is valued in index-asset terms (USD price ÷ the index's USD
+  price). One asset per profile can be checkmarked as the **tethered index
+  asset** (e.g. USDT on a USD index): it is pinned to exactly 1, small
+  market variation deliberately ignored.
+- **Drift is relative to target.** Actual share = asset value ÷ pool total.
+  Drift = (actual% − target%) / target%. The profile threshold applies to
+  that relative drift, so a 10% threshold on a 56% target trips at ±5.6
+  absolute points.
+- **Alerts carry trades.** When an asset crosses its threshold, the email
+  says exactly what to do — BUY/SELL, quantity in asset units, and the
+  index-asset equivalent — sized to bring *that* asset back to its target.
+  Assets inside their band are left alone (dust trades lose money to spread
+  and slippage). Market orders; no slippage math.
+- An asset alerts once and re-arms after it converges back under half its
+  threshold, or when new targets are set.
+- **The currency basket** measures unit growth independent of prices:
+  `basket = Σ (current units ÷ snapshot units) × target weight`. It starts
+  at 1.00000000 when targets are set (unit snapshot taken) and rises above 1
+  as rebalancing accumulates more units of the underlying assets. Changing
+  targets ("Set new targets") re-snapshots and resets it to 1.
+- Adding or removing funds while preserving the basket number is a v2
+  feature; for now all quantity changes move the basket.
 
 ## Running it
 
@@ -101,10 +107,13 @@ data/              SQLite database (created at runtime, git-ignored)
 All routes under `/api`, JSON, cookie-auth via `POST /api/login`.
 
 - `GET /profiles`, `POST /profiles`, `PATCH|DELETE /profiles/:id`
-- `GET /profiles/:id/state` — assets + latest prices + sets + alert log
-- `POST /profiles/:id/assets`, `DELETE /assets/:id`
-- `POST /profiles/:id/sets`, `PATCH|DELETE /sets/:id`
+- `GET /profiles/:id/state` — assets with allocation/drift, totals, basket,
+  snapshots, alert log
+- `POST /profiles/:id/assets`, `PATCH /assets/:id` (quantity, is_index),
+  `DELETE /assets/:id`
+- `POST /profiles/:id/targets` — set new target allocations (must total 100;
+  resets the currency basket)
 - `POST /profiles/:id/poll` — poll now
-- `POST /profiles/:id/rebalance` — reset baselines (optional `set_id`)
+- `POST /profiles/:id/import-screenshot` — parse a balances screenshot
 - `GET /search-coins?q=...`, `GET /assets/:id/history`
 - `POST /test-email`

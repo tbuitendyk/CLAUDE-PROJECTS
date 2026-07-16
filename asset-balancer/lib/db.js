@@ -33,18 +33,6 @@ CREATE TABLE IF NOT EXISTS assets (
   UNIQUE(profile_id, coingecko_id)
 );
 
-CREATE TABLE IF NOT EXISTS sets (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  profile_id INTEGER NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
-  name TEXT NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS set_members (
-  set_id INTEGER NOT NULL REFERENCES sets(id) ON DELETE CASCADE,
-  asset_id INTEGER NOT NULL REFERENCES assets(id) ON DELETE CASCADE,
-  PRIMARY KEY (set_id, asset_id)
-);
-
 CREATE TABLE IF NOT EXISTS price_history (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   profile_id INTEGER NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
@@ -55,15 +43,13 @@ CREATE TABLE IF NOT EXISTS price_history (
 );
 CREATE INDEX IF NOT EXISTS idx_price_history_asset_ts ON price_history(asset_id, ts);
 
--- One row per (set, asset pair) currently over threshold; prevents an email
--- every poll. Cleared when the pair converges again or baselines are reset.
-CREATE TABLE IF NOT EXISTS active_alerts (
-  set_id INTEGER NOT NULL REFERENCES sets(id) ON DELETE CASCADE,
-  asset_a INTEGER NOT NULL REFERENCES assets(id) ON DELETE CASCADE,
-  asset_b INTEGER NOT NULL REFERENCES assets(id) ON DELETE CASCADE,
+-- One row per asset currently over its allocation-drift threshold; prevents
+-- an email every poll. Cleared when the asset converges back toward target
+-- or when new targets are set.
+CREATE TABLE IF NOT EXISTS alloc_alerts (
+  asset_id INTEGER PRIMARY KEY REFERENCES assets(id) ON DELETE CASCADE,
   triggered_at INTEGER NOT NULL,
-  drift_pct REAL NOT NULL,
-  PRIMARY KEY (set_id, asset_a, asset_b)
+  drift_rel_pct REAL NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS alert_log (
@@ -98,5 +84,20 @@ function ensureColumn(table, col, ddl) {
 }
 ensureColumn('assets', 'quantity', 'quantity REAL NOT NULL DEFAULT 0');
 ensureColumn('assets', 'target_pct', 'target_pct REAL NOT NULL DEFAULT 0');
+// Tethered index asset: priced 1:1 with the profile's index (e.g. USDT for a
+// USD index). At most one per profile.
+ensureColumn('assets', 'is_index', 'is_index INTEGER NOT NULL DEFAULT 0');
+// Unit snapshot for the currency-basket calculation; taken when targets are set.
+ensureColumn('assets', 'basket_units', 'basket_units REAL');
+ensureColumn('profiles', 'basket_started_at', 'basket_started_at INTEGER');
+ensureColumn('profile_snapshots', 'basket', 'basket REAL');
+
+// Sets were removed from the design (one flat asset pool per profile);
+// drop the leftover tables from earlier versions.
+db.exec(`
+DROP TABLE IF EXISTS set_members;
+DROP TABLE IF EXISTS sets;
+DROP TABLE IF EXISTS active_alerts;
+`);
 
 module.exports = db;

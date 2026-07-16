@@ -1,121 +1,119 @@
 const db = require('./db');
 const { fetchUsdPrices } = require('./pricing');
 
-// Core engine. For each profile:
-//  1. fetch USD prices for every asset + the index asset
-//  2. record each asset's relative price (usd(asset) / usd(index))
-//  3. for every set in the profile, compare every pair of member assets:
-//     divergence = (relA / baselineA) / (relB / baselineB) - 1
-//     If |divergence| >= profile threshold, the pair has drifted apart enough
-//     to rebalance manually -> raise an alert (once, until it re-arms).
+// Core engine. Each profile is one flat pool of assets with target
+// allocation percentages that total 100 (the tethered index asset included).
+// Every poll:
+//  1. price every asset in index-asset terms; the tethered asset (is_index)
+//     is pinned to exactly 1 (e.g. USDT on a USD index -- small market
+//     variation is deliberately ignored)
+//  2. total the pool and compute each asset's actual share of it
+//  3. drift = (actual% - target%) / target%  -- RELATIVE to the target, so a
+//     10% threshold on a 56% target trips at +/-5.6 absolute points
+//  4. an asset crossing its threshold raises an alert carrying the exact
+//     corrective market trade (buy/sell quantity + index-asset amount) to
+//     bring THAT asset back to its target; assets inside their band are
+//     left alone (dust trades lose money to spread)
+//  5. the currency basket -- sum of (units / snapshot units) x target weight
+//     -- is recorded so unit growth is visible independent of prices
 //
-// Alerts re-arm when the pair converges back under half the threshold, or
-// when baselines are reset via "rebalance".
+// Alerts re-arm once the asset converges back under half its threshold, or
+// when new targets are set.
 
 const REARM_FRACTION = 0.5;
 
-function relPrice(usdPrices, coingeckoId, indexId) {
-  const assetUsd = coingeckoId === 'usd' ? 1 : usdPrices[coingeckoId];
-  const indexUsd = indexId === 'usd' ? 1 : usdPrices[indexId];
-  if (!assetUsd || !indexUsd) return null;
-  return assetUsd / indexUsd;
+// Price one asset in USD and in index-asset units. Returns null when a
+// price is missing this round (skip, don't alert on bad data).
+function priceAsset(asset, profile, usdPrices) {
+  const indexUsd = profile.index_asset === 'usd' ? 1 : usdPrices[profile.index_asset];
+  if (!indexUsd) return null;
+  if (asset.is_index) return { rel: 1, usd: indexUsd }; // tethered: 1:1 by definition
+  const assetUsd = asset.coingecko_id === 'usd' ? 1 : usdPrices[asset.coingecko_id];
+  if (!assetUsd) return null;
+  return { rel: assetUsd / indexUsd, usd: assetUsd };
 }
 
-function pairKey(a, b) {
-  return a.id < b.id ? [a, b] : [b, a];
+// Currency basket: starts at 1.00000000 when targets are set (unit snapshot
+// taken); above 1 means the pool holds more units of the underlying assets.
+function computeBasket(assets) {
+  if (!assets.some((a) => a.basket_units != null)) return null;
+  let basket = 0;
+  for (const a of assets) {
+    const w = (a.target_pct || 0) / 100;
+    // Assets without a usable snapshot contribute neutrally (ratio 1).
+    const ratio = a.basket_units > 0 ? a.quantity / a.basket_units : 1;
+    basket += w * ratio;
+  }
+  return basket;
 }
 
-// Evaluates one profile against a price map. Returns alerts that should be
-// emailed. Pure-ish (writes history/baselines/alert state to the db).
 function evaluateProfile(profile, usdPrices, now) {
   const assets = db.prepare('SELECT * FROM assets WHERE profile_id = ?').all(profile.id);
-  const alerts = [];
-  const current = new Map(); // asset_id -> { asset, rel }
-
   const insertHistory = db.prepare(
     'INSERT INTO price_history (profile_id, asset_id, ts, usd_price, rel_price) VALUES (?, ?, ?, ?, ?)'
   );
-  const setBaseline = db.prepare('UPDATE assets SET baseline_rel = ?, baseline_at = ? WHERE id = ?');
 
+  const priced = [];
   for (const asset of assets) {
-    const rel = relPrice(usdPrices, asset.coingecko_id, profile.index_asset);
-    if (rel == null) continue; // price missing this round; skip, don't alert
-    const usd = asset.coingecko_id === 'usd' ? 1 : usdPrices[asset.coingecko_id];
-    insertHistory.run(profile.id, asset.id, now, usd, rel);
-    if (asset.baseline_rel == null) {
-      // First time we've priced this asset: today's value becomes the baseline.
-      setBaseline.run(rel, now, asset.id);
-      asset.baseline_rel = rel;
-    }
-    current.set(asset.id, { asset, rel });
+    const p = priceAsset(asset, profile, usdPrices);
+    if (!p) continue;
+    insertHistory.run(profile.id, asset.id, now, p.usd, p.rel);
+    priced.push({ asset, rel: p.rel, usd: p.usd });
   }
 
-  // Snapshot the whole profile: what the holdings are worth right now (USD
-  // and index units), what the same holdings were worth at baseline prices,
-  // and the growth that implies. Sum up all the pieces, then divide.
-  if (current.size > 0) {
-    let totalUsd = 0;
-    let totalRel = 0;
-    let baseRelTotal = 0;
-    const quantities = {};
-    for (const { asset, rel } of current.values()) {
-      const usd = asset.coingecko_id === 'usd' ? 1 : usdPrices[asset.coingecko_id];
-      totalUsd += asset.quantity * usd;
-      totalRel += asset.quantity * rel;
-      if (asset.baseline_rel) baseRelTotal += asset.quantity * asset.baseline_rel;
-      quantities[asset.symbol] = asset.quantity;
-    }
-    const growthPct = baseRelTotal > 0 ? (totalRel / baseRelTotal - 1) * 100 : null;
-    db.prepare(
-      'INSERT INTO profile_snapshots (profile_id, ts, total_usd, total_rel, baseline_rel_total, growth_pct, quantities) VALUES (?, ?, ?, ?, ?, ?, ?)'
-    ).run(profile.id, now, totalUsd, totalRel, baseRelTotal || null, growthPct, JSON.stringify(quantities));
+  let totalRel = 0;
+  let totalUsd = 0;
+  for (const p of priced) {
+    totalRel += p.asset.quantity * p.rel;
+    totalUsd += p.asset.quantity * p.usd;
   }
 
-  const sets = db.prepare('SELECT * FROM sets WHERE profile_id = ?').all(profile.id);
-  const getMembers = db.prepare(
-    'SELECT asset_id FROM set_members WHERE set_id = ?'
-  );
-  const getActive = db.prepare(
-    'SELECT * FROM active_alerts WHERE set_id = ? AND asset_a = ? AND asset_b = ?'
-  );
-  const addActive = db.prepare(
-    'INSERT OR REPLACE INTO active_alerts (set_id, asset_a, asset_b, triggered_at, drift_pct) VALUES (?, ?, ?, ?, ?)'
-  );
-  const clearActive = db.prepare(
-    'DELETE FROM active_alerts WHERE set_id = ? AND asset_a = ? AND asset_b = ?'
-  );
-
+  // Allocation drift + alerts, only when the whole pool priced (a missing
+  // price skews every other asset's share).
+  const alerts = [];
   const threshold = profile.threshold_pct / 100;
+  const getActive = db.prepare('SELECT * FROM alloc_alerts WHERE asset_id = ?');
+  const addActive = db.prepare(
+    'INSERT OR REPLACE INTO alloc_alerts (asset_id, triggered_at, drift_rel_pct) VALUES (?, ?, ?)'
+  );
+  const clearActive = db.prepare('DELETE FROM alloc_alerts WHERE asset_id = ?');
 
-  for (const set of sets) {
-    const memberIds = getMembers.all(set.id).map((r) => r.asset_id);
-    const members = memberIds.map((id) => current.get(id)).filter(Boolean);
-    for (let i = 0; i < members.length; i++) {
-      for (let j = i + 1; j < members.length; j++) {
-        const [first, second] = pairKey(members[i].asset, members[j].asset);
-        const a = current.get(first.id);
-        const b = current.get(second.id);
-        if (!a.asset.baseline_rel || !b.asset.baseline_rel) continue;
-        const divergence = (a.rel / a.asset.baseline_rel) / (b.rel / b.asset.baseline_rel) - 1;
-        const active = getActive.get(set.id, first.id, second.id);
-        if (Math.abs(divergence) >= threshold) {
-          if (!active) {
-            addActive.run(set.id, first.id, second.id, now, divergence * 100);
-            alerts.push({
-              profile,
-              set,
-              a: a.asset,
-              b: b.asset,
-              relA: a.rel,
-              relB: b.rel,
-              divergencePct: divergence * 100,
-            });
-          }
-        } else if (active && Math.abs(divergence) < threshold * REARM_FRACTION) {
-          clearActive.run(set.id, first.id, second.id);
+  if (totalRel > 0 && priced.length === assets.length) {
+    for (const p of priced) {
+      const target = p.asset.target_pct;
+      if (!target) continue;
+      const valueRel = p.asset.quantity * p.rel;
+      const actualPct = (valueRel / totalRel) * 100;
+      const driftRel = (actualPct - target) / target;
+      const active = getActive.get(p.asset.id);
+      if (Math.abs(driftRel) >= threshold) {
+        if (!active) {
+          addActive.run(p.asset.id, now, driftRel * 100);
+          // Corrective market trade to bring this asset back to target.
+          const deltaRel = (target / 100) * totalRel - valueRel; // >0 buy, <0 sell
+          alerts.push({
+            profile,
+            asset: p.asset,
+            actualPct,
+            targetPct: target,
+            driftRelPct: driftRel * 100,
+            action: deltaRel > 0 ? 'BUY' : 'SELL',
+            quantity: Math.abs(deltaRel) / p.rel,
+            indexAmount: Math.abs(deltaRel),
+          });
         }
+      } else if (active && Math.abs(driftRel) < threshold * REARM_FRACTION) {
+        clearActive.run(p.asset.id);
       }
     }
+  }
+
+  if (priced.length > 0) {
+    const quantities = {};
+    for (const p of priced) quantities[p.asset.symbol] = p.asset.quantity;
+    db.prepare(
+      'INSERT INTO profile_snapshots (profile_id, ts, total_usd, total_rel, basket, quantities) VALUES (?, ?, ?, ?, ?, ?)'
+    ).run(profile.id, now, totalUsd, totalRel, computeBasket(assets), JSON.stringify(quantities));
   }
 
   db.prepare('UPDATE profiles SET last_polled_at = ? WHERE id = ?').run(now, profile.id);
@@ -150,31 +148,43 @@ async function pollProfiles({ force = false, profileId = null } = {}) {
   return { polled: profiles.length, alerts };
 }
 
-// "Rebalance": accept current prices as the new baseline for a profile
-// (or a single set's members) and clear its active alerts.
-function resetBaselines(profileId, setId = null) {
+// "Set new targets": the deliberate decision to change the intended mix.
+// Targets (including the tethered asset's) must cover every asset and total
+// 100. Takes a fresh unit snapshot, so the currency basket resets to
+// 1.00000000, and clears active alerts so drift is re-judged against the
+// new targets.
+function setTargets(profileId, targets) {
+  const assets = db.prepare('SELECT * FROM assets WHERE profile_id = ?').all(profileId);
+  if (assets.length === 0) throw new Error('profile has no assets');
+  const byId = new Map(assets.map((a) => [a.id, a]));
+  const seen = new Set();
+  let sum = 0;
+  for (const t of targets || []) {
+    const id = Number(t.asset_id);
+    const pct = Number(t.target_pct);
+    if (!byId.has(id)) throw new Error(`unknown asset ${t.asset_id}`);
+    if (seen.has(id)) throw new Error('duplicate asset in targets');
+    if (!(pct >= 0)) throw new Error('target_pct must be >= 0');
+    seen.add(id);
+    sum += pct;
+  }
+  if (seen.size !== assets.length) throw new Error('a target is required for every asset');
+  if (Math.abs(sum - 100) > 0.01) {
+    throw new Error(`targets must total 100% (got ${sum.toFixed(2)}%)`);
+  }
+
   const now = Date.now();
-  let assetIds;
-  if (setId != null) {
-    assetIds = db.prepare('SELECT asset_id AS id FROM set_members WHERE set_id = ?').all(setId).map((r) => r.id);
-  } else {
-    assetIds = db.prepare('SELECT id FROM assets WHERE profile_id = ?').all(profileId).map((r) => r.id);
-  }
-  const latest = db.prepare(
-    'SELECT rel_price FROM price_history WHERE asset_id = ? ORDER BY ts DESC LIMIT 1'
-  );
-  const update = db.prepare('UPDATE assets SET baseline_rel = ?, baseline_at = ? WHERE id = ?');
-  for (const id of assetIds) {
-    const row = latest.get(id);
-    if (row) update.run(row.rel_price, now, id);
-  }
-  if (setId != null) {
-    db.prepare('DELETE FROM active_alerts WHERE set_id = ?').run(setId);
-  } else {
+  const update = db.prepare('UPDATE assets SET target_pct = ?, basket_units = ? WHERE id = ?');
+  db.transaction(() => {
+    for (const t of targets) {
+      const asset = byId.get(Number(t.asset_id));
+      update.run(Number(t.target_pct), asset.quantity, asset.id);
+    }
+    db.prepare('UPDATE profiles SET basket_started_at = ? WHERE id = ?').run(now, profileId);
     db.prepare(
-      'DELETE FROM active_alerts WHERE set_id IN (SELECT id FROM sets WHERE profile_id = ?)'
+      'DELETE FROM alloc_alerts WHERE asset_id IN (SELECT id FROM assets WHERE profile_id = ?)'
     ).run(profileId);
-  }
+  })();
 }
 
-module.exports = { pollProfiles, resetBaselines, evaluateProfile };
+module.exports = { pollProfiles, evaluateProfile, setTargets, computeBasket, priceAsset };

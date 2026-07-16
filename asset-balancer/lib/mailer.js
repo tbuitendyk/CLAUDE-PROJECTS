@@ -21,27 +21,34 @@ function fmt(n, digits = 6) {
   return Number(n).toPrecision(digits);
 }
 
+// Trade quantities need enough precision to be executable but shouldn't be
+// 15-digit noise.
+function fmtQty(n) {
+  return Number(Number(n).toPrecision(8)).toString();
+}
+
 async function sendAlerts(alerts) {
   if (alerts.length === 0) return;
 
   const lines = alerts.map((al) => {
-    const dir = al.divergencePct > 0 ? 'gained on' : 'lost against';
+    const sym = al.asset.symbol.toUpperCase();
+    const idx = al.profile.index_asset.toUpperCase();
+    const state = al.driftRelPct > 0 ? 'overweight' : 'underweight';
     return [
-      `Profile "${al.profile.name}" / set "${al.set.name}":`,
-      `  ${al.a.symbol.toUpperCase()} has ${dir} ${al.b.symbol.toUpperCase()} by ${Math.abs(al.divergencePct).toFixed(2)}% since baseline`,
-      `  (threshold ${al.profile.threshold_pct}%, index: ${al.profile.index_asset})`,
-      `  ${al.a.symbol.toUpperCase()}: baseline ${fmt(al.a.baseline_rel)} -> now ${fmt(al.relA)}`,
-      `  ${al.b.symbol.toUpperCase()}: baseline ${fmt(al.b.baseline_rel)} -> now ${fmt(al.relB)}`,
+      `Profile "${al.profile.name}": ${sym} is ${state}`,
+      `  actual ${al.actualPct.toFixed(2)}% of pool vs target ${al.targetPct}% ` +
+        `(drift ${al.driftRelPct >= 0 ? '+' : ''}${al.driftRelPct.toFixed(1)}% of target, threshold ${al.profile.threshold_pct}%)`,
+      `  -> ${al.action} ${fmtQty(al.quantity)} ${sym}  (≈ ${fmt(al.indexAmount)} ${idx})`,
     ].join('\n');
   });
 
   const text =
-    `Rebalance signal${alerts.length > 1 ? 's' : ''}:\n\n` +
+    `Rebalance signal${alerts.length > 1 ? 's' : ''} — market orders, sized at current prices:\n\n` +
     lines.join('\n\n') +
-    '\n\nOpen the balancer, rebalance manually, then hit "Rebalanced" to reset baselines.';
+    '\n\nAfter trading, take a screenshot of your balances and import it in the balancer to set the new quantities.';
 
   const logStmt = db.prepare(
-    'INSERT INTO alert_log (profile_id, set_id, message, ts, emailed) VALUES (?, ?, ?, ?, ?)'
+    'INSERT INTO alert_log (profile_id, message, ts, emailed) VALUES (?, ?, ?, ?)'
   );
 
   let emailed = 0;
@@ -50,7 +57,7 @@ async function sendAlerts(alerts) {
       await transporter.sendMail({
         from: config.alertEmailFrom || config.smtp.user,
         to: config.alertEmailTo,
-        subject: `[Asset Balancer] ${alerts.length} rebalance signal${alerts.length > 1 ? 's' : ''}`,
+        subject: `[Asset Balancer] ${alerts.length} rebalance trade${alerts.length > 1 ? 's' : ''} to make`,
         text,
       });
       emailed = 1;
@@ -63,7 +70,7 @@ async function sendAlerts(alerts) {
 
   const ts = Date.now();
   for (let i = 0; i < alerts.length; i++) {
-    logStmt.run(alerts[i].profile.id, alerts[i].set.id, lines[i], ts, emailed);
+    logStmt.run(alerts[i].profile.id, lines[i], ts, emailed);
   }
 }
 

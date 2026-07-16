@@ -125,18 +125,18 @@ function fmtMoney(n) {
   return n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
-// Editable cell for quantity / target %; saves on change.
-function editCell(asset, field, step) {
+// Editable quantity cell; saves on change.
+function qtyCell(asset) {
   const td = document.createElement('td');
   const input = document.createElement('input');
   input.type = 'number';
   input.min = '0';
-  input.step = step;
-  input.value = asset[field];
+  input.step = 'any';
+  input.value = asset.quantity;
   input.className = 'cell-input';
   input.addEventListener('change', async () => {
     try {
-      await api(`/assets/${asset.id}`, { method: 'PATCH', body: { [field]: Number(input.value) } });
+      await api(`/assets/${asset.id}`, { method: 'PATCH', body: { quantity: Number(input.value) } });
       await refresh();
     } catch (err) {
       alert(err.message);
@@ -146,28 +146,50 @@ function editCell(asset, field, step) {
   return td;
 }
 
+// Checkmark for the tethered index asset (at most one per profile, priced
+// 1:1 with the index).
+function indexCell(asset) {
+  const td = document.createElement('td');
+  td.className = 'center';
+  const cb = document.createElement('input');
+  cb.type = 'checkbox';
+  cb.checked = Boolean(asset.is_index);
+  cb.title = 'Tethered to the index asset (1:1)';
+  cb.addEventListener('change', async () => {
+    try {
+      await api(`/assets/${asset.id}`, { method: 'PATCH', body: { is_index: cb.checked } });
+      await refresh();
+    } catch (err) {
+      alert(err.message);
+    }
+  });
+  td.appendChild(cb);
+  return td;
+}
+
 function renderDetail() {
   const d = state.detail;
   $('#detail-empty').classList.toggle('hidden', Boolean(d));
   $('#detail').classList.toggle('hidden', !d);
   if (!d) return;
 
-  const { profile, assets, sets, alertLog, totals, snapshots } = d;
+  const { profile, assets, alertLog, totals, snapshots } = d;
   $('#d-name').textContent = profile.name;
   const polled = profile.last_polled_at
     ? new Date(profile.last_polled_at).toLocaleString()
     : 'never';
   $('#d-meta').textContent =
-    `Index: ${profile.index_asset} · threshold ${profile.threshold_pct}% · ` +
+    `Index: ${profile.index_asset} · threshold ${profile.threshold_pct}% of target · ` +
     `polls every ${profile.poll_minutes} min · last poll: ${polled}`;
 
-  // summary: total value, value in index units, growth since baseline
+  // summary: currency basket (unit growth) first, then values
   const summary = $('#d-summary');
   summary.innerHTML = '';
   const stats = [
-    ['Total value', totals && totals.totalUsd != null ? '$' + fmtMoney(totals.totalUsd) : '—'],
+    ['Currency basket', totals && totals.basket != null ? totals.basket.toFixed(8) : '—'],
     [`Total (${profile.index_asset})`, totals ? fmtNum(totals.totalRel) : '—'],
-    ['Growth since baseline', totals && totals.growthPct != null ? fmtPct(totals.growthPct) : '—'],
+    ['Total (USD)', totals && totals.totalUsd != null ? '$' + fmtMoney(totals.totalUsd) : '—'],
+    ['Growth since start', totals && totals.growthPct != null ? fmtPct(totals.growthPct) : '—'],
   ];
   for (const [label, value] of stats) {
     const div = document.createElement('div');
@@ -176,11 +198,14 @@ function renderDetail() {
     summary.appendChild(div);
   }
 
-  // target allocations should add up to 100 (index asset included)
+  // target allocations should add up to 100 (tethered index asset included)
   const warning = $('#alloc-warning');
   const targetTotal = totals ? totals.targetTotal : 0;
-  if (Math.abs(targetTotal - 100) > 0.01 && targetTotal !== 0) {
-    warning.textContent = `Target allocations add up to ${targetTotal.toFixed(1)}% — they should total 100% (index asset included).`;
+  if (Math.abs(targetTotal - 100) > 0.01) {
+    warning.textContent =
+      targetTotal === 0
+        ? 'No targets set yet — use "Set new targets" to define the intended mix.'
+        : `Target allocations add up to ${targetTotal.toFixed(1)}% — they should total 100%. Use "Set new targets" to fix.`;
     warning.classList.remove('hidden');
   } else {
     warning.classList.add('hidden');
@@ -191,17 +216,26 @@ function renderDetail() {
   tbody.innerHTML = '';
   for (const a of assets) {
     const tr = document.createElement('tr');
+    if (a.breached) tr.className = 'breached';
+    tr.appendChild(indexCell(a));
     const sym = document.createElement('td');
     sym.textContent = a.symbol.toUpperCase();
     tr.appendChild(sym);
-    tr.appendChild(editCell(a, 'target_pct', '0.1'));
-    tr.appendChild(editCell(a, 'quantity', 'any'));
+    const tgt = document.createElement('td');
+    tgt.textContent = a.target_pct ? a.target_pct + '%' : '—';
+    tr.appendChild(tgt);
+    tr.appendChild(qtyCell(a));
+    const drift =
+      a.driftRelPct == null
+        ? '—'
+        : `<span class="${a.driftRelPct >= 0 ? 'pos' : 'neg'}">${a.driftRelPct >= 0 ? '+' : ''}${a.driftRelPct.toFixed(1)}%</span>` +
+          (a.breached ? ' ⚠' : '');
     const rest = document.createElement('template');
     rest.innerHTML =
       `<td>${a.last ? '$' + fmtNum(a.last.usd_price) : '—'}</td>` +
       `<td>${a.valueUsd != null ? '$' + fmtMoney(a.valueUsd) : '—'}</td>` +
-      `<td>${a.actualPct != null ? a.actualPct.toFixed(1) + '%' : '—'}</td>` +
-      `<td>${fmtPct(a.driftPct)}</td>`;
+      `<td>${a.actualPct != null ? a.actualPct.toFixed(2) + '%' : '—'}</td>` +
+      `<td>${drift}</td>`;
     tr.append(...rest.content.childNodes);
     const td = document.createElement('td');
     const del = document.createElement('button');
@@ -224,61 +258,14 @@ function renderDetail() {
     const tr = document.createElement('tr');
     tr.innerHTML =
       `<td>${new Date(s.ts).toLocaleString()}</td>` +
-      `<td>$${fmtMoney(s.total_usd)}</td>` +
+      `<td>${s.basket != null ? s.basket.toFixed(8) : '—'}</td>` +
       `<td>${fmtNum(s.total_rel)}</td>` +
-      `<td>${fmtPct(s.growth_pct)}</td>`;
+      `<td>$${fmtMoney(s.total_usd)}</td>`;
     snapBody.appendChild(tr);
   }
 
   // screenshot import (only when the server has an Anthropic API key)
   $('#import-section').classList.toggle('hidden', !state.visionConfigured);
-
-  // sets
-  const setList = $('#set-list');
-  setList.innerHTML = '';
-  const bySymbol = new Map(assets.map((a) => [a.id, a.symbol.toUpperCase()]));
-  for (const s of sets) {
-    const div = document.createElement('div');
-    div.className = 'set';
-    const head = document.createElement('div');
-    head.className = 'set-head';
-    const title = document.createElement('strong');
-    title.textContent = s.name;
-    head.appendChild(title);
-    if (s.active_alerts.length > 0) {
-      const badge = document.createElement('span');
-      badge.className = 'alert-badge';
-      badge.textContent = `⚠ ${s.active_alerts.length} pair(s) over threshold`;
-      head.appendChild(badge);
-    }
-    const del = document.createElement('button');
-    del.textContent = 'Delete';
-    del.className = 'ghost';
-    del.addEventListener('click', async () => {
-      if (!confirm(`Delete set "${s.name}"?`)) return;
-      await api(`/sets/${s.id}`, { method: 'DELETE' });
-      await refresh();
-    });
-    head.appendChild(del);
-    div.appendChild(head);
-    const members = document.createElement('p');
-    members.className = 'muted';
-    members.textContent = s.member_ids.map((id) => bySymbol.get(id) || '?').join(', ') || 'no members';
-    div.appendChild(members);
-    setList.appendChild(div);
-  }
-
-  // set-member checkboxes
-  const box = $('#s-members');
-  box.innerHTML = '';
-  for (const a of assets) {
-    const label = document.createElement('label');
-    const cb = document.createElement('input');
-    cb.type = 'checkbox';
-    cb.value = a.id;
-    label.append(cb, document.createTextNode(a.symbol.toUpperCase()));
-    box.appendChild(label);
-  }
 
   // alert log
   const log = $('#alert-log');
@@ -308,10 +295,55 @@ $('#d-poll').addEventListener('click', async () => {
   }
 });
 
-$('#d-rebalance').addEventListener('click', async () => {
-  if (!confirm('Reset all baselines to current prices? Do this after you have manually rebalanced.')) return;
-  await api(`/profiles/${state.selectedId}/rebalance`, { method: 'POST', body: {} });
-  await refresh();
+// Set new targets: the deliberate decision to change the intended mix.
+$('#d-targets').addEventListener('click', () => {
+  const rows = $('#t-rows');
+  rows.innerHTML = '';
+  for (const a of state.detail.assets) {
+    const row = document.createElement('label');
+    row.className = 'target-row';
+    const name = document.createElement('span');
+    name.textContent = a.symbol.toUpperCase() + (a.is_index ? ' ⚓' : '');
+    const input = document.createElement('input');
+    input.type = 'number';
+    input.min = '0';
+    input.max = '100';
+    input.step = '0.1';
+    input.value = a.target_pct || 0;
+    input.dataset.assetId = a.id;
+    input.addEventListener('input', updateTargetSum);
+    row.append(name, input, document.createTextNode('%'));
+    rows.appendChild(row);
+  }
+  updateTargetSum();
+  $('#targets-editor').classList.remove('hidden');
+});
+
+function updateTargetSum() {
+  let sum = 0;
+  for (const input of document.querySelectorAll('#t-rows input')) sum += Number(input.value) || 0;
+  const el = $('#t-sum');
+  el.textContent = `Total: ${sum.toFixed(1)}%`;
+  el.className = Math.abs(sum - 100) > 0.01 ? 'warn-text' : 'muted';
+  $('#t-save').disabled = Math.abs(sum - 100) > 0.01;
+}
+
+$('#t-save').addEventListener('click', async () => {
+  const targets = [...document.querySelectorAll('#t-rows input')].map((input) => ({
+    asset_id: Number(input.dataset.assetId),
+    target_pct: Number(input.value) || 0,
+  }));
+  try {
+    await api(`/profiles/${state.selectedId}/targets`, { method: 'POST', body: { targets } });
+    $('#targets-editor').classList.add('hidden');
+    await refresh();
+  } catch (err) {
+    alert(err.message);
+  }
+});
+
+$('#t-cancel').addEventListener('click', () => {
+  $('#targets-editor').classList.add('hidden');
 });
 
 $('#d-delete').addEventListener('click', async () => {
@@ -374,15 +406,6 @@ $('#asset-form').addEventListener('submit', async (e) => {
   await refresh();
 });
 
-$('#set-form').addEventListener('submit', async (e) => {
-  e.preventDefault();
-  const name = $('#s-name').value.trim();
-  if (!name) return;
-  const member_ids = [...document.querySelectorAll('#s-members input:checked')].map((cb) => Number(cb.value));
-  await api(`/profiles/${state.selectedId}/sets`, { method: 'POST', body: { name, member_ids } });
-  $('#s-name').value = '';
-  await refresh();
-});
 
 // ---- screenshot import ----
 

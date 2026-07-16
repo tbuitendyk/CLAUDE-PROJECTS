@@ -14,11 +14,16 @@ first — then do the work.
 
 This repo is split **one project per branch**. This branch carries only the
 asset balancer (`asset-balancer/`): a Node.js service (Express + SQLite +
-Nodemailer) that polls CoinGecko on a per-profile schedule, tracks each
-asset's value relative to a profile's index asset, and emails a rebalance
-signal when two assets in the same set drift apart past the profile's
-threshold. It runs as the `asset-balancer` systemd unit (node on
-`127.0.0.1:8091`, deployed to `/opt/asset-balancer`, config in
+Nodemailer + Claude vision) that polls CoinGecko on a per-profile schedule.
+Each profile is one flat pool of assets with target allocation percentages
+(totalling 100, incl. an optional "tethered" index asset pinned 1:1 to the
+index, e.g. USDT for USD). Drift = (actual% − target%)/target%; crossing the
+profile threshold emails the corrective market trade (buy/sell qty + index
+amount) for that asset only. A "currency basket" (Σ units/snapshot-units ×
+target weight, reset to 1.0 when targets change) tracks unit growth
+independent of prices. Quantities come in via screenshot import (Claude
+vision) or manual edit. It runs as the `asset-balancer` systemd unit (node
+on `127.0.0.1:8091`, deployed to `/opt/asset-balancer`, config in
 `/etc/asset-balancer/env`).
 
 The app serves its **own** web UI (`asset-balancer/public/`) — unlike the
