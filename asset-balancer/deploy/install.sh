@@ -30,10 +30,23 @@ INSTALL_DIR="/opt/asset-balancer"
 SERVICE_USER="balancer"
 ENV_FILE="/etc/asset-balancer/env"
 
-echo "==> Installing system packages (nodejs, npm, build tools for better-sqlite3)"
+echo "==> Installing system packages (build tools for better-sqlite3)"
 apt-get update -qq
 apt-get install -y --no-install-recommends \
-  nodejs npm rsync ca-certificates build-essential python3
+  rsync ca-certificates curl build-essential python3
+
+# The app needs Node >= 18 (global fetch, better-sqlite3 v11). Debian 11's
+# apt nodejs is v12, so install Node 20 LTS from NodeSource when the system
+# node is missing or too old. NodeSource's package ships npm and installs to
+# /usr/bin/node, which is what the systemd unit expects.
+NODE_MAJOR="$(node -v 2>/dev/null | sed -n 's/^v\([0-9]*\).*/\1/p' || true)"
+if [[ -z "${NODE_MAJOR}" || "${NODE_MAJOR}" -lt 18 ]]; then
+  echo "==> Installing Node.js 20 from NodeSource (system node: ${NODE_MAJOR:-none})"
+  apt-get remove -y nodejs npm >/dev/null 2>&1 || true
+  curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
+  apt-get install -y nodejs
+fi
+echo "    using node $(node -v) / npm $(npm -v)"
 
 echo "==> Creating service user '${SERVICE_USER}' and ${INSTALL_DIR}"
 id -u "${SERVICE_USER}" &>/dev/null || useradd --system --create-home --shell /usr/sbin/nologin "${SERVICE_USER}"
