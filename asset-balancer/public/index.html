@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Asset Balancer</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header>
+    <h1>Asset Balancer</h1>
+    <span id="email-status" class="pill"></span>
+  </header>
+
+  <main id="app">
+    <section id="login-view" class="hidden card">
+      <h2>Log in</h2>
+      <form id="login-form">
+        <input type="password" id="login-password" placeholder="Password" autocomplete="current-password">
+        <button type="submit">Enter</button>
+      </form>
+      <p id="login-error" class="error"></p>
+    </section>
+
+    <section id="main-view" class="hidden">
+      <div class="row">
+        <div class="card" id="profiles-card">
+          <h2>Profiles</h2>
+          <ul id="profile-list"></ul>
+          <form id="profile-form" class="stack">
+            <input id="pf-name" placeholder="Profile name" required>
+            <input id="pf-index" placeholder="Index asset (usd, bitcoin, ...)" value="usd">
+            <label>Threshold % <input id="pf-threshold" type="number" step="0.1" min="0.1" value="5"></label>
+            <label>Poll every (min) <input id="pf-poll" type="number" min="1" value="15"></label>
+            <button type="submit">Add profile</button>
+          </form>
+        </div>
+
+        <div class="card grow" id="detail-card">
+          <div id="detail-empty"><p>Select a profile.</p></div>
+          <div id="detail" class="hidden">
+            <div class="detail-head">
+              <h2 id="d-name"></h2>
+              <div class="detail-actions">
+                <button id="d-poll">Poll now</button>
+                <button id="d-rebalance" class="warn">Rebalanced (reset baselines)</button>
+                <button id="d-delete" class="danger">Delete profile</button>
+              </div>
+            </div>
+            <p id="d-meta" class="muted"></p>
+
+            <h3>Assets</h3>
+            <table id="asset-table">
+              <thead>
+                <tr><th>Symbol</th><th>Price (USD)</th><th>vs index</th><th>Baseline</th><th>Drift</th><th></th></tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+            <form id="asset-form" class="inline">
+              <input id="a-search" placeholder="Search coin (e.g. ethereum)" autocomplete="off">
+              <div id="a-results" class="search-results hidden"></div>
+              <button type="submit" disabled id="a-add">Add asset</button>
+            </form>
+
+            <h3>Sets</h3>
+            <div id="set-list"></div>
+            <form id="set-form" class="stack">
+              <input id="s-name" placeholder="Set name">
+              <div id="s-members" class="checkboxes"></div>
+              <button type="submit">Add set</button>
+            </form>
+
+            <h3>Alert history</h3>
+            <ul id="alert-log" class="log"></ul>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>

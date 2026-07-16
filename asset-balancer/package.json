@@ -1,0 +1,20 @@
+{
+  "name": "asset-balancer",
+  "version": "1.0.0",
+  "description": "Manual asset balancer: tracks relative asset values against an index and emails when rebalance thresholds are hit.",
+  "main": "server.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node server.js",
+    "poll": "node scripts/poll-once.js",
+    "test-email": "node scripts/test-email.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.5.0",
+    "express": "^4.21.0",
+    "nodemailer": "^6.9.15"
+  }
+}
