@@ -41,6 +41,37 @@ for (const p of profiles) {
     })),
   }, null, 1));
 }
+// Per-asset value breakdown: exactly how totalUsd / totalRel are summed, so
+// a wrong "total" in the status report can be traced to a specific asset
+// (missing price row, stale price, zero quantity, is_index handling).
+console.log('== per-asset value breakdown ==');
+const latest = db.prepare(
+  'SELECT usd_price, rel_price, ts FROM price_history WHERE asset_id = ? ORDER BY ts DESC LIMIT 1'
+);
+for (const p of profiles) {
+  const assets = db.prepare('SELECT * FROM assets WHERE profile_id = ? ORDER BY id').all(p.id);
+  let totalUsd = 0, totalRel = 0;
+  console.log(`\n-- profile ${p.id} "${p.name}" --`);
+  for (const a of assets) {
+    const last = latest.get(a.id);
+    const usd = last ? last.usd_price : null;
+    const valueUsd = last ? a.quantity * last.usd_price : null;
+    const rel = a.is_index ? 1 : (last ? last.rel_price : null);
+    const valueRel = rel != null ? a.quantity * rel : null;
+    if (valueUsd != null) totalUsd += valueUsd;
+    if (valueRel != null) totalRel += valueRel;
+    console.log(
+      `  ${a.symbol.padEnd(6)} id=${a.id} idx=${a.is_index} qty=${a.quantity}` +
+      ` price_usd=${usd == null ? 'NONE' : usd}` +
+      ` value_usd=${valueUsd == null ? 'EXCLUDED' : valueUsd.toFixed(2)}` +
+      ` price_ts=${last ? new Date(last.ts).toISOString() : 'never'}`
+    );
+  }
+  console.log(`  => totalUsd=${totalUsd.toFixed(2)}  totalRel=${totalRel.toFixed(2)}  (index_asset='${p.index_asset}')`);
+  const snap = db.prepare('SELECT ts,total_usd,total_rel,basket FROM profile_snapshots WHERE profile_id=? ORDER BY ts DESC LIMIT 1').get(p.id);
+  if (snap) console.log(`  last snapshot: total_usd=${snap.total_usd} total_rel=${snap.total_rel} basket=${snap.basket} @ ${new Date(snap.ts).toISOString()}`);
+}
+console.log();
 console.log('== active alloc_alerts ==', db.prepare('SELECT COUNT(*) c FROM alloc_alerts').get().c);
 console.log('== alert_log (last 5) ==');
 for (const a of db.prepare('SELECT ts,emailed,message FROM alert_log ORDER BY ts DESC LIMIT 5').all()) {
