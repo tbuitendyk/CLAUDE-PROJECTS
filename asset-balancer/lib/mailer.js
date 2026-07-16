@@ -18,12 +18,12 @@ function emailConfigured() {
   return Boolean(transporter);
 }
 
-// All balancer mail presents as "Asset Balancer", regardless of how the
-// env spells the from address (bare, or "Name <addr>").
+// All balancer mail presents as "Manual Asset Balancer", regardless of how
+// the env spells the from address (bare, or "Name <addr>").
 function fromHeader() {
   const raw = (config.alertEmailFrom || config.smtp.user || '').trim();
   const m = raw.match(/<([^>]+)>/);
-  return { name: 'Asset Balancer', address: m ? m[1] : raw };
+  return { name: 'Manual Asset Balancer', address: m ? m[1] : raw };
 }
 
 function fmt(n, digits = 6) {
