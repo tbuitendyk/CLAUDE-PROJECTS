@@ -33,6 +33,7 @@ want = {
     "SMTP_USER": "support@homeandofficemicro.com",
     "SMTP_PASS": pw,
     "ALERT_EMAIL_FROM": "Asset Balancer <support@homeandofficemicro.com>",
+    "ALERT_EMAIL_TO": "theodore@buitendyk.ca",
 }
 with open(DST) as f:
     lines = f.read().splitlines()
