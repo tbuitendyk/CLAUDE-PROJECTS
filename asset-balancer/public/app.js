@@ -182,21 +182,32 @@ function renderDetail() {
     `Index: ${profile.index_asset} · threshold ${profile.threshold_pct}% of target · ` +
     `polls every ${profile.poll_minutes} min · last poll: ${polled}`;
 
-  // summary: currency basket (unit growth) first, then values
+  // Overall performance, two lines: (1) currency basket — unit growth,
+  // (2) value in index-asset terms with growth since start.
   const summary = $('#d-summary');
   summary.innerHTML = '';
-  const stats = [
-    ['Currency basket', totals && totals.basket != null ? totals.basket.toFixed(8) : '—'],
-    [`Total (${profile.index_asset})`, totals ? fmtNum(totals.totalRel) : '—'],
-    ['Total (USD)', totals && totals.totalUsd != null ? '$' + fmtMoney(totals.totalUsd) : '—'],
-    ['Growth since start', totals && totals.growthPct != null ? fmtPct(totals.growthPct) : '—'],
-  ];
-  for (const [label, value] of stats) {
-    const div = document.createElement('div');
-    div.className = 'stat';
-    div.innerHTML = `<span class="stat-label">${label}</span><span class="stat-value">${value}</span>`;
-    summary.appendChild(div);
+  const idx = profile.index_asset.toUpperCase();
+  const line1 = document.createElement('div');
+  line1.className = 'perf-line';
+  if (totals && totals.basket != null) {
+    const unitPct = (totals.basket - 1) * 100;
+    line1.innerHTML =
+      `Currency basket: <strong>${totals.basket.toFixed(8)}</strong> ` +
+      `<span class="${unitPct >= 0 ? 'pos' : 'neg'}">(${unitPct >= 0 ? '+' : ''}${unitPct.toFixed(4)}% units)</span>`;
+  } else {
+    line1.innerHTML = 'Currency basket: <span class="muted">— set targets to start</span>';
   }
+  const line2 = document.createElement('div');
+  line2.className = 'perf-line';
+  if (totals && totals.totalRel > 0) {
+    line2.innerHTML =
+      `Value (${idx}): <strong>${fmtNum(totals.totalRel)}</strong> ` +
+      (totals.growthPct != null ? `${fmtPct(totals.growthPct)} since start ` : '') +
+      `<span class="muted">· $${fmtMoney(totals.totalUsd)} USD</span>`;
+  } else {
+    line2.innerHTML = `Value (${idx}): <span class="muted">— no priced holdings yet</span>`;
+  }
+  summary.append(line1, line2);
 
   // target allocations should add up to 100 (tethered index asset included)
   const warning = $('#alloc-warning');

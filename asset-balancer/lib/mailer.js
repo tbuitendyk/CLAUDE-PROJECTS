@@ -18,6 +18,14 @@ function emailConfigured() {
   return Boolean(transporter);
 }
 
+// All balancer mail presents as "Asset Balancer", regardless of how the
+// env spells the from address (bare, or "Name <addr>").
+function fromHeader() {
+  const raw = (config.alertEmailFrom || config.smtp.user || '').trim();
+  const m = raw.match(/<([^>]+)>/);
+  return { name: 'Asset Balancer', address: m ? m[1] : raw };
+}
+
 function fmt(n, digits = 6) {
   return Number(n).toPrecision(digits);
 }
@@ -88,7 +96,7 @@ async function sendAlertEvents(events) {
     if (emails.length > 0 && emailConfigured()) {
       try {
         await transporter.sendMail({
-          from: config.alertEmailFrom || config.smtp.user,
+          from: fromHeader(),
           to: emails.join(', '),
           subject: `[Asset Balancer] ${profile.name}: ${alerts.length} rebalance trade${alerts.length > 1 ? 's' : ''} to make`,
           text,
@@ -121,11 +129,11 @@ async function sendTestEmail() {
     throw new Error('SMTP or ALERT_EMAIL_TO not configured');
   }
   await transporter.sendMail({
-    from: config.alertEmailFrom || config.smtp.user,
+    from: fromHeader(),
     to: config.alertEmailTo,
     subject: '[Asset Balancer] Test email',
     text: 'Email delivery from the asset balancer is working.',
   });
 }
 
-module.exports = { sendAlertEvents, sendTestEmail, emailConfigured, buildText };
+module.exports = { sendAlertEvents, sendTestEmail, emailConfigured, buildText, fromHeader };

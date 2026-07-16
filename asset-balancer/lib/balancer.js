@@ -132,6 +132,9 @@ function evaluateProfile(profile, usdPrices, now) {
         clearActive.run(p.asset.id);
       }
     }
+    // Biggest breach first, in emails and logs alike.
+    breaches.sort((a, b) => Math.abs(b.driftRelPct) - Math.abs(a.driftRelPct));
+    newBreaches.sort((a, b) => Math.abs(b.driftRelPct) - Math.abs(a.driftRelPct));
   }
 
   if (priced.length > 0) {
