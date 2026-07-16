@@ -230,6 +230,9 @@ function renderDetail() {
     snapBody.appendChild(tr);
   }
 
+  // screenshot import (only when the server has an Anthropic API key)
+  $('#import-section').classList.toggle('hidden', !state.visionConfigured);
+
   // sets
   const setList = $('#set-list');
   setList.innerHTML = '';
@@ -381,6 +384,145 @@ $('#set-form').addEventListener('submit', async (e) => {
   await refresh();
 });
 
+// ---- screenshot import ----
+
+// Downscale to keep upload + vision token cost small while leaving phone
+// screenshot text perfectly legible.
+function fileToScaledBase64(file, maxEdge = 1568) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      const scale = Math.min(1, maxEdge / Math.max(img.width, img.height));
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.round(img.width * scale);
+      canvas.height = Math.round(img.height * scale);
+      canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
+      resolve(dataUrl.split(',')[1]);
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error('Could not read that image'));
+    };
+    img.src = url;
+  });
+}
+
+let importPlan = []; // [{kind: 'update'|'add', ...}] built from the preview
+
+function renderImportPreview(result) {
+  const box = $('#i-rows');
+  box.innerHTML = '';
+  importPlan = [];
+
+  const addRow = (labelHtml, plan, extraEl = null) => {
+    const idx = importPlan.push(plan) - 1;
+    const row = document.createElement('label');
+    row.className = 'import-row';
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.checked = plan.kind !== 'skip';
+    cb.disabled = plan.kind === 'skip';
+    cb.dataset.idx = idx;
+    const span = document.createElement('span');
+    span.innerHTML = labelHtml;
+    row.append(cb, span);
+    if (extraEl) row.appendChild(extraEl);
+    box.appendChild(row);
+  };
+
+  for (const m of result.matches) {
+    addRow(
+      `<strong>${m.symbol.toUpperCase()}</strong> quantity ${fmtNum(m.old_quantity)} → <strong>${fmtNum(m.new_quantity)}</strong>` +
+        (m.value_usd != null ? ` <span class="muted">($${fmtMoney(m.value_usd)})</span>` : ''),
+      { kind: 'update', asset_id: m.asset_id, quantity: m.new_quantity }
+    );
+  }
+  for (const u of result.unmatched) {
+    if (u.candidates && u.candidates.length > 0) {
+      const select = document.createElement('select');
+      for (const c of u.candidates) {
+        const opt = document.createElement('option');
+        opt.value = JSON.stringify({ id: c.id, symbol: c.symbol });
+        opt.textContent = `${c.name} (${c.symbol.toUpperCase()})${c.rank ? ' #' + c.rank : ''}`;
+        select.appendChild(opt);
+      }
+      const plan = { kind: 'add', quantity: u.quantity, select };
+      addRow(
+        `<strong>${(u.symbol || u.name).toUpperCase()}</strong> — new asset, quantity ${fmtNum(u.quantity)} as`,
+        plan,
+        select
+      );
+    } else {
+      addRow(
+        `<strong>${(u.symbol || u.name).toUpperCase()}</strong> — no CoinGecko match found, skipped`,
+        { kind: 'skip' }
+      );
+    }
+  }
+  if (importPlan.length === 0) {
+    box.innerHTML = '<p class="muted">No holdings with quantities were found in that screenshot.</p>';
+  }
+  $('#import-preview').classList.remove('hidden');
+}
+
+$('#import-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const file = $('#i-file').files[0];
+  if (!file) return;
+  $('#i-go').disabled = true;
+  $('#i-status').textContent = 'Reading screenshot… (this takes a few seconds)';
+  $('#import-preview').classList.add('hidden');
+  try {
+    const image = await fileToScaledBase64(file);
+    const result = await api(`/profiles/${state.selectedId}/import-screenshot`, {
+      method: 'POST',
+      body: { image, media_type: 'image/jpeg' },
+    });
+    $('#i-status').textContent = `Found ${result.parsed.length} holding(s). Review and apply:`;
+    renderImportPreview(result);
+  } catch (err) {
+    $('#i-status').textContent = `Import failed: ${err.message}`;
+  } finally {
+    $('#i-go').disabled = false;
+  }
+});
+
+$('#i-apply').addEventListener('click', async () => {
+  const boxes = document.querySelectorAll('#i-rows input[type=checkbox]:checked');
+  let applied = 0;
+  for (const cb of boxes) {
+    const plan = importPlan[Number(cb.dataset.idx)];
+    if (!plan || plan.kind === 'skip') continue;
+    try {
+      if (plan.kind === 'update') {
+        await api(`/assets/${plan.asset_id}`, { method: 'PATCH', body: { quantity: plan.quantity } });
+      } else if (plan.kind === 'add') {
+        const coin = JSON.parse(plan.select.value);
+        await api(`/profiles/${state.selectedId}/assets`, {
+          method: 'POST',
+          body: { coingecko_id: coin.id, symbol: coin.symbol, quantity: plan.quantity },
+        });
+      }
+      applied++;
+    } catch (err) {
+      alert(`Failed on one row: ${err.message}`);
+    }
+  }
+  $('#import-preview').classList.add('hidden');
+  $('#i-status').textContent = `Applied ${applied} change(s).`;
+  $('#i-file').value = '';
+  await refresh();
+});
+
+$('#i-cancel').addEventListener('click', () => {
+  $('#import-preview').classList.add('hidden');
+  $('#i-status').textContent = '';
+  $('#i-file').value = '';
+});
+
 // ---- boot ----
 
 (async function boot() {
@@ -388,6 +530,7 @@ $('#set-form').addEventListener('submit', async (e) => {
   $('#email-status').textContent = session.emailConfigured
     ? 'email alerts: on'
     : 'email alerts: not configured';
+  state.visionConfigured = Boolean(session.visionConfigured);
   if (session.authed) {
     showMain();
     await loadProfiles();

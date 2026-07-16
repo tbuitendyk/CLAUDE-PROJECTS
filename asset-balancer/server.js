@@ -6,10 +6,12 @@ const db = require('./lib/db');
 const { pollProfiles, resetBaselines } = require('./lib/balancer');
 const { sendAlerts, sendTestEmail, emailConfigured } = require('./lib/mailer');
 const { searchCoins } = require('./lib/pricing');
+const { visionConfigured, parseHoldingsScreenshot } = require('./lib/vision');
 const { startScheduler } = require('./lib/scheduler');
 
 const app = express();
-app.use(express.json());
+// Generous limit: the screenshot-import endpoint receives base64 images.
+app.use(express.json({ limit: '15mb' }));
 
 // ---- auth -----------------------------------------------------------------
 
@@ -69,6 +71,7 @@ app.get('/api/session', (req, res) => {
     authed: !config.appPassword || tokenValid(getCookie(req, COOKIE)),
     passwordRequired: Boolean(config.appPassword),
     emailConfigured: emailConfigured(),
+    visionConfigured: visionConfigured(),
   });
 });
 
@@ -280,6 +283,79 @@ app.post('/api/profiles/:id/rebalance', (req, res) => {
   res.json({ ok: true });
 });
 
+// Match parsed screenshot holdings against a profile's existing assets.
+// Exported logic kept pure for testing.
+function matchHoldings(parsed, assets) {
+  const bySymbol = new Map(assets.map((a) => [a.symbol.toLowerCase(), a]));
+  const matches = [];
+  const unmatched = [];
+  for (const h of parsed) {
+    if (h.quantity == null) continue; // nothing to import without a quantity
+    const sym = (h.symbol || '').toLowerCase();
+    // Fiat USD rows map to the 'usd' pseudo-asset.
+    const existing =
+      bySymbol.get(sym) ||
+      (sym === 'usd' ? assets.find((a) => a.coingecko_id === 'usd') : undefined);
+    if (existing) {
+      matches.push({
+        asset_id: existing.id,
+        symbol: existing.symbol,
+        old_quantity: existing.quantity,
+        new_quantity: h.quantity,
+        name: h.name,
+        value_usd: h.value_usd,
+      });
+    } else {
+      unmatched.push(h);
+    }
+  }
+  return { matches, unmatched };
+}
+
+// Parse a screenshot of a trading app's balances into holdings, match them
+// to this profile's assets, and suggest CoinGecko coins for new ones. The
+// frontend applies the result via the existing PATCH/POST asset endpoints.
+app.post('/api/profiles/:id/import-screenshot', async (req, res) => {
+  const profile = db.prepare('SELECT * FROM profiles WHERE id = ?').get(req.params.id);
+  if (!profile) return res.status(404).json({ error: 'not found' });
+  if (!visionConfigured()) {
+    return res.status(503).json({ error: 'Screenshot import requires ANTHROPIC_API_KEY on the server' });
+  }
+  const { image, media_type } = req.body || {};
+  if (!image || !/^image\/(jpeg|png|webp|gif)$/.test(media_type || '')) {
+    return res.status(400).json({ error: 'image (base64) and media_type required' });
+  }
+  try {
+    const parsed = await parseHoldingsScreenshot(image, media_type);
+    const assets = db.prepare('SELECT * FROM assets WHERE profile_id = ?').all(profile.id);
+    const { matches, unmatched } = matchHoldings(parsed, assets);
+
+    // For unmatched holdings, look up CoinGecko candidates so the UI can
+    // offer "add as new asset" with a concrete coin id.
+    const withSuggestions = [];
+    for (const h of unmatched) {
+      let candidates = [];
+      try {
+        const found = await searchCoins(h.symbol || h.name);
+        const symLower = (h.symbol || '').toLowerCase();
+        candidates = found
+          .sort((a, b) => {
+            const aExact = a.symbol.toLowerCase() === symLower ? 0 : 1;
+            const bExact = b.symbol.toLowerCase() === symLower ? 0 : 1;
+            return aExact - bExact || (a.rank || 1e9) - (b.rank || 1e9);
+          })
+          .slice(0, 3);
+      } catch {
+        /* suggestions are best-effort */
+      }
+      withSuggestions.push({ ...h, candidates });
+    }
+    res.json({ parsed, matches, unmatched: withSuggestions });
+  } catch (err) {
+    res.status(502).json({ error: err.message });
+  }
+});
+
 app.get('/api/search-coins', async (req, res) => {
   try {
     res.json(await searchCoins(String(req.query.q || '')));
@@ -317,3 +393,4 @@ if (require.main === module) {
 }
 
 module.exports = app;
+module.exports.matchHoldings = matchHoldings;

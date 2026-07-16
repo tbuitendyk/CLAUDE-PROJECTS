@@ -66,6 +66,21 @@
               <button type="submit" disabled id="a-add">Add asset</button>
             </form>
 
+            <div id="import-section" class="hidden">
+              <h3>Import from screenshot</h3>
+              <p class="muted">Snap or upload a screenshot of a trading app's balances screen; the holdings are read out and set as current quantities.</p>
+              <form id="import-form" class="inline">
+                <input type="file" id="i-file" accept="image/*">
+                <button type="submit" id="i-go">Read screenshot</button>
+              </form>
+              <p id="i-status" class="muted"></p>
+              <div id="import-preview" class="hidden">
+                <div id="i-rows"></div>
+                <button id="i-apply">Apply selected</button>
+                <button id="i-cancel" class="ghost">Cancel</button>
+              </div>
+            </div>
+
             <h3>Sets</h3>
             <div id="set-list"></div>
             <form id="set-form" class="stack">

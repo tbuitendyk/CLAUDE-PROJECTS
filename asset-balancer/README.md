@@ -63,6 +63,17 @@ If you'd rather not keep the server running for polling, `npm run poll`
 performs one poll-and-alert cycle and exits — suitable for a system cron
 every 15 minutes. The web UI still needs the server running to be usable.
 
+## Screenshot import
+
+With `ANTHROPIC_API_KEY` set, each profile gains an **Import from
+screenshot** section: upload (or photograph) a trading app's balances
+screen and Claude vision (`claude-opus-4-8` with structured outputs)
+extracts each holding — symbol, quantity, value. The app matches them to
+the profile's assets by symbol and shows a preview: existing assets get a
+quantity update, unknown ones offer an "add as new asset" with CoinGecko
+candidates, and you tick what to apply. Costs roughly a cent or two per
+import. Without the key the section is hidden and the endpoint returns 503.
+
 ## Pricing
 
 Prices come from CoinGecko's free API (no key required; an optional demo key
