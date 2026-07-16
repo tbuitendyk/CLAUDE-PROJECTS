@@ -26,6 +26,11 @@ first — then do the work.
 - Verify facts instead of guessing (e.g., check an address/mailbox/branch
   exists rather than assuming its spelling).
 
+**This applies on every branch, and new ones inherit it.** Every project
+branch's root `CLAUDE.md` carries this same "Working style" section. When
+creating a new branch/project (branches are created from here, the control
+plane), seed its `CLAUDE.md` with this header so the behavior carries forward.
+
 ## Driving the VPS (how deploys happen)
 
 SSH (port 22) is blocked from Claude Code cloud sessions — everything goes
