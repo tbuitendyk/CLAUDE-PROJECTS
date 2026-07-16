@@ -48,14 +48,18 @@
               </div>
             </div>
             <p id="d-meta" class="muted"></p>
+            <div id="d-summary" class="summary"></div>
 
             <h3>Assets</h3>
-            <table id="asset-table">
-              <thead>
-                <tr><th>Symbol</th><th>Price (USD)</th><th>vs index</th><th>Baseline</th><th>Drift</th><th></th></tr>
-              </thead>
-              <tbody></tbody>
-            </table>
+            <p id="alloc-warning" class="warn-text hidden"></p>
+            <div class="table-wrap">
+              <table id="asset-table">
+                <thead>
+                  <tr><th>Symbol</th><th>Target %</th><th>Quantity</th><th>Price (USD)</th><th>Value (USD)</th><th>Actual %</th><th>Drift</th><th></th></tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+            </div>
             <form id="asset-form" class="inline">
               <input id="a-search" placeholder="Search coin (e.g. ethereum)" autocomplete="off">
               <div id="a-results" class="search-results hidden"></div>
@@ -69,6 +73,16 @@
               <div id="s-members" class="checkboxes"></div>
               <button type="submit">Add set</button>
             </form>
+
+            <h3>Value history</h3>
+            <div class="table-wrap">
+              <table id="snap-table">
+                <thead>
+                  <tr><th>When</th><th>Total (USD)</th><th>Total (index)</th><th>Growth</th></tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+            </div>
 
             <h3>Alert history</h3>
             <ul id="alert-log" class="log"></ul>

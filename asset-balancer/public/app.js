@@ -120,13 +120,39 @@ function fmtPct(n) {
   return `<span class="${cls}">${n >= 0 ? '+' : ''}${n.toFixed(2)}%</span>`;
 }
 
+function fmtMoney(n) {
+  if (n == null) return '—';
+  return n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+// Editable cell for quantity / target %; saves on change.
+function editCell(asset, field, step) {
+  const td = document.createElement('td');
+  const input = document.createElement('input');
+  input.type = 'number';
+  input.min = '0';
+  input.step = step;
+  input.value = asset[field];
+  input.className = 'cell-input';
+  input.addEventListener('change', async () => {
+    try {
+      await api(`/assets/${asset.id}`, { method: 'PATCH', body: { [field]: Number(input.value) } });
+      await refresh();
+    } catch (err) {
+      alert(err.message);
+    }
+  });
+  td.appendChild(input);
+  return td;
+}
+
 function renderDetail() {
   const d = state.detail;
   $('#detail-empty').classList.toggle('hidden', Boolean(d));
   $('#detail').classList.toggle('hidden', !d);
   if (!d) return;
 
-  const { profile, assets, sets, alertLog } = d;
+  const { profile, assets, sets, alertLog, totals, snapshots } = d;
   $('#d-name').textContent = profile.name;
   const polled = profile.last_polled_at
     ? new Date(profile.last_polled_at).toLocaleString()
@@ -135,17 +161,48 @@ function renderDetail() {
     `Index: ${profile.index_asset} · threshold ${profile.threshold_pct}% · ` +
     `polls every ${profile.poll_minutes} min · last poll: ${polled}`;
 
+  // summary: total value, value in index units, growth since baseline
+  const summary = $('#d-summary');
+  summary.innerHTML = '';
+  const stats = [
+    ['Total value', totals && totals.totalUsd != null ? '$' + fmtMoney(totals.totalUsd) : '—'],
+    [`Total (${profile.index_asset})`, totals ? fmtNum(totals.totalRel) : '—'],
+    ['Growth since baseline', totals && totals.growthPct != null ? fmtPct(totals.growthPct) : '—'],
+  ];
+  for (const [label, value] of stats) {
+    const div = document.createElement('div');
+    div.className = 'stat';
+    div.innerHTML = `<span class="stat-label">${label}</span><span class="stat-value">${value}</span>`;
+    summary.appendChild(div);
+  }
+
+  // target allocations should add up to 100 (index asset included)
+  const warning = $('#alloc-warning');
+  const targetTotal = totals ? totals.targetTotal : 0;
+  if (Math.abs(targetTotal - 100) > 0.01 && targetTotal !== 0) {
+    warning.textContent = `Target allocations add up to ${targetTotal.toFixed(1)}% — they should total 100% (index asset included).`;
+    warning.classList.remove('hidden');
+  } else {
+    warning.classList.add('hidden');
+  }
+
   // assets table
   const tbody = $('#asset-table tbody');
   tbody.innerHTML = '';
   for (const a of assets) {
     const tr = document.createElement('tr');
-    tr.innerHTML =
-      `<td>${a.symbol.toUpperCase()}</td>` +
+    const sym = document.createElement('td');
+    sym.textContent = a.symbol.toUpperCase();
+    tr.appendChild(sym);
+    tr.appendChild(editCell(a, 'target_pct', '0.1'));
+    tr.appendChild(editCell(a, 'quantity', 'any'));
+    const rest = document.createElement('template');
+    rest.innerHTML =
       `<td>${a.last ? '$' + fmtNum(a.last.usd_price) : '—'}</td>` +
-      `<td>${a.last ? fmtNum(a.last.rel_price) : '—'}</td>` +
-      `<td>${fmtNum(a.baseline_rel)}</td>` +
+      `<td>${a.valueUsd != null ? '$' + fmtMoney(a.valueUsd) : '—'}</td>` +
+      `<td>${a.actualPct != null ? a.actualPct.toFixed(1) + '%' : '—'}</td>` +
       `<td>${fmtPct(a.driftPct)}</td>`;
+    tr.append(...rest.content.childNodes);
     const td = document.createElement('td');
     const del = document.createElement('button');
     del.textContent = '✕';
@@ -158,6 +215,19 @@ function renderDetail() {
     td.appendChild(del);
     tr.appendChild(td);
     tbody.appendChild(tr);
+  }
+
+  // value history (snapshots, oldest -> newest)
+  const snapBody = $('#snap-table tbody');
+  snapBody.innerHTML = '';
+  for (const s of snapshots || []) {
+    const tr = document.createElement('tr');
+    tr.innerHTML =
+      `<td>${new Date(s.ts).toLocaleString()}</td>` +
+      `<td>$${fmtMoney(s.total_usd)}</td>` +
+      `<td>${fmtNum(s.total_rel)}</td>` +
+      `<td>${fmtPct(s.growth_pct)}</td>`;
+    snapBody.appendChild(tr);
   }
 
   // sets

@@ -50,6 +50,27 @@ function evaluateProfile(profile, usdPrices, now) {
     current.set(asset.id, { asset, rel });
   }
 
+  // Snapshot the whole profile: what the holdings are worth right now (USD
+  // and index units), what the same holdings were worth at baseline prices,
+  // and the growth that implies. Sum up all the pieces, then divide.
+  if (current.size > 0) {
+    let totalUsd = 0;
+    let totalRel = 0;
+    let baseRelTotal = 0;
+    const quantities = {};
+    for (const { asset, rel } of current.values()) {
+      const usd = asset.coingecko_id === 'usd' ? 1 : usdPrices[asset.coingecko_id];
+      totalUsd += asset.quantity * usd;
+      totalRel += asset.quantity * rel;
+      if (asset.baseline_rel) baseRelTotal += asset.quantity * asset.baseline_rel;
+      quantities[asset.symbol] = asset.quantity;
+    }
+    const growthPct = baseRelTotal > 0 ? (totalRel / baseRelTotal - 1) * 100 : null;
+    db.prepare(
+      'INSERT INTO profile_snapshots (profile_id, ts, total_usd, total_rel, baseline_rel_total, growth_pct, quantities) VALUES (?, ?, ?, ?, ?, ?, ?)'
+    ).run(profile.id, now, totalUsd, totalRel, baseRelTotal || null, growthPct, JSON.stringify(quantities));
+  }
+
   const sets = db.prepare('SELECT * FROM sets WHERE profile_id = ?').all(profile.id);
   const getMembers = db.prepare(
     'SELECT asset_id FROM set_members WHERE set_id = ?'

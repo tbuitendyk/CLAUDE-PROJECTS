@@ -95,6 +95,12 @@ app.post('/api/profiles', (req, res) => {
       Number(poll_minutes) >= 1 ? Math.round(Number(poll_minutes)) : config.defaultPollMinutes,
       Date.now()
     );
+  // The index asset is part of the allocation too (targets sum to 100%
+  // including it), so it gets an asset row from the start.
+  const idx = (index_asset || 'usd').toLowerCase().trim();
+  db.prepare(
+    'INSERT INTO assets (profile_id, coingecko_id, symbol, quantity, target_pct) VALUES (?, ?, ?, 0, 0)'
+  ).run(info.lastInsertRowid, idx, idx === 'usd' ? 'USD' : idx);
   res.json(db.prepare('SELECT * FROM profiles WHERE id = ?').get(info.lastInsertRowid));
 });
 
@@ -135,8 +141,40 @@ app.get('/api/profiles/:id/state', (req, res) => {
       const last = latest.get(a.id);
       const driftPct =
         last && a.baseline_rel ? (last.rel_price / a.baseline_rel - 1) * 100 : null;
-      return { ...a, last, driftPct };
+      const valueUsd = last ? a.quantity * last.usd_price : null;
+      const valueRel = last ? a.quantity * last.rel_price : null;
+      return { ...a, last, driftPct, valueUsd, valueRel };
     });
+
+  // Profile totals: sum up all the pieces, then divide by their value at
+  // baseline prices to get growth since the last rebalance.
+  let totalUsd = 0;
+  let totalRel = 0;
+  let baseRelTotal = 0;
+  let targetTotal = 0;
+  for (const a of assets) {
+    targetTotal += a.target_pct || 0;
+    if (a.last) {
+      totalUsd += a.valueUsd;
+      totalRel += a.valueRel;
+      if (a.baseline_rel) baseRelTotal += a.quantity * a.baseline_rel;
+    }
+  }
+  for (const a of assets) {
+    a.actualPct = totalUsd > 0 && a.valueUsd != null ? (a.valueUsd / totalUsd) * 100 : null;
+  }
+  const totals = {
+    totalUsd,
+    totalRel,
+    baselineRelTotal: baseRelTotal || null,
+    growthPct: baseRelTotal > 0 ? (totalRel / baseRelTotal - 1) * 100 : null,
+    targetTotal,
+  };
+
+  const snapshots = db
+    .prepare('SELECT ts, total_usd, total_rel, growth_pct, quantities FROM profile_snapshots WHERE profile_id = ? ORDER BY ts DESC LIMIT 48')
+    .all(profile.id)
+    .reverse();
 
   const sets = db
     .prepare('SELECT * FROM sets WHERE profile_id = ? ORDER BY id')
@@ -154,22 +192,41 @@ app.get('/api/profiles/:id/state', (req, res) => {
     .prepare('SELECT * FROM alert_log WHERE profile_id = ? ORDER BY ts DESC LIMIT 50')
     .all(profile.id);
 
-  res.json({ profile, assets, sets, alertLog });
+  res.json({ profile, assets, sets, alertLog, totals, snapshots });
 });
 
 // ---- assets & sets ----------------------------------------------------------
 
 app.post('/api/profiles/:id/assets', (req, res) => {
-  const { coingecko_id, symbol } = req.body || {};
+  const { coingecko_id, symbol, quantity, target_pct } = req.body || {};
   if (!coingecko_id || !symbol) return res.status(400).json({ error: 'coingecko_id and symbol required' });
   try {
     const info = db
-      .prepare('INSERT INTO assets (profile_id, coingecko_id, symbol) VALUES (?, ?, ?)')
-      .run(req.params.id, coingecko_id.toLowerCase().trim(), symbol.trim());
+      .prepare('INSERT INTO assets (profile_id, coingecko_id, symbol, quantity, target_pct) VALUES (?, ?, ?, ?, ?)')
+      .run(
+        req.params.id,
+        coingecko_id.toLowerCase().trim(),
+        symbol.trim(),
+        Number(quantity) >= 0 ? Number(quantity) : 0,
+        Number(target_pct) >= 0 ? Number(target_pct) : 0
+      );
     res.json(db.prepare('SELECT * FROM assets WHERE id = ?').get(info.lastInsertRowid));
   } catch (e) {
     res.status(400).json({ error: 'asset already in profile' });
   }
+});
+
+// Update holdings: quantity (what you own) and target allocation percentage.
+app.patch('/api/assets/:id', (req, res) => {
+  const asset = db.prepare('SELECT * FROM assets WHERE id = ?').get(req.params.id);
+  if (!asset) return res.status(404).json({ error: 'not found' });
+  const b = req.body || {};
+  db.prepare('UPDATE assets SET quantity = ?, target_pct = ? WHERE id = ?').run(
+    Number(b.quantity) >= 0 ? Number(b.quantity) : asset.quantity,
+    Number(b.target_pct) >= 0 ? Number(b.target_pct) : asset.target_pct,
+    asset.id
+  );
+  res.json(db.prepare('SELECT * FROM assets WHERE id = ?').get(asset.id));
 });
 
 app.delete('/api/assets/:id', (req, res) => {
