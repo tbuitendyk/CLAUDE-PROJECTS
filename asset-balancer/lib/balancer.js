@@ -47,18 +47,29 @@ function priceAsset(asset, profile, usdPrices) {
   return { rel: assetUsd / indexUsd, usd: assetUsd };
 }
 
-// Currency basket: starts at 1.00000000 when targets are set (unit snapshot
-// taken); above 1 means the pool holds more units of the underlying assets.
-function computeBasket(assets) {
+// Currency basket, chain-linked: base x weighted unit ratios. Starts at
+// 1.00000000; above 1 means the pool holds more units of the underlying
+// assets. Splices (setTargets / recordFlow) fold the current level into the
+// base and re-snapshot, so structural changes never move the number — only
+// trading does.
+function computeBasket(assets, base = 1) {
   if (!assets.some((a) => a.basket_units != null)) return null;
-  let basket = 0;
+  let inner = 0;
   for (const a of assets) {
     const w = (a.target_pct || 0) / 100;
     // Assets without a usable snapshot contribute neutrally (ratio 1).
     const ratio = a.basket_units > 0 ? a.quantity / a.basket_units : 1;
-    basket += w * ratio;
+    inner += w * ratio;
   }
-  return basket;
+  return (base || 1) * inner;
+}
+
+// Chained value-growth index (time-weighted): value_base x (total value in
+// index terms / value at last splice). Market moves and trading move it;
+// deposits and withdrawals splice past it.
+function computeValueIndex(profile, totalRel) {
+  if (!(totalRel > 0) || !(profile.value_snap_rel > 0)) return null;
+  return (profile.value_base || 1) * (totalRel / profile.value_snap_rel);
 }
 
 function evaluateProfile(profile, usdPrices, now) {
@@ -138,11 +149,36 @@ function evaluateProfile(profile, usdPrices, now) {
   }
 
   if (priced.length > 0) {
+    // First time the pool has a value: anchor the value-growth index. Uses
+    // the earliest valued snapshot so profiles created before chaining keep
+    // their existing "growth since start" reading.
+    if (!(profile.value_snap_rel > 0) && totalRel > 0) {
+      const first = db
+        .prepare(
+          'SELECT total_rel FROM profile_snapshots WHERE profile_id = ? AND total_rel > 0 ORDER BY ts LIMIT 1'
+        )
+        .get(profile.id);
+      const anchor = first && first.total_rel > 0 ? first.total_rel : totalRel;
+      db.prepare('UPDATE profiles SET value_base = 1, value_snap_rel = ? WHERE id = ?').run(
+        anchor,
+        profile.id
+      );
+      profile.value_base = 1;
+      profile.value_snap_rel = anchor;
+    }
     const quantities = {};
     for (const p of priced) quantities[p.asset.symbol] = p.asset.quantity;
     db.prepare(
-      'INSERT INTO profile_snapshots (profile_id, ts, total_usd, total_rel, basket, quantities) VALUES (?, ?, ?, ?, ?, ?)'
-    ).run(profile.id, now, totalUsd, totalRel, computeBasket(assets), JSON.stringify(quantities));
+      'INSERT INTO profile_snapshots (profile_id, ts, total_usd, total_rel, basket, value_index, quantities) VALUES (?, ?, ?, ?, ?, ?, ?)'
+    ).run(
+      profile.id,
+      now,
+      totalUsd,
+      totalRel,
+      computeBasket(assets, profile.basket_base),
+      computeValueIndex(profile, totalRel),
+      JSON.stringify(quantities)
+    );
   }
 
   db.prepare('UPDATE profiles SET last_polled_at = ? WHERE id = ?').run(now, profile.id);

@@ -75,6 +75,30 @@ CREATE TABLE IF NOT EXISTS profile_snapshots (
   quantities TEXT                   -- JSON {symbol: quantity}
 );
 CREATE INDEX IF NOT EXISTS idx_snapshots_profile_ts ON profile_snapshots(profile_id, ts);
+
+-- Deposits/withdrawals: external quantity changes recorded so they splice
+-- past the basket/value indexes instead of corrupting them.
+CREATE TABLE IF NOT EXISTS flows (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  profile_id INTEGER NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+  ts INTEGER NOT NULL,
+  deltas TEXT NOT NULL,              -- JSON [{asset_id, symbol, delta}]
+  note TEXT
+);
+
+-- One row per splice (target change / flow / explicit reset): the index
+-- levels and weights at that moment. Behind-the-scenes record for future
+-- analysis of which asset mixes performed best.
+CREATE TABLE IF NOT EXISTS basket_events (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  profile_id INTEGER NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+  ts INTEGER NOT NULL,
+  kind TEXT NOT NULL,                -- 'targets' | 'flow' | 'reset'
+  basket REAL,                       -- chained basket level at the splice
+  value_index REAL,                  -- chained value index at the splice
+  weights TEXT,                      -- JSON {symbol: target_pct} after the event
+  note TEXT
+);
 `);
 
 // Columns added after the first release; bring existing databases up to date.
@@ -90,6 +114,15 @@ ensureColumn('assets', 'is_index', 'is_index INTEGER NOT NULL DEFAULT 0');
 // Unit snapshot for the currency-basket calculation; taken when targets are set.
 ensureColumn('assets', 'basket_units', 'basket_units REAL');
 ensureColumn('profiles', 'basket_started_at', 'basket_started_at INTEGER');
+// Chain-linking: displayed basket = basket_base x (weighted unit ratios).
+// Splices (target changes, flows) fold the current level into basket_base
+// and re-snapshot, so the number is continuous across structural changes.
+ensureColumn('profiles', 'basket_base', 'basket_base REAL NOT NULL DEFAULT 1');
+// Same idea for the value-growth index (time-weighted return): displayed
+// growth compounds value_base x (total_rel / value_snap_rel) across flows.
+ensureColumn('profiles', 'value_base', 'value_base REAL NOT NULL DEFAULT 1');
+ensureColumn('profiles', 'value_snap_rel', 'value_snap_rel REAL');
+ensureColumn('profile_snapshots', 'value_index', 'value_index REAL');
 // Per-profile notifications: master toggle, recipient list (JSON array of
 // {email, whatsapp_phone, whatsapp_key}), and the notification state machine
 // (armed -> notified -> awaiting_upload, with 12h timeouts back to armed).
