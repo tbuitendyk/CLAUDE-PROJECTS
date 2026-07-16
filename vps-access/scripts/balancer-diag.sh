@@ -70,6 +70,16 @@ for (const p of profiles) {
   console.log(`  => totalUsd=${totalUsd.toFixed(2)}  totalRel=${totalRel.toFixed(2)}  (index_asset='${p.index_asset}')`);
   const snap = db.prepare('SELECT ts,total_usd,total_rel,basket FROM profile_snapshots WHERE profile_id=? ORDER BY ts DESC LIMIT 1').get(p.id);
   if (snap) console.log(`  last snapshot: total_usd=${snap.total_usd} total_rel=${snap.total_rel} basket=${snap.basket} @ ${new Date(snap.ts).toISOString()}`);
+  // total_usd timeline: distinct values over time show WHEN the total changed
+  // (e.g. a partial holding jumping to full after a screenshot import).
+  const rows = db.prepare('SELECT ts,total_usd FROM profile_snapshots WHERE profile_id=? ORDER BY ts').all(p.id);
+  let prev = null;
+  const changes = [];
+  for (const row of rows) {
+    const v = Math.round(row.total_usd * 100) / 100;
+    if (prev === null || Math.abs(v - prev) > 0.5) { changes.push(`${new Date(row.ts).toISOString()}=$${v}`); prev = v; }
+  }
+  console.log(`  total_usd timeline (${rows.length} snapshots, ${changes.length} distinct steps): ${changes.slice(0, 12).join('  ')}`);
 }
 console.log();
 console.log('== active alloc_alerts ==', db.prepare('SELECT COUNT(*) c FROM alloc_alerts').get().c);
