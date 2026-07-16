@@ -99,9 +99,12 @@ import. Without the key the section is hidden and the endpoint returns 503.
 ## Pricing
 
 Prices come from CoinGecko's free API (no key required; an optional demo key
-in `COINGECKO_API_KEY` raises rate limits). The provider lives in
-`lib/pricing.js` behind two functions (`fetchUsdPrices`, `searchCoins`), so a
-stock/ETF source can be added later without touching the engine.
+in `COINGECKO_API_KEY` raises rate limits). **Fiat currencies** (CAD, MXN,
+EUR, … — anything on CoinGecko's vs-currency list) can be held as assets
+too: they're stored as `fiat:<code>` and priced from the same source via a
+bitcoin cross-rate (USD-per-CAD = btc_usd ÷ btc_cad) in one extra request
+per poll. The provider lives in `lib/pricing.js`, so a stock/ETF source can
+be added later without touching the engine.
 
 ## Layout
 

@@ -478,6 +478,42 @@ $('#a-search').addEventListener('input', () => {
   }, 300);
 });
 
+// Fiat currencies: datalist of supported codes, added as 'fiat:<code>'.
+let fiatListLoaded = false;
+async function loadFiatList() {
+  if (fiatListLoaded) return;
+  try {
+    const codes = await api('/fiat-currencies');
+    const dl = $('#fiat-list');
+    dl.innerHTML = '';
+    for (const c of codes) {
+      const opt = document.createElement('option');
+      opt.value = c;
+      dl.appendChild(opt);
+    }
+    fiatListLoaded = true;
+  } catch {
+    /* datalist is a convenience; add still validates server-side */
+  }
+}
+$('#f-code').addEventListener('focus', loadFiatList);
+
+$('#fiat-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const code = $('#f-code').value.trim().toLowerCase();
+  if (!code) return;
+  try {
+    await api(`/profiles/${state.selectedId}/assets`, {
+      method: 'POST',
+      body: { coingecko_id: `fiat:${code}`, symbol: code },
+    });
+    $('#f-code').value = '';
+    await refresh();
+  } catch (err) {
+    alert(err.message);
+  }
+});
+
 $('#asset-form').addEventListener('submit', async (e) => {
   e.preventDefault();
   if (!state.pendingCoin) return;

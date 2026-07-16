@@ -5,7 +5,7 @@ const config = require('./lib/config');
 const db = require('./lib/db');
 const { pollProfiles, setTargets, computeBasket, rearmAfterUpload } = require('./lib/balancer');
 const { sendAlertEvents, sendTestEmail, emailConfigured } = require('./lib/mailer');
-const { searchCoins } = require('./lib/pricing');
+const { searchCoins, supportedFiats, fiatCode } = require('./lib/pricing');
 const { visionConfigured, parseHoldingsScreenshot } = require('./lib/vision');
 const { startScheduler } = require('./lib/scheduler');
 
@@ -226,9 +226,24 @@ app.get('/api/profiles/:id/state', (req, res) => {
 
 // ---- assets -----------------------------------------------------------------
 
-app.post('/api/profiles/:id/assets', (req, res) => {
+app.post('/api/profiles/:id/assets', async (req, res) => {
   const { coingecko_id, symbol, quantity } = req.body || {};
-  if (!coingecko_id || !symbol) return res.status(400).json({ error: 'coingecko_id and symbol required' });
+  if (!coingecko_id) return res.status(400).json({ error: 'coingecko_id required' });
+  const id = coingecko_id.toLowerCase().trim();
+
+  // Fiat currencies are stored as 'fiat:<code>' and validated against
+  // CoinGecko's supported vs-currency list.
+  let sym = (symbol || '').trim();
+  if (id.startsWith('fiat:')) {
+    const code = fiatCode(id);
+    const supported = await supportedFiats();
+    if (!code || !supported.includes(code)) {
+      return res.status(400).json({ error: `unsupported fiat currency: ${id}` });
+    }
+    if (!sym) sym = code;
+  }
+  if (!sym) return res.status(400).json({ error: 'symbol required' });
+
   try {
     // New assets join with target 0% (targets change only via the explicit
     // "set new targets" action) and a neutral basket snapshot.
@@ -237,11 +252,16 @@ app.post('/api/profiles/:id/assets', (req, res) => {
       .prepare(
         'INSERT INTO assets (profile_id, coingecko_id, symbol, quantity, target_pct, basket_units) VALUES (?, ?, ?, ?, 0, ?)'
       )
-      .run(req.params.id, coingecko_id.toLowerCase().trim(), symbol.trim(), qty, qty);
+      .run(req.params.id, id, sym, qty, qty);
     res.json(db.prepare('SELECT * FROM assets WHERE id = ?').get(info.lastInsertRowid));
   } catch (e) {
     res.status(400).json({ error: 'asset already in profile' });
   }
+});
+
+// Fiat currency codes available for "add fiat" (live CoinGecko list).
+app.get('/api/fiat-currencies', async (req, res) => {
+  res.json(await supportedFiats());
 });
 
 // Update an asset: quantity (what you own) and/or the tethered-index flag.
@@ -319,10 +339,12 @@ function matchHoldings(parsed, assets) {
   for (const h of parsed) {
     if (h.quantity == null) continue; // nothing to import without a quantity
     const sym = (h.symbol || '').toLowerCase();
-    // Fiat USD rows map to the 'usd' pseudo-asset, or failing that to the
-    // tethered index asset (e.g. a USDT row standing in for USD).
+    // Fiat rows match by symbol, by fiat asset id ('CAD' row -> fiat:cad),
+    // and USD additionally falls back to the legacy 'usd' pseudo-asset or
+    // the tethered index asset (e.g. a USDT row standing in for USD).
     const existing =
       bySymbol.get(sym) ||
+      assets.find((a) => a.coingecko_id === `fiat:${sym}`) ||
       (sym === 'usd'
         ? assets.find((a) => a.coingecko_id === 'usd') || assets.find((a) => a.is_index)
         : undefined);
@@ -360,21 +382,33 @@ app.post('/api/profiles/:id/import-screenshot', async (req, res) => {
     const assets = db.prepare('SELECT * FROM assets WHERE profile_id = ?').all(profile.id);
     const { matches, unmatched } = matchHoldings(parsed, assets);
 
-    // For unmatched holdings, look up CoinGecko candidates so the UI can
-    // offer "add as new asset" with a concrete coin id.
+    // For unmatched holdings, offer candidates so the UI can add them as
+    // new assets: a fiat candidate when the symbol is a fiat code, plus
+    // CoinGecko coin matches.
+    const fiats = await supportedFiats();
     const withSuggestions = [];
     for (const h of unmatched) {
       let candidates = [];
+      const symLower = (h.symbol || '').toLowerCase();
+      if (fiats.includes(symLower)) {
+        candidates.push({
+          id: `fiat:${symLower}`,
+          symbol: symLower,
+          name: `${symLower.toUpperCase()} (fiat currency)`,
+          rank: 0,
+        });
+      }
       try {
         const found = await searchCoins(h.symbol || h.name);
-        const symLower = (h.symbol || '').toLowerCase();
-        candidates = found
-          .sort((a, b) => {
-            const aExact = a.symbol.toLowerCase() === symLower ? 0 : 1;
-            const bExact = b.symbol.toLowerCase() === symLower ? 0 : 1;
-            return aExact - bExact || (a.rank || 1e9) - (b.rank || 1e9);
-          })
-          .slice(0, 3);
+        candidates = candidates.concat(
+          found
+            .sort((a, b) => {
+              const aExact = a.symbol.toLowerCase() === symLower ? 0 : 1;
+              const bExact = b.symbol.toLowerCase() === symLower ? 0 : 1;
+              return aExact - bExact || (a.rank || 1e9) - (b.rank || 1e9);
+            })
+            .slice(0, 3)
+        );
       } catch {
         /* suggestions are best-effort */
       }

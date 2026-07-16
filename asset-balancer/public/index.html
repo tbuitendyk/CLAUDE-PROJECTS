@@ -74,6 +74,11 @@
               <div id="a-results" class="search-results hidden"></div>
               <button type="submit" disabled id="a-add">Add asset</button>
             </form>
+            <form id="fiat-form" class="inline">
+              <input id="f-code" list="fiat-list" placeholder="Fiat code (cad, usd, mxn, …)" maxlength="5" autocomplete="off">
+              <datalist id="fiat-list"></datalist>
+              <button type="submit" id="f-add">Add fiat currency</button>
+            </form>
 
             <div id="import-section" class="hidden">
               <h3>Import from screenshot</h3>

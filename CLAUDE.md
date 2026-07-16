@@ -26,8 +26,9 @@ armed → notified (quiet; manual poll re-checks → awaiting_upload) →
 screenshot import re-arms; 12h timeouts revert to armed.
 A "currency basket" (Σ units/snapshot-units ×
 target weight, reset to 1.0 when targets change) tracks unit growth
-independent of prices. Quantities come in via screenshot import (Claude
-vision) or manual edit. It runs as the `asset-balancer` systemd unit (node
+independent of prices. Assets are CoinGecko coins or fiat currencies
+(`fiat:<code>`, priced via a bitcoin cross-rate from the same API).
+Quantities come in via screenshot import (Claude vision) or manual edit. It runs as the `asset-balancer` systemd unit (node
 on `127.0.0.1:8091`, deployed to `/opt/asset-balancer`, config in
 `/etc/asset-balancer/env`).
 
