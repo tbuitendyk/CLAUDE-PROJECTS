@@ -222,12 +222,15 @@ function renderDetail() {
     warning.classList.add('hidden');
   }
 
-  // assets table
+  // assets table: the tethered index asset sorts to the top, visually
+  // separated from the base assets below it.
   const tbody = $('#asset-table tbody');
   tbody.innerHTML = '';
-  for (const a of assets) {
+  const ordered = [...assets].sort((a, b) => (b.is_index ? 1 : 0) - (a.is_index ? 1 : 0));
+  for (const a of ordered) {
     const tr = document.createElement('tr');
     if (a.breached) tr.className = 'breached';
+    if (a.is_index) tr.classList.add('index-row');
     tr.appendChild(indexCell(a));
     const sym = document.createElement('td');
     sym.textContent = a.symbol.toUpperCase();

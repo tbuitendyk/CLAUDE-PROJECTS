@@ -95,6 +95,8 @@ th { color: var(--muted); font-weight: 500; font-size: .78rem; }
 .checkboxes { display: flex; flex-wrap: wrap; gap: .35rem .9rem; font-size: .85rem; }
 .checkboxes label { justify-content: flex-start; }
 td.center { text-align: center; }
+/* Tethered index asset row: pinned on top, small visual gap to base assets */
+tr.index-row td { border-bottom: 4px solid var(--bg); padding-bottom: .55rem; }
 .toggle-row { display: flex; align-items: center; gap: .5rem; justify-content: flex-start; margin: .25rem 0 .5rem; color: var(--text); }
 .recipient-row { display: flex; gap: .5rem; flex-wrap: wrap; margin-bottom: .4rem; align-items: center; }
 .recipient-row input { flex: 1; min-width: 140px; }
