@@ -98,7 +98,11 @@ async function sendAlertEvents(events) {
         await transporter.sendMail({
           from: fromHeader(),
           to: emails.join(', '),
-          subject: `[Asset Balancer] ${profile.name}: ${alerts.length} rebalance trade${alerts.length > 1 ? 's' : ''} to make`,
+          // Timestamped so mail apps never thread new alerts into an old
+          // conversation (threads display the original sender's name).
+          subject:
+            `[Asset Balancer] ${profile.name}: ${alerts.length} rebalance trade${alerts.length > 1 ? 's' : ''} to make ` +
+            `(${new Date().toISOString().slice(0, 16).replace('T', ' ')} UTC)`,
           text,
         });
         emailed = 1;
@@ -139,7 +143,7 @@ async function sendTestEmail() {
   await transporter.sendMail({
     from: fromHeader(),
     to: config.alertEmailTo,
-    subject: '[Asset Balancer] Test email',
+    subject: `[Asset Balancer] Test email (${new Date().toISOString().slice(0, 16).replace('T', ' ')} UTC)`,
     text: 'Email delivery from the asset balancer is working.',
   });
 }
