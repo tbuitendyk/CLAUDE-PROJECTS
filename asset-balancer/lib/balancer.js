@@ -19,8 +19,22 @@ const { fetchUsdPrices } = require('./pricing');
 //
 // Alerts re-arm once the asset converges back under half its threshold, or
 // when new targets are set.
+//
+// The tethered index asset never gets a trade recommendation and never
+// triggers an alert by itself -- it is the counterparty leg. Its over/under
+// weight is included in alert emails as an informational note only.
+//
+// Notifications follow a per-profile state machine:
+//   armed           -- scheduled poll with a NEW breach -> notify -> 'notified'
+//   notified        -- quiet; manual poll: still breaching -> notify again ->
+//                      'awaiting_upload'; not breaching -> back to 'armed'
+//   awaiting_upload -- quiet; manual poll restarts the clock; a screenshot
+//                      import re-arms (new hits only)
+// Both muted states time out after 12 hours back to 'armed' with alert
+// state cleared, so a persisting breach produces a fresh reminder email.
 
 const REARM_FRACTION = 0.5;
+const NOTIFY_TIMEOUT_MS = 12 * 60 * 60 * 1000;
 
 // Price one asset in USD and in index-asset units. Returns null when a
 // price is missing this round (skip, don't alert on bad data).
@@ -68,14 +82,16 @@ function evaluateProfile(profile, usdPrices, now) {
     totalUsd += p.asset.quantity * p.usd;
   }
 
-  // Allocation drift + alerts, only when the whole pool priced (a missing
-  // price skews every other asset's share).
-  const alerts = [];
+  // Allocation drift, only when the whole pool priced (a missing price
+  // skews every other asset's share). Base assets over threshold become
+  // trade candidates; the tethered index asset only ever yields a note.
+  // This function detects and clears (hysteresis) -- whether a breach turns
+  // into a notification is the state machine's call.
+  const breaches = [];
+  const newBreaches = [];
+  let indexNote = null;
   const threshold = profile.threshold_pct / 100;
   const getActive = db.prepare('SELECT * FROM alloc_alerts WHERE asset_id = ?');
-  const addActive = db.prepare(
-    'INSERT OR REPLACE INTO alloc_alerts (asset_id, triggered_at, drift_rel_pct) VALUES (?, ?, ?)'
-  );
   const clearActive = db.prepare('DELETE FROM alloc_alerts WHERE asset_id = ?');
 
   if (totalRel > 0 && priced.length === assets.length) {
@@ -85,23 +101,33 @@ function evaluateProfile(profile, usdPrices, now) {
       const valueRel = p.asset.quantity * p.rel;
       const actualPct = (valueRel / totalRel) * 100;
       const driftRel = (actualPct - target) / target;
+
+      if (p.asset.is_index) {
+        // Informational only: how far the index leg is over/under weight.
+        indexNote = {
+          symbol: p.asset.symbol,
+          actualPct,
+          targetPct: target,
+          deltaIndex: valueRel - (target / 100) * totalRel, // >0 overweight
+        };
+        continue;
+      }
+
       const active = getActive.get(p.asset.id);
       if (Math.abs(driftRel) >= threshold) {
-        if (!active) {
-          addActive.run(p.asset.id, now, driftRel * 100);
-          // Corrective market trade to bring this asset back to target.
-          const deltaRel = (target / 100) * totalRel - valueRel; // >0 buy, <0 sell
-          alerts.push({
-            profile,
-            asset: p.asset,
-            actualPct,
-            targetPct: target,
-            driftRelPct: driftRel * 100,
-            action: deltaRel > 0 ? 'BUY' : 'SELL',
-            quantity: Math.abs(deltaRel) / p.rel,
-            indexAmount: Math.abs(deltaRel),
-          });
-        }
+        const deltaRel = (target / 100) * totalRel - valueRel; // >0 buy, <0 sell
+        const breach = {
+          profile,
+          asset: p.asset,
+          actualPct,
+          targetPct: target,
+          driftRelPct: driftRel * 100,
+          action: deltaRel > 0 ? 'BUY' : 'SELL',
+          quantity: Math.abs(deltaRel) / p.rel,
+          indexAmount: Math.abs(deltaRel),
+        };
+        breaches.push(breach);
+        if (!active) newBreaches.push(breach);
       } else if (active && Math.abs(driftRel) < threshold * REARM_FRACTION) {
         clearActive.run(p.asset.id);
       }
@@ -117,11 +143,87 @@ function evaluateProfile(profile, usdPrices, now) {
   }
 
   db.prepare('UPDATE profiles SET last_polled_at = ? WHERE id = ?').run(now, profile.id);
-  return alerts;
+  return { breaches, newBreaches, indexNote };
+}
+
+// ---- notification state machine --------------------------------------------
+
+function setNotifyState(profileId, state, now) {
+  db.prepare('UPDATE profiles SET notify_state = ?, notify_state_at = ? WHERE id = ?').run(
+    state,
+    now,
+    profileId
+  );
+}
+
+function clearProfileAlerts(profileId) {
+  db.prepare(
+    'DELETE FROM alloc_alerts WHERE asset_id IN (SELECT id FROM assets WHERE profile_id = ?)'
+  ).run(profileId);
+}
+
+function markActive(breaches, now) {
+  const add = db.prepare(
+    'INSERT OR REPLACE INTO alloc_alerts (asset_id, triggered_at, drift_rel_pct) VALUES (?, ?, ?)'
+  );
+  for (const b of breaches) add.run(b.asset.id, now, b.driftRelPct);
+}
+
+// Muted states fall back to 'armed' after 12 hours with alert state cleared,
+// so a breach that nobody acted on produces a fresh reminder.
+function applyTimeout(profile, now) {
+  if (
+    profile.notify_state !== 'armed' &&
+    profile.notify_state_at &&
+    now - profile.notify_state_at >= NOTIFY_TIMEOUT_MS
+  ) {
+    setNotifyState(profile.id, 'armed', now);
+    clearProfileAlerts(profile.id);
+    profile.notify_state = 'armed';
+    profile.notify_state_at = now;
+  }
+}
+
+// Decides whether this poll produces a notification event. Returns
+// {profile, alerts, indexNote} or null. `manual` marks a user-initiated poll.
+function decideNotification(profile, result, manual, now) {
+  const state = profile.notify_state || 'armed';
+  const { breaches, newBreaches, indexNote } = result;
+
+  if (state === 'armed') {
+    if (newBreaches.length === 0) return null;
+    // At least one NEW hit: notify with the full current trade picture.
+    markActive(breaches, now);
+    setNotifyState(profile.id, 'notified', now);
+    return { profile, alerts: breaches, indexNote };
+  }
+
+  if (state === 'notified') {
+    if (!manual) return null; // quiet until the user checks in
+    if (breaches.length > 0) {
+      markActive(breaches, now);
+      setNotifyState(profile.id, 'awaiting_upload', now);
+      return { profile, alerts: breaches, indexNote };
+    }
+    setNotifyState(profile.id, 'armed', now); // drift resolved itself
+    return null;
+  }
+
+  // awaiting_upload: silent; a manual poll restarts the 12h clock.
+  if (manual) setNotifyState(profile.id, 'awaiting_upload', now);
+  return null;
+}
+
+// A screenshot import was applied: re-arm. Still-active alerts stay marked,
+// so only NEW target hits notify from here.
+function rearmAfterUpload(profileId) {
+  setNotifyState(profileId, 'armed', Date.now());
 }
 
 // Polls every due (or forced) profile in one CoinGecko round-trip.
-async function pollProfiles({ force = false, profileId = null } = {}) {
+// `manual` marks a user-initiated poll ("Poll now"), which the notification
+// state machine treats differently from the scheduler's ticks.
+async function pollProfiles({ force = false, profileId = null, manual = false } = {}) {
   const now = Date.now();
   let profiles = db.prepare('SELECT * FROM profiles WHERE enabled = 1').all();
   if (profileId != null) profiles = profiles.filter((p) => p.id === profileId);
@@ -130,7 +232,7 @@ async function pollProfiles({ force = false, profileId = null } = {}) {
       (p) => !p.last_polled_at || now - p.last_polled_at >= p.poll_minutes * 60_000 - 5_000
     );
   }
-  if (profiles.length === 0) return { polled: 0, alerts: [] };
+  if (profiles.length === 0) return { polled: 0, events: [] };
 
   const ids = new Set();
   for (const p of profiles) {
@@ -141,11 +243,14 @@ async function pollProfiles({ force = false, profileId = null } = {}) {
   }
   const usdPrices = await fetchUsdPrices([...ids]);
 
-  const alerts = [];
+  const events = [];
   for (const p of profiles) {
-    alerts.push(...evaluateProfile(p, usdPrices, now));
+    applyTimeout(p, now);
+    const result = evaluateProfile(p, usdPrices, now);
+    const event = decideNotification(p, result, manual, now);
+    if (event) events.push(event);
   }
-  return { polled: profiles.length, alerts };
+  return { polled: profiles.length, events };
 }
 
 // "Set new targets": the deliberate decision to change the intended mix.
@@ -181,10 +286,18 @@ function setTargets(profileId, targets) {
       update.run(Number(t.target_pct), asset.quantity, asset.id);
     }
     db.prepare('UPDATE profiles SET basket_started_at = ? WHERE id = ?').run(now, profileId);
-    db.prepare(
-      'DELETE FROM alloc_alerts WHERE asset_id IN (SELECT id FROM assets WHERE profile_id = ?)'
-    ).run(profileId);
+    clearProfileAlerts(profileId);
   })();
 }
 
-module.exports = { pollProfiles, evaluateProfile, setTargets, computeBasket, priceAsset };
+module.exports = {
+  pollProfiles,
+  evaluateProfile,
+  setTargets,
+  computeBasket,
+  priceAsset,
+  decideNotification,
+  applyTimeout,
+  rearmAfterUpload,
+  NOTIFY_TIMEOUT_MS,
+};

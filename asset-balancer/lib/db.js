@@ -90,6 +90,13 @@ ensureColumn('assets', 'is_index', 'is_index INTEGER NOT NULL DEFAULT 0');
 // Unit snapshot for the currency-basket calculation; taken when targets are set.
 ensureColumn('assets', 'basket_units', 'basket_units REAL');
 ensureColumn('profiles', 'basket_started_at', 'basket_started_at INTEGER');
+// Per-profile notifications: master toggle, recipient list (JSON array of
+// {email, whatsapp_phone, whatsapp_key}), and the notification state machine
+// (armed -> notified -> awaiting_upload, with 12h timeouts back to armed).
+ensureColumn('profiles', 'alerts_enabled', "alerts_enabled INTEGER NOT NULL DEFAULT 1");
+ensureColumn('profiles', 'recipients', "recipients TEXT NOT NULL DEFAULT '[]'");
+ensureColumn('profiles', 'notify_state', "notify_state TEXT NOT NULL DEFAULT 'armed'");
+ensureColumn('profiles', 'notify_state_at', 'notify_state_at INTEGER');
 ensureColumn('profile_snapshots', 'basket', 'basket REAL');
 
 // Sets were removed from the design (one flat asset pool per profile);

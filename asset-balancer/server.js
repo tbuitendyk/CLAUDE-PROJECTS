@@ -3,8 +3,8 @@ const path = require('path');
 const express = require('express');
 const config = require('./lib/config');
 const db = require('./lib/db');
-const { pollProfiles, setTargets, computeBasket } = require('./lib/balancer');
-const { sendAlerts, sendTestEmail, emailConfigured } = require('./lib/mailer');
+const { pollProfiles, setTargets, computeBasket, rearmAfterUpload } = require('./lib/balancer');
+const { sendAlertEvents, sendTestEmail, emailConfigured } = require('./lib/mailer');
 const { searchCoins } = require('./lib/pricing');
 const { visionConfigured, parseHoldingsScreenshot } = require('./lib/vision');
 const { startScheduler } = require('./lib/scheduler');
@@ -105,14 +105,39 @@ app.patch('/api/profiles/:id', (req, res) => {
   const profile = db.prepare('SELECT * FROM profiles WHERE id = ?').get(req.params.id);
   if (!profile) return res.status(404).json({ error: 'not found' });
   const b = req.body || {};
+
+  // Recipients: [{email, whatsapp_phone, whatsapp_key}, ...]. No global
+  // fallback exists -- an empty list means on-screen logging only.
+  let recipients = profile.recipients;
+  if (b.recipients !== undefined) {
+    if (!Array.isArray(b.recipients)) return res.status(400).json({ error: 'recipients must be an array' });
+    const cleaned = [];
+    for (const r of b.recipients) {
+      const email = String(r.email || '').trim();
+      const phone = String(r.whatsapp_phone || '').trim();
+      const key = String(r.whatsapp_key || '').trim();
+      if (!email && !(phone && key)) continue; // a row needs at least one working channel
+      if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        return res.status(400).json({ error: `invalid email: ${email}` });
+      }
+      if ((phone && !key) || (!phone && key)) {
+        return res.status(400).json({ error: 'WhatsApp needs both phone and CallMeBot API key' });
+      }
+      cleaned.push({ email, whatsapp_phone: phone, whatsapp_key: key });
+    }
+    recipients = JSON.stringify(cleaned);
+  }
+
   db.prepare(
-    'UPDATE profiles SET name = ?, index_asset = ?, threshold_pct = ?, poll_minutes = ?, enabled = ? WHERE id = ?'
+    'UPDATE profiles SET name = ?, index_asset = ?, threshold_pct = ?, poll_minutes = ?, enabled = ?, alerts_enabled = ?, recipients = ? WHERE id = ?'
   ).run(
     b.name ?? profile.name,
     (b.index_asset ?? profile.index_asset).toLowerCase().trim(),
     Number(b.threshold_pct) > 0 ? Number(b.threshold_pct) : profile.threshold_pct,
     Number(b.poll_minutes) >= 1 ? Math.round(Number(b.poll_minutes)) : profile.poll_minutes,
     b.enabled === undefined ? profile.enabled : b.enabled ? 1 : 0,
+    b.alerts_enabled === undefined ? profile.alerts_enabled : b.alerts_enabled ? 1 : 0,
+    recipients,
     profile.id
   );
   res.json(db.prepare('SELECT * FROM profiles WHERE id = ?').get(profile.id));
@@ -249,14 +274,26 @@ app.delete('/api/assets/:id', (req, res) => {
 
 // ---- actions ----------------------------------------------------------------
 
+// Manual update ("Poll now"). Manual polls drive the notification state
+// machine: in 'notified' they re-check and escalate to 'awaiting_upload';
+// in 'awaiting_upload' they restart the 12h clock.
 app.post('/api/profiles/:id/poll', async (req, res) => {
   try {
-    const { alerts } = await pollProfiles({ force: true, profileId: Number(req.params.id) });
-    if (alerts.length > 0) await sendAlerts(alerts);
-    res.json({ ok: true, alerts: alerts.length });
+    const { events } = await pollProfiles({ force: true, profileId: Number(req.params.id), manual: true });
+    if (events.length > 0) await sendAlertEvents(events);
+    res.json({ ok: true, notifications: events.length });
   } catch (err) {
     res.status(502).json({ error: err.message });
   }
+});
+
+// Called by the UI after a screenshot import is applied: re-arms
+// notifications (new target hits only).
+app.post('/api/profiles/:id/import-complete', (req, res) => {
+  const profile = db.prepare('SELECT * FROM profiles WHERE id = ?').get(req.params.id);
+  if (!profile) return res.status(404).json({ error: 'not found' });
+  rearmAfterUpload(profile.id);
+  res.json({ ok: true });
 });
 
 // Set new target allocations: the deliberate decision to change the mix.

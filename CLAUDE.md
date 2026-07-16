@@ -19,7 +19,12 @@ Each profile is one flat pool of assets with target allocation percentages
 (totalling 100, incl. an optional "tethered" index asset pinned 1:1 to the
 index, e.g. USDT for USD). Drift = (actual% − target%)/target%; crossing the
 profile threshold emails the corrective market trade (buy/sell qty + index
-amount) for that asset only. A "currency basket" (Σ units/snapshot-units ×
+amount) for that asset only — never for the tethered index asset (note only).
+Notifications are per-profile (toggle + recipient list of email and optional
+CallMeBot WhatsApp fields; no global fallback) and follow a state machine:
+armed → notified (quiet; manual poll re-checks → awaiting_upload) →
+screenshot import re-arms; 12h timeouts revert to armed.
+A "currency basket" (Σ units/snapshot-units ×
 target weight, reset to 1.0 when targets change) tracks unit growth
 independent of prices. Quantities come in via screenshot import (Claude
 vision) or manual edit. It runs as the `asset-balancer` systemd unit (node

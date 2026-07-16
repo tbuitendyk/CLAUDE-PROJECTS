@@ -267,6 +267,19 @@ function renderDetail() {
   // screenshot import (only when the server has an Anthropic API key)
   $('#import-section').classList.toggle('hidden', !state.visionConfigured);
 
+  // notifications: state machine status, toggle, recipients
+  const rearmAt = profile.notify_state_at
+    ? new Date(profile.notify_state_at + 12 * 3600 * 1000).toLocaleString()
+    : null;
+  const stateText = {
+    armed: 'Armed — a new target hit sends a notification.',
+    notified: `Notified — quiet until you hit "Poll now" (re-checks and notifies if still drifted). Auto re-arms ${rearmAt}.`,
+    awaiting_upload: `Waiting for a screenshot upload after trading. "Poll now" restarts the clock. Auto re-arms ${rearmAt}.`,
+  };
+  $('#n-state').textContent = 'State: ' + (stateText[profile.notify_state] || stateText.armed);
+  $('#n-enabled').checked = Boolean(profile.alerts_enabled);
+  renderRecipients(JSON.parse(profile.recipients || '[]'));
+
   // alert log
   const log = $('#alert-log');
   log.innerHTML = '';
@@ -281,6 +294,68 @@ async function refresh() {
   await loadDetail();
   renderDetail();
 }
+
+// ---- notifications ----
+
+function recipientRow(r = {}) {
+  const row = document.createElement('div');
+  row.className = 'recipient-row';
+  const mk = (cls, ph, val) => {
+    const i = document.createElement('input');
+    i.className = cls;
+    i.placeholder = ph;
+    i.value = val || '';
+    return i;
+  };
+  row.append(
+    mk('r-email', 'email@example.com', r.email),
+    mk('r-phone', 'WhatsApp +1555… (optional)', r.whatsapp_phone),
+    mk('r-key', 'CallMeBot key (optional)', r.whatsapp_key)
+  );
+  const del = document.createElement('button');
+  del.textContent = '✕';
+  del.className = 'ghost';
+  del.addEventListener('click', () => row.remove());
+  row.appendChild(del);
+  return row;
+}
+
+function renderRecipients(list) {
+  const box = $('#n-recipients');
+  box.innerHTML = '';
+  for (const r of list) box.appendChild(recipientRow(r));
+  if (list.length === 0) box.appendChild(recipientRow());
+}
+
+$('#n-add').addEventListener('click', () => {
+  $('#n-recipients').appendChild(recipientRow());
+});
+
+$('#n-save').addEventListener('click', async () => {
+  const recipients = [...document.querySelectorAll('#n-recipients .recipient-row')].map((row) => ({
+    email: row.querySelector('.r-email').value.trim(),
+    whatsapp_phone: row.querySelector('.r-phone').value.trim(),
+    whatsapp_key: row.querySelector('.r-key').value.trim(),
+  }));
+  try {
+    await api(`/profiles/${state.selectedId}`, { method: 'PATCH', body: { recipients } });
+    await refresh();
+  } catch (err) {
+    alert(err.message);
+  }
+});
+
+$('#n-enabled').addEventListener('change', async () => {
+  try {
+    await api(`/profiles/${state.selectedId}`, {
+      method: 'PATCH',
+      body: { alerts_enabled: $('#n-enabled').checked },
+    });
+    await refresh();
+  } catch (err) {
+    alert(err.message);
+  }
+});
 
 // detail actions
 $('#d-poll').addEventListener('click', async () => {
@@ -534,8 +609,12 @@ $('#i-apply').addEventListener('click', async () => {
       alert(`Failed on one row: ${err.message}`);
     }
   }
+  // The applied screenshot re-arms notifications (new target hits only).
+  if (applied > 0) {
+    await api(`/profiles/${state.selectedId}/import-complete`, { method: 'POST' }).catch(() => {});
+  }
   $('#import-preview').classList.add('hidden');
-  $('#i-status').textContent = `Applied ${applied} change(s).`;
+  $('#i-status').textContent = `Applied ${applied} change(s). Notifications re-armed.`;
   $('#i-file').value = '';
   await refresh();
 });

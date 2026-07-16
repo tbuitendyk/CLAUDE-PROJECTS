@@ -24,8 +24,24 @@ and import the screenshot to set the new quantities.
   index-asset equivalent — sized to bring *that* asset back to its target.
   Assets inside their band are left alone (dust trades lose money to spread
   and slippage). Market orders; no slippage math.
+- The **tethered index asset never gets a trade recommendation** and never
+  triggers an alert alone — at least one base asset must breach. Its
+  over/underweight amount is included in alert emails as a note only.
 - An asset alerts once and re-arms after it converges back under half its
   threshold, or when new targets are set.
+- **Notification state machine** (per profile): after an automatic alert the
+  profile goes quiet (prices still update). Hitting **Poll now** re-checks —
+  still drifted → one more notification, then quiet until a **screenshot
+  import** is applied (which re-arms for *new* hits only). Both quiet states
+  auto re-arm after 12 hours; a manual poll while waiting for an upload
+  restarts the clock.
+- **Recipients are per profile**: a toggle turns alerts on/off, and each
+  profile carries its own list of email addresses — no global fallback; with
+  no recipients, alerts only appear in the on-screen log. Each recipient can
+  optionally add a WhatsApp number + [CallMeBot](https://www.callmebot.com)
+  API key to get a WhatsApp notice alongside the email (free personal-use
+  gateway; the recipient self-authorizes once by WhatsApping "I allow
+  callmebot to send me messages" to +34 644 91 07 79).
 - **The currency basket** measures unit growth independent of prices:
   `basket = Σ (current units ÷ snapshot units) × target weight`. It starts
   at 1.00000000 when targets are set (unit snapshot taken) and rises above 1

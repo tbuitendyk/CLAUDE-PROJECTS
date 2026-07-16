@@ -90,6 +90,18 @@
               </div>
             </div>
 
+            <h3>Notifications</h3>
+            <p id="n-state" class="muted"></p>
+            <label class="toggle-row"><input type="checkbox" id="n-enabled"> Alerts enabled for this profile</label>
+            <div id="n-recipients"></div>
+            <div>
+              <button id="n-add" class="ghost">Add recipient</button>
+              <button id="n-save">Save recipients</button>
+            </div>
+            <p class="muted">No recipients = alerts are logged below only. WhatsApp is optional per recipient
+              (CallMeBot: the recipient WhatsApps “I allow callmebot to send me messages” to +34 644 91 07 79
+              once, and enters the API key it replies with).</p>
+
             <h3>Value history</h3>
             <div class="table-wrap">
               <table id="snap-table">
