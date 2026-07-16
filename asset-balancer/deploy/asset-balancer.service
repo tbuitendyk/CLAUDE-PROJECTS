@@ -1,0 +1,24 @@
+[Unit]
+Description=Asset Balancer (price watcher + web UI)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=balancer
+Group=balancer
+WorkingDirectory=/opt/asset-balancer
+# PORT, SMTP creds, ALERT_EMAIL_TO etc. live here (root:balancer 640).
+EnvironmentFile=/etc/asset-balancer/env
+ExecStart=/usr/bin/node server.js
+Restart=on-failure
+RestartSec=5
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/asset-balancer/data
+
+[Install]
+WantedBy=multi-user.target

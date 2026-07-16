@@ -38,9 +38,18 @@ set -a; source .env; set +a
 npm start                 # serves the UI and starts the poller
 ```
 
-Open `http://localhost:3000` (or wherever you deploy it). To link it from
-buitendyk.ca, either host it on a subdomain (e.g. `balancer.buitendyk.ca`
-behind your reverse proxy) or reverse-proxy a path to it.
+Open `http://localhost:3000` (or wherever you deploy it).
+
+### Deploying on the buitendyk.ca VPS
+
+`sudo bash deploy/install.sh` installs it as the `asset-balancer` systemd
+unit on `127.0.0.1:8091` (config in `/etc/asset-balancer/env`); the portal's
+nginx config (on the `website` branch) proxies
+`https://www.buitendyk.ca/balancer/` to it behind the site's Basic Auth.
+The frontend uses relative API URLs, so it works both at `/` and under the
+`/balancer/` prefix. From a cloud session, deploy via the deploy-control
+endpoint: `{"action":"run-script","script":"deploy-balancer.sh"}` — see
+CLAUDE.md at the branch root.
 
 ### Email (Gmail)
 

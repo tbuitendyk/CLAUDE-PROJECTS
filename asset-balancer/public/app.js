@@ -9,8 +9,11 @@ let state = {
   pendingCoin: null, // coin picked from search, awaiting "Add asset"
 };
 
+// API URLs are relative so the app works both served at the root
+// (http://localhost:3000/) and behind a stripping reverse proxy
+// (https://www.buitendyk.ca/balancer/ -> 127.0.0.1:8091/).
 async function api(path, opts = {}) {
-  const res = await fetch(`/api${path}`, {
+  const res = await fetch(`api${path}`, {
     headers: { 'Content-Type': 'application/json' },
     ...opts,
     body: opts.body ? JSON.stringify(opts.body) : undefined,
@@ -311,7 +314,7 @@ $('#set-form').addEventListener('submit', async (e) => {
 // ---- boot ----
 
 (async function boot() {
-  const session = await fetch('/api/session').then((r) => r.json());
+  const session = await fetch('api/session').then((r) => r.json());
   $('#email-status').textContent = session.emailConfigured
     ? 'email alerts: on'
     : 'email alerts: not configured';
