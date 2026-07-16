@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# mail-test.sh [recipient]
+# mail-test.sh -- run both mail tests: authenticated internal send + external Port25 routing.
+# Usage: mail-test.sh [recipient]
 #
 # Runs BOTH mail tests each time. Sender = support@homeandofficemicro.com.
 #
