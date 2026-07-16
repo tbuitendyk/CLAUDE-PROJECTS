@@ -1,50 +1,67 @@
 #!/usr/bin/env bash
-# send-test-email.sh -- send ONE test email to a local mailbox through the mail
-# VM's SMTP, from the VPS host, and report the server's response. Read-mostly:
-# it delivers a single message to the user's own mailbox, nothing else.
+# send-test-email.sh [recipient]
 #
-# The iRedMail VM is reachable from the host on its host-only interface
-# (192.168.56.129) and via the NAT forward; we try a few targets in order.
+# Verify a mailbox exists (SMTP RCPT callout -- no message on a failed target),
+# then send ONE test email through the mail VM's SMTP from the VPS host. If the
+# server says the mailbox is unknown, it does NOT send and reports the spelling
+# is wrong. Recipient defaults to theodor@homeandofficemicro.com; pass an
+# address as the argument to override (needs the widened arg regex to be live).
 set -uo pipefail
+export RCPT="${1:-theodor@homeandofficemicro.com}"
+python3 <<'PY'
+import os, sys, smtplib
+from email.message import EmailMessage
+from email.utils import formatdate, make_msgid
+from datetime import datetime, timezone
 
-TO="theodor@homeandofficemicro.com"
-FROM="vps-test@homeandofficemicro.com"
-TARGETS=("192.168.56.129:25" "127.0.0.1:25" "10.0.2.129:25")
+rcpt    = os.environ["RCPT"]
+sender  = "vps-test@homeandofficemicro.com"
+targets = [("192.168.56.129", 25), ("127.0.0.1", 25), ("10.0.2.129", 25)]
+ts      = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+host    = os.uname().nodename
 
-HOST="$(hostname -f 2>/dev/null || hostname)"
-TS="$(date -u '+%Y-%m-%d %H:%M:%S UTC')"
-MSG="$(mktemp)"; SEND="$(mktemp)"
-trap 'rm -f "$MSG" "$SEND"' EXIT
+def message():
+    m = EmailMessage()
+    m["From"] = f"VPS Deploy Test <{sender}>"
+    m["To"] = rcpt
+    m["Subject"] = f"VPS test email -- {ts}"
+    m["Date"] = formatdate(localtime=True)
+    m["Message-ID"] = make_msgid(domain=host)
+    m.set_content(f"Test message from the VPS host ({host}) through the mail server.\n\nSent (UTC): {ts}\n")
+    return m
 
-cat > "$MSG" <<EOF
-From: VPS Deploy Test <$FROM>
-To: $TO
-Subject: VPS test email -- $TS
-Date: $(date -R)
-Message-ID: <vps-test-$(date +%s).$$@$HOST>
-Content-Type: text/plain; charset=utf-8
+print(f"recipient to verify: {rcpt}")
+for h, p in targets:
+    try:
+        s = smtplib.SMTP(h, p, timeout=20)
+    except Exception as e:
+        print(f"  {h}:{p} unreachable: {e}")
+        continue
+    try:
+        s.ehlo()
+        code, resp = s.mail(sender)
+        if code >= 400:
+            print(f"  {h}:{p}: MAIL FROM refused {code} {resp.decode(errors='replace')}")
+            s.close(); continue
+        code, resp = s.rcpt(rcpt)
+        text = resp.decode(errors='replace')
+        if code in (250, 251):
+            print(f"  VERIFIED: <{rcpt}> is a valid mailbox ({code} via {h}:{p})")
+            dcode, dresp = s.data(message().as_string())
+            s.quit()
+            print(f"SENT: test email accepted for <{rcpt}> ({dcode} {dresp.decode(errors='replace')})")
+            sys.exit(0)
+        if 500 <= code < 600:
+            print(f"  UNKNOWN MAILBOX: {h}:{p} rejected <{rcpt}> -> {code} {text}")
+            print("NOT SENT: that address does not exist on the server -- check the spelling.")
+            s.close(); sys.exit(2)
+        print(f"  {h}:{p}: deferred {code} {text} (greylist?) -- trying next target")
+        s.close()
+    except Exception as e:
+        print(f"  {h}:{p}: error {e}")
+        try: s.close()
+        except Exception: pass
 
-This is a test message sent from the VPS host ($HOST) through the mail server,
-to confirm mail delivery is working after the recent fixes.
-
-Sent (UTC): $TS
-EOF
-
-sent=0
-for t in "${TARGETS[@]}"; do
-  echo "== trying smtp://$t =="
-  cp "$MSG" "$SEND"
-  out="$(curl --silent --show-error --connect-timeout 10 --max-time 45 \
-        --url "smtp://$t" --mail-from "$FROM" --mail-rcpt "$TO" \
-        --upload-file "$SEND" 2>&1)"
-  rc=$?
-  [ -n "$out" ] && echo "$out"
-  if [ $rc -eq 0 ]; then
-    echo "SENT: accepted by $t for <$TO>"
-    sent=1
-    break
-  fi
-  echo "  no (curl rc=$rc)"
-done
-
-[ "$sent" = 1 ] || { echo "ALL SMTP TARGETS FAILED -- mail not sent" >&2; exit 1; }
+print("Could not verify or send on any SMTP target.", file=sys.stderr)
+sys.exit(1)
+PY

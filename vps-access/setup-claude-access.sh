@@ -207,7 +207,7 @@ case "$cmd" in
     # Optional single argument passed to the script as "$1". Validated (no
     # spaces/metacharacters) so it stays data, not a command.
     arg="${3:-}"
-    if [[ -n "$arg" && ! "$arg" =~ ^[A-Za-z0-9][A-Za-z0-9._/-]*$ ]]; then
+    if [[ -n "$arg" && ! "$arg" =~ ^[A-Za-z0-9][A-Za-z0-9._/@+-]*$ ]]; then
       echo "Refusing suspicious script argument: $arg" >&2
       exit 1
     fi

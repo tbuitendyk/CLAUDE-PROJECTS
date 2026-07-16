@@ -54,10 +54,10 @@ BRANCH_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._/-]*$")
 # Stricter than BRANCH_RE: no slashes, so a name can only select a file inside
 # the helper's fixed scripts directory (the helper re-validates too).
 SCRIPT_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
-# Optional single argument to a script: branch-name-shaped (slashes allowed),
+# Optional single argument to a script: branch- or email-shaped (allows / @ +),
 # no shell metacharacters/spaces. Passed positionally as $1, never interpreted
 # as a command. The helper re-validates.
-ARG_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._/-]*$")
+ARG_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._/@+-]*$")
 MAX_BODY = 4096
 # Deploys (apt, rsync, service restarts) can run a while; give them room but
 # still bound it so a wedged command can't pin a worker forever.

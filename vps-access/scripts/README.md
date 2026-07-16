@@ -12,9 +12,9 @@ Rules for every script in this directory:
 2. **Names**: must match `^[A-Za-z0-9][A-Za-z0-9._-]*$` (enforced twice — in
    `server.py` and in the helper). Keep the `.sh` suffix by convention.
    A script may receive **one optional argument** as `$1` (passed via the
-   endpoint's `"arg"` field, regex-validated `^[A-Za-z0-9][A-Za-z0-9._/-]*$` —
-   branch-name-shaped, no spaces/metacharacters). It's positional data, never a
-   command; re-validate it inside the script anyway.
+   endpoint's `"arg"` field, regex-validated `^[A-Za-z0-9][A-Za-z0-9._/@+-]*$` —
+   branch- or email-shaped, no spaces/metacharacters). It's positional data,
+   never a command; re-validate it inside the script anyway.
 3. **Idempotent** wherever possible — safe to run twice.
 4. `set -euo pipefail` at the top; fail loudly, not silently.
 5. **State intent in the header comment**: read-only vs. what it changes.
