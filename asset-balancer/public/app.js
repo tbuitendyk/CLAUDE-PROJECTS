@@ -286,9 +286,9 @@ function renderDetail() {
     ? new Date(profile.notify_state_at + 12 * 3600 * 1000).toLocaleString()
     : null;
   const stateText = {
-    armed: 'Armed — a new target hit sends a notification.',
-    notified: `Notified — quiet until you hit "Poll now" (re-checks and notifies if still drifted). Auto re-arms ${rearmAt}.`,
-    awaiting_upload: `Waiting for a screenshot upload after trading. "Poll now" restarts the clock. Auto re-arms ${rearmAt}.`,
+    armed: 'Armed — a new target hit sends a notification. "Poll now" notifies immediately if anything is exceeded.',
+    notified: `Notified — automatic emails paused. "Poll now" re-checks and re-notifies; a screenshot upload re-arms. Auto re-arms ${rearmAt}.`,
+    awaiting_upload: `Notified — automatic emails paused. "Poll now" re-checks and re-notifies; a screenshot upload re-arms. Auto re-arms ${rearmAt}.`,
   };
   $('#n-state').textContent = 'State: ' + (stateText[profile.notify_state] || stateText.armed);
   $('#n-enabled').checked = Boolean(profile.alerts_enabled);

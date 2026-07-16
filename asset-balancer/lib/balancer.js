@@ -25,13 +25,13 @@ const { fetchUsdPrices } = require('./pricing');
 // weight is included in alert emails as an informational note only.
 //
 // Notifications follow a per-profile state machine:
-//   armed           -- scheduled poll with a NEW breach -> notify -> 'notified'
-//   notified        -- quiet; manual poll: still breaching -> notify again ->
-//                      'awaiting_upload'; not breaching -> back to 'armed'
-//   awaiting_upload -- quiet; manual poll restarts the clock; a screenshot
-//                      import re-arms (new hits only)
-// Both muted states time out after 12 hours back to 'armed' with alert
-// state cleared, so a persisting breach produces a fresh reminder email.
+//   armed    -- scheduled poll with a NEW breach -> notify -> 'notified'
+//   notified -- scheduled polls stay quiet; a screenshot import re-arms
+//               (new hits only)
+// "Poll now" (manual) is a universal reset from any state: it notifies if
+// any target is currently exceeded and restarts the 12h clock. The muted
+// state times out after 12 hours back to 'armed' with alert state cleared,
+// so a persisting breach produces a fresh reminder email.
 
 const REARM_FRACTION = 0.5;
 const NOTIFY_TIMEOUT_MS = 12 * 60 * 60 * 1000;
@@ -189,33 +189,32 @@ function applyTimeout(profile, now) {
 
 // Decides whether this poll produces a notification event. Returns
 // {profile, alerts, indexNote} or null. `manual` marks a user-initiated poll.
+//
+// "Poll now" is a universal reset: from ANY state it re-checks, notifies if
+// any target is currently exceeded, and restarts the 12h clock. Scheduled
+// polls notify only from 'armed' on a NEW hit; after a notification the
+// profile sits muted ('notified') until a manual poll, a screenshot upload
+// (re-arms, new hits only), or the 12h timeout.
 function decideNotification(profile, result, manual, now) {
   const state = profile.notify_state || 'armed';
   const { breaches, newBreaches, indexNote } = result;
 
-  if (state === 'armed') {
-    // Scheduled polls notify only on a NEW hit; a manual "Poll now" treats
-    // any currently-exceeded target as a fresh breach and notifies.
-    const trigger = manual ? breaches.length > 0 : newBreaches.length > 0;
-    if (!trigger) return null;
+  if (manual) {
+    if (breaches.length > 0) {
+      markActive(breaches, now);
+      setNotifyState(profile.id, 'notified', now);
+      return { profile, alerts: breaches, indexNote };
+    }
+    setNotifyState(profile.id, 'armed', now); // nothing exceeded: re-arm
+    return null;
+  }
+
+  // Scheduled polls: only from 'armed', only on a fresh threshold crossing.
+  if (state === 'armed' && newBreaches.length > 0) {
     markActive(breaches, now);
     setNotifyState(profile.id, 'notified', now);
     return { profile, alerts: breaches, indexNote };
   }
-
-  if (state === 'notified') {
-    if (!manual) return null; // quiet until the user checks in
-    if (breaches.length > 0) {
-      markActive(breaches, now);
-      setNotifyState(profile.id, 'awaiting_upload', now);
-      return { profile, alerts: breaches, indexNote };
-    }
-    setNotifyState(profile.id, 'armed', now); // drift resolved itself
-    return null;
-  }
-
-  // awaiting_upload: silent; a manual poll restarts the 12h clock.
-  if (manual) setNotifyState(profile.id, 'awaiting_upload', now);
   return null;
 }
 

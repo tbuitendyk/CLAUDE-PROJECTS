@@ -22,8 +22,9 @@ profile threshold emails the corrective market trade (buy/sell qty + index
 amount) for that asset only — never for the tethered index asset (note only).
 Notifications are per-profile (toggle + recipient list of email and optional
 CallMeBot WhatsApp fields; no global fallback) and follow a state machine:
-armed → notified (quiet; manual poll re-checks → awaiting_upload) →
-screenshot import re-arms; 12h timeouts revert to armed.
+armed → notified (scheduled polls quiet; screenshot import re-arms, 12h
+timeout reverts to armed). "Poll now" is a universal reset from any state:
+notifies immediately if anything is exceeded and restarts the clock.
 A "currency basket" (Σ units/snapshot-units ×
 target weight, reset to 1.0 when targets change) tracks unit growth
 independent of prices. Assets are CoinGecko coins or fiat currencies

@@ -30,11 +30,10 @@ and import the screenshot to set the new quantities.
 - An asset alerts once and re-arms after it converges back under half its
   threshold, or when new targets are set.
 - **Notification state machine** (per profile): after an automatic alert the
-  profile goes quiet (prices still update). Hitting **Poll now** re-checks —
-  still drifted → one more notification, then quiet until a **screenshot
-  import** is applied (which re-arms for *new* hits only). Both quiet states
-  auto re-arm after 12 hours; a manual poll while waiting for an upload
-  restarts the clock.
+  profile goes quiet (prices still update). **Poll now is a universal
+  reset** — from any state it re-checks, notifies immediately if any target
+  is exceeded, and restarts the clock. A **screenshot import** re-arms for
+  *new* hits only, and the quiet state auto re-arms after 12 hours.
 - **Recipients are per profile**: a toggle turns alerts on/off, and each
   profile carries its own list of email addresses — no global fallback; with
   no recipients, alerts only appear in the on-screen log. Each recipient can
