@@ -47,9 +47,23 @@ for (const a of db.prepare('SELECT ts,emailed,message FROM alert_log ORDER BY ts
   console.log(new Date(a.ts).toISOString(), 'emailed=' + a.emailed, '|', a.message.split('\n')[0]);
 }
 
-if (process.env.MODE === 'watest') {
+async function probe(phone, key, label) {
+  const url = 'https://api.callmebot.com/whatsapp.php' +
+    `?phone=${encodeURIComponent(phone)}` +
+    `&text=${encodeURIComponent('Asset Balancer: WhatsApp test (' + label + ')')}` +
+    `&apikey=${encodeURIComponent(key)}`;
+  try {
+    const res = await fetch(url, { signal: AbortSignal.timeout(30000) });
+    const body = (await res.text()).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+    console.log(`${label} [${phone}]: HTTP ${res.status} | ${body.slice(0, 220)}`);
+  } catch (e) {
+    console.log(`${label} [${phone}]: FAILED ${e.message}`);
+  }
+}
+
+if (process.env.MODE === 'watest' || process.env.MODE === 'waformats') {
   (async () => {
-    console.log('== live CallMeBot test ==');
+    console.log('== live CallMeBot test (' + process.env.MODE + ') ==');
     let sent = 0;
     for (const p of profiles) {
       let recipients = [];
@@ -57,16 +71,24 @@ if (process.env.MODE === 'watest') {
       for (const r of recipients) {
         if (!r.whatsapp_phone || !r.whatsapp_key) continue;
         sent++;
-        const url = 'https://api.callmebot.com/whatsapp.php' +
-          `?phone=${encodeURIComponent(r.whatsapp_phone)}` +
-          `&text=${encodeURIComponent('Asset Balancer: WhatsApp test notice for profile "' + p.name + '"')}` +
-          `&apikey=${encodeURIComponent(r.whatsapp_key)}`;
-        try {
-          const res = await fetch(url, { signal: AbortSignal.timeout(30000) });
-          const body = (await res.text()).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
-          console.log(`profile ${p.id} -> ${r.whatsapp_phone}: HTTP ${res.status} | ${body.slice(0, 300)}`);
-        } catch (e) {
-          console.log(`profile ${p.id} -> ${r.whatsapp_phone}: FAILED ${e.message}`);
+        const stored = r.whatsapp_phone.trim();
+        if (process.env.MODE === 'watest') {
+          await probe(stored, r.whatsapp_key, 'as-stored');
+          continue;
+        }
+        // waformats: try the common phone-format variants the key might be
+        // bound to. Mexican numbers sometimes register as +521XXXXXXXXXX.
+        const bare = stored.replace(/^\+/, '');
+        const variants = new Map();
+        variants.set('as-stored', stored);
+        variants.set('no-plus', bare);
+        if (/^\+?52(?!1)/.test(stored)) {
+          variants.set('mx-521', '+521' + bare.slice(2));
+          variants.set('mx-521-no-plus', '521' + bare.slice(2));
+        }
+        for (const [label, phone] of variants) {
+          await probe(phone, r.whatsapp_key, label);
+          await new Promise((res) => setTimeout(res, 2000)); // be polite to the free gateway
         }
       }
     }
