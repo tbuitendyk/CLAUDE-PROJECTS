@@ -191,8 +191,10 @@ function decideNotification(profile, result, manual, now) {
   const { breaches, newBreaches, indexNote } = result;
 
   if (state === 'armed') {
-    if (newBreaches.length === 0) return null;
-    // At least one NEW hit: notify with the full current trade picture.
+    // Scheduled polls notify only on a NEW hit; a manual "Poll now" treats
+    // any currently-exceeded target as a fresh breach and notifies.
+    const trigger = manual ? breaches.length > 0 : newBreaches.length > 0;
+    if (!trigger) return null;
     markActive(breaches, now);
     setNotifyState(profile.id, 'notified', now);
     return { profile, alerts: breaches, indexNote };
