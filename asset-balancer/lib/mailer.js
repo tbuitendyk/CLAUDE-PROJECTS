@@ -210,9 +210,10 @@ async function sendStatusReport(profile, view) {
 
   for (const r of recipients) {
     if (!r.whatsapp_phone || !r.whatsapp_key) continue;
+    // No dollar balances on WhatsApp -- just the (unitless) basket ratio.
     const notice =
       `Asset Balancer: status report for "${profile.name}" — basket ` +
-      `${totals.basket != null ? totals.basket.toFixed(8) : 'n/a'}, total $${money(totals.totalUsd)}.` +
+      `${totals.basket != null ? totals.basket.toFixed(8) : 'n/a'}.` +
       (r.email ? ' Full report emailed to you.' : '');
     try {
       await sendWhatsApp(r.whatsapp_phone, r.whatsapp_key, notice);
