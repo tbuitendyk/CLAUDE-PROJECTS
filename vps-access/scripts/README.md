@@ -26,6 +26,12 @@ Rules for every script in this directory:
 
 `smoke.sh` is a harmless end-to-end test of the mechanism.
 
+`deploy-balancer.sh` deploys the asset balancer from the `balancer` branch:
+syncs a dedicated checkout (`~/deploy-balancer`) and runs
+`asset-balancer/deploy/install.sh` (installs/updates the `asset-balancer`
+systemd service on `127.0.0.1:8091`; first run seeds
+`/etc/asset-balancer/env`, which then needs SMTP creds added by hand).
+
 `delete-branch.sh` lists (no arg) or deletes (`<branch>` arg) stale `claude/*`
 branches on CLAUDE-PROJECTS. It needs `GITHUB_BRANCH_TOKEN` in
 `/etc/deploy-control/env` — a fine-grained PAT scoped to **this repo only,
