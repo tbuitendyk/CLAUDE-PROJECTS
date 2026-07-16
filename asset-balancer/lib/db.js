@@ -113,6 +113,20 @@ ensureColumn('assets', 'target_pct', 'target_pct REAL NOT NULL DEFAULT 0');
 ensureColumn('assets', 'is_index', 'is_index INTEGER NOT NULL DEFAULT 0');
 // Unit snapshot for the currency-basket calculation; taken when targets are set.
 ensureColumn('assets', 'basket_units', 'basket_units REAL');
+// One-time backfill for databases that predate basket_units: an existing
+// profile that already has targets was showing a basket (~1.0) under the old
+// engine, so snapshot the current quantities as the unit baseline. That keeps
+// the basket reading continuous (base 1.0 x qty/qty = 1.0) instead of blanking
+// out until the next "set targets". Idempotent: only fills NULLs, and only for
+// profiles that actually have a target set.
+db.exec(`
+  UPDATE assets SET basket_units = quantity
+  WHERE basket_units IS NULL
+    AND EXISTS (
+      SELECT 1 FROM assets a2
+      WHERE a2.profile_id = assets.profile_id AND a2.target_pct > 0
+    );
+`);
 ensureColumn('profiles', 'basket_started_at', 'basket_started_at INTEGER');
 // Chain-linking: displayed basket = basket_base x (weighted unit ratios).
 // Splices (target changes, flows) fold the current level into basket_base
