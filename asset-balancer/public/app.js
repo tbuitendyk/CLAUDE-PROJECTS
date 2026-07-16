@@ -203,14 +203,28 @@ function renderDetail() {
   const line2 = document.createElement('div');
   line2.className = 'perf-line';
   if (totals && totals.totalRel > 0) {
+    const since = totals.valueStartedAt
+      ? `since ${new Date(totals.valueStartedAt).toLocaleString()}`
+      : 'since start';
     line2.innerHTML =
       `Value (${idx}): <strong>${fmtNum(totals.totalRel)}</strong> ` +
-      (totals.growthPct != null ? `${fmtPct(totals.growthPct)} since start ` : '') +
+      (totals.growthPct != null ? `${fmtPct(totals.growthPct)} <span class="muted">${since}</span> ` : '') +
       `<span class="muted">· $${fmtMoney(totals.totalUsd)} USD</span>`;
   } else {
     line2.innerHTML = `Value (${idx}): <span class="muted">— no priced holdings yet</span>`;
   }
-  summary.append(line1, line2);
+  // Third line: annualized (compounding) rate, once there's enough runway.
+  const line3 = document.createElement('div');
+  line3.className = 'perf-line muted';
+  if (totals && totals.growthPct != null) {
+    line3.innerHTML =
+      totals.annualizedPct != null
+        ? `Annualized (compounding): ${fmtPct(totals.annualizedPct)}`
+        : 'Annualized (compounding): <span class="muted">n/a — too soon (needs ~1 week of history)</span>';
+    summary.append(line1, line2, line3);
+  } else {
+    summary.append(line1, line2);
+  }
 
   // target allocations should add up to 100 (tethered index asset included)
   const warning = $('#alloc-warning');
@@ -477,6 +491,20 @@ $('#t-cancel').addEventListener('click', () => {
 });
 
 // Edit threshold / poll interval on an existing profile.
+$('#d-rename').addEventListener('click', async () => {
+  const current = $('#d-name').textContent;
+  const name = prompt('Rename profile:', current);
+  if (name == null) return; // cancelled
+  const trimmed = name.trim();
+  if (!trimmed || trimmed === current) return;
+  try {
+    await api(`/profiles/${state.selectedId}`, { method: 'PATCH', body: { name: trimmed } });
+    await refresh();
+  } catch (err) {
+    alert(err.message);
+  }
+});
+
 $('#s-save').addEventListener('click', async () => {
   try {
     await api(`/profiles/${state.selectedId}`, {

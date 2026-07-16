@@ -137,6 +137,20 @@ ensureColumn('profiles', 'basket_base', 'basket_base REAL NOT NULL DEFAULT 1');
 ensureColumn('profiles', 'value_base', 'value_base REAL NOT NULL DEFAULT 1');
 ensureColumn('profiles', 'value_snap_rel', 'value_snap_rel REAL');
 ensureColumn('profile_snapshots', 'value_index', 'value_index REAL');
+// When the value index was anchored at 1.0 (the "start" that growth and the
+// annualized/compounding rate are measured from). Preserved across splices
+// (deposits, target changes, index switches) so the track record is continuous.
+ensureColumn('profiles', 'value_started_at', 'value_started_at INTEGER');
+// Backfill for profiles anchored before this column existed: the anchor moment
+// is the first snapshot that carries a value_index, so the start date and the
+// growth % stay mutually consistent.
+db.exec(`
+  UPDATE profiles SET value_started_at = (
+    SELECT MIN(ts) FROM profile_snapshots
+    WHERE profile_id = profiles.id AND value_index IS NOT NULL
+  )
+  WHERE value_started_at IS NULL AND value_snap_rel IS NOT NULL;
+`);
 // Per-profile notifications: master toggle, recipient list (JSON array of
 // {email, whatsapp_phone, whatsapp_key}), and the notification state machine
 // (armed -> notified -> awaiting_upload, with 12h timeouts back to armed).

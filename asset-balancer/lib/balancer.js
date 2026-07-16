@@ -180,9 +180,10 @@ function evaluateProfile(profile, usdPrices, now) {
     // the index denomination now derives from the tethered asset, so historic
     // totals may be in a different currency and aren't comparable.
     if (!(profile.value_snap_rel > 0) && totalRel > 0) {
-      db.prepare('UPDATE profiles SET value_base = 1, value_snap_rel = ? WHERE id = ?').run(totalRel, profile.id);
+      db.prepare('UPDATE profiles SET value_base = 1, value_snap_rel = ?, value_started_at = ? WHERE id = ?').run(totalRel, now, profile.id);
       profile.value_base = 1;
       profile.value_snap_rel = totalRel;
+      profile.value_started_at = now;
     }
     const quantities = {};
     for (const p of priced) quantities[p.asset.symbol] = p.asset.quantity;
@@ -395,7 +396,7 @@ async function recordFlow(profileId, deltas, note) {
       if (profile.value_snap_rel > 0 && valueBefore != null) {
         db.prepare('UPDATE profiles SET value_base = ?, value_snap_rel = ? WHERE id = ?').run(valueBefore, relAfter, profileId);
       } else {
-        db.prepare('UPDATE profiles SET value_base = 1, value_snap_rel = ? WHERE id = ?').run(relAfter, profileId);
+        db.prepare('UPDATE profiles SET value_base = 1, value_snap_rel = ?, value_started_at = ? WHERE id = ?').run(relAfter, now, profileId);
       }
     }
 
@@ -410,11 +411,66 @@ async function recordFlow(profileId, deltas, note) {
   return { applied: applied.length };
 }
 
+// Total pool value in index units for a given denomination (indexUsd) and a
+// USD-price map. Used by the index-switch splice to value the pool in both the
+// old and new denominations from a single price fetch.
+function sumRel(assets, indexUsd, usdPrices) {
+  let total = 0;
+  for (const a of assets) {
+    const p = priceAsset(a, indexUsd, usdPrices);
+    if (p) total += a.quantity * p.rel;
+  }
+  return total;
+}
+
+// Change the tethered index asset (assetId, or null to clear). This changes the
+// pool's denomination, so it splices the value index exactly like a flow: the
+// growth level is frozen and re-anchored to the new-denomination total, keeping
+// performance (and its start date) continuous. The basket is unit-based, so it
+// is unaffected. Callers should re-poll afterward to store fresh prices.
+async function setIndexAsset(profileId, assetId) {
+  const profile = db.prepare('SELECT * FROM profiles WHERE id = ?').get(profileId);
+  if (!profile) throw new Error('profile not found');
+  const assets = db.prepare('SELECT * FROM assets WHERE profile_id = ?').all(profileId);
+  const targetId = assetId == null ? null : Number(assetId);
+  if (targetId != null && !assets.some((a) => a.id === targetId)) throw new Error('unknown asset');
+
+  const usdPrices = await fetchUsdPrices(assets.map((a) => a.coingecko_id));
+
+  // Value-index level BEFORE the change, in the OLD denomination.
+  const totalRelOld = sumRel(assets, indexUsdFor(assets, usdPrices), usdPrices);
+  const valueBefore = computeValueIndex(profile, totalRelOld);
+
+  // Total in the NEW denomination (tethered asset flipped in-memory).
+  const flipped = assets.map((a) => ({ ...a, is_index: a.id === targetId ? 1 : 0 }));
+  const totalRelNew = sumRel(flipped, indexUsdFor(flipped, usdPrices), usdPrices);
+
+  const now = Date.now();
+  db.transaction(() => {
+    db.prepare('UPDATE assets SET is_index = 0 WHERE profile_id = ?').run(profileId);
+    if (targetId != null) db.prepare('UPDATE assets SET is_index = 1 WHERE id = ?').run(targetId);
+
+    if (totalRelNew > 0) {
+      if (profile.value_snap_rel > 0 && valueBefore != null) {
+        // Splice: value_index reads identically before and after the switch.
+        db.prepare('UPDATE profiles SET value_base = ?, value_snap_rel = ? WHERE id = ?').run(valueBefore, totalRelNew, profileId);
+      } else {
+        // No prior anchor: start the track record fresh in the new denomination.
+        db.prepare('UPDATE profiles SET value_base = 1, value_snap_rel = ?, value_started_at = ? WHERE id = ?').run(totalRelNew, now, profileId);
+      }
+    }
+    const after = db.prepare('SELECT * FROM assets WHERE profile_id = ?').all(profileId);
+    recordBasketEvent(profileId, now, 'index', computeBasket(after, profile.basket_base), valueBefore, after, `index -> ${indexLabel(after)}`);
+  })();
+  return { indexLabel: indexLabel(flipped) };
+}
+
 module.exports = {
   pollProfiles,
   evaluateProfile,
   setTargets,
   recordFlow,
+  setIndexAsset,
   computeBasket,
   computeValueIndex,
   priceAsset,

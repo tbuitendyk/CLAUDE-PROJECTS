@@ -7,9 +7,12 @@ const {
   pollProfiles,
   setTargets,
   recordFlow,
+  setIndexAsset,
   computeBasket,
   computeValueIndex,
   indexLabel,
+  indexUsdFor,
+  priceAsset,
   rearmAfterUpload,
 } = require('./lib/balancer');
 const { sendAlertEvents, sendStatusReport, sendTestEmail, emailConfigured } = require('./lib/mailer');
@@ -162,11 +165,26 @@ function buildProfileView(profile) {
     'SELECT usd_price, rel_price, ts FROM price_history WHERE asset_id = ? ORDER BY ts DESC LIMIT 1'
   );
   const rawAssets = db.prepare('SELECT * FROM assets WHERE profile_id = ? ORDER BY id').all(profile.id);
-  const assets = rawAssets.map((a) => {
+  // Price the view from each asset's most recent USD price, deriving relative
+  // prices against the CURRENT tethered asset the same way the poller does.
+  // (Stored rel_price values were computed under whatever index was set at poll
+  // time, so reusing them would break the moment the checkmark changes.) USD
+  // prices are denomination-independent, so this stays correct through any
+  // index switch — the whole table re-denominates consistently.
+  const lastById = new Map();
+  const usdMap = {};
+  for (const a of rawAssets) {
     const last = latest.get(a.id);
-    // The tethered asset is 1:1 with the index by definition, even if its
-    // stored history predates the checkmark.
-    const rel = a.is_index ? 1 : last ? last.rel_price : null;
+    if (last) {
+      lastById.set(a.id, last);
+      usdMap[a.coingecko_id] = last.usd_price;
+    }
+  }
+  const indexUsd = indexUsdFor(rawAssets, usdMap);
+  const assets = rawAssets.map((a) => {
+    const last = lastById.get(a.id) || null;
+    const p = priceAsset(a, indexUsd, usdMap);
+    const rel = p ? p.rel : null;
     const valueRel = rel != null ? a.quantity * rel : null;
     const valueUsd = last ? a.quantity * last.usd_price : null;
     return { ...a, last, rel, valueRel, valueUsd };
@@ -202,6 +220,16 @@ function buildProfileView(profile) {
   // Chained indexes: basket (unit growth) and value index (value growth),
   // both continuous across target changes and deposits/withdrawals.
   const valueIndex = computeValueIndex(profile, totalRel);
+  const growthPct = valueIndex != null ? (valueIndex - 1) * 100 : null;
+  // Annualized (compounding) rate from the value-index start. Suppressed for the
+  // first stretch, where annualizing a tiny window explodes into a nonsense
+  // figure (e.g. +2% in a day -> thousands of % a year).
+  const ANNUALIZE_MIN_DAYS = 7;
+  let annualizedPct = null;
+  if (valueIndex != null && valueIndex > 0 && profile.value_started_at) {
+    const days = (Date.now() - profile.value_started_at) / 86400000;
+    if (days >= ANNUALIZE_MIN_DAYS) annualizedPct = (Math.pow(valueIndex, 365.25 / days) - 1) * 100;
+  }
   const totals = {
     totalUsd,
     totalRel,
@@ -209,7 +237,9 @@ function buildProfileView(profile) {
     indexLabel: indexLabel(rawAssets),
     basket: computeBasket(rawAssets, profile.basket_base),
     valueIndex,
-    growthPct: valueIndex != null ? (valueIndex - 1) * 100 : null,
+    growthPct,
+    valueStartedAt: profile.value_started_at || null,
+    annualizedPct,
   };
   return { assets, totals };
 }
@@ -281,25 +311,25 @@ app.get('/api/fiat-currencies', async (req, res) => {
 
 // Update an asset: quantity (what you own) and/or the tethered-index flag.
 // Target percentages are NOT set here -- use POST /profiles/:id/targets.
-app.patch('/api/assets/:id', (req, res) => {
+app.patch('/api/assets/:id', async (req, res) => {
   const asset = db.prepare('SELECT * FROM assets WHERE id = ?').get(req.params.id);
   if (!asset) return res.status(404).json({ error: 'not found' });
   const b = req.body || {};
-  db.transaction(() => {
+  try {
     if (Number(b.quantity) >= 0) {
       db.prepare('UPDATE assets SET quantity = ? WHERE id = ?').run(Number(b.quantity), asset.id);
     }
     if (b.is_index !== undefined) {
-      if (b.is_index) {
-        // At most one tethered asset per profile.
-        db.prepare('UPDATE assets SET is_index = 0 WHERE profile_id = ?').run(asset.profile_id);
-        db.prepare('UPDATE assets SET is_index = 1 WHERE id = ?').run(asset.id);
-      } else {
-        db.prepare('UPDATE assets SET is_index = 0 WHERE id = ?').run(asset.id);
-      }
+      // Changing the tethered index re-denominates the pool. setIndexAsset
+      // splices the value index so performance stays continuous; the re-poll
+      // then stores fresh prices in the new denomination.
+      await setIndexAsset(asset.profile_id, b.is_index ? asset.id : null);
+      await pollProfiles({ force: true, profileId: asset.profile_id }).catch(() => {});
     }
-  })();
-  res.json(db.prepare('SELECT * FROM assets WHERE id = ?').get(asset.id));
+    res.json(db.prepare('SELECT * FROM assets WHERE id = ?').get(asset.id));
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
 });
 
 app.delete('/api/assets/:id', (req, res) => {
