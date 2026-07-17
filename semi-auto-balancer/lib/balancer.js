@@ -84,16 +84,22 @@ function priceAsset(asset, indexUsd, usdPrices) {
   return { rel: assetUsd / indexUsd, usd: assetUsd };
 }
 
-// Currency basket, chain-linked. null until targets are set (a snapshot
-// exists). Above 1 means more units of the underlying assets.
+// Currency basket, chain-linked. null until targets are set. Above 1 means
+// more units of the underlying assets. The zero-total-weight guard matters:
+// newly added assets carry basket_units (their add-time quantity), so
+// without it a fresh no-targets profile would read basket = 0 — and the
+// first setTargets would then freeze that 0 in as the base forever.
 function computeBasket(assets, base = 1) {
   if (!assets.some((a) => a.basket_units != null)) return null;
   let inner = 0;
+  let totalW = 0;
   for (const a of assets) {
     const w = (a.target_pct || 0) / 100;
     const ratio = a.basket_units > 0 ? a.quantity / a.basket_units : 1;
     inner += w * ratio;
+    totalW += w;
   }
+  if (!(totalW > 0)) return null; // no targets yet — no basket to track
   return (base || 1) * inner;
 }
 

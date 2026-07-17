@@ -140,6 +140,31 @@ const client = {
   ok(approx(assetBySym('usdt').quantity, 3497.4), 'withdrawal applied to the quantity');
   ok(profileRow().notify_state === 'armed', 'auto-applied flow re-arms too');
 
+  // --- H: fresh profile (no value anchor, all quantities 0) adopts the
+  // venue balances as its starting baseline instead of flagging the whole
+  // account unexplained ---
+  db.prepare("INSERT INTO profiles (name, threshold_pct, poll_minutes, created_at) VALUES ('Fresh', 10, 15, 0)").run();
+  db.prepare(
+    "INSERT INTO assets (profile_id, coingecko_id, symbol, quantity, target_pct, is_index, basket_units) VALUES (2, 'tether', 'usdt', 0, 0, 1, 0), (2, 'bitcoin', 'btc', 0, 0, 0, 0)"
+  ).run();
+  const account2 = sync.createAccount(2, 'kraken', 'k2', 's2');
+  const venue2 = { balances: [ { code: 'usdt', amount: 2500 }, { code: 'btc', amount: 0.08 } ], trades: [], flows: [] };
+  const client2 = {
+    venue: 'test',
+    fetchBalances: async () => venue2.balances,
+    fetchTradesSince: async () => venue2.trades,
+    fetchFlowsSince: async () => venue2.flows,
+  };
+  const s8 = await sync.syncAccount(account2.id, { client: client2 });
+  ok(s8.adopted.length === 2 && s8.unexplained.length === 0, 'fresh profile adopts venue balances (nothing unexplained)');
+  const fbtc = db.prepare('SELECT * FROM assets WHERE profile_id = 2 AND symbol = ?').get('btc');
+  const fusdt = db.prepare('SELECT * FROM assets WHERE profile_id = 2 AND symbol = ?').get('usdt');
+  ok(approx(fbtc.quantity, 0.08) && approx(fusdt.quantity, 2500), 'starting quantities set from the venue');
+
+  // A second sync is no longer fresh: balances now reconcile normally.
+  const s9 = await sync.syncAccount(account2.id, { client: client2 });
+  ok(s9.adopted.length === 0 && s9.unexplained.length === 0, 'second sync reconciles normally (no re-adoption)');
+
   console.log('sync reconciliation tests pass');
   process.exit(0);
 })().catch((e) => {

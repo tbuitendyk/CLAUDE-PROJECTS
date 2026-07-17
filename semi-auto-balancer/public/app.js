@@ -672,6 +672,9 @@ $('#x-sync').addEventListener('click', async () => {
     const r = await api(`/exchange-accounts/${state.exchangeId}/sync`, { method: 'POST' });
     const s = r.summary;
     const parts = [`${s.tradesApplied} trade(s) applied`];
+    if (s.adopted && s.adopted.length) {
+      parts.push(`starting balances adopted: ${s.adopted.map((a) => `${a.quantity} ${a.symbol.toUpperCase()}`).join(', ')}`);
+    }
     if (s.newPendingFlows) parts.push(`${s.newPendingFlows} deposit/withdrawal(s) detected — confirm below`);
     if (s.autoAppliedFlows) parts.push(`${s.autoAppliedFlows} flow(s) auto-applied`);
     if (s.unexplained.length) parts.push(`${s.unexplained.length} unexplained difference(s) — see warning`);

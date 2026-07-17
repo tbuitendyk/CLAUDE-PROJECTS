@@ -81,6 +81,20 @@ function totalRelNow(pid) {
   const basketAfterTrade = bal.computeBasket(assets, p.basket_base);
   ok(basketAfterTrade > 1, `trading (sell-high) grows the basket (${basketAfterTrade.toFixed(6)})`);
 
+  // Fresh-profile path (assets added via the app carry basket_units from
+  // day one): no targets -> basket is null, and the FIRST setTargets starts
+  // the track record at 1.0 rather than freezing in a zero base.
+  db.prepare("INSERT INTO profiles (name, threshold_pct, poll_minutes, created_at) VALUES ('Fresh', 10, 15, 0)").run();
+  const p2 = 2;
+  add.run(p2, 'tether', 'usdt', 1000, 0, 1, 1000);
+  add.run(p2, 'bitcoin', 'btc', 0.5, 0, 0, 0.5);
+  let fAssets = db.prepare('SELECT * FROM assets WHERE profile_id = ?').all(p2);
+  ok(bal.computeBasket(fAssets, 1) === null, 'no targets yet -> basket null (not 0)');
+  bal.setTargets(p2, fAssets.map((a, i) => ({ asset_id: a.id, target_pct: i === 0 ? 60 : 40 })));
+  const fp = db.prepare('SELECT * FROM profiles WHERE id = ?').get(p2);
+  fAssets = db.prepare('SELECT * FROM assets WHERE profile_id = ?').all(p2);
+  ok(approx(bal.computeBasket(fAssets, fp.basket_base), 1), 'first setTargets on a fresh profile starts the basket at 1.0');
+
   console.log('engine continuity tests pass');
   process.exit(0);
 })().catch((e) => {

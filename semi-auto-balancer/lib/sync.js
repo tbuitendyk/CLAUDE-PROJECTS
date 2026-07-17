@@ -138,6 +138,7 @@ async function syncAccount(accountId, { client = null } = {}) {
     tradeDeltas: {}, // symbol -> net delta
     newPendingFlows: 0,
     autoAppliedFlows: 0,
+    adopted: [], // [{symbol, quantity}] fresh-profile baseline adoption
     snapped: [], // [{symbol, from, to}] dust corrections
     unexplained: [], // [{code, symbol, residual}] needs user classification
     unmapped: [], // venue codes with balance but no matching asset
@@ -234,6 +235,14 @@ async function syncAccount(accountId, { client = null } = {}) {
       // should equal venue balance MINUS still-pending flow deltas; only
       // assets the venue actually reports are reconciled (a profile may mix
       // in off-venue holdings — those are left alone).
+      //
+      // Fresh profile (no value track record yet, every quantity still 0):
+      // there is no baseline to protect, so the first sync ADOPTS the venue
+      // balances as the starting quantities instead of flagging the entire
+      // account as unexplained. Adds each held asset's quantity in one shot;
+      // the value index then anchors at the next poll.
+      const fresh =
+        !(profile.value_snap_rel > 0) && assets.every((a) => !(a.quantity > 0));
       const pendingByAsset = new Map();
       for (const p of db
         .prepare("SELECT asset_id, amount FROM pending_flows WHERE account_id = ? AND status = 'pending'")
@@ -246,6 +255,13 @@ async function syncAccount(accountId, { client = null } = {}) {
         const asset = assetFor(b.code);
         if (!asset) {
           if (b.amount > 1e-8) summary.unmapped.push(b.code);
+          continue;
+        }
+        if (fresh) {
+          if (b.amount > 0) {
+            qtyById.set(asset.id, b.amount);
+            summary.adopted.push({ symbol: asset.symbol, quantity: b.amount });
+          }
           continue;
         }
         const expected = (qtyById.get(asset.id) || 0) + (pendingByAsset.get(asset.id) || 0);
