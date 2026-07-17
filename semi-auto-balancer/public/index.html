@@ -3,12 +3,12 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Asset Balancer</title>
+  <title>Semi-Auto Balancer</title>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
   <header>
-    <h1>Asset Balancer</h1>
+    <h1>Semi-Auto Balancer</h1>
     <span id="email-status" class="pill"></span>
     <a class="home-link" href="https://www.buitendyk.ca/">Home</a>
   </header>
@@ -30,7 +30,7 @@
           <ul id="profile-list"></ul>
           <form id="profile-form" class="stack">
             <input id="pf-name" placeholder="Profile name" required>
-            <label>Threshold % <input id="pf-threshold" type="number" step="0.1" min="0.1" value="5"></label>
+            <label title="React when an asset has effectively moved about this much against the rest of the account">Sensitivity (price move %) <input id="pf-threshold" type="number" step="0.1" min="0.1" value="5"></label>
             <label>Poll every (min) <input id="pf-poll" type="number" min="1" value="15"></label>
             <button type="submit">Add profile</button>
           </form>
@@ -54,8 +54,13 @@
             <div id="d-summary" class="summary"></div>
 
             <div class="settings-row">
-              <label>Threshold % <input id="s-threshold" type="number" step="0.1" min="0.1"></label>
+              <label title="React when an asset has effectively moved about this much against the rest of the account">
+                Sensitivity (price move %) <input id="s-threshold" type="number" step="0.1" min="0.1"></label>
               <label>Poll every (min) <input id="s-poll" type="number" min="1"></label>
+              <label title="Taker fee per trade leg on this profile's venue">
+                Fee %/leg <input id="s-fee" type="number" step="0.01" min="0"></label>
+              <label title="Estimated spread + slippage per trade leg">
+                Spread % <input id="s-spread" type="number" step="0.01" min="0"></label>
               <button id="s-save" class="ghost">Save settings</button>
             </div>
 
@@ -64,7 +69,7 @@
             <div class="table-wrap">
               <table id="asset-table">
                 <thead>
-                  <tr><th title="Tethered index asset (priced 1:1 with the index)">Index</th><th>Symbol</th><th>Target %</th><th>Quantity</th><th>Price (USD)</th><th>Value (USD)</th><th>Actual %</th><th>Drift vs target</th><th></th></tr>
+                  <tr><th title="Tethered index asset (priced 1:1 with the index)">Index</th><th>Symbol</th><th>Target %</th><th>Quantity</th><th>Price (USD)</th><th>Value (USD)</th><th>Actual %</th><th>Drift vs target</th><th title="This asset's effective drift trigger — weight-normalized so every asset reacts at about the same own-price move">Trigger @</th><th></th></tr>
                 </thead>
                 <tbody></tbody>
               </table>

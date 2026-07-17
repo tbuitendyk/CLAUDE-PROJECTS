@@ -1,5 +1,5 @@
 [Unit]
-Description=Asset Balancer (price watcher + web UI)
+Description=Semi-Auto Balancer (price watcher + web UI)
 After=network-online.target
 Wants=network-online.target
 
@@ -7,9 +7,9 @@ Wants=network-online.target
 Type=simple
 User=balancer
 Group=balancer
-WorkingDirectory=/opt/asset-balancer
+WorkingDirectory=/opt/semi-auto-balancer
 # PORT, SMTP creds, ALERT_EMAIL_TO etc. live here (root:balancer 640).
-EnvironmentFile=/etc/asset-balancer/env
+EnvironmentFile=/etc/semi-auto-balancer/env
 ExecStart=/usr/bin/node server.js
 Restart=on-failure
 RestartSec=5
@@ -18,7 +18,7 @@ NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=true
-ReadWritePaths=/opt/asset-balancer/data
+ReadWritePaths=/opt/semi-auto-balancer/data
 
 [Install]
 WantedBy=multi-user.target

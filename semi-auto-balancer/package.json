@@ -1,13 +1,14 @@
 {
-  "name": "asset-balancer",
+  "name": "semi-auto-balancer",
   "version": "1.0.0",
-  "description": "Manual asset balancer: tracks relative asset values against an index and emails when rebalance thresholds are hit.",
+  "description": "Semi-auto asset balancer: drift-triggered rebalance advisories calibrated to price moves, with exchange sync, backtested threshold tuning, and safety rails.",
   "main": "server.js",
   "type": "commonjs",
   "scripts": {
     "start": "node server.js",
     "poll": "node scripts/poll-once.js",
-    "test-email": "node scripts/test-email.js"
+    "test-email": "node scripts/test-email.js",
+    "test": "node tests/run.js"
   },
   "engines": {
     "node": ">=18"

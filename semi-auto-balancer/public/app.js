@@ -1,4 +1,4 @@
-/* Asset Balancer frontend — vanilla JS, no build step. */
+/* Semi-Auto Balancer frontend — vanilla JS, no build step. */
 
 const $ = (sel) => document.querySelector(sel);
 
@@ -179,12 +179,14 @@ function renderDetail() {
     : 'never';
   const idx = (totals && totals.indexLabel) || 'USD';
   $('#d-meta').textContent =
-    `Index: ${idx} (tethered asset) · threshold ${profile.threshold_pct}% of target · ` +
+    `Index: ${idx} (tethered asset) · reacts to ~${profile.threshold_pct}% price moves · ` +
     `polls every ${profile.poll_minutes} min · last poll: ${polled}`;
 
-  // Editable threshold / poll settings.
+  // Editable sensitivity / poll / trading-cost settings.
   $('#s-threshold').value = profile.threshold_pct;
   $('#s-poll').value = profile.poll_minutes;
+  $('#s-fee').value = profile.fee_pct != null ? profile.fee_pct : 0.38;
+  $('#s-spread').value = profile.spread_pct != null ? profile.spread_pct : 0.1;
 
   // Overall performance, two lines: (1) currency basket — unit growth,
   // (2) value in the index currency with growth since start.
@@ -261,12 +263,21 @@ function renderDetail() {
         ? '—'
         : `<span class="${a.driftRelPct >= 0 ? 'pos' : 'neg'}">${a.driftRelPct >= 0 ? '+' : ''}${a.driftRelPct.toFixed(1)}%</span>` +
           (a.breached ? ' ⚠' : '');
+    // Per-asset effective drift trigger (weight-normalized). The tether never
+    // trades on its own breach; very tight triggers get flagged as noisy.
+    const trigger = a.is_index
+      ? '<span class="muted" title="Tethered index asset — note only, never trades">note</span>'
+      : a.effThresholdPct == null
+        ? '—'
+        : `±${a.effThresholdPct.toFixed(1)}%` +
+          (a.effThresholdPct < 2 ? ' <span class="warn-text" title="Very tight — may trigger on daily noise">⚡</span>' : '');
     const rest = document.createElement('template');
     rest.innerHTML =
       `<td>${a.last ? '$' + fmtNum(a.last.usd_price) : '—'}</td>` +
       `<td>${a.valueUsd != null ? '$' + fmtMoney(a.valueUsd) : '—'}</td>` +
       `<td>${a.actualPct != null ? a.actualPct.toFixed(2) + '%' : '—'}</td>` +
-      `<td>${drift}</td>`;
+      `<td>${drift}</td>` +
+      `<td>${trigger}</td>`;
     tr.append(...rest.content.childNodes);
     const td = document.createElement('td');
     const del = document.createElement('button');
@@ -512,6 +523,8 @@ $('#s-save').addEventListener('click', async () => {
       body: {
         threshold_pct: Number($('#s-threshold').value),
         poll_minutes: Number($('#s-poll').value),
+        fee_pct: Number($('#s-fee').value),
+        spread_pct: Number($('#s-spread').value),
       },
     });
     await refresh();

@@ -8,6 +8,7 @@ const {
   setTargets,
   recordFlow,
   setIndexAsset,
+  effectiveThreshold,
   computeBasket,
   computeValueIndex,
   indexLabel,
@@ -15,6 +16,7 @@ const {
   priceAsset,
   rearmAfterUpload,
 } = require('./lib/balancer');
+const { getJob } = require('./lib/jobs');
 const { sendAlertEvents, sendStatusReport, sendTestEmail, emailConfigured } = require('./lib/mailer');
 const { searchCoins, supportedFiats, fiatCode } = require('./lib/pricing');
 const { visionConfigured, parseHoldingsScreenshot } = require('./lib/vision');
@@ -138,8 +140,11 @@ app.patch('/api/profiles/:id', (req, res) => {
     recipients = JSON.stringify(cleaned);
   }
 
+  // fee/spread accept 0 (fee-free venue), so their validation is >= 0 — not
+  // the > 0 pattern the always-positive fields use.
+  const nonNeg = (v, prev) => (v === undefined ? prev : Number(v) >= 0 ? Number(v) : prev);
   db.prepare(
-    'UPDATE profiles SET name = ?, threshold_pct = ?, poll_minutes = ?, enabled = ?, alerts_enabled = ?, recipients = ? WHERE id = ?'
+    'UPDATE profiles SET name = ?, threshold_pct = ?, poll_minutes = ?, enabled = ?, alerts_enabled = ?, recipients = ?, fee_pct = ?, spread_pct = ? WHERE id = ?'
   ).run(
     b.name ?? profile.name,
     Number(b.threshold_pct) > 0 ? Number(b.threshold_pct) : profile.threshold_pct,
@@ -147,6 +152,8 @@ app.patch('/api/profiles/:id', (req, res) => {
     b.enabled === undefined ? profile.enabled : b.enabled ? 1 : 0,
     b.alerts_enabled === undefined ? profile.alerts_enabled : b.alerts_enabled ? 1 : 0,
     recipients,
+    nonNeg(b.fee_pct, profile.fee_pct),
+    nonNeg(b.spread_pct, profile.spread_pct),
     profile.id
   );
   res.json(db.prepare('SELECT * FROM profiles WHERE id = ?').get(profile.id));
@@ -213,7 +220,15 @@ function buildProfileView(profile) {
       a.actualPct != null && a.target_pct > 0
         ? ((a.actualPct - a.target_pct) / a.target_pct) * 100
         : null;
-    a.breached = a.driftRelPct != null && Math.abs(a.driftRelPct) >= profile.threshold_pct;
+    // Same weight-normalized threshold the engine alerts on (shared function,
+    // so the UI/status email can never disagree with what actually triggers).
+    const tEff = effectiveThreshold(profile.threshold_pct / 100, (a.target_pct || 0) / 100);
+    a.effThresholdPct = tEff != null && a.target_pct > 0 ? tEff * 100 : null;
+    a.breached =
+      !a.is_index &&
+      a.driftRelPct != null &&
+      a.effThresholdPct != null &&
+      Math.abs(a.driftRelPct) >= a.effThresholdPct;
     a.alertActive = activeAlerts.has(a.id);
   }
 
@@ -335,6 +350,24 @@ app.patch('/api/assets/:id', async (req, res) => {
 app.delete('/api/assets/:id', (req, res) => {
   db.prepare('DELETE FROM assets WHERE id = ?').run(req.params.id);
   res.json({ ok: true });
+});
+
+// ---- jobs -------------------------------------------------------------------
+
+// Long-running analysis jobs (threshold sweeps, scans) are started by their
+// own endpoints and polled here. Unknown id => the service restarted since
+// the job ran; finished results live on in analysis_results.
+app.get('/api/jobs/:id', (req, res) => {
+  const job = getJob(req.params.id);
+  if (!job) return res.status(404).json({ error: 'unknown job (result expired — re-run)' });
+  res.json({
+    id: job.id,
+    kind: job.kind,
+    status: job.status,
+    progress: job.progress,
+    result: job.status === 'done' ? job.result : null,
+    error: job.error,
+  });
 });
 
 // ---- actions ----------------------------------------------------------------
@@ -534,7 +567,7 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 if (require.main === module) {
   app.listen(config.port, () => {
-    console.log(`Asset balancer listening on http://localhost:${config.port}`);
+    console.log(`Semi-auto balancer listening on http://localhost:${config.port}`);
     console.log(`Email alerts: ${emailConfigured() ? `on -> ${config.alertEmailTo}` : 'NOT configured'}`);
     startScheduler();
   });

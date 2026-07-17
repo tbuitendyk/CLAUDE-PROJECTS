@@ -86,6 +86,36 @@ CREATE TABLE IF NOT EXISTS flows (
   note TEXT
 );
 
+-- Local daily price-history cache (Phase 0). One row per asset per UTC day
+-- (ts = 00:00 UTC ms). INSERT OR REPLACE on fetch so the partial trailing
+-- point CoinGecko returns (live price at request time) is overwritten by the
+-- real close on the next top-up. Backtests, safety rails, and the scanner all
+-- read from here instead of hitting the API.
+CREATE TABLE IF NOT EXISTS daily_prices (
+  coingecko_id TEXT NOT NULL,
+  ts INTEGER NOT NULL,
+  usd_price REAL NOT NULL,
+  PRIMARY KEY (coingecko_id, ts)
+);
+
+-- CoinGecko monthly call ledger: the demo tier's binding constraint is
+-- 10,000 calls/month, so every request (success or error) is counted.
+CREATE TABLE IF NOT EXISTS cg_ledger (
+  month TEXT PRIMARY KEY,   -- '2026-07'
+  calls INTEGER NOT NULL DEFAULT 0
+);
+
+-- Persisted results of long-running analysis jobs (threshold sweeps, scans)
+-- so a deploy/restart doesn't discard a finished run.
+CREATE TABLE IF NOT EXISTS analysis_results (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  profile_id INTEGER REFERENCES profiles(id) ON DELETE CASCADE,
+  kind TEXT NOT NULL,        -- 'tune-threshold' | 'scan' | ...
+  created_at INTEGER NOT NULL,
+  params TEXT,               -- JSON: inputs the result was computed from
+  result TEXT                -- JSON payload
+);
+
 -- One row per splice (target change / flow / explicit reset): the index
 -- levels and weights at that moment. Behind-the-scenes record for future
 -- analysis of which asset mixes performed best.
@@ -159,6 +189,12 @@ ensureColumn('profiles', 'recipients', "recipients TEXT NOT NULL DEFAULT '[]'");
 ensureColumn('profiles', 'notify_state', "notify_state TEXT NOT NULL DEFAULT 'armed'");
 ensureColumn('profiles', 'notify_state_at', 'notify_state_at INTEGER');
 ensureColumn('profile_snapshots', 'basket', 'basket REAL');
+// Cost model (Phase 0): per-profile trading costs, used by every backtest and
+// advisory feature. fee = taker fee % per leg (Kraken 0.38, Bitso 0.36 —
+// set per profile in the UI); spread = estimated half-spread+slippage % per
+// leg. Zero is a legal value (fee-free venue), so validation is >= 0.
+ensureColumn('profiles', 'fee_pct', 'fee_pct REAL NOT NULL DEFAULT 0.38');
+ensureColumn('profiles', 'spread_pct', 'spread_pct REAL NOT NULL DEFAULT 0.10');
 
 // Sets were removed from the design (one flat asset pool per profile);
 // drop the leftover tables from earlier versions.

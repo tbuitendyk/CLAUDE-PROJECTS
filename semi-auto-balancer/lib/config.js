@@ -7,13 +7,13 @@ function num(v, fallback) {
 
 module.exports = {
   port: num(process.env.PORT, 3000),
-  dbPath: process.env.DB_PATH || path.join(__dirname, '..', 'data', 'balancer.sqlite'),
+  dbPath: process.env.DB_PATH || path.join(__dirname, '..', 'data', 'semi-auto-balancer.sqlite'),
 
   // UI/API password. If empty, the app runs without authentication.
   appPassword: process.env.APP_PASSWORD || '',
   // Used to sign session cookies. Falls back to the password so sessions
   // survive restarts without extra setup.
-  appSecret: process.env.APP_SECRET || process.env.APP_PASSWORD || 'asset-balancer',
+  appSecret: process.env.APP_SECRET || process.env.APP_PASSWORD || 'semi-auto-balancer',
 
   // Default minutes between price polls for new profiles.
   defaultPollMinutes: num(process.env.POLL_MINUTES, 15),

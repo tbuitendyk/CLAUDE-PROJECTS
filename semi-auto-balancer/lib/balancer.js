@@ -28,6 +28,22 @@ const { fetchUsdPrices } = require('./pricing');
 const REARM_FRACTION = 0.5;
 const NOTIFY_TIMEOUT_MS = 12 * 60 * 60 * 1000;
 
+// Phase 1 calibration: profiles.threshold_pct means PRICE-MOVE SENSITIVITY X
+// ("react when an asset has effectively moved ~X% against the rest of the
+// account"). Allocation drift stays the trigger quantity — it ignores
+// unharvestable correlated moves and catches creeping multi-asset imbalance —
+// but a uniform drift threshold is miscalibrated across weights (the
+// denominator moves: a 56%-weight asset needs a ~26% price move to hit 10%
+// drift, a 4%-weight asset only ~10.5%). Normalizing per asset by
+//   T = X(1−w)/(1+wX)     (X, w, T all fractions; w = target weight)
+// makes every asset trigger at the same own-price move ≈ X.
+// Returns null (never triggers) for degenerate inputs: X<=0, or w>=1 where
+// the share is pinned and drift is meaningless.
+function effectiveThreshold(X, w) {
+  if (!(X > 0) || !(w >= 0) || w >= 1) return null;
+  return (X * (1 - w)) / (1 + w * X);
+}
+
 // USD-pegged assets that represent the US dollar as an index: pinned to
 // exactly $1 so a USD-denominated account stays clean (small market variation
 // deliberately ignored). Other tethered assets (e.g. fiat:mxn) use their real
@@ -129,7 +145,7 @@ function evaluateProfile(profile, usdPrices, now) {
   const breaches = [];
   const newBreaches = [];
   let indexNote = null;
-  const threshold = profile.threshold_pct / 100;
+  const sensitivity = profile.threshold_pct / 100; // price-move sensitivity X
   const getActive = db.prepare('SELECT * FROM alloc_alerts WHERE asset_id = ?');
   const clearActive = db.prepare('DELETE FROM alloc_alerts WHERE asset_id = ?');
 
@@ -152,7 +168,14 @@ function evaluateProfile(profile, usdPrices, now) {
       }
 
       const active = getActive.get(p.asset.id);
-      if (Math.abs(driftRel) >= threshold) {
+      const tEff = effectiveThreshold(sensitivity, target / 100);
+      if (tEff == null) {
+        // Degenerate weight (w>=1): drift can't move — never alert, and drop
+        // any stale active alert so it can't linger.
+        if (active) clearActive.run(p.asset.id);
+        continue;
+      }
+      if (Math.abs(driftRel) >= tEff) {
         const deltaRel = (target / 100) * totalRel - valueRel; // >0 buy, <0 sell
         const breach = {
           profile,
@@ -160,13 +183,14 @@ function evaluateProfile(profile, usdPrices, now) {
           actualPct,
           targetPct: target,
           driftRelPct: driftRel * 100,
+          thresholdPct: tEff * 100, // this asset's effective drift threshold
           action: deltaRel > 0 ? 'BUY' : 'SELL',
           quantity: Math.abs(deltaRel) / p.rel,
           indexAmount: Math.abs(deltaRel),
         };
         breaches.push(breach);
         if (!active) newBreaches.push(breach);
-      } else if (active && Math.abs(driftRel) < threshold * REARM_FRACTION) {
+      } else if (active && Math.abs(driftRel) < tEff * REARM_FRACTION) {
         clearActive.run(p.asset.id);
       }
     }
@@ -468,6 +492,7 @@ async function setIndexAsset(profileId, assetId) {
 module.exports = {
   pollProfiles,
   evaluateProfile,
+  effectiveThreshold,
   setTargets,
   recordFlow,
   setIndexAsset,

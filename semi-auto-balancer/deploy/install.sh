@@ -1,21 +1,21 @@
 #!/usr/bin/env bash
-# Installs the Asset Balancer service on a Debian/Ubuntu VPS.
+# Installs the Semi-Auto Balancer service on a Debian/Ubuntu VPS.
 #
 # Usage (run from inside this sub-project directory, as a user with sudo):
-#   cd claude-projects/asset-balancer
+#   cd claude-projects/semi-auto-balancer
 #   sudo bash deploy/install.sh
 #
 # What it does (idempotent -- safe to re-run for upgrades):
 #   1. Installs Node.js + npm via apt (build-essential + python3 are needed
 #      once to compile better-sqlite3's native module).
-#   2. Creates an unprivileged 'balancer' system user and /opt/asset-balancer.
+#   2. Creates an unprivileged 'balancer' system user and /opt/semi-auto-balancer.
 #   3. Syncs the project there (preserving data/, the SQLite database) and
 #      installs production npm dependencies.
-#   4. Seeds /etc/asset-balancer/env from deploy/env.example (only if absent
+#   4. Seeds /etc/semi-auto-balancer/env from deploy/env.example (only if absent
 #      -- re-running never clobbers configured SMTP credentials).
-#   5. Installs, enables and (re)starts the systemd unit on 127.0.0.1:8091.
+#   5. Installs, enables and (re)starts the systemd unit on 127.0.0.1:8092.
 #
-# The public face of the app is the nginx location /balancer/ on the website
+# The public face of the app is the nginx location /semibalancer/ on the website
 # branch (www.buitendyk.ca), which proxies to 8091 behind the site's Basic
 # Auth. This script does not touch nginx -- ship that via deploy-website.
 set -euo pipefail
@@ -26,9 +26,9 @@ if [[ $EUID -ne 0 ]]; then
 fi
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-INSTALL_DIR="/opt/asset-balancer"
+INSTALL_DIR="/opt/semi-auto-balancer"
 SERVICE_USER="balancer"
-ENV_FILE="/etc/asset-balancer/env"
+ENV_FILE="/etc/semi-auto-balancer/env"
 
 echo "==> Installing system packages (build tools for better-sqlite3)"
 apt-get update -qq
@@ -73,12 +73,12 @@ chown "root:${SERVICE_USER}" "${ENV_FILE}"
 chmod 640 "${ENV_FILE}"
 
 echo "==> Installing and starting the systemd unit"
-cp "${REPO_DIR}/deploy/asset-balancer.service" /etc/systemd/system/asset-balancer.service
+cp "${REPO_DIR}/deploy/semi-auto-balancer.service" /etc/systemd/system/semi-auto-balancer.service
 systemctl daemon-reload
-systemctl enable asset-balancer
-systemctl restart asset-balancer
+systemctl enable semi-auto-balancer
+systemctl restart semi-auto-balancer
 sleep 1
-systemctl --no-pager --lines 5 status asset-balancer || true
+systemctl --no-pager --lines 5 status semi-auto-balancer || true
 
 cat <<EOF
 
@@ -87,14 +87,14 @@ Install complete. Remaining manual steps (first install only):
 
   1. Edit ${ENV_FILE} with SMTP credentials (e.g. the iRedMail
      server on mail.homeandofficemicro.com, or Gmail + App Password) so
-     alert emails can be sent, then: sudo systemctl restart asset-balancer
+     alert emails can be sent, then: sudo systemctl restart semi-auto-balancer
 
-  2. The public URL https://www.buitendyk.ca/balancer/ needs the nginx
+  2. The public URL https://www.buitendyk.ca/semibalancer/ needs the nginx
      location from the website branch (ships via deploy-website). Until
-     then the app is only reachable locally on 127.0.0.1:8091.
+     then the app is only reachable locally on 127.0.0.1:8092.
 
   3. Sanity checks:
-       curl -s http://127.0.0.1:8091/api/session
+       curl -s http://127.0.0.1:8092/api/session
        sudo -u ${SERVICE_USER} node ${INSTALL_DIR}/scripts/test-email.js
 ==============================================================================
 EOF

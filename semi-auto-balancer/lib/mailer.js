@@ -19,12 +19,12 @@ function emailConfigured() {
   return Boolean(transporter);
 }
 
-// All balancer mail presents as "Manual Asset Balancer", regardless of how
+// All balancer mail presents as "Semi-Auto Balancer", regardless of how
 // the env spells the from address (bare, or "Name <addr>").
 function fromHeader() {
   const raw = (config.alertEmailFrom || config.smtp.user || '').trim();
   const m = raw.match(/<([^>]+)>/);
-  return { name: 'Manual Asset Balancer', address: m ? m[1] : raw };
+  return { name: 'Semi-Auto Balancer', address: m ? m[1] : raw };
 }
 
 function fmt(n, digits = 6) {
@@ -56,7 +56,8 @@ function buildText(event) {
     return [
       `${sym} is ${state}`,
       `  actual ${al.actualPct.toFixed(2)}% of pool vs target ${al.targetPct}% ` +
-        `(drift ${al.driftRelPct >= 0 ? '+' : ''}${al.driftRelPct.toFixed(1)}% of target, threshold ${profile.threshold_pct}%)`,
+        `(drift ${al.driftRelPct >= 0 ? '+' : ''}${al.driftRelPct.toFixed(1)}% of target, trigger ±${al.thresholdPct != null ? al.thresholdPct.toFixed(1) : profile.threshold_pct}% ` +
+        `≈ a ${profile.threshold_pct}% price move)`,
       `  -> ${al.action} ${fmtQty(al.quantity)} ${sym}  (≈ ${fmt(al.indexAmount)} ${idx})`,
     ].join('\n');
   });
@@ -102,7 +103,7 @@ async function sendAlertEvents(events) {
           // Timestamped so mail apps never thread new alerts into an old
           // conversation (threads display the original sender's name).
           subject:
-            `[Asset Balancer] ${profile.name}: ${alerts.length} rebalance trade${alerts.length > 1 ? 's' : ''} to make ` +
+            `[Semi-Auto Balancer] ${profile.name}: ${alerts.length} rebalance trade${alerts.length > 1 ? 's' : ''} to make ` +
             `(${new Date().toISOString().slice(0, 16).replace('T', ' ')} UTC)`,
           text,
         });
@@ -116,7 +117,7 @@ async function sendAlertEvents(events) {
     for (const r of recipients) {
       if (!r.whatsapp_phone || !r.whatsapp_key) continue;
       const notice =
-        `Asset Balancer: ${alerts.length} rebalance trade${alerts.length > 1 ? 's' : ''} needed on "${profile.name}"` +
+        `Semi-Auto Balancer: ${alerts.length} rebalance trade${alerts.length > 1 ? 's' : ''} needed on "${profile.name}"` +
         (r.email ? ' — details in your email.' : ` — ${alerts.map((a) => `${a.action} ${a.asset.symbol.toUpperCase()}`).join(', ')}.`);
       try {
         await sendWhatsApp(r.whatsapp_phone, r.whatsapp_key, notice);
@@ -168,7 +169,7 @@ async function sendStatusReport(profile, view) {
   const breached = assets.filter((a) => a.breached && !a.is_index).length;
   lines.push(
     `Notifications: ${profile.alerts_enabled ? 'enabled' : 'DISABLED'} · state ${profile.notify_state || 'armed'} · ` +
-      `threshold ${profile.threshold_pct}% of target · ${breached} asset(s) over threshold`
+      `sensitivity ~${profile.threshold_pct}% price move · ${breached} asset(s) over trigger`
   );
   lines.push('');
   lines.push('Assets:');
@@ -198,7 +199,7 @@ async function sendStatusReport(profile, view) {
       await transporter.sendMail({
         from: fromHeader(),
         to: emails.join(', '),
-        subject: `[Asset Balancer] ${profile.name} status (${ts} UTC)`,
+        subject: `[Semi-Auto Balancer] ${profile.name} status (${ts} UTC)`,
         text,
       });
       result.emailedTo = emails;
@@ -213,7 +214,7 @@ async function sendStatusReport(profile, view) {
     if (!r.whatsapp_phone || !r.whatsapp_key) continue;
     // No dollar balances on WhatsApp -- just the (unitless) basket ratio.
     const notice =
-      `Asset Balancer: status report for "${profile.name}" — basket ` +
+      `Semi-Auto Balancer: status report for "${profile.name}" — basket ` +
       `${totals.basket != null ? totals.basket.toFixed(8) : 'n/a'}.` +
       (r.email ? ' Full report emailed to you.' : '');
     try {
@@ -243,8 +244,8 @@ async function sendTestEmail() {
   await transporter.sendMail({
     from: fromHeader(),
     to: config.alertEmailTo,
-    subject: `[Asset Balancer] Test email (${new Date().toISOString().slice(0, 16).replace('T', ' ')} UTC)`,
-    text: 'Email delivery from the asset balancer is working.',
+    subject: `[Semi-Auto Balancer] Test email (${new Date().toISOString().slice(0, 16).replace('T', ' ')} UTC)`,
+    text: 'Email delivery from the semi-auto balancer is working.',
   });
 }
 

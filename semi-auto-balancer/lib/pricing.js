@@ -1,4 +1,3 @@
-const config = require('./config');
 
 // Pricing provider: CoinGecko, for coins AND fiat currencies from the same
 // source. Coins are quoted directly in USD. Fiat holdings are stored with a
@@ -25,19 +24,9 @@ function fiatCode(id) {
   return null;
 }
 
-function headers() {
-  const h = { accept: 'application/json' };
-  if (config.coingeckoApiKey) h['x-cg-demo-api-key'] = config.coingeckoApiKey;
-  return h;
-}
-
-async function getJson(url) {
-  const res = await fetch(url, { headers: headers() });
-  if (!res.ok) {
-    throw new Error(`CoinGecko ${res.status}: ${await res.text().catch(() => '')}`);
-  }
-  return res.json();
-}
+// All CoinGecko traffic goes through the shared rate-limited, quota-ledgered
+// client so bursts from any feature can't starve the others.
+const { getJson } = require('./cg');
 
 // USD price for every requested id — coin ids and fiat ids alike. Fiat
 // entries are keyed under both their 'fiat:xxx' and bare forms.
@@ -57,7 +46,7 @@ async function fetchUsdPrices(ids) {
   for (let i = 0; i < coinIds.length; i += 100) {
     const chunk = coinIds.slice(i, i + 100);
     const body = await getJson(
-      `${config.coingeckoBase}/simple/price?ids=${encodeURIComponent(chunk.join(','))}&vs_currencies=usd`
+      `/simple/price?ids=${encodeURIComponent(chunk.join(','))}&vs_currencies=usd`
     );
     for (const [id, val] of Object.entries(body)) {
       if (val && typeof val.usd === 'number') prices[id] = val.usd;
@@ -68,7 +57,7 @@ async function fetchUsdPrices(ids) {
   const nonUsd = [...fiats].filter((c) => c !== 'usd');
   if (nonUsd.length > 0) {
     const body = await getJson(
-      `${config.coingeckoBase}/simple/price?ids=bitcoin&vs_currencies=${encodeURIComponent(['usd', ...nonUsd].join(','))}`
+      `/simple/price?ids=bitcoin&vs_currencies=${encodeURIComponent(['usd', ...nonUsd].join(','))}`
     );
     const btc = body.bitcoin || {};
     for (const code of nonUsd) {
@@ -90,7 +79,7 @@ let vsCache = { at: 0, list: null };
 async function supportedFiats() {
   if (vsCache.list && Date.now() - vsCache.at < 60 * 60 * 1000) return vsCache.list;
   try {
-    const body = await getJson(`${config.coingeckoBase}/simple/supported_vs_currencies`);
+    const body = await getJson(`/simple/supported_vs_currencies`);
     if (Array.isArray(body) && body.length > 0) {
       const live = new Set(body.map((c) => String(c).toLowerCase()));
       vsCache = { at: Date.now(), list: [...FIAT_CODES].filter((c) => live.has(c)).sort() };
@@ -103,10 +92,7 @@ async function supportedFiats() {
 }
 
 async function searchCoins(query) {
-  const url = `${config.coingeckoBase}/search?query=${encodeURIComponent(query)}`;
-  const res = await fetch(url, { headers: headers() });
-  if (!res.ok) throw new Error(`CoinGecko search ${res.status}`);
-  const body = await res.json();
+  const body = await getJson(`/search?query=${encodeURIComponent(query)}`);
   return (body.coins || []).slice(0, 15).map((c) => ({
     id: c.id,
     symbol: c.symbol,
