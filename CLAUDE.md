@@ -22,12 +22,16 @@ dubber backend on `127.0.0.1:8088`.
 branch. Backend/pipeline changes ship via `deploy-dubber`; the dubber **screen**
 ships from here via `deploy-website`.
 
-The portal also fronts the **asset balancer** (`balancer` branch): nginx
-proxies the whole `/balancer/` prefix to its Node service on
-`127.0.0.1:8091`, behind the same site Basic Auth as the dubber's API.
-Unlike the dubber, the balancer's UI is served by its own service — this
-branch carries only the tile on the portal homepage and the nginx location.
-The service ships via `{"action":"run-script","script":"deploy-balancer.sh"}`.
+The portal also fronts the **two balancers**, each a Node service serving
+its own UI behind the same site Basic Auth as the dubber's API — this branch
+carries only their portal tiles and nginx locations:
+
+- **asset balancer** (`balancer` branch, frozen during cutover):
+  `/balancer/` → `127.0.0.1:8091`; ships via
+  `{"action":"run-script","script":"deploy-balancer.sh"}`.
+- **semi-auto balancer** (`semi-auto-balancer` branch, the next-gen system
+  running in parallel): `/semibalancer/` → `127.0.0.1:8092`; ships via
+  `{"action":"run-script","script":"deploy-semi-auto-balancer.sh"}`.
 
 ## Deploy
 
