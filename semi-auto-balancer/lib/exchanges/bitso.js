@@ -80,11 +80,14 @@ function makeClient({ apiKey, apiSecret }) {
     const res = await fetch(`${API}${requestPath}`, {
       headers: { Authorization: `Bitso ${apiKey}:${nonce}:${sig}` },
     });
+    // Errors name the endpoint: Bitso's permission refusals are identical
+    // strings, so without the path there is no telling which scope is missing.
+    const endpoint = requestPath.split('?')[0];
     const body = await res.json().catch(() => {
-      throw new Error(`Bitso ${res.status}: non-JSON response`);
+      throw new Error(`Bitso ${endpoint}: HTTP ${res.status}, non-JSON response`);
     });
     if (!body.success) {
-      throw new Error(`Bitso: ${(body.error && body.error.message) || `HTTP ${res.status}`}`);
+      throw new Error(`Bitso ${endpoint}: ${(body.error && body.error.message) || `HTTP ${res.status}`}`);
     }
     return body.payload;
   }

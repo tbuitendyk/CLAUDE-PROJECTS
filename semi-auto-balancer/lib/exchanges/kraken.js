@@ -128,9 +128,9 @@ function makeClient({ apiKey, apiSecret }) {
       body: postdata,
     });
     const body = await res.json().catch(() => {
-      throw new Error(`Kraken ${res.status}: non-JSON response`);
+      throw new Error(`Kraken ${method}: HTTP ${res.status}, non-JSON response`);
     });
-    if (body.error && body.error.length) throw new Error(`Kraken: ${body.error.join('; ')}`);
+    if (body.error && body.error.length) throw new Error(`Kraken ${method}: ${body.error.join('; ')}`);
     return body.result || {};
   }
 
