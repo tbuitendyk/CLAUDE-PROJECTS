@@ -146,12 +146,29 @@ async function syncAccount(accountId, { client = null } = {}) {
   };
 
   try {
-    // All venue I/O happens before the DB transaction.
-    const [balances, trades, flows] = [
-      await c.fetchBalances(),
-      await c.fetchTradesSince(account.last_trade_ts),
-      await c.fetchFlowsSince(account.last_ledger_ts),
-    ];
+    // All venue I/O happens before the DB transaction. Balances are the hard
+    // requirement (ground truth — without them there is nothing to reconcile,
+    // so a failure fails the sync). Trade and ledger history degrade
+    // gracefully: some venues gate them behind extra key permissions (Bitso
+    // bundles reading your own fills under its trading permission), and a
+    // partial sync that says WHAT it couldn't see beats a hard failure.
+    // Watermarks don't advance for a failed endpoint, so nothing is skipped
+    // once the permission is granted.
+    const capability = { trades: 'ok', flows: 'ok' };
+    const balances = await c.fetchBalances();
+    let trades = [];
+    let flows = [];
+    try {
+      trades = await c.fetchTradesSince(account.last_trade_ts);
+    } catch (err) {
+      capability.trades = err.message;
+    }
+    try {
+      flows = await c.fetchFlowsSince(account.last_ledger_ts);
+    } catch (err) {
+      capability.flows = err.message;
+    }
+    summary.capability = capability;
 
     const assets = db.prepare('SELECT * FROM assets WHERE profile_id = ?').all(profile.id);
     const assetFor = (code) => matchVenueAsset(assets, code);
@@ -291,7 +308,7 @@ async function syncAccount(accountId, { client = null } = {}) {
         maxTradeTs,
         maxLedgerTs,
         Date.now(),
-        JSON.stringify({ unmapped: summary.unmapped, unexplained: summary.unexplained }),
+        JSON.stringify({ unmapped: summary.unmapped, unexplained: summary.unexplained, capability }),
         account.id
       );
     })();

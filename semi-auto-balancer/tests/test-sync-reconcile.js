@@ -181,6 +181,26 @@ const client = {
   const adoptionFlow = db.prepare("SELECT * FROM flows WHERE profile_id = 2 ORDER BY id DESC LIMIT 1").get();
   ok(adoptionFlow && adoptionFlow.note.includes('baseline adoption'), 'adoption recorded as a flow');
 
+  // --- J: a key without history permissions degrades gracefully — balances
+  // still reconcile/adopt, the missing capability is reported, and the sync
+  // does NOT hard-fail (Bitso gates reading fills behind its trading scope) ---
+  const client3 = {
+    venue: 'test',
+    fetchBalances: async () => venue2.balances,
+    fetchTradesSince: async () => {
+      throw new Error('Bitso: API key has no permission to execute this method');
+    },
+    fetchFlowsSince: async () => {
+      throw new Error('Bitso: API key has no permission to execute this method');
+    },
+  };
+  const s11 = await sync.syncAccount(account2.id, { client: client3 });
+  ok(s11.capability.trades !== 'ok' && s11.capability.flows !== 'ok', 'missing permissions reported per endpoint');
+  ok(s11.unexplained.length === 0, 'balances still reconcile on a limited key');
+  const acct2After = db.prepare('SELECT * FROM exchange_accounts WHERE id = ?').get(account2.id);
+  ok(acct2After.last_sync_status === 'ok', 'limited sync completes instead of hard-failing');
+  ok(JSON.parse(acct2After.last_sync_note).capability.trades.includes('no permission'), 'capability gap persisted for the UI warning');
+
   console.log('sync reconciliation tests pass');
   process.exit(0);
 })().catch((e) => {

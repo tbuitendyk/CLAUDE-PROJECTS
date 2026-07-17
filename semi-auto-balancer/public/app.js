@@ -557,6 +557,20 @@ function renderExchange(x, pendingFlows, profile) {
   // and residuals the trades/flows didn't explain.
   const note = x.note || {};
   const warnings = [];
+  const cap = note.capability || {};
+  if (cap.trades && cap.trades !== 'ok') {
+    warnings.push(
+      `Trade history unavailable (${cap.trades}) — fills won't sync automatically. ` +
+        `On Bitso, reading your own trades requires the trading/orders permission group: edit the API key to add it ` +
+        `(keep "Make withdrawals" and "Perform security actions" OFF; the IP allowlist still applies).`
+    );
+  }
+  if (cap.flows && cap.flows !== 'ok') {
+    warnings.push(
+      `Deposit/withdrawal history unavailable (${cap.flows}) — flows won't be detected automatically; ` +
+        `record them manually under Deposit / withdraw until the key permission is fixed.`
+    );
+  }
   if (note.unmapped && note.unmapped.length) {
     warnings.push(`On the venue but not in this profile: ${note.unmapped.map((c) => c.toUpperCase()).join(', ')} — add the asset(s) to include them.`);
   }
@@ -679,6 +693,10 @@ $('#x-sync').addEventListener('click', async () => {
     if (s.autoAppliedFlows) parts.push(`${s.autoAppliedFlows} flow(s) auto-applied`);
     if (s.unexplained.length) parts.push(`${s.unexplained.length} unexplained difference(s) — see warning`);
     if (s.rearmed) parts.push('notifications re-armed');
+    const cap = s.capability || {};
+    if ((cap.trades && cap.trades !== 'ok') || (cap.flows && cap.flows !== 'ok')) {
+      parts.push('LIMITED: some history endpoints are blocked by key permissions — see the warning under Exchange sync');
+    }
     alert(`Sync complete: ${parts.join(', ')}.`);
     await refresh();
   } catch (err) {
