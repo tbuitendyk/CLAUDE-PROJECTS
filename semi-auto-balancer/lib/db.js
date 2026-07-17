@@ -116,6 +116,69 @@ CREATE TABLE IF NOT EXISTS analysis_results (
   result TEXT                -- JSON payload
 );
 
+-- Phase 1.5: one read-only exchange account per profile (Kraken or Bitso).
+-- Keys live server-side only, are never sent back whole (masked to the last
+-- 4 chars in every API response), and carry no trade/withdraw permissions by
+-- construction (user checklist in EXCHANGES.md). Watermarks start at link
+-- time so history from before the link never floods in — the quantities at
+-- link time are the baseline the reconciliation explains forward from.
+CREATE TABLE IF NOT EXISTS exchange_accounts (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  profile_id INTEGER NOT NULL UNIQUE REFERENCES profiles(id) ON DELETE CASCADE,
+  venue TEXT NOT NULL,                        -- 'kraken' | 'bitso'
+  api_key TEXT NOT NULL,
+  api_secret TEXT NOT NULL,
+  auto_flows INTEGER NOT NULL DEFAULT 0,      -- 1 = detected flows apply without confirmation
+  enabled INTEGER NOT NULL DEFAULT 1,
+  sync_minutes INTEGER NOT NULL DEFAULT 60,
+  last_trade_ts INTEGER NOT NULL,             -- high-water marks (unix ms)
+  last_ledger_ts INTEGER NOT NULL,
+  last_sync_at INTEGER,
+  last_sync_status TEXT,                      -- 'ok' | error message
+  last_sync_note TEXT,                        -- JSON: unmapped balances, unexplained residuals
+  created_at INTEGER NOT NULL
+);
+
+-- Raw synced trades, deduped by the venue's trade id. These are the record
+-- that explains quantity changes with NO splice (trading is the harvest
+-- registering) and the sample the fee calibration reads from.
+CREATE TABLE IF NOT EXISTS exchange_trades (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  account_id INTEGER NOT NULL REFERENCES exchange_accounts(id) ON DELETE CASCADE,
+  venue_trade_id TEXT NOT NULL,
+  ts INTEGER NOT NULL,
+  pair TEXT,
+  side TEXT,
+  price REAL,
+  cost REAL,
+  fee REAL,
+  fee_currency TEXT,
+  fee_pct REAL,              -- realized fee as % of trade value (calibration input)
+  deltas TEXT NOT NULL,      -- JSON [{code, delta}] as applied to quantities
+  raw TEXT,
+  UNIQUE(account_id, venue_trade_id)
+);
+CREATE INDEX IF NOT EXISTS idx_exchange_trades_account_ts ON exchange_trades(account_id, ts);
+
+-- Deposits/withdrawals detected from the venue ledger. They wait as pending
+-- confirmations (a wrong flow splice silently corrupts the basket) unless the
+-- account is set to auto_flows; confirming applies the exact-amount splice
+-- via recordFlow with the flow's real timestamp.
+CREATE TABLE IF NOT EXISTS pending_flows (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  account_id INTEGER NOT NULL REFERENCES exchange_accounts(id) ON DELETE CASCADE,
+  profile_id INTEGER NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+  venue_ref TEXT NOT NULL,   -- venue ledger/funding/withdrawal id
+  ts INTEGER NOT NULL,       -- real event timestamp from the venue
+  kind TEXT NOT NULL,        -- 'deposit' | 'withdrawal'
+  code TEXT NOT NULL,        -- normalized venue currency code
+  asset_id INTEGER REFERENCES assets(id) ON DELETE SET NULL,
+  amount REAL NOT NULL,      -- signed quantity delta
+  status TEXT NOT NULL DEFAULT 'pending',  -- pending | applied | dismissed
+  raw TEXT,
+  UNIQUE(account_id, venue_ref)
+);
+
 -- One row per splice (target change / flow / explicit reset): the index
 -- levels and weights at that moment. Behind-the-scenes record for future
 -- analysis of which asset mixes performed best.

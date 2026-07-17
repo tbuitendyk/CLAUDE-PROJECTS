@@ -85,11 +85,29 @@ VPS; no 429s; ledger counting; fee/spread editable and persisted.
   email copy speak in price-move terms.
 
 ## Phase 1.5 — Read-only exchange integration (Kraken, Bitso)
-**Status: not started — NEXT UP.** User will provide read-only API keys
-(Kraken MAIN, Bitso MAIN confirmed; Bitso ANNA TBD — third-party account).
+**Status: BUILT — tests green (npm test). Awaiting the user's read-only API
+keys to go live** (Kraken MAIN, Bitso MAIN confirmed; Bitso ANNA TBD — stays
+on screenshot import). Keys are entered per profile in the UI (stored
+server-side in the DB, masked to last-4 everywhere; creation checklist with
+scopes + IP pinning in EXCHANGES.md). Deploy gate: link both accounts, watch
+the first syncs reconcile cleanly (balances explained, no spurious pending
+flows), confirm one real deposit end-to-end, THEN consider auto_flows.
 
-- FIRST TASK: verify actual endpoint capabilities/depths per venue (knowledge
-  may be stale) — balances, trade history, ledger, OHLC depth, bulk downloads.
+- ~~FIRST TASK~~ DONE: endpoint capabilities verified live 2026-07-17 —
+  findings in **EXCHANGES.md**. Highlights: Kraken OHLC = 721 candles/interval
+  (~2y daily), altname/pair metadata public, Ledgers filterable to
+  deposit/withdrawal; Bitso's documented v3/ohlc 404s but
+  bitso.com/api/v3/ohlc serves MULTI-YEAR daily history (3y confirmed) incl.
+  usd_mxn (direct MXN rate, no CG cross-call).
+- Shipped in this phase: lib/exchanges/{kraken,bitso}.js (read-only signed
+  clients + public market data), lib/sync.js (reconciliation engine),
+  lib/exsource.js (exchange-first pricing/history), pending-flow confirm UI,
+  fee calibration from real fills (observed %/leg + one-click apply),
+  scheduler auto-sync per account (sync_minutes, default 60), diagnostics
+  endpoint (/api/diagnostics), scripts/import-ohlcvt.js (bulk seed),
+  EXCHANGE_MARKET_DATA env kill-switch. Alert emails now say the sync closes
+  the loop when an account is linked. Tests: test-sync-reconcile,
+  test-exchange-normalize, test-exsource.
 - Read-only API keys per profile (balance/trade/ledger scopes only, no trade/
   withdraw permissions; IP-pinned to the VPS where the venue supports it).
   Stored server-side (env or DB), never in the repo, masked in diagnostics.

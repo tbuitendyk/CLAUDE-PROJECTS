@@ -21,6 +21,9 @@ const { sendAlertEvents, sendStatusReport, sendTestEmail, emailConfigured } = re
 const { searchCoins, supportedFiats, fiatCode } = require('./lib/pricing');
 const { visionConfigured, parseHoldingsScreenshot } = require('./lib/vision');
 const { startScheduler } = require('./lib/scheduler');
+const sync = require('./lib/sync');
+const { monthlyCalls, MONTH_CAP } = require('./lib/cg');
+const { cacheStatus } = require('./lib/history');
 
 const app = express();
 // Generous limit: the screenshot-import endpoint receives base64 images.
@@ -281,7 +284,133 @@ app.get('/api/profiles/:id/state', (req, res) => {
     .prepare('SELECT ts, deltas, note FROM flows WHERE profile_id = ? ORDER BY ts DESC LIMIT 20')
     .all(profile.id);
 
-  res.json({ profile, assets, alertLog, totals, snapshots, flows });
+  res.json({
+    profile,
+    assets,
+    alertLog,
+    totals,
+    snapshots,
+    flows,
+    exchange: exchangeView(profile.id),
+    pendingFlows: db
+      .prepare("SELECT id, ts, kind, code, asset_id, amount FROM pending_flows WHERE profile_id = ? AND status = 'pending' ORDER BY ts")
+      .all(profile.id),
+  });
+});
+
+// ---- exchange sync (Phase 1.5) ----------------------------------------------
+
+// Account as the API exposes it: key masked to the last 4 chars, secret
+// never leaves the server.
+function exchangeView(profileId) {
+  const a = sync.getAccountForProfile(profileId);
+  if (!a) return null;
+  let note = null;
+  try {
+    note = a.last_sync_note ? JSON.parse(a.last_sync_note) : null;
+  } catch {}
+  return {
+    id: a.id,
+    venue: a.venue,
+    api_key_masked: `…${String(a.api_key).slice(-4)}`,
+    auto_flows: a.auto_flows,
+    enabled: a.enabled,
+    sync_minutes: a.sync_minutes,
+    last_sync_at: a.last_sync_at,
+    last_sync_status: a.last_sync_status,
+    note,
+    feeObserved: sync.observedFee(a.id),
+  };
+}
+
+// Link a read-only account (one per profile; replaces any existing link,
+// with fresh watermarks). The key is verified with a balances call before
+// the account is saved, so a typo'd or under-scoped key fails here.
+app.post('/api/profiles/:id/exchange', async (req, res) => {
+  const profile = db.prepare('SELECT * FROM profiles WHERE id = ?').get(req.params.id);
+  if (!profile) return res.status(404).json({ error: 'not found' });
+  const { venue, api_key, api_secret } = req.body || {};
+  try {
+    if (!sync.VENUES[venue]) throw new Error('venue must be kraken or bitso');
+    const client = sync.VENUES[venue].makeClient({ apiKey: api_key, apiSecret: api_secret });
+    await client.fetchBalances(); // read-scope verification
+    sync.createAccount(profile.id, venue, api_key, api_secret);
+    res.json({ ok: true, exchange: exchangeView(profile.id) });
+  } catch (err) {
+    res.status(400).json({ error: `key verification failed: ${err.message}` });
+  }
+});
+
+app.patch('/api/exchange-accounts/:id', (req, res) => {
+  const a = db.prepare('SELECT * FROM exchange_accounts WHERE id = ?').get(req.params.id);
+  if (!a) return res.status(404).json({ error: 'not found' });
+  const b = req.body || {};
+  db.prepare('UPDATE exchange_accounts SET enabled = ?, auto_flows = ?, sync_minutes = ? WHERE id = ?').run(
+    b.enabled === undefined ? a.enabled : b.enabled ? 1 : 0,
+    b.auto_flows === undefined ? a.auto_flows : b.auto_flows ? 1 : 0,
+    Number(b.sync_minutes) >= 5 ? Math.round(Number(b.sync_minutes)) : a.sync_minutes,
+    a.id
+  );
+  res.json({ ok: true, exchange: exchangeView(a.profile_id) });
+});
+
+app.delete('/api/exchange-accounts/:id', (req, res) => {
+  db.prepare('DELETE FROM exchange_accounts WHERE id = ?').run(req.params.id);
+  res.json({ ok: true });
+});
+
+// Manual "Sync now": reconcile, then force a poll so the pool re-values
+// (and re-alerts if the fills changed the picture).
+app.post('/api/exchange-accounts/:id/sync', async (req, res) => {
+  const a = db.prepare('SELECT * FROM exchange_accounts WHERE id = ?').get(req.params.id);
+  if (!a) return res.status(404).json({ error: 'not found' });
+  try {
+    const summary = await sync.syncAccount(a.id);
+    await pollProfiles({ force: true, profileId: a.profile_id }).catch(() => {});
+    res.json({ ok: true, summary });
+  } catch (err) {
+    res.status(502).json({ error: err.message });
+  }
+});
+
+// Confirm a detected deposit/withdrawal: applies the exact-amount splice
+// with the venue's real timestamp. Dismiss drops it (e.g. already recorded
+// manually).
+app.post('/api/pending-flows/:id/confirm', async (req, res) => {
+  try {
+    const result = await sync.applyPendingFlow(Number(req.params.id));
+    const flow = db.prepare('SELECT profile_id FROM pending_flows WHERE id = ?').get(req.params.id);
+    if (flow) await pollProfiles({ force: true, profileId: flow.profile_id }).catch(() => {});
+    res.json({ ok: true, ...result });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.post('/api/pending-flows/:id/dismiss', (req, res) => {
+  try {
+    sync.dismissPendingFlow(Number(req.params.id));
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// ---- diagnostics --------------------------------------------------------------
+
+// The deploy gate reads this: CG quota ledger, history-cache freshness, and
+// per-account sync state (keys masked).
+app.get('/api/diagnostics', (req, res) => {
+  const accounts = db
+    .prepare('SELECT id, profile_id, venue, api_key, enabled, auto_flows, sync_minutes, last_sync_at, last_sync_status FROM exchange_accounts')
+    .all()
+    .map((a) => ({ ...a, api_key: `…${String(a.api_key).slice(-4)}` }));
+  res.json({
+    coingecko: { monthCalls: monthlyCalls(), monthCap: MONTH_CAP },
+    historyCache: cacheStatus(),
+    exchangeAccounts: accounts,
+    pendingFlows: db.prepare("SELECT COUNT(*) AS n FROM pending_flows WHERE status = 'pending'").get().n,
+  });
 });
 
 // ---- assets -----------------------------------------------------------------

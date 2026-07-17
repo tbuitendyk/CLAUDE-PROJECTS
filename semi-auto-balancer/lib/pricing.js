@@ -27,9 +27,13 @@ function fiatCode(id) {
 // All CoinGecko traffic goes through the shared rate-limited, quota-ledgered
 // client so bursts from any feature can't starve the others.
 const { getJson } = require('./cg');
+const exsource = require('./exsource');
 
 // USD price for every requested id — coin ids and fiat ids alike. Fiat
 // entries are keyed under both their 'fiat:xxx' and bare forms.
+// Phase 1.5: held assets are priced from exchange public tickers first
+// (Kraken SYM/USD, Bitso usd_<fiat>); only what the exchanges can't serve
+// falls through to CoinGecko, cutting steady-state quota use.
 async function fetchUsdPrices(ids) {
   const unique = [...new Set(ids.filter(Boolean))];
   const coinIds = [];
@@ -42,9 +46,18 @@ async function fetchUsdPrices(ids) {
 
   const prices = { usd: 1, 'fiat:usd': 1 };
 
+  let exPrices = {};
+  try {
+    exPrices = await exsource.usdPrices(coinIds, [...fiats]);
+  } catch {
+    /* exchange pricing is best-effort; CoinGecko covers everything below */
+  }
+  Object.assign(prices, exPrices);
+  const cgCoinIds = coinIds.filter((id) => !(prices[id] > 0));
+
   // CoinGecko caps URL length; chunk to stay well under it.
-  for (let i = 0; i < coinIds.length; i += 100) {
-    const chunk = coinIds.slice(i, i + 100);
+  for (let i = 0; i < cgCoinIds.length; i += 100) {
+    const chunk = cgCoinIds.slice(i, i + 100);
     const body = await getJson(
       `/simple/price?ids=${encodeURIComponent(chunk.join(','))}&vs_currencies=usd`
     );
@@ -53,8 +66,8 @@ async function fetchUsdPrices(ids) {
     }
   }
 
-  // Cross-rate the fiats through bitcoin in one extra request.
-  const nonUsd = [...fiats].filter((c) => c !== 'usd');
+  // Cross-rate the remaining fiats through bitcoin in one extra request.
+  const nonUsd = [...fiats].filter((c) => c !== 'usd' && !(prices[`fiat:${c}`] > 0));
   if (nonUsd.length > 0) {
     const body = await getJson(
       `/simple/price?ids=bitcoin&vs_currencies=${encodeURIComponent(['usd', ...nonUsd].join(','))}`

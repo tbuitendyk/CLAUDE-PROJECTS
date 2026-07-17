@@ -362,7 +362,10 @@ function setTargets(profileId, targets, { resetBasket = false } = {}) {
 // Record a deposit/withdrawal: per-asset signed quantity deltas that splice
 // past BOTH the currency basket and the value index, so external money never
 // registers as performance. Values assets at live prices for an exact splice.
-async function recordFlow(profileId, deltas, note) {
+// opts.ts records the flow's real timestamp (exchange-synced flows carry the
+// venue's event time); the splice itself is always valued at current prices —
+// that's the only self-consistent snapshot for re-anchoring.
+async function recordFlow(profileId, deltas, note, opts = {}) {
   const profile = db.prepare('SELECT * FROM profiles WHERE id = ?').get(profileId);
   if (!profile) throw new Error('profile not found');
   const assets = db.prepare('SELECT * FROM assets WHERE profile_id = ?').all(profileId);
@@ -388,6 +391,7 @@ async function recordFlow(profileId, deltas, note) {
   };
 
   const now = Date.now();
+  const recordTs = Number(opts.ts) > 0 ? Number(opts.ts) : now;
   db.transaction(() => {
     // Value index: level before, using live prices across every asset.
     let relBefore = 0;
@@ -426,11 +430,11 @@ async function recordFlow(profileId, deltas, note) {
 
     db.prepare('INSERT INTO flows (profile_id, ts, deltas, note) VALUES (?, ?, ?, ?)').run(
       profileId,
-      now,
+      recordTs,
       JSON.stringify(applied.map((a) => ({ asset_id: a.asset.id, symbol: a.asset.symbol, delta: a.delta }))),
       note || null
     );
-    recordBasketEvent(profileId, now, 'flow', basketBefore, valueBefore, after, note || null);
+    recordBasketEvent(profileId, recordTs, 'flow', basketBefore, valueBefore, after, note || null);
   })();
   return { applied: applied.length };
 }

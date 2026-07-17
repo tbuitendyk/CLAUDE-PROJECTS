@@ -1,5 +1,7 @@
 // Phase 0: daily price-history cache — UTC bucketing, partial-point
 // self-correction, fiat cross-rate join, USD synthesis, lazy top-up.
+// Exchange market data off: this file asserts the CoinGecko paths.
+process.env.EXCHANGE_MARKET_DATA = 'off';
 const { freshDb, ok, approx } = require('./helpers');
 freshDb('history');
 

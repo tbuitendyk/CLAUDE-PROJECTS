@@ -326,6 +326,9 @@ function renderDetail() {
   // screenshot import (only when the server has an Anthropic API key)
   $('#import-section').classList.toggle('hidden', !state.visionConfigured);
 
+  // exchange sync: link form vs linked-account panel + pending flows
+  renderExchange(d.exchange, d.pendingFlows || [], profile);
+
   // notifications: state machine status, toggle, recipients
   const rearmAt = profile.notify_state_at
     ? new Date(profile.notify_state_at + 12 * 3600 * 1000).toLocaleString()
@@ -527,6 +530,191 @@ $('#s-save').addEventListener('click', async () => {
         spread_pct: Number($('#s-spread').value),
       },
     });
+    await refresh();
+  } catch (err) {
+    alert(err.message);
+  }
+});
+
+// ---- exchange sync ----
+
+function renderExchange(x, pendingFlows, profile) {
+  $('#x-none').classList.toggle('hidden', Boolean(x));
+  $('#x-linked').classList.toggle('hidden', !x);
+  if (!x) return;
+
+  const last = x.last_sync_at ? new Date(x.last_sync_at).toLocaleString() : 'never';
+  const status = x.last_sync_status
+    ? x.last_sync_status === 'ok'
+      ? '✓ ok'
+      : `⚠ ${x.last_sync_status}`
+    : '—';
+  $('#x-info').textContent =
+    `${x.venue.charAt(0).toUpperCase() + x.venue.slice(1)} · key ${x.api_key_masked} · ` +
+    `last sync: ${last} · status: ${status}`;
+
+  // Sync-note warnings: currencies the venue holds that no asset matches,
+  // and residuals the trades/flows didn't explain.
+  const note = x.note || {};
+  const warnings = [];
+  if (note.unmapped && note.unmapped.length) {
+    warnings.push(`On the venue but not in this profile: ${note.unmapped.map((c) => c.toUpperCase()).join(', ')} — add the asset(s) to include them.`);
+  }
+  for (const u of note.unexplained || []) {
+    warnings.push(
+      `${u.symbol.toUpperCase()}: venue balance differs by ${u.residual >= 0 ? '+' : ''}${u.residual} ` +
+        `beyond what synced trades/flows explain — record it as a deposit/withdrawal or fix the quantity.`
+    );
+  }
+  $('#x-note').textContent = warnings.join(' ');
+  $('#x-note').classList.toggle('hidden', warnings.length === 0);
+
+  $('#x-minutes').value = x.sync_minutes;
+  $('#x-auto').checked = Boolean(x.auto_flows);
+  state.exchangeId = x.id;
+
+  // Observed fee vs the profile's cost model (advisory: apply with one click).
+  const feeBox = $('#x-fee');
+  feeBox.innerHTML = '';
+  if (x.feeObserved && x.feeObserved.trades > 0) {
+    const obs = x.feeObserved.feePct;
+    feeBox.append(
+      `Observed taker fee from ${x.feeObserved.trades} real fill(s): ${obs.toFixed(3)}%/leg · profile setting: ${profile.fee_pct}%/leg `
+    );
+    if (Math.abs(obs - profile.fee_pct) > 0.005) {
+      const btn = document.createElement('button');
+      btn.className = 'ghost';
+      btn.textContent = `Apply ${obs.toFixed(3)}%`;
+      btn.addEventListener('click', async () => {
+        try {
+          await api(`/profiles/${state.selectedId}`, {
+            method: 'PATCH',
+            body: { fee_pct: Number(obs.toFixed(3)) },
+          });
+          await refresh();
+        } catch (err) {
+          alert(err.message);
+        }
+      });
+      feeBox.appendChild(btn);
+    }
+  } else {
+    feeBox.textContent = 'Observed fee: no synced fills yet — appears after the first trades sync in.';
+  }
+
+  // Pending flows awaiting confirmation.
+  $('#x-pending-wrap').classList.toggle('hidden', pendingFlows.length === 0);
+  const tbody = $('#x-pending-table tbody');
+  tbody.innerHTML = '';
+  for (const f of pendingFlows) {
+    const tr = document.createElement('tr');
+    const when = document.createElement('td');
+    when.textContent = new Date(f.ts).toLocaleString();
+    const kind = document.createElement('td');
+    kind.textContent = f.kind;
+    const amt = document.createElement('td');
+    amt.textContent = `${f.amount >= 0 ? '+' : ''}${f.amount} ${f.code.toUpperCase()}`;
+    amt.className = f.amount >= 0 ? 'pos' : 'neg';
+    const actions = document.createElement('td');
+    const ok = document.createElement('button');
+    ok.textContent = 'Confirm';
+    ok.addEventListener('click', async () => {
+      try {
+        await api(`/pending-flows/${f.id}/confirm`, { method: 'POST' });
+        await refresh();
+      } catch (err) {
+        alert(err.message);
+      }
+    });
+    const no = document.createElement('button');
+    no.textContent = 'Dismiss';
+    no.className = 'ghost';
+    no.addEventListener('click', async () => {
+      if (!confirm('Dismiss this detected flow? Only do this if it is already recorded (or wrong).')) return;
+      try {
+        await api(`/pending-flows/${f.id}/dismiss`, { method: 'POST' });
+        await refresh();
+      } catch (err) {
+        alert(err.message);
+      }
+    });
+    actions.append(ok, no);
+    tr.append(when, kind, amt, actions);
+    tbody.appendChild(tr);
+  }
+}
+
+$('#x-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  $('#x-link').disabled = true;
+  try {
+    await api(`/profiles/${state.selectedId}/exchange`, {
+      method: 'POST',
+      body: {
+        venue: $('#x-venue').value,
+        api_key: $('#x-key').value.trim(),
+        api_secret: $('#x-secret').value.trim(),
+      },
+    });
+    $('#x-key').value = '';
+    $('#x-secret').value = '';
+    await refresh();
+  } catch (err) {
+    alert(err.message);
+  } finally {
+    $('#x-link').disabled = false;
+  }
+});
+
+$('#x-sync').addEventListener('click', async () => {
+  $('#x-sync').disabled = true;
+  try {
+    const r = await api(`/exchange-accounts/${state.exchangeId}/sync`, { method: 'POST' });
+    const s = r.summary;
+    const parts = [`${s.tradesApplied} trade(s) applied`];
+    if (s.newPendingFlows) parts.push(`${s.newPendingFlows} deposit/withdrawal(s) detected — confirm below`);
+    if (s.autoAppliedFlows) parts.push(`${s.autoAppliedFlows} flow(s) auto-applied`);
+    if (s.unexplained.length) parts.push(`${s.unexplained.length} unexplained difference(s) — see warning`);
+    if (s.rearmed) parts.push('notifications re-armed');
+    alert(`Sync complete: ${parts.join(', ')}.`);
+    await refresh();
+  } catch (err) {
+    alert(`Sync failed: ${err.message}`);
+  } finally {
+    $('#x-sync').disabled = false;
+  }
+});
+
+$('#x-minutes').addEventListener('change', async () => {
+  try {
+    await api(`/exchange-accounts/${state.exchangeId}`, {
+      method: 'PATCH',
+      body: { sync_minutes: Number($('#x-minutes').value) },
+    });
+    await refresh();
+  } catch (err) {
+    alert(err.message);
+  }
+});
+
+$('#x-auto').addEventListener('change', async () => {
+  const on = $('#x-auto').checked;
+  if (on && !confirm('Auto-apply detected deposits/withdrawals without confirmation?\n\nOnly enable this once synced detections have proven correct — a wrong flow splice silently corrupts the basket track record.')) {
+    $('#x-auto').checked = false;
+    return;
+  }
+  try {
+    await api(`/exchange-accounts/${state.exchangeId}`, { method: 'PATCH', body: { auto_flows: on } });
+    await refresh();
+  } catch (err) {
+    alert(err.message);
+  }
+});
+
+$('#x-unlink').addEventListener('click', async () => {
+  if (!confirm('Unlink this exchange account? Synced history stays; syncing stops.')) return;
+  try {
+    await api(`/exchange-accounts/${state.exchangeId}`, { method: 'DELETE' });
     await refresh();
   } catch (err) {
     alert(err.message);

@@ -100,6 +100,48 @@
                 </table>
               </div>
             </div>
+            <div id="exchange-section">
+              <h3>Exchange sync</h3>
+              <div id="x-none">
+                <p class="muted">Link a <strong>read-only</strong> API key (balance/trade/ledger query only —
+                  no trade or withdraw permissions; IP-pin to the server where the venue supports it).
+                  Balances and trades then sync automatically; detected deposits/withdrawals wait below for
+                  your confirmation before they splice the track record.</p>
+                <form id="x-form" class="inline">
+                  <select id="x-venue">
+                    <option value="kraken">Kraken</option>
+                    <option value="bitso">Bitso</option>
+                  </select>
+                  <input id="x-key" placeholder="API key" autocomplete="off">
+                  <input id="x-secret" type="password" placeholder="API secret" autocomplete="off">
+                  <button type="submit" id="x-link">Link account</button>
+                </form>
+              </div>
+              <div id="x-linked" class="hidden">
+                <p id="x-info" class="muted"></p>
+                <p id="x-note" class="warn-text hidden"></p>
+                <div class="settings-row">
+                  <label>Sync every (min) <input id="x-minutes" type="number" min="5" step="5"></label>
+                  <label class="toggle-row" title="Once you trust the detection, deposits/withdrawals apply without confirmation">
+                    <input type="checkbox" id="x-auto"> Auto-apply detected flows</label>
+                  <button id="x-sync">Sync now</button>
+                  <button id="x-unlink" class="danger ghost">Unlink</button>
+                </div>
+                <p id="x-fee" class="muted"></p>
+                <div id="x-pending-wrap" class="hidden">
+                  <h4>Detected deposits / withdrawals — confirm to keep performance honest</h4>
+                  <p class="muted">Confirming splices the basket and value index with the exact amount and the
+                    venue's real timestamp (not counted as gains). Dismiss if you already recorded it manually.</p>
+                  <div class="table-wrap">
+                    <table id="x-pending-table">
+                      <thead><tr><th>When</th><th>Kind</th><th>Amount</th><th></th></tr></thead>
+                      <tbody></tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            </div>
+
             <form id="asset-form" class="inline">
               <input id="a-search" placeholder="Search coin (e.g. ethereum)" autocomplete="off">
               <div id="a-results" class="search-results hidden"></div>

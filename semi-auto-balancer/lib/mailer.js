@@ -72,11 +72,21 @@ function buildText(event) {
       `it absorbs the residual from the trades above.`;
   }
 
+  // With a linked read-only exchange account the loop closes itself: the
+  // next sync picks up the fills and re-arms. Otherwise, screenshot import.
+  const hasExchange = db
+    .prepare('SELECT 1 FROM exchange_accounts WHERE profile_id = ? AND enabled = 1')
+    .get(profile.id);
+  const followUp = hasExchange
+    ? 'After trading, nothing else to do — the next exchange sync picks up the fills, updates quantities, and re-arms notifications.'
+    : 'After trading, take a screenshot of your balances and import it in the balancer to set the new quantities.';
+
   return (
     `Profile "${profile.name}" — rebalance trade${alerts.length > 1 ? 's' : ''}, market orders sized at current prices:\n\n` +
     lines.join('\n\n') +
     noteText +
-    '\n\nAfter trading, take a screenshot of your balances and import it in the balancer to set the new quantities.'
+    '\n\n' +
+    followUp
   );
 }
 

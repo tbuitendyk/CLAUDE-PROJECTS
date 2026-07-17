@@ -1,15 +1,19 @@
 const db = require('./db');
 const { getJson } = require('./cg');
 const { fiatCode } = require('./pricing');
+const exsource = require('./exsource');
 
-// Daily price-history cache (Phase 0). Sits between the analysis features and
-// CoinGecko: everything reads bucketed daily closes from daily_prices; the API
-// is only touched when the cache is stale, through the shared rate-limited
-// client. The demo tier hard-limits history to the past 365 days; deeper
-// multi-year data layers in from the exchange APIs in Phase 1.5.
+// Daily price-history cache (Phase 0, exchange layer added in Phase 1.5).
+// Everything reads bucketed daily closes from daily_prices; a fetch is only
+// made when the cache is stale. Source priority: bulk OHLCVT seeds (via
+// scripts/import-ohlcvt.js, already in the cache) → exchange APIs (Kraken
+// daily OHLC ≈720d, Bitso fiat books multi-year) → CoinGecko (365-day demo
+// limit, and the sole source for scanner candidates).
 
 const DAY_MS = 86_400_000;
-const MAX_DAYS = 365;
+const MAX_DAYS = 365; // CoinGecko demo-tier hard limit per fetch
+const MAX_EXCHANGE_DAYS = 730; // Kraken serves ~720 daily candles
+const MAX_READ_DAYS = 3650; // bulk seeds can go deeper than any live API
 
 // 00:00 UTC bucket for a ms timestamp.
 function dayBucket(ts) {
@@ -62,9 +66,11 @@ function daysMissing(id, days) {
 }
 
 // Ensure the cache holds ~`days` of daily USD closes for an asset id (coin or
-// 'fiat:<code>'), then return the series oldest→newest.
+// 'fiat:<code>'), then return the series oldest→newest. Reads may span more
+// days than any live source serves (bulk seeds); fetch windows are clamped
+// per source (exchange ≈720d, CoinGecko 365d).
 async function getDailyHistory(id, days = MAX_DAYS) {
-  days = Math.min(Math.max(1, Math.round(days)), MAX_DAYS);
+  days = Math.min(Math.max(1, Math.round(days)), MAX_READ_DAYS);
   const code = fiatCode(id);
 
   if (code === 'usd' || id === 'usd' || id === 'fiat:usd') {
@@ -75,7 +81,22 @@ async function getDailyHistory(id, days = MAX_DAYS) {
     return [...byDay.entries()].map(([ts, usd_price]) => ({ ts, usd_price }));
   }
 
-  const missing = daysMissing(id, days);
+  // Exchange layer first: top up from the venue's own market data when it
+  // covers this asset (deeper history, zero CG quota). Best-effort — any
+  // failure or non-coverage falls through to the CoinGecko path.
+  let exFetched = false;
+  if (exsource.enabled() && daysMissing(id, Math.min(days, MAX_EXCHANGE_DAYS)) > 0) {
+    const latest = latestCachedTs(id);
+    const windowStart = dayBucket(Date.now()) - (Math.min(days, MAX_EXCHANGE_DAYS) - 1) * DAY_MS;
+    const since = latest != null ? Math.max(latest, windowStart) : windowStart;
+    const byDay = await exsource.dailyByDay(id, code, since);
+    if (byDay && byDay.size > 0) {
+      storeSeries(id, byDay);
+      exFetched = true;
+    }
+  }
+
+  const missing = exFetched ? 0 : daysMissing(id, Math.min(days, MAX_DAYS));
   if (missing > 0) {
     if (code) {
       // Fiat via the bitcoin cross-rate: usd-per-fiat = btc_usd / btc_fiat,

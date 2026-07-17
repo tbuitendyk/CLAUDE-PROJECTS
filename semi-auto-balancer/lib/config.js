@@ -37,6 +37,12 @@ module.exports = {
   coingeckoBase: process.env.COINGECKO_BASE || 'https://api.coingecko.com/api/v3',
   coingeckoApiKey: process.env.COINGECKO_API_KEY || '',
 
+  // Phase 1.5: price held assets and top up daily history from the exchanges'
+  // public market data (Kraken ticker/OHLC, Bitso fiat books), reserving
+  // CoinGecko for fallback + the scanner. 'off' forces CoinGecko-only
+  // (tests set this for determinism).
+  exchangeMarketData: process.env.EXCHANGE_MARKET_DATA !== 'off',
+
   // Enables the screenshot-import feature (Claude vision).
   anthropicApiKey: process.env.ANTHROPIC_API_KEY || '',
 };
