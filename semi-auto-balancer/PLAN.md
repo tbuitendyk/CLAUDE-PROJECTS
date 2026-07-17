@@ -24,7 +24,10 @@ status lines as work lands.
   flips, the old unit stops, and `balancer` becomes the archive.
 
 ## Phase 0 — Foundations: history cache, cost model, job runner, tests
-**Status: in progress**
+**Status: SHIPPED @ 263dd56, deployed 2026-07-17 (unit live on 8092).**
+Remaining from the deploy gate: set SMTP creds + optional COINGECKO_API_KEY in
+/etc/semi-auto-balancer/env; set Bitso profiles' fee to 0.36 once profiles
+exist; VPS history-fetch check happens with the first analysis job.
 
 Data layer (`lib/history.js` + `daily_prices` table):
 - `getDailyHistory(coingeckoId, days≤365)`; timestamps normalized to the 00:00
@@ -62,7 +65,7 @@ Deploy gate: history fetch works for all live assets incl. fiat:mxn on the
 VPS; no 429s; ledger counting; fee/spread editable and persisted.
 
 ## Phase 1 — Weight-normalized per-asset thresholds (calibration fix)
-**Status: in progress**
+**Status: SHIPPED @ 263dd56, deployed 2026-07-17.** Tests green (npm test).
 
 - Semantics: `threshold_pct` = **price-move sensitivity X%** ("react when an
   asset effectively moves ~X% against the rest of the account").
@@ -82,7 +85,8 @@ VPS; no 429s; ledger counting; fee/spread editable and persisted.
   email copy speak in price-move terms.
 
 ## Phase 1.5 — Read-only exchange integration (Kraken, Bitso)
-**Status: not started**
+**Status: not started — NEXT UP.** User will provide read-only API keys
+(Kraken MAIN, Bitso MAIN confirmed; Bitso ANNA TBD — third-party account).
 
 - FIRST TASK: verify actual endpoint capabilities/depths per venue (knowledge
   may be stale) — balances, trade history, ledger, OHLC depth, bulk downloads.
