@@ -159,6 +159,7 @@ async function syncAccount(accountId, { client = null } = {}) {
     let maxTradeTs = account.last_trade_ts;
     let maxLedgerTs = account.last_ledger_ts;
     const newPendingIds = [];
+    const adoptDeltas = []; // zero-quantity assets adopting their venue balance
 
     db.transaction(() => {
       const qtyById = new Map(assets.map((a) => [a.id, a.quantity]));
@@ -236,13 +237,14 @@ async function syncAccount(accountId, { client = null } = {}) {
       // assets the venue actually reports are reconciled (a profile may mix
       // in off-venue holdings — those are left alone).
       //
-      // Fresh profile (no value track record yet, every quantity still 0):
-      // there is no baseline to protect, so the first sync ADOPTS the venue
-      // balances as the starting quantities instead of flagging the entire
-      // account as unexplained. Adds each held asset's quantity in one shot;
-      // the value index then anchors at the next poll.
-      const fresh =
-        !(profile.value_snap_rel > 0) && assets.every((a) => !(a.quantity > 0));
+      // Baseline adoption, per asset: a tracked asset still at quantity 0
+      // (nothing synced, typed, or pending explains it) whose venue balance
+      // is positive is money the app simply hasn't started tracking yet —
+      // typically an asset just added to the profile. Its balance is adopted
+      // via the FLOW SPLICE path (recordFlow, after this transaction), so
+      // starting to track it never registers as gains on the value index.
+      // The zero-quantity check uses the post-trade quantity: a fill that
+      // already explains the balance takes the normal reconcile path.
       const pendingByAsset = new Map();
       for (const p of db
         .prepare("SELECT asset_id, amount FROM pending_flows WHERE account_id = ? AND status = 'pending'")
@@ -257,11 +259,8 @@ async function syncAccount(accountId, { client = null } = {}) {
           if (b.amount > 1e-8) summary.unmapped.push(b.code);
           continue;
         }
-        if (fresh) {
-          if (b.amount > 0) {
-            qtyById.set(asset.id, b.amount);
-            summary.adopted.push({ symbol: asset.symbol, quantity: b.amount });
-          }
+        if (!(qtyById.get(asset.id) > 0) && !pendingByAsset.get(asset.id) && b.amount > 0) {
+          adoptDeltas.push({ asset_id: asset.id, delta: b.amount, symbol: asset.symbol });
           continue;
         }
         const expected = (qtyById.get(asset.id) || 0) + (pendingByAsset.get(asset.id) || 0);
@@ -297,7 +296,25 @@ async function syncAccount(accountId, { client = null } = {}) {
       );
     })();
 
-    // 4. Trusted accounts apply detected flows immediately (same code path as
+    // 4. Baseline adoptions apply through recordFlow (needs live prices, so
+    // post-commit): quantities land AND the value index / basket splice past
+    // them — starting to track an asset is never performance. If pricing
+    // fails, the assets stay at 0 and the next sync retries.
+    if (adoptDeltas.length > 0) {
+      try {
+        await recordFlow(
+          profile.id,
+          adoptDeltas.map((d) => ({ asset_id: d.asset_id, delta: d.delta })),
+          `${account.venue} baseline adoption (synced balances)`
+        );
+        for (const d of adoptDeltas) summary.adopted.push({ symbol: d.symbol, quantity: d.delta });
+      } catch (err) {
+        console.error(`baseline adoption failed for account ${account.id}:`, err.message);
+        summary.adoptFailed = err.message;
+      }
+    }
+
+    // 5. Trusted accounts apply detected flows immediately (same code path as
     // manual confirmation — recordFlow prices live, so it runs post-commit).
     if (account.auto_flows) {
       for (const id of newPendingIds) {
@@ -311,7 +328,7 @@ async function syncAccount(accountId, { client = null } = {}) {
       }
     }
 
-    // 5. The alert loop closes: fills seen -> quantities updated -> re-arm.
+    // 6. The alert loop closes: fills seen -> quantities updated -> re-arm.
     if (summary.tradesApplied > 0 || summary.autoAppliedFlows > 0) {
       rearmAfterUpload(profile.id);
       summary.rearmed = true;

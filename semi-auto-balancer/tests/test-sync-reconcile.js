@@ -15,20 +15,20 @@ const db = require('../lib/db');
 const bal = require('../lib/balancer');
 const sync = require('../lib/sync');
 
-function profileRow() {
-  return db.prepare('SELECT * FROM profiles WHERE id = 1').get();
+function profileRow(pid = 1) {
+  return db.prepare('SELECT * FROM profiles WHERE id = ?').get(pid);
 }
-function assetBySym(sym) {
-  return db.prepare('SELECT * FROM assets WHERE profile_id = 1 AND symbol = ?').get(sym);
+function assetBySym(sym, pid = 1) {
+  return db.prepare('SELECT * FROM assets WHERE profile_id = ? AND symbol = ?').get(pid, sym);
 }
-function basketNow() {
-  const p = profileRow();
-  const assets = db.prepare('SELECT * FROM assets WHERE profile_id = 1').all();
+function basketNow(pid = 1) {
+  const p = profileRow(pid);
+  const assets = db.prepare('SELECT * FROM assets WHERE profile_id = ?').all(pid);
   return bal.computeBasket(assets, p.basket_base);
 }
-function valueIndexNow() {
-  const p = profileRow();
-  const assets = db.prepare('SELECT * FROM assets WHERE profile_id = 1').all();
+function valueIndexNow(pid = 1) {
+  const p = profileRow(pid);
+  const assets = db.prepare('SELECT * FROM assets WHERE profile_id = ?').all(pid);
   const iu = bal.indexUsdFor(assets, PRICES);
   const totalRel = assets.reduce((s, a) => {
     const pr = bal.priceAsset(a, iu, PRICES);
@@ -157,13 +157,29 @@ const client = {
   };
   const s8 = await sync.syncAccount(account2.id, { client: client2 });
   ok(s8.adopted.length === 2 && s8.unexplained.length === 0, 'fresh profile adopts venue balances (nothing unexplained)');
-  const fbtc = db.prepare('SELECT * FROM assets WHERE profile_id = 2 AND symbol = ?').get('btc');
-  const fusdt = db.prepare('SELECT * FROM assets WHERE profile_id = 2 AND symbol = ?').get('usdt');
-  ok(approx(fbtc.quantity, 0.08) && approx(fusdt.quantity, 2500), 'starting quantities set from the venue');
+  ok(approx(assetBySym('btc', 2).quantity, 0.08) && approx(assetBySym('usdt', 2).quantity, 2500), 'starting quantities set from the venue');
 
-  // A second sync is no longer fresh: balances now reconcile normally.
+  // A second sync has nothing left to adopt: balances reconcile normally.
   const s9 = await sync.syncAccount(account2.id, { client: client2 });
   ok(s9.adopted.length === 0 && s9.unexplained.length === 0, 'second sync reconciles normally (no re-adoption)');
+
+  // --- I: assets added AFTER the first sync adopt too — per asset, through
+  // the flow splice, so the value index never counts them as gains ---
+  await bal.pollProfiles({ force: true, profileId: 2 }); // anchor the value index
+  const viAnchored = valueIndexNow(2);
+  ok(approx(viAnchored, 1, 1e-6), 'value index anchored after adoption');
+  db.prepare(
+    "INSERT INTO assets (profile_id, coingecko_id, symbol, quantity, target_pct, is_index, basket_units) VALUES (2, 'fiat:mxn', 'mxn', 0, 0, 0, 0)"
+  ).run();
+  PRICES = { tether: 1, bitcoin: 50000, 'fiat:mxn': 0.055 };
+  venue2.balances = [ { code: 'usdt', amount: 2500 }, { code: 'btc', amount: 0.08 }, { code: 'mxn', amount: 40000 } ];
+  const s10 = await sync.syncAccount(account2.id, { client: client2 });
+  ok(s10.adopted.length === 1 && s10.adopted[0].symbol === 'mxn', 'later-added asset adopts its venue balance');
+  ok(approx(assetBySym('mxn', 2).quantity, 40000), 'adopted quantity lands');
+  ok(s10.unexplained.length === 0, 'nothing unexplained after per-asset adoption');
+  ok(approx(valueIndexNow(2), viAnchored, 1e-9), 'value index continuous across adoption (tracked via flow splice, not gains)');
+  const adoptionFlow = db.prepare("SELECT * FROM flows WHERE profile_id = 2 ORDER BY id DESC LIMIT 1").get();
+  ok(adoptionFlow && adoptionFlow.note.includes('baseline adoption'), 'adoption recorded as a flow');
 
   console.log('sync reconciliation tests pass');
   process.exit(0);
