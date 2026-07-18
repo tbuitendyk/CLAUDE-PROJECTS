@@ -43,4 +43,19 @@ ok(covered === series.length, 'swaths tile the whole series with no gaps');
 const flat = Array.from({ length: 120 }, (_, i) => ({ ts: t0 + i * DAY, usd_price: 100 }));
 ok(regime.classify(flat).enough === false, 'a flat/short series is flagged insufficient for a regime study');
 
+// Anti-lag: a V-shaped crash then SHARP recovery. A trailing-MA classifier
+// mislabels the recovery's rising leg as "bear" until the average catches up;
+// the centered classifier must call the rising leg BULL. Build a crash 400->120
+// then a symmetric recovery 120->400, each over 120 days.
+const v = [];
+let vd = 0;
+const vpush = (price) => v.push({ ts: t0 + vd++ * DAY, usd_price: price });
+for (let i = 0; i < 120; i++) vpush(400 - (280 * i) / 119); // crash
+for (let i = 0; i < 120; i++) vpush(120 + (280 * i) / 119); // sharp recovery
+const vsw = regime.classify(v).swaths;
+const recoveryDay = 180; // deep in the rising recovery leg
+const at = vsw.find((s) => s.startIdx <= recoveryDay && s.endIdx >= recoveryDay);
+ok(at && at.label === 'bull', `the recovery's rising leg reads BULL, not lagged bear (got ${at && at.label})`);
+ok(vsw.some((s) => s.label === 'bear' && s.endIdx < recoveryDay), 'the crash itself is still a bear swath');
+
 console.log('regime classifier tests pass');

@@ -215,6 +215,25 @@ average over one window."
   replica, 1460 bars → 1168 in-sample / 292 holdout): top mixes flag ★ with
   types 3/3, positive per-type and holdout edges.
 
+## Phase 2.98 — Honest bull/bear/range taxonomy (centered trend)
+**Status: SHIPPED (tests green: test-regime.js, incl. anti-lag).** The first
+regime classifier (trailing 50d-MA slope + rolling-90d-high drawdown) was
+dishonest on real BTC: over 2022-07→2026-07 it labelled only ~1% of days bear
+(21 of 1460), because a trailing MA lags every turn and a rolling-90d high
+tracks a slow grind down so its drawdown never fires. Rewritten to a CENTERED,
+smoothed trend: smooth daily closes, measure the price change across a ±45-day
+window (looking symmetrically forward and back), and call >+12% bull, <−12%
+bear, else range; ends fall back to a shorter one-sided window with a
+span-scaled threshold; 25-day minimum swath. This is legitimate because the
+labels ONLY characterize the historical record for performance attribution —
+they never drive a live trade — so look-ahead is free, and it removes the
+turning-point lag that made a +37% rally read "bear." Validated against real
+BTC/USD: **43% bull / 27% bear / 30% range**, with swaths on the actual cycle
+(2022-H2 bear to ~$16k, 2023 recovery, 2023-10→2024 bull, 2024 mid-year range,
+2025-09→2026-04 drawdown). Anti-lag test locks in that a V-recovery's rising
+leg reads bull, not lagged bear. `lib/regime.js` — same `classify()` shape, so
+the composition search picks it up unchanged.
+
 ## Phase 2.97 — Deep fiat crosses (no cross ever limits the window)
 **Status: SHIPPED (tests green: test-deepdata.js fiat path).** The deep-daily
 upgrade let crypto reach ~4y while a fiat index (Bitso MXN) stayed capped at
