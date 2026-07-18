@@ -385,6 +385,12 @@ function renderDetail() {
   // composition lab: last persisted mix search
   renderCompose(d.latestCompose);
 
+  // repaint run controls (button/status/bar) for THIS profile — a job still
+  // running on another profile keeps polling untouched; its status only
+  // shows when that profile is on screen.
+  renderJobControls('tune');
+  renderJobControls('compose');
+
   // notifications: state machine status, toggle, recipients
   const rearmAt = profile.notify_state_at
     ? new Date(profile.notify_state_at + 12 * 3600 * 1000).toLocaleString()
@@ -734,36 +740,94 @@ function renderTune(latest, profile) {
     `execution lag ${s.lagHours}h · Apply refuses if targets or costs have changed since.`;
 }
 
-let tunePoll = null;
+// ---- analysis-job registry (tuner + composition lab) ----
+//
+// Long jobs (tune-threshold, compose) run server-side per profile. The run
+// controls (button / status / bar) are ONE shared set in the detail panel,
+// so they must be painted from whichever profile you're currently viewing —
+// not from whatever job happens to be polling. Each in-flight job keeps its
+// OWN poll interval, keyed by profile, that lives across profile switches
+// and is never cleared by switching (the running job is untouched). When a
+// job's profile isn't the one on screen its progress just accrues quietly;
+// switch to it and the controls repaint from its live state.
+const runningJobs = { tune: {}, compose: {} }; // kind -> profileId -> {jobId, progress, progressPct, interval}
+const jobMsg = { tune: {}, compose: {} };      // kind -> profileId -> last terminal message (error, or '')
+const JOB_WIDGETS = {
+  tune: { run: '#tune-run', status: '#tune-status' },
+  compose: { run: '#c-run', status: '#c-status', bar: '#c-bar', fill: '#c-bar-fill' },
+};
+
+// Paint one kind's run controls from the CURRENTLY selected profile's state.
+function renderJobControls(kind) {
+  const w = JOB_WIDGETS[kind];
+  const runBtn = $(w.run);
+  const status = $(w.status);
+  if (!runBtn) return;
+  const entry = runningJobs[kind][state.selectedId];
+  if (entry) {
+    runBtn.disabled = true;
+    status.textContent = entry.progress || 'running…';
+    if (w.bar) {
+      $(w.bar).classList.remove('hidden');
+      $(w.fill).style.width = (entry.progressPct != null ? entry.progressPct : 0) + '%';
+    }
+  } else {
+    runBtn.disabled = false;
+    status.textContent = jobMsg[kind][state.selectedId] || '';
+    if (w.bar) $(w.bar).classList.add('hidden');
+  }
+}
+
+// Start polling a launched job; the interval survives profile switches and
+// only stops when the job ends. Only repaints the shared controls while the
+// job's profile is the one on screen; a completed job refreshes the detail
+// (which re-reads the persisted result) if you're watching it, otherwise the
+// result simply appears the next time you open that profile.
+function trackJob(kind, jobId, profileId) {
+  const existing = runningJobs[kind][profileId];
+  if (existing) clearInterval(existing.interval);
+  const entry = { jobId, progress: 'starting…', progressPct: null, interval: null };
+  runningJobs[kind][profileId] = entry;
+  jobMsg[kind][profileId] = '';
+  if (profileId === state.selectedId) renderJobControls(kind);
+  entry.interval = setInterval(async () => {
+    try {
+      const job = await api(`/jobs/${jobId}`);
+      if (job.status === 'running') {
+        entry.progress = job.progress || 'running…';
+        entry.progressPct = job.progressPct;
+        if (profileId === state.selectedId) renderJobControls(kind);
+      } else {
+        clearInterval(entry.interval);
+        delete runningJobs[kind][profileId];
+        jobMsg[kind][profileId] = job.status === 'done' ? '' : `failed: ${job.error}`;
+        if (profileId === state.selectedId) {
+          if (job.status === 'done') await refresh();
+          else renderJobControls(kind);
+        }
+      }
+    } catch (err) {
+      clearInterval(entry.interval);
+      delete runningJobs[kind][profileId];
+      jobMsg[kind][profileId] = err.message;
+      if (profileId === state.selectedId) renderJobControls(kind);
+    }
+  }, 2000);
+}
+
 $('#tune-run').addEventListener('click', async () => {
+  const profileId = state.selectedId;
   $('#tune-run').disabled = true;
   $('#tune-status').textContent = 'starting…';
   try {
-    const { jobId } = await api(`/profiles/${state.selectedId}/tune-threshold`, {
+    const { jobId } = await api(`/profiles/${profileId}/tune-threshold`, {
       method: 'POST',
       body: { granularity: $('#tune-gran').value, lag_hours: Number($('#tune-lag').value) },
     });
-    clearInterval(tunePoll);
-    tunePoll = setInterval(async () => {
-      try {
-        const job = await api(`/jobs/${jobId}`);
-        if (job.status === 'running') {
-          $('#tune-status').textContent = job.progress || 'running…';
-        } else {
-          clearInterval(tunePoll);
-          $('#tune-run').disabled = false;
-          $('#tune-status').textContent = job.status === 'done' ? '' : `failed: ${job.error}`;
-          if (job.status === 'done') await refresh();
-        }
-      } catch (err) {
-        clearInterval(tunePoll);
-        $('#tune-run').disabled = false;
-        $('#tune-status').textContent = err.message;
-      }
-    }, 2000);
+    trackJob('tune', jobId, profileId);
   } catch (err) {
-    $('#tune-run').disabled = false;
-    $('#tune-status').textContent = err.message;
+    jobMsg.tune[profileId] = err.message;
+    if (profileId === state.selectedId) renderJobControls('tune');
   }
 });
 
@@ -834,41 +898,19 @@ function renderCompose(latest) {
     ` · out-of-sample from ${w.splitAt ? new Date(w.splitAt).toISOString().slice(0, 10) : '?'} (${w.oosBars} bars).`;
 }
 
-let composePoll = null;
 $('#c-run').addEventListener('click', async () => {
+  const profileId = state.selectedId;
   $('#c-run').disabled = true;
   $('#c-status').textContent = 'starting…';
   try {
-    const { jobId } = await api(`/profiles/${state.selectedId}/compose`, {
+    const { jobId } = await api(`/profiles/${profileId}/compose`, {
       method: 'POST',
       body: { samples: Number($('#c-intensity').value) },
     });
-    clearInterval(composePoll);
-    $('#c-bar').classList.remove('hidden');
-    $('#c-bar-fill').style.width = '0%';
-    composePoll = setInterval(async () => {
-      try {
-        const job = await api(`/jobs/${jobId}`);
-        if (job.status === 'running') {
-          $('#c-status').textContent = job.progress || 'running…';
-          if (job.progressPct != null) $('#c-bar-fill').style.width = job.progressPct + '%';
-        } else {
-          clearInterval(composePoll);
-          $('#c-run').disabled = false;
-          $('#c-bar').classList.add('hidden');
-          $('#c-status').textContent = job.status === 'done' ? '' : `failed: ${job.error}`;
-          if (job.status === 'done') await refresh();
-        }
-      } catch (err) {
-        clearInterval(composePoll);
-        $('#c-run').disabled = false;
-        $('#c-bar').classList.add('hidden');
-        $('#c-status').textContent = err.message;
-      }
-    }, 2000);
+    trackJob('compose', jobId, profileId);
   } catch (err) {
-    $('#c-run').disabled = false;
-    $('#c-status').textContent = err.message;
+    jobMsg.compose[profileId] = err.message;
+    if (profileId === state.selectedId) renderJobControls('compose');
   }
 });
 
