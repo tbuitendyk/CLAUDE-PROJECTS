@@ -75,6 +75,31 @@ for (const row of tuneRows) {
   }
 }
 
+console.log('== latest compose (composition lab) results ==');
+const composeRows = db.prepare(
+  "SELECT profile_id, created_at, result FROM analysis_results WHERE kind = 'compose' AND id IN (SELECT MAX(id) FROM analysis_results WHERE kind = 'compose' GROUP BY profile_id)"
+).all();
+for (const row of composeRows) {
+  let r = null;
+  try { r = JSON.parse(row.result || 'null'); } catch {}
+  if (!r) continue;
+  const u = r.universe || {};
+  const w = r.window || {};
+  console.log(`-- profile ${row.profile_id} @ ${new Date(row.created_at).toISOString()}`);
+  console.log(`   combos: ${JSON.stringify(r.combos)} · universe ${u.covered}/${u.considered} venue=${u.venue} notOnVenue=[${(u.notOnVenue||[]).join(',')}] windowDays=${u.windowDays}`);
+  console.log(`   window: bars=${w.bars} train=${w.trainBars} oos=${w.oosBars} split=${w.splitAt ? new Date(w.splitAt).toISOString().slice(0,10) : '?'}`);
+  if (r.screen) {
+    console.log('   screen kept: ' + r.screen.filter(s=>s.kept).map(s=>`${s.symbol}:${s.soloTrain.toFixed(1)}`).join(' '));
+    console.log('   screen weeded: ' + r.screen.filter(s=>!s.kept).map(s=>`${s.symbol}:${s.soloTrain.toFixed(1)}`).join(' '));
+  }
+  if (r.currentMix) {
+    console.log(`   CURRENT mix: ${r.currentMix.assets.map(a=>a.symbol+':'+a.pct).join(' ')} | train=${r.currentMix.train.score.toFixed(2)} oos=${r.currentMix.oos.value.toFixed(2)} (hold ${r.currentMix.oos.hold.toFixed(2)}) x=${r.currentMix.oos.x} | full=${r.currentMix.full ? r.currentMix.full.value.toFixed(2) : '?'} (hold ${r.currentMix.full ? r.currentMix.full.hold.toFixed(2) : '?'}) x=${r.currentMix.full ? r.currentMix.full.x : '?'}`);
+  }
+  for (const m of (r.mixes || []).slice(0, 8)) {
+    console.log(`   mix: ${m.assets.map(a=>a.symbol+':'+a.pct).join(' ')} | train=${m.train.score.toFixed(2)} oos=${m.oos.value.toFixed(2)} (hold ${m.oos.hold.toFixed(2)}) x=${m.oos.x} dd=${m.oos.dd.toFixed(1)} trades=${m.oos.trades}`);
+  }
+}
+
 console.log('== price paths (cached daily closes, active assets) ==');
 for (const a of db.prepare('SELECT DISTINCT coingecko_id FROM assets WHERE target_pct > 0 OR is_index = 1').all()) {
   const s = db.prepare('SELECT COUNT(*) n, MIN(ts) f, MAX(ts) l FROM daily_prices WHERE coingecko_id = ?').get(a.coingecko_id);
