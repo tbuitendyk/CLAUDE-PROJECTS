@@ -906,7 +906,13 @@ async function runCurrentSetSearch(profileId, ctx, setProgress = () => {}) {
     .map((c) => (seriesById.get(c.id) || [])[0])
     .filter(Boolean)
     .map((r) => r.ts);
-  const windowStart = chooseWindowStart(earliests, nowMs - days * 86_400_000, nowMs);
+  let windowStart = chooseWindowStart(earliests, nowMs - days * 86_400_000, nowMs);
+  // Every mix is denominated in the tether, so the window can't begin before
+  // the tether's own history does. Crypto now reaches ~4y (deep-daily), but a
+  // fiat book (e.g. MXN) is shallower — without this clamp the window opens to
+  // the deep crypto span and the tether fails coverage.
+  const tetherRows = seriesById.get(tetherAsset.coingecko_id) || [];
+  if (tetherRows.length) windowStart = Math.max(windowStart, tetherRows[0].ts);
   const trimmed = new Map();
   for (const [id, rows] of seriesById) trimmed.set(id, rows.filter((r) => r.ts >= windowStart));
 
@@ -1039,7 +1045,13 @@ async function runComposeSearch(profileId, opts = {}, setProgress = () => {}) {
     .map((c) => (seriesById.get(c.id) || [])[0])
     .filter(Boolean)
     .map((r) => r.ts);
-  const windowStart = chooseWindowStart(earliests, nowMs - days * 86_400_000, nowMs);
+  let windowStart = chooseWindowStart(earliests, nowMs - days * 86_400_000, nowMs);
+  // The window can't begin before the tether's own history: crypto reaches
+  // ~4y (deep-daily) but a fiat book (e.g. MXN) is shallower, and every mix is
+  // denominated in the tether. Without this the window opens to the deep
+  // crypto span and the tether fails coverage.
+  const tetherRows = seriesById.get(tetherAsset.coingecko_id) || [];
+  if (tetherRows.length) windowStart = Math.max(windowStart, tetherRows[0].ts);
   const trimmed = new Map();
   for (const [id, rows] of seriesById) trimmed.set(id, rows.filter((r) => r.ts >= windowStart));
 
