@@ -9,20 +9,24 @@
 # Usage via run-script:
 #   arg = "<profileId>"              -> intensive (1,000,000 combos)
 #   arg = "<profileId>-<samples>"    -> explicit sample count
-# e.g. arg "2" or "2-1000000" for Bitso MAIN at intensive.
+#   append "-cs"                     -> current-holdings allocation × sensitivity
+# e.g. arg "2" or "2-1000000" (full universe), "2-200000-cs" (Bitso MAIN,
+# current-holdings allocation search at 200k splits).
 set -euo pipefail
 
 ARG="${1:-}"
 if [[ -z "$ARG" ]]; then
-  echo "usage: run-script trigger-compose.sh <profileId>[-<samples>]" >&2
+  echo "usage: run-script trigger-compose.sh <profileId>[-<samples>][-cs]" >&2
   exit 1
 fi
+CURRENTSET=false
+if [[ "$ARG" == *-cs ]]; then CURRENTSET=true; ARG="${ARG%-cs}"; fi
 PID="${ARG%%-*}"
 if [[ "$ARG" == *-* ]]; then SAMPLES="${ARG#*-}"; else SAMPLES=1000000; fi
 
-echo "Triggering composition search: profile=${PID} samples=${SAMPLES}"
+echo "Triggering composition search: profile=${PID} samples=${SAMPLES} currentSet=${CURRENTSET}"
 curl -sS -m 30 -X POST "http://127.0.0.1:8092/api/profiles/${PID}/compose" \
   -H 'Content-Type: application/json' \
-  -d "{\"samples\":${SAMPLES}}"
+  -d "{\"samples\":${SAMPLES},\"currentSet\":${CURRENTSET}}"
 echo
 echo "Started. Watch progress in the UI (Composition lab) or poll /api/jobs/<id>."
