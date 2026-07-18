@@ -240,6 +240,8 @@ function buildProfileView(profile) {
       a.effThresholdPct != null &&
       Math.abs(a.driftRelPct) >= a.effThresholdPct;
     a.alertActive = activeAlerts.has(a.id);
+    // Phase 3: surface engine-side BUY suppression so the UI can badge it.
+    a.buySuppressed = Boolean(a.buy_frozen) && a.breached && a.driftRelPct < 0;
   }
 
   // Chained indexes: basket (unit growth) and value index (value growth),
@@ -575,6 +577,15 @@ app.patch('/api/assets/:id', async (req, res) => {
 
 app.delete('/api/assets/:id', (req, res) => {
   db.prepare('DELETE FROM assets WHERE id = ?').run(req.params.id);
+  res.json({ ok: true });
+});
+
+// Manual unfreeze (Phase 3): the human override on the buy-freeze rail.
+// The rail may re-freeze on the next check if conditions still hold.
+app.post('/api/assets/:id/unfreeze', (req, res) => {
+  const asset = db.prepare('SELECT * FROM assets WHERE id = ?').get(req.params.id);
+  if (!asset) return res.status(404).json({ error: 'not found' });
+  db.prepare('UPDATE assets SET buy_frozen = 0, frozen_at = NULL, freeze_reason = NULL WHERE id = ?').run(asset.id);
   res.json({ ok: true });
 });
 

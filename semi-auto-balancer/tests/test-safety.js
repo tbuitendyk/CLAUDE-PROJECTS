@@ -1,0 +1,122 @@
+// Phase 3 safety rails: recovered-drawdown envelope math (1.25×, clamps,
+// skip rules), fast-crash trigger, engine-level BUY suppression (SELLs
+// pass; no alloc_alert, no armed-state consumption), auto-unfreeze at
+// 0.75×, and the latched depeg watch.
+process.env.EXCHANGE_MARKET_DATA = 'off';
+const { freshDb, ok, approx } = require('./helpers');
+freshDb('safety');
+
+const pricing = require('../lib/pricing');
+let PRICES = {};
+pricing.fetchUsdPrices = async () => PRICES;
+
+const db = require('../lib/db');
+const bal = require('../lib/balancer');
+const safety = require('../lib/safety');
+const exsource = require('../lib/exsource');
+
+const DAY = 86_400_000;
+const t0 = 1_700_000_000_000 - (1_700_000_000_000 % DAY);
+
+function seedDaily(id, prices) {
+  const ins = db.prepare('INSERT OR REPLACE INTO daily_prices (coingecko_id, ts, usd_price) VALUES (?, ?, ?)');
+  prices.forEach((p, i) => ins.run(id, t0 + i * DAY, p));
+}
+
+(async () => {
+  // --- envelope math on synthetic paths ---
+  // 300 days: 100 -> drop to 60 (40% dd) -> recover to 105 -> stable.
+  const recovered40 = [
+    ...Array.from({ length: 50 }, () => 100),
+    ...Array.from({ length: 50 }, (_, i) => 100 - (i + 1) * 0.8), // to 60
+    ...Array.from({ length: 100 }, (_, i) => 60 + (i + 1) * 0.45), // past 100
+    ...Array.from({ length: 100 }, () => 105),
+  ];
+  const env = safety.computeEnvelope(recovered40);
+  ok(approx(env, 50, 1e-6), 'envelope = 1.25 × deepest recovered dd (40% -> 50%)');
+
+  const deep = recovered40.map((p, i) => (i < 100 ? p : p)); // reuse then add a 70% recovered dd
+  const recovered70 = [...recovered40, ...Array.from({ length: 60 }, (_, i) => 105 - i * 1.2), ...Array.from({ length: 80 }, (_, i) => 33 + i * 1)];
+  const env70 = safety.computeEnvelope(recovered70);
+  ok(env70 <= 85.000001, 'envelope clamps at 85%');
+
+  ok(safety.computeEnvelope(recovered40.slice(0, 100)) === null, 'skipped under 180d of history');
+  const shallow = Array.from({ length: 300 }, (_, i) => 100 + Math.sin(i / 10) * 5); // max dd ~10%
+  ok(safety.computeEnvelope(shallow) === null, 'skipped when no recovered dd ≥ 20% exists');
+
+  // Right-censored (unrecovered) drawdowns don't set the envelope.
+  const unrecovered = [...Array.from({ length: 200 }, () => 100), ...Array.from({ length: 100 }, (_, i) => 100 - i * 0.9)];
+  ok(safety.computeEnvelope(unrecovered) === null, 'open (unrecovered) drawdown alone sets no envelope');
+
+  // --- fast crash ---
+  const calm = Array.from({ length: 200 }, () => 100);
+  const crash = safety.currentStress([...calm, 100, 98, 90, 70, 58], null);
+  ok(crash.fastCrash, '≥40% drop inside 7 days flags a fast crash');
+  const slow = safety.currentStress([...calm, ...Array.from({ length: 30 }, (_, i) => 100 - i * 1.5)], null);
+  ok(!slow.fastCrash, 'a slow grind is not a fast crash');
+
+  // --- engine suppression: frozen BUY silenced, SELL passes ---
+  db.prepare("INSERT INTO profiles (name, threshold_pct, poll_minutes, created_at) VALUES ('P', 10, 15, 0)").run();
+  const add = db.prepare(
+    'INSERT INTO assets (profile_id, coingecko_id, symbol, quantity, target_pct, is_index, basket_units) VALUES (1, ?, ?, ?, ?, ?, ?)'
+  );
+  add.run('tether', 'usdt', 1000, 40, 1, 1000);
+  add.run('bitcoin', 'btc', 0.02, 30, 0, 0.02); // will be UNDERWEIGHT -> BUY
+  add.run('ripple', 'xrp', 3000, 30, 0, 3000); // will be OVERWEIGHT -> SELL
+  PRICES = { tether: 1, bitcoin: 20000, ripple: 0.5 };
+  // totals: usdt 1000 + btc 400 + xrp 1500 = 2900; btc 13.8% vs 30 (BUY), xrp 51.7% vs 30 (SELL)
+
+  const profile = db.prepare('SELECT * FROM profiles WHERE id = 1').get();
+  let result = bal.evaluateProfile({ ...profile }, PRICES, t0);
+  ok(result.breaches.some((b) => b.action === 'BUY' && b.asset.symbol === 'btc'), 'unfrozen: BUY breach present');
+
+  db.prepare("UPDATE assets SET buy_frozen = 1, freeze_reason = 'test' WHERE symbol = 'btc'").run();
+  db.prepare('DELETE FROM alloc_alerts').run();
+  result = bal.evaluateProfile({ ...profile }, PRICES, t0 + 1000);
+  ok(!result.breaches.some((b) => b.asset.symbol === 'btc'), 'frozen: BUY breach suppressed at the engine');
+  ok(result.breaches.some((b) => b.action === 'SELL' && b.asset.symbol === 'xrp'), 'frozen elsewhere: SELL still passes');
+  ok(!result.newBreaches.some((b) => b.asset.symbol === 'btc'), 'suppressed BUY is not a new breach either');
+  const marked = db.prepare('SELECT asset_id FROM alloc_alerts').all();
+  ok(!marked.some((m) => m.asset_id === 2), 'suppressed BUY never marks alloc_alerts');
+
+  // --- freeze/unfreeze transitions from series state ---
+  // Asset with a 40%-recovered history (envelope 50%) now 60% down: freeze.
+  db.prepare("UPDATE assets SET buy_frozen = 0, freeze_reason = NULL WHERE symbol = 'btc'").run();
+  const frozenPath = [...recovered40, ...Array.from({ length: 60 }, (_, i) => 105 - i * 1.1)]; // down to ~39 = 63% dd
+  seedDaily('bitcoin', frozenPath);
+  seedDaily('ripple', Array.from({ length: 300 }, () => 0.5)); // calm
+  // The freeze check trusts the freshest polled price — keep it consistent
+  // with the seeded series (the engine assertions above left btc @ 20000).
+  const pushLive = (assetId, usd) =>
+    db.prepare('INSERT INTO price_history (profile_id, asset_id, ts, usd_price, rel_price) VALUES (1, ?, ?, ?, ?)').run(assetId, Date.now(), usd, usd);
+  pushLive(2, frozenPath[frozenPath.length - 1]);
+  let transitions = safety.evaluateFreezes();
+  ok(transitions.some((t) => t.kind === 'freeze' && t.asset.symbol === 'btc'), 'deep breach of the envelope freezes');
+  ok(db.prepare("SELECT buy_frozen FROM assets WHERE symbol = 'btc'").get().buy_frozen === 1, 'freeze persisted');
+  transitions = safety.evaluateFreezes();
+  ok(transitions.length === 0, 'freeze notice is latched (no repeat)');
+
+  // Recovery to 25% dd (< 0.75 × 50% envelope = 37.5%): auto-unfreeze.
+  const recoveryPath = [...frozenPath, ...Array.from({ length: 120 }, (_, i) => 39 + i * 0.33)]; // back to ~79 ≈ 25% dd
+  seedDaily('bitcoin', recoveryPath);
+  pushLive(2, recoveryPath[recoveryPath.length - 1]);
+  transitions = safety.evaluateFreezes();
+  ok(transitions.some((t) => t.kind === 'unfreeze' && t.asset.symbol === 'btc'), 'auto-unfreeze at 0.75× the trigger');
+  ok(db.prepare("SELECT buy_frozen FROM assets WHERE symbol = 'btc'").get().buy_frozen === 0, 'unfreeze persisted');
+
+  // --- depeg watch: latched both ways, valuation untouched ---
+  exsource.usdPrices = async () => ({ tether: 0.965 });
+  let depegs = await safety.evaluateDepegs();
+  ok(depegs.some((t) => t.kind === 'depeg' && t.asset.symbol === 'usdt'), 'peg break below $0.98 latches');
+  depegs = await safety.evaluateDepegs();
+  ok(depegs.length === 0, 'depeg notice latched (no repeat while broken)');
+  exsource.usdPrices = async () => ({ tether: 0.995 });
+  depegs = await safety.evaluateDepegs();
+  ok(depegs.some((t) => t.kind === 'repeg'), 'recovery inside the band latches the all-clear');
+
+  console.log('safety rail tests pass');
+  process.exit(0);
+})().catch((e) => {
+  console.error('FAIL:', e.message);
+  process.exit(1);
+});

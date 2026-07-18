@@ -253,6 +253,31 @@ function renderDetail() {
     tr.appendChild(indexCell(a));
     const sym = document.createElement('td');
     sym.textContent = a.symbol.toUpperCase();
+    if (a.buy_frozen) {
+      const badge = document.createElement('button');
+      badge.textContent = ' 🧊';
+      badge.className = 'ghost';
+      badge.title =
+        `BUY alerts frozen — ${a.freeze_reason || 'structural break'}. Sells still alert. ` +
+        `Auto-unfreezes when the drawdown eases; click to unfreeze now.`;
+      badge.addEventListener('click', async () => {
+        if (!confirm(`Unfreeze BUY alerts for ${a.symbol.toUpperCase()}?\n\nFrozen because: ${a.freeze_reason || 'structural break'}\n\nThe rail may re-freeze if conditions still hold.`)) return;
+        try {
+          await api(`/assets/${a.id}/unfreeze`, { method: 'POST' });
+          await refresh();
+        } catch (err) {
+          alert(err.message);
+        }
+      });
+      sym.appendChild(badge);
+    }
+    if (a.depegged) {
+      const peg = document.createElement('span');
+      peg.textContent = ' ⚠$';
+      peg.title = 'Trading outside the $0.98–1.02 peg band (valuation stays pinned 1:1)';
+      peg.className = 'warn-text';
+      sym.appendChild(peg);
+    }
     tr.appendChild(sym);
     const tgt = document.createElement('td');
     tgt.textContent = a.target_pct ? a.target_pct + '%' : '—';

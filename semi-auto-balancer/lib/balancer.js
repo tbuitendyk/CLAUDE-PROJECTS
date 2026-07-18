@@ -183,6 +183,10 @@ function evaluateProfile(profile, usdPrices, now) {
       }
       if (Math.abs(driftRel) >= tEff) {
         const deltaRel = (target / 100) * totalRel - valueRel; // >0 buy, <0 sell
+        // Phase 3: structural-break buy-freeze. Suppression lives HERE, not
+        // in the mailer: a frozen asset's BUY breach neither emails, nor
+        // marks alloc_alerts, nor consumes the armed state. SELLs pass.
+        if (deltaRel > 0 && p.asset.buy_frozen) continue;
         const breach = {
           profile,
           asset: p.asset,

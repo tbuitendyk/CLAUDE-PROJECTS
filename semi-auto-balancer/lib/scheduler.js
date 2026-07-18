@@ -1,6 +1,45 @@
+const db = require('./db');
 const { pollProfiles } = require('./balancer');
-const { sendAlertEvents } = require('./mailer');
+const { sendAlertEvents, sendSafetyNotice } = require('./mailer');
 const { syncDueAccounts } = require('./sync');
+const safety = require('./safety');
+const { getDailyHistory } = require('./history');
+
+// Daily-cache freshness for the safety rails: the freeze envelope reads
+// daily closes from the cache, so active assets get one top-up per day
+// (mostly exchange-sourced — near-zero CG quota).
+async function refreshDailyCacheDue() {
+  const row = db.prepare("SELECT value FROM settings WHERE key = 'safety_history_at'").get();
+  if (row && Date.now() - Number(row.value) < 22 * 3600e3) return false;
+  const ids = db
+    .prepare("SELECT DISTINCT coingecko_id FROM assets WHERE target_pct > 0 AND is_index = 0 AND coingecko_id NOT IN ('usd','fiat:usd')")
+    .all();
+  for (const { coingecko_id } of ids) {
+    try {
+      await getDailyHistory(coingecko_id, 730);
+    } catch (err) {
+      console.error(`daily refresh failed for ${coingecko_id}:`, err.message);
+    }
+  }
+  db.prepare(
+    "INSERT INTO settings (key, value) VALUES ('safety_history_at', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value"
+  ).run(String(Date.now()));
+  return true;
+}
+
+async function runSafetyChecks() {
+  await refreshDailyCacheDue();
+  // Freeze evaluation is pure DB reads (cache + last polled price);
+  // depeg needs one exchange ticker round for held pegged coins.
+  const transitions = [...safety.evaluateFreezes(), ...(await safety.evaluateDepegs())];
+  for (const t of transitions) {
+    const profile = db.prepare('SELECT * FROM profiles WHERE id = ?').get(t.asset.profile_id);
+    if (!profile) continue;
+    const text = safety.noticeText(t);
+    console.log(`[safety] ${text}`);
+    await sendSafetyNotice(profile, text);
+  }
+}
 
 // Ticks once a minute; each profile decides for itself whether it is due
 // based on its own poll_minutes, and each linked exchange account based on
@@ -33,6 +72,13 @@ function startScheduler() {
       if (events.length > 0) await sendAlertEvents(events);
     } catch (err) {
       console.error('Poll failed:', err.message);
+    }
+    try {
+      // Safety rails run after the poll so freeze/crash checks see the
+      // freshest polled prices.
+      await runSafetyChecks();
+    } catch (err) {
+      console.error('Safety check failed:', err.message);
     }
   };
   tick();

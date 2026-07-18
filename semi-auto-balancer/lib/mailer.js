@@ -249,6 +249,43 @@ async function sendStatusReport(profile, view) {
   return result;
 }
 
+// Safety notices (freeze/unfreeze/depeg): latched one-shot messages routed
+// like status reports — recipients + alerts_enabled honored, but BYPASSING
+// the armed→notified machine (a freeze must never eat a rebalance alert's
+// slot, and vice versa). Always logged on-screen.
+async function sendSafetyNotice(profile, text) {
+  db.prepare('INSERT INTO alert_log (profile_id, message, ts, emailed) VALUES (?, ?, ?, ?)').run(
+    profile.id,
+    text,
+    Date.now(),
+    0
+  );
+  if (!profile.alerts_enabled) return;
+  const recipients = parseRecipients(profile);
+  const emails = recipients.map((r) => (r.email || '').trim()).filter(Boolean);
+  if (emails.length > 0 && emailConfigured()) {
+    try {
+      await transporter.sendMail({
+        from: fromHeader(),
+        to: emails.join(', '),
+        subject: `[Semi-Auto Balancer] SAFETY: ${profile.name} (${new Date().toISOString().slice(0, 16).replace('T', ' ')} UTC)`,
+        text,
+      });
+    } catch (err) {
+      console.error(`Safety email failed for profile ${profile.id}:`, err.message);
+    }
+  }
+  for (const r of recipients) {
+    if (!r.telegram_chat_id) continue;
+    try {
+      if (!telegramConfigured()) throw new Error('bot token not configured');
+      await sendTelegram(r.telegram_chat_id, text);
+    } catch (err) {
+      console.error(`Safety Telegram notice failed for profile ${profile.id}:`, err.message);
+    }
+  }
+}
+
 async function sendTestEmail() {
   if (!emailConfigured() || !config.alertEmailTo) {
     throw new Error('SMTP or ALERT_EMAIL_TO not configured');
@@ -264,6 +301,7 @@ async function sendTestEmail() {
 module.exports = {
   sendAlertEvents,
   sendStatusReport,
+  sendSafetyNotice,
   sendTestEmail,
   emailConfigured,
   buildText,
