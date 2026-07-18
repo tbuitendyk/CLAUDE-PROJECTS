@@ -89,30 +89,90 @@ function seedDaily(id, prices) {
   ok(db.prepare("SELECT buy_frozen FROM assets WHERE symbol = 'btc'").get().buy_frozen === 1, 'override does not clear the frozen status');
   db.prepare("UPDATE assets SET freeze_override = 0 WHERE symbol = 'btc'").run();
 
-  // --- freeze/unfreeze transitions from series state ---
-  // Asset with a 40%-recovered history (envelope 50%) now 60% down: freeze.
-  db.prepare("UPDATE assets SET buy_frozen = 0, freeze_reason = NULL WHERE symbol = 'btc'").run();
-  const frozenPath = [...recovered40, ...Array.from({ length: 60 }, (_, i) => 105 - i * 1.1)]; // down to ~39 = 63% dd
-  seedDaily('bitcoin', frozenPath);
-  seedDaily('ripple', Array.from({ length: 300 }, () => 0.5)); // calm
-  // The freeze check trusts the freshest polled price — keep it consistent
-  // with the seeded series (the engine assertions above left btc @ 20000).
-  const pushLive = (assetId, usd) =>
-    db.prepare('INSERT INTO price_history (profile_id, asset_id, ts, usd_price, rel_price) VALUES (1, ?, ?, ?, ?)').run(assetId, Date.now(), usd, usd);
-  pushLive(2, frozenPath[frozenPath.length - 1]);
-  let transitions = safety.evaluateFreezes();
-  ok(transitions.some((t) => t.kind === 'freeze' && t.asset.symbol === 'btc'), 'deep breach of the envelope freezes');
-  ok(db.prepare("SELECT buy_frozen FROM assets WHERE symbol = 'btc'").get().buy_frozen === 1, 'freeze persisted');
-  transitions = safety.evaluateFreezes();
-  ok(transitions.length === 0, 'freeze notice is latched (no repeat)');
+  // ---- Phase 3.5: market-relative freeze ----
+  // A market coin: peak then a decline to `ddPct` drawdown (≥180d).
+  function mktSeries(ddPct, n = 210) {
+    const end = 100 * (1 - ddPct / 100);
+    const h = Math.floor(n / 2);
+    return [
+      ...Array.from({ length: h }, () => 100),
+      ...Array.from({ length: n - h }, (_, i) => 100 + (end - 100) * ((i + 1) / (n - h))),
+    ];
+  }
+  // A risk asset with an envelope-setting history (recovered 50% dd -> envelope
+  // 62.5%) THEN a terminal decline to `finalDDPct` from its trailing high.
+  function envDeclineSeries(finalDDPct) {
+    const env = [
+      ...Array.from({ length: 60 }, () => 100),
+      ...Array.from({ length: 40 }, (_, i) => 100 - (i + 1) * 1.25), // -> 50 (recovered 50% dd)
+      ...Array.from({ length: 100 }, (_, i) => 50 + (i + 1) * 0.62), // -> ~112
+      ...Array.from({ length: 40 }, () => 110),
+    ];
+    const peak = Math.max(...env);
+    const end = peak * (1 - finalDDPct / 100);
+    return [...env, ...Array.from({ length: 60 }, (_, i) => 110 + (end - 110) * ((i + 1) / 60))];
+  }
+  const MKTS = ['mkt1', 'mkt2', 'mkt3', 'mkt4', 'mkt5', 'mkt6', 'mkt7', 'mkt8'];
+  const seedMarket = (ddPct) => MKTS.forEach((id) => seedDaily(id, mktSeries(ddPct)));
+  const addRisk = db.prepare(
+    "INSERT INTO assets (profile_id, coingecko_id, symbol, quantity, target_pct, is_index, basket_units) VALUES (1, ?, ?, 1, 50, 0, 1)"
+  );
+  const frozenOf = (sym) => db.prepare('SELECT buy_frozen FROM assets WHERE symbol = ?').get(sym).buy_frozen;
+  const findT = (ts, sym) => ts.find((t) => t.asset && t.asset.symbol === sym);
 
-  // Recovery to 25% dd (< 0.75 × 50% envelope = 37.5%): auto-unfreeze.
-  const recoveryPath = [...frozenPath, ...Array.from({ length: 120 }, (_, i) => 39 + i * 0.33)]; // back to ~79 ≈ 25% dd
-  seedDaily('bitcoin', recoveryPath);
-  pushLive(2, recoveryPath[recoveryPath.length - 1]);
+  // Scenario 1 — idiosyncratic collapse while the market is CALM: freeze.
+  db.prepare('DELETE FROM daily_prices').run();
+  addRisk.run('testcoin', 'tst');
+  seedDaily('testcoin', envDeclineSeries(72)); // 72% dd, past its 62.5% envelope
+  seedMarket(0); // calm market
+  let transitions = safety.evaluateFreezes();
+  ok(findT(transitions, 'tst') && findT(transitions, 'tst').kind === 'freeze', 'idiosyncratic collapse (calm market) freezes');
+  ok(/idiosyncratic/.test(findT(transitions, 'tst').reason), 'freeze reason names it idiosyncratic vs the market');
+  ok(frozenOf('tst') === 1, 'idiosyncratic freeze persisted');
+  ok(safety.evaluateFreezes().every((t) => !(t.asset && t.asset.symbol === 'tst')), 'freeze latched (no repeat)');
+
+  // Scenario 2 — the whole MARKET falls to the asset's level: the excess
+  // vanishes, so it UNFREEZES and rejoins harvesting (the core 3.5 win).
+  seedMarket(65); // market now ~65% down too; testcoin still ~72% -> excess ~7pp
   transitions = safety.evaluateFreezes();
-  ok(transitions.some((t) => t.kind === 'unfreeze' && t.asset.symbol === 'btc'), 'auto-unfreeze at 0.75× the trigger');
-  ok(db.prepare("SELECT buy_frozen FROM assets WHERE symbol = 'btc'").get().buy_frozen === 0, 'unfreeze persisted');
+  const un = findT(transitions, 'tst');
+  ok(un && un.kind === 'unfreeze', 'when the market catches up, the frozen asset unfreezes');
+  ok(un.via === 'caught up to the market', 'unfreeze attributed to catching up to the market (not absolute recovery)');
+  ok(frozenOf('tst') === 0, 'relative unfreeze persisted');
+
+  // Scenario 3 — an asset falling WITH a broad market never freezes at all
+  // (tandem drawdown keeps the pool trading).
+  db.prepare('DELETE FROM daily_prices').run();
+  addRisk.run('tandemcoin', 'tnd');
+  seedDaily('tandemcoin', envDeclineSeries(70));
+  seedMarket(66); // broad deep market from the start; excess ~4pp
+  transitions = safety.evaluateFreezes();
+  ok(!findT(transitions, 'tnd'), 'asset falling with the market is never frozen');
+  ok(frozenOf('tnd') === 0, 'tandem asset stays tradable');
+
+  // Scenario 4 — absolute catastrophe (>90%) freezes even inside a deep
+  // market crash, where the excess alone wouldn't trigger.
+  db.prepare('DELETE FROM daily_prices').run();
+  addRisk.run('deadcoin', 'ded');
+  seedDaily('deadcoin', envDeclineSeries(96));
+  seedMarket(92); // market also deep; excess only ~4pp -> not idiosyncratic
+  transitions = safety.evaluateFreezes();
+  ok(findT(transitions, 'ded') && findT(transitions, 'ded').kind === 'freeze', 'catastrophe freezes even when the market is also deep');
+  ok(/catastroph/i.test(findT(transitions, 'ded').reason), 'catastrophe backstop names itself');
+
+  // Scenario 5 — blended benchmark math: mean(BTC dd, median-of-universe dd),
+  // stablecoins excluded.
+  db.prepare('DELETE FROM daily_prices').run();
+  seedDaily('bitcoin', mktSeries(60)); // BTC 60% dd
+  ['m1', 'm2', 'm3'].forEach((id) => seedDaily(id, mktSeries(20))); // three at 20%
+  let md = safety.marketDrawdown();
+  ok(approx(md.btcPct, 60, 1e-6), 'BTC drawdown measured');
+  ok(approx(md.medianPct, 20, 1e-6), 'median across the universe');
+  ok(approx(md.blendPct, 40, 1e-6), 'blend = mean(BTC, median)');
+  ok(md.n === 4, 'benchmark set size counts every eligible coin');
+  seedDaily('tether', mktSeries(30)); // a stablecoin...
+  md = safety.marketDrawdown();
+  ok(md.n === 4, 'stablecoins are excluded from the benchmark');
 
   // --- depeg watch: latched both ways, valuation untouched ---
   exsource.usdPrices = async () => ({ tether: 0.965 });

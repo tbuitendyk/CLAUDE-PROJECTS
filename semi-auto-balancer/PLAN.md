@@ -268,22 +268,20 @@ Structural-break buy-freeze (`assets.buy_frozen`):
   dai…; 'usd'/'fiat:usd' have no market price — guarded). Raw fetched price
   vs $0.98–1.02; valuation stays pinned 1:1 — user decides.
 
-### Phase 3.5 — Market-relative freeze (requested 2026-07-18, NOT STARTED)
-The shipped rail is absolute/per-asset, so a BROAD market drawdown (all
-assets falling in tandem) freezes buys on everything at once — killing the
-rebalancing harvest exactly when mean-reversion is most valuable. Refine to
-freeze only IDIOSYNCRATIC decline (a name genuinely going to zero), keeping
-the pool trading through market-wide dips:
-- Market benchmark drawdown from broad daily-cache data (BTC beta proxy +
-  top-N median; blend, so BTC's own crash doesn't blind the reference).
-- Freeze only when BOTH: past the asset's own envelope AND idiosyncratically
-  deep (excess drawdown / new relative-strength lows vs the market). When
-  asset_dd ≈ market_dd, do NOT freeze.
-- Absolute-catastrophe backstop (~>90% dd) always freezes regardless.
-- Fast-crash becomes relative (a market-wide 40%/7d isn't a rug).
-- Terminal decliners still caught (sustained idiosyncratic new relative
-  lows). Depeg watch unaffected. New tests: tandem→none frozen, idiosyncratic
-  →frozen, catastrophe→always, terminal-in-mixed-market→frozen.
+### Phase 3.5 — Market-relative freeze (SHIPPED 2026-07-18, blend benchmark)
+Tests green (test-safety.js). `marketDrawdown()` blends BTC's drawdown with
+the MEDIAN drawdown across the cached universe (stablecoins/fiat excluded;
+BTC-only or absolute fallback when the cache is thin). The freeze now fires
+only on IDIOSYNCRATIC breakdown — `excess = asset_dd − market_dd ≥ 20pp`
+AND past the asset's own envelope (or a fast idiosyncratic crash) — with an
+absolute-catastrophe backstop (≥90% dd freezes regardless of the market).
+Auto-unfreeze when the drawdown eases (0.75× trigger) OR the asset catches
+back up to the market (excess < 0.6× the margin), so a name frozen for
+idiosyncratic weakness rejoins harvesting once the whole market falls to its
+level. A broad tandem drawdown now freezes NOTHING — the pool keeps
+trading — which was the whole point. Verified: idiosyncratic→frozen,
+market-catches-up→unfreeze, tandem→never frozen, catastrophe→always,
+blend math + stablecoin exclusion.
 
 ## Phase 4 — Target suggestions (composition advisor)
 **Status: not started**

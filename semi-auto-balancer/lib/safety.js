@@ -2,16 +2,25 @@ const db = require('./db');
 const { getDailyHistory } = require('./history');
 const exsource = require('./exsource');
 
-// Phase 3 safety rails.
+// Phase 3 + 3.5 safety rails.
 //
-// Structural-break buy-freeze: when an asset's current drawdown blows past
-// an envelope derived from its own recovered history — or it crashes ≥40%
-// inside 7 days — BUY alerts for it are suppressed AT THE ENGINE (they
-// neither email, nor mark alloc_alerts, nor consume the armed state).
-// SELLS are unaffected; unfreeze is automatic at 0.75× the trigger or
-// manual in the UI. Known, accepted false positives: Mar-2020-BTC-style
-// capitulations freeze buys mid-crash. Bounded: advisory-only, sells still
-// flow, one click to override.
+// Structural-break buy-freeze: BUY alerts for an asset are suppressed AT THE
+// ENGINE (they neither email, nor mark alloc_alerts, nor consume the armed
+// state) when it is IDIOSYNCRATICALLY breaking down — deep past its own
+// envelope AND falling materially harder than the broad market — or it
+// crashes ≥40% inside 7 days idiosyncratically, or it's an absolute
+// catastrophe (>90% drawdown). SELLS are unaffected.
+//
+// Phase 3.5 — market-relative gate: a BROAD market drawdown (everything
+// falling in tandem) must NOT freeze the whole pool, because that's exactly
+// when rebalancing harvest is most valuable — you want to keep buying the
+// relative losers and selling the relative winners. So the freeze compares
+// each asset's drawdown to a blended market benchmark (BTC + the median of
+// the cached universe) and only fires on the EXCESS. Assets falling with the
+// market stay tradable; only names genuinely going to zero freeze.
+// Auto-unfreeze when the drawdown eases (0.75× trigger) OR the asset catches
+// back up to the market (excess falls below 0.6× the margin); manual
+// override in the UI.
 //
 // Depeg watch: pegged coins with a real market quote drifting outside
 // $0.98–1.02. Valuation stays pinned 1:1 — the user decides what to do.
@@ -28,6 +37,11 @@ const MIN_EPISODE_DD = 0.2; // recovered drawdowns smaller than 20% carry no sig
 const FAST_CRASH_DROP = 0.4; // ≥40% down...
 const FAST_CRASH_DAYS = 7; // ...within 7 days
 const UNFREEZE_FRACTION = 0.75;
+// Phase 3.5 market-relative gate.
+const CATASTROPHE_PCT = 90; // absolute drawdown that freezes regardless of the market (dead is dead)
+const IDIO_MARGIN_PCT = 20; // must be this many pp DEEPER than the market to count as idiosyncratic
+const IDIO_RELEASE_FRAC = 0.6; // hysteresis: relative recovery releases once excess < 0.6× the margin
+const MIN_MARKET_N = 3; // fewer cached benchmark coins than this → fall back to BTC-only, else absolute
 const DEPEG_LOW = 0.98;
 const DEPEG_HIGH = 1.02;
 const DEPEG_EXIT_LOW = 0.99; // hysteresis: recover well inside the band
@@ -91,6 +105,47 @@ function currentStress(prices, livePrice) {
   return { currentDDPct, fastCrash };
 }
 
+// Blended market-drawdown benchmark (Phase 3.5) from the daily cache: BTC's
+// current drawdown averaged with the MEDIAN current drawdown across the
+// cached universe (held assets + composition candidates), excluding
+// stablecoins/fiat. In a tandem market drop both rise together, shrinking
+// every asset's EXCESS drawdown so nothing trips the relative freeze — the
+// pool keeps rebalancing. Median tempers the blend so BTC being the thing
+// crashing doesn't blind the reference. Network-free; uses cached data only.
+// Returns { blendPct, btcPct, medianPct, n }; blendPct null when the cache
+// is too thin to judge (caller then falls back to absolute behavior).
+function marketDrawdown() {
+  const peaks = db
+    .prepare('SELECT coingecko_id AS id, MAX(usd_price) AS hi, COUNT(*) AS n FROM daily_prices GROUP BY coingecko_id')
+    .all();
+  const lasts = db
+    .prepare(
+      `SELECT dp.coingecko_id AS id, dp.usd_price AS last FROM daily_prices dp
+         JOIN (SELECT coingecko_id, MAX(ts) AS mt FROM daily_prices GROUP BY coingecko_id) m
+           ON dp.coingecko_id = m.coingecko_id AND dp.ts = m.mt`
+    )
+    .all();
+  const lastById = new Map(lasts.map((r) => [r.id, r.last]));
+  const dds = [];
+  let btc = null;
+  for (const p of peaks) {
+    if (p.n < MIN_HISTORY_DAYS) continue;
+    if (p.id.startsWith('fiat:') || p.id === 'usd' || PEGGED_COINS.has(p.id)) continue;
+    const last = lastById.get(p.id);
+    if (!(p.hi > 0) || !(last > 0)) continue;
+    const dd = (1 - last / p.hi) * 100;
+    dds.push(dd);
+    if (p.id === 'bitcoin') btc = dd;
+  }
+  if (dds.length === 0) return { blendPct: btc, btcPct: btc, medianPct: null, n: 0 };
+  dds.sort((a, b) => a - b);
+  const median = dds[Math.floor(dds.length / 2)];
+  let blend;
+  if (dds.length < MIN_MARKET_N) blend = btc != null ? btc : median;
+  else blend = btc != null ? (btc + median) / 2 : median;
+  return { blendPct: blend, btcPct: btc, medianPct: median, n: dds.length };
+}
+
 // Evaluate freeze/unfreeze transitions for every alertable asset. Reads the
 // daily cache (refreshed by the scheduler's daily task) and each asset's
 // latest polled price; makes NO network calls of its own. Returns the
@@ -102,6 +157,11 @@ function evaluateFreezes() {
   const latestPrice = db.prepare(
     'SELECT usd_price FROM price_history WHERE asset_id = ? ORDER BY ts DESC LIMIT 1'
   );
+  // One market benchmark for the whole pass. Null blend (thin cache) → treat
+  // the market as 0%, which reduces the relative gate to the old absolute
+  // rule — safe when we lack the breadth to judge "with the market".
+  const market = marketDrawdown();
+  const marketDD = market.blendPct != null ? market.blendPct : 0;
   const transitions = [];
   for (const a of assets) {
     if (a.coingecko_id === 'usd' || a.coingecko_id === 'fiat:usd') continue;
@@ -114,28 +174,48 @@ function evaluateFreezes() {
     const envelope = computeEnvelope(prices);
     const { currentDDPct, fastCrash } = currentStress(prices, live ? live.usd_price : null);
 
+    const excessDD = currentDDPct - marketDD; // how much deeper than the market
+    const idiosyncratic = excessDD >= IDIO_MARGIN_PCT;
+    const catastrophe = currentDDPct >= CATASTROPHE_PCT;
     const envelopeHit = envelope != null && currentDDPct >= envelope;
-    const shouldFreeze = envelopeHit || fastCrash;
+    // Only idiosyncratic breakdowns freeze; a catastrophe freezes regardless
+    // (dead is dead). Assets falling WITH the market stay tradable.
+    const shouldFreeze = catastrophe || (envelopeHit && idiosyncratic) || (fastCrash && idiosyncratic);
 
     if (!a.buy_frozen && shouldFreeze) {
-      const reason = fastCrash && !envelopeHit
-        ? `fast crash: ≥${FAST_CRASH_DROP * 100}% inside ${FAST_CRASH_DAYS} days`
-        : `drawdown ${currentDDPct.toFixed(0)}% breached the ${envelope.toFixed(0)}% envelope (1.25× deepest recovered drawdown)`;
+      let reason;
+      if (catastrophe && !(envelopeHit && idiosyncratic) && !(fastCrash && idiosyncratic)) {
+        reason = `catastrophic drawdown ${currentDDPct.toFixed(0)}% (past the ${CATASTROPHE_PCT}% backstop, frozen regardless of the market)`;
+      } else if (fastCrash && !(envelopeHit && idiosyncratic)) {
+        reason = `fast idiosyncratic crash: ≥${FAST_CRASH_DROP * 100}% in ${FAST_CRASH_DAYS} days, ${excessDD.toFixed(0)}pp deeper than the market (${marketDD.toFixed(0)}%)`;
+      } else {
+        reason = `drawdown ${currentDDPct.toFixed(0)}% is ${excessDD.toFixed(0)}pp deeper than the market (${marketDD.toFixed(0)}%) and past the ${envelope.toFixed(0)}% envelope — idiosyncratic decline`;
+      }
       db.prepare('UPDATE assets SET buy_frozen = 1, frozen_at = ?, freeze_reason = ? WHERE id = ?').run(
         Date.now(),
         reason,
         a.id
       );
-      transitions.push({ kind: 'freeze', asset: a, reason, currentDDPct, envelope });
-    } else if (a.buy_frozen && !shouldFreeze) {
-      // Auto-unfreeze at 0.75× the trigger. Envelope freezes release when
-      // the drawdown eases below 0.75× the envelope; fast-crash-only
-      // freezes (no envelope) release when the crash condition clears and
-      // the drawdown from the trailing high eases below 0.75× the crash size.
-      const releaseAt = envelope != null ? envelope * UNFREEZE_FRACTION : FAST_CRASH_DROP * 100 * UNFREEZE_FRACTION;
-      if (currentDDPct <= releaseAt) {
+      transitions.push({ kind: 'freeze', asset: a, reason, currentDDPct, envelope, marketDD, excessDD });
+    } else if (a.buy_frozen) {
+      // Auto-unfreeze (never while still a catastrophe) when EITHER the
+      // absolute drawdown eases below 0.75× the trigger, OR the asset has
+      // caught back up to the market (excess fell below 0.6× the margin) —
+      // i.e. it's now moving WITH the market, so harvesting should resume.
+      const stillCatastrophe = currentDDPct >= CATASTROPHE_PCT;
+      const absReleaseAt = envelope != null ? envelope * UNFREEZE_FRACTION : FAST_CRASH_DROP * 100 * UNFREEZE_FRACTION;
+      const absReleased = currentDDPct <= absReleaseAt;
+      const relReleased = excessDD <= IDIO_MARGIN_PCT * IDIO_RELEASE_FRAC;
+      if (!shouldFreeze && !stillCatastrophe && (absReleased || relReleased)) {
         db.prepare('UPDATE assets SET buy_frozen = 0, frozen_at = NULL, freeze_reason = NULL WHERE id = ?').run(a.id);
-        transitions.push({ kind: 'unfreeze', asset: a, currentDDPct, releaseAt });
+        transitions.push({
+          kind: 'unfreeze',
+          asset: a,
+          currentDDPct,
+          marketDD,
+          excessDD,
+          via: relReleased && !absReleased ? 'caught up to the market' : 'drawdown eased',
+        });
       }
     }
   }
@@ -178,11 +258,14 @@ function noticeText(t) {
     case 'freeze':
       return (
         `SAFETY: BUY alerts for ${sym} are FROZEN — ${t.reason}. ` +
-        `Sells still alert normally. Auto-unfreezes when the drawdown eases (0.75× trigger), or unfreeze manually in the app. ` +
+        `Sells still alert normally. Auto-unfreezes when it recovers or catches back up to the market, or unfreeze manually in the app. ` +
         `Advisory only: nothing was traded.`
       );
     case 'unfreeze':
-      return `SAFETY: ${sym} buy-freeze LIFTED — drawdown eased to ${t.currentDDPct.toFixed(0)}% (release at ${t.releaseAt.toFixed(0)}%). BUY alerts flow again.`;
+      return (
+        `SAFETY: ${sym} buy-freeze LIFTED (${t.via}) — drawdown ${t.currentDDPct.toFixed(0)}% vs market ${t.marketDD.toFixed(0)}% ` +
+        `(now ${t.excessDD.toFixed(0)}pp off the market). BUY alerts flow again.`
+      );
     case 'depeg':
       return (
         `SAFETY: ${sym} is trading at $${t.price.toFixed(4)} — outside the $${DEPEG_LOW.toFixed(2)}–${DEPEG_HIGH.toFixed(2)} peg band. ` +
@@ -198,6 +281,7 @@ function noticeText(t) {
 module.exports = {
   evaluateFreezes,
   evaluateDepegs,
+  marketDrawdown,
   computeEnvelope,
   drawdownEpisodes,
   currentStress,
