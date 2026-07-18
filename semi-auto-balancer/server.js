@@ -18,6 +18,7 @@ const {
 } = require('./lib/balancer');
 const { getJob, startJob, latestResult } = require('./lib/jobs');
 const { runTuneSweep, computeTargetsHash } = require('./lib/backtest');
+const { runComposeSearch } = require('./lib/compose');
 const { sendAlertEvents, sendStatusReport, sendTestEmail, emailConfigured } = require('./lib/mailer');
 const { searchCoins, supportedFiats, fiatCode } = require('./lib/pricing');
 const { visionConfigured, parseHoldingsScreenshot } = require('./lib/vision');
@@ -302,7 +303,23 @@ app.get('/api/profiles/:id/state', (req, res) => {
       .prepare("SELECT id, ts, kind, code, asset_id, amount FROM pending_flows WHERE profile_id = ? AND status = 'pending' ORDER BY ts")
       .all(profile.id),
     latestTune: latestResult(profile.id, 'tune-threshold'),
+    latestCompose: latestResult(profile.id, 'compose'),
   });
+});
+
+// ---- composition search (Phase 2.75) ----------------------------------------
+
+// Start the empirical mix search as a job. Body knobs (all optional):
+// days (window, default 720), samples (default 3000, cap 20000),
+// candidates (top-N size, default 40), seed (reproducibility).
+app.post('/api/profiles/:id/compose', (req, res) => {
+  const profile = db.prepare('SELECT * FROM profiles WHERE id = ?').get(req.params.id);
+  if (!profile) return res.status(404).json({ error: 'not found' });
+  const body = req.body || {};
+  const jobId = startJob('compose', profile.id, (setProgress) =>
+    runComposeSearch(profile.id, body, setProgress)
+  );
+  res.json({ ok: true, jobId });
 });
 
 // ---- threshold sweep (Phase 2) ----------------------------------------------

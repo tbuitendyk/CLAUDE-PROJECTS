@@ -332,6 +332,9 @@ function renderDetail() {
   // sensitivity tuner: last persisted sweep result
   renderTune(d.latestTune, profile);
 
+  // composition lab: last persisted mix search
+  renderCompose(d.latestCompose);
+
   // notifications: state machine status, toggle, recipients
   const rearmAt = profile.notify_state_at
     ? new Date(profile.notify_state_at + 12 * 3600 * 1000).toLocaleString()
@@ -708,6 +711,85 @@ $('#tune-run').addEventListener('click', async () => {
   } catch (err) {
     $('#tune-run').disabled = false;
     $('#tune-status').textContent = err.message;
+  }
+});
+
+// ---- composition lab (Phase 2.75) ----
+
+function mixLabel(assets) {
+  return assets
+    .map((a) => `${a.symbol.toUpperCase()}${a.isIndex ? '⚓' : ''} ${a.pct}%`)
+    .join(' · ');
+}
+
+function renderCompose(latest) {
+  const box = $('#c-result');
+  if (!latest || !latest.result) {
+    box.classList.add('hidden');
+    return;
+  }
+  const r = latest.result;
+  box.classList.remove('hidden');
+  $('#c-caveat').textContent = r.caveat || '';
+
+  const tbody = $('#c-table tbody');
+  tbody.innerHTML = '';
+  const addRow = (label, row, highlight) => {
+    const tr = document.createElement('tr');
+    if (highlight) tr.classList.add('index-row');
+    tr.innerHTML =
+      `<td>${label}</td>` +
+      `<td>${fmtPct(row.train.score)}</td>` +
+      `<td><strong>${row.oos.value != null ? (row.oos.value >= 0 ? '+' : '') + row.oos.value.toFixed(2) + '%' : '—'}</strong></td>` +
+      `<td>${fmtPct(row.oos.hold)}</td>` +
+      `<td>${row.oos.dd != null ? row.oos.dd.toFixed(1) + '%' : '—'}</td>` +
+      `<td>${row.oos.x != null ? row.oos.x + '%' : 'hold'}</td>` +
+      `<td>${row.oos.trades}</td>`;
+    tbody.appendChild(tr);
+  };
+  if (r.currentMix) addRow(`CURRENT: ${mixLabel(r.currentMix.assets)}`, r.currentMix, true);
+  for (const m of r.mixes) addRow(mixLabel(m.assets), m, false);
+
+  const w = r.window || {};
+  const u = r.universe || {};
+  $('#c-stamp').textContent =
+    `Searched ${new Date(latest.createdAt).toLocaleString()} · ${r.evaluatedMixes} unique mixes evaluated · ` +
+    `universe ${u.covered}/${u.considered} candidates with full-window history` +
+    (u.heldExcludedFrozen ? ` (${u.heldExcludedFrozen} held asset(s) excluded: buy-frozen)` : '') +
+    ` · window ${w.from ? new Date(w.from).toISOString().slice(0, 10) : '?'} → ${w.to ? new Date(w.to).toISOString().slice(0, 10) : '?'}` +
+    ` · out-of-sample from ${w.splitAt ? new Date(w.splitAt).toISOString().slice(0, 10) : '?'} (${w.oosBars} bars).`;
+}
+
+let composePoll = null;
+$('#c-run').addEventListener('click', async () => {
+  $('#c-run').disabled = true;
+  $('#c-status').textContent = 'starting…';
+  try {
+    const { jobId } = await api(`/profiles/${state.selectedId}/compose`, {
+      method: 'POST',
+      body: { samples: Number($('#c-intensity').value) },
+    });
+    clearInterval(composePoll);
+    composePoll = setInterval(async () => {
+      try {
+        const job = await api(`/jobs/${jobId}`);
+        if (job.status === 'running') {
+          $('#c-status').textContent = job.progress || 'running…';
+        } else {
+          clearInterval(composePoll);
+          $('#c-run').disabled = false;
+          $('#c-status').textContent = job.status === 'done' ? '' : `failed: ${job.error}`;
+          if (job.status === 'done') await refresh();
+        }
+      } catch (err) {
+        clearInterval(composePoll);
+        $('#c-run').disabled = false;
+        $('#c-status').textContent = err.message;
+      }
+    }, 2000);
+  } catch (err) {
+    $('#c-run').disabled = false;
+    $('#c-status').textContent = err.message;
   }
 });
 

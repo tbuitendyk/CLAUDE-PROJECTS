@@ -110,6 +110,38 @@
               </div>
             </div>
 
+            <div id="compose-section">
+              <h3>Composition lab (mix search)</h3>
+              <p class="muted">Searches thousands of asset groups and target-weight combinations
+                (your holdings + the top market-cap candidates with full-window history) for mixes
+                where rebalancing genuinely beats holding. Ranked by the <strong>out-of-sample</strong>
+                window the search never optimized on. Advisory only — adopting a mix means adding the
+                assets and using "Set new targets" yourself.</p>
+              <div class="inline">
+                <button id="c-run">Run search</button>
+                <label class="muted">intensity
+                  <select id="c-intensity">
+                    <option value="1500">quick</option>
+                    <option value="3000" selected>standard</option>
+                    <option value="8000">intensive</option>
+                  </select>
+                </label>
+                <span id="c-status" class="muted"></span>
+              </div>
+              <div id="c-result" class="hidden">
+                <p id="c-caveat" class="warn-text"></p>
+                <div class="table-wrap">
+                  <table id="c-table">
+                    <thead>
+                      <tr><th>Mix (targets)</th><th title="Worse of the two train halves — robustness score">Train</th><th title="Held-out window the search never saw — the column that matters">Out-of-sample</th><th>OOS hold</th><th>Max DD</th><th title="Best sensitivity in the mini-sweep (null = mix works best held)">X</th><th>Trades</th></tr>
+                    </thead>
+                    <tbody></tbody>
+                  </table>
+                </div>
+                <p id="c-stamp" class="muted"></p>
+              </div>
+            </div>
+
             <div id="flow-section">
               <h3>Deposit / withdraw</h3>
               <p class="muted">Record external money in or out. Enter a signed change per asset (e.g. <code>+5000</code> deposited, <code>-0.05</code> withdrawn). The currency basket and value performance stay continuous — deposits and withdrawals are not counted as gains.</p>
