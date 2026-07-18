@@ -36,15 +36,31 @@ if (tune && tune.r) {
 const comp = latest('compose');
 if (comp && comp.r) {
   const r = comp.r;
-  console.log(`\n== COMPOSE @ ${new Date(comp.at).toISOString()} ==`);
+  const f2 = (v) => (Number.isFinite(v) ? v.toFixed(2) : '?');
+  const win = (o) => o ? `${f2(o.value)}(hold${f2(o.hold)})x${o.x==null?'-':o.x}` : '?';
+  // Mode-polymorphic mix line: REGIME (deep venues) shows per-type edges +
+  // worst/avg; FOLDS (shallow venues) shows walk-forward fold harvest.
+  const mixLine = (m) => {
+    const a = m.assets.map(x=>x.symbol+':'+x.pct).join(' ');
+    const flag = m.recommended ? '★' : ' ';
+    if (m.mode === 'regime') {
+      const pt = m.perType || {};
+      const types = ['bull','bear','range'].filter(t=>pt[t]!=null).map(t=>`${t.slice(0,2)}${f2(pt[t])}`).join(' ');
+      return `${flag}${a} | types ${m.typesPositive}/${m.typesPresent} [${types}] worst=${f2(m.consistency)} avg=${f2(m.average)} hold=${win(m.holdout)} full=${win(m.full)}`;
+    }
+    return `${flag}${a} | folds ${m.positiveFolds}/${m.nFolds} [${(m.foldEdges||[]).map(f2).join(',')}] hold=${win(m.holdout)} full=${win(m.full)}`;
+  };
+  console.log(`\n== COMPOSE @ ${new Date(comp.at).toISOString()} mode=${r.mode}${r.noHarvest?' NO-HARVEST':''} ==`);
   console.log(`combos=${JSON.stringify(r.combos)} window=${JSON.stringify(r.window)}`);
   const u=r.universe||{}; console.log(`universe covered=${u.covered}/${u.considered} venue=${u.venue} windowDays=${u.windowDays} notOnVenue=[${(u.notOnVenue||[]).join(',')}]`);
+  if (r.regime) console.log(`regime byType=${JSON.stringify(r.regime.byType)}`);
+  for (const wmsg of r.warnings||[]) console.log('warn:', wmsg);
   if (r.screen) {
     console.log('kept:  '+r.screen.filter(s=>s.kept).map(s=>`${s.symbol}:${s.soloTrain.toFixed(1)}`).join(' '));
     console.log('weeded:'+r.screen.filter(s=>!s.kept).map(s=>`${s.symbol}:${s.soloTrain.toFixed(1)}`).join(' '));
   }
-  if (r.currentMix) { const c=r.currentMix; console.log(`CURRENT ${c.assets.map(a=>a.symbol+':'+a.pct).join(' ')} | trainWorst=${c.train.score.toFixed(2)} halves=[${c.train.halves.map(h=>h.value.toFixed(1)+'@x'+h.x).join(',')}] oos=${c.oos.value.toFixed(2)}(hold${c.oos.hold.toFixed(2)})x=${c.oos.x} full=${c.full.value.toFixed(2)}(hold${c.full.hold.toFixed(2)})x=${c.full.x}`); }
-  for (const m of (r.mixes||[]).slice(0,10)) console.log(`MIX ${m.assets.map(a=>a.symbol+':'+a.pct).join(' ')} | trainWorst=${m.train.score.toFixed(2)} oos=${m.oos.value.toFixed(2)}(hold${m.oos.hold.toFixed(2)})x=${m.oos.x} full=${m.full.value.toFixed(2)}x=${m.full.x} trades=${m.oos.trades}`);
+  if (r.currentMix) console.log('CURRENT(ref) '+mixLine(r.currentMix));
+  for (const m of (r.mixes||[]).slice(0,10)) console.log('MIX '+mixLine(m));
 }
 JS
   exit 0
@@ -122,24 +138,41 @@ console.log('== latest compose (composition lab) results ==');
 const composeRows = db.prepare(
   "SELECT profile_id, created_at, result FROM analysis_results WHERE kind = 'compose' AND id IN (SELECT MAX(id) FROM analysis_results WHERE kind = 'compose' GROUP BY profile_id)"
 ).all();
-for (const row of composeRows) {
-  let r = null;
-  try { r = JSON.parse(row.result || 'null'); } catch {}
-  if (!r) continue;
-  const u = r.universe || {};
-  const w = r.window || {};
-  console.log(`-- profile ${row.profile_id} @ ${new Date(row.created_at).toISOString()}`);
-  console.log(`   combos: ${JSON.stringify(r.combos)} · universe ${u.covered}/${u.considered} venue=${u.venue} notOnVenue=[${(u.notOnVenue||[]).join(',')}] windowDays=${u.windowDays}`);
-  console.log(`   window: bars=${w.bars} train=${w.trainBars} oos=${w.oosBars} split=${w.splitAt ? new Date(w.splitAt).toISOString().slice(0,10) : '?'}`);
-  if (r.screen) {
-    console.log('   screen kept: ' + r.screen.filter(s=>s.kept).map(s=>`${s.symbol}:${s.soloTrain.toFixed(1)}`).join(' '));
-    console.log('   screen weeded: ' + r.screen.filter(s=>!s.kept).map(s=>`${s.symbol}:${s.soloTrain.toFixed(1)}`).join(' '));
-  }
-  if (r.currentMix) {
-    console.log(`   CURRENT mix: ${r.currentMix.assets.map(a=>a.symbol+':'+a.pct).join(' ')} | train=${r.currentMix.train.score.toFixed(2)} oos=${r.currentMix.oos.value.toFixed(2)} (hold ${r.currentMix.oos.hold.toFixed(2)}) x=${r.currentMix.oos.x} | full=${r.currentMix.full ? r.currentMix.full.value.toFixed(2) : '?'} (hold ${r.currentMix.full ? r.currentMix.full.hold.toFixed(2) : '?'}) x=${r.currentMix.full ? r.currentMix.full.x : '?'}`);
-  }
-  for (const m of (r.mixes || []).slice(0, 8)) {
-    console.log(`   mix: ${m.assets.map(a=>a.symbol+':'+a.pct).join(' ')} | train=${m.train.score.toFixed(2)} oos=${m.oos.value.toFixed(2)} (hold ${m.oos.hold.toFixed(2)}) x=${m.oos.x} dd=${m.oos.dd.toFixed(1)} trades=${m.oos.trades}`);
+{
+  const f2 = (v) => (Number.isFinite(v) ? v.toFixed(2) : '?');
+  const day = (ts) => (ts ? new Date(ts).toISOString().slice(0, 10) : '?');
+  const win = (o) => (o ? `${f2(o.value)}(hold${f2(o.hold)},edge${f2(o.edge)})x${o.x == null ? '-' : o.x}` : '?');
+  // Mode-polymorphic mix line: REGIME (deep venues, e.g. Kraken 4y) reports
+  // per-market-type edges + worst(consistency)/avg; FOLDS (shallow venues,
+  // e.g. Bitso) reports walk-forward fold harvest. ★ = recommended.
+  const mixLine = (m) => {
+    const a = m.assets.map((x) => x.symbol + ':' + x.pct).join(' ');
+    const flag = m.recommended ? '★' : ' ';
+    if (m.mode === 'regime') {
+      const pt = m.perType || {};
+      const types = ['bull', 'bear', 'range'].filter((t) => pt[t] != null).map((t) => `${t.slice(0,2)}${f2(pt[t])}`).join(' ');
+      return `${flag}${a} | types ${m.typesPositive}/${m.typesPresent} [${types}] worst=${f2(m.consistency)} avg=${f2(m.average)} | hold=${win(m.holdout)} full=${win(m.full)}`;
+    }
+    return `${flag}${a} | folds ${m.positiveFolds}/${m.nFolds} edges[${(m.foldEdges || []).map(f2).join(',')}] | hold=${win(m.holdout)} full=${win(m.full)}`;
+  };
+  for (const row of composeRows) {
+    let r = null;
+    try { r = JSON.parse(row.result || 'null'); } catch {}
+    if (!r) continue;
+    const u = r.universe || {};
+    const w = r.window || {};
+    console.log(`-- profile ${row.profile_id} @ ${new Date(row.created_at).toISOString()} mode=${r.mode}${r.noHarvest ? ' NO-HARVEST' : ''}`);
+    console.log(`   combos: ${JSON.stringify(r.combos)} · universe ${u.covered}/${u.considered} venue=${u.venue} notOnVenue=[${(u.notOnVenue||[]).join(',')}] windowDays=${u.windowDays}`);
+    console.log(`   window: bars=${w.bars} inSample=${w.inSampleBars} holdout=${w.holdoutBars} folds=${w.nFolds} from=${day(w.from)} holdoutFrom=${day(w.holdoutFrom)}`);
+    if (r.regime) console.log(`   regime byType: ${JSON.stringify(r.regime.byType)} swaths=${(r.regime.swaths||[]).map(s=>s.label[0]+s.days).join(' ')}`);
+    for (const wmsg of r.warnings || []) console.log('   warn:', wmsg);
+    if (r.screen) {
+      console.log('   screen kept: ' + r.screen.filter(s=>s.kept).map(s=>`${s.symbol}:${s.soloTrain.toFixed(1)}`).join(' '));
+      const weeded = r.screen.filter(s=>!s.kept);
+      if (weeded.length) console.log('   screen weeded: ' + weeded.map(s=>`${s.symbol}:${s.soloTrain.toFixed(1)}`).join(' '));
+    }
+    if (r.currentMix) console.log('   CURRENT (ref): ' + mixLine(r.currentMix));
+    for (const m of (r.mixes || []).slice(0, 8)) console.log('   ' + mixLine(m));
   }
 }
 
