@@ -4,6 +4,9 @@ const { sendAlertEvents, sendSafetyNotice } = require('./mailer');
 const { syncDueAccounts } = require('./sync');
 const safety = require('./safety');
 const { getDailyHistory } = require('./history');
+const hourlyData = require('./hourly');
+
+let hourlyCollectRunning = false;
 
 // Daily-cache freshness for the safety rails: the freeze envelope reads
 // daily closes from the cache, so active assets get one top-up per day
@@ -79,6 +82,27 @@ function startScheduler() {
       await runSafetyChecks();
     } catch (err) {
       console.error('Safety check failed:', err.message);
+    }
+    // Hourly cache top-ups, ~once a day per asset through each one's
+    // persisted source. Guarded so a slow first backfill can't overlap
+    // itself across ticks.
+    if (!hourlyCollectRunning && hourlyData.collectDue()) {
+      hourlyCollectRunning = true;
+      hourlyData
+        .collectHourly()
+        .then((r) => {
+          const filled = r.filter((x) => x.rows > 0);
+          if (filled.length > 0) {
+            console.log(
+              `[${new Date().toISOString()}] hourly top-up: ` +
+                filled.map((x) => `${x.id}+${x.rows}(${x.source})`).join(' ')
+            );
+          }
+        })
+        .catch((err) => console.error('Hourly collect failed:', err.message))
+        .finally(() => {
+          hourlyCollectRunning = false;
+        });
     }
   };
   tick();

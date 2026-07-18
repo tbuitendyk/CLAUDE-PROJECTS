@@ -168,33 +168,49 @@ async function usdFiatRate(code) {
   return last ? 1 / last : null;
 }
 
-const DAY_MS = 86_400_000;
-
-// Daily closes for a book since a ms timestamp, via the undocumented OHLC
-// endpoint (multi-year depth verified). Buckets start at Mexico City
-// midnight (06:00 UTC) — normalized to the UTC day, an accepted ~6h skew.
-// invert=true returns 1/close (usd_mxn book -> USD-per-MXN series).
-async function dailyCloses(book, sinceMs, { invert = false } = {}) {
+// Closes for a book at a bucket size since a ms timestamp, via the
+// undocumented OHLC endpoint — multi-year depth verified for daily AND
+// hourly (17.5k hourly rows in one call). Buckets normalized to the UTC
+// bucket boundary (daily buckets start at Mexico City midnight, an accepted
+// ~6h skew). invert=true returns 1/close (usd_mxn -> USD-per-MXN).
+async function ohlcCloses(book, bucketSeconds, sinceMs, { invert = false } = {}) {
+  const bucketMs = bucketSeconds * 1000;
   const start = Math.max(0, sinceMs || 0);
   const url =
     `${WEB}/api/v3/ohlc?book=${encodeURIComponent(book)}` +
-    `&time_bucket=86400&start=${start}&end=${Date.now()}`;
+    `&time_bucket=${bucketSeconds}&start=${start}&end=${Date.now()}`;
   const rows = await publicJson(url);
-  const byDay = new Map();
+  const byBucket = new Map();
   for (const r of rows || []) {
     const close = Number(r.last_rate);
     if (!(close > 0)) continue;
-    const day = Math.floor(Number(r.bucket_start_time) / DAY_MS) * DAY_MS;
-    byDay.set(day, invert ? 1 / close : close);
+    const t = Math.floor(Number(r.bucket_start_time) / bucketMs) * bucketMs;
+    byBucket.set(t, invert ? 1 / close : close);
   }
-  return byDay;
+  return byBucket;
+}
+
+const dailyCloses = (book, sinceMs, opts = {}) => ohlcCloses(book, 86_400, sinceMs, opts);
+const hourlyCloses = (book, sinceMs, opts = {}) => ohlcCloses(book, 3_600, sinceMs, opts);
+
+// Tradable books, cached daily — the hourly collector discovers which
+// assets Bitso can serve deep history for (SYM_usd / usd_<fiat> books).
+let booksCache = null;
+async function availableBooks() {
+  if (booksCache && Date.now() - booksCache.at < 24 * 3600e3) return booksCache.books;
+  const p = await publicJson(`${API}/v3/available_books/`);
+  booksCache = { at: Date.now(), books: (p || []).map((b) => b.book) };
+  return booksCache.books;
 }
 
 module.exports = {
   makeClient,
   tickerLast,
   usdFiatRate,
+  ohlcCloses,
   dailyCloses,
+  hourlyCloses,
+  availableBooks,
   normalizeTrade,
   normalizeFlow,
   USD_FIAT_BOOKS,

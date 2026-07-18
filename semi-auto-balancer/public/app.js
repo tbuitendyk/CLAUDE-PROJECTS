@@ -704,7 +704,7 @@ function renderTune(latest, profile) {
   const s = r.stamp || {};
   $('#tune-stamp').textContent =
     `Swept ${new Date(latest.createdAt).toLocaleString()} · ${s.assets ? s.assets.map((x) => x.toUpperCase()).join('/') : ''} · ` +
-    `${s.bars} daily bars (${s.dataFrom ? new Date(s.dataFrom).toISOString().slice(0, 10) : '?'} → ` +
+    `${s.bars} ${s.granularity === 'hourly' ? 'hourly' : 'daily'} bars (${s.dataFrom ? new Date(s.dataFrom).toISOString().slice(0, 10) : '?'} → ` +
     `${s.dataTo ? new Date(s.dataTo).toISOString().slice(0, 10) : '?'}) · fee ${s.feePct}%/leg + spread ${s.spreadPct}% · ` +
     `execution lag ${s.lagHours}h · Apply refuses if targets or costs have changed since.`;
 }
@@ -714,7 +714,10 @@ $('#tune-run').addEventListener('click', async () => {
   $('#tune-run').disabled = true;
   $('#tune-status').textContent = 'starting…';
   try {
-    const { jobId } = await api(`/profiles/${state.selectedId}/tune-threshold`, { method: 'POST', body: {} });
+    const { jobId } = await api(`/profiles/${state.selectedId}/tune-threshold`, {
+      method: 'POST',
+      body: { granularity: $('#tune-gran').value, lag_hours: Number($('#tune-lag').value) },
+    });
     clearInterval(tunePoll);
     tunePoll = setInterval(async () => {
       try {

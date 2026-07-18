@@ -105,6 +105,19 @@ CREATE TABLE IF NOT EXISTS settings (
   value TEXT
 );
 
+-- Hourly price cache (Phase 2.5). Filled fully automatically by
+-- lib/hourly.js — Bitso serves years in one call, Binance's public data
+-- portal backfills the rest in minutes, Kraken raw trades rebuild candles
+-- for anything neither lists, CoinGecko's 90-day hourly is the stopgap.
+-- One source per asset (persisted) so a series never mixes venues across
+-- time; INSERT OR REPLACE self-corrects the trailing partial candle.
+CREATE TABLE IF NOT EXISTS hourly_prices (
+  coingecko_id TEXT NOT NULL,
+  ts INTEGER NOT NULL,
+  usd_price REAL NOT NULL,
+  PRIMARY KEY (coingecko_id, ts)
+);
+
 -- CoinGecko monthly call ledger: the demo tier's binding constraint is
 -- 10,000 calls/month, so every request (success or error) is counted.
 CREATE TABLE IF NOT EXISTS cg_ledger (

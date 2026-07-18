@@ -219,27 +219,42 @@ async function tickerUsd(pairKeys) {
   return out;
 }
 
-// Daily closes for a pair since a ms timestamp (0 = as deep as Kraken serves,
-// ~720 days). Candle time is the 00:00 UTC bucket start; the trailing candle
-// is the in-progress day and self-corrects on the next fetch (INSERT OR
+// Closes for a pair at an interval since a ms timestamp. Kraken caps every
+// interval at 721 candles (daily ≈ 2y, hourly = 30d); the trailing candle
+// is the in-progress bucket and self-corrects on the next fetch (INSERT OR
 // REPLACE in the cache).
-async function dailyCloses(pairKey, sinceMs = 0) {
+async function ohlcCloses(pairKey, intervalMin, sinceMs = 0) {
   const since = Math.max(0, Math.floor(sinceMs / 1000));
-  const r = await publicJson(`OHLC?pair=${encodeURIComponent(pairKey)}&interval=1440&since=${since}`);
+  const r = await publicJson(`OHLC?pair=${encodeURIComponent(pairKey)}&interval=${intervalMin}&since=${since}`);
   const key = Object.keys(r).find((k) => k !== 'last');
-  const byDay = new Map();
+  const byBucket = new Map();
   for (const row of r[key] || []) {
     const close = Number(row[4]);
-    if (close > 0) byDay.set(Number(row[0]) * 1000, close);
+    if (close > 0) byBucket.set(Number(row[0]) * 1000, close);
   }
-  return byDay;
+  return byBucket;
+}
+
+const dailyCloses = (pairKey, sinceMs = 0) => ohlcCloses(pairKey, 1440, sinceMs);
+const hourlyCloses = (pairKey, sinceMs = 0) => ohlcCloses(pairKey, 60, sinceMs);
+
+// Raw public trades, one page (<=1000) from a nanosecond cursor. The hourly
+// backfill rebuilds candles from these when neither Bitso nor Binance lists
+// the asset — slow but documented, keyless, and it goes back to inception.
+async function tradesPage(pairKey, sinceNs) {
+  const r = await publicJson(`Trades?pair=${encodeURIComponent(pairKey)}&since=${sinceNs || 0}`);
+  const key = Object.keys(r).find((k) => k !== 'last');
+  return { trades: r[key] || [], last: r.last || null };
 }
 
 module.exports = {
   makeClient,
   pairForSymbol,
   tickerUsd,
+  ohlcCloses,
   dailyCloses,
+  hourlyCloses,
+  tradesPage,
   normalizeCode,
   normalizeTrade,
   normalizeLedgerFlow,

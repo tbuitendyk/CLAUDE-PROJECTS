@@ -151,20 +151,34 @@ adjacent-X difference) per metric — because single-path backtests are lumpy
 trade-timing alone) and differences below the wobble are seed noise.
 
 ## Phase 2.5 — Hourly-granularity backtests
-**Status: queued (design set, data verified).** Same simulator, uniform
-hourly bars (no mixed granularity — breach density jumps 24× at a splice).
-Sources verified live 2026-07-18: Bitso's OHLC endpoint serves FULL
-multi-year hourly in ONE call (17,521 rows / 2y confirmed); Kraken live
-OHLC hourly is 30 days (721-candle cap) — deeper Kraken hourly comes from
-the bulk OHLCVT 60-min CSVs (import script grows an interval flag) or
-accrues live. Needs an hourly_prices cache beside daily_prices. lagHours
-becomes honest (6h = 6 bars; a 1h "trade within the hour" scenario knob).
-Expectation to verify, not assume: tight-X trade counts and fees explode
-(daily bars hide intraday round trips); extra harvest is real only where
-intraday mean reversion survives ~0.5%/leg costs.
+**Status: SHIPPED (tests green: test-hourly.js).** Fully automatic
+acquisition, NO manual downloads and no accrual wait — hourly_prices fills
+years deep on first use via a per-asset source ladder (persisted per asset
+so a series never mixes venues): (1) Bitso *_usd / usd_<fiat> books —
+multi-year hourly in ONE call; (2) Binance public data portal — monthly 1h
+kline zips (minimal in-repo zip reader, ms AND 2025+ microsecond
+timestamps handled) + REST mirrors (api.binance.vision → api.binance.com
+fallback; symbol existence provable from the portal alone when REST is
+blocked) — verified live: FILUSDT/QTUMUSDT/SCUSDT all covered; (3) Kraken
+raw-trades candle rebuild (resumable background job, keyless, back to
+inception) for anything neither lists; (4) CoinGecko 90d hourly stopgap.
+Daily top-ups in the scheduler keep series current. The threshold sweep
+gained bars=daily|hourly and an exec-lag knob (6h/1h); uniform granularity
+only, thin coverage fails with names while backfills run. Kraken bulk
+OHLCVT CSVs: demoted to never-needed (import script remains as a
+power-tool). Composition search still scores on daily bars (candidates are
+CG-uniform); hourly is for refining a chosen mix's X.
 
 ## Phase 2.75 — Composition sweep (empirical mix search)
-**Status: queued — requested 2026-07-18.** Motivating evidence (live Kraken
+**Status: SHIPPED (tests green: test-compose.js — synthetic universe with a
+known answer: oscillators surface, terminal decliners exiled, constraints
+hold, OOS real, seed-deterministic).** lib/candidates.js + lib/compose.js +
+the Composition lab UI (intensity knob quick/standard/intensive, OOS-first
+table, current mix as highlighted baseline). Search: seeded random sampling
++ greedy refinement (2.5%-unit weight jiggles, tether-band moves, asset
+swaps), mixes scored by a mini X-sweep where only REAL harvest counts
+(basket up, not beaten by holding); train = worse of two halves; finalists
+ranked by the held-out out-of-sample window. Motivating evidence (live Kraken
 MAIN sweep): over 2024-07→2026-07, FIL −83%, POL −84%, QTUM −75%, SC −89%,
 DOGE −44% — a ~30% target sleeve of terminal decliners that rebalancing
 bought all the way down, funded by selling the assets that worked (XRP
@@ -209,7 +223,14 @@ every X.
   optimum.
 
 ## Phase 3 — Safety rails
-**Status: not started**
+**Status: SHIPPED (tests green: test-safety.js).** lib/safety.js exactly to
+the spec below: engine-level BUY suppression, latched notices bypassing the
+armed machine, auto-unfreeze at 0.75×, 🧊 badge + manual unfreeze in the
+UI, depeg watch with hysteresis ($0.98–1.02 enter, $0.99–1.01 exit) priced
+from raw exchange quotes (the engine pins tether valuation, so the market
+quote is fetched here). Scheduler runs safety after every poll; the daily
+cache refreshes once a day for the envelope. The composition search
+excludes buy-frozen assets from its universe.
 
 Structural-break buy-freeze (`assets.buy_frozen`):
 - Rules: (a) envelope = 1.25 × deepest RECOVERED drawdown in available
@@ -274,7 +295,7 @@ Structural-break buy-freeze (`assets.buy_frozen`):
 - Idempotent migrations (ensureColumn pattern) throughout.
 - Diagnostics extended each phase (cache freshness, ledger, jobs, fee/spread,
   frozen/depeg state) so the deploy gate means something.
-- Ship order: 0+1 (one deploy), 1.5, 2 — all shipped. Next: 2.75
-  (composition sweep) then 3 (safety rails) — the same Kraken finding
-  motivates both; 2.5 (hourly) opportunistic; then 4, 5 (2.75 consumes the
-  scanner's candidate data early). Nothing auto-applies, ever.
+- Ship order: 0+1 (one deploy), 1.5, 2, 2.75, 3, 2.5 — all shipped.
+  Remaining: 4 (composition advisor UI/loader — much of its analytical core
+  now lives in 2.75), 5 (top-N scanner — candidates.js already does its
+  universe work), and the cutover gate. Nothing auto-applies, ever.

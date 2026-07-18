@@ -93,6 +93,18 @@
                 AND value growth agree; when they diverge you get a warning instead.</p>
               <div class="inline">
                 <button id="tune-run">Run sweep</button>
+                <label class="muted">bars
+                  <select id="tune-gran">
+                    <option value="daily" selected>daily</option>
+                    <option value="hourly">hourly (auto-fills history on first use)</option>
+                  </select>
+                </label>
+                <label class="muted" title="How long after the alert the trades execute in the simulation">exec lag
+                  <select id="tune-lag">
+                    <option value="6" selected>6h</option>
+                    <option value="1">1h</option>
+                  </select>
+                </label>
                 <span id="tune-status" class="muted"></span>
               </div>
               <div id="tune-result" class="hidden">

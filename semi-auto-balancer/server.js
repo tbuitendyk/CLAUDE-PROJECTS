@@ -19,6 +19,7 @@ const {
 const { getJob, startJob, latestResult } = require('./lib/jobs');
 const { runTuneSweep, computeTargetsHash } = require('./lib/backtest');
 const { runComposeSearch } = require('./lib/compose');
+const { hourlyStatus } = require('./lib/hourly');
 const { sendAlertEvents, sendStatusReport, sendTestEmail, emailConfigured } = require('./lib/mailer');
 const { searchCoins, supportedFiats, fiatCode } = require('./lib/pricing');
 const { visionConfigured, parseHoldingsScreenshot } = require('./lib/vision');
@@ -331,9 +332,12 @@ app.post('/api/profiles/:id/compose', (req, res) => {
 app.post('/api/profiles/:id/tune-threshold', (req, res) => {
   const profile = db.prepare('SELECT * FROM profiles WHERE id = ?').get(req.params.id);
   if (!profile) return res.status(404).json({ error: 'not found' });
-  const days = Number((req.body || {}).days) > 0 ? Number(req.body.days) : 730;
+  const b = req.body || {};
+  const days = Number(b.days) > 0 ? Number(b.days) : 730;
+  const granularity = b.granularity === 'hourly' ? 'hourly' : 'daily';
+  const lagHours = Number(b.lag_hours) > 0 ? Number(b.lag_hours) : 6;
   const jobId = startJob('tune-threshold', profile.id, (setProgress) =>
-    runTuneSweep(profile.id, { days }, setProgress)
+    runTuneSweep(profile.id, { days, granularity, lagHours }, setProgress)
   );
   res.json({ ok: true, jobId });
 });
@@ -507,6 +511,7 @@ app.get('/api/diagnostics', (req, res) => {
   res.json({
     coingecko: { monthCalls: monthlyCalls(), monthCap: MONTH_CAP },
     historyCache: cacheStatus(),
+    hourlyCache: hourlyStatus(),
     exchangeAccounts: accounts,
     pendingFlows: db.prepare("SELECT COUNT(*) AS n FROM pending_flows WHERE status = 'pending'").get().n,
   });

@@ -2,6 +2,7 @@ const crypto = require('crypto');
 const db = require('./db');
 const { effectiveThreshold, indexUsdFor, priceAsset } = require('./balancer');
 const { getDailyHistory } = require('./history');
+const hourly = require('./hourly');
 
 // Phase 2: threshold sweep — an advisory backtest that replays the profile's
 // CURRENT mix over cached daily history at many sensitivity settings X and
@@ -306,7 +307,7 @@ function sweep(simAssets, bars, { feePct = 0.38, spreadPct = 0.1, lagHours = 6, 
 // IO wrapper the job runner calls: load the profile's active mix, pull daily
 // history through the cache (exchange-first, CG fallback), align, sweep,
 // stamp. Returns {result, params} as lib/jobs.js expects.
-async function runTuneSweep(profileId, { days = 730, lagHours = 6 } = {}, setProgress = () => {}) {
+async function runTuneSweep(profileId, { days = 730, lagHours = 6, granularity = 'daily' } = {}, setProgress = () => {}) {
   const profile = db.prepare('SELECT * FROM profiles WHERE id = ?').get(profileId);
   if (!profile) throw new Error('profile not found');
   const assets = db.prepare('SELECT * FROM assets WHERE profile_id = ?').all(profileId);
@@ -317,14 +318,40 @@ async function runTuneSweep(profileId, { days = 730, lagHours = 6 } = {}, setPro
   const targetSum = active.reduce((s, a) => s + (a.target_pct || 0), 0);
   if (Math.abs(targetSum - 100) > 0.01) throw new Error('set targets first (they must total 100%)');
 
-  setProgress('fetching daily price history…');
-  const history = new Map();
-  for (const a of active) {
-    history.set(a.coingecko_id, await getDailyHistory(a.coingecko_id, days));
-  }
-  const bars = alignBars(active, history);
-  if (bars.length < 90) {
-    throw new Error(`not enough overlapping daily history across the mix (${bars.length} days)`);
+  let bars;
+  if (granularity === 'hourly') {
+    // Hourly bars: the cache auto-fills through the source ladder on demand
+    // (Bitso years-in-one-call, Binance portal, Kraken trades rebuild, CG
+    // stopgap) — no waiting on accrual. Uniform granularity only: an asset
+    // without enough hourly coverage fails the run with names, not silence.
+    setProgress('ensuring hourly coverage (auto-fills on first use)…');
+    const series = new Map();
+    const thin = [];
+    for (const a of active) {
+      const st = await hourly.ensureHourly(a.coingecko_id, a.symbol, { depthDays: days });
+      const rows = hourly.getHourlySeries(a.coingecko_id, Math.round(days * 24));
+      series.set(a.coingecko_id, rows);
+      if (rows.length < 30 * 24) thin.push(`${a.symbol.toUpperCase()} (${st.status}, ${rows.length}h cached)`);
+    }
+    if (thin.length > 0) {
+      throw new Error(
+        `hourly coverage too thin for: ${thin.join(', ')} — deep backfills run in the background, retry in a few minutes`
+      );
+    }
+    bars = alignBars(active, series);
+    if (bars.length < 30 * 24) {
+      throw new Error(`not enough overlapping hourly history across the mix (${bars.length} bars)`);
+    }
+  } else {
+    setProgress('fetching daily price history…');
+    const history = new Map();
+    for (const a of active) {
+      history.set(a.coingecko_id, await getDailyHistory(a.coingecko_id, days));
+    }
+    bars = alignBars(active, history);
+    if (bars.length < 90) {
+      throw new Error(`not enough overlapping daily history across the mix (${bars.length} days)`);
+    }
   }
 
   const result = sweep(active, bars, {
@@ -339,12 +366,13 @@ async function runTuneSweep(profileId, { days = 730, lagHours = 6 } = {}, setPro
     feePct: profile.fee_pct,
     spreadPct: profile.spread_pct,
     lagHours,
+    granularity,
     dataFrom: bars[0].ts,
     dataTo: bars[bars.length - 1].ts,
     bars: bars.length,
     assets: active.map((a) => a.symbol),
   };
-  return { result, params: { days, lagHours } };
+  return { result, params: { days, lagHours, granularity } };
 }
 
 module.exports = { simulate, sweep, runTuneSweep, alignBars, computeTargetsHash, X_GRID, START_TOTAL };
