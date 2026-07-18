@@ -159,6 +159,11 @@ tr.breached td { background: color-mix(in srgb, var(--danger) 10%, transparent);
 }
 .chip-toggle { color: var(--muted); cursor: pointer; }
 .chip-toggle input { width: auto; margin: 0; }
+.chip-toggle.chip-on {
+  color: var(--text);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 40%, transparent);
+}
 .toggle-inline { display: inline-flex; align-items: center; gap: .35rem; }
 .toggle-inline input { width: auto; }
 
