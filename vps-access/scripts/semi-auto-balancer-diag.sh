@@ -55,6 +55,37 @@ for (const f of db.prepare('SELECT profile_id, ts, deltas, note FROM flows ORDER
   console.log(new Date(f.ts).toISOString(), `profile=${f.profile_id}`, f.deltas, '|', f.note || '');
 }
 
+console.log('== latest tune-threshold results ==');
+const tuneRows = db.prepare(
+  "SELECT profile_id, created_at, result FROM analysis_results WHERE kind = 'tune-threshold' AND id IN (SELECT MAX(id) FROM analysis_results WHERE kind = 'tune-threshold' GROUP BY profile_id)"
+).all();
+for (const row of tuneRows) {
+  let r = null;
+  try { r = JSON.parse(row.result || 'null'); } catch {}
+  if (!r) continue;
+  console.log(`-- profile ${row.profile_id} @ ${new Date(row.created_at).toISOString()} ` +
+    `reco=${r.recommendation ? r.recommendation.x + '%' : 'NONE'} bars=${r.stamp && r.stamp.bars} ` +
+    `fee=${r.stamp && r.stamp.feePct} spread=${r.stamp && r.stamp.spreadPct}`);
+  for (const w of r.warnings || []) console.log('   warn:', w);
+  console.log(`   hold: value=${r.hold.valueGrowthPct.toFixed(2)} maxDD=${r.hold.maxValueDrawdownPct.toFixed(1)}`);
+  for (const g of r.grid) {
+    console.log(`   X=${String(g.x).padEnd(4)} basket=${g.netBasketGrowthPct.toFixed(2).padStart(7)} ` +
+      `value=${g.valueGrowthPct.toFixed(2).padStart(7)} dd=${g.maxValueDrawdownPct.toFixed(1).padStart(5)} ` +
+      `trades=${String(g.tradeCount).padStart(3)} fees=${g.feesPct.toFixed(2)}`);
+  }
+}
+
+console.log('== price paths (cached daily closes, active assets) ==');
+for (const a of db.prepare('SELECT DISTINCT coingecko_id FROM assets WHERE target_pct > 0 OR is_index = 1').all()) {
+  const s = db.prepare('SELECT COUNT(*) n, MIN(ts) f, MAX(ts) l FROM daily_prices WHERE coingecko_id = ?').get(a.coingecko_id);
+  if (!s.n) { console.log(`${a.coingecko_id}: no cache (synthesized or unpriced)`); continue; }
+  const first = db.prepare('SELECT usd_price FROM daily_prices WHERE coingecko_id = ? ORDER BY ts LIMIT 1').get(a.coingecko_id).usd_price;
+  const last = db.prepare('SELECT usd_price FROM daily_prices WHERE coingecko_id = ? ORDER BY ts DESC LIMIT 1').get(a.coingecko_id).usd_price;
+  const mm = db.prepare('SELECT MIN(usd_price) lo, MAX(usd_price) hi FROM daily_prices WHERE coingecko_id = ?').get(a.coingecko_id);
+  console.log(`${a.coingecko_id}: ${s.n}d ${new Date(s.f).toISOString().slice(0,10)}→${new Date(s.l).toISOString().slice(0,10)} ` +
+    `first=${first} last=${last} lo=${mm.lo} hi=${mm.hi} chg=${((last / first - 1) * 100).toFixed(1)}%`);
+}
+
 console.log('== profiles ==');
 for (const p of db.prepare('SELECT id, name, notify_state, threshold_pct, value_started_at FROM profiles').all()) {
   const assets = db.prepare('SELECT symbol, quantity, target_pct, is_index FROM assets WHERE profile_id = ? ORDER BY id').all(p.id);
