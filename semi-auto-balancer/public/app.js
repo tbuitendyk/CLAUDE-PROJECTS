@@ -370,10 +370,9 @@ function recipientRow(r = {}) {
     i.value = val || '';
     return i;
   };
-  row.append(
-    mk('r-email', 'email@example.com', r.email),
-    mk('r-chat', 'Telegram chat ID (optional — use "Find chat IDs")', r.telegram_chat_id)
-  );
+  const chat = mk('r-chat', 'Telegram chat ID', r.telegram_chat_id);
+  chat.title = 'Optional. Click "Find chat IDs" below to fill this in — no need to type it.';
+  row.append(mk('r-email', 'email@example.com', r.email), chat);
   const test = document.createElement('button');
   test.textContent = 'Test';
   test.className = 'ghost';
