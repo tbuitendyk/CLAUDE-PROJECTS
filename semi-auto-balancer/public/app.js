@@ -251,58 +251,11 @@ function renderDetail() {
     if (a.breached) tr.className = 'breached';
     if (a.is_index) tr.classList.add('index-row');
     tr.appendChild(indexCell(a));
+    // Symbol cell: just the ticker (⚓ marks the tethered index). All state
+    // badges live in the dedicated Status column so this stays uncluttered.
     const sym = document.createElement('td');
-    sym.textContent = a.symbol.toUpperCase();
-    if (a.buy_frozen) {
-      const badge = document.createElement('button');
-      badge.textContent = ' 🧊';
-      badge.className = 'ghost';
-      badge.title =
-        `BUY alerts frozen — ${a.freeze_reason || 'structural break'}. Sells still alert. ` +
-        `Auto-unfreezes when the drawdown eases; click to unfreeze now.`;
-      badge.addEventListener('click', async () => {
-        if (!confirm(`Unfreeze BUY alerts for ${a.symbol.toUpperCase()}?\n\nFrozen because: ${a.freeze_reason || 'structural break'}\n\nThe rail may re-freeze if conditions still hold.`)) return;
-        try {
-          await api(`/assets/${a.id}/unfreeze`, { method: 'POST' });
-          await refresh();
-        } catch (err) {
-          alert(err.message);
-        }
-      });
-      sym.appendChild(badge);
-    }
-    if (a.depegged) {
-      const peg = document.createElement('span');
-      peg.textContent = ' ⚠$';
-      peg.title = 'Trading outside the $0.98–1.02 peg band (valuation stays pinned 1:1)';
-      peg.className = 'warn-text';
-      sym.appendChild(peg);
-    }
-    if (!a.is_index) {
-      // Freeze override: the frozen STATUS keeps tracking (badge stays), but
-      // its effects — BUY-alert suppression and exclusion from the
-      // composition lab — stand down while checked.
-      const ovrLabel = document.createElement('label');
-      ovrLabel.className = 'muted';
-      ovrLabel.title =
-        'Ignore buy-freeze for this asset: BUY alerts and composition-lab eligibility stay active even while frozen. ' +
-        'The freeze status itself keeps tracking (badge remains).';
-      ovrLabel.style.marginLeft = '6px';
-      ovrLabel.style.whiteSpace = 'nowrap';
-      const ovr = document.createElement('input');
-      ovr.type = 'checkbox';
-      ovr.checked = Boolean(a.freeze_override);
-      ovr.addEventListener('change', async () => {
-        try {
-          await api(`/assets/${a.id}`, { method: 'PATCH', body: { freeze_override: ovr.checked } });
-          await refresh();
-        } catch (err) {
-          alert(err.message);
-        }
-      });
-      ovrLabel.append(ovr, document.createTextNode('❄off'));
-      sym.appendChild(ovrLabel);
-    }
+    sym.className = 'sym-cell';
+    sym.textContent = a.symbol.toUpperCase() + (a.is_index ? ' ⚓' : '');
     tr.appendChild(sym);
     const tgt = document.createElement('td');
     tgt.textContent = a.target_pct ? a.target_pct + '%' : '—';
@@ -329,6 +282,64 @@ function renderDetail() {
       `<td>${drift}</td>` +
       `<td>${trigger}</td>`;
     tr.append(...rest.content.childNodes);
+
+    // Status cell: buy-freeze badge (click to unfreeze), the freeze-override
+    // toggle, and the depeg flag — all the state that used to crowd the
+    // Symbol cell, now in one place.
+    const statusTd = document.createElement('td');
+    statusTd.className = 'status-cell';
+    if (a.buy_frozen) {
+      const badge = document.createElement('button');
+      badge.textContent = '🧊 frozen';
+      badge.className = 'chip chip-frozen';
+      badge.title =
+        `BUY alerts frozen — ${a.freeze_reason || 'structural break'}. Sells still alert. ` +
+        `Auto-unfreezes when the drawdown eases; click to unfreeze now.`;
+      badge.addEventListener('click', async () => {
+        if (!confirm(`Unfreeze BUY alerts for ${a.symbol.toUpperCase()}?\n\nFrozen because: ${a.freeze_reason || 'structural break'}\n\nThe rail may re-freeze if conditions still hold.`)) return;
+        try {
+          await api(`/assets/${a.id}/unfreeze`, { method: 'POST' });
+          await refresh();
+        } catch (err) {
+          alert(err.message);
+        }
+      });
+      statusTd.appendChild(badge);
+      if (!a.is_index) {
+        // Override: the frozen STATUS keeps tracking (badge stays) but its
+        // effects — BUY-alert suppression + composition-lab exclusion — stand
+        // down while checked. Only meaningful while actually frozen.
+        const ovrLabel = document.createElement('label');
+        ovrLabel.className = 'chip chip-toggle';
+        ovrLabel.title =
+          'Ignore this freeze: BUY alerts and composition-lab eligibility stay active. The freeze status itself keeps tracking.';
+        const ovr = document.createElement('input');
+        ovr.type = 'checkbox';
+        ovr.checked = Boolean(a.freeze_override);
+        ovr.addEventListener('change', async () => {
+          try {
+            await api(`/assets/${a.id}`, { method: 'PATCH', body: { freeze_override: ovr.checked } });
+            await refresh();
+          } catch (err) {
+            alert(err.message);
+          }
+        });
+        ovrLabel.append(ovr, document.createTextNode('ignore'));
+        statusTd.appendChild(ovrLabel);
+      }
+    }
+    if (a.depegged) {
+      const peg = document.createElement('span');
+      peg.textContent = '⚠ depeg';
+      peg.title = 'Trading outside the $0.98–1.02 peg band (valuation stays pinned 1:1)';
+      peg.className = 'chip chip-warn';
+      statusTd.appendChild(peg);
+    }
+    if (!statusTd.childNodes.length) {
+      statusTd.innerHTML = '<span class="muted">—</span>';
+    }
+    tr.appendChild(statusTd);
+
     const td = document.createElement('td');
     const del = document.createElement('button');
     del.textContent = '✕';
@@ -875,19 +886,37 @@ function renderCompose(latest) {
   const tbody = $('#c-table tbody');
   tbody.innerHTML = '';
   const pt = (row, t) => (row.perType && row.perType[t] != null ? sp(row.perType[t]) : '<span class="muted">—</span>');
+  // Current-set mode: each split carries its full sensitivity sweep over the
+  // window (value + edge per X). Render it inline under the mix so the
+  // allocation × sensitivity interaction is visible; best X starred.
+  const xSweep = (row) => {
+    if (!r.currentSet || !row.xGrid) return '';
+    const bestX = row.full ? row.full.x : null;
+    const cells = row.xGrid
+      .map((g) => {
+        const best = g.x === bestX;
+        return (
+          `<span class="xg${best ? ' xg-best' : ''}" title="sensitivity ${g.x}%: value ${sp(g.value)}, edge ${sp(g.edge)} over holding, ${g.trades} trades, max DD ${g.dd.toFixed(0)}%">` +
+          `${g.x}%&nbsp;<span class="${g.edge >= 0 ? 'pos' : 'neg'}">${sp(g.edge)}</span>${best ? ' ★' : ''}</span>`
+        );
+      })
+      .join('');
+    return `<div class="xsweep">split × sensitivity: ${cells}</div>`;
+  };
   const addRow = (label, row, highlight) => {
     const tr = document.createElement('tr');
     if (highlight) tr.classList.add('index-row');
     const star = row.recommended ? ' ★' : '';
     const h = row.holdout || {};
+    const labelCell = `${label}${star}${xSweep(row)}`;
     tr.innerHTML = regimeMode
-      ? `<td>${label}${star}</td>` +
+      ? `<td>${labelCell}</td>` +
         `<td>${row.typesPositive != null ? `${row.typesPositive}/${row.typesPresent}` : '—'}</td>` +
         `<td>${pt(row, 'bull')}</td><td>${pt(row, 'bear')}</td><td>${pt(row, 'range')}</td>` +
         `<td><strong>${row.consistency != null ? sp(row.consistency) : '—'}</strong></td>` +
         `<td>${row.average != null ? sp(row.average) : '—'}</td>` +
         `<td>${holdCellOf(h)}</td>`
-      : `<td>${label}${star}</td>` +
+      : `<td>${labelCell}</td>` +
         `<td>${row.positiveFolds != null ? `${row.positiveFolds}/${row.nFolds}` : '—'}</td>` +
         `<td>${sp(row.robust)}</td><td><strong>${holdCellOf(h)}</strong></td>` +
         `<td>${h.x != null ? h.x + '%' : 'hold'}</td><td class="muted">${row.full ? sp(row.full.value) : '—'}</td>`;
@@ -905,9 +934,21 @@ function renderCompose(latest) {
     tbody.appendChild(tr);
   }
 
-  // Solo-screen verdicts: which candidates made it into combinatorics.
+  // Solo-screen verdicts: which candidates made it into combinatorics. In
+  // current-set mode there is no screen (the set is fixed) — show the weight
+  // rules instead.
   const sc = $('#c-screen');
-  if (r.screen && r.screen.length) {
+  if (r.currentSet) {
+    const wr = r.weightRules || {};
+    const nAssets = r.currentMix ? r.currentMix.assets.length : (r.mixes[0] ? r.mixes[0].assets.length : 0);
+    sc.textContent =
+      `Current-holdings mode: your exact ${nAssets} assets, no additions or drops. Each asset ` +
+      `${wr.minPct != null ? wr.minPct : 4}–${wr.maxPct != null ? wr.maxPct : 80}% on a ${wr.stepPct != null ? wr.stepPct : 1}% grid, ` +
+      `every split scored jointly across the full sensitivity range (see the per-row × sweep).` +
+      (r.universe && r.universe.droppedNames && r.universe.droppedNames.length
+        ? ` Dropped for missing history: ${r.universe.droppedNames.map((s) => s.toUpperCase()).join(', ')}.`
+        : '');
+  } else if (r.screen && r.screen.length) {
     const kept = r.screen.filter((s) => s.kept);
     const dropped = r.screen.filter((s) => !s.kept);
     sc.textContent =
@@ -923,13 +964,16 @@ function renderCompose(latest) {
 
   const w = r.window || {};
   const u = r.universe || {};
+  const unit = r.currentSet ? 'splits' : 'combos';
   const combos = r.combos
-    ? `${r.combos.broadSampled.toLocaleString()} combos broad-searched, ${r.combos.contenders} contenders full-scored`
+    ? `${r.combos.broadSampled.toLocaleString()} ${unit} broad-searched, ${r.combos.contenders} contenders full-scored`
     : `${r.evaluatedMixes} mixes evaluated`;
   $('#c-stamp').textContent =
     `Searched ${new Date(latest.createdAt).toLocaleString()} · ${combos} · ` +
-    `universe ${u.covered}/${u.considered} candidates` +
-    (u.venue ? ` (restricted to ${u.venue}-tradable${u.notOnVenue && u.notOnVenue.length ? `; dropped: ${u.notOnVenue.map((s) => s.toUpperCase()).join(', ')}` : ''})` : ' (no linked venue — unconstrained)') +
+    (r.currentSet
+      ? `current holdings only (${u.covered} assets)`
+      : `universe ${u.covered}/${u.considered} candidates`) +
+    (r.currentSet ? '' : u.venue ? ` (restricted to ${u.venue}-tradable${u.notOnVenue && u.notOnVenue.length ? `; dropped: ${u.notOnVenue.map((s) => s.toUpperCase()).join(', ')}` : ''})` : ' (no linked venue — unconstrained)') +
     (u.heldExcludedFrozen ? ` · ${u.heldExcludedFrozen} held asset(s) excluded: buy-frozen` : '') +
     (u.windowDays && u.requestedDays && u.windowDays < u.requestedDays ? ` · window auto-shrunk ${u.requestedDays}d → ${u.windowDays}d for coverage` : '') +
     ` · window ${w.from ? new Date(w.from).toISOString().slice(0, 10) : '?'} → ${w.to ? new Date(w.to).toISOString().slice(0, 10) : '?'}` +
@@ -946,7 +990,7 @@ $('#c-run').addEventListener('click', async () => {
   try {
     const { jobId } = await api(`/profiles/${profileId}/compose`, {
       method: 'POST',
-      body: { samples: Number($('#c-intensity').value) },
+      body: { samples: Number($('#c-intensity').value), currentSet: $('#c-currentset').checked },
     });
     trackJob('compose', jobId, profileId);
   } catch (err) {

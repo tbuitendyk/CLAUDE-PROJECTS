@@ -33,7 +33,7 @@ h1 { font-size: 1.2rem; margin: 0; }
 .home-link:hover { filter: brightness(1.08); }
 h2 { font-size: 1.05rem; margin: 0 0 .75rem; }
 h3 { font-size: .95rem; margin: 1.25rem 0 .5rem; }
-main { padding: 1.5rem; max-width: 1100px; margin: 0 auto; }
+main { padding: 1.5rem; max-width: 1440px; margin: 0 auto; }
 .row { display: flex; gap: 1.5rem; flex-wrap: wrap; }
 .card {
   background: var(--card); border: 1px solid var(--border);
@@ -135,6 +135,46 @@ tr.breached td { background: color-mix(in srgb, var(--danger) 10%, transparent);
 #import-preview button { margin-top: .5rem; margin-right: .5rem; }
 .log { list-style: none; padding: 0; font-size: .8rem; color: var(--muted); }
 .log li { margin-bottom: .6rem; white-space: pre-wrap; border-left: 2px solid var(--border); padding-left: .6rem; }
+
+/* Assets grid: symbol stays clean; all state lives in the Status column as
+   compact chips. */
+.sym-cell { font-weight: 600; white-space: nowrap; }
+.status-cell { white-space: nowrap; }
+.status-cell .muted { font-size: .85rem; }
+.chip {
+  display: inline-flex; align-items: center; gap: .3rem;
+  font-size: .72rem; line-height: 1; padding: .25rem .5rem;
+  border-radius: 99px; border: 1px solid var(--border);
+  margin: .1rem .25rem .1rem 0; white-space: nowrap; vertical-align: middle;
+}
+.chip-frozen {
+  background: color-mix(in srgb, var(--accent) 15%, transparent);
+  color: var(--text); border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+  cursor: pointer;
+}
+.chip-frozen:hover { filter: brightness(1.12); }
+.chip-warn {
+  background: color-mix(in srgb, var(--warn) 18%, transparent);
+  color: var(--warn); border-color: color-mix(in srgb, var(--warn) 45%, transparent);
+}
+.chip-toggle { color: var(--muted); cursor: pointer; }
+.chip-toggle input { width: auto; margin: 0; }
+.toggle-inline { display: inline-flex; align-items: center; gap: .35rem; }
+.toggle-inline input { width: auto; }
+
+/* Composition lab: per-split sensitivity sweep (allocation × X). */
+.xsweep {
+  margin-top: .35rem; font-size: .74rem; color: var(--muted);
+  display: flex; flex-wrap: wrap; gap: .25rem .55rem; align-items: center;
+}
+.xg {
+  display: inline-flex; gap: .2rem; padding: .1rem .35rem;
+  border-radius: 4px; border: 1px solid transparent; white-space: nowrap;
+}
+.xg-best {
+  border-color: color-mix(in srgb, var(--ok) 55%, transparent);
+  background: color-mix(in srgb, var(--ok) 12%, transparent);
+}
 
 /* Job progress bar (composition lab / long-running sweeps). */
 .progress-wrap {

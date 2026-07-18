@@ -215,6 +215,28 @@ average over one window."
   replica, 1460 bars → 1168 in-sample / 292 holdout): top mixes flag ★ with
   types 3/3, positive per-type and holdout edges.
 
+## Phase 2.95 — Current-set allocation × sensitivity
+**Status: SHIPPED (tests green: test-compose.js current-set path).** A focused
+mode of the composition lab (toggle "Current holdings only"): instead of
+searching the whole tradable universe, it keeps the profile's EXACT asset set
+— index + every position, frozen included, nothing added or dropped (no
+subsets) — and searches only the SPLIT. Each asset roams **4–80% on a 1%
+grid**, summing to 100; the space is sampled densely (same broad → full →
+greedy-refine funnel, minus the solo screen and asset-swaps). Every candidate
+split is scored **jointly across the full sensitivity grid** (the folds/regime
+scorer already sweeps MINI_X per window), so allocation and sensitivity
+permute together; each finalist carries its whole X sweep (value + edge over
+holding per X, best X starred) rendered inline under the mix, so the split ×
+sensitivity interaction is visible the way the tuner shows its X grid. Ranking
+and the honest no-harvest verdict are identical to the lab (robust harvest
+edge, walk-forward on shallow venues / per-regime on deep ones); the current
+mix is scored for reference only. Runs on Bitso (folds mode) as the acceptance
+gate. `lib/compose.js` `searchCurrentSet` + `runCurrentSetSearch`; server
+passes `currentSet` through the existing compose endpoint; UI adds the toggle,
+the per-row × sweep, and mode-aware stamp/notes. Bounds note: 4% floor + 80%
+cap means the ceiling only binds for small sets (Bitso's 4 assets can
+concentrate to ~80%; an 8-asset set tops out near 72% since 7×4% is committed).
+
 ## Phase 2.75 — Composition sweep (empirical mix search)
 **Status: SHIPPED (tests green: test-compose.js — synthetic universe with a
 known answer: oscillators surface, terminal decliners exiled, constraints

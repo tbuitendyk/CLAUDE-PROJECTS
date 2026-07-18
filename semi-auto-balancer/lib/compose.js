@@ -55,6 +55,14 @@ const HOLDOUT_FRAC = 0.2;
 const MIN_FOLD_EDGE = 0.5; // pp of value above holding for a fold to count as harvested
 const RECO_MIN_FOLDS = 3; // of N_FOLDS
 
+// Current-set mode (allocation × sensitivity on the EXACT current holdings):
+// a fine 1% grid, every current asset kept present between 4% and 80%. No
+// assets added, none removed (no subsets) — only the split moves, and every
+// split is scored jointly against the full sensitivity grid.
+const CS_STEP_PCT = 1;
+const CS_MIN_PCT = 4;
+const CS_MAX_PCT = 80;
+
 // Deterministic PRNG so a seed reproduces a search exactly.
 function mulberry32(seed) {
   let a = seed >>> 0;
@@ -556,6 +564,281 @@ async function searchCompositions({
   };
 }
 
+// ---- current-set search (allocation × sensitivity) --------------------------
+//
+// Keeps the profile's EXACT current asset set (index + every holding), never
+// adding or dropping an asset, and searches only the SPLIT: each asset roams
+// 4%–80% on a 1% grid, summing to 100. Every candidate split is scored across
+// the full sensitivity grid (the folds/regime scorer sweeps MINI_X per
+// window), so allocation and sensitivity permute together — the output is the
+// best (split, X) pair, and each finalist carries its whole X sweep so the
+// interaction is visible the way the tuner shows its X grid. Ranking and the
+// no-harvest verdict are identical to the composition lab (robust harvest
+// edge); the current mix is scored for reference only.
+async function searchCurrentSet({
+  assetSet, // [{id, symbol, isIndex}] — the full current set (index included)
+  bars,
+  currentMix = null, // [{id, symbol, targetPct, isIndex}]
+  feePct = 0.38,
+  spreadPct = 0.1,
+  lagHours = 6,
+  samples = 200000,
+  refineTop = 40,
+  refineEvals = 120,
+  finalists = 20,
+  benchmark = null,
+  seed = 42,
+  setProgress = () => {},
+} = {}) {
+  const costs = { feePct, spreadPct, lagHours };
+  const rng = mulberry32(seed);
+  const ids = assetSet.map((a) => a.id);
+  const n = ids.length;
+  const MINU = CS_MIN_PCT, MAXU = CS_MAX_PCT, TOTAL = 100;
+  if (n < 2) throw new Error('need at least 2 current assets (an index + one holding) to search allocations');
+  if (n * MINU > TOTAL) {
+    throw new Error(
+      `${n} assets can't each hold ≥${MINU}% (that needs ${n * MINU}% > 100%) — remove an asset from the profile first`
+    );
+  }
+  const yieldLoop = () => new Promise((r) => setImmediate(r));
+
+  const toAssets = (units) =>
+    assetSet.map((a) => ({ coingecko_id: a.id, symbol: a.symbol, target_pct: units.get(a.id), is_index: a.isIndex ? 1 : 0 }));
+  const keyOf = (units) => ids.map((id) => `${id}:${units.get(id)}`).join(',');
+
+  // Untouched holdout tail + in-sample region + fold/regime setup — identical
+  // to the composition lab so the robustness bar is the same.
+  const holdoutN = Math.max(30, Math.floor(bars.length * HOLDOUT_FRAC));
+  const inSample = bars.slice(0, bars.length - holdoutN);
+  const holdoutBars = bars.slice(bars.length - holdoutN);
+  let mode = 'folds';
+  let swaths = [];
+  let regimeInfo = null;
+  if (benchmark && benchmark.length === bars.length) {
+    const cls = regime.classify(benchmark.slice(0, inSample.length));
+    if (cls.enough) {
+      mode = 'regime';
+      swaths = cls.swaths;
+      regimeInfo = { byType: cls.byType, swaths: cls.swaths.map((s) => ({ label: s.label, days: s.days, from: s.from, to: s.to })) };
+    }
+  }
+  const foldSize = Math.floor(inSample.length / N_FOLDS);
+  const foldsBars = [];
+  for (let f = 0; f < N_FOLDS; f++) {
+    foldsBars.push(inSample.slice(f * foldSize, f === N_FOLDS - 1 ? inSample.length : (f + 1) * foldSize));
+  }
+  const scoreMix = (assets) =>
+    mode === 'regime'
+      ? scoreRegimes(assets, swaths, inSample, holdoutBars, costs)
+      : scoreFolds(assets, foldsBars, holdoutBars, costs);
+
+  // A random feasible split: every asset floored at MINU, the remainder
+  // scattered one unit at a time onto assets still under MAXU.
+  const sampleUnits = () => {
+    const units = new Map(ids.map((id) => [id, MINU]));
+    let remaining = TOTAL - n * MINU;
+    let guard = 100000;
+    while (remaining > 0 && guard-- > 0) {
+      const id = ids[Math.floor(rng() * n)];
+      if (units.get(id) < MAXU) {
+        units.set(id, units.get(id) + 1);
+        remaining--;
+      }
+    }
+    return remaining === 0 ? units : null;
+  };
+
+  // ---- Stage 1: broad sampling → cheap-edge contender board.
+  const CHEAP_X = [6, 22];
+  const fullTop = Math.min(500, Math.max(120, Math.floor(samples / 50)));
+  const board = [];
+  const boardKeys = new Set();
+  let cutoff = -Infinity;
+  let broadSampled = 0;
+  for (let i = 0; i < samples; i++) {
+    const units = sampleUnits();
+    if (units) {
+      broadSampled++;
+      const assets = toAssets(units);
+      const hold = holdGrowthPct(assets, inSample);
+      if (hold != null) {
+        let bestValue = hold;
+        for (const x of CHEAP_X) {
+          const r = simulate(assets, x, { ...costs, bars: inSample });
+          if (r.netBasketGrowthPct > 0 && r.valueGrowthPct >= hold - HOLD_BAND_PP && r.valueGrowthPct > bestValue) {
+            bestValue = r.valueGrowthPct;
+          }
+        }
+        const edge = bestValue - hold;
+        if (edge > cutoff || board.length < fullTop) {
+          const key = keyOf(units);
+          if (!boardKeys.has(key)) {
+            board.push({ key, units, cheap: edge });
+            boardKeys.add(key);
+            if (board.length >= fullTop * 2) {
+              board.sort((a, b) => b.cheap - a.cheap);
+              for (const dropped of board.splice(fullTop)) boardKeys.delete(dropped.key);
+              cutoff = board[board.length - 1].cheap;
+            }
+          }
+        }
+      }
+    }
+    if (i % 2000 === 0) {
+      setProgress(
+        `allocation search: ${i.toLocaleString()} / ${samples.toLocaleString()} splits (${board.length} contenders held)`,
+        3 + (i / samples) * 77
+      );
+    }
+    if (i % 200 === 199) await yieldLoop();
+  }
+  board.sort((a, b) => b.cheap - a.cheap);
+  board.splice(fullTop);
+
+  // ---- Stage 2: full-fidelity scoring of the contender board.
+  const seen = new Map();
+  const evalUnits = (units) => {
+    const key = keyOf(units);
+    if (seen.has(key)) return seen.get(key);
+    const entry = { units, key, ...scoreMix(toAssets(units)) };
+    seen.set(key, entry);
+    return entry;
+  };
+  const fullScored = [];
+  for (let i = 0; i < board.length; i++) {
+    fullScored.push(evalUnits(board[i].units));
+    if (i % 10 === 9) {
+      setProgress(`full-fidelity scoring ${i + 1}/${board.length}`, 80 + (i / board.length) * 10);
+      await yieldLoop();
+    }
+  }
+  const ranked = [...new Map(fullScored.map((s) => [s.key, s])).values()].sort(tupleRank);
+
+  // ---- Stage 3: greedy refinement — shift 1% from one asset to another,
+  // keep the variant only when it ranks better on the robustness order.
+  const survivors = ranked.slice(0, refineTop);
+  for (let si = 0; si < survivors.length; si++) {
+    setProgress(`refining split ${si + 1}/${survivors.length}`, 90 + (si / Math.max(1, survivors.length)) * 7);
+    let current = survivors[si];
+    for (let e = 0; e < refineEvals; e++) {
+      const u = current.units;
+      const from = ids[Math.floor(rng() * n)];
+      const to = ids[Math.floor(rng() * n)];
+      if (from === to || u.get(from) <= MINU || u.get(to) >= MAXU) continue;
+      const variant = new Map(u);
+      variant.set(from, u.get(from) - 1);
+      variant.set(to, u.get(to) + 1);
+      const cand = evalUnits(variant);
+      if (tupleRank(cand, current) < 0) current = cand;
+      if (e % 20 === 19) await yieldLoop();
+    }
+    survivors[si] = current;
+  }
+
+  // ---- Stage 4: finalists + the joint allocation × sensitivity sweep. Each
+  // finalist carries its FULL X grid over the whole window (value + edge over
+  // holding per X), so the split×sensitivity interaction is visible; `full`
+  // reports that grid's best real-harvest X.
+  setProgress('sensitivity sweep + holdout confirmation', 98);
+  const summarize = (assets, entry, refFlag = false) => {
+    const holdF = simulate(assets, null, { ...costs, bars }).valueGrowthPct;
+    const xGrid = MINI_X.map((x) => {
+      const r = simulate(assets, x, { ...costs, bars });
+      return {
+        x,
+        value: r.valueGrowthPct,
+        edge: r.valueGrowthPct - holdF,
+        basket: r.netBasketGrowthPct,
+        dd: r.maxValueDrawdownPct,
+        trades: r.tradeCount,
+      };
+    });
+    let best = null;
+    for (const g of xGrid) {
+      if (g.basket <= 0) continue;
+      if (g.value < holdF - HOLD_BAND_PP) continue;
+      if (!best || g.value > best.value) best = g;
+    }
+    const full = best
+      ? { value: best.value, edge: best.edge, basket: best.basket, x: best.x, dd: best.dd, trades: best.trades, hold: holdF }
+      : { value: holdF, edge: 0, basket: 0, x: null, dd: xGrid[0] ? xGrid[0].dd : 0, trades: 0, hold: holdF };
+    const row = {
+      assets: assets.map((a) => ({ id: a.coingecko_id, symbol: a.symbol, pct: a.target_pct, isIndex: !!a.is_index })),
+      mode: entry.mode,
+      holdout: entry.holdout,
+      full,
+      xGrid,
+      recommended: refFlag ? false : entry.recommended,
+    };
+    if (entry.mode === 'regime') {
+      row.perType = entry.perType;
+      row.consistency = entry.consistency;
+      row.average = entry.average;
+      row.typesPositive = entry.typesPositive;
+      row.typesPresent = entry.typesPresent;
+    } else {
+      row.positiveFolds = entry.positiveFolds;
+      row.nFolds = entry.nFolds;
+      row.robust = entry.robust;
+      row.foldEdges = entry.foldEdges;
+    }
+    if (refFlag) row.reference = true;
+    return row;
+  };
+  const uniqueFinal = [...new Map(survivors.map((s) => [s.key, s])).values()].sort(tupleRank).slice(0, finalists);
+  const rows = uniqueFinal.map((s) => summarize(toAssets(s.units), s));
+  const anyRecommended = rows.some((r) => r.recommended);
+
+  // Current mix — reference only, scored identically (a single window's number
+  // is not a bar to beat). Skip if any current asset lacks window coverage.
+  let currentScored = null;
+  if (currentMix && currentMix.length > 0) {
+    const idset = new Set(ids);
+    if (currentMix.every((m) => idset.has(m.id))) {
+      const assets = currentMix.map((m) => ({
+        coingecko_id: m.id, symbol: m.symbol, target_pct: m.targetPct, is_index: m.isIndex ? 1 : 0,
+      }));
+      currentScored = summarize(assets, scoreMix(assets), true);
+    }
+  }
+
+  const warnings = [];
+  if (!anyRecommended) {
+    warnings.push(
+      mode === 'regime'
+        ? 'No split of your current holdings harvested across ALL market types (bull/bear/range) with a positive holdout — ' +
+            'on this history, rebalancing this exact set does not reliably beat holding in every regime. The table ranks robustness only.'
+        : 'No split of your current holdings harvested consistently across the walk-forward windows with a positive holdout — ' +
+            'on this history, rebalancing this exact set does not reliably beat holding. The table ranks capital preservation only.'
+    );
+  }
+
+  return {
+    mixes: rows,
+    currentMix: currentScored,
+    mode,
+    regime: regimeInfo,
+    noHarvest: !anyRecommended,
+    warnings,
+    screen: [], // no solo screen in current-set mode — the set is fixed
+    currentSet: true,
+    weightRules: { minPct: MINU, maxPct: MAXU, stepPct: CS_STEP_PCT },
+    combos: { broadSampled, contenders: board.length, fullScored: seen.size },
+    window: {
+      bars: bars.length,
+      inSampleBars: inSample.length,
+      holdoutBars: holdoutBars.length,
+      nFolds: N_FOLDS,
+      from: bars[0] ? bars[0].ts : null,
+      to: bars.length ? bars[bars.length - 1].ts : null,
+      holdoutFrom: holdoutBars[0] ? holdoutBars[0].ts : null,
+    },
+    evaluatedMixes: broadSampled + seen.size,
+    caveat: CAVEAT,
+  };
+}
+
 // A mix the account can't trade is a fantasy: when the profile has a linked
 // exchange account, candidates must be tradable THERE. Kraken = an
 // unambiguous SYM/USD pair exists; Bitso = any book with SYM as base
@@ -598,6 +881,95 @@ function chooseWindowStart(earliests, requestedStartMs, nowMs) {
 
 // ---- IO wrapper for the job runner ------------------------------------------
 
+// Current-set (allocation × sensitivity) IO wrapper: keep the EXACT current
+// holdings (index + every position, frozen included — this re-weights what
+// you already own), fetch their history, and search the split × sensitivity.
+async function runCurrentSetSearch(profileId, ctx, setProgress = () => {}) {
+  const { profile, assets, tetherAsset, days, samples, seed } = ctx;
+  const nowMs = Date.now();
+
+  // The set: the index + every held/targeted position. No scanner candidates,
+  // no venue filter (you already hold and trade these).
+  const holdings = assets.filter((a) => !a.is_index && (a.target_pct > 0 || a.quantity > 0));
+  if (holdings.length < 1) {
+    throw new Error('this profile has no held/targeted assets besides the index — nothing to re-weight');
+  }
+  const universe = holdings.map((a) => ({ id: a.coingecko_id, symbol: a.symbol.toLowerCase(), held: true }));
+
+  setProgress(`fetching history for ${universe.length + 1} current assets…`);
+  const seriesById = await candidateSeries(universe, days, { setProgress });
+  seriesById.set(tetherAsset.coingecko_id, await getDailyHistory(tetherAsset.coingecko_id, days));
+
+  // Adaptive window (same rails as the lab): shrink only as far as needed so
+  // most current assets cover it, never below MIN_WINDOW_DAYS.
+  const earliests = universe
+    .map((c) => (seriesById.get(c.id) || [])[0])
+    .filter(Boolean)
+    .map((r) => r.ts);
+  const windowStart = chooseWindowStart(earliests, nowMs - days * 86_400_000, nowMs);
+  const trimmed = new Map();
+  for (const [id, rows] of seriesById) trimmed.set(id, rows.filter((r) => r.ts >= windowStart));
+
+  const { bars, covered } = buildBars(trimmed, [tetherAsset.coingecko_id, ...universe.map((c) => c.id)]);
+  if (!covered.includes(tetherAsset.coingecko_id)) {
+    throw new Error('the tethered index has no usable history for this window');
+  }
+  if (bars.length < MIN_WINDOW_DAYS) throw new Error(`not enough overlapping daily history (${bars.length} bars)`);
+
+  const coveredHoldings = universe.filter((c) => covered.includes(c.id));
+  const droppedForCoverage = universe.filter((c) => !covered.includes(c.id)).map((c) => c.symbol);
+  const assetSet = [
+    { id: tetherAsset.coingecko_id, symbol: tetherAsset.symbol, isIndex: true },
+    ...coveredHoldings.map((c) => ({ id: c.id, symbol: (assets.find((a) => a.coingecko_id === c.id) || {}).symbol || c.symbol, isIndex: false })),
+  ];
+
+  const currentMix = assets
+    .filter((a) => a.target_pct > 0)
+    .map((a) => ({ id: a.coingecko_id, symbol: a.symbol, targetPct: a.target_pct, isIndex: !!a.is_index }));
+
+  // BTC benchmark aligned to the bars enables regime mode; thin history falls
+  // back to walk-forward folds automatically.
+  setProgress('classifying market regimes…');
+  let benchmark = null;
+  try {
+    const btc = await getDailyHistory('bitcoin', days, 'btc');
+    const byTs = new Map(btc.map((r) => [r.ts, r.usd_price]));
+    let last = null;
+    benchmark = bars.map((b) => {
+      const v = byTs.get(b.ts);
+      if (v > 0) last = v;
+      return { ts: b.ts, usd_price: last || 0 };
+    });
+    if (benchmark.some((r) => !(r.usd_price > 0))) benchmark = null;
+  } catch (err) {
+    console.error('benchmark fetch failed (folds mode):', err.message);
+  }
+
+  const account = getAccountForProfile(profileId);
+  const result = await searchCurrentSet({
+    assetSet,
+    bars,
+    benchmark,
+    currentMix: currentMix.length > 0 ? currentMix : null,
+    feePct: profile.fee_pct,
+    spreadPct: profile.spread_pct,
+    samples,
+    seed,
+    setProgress,
+  });
+  result.universe = {
+    considered: universe.length,
+    covered: coveredHoldings.length,
+    droppedForCoverage: droppedForCoverage.length,
+    droppedNames: droppedForCoverage,
+    venue: account ? account.venue : null,
+    notOnVenue: [],
+    requestedDays: days,
+    windowDays: Math.round((nowMs - windowStart) / 86_400_000),
+  };
+  return { result, params: { days, samples, seed, currentSet: true } };
+}
+
 async function runComposeSearch(profileId, opts = {}, setProgress = () => {}) {
   const profile = db.prepare('SELECT * FROM profiles WHERE id = ?').get(profileId);
   if (!profile) throw new Error('profile not found');
@@ -611,6 +983,13 @@ async function runComposeSearch(profileId, opts = {}, setProgress = () => {}) {
   const samples = Number(opts.samples) > 0 ? Math.min(Number(opts.samples), 2_000_000) : 100_000;
   const candidateCount = Number(opts.candidates) > 0 ? Math.min(Number(opts.candidates), 60) : 40;
   const seed = Number(opts.seed) || (Date.now() % 2 ** 31);
+
+  // Current-set mode branches here: it keeps the exact holdings and searches
+  // only the split × sensitivity, so it skips the whole candidate-discovery /
+  // venue-filter machinery below.
+  if (opts.currentSet) {
+    return runCurrentSetSearch(profileId, { profile, assets, tetherAsset, days, samples, seed }, setProgress);
+  }
 
   // Universe: held risk assets (unfrozen — a buy-frozen asset must not be
   // recommended INTO) + the CG top-N candidates, RESTRICTED to what the
@@ -727,4 +1106,4 @@ async function runComposeSearch(profileId, opts = {}, setProgress = () => {}) {
   return { result, params: { days, samples, candidateCount, seed } };
 }
 
-module.exports = { searchCompositions, buildBars, runComposeSearch, chooseWindowStart, mulberry32, MINI_X, CAVEAT };
+module.exports = { searchCompositions, searchCurrentSet, buildBars, runComposeSearch, chooseWindowStart, mulberry32, MINI_X, CAVEAT };

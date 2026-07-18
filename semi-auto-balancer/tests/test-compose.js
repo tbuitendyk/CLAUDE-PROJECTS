@@ -165,6 +165,64 @@ const IDS = [...seriesById.keys()];
   ok(rr.mixes[0].consistency >= 0, 'top mix has a non-negative worst-type edge (harvests even in its weakest regime)');
   ok(rr.currentMix.reference === true && rr.currentMix.recommended === false, 'current mix reference-only in regime mode too');
 
+  // --- CURRENT-SET mode: allocation × sensitivity on a FIXED holdings set.
+  // Keeps every asset present (no subsets), each 4–80% on a 1% grid, and
+  // carries a per-split sensitivity sweep. ---
+  const csAssetSet = [
+    { id: 'tether', symbol: 'usdt', isIndex: true },
+    { id: 'osc-a', symbol: 'osc-a', isIndex: false },
+    { id: 'osc-b', symbol: 'osc-b', isIndex: false },
+    { id: 'riser', symbol: 'riser', isIndex: false },
+  ];
+  const cs = await compose.searchCurrentSet({
+    assetSet: csAssetSet,
+    bars,
+    currentMix: [
+      { id: 'tether', symbol: 'usdt', targetPct: 25, isIndex: true },
+      { id: 'osc-a', symbol: 'osc-a', targetPct: 25, isIndex: false },
+      { id: 'osc-b', symbol: 'osc-b', targetPct: 25, isIndex: false },
+      { id: 'riser', symbol: 'riser', targetPct: 25, isIndex: false },
+    ],
+    feePct: 0.3,
+    spreadPct: 0.1,
+    samples: 4000,
+    refineTop: 10,
+    refineEvals: 20,
+    finalists: 8,
+    seed: 99,
+  });
+  ok(cs.currentSet === true, 'current-set result flags currentSet=true');
+  ok(cs.weightRules.minPct === 4 && cs.weightRules.maxPct === 80, 'weight rules report the 4–80% band');
+  ok(cs.mixes.length > 0, `current-set produced finalists (${cs.mixes.length})`);
+  for (const m of cs.mixes) {
+    ok(m.assets.length === csAssetSet.length, 'every split keeps ALL current assets present (no subsets)');
+    const total = m.assets.reduce((s, a) => s + a.pct, 0);
+    ok(Math.abs(total - 100) < 0.01, 'split totals 100%');
+    ok(m.assets.every((a) => a.pct >= 4 - 1e-9 && a.pct <= 80 + 1e-9), 'every weight inside 4–80%');
+    ok(m.assets.some((a) => a.isIndex), 'the index asset stays in the split');
+    ok(Array.isArray(m.xGrid) && m.xGrid.length === compose.MINI_X.length, 'split carries the full sensitivity sweep');
+    ok(m.xGrid.every((g) => Number.isFinite(g.value) && Number.isFinite(g.edge)), 'every sweep point has value + edge');
+  }
+  ok(cs.currentMix && cs.currentMix.reference === true && cs.currentMix.recommended === false, 'current mix scored, reference-only');
+  ok(Array.isArray(cs.currentMix.xGrid) && cs.currentMix.xGrid.length === compose.MINI_X.length, 'current mix carries its own sensitivity sweep');
+  // Every asset must be able to reach the 80% ceiling: with a floor of 4% and
+  // 4 assets, the max any one can hold is 100 - 3*4 = 88%, so 80% is feasible.
+  const csDet = await compose.searchCurrentSet({
+    assetSet: csAssetSet,
+    bars,
+    feePct: 0.3,
+    spreadPct: 0.1,
+    samples: 4000,
+    refineTop: 10,
+    refineEvals: 20,
+    finalists: 8,
+    seed: 99,
+  });
+  ok(
+    JSON.stringify(csDet.mixes[0].assets) === JSON.stringify(cs.mixes[0].assets),
+    'current-set is deterministic under a fixed seed'
+  );
+
   // --- determinism under a fixed seed ---
   const r2 = await compose.searchCompositions(opts);
   ok(

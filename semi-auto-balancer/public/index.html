@@ -69,7 +69,7 @@
             <div class="table-wrap">
               <table id="asset-table">
                 <thead>
-                  <tr><th title="Tethered index asset (priced 1:1 with the index)">Index</th><th>Symbol</th><th>Target %</th><th>Quantity</th><th>Price (USD)</th><th>Value (USD)</th><th>Actual %</th><th>Drift vs target</th><th title="This asset's effective drift trigger — weight-normalized so every asset reacts at about the same own-price move">Trigger @</th><th></th></tr>
+                  <tr><th title="Tethered index asset (priced 1:1 with the index)">Index</th><th>Symbol</th><th>Target %</th><th>Quantity</th><th>Price (USD)</th><th>Value (USD)</th><th>Actual %</th><th>Drift vs target</th><th title="This asset's effective drift trigger — weight-normalized so every asset reacts at about the same own-price move">Trigger @</th><th title="Buy-freeze / depeg status">Status</th><th></th></tr>
                 </thead>
                 <tbody></tbody>
               </table>
@@ -129,8 +129,14 @@
                 where rebalancing genuinely beats holding. Ranked by the <strong>out-of-sample</strong>
                 window the search never optimized on. Advisory only — adopting a mix means adding the
                 assets and using "Set new targets" yourself.</p>
+              <p class="muted"><strong>Current holdings only</strong> keeps your exact asset set (nothing
+                added or dropped) and searches just the split — every asset 4–80% on a 1% grid — with
+                each split scored jointly across the full sensitivity range, so you get the best
+                allocation <em>and</em> its sensitivity together.</p>
               <div class="inline">
                 <button id="c-run">Run search</button>
+                <label class="muted toggle-inline" title="Search only your current assets' proportions × sensitivity — no new assets, none dropped">
+                  <input type="checkbox" id="c-currentset"> Current holdings only (allocation × sensitivity)</label>
                 <label class="muted">intensity
                   <select id="c-intensity">
                     <option value="20000">quick (~20k combos, ~1 min)</option>
