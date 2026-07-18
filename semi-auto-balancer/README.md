@@ -37,10 +37,10 @@ and import the screenshot to set the new quantities.
 - **Recipients are per profile**: a toggle turns alerts on/off, and each
   profile carries its own list of email addresses — no global fallback; with
   no recipients, alerts only appear in the on-screen log. Each recipient can
-  optionally add a WhatsApp number + [CallMeBot](https://www.callmebot.com)
-  API key to get a WhatsApp notice alongside the email (free personal-use
-  gateway; the recipient self-authorizes once by WhatsApping "I allow
-  callmebot to send me messages" to +34 644 91 07 79).
+  optionally add a Telegram chat ID to get a Telegram notice alongside the
+  email (official Bot API — create a bot once with @BotFather, paste its
+  token in the Notifications section; each recipient sends the bot /start
+  and picks their chat ID via "Find chat IDs").
 - **The currency basket** measures unit growth independent of prices:
   `basket = Σ (current units ÷ snapshot units) × target weight`. It starts
   at 1.00000000 when targets are set (unit snapshot taken) and rises above 1

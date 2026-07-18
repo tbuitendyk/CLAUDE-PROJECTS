@@ -1,7 +1,7 @@
 const nodemailer = require('nodemailer');
 const config = require('./config');
 const db = require('./db');
-const { sendWhatsApp } = require('./whatsapp');
+const { sendTelegram, telegramConfigured } = require('./telegram');
 const { indexLabelForProfile } = require('./balancer');
 
 let transporter = null;
@@ -91,7 +91,7 @@ function buildText(event) {
 }
 
 // Delivers one notification event per profile: on-screen alert log always;
-// email + WhatsApp per the profile's own recipient list (no global fallback).
+// email + Telegram per the profile's own recipient list (no global fallback).
 async function sendAlertEvents(events) {
   const logStmt = db.prepare(
     'INSERT INTO alert_log (profile_id, message, ts, emailed) VALUES (?, ?, ?, ?)'
@@ -123,21 +123,22 @@ async function sendAlertEvents(events) {
       }
     }
 
-    // WhatsApp notices ride along for recipients that configured them.
+    // Telegram notices ride along for recipients that configured a chat id.
     for (const r of recipients) {
-      if (!r.whatsapp_phone || !r.whatsapp_key) continue;
+      if (!r.telegram_chat_id) continue;
       const notice =
         `Semi-Auto Balancer: ${alerts.length} rebalance trade${alerts.length > 1 ? 's' : ''} needed on "${profile.name}"` +
         (r.email ? ' — details in your email.' : ` — ${alerts.map((a) => `${a.action} ${a.asset.symbol.toUpperCase()}`).join(', ')}.`);
       try {
-        await sendWhatsApp(r.whatsapp_phone, r.whatsapp_key, notice);
+        if (!telegramConfigured()) throw new Error('bot token not configured');
+        await sendTelegram(r.telegram_chat_id, notice);
       } catch (err) {
-        console.error(`WhatsApp notice failed for profile ${profile.id}:`, err.message);
-        // Surface the failure in the on-screen alert log so a dead key or
-        // wrong phone format is visible without shell diagnostics.
+        console.error(`Telegram notice failed for profile ${profile.id}:`, err.message);
+        // Surface the failure in the on-screen alert log so a dead token or
+        // wrong chat id is visible without shell diagnostics.
         logStmt.run(
           profile.id,
-          `WhatsApp notice to ${r.whatsapp_phone} FAILED: ${err.message}`,
+          `Telegram notice to chat ${r.telegram_chat_id} FAILED: ${err.message}`,
           Date.now(),
           0
         );
@@ -150,7 +151,7 @@ async function sendAlertEvents(events) {
 
 // Full-profile status report, sent on demand regardless of breach state —
 // all balances, values, allocations, and the currency basket. Doubles as a
-// live test of the whole comms path (email + WhatsApp).
+// live test of the whole comms path (email + Telegram).
 async function sendStatusReport(profile, view) {
   const { assets, totals } = view;
   const idx = indexLabelForProfile(profile.id);
@@ -202,7 +203,7 @@ async function sendStatusReport(profile, view) {
 
   const recipients = parseRecipients(profile);
   const emails = recipients.map((r) => (r.email || '').trim()).filter(Boolean);
-  const result = { emailedTo: [], whatsappOk: 0, whatsappFailed: [], errors: [] };
+  const result = { emailedTo: [], telegramOk: 0, telegramFailed: [], errors: [] };
 
   if (emails.length > 0 && emailConfigured()) {
     try {
@@ -221,25 +222,26 @@ async function sendStatusReport(profile, view) {
   }
 
   for (const r of recipients) {
-    if (!r.whatsapp_phone || !r.whatsapp_key) continue;
-    // No dollar balances on WhatsApp -- just the (unitless) basket ratio.
+    if (!r.telegram_chat_id) continue;
+    // No dollar balances on Telegram -- just the (unitless) basket ratio.
     const notice =
       `Semi-Auto Balancer: status report for "${profile.name}" — basket ` +
       `${totals.basket != null ? totals.basket.toFixed(8) : 'n/a'}.` +
       (r.email ? ' Full report emailed to you.' : '');
     try {
-      await sendWhatsApp(r.whatsapp_phone, r.whatsapp_key, notice);
-      result.whatsappOk++;
+      if (!telegramConfigured()) throw new Error('bot token not configured');
+      await sendTelegram(r.telegram_chat_id, notice);
+      result.telegramOk++;
     } catch (err) {
-      result.whatsappFailed.push(r.whatsapp_phone);
-      result.errors.push(`WhatsApp ${r.whatsapp_phone}: ${err.message}`);
+      result.telegramFailed.push(r.telegram_chat_id);
+      result.errors.push(`Telegram ${r.telegram_chat_id}: ${err.message}`);
     }
   }
 
   db.prepare('INSERT INTO alert_log (profile_id, message, ts, emailed) VALUES (?, ?, ?, ?)').run(
     profile.id,
     `Status report requested — email to [${result.emailedTo.join(', ') || 'none'}], ` +
-      `WhatsApp ok ${result.whatsappOk}, failed ${result.whatsappFailed.length}` +
+      `Telegram ok ${result.telegramOk}, failed ${result.telegramFailed.length}` +
       (result.errors.length ? ` | ${result.errors.join(' | ')}` : ''),
     Date.now(),
     result.emailedTo.length > 0 ? 1 : 0

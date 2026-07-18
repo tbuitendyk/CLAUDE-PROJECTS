@@ -20,6 +20,8 @@ const { getJob } = require('./lib/jobs');
 const { sendAlertEvents, sendStatusReport, sendTestEmail, emailConfigured } = require('./lib/mailer');
 const { searchCoins, supportedFiats, fiatCode } = require('./lib/pricing');
 const { visionConfigured, parseHoldingsScreenshot } = require('./lib/vision');
+const telegram = require('./lib/telegram');
+const { telegramConfigured } = telegram;
 const { startScheduler } = require('./lib/scheduler');
 const sync = require('./lib/sync');
 const { monthlyCalls, MONTH_CAP } = require('./lib/cg');
@@ -88,6 +90,7 @@ app.get('/api/session', (req, res) => {
     passwordRequired: Boolean(config.appPassword),
     emailConfigured: emailConfigured(),
     visionConfigured: visionConfigured(),
+    telegramConfigured: telegramConfigured(),
   });
 });
 
@@ -121,24 +124,26 @@ app.patch('/api/profiles/:id', (req, res) => {
   if (!profile) return res.status(404).json({ error: 'not found' });
   const b = req.body || {};
 
-  // Recipients: [{email, whatsapp_phone, whatsapp_key}, ...]. No global
-  // fallback exists -- an empty list means on-screen logging only.
+  // Recipients: [{email, telegram_chat_id}, ...]. No global fallback exists
+  // -- an empty list means on-screen logging only. (Rows saved by the old
+  // CallMeBot era carried whatsapp fields; they are simply dropped here on
+  // the next save and ignored by the mailer meanwhile.)
   let recipients = profile.recipients;
   if (b.recipients !== undefined) {
     if (!Array.isArray(b.recipients)) return res.status(400).json({ error: 'recipients must be an array' });
     const cleaned = [];
     for (const r of b.recipients) {
       const email = String(r.email || '').trim();
-      const phone = String(r.whatsapp_phone || '').trim();
-      const key = String(r.whatsapp_key || '').trim();
-      if (!email && !(phone && key)) continue; // a row needs at least one working channel
+      const chatId = String(r.telegram_chat_id || '').trim();
+      if (!email && !chatId) continue; // a row needs at least one working channel
       if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
         return res.status(400).json({ error: `invalid email: ${email}` });
       }
-      if ((phone && !key) || (!phone && key)) {
-        return res.status(400).json({ error: 'WhatsApp needs both phone and CallMeBot API key' });
+      // Telegram chat ids are integers (negative for groups).
+      if (chatId && !/^-?\d{1,20}$/.test(chatId)) {
+        return res.status(400).json({ error: `invalid Telegram chat ID: ${chatId} (use "Find chat IDs")` });
       }
-      cleaned.push({ email, whatsapp_phone: phone, whatsapp_key: key });
+      cleaned.push({ email, telegram_chat_id: chatId });
     }
     recipients = JSON.stringify(cleaned);
   }
@@ -396,6 +401,45 @@ app.post('/api/pending-flows/:id/dismiss', (req, res) => {
   }
 });
 
+// ---- telegram notifications ---------------------------------------------------
+
+// One bot serves all profiles. Saving verifies the token against getMe
+// before storing; an empty token clears the stored one.
+app.post('/api/telegram/token', async (req, res) => {
+  try {
+    const result = await telegram.setToken((req.body || {}).token);
+    res.json({ ok: true, ...result });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.get('/api/telegram/status', (req, res) => {
+  res.json(telegram.botStatus());
+});
+
+// Chats that have messaged the bot recently — the "Find chat IDs" picker.
+app.get('/api/telegram/chats', async (req, res) => {
+  try {
+    res.json(await telegram.recentChats());
+  } catch (err) {
+    res.status(502).json({ error: err.message });
+  }
+});
+
+// One test message straight to a chat id, so a recipient row can be proven
+// live before the first real alert needs it.
+app.post('/api/telegram/test', async (req, res) => {
+  try {
+    const chatId = String((req.body || {}).chat_id || '').trim();
+    if (!chatId) return res.status(400).json({ error: 'chat_id required' });
+    await telegram.sendTelegram(chatId, 'Semi-Auto Balancer: Telegram test — this channel works.');
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(502).json({ error: err.message });
+  }
+});
+
 // ---- diagnostics --------------------------------------------------------------
 
 // The deploy gate reads this: CG quota ledger, history-cache freshness, and
@@ -515,7 +559,7 @@ app.post('/api/profiles/:id/poll', async (req, res) => {
 });
 
 // On-demand full status report to the profile's recipients (email + a
-// WhatsApp notice), regardless of breach state. Doubles as a comms test.
+// Telegram notice), regardless of breach state. Doubles as a comms test.
 app.post('/api/profiles/:id/email-status', async (req, res) => {
   const profile = db.prepare('SELECT * FROM profiles WHERE id = ?').get(req.params.id);
   if (!profile) return res.status(404).json({ error: 'not found' });
@@ -523,7 +567,7 @@ app.post('/api/profiles/:id/email-status', async (req, res) => {
   try {
     recipients = JSON.parse(profile.recipients || '[]');
   } catch {}
-  if (!recipients.some((r) => r.email || (r.whatsapp_phone && r.whatsapp_key))) {
+  if (!recipients.some((r) => r.email || r.telegram_chat_id)) {
     return res.status(400).json({ error: 'No recipients configured on this profile' });
   }
   try {

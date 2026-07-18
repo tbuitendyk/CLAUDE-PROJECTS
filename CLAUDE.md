@@ -28,7 +28,9 @@ the checkmarked tethered asset). Chained (splice-continuous) currency basket
 and value index survive target changes, deposits/withdrawals, and index
 switches — only trading and market moves affect them; `value_started_at` dates
 the track record and feeds the annualized (compounding) rate. Notifications
-are per-profile (email + optional CallMeBot WhatsApp) with the
+are per-profile (email + optional Telegram via the official Bot API — one
+bot for the app, token in the settings table, per-recipient chat ids;
+replaced CallMeBot WhatsApp, which was unreliable) with the
 armed → notified state machine (12h timeout; "Poll now" = universal reset).
 
 What this branch changes (see PLAN.md for full detail and status):

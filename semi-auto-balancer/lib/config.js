@@ -45,4 +45,8 @@ module.exports = {
 
   // Enables the screenshot-import feature (Claude vision).
   anthropicApiKey: process.env.ANTHROPIC_API_KEY || '',
+
+  // Telegram bot token override. Normally the token is entered in the UI and
+  // stored in the settings table; set this only to pin it from the env.
+  telegramBotToken: process.env.TELEGRAM_BOT_TOKEN || '',
 };

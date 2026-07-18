@@ -176,9 +176,18 @@
               <button id="n-add" class="ghost">Add recipient</button>
               <button id="n-save">Save recipients</button>
             </div>
-            <p class="muted">No recipients = alerts are logged below only. WhatsApp is optional per recipient
-              (CallMeBot: the recipient WhatsApps “I allow callmebot to send me messages” to +34 644 91 07 79
-              once, and enters the API key it replies with).</p>
+            <p class="muted">No recipients = alerts are logged below only. Telegram is optional per recipient:
+              each recipient opens the bot in Telegram, sends <code>/start</code>, then use
+              “Find chat IDs” below to fill in their chat ID.</p>
+            <div id="tg-box">
+              <p id="tg-status" class="muted"></p>
+              <div class="inline">
+                <input id="tg-token" placeholder="Telegram bot token (from @BotFather, shared by all profiles)" autocomplete="off">
+                <button id="tg-save" class="ghost">Save token</button>
+                <button id="tg-find" class="ghost">Find chat IDs</button>
+              </div>
+              <div id="tg-chats"></div>
+            </div>
 
             <h3>Value history</h3>
             <div class="table-wrap">

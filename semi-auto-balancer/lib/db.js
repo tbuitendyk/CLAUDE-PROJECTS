@@ -98,6 +98,13 @@ CREATE TABLE IF NOT EXISTS daily_prices (
   PRIMARY KEY (coingecko_id, ts)
 );
 
+-- App-wide key/value settings (e.g. the Telegram bot token, entered in the
+-- UI and shared by every profile's notifications).
+CREATE TABLE IF NOT EXISTS settings (
+  key TEXT PRIMARY KEY,
+  value TEXT
+);
+
 -- CoinGecko monthly call ledger: the demo tier's binding constraint is
 -- 10,000 calls/month, so every request (success or error) is counted.
 CREATE TABLE IF NOT EXISTS cg_ledger (
@@ -245,7 +252,7 @@ db.exec(`
   WHERE value_started_at IS NULL AND value_snap_rel IS NOT NULL;
 `);
 // Per-profile notifications: master toggle, recipient list (JSON array of
-// {email, whatsapp_phone, whatsapp_key}), and the notification state machine
+// {email, telegram_chat_id}), and the notification state machine
 // (armed -> notified -> awaiting_upload, with 12h timeouts back to armed).
 ensureColumn('profiles', 'alerts_enabled', "alerts_enabled INTEGER NOT NULL DEFAULT 1");
 ensureColumn('profiles', 'recipients', "recipients TEXT NOT NULL DEFAULT '[]'");

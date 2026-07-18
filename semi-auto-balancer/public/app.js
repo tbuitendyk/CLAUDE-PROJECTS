@@ -341,6 +341,7 @@ function renderDetail() {
   $('#n-state').textContent = 'State: ' + (stateText[profile.notify_state] || stateText.armed);
   $('#n-enabled').checked = Boolean(profile.alerts_enabled);
   renderRecipients(JSON.parse(profile.recipients || '[]'));
+  renderTelegramStatus();
 
   // alert log
   const log = $('#alert-log');
@@ -371,14 +372,27 @@ function recipientRow(r = {}) {
   };
   row.append(
     mk('r-email', 'email@example.com', r.email),
-    mk('r-phone', 'WhatsApp +1555… (optional)', r.whatsapp_phone),
-    mk('r-key', 'CallMeBot key (optional)', r.whatsapp_key)
+    mk('r-chat', 'Telegram chat ID (optional — use "Find chat IDs")', r.telegram_chat_id)
   );
+  const test = document.createElement('button');
+  test.textContent = 'Test';
+  test.className = 'ghost';
+  test.title = 'Send a test Telegram message to this chat ID';
+  test.addEventListener('click', async () => {
+    const chatId = row.querySelector('.r-chat').value.trim();
+    if (!chatId) return alert('Enter a chat ID first (use "Find chat IDs").');
+    try {
+      await api('/telegram/test', { method: 'POST', body: { chat_id: chatId } });
+      alert('Test message sent — check Telegram.');
+    } catch (err) {
+      alert(`Test failed: ${err.message}`);
+    }
+  });
   const del = document.createElement('button');
   del.textContent = '✕';
   del.className = 'ghost';
   del.addEventListener('click', () => row.remove());
-  row.appendChild(del);
+  row.append(test, del);
   return row;
 }
 
@@ -393,11 +407,65 @@ $('#n-add').addEventListener('click', () => {
   $('#n-recipients').appendChild(recipientRow());
 });
 
+// ---- telegram bot (one bot, all profiles) ----
+
+function renderTelegramStatus() {
+  $('#tg-status').textContent = state.telegramConfigured
+    ? 'Telegram bot: configured — recipients message the bot once (/start), then "Find chat IDs".'
+    : 'Telegram bot: NOT configured — create one with @BotFather (/newbot) and paste its token here.';
+}
+
+$('#tg-save').addEventListener('click', async () => {
+  const token = $('#tg-token').value.trim();
+  try {
+    const r = await api('/telegram/token', { method: 'POST', body: { token } });
+    state.telegramConfigured = Boolean(r.configured);
+    $('#tg-token').value = '';
+    renderTelegramStatus();
+    alert(token ? `Token verified — bot @${r.username} is live.` : 'Stored token cleared.');
+  } catch (err) {
+    alert(`Token rejected: ${err.message}`);
+  }
+});
+
+$('#tg-find').addEventListener('click', async () => {
+  const box = $('#tg-chats');
+  box.innerHTML = '<p class="muted">Checking recent messages to the bot…</p>';
+  try {
+    const chats = await api('/telegram/chats');
+    box.innerHTML = '';
+    if (chats.length === 0) {
+      box.innerHTML =
+        '<p class="muted">No recent chats. Each recipient must open the bot in Telegram and send /start ' +
+        '(messages older than ~24h stop showing here — just send it again).</p>';
+      return;
+    }
+    for (const c of chats) {
+      const row = document.createElement('div');
+      row.className = 'recipient-row';
+      const label = document.createElement('span');
+      label.textContent = `${c.name}${c.username ? ' (@' + c.username + ')' : ''} — ${c.chat_id}`;
+      const use = document.createElement('button');
+      use.textContent = 'Use';
+      use.className = 'ghost';
+      use.title = 'Fill this chat ID into the first empty recipient row';
+      use.addEventListener('click', () => {
+        const empty = [...document.querySelectorAll('#n-recipients .r-chat')].find((i) => !i.value.trim());
+        if (empty) empty.value = c.chat_id;
+        else $('#n-recipients').appendChild(recipientRow({ telegram_chat_id: c.chat_id }));
+      });
+      row.append(label, use);
+      box.appendChild(row);
+    }
+  } catch (err) {
+    box.innerHTML = `<p class="warn-text">${err.message}</p>`;
+  }
+});
+
 $('#n-save').addEventListener('click', async () => {
   const recipients = [...document.querySelectorAll('#n-recipients .recipient-row')].map((row) => ({
     email: row.querySelector('.r-email').value.trim(),
-    whatsapp_phone: row.querySelector('.r-phone').value.trim(),
-    whatsapp_key: row.querySelector('.r-key').value.trim(),
+    telegram_chat_id: row.querySelector('.r-chat').value.trim(),
   }));
   try {
     await api(`/profiles/${state.selectedId}`, { method: 'PATCH', body: { recipients } });
@@ -426,7 +494,7 @@ $('#d-status').addEventListener('click', async () => {
     const r = await api(`/profiles/${state.selectedId}/email-status`, { method: 'POST' });
     const parts = [];
     parts.push(r.emailedTo.length ? `Email sent to ${r.emailedTo.join(', ')}` : 'No email sent');
-    parts.push(`WhatsApp: ${r.whatsappOk} sent${r.whatsappFailed.length ? `, ${r.whatsappFailed.length} FAILED` : ''}`);
+    parts.push(`Telegram: ${r.telegramOk} sent${r.telegramFailed.length ? `, ${r.telegramFailed.length} FAILED` : ''}`);
     if (r.errors && r.errors.length) parts.push(r.errors.join(' | '));
     alert(parts.join('\n'));
     await refresh();
@@ -1038,6 +1106,7 @@ $('#i-cancel').addEventListener('click', () => {
     ? 'email alerts: on'
     : 'email alerts: not configured';
   state.visionConfigured = Boolean(session.visionConfigured);
+  state.telegramConfigured = Boolean(session.telegramConfigured);
   if (session.authed) {
     showMain();
     await loadProfiles();
