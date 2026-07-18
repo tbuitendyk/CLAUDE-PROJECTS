@@ -144,6 +144,27 @@ const IDS = [...seriesById.keys()];
   ok(dead.mixes.every((m) => !m.recommended), 'nothing is recommended when nothing harvests');
   ok(dead.warnings.some((w) => /does not reliably beat holding|capital-preservation/i.test(w)), 'no-harvest warning rendered');
 
+  // --- REGIME mode: a benchmark with bull/bear/range swaths switches the
+  // search to per-market-type evaluation ---
+  const nB = bars.length;
+  const benchPrice = (i) => {
+    // bull 25% / bear 15% / range 60% — a long enough range so all three
+    // types get a harvestable in-sample swath after the rolling-high lag.
+    const bull = Math.floor(nB * 0.25), bear = Math.floor(nB * 0.15);
+    if (i < bull) return 100 + (300 * i) / bull; // 100 -> 400
+    if (i < bull + bear) return 400 - (280 * (i - bull)) / bear; // 400 -> 120
+    return 125 + 3 * Math.sin((2 * Math.PI * (i - bull - bear)) / 90); // gentle sideways (one clean range swath)
+  };
+  const benchmark = bars.map((b, i) => ({ ts: b.ts, usd_price: benchPrice(i) }));
+  const rr = await compose.searchCompositions({ ...opts, benchmark });
+  ok(rr.mode === 'regime', 'a diverse benchmark switches the search into regime mode');
+  ok(rr.regime && rr.regime.byType.bull > 0 && rr.regime.byType.bear > 0 && rr.regime.byType.range > 0, 'all three market types present in the study');
+  ok(rr.mixes.every((m) => m.perType && Number.isFinite(m.consistency) && Number.isFinite(m.average)), 'every mix carries per-type edges + consistency/average');
+  ok(rr.mixes.every((m) => m.typesPositive <= m.typesPresent), 'typesPositive bounded by typesPresent');
+  ok(rr.mixes.some((m) => m.recommended) && rr.noHarvest === false, 'a mix harvesting in every market type is recommended');
+  ok(rr.mixes[0].consistency >= 0, 'top mix has a non-negative worst-type edge (harvests even in its weakest regime)');
+  ok(rr.currentMix.reference === true && rr.currentMix.recommended === false, 'current mix reference-only in regime mode too');
+
   // --- determinism under a fixed seed ---
   const r2 = await compose.searchCompositions(opts);
   ok(

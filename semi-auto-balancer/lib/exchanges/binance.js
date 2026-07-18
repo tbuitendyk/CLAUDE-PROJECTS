@@ -13,6 +13,7 @@ const DATA = 'https://data.binance.vision';
 // REST mirrors tried in order — some networks pass one but not the other.
 const API_HOSTS = ['https://api.binance.vision', 'https://api.binance.com'];
 const HOUR_MS = 3_600_000;
+const DAY_MS = 86_400_000;
 
 async function apiFetch(pathAndQuery) {
   let lastErr = null;
@@ -58,8 +59,9 @@ function unzipSingleEntry(buf) {
 
 // Kline CSV rows: openTime,open,high,low,close,... — openTime switched from
 // milliseconds to MICROseconds in 2025+ files; normalize by magnitude.
-function parseKlineCsv(text) {
-  const byHour = new Map();
+// bucketMs picks the candle granularity (HOUR_MS for 1h, DAY_MS for 1d).
+function parseKlineCsv(text, bucketMs = HOUR_MS) {
+  const byBucket = new Map();
   for (const line of String(text).split('\n')) {
     const parts = line.split(',');
     if (parts.length < 5) continue;
@@ -68,9 +70,9 @@ function parseKlineCsv(text) {
     if (t > 1e14) t = Math.floor(t / 1000); // microseconds -> ms
     const close = Number(parts[4]);
     if (!(close > 0)) continue;
-    byHour.set(Math.floor(t / HOUR_MS) * HOUR_MS, close);
+    byBucket.set(Math.floor(t / bucketMs) * bucketMs, close);
   }
-  return byHour;
+  return byBucket;
 }
 
 // Does Binance trade SYMUSDT? Try the REST mirrors; when both are
@@ -89,43 +91,43 @@ async function symbolExists(symbol) {
   }
 }
 
-// One monthly zip -> Map(hourTs -> close); null when that month has no file
+// One monthly zip -> Map(bucketTs -> close); null when that month has no file
 // (pre-listing or post-delisting months 404 — callers just skip them).
-async function monthlyCloses(binanceSymbol, year, month) {
+async function monthlyCloses(binanceSymbol, year, month, interval = '1h', bucketMs = HOUR_MS) {
   const mm = String(month).padStart(2, '0');
-  const url = `${DATA}/data/spot/monthly/klines/${binanceSymbol}/1h/${binanceSymbol}-1h-${year}-${mm}.zip`;
+  const url = `${DATA}/data/spot/monthly/klines/${binanceSymbol}/${interval}/${binanceSymbol}-${interval}-${year}-${mm}.zip`;
   const res = await fetch(url);
   if (res.status === 404) return null;
   if (!res.ok) throw new Error(`binance data ${res.status} for ${binanceSymbol} ${year}-${mm}`);
   const buf = Buffer.from(await res.arrayBuffer());
-  return parseKlineCsv(unzipSingleEntry(buf).toString('utf8'));
+  return parseKlineCsv(unzipSingleEntry(buf).toString('utf8'), bucketMs);
 }
 
 // Recent candles via the REST mirrors (current month / top-ups). Pages by
-// startTime; 1000 candles per call ≈ 41 days per page.
-async function recentCloses(binanceSymbol, sinceMs) {
-  const byHour = new Map();
+// startTime; 1000 candles per call.
+async function recentCloses(binanceSymbol, sinceMs, interval = '1h', bucketMs = HOUR_MS) {
+  const byBucket = new Map();
   let cursor = Math.max(0, sinceMs || 0);
-  for (let page = 0; page < 20; page++) {
+  for (let page = 0; page < 40; page++) {
     const rows = await apiFetch(
-      `/api/v3/klines?symbol=${binanceSymbol}&interval=1h&startTime=${cursor}&limit=1000`
+      `/api/v3/klines?symbol=${binanceSymbol}&interval=${interval}&startTime=${cursor}&limit=1000`
     );
     if (!Array.isArray(rows) || rows.length === 0) break;
     for (const r of rows) {
       const close = Number(r[4]);
-      if (close > 0) byHour.set(Math.floor(Number(r[0]) / HOUR_MS) * HOUR_MS, close);
+      if (close > 0) byBucket.set(Math.floor(Number(r[0]) / bucketMs) * bucketMs, close);
     }
     const lastOpen = Number(rows[rows.length - 1][0]);
     if (rows.length < 1000) break;
-    cursor = lastOpen + HOUR_MS;
+    cursor = lastOpen + bucketMs;
   }
-  return byHour;
+  return byBucket;
 }
 
 // Full backfill: monthly zips from `sinceMs` through last month, then the
 // REST mirror for the current partial month. Months without files (before
 // listing / after delisting) are skipped, not fatal.
-async function backfillCloses(binanceSymbol, sinceMs, { onProgress = () => {} } = {}) {
+async function backfillCloses(binanceSymbol, sinceMs, { interval = '1h', bucketMs = HOUR_MS, onProgress = () => {} } = {}) {
   const out = new Map();
   const start = new Date(Math.max(0, sinceMs));
   const now = new Date();
@@ -134,9 +136,9 @@ async function backfillCloses(binanceSymbol, sinceMs, { onProgress = () => {} } 
   const curY = now.getUTCFullYear();
   const curM = now.getUTCMonth() + 1;
   while (y < curY || (y === curY && m < curM)) {
-    onProgress(`binance ${binanceSymbol} ${y}-${String(m).padStart(2, '0')}`);
+    onProgress(`binance ${binanceSymbol} ${interval} ${y}-${String(m).padStart(2, '0')}`);
     try {
-      const month = await monthlyCloses(binanceSymbol, y, m);
+      const month = await monthlyCloses(binanceSymbol, y, m, interval, bucketMs);
       if (month) for (const [ts, p] of month) out.set(ts, p);
     } catch (err) {
       console.error(`binance monthly failed ${binanceSymbol} ${y}-${m}:`, err.message);
@@ -147,11 +149,9 @@ async function backfillCloses(binanceSymbol, sinceMs, { onProgress = () => {} } 
       y++;
     }
   }
-  // Current partial month via REST; when both mirrors are unreachable the
-  // monthly depth still stands and the gap closes on a later top-up.
   try {
     const monthStartMs = Date.UTC(curY, curM - 1, 1);
-    const recent = await recentCloses(binanceSymbol, Math.max(sinceMs, monthStartMs));
+    const recent = await recentCloses(binanceSymbol, Math.max(sinceMs, monthStartMs), interval, bucketMs);
     for (const [ts, p] of recent) out.set(ts, p);
   } catch (err) {
     console.error(`binance recent top-up unavailable for ${binanceSymbol}:`, err.message);
@@ -159,4 +159,18 @@ async function backfillCloses(binanceSymbol, sinceMs, { onProgress = () => {} } 
   return out;
 }
 
-module.exports = { symbolExists, monthlyCloses, recentCloses, backfillCloses, unzipSingleEntry, parseKlineCsv };
+// Deep DAILY closes (up to years) for a coin symbol, one source, USDT-quoted
+// (≈ USD, fine for backtests). Data-only: no account, no key.
+async function dailyClosesDeep(symbol, sinceMs) {
+  return backfillCloses(`${symbol.toUpperCase()}USDT`, sinceMs, { interval: '1d', bucketMs: DAY_MS });
+}
+
+module.exports = {
+  symbolExists,
+  monthlyCloses,
+  recentCloses,
+  backfillCloses,
+  dailyClosesDeep,
+  unzipSingleEntry,
+  parseKlineCsv,
+};

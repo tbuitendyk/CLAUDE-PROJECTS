@@ -88,13 +88,34 @@ async function getDailyHistory(id, days = MAX_DAYS, symbolHint = null) {
     return [...byDay.entries()].map(([ts, usd_price]) => ({ ts, usd_price }));
   }
 
-  // Exchange layer first: top up from the venue's own market data when it
-  // covers this asset (deeper history, zero CG quota). Fetch when the HEAD
-  // is stale OR the TAIL is shallower than the requested window — a series
-  // first cached via CoinGecko's 365-day cap must deepen, not sit fresh-
-  // but-shallow forever. Best-effort — any failure or non-coverage falls
-  // through to the CoinGecko path.
+  // Deep daily layer (regime study): requests beyond the exchange APIs' live
+  // depth (~720d) pull years from Binance/KuCoin's public data portals
+  // (data-only, no keys). Coins only — fiats keep the Bitso-book path below.
   let exFetched = false;
+  if (exsource.enabled() && days > MAX_EXCHANGE_DAYS && !code && symbolHint) {
+    const windowStart = dayBucket(Date.now()) - (days - 1) * DAY_MS;
+    const oldest = oldestCachedTs(id);
+    const latest = latestCachedTs(id);
+    const tailShallow = oldest == null || oldest > windowStart + 2 * DAY_MS;
+    const headStale = daysMissing(id, days) > 0;
+    if (tailShallow || headStale) {
+      const since = tailShallow ? windowStart : Math.max(latest || 0, windowStart);
+      const byDay = await exsource.deepDailyByDay(symbolHint, since);
+      if (byDay && byDay.size > 0) {
+        storeSeries(id, byDay);
+        exFetched = true;
+      }
+    } else {
+      exFetched = true;
+    }
+  }
+
+  // Exchange layer: top up from the venue's own market data when it covers
+  // this asset (deeper history, zero CG quota). Fetch when the HEAD is stale
+  // OR the TAIL is shallower than the requested window — a series first
+  // cached via CoinGecko's 365-day cap must deepen, not sit fresh-but-shallow
+  // forever. Runs even after a deep fetch, to top up the recent head (the
+  // portal zips lag the current partial month). Best-effort; falls to CG.
   if (exsource.enabled()) {
     const cap = Math.min(days, MAX_EXCHANGE_DAYS);
     const windowStart = dayBucket(Date.now()) - (cap - 1) * DAY_MS;

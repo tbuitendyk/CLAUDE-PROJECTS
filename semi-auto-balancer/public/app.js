@@ -852,30 +852,56 @@ function renderCompose(latest) {
   $('#c-caveat').textContent = [...(r.warnings || []), r.caveat].filter(Boolean).join('  ·  ');
 
   const sp = (n, d = 1) => (n == null ? '—' : (n >= 0 ? '+' : '') + n.toFixed(d) + '%');
+  const regimeMode = r.mode === 'regime';
+  const holdCellOf = (h) =>
+    (h && h.value != null ? sp(h.value) : '—') + (h && h.edge != null ? ` <span class="muted">(edge ${sp(h.edge)})</span>` : '');
+
+  // Header depends on mode: regime shows per-market-type edges; folds shows
+  // the walk-forward columns.
+  const thead = $('#c-table thead');
+  thead.innerHTML = regimeMode
+    ? '<tr><th>Mix (targets) · ★ = recommended</th>' +
+      '<th title="Market types (bull/bear/range) the mix harvested in, out of those present">Types ✓</th>' +
+      '<th title="Median harvest edge over holding across BULL swaths">Bull</th>' +
+      '<th title="Median harvest edge over holding across BEAR swaths">Bear</th>' +
+      '<th title="Median harvest edge over holding across RANGE swaths">Range</th>' +
+      '<th title="Worst market type — the consistency score the ranking uses">Worst</th>' +
+      '<th title="Equal-weighted mean edge across market types">Avg</th>' +
+      '<th title="Untouched confirmation tail: value and (edge over holding)">Holdout</th></tr>'
+    : '<tr><th>Mix (targets) · ★ = recommended</th><th title="Walk-forward windows harvested, out of N">Folds ✓</th>' +
+      '<th title="Median harvest edge across the folds">Median edge</th><th title="Untouched confirmation tail: value and (edge)">Holdout</th>' +
+      '<th title="Best sensitivity on the holdout">X</th><th title="Whole-window value incl. training — hindsight">Full</th></tr>';
+
   const tbody = $('#c-table tbody');
   tbody.innerHTML = '';
+  const pt = (row, t) => (row.perType && row.perType[t] != null ? sp(row.perType[t]) : '<span class="muted">—</span>');
   const addRow = (label, row, highlight) => {
     const tr = document.createElement('tr');
     if (highlight) tr.classList.add('index-row');
     const star = row.recommended ? ' ★' : '';
     const h = row.holdout || {};
-    const holdCell =
-      (h.value != null ? sp(h.value) : '—') +
-      (h.edge != null ? ` <span class="muted">(edge ${sp(h.edge)})</span>` : '');
-    tr.innerHTML =
-      `<td>${label}${star}</td>` +
-      `<td>${row.positiveFolds != null ? `${row.positiveFolds}/${row.nFolds}` : '—'}</td>` +
-      `<td>${sp(row.robust)}</td>` +
-      `<td><strong>${holdCell}</strong></td>` +
-      `<td>${h.x != null ? h.x + '%' : 'hold'}</td>` +
-      `<td class="muted">${row.full ? sp(row.full.value) : '—'}</td>`;
+    tr.innerHTML = regimeMode
+      ? `<td>${label}${star}</td>` +
+        `<td>${row.typesPositive != null ? `${row.typesPositive}/${row.typesPresent}` : '—'}</td>` +
+        `<td>${pt(row, 'bull')}</td><td>${pt(row, 'bear')}</td><td>${pt(row, 'range')}</td>` +
+        `<td><strong>${row.consistency != null ? sp(row.consistency) : '—'}</strong></td>` +
+        `<td>${row.average != null ? sp(row.average) : '—'}</td>` +
+        `<td>${holdCellOf(h)}</td>`
+      : `<td>${label}${star}</td>` +
+        `<td>${row.positiveFolds != null ? `${row.positiveFolds}/${row.nFolds}` : '—'}</td>` +
+        `<td>${sp(row.robust)}</td><td><strong>${holdCellOf(h)}</strong></td>` +
+        `<td>${h.x != null ? h.x + '%' : 'hold'}</td><td class="muted">${row.full ? sp(row.full.value) : '—'}</td>`;
     tbody.appendChild(tr);
   };
   if (r.currentMix) addRow(`CURRENT (reference only): ${mixLabel(r.currentMix.assets)}`, r.currentMix, true);
   for (const m of r.mixes) addRow(mixLabel(m.assets), m, false);
   if (!r.mixes.some((m) => m.recommended)) {
     const tr = document.createElement('tr');
-    tr.innerHTML = `<td colspan="6" class="warn-text">★ none — no mix cleared the walk-forward + holdout bar. Rankings above reflect capital preservation, not harvesting skill.</td>`;
+    const cols = regimeMode ? 8 : 6;
+    const why = regimeMode
+      ? 'no mix harvested across every market type with a positive holdout. Rankings above reflect robustness, not a proven edge.'
+      : 'no mix cleared the walk-forward + holdout bar. Rankings above reflect capital preservation, not harvesting skill.';
+    tr.innerHTML = `<td colspan="${cols}" class="warn-text">★ none — ${why}</td>`;
     tbody.appendChild(tr);
   }
 
@@ -885,7 +911,7 @@ function renderCompose(latest) {
     const kept = r.screen.filter((s) => s.kept);
     const dropped = r.screen.filter((s) => !s.kept);
     sc.textContent =
-      `Solo screen (50/50 vs tether — median harvest edge across the walk-forward folds): kept ` +
+      `Solo screen (50/50 vs tether — ${regimeMode ? 'worst-market-type' : 'median walk-forward'} harvest edge): kept ` +
       kept.map((s) => `${s.symbol.toUpperCase()} ${s.soloTrain >= 0 ? '+' : ''}${s.soloTrain.toFixed(1)}%`).join(', ') +
       (dropped.length
         ? ` · weeded out: ` +
@@ -907,7 +933,10 @@ function renderCompose(latest) {
     (u.heldExcludedFrozen ? ` · ${u.heldExcludedFrozen} held asset(s) excluded: buy-frozen` : '') +
     (u.windowDays && u.requestedDays && u.windowDays < u.requestedDays ? ` · window auto-shrunk ${u.requestedDays}d → ${u.windowDays}d for coverage` : '') +
     ` · window ${w.from ? new Date(w.from).toISOString().slice(0, 10) : '?'} → ${w.to ? new Date(w.to).toISOString().slice(0, 10) : '?'}` +
-    ` · ${w.nFolds || '?'} walk-forward folds + untouched holdout from ${w.holdoutFrom ? new Date(w.holdoutFrom).toISOString().slice(0, 10) : '?'} (${w.holdoutBars} bars).`;
+    (regimeMode && r.regime
+      ? ` · REGIME mode: ${r.regime.byType.bull}d bull / ${r.regime.byType.bear}d bear / ${r.regime.byType.range}d range`
+      : ` · ${w.nFolds || '?'} walk-forward folds`) +
+    ` + untouched holdout from ${w.holdoutFrom ? new Date(w.holdoutFrom).toISOString().slice(0, 10) : '?'} (${w.holdoutBars} bars).`;
 }
 
 $('#c-run').addEventListener('click', async () => {

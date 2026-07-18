@@ -7,6 +7,7 @@ const { fiatCode } = require('./pricing');
 const { getAccountForProfile } = require('./sync');
 const kraken = require('./exchanges/kraken');
 const bitso = require('./exchanges/bitso');
+const regime = require('./regime');
 
 // Phase 2.75: composition sweep — an empirical search over asset GROUPS and
 // target WEIGHTS for setups where rebalancing genuinely earns its keep.
@@ -190,25 +191,73 @@ function scoreWindow(assets, bars, costs) {
   };
 }
 
-// Walk-forward score: harvest edge on each sequential in-sample fold plus an
-// untouched holdout. `robust` (median fold edge) and `positiveFolds` (how
-// many folds actually harvested) drive selection; the holdout is pure
-// confirmation the search never optimizes on.
-function scoreFolds(assets, foldsBars, holdoutBars, costs) {
-  const folds = foldsBars.map((b) => scoreWindow(assets, b, costs));
-  const edges = folds.map((f) => f.edge).slice().sort((a, b) => a - b);
-  const mid = edges.length >> 1;
-  const robust = edges.length === 0 ? 0 : edges.length % 2 ? edges[mid] : (edges[mid - 1] + edges[mid]) / 2;
-  const positiveFolds = folds.filter((f) => f.edge > MIN_FOLD_EDGE).length;
-  const holdout = scoreWindow(assets, holdoutBars, costs);
-  return { folds, robust, positiveFolds, holdout, nFolds: folds.length };
+function median(xs) {
+  if (xs.length === 0) return 0;
+  const s = xs.slice().sort((a, b) => a - b);
+  const m = s.length >> 1;
+  return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
 }
 
-// Ranking order: harvest in MORE forward windows first (robustness), then
-// higher median fold edge, then a positive holdout as the final tiebreak.
-// Returns <0 when `a` should rank before `b`.
-function foldRank(a, b) {
-  return b.positiveFolds - a.positiveFolds || b.robust - a.robust || b.holdout.edge - a.holdout.edge;
+// --- FOLDS mode (shallow venues, e.g. Bitso): walk-forward across N equal
+// sequential in-sample folds + an untouched holdout. ---
+function scoreFolds(assets, foldsBars, holdoutBars, costs) {
+  const folds = foldsBars.map((b) => scoreWindow(assets, b, costs));
+  const robust = median(folds.map((f) => f.edge));
+  const positiveFolds = folds.filter((f) => f.edge > MIN_FOLD_EDGE).length;
+  const holdout = scoreWindow(assets, holdoutBars, costs);
+  return {
+    mode: 'folds',
+    robust,
+    positiveFolds,
+    nFolds: folds.length,
+    foldEdges: folds.map((f) => f.edge),
+    holdout,
+    screenScore: robust,
+    rankTuple: [positiveFolds, robust, holdout.edge],
+    recommended: positiveFolds >= RECO_MIN_FOLDS && holdout.edge > 0,
+  };
+}
+
+// --- REGIME mode (deep venues, e.g. Kraken 4y): harvest edge measured per
+// market-regime type (bull/bear/range), each swath simulated independently,
+// then aggregated equal-weighted BY TYPE + an untouched holdout. Two headline
+// numbers: `consistency` = worst market type's median edge (works in all
+// types), `average` = equal-weighted mean across types (best overall). ---
+function scoreRegimes(assets, swaths, inSampleBars, holdoutBars, costs) {
+  const byType = { bull: [], bear: [], range: [] };
+  for (const s of swaths) {
+    const r = scoreWindow(assets, inSampleBars.slice(s.startIdx, s.endIdx + 1), costs);
+    byType[s.label].push(r.edge);
+  }
+  const perType = {};
+  for (const t of ['bull', 'bear', 'range']) if (byType[t].length) perType[t] = median(byType[t]);
+  const present = Object.keys(perType);
+  const vals = present.map((t) => perType[t]);
+  const consistency = vals.length ? Math.min(...vals) : 0;
+  const average = vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : 0;
+  const typesPositive = vals.filter((v) => v > MIN_FOLD_EDGE).length;
+  const holdout = scoreWindow(assets, holdoutBars, costs);
+  return {
+    mode: 'regime',
+    perType,
+    typesPresent: present.length,
+    typesPositive,
+    consistency,
+    average,
+    holdout,
+    screenScore: consistency,
+    // Rank: positive in MORE market types, then steadier worst type, then
+    // higher average, then a positive holdout.
+    rankTuple: [typesPositive, consistency, average, holdout.edge],
+    recommended: typesPositive >= present.length && present.length >= 2 && holdout.edge > 0,
+  };
+}
+
+// Lexicographic descending compare over rankTuple. <0 => `a` ranks first.
+function tupleRank(a, b) {
+  const A = a.rankTuple, B = b.rankTuple;
+  for (let i = 0; i < A.length; i++) if (B[i] !== A[i]) return B[i] - A[i];
+  return 0;
 }
 
 // Hold growth in closed form — Σ weight × price relative — so the broad
@@ -250,7 +299,7 @@ async function searchCompositions({
   refineTop = 60,
   refineEvals = 80,
   finalists = 20,
-  trainFraction = 0.6,
+  benchmark = null, // BTC-aligned {ts,usd_price}[] over `bars`, enables regime mode
   seed = 42,
   setProgress = () => {},
 } = {}) {
@@ -266,21 +315,39 @@ async function searchCompositions({
   // Long runs must not starve the event loop (polls, syncs, the UI itself).
   const yieldLoop = () => new Promise((r) => setImmediate(r));
 
-  // Walk-forward windows: an untouched holdout tail + N_FOLDS sequential
-  // in-sample folds. Selection judges consistency ACROSS folds, so a single
-  // regime (e.g. one crash window) can neither crown nor doom a mix.
+  // Untouched holdout tail (both modes) + the in-sample region.
   const holdoutN = Math.max(30, Math.floor(bars.length * HOLDOUT_FRAC));
   const inSample = bars.slice(0, bars.length - holdoutN);
   const holdoutBars = bars.slice(bars.length - holdoutN);
+
+  // Choose the validation MODE: REGIME (deep, diverse benchmark → evaluate
+  // per bull/bear/range market type) or FOLDS (shallow → sequential
+  // walk-forward). Regime mode needs the benchmark to span the in-sample
+  // region with ≥2 market types present.
+  let mode = 'folds';
+  let swaths = [];
+  let regimeInfo = null;
+  if (benchmark && benchmark.length === bars.length) {
+    const cls = regime.classify(benchmark.slice(0, inSample.length));
+    if (cls.enough) {
+      mode = 'regime';
+      swaths = cls.swaths;
+      regimeInfo = { byType: cls.byType, swaths: cls.swaths.map((s) => ({ label: s.label, days: s.days, from: s.from, to: s.to })) };
+    }
+  }
   const foldSize = Math.floor(inSample.length / N_FOLDS);
   const foldsBars = [];
   for (let f = 0; f < N_FOLDS; f++) {
     foldsBars.push(inSample.slice(f * foldSize, f === N_FOLDS - 1 ? inSample.length : (f + 1) * foldSize));
   }
+  const scoreMix = (assets) =>
+    mode === 'regime'
+      ? scoreRegimes(assets, swaths, inSample, holdoutBars, costs)
+      : scoreFolds(assets, foldsBars, holdoutBars, costs);
 
   // ---- Stage 0: solo screen — every candidate audited ONE ASSET AT A TIME
-  // (50/50 vs the tether), scored by its MEDIAN harvest edge across the
-  // walk-forward folds. Bad assets are weeded out before any combinatorics.
+  // (50/50 vs the tether), scored by its screen metric (regime consistency,
+  // or fold median). Bad assets are weeded out before any combinatorics.
   const screen = [];
   for (let i = 0; i < candidates.length; i++) {
     const c = candidates[i];
@@ -289,8 +356,8 @@ async function searchCompositions({
       { coingecko_id: tether.id, symbol: tether.symbol, target_pct: 50, is_index: 1 },
       { coingecko_id: c.id, symbol: c.symbol, target_pct: 50, is_index: 0 },
     ];
-    const sc = scoreFolds(solo, foldsBars, holdoutBars, costs);
-    screen.push({ id: c.id, symbol: c.symbol, soloTrain: sc.robust, positiveFolds: sc.positiveFolds });
+    const sc = scoreMix(solo);
+    screen.push({ id: c.id, symbol: c.symbol, soloTrain: sc.screenScore, positiveFolds: sc.positiveFolds || sc.typesPositive || 0 });
     if (i % 4 === 3) await yieldLoop();
   }
   screen.sort((a, b) => b.soloTrain - a.soloTrain);
@@ -348,12 +415,13 @@ async function searchCompositions({
   board.sort((a, b) => b.cheap - a.cheap);
   board.splice(fullTop);
 
-  // ---- Stage 2: full-fidelity WALK-FORWARD scoring of the contender board.
-  const seen = new Map(); // mixKey -> {mix, key, folds, robust, positiveFolds, holdout, nFolds}
+  // ---- Stage 2: full-fidelity scoring of the contender board (regime or
+  // walk-forward, per mode).
+  const seen = new Map(); // mixKey -> {mix, key, ...score}
   const evalMix = (mix) => {
     const key = mixKey(mix);
     if (seen.has(key)) return seen.get(key);
-    const entry = { mix, key, ...scoreFolds(mixToAssets(mix, pool), foldsBars, holdoutBars, costs) };
+    const entry = { mix, key, ...scoreMix(mixToAssets(mix, pool)) };
     seen.set(key, entry);
     return entry;
   };
@@ -365,10 +433,10 @@ async function searchCompositions({
       await yieldLoop();
     }
   }
-  const ranked = [...new Map(fullScored.map((s) => [s.key, s])).values()].sort(foldRank);
+  const ranked = [...new Map(fullScored.map((s) => [s.key, s])).values()].sort(tupleRank);
 
   // ---- Stage 3: greedy refinement — keep variants that rank better on the
-  // walk-forward robustness order (weight jiggles, tether moves, asset swaps).
+  // mode's robustness order (weight jiggles, tether moves, asset swaps).
   const survivors = ranked.slice(0, refineTop);
   for (let si = 0; si < survivors.length; si++) {
     setProgress(`refining survivor ${si + 1}/${survivors.length}`, 90 + (si / Math.max(1, survivors.length)) * 7);
@@ -405,32 +473,42 @@ async function searchCompositions({
         variant.units.set(inn, u);
       }
       const cand = evalMix(variant);
-      if (foldRank(cand, current) < 0) current = cand;
+      if (tupleRank(cand, current) < 0) current = cand;
       if (e % 20 === 19) await yieldLoop();
     }
     survivors[si] = current;
   }
 
-  // ---- Stage 4: finalists, ranked by walk-forward robustness. A mix is a
-  // RECOMMENDATION only if it harvested in a majority of folds AND held a
-  // positive edge on the untouched holdout — not merely "fell least in a
-  // crash". When none qualify, that honest verdict is surfaced as a warning
-  // instead of a misleading leaderboard.
+  // ---- Stage 4: finalists. A mix is a RECOMMENDATION (★) only if it cleared
+  // the mode's bar — in REGIME mode, harvested in every present market type
+  // AND kept a positive holdout edge; in FOLDS mode, a majority of folds +
+  // positive holdout. When none qualify, that honest verdict is surfaced as a
+  // warning instead of a misleading leaderboard.
   setProgress('holdout confirmation', 98);
   const summarize = (entry, assetsList) => {
     const assets = assetsList || mixToAssets(entry.mix, pool);
-    return {
+    const row = {
       assets: assets.map((a) => ({ id: a.coingecko_id, symbol: a.symbol, pct: a.target_pct, isIndex: !!a.is_index })),
-      positiveFolds: entry.positiveFolds,
-      nFolds: entry.nFolds,
-      robust: entry.robust,
-      foldEdges: entry.folds.map((f) => f.edge),
+      mode: entry.mode,
       holdout: entry.holdout,
       full: scoreWindow(assets, bars, costs),
-      recommended: entry.positiveFolds >= RECO_MIN_FOLDS && entry.holdout.edge > 0,
+      recommended: entry.recommended,
     };
+    if (entry.mode === 'regime') {
+      row.perType = entry.perType;
+      row.consistency = entry.consistency;
+      row.average = entry.average;
+      row.typesPositive = entry.typesPositive;
+      row.typesPresent = entry.typesPresent;
+    } else {
+      row.positiveFolds = entry.positiveFolds;
+      row.nFolds = entry.nFolds;
+      row.robust = entry.robust;
+      row.foldEdges = entry.foldEdges;
+    }
+    return row;
   };
-  const uniqueFinal = [...new Map(survivors.map((s) => [s.key, s])).values()].sort(foldRank).slice(0, finalists);
+  const uniqueFinal = [...new Map(survivors.map((s) => [s.key, s])).values()].sort(tupleRank).slice(0, finalists);
   const rows = uniqueFinal.map((s) => summarize(s));
   const anyRecommended = rows.some((r) => r.recommended);
 
@@ -441,20 +519,25 @@ async function searchCompositions({
     const assets = currentMix.map((m) => ({
       coingecko_id: m.id, symbol: m.symbol, target_pct: m.targetPct, is_index: m.isIndex ? 1 : 0,
     }));
-    currentScored = { ...summarize(scoreFolds(assets, foldsBars, holdoutBars, costs), assets), reference: true, recommended: false };
+    currentScored = { ...summarize(scoreMix(assets), assets), reference: true, recommended: false };
   }
 
   const warnings = [];
   if (!anyRecommended) {
     warnings.push(
-      'No mix harvested consistently across the walk-forward windows with a positive holdout — on this universe and history, ' +
-        'rebalancing does not reliably beat holding. The table below is a capital-preservation ranking only, NOT a harvest recommendation.'
+      mode === 'regime'
+        ? 'No mix harvested across ALL market types (bull/bear/range) with a positive holdout — on this universe and history, ' +
+            'no rebalancing setup reliably beats holding in every regime. The table is a robustness ranking only, NOT a recommendation.'
+        : 'No mix harvested consistently across the walk-forward windows with a positive holdout — on this universe and history, ' +
+            'rebalancing does not reliably beat holding. The table is a capital-preservation ranking only, NOT a recommendation.'
     );
   }
 
   return {
     mixes: rows,
     currentMix: currentScored,
+    mode,
+    regime: regimeInfo,
     noHarvest: !anyRecommended,
     warnings,
     screen, // per-asset solo verdicts, kept flag included
@@ -522,7 +605,9 @@ async function runComposeSearch(profileId, opts = {}, setProgress = () => {}) {
   const tetherAsset = assets.find((a) => a.is_index);
   if (!tetherAsset) throw new Error('the composition search needs a tethered index asset — checkmark one first');
 
-  const days = Number(opts.days) > 0 ? Number(opts.days) : 720;
+  // Deep by default now (≈4y) so the regime study has bull/bear/range to work
+  // with; the adaptive window shrinks it when the universe can't cover it.
+  const days = Number(opts.days) > 0 ? Number(opts.days) : 1460;
   const samples = Number(opts.samples) > 0 ? Math.min(Number(opts.samples), 2_000_000) : 100_000;
   const candidateCount = Number(opts.candidates) > 0 ? Math.min(Number(opts.candidates), 60) : 40;
   const seed = Number(opts.seed) || (Date.now() % 2 ** 31);
@@ -598,10 +683,30 @@ async function runComposeSearch(profileId, opts = {}, setProgress = () => {}) {
     .filter((a) => a.target_pct > 0)
     .map((a) => ({ id: a.coingecko_id, symbol: a.symbol, targetPct: a.target_pct, isIndex: !!a.is_index }));
 
+  // BTC benchmark aligned to the bars timeline enables regime mode. Forward-
+  // fill any missing bar (BTC is deep, so gaps are rare). If BTC history is
+  // thin the search falls back to walk-forward folds automatically.
+  setProgress('classifying market regimes…');
+  let benchmark = null;
+  try {
+    const btc = await getDailyHistory('bitcoin', days, 'btc');
+    const byTs = new Map(btc.map((r) => [r.ts, r.usd_price]));
+    let last = null;
+    benchmark = bars.map((b) => {
+      const v = byTs.get(b.ts);
+      if (v > 0) last = v;
+      return { ts: b.ts, usd_price: last || 0 };
+    });
+    if (benchmark.some((r) => !(r.usd_price > 0))) benchmark = null; // leading gap — skip regime mode
+  } catch (err) {
+    console.error('benchmark fetch failed (folds mode):', err.message);
+  }
+
   const result = await searchCompositions({
     candidates: coveredCandidates,
     tether: { id: tetherAsset.coingecko_id, symbol: tetherAsset.symbol },
     bars,
+    benchmark,
     currentMix: currentMix.length > 0 ? currentMix : null,
     feePct: profile.fee_pct,
     spreadPct: profile.spread_pct,

@@ -2,6 +2,8 @@ const config = require('./config');
 const db = require('./db');
 const kraken = require('./exchanges/kraken');
 const bitso = require('./exchanges/bitso');
+const binance = require('./exchanges/binance');
+const kucoin = require('./exchanges/kucoin');
 
 // Exchange-first market data (Phase 1.5): held assets get priced and their
 // daily history topped up from Kraken/Bitso public endpoints, reserving the
@@ -105,4 +107,44 @@ async function dailyByDay(id, code, sinceMs, symbolHint = null) {
   }
 }
 
-module.exports = { enabled, usdPrices, dailyByDay, symbolsForCgIds };
+// Deep DAILY closes (up to ~4 years) for a coin, from Binance's public data
+// portal, KuCoin as fallback. Data-only (no keys) — the long-history layer
+// for the regime study, keyed by ticker symbol. Fiats are not served here
+// (they use the Bitso book path). Returns a Map(dayTs -> usd) or null.
+const DAY_MS = 86_400_000;
+async function deepDailyByDay(symbol, sinceMs) {
+  if (!enabled() || !symbol) return null;
+  const sym = String(symbol).toLowerCase();
+  let series = null;
+  try {
+    const bSym = await binance.symbolExists(sym).catch(() => null);
+    if (bSym) {
+      const got = await binance.dailyClosesDeep(sym, sinceMs);
+      if (got && got.size > 0) series = got;
+    }
+  } catch {
+    /* fall through to KuCoin */
+  }
+  // KuCoin reaches today; Binance's portal zips lag the current partial
+  // month. If Binance carried the depth but its head is stale, merge a
+  // KuCoin top-up so the deep series is also CURRENT. If Binance had
+  // nothing, KuCoin serves the whole window.
+  const headTs = series ? Math.max(...series.keys()) : 0;
+  const stale = !series || headTs < Date.now() - 3 * DAY_MS;
+  if (stale) {
+    try {
+      if (await kucoin.symbolExists(sym)) {
+        const ku = await kucoin.dailyCloses(sym, series ? headTs - DAY_MS : sinceMs);
+        if (ku && ku.size > 0) {
+          if (!series) series = ku;
+          else for (const [ts, p] of ku) series.set(ts, p);
+        }
+      }
+    } catch {
+      /* keep whatever Binance gave */
+    }
+  }
+  return series && series.size > 0 ? series : null;
+}
+
+module.exports = { enabled, usdPrices, dailyByDay, deepDailyByDay, symbolsForCgIds };

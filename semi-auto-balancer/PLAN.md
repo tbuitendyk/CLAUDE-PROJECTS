@@ -169,6 +169,52 @@ OHLCVT CSVs: demoted to never-needed (import script remains as a
 power-tool). Composition search still scores on daily bars (candidates are
 CG-uniform); hourly is for refining a chosen mix's X.
 
+## Phase 2.9 — Deep daily history + market-regime stratification
+**Status: SHIPPED (tests green: test-deepdata.js, test-regime.js,
+test-compose.js regime path).** Two coupled upgrades so the composition
+search can answer "does this mix work across market types, not just on
+average over one window."
+- **~4-year daily depth from data-only venues.** CoinGecko caps at 365d and
+  Kraken live OHLC at ~720 candles; neither reaches the multi-cycle depth a
+  regime study needs. Binance and KuCoin are added as DATA SOURCES ONLY
+  (never trading venues — we still trade on Kraken/Bitso): `lib/exchanges/
+  binance.js` gained `dailyClosesDeep` (monthly 1d kline zips from the public
+  data portal, back to listing), `lib/exchanges/kucoin.js` (NEW) pages daily
+  candles backward and reaches today, and `lib/exsource.js` `deepDailyByDay`
+  tries Binance first then merges KuCoin to heal a stale head (api.binance.
+  vision REST is geo-blocked 451; KuCoin covers the recent tail). `lib/
+  history.js` routes requests deeper than the exchange cap through the deep
+  path (default 1460d) and always tops up the recent head. Live-verified:
+  ~1460 daily closes for SOL/BTC. Survivor universe measured empirically —
+  at 4y, 29 coins carry full history; Kraken already lists 58/75, so the
+  bottleneck is data depth, not tradability (Binance/KuCoin as trading
+  venues would add only ~4 coins — not worth the split; ONE multi-venue
+  tool, no fork).
+- **Regime classifier (`lib/regime.js`).** Labels each day of a BTC benchmark
+  bull / bear / range from trend (price vs a 50d MA + its 20d slope) and
+  drawdown from a ROLLING 90-day high (not all-time — a sideways bottom
+  after a crash must read RANGE/mean-reverting, not perpetual bear), then
+  segments into contiguous swaths with a 20-day minimum-length merge.
+  `classify()` returns swaths + per-type day counts + `enough` (≥2 types
+  with ≥20d each). Real-BTC-validated.
+- **Regime-stratified scoring (`lib/compose.js`).** The search now has two
+  validation MODES chosen automatically by benchmark diversity: FOLDS
+  (shallow venues, e.g. Bitso — the Phase 2.75 walk-forward across 4
+  sequential folds + holdout) and REGIME (deep venues, e.g. Kraken 4y —
+  a mix's harvest edge measured PER market-type by simulating each swath
+  independently, then aggregated). Two honest metric families surface
+  side by side: **consistency** = worst-type edge (harvests even in its
+  weakest regime) and **average** = equal-weighted mean across types (so a
+  mix that only shines in bull markets can't hide behind its average). A
+  mix is recommended (★) only if it harvests in EVERY present type (≥2)
+  with a positive holdout edge. The current mix is still reference-only,
+  never a bar to beat. `runComposeSearch` builds a BTC benchmark aligned to
+  the bars; the UI (`public/app.js`) branches on `r.mode` and renders
+  Types✓/Bull/Bear/Range/Worst/Avg/Holdout for regime mode, folds columns
+  otherwise, with the byType breakdown in the stamp. Live E2E (Kraken
+  replica, 1460 bars → 1168 in-sample / 292 holdout): top mixes flag ★ with
+  types 3/3, positive per-type and holdout edges.
+
 ## Phase 2.75 — Composition sweep (empirical mix search)
 **Status: SHIPPED (tests green: test-compose.js — synthetic universe with a
 known answer: oscillators surface, terminal decliners exiled, constraints
