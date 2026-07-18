@@ -174,7 +174,15 @@ CG-uniform); hourly is for refining a chosen mix's X.
 known answer: oscillators surface, terminal decliners exiled, constraints
 hold, OOS real, seed-deterministic).** lib/candidates.js + lib/compose.js +
 the Composition lab UI (intensity knob quick/standard/intensive, OOS-first
-table, current mix as highlighted baseline). Search: seeded random sampling
+table, current mix as highlighted baseline). Hardened 2026-07-18 after the
+first live run failed: candidates are RESTRICTED to the linked venue's
+tradable assets (a mix the account can't execute is a fantasy; dropped
+symbols listed in the stamp), candidate history now flows through the
+exchange layer via symbol hints (CoinGecko's 365d cap had starved every
+non-held candidate against 720d-deep held assets), fresh-but-shallow cached
+series deepen instead of sitting at the cap, and the evaluation window
+auto-shrinks (floor 240d) to what ≥70% of the universe can cover instead
+of failing. Search: seeded random sampling
 + greedy refinement (2.5%-unit weight jiggles, tether-band moves, asset
 swaps), mixes scored by a mini X-sweep where only REAL harvest counts
 (basket up, not beaten by holding); train = worse of two halves; finalists

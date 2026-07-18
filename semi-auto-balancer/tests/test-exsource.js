@@ -71,6 +71,22 @@ const history = require('../lib/history');
   ok(cgCalls.length === 1 && cgCalls[0].includes('unlisted-coin'), 'uncovered coin history falls back to CoinGecko');
   ok(rows.length === 2 && approx(rows[1].usd_price, 2.6), 'CG fallback series cached and returned');
 
+  // --- fresh-but-shallow series DEEPEN via the exchange (the 365d-cap trap):
+  // bitcoin sits cached at 2 days; asking for 6 must refetch the window, not
+  // conclude "head is fresh, nothing to do" ---
+  kraken.dailyCloses = async (pair, since) =>
+    new Map(Array.from({ length: 6 }, (_, i) => [today - (5 - i) * DAY_MS, 50000 + i]));
+  cgCalls = [];
+  rows = await history.getDailyHistory('bitcoin', 6);
+  ok(rows.length === 6 && cgCalls.length === 0, 'shallow tail triggers an exchange deepen, zero CG calls');
+
+  // --- unheld candidates route through the exchange via the symbol hint ---
+  kraken.pairForSymbol = async (sym) => (sym === 'newby' ? 'NEWBYUSD' : null);
+  kraken.dailyCloses = async () => new Map([[today - DAY_MS, 7], [today, 7.5]]);
+  cgCalls = [];
+  rows = await history.getDailyHistory('brand-new-coin', 5, 'newby');
+  ok(rows.length === 2 && cgCalls.length === 0 && approx(rows[1].usd_price, 7.5), 'symbol hint serves unheld candidates from the venue');
+
   console.log('exsource tests pass');
   process.exit(0);
 })().catch((e) => {

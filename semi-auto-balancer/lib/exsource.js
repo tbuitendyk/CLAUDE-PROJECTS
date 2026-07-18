@@ -82,19 +82,24 @@ async function usdPrices(ids, fiatCodes) {
 // Daily USD closes for one asset id since a ms timestamp, as a Map(dayTs ->
 // price), or null when no exchange source covers it. code = fiat code when
 // the id is a fiat (resolved by the caller, which owns fiatCode()).
-async function dailyByDay(id, code, sinceMs) {
+// symbolHint serves assets not in any profile (composition candidates);
+// held assets resolve their symbol from the assets table as before.
+async function dailyByDay(id, code, sinceMs, symbolHint = null) {
   if (!enabled()) return null;
   try {
     if (code) {
       if (!bitso.USD_FIAT_BOOKS.has(code)) return null;
       return await bitso.dailyCloses(`usd_${code}`, sinceMs, { invert: true });
     }
-    const symById = symbolsForCgIds([id]);
-    const sym = symById.get(id);
+    const sym = symbolHint || symbolsForCgIds([id]).get(id);
     if (!sym) return null;
     const pair = await kraken.pairForSymbol(sym);
-    if (!pair) return null;
-    return await kraken.dailyCloses(pair, sinceMs);
+    if (pair) return await kraken.dailyCloses(pair, sinceMs);
+    // Bitso lists coins Kraken doesn't (and vice versa) — try its usd book.
+    const books = await bitso.availableBooks();
+    const book = `${String(sym).toLowerCase()}_usd`;
+    if (books.includes(book)) return await bitso.dailyCloses(book, sinceMs);
+    return null;
   } catch {
     return null;
   }

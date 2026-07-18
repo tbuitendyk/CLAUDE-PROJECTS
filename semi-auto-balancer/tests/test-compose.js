@@ -101,6 +101,21 @@ const IDS = [...seriesById.keys()];
     'same seed reproduces the same top mix'
   );
 
+  // --- adaptive window: shrink only as needed, floor at 240d, drop stragglers ---
+  const DAYN = 86_400_000;
+  const nowMs = Date.now();
+  const req = nowMs - 720 * DAYN;
+  // 10 candidates: 8 deep (720d), 2 young (150d) — window stays at requested.
+  let earliests = [...Array.from({ length: 8 }, () => req), nowMs - 150 * DAYN, nowMs - 150 * DAYN];
+  ok(compose.chooseWindowStart(earliests, req, nowMs) === req, 'deep majority keeps the requested window');
+  // 10 candidates: 3 deep, 7 at 365d — window shrinks to ~365d (keeps 70%).
+  earliests = [...Array.from({ length: 3 }, () => req), ...Array.from({ length: 7 }, () => nowMs - 365 * DAYN)];
+  const ws = compose.chooseWindowStart(earliests, req, nowMs);
+  ok(approx((nowMs - ws) / DAYN, 365, 1e-6), 'shallow majority shrinks the window to what most can cover');
+  // Everyone young: floor at 240d rather than gutting the window.
+  earliests = Array.from({ length: 10 }, () => nowMs - 100 * DAYN);
+  ok(approx((nowMs - compose.chooseWindowStart(earliests, req, nowMs)) / DAYN, 240, 1e-6), 'window never shrinks below 240d');
+
   console.log('composition search tests pass');
   process.exit(0);
 })().catch((e) => {

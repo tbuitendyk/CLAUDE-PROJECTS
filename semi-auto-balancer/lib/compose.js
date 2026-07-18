@@ -3,6 +3,9 @@ const { simulate } = require('./backtest');
 const { topCandidates, candidateSeries } = require('./candidates');
 const { getDailyHistory } = require('./history');
 const { fiatCode } = require('./pricing');
+const { getAccountForProfile } = require('./sync');
+const kraken = require('./exchanges/kraken');
+const bitso = require('./exchanges/bitso');
 
 // Phase 2.75: composition sweep — an empirical search over asset GROUPS and
 // target WEIGHTS for setups where rebalancing genuinely earns its keep.
@@ -328,6 +331,46 @@ function searchCompositions({
   };
 }
 
+// A mix the account can't trade is a fantasy: when the profile has a linked
+// exchange account, candidates must be tradable THERE. Kraken = an
+// unambiguous SYM/USD pair exists; Bitso = any book with SYM as base
+// (btc_mxn counts — the profile trades in MXN). Returns null (no filter)
+// when no account is linked.
+async function venueTradableFilter(profileId) {
+  const account = getAccountForProfile(profileId);
+  if (!account) return null;
+  if (account.venue === 'kraken') {
+    return {
+      venue: 'kraken',
+      tradable: async (symbol) => Boolean(await kraken.pairForSymbol(symbol).catch(() => null)),
+    };
+  }
+  if (account.venue === 'bitso') {
+    const books = await bitso.availableBooks().catch(() => []);
+    const bases = new Set(books.map((b) => String(b).split('_')[0]));
+    return { venue: 'bitso', tradable: async (symbol) => bases.has(String(symbol).toLowerCase()) };
+  }
+  return null;
+}
+
+// The evaluation window adapts to the universe instead of failing: prefer
+// the requested window, shrink only as far as needed so a healthy share of
+// candidates cover it, never below MIN_WINDOW_DAYS. Returns the window
+// start ms given each candidate's earliest available bar.
+const MIN_WINDOW_DAYS = 240;
+function chooseWindowStart(earliests, requestedStartMs, nowMs) {
+  if (earliests.length === 0) return requestedStartMs;
+  const sorted = [...earliests].sort((a, b) => a - b);
+  // The window must fit at least 70% of candidates (and at least 8 where
+  // the universe has that many): it starts where the target-th candidate's
+  // history begins. Deeper candidates than that don't shrink anything.
+  const target = Math.min(sorted.length, Math.max(Math.min(8, sorted.length), Math.ceil(sorted.length * 0.7)));
+  let ws = Math.max(requestedStartMs, sorted[target - 1]);
+  const minStart = nowMs - MIN_WINDOW_DAYS * 86_400_000;
+  if (ws > minStart) ws = minStart; // young stragglers drop rather than gut the window
+  return ws;
+}
+
 // ---- IO wrapper for the job runner ------------------------------------------
 
 async function runComposeSearch(profileId, opts = {}, setProgress = () => {}) {
@@ -343,7 +386,9 @@ async function runComposeSearch(profileId, opts = {}, setProgress = () => {}) {
   const seed = Number(opts.seed) || (Date.now() % 2 ** 31);
 
   // Universe: held risk assets (unfrozen — a buy-frozen asset must not be
-  // recommended INTO) + the CG top-N candidates.
+  // recommended INTO) + the CG top-N candidates, RESTRICTED to what the
+  // profile's linked venue can actually trade — a mix the account can't
+  // execute is a fantasy.
   setProgress('building candidate universe…');
   const held = assets.filter((a) => !a.is_index && (a.target_pct > 0 || a.quantity > 0) && !a.buy_frozen);
   let top = [];
@@ -359,18 +404,51 @@ async function runComposeSearch(profileId, opts = {}, setProgress = () => {}) {
       byId.set(c.id, { id: c.id, symbol: c.symbol, rank: c.rank });
     }
   }
-  const universe = [...byId.values()];
+  let universe = [...byId.values()];
+
+  const venueFilter = await venueTradableFilter(profileId);
+  const notOnVenue = [];
+  if (venueFilter) {
+    setProgress(`filtering ${universe.length} candidates to ${venueFilter.venue}-tradable…`);
+    const kept = [];
+    for (const c of universe) {
+      // Held assets stay regardless — they're already on the account.
+      if (c.held || (await venueFilter.tradable(c.symbol))) kept.push(c);
+      else notOnVenue.push(c.symbol);
+    }
+    universe = kept;
+  }
 
   setProgress(`fetching history for ${universe.length + 1} assets…`);
-  const seriesById = await candidateSeries(universe.map((c) => c.id), days, { setProgress });
+  const seriesById = await candidateSeries(universe, days, { setProgress });
   seriesById.set(tetherAsset.coingecko_id, await getDailyHistory(tetherAsset.coingecko_id, days));
 
-  const { bars, covered } = buildBars(seriesById, [tetherAsset.coingecko_id, ...universe.map((c) => c.id)]);
+  // Adaptive window: shrink from the requested span only as far as needed
+  // so most of the venue-tradable universe covers it (never below 240d),
+  // then trim every series to the chosen start.
+  const nowMs = Date.now();
+  const earliests = universe
+    .map((c) => (seriesById.get(c.id) || [])[0])
+    .filter(Boolean)
+    .map((r) => r.ts);
+  const windowStart = chooseWindowStart(earliests, nowMs - days * 86_400_000, nowMs);
+  const trimmed = new Map();
+  for (const [id, rows] of seriesById) trimmed.set(id, rows.filter((r) => r.ts >= windowStart));
+
+  const { bars, covered } = buildBars(trimmed, [tetherAsset.coingecko_id, ...universe.map((c) => c.id)]);
   if (!covered.includes(tetherAsset.coingecko_id)) {
     throw new Error('the tether has no usable history for this window');
   }
   const coveredCandidates = universe.filter((c) => covered.includes(c.id));
-  if (bars.length < 240) throw new Error(`not enough overlapping daily history (${bars.length} bars)`);
+  if (bars.length < MIN_WINDOW_DAYS) throw new Error(`not enough overlapping daily history (${bars.length} bars)`);
+
+  if (coveredCandidates.length < 4) {
+    throw new Error(
+      `only ${coveredCandidates.length} tradable candidates cover the ${Math.round((nowMs - windowStart) / 86_400_000)}d window ` +
+        `(${notOnVenue.length} dropped as not on ${venueFilter ? venueFilter.venue : 'the venue'}, ` +
+        `${universe.length - coveredCandidates.length} for missing history) — this should not happen with a linked venue; check /api/diagnostics`
+    );
+  }
 
   const currentMix = assets
     .filter((a) => a.target_pct > 0)
@@ -388,12 +466,16 @@ async function runComposeSearch(profileId, opts = {}, setProgress = () => {}) {
     setProgress,
   });
   result.universe = {
-    considered: universe.length,
+    considered: universe.length + notOnVenue.length,
     covered: coveredCandidates.length,
     droppedForCoverage: universe.length - coveredCandidates.length,
     heldExcludedFrozen: assets.filter((a) => !a.is_index && a.buy_frozen).length,
+    venue: venueFilter ? venueFilter.venue : null,
+    notOnVenue,
+    requestedDays: days,
+    windowDays: Math.round((nowMs - windowStart) / 86_400_000),
   };
   return { result, params: { days, samples, candidateCount, seed } };
 }
 
-module.exports = { searchCompositions, buildBars, runComposeSearch, mulberry32, CAVEAT };
+module.exports = { searchCompositions, buildBars, runComposeSearch, chooseWindowStart, mulberry32, CAVEAT };

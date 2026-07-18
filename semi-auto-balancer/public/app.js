@@ -782,8 +782,10 @@ function renderCompose(latest) {
   const u = r.universe || {};
   $('#c-stamp').textContent =
     `Searched ${new Date(latest.createdAt).toLocaleString()} · ${r.evaluatedMixes} unique mixes evaluated · ` +
-    `universe ${u.covered}/${u.considered} candidates with full-window history` +
-    (u.heldExcludedFrozen ? ` (${u.heldExcludedFrozen} held asset(s) excluded: buy-frozen)` : '') +
+    `universe ${u.covered}/${u.considered} candidates` +
+    (u.venue ? ` (restricted to ${u.venue}-tradable${u.notOnVenue && u.notOnVenue.length ? `; dropped: ${u.notOnVenue.map((s) => s.toUpperCase()).join(', ')}` : ''})` : ' (no linked venue — unconstrained)') +
+    (u.heldExcludedFrozen ? ` · ${u.heldExcludedFrozen} held asset(s) excluded: buy-frozen` : '') +
+    (u.windowDays && u.requestedDays && u.windowDays < u.requestedDays ? ` · window auto-shrunk ${u.requestedDays}d → ${u.windowDays}d for coverage` : '') +
     ` · window ${w.from ? new Date(w.from).toISOString().slice(0, 10) : '?'} → ${w.to ? new Date(w.to).toISOString().slice(0, 10) : '?'}` +
     ` · out-of-sample from ${w.splitAt ? new Date(w.splitAt).toISOString().slice(0, 10) : '?'} (${w.oosBars} bars).`;
 }

@@ -39,21 +39,24 @@ async function topCandidates({ count = 40 } = {}) {
   return out;
 }
 
-// Fetch daily history for a candidate list through the cache, keeping only
-// those with (near-)complete coverage of the evaluation window — "real
-// history" means the whole window, so every mix is judged on the same bars.
-// Small gaps (illiquid days) are tolerated up to missTolerance.
-async function candidateSeries(ids, days, { missTolerance = 0.03, setProgress = () => {} } = {}) {
+// Fetch daily history for a candidate list through the cache. Candidates
+// carry their ticker symbol so the exchange layer can serve them DEEP
+// history (Kraken ≈2y, Bitso multi-year) — without it they'd be stuck at
+// CoinGecko's 365-day cap and flunk long evaluation windows. Gentle pacing
+// between cold fetches keeps venue rate limiters friendly.
+async function candidateSeries(candidates, days, { setProgress = () => {} } = {}) {
   const series = new Map();
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   let i = 0;
-  for (const id of ids) {
-    setProgress(`history ${++i}/${ids.length}: ${id}`);
+  for (const c of candidates) {
+    setProgress(`history ${++i}/${candidates.length}: ${c.id}`);
     try {
-      const rows = await getDailyHistory(id, days);
-      series.set(id, rows);
+      const rows = await getDailyHistory(c.id, days, c.symbol || null);
+      series.set(c.id, rows);
     } catch (err) {
-      console.error(`candidate history failed for ${id}:`, err.message);
+      console.error(`candidate history failed for ${c.id}:`, err.message);
     }
+    if (i < candidates.length) await sleep(250);
   }
   return series;
 }

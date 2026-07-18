@@ -25,6 +25,11 @@ function latestCachedTs(id) {
   return row && row.ts != null ? row.ts : null;
 }
 
+function oldestCachedTs(id) {
+  const row = db.prepare('SELECT MIN(ts) AS ts FROM daily_prices WHERE coingecko_id = ?').get(id);
+  return row && row.ts != null ? row.ts : null;
+}
+
 // Bucket a raw market_chart series ([ [ms, price], ... ]) to UTC days.
 // CoinGecko's daily points are 00:00 UTC snapshots EXCEPT the final one,
 // which is the live price at request time — bucketing it to its day and
@@ -68,8 +73,10 @@ function daysMissing(id, days) {
 // Ensure the cache holds ~`days` of daily USD closes for an asset id (coin or
 // 'fiat:<code>'), then return the series oldest→newest. Reads may span more
 // days than any live source serves (bulk seeds); fetch windows are clamped
-// per source (exchange ≈720d, CoinGecko 365d).
-async function getDailyHistory(id, days = MAX_DAYS) {
+// per source (exchange ≈720d, CoinGecko 365d). `symbolHint` lets callers
+// (the composition lab's candidates) route through the exchange layer for
+// assets not held in any profile.
+async function getDailyHistory(id, days = MAX_DAYS, symbolHint = null) {
   days = Math.min(Math.max(1, Math.round(days)), MAX_READ_DAYS);
   const code = fiatCode(id);
 
@@ -82,17 +89,28 @@ async function getDailyHistory(id, days = MAX_DAYS) {
   }
 
   // Exchange layer first: top up from the venue's own market data when it
-  // covers this asset (deeper history, zero CG quota). Best-effort — any
-  // failure or non-coverage falls through to the CoinGecko path.
+  // covers this asset (deeper history, zero CG quota). Fetch when the HEAD
+  // is stale OR the TAIL is shallower than the requested window — a series
+  // first cached via CoinGecko's 365-day cap must deepen, not sit fresh-
+  // but-shallow forever. Best-effort — any failure or non-coverage falls
+  // through to the CoinGecko path.
   let exFetched = false;
-  if (exsource.enabled() && daysMissing(id, Math.min(days, MAX_EXCHANGE_DAYS)) > 0) {
+  if (exsource.enabled()) {
+    const cap = Math.min(days, MAX_EXCHANGE_DAYS);
+    const windowStart = dayBucket(Date.now()) - (cap - 1) * DAY_MS;
     const latest = latestCachedTs(id);
-    const windowStart = dayBucket(Date.now()) - (Math.min(days, MAX_EXCHANGE_DAYS) - 1) * DAY_MS;
-    const since = latest != null ? Math.max(latest, windowStart) : windowStart;
-    const byDay = await exsource.dailyByDay(id, code, since);
-    if (byDay && byDay.size > 0) {
-      storeSeries(id, byDay);
-      exFetched = true;
+    const oldest = oldestCachedTs(id);
+    const headStale = daysMissing(id, cap) > 0;
+    const tailShallow = oldest == null || oldest > windowStart + DAY_MS;
+    if (headStale || tailShallow) {
+      const since = tailShallow ? windowStart : Math.max(latest || 0, windowStart);
+      const byDay = await exsource.dailyByDay(id, code, since, symbolHint);
+      if (byDay && byDay.size > 0) {
+        storeSeries(id, byDay);
+        exFetched = true;
+      }
+    } else {
+      exFetched = true; // cache already covers the window — nothing to fetch
     }
   }
 
