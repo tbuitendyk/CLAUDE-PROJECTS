@@ -136,7 +136,15 @@ flows), confirm one real deposit end-to-end, THEN consider auto_flows.
   Phase 3's envelope honesty (real multi-cycle drawdown history).
 
 ## Phase 2 — Threshold sweep (advisory backtest tuner)
-**Status: not started**
+**Status: SHIPPED — tests green (test-backtest.js: sinusoid interior
+optimum, downtrend warning path, cost→looser, sim==production parity,
+staleness hash).** lib/backtest.js simulate()+sweep(), job endpoint
+POST /profiles/:id/tune-threshold, apply with staleness refusal, UI table
+under "Sensitivity tuner". Design addition beyond the original spec: the
+HOLD baseline joins the value plateau as its floor — in a pure trend every
+X "wins" against the other Xs while all of them lose to doing nothing, and
+without the floor the sweep recommended the least bad way to bleed
+(caught by the downtrend validation case).
 
 - `lib/backtest.js` `simulate(assets, targets, X, {feePct, spreadPct,
   lagHours, history})`: start at target weights; uniform granularity (no

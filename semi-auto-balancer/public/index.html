@@ -85,6 +85,31 @@
               <button id="t-cancel" class="ghost">Cancel</button>
             </div>
 
+            <div id="tune-section">
+              <h3>Sensitivity tuner (backtest)</h3>
+              <p class="muted">Replays this profile's target mix over cached daily history at many
+                sensitivity settings and shows where the plateau is. Advisory only — nothing changes
+                until you click Apply, and a recommendation appears only where basket (unit) growth
+                AND value growth agree; when they diverge you get a warning instead.</p>
+              <div class="inline">
+                <button id="tune-run">Run sweep</button>
+                <span id="tune-status" class="muted"></span>
+              </div>
+              <div id="tune-result" class="hidden">
+                <p id="tune-reco"></p>
+                <p id="tune-warnings" class="warn-text hidden"></p>
+                <div class="table-wrap">
+                  <table id="tune-table">
+                    <thead>
+                      <tr><th title="Price-move sensitivity">X %</th><th title="Chained basket units, net of fees">Basket</th><th>Value</th><th>vs hold</th><th>Max DD</th><th>Trades</th><th>Fees</th><th></th></tr>
+                    </thead>
+                    <tbody></tbody>
+                  </table>
+                </div>
+                <p id="tune-stamp" class="muted"></p>
+              </div>
+            </div>
+
             <div id="flow-section">
               <h3>Deposit / withdraw</h3>
               <p class="muted">Record external money in or out. Enter a signed change per asset (e.g. <code>+5000</code> deposited, <code>-0.05</code> withdrawn). The currency basket and value performance stay continuous — deposits and withdrawals are not counted as gains.</p>

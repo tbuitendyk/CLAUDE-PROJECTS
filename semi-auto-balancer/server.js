@@ -16,7 +16,8 @@ const {
   priceAsset,
   rearmAfterUpload,
 } = require('./lib/balancer');
-const { getJob } = require('./lib/jobs');
+const { getJob, startJob, latestResult } = require('./lib/jobs');
+const { runTuneSweep, computeTargetsHash } = require('./lib/backtest');
 const { sendAlertEvents, sendStatusReport, sendTestEmail, emailConfigured } = require('./lib/mailer');
 const { searchCoins, supportedFiats, fiatCode } = require('./lib/pricing');
 const { visionConfigured, parseHoldingsScreenshot } = require('./lib/vision');
@@ -300,7 +301,42 @@ app.get('/api/profiles/:id/state', (req, res) => {
     pendingFlows: db
       .prepare("SELECT id, ts, kind, code, asset_id, amount FROM pending_flows WHERE profile_id = ? AND status = 'pending' ORDER BY ts")
       .all(profile.id),
+    latestTune: latestResult(profile.id, 'tune-threshold'),
   });
+});
+
+// ---- threshold sweep (Phase 2) ----------------------------------------------
+
+// Start the advisory backtest as a job (it can run minutes when history
+// needs fetching); the UI polls GET /api/jobs/:id.
+app.post('/api/profiles/:id/tune-threshold', (req, res) => {
+  const profile = db.prepare('SELECT * FROM profiles WHERE id = ?').get(req.params.id);
+  if (!profile) return res.status(404).json({ error: 'not found' });
+  const days = Number((req.body || {}).days) > 0 ? Number(req.body.days) : 730;
+  const jobId = startJob('tune-threshold', profile.id, (setProgress) =>
+    runTuneSweep(profile.id, { days }, setProgress)
+  );
+  res.json({ ok: true, jobId });
+});
+
+// Apply a swept X to the profile — advisory-with-apply. Refuses when the
+// inputs the sweep depended on (targets, fee, spread) have changed since it
+// ran; quantity changes do NOT invalidate (the sim starts at target weights).
+app.post('/api/profiles/:id/apply-threshold', (req, res) => {
+  const profile = db.prepare('SELECT * FROM profiles WHERE id = ?').get(req.params.id);
+  if (!profile) return res.status(404).json({ error: 'not found' });
+  const { x, stamp } = req.body || {};
+  if (!(Number(x) > 0)) return res.status(400).json({ error: 'x must be > 0' });
+  if (!stamp || !stamp.targetsHash) return res.status(400).json({ error: 'stamp required' });
+  const assets = db.prepare('SELECT * FROM assets WHERE profile_id = ?').all(profile.id);
+  if (stamp.targetsHash !== computeTargetsHash(assets)) {
+    return res.status(409).json({ error: 'targets changed since this sweep ran — re-run it' });
+  }
+  if (Math.abs(Number(stamp.feePct) - profile.fee_pct) > 1e-9 || Math.abs(Number(stamp.spreadPct) - profile.spread_pct) > 1e-9) {
+    return res.status(409).json({ error: 'fee/spread changed since this sweep ran — re-run it' });
+  }
+  db.prepare('UPDATE profiles SET threshold_pct = ? WHERE id = ?').run(Number(x), profile.id);
+  res.json({ ok: true, threshold_pct: Number(x) });
 });
 
 // ---- exchange sync (Phase 1.5) ----------------------------------------------

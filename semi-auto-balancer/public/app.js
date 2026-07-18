@@ -329,6 +329,9 @@ function renderDetail() {
   // exchange sync: link form vs linked-account panel + pending flows
   renderExchange(d.exchange, d.pendingFlows || [], profile);
 
+  // sensitivity tuner: last persisted sweep result
+  renderTune(d.latestTune, profile);
+
   // notifications: state machine status, toggle, recipients
   const rearmAt = profile.notify_state_at
     ? new Date(profile.notify_state_at + 12 * 3600 * 1000).toLocaleString()
@@ -600,6 +603,111 @@ $('#s-save').addEventListener('click', async () => {
     await refresh();
   } catch (err) {
     alert(err.message);
+  }
+});
+
+// ---- sensitivity tuner (Phase 2) ----
+
+function renderTune(latest, profile) {
+  const box = $('#tune-result');
+  if (!latest || !latest.result) {
+    box.classList.add('hidden');
+    return;
+  }
+  const r = latest.result;
+  box.classList.remove('hidden');
+
+  const reco = $('#tune-reco');
+  if (r.recommendation) {
+    const same = Math.abs(r.recommendation.x - profile.threshold_pct) < 1e-9;
+    reco.innerHTML =
+      `Recommended sensitivity: <strong>${r.recommendation.x}%</strong> ` +
+      `<span class="muted">(${r.recommendation.reason}; current setting: ${profile.threshold_pct}%${same ? ' — already applied' : ''})</span>`;
+  } else {
+    reco.innerHTML = '<strong>No recommendation</strong> <span class="muted">— see warning below.</span>';
+  }
+
+  const warn = $('#tune-warnings');
+  warn.textContent = (r.warnings || []).join(' ');
+  warn.classList.toggle('hidden', !(r.warnings || []).length);
+
+  const tbody = $('#tune-table tbody');
+  tbody.innerHTML = '';
+  const holdTr = document.createElement('tr');
+  holdTr.innerHTML =
+    `<td class="muted">hold</td><td class="muted">—</td>` +
+    `<td>${fmtPct(r.hold.valueGrowthPct)}</td><td class="muted">baseline</td>` +
+    `<td>${r.hold.maxValueDrawdownPct.toFixed(1)}%</td><td class="muted">0</td><td class="muted">—</td><td></td>`;
+  tbody.appendChild(holdTr);
+  for (const row of r.grid) {
+    const tr = document.createElement('tr');
+    const isReco = r.recommendation && row.x === r.recommendation.x;
+    if (isReco) tr.classList.add('index-row');
+    tr.innerHTML =
+      `<td>${row.x}%${isReco ? ' ★' : ''}${row.x === r.currentX ? ' <span class="muted">(current)</span>' : ''}</td>` +
+      `<td>${fmtPct(row.netBasketGrowthPct)}</td>` +
+      `<td>${fmtPct(row.valueGrowthPct)}</td>` +
+      `<td>${fmtPct(row.valueGrowthPct - r.hold.valueGrowthPct)}</td>` +
+      `<td>${row.maxValueDrawdownPct.toFixed(1)}%</td>` +
+      `<td>${row.tradeCount}</td>` +
+      `<td>${row.feesPct.toFixed(2)}%</td>`;
+    const td = document.createElement('td');
+    const apply = document.createElement('button');
+    apply.textContent = 'Apply';
+    apply.className = 'ghost';
+    apply.title = `Set this profile's sensitivity to ${row.x}%`;
+    apply.addEventListener('click', async () => {
+      if (!confirm(`Set sensitivity to ${row.x}% (currently ${profile.threshold_pct}%)?`)) return;
+      try {
+        await api(`/profiles/${state.selectedId}/apply-threshold`, {
+          method: 'POST',
+          body: { x: row.x, stamp: r.stamp },
+        });
+        await refresh();
+      } catch (err) {
+        alert(err.message);
+      }
+    });
+    td.appendChild(apply);
+    tr.appendChild(td);
+    tbody.appendChild(tr);
+  }
+
+  const s = r.stamp || {};
+  $('#tune-stamp').textContent =
+    `Swept ${new Date(latest.createdAt).toLocaleString()} · ${s.assets ? s.assets.map((x) => x.toUpperCase()).join('/') : ''} · ` +
+    `${s.bars} daily bars (${s.dataFrom ? new Date(s.dataFrom).toISOString().slice(0, 10) : '?'} → ` +
+    `${s.dataTo ? new Date(s.dataTo).toISOString().slice(0, 10) : '?'}) · fee ${s.feePct}%/leg + spread ${s.spreadPct}% · ` +
+    `execution lag ${s.lagHours}h · Apply refuses if targets or costs have changed since.`;
+}
+
+let tunePoll = null;
+$('#tune-run').addEventListener('click', async () => {
+  $('#tune-run').disabled = true;
+  $('#tune-status').textContent = 'starting…';
+  try {
+    const { jobId } = await api(`/profiles/${state.selectedId}/tune-threshold`, { method: 'POST', body: {} });
+    clearInterval(tunePoll);
+    tunePoll = setInterval(async () => {
+      try {
+        const job = await api(`/jobs/${jobId}`);
+        if (job.status === 'running') {
+          $('#tune-status').textContent = job.progress || 'running…';
+        } else {
+          clearInterval(tunePoll);
+          $('#tune-run').disabled = false;
+          $('#tune-status').textContent = job.status === 'done' ? '' : `failed: ${job.error}`;
+          if (job.status === 'done') await refresh();
+        }
+      } catch (err) {
+        clearInterval(tunePoll);
+        $('#tune-run').disabled = false;
+        $('#tune-status').textContent = err.message;
+      }
+    }, 2000);
+  } catch (err) {
+    $('#tune-run').disabled = false;
+    $('#tune-status').textContent = err.message;
   }
 });
 
