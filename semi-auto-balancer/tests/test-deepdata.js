@@ -63,6 +63,40 @@ const history = require('../lib/history');
   rows = await history.getDailyHistory('obscure-coin', 1460, 'obs');
   ok(cgCalls.length >= 1, 'coin with no deep source falls back to CoinGecko');
 
+  // --- deep FIAT cross: a fiat index is otherwise capped at ~2y, but Bitso's
+  // own usd_<code> book serves the multi-year span. mxn deep, ars short. ---
+  const mkFiat = (fromDaysAgo, toDaysAgo, base) => {
+    const m = new Map();
+    for (let d = fromDaysAgo; d >= toDaysAgo; d--) m.set(today - d * DAY, base + (fromDaysAgo - d) * 1e-6);
+    return m;
+  };
+  bitso.dailyCloses = async (book) => {
+    if (book === 'usd_mxn') return mkFiat(1750, 0, 0.05); // ~4.8y deep
+    if (book === 'usd_ars') return mkFiat(700, 0, 0.001); // only ~2y real
+    return new Map();
+  };
+  cgReturn = null;
+  cgCalls = [];
+  rows = await history.getDailyHistory('fiat:mxn', 1460);
+  ok(cgCalls.length === 0, 'deep fiat cross uses the Bitso book, zero CG');
+  ok(rows.length >= 1400, `fiat cross returns ~4y of daily bars (${rows.length})`);
+  ok(rows.every((r) => !r.synthetic), 'no synthetic needed when the book is deep');
+  const mspan = (rows[rows.length - 1].ts - rows[0].ts) / DAY;
+  ok(mspan >= 1400, `deep fiat spans ~4 years (${Math.round(mspan)} days)`);
+
+  // --- synthetic backfill: a SHORT real book is padded flat back to the
+  // window start so the cross never LIMITS the window ---
+  cgReturn = null;
+  cgCalls = [];
+  rows = await history.getDailyHistory('fiat:ars', 1460);
+  const aspan = (rows[rows.length - 1].ts - rows[0].ts) / DAY;
+  ok(aspan >= 1400, `short book synthetically extended to the full window (${Math.round(aspan)} days)`);
+  ok(rows[0].synthetic === true, 'the oldest days are synthetic (flat backfill)');
+  const firstReal = rows.find((r) => !r.synthetic);
+  ok(firstReal && rows.filter((r) => !r.synthetic).length >= 650, 'the recent ~2y remain real');
+  ok(approx(rows[0].usd_price, firstReal.usd_price), 'synthetic tail holds the earliest real rate flat');
+  ok(rows.every((r, i) => i === 0 || r.ts > rows[i - 1].ts), 'series stays strictly increasing in time');
+
   console.log('deep-data layer tests pass');
   process.exit(0);
 })().catch((e) => { console.error('FAIL:', e.message); process.exit(1); });

@@ -110,6 +110,25 @@ async function getDailyHistory(id, days = MAX_DAYS, symbolHint = null) {
     }
   }
 
+  // Deep FIAT layer: a fiat cross (e.g. MXN) is otherwise capped at ~2y by
+  // the regular exchange path (MAX_EXCHANGE_DAYS), but Bitso's own usd_<code>
+  // book serves ~5y. Pull that deep span so a fiat-tethered profile (Bitso
+  // MXN, and any fiat index) isn't the thing that limits the backtest window.
+  if (exsource.enabled() && days > MAX_EXCHANGE_DAYS && code && code !== 'usd') {
+    const windowStart = dayBucket(Date.now()) - (days - 1) * DAY_MS;
+    const oldest = oldestCachedTs(id);
+    const tailShallow = oldest == null || oldest > windowStart + 2 * DAY_MS;
+    if (tailShallow) {
+      const byDay = await exsource.dailyByDay(id, code, windowStart);
+      if (byDay && byDay.size > 0) {
+        storeSeries(id, byDay);
+        exFetched = true;
+      }
+    } else {
+      exFetched = true;
+    }
+  }
+
   // Exchange layer: top up from the venue's own market data when it covers
   // this asset (deeper history, zero CG quota). Fetch when the HEAD is stale
   // OR the TAIL is shallower than the requested window — a series first
@@ -156,9 +175,24 @@ async function getDailyHistory(id, days = MAX_DAYS, symbolHint = null) {
   }
 
   const since = dayBucket(Date.now()) - (days - 1) * DAY_MS;
-  return db
+  const rows = db
     .prepare('SELECT ts, usd_price FROM daily_prices WHERE coingecko_id = ? AND ts >= ? ORDER BY ts')
     .all(id, since);
+
+  // Synthetic backfill for a fiat CROSS: if the real series still starts after
+  // the requested window (some fiat Bitso trades shallow, or no deep source at
+  // all), hold the earliest known cross-rate flat back to the window start so
+  // the cross never LIMITS the window — real data where we have it, a constant
+  // extrapolation before it. Not persisted (the cache stays real-only); a
+  // currency cross is stable enough that a flat pre-history is a fair stand-in,
+  // and every mix is denominated here so a short index must not gate the study.
+  if (days > MAX_EXCHANGE_DAYS && code && code !== 'usd' && rows.length && rows[0].ts > since + DAY_MS) {
+    const flat = rows[0].usd_price;
+    const fill = [];
+    for (let t = since; t < rows[0].ts; t += DAY_MS) fill.push({ ts: t, usd_price: flat, synthetic: true });
+    return fill.concat(rows);
+  }
+  return rows;
 }
 
 // Cache freshness overview for diagnostics.

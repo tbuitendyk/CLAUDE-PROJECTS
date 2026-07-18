@@ -215,6 +215,28 @@ average over one window."
   replica, 1460 bars → 1168 in-sample / 292 holdout): top mixes flag ★ with
   types 3/3, positive per-type and holdout edges.
 
+## Phase 2.97 — Deep fiat crosses (no cross ever limits the window)
+**Status: SHIPPED (tests green: test-deepdata.js fiat path).** The deep-daily
+upgrade let crypto reach ~4y while a fiat index (Bitso MXN) stayed capped at
+~2y (fiat was excluded from the deep path; the regular exchange path caps at
+MAX_EXCHANGE_DAYS=730), so the tether — which every mix is denominated in —
+became the thing that limited the backtest window. Fix, no new external
+dependency: **route fiat deep through Bitso's OWN `usd_<code>` book** (its
+undocumented OHLC serves ~4.8y for usd_mxn, verified back to 2021-09 —
+`bitso.dailyCloses(..., {invert:true})`, already wired), so MXN gets ~4.8y of
+the genuinely-traded rate (better than an ECB reference rate for a Bitso
+trader; the recent window and the deep tail come from ONE source, no seam).
+For any fiat short of the requested window (a fiat Bitso trades shallow, or
+none at all), a **synthetic flat backfill** holds the earliest known
+cross-rate constant back to the window start — real data where we have it, a
+constant extrapolation before it, not persisted (cache stays real-only) — so a
+short cross never gates the study ("synthetic if necessary"). Applies to both
+Kraken (usd index already synthesized 1:1) and Bitso fiat crosses. Checked:
+neither Binance nor KuCoin can substitute — KuCoin lists no MXN; Binance lists
+USDTMXN/BTCMXN but only since 2024-04 (~2.3y). The window-start clamp (window
+can't predate the tether) stays as a safety and is now a no-op once the fiat
+covers the full span.
+
 ## Phase 2.95 — Current-set allocation × sensitivity
 **Status: SHIPPED (tests green: test-compose.js current-set path).** A focused
 mode of the composition lab (toggle "Current holdings only"): instead of
