@@ -1,5 +1,6 @@
 const db = require('./db');
 const { simulate } = require('./backtest');
+const { indexUsdFor, priceAsset } = require('./balancer');
 const { topCandidates, candidateSeries } = require('./candidates');
 const { getDailyHistory } = require('./history');
 const { fiatCode } = require('./pricing');
@@ -179,9 +180,30 @@ function trainScore(assets, half1, half2, costs) {
   return { score: Math.min(a.value, b.value), halves: [a, b] };
 }
 
+// Hold growth in closed form — Σ weight × price relative — so the broad
+// pass doesn't burn a whole simulation on the no-trading baseline.
+function holdGrowthPct(assets, barsArr) {
+  if (barsArr.length < 2) return null;
+  const relAt = (bar) => {
+    const iu = indexUsdFor(assets, bar.usd);
+    return assets.map((a) => {
+      const p = priceAsset(a, iu, bar.usd);
+      return p ? p.rel : null;
+    });
+  };
+  const r0 = relAt(barsArr[0]);
+  const r1 = relAt(barsArr[barsArr.length - 1]);
+  let v = 0;
+  for (let i = 0; i < assets.length; i++) {
+    if (!(r0[i] > 0) || !(r1[i] > 0)) return null;
+    v += ((assets[i].target_pct || 0) / 100) * (r1[i] / r0[i]);
+  }
+  return (v - 1) * 100;
+}
+
 // ---- the search -------------------------------------------------------------
 
-function searchCompositions({
+async function searchCompositions({
   candidates, // [{id, symbol, rank}] risk candidates (held + top-N), coverage-filtered
   tether, // {id, symbol}
   bars, // shared timeline with prices for every candidate + tether
@@ -189,12 +211,14 @@ function searchCompositions({
   feePct = 0.38,
   spreadPct = 0.1,
   lagHours = 6,
-  samples = 3000,
+  samples = 100000, // broad-pass combination count
   minAssets = 4,
   maxAssets = 8,
-  refineTop = 40,
-  refineEvals = 60,
-  finalists = 15,
+  screenKeep = 16, // candidates surviving the solo screen
+  fullTop = 500, // broad-pass contenders promoted to full fidelity
+  refineTop = 60,
+  refineEvals = 80,
+  finalists = 20,
   trainFraction = 0.6,
   seed = 42,
   setProgress = () => {},
@@ -205,10 +229,11 @@ function searchCompositions({
     tether,
     symbolOf: new Map(candidates.map((c) => [c.id, c.symbol])),
   };
-  const candidateIds = candidates.map((c) => c.id);
-  if (candidateIds.length < minAssets) {
-    throw new Error(`only ${candidateIds.length} candidates have full-window history — need at least ${minAssets}`);
+  if (candidates.length < minAssets) {
+    throw new Error(`only ${candidates.length} candidates have full-window history — need at least ${minAssets}`);
   }
+  // Long runs must not starve the event loop (polls, syncs, the UI itself).
+  const yieldLoop = () => new Promise((r) => setImmediate(r));
 
   const nTrain = Math.floor(bars.length * trainFraction);
   const train = bars.slice(0, nTrain);
@@ -216,7 +241,84 @@ function searchCompositions({
   const half1 = train.slice(0, Math.floor(train.length / 2));
   const half2 = train.slice(Math.floor(train.length / 2));
 
-  const seen = new Map(); // mixKey -> {mix, train}
+  // ---- Stage 0: solo screen — every candidate audited ONE ASSET AT A TIME
+  // (50/50 against the tether, mini sweep, worse of the two train halves).
+  // Bad assets are weeded out before any combinatorics; every verdict ships
+  // with the result so the exclusions are inspectable.
+  const screen = [];
+  for (let i = 0; i < candidates.length; i++) {
+    const c = candidates[i];
+    setProgress(`solo screen: ${c.symbol.toUpperCase()} (${i + 1}/${candidates.length})`, (i / candidates.length) * 3);
+    const solo = [
+      { coingecko_id: tether.id, symbol: tether.symbol, target_pct: 50, is_index: 1 },
+      { coingecko_id: c.id, symbol: c.symbol, target_pct: 50, is_index: 0 },
+    ];
+    const t = trainScore(solo, half1, half2, costs);
+    screen.push({
+      id: c.id,
+      symbol: c.symbol,
+      soloTrain: t.score,
+      soloHold: Math.min(t.halves[0].hold, t.halves[1].hold),
+    });
+    if (i % 4 === 3) await yieldLoop();
+  }
+  screen.sort((a, b) => b.soloTrain - a.soloTrain);
+  const keepN = Math.max(minAssets, Math.min(screenKeep, screen.length));
+  const keptIds = new Set(screen.slice(0, keepN).map((s) => s.id));
+  for (const s of screen) s.kept = keptIds.has(s.id);
+  const keptIdsArr = [...keptIds];
+
+  // ---- Stage 1: the broad pass — massive seeded random sampling over
+  // groups + weights of the screened survivors, scored CHEAPLY (closed-form
+  // hold + two representative X sims on the whole train window). Only a
+  // bounded contender board is kept, so a million combos fit in memory.
+  const CHEAP_X = [6, 14];
+  const board = []; // {key, mix, cheap}
+  const boardKeys = new Set();
+  let cutoff = -Infinity;
+  let broadSampled = 0;
+  for (let i = 0; i < samples; i++) {
+    const mix = sampleMix(rng, keptIdsArr, minAssets, Math.min(maxAssets, keptIdsArr.length));
+    if (mix) {
+      broadSampled++;
+      const assets = mixToAssets(mix, pool);
+      const hold = holdGrowthPct(assets, train);
+      if (hold != null) {
+        let best = hold;
+        for (const x of CHEAP_X) {
+          const r = simulate(assets, x, { ...costs, bars: train });
+          if (r.netBasketGrowthPct > 0 && r.valueGrowthPct >= hold - HOLD_BAND_PP && r.valueGrowthPct > best) {
+            best = r.valueGrowthPct;
+          }
+        }
+        if (best > cutoff || board.length < fullTop) {
+          const key = mixKey(mix);
+          if (!boardKeys.has(key)) {
+            board.push({ key, mix, cheap: best });
+            boardKeys.add(key);
+            if (board.length >= fullTop * 2) {
+              board.sort((a, b) => b.cheap - a.cheap);
+              for (const dropped of board.splice(fullTop)) boardKeys.delete(dropped.key);
+              cutoff = board[board.length - 1].cheap;
+            }
+          }
+        }
+      }
+    }
+    if (i % 2000 === 0) {
+      setProgress(
+        `broad search: ${i.toLocaleString()} / ${samples.toLocaleString()} combos (${board.length} contenders held)`,
+        3 + (i / samples) * 77
+      );
+    }
+    if (i % 200 === 199) await yieldLoop();
+  }
+  board.sort((a, b) => b.cheap - a.cheap);
+  board.splice(fullTop);
+
+  // ---- Stage 2: full-fidelity scoring of the contender board (mini sweep
+  // on BOTH train halves, worse half counts).
+  const seen = new Map(); // mixKey -> {mix, key, train}
   const evalMix = (mix) => {
     const key = mixKey(mix);
     if (seen.has(key)) return seen.get(key);
@@ -224,23 +326,25 @@ function searchCompositions({
     seen.set(key, entry);
     return entry;
   };
-
-  // Stage 1: seeded random sampling over groups + weights.
-  let ranked = [];
-  for (let i = 0; i < samples; i++) {
-    if (i % 250 === 0) setProgress(`sampling mixes ${i}/${samples} (${seen.size} unique)`);
-    const mix = sampleMix(rng, candidateIds, minAssets, Math.min(maxAssets, candidateIds.length));
-    if (mix) evalMix(mix);
+  const fullScored = [];
+  for (let i = 0; i < board.length; i++) {
+    fullScored.push(evalMix(board[i].mix));
+    if (i % 10 === 9) {
+      setProgress(`full-fidelity scoring ${i + 1}/${board.length}`, 80 + (i / board.length) * 10);
+      await yieldLoop();
+    }
   }
-  ranked = [...seen.values()].sort((a, b) => b.train.score - a.train.score);
+  const ranked = [...new Map(fullScored.map((s) => [s.key, s])).values()].sort(
+    (a, b) => b.train.score - a.train.score
+  );
 
-  // Stage 2: greedy refinement of the survivors — weight jiggling (move one
-  // 2.5% unit between assets or the tether) and asset swaps (replace one
-  // member with an unused candidate), keeping improvements.
+  // ---- Stage 3: greedy refinement of the survivors — weight jiggling (one
+  // 2.5% unit at a time), tether-band moves, and asset swaps within the
+  // screened pool, keeping improvements.
   const survivors = ranked.slice(0, refineTop);
-  survivors.forEach((s, si) => {
-    setProgress(`refining survivor ${si + 1}/${survivors.length}`);
-    let current = s;
+  for (let si = 0; si < survivors.length; si++) {
+    setProgress(`refining survivor ${si + 1}/${survivors.length}`, 90 + (si / Math.max(1, survivors.length)) * 7);
+    let current = survivors[si];
     for (let e = 0; e < refineEvals; e++) {
       const mix = current.mix;
       const ids = [...mix.units.keys()];
@@ -266,9 +370,9 @@ function searchCompositions({
           variant.units.set(id, variant.units.get(id) - 1);
         }
       } else {
-        // swap one asset for an unused candidate, keeping its units
+        // swap one asset for an unused screened candidate, keeping its units
         const out = ids[Math.floor(rng() * ids.length)];
-        const unused = candidateIds.filter((c) => !variant.units.has(c));
+        const unused = keptIdsArr.filter((c) => !variant.units.has(c));
         if (unused.length === 0) continue;
         const inn = unused[Math.floor(rng() * unused.length)];
         const u = variant.units.get(out);
@@ -277,16 +381,17 @@ function searchCompositions({
       }
       const cand = evalMix(variant);
       if (cand.train.score > current.train.score) current = cand;
+      if (e % 20 === 19) await yieldLoop();
     }
     survivors[si] = current;
-  });
+  }
 
-  // Stage 3: out-of-sample confirmation of the finalists — the column that
-  // actually matters.
+  // ---- Stage 4: out-of-sample confirmation of the finalists — the column
+  // that actually matters.
   const uniqueFinal = [...new Map(survivors.map((s) => [s.key, s])).values()]
     .sort((a, b) => b.train.score - a.train.score)
     .slice(0, finalists);
-  setProgress('out-of-sample confirmation');
+  setProgress('out-of-sample confirmation', 98);
   const rows = uniqueFinal.map((s) => {
     const assets = mixToAssets(s.mix, pool);
     return {
@@ -318,6 +423,8 @@ function searchCompositions({
   return {
     mixes: rows,
     currentMix: currentScored,
+    screen, // per-asset solo verdicts, kept flag included
+    combos: { broadSampled, contenders: board.length, fullScored: seen.size },
     window: {
       bars: bars.length,
       trainBars: train.length,
@@ -326,7 +433,7 @@ function searchCompositions({
       to: bars.length ? bars[bars.length - 1].ts : null,
       splitAt: oos[0] ? oos[0].ts : null,
     },
-    evaluatedMixes: seen.size,
+    evaluatedMixes: broadSampled + seen.size,
     caveat: CAVEAT,
   };
 }
@@ -381,7 +488,7 @@ async function runComposeSearch(profileId, opts = {}, setProgress = () => {}) {
   if (!tetherAsset) throw new Error('the composition search needs a tethered index asset — checkmark one first');
 
   const days = Number(opts.days) > 0 ? Number(opts.days) : 720;
-  const samples = Number(opts.samples) > 0 ? Math.min(Number(opts.samples), 20000) : 3000;
+  const samples = Number(opts.samples) > 0 ? Math.min(Number(opts.samples), 2_000_000) : 100_000;
   const candidateCount = Number(opts.candidates) > 0 ? Math.min(Number(opts.candidates), 60) : 40;
   const seed = Number(opts.seed) || (Date.now() % 2 ** 31);
 
@@ -454,7 +561,7 @@ async function runComposeSearch(profileId, opts = {}, setProgress = () => {}) {
     .filter((a) => a.target_pct > 0)
     .map((a) => ({ id: a.coingecko_id, symbol: a.symbol, targetPct: a.target_pct, isIndex: !!a.is_index }));
 
-  const result = searchCompositions({
+  const result = await searchCompositions({
     candidates: coveredCandidates,
     tether: { id: tetherAsset.coingecko_id, symbol: tetherAsset.symbol },
     bars,

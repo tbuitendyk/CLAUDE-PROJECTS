@@ -55,13 +55,30 @@ const IDS = [...seriesById.keys()];
     ],
     feePct: 0.3,
     spreadPct: 0.1,
-    samples: 600,
+    samples: 4000,
+    screenKeep: 4,
+    fullTop: 60,
     refineTop: 15,
     refineEvals: 30,
     finalists: 8,
     seed: 1234,
   };
-  const r = compose.searchCompositions(opts);
+  const r = await compose.searchCompositions(opts);
+
+  // --- solo screen: verdicts shipped, decliners weeded out ENTIRELY ---
+  ok(r.screen.length === candidates.length, 'every candidate carries a solo-screen verdict');
+  const screenOf = (id) => r.screen.find((s) => s.id === id);
+  ok(!screenOf('dec-d').kept && !screenOf('dec-e').kept, 'terminal decliners weeded out at the solo screen');
+  // Phase matters at window edges (min-of-halves punishes ending on the
+  // trough), so at least one of the phase-shifted oscillators must pass —
+  // not necessarily both.
+  ok(screenOf('osc-a').kept || screenOf('osc-b').kept, 'a harvestable oscillator passes the solo screen');
+  ok(screenOf('chop-g').kept, 'the fast chopper passes the solo screen');
+  ok(
+    r.mixes.every((m) => m.assets.every((a) => a.id !== 'dec-d' && a.id !== 'dec-e')),
+    'weeded assets appear in NO finalist mix at all'
+  );
+  ok(r.combos.broadSampled > 3000 && r.combos.contenders > 0, 'broad pass ran at scale and kept a contender board');
 
   ok(r.mixes.length > 0 && r.mixes.length <= 8, `finalists produced (${r.mixes.length})`);
 
@@ -81,9 +98,6 @@ const IDS = [...seriesById.keys()];
     top3.every((m) => m.assets.some((a) => a.id === 'osc-a' || a.id === 'osc-b')),
     'every top-3 mix contains a harvestable oscillator'
   );
-  const declinerWeight = (m) =>
-    m.assets.filter((a) => a.id === 'dec-d' || a.id === 'dec-e').reduce((s, a) => s + a.pct, 0);
-  ok(top3.every((m) => declinerWeight(m) <= 10), 'terminal decliners carry no meaningful weight in the top mixes');
 
   // --- out-of-sample honesty ---
   ok(r.mixes.every((m) => m.oos && Number.isFinite(m.oos.value)), 'every mix carries an OOS score');
@@ -95,7 +109,7 @@ const IDS = [...seriesById.keys()];
   ok(r.mixes[0].oos.value > r.currentMix.oos.value, 'best found mix beats the decliner-heavy current mix OOS');
 
   // --- determinism under a fixed seed ---
-  const r2 = compose.searchCompositions(opts);
+  const r2 = await compose.searchCompositions(opts);
   ok(
     JSON.stringify(r2.mixes[0].assets) === JSON.stringify(r.mixes[0].assets),
     'same seed reproduces the same top mix'

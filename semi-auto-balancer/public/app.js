@@ -778,10 +778,29 @@ function renderCompose(latest) {
   if (r.currentMix) addRow(`CURRENT: ${mixLabel(r.currentMix.assets)}`, r.currentMix, true);
   for (const m of r.mixes) addRow(mixLabel(m.assets), m, false);
 
+  // Solo-screen verdicts: which candidates made it into combinatorics.
+  const sc = $('#c-screen');
+  if (r.screen && r.screen.length) {
+    const kept = r.screen.filter((s) => s.kept);
+    const dropped = r.screen.filter((s) => !s.kept);
+    sc.textContent =
+      `Solo screen (50/50 vs tether, worse train half): kept ` +
+      kept.map((s) => `${s.symbol.toUpperCase()} ${s.soloTrain >= 0 ? '+' : ''}${s.soloTrain.toFixed(1)}%`).join(', ') +
+      (dropped.length
+        ? ` · weeded out: ` +
+          dropped.map((s) => `${s.symbol.toUpperCase()} ${s.soloTrain >= 0 ? '+' : ''}${s.soloTrain.toFixed(1)}%`).join(', ')
+        : '');
+  } else {
+    sc.textContent = '';
+  }
+
   const w = r.window || {};
   const u = r.universe || {};
+  const combos = r.combos
+    ? `${r.combos.broadSampled.toLocaleString()} combos broad-searched, ${r.combos.contenders} contenders full-scored`
+    : `${r.evaluatedMixes} mixes evaluated`;
   $('#c-stamp').textContent =
-    `Searched ${new Date(latest.createdAt).toLocaleString()} · ${r.evaluatedMixes} unique mixes evaluated · ` +
+    `Searched ${new Date(latest.createdAt).toLocaleString()} · ${combos} · ` +
     `universe ${u.covered}/${u.considered} candidates` +
     (u.venue ? ` (restricted to ${u.venue}-tradable${u.notOnVenue && u.notOnVenue.length ? `; dropped: ${u.notOnVenue.map((s) => s.toUpperCase()).join(', ')}` : ''})` : ' (no linked venue — unconstrained)') +
     (u.heldExcludedFrozen ? ` · ${u.heldExcludedFrozen} held asset(s) excluded: buy-frozen` : '') +
@@ -800,20 +819,25 @@ $('#c-run').addEventListener('click', async () => {
       body: { samples: Number($('#c-intensity').value) },
     });
     clearInterval(composePoll);
+    $('#c-bar').classList.remove('hidden');
+    $('#c-bar-fill').style.width = '0%';
     composePoll = setInterval(async () => {
       try {
         const job = await api(`/jobs/${jobId}`);
         if (job.status === 'running') {
           $('#c-status').textContent = job.progress || 'running…';
+          if (job.progressPct != null) $('#c-bar-fill').style.width = job.progressPct + '%';
         } else {
           clearInterval(composePoll);
           $('#c-run').disabled = false;
+          $('#c-bar').classList.add('hidden');
           $('#c-status').textContent = job.status === 'done' ? '' : `failed: ${job.error}`;
           if (job.status === 'done') await refresh();
         }
       } catch (err) {
         clearInterval(composePoll);
         $('#c-run').disabled = false;
+        $('#c-bar').classList.add('hidden');
         $('#c-status').textContent = err.message;
       }
     }, 2000);

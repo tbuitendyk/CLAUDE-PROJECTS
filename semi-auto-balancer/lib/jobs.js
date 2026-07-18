@@ -24,8 +24,11 @@ function startJob(kind, profileId, fn) {
   };
   jobs.set(id, job);
 
-  const setProgress = (text) => {
+  // pct (0-100) is optional; long jobs report it so the UI can render a
+  // real progress bar instead of a spinner of faith.
+  const setProgress = (text, pct) => {
     job.progress = String(text);
+    if (Number.isFinite(pct)) job.progressPct = Math.max(0, Math.min(100, pct));
   };
 
   (async () => {

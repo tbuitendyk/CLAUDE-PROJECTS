@@ -607,6 +607,7 @@ app.get('/api/jobs/:id', (req, res) => {
     kind: job.kind,
     status: job.status,
     progress: job.progress,
+    progressPct: job.progressPct != null ? job.progressPct : null,
     result: job.status === 'done' ? job.result : null,
     error: job.error,
   });

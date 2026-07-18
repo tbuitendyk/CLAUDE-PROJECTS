@@ -133,13 +133,14 @@
                 <button id="c-run">Run search</button>
                 <label class="muted">intensity
                   <select id="c-intensity">
-                    <option value="1500">quick</option>
-                    <option value="3000" selected>standard</option>
-                    <option value="8000">intensive</option>
+                    <option value="20000">quick (~20k combos, ~1 min)</option>
+                    <option value="100000" selected>standard (~100k combos, ~4 min)</option>
+                    <option value="1000000">intensive (~1M combos, ~25 min)</option>
                   </select>
                 </label>
                 <span id="c-status" class="muted"></span>
               </div>
+              <div id="c-bar" class="progress-wrap hidden"><div id="c-bar-fill" class="progress-fill"></div></div>
               <div id="c-result" class="hidden">
                 <p id="c-caveat" class="warn-text"></p>
                 <div class="table-wrap">
@@ -151,6 +152,7 @@
                   </table>
                 </div>
                 <p id="c-stamp" class="muted"></p>
+                <p id="c-screen" class="muted"></p>
               </div>
             </div>
 

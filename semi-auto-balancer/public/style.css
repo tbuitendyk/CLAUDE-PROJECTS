@@ -135,3 +135,19 @@ tr.breached td { background: color-mix(in srgb, var(--danger) 10%, transparent);
 #import-preview button { margin-top: .5rem; margin-right: .5rem; }
 .log { list-style: none; padding: 0; font-size: .8rem; color: var(--muted); }
 .log li { margin-bottom: .6rem; white-space: pre-wrap; border-left: 2px solid var(--border); padding-left: .6rem; }
+
+/* Job progress bar (composition lab / long-running sweeps). */
+.progress-wrap {
+  height: 8px;
+  max-width: 480px;
+  margin: 6px 0;
+  border-radius: 4px;
+  overflow: hidden;
+  background: rgba(128, 128, 128, 0.25);
+}
+.progress-fill {
+  height: 100%;
+  width: 0;
+  background: #4a9;
+  transition: width 0.6s ease;
+}
