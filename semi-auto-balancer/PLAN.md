@@ -195,7 +195,19 @@ that stopped at 20; (b) the SELECTION metric is now harvest EDGE (value
 above holding), not absolute value — a mix that merely appreciated in the
 train window scores ~0 and can't crowd out genuine harvesters (verified: a
 +1000% pure trender = 0.00 edge vs a real oscillator's 7.05). Train column
-shows edge; display columns keep absolute value/hold/x. Motivating evidence (live Kraken
+shows edge; display columns keep absolute value/hold/x.
+Third correction 2026-07-18 (Bitso results were misleading): (1) WALK-FORWARD
+validation — the single regime-boundary train/OOS split replaced by
+N_FOLDS=4 sequential in-sample folds + an untouched holdout tail; selection
+ranks by robustness (how many folds harvested, then median fold edge, then
+holdout edge), so one crash window can't crown or doom a mix; (2) HONEST
+no-harvest verdict — a mix is recommended (★) only if it harvested in a
+majority of folds AND kept a positive holdout edge; when none qualify the
+result carries noHarvest=true + a warning instead of a leaderboard of
+capital-preservation mixes; (3) the current mix is scored for REFERENCE
+only, never a bar to beat (one window's number is noise). Verified live
+(Kraken): top mixes harvest 4/4 folds with positive holdout edge → ★.
+Motivating evidence (live Kraken
 MAIN sweep): over 2024-07→2026-07, FIL −83%, POL −84%, QTUM −75%, SC −89%,
 DOGE −44% — a ~30% target sleeve of terminal decliners that rebalancing
 bought all the way down, funded by selling the assets that worked (XRP

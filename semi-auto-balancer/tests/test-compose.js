@@ -115,14 +115,34 @@ const IDS = [...seriesById.keys()];
     'every top-3 mix contains a harvestable oscillator'
   );
 
-  // --- out-of-sample honesty ---
-  ok(r.mixes.every((m) => m.oos && Number.isFinite(m.oos.value)), 'every mix carries an OOS score');
-  ok(r.window.oosBars > 0 && r.window.splitAt > r.window.from, 'OOS window is a real held-out tail');
+  // --- walk-forward validation + honest holdout ---
+  ok(r.window.nFolds === 4 && r.window.holdoutBars > 0, 'walk-forward folds + a real untouched holdout');
+  ok(r.window.holdoutFrom > r.window.from, 'holdout is a forward tail of the window');
+  ok(r.mixes.every((m) => Array.isArray(m.foldEdges) && m.foldEdges.length === 4), 'every mix carries per-fold harvest edges');
+  ok(r.mixes.every((m) => m.holdout && Number.isFinite(m.holdout.value)), 'every mix carries a holdout score');
   ok(typeof r.caveat === 'string' && /hindsight|bias/i.test(r.caveat), 'hindsight caveat rides with the result');
 
-  // --- the current (bad) mix is scored as the baseline and loses ---
-  ok(r.currentMix != null, 'current mix scored');
-  ok(r.mixes[0].oos.value > r.currentMix.oos.value, 'best found mix beats the decliner-heavy current mix OOS');
+  // --- selection = walk-forward robustness: the top mix harvested in a
+  // majority of folds and is flagged recommended; a real harvester exists ---
+  ok(r.mixes[0].positiveFolds >= 3, 'the top mix harvested in a majority of the walk-forward folds');
+  ok(r.mixes.some((m) => m.recommended) && r.noHarvest === false, 'a genuine harvester is flagged recommended (not a no-harvest verdict)');
+
+  // --- the current mix is scored for REFERENCE, never used as a benchmark ---
+  ok(r.currentMix != null && r.currentMix.reference === true, 'current mix scored, flagged reference-only');
+  ok(r.currentMix.recommended === false, 'current mix is never itself a recommendation');
+
+  // --- no-harvest verdict fires when nothing clears the bar (decliners-only
+  // universe: no mix can harvest, so the honest warning replaces a leaderboard) ---
+  const deadOpts = {
+    ...opts,
+    // four non-harvesters (two decliners, a flat, a pure trender) — enough to
+    // form mixes, none able to harvest
+    candidates: candidates.filter((c) => ['dec-d', 'dec-e', 'flat-f', 'trend-up'].includes(c.id)),
+  };
+  const dead = await compose.searchCompositions(deadOpts);
+  ok(dead.noHarvest === true, 'a universe with no harvest yields the no-harvest verdict');
+  ok(dead.mixes.every((m) => !m.recommended), 'nothing is recommended when nothing harvests');
+  ok(dead.warnings.some((w) => /does not reliably beat holding|capital-preservation/i.test(w)), 'no-harvest warning rendered');
 
   // --- determinism under a fixed seed ---
   const r2 = await compose.searchCompositions(opts);

@@ -43,6 +43,16 @@ const TETHER_UNITS = [4, 5, 6, 7, 8, 9, 10]; // 10–25%
 // by a grid that stopped at 20.
 const MINI_X = [3, 5, 8, 12, 20, 25, 30];
 const HOLD_BAND_PP = 0.5;
+// Walk-forward validation: the last HOLDOUT_FRAC of the window is an
+// untouched confirmation slice; the rest is cut into N_FOLDS sequential
+// in-sample windows. A mix is judged on how CONSISTENTLY it harvests across
+// those forward windows, not on one regime-boundary split. A fold "counts"
+// as harvested when its edge clears MIN_FOLD_EDGE; a RECOMMENDATION needs a
+// majority of folds AND a positive holdout.
+const N_FOLDS = 4;
+const HOLDOUT_FRAC = 0.2;
+const MIN_FOLD_EDGE = 0.5; // pp of value above holding for a fold to count as harvested
+const RECO_MIN_FOLDS = 3; // of N_FOLDS
 
 // Deterministic PRNG so a seed reproduces a search exactly.
 function mulberry32(seed) {
@@ -180,15 +190,25 @@ function scoreWindow(assets, bars, costs) {
   };
 }
 
-// Train score = the WORSE of the two train halves' HARVEST EDGE (regime
-// robustness): a mix must add value over holding in BOTH halves, not average
-// its way in on one lucky regime — and crucially not win selection just by
-// appreciating. `.score` is the edge; `.value` carries the worse-half
-// absolute return for display.
-function trainScore(assets, half1, half2, costs) {
-  const a = scoreWindow(assets, half1, costs);
-  const b = scoreWindow(assets, half2, costs);
-  return { score: Math.min(a.edge, b.edge), value: Math.min(a.value, b.value), halves: [a, b] };
+// Walk-forward score: harvest edge on each sequential in-sample fold plus an
+// untouched holdout. `robust` (median fold edge) and `positiveFolds` (how
+// many folds actually harvested) drive selection; the holdout is pure
+// confirmation the search never optimizes on.
+function scoreFolds(assets, foldsBars, holdoutBars, costs) {
+  const folds = foldsBars.map((b) => scoreWindow(assets, b, costs));
+  const edges = folds.map((f) => f.edge).slice().sort((a, b) => a - b);
+  const mid = edges.length >> 1;
+  const robust = edges.length === 0 ? 0 : edges.length % 2 ? edges[mid] : (edges[mid - 1] + edges[mid]) / 2;
+  const positiveFolds = folds.filter((f) => f.edge > MIN_FOLD_EDGE).length;
+  const holdout = scoreWindow(assets, holdoutBars, costs);
+  return { folds, robust, positiveFolds, holdout, nFolds: folds.length };
+}
+
+// Ranking order: harvest in MORE forward windows first (robustness), then
+// higher median fold edge, then a positive holdout as the final tiebreak.
+// Returns <0 when `a` should rank before `b`.
+function foldRank(a, b) {
+  return b.positiveFolds - a.positiveFolds || b.robust - a.robust || b.holdout.edge - a.holdout.edge;
 }
 
 // Hold growth in closed form — Σ weight × price relative — so the broad
@@ -246,16 +266,21 @@ async function searchCompositions({
   // Long runs must not starve the event loop (polls, syncs, the UI itself).
   const yieldLoop = () => new Promise((r) => setImmediate(r));
 
-  const nTrain = Math.floor(bars.length * trainFraction);
-  const train = bars.slice(0, nTrain);
-  const oos = bars.slice(nTrain);
-  const half1 = train.slice(0, Math.floor(train.length / 2));
-  const half2 = train.slice(Math.floor(train.length / 2));
+  // Walk-forward windows: an untouched holdout tail + N_FOLDS sequential
+  // in-sample folds. Selection judges consistency ACROSS folds, so a single
+  // regime (e.g. one crash window) can neither crown nor doom a mix.
+  const holdoutN = Math.max(30, Math.floor(bars.length * HOLDOUT_FRAC));
+  const inSample = bars.slice(0, bars.length - holdoutN);
+  const holdoutBars = bars.slice(bars.length - holdoutN);
+  const foldSize = Math.floor(inSample.length / N_FOLDS);
+  const foldsBars = [];
+  for (let f = 0; f < N_FOLDS; f++) {
+    foldsBars.push(inSample.slice(f * foldSize, f === N_FOLDS - 1 ? inSample.length : (f + 1) * foldSize));
+  }
 
   // ---- Stage 0: solo screen — every candidate audited ONE ASSET AT A TIME
-  // (50/50 against the tether, mini sweep, worse of the two train halves).
-  // Bad assets are weeded out before any combinatorics; every verdict ships
-  // with the result so the exclusions are inspectable.
+  // (50/50 vs the tether), scored by its MEDIAN harvest edge across the
+  // walk-forward folds. Bad assets are weeded out before any combinatorics.
   const screen = [];
   for (let i = 0; i < candidates.length; i++) {
     const c = candidates[i];
@@ -264,13 +289,8 @@ async function searchCompositions({
       { coingecko_id: tether.id, symbol: tether.symbol, target_pct: 50, is_index: 1 },
       { coingecko_id: c.id, symbol: c.symbol, target_pct: 50, is_index: 0 },
     ];
-    const t = trainScore(solo, half1, half2, costs);
-    screen.push({
-      id: c.id,
-      symbol: c.symbol,
-      soloTrain: t.score,
-      soloHold: Math.min(t.halves[0].hold, t.halves[1].hold),
-    });
+    const sc = scoreFolds(solo, foldsBars, holdoutBars, costs);
+    screen.push({ id: c.id, symbol: c.symbol, soloTrain: sc.robust, positiveFolds: sc.positiveFolds });
     if (i % 4 === 3) await yieldLoop();
   }
   screen.sort((a, b) => b.soloTrain - a.soloTrain);
@@ -279,13 +299,10 @@ async function searchCompositions({
   for (const s of screen) s.kept = keptIds.has(s.id);
   const keptIdsArr = [...keptIds];
 
-  // ---- Stage 1: the broad pass — massive seeded random sampling over
-  // groups + weights of the screened survivors, scored CHEAPLY (closed-form
-  // hold + two representative X sims on the whole train window). Only a
-  // bounded contender board is kept, so a million combos fit in memory.
-  // Two representative probes — one mid, one high — so the broad pass isn't
-  // blind to mixes whose harvest only appears at high sensitivity (the
-  // full-fidelity stage then refines across the whole MINI_X range).
+  // ---- Stage 1: broad pass — massive seeded random sampling over the
+  // screened survivors, cheaply scored by harvest EDGE over the whole
+  // in-sample region (two representative X probes) into a bounded contender
+  // board, so a million combos fit in memory.
   const CHEAP_X = [6, 22];
   const board = []; // {key, mix, cheap}
   const boardKeys = new Set();
@@ -296,14 +313,11 @@ async function searchCompositions({
     if (mix) {
       broadSampled++;
       const assets = mixToAssets(mix, pool);
-      const hold = holdGrowthPct(assets, train);
+      const hold = holdGrowthPct(assets, inSample);
       if (hold != null) {
-        // Rank contenders by HARVEST EDGE (best qualifying value above hold),
-        // not absolute value — a mix that merely appreciated scores ~0 here
-        // and won't crowd out genuine harvesters.
         let bestValue = hold;
         for (const x of CHEAP_X) {
-          const r = simulate(assets, x, { ...costs, bars: train });
+          const r = simulate(assets, x, { ...costs, bars: inSample });
           if (r.netBasketGrowthPct > 0 && r.valueGrowthPct >= hold - HOLD_BAND_PP && r.valueGrowthPct > bestValue) {
             bestValue = r.valueGrowthPct;
           }
@@ -334,13 +348,12 @@ async function searchCompositions({
   board.sort((a, b) => b.cheap - a.cheap);
   board.splice(fullTop);
 
-  // ---- Stage 2: full-fidelity scoring of the contender board (mini sweep
-  // on BOTH train halves, worse half counts).
-  const seen = new Map(); // mixKey -> {mix, key, train}
+  // ---- Stage 2: full-fidelity WALK-FORWARD scoring of the contender board.
+  const seen = new Map(); // mixKey -> {mix, key, folds, robust, positiveFolds, holdout, nFolds}
   const evalMix = (mix) => {
     const key = mixKey(mix);
     if (seen.has(key)) return seen.get(key);
-    const entry = { mix, key, train: trainScore(mixToAssets(mix, pool), half1, half2, costs) };
+    const entry = { mix, key, ...scoreFolds(mixToAssets(mix, pool), foldsBars, holdoutBars, costs) };
     seen.set(key, entry);
     return entry;
   };
@@ -352,13 +365,10 @@ async function searchCompositions({
       await yieldLoop();
     }
   }
-  const ranked = [...new Map(fullScored.map((s) => [s.key, s])).values()].sort(
-    (a, b) => b.train.score - a.train.score
-  );
+  const ranked = [...new Map(fullScored.map((s) => [s.key, s])).values()].sort(foldRank);
 
-  // ---- Stage 3: greedy refinement of the survivors — weight jiggling (one
-  // 2.5% unit at a time), tether-band moves, and asset swaps within the
-  // screened pool, keeping improvements.
+  // ---- Stage 3: greedy refinement — keep variants that rank better on the
+  // walk-forward robustness order (weight jiggles, tether moves, asset swaps).
   const survivors = ranked.slice(0, refineTop);
   for (let si = 0; si < survivors.length; si++) {
     setProgress(`refining survivor ${si + 1}/${survivors.length}`, 90 + (si / Math.max(1, survivors.length)) * 7);
@@ -369,14 +379,12 @@ async function searchCompositions({
       const variant = { units: new Map(mix.units), tetherUnits: mix.tetherUnits };
       const move = rng();
       if (move < 0.55) {
-        // move one unit between two risk assets
         const from = ids[Math.floor(rng() * ids.length)];
         const to = ids[Math.floor(rng() * ids.length)];
         if (from === to || variant.units.get(from) <= MIN_UNITS || variant.units.get(to) >= CAP_UNITS) continue;
         variant.units.set(from, variant.units.get(from) - 1);
         variant.units.set(to, variant.units.get(to) + 1);
       } else if (move < 0.8) {
-        // move one unit between tether and a risk asset
         const id = ids[Math.floor(rng() * ids.length)];
         if (rng() < 0.5) {
           if (variant.tetherUnits <= TETHER_UNITS[0] || variant.units.get(id) >= CAP_UNITS) continue;
@@ -388,7 +396,6 @@ async function searchCompositions({
           variant.units.set(id, variant.units.get(id) - 1);
         }
       } else {
-        // swap one asset for an unused screened candidate, keeping its units
         const out = ids[Math.floor(rng() * ids.length)];
         const unused = keptIdsArr.filter((c) => !variant.units.has(c));
         if (unused.length === 0) continue;
@@ -398,58 +405,68 @@ async function searchCompositions({
         variant.units.set(inn, u);
       }
       const cand = evalMix(variant);
-      if (cand.train.score > current.train.score) current = cand;
+      if (foldRank(cand, current) < 0) current = cand;
       if (e % 20 === 19) await yieldLoop();
     }
     survivors[si] = current;
   }
 
-  // ---- Stage 4: out-of-sample confirmation of the finalists — the column
-  // that actually matters.
-  const uniqueFinal = [...new Map(survivors.map((s) => [s.key, s])).values()]
-    .sort((a, b) => b.train.score - a.train.score)
-    .slice(0, finalists);
-  setProgress('out-of-sample confirmation', 98);
-  const rows = uniqueFinal.map((s) => {
-    const assets = mixToAssets(s.mix, pool);
+  // ---- Stage 4: finalists, ranked by walk-forward robustness. A mix is a
+  // RECOMMENDATION only if it harvested in a majority of folds AND held a
+  // positive edge on the untouched holdout — not merely "fell least in a
+  // crash". When none qualify, that honest verdict is surfaced as a warning
+  // instead of a misleading leaderboard.
+  setProgress('holdout confirmation', 98);
+  const summarize = (entry, assetsList) => {
+    const assets = assetsList || mixToAssets(entry.mix, pool);
     return {
       assets: assets.map((a) => ({ id: a.coingecko_id, symbol: a.symbol, pct: a.target_pct, isIndex: !!a.is_index })),
-      train: { score: s.train.score, halves: s.train.halves },
-      oos: scoreWindow(assets, oos, costs),
+      positiveFolds: entry.positiveFolds,
+      nFolds: entry.nFolds,
+      robust: entry.robust,
+      foldEdges: entry.folds.map((f) => f.edge),
+      holdout: entry.holdout,
       full: scoreWindow(assets, bars, costs),
+      recommended: entry.positiveFolds >= RECO_MIN_FOLDS && entry.holdout.edge > 0,
     };
-  });
-  rows.sort((a, b) => b.oos.value - a.oos.value);
+  };
+  const uniqueFinal = [...new Map(survivors.map((s) => [s.key, s])).values()].sort(foldRank).slice(0, finalists);
+  const rows = uniqueFinal.map((s) => summarize(s));
+  const anyRecommended = rows.some((r) => r.recommended);
 
-  // Baseline: the profile's current mix, scored with the same machinery.
+  // Current mix — scored the SAME way, shown for REFERENCE only. A single
+  // window's number is noise, so it is explicitly NOT a bar to beat.
   let currentScored = null;
   if (currentMix && currentMix.length > 0) {
     const assets = currentMix.map((m) => ({
-      coingecko_id: m.id,
-      symbol: m.symbol,
-      target_pct: m.targetPct,
-      is_index: m.isIndex ? 1 : 0,
+      coingecko_id: m.id, symbol: m.symbol, target_pct: m.targetPct, is_index: m.isIndex ? 1 : 0,
     }));
-    currentScored = {
-      assets: currentMix.map((m) => ({ id: m.id, symbol: m.symbol, pct: m.targetPct, isIndex: !!m.isIndex })),
-      train: trainScore(assets, half1, half2, costs),
-      oos: scoreWindow(assets, oos, costs),
-      full: scoreWindow(assets, bars, costs),
-    };
+    currentScored = { ...summarize(scoreFolds(assets, foldsBars, holdoutBars, costs), assets), reference: true, recommended: false };
+  }
+
+  const warnings = [];
+  if (!anyRecommended) {
+    warnings.push(
+      'No mix harvested consistently across the walk-forward windows with a positive holdout — on this universe and history, ' +
+        'rebalancing does not reliably beat holding. The table below is a capital-preservation ranking only, NOT a harvest recommendation.'
+    );
   }
 
   return {
     mixes: rows,
     currentMix: currentScored,
+    noHarvest: !anyRecommended,
+    warnings,
     screen, // per-asset solo verdicts, kept flag included
     combos: { broadSampled, contenders: board.length, fullScored: seen.size },
     window: {
       bars: bars.length,
-      trainBars: train.length,
-      oosBars: oos.length,
+      inSampleBars: inSample.length,
+      holdoutBars: holdoutBars.length,
+      nFolds: N_FOLDS,
       from: bars[0] ? bars[0].ts : null,
       to: bars.length ? bars[bars.length - 1].ts : null,
-      splitAt: oos[0] ? oos[0].ts : null,
+      holdoutFrom: holdoutBars[0] ? holdoutBars[0].ts : null,
     },
     evaluatedMixes: broadSampled + seen.size,
     caveat: CAVEAT,

@@ -847,25 +847,37 @@ function renderCompose(latest) {
   }
   const r = latest.result;
   box.classList.remove('hidden');
-  $('#c-caveat').textContent = r.caveat || '';
+  // Warnings (e.g. no mix beat holding out-of-sample) lead; the standing
+  // hindsight caveat follows.
+  $('#c-caveat').textContent = [...(r.warnings || []), r.caveat].filter(Boolean).join('  ·  ');
 
+  const sp = (n, d = 1) => (n == null ? '—' : (n >= 0 ? '+' : '') + n.toFixed(d) + '%');
   const tbody = $('#c-table tbody');
   tbody.innerHTML = '';
   const addRow = (label, row, highlight) => {
     const tr = document.createElement('tr');
     if (highlight) tr.classList.add('index-row');
+    const star = row.recommended ? ' ★' : '';
+    const h = row.holdout || {};
+    const holdCell =
+      (h.value != null ? sp(h.value) : '—') +
+      (h.edge != null ? ` <span class="muted">(edge ${sp(h.edge)})</span>` : '');
     tr.innerHTML =
-      `<td>${label}</td>` +
-      `<td>${fmtPct(row.train.score)}</td>` +
-      `<td><strong>${row.oos.value != null ? (row.oos.value >= 0 ? '+' : '') + row.oos.value.toFixed(2) + '%' : '—'}</strong></td>` +
-      `<td>${fmtPct(row.oos.hold)}</td>` +
-      `<td>${row.oos.dd != null ? row.oos.dd.toFixed(1) + '%' : '—'}</td>` +
-      `<td>${row.oos.x != null ? row.oos.x + '%' : 'hold'}</td>` +
-      `<td>${row.oos.trades}</td>`;
+      `<td>${label}${star}</td>` +
+      `<td>${row.positiveFolds != null ? `${row.positiveFolds}/${row.nFolds}` : '—'}</td>` +
+      `<td>${sp(row.robust)}</td>` +
+      `<td><strong>${holdCell}</strong></td>` +
+      `<td>${h.x != null ? h.x + '%' : 'hold'}</td>` +
+      `<td class="muted">${row.full ? sp(row.full.value) : '—'}</td>`;
     tbody.appendChild(tr);
   };
-  if (r.currentMix) addRow(`CURRENT: ${mixLabel(r.currentMix.assets)}`, r.currentMix, true);
+  if (r.currentMix) addRow(`CURRENT (reference only): ${mixLabel(r.currentMix.assets)}`, r.currentMix, true);
   for (const m of r.mixes) addRow(mixLabel(m.assets), m, false);
+  if (!r.mixes.some((m) => m.recommended)) {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td colspan="6" class="warn-text">★ none — no mix cleared the walk-forward + holdout bar. Rankings above reflect capital preservation, not harvesting skill.</td>`;
+    tbody.appendChild(tr);
+  }
 
   // Solo-screen verdicts: which candidates made it into combinatorics.
   const sc = $('#c-screen');
@@ -873,7 +885,7 @@ function renderCompose(latest) {
     const kept = r.screen.filter((s) => s.kept);
     const dropped = r.screen.filter((s) => !s.kept);
     sc.textContent =
-      `Solo screen (50/50 vs tether — harvest edge over holding, worse train half): kept ` +
+      `Solo screen (50/50 vs tether — median harvest edge across the walk-forward folds): kept ` +
       kept.map((s) => `${s.symbol.toUpperCase()} ${s.soloTrain >= 0 ? '+' : ''}${s.soloTrain.toFixed(1)}%`).join(', ') +
       (dropped.length
         ? ` · weeded out: ` +
@@ -895,7 +907,7 @@ function renderCompose(latest) {
     (u.heldExcludedFrozen ? ` · ${u.heldExcludedFrozen} held asset(s) excluded: buy-frozen` : '') +
     (u.windowDays && u.requestedDays && u.windowDays < u.requestedDays ? ` · window auto-shrunk ${u.requestedDays}d → ${u.windowDays}d for coverage` : '') +
     ` · window ${w.from ? new Date(w.from).toISOString().slice(0, 10) : '?'} → ${w.to ? new Date(w.to).toISOString().slice(0, 10) : '?'}` +
-    ` · out-of-sample from ${w.splitAt ? new Date(w.splitAt).toISOString().slice(0, 10) : '?'} (${w.oosBars} bars).`;
+    ` · ${w.nFolds || '?'} walk-forward folds + untouched holdout from ${w.holdoutFrom ? new Date(w.holdoutFrom).toISOString().slice(0, 10) : '?'} (${w.holdoutBars} bars).`;
 }
 
 $('#c-run').addEventListener('click', async () => {
