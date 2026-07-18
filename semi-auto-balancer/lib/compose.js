@@ -37,7 +37,11 @@ const UNITS_TOTAL = 40; // 100%
 const CAP_UNITS = 10; // 25%
 const MIN_UNITS = 1; // 2.5%
 const TETHER_UNITS = [4, 5, 6, 7, 8, 9, 10]; // 10–25%
-const MINI_X = [3, 5, 8, 12, 20]; // coarse sweep for scoring mixes
+// Mini sweep for full-fidelity mix scoring — spans the SAME range the
+// sensitivity tuner sweeps (up to 30), so a mix whose real optimum is high
+// (e.g. the MXN-denominated Bitso mix peaks near X=25) isn't under-scored
+// by a grid that stopped at 20.
+const MINI_X = [3, 5, 8, 12, 20, 25, 30];
 const HOLD_BAND_PP = 0.5;
 
 // Deterministic PRNG so a seed reproduces a search exactly.
@@ -149,10 +153,13 @@ function sampleMix(rng, candidateIds, minAssets, maxAssets) {
 
 // ---- scoring ----------------------------------------------------------------
 
-// Score a mix on one window: mini X sweep + hold; the mix's score is the
-// best value growth among Xs whose harvest is REAL (basket up, value not
-// beaten by holding). A mix where no X qualifies scores as its hold value —
-// still comparable, honestly labelled x=null.
+// Score a mix on one window: mini X sweep + hold; the best X is the one
+// whose harvest is REAL (basket up, value not beaten by holding). The
+// display fields (value/x/dd/trades) report that best X; `edge` is the
+// SELECTION metric — value growth ABOVE holding, i.e. what rebalancing
+// actually added. A mix that merely rose in price has edge ~0 no matter how
+// high its absolute return, so the search stops rewarding directional drift
+// masquerading as harvesting skill.
 function scoreWindow(assets, bars, costs) {
   const hold = simulate(assets, null, { ...costs, bars });
   let best = null;
@@ -164,6 +171,7 @@ function scoreWindow(assets, bars, costs) {
   }
   return {
     value: best ? best.valueGrowthPct : hold.valueGrowthPct,
+    edge: best ? best.valueGrowthPct - hold.valueGrowthPct : 0,
     basket: best ? best.netBasketGrowthPct : 0,
     x: best ? best.x : null,
     dd: best ? best.maxValueDrawdownPct : hold.maxValueDrawdownPct,
@@ -172,12 +180,15 @@ function scoreWindow(assets, bars, costs) {
   };
 }
 
-// Train score = the WORSE of the two train halves (regime robustness): a mix
-// must work in both halves, not average its way in on one lucky regime.
+// Train score = the WORSE of the two train halves' HARVEST EDGE (regime
+// robustness): a mix must add value over holding in BOTH halves, not average
+// its way in on one lucky regime — and crucially not win selection just by
+// appreciating. `.score` is the edge; `.value` carries the worse-half
+// absolute return for display.
 function trainScore(assets, half1, half2, costs) {
   const a = scoreWindow(assets, half1, costs);
   const b = scoreWindow(assets, half2, costs);
-  return { score: Math.min(a.value, b.value), halves: [a, b] };
+  return { score: Math.min(a.edge, b.edge), value: Math.min(a.value, b.value), halves: [a, b] };
 }
 
 // Hold growth in closed form — Σ weight × price relative — so the broad
@@ -272,7 +283,10 @@ async function searchCompositions({
   // groups + weights of the screened survivors, scored CHEAPLY (closed-form
   // hold + two representative X sims on the whole train window). Only a
   // bounded contender board is kept, so a million combos fit in memory.
-  const CHEAP_X = [6, 14];
+  // Two representative probes — one mid, one high — so the broad pass isn't
+  // blind to mixes whose harvest only appears at high sensitivity (the
+  // full-fidelity stage then refines across the whole MINI_X range).
+  const CHEAP_X = [6, 22];
   const board = []; // {key, mix, cheap}
   const boardKeys = new Set();
   let cutoff = -Infinity;
@@ -284,17 +298,21 @@ async function searchCompositions({
       const assets = mixToAssets(mix, pool);
       const hold = holdGrowthPct(assets, train);
       if (hold != null) {
-        let best = hold;
+        // Rank contenders by HARVEST EDGE (best qualifying value above hold),
+        // not absolute value — a mix that merely appreciated scores ~0 here
+        // and won't crowd out genuine harvesters.
+        let bestValue = hold;
         for (const x of CHEAP_X) {
           const r = simulate(assets, x, { ...costs, bars: train });
-          if (r.netBasketGrowthPct > 0 && r.valueGrowthPct >= hold - HOLD_BAND_PP && r.valueGrowthPct > best) {
-            best = r.valueGrowthPct;
+          if (r.netBasketGrowthPct > 0 && r.valueGrowthPct >= hold - HOLD_BAND_PP && r.valueGrowthPct > bestValue) {
+            bestValue = r.valueGrowthPct;
           }
         }
-        if (best > cutoff || board.length < fullTop) {
+        const edge = bestValue - hold;
+        if (edge > cutoff || board.length < fullTop) {
           const key = mixKey(mix);
           if (!boardKeys.has(key)) {
-            board.push({ key, mix, cheap: best });
+            board.push({ key, mix, cheap: edge });
             boardKeys.add(key);
             if (board.length >= fullTop * 2) {
               board.sort((a, b) => b.cheap - a.cheap);
@@ -587,4 +605,4 @@ async function runComposeSearch(profileId, opts = {}, setProgress = () => {}) {
   return { result, params: { days, samples, candidateCount, seed } };
 }
 
-module.exports = { searchCompositions, buildBars, runComposeSearch, chooseWindowStart, mulberry32, CAVEAT };
+module.exports = { searchCompositions, buildBars, runComposeSearch, chooseWindowStart, mulberry32, MINI_X, CAVEAT };

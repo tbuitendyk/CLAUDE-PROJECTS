@@ -25,6 +25,10 @@ const seriesById = new Map([
   ['osc-a', series((i) => 100 * (1 + 0.3 * Math.sin((2 * Math.PI * i) / 80)))],
   ['osc-b', series((i) => 50 * (1 + 0.3 * Math.sin((2 * Math.PI * i) / 80 + Math.PI)))],
   ['riser', series((i) => 10 * (1 + 0.001 * i + 0.1 * Math.sin((2 * Math.PI * i) / 60)))],
+  // Pure monotonic trend: huge absolute appreciation, ZERO harvestable
+  // oscillation — the selection-metric trap (rewarded under absolute value,
+  // near-zero under harvest edge).
+  ['trend-up', series((i) => 5 * Math.pow(1.004, i))],
   ['dec-d', series((i) => 100 * Math.pow(0.9955, i))],
   ['dec-e', series((i) => 20 * Math.pow(0.995, i))],
   ['flat-f', series(() => 5)],
@@ -79,6 +83,18 @@ const IDS = [...seriesById.keys()];
     'weeded assets appear in NO finalist mix at all'
   );
   ok(r.combos.broadSampled > 3000 && r.combos.contenders > 0, 'broad pass ran at scale and kept a contender board');
+
+  // --- selection metric = harvest EDGE, not appreciation: the pure trender
+  // (5 -> ~55, +1000% absolute) has near-zero rebalance edge and must score
+  // BELOW a genuine oscillator despite crushing it on raw return ---
+  ok(
+    screenOf('osc-a').soloTrain > screenOf('trend-up').soloTrain,
+    `harvesting oscillator out-scores the pure trender on edge (osc ${screenOf('osc-a').soloTrain.toFixed(2)} > trend ${screenOf('trend-up').soloTrain.toFixed(2)})`
+  );
+  ok(screenOf('trend-up').soloTrain < 3, 'pure trend appreciation registers ~no harvest edge');
+
+  // --- grid now spans the tuner's range: a swept X can reach 25/30 ---
+  ok(compose.MINI_X ? compose.MINI_X.includes(25) && compose.MINI_X.includes(30) : true, 'mini-grid reaches 25 and 30');
 
   ok(r.mixes.length > 0 && r.mixes.length <= 8, `finalists produced (${r.mixes.length})`);
 

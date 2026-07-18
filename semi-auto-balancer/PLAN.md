@@ -182,11 +182,20 @@ exchange layer via symbol hints (CoinGecko's 365d cap had starved every
 non-held candidate against 720d-deep held assets), fresh-but-shallow cached
 series deepen instead of sitting at the cap, and the evaluation window
 auto-shrinks (floor 240d) to what ≥70% of the universe can cover instead
-of failing. Search: seeded random sampling
-+ greedy refinement (2.5%-unit weight jiggles, tether-band moves, asset
-swaps), mixes scored by a mini X-sweep where only REAL harvest counts
-(basket up, not beaten by holding); train = worse of two halves; finalists
-ranked by the held-out out-of-sample window. Motivating evidence (live Kraken
+of failing. Search: solo screen (weed candidates one at a time) → broad
+seeded sampling (quick 20k / standard 100k / intensive 1M combos, cheaply
+scored into a bounded contender board) → full two-half fidelity on ~500 →
+greedy refinement (2.5%-unit weight jiggles, tether-band moves, asset
+swaps) → held-out out-of-sample confirmation; runs yield the event loop
+and report % progress (real bar in the UI). Two corrections 2026-07-18
+(from the Bitso MAIN divergence with the tuner): (a) the mini X-grid now
+spans the tuner's full range {3,5,8,12,20,25,30} — a mix whose optimum is
+high (the MXN Bitso mix peaks near 25) is no longer under-scored by a grid
+that stopped at 20; (b) the SELECTION metric is now harvest EDGE (value
+above holding), not absolute value — a mix that merely appreciated in the
+train window scores ~0 and can't crowd out genuine harvesters (verified: a
++1000% pure trender = 0.00 edge vs a real oscillator's 7.05). Train column
+shows edge; display columns keep absolute value/hold/x. Motivating evidence (live Kraken
 MAIN sweep): over 2024-07→2026-07, FIL −83%, POL −84%, QTUM −75%, SC −89%,
 DOGE −44% — a ~30% target sleeve of terminal decliners that rebalancing
 bought all the way down, funded by selling the assets that worked (XRP

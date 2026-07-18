@@ -809,7 +809,7 @@ function renderCompose(latest) {
     const kept = r.screen.filter((s) => s.kept);
     const dropped = r.screen.filter((s) => !s.kept);
     sc.textContent =
-      `Solo screen (50/50 vs tether, worse train half): kept ` +
+      `Solo screen (50/50 vs tether — harvest edge over holding, worse train half): kept ` +
       kept.map((s) => `${s.symbol.toUpperCase()} ${s.soloTrain >= 0 ? '+' : ''}${s.soloTrain.toFixed(1)}%`).join(', ') +
       (dropped.length
         ? ` · weeded out: ` +
