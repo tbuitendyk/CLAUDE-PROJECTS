@@ -278,6 +278,31 @@ function renderDetail() {
       peg.className = 'warn-text';
       sym.appendChild(peg);
     }
+    if (!a.is_index) {
+      // Freeze override: the frozen STATUS keeps tracking (badge stays), but
+      // its effects — BUY-alert suppression and exclusion from the
+      // composition lab — stand down while checked.
+      const ovrLabel = document.createElement('label');
+      ovrLabel.className = 'muted';
+      ovrLabel.title =
+        'Ignore buy-freeze for this asset: BUY alerts and composition-lab eligibility stay active even while frozen. ' +
+        'The freeze status itself keeps tracking (badge remains).';
+      ovrLabel.style.marginLeft = '6px';
+      ovrLabel.style.whiteSpace = 'nowrap';
+      const ovr = document.createElement('input');
+      ovr.type = 'checkbox';
+      ovr.checked = Boolean(a.freeze_override);
+      ovr.addEventListener('change', async () => {
+        try {
+          await api(`/assets/${a.id}`, { method: 'PATCH', body: { freeze_override: ovr.checked } });
+          await refresh();
+        } catch (err) {
+          alert(err.message);
+        }
+      });
+      ovrLabel.append(ovr, document.createTextNode('❄off'));
+      sym.appendChild(ovrLabel);
+    }
     tr.appendChild(sym);
     const tgt = document.createElement('td');
     tgt.textContent = a.target_pct ? a.target_pct + '%' : '—';

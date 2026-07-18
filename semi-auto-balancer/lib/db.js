@@ -284,6 +284,10 @@ ensureColumn('assets', 'buy_frozen', 'buy_frozen INTEGER NOT NULL DEFAULT 0');
 ensureColumn('assets', 'frozen_at', 'frozen_at INTEGER');
 ensureColumn('assets', 'freeze_reason', 'freeze_reason TEXT');
 ensureColumn('assets', 'depegged', 'depegged INTEGER NOT NULL DEFAULT 0');
+// Per-asset override: the freeze STATE keeps tracking (badge, auto-unfreeze
+// timing), but its EFFECTS — engine BUY suppression and exclusion from the
+// composition search — are bypassed while set. The human's standing veto.
+ensureColumn('assets', 'freeze_override', 'freeze_override INTEGER NOT NULL DEFAULT 0');
 
 // Sets were removed from the design (one flat asset pool per profile);
 // drop the leftover tables from earlier versions.

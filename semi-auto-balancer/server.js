@@ -242,7 +242,7 @@ function buildProfileView(profile) {
       Math.abs(a.driftRelPct) >= a.effThresholdPct;
     a.alertActive = activeAlerts.has(a.id);
     // Phase 3: surface engine-side BUY suppression so the UI can badge it.
-    a.buySuppressed = Boolean(a.buy_frozen) && a.breached && a.driftRelPct < 0;
+    a.buySuppressed = Boolean(a.buy_frozen) && !a.freeze_override && a.breached && a.driftRelPct < 0;
   }
 
   // Chained indexes: basket (unit growth) and value index (value growth),
@@ -566,6 +566,9 @@ app.patch('/api/assets/:id', async (req, res) => {
   try {
     if (Number(b.quantity) >= 0) {
       db.prepare('UPDATE assets SET quantity = ? WHERE id = ?').run(Number(b.quantity), asset.id);
+    }
+    if (b.freeze_override !== undefined) {
+      db.prepare('UPDATE assets SET freeze_override = ? WHERE id = ?').run(b.freeze_override ? 1 : 0, asset.id);
     }
     if (b.is_index !== undefined) {
       // Changing the tethered index re-denominates the pool. setIndexAsset

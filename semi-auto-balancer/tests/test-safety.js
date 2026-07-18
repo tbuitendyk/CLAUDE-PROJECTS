@@ -79,6 +79,16 @@ function seedDaily(id, prices) {
   const marked = db.prepare('SELECT asset_id FROM alloc_alerts').all();
   ok(!marked.some((m) => m.asset_id === 2), 'suppressed BUY never marks alloc_alerts');
 
+  // Freeze override: status stays frozen, suppression stands down.
+  db.prepare("UPDATE assets SET freeze_override = 1 WHERE symbol = 'btc'").run();
+  result = bal.evaluateProfile({ ...profile }, PRICES, t0 + 2000);
+  ok(
+    result.breaches.some((b) => b.action === 'BUY' && b.asset.symbol === 'btc'),
+    'freeze_override: BUY breach flows again while still frozen'
+  );
+  ok(db.prepare("SELECT buy_frozen FROM assets WHERE symbol = 'btc'").get().buy_frozen === 1, 'override does not clear the frozen status');
+  db.prepare("UPDATE assets SET freeze_override = 0 WHERE symbol = 'btc'").run();
+
   // --- freeze/unfreeze transitions from series state ---
   // Asset with a 40%-recovered history (envelope 50%) now 60% down: freeze.
   db.prepare("UPDATE assets SET buy_frozen = 0, freeze_reason = NULL WHERE symbol = 'btc'").run();

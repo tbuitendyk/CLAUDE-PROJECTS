@@ -186,7 +186,9 @@ function evaluateProfile(profile, usdPrices, now) {
         // Phase 3: structural-break buy-freeze. Suppression lives HERE, not
         // in the mailer: a frozen asset's BUY breach neither emails, nor
         // marks alloc_alerts, nor consumes the armed state. SELLs pass.
-        if (deltaRel > 0 && p.asset.buy_frozen) continue;
+        // freeze_override is the human veto: status keeps tracking, but the
+        // suppression stands down while it's set.
+        if (deltaRel > 0 && p.asset.buy_frozen && !p.asset.freeze_override) continue;
         const breach = {
           profile,
           asset: p.asset,

@@ -497,7 +497,9 @@ async function runComposeSearch(profileId, opts = {}, setProgress = () => {}) {
   // profile's linked venue can actually trade — a mix the account can't
   // execute is a fantasy.
   setProgress('building candidate universe…');
-  const held = assets.filter((a) => !a.is_index && (a.target_pct > 0 || a.quantity > 0) && !a.buy_frozen);
+  const held = assets.filter(
+    (a) => !a.is_index && (a.target_pct > 0 || a.quantity > 0) && (!a.buy_frozen || a.freeze_override)
+  );
   let top = [];
   try {
     top = await topCandidates({ count: candidateCount });
@@ -576,7 +578,7 @@ async function runComposeSearch(profileId, opts = {}, setProgress = () => {}) {
     considered: universe.length + notOnVenue.length,
     covered: coveredCandidates.length,
     droppedForCoverage: universe.length - coveredCandidates.length,
-    heldExcludedFrozen: assets.filter((a) => !a.is_index && a.buy_frozen).length,
+    heldExcludedFrozen: assets.filter((a) => !a.is_index && a.buy_frozen && !a.freeze_override).length,
     venue: venueFilter ? venueFilter.venue : null,
     notOnVenue,
     requestedDays: days,
