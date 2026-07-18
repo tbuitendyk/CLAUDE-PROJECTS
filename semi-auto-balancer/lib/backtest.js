@@ -186,15 +186,29 @@ function simulate(simAssets, X, { feePct = 0.38, spreadPct = 0.1, lagHours = 6, 
   };
 }
 
-// Xs within 0.5pp of the best value of `metric`. `floor` joins the contest
-// as a pseudo-candidate: the value plateau passes the HOLD baseline in as
-// its floor, because holding is the true loose end of the grid — in a
+// The plateau band is noise-scaled: 0.5pp absolute materiality (≈ one extra
+// round trip's cost on a quarter of the pool over the window) OR the median
+// absolute difference between ADJACENT grid results, whichever is larger.
+// Single-path backtests are lumpy — one trade landing a bar earlier moves
+// the basket by whole points — and differences smaller than the run-to-run
+// wobble are seed noise, not signal.
+function noiseBand(rows, metric) {
+  const diffs = [];
+  for (let i = 1; i < rows.length; i++) diffs.push(Math.abs(rows[i][metric] - rows[i - 1][metric]));
+  diffs.sort((a, b) => a - b);
+  const mad = diffs.length ? diffs[Math.floor(diffs.length / 2)] : 0;
+  return Math.max(PLATEAU_PP, mad);
+}
+
+// Xs within the band of the best value of `metric`. `floor` joins the
+// contest as a pseudo-candidate: the value plateau passes the HOLD baseline
+// in as its floor, because holding is the true loose end of the grid — in a
 // downtrend every X "wins" against the other Xs while all of them lose to
 // doing nothing, and without the floor the sweep would recommend the least
 // bad way to bleed.
-function plateauXs(rows, metric, floor = -Infinity) {
+function plateauXs(rows, metric, floor = -Infinity, band = PLATEAU_PP) {
   const best = Math.max(...rows.map((r) => r[metric]), floor);
-  return rows.filter((r) => r[metric] >= best - PLATEAU_PP).map((r) => r.x);
+  return rows.filter((r) => r[metric] >= best - band).map((r) => r.x);
 }
 
 function range(xs) {
@@ -214,8 +228,10 @@ function sweep(simAssets, bars, { feePct = 0.38, spreadPct = 0.1, lagHours = 6, 
   }
   const hold = simulate(simAssets, null, { ...opts, bars });
 
-  const basketXs = plateauXs(grid, 'netBasketGrowthPct');
-  const valueXs = plateauXs(grid, 'valueGrowthPct', hold.valueGrowthPct);
+  const basketBand = noiseBand(grid, 'netBasketGrowthPct');
+  const valueBand = noiseBand(grid, 'valueGrowthPct');
+  const basketXs = plateauXs(grid, 'netBasketGrowthPct', -Infinity, basketBand);
+  const valueXs = plateauXs(grid, 'valueGrowthPct', hold.valueGrowthPct, valueBand);
   const jointXs = basketXs.filter((x) => valueXs.includes(x));
   // Looser end of the joint plateau: equal performance, fewer trades, lower
   // sensitivity to noise.
@@ -249,8 +265,8 @@ function sweep(simAssets, bars, { feePct = 0.38, spreadPct = 0.1, lagHours = 6, 
       const slice = bars.slice(w * size, w === wcount - 1 ? n : (w + 1) * size);
       const g = X_GRID.map((x) => simulate(simAssets, x, { ...opts, bars: slice }));
       const holdW = simulate(simAssets, null, { ...opts, bars: slice });
-      const joint = plateauXs(g, 'netBasketGrowthPct').filter((x) =>
-        plateauXs(g, 'valueGrowthPct', holdW.valueGrowthPct).includes(x)
+      const joint = plateauXs(g, 'netBasketGrowthPct', -Infinity, noiseBand(g, 'netBasketGrowthPct')).filter((x) =>
+        plateauXs(g, 'valueGrowthPct', holdW.valueGrowthPct, noiseBand(g, 'valueGrowthPct')).includes(x)
       );
       subWindows.push({ from: slice[0].ts, to: slice[slice.length - 1].ts, bars: slice.length, joint: range(joint) });
     }
@@ -267,8 +283,21 @@ function sweep(simAssets, bars, { feePct = 0.38, spreadPct = 0.1, lagHours = 6, 
   return {
     grid,
     hold: { valueGrowthPct: hold.valueGrowthPct, maxValueDrawdownPct: hold.maxValueDrawdownPct },
-    plateau: { basket: range(basketXs), value: range(valueXs), joint: range(jointXs) },
-    recommendation: recoX != null ? { x: recoX, reason: 'looser end of the range where basket AND value both stay within 0.5pp of best' } : null,
+    plateau: {
+      basket: range(basketXs),
+      value: range(valueXs),
+      joint: range(jointXs),
+      bandPp: { basket: basketBand, value: valueBand },
+    },
+    recommendation:
+      recoX != null
+        ? {
+            x: recoX,
+            reason:
+              `looser end of the range where basket AND value both stay within the noise band of best ` +
+              `(±${basketBand.toFixed(1)}pp / ±${valueBand.toFixed(1)}pp)`,
+          }
+        : null,
     warnings,
     subWindows,
   };

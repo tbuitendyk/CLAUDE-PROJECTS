@@ -144,7 +144,45 @@ under "Sensitivity tuner". Design addition beyond the original spec: the
 HOLD baseline joins the value plateau as its floor — in a pure trend every
 X "wins" against the other Xs while all of them lose to doing nothing, and
 without the floor the sweep recommended the least bad way to bleed
-(caught by the downtrend validation case).
+(caught by the downtrend validation case). Second addition (user challenge
+2026-07-18): the plateau band is noise-scaled — max(0.5pp, median absolute
+adjacent-X difference) per metric — because single-path backtests are lumpy
+(live Kraken sweep showed ±2–5pp basket wobble between adjacent X from
+trade-timing alone) and differences below the wobble are seed noise.
+
+## Phase 2.5 — Hourly-granularity backtests
+**Status: queued (design set, data verified).** Same simulator, uniform
+hourly bars (no mixed granularity — breach density jumps 24× at a splice).
+Sources verified live 2026-07-18: Bitso's OHLC endpoint serves FULL
+multi-year hourly in ONE call (17,521 rows / 2y confirmed); Kraken live
+OHLC hourly is 30 days (721-candle cap) — deeper Kraken hourly comes from
+the bulk OHLCVT 60-min CSVs (import script grows an interval flag) or
+accrues live. Needs an hourly_prices cache beside daily_prices. lagHours
+becomes honest (6h = 6 bars; a 1h "trade within the hour" scenario knob).
+Expectation to verify, not assume: tight-X trade counts and fees explode
+(daily bars hide intraday round trips); extra harvest is real only where
+intraday mean reversion survives ~0.5%/leg costs.
+
+## Phase 2.75 — Composition sweep (empirical mix search)
+**Status: queued — requested 2026-07-18.** Motivating evidence (live Kraken
+MAIN sweep): over 2024-07→2026-07, FIL −83%, POL −84%, QTUM −75%, SC −89%,
+DOGE −44% — a ~30% target sleeve of terminal decliners that rebalancing
+bought all the way down, funded by selling the assets that worked (XRP
++81%, BTC round-tripping). No X beats holding on that mix; the mix is the
+problem, not the threshold. Bitso MAIN (BTC/XRP/DOGE vs a fat MXN sleeve,
+boom-bust round trips, no terminal decliners at weight) beats holding at
+every X.
+- Search: current assets ± scanner candidates (≤8 per mix); targets on a
+  constrained simplex (tether 10–25%, per-asset cap 25%, 2.5–5% steps,
+  sum 100). Random/Latin-hypercube sample + local refinement; each mix
+  scored by a mini-sweep (few X) on value growth, subject to basket
+  agreement and a drawdown cap.
+- Overfitting rails (non-negotiable): sub-window stability, out-of-sample
+  confirmation (fit early window, confirm late), costs always on, and the
+  hindsight caveat rendered WITH results — picking past winners is
+  selection bias; output is a candidate mix to consider, never a promise.
+- Advisory-with-apply: winning mixes load into the existing targets editor
+  (which splices the basket); nothing auto-applies.
 
 - `lib/backtest.js` `simulate(assets, targets, X, {feePct, spreadPct,
   lagHours, history})`: start at target weights; uniform granularity (no
@@ -236,4 +274,7 @@ Structural-break buy-freeze (`assets.buy_frozen`):
 - Idempotent migrations (ensureColumn pattern) throughout.
 - Diagnostics extended each phase (cache freshness, ledger, jobs, fee/spread,
   frozen/depeg state) so the deploy gate means something.
-- Ship order: 0+1 (one deploy), 1.5, 2, 3, 4, 5. Nothing auto-applies, ever.
+- Ship order: 0+1 (one deploy), 1.5, 2 — all shipped. Next: 2.75
+  (composition sweep) then 3 (safety rails) — the same Kraken finding
+  motivates both; 2.5 (hourly) opportunistic; then 4, 5 (2.75 consumes the
+  scanner's candidate data early). Nothing auto-applies, ever.
