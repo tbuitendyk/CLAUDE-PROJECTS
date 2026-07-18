@@ -5,6 +5,50 @@
 # trades/flows, and per-profile asset state. Mirrors balancer-diag.sh for
 # the old system. Never prints API secrets. Runs as root via run-script.
 set -euo pipefail
+MODE="${1:-full}"
+
+cd /opt/semi-auto-balancer
+
+# Compact analysis mode: ONLY the composition-lab + tuner tables for one
+# profile (arg = "analysis-<profileId>"), so output fits the deploy
+# endpoint's 8KB stdout cap. Anything else runs the full diagnostics.
+if [[ "$MODE" == analysis-* ]]; then
+  PID="${MODE#analysis-}" node <<'JS'
+const db = require('better-sqlite3')('/opt/semi-auto-balancer/data/semi-auto-balancer.sqlite');
+const pid = Number(process.env.PID);
+const latest = (kind) => {
+  const row = db.prepare("SELECT created_at, result FROM analysis_results WHERE kind=? AND profile_id=? ORDER BY id DESC LIMIT 1").get(kind, pid);
+  return row ? { at: row.created_at, r: JSON.parse(row.result || 'null') } : null;
+};
+const p = db.prepare('SELECT name, threshold_pct, fee_pct, spread_pct FROM profiles WHERE id=?').get(pid);
+console.log(`profile ${pid} "${p.name}" threshold=${p.threshold_pct}% fee=${p.fee_pct} spread=${p.spread_pct}`);
+console.log('assets:', db.prepare('SELECT symbol,target_pct,is_index,buy_frozen,freeze_override FROM assets WHERE profile_id=? ORDER BY is_index DESC, target_pct DESC').all(pid).map(a=>`${a.symbol}:${a.target_pct}${a.is_index?'(idx)':''}${a.buy_frozen?(a.freeze_override?'[frz/ovr]':'[FRZ]'):''}`).join(' '));
+
+const tune = latest('tune-threshold');
+if (tune && tune.r) {
+  const r = tune.r;
+  console.log(`\n== TUNER @ ${new Date(tune.at).toISOString()} gran=${r.stamp&&r.stamp.granularity} bars=${r.stamp&&r.stamp.bars} ==`);
+  console.log(`reco=${r.recommendation?r.recommendation.x+'%':'NONE'} currentX=${r.currentX} hold_value=${r.hold.valueGrowthPct.toFixed(2)} plateau=${JSON.stringify(r.plateau)}`);
+  for (const w of r.warnings||[]) console.log('warn:', w);
+  for (const g of r.grid) console.log(`  X=${String(g.x).padEnd(4)} basket=${g.netBasketGrowthPct.toFixed(2).padStart(7)} value=${g.valueGrowthPct.toFixed(2).padStart(7)} trades=${String(g.tradeCount).padStart(4)} fees=${g.feesPct.toFixed(2)}`);
+}
+
+const comp = latest('compose');
+if (comp && comp.r) {
+  const r = comp.r;
+  console.log(`\n== COMPOSE @ ${new Date(comp.at).toISOString()} ==`);
+  console.log(`combos=${JSON.stringify(r.combos)} window=${JSON.stringify(r.window)}`);
+  const u=r.universe||{}; console.log(`universe covered=${u.covered}/${u.considered} venue=${u.venue} windowDays=${u.windowDays} notOnVenue=[${(u.notOnVenue||[]).join(',')}]`);
+  if (r.screen) {
+    console.log('kept:  '+r.screen.filter(s=>s.kept).map(s=>`${s.symbol}:${s.soloTrain.toFixed(1)}`).join(' '));
+    console.log('weeded:'+r.screen.filter(s=>!s.kept).map(s=>`${s.symbol}:${s.soloTrain.toFixed(1)}`).join(' '));
+  }
+  if (r.currentMix) { const c=r.currentMix; console.log(`CURRENT ${c.assets.map(a=>a.symbol+':'+a.pct).join(' ')} | trainWorst=${c.train.score.toFixed(2)} halves=[${c.train.halves.map(h=>h.value.toFixed(1)+'@x'+h.x).join(',')}] oos=${c.oos.value.toFixed(2)}(hold${c.oos.hold.toFixed(2)})x=${c.oos.x} full=${c.full.value.toFixed(2)}(hold${c.full.hold.toFixed(2)})x=${c.full.x}`); }
+  for (const m of (r.mixes||[]).slice(0,10)) console.log(`MIX ${m.assets.map(a=>a.symbol+':'+a.pct).join(' ')} | trainWorst=${m.train.score.toFixed(2)} oos=${m.oos.value.toFixed(2)}(hold${m.oos.hold.toFixed(2)})x=${m.oos.x} full=${m.full.value.toFixed(2)}x=${m.full.x} trades=${m.oos.trades}`);
+}
+JS
+  exit 0
+fi
 
 echo "== semi-auto-balancer service =="
 systemctl --no-pager --lines 0 status semi-auto-balancer | head -5 || true
@@ -14,7 +58,6 @@ journalctl -u semi-auto-balancer --since "24 hours ago" --no-pager 2>/dev/null \
   | grep -iE 'sync|adopt|flow|kraken|bitso|error|failed' | tail -n 30 || echo "(none)"
 echo
 
-cd /opt/semi-auto-balancer
 node <<'JS'
 const db = require('better-sqlite3')('/opt/semi-auto-balancer/data/semi-auto-balancer.sqlite');
 
