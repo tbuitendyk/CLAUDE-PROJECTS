@@ -1,23 +1,31 @@
 #!/usr/bin/env bash
 # setup-mailvm-agent.sh -- install a persistent systemd ssh-agent that auto-loads
 # /root/.ssh/id_ed25519 at boot using the stored passphrase, so headless
-# host->mail-VM SSH works. Requires MAILVM_KEY_PASSPHRASE in /etc/deploy-control/env.
+# host->mail-VM SSH works. Reads the passphrase from /etc/deploy-control/env as
+# MAILVM_KEY_PASSPHRASE_B64 (base64, preferred) or MAILVM_KEY_PASSPHRASE (plaintext).
+# NOTE: base64 is obfuscation, not encryption -- anyone with root can still decode it.
 set -euo pipefail
 ENVFILE=/etc/deploy-control/env
 KEY=/root/.ssh/id_ed25519
 SOCK=/run/mailvm-ssh-agent.sock
 
-grep -q '^MAILVM_KEY_PASSPHRASE=' "$ENVFILE" || { echo "MAILVM_KEY_PASSPHRASE not in $ENVFILE -- add it first." >&2; exit 1; }
+grep -qE '^MAILVM_KEY_PASSPHRASE(_B64)?=' "$ENVFILE" \
+  || { echo "no MAILVM_KEY_PASSPHRASE[_B64] in $ENVFILE -- add it first." >&2; exit 1; }
 [[ -f "$KEY" ]] || { echo "missing $KEY" >&2; exit 1; }
 
-# askpass helper: prints the stored key passphrase (root-only)
+# askpass helper: prints the key passphrase (base64-decoded if the _B64 form is set)
 cat > /usr/local/sbin/mailvm-askpass.sh <<'ASK'
 #!/usr/bin/env bash
-sed -n 's/^MAILVM_KEY_PASSPHRASE=//p' /etc/deploy-control/env | head -1
+E=/etc/deploy-control/env
+b64="$(sed -n 's/^MAILVM_KEY_PASSPHRASE_B64=//p' "$E" | head -1)"
+if [ -n "$b64" ]; then
+  printf '%s' "$b64" | base64 -d; echo
+else
+  sed -n 's/^MAILVM_KEY_PASSPHRASE=//p' "$E" | head -1
+fi
 ASK
 chmod 700 /usr/local/sbin/mailvm-askpass.sh
 
-# loader: run by the service once the agent socket is up
 cat > /usr/local/sbin/mailvm-agent-load.sh <<'LOADER'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -47,7 +55,8 @@ WantedBy=multi-user.target
 UNIT
 
 systemctl daemon-reload
-systemctl enable --now mailvm-ssh-agent.service
+systemctl enable mailvm-ssh-agent.service >/dev/null 2>&1 || true
+systemctl restart mailvm-ssh-agent.service      # restart so a re-run reloads the askpass + re-adds the key
 sleep 2
 echo "=== keys loaded in the agent ==="
 SSH_AUTH_SOCK="$SOCK" ssh-add -l 2>&1 || true
