@@ -2,10 +2,10 @@
 # mail-test-with-report.sh -- send a test to one address, email its mail.log delivery trace to another.
 # Usage: mail-test-with-report.sh <sendto>/<reportto>   (bare local-part -> @homeandofficemicro.com, or full address)
 #
-# Sends a test email to <sendto> via authenticated submission as support@ to the
-# real mail server (192.168.56.129:587), captures the queue-id, SSHes into the
-# mail VM (using the mailvm ssh-agent) to pull /var/log/mail.log lines for that
-# message, and emails the collected trace to <reportto>.
+# Sends a test via authenticated submission as support@ to the real mail server
+# (192.168.56.129:587), captures the queue-id, then SSHes into the mail VM (via
+# the mailvm ssh-agent) and follows /var/log/mail.log for that message -- through
+# the Amavis reinjection -- until a terminal status, and emails the trace to <reportto>.
 set -uo pipefail
 export ARG="${1:-}"
 export SSH_AUTH_SOCK=/run/mailvm-ssh-agent.sock
@@ -52,21 +52,35 @@ mid,qid,dresp=submit(sendto, f"VPS delivery test {ts}", f"Delivery test to {send
 print(f"  submit: {dresp}")
 print(f"  message-id={mid}  queue-id={qid}")
 
-time.sleep(7)  # let the server process + log
-
+# Follow the log: seed with the queue-id + message-id, pull every line for those
+# AND for any queue-ids they hand off to ('queued as X'), until a terminal status.
+REMOTE=r'''
+mid="$1"; shift; seeds="$*"
+ids="$seeds"
+for _ in 1 2 3; do
+  more=$(grep -F $(for x in $ids "$mid"; do echo -n " -e $x"; done) /var/log/mail.log 2>/dev/null \
+         | grep -oE 'queued as [0-9A-Za-z]+' | awk '{print $3}' | sort -u | tr '\n' ' ')
+  ids="$ids $more"
+done
+grep -F $(for x in $(echo "$ids" | tr ' ' '\n' | sort -u) "$mid"; do echo -n " -e $x"; done) /var/log/mail.log 2>/dev/null | tail -60
+'''
 midcore=mid.strip('<>')
-pats=[p for p in (qid, midcore) if p]
-grep_args="".join(f" -e '{p}'" for p in pats)
-remote=f"grep -F{grep_args} /var/log/mail.log | tail -40 || echo '(no matching lines yet)'"
-res=subprocess.run(["ssh","-o","BatchMode=yes","-o","StrictHostKeyChecking=accept-new",
-     "-o","ConnectTimeout=8",f"root@{MAILVM}",remote], capture_output=True,text=True,timeout=30)
-trace=res.stdout.strip() or "(no matching mail.log lines found)"
-if res.returncode!=0 and res.stderr.strip(): trace+=f"\n[ssh error] {res.stderr.strip()}"
+seed=qid or "NOQID"
+trace=""; err=""
+for _ in range(6):  # up to ~24s
+    time.sleep(4)
+    res=subprocess.run(["ssh","-o","BatchMode=yes","-o","StrictHostKeyChecking=accept-new",
+         "-o","ConnectTimeout=8",f"root@{MAILVM}","bash","-s",midcore,seed],
+        input=REMOTE, capture_output=True, text=True, timeout=30)
+    trace=res.stdout.strip(); err=res.stderr.strip()
+    if re.search(r'status=(sent|bounced|deferred|expired)|: removed$', trace, re.M): break
+if not trace: trace="(no matching mail.log lines found)"
+if err: trace += f"\n[ssh stderr] {err}"
 print("=== trace (first 900 chars) ===\n"+trace[:900])
 
 body=(f"Delivery report -- test message to <{sendto}>\n"
       f"Sent (UTC): {ts}\nMessage-ID: {mid}\nQueue-ID: {qid}\nSubmit response: {dresp}\n\n"
       f"--- /var/log/mail.log on the mail VM ({MAILVM}) ---\n{trace}\n")
 _,_,r2=submit(reportto, f"Mail delivery report: {sendto}", body)
-print(f"report emailed to <{reportto}>: {r2.splitlines()[0] if r2 else ''}")
+print(f"report emailed to <{reportto}>: {(r2 or '').splitlines()[0] if r2 else ''}")
 PY
