@@ -33,7 +33,7 @@ export SSH_AUTH_SOCK=/run/mailvm-ssh-agent.sock
 export SSH_ASKPASS=/usr/local/sbin/mailvm-askpass.sh
 export SSH_ASKPASS_REQUIRE=force
 for i in 1 2 3 4 5 6; do [ -S "$SSH_AUTH_SOCK" ] && break; sleep 0.5; done
-ssh-add /root/.ssh/id_ed25519 </dev/null
+timeout 20 ssh-add /root/.ssh/id_ed25519 </dev/null   # fail fast on a bad passphrase (don't hang)
 LOADER
 chmod 700 /usr/local/sbin/mailvm-agent-load.sh
 
@@ -44,10 +44,11 @@ After=network-online.target
 
 [Service]
 Type=simple
+TimeoutStartSec=30
 Environment=SSH_AUTH_SOCK=/run/mailvm-ssh-agent.sock
 ExecStartPre=-/bin/rm -f /run/mailvm-ssh-agent.sock
 ExecStart=/usr/bin/ssh-agent -D -a /run/mailvm-ssh-agent.sock
-ExecStartPost=/usr/local/sbin/mailvm-agent-load.sh
+ExecStartPost=-/usr/local/sbin/mailvm-agent-load.sh
 Restart=on-failure
 
 [Install]
