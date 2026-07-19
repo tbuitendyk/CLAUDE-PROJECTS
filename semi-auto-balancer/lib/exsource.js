@@ -147,4 +147,29 @@ async function deepDailyByDay(symbol, sinceMs) {
   return series && series.size > 0 ? series : null;
 }
 
-module.exports = { enabled, usdPrices, dailyByDay, deepDailyByDay, symbolsForCgIds };
+// Deep daily for a REBRAND PREDECESSOR (e.g. MATIC after the POL rename).
+// Unlike deepDailyByDay this does NOT gate on a live-listing check: a
+// renamed/delisted symbol has no RECENT data by definition (its liveness probe
+// fails), but its HISTORICAL monthly zips still exist on the portal. Page
+// Binance directly; KuCoin as a fallback. Returns Map(dayTs -> usd) or null.
+async function deepDailyPredecessor(symbol, sinceMs) {
+  if (!enabled() || !symbol) return null;
+  const sym = String(symbol).toLowerCase();
+  try {
+    const got = await binance.dailyClosesDeep(sym, sinceMs);
+    if (got && got.size > 0) return got;
+  } catch {
+    /* try KuCoin */
+  }
+  try {
+    if (await kucoin.symbolExists(sym)) {
+      const ku = await kucoin.dailyCloses(sym, sinceMs);
+      if (ku && ku.size > 0) return ku;
+    }
+  } catch {
+    /* nothing */
+  }
+  return null;
+}
+
+module.exports = { enabled, usdPrices, dailyByDay, deepDailyByDay, deepDailyPredecessor, symbolsForCgIds };

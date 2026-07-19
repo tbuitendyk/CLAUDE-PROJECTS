@@ -122,7 +122,9 @@ async function getDailyHistory(id, days = MAX_DAYS, symbolHint = null) {
       // Splice when the post-rebrand series doesn't reach the requested window
       // (its history starts at/after the migration, so the older span is missing).
       if (oldestNow == null || oldestNow > windowStart + 2 * DAY_MS) {
-        const pred = await exsource.deepDailyByDay(rb.fromSymbol, windowStart);
+        // Predecessor path skips the live-listing gate — a renamed symbol has
+        // no recent data but its historical zips are intact.
+        const pred = await exsource.deepDailyPredecessor(rb.fromSymbol, windowStart);
         if (pred && pred.size > 0) {
           // The new series' earliest price at/after the migration, for the
           // continuity check against the predecessor at the boundary.
