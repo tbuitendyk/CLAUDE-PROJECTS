@@ -288,31 +288,13 @@ function renderDetail() {
     // crowd the Symbol cell, now in one place.
     const statusTd = document.createElement('td');
     statusTd.className = 'status-cell';
-    if (a.buy_frozen) {
-      const badge = document.createElement('button');
-      badge.textContent = a.freeze_override ? '🧊 frozen · ignored' : '🧊 frozen';
-      badge.className = 'chip chip-frozen';
-      badge.title =
-        `BUY alerts frozen — ${a.freeze_reason || 'structural break'}. Sells still alert. ` +
-        (a.freeze_override ? 'Currently IGNORED (effects off) via the toggle. ' : '') +
-        `Auto-unfreezes when the drawdown eases; click to unfreeze now.`;
-      badge.addEventListener('click', async () => {
-        if (!confirm(`Unfreeze BUY alerts for ${a.symbol.toUpperCase()}?\n\nFrozen because: ${a.freeze_reason || 'structural break'}\n\nThe rail may re-freeze if conditions still hold.`)) return;
-        try {
-          await api(`/assets/${a.id}/unfreeze`, { method: 'POST' });
-          await refresh();
-        } catch (err) {
-          alert(err.message);
-        }
-      });
-      statusTd.appendChild(badge);
-    }
-    // Standing "ignore freeze" toggle for EVERY active base asset. freeze_override
-    // persists across an auto-unfreeze, so it must be visible and settable
-    // whether or not the asset is currently frozen — otherwise a lingering
-    // override sits invisible on an unfrozen asset and silently neutralizes the
-    // next freeze. When set, BUY alerts and composition-lab eligibility stay
-    // active even if the rail freezes the asset (the freeze status still tracks).
+    // Standing "ignore freeze" toggle for EVERY active base asset FIRST, then
+    // the frozen status badge. freeze_override persists across an auto-unfreeze,
+    // so the toggle must be visible and settable whether or not the asset is
+    // currently frozen — otherwise a lingering override sits invisible on an
+    // unfrozen asset and silently neutralizes the next freeze. When set, BUY
+    // alerts and composition-lab eligibility stay active even if the rail
+    // freezes the asset (the freeze status still tracks).
     const activeAsset = !a.is_index && (a.target_pct > 0 || a.quantity > 0);
     if (activeAsset) {
       const ovrLabel = document.createElement('label');
@@ -333,6 +315,25 @@ function renderDetail() {
       });
       ovrLabel.append(ovr, document.createTextNode('ignore freeze'));
       statusTd.appendChild(ovrLabel);
+    }
+    if (a.buy_frozen) {
+      const badge = document.createElement('button');
+      badge.textContent = a.freeze_override ? '🧊 frozen · ignored' : '🧊 frozen';
+      badge.className = 'chip chip-frozen';
+      badge.title =
+        `BUY alerts frozen — ${a.freeze_reason || 'structural break'}. Sells still alert. ` +
+        (a.freeze_override ? 'Currently IGNORED (effects off) via the toggle. ' : '') +
+        `Auto-unfreezes when the drawdown eases; click to unfreeze now.`;
+      badge.addEventListener('click', async () => {
+        if (!confirm(`Unfreeze BUY alerts for ${a.symbol.toUpperCase()}?\n\nFrozen because: ${a.freeze_reason || 'structural break'}\n\nThe rail may re-freeze if conditions still hold.`)) return;
+        try {
+          await api(`/assets/${a.id}/unfreeze`, { method: 'POST' });
+          await refresh();
+        } catch (err) {
+          alert(err.message);
+        }
+      });
+      statusTd.appendChild(badge);
     }
     if (a.depegged) {
       const peg = document.createElement('span');
