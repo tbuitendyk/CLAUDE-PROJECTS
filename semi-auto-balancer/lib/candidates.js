@@ -12,6 +12,13 @@ const { getDailyHistory } = require('./history');
 // derivative assets have no harvestable identity of their own.
 const NAME_EXCLUDE = /usd|usde?|dai|tether|wrapped|staked|restaked|bridged|peg|frax|eur[tcs]?\b|gyen|pax|cbeth|wbtc|weth|steth|reth/i;
 
+// Commodity-backed tokens are NOT stablecoins: they track a real, diversifying
+// price (gold/silver), so they belong in the harvest universe even though
+// their names ("PAX Gold", "Tether Gold") trip the substring heuristics above
+// (`pax`, `tether`). Exact-symbol allowlist, exempt from NAME_EXCLUDE only —
+// the CoinGecko stablecoins/wrapped category filter still removes true pegs.
+const COMMODITY_OK = /^(paxg|xaut|kau|kag|xaur|dgx)$/i;
+
 async function topCandidates({ count = 40 } = {}) {
   const markets = await getJson(
     '/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=100&page=1'
@@ -32,8 +39,9 @@ async function topCandidates({ count = 40 } = {}) {
   const out = [];
   for (const m of markets || []) {
     if (excluded.has(m.id)) continue;
-    if (NAME_EXCLUDE.test(m.name || '') || NAME_EXCLUDE.test(m.symbol || '')) continue;
-    out.push({ id: m.id, symbol: (m.symbol || '').toLowerCase(), name: m.name, rank: m.market_cap_rank });
+    const sym = (m.symbol || '').toLowerCase();
+    if (!COMMODITY_OK.test(sym) && (NAME_EXCLUDE.test(m.name || '') || NAME_EXCLUDE.test(sym))) continue;
+    out.push({ id: m.id, symbol: sym, name: m.name, rank: m.market_cap_rank });
     if (out.length >= count) break;
   }
   return out;
@@ -61,4 +69,4 @@ async function candidateSeries(candidates, days, { setProgress = () => {} } = {}
   return series;
 }
 
-module.exports = { topCandidates, candidateSeries, NAME_EXCLUDE };
+module.exports = { topCandidates, candidateSeries, NAME_EXCLUDE, COMMODITY_OK };

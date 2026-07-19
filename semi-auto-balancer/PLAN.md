@@ -244,6 +244,22 @@ portfolios worth holding, not just volatility to harvest.
   so the solo screen + subset search can SHED dead weight (FIL/SC) instead of
   flooring it. The UI scope selector is now Full universe / Current holdings —
   re-weight only / Current holdings — allow drops.
+- **Follow-ups (2026-07-19):** (i) commodity-backed tokens (PAX Gold, Tether
+  Gold) were being wrongly weeded from the candidate universe — the `pax` /
+  `tether` substrings in NAME_EXCLUDE caught PAXG/XAUT, which are gold-price
+  diversifiers, not stablecoins. Added an exact-symbol COMMODITY_OK allowlist
+  exempt from the name heuristic (the CG category filter still removes real
+  pegs); test-candidates.js covers it. (ii) The trigger sensitivity was
+  invisible in regime-mode rows (only folds mode had an X column, only
+  current-set had the sweep strip). The Return cell now shows `@ X%` (the
+  whole-window trigger, or `@ hold` when holding won), and the regime Holdout
+  cell shows its best X — so a ★ mix tells you what sensitivity to set.
+- **Also fixed while validating:** the MATIC→POL splice initially no-op'd
+  because the predecessor fetch went through the live-listing gate
+  (`symbolExists`), which a RENAMED symbol fails (REST geo-blocked here + no
+  recent MATICUSDT zip post-rename). `exsource.deepDailyPredecessor` pages the
+  predecessor's historical zips directly, no liveness gate — POL then reaches
+  ~4y and the Kraken current-set window opened 722 → 1460 bars.
 
 ## Phase 2.98 — Honest bull/bear/range taxonomy (centered trend)
 **Status: SHIPPED (tests green: test-regime.js, incl. anti-lag).** The first

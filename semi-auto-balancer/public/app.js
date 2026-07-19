@@ -876,7 +876,7 @@ function renderCompose(latest) {
   // Header depends on mode: regime shows per-market-type edges; folds shows
   // the walk-forward columns.
   const qualTh =
-    '<th title="Whole-window return at the best sensitivity · max drawdown · whether it keeps up with the market (holding BTC in the index currency). ✓mkt = real possibility; ▼mkt = lags the market">Return · DD · vs mkt</th>';
+    '<th title="Whole-window return @ the trigger sensitivity that produced it (@ hold = holding won, no full-window trigger) · max drawdown · whether it keeps up with the market (holding BTC in the index currency). ✓mkt = real possibility; ▼mkt = lags the market">Return @ X · DD · vs mkt</th>';
   const thead = $('#c-table thead');
   thead.innerHTML = regimeMode
     ? '<tr><th>Mix (targets) · ★ = recommended</th>' +
@@ -918,13 +918,20 @@ function renderCompose(latest) {
   const qualCell = (row) => {
     const ret = row.netReturn != null ? sp(row.netReturn) : row.full ? sp(row.full.value) : '—';
     const dd = row.maxDD != null ? row.maxDD.toFixed(0) : row.full ? row.full.dd.toFixed(0) : '—';
+    // The sensitivity behind that whole-window return: a real X when some
+    // trigger beat holding over the full path, else "hold" (holding won —
+    // there is no full-window rebalance trigger; the edge lives per-regime).
+    const trig =
+      row.full && row.full.x != null
+        ? ` <span class="muted" title="the trigger sensitivity that produced this whole-window return">@ ${row.full.x}%</span>`
+        : ' <span class="muted" title="no sensitivity beat holding over the full window — the harvest is per-regime / holdout only">@ hold</span>';
     const mk =
       row.beatsMarket == null
         ? ''
         : row.beatsMarket
           ? ' <span class="pos" title="keeps up with the market (hold BTC) — a real possibility">✓mkt</span>'
           : ' <span class="neg" title="lags the market (hold BTC) on return/drawdown">▼mkt</span>';
-    return `${ret} <span class="muted">· DD ${dd}%</span>${mk}`;
+    return `${ret}${trig} <span class="muted">· DD ${dd}%</span>${mk}`;
   };
   const addRow = (label, row, highlight) => {
     const tr = document.createElement('tr');
@@ -938,7 +945,7 @@ function renderCompose(latest) {
         `<td>${pt(row, 'bull')}</td><td>${pt(row, 'bear')}</td><td>${pt(row, 'range')}</td>` +
         `<td><strong>${row.consistency != null ? sp(row.consistency) : '—'}</strong></td>` +
         `<td>${row.average != null ? sp(row.average) : '—'}</td>` +
-        `<td>${holdCellOf(h)}</td>` +
+        `<td>${holdCellOf(h)}${h.x != null ? ` <span class="muted">@ ${h.x}%</span>` : ''}</td>` +
         `<td>${qualCell(row)}</td>`
       : `<td>${labelCell}</td>` +
         `<td>${row.positiveFolds != null ? `${row.positiveFolds}/${row.nFolds}` : '—'}</td>` +
