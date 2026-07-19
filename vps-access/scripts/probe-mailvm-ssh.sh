@@ -1,15 +1,12 @@
 #!/usr/bin/env bash
-# probe-mailvm-ssh.sh -- check whether the host can SSH into the mail VM to read its logs (one-shot).
+# probe-mailvm-ssh.sh -- diagnose host->mail-VM SSH: host key fingerprint + verbose auth exchange.
 set -uo pipefail
 VM=192.168.56.129
-echo "=== ~/.ssh hints ==="
-[ -f ~/.ssh/config ] && grep -iE 'host |192\.168\.56|mail' ~/.ssh/config | head || echo "(no relevant ~/.ssh/config lines)"
-echo "known_hosts entries for $VM: $(grep -c "$VM" ~/.ssh/known_hosts 2>/dev/null || echo 0)"
-echo "private keys present:"; ls ~/.ssh/id_* 2>/dev/null | grep -v '\.pub$' | sed 's/^/  /' || echo "  (none)"
+echo "=== host key fingerprint (this must appear in the VM's authorized_keys) ==="
+ssh-keygen -lf /root/.ssh/id_ed25519.pub
 echo
-for u in root admin; do
-  echo "=== try ssh $u@$VM (BatchMode, no password) ==="
-  out=$(ssh -o BatchMode=yes -o ConnectTimeout=8 -o StrictHostKeyChecking=accept-new "$u@$VM" \
-        'echo CONNECT_OK; echo "whoami=$(id -un)"; (test -r /var/log/mail.log && echo LOG_READABLE || echo LOG_UNREADABLE)' 2>&1)
-  echo "  rc=$? :"; echo "$out" | sed 's/^/  /'
-done
+echo "=== ssh -vvv root@$VM (which key is offered, and the server's verdict) ==="
+ssh -vvv -o BatchMode=yes -o ConnectTimeout=8 -o StrictHostKeyChecking=accept-new \
+    root@"$VM" 'echo CONNECTED_OK; id -un; test -r /var/log/mail.log && echo LOG_READABLE' 2>&1 \
+  | grep -iE 'Offering public key|Authentications that can continue|Server accepts key|Permission denied|Authenticated to|CONNECTED_OK|LOG_READABLE' \
+  | head -20
