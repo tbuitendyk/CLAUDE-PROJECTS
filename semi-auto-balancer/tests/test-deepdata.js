@@ -97,6 +97,32 @@ const history = require('../lib/history');
   ok(approx(rows[0].usd_price, firstReal.usd_price), 'synthetic tail holds the earliest real rate flat');
   ok(rows.every((r, i) => i === 0 || r.ts > rows[i - 1].ts), 'series stays strictly increasing in time');
 
+  // --- rebrand splice: POL (listed only at the 2024-09 migration) inherits
+  // MATIC's deep history, spliced at the migration date after a continuity
+  // check. Flat 0.5 on both sides → seamless boundary. ---
+  const constSeries = (fromDaysAgo, toDaysAgo, val) => {
+    const m = new Map();
+    for (let d = fromDaysAgo; d >= toDaysAgo; d--) m.set(today - d * DAY, val);
+    return m;
+  };
+  const migrationDaysAgo = Math.round((today - Date.UTC(2024, 8, 4)) / DAY); // 2024-09-04
+  binance.symbolExists = async (s) => ({ pol: 'POLUSDT', matic: 'MATICUSDT' })[s.toLowerCase()] || null;
+  binance.dailyClosesDeep = async (sym) => {
+    const s = sym.toLowerCase();
+    if (s === 'matic') return constSeries(1460, 0, 0.5); // deep predecessor
+    if (s === 'pol') return constSeries(migrationDaysAgo, 0, 0.5); // POL only since migration
+    return new Map();
+  };
+  kucoin.symbolExists = async () => false;
+  cgReturn = null;
+  cgCalls = [];
+  rows = await history.getDailyHistory('polygon-ecosystem-token', 1460, 'pol');
+  const rbSpan = (rows[rows.length - 1].ts - rows[0].ts) / DAY;
+  ok(rbSpan >= 1400, `POL series spliced back through MATIC to ~4 years (${Math.round(rbSpan)} days)`);
+  ok(cgCalls.length === 0, 'rebrand splice used exchange data, zero CG');
+  ok(rows.every((r) => Math.abs(r.usd_price - 0.5) < 1e-9), 'spliced series is continuous (no boundary break)');
+  ok(rows.every((r, i) => i === 0 || r.ts > rows[i - 1].ts), 'spliced series strictly increasing, no gaps at the migration');
+
   console.log('deep-data layer tests pass');
   process.exit(0);
 })().catch((e) => { console.error('FAIL:', e.message); process.exit(1); });

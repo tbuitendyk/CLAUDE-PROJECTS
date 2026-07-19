@@ -2,6 +2,7 @@ const db = require('./db');
 const { getJson } = require('./cg');
 const { fiatCode } = require('./pricing');
 const exsource = require('./exsource');
+const { rebrandFor } = require('./rebrands');
 
 // Daily price-history cache (Phase 0, exchange layer added in Phase 1.5).
 // Everything reads bucketed daily closes from daily_prices; a fetch is only
@@ -107,6 +108,50 @@ async function getDailyHistory(id, days = MAX_DAYS, symbolHint = null) {
       }
     } else {
       exFetched = true;
+    }
+
+    // Rebrand splice: a renamed token (e.g. MATIC→POL) whose post-rebrand
+    // series starts only at the migration inherits its predecessor's deep
+    // history for the older span — spliced at the migration date, and ONLY if
+    // the boundary is continuous (a mislabelled entry or a real break is
+    // refused). This lets a rebranded holding cover the full window instead of
+    // capping it at its (recent) listing date.
+    const rb = rebrandFor(id, symbolHint);
+    if (rb) {
+      const oldestNow = oldestCachedTs(id);
+      // Splice when the post-rebrand series doesn't reach the requested window
+      // (its history starts at/after the migration, so the older span is missing).
+      if (oldestNow == null || oldestNow > windowStart + 2 * DAY_MS) {
+        const pred = await exsource.deepDailyByDay(rb.fromSymbol, windowStart);
+        if (pred && pred.size > 0) {
+          // The new series' earliest price at/after the migration, for the
+          // continuity check against the predecessor at the boundary.
+          const firstNew = db
+            .prepare('SELECT ts, usd_price FROM daily_prices WHERE coingecko_id = ? AND ts >= ? ORDER BY ts LIMIT 1')
+            .get(id, rb.dateMs);
+          const preRebrand = new Map();
+          let boundaryOld = null;
+          for (const [ts, price] of pred) {
+            if (ts >= rb.dateMs) {
+              boundaryOld = price * rb.ratio; // predecessor value at the swap, in new units
+              continue; // don't overwrite real post-rebrand data
+            }
+            preRebrand.set(ts, price * rb.ratio);
+          }
+          // Continuity gate: predecessor (×ratio) at the boundary must line up
+          // with the new series' first print. Skip the splice on a real break.
+          const seamless =
+            !firstNew ||
+            boundaryOld == null ||
+            Math.abs(boundaryOld / firstNew.usd_price - 1) <= 0.15;
+          if (seamless && preRebrand.size > 0) {
+            storeSeries(id, preRebrand);
+            exFetched = true;
+          } else if (!seamless) {
+            console.error(`rebrand splice skipped for ${id}: boundary break (${boundaryOld} vs ${firstNew.usd_price})`);
+          }
+        }
+      }
     }
   }
 

@@ -289,6 +289,70 @@ function holdGrowthPct(assets, barsArr) {
   return (v - 1) * 100;
 }
 
+// ---- market benchmark + quality gate ---------------------------------------
+//
+// The composition search ranks by rebalancing HARVEST edge, which is blind to
+// whether a mix's underlying assets sank — so it will happily crown a mix that
+// harvested well while losing 40%. To surface REAL possibilities (and weed the
+// junk we'd never actually hold), each mix is also measured against the market:
+// holding BTC over the same window, priced in the profile's index currency
+// (NOT the user's current mix — one window's number for that is noise). A mix
+// is a "real possibility" only if it roughly keeps up with that market on both
+// return and drawdown.
+const MKT_LAG_MARGIN = 8; // pp: a real possibility may trail market return by at most this
+const MKT_DD_MARGIN = 10; // pp: ...and draw down at most this much more than the market
+
+function maxDrawdownPct(pathVals) {
+  let peak = -Infinity;
+  let mdd = 0;
+  for (const v of pathVals) {
+    if (v > peak) peak = v;
+    if (peak > 0) {
+      const dd = 1 - v / peak;
+      if (dd > mdd) mdd = dd;
+    }
+  }
+  return mdd * 100;
+}
+
+// Market baseline = 1 unit of BTC, valued in the index currency, over `bars`.
+// benchmark[i].usd_price is BTC in USD; bars[i].usd[tetherId] is USD per index
+// unit, so their ratio is BTC expressed in the index. Returns {return, maxDD}
+// in percent, or null when the benchmark/tether can't be aligned (gate off).
+function marketBenchmark(benchmark, bars, tetherId) {
+  if (!benchmark || benchmark.length !== bars.length || bars.length < 2) return null;
+  const path = [];
+  for (let i = 0; i < bars.length; i++) {
+    const idxUsd = bars[i].usd[tetherId];
+    const btcUsd = benchmark[i].usd_price;
+    if (!(idxUsd > 0) || !(btcUsd > 0)) return null;
+    path.push(btcUsd / idxUsd);
+  }
+  return { return: (path[path.length - 1] / path[0] - 1) * 100, maxDD: maxDrawdownPct(path) };
+}
+
+// Does a mix keep up with the market on both return and drawdown? (Gate off →
+// everything passes.) `full` is the mix's whole-window score at its best X.
+function beatsMarketOf(full, market) {
+  if (!market) return true;
+  return full.value >= market.return - MKT_LAG_MARGIN && full.dd <= market.maxDD + MKT_DD_MARGIN;
+}
+
+// Display order for the finalists: real possibilities (keep up with the
+// market) first, then harvest breadth, then worst-regime edge / fold
+// robustness, then raw return. Surfaces good all-round mixes the pure-harvest
+// sort buries, and sinks the harvest-well-but-sank junk.
+function qualityRank(a, b) {
+  if (!!b.beatsMarket !== !!a.beatsMarket) return (b.beatsMarket ? 1 : 0) - (a.beatsMarket ? 1 : 0);
+  const ab = a.typesPositive != null ? a.typesPositive : a.positiveFolds || 0;
+  const bb = b.typesPositive != null ? b.typesPositive : b.positiveFolds || 0;
+  if (bb !== ab) return bb - ab;
+  const aw = a.consistency != null ? a.consistency : a.robust || 0;
+  const bw = b.consistency != null ? b.consistency : b.robust || 0;
+  if (bw !== aw) return bw - aw;
+  return (b.full ? b.full.value : 0) - (a.full ? a.full.value : 0);
+}
+
 // ---- the search -------------------------------------------------------------
 
 async function searchCompositions({
@@ -493,13 +557,19 @@ async function searchCompositions({
   // positive holdout. When none qualify, that honest verdict is surfaced as a
   // warning instead of a misleading leaderboard.
   setProgress('holdout confirmation', 98);
+  const tetherId = tether.id;
+  const market = marketBenchmark(benchmark, bars, tetherId);
   const summarize = (entry, assetsList) => {
     const assets = assetsList || mixToAssets(entry.mix, pool);
+    const full = scoreWindow(assets, bars, costs);
     const row = {
       assets: assets.map((a) => ({ id: a.coingecko_id, symbol: a.symbol, pct: a.target_pct, isIndex: !!a.is_index })),
       mode: entry.mode,
       holdout: entry.holdout,
-      full: scoreWindow(assets, bars, costs),
+      full,
+      netReturn: full.value,
+      maxDD: full.dd,
+      beatsMarket: beatsMarketOf(full, market),
       recommended: entry.recommended,
     };
     if (entry.mode === 'regime') {
@@ -514,10 +584,17 @@ async function searchCompositions({
       row.robust = entry.robust;
       row.foldEdges = entry.foldEdges;
     }
+    // ★ only for a real possibility (harvests AND keeps up with the market).
+    row.recommended = row.recommended && row.beatsMarket;
     return row;
   };
-  const uniqueFinal = [...new Map(survivors.map((s) => [s.key, s])).values()].sort(tupleRank).slice(0, finalists);
-  const rows = uniqueFinal.map((s) => summarize(s));
+  const allRows = [...new Map(survivors.map((s) => [s.key, s])).values()]
+    .map((s) => summarize(s))
+    .sort(qualityRank);
+  const real = allRows.filter((r) => r.beatsMarket);
+  const noRealPossibility = market != null && real.length === 0;
+  const rows = (real.length ? real : allRows).slice(0, finalists);
+  const weededForQuality = allRows.length - rows.length;
   const anyRecommended = rows.some((r) => r.recommended);
 
   // Current mix — scored the SAME way, shown for REFERENCE only. A single
@@ -531,13 +608,20 @@ async function searchCompositions({
   }
 
   const warnings = [];
-  if (!anyRecommended) {
+  if (noRealPossibility) {
     warnings.push(
+      'No mix kept up with the market (holding BTC, valued in the index currency) on both return and drawdown — ' +
+        'showing best-effort harvesters; none is a real upgrade over just holding the market.'
+    );
+  } else if (!anyRecommended) {
+    const base =
       mode === 'regime'
-        ? 'No mix harvested across ALL market types (bull/bear/range) with a positive holdout — on this universe and history, ' +
-            'no rebalancing setup reliably beats holding in every regime. The table is a robustness ranking only, NOT a recommendation.'
-        : 'No mix harvested consistently across the walk-forward windows with a positive holdout — on this universe and history, ' +
-            'rebalancing does not reliably beat holding. The table is a capital-preservation ranking only, NOT a recommendation.'
+        ? 'No mix harvested across ALL market types (bull/bear/range) with a positive holdout'
+        : 'No mix harvested consistently across the walk-forward windows with a positive holdout';
+    warnings.push(
+      market
+        ? `${base} while keeping up with the market — the table ranks real possibilities by robustness, but none clears the ★ bar.`
+        : `${base} — on this universe and history, rebalancing does not reliably beat holding. The table is a capital-preservation ranking only, NOT a recommendation.`
     );
   }
 
@@ -547,6 +631,9 @@ async function searchCompositions({
     mode,
     regime: regimeInfo,
     noHarvest: !anyRecommended,
+    market,
+    noRealPossibility,
+    weededForQuality,
     warnings,
     screen, // per-asset solo verdicts, kept flag included
     combos: { broadSampled, contenders: board.length, fullScored: seen.size },
@@ -649,12 +736,20 @@ async function searchCurrentSet({
     return remaining === 0 ? units : null;
   };
 
-  // ---- Stage 1: broad sampling → cheap-edge contender board.
+  // ---- Stage 1: broad sampling → TWO contender boards. The primary board
+  // keeps the best cheap harvest EDGE; a secondary board keeps the best raw
+  // RETURN. Merging both into full scoring means return-good splits (which the
+  // pure-harvest board would drop) still get evaluated — that's what lets the
+  // quality gate surface real possibilities the harvest sort would bury.
   const CHEAP_X = [6, 22];
   const fullTop = Math.min(500, Math.max(120, Math.floor(samples / 50)));
+  const RET_KEEP = Math.min(150, fullTop);
   const board = [];
   const boardKeys = new Set();
   let cutoff = -Infinity;
+  const retBoard = [];
+  const retKeys = new Set();
+  let retCutoff = -Infinity;
   let broadSampled = 0;
   for (let i = 0; i < samples; i++) {
     const units = sampleUnits();
@@ -663,6 +758,7 @@ async function searchCurrentSet({
       const assets = toAssets(units);
       const hold = holdGrowthPct(assets, inSample);
       if (hold != null) {
+        const key = keyOf(units);
         let bestValue = hold;
         for (const x of CHEAP_X) {
           const r = simulate(assets, x, { ...costs, bars: inSample });
@@ -671,16 +767,22 @@ async function searchCurrentSet({
           }
         }
         const edge = bestValue - hold;
-        if (edge > cutoff || board.length < fullTop) {
-          const key = keyOf(units);
-          if (!boardKeys.has(key)) {
-            board.push({ key, units, cheap: edge });
-            boardKeys.add(key);
-            if (board.length >= fullTop * 2) {
-              board.sort((a, b) => b.cheap - a.cheap);
-              for (const dropped of board.splice(fullTop)) boardKeys.delete(dropped.key);
-              cutoff = board[board.length - 1].cheap;
-            }
+        if ((edge > cutoff || board.length < fullTop) && !boardKeys.has(key)) {
+          board.push({ key, units, cheap: edge });
+          boardKeys.add(key);
+          if (board.length >= fullTop * 2) {
+            board.sort((a, b) => b.cheap - a.cheap);
+            for (const dropped of board.splice(fullTop)) boardKeys.delete(dropped.key);
+            cutoff = board[board.length - 1].cheap;
+          }
+        }
+        if ((hold > retCutoff || retBoard.length < RET_KEEP) && !retKeys.has(key)) {
+          retBoard.push({ key, units, hold });
+          retKeys.add(key);
+          if (retBoard.length >= RET_KEEP * 2) {
+            retBoard.sort((a, b) => b.hold - a.hold);
+            for (const dropped of retBoard.splice(RET_KEEP)) retKeys.delete(dropped.key);
+            retCutoff = retBoard[retBoard.length - 1].hold;
           }
         }
       }
@@ -695,6 +797,15 @@ async function searchCurrentSet({
   }
   board.sort((a, b) => b.cheap - a.cheap);
   board.splice(fullTop);
+  // Fold the return board into full scoring (dedup by key).
+  retBoard.sort((a, b) => b.hold - a.hold);
+  const boardSet = new Set(board.map((b) => b.key));
+  for (const rb of retBoard.slice(0, RET_KEEP)) {
+    if (!boardSet.has(rb.key)) {
+      board.push({ key: rb.key, units: rb.units, cheap: 0 });
+      boardSet.add(rb.key);
+    }
+  }
 
   // ---- Stage 2: full-fidelity scoring of the contender board.
   const seen = new Map();
@@ -741,6 +852,8 @@ async function searchCurrentSet({
   // holding per X), so the split×sensitivity interaction is visible; `full`
   // reports that grid's best real-harvest X.
   setProgress('sensitivity sweep + holdout confirmation', 98);
+  const tetherId = (assetSet.find((a) => a.isIndex) || {}).id;
+  const market = marketBenchmark(benchmark, bars, tetherId);
   const summarize = (assets, entry, refFlag = false) => {
     const holdF = simulate(assets, null, { ...costs, bars }).valueGrowthPct;
     const xGrid = MINI_X.map((x) => {
@@ -783,11 +896,25 @@ async function searchCurrentSet({
       row.robust = entry.robust;
       row.foldEdges = entry.foldEdges;
     }
+    // Quality: whole-window return + drawdown, and whether it keeps up with
+    // the market. A mix is only ★ if it harvests AND is a real possibility.
+    row.netReturn = full.value;
+    row.maxDD = full.dd;
+    row.beatsMarket = beatsMarketOf(full, market);
+    if (!refFlag) row.recommended = row.recommended && row.beatsMarket;
     if (refFlag) row.reference = true;
     return row;
   };
-  const uniqueFinal = [...new Map(survivors.map((s) => [s.key, s])).values()].sort(tupleRank).slice(0, finalists);
-  const rows = uniqueFinal.map((s) => summarize(toAssets(s.units), s));
+  // Score every survivor, then order by quality (real possibilities first) and
+  // show those — the harvest-well-but-sank junk sinks below the fold and is
+  // reported as a weeded count rather than cluttering the board.
+  const allRows = [...new Map(survivors.map((s) => [s.key, s])).values()]
+    .map((s) => summarize(toAssets(s.units), s))
+    .sort(qualityRank);
+  const real = allRows.filter((r) => r.beatsMarket);
+  const noRealPossibility = market != null && real.length === 0;
+  const rows = (real.length ? real : allRows).slice(0, finalists);
+  const weededForQuality = allRows.length - rows.length;
   const anyRecommended = rows.some((r) => r.recommended);
 
   // Current mix — reference only, scored identically (a single window's number
@@ -804,13 +931,20 @@ async function searchCurrentSet({
   }
 
   const warnings = [];
-  if (!anyRecommended) {
+  if (noRealPossibility) {
     warnings.push(
+      'No split of your current holdings kept up with the market (holding BTC, valued in your index currency) on both return and drawdown — ' +
+        'showing best-effort harvesters; none is a real upgrade over just holding the market.'
+    );
+  } else if (!anyRecommended) {
+    const base =
       mode === 'regime'
-        ? 'No split of your current holdings harvested across ALL market types (bull/bear/range) with a positive holdout — ' +
-            'on this history, rebalancing this exact set does not reliably beat holding in every regime. The table ranks robustness only.'
-        : 'No split of your current holdings harvested consistently across the walk-forward windows with a positive holdout — ' +
-            'on this history, rebalancing this exact set does not reliably beat holding. The table ranks capital preservation only.'
+        ? 'No split harvested across ALL market types (bull/bear/range) with a positive holdout'
+        : 'No split harvested consistently across the walk-forward windows with a positive holdout';
+    warnings.push(
+      market
+        ? `${base} while keeping up with the market — the table ranks real possibilities by robustness, but none clears the ★ bar.`
+        : `${base} — on this history, rebalancing this exact set does not reliably beat holding. The table ranks capital preservation only.`
     );
   }
 
@@ -820,6 +954,9 @@ async function searchCurrentSet({
     mode,
     regime: regimeInfo,
     noHarvest: !anyRecommended,
+    market,
+    noRealPossibility,
+    weededForQuality,
     warnings,
     screen: [], // no solo screen in current-set mode — the set is fixed
     currentSet: true,
@@ -997,19 +1134,27 @@ async function runComposeSearch(profileId, opts = {}, setProgress = () => {}) {
     return runCurrentSetSearch(profileId, { profile, assets, tetherAsset, days, samples, seed }, setProgress);
   }
 
-  // Universe: held risk assets (unfrozen — a buy-frozen asset must not be
-  // recommended INTO) + the CG top-N candidates, RESTRICTED to what the
-  // profile's linked venue can actually trade — a mix the account can't
+  // heldOnly (drops-allowed) = search subsets/weights of the CURRENT holdings
+  // ONLY: no scanner candidates, no venue filter (you already hold and trade
+  // these), and frozen positions ARE included — the whole point is to decide
+  // which of your current assets to keep or shed.
+  const heldOnly = !!opts.heldOnly;
+
+  // Universe: held risk assets (in the full lab, unfrozen only — a buy-frozen
+  // asset must not be recommended INTO) + the CG top-N candidates, RESTRICTED
+  // to what the profile's linked venue can trade — a mix the account can't
   // execute is a fantasy.
   setProgress('building candidate universe…');
   const held = assets.filter(
-    (a) => !a.is_index && (a.target_pct > 0 || a.quantity > 0) && (!a.buy_frozen || a.freeze_override)
+    (a) => !a.is_index && (a.target_pct > 0 || a.quantity > 0) && (heldOnly || !a.buy_frozen || a.freeze_override)
   );
   let top = [];
-  try {
-    top = await topCandidates({ count: candidateCount });
-  } catch (err) {
-    console.error('topCandidates failed (searching held assets only):', err.message);
+  if (!heldOnly) {
+    try {
+      top = await topCandidates({ count: candidateCount });
+    } catch (err) {
+      console.error('topCandidates failed (searching held assets only):', err.message);
+    }
   }
   const byId = new Map();
   for (const a of held) byId.set(a.coingecko_id, { id: a.coingecko_id, symbol: a.symbol.toLowerCase(), held: true });
@@ -1020,7 +1165,7 @@ async function runComposeSearch(profileId, opts = {}, setProgress = () => {}) {
   }
   let universe = [...byId.values()];
 
-  const venueFilter = await venueTradableFilter(profileId);
+  const venueFilter = heldOnly ? null : await venueTradableFilter(profileId);
   const notOnVenue = [];
   if (venueFilter) {
     setProgress(`filtering ${universe.length} candidates to ${venueFilter.venue}-tradable…`);
@@ -1062,11 +1207,14 @@ async function runComposeSearch(profileId, opts = {}, setProgress = () => {}) {
   const coveredCandidates = universe.filter((c) => covered.includes(c.id));
   if (bars.length < MIN_WINDOW_DAYS) throw new Error(`not enough overlapping daily history (${bars.length} bars)`);
 
-  if (coveredCandidates.length < 4) {
+  const minReal = heldOnly ? 2 : 4;
+  if (coveredCandidates.length < minReal) {
     throw new Error(
-      `only ${coveredCandidates.length} tradable candidates cover the ${Math.round((nowMs - windowStart) / 86_400_000)}d window ` +
-        `(${notOnVenue.length} dropped as not on ${venueFilter ? venueFilter.venue : 'the venue'}, ` +
-        `${universe.length - coveredCandidates.length} for missing history) — this should not happen with a linked venue; check /api/diagnostics`
+      heldOnly
+        ? `only ${coveredCandidates.length} of your holdings have enough history for the ${Math.round((nowMs - windowStart) / 86_400_000)}d window — need at least ${minReal} to search subsets`
+        : `only ${coveredCandidates.length} tradable candidates cover the ${Math.round((nowMs - windowStart) / 86_400_000)}d window ` +
+            `(${notOnVenue.length} dropped as not on ${venueFilter ? venueFilter.venue : 'the venue'}, ` +
+            `${universe.length - coveredCandidates.length} for missing history) — this should not happen with a linked venue; check /api/diagnostics`
     );
   }
 
@@ -1102,20 +1250,26 @@ async function runComposeSearch(profileId, opts = {}, setProgress = () => {}) {
     feePct: profile.fee_pct,
     spreadPct: profile.spread_pct,
     samples,
+    // heldOnly: search subsets of the current holdings (drop assets down to a
+    // 3-asset floor); the full lab keeps its 4–8 default.
+    minAssets: heldOnly ? Math.min(3, coveredCandidates.length) : undefined,
+    maxAssets: heldOnly ? coveredCandidates.length : undefined,
     seed,
     setProgress,
   });
+  const account = heldOnly ? getAccountForProfile(profileId) : null;
+  result.heldOnly = heldOnly;
   result.universe = {
     considered: universe.length + notOnVenue.length,
     covered: coveredCandidates.length,
     droppedForCoverage: universe.length - coveredCandidates.length,
-    heldExcludedFrozen: assets.filter((a) => !a.is_index && a.buy_frozen && !a.freeze_override).length,
-    venue: venueFilter ? venueFilter.venue : null,
+    heldExcludedFrozen: heldOnly ? 0 : assets.filter((a) => !a.is_index && a.buy_frozen && !a.freeze_override).length,
+    venue: venueFilter ? venueFilter.venue : account ? account.venue : null,
     notOnVenue,
     requestedDays: days,
     windowDays: Math.round((nowMs - windowStart) / 86_400_000),
   };
-  return { result, params: { days, samples, candidateCount, seed } };
+  return { result, params: { days, samples, candidateCount, seed, heldOnly } };
 }
 
 module.exports = { searchCompositions, searchCurrentSet, buildBars, runComposeSearch, chooseWindowStart, mulberry32, MINI_X, CAVEAT };

@@ -215,6 +215,36 @@ average over one window."
   replica, 1460 bars → 1168 in-sample / 292 holdout): top mixes flag ★ with
   types 3/3, positive per-type and holdout edges.
 
+## Phase 2.99 — Real-possibility gate, drops-allowed scope, rebrand splice
+**Status: SHIPPED (tests green: test-compose.js quality gate, test-deepdata.js
+rebrand splice).** Three coupled upgrades so the composition lab surfaces
+portfolios worth holding, not just volatility to harvest.
+- **(a) Rebrand splice (`lib/rebrands.js`).** A curated (not auto-detected)
+  token-migration map lets a renamed asset inherit its predecessor's deep
+  history, spliced at the migration date — MATIC→POL 1:1, so POL reaches ~4y
+  instead of capping the window at its 2024 listing. history.js fetches the
+  predecessor's deep series, keeps the pre-migration span (×ratio), and splices
+  ONLY when the boundary is continuous (predecessor×ratio vs the new series'
+  first print within 15%); a real break is refused and logged.
+- **(c) Market-benchmark quality gate (`lib/compose.js`).** The search ranks by
+  harvest edge, which is blind to whether the underlying assets sank — so it
+  would crown a mix that harvested well while losing 40%. Each mix is now also
+  measured against the MARKET: holding BTC over the same window, priced in the
+  profile's index currency (not the user's current mix — one window's number
+  for that is noise). `beatsMarket` = keeps up on both return and drawdown
+  (within 8pp return / 10pp DD). A mix is ★ only if it harvests AND beats
+  market; finalists are re-ranked real-possibilities-first (`qualityRank`),
+  the harvest-well-but-sank junk is weeded off the board (reported as a count),
+  and each row exposes Return · Max DD · vs-mkt. To surface good all-round
+  setups the pure-harvest sort buried, the broad pass keeps a second contender
+  board by raw RETURN and folds it into full scoring. Applies to both the full
+  lab and current-set search.
+- **(b) Drops-allowed scope.** A third search scope (`heldOnly`): the full lab
+  pinned to the CURRENT holdings only (no market candidates, frozen included),
+  so the solo screen + subset search can SHED dead weight (FIL/SC) instead of
+  flooring it. The UI scope selector is now Full universe / Current holdings —
+  re-weight only / Current holdings — allow drops.
+
 ## Phase 2.98 — Honest bull/bear/range taxonomy (centered trend)
 **Status: SHIPPED (tests green: test-regime.js, incl. anti-lag).** The first
 regime classifier (trailing 50d-MA slope + rolling-90d-high drawdown) was

@@ -875,6 +875,8 @@ function renderCompose(latest) {
 
   // Header depends on mode: regime shows per-market-type edges; folds shows
   // the walk-forward columns.
+  const qualTh =
+    '<th title="Whole-window return at the best sensitivity · max drawdown · whether it keeps up with the market (holding BTC in the index currency). ✓mkt = real possibility; ▼mkt = lags the market">Return · DD · vs mkt</th>';
   const thead = $('#c-table thead');
   thead.innerHTML = regimeMode
     ? '<tr><th>Mix (targets) · ★ = recommended</th>' +
@@ -884,10 +886,11 @@ function renderCompose(latest) {
       '<th title="Median harvest edge over holding across RANGE swaths">Range</th>' +
       '<th title="Worst market type — the consistency score the ranking uses">Worst</th>' +
       '<th title="Equal-weighted mean edge across market types">Avg</th>' +
-      '<th title="Untouched confirmation tail: value and (edge over holding)">Holdout</th></tr>'
+      '<th title="Untouched confirmation tail: value and (edge over holding)">Holdout</th>' +
+      qualTh + '</tr>'
     : '<tr><th>Mix (targets) · ★ = recommended</th><th title="Walk-forward windows harvested, out of N">Folds ✓</th>' +
       '<th title="Median harvest edge across the folds">Median edge</th><th title="Untouched confirmation tail: value and (edge)">Holdout</th>' +
-      '<th title="Best sensitivity on the holdout">X</th><th title="Whole-window value incl. training — hindsight">Full</th></tr>';
+      '<th title="Best sensitivity on the holdout">X</th>' + qualTh + '</tr>';
 
   const tbody = $('#c-table tbody');
   tbody.innerHTML = '';
@@ -909,6 +912,20 @@ function renderCompose(latest) {
       .join('');
     return `<div class="xsweep">split × sensitivity: ${cells}</div>`;
   };
+  // Return · drawdown · market-keep — the "real possibility" cell. netReturn is
+  // the whole-window value at the mix's best X; maxDD its drawdown; the marker
+  // says whether it keeps up with holding BTC (in the index currency).
+  const qualCell = (row) => {
+    const ret = row.netReturn != null ? sp(row.netReturn) : row.full ? sp(row.full.value) : '—';
+    const dd = row.maxDD != null ? row.maxDD.toFixed(0) : row.full ? row.full.dd.toFixed(0) : '—';
+    const mk =
+      row.beatsMarket == null
+        ? ''
+        : row.beatsMarket
+          ? ' <span class="pos" title="keeps up with the market (hold BTC) — a real possibility">✓mkt</span>'
+          : ' <span class="neg" title="lags the market (hold BTC) on return/drawdown">▼mkt</span>';
+    return `${ret} <span class="muted">· DD ${dd}%</span>${mk}`;
+  };
   const addRow = (label, row, highlight) => {
     const tr = document.createElement('tr');
     if (highlight) tr.classList.add('index-row');
@@ -921,21 +938,24 @@ function renderCompose(latest) {
         `<td>${pt(row, 'bull')}</td><td>${pt(row, 'bear')}</td><td>${pt(row, 'range')}</td>` +
         `<td><strong>${row.consistency != null ? sp(row.consistency) : '—'}</strong></td>` +
         `<td>${row.average != null ? sp(row.average) : '—'}</td>` +
-        `<td>${holdCellOf(h)}</td>`
+        `<td>${holdCellOf(h)}</td>` +
+        `<td>${qualCell(row)}</td>`
       : `<td>${labelCell}</td>` +
         `<td>${row.positiveFolds != null ? `${row.positiveFolds}/${row.nFolds}` : '—'}</td>` +
         `<td>${sp(row.robust)}</td><td><strong>${holdCellOf(h)}</strong></td>` +
-        `<td>${h.x != null ? h.x + '%' : 'hold'}</td><td class="muted">${row.full ? sp(row.full.value) : '—'}</td>`;
+        `<td>${h.x != null ? h.x + '%' : 'hold'}</td><td>${qualCell(row)}</td>`;
     tbody.appendChild(tr);
   };
   if (r.currentMix) addRow(`CURRENT (reference only): ${mixLabel(r.currentMix.assets)}`, r.currentMix, true);
   for (const m of r.mixes) addRow(mixLabel(m.assets), m, false);
   if (!r.mixes.some((m) => m.recommended)) {
     const tr = document.createElement('tr');
-    const cols = regimeMode ? 8 : 6;
-    const why = regimeMode
-      ? 'no mix harvested across every market type with a positive holdout. Rankings above reflect robustness, not a proven edge.'
-      : 'no mix cleared the walk-forward + holdout bar. Rankings above reflect capital preservation, not harvesting skill.';
+    const cols = regimeMode ? 9 : 6;
+    const why = r.noRealPossibility
+      ? 'no mix kept up with the market (holding BTC in the index currency) on return and drawdown. The rows are best-effort harvesters, not upgrades over holding.'
+      : regimeMode
+        ? 'no mix both harvested across every market type AND kept up with the market. Rankings reflect robustness, not a proven edge.'
+        : 'no mix both cleared the walk-forward + holdout bar AND kept up with the market. Rankings reflect capital preservation, not skill.';
     tr.innerHTML = `<td colspan="${cols}" class="warn-text">★ none — ${why}</td>`;
     tbody.appendChild(tr);
   }
@@ -954,6 +974,12 @@ function renderCompose(latest) {
       (r.universe && r.universe.droppedNames && r.universe.droppedNames.length
         ? ` Dropped for missing history: ${r.universe.droppedNames.map((s) => s.toUpperCase()).join(', ')}.`
         : '');
+  } else if (r.heldOnly) {
+    const kept = (r.screen || []).filter((s) => s.kept);
+    const dropped = (r.screen || []).filter((s) => !s.kept);
+    sc.textContent =
+      `Current holdings, drops allowed: searching subsets + weights of your ${r.universe ? r.universe.covered : ''} holdings (no market candidates).` +
+      (dropped.length ? ` Solo screen weeded: ${dropped.map((s) => s.symbol.toUpperCase()).join(', ')}.` : ' Solo screen kept all; the subset search can still drop assets.');
   } else if (r.screen && r.screen.length) {
     const kept = r.screen.filter((s) => s.kept);
     const dropped = r.screen.filter((s) => !s.kept);
@@ -986,7 +1012,9 @@ function renderCompose(latest) {
     (regimeMode && r.regime
       ? ` · REGIME mode: ${r.regime.byType.bull}d bull / ${r.regime.byType.bear}d bear / ${r.regime.byType.range}d range`
       : ` · ${w.nFolds || '?'} walk-forward folds`) +
-    ` + untouched holdout from ${w.holdoutFrom ? new Date(w.holdoutFrom).toISOString().slice(0, 10) : '?'} (${w.holdoutBars} bars).`;
+    ` + untouched holdout from ${w.holdoutFrom ? new Date(w.holdoutFrom).toISOString().slice(0, 10) : '?'} (${w.holdoutBars} bars).` +
+    (r.market ? ` · market (hold BTC): ${sp(r.market.return)} / DD ${r.market.maxDD.toFixed(0)}% — the bar a "real possibility" must keep up with.` : '') +
+    (r.weededForQuality ? ` · ${r.weededForQuality} mix(es) hidden: lagged the market.` : '');
 }
 
 $('#c-run').addEventListener('click', async () => {
@@ -994,9 +1022,10 @@ $('#c-run').addEventListener('click', async () => {
   $('#c-run').disabled = true;
   $('#c-status').textContent = 'starting…';
   try {
+    const scope = $('#c-scope').value;
     const { jobId } = await api(`/profiles/${profileId}/compose`, {
       method: 'POST',
-      body: { samples: Number($('#c-intensity').value), currentSet: $('#c-currentset').checked },
+      body: { samples: Number($('#c-intensity').value), currentSet: scope === 'reweight', heldOnly: scope === 'drops' },
     });
     trackJob('compose', jobId, profileId);
   } catch (err) {

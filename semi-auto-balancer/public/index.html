@@ -135,8 +135,13 @@
                 allocation <em>and</em> its sensitivity together.</p>
               <div class="inline">
                 <button id="c-run">Run search</button>
-                <label class="muted toggle-inline" title="Search only your current assets' proportions × sensitivity — no new assets, none dropped">
-                  <input type="checkbox" id="c-currentset"> Current holdings only (allocation × sensitivity)</label>
+                <label class="muted">scope
+                  <select id="c-scope">
+                    <option value="full" selected>Full universe (holdings + market candidates)</option>
+                    <option value="reweight">Current holdings — re-weight only (alloc × sensitivity)</option>
+                    <option value="drops">Current holdings — allow drops</option>
+                  </select>
+                </label>
                 <label class="muted">intensity
                   <select id="c-intensity">
                     <option value="20000">quick (~20k combos, ~1 min)</option>

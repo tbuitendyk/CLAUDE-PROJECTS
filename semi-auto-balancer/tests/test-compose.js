@@ -165,6 +165,13 @@ const IDS = [...seriesById.keys()];
   ok(rr.mixes[0].consistency >= 0, 'top mix has a non-negative worst-type edge (harvests even in its weakest regime)');
   ok(rr.currentMix.reference === true && rr.currentMix.recommended === false, 'current mix reference-only in regime mode too');
 
+  // --- quality gate: a market benchmark yields return/DD + beatsMarket, and
+  // ★ requires keeping up with the market ---
+  ok(rr.market && Number.isFinite(rr.market.return) && Number.isFinite(rr.market.maxDD), 'market benchmark (hold BTC in index) computed');
+  ok(rr.mixes.every((m) => Number.isFinite(m.netReturn) && Number.isFinite(m.maxDD) && typeof m.beatsMarket === 'boolean'), 'every mix carries return / maxDD / beatsMarket');
+  ok(rr.mixes.every((m) => !m.recommended || m.beatsMarket), '★ is reserved for mixes that keep up with the market');
+  ok(typeof rr.weededForQuality === 'number' && rr.weededForQuality >= 0, 'a weeded-for-quality count is reported');
+
   // --- CURRENT-SET mode: allocation × sensitivity on a FIXED holdings set.
   // Keeps every asset present (no subsets), each 4–80% on a 1% grid, and
   // carries a per-split sensitivity sweep. ---
@@ -203,6 +210,11 @@ const IDS = [...seriesById.keys()];
     ok(Array.isArray(m.xGrid) && m.xGrid.length === compose.MINI_X.length, 'split carries the full sensitivity sweep');
     ok(m.xGrid.every((g) => Number.isFinite(g.value) && Number.isFinite(g.edge)), 'every sweep point has value + edge');
   }
+  // No benchmark passed to this current-set call → market gate disabled: every
+  // split "beats market" and nothing is weeded on quality grounds.
+  ok(cs.market == null, 'no benchmark → no market gate');
+  ok(cs.mixes.every((m) => m.beatsMarket === true), 'gate off → all splits pass the market check');
+  ok(cs.mixes.every((m) => Number.isFinite(m.netReturn) && Number.isFinite(m.maxDD)), 'splits still carry return / maxDD');
   ok(cs.currentMix && cs.currentMix.reference === true && cs.currentMix.recommended === false, 'current mix scored, reference-only');
   ok(Array.isArray(cs.currentMix.xGrid) && cs.currentMix.xGrid.length === compose.MINI_X.length, 'current mix carries its own sensitivity sweep');
   // Every asset must be able to reach the 80% ceiling: with a floor of 4% and
