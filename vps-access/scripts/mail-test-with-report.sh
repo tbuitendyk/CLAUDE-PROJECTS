@@ -66,21 +66,34 @@ grep -F $(for x in $(echo "$ids" | tr ' ' '\n' | sort -u) "$mid"; do echo -n " -
 '''
 midcore=mid.strip('<>')
 seed=qid or "NOQID"
-trace=""; err=""
-for _ in range(6):  # up to ~24s
+
+def final_delivery(t):
+    # the REAL delivery line = a status= line whose relay is NOT the Amavis
+    # loopback (:10024/10025/10026). That excludes the content-filter handoff.
+    for ln in t.splitlines():
+        if re.search(r'status=(sent|deferred|bounced|expired)', ln) and not re.search(r':1002[456]\b', ln):
+            return ln.strip()
+    return None
+
+trace=""; err=""; final=None
+for _ in range(8):  # up to ~32s -- external relay + remote response can lag
     time.sleep(4)
     res=subprocess.run(["ssh","-o","BatchMode=yes","-o","StrictHostKeyChecking=accept-new",
          "-o","ConnectTimeout=8",f"root@{MAILVM}","bash","-s",midcore,seed],
         input=REMOTE, capture_output=True, text=True, timeout=30)
     trace=res.stdout.strip(); err=res.stderr.strip()
-    if re.search(r'status=(sent|bounced|deferred|expired)|: removed$', trace, re.M): break
+    final=final_delivery(trace)
+    if final: break
 if not trace: trace="(no matching mail.log lines found)"
 if err: trace += f"\n[ssh stderr] {err}"
-print("=== trace (first 900 chars) ===\n"+trace[:900])
+outcome=final or "(no final delivery line captured within the poll window -- external relay may be slow/greylisted; re-run to see the outcome)"
+print("=== FINAL DELIVERY ===\n"+outcome)
+print("=== trace (first 600 chars) ===\n"+trace[:600])
 
 body=(f"Delivery report -- test message to <{sendto}>\n"
       f"Sent (UTC): {ts}\nMessage-ID: {mid}\nQueue-ID: {qid}\nSubmit response: {dresp}\n\n"
-      f"--- /var/log/mail.log on the mail VM ({MAILVM}) ---\n{trace}\n")
+      f"FINAL DELIVERY:\n{outcome}\n\n"
+      f"--- full /var/log/mail.log trace (mail VM {MAILVM}) ---\n{trace}\n")
 _,_,r2=submit(reportto, f"Mail delivery report: {sendto}", body)
 print(f"report emailed to <{reportto}>: {(r2 or '').splitlines()[0] if r2 else ''}")
 PY
