@@ -37,7 +37,10 @@ h1 { font-size: 1.2rem; margin: 0; }
   padding: .45rem .8rem; white-space: nowrap;
 }
 .help-link:hover { color: var(--text); border-color: var(--accent); }
-.help-link + .home-link { margin-left: 0; }
+/* Only the FIRST right-side link pushes off the title; the rest sit tight
+   beside it (two auto margins would otherwise split the free space and
+   strand the first link mid-header). */
+.help-link + .help-link, .help-link + .home-link { margin-left: 0; }
 h2 { font-size: 1.05rem; margin: 0 0 .75rem; }
 h3 { font-size: .95rem; margin: 1.25rem 0 .5rem; }
 main { padding: 1.5rem; max-width: 1440px; margin: 0 auto; }
