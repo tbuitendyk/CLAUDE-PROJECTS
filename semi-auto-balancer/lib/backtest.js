@@ -446,6 +446,7 @@ async function runTuneSweep(profileId, { days = 730, lagHours = 6, granularity =
     bars: bars.length,
     assets: active.map((a) => a.symbol),
     targets: active.map((a) => `${String(a.symbol).toUpperCase()}:${a.target_pct}`),
+    indexSymbol: (active.find((a) => a.is_index) || {}).symbol || null,
   };
   return { result, params: { days, lagHours, granularity, hypothetical } };
 }

@@ -695,13 +695,26 @@ function renderTune(latest, profile) {
   box.classList.remove('hidden');
 
   const reco = $('#tune-reco');
+  // A hypothetical sweep (⇢ tuner from the composition lab) shows the exact
+  // mix under test front and centre — not just in the fine-print stamp.
+  const stampS = r.stamp || {};
+  const mixLine =
+    stampS.hypothetical && stampS.targets
+      ? `<span class="tune-mix">Mix under test (hypothetical): ${stampS.targets
+          .map((t) => {
+            const [sym, pct] = t.split(':');
+            return `${sym}${stampS.indexSymbol && sym.toLowerCase() === String(stampS.indexSymbol).toLowerCase() ? '⚓' : ''} ${pct}%`;
+          })
+          .join(' · ')}</span><br>`
+      : '';
   if (r.recommendation) {
     const same = Math.abs(r.recommendation.x - profile.threshold_pct) < 1e-9;
     reco.innerHTML =
+      mixLine +
       `Recommended sensitivity: <strong>${r.recommendation.x}%</strong> ` +
       `<span class="muted">(${r.recommendation.reason}; current setting: ${profile.threshold_pct}%${same ? ' — already applied' : ''})</span>`;
   } else {
-    reco.innerHTML = '<strong>No recommendation</strong> <span class="muted">— see warning below.</span>';
+    reco.innerHTML = mixLine + '<strong>No recommendation</strong> <span class="muted">— see warning below.</span>';
   }
 
   const warn = $('#tune-warnings');
@@ -911,7 +924,7 @@ function renderCompose(latest) {
     '<th title="Whole-window return @ the trigger sensitivity that produced it (@ hold = holding won, no full-window trigger) · max drawdown · whether it keeps up with the market (holding BTC in the index currency). ✓mkt = real possibility; ▼mkt = lags the market">Return @ X · DD · vs mkt</th>';
   const thead = $('#c-table thead');
   thead.innerHTML = regimeMode
-    ? '<tr><th>Mix (targets) · ★ = recommended</th>' +
+    ? '<tr><th title="The proposed allocation: each asset with its target %. ⚓ marks the tethered index. ★ = recommended (harvests in every present market type AND keeps up with the market, with a positive holdout)">Mix (targets) · ★ = recommended</th>' +
       '<th title="Market types (bull/bear/range) the mix harvested in, out of those present">Types ✓</th>' +
       '<th title="Median harvest edge over holding across BULL swaths">Bull</th>' +
       '<th title="Median harvest edge over holding across BEAR swaths">Bear</th>' +
@@ -919,10 +932,10 @@ function renderCompose(latest) {
       '<th title="Worst market type — the consistency score the ranking uses">Worst</th>' +
       '<th title="Equal-weighted mean edge across market types">Avg</th>' +
       '<th title="Untouched confirmation tail: value and (edge over holding)">Holdout</th>' +
-      qualTh + '<th></th></tr>'
-    : '<tr><th>Mix (targets) · ★ = recommended</th><th title="Walk-forward windows harvested, out of N">Folds ✓</th>' +
+      qualTh + '<th title="⇢ tuner: send this mix to the sensitivity tuner for a full X-grid sweep (hypothetical — nothing applies)"></th></tr>'
+    : '<tr><th title="The proposed allocation: each asset with its target %. ⚓ marks the tethered index. ★ = recommended (harvests in most walk-forward windows AND keeps up with the market, with a positive holdout)">Mix (targets) · ★ = recommended</th><th title="Walk-forward windows harvested, out of N sequential in-sample folds — how CONSISTENTLY this mix beat holding across time">Folds ✓</th>' +
       '<th title="Median harvest edge across the folds">Median edge</th><th title="Untouched confirmation tail: value and (edge)">Holdout</th>' +
-      '<th title="Best sensitivity on the holdout">X</th>' + qualTh + '<th></th></tr>';
+      '<th title="Best sensitivity on the holdout">X</th>' + qualTh + '<th title="⇢ tuner: send this mix to the sensitivity tuner for a full X-grid sweep (hypothetical — nothing applies)"></th></tr>';
 
   const tbody = $('#c-table tbody');
   tbody.innerHTML = '';
@@ -970,7 +983,7 @@ function renderCompose(latest) {
     if (highlight) tr.classList.add('ref-row');
     const star = row.recommended ? ' ★' : '';
     const h = row.holdout || {};
-    const labelCell = `${label}${star}${xSweep(row)}`;
+    const labelCell = `<span class="mix-label">${label}${star}</span>${xSweep(row)}`;
     tr.innerHTML = regimeMode
       ? `<td>${labelCell}</td>` +
         `<td>${row.typesPositive != null ? `${row.typesPositive}/${row.typesPresent}` : '—'}</td>` +

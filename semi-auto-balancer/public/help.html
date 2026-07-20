@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Semi-Auto Balancer — User Guide</title>
+  <link rel="stylesheet" href="style.css">
+  <style>
+    /* Help-page-only styling: figures mimic the live UI so sections are
+       visually recognizable at a glance. */
+    main.help { max-width: 980px; }
+    main.help h2 { font-size: 1.25rem; margin: 2.2rem 0 .6rem; padding-top: 1rem; border-top: 1px solid var(--border); }
+    main.help h3 { font-size: 1rem; margin: 1.2rem 0 .4rem; }
+    main.help p, main.help li { font-size: .92rem; line-height: 1.55; }
+    main.help code { background: var(--card); border: 1px solid var(--border); border-radius: 4px; padding: .05rem .35rem; font-size: .85em; }
+    .fig {
+      background: var(--card); border: 1px solid var(--border); border-radius: 10px;
+      padding: .9rem 1rem; margin: .8rem 0 1rem; overflow-x: auto;
+    }
+    .fig figcaption { color: var(--muted); font-size: .8rem; margin-top: .6rem; }
+    .fig table { font-size: .8rem; }
+    .fig .callout { color: var(--warn); font-size: .75rem; white-space: nowrap; }
+    .toc { columns: 2; font-size: .9rem; }
+    .toc a { color: var(--accent); text-decoration: none; }
+    .kbd-note { color: var(--muted); font-size: .85rem; }
+    .mock-strip { font-size: .78rem; color: var(--muted); display: flex; flex-wrap: wrap; gap: .3rem .6rem; align-items: center; margin-top: .3rem; }
+    .term { font-weight: 600; }
+    dl.gloss dt { font-weight: 600; margin-top: .7rem; }
+    dl.gloss dd { margin: .15rem 0 0 0; color: var(--muted); font-size: .9rem; line-height: 1.5; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Semi-Auto Balancer — User Guide</h1>
+    <a class="home-link" href="index.html">Back to the app</a>
+  </header>
+  <main class="help">
+
+    <p class="kbd-note">Tip: every column header and most controls in the app carry a hover tooltip —
+    hold the pointer over anything for its exact definition. This guide covers the concepts and how the
+    sections fit together.</p>
+
+    <h2 id="toc">Contents</h2>
+    <div class="toc">
+      <div><a href="#overview">1. What this tool is</a></div>
+      <div><a href="#assets">2. Assets grid &amp; the tethered index</a></div>
+      <div><a href="#targets">3. Targets, basket &amp; value index</a></div>
+      <div><a href="#tuner">4. Sensitivity tuner</a></div>
+      <div><a href="#lab">5. Composition lab</a></div>
+      <div><a href="#pool">6. Candidate pool (exclusions)</a></div>
+      <div><a href="#sync">7. Exchange sync</a></div>
+      <div><a href="#safety">8. Safety rails</a></div>
+      <div><a href="#notify">9. Notifications</a></div>
+      <div><a href="#gloss">10. Glossary</a></div>
+    </div>
+
+    <h2 id="overview">1. What this tool is</h2>
+    <p>A <strong>semi-automatic rebalancer</strong>: it watches your portfolio (one flat pool of assets
+    per profile), and when an asset drifts far enough from its target weight it <em>notifies</em> you
+    with the exact trades to make. Nothing trades itself, and nothing changes settings itself — every
+    analysis is <strong>advisory-with-apply</strong>. The two analysis tools (tuner and lab) are
+    backtests over real exchange history (~4 years daily where available), with honesty rails: costs
+    always on, out-of-sample confirmation, and explicit "no edge found" verdicts.</p>
+
+    <h2 id="assets">2. Assets grid &amp; the tethered index</h2>
+    <figure class="fig">
+      <table>
+        <thead><tr><th>Index</th><th>Symbol</th><th>Target %</th><th>Quantity</th><th>Price (USD)</th><th>Value (USD)</th><th>Actual %</th><th>Drift vs target</th><th>Trigger @</th><th>Status</th><th></th></tr></thead>
+        <tbody>
+          <tr class="index-row"><td class="center">☑</td><td class="sym-cell">USDC ⚓</td><td>15%</td><td>4,120</td><td>$1.00</td><td>$4,120</td><td>14.8%</td><td>—</td><td><span class="muted">note</span></td><td><span class="muted">—</span></td><td></td></tr>
+          <tr><td class="center">☐</td><td class="sym-cell">BTC</td><td>40%</td><td>0.1712</td><td>$64,800</td><td>$11,090</td><td>41.2%</td><td><span class="pos">+3.0%</span></td><td>±5.2%</td><td><span class="chip chip-toggle">☐ ignore freeze</span></td><td>✕</td></tr>
+          <tr><td class="center">☐</td><td class="sym-cell">DOGE</td><td>20%</td><td>28,400</td><td>$0.072</td><td>$2,050</td><td>17.4%</td><td><span class="neg">−13.0%</span></td><td>±6.9%</td><td><span class="chip chip-frozen">🧊 frozen</span> <span class="chip chip-toggle">☐ ignore freeze</span></td><td>✕</td></tr>
+        </tbody>
+      </table>
+      <figcaption>The assets grid. The <strong>tethered index</strong> (⚓, checkmarked) sits pinned on top —
+      it defines the profile's denomination and holds the cash side of every rebalance. Status chips show
+      safety-rail state per asset.</figcaption>
+    </figure>
+    <ul>
+      <li><span class="term">Index checkbox</span> — exactly one asset is the tethered index (USDC, USD, MXN…).
+        Every value, basket and backtest is denominated in it. Switching it splices the track record
+        continuously — then use <em>Set new targets</em> to give the new tether a real band.</li>
+      <li><span class="term">Trigger @</span> — the per-asset drift trigger, derived from the profile
+        sensitivity X by weight-normalization <code>X(1−w)/(1+wX)</code>, so a 4% asset and a 56% asset both
+        react at about the same own-price move. The tether itself never trades on its own breach.</li>
+      <li><span class="term">Status</span> — the buy-freeze badge (click to unfreeze), the standing
+        <em>ignore freeze</em> toggle (visible on every active asset, persists across freeze/unfreeze), and
+        the depeg flag. See <a href="#safety">Safety rails</a>.</li>
+    </ul>
+
+    <h2 id="targets">3. Targets, basket &amp; value index</h2>
+    <p><strong>Set new targets</strong> opens the editor; targets (index included) must total 100%. Two
+    chained series survive every change:</p>
+    <ul>
+      <li><span class="term">Currency basket</span> — unit growth from <em>trading only</em>. Deposits,
+        withdrawals and target changes splice through it without a jump; only buys/sells (and market moves
+        between them) move it. Basket &gt; 1.0 means rebalancing has accumulated units.</li>
+      <li><span class="term">Value index</span> — performance in index-currency terms since
+        <em>value started</em>; feeds the annualized (compounding) rate on the profile summary.</li>
+    </ul>
+    <p>Record manual <strong>deposits / withdrawals</strong> in their section (or let exchange sync detect
+    them) — they are spliced, never counted as gains.</p>
+
+    <h2 id="tuner">4. Sensitivity tuner (backtest)</h2>
+    <figure class="fig">
+      <table>
+        <thead><tr><th>X %</th><th>Basket</th><th>Value</th><th>vs hold</th><th>½ recent</th><th>¼ recent</th><th>Max DD</th><th>Trades</th><th>Fees</th><th></th></tr></thead>
+        <tbody>
+          <tr><td class="muted">hold</td><td class="muted">—</td><td>+38.2%</td><td class="muted">baseline</td><td class="muted">−4.1% hold</td><td class="muted">−9.8% hold</td><td>51.2%</td><td class="muted">0</td><td class="muted">—</td><td></td></tr>
+          <tr><td>20%</td><td>+6.1%</td><td>+41.0%</td><td><span class="pos">+2.8%</span></td><td>−3.0% <span class="pos">(+1.1)</span></td><td>−9.1% <span class="pos">(+0.7)</span></td><td>50.8%</td><td>31</td><td>0.9%</td><td><button class="ghost">Apply</button></td></tr>
+          <tr class="reco-row"><td>25% ★</td><td>+6.0%</td><td>+41.2%</td><td><span class="pos">+3.0%</span></td><td>−3.2% <span class="pos">(+0.9)</span></td><td>−9.4% <span class="pos">(+0.4)</span></td><td>50.6%</td><td>24</td><td>0.7%</td><td><button class="ghost">Apply</button></td></tr>
+        </tbody>
+      </table>
+      <div class="mock-strip"><span class="callout">★ green row = recommended X</span>
+        <span class="callout">½ / ¼ recent = same X re-simulated on the most recent half / quarter</span></div>
+      <figcaption>The tuner replays your mix at every sensitivity X. Trust <em>plateaus</em> (several adjacent
+      X all good), never a lone spike.</figcaption>
+    </figure>
+    <ul>
+      <li><span class="term">Basket / Value / vs hold</span> — whole-window results per X; <em>vs hold</em>
+        is the harvest edge over doing nothing. A recommendation appears only where basket AND value agree
+        on a plateau; divergence gives a warning instead.</li>
+      <li><span class="term">½ recent / ¼ recent</span> — the same X over the most recent half and quarter
+        of the history, each against its own hold baseline. An X that shines on all-history but bleeds in
+        the recent quarter is an edge that died.</li>
+      <li><span class="term">Hypothetical sweeps</span> — arriving via <em>⇢ tuner</em> from the lab, the
+        exact mix under test is shown above the table and <strong>Apply is disabled</strong> (it's not your
+        applied targets). The stamp says HYPOTHETICAL.</li>
+      <li><span class="term">Idealize tether 1:1</span> — assumption toggle: treat a USD-stable tether as a
+        perfect $1 peg (erases real wobble/depegs, e.g. USDC's 2023 SVB dip). Stated in the stamp when on;
+        refuses non-USD-stable tethers.</li>
+    </ul>
+
+    <h2 id="lab">5. Composition lab (mix search)</h2>
+    <figure class="fig">
+      <table>
+        <thead><tr><th>Mix (targets) · ★</th><th>Types ✓</th><th>Bull</th><th>Bear</th><th>Range</th><th>Worst</th><th>Avg</th><th>Holdout</th><th>Return @ X · DD · vs mkt</th><th></th></tr></thead>
+        <tbody>
+          <tr class="ref-row"><td><span class="mix-label">CURRENT (reference only): USDC⚓ 15% · BTC 40% · XRP 25% · DOGE 20%</span></td><td>1/3</td><td>+0.2%</td><td>+0.9%</td><td>+0.1%</td><td><strong>+0.1%</strong></td><td>+0.4%</td><td>−11.7% <span class="muted">(edge +0.9%)</span> <span class="muted">@ 20%</span></td><td>+105% <span class="muted">@ hold · DD 58%</span> <span class="pos">✓mkt</span></td><td><button class="ghost">⇢ tuner</button></td></tr>
+          <tr><td><span class="mix-label">USDC⚓ 10% · DOGE 20% · XLM 22.5% · BCH 25% · XRP 22.5% ★</span></td><td>3/3</td><td>+1.5%</td><td>+1.0%</td><td>+0.8%</td><td><strong>+0.8%</strong></td><td>+1.1%</td><td>−56.3% <span class="muted">(edge +1.2%)</span> <span class="muted">@ 25%</span></td><td>+172% <span class="muted">@ 30% · DD 63%</span> <span class="pos">✓mkt</span></td><td><button class="ghost">⇢ tuner</button></td></tr>
+        </tbody>
+      </table>
+      <div class="mock-strip">
+        <span class="callout">blue row = your CURRENT mix (reference only, never a bar to beat)</span>
+        <span class="callout">★ = recommended</span>
+        <span class="callout">⇢ tuner = full X sweep of that mix</span>
+      </div>
+      <figcaption>Regime-mode results. Bull/Bear/Range = harvest edge <em>within</em> each market type
+      (in-sample attribution); Holdout = the one true out-of-sample number; Return @ X = whole-window
+      return at the trigger that produced it (<code>@ hold</code> = no trigger beat holding).</figcaption>
+    </figure>
+    <h3>Scopes</h3>
+    <ul>
+      <li><span class="term">Full universe</span> — your holdings + top market-cap candidates
+        (venue-tradable, full-window history), searching groups AND weights.</li>
+      <li><span class="term">Current holdings — re-weight only</span> — your exact asset set, nothing added
+        or dropped; each asset 4–80% on a 1% grid; every split carries its own
+        <em>split × sensitivity</em> strip (per-X edge, best X starred — trust runs of green, not a lone
+        starred spike).</li>
+      <li><span class="term">Current holdings — allow drops</span> — subsets + weights of what you own, so
+        dead weight can be shed.</li>
+    </ul>
+    <h3>How to read a result</h3>
+    <ul>
+      <li><span class="term">Two modes.</span> With deep history the search runs <em>regime mode</em>
+        (columns above: per-market-type harvest, classified from BTC's action into bull/bear/range swaths).
+        With shallow history it runs <em>folds mode</em> (walk-forward: Folds ✓ / Median edge columns).</li>
+      <li><span class="term">Harvest edge ≠ return.</span> Bull/Bear/Range/Worst/Avg measure what
+        rebalancing added <em>over holding the same bag</em> — blind to whether the bag itself sank. That's
+        why the quality gate exists:</li>
+      <li><span class="term">✓mkt / ▼mkt</span> — does the mix keep up with the market (holding BTC in your
+        index currency) on return AND drawdown? ★ requires harvesting <em>and</em> ✓mkt with a positive
+        holdout. Mixes that harvested well but sank are hidden (counted in the stamp).</li>
+      <li><span class="term">No-harvest / no-real-possibility verdicts</span> — when nothing clears the bar
+        the table says so honestly instead of dressing up the least-bad row.</li>
+      <li><span class="term">The stamp</span> (bottom line) records everything: combos searched, universe
+        and every exclusion by name (venue, missing history, your pool unchecks), window and what limited
+        it, regime day-counts, the market bar, and any active assumptions.</li>
+    </ul>
+
+    <h2 id="pool">6. Candidate pool (exclusions)</h2>
+    <p><strong>Candidate pool…</strong> (next to Run search) lists everything the lab would consider —
+    held assets (marked •) and market candidates. <strong>Uncheck</strong> an asset to exclude it from
+    every scope; saved per profile instantly, and named in the result stamp ("excluded by you: …").
+    The tethered index is locked — every mix is denominated in it. Use this to weed assets that are
+    expensive to trade from your position (indirect crosses) or that you never want proposed.</p>
+
+    <h2 id="sync">7. Exchange sync</h2>
+    <p>Link a <strong>read-only</strong> API key (Kraken or Bitso). Balances and trades sync
+    automatically; your quantities become ground truth from the venue. Detected deposits/withdrawals wait
+    for confirmation before splicing the track record (auto-apply once you trust it). Real fills also
+    calibrate the fee/spread costs the backtests use. The sync note warns when the key lacks history
+    permissions.</p>
+
+    <h2 id="safety">8. Safety rails</h2>
+    <ul>
+      <li><span class="term">Buy-freeze (🧊)</span> — an asset in a structural break (deep drawdown beyond
+        its recovered envelope, or falling far more than the market) has BUY alerts suppressed; sells still
+        alert. Auto-unfreezes on recovery or catch-up; click the badge to unfreeze manually.</li>
+      <li><span class="term">Ignore freeze</span> — standing per-asset override (visible on every active
+        asset): BUY alerts and lab eligibility stay active even if the rail freezes it. Persists across
+        freeze/unfreeze cycles — the chip highlights when armed.</li>
+      <li><span class="term">Depeg watch (⚠)</span> — a stable asset trading outside its band is flagged;
+        valuation stays pinned 1:1.</li>
+    </ul>
+
+    <h2 id="notify">9. Notifications</h2>
+    <p>Per-profile recipients: email and/or Telegram (one bot token shared app-wide; each recipient
+    <code>/start</code>s the bot, then "Find chat IDs"). The state machine:
+    <strong>armed</strong> → alert sent → <strong>notified</strong> (quiet) → re-armed by the next sync,
+    a screenshot upload, "Poll now", or the 12-hour timeout. "Poll now" is the universal reset.</p>
+
+    <h2 id="gloss">10. Glossary</h2>
+    <dl class="gloss">
+      <dt>Sensitivity X</dt><dd>The profile-wide price-move threshold (%). Weight-normalized per asset into its Trigger @.</dd>
+      <dt>Harvest edge</dt><dd>Value growth above holding the identical basket untouched — what rebalancing itself added, in percentage points.</dd>
+      <dt>Hold</dt><dd>The do-nothing baseline: same starting weights, no trades ever.</dd>
+      <dt>Holdout</dt><dd>The most recent ~20% of the window, never touched during search/optimization — the only true out-of-sample number.</dd>
+      <dt>In-sample</dt><dd>The first ~80%, where the search optimizes. Bull/Bear/Range columns are in-sample attribution.</dd>
+      <dt>Regime / swath</dt><dd>Contiguous bull, bear or range stretch of the market, classified from BTC's action (centered trend, no lag). "Types ✓ 3/3" = harvested in all three.</dd>
+      <dt>Worst / Avg</dt><dd>Worst market-type edge (consistency — the primary rank) and the equal-weighted mean across types.</dd>
+      <dt>Folds</dt><dd>Shallow-history alternative: N sequential walk-forward windows; Folds ✓ counts how many the mix harvested in.</dd>
+      <dt>✓mkt</dt><dd>Keeps up with the market benchmark — holding BTC in the index currency — on both return and max drawdown.</dd>
+      <dt>Max DD</dt><dd>Deepest peak-to-trough fall of portfolio value across the window.</dd>
+      <dt>Basket</dt><dd>Chained unit-growth series moved only by trading; splice-continuous across targets, flows, and index switches.</dd>
+      <dt>Idealize tether</dt><dd>Assumption toggle: a USD-stable tether treated as a perfect $1 peg. Always stated in the stamp when active.</dd>
+    </dl>
+
+    <p class="kbd-note" style="margin-top:2rem">Guide reflects the live build. Sections and columns carry
+    their own tooltips in the app — this page is the map, the tooltips are the fine print.</p>
+  </main>
+</body>
+</html>

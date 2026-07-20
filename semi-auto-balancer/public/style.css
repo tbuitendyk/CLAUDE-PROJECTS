@@ -31,6 +31,13 @@ h1 { font-size: 1.2rem; margin: 0; }
   padding: .45rem .8rem; white-space: nowrap;
 }
 .home-link:hover { filter: brightness(1.08); }
+.help-link {
+  margin-left: auto; text-decoration: none; font-size: .85rem;
+  color: var(--muted); border: 1px solid var(--border); border-radius: 6px;
+  padding: .45rem .8rem; white-space: nowrap;
+}
+.help-link:hover { color: var(--text); border-color: var(--accent); }
+.help-link + .home-link { margin-left: 0; }
 h2 { font-size: 1.05rem; margin: 0 0 .75rem; }
 h3 { font-size: .95rem; margin: 1.25rem 0 .5rem; }
 main { padding: 1.5rem; max-width: 1440px; margin: 0 auto; }
@@ -170,6 +177,11 @@ tr.breached td { background: color-mix(in srgb, var(--danger) 10%, transparent);
 }
 .toggle-inline { display: inline-flex; align-items: center; gap: .35rem; }
 .toggle-inline input { width: auto; }
+
+/* Composition lab: the mix column never wraps mid-label (the table scrolls
+   horizontally instead), and gets room to breathe. */
+#c-table th:first-child, #c-table td:first-child { min-width: 24rem; }
+.mix-label { white-space: nowrap; }
 
 /* Composition lab candidate pool: a tidy grid of equal-width columns, each
    checkbox hard against its own ticker so ownership is unambiguous. */

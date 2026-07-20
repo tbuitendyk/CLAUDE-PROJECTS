@@ -10,6 +10,7 @@
   <header>
     <h1>Semi-Auto Balancer</h1>
     <span id="email-status" class="pill"></span>
+    <a class="help-link" href="help.html" target="_blank" rel="noopener" title="Open the user guide in a new tab">Help</a>
     <a class="home-link" href="https://www.buitendyk.ca/">Home</a>
   </header>
 
@@ -69,7 +70,7 @@
             <div class="table-wrap">
               <table id="asset-table">
                 <thead>
-                  <tr><th title="Tethered index asset (priced 1:1 with the index)">Index</th><th>Symbol</th><th>Target %</th><th>Quantity</th><th>Price (USD)</th><th>Value (USD)</th><th>Actual %</th><th>Drift vs target</th><th title="This asset's effective drift trigger — weight-normalized so every asset reacts at about the same own-price move">Trigger @</th><th title="Buy-freeze / depeg status">Status</th><th></th></tr>
+                  <tr><th title="Checkmark ONE asset as the tethered index: it defines the profile's denomination, is priced 1:1 with the index, and holds the cash side of every rebalance">Index</th><th title="Ticker. ⚓ marks the tethered index asset">Symbol</th><th title="This asset's intended share of the pool. All targets (index included) must total 100%">Target %</th><th title="Units currently held — editable; exchange sync updates it automatically when linked">Quantity</th><th title="Latest fetched price in USD">Price (USD)</th><th title="Quantity × price, in USD">Value (USD)</th><th title="This asset's CURRENT share of the pool's total value">Actual %</th><th title="Relative drift: (actual − target) ÷ target. The alert fires when |drift| crosses the trigger">Drift vs target</th><th title="This asset's effective drift trigger — weight-normalized from the profile sensitivity X so every asset reacts at about the same own-price move X">Trigger @</th><th title="Safety-rail state: 🧊 buy-freeze (click to unfreeze) · standing ignore-freeze toggle · ⚠ depeg flag">Status</th><th title="Remove the asset from this profile"></th></tr>
                 </thead>
                 <tbody></tbody>
               </table>
@@ -115,7 +116,7 @@
                 <div class="table-wrap">
                   <table id="tune-table">
                     <thead>
-                      <tr><th title="Price-move sensitivity">X %</th><th title="Chained basket units, net of fees — ALL history">Basket</th><th title="Value growth — ALL history">Value</th><th title="Value minus holding — ALL history">vs hold</th><th title="Value (and vs hold) over the most recent HALF of the history">½ recent</th><th title="Value (and vs hold) over the most recent QUARTER of the history">¼ recent</th><th>Max DD</th><th>Trades</th><th>Fees</th><th></th></tr>
+                      <tr><th title="Price-move sensitivity">X %</th><th title="Chained basket units, net of fees — ALL history">Basket</th><th title="Value growth — ALL history">Value</th><th title="Value minus holding — ALL history">vs hold</th><th title="Value (and vs hold) over the most recent HALF of the history">½ recent</th><th title="Value (and vs hold) over the most recent QUARTER of the history">¼ recent</th><th title="Deepest peak-to-trough fall of portfolio VALUE over the whole window, in index terms">Max DD</th><th title="Simulated trades executed over the whole window (each leg pays fee + spread)">Trades</th><th title="Total fees + spread paid, as % of starting value">Fees</th><th title="Apply this sensitivity X to the profile (real sweeps only — hypothetical mixes can't be applied)"></th></tr>
                     </thead>
                     <tbody></tbody>
                   </table>
@@ -190,7 +191,7 @@
               </div>
               <div class="table-wrap">
                 <table id="flow-table">
-                  <thead><tr><th>When</th><th>Change</th><th>Note</th></tr></thead>
+                  <thead><tr><th title="When the deposit/withdrawal was recorded (venue timestamp when synced)">When</th><th title="Signed quantity change per asset — spliced into the basket so flows never count as gains">Change</th><th title="Your note, or the sync's origin tag">Note</th></tr></thead>
                   <tbody></tbody>
                 </table>
               </div>
@@ -229,7 +230,7 @@
                     venue's real timestamp (not counted as gains). Dismiss if you already recorded it manually.</p>
                   <div class="table-wrap">
                     <table id="x-pending-table">
-                      <thead><tr><th>When</th><th>Kind</th><th>Amount</th><th></th></tr></thead>
+                      <thead><tr><th title="Venue timestamp of the detected transfer">When</th><th title="deposit or withdrawal, as reported by the venue ledger">Kind</th><th title="Detected amount — confirming splices it into the track record with this exact figure">Amount</th><th title="Confirm (splice) or dismiss (already recorded manually)"></th></tr></thead>
                       <tbody></tbody>
                     </table>
                   </div>
@@ -288,7 +289,7 @@
             <div class="table-wrap">
               <table id="snap-table">
                 <thead>
-                  <tr><th>When</th><th>Basket</th><th>Value index</th><th>Total (index)</th><th>Total (USD)</th></tr>
+                  <tr><th title="Snapshot time">When</th><th title="Chained currency-basket level: unit growth from trading only — deposits, withdrawals and target changes splice through it">Basket</th><th title="Chained value index: performance in index-currency terms, survives target changes and flows">Value index</th><th title="Total pool value in the index currency">Total (index)</th><th title="Total pool value in USD">Total (USD)</th></tr>
                 </thead>
                 <tbody></tbody>
               </table>
