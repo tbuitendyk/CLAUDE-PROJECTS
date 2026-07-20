@@ -217,9 +217,11 @@ function renderDetail() {
     ? new Date(profile.last_polled_at).toLocaleString()
     : 'never';
   const idx = (totals && totals.indexLabel) || 'USD';
-  $('#d-meta').textContent =
-    `Index: ${idx} (tethered asset) · reacts to ~${profile.threshold_pct}% price moves · ` +
-    `polls every ${profile.poll_minutes} min · last poll: ${polled}`;
+  $('#d-meta').textContent = profile.is_shell
+    ? 'Account pool — holds the assets not assigned to any strategy profile. It never polls and never ' +
+      'alerts; deposits land here, dust corrections settle here, and new sub-accounts are funded from here.'
+    : `Index: ${idx} (tethered asset) · reacts to ~${profile.threshold_pct}% price moves · ` +
+      `polls every ${profile.poll_minutes} min · last poll: ${polled}`;
 
   // Editable sensitivity / poll / trading-cost settings.
   $('#s-threshold').value = profile.threshold_pct;
