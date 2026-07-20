@@ -193,6 +193,10 @@
 
             <div id="flow-section">
               <h3>Deposit / withdraw</h3>
+              <p id="flow-pointer" class="muted hidden">This sub-account is funded by <strong>carve-outs</strong>
+                from the master pool. Record external deposits/withdrawals on the group's 🪣 master entry and
+                carve funds here — recording them directly on a sub-account would double-count against the
+                account reconcile once the sync detects the same money.</p>
               <p class="muted">Record external money in or out. Enter a signed change per asset (e.g. <code>+5000</code> deposited, <code>-0.05</code> withdrawn). The currency basket and value performance stay continuous — deposits and withdrawals are not counted as gains.</p>
               <div id="flow-rows"></div>
               <input id="flow-note" placeholder="Note (optional, e.g. monthly savings)" class="flow-note">

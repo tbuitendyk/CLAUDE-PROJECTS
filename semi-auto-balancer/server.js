@@ -1046,7 +1046,16 @@ app.post('/api/profiles/:id/flow', async (req, res) => {
   if (!profile) return res.status(404).json({ error: 'not found' });
   const body = req.body || {};
   try {
-    const result = await recordFlow(profile.id, body.deltas || [], body.note);
+    // Phase 6: the shell's flow rows offer every asset the ACCOUNT knows —
+    // a delta may arrive keyed by coingecko_id instead of an asset_id, and
+    // the shell's own asset row is created on demand (target 0) so an empty
+    // pool can receive its first deposit.
+    const deltas = (body.deltas || []).map((d) => {
+      if (d.asset_id != null || !d.coingecko_id) return d;
+      const asset = subaccounts.ensureAsset(profile.id, { coingecko_id: d.coingecko_id, symbol: d.symbol || d.coingecko_id });
+      return { asset_id: asset.id, delta: d.delta };
+    });
+    const result = await recordFlow(profile.id, deltas, body.note);
     await pollProfiles({ force: true, profileId: profile.id }).catch(() => {});
     res.json({ ok: true, ...result });
   } catch (err) {

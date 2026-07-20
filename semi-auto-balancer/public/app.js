@@ -269,10 +269,16 @@ function renderDetail() {
     summary.append(line1, line2);
   }
 
+  // Strategy-column stripping + pool semantics for the shell's asset table.
+  $('#detail').classList.toggle('shell-mode', Boolean(profile.is_shell));
+
   // target allocations should add up to 100 (tethered index asset included)
+  // — a strategy concern; the shell has no targets by design.
   const warning = $('#alloc-warning');
   const targetTotal = totals ? totals.targetTotal : 0;
-  if (Math.abs(targetTotal - 100) > 0.01) {
+  if (profile.is_shell) {
+    warning.classList.add('hidden');
+  } else if (Math.abs(targetTotal - 100) > 0.01) {
     warning.textContent =
       targetTotal === 0
         ? 'No targets set yet — use "Set new targets" to define the intended mix.'
@@ -1316,6 +1322,10 @@ $('#c-pool-btn').addEventListener('click', async () => {
 // ---- exchange sync ----
 
 function renderExchange(x, pendingFlows, profile) {
+  // Reset the group-view collapses; loadSubaccounts re-applies them when
+  // this profile turns out to be a grouped sub-account.
+  $('#x-pointer').classList.add('hidden');
+  $('#flow-section').classList.remove('group-collapsed');
   $('#x-none').classList.toggle('hidden', Boolean(x));
   $('#x-linked').classList.toggle('hidden', !x);
   if (!x) return;
@@ -1585,6 +1595,35 @@ async function loadSubaccounts(x) {
   const collapse = multi && viewing && !viewing.isShell && shellProfile;
   $('#x-pointer').classList.toggle('hidden', !collapse);
   $('#x-linked').classList.toggle('hidden', Boolean(collapse));
+  $('#flow-section').classList.toggle('group-collapsed', Boolean(collapse));
+  $('#flow-pointer').classList.toggle('hidden', !collapse);
+
+  // On the SHELL, deposit/withdraw offers every asset the account knows
+  // (union across linked profiles, deduped) — an empty pool must be able to
+  // receive its first deposit; the asset row is created server-side.
+  if (viewing && viewing.isShell) {
+    const union = new Map();
+    for (const p of data.profiles) {
+      for (const a of p.assets) if (!union.has(a.coingecko_id)) union.set(a.coingecko_id, a);
+    }
+    const box = $('#flow-rows');
+    box.innerHTML = '';
+    for (const a of [...union.values()].sort((q, w) => q.symbol.localeCompare(w.symbol))) {
+      const row = document.createElement('label');
+      row.className = 'flow-row';
+      const name = document.createElement('span');
+      name.textContent = a.symbol.toUpperCase();
+      const input = document.createElement('input');
+      input.type = 'number';
+      input.step = 'any';
+      input.placeholder = '+deposit / -withdraw';
+      input.dataset.cg = a.coingecko_id;
+      input.dataset.symbol = a.symbol;
+      input.className = 'flow-input';
+      row.append(name, input);
+      box.appendChild(row);
+    }
+  }
   if (collapse) {
     const btn = $('#x-open-shell');
     btn.textContent = `Open 🪣 ${shellProfile.name}`;
@@ -1939,7 +1978,11 @@ function renderFlowRows(assets) {
 
 $('#flow-save').addEventListener('click', async () => {
   const deltas = [...document.querySelectorAll('#flow-rows .flow-input')]
-    .map((input) => ({ asset_id: Number(input.dataset.assetId), delta: Number(input.value) || 0 }))
+    .map((input) =>
+      input.dataset.cg
+        ? { coingecko_id: input.dataset.cg, symbol: input.dataset.symbol, delta: Number(input.value) || 0 }
+        : { asset_id: Number(input.dataset.assetId), delta: Number(input.value) || 0 }
+    )
     .filter((d) => d.delta !== 0);
   if (deltas.length === 0) {
     alert('Enter at least one non-zero deposit or withdrawal.');
@@ -1947,8 +1990,9 @@ $('#flow-save').addEventListener('click', async () => {
   }
   const summary = deltas
     .map((d) => {
-      const a = state.detail.assets.find((x) => x.id === d.asset_id);
-      return `${d.delta >= 0 ? '+' : ''}${d.delta} ${(a ? a.symbol : '').toUpperCase()}`;
+      const a = d.asset_id != null ? state.detail.assets.find((x) => x.id === d.asset_id) : null;
+      const sym = d.symbol || (a ? a.symbol : '');
+      return `${d.delta >= 0 ? '+' : ''}${d.delta} ${sym.toUpperCase()}`;
     })
     .join(', ');
   if (!confirm(`Record this flow?\n\n${summary}\n\nThe basket and value performance stay continuous — this is not counted as a gain.`)) return;
