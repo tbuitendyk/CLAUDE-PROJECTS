@@ -212,6 +212,19 @@ const client = {
   await sub.rewindTxn(carveLegs[0].id);
   ok(approx(qtyOf(shell.id, 'btc'), dust, 1e-9) && approx(qtyOf(1, 'btc'), btcAsset.quantity, 1e-9), 'rewinding one leg reversed BOTH');
 
+  // ---- account summary: totals across profiles in the VIEW's tether ---------
+  const sum1 = sub.accountSummary(account.id, 1, PRICES);
+  ok(sum1.indexSymbol === 'USDC', 'summary denominates in the viewing profile tether');
+  const btcTotal = sum1.assets.find((a) => a.symbol === 'btc');
+  const expectBtc = qtyOf(1, 'btc') + (qtyOf(2, 'btc') || 0) + qtyOf(shell.id, 'btc');
+  ok(approx(btcTotal.qty, expectBtc, 1e-9), `btc total spans all linked profiles (${btcTotal.qty})`);
+  ok(approx(btcTotal.value, expectBtc * 50_000, 1e-6), 'asset value priced in tether units');
+  const expectTotal = sum1.assets.reduce((s2, a) => s2 + (a.value || 0), 0);
+  ok(approx(sum1.totalValue, expectTotal, 1e-6) && sum1.complete, 'account total = sum of asset values, complete');
+  // A missing price degrades honestly instead of lying.
+  const partial = sub.accountSummary(account.id, 1, { ...PRICES, 'pax-gold': undefined });
+  ok(partial.complete === false && partial.assets.find((a) => a.symbol === 'paxg').value === null, 'unpriced asset → null value, total marked partial');
+
   // ---- carve validation ------------------------------------------------------
   threw = false;
   try { await sub.carveOut(account.id, 1, shell.id, [{ asset_id: btcAsset.id, qty: 99 }]); } catch (e) { threw = /available/.test(e.message); }

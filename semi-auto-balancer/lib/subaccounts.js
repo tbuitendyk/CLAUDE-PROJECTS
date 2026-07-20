@@ -1,5 +1,5 @@
 const db = require('./db');
-const { recordFlow } = require('./balancer');
+const { recordFlow, indexUsdFor, priceAsset, indexLabel } = require('./balancer');
 
 // Phase 6 virtual sub-accounts: several profiles carve up ONE physical
 // exchange account, each trading on its own alerts and tracking its own
@@ -359,6 +359,48 @@ async function reassignTxn(txnId, profileId) {
   return { warnings, applied };
 }
 
+// ---- account summary --------------------------------------------------------
+// Combined view across every linked profile: each asset's TOTAL balance and
+// the account's total value, denominated in the VIEWING profile's index
+// tether (each profile may denominate differently — the header follows
+// whichever profile is on screen). usdPrices injected for testability; a
+// missing price leaves that asset's value null and marks the total ≈partial.
+function accountSummary(accountId, viewProfileId, usdPrices) {
+  const profiles = linkedProfiles(accountId);
+  if (profiles.length === 0) return null;
+  const view = profiles.find((p) => p.id === Number(viewProfileId)) || profiles[0];
+  const viewAssets = db.prepare('SELECT * FROM assets WHERE profile_id = ?').all(view.id);
+  const indexUsd = indexUsdFor(viewAssets, usdPrices);
+  const symbol = indexLabel(viewAssets);
+
+  // Total quantity per coingecko id across all linked profiles.
+  const totals = new Map(); // id -> {symbol, qty, sample}
+  for (const p of profiles) {
+    for (const a of db.prepare('SELECT * FROM assets WHERE profile_id = ?').all(p.id)) {
+      const t = totals.get(a.coingecko_id) || { symbol: a.symbol, qty: 0, sample: a };
+      t.qty += a.quantity;
+      totals.set(a.coingecko_id, t);
+    }
+  }
+
+  let totalValue = 0;
+  let complete = indexUsd != null;
+  const assets = [];
+  for (const t of totals.values()) {
+    if (t.qty <= 0) continue;
+    let value = null;
+    if (indexUsd != null) {
+      const pr = priceAsset(t.sample, indexUsd, usdPrices);
+      if (pr && Number.isFinite(pr.rel)) value = t.qty * pr.rel;
+      else complete = false;
+    }
+    if (value != null) totalValue += value;
+    assets.push({ symbol: t.symbol, qty: t.qty, value });
+  }
+  assets.sort((a, b) => (b.value ?? -1) - (a.value ?? -1));
+  return { indexSymbol: symbol, totalValue: complete || totalValue > 0 ? totalValue : null, complete, assets };
+}
+
 // ---- carve-out --------------------------------------------------------------
 // A virtual transfer between two linked profiles: paired recordFlow calls at
 // live prices, splice-continuous on both sides, no venue I/O. If the second
@@ -402,6 +444,7 @@ async function carveOut(accountId, fromProfileId, toProfileId, items) {
 
 module.exports = {
   linkedProfiles,
+  accountSummary,
   shellOf,
   linkProfile,
   unlinkProfile,

@@ -668,12 +668,13 @@ app.post('/api/pending-flows/:id/confirm', async (req, res) => {
 
 // Everything linked to an account: profiles (shell marked), the inbox, the
 // transaction log, and the per-code reconcile view from the last sync.
-app.get('/api/accounts/:id/subaccounts', (req, res) => {
+app.get('/api/accounts/:id/subaccounts', async (req, res) => {
   try {
     const accountId = Number(req.params.id);
     const account = db.prepare('SELECT * FROM exchange_accounts WHERE id = ?').get(accountId);
     if (!account) return res.status(404).json({ error: 'account not found' });
-    const profiles = subaccounts.linkedProfiles(accountId).map((p) => ({
+    const linked = subaccounts.linkedProfiles(accountId);
+    const profiles = linked.map((p) => ({
       id: p.id,
       name: p.name,
       isShell: Boolean(p.is_shell),
@@ -681,10 +682,26 @@ app.get('/api/accounts/:id/subaccounts', (req, res) => {
         .prepare('SELECT id, symbol, coingecko_id, quantity, is_index FROM assets WHERE profile_id = ? ORDER BY id')
         .all(p.id),
     }));
+    // Combined header (multi only): total value in the VIEWING profile's
+    // index tether + each asset's total balance across linked profiles.
+    let summary = null;
+    let summaryError = null;
+    if (linked.length > 1) {
+      try {
+        const ids = new Set();
+        for (const p of profiles) for (const a of p.assets) ids.add(a.coingecko_id);
+        const prices = await require('./lib/pricing').fetchUsdPrices([...ids]);
+        summary = subaccounts.accountSummary(accountId, Number(req.query.viewProfileId) || null, prices);
+      } catch (err) {
+        summaryError = err.message;
+      }
+    }
     const note = account.last_sync_note ? JSON.parse(account.last_sync_note) : {};
     res.json({
       account: { id: account.id, venue: account.venue, lastSyncAt: account.last_sync_at, lastSyncStatus: account.last_sync_status },
       profiles,
+      summary,
+      summaryError,
       perCode: note.perCode || null,
       inbox: subaccounts.listInbox(accountId),
       txnLog: subaccounts.listTxnLog(accountId, 50),

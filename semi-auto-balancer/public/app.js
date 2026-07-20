@@ -1425,7 +1425,7 @@ function profileOptions(select, profiles, preselectId) {
 }
 
 async function loadSubaccounts(x) {
-  const data = await api(`/accounts/${x.id}/subaccounts`);
+  const data = await api(`/accounts/${x.id}/subaccounts?viewProfileId=${state.selectedId}`);
   subState = { accountId: x.id, profiles: data.profiles };
   const multi = data.profiles.length > 1;
   $('#sub-off').classList.toggle('hidden', multi);
@@ -1448,6 +1448,25 @@ async function loadSubaccounts(x) {
   $('#sub-link').disabled = unlinked.length === 0;
   $('#sub-link2').disabled = unlinked.length === 0;
   if (!multi) return;
+
+  // Combined header: account total in the viewing profile's tether + each
+  // asset's total balance across every linked profile.
+  const s = data.summary;
+  $('#sub-summary').classList.toggle('hidden', !s && !data.summaryError);
+  if (s) {
+    const fmt = (v) => v.toLocaleString(undefined, { maximumFractionDigits: v >= 100 ? 0 : 2 });
+    $('#sub-total').textContent =
+      `Account total: ${s.totalValue != null ? `${s.complete ? '' : '≥ '}${fmt(s.totalValue)} ${s.indexSymbol}` : 'unpriced'}` +
+      (s.complete ? '' : ' (some assets unpriced this round)');
+    $('#sub-asset-totals').textContent =
+      'Combined balances: ' +
+      s.assets
+        .map((a) => `${a.symbol.toUpperCase()} ${+a.qty.toFixed(8)}${a.value != null ? ` ≈ ${fmt(a.value)} ${s.indexSymbol}` : ''}`)
+        .join(' · ');
+  } else if (data.summaryError) {
+    $('#sub-total').textContent = `Account total unavailable: ${data.summaryError}`;
+    $('#sub-asset-totals').textContent = '';
+  }
 
   // Linked profiles summary line.
   $('#sub-profiles').innerHTML = data.profiles
