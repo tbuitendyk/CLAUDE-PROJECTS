@@ -274,6 +274,16 @@ const IDS = [...seriesById.keys()];
   ok(noIndex.currentMix == null, 'the unscorable current mix degrades to null');
   ok(noIndex.warnings.some((w) => /could not be scored/i.test(w)), 'with an explicit warning pointing at stale targets');
 
+  // --- intensity-scaled funnel sizes (user-tuned tiers) ---
+  const fq = compose.funnelSizes(20000);
+  ok(fq.fullTop === 500 && fq.retKeep === 150 && fq.refineTop === 60 && fq.refineEvals === 80, 'quick tier: base funnel');
+  const fs_ = compose.funnelSizes(100000);
+  ok(fs_.fullTop === 625 && fs_.retKeep === 188 && fs_.refineTop === 120 && fs_.refineEvals === 160, 'standard tier: boards ×1.25, refine ×2');
+  const fi = compose.funnelSizes(1000000);
+  ok(fi.fullTop === 750 && fi.retKeep === 225 && fi.refineTop === 240 && fi.refineEvals === 320, 'intensive tier: boards ×1.5, refine ×4');
+  ok(fq.finalists === 30 && fi.finalists === 30, 'top 30 rendered at every tier');
+  ok(r.funnel && r.funnel.fullTop === opts.fullTop, 'result echoes the funnel sizes actually used');
+
   // --- determinism under a fixed seed ---
   const r2 = await compose.searchCompositions(opts);
   ok(

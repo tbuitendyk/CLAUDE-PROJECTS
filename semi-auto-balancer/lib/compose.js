@@ -353,6 +353,22 @@ function qualityRank(a, b) {
   return (b.full ? b.full.value : 0) - (a.full ? a.full.value : 0);
 }
 
+// Intensity-scaled funnel sizes (user-tuned): the broad pass dominates
+// wall-clock (>95% at 1M), so wider boards and a much deeper refinement stage
+// cost little relative to the stage already being paid for. Boards ×1.25/×1.5
+// and refinement ×2/×4 at the standard/intensive tiers; 30 finalists rendered.
+function funnelSizes(samples = 100000) {
+  const boardScale = samples >= 1_000_000 ? 1.5 : samples >= 100_000 ? 1.25 : 1;
+  const refineScale = samples >= 1_000_000 ? 4 : samples >= 100_000 ? 2 : 1;
+  return {
+    fullTop: Math.round(500 * boardScale),
+    retKeep: Math.round(150 * boardScale),
+    refineTop: 60 * refineScale,
+    refineEvals: 80 * refineScale,
+    finalists: 30,
+  };
+}
+
 // ---- the search -------------------------------------------------------------
 
 async function searchCompositions({
@@ -367,14 +383,21 @@ async function searchCompositions({
   minAssets = 4,
   maxAssets = 8,
   screenKeep = 16, // candidates surviving the solo screen
-  fullTop = 500, // broad-pass contenders promoted to full fidelity
-  refineTop = 60,
-  refineEvals = 80,
-  finalists = 20,
+  fullTop, // broad-pass contenders promoted to full fidelity (default: intensity-scaled)
+  retKeep, // raw-return board size (default: intensity-scaled)
+  refineTop,
+  refineEvals,
+  finalists,
   benchmark = null, // BTC-aligned {ts,usd_price}[] over `bars`, enables regime mode
   seed = 42,
   setProgress = () => {},
 } = {}) {
+  const sized = funnelSizes(samples);
+  fullTop = fullTop ?? sized.fullTop;
+  retKeep = Math.min(retKeep ?? sized.retKeep, fullTop);
+  refineTop = refineTop ?? sized.refineTop;
+  refineEvals = refineEvals ?? sized.refineEvals;
+  finalists = finalists ?? sized.finalists;
   const costs = { feePct, spreadPct, lagHours };
   const rng = mulberry32(seed);
   const pool = {
@@ -473,9 +496,16 @@ async function searchCompositions({
   // in-sample region (two representative X probes) into a bounded contender
   // board, so a million combos fit in memory.
   const CHEAP_X = [6, 22];
-  const board = []; // {key, mix, cheap}
+  const board = []; // {key, mix, cheap} — best cheap harvest EDGE
   const boardKeys = new Set();
   let cutoff = -Infinity;
+  // Second board: best raw RETURN (pure hold). A harvest-ranked board discards
+  // the sets that simply made the most money sitting still, so the quality
+  // gate would never even see them; this keeps the best pure performers alive
+  // into full scoring, where they're labeled honestly.
+  const retBoard = []; // {key, mix, hold}
+  const retKeys = new Set();
+  let retCutoff = -Infinity;
   let broadSampled = 0;
   for (let i = 0; i < samples; i++) {
     const mix = sampleMix(rng, keptIdsArr, minAssets, Math.min(maxAssets, keptIdsArr.length));
@@ -492,16 +522,23 @@ async function searchCompositions({
           }
         }
         const edge = bestValue - hold;
-        if (edge > cutoff || board.length < fullTop) {
-          const key = mixKey(mix);
-          if (!boardKeys.has(key)) {
-            board.push({ key, mix, cheap: edge });
-            boardKeys.add(key);
-            if (board.length >= fullTop * 2) {
-              board.sort((a, b) => b.cheap - a.cheap);
-              for (const dropped of board.splice(fullTop)) boardKeys.delete(dropped.key);
-              cutoff = board[board.length - 1].cheap;
-            }
+        const key = mixKey(mix);
+        if ((edge > cutoff || board.length < fullTop) && !boardKeys.has(key)) {
+          board.push({ key, mix, cheap: edge });
+          boardKeys.add(key);
+          if (board.length >= fullTop * 2) {
+            board.sort((a, b) => b.cheap - a.cheap);
+            for (const dropped of board.splice(fullTop)) boardKeys.delete(dropped.key);
+            cutoff = board[board.length - 1].cheap;
+          }
+        }
+        if ((hold > retCutoff || retBoard.length < retKeep) && !retKeys.has(key)) {
+          retBoard.push({ key, mix, hold });
+          retKeys.add(key);
+          if (retBoard.length >= retKeep * 2) {
+            retBoard.sort((a, b) => b.hold - a.hold);
+            for (const dropped of retBoard.splice(retKeep)) retKeys.delete(dropped.key);
+            retCutoff = retBoard[retBoard.length - 1].hold;
           }
         }
       }
@@ -516,6 +553,15 @@ async function searchCompositions({
   }
   board.sort((a, b) => b.cheap - a.cheap);
   board.splice(fullTop);
+  // Fold the raw-return board into full scoring (deduped against the edge board).
+  retBoard.sort((a, b) => b.hold - a.hold);
+  const edgeKeys = new Set(board.map((b) => b.key));
+  for (const rb of retBoard.slice(0, retKeep)) {
+    if (!edgeKeys.has(rb.key)) {
+      board.push({ key: rb.key, mix: rb.mix, cheap: 0 });
+      edgeKeys.add(rb.key);
+    }
+  }
 
   // ---- Stage 2: full-fidelity scoring of the contender board (regime or
   // walk-forward, per mode).
@@ -672,6 +718,7 @@ async function searchCompositions({
     market,
     noRealPossibility,
     weededForQuality,
+    funnel: { fullTop, retKeep, refineTop, refineEvals },
     warnings,
     screen, // per-asset solo verdicts, kept flag included
     combos: { broadSampled, contenders: board.length, fullScored: seen.size },
@@ -708,9 +755,9 @@ async function searchCurrentSet({
   spreadPct = 0.1,
   lagHours = 6,
   samples = 200000,
-  refineTop = 40,
-  refineEvals = 120,
-  finalists = 20,
+  refineTop,
+  refineEvals,
+  finalists,
   benchmark = null,
   seed = 42,
   setProgress = () => {},
@@ -780,8 +827,16 @@ async function searchCurrentSet({
   // pure-harvest board would drop) still get evaluated — that's what lets the
   // quality gate surface real possibilities the harvest sort would bury.
   const CHEAP_X = [6, 22];
-  const fullTop = Math.min(500, Math.max(120, Math.floor(samples / 50)));
-  const RET_KEEP = Math.min(150, fullTop);
+  // Intensity-scaled funnel (same tiers as the full-universe search); the
+  // current-set base refinement is 40×120 on the finer 1% grid.
+  const sizedCS = funnelSizes(samples);
+  const csScale = sizedCS.fullTop / 500; // 1 / 1.25 / 1.5
+  const csRefineScale = sizedCS.refineTop / 60; // 1 / 2 / 4
+  refineTop = refineTop ?? 40 * csRefineScale;
+  refineEvals = refineEvals ?? 120 * csRefineScale;
+  finalists = finalists ?? sizedCS.finalists;
+  const fullTop = Math.min(Math.round(500 * csScale), Math.max(120, Math.floor(samples / 50)));
+  const RET_KEEP = Math.min(sizedCS.retKeep, fullTop);
   const board = [];
   const boardKeys = new Set();
   let cutoff = -Infinity;
@@ -1007,6 +1062,7 @@ async function searchCurrentSet({
     screen: [], // no solo screen in current-set mode — the set is fixed
     currentSet: true,
     weightRules: { minPct: MINU, maxPct: MAXU, stepPct: CS_STEP_PCT },
+    funnel: { fullTop, retKeep: RET_KEEP, refineTop, refineEvals },
     combos: { broadSampled, contenders: board.length, fullScored: seen.size },
     window: {
       bars: bars.length,
@@ -1436,6 +1492,7 @@ async function runComposeSearch(profileId, opts = {}, setProgress = () => {}) {
 }
 
 module.exports = {
+  funnelSizes,
   searchCompositions,
   searchCurrentSet,
   buildBars,

@@ -1129,7 +1129,8 @@ function renderCompose(latest) {
   const u = r.universe || {};
   const unit = r.currentSet ? 'splits' : 'combos';
   const combos = r.combos
-    ? `${r.combos.broadSampled.toLocaleString()} ${unit} broad-searched, ${r.combos.contenders} contenders full-scored`
+    ? `${r.combos.broadSampled.toLocaleString()} ${unit} broad-searched, ${r.combos.contenders} contenders full-scored` +
+      (r.funnel ? ` (boards ${r.funnel.fullTop}+${r.funnel.retKeep} raw-return · refine ${r.funnel.refineTop}×${r.funnel.refineEvals})` : '')
     : `${r.evaluatedMixes} mixes evaluated`;
   $('#c-stamp').textContent =
     `Searched ${new Date(latest.createdAt).toLocaleString()} · ${combos} · ` +
