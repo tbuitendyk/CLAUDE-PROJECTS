@@ -48,19 +48,25 @@
       <div><a href="#tuner">4. Sensitivity tuner</a></div>
       <div><a href="#lab">5. Composition lab</a></div>
       <div><a href="#pool">6. Candidate pool (exclusions)</a></div>
-      <div><a href="#sync">7. Exchange sync</a></div>
-      <div><a href="#safety">8. Safety rails</a></div>
-      <div><a href="#notify">9. Notifications</a></div>
-      <div><a href="#gloss">10. Glossary</a></div>
+      <div><a href="#ladder">7. Ladder Lab (BTC/USD)</a></div>
+      <div><a href="#monitors">8. Ladder monitors</a></div>
+      <div><a href="#sync">9. Exchange sync</a></div>
+      <div><a href="#sub">10. Sub-accounts &amp; trials</a></div>
+      <div><a href="#safety">11. Safety rails</a></div>
+      <div><a href="#notify">12. Notifications</a></div>
+      <div><a href="#gloss">13. Glossary</a></div>
     </div>
 
     <h2 id="overview">1. What this tool is</h2>
     <p>A <strong>semi-automatic rebalancer</strong>: it watches your portfolio (one flat pool of assets
     per profile), and when an asset drifts far enough from its target weight it <em>notifies</em> you
     with the exact trades to make. Nothing trades itself, and nothing changes settings itself — every
-    analysis is <strong>advisory-with-apply</strong>. The two analysis tools (tuner and lab) are
+    analysis is <strong>advisory-with-apply</strong>. The two in-page analysis tools (tuner and lab) are
     backtests over real exchange history (~4 years daily where available), with honesty rails: costs
-    always on, out-of-sample confirmation, and explicit "no edge found" verdicts.</p>
+    always on, out-of-sample confirmation, and explicit "no edge found" verdicts. The
+    <strong>Ladder Lab</strong> (header button, opens its own page) is a separate BTC/USD strategy
+    laboratory with live rung monitors; <strong>sub-accounts</strong> let several profiles trade
+    independently inside one exchange account for small real-allocation trials.</p>
 
     <h2 id="assets">2. Assets grid &amp; the tethered index</h2>
     <figure class="fig">
@@ -152,7 +158,10 @@
     <h3>Scopes</h3>
     <ul>
       <li><span class="term">Full universe</span> — your holdings + top market-cap candidates
-        (venue-tradable, full-window history), searching groups AND weights.</li>
+        (venue-tradable, full-window history), searching groups AND weights. Mixes range from a
+        <strong>single tradable asset</strong> (tether + one coin taking 75–90%) up to 8; the per-asset
+        cap scales with the count — 25% at 4+ assets, wider for concentrated mixes (a pair splits within
+        2.5–45%).</li>
       <li><span class="term">Current holdings — re-weight only</span> — your exact asset set, nothing added
         or dropped; each asset 4–80% on a 1% grid; every split carries its own
         <em>split × sensitivity</em> strip (per-X edge, best X starred — trust runs of green, not a lone
@@ -176,6 +185,9 @@
       <li><span class="term">The stamp</span> (bottom line) records everything: combos searched, universe
         and every exclusion by name (venue, missing history, your pool unchecks), window and what limited
         it, regime day-counts, the market bar, and any active assumptions.</li>
+      <li><span class="term">Cancel</span> — while a search runs, the Cancel button next to Run search
+        stops it within seconds ("cancelled — no result saved"); your last completed result stays
+        untouched.</li>
     </ul>
 
     <h2 id="pool">6. Candidate pool (exclusions)</h2>
@@ -185,14 +197,90 @@
     The tethered index is locked — every mix is denominated in it. Use this to weed assets that are
     expensive to trade from your position (indirect crosses) or that you never want proposed.</p>
 
-    <h2 id="sync">7. Exchange sync</h2>
+    <h2 id="ladder">7. Ladder Lab (BTC/USD)</h2>
+    <p>Its own page (<strong>Ladder Lab</strong> header button, opens a new tab): a two-asset USD+BTC
+    strategy laboratory for the cycle-ladder thesis — <em>buy rungs on drawdowns from the all-time high,
+    sell rungs into strength anchored to the high you fell from</em>, with order sizing, a hard USD
+    reserve floor, and optional monthly DCA.</p>
+    <ul>
+      <li><span class="term">Data</span> — one button loads the deepest daily BTC/USD history available
+        (Binance archive reaches 2017-08, ~9 years).</li>
+      <li><span class="term">Sweep</span> — every configuration in the 78,732-point grid (entry rungs ×
+        spacing × count × buy sizing × exit levels × spacing × count × sell sizing × reserve × DCA) is
+        scored on the FULL history — deliberately no holdout; the synthetic-futures grid is the forward
+        test instead, and the caveat renders with every result. Score = MAR (CAGR ÷ max drawdown).</li>
+      <li><span class="term">Plateaus &amp; picks</span> — each config's <em>robust score</em> is the worst
+        MAR among itself and all one-step neighbors; connected high-robust regions are the plateaus. Picks
+        are each plateau's best member plus the best per risk tier (max DD &lt;30 / 30–50 / &gt;50%), every
+        row stating its plateau standing and carrying generated reasoning underneath.</li>
+      <li><span class="term">Epoch mechanics</span> — a new ATH re-arms the entry ladder; the first entry
+        of an epoch arms the exit ladder at <em>absolute</em> multiples of that epoch's peak, which stay
+        armed until hit even across later highs (ladder memory — unlike weight-based rebalancing).</li>
+      <li><span class="term">Synthetic futures</span> — every pick is projected across 8 archetypes
+        (steady bull, moonshot-crash, plummet-flat, crash-recover, crab, bull-bear, double cycle, history
+        bootstrap) × 60 five-year paths starting at today's price with the real ATH carried in. Rough
+        probabilities come from 2,000 history bootstraps — labeled rough; short history can't price
+        structural change.</li>
+      <li><span class="term">Adopt as monitor</span> — every pick row can become a live monitor in one
+        click (next section).</li>
+    </ul>
+
+    <h2 id="monitors">8. Ladder monitors</h2>
+    <p>Live watching of an adopted ladder config (Ladder Lab page → Live monitors). The monitor checks
+    the BTC price on its own cadence and notifies on rung crossings — buy rungs, anchored sell rungs,
+    ladder re-anchor at a new ATH, and a monthly DCA reminder — by email and/or Telegram per its own
+    recipients list (same rules as profile notifications). Rung chips on the card show fired
+    (struck-through), armed, and next-up levels; alerts are one-shot per rung per epoch. Advisory only —
+    it says what the config would do; the order is yours.</p>
+    <ul>
+      <li><span class="term">Real balances (optional)</span> — enter your current USD, BTC, and the
+        average cost of that BTC at setup, and every alert speaks in real amounts ("spend ≈ $2,000 ≈
+        0.0266 BTC", "sell ≈ 0.0143 BTC ≈ $1,430, +43% vs your avg cost"), tracked forward by a modeled
+        ledger using the lab's 0.5%/leg costs. Buys re-weight avg cost; sells don't. Leave empty for
+        percent-only alerts.</li>
+      <li><span class="term">Edit balances</span> — true the model up after real fills any time; rung
+        state is untouched.</li>
+      <li><span class="term">Check now / Test alert</span> — force an immediate evaluation; send a test
+        through the full comms path before trusting it.</li>
+    </ul>
+
+    <h2 id="sync">9. Exchange sync</h2>
     <p>Link a <strong>read-only</strong> API key (Kraken or Bitso). Balances and trades sync
     automatically; your quantities become ground truth from the venue. Detected deposits/withdrawals wait
     for confirmation before splicing the track record (auto-apply once you trust it). Real fills also
     calibrate the fee/spread costs the backtests use. The sync note warns when the key lacks history
     permissions.</p>
 
-    <h2 id="safety">8. Safety rails</h2>
+    <h2 id="sub">10. Sub-accounts &amp; small real-allocation trials</h2>
+    <p>Several profiles can share ONE physical exchange account, each trading on its own alerts and
+    tracking its own splice-continuous performance — the way to trial a lab mix with a small slice
+    instead of the whole account. Found in the Exchange sync section once an account is linked.</p>
+    <ul>
+      <li><span class="term">The shell ("Unallocated")</span> — linking a second profile creates it
+        automatically: the visible pool of assets not assigned to any strategy. Physical balance = sum of
+        strategy profiles + shell, exactly. Dust corrections land here, unattributable deposits default
+        here, new trials are funded from here — strategy track records never absorb anything they didn't
+        earn. It has no targets and no alerts; it's a wallet view, not a strategy.</li>
+      <li><span class="term">Carve out</span> — the virtual transfer that starts a trial: move amounts
+        between linked profiles at live prices. No real trade happens and both track records splice past
+        it — the source doesn't register a loss, the trial starts honest at day zero.</li>
+      <li><span class="term">Fill attribution</span> — synced fills resolve in three tiers: an asset held
+        by exactly one linked profile attributes automatically; a fill matching a profile's own recent
+        advice (same symbol+side, size ±15%, within 36h) attributes to it; anything ambiguous waits in the
+        <strong>attribution inbox</strong> with the best guess pre-selected and a stated reason. A queued
+        fill applies nothing until you assign it. The tether leg always follows the traded asset's
+        profile.</li>
+      <li><span class="term">Reconcile table</span> — per asset: physical (venue truth) vs Σ virtual vs
+        pending vs queued, with the residual flagged when it exceeds tolerance. Never silently fixed.</li>
+      <li><span class="term">Transaction log &amp; Rewind</span> — every applied transaction (auto or
+        manual: fills, flows, carve-outs, snaps, adoptions) appears in plain words, newest first, each row
+        rewindable once. <strong>Rewind</strong> reverses it (attributed fills return to the inbox);
+        <strong>Reassign →</strong> rewinds and assigns to the right profile in one click. History is
+        never edited — corrections append; a rewind reaching back across an already-chained daily
+        snapshot annotates the affected profile visibly instead of falsifying its record.</li>
+    </ul>
+
+    <h2 id="safety">11. Safety rails</h2>
     <ul>
       <li><span class="term">Buy-freeze (🧊)</span> — an asset in a structural break (deep drawdown beyond
         its recovered envelope, or falling far more than the market) has BUY alerts suppressed; sells still
@@ -204,13 +292,13 @@
         valuation stays pinned 1:1.</li>
     </ul>
 
-    <h2 id="notify">9. Notifications</h2>
+    <h2 id="notify">12. Notifications</h2>
     <p>Per-profile recipients: email and/or Telegram (one bot token shared app-wide; each recipient
     <code>/start</code>s the bot, then "Find chat IDs"). The state machine:
     <strong>armed</strong> → alert sent → <strong>notified</strong> (quiet) → re-armed by the next sync,
     a screenshot upload, "Poll now", or the 12-hour timeout. "Poll now" is the universal reset.</p>
 
-    <h2 id="gloss">10. Glossary</h2>
+    <h2 id="gloss">13. Glossary</h2>
     <dl class="gloss">
       <dt>Sensitivity X</dt><dd>The profile-wide price-move threshold (%). Weight-normalized per asset into its Trigger @.</dd>
       <dt>Harvest edge</dt><dd>Value growth above holding the identical basket untouched — what rebalancing itself added, in percentage points.</dd>
@@ -224,6 +312,13 @@
       <dt>Max DD</dt><dd>Deepest peak-to-trough fall of portfolio value across the window.</dd>
       <dt>Basket</dt><dd>Chained unit-growth series moved only by trading; splice-continuous across targets, flows, and index switches.</dd>
       <dt>Idealize tether</dt><dd>Assumption toggle: a USD-stable tether treated as a perfect $1 peg. Always stated in the stamp when active.</dd>
+      <dt>MAR</dt><dd>CAGR ÷ max drawdown — return per unit of worst pain; the Ladder Lab's ranking score.</dd>
+      <dt>Robust score</dt><dd>A ladder config's worst MAR among itself and all one-step grid neighbors. High robust = a plateau member; a lucky spike scores near zero.</dd>
+      <dt>Anchor / epoch</dt><dd>The ATH the ladder measures from. A new ATH starts a new epoch (entries re-arm); the first entry of an epoch arms the exit ladder at absolute levels against that anchor.</dd>
+      <dt>Shell profile</dt><dd>The per-account "Unallocated" pool: physical balance = strategy profiles + shell. Absorbs dust, funds carve-outs, never a strategy.</dd>
+      <dt>Carve-out</dt><dd>A virtual transfer between linked profiles — paired flow splices at live prices, no real trade, both track records continuous.</dd>
+      <dt>Attribution</dt><dd>Deciding which linked profile owns a synced fill: unique holder → automatic; advice match (±15%, 36h) → automatic; ambiguous → inbox.</dd>
+      <dt>Rewind</dt><dd>One-click reversal of any applied transaction. Appends a compensating entry (history never edited); attributed fills return to the inbox; cross-snapshot corrections annotate the profile visibly.</dd>
     </dl>
 
     <p class="kbd-note" style="margin-top:2rem">Guide reflects the live build. Sections and columns carry
