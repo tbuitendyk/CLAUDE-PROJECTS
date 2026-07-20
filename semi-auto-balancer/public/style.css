@@ -37,6 +37,17 @@ h1 { font-size: 1.2rem; margin: 0; }
   padding: .45rem .8rem; white-space: nowrap;
 }
 .help-link:hover { color: var(--text); border-color: var(--accent); }
+button.help-link { background: none; cursor: pointer; font: inherit; font-size: .85rem; }
+/* Tabbed view: the bar sits atop the detail pane; sections not on the
+   active tab are hidden (a class of their own so it can't fight the
+   pre-existing .hidden usage on conditional sections). */
+#tab-bar { display: flex; flex-wrap: wrap; gap: .4rem; margin-bottom: 1rem; border-bottom: 1px solid var(--border); padding-bottom: .6rem; position: sticky; top: 0; background: var(--bg); z-index: 5; }
+#tab-bar button {
+  background: var(--card); color: var(--muted); border: 1px solid var(--border);
+  border-radius: 6px; padding: .4rem .8rem; font-size: .85rem; cursor: pointer;
+}
+#tab-bar button.active { color: #fff; background: var(--accent); border-color: var(--accent); }
+.tab-off { display: none !important; }
 /* Only the FIRST right-side link pushes off the title; the rest sit tight
    beside it (two auto margins would otherwise split the free space and
    strand the first link mid-header). */

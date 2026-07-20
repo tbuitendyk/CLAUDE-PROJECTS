@@ -1410,6 +1410,75 @@ function renderExchange(x, pendingFlows, profile) {
   });
 }
 
+// ---- view mode: one flowing page OR tabbed sections -------------------------
+// The detail pane's blocks are assigned to tabs at runtime by walking the
+// landmarks (no HTML restructuring, so nothing else can break). Preference
+// persists per browser; "Tabs"/"Flow" toggles in the header.
+const TAB_DEFS = [
+  { key: 'profile', label: 'Profile & Assets' },
+  { key: 'tuner', label: 'Sensitivity tuner' },
+  { key: 'lab', label: 'Composition lab' },
+  { key: 'money', label: 'Deposits & Exchange' },
+  { key: 'notify', label: 'Notifications' },
+  { key: 'history', label: 'History' },
+];
+let viewMode = localStorage.getItem('sab-view') || 'flow';
+let activeTab = localStorage.getItem('sab-tab') || 'profile';
+
+function assignTabs() {
+  let current = 'profile';
+  for (const el of $('#detail').children) {
+    if (el.id === 'tab-bar') continue;
+    // Blocks that belong with Assets despite sitting later in the DOM.
+    if (el.id === 'asset-form' || el.id === 'fiat-form' || el.id === 'import-section') {
+      el.dataset.tab = 'profile';
+      continue;
+    }
+    if (el.id === 'tune-section') current = 'tuner';
+    else if (el.id === 'compose-section') current = 'lab';
+    else if (el.id === 'flow-section') current = 'money';
+    else if (el.id === 'exchange-section') current = 'money';
+    else if (el.tagName === 'H3' && /^Notifications/.test(el.textContent)) current = 'notify';
+    else if (el.tagName === 'H3' && /^(Value|Alert) history/.test(el.textContent)) current = 'history';
+    el.dataset.tab = current;
+  }
+}
+
+function applyView() {
+  assignTabs();
+  const tabs = viewMode === 'tabs';
+  $('#view-toggle').textContent = tabs ? 'Flow' : 'Tabs';
+  $('#view-toggle').title = tabs
+    ? 'Back to one flowing page'
+    : 'Split the sections into clickable tabs (remembered per browser)';
+  const bar = $('#tab-bar');
+  bar.classList.toggle('hidden', !tabs);
+  if (tabs && !bar.children.length) {
+    for (const t of TAB_DEFS) {
+      const b = document.createElement('button');
+      b.textContent = t.label;
+      b.dataset.key = t.key;
+      b.addEventListener('click', () => {
+        activeTab = t.key;
+        localStorage.setItem('sab-tab', t.key);
+        applyView();
+      });
+      bar.appendChild(b);
+    }
+  }
+  for (const b of bar.children) b.classList.toggle('active', b.dataset.key === activeTab);
+  for (const el of $('#detail').children) {
+    if (el.id === 'tab-bar') continue;
+    el.classList.toggle('tab-off', tabs && el.dataset.tab !== activeTab);
+  }
+}
+
+$('#view-toggle').addEventListener('click', () => {
+  viewMode = viewMode === 'tabs' ? 'flow' : 'tabs';
+  localStorage.setItem('sab-view', viewMode);
+  applyView();
+});
+
 // ---- Phase 6: sub-accounts UI -----------------------------------------------
 let subState = { accountId: null, profiles: [] };
 
@@ -1425,7 +1494,9 @@ function profileOptions(select, profiles, preselectId) {
 }
 
 async function loadSubaccounts(x) {
+  $('#sub-status').textContent = 'loading…';
   const data = await api(`/accounts/${x.id}/subaccounts?viewProfileId=${state.selectedId}`);
+  $('#sub-status').textContent = '';
   subState = { accountId: x.id, profiles: data.profiles };
   const multi = data.profiles.length > 1;
   $('#sub-off').classList.toggle('hidden', multi);
@@ -2047,6 +2118,7 @@ $('#i-cancel').addEventListener('click', () => {
   state.telegramConfigured = Boolean(session.telegramConfigured);
   if (session.authed) {
     showMain();
+    applyView();
     await loadProfiles();
     setInterval(async () => {
       if (state.selectedId) await refresh().catch(() => {});
