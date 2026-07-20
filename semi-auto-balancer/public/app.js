@@ -210,7 +210,9 @@ function renderDetail() {
   if (!d) return;
 
   const { profile, assets, alertLog, totals, snapshots, flows } = d;
-  $('#d-name').textContent = profile.name;
+  $('#d-name').textContent = profile.is_shell ? `🪣 ${profile.name}` : profile.name;
+  applyShellView(Boolean(profile.is_shell));
+  applyView();
   const polled = profile.last_polled_at
     ? new Date(profile.last_polled_at).toLocaleString()
     : 'never';
@@ -1481,6 +1483,35 @@ function assignTabs() {
   }
 }
 
+// The shell ("Master") entry is the ACCOUNT view, not a strategy: it keeps
+// the assets pool, deposits/withdrawals, and the exchange + sub-accounts
+// machinery, and hides everything strategy-shaped (sensitivity settings,
+// tuner, composition lab, notifications, histories, screenshot import,
+// add-asset forms, the basket/value summary, and the strategy action
+// buttons). Server-side, deleting a shell with linked siblings is refused.
+function isShellSelected() {
+  const p = state.profiles.find((pp) => pp.id === state.selectedId);
+  return Boolean(p && p.is_shell);
+}
+
+function applyShellView(shell) {
+  assignTabs();
+  const denyIds = new Set(['d-summary', 'import-section', 'asset-form', 'fiat-form']);
+  for (const el of $('#detail').children) {
+    if (el.id === 'tab-bar') continue;
+    let off = false;
+    if (shell) {
+      const tab = el.dataset.tab;
+      if (tab === 'tuner' || tab === 'lab' || tab === 'notify' || tab === 'history') off = true;
+      if (denyIds.has(el.id) || el.classList.contains('settings-row')) off = true;
+    }
+    el.classList.toggle('shell-off', off);
+  }
+  for (const bid of ['#d-status', '#d-poll', '#d-targets', '#d-delete']) {
+    $(bid).classList.toggle('hidden', shell);
+  }
+}
+
 function applyView() {
   assignTabs();
   const tabs = viewMode === 'tabs';
@@ -1503,7 +1534,14 @@ function applyView() {
       bar.appendChild(b);
     }
   }
-  for (const b of bar.children) b.classList.toggle('active', b.dataset.key === activeTab);
+  // On the shell only two tabs have content; hide the rest and fall back.
+  const shell = isShellSelected();
+  const shellTabs = ['profile', 'money'];
+  if (shell && !shellTabs.includes(activeTab)) activeTab = 'money';
+  for (const b of bar.children) {
+    b.classList.toggle('hidden', shell && !shellTabs.includes(b.dataset.key));
+    b.classList.toggle('active', b.dataset.key === activeTab);
+  }
   for (const el of $('#detail').children) {
     if (el.id === 'tab-bar') continue;
     el.classList.toggle('tab-off', tabs && el.dataset.tab !== activeTab);
@@ -1536,6 +1574,29 @@ async function loadSubaccounts(x) {
   $('#sub-status').textContent = '';
   subState = { accountId: x.id, profiles: data.profiles };
   const multi = data.profiles.length > 1;
+
+  // Factored-out account controls: on a SUB-profile of a group, the whole
+  // exchange panel collapses to a pointer at the group's master (shell)
+  // entry — the 1:n machinery lives in exactly one place.
+  const viewing = data.profiles.find((p) => p.id === state.selectedId);
+  const shellProfile = data.profiles.find((p) => p.isShell);
+  const collapse = multi && viewing && !viewing.isShell && shellProfile;
+  $('#x-pointer').classList.toggle('hidden', !collapse);
+  $('#x-linked').classList.toggle('hidden', Boolean(collapse));
+  if (collapse) {
+    const btn = $('#x-open-shell');
+    btn.textContent = `Open 🪣 ${shellProfile.name}`;
+    btn.onclick = async () => {
+      state.selectedId = shellProfile.id;
+      renderProfiles();
+      await loadDetail();
+      renderDetail();
+    };
+    $('#sub-off').classList.add('hidden');
+    $('#sub-on').classList.add('hidden');
+    return;
+  }
+
   $('#sub-off').classList.toggle('hidden', multi);
   $('#sub-on').classList.toggle('hidden', !multi);
 
@@ -1557,24 +1618,31 @@ async function loadSubaccounts(x) {
   $('#sub-link2').disabled = unlinked.length === 0;
   if (!multi) return;
 
-  // Combined header: account total in the viewing profile's tether + each
-  // asset's total balance across every linked profile.
-  const s = data.summary;
-  $('#sub-summary').classList.toggle('hidden', !s && !data.summaryError);
-  if (s) {
-    const fmt = (v) => v.toLocaleString(undefined, { maximumFractionDigits: v >= 100 ? 0 : 2 });
-    $('#sub-total').textContent =
-      `Account total: ${s.totalValue != null ? `${s.complete ? '' : '≥ '}${fmt(s.totalValue)} ${s.indexSymbol}` : 'unpriced'}` +
-      (s.complete ? '' : ' (some assets unpriced this round)');
-    $('#sub-asset-totals').textContent =
-      'Combined balances: ' +
-      s.assets
-        .map((a) => `${a.symbol.toUpperCase()} ${+a.qty.toFixed(8)}${a.value != null ? ` ≈ ${fmt(a.value)} ${s.indexSymbol}` : ''}`)
-        .join(' · ');
-  } else if (data.summaryError) {
-    $('#sub-total').textContent = `Account total unavailable: ${data.summaryError}`;
-    $('#sub-asset-totals').textContent = '';
-  }
+  // Combined header: the panel renders immediately; the priced totals come
+  // from a SEPARATE request so a slow price round can't stall the page.
+  $('#sub-summary').classList.remove('hidden');
+  $('#sub-total').textContent = 'Account total: pricing…';
+  $('#sub-asset-totals').textContent = '';
+  api(`/accounts/${x.id}/subaccounts?viewProfileId=${state.selectedId}&summary=1`)
+    .then((d2) => {
+      const s = d2.summary;
+      if (s) {
+        const fmt = (v) => v.toLocaleString(undefined, { maximumFractionDigits: v >= 100 ? 0 : 2 });
+        $('#sub-total').textContent =
+          `Account total: ${s.totalValue != null ? `${s.complete ? '' : '≥ '}${fmt(s.totalValue)} ${s.indexSymbol}` : 'unpriced'}` +
+          (s.complete ? '' : ' (some assets unpriced this round)');
+        $('#sub-asset-totals').textContent =
+          'Combined balances: ' +
+          s.assets
+            .map((a) => `${a.symbol.toUpperCase()} ${+a.qty.toFixed(8)}${a.value != null ? ` ≈ ${fmt(a.value)} ${s.indexSymbol}` : ''}`)
+            .join(' · ');
+      } else {
+        $('#sub-total').textContent = `Account total unavailable: ${d2.summaryError || 'no summary'}`;
+      }
+    })
+    .catch((err) => {
+      $('#sub-total').textContent = `Account total unavailable: ${err.message}`;
+    });
 
   // Linked profiles summary line.
   $('#sub-profiles').innerHTML = data.profiles

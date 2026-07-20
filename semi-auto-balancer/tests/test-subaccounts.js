@@ -224,6 +224,9 @@ const client = {
   // A missing price degrades honestly instead of lying.
   const partial = sub.accountSummary(account.id, 1, { ...PRICES, 'pax-gold': undefined });
   ok(partial.complete === false && partial.assets.find((a) => a.symbol === 'paxg').value === null, 'unpriced asset → null value, total marked partial');
+  // Viewing from the tetherless SHELL denominates in the account owner's tether.
+  const shellView = sub.accountSummary(account.id, shell.id, PRICES);
+  ok(shellView.indexSymbol === 'USDC', `shell view falls back to the owner's tether (${shellView.indexSymbol})`);
 
   // ---- carve validation ------------------------------------------------------
   threw = false;

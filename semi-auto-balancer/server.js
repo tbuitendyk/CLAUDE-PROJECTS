@@ -185,6 +185,17 @@ app.patch('/api/profiles/:id', (req, res) => {
 });
 
 app.delete('/api/profiles/:id', (req, res) => {
+  // A shell is the account's residual pool: while strategy profiles are
+  // still linked to its account, deleting it would orphan the group.
+  const p = db.prepare('SELECT * FROM profiles WHERE id = ?').get(req.params.id);
+  if (p && p.is_shell) {
+    const siblings = db
+      .prepare('SELECT COUNT(*) AS n FROM profiles WHERE exchange_account_id = ? AND id != ?')
+      .get(p.exchange_account_id, p.id);
+    if (siblings && siblings.n > 0) {
+      return res.status(400).json({ error: 'unlink or delete the sub-account profiles first — the shell is the group\'s pool' });
+    }
+  }
   db.prepare('DELETE FROM profiles WHERE id = ?').run(req.params.id);
   res.json({ ok: true });
 });
@@ -684,13 +695,19 @@ app.get('/api/accounts/:id/subaccounts', async (req, res) => {
     }));
     // Combined header (multi only): total value in the VIEWING profile's
     // index tether + each asset's total balance across linked profiles.
+    // Priced summaries need a live price round that can be SLOW on a cold
+    // cache — so the panel data never waits for it: the client asks with
+    // summary=1 in a separate request and fills the header in when ready.
     let summary = null;
     let summaryError = null;
-    if (linked.length > 1) {
+    if (linked.length > 1 && String(req.query.summary) === '1') {
       try {
         const ids = new Set();
         for (const p of profiles) for (const a of p.assets) ids.add(a.coingecko_id);
-        const prices = await require('./lib/pricing').fetchUsdPrices([...ids]);
+        const prices = await Promise.race([
+          require('./lib/pricing').fetchUsdPrices([...ids]),
+          new Promise((_, rej) => setTimeout(() => rej(new Error('price fetch timed out')), 15_000)),
+        ]);
         summary = subaccounts.accountSummary(accountId, Number(req.query.viewProfileId) || null, prices);
       } catch (err) {
         summaryError = err.message;

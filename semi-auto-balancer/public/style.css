@@ -48,6 +48,8 @@ button.help-link { background: none; cursor: pointer; font: inherit; font-size: 
 }
 #tab-bar button.active { color: #fff; background: var(--accent); border-color: var(--accent); }
 .tab-off { display: none !important; }
+/* Shell (master) entries hide everything strategy-shaped. */
+.shell-off { display: none !important; }
 /* Only the FIRST right-side link pushes off the title; the rest sit tight
    beside it (two auto margins would otherwise split the free space and
    strand the first link mid-header). */

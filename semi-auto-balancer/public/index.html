@@ -208,6 +208,13 @@
             </div>
             <div id="exchange-section">
               <h3>Exchange sync</h3>
+              <div id="x-pointer" class="hidden">
+                <p class="muted">This profile is a <strong>sub-account</strong>: it receives its attributed
+                  fills automatically, but all account-level machinery — API keys, sync, pending
+                  deposits/withdrawals, the combined totals, carve-outs, the attribution inbox, and the
+                  transaction log — lives on the group's master entry.</p>
+                <button id="x-open-shell"></button>
+              </div>
               <div id="x-none">
                 <p class="muted">Link a <strong>read-only</strong> API key (balance/trade/ledger query only —
                   no trade or withdraw permissions; IP-pin to the server where the venue supports it).

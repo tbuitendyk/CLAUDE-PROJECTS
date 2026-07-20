@@ -369,7 +369,22 @@ function accountSummary(accountId, viewProfileId, usdPrices) {
   const profiles = linkedProfiles(accountId);
   if (profiles.length === 0) return null;
   const view = profiles.find((p) => p.id === Number(viewProfileId)) || profiles[0];
-  const viewAssets = db.prepare('SELECT * FROM assets WHERE profile_id = ?').all(view.id);
+  let viewAssets = db.prepare('SELECT * FROM assets WHERE profile_id = ?').all(view.id);
+  // The shell has no tether of its own — denominate in the account CREATOR
+  // profile's tether (falling back to any linked profile that has one).
+  if (!viewAssets.some((a) => a.is_index)) {
+    const owner = db
+      .prepare('SELECT profile_id FROM exchange_accounts WHERE id = ?')
+      .get(accountId);
+    const candidates = [owner && owner.profile_id, ...profiles.map((p) => p.id)].filter(Boolean);
+    for (const pid of candidates) {
+      const rows = db.prepare('SELECT * FROM assets WHERE profile_id = ?').all(pid);
+      if (rows.some((a) => a.is_index)) {
+        viewAssets = rows;
+        break;
+      }
+    }
+  }
   const indexUsd = indexUsdFor(viewAssets, usdPrices);
   const symbol = indexLabel(viewAssets);
 
