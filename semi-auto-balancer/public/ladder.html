@@ -91,6 +91,12 @@
             <label class="muted" title="% of starting capital never spent">reserve % <input id="m-reservePct" type="number" step="any" value="0" style="width:4.5rem"></label>
             <label class="muted" title="Monthly buy of this % of starting capital (reminder only)">DCA %/mo <input id="m-dcaMonthlyPct" type="number" step="any" value="2" style="width:4.5rem"></label>
           </div>
+          <div class="inline" style="margin-top:.4rem">
+            <span class="muted" title="Optional: enter your real balances and the alerts will state actual order sizes in dollars and BTC, tracked forward by the same arithmetic the lab scores with (0.5%/leg). Leave empty for percent-only alerts.">Real balances (optional):</span>
+            <label class="muted">USD <input id="m-startUsd" type="number" step="any" min="0" placeholder="e.g. 10000" style="width:7rem"></label>
+            <label class="muted">BTC held <input id="m-startBtc" type="number" step="any" min="0" placeholder="e.g. 0.15" style="width:7rem"></label>
+            <label class="muted" title="Average cost of the BTC you already hold — sell alerts then show gain vs cost">avg cost $/BTC <input id="m-avgCost" type="number" step="any" min="0" placeholder="optional" style="width:7rem"></label>
+          </div>
           <div id="m-recipients" style="margin-top:.4rem"></div>
           <div class="inline" style="margin-top:.4rem">
             <button id="m-add-recipient" class="secondary" title="Add another email / Telegram recipient row">+ recipient</button>

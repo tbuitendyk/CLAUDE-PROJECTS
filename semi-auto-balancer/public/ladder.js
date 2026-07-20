@@ -366,6 +366,13 @@ function renderMonitors(monitors) {
       `<span class="muted" title="who gets notified">${esc(recips)}</span>` +
       `</div>` +
       `<div style="margin-top:.35rem">${entryChips}${m.exitsArmed ? '' : '<span class="muted" style="font-size:.75rem"> · exits arm at the first buy: </span>'}${exitChips}</div>` +
+      (m.ledger
+        ? `<div class="muted" style="font-size:.78rem;margin-top:.25rem" title="Modeled ledger: each fired rung is applied at the crossing price with 0.5%/leg costs — true it up after real fills with Edit balances">` +
+          `Balances: ${fmtUsd(m.ledger.usdBal)} USD + ${m.ledger.btcBal.toFixed(6).replace(/0+$/, '').replace(/\.$/, '')} BTC` +
+          (m.ledger.totalValue != null ? ` ≈ ${fmtUsd(m.ledger.totalValue)} total (${m.ledger.btcSharePct.toFixed(0)}% in BTC)` : '') +
+          (m.ledger.avgCost ? ` · avg cost ${fmtUsd(m.ledger.avgCost)}${m.ledger.vsCostPct != null ? ` (${m.ledger.vsCostPct >= 0 ? '+' : ''}${m.ledger.vsCostPct.toFixed(0)}% vs cost)` : ''}` : '') +
+          `</div>`
+        : '') +
       (m.config.dcaMonthlyPct > 0 ? `<div class="muted" style="font-size:.78rem;margin-top:.25rem">DCA reminder: ${m.config.dcaMonthlyPct}% of starting capital monthly</div>` : '') +
       (m.events.length
         ? `<ul class="mon-events">${m.events
@@ -376,6 +383,7 @@ function renderMonitors(monitors) {
       `<div class="inline" style="margin-top:.45rem">` +
       `<button data-act="check" title="Evaluate against the live BTC price right now">Check now</button>` +
       `<button data-act="test" title="Send a test notification to every recipient">Test alert</button>` +
+      (m.ledger ? `<button data-act="balances" title="Correct the modeled balances after real fills (rung state untouched)">Edit balances</button>` : '') +
       `<button data-act="toggle" title="${m.active ? 'Stop checking (state is kept)' : 'Resume checking'}">${m.active ? 'Pause' : 'Resume'}</button>` +
       `<button data-act="delete" title="Delete this monitor and its event log">Delete</button>` +
       `<span class="muted mon-msg"></span>` +
@@ -406,6 +414,14 @@ async function monitorAction(m, act, msgEl) {
       msgEl.textContent = 'sending…';
       const r = await api(`/ladder/monitors/${m.id}/test`, { method: 'POST', body: {} });
       msgEl.textContent = r.emailed ? 'test sent (email + any Telegram)' : 'test logged (no email went out — check recipients/SMTP)';
+    } else if (act === 'balances') {
+      const usd = prompt('USD balance:', m.ledger.usdBal.toFixed(2));
+      if (usd == null) return;
+      const btc = prompt('BTC held:', m.ledger.btcBal.toFixed(6));
+      if (btc == null) return;
+      const ac = prompt('Avg cost $/BTC (empty = unknown):', m.ledger.avgCost ? m.ledger.avgCost.toFixed(0) : '');
+      if (ac == null) return;
+      await api(`/ladder/monitors/${m.id}`, { method: 'PUT', body: { usdBal: Number(usd), btcBal: Number(btc), avgCost: ac === '' ? null : Number(ac) } });
     } else if (act === 'toggle') {
       await api(`/ladder/monitors/${m.id}`, { method: 'PUT', body: { active: !m.active } });
     } else if (act === 'delete') {
@@ -433,6 +449,15 @@ $('#m-create').addEventListener('click', async () => {
       config,
       recipients: readRecipients(),
     };
+    // Real balances are optional: either field activates the modeled ledger.
+    const su = $('#m-startUsd').value.trim();
+    const sb = $('#m-startBtc').value.trim();
+    const ac = $('#m-avgCost').value.trim();
+    if (su !== '' || sb !== '') {
+      body.startUsd = su === '' ? 0 : Number(su);
+      body.startBtc = sb === '' ? 0 : Number(sb);
+      if (ac !== '') body.avgCost = Number(ac);
+    }
     const r = await api('/ladder/monitors', { method: 'POST', body });
     status.textContent = `created "${r.monitor.name}" — first check done (${r.monitor.events.length} event(s) logged)`;
     await loadMonitors();

@@ -327,6 +327,17 @@ CREATE TABLE IF NOT EXISTS ladder_events (
 );
 `);
 
+// Phase L2.1: optional modeled ledger per monitor — real balances entered at
+// setup (current USD, current BTC, average cost of the existing BTC) so rung
+// alerts speak in dollars and coins instead of percentages. The ledger
+// mirrors simulateLadder's arithmetic on each fired rung; NULL = the monitor
+// stays percent-only. start_usd is the base for the reserve floor and DCA
+// sizing (matching the simulator's startUsd semantics).
+ensureColumn('ladder_monitors', 'start_usd', 'start_usd REAL');
+ensureColumn('ladder_monitors', 'usd_bal', 'usd_bal REAL');
+ensureColumn('ladder_monitors', 'btc_bal', 'btc_bal REAL');
+ensureColumn('ladder_monitors', 'avg_cost', 'avg_cost REAL');
+
 // Sets were removed from the design (one flat asset pool per profile);
 // drop the leftover tables from earlier versions.
 db.exec(`

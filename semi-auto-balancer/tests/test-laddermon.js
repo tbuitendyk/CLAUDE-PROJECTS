@@ -5,7 +5,7 @@
 // actually underway), DCA reminds monthly after seating, and repeated checks
 // at the same price never re-fire. Plus CRUD, recipients validation, and the
 // tick's notification dispatch through the (stubbed) mailer.
-const { freshDb, ok } = require('./helpers');
+const { freshDb, ok, approx } = require('./helpers');
 freshDb('laddermon');
 
 const mailer = require('../lib/mailer');
@@ -126,6 +126,55 @@ const T0 = 1_780_000_000_000;
   lm.updateMonitor(mon.id, { config: { ...CFG, entryStart: 30 } });
   m = lm.getMonitor(mon.id);
   ok(m.entries_fired.length === 0 && m.exit_levels.length === 0 && m.epoch_had_entry === 0, 'config change resets stale epoch state');
+
+  // ---- real-balance mode: alerts carry actual order sizes, ledger mirrors
+  // the simulator (0.5%/leg), avg cost updates on buys, true-up supported.
+  const FEE = require('../lib/ladder').FEE_RATE;
+  const led = lm.createMonitor({
+    name: 'Real ladder',
+    config: CFG,
+    anchor: 100_000,
+    recipients: [],
+    startUsd: 10_000,
+    startBtc: 0.05,
+    avgCost: 70_000,
+  });
+  ok(led.usd_bal === 10_000 && led.btc_bal === 0.05 && led.avg_cost === 70_000, 'balances stored at creation');
+
+  // First check at -25%: rung 1 fires; spend = 20% of 10k = 2000.
+  evs = await lm.checkMonitor(lm.getMonitor(led.id), 75_000, T0);
+  const buyEv = evs.find((e) => e.type === 'buy');
+  ok(/spend ≈ \$2,000/.test(buyEv.message), `buy alert states the real spend (${buyEv.message.match(/spend ≈ [^ ]+/)})`);
+  m = lm.getMonitor(led.id);
+  const qty1 = (2000 - 2000 * FEE) / 75_000;
+  ok(approx(m.usd_bal, 8000, 1e-9), 'USD debited');
+  ok(approx(m.btc_bal, 0.05 + qty1, 1e-9), 'BTC credited net of costs');
+  const expAvg = (0.05 * 70_000 + 2000) / (0.05 + qty1);
+  ok(approx(m.avg_cost, expAvg, 1e-9), `avg cost re-weighted (${m.avg_cost.toFixed(0)} ≈ ${expAvg.toFixed(0)})`);
+
+  // Sell at the anchor: qty = 20% of held; proceeds credited net of costs.
+  evs = await lm.checkMonitor(lm.getMonitor(led.id), 100_000, T0 + 60_000);
+  const sellEv = evs.find((e) => e.type === 'sell');
+  ok(sellEv && /sell ≈ .* BTC ≈ \$/.test(sellEv.message), 'sell alert states real BTC quantity and proceeds');
+  ok(/Vs your .* avg cost: \+/.test(sellEv.message), 'sell alert shows gain vs avg cost');
+  const before = m;
+  m = lm.getMonitor(led.id);
+  const sellQty = before.btc_bal * CFG.sellFrac;
+  ok(approx(m.btc_bal, before.btc_bal - sellQty, 1e-9), 'BTC debited on sell');
+  ok(approx(m.usd_bal, before.usd_bal + sellQty * 100_000 * (1 - FEE), 1e-9), 'USD credited net of costs');
+  ok(approx(m.avg_cost, before.avg_cost, 1e-9), 'avg cost unchanged by sells');
+
+  // True-up after real fills.
+  lm.updateMonitor(led.id, { usdBal: 9000, btcBal: 0.08, avgCost: 72_000 });
+  m = lm.getMonitor(led.id);
+  ok(m.usd_bal === 9000 && m.btc_bal === 0.08 && m.avg_cost === 72_000, 'balance true-up persists');
+  const lview = lm.monitorView(m);
+  ok(lview.ledger && approx(lview.ledger.totalValue, 9000 + 0.08 * m.last_price, 1e-9), 'view exposes total value at last price');
+
+  // Percent-only monitors carry no ledger and no amounts in messages.
+  const pctView = lm.monitorView(lm.getMonitor(mon.id));
+  ok(pctView.ledger === null, 'percent-only monitor has no ledger');
+  lm.deleteMonitor(led.id);
 
   // ---- view + delete --------------------------------------------------------
   const view = lm.monitorView(lm.getMonitor(mon.id));

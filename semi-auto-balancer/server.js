@@ -461,6 +461,9 @@ app.post('/api/ladder/monitors', async (req, res) => {
       recipients: b.recipients,
       pollMinutes: b.pollMinutes,
       alertsEnabled: b.alertsEnabled != null ? b.alertsEnabled : 1,
+      startUsd: b.startUsd,
+      startBtc: b.startBtc,
+      avgCost: b.avgCost,
     });
     // First evaluation immediately, so already-passed rungs alert now
     // (mirrors the simulator's mid-drawdown start) and the card shows live

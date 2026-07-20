@@ -1,6 +1,7 @@
 const db = require('./db');
 const mailer = require('./mailer');
 const pricing = require('./pricing');
+const { FEE_RATE } = require('./ladder'); // same 0.5%/leg the lab scores with
 
 // Ladder monitors (Phase L2): LIVE watching of an adopted cycle-ladder
 // config. The Ladder Lab tunes and picks configs; a monitor takes one and
@@ -64,6 +65,7 @@ const entryLevelPct = (cfg, r) => cfg.entryStart + r * cfg.entrySpacing;
 const exitLevelMult = (cfg, j) => cfg.exitStart + j * cfg.exitSpacing;
 
 const fmtUsd = (x) => `$${Math.round(x).toLocaleString('en-US')}`;
+const fmtBtc = (x) => (x >= 1 ? x.toFixed(4) : x.toFixed(6)).replace(/0+$/, '').replace(/\.$/, '') + '';
 const pct = (x) => `${Math.round(x * 100)}%`;
 
 // ---- pure state transition --------------------------------------------------
@@ -80,10 +82,35 @@ function evaluate(mon, price, now = Date.now()) {
   let exitsFired = new Set(mon.exits_fired);
   let lastDcaMonth = mon.last_dca_month;
 
+  // Optional modeled ledger: real balances entered at setup let every alert
+  // state actual order sizes; the ledger applies each fired rung at the
+  // crossing price with the lab's 0.5%/leg cost, exactly as simulateLadder
+  // would. Percent-only monitors (NULL balances) keep the original wording.
+  const hasLedger = mon.usd_bal != null && mon.btc_bal != null;
+  let usdBal = hasLedger ? mon.usd_bal : null;
+  let btcBal = hasLedger ? mon.btc_bal : null;
+  let avgCost = mon.avg_cost;
+  const reserveFloor = hasLedger && mon.start_usd != null ? (cfg.reservePct / 100) * mon.start_usd : 0;
+  const balancesLine = () => ` After: ${fmtUsd(usdBal)} USD + ${fmtBtc(btcBal)} BTC${avgCost > 0 ? ` (avg cost ${fmtUsd(avgCost)})` : ''}.`;
+
   // EXITS first — anchored absolute levels persist until hit.
   for (let j = 0; j < exitLevels.length; j++) {
     if (!exitsFired.has(j) && price >= exitLevels[j]) {
       exitsFired.add(j);
+      let amounts = '';
+      if (hasLedger && btcBal > 0) {
+        const qty = btcBal * cfg.sellFrac;
+        const gross = qty * price;
+        const fee = gross * FEE_RATE;
+        btcBal -= qty;
+        usdBal += gross - fee;
+        amounts =
+          ` With your balances: sell ≈ ${fmtBtc(qty)} BTC ≈ ${fmtUsd(gross)} (est. costs ${fmtUsd(fee)}).` +
+          (avgCost > 0 ? ` Vs your ${fmtUsd(avgCost)} avg cost: ${price >= avgCost ? '+' : ''}${((price / avgCost - 1) * 100).toFixed(0)}%.` : '') +
+          balancesLine();
+      } else if (hasLedger) {
+        amounts = ' With your balances: no BTC held — nothing to sell.';
+      }
       events.push({
         type: 'sell',
         subject: `SELL rung ${j + 1} hit at ${fmtUsd(price)}`,
@@ -91,7 +118,8 @@ function evaluate(mon, price, now = Date.now()) {
           `SELL rung ${j + 1}/${exitLevels.length} hit: BTC ${fmtUsd(price)} reached the armed level ` +
           `${fmtUsd(exitLevels[j])} (${exitLevelMult(cfg, j).toFixed(2)}× the ` +
           `${fmtUsd(exitLevels[j] / exitLevelMult(cfg, j))} anchor this ladder was armed against). ` +
-          `Config says: sell ${pct(cfg.sellFrac)} of held BTC at market.`,
+          `Config says: sell ${pct(cfg.sellFrac)} of held BTC at market.` +
+          amounts,
       });
     }
   }
@@ -122,6 +150,24 @@ function evaluate(mon, price, now = Date.now()) {
     const level = entryLevelPct(cfg, r);
     if (ddPct >= level && !entriesFired.has(r)) {
       entriesFired.add(r);
+      let amounts = '';
+      if (hasLedger) {
+        const spendable = usdBal - reserveFloor;
+        if (spendable <= 1) {
+          amounts = ` With your balances: the reserve floor leaves nothing spendable (${fmtUsd(usdBal)} USD, floor ${fmtUsd(reserveFloor)}).`;
+        } else {
+          const spend = spendable * cfg.buyFrac;
+          const fee = spend * FEE_RATE;
+          const qty = (spend - fee) / price;
+          const btcOld = btcBal;
+          usdBal -= spend;
+          btcBal += qty;
+          if (btcOld <= 0) avgCost = spend / qty;
+          else if (avgCost > 0) avgCost = (btcOld * avgCost + spend) / btcBal;
+          // avgCost stays null when the pre-existing BTC's basis was never given.
+          amounts = ` With your balances: spend ≈ ${fmtUsd(spend)} ≈ ${fmtBtc(qty)} BTC (est. costs ${fmtUsd(fee)}).` + balancesLine();
+        }
+      }
       events.push({
         type: 'buy',
         subject: `BUY rung ${r + 1} hit at ${fmtUsd(price)}`,
@@ -130,7 +176,8 @@ function evaluate(mon, price, now = Date.now()) {
           `${fmtUsd(anchor)} anchor (rung level −${level}% = ${fmtUsd(anchor * (1 - level / 100))}). ` +
           `Config says: spend ${pct(cfg.buyFrac)} of spendable USD` +
           (cfg.reservePct > 0 ? ` (after the ${cfg.reservePct}% reserve floor)` : '') +
-          ` at market.`,
+          ` at market.` +
+          amounts,
       });
       if (!epochHadEntry) {
         epochHadEntry = true;
@@ -155,12 +202,30 @@ function evaluate(mon, price, now = Date.now()) {
       // Only remind once armed with a real prior month — the very first
       // check just seats the counter instead of firing a stale reminder.
       if (lastDcaMonth != null) {
+        let amounts = '';
+        if (hasLedger && mon.start_usd != null) {
+          const want = (cfg.dcaMonthlyPct / 100) * mon.start_usd;
+          const spend = Math.min(want, Math.max(0, usdBal - reserveFloor));
+          if (spend > 1) {
+            const fee = spend * FEE_RATE;
+            const qty = (spend - fee) / price;
+            const btcOld = btcBal;
+            usdBal -= spend;
+            btcBal += qty;
+            if (btcOld <= 0) avgCost = spend / qty;
+            else if (avgCost > 0) avgCost = (btcOld * avgCost + spend) / btcBal;
+            amounts = ` With your balances: buy ≈ ${fmtUsd(spend)} ≈ ${fmtBtc(qty)} BTC.` + balancesLine();
+          } else {
+            amounts = ' With your balances: the reserve floor leaves nothing spendable this month.';
+          }
+        }
         events.push({
           type: 'dca',
           subject: `monthly DCA due`,
           message:
             `Monthly DCA reminder: buy ${cfg.dcaMonthlyPct}% of your starting capital in BTC at market ` +
-            `(price now ${fmtUsd(price)}).`,
+            `(price now ${fmtUsd(price)}).` +
+            amounts,
         });
       }
       lastDcaMonth = month;
@@ -178,6 +243,9 @@ function evaluate(mon, price, now = Date.now()) {
       last_dca_month: lastDcaMonth,
       last_price: price,
       last_checked_at: now,
+      usd_bal: usdBal,
+      btc_bal: btcBal,
+      avg_cost: avgCost,
     },
   };
 }
@@ -203,15 +271,36 @@ function getMonitor(id) {
   return row ? parseRow(row) : null;
 }
 
-function createMonitor({ name, config, anchor, recipients = [], pollMinutes = 15, alertsEnabled = 1 }) {
+// Optional real balances: {startUsd, startBtc, avgCost}. Entering either
+// balance activates the modeled ledger (both required, ≥ 0, together > 0);
+// avgCost (average cost of the existing BTC) is optional context.
+function parseBalances({ startUsd, startBtc, avgCost }) {
+  const hasAny = startUsd != null || startBtc != null;
+  if (!hasAny) return { start_usd: null, usd_bal: null, btc_bal: null, avg_cost: null };
+  const u = Number(startUsd ?? 0);
+  const b = Number(startBtc ?? 0);
+  if (!Number.isFinite(u) || u < 0 || !Number.isFinite(b) || b < 0) throw new Error('balances must be non-negative numbers');
+  if (u + b <= 0) throw new Error('enter at least some USD or BTC for real-balance mode');
+  let ac = null;
+  if (avgCost != null && String(avgCost) !== '') {
+    ac = Number(avgCost);
+    if (!Number.isFinite(ac) || ac <= 0) throw new Error('avg cost must be a positive price');
+    if (b <= 0) throw new Error('avg cost only applies when some BTC is held');
+  }
+  return { start_usd: u, usd_bal: u, btc_bal: b, avg_cost: ac };
+}
+
+function createMonitor({ name, config, anchor, recipients = [], pollMinutes = 15, alertsEnabled = 1, startUsd, startBtc, avgCost }) {
   const cfg = validateConfig(config);
   const a = Number(anchor);
   if (!Number.isFinite(a) || a <= 0) throw new Error('anchor (ATH) must be a positive price');
   if (!name || !String(name).trim()) throw new Error('name is required');
+  const bal = parseBalances({ startUsd, startBtc, avgCost });
   const info = db
     .prepare(
-      `INSERT INTO ladder_monitors (name, created_at, config, anchor_ath, poll_minutes, alerts_enabled, recipients)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`
+      `INSERT INTO ladder_monitors (name, created_at, config, anchor_ath, poll_minutes, alerts_enabled, recipients,
+        start_usd, usd_bal, btc_bal, avg_cost)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     )
     .run(
       String(name).trim(),
@@ -220,7 +309,11 @@ function createMonitor({ name, config, anchor, recipients = [], pollMinutes = 15
       a,
       Math.max(1, Math.round(Number(pollMinutes) || 15)),
       alertsEnabled ? 1 : 0,
-      JSON.stringify(cleanRecipients(recipients))
+      JSON.stringify(cleanRecipients(recipients)),
+      bal.start_usd,
+      bal.usd_bal,
+      bal.btc_bal,
+      bal.avg_cost
     );
   return getMonitor(info.lastInsertRowid);
 }
@@ -239,6 +332,22 @@ function updateMonitor(id, fields) {
     const a = Number(fields.anchor);
     if (!Number.isFinite(a) || a <= 0) throw new Error('anchor must be a positive price');
     sets.push('anchor_ath = ?'); vals.push(a);
+  }
+  // Balance true-ups: real fills never match the model to the cent, so the
+  // ledger can be corrected any time without touching rung state.
+  if (fields.usdBal != null || fields.btcBal != null || fields.avgCost !== undefined || fields.startUsd != null) {
+    const num = (v, name, allowZero = true) => {
+      const n = Number(v);
+      if (!Number.isFinite(n) || n < 0 || (!allowZero && n <= 0)) throw new Error(`${name} must be a ${allowZero ? 'non-negative' : 'positive'} number`);
+      return n;
+    };
+    if (fields.usdBal != null) { sets.push('usd_bal = ?'); vals.push(num(fields.usdBal, 'USD balance')); }
+    if (fields.btcBal != null) { sets.push('btc_bal = ?'); vals.push(num(fields.btcBal, 'BTC balance')); }
+    if (fields.startUsd != null) { sets.push('start_usd = ?'); vals.push(num(fields.startUsd, 'starting USD')); }
+    if (fields.avgCost !== undefined) {
+      if (fields.avgCost === null || String(fields.avgCost) === '') { sets.push('avg_cost = NULL'); }
+      else { sets.push('avg_cost = ?'); vals.push(num(fields.avgCost, 'avg cost', false)); }
+    }
   }
   if (fields.config != null) {
     // A config change is a different ladder: reset the epoch state so stale
@@ -273,10 +382,12 @@ async function checkMonitor(mon, price, now = Date.now()) {
   const { events, patch } = evaluate(mon, price, now);
   db.prepare(
     `UPDATE ladder_monitors SET anchor_ath = ?, entries_fired = ?, epoch_had_entry = ?, exit_levels = ?,
-     exits_fired = ?, last_dca_month = ?, last_price = ?, last_checked_at = ? WHERE id = ?`
+     exits_fired = ?, last_dca_month = ?, last_price = ?, last_checked_at = ?,
+     usd_bal = ?, btc_bal = ?, avg_cost = ? WHERE id = ?`
   ).run(
     patch.anchor_ath, patch.entries_fired, patch.epoch_had_entry, patch.exit_levels,
-    patch.exits_fired, patch.last_dca_month, patch.last_price, patch.last_checked_at, mon.id
+    patch.exits_fired, patch.last_dca_month, patch.last_price, patch.last_checked_at,
+    patch.usd_bal, patch.btc_bal, patch.avg_cost, mon.id
   );
   for (const ev of events) {
     let emailed = 0;
@@ -344,6 +455,18 @@ function monitorView(mon) {
           armed: false,
         })),
     exitsArmed: mon.exit_levels.length > 0,
+    ledger:
+      mon.usd_bal != null && mon.btc_bal != null
+        ? {
+            startUsd: mon.start_usd,
+            usdBal: mon.usd_bal,
+            btcBal: mon.btc_bal,
+            avgCost: mon.avg_cost,
+            totalValue: price ? mon.usd_bal + mon.btc_bal * price : null,
+            btcSharePct: price && mon.usd_bal + mon.btc_bal * price > 0 ? ((mon.btc_bal * price) / (mon.usd_bal + mon.btc_bal * price)) * 100 : null,
+            vsCostPct: price && mon.avg_cost > 0 ? (price / mon.avg_cost - 1) * 100 : null,
+          }
+        : null,
     events: recentEvents(mon.id),
   };
 }
