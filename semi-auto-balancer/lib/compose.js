@@ -1119,7 +1119,18 @@ async function venueTradableFilter(profileId) {
     };
   }
   if (account.venue === 'bitso') {
-    const books = await bitso.availableBooks().catch(() => []);
+    // A failed book fetch must NOT degrade to an empty set — that silently
+    // marks every candidate "not on bitso" and the search fails with a
+    // misleading count (observed live 2026-07-20). Fail with the true cause.
+    let books;
+    try {
+      books = await bitso.availableBooks();
+    } catch (err) {
+      throw new Error(`Bitso book list unavailable (${err.message}) — the venue filter cannot run; retry the search`);
+    }
+    if (!Array.isArray(books) || books.length === 0) {
+      throw new Error('Bitso returned an empty book list — the venue filter cannot run; retry the search');
+    }
     const bases = new Set(books.map((b) => String(b).split('_')[0]));
     return { venue: 'bitso', tradable: async (symbol) => bases.has(String(symbol).toLowerCase()) };
   }
@@ -1427,12 +1438,14 @@ async function runComposeSearch(profileId, opts = {}, setProgress = () => {}) {
   const coverageDroppedNames = universe.filter((c) => !covered.includes(c.id)).map((c) => c.symbol);
   if (bars.length < MIN_WINDOW_DAYS) throw new Error(`not enough overlapping daily history (${bars.length} bars)`);
 
-  const minReal = heldOnly ? 2 : 4;
+  // Mixes go down to ONE tradable asset, so a single covered candidate is a
+  // legal (if minimal) universe; zero is the only hard stop.
+  const minReal = 1;
   if (coveredCandidates.length < minReal) {
     throw new Error(
       heldOnly
-        ? `only ${coveredCandidates.length} of your holdings have enough history for the ${Math.round((nowMs - windowStart) / 86_400_000)}d window — need at least ${minReal} to search subsets`
-        : `only ${coveredCandidates.length} tradable candidates cover the ${Math.round((nowMs - windowStart) / 86_400_000)}d window ` +
+        ? `none of your holdings have enough history for the ${Math.round((nowMs - windowStart) / 86_400_000)}d window`
+        : `no tradable candidates cover the ${Math.round((nowMs - windowStart) / 86_400_000)}d window ` +
             `(${notOnVenue.length} dropped as not on ${venueFilter ? venueFilter.venue : 'the venue'}, ` +
             `${universe.length - coveredCandidates.length} for missing history) — this should not happen with a linked venue; check /api/diagnostics`
     );
