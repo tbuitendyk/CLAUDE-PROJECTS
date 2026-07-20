@@ -54,12 +54,21 @@ function getJob(id) {
 }
 
 // Most recent persisted result of a kind for a profile (survives restarts).
+// profileId null = profile-independent jobs (e.g. the Ladder Lab): stored
+// with a NULL profile_id, which the FK on profiles(id) permits.
 function latestResult(profileId, kind) {
-  const row = db
-    .prepare(
-      'SELECT * FROM analysis_results WHERE profile_id = ? AND kind = ? ORDER BY created_at DESC LIMIT 1'
-    )
-    .get(profileId, kind);
+  const row =
+    profileId == null
+      ? db
+          .prepare(
+            'SELECT * FROM analysis_results WHERE profile_id IS NULL AND kind = ? ORDER BY created_at DESC LIMIT 1'
+          )
+          .get(kind)
+      : db
+          .prepare(
+            'SELECT * FROM analysis_results WHERE profile_id = ? AND kind = ? ORDER BY created_at DESC LIMIT 1'
+          )
+          .get(profileId, kind);
   if (!row) return null;
   return {
     id: row.id,

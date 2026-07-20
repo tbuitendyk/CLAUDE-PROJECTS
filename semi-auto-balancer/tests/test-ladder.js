@@ -169,6 +169,16 @@ const mkBars = (prices) => prices.map((p, i) => ({ ts: t0 + i * DAY, price: p })
   const st = await ladder.dataStatus();
   ok(st.rows === 0 && st.from === null, 'dataStatus reports an empty cache honestly');
 
+  // Regression (caught live): ladder jobs are profile-independent. profileId 0
+  // violated the analysis_results FK (no profile 0 exists); NULL must persist
+  // and be readable back via latestResult(null, kind).
+  const { startJob, getJob, latestResult } = require('../lib/jobs');
+  const jid = startJob('ladder-fk-test', null, async () => ({ result: { x: 1 }, params: { p: 2 } }));
+  for (let i = 0; i < 50 && getJob(jid).status === 'running'; i++) await new Promise((r) => setTimeout(r, 20));
+  ok(getJob(jid).status === 'done', `NULL-profile job persists without FK failure (${getJob(jid).error || 'no error'})`);
+  const lr = latestResult(null, 'ladder-fk-test');
+  ok(lr && lr.result.x === 1 && lr.params.p === 2, 'latestResult(null, kind) reads the NULL-profile row back');
+
   console.log('test-ladder: all assertions passed');
 })().catch((err) => {
   console.error('FAIL (exception):', err);

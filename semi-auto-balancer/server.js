@@ -400,7 +400,7 @@ app.get('/api/profiles/:id/compose-candidates', async (req, res) => {
 app.get('/api/ladder/status', async (req, res) => {
   try {
     const data = await ladder.dataStatus();
-    const latest = latestResult(0, 'ladder-sweep');
+    const latest = latestResult(null, 'ladder-sweep');
     res.json({ data, hasResult: Boolean(latest), lastSweepAt: latest ? latest.createdAt : null, gridSize: ladder.GRID_SIZE });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -409,7 +409,7 @@ app.get('/api/ladder/status', async (req, res) => {
 
 // Load maximum-depth daily BTC history (Binance archive reaches 2017) as a job.
 app.post('/api/ladder/load-data', (req, res) => {
-  const jobId = startJob('ladder-data', 0, async (setProgress) => {
+  const jobId = startJob('ladder-data', null, async (setProgress) => {
     setProgress('fetching deep BTC daily history (Binance archive)…', 5);
     const { getDailyHistory } = require('./lib/history');
     const rows = await getDailyHistory('bitcoin', 3650, 'btc');
@@ -422,14 +422,14 @@ app.post('/api/ladder/load-data', (req, res) => {
 // Run the full configuration sweep + plateau detection + scenario grid.
 app.post('/api/ladder/sweep', (req, res) => {
   const b = req.body || {};
-  const jobId = startJob('ladder-sweep', 0, (setProgress) =>
+  const jobId = startJob('ladder-sweep', null, (setProgress) =>
     ladder.runLadderSweep({ fast: Boolean(b.fast), seed: Number(b.seed) || 424242 }, setProgress)
   );
   res.json({ ok: true, jobId });
 });
 
 app.get('/api/ladder/latest', (req, res) => {
-  const latest = latestResult(0, 'ladder-sweep');
+  const latest = latestResult(null, 'ladder-sweep');
   if (!latest) return res.json({ result: null });
   res.json(latest);
 });
