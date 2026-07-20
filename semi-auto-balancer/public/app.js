@@ -67,15 +67,18 @@ async function loadProfiles() {
 function renderProfiles() {
   const ul = $('#profile-list');
   ul.innerHTML = '';
-  for (const p of state.profiles) {
+  const addLi = (p, { indent = false, head = false } = {}) => {
     const li = document.createElement('li');
-    li.className = p.id === state.selectedId ? 'active' : '';
+    li.className =
+      (p.id === state.selectedId ? 'active' : '') + (indent ? ' sub-item' : '') + (head ? ' group-head' : '');
     const label = document.createElement('span');
-    label.textContent = p.name;
-    if (!p.enabled) label.className = 'off';
+    label.textContent = head ? `🪣 ${p.name}` : p.name;
+    // The shell is intentionally never-polling; struck-through would read as
+    // "broken" on a group header, so only non-head disabled profiles get it.
+    if (!p.enabled && !head) label.className = 'off';
     const meta = document.createElement('span');
     meta.className = 'muted';
-    meta.textContent = `${p.threshold_pct}%`;
+    meta.textContent = head ? 'account' : `${p.threshold_pct}%`;
     li.append(label, meta);
     li.addEventListener('click', async () => {
       state.selectedId = p.id;
@@ -84,6 +87,40 @@ function renderProfiles() {
       renderDetail();
     });
     ul.appendChild(li);
+  };
+
+  // Grouping: a multi-profile exchange account renders as its Unallocated
+  // shell on top (the account-level view) with its linked strategy profiles
+  // indented underneath in creation order. Everything else renders flat in
+  // creation order, groups slotted where their oldest member sits.
+  const byCreated = (a, b) => (a.created_at || 0) - (b.created_at || 0) || a.id - b.id;
+  const groups = new Map(); // account_id -> members[]
+  for (const p of state.profiles) {
+    if (p.exchange_account_id) {
+      if (!groups.has(p.exchange_account_id)) groups.set(p.exchange_account_id, []);
+      groups.get(p.exchange_account_id).push(p);
+    }
+  }
+  const rendered = new Set();
+  const entries = [];
+  for (const p of [...state.profiles].sort(byCreated)) {
+    if (rendered.has(p.id)) continue;
+    const members = p.exchange_account_id ? groups.get(p.exchange_account_id) : null;
+    const shell = members && members.find((m) => m.is_shell);
+    if (members && members.length > 1 && shell) {
+      entries.push({ head: shell, children: members.filter((m) => !m.is_shell).sort(byCreated) });
+      for (const m of members) rendered.add(m.id);
+    } else {
+      entries.push({ single: p });
+      rendered.add(p.id);
+    }
+  }
+  for (const e of entries) {
+    if (e.single) addLi(e.single);
+    else {
+      addLi(e.head, { head: true });
+      for (const c of e.children) addLi(c, { indent: true });
+    }
   }
 }
 

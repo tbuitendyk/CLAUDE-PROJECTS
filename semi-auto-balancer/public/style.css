@@ -95,6 +95,11 @@ form.inline input { flex: 1; min-width: 200px; }
 #profile-list li:hover { background: var(--bg); }
 #profile-list li.active { background: var(--bg); outline: 1px solid var(--accent); }
 #profile-list .off { color: var(--muted); text-decoration: line-through; }
+/* Sub-account groups: the Unallocated shell heads its account's group; the
+   linked strategy profiles sit indented beneath it in creation order. */
+#profile-list li.group-head { font-weight: 600; }
+#profile-list li.sub-item { padding-left: 1.6rem; position: relative; }
+#profile-list li.sub-item::before { content: '└'; position: absolute; left: .6rem; color: var(--muted); }
 .detail-head { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: .5rem; }
 .detail-actions { display: flex; gap: .5rem; flex-wrap: wrap; }
 .summary { display: flex; flex-direction: column; gap: .3rem; margin: .75rem 0 .25rem; }
