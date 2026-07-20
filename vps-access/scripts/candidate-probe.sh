@@ -90,3 +90,18 @@ const id = process.env.PROBE_ID, sym = process.env.PROBE_SYM;
   console.log('  bar samples:', inSample.filter((_, i) => i % step === 0).map((b) => `${d10(b.ts)}=${b.usd[id]}`).join(' '));
 })();
 JS2
+
+# Third phase: what did the LAST stored compose run actually compute for the
+# focus symbol? (screen entry incl. ownReturnPct — ground truth for a drop.)
+PROBE_SYM="$SYM" node <<'JS3'
+const sym = process.env.PROBE_SYM;
+const db = require('./lib/db');
+for (const pid of [1, 2]) {
+  const row = db.prepare("SELECT created_at, result FROM analysis_results WHERE kind='compose' AND profile_id=? ORDER BY id DESC LIMIT 1").get(pid);
+  if (!row) continue;
+  let r = null; try { r = JSON.parse(row.result); } catch {}
+  if (!r || !r.screen) { console.log(`profile ${pid}: no screen in latest result (${new Date(row.created_at).toISOString()})`); continue; }
+  const e = r.screen.find((s) => s.symbol === sym);
+  console.log(`profile ${pid} @ ${new Date(row.created_at).toISOString()}: ${sym} screen entry:`, JSON.stringify(e || 'ABSENT'));
+}
+JS3
