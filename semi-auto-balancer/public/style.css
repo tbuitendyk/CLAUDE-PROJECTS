@@ -103,6 +103,10 @@ th { color: var(--muted); font-weight: 500; font-size: .78rem; }
 td.center { text-align: center; }
 /* Tethered index asset row: pinned on top, small visual gap to base assets */
 tr.index-row td { border-bottom: 4px solid var(--bg); padding-bottom: .55rem; }
+/* Recommended (★) row in the tuner: tinted, KEEPS the normal separator line */
+tr.reco-row td { background: color-mix(in srgb, var(--ok) 9%, transparent); }
+/* CURRENT reference row in the composition lab: distinct tint, normal border */
+tr.ref-row td { background: color-mix(in srgb, var(--accent) 8%, transparent); }
 .toggle-row { display: flex; align-items: center; gap: .5rem; justify-content: flex-start; margin: .25rem 0 .5rem; color: var(--text); }
 .settings-row { display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; margin: .25rem 0 .75rem; }
 .settings-row label { color: var(--muted); }

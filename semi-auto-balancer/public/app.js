@@ -737,7 +737,7 @@ function renderTune(latest, profile) {
   for (const row of r.grid) {
     const tr = document.createElement('tr');
     const isReco = r.recommendation && row.x === r.recommendation.x;
-    if (isReco) tr.classList.add('index-row');
+    if (isReco) tr.classList.add('reco-row');
     tr.innerHTML =
       `<td>${row.x}%${isReco ? ' ★' : ''}${!hypothetical && row.x === r.currentX ? ' <span class="muted">(current)</span>' : ''}</td>` +
       `<td>${fmtPct(row.netBasketGrowthPct)}</td>` +
@@ -967,7 +967,7 @@ function renderCompose(latest) {
   };
   const addRow = (label, row, highlight) => {
     const tr = document.createElement('tr');
-    if (highlight) tr.classList.add('index-row');
+    if (highlight) tr.classList.add('ref-row');
     const star = row.recommended ? ' ★' : '';
     const h = row.holdout || {};
     const labelCell = `${label}${star}${xSweep(row)}`;
