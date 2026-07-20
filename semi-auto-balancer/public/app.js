@@ -1181,9 +1181,13 @@ $('#c-pool-btn').addEventListener('click', async () => {
       label.append(cb, document.createTextNode(` ${c.symbol.toUpperCase()}${c.held ? ' •' : ''}`));
       box.appendChild(label);
     }
-    status.textContent = excludedNow.size
-      ? `${excludedNow.size} asset(s) currently excluded. • = held.`
-      : 'Nothing excluded. Uncheck to exclude; saves immediately. • = held.';
+    status.textContent =
+      (r.marketsUnavailable
+        ? '⚠ Market candidates unavailable right now (data queue busy — likely a running search); showing held assets only. Reopen later for the full pool. '
+        : '') +
+      (excludedNow.size
+        ? `${excludedNow.size} asset(s) currently excluded. • = held.`
+        : 'Nothing excluded. Uncheck to exclude; saves immediately. • = held.');
   } catch (err) {
     box.innerHTML = `<span class="error">Pool load failed: ${err.message}</span>`;
   }

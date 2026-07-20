@@ -351,9 +351,12 @@ app.get('/api/profiles/:id/compose-candidates', async (req, res) => {
       byId.set(a.coingecko_id, { id: a.coingecko_id, symbol: a.symbol.toLowerCase(), held: true });
     }
     let top = [];
+    let marketsUnavailable = false;
     try {
       top = await topCandidates({ count: 40 });
+      marketsUnavailable = top.length === 0;
     } catch (err) {
+      marketsUnavailable = true;
       console.error('compose-candidates: topCandidates failed:', err.message);
     }
     for (const c of top) {
@@ -374,6 +377,7 @@ app.get('/api/profiles/:id/compose-candidates', async (req, res) => {
     res.json({
       tether: tetherAsset ? { id: tetherAsset.coingecko_id, symbol: tetherAsset.symbol } : null,
       venue: venueFilter ? venueFilter.venue : null,
+      marketsUnavailable,
       pool: pool
         .sort((a, b) => (a.held === b.held ? (a.rank || 999) - (b.rank || 999) : a.held ? -1 : 1))
         .map((c) => ({ ...c, excluded: excluded.has(c.id) })),

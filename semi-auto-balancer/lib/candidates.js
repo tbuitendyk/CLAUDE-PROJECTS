@@ -19,7 +19,16 @@ const NAME_EXCLUDE = /usd|usde?|dai|tether|wrapped|staked|restaked|bridged|peg|f
 // the CoinGecko stablecoins/wrapped category filter still removes true pegs.
 const COMMODITY_OK = /^(paxg|xaut|kau|kag|xaur|dgx)$/i;
 
-async function topCandidates({ count = 40 } = {}) {
+// Cached candidate list: three CG calls per refresh (markets + two category
+// filters) ride the SAME throttled queue as polling and any running search,
+// so fetching fresh on every request made the pool collapse to held-only
+// whenever the queue was busy. Refresh lazily at most every CANDIDATES_TTL;
+// serve stale on failure — a half-hour-old top-100 beats a silently empty one.
+const CANDIDATES_TTL_MS = 30 * 60_000;
+let candidatesCache = { ts: 0, rows: [] };
+let candidatesInflight = null;
+
+async function fetchTopCandidatesFresh() {
   const markets = await getJson(
     '/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=100&page=1'
   );
@@ -42,9 +51,33 @@ async function topCandidates({ count = 40 } = {}) {
     const sym = (m.symbol || '').toLowerCase();
     if (!COMMODITY_OK.test(sym) && (NAME_EXCLUDE.test(m.name || '') || NAME_EXCLUDE.test(sym))) continue;
     out.push({ id: m.id, symbol: sym, name: m.name, rank: m.market_cap_rank });
-    if (out.length >= count) break;
   }
   return out;
+}
+
+async function topCandidates({ count = 40 } = {}) {
+  const fresh = Date.now() - candidatesCache.ts < CANDIDATES_TTL_MS;
+  if (!fresh || !candidatesCache.rows.length) {
+    if (!candidatesInflight) {
+      candidatesInflight = fetchTopCandidatesFresh()
+        .then((rows) => {
+          if (rows.length) candidatesCache = { ts: Date.now(), rows };
+          return rows;
+        })
+        .finally(() => {
+          candidatesInflight = null;
+        });
+    }
+    if (candidatesCache.rows.length) {
+      // Serve stale NOW; the refresh lands in the background.
+      candidatesInflight.catch(() => {});
+    } else {
+      // Nothing cached yet — this first call must wait (and may throw; the
+      // caller's degrade path handles that).
+      await candidatesInflight;
+    }
+  }
+  return candidatesCache.rows.slice(0, count);
 }
 
 // Fetch daily history for a candidate list through the cache. Candidates
