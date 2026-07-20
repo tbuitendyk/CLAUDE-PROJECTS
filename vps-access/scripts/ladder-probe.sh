@@ -112,8 +112,60 @@ for i, p in enumerate(r.get("picks") or []):
         i + 1, p.get("tier"), p.get("plateauRank"), p.get("plateauMemberRank"), p.get("plateauMemberSize"), p["robustScore"], p["mar"], p["maxDDPct"]))
     print("   cfg %s" % json.dumps(p["config"]))'
     ;;
+  mon-test)
+    # Self-cleaning live verification of the Phase L2 monitor machinery:
+    # create a temp monitor (NO recipients — on-screen log only), verify the
+    # immediate first check fired the already-passed rungs, exercise
+    # check-now, then delete it. Leaves no residue.
+    python3 - <<'PYEOF'
+import json, subprocess, sys
+
+def api(method, path, body=None):
+    cmd = ["curl", "-sS", "-m", "30", "-X", method, "http://127.0.0.1:8092/api" + path,
+           "-H", "Content-Type: application/json"]
+    if body is not None:
+        cmd += ["-d", json.dumps(body)]
+    out = subprocess.run(cmd, capture_output=True, text=True).stdout
+    return json.loads(out)
+
+bad = []
+cfg = {"entryStart": 20, "entrySpacing": 20, "entryCount": 4, "buyFrac": 0.2,
+       "exitStart": 1.0, "exitSpacing": 0.5, "exitCount": 3, "sellFrac": 0.2,
+       "reservePct": 0, "dcaMonthlyPct": 2}
+r = api("POST", "/ladder/monitors", {"name": "probe-temp", "config": cfg, "recipients": [], "pollMinutes": 15})
+if not r.get("ok"):
+    print("CREATE FAILED:", r); sys.exit(1)
+m = r["monitor"]
+mid = m["id"]
+print("created monitor", mid, "anchor", round(m["anchor"]), "price", m["lastPrice"] and round(m["lastPrice"]))
+fired = [e for e in m["entries"] if e["fired"]]
+print("entry rungs fired on first check:", [e["rung"] for e in fired])
+print("exits armed:", m["exitsArmed"], [round(x["priceLevel"]) for x in m["exits"]])
+evs = m["events"]
+print("events logged:", len(evs))
+for e in evs[:4]:
+    print("  -", e["type"], "|", e["message"][:110])
+if m["lastPrice"] and m["drawdownPct"] and m["drawdownPct"] > 45:
+    if len(fired) < 2: bad.append("expected rungs 1+2 fired at current drawdown")
+    if not m["exitsArmed"]: bad.append("exit ladder should be armed after first entry")
+if not evs: bad.append("no events logged on first check")
+c = api("POST", "/ladder/monitors/%d/check" % mid, {})
+print("check-now:", "ok" if c.get("ok") else c, "price", c.get("price") and round(c["price"]), "events", c.get("events"))
+if c.get("ok") and c.get("events", 0) != 0: bad.append("repeat check at same price should be silent")
+lst = api("GET", "/ladder/monitors")
+if not any(x["id"] == mid for x in lst.get("monitors", [])): bad.append("monitor missing from list")
+d = api("DELETE", "/ladder/monitors/%d" % mid)
+if not d.get("ok"): bad.append("delete failed")
+lst = api("GET", "/ladder/monitors")
+if any(x["id"] == mid for x in lst.get("monitors", [])): bad.append("monitor survived delete")
+print("cleanup: temp monitor deleted")
+if bad:
+    print("SANITY FAILURES:"); [print("  -", b) for b in bad]; sys.exit(1)
+print("SANITY: monitor machinery verified live")
+PYEOF
+    ;;
   *)
-    echo "usage: run-script ladder-probe.sh status|load|sweep|sweep-fast|latest|picks" >&2
+    echo "usage: run-script ladder-probe.sh status|load|sweep|sweep-fast|latest|picks|mon-test" >&2
     exit 1
     ;;
 esac
