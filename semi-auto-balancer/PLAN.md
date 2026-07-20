@@ -566,6 +566,89 @@ first check, so already-passed rungs alert right away (mirrors the
 simulator's mid-drawdown start). Advisory only — a monitor says what the
 config would do; it never touches an exchange.
 
+## Phase 6 — Virtual sub-accounts (multiple profiles per exchange account)
+**Status: DESIGN — awaiting sign-off. Decisions locked with the user
+2026-07-20: attribution = auto-match + inbox fallback; shared traded assets
+across co-located profiles ALLOWED; everything stays advisory-only.**
+
+Motivation: adopt a lab mix at a SMALL real allocation without betting the
+account — several profiles carve up one physical exchange account, each
+trading independently on its own alerts and tracking performance
+independently (own value/basket indices, own `value_started_at`), while the
+venue sees one combined balance sheet.
+
+What already works untouched: per-profile targets/thresholds/alerts and the
+splice-continuous index machinery — independent track records are free once
+quantities are per-profile (they already are). The build is entirely in the
+LINKING, ATTRIBUTION, and RECONCILIATION layers.
+
+### Schema
+- `profiles.exchange_account_id` (nullable FK → exchange_accounts): N
+  profiles may point at one account. `exchange_accounts.profile_id` is
+  reinterpreted as the account's **residual profile** (default attribution
+  target, absorbs snap corrections); existing 1:1 setups migrate by setting
+  the owning profile's `exchange_account_id` — zero behavior change until a
+  second profile links (idempotent ensureColumn migration).
+- `attribution_queue` (id, account_id, kind 'trade'|'flow', venue_ref, ts,
+  pair, side, price, deltas JSON, suggested_profile_id, reason TEXT,
+  status 'pending'|'assigned'|'dismissed', assigned_profile_id,
+  resolved_at). UNIQUE(account_id, kind, venue_ref) guards replays.
+- `exchange_trades.profile_id` (nullable): the attributed owner; NULL while
+  queued. Queued trades apply NO quantity change until assigned.
+
+### Sync rework (account-level; one venue fetch per account, as today)
+Asset mapping goes per-code across ALL linked profiles: holders(code) =
+[(profile, asset)]. Attribution tiers, cheapest first:
+- **T1 unique holder**: exactly one linked profile holds every non-tether
+  code in the fill's deltas → auto-attribute. The tether leg follows the
+  traded asset's profile (an XRP buy debits THAT profile's USDC).
+- **T2 advice match**: a profile whose recent alert/advice matches the fill
+  (same symbol + side, size within ±25% of the suggested quantity, within
+  48h of the alert) → auto-attribute. Multiple matching profiles = ambiguous
+  → queue. (Window/tolerance numbers are review items.)
+- **T3 inbox**: everything else queues with `suggested_profile_id` = best
+  scorer (or the residual profile) and a human-readable `reason`. One-click
+  assign applies the deltas then (deduped by venue trade id).
+Flows (deposits/withdrawals) route through the same tiers; baseline
+adoption only auto-fires for codes held by exactly ONE linked profile at
+zero quantity — otherwise it queues.
+
+### Reconciliation invariant (the safety heart)
+Per venue code: `physical balance = Σ linked-profile quantities +
+Σ pending-flow deltas + Σ queued-unapplied trade deltas ± tolerance`.
+Within tolerance → snap lands on the RESIDUAL profile's asset (never a
+trial's — a trial's track record must not absorb dust it didn't earn).
+Outside tolerance → unexplained, flagged loudly per code, never auto-fixed.
+The account panel shows physical vs sum-of-virtual per symbol with the
+unassigned remainder as a visible bucket.
+
+### Carve-out (virtual transfer — how a trial starts)
+"Carve out trial": pick source profile, amounts per asset → one transaction
+executes paired `recordFlow` calls (withdrawal from source, deposit to
+target) at live prices. No venue I/O, both indices splice past the transfer
+— the main profile's track record and the trial's day-zero are both honest.
+Trial creation wizard chains: new profile → link to account → carve-out →
+targets prefilled from a lab mix (reusing the mix→tuner handoff shape).
+
+### Corrections
+Reassigning a fill AFTER indices have chained past it does NOT rewrite
+history: the correction applies as a dated flow-pair now (negative deltas
+to the wrong profile, positive to the right one), stamped with an audit
+note. Review item: an optional 24h grace window where a same-day
+reassignment may instead rewrite, since the daily index hasn't chained yet.
+
+### Tests (gate for shipping)
+Multi-profile reconcile invariant; T1/T2/T3 paths including the
+shared-asset ambiguity → queue; tether-follows-trade attribution; carve-out
+splice continuity (neither index jumps at the transfer moment); queued
+trade applying on assign; correction flow-pair; single-holder-only baseline
+adoption; migration no-op for existing 1:1 accounts.
+
+### Non-goals
+No auto-trading, no per-profile API keys, no venue-native sub-accounts
+(Bitso retail has none; Kraken's are institutional). The venue keys stay
+read-only, one set per account.
+
 ## Cross-cutting
 
 - Idempotent migrations (ensureColumn pattern) throughout.
