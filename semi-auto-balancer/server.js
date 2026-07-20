@@ -21,6 +21,7 @@ const { runTuneSweep, computeTargetsHash } = require('./lib/backtest');
 const { runComposeSearch, venueTradableFilter, parseComposeExclusions } = require('./lib/compose');
 const { topCandidates } = require('./lib/candidates');
 const { hourlyStatus } = require('./lib/hourly');
+const ladder = require('./lib/ladder');
 const { sendAlertEvents, sendStatusReport, sendTestEmail, emailConfigured } = require('./lib/mailer');
 const { searchCoins, supportedFiats, fiatCode } = require('./lib/pricing');
 const { visionConfigured, parseHoldingsScreenshot } = require('./lib/vision');
@@ -391,6 +392,46 @@ app.get('/api/profiles/:id/compose-candidates', async (req, res) => {
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
+});
+
+// ---- Ladder Lab (Phase L): BTC/USD cycle-ladder strategy lab ----------------
+
+// Data coverage + latest sweep presence for the Ladder Lab page.
+app.get('/api/ladder/status', async (req, res) => {
+  try {
+    const data = await ladder.dataStatus();
+    const latest = latestResult(0, 'ladder-sweep');
+    res.json({ data, hasResult: Boolean(latest), lastSweepAt: latest ? latest.createdAt : null, gridSize: ladder.GRID_SIZE });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Load maximum-depth daily BTC history (Binance archive reaches 2017) as a job.
+app.post('/api/ladder/load-data', (req, res) => {
+  const jobId = startJob('ladder-data', 0, async (setProgress) => {
+    setProgress('fetching deep BTC daily history (Binance archive)…', 5);
+    const { getDailyHistory } = require('./lib/history');
+    const rows = await getDailyHistory('bitcoin', 3650, 'btc');
+    setProgress('done', 100);
+    return { result: { rows: rows.length, from: rows[0] ? rows[0].ts : null, to: rows.length ? rows[rows.length - 1].ts : null }, params: {} };
+  });
+  res.json({ ok: true, jobId });
+});
+
+// Run the full configuration sweep + plateau detection + scenario grid.
+app.post('/api/ladder/sweep', (req, res) => {
+  const b = req.body || {};
+  const jobId = startJob('ladder-sweep', 0, (setProgress) =>
+    ladder.runLadderSweep({ fast: Boolean(b.fast), seed: Number(b.seed) || 424242 }, setProgress)
+  );
+  res.json({ ok: true, jobId });
+});
+
+app.get('/api/ladder/latest', (req, res) => {
+  const latest = latestResult(0, 'ladder-sweep');
+  if (!latest) return res.json({ result: null });
+  res.json(latest);
 });
 
 // ---- threshold sweep (Phase 2) ----------------------------------------------

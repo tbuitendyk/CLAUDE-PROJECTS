@@ -502,6 +502,40 @@ blend math + stablecoin exclusion.
   ANY asset is unpriced) must ignore zero-target assets — one flaky fringe
   candidate must never silently disable a profile's alerting.
 
+## Phase L — Ladder Lab (BTC/USD cycle-ladder strategy laboratory)
+**Status: SHIPPED (tests green: test-ladder.js).** A standalone subproject
+(own page, `ladder.html`, header-linked from the main app like Help; own
+engine `lib/ladder.js`; `/api/ladder/*` endpoints; jobs under profileId 0)
+testing the cycle-ladder thesis the compose/tuner results pointed to: two
+assets only (USD + BTC), **entry rungs buy on drawdowns from the running ATH,
+exit rungs sell into strength at absolute levels anchored to the fallen-from
+ATH**, plus order sizing, a hard USD reserve floor, and optional monthly DCA.
+Design decisions (user's explicit calls, stated in the UI):
+- **Tuned over the ENTIRE history — deliberately no out-of-sample holdout.**
+  The forward test is a synthetic-futures grid instead; the caveat renders
+  with every result.
+- Data facility loads the deepest daily BTC/USD history available (Binance
+  archive reaches 2017 via the existing deep-daily layer; ~3650d requested).
+- Grid: 10 dims × 78,732 configs (entry start/spacing/count, buy fraction,
+  exit start/spacing/count, sell fraction, reserve %, DCA %/mo); fast pass =
+  every 3rd config. Score = MAR (CAGR ÷ maxDD); costs 0.5%/leg throughout.
+- **Plateau-first selection**: robustScore = min(own, all ±1-step neighbors);
+  BFS connected components ≥0.8× best robust; picks = best member of each top
+  plateau + best robust config per risk tier (maxDD <30 / 30–50 / >50%);
+  engine-generated reasoning strings render under each pick.
+- Epoch state machine: new ATH re-arms entries; first entry of an epoch arms
+  the exit ladder at absolute multiples of that epoch's peak (levels persist
+  until hit — ladder memory, unlike weight-based rebalancing).
+- Scenario engine: 8 archetypes (steady bull, moonshot-crash, plummet-flat,
+  crash-recover, crab, bull-bear, double cycle, history bootstrap) × 60 paths
+  × 5y, starting at today's price with the real ATH carried in (mid-drawdown,
+  as reality stands). Rough probabilities: 2,000 history block-bootstraps
+  classified by nearest archetype in (return, drawdown) space — labeled as
+  rough estimates. Baselines: hold BTC, pure DCA, hold USD.
+- Bug found by the test battery: median() operator precedence
+  (`s.length >> 1 - 1` ≡ `>> 0`) made every even-count scenario median NaN —
+  fixed before first deploy.
+
 ## Cross-cutting
 
 - Idempotent migrations (ensureColumn pattern) throughout.

@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Ladder Lab — BTC/USD Cycle Ladder</title>
+  <link rel="stylesheet" href="style.css">
+  <style>
+    main.ladder { max-width: 1440px; }
+    .lab-section { margin: 1.4rem 0; }
+    .lab-section h2 { font-size: 1.05rem; margin: 0 0 .5rem; }
+    .grid-note { color: var(--muted); font-size: .82rem; }
+    #l-results table { font-size: .82rem; }
+    .reason-row td {
+      color: var(--muted); font-size: .78rem; border-bottom: 2px solid var(--border);
+      padding-top: 0; padding-bottom: .6rem;
+    }
+    .prob { font-size: .72rem; color: var(--muted); display: block; }
+    td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+    .tier-chip { font-size: .7rem; border: 1px solid var(--border); border-radius: 99px; padding: .1rem .45rem; margin-left: .35rem; color: var(--muted); white-space: nowrap; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Ladder Lab — BTC/USD cycle ladder</h1>
+    <a class="help-link" href="index.html" title="Back to the Semi-Auto Balancer">← Balancer</a>
+    <a class="home-link" href="https://www.buitendyk.ca/">Home</a>
+  </header>
+  <main class="ladder">
+
+    <p class="muted">A two-asset (USD + BTC) strategy laboratory for the cycle-ladder thesis:
+      <strong>buy rungs on drawdowns from the all-time high, sell rungs into strength anchored to the
+      high you fell from</strong>, with order sizing, a hard USD reserve floor, and optional DCA.
+      Parameters are tuned over the <strong>entire</strong> history — deliberately no holdout — and the
+      forward test is the synthetic-futures grid below. Costs 0.5%/leg throughout. Advisory only.</p>
+
+    <div class="lab-section card" id="l-data-card">
+      <h2>Data</h2>
+      <p id="l-data" class="muted">Checking BTC history coverage…</p>
+      <div class="inline">
+        <button id="l-load" title="Fetch the deepest available daily BTC/USD history (Binance archive reaches 2017)">Load full BTC history</button>
+        <span id="l-data-status" class="muted"></span>
+      </div>
+    </div>
+
+    <div class="lab-section card" id="l-sweep-card">
+      <h2>Sweep</h2>
+      <p class="muted" id="l-grid-desc">Runs every configuration in the grid — entry rungs × spacing × count ×
+        buy sizing × exit levels × spacing × count × sell sizing × reserve floor × DCA — scores each on the
+        full history, finds <strong>large contiguous plateaus</strong> (regions where results stay consistent
+        as parameters vary), then projects the top picks across synthetic futures.</p>
+      <div class="inline">
+        <button id="l-run" title="Full grid sweep + plateau detection + scenario projections">Run full sweep</button>
+        <label class="muted toggle-inline" title="Sample every 3rd configuration — same coverage shape, ~3× faster; for a quick look">
+          <input type="checkbox" id="l-fast"> fast pass (⅓ grid)</label>
+        <span id="l-status" class="muted"></span>
+      </div>
+      <div id="l-bar" class="progress-wrap hidden"><div id="l-bar-fill" class="progress-fill"></div></div>
+    </div>
+
+    <div id="l-results" class="hidden">
+      <div class="lab-section">
+        <p id="l-caveat" class="warn-text"></p>
+        <p id="l-window" class="window-line"></p>
+      </div>
+
+      <div class="lab-section">
+        <h2>Top selections <span class="grid-note">— best member of each stability plateau + best per risk tier; reasoning generated from the measurements</span></h2>
+        <div class="table-wrap">
+          <table id="l-picks">
+            <thead>
+              <tr>
+                <th title="The configuration: buy rungs (% below ATH) at a fraction of spendable USD; sell rungs (multiples of the fallen-from ATH) at a fraction of held BTC; reserve floor; DCA">Configuration</th>
+                <th title="Risk tier by max drawdown: conservative <30%, balanced 30–50%, aggressive >50%">Tier</th>
+                <th class="num" title="Compound annual growth rate over the full period, costs included">CAGR</th>
+                <th class="num" title="Deepest peak-to-trough fall of total portfolio value">Max DD</th>
+                <th class="num" title="MAR ratio = CAGR ÷ MaxDD — the risk-adjusted score the sweep ranks by">MAR</th>
+                <th class="num" title="Worst score among this config's grid neighbors — high = a plateau member, not a lucky spike">Robust</th>
+                <th class="num" title="Longest stretch (days) below a prior portfolio peak">Underwater</th>
+                <th class="num" title="Lowest the USD balance ever fell, as % of starting capital">Min USD</th>
+                <th class="num" title="Average share of the portfolio held in BTC across the period">BTC share</th>
+                <th class="num" title="Trades executed / total fees as % of capital">Trades · fees</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="lab-section">
+        <h2>Stability plateaus <span class="grid-note">— parameter regions where results stay consistent; size = member configs</span></h2>
+        <div class="table-wrap"><table id="l-plateaus"><thead><tr>
+          <th>Rank</th><th class="num" title="Number of neighboring configurations in this connected region">Size</th>
+          <th title="The parameter ranges this plateau spans — anything inside performs comparably">Parameter ranges</th>
+          <th class="num" title="Best member's CAGR / MaxDD">Best member</th>
+        </tr></thead><tbody></tbody></table></div>
+      </div>
+
+      <div class="lab-section">
+        <h2>Baselines <span class="grid-note">— reference only</span></h2>
+        <div class="table-wrap"><table id="l-baselines"><thead><tr>
+          <th>Strategy</th><th class="num">CAGR</th><th class="num">Max DD</th><th class="num">MAR</th><th class="num">Underwater</th><th class="num">Trades · fees</th>
+        </tr></thead><tbody></tbody></table></div>
+      </div>
+
+      <div class="lab-section">
+        <h2>Synthetic futures <span class="grid-note" id="l-scen-note"></span></h2>
+        <p class="muted" id="l-prob-note"></p>
+        <div class="table-wrap"><table id="l-scenarios"><thead></thead><tbody></tbody></table></div>
+      </div>
+
+      <div class="lab-section">
+        <h2>Parameter sensitivity <span class="grid-note">— mean risk-adjusted score marginalized over the rest of the grid</span></h2>
+        <div class="table-wrap"><table id="l-heat"><thead></thead><tbody></tbody></table></div>
+      </div>
+    </div>
+
+  </main>
+  <script src="ladder.js"></script>
+</body>
+</html>
