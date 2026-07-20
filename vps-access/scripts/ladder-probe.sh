@@ -132,7 +132,8 @@ bad = []
 cfg = {"entryStart": 20, "entrySpacing": 20, "entryCount": 4, "buyFrac": 0.2,
        "exitStart": 1.0, "exitSpacing": 0.5, "exitCount": 3, "sellFrac": 0.2,
        "reservePct": 0, "dcaMonthlyPct": 2}
-r = api("POST", "/ladder/monitors", {"name": "probe-temp", "config": cfg, "recipients": [], "pollMinutes": 15})
+r = api("POST", "/ladder/monitors", {"name": "probe-temp", "config": cfg, "recipients": [], "pollMinutes": 15,
+                                     "startUsd": 10000, "startBtc": 0.05, "avgCost": 70000})
 if not r.get("ok"):
     print("CREATE FAILED:", r); sys.exit(1)
 m = r["monitor"]
@@ -149,6 +150,13 @@ if m["lastPrice"] and m["drawdownPct"] and m["drawdownPct"] > 45:
     if len(fired) < 2: bad.append("expected rungs 1+2 fired at current drawdown")
     if not m["exitsArmed"]: bad.append("exit ladder should be armed after first entry")
 if not evs: bad.append("no events logged on first check")
+led = m.get("ledger")
+if not led:
+    bad.append("ledger missing despite real balances at creation")
+else:
+    print("ledger: %s USD + %s BTC, avg cost %s, total %s" % (
+        round(led["usdBal"]), led["btcBal"], led.get("avgCost") and round(led["avgCost"]), led.get("totalValue") and round(led["totalValue"])))
+    if not any("spend ≈ $" in e["message"] for e in evs): bad.append("buy alerts lack real dollar amounts")
 c = api("POST", "/ladder/monitors/%d/check" % mid, {})
 print("check-now:", "ok" if c.get("ok") else c, "price", c.get("price") and round(c["price"]), "events", c.get("events"))
 if c.get("ok") and c.get("events", 0) != 0: bad.append("repeat check at same price should be silent")
