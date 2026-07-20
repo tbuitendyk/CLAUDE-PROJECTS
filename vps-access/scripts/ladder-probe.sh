@@ -92,8 +92,28 @@ if bad:
     sys.exit(1)
 print("SANITY: all checks passed")'
     ;;
+  picks)
+    curl -sS -m 30 "$BASE/api/ladder/latest" | python3 -c '
+import json, sys
+d = json.load(sys.stdin)
+r = d.get("result")
+if not r:
+    print("NO RESULT PERSISTED")
+    sys.exit(0)
+print("plateauThreshold (0.8 x best robust):", round(r.get("plateauThreshold", 0), 4))
+for pl in r.get("plateaus") or []:
+    print("plateau #%d: %d members, ranges:" % (pl["rank"] + 1, pl["size"]))
+    for k, v in pl["ranges"].items():
+        print("   %s: %s .. %s" % (k, v[0], v[1]))
+    b = pl["best"]
+    print("   best member: cagr %.1f%% dd %.0f%% mar %.2f cfg %s" % (b["cagrPct"], b["maxDDPct"], b["mar"], json.dumps(b["config"])))
+for i, p in enumerate(r.get("picks") or []):
+    print("pick #%d [%s] plateauRank=%s plateauSize=%s robust=%.3f mar=%.3f dd=%.0f%%" % (
+        i + 1, p.get("tier"), p.get("plateauRank"), p.get("plateauSize"), p["robustScore"], p["mar"], p["maxDDPct"]))
+    print("   cfg %s" % json.dumps(p["config"]))'
+    ;;
   *)
-    echo "usage: run-script ladder-probe.sh status|load|sweep|sweep-fast|latest" >&2
+    echo "usage: run-script ladder-probe.sh status|load|sweep|sweep-fast|latest|picks" >&2
     exit 1
     ;;
 esac
