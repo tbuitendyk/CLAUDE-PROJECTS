@@ -18,13 +18,19 @@ const MARKETS = [
   { id: 'pax-gold', symbol: 'paxg', name: 'PAX Gold', market_cap_rank: 43 },
   { id: 'category-only-stable', symbol: 'zzz', name: 'Zzz Reserve', market_cap_rank: 60 },
 ];
+let searchCalls = 0;
 cg.getJson = async (path) => {
   if (path.includes('category=stablecoins')) return [{ id: 'category-only-stable' }];
   if (path.includes('category=wrapped-tokens')) return [];
+  if (path.startsWith('/search')) {
+    searchCalls++;
+    return { coins: [{ id: 'obscure-coin', symbol: 'obsq', name: 'Obscure Quest', market_cap_rank: 1800 }] };
+  }
   return MARKETS;
 };
 
 const { topCandidates, COMMODITY_OK } = require('../lib/candidates');
+const { searchCoins } = require('../lib/pricing');
 
 (async () => {
   ok(COMMODITY_OK.test('paxg') && COMMODITY_OK.test('xaut'), 'gold tokens are on the commodity allowlist');
@@ -38,6 +44,18 @@ const { topCandidates, COMMODITY_OK } = require('../lib/candidates');
   ok(ids.has('bitcoin') && ids.has('ethereum') && ids.has('ripple'), 'ordinary coins pass through');
   ok(!ids.has('tether') && !ids.has('usd-coin'), 'genuine stablecoins are still weeded by the name heuristic');
   ok(!ids.has('category-only-stable'), 'a stablecoin caught only by CG category is still excluded');
+
+  // --- local-first coin search: majors answer from the cached markets
+  // snapshot WITHOUT touching the throttled live /search queue; obscure
+  // queries fall through to live and merge ---
+  searchCalls = 0;
+  const usdc = await searchCoins('usdc');
+  ok(usdc.length > 0 && usdc[0].id === 'usd-coin', 'a major (USDC) resolves from the local snapshot, exact-symbol first');
+  ok(searchCalls === 0, 'major search made ZERO live /search calls (immune to CG queue flakiness)');
+  const eth = await searchCoins('ethereum');
+  ok(eth.some((c) => c.id === 'ethereum') && searchCalls === 0, 'name search also answers locally');
+  const obscure = await searchCoins('obsq');
+  ok(searchCalls === 1 && obscure.some((c) => c.id === 'obscure-coin'), 'a thin local result falls through to live search and merges');
 
   console.log('candidate filtering tests pass');
   process.exit(0);

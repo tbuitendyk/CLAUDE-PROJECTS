@@ -1452,21 +1452,30 @@ $('#d-delete').addEventListener('click', async () => {
   await loadProfiles();
 });
 
-// asset search + add
+// asset search + add. The dropdown ALWAYS answers: results, "searching…",
+// "no matches", or the actual error — never silence (the old handler hid
+// every failure, which read as a dead control whenever the search flaked).
+// A sequence guard drops out-of-order responses so a slow older query can't
+// overwrite a newer one.
 let searchTimer = null;
+let searchSeq = 0;
 $('#a-search').addEventListener('input', () => {
   state.pendingCoin = null;
   $('#a-add').disabled = true;
   clearTimeout(searchTimer);
   const q = $('#a-search').value.trim();
+  const box = $('#a-results');
   if (q.length < 2) {
-    $('#a-results').classList.add('hidden');
+    box.classList.add('hidden');
     return;
   }
+  box.innerHTML = '<div class="muted">searching…</div>';
+  box.classList.remove('hidden');
   searchTimer = setTimeout(async () => {
+    const seq = ++searchSeq;
     try {
       const coins = await api(`/search-coins?q=${encodeURIComponent(q)}`);
-      const box = $('#a-results');
+      if (seq !== searchSeq) return; // a newer query superseded this one
       box.innerHTML = '';
       for (const c of coins) {
         const div = document.createElement('div');
@@ -1479,9 +1488,10 @@ $('#a-search').addEventListener('input', () => {
         });
         box.appendChild(div);
       }
-      box.classList.toggle('hidden', coins.length === 0);
-    } catch {
-      /* search failing is non-fatal */
+      if (coins.length === 0) box.innerHTML = `<div class="muted">no matches for “${q.replace(/[<>]/g, '')}”</div>`;
+    } catch (err) {
+      if (seq !== searchSeq) return;
+      box.innerHTML = `<div class="error">search failed: ${String(err.message || err).replace(/[<>]/g, '')} — keep typing to retry</div>`;
     }
   }, 300);
 });

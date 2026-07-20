@@ -104,14 +104,80 @@ async function supportedFiats() {
   return [...FIAT_CODES].sort();
 }
 
+// Coin search, LOCAL-FIRST: the CG /search endpoint rides the same throttled
+// queue as polling and history backfills, so live searches were flaky —
+// waiting behind the bucket or dying in a 429 backoff with nothing shown.
+// Instead, keep a top-250 markets snapshot (refreshed lazily, ~1 quota call
+// per half hour) and answer from it instantly; only fall through to the live
+// CG /search when the local snapshot has too few matches (obscure coins), and
+// serve stale-but-usable data sooner than nothing.
+const MARKETS_TTL_MS = 30 * 60_000;
+let marketsCache = { ts: 0, rows: [] };
+let marketsInflight = null;
+
+async function topMarketsSnapshot() {
+  const fresh = Date.now() - marketsCache.ts < MARKETS_TTL_MS;
+  if (fresh && marketsCache.rows.length) return marketsCache.rows;
+  if (!marketsInflight) {
+    marketsInflight = getJson('/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=250&page=1')
+      .then((rows) => {
+        if (Array.isArray(rows) && rows.length) marketsCache = { ts: Date.now(), rows };
+        return marketsCache.rows;
+      })
+      .catch(() => marketsCache.rows) // keep stale on failure — stale beats silence
+      .finally(() => {
+        marketsInflight = null;
+      });
+  }
+  // If we have anything cached, return it NOW and let the refresh land in the
+  // background; only await when the cache is empty (first ever search).
+  return marketsCache.rows.length ? marketsCache.rows : marketsInflight;
+}
+
+function localMatches(rows, q) {
+  const needle = q.toLowerCase();
+  const scored = [];
+  for (const m of rows) {
+    const sym = (m.symbol || '').toLowerCase();
+    const name = (m.name || '').toLowerCase();
+    let score = null;
+    if (sym === needle) score = 0;
+    else if (sym.startsWith(needle)) score = 1;
+    else if (name.startsWith(needle)) score = 2;
+    else if (name.includes(needle)) score = 3;
+    if (score != null) scored.push({ score, rank: m.market_cap_rank || 9999, m });
+  }
+  scored.sort((a, b) => a.score - b.score || a.rank - b.rank);
+  return scored.map(({ m }) => ({ id: m.id, symbol: m.symbol, name: m.name, rank: m.market_cap_rank }));
+}
+
 async function searchCoins(query) {
-  const body = await getJson(`/search?query=${encodeURIComponent(query)}`);
-  return (body.coins || []).slice(0, 15).map((c) => ({
-    id: c.id,
-    symbol: c.symbol,
-    name: c.name,
-    rank: c.market_cap_rank,
-  }));
+  const q = String(query || '').trim();
+  if (!q) return [];
+  const rows = await topMarketsSnapshot();
+  const local = localMatches(rows, q).slice(0, 15);
+  // Top-250 answers the overwhelming majority (USDC, majors) instantly and
+  // reliably: an exact symbol hit or a healthy match count is a confident
+  // answer. Only chase the throttled live search for thin/obscure queries.
+  const needle = q.toLowerCase();
+  const exact =
+    local.length > 0 &&
+    ((local[0].symbol || '').toLowerCase() === needle || (local[0].name || '').toLowerCase() === needle);
+  if (exact || local.length >= 3) return local;
+  try {
+    const body = await getJson(`/search?query=${encodeURIComponent(q)}`);
+    const live = (body.coins || []).slice(0, 15).map((c) => ({
+      id: c.id,
+      symbol: c.symbol,
+      name: c.name,
+      rank: c.market_cap_rank,
+    }));
+    // Merge: local (authoritative for majors) first, live fills the rest.
+    const seen = new Set(local.map((c) => c.id));
+    return [...local, ...live.filter((c) => !seen.has(c.id))].slice(0, 15);
+  } catch {
+    return local; // live search flaked — local results still beat nothing
+  }
 }
 
 module.exports = { fetchUsdPrices, searchCoins, supportedFiats, fiatCode };
