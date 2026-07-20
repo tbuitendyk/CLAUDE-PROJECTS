@@ -418,6 +418,12 @@ every X.
 - Validation: sinusoid → interior optimum (basket & value agree); pure trend
   → basket-positive but value-negative → warning path; higher cost → looser
   optimum.
+- 2026-07-20: mixes now go DOWN TO ONE tradable asset (minAssets 1 in both
+  the full lab and the held-only drops scope) with a count-scaled per-asset
+  cap — 25% stays for 4+ assets; smaller mixes get exactly the concentration
+  their count requires (a pair splits within 2.5–45%, a lone asset takes the
+  tether's complement, 75–90%). Sampler and greedy refinement share the same
+  cap rule; test-compose.js covers a single-candidate universe end to end.
 
 ## Phase 3 — Safety rails
 **Status: SHIPPED (tests green: test-safety.js).** lib/safety.js exactly to

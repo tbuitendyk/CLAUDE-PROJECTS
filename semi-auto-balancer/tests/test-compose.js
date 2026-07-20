@@ -108,7 +108,11 @@ const IDS = [...seriesById.keys()];
     ok(Math.abs(total - 100) < 0.01, 'targets total 100%');
     const tether = m.assets.find((a) => a.isIndex);
     ok(tether.pct >= 10 && tether.pct <= 25, 'tether inside the 10–25% band');
-    ok(m.assets.every((a) => a.isIndex || a.pct <= 25.01), 'per-asset cap respected');
+    // Count-scaled cap: 25% for 4+ assets, wider for concentrated mixes
+    // (a lone asset must absorb everything the tether doesn't).
+    const nonTether = m.assets.filter((a) => !a.isIndex);
+    const capPct = Math.max(25, Math.ceil((100 - tether.pct) / 2.5 / nonTether.length) * 2.5);
+    ok(nonTether.every((a) => a.pct <= capPct + 0.01), `count-scaled per-asset cap respected (${nonTether.length} assets ≤ ${capPct}%)`);
     ok(m.assets.every((a) => a.pct >= 2.5), 'no dust weights');
   }
 
@@ -120,6 +124,29 @@ const IDS = [...seriesById.keys()];
   );
 
   // --- walk-forward validation + honest holdout ---
+  // --- down to ONE tradable asset: a single-candidate universe must search
+  // (previously threw "need at least 4"), producing tether+asset splits where
+  // the asset absorbs everything the tether doesn't (75–90%).
+  const solo = await compose.searchCompositions({
+    ...opts,
+    candidates: candidates.filter((c) => c.id === 'osc-a'),
+    currentMix: null,
+    samples: 300,
+    screenKeep: 2,
+    fullTop: 10,
+    refineTop: 4,
+    refineEvals: 12,
+    finalists: 4,
+  });
+  ok(solo.mixes.length > 0, `single-candidate universe searches (${solo.mixes.length} finalists)`);
+  for (const m of solo.mixes) {
+    const non = m.assets.filter((a) => !a.isIndex);
+    const tether = m.assets.find((a) => a.isIndex);
+    ok(non.length === 1, 'solo mixes carry exactly one tradable asset');
+    ok(non[0].pct >= 75 - 1e-9 && non[0].pct <= 90 + 1e-9, `solo asset takes the tether's complement (${non[0].pct}%)`);
+    ok(Math.abs(non[0].pct + tether.pct - 100) < 0.01, 'solo split totals 100%');
+  }
+
   ok(r.window.nFolds === 4 && r.window.holdoutBars > 0, 'walk-forward folds + a real untouched holdout');
   ok(r.window.holdoutFrom > r.window.from, 'holdout is a forward tail of the window');
   ok(r.mixes.every((m) => Array.isArray(m.foldEdges) && m.foldEdges.length === 4), 'every mix carries per-fold harvest edges');

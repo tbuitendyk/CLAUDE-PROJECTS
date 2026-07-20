@@ -158,10 +158,16 @@ function sampleMix(rng, candidateIds, minAssets, maxAssets) {
   const tetherUnits = TETHER_UNITS[Math.floor(rng() * TETHER_UNITS.length)];
   const units = new Map(chosen.map((id) => [id, MIN_UNITS]));
   let remaining = UNITS_TOTAL - tetherUnits - chosen.length * MIN_UNITS;
+  // Per-mix cap scales with the asset count: the 25% diversification cap is
+  // right for 4+ assets but makes small mixes unfillable (1 asset + tether
+  // can't reach 100%), so concentrated mixes get exactly the headroom their
+  // count requires — a lone asset absorbs everything the tether doesn't
+  // (75–90%), a pair splits within 2.5%..45%, and 4+ keep the 25% cap.
+  const capUnits = Math.max(CAP_UNITS, Math.ceil((UNITS_TOTAL - tetherUnits) / chosen.length));
   let guard = 1000;
   while (remaining > 0 && guard-- > 0) {
     const id = chosen[Math.floor(rng() * chosen.length)];
-    if (units.get(id) < CAP_UNITS) {
+    if (units.get(id) < capUnits) {
       units.set(id, units.get(id) + 1);
       remaining--;
     }
@@ -380,7 +386,7 @@ async function searchCompositions({
   spreadPct = 0.1,
   lagHours = 6,
   samples = 100000, // broad-pass combination count
-  minAssets = 4,
+  minAssets = 1,
   maxAssets = 8,
   screenKeep = 16, // candidates surviving the solo screen
   fullTop, // broad-pass contenders promoted to full fidelity (default: intensity-scaled)
@@ -594,16 +600,19 @@ async function searchCompositions({
       const ids = [...mix.units.keys()];
       const variant = { units: new Map(mix.units), tetherUnits: mix.tetherUnits };
       const move = rng();
+      // Same count-scaled cap the sampler uses: small mixes are allowed the
+      // concentration their asset count requires; 4+ keep the 25% cap.
+      const capU = (tu) => Math.max(CAP_UNITS, Math.ceil((UNITS_TOTAL - tu) / ids.length));
       if (move < 0.55) {
         const from = ids[Math.floor(rng() * ids.length)];
         const to = ids[Math.floor(rng() * ids.length)];
-        if (from === to || variant.units.get(from) <= MIN_UNITS || variant.units.get(to) >= CAP_UNITS) continue;
+        if (from === to || variant.units.get(from) <= MIN_UNITS || variant.units.get(to) >= capU(variant.tetherUnits)) continue;
         variant.units.set(from, variant.units.get(from) - 1);
         variant.units.set(to, variant.units.get(to) + 1);
       } else if (move < 0.8) {
         const id = ids[Math.floor(rng() * ids.length)];
         if (rng() < 0.5) {
-          if (variant.tetherUnits <= TETHER_UNITS[0] || variant.units.get(id) >= CAP_UNITS) continue;
+          if (variant.tetherUnits <= TETHER_UNITS[0] || variant.units.get(id) >= capU(variant.tetherUnits - 1)) continue;
           variant.tetherUnits--;
           variant.units.set(id, variant.units.get(id) + 1);
         } else {
@@ -1464,9 +1473,9 @@ async function runComposeSearch(profileId, opts = {}, setProgress = () => {}) {
     feePct: profile.fee_pct,
     spreadPct: profile.spread_pct,
     samples,
-    // heldOnly: search subsets of the current holdings (drop assets down to a
-    // 3-asset floor); the full lab keeps its 4–8 default.
-    minAssets: heldOnly ? Math.min(3, coveredCandidates.length) : undefined,
+    // heldOnly: search subsets of the current holdings, down to a single
+    // tradable asset (the full lab's sampler also floors at 1).
+    minAssets: heldOnly ? 1 : undefined,
     maxAssets: heldOnly ? coveredCandidates.length : undefined,
     seed,
     setProgress,
