@@ -918,10 +918,10 @@ function renderCompose(latest) {
       '<th title="Worst market type — the consistency score the ranking uses">Worst</th>' +
       '<th title="Equal-weighted mean edge across market types">Avg</th>' +
       '<th title="Untouched confirmation tail: value and (edge over holding)">Holdout</th>' +
-      qualTh + '</tr>'
+      qualTh + '<th></th></tr>'
     : '<tr><th>Mix (targets) · ★ = recommended</th><th title="Walk-forward windows harvested, out of N">Folds ✓</th>' +
       '<th title="Median harvest edge across the folds">Median edge</th><th title="Untouched confirmation tail: value and (edge)">Holdout</th>' +
-      '<th title="Best sensitivity on the holdout">X</th>' + qualTh + '</tr>';
+      '<th title="Best sensitivity on the holdout">X</th>' + qualTh + '<th></th></tr>';
 
   const tbody = $('#c-table tbody');
   tbody.innerHTML = '';
@@ -982,13 +982,14 @@ function renderCompose(latest) {
         `<td>${row.positiveFolds != null ? `${row.positiveFolds}/${row.nFolds}` : '—'}</td>` +
         `<td>${sp(row.robust)}</td><td><strong>${holdCellOf(h)}</strong></td>` +
         `<td>${h.x != null ? h.x + '%' : 'hold'}</td><td>${qualCell(row)}</td>`;
-    // "⇢ tuner": sweep THIS mix across the whole X grid in the sensitivity
-    // tuner (marked hypothetical there — nothing applies), so the full
-    // performance-vs-X curve is inspectable with your own eyes.
-    const mixTd = tr.querySelector('td');
+    // "⇢ tuner" (own trailing cell): sweep THIS mix across the whole X grid in
+    // the sensitivity tuner (marked hypothetical there — nothing applies), so
+    // the full performance-vs-X curve is inspectable with your own eyes.
+    const tunerTd = document.createElement('td');
+    tunerTd.className = 'tuner-cell';
     const toTuner = document.createElement('button');
     toTuner.textContent = '⇢ tuner';
-    toTuner.className = 'chip chip-toggle';
+    toTuner.className = 'ghost';
     toTuner.title = 'Run the sensitivity tuner on this mix (full X sweep, all/half/quarter windows). Hypothetical — nothing is applied.';
     toTuner.addEventListener('click', async () => {
       const profileId = state.selectedId;
@@ -1007,14 +1008,15 @@ function renderCompose(latest) {
         alert(err.message);
       }
     });
-    mixTd.appendChild(toTuner);
+    tunerTd.appendChild(toTuner);
+    tr.appendChild(tunerTd);
     tbody.appendChild(tr);
   };
   if (r.currentMix) addRow(`CURRENT (reference only): ${mixLabel(r.currentMix.assets)}`, r.currentMix, true);
   for (const m of r.mixes) addRow(mixLabel(m.assets), m, false);
   if (!r.mixes.some((m) => m.recommended)) {
     const tr = document.createElement('tr');
-    const cols = regimeMode ? 9 : 6;
+    const cols = regimeMode ? 10 : 7;
     const why = r.noRealPossibility
       ? 'no mix kept up with the market (holding BTC in the index currency) on return and drawdown. The rows are best-effort harvesters, not upgrades over holding.'
       : regimeMode
@@ -1040,22 +1042,36 @@ function renderCompose(latest) {
         : '');
   } else if (r.heldOnly) {
     const dropped = (r.screen || []).filter((s) => !s.kept);
+    const decl = dropped.filter((s) => s.ownReturnPct != null);
+    const legacy = dropped.filter((s) => s.ownReturnPct == null);
     sc.textContent =
       `Current holdings, drops allowed: searching subsets + weights of your ${r.universe ? r.universe.covered : ''} holdings (no market candidates).` +
-      (dropped.length
-        ? ` Dropped as terminal decliners (lost >75%): ${dropped.map((s) => s.symbol.toUpperCase()).join(', ')}. The subset search drops the rest as it sees fit.`
-        : ' Everything kept; the subset search drops assets as it sees fit.');
+      (decl.length
+        ? ` Dropped as terminal decliners (lost >75%): ${decl.map((s) => `${s.symbol.toUpperCase()} ${s.ownReturnPct.toFixed(0)}%`).join(', ')}.`
+        : '') +
+      (legacy.length
+        ? ` ⚠ ${legacy.map((s) => s.symbol.toUpperCase()).join(', ')} excluded by the OLD harvest screen — re-run to apply the keep-all rules.`
+        : '') +
+      ' The subset search drops the rest as it sees fit.';
   } else if (r.screen && r.screen.length) {
     const kept = r.screen.filter((s) => s.kept);
     const dropped = r.screen.filter((s) => !s.kept);
     // Solo harvest edge is INFORMATIONAL (character only) — every candidate
-    // goes into the search except terminal decliners.
+    // goes into the search except terminal decliners. Legacy results (from
+    // before the keep-all screen) carry no ownReturnPct on their drops — never
+    // claim "terminal decliner" for those; they were cut by the OLD harvest
+    // rule and only a re-run applies the current one.
+    const legacyDrops = dropped.filter((s) => s.ownReturnPct == null);
+    const declinerDrops = dropped.filter((s) => s.ownReturnPct != null);
     sc.textContent =
       `Candidate harvest character (50/50 vs tether, ${regimeMode ? 'worst-market-type' : 'median walk-forward'} edge — informational; all kept except terminal decliners): ` +
       kept.map((s) => `${s.symbol.toUpperCase()} ${s.soloTrain >= 0 ? '+' : ''}${s.soloTrain.toFixed(1)}%`).join(', ') +
-      (dropped.length
+      (declinerDrops.length
         ? ` · dropped as terminal decliners (lost >75% over the window): ` +
-          dropped.map((s) => `${s.symbol.toUpperCase()} ${s.ownReturnPct != null ? s.ownReturnPct.toFixed(0) + '%' : ''}`).join(', ')
+          declinerDrops.map((s) => `${s.symbol.toUpperCase()} ${s.ownReturnPct.toFixed(0)}%`).join(', ')
+        : '') +
+      (legacyDrops.length
+        ? ` · ⚠ ${legacyDrops.map((s) => s.symbol.toUpperCase()).join(', ')} excluded by the OLD harvest screen — this result predates the keep-all rules; re-run the search to include ${legacyDrops.length > 1 ? 'them' : 'it'}.`
         : '');
   } else {
     sc.textContent = '';

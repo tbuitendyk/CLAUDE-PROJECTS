@@ -167,6 +167,10 @@ tr.breached td { background: color-mix(in srgb, var(--danger) 10%, transparent);
 .toggle-inline { display: inline-flex; align-items: center; gap: .35rem; }
 .toggle-inline input { width: auto; }
 
+/* Composition lab: the trailing ⇢ tuner cell stays compact and aligned. */
+.tuner-cell { white-space: nowrap; text-align: right; }
+.tuner-cell button { font-size: .75rem; padding: .3rem .55rem; }
+
 /* Composition lab: per-split sensitivity sweep (allocation × X). */
 .xsweep {
   margin-top: .35rem; font-size: .74rem; color: var(--muted);
