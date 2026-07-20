@@ -27,6 +27,14 @@
     .term { font-weight: 600; }
     dl.gloss dt { font-weight: 600; margin-top: .7rem; }
     dl.gloss dd { margin: .15rem 0 0 0; color: var(--muted); font-size: .9rem; line-height: 1.5; }
+    /* Mock chips for the ladder-monitor and sub-account figures. */
+    .rung { display: inline-block; border: 1px solid var(--border); border-radius: 6px; padding: .1rem .4rem; margin: .15rem .25rem .15rem 0; font-size: .78rem; white-space: nowrap; }
+    .rung.fired { text-decoration: line-through; opacity: .55; }
+    .rung.live { border-color: var(--accent); font-weight: 600; }
+    .tier-chip { font-size: .7rem; border: 1px solid var(--border); border-radius: 99px; padding: .1rem .45rem; color: var(--muted); white-space: nowrap; }
+    .mock-btn { display: inline-block; border: 1px solid var(--border); border-radius: 6px; padding: .12rem .5rem; font-size: .75rem; background: var(--card); }
+    .mock-sel { display: inline-block; border: 1px solid var(--border); border-radius: 6px; padding: .12rem .5rem; font-size: .75rem; color: var(--muted); }
+    .steps li { margin: .5rem 0; }
   </style>
 </head>
 <body>
@@ -202,6 +210,27 @@
     strategy laboratory for the cycle-ladder thesis — <em>buy rungs on drawdowns from the all-time high,
     sell rungs into strength anchored to the high you fell from</em>, with order sizing, a hard USD
     reserve floor, and optional monthly DCA.</p>
+    <figure class="fig">
+      <table>
+        <thead><tr><th>Configuration</th><th>Tier</th><th>CAGR</th><th>Max DD</th><th>MAR</th><th>Robust</th><th></th></tr></thead>
+        <tbody>
+          <tr>
+            <td>buy −20%/−40%/−60%/−80% of ATH @ 20% of spendable · sell 1.00×/1.50×/2.00× ATH @ 20% of held · reserve 0% · DCA 2%/mo
+              <span class="muted" style="font-size:.75rem">plateau #1 best (7,117 configs)</span></td>
+            <td><span class="tier-chip">aggressive</span></td>
+            <td class="pos">+32.9%</td><td>62%</td><td>0.53</td><td>0.48</td>
+            <td><span class="mock-btn">Adopt as monitor</span></td>
+          </tr>
+          <tr><td colspan="7" class="muted" style="font-size:.78rem;border-bottom:2px solid var(--border)">
+            Why: the BEST member of the largest stability plateau (7,117 neighboring configs perform within
+            20% — a broad region, not a lucky spike); full-period CAGR 32.9% at max drawdown 62% … across
+            synthetic futures: probability-weighted median +175% …</td></tr>
+        </tbody>
+      </table>
+      <figcaption>A Top-selections row: the config in words, its risk tier, the measurements, and the
+      engine-generated reasoning underneath. <strong>Adopt as monitor</strong> turns it into a live
+      watcher (next section).</figcaption>
+    </figure>
     <ul>
       <li><span class="term">Data</span> — one button loads the deepest daily BTC/USD history available
         (Binance archive reaches 2017-08, ~9 years).</li>
@@ -229,9 +258,34 @@
     <p>Live watching of an adopted ladder config (Ladder Lab page → Live monitors). The monitor checks
     the BTC price on its own cadence and notifies on rung crossings — buy rungs, anchored sell rungs,
     ladder re-anchor at a new ATH, and a monthly DCA reminder — by email and/or Telegram per its own
-    recipients list (same rules as profile notifications). Rung chips on the card show fired
-    (struck-through), armed, and next-up levels; alerts are one-shot per rung per epoch. Advisory only —
-    it says what the config would do; the order is yours.</p>
+    recipients list (same rules as profile notifications). Alerts are one-shot per rung per epoch.
+    Advisory only — it says what the config would do; the order is yours.</p>
+    <figure class="fig">
+      <div style="font-size:.9rem"><strong>Aggressive ladder</strong>
+        <span class="muted">· anchor $124,659 · BTC $64,116 (−48.6% vs anchor) · checked 8:02 PM · every 15m</span></div>
+      <div style="margin-top:.4rem">
+        <span class="rung fired">buy −20% $99,727</span>
+        <span class="rung fired">buy −40% $74,795</span>
+        <span class="rung live">buy −60% $49,864</span>
+        <span class="rung">buy −80% $24,932</span>
+        <span class="rung live">sell 1.00× $124,659</span>
+        <span class="rung">sell 1.50× $186,989</span>
+        <span class="rung">sell 2.00× $249,318</span>
+      </div>
+      <div class="muted" style="font-size:.78rem;margin-top:.35rem">Balances: $6,400 USD + 0.104845 BTC ≈ $13,124 total (51% in BTC) · avg cost $67,719 (−5% vs cost)</div>
+      <div class="mock-strip" style="margin-top:.45rem">
+        <span class="mock-btn">Check now</span> <span class="mock-btn">Test alert</span>
+        <span class="mock-btn">Edit balances</span> <span class="mock-btn">Pause</span> <span class="mock-btn">Delete</span>
+      </div>
+      <div class="mock-strip">
+        <span class="callout">struck-through = fired this epoch</span>
+        <span class="callout">highlighted = the next armed level</span>
+        <span class="callout">sell levels are ABSOLUTE — they survive new highs until hit</span>
+      </div>
+      <figcaption>A monitor card. Buy rungs measure down from the anchor; the exit ladder armed at the
+      first buy of the epoch and stays at those dollar levels. With real balances entered, the card and
+      every alert speak in actual dollars and BTC.</figcaption>
+    </figure>
     <ul>
       <li><span class="term">Real balances (optional)</span> — enter your current USD, BTC, and the
         average cost of that BTC at setup, and every alert speaks in real amounts ("spend ≈ $2,000 ≈
@@ -255,6 +309,88 @@
     <p>Several profiles can share ONE physical exchange account, each trading on its own alerts and
     tracking its own splice-continuous performance — the way to trial a lab mix with a small slice
     instead of the whole account. Found in the Exchange sync section once an account is linked.</p>
+
+    <h3>Starting a trial, step by step</h3>
+    <ol class="steps">
+      <li><strong>Create the trial profile</strong> in the sidebar ("Add profile" — e.g. <em>Trial: PAXG
+        mix</em>). Don't add assets to it by hand — the carve-out and sync will populate it.</li>
+      <li>In your main profile's <strong>Exchange sync → Sub-accounts</strong>, pick the trial in the
+        dropdown and click <strong>Link profile to this account</strong>. The
+        <em>Unallocated</em> shell profile appears automatically.</li>
+      <li><strong>Carve out</strong> its starting capital: from your main profile, to the trial, enter
+        the amounts (e.g. 1,500 USDC). This is a virtual transfer — no real trade, both track records
+        stay continuous, and the trial's clock starts at day zero.</li>
+      <li>Give the trial its <strong>targets</strong> (tether checkmark + Set new targets) and
+        sensitivity. Its own alerts now tell you what to buy; you place the orders on the exchange as
+        usual.</li>
+      <li>Fills sync back and are <strong>attributed</strong> automatically where possible; anything
+        ambiguous waits in the inbox (one click). Watch each profile's own value index for the honest
+        scoreboard.</li>
+    </ol>
+
+    <figure class="fig">
+      <div class="mock-strip" style="font-size:.82rem;color:var(--text)">
+        <strong>Bitso MAIN</strong>: USDC 4,120, BTC 0.14, XRP 2,678 &nbsp;·&nbsp;
+        <strong>Trial: PAXG mix</strong>: USDC 1,500, PAXG 0.31 &nbsp;·&nbsp;
+        <strong>Unallocated (bitso)</strong> 🪣: BTC 0.0002
+      </div>
+      <table style="margin-top:.5rem">
+        <thead><tr><th>Asset</th><th>Physical</th><th>Σ virtual</th><th>Pending</th><th>Queued</th><th>Residual</th></tr></thead>
+        <tbody>
+          <tr><td>USDC</td><td>5,620</td><td>5,620</td><td>0</td><td>0</td><td>0</td></tr>
+          <tr><td>XRP</td><td>2,708</td><td>2,678</td><td>0</td><td>30</td><td>0</td></tr>
+          <tr><td>BTC</td><td>0.1402</td><td>0.1402</td><td>0</td><td>0</td><td>0</td></tr>
+        </tbody>
+      </table>
+      <figcaption>The linked-profiles line and the <strong>reconcile table</strong>: per asset,
+      the venue's physical balance must equal the sum of every profile's virtual holding + flows awaiting
+      confirmation + fills awaiting attribution. Here 30 XRP sit queued (see inbox below) — the invariant
+      still balances. A residual beyond tolerance is flagged ⚠ and never silently fixed; dust within
+      tolerance snaps into the shell.</figcaption>
+    </figure>
+
+    <figure class="fig">
+      <table>
+        <thead><tr><th>When</th><th>Fill</th><th>Why here</th><th>Assign to</th><th></th></tr></thead>
+        <tbody><tr>
+          <td class="muted">7/20, 7:45 PM</td>
+          <td>SELL xrp_usdc &nbsp;−30 XRP / +75 USDC</td>
+          <td class="muted">2 profiles hold XRP and none advised this trade</td>
+          <td><span class="mock-sel">Trial: PAXG mix ▾</span></td>
+          <td><span class="mock-btn">Assign</span> <span class="mock-btn">Dismiss</span></td>
+        </tr></tbody>
+      </table>
+      <figcaption>The <strong>attribution inbox</strong>. A fill lands here only when the automatic tiers
+      couldn't decide: the asset is held by more than one linked profile AND no profile's recent advice
+      matches it (same symbol+side, size ±15%, within 36h). The best guess is pre-selected; a queued fill
+      applies nothing until you assign it.</figcaption>
+    </figure>
+
+    <figure class="fig">
+      <table>
+        <thead><tr><th>When</th><th>Profile</th><th>What happened</th><th></th></tr></thead>
+        <tbody>
+          <tr><td class="muted">7/20, 7:48 PM</td><td>Trial: PAXG mix</td>
+            <td>BUY paxg_usdc → "Trial: PAXG mix" (only holder)</td>
+            <td><span class="mock-btn">Rewind</span> <span class="mock-sel">Bitso MAIN ▾</span> <span class="mock-btn">Reassign →</span></td></tr>
+          <tr><td class="muted">7/20, 7:31 PM</td><td>Bitso MAIN</td>
+            <td>carved 1,500 USDC out of "Bitso MAIN" → "Trial: PAXG mix"</td>
+            <td><span class="mock-btn">Rewind</span></td></tr>
+          <tr style="opacity:.55"><td class="muted">7/20, 7:12 PM</td><td>Bitso MAIN</td>
+            <td>SELL xrp_usdc → "Bitso MAIN" (auto: matched its own advice) <span class="muted">(rewound)</span></td>
+            <td></td></tr>
+        </tbody>
+      </table>
+      <div class="mock-strip">
+        <span class="callout">every applied transaction, newest first, in plain words</span>
+        <span class="callout">Rewind = reverse it; attributed fills go back to the inbox</span>
+        <span class="callout">Reassign → = rewind + assign to the right profile in one click</span>
+      </div>
+      <figcaption>The <strong>transaction log</strong>. Each row is rewindable exactly once; corrections
+      are appended, never edited (the faded row shows a rewound entry). A rewind reaching back across an
+      already-chained daily snapshot adds a visible annotation to the affected profile instead of
+      falsifying its history.</figcaption>
+    </figure>
     <ul>
       <li><span class="term">The shell ("Unallocated")</span> — linking a second profile creates it
         automatically: the visible pool of assets not assigned to any strategy. Physical balance = sum of
