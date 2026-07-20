@@ -204,6 +204,10 @@ tr.breached td { background: color-mix(in srgb, var(--danger) 10%, transparent);
 #c-pool label input { width: auto; margin: 0; flex: 0 0 auto; }
 #c-pool label:has(input:disabled) { color: var(--muted); cursor: default; }
 #c-pool label:has(input:not(:checked)) { color: var(--muted); text-decoration: line-through; }
+/* Candidates currently outside the top-40 market-cap cut: visible and
+   weedable (ranks drift), but dimmed with a dotted underline. */
+#c-pool label.out-of-cut { opacity: .55; }
+#c-pool label.out-of-cut { text-decoration-line: underline; text-decoration-style: dotted; }
 
 /* Composition lab: the trailing ⇢ tuner cell stays compact and aligned. */
 .tuner-cell { white-space: nowrap; text-align: right; }

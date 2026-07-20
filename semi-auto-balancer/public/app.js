@@ -1222,7 +1222,12 @@ $('#c-pool-btn').addEventListener('click', async () => {
     }
     for (const c of r.pool) {
       const label = document.createElement('label');
-      label.title = c.held ? 'Held in this profile' : `Market candidate (rank ${c.rank || '?'})`;
+      label.title = c.held
+        ? 'Held in this profile — always enters the search'
+        : c.inCut === false
+          ? `Market candidate (rank ${c.rank || '?'}) — currently OUTSIDE the top-40 search cut; ranks drift, so it may enter a future run. Unchecking excludes it permanently either way.`
+          : `Market candidate (rank ${c.rank || '?'}) — inside the current top-40 search cut`;
+      if (c.inCut === false) label.classList.add('out-of-cut');
       const cb = document.createElement('input');
       cb.type = 'checkbox';
       cb.checked = !c.excluded;

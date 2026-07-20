@@ -350,20 +350,26 @@ app.get('/api/profiles/:id/compose-candidates', async (req, res) => {
       if (a.is_index || !(a.target_pct > 0 || a.quantity > 0)) continue;
       byId.set(a.coingecko_id, { id: a.coingecko_id, symbol: a.symbol.toLowerCase(), held: true });
     }
+    // Show the FULL filtered candidate list (top ~100), not just the top-40
+    // search cut: borderline-rank coins drift across the cut between market
+    // snapshots, and everything that COULD enter a search must be visible and
+    // weedable. inCut marks who is inside the cut as of this snapshot.
     let top = [];
     let marketsUnavailable = false;
     try {
-      top = await topCandidates({ count: 40 });
+      top = await topCandidates({ count: 100 });
       marketsUnavailable = top.length === 0;
     } catch (err) {
       marketsUnavailable = true;
       console.error('compose-candidates: topCandidates failed:', err.message);
     }
+    const cutIds = new Set(top.slice(0, 40).map((c) => c.id));
     for (const c of top) {
       if (!byId.has(c.id) && (!tetherAsset || c.id !== tetherAsset.coingecko_id) && !fiatCode(c.id)) {
-        byId.set(c.id, { id: c.id, symbol: c.symbol, rank: c.rank });
+        byId.set(c.id, { id: c.id, symbol: c.symbol, rank: c.rank, inCut: cutIds.has(c.id) });
       }
     }
+    for (const [, c] of byId) if (c.held) c.inCut = true; // held assets always enter
     let pool = [...byId.values()];
     const venueFilter = await venueTradableFilter(profile.id);
     if (venueFilter) {
