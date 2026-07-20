@@ -123,6 +123,21 @@ const history = require('../lib/history');
   ok(rows.every((r) => Math.abs(r.usd_price - 0.5) < 1e-9), 'spliced series is continuous (no boundary break)');
   ok(rows.every((r, i) => i === 0 || r.ts > rows[i - 1].ts), 'spliced series strictly increasing, no gaps at the migration');
 
+  // --- stablecoin flat backfill (variance-gated): a COIN whose known series
+  // is demonstrably flat (a stable tether with no deep source) extends flat to
+  // the window; a volatile coin with the same shallow depth NEVER does. ---
+  binance.symbolExists = async () => null;
+  kucoin.symbolExists = async () => false;
+  cgReturn = { prices: Array.from({ length: 400 }, (_, i) => [today - (399 - i) * DAY, 0.999 + 0.004 * ((i % 9) / 9)]) };
+  rows = await history.getDailyHistory('stable-tether-coin', 1460, 'stc');
+  const sspan = (rows[rows.length - 1].ts - rows[0].ts) / DAY;
+  ok(sspan >= 1400, `flat coin series extends to the full window (${Math.round(sspan)}d)`);
+  ok(rows[0].synthetic === true && rows.filter((r) => !r.synthetic).length >= 350, 'old span synthetic, recent span real');
+  cgReturn = { prices: Array.from({ length: 400 }, (_, i) => [today - (399 - i) * DAY, 100 * (1 + 0.5 * Math.sin(i / 20))]) };
+  rows = await history.getDailyHistory('volatile-shallow-coin', 1460, 'vsc');
+  ok((rows[rows.length - 1].ts - rows[0].ts) / DAY < 1400, 'a volatile shallow coin is NEVER synthetically extended');
+  ok(rows.every((r) => !r.synthetic), 'no synthetic rows for the volatile coin');
+
   console.log('deep-data layer tests pass');
   process.exit(0);
 })().catch((e) => { console.error('FAIL:', e.message); process.exit(1); });

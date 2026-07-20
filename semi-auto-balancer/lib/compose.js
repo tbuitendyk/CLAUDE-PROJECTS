@@ -1106,7 +1106,13 @@ async function runCurrentSetSearch(profileId, ctx, setProgress = () => {}) {
 
   setProgress(`fetching history for ${universe.length + 1} current assets…`);
   const seriesById = await candidateSeries(universe, days, { setProgress });
-  seriesById.set(tetherAsset.coingecko_id, await getDailyHistory(tetherAsset.coingecko_id, days));
+  // The tether needs the symbol hint too — without it the deep-daily (Binance/
+  // KuCoin) path never fires and a coin tether (e.g. USDC) silently caps at the
+  // ~2y exchange window, dragging the whole study down with it via the clamp.
+  seriesById.set(
+    tetherAsset.coingecko_id,
+    await getDailyHistory(tetherAsset.coingecko_id, days, tetherAsset.symbol ? String(tetherAsset.symbol).toLowerCase() : null)
+  );
 
   // Adaptive window (same rails as the lab): shrink only as far as needed so
   // most current assets cover it, never below MIN_WINDOW_DAYS.
@@ -1121,6 +1127,16 @@ async function runCurrentSetSearch(profileId, ctx, setProgress = () => {}) {
   // the deep crypto span and the tether fails coverage.
   const tetherRows = seriesById.get(tetherAsset.coingecko_id) || [];
   if (tetherRows.length) windowStart = Math.max(windowStart, tetherRows[0].ts);
+  // When the window shrank, NAME the binding series (whose history starts at
+  // the chosen window start) so the stamp explains itself instead of leaving
+  // a bare "auto-shrunk for coverage".
+  const windowLimitedBy = [];
+  if (windowStart > nowMs - (days - 2) * 86_400_000) {
+    const firstOf = (aid) => (((seriesById.get(aid) || [])[0] || {}).ts);
+    const near = (ts) => ts && ts >= windowStart - 3 * 86_400_000 && ts <= windowStart + 3 * 86_400_000;
+    if (near(firstOf(tetherAsset.coingecko_id))) windowLimitedBy.push(String(tetherAsset.symbol).toLowerCase());
+    for (const c of universe) if (near(firstOf(c.id))) windowLimitedBy.push(c.symbol);
+  }
   const trimmed = new Map();
   for (const [id, rows] of seriesById) trimmed.set(id, rows.filter((r) => r.ts >= windowStart));
 
@@ -1184,6 +1200,7 @@ async function runCurrentSetSearch(profileId, ctx, setProgress = () => {}) {
     notOnVenue: [],
     requestedDays: days,
     windowDays: Math.round((nowMs - windowStart) / 86_400_000),
+    windowLimitedBy,
   };
   return { result, params: { days, samples, seed, currentSet: true } };
 }
@@ -1262,7 +1279,13 @@ async function runComposeSearch(profileId, opts = {}, setProgress = () => {}) {
 
   setProgress(`fetching history for ${universe.length + 1} assets…`);
   const seriesById = await candidateSeries(universe, days, { setProgress });
-  seriesById.set(tetherAsset.coingecko_id, await getDailyHistory(tetherAsset.coingecko_id, days));
+  // The tether needs the symbol hint too — without it the deep-daily (Binance/
+  // KuCoin) path never fires and a coin tether (e.g. USDC) silently caps at the
+  // ~2y exchange window, dragging the whole study down with it via the clamp.
+  seriesById.set(
+    tetherAsset.coingecko_id,
+    await getDailyHistory(tetherAsset.coingecko_id, days, tetherAsset.symbol ? String(tetherAsset.symbol).toLowerCase() : null)
+  );
 
   // Adaptive window: shrink from the requested span only as far as needed
   // so most of the venue-tradable universe covers it (never below 240d),
@@ -1279,6 +1302,16 @@ async function runComposeSearch(profileId, opts = {}, setProgress = () => {}) {
   // crypto span and the tether fails coverage.
   const tetherRows = seriesById.get(tetherAsset.coingecko_id) || [];
   if (tetherRows.length) windowStart = Math.max(windowStart, tetherRows[0].ts);
+  // When the window shrank, NAME the binding series (whose history starts at
+  // the chosen window start) so the stamp explains itself instead of leaving
+  // a bare "auto-shrunk for coverage".
+  const windowLimitedBy = [];
+  if (windowStart > nowMs - (days - 2) * 86_400_000) {
+    const firstOf = (aid) => (((seriesById.get(aid) || [])[0] || {}).ts);
+    const near = (ts) => ts && ts >= windowStart - 3 * 86_400_000 && ts <= windowStart + 3 * 86_400_000;
+    if (near(firstOf(tetherAsset.coingecko_id))) windowLimitedBy.push(String(tetherAsset.symbol).toLowerCase());
+    for (const c of universe) if (near(firstOf(c.id))) windowLimitedBy.push(c.symbol);
+  }
   const trimmed = new Map();
   for (const [id, rows] of seriesById) trimmed.set(id, rows.filter((r) => r.ts >= windowStart));
 
@@ -1358,6 +1391,7 @@ async function runComposeSearch(profileId, opts = {}, setProgress = () => {}) {
     notOnVenue,
     requestedDays: days,
     windowDays: Math.round((nowMs - windowStart) / 86_400_000),
+    windowLimitedBy,
   };
   return { result, params: { days, samples, candidateCount, seed, heldOnly } };
 }

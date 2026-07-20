@@ -1096,7 +1096,11 @@ function renderCompose(latest) {
     (!r.currentSet && u.droppedNames && u.droppedNames.length
       ? ` · ${u.droppedNames.length} dropped for insufficient history: ${u.droppedNames.map((s) => s.toUpperCase()).join(', ')}`
       : '') +
-    (u.windowDays && u.requestedDays && u.windowDays < u.requestedDays ? ` · window auto-shrunk ${u.requestedDays}d → ${u.windowDays}d for coverage` : '') +
+    (u.windowDays && u.requestedDays && u.windowDays < u.requestedDays
+      ? ` · window auto-shrunk ${u.requestedDays}d → ${u.windowDays}d for coverage${
+          u.windowLimitedBy && u.windowLimitedBy.length ? ` (limited by ${u.windowLimitedBy.map((s) => s.toUpperCase()).join(', ')})` : ''
+        }`
+      : '') +
     ` · window ${w.from ? new Date(w.from).toISOString().slice(0, 10) : '?'} → ${w.to ? new Date(w.to).toISOString().slice(0, 10) : '?'}` +
     (regimeMode && r.regime
       ? ` · REGIME mode: ${r.regime.byType.bull}d bull / ${r.regime.byType.bear}d bear / ${r.regime.byType.range}d range`

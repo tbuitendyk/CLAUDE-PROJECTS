@@ -233,11 +233,26 @@ async function getDailyHistory(id, days = MAX_DAYS, symbolHint = null) {
   // extrapolation before it. Not persisted (the cache stays real-only); a
   // currency cross is stable enough that a flat pre-history is a fair stand-in,
   // and every mix is denominated here so a short index must not gate the study.
-  if (days > MAX_EXCHANGE_DAYS && code && code !== 'usd' && rows.length && rows[0].ts > since + DAY_MS) {
-    const flat = rows[0].usd_price;
-    const fill = [];
-    for (let t = since; t < rows[0].ts; t += DAY_MS) fill.push({ ts: t, usd_price: flat, synthetic: true });
-    return fill.concat(rows);
+  if (days > MAX_EXCHANGE_DAYS && rows.length && rows[0].ts > since + DAY_MS) {
+    if (code && code !== 'usd') {
+      const flat = rows[0].usd_price;
+      const fill = [];
+      for (let t = since; t < rows[0].ts; t += DAY_MS) fill.push({ ts: t, usd_price: flat, synthetic: true });
+      return fill.concat(rows);
+    }
+    // Stablecoin backfill (same spirit, variance-gated): a COIN whose known
+    // series is demonstrably flat (a stable tether like USDC with no deep
+    // source reachable) may also be flat-extended so it never gates a deep
+    // window. A volatile coin can never qualify — the ±3% band check fails.
+    if (!code && rows.length >= 30) {
+      const vals = rows.map((r) => r.usd_price).sort((a, b) => a - b);
+      const med = vals[vals.length >> 1];
+      if (med > 0 && vals[vals.length - 1] / med < 1.03 && vals[0] / med > 0.97) {
+        const fill = [];
+        for (let t = since; t < rows[0].ts; t += DAY_MS) fill.push({ ts: t, usd_price: med, synthetic: true });
+        return fill.concat(rows);
+      }
+    }
   }
   return rows;
 }
