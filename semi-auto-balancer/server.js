@@ -336,8 +336,11 @@ app.post('/api/profiles/:id/tune-threshold', (req, res) => {
   const days = Number(b.days) > 0 ? Number(b.days) : 730;
   const granularity = b.granularity === 'hourly' ? 'hourly' : 'daily';
   const lagHours = Number(b.lag_hours) > 0 ? Number(b.lag_hours) : 6;
+  // Optional hypothetical mix (composition-lab row → tuner): sweeps that mix
+  // instead of the applied targets; the result is stamped hypothetical.
+  const mix = Array.isArray(b.mix) && b.mix.length > 0 ? b.mix : null;
   const jobId = startJob('tune-threshold', profile.id, (setProgress) =>
-    runTuneSweep(profile.id, { days, granularity, lagHours }, setProgress)
+    runTuneSweep(profile.id, { days, granularity, lagHours, mix }, setProgress)
   );
   res.json({ ok: true, jobId });
 });

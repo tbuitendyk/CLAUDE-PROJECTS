@@ -304,19 +304,63 @@ function sweep(simAssets, bars, { feePct = 0.38, spreadPct = 0.1, lagHours = 6, 
   };
 }
 
+// Recent-window tabulation: the same X grid re-simulated over the most recent
+// HALF and QUARTER of the bars, so a setup's performance can be eyeballed
+// across "all history / lately / very lately" instead of one blended number.
+function recentWindows(simAssets, bars, opts) {
+  const out = {};
+  for (const [key, frac] of [['half', 0.5], ['quarter', 0.25]]) {
+    const slice = bars.slice(Math.floor(bars.length * (1 - frac)));
+    if (slice.length < 30) continue;
+    const grid = X_GRID.map((x) => {
+      const r = simulate(simAssets, x, { ...opts, bars: slice });
+      return {
+        x,
+        valueGrowthPct: r.valueGrowthPct,
+        netBasketGrowthPct: r.netBasketGrowthPct,
+        maxValueDrawdownPct: r.maxValueDrawdownPct,
+        tradeCount: r.tradeCount,
+      };
+    });
+    const hold = simulate(simAssets, null, { ...opts, bars: slice });
+    out[key] = {
+      from: slice[0].ts,
+      to: slice[slice.length - 1].ts,
+      bars: slice.length,
+      hold: { valueGrowthPct: hold.valueGrowthPct, maxValueDrawdownPct: hold.maxValueDrawdownPct },
+      grid,
+    };
+  }
+  return out;
+}
+
 // IO wrapper the job runner calls: load the profile's active mix, pull daily
 // history through the cache (exchange-first, CG fallback), align, sweep,
 // stamp. Returns {result, params} as lib/jobs.js expects.
-async function runTuneSweep(profileId, { days = 730, lagHours = 6, granularity = 'daily' } = {}, setProgress = () => {}) {
+// opts.mix = [{id, symbol, targetPct, isIndex}] sweeps a HYPOTHETICAL mix
+// (e.g. a composition-lab row) instead of the profile's applied targets —
+// the result is stamped hypothetical and Apply is refused for it.
+async function runTuneSweep(profileId, { days = 730, lagHours = 6, granularity = 'daily', mix = null } = {}, setProgress = () => {}) {
   const profile = db.prepare('SELECT * FROM profiles WHERE id = ?').get(profileId);
   if (!profile) throw new Error('profile not found');
-  const assets = db.prepare('SELECT * FROM assets WHERE profile_id = ?').all(profileId);
-  const active = assets.filter((a) => a.target_pct > 0 || a.is_index);
+  const hypothetical = Array.isArray(mix) && mix.length > 0;
+  const active = hypothetical
+    ? mix.map((m) => ({
+        coingecko_id: m.id,
+        symbol: String(m.symbol || m.id),
+        target_pct: Number(m.targetPct) || 0,
+        is_index: m.isIndex ? 1 : 0,
+      }))
+    : db
+        .prepare('SELECT * FROM assets WHERE profile_id = ?')
+        .all(profileId)
+        .filter((a) => a.target_pct > 0 || a.is_index);
   if (!active.some((a) => a.is_index)) {
     throw new Error('the sweep needs a tethered index asset — checkmark one first');
   }
   const targetSum = active.reduce((s, a) => s + (a.target_pct || 0), 0);
-  if (Math.abs(targetSum - 100) > 0.01) throw new Error('set targets first (they must total 100%)');
+  if (Math.abs(targetSum - 100) > 0.01)
+    throw new Error(hypothetical ? 'mix targets must total 100%' : 'set targets first (they must total 100%)');
 
   let bars;
   if (granularity === 'hourly') {
@@ -346,7 +390,9 @@ async function runTuneSweep(profileId, { days = 730, lagHours = 6, granularity =
     setProgress('fetching daily price history…');
     const history = new Map();
     for (const a of active) {
-      history.set(a.coingecko_id, await getDailyHistory(a.coingecko_id, days));
+      // Symbol hint lets the exchange layer serve DEEP history — essential for
+      // hypothetical mixes carrying assets the profile doesn't hold.
+      history.set(a.coingecko_id, await getDailyHistory(a.coingecko_id, days, a.symbol ? String(a.symbol).toLowerCase() : null));
     }
     bars = alignBars(active, history);
     if (bars.length < 90) {
@@ -354,15 +400,16 @@ async function runTuneSweep(profileId, { days = 730, lagHours = 6, granularity =
     }
   }
 
-  const result = sweep(active, bars, {
-    feePct: profile.fee_pct,
-    spreadPct: profile.spread_pct,
-    lagHours,
-    setProgress,
-  });
+  const costOpts = { feePct: profile.fee_pct, spreadPct: profile.spread_pct, lagHours };
+  const result = sweep(active, bars, { ...costOpts, setProgress });
+  // (a) all history is the main grid; (b)/(c) re-simulate the same X grid over
+  // the most recent half and quarter so recent behaviour is visible untangled.
+  setProgress('tabulating recent half / quarter windows…');
+  result.recent = recentWindows(active, bars, costOpts);
   result.currentX = profile.threshold_pct;
   result.stamp = {
     targetsHash: computeTargetsHash(active),
+    hypothetical,
     feePct: profile.fee_pct,
     spreadPct: profile.spread_pct,
     lagHours,
@@ -371,8 +418,9 @@ async function runTuneSweep(profileId, { days = 730, lagHours = 6, granularity =
     dataTo: bars[bars.length - 1].ts,
     bars: bars.length,
     assets: active.map((a) => a.symbol),
+    targets: active.map((a) => `${String(a.symbol).toUpperCase()}:${a.target_pct}`),
   };
-  return { result, params: { days, lagHours, granularity } };
+  return { result, params: { days, lagHours, granularity, hypothetical } };
 }
 
-module.exports = { simulate, sweep, runTuneSweep, alignBars, computeTargetsHash, X_GRID, START_TOTAL };
+module.exports = { simulate, sweep, runTuneSweep, recentWindows, alignBars, computeTargetsHash, X_GRID, START_TOTAL };

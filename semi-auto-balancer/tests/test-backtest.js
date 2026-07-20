@@ -87,6 +87,17 @@ const mkBars = (n, priceFn) =>
   ok(b.action === 'SELL' && b.asset.symbol === 'btc', 'parity: same action, same asset');
   ok(approx(b.quantity, sig.qty, 1e-9), `parity: same trade quantity (${b.quantity} == ${sig.qty})`);
 
+  // --- recent-window tabulation: half/quarter slices of the SAME bars, each
+  // with a full X grid + hold, so per-window behaviour is inspectable ---
+  const rec = bt.recentWindows(ASSETS, sinBars, { feePct: 0.3, spreadPct: 0.1, lagHours: 6 });
+  ok(rec.half && rec.quarter, 'half and quarter windows tabulated');
+  ok(rec.half.bars === Math.ceil(sinBars.length / 2) || Math.abs(rec.half.bars - sinBars.length / 2) <= 1, `half window is half the bars (${rec.half.bars}/${sinBars.length})`);
+  ok(Math.abs(rec.quarter.bars - sinBars.length / 4) <= 1, `quarter window is a quarter of the bars (${rec.quarter.bars})`);
+  ok(rec.half.to === sinBars[sinBars.length - 1].ts && rec.quarter.to === sinBars[sinBars.length - 1].ts, 'both recent windows end at the MOST RECENT bar');
+  ok(rec.quarter.from > rec.half.from, 'quarter starts later than half (nested recency)');
+  ok(rec.half.grid.length === bt.X_GRID.length && rec.half.grid.every((g) => Number.isFinite(g.valueGrowthPct)), 'half window carries the full X grid');
+  ok(Number.isFinite(rec.half.hold.valueGrowthPct) && Number.isFinite(rec.quarter.hold.valueGrowthPct), 'each recent window carries its own hold baseline');
+
   // --- staleness hash: targets in, quantities out ---
   const h1 = bt.computeTargetsHash(ASSETS);
   const h2 = bt.computeTargetsHash(ASSETS.map((a) => ({ ...a, target_pct: a.is_index ? 40 : 60 })));

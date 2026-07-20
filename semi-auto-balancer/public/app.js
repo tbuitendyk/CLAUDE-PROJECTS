@@ -708,12 +708,30 @@ function renderTune(latest, profile) {
   warn.textContent = (r.warnings || []).join(' ');
   warn.classList.toggle('hidden', !(r.warnings || []).length);
 
+  const s = r.stamp || {};
+  const hypothetical = Boolean(s.hypothetical);
+  // Recent-window sub-grids (most recent half / quarter of the history).
+  const recent = r.recent || {};
+  const recCell = (win, x) => {
+    const w = recent[win];
+    if (!w) return '<td class="muted">—</td>';
+    const g = (w.grid || []).find((row) => row.x === x);
+    if (!g) return '<td class="muted">—</td>';
+    const edge = g.valueGrowthPct - w.hold.valueGrowthPct;
+    return `<td>${fmtPct(g.valueGrowthPct)} <span class="${edge >= 0 ? 'pos' : 'neg'}" title="vs holding over this recent window">(${edge >= 0 ? '+' : ''}${edge.toFixed(1)})</span></td>`;
+  };
+  const recHoldCell = (win) => {
+    const w = recent[win];
+    return w ? `<td class="muted">${fmtPct(w.hold.valueGrowthPct)} hold</td>` : '<td class="muted">—</td>';
+  };
+
   const tbody = $('#tune-table tbody');
   tbody.innerHTML = '';
   const holdTr = document.createElement('tr');
   holdTr.innerHTML =
     `<td class="muted">hold</td><td class="muted">—</td>` +
     `<td>${fmtPct(r.hold.valueGrowthPct)}</td><td class="muted">baseline</td>` +
+    recHoldCell('half') + recHoldCell('quarter') +
     `<td>${r.hold.maxValueDrawdownPct.toFixed(1)}%</td><td class="muted">0</td><td class="muted">—</td><td></td>`;
   tbody.appendChild(holdTr);
   for (const row of r.grid) {
@@ -721,41 +739,53 @@ function renderTune(latest, profile) {
     const isReco = r.recommendation && row.x === r.recommendation.x;
     if (isReco) tr.classList.add('index-row');
     tr.innerHTML =
-      `<td>${row.x}%${isReco ? ' ★' : ''}${row.x === r.currentX ? ' <span class="muted">(current)</span>' : ''}</td>` +
+      `<td>${row.x}%${isReco ? ' ★' : ''}${!hypothetical && row.x === r.currentX ? ' <span class="muted">(current)</span>' : ''}</td>` +
       `<td>${fmtPct(row.netBasketGrowthPct)}</td>` +
       `<td>${fmtPct(row.valueGrowthPct)}</td>` +
       `<td>${fmtPct(row.valueGrowthPct - r.hold.valueGrowthPct)}</td>` +
+      recCell('half', row.x) + recCell('quarter', row.x) +
       `<td>${row.maxValueDrawdownPct.toFixed(1)}%</td>` +
       `<td>${row.tradeCount}</td>` +
       `<td>${row.feesPct.toFixed(2)}%</td>`;
     const td = document.createElement('td');
-    const apply = document.createElement('button');
-    apply.textContent = 'Apply';
-    apply.className = 'ghost';
-    apply.title = `Set this profile's sensitivity to ${row.x}%`;
-    apply.addEventListener('click', async () => {
-      if (!confirm(`Set sensitivity to ${row.x}% (currently ${profile.threshold_pct}%)?`)) return;
-      try {
-        await api(`/profiles/${state.selectedId}/apply-threshold`, {
-          method: 'POST',
-          body: { x: row.x, stamp: r.stamp },
-        });
-        await refresh();
-      } catch (err) {
-        alert(err.message);
-      }
-    });
-    td.appendChild(apply);
+    if (!hypothetical) {
+      const apply = document.createElement('button');
+      apply.textContent = 'Apply';
+      apply.className = 'ghost';
+      apply.title = `Set this profile's sensitivity to ${row.x}%`;
+      apply.addEventListener('click', async () => {
+        if (!confirm(`Set sensitivity to ${row.x}% (currently ${profile.threshold_pct}%)?`)) return;
+        try {
+          await api(`/profiles/${state.selectedId}/apply-threshold`, {
+            method: 'POST',
+            body: { x: row.x, stamp: r.stamp },
+          });
+          await refresh();
+        } catch (err) {
+          alert(err.message);
+        }
+      });
+      td.appendChild(apply);
+    }
     tr.appendChild(td);
     tbody.appendChild(tr);
   }
 
-  const s = r.stamp || {};
+  // History length stated plainly (bars + span in years + dates), the recent
+  // window boundaries, and a loud marker when this sweep is a HYPOTHETICAL
+  // composition-lab mix rather than the profile's applied targets.
+  const spanYears = s.bars ? (s.granularity === 'hourly' ? s.bars / 24 / 365 : s.bars / 365) : 0;
+  const d10 = (ts) => (ts ? new Date(ts).toISOString().slice(0, 10) : '?');
   $('#tune-stamp').textContent =
+    (hypothetical
+      ? `⚠ HYPOTHETICAL mix (from the composition lab — NOT this profile's applied targets; Apply disabled): ${(s.targets || s.assets || []).join(' · ')} · `
+      : '') +
     `Swept ${new Date(latest.createdAt).toLocaleString()} · ${s.assets ? s.assets.map((x) => x.toUpperCase()).join('/') : ''} · ` +
-    `${s.bars} ${s.granularity === 'hourly' ? 'hourly' : 'daily'} bars (${s.dataFrom ? new Date(s.dataFrom).toISOString().slice(0, 10) : '?'} → ` +
-    `${s.dataTo ? new Date(s.dataTo).toISOString().slice(0, 10) : '?'}) · fee ${s.feePct}%/leg + spread ${s.spreadPct}% · ` +
-    `execution lag ${s.lagHours}h · Apply refuses if targets or costs have changed since.`;
+    `history: ${s.bars} ${s.granularity === 'hourly' ? 'hourly' : 'daily'} bars ≈ ${spanYears.toFixed(1)} years (${d10(s.dataFrom)} → ${d10(s.dataTo)})` +
+    (recent.half ? ` · ½ recent = ${recent.half.bars} bars from ${d10(recent.half.from)}` : '') +
+    (recent.quarter ? ` · ¼ recent = ${recent.quarter.bars} bars from ${d10(recent.quarter.from)}` : '') +
+    ` · fee ${s.feePct}%/leg + spread ${s.spreadPct}% · execution lag ${s.lagHours}h` +
+    (hypothetical ? '' : ' · Apply refuses if targets or costs have changed since.');
 }
 
 // ---- analysis-job registry (tuner + composition lab) ----
@@ -952,6 +982,32 @@ function renderCompose(latest) {
         `<td>${row.positiveFolds != null ? `${row.positiveFolds}/${row.nFolds}` : '—'}</td>` +
         `<td>${sp(row.robust)}</td><td><strong>${holdCellOf(h)}</strong></td>` +
         `<td>${h.x != null ? h.x + '%' : 'hold'}</td><td>${qualCell(row)}</td>`;
+    // "⇢ tuner": sweep THIS mix across the whole X grid in the sensitivity
+    // tuner (marked hypothetical there — nothing applies), so the full
+    // performance-vs-X curve is inspectable with your own eyes.
+    const mixTd = tr.querySelector('td');
+    const toTuner = document.createElement('button');
+    toTuner.textContent = '⇢ tuner';
+    toTuner.className = 'chip chip-toggle';
+    toTuner.title = 'Run the sensitivity tuner on this mix (full X sweep, all/half/quarter windows). Hypothetical — nothing is applied.';
+    toTuner.addEventListener('click', async () => {
+      const profileId = state.selectedId;
+      try {
+        const { jobId } = await api(`/profiles/${profileId}/tune-threshold`, {
+          method: 'POST',
+          body: {
+            days: (r.window && r.window.bars) || 1460,
+            mix: row.assets.map((a) => ({ id: a.id, symbol: a.symbol, targetPct: a.pct, isIndex: a.isIndex })),
+          },
+        });
+        trackJob('tune', jobId, profileId);
+        const sect = document.getElementById('tune-section');
+        if (sect) sect.scrollIntoView({ behavior: 'smooth' });
+      } catch (err) {
+        alert(err.message);
+      }
+    });
+    mixTd.appendChild(toTuner);
     tbody.appendChild(tr);
   };
   if (r.currentMix) addRow(`CURRENT (reference only): ${mixLabel(r.currentMix.assets)}`, r.currentMix, true);
