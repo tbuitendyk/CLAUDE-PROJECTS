@@ -180,10 +180,11 @@ tr.breached td { background: color-mix(in srgb, var(--danger) 10%, transparent);
 .toggle-inline { display: inline-flex; align-items: center; gap: .35rem; }
 .toggle-inline input { width: auto; }
 
-/* Composition lab: the mix column never wraps mid-label (the table scrolls
-   horizontally instead), and gets room to breathe. */
-#c-table th:first-child, #c-table td:first-child { min-width: 24rem; }
-.mix-label { white-space: nowrap; }
+/* Composition lab layout: numeric columns are short — they never wrap, and
+   shrink to fit. The mix column soaks up ALL remaining width, so labels only
+   wrap when genuinely long, and no horizontal scrollbar appears. */
+#c-table th:not(:first-child), #c-table td:not(:first-child) { white-space: nowrap; }
+#c-table th:first-child, #c-table td:first-child { width: 99%; }
 
 /* Composition lab candidate pool: a tidy grid of equal-width columns, each
    checkbox hard against its own ticker so ownership is unambiguous. */
