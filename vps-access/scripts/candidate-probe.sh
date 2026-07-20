@@ -54,3 +54,39 @@ const id = process.env.PROBE_ID, sym = process.env.PROBE_SYM;
   } catch (e) { console.log('getDailyHistory ERR:', e.message); }
 })();
 JS
+
+# Second phase: rebuild the composition pipeline's bars for profile 2 (Bitso)
+# and print the focus asset's in-sample first/last — the exact numbers the
+# terminal-decliner screen sees.
+PROBE_ID="$ID" PROBE_SYM="$SYM" node <<'JS2'
+const id = process.env.PROBE_ID, sym = process.env.PROBE_SYM;
+(async () => {
+  const db = require('./lib/db');
+  const { candidateSeries } = require('./lib/candidates');
+  const { getDailyHistory } = require('./lib/history');
+  const compose = require('./lib/compose');
+  const profile = db.prepare('SELECT * FROM profiles WHERE id = 2').get();
+  if (!profile) return console.log('no profile 2');
+  const assets = db.prepare('SELECT * FROM assets WHERE profile_id = 2').all();
+  const tether = assets.find((a) => a.is_index);
+  const days = 1460, nowMs = Date.now(), DAY = 86400000;
+  const universe = [{ id, symbol: sym, held: false }];
+  const seriesById = await candidateSeries(universe, days, {});
+  seriesById.set(tether.coingecko_id, await getDailyHistory(tether.coingecko_id, days));
+  const earliests = universe.map((c) => (seriesById.get(c.id) || [])[0]).filter(Boolean).map((r) => r.ts);
+  let ws = compose.chooseWindowStart(earliests, nowMs - days * DAY, nowMs);
+  const tr = seriesById.get(tether.coingecko_id) || [];
+  if (tr.length) ws = Math.max(ws, tr[0].ts);
+  const trimmed = new Map();
+  for (const [k, rows] of seriesById) trimmed.set(k, rows.filter((r) => r.ts >= ws));
+  const { bars, covered } = compose.buildBars(trimmed, [tether.coingecko_id, id]);
+  console.log(`bars=${bars.length} covered=${covered.join(',')}`);
+  const inSample = bars.slice(0, bars.length - Math.max(30, Math.floor(bars.length * 0.2)));
+  let first = null, last = null;
+  for (const b of inSample) { const p = b.usd[id]; if (p > 0) { if (first == null) first = p; last = p; } }
+  console.log(`in-sample ${sym}: first=${first} last=${last} ownReturn=${first && last ? (((last / first) - 1) * 100).toFixed(1) : '?'}%`);
+  const d10 = (ts) => new Date(ts).toISOString().slice(0, 10);
+  const step = Math.max(1, Math.floor(inSample.length / 10));
+  console.log('  bar samples:', inSample.filter((_, i) => i % step === 0).map((b) => `${d10(b.ts)}=${b.usd[id]}`).join(' '));
+})();
+JS2
