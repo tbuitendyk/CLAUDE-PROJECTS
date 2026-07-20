@@ -254,6 +254,19 @@ portfolios worth holding, not just volatility to harvest.
   current-set had the sweep strip). The Return cell now shows `@ X%` (the
   whole-window trigger, or `@ hold` when holding won), and the regime Holdout
   cell shows its best X — so a ★ mix tells you what sensitivity to set.
+- **Stop culling picks on harvest (2026-07-19):** the Stage-0 solo screen used
+  to keep only the top-N candidates by standalone harvest edge — which
+  systematically discarded *contrarian / uncorrelated diversifiers* (PAX Gold
+  scored ~0 solo harvest and was cut) whose value is drawdown reduction inside
+  a MIX, not oscillation against a stable tether. The screen no longer culls on
+  harvest: the solo edge is INFORMATIONAL, and the ONLY thing dropped is a
+  terminal DECLINER (own return < −75% over the window — rebalancing into a
+  value-destroyer is the proven trap). A safety keeps everything if weeding
+  would starve the search. Default candidate universe widened 40 → 60 (cap
+  80). Rationale: on a months-to-years decision, a few more minutes of
+  permutations beats a narrower net; the broad pass + market/quality gate do
+  the real sorting. test-compose.js: a rising near-zero-harvest asset
+  (gold-like) now survives; decliners still weeded.
 - **Also fixed while validating:** the MATIC→POL splice initially no-op'd
   because the predecessor fetch went through the live-listing gate
   (`symbolExists`), which a RENAMED symbol fails (REST geo-blocked here + no

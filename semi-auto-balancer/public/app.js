@@ -983,20 +983,23 @@ function renderCompose(latest) {
         ? ` Dropped for missing history: ${r.universe.droppedNames.map((s) => s.toUpperCase()).join(', ')}.`
         : '');
   } else if (r.heldOnly) {
-    const kept = (r.screen || []).filter((s) => s.kept);
     const dropped = (r.screen || []).filter((s) => !s.kept);
     sc.textContent =
       `Current holdings, drops allowed: searching subsets + weights of your ${r.universe ? r.universe.covered : ''} holdings (no market candidates).` +
-      (dropped.length ? ` Solo screen weeded: ${dropped.map((s) => s.symbol.toUpperCase()).join(', ')}.` : ' Solo screen kept all; the subset search can still drop assets.');
+      (dropped.length
+        ? ` Dropped as terminal decliners (lost >75%): ${dropped.map((s) => s.symbol.toUpperCase()).join(', ')}. The subset search drops the rest as it sees fit.`
+        : ' Everything kept; the subset search drops assets as it sees fit.');
   } else if (r.screen && r.screen.length) {
     const kept = r.screen.filter((s) => s.kept);
     const dropped = r.screen.filter((s) => !s.kept);
+    // Solo harvest edge is INFORMATIONAL (character only) — every candidate
+    // goes into the search except terminal decliners.
     sc.textContent =
-      `Solo screen (50/50 vs tether — ${regimeMode ? 'worst-market-type' : 'median walk-forward'} harvest edge): kept ` +
+      `Candidate harvest character (50/50 vs tether, ${regimeMode ? 'worst-market-type' : 'median walk-forward'} edge — informational; all kept except terminal decliners): ` +
       kept.map((s) => `${s.symbol.toUpperCase()} ${s.soloTrain >= 0 ? '+' : ''}${s.soloTrain.toFixed(1)}%`).join(', ') +
       (dropped.length
-        ? ` · weeded out: ` +
-          dropped.map((s) => `${s.symbol.toUpperCase()} ${s.soloTrain >= 0 ? '+' : ''}${s.soloTrain.toFixed(1)}%`).join(', ')
+        ? ` · dropped as terminal decliners (lost >75% over the window): ` +
+          dropped.map((s) => `${s.symbol.toUpperCase()} ${s.ownReturnPct != null ? s.ownReturnPct.toFixed(0) + '%' : ''}`).join(', ')
         : '');
   } else {
     sc.textContent = '';

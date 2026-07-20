@@ -417,9 +417,28 @@ async function searchCompositions({
       ? scoreRegimes(assets, swaths, inSample, holdoutBars, costs)
       : scoreFolds(assets, foldsBars, holdoutBars, costs);
 
-  // ---- Stage 0: solo screen — every candidate audited ONE ASSET AT A TIME
-  // (50/50 vs the tether), scored by its screen metric (regime consistency,
-  // or fold median). Bad assets are weeded out before any combinatorics.
+  // ---- Stage 0: solo screen. Each candidate is audited ONE ASSET AT A TIME
+  // (50/50 vs the tether) to CHARACTERIZE its standalone harvest — shown for
+  // context. It does NOT cull on harvest: the ONLY thing dropped is a terminal
+  // DECLINER (an asset that structurally collapsed over the window), because
+  // rebalancing INTO a value-destroyer is a proven trap. A low-harvest but
+  // sound asset — gold and other uncorrelated / contrarian diversifiers — is
+  // KEPT: its worth is drawdown reduction and market-keeping inside a MIX, not
+  // oscillation against a stable tether, and that only shows up in combination.
+  // Trading a few more minutes of permutations for a wider net is the right
+  // call on a months-to-years decision; the broad pass + quality gate sort it.
+  const DECLINE_FLOOR = -0.75; // lost >75% over the window ⇒ terminal decliner
+  const ownReturn = (id) => {
+    let first = null, last = null;
+    for (const b of inSample) {
+      const p = b.usd[id];
+      if (p > 0) {
+        if (first == null) first = p;
+        last = p;
+      }
+    }
+    return first && last ? last / first - 1 : 0;
+  };
   const screen = [];
   for (let i = 0; i < candidates.length; i++) {
     const c = candidates[i];
@@ -429,14 +448,25 @@ async function searchCompositions({
       { coingecko_id: c.id, symbol: c.symbol, target_pct: 50, is_index: 0 },
     ];
     const sc = scoreMix(solo);
-    screen.push({ id: c.id, symbol: c.symbol, soloTrain: sc.screenScore, positiveFolds: sc.positiveFolds || sc.typesPositive || 0 });
+    const ret = ownReturn(c.id);
+    screen.push({
+      id: c.id,
+      symbol: c.symbol,
+      soloTrain: sc.screenScore,
+      positiveFolds: sc.positiveFolds || sc.typesPositive || 0,
+      ownReturnPct: ret * 100,
+      kept: ret > DECLINE_FLOOR, // only terminal decliners are weeded
+    });
     if (i % 4 === 3) await yieldLoop();
   }
   screen.sort((a, b) => b.soloTrain - a.soloTrain);
-  const keepN = Math.max(minAssets, Math.min(screenKeep, screen.length));
-  const keptIds = new Set(screen.slice(0, keepN).map((s) => s.id));
-  for (const s of screen) s.kept = keptIds.has(s.id);
-  const keptIdsArr = [...keptIds];
+  let keptIdsArr = screen.filter((s) => s.kept).map((s) => s.id);
+  // Safety: if weeding decliners would leave too few to form a mix, keep them
+  // all rather than starve the search (the quality gate still judges honestly).
+  if (keptIdsArr.length < minAssets) {
+    for (const s of screen) s.kept = true;
+    keptIdsArr = candidates.map((c) => c.id);
+  }
 
   // ---- Stage 1: broad pass — massive seeded random sampling over the
   // screened survivors, cheaply scored by harvest EDGE over the whole
@@ -1124,7 +1154,7 @@ async function runComposeSearch(profileId, opts = {}, setProgress = () => {}) {
   // with; the adaptive window shrinks it when the universe can't cover it.
   const days = Number(opts.days) > 0 ? Number(opts.days) : 1460;
   const samples = Number(opts.samples) > 0 ? Math.min(Number(opts.samples), 2_000_000) : 100_000;
-  const candidateCount = Number(opts.candidates) > 0 ? Math.min(Number(opts.candidates), 60) : 40;
+  const candidateCount = Number(opts.candidates) > 0 ? Math.min(Number(opts.candidates), 80) : 60;
   const seed = Number(opts.seed) || (Date.now() % 2 ** 31);
 
   // Current-set mode branches here: it keeps the exact holdings and searches

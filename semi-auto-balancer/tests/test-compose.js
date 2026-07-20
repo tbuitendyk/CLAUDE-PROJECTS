@@ -92,6 +92,10 @@ const IDS = [...seriesById.keys()];
     `harvesting oscillator out-scores the pure trender on edge (osc ${screenOf('osc-a').soloTrain.toFixed(2)} > trend ${screenOf('trend-up').soloTrain.toFixed(2)})`
   );
   ok(screenOf('trend-up').soloTrain < 3, 'pure trend appreciation registers ~no harvest edge');
+  // ...but a near-zero-harvest RISER (a gold-like contrarian/diversifier) is
+  // KEPT — the screen only weeds terminal decliners, never low harvest.
+  ok(screenOf('trend-up').kept, 'a rising, near-zero-harvest asset (gold-like) survives the screen — only decliners are weeded');
+  ok(screenOf('riser').kept && screenOf('flat-f').kept, 'a gentle riser and a dead-flat both survive — neither is a decliner');
 
   // --- grid now spans the tuner's range: a swept X can reach 25/30 ---
   ok(compose.MINI_X ? compose.MINI_X.includes(25) && compose.MINI_X.includes(30) : true, 'mini-grid reaches 25 and 30');
