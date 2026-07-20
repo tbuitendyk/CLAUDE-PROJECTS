@@ -124,7 +124,9 @@ function renderResult(latest) {
   picksBody.innerHTML = '';
   for (const p of r.picks) {
     const tags = [];
-    if (p.plateauRank != null) tags.push(`plateau #${p.plateauRank + 1} (${p.plateauSize} configs)`);
+    if (p.plateauRank != null) tags.push(`plateau #${p.plateauRank + 1} best (${p.plateauSize} configs)`);
+    else if (p.plateauMemberRank != null) tags.push(`in plateau #${p.plateauMemberRank + 1} (${p.plateauMemberSize} configs)`);
+    else if ('plateauMemberRank' in p) tags.push('outside plateaus');
     const tr = document.createElement('tr');
     tr.innerHTML =
       `<td>${esc(p.label)}${tags.length ? ` <span class="grid-note">${esc(tags.join(', '))}</span>` : ''}</td>` +

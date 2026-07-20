@@ -427,13 +427,27 @@ function pathStats(path, startPrice) {
 }
 
 // ---- reasoning --------------------------------------------------------------
-function reasonFor(pick, holdBase, plateau, scenarioRow) {
+// membership: {kind:'best'|'member'|'outside', rank?, size?, robust?, threshold?}
+// — every pick states its plateau standing explicitly, so a best-in-tier pick
+// that lives outside the stable regions is never mistaken for plateau-backed.
+function reasonFor(pick, holdBase, membership, scenarioRow) {
   const parts = [];
-  if (plateau) {
+  if (membership && membership.kind === 'best') {
     parts.push(
-      `sits inside the ${plateau.rank === 0 ? 'largest' : `#${plateau.rank + 1}`} stability plateau ` +
-        `(${plateau.size} neighboring configs perform within ${Math.round((1 - plateau.qualifyFrac) * 100)}% — ` +
+      `the BEST member of the ${membership.rank === 0 ? 'largest' : `#${membership.rank + 1}`} stability plateau ` +
+        `(${membership.size} neighboring configs perform within ${Math.round((1 - membership.qualifyFrac) * 100)}% — ` +
         `this is a broad region, not a lucky spike)`
+    );
+  } else if (membership && membership.kind === 'member') {
+    parts.push(
+      `sits inside stability plateau #${membership.rank + 1} (${membership.size} configs — broad-region-backed, ` +
+        `just not the region's single best point)`
+    );
+  } else if (membership && membership.kind === 'outside') {
+    parts.push(
+      `OUTSIDE the detected plateaus (robust score ${membership.robust.toFixed(2)} vs qualification bar ` +
+        `${membership.threshold.toFixed(2)} — some one-step neighbor performs materially worse; ` +
+        `treat as best-available-in-tier, not broad-region-backed)`
     );
   }
   parts.push(
@@ -587,23 +601,29 @@ async function runLadderSweep({ fast = false, seed = 424242 } = {}, setProgress 
   for (const [idx, tags] of pickSet) {
     const cfg = configAt(indexList[idx]);
     const scenarioRow = projectRow((path) => simulateLadder(path, cfg, { startPeak: realATH }));
-    const region = tags.plateauRank != null ? plat.regions[tags.plateauRank] : null;
+    // Actual region membership (not just "is the best member"): a tier pick
+    // can sit inside a plateau without being its single best point, and the
+    // reasoning must say which it is instead of leaving it ambiguous.
+    const memberRank = plat.regions.findIndex((rg) => rg.members.includes(idx));
+    const membership =
+      tags.plateauRank != null
+        ? { kind: 'best', rank: tags.plateauRank, size: plat.regions[tags.plateauRank].size, qualifyFrac: 0.8 }
+        : memberRank >= 0
+          ? { kind: 'member', rank: memberRank, size: plat.regions[memberRank].size }
+          : { kind: 'outside', robust: plat.robust[idx], threshold: plat.threshold };
     picks.push({
       config: cfg,
       label: describeConfig(cfg),
       plateauRank: tags.plateauRank ?? null,
       plateauSize: tags.plateauSize ?? null,
+      plateauMemberRank: memberRank >= 0 ? memberRank : null,
+      plateauMemberSize: memberRank >= 0 ? plat.regions[memberRank].size : null,
       tier: tags.tier ?? tierOf(results[idx]),
       ...results[idx],
       years,
       robustScore: plat.robust[idx],
       scenarios: scenarioRow,
-      reasoning: reasonFor(
-        { ...results[idx], years },
-        holdBase,
-        region ? { rank: tags.plateauRank, size: region.size, qualifyFrac: 0.8 } : null,
-        scenarioRow
-      ),
+      reasoning: reasonFor({ ...results[idx], years }, holdBase, membership, scenarioRow),
     });
     await yieldLoop();
   }

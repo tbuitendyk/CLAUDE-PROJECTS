@@ -149,6 +149,18 @@ const mkBars = (prices) => prices.map((p, i) => ({ ts: t0 + i * DAY, price: p })
     ok(Object.keys(p.scenarios.byArchetype).length === ladder.ARCHETYPES.length, 'pick projected across every archetype');
     ok(isFinite(p.scenarios.probWeightedMedian), 'probability-weighted median is finite');
   }
+  // Plateau membership tagging: every pick states its standing explicitly.
+  for (const p of r.picks) {
+    ok('plateauMemberRank' in p, 'pick carries the plateau-membership field');
+    if (p.plateauRank != null) {
+      ok(p.plateauMemberRank === p.plateauRank, 'a plateau best member is tagged as a member of its own region');
+      ok(/BEST member/.test(p.reasoning), 'best-member reasoning says so');
+    } else if (p.plateauMemberRank != null) {
+      ok(/inside stability plateau #\d/.test(p.reasoning), 'plain-member reasoning names its plateau');
+    } else {
+      ok(/OUTSIDE the detected plateaus/.test(p.reasoning), 'outside-pick reasoning is explicit about it');
+    }
+  }
   const tiers = new Set(r.picks.map((p) => p.tier));
   ok(tiers.size >= 2, `picks span multiple risk tiers (${[...tiers].join(', ')})`);
   ok(r.plateaus.length >= 1 && r.plateaus[0].size >= 1, 'plateaus reported');
