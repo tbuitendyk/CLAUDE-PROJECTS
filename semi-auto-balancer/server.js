@@ -18,7 +18,7 @@ const {
 } = require('./lib/balancer');
 const { getJob, startJob, cancelJob, latestResult } = require('./lib/jobs');
 const { runTuneSweep, computeTargetsHash } = require('./lib/backtest');
-const { runComposeSearch, venueTradableFilter, parseComposeExclusions } = require('./lib/compose');
+const { runComposeSearch, venueTradableFilter, parseComposeExclusions, parseComposePins } = require('./lib/compose');
 const { topCandidates } = require('./lib/candidates');
 const { hourlyStatus } = require('./lib/hourly');
 const ladder = require('./lib/ladder');
@@ -164,11 +164,18 @@ app.patch('/api/profiles/:id', (req, res) => {
     const ids = b.compose_excluded.filter((v) => typeof v === 'string' && v.length > 0 && v.length <= 100).slice(0, 200);
     composeExcluded = JSON.stringify(ids);
   }
+  // Pinned (must-include) lab assets — same shape and validation as exclusions.
+  let composePinned = profile.compose_pinned;
+  if (b.compose_pinned !== undefined) {
+    if (!Array.isArray(b.compose_pinned)) return res.status(400).json({ error: 'compose_pinned must be an array of ids' });
+    const ids = b.compose_pinned.filter((v) => typeof v === 'string' && v.length > 0 && v.length <= 100).slice(0, 200);
+    composePinned = JSON.stringify(ids);
+  }
 
   // the > 0 pattern the always-positive fields use.
   const nonNeg = (v, prev) => (v === undefined ? prev : Number(v) >= 0 ? Number(v) : prev);
   db.prepare(
-    'UPDATE profiles SET name = ?, threshold_pct = ?, poll_minutes = ?, enabled = ?, alerts_enabled = ?, recipients = ?, fee_pct = ?, spread_pct = ?, compose_excluded = ? WHERE id = ?'
+    'UPDATE profiles SET name = ?, threshold_pct = ?, poll_minutes = ?, enabled = ?, alerts_enabled = ?, recipients = ?, fee_pct = ?, spread_pct = ?, compose_excluded = ?, compose_pinned = ? WHERE id = ?'
   ).run(
     b.name ?? profile.name,
     Number(b.threshold_pct) > 0 ? Number(b.threshold_pct) : profile.threshold_pct,
@@ -179,6 +186,7 @@ app.patch('/api/profiles/:id', (req, res) => {
     nonNeg(b.fee_pct, profile.fee_pct),
     nonNeg(b.spread_pct, profile.spread_pct),
     composeExcluded,
+    composePinned,
     profile.id
   );
   res.json(db.prepare('SELECT * FROM profiles WHERE id = ?').get(profile.id));
@@ -394,13 +402,14 @@ app.get('/api/profiles/:id/compose-candidates', async (req, res) => {
       pool = kept;
     }
     const excluded = parseComposeExclusions(profile, tetherAsset ? tetherAsset.coingecko_id : null);
+    const pinned = parseComposePins(profile, tetherAsset ? tetherAsset.coingecko_id : null);
     res.json({
       tether: tetherAsset ? { id: tetherAsset.coingecko_id, symbol: tetherAsset.symbol } : null,
       venue: venueFilter ? venueFilter.venue : null,
       marketsUnavailable,
       pool: pool
         .sort((a, b) => (a.held === b.held ? (a.rank || 999) - (b.rank || 999) : a.held ? -1 : 1))
-        .map((c) => ({ ...c, excluded: excluded.has(c.id) })),
+        .map((c) => ({ ...c, excluded: excluded.has(c.id), pinned: pinned.has(c.id) })),
     });
   } catch (err) {
     res.status(500).json({ error: err.message });

@@ -146,15 +146,20 @@ function mixToAssets(mix, pool) {
   return assets;
 }
 
-function sampleMix(rng, candidateIds, minAssets, maxAssets) {
-  const k = minAssets + Math.floor(rng() * (maxAssets - minAssets + 1));
-  const ids = [...candidateIds];
+function sampleMix(rng, candidateIds, minAssets, maxAssets, pinnedIds = []) {
+  // Pinned assets are in EVERY sampled mix; the random subset fills the
+  // remainder. With no pins this reduces to the original sampler (same RNG
+  // draw sequence, so unpinned searches stay seed-reproducible).
+  let k = minAssets + Math.floor(rng() * (maxAssets - minAssets + 1));
+  if (k < pinnedIds.length) k = pinnedIds.length;
+  const ids = pinnedIds.length ? candidateIds.filter((id) => !pinnedIds.includes(id)) : [...candidateIds];
+  const extra = Math.min(k - pinnedIds.length, ids.length);
   // Fisher–Yates partial shuffle for the subset.
-  for (let i = 0; i < Math.min(k, ids.length); i++) {
+  for (let i = 0; i < extra; i++) {
     const j = i + Math.floor(rng() * (ids.length - i));
     [ids[i], ids[j]] = [ids[j], ids[i]];
   }
-  const chosen = ids.slice(0, Math.min(k, ids.length));
+  const chosen = [...pinnedIds, ...ids.slice(0, extra)];
   const tetherUnits = TETHER_UNITS[Math.floor(rng() * TETHER_UNITS.length)];
   const units = new Map(chosen.map((id) => [id, MIN_UNITS]));
   let remaining = UNITS_TOTAL - tetherUnits - chosen.length * MIN_UNITS;
@@ -359,6 +364,10 @@ function qualityRank(a, b) {
   return (b.full ? b.full.value : 0) - (a.full ? a.full.value : 0);
 }
 
+// How many gate-hidden rows a result keeps viewable. Bounded so a persisted
+// result stays small; the weededForQuality count still reports the true total.
+const HIDDEN_CAP = 40;
+
 // Intensity-scaled funnel sizes (user-tuned): the broad pass dominates
 // wall-clock (>95% at 1M), so wider boards and a much deeper refinement stage
 // cost little relative to the stage already being paid for. Boards ×1.25/×1.5
@@ -388,6 +397,7 @@ async function searchCompositions({
   samples = 100000, // broad-pass combination count
   minAssets = 1,
   maxAssets = 8,
+  pinned = [], // coingecko ids that must appear in every searched mix
   screenKeep = 16, // candidates surviving the solo screen
   fullTop, // broad-pass contenders promoted to full fidelity (default: intensity-scaled)
   retKeep, // raw-return board size (default: intensity-scaled)
@@ -413,6 +423,12 @@ async function searchCompositions({
   if (candidates.length < minAssets) {
     throw new Error(`only ${candidates.length} candidates have full-window history — need at least ${minAssets}`);
   }
+  // Pins: must-include ids, restricted to what actually made the candidate
+  // pool (the IO wrapper warns about any that didn't). A big pin set widens
+  // maxAssets so the pins alone never make sampling infeasible.
+  const pinnedIds = pinned.filter((id) => pool.symbolOf.has(id));
+  const pinnedSet = new Set(pinnedIds);
+  if (pinnedIds.length) maxAssets = Math.max(maxAssets, pinnedIds.length);
   // Long runs must not starve the event loop (polls, syncs, the UI itself).
   const yieldLoop = () => new Promise((r) => setImmediate(r));
 
@@ -484,7 +500,11 @@ async function searchCompositions({
       soloTrain: sc.screenScore,
       positiveFolds: sc.positiveFolds || sc.typesPositive || 0,
       ownReturnPct: ret * 100,
-      kept: ret > DECLINE_FLOOR, // only terminal decliners are weeded
+      // Only terminal decliners are weeded — and a PIN even survives that:
+      // the user demanded the asset in every mix, so the search honors it
+      // and lets the quality gate judge the result honestly.
+      kept: ret > DECLINE_FLOOR || pinnedSet.has(c.id),
+      pinned: pinnedSet.has(c.id) || undefined,
     });
     if (i % 4 === 3) await yieldLoop();
   }
@@ -514,7 +534,7 @@ async function searchCompositions({
   let retCutoff = -Infinity;
   let broadSampled = 0;
   for (let i = 0; i < samples; i++) {
-    const mix = sampleMix(rng, keptIdsArr, minAssets, Math.min(maxAssets, keptIdsArr.length));
+    const mix = sampleMix(rng, keptIdsArr, minAssets, Math.min(maxAssets, keptIdsArr.length), pinnedIds);
     if (mix) {
       broadSampled++;
       const assets = mixToAssets(mix, pool);
@@ -622,6 +642,7 @@ async function searchCompositions({
         }
       } else {
         const out = ids[Math.floor(rng() * ids.length)];
+        if (pinnedSet.has(out)) continue; // a pinned asset is never swapped out
         const unused = keptIdsArr.filter((c) => !variant.units.has(c));
         if (unused.length === 0) continue;
         const inn = unused[Math.floor(rng() * unused.length)];
@@ -680,6 +701,11 @@ async function searchCompositions({
   const noRealPossibility = market != null && real.length === 0;
   const rows = (real.length ? real : allRows).slice(0, finalists);
   const weededForQuality = allRows.length - rows.length;
+  // The weeded rows stay INSPECTABLE, not erased: everything the gate (or the
+  // finalists fold) kept off the board, in the same quality order, capped.
+  // Each row carries beatsMarket so the renderer labels laggards honestly.
+  const shownSet = new Set(rows);
+  const hiddenMixes = allRows.filter((r) => !shownSet.has(r)).slice(0, HIDDEN_CAP);
   const anyRecommended = rows.some((r) => r.recommended);
 
   // Current mix — scored the SAME way, shown for REFERENCE only. A single
@@ -720,6 +746,7 @@ async function searchCompositions({
 
   return {
     mixes: rows,
+    hiddenMixes,
     currentMix: currentScored,
     mode,
     regime: regimeInfo,
@@ -1017,6 +1044,9 @@ async function searchCurrentSet({
   const noRealPossibility = market != null && real.length === 0;
   const rows = (real.length ? real : allRows).slice(0, finalists);
   const weededForQuality = allRows.length - rows.length;
+  // Weeded rows stay inspectable (same cap and honesty rules as the lab).
+  const shownSet = new Set(rows);
+  const hiddenMixes = allRows.filter((r) => !shownSet.has(r)).slice(0, HIDDEN_CAP);
   const anyRecommended = rows.some((r) => r.recommended);
 
   // Current mix — reference only, scored identically (a single window's number
@@ -1060,6 +1090,7 @@ async function searchCurrentSet({
 
   return {
     mixes: rows,
+    hiddenMixes,
     currentMix: currentScored,
     mode,
     regime: regimeInfo,
@@ -1098,6 +1129,24 @@ function parseComposeExclusions(profile, tetherId = null) {
     if (Array.isArray(parsed)) ids = parsed.filter((v) => typeof v === 'string');
   } catch {
     /* unreadable -> no exclusions */
+  }
+  const set = new Set(ids);
+  if (tetherId) set.delete(tetherId);
+  return set;
+}
+
+// User-pinned MUST-INCLUDE assets (profiles.compose_pinned, JSON array of
+// coingecko ids): every searched mix contains all of them — this turns the lab
+// into "what works best WITH my core set". The tethered index is stripped
+// (every mix holds it anyway); garbage parses to no pins. A pin overrides an
+// exclusion for the same asset — the more specific intent wins.
+function parseComposePins(profile, tetherId = null) {
+  let ids = [];
+  try {
+    const parsed = JSON.parse(profile && profile.compose_pinned ? profile.compose_pinned : '[]');
+    if (Array.isArray(parsed)) ids = parsed.filter((v) => typeof v === 'string');
+  } catch {
+    /* unreadable -> no pins */
   }
   const set = new Set(ids);
   if (tetherId) set.delete(tetherId);
@@ -1169,6 +1218,10 @@ async function runCurrentSetSearch(profileId, ctx, setProgress = () => {}) {
   // are weeded even here — an excluded holding keeps its actual weight in the
   // profile but stays out of the re-weighting study.
   const excluded = parseComposeExclusions(profile, tetherAsset.coingecko_id);
+  // A pin overrides an exclusion even here: the set is fixed, so a pin's only
+  // effect in current-set mode is keeping a pinned holding in the study.
+  const pinnedSet = parseComposePins(profile, tetherAsset.coingecko_id);
+  for (const id of pinnedSet) excluded.delete(id);
   const holdings = assets.filter(
     (a) => !a.is_index && (a.target_pct > 0 || a.quantity > 0) && !excluded.has(a.coingecko_id)
   );
@@ -1289,6 +1342,7 @@ async function runCurrentSetSearch(profileId, ctx, setProgress = () => {}) {
     droppedForCoverage: droppedForCoverage.length,
     droppedNames: droppedForCoverage,
     excludedByUser,
+    pinnedByUser: coveredHoldings.filter((c) => pinnedSet.has(c.id)).map((c) => c.symbol),
     venue: account ? account.venue : null,
     notOnVenue: [],
     requestedDays: days,
@@ -1337,10 +1391,16 @@ async function runComposeSearch(profileId, opts = {}, setProgress = () => {}) {
   const held = assets.filter(
     (a) => !a.is_index && (a.target_pct > 0 || a.quantity > 0) && (heldOnly || !a.buy_frozen || a.freeze_override)
   );
+  const pinnedSet = parseComposePins(profile, tetherAsset.coingecko_id);
+  const pinWarnings = [];
   let top = [];
+  let deepTop = [];
   if (!heldOnly) {
     try {
-      top = await topCandidates({ count: candidateCount });
+      // With pins, fetch a deeper market list so a pinned coin that drifted
+      // below the search cut can still be injected into the universe.
+      deepTop = await topCandidates({ count: pinnedSet.size ? Math.max(candidateCount, 100) : candidateCount });
+      top = deepTop.slice(0, candidateCount);
     } catch (err) {
       console.error('topCandidates failed (searching held assets only):', err.message);
     }
@@ -1352,14 +1412,38 @@ async function runComposeSearch(profileId, opts = {}, setProgress = () => {}) {
       byId.set(c.id, { id: c.id, symbol: c.symbol, rank: c.rank });
     }
   }
+  // Pinned coins below the search cut enter anyway — a pin is an explicit
+  // instruction, not a suggestion the rank cut may veto.
+  for (const c of deepTop) {
+    if (pinnedSet.has(c.id) && !byId.has(c.id) && c.id !== tetherAsset.coingecko_id && !fiatCode(c.id)) {
+      byId.set(c.id, { id: c.id, symbol: c.symbol, rank: c.rank });
+    }
+  }
   let universe = [...byId.values()];
 
   // User-curated exclusions weed the pool BEFORE anything else runs — held
   // assets included (an unchecked holding keeps its live weight but stays out
-  // of the study). Named in the stamp so nothing vanishes silently.
+  // of the study). Named in the stamp so nothing vanishes silently. A PIN on
+  // the same asset overrides the exclusion (the more specific intent wins).
   const userExcluded = parseComposeExclusions(profile, tetherAsset.coingecko_id);
+  for (const id of pinnedSet) {
+    if (userExcluded.delete(id)) {
+      const sym = ((byId.get(id) || {}).symbol || id).toUpperCase();
+      pinWarnings.push(`${sym} is both pinned and excluded — the pin wins; it stays in the search.`);
+    }
+  }
   const excludedByUser = universe.filter((c) => userExcluded.has(c.id)).map((c) => c.symbol);
   universe = universe.filter((c) => !userExcluded.has(c.id));
+
+  // A pin that never made the universe at all is named, not silently ignored.
+  const missingPins = [...pinnedSet].filter((id) => !universe.some((c) => c.id === id));
+  if (missingPins.length) {
+    pinWarnings.push(
+      `pinned asset(s) not in this search scope: ${missingPins.join(', ')} — ` +
+        (heldOnly ? 'the drops-allowed scope searches current holdings only' : 'not held and not among the market candidates') +
+        '; ignored.'
+    );
+  }
 
   const venueFilter = heldOnly ? null : await venueTradableFilter(profileId);
   const notOnVenue = [];
@@ -1369,7 +1453,14 @@ async function runComposeSearch(profileId, opts = {}, setProgress = () => {}) {
     for (const c of universe) {
       // Held assets stay regardless — they're already on the account.
       if (c.held || (await venueFilter.tradable(c.symbol))) kept.push(c);
-      else notOnVenue.push(c.symbol);
+      else {
+        notOnVenue.push(c.symbol);
+        if (pinnedSet.has(c.id)) {
+          pinWarnings.push(
+            `pinned ${c.symbol.toUpperCase()} is not tradable on ${venueFilter.venue} — dropped despite the pin (a mix the account can't trade is a fantasy).`
+          );
+        }
+      }
     }
     universe = kept;
   }
@@ -1436,6 +1527,14 @@ async function runComposeSearch(profileId, opts = {}, setProgress = () => {}) {
   // Venue-tradable candidates that still lacked full-window history — named so
   // the stamp can explain them, not just count them (the silent-drop trap).
   const coverageDroppedNames = universe.filter((c) => !covered.includes(c.id)).map((c) => c.symbol);
+  for (const c of universe) {
+    if (pinnedSet.has(c.id) && !covered.includes(c.id)) {
+      pinWarnings.push(
+        `pinned ${c.symbol.toUpperCase()} lacks usable history for the ${Math.round((nowMs - windowStart) / 86_400_000)}d window — dropped despite the pin.`
+      );
+    }
+  }
+  const pinnedInSearch = coveredCandidates.filter((c) => pinnedSet.has(c.id));
   if (bars.length < MIN_WINDOW_DAYS) throw new Error(`not enough overlapping daily history (${bars.length} bars)`);
 
   // Mixes go down to ONE tradable asset, so a single covered candidate is a
@@ -1490,6 +1589,7 @@ async function runComposeSearch(profileId, opts = {}, setProgress = () => {}) {
     // tradable asset (the full lab's sampler also floors at 1).
     minAssets: heldOnly ? 1 : undefined,
     maxAssets: heldOnly ? coveredCandidates.length : undefined,
+    pinned: pinnedInSearch.map((c) => c.id),
     seed,
     setProgress,
   });
@@ -1501,6 +1601,7 @@ async function runComposeSearch(profileId, opts = {}, setProgress = () => {}) {
     droppedForCoverage: universe.length - coveredCandidates.length,
     droppedNames: coverageDroppedNames,
     excludedByUser,
+    pinnedByUser: pinnedInSearch.map((c) => c.symbol),
     heldExcludedFrozen: heldOnly ? 0 : assets.filter((a) => !a.is_index && a.buy_frozen && !a.freeze_override).length,
     venue: venueFilter ? venueFilter.venue : account ? account.venue : null,
     notOnVenue,
@@ -1510,6 +1611,7 @@ async function runComposeSearch(profileId, opts = {}, setProgress = () => {}) {
   };
   result.idealTether = tetherIdealized;
   if (idealWarning) result.warnings = [idealWarning, ...(result.warnings || [])];
+  if (pinWarnings.length) result.warnings = [...pinWarnings, ...(result.warnings || [])];
   return { result, params: { days, samples, candidateCount, seed, heldOnly, idealTether: tetherIdealized } };
 }
 
@@ -1522,6 +1624,7 @@ module.exports = {
   chooseWindowStart,
   mulberry32,
   parseComposeExclusions,
+  parseComposePins,
   venueTradableFilter,
   MINI_X,
   CAVEAT,

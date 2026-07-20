@@ -281,6 +281,10 @@ ensureColumn('profiles', 'spread_pct', 'spread_pct REAL NOT NULL DEFAULT 0.10');
 // Composition-lab candidate exclusions: JSON array of coingecko ids the user
 // unchecked from the candidate pool — weeded before any search scope runs.
 ensureColumn('profiles', 'compose_excluded', "compose_excluded TEXT NOT NULL DEFAULT '[]'");
+// Composition-lab pinned (must-include) assets: JSON array of coingecko ids
+// the user pinned in the candidate pool — every searched mix contains them.
+// A pin overrides an exclusion for the same asset.
+ensureColumn('profiles', 'compose_pinned', "compose_pinned TEXT NOT NULL DEFAULT '[]'");
 // Phase 3 safety rails: structural-break buy-freeze (engine suppresses BUY
 // alerts while set; sells unaffected) and the latched depeg flag.
 ensureColumn('assets', 'buy_frozen', 'buy_frozen INTEGER NOT NULL DEFAULT 0');

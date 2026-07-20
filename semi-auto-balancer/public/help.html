@@ -187,7 +187,10 @@
         why the quality gate exists:</li>
       <li><span class="term">✓mkt / ▼mkt</span> — does the mix keep up with the market (holding BTC in your
         index currency) on return AND drawdown? ★ requires harvesting <em>and</em> ✓mkt with a positive
-        holdout. Mixes that harvested well but sank are hidden (counted in the stamp).</li>
+        holdout. Mixes that harvested well but sank are weeded off the default board (counted in the
+        stamp) — but not erased: a <strong>"show the N weeded mix(es)"</strong> row at the bottom of the
+        table reveals them, muted and labeled ▼mkt, so you can glean what almost made it. Results from
+        before this feature only carry the count — re-run to make their weeded rows viewable.</li>
       <li><span class="term">No-harvest / no-real-possibility verdicts</span> — when nothing clears the bar
         the table says so honestly instead of dressing up the least-bad row.</li>
       <li><span class="term">The stamp</span> (bottom line) records everything: combos searched, universe
@@ -198,12 +201,20 @@
         untouched.</li>
     </ul>
 
-    <h2 id="pool">6. Candidate pool (exclusions)</h2>
+    <h2 id="pool">6. Candidate pool (exclusions &amp; 📌 pins)</h2>
     <p><strong>Candidate pool…</strong> (next to Run search) lists everything the lab would consider —
     held assets (marked •) and market candidates. <strong>Uncheck</strong> an asset to exclude it from
     every scope; saved per profile instantly, and named in the result stamp ("excluded by you: …").
     The tethered index is locked — every mix is denominated in it. Use this to weed assets that are
     expensive to trade from your position (indirect crosses) or that you never want proposed.</p>
+    <p>Click an asset's <strong>📌 pin</strong> to force it into <em>every</em> searched mix — the search
+    then answers "which additions work best <em>with</em> my core set" instead of proposing arbitrary
+    bags. Pins override exclusions (excluding a pinned asset unpins it), survive the terminal-decliner
+    screen, keep a pinned coin that drifted below the market-cap cut in the universe, and are named in
+    the stamp ("📌 pinned by you: …"). A pin that can't be honored — not tradable on your venue, or no
+    usable history for the window — is dropped with a named warning, never silently. Example: pin
+    USDC⚓-companions BCH, XRP and PAXG, exclude BTC, and the search hunts for the 1–2 assets that best
+    complete that fixed core.</p>
 
     <h2 id="ladder">7. Ladder Lab (BTC/USD)</h2>
     <p>Its own page (<strong>Ladder Lab</strong> header button, opens a new tab): a two-asset USD+BTC

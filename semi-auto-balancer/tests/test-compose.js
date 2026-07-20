@@ -275,6 +275,61 @@ const IDS = [...seriesById.keys()];
   ok(px({}).size === 0 && px(null).size === 0, 'missing column/profile parses to no exclusions');
   ok(px({ compose_excluded: '[1,2,"x"]' }).size === 1, 'non-string entries are ignored');
 
+  // --- weeded rows are VIEWABLE, not erased: hiddenMixes carries everything
+  // the board hid (below the market bar or the finalists fold), same shape,
+  // quality-ordered, capped at 40; weededForQuality still counts the truth ---
+  ok(Array.isArray(r.hiddenMixes), 'result carries a hiddenMixes array');
+  ok(
+    r.hiddenMixes.length === Math.min(r.weededForQuality, 40),
+    `hiddenMixes covers the weeded count, capped at 40 (${r.hiddenMixes.length}/${r.weededForQuality})`
+  );
+  {
+    const shownKeys = new Set(r.mixes.map((m) => JSON.stringify(m.assets)));
+    ok(r.hiddenMixes.every((m) => !shownKeys.has(JSON.stringify(m.assets))), 'hidden rows never duplicate shown rows');
+  }
+  ok(
+    r.hiddenMixes.every((m) => Number.isFinite(m.netReturn) && Number.isFinite(m.maxDD)),
+    'hidden rows carry the same quality fields as shown rows'
+  );
+  ok(Array.isArray(rr.hiddenMixes), 'regime-mode result carries hiddenMixes');
+  ok(
+    rr.hiddenMixes.length === Math.min(rr.weededForQuality, 40),
+    'regime-mode hiddenMixes matches its weeded count (capped)'
+  );
+  ok(Array.isArray(cs.hiddenMixes), 'current-set result carries hiddenMixes too');
+  ok(cs.hiddenMixes.length === Math.min(cs.weededForQuality, 40), 'current-set hiddenMixes matches its weeded count (capped)');
+
+  // --- 📌 pinned assets: forced into EVERY searched mix, immune to the
+  // decliner weed and the refinement swap, still judged honestly downstream ---
+  const pinnedRun = await compose.searchCompositions({
+    ...opts,
+    samples: 1500,
+    pinned: ['riser', 'dec-d'], // dec-d is a terminal decliner — the pin keeps it anyway
+  });
+  ok(
+    pinnedRun.mixes.every((m) => m.assets.some((a) => a.id === 'riser') && m.assets.some((a) => a.id === 'dec-d')),
+    'every finalist contains ALL pinned assets (even a pinned decliner)'
+  );
+  ok(
+    pinnedRun.hiddenMixes.every((m) => m.assets.some((a) => a.id === 'riser') && m.assets.some((a) => a.id === 'dec-d')),
+    'the pin binds the WHOLE search — hidden rows contain the pins too'
+  );
+  {
+    const ps = pinnedRun.screen.find((s) => s.id === 'dec-d');
+    ok(ps.kept === true && ps.pinned === true, 'a pinned terminal decliner survives the solo screen, flagged pinned');
+    const un = pinnedRun.screen.find((s) => s.id === 'dec-e');
+    ok(un.kept === false && !un.pinned, 'the UNpinned decliner is still weeded as before');
+  }
+  const ghostPin = await compose.searchCompositions({ ...opts, samples: 300, pinned: ['no-such-id'] });
+  ok(ghostPin.mixes.length > 0, 'unknown pinned ids are ignored and the search still runs');
+
+  // --- parseComposePins: same defensive parsing as exclusions, tether immune ---
+  const pp = compose.parseComposePins;
+  ok(pp({ compose_pinned: '["osc-a","riser"]' }).has('osc-a'), 'pins parse from the profile JSON');
+  ok(!pp({ compose_pinned: '["tether","osc-a"]' }, 'tether').has('tether'), 'the tethered index can never be pinned');
+  ok(pp({ compose_pinned: '["tether","osc-a"]' }, 'tether').has('osc-a'), 'other pins survive the tether guard');
+  ok(pp({ compose_pinned: 'not json' }).size === 0 && pp({}).size === 0 && pp(null).size === 0, 'garbage/missing parses to no pins');
+
   // --- index-switch resilience: right after re-tethering, the tether sits at
   // 0% target while the old targets still total 100. That current mix must
   // score (reference), and an outright unscorable current mix (no index at

@@ -424,6 +424,21 @@ every X.
   their count requires (a pair splits within 2.5–45%, a lone asset takes the
   tether's complement, 75–90%). Sampler and greedy refinement share the same
   cap rule; test-compose.js covers a single-candidate universe end to end.
+- 2026-07-20 (viewable weeds + pins): the quality gate no longer ERASES what
+  it hides — both search modes ship `hiddenMixes` (everything below the
+  market bar or the finalists fold, same row shape, quality-ordered, capped
+  at 40) and the renderer reveals them behind a "show the N weeded mix(es)"
+  toggle, muted, ▼mkt-labeled; the default board stays honest. And the pool
+  gained 📌 PINS (`profiles.compose_pinned`, mirror of the exclusions):
+  pinned assets are forced into EVERY sampled mix (sampler pre-seeds them;
+  refinement never swaps them out), survive the terminal-decliner screen,
+  override an exclusion on the same asset, and get injected even when their
+  market rank fell below the search cut (deep top-100 fetch). Un-honorable
+  pins (venue-untradable / no window history / not in scope) warn by name.
+  Stamp: "📌 pinned by you: …". Unpinned searches keep byte-identical RNG
+  sequences (seed determinism preserved). This turns the lab into "what
+  1–2 additions best complete my fixed core set" — the USDC+BCH+XRP+PAXG
+  live-test workflow. Tests in test-compose.js; Playwright-verified UI.
 
 ## Phase 3 — Safety rails
 **Status: SHIPPED (tests green: test-safety.js).** lib/safety.js exactly to

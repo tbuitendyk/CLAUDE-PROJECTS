@@ -1163,9 +1163,10 @@ function renderCompose(latest) {
           : ' <span class="neg" title="lags the market (hold BTC) on return/drawdown">▼mkt</span>';
     return `${ret}${trig} <span class="muted">· DD ${dd}%</span>${mk}`;
   };
-  const addRow = (label, row, highlight) => {
+  const addRow = (label, row, highlight, weeded) => {
     const tr = document.createElement('tr');
     if (highlight) tr.classList.add('ref-row');
+    if (weeded) tr.classList.add('weeded-row');
     const star = row.recommended ? ' ★' : '';
     const h = row.holdout || {};
     // The star (and the final asset spec) never orphan onto their own wrapped
@@ -1231,6 +1232,45 @@ function renderCompose(latest) {
         : 'no mix both cleared the walk-forward + holdout bar AND kept up with the market. Rankings reflect capital preservation, not skill.';
     tr.innerHTML = `<td colspan="${cols}" class="warn-text">★ none — ${why}</td>`;
     tbody.appendChild(tr);
+  }
+
+  // The weeded (gate-hidden) rows are viewable on demand: same columns, muted,
+  // each already labeled ▼mkt/✓mkt by the quality cell — nothing is erased,
+  // the default view just stays honest. Older persisted results predate the
+  // field; only the stamp explains those.
+  {
+    const hidden = r.hiddenMixes || [];
+    if (hidden.length) {
+      const tr = document.createElement('tr');
+      tr.className = 'weeded-toggle';
+      const td = document.createElement('td');
+      td.colSpan = regimeMode ? 10 : 7;
+      const btn = document.createElement('button');
+      btn.className = 'ghost';
+      const total = r.weededForQuality || hidden.length;
+      const showLabel =
+        `▽ show the ${total} weeded mix(es)` +
+        (hidden.length < total ? ` (best ${hidden.length} kept)` : '') +
+        ' — lagged the market (▼mkt) or fell below the finalists fold';
+      btn.textContent = showLabel;
+      btn.title =
+        'Reveal the rows the quality gate keeps off the board. They are ranked with the same quality order — useful for gleaning what ' +
+        'almost made it — but the gate verdict stands: ▼mkt rows lag holding BTC on return/drawdown.';
+      let open = false;
+      btn.addEventListener('click', () => {
+        open = !open;
+        if (open) {
+          for (const m of hidden) addRow(mixLabel(m.assets), m, false, true);
+          btn.textContent = '△ hide the weeded mixes';
+        } else {
+          tbody.querySelectorAll('tr.weeded-row').forEach((x) => x.remove());
+          btn.textContent = showLabel;
+        }
+      });
+      td.appendChild(btn);
+      tr.appendChild(td);
+      tbody.appendChild(tr);
+    }
   }
 
   // Solo-screen verdicts: which candidates made it into combinatorics. In
@@ -1300,6 +1340,9 @@ function renderCompose(latest) {
     (u.excludedByUser && u.excludedByUser.length
       ? ` · excluded by you: ${u.excludedByUser.map((s) => s.toUpperCase()).join(', ')}`
       : '') +
+    (u.pinnedByUser && u.pinnedByUser.length
+      ? ` · 📌 pinned by you (forced into every mix): ${u.pinnedByUser.map((s) => s.toUpperCase()).join(', ')}`
+      : '') +
     (u.heldExcludedFrozen ? ` · ${u.heldExcludedFrozen} held asset(s) excluded: buy-frozen` : '') +
     (!r.currentSet && u.droppedNames && u.droppedNames.length
       ? ` · ${u.droppedNames.length} dropped for insufficient history: ${u.droppedNames.map((s) => s.toUpperCase()).join(', ')}`
@@ -1316,7 +1359,11 @@ function renderCompose(latest) {
     ` + untouched holdout from ${w.holdoutFrom ? new Date(w.holdoutFrom).toISOString().slice(0, 10) : '?'} (${w.holdoutBars} bars).` +
     (r.idealTether ? ' · ⚠ ASSUMPTION: tether idealized to a perfect $1 peg (real wobble/depegs erased).' : '') +
     (r.market ? ` · market (hold BTC): ${sp(r.market.return)} / DD ${r.market.maxDD.toFixed(0)}% — the bar a "real possibility" must keep up with.` : '') +
-    (r.weededForQuality ? ` · ${r.weededForQuality} mix(es) hidden: lagged the market.` : '');
+    (r.weededForQuality
+      ? r.hiddenMixes && r.hiddenMixes.length
+        ? ` · ${r.weededForQuality} mix(es) weeded (lagged the market or fell below the fold) — viewable via "show" at the bottom of the table.`
+        : ` · ${r.weededForQuality} mix(es) hidden: lagged the market. Re-run the search to make them viewable.`
+      : '');
 }
 
 $('#c-run').addEventListener('click', async () => {
@@ -1373,16 +1420,17 @@ $('#c-pool-btn').addEventListener('click', async () => {
     const r = await api(`/profiles/${state.selectedId}/compose-candidates`);
     box.innerHTML = '';
     const excludedNow = new Set(r.pool.filter((c) => c.excluded).map((c) => c.id));
+    const pinnedNow = new Set(r.pool.filter((c) => c.pinned).map((c) => c.id));
     const save = async () => {
       status.textContent = 'saving…';
       try {
         await api(`/profiles/${state.selectedId}`, {
           method: 'PATCH',
-          body: { compose_excluded: [...excludedNow] },
+          body: { compose_excluded: [...excludedNow], compose_pinned: [...pinnedNow] },
         });
-        status.textContent = excludedNow.size
-          ? `${excludedNow.size} asset(s) excluded from all lab scopes.`
-          : 'No exclusions — the full pool is searchable.';
+        status.textContent =
+          (excludedNow.size ? `${excludedNow.size} asset(s) excluded from all lab scopes.` : 'No exclusions — the full pool is searchable.') +
+          (pinnedNow.size ? ` 📌 ${pinnedNow.size} pinned — every searched mix must contain ${pinnedNow.size > 1 ? 'them all' : 'it'}.` : '');
       } catch (err) {
         status.textContent = `save failed: ${err.message}`;
       }
@@ -1408,12 +1456,36 @@ $('#c-pool-btn').addEventListener('click', async () => {
       const cb = document.createElement('input');
       cb.type = 'checkbox';
       cb.checked = !c.excluded;
-      cb.addEventListener('change', () => {
-        if (cb.checked) excludedNow.delete(c.id);
-        else excludedNow.add(c.id);
+      // 📌 pin: force this asset into EVERY searched mix. A pin overrides an
+      // exclusion, and excluding a pinned asset unpins it — the click order
+      // decides, and both controls stay visually consistent either way.
+      const pin = document.createElement('span');
+      pin.className = 'pin' + (pinnedNow.has(c.id) ? ' on' : '');
+      pin.textContent = '📌';
+      pin.title = 'Pin: force this asset into every searched mix (overrides an exclusion). Click to toggle; saves immediately.';
+      pin.addEventListener('click', (ev) => {
+        ev.preventDefault(); // keep the label from also toggling the checkbox
+        if (pinnedNow.has(c.id)) pinnedNow.delete(c.id);
+        else {
+          pinnedNow.add(c.id);
+          excludedNow.delete(c.id);
+          cb.checked = true;
+        }
+        pin.classList.toggle('on', pinnedNow.has(c.id));
         save();
       });
-      label.append(cb, document.createTextNode(` ${c.symbol.toUpperCase()}${c.held ? ' •' : ''}`));
+      cb.addEventListener('change', () => {
+        if (cb.checked) excludedNow.delete(c.id);
+        else {
+          excludedNow.add(c.id);
+          if (pinnedNow.has(c.id)) {
+            pinnedNow.delete(c.id);
+            pin.classList.remove('on');
+          }
+        }
+        save();
+      });
+      label.append(cb, document.createTextNode(` ${c.symbol.toUpperCase()}${c.held ? ' •' : ''}`), pin);
       box.appendChild(label);
     }
     status.textContent =
@@ -1421,8 +1493,10 @@ $('#c-pool-btn').addEventListener('click', async () => {
         ? '⚠ Market candidates unavailable right now (data queue busy — likely a running search); showing held assets only. Reopen later for the full pool. '
         : '') +
       (excludedNow.size
-        ? `${excludedNow.size} asset(s) currently excluded. • = held.`
-        : 'Nothing excluded. Uncheck to exclude; saves immediately. • = held.');
+        ? `${excludedNow.size} asset(s) currently excluded. `
+        : 'Nothing excluded. Uncheck to exclude; saves immediately. ') +
+      (pinnedNow.size ? `📌 ${pinnedNow.size} pinned. ` : '') +
+      '• = held · 📌 = pinned into every mix.';
   } catch (err) {
     box.innerHTML = `<span class="error">Pool load failed: ${err.message}</span>`;
   }

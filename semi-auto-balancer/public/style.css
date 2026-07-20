@@ -244,6 +244,17 @@ tr.breached td { background: color-mix(in srgb, var(--danger) 10%, transparent);
    weedable (ranks drift), but dimmed with a dotted underline. */
 #c-pool label.out-of-cut { opacity: .55; }
 #c-pool label.out-of-cut { text-decoration-line: underline; text-decoration-style: dotted; }
+/* 📌 pin control: ghosted until active so the grid stays quiet; the pin's own
+   opacity beats the out-of-cut dim so an active pin always reads clearly. */
+#c-pool .pin { cursor: pointer; opacity: .25; margin-left: auto; filter: grayscale(1); }
+#c-pool .pin.on { opacity: 1; filter: none; }
+#c-pool label:has(.pin.on) { text-decoration: none; color: var(--text); }
+
+/* Composition lab: weeded (gate-hidden) rows revealed on demand — muted so
+   the honest board stays visually primary; the ▼mkt cell tells the verdict. */
+#c-table tr.weeded-row { opacity: .55; }
+#c-table tr.weeded-toggle td { text-align: center; }
+#c-table tr.weeded-toggle button { font-size: .8rem; }
 
 /* Composition lab: the trailing ⇢ tuner cell stays compact and aligned. */
 .tuner-cell { white-space: nowrap; text-align: right; }
