@@ -39,6 +39,18 @@ const id = process.env.PROBE_ID, sym = process.env.PROBE_SYM;
     const f = rows[0], l = rows[rows.length - 1];
     const span = f && l ? Math.round((l.ts - f.ts) / 86400000) : 0;
     console.log(`getDailyHistory(${id}, 1460, ${sym}): ${rows.length} rows, ${f ? new Date(f.ts).toISOString().slice(0, 10) : '-'} -> ${l ? new Date(l.ts).toISOString().slice(0, 10) : '-'} (${span}d span)`);
+    // Value sanity: quarterly samples + biggest single-day jump — a corrupt or
+    // source-mixed series (unit flips, inversions) shows up here immediately.
+    const day = (ts) => new Date(ts).toISOString().slice(0, 10);
+    const step = Math.max(1, Math.floor(rows.length / 16));
+    console.log('  samples:', rows.filter((_, i) => i % step === 0 || i === rows.length - 1).map((r) => `${day(r.ts)}=${r.usd_price}`).join(' '));
+    let worst = null;
+    for (let i = 1; i < rows.length; i++) {
+      const ratio = rows[i].usd_price / rows[i - 1].usd_price;
+      if (!worst || Math.abs(Math.log(ratio)) > Math.abs(Math.log(worst.ratio))) worst = { ratio, at: rows[i].ts, from: rows[i - 1].usd_price, to: rows[i].usd_price };
+    }
+    if (worst) console.log(`  biggest 1d jump: ×${worst.ratio.toFixed(4)} on ${day(worst.at)} (${worst.from} -> ${worst.to})`);
+    console.log(`  window return: ${(((l.usd_price / f.usd_price) - 1) * 100).toFixed(1)}%`);
   } catch (e) { console.log('getDailyHistory ERR:', e.message); }
 })();
 JS
