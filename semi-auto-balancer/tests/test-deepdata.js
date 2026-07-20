@@ -138,6 +138,16 @@ const history = require('../lib/history');
   ok((rows[rows.length - 1].ts - rows[0].ts) / DAY < 1400, 'a volatile shallow coin is NEVER synthetically extended');
   ok(rows.every((r) => !r.synthetic), 'no synthetic rows for the volatile coin');
 
+  // --- idealize-tether helper: constant $1 only for USD-stable series ---
+  const stableRows = Array.from({ length: 200 }, (_, i) => ({ ts: today - (199 - i) * DAY, usd_price: 0.999 + 0.002 * (i % 2) }));
+  const ideal = history.idealTetherSeries(stableRows, 1460);
+  ok(ideal && ideal.length === 1460 && ideal.every((r) => r.usd_price === 1 && r.synthetic), 'stable tether idealizes to a constant $1 full-window series');
+  ok(history.idealTetherSeries(stableRows, 48, Date.now(), 'hourly').length === 48 * 24, 'hourly idealization buckets by hour');
+  const mxnish = Array.from({ length: 200 }, (_, i) => ({ ts: today - (199 - i) * DAY, usd_price: 0.055 + 0.001 * (i % 3) }));
+  ok(history.idealTetherSeries(mxnish, 1460) === null, 'a non-USD-stable tether (MXN-like) REFUSES idealization');
+  const volatile = Array.from({ length: 200 }, (_, i) => ({ ts: today - (199 - i) * DAY, usd_price: 1 + 0.5 * Math.sin(i / 10) }));
+  ok(history.idealTetherSeries(volatile, 1460) === null, 'a volatile series refuses idealization too');
+
   console.log('deep-data layer tests pass');
   process.exit(0);
 })().catch((e) => { console.error('FAIL:', e.message); process.exit(1); });

@@ -785,6 +785,7 @@ function renderTune(latest, profile) {
     (recent.half ? ` · ½ recent = ${recent.half.bars} bars from ${d10(recent.half.from)}` : '') +
     (recent.quarter ? ` · ¼ recent = ${recent.quarter.bars} bars from ${d10(recent.quarter.from)}` : '') +
     ` · fee ${s.feePct}%/leg + spread ${s.spreadPct}% · execution lag ${s.lagHours}h` +
+    (s.idealTether ? ' · ⚠ ASSUMPTION: tether idealized to a perfect $1 peg.' : '') +
     (hypothetical ? '' : ' · Apply refuses if targets or costs have changed since.');
 }
 
@@ -870,7 +871,7 @@ $('#tune-run').addEventListener('click', async () => {
   try {
     const { jobId } = await api(`/profiles/${profileId}/tune-threshold`, {
       method: 'POST',
-      body: { granularity: $('#tune-gran').value, lag_hours: Number($('#tune-lag').value) },
+      body: { granularity: $('#tune-gran').value, lag_hours: Number($('#tune-lag').value), idealTether: $('#tune-ideal').checked },
     });
     trackJob('tune', jobId, profileId);
   } catch (err) {
@@ -998,6 +999,7 @@ function renderCompose(latest) {
           method: 'POST',
           body: {
             days: (r.window && r.window.bars) || 1460,
+            idealTether: r.idealTether === true,
             mix: row.assets.map((a) => ({ id: a.id, symbol: a.symbol, targetPct: a.pct, isIndex: a.isIndex })),
           },
         });
@@ -1106,6 +1108,7 @@ function renderCompose(latest) {
       ? ` · REGIME mode: ${r.regime.byType.bull}d bull / ${r.regime.byType.bear}d bear / ${r.regime.byType.range}d range`
       : ` · ${w.nFolds || '?'} walk-forward folds`) +
     ` + untouched holdout from ${w.holdoutFrom ? new Date(w.holdoutFrom).toISOString().slice(0, 10) : '?'} (${w.holdoutBars} bars).` +
+    (r.idealTether ? ' · ⚠ ASSUMPTION: tether idealized to a perfect $1 peg (real wobble/depegs erased).' : '') +
     (r.market ? ` · market (hold BTC): ${sp(r.market.return)} / DD ${r.market.maxDD.toFixed(0)}% — the bar a "real possibility" must keep up with.` : '') +
     (r.weededForQuality ? ` · ${r.weededForQuality} mix(es) hidden: lagged the market.` : '');
 }
@@ -1118,7 +1121,7 @@ $('#c-run').addEventListener('click', async () => {
     const scope = $('#c-scope').value;
     const { jobId } = await api(`/profiles/${profileId}/compose`, {
       method: 'POST',
-      body: { samples: Number($('#c-intensity').value), currentSet: scope === 'reweight', heldOnly: scope === 'drops' },
+      body: { samples: Number($('#c-intensity').value), currentSet: scope === 'reweight', heldOnly: scope === 'drops', idealTether: $('#c-ideal').checked },
     });
     trackJob('compose', jobId, profileId);
   } catch (err) {

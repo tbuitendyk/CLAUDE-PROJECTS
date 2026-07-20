@@ -2,7 +2,7 @@ const db = require('./db');
 const { simulate } = require('./backtest');
 const { indexUsdFor, priceAsset } = require('./balancer');
 const { topCandidates, candidateSeries } = require('./candidates');
-const { getDailyHistory } = require('./history');
+const { getDailyHistory, idealTetherSeries } = require('./history');
 const { fiatCode } = require('./pricing');
 const { getAccountForProfile } = require('./sync');
 const kraken = require('./exchanges/kraken');
@@ -1085,7 +1085,7 @@ function chooseWindowStart(earliests, requestedStartMs, nowMs) {
 // holdings (index + every position, frozen included — this re-weights what
 // you already own), fetch their history, and search the split × sensitivity.
 async function runCurrentSetSearch(profileId, ctx, setProgress = () => {}) {
-  const { profile, assets, tetherAsset, days, samples, seed } = ctx;
+  const { profile, assets, tetherAsset, days, samples, seed, idealTether = false } = ctx;
   const nowMs = Date.now();
 
   // The set: the index + every held/targeted position. No scanner candidates,
@@ -1113,6 +1113,23 @@ async function runCurrentSetSearch(profileId, ctx, setProgress = () => {}) {
     tetherAsset.coingecko_id,
     await getDailyHistory(tetherAsset.coingecko_id, days, tetherAsset.symbol ? String(tetherAsset.symbol).toLowerCase() : null)
   );
+
+  // Optional ASSUMPTION toggle: idealize a USD-stable tether to a perfect
+  // $1.00 peg (wobbles and depegs erased, stated openly in the stamp). The
+  // helper refuses non-USD-stable tethers, so this can never fictionalize a
+  // volatile denomination; the refusal is surfaced as a warning.
+  let tetherIdealized = false;
+  let idealWarning = null;
+  if (idealTether) {
+    const ideal = idealTetherSeries(seriesById.get(tetherAsset.coingecko_id), days, nowMs, 'daily');
+    if (ideal) {
+      seriesById.set(tetherAsset.coingecko_id, ideal);
+      tetherIdealized = true;
+    } else {
+      idealWarning =
+        'Idealize-tether was requested but the tether is not USD-stable (median off $1 by >3%) — using REAL tether data.';
+    }
+  }
 
   // Adaptive window (same rails as the lab): shrink only as far as needed so
   // most current assets cover it, never below MIN_WINDOW_DAYS.
@@ -1202,7 +1219,9 @@ async function runCurrentSetSearch(profileId, ctx, setProgress = () => {}) {
     windowDays: Math.round((nowMs - windowStart) / 86_400_000),
     windowLimitedBy,
   };
-  return { result, params: { days, samples, seed, currentSet: true } };
+  result.idealTether = tetherIdealized;
+  if (idealWarning) result.warnings = [idealWarning, ...(result.warnings || [])];
+  return { result, params: { days, samples, seed, currentSet: true, idealTether: tetherIdealized } };
 }
 
 async function runComposeSearch(profileId, opts = {}, setProgress = () => {}) {
@@ -1218,12 +1237,13 @@ async function runComposeSearch(profileId, opts = {}, setProgress = () => {}) {
   const samples = Number(opts.samples) > 0 ? Math.min(Number(opts.samples), 2_000_000) : 100_000;
   const candidateCount = Number(opts.candidates) > 0 ? Math.min(Number(opts.candidates), 80) : 60;
   const seed = Number(opts.seed) || (Date.now() % 2 ** 31);
+  const idealTether = !!opts.idealTether;
 
   // Current-set mode branches here: it keeps the exact holdings and searches
   // only the split × sensitivity, so it skips the whole candidate-discovery /
   // venue-filter machinery below.
   if (opts.currentSet) {
-    return runCurrentSetSearch(profileId, { profile, assets, tetherAsset, days, samples, seed }, setProgress);
+    return runCurrentSetSearch(profileId, { profile, assets, tetherAsset, days, samples, seed, idealTether }, setProgress);
   }
 
   // heldOnly (drops-allowed) = search subsets/weights of the CURRENT holdings
@@ -1286,6 +1306,23 @@ async function runComposeSearch(profileId, opts = {}, setProgress = () => {}) {
     tetherAsset.coingecko_id,
     await getDailyHistory(tetherAsset.coingecko_id, days, tetherAsset.symbol ? String(tetherAsset.symbol).toLowerCase() : null)
   );
+
+  // Optional ASSUMPTION toggle: idealize a USD-stable tether to a perfect
+  // $1.00 peg (wobbles and depegs erased, stated openly in the stamp). The
+  // helper refuses non-USD-stable tethers, so this can never fictionalize a
+  // volatile denomination; the refusal is surfaced as a warning.
+  let tetherIdealized = false;
+  let idealWarning = null;
+  if (idealTether) {
+    const ideal = idealTetherSeries(seriesById.get(tetherAsset.coingecko_id), days, nowMs, 'daily');
+    if (ideal) {
+      seriesById.set(tetherAsset.coingecko_id, ideal);
+      tetherIdealized = true;
+    } else {
+      idealWarning =
+        'Idealize-tether was requested but the tether is not USD-stable (median off $1 by >3%) — using REAL tether data.';
+    }
+  }
 
   // Adaptive window: shrink from the requested span only as far as needed
   // so most of the venue-tradable universe covers it (never below 240d),
@@ -1393,7 +1430,9 @@ async function runComposeSearch(profileId, opts = {}, setProgress = () => {}) {
     windowDays: Math.round((nowMs - windowStart) / 86_400_000),
     windowLimitedBy,
   };
-  return { result, params: { days, samples, candidateCount, seed, heldOnly } };
+  result.idealTether = tetherIdealized;
+  if (idealWarning) result.warnings = [idealWarning, ...(result.warnings || [])];
+  return { result, params: { days, samples, candidateCount, seed, heldOnly, idealTether: tetherIdealized } };
 }
 
 module.exports = {

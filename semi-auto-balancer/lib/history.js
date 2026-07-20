@@ -257,6 +257,25 @@ async function getDailyHistory(id, days = MAX_DAYS, symbolHint = null) {
   return rows;
 }
 
+// Idealized tether series: constant $1.00 across the whole window — the
+// "treat the tether as a perfect USD peg" ASSUMPTION, exposed as a user
+// toggle in the backtests (default off = real data, wobbles and depegs
+// included). Only legitimate for a genuinely USD-stable tether: returns null
+// unless the real series' median sits within ±3% of $1 (fiat:usd trivially
+// qualifies), so a volatile or non-USD tether can never be "idealized" into
+// fiction. `granularity` bucket: 'daily' or 'hourly'.
+function idealTetherSeries(realRows, days, nowMs = Date.now(), granularity = 'daily') {
+  const vals = (realRows || []).map((r) => r.usd_price).filter((v) => v > 0).sort((a, b) => a - b);
+  const med = vals.length ? vals[vals.length >> 1] : null;
+  if (med == null || med < 0.97 || med > 1.03) return null;
+  const step = granularity === 'hourly' ? 3_600_000 : DAY_MS;
+  const count = granularity === 'hourly' ? days * 24 : days;
+  const head = Math.floor(nowMs / step) * step;
+  const rows = [];
+  for (let i = count - 1; i >= 0; i--) rows.push({ ts: head - i * step, usd_price: 1, synthetic: true });
+  return rows;
+}
+
 // Cache freshness overview for diagnostics.
 function cacheStatus() {
   return db
@@ -266,4 +285,4 @@ function cacheStatus() {
     .all();
 }
 
-module.exports = { getDailyHistory, cacheStatus, dayBucket, bucketSeries, DAY_MS, MAX_DAYS };
+module.exports = { getDailyHistory, idealTetherSeries, cacheStatus, dayBucket, bucketSeries, DAY_MS, MAX_DAYS };

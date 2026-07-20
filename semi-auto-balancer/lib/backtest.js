@@ -1,7 +1,7 @@
 const crypto = require('crypto');
 const db = require('./db');
 const { effectiveThreshold, indexUsdFor, priceAsset } = require('./balancer');
-const { getDailyHistory } = require('./history');
+const { getDailyHistory, idealTetherSeries } = require('./history');
 const hourly = require('./hourly');
 
 // Phase 2: threshold sweep — an advisory backtest that replays the profile's
@@ -340,7 +340,7 @@ function recentWindows(simAssets, bars, opts) {
 // opts.mix = [{id, symbol, targetPct, isIndex}] sweeps a HYPOTHETICAL mix
 // (e.g. a composition-lab row) instead of the profile's applied targets —
 // the result is stamped hypothetical and Apply is refused for it.
-async function runTuneSweep(profileId, { days = 730, lagHours = 6, granularity = 'daily', mix = null } = {}, setProgress = () => {}) {
+async function runTuneSweep(profileId, { days = 730, lagHours = 6, granularity = 'daily', mix = null, idealTether = false } = {}, setProgress = () => {}) {
   const profile = db.prepare('SELECT * FROM profiles WHERE id = ?').get(profileId);
   if (!profile) throw new Error('profile not found');
   const hypothetical = Array.isArray(mix) && mix.length > 0;
@@ -363,6 +363,10 @@ async function runTuneSweep(profileId, { days = 730, lagHours = 6, granularity =
     throw new Error(hypothetical ? 'mix targets must total 100%' : 'set targets first (they must total 100%)');
 
   let bars;
+  // Idealize-tether assumption toggle: USD-stable tethers only (the helper
+  // refuses anything whose median strays >3% from $1; refusal is surfaced).
+  let tetherIdealized = false;
+  let idealIgnored = false;
   if (granularity === 'hourly') {
     // Hourly bars: the cache auto-fills through the source ladder on demand
     // (Bitso years-in-one-call, Binance portal, Kraken trades rebuild, CG
@@ -382,6 +386,14 @@ async function runTuneSweep(profileId, { days = 730, lagHours = 6, granularity =
         `hourly coverage too thin for: ${thin.join(', ')} — deep backfills run in the background, retry in a few minutes`
       );
     }
+    if (idealTether) {
+      const t = active.find((a) => a.is_index);
+      const ideal = t ? idealTetherSeries(series.get(t.coingecko_id), days, Date.now(), 'hourly') : null;
+      if (ideal) {
+        series.set(t.coingecko_id, ideal);
+        tetherIdealized = true;
+      } else idealIgnored = true;
+    }
     bars = alignBars(active, series);
     if (bars.length < 30 * 24) {
       throw new Error(`not enough overlapping hourly history across the mix (${bars.length} bars)`);
@@ -393,6 +405,14 @@ async function runTuneSweep(profileId, { days = 730, lagHours = 6, granularity =
       // Symbol hint lets the exchange layer serve DEEP history — essential for
       // hypothetical mixes carrying assets the profile doesn't hold.
       history.set(a.coingecko_id, await getDailyHistory(a.coingecko_id, days, a.symbol ? String(a.symbol).toLowerCase() : null));
+    }
+    if (idealTether) {
+      const t = active.find((a) => a.is_index);
+      const ideal = t ? idealTetherSeries(history.get(t.coingecko_id), days, Date.now(), 'daily') : null;
+      if (ideal) {
+        history.set(t.coingecko_id, ideal);
+        tetherIdealized = true;
+      } else idealIgnored = true;
     }
     bars = alignBars(active, history);
     if (bars.length < 90) {
@@ -406,10 +426,17 @@ async function runTuneSweep(profileId, { days = 730, lagHours = 6, granularity =
   // the most recent half and quarter so recent behaviour is visible untangled.
   setProgress('tabulating recent half / quarter windows…');
   result.recent = recentWindows(active, bars, costOpts);
+  if (idealIgnored) {
+    result.warnings = [
+      'Idealize-tether was requested but the tether is not USD-stable (median off $1 by >3%) — using REAL tether data.',
+      ...(result.warnings || []),
+    ];
+  }
   result.currentX = profile.threshold_pct;
   result.stamp = {
     targetsHash: computeTargetsHash(active),
     hypothetical,
+    idealTether: tetherIdealized,
     feePct: profile.fee_pct,
     spreadPct: profile.spread_pct,
     lagHours,

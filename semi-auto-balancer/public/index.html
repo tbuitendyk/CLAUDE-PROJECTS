@@ -105,6 +105,8 @@
                     <option value="1">1h</option>
                   </select>
                 </label>
+                <label class="muted toggle-inline" title="ASSUMPTION toggle: treat the tethered index as a perfect $1.00 peg (USD-stable tethers only; stated in the stamp when on). Default off = real data.">
+                  <input type="checkbox" id="tune-ideal"> Idealize tether 1:1</label>
                 <span id="tune-status" class="muted"></span>
               </div>
               <div id="tune-result" class="hidden">
@@ -143,6 +145,8 @@
                     <option value="drops">Current holdings — allow drops</option>
                   </select>
                 </label>
+                <label class="muted toggle-inline" title="ASSUMPTION toggle: treat the tethered index as a perfect $1.00 peg for the whole window (erases real peg wobble and depegs, e.g. USDC's 2023 SVB dip). USD-stable tethers only; the run stamp states when it is on. Default off = real data.">
+                  <input type="checkbox" id="c-ideal"> Idealize tether 1:1</label>
                 <label class="muted">intensity
                   <select id="c-intensity">
                     <option value="20000">quick (~20k combos, ~1 min)</option>

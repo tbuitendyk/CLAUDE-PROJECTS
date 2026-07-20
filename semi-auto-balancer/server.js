@@ -401,8 +401,9 @@ app.post('/api/profiles/:id/tune-threshold', (req, res) => {
   // Optional hypothetical mix (composition-lab row → tuner): sweeps that mix
   // instead of the applied targets; the result is stamped hypothetical.
   const mix = Array.isArray(b.mix) && b.mix.length > 0 ? b.mix : null;
+  const idealTether = Boolean(b.idealTether);
   const jobId = startJob('tune-threshold', profile.id, (setProgress) =>
-    runTuneSweep(profile.id, { days, granularity, lagHours, mix }, setProgress)
+    runTuneSweep(profile.id, { days, granularity, lagHours, mix, idealTether }, setProgress)
   );
   res.json({ ok: true, jobId });
 });
