@@ -506,11 +506,92 @@ function renderDetail() {
     li.textContent = `${new Date(entry.ts).toLocaleString()} ${entry.emailed ? '📧' : ''}\n${entry.message}`;
     log.appendChild(li);
   }
+
+  // Uncommitted edits survive every rebuild (per-profile draft store).
+  restoreDrafts(profile.id);
+}
+
+// ---- unsaved-field preservation ---------------------------------------------
+// Re-renders (the periodic refresh, post-action refreshes, and profile
+// switches) rebuild the DOM, which used to eat anything typed but not yet
+// saved. Every keystroke in a text field is captured into a PER-PROFILE
+// draft store; after any re-render the drafts are written back into the
+// rebuilt fields — so flipping between sub-accounts mid-edit (e.g. copying
+// emails/chat ids across) keeps every uncommitted value. A draft retires
+// itself the moment the server value matches it (i.e. it was saved).
+const draftStore = {}; // profileId -> Map(fieldKey -> value)
+
+function fieldKey(el) {
+  if (el.id) return '#' + el.id;
+  const container = el.closest('[id]');
+  const cid = container ? container.id : 'detail';
+  const kin = container ? [...container.querySelectorAll(`${el.tagName}.${(el.className || 'x').split(' ')[0]}`)] : [];
+  return `${cid}|${(el.className || '').split(' ')[0]}|${el.dataset.assetId || el.dataset.cg || ''}|${kin.indexOf(el)}`;
+}
+
+document.addEventListener('input', (e) => {
+  const el = e.target;
+  if (!state.selectedId) return;
+  if (!el.matches || !el.matches('#main-view input[type="text"], #main-view input[type="number"], #main-view input[type="email"], #main-view input:not([type]), #main-view textarea')) return;
+  const store = draftStore[state.selectedId] || (draftStore[state.selectedId] = new Map());
+  store.set(fieldKey(el), el.value);
+});
+
+function restoreDrafts(profileId) {
+  const store = draftStore[profileId];
+  if (!store || !store.size) return;
+  // Drafted EXTRA recipient rows (added but never saved) must exist again
+  // before values can land in them.
+  const recKeys = [...store.keys()].filter((k) => k.startsWith('n-recipients|'));
+  if (recKeys.length) {
+    const maxIdx = Math.max(...recKeys.map((k) => Number(k.split('|')[3] || 0)));
+    const box = $('#n-recipients');
+    while (box && box.querySelectorAll('.r-email').length <= maxIdx) box.appendChild(recipientRow());
+  }
+  for (const [key, val] of [...store]) {
+    let el = null;
+    if (key.startsWith('#')) el = document.querySelector(key);
+    else {
+      const [cid, cls, dataKey, idx] = key.split('|');
+      const container = document.getElementById(cid);
+      if (container) {
+        const kin = [...container.querySelectorAll(`.${cls || 'x'}`)];
+        el =
+          (dataKey && kin.find((c) => (c.dataset.assetId || c.dataset.cg || '') === dataKey)) ||
+          kin[Number(idx)] ||
+          null;
+      }
+    }
+    if (!el) continue;
+    if (el.value === val) {
+      store.delete(key); // committed (or identical) — draft retired
+      continue;
+    }
+    el.value = val;
+  }
 }
 
 async function refresh() {
+  // Keep the caret where the user left it across the rebuild.
+  const ae = document.activeElement;
+  const focusKey = ae && ae.matches && ae.matches('#main-view input, #main-view textarea') ? fieldKey(ae) : null;
+  const sel = focusKey && ae.selectionStart != null ? [ae.selectionStart, ae.selectionEnd] : null;
   await loadDetail();
   renderDetail();
+  if (focusKey) {
+    const el = focusKey.startsWith('#') ? document.querySelector(focusKey) : null;
+    const target = el || (() => {
+      const [cid, cls, dataKey, idx] = focusKey.split('|');
+      const container = document.getElementById(cid);
+      if (!container) return null;
+      const kin = [...container.querySelectorAll(`.${cls || 'x'}`)];
+      return (dataKey && kin.find((c) => (c.dataset.assetId || c.dataset.cg || '') === dataKey)) || kin[Number(idx)] || null;
+    })();
+    if (target) {
+      target.focus();
+      if (sel && target.setSelectionRange) try { target.setSelectionRange(sel[0], sel[1]); } catch {}
+    }
+  }
 }
 
 // ---- notifications ----
@@ -1851,6 +1932,7 @@ async function loadSubaccounts(x) {
   };
   from.onchange = renderCarveItems;
   renderCarveItems();
+  restoreDrafts(state.selectedId);
 
   // Transaction log.
   const lb = $('#sub-log tbody');
@@ -2333,8 +2415,13 @@ $('#i-cancel').addEventListener('click', () => {
     applyView();
     await loadProfiles();
     setInterval(async () => {
-      if (state.selectedId) await refresh().catch(() => {});
-    }, 60_000);
+      if (!state.selectedId) return;
+      // Never rebuild under the user's cursor — drafts survive anyway, but
+      // a refresh mid-keystroke still feels like the page fighting you.
+      const ae = document.activeElement;
+      if (ae && ae.matches && ae.matches('#main-view input, #main-view textarea, #main-view select')) return;
+      await refresh().catch(() => {});
+    }, 120_000);
   } else {
     showLogin();
   }
