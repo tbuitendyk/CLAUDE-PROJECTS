@@ -138,6 +138,27 @@ const history = require('../lib/history');
   ok((rows[rows.length - 1].ts - rows[0].ts) / DAY < 1400, 'a volatile shallow coin is NEVER synthetically extended');
   ok(rows.every((r) => !r.synthetic), 'no synthetic rows for the volatile coin');
 
+  // --- INTERNAL gap fill (the live USDC failure): a stitched stable series
+  // with missing candle days inside its span gets those days filled with the
+  // previous close, so it can't fall under buildBars' 97% coverage bar and
+  // drop the tether. Volatile series keep their gaps untouched. ---
+  cgReturn = {
+    prices: Array.from({ length: 1400 }, (_, i) => [today - (1399 - i) * DAY, 1.0 + 0.002 * (i % 5) / 5])
+      .filter((_, i) => i % 9 !== 3), // knock out ~11% of days — like the real USDC series
+  };
+  rows = await history.getDailyHistory('gappy-stable-coin', 1460, 'gsc');
+  const gapSpanDays = Math.round((rows[rows.length - 1].ts - rows[0].ts) / DAY) + 1;
+  ok(rows.length === gapSpanDays, `stable series internal gaps filled (${rows.length} rows over ${gapSpanDays} days)`);
+  ok(rows.every((r, i) => i === 0 || r.ts - rows[i - 1].ts === DAY), 'filled series has a row every single day');
+  const synth = rows.filter((r) => r.synthetic);
+  ok(synth.length > 100, `the knocked-out days are synthetic (${synth.length})`);
+  cgReturn = {
+    prices: Array.from({ length: 1400 }, (_, i) => [today - (1399 - i) * DAY, 100 * (1 + 0.5 * Math.sin(i / 20))])
+      .filter((_, i) => i % 9 !== 3),
+  };
+  rows = await history.getDailyHistory('gappy-volatile-coin', 1460, 'gvc');
+  ok(rows.some((r, i) => i > 0 && r.ts - rows[i - 1].ts > DAY), 'a volatile series keeps its gaps (no fabricated prices)');
+
   // --- idealize-tether helper: constant $1 only for USD-stable series ---
   const stableRows = Array.from({ length: 200 }, (_, i) => ({ ts: today - (199 - i) * DAY, usd_price: 0.999 + 0.002 * (i % 2) }));
   const ideal = history.idealTetherSeries(stableRows, 1460);
