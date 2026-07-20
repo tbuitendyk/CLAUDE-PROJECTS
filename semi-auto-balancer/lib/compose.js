@@ -1227,6 +1227,7 @@ async function runCurrentSetSearch(profileId, ctx, setProgress = () => {}) {
 async function runComposeSearch(profileId, opts = {}, setProgress = () => {}) {
   const profile = db.prepare('SELECT * FROM profiles WHERE id = ?').get(profileId);
   if (!profile) throw new Error('profile not found');
+  const nowMs = Date.now();
   const assets = db.prepare('SELECT * FROM assets WHERE profile_id = ?').all(profileId);
   const tetherAsset = assets.find((a) => a.is_index);
   if (!tetherAsset) throw new Error('the composition search needs a tethered index asset — checkmark one first');
@@ -1327,7 +1328,6 @@ async function runComposeSearch(profileId, opts = {}, setProgress = () => {}) {
   // Adaptive window: shrink from the requested span only as far as needed
   // so most of the venue-tradable universe covers it (never below 240d),
   // then trim every series to the chosen start.
-  const nowMs = Date.now();
   const earliests = universe
     .map((c) => (seriesById.get(c.id) || [])[0])
     .filter(Boolean)
