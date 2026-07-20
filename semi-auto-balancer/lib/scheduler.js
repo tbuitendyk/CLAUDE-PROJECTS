@@ -3,6 +3,7 @@ const { pollProfiles } = require('./balancer');
 const { sendAlertEvents, sendSafetyNotice } = require('./mailer');
 const { syncDueAccounts } = require('./sync');
 const safety = require('./safety');
+const laddermon = require('./laddermon');
 const { getDailyHistory } = require('./history');
 const hourlyData = require('./hourly');
 
@@ -82,6 +83,17 @@ function startScheduler() {
       await runSafetyChecks();
     } catch (err) {
       console.error('Safety check failed:', err.message);
+    }
+    try {
+      // Ladder monitors (Phase L2): each due monitor gets evaluated against
+      // one shared BTC price fetch; rung crossings notify per its own
+      // recipients list.
+      const lm = await laddermon.tick();
+      if (lm.events > 0) {
+        console.log(`[${new Date().toISOString()}] ladder monitors: ${lm.checked} checked, ${lm.events} event(s)`);
+      }
+    } catch (err) {
+      console.error('Ladder monitor tick failed:', err.message);
     }
     // Hourly cache top-ups, ~once a day per asset through each one's
     // persisted source. Guarded so a slow first backfill can't overlap

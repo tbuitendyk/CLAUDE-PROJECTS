@@ -286,6 +286,40 @@ async function sendSafetyNotice(profile, text) {
   }
 }
 
+// Ladder-monitor notices (Phase L2): same recipient shape and routing as
+// safety notices, but the on-screen log lives in ladder_events (monitors are
+// not profiles — alert_log's FK would reject them). Returns {emailed} so the
+// caller can stamp its event row.
+async function sendLadderNotice(monitor, subject, text) {
+  if (!monitor.alerts_enabled) return { emailed: 0 };
+  const recipients = parseRecipients(monitor);
+  const emails = recipients.map((r) => (r.email || '').trim()).filter(Boolean);
+  let emailed = 0;
+  if (emails.length > 0 && emailConfigured()) {
+    try {
+      await transporter.sendMail({
+        from: fromHeader(),
+        to: emails.join(', '),
+        subject: `[Ladder] ${monitor.name}: ${subject} (${new Date().toISOString().slice(0, 16).replace('T', ' ')} UTC)`,
+        text,
+      });
+      emailed = 1;
+    } catch (err) {
+      console.error(`Ladder email failed for monitor ${monitor.id}:`, err.message);
+    }
+  }
+  for (const r of recipients) {
+    if (!r.telegram_chat_id) continue;
+    try {
+      if (!telegramConfigured()) throw new Error('bot token not configured');
+      await sendTelegram(r.telegram_chat_id, `Ladder "${monitor.name}": ${text}`);
+    } catch (err) {
+      console.error(`Ladder Telegram notice failed for monitor ${monitor.id}:`, err.message);
+    }
+  }
+  return { emailed };
+}
+
 async function sendTestEmail() {
   if (!emailConfigured() || !config.alertEmailTo) {
     throw new Error('SMTP or ALERT_EMAIL_TO not configured');
@@ -302,6 +336,7 @@ module.exports = {
   sendAlertEvents,
   sendStatusReport,
   sendSafetyNotice,
+  sendLadderNotice,
   sendTestEmail,
   emailConfigured,
   buildText,

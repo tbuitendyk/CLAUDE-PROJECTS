@@ -22,7 +22,8 @@ const { runComposeSearch, venueTradableFilter, parseComposeExclusions } = requir
 const { topCandidates } = require('./lib/candidates');
 const { hourlyStatus } = require('./lib/hourly');
 const ladder = require('./lib/ladder');
-const { sendAlertEvents, sendStatusReport, sendTestEmail, emailConfigured } = require('./lib/mailer');
+const laddermon = require('./lib/laddermon');
+const { sendAlertEvents, sendStatusReport, sendTestEmail, sendLadderNotice, emailConfigured } = require('./lib/mailer');
 const { searchCoins, supportedFiats, fiatCode } = require('./lib/pricing');
 const { visionConfigured, parseHoldingsScreenshot } = require('./lib/vision');
 const telegram = require('./lib/telegram');
@@ -432,6 +433,96 @@ app.get('/api/ladder/latest', (req, res) => {
   const latest = latestResult(null, 'ladder-sweep');
   if (!latest) return res.json({ result: null });
   res.json(latest);
+});
+
+// ---- Ladder monitors (Phase L2): live rung watching + notifications ---------
+
+app.get('/api/ladder/monitors', (req, res) => {
+  try {
+    res.json({ monitors: laddermon.listMonitors().map(laddermon.monitorView) });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/ladder/monitors', async (req, res) => {
+  try {
+    const b = req.body || {};
+    let anchor = b.anchor;
+    if (anchor == null) {
+      // Default anchor: the highest daily close on record (the real ATH).
+      const row = db.prepare("SELECT MAX(usd_price) AS ath FROM daily_prices WHERE coingecko_id = 'bitcoin'").get();
+      anchor = row && row.ath;
+    }
+    const mon = laddermon.createMonitor({
+      name: b.name,
+      config: b.config,
+      anchor,
+      recipients: b.recipients,
+      pollMinutes: b.pollMinutes,
+      alertsEnabled: b.alertsEnabled != null ? b.alertsEnabled : 1,
+    });
+    // First evaluation immediately, so already-passed rungs alert now
+    // (mirrors the simulator's mid-drawdown start) and the card shows live
+    // state instead of "never checked".
+    try {
+      const prices = await require('./lib/pricing').fetchUsdPrices(['bitcoin']);
+      if (prices && Number.isFinite(prices.bitcoin)) await laddermon.checkMonitor(mon, prices.bitcoin);
+    } catch (err) {
+      console.error('Initial ladder check failed:', err.message);
+    }
+    res.json({ ok: true, monitor: laddermon.monitorView(laddermon.getMonitor(mon.id)) });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.put('/api/ladder/monitors/:id', (req, res) => {
+  try {
+    const mon = laddermon.updateMonitor(Number(req.params.id), req.body || {});
+    res.json({ ok: true, monitor: laddermon.monitorView(mon) });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.delete('/api/ladder/monitors/:id', (req, res) => {
+  try {
+    laddermon.deleteMonitor(Number(req.params.id));
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Force an immediate evaluation (the ladder's "Poll now").
+app.post('/api/ladder/monitors/:id/check', async (req, res) => {
+  try {
+    const mon = laddermon.getMonitor(Number(req.params.id));
+    if (!mon) return res.status(404).json({ error: 'monitor not found' });
+    const prices = await require('./lib/pricing').fetchUsdPrices(['bitcoin']);
+    const price = prices && prices.bitcoin;
+    if (!Number.isFinite(price) || price <= 0) throw new Error('no BTC price available');
+    const events = await laddermon.checkMonitor(mon, price);
+    res.json({ ok: true, price, events: events.length, monitor: laddermon.monitorView(laddermon.getMonitor(mon.id)) });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Send a test notification through the monitor's full comms path.
+app.post('/api/ladder/monitors/:id/test', async (req, res) => {
+  try {
+    const mon = laddermon.getMonitor(Number(req.params.id));
+    if (!mon) return res.status(404).json({ error: 'monitor not found' });
+    const msg = `Test notification for ladder monitor "${mon.name}" — the comms path works.`;
+    const { emailed } = await sendLadderNotice(mon, 'test notification', msg);
+    db.prepare('INSERT INTO ladder_events (monitor_id, ts, type, price, message, emailed) VALUES (?, ?, ?, ?, ?, ?)')
+      .run(mon.id, Date.now(), 'test', mon.last_price, msg, emailed);
+    res.json({ ok: true, emailed: Boolean(emailed) });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // ---- threshold sweep (Phase 2) ----------------------------------------------

@@ -122,7 +122,7 @@ function renderResult(latest) {
   // Top picks (+ reasoning rows).
   const picksBody = $('#l-picks tbody');
   picksBody.innerHTML = '';
-  for (const p of r.picks) {
+  r.picks.forEach((p, pi) => {
     const tags = [];
     if (p.plateauRank != null) tags.push(`plateau #${p.plateauRank + 1} best (${p.plateauSize} configs)`);
     else if (p.plateauMemberRank != null) tags.push(`in plateau #${p.plateauMemberRank + 1} (${p.plateauMemberSize} configs)`);
@@ -138,13 +138,17 @@ function renderResult(latest) {
       `<td class="num">${p.maxUnderwaterDays}d</td>` +
       `<td class="num">${pctPlain(p.minUsdPctOfStart, 0)}</td>` +
       `<td class="num">${pctPlain(p.btcSharePct, 0)}</td>` +
-      `<td class="num">${p.trades} · ${pctPlain(p.feesPct)}</td>`;
+      `<td class="num">${p.trades} · ${pctPlain(p.feesPct)}</td>` +
+      `<td class="adopt-cell"><button data-adopt="${pi}" title="Prefill the Live-monitors form with this configuration and the real ATH anchor">Adopt as monitor</button></td>`;
     picksBody.appendChild(tr);
     const rr = document.createElement('tr');
     rr.className = 'reason-row';
-    rr.innerHTML = `<td colspan="10">Why: ${esc(p.reasoning)}</td>`;
+    rr.innerHTML = `<td colspan="11">Why: ${esc(p.reasoning)}</td>`;
     picksBody.appendChild(rr);
-  }
+  });
+  picksBody.querySelectorAll('button[data-adopt]').forEach((btn) =>
+    btn.addEventListener('click', () => adoptPick(r, Number(btn.dataset.adopt)))
+  );
 
   // Plateaus.
   const platBody = $('#l-plateaus tbody');
@@ -285,7 +289,162 @@ $('#l-run').addEventListener('click', async () => {
   }
 });
 
+// ---- live monitors ----------------------------------------------------------
+const CONFIG_FIELDS = ['entryStart', 'entrySpacing', 'entryCount', 'buyFrac', 'exitStart', 'exitSpacing', 'exitCount', 'sellFrac', 'reservePct', 'dcaMonthlyPct'];
+const fmtUsd = (x) => (x == null || !isFinite(x) ? '—' : `$${Math.round(x).toLocaleString('en-US')}`);
+const fmtWhen = (ts) => (ts ? new Date(ts).toLocaleString() : 'never');
+
+function recipientRow(email = '', chat = '') {
+  const div = document.createElement('div');
+  div.className = 'inline recipient-row';
+  div.innerHTML =
+    `<label class="muted">email <input type="email" class="r-email" value="${esc(email)}" placeholder="you@example.com" style="width:16rem"></label>` +
+    `<label class="muted" title="Numeric chat id — use the balancer's Find chat IDs helper">Telegram chat id <input type="text" class="r-chat" value="${esc(chat)}" style="width:9rem"></label>` +
+    `<button class="r-del" title="Remove this recipient">×</button>`;
+  div.querySelector('.r-del').addEventListener('click', () => div.remove());
+  return div;
+}
+
+function readRecipients() {
+  return [...document.querySelectorAll('#m-recipients .recipient-row')].map((row) => ({
+    email: row.querySelector('.r-email').value.trim(),
+    telegram_chat_id: row.querySelector('.r-chat').value.trim(),
+  }));
+}
+
+function adoptPick(result, pi) {
+  const p = result.picks[pi];
+  $('#l-mon-form-wrap').open = true;
+  $('#m-name').value = `${p.tier ? p.tier[0].toUpperCase() + p.tier.slice(1) : 'Adopted'} ladder`;
+  $('#m-anchor').value = Math.round(result.window.ath);
+  for (const f of CONFIG_FIELDS) $(`#m-${f}`).value = p.config[f];
+  $('#m-status').textContent = `prefilled from pick #${pi + 1} — add recipients and create`;
+  $('#l-mon-form-wrap').scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+function rungChips(m) {
+  const nextEntry = m.entries.find((e) => !e.fired);
+  const entryChips = m.entries
+    .map((e) => {
+      const cls = e.fired ? 'rung fired' : e === nextEntry ? 'rung live' : 'rung';
+      return `<span class="${cls}" title="${e.fired ? 'already fired this epoch' : 'armed'}">buy −${e.levelPct}% ${fmtUsd(e.priceLevel)}</span>`;
+    })
+    .join('');
+  const nextExit = m.exitsArmed ? m.exits.find((x) => !x.fired) : null;
+  const exitChips = m.exits
+    .map((x) => {
+      const cls = x.fired ? 'rung fired' : x === nextExit ? 'rung live' : 'rung';
+      const note = m.exitsArmed ? (x.fired ? 'already fired' : 'armed at this absolute level') : 'preview — arms at the first buy of an epoch';
+      return `<span class="${cls}" title="${note}">sell ${x.mult.toFixed(2)}× ${fmtUsd(x.priceLevel)}</span>`;
+    })
+    .join('');
+  return { entryChips, exitChips };
+}
+
+function renderMonitors(monitors) {
+  const host = $('#l-monitors');
+  if (!monitors.length) {
+    host.innerHTML = '<p class="muted">No monitors yet. Adopt a pick from the sweep results, or create one manually below.</p>';
+    return;
+  }
+  host.innerHTML = '';
+  for (const m of monitors) {
+    const { entryChips, exitChips } = rungChips(m);
+    const recips = m.recipients.length
+      ? m.recipients.map((r) => r.email || `tg:${r.telegram_chat_id}`).join(', ')
+      : 'no recipients — on-screen log only';
+    const div = document.createElement('div');
+    div.className = 'mon-row';
+    div.innerHTML =
+      `<div class="mon-head">` +
+      `<strong>${esc(m.name)}</strong>` +
+      `${m.active ? '' : '<span class="tier-chip">paused</span>'}` +
+      `${m.alertsEnabled ? '' : '<span class="tier-chip">alerts off</span>'}` +
+      `<span class="muted">anchor ${fmtUsd(m.anchor)}</span>` +
+      `<span class="muted">${m.lastPrice ? `BTC ${fmtUsd(m.lastPrice)} (${m.drawdownPct >= 0 ? '−' : '+'}${Math.abs(m.drawdownPct).toFixed(1)}% vs anchor)` : 'not checked yet'}</span>` +
+      `<span class="muted" title="last checked">checked ${fmtWhen(m.lastCheckedAt)} · every ${m.pollMinutes}m</span>` +
+      `<span class="muted" title="who gets notified">${esc(recips)}</span>` +
+      `</div>` +
+      `<div style="margin-top:.35rem">${entryChips}${m.exitsArmed ? '' : '<span class="muted" style="font-size:.75rem"> · exits arm at the first buy: </span>'}${exitChips}</div>` +
+      (m.config.dcaMonthlyPct > 0 ? `<div class="muted" style="font-size:.78rem;margin-top:.25rem">DCA reminder: ${m.config.dcaMonthlyPct}% of starting capital monthly</div>` : '') +
+      (m.events.length
+        ? `<ul class="mon-events">${m.events
+            .slice(0, 4)
+            .map((e) => `<li>${new Date(e.ts).toLocaleString()} — ${esc(e.message)}${e.emailed ? ' ✉' : ''}</li>`)
+            .join('')}</ul>`
+        : '') +
+      `<div class="inline" style="margin-top:.45rem">` +
+      `<button data-act="check" title="Evaluate against the live BTC price right now">Check now</button>` +
+      `<button data-act="test" title="Send a test notification to every recipient">Test alert</button>` +
+      `<button data-act="toggle" title="${m.active ? 'Stop checking (state is kept)' : 'Resume checking'}">${m.active ? 'Pause' : 'Resume'}</button>` +
+      `<button data-act="delete" title="Delete this monitor and its event log">Delete</button>` +
+      `<span class="muted mon-msg"></span>` +
+      `</div>`;
+    for (const btn of div.querySelectorAll('button[data-act]')) {
+      btn.addEventListener('click', () => monitorAction(m, btn.dataset.act, div.querySelector('.mon-msg')));
+    }
+    host.appendChild(div);
+  }
+}
+
+async function loadMonitors() {
+  try {
+    const { monitors } = await api('/ladder/monitors');
+    renderMonitors(monitors);
+  } catch (err) {
+    $('#l-monitors').innerHTML = `<p class="muted">monitors unavailable: ${esc(err.message)}</p>`;
+  }
+}
+
+async function monitorAction(m, act, msgEl) {
+  try {
+    if (act === 'check') {
+      msgEl.textContent = 'checking…';
+      const r = await api(`/ladder/monitors/${m.id}/check`, { method: 'POST', body: {} });
+      msgEl.textContent = `BTC ${fmtUsd(r.price)} — ${r.events} event(s)`;
+    } else if (act === 'test') {
+      msgEl.textContent = 'sending…';
+      const r = await api(`/ladder/monitors/${m.id}/test`, { method: 'POST', body: {} });
+      msgEl.textContent = r.emailed ? 'test sent (email + any Telegram)' : 'test logged (no email went out — check recipients/SMTP)';
+    } else if (act === 'toggle') {
+      await api(`/ladder/monitors/${m.id}`, { method: 'PUT', body: { active: !m.active } });
+    } else if (act === 'delete') {
+      if (!confirm(`Delete monitor "${m.name}" and its event log?`)) return;
+      await api(`/ladder/monitors/${m.id}`, { method: 'DELETE' });
+    }
+    await loadMonitors();
+  } catch (err) {
+    msgEl.textContent = `failed: ${err.message}`;
+  }
+}
+
+$('#m-add-recipient').addEventListener('click', () => $('#m-recipients').appendChild(recipientRow()));
+
+$('#m-create').addEventListener('click', async () => {
+  const status = $('#m-status');
+  status.textContent = 'creating…';
+  try {
+    const config = {};
+    for (const f of CONFIG_FIELDS) config[f] = Number($(`#m-${f}`).value);
+    const body = {
+      name: $('#m-name').value,
+      anchor: $('#m-anchor').value ? Number($('#m-anchor').value) : null,
+      pollMinutes: Number($('#m-poll').value) || 15,
+      config,
+      recipients: readRecipients(),
+    };
+    const r = await api('/ladder/monitors', { method: 'POST', body });
+    status.textContent = `created "${r.monitor.name}" — first check done (${r.monitor.events.length} event(s) logged)`;
+    await loadMonitors();
+  } catch (err) {
+    status.textContent = `failed: ${err.message}`;
+  }
+});
+
 (async () => {
   await refreshStatus();
-  await loadLatest();
+  await Promise.all([loadLatest(), loadMonitors()]);
+  $('#m-recipients').appendChild(recipientRow());
+  // Keep the card live while rungs are being watched.
+  setInterval(loadMonitors, 60_000);
 })();

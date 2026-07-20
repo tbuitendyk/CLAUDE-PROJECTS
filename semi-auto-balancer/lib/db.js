@@ -292,6 +292,41 @@ ensureColumn('assets', 'depegged', 'depegged INTEGER NOT NULL DEFAULT 0');
 // composition search — are bypassed while set. The human's standing veto.
 ensureColumn('assets', 'freeze_override', 'freeze_override INTEGER NOT NULL DEFAULT 0');
 
+// Phase L2 ladder monitors: live BTC/USD cycle-ladder watching. Each monitor
+// carries an adopted ladder config, the current epoch state (anchor ATH,
+// which rungs fired, armed absolute exit levels), its own poll cadence, and
+// its own recipients list (same {email, telegram_chat_id} shape as profiles).
+// Events are the audit trail AND the on-screen notification log.
+db.exec(`
+CREATE TABLE IF NOT EXISTS ladder_monitors (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  active INTEGER NOT NULL DEFAULT 1,
+  config TEXT NOT NULL,                       -- JSON: the 10 ladder params
+  anchor_ath REAL NOT NULL,                   -- epoch anchor; auto-raises on new ATH
+  entries_fired TEXT NOT NULL DEFAULT '[]',   -- rung indices fired this epoch
+  epoch_had_entry INTEGER NOT NULL DEFAULT 0,
+  exit_levels TEXT NOT NULL DEFAULT '[]',     -- absolute $ sell levels (armed at first entry)
+  exits_fired TEXT NOT NULL DEFAULT '[]',
+  last_price REAL,
+  last_checked_at INTEGER,
+  last_dca_month INTEGER,
+  poll_minutes INTEGER NOT NULL DEFAULT 15,
+  alerts_enabled INTEGER NOT NULL DEFAULT 1,
+  recipients TEXT NOT NULL DEFAULT '[]'
+);
+CREATE TABLE IF NOT EXISTS ladder_events (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  monitor_id INTEGER NOT NULL REFERENCES ladder_monitors(id) ON DELETE CASCADE,
+  ts INTEGER NOT NULL,
+  type TEXT NOT NULL,        -- 'buy' | 'sell' | 'reanchor' | 'dca' | 'test' | 'error'
+  price REAL,
+  message TEXT NOT NULL,
+  emailed INTEGER NOT NULL DEFAULT 0
+);
+`);
+
 // Sets were removed from the design (one flat asset pool per profile);
 // drop the leftover tables from earlier versions.
 db.exec(`

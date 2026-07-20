@@ -19,6 +19,15 @@
     .prob { font-size: .72rem; color: var(--muted); display: block; }
     td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
     .tier-chip { font-size: .7rem; border: 1px solid var(--border); border-radius: 99px; padding: .1rem .45rem; margin-left: .35rem; color: var(--muted); white-space: nowrap; }
+    .mon-row { border: 1px solid var(--border); border-radius: 8px; padding: .7rem .9rem; margin: .5rem 0; }
+    .mon-head { display: flex; flex-wrap: wrap; gap: .6rem 1rem; align-items: baseline; }
+    .mon-head strong { font-size: .95rem; }
+    .rung { display: inline-block; border: 1px solid var(--border); border-radius: 6px; padding: .1rem .4rem; margin: .15rem .25rem .15rem 0; font-size: .78rem; white-space: nowrap; }
+    .rung.fired { text-decoration: line-through; opacity: .55; }
+    .rung.live { border-color: var(--accent, #4a90d9); font-weight: 600; }
+    .mon-events { font-size: .75rem; color: var(--muted); margin-top: .35rem; }
+    .mon-events li { margin: .15rem 0; }
+    .adopt-cell { white-space: nowrap; }
   </style>
 </head>
 <body>
@@ -59,6 +68,39 @@
       <div id="l-bar" class="progress-wrap hidden"><div id="l-bar-fill" class="progress-fill"></div></div>
     </div>
 
+    <div class="lab-section card" id="l-monitors-card">
+      <h2>Live monitors <span class="grid-note">— adopted ladders watched on live prices; rung crossings notify by email/Telegram</span></h2>
+      <div id="l-monitors"><p class="muted">Loading…</p></div>
+      <details id="l-mon-form-wrap" style="margin-top:.8rem">
+        <summary class="muted" style="cursor:pointer">New monitor (or use "Adopt as monitor" on a pick below)</summary>
+        <div id="l-mon-form" style="margin-top:.6rem">
+          <div class="inline">
+            <label class="muted">Name <input id="m-name" type="text" placeholder="Aggressive ladder" style="width:14rem"></label>
+            <label class="muted" title="The all-time high the drawdown rungs measure from; auto-raises on a new high">Anchor ATH $ <input id="m-anchor" type="number" step="any" style="width:8rem"></label>
+            <label class="muted" title="How often the live price is checked against the rungs">Check every (min) <input id="m-poll" type="number" value="15" min="1" style="width:5rem"></label>
+          </div>
+          <div class="inline" style="margin-top:.4rem">
+            <label class="muted" title="First buy rung, % below the anchor">1st buy −% <input id="m-entryStart" type="number" step="any" value="20" style="width:4.5rem"></label>
+            <label class="muted" title="% drawdown between successive buy rungs">step % <input id="m-entrySpacing" type="number" step="any" value="20" style="width:4.5rem"></label>
+            <label class="muted" title="Number of buy rungs">rungs <input id="m-entryCount" type="number" value="4" min="1" style="width:4rem"></label>
+            <label class="muted" title="Fraction of spendable USD per buy (0..1)">buy frac <input id="m-buyFrac" type="number" step="any" value="0.2" style="width:4.5rem"></label>
+            <label class="muted" title="First sell level as a multiple of the fallen-from anchor">1st sell × <input id="m-exitStart" type="number" step="any" value="1.0" style="width:4.5rem"></label>
+            <label class="muted" title="Multiple step between successive sell levels">step × <input id="m-exitSpacing" type="number" step="any" value="0.5" style="width:4.5rem"></label>
+            <label class="muted" title="Number of sell rungs">rungs <input id="m-exitCount" type="number" value="3" min="1" style="width:4rem"></label>
+            <label class="muted" title="Fraction of held BTC per sell (0..1)">sell frac <input id="m-sellFrac" type="number" step="any" value="0.2" style="width:4.5rem"></label>
+            <label class="muted" title="% of starting capital never spent">reserve % <input id="m-reservePct" type="number" step="any" value="0" style="width:4.5rem"></label>
+            <label class="muted" title="Monthly buy of this % of starting capital (reminder only)">DCA %/mo <input id="m-dcaMonthlyPct" type="number" step="any" value="2" style="width:4.5rem"></label>
+          </div>
+          <div id="m-recipients" style="margin-top:.4rem"></div>
+          <div class="inline" style="margin-top:.4rem">
+            <button id="m-add-recipient" class="secondary" title="Add another email / Telegram recipient row">+ recipient</button>
+            <button id="m-create" title="Create the monitor; already-passed rungs alert immediately on the first check">Create monitor</button>
+            <span id="m-status" class="muted"></span>
+          </div>
+        </div>
+      </details>
+    </div>
+
     <div id="l-results" class="hidden">
       <div class="lab-section">
         <p id="l-caveat" class="warn-text"></p>
@@ -81,6 +123,7 @@
                 <th class="num" title="Lowest the USD balance ever fell, as % of starting capital">Min USD</th>
                 <th class="num" title="Average share of the portfolio held in BTC across the period">BTC share</th>
                 <th class="num" title="Trades executed / total fees as % of capital">Trades · fees</th>
+                <th title="Create a live monitor from this configuration — rung crossings then notify by email/Telegram">Adopt</th>
               </tr>
             </thead>
             <tbody></tbody>

@@ -536,6 +536,30 @@ Design decisions (user's explicit calls, stated in the UI):
   (`s.length >> 1 - 1` ≡ `>> 0`) made every even-count scenario median NaN —
   fixed before first deploy.
 
+## Phase L2 — Ladder monitors (live rung watching + notifications)
+**Status: SHIPPED (tests green: test-laddermon.js).** The Ladder Lab picks a
+config; a monitor adopts one and watches it on live prices. `lib/laddermon.js`
++ `ladder_monitors`/`ladder_events` tables + `/api/ladder/monitors` CRUD +
+check/test endpoints + a scheduler tick (each monitor its own cadence, one
+shared BTC price fetch per tick). The state machine mirrors simulateLadder
+exactly: exits first (absolute levels anchored at the first entry of an epoch,
+armed until hit even across new highs), a new ATH raises the anchor and
+re-arms entries (announced only when an epoch was underway — silent on an
+uneventful grind up), entries fire once per epoch, optional monthly DCA
+reminder (counter seated on the first check so no stale reminder fires).
+Notifications ride the profile machinery's shape: per-monitor recipients
+[{email, telegram_chat_id}] with the same validation, email + Telegram via
+`mailer.sendLadderNotice`, always logged to ladder_events (the on-screen
+audit trail; alert_log's FK to profiles is why monitors have their own log).
+Rung alerts are edge-triggered one-shots per epoch, so the armed→notified
+timeout machine is unnecessary by construction. UI: "Live monitors" card on
+ladder.html — adopt-from-pick buttons prefill the form (config + real ATH
+anchor), rung chips show fired/armed/next state, recent events inline,
+check-now/test-alert/pause/delete per monitor. Creation runs an immediate
+first check, so already-passed rungs alert right away (mirrors the
+simulator's mid-drawdown start). Advisory only — a monitor says what the
+config would do; it never touches an exchange.
+
 ## Cross-cutting
 
 - Idempotent migrations (ensureColumn pattern) throughout.
