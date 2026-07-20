@@ -1009,7 +1009,14 @@ function renderCompose(latest) {
     if (highlight) tr.classList.add('ref-row');
     const star = row.recommended ? ' ★' : '';
     const h = row.holdout || {};
-    const labelCell = `<span class="mix-label">${label}${star}</span>${xSweep(row)}`;
+    // The star (and the final asset spec) never orphan onto their own wrapped
+    // line: the last " · asset pct%" chunk plus the ★ form one unbreakable unit.
+    const cut = label.lastIndexOf(' · ');
+    const labelHtml =
+      cut === -1
+        ? `<span class="nowrap-tail">${label}${star}</span>`
+        : `${label.slice(0, cut)} · <span class="nowrap-tail">${label.slice(cut + 3)}${star}</span>`;
+    const labelCell = `<span class="mix-label">${labelHtml}</span>${xSweep(row)}`;
     tr.innerHTML = regimeMode
       ? `<td>${labelCell}</td>` +
         `<td>${row.typesPositive != null ? `${row.typesPositive}/${row.typesPresent}` : '—'}</td>` +

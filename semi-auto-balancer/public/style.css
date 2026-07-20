@@ -184,6 +184,8 @@ tr.breached td { background: color-mix(in srgb, var(--danger) 10%, transparent);
    lines — readable and compact); the mix column just gets a modest floor so a
    lone star/last asset doesn't orphan onto its own line. */
 #c-table th:first-child, #c-table td:first-child { min-width: 16rem; }
+/* The final asset spec + ★ wrap as one unit — a star can never orphan alone. */
+.nowrap-tail { white-space: nowrap; }
 
 /* Composition lab candidate pool: a tidy grid of equal-width columns, each
    checkbox hard against its own ticker so ownership is unambiguous. */
