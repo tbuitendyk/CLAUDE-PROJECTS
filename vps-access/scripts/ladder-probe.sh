@@ -108,8 +108,8 @@ for pl in r.get("plateaus") or []:
     b = pl["best"]
     print("   best member: cagr %.1f%% dd %.0f%% mar %.2f cfg %s" % (b["cagrPct"], b["maxDDPct"], b["mar"], json.dumps(b["config"])))
 for i, p in enumerate(r.get("picks") or []):
-    print("pick #%d [%s] plateauRank=%s plateauSize=%s robust=%.3f mar=%.3f dd=%.0f%%" % (
-        i + 1, p.get("tier"), p.get("plateauRank"), p.get("plateauSize"), p["robustScore"], p["mar"], p["maxDDPct"]))
+    print("pick #%d [%s] plateauBestRank=%s memberRank=%s memberSize=%s robust=%.3f mar=%.3f dd=%.0f%%" % (
+        i + 1, p.get("tier"), p.get("plateauRank"), p.get("plateauMemberRank"), p.get("plateauMemberSize"), p["robustScore"], p["mar"], p["maxDDPct"]))
     print("   cfg %s" % json.dumps(p["config"]))'
     ;;
   *)
