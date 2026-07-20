@@ -135,6 +135,7 @@
                 allocation <em>and</em> its sensitivity together.</p>
               <div class="inline">
                 <button id="c-run">Run search</button>
+                <button id="c-pool-btn" class="ghost" title="See the candidate pool and uncheck assets to exclude them from every composition-lab scope">Candidate pool…</button>
                 <label class="muted">scope
                   <select id="c-scope">
                     <option value="full" selected>Full universe (holdings + market candidates)</option>
@@ -150,6 +151,14 @@
                   </select>
                 </label>
                 <span id="c-status" class="muted"></span>
+              </div>
+              <div id="c-pool-wrap" class="hidden">
+                <p class="muted">Uncheck an asset to exclude it from <strong>every</strong> composition-lab scope
+                  (e.g. assets that are expensive to trade from your position — indirect crosses). Saved per
+                  profile, applied before any search starts. The tethered index can't be excluded — every mix
+                  is denominated in it.</p>
+                <div id="c-pool" class="checkboxes"></div>
+                <p id="c-pool-status" class="muted"></p>
               </div>
               <div id="c-bar" class="progress-wrap hidden"><div id="c-bar-fill" class="progress-fill"></div></div>
               <div id="c-result" class="hidden">

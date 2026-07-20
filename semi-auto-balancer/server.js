@@ -18,7 +18,8 @@ const {
 } = require('./lib/balancer');
 const { getJob, startJob, latestResult } = require('./lib/jobs');
 const { runTuneSweep, computeTargetsHash } = require('./lib/backtest');
-const { runComposeSearch } = require('./lib/compose');
+const { runComposeSearch, venueTradableFilter, parseComposeExclusions } = require('./lib/compose');
+const { topCandidates } = require('./lib/candidates');
 const { hourlyStatus } = require('./lib/hourly');
 const { sendAlertEvents, sendStatusReport, sendTestEmail, emailConfigured } = require('./lib/mailer');
 const { searchCoins, supportedFiats, fiatCode } = require('./lib/pricing');
@@ -152,10 +153,19 @@ app.patch('/api/profiles/:id', (req, res) => {
   }
 
   // fee/spread accept 0 (fee-free venue), so their validation is >= 0 — not
+  // Composition-lab candidate exclusions: array of coingecko ids the user
+  // unchecked from the pool. Validated as plain strings; stored as JSON.
+  let composeExcluded = profile.compose_excluded;
+  if (b.compose_excluded !== undefined) {
+    if (!Array.isArray(b.compose_excluded)) return res.status(400).json({ error: 'compose_excluded must be an array of ids' });
+    const ids = b.compose_excluded.filter((v) => typeof v === 'string' && v.length > 0 && v.length <= 100).slice(0, 200);
+    composeExcluded = JSON.stringify(ids);
+  }
+
   // the > 0 pattern the always-positive fields use.
   const nonNeg = (v, prev) => (v === undefined ? prev : Number(v) >= 0 ? Number(v) : prev);
   db.prepare(
-    'UPDATE profiles SET name = ?, threshold_pct = ?, poll_minutes = ?, enabled = ?, alerts_enabled = ?, recipients = ?, fee_pct = ?, spread_pct = ? WHERE id = ?'
+    'UPDATE profiles SET name = ?, threshold_pct = ?, poll_minutes = ?, enabled = ?, alerts_enabled = ?, recipients = ?, fee_pct = ?, spread_pct = ?, compose_excluded = ? WHERE id = ?'
   ).run(
     b.name ?? profile.name,
     Number(b.threshold_pct) > 0 ? Number(b.threshold_pct) : profile.threshold_pct,
@@ -165,6 +175,7 @@ app.patch('/api/profiles/:id', (req, res) => {
     recipients,
     nonNeg(b.fee_pct, profile.fee_pct),
     nonNeg(b.spread_pct, profile.spread_pct),
+    composeExcluded,
     profile.id
   );
   res.json(db.prepare('SELECT * FROM profiles WHERE id = ?').get(profile.id));
@@ -323,6 +334,53 @@ app.post('/api/profiles/:id/compose', (req, res) => {
     runComposeSearch(profile.id, body, setProgress)
   );
   res.json({ ok: true, jobId });
+});
+
+// The candidate POOL for this profile's composition lab, before any search:
+// held assets + the top market-cap candidates, venue-filtered — with each
+// entry's current excluded state, so the user can weed the pool up front.
+app.get('/api/profiles/:id/compose-candidates', async (req, res) => {
+  const profile = db.prepare('SELECT * FROM profiles WHERE id = ?').get(req.params.id);
+  if (!profile) return res.status(404).json({ error: 'not found' });
+  const assets = db.prepare('SELECT * FROM assets WHERE profile_id = ?').all(profile.id);
+  const tetherAsset = assets.find((a) => a.is_index) || null;
+  try {
+    const byId = new Map();
+    for (const a of assets) {
+      if (a.is_index || !(a.target_pct > 0 || a.quantity > 0)) continue;
+      byId.set(a.coingecko_id, { id: a.coingecko_id, symbol: a.symbol.toLowerCase(), held: true });
+    }
+    let top = [];
+    try {
+      top = await topCandidates({ count: 40 });
+    } catch (err) {
+      console.error('compose-candidates: topCandidates failed:', err.message);
+    }
+    for (const c of top) {
+      if (!byId.has(c.id) && (!tetherAsset || c.id !== tetherAsset.coingecko_id) && !fiatCode(c.id)) {
+        byId.set(c.id, { id: c.id, symbol: c.symbol, rank: c.rank });
+      }
+    }
+    let pool = [...byId.values()];
+    const venueFilter = await venueTradableFilter(profile.id);
+    if (venueFilter) {
+      const kept = [];
+      for (const c of pool) {
+        if (c.held || (await venueFilter.tradable(c.symbol))) kept.push(c);
+      }
+      pool = kept;
+    }
+    const excluded = parseComposeExclusions(profile, tetherAsset ? tetherAsset.coingecko_id : null);
+    res.json({
+      tether: tetherAsset ? { id: tetherAsset.coingecko_id, symbol: tetherAsset.symbol } : null,
+      venue: venueFilter ? venueFilter.venue : null,
+      pool: pool
+        .sort((a, b) => (a.held === b.held ? (a.rank || 999) - (b.rank || 999) : a.held ? -1 : 1))
+        .map((c) => ({ ...c, excluded: excluded.has(c.id) })),
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // ---- threshold sweep (Phase 2) ----------------------------------------------

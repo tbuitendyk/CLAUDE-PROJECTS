@@ -278,6 +278,9 @@ ensureColumn('profile_snapshots', 'basket', 'basket REAL');
 // leg. Zero is a legal value (fee-free venue), so validation is >= 0.
 ensureColumn('profiles', 'fee_pct', 'fee_pct REAL NOT NULL DEFAULT 0.38');
 ensureColumn('profiles', 'spread_pct', 'spread_pct REAL NOT NULL DEFAULT 0.10');
+// Composition-lab candidate exclusions: JSON array of coingecko ids the user
+// unchecked from the candidate pool — weeded before any search scope runs.
+ensureColumn('profiles', 'compose_excluded', "compose_excluded TEXT NOT NULL DEFAULT '[]'");
 // Phase 3 safety rails: structural-break buy-freeze (engine suppresses BUY
 // alerts while set; sells unaffected) and the latched depeg flag.
 ensureColumn('assets', 'buy_frozen', 'buy_frozen INTEGER NOT NULL DEFAULT 0');

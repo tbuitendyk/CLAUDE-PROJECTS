@@ -1089,6 +1089,9 @@ function renderCompose(latest) {
       ? `current holdings only (${u.covered} assets)`
       : `universe ${u.covered}/${u.considered} candidates`) +
     (r.currentSet ? '' : u.venue ? ` (restricted to ${u.venue}-tradable${u.notOnVenue && u.notOnVenue.length ? `; dropped: ${u.notOnVenue.map((s) => s.toUpperCase()).join(', ')}` : ''})` : ' (no linked venue — unconstrained)') +
+    (u.excludedByUser && u.excludedByUser.length
+      ? ` · excluded by you: ${u.excludedByUser.map((s) => s.toUpperCase()).join(', ')}`
+      : '') +
     (u.heldExcludedFrozen ? ` · ${u.heldExcludedFrozen} held asset(s) excluded: buy-frozen` : '') +
     (!r.currentSet && u.droppedNames && u.droppedNames.length
       ? ` · ${u.droppedNames.length} dropped for insufficient history: ${u.droppedNames.map((s) => s.toUpperCase()).join(', ')}`
@@ -1117,6 +1120,72 @@ $('#c-run').addEventListener('click', async () => {
   } catch (err) {
     jobMsg.compose[profileId] = err.message;
     if (profileId === state.selectedId) renderJobControls('compose');
+  }
+});
+
+// ---- composition-lab candidate pool (per-profile exclusions) ----
+//
+// "Candidate pool…" toggles a checklist of everything the lab would consider
+// (held assets + venue-tradable market candidates). Unchecking an asset saves
+// it to the profile's exclusion list, weeded before ANY search scope runs.
+$('#c-pool-btn').addEventListener('click', async () => {
+  const wrap = $('#c-pool-wrap');
+  if (!wrap.classList.contains('hidden')) {
+    wrap.classList.add('hidden');
+    return;
+  }
+  wrap.classList.remove('hidden');
+  const box = $('#c-pool');
+  const status = $('#c-pool-status');
+  box.innerHTML = '<span class="muted">Loading candidate pool…</span>';
+  status.textContent = '';
+  try {
+    const r = await api(`/profiles/${state.selectedId}/compose-candidates`);
+    box.innerHTML = '';
+    const excludedNow = new Set(r.pool.filter((c) => c.excluded).map((c) => c.id));
+    const save = async () => {
+      status.textContent = 'saving…';
+      try {
+        await api(`/profiles/${state.selectedId}`, {
+          method: 'PATCH',
+          body: { compose_excluded: [...excludedNow] },
+        });
+        status.textContent = excludedNow.size
+          ? `${excludedNow.size} asset(s) excluded from all lab scopes.`
+          : 'No exclusions — the full pool is searchable.';
+      } catch (err) {
+        status.textContent = `save failed: ${err.message}`;
+      }
+    };
+    if (r.tether) {
+      const lock = document.createElement('label');
+      lock.title = 'The tethered index cannot be excluded — every mix is denominated in it.';
+      const cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.checked = true;
+      cb.disabled = true;
+      lock.append(cb, document.createTextNode(` ${r.tether.symbol.toUpperCase()} ⚓`));
+      box.appendChild(lock);
+    }
+    for (const c of r.pool) {
+      const label = document.createElement('label');
+      label.title = c.held ? 'Held in this profile' : `Market candidate (rank ${c.rank || '?'})`;
+      const cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.checked = !c.excluded;
+      cb.addEventListener('change', () => {
+        if (cb.checked) excludedNow.delete(c.id);
+        else excludedNow.add(c.id);
+        save();
+      });
+      label.append(cb, document.createTextNode(` ${c.symbol.toUpperCase()}${c.held ? ' •' : ''}`));
+      box.appendChild(label);
+    }
+    status.textContent = excludedNow.size
+      ? `${excludedNow.size} asset(s) currently excluded. • = held.`
+      : 'Nothing excluded. Uncheck to exclude; saves immediately. • = held.';
+  } catch (err) {
+    box.innerHTML = `<span class="error">Pool load failed: ${err.message}</span>`;
   }
 });
 

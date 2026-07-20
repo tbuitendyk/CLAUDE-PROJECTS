@@ -239,6 +239,15 @@ const IDS = [...seriesById.keys()];
     'current-set is deterministic under a fixed seed'
   );
 
+  // --- user-curated candidate exclusions: parsed defensively, tether immune ---
+  const px = compose.parseComposeExclusions;
+  ok(px({ compose_excluded: '["dec-d","osc-a"]' }).has('dec-d'), 'exclusions parse from the profile JSON');
+  ok(!px({ compose_excluded: '["tether","osc-a"]' }, 'tether').has('tether'), 'the tethered index can never be excluded');
+  ok(px({ compose_excluded: '["tether","osc-a"]' }, 'tether').has('osc-a'), 'other exclusions survive the tether guard');
+  ok(px({ compose_excluded: 'not json' }).size === 0, 'garbage parses to no exclusions');
+  ok(px({}).size === 0 && px(null).size === 0, 'missing column/profile parses to no exclusions');
+  ok(px({ compose_excluded: '[1,2,"x"]' }).size === 1, 'non-string entries are ignored');
+
   // --- determinism under a fixed seed ---
   const r2 = await compose.searchCompositions(opts);
   ok(

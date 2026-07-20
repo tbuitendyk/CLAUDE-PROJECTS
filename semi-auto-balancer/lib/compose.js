@@ -1006,6 +1006,23 @@ async function searchCurrentSet({
   };
 }
 
+// User-curated candidate exclusions (profiles.compose_excluded, JSON array of
+// coingecko ids): assets the user unchecked from the candidate pool — weeded
+// before ANY search scope runs. The tethered index can never be excluded (every
+// mix is denominated in it). Returns a Set of ids; garbage parses to empty.
+function parseComposeExclusions(profile, tetherId = null) {
+  let ids = [];
+  try {
+    const parsed = JSON.parse(profile && profile.compose_excluded ? profile.compose_excluded : '[]');
+    if (Array.isArray(parsed)) ids = parsed.filter((v) => typeof v === 'string');
+  } catch {
+    /* unreadable -> no exclusions */
+  }
+  const set = new Set(ids);
+  if (tetherId) set.delete(tetherId);
+  return set;
+}
+
 // A mix the account can't trade is a fantasy: when the profile has a linked
 // exchange account, candidates must be tradable THERE. Kraken = an
 // unambiguous SYM/USD pair exists; Bitso = any book with SYM as base
@@ -1056,10 +1073,18 @@ async function runCurrentSetSearch(profileId, ctx, setProgress = () => {}) {
   const nowMs = Date.now();
 
   // The set: the index + every held/targeted position. No scanner candidates,
-  // no venue filter (you already hold and trade these).
-  const holdings = assets.filter((a) => !a.is_index && (a.target_pct > 0 || a.quantity > 0));
+  // no venue filter (you already hold and trade these). User-excluded assets
+  // are weeded even here — an excluded holding keeps its actual weight in the
+  // profile but stays out of the re-weighting study.
+  const excluded = parseComposeExclusions(profile, tetherAsset.coingecko_id);
+  const holdings = assets.filter(
+    (a) => !a.is_index && (a.target_pct > 0 || a.quantity > 0) && !excluded.has(a.coingecko_id)
+  );
+  const excludedByUser = assets
+    .filter((a) => !a.is_index && (a.target_pct > 0 || a.quantity > 0) && excluded.has(a.coingecko_id))
+    .map((a) => a.symbol.toLowerCase());
   if (holdings.length < 1) {
-    throw new Error('this profile has no held/targeted assets besides the index — nothing to re-weight');
+    throw new Error('this profile has no held/targeted assets besides the index — nothing to re-weight (check your candidate-pool exclusions)');
   }
   const universe = holdings.map((a) => ({ id: a.coingecko_id, symbol: a.symbol.toLowerCase(), held: true }));
 
@@ -1135,6 +1160,7 @@ async function runCurrentSetSearch(profileId, ctx, setProgress = () => {}) {
     covered: coveredHoldings.length,
     droppedForCoverage: droppedForCoverage.length,
     droppedNames: droppedForCoverage,
+    excludedByUser,
     venue: account ? account.venue : null,
     notOnVenue: [],
     requestedDays: days,
@@ -1194,6 +1220,13 @@ async function runComposeSearch(profileId, opts = {}, setProgress = () => {}) {
     }
   }
   let universe = [...byId.values()];
+
+  // User-curated exclusions weed the pool BEFORE anything else runs — held
+  // assets included (an unchecked holding keeps its live weight but stays out
+  // of the study). Named in the stamp so nothing vanishes silently.
+  const userExcluded = parseComposeExclusions(profile, tetherAsset.coingecko_id);
+  const excludedByUser = universe.filter((c) => userExcluded.has(c.id)).map((c) => c.symbol);
+  universe = universe.filter((c) => !userExcluded.has(c.id));
 
   const venueFilter = heldOnly ? null : await venueTradableFilter(profileId);
   const notOnVenue = [];
@@ -1297,6 +1330,7 @@ async function runComposeSearch(profileId, opts = {}, setProgress = () => {}) {
     covered: coveredCandidates.length,
     droppedForCoverage: universe.length - coveredCandidates.length,
     droppedNames: coverageDroppedNames,
+    excludedByUser,
     heldExcludedFrozen: heldOnly ? 0 : assets.filter((a) => !a.is_index && a.buy_frozen && !a.freeze_override).length,
     venue: venueFilter ? venueFilter.venue : account ? account.venue : null,
     notOnVenue,
@@ -1306,4 +1340,15 @@ async function runComposeSearch(profileId, opts = {}, setProgress = () => {}) {
   return { result, params: { days, samples, candidateCount, seed, heldOnly } };
 }
 
-module.exports = { searchCompositions, searchCurrentSet, buildBars, runComposeSearch, chooseWindowStart, mulberry32, MINI_X, CAVEAT };
+module.exports = {
+  searchCompositions,
+  searchCurrentSet,
+  buildBars,
+  runComposeSearch,
+  chooseWindowStart,
+  mulberry32,
+  parseComposeExclusions,
+  venueTradableFilter,
+  MINI_X,
+  CAVEAT,
+};
