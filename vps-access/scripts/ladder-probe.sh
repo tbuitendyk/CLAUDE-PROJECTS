@@ -164,8 +164,22 @@ if bad:
 print("SANITY: monitor machinery verified live")
 PYEOF
     ;;
+  busy)
+    # Is an analysis job likely running? Jobs live in the service's memory
+    # (no list endpoint), so sample the process CPU over 3s — a compose
+    # search or ladder sweep pins a core; idle scheduler ticks do not.
+    PID=$(systemctl show -p MainPID --value semi-auto-balancer)
+    if [[ -z "$PID" || "$PID" == "0" ]]; then echo "service not running"; exit 1; fi
+    read -r c1 < <(awk '{print $14+$15}' "/proc/$PID/stat")
+    sleep 3
+    read -r c2 < <(awk '{print $14+$15}' "/proc/$PID/stat")
+    HZ=$(getconf CLK_TCK)
+    PCT=$(( (c2 - c1) * 100 / (HZ * 3) ))
+    echo "service pid $PID cpu ≈ ${PCT}% over 3s"
+    if (( PCT >= 40 )); then echo "BUSY — an analysis job is likely running; do not restart"; else echo "IDLE — safe to deploy"; fi
+    ;;
   *)
-    echo "usage: run-script ladder-probe.sh status|load|sweep|sweep-fast|latest|picks|mon-test" >&2
+    echo "usage: run-script ladder-probe.sh status|load|sweep|sweep-fast|latest|picks|mon-test|busy" >&2
     exit 1
     ;;
 esac
