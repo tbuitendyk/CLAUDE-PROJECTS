@@ -398,6 +398,11 @@ CREATE TABLE IF NOT EXISTS advice_log (
 );
 `);
 
+// Shells poll for VALUATION (pool prices/values in their chosen tether)
+// while alerting stays impossible (alerts off + no targets). Flip shells
+// created under the earlier never-poll design; idempotent.
+db.exec('UPDATE profiles SET enabled = 1 WHERE is_shell = 1 AND enabled = 0;');
+
 // Sets were removed from the design (one flat asset pool per profile);
 // drop the leftover tables from earlier versions.
 db.exec(`

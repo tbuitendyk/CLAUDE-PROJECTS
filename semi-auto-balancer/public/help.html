@@ -396,7 +396,7 @@
         automatically: the visible pool of assets not assigned to any strategy. Physical balance = sum of
         strategy profiles + shell, exactly. Dust corrections land here, unattributable deposits default
         here, new trials are funded from here — strategy track records never absorb anything they didn't
-        earn. It has no targets and no alerts; it's a wallet view, not a strategy.</li>
+        earn. It has no targets and can never alert, but it polls for valuation — pick its ⚓ tether and the pool shows real prices, values and shares, with the whole account's total and per-sub-account split in its header.</li>
       <li><span class="term">Carve out</span> — the virtual transfer that starts a trial: move amounts
         between linked profiles at live prices. No real trade happens and both track records splice past
         it — the source doesn't register a loss, the trial starts honest at day zero.</li>

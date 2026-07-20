@@ -48,7 +48,9 @@ function unlinkProfile(profileId) {
 }
 
 // Create (or return) the account's "Unallocated" shell: not a strategy — a
-// visible pool. No alerts, no polling, excluded from labs/scans by callers.
+// visible pool. It POLLS for valuation (so the pool shows real prices and
+// values in its chosen tether) but can never alert: alerts are off and it
+// has no targets, so no breach is possible. Excluded from labs/scans.
 function ensureShell(accountId) {
   const existing = shellOf(accountId);
   if (existing) return existing;
@@ -57,7 +59,7 @@ function ensureShell(accountId) {
   const info = db
     .prepare(
       `INSERT INTO profiles (name, threshold_pct, poll_minutes, created_at, enabled, alerts_enabled, exchange_account_id, is_shell)
-       VALUES (?, 5, 60, ?, 0, 0, ?, 1)`
+       VALUES (?, 5, 60, ?, 1, 0, ?, 1)`
     )
     .run(`Unallocated (${account.venue})`, Date.now(), accountId);
   return db.prepare('SELECT * FROM profiles WHERE id = ?').get(info.lastInsertRowid);
@@ -413,7 +415,20 @@ function accountSummary(accountId, viewProfileId, usdPrices) {
     assets.push({ symbol: t.symbol, qty: t.qty, value });
   }
   assets.sort((a, b) => (b.value ?? -1) - (a.value ?? -1));
-  return { indexSymbol: symbol, totalValue: complete || totalValue > 0 ? totalValue : null, complete, assets };
+  // Per-profile split for the account-status header.
+  const perProfile = [];
+  for (const p of profiles) {
+    let value = 0;
+    let ok = indexUsd != null;
+    for (const a of db.prepare('SELECT * FROM assets WHERE profile_id = ?').all(p.id)) {
+      if (a.quantity <= 0) continue;
+      const pr = indexUsd != null ? priceAsset(a, indexUsd, usdPrices) : null;
+      if (pr && Number.isFinite(pr.rel)) value += a.quantity * pr.rel;
+      else ok = false;
+    }
+    perProfile.push({ id: p.id, name: p.name, isShell: Boolean(p.is_shell), value: ok || value > 0 ? value : null });
+  }
+  return { indexSymbol: symbol, totalValue: complete || totalValue > 0 ? totalValue : null, complete, assets, perProfile };
 }
 
 // ---- carve-out --------------------------------------------------------------

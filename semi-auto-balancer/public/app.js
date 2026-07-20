@@ -211,17 +211,39 @@ function renderDetail() {
 
   const { profile, assets, alertLog, totals, snapshots, flows } = d;
   $('#d-name').textContent = profile.is_shell ? `🪣 ${profile.name}` : profile.name;
+  const gShell = groupShellFor(profile);
+  $('#detail').classList.toggle('group-sub', Boolean(gShell));
   applyShellView(Boolean(profile.is_shell));
   applyView();
   const polled = profile.last_polled_at
     ? new Date(profile.last_polled_at).toLocaleString()
     : 'never';
   const idx = (totals && totals.indexLabel) || 'USD';
-  $('#d-meta').textContent = profile.is_shell
-    ? 'Account pool — holds the assets not assigned to any strategy profile. It never polls and never ' +
-      'alerts; deposits land here, dust corrections settle here, and new sub-accounts are funded from here.'
-    : `Index: ${idx} (tethered asset) · reacts to ~${profile.threshold_pct}% price moves · ` +
+  const meta = $('#d-meta');
+  if (profile.is_shell) {
+    const hasTether = assets.some((a) => a.is_index);
+    meta.textContent =
+      (hasTether
+        ? `Account pool, valued in ${idx} (⚓ in the table picks the tether). `
+        : 'Account pool — checkmark an asset below as the ⚓ tether to value everything in it. ') +
+      `Prices refresh with each poll (last: ${polled}); it never alerts. Deposits land here, dust settles ` +
+      'here, and sub-accounts are funded from here by carve-out.';
+  } else if (gShell) {
+    meta.innerHTML =
+      `Index: ${idx} (tethered asset) · reacts to ~${profile.threshold_pct}% price moves · ` +
+      `polls every ${profile.poll_minutes} min · last poll: ${polled} · account: ` +
+      `<a class="meta-link" id="d-shell-link">🪣 ${gShell.name}</a>`;
+    $('#d-shell-link').addEventListener('click', async () => {
+      state.selectedId = gShell.id;
+      renderProfiles();
+      await loadDetail();
+      renderDetail();
+    });
+  } else {
+    meta.textContent =
+      `Index: ${idx} (tethered asset) · reacts to ~${profile.threshold_pct}% price moves · ` +
       `polls every ${profile.poll_minutes} min · last poll: ${polled}`;
+  }
 
   // Editable sensitivity / poll / trading-cost settings.
   $('#s-threshold').value = profile.threshold_pct;
@@ -233,6 +255,12 @@ function renderDetail() {
   // (2) value in the index currency with growth since start.
   const summary = $('#d-summary');
   summary.innerHTML = '';
+  // On the shell, this block is the ACCOUNT STATUS (total in the tether,
+  // per-sub-account split, combined balances) — filled asynchronously by
+  // the sub-accounts summary fetch; basket/value lines are strategy-only.
+  if (profile.is_shell) {
+    summary.innerHTML = '<div class="perf-line">Account status: <span class="muted">pricing…</span></div>';
+  }
   const line1 = document.createElement('div');
   line1.className = 'perf-line';
   if (totals && totals.basket != null) {
@@ -264,8 +292,8 @@ function renderDetail() {
       totals.annualizedPct != null
         ? `Annualized (compounding): ${fmtPct(totals.annualizedPct)}`
         : 'Annualized (compounding): <span class="muted">n/a — too soon (needs ~1 week of history)</span>';
-    summary.append(line1, line2, line3);
-  } else {
+    if (!profile.is_shell) summary.append(line1, line2, line3);
+  } else if (!profile.is_shell) {
     summary.append(line1, line2);
   }
 
@@ -1508,7 +1536,7 @@ function isShellSelected() {
 
 function applyShellView(shell) {
   assignTabs();
-  const denyIds = new Set(['d-summary', 'import-section', 'asset-form', 'fiat-form']);
+  const denyIds = new Set(['import-section', 'asset-form', 'fiat-form']);
   for (const el of $('#detail').children) {
     if (el.id === 'tab-bar') continue;
     let off = false;
@@ -1519,9 +1547,17 @@ function applyShellView(shell) {
     }
     el.classList.toggle('shell-off', off);
   }
-  for (const bid of ['#d-status', '#d-poll', '#d-targets', '#d-delete']) {
+  // Poll now STAYS on the shell — it refreshes the pool's valuation.
+  for (const bid of ['#d-status', '#d-targets', '#d-delete']) {
     $(bid).classList.toggle('hidden', shell);
   }
+}
+
+// A grouped SUB-profile: linked to an account whose shell exists. Its
+// account sections are factored out entirely (they live on the master).
+function groupShellFor(profile) {
+  if (!profile || profile.is_shell || !profile.exchange_account_id) return null;
+  return state.profiles.find((p) => p.is_shell && p.exchange_account_id === profile.exchange_account_id) || null;
 }
 
 function applyView() {
@@ -1546,12 +1582,16 @@ function applyView() {
       bar.appendChild(b);
     }
   }
-  // On the shell only two tabs have content; hide the rest and fall back.
-  const shell = isShellSelected();
-  const shellTabs = ['profile', 'money'];
-  if (shell && !shellTabs.includes(activeTab)) activeTab = 'money';
+  // Tab sets per profile kind: the shell has only pool + account tabs; a
+  // grouped sub-profile has everything EXCEPT the account tab (that
+  // machinery lives on its master); ungrouped profiles have all six.
+  const selected = state.profiles.find((p) => p.id === state.selectedId);
+  const shell = Boolean(selected && selected.is_shell);
+  const grouped = Boolean(groupShellFor(selected));
+  const allowed = shell ? ['profile', 'money'] : grouped ? TAB_DEFS.map((t) => t.key).filter((k) => k !== 'money') : TAB_DEFS.map((t) => t.key);
+  if (!allowed.includes(activeTab)) activeTab = allowed[0];
   for (const b of bar.children) {
-    b.classList.toggle('hidden', shell && !shellTabs.includes(b.dataset.key));
+    b.classList.toggle('hidden', !allowed.includes(b.dataset.key));
     b.classList.toggle('active', b.dataset.key === activeTab);
   }
   for (const el of $('#detail').children) {
@@ -1664,21 +1704,42 @@ async function loadSubaccounts(x) {
   $('#sub-summary').classList.remove('hidden');
   $('#sub-total').textContent = 'Account total: pricing…';
   $('#sub-asset-totals').textContent = '';
-  api(`/accounts/${x.id}/subaccounts?viewProfileId=${state.selectedId}&summary=1`)
+  const summaryProfileId = state.selectedId;
+  api(`/accounts/${x.id}/subaccounts?viewProfileId=${summaryProfileId}&summary=1`)
     .then((d2) => {
       const s = d2.summary;
+      const fmt = (v) => v.toLocaleString(undefined, { maximumFractionDigits: v >= 100 ? 0 : 2 });
       if (s) {
-        const fmt = (v) => v.toLocaleString(undefined, { maximumFractionDigits: v >= 100 ? 0 : 2 });
-        $('#sub-total').textContent =
+        const totalLine =
           `Account total: ${s.totalValue != null ? `${s.complete ? '' : '≥ '}${fmt(s.totalValue)} ${s.indexSymbol}` : 'unpriced'}` +
           (s.complete ? '' : ' (some assets unpriced this round)');
-        $('#sub-asset-totals').textContent =
+        const balancesLine =
           'Combined balances: ' +
           s.assets
             .map((a) => `${a.symbol.toUpperCase()} ${+a.qty.toFixed(8)}${a.value != null ? ` ≈ ${fmt(a.value)} ${s.indexSymbol}` : ''}`)
             .join(' · ');
+        $('#sub-total').textContent = totalLine;
+        $('#sub-asset-totals').textContent = balancesLine;
+        // The shell's Profile & Assets header IS the account status.
+        if (summaryProfileId === state.selectedId && isShellSelected()) {
+          const split = (s.perProfile || [])
+            .map((p) => `${p.isShell ? '🪣 ' : ''}${p.name}: ${p.value != null ? `${fmt(p.value)} ${s.indexSymbol}` : '—'}`)
+            .join(' · ');
+          const strongTotal =
+            s.totalValue != null
+              ? `<strong>${s.complete ? '' : '≥ '}${fmt(s.totalValue)} ${s.indexSymbol}</strong>` +
+                (s.complete ? '' : ' <span class="muted">(some assets unpriced this round)</span>')
+              : '<span class="muted">unpriced this round</span>';
+          $('#d-summary').innerHTML =
+            `<div class="perf-line">Account total: ${strongTotal}</div>` +
+            (split ? `<div class="muted">${split}</div>` : '') +
+            `<div class="muted">${balancesLine}</div>`;
+        }
       } else {
         $('#sub-total').textContent = `Account total unavailable: ${d2.summaryError || 'no summary'}`;
+        if (summaryProfileId === state.selectedId && isShellSelected()) {
+          $('#d-summary').innerHTML = `<div class="perf-line">Account status: <span class="muted">${d2.summaryError || 'unavailable'}</span></div>`;
+        }
       }
     })
     .catch((err) => {

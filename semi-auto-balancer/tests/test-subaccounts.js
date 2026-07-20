@@ -74,7 +74,7 @@ const client = {
   sub.linkProfile(2, account.id);
   const shell = sub.ensureShell(account.id);
   ok(shell.is_shell === 1 && /Unallocated/.test(shell.name), `shell created ("${shell.name}")`);
-  ok(shell.enabled === 0 && shell.alerts_enabled === 0, 'shell never polls, never alerts');
+  ok(shell.enabled === 1 && shell.alerts_enabled === 0, 'shell polls for valuation but can never alert');
   ok(sub.ensureShell(account.id).id === shell.id, 'ensureShell is idempotent');
   ok(sub.linkedProfiles(account.id).length === 3, 'three linked profiles (Main, Trial, shell)');
   ok(sync.getAccountForProfile(2).id === account.id, 'linked non-owner resolves the shared account');
@@ -227,6 +227,10 @@ const client = {
   // Viewing from the tetherless SHELL denominates in the account owner's tether.
   const shellView = sub.accountSummary(account.id, shell.id, PRICES);
   ok(shellView.indexSymbol === 'USDC', `shell view falls back to the owner's tether (${shellView.indexSymbol})`);
+  // Per-profile split for the account-status header.
+  ok(Array.isArray(shellView.perProfile) && shellView.perProfile.length === 3, 'summary carries a per-profile split');
+  const splitSum = shellView.perProfile.reduce((s2, p) => s2 + (p.value || 0), 0);
+  ok(approx(splitSum, shellView.totalValue, 1e-6), `per-profile values sum to the account total (${splitSum.toFixed(2)})`);
 
   // ---- carve validation ------------------------------------------------------
   threw = false;
