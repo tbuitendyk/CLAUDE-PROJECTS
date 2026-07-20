@@ -26,7 +26,16 @@ function startJob(kind, profileId, fn) {
 
   // pct (0-100) is optional; long jobs report it so the UI can render a
   // real progress bar instead of a spinner of faith.
+  // Cancellation is COOPERATIVE: cancelJob() sets a flag, and the next
+  // setProgress call throws it out of the job fn — every long-running job
+  // (compose, tune, ladder) reports progress frequently, so cancel lands
+  // within seconds without the search code knowing cancellation exists.
   const setProgress = (text, pct) => {
+    if (job.cancelRequested) {
+      const e = new Error('cancelled by user');
+      e.cancelled = true;
+      throw e;
+    }
     job.progress = String(text);
     if (Number.isFinite(pct)) job.progressPct = Math.max(0, Math.min(100, pct));
   };
@@ -40,13 +49,29 @@ function startJob(kind, profileId, fn) {
         'INSERT INTO analysis_results (profile_id, kind, created_at, params, result) VALUES (?, ?, ?, ?, ?)'
       ).run(job.profileId, kind, Date.now(), JSON.stringify(params ?? null), JSON.stringify(result ?? null));
     } catch (err) {
-      job.status = 'failed';
-      job.error = err.message;
-      console.error(`Job ${kind}/${id} failed:`, err.message);
+      if (err.cancelled || job.cancelRequested) {
+        job.status = 'cancelled';
+        job.error = 'cancelled by user';
+        console.log(`Job ${kind}/${id} cancelled by user`);
+      } else {
+        job.status = 'failed';
+        job.error = err.message;
+        console.error(`Job ${kind}/${id} failed:`, err.message);
+      }
     }
   })();
 
   return id;
+}
+
+// Request cancellation of a running job. Returns what happened: a finished
+// or unknown job cannot be cancelled (honest feedback beats a silent no-op).
+function cancelJob(id) {
+  const job = jobs.get(id);
+  if (!job) return { ok: false, reason: 'unknown job id (expired or never existed)' };
+  if (job.status !== 'running') return { ok: false, reason: `job already ${job.status}` };
+  job.cancelRequested = true;
+  return { ok: true };
 }
 
 function getJob(id) {
@@ -79,4 +104,4 @@ function latestResult(profileId, kind) {
   };
 }
 
-module.exports = { startJob, getJob, latestResult };
+module.exports = { startJob, getJob, cancelJob, latestResult };

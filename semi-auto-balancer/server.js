@@ -16,7 +16,7 @@ const {
   priceAsset,
   rearmAfterUpload,
 } = require('./lib/balancer');
-const { getJob, startJob, latestResult } = require('./lib/jobs');
+const { getJob, startJob, cancelJob, latestResult } = require('./lib/jobs');
 const { runTuneSweep, computeTargetsHash } = require('./lib/backtest');
 const { runComposeSearch, venueTradableFilter, parseComposeExclusions } = require('./lib/compose');
 const { topCandidates } = require('./lib/candidates');
@@ -825,6 +825,14 @@ app.get('/api/jobs/:id', (req, res) => {
     result: job.status === 'done' ? job.result : null,
     error: job.error,
   });
+});
+
+// Cooperative cancel: flags the job; it aborts at its next progress report
+// (seconds for the long searches). Works for any running analysis job.
+app.post('/api/jobs/:id/cancel', (req, res) => {
+  const r = cancelJob(req.params.id);
+  if (!r.ok) return res.status(409).json({ error: r.reason });
+  res.json({ ok: true });
 });
 
 // ---- actions ----------------------------------------------------------------

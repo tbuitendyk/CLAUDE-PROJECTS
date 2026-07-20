@@ -44,6 +44,29 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   ok(getJob(bad).status === 'failed' && getJob(bad).error === 'nope', 'failed job carries its error');
   ok(getJob('deadbeef') === null, 'unknown job id -> null (UI: result expired)');
 
+  // --- cooperative cancel: flagged job aborts at its next setProgress ---
+  const { cancelJob } = require('../lib/jobs');
+  let progressCalls = 0;
+  const slow = startJob('compose', 1, async (setProgress) => {
+    for (let i = 0; i < 100; i++) {
+      await sleep(20);
+      setProgress(`step ${i}`, i);
+      progressCalls++;
+    }
+    return { result: { never: true }, params: {} };
+  });
+  await sleep(60);
+  const c = cancelJob(slow);
+  ok(c.ok === true, 'cancel accepted for a running job');
+  await sleep(120);
+  const cj = getJob(slow);
+  ok(cj.status === 'cancelled' && cj.error === 'cancelled by user', `cancelled job reports honestly (${cj.status})`);
+  ok(progressCalls < 100, `job aborted mid-loop at progress call ${progressCalls}`);
+  ok(latestResult(1, 'compose') === null, 'cancelled job persists nothing');
+  const again = cancelJob(slow);
+  ok(again.ok === false && /already cancelled/.test(again.reason), 'double-cancel refused with the reason');
+  ok(cancelJob('deadbeef').ok === false, 'cancelling an unknown job refused');
+
   console.log('jobs + ledger tests pass');
   process.exit(0);
 })().catch((e) => {

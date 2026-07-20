@@ -830,7 +830,7 @@ const runningJobs = { tune: {}, compose: {} }; // kind -> profileId -> {jobId, p
 const jobMsg = { tune: {}, compose: {} };      // kind -> profileId -> last terminal message (error, or '')
 const JOB_WIDGETS = {
   tune: { run: '#tune-run', status: '#tune-status' },
-  compose: { run: '#c-run', status: '#c-status', bar: '#c-bar', fill: '#c-bar-fill' },
+  compose: { run: '#c-run', status: '#c-status', bar: '#c-bar', fill: '#c-bar-fill', cancel: '#c-cancel' },
 };
 
 // Paint one kind's run controls from the CURRENTLY selected profile's state.
@@ -847,10 +847,12 @@ function renderJobControls(kind) {
       $(w.bar).classList.remove('hidden');
       $(w.fill).style.width = (entry.progressPct != null ? entry.progressPct : 0) + '%';
     }
+    if (w.cancel) $(w.cancel).classList.remove('hidden');
   } else {
     runBtn.disabled = false;
     status.textContent = jobMsg[kind][state.selectedId] || '';
     if (w.bar) $(w.bar).classList.add('hidden');
+    if (w.cancel) $(w.cancel).classList.add('hidden');
   }
 }
 
@@ -876,7 +878,8 @@ function trackJob(kind, jobId, profileId) {
       } else {
         clearInterval(entry.interval);
         delete runningJobs[kind][profileId];
-        jobMsg[kind][profileId] = job.status === 'done' ? '' : `failed: ${job.error}`;
+        jobMsg[kind][profileId] =
+          job.status === 'done' ? '' : job.status === 'cancelled' ? 'cancelled — no result saved' : `failed: ${job.error}`;
         if (profileId === state.selectedId) {
           if (job.status === 'done') await refresh();
           else renderJobControls(kind);
@@ -1174,6 +1177,23 @@ $('#c-run').addEventListener('click', async () => {
   } catch (err) {
     jobMsg.compose[profileId] = err.message;
     if (profileId === state.selectedId) renderJobControls('compose');
+  }
+});
+
+// Cancel the running comp lab search for the profile ON SCREEN. The job
+// aborts at its next progress report; the poll loop then shows "cancelled".
+$('#c-cancel').addEventListener('click', async () => {
+  const entry = runningJobs.compose[state.selectedId];
+  if (!entry) return;
+  $('#c-cancel').disabled = true;
+  try {
+    await api(`/jobs/${entry.jobId}/cancel`, { method: 'POST', body: {} });
+    entry.progress = 'cancelling…';
+    renderJobControls('compose');
+  } catch (err) {
+    jobMsg.compose[state.selectedId] = `cancel failed: ${err.message}`;
+  } finally {
+    $('#c-cancel').disabled = false;
   }
 });
 
