@@ -167,6 +167,24 @@ tr.breached td { background: color-mix(in srgb, var(--danger) 10%, transparent);
 .toggle-inline { display: inline-flex; align-items: center; gap: .35rem; }
 .toggle-inline input { width: auto; }
 
+/* Composition lab candidate pool: a tidy grid of equal-width columns, each
+   checkbox hard against its own ticker so ownership is unambiguous. */
+#c-pool {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(7.5rem, 1fr));
+  gap: .35rem .9rem;
+  margin: .5rem 0;
+  font-size: .85rem;
+}
+#c-pool label {
+  display: flex; align-items: center; gap: .4rem;
+  justify-content: flex-start; white-space: nowrap;
+  color: var(--text); cursor: pointer;
+}
+#c-pool label input { width: auto; margin: 0; flex: 0 0 auto; }
+#c-pool label:has(input:disabled) { color: var(--muted); cursor: default; }
+#c-pool label:has(input:not(:checked)) { color: var(--muted); text-decoration: line-through; }
+
 /* Composition lab: the trailing ⇢ tuner cell stays compact and aligned. */
 .tuner-cell { white-space: nowrap; text-align: right; }
 .tuner-cell button { font-size: .75rem; padding: .3rem .55rem; }
