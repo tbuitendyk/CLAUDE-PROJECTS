@@ -603,9 +603,9 @@ Asset mapping goes per-code across ALL linked profiles: holders(code) =
   code in the fill's deltas → auto-attribute. The tether leg follows the
   traded asset's profile (an XRP buy debits THAT profile's USDC).
 - **T2 advice match**: a profile whose recent alert/advice matches the fill
-  (same symbol + side, size within ±25% of the suggested quantity, within
-  48h of the alert) → auto-attribute. Multiple matching profiles = ambiguous
-  → queue. (Window/tolerance numbers are review items.)
+  (same symbol + side, size within ±15% of the suggested quantity, within
+  36h of the alert) → auto-attribute. Multiple matching profiles = ambiguous
+  → queue. (Numbers set by the user 2026-07-20.)
 - **T3 inbox**: everything else queues with `suggested_profile_id` = best
   scorer (or the residual profile) and a human-readable `reason`. One-click
   assign applies the deltas then (deduped by venue trade id).
@@ -630,19 +630,36 @@ target) at live prices. No venue I/O, both indices splice past the transfer
 Trial creation wizard chains: new profile → link to account → carve-out →
 targets prefilled from a lab mix (reusing the mix→tuner handoff shape).
 
-### Corrections
-Reassigning a fill AFTER indices have chained past it does NOT rewrite
-history: the correction applies as a dated flow-pair now (negative deltas
-to the wrong profile, positive to the right one), stamped with an audit
-note. Review item: an optional 24h grace window where a same-day
-reassignment may instead rewrite, since the daily index hasn't chained yet.
+### Rewind (universal undo — user requirement 2026-07-20)
+EVERY applied transaction — auto-attributed fill, manually assigned fill,
+confirmed flow, carve-out, snap, baseline adoption — lands as a row in a
+per-account **transaction log** (append-only), newest first, in plain
+words: *"14:32 · XRP buy 120 @ $2.11 → Trial profile (auto: matched its
+sell alert)"*. Every row carries two buttons and no manual carries a
+required reading list:
+- **Rewind** — appends a compensating entry that reverses the row's
+  quantity deltas and, for an attributed fill, returns it to the inbox as
+  pending. History is never deleted or edited; the log shows both the
+  mistake and its reversal. Quantities clamp at zero with a loud warning if
+  later activity already consumed them.
+- **Reassign →** (attribution rows only) — rewind + assign to the right
+  profile in one click.
+Index honesty: a rewind that crosses a chained daily snapshot cannot
+silently rewrite the past — the affected profiles get a visible annotation
+("attribution corrected on <date>; indices between <t1>–<t2> carry the
+distortion") instead of a falsified history. Same-day rewinds (nothing
+chained yet) reverse cleanly with no annotation. This mechanism replaces
+the earlier flow-pair correction design — one concept everywhere.
 
 ### Tests (gate for shipping)
 Multi-profile reconcile invariant; T1/T2/T3 paths including the
 shared-asset ambiguity → queue; tether-follows-trade attribution; carve-out
 splice continuity (neither index jumps at the transfer moment); queued
-trade applying on assign; correction flow-pair; single-holder-only baseline
-adoption; migration no-op for existing 1:1 accounts.
+trade applying on assign; rewind round-trips (auto fill → rewind → back in
+inbox; carve-out → rewind; reassign in one step; clamp-at-zero warning;
+cross-snapshot annotation appears, same-day rewind stays clean);
+single-holder-only baseline adoption; migration no-op for existing 1:1
+accounts.
 
 ### Non-goals
 No auto-trading, no per-profile API keys, no venue-native sub-accounts
