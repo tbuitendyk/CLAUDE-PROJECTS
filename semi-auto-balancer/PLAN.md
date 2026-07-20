@@ -584,11 +584,22 @@ LINKING, ATTRIBUTION, and RECONCILIATION layers.
 
 ### Schema
 - `profiles.exchange_account_id` (nullable FK → exchange_accounts): N
-  profiles may point at one account. `exchange_accounts.profile_id` is
-  reinterpreted as the account's **residual profile** (default attribution
-  target, absorbs snap corrections); existing 1:1 setups migrate by setting
-  the owning profile's `exchange_account_id` — zero behavior change until a
-  second profile links (idempotent ensureColumn migration).
+  profiles may point at one account.
+- **The shell profile (user's call 2026-07-20)**: each multi-profile
+  account gets a dedicated "Unallocated" shell profile — not a strategy, a
+  visible pool. It IS the residual: physical balance = Σ strategy profiles
+  + shell, exactly (the abstract "unassigned bucket" is materialized as
+  this profile, so it's always on screen, priced, and carve-out-able).
+  Dust snaps land here; unattributable deposits default here; carving out
+  a NEW trial funds FROM here (and decommissioning a trial returns assets
+  here). The shell has no targets, no thresholds, alerts off, excluded
+  from scans/labs — strategy profiles' track records never absorb anything
+  they didn't earn. `profiles.is_shell INTEGER` marks it;
+  `exchange_accounts.profile_id` points at it once created.
+- Migration: existing 1:1 setups keep everything in their current profile
+  (it is a strategy profile); the shell is created empty on first
+  multi-profile use — zero behavior change until then (idempotent
+  ensureColumn migration).
 - `attribution_queue` (id, account_id, kind 'trade'|'flow', venue_ref, ts,
   pair, side, price, deltas JSON, suggested_profile_id, reason TEXT,
   status 'pending'|'assigned'|'dismissed', assigned_profile_id,
