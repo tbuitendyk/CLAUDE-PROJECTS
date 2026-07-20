@@ -243,7 +243,11 @@ async function getDailyHistory(id, days = MAX_DAYS, symbolHint = null) {
     if (!code && rows.length >= 30) {
       const vals = rows.map((r) => r.usd_price).sort((a, b) => a - b);
       med = vals[vals.length >> 1];
-      stableBand = med > 0 && vals[vals.length - 1] / med < 1.03 && vals[0] / med > 0.97;
+      // USD-stable by MEDIAN (the idealize-tether gate): a real depeg episode
+      // (USDC touched ~$0.87 in Mar-2023) must not disqualify the series —
+      // those days stay in the data untouched; only missing days get the
+      // previous close. A volatile coin's median is nowhere near $1.
+      stableBand = med >= 0.97 && med <= 1.03;
     }
     if (isFiatCross || stableBand) {
       const filled = [];

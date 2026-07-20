@@ -143,15 +143,20 @@ const history = require('../lib/history');
   // previous close, so it can't fall under buildBars' 97% coverage bar and
   // drop the tether. Volatile series keep their gaps untouched. ---
   cgReturn = {
-    prices: Array.from({ length: 1400 }, (_, i) => [today - (1399 - i) * DAY, 1.0 + 0.002 * (i % 5) / 5])
-      .filter((_, i) => i % 9 !== 3), // knock out ~11% of days — like the real USDC series
+    // USDC-shaped: mostly $1, a real 10-day depeg to ~$0.88 (Mar-2023 style),
+    // and ~11% of days knocked out — the exact live failure shape.
+    prices: Array.from({ length: 1400 }, (_, i) => [
+      today - (1399 - i) * DAY,
+      i >= 700 && i < 710 ? 0.88 + 0.01 * (i - 700) : 1.0 + (0.002 * (i % 5)) / 5,
+    ]).filter((_, i) => i % 9 !== 3),
   };
   rows = await history.getDailyHistory('gappy-stable-coin', 1460, 'gsc');
   const gapSpanDays = Math.round((rows[rows.length - 1].ts - rows[0].ts) / DAY) + 1;
-  ok(rows.length === gapSpanDays, `stable series internal gaps filled (${rows.length} rows over ${gapSpanDays} days)`);
+  ok(rows.length === gapSpanDays, `stable series internal gaps filled despite a depeg episode (${rows.length} rows over ${gapSpanDays} days)`);
   ok(rows.every((r, i) => i === 0 || r.ts - rows[i - 1].ts === DAY), 'filled series has a row every single day');
   const synth = rows.filter((r) => r.synthetic);
   ok(synth.length > 100, `the knocked-out days are synthetic (${synth.length})`);
+  ok(rows.some((r) => !r.synthetic && r.usd_price < 0.95), 'the real depeg days survive untouched in the filled series');
   cgReturn = {
     prices: Array.from({ length: 1400 }, (_, i) => [today - (1399 - i) * DAY, 100 * (1 + 0.5 * Math.sin(i / 20))])
       .filter((_, i) => i % 9 !== 3),
