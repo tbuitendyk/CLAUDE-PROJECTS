@@ -1015,6 +1015,9 @@ function renderCompose(latest) {
       : `universe ${u.covered}/${u.considered} candidates`) +
     (r.currentSet ? '' : u.venue ? ` (restricted to ${u.venue}-tradable${u.notOnVenue && u.notOnVenue.length ? `; dropped: ${u.notOnVenue.map((s) => s.toUpperCase()).join(', ')}` : ''})` : ' (no linked venue — unconstrained)') +
     (u.heldExcludedFrozen ? ` · ${u.heldExcludedFrozen} held asset(s) excluded: buy-frozen` : '') +
+    (!r.currentSet && u.droppedNames && u.droppedNames.length
+      ? ` · ${u.droppedNames.length} dropped for insufficient history: ${u.droppedNames.map((s) => s.toUpperCase()).join(', ')}`
+      : '') +
     (u.windowDays && u.requestedDays && u.windowDays < u.requestedDays ? ` · window auto-shrunk ${u.requestedDays}d → ${u.windowDays}d for coverage` : '') +
     ` · window ${w.from ? new Date(w.from).toISOString().slice(0, 10) : '?'} → ${w.to ? new Date(w.to).toISOString().slice(0, 10) : '?'}` +
     (regimeMode && r.regime

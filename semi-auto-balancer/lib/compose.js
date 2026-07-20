@@ -1205,6 +1205,9 @@ async function runComposeSearch(profileId, opts = {}, setProgress = () => {}) {
     throw new Error('the tether has no usable history for this window');
   }
   const coveredCandidates = universe.filter((c) => covered.includes(c.id));
+  // Venue-tradable candidates that still lacked full-window history — named so
+  // the stamp can explain them, not just count them (the silent-drop trap).
+  const coverageDroppedNames = universe.filter((c) => !covered.includes(c.id)).map((c) => c.symbol);
   if (bars.length < MIN_WINDOW_DAYS) throw new Error(`not enough overlapping daily history (${bars.length} bars)`);
 
   const minReal = heldOnly ? 2 : 4;
@@ -1263,6 +1266,7 @@ async function runComposeSearch(profileId, opts = {}, setProgress = () => {}) {
     considered: universe.length + notOnVenue.length,
     covered: coveredCandidates.length,
     droppedForCoverage: universe.length - coveredCandidates.length,
+    droppedNames: coverageDroppedNames,
     heldExcludedFrozen: heldOnly ? 0 : assets.filter((a) => !a.is_index && a.buy_frozen && !a.freeze_override).length,
     venue: venueFilter ? venueFilter.venue : account ? account.venue : null,
     notOnVenue,
