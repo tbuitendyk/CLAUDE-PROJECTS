@@ -628,16 +628,24 @@ async function searchCompositions({
   const anyRecommended = rows.some((r) => r.recommended);
 
   // Current mix — scored the SAME way, shown for REFERENCE only. A single
-  // window's number is noise, so it is explicitly NOT a bar to beat.
+  // window's number is noise, so it is explicitly NOT a bar to beat. Scoring
+  // it must never kill the search (e.g. a just-switched index with stale
+  // targets) — degrade to "not scorable" with a warning instead.
   let currentScored = null;
+  let currentMixWarning = null;
   if (currentMix && currentMix.length > 0) {
-    const assets = currentMix.map((m) => ({
-      coingecko_id: m.id, symbol: m.symbol, target_pct: m.targetPct, is_index: m.isIndex ? 1 : 0,
-    }));
-    currentScored = { ...summarize(scoreMix(assets), assets), reference: true, recommended: false };
+    try {
+      const assets = currentMix.map((m) => ({
+        coingecko_id: m.id, symbol: m.symbol, target_pct: m.targetPct, is_index: m.isIndex ? 1 : 0,
+      }));
+      currentScored = { ...summarize(scoreMix(assets), assets), reference: true, recommended: false };
+    } catch (err) {
+      currentMixWarning = `Current mix could not be scored for reference (${err.message}) — likely stale targets after an index switch; use "Set new targets".`;
+    }
   }
 
   const warnings = [];
+  if (currentMixWarning) warnings.push(currentMixWarning);
   if (noRealPossibility) {
     warnings.push(
       'No mix kept up with the market (holding BTC, valued in the index currency) on both return and drawdown — ' +
@@ -948,19 +956,27 @@ async function searchCurrentSet({
   const anyRecommended = rows.some((r) => r.recommended);
 
   // Current mix — reference only, scored identically (a single window's number
-  // is not a bar to beat). Skip if any current asset lacks window coverage.
+  // is not a bar to beat). Skip if any current asset lacks window coverage;
+  // never let scoring it kill the search (e.g. stale targets after an index
+  // switch) — degrade to "not scorable" with a warning instead.
   let currentScored = null;
+  let currentMixWarning = null;
   if (currentMix && currentMix.length > 0) {
     const idset = new Set(ids);
     if (currentMix.every((m) => idset.has(m.id))) {
-      const assets = currentMix.map((m) => ({
-        coingecko_id: m.id, symbol: m.symbol, target_pct: m.targetPct, is_index: m.isIndex ? 1 : 0,
-      }));
-      currentScored = summarize(assets, scoreMix(assets), true);
+      try {
+        const assets = currentMix.map((m) => ({
+          coingecko_id: m.id, symbol: m.symbol, target_pct: m.targetPct, is_index: m.isIndex ? 1 : 0,
+        }));
+        currentScored = summarize(assets, scoreMix(assets), true);
+      } catch (err) {
+        currentMixWarning = `Current mix could not be scored for reference (${err.message}) — likely stale targets after an index switch; use "Set new targets".`;
+      }
     }
   }
 
   const warnings = [];
+  if (currentMixWarning) warnings.push(currentMixWarning);
   if (noRealPossibility) {
     warnings.push(
       'No split of your current holdings kept up with the market (holding BTC, valued in your index currency) on both return and drawdown — ' +
@@ -1121,9 +1137,12 @@ async function runCurrentSetSearch(profileId, ctx, setProgress = () => {}) {
     ...coveredHoldings.map((c) => ({ id: c.id, symbol: (assets.find((a) => a.coingecko_id === c.id) || {}).symbol || c.symbol, isIndex: false })),
   ];
 
+  // The tether belongs in the current mix even at 0% target (e.g. right after
+  // an index switch, before new targets are set) — simulate() requires an
+  // index asset, and a 0% tether honestly represents "not holding it yet".
   const currentMix = assets
-    .filter((a) => a.target_pct > 0)
-    .map((a) => ({ id: a.coingecko_id, symbol: a.symbol, targetPct: a.target_pct, isIndex: !!a.is_index }));
+    .filter((a) => a.target_pct > 0 || a.is_index)
+    .map((a) => ({ id: a.coingecko_id, symbol: a.symbol, targetPct: a.target_pct || 0, isIndex: !!a.is_index }));
 
   // BTC benchmark aligned to the bars enables regime mode; thin history falls
   // back to walk-forward folds automatically.
@@ -1284,9 +1303,12 @@ async function runComposeSearch(profileId, opts = {}, setProgress = () => {}) {
     );
   }
 
+  // The tether belongs in the current mix even at 0% target (e.g. right after
+  // an index switch, before new targets are set) — simulate() requires an
+  // index asset, and a 0% tether honestly represents "not holding it yet".
   const currentMix = assets
-    .filter((a) => a.target_pct > 0)
-    .map((a) => ({ id: a.coingecko_id, symbol: a.symbol, targetPct: a.target_pct, isIndex: !!a.is_index }));
+    .filter((a) => a.target_pct > 0 || a.is_index)
+    .map((a) => ({ id: a.coingecko_id, symbol: a.symbol, targetPct: a.target_pct || 0, isIndex: !!a.is_index }));
 
   // BTC benchmark aligned to the bars timeline enables regime mode. Forward-
   // fill any missing bar (BTC is deep, so gaps are rare). If BTC history is

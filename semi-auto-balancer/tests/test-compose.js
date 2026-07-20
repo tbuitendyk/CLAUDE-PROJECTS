@@ -248,6 +248,32 @@ const IDS = [...seriesById.keys()];
   ok(px({}).size === 0 && px(null).size === 0, 'missing column/profile parses to no exclusions');
   ok(px({ compose_excluded: '[1,2,"x"]' }).size === 1, 'non-string entries are ignored');
 
+  // --- index-switch resilience: right after re-tethering, the tether sits at
+  // 0% target while the old targets still total 100. That current mix must
+  // score (reference), and an outright unscorable current mix (no index at
+  // all) must degrade to a warning — never kill the whole search. ---
+  const zeroTether = await compose.searchCompositions({
+    ...opts,
+    samples: 500,
+    currentMix: [
+      { id: 'tether', symbol: 'usdt', targetPct: 0, isIndex: true },
+      { id: 'osc-a', symbol: 'osc-a', targetPct: 60, isIndex: false },
+      { id: 'osc-b', symbol: 'osc-b', targetPct: 40, isIndex: false },
+    ],
+  });
+  ok(zeroTether.currentMix && zeroTether.currentMix.reference === true, 'a 0%-tether current mix (fresh index switch) still scores as reference');
+  const noIndex = await compose.searchCompositions({
+    ...opts,
+    samples: 500,
+    currentMix: [
+      { id: 'dec-d', symbol: 'dec-d', targetPct: 60, isIndex: false },
+      { id: 'dec-e', symbol: 'dec-e', targetPct: 40, isIndex: false },
+    ],
+  });
+  ok(noIndex.mixes.length > 0, 'an unscorable current mix does NOT kill the search');
+  ok(noIndex.currentMix == null, 'the unscorable current mix degrades to null');
+  ok(noIndex.warnings.some((w) => /could not be scored/i.test(w)), 'with an explicit warning pointing at stale targets');
+
   // --- determinism under a fixed seed ---
   const r2 = await compose.searchCompositions(opts);
   ok(
