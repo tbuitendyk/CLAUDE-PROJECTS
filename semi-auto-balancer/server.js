@@ -395,7 +395,11 @@ app.post('/api/profiles/:id/tune-threshold', (req, res) => {
   const profile = db.prepare('SELECT * FROM profiles WHERE id = ?').get(req.params.id);
   if (!profile) return res.status(404).json({ error: 'not found' });
   const b = req.body || {};
-  const days = Number(b.days) > 0 ? Number(b.days) : 730;
+  // 4-year mandate: daily sweeps default to the full deep window. Hourly
+  // stays ~2y — its job is finer execution timing, and hourly source depth
+  // is patchier; the bars selector labels this tradeoff.
+  const granularity0 = b.granularity === 'hourly' ? 'hourly' : 'daily';
+  const days = Number(b.days) > 0 ? Number(b.days) : granularity0 === 'hourly' ? 730 : 1460;
   const granularity = b.granularity === 'hourly' ? 'hourly' : 'daily';
   const lagHours = Number(b.lag_hours) > 0 ? Number(b.lag_hours) : 6;
   // Optional hypothetical mix (composition-lab row → tuner): sweeps that mix

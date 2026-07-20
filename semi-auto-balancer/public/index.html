@@ -96,8 +96,8 @@
                 <button id="tune-run">Run sweep</button>
                 <label class="muted">bars
                   <select id="tune-gran">
-                    <option value="daily" selected>daily</option>
-                    <option value="hourly">hourly (auto-fills history on first use)</option>
+                    <option value="daily" selected>daily — 4-year window</option>
+                    <option value="hourly">hourly — ~2y, finer execution timing (auto-fills)</option>
                   </select>
                 </label>
                 <label class="muted" title="How long after the alert the trades execute in the simulation">exec lag
@@ -112,6 +112,7 @@
               </div>
               <div id="tune-result" class="hidden">
                 <p id="tune-reco"></p>
+                <p id="tune-window" class="window-line" title="The exact time span this sweep evaluated, incl. the recent sub-windows"></p>
                 <p id="tune-warnings" class="warn-text hidden"></p>
                 <div class="table-wrap">
                   <table id="tune-table">
@@ -168,6 +169,7 @@
               <div id="c-bar" class="progress-wrap hidden"><div id="c-bar-fill" class="progress-fill"></div></div>
               <div id="c-result" class="hidden">
                 <p id="c-caveat" class="warn-text"></p>
+                <p id="c-window" class="window-line" title="The exact time span this search evaluated: full window, in-sample vs untouched holdout, and the regime day-counts"></p>
                 <div class="table-wrap">
                   <table id="c-table">
                     <thead>

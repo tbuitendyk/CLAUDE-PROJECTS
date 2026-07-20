@@ -709,10 +709,15 @@ function renderTune(latest, profile) {
       : '';
   if (r.recommendation) {
     const same = Math.abs(r.recommendation.x - profile.threshold_pct) < 1e-9;
+    // "current setting" only makes sense for a sweep of the ACTIVE profile's
+    // own mix — a hypothetical (lab) sweep compares to nothing applied.
+    const settingNote = stampS.hypothetical
+      ? ''
+      : `; current setting: ${profile.threshold_pct}%${same ? ' — already applied' : ''}`;
     reco.innerHTML =
       mixLine +
       `Recommended sensitivity: <strong>${r.recommendation.x}%</strong> ` +
-      `<span class="muted">(${r.recommendation.reason}; current setting: ${profile.threshold_pct}%${same ? ' — already applied' : ''})</span>`;
+      `<span class="muted">(${r.recommendation.reason}${settingNote})</span>`;
   } else {
     reco.innerHTML = mixLine + '<strong>No recommendation</strong> <span class="muted">— see warning below.</span>';
   }
@@ -737,6 +742,15 @@ function renderTune(latest, profile) {
     const w = recent[win];
     return w ? `<td class="muted">${fmtPct(w.hold.valueGrowthPct)} hold</td>` : '<td class="muted">—</td>';
   };
+
+  // The evaluated time periods, stated up top — not just fine print below.
+  const d10h = (ts) => (ts ? new Date(ts).toISOString().slice(0, 10) : '?');
+  const yearsH = stampS.bars ? (stampS.granularity === 'hourly' ? stampS.bars / 24 / 365 : stampS.bars / 365) : 0;
+  $('#tune-window').textContent =
+    `Period: ${d10h(stampS.dataFrom)} → ${d10h(stampS.dataTo)} · ${stampS.bars} ${stampS.granularity === 'hourly' ? 'hourly' : 'daily'} bars ≈ ${yearsH.toFixed(1)} years` +
+    (recent.half ? ` · ½ recent = ${d10h(recent.half.from)} → ${d10h(recent.half.to)}` : '') +
+    (recent.quarter ? ` · ¼ recent = ${d10h(recent.quarter.from)} → ${d10h(recent.quarter.to)}` : '') +
+    (stampS.idealTether ? ' · ⚠ tether idealized $1' : '');
 
   const tbody = $('#tune-table tbody');
   tbody.innerHTML = '';
@@ -920,6 +934,18 @@ function renderCompose(latest) {
 
   // Header depends on mode: regime shows per-market-type edges; folds shows
   // the walk-forward columns.
+  // The evaluated time periods, stated up top — not just fine print below.
+  {
+    const w0 = r.window || {};
+    const d10c = (ts) => (ts ? new Date(ts).toISOString().slice(0, 10) : '?');
+    const yearsC = w0.bars ? w0.bars / 365 : 0;
+    $('#c-window').textContent =
+      `Period: ${d10c(w0.from)} → ${d10c(w0.to)} · ${w0.bars || '?'} daily bars ≈ ${yearsC.toFixed(1)} years` +
+      ` · in-sample ${w0.inSampleBars || '?'} bars · holdout ${w0.holdoutBars || '?'} bars from ${d10c(w0.holdoutFrom)}` +
+      (regimeMode && r.regime ? ` · regimes: ${r.regime.byType.bull}d bull / ${r.regime.byType.bear}d bear / ${r.regime.byType.range}d range` : '') +
+      (r.idealTether ? ' · ⚠ tether idealized $1' : '');
+  }
+
   const qualTh =
     '<th title="Whole-window return @ the trigger sensitivity that produced it (@ hold = holding won, no full-window trigger) · max drawdown · whether it keeps up with the market (holding BTC in the index currency). ✓mkt = real possibility; ▼mkt = lags the market">Return @ X · DD · vs mkt</th>';
   const thead = $('#c-table thead');
