@@ -23,6 +23,7 @@ const { topCandidates } = require('./lib/candidates');
 const { hourlyStatus } = require('./lib/hourly');
 const ladder = require('./lib/ladder');
 const laddermon = require('./lib/laddermon');
+const subaccounts = require('./lib/subaccounts');
 const { sendAlertEvents, sendStatusReport, sendTestEmail, sendLadderNotice, emailConfigured } = require('./lib/mailer');
 const { searchCoins, supportedFiats, fiatCode } = require('./lib/pricing');
 const { visionConfigured, parseHoldingsScreenshot } = require('./lib/vision');
@@ -653,10 +654,117 @@ app.post('/api/exchange-accounts/:id/sync', async (req, res) => {
 // manually).
 app.post('/api/pending-flows/:id/confirm', async (req, res) => {
   try {
-    const result = await sync.applyPendingFlow(Number(req.params.id));
+    // Phase 6: the inbox may redirect the flow to a different linked profile.
+    const result = await sync.applyPendingFlow(Number(req.params.id), (req.body || {}).profileId ?? null);
     const flow = db.prepare('SELECT profile_id FROM pending_flows WHERE id = ?').get(req.params.id);
     if (flow) await pollProfiles({ force: true, profileId: flow.profile_id }).catch(() => {});
     res.json({ ok: true, ...result });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// ---- Phase 6: virtual sub-accounts ------------------------------------------
+
+// Everything linked to an account: profiles (shell marked), the inbox, the
+// transaction log, and the per-code reconcile view from the last sync.
+app.get('/api/accounts/:id/subaccounts', (req, res) => {
+  try {
+    const accountId = Number(req.params.id);
+    const account = db.prepare('SELECT * FROM exchange_accounts WHERE id = ?').get(accountId);
+    if (!account) return res.status(404).json({ error: 'account not found' });
+    const profiles = subaccounts.linkedProfiles(accountId).map((p) => ({
+      id: p.id,
+      name: p.name,
+      isShell: Boolean(p.is_shell),
+      assets: db
+        .prepare('SELECT id, symbol, coingecko_id, quantity, is_index FROM assets WHERE profile_id = ? ORDER BY id')
+        .all(p.id),
+    }));
+    const note = account.last_sync_note ? JSON.parse(account.last_sync_note) : {};
+    res.json({
+      account: { id: account.id, venue: account.venue, lastSyncAt: account.last_sync_at, lastSyncStatus: account.last_sync_status },
+      profiles,
+      perCode: note.perCode || null,
+      inbox: subaccounts.listInbox(accountId),
+      txnLog: subaccounts.listTxnLog(accountId, 50),
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/accounts/:id/shell', (req, res) => {
+  try {
+    res.json({ ok: true, shell: subaccounts.ensureShell(Number(req.params.id)) });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.post('/api/profiles/:id/link-account', (req, res) => {
+  try {
+    const accountId = Number((req.body || {}).accountId);
+    const profiles = subaccounts.linkProfile(Number(req.params.id), accountId);
+    // A second linked profile means multi mode: make sure the shell exists
+    // so dust and unattributable items always have a home.
+    if (profiles.length > 1) subaccounts.ensureShell(accountId);
+    res.json({ ok: true, profiles: subaccounts.linkedProfiles(accountId).map((p) => ({ id: p.id, name: p.name, isShell: Boolean(p.is_shell) })) });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.post('/api/profiles/:id/unlink-account', (req, res) => {
+  try {
+    subaccounts.unlinkProfile(Number(req.params.id));
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.post('/api/attribution/:id/assign', (req, res) => {
+  try {
+    const r = subaccounts.assignQueuedTrade(Number(req.params.id), Number((req.body || {}).profileId));
+    res.json({ ok: true, ...r });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.post('/api/attribution/:id/dismiss', (req, res) => {
+  try {
+    subaccounts.dismissQueuedTrade(Number(req.params.id));
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.post('/api/txnlog/:id/rewind', async (req, res) => {
+  try {
+    const r = await subaccounts.rewindTxn(Number(req.params.id));
+    res.json({ ok: true, warnings: r.warnings });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.post('/api/txnlog/:id/reassign', async (req, res) => {
+  try {
+    const r = await subaccounts.reassignTxn(Number(req.params.id), Number((req.body || {}).profileId));
+    res.json({ ok: true, ...r });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.post('/api/accounts/:id/carve', async (req, res) => {
+  try {
+    const b = req.body || {};
+    const r = await subaccounts.carveOut(Number(req.params.id), b.fromProfileId, b.toProfileId, b.items);
+    res.json({ ok: true, ...r });
   } catch (err) {
     res.status(400).json({ error: err.message });
   }

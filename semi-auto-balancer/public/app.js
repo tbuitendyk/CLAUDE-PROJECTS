@@ -1365,12 +1365,23 @@ function renderExchange(x, pendingFlows, profile) {
     const amt = document.createElement('td');
     amt.textContent = `${f.amount >= 0 ? '+' : ''}${f.amount} ${f.code.toUpperCase()}`;
     amt.className = f.amount >= 0 ? 'pos' : 'neg';
+    // Multi-profile accounts: the flow may be redirected to any linked
+    // profile at confirm time; the cell is populated once sub-account data
+    // loads (single-profile accounts just show a dash).
+    const target = document.createElement('td');
+    target.className = 'flow-target';
+    target.dataset.suggested = f.profile_id;
+    target.textContent = '—';
     const actions = document.createElement('td');
     const ok = document.createElement('button');
     ok.textContent = 'Confirm';
     ok.addEventListener('click', async () => {
       try {
-        await api(`/pending-flows/${f.id}/confirm`, { method: 'POST' });
+        const sel = target.querySelector('select');
+        await api(`/pending-flows/${f.id}/confirm`, {
+          method: 'POST',
+          body: sel ? { profileId: Number(sel.value) } : {},
+        });
         await refresh();
       } catch (err) {
         alert(err.message);
@@ -1389,10 +1400,240 @@ function renderExchange(x, pendingFlows, profile) {
       }
     });
     actions.append(ok, no);
-    tr.append(when, kind, amt, actions);
+    tr.append(when, kind, amt, target, actions);
     tbody.appendChild(tr);
   }
+
+  // Phase 6 sub-accounts panel (loads its own data; failures stay local).
+  loadSubaccounts(x).catch((err) => {
+    $('#sub-status').textContent = `sub-accounts unavailable: ${err.message}`;
+  });
 }
+
+// ---- Phase 6: sub-accounts UI -----------------------------------------------
+let subState = { accountId: null, profiles: [] };
+
+function profileOptions(select, profiles, preselectId) {
+  select.innerHTML = '';
+  for (const p of profiles) {
+    const o = document.createElement('option');
+    o.value = p.id;
+    o.textContent = p.isShell ? `${p.name} (shell)` : p.name;
+    if (p.id === preselectId) o.selected = true;
+    select.appendChild(o);
+  }
+}
+
+async function loadSubaccounts(x) {
+  const data = await api(`/accounts/${x.id}/subaccounts`);
+  subState = { accountId: x.id, profiles: data.profiles };
+  const multi = data.profiles.length > 1;
+  $('#sub-off').classList.toggle('hidden', multi);
+  $('#sub-on').classList.toggle('hidden', !multi);
+
+  // Profiles eligible for linking: not linked to any account, not this one.
+  const unlinked = state.profiles.filter(
+    (p) => !p.exchange_account_id && !data.profiles.some((lp) => lp.id === p.id)
+  );
+  for (const selId of ['#sub-link-profile', '#sub-link-profile2']) {
+    const sel = $(selId);
+    sel.innerHTML = '';
+    for (const p of unlinked) {
+      const o = document.createElement('option');
+      o.value = p.id;
+      o.textContent = p.name;
+      sel.appendChild(o);
+    }
+  }
+  $('#sub-link').disabled = unlinked.length === 0;
+  $('#sub-link2').disabled = unlinked.length === 0;
+  if (!multi) return;
+
+  // Linked profiles summary line.
+  $('#sub-profiles').innerHTML = data.profiles
+    .map((p) => {
+      const held = p.assets.filter((a) => a.quantity > 0);
+      const sum = held.map((a) => `${a.symbol.toUpperCase()} ${+a.quantity.toFixed(6)}`).join(', ') || 'empty';
+      return `<strong>${p.name}</strong>${p.isShell ? ' 🪣' : ''}: ${sum}`;
+    })
+    .join(' &nbsp;·&nbsp; ');
+
+  // Per-code reconcile view from the last sync.
+  const rb = $('#sub-recon tbody');
+  rb.innerHTML = '';
+  $('#sub-recon-wrap').classList.toggle('hidden', !data.perCode);
+  for (const c of data.perCode || []) {
+    const tr = document.createElement('tr');
+    const bad = Math.abs(c.residual) > Math.max(1e-8, 5e-4 * Math.abs(c.physical));
+    tr.innerHTML =
+      `<td>${c.code.toUpperCase()}</td><td class="num">${c.physical}</td><td class="num">${+c.virtual.toFixed(8)}</td>` +
+      `<td class="num">${+(c.pending || 0).toFixed(8)}</td><td class="num">${+(c.queued || 0).toFixed(8)}</td>` +
+      `<td class="num${bad ? ' neg' : ''}">${+c.residual.toFixed(8)}${bad ? ' ⚠' : ''}</td>`;
+    rb.appendChild(tr);
+  }
+
+  // Pending-flow target selects (populated now that profiles are known).
+  document.querySelectorAll('#x-pending-table .flow-target').forEach((td) => {
+    if (td.querySelector('select')) return;
+    const sel = document.createElement('select');
+    profileOptions(sel, data.profiles, Number(td.dataset.suggested));
+    td.textContent = '';
+    td.appendChild(sel);
+  });
+
+  // Attribution inbox.
+  const inbox = data.inbox.trades || [];
+  $('#sub-inbox-wrap').classList.toggle('hidden', inbox.length === 0);
+  const ib = $('#sub-inbox tbody');
+  ib.innerHTML = '';
+  for (const q of inbox) {
+    const tr = document.createElement('tr');
+    const fill = `${(q.side || 'trade').toUpperCase()} ${q.pair || ''} ` + q.deltas.map((d) => `${d.delta > 0 ? '+' : ''}${d.delta} ${d.code.toUpperCase()}`).join(' / ');
+    tr.innerHTML = `<td>${new Date(q.ts).toLocaleString()}</td><td>${fill}</td><td class="muted">${q.reason || ''}</td>`;
+    const selTd = document.createElement('td');
+    const sel = document.createElement('select');
+    profileOptions(sel, data.profiles, q.suggested_profile_id);
+    selTd.appendChild(sel);
+    const act = document.createElement('td');
+    const assign = document.createElement('button');
+    assign.textContent = 'Assign';
+    assign.addEventListener('click', async () => {
+      try {
+        await api(`/attribution/${q.id}/assign`, { method: 'POST', body: { profileId: Number(sel.value) } });
+        await refresh();
+      } catch (err) { alert(err.message); }
+    });
+    const dis = document.createElement('button');
+    dis.textContent = 'Dismiss';
+    dis.className = 'ghost';
+    dis.addEventListener('click', async () => {
+      if (!confirm('Dismiss this fill? Its quantities will never be applied anywhere.')) return;
+      try {
+        await api(`/attribution/${q.id}/dismiss`, { method: 'POST', body: {} });
+        await refresh();
+      } catch (err) { alert(err.message); }
+    });
+    act.append(assign, dis);
+    tr.append(selTd, act);
+    ib.appendChild(tr);
+  }
+
+  // Carve-out selects + items for the chosen source.
+  const from = $('#carve-from');
+  const to = $('#carve-to');
+  if (!from.dataset.wired || Number(from.dataset.account) !== x.id) {
+    // Default source: the first profile that actually holds something (the
+    // shell once it has contents; before that, whichever strategy is funded).
+    const holding = data.profiles.find((p) => p.assets.some((a) => a.quantity > 0)) || data.profiles[0];
+    const dest = data.profiles.find((p) => p.id !== holding.id) || data.profiles[0];
+    profileOptions(from, data.profiles, holding.id);
+    profileOptions(to, data.profiles, dest.id);
+    from.dataset.wired = '1';
+    from.dataset.account = x.id;
+  }
+  const renderCarveItems = () => {
+    const src = subState.profiles.find((p) => p.id === Number(from.value));
+    const host = $('#carve-items');
+    host.innerHTML = '';
+    for (const a of (src?.assets || []).filter((a2) => a2.quantity > 0)) {
+      const label = document.createElement('label');
+      label.className = 'muted';
+      label.style.marginRight = '.8rem';
+      label.innerHTML = `${a.symbol.toUpperCase()} (have ${+a.quantity.toFixed(8)}) `;
+      const inp = document.createElement('input');
+      inp.type = 'number';
+      inp.step = 'any';
+      inp.min = '0';
+      inp.max = String(a.quantity);
+      inp.style.width = '7rem';
+      inp.dataset.assetId = a.id;
+      label.appendChild(inp);
+      host.appendChild(label);
+    }
+    if (!host.children.length) host.innerHTML = '<span class="muted">nothing held in the source profile</span>';
+  };
+  from.onchange = renderCarveItems;
+  renderCarveItems();
+
+  // Transaction log.
+  const lb = $('#sub-log tbody');
+  lb.innerHTML = '';
+  const nameOf = (id) => (data.profiles.find((p) => p.id === id) || { name: id ?? '—' }).name;
+  for (const rrow of data.txnLog) {
+    const tr = document.createElement('tr');
+    tr.innerHTML =
+      `<td>${new Date(rrow.ts).toLocaleString()}</td><td>${nameOf(rrow.profile_id)}</td>` +
+      `<td>${rrow.note}${rrow.rewound_by ? ' <span class="muted">(rewound)</span>' : ''}</td>`;
+    const act = document.createElement('td');
+    if (rrow.kind !== 'rewind' && !rrow.rewound_by) {
+      const rw = document.createElement('button');
+      rw.textContent = 'Rewind';
+      rw.className = 'ghost';
+      rw.title = 'Reverse this transaction (appends a compensating entry; attributed fills return to the inbox)';
+      rw.addEventListener('click', async () => {
+        if (!confirm(`Rewind: ${rrow.note}?`)) return;
+        try {
+          const res = await api(`/txnlog/${rrow.id}/rewind`, { method: 'POST', body: {} });
+          if (res.warnings && res.warnings.length) alert('Rewound with warnings:\n' + res.warnings.join('\n'));
+          await refresh();
+        } catch (err) { alert(err.message); }
+      });
+      act.appendChild(rw);
+      if (rrow.kind.startsWith('trade-')) {
+        const sel = document.createElement('select');
+        profileOptions(sel, data.profiles.filter((p) => p.id !== rrow.profile_id));
+        const re = document.createElement('button');
+        re.textContent = 'Reassign →';
+        re.title = 'Rewind and assign this fill to the selected profile in one step';
+        re.addEventListener('click', async () => {
+          try {
+            const res = await api(`/txnlog/${rrow.id}/reassign`, { method: 'POST', body: { profileId: Number(sel.value) } });
+            if (res.warnings && res.warnings.length) alert('Reassigned with warnings:\n' + res.warnings.join('\n'));
+            await refresh();
+          } catch (err) { alert(err.message); }
+        });
+        act.append(sel, re);
+      }
+    }
+    tr.appendChild(act);
+    lb.appendChild(tr);
+  }
+}
+
+async function linkSelectedProfile(selId, statusId) {
+  const sel = $(selId);
+  if (!sel.value) return;
+  $(statusId).textContent = 'linking…';
+  try {
+    await api(`/profiles/${sel.value}/link-account`, { method: 'POST', body: { accountId: subState.accountId || state.exchangeId } });
+    $(statusId).textContent = 'linked ✓';
+    await refresh();
+  } catch (err) {
+    $(statusId).textContent = `failed: ${err.message}`;
+  }
+}
+$('#sub-link').addEventListener('click', () => linkSelectedProfile('#sub-link-profile', '#sub-status'));
+$('#sub-link2').addEventListener('click', () => linkSelectedProfile('#sub-link-profile2', '#sub-status2'));
+
+$('#carve-go').addEventListener('click', async () => {
+  const status = $('#carve-status');
+  const items = [...document.querySelectorAll('#carve-items input')]
+    .map((i) => ({ asset_id: Number(i.dataset.assetId), qty: Number(i.value) }))
+    .filter((i) => i.qty > 0);
+  if (!items.length) { status.textContent = 'enter at least one quantity'; return; }
+  if ($('#carve-from').value === $('#carve-to').value) { status.textContent = 'pick two different profiles'; return; }
+  status.textContent = 'transferring…';
+  try {
+    await api(`/accounts/${subState.accountId}/carve`, {
+      method: 'POST',
+      body: { fromProfileId: Number($('#carve-from').value), toProfileId: Number($('#carve-to').value), items },
+    });
+    status.textContent = 'done ✓ (both track records spliced)';
+    await refresh();
+  } catch (err) {
+    status.textContent = `failed: ${err.message}`;
+  }
+});
 
 $('#x-form').addEventListener('submit', async (e) => {
   e.preventDefault();

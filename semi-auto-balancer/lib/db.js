@@ -338,6 +338,66 @@ ensureColumn('ladder_monitors', 'usd_bal', 'usd_bal REAL');
 ensureColumn('ladder_monitors', 'btc_bal', 'btc_bal REAL');
 ensureColumn('ladder_monitors', 'avg_cost', 'avg_cost REAL');
 
+// Phase 6 virtual sub-accounts: N profiles per exchange account. A profile
+// links via exchange_account_id; the account's "Unallocated" SHELL profile
+// (is_shell) is the materialized residual pool — physical balance = Σ
+// strategy profiles + shell. exchange_accounts.profile_id stays pointing at
+// the CREATOR profile (stable lookups, no CASCADE surprises); the shell is
+// found by is_shell among linked profiles.
+ensureColumn('profiles', 'exchange_account_id', 'exchange_account_id INTEGER REFERENCES exchange_accounts(id)');
+ensureColumn('profiles', 'is_shell', 'is_shell INTEGER NOT NULL DEFAULT 0');
+// Attributed owner of a synced fill; NULL = queued, applies nothing yet.
+ensureColumn('exchange_trades', 'profile_id', 'profile_id INTEGER REFERENCES profiles(id)');
+// Migration for existing 1:1 setups: the owning profile self-links. Zero
+// behavior change until a second profile links to the same account.
+db.exec(`
+UPDATE profiles SET exchange_account_id =
+  (SELECT ea.id FROM exchange_accounts ea WHERE ea.profile_id = profiles.id)
+WHERE exchange_account_id IS NULL
+  AND EXISTS (SELECT 1 FROM exchange_accounts ea WHERE ea.profile_id = profiles.id);
+`);
+db.exec(`
+-- Ambiguous synced fills wait here; assignment applies their deltas then.
+CREATE TABLE IF NOT EXISTS attribution_queue (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  account_id INTEGER NOT NULL REFERENCES exchange_accounts(id) ON DELETE CASCADE,
+  kind TEXT NOT NULL,             -- 'trade' (flows use pending_flows as their inbox)
+  venue_ref TEXT NOT NULL,        -- venue trade id
+  ts INTEGER NOT NULL,
+  pair TEXT, side TEXT, price REAL,
+  deltas TEXT NOT NULL,           -- JSON [{code, delta}]
+  suggested_profile_id INTEGER REFERENCES profiles(id),
+  reason TEXT,
+  status TEXT NOT NULL DEFAULT 'pending',  -- 'pending' | 'assigned' | 'dismissed'
+  assigned_profile_id INTEGER REFERENCES profiles(id),
+  resolved_at INTEGER,
+  UNIQUE (account_id, kind, venue_ref)
+);
+-- Append-only per-account transaction log: every applied transaction (auto
+-- or manual) lands here in plain words, each row rewindable exactly once.
+CREATE TABLE IF NOT EXISTS txn_log (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  account_id INTEGER NOT NULL REFERENCES exchange_accounts(id) ON DELETE CASCADE,
+  profile_id INTEGER REFERENCES profiles(id),
+  ts INTEGER NOT NULL,
+  kind TEXT NOT NULL,   -- 'trade-auto-t1'|'trade-auto-t2'|'trade-assign'|'flow-apply'|'carve-out'|'snap'|'adopt'|'rewind'
+  ref TEXT,             -- venue trade id / flow ref / carve ref (pairs share it)
+  deltas TEXT,          -- JSON [{asset_id, symbol, delta}]
+  note TEXT NOT NULL,
+  rewound_of INTEGER REFERENCES txn_log(id),
+  rewound_by INTEGER REFERENCES txn_log(id)
+);
+-- Structured advice at alert time, for T2 attribution matching (±15%, 36h).
+CREATE TABLE IF NOT EXISTS advice_log (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  profile_id INTEGER NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+  ts INTEGER NOT NULL,
+  symbol TEXT NOT NULL,
+  side TEXT NOT NULL,             -- 'BUY' | 'SELL'
+  quantity REAL NOT NULL
+);
+`);
+
 // Sets were removed from the design (one flat asset pool per profile);
 // drop the leftover tables from earlier versions.
 db.exec(`

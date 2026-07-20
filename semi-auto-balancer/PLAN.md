@@ -567,9 +567,16 @@ simulator's mid-drawdown start). Advisory only — a monitor says what the
 config would do; it never touches an exchange.
 
 ## Phase 6 — Virtual sub-accounts (multiple profiles per exchange account)
-**Status: DESIGN — awaiting sign-off. Decisions locked with the user
-2026-07-20: attribution = auto-match + inbox fallback; shared traded assets
-across co-located profiles ALLOWED; everything stays advisory-only.**
+**Status: BUILT 2026-07-20 (tests green: test-subaccounts.js — the full
+spec gate; browser-verified panel). Decisions locked with the user:
+attribution = auto-match (±15%, 36h) + inbox fallback; shared traded assets
+ALLOWED; shell profile = the materialized unallocated pool; universal
+append-only rewind; everything stays advisory-only. Implementation notes:
+exchange_accounts.profile_id keeps pointing at the CREATOR profile (stable
+lookups; the shell is found by is_shell among linked profiles); the
+single-profile sync path is byte-identical to Phase 1.5 — the multi path
+only engages once a second profile links, so the migration is a true
+no-op.**
 
 Motivation: adopt a lab mix at a SMALL real allocation without betting the
 account — several profiles carve up one physical exchange account, each

@@ -97,9 +97,19 @@ async function sendAlertEvents(events) {
     'INSERT INTO alert_log (profile_id, message, ts, emailed) VALUES (?, ?, ?, ?)'
   );
 
+  const insAdvice = db.prepare('INSERT INTO advice_log (profile_id, ts, symbol, side, quantity) VALUES (?, ?, ?, ?, ?)');
   for (const event of events) {
     const { profile, alerts } = event;
     if (alerts.length === 0) continue;
+    // Structured advice for Phase 6 T2 attribution matching: a synced fill
+    // that matches a profile's own recent advice (symbol+side, size ±15%,
+    // within 36h) auto-attributes to it. Pruned to a rolling week.
+    for (const a of alerts) {
+      if (a.asset && a.asset.symbol && a.action && Number(a.quantity) > 0) {
+        insAdvice.run(profile.id, Date.now(), String(a.asset.symbol).toLowerCase(), a.action, Number(a.quantity));
+      }
+    }
+    db.prepare('DELETE FROM advice_log WHERE ts < ?').run(Date.now() - 7 * 86_400_000);
     const text = buildText(event);
     const recipients = profile.alerts_enabled ? parseRecipients(profile) : [];
     const emails = recipients.map((r) => (r.email || '').trim()).filter(Boolean);

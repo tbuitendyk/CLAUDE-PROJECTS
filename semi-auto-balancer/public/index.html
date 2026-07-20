@@ -238,9 +238,69 @@
                     venue's real timestamp (not counted as gains). Dismiss if you already recorded it manually.</p>
                   <div class="table-wrap">
                     <table id="x-pending-table">
-                      <thead><tr><th title="Venue timestamp of the detected transfer">When</th><th title="deposit or withdrawal, as reported by the venue ledger">Kind</th><th title="Detected amount — confirming splices it into the track record with this exact figure">Amount</th><th title="Confirm (splice) or dismiss (already recorded manually)"></th></tr></thead>
+                      <thead><tr><th title="Venue timestamp of the detected transfer">When</th><th title="deposit or withdrawal, as reported by the venue ledger">Kind</th><th title="Detected amount — confirming splices it into the track record with this exact figure">Amount</th><th title="Which linked profile receives the flow (multi-profile accounts; pre-set to the best guess)">Apply to</th><th title="Confirm (splice) or dismiss (already recorded manually)"></th></tr></thead>
                       <tbody></tbody>
                     </table>
+                  </div>
+                </div>
+
+                <div id="sub-section">
+                  <h4>Sub-accounts <span class="grid-note">— several profiles trading independently inside this one account</span></h4>
+                  <div id="sub-off">
+                    <p class="muted">Run a small real-allocation trial without betting the account: link a second
+                      profile to this account and an <strong>Unallocated</strong> shell appears — the visible pool of
+                      assets not assigned to any strategy, from which new profiles are funded. Fills are attributed
+                      automatically (unique holder, or a match to a profile's own advice: ±15% within 36h); anything
+                      ambiguous waits in an inbox. Every applied transaction can be rewound with one click.</p>
+                    <div class="inline">
+                      <select id="sub-link-profile"></select>
+                      <button id="sub-link" title="Link the selected profile to this account (creates the Unallocated shell)">Link profile to this account</button>
+                      <span id="sub-status" class="muted"></span>
+                    </div>
+                  </div>
+                  <div id="sub-on" class="hidden">
+                    <div id="sub-profiles" class="muted"></div>
+                    <div class="inline" style="margin-top:.35rem">
+                      <select id="sub-link-profile2"></select>
+                      <button id="sub-link2" title="Link another profile to this account">Link another profile</button>
+                      <span id="sub-status2" class="muted"></span>
+                    </div>
+                    <div class="table-wrap" id="sub-recon-wrap" style="margin-top:.5rem">
+                      <table id="sub-recon">
+                        <thead><tr>
+                          <th title="Venue asset code">Asset</th>
+                          <th class="num" title="The venue's actual balance (ground truth)">Physical</th>
+                          <th class="num" title="Sum of this asset across every linked profile">Σ virtual</th>
+                          <th class="num" title="Detected flows awaiting confirmation">Pending</th>
+                          <th class="num" title="Queued fills awaiting attribution">Queued</th>
+                          <th class="num" title="physical − (virtual + pending + queued); dust snaps to the shell, larger residuals are flagged">Residual</th>
+                        </tr></thead><tbody></tbody>
+                      </table>
+                    </div>
+                    <div id="sub-inbox-wrap" class="hidden" style="margin-top:.6rem">
+                      <h4>Attribution inbox <span class="grid-note">— fills that need a human to say whose they are</span></h4>
+                      <div class="table-wrap"><table id="sub-inbox">
+                        <thead><tr><th>When</th><th>Fill</th><th title="Why it could not be attributed automatically">Why here</th><th title="Assign to this profile (pre-set to the best guess)">Assign to</th><th></th></tr></thead>
+                        <tbody></tbody></table></div>
+                    </div>
+                    <details style="margin-top:.6rem">
+                      <summary class="muted" style="cursor:pointer">Carve out (virtual transfer between linked profiles — no real trade)</summary>
+                      <div class="inline" style="margin-top:.4rem">
+                        <label class="muted">from <select id="carve-from"></select></label>
+                        <label class="muted">to <select id="carve-to"></select></label>
+                      </div>
+                      <div id="carve-items" style="margin-top:.3rem"></div>
+                      <div class="inline" style="margin-top:.3rem">
+                        <button id="carve-go" title="Executes paired flow splices at live prices — both track records stay continuous">Transfer</button>
+                        <span id="carve-status" class="muted"></span>
+                      </div>
+                    </details>
+                    <details style="margin-top:.6rem" open>
+                      <summary class="muted" style="cursor:pointer">Transaction log — everything applied, each row rewindable once</summary>
+                      <div class="table-wrap"><table id="sub-log">
+                        <thead><tr><th>When</th><th>Profile</th><th>What happened</th><th></th></tr></thead>
+                        <tbody></tbody></table></div>
+                    </details>
                   </div>
                 </div>
               </div>

@@ -54,6 +54,11 @@ function getAccount(accountId) {
 }
 
 function getAccountForProfile(profileId) {
+  // Phase 6: linked profiles (profiles.exchange_account_id) resolve first —
+  // several profiles may share one account; the legacy owner-column lookup
+  // stays as the fallback for unmigrated rows.
+  const p = db.prepare('SELECT exchange_account_id FROM profiles WHERE id = ?').get(profileId);
+  if (p && p.exchange_account_id) return getAccount(p.exchange_account_id);
   return db.prepare('SELECT * FROM exchange_accounts WHERE profile_id = ?').get(profileId);
 }
 
@@ -95,24 +100,53 @@ function createAccount(profileId, venue, apiKey, apiSecret) {
 // Apply one pending flow: the exact-amount splice, stamped with the venue's
 // real event timestamp. Throws when the flow's currency has no matching
 // asset yet (add the asset first, then confirm).
-async function applyPendingFlow(flowId) {
+async function applyPendingFlow(flowId, overrideProfileId = null) {
   const flow = db.prepare("SELECT * FROM pending_flows WHERE id = ? AND status = 'pending'").get(flowId);
   if (!flow) throw new Error('pending flow not found (already applied or dismissed?)');
-  const assets = db.prepare('SELECT * FROM assets WHERE profile_id = ?').all(flow.profile_id);
-  const asset = flow.asset_id
-    ? assets.find((a) => a.id === flow.asset_id)
-    : matchVenueAsset(assets, flow.code);
+  // Phase 6: the inbox may redirect a flow to a different LINKED profile at
+  // apply time (the stored profile_id is only the suggestion).
+  let targetProfileId = flow.profile_id;
+  if (overrideProfileId != null && Number(overrideProfileId) !== flow.profile_id) {
+    const target = db.prepare('SELECT * FROM profiles WHERE id = ?').get(overrideProfileId);
+    if (!target || target.exchange_account_id !== flow.account_id) {
+      throw new Error('target profile is not linked to this account');
+    }
+    targetProfileId = target.id;
+  }
+  const assets = db.prepare('SELECT * FROM assets WHERE profile_id = ?').all(targetProfileId);
+  let asset =
+    (targetProfileId === flow.profile_id && flow.asset_id ? assets.find((a) => a.id === flow.asset_id) : null) ||
+    matchVenueAsset(assets, flow.code);
   if (!asset) {
-    throw new Error(`no asset matches "${flow.code.toUpperCase()}" — add it to the profile, then confirm`);
+    // A linked sibling that knows the asset donates the identity (target 0).
+    const donor = db
+      .prepare(
+        `SELECT a.* FROM assets a JOIN profiles p ON p.id = a.profile_id
+         WHERE p.exchange_account_id = ? AND LOWER(a.symbol) = LOWER(?) LIMIT 1`
+      )
+      .get(flow.account_id, flow.code);
+    if (!donor) throw new Error(`no asset matches "${flow.code.toUpperCase()}" — add it to the profile, then confirm`);
+    asset = require('./subaccounts').ensureAsset(targetProfileId, donor);
   }
   const account = getAccount(flow.account_id);
   await recordFlow(
-    flow.profile_id,
+    targetProfileId,
     [{ asset_id: asset.id, delta: flow.amount }],
     `${account ? account.venue : 'exchange'} ${flow.kind} (synced, ${new Date(flow.ts).toISOString()})`,
     { ts: flow.ts }
   );
-  db.prepare("UPDATE pending_flows SET status = 'applied', asset_id = ? WHERE id = ?").run(asset.id, flowId);
+  db.prepare("UPDATE pending_flows SET status = 'applied', asset_id = ?, profile_id = ? WHERE id = ?").run(
+    asset.id, targetProfileId, flowId
+  );
+  require('./subaccounts').logTxn({
+    accountId: flow.account_id,
+    profileId: targetProfileId,
+    kind: 'flow-apply',
+    ref: flow.venue_ref,
+    deltas: [{ asset_id: asset.id, symbol: asset.symbol, delta: flow.amount }],
+    note: `${flow.kind} of ${flow.amount} ${asset.symbol.toUpperCase()} applied to "${db.prepare('SELECT name FROM profiles WHERE id = ?').get(targetProfileId).name}"`,
+    ts: Date.now(),
+  });
   return { flowId, symbol: asset.symbol, delta: flow.amount };
 }
 
@@ -128,6 +162,13 @@ function dismissPendingFlow(flowId) {
 async function syncAccount(accountId, { client = null } = {}) {
   const account = getAccount(accountId);
   if (!account) throw new Error('exchange account not found');
+  // Phase 6: two or more linked profiles → the account-level multi path
+  // (attribution + shell). One linked profile keeps THIS original path,
+  // byte-for-byte — migration is a no-op until a second profile links.
+  const linked = db
+    .prepare('SELECT * FROM profiles WHERE exchange_account_id = ? ORDER BY is_shell, id')
+    .all(accountId);
+  if (linked.length > 1) return syncAccountMulti(account, client, linked);
   const profile = db.prepare('SELECT * FROM profiles WHERE id = ?').get(account.profile_id);
   if (!profile) throw new Error('profile not found');
   const c = client || makeClientFor(account);
@@ -358,6 +399,284 @@ async function syncAccount(accountId, { client = null } = {}) {
       Date.now(),
       err.message,
       accountId
+    );
+    throw err;
+  }
+}
+
+// ---- Phase 6: account-level sync for MULTI-profile accounts -----------------
+// Same venue I/O as the single path; the difference is WHO owns each event:
+// trades attribute across linked profiles (T1 unique holder / T2 advice
+// match / T3 inbox — queued fills apply nothing until assigned), flows get
+// a suggested target, and the reconcile invariant runs account-wide with
+// the SHELL absorbing dust so strategy track records never inherit noise.
+async function syncAccountMulti(account, client, profiles) {
+  const sub = require('./subaccounts');
+  const c = client || makeClientFor(account);
+  const shell = profiles.find((p) => p.is_shell) || null;
+  const summary = {
+    venue: account.venue,
+    multi: true,
+    linkedProfiles: profiles.length,
+    tradesApplied: 0,
+    tradesQueued: 0,
+    attribution: { t1: 0, t2: 0, queued: 0 },
+    tradeDeltas: {},
+    newPendingFlows: 0,
+    autoAppliedFlows: 0,
+    adopted: [],
+    snapped: [],
+    unexplained: [],
+    unmapped: [],
+    perCode: [],
+    rearmed: false,
+  };
+
+  try {
+    const capability = { trades: 'ok', flows: 'ok' };
+    const balances = await c.fetchBalances();
+    let trades = [];
+    let flows = [];
+    try {
+      trades = await c.fetchTradesSince(account.last_trade_ts);
+    } catch (err) {
+      capability.trades = err.message;
+    }
+    try {
+      flows = await c.fetchFlowsSince(account.last_ledger_ts);
+    } catch (err) {
+      capability.flows = err.message;
+    }
+    summary.capability = capability;
+
+    const assetsOf = new Map(
+      profiles.map((p) => [p.id, db.prepare('SELECT * FROM assets WHERE profile_id = ?').all(p.id)])
+    );
+    const holdersOf = (code) =>
+      profiles
+        .map((p) => {
+          const a = matchVenueAsset(assetsOf.get(p.id), code);
+          return a ? { profile: p, asset: a } : null;
+        })
+        .filter(Boolean);
+
+    let maxTradeTs = account.last_trade_ts;
+    let maxLedgerTs = account.last_ledger_ts;
+    const newPendingIds = [];
+    const adoptTargets = []; // {profileId, asset, delta}
+    const touchedProfiles = new Set();
+
+    db.transaction(() => {
+      const qty = new Map(); // asset_id -> live quantity during this pass
+      for (const rows of assetsOf.values()) for (const a of rows) qty.set(a.id, a.quantity);
+      const updQty = db.prepare('UPDATE assets SET quantity = ? WHERE id = ?');
+      const insTrade = db.prepare(
+        `INSERT OR IGNORE INTO exchange_trades
+           (account_id, profile_id, venue_trade_id, ts, pair, side, price, cost, fee, fee_currency, fee_pct, deltas, raw)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      );
+
+      // 1. Trades: attribute, then apply (or queue applying nothing).
+      for (const t of trades) {
+        if (t.ts > maxTradeTs) maxTradeTs = t.ts;
+        const baseCode = String((t.pair || '').split(/[_/]/)[0] || (t.deltas[0] && t.deltas[0].code) || '').toLowerCase();
+        const baseDelta = (t.deltas.find((d) => d.code === baseCode) || t.deltas[0] || { delta: 0 }).delta;
+        const decision = sub.attributeTrade({
+          trade: { ts: t.ts, side: t.side, baseCode, baseDelta },
+          holders: holdersOf(baseCode),
+          shell,
+        });
+        const inserted = insTrade.run(
+          account.id,
+          decision.profileId ?? null,
+          t.id, t.ts, t.pair || null, t.side || null, t.price ?? null, t.cost ?? null,
+          t.fee ?? null, t.feeCurrency || null, t.feePct ?? null,
+          JSON.stringify(t.deltas), JSON.stringify(t.raw ?? null)
+        );
+        if (inserted.changes === 0) continue; // replay of an already-seen fill
+
+        if (decision.profileId) {
+          const target = profiles.find((p) => p.id === decision.profileId);
+          const applied = [];
+          for (const d of t.deltas) {
+            let asset = matchVenueAsset(assetsOf.get(target.id), d.code);
+            if (!asset) {
+              const donor = holdersOf(d.code)[0];
+              if (!donor) {
+                summary.unmapped.push(d.code);
+                continue;
+              }
+              asset = sub.ensureAsset(target.id, donor.asset);
+              assetsOf.get(target.id).push(asset);
+              qty.set(asset.id, asset.quantity);
+            }
+            const next = Math.max(0, (qty.get(asset.id) || 0) + d.delta);
+            qty.set(asset.id, next);
+            applied.push({ asset_id: asset.id, symbol: asset.symbol, delta: d.delta });
+            summary.tradeDeltas[asset.symbol] = (summary.tradeDeltas[asset.symbol] || 0) + d.delta;
+          }
+          summary.tradesApplied++;
+          summary.attribution[decision.tier]++;
+          touchedProfiles.add(target.id);
+          sub.logTxn({
+            accountId: account.id,
+            profileId: target.id,
+            kind: `trade-auto-${decision.tier}`,
+            ref: t.id,
+            deltas: applied,
+            note:
+              `${(t.side || 'trade').toUpperCase()} ${t.pair || baseCode} → "${target.name}" ` +
+              (decision.tier === 't2' ? '(auto: matched its own advice)' : target.is_shell ? '(unallocated asset)' : '(only holder)'),
+            ts: t.ts,
+          });
+        } else {
+          db.prepare(
+            `INSERT OR IGNORE INTO attribution_queue
+               (account_id, kind, venue_ref, ts, pair, side, price, deltas, suggested_profile_id, reason)
+             VALUES (?, 'trade', ?, ?, ?, ?, ?, ?, ?, ?)`
+          ).run(
+            account.id, t.id, t.ts, t.pair || null, t.side || null, t.price ?? null,
+            JSON.stringify(t.deltas), decision.suggestedProfileId, decision.queue
+          );
+          summary.tradesQueued++;
+          summary.attribution.queued++;
+        }
+      }
+
+      // 2. Flows: pending as always; profile_id = the SUGGESTED target
+      // (unique holder, else the shell) — changeable at apply time.
+      const insFlow = db.prepare(
+        `INSERT OR IGNORE INTO pending_flows
+           (account_id, profile_id, venue_ref, ts, kind, code, asset_id, amount, raw)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      );
+      for (const f of flows) {
+        if (f.ts > maxLedgerTs) maxLedgerTs = f.ts;
+        if (!(Math.abs(f.amount) > 0)) continue;
+        const holders = holdersOf(f.code);
+        const suggested = holders.length === 1 ? holders[0] : null;
+        const targetProfileId = suggested ? suggested.profile.id : (shell || profiles[0]).id;
+        const r = insFlow.run(
+          account.id, targetProfileId, f.id, f.ts, f.kind, f.code,
+          suggested ? suggested.asset.id : null, f.amount, JSON.stringify(f.raw ?? null)
+        );
+        if (r.changes > 0) {
+          summary.newPendingFlows++;
+          newPendingIds.push(r.lastInsertRowid);
+        }
+      }
+
+      // 3. Account-wide reconcile: physical = Σ profiles + pending + queued.
+      const pendingByCode = new Map();
+      for (const p of db
+        .prepare("SELECT code, amount FROM pending_flows WHERE account_id = ? AND status = 'pending'")
+        .all(account.id)) {
+        const code = String(p.code).toLowerCase();
+        pendingByCode.set(code, (pendingByCode.get(code) || 0) + p.amount);
+      }
+      const queuedByCode = new Map();
+      for (const q of db
+        .prepare("SELECT deltas FROM attribution_queue WHERE account_id = ? AND status = 'pending'")
+        .all(account.id)) {
+        for (const d of JSON.parse(q.deltas)) {
+          const code = String(d.code).toLowerCase();
+          queuedByCode.set(code, (queuedByCode.get(code) || 0) + d.delta);
+        }
+      }
+      for (const b of balances) {
+        const holders = holdersOf(b.code);
+        if (holders.length === 0) {
+          if (b.amount > 1e-8) summary.unmapped.push(b.code);
+          continue;
+        }
+        const virtual = holders.reduce((s, h) => s + (qty.get(h.asset.id) || 0), 0);
+        const pend = pendingByCode.get(b.code) || 0;
+        const queued = queuedByCode.get(b.code) || 0;
+        if (virtual === 0 && !pend && !queued && b.amount > 0 && holders.length === 1) {
+          adoptTargets.push({ profileId: holders[0].profile.id, asset: holders[0].asset, delta: b.amount, symbol: holders[0].asset.symbol });
+          continue;
+        }
+        const expected = virtual + pend + queued;
+        const residual = b.amount - expected;
+        const tolerance = Math.max(RESIDUAL_ABS, RESIDUAL_REL * Math.max(Math.abs(b.amount), 1e-8));
+        if (Math.abs(residual) <= tolerance) {
+          if (residual !== 0 && shell) {
+            // Dust lands in the shell — strategy track records never absorb
+            // noise they didn't earn.
+            let sAsset = matchVenueAsset(assetsOf.get(shell.id), b.code);
+            if (!sAsset) {
+              sAsset = sub.ensureAsset(shell.id, holders[0].asset);
+              assetsOf.get(shell.id).push(sAsset);
+              qty.set(sAsset.id, sAsset.quantity);
+            }
+            const next = Math.max(0, (qty.get(sAsset.id) || 0) + residual);
+            summary.snapped.push({ symbol: sAsset.symbol, from: qty.get(sAsset.id) || 0, to: next });
+            qty.set(sAsset.id, next);
+            sub.logTxn({
+              accountId: account.id, profileId: shell.id, kind: 'snap', ref: null,
+              deltas: [{ asset_id: sAsset.id, symbol: sAsset.symbol, delta: residual }],
+              note: `dust snap ${residual > 0 ? '+' : ''}${residual} ${sAsset.symbol.toUpperCase()} → shell`,
+            });
+          }
+        } else {
+          summary.unexplained.push({ code: b.code, residual });
+        }
+        summary.perCode.push({ code: b.code, physical: b.amount, virtual, pending: pend, queued, residual });
+      }
+
+      // Persist every touched quantity.
+      for (const rows of assetsOf.values()) {
+        for (const a of rows) {
+          const next = qty.get(a.id);
+          if (next != null && next !== a.quantity) updQty.run(next, a.id);
+        }
+      }
+
+      summary.unmapped = [...new Set(summary.unmapped)];
+      db.prepare(
+        `UPDATE exchange_accounts SET last_trade_ts = ?, last_ledger_ts = ?, last_sync_at = ?,
+           last_sync_status = 'ok', last_sync_note = ? WHERE id = ?`
+      ).run(
+        maxTradeTs, maxLedgerTs, Date.now(),
+        JSON.stringify({ multi: true, unmapped: summary.unmapped, unexplained: summary.unexplained, capability, perCode: summary.perCode }),
+        account.id
+      );
+    })();
+
+    // Baseline adoptions splice via recordFlow (live prices → post-commit).
+    for (const t of adoptTargets) {
+      try {
+        await recordFlow(t.profileId, [{ asset_id: t.asset.id, delta: t.delta }], `${account.venue} baseline adoption (synced balances)`);
+        summary.adopted.push({ symbol: t.symbol, quantity: t.delta });
+        sub.logTxn({
+          accountId: account.id, profileId: t.profileId, kind: 'adopt', ref: null,
+          deltas: [{ asset_id: t.asset.id, symbol: t.symbol, delta: t.delta }],
+          note: `adopted ${t.delta} ${t.symbol.toUpperCase()} (venue balance, sole holder)`,
+        });
+      } catch (err) {
+        console.error(`baseline adoption failed for account ${account.id}:`, err.message);
+        summary.adoptFailed = err.message;
+      }
+    }
+
+    if (account.auto_flows) {
+      for (const id of newPendingIds) {
+        try {
+          await applyPendingFlow(id);
+          summary.autoAppliedFlows++;
+        } catch (err) {
+          console.error(`auto-apply flow ${id} failed:`, err.message);
+        }
+      }
+    }
+
+    for (const pid of touchedProfiles) rearmAfterUpload(pid);
+    summary.rearmed = touchedProfiles.size > 0;
+    summary.feeObserved = observedFee(account.id);
+    return summary;
+  } catch (err) {
+    db.prepare('UPDATE exchange_accounts SET last_sync_at = ?, last_sync_status = ? WHERE id = ?').run(
+      Date.now(), err.message, account.id
     );
     throw err;
   }
