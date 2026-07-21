@@ -37,6 +37,13 @@ function makeClientFor(account) {
   return venue.makeClient({ apiKey: account.api_key, apiSecret: account.api_secret });
 }
 
+// Fiat codes the sync may SYNTHESIZE an asset row for when a trade leg
+// settles in a currency no profile tracks yet (observed live 2026-07-21:
+// BUY legs settled in USD were silently dropped — the cash vanished from
+// the virtual books). Cash must always have a home; unknown NON-fiat codes
+// queue the whole fill for a human instead.
+const SYNTH_FIATS = new Set(['usd', 'eur', 'mxn', 'cad', 'gbp', 'ars', 'brl', 'cop', 'chf', 'jpy', 'aud']);
+
 // Venue currency code -> profile asset, mirroring the screenshot-import
 // matching: symbol first, fiat:<code> second, USD's pseudo/tether forms last.
 function matchVenueAsset(assets, code) {
@@ -481,11 +488,31 @@ async function syncAccountMulti(account, client, profiles) {
         if (t.ts > maxTradeTs) maxTradeTs = t.ts;
         const baseCode = String((t.pair || '').split(/[_/]/)[0] || (t.deltas[0] && t.deltas[0].code) || '').toLowerCase();
         const baseDelta = (t.deltas.find((d) => d.code === baseCode) || t.deltas[0] || { delta: 0 }).delta;
-        const decision = sub.attributeTrade({
+        let decision = sub.attributeTrade({
           trade: { ts: t.ts, side: t.side, baseCode, baseDelta },
           holders: holdersOf(baseCode),
           shell,
         });
+        // EVERY leg must have a home BEFORE anything applies: a leg in an
+        // unknown NON-fiat currency demotes the whole fill to the inbox —
+        // a partially-applied trade silently destroys money on the books.
+        // (Fiat legs synthesize their asset row at apply time below.)
+        if (decision.profileId) {
+          const targetAssets = assetsOf.get(decision.profileId);
+          const stranger = t.deltas.find(
+            (d) =>
+              !matchVenueAsset(targetAssets, d.code) &&
+              !holdersOf(d.code)[0] &&
+              !SYNTH_FIATS.has(String(d.code).toLowerCase())
+          );
+          if (stranger) {
+            summary.unmapped.push(stranger.code);
+            decision = {
+              queue: `settles in unmapped currency "${stranger.code}" — add that asset to a linked profile, then assign`,
+              suggestedProfileId: decision.profileId,
+            };
+          }
+        }
         const inserted = insTrade.run(
           account.id,
           decision.profileId ?? null,
@@ -502,11 +529,15 @@ async function syncAccountMulti(account, client, profiles) {
             let asset = matchVenueAsset(assetsOf.get(target.id), d.code);
             if (!asset) {
               const donor = holdersOf(d.code)[0];
-              if (!donor) {
-                summary.unmapped.push(d.code);
-                continue;
-              }
-              asset = sub.ensureAsset(target.id, donor.asset);
+              // No donor anywhere: the pre-scan guarantees this is a known
+              // fiat — synthesize its row so the cash leg lands on the books
+              // instead of vanishing (the old `continue` here dropped it).
+              asset = donor
+                ? sub.ensureAsset(target.id, donor.asset)
+                : sub.ensureAsset(target.id, {
+                    coingecko_id: `fiat:${String(d.code).toLowerCase()}`,
+                    symbol: String(d.code).toLowerCase(),
+                  });
               assetsOf.get(target.id).push(asset);
               qty.set(asset.id, asset.quantity);
             }

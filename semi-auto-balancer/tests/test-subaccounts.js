@@ -252,6 +252,55 @@ const client = {
   try { await sub.carveOut(account.id, 1, shell.id, [{ asset_id: btcAsset.id, qty: 99 }]); } catch (e) { threw = /available/.test(e.message); }
   ok(threw, 'over-carving refused with the available amount');
 
+  // ---- every trade leg lands on the books (the vanished-USD incident) -------
+  // A fill settling in a fiat no profile tracks must SYNTHESIZE the fiat row
+  // on the attributed profile (cash never vanishes); a fill settling in an
+  // unknown NON-fiat currency must queue WHOLE instead of half-applying.
+  {
+    db.prepare(
+      "INSERT INTO assets (profile_id, coingecko_id, symbol, quantity, target_pct, is_index, basket_units) VALUES (2, 'litecoin', 'ltc', 1, 0, 0, 0)"
+    ).run();
+    // Physical balances mirror the virtual books post-trade so reconcile is
+    // quiet and the assertions test ONLY the leg handling.
+    const groupBalances = (extra = {}) => {
+      const rows = db
+        .prepare(
+          `SELECT LOWER(a.symbol) code, SUM(a.quantity) s FROM assets a JOIN profiles p ON p.id = a.profile_id
+           WHERE p.exchange_account_id = ? GROUP BY LOWER(a.symbol)`
+        )
+        .all(account.id);
+      const by = new Map(rows.map((r) => [r.code, r.s]));
+      for (const [c, d] of Object.entries(extra)) by.set(c, (by.get(c) || 0) + d);
+      return [...by.entries()].filter(([, v]) => v > 1e-12).map(([code, amount]) => ({ code, amount }));
+    };
+    const tF = now + 90_000;
+    VENUE.trades = [
+      { id: 'tr-usd-leg', ts: tF, pair: 'ltc_usd', side: 'sell', price: 100, deltas: [
+        { code: 'ltc', delta: -0.5 }, { code: 'usd', delta: 2500 }] },
+    ];
+    VENUE.balances = groupBalances({ ltc: -0.5, usd: 2500 });
+    const sF = await sync.syncAccount(account.id, { client });
+    ok(sF.tradesApplied >= 1, 'fiat-settled fill applied (not dropped, not queued)');
+    ok(approx(qtyOf(2, 'ltc'), 0.5, 1e-9), 'base leg debited on the unique holder');
+    const usdRow = db.prepare("SELECT * FROM assets WHERE profile_id = 2 AND coingecko_id = 'fiat:usd'").get();
+    ok(usdRow && approx(usdRow.quantity, 2500, 1e-9), 'the USD cash leg SYNTHESIZED its fiat row and landed on the books');
+
+    const tG = tF + 1000;
+    VENUE.trades = [
+      { id: 'tr-zzz-leg', ts: tG, pair: 'ltc_zzz', side: 'sell', price: 1, deltas: [
+        { code: 'ltc', delta: -0.1 }, { code: 'zzz', delta: 10 }] },
+    ];
+    VENUE.balances = groupBalances({ ltc: -0.1 });
+    const sG = await sync.syncAccount(account.id, { client });
+    ok(sG.tradesQueued >= 1, 'unknown-currency fill queued whole');
+    ok(approx(qtyOf(2, 'ltc'), 0.5, 1e-9), 'NOTHING applied from the queued fill (no half-application)');
+    ok(db.prepare("SELECT * FROM assets WHERE symbol = 'zzz'").get() === undefined, 'no phantom asset row created');
+    const qz = db
+      .prepare("SELECT * FROM attribution_queue WHERE venue_ref = 'tr-zzz-leg'")
+      .get();
+    ok(qz && qz.status === 'pending' && /zzz/.test(qz.reason || ''), 'inbox row names the unmapped currency');
+  }
+
   // ---- delete-asset guard (the live 15,000-MXN vanish, 2026-07-21) ----------
   // Deleting a funded asset on a grouped sub-account must return the balance
   // to the shell (logged carve), never erase it; a funded SHELL asset must
