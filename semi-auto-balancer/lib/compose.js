@@ -368,22 +368,27 @@ function qualityRank(a, b) {
 // result stays small; the weededForQuality count still reports the true total.
 const HIDDEN_CAP = 40;
 
-// Cooperative CPU throttle for the search loops. setImmediate alone never
-// idles — it drains the event queue but keeps the core pinned at 100%,
-// starving polls, account syncs and the UI for the whole run. Every ~90ms
-// of work the throttle takes a real ~10ms sleep: ≈10% CPU headroom for the
-// rest of the service, at ~11% wall-clock cost on the search itself.
+// Cooperative CPU throttle + pause gate for the search loops. setImmediate
+// alone never idles — it drains the event queue but keeps the core pinned at
+// 100%, starving polls, account syncs and the UI for the whole run. The
+// yielder runs a duty cycle sized by cpuPct (e.g. 90 → ~10ms real sleep per
+// ~90ms of work; 100 → no sleep), and awaits the job's pause gate at every
+// yield so ⏸ Pause parks the search in place within a fraction of a second.
 // Timing-only — sampling order and seeds are untouched (results identical).
 const THROTTLE_WORK_MS = 90;
-const THROTTLE_SLEEP_MS = 10;
-function makeYielder() {
+const CPU_PCT_DEFAULT = 90;
+function makeYielder(cpuPct = CPU_PCT_DEFAULT, pauseGate = null) {
+  const pct = Math.min(100, Math.max(50, Number(cpuPct) || CPU_PCT_DEFAULT));
+  const sleepMs = pct >= 100 ? 0 : Math.round((THROTTLE_WORK_MS * (100 - pct)) / pct);
   let lastSleep = Date.now();
-  return () => {
-    if (Date.now() - lastSleep >= THROTTLE_WORK_MS) {
-      lastSleep = Date.now() + THROTTLE_SLEEP_MS;
-      return new Promise((r) => setTimeout(r, THROTTLE_SLEEP_MS));
+  return async () => {
+    if (pauseGate) await pauseGate();
+    if (sleepMs > 0 && Date.now() - lastSleep >= THROTTLE_WORK_MS) {
+      lastSleep = Date.now() + sleepMs;
+      await new Promise((r) => setTimeout(r, sleepMs));
+    } else {
+      await new Promise((r) => setImmediate(r));
     }
-    return new Promise((r) => setImmediate(r));
   };
 }
 
@@ -425,6 +430,8 @@ async function searchCompositions({
   finalists,
   benchmark = null, // BTC-aligned {ts,usd_price}[] over `bars`, enables regime mode
   seed = 42,
+  cpuPct = CPU_PCT_DEFAULT, // duty-cycle throttle (50–100; 100 = no sleep)
+  pauseGate = null, // job runner's cooperative pause gate
   setProgress = () => {},
 } = {}) {
   const sized = funnelSizes(samples);
@@ -449,7 +456,7 @@ async function searchCompositions({
   const pinnedSet = new Set(pinnedIds);
   if (pinnedIds.length) maxAssets = Math.max(maxAssets, pinnedIds.length);
   // Long runs must not starve the event loop (polls, syncs, the UI itself).
-  const yieldLoop = makeYielder();
+  const yieldLoop = makeYielder(cpuPct, pauseGate);
 
   // Untouched holdout tail (both modes) + the in-sample region.
   const holdoutN = Math.max(30, Math.floor(bars.length * HOLDOUT_FRAC));
@@ -815,6 +822,8 @@ async function searchCurrentSet({
   finalists,
   benchmark = null,
   seed = 42,
+  cpuPct = CPU_PCT_DEFAULT,
+  pauseGate = null,
   setProgress = () => {},
 } = {}) {
   const costs = { feePct, spreadPct, lagHours };
@@ -828,7 +837,7 @@ async function searchCurrentSet({
       `${n} assets can't each hold ≥${MINU}% (that needs ${n * MINU}% > 100%) — remove an asset from the profile first`
     );
   }
-  const yieldLoop = makeYielder();
+  const yieldLoop = makeYielder(cpuPct, pauseGate);
 
   const toAssets = (units) =>
     assetSet.map((a) => ({ coingecko_id: a.id, symbol: a.symbol, target_pct: units.get(a.id), is_index: a.isIndex ? 1 : 0 }));
@@ -1228,8 +1237,8 @@ function chooseWindowStart(earliests, requestedStartMs, nowMs) {
 // Current-set (allocation × sensitivity) IO wrapper: keep the EXACT current
 // holdings (index + every position, frozen included — this re-weights what
 // you already own), fetch their history, and search the split × sensitivity.
-async function runCurrentSetSearch(profileId, ctx, setProgress = () => {}) {
-  const { profile, assets, tetherAsset, days, samples, seed, idealTether = false } = ctx;
+async function runCurrentSetSearch(profileId, ctx, setProgress = () => {}, pauseGate = null) {
+  const { profile, assets, tetherAsset, days, samples, seed, idealTether = false, cpuPct } = ctx;
   const nowMs = Date.now();
 
   // The set: the index + every held/targeted position. No scanner candidates,
@@ -1353,6 +1362,8 @@ async function runCurrentSetSearch(profileId, ctx, setProgress = () => {}) {
     spreadPct: profile.spread_pct,
     samples,
     seed,
+    cpuPct,
+    pauseGate,
     setProgress,
   });
   result.universe = {
@@ -1373,7 +1384,7 @@ async function runCurrentSetSearch(profileId, ctx, setProgress = () => {}) {
   return { result, params: { days, samples, seed, currentSet: true, idealTether: tetherIdealized } };
 }
 
-async function runComposeSearch(profileId, opts = {}, setProgress = () => {}) {
+async function runComposeSearch(profileId, opts = {}, setProgress = () => {}, pauseGate = null) {
   const profile = db.prepare('SELECT * FROM profiles WHERE id = ?').get(profileId);
   if (!profile) throw new Error('profile not found');
   const nowMs = Date.now();
@@ -1388,12 +1399,20 @@ async function runComposeSearch(profileId, opts = {}, setProgress = () => {}) {
   const candidateCount = Number(opts.candidates) > 0 ? Math.min(Number(opts.candidates), 80) : 60;
   const seed = Number(opts.seed) || (Date.now() % 2 ** 31);
   const idealTether = !!opts.idealTether;
+  // User-selectable duty cycle (50–100, clamped in makeYielder); undefined
+  // falls through to the 90% default.
+  const cpuPct = Number(opts.cpu) > 0 ? Number(opts.cpu) : undefined;
 
   // Current-set mode branches here: it keeps the exact holdings and searches
   // only the split × sensitivity, so it skips the whole candidate-discovery /
   // venue-filter machinery below.
   if (opts.currentSet) {
-    return runCurrentSetSearch(profileId, { profile, assets, tetherAsset, days, samples, seed, idealTether }, setProgress);
+    return runCurrentSetSearch(
+      profileId,
+      { profile, assets, tetherAsset, days, samples, seed, idealTether, cpuPct },
+      setProgress,
+      pauseGate
+    );
   }
 
   // heldOnly (drops-allowed) = search subsets/weights of the CURRENT holdings
@@ -1610,6 +1629,8 @@ async function runComposeSearch(profileId, opts = {}, setProgress = () => {}) {
     maxAssets: heldOnly ? coveredCandidates.length : undefined,
     pinned: pinnedInSearch.map((c) => c.id),
     seed,
+    cpuPct,
+    pauseGate,
     setProgress,
   });
   const account = heldOnly ? getAccountForProfile(profileId) : null;

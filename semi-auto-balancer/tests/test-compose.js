@@ -366,6 +366,17 @@ const IDS = [...seriesById.keys()];
   ok(fq.finalists === 30 && fi.finalists === 30, 'top 30 rendered at every tier');
   ok(r.funnel && r.funnel.fullTop === opts.fullTop, 'result echoes the funnel sizes actually used');
 
+  // --- cpu duty-cycle + pause gate are timing-only: identical results at
+  // any setting, and the search awaits the gate at its yield points ---
+  let gateCalls = 0;
+  const cpuA = await compose.searchCompositions({ ...opts, samples: 300, cpuPct: 100, pauseGate: async () => { gateCalls++; } });
+  const cpuB = await compose.searchCompositions({ ...opts, samples: 300, cpuPct: 50 });
+  ok(
+    JSON.stringify(cpuA.mixes[0].assets) === JSON.stringify(cpuB.mixes[0].assets),
+    'cpu throttle setting never changes search results'
+  );
+  ok(gateCalls > 0, `the search awaits the pause gate at its yield points (${gateCalls} calls)`);
+
   // --- determinism under a fixed seed ---
   const r2 = await compose.searchCompositions(opts);
   ok(

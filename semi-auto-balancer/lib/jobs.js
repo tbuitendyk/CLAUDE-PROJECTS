@@ -40,9 +40,21 @@ function startJob(kind, profileId, fn) {
     if (Number.isFinite(pct)) job.progressPct = Math.max(0, Math.min(100, pct));
   };
 
+  // Cooperative PAUSE: job code awaits this gate at its yield points; while
+  // pauseRequested it parks (holding its place — nothing is lost), waking
+  // ~150ms after resume. Cancel-while-paused releases the gate so the next
+  // setProgress can throw the cancellation as usual.
+  const pauseGate = async () => {
+    while (job.pauseRequested && !job.cancelRequested) {
+      job.paused = true;
+      await new Promise((r) => setTimeout(r, 150));
+    }
+    job.paused = false;
+  };
+
   (async () => {
     try {
-      const { result, params } = await fn(setProgress);
+      const { result, params } = await fn(setProgress, pauseGate);
       job.result = result;
       job.status = 'done';
       db.prepare(
@@ -74,6 +86,16 @@ function cancelJob(id) {
   return { ok: true };
 }
 
+// Pause/resume a running job (cooperative, same contract as cancel). A
+// finished or unknown job refuses honestly.
+function pauseJob(id, paused) {
+  const job = jobs.get(id);
+  if (!job) return { ok: false, reason: 'unknown job id (expired or never existed)' };
+  if (job.status !== 'running') return { ok: false, reason: `job already ${job.status}` };
+  job.pauseRequested = Boolean(paused);
+  return { ok: true, paused: job.pauseRequested };
+}
+
 function getJob(id) {
   return jobs.get(id) || null;
 }
@@ -91,6 +113,7 @@ function activeJobs() {
       profileId: j.profileId,
       progress: j.progress,
       progressPct: j.progressPct ?? null,
+      paused: Boolean(j.pauseRequested),
       startedAt: j.startedAt,
     }));
 }
@@ -121,4 +144,4 @@ function latestResult(profileId, kind) {
   };
 }
 
-module.exports = { startJob, getJob, cancelJob, activeJobs, latestResult };
+module.exports = { startJob, getJob, cancelJob, pauseJob, activeJobs, latestResult };

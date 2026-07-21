@@ -196,9 +196,13 @@
       <li><span class="term">The stamp</span> (bottom line) records everything: combos searched, universe
         and every exclusion by name (venue, missing history, your pool unchecks), window and what limited
         it, regime day-counts, the market bar, and any active assumptions.</li>
-      <li><span class="term">Cancel</span> — while a search runs, the Cancel button next to Run search
+      <li><span class="term">⏸ Pause / Cancel / cpu</span> — while a search runs, <strong>⏸ Pause</strong>
+        parks it at its next yield point (sub-second) holding its place — Resume continues exactly where
+        it left off; paused searches survive page reloads but not service restarts. <strong>Cancel</strong>
         stops it within seconds ("cancelled — no result saved"); your last completed result stays
-        untouched.</li>
+        untouched. The <strong>cpu</strong> selector (100/90/75/50%) caps how much of a core the NEXT
+        search may use — lower keeps the rest of the app snappy while a long search grinds; the setting
+        never changes results, only speed.</li>
     </ul>
 
     <h2 id="pool">6. Candidate pool (exclusions &amp; 📌 pins)</h2>

@@ -16,7 +16,7 @@ const {
   priceAsset,
   rearmAfterUpload,
 } = require('./lib/balancer');
-const { getJob, startJob, cancelJob, activeJobs, latestResult } = require('./lib/jobs');
+const { getJob, startJob, cancelJob, pauseJob, activeJobs, latestResult } = require('./lib/jobs');
 const { runTuneSweep, computeTargetsHash } = require('./lib/backtest');
 const { runComposeSearch, venueTradableFilter, parseComposeExclusions, parseComposePins } = require('./lib/compose');
 const { topCandidates } = require('./lib/candidates');
@@ -352,8 +352,8 @@ app.post('/api/profiles/:id/compose', (req, res) => {
   const profile = db.prepare('SELECT * FROM profiles WHERE id = ?').get(req.params.id);
   if (!profile) return res.status(404).json({ error: 'not found' });
   const body = req.body || {};
-  const jobId = startJob('compose', profile.id, (setProgress) =>
-    runComposeSearch(profile.id, body, setProgress)
+  const jobId = startJob('compose', profile.id, (setProgress, pauseGate) =>
+    runComposeSearch(profile.id, body, setProgress, pauseGate)
   );
   res.json({ ok: true, jobId });
 });
@@ -990,6 +990,7 @@ app.get('/api/jobs/:id', (req, res) => {
     status: job.status,
     progress: job.progress,
     progressPct: job.progressPct != null ? job.progressPct : null,
+    paused: Boolean(job.pauseRequested),
     result: job.status === 'done' ? job.result : null,
     error: job.error,
   });
@@ -1001,6 +1002,14 @@ app.post('/api/jobs/:id/cancel', (req, res) => {
   const r = cancelJob(req.params.id);
   if (!r.ok) return res.status(409).json({ error: r.reason });
   res.json({ ok: true });
+});
+
+// Cooperative pause/resume: the search parks at its next yield point (a
+// fraction of a second), holding its place — nothing is lost or re-run.
+app.post('/api/jobs/:id/pause', (req, res) => {
+  const r = pauseJob(req.params.id, (req.body || {}).paused !== false);
+  if (!r.ok) return res.status(409).json({ error: r.reason });
+  res.json(r);
 });
 
 // ---- actions ----------------------------------------------------------------

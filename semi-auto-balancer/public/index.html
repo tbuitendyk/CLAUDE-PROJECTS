@@ -144,6 +144,7 @@
                 allocation <em>and</em> its sensitivity together.</p>
               <div class="inline">
                 <button id="c-run">Run search</button>
+                <button id="c-pause" class="hidden" title="Pause the running search — it parks at its next yield point (a fraction of a second) and holds its place; Resume continues exactly where it left off. Paused searches survive page reloads but NOT service restarts.">⏸ Pause</button>
                 <button id="c-cancel" class="hidden" title="Stop the running search — it aborts at its next progress report (a few seconds); no result is saved">Cancel</button>
                 <button id="c-pool-btn" class="ghost" title="See the candidate pool: uncheck assets to exclude them from every composition-lab scope, or 📌-pin assets to force them into every searched mix">Candidate pool…</button>
                 <label class="muted">scope
@@ -160,6 +161,14 @@
                     <option value="20000">quick (~20k combos, ~1 min)</option>
                     <option value="100000" selected>standard (~100k combos, ~4 min)</option>
                     <option value="1000000">intensive (~1M combos, ~25 min)</option>
+                  </select>
+                </label>
+                <label class="muted" title="How much of a CPU core the search may use. Lower = slower search but a more responsive app (polls, syncs, page loads) while it runs. Applies to the NEXT search you start; remembered per browser.">cpu
+                  <select id="c-cpu">
+                    <option value="100">100% (fastest)</option>
+                    <option value="90" selected>90%</option>
+                    <option value="75">75%</option>
+                    <option value="50">50% (background)</option>
                   </select>
                 </label>
                 <span id="c-status" class="muted"></span>

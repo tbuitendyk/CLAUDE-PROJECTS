@@ -79,6 +79,36 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   ok(cancelJob('deadbeef').ok === false, 'cancelling an unknown job refused');
   ok(activeJobs().length === 0, 'activeJobs empty once everything has ended');
 
+  // --- cooperative pause/resume: the gate parks the loop in place ---
+  const { pauseJob } = require('../lib/jobs');
+  let steps = 0;
+  const pausable = startJob('compose', 1, async (setProgress, pauseGate) => {
+    for (let i = 0; i < 20; i++) {
+      await pauseGate();
+      await sleep(15);
+      setProgress(`p${i}`, i);
+      steps++;
+    }
+    return { result: { steps: 20 }, params: {} };
+  });
+  await sleep(50);
+  ok(pauseJob(pausable, true).ok === true, 'pause accepted for a running job');
+  await sleep(200); // let it park at the gate
+  const frozenAt = steps;
+  ok(getJob(pausable).status === 'running', 'a paused job still counts as running (holds its place)');
+  await sleep(250);
+  ok(steps === frozenAt, `paused job makes NO progress (held at step ${frozenAt})`);
+  {
+    const act = activeJobs().find((j) => j.id === pausable);
+    ok(act && act.paused === true, 'activeJobs reports the paused flag (reload re-attach shows ⏸)');
+  }
+  ok(pauseJob(pausable, false).ok === true, 'resume accepted');
+  await sleep(900);
+  const pj = getJob(pausable);
+  ok(pj.status === 'done' && pj.result.steps === 20 && steps === 20, 'resumed job completes from exactly where it left off');
+  ok(pauseJob('deadbeef', true).ok === false, 'pausing an unknown job refused');
+  ok(pauseJob(pausable, true).ok === false, 'pausing a finished job refused');
+
   console.log('jobs + ledger tests pass');
   process.exit(0);
 })().catch((e) => {

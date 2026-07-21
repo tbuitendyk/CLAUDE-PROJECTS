@@ -1034,7 +1034,7 @@ const runningJobs = { tune: {}, compose: {} }; // kind -> profileId -> {jobId, p
 const jobMsg = { tune: {}, compose: {} };      // kind -> profileId -> last terminal message (error, or '')
 const JOB_WIDGETS = {
   tune: { run: '#tune-run', status: '#tune-status' },
-  compose: { run: '#c-run', status: '#c-status', bar: '#c-bar', fill: '#c-bar-fill', cancel: '#c-cancel' },
+  compose: { run: '#c-run', status: '#c-status', bar: '#c-bar', fill: '#c-bar-fill', cancel: '#c-cancel', pause: '#c-pause' },
 };
 
 // Paint one kind's run controls from the CURRENTLY selected profile's state.
@@ -1046,17 +1046,23 @@ function renderJobControls(kind) {
   const entry = runningJobs[kind][state.selectedId];
   if (entry) {
     runBtn.disabled = true;
-    status.textContent = entry.progress || 'running…';
+    status.textContent = (entry.paused ? '⏸ paused — ' : '') + (entry.progress || 'running…');
     if (w.bar) {
       $(w.bar).classList.remove('hidden');
       $(w.fill).style.width = (entry.progressPct != null ? entry.progressPct : 0) + '%';
     }
     if (w.cancel) $(w.cancel).classList.remove('hidden');
+    if (w.pause) {
+      const pb = $(w.pause);
+      pb.classList.remove('hidden');
+      pb.textContent = entry.paused ? '▶ Resume' : '⏸ Pause';
+    }
   } else {
     runBtn.disabled = false;
     status.textContent = jobMsg[kind][state.selectedId] || '';
     if (w.bar) $(w.bar).classList.add('hidden');
     if (w.cancel) $(w.cancel).classList.add('hidden');
+    if (w.pause) $(w.pause).classList.add('hidden');
   }
 }
 
@@ -1078,6 +1084,7 @@ function trackJob(kind, jobId, profileId) {
       if (job.status === 'running') {
         entry.progress = job.progress || 'running…';
         entry.progressPct = job.progressPct;
+        entry.paused = Boolean(job.paused);
         if (profileId === state.selectedId) renderJobControls(kind);
       } else {
         clearInterval(entry.interval);
@@ -1118,6 +1125,7 @@ async function resumeActiveJobs() {
       if (e) {
         e.progress = j.progress || 'running…';
         e.progressPct = j.progressPct;
+        e.paused = Boolean(j.paused);
         if (j.profileId === state.selectedId) renderJobControls(kind);
       }
     }
@@ -1450,12 +1458,44 @@ $('#c-run').addEventListener('click', async () => {
     const scope = $('#c-scope').value;
     const { jobId } = await api(`/profiles/${profileId}/compose`, {
       method: 'POST',
-      body: { samples: Number($('#c-intensity').value), currentSet: scope === 'reweight', heldOnly: scope === 'drops', idealTether: $('#c-ideal').checked },
+      body: {
+        samples: Number($('#c-intensity').value),
+        currentSet: scope === 'reweight',
+        heldOnly: scope === 'drops',
+        idealTether: $('#c-ideal').checked,
+        cpu: Number($('#c-cpu').value),
+      },
     });
     trackJob('compose', jobId, profileId);
   } catch (err) {
     jobMsg.compose[profileId] = err.message;
     if (profileId === state.selectedId) renderJobControls('compose');
+  }
+});
+
+// CPU duty-cycle choice: applies to the next search; remembered per browser.
+{
+  const sel = $('#c-cpu');
+  const saved = localStorage.getItem('sab-cpu');
+  if (saved && sel.querySelector(`option[value="${saved}"]`)) sel.value = saved;
+  sel.addEventListener('change', () => localStorage.setItem('sab-cpu', sel.value));
+}
+
+// Pause/resume the running comp lab search for the profile ON SCREEN: the
+// search parks at its next yield point (sub-second) and holds its place.
+$('#c-pause').addEventListener('click', async () => {
+  const entry = runningJobs.compose[state.selectedId];
+  if (!entry) return;
+  $('#c-pause').disabled = true;
+  try {
+    const r = await api(`/jobs/${entry.jobId}/pause`, { method: 'POST', body: { paused: !entry.paused } });
+    entry.paused = Boolean(r.paused);
+    renderJobControls('compose');
+  } catch (err) {
+    jobMsg.compose[state.selectedId] = `pause failed: ${err.message}`;
+    renderJobControls('compose');
+  } finally {
+    $('#c-pause').disabled = false;
   }
 });
 
