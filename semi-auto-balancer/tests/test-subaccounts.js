@@ -68,6 +68,9 @@ const client = {
   let s = await sync.syncAccount(account.id, { client });
   ok(!s.multi, 'unlinked second profile → the ORIGINAL single-profile sync path runs');
   ok(sync.getAccountForProfile(1).id === account.id, 'owner still resolves its account (legacy column fallback)');
+  // Poll semantics, 1:1 era: the profile IS the account view → sync first.
+  ok(sync.syncScopeForPoll(1) === account.id, '1:1-linked profile: poll syncs the account first');
+  ok(sync.syncScopeForPoll(2) === null, 'unlinked profile: pure price poll');
 
   // ---- linking + shell ------------------------------------------------------
   sub.linkProfile(1, account.id);
@@ -81,6 +84,12 @@ const client = {
   let threw = false;
   try { sub.unlinkProfile(shell.id); } catch { threw = true; }
   ok(threw, 'the shell cannot be unlinked');
+
+  // Poll semantics, grouped era: only the MASTER reads the venue on poll;
+  // grouped subs reprice their recorded balances (sync lives on the master).
+  ok(sync.syncScopeForPoll(shell.id) === account.id, 'master (shell): poll syncs the account first');
+  ok(sync.syncScopeForPoll(1) === null && sync.syncScopeForPoll(2) === null, 'grouped subs: pure price poll');
+  ok(sync.syncScopeForPoll(999) === null, 'unknown profile: pure price poll (no crash)');
 
   // ---- multi sync: T1 unique holder + tether-follows-trade ------------------
   const t1 = now + 1000;

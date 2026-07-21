@@ -1001,14 +1001,34 @@ app.post('/api/jobs/:id/cancel', (req, res) => {
 
 // ---- actions ----------------------------------------------------------------
 
-// Manual update ("Poll now"). Manual polls drive the notification state
-// machine: in 'notified' they re-check and escalate to 'awaiting_upload';
-// in 'awaiting_upload' they restart the 12h clock.
+// Manual update ("Poll now" / "Sync & poll"). Manual polls drive the
+// notification state machine: in 'notified' they re-check and escalate to
+// 'awaiting_upload'; in 'awaiting_upload' they restart the 12h clock.
+// On the MASTER (shell) and on 1:1-linked profiles the venue is synced FIRST
+// (balances/trades/attribution) so fresh quantities sit under fresh prices —
+// a sync failure is reported in the response but never blocks the price
+// poll; alerts must not hostage on venue availability.
 app.post('/api/profiles/:id/poll', async (req, res) => {
+  const profileId = Number(req.params.id);
+  let synced = null;
+  let syncError = null;
+  const accountId = sync.syncScopeForPoll(profileId);
+  if (accountId) {
+    try {
+      const s = await sync.syncAccount(accountId);
+      synced = {
+        multi: Boolean(s && s.multi),
+        tradesApplied: (s && s.tradesApplied) || 0,
+        tradesQueued: (s && s.tradesQueued) || 0,
+      };
+    } catch (err) {
+      syncError = err.message;
+    }
+  }
   try {
-    const { events } = await pollProfiles({ force: true, profileId: Number(req.params.id), manual: true });
+    const { events } = await pollProfiles({ force: true, profileId, manual: true });
     if (events.length > 0) await sendAlertEvents(events);
-    res.json({ ok: true, notifications: events.length });
+    res.json({ ok: true, notifications: events.length, synced, syncError });
   } catch (err) {
     res.status(502).json({ error: err.message });
   }

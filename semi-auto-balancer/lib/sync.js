@@ -702,9 +702,29 @@ async function syncDueAccounts() {
   return results;
 }
 
+// "Poll now" semantics with account groups: on the MASTER (shell) and on a
+// profile that owns its account ALONE (1:1 link — the profile IS the account
+// view) the button means "read the account, then reprice", so those sync the
+// venue first. A grouped sub-account stays a pure price poll — its balances
+// are managed by the account-level sync on the master, and per-sub clicks
+// must not multiply venue API traffic. Returns the account id to sync before
+// polling, or null for a pure price poll.
+function syncScopeForPoll(profileId) {
+  const profile = db.prepare('SELECT * FROM profiles WHERE id = ?').get(profileId);
+  if (!profile) return null;
+  const account = getAccountForProfile(profileId);
+  if (!account) return null;
+  const shell = db
+    .prepare('SELECT id FROM profiles WHERE exchange_account_id = ? AND is_shell = 1')
+    .get(account.id);
+  if (!shell) return account.id; // 1:1 — no group, the profile is the account view
+  return profile.is_shell ? account.id : null;
+}
+
 module.exports = {
   syncAccount,
   syncDueAccounts,
+  syncScopeForPoll,
   createAccount,
   applyPendingFlow,
   dismissPendingFlow,

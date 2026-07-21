@@ -444,6 +444,13 @@
     <code>/start</code>s the bot, then "Find chat IDs"). The state machine:
     <strong>armed</strong> → alert sent → <strong>notified</strong> (quiet) → re-armed by the next sync,
     a screenshot upload, "Poll now", or the 12-hour timeout. "Poll now" is the universal reset.</p>
+    <p><strong>What the poll button does depends on where you are.</strong> On the master account (and on
+    a profile that owns its exchange account alone) it reads <em>Sync &amp; poll</em>: it reads balances
+    and trades from the venue, runs attribution/reconciliation, <em>then</em> refreshes prices — so fresh
+    quantities sit under fresh prices. On a grouped sub-account (and on unlinked profiles) it stays
+    <em>Poll now</em>: prices and alerts only — a sub's balances change exclusively through the account
+    sync, and its meta line shows "balances as of account sync …" so staleness is never hidden. Every
+    variant remains the universal notification reset.</p>
 
     <h2 id="gloss">13. Glossary</h2>
     <dl class="gloss">

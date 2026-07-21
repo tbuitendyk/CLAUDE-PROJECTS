@@ -229,13 +229,18 @@ function renderDetail() {
       (hasTether
         ? `Account pool, valued in ${idx} (⚓ in the table picks the tether). `
         : 'Account pool — checkmark an asset below as the ⚓ tether to value everything in it. ') +
-      `Prices refresh with each poll (last: ${polled}); it never alerts. Deposits land here, dust settles ` +
-      'here, and sub-accounts are funded from here by carve-out.';
+      `Sync & poll reads the account (balances, trades, attribution) and reprices (last poll: ${polled}); ` +
+      'it never alerts. Deposits land here, dust settles here, and sub-accounts are funded from here by carve-out.';
   } else if (gShell) {
+    // A grouped sub's poll never reads the venue — say how fresh the
+    // quantities under the prices are, and where the sync lives.
+    const syncedAt =
+      d.exchange && d.exchange.last_sync_at ? new Date(d.exchange.last_sync_at).toLocaleString() : 'never';
     meta.innerHTML =
       `Index: ${idx} (tethered asset) · reacts to ~${profile.threshold_pct}% price moves · ` +
       `polls every ${profile.poll_minutes} min · last poll: ${polled} · account: ` +
-      `<a class="meta-link" id="d-shell-link">🪣 ${gShell.name}</a>`;
+      `<a class="meta-link" id="d-shell-link">🪣 ${gShell.name}</a>` +
+      ` · balances as of account sync ${syncedAt} (sync &amp; poll on the master)`;
     $('#d-shell-link').addEventListener('click', async () => {
       state.selectedId = gShell.id;
       renderProfiles();
@@ -246,6 +251,21 @@ function renderDetail() {
     meta.textContent =
       `Index: ${idx} (tethered asset) · reacts to ~${profile.threshold_pct}% price moves · ` +
       `polls every ${profile.poll_minutes} min · last poll: ${polled}`;
+  }
+
+  // "Poll now" by context: the master and a 1:1-linked profile read the
+  // ACCOUNT first (sync: balances, trades, attribution) and then reprice —
+  // that is what the button always felt like it meant. A grouped sub or an
+  // unlinked profile reprices its recorded quantities only.
+  {
+    const pollBtn = $('#d-poll');
+    const syncsFirst = Boolean(d.exchange && (profile.is_shell || !gShell));
+    pollBtn.textContent = syncsFirst ? 'Sync & poll' : 'Poll now';
+    pollBtn.title = syncsFirst
+      ? 'Reads balances and trades from the exchange (sync + attribution), then refreshes prices and re-evaluates alerts. Also the universal notification reset.'
+      : gShell
+        ? "Refreshes market prices and re-evaluates alerts over this sub-account's recorded balances. The balances themselves change only via account sync — use Sync & poll on the master. Also the universal notification reset."
+        : 'Refreshes market prices and re-evaluates alerts (quantities here are manual). Also the universal notification reset.';
   }
 
   // Editable sensitivity / poll / trading-cost settings.
@@ -757,7 +777,10 @@ $('#d-status').addEventListener('click', async () => {
 $('#d-poll').addEventListener('click', async () => {
   $('#d-poll').disabled = true;
   try {
-    await api(`/profiles/${state.selectedId}/poll`, { method: 'POST' });
+    const r = await api(`/profiles/${state.selectedId}/poll`, { method: 'POST' });
+    // Sync-first contexts: a venue failure never blocks the price poll, but
+    // it must not pass silently either — stale balances under fresh prices.
+    if (r.syncError) alert(`Account sync failed (prices were still refreshed): ${r.syncError}`);
     await refresh();
   } catch (err) {
     alert(`Poll failed: ${err.message}`);
