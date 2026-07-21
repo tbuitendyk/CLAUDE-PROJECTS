@@ -431,7 +431,18 @@ function renderDetail() {
     del.className = 'ghost';
     del.addEventListener('click', async () => {
       if (!confirm(`Remove ${a.symbol.toUpperCase()} from this profile?`)) return;
-      await api(`/assets/${a.id}`, { method: 'DELETE' });
+      try {
+        const r = await api(`/assets/${a.id}`, { method: 'DELETE' });
+        // Grouped sub-account with a balance: the money went back to the
+        // master pool, not into the void — say so.
+        if (r.returned) {
+          alert(
+            `${r.returned.qty} ${r.returned.symbol.toUpperCase()} returned to "${r.returned.toName}" (unallocated pool) — recorded in the account transaction log (rewindable).`
+          );
+        }
+      } catch (err) {
+        alert(err.message);
+      }
       await refresh();
     });
     td.appendChild(del);

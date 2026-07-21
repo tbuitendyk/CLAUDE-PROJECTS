@@ -237,6 +237,42 @@ const client = {
   try { await sub.carveOut(account.id, 1, shell.id, [{ asset_id: btcAsset.id, qty: 99 }]); } catch (e) { threw = /available/.test(e.message); }
   ok(threw, 'over-carving refused with the available amount');
 
+  // ---- delete-asset guard (the live 15,000-MXN vanish, 2026-07-21) ----------
+  // Deleting a funded asset on a grouped sub-account must return the balance
+  // to the shell (logged carve), never erase it; a funded SHELL asset must
+  // refuse; a zero-balance row still deletes plainly.
+  {
+    db.prepare(
+      "INSERT INTO assets (profile_id, coingecko_id, symbol, quantity, target_pct, is_index, basket_units) VALUES (2, 'chainlink', 'link', 25, 0, 0, 0)"
+    ).run();
+    const a = db.prepare("SELECT * FROM assets WHERE profile_id = 2 AND symbol = 'link'").get();
+    const shellBefore = qtyOf(shell.id, 'link') || 0;
+    const r = await sub.removeAsset(a.id);
+    ok(r.ok && r.returned && approx(r.returned.qty, 25, 1e-9), 'funded grouped delete reports the returned balance');
+    ok(db.prepare('SELECT * FROM assets WHERE id = ?').get(a.id) === undefined, 'the asset row itself is gone');
+    ok(approx(qtyOf(shell.id, 'link'), shellBefore + 25, 1e-9), 'the balance landed in the SHELL, not the void');
+    ok(
+      sub.listTxnLog(account.id).some(
+        (t) => t.kind === 'carve-out' && t.profile_id === shell.id && (t.deltas || []).some((d) => d.symbol === 'link' && d.delta === 25)
+      ),
+      'the return is in the txn log as a carve (rewindable)'
+    );
+
+    const sh = db.prepare("SELECT * FROM assets WHERE profile_id = ? AND symbol = 'link'").get(shell.id);
+    ok(sh && sh.quantity > 0, 'shell link row funded by the return');
+    let refuse = false;
+    try { await sub.removeAsset(sh.id); } catch (e) { refuse = /pool/.test(e.message); }
+    ok(refuse, 'a funded shell asset refuses deletion (the pool row IS the money)');
+    ok(db.prepare('SELECT * FROM assets WHERE id = ?').get(sh.id) !== undefined, 'the refused shell row survives untouched');
+
+    db.prepare(
+      "INSERT INTO assets (profile_id, coingecko_id, symbol, quantity, target_pct, is_index, basket_units) VALUES (2, 'tron', 'trx', 0, 0, 0, 0)"
+    ).run();
+    const z = db.prepare("SELECT * FROM assets WHERE profile_id = 2 AND symbol = 'trx'").get();
+    const rz = await sub.removeAsset(z.id);
+    ok(rz.ok && !rz.returned, 'a zero-balance grouped row deletes plainly (no carve)');
+  }
+
   console.log('test-subaccounts: all assertions passed');
   process.exit(0);
 })().catch((err) => {

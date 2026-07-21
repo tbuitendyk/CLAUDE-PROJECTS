@@ -472,9 +472,44 @@ async function carveOut(accountId, fromProfileId, toProfileId, items) {
   return { ref, legFrom, legTo };
 }
 
+// Deleting an asset row DESTROYS its recorded quantity — and inside an
+// account group that quantity is real money on the venue (observed live
+// 2026-07-21: 15,000 MXN vanished when a trial sub-account's MXN row was
+// deleted; nothing returned it to the pool and nothing logged it). So:
+// a grouped sub-account returns any remaining balance to the SHELL first,
+// as a normal carve — recorded in flows (value-index splice intact) and the
+// txn log (rewindable) — and only then drops the row. A funded SHELL asset
+// refuses deletion outright: the pool row IS the group's money. Unlinked
+// profiles and dust balances keep the old plain delete.
+const REMOVE_DUST = 1e-9;
+async function removeAsset(assetId) {
+  const asset = db.prepare('SELECT * FROM assets WHERE id = ?').get(assetId);
+  if (!asset) return { ok: true, existed: false };
+  const profile = db.prepare('SELECT * FROM profiles WHERE id = ?').get(asset.profile_id);
+  const qty = Number(asset.quantity) || 0;
+  let returned = null;
+  if (profile && profile.exchange_account_id && qty > REMOVE_DUST) {
+    const shell = shellOf(profile.exchange_account_id);
+    if (profile.is_shell) {
+      throw new Error(
+        `${asset.symbol.toUpperCase()} still holds ${qty} in the unallocated pool — ` +
+          'carve it to a sub-account (or withdraw it on the venue and sync) before deleting; ' +
+          "deleting the pool row would erase the group's money"
+      );
+    }
+    if (shell && shell.id !== profile.id) {
+      await carveOut(profile.exchange_account_id, profile.id, shell.id, [{ asset_id: asset.id, qty }]);
+      returned = { qty, symbol: asset.symbol, toProfileId: shell.id, toName: shell.name };
+    }
+  }
+  db.prepare('DELETE FROM assets WHERE id = ?').run(assetId);
+  return { ok: true, existed: true, returned };
+}
+
 module.exports = {
   linkedProfiles,
   accountSummary,
+  removeAsset,
   shellOf,
   linkProfile,
   unlinkProfile,

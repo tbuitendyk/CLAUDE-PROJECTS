@@ -945,9 +945,14 @@ app.patch('/api/assets/:id', async (req, res) => {
   }
 });
 
-app.delete('/api/assets/:id', (req, res) => {
-  db.prepare('DELETE FROM assets WHERE id = ?').run(req.params.id);
-  res.json({ ok: true });
+// Grouped sub-accounts return any remaining balance to the shell (a logged,
+// rewindable carve) before the row goes; a funded shell asset refuses.
+app.delete('/api/assets/:id', async (req, res) => {
+  try {
+    res.json(await subaccounts.removeAsset(req.params.id));
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
 });
 
 // Manual unfreeze (Phase 3): the human override on the buy-freeze rail.
