@@ -15,7 +15,7 @@
 # survives via its checkpoint and resumes after start.
 set -euo pipefail
 MODE="${1:-status}"
-UNITS=(balancer semi-auto-balancer)
+UNITS=(asset-balancer semi-auto-balancer)
 
 case "$MODE" in
   stop|start)

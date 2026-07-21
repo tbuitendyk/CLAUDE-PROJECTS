@@ -58,7 +58,7 @@ inbound delivery via the public IP is the routing test. Read the report in the
 From mailbox (defaults to `theodor@homeandofficemicro.com`).
 
 - `service-ctl.sh [stop|start|status]` — stop/start BOTH balancer services
-  together (`balancer` + `semi-auto-balancer`, hard whitelist — can never
+  together (`asset-balancer` + `semi-auto-balancer`, hard whitelist — can never
   touch `deploy-control`). Stop is temporary: units stay enabled, a reboot
   brings them back. While stopped: no polls/alerts/syncs/monitor checks;
   running searches die, ⏸-paused ones survive via checkpoint.
