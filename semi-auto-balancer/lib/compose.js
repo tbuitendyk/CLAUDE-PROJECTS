@@ -368,6 +368,25 @@ function qualityRank(a, b) {
 // result stays small; the weededForQuality count still reports the true total.
 const HIDDEN_CAP = 40;
 
+// Cooperative CPU throttle for the search loops. setImmediate alone never
+// idles — it drains the event queue but keeps the core pinned at 100%,
+// starving polls, account syncs and the UI for the whole run. Every ~90ms
+// of work the throttle takes a real ~10ms sleep: ≈10% CPU headroom for the
+// rest of the service, at ~11% wall-clock cost on the search itself.
+// Timing-only — sampling order and seeds are untouched (results identical).
+const THROTTLE_WORK_MS = 90;
+const THROTTLE_SLEEP_MS = 10;
+function makeYielder() {
+  let lastSleep = Date.now();
+  return () => {
+    if (Date.now() - lastSleep >= THROTTLE_WORK_MS) {
+      lastSleep = Date.now() + THROTTLE_SLEEP_MS;
+      return new Promise((r) => setTimeout(r, THROTTLE_SLEEP_MS));
+    }
+    return new Promise((r) => setImmediate(r));
+  };
+}
+
 // Intensity-scaled funnel sizes (user-tuned): the broad pass dominates
 // wall-clock (>95% at 1M), so wider boards and a much deeper refinement stage
 // cost little relative to the stage already being paid for. Boards ×1.25/×1.5
@@ -430,7 +449,7 @@ async function searchCompositions({
   const pinnedSet = new Set(pinnedIds);
   if (pinnedIds.length) maxAssets = Math.max(maxAssets, pinnedIds.length);
   // Long runs must not starve the event loop (polls, syncs, the UI itself).
-  const yieldLoop = () => new Promise((r) => setImmediate(r));
+  const yieldLoop = makeYielder();
 
   // Untouched holdout tail (both modes) + the in-sample region.
   const holdoutN = Math.max(30, Math.floor(bars.length * HOLDOUT_FRAC));
@@ -809,7 +828,7 @@ async function searchCurrentSet({
       `${n} assets can't each hold ≥${MINU}% (that needs ${n * MINU}% > 100%) — remove an asset from the profile first`
     );
   }
-  const yieldLoop = () => new Promise((r) => setImmediate(r));
+  const yieldLoop = makeYielder();
 
   const toAssets = (units) =>
     assetSet.map((a) => ({ coingecko_id: a.id, symbol: a.symbol, target_pct: units.get(a.id), is_index: a.isIndex ? 1 : 0 }));
