@@ -78,6 +78,23 @@ function getJob(id) {
   return jobs.get(id) || null;
 }
 
+// Snapshot of every RUNNING job (light fields — no result payloads). Live
+// status is in-memory only, so without this a page reload silently orphans
+// the progress display while the search keeps burning CPU server-side; a
+// reloaded page calls this to rediscover and re-attach to running jobs.
+function activeJobs() {
+  return [...jobs.values()]
+    .filter((j) => j.status === 'running')
+    .map((j) => ({
+      id: j.id,
+      kind: j.kind,
+      profileId: j.profileId,
+      progress: j.progress,
+      progressPct: j.progressPct ?? null,
+      startedAt: j.startedAt,
+    }));
+}
+
 // Most recent persisted result of a kind for a profile (survives restarts).
 // profileId null = profile-independent jobs (e.g. the Ladder Lab): stored
 // with a NULL profile_id, which the FK on profiles(id) permits.
@@ -104,4 +121,4 @@ function latestResult(profileId, kind) {
   };
 }
 
-module.exports = { startJob, getJob, cancelJob, latestResult };
+module.exports = { startJob, getJob, cancelJob, activeJobs, latestResult };

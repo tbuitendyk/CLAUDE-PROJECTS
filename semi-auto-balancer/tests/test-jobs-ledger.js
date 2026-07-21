@@ -4,7 +4,7 @@ freshDb('jobs');
 
 const db = require('../lib/db');
 const cg = require('../lib/cg');
-const { startJob, getJob, latestResult } = require('../lib/jobs');
+const { startJob, getJob, activeJobs, latestResult } = require('../lib/jobs');
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -56,6 +56,17 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     return { result: { never: true }, params: {} };
   });
   await sleep(60);
+
+  // --- activeJobs: running jobs discoverable (reload re-attach), light
+  // fields only, finished/failed jobs absent ---
+  {
+    const act = activeJobs();
+    ok(act.length === 1 && act[0].id === slow, 'activeJobs lists exactly the running job');
+    const a = act[0];
+    ok(a.kind === 'compose' && a.profileId === 1 && /^step /.test(a.progress) && Number.isFinite(a.progressPct), 'active entry carries kind/profile/progress/pct');
+    ok(!('result' in a) && !('error' in a), 'active entries ship no result payloads');
+  }
+
   const c = cancelJob(slow);
   ok(c.ok === true, 'cancel accepted for a running job');
   await sleep(120);
@@ -66,6 +77,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const again = cancelJob(slow);
   ok(again.ok === false && /already cancelled/.test(again.reason), 'double-cancel refused with the reason');
   ok(cancelJob('deadbeef').ok === false, 'cancelling an unknown job refused');
+  ok(activeJobs().length === 0, 'activeJobs empty once everything has ended');
 
   console.log('jobs + ledger tests pass');
   process.exit(0);

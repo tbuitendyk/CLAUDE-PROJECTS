@@ -466,10 +466,34 @@ $('#m-create').addEventListener('click', async () => {
   }
 });
 
+// Re-attach to sweeps/loads still running server-side: a reload must not
+// orphan a live progress display (the job itself never stops for a ctrl-R).
+async function resumeActiveJobs() {
+  try {
+    const { jobs } = await api('/jobs');
+    for (const j of jobs) {
+      if (j.kind === 'ladder-sweep') {
+        $('#l-status').textContent = j.progress || 'running…';
+        if (j.progressPct != null) $('#l-bar-fill').style.width = j.progressPct + '%';
+        pollJob(j.id, { statusEl: '#l-status', barEl: '#l-bar', fillEl: '#l-bar-fill', buttons: ['#l-run', '#l-load'] }, loadLatest);
+      } else if (j.kind === 'ladder-data') {
+        $('#l-data-status').textContent = j.progress || 'running…';
+        pollJob(j.id, { statusEl: '#l-data-status', barEl: null, fillEl: null, buttons: ['#l-load'] }, async () => {
+          $('#l-data-status').textContent = 'loaded ✓';
+          await refreshStatus();
+        });
+      }
+    }
+  } catch {
+    /* transient — a manual reload retries */
+  }
+}
+
 (async () => {
   await refreshStatus();
   await Promise.all([loadLatest(), loadMonitors()]);
   $('#m-recipients').appendChild(recipientRow());
+  resumeActiveJobs();
   // Keep the card live while rungs are being watched.
   setInterval(loadMonitors, 60_000);
 })();

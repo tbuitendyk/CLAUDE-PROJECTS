@@ -143,6 +143,9 @@ $('#profile-form').addEventListener('submit', async (e) => {
 async function loadDetail() {
   if (!state.selectedId) return;
   state.detail = await api(`/profiles/${state.selectedId}/state`);
+  // Fire-and-forget: re-attach to any search still running server-side (a
+  // reload or profile flip must not orphan a live progress display).
+  resumeActiveJobs();
 }
 
 function fmtNum(n, digits = 6) {
@@ -1048,6 +1051,34 @@ function trackJob(kind, jobId, profileId) {
       if (profileId === state.selectedId) renderJobControls(kind);
     }
   }, 2000);
+}
+
+// A reload used to orphan running searches: the job keeps running (and its
+// result still persists) server-side, but the page forgot the job id, so the
+// controls sat idle as if nothing was happening. On boot and on every detail
+// load, ask the server for running jobs and re-attach the ones this page
+// knows how to track — the progress bar comes back as if never interrupted.
+const SERVER_JOB_KINDS = { compose: 'compose', 'tune-threshold': 'tune' };
+async function resumeActiveJobs() {
+  try {
+    const { jobs } = await api('/jobs');
+    for (const j of jobs) {
+      const kind = SERVER_JOB_KINDS[j.kind];
+      if (!kind || j.profileId == null) continue;
+      const existing = runningJobs[kind][j.profileId];
+      if (existing && existing.jobId === j.id) continue; // already attached
+      trackJob(kind, j.id, j.profileId);
+      // Seed the listing's live progress so the bar doesn't flash "starting…".
+      const e = runningJobs[kind][j.profileId];
+      if (e) {
+        e.progress = j.progress || 'running…';
+        e.progressPct = j.progressPct;
+        if (j.profileId === state.selectedId) renderJobControls(kind);
+      }
+    }
+  } catch {
+    /* transient — the next boot/detail load retries */
+  }
 }
 
 $('#tune-run').addEventListener('click', async () => {
@@ -2488,6 +2519,7 @@ $('#i-cancel').addEventListener('click', () => {
     showMain();
     applyView();
     await loadProfiles();
+    resumeActiveJobs();
     setInterval(async () => {
       if (!state.selectedId) return;
       // Never rebuild under the user's cursor — drafts survive anyway, but

@@ -16,7 +16,7 @@ const {
   priceAsset,
   rearmAfterUpload,
 } = require('./lib/balancer');
-const { getJob, startJob, cancelJob, latestResult } = require('./lib/jobs');
+const { getJob, startJob, cancelJob, activeJobs, latestResult } = require('./lib/jobs');
 const { runTuneSweep, computeTargetsHash } = require('./lib/backtest');
 const { runComposeSearch, venueTradableFilter, parseComposeExclusions, parseComposePins } = require('./lib/compose');
 const { topCandidates } = require('./lib/candidates');
@@ -960,6 +960,14 @@ app.post('/api/assets/:id/unfreeze', (req, res) => {
 });
 
 // ---- jobs -------------------------------------------------------------------
+
+// Every RUNNING job (light snapshot, no results): a reloaded page calls this
+// to rediscover searches that are still chewing server-side and re-attach its
+// progress displays — live job status is in-memory, so the browser's job ids
+// don't survive a ctrl-R without it.
+app.get('/api/jobs', (req, res) => {
+  res.json({ jobs: activeJobs() });
+});
 
 // Long-running analysis jobs (threshold sweeps, scans) are started by their
 // own endpoints and polled here. Unknown id => the service restarted since
