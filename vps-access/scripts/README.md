@@ -56,3 +56,9 @@ through the mail server to Port25's `check-auth@verifier.port25.com` reflector,
 which emails an SPF/DKIM/DMARC report back to the From address -- the reply's
 inbound delivery via the public IP is the routing test. Read the report in the
 From mailbox (defaults to `theodor@homeandofficemicro.com`).
+
+- `service-ctl.sh [stop|start|status]` — stop/start BOTH balancer services
+  together (`balancer` + `semi-auto-balancer`, hard whitelist — can never
+  touch `deploy-control`). Stop is temporary: units stay enabled, a reboot
+  brings them back. While stopped: no polls/alerts/syncs/monitor checks;
+  running searches die, ⏸-paused ones survive via checkpoint.
