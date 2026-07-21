@@ -1,5 +1,6 @@
 const db = require('./db');
-const { recordFlow, indexUsdFor, priceAsset, indexLabel } = require('./balancer');
+const { recordFlow, indexUsdFor, priceAsset, indexLabel, computeBasket, computeValueIndex } = require('./balancer');
+const { fetchUsdPrices } = require('./pricing');
 
 // Phase 6 virtual sub-accounts: several profiles carve up ONE physical
 // exchange account, each trading on its own alerts and tracking its own
@@ -502,7 +503,69 @@ async function removeAsset(assetId) {
       returned = { qty, symbol: asset.symbol, toProfileId: shell.id, toName: shell.name };
     }
   }
-  db.prepare('DELETE FROM assets WHERE id = ?').run(assetId);
+
+  // Removing the ROW is itself a structural change the indices must splice
+  // across — observed live 2026-07-21: deleting a zero-balance but
+  // 20%-TARGETED row dropped its weight term from the basket sum (1.0 → 0.8)
+  // and the next targets-set folded the corrupted level into the base.
+  // Re-read profile/assets: the carve above may have just updated both.
+  const prof = profile ? db.prepare('SELECT * FROM profiles WHERE id = ?').get(asset.profile_id) : null;
+  const assetsNow = db.prepare('SELECT * FROM assets WHERE profile_id = ?').all(asset.profile_id);
+  const live = assetsNow.find((a) => a.id === asset.id);
+  const liveQty = live ? Number(live.quantity) || 0 : 0;
+
+  // BASKET: level with the row present (unit math, no prices needed); after
+  // the delete the base is rescaled so the displayed level is unchanged.
+  const basketBefore = prof && live ? computeBasket(assetsNow, prof.basket_base) : null;
+
+  // VALUE: only a still-FUNDED row changes the total (grouped deletes were
+  // just carved to zero above). Treat it like a withdrawal: fold the level,
+  // re-anchor the snap without the removed value. If pricing is down we
+  // REFUSE rather than delete-and-corrupt.
+  let valueSplice = null;
+  if (prof && live && liveQty > REMOVE_DUST && prof.value_snap_rel > 0) {
+    const usdPrices = await fetchUsdPrices(assetsNow.map((a) => a.coingecko_id));
+    const indexUsd = indexUsdFor(assetsNow, usdPrices);
+    let relTotal = 0;
+    let relRemoved = 0;
+    for (const a of assetsNow) {
+      const p = priceAsset(a, indexUsd, usdPrices);
+      if (!p) {
+        if ((Number(a.quantity) || 0) > 0) {
+          throw new Error(
+            `cannot price ${a.symbol.toUpperCase()} right now — deleting ${asset.symbol.toUpperCase()} needs a valued splice; retry when pricing is back`
+          );
+        }
+        continue;
+      }
+      relTotal += a.quantity * p.rel;
+      if (a.id === asset.id) relRemoved = a.quantity * p.rel;
+    }
+    valueSplice = { valueBefore: computeValueIndex(prof, relTotal), relAfter: relTotal - relRemoved };
+  }
+
+  db.transaction(() => {
+    db.prepare('DELETE FROM assets WHERE id = ?').run(asset.id);
+    if (basketBefore != null) {
+      const remaining = db.prepare('SELECT * FROM assets WHERE profile_id = ?').all(asset.profile_id);
+      const innerAfter = computeBasket(remaining, 1);
+      // No targeted rows left → the basket track goes dormant (reads null);
+      // nothing to rescale. Otherwise preserve the displayed level exactly.
+      if (innerAfter > 0) {
+        db.prepare('UPDATE profiles SET basket_base = ? WHERE id = ?').run(basketBefore / innerAfter, asset.profile_id);
+      }
+    }
+    if (valueSplice) {
+      if (valueSplice.relAfter > 0 && valueSplice.valueBefore > 0) {
+        db.prepare('UPDATE profiles SET value_base = ?, value_snap_rel = ? WHERE id = ?').run(
+          valueSplice.valueBefore, valueSplice.relAfter, asset.profile_id
+        );
+      } else {
+        // Nothing valued remains — pause the track; the next flow re-anchors.
+        db.prepare('UPDATE profiles SET value_snap_rel = NULL WHERE id = ?').run(asset.profile_id);
+      }
+    }
+  })();
   return { ok: true, existed: true, returned };
 }
 

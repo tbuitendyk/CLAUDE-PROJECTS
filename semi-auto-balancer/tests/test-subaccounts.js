@@ -282,6 +282,50 @@ const client = {
     ok(rz.ok && !rz.returned, 'a zero-balance grouped row deletes plainly (no carve)');
   }
 
+  // ---- delete-asset SPLICES (the live basket 1.0 → 0.8000 lock-in) ----------
+  // Removing a ROW is a structural change: the basket must not lose the row's
+  // weight term (observed live: deleting a zero-balance 20%-targeted row read
+  // as a 20% unit loss), and a funded unlinked delete must splice value like
+  // a withdrawal instead of faking a crash.
+  {
+    db.prepare("INSERT INTO profiles (name, threshold_pct, poll_minutes, created_at) VALUES ('SpliceTest', 10, 15, 0)").run();
+    const P = db.prepare("SELECT id FROM profiles WHERE name = 'SpliceTest'").get().id;
+    const addA = db.prepare(
+      'INSERT INTO assets (profile_id, coingecko_id, symbol, quantity, target_pct, is_index, basket_units) VALUES (?, ?, ?, ?, ?, ?, ?)'
+    );
+    addA.run(P, 'usd-coin', 'usdc', 100, 40, 1, 100);
+    addA.run(P, 'ripple', 'xrp', 10, 40, 0, 10);
+    addA.run(P, 'solana', 'sol', 0, 20, 0, 0);
+    // Value anchor: rel total = usdc 100×1 + xrp 10×2.5 = 125.
+    db.prepare('UPDATE profiles SET value_base = 1, value_snap_rel = 125 WHERE id = ?').run(P);
+    const basketAt = () => {
+      const prof = db.prepare('SELECT * FROM profiles WHERE id = ?').get(P);
+      return bal.computeBasket(db.prepare('SELECT * FROM assets WHERE profile_id = ?').all(P), prof.basket_base);
+    };
+    ok(approx(basketAt(), 1, 1e-9), 'splice fixture starts at basket 1.0');
+
+    const sol = db.prepare("SELECT * FROM assets WHERE profile_id = ? AND symbol = 'sol'").get(P);
+    await sub.removeAsset(sol.id);
+    ok(approx(basketAt(), 1, 1e-9), 'deleting a zero-balance TARGETED row leaves the basket level unchanged (the 1.0 → 0.8 bug)');
+
+    const xrpRow = db.prepare("SELECT * FROM assets WHERE profile_id = ? AND symbol = 'xrp'").get(P);
+    await sub.removeAsset(xrpRow.id);
+    const prof = db.prepare('SELECT * FROM profiles WHERE id = ?').get(P);
+    ok(approx(prof.value_snap_rel, 100, 1e-9), 'funded unlinked delete re-anchors the value snap without the removed value');
+    ok(approx(bal.computeValueIndex(prof, 100), 1, 1e-9), 'value index reads 1.0 after the funded delete — no fake −20% crash');
+    ok(approx(basketAt(), 1, 1e-9), 'basket level survives the funded delete too');
+
+    addA.run(P, 'ripple', 'xrp', 10, 0, 0, 10);
+    const again = db.prepare("SELECT * FROM assets WHERE profile_id = ? AND symbol = 'xrp'").get(P);
+    const saved = PRICES;
+    PRICES = {};
+    let refused = false;
+    try { await sub.removeAsset(again.id); } catch (e) { refused = /cannot price/.test(e.message); }
+    PRICES = saved;
+    ok(refused, 'funded delete with pricing down REFUSES (never delete-and-corrupt)');
+    ok(db.prepare('SELECT * FROM assets WHERE id = ?').get(again.id) !== undefined, 'the refused row survives untouched');
+  }
+
   console.log('test-subaccounts: all assertions passed');
   process.exit(0);
 })().catch((err) => {
