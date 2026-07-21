@@ -301,6 +301,51 @@ const client = {
     ok(qz && qz.status === 'pending' && /zzz/.test(qz.reason || ''), 'inbox row names the unmapped currency');
   }
 
+  // ---- partial fills aggregate-match advice (the queued-DOGE incident) ------
+  // An advised order that executes in pieces: no single piece fits the
+  // advised size ±15%, so piece 1 queues — but when piece 2 arrives, the SUM
+  // matches the advice, piece 2 auto-attributes (T2 aggregate) and the
+  // queued sibling is pulled onto the same profile automatically.
+  {
+    db.prepare(
+      "INSERT INTO assets (profile_id, coingecko_id, symbol, quantity, target_pct, is_index, basket_units) VALUES (1, 'litecoin', 'ltc', 0.3, 0, 0, 0)"
+    ).run(); // second LTC holder → per-fill T2 territory, not T1
+    const tH = now + 200_000;
+    db.prepare('INSERT INTO advice_log (profile_id, ts, symbol, side, quantity) VALUES (2, ?, ?, ?, ?)').run(
+      tH - 1000, 'ltc', 'SELL', 0.42
+    );
+    const balancesNow = (extra = {}) => {
+      const rows = db
+        .prepare(
+          `SELECT LOWER(a.symbol) code, SUM(a.quantity) s FROM assets a JOIN profiles p ON p.id = a.profile_id
+           WHERE p.exchange_account_id = ? GROUP BY LOWER(a.symbol)`
+        )
+        .all(account.id);
+      const by = new Map(rows.map((r) => [r.code, r.s]));
+      for (const [c, d] of Object.entries(extra)) by.set(c, (by.get(c) || 0) + d);
+      return [...by.entries()].filter(([, v]) => v > 1e-12).map(([code, amount]) => ({ code, amount }));
+    };
+    VENUE.trades = [
+      { id: 'fill-1', ts: tH, pair: 'ltc_usd', side: 'sell', price: 100, deltas: [
+        { code: 'ltc', delta: -0.12 }, { code: 'usd', delta: 12 }] },
+      { id: 'fill-2', ts: tH + 60_000, pair: 'ltc_usd', side: 'sell', price: 100, deltas: [
+        { code: 'ltc', delta: -0.3 }, { code: 'usd', delta: 30 }] },
+    ];
+    VENUE.balances = balancesNow({ ltc: -0.42, usd: 42 });
+    const sP = await sync.syncAccount(account.id, { client });
+    ok(sP.attribution.t2 === 2, `both pieces landed as T2 (piece 2 aggregate + sibling pull; t2=${sP.attribution.t2})`);
+    ok(approx(qtyOf(2, 'ltc'), 0.5 - 0.42, 1e-9), 'advised profile debited by the FULL aggregate (0.42 LTC)');
+    ok(approx(qtyOf(1, 'ltc'), 0.3, 1e-9), 'the other holder untouched');
+    ok(
+      db.prepare("SELECT COUNT(*) n FROM attribution_queue WHERE venue_ref IN ('fill-1','fill-2') AND status = 'pending'").get().n === 0,
+      'nothing left in the inbox — the queued sibling was pulled automatically'
+    );
+    ok(
+      sub.listTxnLog(account.id).some((t) => /aggregate matched/.test(t.note || '')),
+      'txn log says WHY: aggregate matched the advice'
+    );
+  }
+
   // ---- delete-asset guard (the live 15,000-MXN vanish, 2026-07-21) ----------
   // Deleting a funded asset on a grouped sub-account must return the balance
   // to the shell (logged carve), never erase it; a funded SHELL asset must

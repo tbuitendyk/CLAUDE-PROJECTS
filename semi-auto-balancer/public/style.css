@@ -156,6 +156,9 @@ tr.ref-row td { background: color-mix(in srgb, var(--accent) 8%, transparent); }
 .settings-row { display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; margin: .25rem 0 .75rem; }
 .settings-row label { color: var(--muted); }
 .settings-row input { width: 90px; }
+/* Checkboxes are not number fields: the 90px input width was shoving the
+   auto-apply box far from its own label text. */
+.settings-row input[type="checkbox"], .toggle-row input[type="checkbox"] { width: auto; }
 #flow-section { margin: 1rem 0; }
 .flow-row { display: flex; align-items: center; gap: .6rem; justify-content: flex-start; padding: .2rem 0; color: var(--text); font-size: .9rem; }
 .flow-row span { min-width: 90px; }

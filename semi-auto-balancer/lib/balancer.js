@@ -280,7 +280,13 @@ function decideNotification(profile, result, manual, now) {
     return null;
   }
 
-  if (state === 'armed' && newBreaches.length > 0) {
+  // Per-ASSET quiet period: repeats of already-notified breaches stay silent
+  // (alloc_alerts marks them active), but a breach on an asset NOT in the
+  // notified set is NEW information — a just-unfrozen asset, a fresh drift —
+  // and sends even while the profile is in its quiet window. (Observed live
+  // 2026-07-21: a DOGE advice sat silent for over an hour behind an earlier
+  // email's quiet period.) The 12h timeout and all re-arm paths unchanged.
+  if (newBreaches.length > 0) {
     markActive(breaches, now);
     setNotifyState(profile.id, 'notified', now);
     return { profile, alerts: breaches, indexNote };

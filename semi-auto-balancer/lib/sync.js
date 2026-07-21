@@ -71,7 +71,10 @@ function getAccountForProfile(profileId) {
 
 // Observed taker fee from the account's real fills — the advisory input that
 // calibrates profiles.fee_pct against genuinely executed trades.
-function observedFee(accountId, sample = 50) {
+// Sample = last 10 fills (user-tuned): a one-off expensive trade at account
+// setup (e.g. a fiat conversion) must age out of the calibration quickly
+// instead of dragging the average for fifty fills.
+function observedFee(accountId, sample = 10) {
   const row = db
     .prepare(
       `SELECT AVG(fee_pct) AS avg_pct, COUNT(*) AS n FROM (
@@ -471,6 +474,7 @@ async function syncAccountMulti(account, client, profiles) {
     let maxLedgerTs = account.last_ledger_ts;
     const newPendingIds = [];
     const adoptTargets = []; // {profileId, asset, delta}
+    const aggFollowups = []; // {pair, side, ts, profileId, name} — aggregate-T2 sibling pulls
     const touchedProfiles = new Set();
 
     db.transaction(() => {
@@ -489,7 +493,7 @@ async function syncAccountMulti(account, client, profiles) {
         const baseCode = String((t.pair || '').split(/[_/]/)[0] || (t.deltas[0] && t.deltas[0].code) || '').toLowerCase();
         const baseDelta = (t.deltas.find((d) => d.code === baseCode) || t.deltas[0] || { delta: 0 }).delta;
         let decision = sub.attributeTrade({
-          trade: { ts: t.ts, side: t.side, baseCode, baseDelta },
+          trade: { ts: t.ts, side: t.side, baseCode, baseDelta, pair: t.pair || null, accountId: account.id, id: t.id },
           holders: holdersOf(baseCode),
           shell,
         });
@@ -557,9 +561,25 @@ async function syncAccountMulti(account, client, profiles) {
             deltas: applied,
             note:
               `${(t.side || 'trade').toUpperCase()} ${t.pair || baseCode} → "${target.name}" ` +
-              (decision.tier === 't2' ? '(auto: matched its own advice)' : target.is_shell ? '(unallocated asset)' : '(only holder)'),
+              (decision.tier === 't2'
+                ? decision.aggregate
+                  ? '(auto: partial fills aggregate-matched its advice)'
+                  : '(auto: matched its own advice)'
+                : target.is_shell
+                  ? '(unallocated asset)'
+                  : '(only holder)'),
             ts: t.ts,
           });
+          if (decision.aggregate) {
+            aggFollowups.push({
+              pair: t.pair,
+              side: t.side,
+              ts: t.ts,
+              sinceTs: decision.aggSinceTs ?? t.ts - sub.T2_WINDOW_MS,
+              profileId: target.id,
+              name: target.name,
+            });
+          }
         } else {
           db.prepare(
             `INSERT OR IGNORE INTO attribution_queue
@@ -673,6 +693,32 @@ async function syncAccountMulti(account, client, profiles) {
         account.id
       );
     })();
+
+    // Aggregate-T2 follow-through: the earlier PIECES of the same advised
+    // order may be sitting in the inbox — pull them onto the matched profile.
+    // Runs post-flush so quantity writes never collide with the batch cache.
+    for (const s of aggFollowups) {
+      const sibs = db
+        .prepare(
+          `SELECT id FROM attribution_queue WHERE account_id = ? AND kind = 'trade' AND status = 'pending'
+             AND pair = ? AND side = ? AND ts >= ? AND ts <= ?`
+        )
+        .all(account.id, s.pair, s.side, s.sinceTs, s.ts);
+      for (const row of sibs) {
+        try {
+          sub.assignQueuedTrade(row.id, s.profileId, {
+            kind: 'trade-auto-t2',
+            note: `partial fill — aggregate matched "${s.name}" advice`,
+          });
+          summary.tradesApplied++;
+          summary.attribution.t2++;
+          summary.tradesQueued = Math.max(0, summary.tradesQueued - 1);
+          touchedProfiles.add(s.profileId);
+        } catch (err) {
+          console.error(`aggregate sibling assign failed (queue ${row.id}):`, err.message);
+        }
+      }
+    }
 
     // Baseline adoptions splice via recordFlow (live prices → post-commit).
     for (const t of adoptTargets) {

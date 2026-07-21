@@ -112,16 +112,66 @@ function attributeTrade({ trade, holders, shell, now = Date.now() }) {
   // T2: match a profile's own recent advice — symbol+side, size ±15%, 36h.
   const baseQty = Math.abs(trade.baseDelta);
   const side = String(trade.side || '').toUpperCase();
-  const matches = [];
+  const adviceOf = new Map();
   for (const h of holders) {
-    const rows = db
-      .prepare('SELECT * FROM advice_log WHERE profile_id = ? AND symbol = ? AND side = ? AND ts >= ? AND ts <= ?')
-      .all(h.profile.id, trade.baseCode, side, trade.ts - T2_WINDOW_MS, trade.ts);
-    if (rows.some((r) => baseQty >= r.quantity * (1 - T2_SIZE_TOL) && baseQty <= r.quantity * (1 + T2_SIZE_TOL))) {
-      matches.push(h);
+    adviceOf.set(
+      h.profile.id,
+      db
+        .prepare('SELECT * FROM advice_log WHERE profile_id = ? AND symbol = ? AND side = ? AND ts >= ? AND ts <= ?')
+        .all(h.profile.id, trade.baseCode, side, trade.ts - T2_WINDOW_MS, trade.ts)
+    );
+  }
+  const fits = (qtyAbs, rows) =>
+    (rows || []).some((r) => qtyAbs >= r.quantity * (1 - T2_SIZE_TOL) && qtyAbs <= r.quantity * (1 + T2_SIZE_TOL));
+  const matches = holders.filter((h) => fits(baseQty, adviceOf.get(h.profile.id)));
+  if (matches.length === 1) return { profileId: matches[0].profile.id, tier: 't2' };
+
+  // T2 AGGREGATE: an advised order often executes in PIECES, and no single
+  // piece matches the advised size (observed live 2026-07-21: a ~1740-DOGE
+  // advice filled as 379 + 1361 and both pieces queued). Sum this fill with
+  // its sibling fills — same account/pair/side within the advice window,
+  // still unattributed or already on the candidate profile — and match the
+  // SUM against the advice instead.
+  if (matches.length === 0 && trade.accountId && trade.pair) {
+    const sibRows = db
+      .prepare(
+        `SELECT ts, deltas, profile_id FROM exchange_trades
+         WHERE account_id = ? AND pair = ? AND side = ? AND ts >= ? AND ts <= ? AND venue_trade_id != ?`
+      )
+      .all(trade.accountId, trade.pair, trade.side, trade.ts - T2_WINDOW_MS, trade.ts, String(trade.id ?? ''));
+    const aggMatches = [];
+    for (const h of holders) {
+      const advice = adviceOf.get(h.profile.id) || [];
+      if (advice.length === 0) continue;
+      // Pieces of an advised order cannot PREDATE the advice: only fills at
+      // or after the earliest matching advice count toward the aggregate —
+      // an older unrelated fill on the same pair must not inflate the sum.
+      const minAdviceTs = Math.min(...advice.map((r) => r.ts));
+      let sum = baseQty;
+      for (const r of sibRows) {
+        if (r.ts < minAdviceTs) continue;
+        if (r.profile_id != null && r.profile_id !== h.profile.id) continue;
+        try {
+          const d = JSON.parse(r.deltas).find(
+            (x) => String(x.code).toLowerCase() === trade.baseCode && (x.delta > 0) === (trade.baseDelta > 0)
+          );
+          if (d) sum += Math.abs(d.delta);
+        } catch {
+          /* unreadable sibling deltas — skip that sibling */
+        }
+      }
+      if (sum > baseQty && fits(sum, advice)) aggMatches.push({ h, minAdviceTs });
+    }
+    if (aggMatches.length === 1) {
+      return {
+        profileId: aggMatches[0].h.profile.id,
+        tier: 't2',
+        aggregate: true,
+        aggSinceTs: aggMatches[0].minAdviceTs,
+      };
     }
   }
-  if (matches.length === 1) return { profileId: matches[0].profile.id, tier: 't2' };
+
   return {
     queue:
       matches.length > 1

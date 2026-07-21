@@ -81,4 +81,19 @@ const solo = db.prepare('SELECT * FROM profiles WHERE id = 2').get();
 const rs = bal.evaluateProfile(solo, PRICES, Date.now());
 ok(rs.breaches.length === 0, 'w=100% profile never alerts (T would be 0)');
 
+// --- per-ASSET quiet period (1b): a breach on an asset NOT in the notified
+// set sends even while the profile is quiet; repeats stay silent. ---
+db.prepare("UPDATE profiles SET notify_state = 'notified' WHERE id = 1").run();
+{
+  const p1 = db.prepare('SELECT * FROM profiles WHERE id = 1').get();
+  const a = db.prepare('SELECT * FROM assets WHERE profile_id = 1 LIMIT 1').get();
+  const breach = { asset: a, side: 'BUY', driftRelPct: -50 };
+  const rNew = bal.decideNotification(p1, { breaches: [breach], newBreaches: [breach], indexNote: null }, false, Date.now());
+  ok(rNew && rNew.alerts.length === 1, 'per-asset quiet: a NEW breach notifies during the quiet period');
+  const p1b = db.prepare('SELECT * FROM profiles WHERE id = 1').get();
+  ok(p1b.notify_state === 'notified', 'sending re-stamps the notified state');
+  const rRep = bal.decideNotification(p1b, { breaches: [breach], newBreaches: [], indexNote: null }, false, Date.now());
+  ok(rRep === null, 'per-asset quiet: repeats of already-notified breaches stay silent');
+}
+
 console.log('threshold calibration tests pass');

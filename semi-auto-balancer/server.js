@@ -961,10 +961,22 @@ app.delete('/api/assets/:id', async (req, res) => {
 
 // Manual unfreeze (Phase 3): the human override on the buy-freeze rail.
 // The rail may re-freeze on the next check if conditions still hold.
-app.post('/api/assets/:id/unfreeze', (req, res) => {
+// Unfreezing is NEW information — the advice the freeze was suppressing must
+// not wait for the next scheduled poll or sit behind a quiet period: re-arm
+// the notification machine and re-poll immediately, like "Poll now".
+app.post('/api/assets/:id/unfreeze', async (req, res) => {
   const asset = db.prepare('SELECT * FROM assets WHERE id = ?').get(req.params.id);
   if (!asset) return res.status(404).json({ error: 'not found' });
   db.prepare('UPDATE assets SET buy_frozen = 0, frozen_at = NULL, freeze_reason = NULL WHERE id = ?').run(asset.id);
+  db.prepare("UPDATE profiles SET notify_state = 'armed', notify_state_at = ? WHERE id = ?").run(Date.now(), asset.profile_id);
+  try {
+    const { events } = await pollProfiles({ force: true, profileId: asset.profile_id, manual: true });
+    if (events.length > 0) await sendAlertEvents(events);
+  } catch (err) {
+    // The unfreeze itself succeeded; delivery is best-effort and the next
+    // poll retries. Say so instead of failing the whole action.
+    return res.json({ ok: true, pollError: err.message });
+  }
   res.json({ ok: true });
 });
 
