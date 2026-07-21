@@ -342,7 +342,7 @@ function renderDetail() {
         inp.type = 'number';
         inp.step = 'any';
         inp.min = '0';
-        inp.value = totals.totalRel;
+        inp.value = Math.round(totals.totalRel * 100) / 100; // cents are enough
         inp.className = 'cell-input';
         inp.style.width = '110px';
         inp.title = `Baseline amount in ${idx} units`;

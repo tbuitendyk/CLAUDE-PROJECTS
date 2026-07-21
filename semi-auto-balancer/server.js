@@ -1144,7 +1144,8 @@ app.post('/api/profiles/:id/value-baseline', (req, res) => {
   const profile = db.prepare('SELECT * FROM profiles WHERE id = ?').get(req.params.id);
   if (!profile) return res.status(404).json({ error: 'not found' });
   if (profile.is_shell) return res.status(400).json({ error: 'the pool has no strategy track record to re-baseline' });
-  const baseline = Number((req.body || {}).baseline);
+  // Hard-rounded to cents: millionths of a cent in a baseline are noise.
+  const baseline = Math.round(Number((req.body || {}).baseline) * 100) / 100;
   if (!(baseline > 0)) return res.status(400).json({ error: 'baseline must be a positive number (in tether units)' });
   // Optional start-clock fix (UTC): the track's start was historically
   // stamped by whatever event anchored the index — not necessarily when the
