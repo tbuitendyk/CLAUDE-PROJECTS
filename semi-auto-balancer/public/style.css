@@ -250,9 +250,11 @@ tr.breached td { background: color-mix(in srgb, var(--danger) 10%, transparent);
 #c-pool .pin.on { opacity: 1; filter: none; }
 #c-pool label:has(.pin.on) { text-decoration: none; color: var(--text); }
 
-/* Composition lab: weeded (gate-hidden) rows revealed on demand — muted so
-   the honest board stays visually primary; the ▼mkt cell tells the verdict. */
-#c-table tr.weeded-row { opacity: .55; }
+/* Composition lab: weeded (gate-hidden) rows revealed on demand — a blue
+   tint (not a faded ghost) keeps them fully readable while still visually
+   distinct from the honest board; the ▼mkt cell tells the verdict. */
+#c-table tr.weeded-row { background: rgba(79, 156, 249, .13); }
+#c-table tr.weeded-row td:first-child { box-shadow: inset 3px 0 0 var(--accent); }
 #c-table tr.weeded-toggle td { text-align: center; }
 #c-table tr.weeded-toggle button { font-size: .8rem; }
 
