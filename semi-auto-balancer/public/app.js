@@ -1485,7 +1485,7 @@ $('#c-pool-btn').addEventListener('click', async () => {
         }
         save();
       });
-      label.append(cb, document.createTextNode(` ${c.symbol.toUpperCase()}${c.held ? ' •' : ''}`), pin);
+      label.append(cb, pin, document.createTextNode(`${c.symbol.toUpperCase()}${c.held ? ' •' : ''}`));
       box.appendChild(label);
     }
     status.textContent =
