@@ -1480,7 +1480,6 @@ $('#c-run').addEventListener('click', async () => {
         currentSet: scope === 'reweight',
         heldOnly: scope === 'drops',
         idealTether: $('#c-ideal').checked,
-        cpu: Number($('#c-cpu').value),
       },
     });
     trackJob('compose', jobId, profileId);
@@ -1490,13 +1489,23 @@ $('#c-run').addEventListener('click', async () => {
   }
 });
 
-// CPU duty-cycle choice: applies to the next search; remembered per browser.
-{
-  const sel = $('#c-cpu');
-  const saved = localStorage.getItem('sab-cpu');
-  if (saved && sel.querySelector(`option[value="${saved}"]`)) sel.value = saved;
-  sel.addEventListener('change', () => localStorage.setItem('sab-cpu', sel.value));
+// Service-wide CPU cap: one header button, stored server-side, applies LIVE
+// to every heavy loop (running searches included, within seconds). Click
+// cycles down through the steps and wraps back to 100%.
+const CPU_STEPS = [100, 90, 75, 50, 25];
+function paintCpuBtn(pct) {
+  $('#cpu-btn').textContent = `CPU ${pct}%`;
 }
+$('#cpu-btn').addEventListener('click', async () => {
+  const cur = Number(($('#cpu-btn').textContent.match(/\d+/) || [90])[0]);
+  const next = CPU_STEPS[(CPU_STEPS.indexOf(cur) + 1) % CPU_STEPS.length] || 90;
+  try {
+    const r = await api('/settings/cpu', { method: 'POST', body: { pct: next } });
+    paintCpuBtn(r.pct);
+  } catch (err) {
+    alert(`CPU setting failed: ${err.message}`);
+  }
+});
 
 // Pause/resume the running comp lab search for the profile ON SCREEN: the
 // search parks at its next yield point (sub-second) and holds its place.
@@ -2631,6 +2640,7 @@ $('#i-cancel').addEventListener('click', () => {
   $('#email-status').textContent = session.emailConfigured
     ? 'email alerts: on'
     : 'email alerts: not configured';
+  paintCpuBtn(session.cpuPct || 90);
   state.visionConfigured = Boolean(session.visionConfigured);
   state.telegramConfigured = Boolean(session.telegramConfigured);
   if (session.authed) {

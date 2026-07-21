@@ -496,7 +496,9 @@ async function runLadderSweep({ fast = false, seed = 424242 } = {}, setProgress 
     if (d < 0) break;
   }
 
-  const yieldLoop = () => new Promise((r) => setImmediate(r));
+  // Service-wide CPU cap (lib/throttle.js): the sweep honors the same live
+  // duty-cycle setting as the comp-lab searches and the tuner.
+  const yieldLoop = require('./throttle').makeYielder();
   const scores = new Float64Array(indexList.length);
   const results = new Array(indexList.length);
   for (let i = 0; i < indexList.length; i++) {

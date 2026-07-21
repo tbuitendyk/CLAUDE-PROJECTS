@@ -27,7 +27,7 @@ const mkBars = (n, priceFn) =>
 (async () => {
   // --- sinusoid: mean-reverting market -> interior optimum, both curves agree ---
   const sinBars = mkBars(720, (i) => 100 * (1 + 0.3 * Math.sin((2 * Math.PI * i) / 90)));
-  const sin = bt.sweep(ASSETS, sinBars, { feePct: 0.3, spreadPct: 0.1 });
+  const sin = await bt.sweep(ASSETS, sinBars, { feePct: 0.3, spreadPct: 0.1 });
   ok(sin.recommendation != null, 'sinusoid: basket & value agree -> a recommendation exists');
   ok(sin.recommendation.x < 30, 'sinusoid: optimum is interior, not "never trade"');
   const sinBest = Math.max(...sin.grid.map((r) => r.netBasketGrowthPct));
@@ -40,7 +40,7 @@ const mkBars = (n, priceFn) =>
 
   // --- pure downtrend: basket-positive but value-negative -> warning path ---
   const downBars = mkBars(400, (i) => 100 * Math.pow(0.998, i));
-  const down = bt.sweep(ASSETS, downBars, { feePct: 0.3, spreadPct: 0.1 });
+  const down = await bt.sweep(ASSETS, downBars, { feePct: 0.3, spreadPct: 0.1 });
   ok(down.recommendation == null, 'downtrend: no recommendation when basket and value diverge');
   ok(
     down.warnings.some((w) => /underperforms simply holding|diverge/i.test(w)),
@@ -54,8 +54,8 @@ const mkBars = (n, priceFn) =>
   ok(down.grid.every((r) => r.valueGrowthPct < down.hold.valueGrowthPct), 'downtrend: every X loses to holding');
 
   // --- higher cost -> looser optimum ---
-  const cheap = bt.sweep(ASSETS, sinBars, { feePct: 0, spreadPct: 0 });
-  const dear = bt.sweep(ASSETS, sinBars, { feePct: 2, spreadPct: 0.5 });
+  const cheap = await bt.sweep(ASSETS, sinBars, { feePct: 0, spreadPct: 0 });
+  const dear = await bt.sweep(ASSETS, sinBars, { feePct: 2, spreadPct: 0.5 });
   ok(cheap.recommendation != null && dear.recommendation != null, 'both cost levels still recommend on a sinusoid');
   ok(dear.recommendation.x >= cheap.recommendation.x, `higher cost loosens the optimum (${cheap.recommendation.x}% -> ${dear.recommendation.x}%)`);
 

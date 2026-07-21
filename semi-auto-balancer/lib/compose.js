@@ -8,6 +8,7 @@ const { getAccountForProfile } = require('./sync');
 const kraken = require('./exchanges/kraken');
 const bitso = require('./exchanges/bitso');
 const regime = require('./regime');
+const { makeYielder } = require('./throttle');
 
 // Phase 2.75: composition sweep — an empirical search over asset GROUPS and
 // target WEIGHTS for setups where rebalancing genuinely earns its keep.
@@ -376,43 +377,10 @@ function qualityRank(a, b) {
 // result stays small; the weededForQuality count still reports the true total.
 const HIDDEN_CAP = 40;
 
-// Cooperative CPU throttle + pause gate for the search loops. setImmediate
-// alone never idles — it drains the event queue but keeps the core pinned at
-// 100%, starving polls, account syncs and the UI for the whole run. The
-// yielder runs a duty cycle sized by cpuPct (e.g. 90 → ~10ms real sleep per
-// ~90ms of work; 100 → no sleep), and awaits the job's pause gate at every
-// yield so ⏸ Pause parks the search in place within a fraction of a second.
-// Timing-only — sampling order and seeds are untouched (results identical).
-const THROTTLE_WORK_MS = 90;
-const CPU_PCT_DEFAULT = 90;
-function makeYielder(cpuPct = CPU_PCT_DEFAULT, pauseGate = null) {
-  const pct = Math.min(100, Math.max(50, Number(cpuPct) || CPU_PCT_DEFAULT));
-  const sleepMs = pct >= 100 ? 0 : Math.round((THROTTLE_WORK_MS * (100 - pct)) / pct);
-  let lastSleep = Date.now();
-  let checkpointedThisPause = false;
-  return async (snapFn) => {
-    if (pauseGate) {
-      // Entering a pause with a snapshot builder in hand: persist the full
-      // search state ONCE per pause, so the pause survives a deploy/restart.
-      if (pauseGate.pending && pauseGate.pending() && !checkpointedThisPause && snapFn && pauseGate.saveCheckpoint) {
-        try {
-          pauseGate.saveCheckpoint(snapFn());
-          checkpointedThisPause = true;
-        } catch {
-          /* checkpointing is best-effort; the in-memory pause still works */
-        }
-      }
-      await pauseGate();
-      if (!(pauseGate.pending && pauseGate.pending())) checkpointedThisPause = false;
-    }
-    if (sleepMs > 0 && Date.now() - lastSleep >= THROTTLE_WORK_MS) {
-      lastSleep = Date.now() + sleepMs;
-      await new Promise((r) => setTimeout(r, sleepMs));
-    } else {
-      await new Promise((r) => setImmediate(r));
-    }
-  };
-}
+// CPU throttling + the ⏸ pause gate live in lib/throttle.js now: ONE
+// service-wide setting (changeable live in the UI header) governs the duty
+// cycle of every heavy loop — these searches, the tuner, ladder sweeps.
+// Timing-only: sampling order and seeds untouched, results identical.
 
 // Intensity-scaled funnel sizes (user-tuned): the broad pass dominates
 // wall-clock (>95% at 1M), so wider boards and a much deeper refinement stage
@@ -452,7 +420,6 @@ async function searchCompositions({
   finalists,
   benchmark = null, // BTC-aligned {ts,usd_price}[] over `bars`, enables regime mode
   seed = 42,
-  cpuPct = CPU_PCT_DEFAULT, // duty-cycle throttle (50–100; 100 = no sleep)
   pauseGate = null, // job runner's cooperative pause gate
   resume = null, // checkpoint loop state (deploy-surviving pause)
   checkpointWrapper = null, // IO wrapper's frozen result metadata, rides in snapshots
@@ -480,7 +447,7 @@ async function searchCompositions({
   const pinnedSet = new Set(pinnedIds);
   if (pinnedIds.length) maxAssets = Math.max(maxAssets, pinnedIds.length);
   // Long runs must not starve the event loop (polls, syncs, the UI itself).
-  const yieldLoop = makeYielder(cpuPct, pauseGate);
+  const yieldLoop = makeYielder(pauseGate);
 
   // ---- checkpointing (deploy-surviving pause) -------------------------------
   // A snapshot freezes the search INPUTS (bars, candidates, benchmark, every
@@ -493,7 +460,7 @@ async function searchCompositions({
   const inputsSnap = () => ({
     candidates, tether, bars, benchmark, currentMix, feePct, spreadPct, lagHours,
     samples, minAssets, maxAssets, pinned: pinnedIds, screenKeep, fullTop, retKeep,
-    refineTop, refineEvals, finalists, seed, cpuPct,
+    refineTop, refineEvals, finalists, seed,
   });
 
   // Untouched holdout tail (both modes) + the in-sample region.
@@ -932,7 +899,6 @@ async function searchCurrentSet({
   finalists,
   benchmark = null,
   seed = 42,
-  cpuPct = CPU_PCT_DEFAULT,
   pauseGate = null,
   resume = null,
   checkpointWrapper = null,
@@ -949,7 +915,7 @@ async function searchCurrentSet({
       `${n} assets can't each hold ≥${MINU}% (that needs ${n * MINU}% > 100%) — remove an asset from the profile first`
     );
   }
-  const yieldLoop = makeYielder(cpuPct, pauseGate);
+  const yieldLoop = makeYielder(pauseGate);
 
   const toAssets = (units) =>
     assetSet.map((a) => ({ coingecko_id: a.id, symbol: a.symbol, target_pct: units.get(a.id), is_index: a.isIndex ? 1 : 0 }));
@@ -1020,7 +986,7 @@ async function searchCurrentSet({
   const desU = (s) => new Map(s);
   const inputsSnap = () => ({
     assetSet, bars, benchmark, currentMix, feePct, spreadPct, lagHours,
-    samples, refineTop, refineEvals, finalists, seed, cpuPct,
+    samples, refineTop, refineEvals, finalists, seed,
   });
 
   const board = [];
@@ -1415,7 +1381,7 @@ function chooseWindowStart(earliests, requestedStartMs, nowMs) {
 // holdings (index + every position, frozen included — this re-weights what
 // you already own), fetch their history, and search the split × sensitivity.
 async function runCurrentSetSearch(profileId, ctx, setProgress = () => {}, pauseGate = null) {
-  const { profile, assets, tetherAsset, days, samples, seed, idealTether = false, cpuPct } = ctx;
+  const { profile, assets, tetherAsset, days, samples, seed, idealTether = false } = ctx;
   const nowMs = Date.now();
 
   // The set: the index + every held/targeted position. No scanner candidates,
@@ -1560,7 +1526,6 @@ async function runCurrentSetSearch(profileId, ctx, setProgress = () => {}, pause
     spreadPct: profile.spread_pct,
     samples,
     seed,
-    cpuPct,
     pauseGate,
     checkpointWrapper: wrapperMeta,
     setProgress,
@@ -1585,9 +1550,6 @@ async function runComposeSearch(profileId, opts = {}, setProgress = () => {}, pa
   const candidateCount = Number(opts.candidates) > 0 ? Math.min(Number(opts.candidates), 80) : 60;
   const seed = Number(opts.seed) || (Date.now() % 2 ** 31);
   const idealTether = !!opts.idealTether;
-  // User-selectable duty cycle (50–100, clamped in makeYielder); undefined
-  // falls through to the 90% default.
-  const cpuPct = Number(opts.cpu) > 0 ? Number(opts.cpu) : undefined;
 
   // Current-set mode branches here: it keeps the exact holdings and searches
   // only the split × sensitivity, so it skips the whole candidate-discovery /
@@ -1595,7 +1557,7 @@ async function runComposeSearch(profileId, opts = {}, setProgress = () => {}, pa
   if (opts.currentSet) {
     return runCurrentSetSearch(
       profileId,
-      { profile, assets, tetherAsset, days, samples, seed, idealTether, cpuPct },
+      { profile, assets, tetherAsset, days, samples, seed, idealTether },
       setProgress,
       pauseGate
     );
@@ -1839,7 +1801,6 @@ async function runComposeSearch(profileId, opts = {}, setProgress = () => {}, pa
     maxAssets: heldOnly ? coveredCandidates.length : undefined,
     pinned: pinnedInSearch.map((c) => c.id),
     seed,
-    cpuPct,
     pauseGate,
     checkpointWrapper: wrapperMeta,
     setProgress,

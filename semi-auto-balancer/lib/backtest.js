@@ -218,14 +218,18 @@ function range(xs) {
 
 // One full sweep over the X grid, with the joint-plateau recommendation and
 // sub-window stability check.
-function sweep(simAssets, bars, { feePct = 0.38, spreadPct = 0.1, lagHours = 6, setProgress = () => {} } = {}) {
+async function sweep(simAssets, bars, { feePct = 0.38, spreadPct = 0.1, lagHours = 6, setProgress = () => {} } = {}) {
   const opts = { feePct, spreadPct, lagHours };
+  // Service-wide CPU cap (lib/throttle.js): one X simulation is the natural
+  // work unit, so yield between them — the live setting applies mid-sweep.
+  const yieldLoop = require('./throttle').makeYielder();
   const grid = [];
   for (let i = 0; i < X_GRID.length; i++) {
     setProgress(`simulating X=${X_GRID[i]}% (${i + 1}/${X_GRID.length})`);
     const r = simulate(simAssets, X_GRID[i], { ...opts, bars });
     delete r.signals; // bulky; parity tests use simulate() directly
     grid.push(r);
+    await yieldLoop();
   }
   const hold = simulate(simAssets, null, { ...opts, bars });
 
@@ -263,6 +267,7 @@ function sweep(simAssets, bars, { feePct = 0.38, spreadPct = 0.1, lagHours = 6, 
   if (wcount > 1) {
     const size = Math.floor(n / wcount);
     for (let w = 0; w < wcount; w++) {
+      await yieldLoop();
       const slice = bars.slice(w * size, w === wcount - 1 ? n : (w + 1) * size);
       const g = X_GRID.map((x) => simulate(simAssets, x, { ...opts, bars: slice }));
       const holdW = simulate(simAssets, null, { ...opts, bars: slice });
@@ -421,7 +426,7 @@ async function runTuneSweep(profileId, { days = 730, lagHours = 6, granularity =
   }
 
   const costOpts = { feePct: profile.fee_pct, spreadPct: profile.spread_pct, lagHours };
-  const result = sweep(active, bars, { ...costOpts, setProgress });
+  const result = await sweep(active, bars, { ...costOpts, setProgress });
   // (a) all history is the main grid; (b)/(c) re-simulate the same X grid over
   // the most recent half and quarter so recent behaviour is visible untangled.
   setProgress('tabulating recent half / quarter windows…');

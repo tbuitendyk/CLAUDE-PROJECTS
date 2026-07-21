@@ -204,9 +204,11 @@
         drift can't leak in). Resume works both in the same session and after a restart; Cancel on a
         restart-surviving pause discards it. <strong>Cancel</strong> on a live search stops it within
         seconds ("cancelled — no result saved"); your last completed result stays untouched. The
-        <strong>cpu</strong> selector (100/90/75/50%) caps how much of a core the NEXT search may use —
-        lower keeps the rest of the app snappy while a long search grinds; the setting never changes
-        results, only speed.</li>
+        <strong>CPU button in the page header</strong> (cycles 100/90/75/50/25%) is a
+        <em>service-wide</em> cap on heavy work — comp-lab searches, the sensitivity tuner, and Ladder
+        Lab sweeps all honor it, and it applies to <em>already-running</em> work within seconds. Stored
+        on the server, so every browser sees the same setting. It never changes results, only speed;
+        polls, syncs, alerts and page loads are never throttled.</li>
     </ul>
 
     <h2 id="pool">6. Candidate pool (exclusions &amp; 📌 pins)</h2>

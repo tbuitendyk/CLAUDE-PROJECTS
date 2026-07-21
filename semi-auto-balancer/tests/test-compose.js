@@ -366,16 +366,26 @@ const IDS = [...seriesById.keys()];
   ok(fq.finalists === 30 && fi.finalists === 30, 'top 30 rendered at every tier');
   ok(r.funnel && r.funnel.fullTop === opts.fullTop, 'result echoes the funnel sizes actually used');
 
-  // --- cpu duty-cycle + pause gate are timing-only: identical results at
-  // any setting, and the search awaits the gate at its yield points ---
+  // --- the SERVICE-WIDE cpu cap + pause gate are timing-only: identical
+  // results at any setting, and the search awaits the gate at its yields ---
+  const throttle = require('../lib/throttle');
   let gateCalls = 0;
-  const cpuA = await compose.searchCompositions({ ...opts, samples: 300, cpuPct: 100, pauseGate: async () => { gateCalls++; } });
-  const cpuB = await compose.searchCompositions({ ...opts, samples: 300, cpuPct: 50 });
+  throttle.setCpuPct(100);
+  const cpuA = await compose.searchCompositions({ ...opts, samples: 300, pauseGate: async () => { gateCalls++; } });
+  throttle.setCpuPct(25);
+  throttle.refresh();
+  const cpuB = await compose.searchCompositions({ ...opts, samples: 300 });
+  throttle.setCpuPct(90); // restore the default for the rest of the battery
   ok(
     JSON.stringify(cpuA.mixes[0].assets) === JSON.stringify(cpuB.mixes[0].assets),
-    'cpu throttle setting never changes search results'
+    'the service-wide cpu cap never changes search results (100% vs 25%)'
   );
   ok(gateCalls > 0, `the search awaits the pause gate at its yield points (${gateCalls} calls)`);
+  ok(throttle.currentCpuPct() === 90, 'cpu setting round-trips through the settings table');
+  let cpuThrew = false;
+  try { throttle.setCpuPct('nope'); } catch { cpuThrew = true; }
+  ok(cpuThrew && throttle.setCpuPct(10) === 25 && throttle.setCpuPct(500) === 100, 'cpu pct validated and clamped to 25–100');
+  throttle.setCpuPct(90);
 
   // --- deploy-surviving pause: checkpoint → kill (simulated restart) →
   // resume from the JSON-round-tripped checkpoint → BYTE-IDENTICAL result ---

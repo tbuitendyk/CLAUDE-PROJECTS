@@ -30,6 +30,7 @@ const { visionConfigured, parseHoldingsScreenshot } = require('./lib/vision');
 const telegram = require('./lib/telegram');
 const { telegramConfigured } = telegram;
 const { startScheduler } = require('./lib/scheduler');
+const throttle = require('./lib/throttle');
 const sync = require('./lib/sync');
 const { monthlyCalls, MONTH_CAP } = require('./lib/cg');
 const { cacheStatus } = require('./lib/history');
@@ -98,6 +99,7 @@ app.get('/api/session', (req, res) => {
     emailConfigured: emailConfigured(),
     visionConfigured: visionConfigured(),
     telegramConfigured: telegramConfigured(),
+    cpuPct: throttle.currentCpuPct(),
   });
 });
 
@@ -1031,6 +1033,21 @@ app.get('/api/jobs/:id', (req, res) => {
     result: job.status === 'done' ? job.result : null,
     error: job.error,
   });
+});
+
+// Service-wide CPU cap (25–100% of a core): governs every heavy loop —
+// comp-lab searches (running ones included, within seconds), the tuner,
+// ladder sweeps. Timing-only; results identical at any setting.
+app.get('/api/settings/cpu', (req, res) => {
+  res.json({ pct: throttle.currentCpuPct() });
+});
+app.post('/api/settings/cpu', (req, res) => {
+  try {
+    const pct = throttle.setCpuPct((req.body || {}).pct);
+    res.json({ ok: true, pct });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
 });
 
 // Cooperative cancel: flags the job; it aborts at its next progress report
