@@ -63,16 +63,24 @@ const CS_STEP_PCT = 1;
 const CS_MIN_PCT = 4;
 const CS_MAX_PCT = 80;
 
-// Deterministic PRNG so a seed reproduces a search exactly.
+// Deterministic PRNG so a seed reproduces a search exactly. The internal
+// state is exposed (get/setState) so a paused search can CHECKPOINT and a
+// resumed one continue the identical draw sequence — the algorithm and the
+// sequence are byte-for-byte unchanged.
 function mulberry32(seed) {
   let a = seed >>> 0;
-  return function () {
+  const rng = function () {
     a |= 0;
     a = (a + 0x6d2b79f5) | 0;
     let t = Math.imul(a ^ (a >>> 15), 1 | a);
     t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
+  rng.getState = () => a;
+  rng.setState = (v) => {
+    a = v >>> 0;
+  };
+  return rng;
 }
 
 // ---- timeline & bars --------------------------------------------------------
@@ -381,8 +389,22 @@ function makeYielder(cpuPct = CPU_PCT_DEFAULT, pauseGate = null) {
   const pct = Math.min(100, Math.max(50, Number(cpuPct) || CPU_PCT_DEFAULT));
   const sleepMs = pct >= 100 ? 0 : Math.round((THROTTLE_WORK_MS * (100 - pct)) / pct);
   let lastSleep = Date.now();
-  return async () => {
-    if (pauseGate) await pauseGate();
+  let checkpointedThisPause = false;
+  return async (snapFn) => {
+    if (pauseGate) {
+      // Entering a pause with a snapshot builder in hand: persist the full
+      // search state ONCE per pause, so the pause survives a deploy/restart.
+      if (pauseGate.pending && pauseGate.pending() && !checkpointedThisPause && snapFn && pauseGate.saveCheckpoint) {
+        try {
+          pauseGate.saveCheckpoint(snapFn());
+          checkpointedThisPause = true;
+        } catch {
+          /* checkpointing is best-effort; the in-memory pause still works */
+        }
+      }
+      await pauseGate();
+      if (!(pauseGate.pending && pauseGate.pending())) checkpointedThisPause = false;
+    }
     if (sleepMs > 0 && Date.now() - lastSleep >= THROTTLE_WORK_MS) {
       lastSleep = Date.now() + sleepMs;
       await new Promise((r) => setTimeout(r, sleepMs));
@@ -432,6 +454,8 @@ async function searchCompositions({
   seed = 42,
   cpuPct = CPU_PCT_DEFAULT, // duty-cycle throttle (50–100; 100 = no sleep)
   pauseGate = null, // job runner's cooperative pause gate
+  resume = null, // checkpoint loop state (deploy-surviving pause)
+  checkpointWrapper = null, // IO wrapper's frozen result metadata, rides in snapshots
   setProgress = () => {},
 } = {}) {
   const sized = funnelSizes(samples);
@@ -457,6 +481,20 @@ async function searchCompositions({
   if (pinnedIds.length) maxAssets = Math.max(maxAssets, pinnedIds.length);
   // Long runs must not starve the event loop (polls, syncs, the UI itself).
   const yieldLoop = makeYielder(cpuPct, pauseGate);
+
+  // ---- checkpointing (deploy-surviving pause) -------------------------------
+  // A snapshot freezes the search INPUTS (bars, candidates, benchmark, every
+  // resolved knob) plus the exact loop position; a resumed run feeds it back
+  // via opts.resume and continues draw-for-draw identically. The broad pass
+  // (≈95% of wall-clock) resumes exactly; the short post-broad stages re-run
+  // deterministically from the completed contender board.
+  const serMix = (m) => ({ u: [...m.units.entries()], t: m.tetherUnits });
+  const desMix = (s) => ({ units: new Map(s.u), tetherUnits: s.t });
+  const inputsSnap = () => ({
+    candidates, tether, bars, benchmark, currentMix, feePct, spreadPct, lagHours,
+    samples, minAssets, maxAssets, pinned: pinnedIds, screenKeep, fullTop, retKeep,
+    refineTop, refineEvals, finalists, seed, cpuPct,
+  });
 
   // Untouched holdout tail (both modes) + the in-sample region.
   const holdoutN = Math.max(30, Math.floor(bars.length * HOLDOUT_FRAC));
@@ -510,37 +548,47 @@ async function searchCompositions({
     }
     return first && last ? last / first - 1 : 0;
   };
-  const screen = [];
-  for (let i = 0; i < candidates.length; i++) {
-    const c = candidates[i];
-    setProgress(`solo screen: ${c.symbol.toUpperCase()} (${i + 1}/${candidates.length})`, (i / candidates.length) * 3);
-    const solo = [
-      { coingecko_id: tether.id, symbol: tether.symbol, target_pct: 50, is_index: 1 },
-      { coingecko_id: c.id, symbol: c.symbol, target_pct: 50, is_index: 0 },
-    ];
-    const sc = scoreMix(solo);
-    const ret = ownReturn(c.id);
-    screen.push({
-      id: c.id,
-      symbol: c.symbol,
-      soloTrain: sc.screenScore,
-      positiveFolds: sc.positiveFolds || sc.typesPositive || 0,
-      ownReturnPct: ret * 100,
-      // Only terminal decliners are weeded — and a PIN even survives that:
-      // the user demanded the asset in every mix, so the search honors it
-      // and lets the quality gate judge the result honestly.
-      kept: ret > DECLINE_FLOOR || pinnedSet.has(c.id),
-      pinned: pinnedSet.has(c.id) || undefined,
-    });
-    if (i % 4 === 3) await yieldLoop();
-  }
-  screen.sort((a, b) => b.soloTrain - a.soloTrain);
-  let keptIdsArr = screen.filter((s) => s.kept).map((s) => s.id);
-  // Safety: if weeding decliners would leave too few to form a mix, keep them
-  // all rather than starve the search (the quality gate still judges honestly).
-  if (keptIdsArr.length < minAssets) {
-    for (const s of screen) s.kept = true;
-    keptIdsArr = candidates.map((c) => c.id);
+  let screen;
+  let keptIdsArr;
+  if (resume) {
+    // The screen verdicts were frozen into the checkpoint — reuse them so a
+    // resumed run's draws line up exactly with the interrupted one.
+    screen = resume.screen;
+    keptIdsArr = resume.keptIdsArr;
+    setProgress('resuming from checkpoint…');
+  } else {
+    screen = [];
+    for (let i = 0; i < candidates.length; i++) {
+      const c = candidates[i];
+      setProgress(`solo screen: ${c.symbol.toUpperCase()} (${i + 1}/${candidates.length})`, (i / candidates.length) * 3);
+      const solo = [
+        { coingecko_id: tether.id, symbol: tether.symbol, target_pct: 50, is_index: 1 },
+        { coingecko_id: c.id, symbol: c.symbol, target_pct: 50, is_index: 0 },
+      ];
+      const sc = scoreMix(solo);
+      const ret = ownReturn(c.id);
+      screen.push({
+        id: c.id,
+        symbol: c.symbol,
+        soloTrain: sc.screenScore,
+        positiveFolds: sc.positiveFolds || sc.typesPositive || 0,
+        ownReturnPct: ret * 100,
+        // Only terminal decliners are weeded — and a PIN even survives that:
+        // the user demanded the asset in every mix, so the search honors it
+        // and lets the quality gate judge the result honestly.
+        kept: ret > DECLINE_FLOOR || pinnedSet.has(c.id),
+        pinned: pinnedSet.has(c.id) || undefined,
+      });
+      if (i % 4 === 3) await yieldLoop();
+    }
+    screen.sort((a, b) => b.soloTrain - a.soloTrain);
+    keptIdsArr = screen.filter((s) => s.kept).map((s) => s.id);
+    // Safety: if weeding decliners would leave too few to form a mix, keep them
+    // all rather than starve the search (the quality gate still judges honestly).
+    if (keptIdsArr.length < minAssets) {
+      for (const s of screen) s.kept = true;
+      keptIdsArr = candidates.map((c) => c.id);
+    }
   }
 
   // ---- Stage 1: broad pass — massive seeded random sampling over the
@@ -559,61 +607,123 @@ async function searchCompositions({
   const retKeys = new Set();
   let retCutoff = -Infinity;
   let broadSampled = 0;
-  for (let i = 0; i < samples; i++) {
-    const mix = sampleMix(rng, keptIdsArr, minAssets, Math.min(maxAssets, keptIdsArr.length), pinnedIds);
-    if (mix) {
-      broadSampled++;
-      const assets = mixToAssets(mix, pool);
-      const hold = holdGrowthPct(assets, inSample);
-      if (hold != null) {
-        let bestValue = hold;
-        for (const x of CHEAP_X) {
-          const r = simulate(assets, x, { ...costs, bars: inSample });
-          if (r.netBasketGrowthPct > 0 && r.valueGrowthPct >= hold - HOLD_BAND_PP && r.valueGrowthPct > bestValue) {
-            bestValue = r.valueGrowthPct;
+  let rngStateBroadEnd = null;
+
+  if (resume && resume.phase === 'post-broad') {
+    // The contender board was complete at pause — stages 2–4 re-run
+    // deterministically from it (a few minutes at worst, vs. the broad
+    // pass's tens of minutes which the 'broad' phase resumes exactly).
+    for (const b of resume.board) board.push({ key: b.key, mix: desMix(b.mix), cheap: b.cheap });
+    broadSampled = resume.broadSampled || 0;
+    rngStateBroadEnd = resume.rngState;
+    rng.setState(resume.rngState);
+  } else {
+    let broadStart = 0;
+    if (resume && resume.phase === 'broad') {
+      broadStart = resume.i;
+      rng.setState(resume.rngState);
+      cutoff = resume.cutoff == null ? -Infinity : resume.cutoff;
+      retCutoff = resume.retCutoff == null ? -Infinity : resume.retCutoff;
+      broadSampled = resume.broadSampled || 0;
+      for (const b of resume.board) {
+        board.push({ key: b.key, mix: desMix(b.mix), cheap: b.cheap });
+        boardKeys.add(b.key);
+      }
+      for (const b of resume.retBoard) {
+        retBoard.push({ key: b.key, mix: desMix(b.mix), hold: b.hold });
+        retKeys.add(b.key);
+      }
+    }
+    const broadSnap = (nextI) => () => ({
+      engine: 'compositions',
+      wrapper: checkpointWrapper,
+      inputs: inputsSnap(),
+      loop: {
+        phase: 'broad',
+        i: nextI,
+        rngState: rng.getState(),
+        cutoff: Number.isFinite(cutoff) ? cutoff : null,
+        retCutoff: Number.isFinite(retCutoff) ? retCutoff : null,
+        broadSampled,
+        screen,
+        keptIdsArr,
+        board: board.map((b) => ({ key: b.key, mix: serMix(b.mix), cheap: b.cheap })),
+        retBoard: retBoard.map((b) => ({ key: b.key, mix: serMix(b.mix), hold: b.hold })),
+      },
+    });
+    for (let i = broadStart; i < samples; i++) {
+      const mix = sampleMix(rng, keptIdsArr, minAssets, Math.min(maxAssets, keptIdsArr.length), pinnedIds);
+      if (mix) {
+        broadSampled++;
+        const assets = mixToAssets(mix, pool);
+        const hold = holdGrowthPct(assets, inSample);
+        if (hold != null) {
+          let bestValue = hold;
+          for (const x of CHEAP_X) {
+            const r = simulate(assets, x, { ...costs, bars: inSample });
+            if (r.netBasketGrowthPct > 0 && r.valueGrowthPct >= hold - HOLD_BAND_PP && r.valueGrowthPct > bestValue) {
+              bestValue = r.valueGrowthPct;
+            }
           }
-        }
-        const edge = bestValue - hold;
-        const key = mixKey(mix);
-        if ((edge > cutoff || board.length < fullTop) && !boardKeys.has(key)) {
-          board.push({ key, mix, cheap: edge });
-          boardKeys.add(key);
-          if (board.length >= fullTop * 2) {
-            board.sort((a, b) => b.cheap - a.cheap);
-            for (const dropped of board.splice(fullTop)) boardKeys.delete(dropped.key);
-            cutoff = board[board.length - 1].cheap;
+          const edge = bestValue - hold;
+          const key = mixKey(mix);
+          if ((edge > cutoff || board.length < fullTop) && !boardKeys.has(key)) {
+            board.push({ key, mix, cheap: edge });
+            boardKeys.add(key);
+            if (board.length >= fullTop * 2) {
+              board.sort((a, b) => b.cheap - a.cheap);
+              for (const dropped of board.splice(fullTop)) boardKeys.delete(dropped.key);
+              cutoff = board[board.length - 1].cheap;
+            }
           }
-        }
-        if ((hold > retCutoff || retBoard.length < retKeep) && !retKeys.has(key)) {
-          retBoard.push({ key, mix, hold });
-          retKeys.add(key);
-          if (retBoard.length >= retKeep * 2) {
-            retBoard.sort((a, b) => b.hold - a.hold);
-            for (const dropped of retBoard.splice(retKeep)) retKeys.delete(dropped.key);
-            retCutoff = retBoard[retBoard.length - 1].hold;
+          if ((hold > retCutoff || retBoard.length < retKeep) && !retKeys.has(key)) {
+            retBoard.push({ key, mix, hold });
+            retKeys.add(key);
+            if (retBoard.length >= retKeep * 2) {
+              retBoard.sort((a, b) => b.hold - a.hold);
+              for (const dropped of retBoard.splice(retKeep)) retKeys.delete(dropped.key);
+              retCutoff = retBoard[retBoard.length - 1].hold;
+            }
           }
         }
       }
+      if (i % 2000 === 0) {
+        setProgress(
+          `broad search: ${i.toLocaleString()} / ${samples.toLocaleString()} combos (${board.length} contenders held)`,
+          3 + (i / samples) * 77
+        );
+      }
+      if (i % 200 === 199) await yieldLoop(broadSnap(i + 1));
     }
-    if (i % 2000 === 0) {
-      setProgress(
-        `broad search: ${i.toLocaleString()} / ${samples.toLocaleString()} combos (${board.length} contenders held)`,
-        3 + (i / samples) * 77
-      );
+    board.sort((a, b) => b.cheap - a.cheap);
+    board.splice(fullTop);
+    // Fold the raw-return board into full scoring (deduped against the edge board).
+    retBoard.sort((a, b) => b.hold - a.hold);
+    const edgeKeys = new Set(board.map((b) => b.key));
+    for (const rb of retBoard.slice(0, retKeep)) {
+      if (!edgeKeys.has(rb.key)) {
+        board.push({ key: rb.key, mix: rb.mix, cheap: 0 });
+        edgeKeys.add(rb.key);
+      }
     }
-    if (i % 200 === 199) await yieldLoop();
+    rngStateBroadEnd = rng.getState();
   }
-  board.sort((a, b) => b.cheap - a.cheap);
-  board.splice(fullTop);
-  // Fold the raw-return board into full scoring (deduped against the edge board).
-  retBoard.sort((a, b) => b.hold - a.hold);
-  const edgeKeys = new Set(board.map((b) => b.key));
-  for (const rb of retBoard.slice(0, retKeep)) {
-    if (!edgeKeys.has(rb.key)) {
-      board.push({ key: rb.key, mix: rb.mix, cheap: 0 });
-      edgeKeys.add(rb.key);
-    }
-  }
+
+  // Post-broad snapshot: the merged board is final; a resume re-runs stages
+  // 2–4 from it with the rng state the original run had at broad-pass end.
+  const postSnap = () => ({
+    engine: 'compositions',
+    wrapper: checkpointWrapper,
+    inputs: inputsSnap(),
+    loop: {
+      phase: 'post-broad',
+      rngState: rngStateBroadEnd,
+      broadSampled,
+      screen,
+      keptIdsArr,
+      board: board.map((b) => ({ key: b.key, mix: serMix(b.mix), cheap: b.cheap })),
+    },
+  });
 
   // ---- Stage 2: full-fidelity scoring of the contender board (regime or
   // walk-forward, per mode).
@@ -630,7 +740,7 @@ async function searchCompositions({
     fullScored.push(evalMix(board[i].mix));
     if (i % 10 === 9) {
       setProgress(`full-fidelity scoring ${i + 1}/${board.length}`, 80 + (i / board.length) * 10);
-      await yieldLoop();
+      await yieldLoop(postSnap);
     }
   }
   const ranked = [...new Map(fullScored.map((s) => [s.key, s])).values()].sort(tupleRank);
@@ -678,7 +788,7 @@ async function searchCompositions({
       }
       const cand = evalMix(variant);
       if (tupleRank(cand, current) < 0) current = cand;
-      if (e % 20 === 19) await yieldLoop();
+      if (e % 20 === 19) await yieldLoop(postSnap);
     }
     survivors[si] = current;
   }
@@ -824,6 +934,8 @@ async function searchCurrentSet({
   seed = 42,
   cpuPct = CPU_PCT_DEFAULT,
   pauseGate = null,
+  resume = null,
+  checkpointWrapper = null,
   setProgress = () => {},
 } = {}) {
   const costs = { feePct, spreadPct, lagHours };
@@ -901,6 +1013,16 @@ async function searchCurrentSet({
   finalists = finalists ?? sizedCS.finalists;
   const fullTop = Math.min(Math.round(500 * csScale), Math.max(120, Math.floor(samples / 50)));
   const RET_KEEP = Math.min(sizedCS.retKeep, fullTop);
+
+  // Checkpointing (deploy-surviving pause) — same contract as the full lab:
+  // exact broad-pass resume, deterministic post-broad redo from the board.
+  const serU = (u) => [...u.entries()];
+  const desU = (s) => new Map(s);
+  const inputsSnap = () => ({
+    assetSet, bars, benchmark, currentMix, feePct, spreadPct, lagHours,
+    samples, refineTop, refineEvals, finalists, seed, cpuPct,
+  });
+
   const board = [];
   const boardKeys = new Set();
   let cutoff = -Infinity;
@@ -908,61 +1030,116 @@ async function searchCurrentSet({
   const retKeys = new Set();
   let retCutoff = -Infinity;
   let broadSampled = 0;
-  for (let i = 0; i < samples; i++) {
-    const units = sampleUnits();
-    if (units) {
-      broadSampled++;
-      const assets = toAssets(units);
-      const hold = holdGrowthPct(assets, inSample);
-      if (hold != null) {
-        const key = keyOf(units);
-        let bestValue = hold;
-        for (const x of CHEAP_X) {
-          const r = simulate(assets, x, { ...costs, bars: inSample });
-          if (r.netBasketGrowthPct > 0 && r.valueGrowthPct >= hold - HOLD_BAND_PP && r.valueGrowthPct > bestValue) {
-            bestValue = r.valueGrowthPct;
+  let rngStateBroadEnd = null;
+
+  if (resume && resume.phase === 'post-broad') {
+    for (const b of resume.board) board.push({ key: b.key, units: desU(b.units), cheap: b.cheap });
+    broadSampled = resume.broadSampled || 0;
+    rngStateBroadEnd = resume.rngState;
+    rng.setState(resume.rngState);
+    setProgress('resuming from checkpoint…');
+  } else {
+    let broadStart = 0;
+    if (resume && resume.phase === 'broad') {
+      broadStart = resume.i;
+      rng.setState(resume.rngState);
+      cutoff = resume.cutoff == null ? -Infinity : resume.cutoff;
+      retCutoff = resume.retCutoff == null ? -Infinity : resume.retCutoff;
+      broadSampled = resume.broadSampled || 0;
+      for (const b of resume.board) {
+        board.push({ key: b.key, units: desU(b.units), cheap: b.cheap });
+        boardKeys.add(b.key);
+      }
+      for (const b of resume.retBoard) {
+        retBoard.push({ key: b.key, units: desU(b.units), hold: b.hold });
+        retKeys.add(b.key);
+      }
+      setProgress('resuming from checkpoint…');
+    }
+    const broadSnap = (nextI) => () => ({
+      engine: 'current-set',
+      wrapper: checkpointWrapper,
+      inputs: inputsSnap(),
+      loop: {
+        phase: 'broad',
+        i: nextI,
+        rngState: rng.getState(),
+        cutoff: Number.isFinite(cutoff) ? cutoff : null,
+        retCutoff: Number.isFinite(retCutoff) ? retCutoff : null,
+        broadSampled,
+        board: board.map((b) => ({ key: b.key, units: serU(b.units), cheap: b.cheap })),
+        retBoard: retBoard.map((b) => ({ key: b.key, units: serU(b.units), hold: b.hold })),
+      },
+    });
+    for (let i = broadStart; i < samples; i++) {
+      const units = sampleUnits();
+      if (units) {
+        broadSampled++;
+        const assets = toAssets(units);
+        const hold = holdGrowthPct(assets, inSample);
+        if (hold != null) {
+          const key = keyOf(units);
+          let bestValue = hold;
+          for (const x of CHEAP_X) {
+            const r = simulate(assets, x, { ...costs, bars: inSample });
+            if (r.netBasketGrowthPct > 0 && r.valueGrowthPct >= hold - HOLD_BAND_PP && r.valueGrowthPct > bestValue) {
+              bestValue = r.valueGrowthPct;
+            }
           }
-        }
-        const edge = bestValue - hold;
-        if ((edge > cutoff || board.length < fullTop) && !boardKeys.has(key)) {
-          board.push({ key, units, cheap: edge });
-          boardKeys.add(key);
-          if (board.length >= fullTop * 2) {
-            board.sort((a, b) => b.cheap - a.cheap);
-            for (const dropped of board.splice(fullTop)) boardKeys.delete(dropped.key);
-            cutoff = board[board.length - 1].cheap;
+          const edge = bestValue - hold;
+          if ((edge > cutoff || board.length < fullTop) && !boardKeys.has(key)) {
+            board.push({ key, units, cheap: edge });
+            boardKeys.add(key);
+            if (board.length >= fullTop * 2) {
+              board.sort((a, b) => b.cheap - a.cheap);
+              for (const dropped of board.splice(fullTop)) boardKeys.delete(dropped.key);
+              cutoff = board[board.length - 1].cheap;
+            }
           }
-        }
-        if ((hold > retCutoff || retBoard.length < RET_KEEP) && !retKeys.has(key)) {
-          retBoard.push({ key, units, hold });
-          retKeys.add(key);
-          if (retBoard.length >= RET_KEEP * 2) {
-            retBoard.sort((a, b) => b.hold - a.hold);
-            for (const dropped of retBoard.splice(RET_KEEP)) retKeys.delete(dropped.key);
-            retCutoff = retBoard[retBoard.length - 1].hold;
+          if ((hold > retCutoff || retBoard.length < RET_KEEP) && !retKeys.has(key)) {
+            retBoard.push({ key, units, hold });
+            retKeys.add(key);
+            if (retBoard.length >= RET_KEEP * 2) {
+              retBoard.sort((a, b) => b.hold - a.hold);
+              for (const dropped of retBoard.splice(RET_KEEP)) retKeys.delete(dropped.key);
+              retCutoff = retBoard[retBoard.length - 1].hold;
+            }
           }
         }
       }
+      if (i % 2000 === 0) {
+        setProgress(
+          `allocation search: ${i.toLocaleString()} / ${samples.toLocaleString()} splits (${board.length} contenders held)`,
+          3 + (i / samples) * 77
+        );
+      }
+      if (i % 200 === 199) await yieldLoop(broadSnap(i + 1));
     }
-    if (i % 2000 === 0) {
-      setProgress(
-        `allocation search: ${i.toLocaleString()} / ${samples.toLocaleString()} splits (${board.length} contenders held)`,
-        3 + (i / samples) * 77
-      );
+    board.sort((a, b) => b.cheap - a.cheap);
+    board.splice(fullTop);
+    // Fold the return board into full scoring (dedup by key).
+    retBoard.sort((a, b) => b.hold - a.hold);
+    const boardSet = new Set(board.map((b) => b.key));
+    for (const rb of retBoard.slice(0, RET_KEEP)) {
+      if (!boardSet.has(rb.key)) {
+        board.push({ key: rb.key, units: rb.units, cheap: 0 });
+        boardSet.add(rb.key);
+      }
     }
-    if (i % 200 === 199) await yieldLoop();
+    rngStateBroadEnd = rng.getState();
   }
-  board.sort((a, b) => b.cheap - a.cheap);
-  board.splice(fullTop);
-  // Fold the return board into full scoring (dedup by key).
-  retBoard.sort((a, b) => b.hold - a.hold);
-  const boardSet = new Set(board.map((b) => b.key));
-  for (const rb of retBoard.slice(0, RET_KEEP)) {
-    if (!boardSet.has(rb.key)) {
-      board.push({ key: rb.key, units: rb.units, cheap: 0 });
-      boardSet.add(rb.key);
-    }
-  }
+
+  const postSnap = () => ({
+    engine: 'current-set',
+    wrapper: checkpointWrapper,
+    inputs: inputsSnap(),
+    loop: {
+      phase: 'post-broad',
+      rngState: rngStateBroadEnd,
+      broadSampled,
+      board: board.map((b) => ({ key: b.key, units: serU(b.units), cheap: b.cheap })),
+    },
+  });
 
   // ---- Stage 2: full-fidelity scoring of the contender board.
   const seen = new Map();
@@ -978,7 +1155,7 @@ async function searchCurrentSet({
     fullScored.push(evalUnits(board[i].units));
     if (i % 10 === 9) {
       setProgress(`full-fidelity scoring ${i + 1}/${board.length}`, 80 + (i / board.length) * 10);
-      await yieldLoop();
+      await yieldLoop(postSnap);
     }
   }
   const ranked = [...new Map(fullScored.map((s) => [s.key, s])).values()].sort(tupleRank);
@@ -999,7 +1176,7 @@ async function searchCurrentSet({
       variant.set(to, u.get(to) + 1);
       const cand = evalUnits(variant);
       if (tupleRank(cand, current) < 0) current = cand;
-      if (e % 20 === 19) await yieldLoop();
+      if (e % 20 === 19) await yieldLoop(postSnap);
     }
     survivors[si] = current;
   }
@@ -1353,6 +1530,27 @@ async function runCurrentSetSearch(profileId, ctx, setProgress = () => {}, pause
   }
 
   const account = getAccountForProfile(profileId);
+  // Frozen into checkpoints so a resumed run reproduces the stamp verbatim.
+  const wrapperMeta = {
+    resultExtras: {
+      universe: {
+        considered: universe.length,
+        covered: coveredHoldings.length,
+        droppedForCoverage: droppedForCoverage.length,
+        droppedNames: droppedForCoverage,
+        excludedByUser,
+        pinnedByUser: coveredHoldings.filter((c) => pinnedSet.has(c.id)).map((c) => c.symbol),
+        venue: account ? account.venue : null,
+        notOnVenue: [],
+        requestedDays: days,
+        windowDays: Math.round((nowMs - windowStart) / 86_400_000),
+        windowLimitedBy,
+      },
+      idealTether: tetherIdealized,
+    },
+    warnings: idealWarning ? [idealWarning] : [],
+    params: { days, samples, seed, currentSet: true, idealTether: tetherIdealized },
+  };
   const result = await searchCurrentSet({
     assetSet,
     bars,
@@ -1364,24 +1562,12 @@ async function runCurrentSetSearch(profileId, ctx, setProgress = () => {}, pause
     seed,
     cpuPct,
     pauseGate,
+    checkpointWrapper: wrapperMeta,
     setProgress,
   });
-  result.universe = {
-    considered: universe.length,
-    covered: coveredHoldings.length,
-    droppedForCoverage: droppedForCoverage.length,
-    droppedNames: droppedForCoverage,
-    excludedByUser,
-    pinnedByUser: coveredHoldings.filter((c) => pinnedSet.has(c.id)).map((c) => c.symbol),
-    venue: account ? account.venue : null,
-    notOnVenue: [],
-    requestedDays: days,
-    windowDays: Math.round((nowMs - windowStart) / 86_400_000),
-    windowLimitedBy,
-  };
-  result.idealTether = tetherIdealized;
-  if (idealWarning) result.warnings = [idealWarning, ...(result.warnings || [])];
-  return { result, params: { days, samples, seed, currentSet: true, idealTether: tetherIdealized } };
+  Object.assign(result, wrapperMeta.resultExtras);
+  if (wrapperMeta.warnings.length) result.warnings = [...wrapperMeta.warnings, ...(result.warnings || [])];
+  return { result, params: wrapperMeta.params };
 }
 
 async function runComposeSearch(profileId, opts = {}, setProgress = () => {}, pauseGate = null) {
@@ -1614,6 +1800,30 @@ async function runComposeSearch(profileId, opts = {}, setProgress = () => {}, pa
     console.error('benchmark fetch failed (folds mode):', err.message);
   }
 
+  // Frozen into checkpoints so a resumed run reproduces the stamp verbatim.
+  const accountForMeta = heldOnly ? getAccountForProfile(profileId) : null;
+  const wrapperMeta = {
+    resultExtras: {
+      heldOnly,
+      idealTether: tetherIdealized,
+      universe: {
+        considered: universe.length + notOnVenue.length,
+        covered: coveredCandidates.length,
+        droppedForCoverage: universe.length - coveredCandidates.length,
+        droppedNames: coverageDroppedNames,
+        excludedByUser,
+        pinnedByUser: pinnedInSearch.map((c) => c.symbol),
+        heldExcludedFrozen: heldOnly ? 0 : assets.filter((a) => !a.is_index && a.buy_frozen && !a.freeze_override).length,
+        venue: venueFilter ? venueFilter.venue : accountForMeta ? accountForMeta.venue : null,
+        notOnVenue,
+        requestedDays: days,
+        windowDays: Math.round((nowMs - windowStart) / 86_400_000),
+        windowLimitedBy,
+      },
+    },
+    warnings: [...pinWarnings, ...(idealWarning ? [idealWarning] : [])],
+    params: { days, samples, candidateCount, seed, heldOnly, idealTether: tetherIdealized },
+  };
   const result = await searchCompositions({
     candidates: coveredCandidates,
     tether: { id: tetherAsset.coingecko_id, symbol: tetherAsset.symbol },
@@ -1631,28 +1841,33 @@ async function runComposeSearch(profileId, opts = {}, setProgress = () => {}, pa
     seed,
     cpuPct,
     pauseGate,
+    checkpointWrapper: wrapperMeta,
     setProgress,
   });
-  const account = heldOnly ? getAccountForProfile(profileId) : null;
-  result.heldOnly = heldOnly;
-  result.universe = {
-    considered: universe.length + notOnVenue.length,
-    covered: coveredCandidates.length,
-    droppedForCoverage: universe.length - coveredCandidates.length,
-    droppedNames: coverageDroppedNames,
-    excludedByUser,
-    pinnedByUser: pinnedInSearch.map((c) => c.symbol),
-    heldExcludedFrozen: heldOnly ? 0 : assets.filter((a) => !a.is_index && a.buy_frozen && !a.freeze_override).length,
-    venue: venueFilter ? venueFilter.venue : account ? account.venue : null,
-    notOnVenue,
-    requestedDays: days,
-    windowDays: Math.round((nowMs - windowStart) / 86_400_000),
-    windowLimitedBy,
-  };
-  result.idealTether = tetherIdealized;
-  if (idealWarning) result.warnings = [idealWarning, ...(result.warnings || [])];
-  if (pinWarnings.length) result.warnings = [...pinWarnings, ...(result.warnings || [])];
-  return { result, params: { days, samples, candidateCount, seed, heldOnly, idealTether: tetherIdealized } };
+  Object.assign(result, wrapperMeta.resultExtras);
+  if (wrapperMeta.warnings.length) result.warnings = [...wrapperMeta.warnings, ...(result.warnings || [])];
+  return { result, params: wrapperMeta.params };
+}
+
+// Resume a checkpointed (paused-through-a-deploy) search: the checkpoint's
+// frozen inputs + loop state produce the identical result the uninterrupted
+// run would have (broad pass exact, post-broad stages redone deterministically
+// from the frozen contender board). Market drift since the pause cannot leak
+// in — every input the search sees comes from the checkpoint.
+async function resumeComposeSearch(cp, setProgress = () => {}, pauseGate = null) {
+  if (!cp || !cp.inputs || !cp.loop) throw new Error('malformed checkpoint — cannot resume');
+  const search = cp.engine === 'current-set' ? searchCurrentSet : searchCompositions;
+  const w = cp.wrapper || {};
+  const result = await search({
+    ...cp.inputs,
+    resume: cp.loop,
+    checkpointWrapper: w,
+    pauseGate,
+    setProgress,
+  });
+  Object.assign(result, w.resultExtras || {});
+  if (w.warnings && w.warnings.length) result.warnings = [...w.warnings, ...(result.warnings || [])];
+  return { result, params: w.params || {} };
 }
 
 module.exports = {
@@ -1661,6 +1876,7 @@ module.exports = {
   searchCurrentSet,
   buildBars,
   runComposeSearch,
+  resumeComposeSearch,
   chooseWindowStart,
   mulberry32,
   parseComposeExclusions,

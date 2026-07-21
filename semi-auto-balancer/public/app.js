@@ -1113,7 +1113,7 @@ function trackJob(kind, jobId, profileId) {
 const SERVER_JOB_KINDS = { compose: 'compose', 'tune-threshold': 'tune' };
 async function resumeActiveJobs() {
   try {
-    const { jobs } = await api('/jobs');
+    const { jobs, checkpoints } = await api('/jobs');
     for (const j of jobs) {
       const kind = SERVER_JOB_KINDS[j.kind];
       if (!kind || j.profileId == null) continue;
@@ -1128,6 +1128,23 @@ async function resumeActiveJobs() {
         e.paused = Boolean(j.paused);
         if (j.profileId === state.selectedId) renderJobControls(kind);
       }
+    }
+    // Checkpointed searches: paused runs that survived a restart/deploy.
+    // Park a pseudo-entry so the widget shows ⏸ paused with ▶ Resume /
+    // Cancel — resuming spawns a fresh job that continues from the frozen
+    // state and provably reproduces the uninterrupted result.
+    for (const c of checkpoints || []) {
+      const kind = SERVER_JOB_KINDS[c.kind];
+      if (!kind || c.profileId == null) continue;
+      if (runningJobs[kind][c.profileId]) continue; // a live job owns the slot
+      runningJobs[kind][c.profileId] = {
+        checkpointId: c.id,
+        paused: true,
+        progress: `${c.progress || 'checkpointed'} — survived restart, Resume to continue`,
+        progressPct: c.progressPct,
+        interval: null,
+      };
+      if (c.profileId === state.selectedId) renderJobControls(kind);
     }
   } catch {
     /* transient — the next boot/detail load retries */
@@ -1488,6 +1505,14 @@ $('#c-pause').addEventListener('click', async () => {
   if (!entry) return;
   $('#c-pause').disabled = true;
   try {
+    if (entry.checkpointId) {
+      // A checkpointed search (survived a restart): Resume spawns a fresh
+      // job continuing from the frozen state — same result, guaranteed.
+      const { jobId } = await api(`/checkpoints/${entry.checkpointId}/resume`, { method: 'POST', body: {} });
+      delete runningJobs.compose[state.selectedId];
+      trackJob('compose', jobId, state.selectedId);
+      return;
+    }
     const r = await api(`/jobs/${entry.jobId}/pause`, { method: 'POST', body: { paused: !entry.paused } });
     entry.paused = Boolean(r.paused);
     renderJobControls('compose');
@@ -1506,6 +1531,14 @@ $('#c-cancel').addEventListener('click', async () => {
   if (!entry) return;
   $('#c-cancel').disabled = true;
   try {
+    if (entry.checkpointId) {
+      // Discard a checkpointed (restart-surviving) paused search.
+      await api(`/checkpoints/${entry.checkpointId}`, { method: 'DELETE' });
+      delete runningJobs.compose[state.selectedId];
+      jobMsg.compose[state.selectedId] = 'paused search discarded';
+      renderJobControls('compose');
+      return;
+    }
     await api(`/jobs/${entry.jobId}/cancel`, { method: 'POST', body: {} });
     entry.progress = 'cancelling…';
     renderJobControls('compose');

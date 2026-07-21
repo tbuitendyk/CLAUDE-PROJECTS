@@ -377,6 +377,105 @@ const IDS = [...seriesById.keys()];
   );
   ok(gateCalls > 0, `the search awaits the pause gate at its yield points (${gateCalls} calls)`);
 
+  // --- deploy-surviving pause: checkpoint → kill (simulated restart) →
+  // resume from the JSON-round-tripped checkpoint → BYTE-IDENTICAL result ---
+  const mkGate = (hasCp) => {
+    const gate = async () => {
+      if (gate.armed && hasCp()) {
+        const e = new Error('cancelled by user');
+        e.cancelled = true;
+        throw e; // the process "dies" right after checkpointing
+      }
+    };
+    gate.armed = false;
+    gate.pending = () => gate.armed;
+    return gate;
+  };
+  {
+    // (1) mid-BROAD checkpoint — the exact-resume path.
+    let cp = null;
+    const gate = mkGate(() => cp != null);
+    gate.saveCheckpoint = (s) => {
+      cp = JSON.parse(JSON.stringify(s)); // same round-trip the DB imposes
+    };
+    let died = false;
+    try {
+      await compose.searchCompositions({
+        ...opts,
+        pauseGate: gate,
+        checkpointWrapper: { resultExtras: {}, warnings: [], params: {} },
+        setProgress: (t) => {
+          if (/broad search: 2,000/.test(t)) gate.armed = true;
+        },
+      });
+    } catch (e) {
+      died = Boolean(e.cancelled);
+    }
+    ok(died && cp != null, 'search checkpointed at pause and was killed mid-broad (simulated restart)');
+    ok(cp.loop.phase === 'broad' && cp.loop.i > 2000 && cp.loop.i < opts.samples, `checkpoint holds mid-broad state (i=${cp.loop.i})`);
+    const resumed = await compose.searchCompositions({ ...cp.inputs, resume: cp.loop });
+    ok(JSON.stringify(resumed.mixes) === JSON.stringify(r.mixes), 'broad-phase resume reproduces the uninterrupted result byte-identically');
+    ok(JSON.stringify(resumed.hiddenMixes) === JSON.stringify(r.hiddenMixes), '…including the hidden rows');
+
+    // (2) POST-BROAD checkpoint — deterministic redo from the frozen board.
+    let cp2 = null;
+    const gate2 = mkGate(() => cp2 != null);
+    gate2.saveCheckpoint = (s) => {
+      cp2 = JSON.parse(JSON.stringify(s));
+    };
+    let died2 = false;
+    try {
+      await compose.searchCompositions({
+        ...opts,
+        pauseGate: gate2,
+        setProgress: (t) => {
+          if (/full-fidelity scoring 2\d/.test(t)) gate2.armed = true;
+        },
+      });
+    } catch (e) {
+      died2 = Boolean(e.cancelled);
+    }
+    ok(died2 && cp2 != null && cp2.loop.phase === 'post-broad', 'post-broad checkpoint captured (frozen contender board)');
+    const resumed2 = await compose.searchCompositions({ ...cp2.inputs, resume: cp2.loop });
+    ok(JSON.stringify(resumed2.mixes) === JSON.stringify(r.mixes), 'post-broad resume redoes stages 2–4 to the identical result');
+
+    // (3) CURRENT-SET mode gets the same guarantee.
+    let cp3 = null;
+    const gate3 = mkGate(() => cp3 != null);
+    gate3.saveCheckpoint = (s) => {
+      cp3 = JSON.parse(JSON.stringify(s));
+    };
+    let died3 = false;
+    try {
+      await compose.searchCurrentSet({
+        assetSet: csAssetSet,
+        bars,
+        currentMix: [
+          { id: 'tether', symbol: 'usdt', targetPct: 25, isIndex: true },
+          { id: 'osc-a', symbol: 'osc-a', targetPct: 25, isIndex: false },
+          { id: 'osc-b', symbol: 'osc-b', targetPct: 25, isIndex: false },
+          { id: 'riser', symbol: 'riser', targetPct: 25, isIndex: false },
+        ],
+        feePct: 0.3,
+        spreadPct: 0.1,
+        samples: 4000,
+        refineTop: 10,
+        refineEvals: 20,
+        finalists: 8,
+        seed: 99,
+        pauseGate: gate3,
+        setProgress: (t) => {
+          if (/allocation search: 2,000/.test(t)) gate3.armed = true;
+        },
+      });
+    } catch (e) {
+      died3 = Boolean(e.cancelled);
+    }
+    ok(died3 && cp3 != null && cp3.loop.phase === 'broad', 'current-set checkpoint captured mid-broad');
+    const resumed3 = await compose.searchCurrentSet({ ...cp3.inputs, resume: cp3.loop });
+    ok(JSON.stringify(resumed3.mixes) === JSON.stringify(cs.mixes), 'current-set resume reproduces the uninterrupted result byte-identically');
+  }
+
   // --- determinism under a fixed seed ---
   const r2 = await compose.searchCompositions(opts);
   ok(

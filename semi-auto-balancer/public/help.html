@@ -197,12 +197,16 @@
         and every exclusion by name (venue, missing history, your pool unchecks), window and what limited
         it, regime day-counts, the market bar, and any active assumptions.</li>
       <li><span class="term">⏸ Pause / Cancel / cpu</span> — while a search runs, <strong>⏸ Pause</strong>
-        parks it at its next yield point (sub-second) holding its place — Resume continues exactly where
-        it left off; paused searches survive page reloads but not service restarts. <strong>Cancel</strong>
-        stops it within seconds ("cancelled — no result saved"); your last completed result stays
-        untouched. The <strong>cpu</strong> selector (100/90/75/50%) caps how much of a core the NEXT
-        search may use — lower keeps the rest of the app snappy while a long search grinds; the setting
-        never changes results, only speed.</li>
+        parks it at its next yield point (sub-second) holding its place, and writes a
+        <strong>checkpoint that survives service restarts and deploys</strong>: pause before a deploy,
+        deploy, then hit ▶ Resume — the search continues from the frozen state and provably produces the
+        identical result an uninterrupted run would have (inputs are frozen in the checkpoint, so market
+        drift can't leak in). Resume works both in the same session and after a restart; Cancel on a
+        restart-surviving pause discards it. <strong>Cancel</strong> on a live search stops it within
+        seconds ("cancelled — no result saved"); your last completed result stays untouched. The
+        <strong>cpu</strong> selector (100/90/75/50%) caps how much of a core the NEXT search may use —
+        lower keeps the rest of the app snappy while a long search grinds; the setting never changes
+        results, only speed.</li>
     </ul>
 
     <h2 id="pool">6. Candidate pool (exclusions &amp; 📌 pins)</h2>

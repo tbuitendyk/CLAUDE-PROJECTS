@@ -51,6 +51,24 @@ function startJob(kind, profileId, fn) {
     }
     job.paused = false;
   };
+  // Deploy-surviving pause: when the job parks, its loop hands the gate a
+  // full state snapshot which is PERSISTED — pause → deploy → resume works
+  // because the checkpoint outlives the process. One per (kind, profile);
+  // re-pause replaces it; completion deletes it.
+  pauseGate.pending = () => Boolean(job.pauseRequested && !job.cancelRequested);
+  pauseGate.saveCheckpoint = (state) => {
+    db.prepare(
+      'INSERT OR REPLACE INTO job_checkpoints (kind, profile_id, created_at, progress, progress_pct, state) VALUES (?, ?, ?, ?, ?, ?)'
+    ).run(kind, job.profileId, Date.now(), job.progress || '', job.progressPct ?? null, JSON.stringify(state));
+    job.checkpointed = true;
+  };
+
+  const dropCheckpoint = () => {
+    try {
+      if (job.profileId == null) db.prepare('DELETE FROM job_checkpoints WHERE kind = ? AND profile_id IS NULL').run(kind);
+      else db.prepare('DELETE FROM job_checkpoints WHERE kind = ? AND profile_id = ?').run(kind, job.profileId);
+    } catch { /* best-effort */ }
+  };
 
   (async () => {
     try {
@@ -60,12 +78,16 @@ function startJob(kind, profileId, fn) {
       db.prepare(
         'INSERT INTO analysis_results (profile_id, kind, created_at, params, result) VALUES (?, ?, ?, ?, ?)'
       ).run(job.profileId, kind, Date.now(), JSON.stringify(params ?? null), JSON.stringify(result ?? null));
+      dropCheckpoint(); // finished — the persisted result supersedes it
     } catch (err) {
       if (err.cancelled || job.cancelRequested) {
         job.status = 'cancelled';
         job.error = 'cancelled by user';
+        dropCheckpoint(); // an explicit cancel discards the paused state too
         console.log(`Job ${kind}/${id} cancelled by user`);
       } else {
+        // A FAILED job keeps its checkpoint — a resume can retry after the
+        // cause (e.g. a data hiccup) clears.
         job.status = 'failed';
         job.error = err.message;
         console.error(`Job ${kind}/${id} failed:`, err.message);
@@ -118,6 +140,32 @@ function activeJobs() {
     }));
 }
 
+// Persisted paused-search checkpoints (they outlive restarts — that is the
+// point). Light listing for the UI; getCheckpoint returns the full state.
+function listCheckpoints() {
+  return db
+    .prepare('SELECT id, kind, profile_id, created_at, progress, progress_pct FROM job_checkpoints ORDER BY created_at DESC')
+    .all()
+    .map((r) => ({
+      id: r.id,
+      kind: r.kind,
+      profileId: r.profile_id,
+      createdAt: r.created_at,
+      progress: r.progress,
+      progressPct: r.progress_pct,
+    }));
+}
+
+function getCheckpoint(id) {
+  const r = db.prepare('SELECT * FROM job_checkpoints WHERE id = ?').get(id);
+  if (!r) return null;
+  return { id: r.id, kind: r.kind, profileId: r.profile_id, createdAt: r.created_at, state: JSON.parse(r.state) };
+}
+
+function deleteCheckpoint(id) {
+  return db.prepare('DELETE FROM job_checkpoints WHERE id = ?').run(id).changes > 0;
+}
+
 // Most recent persisted result of a kind for a profile (survives restarts).
 // profileId null = profile-independent jobs (e.g. the Ladder Lab): stored
 // with a NULL profile_id, which the FK on profiles(id) permits.
@@ -144,4 +192,14 @@ function latestResult(profileId, kind) {
   };
 }
 
-module.exports = { startJob, getJob, cancelJob, pauseJob, activeJobs, latestResult };
+module.exports = {
+  startJob,
+  getJob,
+  cancelJob,
+  pauseJob,
+  activeJobs,
+  latestResult,
+  listCheckpoints,
+  getCheckpoint,
+  deleteCheckpoint,
+};

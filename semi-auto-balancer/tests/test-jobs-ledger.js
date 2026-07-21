@@ -109,6 +109,34 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   ok(pauseJob('deadbeef', true).ok === false, 'pausing an unknown job refused');
   ok(pauseJob(pausable, true).ok === false, 'pausing a finished job refused');
 
+  // --- checkpoints persist through the gate and clear on completion/cancel ---
+  const { listCheckpoints, getCheckpoint } = require('../lib/jobs');
+  const ck = startJob('compose', 1, async (sp, gate) => {
+    gate.saveCheckpoint({ hello: 1 });
+    await sleep(60);
+    return { result: { ok: 1 }, params: {} };
+  });
+  await sleep(20);
+  {
+    const rows = listCheckpoints();
+    ok(rows.length === 1 && getCheckpoint(rows[0].id).state.hello === 1, 'pause gate persists a checkpoint row (survives restarts)');
+  }
+  await sleep(200);
+  ok(getJob(ck).status === 'done' && listCheckpoints().length === 0, 'checkpoint deleted when the job completes');
+  const ck2 = startJob('compose', 1, async (sp, gate) => {
+    gate.saveCheckpoint({ hello: 2 });
+    for (let i = 0; i < 50; i++) {
+      await sleep(20);
+      sp(`s${i}`);
+    }
+    return { result: {}, params: {} };
+  });
+  await sleep(30);
+  ok(listCheckpoints().length === 1, 'second checkpoint written');
+  cancelJob(ck2);
+  await sleep(120);
+  ok(getJob(ck2).status === 'cancelled' && listCheckpoints().length === 0, 'explicit cancel discards the checkpoint too');
+
   console.log('jobs + ledger tests pass');
   process.exit(0);
 })().catch((e) => {

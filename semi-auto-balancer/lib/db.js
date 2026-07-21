@@ -285,6 +285,20 @@ ensureColumn('profiles', 'compose_excluded', "compose_excluded TEXT NOT NULL DEF
 // the user pinned in the candidate pool — every searched mix contains them.
 // A pin overrides an exclusion for the same asset.
 ensureColumn('profiles', 'compose_pinned', "compose_pinned TEXT NOT NULL DEFAULT '[]'");
+// Paused-search checkpoints (survive service restarts/deploys): the frozen
+// search inputs + exact loop state, one per (kind, profile). Written when a
+// job is paused, replaced on re-pause, deleted when the job completes or is
+// discarded — the whole point is pause → deploy → resume.
+db.exec(`CREATE TABLE IF NOT EXISTS job_checkpoints (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  kind TEXT NOT NULL,
+  profile_id INTEGER,
+  created_at INTEGER NOT NULL,
+  progress TEXT,
+  progress_pct REAL,
+  state TEXT NOT NULL,
+  UNIQUE(kind, profile_id)
+)`);
 // Phase 3 safety rails: structural-break buy-freeze (engine suppresses BUY
 // alerts while set; sells unaffected) and the latched depeg flag.
 ensureColumn('assets', 'buy_frozen', 'buy_frozen INTEGER NOT NULL DEFAULT 0');

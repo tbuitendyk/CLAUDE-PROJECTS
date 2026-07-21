@@ -16,9 +16,9 @@ const {
   priceAsset,
   rearmAfterUpload,
 } = require('./lib/balancer');
-const { getJob, startJob, cancelJob, pauseJob, activeJobs, latestResult } = require('./lib/jobs');
+const { getJob, startJob, cancelJob, pauseJob, activeJobs, latestResult, listCheckpoints, getCheckpoint, deleteCheckpoint } = require('./lib/jobs');
 const { runTuneSweep, computeTargetsHash } = require('./lib/backtest');
-const { runComposeSearch, venueTradableFilter, parseComposeExclusions, parseComposePins } = require('./lib/compose');
+const { runComposeSearch, resumeComposeSearch, venueTradableFilter, parseComposeExclusions, parseComposePins } = require('./lib/compose');
 const { topCandidates } = require('./lib/candidates');
 const { hourlyStatus } = require('./lib/hourly');
 const ladder = require('./lib/ladder');
@@ -975,7 +975,32 @@ app.post('/api/assets/:id/unfreeze', (req, res) => {
 // progress displays — live job status is in-memory, so the browser's job ids
 // don't survive a ctrl-R without it.
 app.get('/api/jobs', (req, res) => {
-  res.json({ jobs: activeJobs() });
+  const jobs = activeJobs();
+  // Checkpoints = paused searches persisted through a restart. Hide any that
+  // a live job of the same slot already supersedes (paused in-memory writes
+  // one too — the running entry is the fresher truth).
+  const live = new Set(jobs.map((j) => `${j.kind}|${j.profileId}`));
+  const checkpoints = listCheckpoints().filter((c) => !live.has(`${c.kind}|${c.profileId}`));
+  res.json({ jobs, checkpoints });
+});
+
+// Resume a checkpointed search as a NEW job — the frozen inputs guarantee
+// the result is identical to the uninterrupted run's. The checkpoint stays
+// until the resumed job finishes (so a crash mid-resume loses nothing).
+app.post('/api/checkpoints/:id/resume', (req, res) => {
+  const cp = getCheckpoint(Number(req.params.id));
+  if (!cp) return res.status(404).json({ error: 'checkpoint not found (already resumed or discarded)' });
+  if (cp.kind !== 'compose') return res.status(400).json({ error: `cannot resume kind "${cp.kind}"` });
+  const jobId = startJob(cp.kind, cp.profileId, (setProgress, pauseGate) =>
+    resumeComposeSearch(cp.state, setProgress, pauseGate)
+  );
+  res.json({ ok: true, jobId });
+});
+
+// Discard a checkpointed search without resuming it.
+app.delete('/api/checkpoints/:id', (req, res) => {
+  if (!deleteCheckpoint(Number(req.params.id))) return res.status(404).json({ error: 'checkpoint not found' });
+  res.json({ ok: true });
 });
 
 // Long-running analysis jobs (threshold sweeps, scans) are started by their
