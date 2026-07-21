@@ -808,6 +808,25 @@ $('#i-cancel').addEventListener('click', () => {
   $('#i-file').value = '';
 });
 
+// ---- master service switch ----
+
+function paintService(on) {
+  const btn = $('#svc-toggle');
+  btn.textContent = on ? 'Service: ON' : 'Service: OFF';
+  btn.classList.toggle('off', !on);
+}
+
+$('#svc-toggle').addEventListener('click', async () => {
+  const turningOff = $('#svc-toggle').textContent.includes('ON');
+  if (turningOff && !confirm('Turn the service OFF? No polling and no alerts until it is switched back on.')) return;
+  try {
+    const r = await api('/service', { method: 'POST', body: { on: !turningOff } });
+    paintService(r.serviceOn);
+  } catch (err) {
+    alert(err.message);
+  }
+});
+
 // ---- boot ----
 
 (async function boot() {
@@ -816,6 +835,7 @@ $('#i-cancel').addEventListener('click', () => {
     ? 'email alerts: on'
     : 'email alerts: not configured';
   state.visionConfigured = Boolean(session.visionConfigured);
+  paintService(session.serviceOn !== false);
   if (session.authed) {
     showMain();
     await loadProfiles();

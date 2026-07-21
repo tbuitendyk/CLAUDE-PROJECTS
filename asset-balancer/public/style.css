@@ -25,8 +25,9 @@ header {
   padding: 1rem 1.5rem; border-bottom: 1px solid var(--border);
 }
 h1 { font-size: 1.2rem; margin: 0; }
-.home-link {
-  margin-left: auto; text-decoration: none; font-size: .85rem;
+#svc-toggle { margin-left: auto; }
+#svc-toggle.off { background: var(--danger); }
+.home-link { text-decoration: none; font-size: .85rem;
   background: var(--accent); color: #fff; border-radius: 6px;
   padding: .45rem .8rem; white-space: nowrap;
 }

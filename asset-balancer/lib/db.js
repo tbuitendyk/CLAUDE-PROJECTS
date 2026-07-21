@@ -160,6 +160,14 @@ ensureColumn('profiles', 'notify_state', "notify_state TEXT NOT NULL DEFAULT 'ar
 ensureColumn('profiles', 'notify_state_at', 'notify_state_at INTEGER');
 ensureColumn('profile_snapshots', 'basket', 'basket REAL');
 
+// Service-wide key/value settings (e.g. the master Service ON/OFF switch).
+db.exec(`
+CREATE TABLE IF NOT EXISTS settings (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL
+);
+`);
+
 // Sets were removed from the design (one flat asset pool per profile);
 // drop the leftover tables from earlier versions.
 db.exec(`

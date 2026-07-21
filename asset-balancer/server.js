@@ -19,6 +19,7 @@ const { sendAlertEvents, sendStatusReport, sendTestEmail, emailConfigured } = re
 const { searchCoins, supportedFiats, fiatCode } = require('./lib/pricing');
 const { visionConfigured, parseHoldingsScreenshot } = require('./lib/vision');
 const { startScheduler } = require('./lib/scheduler');
+const { serviceOn, setServiceOn } = require('./lib/settings');
 
 const app = express();
 // Generous limit: the screenshot-import endpoint receives base64 images.
@@ -83,10 +84,19 @@ app.get('/api/session', (req, res) => {
     passwordRequired: Boolean(config.appPassword),
     emailConfigured: emailConfigured(),
     visionConfigured: visionConfigured(),
+    serviceOn: serviceOn(),
   });
 });
 
 app.use('/api', requireAuth);
+
+// Master service switch: OFF suspends scheduled + manual polling and all
+// notifications; the UI stays reachable so it can be switched back ON.
+app.post('/api/service', (req, res) => {
+  const on = setServiceOn(Boolean((req.body || {}).on));
+  console.log(`[${new Date().toISOString()}] service switched ${on ? 'ON' : 'OFF'} via UI`);
+  res.json({ serviceOn: on });
+});
 
 // ---- profiles ---------------------------------------------------------------
 
@@ -343,6 +353,7 @@ app.delete('/api/assets/:id', (req, res) => {
 // machine: in 'notified' they re-check and escalate to 'awaiting_upload';
 // in 'awaiting_upload' they restart the 12h clock.
 app.post('/api/profiles/:id/poll', async (req, res) => {
+  if (!serviceOn()) return res.status(409).json({ error: 'Service is OFF — switch it back ON to poll' });
   try {
     const { events } = await pollProfiles({ force: true, profileId: Number(req.params.id), manual: true });
     if (events.length > 0) await sendAlertEvents(events);
