@@ -148,6 +148,13 @@ async function loadDetail() {
   resumeActiveJobs();
 }
 
+function fmtUtc(ts) {
+  // All clocks in this app are UTC and say so — local-time rendering caused
+  // real confusion about when a track record actually started.
+  if (!ts) return 'never';
+  return new Date(ts).toISOString().replace('T', ' ').slice(0, 16) + ' UTC';
+}
+
 function fmtNum(n, digits = 6) {
   if (n == null) return '—';
   return Number(n).toPrecision(digits);
@@ -230,7 +237,7 @@ function renderDetail() {
   applyShellView(Boolean(profile.is_shell));
   applyView();
   const polled = profile.last_polled_at
-    ? new Date(profile.last_polled_at).toLocaleString()
+    ? fmtUtc(profile.last_polled_at)
     : 'never';
   const idx = (totals && totals.indexLabel) || 'USD';
   const meta = $('#d-meta');
@@ -246,7 +253,7 @@ function renderDetail() {
     // A grouped sub's poll never reads the venue — say how fresh the
     // quantities under the prices are, and where the sync lives.
     const syncedAt =
-      d.exchange && d.exchange.last_sync_at ? new Date(d.exchange.last_sync_at).toLocaleString() : 'never';
+      d.exchange && d.exchange.last_sync_at ? fmtUtc(d.exchange.last_sync_at) : 'never';
     meta.innerHTML =
       `Index: ${idx} (tethered asset) · reacts to ~${profile.threshold_pct}% price moves · ` +
       `polls every ${profile.poll_minutes} min · last poll: ${polled} · account: ` +
@@ -309,7 +316,7 @@ function renderDetail() {
   line2.className = 'perf-line';
   if (totals && totals.totalRel > 0) {
     const since = totals.valueStartedAt
-      ? `since ${new Date(totals.valueStartedAt).toLocaleString()}`
+      ? `since ${fmtUtc(totals.valueStartedAt)}`
       : 'since start';
     // The line names the BASELINE the % is measured from — the original
     // value, not just the growth — and offers ✎ to re-pin it (entry costs
@@ -338,6 +345,16 @@ function renderDetail() {
         inp.value = totals.totalRel;
         inp.className = 'cell-input';
         inp.style.width = '110px';
+        inp.title = `Baseline amount in ${idx} units`;
+        // Start clock, ALWAYS UTC (editable — the original stamp came from
+        // whatever event anchored the index, not necessarily your fills).
+        const when = document.createElement('input');
+        when.type = 'text';
+        when.className = 'cell-input';
+        when.style.width = '150px';
+        when.placeholder = 'YYYY-MM-DD HH:MM UTC';
+        when.title = 'Track-record start, in UTC (e.g. 2026-07-21 08:00). Leave as-is to keep the current start.';
+        when.value = totals.valueStartedAt ? new Date(totals.valueStartedAt).toISOString().replace('T', ' ').slice(0, 16) : '';
         const save = document.createElement('button');
         save.textContent = 'Save baseline';
         const cancel = document.createElement('button');
@@ -347,7 +364,7 @@ function renderDetail() {
           try {
             await api(`/profiles/${state.selectedId}/value-baseline`, {
               method: 'POST',
-              body: { baseline: Number(inp.value) },
+              body: { baseline: Number(inp.value), startedAt: when.value.trim() },
             });
             await refresh();
           } catch (err) {
@@ -358,7 +375,7 @@ function renderDetail() {
           box.remove();
           edit.disabled = false;
         });
-        box.append(' ', inp, ' ', save, ' ', cancel);
+        box.append(' ', inp, ' ', when, document.createTextNode(' UTC '), save, ' ', cancel);
         line2.append(box);
         inp.focus();
         inp.select();
@@ -537,7 +554,7 @@ function renderDetail() {
   for (const s of snapshots || []) {
     const tr = document.createElement('tr');
     tr.innerHTML =
-      `<td>${new Date(s.ts).toLocaleString()}</td>` +
+      `<td>${fmtUtc(s.ts)}</td>` +
       `<td>${s.basket != null ? s.basket.toFixed(8) : '—'}</td>` +
       `<td>${s.value_index != null ? s.value_index.toFixed(6) : '—'}</td>` +
       `<td>${fmtNum(s.total_rel)}</td>` +
@@ -557,7 +574,7 @@ function renderDetail() {
       .join(', ');
     const tr = document.createElement('tr');
     tr.innerHTML =
-      `<td>${new Date(f.ts).toLocaleString()}</td><td>${change}</td><td>${f.note ? f.note.replace(/[<>]/g, '') : ''}</td>`;
+      `<td>${fmtUtc(f.ts)}</td><td>${change}</td><td>${f.note ? f.note.replace(/[<>]/g, '') : ''}</td>`;
     flowBody.appendChild(tr);
   }
 
@@ -581,7 +598,7 @@ function renderDetail() {
 
   // notifications: state machine status, toggle, recipients
   const rearmAt = profile.notify_state_at
-    ? new Date(profile.notify_state_at + 12 * 3600 * 1000).toLocaleString()
+    ? fmtUtc(profile.notify_state_at + 12 * 3600 * 1000)
     : null;
   const stateText = {
     armed: 'Armed — a new target hit sends a notification. "Poll now" notifies immediately if anything is exceeded.',
@@ -598,7 +615,7 @@ function renderDetail() {
   log.innerHTML = '';
   for (const entry of alertLog) {
     const li = document.createElement('li');
-    li.textContent = `${new Date(entry.ts).toLocaleString()} ${entry.emailed ? '📧' : ''}\n${entry.message}`;
+    li.textContent = `${fmtUtc(entry.ts)} ${entry.emailed ? '📧' : ''}\n${entry.message}`;
     log.appendChild(li);
   }
 
@@ -1061,7 +1078,7 @@ function renderTune(latest, profile) {
     (hypothetical
       ? `⚠ HYPOTHETICAL mix (from the composition lab — NOT this profile's applied targets; Apply disabled): ${(s.targets || s.assets || []).join(' · ')} · `
       : '') +
-    `Swept ${new Date(latest.createdAt).toLocaleString()} · ${s.assets ? s.assets.map((x) => x.toUpperCase()).join('/') : ''} · ` +
+    `Swept ${fmtUtc(latest.createdAt)} · ${s.assets ? s.assets.map((x) => x.toUpperCase()).join('/') : ''} · ` +
     `history: ${s.bars} ${s.granularity === 'hourly' ? 'hourly' : 'daily'} bars ≈ ${spanYears.toFixed(1)} years (${d10(s.dataFrom)} → ${d10(s.dataTo)})` +
     (recent.half ? ` · ½ recent = ${recent.half.bars} bars from ${d10(recent.half.from)}` : '') +
     (recent.quarter ? ` · ¼ recent = ${recent.quarter.bars} bars from ${d10(recent.quarter.from)}` : '') +
@@ -1483,7 +1500,7 @@ function renderCompose(latest) {
       (r.funnel ? ` (boards ${r.funnel.fullTop}+${r.funnel.retKeep} raw-return · refine ${r.funnel.refineTop}×${r.funnel.refineEvals})` : '')
     : `${r.evaluatedMixes} mixes evaluated`;
   $('#c-stamp').textContent =
-    `Searched ${new Date(latest.createdAt).toLocaleString()} · ${combos} · ` +
+    `Searched ${fmtUtc(latest.createdAt)} · ${combos} · ` +
     (r.currentSet
       ? `current holdings only (${u.covered} assets)`
       : `universe ${u.covered}/${u.considered} candidates`) +
@@ -1725,7 +1742,7 @@ function renderExchange(x, pendingFlows, profile) {
   $('#x-linked').classList.toggle('hidden', !x);
   if (!x) return;
 
-  const last = x.last_sync_at ? new Date(x.last_sync_at).toLocaleString() : 'never';
+  const last = x.last_sync_at ? fmtUtc(x.last_sync_at) : 'never';
   const status = x.last_sync_status
     ? x.last_sync_status === 'ok'
       ? '✓ ok'
@@ -1805,7 +1822,7 @@ function renderExchange(x, pendingFlows, profile) {
   for (const f of pendingFlows) {
     const tr = document.createElement('tr');
     const when = document.createElement('td');
-    when.textContent = new Date(f.ts).toLocaleString();
+    when.textContent = fmtUtc(f.ts);
     const kind = document.createElement('td');
     kind.textContent = f.kind;
     const amt = document.createElement('td');
@@ -2153,7 +2170,7 @@ async function loadSubaccounts(x) {
   for (const q of inbox) {
     const tr = document.createElement('tr');
     const fill = `${(q.side || 'trade').toUpperCase()} ${q.pair || ''} ` + q.deltas.map((d) => `${d.delta > 0 ? '+' : ''}${d.delta} ${d.code.toUpperCase()}`).join(' / ');
-    tr.innerHTML = `<td>${new Date(q.ts).toLocaleString()}</td><td>${fill}</td><td class="muted">${q.reason || ''}</td>`;
+    tr.innerHTML = `<td>${fmtUtc(q.ts)}</td><td>${fill}</td><td class="muted">${q.reason || ''}</td>`;
     const selTd = document.createElement('td');
     const sel = document.createElement('select');
     profileOptions(sel, data.profiles, q.suggested_profile_id);
@@ -2227,7 +2244,7 @@ async function loadSubaccounts(x) {
   for (const rrow of data.txnLog) {
     const tr = document.createElement('tr');
     tr.innerHTML =
-      `<td>${new Date(rrow.ts).toLocaleString()}</td><td>${nameOf(rrow.profile_id)}</td>` +
+      `<td>${fmtUtc(rrow.ts)}</td><td>${nameOf(rrow.profile_id)}</td>` +
       `<td>${rrow.note}${rrow.rewound_by ? ' <span class="muted">(rewound)</span>' : ''}</td>`;
     const act = document.createElement('td');
     if (rrow.kind !== 'rewind' && !rrow.rewound_by) {

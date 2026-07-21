@@ -1146,8 +1146,26 @@ app.post('/api/profiles/:id/value-baseline', (req, res) => {
   if (profile.is_shell) return res.status(400).json({ error: 'the pool has no strategy track record to re-baseline' });
   const baseline = Number((req.body || {}).baseline);
   if (!(baseline > 0)) return res.status(400).json({ error: 'baseline must be a positive number (in tether units)' });
-  db.prepare('UPDATE profiles SET value_base = 1, value_snap_rel = ? WHERE id = ?').run(baseline, profile.id);
-  res.json({ ok: true, baseline });
+  // Optional start-clock fix (UTC): the track's start was historically
+  // stamped by whatever event anchored the index — not necessarily when the
+  // user actually entered their positions. Accepts ISO-UTC or epoch ms; must
+  // not be in the future.
+  let startedAt;
+  const rawStart = (req.body || {}).startedAt;
+  if (rawStart !== undefined && rawStart !== null && rawStart !== '') {
+    const t = typeof rawStart === 'number' ? rawStart : Date.parse(String(rawStart).replace(' ', 'T').replace(/Z?$/, 'Z'));
+    if (!Number.isFinite(t)) return res.status(400).json({ error: 'startedAt must be an ISO-UTC datetime (e.g. 2026-07-21 08:00)' });
+    if (t > Date.now() + 60_000) return res.status(400).json({ error: 'startedAt cannot be in the future' });
+    startedAt = t;
+  }
+  if (startedAt !== undefined) {
+    db.prepare('UPDATE profiles SET value_base = 1, value_snap_rel = ?, value_started_at = ? WHERE id = ?').run(
+      baseline, startedAt, profile.id
+    );
+  } else {
+    db.prepare('UPDATE profiles SET value_base = 1, value_snap_rel = ? WHERE id = ?').run(baseline, profile.id);
+  }
+  res.json({ ok: true, baseline, startedAt: startedAt ?? profile.value_started_at ?? null });
 });
 
 // Set new target allocations: the deliberate decision to change the mix.
