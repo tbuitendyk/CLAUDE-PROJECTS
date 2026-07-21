@@ -927,6 +927,10 @@ app.patch('/api/assets/:id', async (req, res) => {
   const b = req.body || {};
   try {
     if (Number(b.quantity) >= 0) {
+      // Group-owned books refuse bare number edits — the API guard, so no
+      // client (ours or curl) can silently break the reconcile invariant.
+      const blocked = subaccounts.quantityEditBlocked(asset.profile_id);
+      if (blocked) return res.status(400).json({ error: `quantity is not hand-editable here: ${blocked}` });
       db.prepare('UPDATE assets SET quantity = ? WHERE id = ?').run(Number(b.quantity), asset.id);
     }
     if (b.freeze_override !== undefined) {

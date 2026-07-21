@@ -473,6 +473,25 @@ async function carveOut(accountId, fromProfileId, toProfileId, items) {
   return { ref, legFrom, legTo };
 }
 
+// Bare quantity edits don't mix with the group model: inside an account
+// group every quantity change has a proper owner — sync/attribution for
+// trades, carve-outs for transfers, the master's deposit rows for external
+// flows, rewind for corrections — and a bare number edit can't say which it
+// is, silently breaks the reconcile invariant (physical = Σ virtual), and
+// reads as fake performance in the indices. Returns the human reason the
+// edit is refused, or null where quantities are manually owned (unlinked
+// profiles, and 1:1 links where sync reconciles to venue truth anyway).
+function quantityEditBlocked(profileId) {
+  const profile = db.prepare('SELECT * FROM profiles WHERE id = ?').get(profileId);
+  if (!profile || !profile.exchange_account_id) return null;
+  const shell = shellOf(profile.exchange_account_id);
+  if (!shell) return null; // 1:1 link — manual edits keep old-app parity
+  if (profile.is_shell) {
+    return "the pool's balances come from account sync, deposits, and carve-outs — use those controls";
+  }
+  return "this sub-account's balances come from account sync, carve-outs from the master, and the attribution inbox — use those (or rewind a bad transaction)";
+}
+
 // Deleting an asset row DESTROYS its recorded quantity — and inside an
 // account group that quantity is real money on the venue (observed live
 // 2026-07-21: 15,000 MXN vanished when a trial sub-account's MXN row was
@@ -573,6 +592,7 @@ module.exports = {
   linkedProfiles,
   accountSummary,
   removeAsset,
+  quantityEditBlocked,
   shellOf,
   linkProfile,
   unlinkProfile,

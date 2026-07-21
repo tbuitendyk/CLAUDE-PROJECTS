@@ -320,6 +320,14 @@
     <p>Several profiles can share ONE physical exchange account, each trading on its own alerts and
     tracking its own splice-continuous performance — the way to trial a lab mix with a small slice
     instead of the whole account. Found in the Exchange sync section once an account is linked.</p>
+    <p><strong>Group books are protected.</strong> Inside an account group, every balance change has a
+    proper owner: trades arrive via account sync/attribution, transfers via carve-out, external
+    deposits/withdrawals via the master's deposit rows, corrections via rewind. So the quantity cells
+    are read-only here and bare edits are refused at the API too. Deleting an asset row can't destroy
+    money either: a funded asset's balance is carved back to the master first (logged, rewindable), a
+    funded pool asset refuses deletion, and the basket/value indices splice across any removal so
+    bookkeeping never reads as performance. On unlinked profiles quantity edits stay editable — there
+    they ARE how you record your own trades.</p>
 
     <h3>Starting a trial, step by step</h3>
     <ol class="steps">

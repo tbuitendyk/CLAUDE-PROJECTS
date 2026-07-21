@@ -164,9 +164,20 @@ function fmtMoney(n) {
   return n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
-// Editable quantity cell; saves on change.
+// Editable quantity cell; saves on change. Inside an account GROUP the cell
+// is read-only: every quantity change there has a proper owner (sync,
+// carve-outs, master deposits, rewind) and a bare number edit would break
+// the reconcile invariant and fake performance — the API refuses it too.
 function qtyCell(asset) {
   const td = document.createElement('td');
+  const p = state.detail && state.detail.profile;
+  if (p && (p.is_shell || groupShellFor(p))) {
+    td.textContent = String(asset.quantity);
+    td.title = p.is_shell
+      ? 'Pool balances change via account sync, deposits, and carve-outs — not by editing the number.'
+      : 'Sub-account balances change via account sync, carve-outs from the master, and the attribution inbox (or rewind a bad transaction) — not by editing the number.';
+    return td;
+  }
   const input = document.createElement('input');
   input.type = 'number';
   input.min = '0';

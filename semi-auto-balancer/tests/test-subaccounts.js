@@ -71,6 +71,8 @@ const client = {
   // Poll semantics, 1:1 era: the profile IS the account view → sync first.
   ok(sync.syncScopeForPoll(1) === account.id, '1:1-linked profile: poll syncs the account first');
   ok(sync.syncScopeForPoll(2) === null, 'unlinked profile: pure price poll');
+  ok(sub.quantityEditBlocked(1) === null, '1:1 era: quantities stay hand-editable (old-app parity)');
+  ok(sub.quantityEditBlocked(2) === null, 'unlinked profile: quantities hand-editable');
 
   // ---- linking + shell ------------------------------------------------------
   sub.linkProfile(1, account.id);
@@ -90,6 +92,10 @@ const client = {
   ok(sync.syncScopeForPoll(shell.id) === account.id, 'master (shell): poll syncs the account first');
   ok(sync.syncScopeForPoll(1) === null && sync.syncScopeForPoll(2) === null, 'grouped subs: pure price poll');
   ok(sync.syncScopeForPoll(999) === null, 'unknown profile: pure price poll (no crash)');
+  // Group-owned books: bare quantity edits refused everywhere in the group.
+  ok(/carve-outs/.test(sub.quantityEditBlocked(shell.id) || ''), 'shell: bare quantity edits refused (pool is group money)');
+  ok(/rewind/.test(sub.quantityEditBlocked(1) || '') && /rewind/.test(sub.quantityEditBlocked(2) || ''), 'grouped subs: bare quantity edits refused');
+  ok(sub.quantityEditBlocked(999) === null, 'unknown profile: no crash, no block');
 
   // ---- multi sync: T1 unique holder + tether-follows-trade ------------------
   const t1 = now + 1000;
