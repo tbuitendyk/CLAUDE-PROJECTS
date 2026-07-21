@@ -17,13 +17,15 @@ const hit = db.prepare("SELECT id FROM flows WHERE profile_id = 6 AND note LIKE 
 if (hit) { console.log('ALREADY RESTORED (flow #' + hit.id + ') — refusing to double-apply'); process.exit(2); }
 JS
 
-# shellcheck disable=SC1091
-set -a; source /etc/semi-auto-balancer/env; set +a
+# The env file is systemd-style, NOT bash-sourceable (unquoted specials) —
+# extract the one key we need and JSON-encode it safely via python.
+APP_PASSWORD=$(grep -E '^APP_PASSWORD=' /etc/semi-auto-balancer/env | head -1 | cut -d= -f2- || true)
+LOGIN_JSON=$(PW="$APP_PASSWORD" python3 -c 'import json,os; print(json.dumps({"password": os.environ.get("PW","")}))')
 JAR=$(mktemp)
 trap 'rm -f "$JAR"' EXIT
 curl -sS -c "$JAR" -X POST http://127.0.0.1:8092/api/login \
   -H 'Content-Type: application/json' \
-  -d "{\"password\":\"${APP_PASSWORD:-}\"}" >/dev/null
+  -d "$LOGIN_JSON" >/dev/null
 
 curl -sS -b "$JAR" -X POST http://127.0.0.1:8092/api/profiles/6/flow \
   -H 'Content-Type: application/json' \
