@@ -115,6 +115,11 @@
     <p>Record manual <strong>deposits / withdrawals</strong> in their section (or let exchange sync detect
     them) — they are spliced, never counted as gains.</p>
 
+    <p><strong>✎ baseline</strong> (on the Value line): the value track record measures growth from a
+    baseline amount, shown as "from …" in the line. Click ✎ to re-pin it — the field prefills with the
+    current value; overwrite it with the true initial capital if entry costs (fiat conversions, spreads
+    on the way in) polluted the start. The "since" date stays put; only the measuring stick moves.</p>
+
     <h2 id="tuner">4. Sensitivity tuner (backtest)</h2>
     <figure class="fig">
       <table>
@@ -204,7 +209,8 @@
         drift can't leak in). Resume works both in the same session and after a restart; Cancel on a
         restart-surviving pause discards it. <strong>Cancel</strong> on a live search stops it within
         seconds ("cancelled — no result saved"); your last completed result stays untouched. The
-        <strong>CPU button in the page header</strong> (cycles 100/90/75/50/25%) is a
+        <strong>CPU button in the page header</strong> (cycles 100/90/75/50/25/10%/OFF — OFF parks heavy
+        work in place until turned back up; Cancel and ⏸ Pause still work while parked) is a
         <em>service-wide</em> cap on heavy work — comp-lab searches, the sensitivity tuner, and Ladder
         Lab sweeps all honor it, and it applies to <em>already-running</em> work within seconds. Stored
         on the server, so every browser sees the same setting. It never changes results, only speed;

@@ -311,10 +311,60 @@ function renderDetail() {
     const since = totals.valueStartedAt
       ? `since ${new Date(totals.valueStartedAt).toLocaleString()}`
       : 'since start';
+    // The line names the BASELINE the % is measured from — the original
+    // value, not just the growth — and offers ✎ to re-pin it (entry costs
+    // are funding-path artifacts, not balancing performance).
     line2.innerHTML =
       `Value (${idx}): <strong>${fmtNum(totals.totalRel)}</strong> ` +
-      (totals.growthPct != null ? `${fmtPct(totals.growthPct)} <span class="muted">${since}</span> ` : '') +
+      (totals.growthPct != null
+        ? `${fmtPct(totals.growthPct)} <span class="muted">from ${totals.valueBaselineRel != null ? fmtNum(totals.valueBaselineRel) : '?'} ${since}</span> `
+        : '') +
       `<span class="muted">· $${fmtMoney(totals.totalUsd)} USD</span>`;
+    if (!profile.is_shell && totals.growthPct != null) {
+      const edit = document.createElement('button');
+      edit.className = 'ghost';
+      edit.textContent = '✎ baseline';
+      edit.title =
+        `Set the value track record's baseline in ${idx} units — the amount performance is measured FROM. ` +
+        'Prefilled with the CURRENT value; overwrite it with the true initial capital (entry costs like fiat ' +
+        'conversions are funding artifacts, not balancing performance). The "since" date is unchanged.';
+      edit.addEventListener('click', () => {
+        edit.disabled = true;
+        const box = document.createElement('span');
+        const inp = document.createElement('input');
+        inp.type = 'number';
+        inp.step = 'any';
+        inp.min = '0';
+        inp.value = totals.totalRel;
+        inp.className = 'cell-input';
+        inp.style.width = '110px';
+        const save = document.createElement('button');
+        save.textContent = 'Save baseline';
+        const cancel = document.createElement('button');
+        cancel.textContent = 'Cancel';
+        cancel.className = 'ghost';
+        save.addEventListener('click', async () => {
+          try {
+            await api(`/profiles/${state.selectedId}/value-baseline`, {
+              method: 'POST',
+              body: { baseline: Number(inp.value) },
+            });
+            await refresh();
+          } catch (err) {
+            alert(err.message);
+          }
+        });
+        cancel.addEventListener('click', () => {
+          box.remove();
+          edit.disabled = false;
+        });
+        box.append(' ', inp, ' ', save, ' ', cancel);
+        line2.append(box);
+        inp.focus();
+        inp.select();
+      });
+      line2.append(' ', edit);
+    }
   } else {
     line2.innerHTML = `Value (${idx}): <span class="muted">— no priced holdings yet</span>`;
   }
@@ -1492,13 +1542,17 @@ $('#c-run').addEventListener('click', async () => {
 // Service-wide CPU cap: one header button, stored server-side, applies LIVE
 // to every heavy loop (running searches included, within seconds). Click
 // cycles down through the steps and wraps back to 100%.
-const CPU_STEPS = [100, 90, 75, 50, 25];
+const CPU_STEPS = [100, 90, 75, 50, 25, 10, 0]; // 0 = OFF: heavy work parks in place
 function paintCpuBtn(pct) {
-  $('#cpu-btn').textContent = `CPU ${pct}%`;
+  const btn = $('#cpu-btn');
+  btn.dataset.pct = String(pct);
+  btn.textContent = pct <= 0 ? 'CPU OFF' : `CPU ${pct}%`;
+  btn.classList.toggle('warn', pct <= 0);
 }
 $('#cpu-btn').addEventListener('click', async () => {
-  const cur = Number(($('#cpu-btn').textContent.match(/\d+/) || [90])[0]);
-  const next = CPU_STEPS[(CPU_STEPS.indexOf(cur) + 1) % CPU_STEPS.length] || 90;
+  const cur = Number($('#cpu-btn').dataset.pct ?? 90);
+  const idx = CPU_STEPS.indexOf(cur);
+  const next = CPU_STEPS[(idx + 1) % CPU_STEPS.length];
   try {
     const r = await api('/settings/cpu', { method: 'POST', body: { pct: next } });
     paintCpuBtn(r.pct);
@@ -2640,7 +2694,7 @@ $('#i-cancel').addEventListener('click', () => {
   $('#email-status').textContent = session.emailConfigured
     ? 'email alerts: on'
     : 'email alerts: not configured';
-  paintCpuBtn(session.cpuPct || 90);
+  paintCpuBtn(Number.isFinite(session.cpuPct) ? session.cpuPct : 90);
   state.visionConfigured = Boolean(session.visionConfigured);
   state.telegramConfigured = Boolean(session.telegramConfigured);
   if (session.authed) {

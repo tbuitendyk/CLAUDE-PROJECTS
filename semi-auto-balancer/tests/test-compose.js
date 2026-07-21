@@ -384,7 +384,19 @@ const IDS = [...seriesById.keys()];
   ok(throttle.currentCpuPct() === 90, 'cpu setting round-trips through the settings table');
   let cpuThrew = false;
   try { throttle.setCpuPct('nope'); } catch { cpuThrew = true; }
-  ok(cpuThrew && throttle.setCpuPct(10) === 25 && throttle.setCpuPct(500) === 100, 'cpu pct validated and clamped to 25–100');
+  ok(cpuThrew && throttle.setCpuPct(10) === 10 && throttle.setCpuPct(-5) === 0 && throttle.setCpuPct(500) === 100, 'cpu pct validated and clamped to 0–100');
+  // OFF (0%) parks the yielder in place; turning the knob back up releases it.
+  throttle.setCpuPct(0);
+  {
+    const y = throttle.makeYielder();
+    let resolved = false;
+    const parked = y().then(() => { resolved = true; });
+    await new Promise((r) => setTimeout(r, 400));
+    ok(!resolved, 'CPU OFF parks the loop (no progress while parked)');
+    throttle.setCpuPct(90);
+    await parked;
+    ok(resolved, 'raising the knob releases the parked loop within a tick');
+  }
   throttle.setCpuPct(90);
 
   // --- deploy-surviving pause: checkpoint → kill (simulated restart) →

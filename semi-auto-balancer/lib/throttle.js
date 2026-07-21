@@ -10,7 +10,7 @@ const db = require('./db');
 // byte-identical at any setting.
 
 const WORK_MS = 90;
-const CPU_MIN = 25;
+const CPU_MIN = 0; // 0 = OFF: heavy loops park in place until turned back up
 const CPU_MAX = 100;
 const CPU_DEFAULT = 90;
 const CACHE_MS = 3000;
@@ -72,8 +72,15 @@ function makeYielder(pauseGate = null) {
       await pauseGate();
       if (!(pauseGate.pending && pauseGate.pending())) checkpointedThisPause = false;
     }
+    // OFF (0%): park in place, waking every 250ms to re-check the setting.
+    // A pending CANCEL releases the park so the loop can reach its next
+    // setProgress and abort; a pause parks via the gate above regardless.
+    while (currentCpuPct() <= 0) {
+      if (pauseGate && pauseGate.cancelPending && pauseGate.cancelPending()) break;
+      await new Promise((r) => setTimeout(r, 250));
+    }
     const pct = currentCpuPct();
-    const sleepMs = pct >= 100 ? 0 : Math.round((WORK_MS * (100 - pct)) / pct);
+    const sleepMs = pct >= 100 || pct <= 0 ? 0 : Math.round((WORK_MS * (100 - pct)) / pct);
     if (sleepMs > 0 && Date.now() - lastSleep >= WORK_MS) {
       lastSleep = Date.now() + sleepMs;
       await new Promise((r) => setTimeout(r, sleepMs));

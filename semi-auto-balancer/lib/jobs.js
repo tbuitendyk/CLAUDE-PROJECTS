@@ -56,6 +56,7 @@ function startJob(kind, profileId, fn) {
   // because the checkpoint outlives the process. One per (kind, profile);
   // re-pause replaces it; completion deletes it.
   pauseGate.pending = () => Boolean(job.pauseRequested && !job.cancelRequested);
+  pauseGate.cancelPending = () => Boolean(job.cancelRequested);
   pauseGate.saveCheckpoint = (state) => {
     db.prepare(
       'INSERT OR REPLACE INTO job_checkpoints (kind, profile_id, created_at, progress, progress_pct, state) VALUES (?, ?, ?, ?, ?, ?)'

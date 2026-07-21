@@ -302,6 +302,11 @@ function buildProfileView(profile) {
     valueIndex,
     growthPct,
     valueStartedAt: profile.value_started_at || null,
+    // The implied baseline in tether units — the amount the track record
+    // measures growth FROM (index = 1 exactly at this value). Shown in the
+    // value line and editable via the ✎ baseline control.
+    valueBaselineRel:
+      profile.value_snap_rel > 0 && profile.value_base > 0 ? profile.value_snap_rel / profile.value_base : null,
     annualizedPct,
   };
   return { assets, totals };
@@ -1128,6 +1133,21 @@ app.post('/api/profiles/:id/import-complete', (req, res) => {
   if (!profile) return res.status(404).json({ error: 'not found' });
   rearmAfterUpload(profile.id);
   res.json({ ok: true });
+});
+
+// Set the value track record's BASELINE (in tether units): the dollar (or
+// tether-unit) amount performance is measured from. Entry costs — fiat
+// conversions, spreads on the way in — are artifacts of the funding path,
+// not balancing performance, so the user can pin the baseline to the true
+// initial capital. The start DATE is deliberately untouched.
+app.post('/api/profiles/:id/value-baseline', (req, res) => {
+  const profile = db.prepare('SELECT * FROM profiles WHERE id = ?').get(req.params.id);
+  if (!profile) return res.status(404).json({ error: 'not found' });
+  if (profile.is_shell) return res.status(400).json({ error: 'the pool has no strategy track record to re-baseline' });
+  const baseline = Number((req.body || {}).baseline);
+  if (!(baseline > 0)) return res.status(400).json({ error: 'baseline must be a positive number (in tether units)' });
+  db.prepare('UPDATE profiles SET value_base = 1, value_snap_rel = ? WHERE id = ?').run(baseline, profile.id);
+  res.json({ ok: true, baseline });
 });
 
 // Set new target allocations: the deliberate decision to change the mix.
