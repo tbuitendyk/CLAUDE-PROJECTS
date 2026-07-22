@@ -114,13 +114,15 @@ function lossGrad(W, X, yIdx, lambda) {
 // Async on purpose: a multi-year run trains for minutes, and Node is
 // single-threaded — without yielding, status polls queue unanswered until
 // nginx returns an HTML 504 and the UI dies mid-run. Every few iterations
-// the loop hands the event loop back (and reports progress via onIter).
-const yieldNow = () => new Promise((resolve) => setImmediate(resolve));
+// the loop hands the event loop back through the service-wide CPU throttle
+// (lib/throttle.js) and reports progress via onIter.
+const { makeYielder } = require('./throttle');
 const YIELD_EVERY = 10;
 
 async function trainSoftmax(X, y, lambda, { maxIter = 5000, tol = 1e-7, onIter = null } = {}) {
   const f = X[0].length;
   const yIdx = y.map(classIndex);
+  const pace = makeYielder();
   let W = new Float64Array(K * (f + 1));
   let lr = 1.0;
   let { loss, grad } = lossGrad(W, X, yIdx, lambda);
@@ -129,7 +131,7 @@ async function trainSoftmax(X, y, lambda, { maxIter = 5000, tol = 1e-7, onIter =
   for (; iter < maxIter; iter++) {
     if (iter % YIELD_EVERY === 0) {
       if (onIter) onIter(iter);
-      await yieldNow();
+      await pace();
     }
     const Wnext = new Float64Array(W.length);
     for (let i = 0; i < W.length; i++) Wnext[i] = W[i] - lr * grad[i];

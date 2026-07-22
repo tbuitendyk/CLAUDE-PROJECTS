@@ -81,6 +81,14 @@ button {
   padding: 9px 22px; font: inherit; font-weight: 600; cursor: pointer;
 }
 button:disabled { opacity: 0.55; cursor: default; }
+button.secondary { background: var(--page); color: var(--accent); border: 1px solid var(--accent); }
+.cpu-btn {
+  margin-left: auto; background: var(--page); color: var(--ink-2);
+  border: 1px solid var(--baseline); padding: 4px 12px; font-size: 12px; font-weight: 600;
+}
+.topbar .inner { align-items: center; }
+tr.hilite td { background: var(--seq-100); }
+button.rowload { padding: 2px 8px; font-size: 11px; background: var(--page); color: var(--accent); border: 1px solid var(--accent); }
 
 .status { margin-top: 18px; color: var(--ink-2); }
 .status .spin { display: inline-block; margin-right: 8px; animation: spin 1.1s linear infinite; }

@@ -103,4 +103,29 @@ async function monthlyKlines(symbol, year, month) {
   return rows;
 }
 
-module.exports = { monthlyKlines, unzipSingleEntry, parseKlineCsv, HOUR_MS };
+// What's on disk: per symbol, how many months are cached and the span they
+// cover. Powers the UI's "available data" area.
+function cacheState() {
+  let files = [];
+  try {
+    files = fs.readdirSync(CACHE_DIR);
+  } catch {
+    return [];
+  }
+  const bySymbol = new Map();
+  for (const f of files) {
+    const m = /^([A-Z0-9]+)-1h-(\d{4}-\d{2})\.json$/.exec(f);
+    if (!m) continue;
+    const [, symbol, month] = m;
+    if (!bySymbol.has(symbol)) bySymbol.set(symbol, []);
+    bySymbol.get(symbol).push(month);
+  }
+  return [...bySymbol.entries()]
+    .map(([symbol, months]) => {
+      months.sort();
+      return { symbol, months: months.length, from: months[0], to: months[months.length - 1] };
+    })
+    .sort((a, b) => (a.symbol < b.symbol ? -1 : 1));
+}
+
+module.exports = { monthlyKlines, unzipSingleEntry, parseKlineCsv, cacheState, HOUR_MS };

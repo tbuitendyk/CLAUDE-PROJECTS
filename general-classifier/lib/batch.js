@@ -70,20 +70,22 @@ function batchRunning() {
   return activeBatch && activeBatch.status === 'running' ? activeBatch.id : null;
 }
 
-// Rank runs for the summary: by edge over the majority baseline, then by
-// balanced-accuracy edge. Failed runs sink to the bottom with their errors.
+// Rank runs for the summary: by edge over the BEST CONSTANT hindsight guess
+// (immune to train/test distribution shift), then by balanced-accuracy
+// edge. Failed runs sink to the bottom with their errors.
 function summarize(runs) {
   const done = runs.filter((r) => r.status === 'done');
   const failed = runs.filter((r) => r.status === 'error');
+  const rankKey = (m) => m.hindsightEdge ?? m.edge ?? -1;
   const ranked = [...done].sort((a, b) => {
-    const e = (b.metrics.edge ?? -1) - (a.metrics.edge ?? -1);
+    const e = rankKey(b.metrics) - rankKey(a.metrics);
     if (e !== 0) return e;
     return (b.metrics.balancedEdge ?? -1) - (a.metrics.balancedEdge ?? -1);
   });
   return {
     ranked: ranked.map((r) => ({ trade: r.trade, compare: r.compare, model: r.model, ...r.metrics })),
     failed: failed.map((r) => ({ trade: r.trade, compare: r.compare, model: r.model, error: r.error })),
-    positiveEdge: ranked.filter((r) => r.metrics.edge > 0).length,
+    positiveEdge: ranked.filter((r) => rankKey(r.metrics) > 0).length,
     done: done.length,
     total: runs.length,
   };

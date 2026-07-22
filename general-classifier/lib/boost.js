@@ -9,10 +9,10 @@
 // best round, stop after `patience` rounds without improvement — then the
 // caller retrains on the full training window for exactly that many rounds.
 
+const { makeYielder } = require('./throttle');
+
 const CLASSES = [-1, 0, 1];
 const K = CLASSES.length;
-
-const yieldNow = () => new Promise((resolve) => setImmediate(resolve));
 
 function classIndex(label) {
   const k = CLASSES.indexOf(label);
@@ -151,6 +151,7 @@ async function trainBoost(X, y, {
 
   const model = { priors, trees: [], importance: new Float64Array(f), bestRound: 0, valCurveBest: null };
   const F = Array.from({ length: n }, () => Float64Array.from(priors));
+  const pace = makeYielder();
 
   let bestValLoss = Infinity;
   let bestTreeCount = 0;
@@ -158,7 +159,7 @@ async function trainBoost(X, y, {
 
   for (let r = 0; r < rounds; r++) {
     if (onRound) onRound(r);
-    await yieldNow();
+    await pace();
 
     const roundTrees = [];
     // Residuals/hessians from CURRENT scores for all classes first, so the

@@ -40,11 +40,115 @@
     $('dormant').disabled = $('autoband').checked;
   });
 
+  // ---- CPU throttle (semi-auto balancer pattern) -----------------------------
+
+  const cpuBtn = $('cpu-btn');
+  const CPU_STEPS = [100, 90, 75, 50, 25, 10, 0];
+  let cpuPct = null;
+
+  function showCpu() {
+    cpuBtn.textContent = cpuPct === null ? 'CPU …' : cpuPct <= 0 ? 'CPU OFF' : `CPU ${cpuPct}%`;
+  }
+  async function loadCpu() {
+    try {
+      const res = await fetch('api/cpu');
+      cpuPct = (await jsonBody(res)).pct;
+    } catch {
+      cpuPct = null;
+    }
+    showCpu();
+  }
+  cpuBtn.addEventListener('click', async () => {
+    const idx = CPU_STEPS.indexOf(cpuPct);
+    const next = CPU_STEPS[(idx + 1) % CPU_STEPS.length];
+    try {
+      const res = await fetch('api/cpu', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pct: next }),
+      });
+      cpuPct = (await jsonBody(res)).pct;
+    } catch {
+      /* leave display as-is */
+    }
+    showCpu();
+  });
+  loadCpu();
+
+  // ---- data state -------------------------------------------------------------
+
+  const dataStateEl = $('data-state');
+
+  async function refreshDataState() {
+    try {
+      const res = await fetch('api/data-state');
+      const body = await jsonBody(res);
+      if (!res.ok) throw new Error(body.error || `HTTP ${res.status}`);
+      if (!body.symbols.length) {
+        dataStateEl.innerHTML = '<p class="note">Nothing cached yet — Load Data will populate this.</p>';
+        return;
+      }
+      const current = [$('trade').value.toUpperCase(), $('compare').value.toUpperCase()];
+      dataStateEl.innerHTML = `
+        <div class="tablewrap"><table>
+          <tr><th>pair</th><th>months cached</th><th>from</th><th>to</th></tr>
+          ${body.symbols.map((s) => `
+            <tr class="${current.includes(s.symbol) ? 'hilite' : ''}">
+              <td>${esc(s.symbol)}</td><td>${s.months}</td><td>${esc(s.from)}</td><td>${esc(s.to)}</td>
+            </tr>`).join('')}
+        </table></div>
+        <p class="note">Highlighted rows are the pairs currently selected above. Months cached on disk are never re-downloaded.</p>`;
+    } catch (err) {
+      dataStateEl.innerHTML = `<p class="note">data state unavailable: ${esc(err.message)}</p>`;
+    }
+  }
+
+  // ---- load / run -------------------------------------------------------------
+
+  const loadBtn = $('load-btn');
+
+  loadBtn.addEventListener('click', async () => {
+    setError('');
+    loadBtn.disabled = true;
+    runBtn.disabled = true;
+    setStatus('loading data…');
+    try {
+      const res = await fetch('api/load', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tradeSymbol: $('trade').value,
+          compareSymbol: $('compare').value,
+          startMonth: $('start').value,
+          endMonth: $('end').value,
+        }),
+      });
+      const body = await jsonBody(res);
+      if (!res.ok) throw new Error(body.error || `HTTP ${res.status}`);
+      const result = await poll(body.jobId);
+      const parts = Object.entries(result).map(([sym, s]) => {
+        const missing = s.missingMonths.length ? `, no data for ${s.missingMonths.length} month(s)` : '';
+        return `${sym}: ${s.candles.toLocaleString()} candles across ${s.monthsRequested - s.missingMonths.length}/${s.monthsRequested} months${missing}`;
+      });
+      setStatus('');
+      statusEl.hidden = false;
+      statusEl.textContent = `✓ Data loaded — ${parts.join(' · ')}`;
+      refreshDataState();
+    } catch (err) {
+      setError(err.message);
+      setStatus('');
+    } finally {
+      loadBtn.disabled = false;
+      runBtn.disabled = false;
+    }
+  });
+
   form.addEventListener('submit', async (ev) => {
     ev.preventDefault();
     setError('');
     reportEl.hidden = true;
     runBtn.disabled = true;
+    loadBtn.disabled = true;
     setStatus('starting…');
     try {
       const res = await fetch('api/run', {
@@ -62,18 +166,23 @@
       });
       const body = await jsonBody(res);
       if (!res.ok) throw new Error(body.error || `HTTP ${res.status}`);
-      await poll(body.jobId);
+      const result = await poll(body.jobId);
+      setStatus('');
+      render(result);
+      refreshDataState();
     } catch (err) {
       setError(err.message);
       setStatus('');
     } finally {
       runBtn.disabled = false;
+      loadBtn.disabled = false;
     }
   });
 
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const MAX_POLL_FAILURES = 8; // transient 502/504s and network blips survive; ~30s of solid failure gives up
 
+  // Polls a job to completion and RETURNS its result (callers render).
   async function poll(jobId) {
     let failures = 0;
     for (;;) {
@@ -99,10 +208,8 @@
         await sleep(800);
         continue;
       }
-      setStatus('');
       if (job.status === 'error') throw new Error(job.error);
-      render(job.result);
-      return;
+      return job.result;
     }
   }
 
@@ -285,21 +392,50 @@
       <p class="note">${header} · ${s.positiveEdge} of ${s.done} completed combos beat their majority baseline</p>
       ${weakWarning}
       <div class="tablewrap"><table>
-        <tr><th>#</th><th>trade</th><th>model</th><th>band</th><th>test acc</th><th>majority</th><th>edge</th><th>balanced acc</th><th>dir calls</th><th>dir hit rate</th><th>train acc</th><th>weeks (tr/te)</th><th>picked</th></tr>
-        ${s.ranked.map((r, i) => `
-          <tr class="${r.edge > 0 ? '' : 'miss'}">
-            <td>${i + 1}</td><td>${esc(r.trade)}</td><td>${esc(r.model)}</td>
+        <tr><th>#</th><th></th><th>trade</th><th>model</th><th>band</th><th>test acc</th><th>best constant</th><th>true edge</th><th>balanced acc</th><th>dir calls</th><th>dir hit rate</th><th>train acc</th><th>weeks (tr/te)</th><th>picked</th></tr>
+        ${s.ranked.map((r, i) => {
+          const te = r.hindsightEdge != null ? r.hindsightEdge : r.edge;
+          const bc = r.bestConstant != null ? pct(r.bestConstant) : `${pct(r.majorityBaseline)} (${clsName(r.majorityClass)})`;
+          return `
+          <tr class="${te > 0 ? '' : 'miss'}">
+            <td>${i + 1}</td>
+            <td><button type="button" class="rowload" data-i="${i}" title="Load this combo into the form above and run the full detailed report">detail</button></td>
+            <td>${esc(r.trade)}</td><td>${esc(r.model)}</td>
             <td>${r.bandPct != null ? '±' + Number(r.bandPct).toFixed(2) + '%' : '—'}</td>
-            <td>${pct(r.testAcc)}</td><td>${pct(r.majorityBaseline)} (${clsName(r.majorityClass)})</td>
-            <td><strong>${r.edge >= 0 ? '+' : ''}${(100 * r.edge).toFixed(1)}%</strong></td>
+            <td>${pct(r.testAcc)}</td><td>${bc}</td>
+            <td><strong>${te >= 0 ? '+' : ''}${(100 * te).toFixed(1)}%</strong></td>
             <td>${pct(r.balancedAcc)}</td>
             <td>${r.directionalCalls}</td><td>${pct(r.directionalHitRate)}</td>
             <td>${pct(r.trainAcc)}</td><td>${r.trainWeeks}/${r.testWeeks}</td><td>${esc(r.chosen)}</td>
-          </tr>`).join('')}
+          </tr>`;
+        }).join('')}
       </table></div>
       ${s.failed.length ? `<p class="note">Failed: ${s.failed.map((f) => `${esc(f.trade)}/${esc(f.model)} (${esc(f.error)})`).join(' · ')}</p>` : ''}
-      <p class="note">Rows shaded red did not beat "always guess the majority class". Edge = test accuracy − majority baseline;
-        dir hit rate = accuracy of the non-dormant (±1) calls only. Sorted best-first.</p>`;
+      <p class="note">True edge = test accuracy − the best CONSTANT guess in hindsight (the toughest prior-only competitor —
+        immune to train/test distribution drift, unlike the train-majority baseline). Rows shaded red have no true edge.
+        Dir hit rate = accuracy of the non-dormant (±1) calls only. Sorted best-first. "detail" shuttles the combo into
+        the form above and runs the full report.</p>`;
+
+    batchViewEl.querySelectorAll('.rowload').forEach((btn) => {
+      btn.addEventListener('click', () => shuttleToForm(doc, s.ranked[Number(btn.dataset.i)]));
+    });
+  }
+
+  // Batch row -> one-off run: copy the screen's config + the row's combo into
+  // the form and fire the detailed report.
+  function shuttleToForm(doc, r) {
+    $('trade').value = r.trade;
+    $('compare').value = r.compare || doc.params.compareSymbol;
+    $('start').value = doc.params.startMonth;
+    $('end').value = doc.params.endMonth;
+    $('features').value = doc.params.featureSet || 'compressed';
+    $('model').value = r.model;
+    const auto = doc.params.dormantPct === 'auto';
+    $('autoband').checked = auto;
+    $('dormant').disabled = auto;
+    if (!auto) $('dormant').value = doc.params.dormantPct;
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    form.requestSubmit();
   }
 
   const batchPickEl = $('batch-pick');
@@ -374,4 +510,5 @@
   });
   $('batch-refresh').addEventListener('click', refreshBatch);
   refreshBatch();
+  refreshDataState();
 })();

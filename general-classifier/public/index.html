@@ -4,13 +4,15 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>General Classifier</title>
-  <link rel="stylesheet" href="style.css?v=5">
+  <link rel="stylesheet" href="style.css?v=6">
 </head>
 <body>
   <header class="topbar">
     <div class="inner">
       <a class="brand" href="https://www.buitendyk.ca/">buitendyk<span>.ca</span></a>
       <span class="crumb">/ general classifier</span>
+      <button id="cpu-btn" class="cpu-btn" type="button"
+        title="Service-wide CPU cap for heavy work (training, boosting, pair screens) — click to cycle 100/90/75/50/25/10%/OFF. Applies LIVE to running work within seconds; results are identical at any setting, only speed changes. OFF parks heavy work in place until turned back up.">CPU …</button>
     </div>
   </header>
 
@@ -63,9 +65,19 @@
         </select>
       </div>
       <div class="field submit">
-        <button id="run" type="submit">Load Data</button>
+        <button id="load-btn" type="button" class="secondary">Load Data</button>
+      </div>
+      <div class="field submit">
+        <button id="run" type="submit">Run Classifier</button>
       </div>
     </form>
+
+    <div class="section">
+      <h2>Available data on server</h2>
+      <p class="note">Every pair/month already downloaded and cached. Load Data fetches the months for the two pairs
+        above into this cache; Run Classifier uses it (and fetches anything still missing on the fly).</p>
+      <div id="data-state"><p class="note">Loading…</p></div>
+    </div>
 
     <div id="status" class="status" hidden></div>
     <div id="error" class="error" hidden></div>
@@ -97,6 +109,6 @@
     pruned to time / open / high / low / close / quote&nbsp;volume.
   </footer>
 
-  <script src="app.js?v=6"></script>
+  <script src="app.js?v=7"></script>
 </body>
 </html>

@@ -1,7 +1,9 @@
 const path = require('path');
 const express = require('express');
 const { startJob, getJob } = require('./lib/jobs');
-const { runAnalysis } = require('./lib/pipeline');
+const { runAnalysis, loadData } = require('./lib/pipeline');
+const { cacheState } = require('./lib/binance');
+const throttle = require('./lib/throttle');
 const batch = require('./lib/batch');
 
 // General Classifier web service. Fronted by nginx at
@@ -19,7 +21,38 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 const SYMBOL_RE = /^[A-Z0-9]{5,20}$/;
 
-app.get('/api/healthz', (req, res) => res.json({ ok: true }));
+app.get('/api/healthz', (req, res) => res.json({ ok: true, cpuPct: throttle.currentCpuPct() }));
+
+// ---- CPU throttle (semi-auto balancer pattern) ------------------------------
+
+app.get('/api/cpu', (req, res) => res.json({ pct: throttle.currentCpuPct() }));
+
+app.post('/api/cpu', (req, res) => {
+  try {
+    res.json({ pct: throttle.setCpuPct((req.body || {}).pct) });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// ---- data state + load-only phase -------------------------------------------
+
+app.get('/api/data-state', (req, res) => res.json({ symbols: cacheState() }));
+
+app.post('/api/load', (req, res) => {
+  const b = req.body || {};
+  const tradeSymbol = String(b.tradeSymbol || '').trim().toUpperCase();
+  const compareSymbol = String(b.compareSymbol || '').trim().toUpperCase();
+  const startMonth = String(b.startMonth || '').trim();
+  const endMonth = String(b.endMonth || '').trim();
+  if (!SYMBOL_RE.test(tradeSymbol)) return res.status(400).json({ error: 'trade pair must look like ZECUSDT' });
+  if (!SYMBOL_RE.test(compareSymbol)) return res.status(400).json({ error: 'compare pair must look like BTCUSDT' });
+  if (!/^\d{4}-\d{2}$/.test(startMonth) || !/^\d{4}-\d{2}$/.test(endMonth)) {
+    return res.status(400).json({ error: 'months must be YYYY-MM' });
+  }
+  const jobId = startJob((setProgress) => loadData({ tradeSymbol, compareSymbol, startMonth, endMonth }, setProgress));
+  res.json({ jobId });
+});
 
 app.post('/api/run', (req, res) => {
   const b = req.body || {};

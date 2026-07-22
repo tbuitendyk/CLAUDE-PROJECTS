@@ -273,11 +273,19 @@ function extractMetrics(report) {
       if (row.predicted === row.actual) dirHits++;
     }
   }
+  // Best CONSTANT guess in hindsight: the strongest prior-only competitor.
+  // Under an adaptive band the test class mix can drift far from training's,
+  // making the train-majority baseline too easy to "beat" — this one can't
+  // be gamed by distribution shift.
+  const testCounts = report.split.test.classCounts;
+  const bestConstant = Math.max(...Object.values(testCounts)) / report.split.test.count;
   return {
     testAcc: t.accuracy,
     majorityBaseline: t.majorityBaseline,
     majorityClass: t.majorityClass,
     edge: t.accuracy - t.majorityBaseline,
+    bestConstant,
+    hindsightEdge: t.accuracy - bestConstant,
     balancedAcc,
     balancedEdge: balancedAcc != null ? balancedAcc - 1 / 3 : null,
     directionalCalls: dirCalls,
@@ -294,4 +302,16 @@ function extractMetrics(report) {
   };
 }
 
-module.exports = { runAnalysis, monthList, extractMetrics, MIN_CHUNKS };
+// Download/cache the months for both symbols WITHOUT running an analysis —
+// the "Load Data" phase. Returns a per-symbol summary for the data-state UI.
+async function loadData({ tradeSymbol, compareSymbol, startMonth, endMonth }, onProgress = () => {}) {
+  const months = monthList(startMonth, endMonth);
+  const out = {};
+  for (const symbol of [tradeSymbol, compareSymbol]) {
+    const { rows, missing } = await loadSymbol(symbol, months, onProgress);
+    out[symbol] = { candles: rows.length, monthsRequested: months.length, missingMonths: missing };
+  }
+  return out;
+}
+
+module.exports = { runAnalysis, loadData, monthList, extractMetrics, MIN_CHUNKS };
