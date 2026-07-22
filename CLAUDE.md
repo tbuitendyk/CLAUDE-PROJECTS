@@ -11,6 +11,11 @@ first — then do the work.
 - If there's a real fork or a missing detail, check in briefly before spending effort.
 - Verify facts instead of guessing (e.g., check an address/mailbox/branch exists
   rather than assuming its spelling).
+- **The owner drives all testing and UI evaluation.** Sessions verify code
+  correctness only (unit tests, deploy health checks) and never run or
+  interpret analyses through the interface unless explicitly asked. The owner
+  is the project lead who checks the work; sessions are the expert coder,
+  deployer, and recommender.
 
 This repo is split **one project per branch**. This branch carries the
 **General Classifier** (`general-classifier/`): a Node/Express service on
