@@ -35,6 +35,11 @@
     }
   }
 
+  const dormantValue = () => ($('autoband').checked ? 'auto' : Number($('dormant').value));
+  $('autoband').addEventListener('change', () => {
+    $('dormant').disabled = $('autoband').checked;
+  });
+
   form.addEventListener('submit', async (ev) => {
     ev.preventDefault();
     setError('');
@@ -46,7 +51,7 @@
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          dormantPct: Number($('dormant').value),
+          dormantPct: dormantValue(),
           tradeSymbol: $('trade').value,
           compareSymbol: $('compare').value,
           startMonth: $('start').value,
@@ -153,7 +158,10 @@
           ${tile('Features / chunk', r.data.featureCount.toLocaleString(), r.params.featureSet === 'raw' ? 'raw: 192h × 5 fields × 2 pairs' : 'compressed (engineered)')}
         </div>
         <p class="note">
-          Score distribution (all chunks, dormant &plusmn;${esc(String(r.params.dormantPct))}%): ${classCountsInline(r.data.classCounts)}
+          Dormant band: ${r.data.adaptiveBand
+            ? `<strong>auto &rarr; &plusmn;${r.data.dormantBandPct.toFixed(2)}%</strong> (33rd percentile of |Tue&rarr;Thu move|, calibrated on training weeks only)`
+            : `&plusmn;${esc(String(r.params.dormantPct))}%`}.
+          Score distribution (all chunks): ${classCountsInline(r.data.classCounts)}
           &nbsp;&middot;&nbsp; train: ${classCountsInline(r.split.train.classCounts)}
           &nbsp;&middot;&nbsp; test: ${classCountsInline(r.split.test.classCounts)}
           ${missingNotes.length ? '<br>' + missingNotes.join('<br>') : ''}
@@ -277,10 +285,11 @@
       <p class="note">${header} · ${s.positiveEdge} of ${s.done} completed combos beat their majority baseline</p>
       ${weakWarning}
       <div class="tablewrap"><table>
-        <tr><th>#</th><th>trade</th><th>model</th><th>test acc</th><th>majority</th><th>edge</th><th>balanced acc</th><th>dir calls</th><th>dir hit rate</th><th>train acc</th><th>weeks (tr/te)</th><th>picked</th></tr>
+        <tr><th>#</th><th>trade</th><th>model</th><th>band</th><th>test acc</th><th>majority</th><th>edge</th><th>balanced acc</th><th>dir calls</th><th>dir hit rate</th><th>train acc</th><th>weeks (tr/te)</th><th>picked</th></tr>
         ${s.ranked.map((r, i) => `
           <tr class="${r.edge > 0 ? '' : 'miss'}">
             <td>${i + 1}</td><td>${esc(r.trade)}</td><td>${esc(r.model)}</td>
+            <td>${r.bandPct != null ? '±' + Number(r.bandPct).toFixed(2) + '%' : '—'}</td>
             <td>${pct(r.testAcc)}</td><td>${pct(r.majorityBaseline)} (${clsName(r.majorityClass)})</td>
             <td><strong>${r.edge >= 0 ? '+' : ''}${(100 * r.edge).toFixed(1)}%</strong></td>
             <td>${pct(r.balancedAcc)}</td>
@@ -348,7 +357,7 @@
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          dormantPct: Number($('dormant').value),
+          dormantPct: dormantValue(),
           startMonth: $('start').value,
           endMonth: $('end').value,
           featureSet: $('features').value,

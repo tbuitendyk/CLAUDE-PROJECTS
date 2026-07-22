@@ -83,6 +83,24 @@ module.exports = {
     // Same chunks, same labels — only the representation differs.
     assert.deepStrictEqual(compressed.chunks.map((c) => c.label), raw.chunks.map((c) => c.label));
   },
+  async adaptiveBandBalancesClasses() {
+    const { balancedBandPct } = require('../lib/dataset');
+    // 90 diffs spread evenly from -4.5% to +4.5% (in steps of 0.1, no zero):
+    // the 33rd-percentile |diff| should make roughly a third dormant.
+    const diffs = [];
+    for (let i = 1; i <= 45; i++) {
+      diffs.push(i * 0.1);
+      diffs.push(-i * 0.1);
+    }
+    const band = balancedBandPct(diffs);
+    const labels = diffs.map((d) => scoreDiff(d / 100, band / 100));
+    const zeros = labels.filter((l) => l === 0).length;
+    assert.ok(Math.abs(zeros / diffs.length - 1 / 3) < 0.05, `dormant share ${zeros / diffs.length}`);
+    const pos = labels.filter((l) => l === 1).length;
+    const neg = labels.filter((l) => l === -1).length;
+    assert.strictEqual(pos, neg); // symmetric fixture -> symmetric split
+    assert.strictEqual(balancedBandPct([]), 0.01); // floor, never zero/NaN
+  },
   async dormantBandIsRelative() {
     assert.strictEqual(scoreDiff(0.019, 0.02), 0);
     assert.strictEqual(scoreDiff(0.021, 0.02), 1);

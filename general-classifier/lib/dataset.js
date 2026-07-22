@@ -110,6 +110,15 @@ function scoreDiff(diffFrac, dormantFrac) {
   return diffFrac > 0 ? 1 : -1;
 }
 
+// Adaptive band: the |move| percentile that makes ~1/3 of the given weeks
+// dormant. Callers pass TRAINING diffs only, so the test window never
+// influences its own labeling. Returned in percent, floored at 0.01.
+function balancedBandPct(diffPcts) {
+  const abs = diffPcts.map((d) => Math.abs(d)).sort((a, b) => a - b);
+  if (abs.length === 0) return 0.01;
+  return Math.max(abs[Math.floor(abs.length / 3)], 0.01);
+}
+
 // Build every labelable chunk from two forward-filled hourly maps.
 // dormantPct: e.g. 2 for "+/-2%". featureSet: 'compressed' (v2 default,
 // 42 engineered numbers) or 'raw' (v1, all 1,920 hourly values).
@@ -174,6 +183,7 @@ module.exports = {
   buildChunks,
   meanOHLC,
   scoreDiff,
+  balancedBandPct,
   assetFeatures,
   CHUNK_HOURS,
   TUE_OFFSET_H,

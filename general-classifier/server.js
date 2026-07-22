@@ -23,15 +23,15 @@ app.get('/api/healthz', (req, res) => res.json({ ok: true }));
 
 app.post('/api/run', (req, res) => {
   const b = req.body || {};
-  const dormantPct = Number(b.dormantPct);
+  const dormantPct = b.dormantPct === 'auto' ? 'auto' : Number(b.dormantPct);
   const tradeSymbol = String(b.tradeSymbol || '').trim().toUpperCase();
   const compareSymbol = String(b.compareSymbol || '').trim().toUpperCase();
   const startMonth = String(b.startMonth || '').trim();
   const endMonth = String(b.endMonth || '').trim();
   const featureSet = String(b.featureSet || 'compressed');
 
-  if (!Number.isFinite(dormantPct) || dormantPct <= 0 || dormantPct >= 50) {
-    return res.status(400).json({ error: 'dormant range must be a percentage between 0 and 50' });
+  if (dormantPct !== 'auto' && (!Number.isFinite(dormantPct) || dormantPct <= 0 || dormantPct >= 50)) {
+    return res.status(400).json({ error: 'dormant range must be "auto" or a percentage between 0 and 50' });
   }
   if (!SYMBOL_RE.test(tradeSymbol)) return res.status(400).json({ error: 'trade pair must look like ZECUSDT' });
   if (!SYMBOL_RE.test(compareSymbol)) return res.status(400).json({ error: 'compare pair must look like BTCUSDT' });
@@ -57,9 +57,9 @@ app.post('/api/run', (req, res) => {
 
 app.post('/api/batch', (req, res) => {
   const b = req.body || {};
-  const dormantPct = b.dormantPct === undefined ? 5 : Number(b.dormantPct);
-  if (!Number.isFinite(dormantPct) || dormantPct <= 0 || dormantPct >= 50) {
-    return res.status(400).json({ error: 'dormant range must be a percentage between 0 and 50' });
+  const dormantPct = b.dormantPct === 'auto' ? 'auto' : b.dormantPct === undefined ? 5 : Number(b.dormantPct);
+  if (dormantPct !== 'auto' && (!Number.isFinite(dormantPct) || dormantPct <= 0 || dormantPct >= 50)) {
+    return res.status(400).json({ error: 'dormant range must be "auto" or a percentage between 0 and 50' });
   }
   for (const m of ['startMonth', 'endMonth']) {
     if (b[m] !== undefined && !/^\d{4}-\d{2}$/.test(String(b[m]))) {

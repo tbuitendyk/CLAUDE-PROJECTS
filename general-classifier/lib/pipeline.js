@@ -1,5 +1,5 @@
 const { monthlyKlines } = require('./binance');
-const { toHourlyMap, forwardFill, buildChunks } = require('./dataset');
+const { toHourlyMap, forwardFill, buildChunks, scoreDiff, balancedBandPct } = require('./dataset');
 const { FEATURE_NAMES } = require('./features');
 const { CLASSES, standardizeFit, standardizeApply, predict, accuracy, tuneAndTrain } = require('./logreg');
 const { trainBoost, predictBoost, accuracyBoost, importanceTable } = require('./boost');
@@ -102,6 +102,7 @@ function topWeights(model, names, count = 12) {
 
 async function runAnalysis(params, onProgress = () => {}) {
   const { dormantPct, tradeSymbol, compareSymbol, startMonth, endMonth } = params;
+  const adaptiveBand = dormantPct === 'auto';
   const featureSet = params.featureSet === 'raw' ? 'raw' : 'compressed';
   const modelKind = params.model === 'boost' ? 'boost' : 'logreg';
   const months = monthList(startMonth, endMonth);
@@ -114,7 +115,12 @@ async function runAnalysis(params, onProgress = () => {}) {
   onProgress('building 8-day chunks and scoring them');
   const tradeFilled = forwardFill(toHourlyMap(trade.rows));
   const compareFilled = forwardFill(toHourlyMap(compare.rows));
-  const { chunks, dropped, considered } = buildChunks(tradeFilled.map, compareFilled.map, dormantPct, featureSet);
+  const { chunks, dropped, considered } = buildChunks(
+    tradeFilled.map,
+    compareFilled.map,
+    adaptiveBand ? 0 : dormantPct,
+    featureSet
+  );
 
   if (chunks.length < MIN_CHUNKS) {
     throw new Error(
@@ -126,6 +132,15 @@ async function runAnalysis(params, onProgress = () => {}) {
   const nTrain = chunks.length - nTest;
   const trainChunks = chunks.slice(0, nTrain);
   const testChunks = chunks.slice(nTrain);
+
+  // Adaptive band: calibrate on TRAINING weeks only (the test window never
+  // influences its own labeling), then relabel every chunk with it.
+  let dormantBandPct = adaptiveBand ? null : Math.abs(dormantPct);
+  if (adaptiveBand) {
+    dormantBandPct = balancedBandPct(trainChunks.map((c) => c.diffPct));
+    onProgress(`adaptive band calibrated: ±${dormantBandPct.toFixed(2)}% (training weeks only)`);
+    for (const c of chunks) c.label = scoreDiff(c.diffPct / 100, dormantBandPct / 100);
+  }
 
   const featureCount = chunks[0].x.length;
   const ytr = trainChunks.map((c) => c.label);
@@ -213,6 +228,8 @@ async function runAnalysis(params, onProgress = () => {}) {
   return {
     params: { dormantPct, tradeSymbol, compareSymbol, startMonth, endMonth, featureSet, model: modelKind },
     data: {
+      dormantBandPct,
+      adaptiveBand,
       monthsRequested: months.length,
       missingMonths: { [tradeSymbol]: trade.missing, [compareSymbol]: compare.missing },
       candles: { [tradeSymbol]: trade.rows.length, [compareSymbol]: compare.rows.length },
@@ -273,6 +290,7 @@ function extractMetrics(report) {
     testClassCounts: report.split.test.classCounts,
     chosen: report.tuning.model === 'boost' ? `rounds=${report.tuning.bestRound}` : `lambda=${report.tuning.chosenLambda}`,
     valMajorityAcc: report.tuning.valMajorityAcc,
+    bandPct: report.data.dormantBandPct,
   };
 }
 
