@@ -23,6 +23,18 @@
     errorEl.textContent = text || '';
   }
 
+  // Parse a response body that SHOULD be JSON but may be an nginx HTML error
+  // page (502/504 during proxy hiccups) — surface a readable message instead
+  // of "Unexpected token '<'".
+  async function jsonBody(res) {
+    const text = await res.text();
+    try {
+      return JSON.parse(text);
+    } catch {
+      throw new Error(`server returned ${res.status || 'no'} status with a non-JSON body (proxy timeout or service restart?)`);
+    }
+  }
+
   form.addEventListener('submit', async (ev) => {
     ev.preventDefault();
     setError('');
@@ -41,7 +53,7 @@
           endMonth: $('end').value,
         }),
       });
-      const body = await res.json();
+      const body = await jsonBody(res);
       if (!res.ok) throw new Error(body.error || `HTTP ${res.status}`);
       await poll(body.jobId);
     } catch (err) {
@@ -52,14 +64,32 @@
     }
   });
 
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  const MAX_POLL_FAILURES = 8; // transient 502/504s and network blips survive; ~30s of solid failure gives up
+
   async function poll(jobId) {
+    let failures = 0;
     for (;;) {
-      const res = await fetch(`api/jobs/${jobId}`);
-      const job = await res.json();
-      if (!res.ok) throw new Error(job.error || `HTTP ${res.status}`);
+      let job;
+      try {
+        const res = await fetch(`api/jobs/${jobId}`);
+        if (res.status === 404) {
+          // The service restarted and forgot the job — retrying won't help.
+          const body = await jsonBody(res).catch(() => ({}));
+          throw Object.assign(new Error(body.error || 'the service restarted mid-run — run again'), { fatal: true });
+        }
+        job = await jsonBody(res);
+        if (!res.ok) throw new Error(job.error || `HTTP ${res.status}`);
+      } catch (err) {
+        if (err.fatal || ++failures >= MAX_POLL_FAILURES) throw err;
+        setStatus(`status check failed (${err.message}) — retrying ${failures}/${MAX_POLL_FAILURES}…`);
+        await sleep(3000);
+        continue;
+      }
+      failures = 0;
       if (job.status === 'running') {
         setStatus(job.progress || 'working…');
-        await new Promise((r) => setTimeout(r, 800));
+        await sleep(800);
         continue;
       }
       setStatus('');

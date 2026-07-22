@@ -110,7 +110,15 @@ function lossGrad(W, X, yIdx, lambda) {
 // (and undo the step) when it rises. Converges when the relative improvement
 // stays under tol. The loss is convex, so the cap existing is a safety net,
 // not a tuning knob — hitting it is reported as converged:false.
-function trainSoftmax(X, y, lambda, { maxIter = 5000, tol = 1e-7 } = {}) {
+//
+// Async on purpose: a multi-year run trains for minutes, and Node is
+// single-threaded — without yielding, status polls queue unanswered until
+// nginx returns an HTML 504 and the UI dies mid-run. Every few iterations
+// the loop hands the event loop back (and reports progress via onIter).
+const yieldNow = () => new Promise((resolve) => setImmediate(resolve));
+const YIELD_EVERY = 10;
+
+async function trainSoftmax(X, y, lambda, { maxIter = 5000, tol = 1e-7, onIter = null } = {}) {
   const f = X[0].length;
   const yIdx = y.map(classIndex);
   let W = new Float64Array(K * (f + 1));
@@ -119,6 +127,10 @@ function trainSoftmax(X, y, lambda, { maxIter = 5000, tol = 1e-7 } = {}) {
   let iter = 0;
   let converged = false;
   for (; iter < maxIter; iter++) {
+    if (iter % YIELD_EVERY === 0) {
+      if (onIter) onIter(iter);
+      await yieldNow();
+    }
     const Wnext = new Float64Array(W.length);
     for (let i = 0; i < W.length; i++) Wnext[i] = W[i] - lr * grad[i];
     const next = lossGrad(Wnext, X, yIdx, lambda);
@@ -166,7 +178,7 @@ const DEFAULT_LAMBDAS = [0.01, 0.03, 0.1, 0.3, 1, 3, 10, 30];
 // Chronological tune: validation = tail of the TRAINING window (never the
 // test set). Ties go to the stronger lambda — when two strengths validate
 // identically the simpler model generalizes better.
-function tuneAndTrain(Xtr, ytr, { lambdas = DEFAULT_LAMBDAS, onProgress = () => {} } = {}) {
+async function tuneAndTrain(Xtr, ytr, { lambdas = DEFAULT_LAMBDAS, onProgress = () => {} } = {}) {
   const n = Xtr.length;
   const nVal = Math.max(3, Math.round(n * 0.25));
   const nSub = n - nVal;
@@ -179,7 +191,9 @@ function tuneAndTrain(Xtr, ytr, { lambdas = DEFAULT_LAMBDAS, onProgress = () => 
   const ladder = [];
   for (const lambda of lambdas) {
     onProgress(`training at lambda=${lambda}`);
-    const m = trainSoftmax(Xsub, ysub, lambda);
+    const m = await trainSoftmax(Xsub, ysub, lambda, {
+      onIter: (i) => onProgress(`training at lambda=${lambda} (iteration ${i})`),
+    });
     ladder.push({ lambda, valAcc: accuracy(m, Xval, yval), iters: m.iters, converged: m.converged });
   }
   // Best validation accuracy wins; on ties prefer converged models, then the
@@ -191,7 +205,9 @@ function tuneAndTrain(Xtr, ytr, { lambdas = DEFAULT_LAMBDAS, onProgress = () => 
     else if (row.valAcc === best.valAcc && (row.converged || !best.converged)) best = row;
   }
   onProgress(`retraining on full training set at lambda=${best.lambda}`);
-  const model = trainSoftmax(Xtr, ytr, best.lambda);
+  const model = await trainSoftmax(Xtr, ytr, best.lambda, {
+    onIter: (i) => onProgress(`retraining at lambda=${best.lambda} (iteration ${i})`),
+  });
   return { model, ladder, chosenLambda: best.lambda, valSize: nVal };
 }
 

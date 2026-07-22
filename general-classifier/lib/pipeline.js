@@ -24,7 +24,7 @@ function monthList(startMonth, endMonth) {
   let { year, month } = a;
   while (year < b.year || (year === b.year && month <= b.month)) {
     out.push({ year, month });
-    if (out.length > 72) throw new Error('range too large (max 72 months)');
+    if (out.length > 120) throw new Error('range too large (max 120 months)');
     month++;
     if (month > 12) {
       month = 1;
@@ -117,7 +117,7 @@ async function runAnalysis(params, onProgress = () => {}) {
   const ytr = trainChunks.map((c) => c.label);
   const yte = testChunks.map((c) => c.label);
 
-  const { model, ladder, chosenLambda, valSize } = tuneAndTrain(Xtr, ytr, { onProgress });
+  const { model, ladder, chosenLambda, valSize } = await tuneAndTrain(Xtr, ytr, { onProgress });
 
   onProgress('evaluating the out-of-sample test set');
   const testRows = testChunks.map((c, i) => {
