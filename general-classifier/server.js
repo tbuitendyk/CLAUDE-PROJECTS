@@ -137,8 +137,8 @@ app.post('/api/consensus', (req, res) => {
     return res.status(400).json({ error: 'pairs must be a non-empty array of symbols like DOTUSDT' });
   }
   const nullShifts = b.nullShifts === undefined ? 0 : Number(b.nullShifts);
-  if (!Number.isInteger(nullShifts) || nullShifts < 0 || nullShifts > 20) {
-    return res.status(400).json({ error: 'nullShifts must be an integer 0..20' });
+  if (!Number.isInteger(nullShifts) || nullShifts < 0 || nullShifts > 1000) {
+    return res.status(400).json({ error: 'nullShifts must be an integer 0..1000' });
   }
   try {
     const id = batch.startConsensus({

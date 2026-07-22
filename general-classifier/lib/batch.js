@@ -203,10 +203,14 @@ function summarizeConsensus(runs) {
   const perPair = pairs
     .map((trade) => {
       const real = consensusOf(done.filter((r) => r.trade === trade && !r.shift));
-      const shiftIds = [...new Set(done.filter((r) => r.trade === trade && r.shift).map((r) => r.shift))];
+      // Group null runs by the EFFECTIVE rotation (derived per pair from the
+      // fractional request): duplicate rotations collapse into one sample
+      // instead of double-counting identical reruns in the distribution.
+      const nullKey = (r) => r.effectiveShift ?? r.shift;
+      const shiftIds = [...new Set(done.filter((r) => r.trade === trade && r.shift).map(nullKey))];
       let nullStats = null;
       if (shiftIds.length) {
-        const nullCons = shiftIds.map((s) => consensusOf(done.filter((r) => r.trade === trade && r.shift === s)));
+        const nullCons = shiftIds.map((s) => consensusOf(done.filter((r) => r.trade === trade && r.shift && nullKey(r) === s)));
         const score = (c) => c.fraction + 0.001 * (c.medianTrueEdge ?? 0);
         const beatOrTie = nullCons.filter((c) => score(c) >= score(real)).length;
         nullStats = {
@@ -238,7 +242,7 @@ function startConsensus(params) {
     pairs = DEFAULT_PAIRS,
     nullShifts = 0,
   } = params || {};
-  const nShifts = Math.min(20, Math.max(0, Math.floor(Number(nullShifts) || 0)));
+  const nShifts = Math.min(1000, Math.max(0, Math.floor(Number(nullShifts) || 0)));
 
   const stamp = new Date().toISOString().replace(/[-:]/g, '').slice(0, 13).replace('T', '-');
   const doc = {
@@ -261,12 +265,12 @@ function startConsensus(params) {
     runs: [],
     summary: null,
   };
-  // Spread the label shifts across the week cycle, away from 0 (offset 11+
-  // avoids trivially small shifts on short histories).
-  const shifts = Array.from({ length: nShifts }, (_, k) => 11 + k * 17);
+  // Shifts are requested as evenly spread FRACTIONS of each pair's own week
+  // cycle (the pipeline derives the integer rotation per pair, buffered away
+  // from the ends). shift here is the sample INDEX (1..N), not the rotation.
   for (const trade of pairs) {
     if (trade === compareSymbol) continue;
-    for (const shift of [0, ...shifts]) {
+    for (let shift = 0; shift <= nShifts; shift++) {
       for (const view of CONSENSUS_VIEWS) {
         for (const model of CONSENSUS_MODELS) {
           doc.runs.push({ trade, compare: compareSymbol, model, view, shift, status: 'pending', error: null, metrics: null });
@@ -293,13 +297,14 @@ function startConsensus(params) {
             featureSet: 'compressed',
             model: run.model,
             featureView: run.view,
-            labelShift: run.shift,
+            labelShiftFrac: run.shift > 0 ? run.shift / (nShifts + 1) : 0,
           },
           (p) => {
             doc.progress = `${tag}: ${p}`;
           }
         );
         run.metrics = extractMetrics(report);
+        run.effectiveShift = report.params.labelShift || 0;
         run.status = 'done';
       } catch (err) {
         run.status = 'error';

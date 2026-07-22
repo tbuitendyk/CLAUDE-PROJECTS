@@ -1,6 +1,7 @@
 const { assert } = require('./helpers');
 const { FEATURE_NAMES, viewIndices } = require('../lib/features');
 const { summarizeConsensus, CONSENSUS_VIEWS, CONSENSUS_MODELS } = require('../lib/batch');
+const { deriveShift } = require('../lib/pipeline');
 
 module.exports = {
   async viewsPartitionSensibly() {
@@ -15,6 +16,45 @@ module.exports = {
     // spot-check membership
     const names = viewIndices('cross').map((i) => FEATURE_NAMES[i]);
     assert.deepStrictEqual(names, ['rel_total_ret', 'rel_ret_last24h', 'rel_vol_log', 'ret_correlation']);
+  },
+  async fractionalShiftsMapIntoTheBufferedCycle() {
+    // 310-week pair: rotations live in [8, 302], spread with the fraction.
+    assert.strictEqual(deriveShift(310, 0.0001), 8);
+    assert.strictEqual(deriveShift(310, 0.5), 8 + Math.round(0.5 * 294));
+    assert.ok(deriveShift(310, 0.9999) <= 302);
+    // monotone in frac
+    assert.ok(deriveShift(310, 0.7) > deriveShift(310, 0.3));
+    // more requests than distinct rotations -> collisions happen (callers
+    // group by derived value, so duplicates collapse instead of double-count)
+    const vals = new Set();
+    for (let k = 1; k <= 1000; k++) vals.add(deriveShift(310, k / 1001));
+    assert.ok(vals.size <= 295 && vals.size >= 290, `distinct rotations ${vals.size}`);
+    assert.throws(() => deriveShift(18, 0.5), /too few chunks/);
+  },
+  async nullSamplesGroupByEffectiveShift() {
+    const run = (shift, effectiveShift, edge) => ({
+      trade: 'AAAUSDT',
+      compare: 'BTCUSDT',
+      model: 'logreg',
+      view: 'full',
+      shift,
+      effectiveShift,
+      status: 'done',
+      error: null,
+      metrics: { hindsightEdge: edge, edge, balancedEdge: 0, balancedAcc: 0.4 },
+    });
+    // real run positive; four null samples but two collapse to rotation 40
+    const runs = [
+      run(0, 0, 0.05),
+      run(1, 40, 0.1), // beats real
+      run(2, 40, 0.1), // duplicate rotation -> same sample, must not double-count
+      run(3, 90, -0.02),
+      run(4, 140, -0.01),
+    ];
+    const s = summarizeConsensus(runs);
+    const a = s.pairs[0];
+    assert.strictEqual(a.null.shifts, 3); // 40, 90, 140 — not 4
+    assert.ok(Math.abs(a.null.exceedRate - 1 / 3) < 1e-9);
   },
   async consensusAggregatesPerPair() {
     const run = (trade, view, model, shift, hindsightEdge, balancedAcc = 0.4) => ({

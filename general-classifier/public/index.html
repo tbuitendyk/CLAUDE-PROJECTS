@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>General Classifier</title>
-  <link rel="stylesheet" href="style.css?v=8">
+  <link rel="stylesheet" href="style.css?v=9">
 </head>
 <body>
   <header class="topbar">
@@ -123,8 +123,8 @@
           <input id="cons-pairs" type="text" placeholder="DOTUSDT, AVAXUSDT, SOLUSDT">
         </div>
         <div class="field">
-          <label for="cons-null">Null shifts (0&ndash;20)</label>
-          <input id="cons-null" type="number" min="0" max="20" step="1" value="0">
+          <label for="cons-null">Null shifts (0&ndash;1000)</label>
+          <input id="cons-null" type="number" min="0" max="1000" step="1" value="0">
         </div>
         <div class="field submit"><button id="cons-start" type="button">Start consensus screen</button></div>
       </div>
@@ -132,7 +132,10 @@
         The consensus screen runs a FIXED spec grid per pair — 4 feature views (full / prices / volume / cross-asset)
         &times; 2 models, adaptive band, full history above — and scores each pair by agreement across its 8 specs, never
         by its best cell. Null shifts re-run the whole grid with circularly time-shifted labels to measure the noise
-        floor (expensive: each shift adds 8 more runs per pair — use a short pair list). All work obeys the CPU cap.
+        floor (expensive: each shift adds 8 more runs per pair — use a short pair list). Note: a pair only has
+        ~(weeks &minus; 16) distinct rotations (&asymp;290 for a 2020-listed pair, &asymp;420 for full history), so
+        requests beyond that hit duplicate rotations, which are collapsed into single null samples rather than
+        double-counted — the exceed-rate denominator shows the true distinct count. All work obeys the CPU cap.
       </p>
       <div id="batch-error" class="error" hidden></div>
       <div id="batch-view"></div>
@@ -144,6 +147,6 @@
     pruned to time / open / high / low / close / quote&nbsp;volume.
   </footer>
 
-  <script src="app.js?v=9"></script>
+  <script src="app.js?v=10"></script>
 </body>
 </html>

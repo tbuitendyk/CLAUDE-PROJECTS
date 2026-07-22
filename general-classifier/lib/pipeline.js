@@ -106,7 +106,8 @@ async function runAnalysis(params, onProgress = () => {}) {
   const featureSet = params.featureSet === 'raw' ? 'raw' : 'compressed';
   const modelKind = params.model === 'boost' ? 'boost' : 'logreg';
   const featureView = params.featureView || 'full';
-  const labelShift = Math.max(0, Math.floor(Number(params.labelShift) || 0));
+  const explicitShift = Math.max(0, Math.floor(Number(params.labelShift) || 0));
+  const labelShiftFrac = Number(params.labelShiftFrac) || 0;
   const months = monthList(startMonth, endMonth);
 
   const trade = await loadSymbol(tradeSymbol, months, onProgress);
@@ -133,7 +134,10 @@ async function runAnalysis(params, onProgress = () => {}) {
   // Null-calibration mode: circularly shift the LABEL side (c1/c2/diff/label)
   // across chunks, preserving the labels' own time structure while severing
   // the feature->label link. What the pipeline "finds" under shifts is the
-  // noise floor a real result must clear.
+  // noise floor a real result must clear. A fractional shift request maps
+  // onto THIS pair's own cycle length, keeping an 8-week buffer at both ends
+  // (a shift near 0 or near n leaves labels nearly aligned with reality).
+  const labelShift = explicitShift > 0 ? explicitShift : labelShiftFrac > 0 ? deriveShift(chunks.length, labelShiftFrac) : 0;
   if (labelShift > 0) {
     const n = chunks.length;
     const src = chunks.map((c) => ({ c1: c.c1, c2: c.c2, diffPct: c.diffPct, label: c.label }));
@@ -280,6 +284,16 @@ async function runAnalysis(params, onProgress = () => {}) {
   };
 }
 
+// Map a fractional null-shift request (0..1) onto a pair's own cycle of n
+// weeks, keeping an 8-week buffer away from both ends. Distinct fractions
+// can collapse to the same integer once n < requested shifts — callers
+// group null samples by the DERIVED shift so duplicates never double-count.
+function deriveShift(n, frac) {
+  const usable = n - 16;
+  if (usable < 4) throw new Error(`too few chunks (${n}) for null-shift calibration`);
+  return Math.min(n - 1, Math.max(1, 8 + Math.round(frac * usable)));
+}
+
 // Compact, comparable metrics from a full report — what the batch screen
 // stores per run so pair/model combos can be ranked side by side.
 function extractMetrics(report) {
@@ -335,4 +349,4 @@ async function loadData({ tradeSymbol, compareSymbol, startMonth, endMonth }, on
   return out;
 }
 
-module.exports = { runAnalysis, loadData, monthList, extractMetrics, MIN_CHUNKS };
+module.exports = { runAnalysis, loadData, monthList, extractMetrics, deriveShift, MIN_CHUNKS };
