@@ -1,4 +1,5 @@
 const { HOUR_MS } = require('./binance');
+const { compressedFeatures } = require('./features');
 
 // Chunking + labeling, exactly as specified:
 //
@@ -110,8 +111,9 @@ function scoreDiff(diffFrac, dormantFrac) {
 }
 
 // Build every labelable chunk from two forward-filled hourly maps.
-// dormantPct: e.g. 2 for "+/-2%".
-function buildChunks(tradeMap, compareMap, dormantPct) {
+// dormantPct: e.g. 2 for "+/-2%". featureSet: 'compressed' (v2 default,
+// 42 engineered numbers) or 'raw' (v1, all 1,920 hourly values).
+function buildChunks(tradeMap, compareMap, dormantPct, featureSet = 'compressed') {
   const dormantFrac = Math.abs(dormantPct) / 100;
   // Min/max via a loop, NOT Math.min(...keys): spreading a multi-year run's
   // ~150k timestamps as function arguments overflows the call stack.
@@ -149,13 +151,16 @@ function buildChunks(tradeMap, compareMap, dormantPct) {
     const c1 = meanOHLC(tue);
     const c2 = meanOHLC(thu);
     const diffFrac = (c2 - c1) / c1;
+    const x = featureSet === 'raw'
+      ? [...assetFeatures(trade), ...assetFeatures(compare)]
+      : compressedFeatures(trade, compare).x;
     chunks.push({
       startTs: start,
       label: scoreDiff(diffFrac, dormantFrac),
       c1,
       c2,
       diffPct: diffFrac * 100,
-      x: [...assetFeatures(trade), ...assetFeatures(compare)],
+      x,
     });
   }
   chunks.sort((a, b) => a.startTs - b.startTs);

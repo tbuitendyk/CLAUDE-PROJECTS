@@ -69,11 +69,11 @@ main { max-width: 1100px; margin: 0 auto; padding: 24px 20px 60px; }
 }
 .field { display: flex; flex-direction: column; gap: 4px; }
 .field label { font-size: 12px; color: var(--ink-2); }
-.field input {
+.field input, .field select {
   background: var(--page); color: var(--ink); border: 1px solid var(--baseline);
   border-radius: 6px; padding: 8px 10px; font: inherit; min-width: 120px;
 }
-.field input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+.field input:focus, .field select:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
 button {
   background: var(--accent); color: #fff; border: 0; border-radius: 6px;
   padding: 9px 22px; font: inherit; font-weight: 600; cursor: pointer;

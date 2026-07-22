@@ -1,5 +1,6 @@
 const { monthlyKlines } = require('./binance');
-const { toHourlyMap, forwardFill, buildChunks, FEATURE_COUNT } = require('./dataset');
+const { toHourlyMap, forwardFill, buildChunks } = require('./dataset');
+const { FEATURE_NAMES } = require('./features');
 const { CLASSES, standardizeFit, standardizeApply, predict, accuracy, tuneAndTrain } = require('./logreg');
 
 // End-to-end run: download -> prune -> chunk -> score -> train 80% -> test
@@ -85,8 +86,22 @@ function classCounts(labels) {
   return counts;
 }
 
+// On standardized features every weight is in comparable units, so with the
+// compressed (named) set we can report what the model actually leaned on.
+function topWeights(model, names, count = 12) {
+  const f = names.length;
+  return names
+    .map((name, j) => {
+      const w = CLASSES.map((_, k) => model.W[k * (f + 1) + j]);
+      return { name, weights: { '-1': w[0], 0: w[1], 1: w[2] }, mag: Math.max(Math.abs(w[0]), Math.abs(w[1]), Math.abs(w[2])) };
+    })
+    .sort((a, b) => b.mag - a.mag)
+    .slice(0, count);
+}
+
 async function runAnalysis(params, onProgress = () => {}) {
   const { dormantPct, tradeSymbol, compareSymbol, startMonth, endMonth } = params;
+  const featureSet = params.featureSet === 'raw' ? 'raw' : 'compressed';
   const months = monthList(startMonth, endMonth);
 
   const trade = await loadSymbol(tradeSymbol, months, onProgress);
@@ -97,7 +112,7 @@ async function runAnalysis(params, onProgress = () => {}) {
   onProgress('building 8-day chunks and scoring them');
   const tradeFilled = forwardFill(toHourlyMap(trade.rows));
   const compareFilled = forwardFill(toHourlyMap(compare.rows));
-  const { chunks, dropped, considered } = buildChunks(tradeFilled.map, compareFilled.map, dormantPct);
+  const { chunks, dropped, considered } = buildChunks(tradeFilled.map, compareFilled.map, dormantPct, featureSet);
 
   if (chunks.length < MIN_CHUNKS) {
     throw new Error(
@@ -110,7 +125,8 @@ async function runAnalysis(params, onProgress = () => {}) {
   const trainChunks = chunks.slice(0, nTrain);
   const testChunks = chunks.slice(nTrain);
 
-  onProgress(`standardizing features (${FEATURE_COUNT} per chunk)`);
+  const featureCount = chunks[0].x.length;
+  onProgress(`standardizing features (${featureCount} per chunk)`);
   const scaler = standardizeFit(trainChunks.map((c) => c.x));
   const Xtr = standardizeApply(trainChunks.map((c) => c.x), scaler);
   const Xte = standardizeApply(testChunks.map((c) => c.x), scaler);
@@ -142,7 +158,7 @@ async function runAnalysis(params, onProgress = () => {}) {
 
   const fmtWeek = (c) => new Date(c.startTs).toISOString().slice(0, 10);
   return {
-    params: { dormantPct, tradeSymbol, compareSymbol, startMonth, endMonth },
+    params: { dormantPct, tradeSymbol, compareSymbol, startMonth, endMonth, featureSet },
     data: {
       monthsRequested: months.length,
       missingMonths: { [tradeSymbol]: trade.missing, [compareSymbol]: compare.missing },
@@ -151,7 +167,7 @@ async function runAnalysis(params, onProgress = () => {}) {
       mondaysConsidered: considered,
       chunks: chunks.length,
       dropped,
-      featureCount: FEATURE_COUNT,
+      featureCount,
       classCounts: classCounts(chunks.map((c) => c.label)),
     },
     split: {
@@ -164,6 +180,7 @@ async function runAnalysis(params, onProgress = () => {}) {
       iters: model.iters,
       converged: model.converged,
       trainAcc: accuracy(model, Xtr, ytr),
+      topWeights: featureSet === 'compressed' ? topWeights(model, FEATURE_NAMES) : null,
     },
     test: {
       accuracy: testAcc,

@@ -71,8 +71,17 @@ module.exports = {
     assert.deepStrictEqual(chunks.map((c) => c.label), [1, -1, 0]);
     assert.ok(Math.abs(chunks[0].diffPct - 5) < 1e-9);
     assert.ok(Math.abs(chunks[1].diffPct + 5) < 1e-9);
-    assert.strictEqual(chunks[0].x.length, FEATURE_COUNT);
+    assert.strictEqual(chunks[0].x.length, 44); // compressed is the default
     assert.ok(dropped.noLabel >= 1); // tail Mondays can't see their Thursday
+  },
+  async featureSetSelectsRepresentation() {
+    const { trade, compare } = buildFixture();
+    const compressed = buildChunks(trade, compare, 2, 'compressed');
+    const raw = buildChunks(trade, compare, 2, 'raw');
+    assert.strictEqual(compressed.chunks[0].x.length, 44);
+    assert.strictEqual(raw.chunks[0].x.length, FEATURE_COUNT); // 1920
+    // Same chunks, same labels — only the representation differs.
+    assert.deepStrictEqual(compressed.chunks.map((c) => c.label), raw.chunks.map((c) => c.label));
   },
   async dormantBandIsRelative() {
     assert.strictEqual(scoreDiff(0.019, 0.02), 0);

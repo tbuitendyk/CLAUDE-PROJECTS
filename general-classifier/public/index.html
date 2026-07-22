@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>General Classifier</title>
-  <link rel="stylesheet" href="style.css?v=1">
+  <link rel="stylesheet" href="style.css?v=2">
 </head>
 <body>
   <header class="topbar">
@@ -47,6 +47,13 @@
         <label for="end">End month</label>
         <input id="end" type="month" value="2026-06" required>
       </div>
+      <div class="field">
+        <label for="features">Features</label>
+        <select id="features">
+          <option value="compressed" selected>Compressed (44 engineered)</option>
+          <option value="raw">Raw hourly (1,920)</option>
+        </select>
+      </div>
       <div class="field submit">
         <button id="run" type="submit">Load Data</button>
       </div>
@@ -62,6 +69,6 @@
     pruned to time / open / high / low / close / quote&nbsp;volume.
   </footer>
 
-  <script src="app.js?v=2"></script>
+  <script src="app.js?v=3"></script>
 </body>
 </html>

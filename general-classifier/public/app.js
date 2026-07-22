@@ -51,6 +51,7 @@
           compareSymbol: $('compare').value,
           startMonth: $('start').value,
           endMonth: $('end').value,
+          featureSet: $('features').value,
         }),
       });
       const body = await jsonBody(res);
@@ -148,7 +149,7 @@
           ${tile(`${esc(r.params.tradeSymbol)} candles`, r.data.candles[r.params.tradeSymbol].toLocaleString(), `${r.data.gapFills[r.params.tradeSymbol]} gap-filled`)}
           ${tile(`${esc(r.params.compareSymbol)} candles`, r.data.candles[r.params.compareSymbol].toLocaleString(), `${r.data.gapFills[r.params.compareSymbol]} gap-filled`)}
           ${tile('Labelable chunks', String(r.data.chunks), `${r.data.dropped.gap} dropped (gaps), ${r.data.dropped.noLabel} without label data`)}
-          ${tile('Features / chunk', r.data.featureCount.toLocaleString(), '192h × 5 fields × 2 pairs')}
+          ${tile('Features / chunk', r.data.featureCount.toLocaleString(), r.params.featureSet === 'raw' ? 'raw: 192h × 5 fields × 2 pairs' : 'compressed (engineered)')}
         </div>
         <p class="note">
           Score distribution (all chunks, dormant &plusmn;${esc(String(r.params.dormantPct))}%): ${classCountsInline(r.data.classCounts)}
@@ -172,6 +173,18 @@
           converged ${r.final.converged ? `after ${r.final.iters} iterations` : `— NO, hit the iteration cap at ${r.final.iters}`};
           training accuracy ${pct(r.final.trainAcc)} (high train + low test = memorization, not signal).</p>
       </div>
+
+      ${r.final.topWeights ? `
+      <div class="section">
+        <h2>What the model leaned on (top ${r.final.topWeights.length} of ${r.data.featureCount} features by |weight|)</h2>
+        <div class="tablewrap"><table>
+          <tr><th>feature</th><th>w(−1)</th><th>w(0)</th><th>w(+1)</th></tr>
+          ${r.final.topWeights.map((m) => `
+            <tr><td>${esc(m.name)}</td>
+              <td>${m.weights['-1'].toFixed(3)}</td><td>${m.weights['0'].toFixed(3)}</td><td>${m.weights['1'].toFixed(3)}</td></tr>`).join('')}
+        </table></div>
+        <p class="note">Weights are on standardized features, so magnitudes are comparable; a positive weight pushes toward that class when the feature is above its training average. Only trust these if the test accuracy itself beats the baselines.</p>
+      </div>` : ''}
 
       <div class="section">
         <h2>Confusion matrix (rows = actual, columns = predicted)</h2>

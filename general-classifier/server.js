@@ -27,6 +27,7 @@ app.post('/api/run', (req, res) => {
   const compareSymbol = String(b.compareSymbol || '').trim().toUpperCase();
   const startMonth = String(b.startMonth || '').trim();
   const endMonth = String(b.endMonth || '').trim();
+  const featureSet = String(b.featureSet || 'compressed');
 
   if (!Number.isFinite(dormantPct) || dormantPct <= 0 || dormantPct >= 50) {
     return res.status(400).json({ error: 'dormant range must be a percentage between 0 and 50' });
@@ -37,9 +38,12 @@ app.post('/api/run', (req, res) => {
   if (!/^\d{4}-\d{2}$/.test(startMonth) || !/^\d{4}-\d{2}$/.test(endMonth)) {
     return res.status(400).json({ error: 'months must be YYYY-MM' });
   }
+  if (featureSet !== 'compressed' && featureSet !== 'raw') {
+    return res.status(400).json({ error: 'featureSet must be "compressed" or "raw"' });
+  }
 
   const jobId = startJob((setProgress) =>
-    runAnalysis({ dormantPct, tradeSymbol, compareSymbol, startMonth, endMonth }, setProgress)
+    runAnalysis({ dormantPct, tradeSymbol, compareSymbol, startMonth, endMonth, featureSet }, setProgress)
   );
   res.json({ jobId });
 });
