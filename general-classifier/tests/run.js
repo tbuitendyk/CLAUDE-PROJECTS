@@ -1,0 +1,20 @@
+// Tiny test runner: node tests/run.js
+const files = ['test-binance.js', 'test-dataset.js', 'test-logreg.js'];
+
+let failures = 0;
+(async () => {
+  for (const f of files) {
+    const mod = require(`./${f}`);
+    for (const [name, fn] of Object.entries(mod)) {
+      try {
+        await fn();
+        console.log(`ok   ${f} :: ${name}`);
+      } catch (err) {
+        failures++;
+        console.error(`FAIL ${f} :: ${name}\n     ${err.message}`);
+      }
+    }
+  }
+  console.log(failures === 0 ? '\nall tests passed' : `\n${failures} FAILURE(S)`);
+  process.exit(failures === 0 ? 0 : 1);
+})();
