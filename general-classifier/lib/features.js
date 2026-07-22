@@ -170,4 +170,24 @@ const FEATURE_NAMES = (() => {
   return [...one('trade'), ...one('comp'), 'rel_total_ret', 'rel_ret_last24h', 'rel_vol_log', 'ret_correlation'];
 })();
 
-module.exports = { compressedFeatures, FEATURE_NAMES, mean, std, linSlope, pearson };
+// Feature VIEWS for the consensus screen: methodologically distinct slices
+// of the 44. A pair that shows edge across views can't be riding a single
+// family's artifact. 'full' = everything; 'prices' = no volume features;
+// 'volume' = only volume features; 'cross' = only the cross-asset features.
+const isVolume = (n) => n.includes('dayvol') || n === 'rel_vol_log';
+const isCross = (n) => n.startsWith('rel_') || n === 'ret_correlation';
+const FEATURE_VIEWS = {
+  full: () => true,
+  prices: (n) => !isVolume(n),
+  volume: (n) => isVolume(n),
+  cross: (n) => isCross(n),
+};
+
+// Indices of FEATURE_NAMES selected by a view (throws on unknown views).
+function viewIndices(view) {
+  const pred = FEATURE_VIEWS[view];
+  if (!pred) throw new Error(`unknown feature view "${view}"`);
+  return FEATURE_NAMES.map((n, i) => (pred(n) ? i : -1)).filter((i) => i >= 0);
+}
+
+module.exports = { compressedFeatures, FEATURE_NAMES, FEATURE_VIEWS, viewIndices, mean, std, linSlope, pearson };

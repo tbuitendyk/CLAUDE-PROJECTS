@@ -79,9 +79,13 @@ app.post('/api/run', (req, res) => {
   if (model !== 'logreg' && model !== 'boost') {
     return res.status(400).json({ error: 'model must be "logreg" or "boost"' });
   }
+  const featureView = String(b.featureView || 'full');
+  if (!['full', 'prices', 'volume', 'cross'].includes(featureView)) {
+    return res.status(400).json({ error: 'featureView must be full/prices/volume/cross' });
+  }
 
   const jobId = startJob((setProgress) =>
-    runAnalysis({ dormantPct, tradeSymbol, compareSymbol, startMonth, endMonth, featureSet, model }, setProgress)
+    runAnalysis({ dormantPct, tradeSymbol, compareSymbol, startMonth, endMonth, featureSet, model, featureView }, setProgress)
   );
   res.json({ jobId });
 });
@@ -114,6 +118,34 @@ app.post('/api/batch', (req, res) => {
       compareSymbol: b.compareSymbol ? String(b.compareSymbol).toUpperCase() : undefined,
       pairs: b.pairs,
       models: b.models,
+    });
+    res.json({ batchId: id });
+  } catch (err) {
+    res.status(409).json({ error: err.message });
+  }
+});
+
+app.post('/api/consensus', (req, res) => {
+  const b = req.body || {};
+  for (const m of ['startMonth', 'endMonth']) {
+    if (b[m] !== undefined && !/^\d{4}-\d{2}$/.test(String(b[m]))) {
+      return res.status(400).json({ error: `${m} must be YYYY-MM` });
+    }
+  }
+  if (b.pairs !== undefined && (!Array.isArray(b.pairs) || !b.pairs.length || b.pairs.some((p) => !SYMBOL_RE.test(String(p).toUpperCase())))) {
+    return res.status(400).json({ error: 'pairs must be a non-empty array of symbols like DOTUSDT' });
+  }
+  const nullShifts = b.nullShifts === undefined ? 0 : Number(b.nullShifts);
+  if (!Number.isInteger(nullShifts) || nullShifts < 0 || nullShifts > 20) {
+    return res.status(400).json({ error: 'nullShifts must be an integer 0..20' });
+  }
+  try {
+    const id = batch.startConsensus({
+      startMonth: b.startMonth,
+      endMonth: b.endMonth,
+      compareSymbol: b.compareSymbol ? String(b.compareSymbol).toUpperCase() : undefined,
+      pairs: b.pairs ? b.pairs.map((p) => String(p).toUpperCase()) : undefined,
+      nullShifts,
     });
     res.json({ batchId: id });
   } catch (err) {

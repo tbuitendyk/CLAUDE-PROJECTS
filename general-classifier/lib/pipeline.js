@@ -1,6 +1,6 @@
 const { monthlyKlines } = require('./binance');
 const { toHourlyMap, forwardFill, buildChunks, scoreDiff, balancedBandPct } = require('./dataset');
-const { FEATURE_NAMES } = require('./features');
+const { FEATURE_NAMES, viewIndices } = require('./features');
 const { CLASSES, standardizeFit, standardizeApply, predict, accuracy, tuneAndTrain } = require('./logreg');
 const { trainBoost, predictBoost, accuracyBoost, importanceTable } = require('./boost');
 
@@ -105,6 +105,8 @@ async function runAnalysis(params, onProgress = () => {}) {
   const adaptiveBand = dormantPct === 'auto';
   const featureSet = params.featureSet === 'raw' ? 'raw' : 'compressed';
   const modelKind = params.model === 'boost' ? 'boost' : 'logreg';
+  const featureView = params.featureView || 'full';
+  const labelShift = Math.max(0, Math.floor(Number(params.labelShift) || 0));
   const months = monthList(startMonth, endMonth);
 
   const trade = await loadSymbol(tradeSymbol, months, onProgress);
@@ -126,6 +128,25 @@ async function runAnalysis(params, onProgress = () => {}) {
     throw new Error(
       `only ${chunks.length} labelable chunks in that range (need at least ${MIN_CHUNKS}) — widen the month range`
     );
+  }
+
+  // Null-calibration mode: circularly shift the LABEL side (c1/c2/diff/label)
+  // across chunks, preserving the labels' own time structure while severing
+  // the feature->label link. What the pipeline "finds" under shifts is the
+  // noise floor a real result must clear.
+  if (labelShift > 0) {
+    const n = chunks.length;
+    const src = chunks.map((c) => ({ c1: c.c1, c2: c.c2, diffPct: c.diffPct, label: c.label }));
+    for (let i = 0; i < n; i++) Object.assign(chunks[i], src[(i + labelShift) % n]);
+  }
+
+  // Feature view projection (consensus screen): restrict the compressed
+  // vector to one methodological slice.
+  let featureNames = FEATURE_NAMES;
+  if (featureSet === 'compressed' && featureView !== 'full') {
+    const idx = viewIndices(featureView);
+    featureNames = idx.map((i) => FEATURE_NAMES[i]);
+    for (const c of chunks) c.x = idx.map((i) => c.x[i]);
   }
 
   const nTest = Math.max(2, Math.round(chunks.length * 0.2));
@@ -160,7 +181,7 @@ async function runAnalysis(params, onProgress = () => {}) {
       iters: model.iters,
       converged: model.converged,
       trainAcc: accuracy(model, Xtr, ytr),
-      topWeights: featureSet === 'compressed' ? topWeights(model, FEATURE_NAMES) : null,
+      topWeights: featureSet === 'compressed' ? topWeights(model, featureNames) : null,
     };
     predictFn = (i) => predict(model, Xte[i]);
   } else {
@@ -198,7 +219,7 @@ async function runAnalysis(params, onProgress = () => {}) {
       converged: true,
       trainAcc: accuracyBoost(model, Xtr, ytr),
       topWeights: null,
-      importance: featureSet === 'compressed' ? importanceTable(model, FEATURE_NAMES) : null,
+      importance: featureSet === 'compressed' ? importanceTable(model, featureNames) : null,
     };
     predictFn = (i) => predictBoost(model, Xte[i]);
   }
@@ -226,7 +247,7 @@ async function runAnalysis(params, onProgress = () => {}) {
 
   const fmtWeek = (c) => new Date(c.startTs).toISOString().slice(0, 10);
   return {
-    params: { dormantPct, tradeSymbol, compareSymbol, startMonth, endMonth, featureSet, model: modelKind },
+    params: { dormantPct, tradeSymbol, compareSymbol, startMonth, endMonth, featureSet, model: modelKind, featureView, labelShift },
     data: {
       dormantBandPct,
       adaptiveBand,

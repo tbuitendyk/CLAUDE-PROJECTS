@@ -162,8 +162,10 @@
           endMonth: $('end').value,
           featureSet: $('features').value,
           model: $('model').value,
+          featureView: pendingView || 'full',
         }),
       });
+      pendingView = null;
       const body = await jsonBody(res);
       if (!res.ok) throw new Error(body.error || `HTTP ${res.status}`);
       const result = await poll(body.jobId);
@@ -382,6 +384,23 @@
       batchViewEl.innerHTML = `<p class="note">${header}</p><p class="note">No completed runs yet.</p>`;
       return;
     }
+    const consensusBlock = s.kind === 'consensus' && s.pairs ? `
+      <div class="tablewrap" style="margin-bottom:12px"><table>
+        <tr><th>pair</th><th>specs done</th><th>positive true edge</th><th>consensus</th><th>median true edge</th><th>median balanced acc</th><th>null: median consensus</th><th>null: exceed rate</th></tr>
+        ${s.pairs.map((p) => `
+          <tr class="${p.fraction >= 0.625 && (p.medianTrueEdge ?? 0) > 0 ? 'hilite' : ''}">
+            <td>${esc(p.trade)}</td><td>${p.specs}</td><td>${p.positive}</td>
+            <td><strong>${pct(p.fraction, 0)}</strong></td>
+            <td>${p.medianTrueEdge != null ? (p.medianTrueEdge >= 0 ? '+' : '') + (100 * p.medianTrueEdge).toFixed(1) + '%' : '—'}</td>
+            <td>${pct(p.medianBalancedAcc)}</td>
+            <td>${p.null ? pct(p.null.medianNullFraction, 0) : '—'}</td>
+            <td>${p.null ? `${pct(p.null.exceedRate, 0)} of ${p.null.shifts} shifts` : '—'}</td>
+          </tr>`).join('')}
+      </table></div>
+      <p class="note">Consensus = share of the pair's specs (4 views × 2 models) with positive true edge. Highlighted rows:
+        ≥5/8 specs positive with positive median. Null exceed rate ≈ p-value: the share of label-shifted reruns whose
+        consensus matched or beat the real one — small is good, and anything above ~10% means noise does this routinely.
+        Per-spec detail below covers the real (unshifted) runs.</p>` : '';
     const maxTestWeeks = Math.max(...s.ranked.map((r) => r.testWeeks || 0));
     const weakWarning = maxTestWeeks < 20
       ? `<div class="warnbox">⚠ <strong>Statistically weak screen:</strong> only ${maxTestWeeks} test weeks per combo —
@@ -389,10 +408,11 @@
          within luck's reach. Widen the month range (the batch uses the form's months) and re-run before believing anything here.</div>`
       : '';
     batchViewEl.innerHTML = `
-      <p class="note">${header} · ${s.positiveEdge} of ${s.done} completed combos beat their majority baseline</p>
+      <p class="note">${header}${s.positiveEdge != null ? ` · ${s.positiveEdge} of ${s.done} completed combos beat their baseline` : ''}</p>
       ${weakWarning}
+      ${consensusBlock}
       <div class="tablewrap"><table>
-        <tr><th>#</th><th></th><th>trade</th><th>model</th><th>band</th><th>test acc</th><th>best constant</th><th>true edge</th><th>balanced acc</th><th>dir calls</th><th>dir hit rate</th><th>train acc</th><th>weeks (tr/te)</th><th>picked</th></tr>
+        <tr><th>#</th><th></th><th>trade</th><th>model</th><th>view</th><th>band</th><th>test acc</th><th>best constant</th><th>true edge</th><th>balanced acc</th><th>dir calls</th><th>dir hit rate</th><th>train acc</th><th>weeks (tr/te)</th><th>picked</th></tr>
         ${s.ranked.map((r, i) => {
           const te = r.hindsightEdge != null ? r.hindsightEdge : r.edge;
           const bc = r.bestConstant != null ? pct(r.bestConstant) : `${pct(r.majorityBaseline)} (${clsName(r.majorityClass)})`;
@@ -401,6 +421,7 @@
             <td>${i + 1}</td>
             <td><button type="button" class="rowload" data-i="${i}" title="Load this combo into the form above and run the full detailed report">detail</button></td>
             <td>${esc(r.trade)}</td><td>${esc(r.model)}</td>
+            <td>${esc(r.view || 'full')}</td>
             <td>${r.bandPct != null ? '±' + Number(r.bandPct).toFixed(2) + '%' : '—'}</td>
             <td>${pct(r.testAcc)}</td><td>${bc}</td>
             <td><strong>${te >= 0 ? '+' : ''}${(100 * te).toFixed(1)}%</strong></td>
@@ -422,7 +443,10 @@
   }
 
   // Batch row -> one-off run: copy the screen's config + the row's combo into
-  // the form and fire the detailed report.
+  // the form and fire the detailed report. Consensus rows carry a feature
+  // VIEW (no form control for it) — passed through on the next submit only.
+  let pendingView = null;
+
   function shuttleToForm(doc, r) {
     $('trade').value = r.trade;
     $('compare').value = r.compare || doc.params.compareSymbol;
@@ -434,6 +458,7 @@
     $('autoband').checked = auto;
     $('dormant').disabled = auto;
     if (!auto) $('dormant').value = doc.params.dormantPct;
+    pendingView = r.view && r.view !== 'full' ? r.view : null;
     window.scrollTo({ top: 0, behavior: 'smooth' });
     form.requestSubmit();
   }
@@ -508,6 +533,31 @@
       batchErrorEl.textContent = err.message;
     }
   });
+  $('cons-start').addEventListener('click', async () => {
+    try {
+      batchErrorEl.hidden = true;
+      const pairsRaw = $('cons-pairs').value.trim();
+      const body = {
+        startMonth: $('start').value,
+        endMonth: $('end').value,
+        nullShifts: Number($('cons-null').value) || 0,
+      };
+      if (pairsRaw) body.pairs = pairsRaw.split(',').map((p) => p.trim().toUpperCase()).filter(Boolean);
+      const res = await fetch('api/consensus', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const resBody = await jsonBody(res);
+      if (!res.ok) throw new Error(resBody.error || `HTTP ${res.status}`);
+      pickedBatch = null; // follow the screen we just started
+      refreshBatch();
+    } catch (err) {
+      batchErrorEl.hidden = false;
+      batchErrorEl.textContent = err.message;
+    }
+  });
+
   $('batch-refresh').addEventListener('click', refreshBatch);
   refreshBatch();
   refreshDataState();
