@@ -267,8 +267,15 @@
       batchViewEl.innerHTML = `<p class="note">${header}</p><p class="note">No completed runs yet.</p>`;
       return;
     }
+    const maxTestWeeks = Math.max(...s.ranked.map((r) => r.testWeeks || 0));
+    const weakWarning = maxTestWeeks < 20
+      ? `<div class="warnbox">⚠ <strong>Statistically weak screen:</strong> only ${maxTestWeeks} test weeks per combo —
+         each week is worth ${(100 / maxTestWeeks).toFixed(0)} points of accuracy, so every edge in this table is
+         within luck's reach. Widen the month range (the batch uses the form's months) and re-run before believing anything here.</div>`
+      : '';
     batchViewEl.innerHTML = `
       <p class="note">${header} · ${s.positiveEdge} of ${s.done} completed combos beat their majority baseline</p>
+      ${weakWarning}
       <div class="tablewrap"><table>
         <tr><th>#</th><th>trade</th><th>model</th><th>test acc</th><th>majority</th><th>edge</th><th>balanced acc</th><th>dir calls</th><th>dir hit rate</th><th>train acc</th><th>weeks (tr/te)</th><th>picked</th></tr>
         ${s.ranked.map((r, i) => `
@@ -286,6 +293,18 @@
         dir hit rate = accuracy of the non-dormant (±1) calls only. Sorted best-first.</p>`;
   }
 
+  const batchPickEl = $('batch-pick');
+  let pickedBatch = null; // null = follow the latest
+
+  function fillPicker(batches) {
+    batchPickEl.innerHTML = batches
+      .map((b) => `<option value="${esc(b.id)}">${esc(b.id)} — ${esc(b.status)} (${b.runsDone}/${b.runsTotal}, ±${esc(String(b.params.dormantPct))}%, ${esc(b.params.startMonth)}→${esc(b.params.endMonth)})</option>`)
+      .join('');
+    const want = pickedBatch && batches.some((b) => b.id === pickedBatch) ? pickedBatch : (batches[0] || {}).id;
+    if (want) batchPickEl.value = want;
+    return want;
+  }
+
   async function refreshBatch() {
     try {
       batchErrorEl.hidden = true;
@@ -297,8 +316,8 @@
         setBatchStatus('');
         return;
       }
-      const latest = body.batches[0];
-      const res2 = await fetch(`api/batch/${latest.id}`);
+      const targetId = fillPicker(body.batches);
+      const res2 = await fetch(`api/batch/${targetId}`);
       const doc = await jsonBody(res2);
       if (!res2.ok) throw new Error(doc.error || `HTTP ${res2.status}`);
       renderBatch(doc);
@@ -316,6 +335,12 @@
     }
   }
 
+  batchPickEl.addEventListener('change', () => {
+    pickedBatch = batchPickEl.value;
+    clearTimeout(batchTimer);
+    refreshBatch();
+  });
+
   $('batch-start').addEventListener('click', async () => {
     try {
       batchErrorEl.hidden = true;
@@ -331,6 +356,7 @@
       });
       const body = await jsonBody(res);
       if (!res.ok) throw new Error(body.error || `HTTP ${res.status}`);
+      pickedBatch = null; // follow the batch we just started
       refreshBatch();
     } catch (err) {
       batchErrorEl.hidden = false;

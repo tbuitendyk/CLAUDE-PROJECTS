@@ -121,6 +121,12 @@ tr.miss td { background: var(--miss-bg); }
 
 .note { color: var(--muted); font-size: 12px; margin-top: 8px; }
 
+.warnbox {
+  margin: 10px 0; padding: 10px 14px; border-radius: 8px;
+  border: 1px solid #ec835a; border-left-width: 4px;
+  background: rgba(236, 131, 90, 0.10); color: var(--ink-2);
+}
+
 .foot { max-width: 1100px; margin: 0 auto; padding: 18px 20px 32px; color: var(--muted); font-size: 12px; border-top: 1px solid var(--grid); }
 
 @media (max-width: 640px) {
