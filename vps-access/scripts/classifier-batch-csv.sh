@@ -23,6 +23,7 @@ for f in sorted(glob.glob('/opt/general-classifier/data/batches/*.json')):
             round(m['trainAcc'], 3), m['trainWeeks'], m['testWeeks'],
             tc.get('-1', ''), tc.get('0', ''), tc.get('1', ''),
             m['chosen'].replace('lambda=', 'L').replace('rounds=', 'R'),
+            round(m['bandPct'], 2) if m.get('bandPct') is not None else '',
             round(m['valMajorityAcc'], 3) if m.get('valMajorityAcc') is not None else '',
         ]))
 EOF
