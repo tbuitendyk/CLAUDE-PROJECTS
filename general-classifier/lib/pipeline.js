@@ -43,7 +43,7 @@ async function loadSymbol(symbol, months, onProgress) {
     onProgress(`downloading ${symbol} ${mm}`);
     const monthRows = await monthlyKlines(symbol, year, month);
     if (monthRows === null) missing.push(mm);
-    else rows.push(...monthRows);
+    else for (const r of monthRows) rows.push(r); // no spread-push: keeps arg counts off the call stack
   }
   return { rows, missing };
 }

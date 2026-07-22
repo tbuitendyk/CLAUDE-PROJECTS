@@ -99,6 +99,20 @@ module.exports = {
     assert.deepStrictEqual(chunks.map((c) => c.label), [-1, 0]);
     assert.strictEqual(dropped.gap, 1);
   },
+  async survivesMultiYearKeyCounts() {
+    // Regression: Math.min(...keys) blew the call stack at ~150k timestamps
+    // (a 2018→2026 run). Sparse candles (every other hour) keep this test
+    // light — zero complete chunks — while the min/max scan sees every key.
+    const map = new Map();
+    const hours = 9 * 365 * 24; // nine years
+    for (let i = 0; i < hours; i += 2) {
+      const ts = MON_JAN5_2026 - hours * HOUR_MS + i * HOUR_MS;
+      map.set(ts, { ts, open: 1, high: 1, low: 1, close: 1, quoteVolume: 1 });
+    }
+    assert.ok(map.size > 39000, `fixture too small (${map.size})`);
+    const { chunks } = buildChunks(map, map, 2); // must not throw
+    assert.strictEqual(chunks.length, 0); // hourly gaps everywhere -> nothing labelable
+  },
   async featuresAreShapeNotLevel() {
     const candles = flatCandles(MON_JAN5_2026, 4, 200);
     candles[3] = { ...candles[3], open: 220, high: 220, low: 220, close: 220 };

@@ -113,10 +113,17 @@ function scoreDiff(diffFrac, dormantFrac) {
 // dormantPct: e.g. 2 for "+/-2%".
 function buildChunks(tradeMap, compareMap, dormantPct) {
   const dormantFrac = Math.abs(dormantPct) / 100;
-  const all = [...tradeMap.keys(), ...compareMap.keys()];
-  if (all.length === 0) return { chunks: [], dropped: { gap: 0, noLabel: 0 }, considered: 0 };
-  const minTs = Math.min(...all);
-  const maxTs = Math.max(...all);
+  // Min/max via a loop, NOT Math.min(...keys): spreading a multi-year run's
+  // ~150k timestamps as function arguments overflows the call stack.
+  let minTs = Infinity;
+  let maxTs = -Infinity;
+  for (const m of [tradeMap, compareMap]) {
+    for (const ts of m.keys()) {
+      if (ts < minTs) minTs = ts;
+      if (ts > maxTs) maxTs = ts;
+    }
+  }
+  if (minTs === Infinity) return { chunks: [], dropped: { gap: 0, noLabel: 0 }, considered: 0 };
 
   const chunks = [];
   const dropped = { gap: 0, noLabel: 0 };
