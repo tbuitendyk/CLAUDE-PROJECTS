@@ -2,6 +2,7 @@ const { monthlyKlines } = require('./binance');
 const { toHourlyMap, forwardFill, buildChunks } = require('./dataset');
 const { FEATURE_NAMES } = require('./features');
 const { CLASSES, standardizeFit, standardizeApply, predict, accuracy, tuneAndTrain } = require('./logreg');
+const { trainBoost, predictBoost, accuracyBoost, importanceTable } = require('./boost');
 
 // End-to-end run: download -> prune -> chunk -> score -> train 80% -> test
 // 20% -> report. Split is CHRONOLOGICAL: the test set is the most recent
@@ -102,6 +103,7 @@ function topWeights(model, names, count = 12) {
 async function runAnalysis(params, onProgress = () => {}) {
   const { dormantPct, tradeSymbol, compareSymbol, startMonth, endMonth } = params;
   const featureSet = params.featureSet === 'raw' ? 'raw' : 'compressed';
+  const modelKind = params.model === 'boost' ? 'boost' : 'logreg';
   const months = monthList(startMonth, endMonth);
 
   const trade = await loadSymbol(tradeSymbol, months, onProgress);
@@ -126,18 +128,69 @@ async function runAnalysis(params, onProgress = () => {}) {
   const testChunks = chunks.slice(nTrain);
 
   const featureCount = chunks[0].x.length;
-  onProgress(`standardizing features (${featureCount} per chunk)`);
-  const scaler = standardizeFit(trainChunks.map((c) => c.x));
-  const Xtr = standardizeApply(trainChunks.map((c) => c.x), scaler);
-  const Xte = standardizeApply(testChunks.map((c) => c.x), scaler);
   const ytr = trainChunks.map((c) => c.label);
   const yte = testChunks.map((c) => c.label);
 
-  const { model, ladder, chosenLambda, valSize } = await tuneAndTrain(Xtr, ytr, { onProgress });
+  let tuning;
+  let finalInfo;
+  let predictFn;
+  if (modelKind === 'logreg') {
+    onProgress(`standardizing features (${featureCount} per chunk)`);
+    const scaler = standardizeFit(trainChunks.map((c) => c.x));
+    const Xtr = standardizeApply(trainChunks.map((c) => c.x), scaler);
+    const Xte = standardizeApply(testChunks.map((c) => c.x), scaler);
+    const { model, ladder, chosenLambda, valSize, valMajorityAcc } = await tuneAndTrain(Xtr, ytr, { onProgress });
+    tuning = { model: 'logreg', ladder, chosenLambda, valSize, valMajorityAcc };
+    finalInfo = {
+      iters: model.iters,
+      converged: model.converged,
+      trainAcc: accuracy(model, Xtr, ytr),
+      topWeights: featureSet === 'compressed' ? topWeights(model, FEATURE_NAMES) : null,
+    };
+    predictFn = (i) => predict(model, Xte[i]);
+  } else {
+    // Boosted trees: raw (unstandardized) features — thresholds don't care
+    // about scale. Round count is tuned by early stopping on the same
+    // chronological validation tail the ladder uses, then the final model
+    // retrains on the full training window for exactly bestRound rounds.
+    const Xtr = trainChunks.map((c) => c.x);
+    const Xte = testChunks.map((c) => c.x);
+    const nVal = Math.max(3, Math.round(Xtr.length * 0.25));
+    const nSub = Xtr.length - nVal;
+    if (nSub < 4) throw new Error(`not enough training chunks (${Xtr.length}) to tune boosting rounds`);
+    const ysub = ytr.slice(0, nSub);
+    const yval = ytr.slice(nSub);
+    const counts = new Map();
+    for (const l of ysub) counts.set(l, (counts.get(l) || 0) + 1);
+    const majLabel = [...counts.entries()].sort((a, b) => b[1] - a[1])[0][0];
+    const valMajorityAcc = yval.filter((l) => l === majLabel).length / yval.length;
+
+    onProgress('boosting on the sub-train window (early stopping on validation)');
+    const probe = await trainBoost(Xtr.slice(0, nSub), ysub, {
+      Xval: Xtr.slice(nSub),
+      yval,
+      onRound: (r) => { if (r % 10 === 0) onProgress(`boosting round ${r} (validation watch)`); },
+    });
+    const valAcc = accuracyBoost(probe, Xtr.slice(nSub), yval);
+    onProgress(`retraining on all ${Xtr.length} training weeks for ${probe.bestRound} rounds`);
+    const model = await trainBoost(Xtr, ytr, {
+      rounds: probe.bestRound,
+      onRound: (r) => { if (r % 10 === 0) onProgress(`final boosting round ${r}/${probe.bestRound}`); },
+    });
+    tuning = { model: 'boost', bestRound: probe.bestRound, valAcc, valSize: nVal, valMajorityAcc };
+    finalInfo = {
+      iters: model.bestRound,
+      converged: true,
+      trainAcc: accuracyBoost(model, Xtr, ytr),
+      topWeights: null,
+      importance: featureSet === 'compressed' ? importanceTable(model, FEATURE_NAMES) : null,
+    };
+    predictFn = (i) => predictBoost(model, Xte[i]);
+  }
 
   onProgress('evaluating the out-of-sample test set');
   const testRows = testChunks.map((c, i) => {
-    const p = predict(model, Xte[i]);
+    const p = predictFn(i);
     return {
       weekStart: new Date(c.startTs).toISOString().slice(0, 10),
       actual: c.label,
@@ -158,7 +211,7 @@ async function runAnalysis(params, onProgress = () => {}) {
 
   const fmtWeek = (c) => new Date(c.startTs).toISOString().slice(0, 10);
   return {
-    params: { dormantPct, tradeSymbol, compareSymbol, startMonth, endMonth, featureSet },
+    params: { dormantPct, tradeSymbol, compareSymbol, startMonth, endMonth, featureSet, model: modelKind },
     data: {
       monthsRequested: months.length,
       missingMonths: { [tradeSymbol]: trade.missing, [compareSymbol]: compare.missing },
@@ -175,13 +228,8 @@ async function runAnalysis(params, onProgress = () => {}) {
       train: { count: nTrain, from: fmtWeek(trainChunks[0]), to: fmtWeek(trainChunks[nTrain - 1]), classCounts: trainCounts },
       test: { count: nTest, from: fmtWeek(testChunks[0]), to: fmtWeek(testChunks[nTest - 1]), classCounts: testCounts },
     },
-    tuning: { ladder, chosenLambda, valSize },
-    final: {
-      iters: model.iters,
-      converged: model.converged,
-      trainAcc: accuracy(model, Xtr, ytr),
-      topWeights: featureSet === 'compressed' ? topWeights(model, FEATURE_NAMES) : null,
-    },
+    tuning,
+    final: finalInfo,
     test: {
       accuracy: testAcc,
       randomBaseline: 1 / 3,
@@ -194,4 +242,38 @@ async function runAnalysis(params, onProgress = () => {}) {
   };
 }
 
-module.exports = { runAnalysis, monthList, MIN_CHUNKS };
+// Compact, comparable metrics from a full report — what the batch screen
+// stores per run so pair/model combos can be ranked side by side.
+function extractMetrics(report) {
+  const t = report.test;
+  const perClassRecall = t.perClass.filter((m) => m.recall != null).map((m) => m.recall);
+  const balancedAcc = perClassRecall.length ? perClassRecall.reduce((s, v) => s + v, 0) / perClassRecall.length : null;
+  let dirCalls = 0;
+  let dirHits = 0;
+  for (const row of t.rows) {
+    if (row.predicted !== 0) {
+      dirCalls++;
+      if (row.predicted === row.actual) dirHits++;
+    }
+  }
+  return {
+    testAcc: t.accuracy,
+    majorityBaseline: t.majorityBaseline,
+    majorityClass: t.majorityClass,
+    edge: t.accuracy - t.majorityBaseline,
+    balancedAcc,
+    balancedEdge: balancedAcc != null ? balancedAcc - 1 / 3 : null,
+    directionalCalls: dirCalls,
+    directionalHits: dirHits,
+    directionalHitRate: dirCalls > 0 ? dirHits / dirCalls : null,
+    trainAcc: report.final.trainAcc,
+    trainWeeks: report.split.train.count,
+    testWeeks: report.split.test.count,
+    chunks: report.data.chunks,
+    testClassCounts: report.split.test.classCounts,
+    chosen: report.tuning.model === 'boost' ? `rounds=${report.tuning.bestRound}` : `lambda=${report.tuning.chosenLambda}`,
+    valMajorityAcc: report.tuning.valMajorityAcc,
+  };
+}
+
+module.exports = { runAnalysis, monthList, extractMetrics, MIN_CHUNKS };

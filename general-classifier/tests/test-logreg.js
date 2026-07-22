@@ -68,11 +68,24 @@ module.exports = {
     const { X, y } = makeData(100, 8, 5);
     const scaler = standardizeFit(X);
     const Z = standardizeApply(X, scaler);
-    const { model, ladder, chosenLambda } = await tuneAndTrain(Z, y, { lambdas: [0.1, 1, 10] });
-    assert.strictEqual(ladder.length, 3);
+    const { model, ladder, chosenLambda, valMajorityAcc } = await tuneAndTrain(Z, y, { lambdas: [0.1, 1, 10] });
+    assert.ok(ladder.length >= 3); // may auto-extend past the base rungs
     assert.ok(ladder.some((r) => r.lambda === chosenLambda));
     assert.ok(ladder.every((r) => r.valAcc >= 0 && r.valAcc <= 1));
+    assert.ok(valMajorityAcc >= 0 && valMajorityAcc <= 1);
     assert.ok(accuracy(model, Z, y) > 0.7);
+  },
+  async ladderExtendsWhenTheEdgeWins() {
+    // Pure-noise labels: shrinking to the prior is optimal, so big lambdas
+    // keep winning and the ladder must extend beyond its top rung.
+    const rng = (() => { let s = 9; return () => { s = (s * 1664525 + 1013904223) >>> 0; return s / 2 ** 32; }; })();
+    const X = Array.from({ length: 60 }, () => Array.from({ length: 6 }, () => rng() * 2 - 1));
+    const y = X.map(() => (rng() < 0.34 ? -1 : rng() < 0.5 ? 0 : 1));
+    const { ladder, chosenLambda } = await tuneAndTrain(X, y, { lambdas: [0.1, 1, 10] });
+    const maxBase = 10;
+    assert.ok(ladder.length > 3, `ladder did not extend (len ${ladder.length})`);
+    assert.ok(ladder.some((r) => r.lambda > maxBase), 'no rung beyond the base top');
+    assert.ok(chosenLambda >= maxBase);
   },
   async heavyRegularizationTamesWeights() {
     const { X, y } = makeData(80, 6, 13);

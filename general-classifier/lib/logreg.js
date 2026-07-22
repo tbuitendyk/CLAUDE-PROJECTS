@@ -177,7 +177,10 @@ const DEFAULT_LAMBDAS = [0.01, 0.03, 0.1, 0.3, 1, 3, 10, 30];
 
 // Chronological tune: validation = tail of the TRAINING window (never the
 // test set). Ties go to the stronger lambda — when two strengths validate
-// identically the simpler model generalizes better.
+// identically the simpler model generalizes better. When the winner sits at
+// the TOP of the ladder, the ladder auto-extends (×~3 per rung, up to 4
+// times) so an edge pick always means "the interior optimum", never "the
+// fence was too close".
 async function tuneAndTrain(Xtr, ytr, { lambdas = DEFAULT_LAMBDAS, onProgress = () => {} } = {}) {
   const n = Xtr.length;
   const nVal = Math.max(3, Math.round(n * 0.25));
@@ -188,27 +191,44 @@ async function tuneAndTrain(Xtr, ytr, { lambdas = DEFAULT_LAMBDAS, onProgress = 
   const Xval = Xtr.slice(nSub);
   const yval = ytr.slice(nSub);
 
+  // Reference for reading the ladder: a model that always guesses the
+  // sub-train majority class, scored on the same validation weeks. Ladder
+  // rows at or below this are prior-convergence, not signal.
+  const counts = new Map();
+  for (const l of ysub) counts.set(l, (counts.get(l) || 0) + 1);
+  const majLabel = [...counts.entries()].sort((a, b) => b[1] - a[1])[0][0];
+  const valMajorityAcc = yval.filter((l) => l === majLabel).length / yval.length;
+
   const ladder = [];
-  for (const lambda of lambdas) {
+  const evalLambda = async (lambda) => {
     onProgress(`training at lambda=${lambda}`);
     const m = await trainSoftmax(Xsub, ysub, lambda, {
       onIter: (i) => onProgress(`training at lambda=${lambda} (iteration ${i})`),
     });
     ladder.push({ lambda, valAcc: accuracy(m, Xval, yval), iters: m.iters, converged: m.converged });
+  };
+  const pickBest = () => {
+    let best = ladder[0];
+    for (const row of ladder) {
+      if (row.valAcc > best.valAcc) best = row;
+      else if (row.valAcc === best.valAcc && row.lambda > best.lambda && (row.converged || !best.converged)) best = row;
+    }
+    return best;
+  };
+
+  for (const lambda of lambdas) await evalLambda(lambda);
+  for (let ext = 0; ext < 4; ext++) {
+    const maxLambda = Math.max(...ladder.map((r) => r.lambda));
+    if (pickBest().lambda !== maxLambda) break;
+    await evalLambda(Math.round((maxLambda * 10) / 3)); // 30 -> 100 -> 333 -> 1110 -> 3700
   }
-  // Best validation accuracy wins; on ties prefer converged models, then the
-  // larger lambda (rows arrive in ascending lambda order) — never crown a
-  // cap-hitting run over a converged one that validated identically.
-  let best = ladder[0];
-  for (const row of ladder) {
-    if (row.valAcc > best.valAcc) best = row;
-    else if (row.valAcc === best.valAcc && (row.converged || !best.converged)) best = row;
-  }
+
+  const best = pickBest();
   onProgress(`retraining on full training set at lambda=${best.lambda}`);
   const model = await trainSoftmax(Xtr, ytr, best.lambda, {
     onIter: (i) => onProgress(`retraining at lambda=${best.lambda} (iteration ${i})`),
   });
-  return { model, ladder, chosenLambda: best.lambda, valSize: nVal };
+  return { model, ladder, chosenLambda: best.lambda, valSize: nVal, valMajorityAcc };
 }
 
 module.exports = {

@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>General Classifier</title>
-  <link rel="stylesheet" href="style.css?v=2">
+  <link rel="stylesheet" href="style.css?v=3">
 </head>
 <body>
   <header class="topbar">
@@ -54,6 +54,13 @@
           <option value="raw">Raw hourly (1,920)</option>
         </select>
       </div>
+      <div class="field">
+        <label for="model">Model</label>
+        <select id="model">
+          <option value="logreg" selected>Logistic (linear)</option>
+          <option value="boost">Boosted trees (nonlinear)</option>
+        </select>
+      </div>
       <div class="field submit">
         <button id="run" type="submit">Load Data</button>
       </div>
@@ -62,6 +69,22 @@
     <div id="status" class="status" hidden></div>
     <div id="error" class="error" hidden></div>
     <div id="report" hidden></div>
+
+    <div class="section" id="batch-section">
+      <h2>Pair screen (batch)</h2>
+      <p class="note">
+        Runs the full pipeline for a fixed list of high-cap, long-history pairs against BTCUSDT,
+        with both models, using the dormant range / months / features set above. Results persist on
+        the server; the table ranks combos by edge over the majority baseline.
+      </p>
+      <div class="controls" style="margin-top:10px">
+        <div class="field submit"><button id="batch-start" type="button">Start pair screen</button></div>
+        <div class="field submit"><button id="batch-refresh" type="button">Refresh</button></div>
+        <div id="batch-status" class="status" style="margin-top:0" hidden></div>
+      </div>
+      <div id="batch-error" class="error" hidden></div>
+      <div id="batch-view"></div>
+    </div>
   </main>
 
   <footer class="foot">
@@ -69,6 +92,6 @@
     pruned to time / open / high / low / close / quote&nbsp;volume.
   </footer>
 
-  <script src="app.js?v=3"></script>
+  <script src="app.js?v=4"></script>
 </body>
 </html>

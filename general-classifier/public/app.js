@@ -52,6 +52,7 @@
           startMonth: $('start').value,
           endMonth: $('end').value,
           featureSet: $('features').value,
+          model: $('model').value,
         }),
       });
       const body = await jsonBody(res);
@@ -159,6 +160,19 @@
         </p>
       </div>
 
+      ${r.tuning.model === 'boost' ? `
+      <div class="section">
+        <h2>Boosting rounds (validation = last ${r.tuning.valSize} training weeks)</h2>
+        <div class="tiles">
+          ${tile('Rounds chosen', String(r.tuning.bestRound), 'early stopping on validation log-loss')}
+          ${tile('Validation accuracy', pct(r.tuning.valAcc), 'at the chosen round count')}
+          ${tile('Validation majority ref', pct(r.tuning.valMajorityAcc), 'always guessing the training majority')}
+          ${tile('Training accuracy', pct(r.final.trainAcc), 'final model, full training window')}
+        </div>
+        <p class="note">Rounds are a real quality knob for boosting, so they are tuned automatically: train on the older
+          three-quarters of the training window, watch log-loss on the newest quarter, keep the best round count.
+          A validation accuracy at or below the majority reference means the model found nothing the prior didn't know.</p>
+      </div>` : `
       <div class="section">
         <h2>Regularization ladder (validation = last ${r.tuning.valSize} training weeks)</h2>
         <div class="tablewrap"><table>
@@ -169,10 +183,13 @@
               <td>${pct(row.valAcc)}</td><td>${row.iters}</td><td>${row.converged ? 'yes' : 'NO (hit cap)'}</td>
             </tr>`).join('')}
         </table></div>
-        <p class="note">Final model: retrained on all ${r.split.train.count} training weeks at &lambda;=${r.tuning.chosenLambda};
+        <p class="note">Reference: always guessing the training-majority class scores <strong>${pct(r.tuning.valMajorityAcc)}</strong>
+          on these validation weeks — ladder rows at or below that are the model converging to the prior, not finding signal.
+          The ladder auto-extends when the top &lambda; wins, so a chosen &lambda; is always an interior optimum.
+          Final model: retrained on all ${r.split.train.count} training weeks at &lambda;=${r.tuning.chosenLambda};
           converged ${r.final.converged ? `after ${r.final.iters} iterations` : `— NO, hit the iteration cap at ${r.final.iters}`};
-          training accuracy ${pct(r.final.trainAcc)} (high train + low test = memorization, not signal).</p>
-      </div>
+          training accuracy ${pct(r.final.trainAcc)}.</p>
+      </div>`}
 
       ${r.final.topWeights ? `
       <div class="section">
@@ -184,6 +201,15 @@
               <td>${m.weights['-1'].toFixed(3)}</td><td>${m.weights['0'].toFixed(3)}</td><td>${m.weights['1'].toFixed(3)}</td></tr>`).join('')}
         </table></div>
         <p class="note">Weights are on standardized features, so magnitudes are comparable; a positive weight pushes toward that class when the feature is above its training average. Only trust these if the test accuracy itself beats the baselines.</p>
+      </div>` : ''}
+      ${r.final.importance ? `
+      <div class="section">
+        <h2>What the model leaned on (split-gain share, top ${r.final.importance.length} of ${r.data.featureCount})</h2>
+        <div class="tablewrap"><table>
+          <tr><th>feature</th><th>gain share</th></tr>
+          ${r.final.importance.map((m) => `<tr><td>${esc(m.name)}</td><td>${pct(m.share)}</td></tr>`).join('')}
+        </table></div>
+        <p class="note">Share of total split gain across all boosted trees. Only trust these if the test accuracy itself beats the baselines.</p>
       </div>` : ''}
 
       <div class="section">
@@ -219,4 +245,98 @@
       </div>`;
     reportEl.hidden = false;
   }
+
+  // ---- pair-screen batch UI --------------------------------------------------
+
+  const batchStatusEl = $('batch-status');
+  const batchErrorEl = $('batch-error');
+  const batchViewEl = $('batch-view');
+  let batchTimer = null;
+
+  function setBatchStatus(text) {
+    batchStatusEl.hidden = !text;
+    batchStatusEl.innerHTML = text ? `<span class="spin">⟳</span>${esc(text)}` : '';
+  }
+
+  function renderBatch(doc) {
+    const s = doc.summary;
+    const header = `${esc(doc.id)} — ${esc(doc.status)}${doc.status === 'running' && doc.progress ? ` — ${esc(doc.progress)}` : ''}
+      · ${doc.runs.filter((r) => r.status === 'done' || r.status === 'error').length}/${doc.runs.length} runs
+      · dormant ±${esc(String(doc.params.dormantPct))}% · ${esc(doc.params.startMonth)}→${esc(doc.params.endMonth)} · vs ${esc(doc.params.compareSymbol)}`;
+    if (!s || !s.ranked.length) {
+      batchViewEl.innerHTML = `<p class="note">${header}</p><p class="note">No completed runs yet.</p>`;
+      return;
+    }
+    batchViewEl.innerHTML = `
+      <p class="note">${header} · ${s.positiveEdge} of ${s.done} completed combos beat their majority baseline</p>
+      <div class="tablewrap"><table>
+        <tr><th>#</th><th>trade</th><th>model</th><th>test acc</th><th>majority</th><th>edge</th><th>balanced acc</th><th>dir calls</th><th>dir hit rate</th><th>train acc</th><th>weeks (tr/te)</th><th>picked</th></tr>
+        ${s.ranked.map((r, i) => `
+          <tr class="${r.edge > 0 ? '' : 'miss'}">
+            <td>${i + 1}</td><td>${esc(r.trade)}</td><td>${esc(r.model)}</td>
+            <td>${pct(r.testAcc)}</td><td>${pct(r.majorityBaseline)} (${clsName(r.majorityClass)})</td>
+            <td><strong>${r.edge >= 0 ? '+' : ''}${(100 * r.edge).toFixed(1)}%</strong></td>
+            <td>${pct(r.balancedAcc)}</td>
+            <td>${r.directionalCalls}</td><td>${pct(r.directionalHitRate)}</td>
+            <td>${pct(r.trainAcc)}</td><td>${r.trainWeeks}/${r.testWeeks}</td><td>${esc(r.chosen)}</td>
+          </tr>`).join('')}
+      </table></div>
+      ${s.failed.length ? `<p class="note">Failed: ${s.failed.map((f) => `${esc(f.trade)}/${esc(f.model)} (${esc(f.error)})`).join(' · ')}</p>` : ''}
+      <p class="note">Rows shaded red did not beat "always guess the majority class". Edge = test accuracy − majority baseline;
+        dir hit rate = accuracy of the non-dormant (±1) calls only. Sorted best-first.</p>`;
+  }
+
+  async function refreshBatch() {
+    try {
+      batchErrorEl.hidden = true;
+      const res = await fetch('api/batches');
+      const body = await jsonBody(res);
+      if (!res.ok) throw new Error(body.error || `HTTP ${res.status}`);
+      if (!body.batches.length) {
+        batchViewEl.innerHTML = '<p class="note">No pair screens have been run yet.</p>';
+        setBatchStatus('');
+        return;
+      }
+      const latest = body.batches[0];
+      const res2 = await fetch(`api/batch/${latest.id}`);
+      const doc = await jsonBody(res2);
+      if (!res2.ok) throw new Error(doc.error || `HTTP ${res2.status}`);
+      renderBatch(doc);
+      if (doc.status === 'running') {
+        setBatchStatus(doc.progress || 'running…');
+        clearTimeout(batchTimer);
+        batchTimer = setTimeout(refreshBatch, 5000);
+      } else {
+        setBatchStatus('');
+      }
+    } catch (err) {
+      setBatchStatus('');
+      batchErrorEl.hidden = false;
+      batchErrorEl.textContent = err.message;
+    }
+  }
+
+  $('batch-start').addEventListener('click', async () => {
+    try {
+      batchErrorEl.hidden = true;
+      const res = await fetch('api/batch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          dormantPct: Number($('dormant').value),
+          startMonth: $('start').value,
+          endMonth: $('end').value,
+          featureSet: $('features').value,
+        }),
+      });
+      const body = await jsonBody(res);
+      if (!res.ok) throw new Error(body.error || `HTTP ${res.status}`);
+      refreshBatch();
+    } catch (err) {
+      batchErrorEl.hidden = false;
+      batchErrorEl.textContent = err.message;
+    }
+  });
+  $('batch-refresh').addEventListener('click', refreshBatch);
+  refreshBatch();
 })();

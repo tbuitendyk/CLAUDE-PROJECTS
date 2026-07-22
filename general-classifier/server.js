@@ -2,6 +2,7 @@ const path = require('path');
 const express = require('express');
 const { startJob, getJob } = require('./lib/jobs');
 const { runAnalysis } = require('./lib/pipeline');
+const batch = require('./lib/batch');
 
 // General Classifier web service. Fronted by nginx at
 // https://www.buitendyk.ca/classifier/ behind the site's Basic Auth (the
@@ -41,11 +42,58 @@ app.post('/api/run', (req, res) => {
   if (featureSet !== 'compressed' && featureSet !== 'raw') {
     return res.status(400).json({ error: 'featureSet must be "compressed" or "raw"' });
   }
+  const model = String(b.model || 'logreg');
+  if (model !== 'logreg' && model !== 'boost') {
+    return res.status(400).json({ error: 'model must be "logreg" or "boost"' });
+  }
 
   const jobId = startJob((setProgress) =>
-    runAnalysis({ dormantPct, tradeSymbol, compareSymbol, startMonth, endMonth, featureSet }, setProgress)
+    runAnalysis({ dormantPct, tradeSymbol, compareSymbol, startMonth, endMonth, featureSet, model }, setProgress)
   );
   res.json({ jobId });
+});
+
+// ---- pair-screen batches ----------------------------------------------------
+
+app.post('/api/batch', (req, res) => {
+  const b = req.body || {};
+  const dormantPct = b.dormantPct === undefined ? 5 : Number(b.dormantPct);
+  if (!Number.isFinite(dormantPct) || dormantPct <= 0 || dormantPct >= 50) {
+    return res.status(400).json({ error: 'dormant range must be a percentage between 0 and 50' });
+  }
+  for (const m of ['startMonth', 'endMonth']) {
+    if (b[m] !== undefined && !/^\d{4}-\d{2}$/.test(String(b[m]))) {
+      return res.status(400).json({ error: `${m} must be YYYY-MM` });
+    }
+  }
+  if (b.pairs !== undefined && (!Array.isArray(b.pairs) || b.pairs.some((p) => !SYMBOL_RE.test(String(p))))) {
+    return res.status(400).json({ error: 'pairs must be an array of symbols like ETHUSDT' });
+  }
+  if (b.models !== undefined && (!Array.isArray(b.models) || b.models.some((m) => m !== 'logreg' && m !== 'boost'))) {
+    return res.status(400).json({ error: 'models must be an array of "logreg"/"boost"' });
+  }
+  try {
+    const id = batch.startBatch({
+      dormantPct,
+      startMonth: b.startMonth,
+      endMonth: b.endMonth,
+      featureSet: b.featureSet === 'raw' ? 'raw' : 'compressed',
+      compareSymbol: b.compareSymbol ? String(b.compareSymbol).toUpperCase() : undefined,
+      pairs: b.pairs,
+      models: b.models,
+    });
+    res.json({ batchId: id });
+  } catch (err) {
+    res.status(409).json({ error: err.message });
+  }
+});
+
+app.get('/api/batches', (req, res) => res.json({ running: batch.batchRunning(), batches: batch.listBatches() }));
+
+app.get('/api/batch/:id', (req, res) => {
+  const doc = batch.getBatch(req.params.id);
+  if (!doc) return res.status(404).json({ error: 'unknown batch' });
+  res.json(doc);
 });
 
 app.get('/api/jobs/:id', (req, res) => {
