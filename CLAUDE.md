@@ -28,9 +28,17 @@ classifier on the first 80% of weeks and reports out-of-sample metrics on the
 most recent 20%. Full spec and rationale in `general-classifier/README.md`.
 
 **Hard constraint from the owner: no AI/LLM/API calls anywhere in the
-classification path.** Data comes only from Binance's public bulk portal;
-training is local deterministic math (`lib/logreg.js`, zero imports). Keep it
-that way in future versions unless the owner explicitly says otherwise.
+classification path.** Data comes only from Binance's public data channel —
+the bulk portal's monthly/daily zips plus its keyless REST data mirror
+(api.binance.vision, current partial month only, same pattern as the
+semi-auto balancer); training is local deterministic math (`lib/logreg.js`,
+zero imports). Keep it that way in future versions unless the owner
+explicitly says otherwise.
+
+The live paper tracker's pre-registered protocol lives in
+`general-classifier/TRACKER.md` — frozen DOT/AVAX models, $100 paper books.
+**Do not alter tracker mechanics, models, or evaluation rules after the
+first live week**; if a change is unavoidable, the live record restarts.
 
 Related pieces on OTHER branches (don't edit them here):
 

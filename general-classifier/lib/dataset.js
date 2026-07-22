@@ -122,7 +122,10 @@ function balancedBandPct(diffPcts) {
 // Build every labelable chunk from two forward-filled hourly maps.
 // dormantPct: e.g. 2 for "+/-2%". featureSet: 'compressed' (v2 default,
 // 42 engineered numbers) or 'raw' (v1, all 1,920 hourly values).
-function buildChunks(tradeMap, compareMap, dormantPct, featureSet = 'compressed') {
+// includeUnlabeled (live tracker): chunks whose 192h of features are
+// complete but whose Tue/Thu label windows haven't happened yet are
+// emitted with label/c1/c2/diffPct null instead of being dropped.
+function buildChunks(tradeMap, compareMap, dormantPct, featureSet = 'compressed', { includeUnlabeled = false } = {}) {
   const dormantFrac = Math.abs(dormantPct) / 100;
   // Min/max via a loop, NOT Math.min(...keys): spreading a multi-year run's
   // ~150k timestamps as function arguments overflows the call stack.
@@ -140,29 +143,25 @@ function buildChunks(tradeMap, compareMap, dormantPct, featureSet = 'compressed'
   const dropped = { gap: 0, noLabel: 0 };
   const mondays = mondayStarts(minTs, maxTs);
   for (const start of mondays) {
-    if (start + (THU_OFFSET_H + LABEL_HOURS - 1) * HOUR_MS > maxTs) {
-      // Label windows extend past loaded data; not an anomaly, just the tail.
-      dropped.noLabel++;
-      continue;
-    }
     const trade = candleRun(tradeMap, start, CHUNK_HOURS);
     const compare = candleRun(compareMap, start, CHUNK_HOURS);
     if (!trade || !compare) {
-      dropped.gap++;
+      if (start + (CHUNK_HOURS - 1) * HOUR_MS <= maxTs) dropped.gap++;
       continue;
     }
     const tue = candleRun(tradeMap, start + TUE_OFFSET_H * HOUR_MS, LABEL_HOURS);
     const thu = candleRun(tradeMap, start + THU_OFFSET_H * HOUR_MS, LABEL_HOURS);
+    const x = featureSet === 'raw'
+      ? [...assetFeatures(trade), ...assetFeatures(compare)]
+      : compressedFeatures(trade, compare).x;
     if (!tue || !thu) {
       dropped.noLabel++;
+      if (includeUnlabeled) chunks.push({ startTs: start, label: null, c1: null, c2: null, diffPct: null, x });
       continue;
     }
     const c1 = meanOHLC(tue);
     const c2 = meanOHLC(thu);
     const diffFrac = (c2 - c1) / c1;
-    const x = featureSet === 'raw'
-      ? [...assetFeatures(trade), ...assetFeatures(compare)]
-      : compressedFeatures(trade, compare).x;
     chunks.push({
       startTs: start,
       label: scoreDiff(diffFrac, dormantFrac),

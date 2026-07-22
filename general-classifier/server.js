@@ -5,6 +5,7 @@ const { runAnalysis, loadData } = require('./lib/pipeline');
 const { cacheState } = require('./lib/binance');
 const throttle = require('./lib/throttle');
 const batch = require('./lib/batch');
+const tracker = require('./lib/tracker');
 
 // General Classifier web service. Fronted by nginx at
 // https://www.buitendyk.ca/classifier/ behind the site's Basic Auth (the
@@ -152,6 +153,22 @@ app.post('/api/consensus', (req, res) => {
     res.status(409).json({ error: err.message });
   }
 });
+
+// ---- live paper tracker ------------------------------------------------------
+
+app.get('/api/tracker', (req, res) => res.json(tracker.status()));
+
+app.post('/api/tracker/init', (req, res) => {
+  if (tracker.initialized()) return res.status(409).json({ error: 'tracker already initialized' });
+  const jobId = startJob((setProgress) => tracker.init({}, setProgress));
+  res.json({ jobId });
+});
+
+// Weekly heartbeat: predictions post at Tue 00:xx, settlements after Thu
+// 18:00; a 30-minute cadence catches both promptly and self-heals after
+// downtime (missed weeks arrive flagged as seeded, never lost).
+setInterval(() => tracker.tick().catch((err) => console.error('tracker tick failed:', err.message)), 30 * 60 * 1000);
+setTimeout(() => tracker.tick().catch((err) => console.error('tracker tick failed:', err.message)), 20 * 1000);
 
 app.get('/api/batches', (req, res) => res.json({ running: batch.batchRunning(), batches: batch.listBatches() }));
 

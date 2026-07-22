@@ -185,7 +185,8 @@
   const MAX_POLL_FAILURES = 8; // transient 502/504s and network blips survive; ~30s of solid failure gives up
 
   // Polls a job to completion and RETURNS its result (callers render).
-  async function poll(jobId) {
+  // onStatus lets a caller route progress into its own status line.
+  async function poll(jobId, onStatus = setStatus) {
     let failures = 0;
     for (;;) {
       let job;
@@ -200,13 +201,13 @@
         if (!res.ok) throw new Error(job.error || `HTTP ${res.status}`);
       } catch (err) {
         if (err.fatal || ++failures >= MAX_POLL_FAILURES) throw err;
-        setStatus(`status check failed (${err.message}) — retrying ${failures}/${MAX_POLL_FAILURES}…`);
+        onStatus(`status check failed (${err.message}) — retrying ${failures}/${MAX_POLL_FAILURES}…`);
         await sleep(3000);
         continue;
       }
       failures = 0;
       if (job.status === 'running') {
-        setStatus(job.progress || 'working…');
+        onStatus(job.progress || 'working…');
         await sleep(800);
         continue;
       }
@@ -559,6 +560,91 @@
   });
 
   $('batch-refresh').addEventListener('click', refreshBatch);
+
+  // ---- live tracker -----------------------------------------------------------
+
+  const trackerViewEl = $('tracker-view');
+  const trackerErrEl = $('tracker-error');
+  const trackerStatusEl = $('tracker-status');
+
+  function setTrackerStatus(text) {
+    trackerStatusEl.hidden = !text;
+    trackerStatusEl.innerHTML = text ? `<span class="spin">⟳</span>${esc(text)}` : '';
+  }
+
+  function money(v) {
+    return (v < 0 ? '−$' : '+$') + Math.abs(v).toFixed(2);
+  }
+
+  function renderTracker(t) {
+    if (!t.initialized) {
+      trackerViewEl.innerHTML = '<p class="note">Not initialized yet. Initialize trains and freezes the models (one-time, throttle-aware), then seeds every week since 2026-07-01.</p>';
+      return;
+    }
+    trackerViewEl.innerHTML = Object.entries(t.pairs).map(([pair, p]) => {
+      const vb = p.books.vote;
+      const liveCount = p.weeks.filter((w) => w.live).length;
+      return `
+      <div class="section">
+        <h2>${esc(pair)} — band ±${p.bandPct.toFixed(2)}%, ${p.trainWeeks} training weeks through ${esc(p.trainedThrough)}</h2>
+        <div class="tiles">
+          ${tile('Vote book P&L', money(vb.pnl), `${vb.trades} trades, ${vb.wins} wins, after $1/trip fees`, true)}
+          ${tile('Vote accuracy', vb.scored ? pct(vb.correct / vb.scored) : '—', `${vb.correct}/${vb.scored} scored weeks`)}
+          ${tile('Weeks recorded', String(p.weeks.length), `${liveCount} live · ${p.weeks.length - liveCount} seeded`)}
+        </div>
+        <div class="tablewrap" style="margin-top:10px"><table>
+          <tr><th>book</th><th>trades</th><th>wins</th><th>P&amp;L</th><th>accuracy</th></tr>
+          ${Object.entries(p.books).map(([k, b]) => `
+            <tr class="${k === 'vote' ? 'hilite' : ''}"><td>${esc(k)}</td><td>${b.trades}</td><td>${b.wins}</td>
+            <td>${money(b.pnl)}</td><td>${b.scored ? pct(b.correct / b.scored) : '—'}</td></tr>`).join('')}
+        </table></div>
+        <div class="tablewrap" style="margin-top:10px"><table>
+          <tr><th>week (Mon)</th><th>vote</th><th>actual</th><th>entry</th><th>exit</th><th>vote P&amp;L</th><th>status</th><th>provenance</th></tr>
+          ${p.weeks.slice(-30).reverse().map((w) => `
+            <tr class="${w.status === 'settled' && w.vote !== 0 && w.pnl.vote <= 0 ? 'miss' : ''}">
+              <td>${esc(w.weekOf)}</td><td>${clsSpan(w.vote)}</td><td>${w.actual === null ? '—' : clsSpan(w.actual)}</td>
+              <td>${w.entry != null ? w.entry : '—'}</td><td>${w.exit != null ? w.exit : '—'}</td>
+              <td>${w.pnl ? money(w.pnl.vote) : '—'}</td><td>${esc(w.status)}</td>
+              <td>${w.live ? 'LIVE' : 'seeded'}</td>
+            </tr>`).join('')}
+        </table></div>
+      </div>`;
+    }).join('');
+  }
+
+  async function refreshTracker() {
+    try {
+      trackerErrEl.hidden = true;
+      const res = await fetch('api/tracker');
+      const t = await jsonBody(res);
+      if (!res.ok) throw new Error(t.error || `HTTP ${res.status}`);
+      renderTracker(t);
+      $('tracker-init').disabled = !!t.initialized;
+    } catch (err) {
+      trackerErrEl.hidden = false;
+      trackerErrEl.textContent = err.message;
+    }
+  }
+
+  $('tracker-init').addEventListener('click', async () => {
+    try {
+      trackerErrEl.hidden = true;
+      setTrackerStatus('initializing…');
+      const res = await fetch('api/tracker/init', { method: 'POST' });
+      const body = await jsonBody(res);
+      if (!res.ok) throw new Error(body.error || `HTTP ${res.status}`);
+      await poll(body.jobId, setTrackerStatus);
+      setTrackerStatus('');
+      refreshTracker();
+    } catch (err) {
+      setTrackerStatus('');
+      trackerErrEl.hidden = false;
+      trackerErrEl.textContent = err.message;
+    }
+  });
+  $('tracker-refresh').addEventListener('click', refreshTracker);
+
   refreshBatch();
   refreshDataState();
+  refreshTracker();
 })();

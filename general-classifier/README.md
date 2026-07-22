@@ -63,6 +63,7 @@ lib/dataset.js       Mon→Mon chunking, gap fill, Tue/Thu scoring, feature buil
 lib/features.js      v2 compressed feature set (44 engineered numbers, pure JS)
 lib/logreg.js        softmax regression, z-scoring, lambda ladder (pure JS)
 lib/pipeline.js      orchestration + report assembly
+lib/tracker.js       live paper tracker (frozen models, $100 books, TRACKER.md protocol)
 lib/jobs.js          in-memory async job runner (UI polls)
 public/              the web page (prefix-relative URLs, light/dark aware)
 deploy/              install.sh, systemd unit, env.example (PORT=8093)

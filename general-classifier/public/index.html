@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>General Classifier</title>
-  <link rel="stylesheet" href="style.css?v=7">
+  <link rel="stylesheet" href="style.css?v=8">
 </head>
 <body>
   <header class="topbar">
@@ -83,6 +83,24 @@
     <div id="error" class="error" hidden></div>
     <div id="report" hidden></div>
 
+    <div class="section" id="tracker-section">
+      <h2>Live tracker (paper)</h2>
+      <p class="note">
+        Frozen DOT/AVAX consensus models (trained through 2026-06, never retrained) predict every week's
+        Tue&rarr;Thu move and paper-trade it: $100 per order, entry Tue 03:00 open, exit Thu 15:00 open,
+        $0.50 friction per leg. Majority vote of the 8 specs is the headline book; ties stand aside.
+        Weeks recorded before their entry time count as LIVE; the backfill from the end of the OOS era is
+        SEEDED and reported separately. Full pre-registered protocol: TRACKER.md in the repo.
+      </p>
+      <div class="controls" style="margin-top:10px">
+        <div class="field submit"><button id="tracker-init" type="button">Initialize tracker</button></div>
+        <div class="field submit"><button id="tracker-refresh" type="button" class="secondary">Refresh</button></div>
+        <div id="tracker-status" class="status" style="margin-top:0" hidden></div>
+      </div>
+      <div id="tracker-error" class="error" hidden></div>
+      <div id="tracker-view"></div>
+    </div>
+
     <div class="section" id="batch-section">
       <h2>Pair screen (batch)</h2>
       <p class="note">
@@ -126,6 +144,6 @@
     pruned to time / open / high / low / close / quote&nbsp;volume.
   </footer>
 
-  <script src="app.js?v=8"></script>
+  <script src="app.js?v=9"></script>
 </body>
 </html>
