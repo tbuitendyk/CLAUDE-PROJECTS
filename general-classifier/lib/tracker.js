@@ -276,6 +276,45 @@ async function tick(onProgress = () => {}) {
   }
 }
 
+// ---- screening reference edges --------------------------------------------------
+
+// Per-spec true edges for a pair from a completed consensus screen's
+// unshifted runs, plus their median (the vote row's reference). Pure
+// function so it's testable; returns null when the doc has nothing usable.
+function refEdgesFromDoc(doc, pair) {
+  if (!doc || doc.kind !== 'consensus') return null;
+  const specs = {};
+  const edges = [];
+  for (const r of doc.runs || []) {
+    if (r.trade !== pair || r.shift || r.status !== 'done' || !r.metrics) continue;
+    const e = r.metrics.hindsightEdge ?? r.metrics.edge;
+    if (e === undefined || e === null) continue;
+    specs[`${r.view}/${r.model}`] = e;
+    edges.push(e);
+  }
+  if (!edges.length) return null;
+  edges.sort((a, b) => a - b);
+  const mid = Math.floor(edges.length / 2);
+  const median = edges.length % 2 ? edges[mid] : (edges[mid - 1] + edges[mid]) / 2;
+  return { specs, median };
+}
+
+// Newest completed consensus screen that covers the pair. Display-only
+// context (ranking the book table) — never feeds any decision.
+function referenceEdges(pair) {
+  try {
+    const { listBatches, getBatch } = require('./batch');
+    for (const b of listBatches()) {
+      if (b.status !== 'done') continue;
+      const ref = refEdgesFromDoc(getBatch(b.id), pair);
+      if (ref) return { ...ref, source: b.id };
+    }
+  } catch {
+    /* reference is optional */
+  }
+  return null;
+}
+
 // ---- status for the UI ---------------------------------------------------------
 
 function status() {
@@ -301,6 +340,7 @@ function status() {
       bandPct: s.pairs[pair].bandPct,
       trainWeeks: s.pairs[pair].trainWeeks,
       trainedThrough: s.pairs[pair].trainedThrough,
+      screenRef: referenceEdges(pair),
       books,
       weeks: weeks.map(({ pair: p, predictions, ...w }) => ({ ...w, specs: predictions })),
     };
@@ -313,4 +353,4 @@ function status() {
   };
 }
 
-module.exports = { init, tick, status, initialized, voteOf, pnlFor, trainSpec, predictSpec, SPECS, NOTIONAL, FEE_PER_LEG };
+module.exports = { init, tick, status, initialized, voteOf, pnlFor, trainSpec, predictSpec, refEdgesFromDoc, SPECS, NOTIONAL, FEE_PER_LEG };

@@ -646,14 +646,48 @@
     return (v < 0 ? '−$' : '+$') + Math.abs(v).toFixed(2);
   }
 
+  let trackerData = null;
+  const bookSel = {}; // pair -> selected book key ('vote' default)
+
   function renderTracker(t) {
+    trackerData = t;
     if (!t.initialized) {
       trackerViewEl.innerHTML = '<p class="note">Not initialized yet. Initialize trains and freezes the models (one-time, throttle-aware), then seeds every week since 2026-07-01.</p>';
       return;
     }
+    const fmtEdge = (e) => (e == null ? '—' : (e >= 0 ? '+' : '') + (100 * e).toFixed(1) + '%');
     trackerViewEl.innerHTML = Object.entries(t.pairs).map(([pair, p]) => {
       const vb = p.books.vote;
       const liveCount = p.weeks.filter((w) => w.live).length;
+      const selected = bookSel[pair] || 'vote';
+      const ref = p.screenRef || null;
+      // vote first (with the screen's MEDIAN true edge as its reference),
+      // then the 8 spec books ordered by their screening true edge
+      const specKeys = Object.keys(p.books).filter((k) => k !== 'vote')
+        .sort((a, b) => ((ref && ref.specs[b]) ?? -1e9) - ((ref && ref.specs[a]) ?? -1e9));
+      const bookRows = ['vote', ...specKeys].map((k) => {
+        const b = p.books[k];
+        const refEdge = k === 'vote' ? (ref ? ref.median : null) : ref ? ref.specs[k] : null;
+        return `
+          <tr class="bookrow ${k === selected ? 'hilite' : ''}" data-pair="${esc(pair)}" data-book="${esc(k)}"
+              title="Click to show this book's full trade history below">
+            <td>${k === 'vote' ? '<strong>vote (majority of 8)</strong>' : esc(k)}</td>
+            <td>${fmtEdge(refEdge)}</td>
+            <td>${b.trades}</td><td>${b.wins}</td><td>${money(b.pnl)}</td>
+            <td>${b.scored ? pct(b.correct / b.scored) : '—'}</td>
+          </tr>`;
+      }).join('');
+      const hist = p.weeks.slice().reverse().map((w) => {
+        const call = selected === 'vote' ? w.vote : (w.specs || {})[selected];
+        const pnl = w.pnl ? w.pnl[selected] : null;
+        return `
+          <tr class="${w.status === 'settled' && call !== 0 && pnl != null && pnl <= 0 ? 'miss' : ''}">
+            <td>${esc(w.weekOf)}</td><td>${clsSpan(call)}</td><td>${w.actual === null ? '—' : clsSpan(w.actual)}</td>
+            <td>${w.entry != null ? w.entry : '—'}</td><td>${w.exit != null ? w.exit : '—'}</td>
+            <td>${pnl != null ? money(pnl) : '—'}</td><td>${esc(w.status)}</td>
+            <td>${w.live ? 'LIVE' : 'seeded'}</td>
+          </tr>`;
+      }).join('');
       return `
       <div class="section">
         <h2>${esc(pair)} — band ±${p.bandPct.toFixed(2)}%, ${p.trainWeeks} training weeks through ${esc(p.trainedThrough)}</h2>
@@ -663,23 +697,38 @@
           ${tile('Weeks recorded', String(p.weeks.length), `${liveCount} live · ${p.weeks.length - liveCount} seeded`)}
         </div>
         <div class="tablewrap" style="margin-top:10px"><table>
-          <tr><th>book</th><th>trades</th><th>wins</th><th>P&amp;L</th><th>accuracy</th></tr>
-          ${Object.entries(p.books).map(([k, b]) => `
-            <tr class="${k === 'vote' ? 'hilite' : ''}"><td>${esc(k)}</td><td>${b.trades}</td><td>${b.wins}</td>
-            <td>${money(b.pnl)}</td><td>${b.scored ? pct(b.correct / b.scored) : '—'}</td></tr>`).join('')}
+          <tr>
+            <th title="The decision book: vote = majority of the 8 specs (ties stand aside); the rest are the individual method permutations, each running its own $100 paper book on identical prices.">book</th>
+            <th title="True edge this book showed in the screening era (vote row = median of the 8). Historical context only — the live columns to the right are the actual test.">screen true edge</th>
+            <th title="Settled weeks where this book took a position (±1). Weeks it called 0 are not trades.">trades</th>
+            <th title="Trades that closed with positive P&L after fees.">wins</th>
+            <th title="Cumulative paper P&L: $100 per order, entry Tue 03:00 open, exit Thu 15:00 open, $0.50 per leg.">P&amp;L</th>
+            <th title="Of settled weeks with a known outcome, how often this book's call matched the realized class.">accuracy</th>
+          </tr>
+          ${bookRows}
         </table></div>
-        <div class="tablewrap" style="margin-top:10px"><table>
-          <tr><th>week (Mon)</th><th>vote</th><th>actual</th><th>entry</th><th>exit</th><th>vote P&amp;L</th><th>status</th><th>provenance</th></tr>
-          ${p.weeks.slice(-30).reverse().map((w) => `
-            <tr class="${w.status === 'settled' && w.vote !== 0 && w.pnl.vote <= 0 ? 'miss' : ''}">
-              <td>${esc(w.weekOf)}</td><td>${clsSpan(w.vote)}</td><td>${w.actual === null ? '—' : clsSpan(w.actual)}</td>
-              <td>${w.entry != null ? w.entry : '—'}</td><td>${w.exit != null ? w.exit : '—'}</td>
-              <td>${w.pnl ? money(w.pnl.vote) : '—'}</td><td>${esc(w.status)}</td>
-              <td>${w.live ? 'LIVE' : 'seeded'}</td>
-            </tr>`).join('')}
+        <p class="note" style="margin-top:10px">Trade history — <strong>${esc(selected === 'vote' ? 'vote (majority of 8)' : selected)}</strong>${ref ? ` · screening reference from ${esc(ref.source)}` : ''}</p>
+        <div class="tablewrap"><table>
+          <tr>
+            <th title="Monday the 8-day feature chunk started; the call was made after it closed.">week (Mon)</th>
+            <th title="This book's call for the week: +1 long, −1 short, 0 stand aside.">call</th>
+            <th title="What actually happened (Tue morning vs Thu afternoon averages against the frozen band).">actual</th>
+            <th title="Trade entry: Tuesday 03:00 UTC hourly open.">entry</th>
+            <th title="Trade exit: Thursday 15:00 UTC hourly open.">exit</th>
+            <th title="This book's P&L for the week after $1 round-trip fees; $0.00 when it stood aside.">P&amp;L</th>
+            <th title="pending = awaiting Thursday settlement; settled = done; missed = data gap prevented pricing.">status</th>
+            <th title="LIVE = call recorded before entry time. seeded = backfilled after the fact (end-of-OOS catch-up or downtime recovery) — reported, but not part of the pre-registered live verdict.">provenance</th>
+          </tr>
+          ${hist}
         </table></div>
       </div>`;
     }).join('');
+    trackerViewEl.querySelectorAll('.bookrow').forEach((row) => {
+      row.addEventListener('click', () => {
+        bookSel[row.dataset.pair] = row.dataset.book;
+        renderTracker(trackerData);
+      });
+    });
   }
 
   async function refreshTracker() {

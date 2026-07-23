@@ -1,5 +1,5 @@
 const { assert, makeRng } = require('./helpers');
-const { voteOf, pnlFor, trainSpec, predictSpec, SPECS, NOTIONAL, FEE_PER_LEG } = require('../lib/tracker');
+const { voteOf, pnlFor, trainSpec, predictSpec, refEdgesFromDoc, SPECS, NOTIONAL, FEE_PER_LEG } = require('../lib/tracker');
 const { buildChunks, toHourlyMap } = require('../lib/dataset');
 
 const HOUR_MS = 3_600_000;
@@ -49,6 +49,29 @@ module.exports = {
         );
       }
     }
+  },
+  async screenReferenceEdgesExtractAndMedian() {
+    const run = (trade, view, model, shift, edge, status = 'done') => ({
+      trade, view, model, shift, status,
+      metrics: status === 'done' ? { hindsightEdge: edge } : null,
+    });
+    const doc = {
+      kind: 'consensus',
+      runs: [
+        run('DOTUSDT', 'full', 'logreg', 0, 0.10),
+        run('DOTUSDT', 'full', 'boost', 0, 0.02),
+        run('DOTUSDT', 'cross', 'logreg', 0, 0.06),
+        run('DOTUSDT', 'cross', 'boost', 0, -0.01),
+        run('DOTUSDT', 'prices', 'logreg', 11, 0.99), // null shift: excluded
+        run('DOTUSDT', 'volume', 'logreg', 0, 0.04, 'error'), // failed: excluded
+        run('AVAXUSDT', 'full', 'logreg', 0, 0.5), // other pair: excluded
+      ],
+    };
+    const ref = refEdgesFromDoc(doc, 'DOTUSDT');
+    assert.deepStrictEqual(Object.keys(ref.specs).sort(), ['cross/boost', 'cross/logreg', 'full/boost', 'full/logreg']);
+    assert.ok(Math.abs(ref.median - 0.04) < 1e-12); // median of [-0.01, 0.02, 0.06, 0.10]
+    assert.strictEqual(refEdgesFromDoc(doc, 'NOPEUSDT'), null);
+    assert.strictEqual(refEdgesFromDoc({ kind: 'screen', runs: [] }, 'DOTUSDT'), null); // pair screens don't qualify
   },
   async unlabeledTailChunksEmergeForPrediction() {
     // 10 days of data: one complete chunk (Mon->Mon) whose label windows
