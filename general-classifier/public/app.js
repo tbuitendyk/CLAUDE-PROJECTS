@@ -403,9 +403,34 @@
       batchViewEl.innerHTML = `<p class="note">${header}</p><p class="note">No completed runs yet.</p>`;
       return;
     }
+    const T = {
+      pair: 'The trade asset — each is tested against the compare pair (BTCUSDT).',
+      specs: 'How many of the 8 method permutations (4 feature views × 2 models) completed for this pair.',
+      posEdge: 'How many of the specs beat their best-constant baseline (true edge > 0).',
+      consensus: 'positive ÷ specs done. The pair’s headline agreement score across methods.',
+      medEdge: 'Middle value of the specs’ true edges — the TYPICAL spec’s margin, immune to one lucky or one broken spec.',
+      medBal: 'Middle value of the specs’ balanced accuracies. Chance = 33.3% whatever the class mix, so distance above 33.3% = real sorting skill.',
+      nullMed: 'Consensus the same grid typically fabricates when labels are time-shifted (nothing real to find) — the machine’s noise floor.',
+      nullExceed: 'Share of distinct label-shifted reruns whose consensus matched or beat the real one. Empirical p-value: 0% = noise never faked this well.',
+      rank: 'Rank, best first by true edge.',
+      detail: 'Loads this combo into the form above and runs the full detailed report.',
+      model: 'The learner: logreg = linear (flat decision planes), boost = small trees (thresholds + interactions).',
+      view: 'Feature slice used: full 44 / prices-only / volume-only / cross-asset-only.',
+      band: 'Dormant band for this pair. auto = 33rd percentile of its own training-week |Tue→Thu| moves, so classes balance.',
+      testAcc: 'Percentage of held-out test weeks where the predicted −1/0/+1 matched what actually happened.',
+      bestConst: 'Plain accuracy of always guessing the test window’s most common class (in hindsight) — the toughest do-nothing competitor.',
+      trueEdge: 'test acc − best constant. Positive = beat the smartest lazy strategy.',
+      balAcc: 'Average of the three per-class hit rates. 33.3% = chance for ANY know-nothing strategy, regardless of class mix.',
+      dirCalls: 'Weeks this spec dared a directional (±1) call instead of standing aside.',
+      dirHit: 'Fraction of those directional calls that were right — the would-it-have-traded-well column.',
+      trainAcc: 'Accuracy on its own training weeks. Far above test acc = memorization; close to test acc = honest fit.',
+      weeks: 'Training / test week counts — the sample sizes behind every other number.',
+      picked: 'Auto-tuned hyperparameter: λ (regularization strength) for logreg, boosting rounds for boost. Extreme λ ≈ shrank toward predicting the prior.',
+    };
+    const th = (label, tip) => `<th title="${esc(tip)}">${label}</th>`;
     const consensusBlock = s.kind === 'consensus' && s.pairs ? `
       <div class="tablewrap" style="margin-bottom:12px"><table>
-        <tr><th>pair</th><th>specs done</th><th>positive true edge</th><th>consensus</th><th>median true edge</th><th>median balanced acc</th><th>null: median consensus</th><th>null: exceed rate</th></tr>
+        <tr>${th('pair', T.pair)}${th('specs done', T.specs)}${th('positive true edge', T.posEdge)}${th('consensus', T.consensus)}${th('median true edge', T.medEdge)}${th('median balanced acc', T.medBal)}${th('null: median consensus', T.nullMed)}${th('null: exceed rate', T.nullExceed)}</tr>
         ${s.pairs.map((p) => `
           <tr class="${p.fraction >= 0.625 && (p.medianTrueEdge ?? 0) > 0 ? 'hilite' : ''}">
             <td>${esc(p.trade)}</td><td>${p.specs}</td><td>${p.positive}</td>
@@ -431,7 +456,7 @@
       ${weakWarning}
       ${consensusBlock}
       <div class="tablewrap"><table>
-        <tr><th>#</th><th></th><th>trade</th><th>model</th><th>view</th><th>band</th><th>test acc</th><th>best constant</th><th>true edge</th><th>balanced acc</th><th>dir calls</th><th>dir hit rate</th><th>train acc</th><th>weeks (tr/te)</th><th>picked</th></tr>
+        <tr>${th('#', T.rank)}${th('', T.detail)}${th('trade', T.pair)}${th('model', T.model)}${th('view', T.view)}${th('band', T.band)}${th('test acc', T.testAcc)}${th('best constant', T.bestConst)}${th('true edge', T.trueEdge)}${th('balanced acc', T.balAcc)}${th('dir calls', T.dirCalls)}${th('dir hit rate', T.dirHit)}${th('train acc', T.trainAcc)}${th('weeks (tr/te)', T.weeks)}${th('picked', T.picked)}</tr>
         ${s.ranked.map((r, i) => {
           const te = r.hindsightEdge != null ? r.hindsightEdge : r.edge;
           const bc = r.bestConstant != null ? pct(r.bestConstant) : `${pct(r.majorityBaseline)} (${clsName(r.majorityClass)})`;
