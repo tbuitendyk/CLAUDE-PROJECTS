@@ -306,20 +306,33 @@ async function refreshPrices(onProgress = () => {}) {
   if (!s) return;
   const now = Date.now();
   for (const pair of s.config.pairs) {
+    let rows = [];
     try {
-      const rows = await recentKlines(pair, now - 7 * 24 * HOUR_MS);
-      if (!rows.length) continue;
-      const last = rows[rows.length - 1];
-      s.pairs[pair].lastPrice = { price: last.close, at: new Date(last.ts).toISOString() };
-      const byTs = new Map(rows.map((r) => [r.ts, r]));
-      for (const w of s.weeks.filter((x) => x.pair === pair && x.status === 'pending')) {
-        if (w.entry == null && now >= w.entryTs) {
-          const c = byTs.get(w.entryTs);
-          if (c) w.entry = c.open;
+      rows = await recentKlines(pair, now - 8 * 24 * HOUR_MS);
+    } catch {
+      // REST unreachable (geo-blocked from this VPS): bulk portal's daily
+      // zips are the freshest source available — typically ~1 day behind.
+      for (let ts = now - 8 * 24 * HOUR_MS; ts < now; ts += 24 * HOUR_MS) {
+        const d = new Date(ts);
+        try {
+          const dayRows = await dailyKlines(pair, d.getUTCFullYear(), d.getUTCMonth() + 1, d.getUTCDate());
+          if (dayRows) for (const r of dayRows) rows.push(r);
+        } catch (err) {
+          onProgress(`daily fetch failed for ${pair} ${d.toISOString().slice(0, 10)}: ${err.message}`);
         }
       }
-    } catch (err) {
-      onProgress(`price refresh failed for ${pair}: ${err.message}`);
+    }
+    if (!rows.length) continue;
+    const last = rows[rows.length - 1];
+    if (!s.pairs[pair].lastPrice || Date.parse(s.pairs[pair].lastPrice.at) < last.ts) {
+      s.pairs[pair].lastPrice = { price: last.close, at: new Date(last.ts).toISOString() };
+    }
+    const byTs = new Map(rows.map((r) => [r.ts, r]));
+    for (const w of s.weeks.filter((x) => x.pair === pair && x.status === 'pending')) {
+      if (w.entry == null && now >= w.entryTs) {
+        const c = byTs.get(w.entryTs);
+        if (c) w.entry = c.open;
+      }
     }
   }
   saveState();

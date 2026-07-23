@@ -688,7 +688,7 @@
             <td>${esc(w.weekOf)}</td><td>${clsSpan(call)}</td><td>${w.actual === null ? '—' : clsSpan(w.actual)}</td>
             <td>${w.entry != null ? w.entry : '—'}</td><td>${w.exit != null ? w.exit : floatingExit}</td>
             <td>${pnl != null ? money(pnl) : '—'}</td><td>${esc(w.status)}</td>
-            <td>${w.live ? 'LIVE' : 'seeded'}</td>
+            <td>${w.live ? 'LIVE' : 'unseen'}</td>
           </tr>`;
       }).join('');
       return `
@@ -697,7 +697,7 @@
         <div class="tiles">
           ${tile('Vote book P&L', money(vb.pnl), `${vb.trades} trades, ${vb.wins} wins, after $1/trip fees`, true)}
           ${tile('Vote accuracy', vb.scored ? pct(vb.correct / vb.scored) : '—', `${vb.correct}/${vb.scored} scored weeks`)}
-          ${tile('Weeks recorded', String(p.weeks.length), `${liveCount} live · ${p.weeks.length - liveCount} seeded`)}
+          ${tile('Weeks recorded', String(p.weeks.length), `${liveCount} live · ${p.weeks.length - liveCount} unseen (backfilled)`)}
         </div>
         <div class="tablewrap" style="margin-top:10px"><table>
           <tr>
@@ -720,7 +720,7 @@
             <th title="Trade exit: Thursday 15:00 UTC hourly open.">exit</th>
             <th title="This book's P&L for the week after $1 round-trip fees; $0.00 when it stood aside.">P&amp;L</th>
             <th title="pending = awaiting Thursday settlement; settled = done; missed = data gap prevented pricing.">status</th>
-            <th title="LIVE = the deterministic frozen-weight call was recorded before its outcome window opened (Thu 12:00 UTC). seeded = recorded later (end-of-OOS backfill or downtime recovery) — reported, but not part of the pre-registered live verdict. See TRACKER.md amendment log.">provenance</th>
+            <th title="Every post-June week is data the frozen models never trained on. LIVE = the call was also recorded before its outcome window opened (Thu 12:00 UTC) and counts toward the 26-week verdict; unseen = backfilled after the fact — equally untrained-on, reported alongside.">provenance</th>
           </tr>
           ${hist}
         </table></div>
