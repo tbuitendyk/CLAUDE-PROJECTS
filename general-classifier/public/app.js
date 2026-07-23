@@ -720,7 +720,7 @@
             <th title="Trade exit: Thursday 15:00 UTC hourly open.">exit</th>
             <th title="This book's P&L for the week after $1 round-trip fees; $0.00 when it stood aside.">P&amp;L</th>
             <th title="pending = awaiting Thursday settlement; settled = done; missed = data gap prevented pricing.">status</th>
-            <th title="LIVE = call recorded before entry time. seeded = backfilled after the fact (end-of-OOS catch-up or downtime recovery) — reported, but not part of the pre-registered live verdict.">provenance</th>
+            <th title="LIVE = the deterministic frozen-weight call was recorded before its outcome window opened (Thu 12:00 UTC). seeded = recorded later (end-of-OOS backfill or downtime recovery) — reported, but not part of the pre-registered live verdict. See TRACKER.md amendment log.">provenance</th>
           </tr>
           ${hist}
         </table></div>

@@ -27,13 +27,34 @@ here is altered after the first live prediction, the record restarts.
 
 ## Provenance rules
 
-- A prediction is **LIVE** only if recorded before its entry time
-  (Tue 03:00 UTC). Everything recorded later — including the seed backfill
-  from 2026-07-01 to tracker start, and any weeks caught up after service
-  downtime — is flagged **SEEDED** and reported separately.
-- Data: Binance public bulk portal (monthly zips) plus its keyless REST
-  data mirror for the current partial month. No other sources; no AI
-  anywhere in the loop.
+*(Amended 2026-07-23, BEFORE any live week existed — see Amendment log.)*
+
+- A prediction is **LIVE** if it was computed from the frozen weights on
+  data ending the chunk's final Monday 23:59 UTC and **recorded before the
+  outcome window opens (Thursday 12:00 UTC of its week)**. The anti-peeking
+  guarantee is determinism, not the wall clock: a prediction is a pure
+  function of the committed frozen weights and Binance's published candles,
+  so its value is verifiable by recomputation regardless of when it was
+  written down — provided it is written down before the outcome exists.
+- Everything recorded after its Thursday 12:00 — the seed backfill from
+  2026-07-01 to tracker start, and weeks caught up after long downtime — is
+  flagged **SEEDED** and reported separately.
+- Paper pricing is unchanged (entry Tue 03:00 open, exit Thu 15:00 open).
+- Data: Binance public bulk portal (monthly + daily zips) plus its keyless
+  REST data mirror when reachable. No other sources; no AI anywhere in the
+  loop.
+
+## Amendment log
+
+- **2026-07-23** (zero live weeks recorded at the time): LIVE originally
+  required recording before the Tue 03:00 entry. A reachability probe from
+  the VPS that day showed Binance's REST mirrors are no longer available
+  from its location (api.binance.vision: DNS NXDOMAIN; api.binance.com:
+  HTTP 451 geo-block), leaving only the bulk portal, whose daily zips for a
+  given Monday publish on Tuesday — usually after 03:00 UTC. Under the
+  original clock rule nearly every week would have been flagged seeded
+  forever. LIVE was redefined as above (recorded before the outcome window
+  opens, determinism as the guarantee). No other rule changed.
 
 ## Evaluation
 

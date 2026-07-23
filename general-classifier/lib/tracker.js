@@ -36,6 +36,14 @@ for (const view of ['full', 'prices', 'volume', 'cross']) {
   for (const model of ['logreg', 'boost']) SPECS.push({ key: `${view}/${model}`, view, model });
 }
 
+// LIVE provenance (TRACKER.md, amended 2026-07-23 pre-live): a prediction is
+// live if recorded before its outcome window opens (Thu 12:00 UTC). The
+// guarantee is determinism — frozen weights + published candles — with the
+// record required to exist before the outcome does.
+function isLive(recordedAtMs, chunkStart) {
+  return recordedAtMs < chunkStart + THU_OFFSET_H * HOUR_MS;
+}
+
 let state = null; // lazy-loaded singleton
 let ticking = false;
 
@@ -199,6 +207,9 @@ async function tick(onProgress = () => {}) {
   ticking = true;
   try {
     const now = Date.now();
+    // Idempotent provenance migration: recompute every stored week's live
+    // flag from its recorded timestamp under the current TRACKER.md rule.
+    for (const w of s.weeks) w.live = isLive(Date.parse(w.recordedAt), w.chunkStart);
     const compareMap = await fullHourlyMap(s.config.compareSymbol, '2026-01', onProgress);
     for (const pair of s.config.pairs) {
       const pairCfg = s.pairs[pair];
@@ -220,7 +231,7 @@ async function tick(onProgress = () => {}) {
           predictions,
           vote: voteOf(predictions),
           recordedAt: new Date(now).toISOString(),
-          live: now <= entryTs,
+          live: isLive(now, c.startTs),
           entryTs,
           exitTs: c.startTs + EXIT_OFFSET_H * HOUR_MS,
           entry: null,
@@ -392,4 +403,4 @@ function status() {
   };
 }
 
-module.exports = { init, tick, status, initialized, refreshPrices, voteOf, pnlFor, trainSpec, predictSpec, refEdgesFromDoc, SPECS, NOTIONAL, FEE_PER_LEG };
+module.exports = { init, tick, status, initialized, refreshPrices, isLive, voteOf, pnlFor, trainSpec, predictSpec, refEdgesFromDoc, SPECS, NOTIONAL, FEE_PER_LEG };

@@ -90,8 +90,9 @@
         Frozen DOT/AVAX consensus models (trained through 2026-06, never retrained) predict every week's
         Tue&rarr;Thu move and paper-trade it: $100 per order, entry Tue 03:00 open, exit Thu 15:00 open,
         $0.50 friction per leg. Majority vote of the 8 specs is the headline book; ties stand aside.
-        Weeks recorded before their entry time count as LIVE; the backfill from the end of the OOS era is
-        SEEDED and reported separately. Full pre-registered protocol: TRACKER.md in the repo.
+        LIVE weeks are those whose (deterministic, frozen-weight) prediction was recorded before the outcome
+        window opened (Thu 12:00 UTC); the end-of-OOS backfill and post-downtime catch-ups are SEEDED and
+        reported separately. Full pre-registered protocol + amendment log: TRACKER.md in the repo.
       </p>
       <div class="controls" style="margin-top:10px">
         <div class="field submit"><button id="tracker-init" type="button">Initialize tracker</button></div>
@@ -149,6 +150,6 @@
     pruned to time / open / high / low / close / quote&nbsp;volume.
   </footer>
 
-  <script src="app.js?v=15"></script>
+  <script src="app.js?v=16"></script>
 </body>
 </html>

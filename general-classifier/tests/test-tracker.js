@@ -1,5 +1,5 @@
 const { assert, makeRng } = require('./helpers');
-const { voteOf, pnlFor, trainSpec, predictSpec, refEdgesFromDoc, SPECS, NOTIONAL, FEE_PER_LEG } = require('../lib/tracker');
+const { voteOf, pnlFor, trainSpec, predictSpec, refEdgesFromDoc, isLive, SPECS, NOTIONAL, FEE_PER_LEG } = require('../lib/tracker');
 const { buildChunks, toHourlyMap } = require('../lib/dataset');
 
 const HOUR_MS = 3_600_000;
@@ -49,6 +49,17 @@ module.exports = {
         );
       }
     }
+  },
+  async liveDeadlineIsThursdayNoon() {
+    // TRACKER.md (amended 2026-07-23): LIVE = recorded before the outcome
+    // window opens, Thu 12:00 UTC = chunk start + 252h.
+    const chunkStart = Date.UTC(2026, 6, 13); // Mon Jul 13
+    const thuNoon = chunkStart + 252 * 3_600_000;
+    assert.strictEqual(new Date(thuNoon).getUTCDay(), 4);
+    assert.strictEqual(new Date(thuNoon).getUTCHours(), 12);
+    assert.ok(isLive(thuNoon - 1, chunkStart)); // 11:59:59.999 Thu -> live
+    assert.ok(!isLive(thuNoon, chunkStart)); // 12:00:00 Thu -> seeded
+    assert.ok(isLive(chunkStart + 200 * 3_600_000, chunkStart)); // Tue-late recording is fine now
   },
   async screenReferenceEdgesExtractAndMedian() {
     const run = (trade, view, model, shift, edge, status = 'done') => ({
