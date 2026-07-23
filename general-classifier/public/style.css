@@ -82,6 +82,7 @@ button {
 }
 button:disabled { opacity: 0.55; cursor: default; }
 button.secondary { background: var(--page); color: var(--accent); border: 1px solid var(--accent); }
+button.danger { background: var(--page); color: var(--down); border: 1px solid var(--down); }
 .cpu-btn {
   margin-left: auto; background: var(--page); color: var(--ink-2);
   border: 1px solid var(--baseline); padding: 4px 12px; font-size: 12px; font-weight: 600;

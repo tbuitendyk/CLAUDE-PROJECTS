@@ -39,6 +39,25 @@ module.exports = {
       throttle.refresh();
     }
   },
+  async abortKillsOldYieldersButNotNewOnes() {
+    const pace = throttle.makeYielder();
+    await pace(); // fine before the abort
+    throttle.abortHeavyWork();
+    await assert.rejects(pace(), /cancelled by owner/);
+    const fresh = throttle.makeYielder(); // created after the abort: unaffected
+    await fresh();
+  },
+  async abortStopsInFlightTraining() {
+    const { trainSoftmax } = require('../lib/logreg');
+    const { makeRng } = require('./helpers');
+    const rng = makeRng(77);
+    const X = Array.from({ length: 200 }, () => Array.from({ length: 400 }, () => rng() * 2 - 1));
+    const y = X.map((r) => (r[0] > 0.3 ? 1 : r[0] < -0.3 ? -1 : 0));
+    const p = trainSoftmax(X, y, 0.001, { maxIter: 100000, tol: 0 }); // effectively endless
+    await new Promise((r) => setTimeout(r, 100));
+    throttle.abortHeavyWork();
+    await assert.rejects(p, /cancelled by owner/);
+  },
   async yielderSleepsWhenThrottled() {
     const prev = fs.existsSync(SETTINGS) ? fs.readFileSync(SETTINGS, 'utf8') : null;
     try {

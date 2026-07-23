@@ -225,6 +225,16 @@ app.post('/api/tracker/init', (req, res) => {
 setInterval(() => tracker.tick().catch((err) => console.error('tracker tick failed:', err.message)), 30 * 60 * 1000);
 setTimeout(() => tracker.tick().catch((err) => console.error('tracker tick failed:', err.message)), 20 * 1000);
 
+// Owner's kill switch: stops the active screen at its current run AND
+// aborts every in-flight heavy loop (single runs, tracker init) at its next
+// yield point — works even with the CPU cap at OFF. Ticks, downloads-in-
+// progress for the current file, and saved results are unaffected.
+app.post('/api/abort', (req, res) => {
+  const cancelledBatch = batch.cancelActive();
+  throttle.abortHeavyWork();
+  res.json({ ok: true, cancelledBatch });
+});
+
 app.get('/api/batches', (req, res) => res.json({ running: batch.batchRunning(), batches: batch.listBatches() }));
 
 app.get('/api/batch/:id', (req, res) => {

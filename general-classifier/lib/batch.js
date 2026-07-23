@@ -70,6 +70,14 @@ function batchRunning() {
   return activeBatch && activeBatch.status === 'running' ? activeBatch.id : null;
 }
 
+// Owner's kill switch: flag the active batch so its loop stops at the next
+// run boundary (the throttle-level abort kills the in-flight run itself).
+function cancelActive() {
+  if (!batchRunning()) return null;
+  activeBatch.cancelRequested = true;
+  return activeBatch.id;
+}
+
 // Rank runs for the summary: by edge over the BEST CONSTANT hindsight guess
 // (immune to train/test distribution shift), then by balanced-accuracy
 // edge. Failed runs sink to the bottom with their errors.
@@ -126,6 +134,7 @@ function startBatch(params) {
 
   (async () => {
     for (const run of doc.runs) {
+      if (doc.cancelRequested) break;
       run.status = 'running';
       doc.progress = `${run.trade} / ${run.model}`;
       try {
@@ -153,7 +162,8 @@ function startBatch(params) {
       doc.summary = summarize(doc.runs);
       saveBatch(doc);
     }
-    doc.status = 'done';
+    for (const r of doc.runs) if (r.status === 'running') r.status = 'error';
+    doc.status = doc.cancelRequested ? 'cancelled' : 'done';
     doc.finishedAt = new Date().toISOString();
     doc.progress = '';
     saveBatch(doc);
@@ -287,6 +297,7 @@ function startConsensus(params) {
 
   (async () => {
     for (const run of doc.runs) {
+      if (doc.cancelRequested) break;
       run.status = 'running';
       const tag = `${run.trade}/${run.view}/${run.model}${run.shift ? `/shift${run.shift}` : ''}`;
       doc.progress = tag;
@@ -318,7 +329,8 @@ function startConsensus(params) {
       doc.summary = summarizeConsensus(doc.runs);
       saveBatch(doc);
     }
-    doc.status = 'done';
+    for (const r of doc.runs) if (r.status === 'running') r.status = 'error';
+    doc.status = doc.cancelRequested ? 'cancelled' : 'done';
     doc.finishedAt = new Date().toISOString();
     doc.progress = '';
     saveBatch(doc);
@@ -338,6 +350,7 @@ module.exports = {
   getBatch,
   listBatches,
   batchRunning,
+  cancelActive,
   summarize,
   summarizeConsensus,
   DEFAULT_PAIRS,

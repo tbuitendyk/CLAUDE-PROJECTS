@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>General Classifier</title>
-  <link rel="stylesheet" href="style.css?v=14">
+  <link rel="stylesheet" href="style.css?v=15">
 </head>
 <body>
   <header class="topbar">
@@ -117,6 +117,8 @@
         </div>
         <div class="field submit"><button id="batch-start" type="button">Start pair screen</button></div>
         <div class="field submit"><button id="batch-refresh" type="button">Refresh</button></div>
+        <div class="field submit"><button id="stop-all" type="button" class="danger"
+          title="Kill switch: stops the running screen at its current run and aborts any in-flight training (single runs, tracker init) within seconds — even with the CPU cap at OFF. Completed runs and saved results are kept; the screen is marked cancelled.">Stop jobs</button></div>
         <div id="batch-status" class="status" style="margin-top:0" hidden></div>
       </div>
       <div class="controls" style="margin-top:10px">
@@ -150,6 +152,6 @@
     pruned to time / open / high / low / close / quote&nbsp;volume.
   </footer>
 
-  <script src="app.js?v=17"></script>
+  <script src="app.js?v=18"></script>
 </body>
 </html>

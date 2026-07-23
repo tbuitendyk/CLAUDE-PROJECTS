@@ -629,6 +629,21 @@
     }
   });
 
+  $('stop-all').addEventListener('click', async () => {
+    if (!confirm('Stop the running screen and abort any in-flight training? Completed runs are kept.')) return;
+    try {
+      batchErrorEl.hidden = true;
+      const res = await fetch('api/abort', { method: 'POST' });
+      const body = await jsonBody(res);
+      if (!res.ok) throw new Error(body.error || `HTTP ${res.status}`);
+      setBatchStatus(body.cancelledBatch ? `stopping ${body.cancelledBatch}…` : 'no screen running — any in-flight training aborted');
+      setTimeout(() => { setBatchStatus(''); refreshBatch(); }, 2500);
+    } catch (err) {
+      batchErrorEl.hidden = false;
+      batchErrorEl.textContent = err.message;
+    }
+  });
+
   $('batch-refresh').addEventListener('click', refreshBatch);
 
   // ---- live tracker -----------------------------------------------------------

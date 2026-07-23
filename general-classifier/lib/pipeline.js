@@ -38,9 +38,12 @@ function monthList(startMonth, endMonth) {
 }
 
 async function loadSymbol(symbol, months, onProgress) {
+  const { currentAbortEpoch, throwIfAbortedSince } = require('./throttle');
+  const epoch = currentAbortEpoch();
   const rows = [];
   const missing = [];
   for (const { year, month } of months) {
+    throwIfAbortedSince(epoch);
     const mm = `${year}-${String(month).padStart(2, '0')}`;
     onProgress(`downloading ${symbol} ${mm}`);
     const monthRows = await monthlyKlines(symbol, year, month);
@@ -53,9 +56,12 @@ async function loadSymbol(symbol, months, onProgress) {
 // "All loaded data" mode: read exactly the months already cached on disk
 // for this symbol — never touches the network.
 async function loadSymbolAll(symbol, onProgress) {
+  const { currentAbortEpoch, throwIfAbortedSince } = require('./throttle');
+  const epoch = currentAbortEpoch();
   const rows = [];
   const list = cachedMonths(symbol);
   for (const mm of list) {
+    throwIfAbortedSince(epoch);
     onProgress(`reading cached ${symbol} ${mm}`);
     const [year, month] = mm.split('-').map(Number);
     const monthRows = await monthlyKlines(symbol, year, month);

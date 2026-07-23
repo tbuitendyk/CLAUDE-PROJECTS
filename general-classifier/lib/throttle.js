@@ -57,13 +57,35 @@ function refresh() {
   cache = { v: cache.v, at: 0 };
 }
 
+// Cooperative kill switch: bumping the epoch makes every yielder created
+// BEFORE the bump throw 'cancelled by owner' at its next yield point —
+// including loops parked at CPU OFF. Work started after the bump captures
+// the new epoch and runs normally.
+let abortEpoch = 0;
+
+function abortHeavyWork() {
+  abortEpoch += 1;
+  return abortEpoch;
+}
+
+function currentAbortEpoch() {
+  return abortEpoch;
+}
+
+function throwIfAbortedSince(epoch) {
+  if (abortEpoch !== epoch) throw new Error('cancelled by owner');
+}
+
 // The cooperative yielder every heavy loop awaits at its yield points.
 // At 100% it degrades to a bare setImmediate (identical to the old
 // behavior); at OFF it parks in place, waking every 250ms to re-check.
 function makeYielder() {
   let lastSleep = Date.now();
+  const epoch = abortEpoch;
   return async () => {
+    throwIfAbortedSince(epoch);
     while (currentCpuPct() <= 0) {
+      throwIfAbortedSince(epoch);
       await new Promise((r) => setTimeout(r, 250));
     }
     const pct = currentCpuPct();
@@ -74,7 +96,19 @@ function makeYielder() {
     } else {
       await new Promise((r) => setImmediate(r));
     }
+    throwIfAbortedSince(epoch);
   };
 }
 
-module.exports = { makeYielder, currentCpuPct, setCpuPct, refresh, CPU_MIN, CPU_MAX, CPU_DEFAULT };
+module.exports = {
+  makeYielder,
+  currentCpuPct,
+  setCpuPct,
+  refresh,
+  abortHeavyWork,
+  currentAbortEpoch,
+  throwIfAbortedSince,
+  CPU_MIN,
+  CPU_MAX,
+  CPU_DEFAULT,
+};
