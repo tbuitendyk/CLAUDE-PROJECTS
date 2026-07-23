@@ -680,10 +680,13 @@
       const hist = p.weeks.slice().reverse().map((w) => {
         const call = selected === 'vote' ? w.vote : (w.specs || {})[selected];
         const pnl = w.pnl ? w.pnl[selected] : null;
+        const floatingExit = w.status === 'pending' && p.lastPrice
+          ? `<em title="current market price (as of ${esc(p.lastPrice.at)}) — position still floating, not the exit">${p.lastPrice.price}</em>`
+          : '—';
         return `
           <tr class="${w.status === 'settled' && call !== 0 && pnl != null && pnl <= 0 ? 'miss' : ''}">
             <td>${esc(w.weekOf)}</td><td>${clsSpan(call)}</td><td>${w.actual === null ? '—' : clsSpan(w.actual)}</td>
-            <td>${w.entry != null ? w.entry : '—'}</td><td>${w.exit != null ? w.exit : '—'}</td>
+            <td>${w.entry != null ? w.entry : '—'}</td><td>${w.exit != null ? w.exit : floatingExit}</td>
             <td>${pnl != null ? money(pnl) : '—'}</td><td>${esc(w.status)}</td>
             <td>${w.live ? 'LIVE' : 'seeded'}</td>
           </tr>`;
@@ -731,15 +734,20 @@
     });
   }
 
-  async function refreshTracker() {
+  // fresh=true (the Refresh button) pulls current prices server-side first;
+  // the initial page load just reads existing state.
+  async function refreshTracker(fresh = false) {
     try {
       trackerErrEl.hidden = true;
-      const res = await fetch('api/tracker');
+      if (fresh) setTrackerStatus('fetching current prices…');
+      const res = await fetch('api/tracker' + (fresh ? '/refresh' : ''), fresh ? { method: 'POST' } : undefined);
       const t = await jsonBody(res);
+      setTrackerStatus('');
       if (!res.ok) throw new Error(t.error || `HTTP ${res.status}`);
       renderTracker(t);
       $('tracker-init').disabled = !!t.initialized;
     } catch (err) {
+      setTrackerStatus('');
       trackerErrEl.hidden = false;
       trackerErrEl.textContent = err.message;
     }
@@ -761,7 +769,7 @@
       trackerErrEl.textContent = err.message;
     }
   });
-  $('tracker-refresh').addEventListener('click', refreshTracker);
+  $('tracker-refresh').addEventListener('click', () => refreshTracker(true));
 
   refreshBatch();
   refreshDataState();

@@ -202,6 +202,17 @@ setTimeout(() => refreshNewMonths().catch((err) => console.error('auto-refresh f
 
 app.get('/api/tracker', (req, res) => res.json(tracker.status()));
 
+// Refresh-button path: pull a fresh price per pair (one REST call each),
+// fill any newly knowable pending entry prices, then return status.
+app.post('/api/tracker/refresh', async (req, res) => {
+  try {
+    await tracker.refreshPrices();
+    res.json(tracker.status());
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.post('/api/tracker/init', (req, res) => {
   if (tracker.initialized()) return res.status(409).json({ error: 'tracker already initialized' });
   const jobId = startJob((setProgress) => tracker.init({}, setProgress));

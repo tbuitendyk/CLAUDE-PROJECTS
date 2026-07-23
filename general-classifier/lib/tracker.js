@@ -232,10 +232,21 @@ async function tick(onProgress = () => {}) {
         onProgress(`${pair} ${new Date(c.startTs).toISOString().slice(0, 10)}: vote ${voteOf(predictions)} recorded`);
       }
 
-      // 2. settle pending weeks whose exit window has passed
+      // latest known price for the pair (the in-progress hourly candle) —
+      // shown italic in the UI as the floating exit for pending positions
+      let lastTs = 0;
+      for (const ts of tradeMap.keys()) if (ts > lastTs) lastTs = ts;
+      if (lastTs) pairCfg.lastPrice = { price: tradeMap.get(lastTs).close, at: new Date(lastTs).toISOString() };
+
+      // 2. settle pending weeks whose exit window has passed (filling the
+      // actual entry price as soon as its candle exists, pre-settlement)
       for (const w of s.weeks.filter((x) => x.pair === pair && x.status === 'pending')) {
+        if (w.entry == null && now >= w.entryTs) {
+          const ec = tradeMap.get(w.entryTs);
+          if (ec) w.entry = ec.open;
+        }
         if (now < w.chunkStart + SETTLE_AFTER_H * HOUR_MS) continue;
-        const entryCandle = tradeMap.get(w.entryTs);
+        const entryCandle = w.entry != null ? { open: w.entry } : tradeMap.get(w.entryTs);
         const exitCandle = tradeMap.get(w.exitTs);
         if (!entryCandle || !exitCandle) {
           if (now > w.exitTs + MISSED_AFTER_MS) {
@@ -274,6 +285,33 @@ async function tick(onProgress = () => {}) {
   } finally {
     ticking = false;
   }
+}
+
+// On-demand price pull (the UI's Refresh button): one REST call per pair
+// updates lastPrice and fills any pending entries whose candle now exists.
+// Much lighter than a full tick; failures leave prices stale, never break.
+async function refreshPrices(onProgress = () => {}) {
+  const s = loadState();
+  if (!s) return;
+  const now = Date.now();
+  for (const pair of s.config.pairs) {
+    try {
+      const rows = await recentKlines(pair, now - 7 * 24 * HOUR_MS);
+      if (!rows.length) continue;
+      const last = rows[rows.length - 1];
+      s.pairs[pair].lastPrice = { price: last.close, at: new Date(last.ts).toISOString() };
+      const byTs = new Map(rows.map((r) => [r.ts, r]));
+      for (const w of s.weeks.filter((x) => x.pair === pair && x.status === 'pending')) {
+        if (w.entry == null && now >= w.entryTs) {
+          const c = byTs.get(w.entryTs);
+          if (c) w.entry = c.open;
+        }
+      }
+    } catch (err) {
+      onProgress(`price refresh failed for ${pair}: ${err.message}`);
+    }
+  }
+  saveState();
 }
 
 // ---- screening reference edges --------------------------------------------------
@@ -341,6 +379,7 @@ function status() {
       trainWeeks: s.pairs[pair].trainWeeks,
       trainedThrough: s.pairs[pair].trainedThrough,
       screenRef: referenceEdges(pair),
+      lastPrice: s.pairs[pair].lastPrice || null,
       books,
       weeks: weeks.map(({ pair: p, predictions, ...w }) => ({ ...w, specs: predictions })),
     };
@@ -353,4 +392,4 @@ function status() {
   };
 }
 
-module.exports = { init, tick, status, initialized, voteOf, pnlFor, trainSpec, predictSpec, refEdgesFromDoc, SPECS, NOTIONAL, FEE_PER_LEG };
+module.exports = { init, tick, status, initialized, refreshPrices, voteOf, pnlFor, trainSpec, predictSpec, refEdgesFromDoc, SPECS, NOTIONAL, FEE_PER_LEG };
