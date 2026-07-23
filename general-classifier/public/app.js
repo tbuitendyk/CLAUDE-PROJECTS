@@ -40,6 +40,18 @@
     $('dormant').disabled = $('autoband').checked;
   });
 
+  // "All loaded data": run on exactly what's cached — months (and Load Data,
+  // which exists to fetch explicit ranges) go dormant while checked.
+  const allLoadedChecked = () => $('allloaded').checked;
+  $('allloaded').addEventListener('change', () => {
+    const on = allLoadedChecked();
+    $('start').disabled = on;
+    $('end').disabled = on;
+    $('start').required = !on;
+    $('end').required = !on;
+    $('load-btn').disabled = on;
+  });
+
   // ---- CPU throttle (semi-auto balancer pattern) -----------------------------
 
   const cpuBtn = $('cpu-btn');
@@ -91,13 +103,17 @@
       const current = [$('trade').value.toUpperCase(), $('compare').value.toUpperCase()];
       dataStateEl.innerHTML = `
         <div class="tablewrap"><table>
-          <tr><th>pair</th><th>months cached</th><th>from</th><th>to</th></tr>
+          <tr><th>pair</th><th>months cached</th><th>from</th><th>to</th><th>≈ max rotations</th></tr>
           ${body.symbols.map((s) => `
             <tr class="${current.includes(s.symbol) ? 'hilite' : ''}">
               <td>${esc(s.symbol)}</td><td>${s.months}</td><td>${esc(s.from)}</td><td>${esc(s.to)}</td>
+              <td>~${Math.max(0, Math.floor(s.months * 4.345) - 18)}</td>
             </tr>`).join('')}
         </table></div>
-        <p class="note">Highlighted rows are the pairs currently selected above. Months cached on disk are never re-downloaded.</p>`;
+        <p class="note">Highlighted rows are the pairs currently selected above. Months cached on disk are never re-downloaded;
+          newly published months are fetched automatically every 6 hours for every pair listed here.
+          ≈ max rotations estimates the distinct null-shift ceiling from cached months (weeks − 16);
+          the consensus "max" button computes it exactly for the pairs you enter.</p>`;
     } catch (err) {
       dataStateEl.innerHTML = `<p class="note">data state unavailable: ${esc(err.message)}</p>`;
     }
@@ -160,6 +176,7 @@
           compareSymbol: $('compare').value,
           startMonth: $('start').value,
           endMonth: $('end').value,
+          allLoaded: allLoadedChecked(),
           featureSet: $('features').value,
           model: $('model').value,
           featureView: pendingView || 'full',
@@ -378,9 +395,10 @@
 
   function renderBatch(doc) {
     const s = doc.summary;
+    const range = doc.params.allLoaded ? 'all loaded data' : `${esc(doc.params.startMonth)}→${esc(doc.params.endMonth)}`;
     const header = `${esc(doc.id)} — ${esc(doc.status)}${doc.status === 'running' && doc.progress ? ` — ${esc(doc.progress)}` : ''}
       · ${doc.runs.filter((r) => r.status === 'done' || r.status === 'error').length}/${doc.runs.length} runs
-      · dormant ±${esc(String(doc.params.dormantPct))}% · ${esc(doc.params.startMonth)}→${esc(doc.params.endMonth)} · vs ${esc(doc.params.compareSymbol)}`;
+      · dormant ±${esc(String(doc.params.dormantPct))}% · ${range} · vs ${esc(doc.params.compareSymbol)}`;
     if (!s || !s.ranked.length) {
       batchViewEl.innerHTML = `<p class="note">${header}</p><p class="note">No completed runs yet.</p>`;
       return;
@@ -451,8 +469,12 @@
   function shuttleToForm(doc, r) {
     $('trade').value = r.trade;
     $('compare').value = r.compare || doc.params.compareSymbol;
-    $('start').value = doc.params.startMonth;
-    $('end').value = doc.params.endMonth;
+    $('allloaded').checked = !!doc.params.allLoaded;
+    $('allloaded').dispatchEvent(new Event('change'));
+    if (!doc.params.allLoaded) {
+      $('start').value = doc.params.startMonth;
+      $('end').value = doc.params.endMonth;
+    }
     $('features').value = doc.params.featureSet || 'compressed';
     $('model').value = r.model;
     const auto = doc.params.dormantPct === 'auto';
@@ -522,6 +544,7 @@
           dormantPct: dormantValue(),
           startMonth: $('start').value,
           endMonth: $('end').value,
+          allLoaded: allLoadedChecked(),
           featureSet: $('features').value,
         }),
       });
@@ -534,6 +557,27 @@
       batchErrorEl.textContent = err.message;
     }
   });
+  $('cons-max').addEventListener('click', async () => {
+    try {
+      batchErrorEl.hidden = true;
+      const pairsRaw = $('cons-pairs').value.trim();
+      if (!pairsRaw) throw new Error('enter a pair list first — computing exact rotations for all 17 pairs would take a while');
+      const pairs = pairsRaw.split(',').map((p) => p.trim().toUpperCase()).filter(Boolean).join(',');
+      setBatchStatus('computing exact rotation ceilings…');
+      const res = await fetch(`api/rotations?pairs=${encodeURIComponent(pairs)}`);
+      const body = await jsonBody(res);
+      setBatchStatus('');
+      if (!res.ok) throw new Error(body.error || `HTTP ${res.status}`);
+      $('cons-null').value = body.suggested;
+      const parts = Object.entries(body.pairs).map(([p, r]) => `${p}: ${r.chunks} weeks → ${r.maxRotations} rotations`);
+      batchViewEl.insertAdjacentHTML('afterbegin', `<p class="note">Exact ceilings on cached data — ${parts.map(esc).join(' · ')} · null shifts set to ${body.suggested}.</p>`);
+    } catch (err) {
+      setBatchStatus('');
+      batchErrorEl.hidden = false;
+      batchErrorEl.textContent = err.message;
+    }
+  });
+
   $('cons-start').addEventListener('click', async () => {
     try {
       batchErrorEl.hidden = true;
@@ -541,6 +585,7 @@
       const body = {
         startMonth: $('start').value,
         endMonth: $('end').value,
+        allLoaded: allLoadedChecked(),
         nullShifts: Number($('cons-null').value) || 0,
       };
       if (pairsRaw) body.pairs = pairsRaw.split(',').map((p) => p.trim().toUpperCase()).filter(Boolean);

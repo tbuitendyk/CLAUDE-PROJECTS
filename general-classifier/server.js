@@ -1,8 +1,8 @@
 const path = require('path');
 const express = require('express');
 const { startJob, getJob } = require('./lib/jobs');
-const { runAnalysis, loadData } = require('./lib/pipeline');
-const { cacheState } = require('./lib/binance');
+const { runAnalysis, loadData, countRotations } = require('./lib/pipeline');
+const { cacheState, cachedMonths, monthlyKlines } = require('./lib/binance');
 const throttle = require('./lib/throttle');
 const batch = require('./lib/batch');
 const tracker = require('./lib/tracker');
@@ -67,11 +67,12 @@ app.post('/api/run', (req, res) => {
   if (dormantPct !== 'auto' && (!Number.isFinite(dormantPct) || dormantPct <= 0 || dormantPct >= 50)) {
     return res.status(400).json({ error: 'dormant range must be "auto" or a percentage between 0 and 50' });
   }
+  const allLoaded = !!b.allLoaded;
   if (!SYMBOL_RE.test(tradeSymbol)) return res.status(400).json({ error: 'trade pair must look like ZECUSDT' });
   if (!SYMBOL_RE.test(compareSymbol)) return res.status(400).json({ error: 'compare pair must look like BTCUSDT' });
   if (tradeSymbol === compareSymbol) return res.status(400).json({ error: 'trade and compare pairs must differ' });
-  if (!/^\d{4}-\d{2}$/.test(startMonth) || !/^\d{4}-\d{2}$/.test(endMonth)) {
-    return res.status(400).json({ error: 'months must be YYYY-MM' });
+  if (!allLoaded && (!/^\d{4}-\d{2}$/.test(startMonth) || !/^\d{4}-\d{2}$/.test(endMonth))) {
+    return res.status(400).json({ error: 'months must be YYYY-MM (or check "all loaded data")' });
   }
   if (featureSet !== 'compressed' && featureSet !== 'raw') {
     return res.status(400).json({ error: 'featureSet must be "compressed" or "raw"' });
@@ -86,7 +87,7 @@ app.post('/api/run', (req, res) => {
   }
 
   const jobId = startJob((setProgress) =>
-    runAnalysis({ dormantPct, tradeSymbol, compareSymbol, startMonth, endMonth, featureSet, model, featureView }, setProgress)
+    runAnalysis({ dormantPct, tradeSymbol, compareSymbol, startMonth, endMonth, featureSet, model, featureView, allLoaded }, setProgress)
   );
   res.json({ jobId });
 });
@@ -100,7 +101,7 @@ app.post('/api/batch', (req, res) => {
     return res.status(400).json({ error: 'dormant range must be "auto" or a percentage between 0 and 50' });
   }
   for (const m of ['startMonth', 'endMonth']) {
-    if (b[m] !== undefined && !/^\d{4}-\d{2}$/.test(String(b[m]))) {
+    if (!b.allLoaded && b[m] !== undefined && !/^\d{4}-\d{2}$/.test(String(b[m]))) {
       return res.status(400).json({ error: `${m} must be YYYY-MM` });
     }
   }
@@ -119,6 +120,7 @@ app.post('/api/batch', (req, res) => {
       compareSymbol: b.compareSymbol ? String(b.compareSymbol).toUpperCase() : undefined,
       pairs: b.pairs,
       models: b.models,
+      allLoaded: !!b.allLoaded,
     });
     res.json({ batchId: id });
   } catch (err) {
@@ -129,7 +131,7 @@ app.post('/api/batch', (req, res) => {
 app.post('/api/consensus', (req, res) => {
   const b = req.body || {};
   for (const m of ['startMonth', 'endMonth']) {
-    if (b[m] !== undefined && !/^\d{4}-\d{2}$/.test(String(b[m]))) {
+    if (!b.allLoaded && b[m] !== undefined && !/^\d{4}-\d{2}$/.test(String(b[m]))) {
       return res.status(400).json({ error: `${m} must be YYYY-MM` });
     }
   }
@@ -147,12 +149,54 @@ app.post('/api/consensus', (req, res) => {
       compareSymbol: b.compareSymbol ? String(b.compareSymbol).toUpperCase() : undefined,
       pairs: b.pairs ? b.pairs.map((p) => String(p).toUpperCase()) : undefined,
       nullShifts,
+      allLoaded: !!b.allLoaded,
     });
     res.json({ batchId: id });
   } catch (err) {
     res.status(409).json({ error: err.message });
   }
 });
+
+// Exact null-shift ceilings for a comma-separated pair list, computed on the
+// currently cached data (no network). Powers the consensus "max" button.
+app.get('/api/rotations', async (req, res) => {
+  const pairs = String(req.query.pairs || '').split(',').map((p) => p.trim().toUpperCase()).filter(Boolean);
+  const compareSymbol = String(req.query.compare || 'BTCUSDT').toUpperCase();
+  if (!pairs.length || pairs.length > 6 || pairs.some((p) => !SYMBOL_RE.test(p))) {
+    return res.status(400).json({ error: 'pass 1-6 pairs like ?pairs=DOTUSDT,AVAXUSDT' });
+  }
+  try {
+    const out = {};
+    for (const p of pairs) out[p] = await countRotations(p, compareSymbol);
+    const suggested = Math.min(1000, Math.max(0, ...Object.values(out).map((r) => r.maxRotations)));
+    res.json({ pairs: out, suggested });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Keep every dataset already on the server fresh: every 6 hours, fetch any
+// newly PUBLISHED monthly zips (the bulk portal posts a month a few days
+// after it ends) for each cached symbol. Purely additive; never re-downloads.
+async function refreshNewMonths() {
+  const now = new Date();
+  for (const { symbol } of cacheState()) {
+    const have = new Set(cachedMonths(symbol));
+    for (let back = 1; back <= 2; back++) {
+      const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - back, 1));
+      const mm = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
+      if (have.has(mm)) continue;
+      try {
+        const rows = await monthlyKlines(symbol, d.getUTCFullYear(), d.getUTCMonth() + 1);
+        if (rows) console.log(`auto-refresh: cached ${symbol} ${mm} (${rows.length} candles)`);
+      } catch (err) {
+        console.error(`auto-refresh failed for ${symbol} ${mm}:`, err.message);
+      }
+    }
+  }
+}
+setInterval(() => refreshNewMonths().catch((err) => console.error('auto-refresh failed:', err.message)), 6 * 60 * 60 * 1000);
+setTimeout(() => refreshNewMonths().catch((err) => console.error('auto-refresh failed:', err.message)), 60 * 1000);
 
 // ---- live paper tracker ------------------------------------------------------
 

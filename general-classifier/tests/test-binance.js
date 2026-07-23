@@ -75,4 +75,19 @@ module.exports = {
   async rejectsGarbage() {
     assert.throws(() => unzipSingleEntry(Buffer.from('definitely not a zip file at all......')), /not a zip/);
   },
+  async cachedMonthsScansOnlyMonthlyFilesForTheSymbol() {
+    const fs = require('fs');
+    const path = require('path');
+    const { cachedMonths } = require('../lib/binance');
+    const dir = path.join(__dirname, '..', 'data', 'cache');
+    fs.mkdirSync(dir, { recursive: true });
+    const files = ['TESTAAUSDT-1h-2025-02.json', 'TESTAAUSDT-1h-2025-01.json', 'TESTAAUSDT-1h-2025-01-15.json', 'TESTBBUSDT-1h-2025-01.json'];
+    try {
+      for (const f of files) fs.writeFileSync(path.join(dir, f), '[]');
+      assert.deepStrictEqual(cachedMonths('TESTAAUSDT'), ['2025-01', '2025-02']); // sorted, no daily, no other symbol
+      assert.deepStrictEqual(cachedMonths('NOPEUSDT'), []);
+    } finally {
+      for (const f of files) fs.rmSync(path.join(dir, f), { force: true });
+    }
+  },
 };

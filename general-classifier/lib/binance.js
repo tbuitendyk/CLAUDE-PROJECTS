@@ -182,6 +182,22 @@ async function recentKlines(symbol, sinceMs) {
   return rows;
 }
 
+// Sorted list of cached month strings ('2020-08', ...) for one symbol.
+function cachedMonths(symbol) {
+  let files = [];
+  try {
+    files = fs.readdirSync(CACHE_DIR);
+  } catch {
+    return [];
+  }
+  const months = [];
+  for (const f of files) {
+    const m = new RegExp(`^${symbol}-1h-(\\d{4}-\\d{2})\\.json$`).exec(f);
+    if (m) months.push(m[1]);
+  }
+  return months.sort();
+}
+
 // What's on disk: per symbol, how many months are cached and the span they
 // cover. Powers the UI's "available data" area.
 function cacheState() {
@@ -207,4 +223,4 @@ function cacheState() {
     .sort((a, b) => (a.symbol < b.symbol ? -1 : 1));
 }
 
-module.exports = { monthlyKlines, dailyKlines, recentKlines, unzipSingleEntry, parseKlineCsv, cacheState, HOUR_MS };
+module.exports = { monthlyKlines, dailyKlines, recentKlines, unzipSingleEntry, parseKlineCsv, cacheState, cachedMonths, HOUR_MS };

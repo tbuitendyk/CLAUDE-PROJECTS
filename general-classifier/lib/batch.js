@@ -101,6 +101,7 @@ function startBatch(params) {
     compareSymbol = 'BTCUSDT',
     pairs = DEFAULT_PAIRS,
     models = ['logreg', 'boost'],
+    allLoaded = false,
   } = params || {};
 
   const stamp = new Date().toISOString().replace(/[-:]/g, '').slice(0, 13).replace('T', '-');
@@ -110,7 +111,7 @@ function startBatch(params) {
     startedAt: new Date().toISOString(),
     finishedAt: null,
     progress: '',
-    params: { dormantPct, startMonth, endMonth, featureSet, compareSymbol, models },
+    params: { dormantPct, startMonth, endMonth, featureSet, compareSymbol, models, allLoaded },
     runs: [],
     summary: null,
   };
@@ -137,6 +138,7 @@ function startBatch(params) {
             endMonth,
             featureSet,
             model: run.model,
+            allLoaded,
           },
           (p) => {
             doc.progress = `${run.trade} / ${run.model}: ${p}`;
@@ -241,6 +243,7 @@ function startConsensus(params) {
     compareSymbol = 'BTCUSDT',
     pairs = DEFAULT_PAIRS,
     nullShifts = 0,
+    allLoaded = false,
   } = params || {};
   const nShifts = Math.min(1000, Math.max(0, Math.floor(Number(nullShifts) || 0)));
 
@@ -261,6 +264,7 @@ function startConsensus(params) {
       views: CONSENSUS_VIEWS,
       models: CONSENSUS_MODELS,
       nullShifts: nShifts,
+      allLoaded,
     },
     runs: [],
     summary: null,
@@ -298,6 +302,7 @@ function startConsensus(params) {
             model: run.model,
             featureView: run.view,
             labelShiftFrac: run.shift > 0 ? run.shift / (nShifts + 1) : 0,
+            allLoaded,
           },
           (p) => {
             doc.progress = `${tag}: ${p}`;

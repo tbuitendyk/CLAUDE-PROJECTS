@@ -1,4 +1,4 @@
-const { monthlyKlines } = require('./binance');
+const { monthlyKlines, cachedMonths } = require('./binance');
 const { toHourlyMap, forwardFill, buildChunks, scoreDiff, balancedBandPct } = require('./dataset');
 const { FEATURE_NAMES, viewIndices } = require('./features');
 const { CLASSES, standardizeFit, standardizeApply, predict, accuracy, tuneAndTrain } = require('./logreg');
@@ -48,6 +48,20 @@ async function loadSymbol(symbol, months, onProgress) {
     else for (const r of monthRows) rows.push(r); // no spread-push: keeps arg counts off the call stack
   }
   return { rows, missing };
+}
+
+// "All loaded data" mode: read exactly the months already cached on disk
+// for this symbol — never touches the network.
+async function loadSymbolAll(symbol, onProgress) {
+  const rows = [];
+  const list = cachedMonths(symbol);
+  for (const mm of list) {
+    onProgress(`reading cached ${symbol} ${mm}`);
+    const [year, month] = mm.split('-').map(Number);
+    const monthRows = await monthlyKlines(symbol, year, month);
+    if (monthRows) for (const r of monthRows) rows.push(r);
+  }
+  return { rows, missing: [], cachedMonthCount: list.length };
 }
 
 function confusionMatrix(pairs) {
@@ -108,10 +122,11 @@ async function runAnalysis(params, onProgress = () => {}) {
   const featureView = params.featureView || 'full';
   const explicitShift = Math.max(0, Math.floor(Number(params.labelShift) || 0));
   const labelShiftFrac = Number(params.labelShiftFrac) || 0;
-  const months = monthList(startMonth, endMonth);
+  const allLoaded = !!params.allLoaded;
+  const months = allLoaded ? null : monthList(startMonth, endMonth);
 
-  const trade = await loadSymbol(tradeSymbol, months, onProgress);
-  const compare = await loadSymbol(compareSymbol, months, onProgress);
+  const trade = allLoaded ? await loadSymbolAll(tradeSymbol, onProgress) : await loadSymbol(tradeSymbol, months, onProgress);
+  const compare = allLoaded ? await loadSymbolAll(compareSymbol, onProgress) : await loadSymbol(compareSymbol, months, onProgress);
   if (trade.rows.length === 0) throw new Error(`no data for ${tradeSymbol} in that range — is the pair listed on Binance spot?`);
   if (compare.rows.length === 0) throw new Error(`no data for ${compareSymbol} in that range — is the pair listed on Binance spot?`);
 
@@ -251,11 +266,11 @@ async function runAnalysis(params, onProgress = () => {}) {
 
   const fmtWeek = (c) => new Date(c.startTs).toISOString().slice(0, 10);
   return {
-    params: { dormantPct, tradeSymbol, compareSymbol, startMonth, endMonth, featureSet, model: modelKind, featureView, labelShift },
+    params: { dormantPct, tradeSymbol, compareSymbol, startMonth, endMonth, featureSet, model: modelKind, featureView, labelShift, allLoaded },
     data: {
       dormantBandPct,
       adaptiveBand,
-      monthsRequested: months.length,
+      monthsRequested: allLoaded ? Math.max(trade.cachedMonthCount, compare.cachedMonthCount) : months.length,
       missingMonths: { [tradeSymbol]: trade.missing, [compareSymbol]: compare.missing },
       candles: { [tradeSymbol]: trade.rows.length, [compareSymbol]: compare.rows.length },
       gapFills: { [tradeSymbol]: tradeFilled.fills, [compareSymbol]: compareFilled.fills },
@@ -282,6 +297,19 @@ async function runAnalysis(params, onProgress = () => {}) {
       rows: testRows,
     },
   };
+}
+
+// Exact null-shift ceiling for a pair on the currently cached data: count
+// the labelable chunks and subtract the 16-week buffer. Used by the UI's
+// "max" button so oversized shift requests aren't guesswork.
+async function countRotations(tradeSymbol, compareSymbol, onProgress = () => {}) {
+  const trade = await loadSymbolAll(tradeSymbol, onProgress);
+  const compare = await loadSymbolAll(compareSymbol, onProgress);
+  if (!trade.rows.length || !compare.rows.length) return { chunks: 0, maxRotations: 0 };
+  const tradeFilled = forwardFill(toHourlyMap(trade.rows));
+  const compareFilled = forwardFill(toHourlyMap(compare.rows));
+  const { chunks } = buildChunks(tradeFilled.map, compareFilled.map, 0, 'compressed');
+  return { chunks: chunks.length, maxRotations: Math.max(0, chunks.length - 16) };
 }
 
 // Map a fractional null-shift request (0..1) onto a pair's own cycle of n
@@ -349,4 +377,4 @@ async function loadData({ tradeSymbol, compareSymbol, startMonth, endMonth }, on
   return out;
 }
 
-module.exports = { runAnalysis, loadData, monthList, extractMetrics, deriveShift, MIN_CHUNKS };
+module.exports = { runAnalysis, loadData, monthList, extractMetrics, deriveShift, countRotations, MIN_CHUNKS };

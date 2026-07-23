@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>General Classifier</title>
-  <link rel="stylesheet" href="style.css?v=9">
+  <link rel="stylesheet" href="style.css?v=10">
 </head>
 <body>
   <header class="topbar">
@@ -49,6 +49,7 @@
       <div class="field">
         <label for="end">End month</label>
         <input id="end" type="month" value="2026-06" required>
+        <label class="check"><input type="checkbox" id="allloaded"> all loaded data</label>
       </div>
       <div class="field">
         <label for="features">Features</label>
@@ -126,6 +127,7 @@
           <label for="cons-null">Null shifts (0&ndash;1000)</label>
           <input id="cons-null" type="number" min="0" max="1000" step="1" value="0">
         </div>
+        <div class="field submit"><button id="cons-max" type="button" class="secondary" title="Compute the exact distinct-rotation ceiling for the pairs listed (on currently cached data) and fill it in">max</button></div>
         <div class="field submit"><button id="cons-start" type="button">Start consensus screen</button></div>
       </div>
       <p class="note">
@@ -147,6 +149,6 @@
     pruned to time / open / high / low / close / quote&nbsp;volume.
   </footer>
 
-  <script src="app.js?v=10"></script>
+  <script src="app.js?v=11"></script>
 </body>
 </html>
