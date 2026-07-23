@@ -20,6 +20,28 @@ const DEFAULT_PAIRS = [
 
 let activeBatch = null; // one at a time; the UI polls this
 
+// Startup sweep: a batch doc still marked 'running' on disk means the
+// service died or was restarted mid-screen (deploys included). Mark it
+// honestly so the picker never shows a zombie as alive. Completed runs and
+// the summary-so-far are already persisted and stay usable.
+(() => {
+  try {
+    for (const f of fs.readdirSync(BATCH_DIR)) {
+      if (!f.endsWith('.json')) continue;
+      const file = path.join(BATCH_DIR, f);
+      const doc = JSON.parse(fs.readFileSync(file, 'utf8'));
+      if (doc.status !== 'running') continue;
+      for (const r of doc.runs) if (r.status === 'running') r.status = 'error';
+      doc.status = 'interrupted';
+      doc.finishedAt = doc.finishedAt || new Date().toISOString();
+      doc.progress = '';
+      fs.writeFileSync(file, JSON.stringify(doc, null, 1));
+    }
+  } catch {
+    /* no batch dir yet */
+  }
+})();
+
 function batchFile(id) {
   return path.join(BATCH_DIR, `${id}.json`);
 }
