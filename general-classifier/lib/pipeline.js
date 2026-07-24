@@ -1,8 +1,8 @@
 const { monthlyKlines, cachedMonths, HOUR_MS } = require('./binance');
-const { pnlFor } = require('./paper');
+const { pnlFor, directionalCall } = require('./paper');
 const { toHourlyMap, forwardFill, buildChunks, scoreDiff, balancedBandPct, GEOMETRIES } = require('./dataset');
 const { featureNamesFor, viewIndices } = require('./features');
-const { CLASSES, standardizeFit, standardizeApply, predict, accuracy, tuneAndTrain } = require('./logreg');
+const { CLASSES, standardizeFit, standardizeApply, predict, accuracy, tuneAndTrain, trainSoftmax } = require('./logreg');
 const { trainBoost, predictBoost, accuracyBoost, importanceTable } = require('./boost');
 
 // End-to-end run: download -> prune -> chunk -> score -> train 80% -> test
@@ -11,6 +11,34 @@ const { trainBoost, predictBoost, accuracyBoost, importanceTable } = require('./
 // predicting the future.
 
 const MIN_CHUNKS = 12;
+
+// Threshold menu for the directional decision rule — a FIXED, pre-registered
+// grid (never a continuous scan). tau=0 is "always in, direction only".
+// Chosen on the chronological validation tail by paper P&L; ties go to the
+// higher tau (fewer, more confident trades).
+const TAU_GRID = [0, 0.34, 0.4, 0.45, 0.5, 0.55, 0.6];
+
+function tuneTau(valChunks, valProbs, tradeMap, geo) {
+  const ladder = TAU_GRID.map((tau) => {
+    let pnl = 0;
+    let trades = 0;
+    valChunks.forEach((c, i) => {
+      const call = directionalCall(valProbs[i], tau);
+      if (call === 0) return;
+      const entryC = tradeMap.get(c.startTs + geo.entryOffsetH * HOUR_MS);
+      const exitC = tradeMap.get(c.startTs + geo.exitOffsetH * HOUR_MS);
+      if (!entryC || !exitC) return;
+      pnl += pnlFor(call, entryC.open, exitC.open);
+      trades++;
+    });
+    return { tau, pnl, trades };
+  });
+  let best = ladder[0];
+  for (const row of ladder) {
+    if (row.pnl > best.pnl || (row.pnl === best.pnl && row.tau > best.tau)) best = row;
+  }
+  return { tau: best.tau, tauLadder: ladder };
+}
 
 function monthList(startMonth, endMonth) {
   const parse = (s) => {
@@ -127,6 +155,7 @@ async function runAnalysis(params, onProgress = () => {}) {
   const featureSet = params.featureSet === 'raw' ? 'raw' : 'compressed';
   const modelKind = params.model === 'boost' ? 'boost' : 'logreg';
   const featureView = params.featureView || 'full';
+  const decision = params.decision === 'directional' ? 'directional' : 'argmax';
   const geometry = params.geometry || 'weekly-8d';
   const geo = GEOMETRIES[geometry];
   if (!geo) throw new Error(`unknown geometry "${geometry}"`);
@@ -198,16 +227,47 @@ async function runAnalysis(params, onProgress = () => {}) {
   const featureCount = chunks[0].x.length;
   const ytr = trainChunks.map((c) => c.label);
   const yte = testChunks.map((c) => c.label);
+  const trainCounts = classCounts(ytr);
+
+  // Big-move hunter: balanced class weights from TRAINING counts, so the
+  // rare ±1 chunks carry as much total loss as the dormant majority and the
+  // optimizer can't settle for "always 0". Capped so a nearly-empty class
+  // can't dominate. The decision side (directionalCall + tau) is tuned on
+  // the validation tail by paper P&L below.
+  let classWeights = null;
+  if (decision === 'directional') {
+    const present = CLASSES.filter((c) => trainCounts[c] > 0);
+    classWeights = {};
+    for (const c of CLASSES) {
+      classWeights[c] = trainCounts[c] > 0 ? Math.min(20, ytr.length / (present.length * trainCounts[c])) : 1;
+    }
+  }
+  const weightsFor = (labels) => (classWeights ? labels.map((l) => classWeights[l]) : null);
 
   let tuning;
   let finalInfo;
   let predictFn;
+  let tau = null;
+  let tauLadder = null;
   if (modelKind === 'logreg') {
     onProgress(`standardizing features (${featureCount} per chunk)`);
     const scaler = standardizeFit(trainChunks.map((c) => c.x));
     const Xtr = standardizeApply(trainChunks.map((c) => c.x), scaler);
     const Xte = standardizeApply(testChunks.map((c) => c.x), scaler);
-    const { model, ladder, chosenLambda, valSize, valMajorityAcc } = await tuneAndTrain(Xtr, ytr, { onProgress });
+    const { model, ladder, chosenLambda, valSize, valMajorityAcc } = await tuneAndTrain(Xtr, ytr, { onProgress, classWeights });
+    if (decision === 'directional') {
+      // Honest tau: a probe at the chosen lambda trained on the sub-train
+      // only (same split as the ladder), so the validation probabilities the
+      // threshold is tuned on were never trained on.
+      const nSub = Xtr.length - Math.max(3, Math.round(Xtr.length * 0.25));
+      onProgress('tuning directional threshold on the validation tail (paper P&L)');
+      const probe = await trainSoftmax(Xtr.slice(0, nSub), ytr.slice(0, nSub), chosenLambda, {
+        weights: weightsFor(ytr.slice(0, nSub)),
+      });
+      const valProbs = [];
+      for (let i = nSub; i < Xtr.length; i++) valProbs.push(predict(probe, Xtr[i]).probs);
+      ({ tau, tauLadder } = tuneTau(trainChunks.slice(nSub), valProbs, tradeFilled.map, geo));
+    }
     tuning = { model: 'logreg', ladder, chosenLambda, valSize, valMajorityAcc };
     finalInfo = {
       iters: model.iters,
@@ -237,12 +297,23 @@ async function runAnalysis(params, onProgress = () => {}) {
     const probe = await trainBoost(Xtr.slice(0, nSub), ysub, {
       Xval: Xtr.slice(nSub),
       yval,
+      weights: weightsFor(ysub),
+      valWeights: weightsFor(yval),
       onRound: (r) => { if (r % 10 === 0) onProgress(`boosting round ${r} (validation watch)`); },
     });
     const valAcc = accuracyBoost(probe, Xtr.slice(nSub), yval);
+    if (decision === 'directional') {
+      // The probe never trained on the validation tail — its probabilities
+      // there are honest, so tau tunes on them by paper P&L.
+      onProgress('tuning directional threshold on the validation tail (paper P&L)');
+      const valProbs = [];
+      for (let i = nSub; i < Xtr.length; i++) valProbs.push(predictBoost(probe, Xtr[i]).probs);
+      ({ tau, tauLadder } = tuneTau(trainChunks.slice(nSub), valProbs, tradeFilled.map, geo));
+    }
     onProgress(`retraining on all ${Xtr.length} training weeks for ${probe.bestRound} rounds`);
     const model = await trainBoost(Xtr, ytr, {
       rounds: probe.bestRound,
+      weights: weightsFor(ytr),
       onRound: (r) => { if (r % 10 === 0) onProgress(`final boosting round ${r}/${probe.bestRound}`); },
     });
     tuning = { model: 'boost', bestRound: probe.bestRound, valAcc, valSize: nVal, valMajorityAcc };
@@ -256,9 +327,18 @@ async function runAnalysis(params, onProgress = () => {}) {
     predictFn = (i) => predictBoost(model, Xte[i]);
   }
 
+  if (decision === 'directional') {
+    Object.assign(tuning, { decision, classWeights, tau, tauLadder });
+  }
+
   onProgress('evaluating the out-of-sample test set');
+  // Directional mode: the ACTION is the prediction — every downstream metric
+  // (accuracy, confusion, paper, vote books) scores what would be traded.
+  const decide = decision === 'directional'
+    ? (p) => ({ label: directionalCall(p.probs, tau), probs: p.probs })
+    : (p) => p;
   const testRows = testChunks.map((c, i) => {
-    const p = predictFn(i);
+    const p = decide(predictFn(i));
     // one-shot paper book over the test window at this geometry's own
     // entry/exit candles (classic = the tracker's Tue 03:00 / Thu 15:00)
     const entryC = tradeFilled.map.get(c.startTs + geo.entryOffsetH * HOUR_MS);
@@ -291,14 +371,13 @@ async function runAnalysis(params, onProgress = () => {}) {
     unpriced: testRows.length - priced.length,
   };
 
-  const trainCounts = classCounts(ytr);
   const testCounts = classCounts(yte);
   const majorityClass = CLASSES.reduce((a, b) => (trainCounts[b] > trainCounts[a] ? b : a));
   const majorityBaseline = yte.filter((l) => l === majorityClass).length / yte.length;
 
   const fmtWeek = (c) => new Date(c.startTs).toISOString().slice(0, 10);
   return {
-    params: { dormantPct, tradeSymbol, compareSymbol, startMonth, endMonth, featureSet, model: modelKind, featureView, labelShift, allLoaded, geometry },
+    params: { dormantPct, tradeSymbol, compareSymbol, startMonth, endMonth, featureSet, model: modelKind, featureView, decision, labelShift, allLoaded, geometry },
     data: {
       dormantBandPct,
       adaptiveBand,
@@ -393,7 +472,10 @@ function extractMetrics(report) {
     testWeeks: report.split.test.count,
     chunks: report.data.chunks,
     testClassCounts: report.split.test.classCounts,
-    chosen: report.tuning.model === 'boost' ? `rounds=${report.tuning.bestRound}` : `lambda=${report.tuning.chosenLambda}`,
+    chosen: (report.tuning.model === 'boost' ? `rounds=${report.tuning.bestRound}` : `lambda=${report.tuning.chosenLambda}`)
+      + (report.tuning.tau != null ? `, tau=${report.tuning.tau}` : ''),
+    decision: report.params.decision || 'argmax',
+    tau: report.tuning.tau ?? null,
     valMajorityAcc: report.tuning.valMajorityAcc,
     bandPct: report.data.dormantBandPct,
     paperPnl: report.test.paper ? report.test.paper.pnl : null,

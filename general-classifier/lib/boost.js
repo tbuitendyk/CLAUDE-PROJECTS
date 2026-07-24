@@ -117,13 +117,16 @@ function scoreRow(model, x) {
   return z;
 }
 
-function logLoss(model, X, yIdx) {
+function logLoss(model, X, yIdx, w = null) {
   let loss = 0;
+  let sumW = 0;
   for (let i = 0; i < X.length; i++) {
+    const wi = w ? w[i] : 1;
+    sumW += wi;
     const p = softmaxRow(scoreRow(model, X[i]));
-    loss -= Math.log(Math.max(p[yIdx[i]], 1e-300));
+    loss -= wi * Math.log(Math.max(p[yIdx[i]], 1e-300));
   }
-  return loss / X.length;
+  return loss / sumW;
 }
 
 // Train for up to `rounds`; when Xval/yval are given, early-stop on val
@@ -138,6 +141,8 @@ async function trainBoost(X, y, {
   Xval = null,
   yval = null,
   onRound = null,
+  weights = null, // per-sample: scales gradients, hessians, priors, so
+  valWeights = null, // Newton leaves optimize the weighted loss exactly
 } = {}) {
   const n = X.length;
   const f = X[0].length;
@@ -145,9 +150,15 @@ async function trainBoost(X, y, {
   const yvalIdx = yval ? yval.map(classIndex) : null;
 
   // Laplace-smoothed log priors so an absent class never yields -Infinity.
+  // Weighted counts keep the starting scores consistent with the objective.
   const counts = new Float64Array(K);
-  for (const k of yIdx) counts[k]++;
-  const priors = Array.from({ length: K }, (_, k) => Math.log((counts[k] + 1) / (n + K)));
+  let sumW = 0;
+  for (let i = 0; i < n; i++) {
+    const wi = weights ? weights[i] : 1;
+    counts[yIdx[i]] += wi;
+    sumW += wi;
+  }
+  const priors = Array.from({ length: K }, (_, k) => Math.log((counts[k] + 1) / (sumW + K)));
 
   const model = { priors, trees: [], importance: new Float64Array(f), bestRound: 0, valCurveBest: null };
   const F = Array.from({ length: n }, () => Float64Array.from(priors));
@@ -170,8 +181,9 @@ async function trainBoost(X, y, {
       const res = new Float64Array(n);
       const hess = new Float64Array(n);
       for (let i = 0; i < n; i++) {
-        res[i] = (yIdx[i] === k ? 1 : 0) - P[i][k];
-        hess[i] = Math.max(P[i][k] * (1 - P[i][k]), 1e-6);
+        const wi = weights ? weights[i] : 1;
+        res[i] = wi * ((yIdx[i] === k ? 1 : 0) - P[i][k]);
+        hess[i] = wi * Math.max(P[i][k] * (1 - P[i][k]), 1e-6);
       }
       const tree = fitTree(X, res, hess, [...Array(n).keys()], { minLeaf, lr, importance: model.importance });
       roundTrees.push(tree);
@@ -180,7 +192,7 @@ async function trainBoost(X, y, {
     model.trees.push(roundTrees);
 
     if (yvalIdx) {
-      const vl = logLoss(model, Xval, yvalIdx);
+      const vl = logLoss(model, Xval, yvalIdx, valWeights);
       if (vl < bestValLoss - 1e-6) {
         bestValLoss = vl;
         bestTreeCount = model.trees.length;

@@ -102,4 +102,46 @@ module.exports = {
     const acc = accuracy(model, X, y);
     assert.ok(acc > 0.9, `accuracy ${acc}`);
   },
+  async classWeightsRescueRareMovers() {
+    // Wide-band shape: 30 dormant chunks blanket [-1,1] on one feature, five
+    // +1 movers overlap the right end, five -1 movers the left end. The
+    // unweighted optimum leans on the 3:1 prior and calls the overlap 0;
+    // balanced weights make the rare classes matter enough to claim it.
+    const X = [];
+    const y = [];
+    for (let i = 0; i < 30; i++) {
+      X.push([(i / 29) * 2 - 1]);
+      y.push(0);
+    }
+    for (const v of [0.6, 0.7, 0.8, 0.9, 1.0]) {
+      X.push([v]);
+      y.push(1);
+    }
+    for (const v of [-0.6, -0.7, -0.8, -0.9, -1.0]) {
+      X.push([v]);
+      y.push(-1);
+    }
+    const balanced = { '-1': 40 / 15, 0: 40 / 90, 1: 40 / 15 };
+    const weights = y.map((l) => balanced[l]);
+    const plain = await trainSoftmax(X, y, 0.1);
+    const weighted = await trainSoftmax(X, y, 0.1, { weights });
+    assert.strictEqual(predict(plain, [0.75]).label, 0); // prior wins unweighted
+    assert.strictEqual(predict(weighted, [0.75]).label, 1);
+    assert.strictEqual(predict(weighted, [-0.75]).label, -1);
+    assert.strictEqual(predict(weighted, [0]).label, 0); // middle stays dormant
+    // weighted accuracy: all-ones weights reproduce the plain number exactly
+    const ones = y.map(() => 1);
+    assert.strictEqual(accuracy(plain, X, y, ones), accuracy(plain, X, y));
+    // under balanced weights the weighted model scores better than the plain
+    assert.ok(accuracy(weighted, X, y, weights) > accuracy(plain, X, y, weights));
+  },
+  async tuneAndTrainAcceptsClassWeights() {
+    const { X, y } = makeData(80, 4, 23);
+    const { model, chosenLambda } = await tuneAndTrain(X, y, {
+      lambdas: [0.1, 1],
+      classWeights: { '-1': 1.5, 0: 0.7, 1: 1.5 },
+    });
+    assert.ok([0.1, 1].includes(chosenLambda));
+    assert.ok(accuracy(model, X, y) > 0.5); // still learns the real rule
+  },
 };

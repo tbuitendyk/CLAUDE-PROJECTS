@@ -1,7 +1,7 @@
 const { assert } = require('./helpers');
 const { FEATURE_NAMES, viewIndices } = require('../lib/features');
 const { summarizeConsensus, voteBook, CONSENSUS_VIEWS, CONSENSUS_MODELS } = require('../lib/batch');
-const { voteOf, pnlFor } = require('../lib/paper');
+const { voteOf, pnlFor, directionalCall } = require('../lib/paper');
 const { deriveShift } = require('../lib/pipeline');
 
 module.exports = {
@@ -56,6 +56,16 @@ module.exports = {
     const a = s.pairs[0];
     assert.strictEqual(a.null.shifts, 3); // 40, 90, 140 — not 4
     assert.ok(Math.abs(a.null.exceedRate - 1 / 3) < 1e-9);
+  },
+  async directionalCallIgnoresTheDormantClass() {
+    // P(0) can dominate outright and still never win at tau=0 — standing
+    // aside only happens on ties or below-threshold confidence.
+    assert.strictEqual(directionalCall({ '-1': 0.2, 0: 0.5, 1: 0.3 }, 0), 1);
+    assert.strictEqual(directionalCall({ '-1': 0.3, 0: 0.5, 1: 0.2 }, 0), -1);
+    assert.strictEqual(directionalCall({ '-1': 0.25, 0: 0.5, 1: 0.25 }, 0), 0); // exact tie
+    assert.strictEqual(directionalCall({ '-1': 0.2, 0: 0.5, 1: 0.3 }, 0.4), 0); // under threshold
+    assert.strictEqual(directionalCall({ '-1': 0.2, 0: 0.35, 1: 0.45 }, 0.4), 1); // over it
+    assert.strictEqual(directionalCall({ '-1': 0.55, 0: 0.05, 1: 0.4 }, 0.5), -1);
   },
   async voteRuleMatchesTheTracker() {
     // Same semantics as tracker.js voteOf: outright majority wins, ANY tie

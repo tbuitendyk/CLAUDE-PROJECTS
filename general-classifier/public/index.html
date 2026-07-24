@@ -76,6 +76,14 @@
           <option value="boost">Boosted trees (nonlinear)</option>
         </select>
       </div>
+      <div class="field">
+        <label for="decision">Decision</label>
+        <select id="decision"
+          title="Argmax: classic 3-class prediction — most likely of −1/0/+1 wins. Directional hunter: built for WIDE dormant bands (e.g. ±10%) where most periods are 0 — training weights the rare ±1 periods up so 'always predict 0' stops being rewarded, and the trade call compares P(+1) vs P(−1) only, standing aside when the winner's probability is below a threshold τ tuned on validation paper P&L (never the test window).">
+          <option value="argmax" selected>Argmax (3-class)</option>
+          <option value="directional">Directional hunter (±1 only, τ by $)</option>
+        </select>
+      </div>
       <div class="field submit">
         <button id="load-btn" type="button" class="secondary">Load Data</button>
       </div>
@@ -165,6 +173,6 @@
     pruned to time / open / high / low / close / quote&nbsp;volume.
   </footer>
 
-  <script src="app.js?v=23"></script>
+  <script src="app.js?v=24"></script>
 </body>
 </html>

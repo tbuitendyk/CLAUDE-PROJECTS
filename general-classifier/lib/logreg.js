@@ -77,31 +77,38 @@ function softmax(z) {
   return p;
 }
 
-// Full-batch loss + gradient. Returns {loss, grad}.
-function lossGrad(W, X, yIdx, lambda) {
+// Full-batch loss + gradient. Returns {loss, grad}. Optional per-sample
+// weights w make this cost-sensitive: everything normalizes by sum(w)
+// instead of n, so w = all-ones reproduces the unweighted math exactly.
+// Used by the big-move hunter, where rare ±1 chunks must outweigh the
+// dormant majority or the convex optimum is "always predict 0".
+function lossGrad(W, X, yIdx, lambda, w = null) {
   const n = X.length;
   const f = X[0].length;
   const grad = new Float64Array(K * (f + 1));
   let loss = 0;
+  let sumW = 0;
   for (let i = 0; i < n; i++) {
+    const wi = w ? w[i] : 1;
+    sumW += wi;
     const p = softmax(logits(W, X[i], f));
-    loss -= Math.log(Math.max(p[yIdx[i]], 1e-300));
+    loss -= wi * Math.log(Math.max(p[yIdx[i]], 1e-300));
     for (let k = 0; k < K; k++) {
-      const err = p[k] - (k === yIdx[i] ? 1 : 0);
+      const err = wi * (p[k] - (k === yIdx[i] ? 1 : 0));
       const off = k * (f + 1);
       const x = X[i];
       for (let j = 0; j < f; j++) grad[off + j] += err * x[j];
       grad[off + f] += err;
     }
   }
-  loss /= n;
+  loss /= sumW;
   for (let k = 0; k < K; k++) {
     const off = k * (f + 1);
     for (let j = 0; j < f; j++) {
-      loss += (lambda / (2 * n)) * W[off + j] * W[off + j];
-      grad[off + j] = grad[off + j] / n + (lambda / n) * W[off + j];
+      loss += (lambda / (2 * sumW)) * W[off + j] * W[off + j];
+      grad[off + j] = grad[off + j] / sumW + (lambda / sumW) * W[off + j];
     }
-    grad[off + f] /= n;
+    grad[off + f] /= sumW;
   }
   return { loss, grad };
 }
@@ -119,13 +126,13 @@ function lossGrad(W, X, yIdx, lambda) {
 const { makeYielder } = require('./throttle');
 const YIELD_EVERY = 10;
 
-async function trainSoftmax(X, y, lambda, { maxIter = 5000, tol = 1e-7, onIter = null } = {}) {
+async function trainSoftmax(X, y, lambda, { maxIter = 5000, tol = 1e-7, onIter = null, weights = null } = {}) {
   const f = X[0].length;
   const yIdx = y.map(classIndex);
   const pace = makeYielder();
   let W = new Float64Array(K * (f + 1));
   let lr = 1.0;
-  let { loss, grad } = lossGrad(W, X, yIdx, lambda);
+  let { loss, grad } = lossGrad(W, X, yIdx, lambda, weights);
   let iter = 0;
   let converged = false;
   for (; iter < maxIter; iter++) {
@@ -135,7 +142,7 @@ async function trainSoftmax(X, y, lambda, { maxIter = 5000, tol = 1e-7, onIter =
     }
     const Wnext = new Float64Array(W.length);
     for (let i = 0; i < W.length; i++) Wnext[i] = W[i] - lr * grad[i];
-    const next = lossGrad(Wnext, X, yIdx, lambda);
+    const next = lossGrad(Wnext, X, yIdx, lambda, weights);
     if (next.loss <= loss) {
       const improved = (loss - next.loss) / Math.max(loss, 1e-12);
       W = Wnext;
@@ -166,11 +173,19 @@ function predict(model, x) {
   return { label: CLASSES[best], probs: { '-1': p[0], 0: p[1], 1: p[2] } };
 }
 
-function accuracy(model, X, y) {
+// Optional per-sample weights turn this into cost-weighted accuracy — with
+// balanced class weights it behaves like balanced accuracy, the right
+// yardstick when the training objective itself is class-weighted.
+function accuracy(model, X, y, w = null) {
   if (X.length === 0) return null;
   let hit = 0;
-  for (let i = 0; i < X.length; i++) if (predict(model, X[i]).label === y[i]) hit++;
-  return hit / X.length;
+  let sumW = 0;
+  for (let i = 0; i < X.length; i++) {
+    const wi = w ? w[i] : 1;
+    sumW += wi;
+    if (predict(model, X[i]).label === y[i]) hit += wi;
+  }
+  return hit / sumW;
 }
 
 // ---- lambda ladder ----------------------------------------------------------
@@ -183,7 +198,7 @@ const DEFAULT_LAMBDAS = [0.01, 0.03, 0.1, 0.3, 1, 3, 10, 30];
 // the TOP of the ladder, the ladder auto-extends (×~3 per rung, up to 4
 // times) so an edge pick always means "the interior optimum", never "the
 // fence was too close".
-async function tuneAndTrain(Xtr, ytr, { lambdas = DEFAULT_LAMBDAS, onProgress = () => {} } = {}) {
+async function tuneAndTrain(Xtr, ytr, { lambdas = DEFAULT_LAMBDAS, onProgress = () => {}, classWeights = null } = {}) {
   const n = Xtr.length;
   const nVal = Math.max(3, Math.round(n * 0.25));
   const nSub = n - nVal;
@@ -192,6 +207,12 @@ async function tuneAndTrain(Xtr, ytr, { lambdas = DEFAULT_LAMBDAS, onProgress = 
   const ysub = ytr.slice(0, nSub);
   const Xval = Xtr.slice(nSub);
   const yval = ytr.slice(nSub);
+  // classWeights (label -> weight) makes training cost-sensitive AND scores
+  // the validation ladder with the same weights, so lambda is chosen for the
+  // weighted objective, not for "predict the dormant majority".
+  const wFor = classWeights ? (labels) => labels.map((l) => classWeights[l] ?? 1) : () => null;
+  const wsub = wFor(ysub);
+  const wval = wFor(yval);
 
   // Reference for reading the ladder: a model that always guesses the
   // sub-train majority class, scored on the same validation weeks. Ladder
@@ -205,9 +226,10 @@ async function tuneAndTrain(Xtr, ytr, { lambdas = DEFAULT_LAMBDAS, onProgress = 
   const evalLambda = async (lambda) => {
     onProgress(`training at lambda=${lambda}`);
     const m = await trainSoftmax(Xsub, ysub, lambda, {
+      weights: wsub,
       onIter: (i) => onProgress(`training at lambda=${lambda} (iteration ${i})`),
     });
-    ladder.push({ lambda, valAcc: accuracy(m, Xval, yval), iters: m.iters, converged: m.converged });
+    ladder.push({ lambda, valAcc: accuracy(m, Xval, yval, wval), iters: m.iters, converged: m.converged });
   };
   const pickBest = () => {
     let best = ladder[0];
@@ -228,6 +250,7 @@ async function tuneAndTrain(Xtr, ytr, { lambdas = DEFAULT_LAMBDAS, onProgress = 
   const best = pickBest();
   onProgress(`retraining on full training set at lambda=${best.lambda}`);
   const model = await trainSoftmax(Xtr, ytr, best.lambda, {
+    weights: wFor(ytr),
     onIter: (i) => onProgress(`retraining at lambda=${best.lambda} (iteration ${i})`),
   });
   return { model, ladder, chosenLambda: best.lambda, valSize: nVal, valMajorityAcc };

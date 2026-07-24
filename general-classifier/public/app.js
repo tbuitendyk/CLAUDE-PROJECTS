@@ -181,6 +181,7 @@
           model: $('model').value,
           featureView: pendingView || 'full',
           geometry: $('geometry').value,
+          decision: $('decision').value,
         }),
       });
       pendingView = null;
@@ -331,6 +332,27 @@
           training accuracy ${pct(r.final.trainAcc)}.</p>
       </div>`}
 
+      ${r.tuning.tau != null ? `
+      <div class="section">
+        <h2>Directional hunter — threshold tuned by validation paper P&amp;L</h2>
+        <div class="tiles">
+          ${tile('Chosen τ', String(r.tuning.tau), r.tuning.tau === 0 ? 'always in — trade every period, direction only' : 'stand aside below this directional probability', true)}
+          ${tile('Class weights', CLASSES.map((c) => `${clsName(c)}&thinsp;×${(r.tuning.classWeights[String(c)] ?? 1).toFixed(2)}`).join(' '), 'training loss multipliers (balanced on training counts)')}
+        </div>
+        <div class="tablewrap"><table>
+          <tr><th>τ</th><th>validation P&amp;L</th><th>trades</th></tr>
+          ${r.tuning.tauLadder.map((row) => `
+            <tr>
+              <td class="${row.tau === r.tuning.tau ? 'chosen' : ''}">${row.tau}${row.tau === r.tuning.tau ? ' ← chosen' : ''}</td>
+              <td>${money(row.pnl)}</td><td>${row.trades}</td>
+            </tr>`).join('')}
+        </table></div>
+        <p class="note">The action compares P(+1) vs P(−1) only — 0 is never "predicted", it's what happens when the winning
+          direction lacks confidence (or the probabilities tie). τ comes from a fixed menu scored by paper P&amp;L on the
+          validation tail; the test window never influences it. With wide dormant bands this is the honest setup: the
+          model is trained to hunt the rare big movers, and dollars — not accuracy — pick how trigger-happy to be.</p>
+      </div>` : ''}
+
       ${r.final.topWeights ? `
       <div class="section">
         <h2>What the model leaned on (top ${r.final.topWeights.length} of ${r.data.featureCount} features by |weight|)</h2>
@@ -405,7 +427,7 @@
     const range = doc.params.allLoaded ? 'all loaded data' : `${esc(doc.params.startMonth)}→${esc(doc.params.endMonth)}`;
     const header = `${esc(doc.id)} — ${esc(doc.status)}${doc.status === 'running' && doc.progress ? ` — ${esc(doc.progress)}` : ''}
       · ${doc.runs.filter((r) => r.status === 'done' || r.status === 'error').length}/${doc.runs.length} runs
-      · dormant ±${esc(String(doc.params.dormantPct))}% · ${range} · ${esc(doc.params.geometry || 'weekly-8d')} · vs ${esc(doc.params.compareSymbol)}`;
+      · dormant ±${esc(String(doc.params.dormantPct))}% · ${range} · ${esc(doc.params.geometry || 'weekly-8d')}${doc.params.decision === 'directional' ? ' · directional hunter' : ''} · vs ${esc(doc.params.compareSymbol)}`;
     if (!s || !s.ranked.length) {
       batchViewEl.innerHTML = `<p class="note">${header}</p><p class="note">No completed runs yet.</p>`;
       return;
@@ -551,6 +573,7 @@
     }
     $('features').value = doc.params.featureSet || 'compressed';
     $('geometry').value = doc.params.geometry || 'weekly-8d';
+    $('decision').value = doc.params.decision || 'argmax';
     $('model').value = r.model;
     const auto = doc.params.dormantPct === 'auto';
     $('autoband').checked = auto;
@@ -622,6 +645,7 @@
           allLoaded: allLoadedChecked(),
           featureSet: $('features').value,
           geometry: $('geometry').value,
+          decision: $('decision').value,
         }),
       });
       const body = await jsonBody(res);
@@ -664,6 +688,8 @@
         allLoaded: allLoadedChecked(),
         nullShifts: Number($('cons-null').value) || 0,
         geometry: $('geometry').value,
+        decision: $('decision').value,
+        dormantPct: dormantValue(), // 'auto' = classic; a manual wide band feeds the big-move hunter
       };
       if (pairsRaw) body.pairs = pairsRaw.split(',').map((p) => p.trim().toUpperCase()).filter(Boolean);
       const res = await fetch('api/consensus', {

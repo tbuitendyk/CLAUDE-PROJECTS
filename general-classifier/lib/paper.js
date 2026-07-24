@@ -30,4 +30,17 @@ function voteOf(labels) {
   return winners.length === 1 ? Number(winners[0]) : 0;
 }
 
-module.exports = { NOTIONAL, FEE_PER_LEG, ENTRY_OFFSET_H, EXIT_OFFSET_H, pnlFor, voteOf };
+// Big-move hunter decision rule: act on the LARGER of the two directional
+// probabilities — P(0) never wins by default, because standing aside is a
+// choice about CONFIDENCE, not a class to be predicted — but stand aside
+// unless that probability clears tau. tau = 0 means always-in. tau itself
+// is tuned upstream on validation paper P&L, never on the test window.
+function directionalCall(probs, tau) {
+  const up = probs['1'];
+  const down = probs['-1'];
+  if (up === down) return 0;
+  const label = up > down ? 1 : -1;
+  return Math.max(up, down) >= tau ? label : 0;
+}
+
+module.exports = { NOTIONAL, FEE_PER_LEG, ENTRY_OFFSET_H, EXIT_OFFSET_H, pnlFor, voteOf, directionalCall };

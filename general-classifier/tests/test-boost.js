@@ -68,6 +68,34 @@ module.exports = {
     const acc = accuracyBoost(model, X, y);
     assert.ok(acc > 0.9, `accuracy ${acc}`);
   },
+  async sampleWeightsRescueRareMovers() {
+    // Same wide-band shape as the logreg test: dormant majority blankets the
+    // feature line, rare ±1 movers overlap the ends. With balanced weights
+    // the boosted model must claim the overlap regions for the movers.
+    const X = [];
+    const y = [];
+    for (let i = 0; i < 30; i++) {
+      X.push([(i / 29) * 2 - 1]);
+      y.push(0);
+    }
+    for (const v of [0.6, 0.7, 0.8, 0.9, 1.0]) {
+      X.push([v]);
+      y.push(1);
+    }
+    for (const v of [-0.6, -0.7, -0.8, -0.9, -1.0]) {
+      X.push([v]);
+      y.push(-1);
+    }
+    const balanced = { '-1': 40 / 15, 0: 40 / 90, 1: 40 / 15 };
+    const weights = y.map((l) => balanced[l]);
+    const weighted = await trainBoost(X, y, { rounds: 60, minLeaf: 2, weights });
+    assert.strictEqual(predictBoost(weighted, [0.8]).label, 1);
+    assert.strictEqual(predictBoost(weighted, [-0.8]).label, -1);
+    assert.strictEqual(predictBoost(weighted, [0]).label, 0);
+    // weighted priors shift toward the up-weighted classes vs the plain fit
+    const plain = await trainBoost(X, y, { rounds: 1, minLeaf: 2 });
+    assert.ok(weighted.priors[1] < plain.priors[1], 'dormant prior must shrink under balancing');
+  },
   async batchSummarizeRanksByEdge() {
     const mk = (trade, model, edge, status = 'done') => ({
       trade,

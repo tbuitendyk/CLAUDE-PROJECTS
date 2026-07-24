@@ -140,6 +140,7 @@ function startBatch(params) {
     pairs = DEFAULT_PAIRS,
     models = ['logreg', 'boost'],
     geometry = 'weekly-8d',
+    decision = 'argmax',
     allLoaded = false,
   } = params || {};
 
@@ -150,7 +151,7 @@ function startBatch(params) {
     startedAt: new Date().toISOString(),
     finishedAt: null,
     progress: '',
-    params: { dormantPct, startMonth, endMonth, featureSet, compareSymbol, models, geometry, allLoaded },
+    params: { dormantPct, startMonth, endMonth, featureSet, compareSymbol, models, geometry, decision, allLoaded },
     runs: [],
     summary: null,
   };
@@ -179,6 +180,7 @@ function startBatch(params) {
             featureSet,
             model: run.model,
             geometry,
+            decision,
             allLoaded,
           },
           (p) => {
@@ -353,6 +355,8 @@ function startConsensus(params) {
     pairs = DEFAULT_PAIRS,
     nullShifts = 0,
     geometry = 'weekly-8d',
+    decision = 'argmax',
+    dormantPct = 'auto', // manual wide bands (big-move hunter) allowed; 'auto' = classic
     allLoaded = false,
   } = params || {};
   const nShifts = Math.min(1000, Math.max(0, Math.floor(Number(nullShifts) || 0)));
@@ -366,7 +370,7 @@ function startConsensus(params) {
     finishedAt: null,
     progress: '',
     params: {
-      dormantPct: 'auto',
+      dormantPct,
       startMonth,
       endMonth,
       featureSet: 'compressed',
@@ -375,6 +379,7 @@ function startConsensus(params) {
       models: CONSENSUS_MODELS,
       nullShifts: nShifts,
       geometry,
+      decision,
       allLoaded,
     },
     runs: [],
@@ -418,7 +423,7 @@ function startConsensus(params) {
       try {
         const report = await runAnalysis(
           {
-            dormantPct: 'auto',
+            dormantPct,
             tradeSymbol: run.trade,
             compareSymbol: run.compare,
             startMonth,
@@ -428,6 +433,7 @@ function startConsensus(params) {
             featureView: run.view,
             labelShiftFrac: run.shift > 0 ? run.shift / (nShifts + 1) : 0,
             geometry,
+            decision,
             allLoaded,
           },
           (p) => {

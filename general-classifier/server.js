@@ -91,8 +91,12 @@ app.post('/api/run', (req, res) => {
   if (!GEOMETRY_KEYS.includes(geometry)) {
     return res.status(400).json({ error: `geometry must be one of ${GEOMETRY_KEYS.join('/')}` });
   }
+  const decision = String(b.decision || 'argmax');
+  if (decision !== 'argmax' && decision !== 'directional') {
+    return res.status(400).json({ error: 'decision must be "argmax" or "directional"' });
+  }
   const jobId = startJob((setProgress) =>
-    runAnalysis({ dormantPct, tradeSymbol, compareSymbol, startMonth, endMonth, featureSet, model, featureView, geometry, allLoaded }, setProgress)
+    runAnalysis({ dormantPct, tradeSymbol, compareSymbol, startMonth, endMonth, featureSet, model, featureView, decision, geometry, allLoaded }, setProgress)
   );
   res.json({ jobId });
 });
@@ -120,6 +124,10 @@ app.post('/api/batch', (req, res) => {
   if (!GEOMETRY_KEYS.includes(batchGeometry)) {
     return res.status(400).json({ error: `geometry must be one of ${GEOMETRY_KEYS.join('/')}` });
   }
+  const batchDecision = String(b.decision || 'argmax');
+  if (batchDecision !== 'argmax' && batchDecision !== 'directional') {
+    return res.status(400).json({ error: 'decision must be "argmax" or "directional"' });
+  }
   try {
     const id = batch.startBatch({
       dormantPct,
@@ -130,6 +138,7 @@ app.post('/api/batch', (req, res) => {
       pairs: b.pairs,
       models: b.models,
       geometry: batchGeometry,
+      decision: batchDecision,
       allLoaded: !!b.allLoaded,
     });
     res.json({ batchId: id });
@@ -156,6 +165,14 @@ app.post('/api/consensus', (req, res) => {
   if (!GEOMETRY_KEYS.includes(consGeometry)) {
     return res.status(400).json({ error: `geometry must be one of ${GEOMETRY_KEYS.join('/')}` });
   }
+  const consDecision = String(b.decision || 'argmax');
+  if (consDecision !== 'argmax' && consDecision !== 'directional') {
+    return res.status(400).json({ error: 'decision must be "argmax" or "directional"' });
+  }
+  const consDormant = b.dormantPct === undefined || b.dormantPct === 'auto' ? 'auto' : Number(b.dormantPct);
+  if (consDormant !== 'auto' && (!Number.isFinite(consDormant) || consDormant <= 0 || consDormant >= 50)) {
+    return res.status(400).json({ error: 'dormant range must be "auto" or a percentage between 0 and 50' });
+  }
   try {
     const id = batch.startConsensus({
       startMonth: b.startMonth,
@@ -164,6 +181,8 @@ app.post('/api/consensus', (req, res) => {
       pairs: b.pairs ? b.pairs.map((p) => String(p).toUpperCase()) : undefined,
       nullShifts,
       geometry: consGeometry,
+      decision: consDecision,
+      dormantPct: consDormant,
       allLoaded: !!b.allLoaded,
     });
     res.json({ batchId: id });
