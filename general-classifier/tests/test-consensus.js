@@ -1,7 +1,7 @@
 const { assert } = require('./helpers');
 const { FEATURE_NAMES, viewIndices } = require('../lib/features');
-const { summarizeConsensus, voteBook, CONSENSUS_VIEWS, CONSENSUS_MODELS } = require('../lib/batch');
-const { voteOf, pnlFor, directionalCall } = require('../lib/paper');
+const { summarizeConsensus, voteBook, SUPER_QUORUM, CONSENSUS_VIEWS, CONSENSUS_MODELS } = require('../lib/batch');
+const { voteOf, superOf, pnlFor, directionalCall } = require('../lib/paper');
 const { deriveShift } = require('../lib/pipeline');
 
 module.exports = {
@@ -66,6 +66,86 @@ module.exports = {
     assert.strictEqual(directionalCall({ '-1': 0.2, 0: 0.5, 1: 0.3 }, 0.4), 0); // under threshold
     assert.strictEqual(directionalCall({ '-1': 0.2, 0: 0.35, 1: 0.45 }, 0.4), 1); // over it
     assert.strictEqual(directionalCall({ '-1': 0.55, 0: 0.05, 1: 0.4 }, 0.5), -1);
+  },
+  async superGateNeedsSixOfEight() {
+    assert.strictEqual(SUPER_QUORUM, 6);
+    assert.strictEqual(superOf([1, 1, 1, 1, 1, 1, 0, -1]), 1); // 6 up
+    assert.strictEqual(superOf([-1, -1, -1, -1, -1, -1, -1, 1]), -1); // 7 down
+    assert.strictEqual(superOf([1, 1, 1, 1, 1, 0, 0, -1]), 0); // 5 up: majority vote fires, gate doesn't
+    assert.strictEqual(superOf([1, 1, 1, 1, 1, -1, -1, -1]), 0); // 5-3 plurality is not conviction
+    assert.strictEqual(superOf([0, 0, 0, 0, 0, 0, 0, 0]), 0);
+    assert.strictEqual(superOf([1, 1, 1, 1, 1, 1, 1, 1]), 1);
+    // quorum is an absolute count: 5 specs present can never clear 6
+    assert.strictEqual(superOf([1, 1, 1, 1, 1], 6), 0);
+  },
+  async voteBookCarriesBothBooks() {
+    // 8 specs, 3 periods: unanimous up / 5-3 split / 6 down.
+    const col = (arr) => arr; // per-spec rows, transposed below
+    const perPeriod = [
+      [1, 1, 1, 1, 1, 1, 1, 1], // vote +1, super +1
+      [1, 1, 1, 1, 1, -1, -1, -1], // vote +1, super 0
+      [-1, -1, -1, -1, -1, -1, 0, 0], // vote -1, super -1
+    ];
+    const group = {
+      bestConstant: 1 / 3,
+      rows: [
+        { week: 'p1', actual: 1, entry: 100, exit: 110 },
+        { week: 'p2', actual: -1, entry: 100, exit: 90 },
+        { week: 'p3', actual: -1, entry: 100, exit: 95 },
+      ],
+      preds: Array.from({ length: 8 }, (_, s) => perPeriod.map((p) => col(p)[s])),
+    };
+    const { stats, superStats, rows } = voteBook(group);
+    assert.deepStrictEqual(rows.map((r) => r.vote), [1, 1, -1]);
+    assert.deepStrictEqual(rows.map((r) => r.sup), [1, 0, -1]);
+    // vote: +9 (long into +10%), -11 (long into -10%), +4 (short into -5%)
+    assert.ok(Math.abs(stats.pnl - (9 - 11 + 4)) < 1e-9);
+    assert.strictEqual(stats.trades, 3);
+    // super: skips the split period entirely — fewer trades, fewer fees
+    assert.ok(Math.abs(superStats.pnl - (9 + 4)) < 1e-9);
+    assert.strictEqual(superStats.trades, 2);
+    assert.strictEqual(superStats.wins, 2);
+    // both books miss p2 (actual -1; vote said +1, super stood aside) -> 2/3 each
+    assert.ok(Math.abs(stats.acc - 2 / 3) < 1e-9);
+    assert.ok(Math.abs(superStats.acc - 2 / 3) < 1e-9);
+  },
+  async superStatsFlowIntoTheSummary() {
+    const run = (shift) => ({
+      trade: 'AAAUSDT',
+      compare: 'BTCUSDT',
+      model: 'logreg',
+      view: 'full',
+      shift,
+      effectiveShift: shift ? shift * 10 : 0,
+      status: 'done',
+      error: null,
+      metrics: { hindsightEdge: 0.05, edge: 0.05, balancedEdge: 0, balancedAcc: 0.4 },
+    });
+    const votes = {
+      AAAUSDT: {
+        real: {
+          pnl: 12, trades: 5, wins: 3, acc: 0.5, trueEdge: 0.1, specsInVote: 8,
+          super: { pnl: 8, trades: 2, wins: 2, acc: 0.55, trueEdge: 0.15, specsInVote: 8 },
+          rows: [{ week: 'w1' }],
+          specPreds: { 'full/logreg': [1] },
+        },
+        nulls: {
+          10: { pnl: 20, trades: 6, acc: 0.5, trueEdge: 0.12, super: { pnl: 9, trades: 3, acc: 0.4, trueEdge: -0.01 } },
+          20: { pnl: -5, trades: 4, acc: 0.3, trueEdge: -0.08, super: { pnl: -2, trades: 1, acc: 0.3, trueEdge: -0.1 } },
+        },
+      },
+    };
+    const s = summarizeConsensus([run(0), run(1), run(2)], votes);
+    const a = s.pairs[0];
+    assert.strictEqual(a.superVote.pnl, 8);
+    assert.strictEqual(a.vote.super, undefined); // super lives in its own field
+    assert.strictEqual(a.vote.specPreds, undefined); // raw preds never bloat the summary
+    assert.strictEqual(a.nullVote.superShifts, 2);
+    assert.ok(Math.abs(a.nullVote.superExceedPnl - 0.5) < 1e-9); // 9 >= 8, -2 < 8
+    assert.ok(Math.abs(a.nullVote.superExceedEdge - 0) < 1e-9); // neither null edge beats 0.15
+    // old-format votes (no super) keep working
+    const old = summarizeConsensus([run(0)], { AAAUSDT: { real: { pnl: 1, trades: 1, wins: 1, rows: [] }, nulls: {} } });
+    assert.strictEqual(old.pairs[0].superVote, null);
   },
   async voteRuleMatchesTheTracker() {
     // Same semantics as tracker.js voteOf: outright majority wins, ANY tie

@@ -159,7 +159,9 @@
         &times; 2 models, adaptive band, full history above — and scores each pair by agreement across its 8 specs, never
         by its best cell. Each pair also gets a simulated <strong>vote book</strong>: every test period the 8 specs vote
         (majority wins, ties stand aside — the live tracker's exact rule) and the vote trades $100 at the geometry's
-        entry/exit candles, so the screen reports the dollars the actual consensus strategy would have made. Null shifts re-run the whole grid with circularly time-shifted labels to measure the noise
+        entry/exit candles, so the screen reports the dollars the actual consensus strategy would have made — plus a
+        <strong>super 6/8 book</strong> that trades only when six or more specs call the same direction, the
+        conviction-concentration gate aimed at fee drag. Null shifts re-run the whole grid with circularly time-shifted labels to measure the noise
         floor (expensive: each shift adds 8 more runs per pair — use a short pair list). Note: a pair only has
         ~(weeks &minus; 16) distinct rotations (&asymp;290 for a 2020-listed pair, &asymp;420 for full history), so
         requests beyond that hit duplicate rotations, which are collapsed into single null samples rather than
@@ -175,6 +177,6 @@
     pruned to time / open / high / low / close / quote&nbsp;volume.
   </footer>
 
-  <script src="app.js?v=25"></script>
+  <script src="app.js?v=26"></script>
 </body>
 </html>

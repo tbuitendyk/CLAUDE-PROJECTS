@@ -30,6 +30,24 @@ function voteOf(labels) {
   return winners.length === 1 ? Number(winners[0]) : 0;
 }
 
+// Supermajority gate: trade only when at least `quorum` specs agree on the
+// SAME direction (absolute count, not a fraction of those present).
+// Plurality is irrelevant — 5 up vs 3 down stands aside at quorum 6, even
+// though the majority vote would go long. This is the conviction-
+// concentration counterpart to voteOf: fewer trades, each backed by broad
+// cross-method agreement, aimed at the fee drag that eats thin edges.
+function superOf(labels, quorum = 6) {
+  let up = 0;
+  let down = 0;
+  for (const p of labels) {
+    if (p === 1) up++;
+    else if (p === -1) down++;
+  }
+  if (up >= quorum) return 1;
+  if (down >= quorum) return -1;
+  return 0;
+}
+
 // Big-move hunter decision rule: act on the LARGER of the two directional
 // probabilities — P(0) never wins by default, because standing aside is a
 // choice about CONFIDENCE, not a class to be predicted — but stand aside
@@ -43,4 +61,4 @@ function directionalCall(probs, tau) {
   return Math.max(up, down) >= tau ? label : 0;
 }
 
-module.exports = { NOTIONAL, FEE_PER_LEG, ENTRY_OFFSET_H, EXIT_OFFSET_H, pnlFor, voteOf, directionalCall };
+module.exports = { NOTIONAL, FEE_PER_LEG, ENTRY_OFFSET_H, EXIT_OFFSET_H, pnlFor, voteOf, superOf, directionalCall };

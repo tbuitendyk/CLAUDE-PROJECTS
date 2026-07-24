@@ -1,7 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const { runAnalysis, extractMetrics } = require('./pipeline');
-const { pnlFor, voteOf } = require('./paper');
+const { pnlFor, voteOf, superOf } = require('./paper');
 
 // Pair screen: run the full pipeline for every (trade pair x model) combo
 // against one compare pair, sequentially, persisting after every run so a
@@ -225,6 +225,7 @@ const CONSENSUS_VIEWS = ['full', 'prices', 'volume', 'cross'];
 const CONSENSUS_MODELS = ['logreg', 'boost'];
 const SPECS_PER_GRID = CONSENSUS_VIEWS.length * CONSENSUS_MODELS.length; // 8
 const VOTE_QUORUM = 5; // a "vote of the 8" needs most of them present to mean anything
+const SUPER_QUORUM = 6; // pre-registered supermajority gate: 6 of 8 same-direction
 
 // ---- simulated consensus (vote) book -------------------------------------------
 //
@@ -238,36 +239,43 @@ const VOTE_QUORUM = 5; // a "vote of the 8" needs most of them present to mean a
 //
 // group: { rows: [{week, actual, entry, exit}], preds: [ [-1|0|1 per row] ],
 //          bestConstant } — assembled in startConsensus as spec runs finish.
+// Two books from the same predictions: `vote` (tracker rule — majority, any
+// tie stands aside) and `super` (SUPER_QUORUM same-direction specs or stand
+// aside — the fee-fighting conviction gate).
 function voteBook(group) {
   const rows = group.rows.map((r, i) => {
-    const vote = voteOf(group.preds.map((p) => p[i]));
+    const calls = group.preds.map((p) => p[i]);
+    const vote = voteOf(calls);
+    const sup = superOf(calls, SUPER_QUORUM);
     const priced = r.entry != null && r.exit != null;
     return {
       week: r.week,
       vote,
+      sup,
       actual: r.actual,
       entry: r.entry,
       exit: r.exit,
       pnl: priced ? pnlFor(vote, r.entry, r.exit) : null,
+      supPnl: priced ? pnlFor(sup, r.entry, r.exit) : null,
     };
   });
-  const priced = rows.filter((r) => r.pnl != null);
-  const trades = priced.filter((r) => r.vote !== 0);
-  const correct = rows.filter((r) => r.vote === r.actual).length;
-  const acc = rows.length ? correct / rows.length : null;
-  return {
-    stats: {
-      pnl: priced.reduce((s, r) => s + r.pnl, 0),
+  const bookStats = (callKey, pnlKey) => {
+    const priced = rows.filter((r) => r[pnlKey] != null);
+    const trades = priced.filter((r) => r[callKey] !== 0);
+    const correct = rows.filter((r) => r[callKey] === r.actual).length;
+    const acc = rows.length ? correct / rows.length : null;
+    return {
+      pnl: priced.reduce((s, r) => s + r[pnlKey], 0),
       trades: trades.length,
-      wins: trades.filter((r) => r.pnl > 0).length,
+      wins: trades.filter((r) => r[pnlKey] > 0).length,
       unpriced: rows.length - priced.length,
       scored: rows.length,
       acc,
       trueEdge: acc != null && group.bestConstant != null ? acc - group.bestConstant : null,
       specsInVote: group.preds.length,
-    },
-    rows,
+    };
   };
+  return { stats: bookStats('vote', 'pnl'), superStats: bookStats('sup', 'supPnl'), rows };
 }
 
 function median(values) {
@@ -302,10 +310,12 @@ function summarizeConsensus(runs, votes = null) {
   const perPair = pairs
     .map((trade) => {
       const real = consensusOf(done.filter((r) => r.trade === trade && !r.shift));
-      // Simulated vote book (doc.votes): stats for the real grid, plus the
-      // dollars/edge exceed rates against the null-shift vote books.
+      // Simulated vote books (doc.votes): majority + supermajority stats for
+      // the real grid, plus dollars/edge exceed rates against the null-shift
+      // books. Older docs stored no `super`/`specPreds` — everything guards.
       const vt = votes ? votes[trade] : null;
-      const voteStats = vt && vt.real ? (({ rows, ...stats }) => stats)(vt.real) : null;
+      const voteStats = vt && vt.real ? (({ rows, specPreds, super: sup, ...stats }) => stats)(vt.real) : null;
+      const superStats = vt && vt.real ? vt.real.super || null : null;
       let nullVote = null;
       if (voteStats && vt.nulls) {
         const nv = Object.values(vt.nulls);
@@ -316,6 +326,12 @@ function summarizeConsensus(runs, votes = null) {
             exceedEdge: nv.filter((s) => (s.trueEdge ?? -Infinity) >= (vt.real.trueEdge ?? -Infinity)).length / nv.length,
             medianPnl: median(nv.map((s) => s.pnl)),
           };
+          const nvS = nv.filter((s) => s.super);
+          if (superStats && nvS.length) {
+            nullVote.superShifts = nvS.length;
+            nullVote.superExceedPnl = nvS.filter((s) => s.super.pnl >= superStats.pnl).length / nvS.length;
+            nullVote.superExceedEdge = nvS.filter((s) => (s.super.trueEdge ?? -Infinity) >= (superStats.trueEdge ?? -Infinity)).length / nvS.length;
+          }
         }
       }
       // Group null runs by the EFFECTIVE rotation (derived per pair from the
@@ -334,7 +350,7 @@ function summarizeConsensus(runs, votes = null) {
           exceedRate: beatOrTie / shiftIds.length, // ~p-value: share of null shifts scoring >= the real run
         };
       }
-      return { trade, ...real, vote: voteStats, nullVote, null: nullStats };
+      return { trade, ...real, vote: voteStats, superVote: superStats, nullVote, null: nullStats };
     })
     .sort((a, b) => b.fraction - a.fraction || (b.medianTrueEdge ?? -1) - (a.medianTrueEdge ?? -1));
   return {
@@ -421,7 +437,7 @@ function startConsensus(params) {
       const groupKey = `${run.trade}|${run.shift}`;
       let group = voteGroups.get(groupKey);
       if (!group) {
-        group = { rows: null, preds: [], bestConstant: null, effectiveShift: 0, completed: 0 };
+        group = { rows: null, preds: [], specKeys: [], bestConstant: null, effectiveShift: 0, completed: 0 };
         voteGroups.set(groupKey, group);
       }
       try {
@@ -453,6 +469,7 @@ function startConsensus(params) {
         }
         if (report.test.rows.length === group.rows.length) {
           group.preds.push(report.test.rows.map((r) => r.predicted));
+          group.specKeys.push(`${run.view}/${run.model}`);
           group.bestConstant = run.metrics.bestConstant;
           group.effectiveShift = run.effectiveShift;
         }
@@ -466,11 +483,20 @@ function startConsensus(params) {
         if (group.preds.length >= VOTE_QUORUM) {
           const book = voteBook(group);
           const v = doc.votes[run.trade] || (doc.votes[run.trade] = { real: null, nulls: {} });
-          // Real grid keeps its trade-by-trade rows for the UI; null books
-          // keep stats only, keyed by effective rotation so duplicate
-          // rotations collapse exactly like the consensus-fraction nulls.
-          if (run.shift === 0) v.real = { ...book.stats, rows: book.rows };
-          else v.nulls[group.effectiveShift] = book.stats;
+          // Real grid keeps its trade-by-trade rows AND the raw per-spec
+          // predictions (future gate ideas re-analyze without rerunning);
+          // null books keep stats only, keyed by effective rotation so
+          // duplicate rotations collapse exactly like the fraction nulls.
+          if (run.shift === 0) {
+            v.real = {
+              ...book.stats,
+              super: book.superStats,
+              rows: book.rows,
+              specPreds: Object.fromEntries(group.specKeys.map((k, i) => [k, group.preds[i]])),
+            };
+          } else {
+            v.nulls[group.effectiveShift] = { ...book.stats, super: book.superStats };
+          }
         }
       }
       doc.summary = summarizeConsensus(doc.runs, doc.votes);
@@ -501,6 +527,7 @@ module.exports = {
   summarize,
   summarizeConsensus,
   voteBook,
+  SUPER_QUORUM,
   DEFAULT_PAIRS,
   CONSENSUS_VIEWS,
   CONSENSUS_MODELS,
