@@ -1,6 +1,7 @@
 const { assert } = require('./helpers');
 const { FEATURE_NAMES, viewIndices } = require('../lib/features');
-const { summarizeConsensus, CONSENSUS_VIEWS, CONSENSUS_MODELS } = require('../lib/batch');
+const { summarizeConsensus, voteBook, CONSENSUS_VIEWS, CONSENSUS_MODELS } = require('../lib/batch');
+const { voteOf, pnlFor } = require('../lib/paper');
 const { deriveShift } = require('../lib/pipeline');
 
 module.exports = {
@@ -55,6 +56,84 @@ module.exports = {
     const a = s.pairs[0];
     assert.strictEqual(a.null.shifts, 3); // 40, 90, 140 — not 4
     assert.ok(Math.abs(a.null.exceedRate - 1 / 3) < 1e-9);
+  },
+  async voteRuleMatchesTheTracker() {
+    // Same semantics as tracker.js voteOf: outright majority wins, ANY tie
+    // for the top count stands aside.
+    assert.strictEqual(voteOf([1, 1, 1, 1, 1, 0, 0, -1]), 1);
+    assert.strictEqual(voteOf([-1, -1, -1, 0, 0, 1, 1, -1]), -1);
+    assert.strictEqual(voteOf([1, 1, 1, 1, -1, -1, -1, -1]), 0); // 4-4 tie
+    assert.strictEqual(voteOf([1, 1, 1, 0, 0, 0, -1, -1]), 0); // 3-3 top tie
+    assert.strictEqual(voteOf([0, 0, 0, 0, 0, 0, 0, 0]), 0);
+    assert.strictEqual(voteOf([1, 1, 1, 0, 0, -1, -1, -1]), 0); // 3-3 outer tie
+    assert.strictEqual(voteOf([1, 1, 1, 1, 0, 0, 0, -1]), 1); // 4-3-1
+  },
+  async voteBookTradesTheVote() {
+    // 4 test periods; 3 specs. Votes: +1, tie->0, -1, +1-unpriced.
+    const group = {
+      bestConstant: 0.5,
+      rows: [
+        { week: 'w1', actual: 1, entry: 100, exit: 110 }, // vote +1 -> +$9 win
+        { week: 'w2', actual: 0, entry: 100, exit: 90 }, // tie -> stand aside, $0
+        { week: 'w3', actual: 1, entry: 100, exit: 105 }, // vote -1 -> -$6 loss
+        { week: 'w4', actual: -1, entry: null, exit: null }, // vote +1 but unpriced
+      ],
+      preds: [
+        [1, 1, -1, 1],
+        [1, 0, -1, 1],
+        [1, -1, -1, 1],
+      ],
+    };
+    const { stats, rows } = voteBook(group);
+    assert.deepStrictEqual(rows.map((r) => r.vote), [1, 0, -1, 1]);
+    assert.ok(Math.abs(rows[0].pnl - 9) < 1e-9); // 100*(110/100-1) - 1
+    assert.strictEqual(rows[1].pnl, 0);
+    assert.ok(Math.abs(rows[2].pnl + 6) < 1e-9); // short into a +5% move
+    assert.strictEqual(rows[3].pnl, null);
+    assert.ok(Math.abs(stats.pnl - 3) < 1e-9);
+    assert.strictEqual(stats.trades, 2); // stand-aside and unpriced don't trade
+    assert.strictEqual(stats.wins, 1);
+    assert.strictEqual(stats.unpriced, 1);
+    assert.strictEqual(stats.scored, 4);
+    assert.ok(Math.abs(stats.acc - 0.5) < 1e-9); // w1 (+1=+1) and w2 (0=0)
+    assert.ok(Math.abs(stats.trueEdge - 0) < 1e-9); // 0.5 acc - 0.5 bestConstant
+    assert.strictEqual(stats.specsInVote, 3);
+    // book P&L is per-row pnlFor, so paper economics can never drift
+    assert.strictEqual(rows[0].pnl, pnlFor(1, 100, 110));
+  },
+  async voteStatsMergeIntoTheSummary() {
+    const run = (shift, edge) => ({
+      trade: 'AAAUSDT',
+      compare: 'BTCUSDT',
+      model: 'logreg',
+      view: 'full',
+      shift,
+      effectiveShift: shift ? shift * 10 : 0,
+      status: 'done',
+      error: null,
+      metrics: { hindsightEdge: edge, edge, balancedEdge: 0, balancedAcc: 0.4 },
+    });
+    const runs = [run(0, 0.05), run(1, 0.01), run(2, -0.01)];
+    const votes = {
+      AAAUSDT: {
+        real: { pnl: 12, trades: 5, wins: 3, unpriced: 0, scored: 10, acc: 0.5, trueEdge: 0.1, specsInVote: 8, rows: [{ week: 'w1' }] },
+        nulls: {
+          10: { pnl: 20, trades: 6, wins: 4, acc: 0.5, trueEdge: 0.12, specsInVote: 8 }, // beats real on both
+          20: { pnl: -5, trades: 4, wins: 1, acc: 0.3, trueEdge: -0.08, specsInVote: 8 },
+        },
+      },
+    };
+    const s = summarizeConsensus(runs, votes);
+    const a = s.pairs[0];
+    assert.strictEqual(a.vote.pnl, 12);
+    assert.strictEqual(a.vote.rows, undefined); // rows stay on doc.votes, not in the summary
+    assert.strictEqual(a.nullVote.shifts, 2);
+    assert.ok(Math.abs(a.nullVote.exceedPnl - 0.5) < 1e-9);
+    assert.ok(Math.abs(a.nullVote.exceedEdge - 0.5) < 1e-9);
+    // without votes the fields are null and nothing breaks (old docs)
+    const bare = summarizeConsensus(runs);
+    assert.strictEqual(bare.pairs[0].vote, null);
+    assert.strictEqual(bare.pairs[0].nullVote, null);
   },
   async consensusAggregatesPerPair() {
     const run = (trade, view, model, shift, hindsightEdge, balancedAcc = 0.4) => ({

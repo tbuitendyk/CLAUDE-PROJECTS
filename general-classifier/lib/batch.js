@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const { runAnalysis, extractMetrics } = require('./pipeline');
+const { pnlFor, voteOf } = require('./paper');
 
 // Pair screen: run the full pipeline for every (trade pair x model) combo
 // against one compare pair, sequentially, persisting after every run so a
@@ -87,7 +88,7 @@ function getBatch(id) {
     // docs saved by older versions pick up new summary fields (e.g. median
     // paper P&L) without re-running anything.
     if (doc.summary && Array.isArray(doc.runs)) {
-      doc.summary = doc.kind === 'consensus' ? summarizeConsensus(doc.runs) : summarize(doc.runs);
+      doc.summary = doc.kind === 'consensus' ? summarizeConsensus(doc.runs, doc.votes || null) : summarize(doc.runs);
     }
     return doc;
   } catch {
@@ -218,6 +219,52 @@ function startBatch(params) {
 
 const CONSENSUS_VIEWS = ['full', 'prices', 'volume', 'cross'];
 const CONSENSUS_MODELS = ['logreg', 'boost'];
+const SPECS_PER_GRID = CONSENSUS_VIEWS.length * CONSENSUS_MODELS.length; // 8
+const VOTE_QUORUM = 5; // a "vote of the 8" needs most of them present to mean anything
+
+// ---- simulated consensus (vote) book -------------------------------------------
+//
+// The tradable number. All 8 specs of a pair share identical test chunks,
+// labels, and entry/exit candles — only their predictions differ — so for
+// every test period the specs VOTE (the tracker's exact rule via paper.js
+// voteOf: majority wins, any tie stands aside) and the vote trades one $100
+// order at the geometry's own entry/exit, $1 round trip. Computed for the
+// real grid AND for every null-shift rerun, so the vote book gets its own
+// noise floor alongside the consensus-fraction one.
+//
+// group: { rows: [{week, actual, entry, exit}], preds: [ [-1|0|1 per row] ],
+//          bestConstant } — assembled in startConsensus as spec runs finish.
+function voteBook(group) {
+  const rows = group.rows.map((r, i) => {
+    const vote = voteOf(group.preds.map((p) => p[i]));
+    const priced = r.entry != null && r.exit != null;
+    return {
+      week: r.week,
+      vote,
+      actual: r.actual,
+      entry: r.entry,
+      exit: r.exit,
+      pnl: priced ? pnlFor(vote, r.entry, r.exit) : null,
+    };
+  });
+  const priced = rows.filter((r) => r.pnl != null);
+  const trades = priced.filter((r) => r.vote !== 0);
+  const correct = rows.filter((r) => r.vote === r.actual).length;
+  const acc = rows.length ? correct / rows.length : null;
+  return {
+    stats: {
+      pnl: priced.reduce((s, r) => s + r.pnl, 0),
+      trades: trades.length,
+      wins: trades.filter((r) => r.pnl > 0).length,
+      unpriced: rows.length - priced.length,
+      scored: rows.length,
+      acc,
+      trueEdge: acc != null && group.bestConstant != null ? acc - group.bestConstant : null,
+      specsInVote: group.preds.length,
+    },
+    rows,
+  };
+}
 
 function median(values) {
   const v = [...values].sort((a, b) => a - b);
@@ -244,13 +291,29 @@ function consensusOf(specs) {
   };
 }
 
-function summarizeConsensus(runs) {
+function summarizeConsensus(runs, votes = null) {
   const done = runs.filter((r) => r.status === 'done');
   const failed = runs.filter((r) => r.status === 'error');
   const pairs = [...new Set(runs.map((r) => r.trade))];
   const perPair = pairs
     .map((trade) => {
       const real = consensusOf(done.filter((r) => r.trade === trade && !r.shift));
+      // Simulated vote book (doc.votes): stats for the real grid, plus the
+      // dollars/edge exceed rates against the null-shift vote books.
+      const vt = votes ? votes[trade] : null;
+      const voteStats = vt && vt.real ? (({ rows, ...stats }) => stats)(vt.real) : null;
+      let nullVote = null;
+      if (voteStats && vt.nulls) {
+        const nv = Object.values(vt.nulls);
+        if (nv.length) {
+          nullVote = {
+            shifts: nv.length,
+            exceedPnl: nv.filter((s) => s.pnl >= vt.real.pnl).length / nv.length,
+            exceedEdge: nv.filter((s) => (s.trueEdge ?? -Infinity) >= (vt.real.trueEdge ?? -Infinity)).length / nv.length,
+            medianPnl: median(nv.map((s) => s.pnl)),
+          };
+        }
+      }
       // Group null runs by the EFFECTIVE rotation (derived per pair from the
       // fractional request): duplicate rotations collapse into one sample
       // instead of double-counting identical reruns in the distribution.
@@ -267,7 +330,7 @@ function summarizeConsensus(runs) {
           exceedRate: beatOrTie / shiftIds.length, // ~p-value: share of null shifts scoring >= the real run
         };
       }
-      return { trade, ...real, null: nullStats };
+      return { trade, ...real, vote: voteStats, nullVote, null: nullStats };
     })
     .sort((a, b) => b.fraction - a.fraction || (b.medianTrueEdge ?? -1) - (a.medianTrueEdge ?? -1));
   return {
@@ -315,6 +378,7 @@ function startConsensus(params) {
       allLoaded,
     },
     runs: [],
+    votes: {}, // per pair: { real: {stats + rows}, nulls: { [effectiveShift]: stats } }
     summary: null,
   };
   // Shifts are requested as evenly spread FRACTIONS of each pair's own week
@@ -333,12 +397,24 @@ function startConsensus(params) {
   activeBatch = doc;
   saveBatch(doc);
 
+  // Vote-book accumulator: one group per (pair, shift sample). Groups live
+  // only in memory while their 8 specs run (the loop keeps them contiguous);
+  // the computed book lands in doc.votes and the raw predictions are dropped.
+  // A crash mid-group loses only that group's vote, never its spec runs.
+  const voteGroups = new Map();
+
   (async () => {
     for (const run of doc.runs) {
       if (doc.cancelRequested) break;
       run.status = 'running';
       const tag = `${run.trade}/${run.view}/${run.model}${run.shift ? `/shift${run.shift}` : ''}`;
       doc.progress = tag;
+      const groupKey = `${run.trade}|${run.shift}`;
+      let group = voteGroups.get(groupKey);
+      if (!group) {
+        group = { rows: null, preds: [], bestConstant: null, effectiveShift: 0, completed: 0 };
+        voteGroups.set(groupKey, group);
+      }
       try {
         const report = await runAnalysis(
           {
@@ -361,11 +437,32 @@ function startConsensus(params) {
         run.metrics = extractMetrics(report);
         run.effectiveShift = report.params.labelShift || 0;
         run.status = 'done';
+        if (!group.rows) {
+          group.rows = report.test.rows.map((r) => ({ week: r.weekStart, actual: r.actual, entry: r.entry, exit: r.exit }));
+        }
+        if (report.test.rows.length === group.rows.length) {
+          group.preds.push(report.test.rows.map((r) => r.predicted));
+          group.bestConstant = run.metrics.bestConstant;
+          group.effectiveShift = run.effectiveShift;
+        }
       } catch (err) {
         run.status = 'error';
         run.error = err.message || String(err);
       }
-      doc.summary = summarizeConsensus(doc.runs);
+      group.completed++;
+      if (group.completed === SPECS_PER_GRID) {
+        voteGroups.delete(groupKey);
+        if (group.preds.length >= VOTE_QUORUM) {
+          const book = voteBook(group);
+          const v = doc.votes[run.trade] || (doc.votes[run.trade] = { real: null, nulls: {} });
+          // Real grid keeps its trade-by-trade rows for the UI; null books
+          // keep stats only, keyed by effective rotation so duplicate
+          // rotations collapse exactly like the consensus-fraction nulls.
+          if (run.shift === 0) v.real = { ...book.stats, rows: book.rows };
+          else v.nulls[group.effectiveShift] = book.stats;
+        }
+      }
+      doc.summary = summarizeConsensus(doc.runs, doc.votes);
       saveBatch(doc);
     }
     for (const r of doc.runs) if (r.status === 'running') r.status = 'error';
@@ -392,6 +489,7 @@ module.exports = {
   cancelActive,
   summarize,
   summarizeConsensus,
+  voteBook,
   DEFAULT_PAIRS,
   CONSENSUS_VIEWS,
   CONSENSUS_MODELS,

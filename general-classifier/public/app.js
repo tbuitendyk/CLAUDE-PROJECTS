@@ -417,7 +417,10 @@
       consensus: 'positive ÷ specs done. The pair’s headline agreement score across methods.',
       medEdge: 'Middle value of the specs’ true edges — the TYPICAL spec’s margin, immune to one lucky or one broken spec.',
       medBal: 'Middle value of the specs’ balanced accuracies. Chance = 33.3% whatever the class mix, so distance above 33.3% = real sorting skill.',
-      medPaper: 'Middle value of the 8 specs’ one-shot $100 paper books over the test window (this geometry’s own entry/exit candles, $1 round trip) — the TYPICAL spec’s dollars, never the luckiest cell’s. (+N) = how many specs finished positive. Same caveat as the per-spec column: a few big-move periods dominate it.',
+      medPaper: 'Middle value of the 8 specs’ one-shot $100 paper books over the test window (this geometry’s own entry/exit candles, $1 round trip) — the TYPICAL spec’s dollars, never the luckiest cell’s. (+N) = how many specs finished positive. Robustness check; the vote book to the right is the tradable number.',
+      votePnl: 'The tradable number: each test period the 8 specs VOTE (majority wins, any tie stands aside — the live tracker’s exact rule) and the vote trades one $100 order at this geometry’s entry/exit candles, $1 round trip. This is what the consensus strategy would actually have made over the test window. (W/T) = wins/trades. Click "trades" for the period-by-period history.',
+      voteAcc: 'Share of test periods where the vote matched the realized class, with (edge) = vote accuracy − the best constant hindsight guess. Stand-asides count as calls of 0.',
+      nullVote: 'Share of label-shifted reruns whose VOTE BOOK made at least as many dollars as the real one — the dollars version of the exceed rate. Small is good; the consensus-fraction exceed rate stays the primary test.',
       nullMed: 'Consensus the same grid typically fabricates when labels are time-shifted (nothing real to find) — the machine’s noise floor.',
       nullExceed: 'Share of distinct label-shifted reruns whose consensus matched or beat the real one. Empirical p-value: 0% = noise never faked this well.',
       rank: 'Rank, best first by true edge.',
@@ -438,24 +441,47 @@
       paperWT: 'Paper wins / trades: directional (±1) calls only; wins closed positive after fees.',
     };
     const th = (label, tip) => `<th title="${esc(tip)}">${label}</th>`;
+    const fmtE = (e) => (e == null ? '—' : (e >= 0 ? '+' : '') + (100 * e).toFixed(1) + '%');
+    const voteHist = (pair) => {
+      const rows = doc.votes && doc.votes[pair] && doc.votes[pair].real && doc.votes[pair].real.rows;
+      if (!rows) return '<p class="note">No vote trade rows stored for this pair (older screen?).</p>';
+      return `<div class="tablewrap" style="margin:6px 0 4px"><table>
+        <tr><th>period start</th><th>vote</th><th>actual</th><th>entry</th><th>exit</th><th>P&amp;L</th></tr>
+        ${rows.map((r) => `
+          <tr class="${r.vote !== 0 && r.pnl != null && r.pnl <= 0 ? 'miss' : ''}">
+            <td>${esc(r.week)}</td><td>${clsSpan(r.vote)}</td><td>${clsSpan(r.actual)}</td>
+            <td>${r.entry != null ? r.entry : '—'}</td><td>${r.exit != null ? r.exit : '—'}</td>
+            <td>${r.pnl != null ? money(r.pnl) : '—'}</td>
+          </tr>`).join('')}
+      </table></div>`;
+    };
     const consensusBlock = s.kind === 'consensus' && s.pairs ? `
       <div class="tablewrap" style="margin-bottom:12px"><table>
-        <tr>${th('pair', T.pair)}${th('specs done', T.specs)}${th('positive true edge', T.posEdge)}${th('consensus', T.consensus)}${th('median true edge', T.medEdge)}${th('median balanced acc', T.medBal)}${th('median paper P&amp;L', T.medPaper)}${th('null: median consensus', T.nullMed)}${th('null: exceed rate', T.nullExceed)}</tr>
+        <tr>${th('pair', T.pair)}${th('specs done', T.specs)}${th('positive true edge', T.posEdge)}${th('consensus', T.consensus)}${th('median true edge', T.medEdge)}${th('median balanced acc', T.medBal)}${th('median paper P&amp;L', T.medPaper)}${th('vote P&amp;L (W/T)', T.votePnl)}${th('vote acc (edge)', T.voteAcc)}${th('null: median consensus', T.nullMed)}${th('null: exceed rate', T.nullExceed)}${th('null: vote exceed', T.nullVote)}</tr>
         ${s.pairs.map((p) => `
           <tr class="${p.fraction >= 0.625 && (p.medianTrueEdge ?? 0) > 0 ? 'hilite' : ''}">
             <td>${esc(p.trade)}</td><td>${p.specs}</td><td>${p.positive}</td>
             <td><strong>${pct(p.fraction, 0)}</strong></td>
-            <td>${p.medianTrueEdge != null ? (p.medianTrueEdge >= 0 ? '+' : '') + (100 * p.medianTrueEdge).toFixed(1) + '%' : '—'}</td>
+            <td>${fmtE(p.medianTrueEdge)}</td>
             <td>${pct(p.medianBalancedAcc)}</td>
             <td>${p.medianPaperPnl != null ? `${money(p.medianPaperPnl)} (+${p.positivePaper})` : '—'}</td>
+            <td class="nowrap">${p.vote
+              ? `<strong>${money(p.vote.pnl)}</strong> (${p.vote.wins}/${p.vote.trades})
+                 <button type="button" class="rowload votetrades" data-pair="${esc(p.trade)}">trades</button>${p.vote.specsInVote < 8 ? ` <span title="only ${p.vote.specsInVote} of 8 specs completed">⚠${p.vote.specsInVote}/8</span>` : ''}`
+              : '—'}</td>
+            <td>${p.vote ? `${pct(p.vote.acc)} (${fmtE(p.vote.trueEdge)})` : '—'}</td>
             <td>${p.null ? pct(p.null.medianNullFraction, 0) : '—'}</td>
             <td>${p.null ? `${pct(p.null.exceedRate, 0)} of ${p.null.shifts} shifts` : '—'}</td>
-          </tr>`).join('')}
+            <td>${p.nullVote ? `${pct(p.nullVote.exceedPnl, 0)} of ${p.nullVote.shifts}` : '—'}</td>
+          </tr>
+          <tr class="votehist" data-pair="${esc(p.trade)}" hidden><td colspan="12">${'' /* filled on toggle */}</td></tr>`).join('')}
       </table></div>
       <p class="note">Consensus = share of the pair's specs (4 views × 2 models) with positive true edge. Highlighted rows:
-        ≥5/8 specs positive with positive median. Null exceed rate ≈ p-value: the share of label-shifted reruns whose
-        consensus matched or beat the real one — small is good, and anything above ~10% means noise does this routinely.
-        Per-spec detail below covers the real (unshifted) runs.</p>` : '';
+        ≥5/8 specs positive with positive median. Vote P&amp;L simulates the actual consensus strategy — the tracker's
+        majority-vote rule trading $100 per period — so it's the dollars the decision rule would really have made;
+        the medians are robustness checks. Null exceed rates ≈ p-values: the share of label-shifted reruns that matched
+        or beat the real run on consensus fraction (primary) or vote dollars — small is good, and anything above ~10%
+        means noise does this routinely. Per-spec detail below covers the real (unshifted) runs.</p>` : '';
     const maxTestWeeks = Math.max(...s.ranked.map((r) => r.testWeeks || 0));
     const weakWarning = maxTestWeeks < 20
       ? `<div class="warnbox">⚠ <strong>Statistically weak screen:</strong> only ${maxTestWeeks} test weeks per combo —
@@ -492,8 +518,20 @@
         Dir hit rate = accuracy of the non-dormant (±1) calls only. Sorted best-first. "detail" shuttles the combo into
         the form above and runs the full report.</p>`;
 
-    batchViewEl.querySelectorAll('.rowload').forEach((btn) => {
+    batchViewEl.querySelectorAll('.rowload[data-i]').forEach((btn) => {
       btn.addEventListener('click', () => shuttleToForm(doc, s.ranked[Number(btn.dataset.i)]));
+    });
+    batchViewEl.querySelectorAll('.votetrades').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const row = batchViewEl.querySelector(`.votehist[data-pair="${btn.dataset.pair}"]`);
+        if (!row) return;
+        if (row.hidden) {
+          row.firstElementChild.innerHTML = voteHist(btn.dataset.pair);
+          row.hidden = false;
+        } else {
+          row.hidden = true;
+        }
+      });
     });
   }
 

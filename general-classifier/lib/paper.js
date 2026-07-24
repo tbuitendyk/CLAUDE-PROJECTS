@@ -17,4 +17,17 @@ function pnlFor(direction, entry, exit) {
   return gross - 2 * FEE_PER_LEG;
 }
 
-module.exports = { NOTIONAL, FEE_PER_LEG, ENTRY_OFFSET_H, EXIT_OFFSET_H, pnlFor };
+// Majority vote over an array of -1/0/+1 calls — the tracker's exact rule
+// (tracker.js voteOf, which takes the same counts over an object): the most
+// common call wins outright; ANY tie for the top stands aside. Shared here
+// so the consensus screen's simulated vote book can never drift from what
+// the live tracker actually does.
+function voteOf(labels) {
+  const counts = { '-1': 0, 0: 0, 1: 0 };
+  for (const p of labels) counts[p]++;
+  const top = Math.max(counts['-1'], counts['0'], counts['1']);
+  const winners = Object.keys(counts).filter((k) => counts[k] === top);
+  return winners.length === 1 ? Number(winners[0]) : 0;
+}
+
+module.exports = { NOTIONAL, FEE_PER_LEG, ENTRY_OFFSET_H, EXIT_OFFSET_H, pnlFor, voteOf };
