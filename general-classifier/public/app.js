@@ -461,23 +461,21 @@
       ${weakWarning}
       ${consensusBlock}
       <div class="tablewrap"><table>
-        <tr>${th('#', T.rank)}${th('', T.detail)}${th('trade', T.pair)}${th('model', T.model)}${th('view', T.view)}${th('band', T.band)}${th('test acc', T.testAcc)}${th('best constant', T.bestConst)}${th('true edge', T.trueEdge)}${th('balanced acc', T.balAcc)}${th('dir calls', T.dirCalls)}${th('dir hit rate', T.dirHit)}${th('paper P&amp;L', T.paperPnl)}${th('W/T', T.paperWT)}${th('train acc', T.trainAcc)}${th('weeks (tr/te)', T.weeks)}${th('picked', T.picked)}</tr>
+        <tr>${th('#', T.rank + ' ' + T.detail)}${th('trade', T.pair)}${th('model', T.model)}${th('view', T.view)}${th('band', T.band)}${th('test acc', T.testAcc)}${th('best const', T.bestConst)}${th('true edge', T.trueEdge)}${th('bal acc', T.balAcc)}${th('dir hits/calls', T.dirHit + ' ' + T.dirCalls)}${th('paper P&amp;L (W/T)', T.paperPnl + ' ' + T.paperWT)}${th('train acc', T.trainAcc)}${th('wks tr/te', T.weeks)}${th('picked', T.picked)}</tr>
         ${s.ranked.map((r, i) => {
           const te = r.hindsightEdge != null ? r.hindsightEdge : r.edge;
           const bc = r.bestConstant != null ? pct(r.bestConstant) : `${pct(r.majorityBaseline)} (${clsName(r.majorityClass)})`;
           return `
           <tr class="${te > 0 ? '' : 'miss'}">
-            <td>${i + 1}</td>
-            <td><button type="button" class="rowload" data-i="${i}" title="Load this combo into the form above and run the full detailed report">detail</button></td>
+            <td class="nowrap">${i + 1} <button type="button" class="rowload" data-i="${i}" title="Load this combo into the form above and run the full detailed report">detail</button></td>
             <td>${esc(r.trade)}</td><td>${esc(r.model)}</td>
             <td>${esc(r.view || 'full')}</td>
             <td>${r.bandPct != null ? '±' + Number(r.bandPct).toFixed(2) + '%' : '—'}</td>
             <td>${pct(r.testAcc)}</td><td>${bc}</td>
             <td><strong>${te >= 0 ? '+' : ''}${(100 * te).toFixed(1)}%</strong></td>
             <td>${pct(r.balancedAcc)}</td>
-            <td>${r.directionalCalls}</td><td>${pct(r.directionalHitRate)}</td>
-            <td>${r.paperPnl != null ? money(r.paperPnl) : '—'}</td>
-            <td>${r.paperTrades != null ? `${r.paperWins}/${r.paperTrades}` : '—'}</td>
+            <td>${r.directionalHits}/${r.directionalCalls}${r.directionalHitRate != null ? ` (${pct(r.directionalHitRate, 0)})` : ''}</td>
+            <td>${r.paperPnl != null ? `${money(r.paperPnl)} (${r.paperWins}/${r.paperTrades})` : '—'}</td>
             <td>${pct(r.trainAcc)}</td><td>${r.trainWeeks}/${r.testWeeks}</td><td>${esc(r.chosen)}</td>
           </tr>`;
         }).join('')}
