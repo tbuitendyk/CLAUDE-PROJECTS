@@ -82,7 +82,14 @@ function listBatches() {
 function getBatch(id) {
   if (activeBatch && activeBatch.id === id) return activeBatch;
   try {
-    return JSON.parse(fs.readFileSync(batchFile(id), 'utf8'));
+    const doc = JSON.parse(fs.readFileSync(batchFile(id), 'utf8'));
+    // The runs are the record; the summary is derived. Rebuild it on read so
+    // docs saved by older versions pick up new summary fields (e.g. median
+    // paper P&L) without re-running anything.
+    if (doc.summary && Array.isArray(doc.runs)) {
+      doc.summary = doc.kind === 'consensus' ? summarizeConsensus(doc.runs) : summarize(doc.runs);
+    }
+    return doc;
   } catch {
     return null;
   }
@@ -223,12 +230,17 @@ function median(values) {
 function consensusOf(specs) {
   const edges = specs.map((r) => r.metrics.hindsightEdge ?? r.metrics.edge ?? 0);
   const positive = edges.filter((e) => e > 0).length;
+  const pnls = specs.map((r) => r.metrics.paperPnl).filter((v) => v != null);
   return {
     specs: specs.length,
     positive,
     fraction: specs.length ? positive / specs.length : 0,
     medianTrueEdge: median(edges),
     medianBalancedAcc: median(specs.map((r) => r.metrics.balancedAcc).filter((v) => v != null)),
+    // Same never-best-cell logic as the edges: the TYPICAL spec's one-shot
+    // $100 paper book over the test window, not the luckiest one's.
+    medianPaperPnl: pnls.length ? median(pnls) : null,
+    positivePaper: pnls.filter((v) => v > 0).length,
   };
 }
 

@@ -417,6 +417,7 @@
       consensus: 'positive ÷ specs done. The pair’s headline agreement score across methods.',
       medEdge: 'Middle value of the specs’ true edges — the TYPICAL spec’s margin, immune to one lucky or one broken spec.',
       medBal: 'Middle value of the specs’ balanced accuracies. Chance = 33.3% whatever the class mix, so distance above 33.3% = real sorting skill.',
+      medPaper: 'Middle value of the 8 specs’ one-shot $100 paper books over the test window (this geometry’s own entry/exit candles, $1 round trip) — the TYPICAL spec’s dollars, never the luckiest cell’s. (+N) = how many specs finished positive. Same caveat as the per-spec column: a few big-move periods dominate it.',
       nullMed: 'Consensus the same grid typically fabricates when labels are time-shifted (nothing real to find) — the machine’s noise floor.',
       nullExceed: 'Share of distinct label-shifted reruns whose consensus matched or beat the real one. Empirical p-value: 0% = noise never faked this well.',
       rank: 'Rank, best first by true edge.',
@@ -439,13 +440,14 @@
     const th = (label, tip) => `<th title="${esc(tip)}">${label}</th>`;
     const consensusBlock = s.kind === 'consensus' && s.pairs ? `
       <div class="tablewrap" style="margin-bottom:12px"><table>
-        <tr>${th('pair', T.pair)}${th('specs done', T.specs)}${th('positive true edge', T.posEdge)}${th('consensus', T.consensus)}${th('median true edge', T.medEdge)}${th('median balanced acc', T.medBal)}${th('null: median consensus', T.nullMed)}${th('null: exceed rate', T.nullExceed)}</tr>
+        <tr>${th('pair', T.pair)}${th('specs done', T.specs)}${th('positive true edge', T.posEdge)}${th('consensus', T.consensus)}${th('median true edge', T.medEdge)}${th('median balanced acc', T.medBal)}${th('median paper P&amp;L', T.medPaper)}${th('null: median consensus', T.nullMed)}${th('null: exceed rate', T.nullExceed)}</tr>
         ${s.pairs.map((p) => `
           <tr class="${p.fraction >= 0.625 && (p.medianTrueEdge ?? 0) > 0 ? 'hilite' : ''}">
             <td>${esc(p.trade)}</td><td>${p.specs}</td><td>${p.positive}</td>
             <td><strong>${pct(p.fraction, 0)}</strong></td>
             <td>${p.medianTrueEdge != null ? (p.medianTrueEdge >= 0 ? '+' : '') + (100 * p.medianTrueEdge).toFixed(1) + '%' : '—'}</td>
             <td>${pct(p.medianBalancedAcc)}</td>
+            <td>${p.medianPaperPnl != null ? `${money(p.medianPaperPnl)} (+${p.positivePaper})` : '—'}</td>
             <td>${p.null ? pct(p.null.medianNullFraction, 0) : '—'}</td>
             <td>${p.null ? `${pct(p.null.exceedRate, 0)} of ${p.null.shifts} shifts` : '—'}</td>
           </tr>`).join('')}

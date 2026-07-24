@@ -65,7 +65,7 @@ module.exports = {
       shift,
       status: 'done',
       error: null,
-      metrics: { hindsightEdge, edge: hindsightEdge, balancedEdge: 0, balancedAcc },
+      metrics: { hindsightEdge, edge: hindsightEdge, balancedEdge: 0, balancedAcc, paperPnl: 100 * hindsightEdge },
     });
     const runs = [];
     // Pair A: 6 of 8 real specs positive; nulls (2 shifts) score 0/8 and 8/8.
@@ -91,6 +91,10 @@ module.exports = {
     assert.strictEqual(a.positive, 6);
     assert.ok(Math.abs(a.fraction - 0.75) < 1e-9);
     assert.ok(a.medianTrueEdge > 0);
+    // paper aggregate mirrors the edge logic: median of the specs' books +
+    // the count that finished positive (fixture: pnl = 100 × edge)
+    assert.ok(Math.abs(a.medianPaperPnl - 5) < 1e-9);
+    assert.strictEqual(a.positivePaper, 6);
     assert.strictEqual(a.null.shifts, 2);
     assert.ok(Math.abs(a.null.exceedRate - 0.5) < 1e-9); // one of two null shifts beat the real run
     const b = s.pairs[1];
