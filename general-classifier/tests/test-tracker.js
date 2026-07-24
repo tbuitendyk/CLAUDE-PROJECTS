@@ -7,6 +7,9 @@ const MON = Date.UTC(2026, 0, 5); // Monday 00:00 UTC
 
 module.exports = {
   async pnlMath() {
+    // shared source of truth: tracker re-exports lib/paper.js
+    const paper = require('../lib/paper');
+    assert.strictEqual(paper.pnlFor, pnlFor);
     assert.strictEqual(NOTIONAL, 100);
     assert.strictEqual(FEE_PER_LEG, 0.5);
     // long: +10% move -> $10 gross - $1 fees

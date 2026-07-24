@@ -271,6 +271,7 @@
           ${tile('Test accuracy', pct(t.accuracy), `${r.split.test.count} held-out weeks`, true)}
           ${tile('Majority baseline', pct(t.majorityBaseline), `always guess ${clsName(t.majorityClass)}`)}
           ${tile('Random baseline', pct(t.randomBaseline), '3 classes')}
+          ${t.paper ? tile('Paper P&L', money(t.paper.pnl), `${t.paper.trades} trades, ${t.paper.wins} wins, $1/trip fees${t.paper.unpriced ? `, ${t.paper.unpriced} unpriced` : ''}`) : ''}
           ${tile('Training weeks', String(r.split.train.count), `${esc(r.split.train.from)} → ${esc(r.split.train.to)}`)}
         </div>
         <div class="verdict">${verdict}</div>
@@ -366,7 +367,7 @@
       <div class="section">
         <h2>Held-out weeks, one by one</h2>
         <div class="tablewrap"><table>
-          <tr><th>week (Mon)</th><th>actual</th><th>predicted</th><th>P(−1)</th><th>P(0)</th><th>P(+1)</th><th>Tue&rarr;Thu move</th></tr>
+          <tr><th>week (Mon)</th><th>actual</th><th>predicted</th><th>P(−1)</th><th>P(0)</th><th>P(+1)</th><th>Tue&rarr;Thu move</th><th title="One-shot $100 paper trade for this week at tracker economics; $0.00 = stood aside; — = entry/exit candle missing.">paper P&amp;L</th></tr>
           ${t.rows.map((row) => `
             <tr class="${row.actual === row.predicted ? '' : 'miss'}">
               <td>${esc(row.weekStart)}</td>
@@ -374,9 +375,11 @@
               <td>${clsSpan(row.predicted)}</td>
               <td>${pct(row.probs['-1'], 0)}</td><td>${pct(row.probs['0'], 0)}</td><td>${pct(row.probs['1'], 0)}</td>
               <td><span class="cls ${row.diffPct > 0 ? 'up' : row.diffPct < 0 ? 'down' : 'flat'}">${row.diffPct >= 0 ? '+' : ''}${row.diffPct.toFixed(2)}%</span></td>
+              <td>${row.paperPnl != null ? money(row.paperPnl) : '—'}</td>
             </tr>`).join('')}
         </table></div>
-        <p class="note">Shaded rows are misses. Probabilities are the model's own confidence — well-calibrated only if there's real signal.</p>
+        <p class="note">Shaded rows are misses. Probabilities are the model's own confidence — well-calibrated only if there's real signal.
+          Paper P&amp;L uses the tracker's exact economics; the total is dominated by a few big-move weeks, so treat it as the dollars reality-check, not the ranking metric.</p>
       </div>`;
     reportEl.hidden = false;
   }
@@ -426,6 +429,8 @@
       trainAcc: 'Accuracy on its own training weeks. Far above test acc = memorization; close to test acc = honest fit.',
       weeks: 'Training / test week counts — the sample sizes behind every other number.',
       picked: 'Auto-tuned hyperparameter: λ (regularization strength) for logreg, boosting rounds for boost. Extreme λ ≈ shrank toward predicting the prior.',
+      paperPnl: 'One-shot $100 paper book over this spec’s test weeks, tracker economics exactly (entry Tue 03:00 open, exit Thu 15:00 open, $1 round trip). Color metric: a handful of big-move weeks dominate it — rank by true edge, use this as the dollars reality-check.',
+      paperWT: 'Paper wins / trades: directional (±1) calls only; wins closed positive after fees.',
     };
     const th = (label, tip) => `<th title="${esc(tip)}">${label}</th>`;
     const consensusBlock = s.kind === 'consensus' && s.pairs ? `
@@ -456,7 +461,7 @@
       ${weakWarning}
       ${consensusBlock}
       <div class="tablewrap"><table>
-        <tr>${th('#', T.rank)}${th('', T.detail)}${th('trade', T.pair)}${th('model', T.model)}${th('view', T.view)}${th('band', T.band)}${th('test acc', T.testAcc)}${th('best constant', T.bestConst)}${th('true edge', T.trueEdge)}${th('balanced acc', T.balAcc)}${th('dir calls', T.dirCalls)}${th('dir hit rate', T.dirHit)}${th('train acc', T.trainAcc)}${th('weeks (tr/te)', T.weeks)}${th('picked', T.picked)}</tr>
+        <tr>${th('#', T.rank)}${th('', T.detail)}${th('trade', T.pair)}${th('model', T.model)}${th('view', T.view)}${th('band', T.band)}${th('test acc', T.testAcc)}${th('best constant', T.bestConst)}${th('true edge', T.trueEdge)}${th('balanced acc', T.balAcc)}${th('dir calls', T.dirCalls)}${th('dir hit rate', T.dirHit)}${th('paper P&amp;L', T.paperPnl)}${th('W/T', T.paperWT)}${th('train acc', T.trainAcc)}${th('weeks (tr/te)', T.weeks)}${th('picked', T.picked)}</tr>
         ${s.ranked.map((r, i) => {
           const te = r.hindsightEdge != null ? r.hindsightEdge : r.edge;
           const bc = r.bestConstant != null ? pct(r.bestConstant) : `${pct(r.majorityBaseline)} (${clsName(r.majorityClass)})`;
@@ -471,6 +476,8 @@
             <td><strong>${te >= 0 ? '+' : ''}${(100 * te).toFixed(1)}%</strong></td>
             <td>${pct(r.balancedAcc)}</td>
             <td>${r.directionalCalls}</td><td>${pct(r.directionalHitRate)}</td>
+            <td>${r.paperPnl != null ? money(r.paperPnl) : '—'}</td>
+            <td>${r.paperTrades != null ? `${r.paperWins}/${r.paperTrades}` : '—'}</td>
             <td>${pct(r.trainAcc)}</td><td>${r.trainWeeks}/${r.testWeeks}</td><td>${esc(r.chosen)}</td>
           </tr>`;
         }).join('')}

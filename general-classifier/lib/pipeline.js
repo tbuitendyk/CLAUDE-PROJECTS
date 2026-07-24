@@ -1,4 +1,5 @@
-const { monthlyKlines, cachedMonths } = require('./binance');
+const { monthlyKlines, cachedMonths, HOUR_MS } = require('./binance');
+const { ENTRY_OFFSET_H, EXIT_OFFSET_H, pnlFor } = require('./paper');
 const { toHourlyMap, forwardFill, buildChunks, scoreDiff, balancedBandPct } = require('./dataset');
 const { FEATURE_NAMES, viewIndices } = require('./features');
 const { CLASSES, standardizeFit, standardizeApply, predict, accuracy, tuneAndTrain } = require('./logreg');
@@ -252,6 +253,11 @@ async function runAnalysis(params, onProgress = () => {}) {
   onProgress('evaluating the out-of-sample test set');
   const testRows = testChunks.map((c, i) => {
     const p = predictFn(i);
+    // one-shot paper book over the test window, tracker economics exactly
+    const entryC = tradeFilled.map.get(c.startTs + ENTRY_OFFSET_H * HOUR_MS);
+    const exitC = tradeFilled.map.get(c.startTs + EXIT_OFFSET_H * HOUR_MS);
+    const entry = entryC ? entryC.open : null;
+    const exit = exitC ? exitC.open : null;
     return {
       weekStart: new Date(c.startTs).toISOString().slice(0, 10),
       actual: c.label,
@@ -260,10 +266,23 @@ async function runAnalysis(params, onProgress = () => {}) {
       c1: c.c1,
       c2: c.c2,
       diffPct: c.diffPct,
+      entry,
+      exit,
+      paperPnl: entry != null && exit != null ? pnlFor(p.label, entry, exit) : null,
     };
   });
   const pairs = testRows.map((r) => ({ actual: r.actual, predicted: r.predicted }));
   const testAcc = pairs.filter((p) => p.actual === p.predicted).length / pairs.length;
+
+  const priced = testRows.filter((r) => r.paperPnl !== null);
+  const paperTrades = priced.filter((r) => r.predicted !== 0);
+  const paper = {
+    pnl: priced.reduce((s, r) => s + r.paperPnl, 0),
+    trades: paperTrades.length,
+    wins: paperTrades.filter((r) => r.paperPnl > 0).length,
+    priced: priced.length,
+    unpriced: testRows.length - priced.length,
+  };
 
   const trainCounts = classCounts(ytr);
   const testCounts = classCounts(yte);
@@ -300,6 +319,7 @@ async function runAnalysis(params, onProgress = () => {}) {
       majorityBaseline,
       confusion: confusionMatrix(pairs),
       perClass: perClassMetrics(pairs),
+      paper,
       rows: testRows,
     },
   };
@@ -368,6 +388,9 @@ function extractMetrics(report) {
     chosen: report.tuning.model === 'boost' ? `rounds=${report.tuning.bestRound}` : `lambda=${report.tuning.chosenLambda}`,
     valMajorityAcc: report.tuning.valMajorityAcc,
     bandPct: report.data.dormantBandPct,
+    paperPnl: report.test.paper ? report.test.paper.pnl : null,
+    paperTrades: report.test.paper ? report.test.paper.trades : null,
+    paperWins: report.test.paper ? report.test.paper.wins : null,
   };
 }
 

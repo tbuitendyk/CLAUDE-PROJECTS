@@ -23,11 +23,9 @@ const { trainBoost, predictBoost } = require('./boost');
 //     vote +1 -> long, -1 -> short, 0 -> no trade. Each of the 8 specs also
 //     keeps its own $100 paper book for comparison.
 
+const { NOTIONAL, FEE_PER_LEG, ENTRY_OFFSET_H, EXIT_OFFSET_H, pnlFor } = require('./paper');
+
 const STATE_FILE = path.join(__dirname, '..', 'data', 'tracker', 'state.json');
-const NOTIONAL = 100;
-const FEE_PER_LEG = 0.5;
-const ENTRY_OFFSET_H = TUE_OFFSET_H + 3; // Tue 03:00, midpoint of 00:00-05:59
-const EXIT_OFFSET_H = THU_OFFSET_H + 3; // Thu 15:00, midpoint of 12:00-17:59
 const SETTLE_AFTER_H = THU_OFFSET_H + LABEL_HOURS + 1; // Thu 18:00+: exit price AND actual label knowable
 const MISSED_AFTER_MS = 72 * HOUR_MS; // give laggy data 3 days before declaring a week unmeasurable
 
@@ -149,12 +147,6 @@ function voteOf(predictions) {
   const top = Math.max(counts['-1'], counts['0'], counts['1']);
   const winners = Object.keys(counts).filter((k) => counts[k] === top);
   return winners.length === 1 ? Number(winners[0]) : 0; // any tie -> stand aside
-}
-
-function pnlFor(direction, entry, exit) {
-  if (direction === 0) return 0;
-  const gross = direction === 1 ? NOTIONAL * (exit / entry - 1) : NOTIONAL * (1 - exit / entry);
-  return gross - 2 * FEE_PER_LEG;
 }
 
 // ---- init ---------------------------------------------------------------------
