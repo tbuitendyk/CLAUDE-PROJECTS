@@ -157,6 +157,7 @@ async function runAnalysis(params, onProgress = () => {}) {
   const featureView = params.featureView || 'full';
   const decision = params.decision === 'directional' ? 'directional' : 'argmax';
   const geometry = params.geometry || 'weekly-8d';
+  const weekdaysOnly = !!params.weekdaysOnly;
   const geo = GEOMETRIES[geometry];
   if (!geo) throw new Error(`unknown geometry "${geometry}"`);
   const nDays = geo.featureHours / 24;
@@ -178,7 +179,7 @@ async function runAnalysis(params, onProgress = () => {}) {
     compareFilled.map,
     adaptiveBand ? 0 : dormantPct,
     featureSet,
-    { geometry }
+    { geometry, weekdaysOnly }
   );
 
   if (chunks.length < MIN_CHUNKS) {
@@ -377,7 +378,7 @@ async function runAnalysis(params, onProgress = () => {}) {
 
   const fmtWeek = (c) => new Date(c.startTs).toISOString().slice(0, 10);
   return {
-    params: { dormantPct, tradeSymbol, compareSymbol, startMonth, endMonth, featureSet, model: modelKind, featureView, decision, labelShift, allLoaded, geometry },
+    params: { dormantPct, tradeSymbol, compareSymbol, startMonth, endMonth, featureSet, model: modelKind, featureView, decision, labelShift, allLoaded, geometry, weekdaysOnly },
     data: {
       dormantBandPct,
       adaptiveBand,
@@ -415,13 +416,13 @@ async function runAnalysis(params, onProgress = () => {}) {
 // the labelable chunks (at the given geometry) and subtract the 16-chunk
 // buffer. Used by the UI's "max" button so oversized shift requests aren't
 // guesswork.
-async function countRotations(tradeSymbol, compareSymbol, onProgress = () => {}, geometry = 'weekly-8d') {
+async function countRotations(tradeSymbol, compareSymbol, onProgress = () => {}, geometry = 'weekly-8d', weekdaysOnly = false) {
   const trade = await loadSymbolAll(tradeSymbol, onProgress);
   const compare = await loadSymbolAll(compareSymbol, onProgress);
   if (!trade.rows.length || !compare.rows.length) return { chunks: 0, maxRotations: 0 };
   const tradeFilled = forwardFill(toHourlyMap(trade.rows));
   const compareFilled = forwardFill(toHourlyMap(compare.rows));
-  const { chunks } = buildChunks(tradeFilled.map, compareFilled.map, 0, 'compressed', { geometry });
+  const { chunks } = buildChunks(tradeFilled.map, compareFilled.map, 0, 'compressed', { geometry, weekdaysOnly });
   return { chunks: chunks.length, maxRotations: Math.max(0, chunks.length - 16) };
 }
 

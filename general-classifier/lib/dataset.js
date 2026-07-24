@@ -36,6 +36,25 @@ const GEOMETRIES = {
   'daily-4d': { featureHours: 96, stepHours: 24, anchor: 'daily', labelMode: 'points', entryOffsetH: 97, exitOffsetH: 138 },
 };
 
+// 24/5 mode: keep only daily-geometry starts whose FEATURE window sits
+// entirely on weekdays and whose entry candle lands on a weekday — crypto
+// trades through weekends, but weekend microstructure (thin volume, gap-y
+// moves) is exactly the noise the classic 8-day chunk averaged away, so the
+// short shapes get the option to sidestep it. Allowed start weekdays (UTC,
+// getUTCDay: Mon=1) follow from each shape:
+//   1d: Mon-Thu starts -> features Mon-Thu, trade Tue-Fri        (4 per week)
+//   2d: Mon-Wed starts -> features Mon-Thu, trade Wed-Fri        (3 per week)
+//   3d: Mon only       -> features Mon-Wed, enter Thu, exit Fri  (1 per week)
+//   4d: Mon only       -> features Mon-Thu, enter Fri 01:00 —
+//       the exit lands Saturday 18:00, accepted by design        (1 per week)
+// weekly-8d has no entry: 8 straight days always span a weekend.
+const WEEKDAY_STARTS = {
+  'daily-1d': [1, 2, 3, 4],
+  'daily-2d': [1, 2, 3],
+  'daily-3d': [1],
+  'daily-4d': [1],
+};
+
 function toHourlyMap(rows) {
   const map = new Map();
   for (const r of rows) map.set(r.ts, r);
@@ -149,7 +168,7 @@ function balancedBandPct(diffPcts) {
 // includeUnlabeled (live tracker): chunks whose features are complete but
 // whose label data hasn't happened yet are emitted with label/c1/c2/diffPct
 // null instead of being dropped.
-function buildChunks(tradeMap, compareMap, dormantPct, featureSet = 'compressed', { includeUnlabeled = false, geometry = 'weekly-8d' } = {}) {
+function buildChunks(tradeMap, compareMap, dormantPct, featureSet = 'compressed', { includeUnlabeled = false, geometry = 'weekly-8d', weekdaysOnly = false } = {}) {
   const geo = GEOMETRIES[geometry];
   if (!geo) throw new Error(`unknown geometry "${geometry}"`);
   const dormantFrac = Math.abs(dormantPct) / 100;
@@ -167,7 +186,11 @@ function buildChunks(tradeMap, compareMap, dormantPct, featureSet = 'compressed'
 
   const chunks = [];
   const dropped = { gap: 0, noLabel: 0 };
-  const starts = geo.anchor === 'monday' ? mondayStarts(minTs, maxTs) : dailyStarts(minTs, maxTs);
+  let starts = geo.anchor === 'monday' ? mondayStarts(minTs, maxTs) : dailyStarts(minTs, maxTs);
+  if (weekdaysOnly && WEEKDAY_STARTS[geometry]) {
+    const allowed = new Set(WEEKDAY_STARTS[geometry]);
+    starts = starts.filter((ts) => allowed.has(new Date(ts).getUTCDay()));
+  }
   for (const start of starts) {
     const trade = candleRun(tradeMap, start, geo.featureHours);
     const compare = candleRun(compareMap, start, geo.featureHours);
@@ -225,6 +248,7 @@ module.exports = {
   scoreDiff,
   balancedBandPct,
   GEOMETRIES,
+  WEEKDAY_STARTS,
   assetFeatures,
   CHUNK_HOURS,
   TUE_OFFSET_H,

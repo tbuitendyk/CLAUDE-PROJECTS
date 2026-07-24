@@ -182,6 +182,7 @@
           featureView: pendingView || 'full',
           geometry: $('geometry').value,
           decision: $('decision').value,
+          weekdaysOnly: $('weekdays').checked,
         }),
       });
       pendingView = null;
@@ -427,7 +428,7 @@
     const range = doc.params.allLoaded ? 'all loaded data' : `${esc(doc.params.startMonth)}→${esc(doc.params.endMonth)}`;
     const header = `${esc(doc.id)} — ${esc(doc.status)}${doc.status === 'running' && doc.progress ? ` — ${esc(doc.progress)}` : ''}
       · ${doc.runs.filter((r) => r.status === 'done' || r.status === 'error').length}/${doc.runs.length} runs
-      · dormant ±${esc(String(doc.params.dormantPct))}% · ${range} · ${esc(doc.params.geometry || 'weekly-8d')}${doc.params.decision === 'directional' ? ' · directional hunter' : ''} · vs ${esc(doc.params.compareSymbol)}`;
+      · dormant ±${esc(String(doc.params.dormantPct))}% · ${range} · ${esc(doc.params.geometry || 'weekly-8d')}${doc.params.weekdaysOnly ? ' · 24/5' : ''}${doc.params.decision === 'directional' ? ' · directional hunter' : ''} · vs ${esc(doc.params.compareSymbol)}`;
     if (!s || !s.ranked.length) {
       batchViewEl.innerHTML = `<p class="note">${header}</p><p class="note">No completed runs yet.</p>`;
       return;
@@ -574,6 +575,7 @@
     $('features').value = doc.params.featureSet || 'compressed';
     $('geometry').value = doc.params.geometry || 'weekly-8d';
     $('decision').value = doc.params.decision || 'argmax';
+    $('weekdays').checked = !!doc.params.weekdaysOnly;
     $('model').value = r.model;
     const auto = doc.params.dormantPct === 'auto';
     $('autoband').checked = auto;
@@ -646,6 +648,7 @@
           featureSet: $('features').value,
           geometry: $('geometry').value,
           decision: $('decision').value,
+          weekdaysOnly: $('weekdays').checked,
         }),
       });
       const body = await jsonBody(res);
@@ -664,7 +667,7 @@
       if (!pairsRaw) throw new Error('enter a pair list first — computing exact rotations for all 17 pairs would take a while');
       const pairs = pairsRaw.split(',').map((p) => p.trim().toUpperCase()).filter(Boolean).join(',');
       setBatchStatus('computing exact rotation ceilings…');
-      const res = await fetch(`api/rotations?pairs=${encodeURIComponent(pairs)}&geometry=${encodeURIComponent($('geometry').value)}`);
+      const res = await fetch(`api/rotations?pairs=${encodeURIComponent(pairs)}&geometry=${encodeURIComponent($('geometry').value)}&weekdays=${$('weekdays').checked ? 1 : 0}`);
       const body = await jsonBody(res);
       setBatchStatus('');
       if (!res.ok) throw new Error(body.error || `HTTP ${res.status}`);
@@ -690,6 +693,7 @@
         geometry: $('geometry').value,
         decision: $('decision').value,
         dormantPct: dormantValue(), // 'auto' = classic; a manual wide band feeds the big-move hunter
+        weekdaysOnly: $('weekdays').checked,
       };
       if (pairsRaw) body.pairs = pairsRaw.split(',').map((p) => p.trim().toUpperCase()).filter(Boolean);
       const res = await fetch('api/consensus', {

@@ -96,7 +96,7 @@ app.post('/api/run', (req, res) => {
     return res.status(400).json({ error: 'decision must be "argmax" or "directional"' });
   }
   const jobId = startJob((setProgress) =>
-    runAnalysis({ dormantPct, tradeSymbol, compareSymbol, startMonth, endMonth, featureSet, model, featureView, decision, geometry, allLoaded }, setProgress)
+    runAnalysis({ dormantPct, tradeSymbol, compareSymbol, startMonth, endMonth, featureSet, model, featureView, decision, geometry, weekdaysOnly: !!b.weekdaysOnly, allLoaded }, setProgress)
   );
   res.json({ jobId });
 });
@@ -139,6 +139,7 @@ app.post('/api/batch', (req, res) => {
       models: b.models,
       geometry: batchGeometry,
       decision: batchDecision,
+      weekdaysOnly: !!b.weekdaysOnly,
       allLoaded: !!b.allLoaded,
     });
     res.json({ batchId: id });
@@ -183,6 +184,7 @@ app.post('/api/consensus', (req, res) => {
       geometry: consGeometry,
       decision: consDecision,
       dormantPct: consDormant,
+      weekdaysOnly: !!b.weekdaysOnly,
       allLoaded: !!b.allLoaded,
     });
     res.json({ batchId: id });
@@ -197,6 +199,7 @@ app.get('/api/rotations', async (req, res) => {
   const pairs = String(req.query.pairs || '').split(',').map((p) => p.trim().toUpperCase()).filter(Boolean);
   const compareSymbol = String(req.query.compare || 'BTCUSDT').toUpperCase();
   const geometry = String(req.query.geometry || 'weekly-8d');
+  const weekdaysOnly = req.query.weekdays === '1';
   if (!pairs.length || pairs.length > 6 || pairs.some((p) => !SYMBOL_RE.test(p))) {
     return res.status(400).json({ error: 'pass 1-6 pairs like ?pairs=DOTUSDT,AVAXUSDT' });
   }
@@ -205,7 +208,7 @@ app.get('/api/rotations', async (req, res) => {
   }
   try {
     const out = {};
-    for (const p of pairs) out[p] = await countRotations(p, compareSymbol, () => {}, geometry);
+    for (const p of pairs) out[p] = await countRotations(p, compareSymbol, () => {}, geometry, weekdaysOnly);
     const suggested = Math.min(1000, Math.max(0, ...Object.values(out).map((r) => r.maxRotations)));
     res.json({ pairs: out, suggested });
   } catch (err) {

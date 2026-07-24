@@ -8,6 +8,7 @@ const {
   scoreDiff,
   assetFeatures,
   GEOMETRIES,
+  WEEKDAY_STARTS,
   CHUNK_HOURS,
   TUE_OFFSET_H,
   THU_OFFSET_H,
@@ -208,6 +209,48 @@ module.exports = {
     assert.strictEqual(first.label, -1);
     assert.strictEqual(first.c2, 90);
     assert.strictEqual(first.x.length, 34); // (3+12)×2 + 4 cross
+  },
+  async weekdayModeKeepsTheRegisteredStarts() {
+    // The 24/5 table exactly as specified by the owner: 4 runs/week for 1d,
+    // 3 for 2d, 1 each for 3d/4d (the 4d trade exits Saturday by design).
+    assert.deepStrictEqual(WEEKDAY_STARTS, {
+      'daily-1d': [1, 2, 3, 4],
+      'daily-2d': [1, 2, 3],
+      'daily-3d': [1],
+      'daily-4d': [1],
+    });
+    // Derivation holds: every allowed start puts all feature days AND the
+    // entry day on weekdays (Mon=1..Fri=5).
+    for (const [key, days] of Object.entries(WEEKDAY_STARTS)) {
+      const geo = GEOMETRIES[key];
+      const featureDays = geo.featureHours / 24;
+      for (const d of days) {
+        for (let k = 0; k < featureDays; k++) assert.ok(d + k >= 1 && d + k <= 5, `${key} start ${d} feature day`);
+        const entryDay = d + Math.floor(geo.entryOffsetH / 24);
+        assert.ok(entryDay >= 1 && entryDay <= 5, `${key} start ${d} entry day`);
+      }
+    }
+  },
+  async weekdayModeFiltersDailyChunks() {
+    // Three flat weeks: 1d keeps exactly Mon-Thu starts, 4d keeps Mondays,
+    // and the classic weekly shape ignores the flag entirely.
+    const trade = toHourlyMap(flatCandles(MON_JAN5_2026, 21 * 24));
+    const compare = toHourlyMap(flatCandles(MON_JAN5_2026, 21 * 24, 50000));
+    const oneDay = buildChunks(trade, compare, 2, 'compressed', { geometry: 'daily-1d', weekdaysOnly: true });
+    assert.ok(oneDay.chunks.length >= 10, `got ${oneDay.chunks.length}`);
+    for (const c of oneDay.chunks) {
+      const dow = new Date(c.startTs).getUTCDay();
+      assert.ok(dow >= 1 && dow <= 4, `1d start dow ${dow}`);
+    }
+    const all = buildChunks(trade, compare, 2, 'compressed', { geometry: 'daily-1d' });
+    assert.ok(all.chunks.length > oneDay.chunks.length); // 24/5 costs samples
+    const fourDay = buildChunks(trade, compare, 2, 'compressed', { geometry: 'daily-4d', weekdaysOnly: true });
+    assert.ok(fourDay.chunks.length >= 1);
+    for (const c of fourDay.chunks) assert.strictEqual(new Date(c.startTs).getUTCDay(), 1);
+    const { trade: wTrade, compare: wCompare } = buildFixture();
+    const weeklyOn = buildChunks(wTrade, wCompare, 2, 'compressed', { weekdaysOnly: true });
+    const weeklyOff = buildChunks(wTrade, wCompare, 2, 'compressed', {});
+    assert.strictEqual(weeklyOn.chunks.length, weeklyOff.chunks.length);
   },
   async featuresAreShapeNotLevel() {
     const candles = flatCandles(MON_JAN5_2026, 4, 200);

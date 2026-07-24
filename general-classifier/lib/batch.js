@@ -141,6 +141,7 @@ function startBatch(params) {
     models = ['logreg', 'boost'],
     geometry = 'weekly-8d',
     decision = 'argmax',
+    weekdaysOnly = false,
     allLoaded = false,
   } = params || {};
 
@@ -151,7 +152,7 @@ function startBatch(params) {
     startedAt: new Date().toISOString(),
     finishedAt: null,
     progress: '',
-    params: { dormantPct, startMonth, endMonth, featureSet, compareSymbol, models, geometry, decision, allLoaded },
+    params: { dormantPct, startMonth, endMonth, featureSet, compareSymbol, models, geometry, decision, weekdaysOnly, allLoaded },
     runs: [],
     summary: null,
   };
@@ -181,6 +182,7 @@ function startBatch(params) {
             model: run.model,
             geometry,
             decision,
+            weekdaysOnly,
             allLoaded,
           },
           (p) => {
@@ -357,6 +359,7 @@ function startConsensus(params) {
     geometry = 'weekly-8d',
     decision = 'argmax',
     dormantPct = 'auto', // manual wide bands (big-move hunter) allowed; 'auto' = classic
+    weekdaysOnly = false,
     allLoaded = false,
   } = params || {};
   const nShifts = Math.min(1000, Math.max(0, Math.floor(Number(nullShifts) || 0)));
@@ -380,6 +383,7 @@ function startConsensus(params) {
       nullShifts: nShifts,
       geometry,
       decision,
+      weekdaysOnly,
       allLoaded,
     },
     runs: [],
@@ -434,6 +438,7 @@ function startConsensus(params) {
             labelShiftFrac: run.shift > 0 ? run.shift / (nShifts + 1) : 0,
             geometry,
             decision,
+            weekdaysOnly,
             allLoaded,
           },
           (p) => {
