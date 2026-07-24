@@ -1,7 +1,7 @@
 const { monthlyKlines, cachedMonths, HOUR_MS } = require('./binance');
-const { ENTRY_OFFSET_H, EXIT_OFFSET_H, pnlFor } = require('./paper');
-const { toHourlyMap, forwardFill, buildChunks, scoreDiff, balancedBandPct } = require('./dataset');
-const { FEATURE_NAMES, viewIndices } = require('./features');
+const { pnlFor } = require('./paper');
+const { toHourlyMap, forwardFill, buildChunks, scoreDiff, balancedBandPct, GEOMETRIES } = require('./dataset');
+const { featureNamesFor, viewIndices } = require('./features');
 const { CLASSES, standardizeFit, standardizeApply, predict, accuracy, tuneAndTrain } = require('./logreg');
 const { trainBoost, predictBoost, accuracyBoost, importanceTable } = require('./boost');
 
@@ -127,6 +127,10 @@ async function runAnalysis(params, onProgress = () => {}) {
   const featureSet = params.featureSet === 'raw' ? 'raw' : 'compressed';
   const modelKind = params.model === 'boost' ? 'boost' : 'logreg';
   const featureView = params.featureView || 'full';
+  const geometry = params.geometry || 'weekly-8d';
+  const geo = GEOMETRIES[geometry];
+  if (!geo) throw new Error(`unknown geometry "${geometry}"`);
+  const nDays = geo.featureHours / 24;
   const explicitShift = Math.max(0, Math.floor(Number(params.labelShift) || 0));
   const labelShiftFrac = Number(params.labelShiftFrac) || 0;
   const allLoaded = !!params.allLoaded;
@@ -137,14 +141,15 @@ async function runAnalysis(params, onProgress = () => {}) {
   if (trade.rows.length === 0) throw new Error(`no data for ${tradeSymbol} in that range — is the pair listed on Binance spot?`);
   if (compare.rows.length === 0) throw new Error(`no data for ${compareSymbol} in that range — is the pair listed on Binance spot?`);
 
-  onProgress('building 8-day chunks and scoring them');
+  onProgress(`building ${geometry} chunks and scoring them`);
   const tradeFilled = forwardFill(toHourlyMap(trade.rows));
   const compareFilled = forwardFill(toHourlyMap(compare.rows));
   const { chunks, dropped, considered } = buildChunks(
     tradeFilled.map,
     compareFilled.map,
     adaptiveBand ? 0 : dormantPct,
-    featureSet
+    featureSet,
+    { geometry }
   );
 
   if (chunks.length < MIN_CHUNKS) {
@@ -168,10 +173,11 @@ async function runAnalysis(params, onProgress = () => {}) {
 
   // Feature view projection (consensus screen): restrict the compressed
   // vector to one methodological slice.
-  let featureNames = FEATURE_NAMES;
+  const allNames = featureNamesFor(nDays);
+  let featureNames = allNames;
   if (featureSet === 'compressed' && featureView !== 'full') {
-    const idx = viewIndices(featureView);
-    featureNames = idx.map((i) => FEATURE_NAMES[i]);
+    const idx = viewIndices(featureView, nDays);
+    featureNames = idx.map((i) => allNames[i]);
     for (const c of chunks) c.x = idx.map((i) => c.x[i]);
   }
 
@@ -253,9 +259,10 @@ async function runAnalysis(params, onProgress = () => {}) {
   onProgress('evaluating the out-of-sample test set');
   const testRows = testChunks.map((c, i) => {
     const p = predictFn(i);
-    // one-shot paper book over the test window, tracker economics exactly
-    const entryC = tradeFilled.map.get(c.startTs + ENTRY_OFFSET_H * HOUR_MS);
-    const exitC = tradeFilled.map.get(c.startTs + EXIT_OFFSET_H * HOUR_MS);
+    // one-shot paper book over the test window at this geometry's own
+    // entry/exit candles (classic = the tracker's Tue 03:00 / Thu 15:00)
+    const entryC = tradeFilled.map.get(c.startTs + geo.entryOffsetH * HOUR_MS);
+    const exitC = tradeFilled.map.get(c.startTs + geo.exitOffsetH * HOUR_MS);
     const entry = entryC ? entryC.open : null;
     const exit = exitC ? exitC.open : null;
     return {
@@ -291,7 +298,7 @@ async function runAnalysis(params, onProgress = () => {}) {
 
   const fmtWeek = (c) => new Date(c.startTs).toISOString().slice(0, 10);
   return {
-    params: { dormantPct, tradeSymbol, compareSymbol, startMonth, endMonth, featureSet, model: modelKind, featureView, labelShift, allLoaded },
+    params: { dormantPct, tradeSymbol, compareSymbol, startMonth, endMonth, featureSet, model: modelKind, featureView, labelShift, allLoaded, geometry },
     data: {
       dormantBandPct,
       adaptiveBand,
@@ -326,15 +333,16 @@ async function runAnalysis(params, onProgress = () => {}) {
 }
 
 // Exact null-shift ceiling for a pair on the currently cached data: count
-// the labelable chunks and subtract the 16-week buffer. Used by the UI's
-// "max" button so oversized shift requests aren't guesswork.
-async function countRotations(tradeSymbol, compareSymbol, onProgress = () => {}) {
+// the labelable chunks (at the given geometry) and subtract the 16-chunk
+// buffer. Used by the UI's "max" button so oversized shift requests aren't
+// guesswork.
+async function countRotations(tradeSymbol, compareSymbol, onProgress = () => {}, geometry = 'weekly-8d') {
   const trade = await loadSymbolAll(tradeSymbol, onProgress);
   const compare = await loadSymbolAll(compareSymbol, onProgress);
   if (!trade.rows.length || !compare.rows.length) return { chunks: 0, maxRotations: 0 };
   const tradeFilled = forwardFill(toHourlyMap(trade.rows));
   const compareFilled = forwardFill(toHourlyMap(compare.rows));
-  const { chunks } = buildChunks(tradeFilled.map, compareFilled.map, 0, 'compressed');
+  const { chunks } = buildChunks(tradeFilled.map, compareFilled.map, 0, 'compressed', { geometry });
   return { chunks: chunks.length, maxRotations: Math.max(0, chunks.length - 16) };
 }
 

@@ -3,9 +3,11 @@ const {
   toHourlyMap,
   forwardFill,
   mondayStarts,
+  dailyStarts,
   buildChunks,
   scoreDiff,
   assetFeatures,
+  GEOMETRIES,
   CHUNK_HOURS,
   TUE_OFFSET_H,
   THU_OFFSET_H,
@@ -139,6 +141,73 @@ module.exports = {
     assert.ok(map.size > 39000, `fixture too small (${map.size})`);
     const { chunks } = buildChunks(map, map, 2); // must not throw
     assert.strictEqual(chunks.length, 0); // hourly gaps everywhere -> nothing labelable
+  },
+  async geometryTableIsAsRegistered() {
+    // The pre-registered daily shapes: enter 01:00 the day after the chunk
+    // ends, exit 18:00 (1-2d, 17h hold) or 18:00 the following day (3-4d, 41h).
+    assert.deepStrictEqual(Object.keys(GEOMETRIES), ['weekly-8d', 'daily-1d', 'daily-2d', 'daily-3d', 'daily-4d']);
+    const expect = {
+      'daily-1d': [24, 25, 42],
+      'daily-2d': [48, 49, 66],
+      'daily-3d': [72, 73, 114],
+      'daily-4d': [96, 97, 138],
+    };
+    for (const [key, [feat, entry, exit]] of Object.entries(expect)) {
+      const g = GEOMETRIES[key];
+      assert.strictEqual(g.featureHours, feat, `${key} featureHours`);
+      assert.strictEqual(g.stepHours, 24, `${key} steps daily`);
+      assert.strictEqual(g.entryOffsetH, entry, `${key} entry`);
+      assert.strictEqual(g.exitOffsetH, exit, `${key} exit`);
+      assert.strictEqual(g.entryOffsetH % 24, 1, `${key} enters at 01:00`);
+      assert.strictEqual(g.exitOffsetH % 24, 18, `${key} exits at 18:00`);
+      assert.strictEqual(g.entryOffsetH, g.featureHours + 1, `${key} enters 1h after the chunk`);
+      assert.strictEqual(g.exitOffsetH - g.entryOffsetH, key < 'daily-3' ? 17 : 41, `${key} hold`);
+      assert.strictEqual(g.labelMode, 'points');
+    }
+    const w = GEOMETRIES['weekly-8d'];
+    assert.strictEqual(w.featureHours, CHUNK_HOURS);
+    assert.strictEqual(w.stepHours, 168);
+    assert.strictEqual(w.labelMode, 'windows');
+    assert.strictEqual(w.entryOffsetH, 195); // Tue 03:00, tracker economics
+    assert.strictEqual(w.exitOffsetH, 255); // Thu 15:00
+  },
+  async dailyStartsEveryMidnight() {
+    const days = dailyStarts(MON_JAN5_2026, MON_JAN5_2026 + 3 * 24 * HOUR_MS);
+    assert.deepStrictEqual(days, [0, 1, 2, 3].map((k) => MON_JAN5_2026 + k * 24 * HOUR_MS));
+    assert.ok(days.every((ts) => new Date(ts).getUTCHours() === 0));
+    // starting mid-day rounds UP to the next midnight
+    const later = dailyStarts(MON_JAN5_2026 + 5 * HOUR_MS, MON_JAN5_2026 + 2 * 24 * HOUR_MS);
+    assert.strictEqual(later[0], MON_JAN5_2026 + 24 * HOUR_MS);
+  },
+  async dailyGeometryPointLabels() {
+    // 6 flat days; the candle at +42h (day 2, 18:00) opens at 105 — the
+    // daily-1d chunk starting Jan 5 must label +1 from single candle OPENS.
+    const trade = toHourlyMap(flatCandles(MON_JAN5_2026, 6 * 24));
+    const compare = toHourlyMap(flatCandles(MON_JAN5_2026, 6 * 24, 50000));
+    setWindow(trade, MON_JAN5_2026 + 42 * HOUR_MS, 1, 105);
+    const { chunks, considered } = buildChunks(trade, compare, 2, 'compressed', { geometry: 'daily-1d' });
+    assert.strictEqual(considered, 6); // one start per midnight in range
+    assert.strictEqual(chunks.length, 5); // last start can't see its exit candle
+    for (let i = 1; i < chunks.length; i++) {
+      assert.strictEqual(chunks[i].startTs - chunks[i - 1].startTs, 24 * HOUR_MS); // daily stepping
+    }
+    assert.strictEqual(chunks[0].c1, 100); // entry: +25h open
+    assert.strictEqual(chunks[0].c2, 105); // exit: +42h open
+    assert.ok(Math.abs(chunks[0].diffPct - 5) < 1e-9);
+    assert.deepStrictEqual(chunks.map((c) => c.label), [1, 0, 0, 0, 0]);
+    assert.strictEqual(chunks[0].x.length, 30); // (1+12)×2 + 4 cross
+  },
+  async multiDayGeometriesUseTheirOwnOffsets() {
+    // daily-3d: entry +73h, exit +114h. Set exit open to 90 -> label -1.
+    const trade = toHourlyMap(flatCandles(MON_JAN5_2026, 8 * 24));
+    const compare = toHourlyMap(flatCandles(MON_JAN5_2026, 8 * 24, 50000));
+    setWindow(trade, MON_JAN5_2026 + 114 * HOUR_MS, 1, 90);
+    const { chunks } = buildChunks(trade, compare, 2, 'compressed', { geometry: 'daily-3d' });
+    const first = chunks.find((c) => c.startTs === MON_JAN5_2026);
+    assert.ok(first, 'chunk at the fixture start exists');
+    assert.strictEqual(first.label, -1);
+    assert.strictEqual(first.c2, 90);
+    assert.strictEqual(first.x.length, 34); // (3+12)×2 + 4 cross
   },
   async featuresAreShapeNotLevel() {
     const candles = flatCandles(MON_JAN5_2026, 4, 200);

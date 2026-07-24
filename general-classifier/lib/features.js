@@ -5,9 +5,7 @@
 // features it cannot, so whatever it learns has to generalize. Pure
 // deterministic arithmetic, zero imports, same as lib/logreg.js.
 
-const HOURS = 192;
 const DAY = 24;
-const DAYS = 8;
 
 function mean(a) {
   let s = 0;
@@ -60,16 +58,18 @@ function pearson(a, b) {
   return saa > 0 && sbb > 0 ? sab / Math.sqrt(saa * sbb) : 0;
 }
 
-// 20 features for one asset's 192 candles. Everything is scale-free
-// (returns, ratios) so weeks at $20 and weeks at $700 describe the same
-// shapes with the same numbers.
+// nDays+12 features for one asset's chunk (any whole number of days, 24
+// candles each). Everything is scale-free (returns, ratios) so chunks at
+// $20 and chunks at $700 describe the same shapes with the same numbers.
 function assetCompressed(candles, prefix, names, out) {
+  const HOURS = candles.length;
+  const DAYS = HOURS / DAY;
   const push = (name, value) => {
     names.push(`${prefix}_${name}`);
     out.push(Number.isFinite(value) ? value : 0);
   };
 
-  // Daily returns, Monday(1)..Monday(8), each day's close vs the previous close.
+  // Daily returns, day 1..N, each day's close vs the previous close.
   for (let d = 0; d < DAYS; d++) {
     const dayClose = candles[d * DAY + DAY - 1].close;
     const base = d === 0 ? candles[0].open : candles[d * DAY - 1].close;
@@ -117,7 +117,8 @@ function assetCompressed(candles, prefix, names, out) {
   }
   push('range', (hi - lo) / (closeSum / HOURS));
 
-  push('ret_last24h', last / candles[HOURS - DAY - 1].close - 1);
+  // for 1-day chunks the "last 24h" IS the whole chunk; degrade gracefully
+  push('ret_last24h', HOURS > DAY ? last / candles[HOURS - DAY - 1].close - 1 : last / first - 1);
   push('ret_last6h', last / candles[HOURS - 6 - 1].close - 1);
 
   const dayVols = [];
@@ -133,7 +134,8 @@ function assetCompressed(candles, prefix, names, out) {
   return rets; // hourly log returns, reused for the cross features
 }
 
-// Full compressed vector for one chunk: 20 trade + 20 compare + 4 cross = 44.
+// Full compressed vector for one chunk: (nDays+12) per asset + 4 cross —
+// 44 for the classic 8-day chunk, 30 for a 1-day chunk, etc.
 function compressedFeatures(tradeCandles, compareCandles) {
   const names = [];
   const out = [];
@@ -159,16 +161,17 @@ function compressedFeatures(tradeCandles, compareCandles) {
   return { x: out, names };
 }
 
-// Stable name list (for reports) without needing candles.
-const FEATURE_NAMES = (() => {
+// Stable name list (for reports) for a chunk of nDays, without candles.
+function featureNamesFor(nDays) {
   const one = (p) => [
-    ...Array.from({ length: DAYS }, (_, d) => `${p}_day${d + 1}_ret`),
+    ...Array.from({ length: nDays }, (_, d) => `${p}_day${d + 1}_ret`),
     `${p}_total_ret`, `${p}_hourly_vol`, `${p}_vol_shift`, `${p}_trend_slope`, `${p}_trend_accel`,
     `${p}_max_drawdown`, `${p}_max_runup`, `${p}_range`, `${p}_ret_last24h`, `${p}_ret_last6h`,
     `${p}_dayvol_cv`, `${p}_dayvol_last_ratio`,
   ];
   return [...one('trade'), ...one('comp'), 'rel_total_ret', 'rel_ret_last24h', 'rel_vol_log', 'ret_correlation'];
-})();
+}
+const FEATURE_NAMES = featureNamesFor(8);
 
 // Feature VIEWS for the consensus screen: methodologically distinct slices
 // of the 44. A pair that shows edge across views can't be riding a single
@@ -183,11 +186,12 @@ const FEATURE_VIEWS = {
   cross: (n) => isCross(n),
 };
 
-// Indices of FEATURE_NAMES selected by a view (throws on unknown views).
-function viewIndices(view) {
+// Indices of the nDays name list selected by a view (throws on unknowns).
+function viewIndices(view, nDays = 8) {
   const pred = FEATURE_VIEWS[view];
   if (!pred) throw new Error(`unknown feature view "${view}"`);
-  return FEATURE_NAMES.map((n, i) => (pred(n) ? i : -1)).filter((i) => i >= 0);
+  const names = nDays === 8 ? FEATURE_NAMES : featureNamesFor(nDays);
+  return names.map((n, i) => (pred(n) ? i : -1)).filter((i) => i >= 0);
 }
 
-module.exports = { compressedFeatures, FEATURE_NAMES, FEATURE_VIEWS, viewIndices, mean, std, linSlope, pearson };
+module.exports = { compressedFeatures, FEATURE_NAMES, featureNamesFor, FEATURE_VIEWS, viewIndices, mean, std, linSlope, pearson };

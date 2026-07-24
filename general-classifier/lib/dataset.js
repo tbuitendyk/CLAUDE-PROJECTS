@@ -22,6 +22,20 @@ const FIELDS_PER_CANDLE = 5; // open, high, low, close, quote_volume
 const FEATURES_PER_ASSET = CHUNK_HOURS * FIELDS_PER_CANDLE; // 960
 const FEATURE_COUNT = FEATURES_PER_ASSET * 2; // 1920
 
+// Chunk/label GEOMETRIES. The classic weekly shape scores on 6h window
+// AVERAGES (Tue morning vs Thu afternoon); the daily shapes score on two
+// single candle opens: enter at 01:00 the day after the sample ends (one
+// clear hour after midnight), exit at 18:00 that same day (1d/2d, 17h hold)
+// or the following day (3d/4d, 41h hold). Daily shapes step every day, so
+// six years yields ~2,200 overlapping samples instead of ~310.
+const GEOMETRIES = {
+  'weekly-8d': { featureHours: 192, stepHours: 168, anchor: 'monday', labelMode: 'windows', entryOffsetH: TUE_OFFSET_H + 3, exitOffsetH: THU_OFFSET_H + 3 },
+  'daily-1d': { featureHours: 24, stepHours: 24, anchor: 'daily', labelMode: 'points', entryOffsetH: 25, exitOffsetH: 42 },
+  'daily-2d': { featureHours: 48, stepHours: 24, anchor: 'daily', labelMode: 'points', entryOffsetH: 49, exitOffsetH: 66 },
+  'daily-3d': { featureHours: 72, stepHours: 24, anchor: 'daily', labelMode: 'points', entryOffsetH: 73, exitOffsetH: 114 },
+  'daily-4d': { featureHours: 96, stepHours: 24, anchor: 'daily', labelMode: 'points', entryOffsetH: 97, exitOffsetH: 138 },
+};
+
 function toHourlyMap(rows) {
   const map = new Map();
   for (const r of rows) map.set(r.ts, r);
@@ -65,6 +79,14 @@ function mondayStarts(minTs, maxTs) {
   let d = Math.floor(minTs / DAY_MS) * DAY_MS;
   while (new Date(d).getUTCDay() !== 1) d += DAY_MS;
   for (; d <= maxTs; d += 7 * DAY_MS) out.push(d);
+  return out;
+}
+
+// Every day's 00:00 UTC in [minTs, maxTs].
+function dailyStarts(minTs, maxTs) {
+  const out = [];
+  const DAY_MS = 24 * HOUR_MS;
+  for (let d = Math.ceil(minTs / DAY_MS) * DAY_MS; d <= maxTs; d += DAY_MS) out.push(d);
   return out;
 }
 
@@ -121,11 +143,15 @@ function balancedBandPct(diffPcts) {
 
 // Build every labelable chunk from two forward-filled hourly maps.
 // dormantPct: e.g. 2 for "+/-2%". featureSet: 'compressed' (v2 default,
-// 42 engineered numbers) or 'raw' (v1, all 1,920 hourly values).
-// includeUnlabeled (live tracker): chunks whose 192h of features are
-// complete but whose Tue/Thu label windows haven't happened yet are
-// emitted with label/c1/c2/diffPct null instead of being dropped.
-function buildChunks(tradeMap, compareMap, dormantPct, featureSet = 'compressed', { includeUnlabeled = false } = {}) {
+// engineered numbers) or 'raw' (v1, all hourly values).
+// geometry: a GEOMETRIES key — classic weekly window-average labels, or
+// daily-stepped shapes labeled on two single candle opens.
+// includeUnlabeled (live tracker): chunks whose features are complete but
+// whose label data hasn't happened yet are emitted with label/c1/c2/diffPct
+// null instead of being dropped.
+function buildChunks(tradeMap, compareMap, dormantPct, featureSet = 'compressed', { includeUnlabeled = false, geometry = 'weekly-8d' } = {}) {
+  const geo = GEOMETRIES[geometry];
+  if (!geo) throw new Error(`unknown geometry "${geometry}"`);
   const dormantFrac = Math.abs(dormantPct) / 100;
   // Min/max via a loop, NOT Math.min(...keys): spreading a multi-year run's
   // ~150k timestamps as function arguments overflows the call stack.
@@ -141,26 +167,40 @@ function buildChunks(tradeMap, compareMap, dormantPct, featureSet = 'compressed'
 
   const chunks = [];
   const dropped = { gap: 0, noLabel: 0 };
-  const mondays = mondayStarts(minTs, maxTs);
-  for (const start of mondays) {
-    const trade = candleRun(tradeMap, start, CHUNK_HOURS);
-    const compare = candleRun(compareMap, start, CHUNK_HOURS);
+  const starts = geo.anchor === 'monday' ? mondayStarts(minTs, maxTs) : dailyStarts(minTs, maxTs);
+  for (const start of starts) {
+    const trade = candleRun(tradeMap, start, geo.featureHours);
+    const compare = candleRun(compareMap, start, geo.featureHours);
     if (!trade || !compare) {
-      if (start + (CHUNK_HOURS - 1) * HOUR_MS <= maxTs) dropped.gap++;
+      if (start + (geo.featureHours - 1) * HOUR_MS <= maxTs) dropped.gap++;
       continue;
     }
-    const tue = candleRun(tradeMap, start + TUE_OFFSET_H * HOUR_MS, LABEL_HOURS);
-    const thu = candleRun(tradeMap, start + THU_OFFSET_H * HOUR_MS, LABEL_HOURS);
     const x = featureSet === 'raw'
       ? [...assetFeatures(trade), ...assetFeatures(compare)]
       : compressedFeatures(trade, compare).x;
-    if (!tue || !thu) {
+
+    let c1 = null;
+    let c2 = null;
+    if (geo.labelMode === 'windows') {
+      const tue = candleRun(tradeMap, start + TUE_OFFSET_H * HOUR_MS, LABEL_HOURS);
+      const thu = candleRun(tradeMap, start + THU_OFFSET_H * HOUR_MS, LABEL_HOURS);
+      if (tue && thu) {
+        c1 = meanOHLC(tue);
+        c2 = meanOHLC(thu);
+      }
+    } else {
+      const entryC = tradeMap.get(start + geo.entryOffsetH * HOUR_MS);
+      const exitC = tradeMap.get(start + geo.exitOffsetH * HOUR_MS);
+      if (entryC && exitC) {
+        c1 = entryC.open;
+        c2 = exitC.open;
+      }
+    }
+    if (c1 === null || c2 === null) {
       dropped.noLabel++;
       if (includeUnlabeled) chunks.push({ startTs: start, label: null, c1: null, c2: null, diffPct: null, x });
       continue;
     }
-    const c1 = meanOHLC(tue);
-    const c2 = meanOHLC(thu);
     const diffFrac = (c2 - c1) / c1;
     chunks.push({
       startTs: start,
@@ -172,17 +212,19 @@ function buildChunks(tradeMap, compareMap, dormantPct, featureSet = 'compressed'
     });
   }
   chunks.sort((a, b) => a.startTs - b.startTs);
-  return { chunks, dropped, considered: mondays.length };
+  return { chunks, dropped, considered: starts.length };
 }
 
 module.exports = {
   toHourlyMap,
   forwardFill,
   mondayStarts,
+  dailyStarts,
   buildChunks,
   meanOHLC,
   scoreDiff,
   balancedBandPct,
+  GEOMETRIES,
   assetFeatures,
   CHUNK_HOURS,
   TUE_OFFSET_H,

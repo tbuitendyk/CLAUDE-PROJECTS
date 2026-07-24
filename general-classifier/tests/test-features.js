@@ -1,5 +1,5 @@
 const { assert, makeRng } = require('./helpers');
-const { compressedFeatures, FEATURE_NAMES, linSlope, pearson } = require('../lib/features');
+const { compressedFeatures, FEATURE_NAMES, featureNamesFor, viewIndices, linSlope, pearson } = require('../lib/features');
 
 const HOURS = 192;
 
@@ -66,6 +66,47 @@ module.exports = {
     const res = compressedFeatures(candles(() => 100, (i) => (i >= 168 ? 8000 : 0)), candles(() => 50000));
     assert.ok(Math.abs(get(res, 'trade_dayvol_last_ratio') - 8) < 1e-9); // 8x the daily mean
     assert.ok(get(res, 'trade_dayvol_cv') > 2);
+  },
+  async namesScaleWithChunkDays() {
+    // (nDays+12) per asset + 4 cross: 44 for 8 days, 30 for 1, 34 for 3.
+    assert.deepStrictEqual(featureNamesFor(8), FEATURE_NAMES);
+    assert.strictEqual(FEATURE_NAMES.length, 44);
+    assert.strictEqual(featureNamesFor(1).length, 30);
+    assert.strictEqual(featureNamesFor(3).length, 34);
+    assert.ok(featureNamesFor(1).includes('trade_day1_ret'));
+    assert.ok(!featureNamesFor(1).includes('trade_day2_ret'));
+  },
+  async shortChunksProduceMatchingVectors() {
+    const short = (n, price) => {
+      const out = [];
+      for (let i = 0; i < n * 24; i++) {
+        const c = price * Math.pow(1.0005, i);
+        out.push({ ts: i, open: i === 0 ? price : price * Math.pow(1.0005, i - 1), high: c * 1.001, low: c * 0.999, close: c, quoteVolume: 1000 });
+      }
+      return out;
+    };
+    for (const n of [1, 2, 3, 4]) {
+      const res = compressedFeatures(short(n, 100), short(n, 50000));
+      assert.strictEqual(res.x.length, featureNamesFor(n).length, `${n}-day length`);
+      assert.deepStrictEqual(res.names, featureNamesFor(n), `${n}-day names`);
+      assert.ok(res.x.every((v) => Number.isFinite(v)), `${n}-day all finite`);
+    }
+    // On a 1-day chunk "last 24h" IS the whole chunk — must equal total_ret.
+    const one = compressedFeatures(short(1, 100), short(1, 50000));
+    const g = (nm) => one.x[one.names.indexOf(nm)];
+    assert.ok(Math.abs(g('trade_ret_last24h') - g('trade_total_ret')) < 1e-12);
+  },
+  async viewsSliceEveryGeometry() {
+    for (const n of [1, 2, 3, 4, 8]) {
+      const total = featureNamesFor(n).length;
+      const prices = viewIndices('prices', n).length;
+      const volume = viewIndices('volume', n).length;
+      const cross = viewIndices('cross', n).length;
+      assert.strictEqual(viewIndices('full', n).length, total);
+      assert.strictEqual(volume, 5, `${n}-day volume view`); // 2×(dayvol_cv, dayvol_last_ratio) + rel_vol_log
+      assert.strictEqual(cross, 4, `${n}-day cross view`);
+      assert.strictEqual(prices + volume, total, `${n}-day prices/volume partition`);
+    }
   },
   async helpersBehave() {
     assert.ok(Math.abs(linSlope([0, 1, 2, 3]) - 1) < 1e-12);

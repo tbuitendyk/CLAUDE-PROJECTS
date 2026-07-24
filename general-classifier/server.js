@@ -2,6 +2,7 @@ const path = require('path');
 const express = require('express');
 const { startJob, getJob } = require('./lib/jobs');
 const { runAnalysis, loadData, countRotations } = require('./lib/pipeline');
+const { GEOMETRIES } = require('./lib/dataset');
 const { cacheState, cachedMonths, monthlyKlines } = require('./lib/binance');
 const throttle = require('./lib/throttle');
 const batch = require('./lib/batch');
@@ -21,6 +22,7 @@ app.use(express.json({ limit: '256kb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 
 const SYMBOL_RE = /^[A-Z0-9]{5,20}$/;
+const GEOMETRY_KEYS = Object.keys(GEOMETRIES); // weekly-8d, daily-1d..daily-4d
 
 app.get('/api/healthz', (req, res) => res.json({ ok: true, cpuPct: throttle.currentCpuPct() }));
 
@@ -85,9 +87,12 @@ app.post('/api/run', (req, res) => {
   if (!['full', 'prices', 'volume', 'cross'].includes(featureView)) {
     return res.status(400).json({ error: 'featureView must be full/prices/volume/cross' });
   }
-
+  const geometry = String(b.geometry || 'weekly-8d');
+  if (!GEOMETRY_KEYS.includes(geometry)) {
+    return res.status(400).json({ error: `geometry must be one of ${GEOMETRY_KEYS.join('/')}` });
+  }
   const jobId = startJob((setProgress) =>
-    runAnalysis({ dormantPct, tradeSymbol, compareSymbol, startMonth, endMonth, featureSet, model, featureView, allLoaded }, setProgress)
+    runAnalysis({ dormantPct, tradeSymbol, compareSymbol, startMonth, endMonth, featureSet, model, featureView, geometry, allLoaded }, setProgress)
   );
   res.json({ jobId });
 });
@@ -111,6 +116,10 @@ app.post('/api/batch', (req, res) => {
   if (b.models !== undefined && (!Array.isArray(b.models) || b.models.some((m) => m !== 'logreg' && m !== 'boost'))) {
     return res.status(400).json({ error: 'models must be an array of "logreg"/"boost"' });
   }
+  const batchGeometry = String(b.geometry || 'weekly-8d');
+  if (!GEOMETRY_KEYS.includes(batchGeometry)) {
+    return res.status(400).json({ error: `geometry must be one of ${GEOMETRY_KEYS.join('/')}` });
+  }
   try {
     const id = batch.startBatch({
       dormantPct,
@@ -120,6 +129,7 @@ app.post('/api/batch', (req, res) => {
       compareSymbol: b.compareSymbol ? String(b.compareSymbol).toUpperCase() : undefined,
       pairs: b.pairs,
       models: b.models,
+      geometry: batchGeometry,
       allLoaded: !!b.allLoaded,
     });
     res.json({ batchId: id });
@@ -142,6 +152,10 @@ app.post('/api/consensus', (req, res) => {
   if (!Number.isInteger(nullShifts) || nullShifts < 0 || nullShifts > 1000) {
     return res.status(400).json({ error: 'nullShifts must be an integer 0..1000' });
   }
+  const consGeometry = String(b.geometry || 'weekly-8d');
+  if (!GEOMETRY_KEYS.includes(consGeometry)) {
+    return res.status(400).json({ error: `geometry must be one of ${GEOMETRY_KEYS.join('/')}` });
+  }
   try {
     const id = batch.startConsensus({
       startMonth: b.startMonth,
@@ -149,6 +163,7 @@ app.post('/api/consensus', (req, res) => {
       compareSymbol: b.compareSymbol ? String(b.compareSymbol).toUpperCase() : undefined,
       pairs: b.pairs ? b.pairs.map((p) => String(p).toUpperCase()) : undefined,
       nullShifts,
+      geometry: consGeometry,
       allLoaded: !!b.allLoaded,
     });
     res.json({ batchId: id });
@@ -162,12 +177,16 @@ app.post('/api/consensus', (req, res) => {
 app.get('/api/rotations', async (req, res) => {
   const pairs = String(req.query.pairs || '').split(',').map((p) => p.trim().toUpperCase()).filter(Boolean);
   const compareSymbol = String(req.query.compare || 'BTCUSDT').toUpperCase();
+  const geometry = String(req.query.geometry || 'weekly-8d');
   if (!pairs.length || pairs.length > 6 || pairs.some((p) => !SYMBOL_RE.test(p))) {
     return res.status(400).json({ error: 'pass 1-6 pairs like ?pairs=DOTUSDT,AVAXUSDT' });
   }
+  if (!GEOMETRY_KEYS.includes(geometry)) {
+    return res.status(400).json({ error: `geometry must be one of ${GEOMETRY_KEYS.join('/')}` });
+  }
   try {
     const out = {};
-    for (const p of pairs) out[p] = await countRotations(p, compareSymbol);
+    for (const p of pairs) out[p] = await countRotations(p, compareSymbol, () => {}, geometry);
     const suggested = Math.min(1000, Math.max(0, ...Object.values(out).map((r) => r.maxRotations)));
     res.json({ pairs: out, suggested });
   } catch (err) {

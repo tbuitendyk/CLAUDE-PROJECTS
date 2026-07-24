@@ -180,6 +180,7 @@
           featureSet: $('features').value,
           model: $('model').value,
           featureView: pendingView || 'full',
+          geometry: $('geometry').value,
         }),
       });
       pendingView = null;
@@ -244,6 +245,9 @@
 
   function render(r) {
     const t = r.test;
+    const daily = (r.params.geometry || 'weekly-8d') !== 'weekly-8d';
+    const chunkWord = daily ? 'chunks' : 'weeks';
+    const moveLabel = daily ? 'entry→exit move' : 'Tue→Thu move';
     const edgeVsMaj = t.accuracy - t.majorityBaseline;
     const verdict =
       edgeVsMaj > 0.05 && t.accuracy > t.randomBaseline
@@ -268,11 +272,11 @@
       <div class="section">
         <h2>Out-of-sample result &mdash; ${esc(r.split.test.from)} to ${esc(r.split.test.to)}</h2>
         <div class="tiles">
-          ${tile('Test accuracy', pct(t.accuracy), `${r.split.test.count} held-out weeks`, true)}
+          ${tile('Test accuracy', pct(t.accuracy), `${r.split.test.count} held-out ${chunkWord}`, true)}
           ${tile('Majority baseline', pct(t.majorityBaseline), `always guess ${clsName(t.majorityClass)}`)}
           ${tile('Random baseline', pct(t.randomBaseline), '3 classes')}
           ${t.paper ? tile('Paper P&L', money(t.paper.pnl), `${t.paper.trades} trades, ${t.paper.wins} wins, $1/trip fees${t.paper.unpriced ? `, ${t.paper.unpriced} unpriced` : ''}`) : ''}
-          ${tile('Training weeks', String(r.split.train.count), `${esc(r.split.train.from)} → ${esc(r.split.train.to)}`)}
+          ${tile(daily ? 'Training chunks' : 'Training weeks', String(r.split.train.count), `${esc(r.split.train.from)} → ${esc(r.split.train.to)}`)}
         </div>
         <div class="verdict">${verdict}</div>
       </div>
@@ -365,9 +369,9 @@
       </div>
 
       <div class="section">
-        <h2>Held-out weeks, one by one</h2>
+        <h2>Held-out ${chunkWord}, one by one</h2>
         <div class="tablewrap"><table>
-          <tr><th>week (Mon)</th><th>actual</th><th>predicted</th><th>P(−1)</th><th>P(0)</th><th>P(+1)</th><th>Tue&rarr;Thu move</th><th title="One-shot $100 paper trade for this week at tracker economics; $0.00 = stood aside; — = entry/exit candle missing.">paper P&amp;L</th></tr>
+          <tr><th>${daily ? 'chunk start' : 'week (Mon)'}</th><th>actual</th><th>predicted</th><th>P(−1)</th><th>P(0)</th><th>P(+1)</th><th>${esc(moveLabel)}</th><th title="One-shot $100 paper trade at this geometry's own entry/exit candles; $0.00 = stood aside; — = entry/exit candle missing.">paper P&amp;L</th></tr>
           ${t.rows.map((row) => `
             <tr class="${row.actual === row.predicted ? '' : 'miss'}">
               <td>${esc(row.weekStart)}</td>
@@ -401,7 +405,7 @@
     const range = doc.params.allLoaded ? 'all loaded data' : `${esc(doc.params.startMonth)}→${esc(doc.params.endMonth)}`;
     const header = `${esc(doc.id)} — ${esc(doc.status)}${doc.status === 'running' && doc.progress ? ` — ${esc(doc.progress)}` : ''}
       · ${doc.runs.filter((r) => r.status === 'done' || r.status === 'error').length}/${doc.runs.length} runs
-      · dormant ±${esc(String(doc.params.dormantPct))}% · ${range} · vs ${esc(doc.params.compareSymbol)}`;
+      · dormant ±${esc(String(doc.params.dormantPct))}% · ${range} · ${esc(doc.params.geometry || 'weekly-8d')} · vs ${esc(doc.params.compareSymbol)}`;
     if (!s || !s.ranked.length) {
       batchViewEl.innerHTML = `<p class="note">${header}</p><p class="note">No completed runs yet.</p>`;
       return;
@@ -506,6 +510,7 @@
       $('end').value = doc.params.endMonth;
     }
     $('features').value = doc.params.featureSet || 'compressed';
+    $('geometry').value = doc.params.geometry || 'weekly-8d';
     $('model').value = r.model;
     const auto = doc.params.dormantPct === 'auto';
     $('autoband').checked = auto;
@@ -576,6 +581,7 @@
           endMonth: $('end').value,
           allLoaded: allLoadedChecked(),
           featureSet: $('features').value,
+          geometry: $('geometry').value,
         }),
       });
       const body = await jsonBody(res);
@@ -594,7 +600,7 @@
       if (!pairsRaw) throw new Error('enter a pair list first — computing exact rotations for all 17 pairs would take a while');
       const pairs = pairsRaw.split(',').map((p) => p.trim().toUpperCase()).filter(Boolean).join(',');
       setBatchStatus('computing exact rotation ceilings…');
-      const res = await fetch(`api/rotations?pairs=${encodeURIComponent(pairs)}`);
+      const res = await fetch(`api/rotations?pairs=${encodeURIComponent(pairs)}&geometry=${encodeURIComponent($('geometry').value)}`);
       const body = await jsonBody(res);
       setBatchStatus('');
       if (!res.ok) throw new Error(body.error || `HTTP ${res.status}`);
@@ -617,6 +623,7 @@
         endMonth: $('end').value,
         allLoaded: allLoadedChecked(),
         nullShifts: Number($('cons-null').value) || 0,
+        geometry: $('geometry').value,
       };
       if (pairsRaw) body.pairs = pairsRaw.split(',').map((p) => p.trim().toUpperCase()).filter(Boolean);
       const res = await fetch('api/consensus', {
