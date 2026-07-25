@@ -544,7 +544,17 @@
         if (w.every((v) => v != null) && w[1] > w[0] && w[2] > w[1] && w[3] > w[2]) monotone++;
       }
       const pSign = comparable ? binomTail(rising, comparable, 0.5) : null;
-      const pMono = withLadder.length ? binomTail(monotone, withLadder.length, 1 / 24) : null;
+      // Chance rate for a strictly monotone gradient is 1/8, NOT 1/24. The
+      // four rungs are NESTED cumulative subsets (every q8 trade is also a
+      // q7/q6/q5 trade), so w5<w6 holds exactly when the "exactly 5" stratum
+      // sits below the average of the strata above it — a coin flip — and the
+      // same for the other two steps. Each stratum appears in only one of the
+      // three conditions, so the flips are independent: (1/2)^3 = 1/8.
+      // The 1/24 figure treats the rungs as independent orderings and
+      // understates the null by ~3x; it reported p=0.0046 where the correct
+      // value is p=0.154 on this screen.
+      const MONO_CHANCE = 1 / 8;
+      const pMono = withLadder.length ? binomTail(monotone, withLadder.length, MONO_CHANCE) : null;
       const verdict = pSign != null && pSign < 0.05
         ? 'The gradient replicates across pairs — evidence that agreement tracks edge as a general mechanism, not a DOGE artifact.'
         : pSign != null && pSign < 0.2
@@ -571,7 +581,8 @@
         Win rate rises from 5-of-8 to unanimous in <strong>${rising} of ${comparable}</strong> pairs
         (chance = 50%, binomial p = <strong>${pSign == null ? '—' : pSign.toFixed(4)}</strong>).<br>
         Strictly monotone across all four rungs in <strong>${monotone} of ${withLadder.length}</strong> pairs
-        (chance ≈ 1 in 24, expected ${(withLadder.length / 24).toFixed(1)}, binomial p =
+        (chance = 1 in 8 — the rungs are nested subsets, not independent orderings — expected
+        ${(withLadder.length * MONO_CHANCE).toFixed(1)}, binomial p =
         <strong>${pMono == null ? '—' : pMono.toFixed(4)}</strong>).<br>
         ${esc(verdict)}
         ${matrix}
