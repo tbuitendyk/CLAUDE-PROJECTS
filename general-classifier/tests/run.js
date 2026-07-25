@@ -1,5 +1,5 @@
 // Tiny test runner: node tests/run.js
-const files = ['test-binance.js', 'test-dataset.js', 'test-features.js', 'test-logreg.js', 'test-boost.js', 'test-throttle.js', 'test-consensus.js', 'test-tracker.js'];
+const files = ['test-binance.js', 'test-dataset.js', 'test-features.js', 'test-logreg.js', 'test-boost.js', 'test-throttle.js', 'test-consensus.js', 'test-tracker.js', 'test-dogebook.js'];
 
 let failures = 0;
 (async () => {

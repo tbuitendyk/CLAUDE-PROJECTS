@@ -7,6 +7,7 @@ const { cacheState, cachedMonths, monthlyKlines } = require('./lib/binance');
 const throttle = require('./lib/throttle');
 const batch = require('./lib/batch');
 const tracker = require('./lib/tracker');
+const dogebook = require('./lib/dogebook');
 
 // General Classifier web service. Fronted by nginx at
 // https://www.buitendyk.ca/classifier/ behind the site's Basic Auth (the
@@ -273,6 +274,32 @@ app.post('/api/tracker/init', (req, res) => {
 // downtime (missed weeks arrive flagged as seeded, never lost).
 setInterval(() => tracker.tick().catch((err) => console.error('tracker tick failed:', err.message)), 30 * 60 * 1000);
 setTimeout(() => tracker.tick().catch((err) => console.error('tracker tick failed:', err.message)), 20 * 1000);
+
+// ---- second live paper book: DOGE daily-3d (TRACKER-DOGE.md) -----------------
+// Entirely separate state and endpoints from the frozen DOT/AVAX tracker.
+
+app.get('/api/dogebook', (req, res) => res.json(dogebook.status()));
+
+app.post('/api/dogebook/refresh', async (req, res) => {
+  try {
+    await dogebook.refreshPrices();
+    res.json(dogebook.status());
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/dogebook/init', (req, res) => {
+  if (dogebook.initialized()) return res.status(409).json({ error: 'doge book already initialized' });
+  const jobId = startJob((setProgress) => dogebook.init({}, setProgress));
+  res.json({ jobId });
+});
+
+// Daily geometry: a new chunk closes every day and settlement lands 115h
+// later, so a 30-minute cadence catches both promptly and self-heals after
+// downtime (missed days arrive flagged unseen, never lost).
+setInterval(() => dogebook.tick().catch((err) => console.error('dogebook tick failed:', err.message)), 30 * 60 * 1000);
+setTimeout(() => dogebook.tick().catch((err) => console.error('dogebook tick failed:', err.message)), 40 * 1000);
 
 // Owner's kill switch: stops the active screen at its current run AND
 // aborts every in-flight heavy loop (single runs, tracker init) at its next

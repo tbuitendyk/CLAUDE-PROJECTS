@@ -40,6 +40,14 @@ The live paper tracker's pre-registered protocol lives in
 **Do not alter tracker mechanics, models, or evaluation rules after the
 first live week**; if a change is unavoidable, the live record restarts.
 
+A SECOND independent book — DOGEUSDT on the daily-3d geometry, five decision
+rules declared in advance (majority vote plus quorums 5/6/7/8) — is
+pre-registered in `general-classifier/TRACKER-DOGE.md` and implemented in
+`lib/dogebook.js` with its own state file. Same no-touch rule applies once it
+is live. It is a deliberately separate module: `lib/tracker.js` must stay
+byte-identical so the DOT/AVAX record can never be perturbed by work on the
+DOGE book. The two share only the paper-trade primitives in `lib/paper.js`.
+
 Related pieces on OTHER branches (don't edit them here):
 
 - **`website` branch** — the portal tile and the `/classifier/` nginx location

@@ -979,7 +979,144 @@
   });
   $('tracker-refresh').addEventListener('click', () => refreshTracker(true));
 
+  // ---- live tracker II: DOGE daily-3d -----------------------------------------
+
+  const dogeViewEl = $('doge-view');
+  const dogeErrEl = $('doge-error');
+  const dogeStatusEl = $('doge-status');
+  const BOOK_LABEL = {
+    vote: 'vote (majority of 8)',
+    q5: '5 of 8 agree',
+    q6: '6 of 8 agree',
+    q7: '7 of 8 agree',
+    q8: '8 of 8 (unanimous)',
+  };
+  // The backtest gradient this book exists to test forward (TRACKER-DOGE.md).
+  const BACKTEST_WIN = { q5: 0.537, q6: 0.574, q7: 0.626, q8: 0.673 };
+  let dogeSel = 'q7';
+
+  function setDogeStatus(text) {
+    dogeStatusEl.hidden = !text;
+    dogeStatusEl.innerHTML = text ? `<span class="spin">⟳</span>${esc(text)}` : '';
+  }
+
+  function renderDoge(t) {
+    if (!t.initialized) {
+      dogeViewEl.innerHTML = '<p class="note">Not initialized. Initialize trains and freezes the 8 specs on every '
+        + 'chunk completed before 2026-07-01 (throttle-aware, a few minutes), then seeds every day since.</p>';
+      return;
+    }
+    const rows = Object.entries(t.books).map(([k, b]) => {
+      const back = BACKTEST_WIN[k];
+      const live = b.trades ? b.wins / b.trades : null;
+      return `<tr class="bookrow ${k === dogeSel ? 'hilite' : ''}" data-book="${esc(k)}"
+          title="Click to show this book's period-by-period history below">
+        <td>${k === 'vote' ? '<strong>' + esc(BOOK_LABEL[k]) + '</strong>' : esc(BOOK_LABEL[k])}</td>
+        <td>${b.trades}</td><td>${b.wins}</td>
+        <td>${live == null ? '—' : pct(live)}</td>
+        <td>${back == null ? '—' : pct(back)}</td>
+        <td>${money(b.pnl)}</td>
+        <td>${b.grossPerTrade == null ? '—' : '$' + b.grossPerTrade.toFixed(2)}</td>
+        <td>${b.scored ? pct(b.correct / b.scored) : '—'}</td>
+      </tr>`;
+    }).join('');
+    const hist = t.periods.slice().reverse().map((p) => {
+      const call = p.calls[dogeSel];
+      const pnl = p.pnl ? p.pnl[dogeSel] : null;
+      const floatingExit = p.status === 'pending' && t.lastPrice
+        ? `<em title="current market price (as of ${esc(t.lastPrice.at)}) — position still floating, not the exit">${t.lastPrice.price}</em>`
+        : '—';
+      const agree = Object.values(p.predictions).filter((v) => v === call && call !== 0).length;
+      return `<tr class="${p.status === 'settled' && call !== 0 && pnl != null && pnl <= 0 ? 'miss' : ''}">
+        <td>${esc(p.dayOf)}</td><td>${clsSpan(call)}</td>
+        <td>${call === 0 ? '—' : `${agree}/8`}</td>
+        <td>${p.actual === null ? '—' : clsSpan(p.actual)}</td>
+        <td>${p.entry != null ? p.entry : '—'}</td><td>${p.exit != null ? p.exit : floatingExit}</td>
+        <td>${pnl != null ? money(pnl) : '—'}</td><td>${esc(p.status)}</td>
+        <td>${p.live ? 'LIVE' : 'unseen'}</td>
+      </tr>`;
+    }).join('');
+    const vb = t.books.q7;
+    dogeViewEl.innerHTML = `
+      <div class="tiles">
+        ${tile('7-of-8 book P&L', money(vb.pnl), `${vb.trades} trades, ${vb.wins} wins, after $1/trip fees`, true)}
+        ${tile('Vote book P&L', money(t.books.vote.pnl), `${t.books.vote.trades} trades, ${t.books.vote.wins} wins`)}
+        ${tile('Periods recorded', String(t.periods.length), `${t.liveCount} live · ${t.periods.length - t.liveCount} unseen (backfilled)`)}
+        ${tile('Frozen band', '±' + t.bandPct.toFixed(2) + '%', `${t.trainChunks} training chunks through ${esc(t.trainedThrough)}`)}
+      </div>
+      <div class="tablewrap" style="margin-top:10px"><table>
+        <tr>
+          <th title="All five rules were declared before the first period. None will be promoted on the basis of live results.">book</th>
+          <th title="Settled periods where this book took a position (±1).">trades</th>
+          <th title="Trades that closed positive after $1 round-trip fees.">wins</th>
+          <th title="Live win rate — the number this book exists to test.">win rate</th>
+          <th title="What this rung scored in the backtest. The claim under test is that win rate rises monotonically with agreement; if the live column reproduces that ordering, the conviction hypothesis survives out of sample.">backtest</th>
+          <th title="Cumulative paper P&L at $100 per order, $0.50 per leg.">P&amp;L</th>
+          <th title="P&L before friction, per trade — the raw directional edge captured. Above $1.00 means the rule beats its own fees.">gross/trade</th>
+          <th title="Of settled periods with a known outcome, how often this book's call matched the realized class. Stand-asides count as calls of 0.">accuracy</th>
+        </tr>
+        ${rows}
+      </table></div>
+      <p class="note" style="margin-top:10px">History — <strong>${esc(BOOK_LABEL[dogeSel])}</strong>. Click any book above to switch.</p>
+      <div class="tablewrap"><table>
+        <tr>
+          <th title="Day the 72-hour chunk started; the call was made after it closed.">chunk day</th>
+          <th title="This book's call: +1 long, −1 short, 0 stand aside.">call</th>
+          <th title="How many of the 8 specs backed the traded direction.">agreement</th>
+          <th title="Realized class from the two candle opens against the frozen band.">actual</th>
+          <th title="Entry: 01:00 UTC the day after the chunk closed, hourly open.">entry</th>
+          <th title="Exit: 18:00 UTC the following day, hourly open (41-hour hold).">exit</th>
+          <th title="This book's P&L for the period after $1 round-trip fees; $0.00 when it stood aside.">P&amp;L</th>
+          <th title="pending = awaiting settlement; settled = done; missed = data gap prevented pricing.">status</th>
+          <th title="LIVE = recorded before the outcome candle existed. unseen = backfilled after the fact — equally untrained-on, reported alongside but not counted toward the live verdict.">provenance</th>
+        </tr>
+        ${hist}
+      </table></div>`;
+    dogeViewEl.querySelectorAll('.bookrow').forEach((row) => {
+      row.addEventListener('click', () => {
+        dogeSel = row.dataset.book;
+        renderDoge(t);
+      });
+    });
+  }
+
+  async function refreshDoge(fresh = false) {
+    try {
+      dogeErrEl.hidden = true;
+      if (fresh) setDogeStatus('fetching current prices…');
+      const res = await fetch('api/dogebook' + (fresh ? '/refresh' : ''), fresh ? { method: 'POST' } : undefined);
+      const t = await jsonBody(res);
+      setDogeStatus('');
+      if (!res.ok) throw new Error(t.error || `HTTP ${res.status}`);
+      renderDoge(t);
+      $('doge-init').disabled = !!t.initialized;
+    } catch (err) {
+      setDogeStatus('');
+      dogeErrEl.hidden = false;
+      dogeErrEl.textContent = err.message;
+    }
+  }
+
+  $('doge-init').addEventListener('click', async () => {
+    try {
+      dogeErrEl.hidden = true;
+      setDogeStatus('initializing…');
+      const res = await fetch('api/dogebook/init', { method: 'POST' });
+      const body = await jsonBody(res);
+      if (!res.ok) throw new Error(body.error || `HTTP ${res.status}`);
+      await poll(body.jobId, setDogeStatus);
+      setDogeStatus('');
+      refreshDoge();
+    } catch (err) {
+      setDogeStatus('');
+      dogeErrEl.hidden = false;
+      dogeErrEl.textContent = err.message;
+    }
+  });
+  $('doge-refresh').addEventListener('click', () => refreshDoge(true));
+
   refreshBatch();
   refreshDataState();
   refreshTracker();
+  refreshDoge();
 })();

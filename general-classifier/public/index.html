@@ -124,6 +124,26 @@
       <div id="tracker-view"></div>
     </div>
 
+    <div class="section" id="dogebook-section">
+      <h2>Live tracker II &mdash; DOGE daily-3d (paper)</h2>
+      <p class="note">
+        A second, independent book. Frozen 8-spec models (trained through 2026-06, never retrained) predict every
+        day's 41-hour move: entry 01:00 UTC the day after the 72-hour chunk closes, exit 18:00 the following day,
+        $100 per order, $0.50 per leg. <strong>Five decision rules are declared in advance and all five are
+        reported</strong> &mdash; the majority vote plus the agreement gradient at 5, 6, 7 and 8 of 8 &mdash; so
+        nothing is selected after the fact and no multiplicity correction is owed. Backtest gradient to beat:
+        win rate 53.7% / 57.4% / 62.6% / 67.3% across the four quorums. Positions overlap (a signal a day against a
+        41-hour hold), so implied capital is ~$200&ndash;300, not $100. Protocol: TRACKER-DOGE.md in the repo.
+      </p>
+      <div class="controls" style="margin-top:10px">
+        <div class="field submit"><button id="doge-init" type="button">Initialize DOGE book</button></div>
+        <div class="field submit"><button id="doge-refresh" type="button" class="secondary">Refresh</button></div>
+        <div id="doge-status" class="status" style="margin-top:0" hidden></div>
+      </div>
+      <div id="doge-error" class="error" hidden></div>
+      <div id="doge-view"></div>
+    </div>
+
     <div class="section" id="batch-section">
       <h2>Pair screen (batch)</h2>
       <p class="note">
@@ -177,6 +197,6 @@
     pruned to time / open / high / low / close / quote&nbsp;volume.
   </footer>
 
-  <script src="app.js?v=30"></script>
+  <script src="app.js?v=31"></script>
 </body>
 </html>
