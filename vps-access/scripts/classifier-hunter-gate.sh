@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # H1 hunter-campaign gate reader: newest directional consensus screen,
-# per pair: vote book net/trades/wins + the pre-registered gate verdict
-# (net > $0 at the screen's recorded friction on >= 30 trades). Read-only.
+# per pair: vote book net/trades/wins + the gate verdict per VERDICTS.md
+# amendment A1: net > $0 at recorded friction AND (>=30 trades, OR >=10
+# trades with gross/trade >= $1.00 at a rate >= 7 trades/365 test days).
+# Read-only.
 set -euo pipefail
 
 curl -s http://127.0.0.1:8093/api/batches > /tmp/h1-batches.json
@@ -27,8 +29,16 @@ for pair in s.get("pairs", []):
     if not v:
         print(f"{pair['trade']}: no vote book")
         continue
-    gate = v["pnl"] > 0 and v["trades"] >= 30
     gpt = (v["pnl"] + v["trades"] * trip) / v["trades"] if v["trades"] else None
+    # Test-window length in days: one scored period per step. daily-* steps
+    # every 24h; weekly-8d steps every 7 days.
+    step_days = 7 if p.get("geometry", "weekly-8d") == "weekly-8d" else 1
+    test_days = (v.get("scored") or 0) * step_days
+    rate = v["trades"] * 365 / test_days if test_days else 0
+    lane_a = v["trades"] >= 30
+    lane_b = v["trades"] >= 10 and gpt is not None and gpt >= 1.0 and rate >= 7
+    gate = v["pnl"] > 0 and (lane_a or lane_b)
+    lane = "a" if lane_a else ("b" if lane_b else "-")
     sup = pair.get("superVote")
     supstr = f" | q6 {sup['pnl']:+.2f} ({sup['trades']}t)" if sup else ""
     taus = []
@@ -36,9 +46,10 @@ for pair in s.get("pairs", []):
         if r["trade"] == pair["trade"] and not r.get("shift") and r.get("metrics"):
             ch = r["metrics"].get("chosen", "")
             taus.append(ch.split("tau=")[-1] if "tau=" in ch else "?")
-    print(f"{pair['trade']}: vote {v['pnl']:+.2f} ({v['wins']}/{v['trades']}t, gross/t {('$%.2f' % gpt) if gpt is not None else '—'}){supstr} | taus {','.join(taus)} | GATE {'PASS' if gate else 'no'}")
+    ratestr = f", {rate:.1f}t/yr" if v["trades"] else ""
+    print(f"{pair['trade']}: vote {v['pnl']:+.2f} ({v['wins']}/{v['trades']}t, gross/t {('$%.2f' % gpt) if gpt is not None else '—'}{ratestr}){supstr} | taus {','.join(taus)} | GATE {'PASS(' + lane + ')' if gate else 'no'}")
     if gate:
-        passing.append(pair["trade"])
+        passing.append(f"{pair['trade']}({lane})")
 print()
 print(f"gate passes: {len(passing)} of {len(s.get('pairs', []))} -> {', '.join(passing) if passing else 'none'}")
 EOF
