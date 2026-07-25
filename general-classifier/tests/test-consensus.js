@@ -1,6 +1,6 @@
 const { assert } = require('./helpers');
 const { FEATURE_NAMES, viewIndices } = require('../lib/features');
-const { summarizeConsensus, voteBook, SUPER_QUORUM, CONSENSUS_VIEWS, CONSENSUS_MODELS } = require('../lib/batch');
+const { summarizeConsensus, voteBook, gatesFromStored, SUPER_QUORUM, GATE_QUORUMS, CONSENSUS_VIEWS, CONSENSUS_MODELS } = require('../lib/batch');
 const { voteOf, superOf, pnlFor, directionalCall } = require('../lib/paper');
 const { deriveShift } = require('../lib/pipeline');
 
@@ -210,6 +210,57 @@ module.exports = {
       AAAUSDT: { real: { pnl: 10, trades: 5, wins: 3, acc: 0.5, trueEdge: 0.1, rows: [] }, nulls: { 10: { pnl: 1, trades: 2 } } },
     });
     assert.strictEqual(legacy.pairs[0].nullVote.shifts, 1);
+  },
+  async gateLadderIsMonotoneInAgreement() {
+    // Construct a grid where agreement genuinely tracks correctness: the more
+    // specs agree, the more often the call is right. gross/trade must then
+    // rise as the quorum tightens, while trade count falls.
+    const periods = [
+      { agree: 8, right: true }, { agree: 8, right: true }, { agree: 8, right: true },
+      { agree: 7, right: true }, { agree: 7, right: true }, { agree: 7, right: false },
+      { agree: 6, right: true }, { agree: 6, right: false }, { agree: 6, right: true },
+      { agree: 5, right: false }, { agree: 5, right: true }, { agree: 5, right: false },
+    ];
+    const rows = periods.map((p, i) => ({
+      week: `p${i}`,
+      actual: p.right ? 1 : -1, // the +1 callers are right exactly when p.right
+      entry: 100,
+      exit: p.right ? 110 : 90,
+    }));
+    // spec s calls +1 on period i when s < agree, else -1
+    const preds = Array.from({ length: 8 }, (_, s) => periods.map((p) => (s < p.agree ? 1 : -1)));
+    const { gates } = voteBook({ rows, preds, bestConstant: 0.5 });
+    assert.ok(gates, 'a complete 8-spec grid produces the ladder');
+    assert.deepStrictEqual(Object.keys(gates).map(Number), GATE_QUORUMS);
+    const perTrade = (q) => (gates[q].pnl + gates[q].trades) / gates[q].trades;
+    // trades fall as the quorum tightens
+    assert.ok(gates[5].trades > gates[6].trades, `${gates[5].trades} > ${gates[6].trades}`);
+    assert.ok(gates[6].trades > gates[7].trades);
+    assert.ok(gates[7].trades > gates[8].trades);
+    // and gross per trade rises, which is the hypothesis under test
+    assert.ok(perTrade(6) > perTrade(5), `${perTrade(6)} > ${perTrade(5)}`);
+    assert.ok(perTrade(7) > perTrade(6));
+    assert.ok(perTrade(8) > perTrade(7));
+    // the pre-registered rung is exactly the standalone super book
+    const book = voteBook({ rows, preds, bestConstant: 0.5 });
+    assert.deepStrictEqual(book.superStats, book.gates[6]);
+  },
+  async ladderRebuildsFromStoredPredictions() {
+    // Regression: a v1.16 screen stored specPreds + rows but only the 6/8
+    // book. Its full ladder must be recoverable with no re-running.
+    const rows = [
+      { week: 'p1', actual: 1, entry: 100, exit: 110 },
+      { week: 'p2', actual: -1, entry: 100, exit: 95 },
+      { week: 'p3', actual: 1, entry: 100, exit: 104 },
+    ];
+    const preds = Array.from({ length: 8 }, (_, s) => [1, s < 7 ? -1 : 1, s < 5 ? 1 : -1]);
+    const live = voteBook({ rows, preds, bestConstant: 0.4 });
+    const stored = { ...live.stats, super: live.superStats, rows: live.rows, specPreds: Object.fromEntries(preds.map((p, i) => [`v${i}`, p])) };
+    const rebuilt = gatesFromStored(stored);
+    assert.deepStrictEqual(rebuilt, live.gates); // identical, including trueEdge
+    // a short grid rebuilds nothing rather than something misleading
+    assert.strictEqual(gatesFromStored({ ...stored, specPreds: { a: [1, 1, 1] } }), null);
+    assert.strictEqual(gatesFromStored({ rows: null, specPreds: {} }), null);
   },
   async voteRuleMatchesTheTracker() {
     // Same semantics as tracker.js voteOf: outright majority wins, ANY tie

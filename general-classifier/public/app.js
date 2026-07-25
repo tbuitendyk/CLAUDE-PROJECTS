@@ -9,6 +9,7 @@
   const reportEl = $('report');
 
   const CLASSES = [-1, 0, 1];
+  const GATE_Q = [5, 6, 7, 8]; // agreement-gradient rungs (server: GATE_QUORUMS)
   const clsName = (c) => (c > 0 ? '+1' : c < 0 ? '−1' : '0');
   const clsSpan = (c) => `<span class="cls ${c > 0 ? 'up' : c < 0 ? 'down' : 'flat'}">${clsName(c)}</span>`;
   const pct = (x, d = 1) => (x == null ? '—' : (100 * x).toFixed(d) + '%');
@@ -550,6 +551,44 @@
           </tr>
           <tr class="votehist" data-pair="${esc(p.trade)}" hidden><td colspan="15">${'' /* filled on toggle */}</td></tr>`).join('')}
       </table></div>
+      ${s.pairs.filter((p) => p.gateLadder).map((p) => {
+        const nv = p.nullVote || {};
+        const rung = (q) => {
+          const g = p.gateLadder[q];
+          if (!g) return '';
+          const gross = g.pnl + g.trades; // net + $1 round trip per trade
+          const per = g.trades ? gross / g.trades : null;
+          return `<tr class="${q === 6 ? 'hilite' : ''}">
+            <td class="nowrap">${q} of 8${q === 6 ? ' <strong>← pre-registered</strong>' : ''}</td>
+            <td>${g.trades}</td>
+            <td>${money(g.pnl)}</td>
+            <td>${money(gross)}</td>
+            <td><strong>${per == null ? '—' : '$' + per.toFixed(2)}</strong></td>
+            <td>${g.trades ? pct(g.wins / g.trades) : '—'}</td>
+            <td>${nv.gateExceed && nv.gateExceed[q] != null ? `${pct(nv.gateExceed[q], 0)} of ${nv.gateShifts}` : '—'}</td>
+          </tr>`;
+        };
+        return `<div class="tablewrap" style="margin-bottom:12px"><table>
+          <tr><th colspan="7">${esc(p.trade)} — agreement gradient (diagnostic, NOT a menu)</th></tr>
+          <tr>
+            <th title="How many of the 8 specs must call the SAME direction before the book trades. An absolute count: 5 up vs 3 down does not clear 6.">quorum</th>
+            <th title="Periods this rung actually traded.">trades</th>
+            <th title="Net paper P&amp;L after $1.00 round-trip friction.">net</th>
+            <th title="P&amp;L before friction — net plus $1 per trade. This is the raw directional edge the rung captured.">gross</th>
+            <th title="Gross ÷ trades. THE number for this table: if conviction correlates with edge it should rise monotonically as the quorum tightens, regardless of what net dollars do.">gross/trade</th>
+            <th title="Share of this rung's trades that closed positive after fees.">win rate</th>
+            <th title="Share of label-shifted reruns whose book at THIS quorum made at least as many dollars. Each rung is judged against its own noise floor.">null exceed</th>
+          </tr>
+          ${GATE_Q.map(rung).join('')}
+        </table></div>
+        <p class="note">Read the <strong>gross/trade</strong> column, not the net column. A monotone rise as the quorum
+          tightens is the claim being tested — that agreement across methods tracks real edge — and it is much harder
+          for noise to fake than any single rung's dollars. Net dollars are expected to peak somewhere in the middle
+          and fall at the tight end, because volume drops faster than per-trade edge rises. The decision rule remains
+          <strong>6 of 8</strong>, fixed in advance; the other rungs are evidence about the hypothesis, not candidates
+          to adopt. Picking the best-looking rung after the fact is a 4-way search and would cost a 4&times; correction
+          on its p-value.</p>`;
+      }).join('')}
       <p class="note">Consensus = share of the pair's specs (4 views × 2 models) with positive true edge. Highlighted rows:
         ≥5/8 specs positive with positive median. Vote P&amp;L simulates the actual consensus strategy — the tracker's
         majority-vote rule trading $100 per period; super 6/8 is the conviction gate, trading only on 6+ same-direction

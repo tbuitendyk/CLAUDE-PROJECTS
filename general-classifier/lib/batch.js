@@ -226,6 +226,12 @@ const CONSENSUS_MODELS = ['logreg', 'boost'];
 const SPECS_PER_GRID = CONSENSUS_VIEWS.length * CONSENSUS_MODELS.length; // 8
 const VOTE_QUORUM = 5; // a "vote of the 8" needs most of them present to mean anything
 const SUPER_QUORUM = 6; // pre-registered supermajority gate: 6 of 8 same-direction
+// Agreement GRADIENT, not a menu. The pre-registered decision rule is and
+// stays SUPER_QUORUM; the other rungs exist to test whether edge rises
+// monotonically with agreement (the conviction hypothesis), which is a far
+// stronger and harder-to-fake claim than any single rung's dollars. Picking
+// the best rung after the fact is a 4-way search and costs a 4x correction.
+const GATE_QUORUMS = [5, 6, 7, 8];
 
 // ---- simulated consensus (vote) book -------------------------------------------
 //
@@ -243,10 +249,10 @@ const SUPER_QUORUM = 6; // pre-registered supermajority gate: 6 of 8 same-direct
 // tie stands aside) and `super` (SUPER_QUORUM same-direction specs or stand
 // aside — the fee-fighting conviction gate).
 function voteBook(group) {
+  const callsAt = group.rows.map((r, i) => group.preds.map((p) => p[i]));
   const rows = group.rows.map((r, i) => {
-    const calls = group.preds.map((p) => p[i]);
-    const vote = voteOf(calls);
-    const sup = superOf(calls, SUPER_QUORUM);
+    const vote = voteOf(callsAt[i]);
+    const sup = superOf(callsAt[i], SUPER_QUORUM);
     const priced = r.entry != null && r.exit != null;
     return {
       week: r.week,
@@ -259,28 +265,53 @@ function voteBook(group) {
       supPnl: priced ? pnlFor(sup, r.entry, r.exit) : null,
     };
   });
-  const bookStats = (callKey, pnlKey) => {
-    const priced = rows.filter((r) => r[pnlKey] != null);
-    const trades = priced.filter((r) => r[callKey] !== 0);
-    const correct = rows.filter((r) => r[callKey] === r.actual).length;
-    const acc = rows.length ? correct / rows.length : null;
+  // One book from any per-period decision rule, on identical prices.
+  const bookStats = (callOf) => {
+    let pnl = 0;
+    let trades = 0;
+    let wins = 0;
+    let priced = 0;
+    let correct = 0;
+    group.rows.forEach((r, i) => {
+      const call = callOf(i);
+      if (call === r.actual) correct++;
+      if (r.entry == null || r.exit == null) return;
+      priced++;
+      if (call === 0) return;
+      const p = pnlFor(call, r.entry, r.exit);
+      pnl += p;
+      trades++;
+      if (p > 0) wins++;
+    });
+    const n = group.rows.length;
+    const acc = n ? correct / n : null;
     return {
-      pnl: priced.reduce((s, r) => s + r[pnlKey], 0),
-      trades: trades.length,
-      wins: trades.filter((r) => r[pnlKey] > 0).length,
-      unpriced: rows.length - priced.length,
-      scored: rows.length,
+      pnl,
+      trades,
+      wins,
+      unpriced: n - priced,
+      scored: n,
       acc,
       trueEdge: acc != null && group.bestConstant != null ? acc - group.bestConstant : null,
       specsInVote: group.preds.length,
     };
   };
-  // The gate's quorum is ABSOLUTE (6), so a short grid silently runs a
-  // different rule — unreachable at 5 specs, unanimity at 6, 6-of-7 at 7 —
-  // and a forced all-stand-aside book is a structural constant, not a
-  // measurement. Emit no super book at all rather than a misleading one.
+  // The gate's quorum is ABSOLUTE, so a short grid silently runs a different
+  // rule — unreachable at 5 specs, unanimity at 6, 6-of-7 at 7 — and a forced
+  // all-stand-aside book is a structural constant, not a measurement. Emit no
+  // gate books at all rather than misleading ones.
   const complete = group.preds.length >= SPECS_PER_GRID;
-  return { stats: bookStats('vote', 'pnl'), superStats: complete ? bookStats('sup', 'supPnl') : null, rows };
+  let gates = null;
+  if (complete) {
+    gates = {};
+    for (const q of GATE_QUORUMS) gates[q] = bookStats((i) => superOf(callsAt[i], q));
+  }
+  return {
+    stats: bookStats((i) => rows[i].vote),
+    superStats: gates ? gates[SUPER_QUORUM] : null,
+    gates,
+    rows,
+  };
 }
 
 function median(values) {
@@ -308,6 +339,18 @@ function consensusOf(specs) {
   };
 }
 
+// Rebuild the agreement gradient from a stored real grid. v1.16 screens saved
+// the per-spec predictions and the priced rows but only the 6-of-8 book, so
+// every earlier screen can produce its full ladder with no retraining —
+// bestConstant is recovered from the stored accuracy and true edge.
+function gatesFromStored(real) {
+  if (!real || !Array.isArray(real.rows) || !real.specPreds) return null;
+  const preds = Object.values(real.specPreds);
+  if (preds.length < SPECS_PER_GRID) return null;
+  const bestConstant = real.acc != null && real.trueEdge != null ? real.acc - real.trueEdge : null;
+  return voteBook({ rows: real.rows, preds, bestConstant }).gates;
+}
+
 function summarizeConsensus(runs, votes = null) {
   const done = runs.filter((r) => r.status === 'done');
   const failed = runs.filter((r) => r.status === 'error');
@@ -319,8 +362,11 @@ function summarizeConsensus(runs, votes = null) {
       // the real grid, plus dollars/edge exceed rates against the null-shift
       // books. Older docs stored no `super`/`specPreds` — everything guards.
       const vt = votes ? votes[trade] : null;
-      const voteStats = vt && vt.real ? (({ rows, specPreds, super: sup, ...stats }) => stats)(vt.real) : null;
+      const voteStats = vt && vt.real ? (({ rows, specPreds, super: sup, gates, ...stats }) => stats)(vt.real) : null;
       const superStats = vt && vt.real ? vt.real.super || null : null;
+      // Agreement gradient (5..8 of 8). Recomputed from stored predictions
+      // when a pre-ladder screen is re-read, so no screen needs re-running.
+      const gateLadder = vt && vt.real ? vt.real.gates || gatesFromStored(vt.real) : null;
       let nullVote = null;
       if (voteStats && vt.nulls) {
         // Pool ONLY null grids whose spec count matches the real grid. A
@@ -353,6 +399,23 @@ function summarizeConsensus(runs, votes = null) {
             nullVote.superMedianPnl = median(nvS.map((s) => s.super.pnl));
             nullVote.superMedianTrades = median(nvS.map((s) => s.super.trades).filter((v) => v != null));
           }
+          // Per-rung null calibration, so the gradient is judged against the
+          // noise floor of EACH rung rather than only the pre-registered one.
+          const nvG = nv.filter((s) => s.gates);
+          if (gateLadder && nvG.length) {
+            nullVote.gateShifts = nvG.length;
+            nullVote.gateExceed = {};
+            nullVote.gateMedianPnl = {};
+            nullVote.gateMedianTrades = {};
+            for (const q of GATE_QUORUMS) {
+              const real = gateLadder[q];
+              const nulls = nvG.map((s) => s.gates[q]).filter(Boolean);
+              if (!real || !nulls.length) continue;
+              nullVote.gateExceed[q] = nulls.filter((g) => g.pnl >= real.pnl).length / nulls.length;
+              nullVote.gateMedianPnl[q] = median(nulls.map((g) => g.pnl));
+              nullVote.gateMedianTrades[q] = median(nulls.map((g) => g.trades));
+            }
+          }
         }
       }
       // Group null runs by the EFFECTIVE rotation (derived per pair from the
@@ -371,7 +434,7 @@ function summarizeConsensus(runs, votes = null) {
           exceedRate: beatOrTie / shiftIds.length, // ~p-value: share of null shifts scoring >= the real run
         };
       }
-      return { trade, ...real, vote: voteStats, superVote: superStats, nullVote, null: nullStats };
+      return { trade, ...real, vote: voteStats, superVote: superStats, gateLadder, nullVote, null: nullStats };
     })
     .sort((a, b) => b.fraction - a.fraction || (b.medianTrueEdge ?? -1) - (a.medianTrueEdge ?? -1));
   return {
@@ -512,11 +575,12 @@ function startConsensus(params) {
             v.real = {
               ...book.stats,
               super: book.superStats,
+              gates: book.gates,
               rows: book.rows,
               specPreds: Object.fromEntries(group.specKeys.map((k, i) => [k, group.preds[i]])),
             };
           } else {
-            v.nulls[group.effectiveShift] = { ...book.stats, super: book.superStats };
+            v.nulls[group.effectiveShift] = { ...book.stats, super: book.superStats, gates: book.gates };
           }
         }
       }
@@ -548,7 +612,9 @@ module.exports = {
   summarize,
   summarizeConsensus,
   voteBook,
+  gatesFromStored,
   SUPER_QUORUM,
+  GATE_QUORUMS,
   DEFAULT_PAIRS,
   CONSENSUS_VIEWS,
   CONSENSUS_MODELS,
