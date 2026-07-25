@@ -1,5 +1,5 @@
 const { assert } = require('./helpers');
-const { metaCall, splitHalves, bestConstantOf, FRACTION_MENU, SPECS } = require('../lib/metalens');
+const { metaCall, committeeFor, splitHalves, bestConstantOf, FRACTION_MENU, SPECS } = require('../lib/metalens');
 
 module.exports = {
   async menuIsTheRegisteredOne() {
@@ -23,6 +23,18 @@ module.exports = {
     assert.strictEqual(metaCall([], 0.5), 0);
     // dormant calls never count as backing
     assert.strictEqual(metaCall([0, 0, 0, 1], 0.75), 0); // 1 backer < need 3
+  },
+  async zeroPassFallbackIsExplicitAndMarked() {
+    const passed = [SPECS[0], SPECS[3]];
+    // survivors exist: the fallback never engages, forced or not
+    assert.deepStrictEqual(committeeFor(passed, SPECS, true), { specs: passed, forcedAll: false });
+    assert.deepStrictEqual(committeeFor(passed, SPECS, false), { specs: passed, forcedAll: false });
+    // nothing survives: default is stand-aside (empty committee)...
+    assert.deepStrictEqual(committeeFor([], SPECS, false), { specs: [], forcedAll: false });
+    // ...and the owner's fallback runs all 8, permanently marked as forced
+    const forced = committeeFor([], SPECS, true);
+    assert.strictEqual(forced.specs.length, 8);
+    assert.strictEqual(forced.forcedAll, true);
   },
   async halvesAreChronological() {
     const chunks = Array.from({ length: 11 }, (_, i) => ({ startTs: i }));

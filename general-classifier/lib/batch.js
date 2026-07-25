@@ -664,6 +664,7 @@ function startMetalens(params) {
     geometry = 'daily-3d',
     dormantPct = 'auto',
     weekdaysOnly = false,
+    forceAllOnZeroPass = false,
     allLoaded = false,
   } = params || {};
   const nShifts = Math.min(1000, Math.max(0, Math.floor(Number(nullShifts) || 0)));
@@ -676,7 +677,7 @@ function startMetalens(params) {
     startedAt: new Date().toISOString(),
     finishedAt: null,
     progress: '',
-    params: { protocol: 'metalens', dormantPct, startMonth, endMonth, compareSymbol, nullShifts: nShifts, geometry, weekdaysOnly, allLoaded },
+    params: { protocol: 'metalens', dormantPct, startMonth, endMonth, compareSymbol, nullShifts: nShifts, geometry, weekdaysOnly, forceAllOnZeroPass, allLoaded },
     runs: [],
     meta: {}, // per pair: full stage1/stage2/test detail for the REAL run
     summary: null,
@@ -706,6 +707,7 @@ function startMetalens(params) {
             geometry,
             dormantPct,
             weekdaysOnly,
+            forceAllOnZeroPass,
             labelShiftFrac: run.shift > 0 ? run.shift / (nShifts + 1) : 0,
             allLoaded,
           },

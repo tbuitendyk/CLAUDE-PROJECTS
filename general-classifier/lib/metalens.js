@@ -37,6 +37,23 @@ const { loadSymbol, loadSymbolAll, monthList, deriveShift } = require('./pipelin
 // Honest degenerate outcomes, reported rather than papered over: zero lenses
 // passing stage 1 means the meta-book stands aside everywhere (P&L $0.00,
 // 0 trades) — "no signal found" is a result, not an error.
+//
+// forceAllOnZeroPass (owner's requirement, motivated by DOT): when stage 1
+// passes NOTHING, optionally continue with ALL 8 lenses as the committee
+// instead of standing aside — because a pair can have individually-dead
+// lenses whose rare agreement still carries signal (DOT's 1000-shift null:
+// every spec negative, vote dead at 40%, yet the 6/8 gate at 2%). The
+// fallback is recorded on the result (forcedAll: true) so a forced run can
+// never masquerade as a selective one, and null replays inherit the same
+// setting so the calibration stays apples-to-apples.
+
+// The committee stage 2 works with: the stage-1 survivors, or — only when
+// nothing survived AND the owner forced it — the full grid.
+function committeeFor(passed, all, forceAllOnZeroPass) {
+  if (passed.length) return { specs: passed, forcedAll: false };
+  if (forceAllOnZeroPass) return { specs: all, forcedAll: true };
+  return { specs: [], forcedAll: false };
+}
 
 const FRACTION_MENU = [0.5, 0.625, 0.75, 0.875, 1.0];
 
@@ -127,6 +144,7 @@ async function runMetaLens(params, onProgress = () => {}) {
   if (!geo) throw new Error(`unknown geometry "${geometry}"`);
   const nDays = geo.featureHours / 24;
   const weekdaysOnly = !!params.weekdaysOnly;
+  const forceAllOnZeroPass = !!params.forceAllOnZeroPass;
   const adaptiveBand = params.dormantPct === 'auto' || params.dormantPct === undefined;
   const labelShiftFrac = Number(params.labelShiftFrac) || 0;
   const allLoaded = !!params.allLoaded;
@@ -186,13 +204,14 @@ async function runMetaLens(params, onProgress = () => {}) {
     stage1.push(row);
   }
   const passedSpecs = SPECS.filter((s) => stage1.find((r) => r.key === s.key).passed);
+  const committee = committeeFor(passedSpecs, SPECS, forceAllOnZeroPass);
 
   // ---- stage 2: agreement threshold on half B --------------------------------
-  let stage2 = { menu: [], chosenFrac: null, lenses: passedSpecs.map((s) => s.key) };
+  let stage2 = { menu: [], chosenFrac: null, lenses: committee.specs.map((s) => s.key), forcedAll: committee.forcedAll };
   let finalModels = [];
-  if (passedSpecs.length) {
+  if (committee.specs.length) {
     const modelsA = [];
-    for (const spec of passedSpecs) {
+    for (const spec of committee.specs) {
       onProgress(`stage 2: retraining ${spec.key} on all of half A`);
       modelsA.push(await trainOn(spec, A, nDays, onProgress));
     }
@@ -206,14 +225,14 @@ async function runMetaLens(params, onProgress = () => {}) {
     stage2.chosenFrac = best.frac;
 
     // ---- verdict: retrain on A+B, trade the untouched test window ------------
-    for (const spec of passedSpecs) {
+    for (const spec of committee.specs) {
       onProgress(`final: retraining ${spec.key} on the full training window`);
       finalModels.push(await trainOn(spec, trainChunks, nDays, onProgress));
     }
   }
 
   const testCalls = testChunks.map((c) => finalModels.map((m) => m.predictOne(c)));
-  const callOf = (i) => (passedSpecs.length ? metaCall(testCalls[i], stage2.chosenFrac) : 0);
+  const callOf = (i) => (committee.specs.length ? metaCall(testCalls[i], stage2.chosenFrac) : 0);
   const book = paperOver(testChunks, callOf, tradeFilled.map, geo);
   const testConst = bestConstantOf(testChunks.map((c) => c.label));
   const hits = testChunks.filter((c, i) => callOf(i) === c.label).length;
@@ -228,6 +247,7 @@ async function runMetaLens(params, onProgress = () => {}) {
       endMonth,
       geometry,
       weekdaysOnly,
+      forceAllOnZeroPass,
       dormantPct: adaptiveBand ? 'auto' : params.dormantPct,
       labelShift,
       allLoaded,
@@ -244,8 +264,8 @@ async function runMetaLens(params, onProgress = () => {}) {
       rows: testChunks.map((c, i) => ({
         dayOf: new Date(c.startTs).toISOString().slice(0, 10),
         call: callOf(i),
-        backing: passedSpecs.length ? testCalls[i].filter((v) => v !== 0 && v === callOf(i)).length : 0,
-        of: passedSpecs.length,
+        backing: committee.specs.length ? testCalls[i].filter((v) => v !== 0 && v === callOf(i)).length : 0,
+        of: committee.specs.length,
         actual: c.label,
       })),
     },
@@ -255,7 +275,9 @@ async function runMetaLens(params, onProgress = () => {}) {
 // Compact metrics for batch storage — the null runs keep only these.
 function extractMetaMetrics(report) {
   return {
-    lensesPassed: report.stage2.lenses.length,
+    lensesPassed: report.stage1.filter((r) => r.passed).length,
+    committeeSize: report.stage2.lenses.length,
+    forcedAll: !!report.stage2.forcedAll,
     lenses: report.stage2.lenses,
     chosenFrac: report.stage2.chosenFrac,
     pnl: report.test.book.pnl,
@@ -270,4 +292,4 @@ function extractMetaMetrics(report) {
   };
 }
 
-module.exports = { runMetaLens, extractMetaMetrics, metaCall, splitHalves, bestConstantOf, FRACTION_MENU, SPECS };
+module.exports = { runMetaLens, extractMetaMetrics, metaCall, committeeFor, splitHalves, bestConstantOf, FRACTION_MENU, SPECS };

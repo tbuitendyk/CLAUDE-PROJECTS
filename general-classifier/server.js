@@ -230,6 +230,7 @@ app.post('/api/metalens', (req, res) => {
       geometry,
       dormantPct: dormant,
       weekdaysOnly: !!b.weekdaysOnly,
+      forceAllOnZeroPass: !!b.forceAllOnZeroPass,
       allLoaded: !!b.allLoaded,
     });
     res.json({ batchId: id });

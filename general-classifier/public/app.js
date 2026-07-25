@@ -777,7 +777,7 @@
         : '';
       return `<tr class="${m.pnl > 0 ? 'hilite' : ''}">
         <td>${esc(p.trade)}</td>
-        <td>${m.lensesPassed}/8</td>
+        <td>${m.lensesPassed}/8${m.forcedAll ? ' <strong title="Stage 1 passed nothing; the owner-enabled fallback ran stage 2 with ALL 8 lenses — agreement-only mode. This is a different claim than a selective run and is permanently marked as such.">⚑ forced all 8</strong>' : ''}</td>
         <td>${m.chosenFrac == null ? '—' : pct(m.chosenFrac, 1)}</td>
         <td>${m.trades} (${m.wins} w)</td>
         <td><strong>${money(m.pnl)}</strong></td>
@@ -794,6 +794,7 @@
           <tr>${th('lens (stage 1)', MT.s1)}<th>tail acc</th><th>best const</th><th>edge</th><th>passed</th></tr>
           ${d.stage1.map((r) => `<tr class="${r.passed ? '' : 'miss'}"><td>${esc(r.key)}</td><td>${r.valAcc == null ? esc(r.error || '—') : pct(r.valAcc)}</td><td>${pct(r.bestConstant)}</td><td>${r.edge == null ? '—' : fmtE(r.edge)}</td><td>${r.passed ? 'yes' : 'no'}</td></tr>`).join('')}
         </table></div>
+        ${d.stage2.forcedAll ? '<p class="note"><strong>⚑ zero lenses passed stage 1 — fallback engaged: all 8 lenses form the committee (agreement-only mode).</strong></p>' : ''}
         ${d.stage2.menu.length ? `<div class="tablewrap" style="margin:6px 0"><table>
           <tr>${th('agreement (stage 2)', MT.s2)}<th>B-half P&amp;L</th><th>trades</th></tr>
           ${d.stage2.menu.map((r) => `<tr><td class="${r.frac === d.stage2.chosenFrac ? 'chosen' : ''}">${pct(r.frac, 1)}${r.frac === d.stage2.chosenFrac ? ' ← chosen' : ''}</td><td>${money(r.pnl)}</td><td>${r.trades}</td></tr>`).join('')}
@@ -970,6 +971,7 @@
         decision: $('decision').value, // classic only; the meta-lens endpoint ignores it
         dormantPct: dormantValue(),
         weekdaysOnly: $('weekdays').checked,
+        forceAllOnZeroPass: $('proto-forceall').checked, // meta-lens only; classic ignores it
       };
       if (pairsRaw) body.pairs = pairsRaw.split(',').map((p) => p.trim().toUpperCase()).filter(Boolean);
       const res = await fetch(useMeta ? 'api/metalens' : 'api/consensus', {

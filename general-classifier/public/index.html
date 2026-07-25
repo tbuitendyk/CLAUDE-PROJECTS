@@ -254,6 +254,9 @@
               <input type="radio" name="protocol" id="proto-classic" checked> classic &mdash; 8-spec consensus grid</label>
             <label class="check" title="Two-stage nested protocol. The training window splits into chronological halves A (early) and B (late); the test window stays untouched. STAGE 1 (half A): each of the 8 lenses trains on A's first 75% and is scored on A's tail — a lens PASSES only if it beats the tail's best constant guess, i.e. it detects signal on data it hasn't seen. STAGE 2 (half B): the passing lenses retrain on all of A and an agreement threshold is picked from a fixed menu (50 / 62.5 / 75 / 87.5 / 100% of passing lenses) by paper P&L on B; ties go stricter. VERDICT: passing lenses retrain on A+B and trade the test window once at that threshold. Null shifts replay the ENTIRE recipe — selection and threshold included — for every label rotation: whatever freedom the real run enjoyed, the null enjoys too. Zero lenses passing is a reported result (the book stands aside), not an error.">
               <input type="radio" name="protocol" id="proto-metalens"> meta-lens &mdash; two-stage (select lenses, then threshold)</label>
+            <label class="check" style="margin-left:18px"
+              title="Meta-lens only. Normally, zero lenses passing stage 1 means the book stands aside on the whole test window — 'no signal found' is the result. Ticked, the recipe instead continues with ALL 8 lenses as the committee and lets stage 2 pick the agreement threshold. Motivated by DOT: every individual lens dead, yet the 6-of-8 agreement gate survived a 1000-shift null at 2% — a pair's signal can live in agreement alone, invisible to lens selection. The fallback is stamped on the results (forced: all 8) so a forced run can never pass as a selective one, and null replays inherit the same setting.">
+              <input type="checkbox" id="proto-forceall"> on zero passing lenses: force all 8 (agreement-only mode)</label>
           </div>
         </div>
         <div class="field" style="flex:1; min-width:260px">
@@ -291,6 +294,6 @@
     pruned to time / open / high / low / close / quote&nbsp;volume.
   </footer>
 
-  <script src="app.js?v=38"></script>
+  <script src="app.js?v=39"></script>
 </body>
 </html>
