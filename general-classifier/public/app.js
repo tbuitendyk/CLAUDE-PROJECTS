@@ -1215,8 +1215,189 @@
   });
   $('doge-refresh').addEventListener('click', () => refreshDoge(true));
 
+  // ---- generalized paper books --------------------------------------------------
+
+  const bkViewEl = $('bk-view');
+  const bkErrEl = $('bk-error');
+  const bkStatusEl = $('bk-status');
+  const RULE_LABEL = { vote: 'vote (majority)', q5: '5 of 8', q6: '6 of 8', q7: '7 of 8', q8: '8 of 8' };
+
+  function setBkStatus(text) {
+    bkStatusEl.hidden = !text;
+    bkStatusEl.innerHTML = text ? `<span class="spin">⟳</span>${esc(text)}` : '';
+  }
+  $('bk-autoband').addEventListener('change', () => {
+    $('bk-band').disabled = $('bk-autoband').checked;
+  });
+
+  function bookCard(b) {
+    const cfg = b.config;
+    const head = `${b.bookNumber ? `<strong>book #${b.bookNumber}</strong>` : `<em>draft (would be book #${b.wouldBeNumber})</em>`}
+      · ${esc(cfg.pair)} vs ${esc(cfg.compareSymbol)} · ${esc(cfg.geometry)} · band ${cfg.band === 'auto' ? `auto${b.bandPct ? ` → ±${b.bandPct.toFixed(2)}%` : b.preview ? ` → ±${b.preview.bandPct.toFixed(2)}%` : ''}` : `±${esc(String(cfg.band))}%`}
+      · cutoff ${esc(cfg.cutoff)} · <strong>${esc(b.status)}</strong>${b.status === 'live' ? ` · verdict ${b.horizonDone}/${cfg.horizonPeriods} live periods` : ''}${b.status === 'completed' ? ' · verdict window closed' : ''}`;
+    const decl = `<details><summary class="note" style="cursor:pointer">protocol declaration${b.status === 'draft' ? ' — READ BEFORE DECLARING' : ''}</summary>
+      <pre style="white-space:pre-wrap; font-size:12px; padding:8px; background:var(--page); border:1px solid var(--grid); border-radius:6px">${esc(b.declaration)}</pre></details>`;
+    if (b.status === 'draft') {
+      return `<div class="section" style="margin-top:14px">
+        <p class="note">${head} · ${b.preview.trainChunks} training chunks, ${b.preview.totalChunks} total</p>
+        ${decl}
+        <div class="controls" style="margin-top:8px">
+          <div class="field submit"><button type="button" class="bk-declare" data-id="${esc(b.id)}">Declare &amp; initialize</button></div>
+          <div class="field submit"><button type="button" class="bk-discard secondary" data-id="${esc(b.id)}">Discard draft</button></div>
+        </div>
+      </div>`;
+    }
+    const rows = Object.entries(b.rules).map(([r, s]) => `
+      <tr><td>${esc(RULE_LABEL[r] || r)}</td>
+        <td>${s.trades}</td><td>${s.wins}</td>
+        <td>${s.trades ? pct(s.wins / s.trades) : '—'}</td>
+        <td>${money(s.pnl)}</td>
+        <td>${s.grossPerTrade == null ? '—' : '$' + s.grossPerTrade.toFixed(2)}</td>
+        <td>${s.scored ? pct(s.correct / s.scored) : '—'}</td></tr>`).join('');
+    const hist = b.periods.slice(-30).reverse().map((p) => {
+      const firstRule = cfg.rules[0];
+      return `<tr>
+        <td>${esc(p.dayOf)}</td>
+        ${cfg.rules.map((r) => `<td>${clsSpan(p.calls[r])}</td>`).join('')}
+        <td>${p.actual === null ? '—' : clsSpan(p.actual)}</td>
+        <td>${p.entry != null ? p.entry : '—'}</td><td>${p.exit != null ? p.exit : '—'}</td>
+        <td>${p.pnl && p.pnl[firstRule] != null ? money(p.pnl[firstRule]) : '—'}</td>
+        <td>${esc(p.status)}${p.postHorizon ? ' · post-horizon' : ''}</td>
+        <td>${p.live ? 'LIVE' : 'unseen'}</td>
+      </tr>`;
+    }).join('');
+    return `<div class="section" style="margin-top:14px">
+      <p class="note">${head}</p>
+      ${decl}
+      <div class="tablewrap" style="margin-top:8px"><table>
+        <tr><th>rule</th><th>trades</th><th>wins</th><th>win rate</th><th>P&amp;L</th><th>gross/trade</th><th>accuracy</th></tr>
+        ${rows}
+      </table></div>
+      <details style="margin-top:8px"><summary class="note" style="cursor:pointer">last 30 periods (calls: ${cfg.rules.map((r) => esc(RULE_LABEL[r] || r)).join(' · ')}; P&amp;L column = ${esc(RULE_LABEL[cfg.rules[0]])})</summary>
+      <div class="tablewrap"><table>
+        <tr><th>period</th>${cfg.rules.map((r) => `<th>${esc(r)}</th>`).join('')}<th>actual</th><th>entry</th><th>exit</th><th>P&amp;L</th><th>status</th><th>prov.</th></tr>
+        ${hist}
+      </table></div></details>
+      ${b.status === 'live' || b.status === 'completed' ? `<div class="controls" style="margin-top:8px">
+        <div class="field submit"><button type="button" class="bk-retire danger" data-id="${esc(b.id)}">Retire book</button></div>
+      </div>` : ''}
+      ${b.amendments && b.amendments.length ? `<p class="note">log: ${b.amendments.map((a) => `${esc(a.at.slice(0, 10))} — ${esc(a.what)}`).join(' · ')}</p>` : ''}
+    </div>`;
+  }
+
+  function renderBooks(all) {
+    const active = all.books.filter((b) => b.status === 'live' || b.status === 'completed');
+    const combined = active.length
+      ? `<p class="note"><strong>${all.declaredCount}</strong> book(s) declared all-time — that count is the denominator
+         against any winner. Active: ${active.map((b) => `#${b.bookNumber} ${esc(b.config.pair)}`).join(', ')}.</p>`
+      : `<p class="note">${all.declaredCount ? `${all.declaredCount} book(s) declared all-time.` : 'No books yet.'} Create a draft above to begin.</p>`;
+    bkViewEl.innerHTML = combined + all.books.slice().reverse().map(bookCard).join('');
+    bkViewEl.querySelectorAll('.bk-declare').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        if (!confirm('Declare and initialize this book?\n\nThis trains and FREEZES the models, band and config permanently, '
+          + 'assigns the book its number, and starts the live record. Read the protocol declaration first.\n\n'
+          + 'After this the only actions are view and retire.')) return;
+        try {
+          bkErrEl.hidden = true;
+          setBkStatus('declaring…');
+          const res = await fetch(`api/books/${btn.dataset.id}/declare`, { method: 'POST' });
+          const body = await jsonBody(res);
+          if (!res.ok) throw new Error(body.error || `HTTP ${res.status}`);
+          await poll(body.jobId, setBkStatus);
+          setBkStatus('');
+          refreshBooks();
+        } catch (err) {
+          setBkStatus('');
+          bkErrEl.hidden = false;
+          bkErrEl.textContent = err.message;
+        }
+      });
+    });
+    bkViewEl.querySelectorAll('.bk-discard').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        try {
+          const res = await fetch(`api/books/${btn.dataset.id}/discard`, { method: 'POST' });
+          const body = await jsonBody(res);
+          if (!res.ok) throw new Error(body.error || `HTTP ${res.status}`);
+          refreshBooks();
+        } catch (err) {
+          bkErrEl.hidden = false;
+          bkErrEl.textContent = err.message;
+        }
+      });
+    });
+    bkViewEl.querySelectorAll('.bk-retire').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const reason = prompt('Retiring is permanent and logged. Reason?');
+        if (reason === null) return;
+        try {
+          const res = await fetch(`api/books/${btn.dataset.id}/retire`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ reason }),
+          });
+          const body = await jsonBody(res);
+          if (!res.ok) throw new Error(body.error || `HTTP ${res.status}`);
+          refreshBooks();
+        } catch (err) {
+          bkErrEl.hidden = false;
+          bkErrEl.textContent = err.message;
+        }
+      });
+    });
+  }
+
+  async function refreshBooks(fresh = false) {
+    try {
+      bkErrEl.hidden = true;
+      if (fresh) setBkStatus('fetching current prices…');
+      const res = await fetch('api/books' + (fresh ? '/refresh' : ''), fresh ? { method: 'POST' } : undefined);
+      const all = await jsonBody(res);
+      setBkStatus('');
+      if (!res.ok) throw new Error(all.error || `HTTP ${res.status}`);
+      renderBooks(all);
+    } catch (err) {
+      setBkStatus('');
+      bkErrEl.hidden = false;
+      bkErrEl.textContent = err.message;
+    }
+  }
+
+  $('bk-create').addEventListener('click', async () => {
+    try {
+      bkErrEl.hidden = true;
+      setBkStatus('building draft preview…');
+      const res = await fetch('api/books', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          pair: $('bk-pair').value,
+          compareSymbol: $('bk-compare').value,
+          geometry: $('bk-geometry').value,
+          band: $('bk-autoband').checked ? 'auto' : Number($('bk-band').value),
+          startMonth: $('bk-start').value,
+          cutoff: $('bk-cutoff').value,
+          horizonPeriods: Number($('bk-horizon').value),
+          rules: [...document.querySelectorAll('.bk-rule:checked')].map((el) => el.value),
+          notes: $('bk-notes').value,
+        }),
+      });
+      const body = await jsonBody(res);
+      if (!res.ok) throw new Error(body.error || `HTTP ${res.status}`);
+      await poll(body.jobId, setBkStatus);
+      setBkStatus('');
+      refreshBooks();
+    } catch (err) {
+      setBkStatus('');
+      bkErrEl.hidden = false;
+      bkErrEl.textContent = err.message;
+    }
+  });
+  $('bk-refresh').addEventListener('click', () => refreshBooks(true));
+
   refreshBatch();
   refreshDataState();
   refreshTracker();
   refreshDoge();
+  refreshBooks();
 })();

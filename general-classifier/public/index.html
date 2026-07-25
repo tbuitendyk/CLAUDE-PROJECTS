@@ -152,6 +152,74 @@
       <div id="doge-error" class="error" hidden></div>
       <div id="doge-view"></div>
     </div>
+
+    <div class="section" id="books-section">
+      <h2>New paper books &mdash; owner-created</h2>
+      <p class="note">
+        One engine, many books. Create a <strong>draft</strong> to see the data coverage, the would-be band and the
+        full generated protocol with nothing trained or frozen; <strong>Declare &amp; initialize</strong> trains the
+        8 specs, freezes everything, and starts the record — after that the engine refuses all changes (the only
+        verbs left are view and retire). Every declared book gets a permanent number: the count of declared books is
+        the honest denominator against any future winner. The two original books above are frozen protocol and run
+        on their own code, untouched by this engine.
+      </p>
+      <div class="controls" style="margin-top:10px">
+        <div class="field">
+          <label for="bk-pair">Trade pair</label>
+          <input id="bk-pair" type="text" value="DOTUSDT" pattern="[A-Za-z0-9]{5,20}">
+        </div>
+        <div class="field">
+          <label for="bk-compare">Compare pair</label>
+          <input id="bk-compare" type="text" value="BTCUSDT" pattern="[A-Za-z0-9]{5,20}">
+        </div>
+        <div class="field">
+          <label for="bk-geometry">Chunk shape</label>
+          <select id="bk-geometry">
+            <option value="weekly-8d">Weekly 8-day</option>
+            <option value="daily-1d">Daily 1-day</option>
+            <option value="daily-2d">Daily 2-day</option>
+            <option value="daily-3d" selected>Daily 3-day</option>
+            <option value="daily-4d">Daily 4-day</option>
+          </select>
+        </div>
+        <div class="field">
+          <label class="check"><input type="checkbox" id="bk-autoband" checked> auto band</label>
+          <label for="bk-band">Band &plusmn;%</label>
+          <input id="bk-band" type="number" step="0.1" min="0.1" max="49" value="2" disabled>
+        </div>
+        <div class="field">
+          <label for="bk-start">History from</label>
+          <input id="bk-start" type="month" value="2019-01">
+        </div>
+        <div class="field">
+          <label for="bk-cutoff" title="Models train only on chunks whose outcomes completed before this date. Nothing after it ever influences the frozen weights.">Training cutoff</label>
+          <input id="bk-cutoff" type="date" value="2026-07-01">
+        </div>
+        <div class="field">
+          <label for="bk-horizon" title="The verdict window: after this many LIVE settled periods the book marks itself completed and the verdict never moves again.">Horizon (live periods)</label>
+          <input id="bk-horizon" type="number" min="5" max="1000" step="1" value="90">
+        </div>
+        <div class="field" style="min-width:220px">
+          <label title="Which decision rules this book reports. All selected rules are declared up front and ALL are reported — none can be promoted later on live results.">Rules (all reported)</label>
+          <div style="display:flex; gap:10px; flex-wrap:wrap; padding-top:6px">
+            <label class="check"><input type="checkbox" class="bk-rule" value="vote" checked> vote</label>
+            <label class="check"><input type="checkbox" class="bk-rule" value="q5" checked> 5/8</label>
+            <label class="check"><input type="checkbox" class="bk-rule" value="q6" checked> 6/8</label>
+            <label class="check"><input type="checkbox" class="bk-rule" value="q7" checked> 7/8</label>
+            <label class="check"><input type="checkbox" class="bk-rule" value="q8" checked> 8/8</label>
+          </div>
+        </div>
+        <div class="field" style="flex:1; min-width:260px">
+          <label for="bk-notes">Rationale (goes into the declaration)</label>
+          <input id="bk-notes" type="text" placeholder="why this book exists — e.g. which screen and null run motivated it">
+        </div>
+        <div class="field submit"><button id="bk-create" type="button">Create draft</button></div>
+        <div class="field submit"><button id="bk-refresh" type="button" class="secondary">Refresh</button></div>
+        <div id="bk-status" class="status" style="margin-top:0" hidden></div>
+      </div>
+      <div id="bk-error" class="error" hidden></div>
+      <div id="bk-view"></div>
+    </div>
     </div><!-- /tab-books -->
 
     <div id="tab-research-2"><!-- research tab, part two: the batch tools -->
@@ -209,6 +277,6 @@
     pruned to time / open / high / low / close / quote&nbsp;volume.
   </footer>
 
-  <script src="app.js?v=35"></script>
+  <script src="app.js?v=36"></script>
 </body>
 </html>

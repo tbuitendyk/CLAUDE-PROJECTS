@@ -8,6 +8,7 @@ const throttle = require('./lib/throttle');
 const batch = require('./lib/batch');
 const tracker = require('./lib/tracker');
 const dogebook = require('./lib/dogebook');
+const books = require('./lib/books');
 
 // General Classifier web service. Fronted by nginx at
 // https://www.buitendyk.ca/classifier/ behind the site's Basic Auth (the
@@ -300,6 +301,56 @@ app.post('/api/dogebook/init', (req, res) => {
 // downtime (missed days arrive flagged unseen, never lost).
 setInterval(() => dogebook.tick().catch((err) => console.error('dogebook tick failed:', err.message)), 30 * 60 * 1000);
 setTimeout(() => dogebook.tick().catch((err) => console.error('dogebook tick failed:', err.message)), 40 * 1000);
+
+// ---- generalized paper books (owner-created, code-enforced freeze) -----------
+
+app.get('/api/books', (req, res) => res.json(books.statusAll()));
+
+app.post('/api/books', (req, res) => {
+  try {
+    books.validateConfig(req.body); // fail fast with a readable error
+  } catch (err) {
+    return res.status(400).json({ error: err.message });
+  }
+  const jobId = startJob((setProgress) => books.createDraft(req.body, setProgress));
+  res.json({ jobId });
+});
+
+app.post('/api/books/:id/declare', (req, res) => {
+  const doc = books.loadBook(req.params.id);
+  if (!doc) return res.status(404).json({ error: 'unknown book' });
+  if (doc.status !== 'draft') return res.status(409).json({ error: `book is ${doc.status}` });
+  const jobId = startJob((setProgress) => books.declare(req.params.id, setProgress));
+  res.json({ jobId });
+});
+
+app.post('/api/books/:id/discard', (req, res) => {
+  try {
+    res.json(books.discardDraft(req.params.id));
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.post('/api/books/:id/retire', (req, res) => {
+  try {
+    res.json(books.retire(req.params.id, (req.body || {}).reason));
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.post('/api/books/refresh', async (req, res) => {
+  try {
+    await books.refreshPrices();
+    res.json(books.statusAll());
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+setInterval(() => books.tick().catch((err) => console.error('books tick failed:', err.message)), 30 * 60 * 1000);
+setTimeout(() => books.tick().catch((err) => console.error('books tick failed:', err.message)), 60 * 1000);
 
 // Owner's kill switch: stops the active screen at its current run AND
 // aborts every in-flight heavy loop (single runs, tracker init) at its next
