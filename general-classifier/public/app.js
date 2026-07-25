@@ -789,7 +789,9 @@
     }).join('');
     const details = s.pairs.filter((p) => p.detail).map((p) => {
       const d = p.detail;
-      return `<details style="margin-top:8px"><summary class="note" style="cursor:pointer">${esc(p.trade)} — stage detail (halves A ${d.data.halves.A} / B ${d.data.halves.B} chunks, band ±${d.data.bandPct.toFixed(2)}%)</summary>
+      const sp = d.data.split || { mode: 'chronological' };
+      const g = d.data.groups || {};
+      return `<details style="margin-top:8px"><summary class="note" style="cursor:pointer">${esc(p.trade)} — stage detail (${esc(sp.mode)} split${sp.mode === 'interlaced' ? `, ${sp.blocks} blocks of ${sp.blockDays}d, ${sp.purgedChunks} chunks purged` : ''}; fit ${g.fitA != null ? g.fitA : '?'} / score ${g.scoreA != null ? g.scoreA : '?'} / B ${d.data.halves.B}, band ±${d.data.bandPct.toFixed(2)}%)</summary>
         <div class="tablewrap" style="margin:6px 0"><table>
           <tr>${th('lens (stage 1)', MT.s1)}<th>tail acc</th><th>best const</th><th>edge</th><th>passed</th></tr>
           ${d.stage1.map((r) => `<tr class="${r.passed ? '' : 'miss'}"><td>${esc(r.key)}</td><td>${r.valAcc == null ? esc(r.error || '—') : pct(r.valAcc)}</td><td>${pct(r.bestConstant)}</td><td>${r.edge == null ? '—' : fmtE(r.edge)}</td><td>${r.passed ? 'yes' : 'no'}</td></tr>`).join('')}
@@ -972,6 +974,7 @@
         dormantPct: dormantValue(),
         weekdaysOnly: $('weekdays').checked,
         forceAllOnZeroPass: $('proto-forceall').checked, // meta-lens only; classic ignores it
+        splitMode: $('proto-interlaced').checked ? 'interlaced' : 'chronological',
       };
       if (pairsRaw) body.pairs = pairsRaw.split(',').map((p) => p.trim().toUpperCase()).filter(Boolean);
       const res = await fetch(useMeta ? 'api/metalens' : 'api/consensus', {

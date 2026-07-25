@@ -231,6 +231,7 @@ app.post('/api/metalens', (req, res) => {
       dormantPct: dormant,
       weekdaysOnly: !!b.weekdaysOnly,
       forceAllOnZeroPass: !!b.forceAllOnZeroPass,
+      splitMode: b.splitMode === 'interlaced' ? 'interlaced' : 'chronological',
       allLoaded: !!b.allLoaded,
     });
     res.json({ batchId: id });

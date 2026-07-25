@@ -257,6 +257,9 @@
             <label class="check" style="margin-left:18px"
               title="Meta-lens only. Normally, zero lenses passing stage 1 means the book stands aside on the whole test window — 'no signal found' is the result. Ticked, the recipe instead continues with ALL 8 lenses as the committee and lets stage 2 pick the agreement threshold. Motivated by DOT: every individual lens dead, yet the 6-of-8 agreement gate survived a 1000-shift null at 2% — a pair's signal can live in agreement alone, invisible to lens selection. The fallback is stamped on the results (forced: all 8) so a forced run can never pass as a selective one, and null replays inherit the same setting.">
               <input type="checkbox" id="proto-forceall"> on zero passing lenses: force all 8 (agreement-only mode)</label>
+            <label class="check" style="margin-left:18px"
+              title="Meta-lens only. Chronological split (default): group A is the early training era, B the late one — so stage 2 picks its threshold in one regime and applies it in another. Both DOT and DOGE showed the raw gross edge FLIPPING SIGN between eras, making that the dominant effect rather than a nuisance. Interlaced: alternate 49-day blocks (7 weeks) between the groups so every group spans the whole history. Whole weeks keep the weekday composition identical across blocks; an odd multiple drifts across the calendar so no block ever lines up with month-end structure. Neighbouring chunks overlap, so the last 5 chunks of every block are PURGED (2 for weekly geometry) — without that, interlacing would leak training data into the set meant to score it. The test window always stays chronological-last either way.">
+              <input type="checkbox" id="proto-interlaced"> split: interlaced 49-day blocks (purged) instead of chronological halves</label>
           </div>
         </div>
         <div class="field" style="flex:1; min-width:260px">
@@ -294,6 +297,6 @@
     pruned to time / open / high / low / close / quote&nbsp;volume.
   </footer>
 
-  <script src="app.js?v=39"></script>
+  <script src="app.js?v=40"></script>
 </body>
 </html>

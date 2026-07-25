@@ -86,6 +86,78 @@ function splitHalves(trainChunks) {
   return { A: trainChunks.slice(0, nA), B: trainChunks.slice(nA) };
 }
 
+// BLOCK-INTERLACED split (owner's design). Chronological halves make stage 2
+// choose its threshold in one era and apply it in another — and both DOT and
+// DOGE showed the raw gross edge FLIPPING SIGN between eras, so that isn't a
+// nuisance, it's the dominant effect. Interlacing whole blocks lets every
+// group span the entire history instead.
+//
+// Block size is an odd number of WEEKS (49 days = 7 weeks by default):
+//   * whole weeks keep the weekday composition identical in every block, so
+//     day-of-week can never differ between the groups;
+//   * an odd multiple drifts steadily across the calendar, so no block ever
+//     consistently starts on a month boundary and picks up month-end
+//     structure (rebalancing, expiry, funding cycles).
+//
+// PURGE: neighbouring chunks overlap — a daily-3d chunk spans 72h of features
+// and settles 114h out, so chunks near a block edge reach into the next block.
+// The last `purge` chunks of every block are dropped, purge = ceil(settle
+// horizon / step), which is 5 chunks for daily-3d and 2 for weekly-8d.
+// Without this, interlacing would leak a model's training data into the very
+// set meant to score it — worse than the era problem it fixes.
+//
+// Groups come from block index mod 4: 0 -> stage-1 fit, 2 -> stage-1 score,
+// 1 and 3 -> stage 2's half B. Every group therefore spans all eras, and
+// stage 1's scoring set is era-mixed too (a chronological tail of an
+// interlaced A would have quietly reintroduced the same problem).
+const BLOCK_DAYS = 49; // 7 weeks
+const DAY_MS = 24 * HOUR_MS;
+
+function purgeChunks(geo) {
+  return Math.ceil(geo.exitOffsetH / (geo.stepHours || 24));
+}
+
+function interlacedSplit(trainChunks, geo, blockDays = BLOCK_DAYS) {
+  const purge = purgeChunks(geo);
+  const t0 = trainChunks[0].startTs;
+  const blockMs = blockDays * DAY_MS;
+  const blocks = new Map();
+  for (const c of trainChunks) {
+    const b = Math.floor((c.startTs - t0) / blockMs);
+    if (!blocks.has(b)) blocks.set(b, []);
+    blocks.get(b).push(c);
+  }
+  const fitA = [];
+  const scoreA = [];
+  const B = [];
+  let purged = 0;
+  for (const [idx, list] of [...blocks.entries()].sort((a, b) => a[0] - b[0])) {
+    const kept = list.length > purge ? list.slice(0, list.length - purge) : [];
+    purged += list.length - kept.length;
+    const bucket = idx % 4 === 0 ? fitA : idx % 4 === 2 ? scoreA : B;
+    for (const c of kept) bucket.push(c);
+  }
+  return {
+    fitA,
+    scoreA,
+    B,
+    meta: { mode: 'interlaced', blockDays, blocks: blocks.size, purge, purgedChunks: purged },
+  };
+}
+
+// One entry point for both modes, so the rest of the recipe is split-agnostic.
+function buildSplit(trainChunks, geo, splitMode, blockDays = BLOCK_DAYS) {
+  if (splitMode === 'interlaced') return interlacedSplit(trainChunks, geo, blockDays);
+  const { A, B } = splitHalves(trainChunks);
+  const nVal = Math.max(3, Math.round(A.length * 0.25));
+  return {
+    fitA: A.slice(0, A.length - nVal),
+    scoreA: A.slice(A.length - nVal),
+    B,
+    meta: { mode: 'chronological', blockDays: null, blocks: null, purge: 0, purgedChunks: 0 },
+  };
+}
+
 async function trainOn(spec, chunks, nDays, onProgress) {
   const idx = viewIndices(spec.view, nDays);
   const X = chunks.map((c) => idx.map((i) => c.x[i]));
@@ -145,6 +217,7 @@ async function runMetaLens(params, onProgress = () => {}) {
   const nDays = geo.featureHours / 24;
   const weekdaysOnly = !!params.weekdaysOnly;
   const forceAllOnZeroPass = !!params.forceAllOnZeroPass;
+  const splitMode = params.splitMode === 'interlaced' ? 'interlaced' : 'chronological';
   const adaptiveBand = params.dormantPct === 'auto' || params.dormantPct === undefined;
   const labelShiftFrac = Number(params.labelShiftFrac) || 0;
   const allLoaded = !!params.allLoaded;
@@ -176,18 +249,24 @@ async function runMetaLens(params, onProgress = () => {}) {
   }
 
   const nTest = Math.max(2, Math.round(chunks.length * 0.2));
-  const trainChunks = chunks.slice(0, chunks.length - nTest);
+  // The test window is ALWAYS the chronological tail — interlacing it would
+  // destroy the predict-the-future property this whole project rests on.
+  // Purge the training side of the boundary too: with overlapping chunks the
+  // last few training chunks share candles with the first test chunks.
+  const boundaryPurge = purgeChunks(geo);
+  const trainChunks = chunks.slice(0, Math.max(0, chunks.length - nTest - boundaryPurge));
   const testChunks = chunks.slice(chunks.length - nTest);
 
   let bandPct = adaptiveBand ? balancedBandPct(trainChunks.map((c) => c.diffPct)) : Math.abs(params.dormantPct);
   if (adaptiveBand) for (const c of chunks) c.label = scoreDiff(c.diffPct / 100, bandPct / 100);
 
-  const { A, B } = splitHalves(trainChunks);
+  const split = buildSplit(trainChunks, geo, splitMode);
+  const { fitA: subA, scoreA: valA, B } = split;
+  if (!subA.length || !valA.length || !B.length) {
+    throw new Error(`split produced an empty group (fit ${subA.length}, score ${valA.length}, B ${B.length}) — widen the range`);
+  }
 
-  // ---- stage 1: lens selection on half A ------------------------------------
-  const nValA = Math.max(3, Math.round(A.length * 0.25));
-  const subA = A.slice(0, A.length - nValA);
-  const valA = A.slice(A.length - nValA);
+  // ---- stage 1: lens selection ------------------------------------------------
   const valConst = bestConstantOf(valA.map((c) => c.label));
   const stage1 = [];
   for (const spec of SPECS) {
@@ -210,10 +289,11 @@ async function runMetaLens(params, onProgress = () => {}) {
   let stage2 = { menu: [], chosenFrac: null, lenses: committee.specs.map((s) => s.key), forcedAll: committee.forcedAll };
   let finalModels = [];
   if (committee.specs.length) {
+    const allA = [...subA, ...valA].sort((a, b) => a.startTs - b.startTs);
     const modelsA = [];
     for (const spec of committee.specs) {
-      onProgress(`stage 2: retraining ${spec.key} on all of half A`);
-      modelsA.push(await trainOn(spec, A, nDays, onProgress));
+      onProgress(`stage 2: retraining ${spec.key} on all of group A`);
+      modelsA.push(await trainOn(spec, allA, nDays, onProgress));
     }
     const bCalls = B.map((c) => modelsA.map((m) => m.predictOne(c)));
     for (const frac of FRACTION_MENU) {
@@ -248,11 +328,20 @@ async function runMetaLens(params, onProgress = () => {}) {
       geometry,
       weekdaysOnly,
       forceAllOnZeroPass,
+      splitMode,
       dormantPct: adaptiveBand ? 'auto' : params.dormantPct,
       labelShift,
       allLoaded,
     },
-    data: { chunks: chunks.length, bandPct, halves: { A: A.length, B: B.length }, test: testChunks.length },
+    data: {
+      chunks: chunks.length,
+      bandPct,
+      halves: { A: subA.length + valA.length, B: B.length },
+      groups: { fitA: subA.length, scoreA: valA.length, B: B.length },
+      split: split.meta,
+      boundaryPurge,
+      test: testChunks.length,
+    },
     stage1,
     stage2,
     test: {
@@ -292,4 +381,17 @@ function extractMetaMetrics(report) {
   };
 }
 
-module.exports = { runMetaLens, extractMetaMetrics, metaCall, committeeFor, splitHalves, bestConstantOf, FRACTION_MENU, SPECS };
+module.exports = {
+  runMetaLens,
+  extractMetaMetrics,
+  metaCall,
+  committeeFor,
+  splitHalves,
+  buildSplit,
+  interlacedSplit,
+  purgeChunks,
+  bestConstantOf,
+  FRACTION_MENU,
+  BLOCK_DAYS,
+  SPECS,
+};
