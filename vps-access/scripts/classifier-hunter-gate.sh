@@ -1,27 +1,28 @@
 #!/usr/bin/env bash
-# H1 hunter-campaign gate reader: newest directional consensus screen,
-# per pair: vote book net/trades/wins + the gate verdict per VERDICTS.md
-# amendment A1: net > $0 at recorded friction AND (>=30 trades, OR >=10
-# trades with gross/trade >= $1.00 at a rate >= 7 trades/365 test days).
-# Read-only.
+# H1 hunter-campaign gate reader: ALL directional consensus screens, newest
+# last, per pair: vote book net/trades/wins + the gate verdict per
+# VERDICTS.md amendment A1: net > $0 at recorded friction AND (>=30 trades
+# [lane a], OR >=10 trades with gross/trade >= $1.00 at a rate >= 7
+# trades/365 test days [lane b]). Read-only.
 set -euo pipefail
 
 curl -s http://127.0.0.1:8093/api/batches > /tmp/h1-batches.json
-ID=$(python3 -c '
+IDS=$(python3 -c '
 import json
 d = json.load(open("/tmp/h1-batches.json"))
 ids = [b["id"] for b in d["batches"]
        if b["id"].startswith("consensus-") and (b.get("params") or {}).get("decision") == "directional"]
-print(ids[0] if ids else "")')
-if [ -z "$ID" ]; then echo "no directional consensus screens found"; exit 0; fi
-curl -s "http://127.0.0.1:8093/api/batch/$ID" > /tmp/h1-doc.json
+print("\n".join(reversed(ids)))')
+if [ -z "$IDS" ]; then echo "no directional consensus screens found"; exit 0; fi
 
+for ID in $IDS; do
+curl -s "http://127.0.0.1:8093/api/batch/$ID" > /tmp/h1-doc.json
 python3 <<'EOF'
 import json
 d = json.load(open("/tmp/h1-doc.json"))
 p = d["params"]
 trip = 2 * p.get("feePerLeg", 0.5)
-print(f"{d['id']} status={d['status']} band=+/-{p['dormantPct']}% geometry={p['geometry']} fee/trip=${trip:.2f} runs={sum(1 for r in d['runs'] if r['status']!='pending')}/{len(d['runs'])}")
+print(f"=== {d['id']} status={d['status']} band=+/-{p['dormantPct']}% geometry={p['geometry']} fee/trip=${trip:.2f} runs={sum(1 for r in d['runs'] if r['status']!='pending')}/{len(d['runs'])}")
 s = d.get("summary") or {}
 passing = []
 for pair in s.get("pairs", []):
@@ -52,4 +53,6 @@ for pair in s.get("pairs", []):
         passing.append(f"{pair['trade']}({lane})")
 print()
 print(f"gate passes: {len(passing)} of {len(s.get('pairs', []))} -> {', '.join(passing) if passing else 'none'}")
+print()
 EOF
+done
