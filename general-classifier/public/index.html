@@ -229,19 +229,24 @@
 
     <div id="tab-research-2"><!-- research tab, part two: the batch tools -->
     <div class="section" id="batch-section">
-      <h2>Pair screen (batch)</h2>
+      <h2>Screens (batch)</h2>
       <p class="note">
-        Runs the full pipeline for a fixed list of high-cap, long-history pairs against BTCUSDT,
-        with both models, using the dormant range / months / features set above. Results persist on
-        the server; the table ranks combos by edge over the majority baseline.
+        Three instruments, all persisting to the server and readable in the picker below.
+        <strong>Quick screen (legacy)</strong>: 17 pairs &times; 2 models, one spec each, full view only —
+        the original pre-consensus screen. Cheap pulse-check (34 runs) and the only screen that honors the
+        raw-features option, but it has no feature views, no vote/gate books and NO null support: never a
+        basis for belief. <strong>Consensus</strong> and <strong>meta-lens</strong> (protocol selector below)
+        are the real instruments — spec grids, vote and gate books, gradients, and null calibration.
       </p>
       <div class="controls" style="margin-top:10px">
         <div class="field">
           <label for="batch-pick">Saved screens</label>
           <select id="batch-pick"></select>
         </div>
-        <div class="field submit"><button id="batch-start" type="button">Start pair screen</button></div>
-        <div class="field submit"><button id="batch-refresh" type="button">Refresh</button></div>
+        <div class="field submit"><button id="batch-start" type="button" class="secondary"
+          title="LEGACY quick screen: 17 pairs x 2 models, one spec each (full view), using every setting in the form above including raw features and the hunter decision. No views, no vote or gate books, no nulls — a coarse pulse-check only. For anything you might act on, use the consensus or meta-lens protocol below.">Start quick screen (legacy)</button></div>
+        <div class="field submit"><button id="batch-refresh" type="button" class="secondary"
+          title="Re-fetch and re-render the screen selected in the picker. While a screen is running the view already auto-polls every 5 seconds — this is for forcing an update or after switching screens.">Refresh</button></div>
         <div class="field submit"><button id="stop-all" type="button" class="danger"
           title="Kill switch: stops the running screen at its current run and aborts any in-flight training (single runs, tracker init) within seconds — even with the CPU cap at OFF. Completed runs and saved results are kept; the screen is marked cancelled.">Stop jobs</button></div>
         <div id="batch-status" class="status" style="margin-top:0" hidden></div>
