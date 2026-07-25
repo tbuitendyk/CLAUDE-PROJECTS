@@ -110,10 +110,35 @@ Protocol, declared breadth:
 - Reading gate per pair-band: net > $0 at research friction ($0.25 round
   trip) on ≥ 30 trades, with a τ that actually traded on validation
   (a zero-validation-trade τ is absence of evidence, not conviction).
+  **Gate amended — see Amendment log (A1).**
 - Anything clearing the gate earns a deep null (200–1000 shifts, that
   pair and band only), read against the ledger's full denominator.
   Nothing here earns belief, a book, or capital directly.
 
 ## Amendment log
 
-- *(none)*
+- **A1 (2026-07-26) — H1 reading gate: low-frequency lane added.** The
+  original gate's flat ≥ 30-trade floor was set by the session, not the
+  owner, and contradicts the campaign's own premise at wide bands: a tail
+  hunter that fires a handful of times a year can never reach 30 trades in
+  any test window. Amended gate, per pair-band:
+
+  Net > $0 at research friction ($0.25 round trip), with a τ that actually
+  traded on validation, AND either:
+  - **(a)** ≥ 30 trades in the test window, or
+  - **(b)** ≥ 10 trades AND gross-per-trade ≥ $1.00 AND a trade rate of at
+    least **7 trades per 365 days of test window**. The rate term makes the
+    low-N lane scale with the testing timeframe — 10 signals in one year is
+    a jump-on-able pattern; 10 signals in ten years is not, and lane (a)
+    already covers any window long enough to accumulate 30. The $1.00
+    gross-per-trade term restricts the lane to rare-but-fat signals, the
+    only regime where low frequency is worth acting on.
+
+  Timing disclosure: this amendment was written AFTER the ±3% sweep was
+  read and BEFORE the ±5% and ±8% sweeps were read. It is therefore clean
+  (pre-registered) for ±5% and ±8%, and post-hoc for ±3%. Any ±3%
+  candidate admitted only by lane (b) — as of writing, BCHUSDT (+$38.09,
+  27 trades, $1.66 gross/trade) — is flagged **admitted-after-looking**:
+  its deep null is still valid evidence, but it does not get to claim it
+  survived a pre-registered gate. Candidates that passed the original
+  ≥ 30 gate are unaffected.
