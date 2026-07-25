@@ -144,4 +144,32 @@ module.exports = {
     assert.ok([0.1, 1].includes(chosenLambda));
     assert.ok(accuracy(model, X, y) > 0.5); // still learns the real rule
   },
+  async ladderReferenceMatchesTheLadderScale() {
+    // Regression (review F3): when the rungs are class-weighted (balanced
+    // accuracy, chance 1/3) the majority reference must be weighted too.
+    // An unweighted count fraction sits near the dormant share and brands
+    // genuinely skillful rungs as prior-convergence.
+    // Scattered (not sorted) so the chronological validation tail carries the
+    // same ~70%-dormant mix as the sub-train — a sorted fixture would put one
+    // class entirely in the tail and test nothing about scale.
+    const rng = makeRng(91);
+    const X = [];
+    const y = [];
+    for (let i = 0; i < 200; i++) {
+      const v = rng() * 2 - 1;
+      X.push([v]);
+      y.push(v > 0.6 ? 1 : v < -0.6 ? -1 : 0);
+    }
+    const w = { '-1': y.length / (3 * y.filter((l) => l === -1).length), 0: y.length / (3 * y.filter((l) => l === 0).length), 1: y.length / (3 * y.filter((l) => l === 1).length) };
+    const weighted = await tuneAndTrain(X, y, { lambdas: [0.1, 1], classWeights: w });
+    const plain = await tuneAndTrain(X, y, { lambdas: [0.1, 1] });
+    // unweighted reference tracks the dormant share of the validation tail
+    assert.ok(plain.valMajorityAcc > 0.5, `plain ref ${plain.valMajorityAcc}`);
+    // the weighted reference must land near balanced chance (1/3), because
+    // that is the floor the weighted rungs are actually competing against
+    assert.ok(Math.abs(weighted.valMajorityAcc - 1 / 3) < 0.1, `weighted ref ${weighted.valMajorityAcc}`);
+    assert.ok(plain.valMajorityAcc - weighted.valMajorityAcc > 0.15, 'the two scales must differ measurably');
+    // sanity: the rungs stay on a comparable scale
+    assert.ok(weighted.ladder.every((r) => r.valAcc >= 0 && r.valAcc <= 1));
+  },
 };

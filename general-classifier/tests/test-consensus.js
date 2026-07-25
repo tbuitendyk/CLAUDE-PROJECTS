@@ -147,6 +147,66 @@ module.exports = {
     const old = summarizeConsensus([run(0)], { AAAUSDT: { real: { pnl: 1, trades: 1, wins: 1, rows: [] }, nulls: {} } });
     assert.strictEqual(old.pairs[0].superVote, null);
   },
+  async shortGridsEmitNoSuperBook() {
+    // Regression (review F2): SUPER_QUORUM=6 is an ABSOLUTE count, so a grid
+    // of 5 specs can never fire the gate and a grid of 6-7 silently runs a
+    // stricter rule. Either way the book is not a measurement of 6-of-8.
+    const mk = (nSpecs) => ({
+      bestConstant: 1 / 3,
+      rows: [
+        { week: 'p1', actual: 1, entry: 100, exit: 110 },
+        { week: 'p2', actual: 1, entry: 100, exit: 108 },
+      ],
+      preds: Array.from({ length: nSpecs }, () => [1, 1]), // unanimous +1
+    });
+    for (const n of [5, 6, 7]) {
+      const b = voteBook(mk(n));
+      assert.strictEqual(b.superStats, null, `${n} specs must emit no super book`);
+      assert.ok(b.stats.trades > 0, `${n} specs still produce a vote book`);
+    }
+    const full = voteBook(mk(8));
+    assert.ok(full.superStats, '8 specs produce a super book');
+    assert.strictEqual(full.superStats.trades, 2);
+  },
+  async degradedNullsAreNotPooled() {
+    // Regression (review F1): a null grid with fewer specs ran a different
+    // decision rule, so pooling it as an ordinary sample biases the p-value.
+    const run = (shift) => ({
+      trade: 'AAAUSDT', compare: 'BTCUSDT', model: 'logreg', view: 'full', shift,
+      effectiveShift: shift ? shift * 10 : 0, status: 'done', error: null,
+      metrics: { hindsightEdge: 0.05, edge: 0.05, balancedEdge: 0, balancedAcc: 0.4 },
+    });
+    const nullSample = (pnl, specsInVote, superPnl) => ({
+      pnl, trades: 4, wins: 2, acc: 0.4, trueEdge: 0.01, specsInVote,
+      ...(superPnl == null ? {} : { super: { pnl: superPnl, trades: 2, acc: 0.4, trueEdge: 0.01, specsInVote } }),
+    });
+    const votes = {
+      AAAUSDT: {
+        real: {
+          pnl: 10, trades: 5, wins: 3, acc: 0.5, trueEdge: 0.1, specsInVote: 8,
+          super: { pnl: 6, trades: 2, wins: 2, acc: 0.5, trueEdge: 0.1, specsInVote: 8 },
+          rows: [], specPreds: {},
+        },
+        nulls: {
+          10: nullSample(20, 8, 9), // intact, beats both books
+          20: nullSample(-5, 8, -2), // intact, beats neither
+          30: nullSample(0, 5, null), // DEGRADED: 5 specs, no super book
+          40: nullSample(0, 7, null), // DEGRADED: 7 specs, no super book
+        },
+      },
+    };
+    const s = summarizeConsensus([run(0), run(1)], votes);
+    const nv = s.pairs[0].nullVote;
+    assert.strictEqual(nv.shifts, 2, 'only the two intact nulls are comparable');
+    assert.ok(Math.abs(nv.exceedPnl - 0.5) < 1e-9); // 1 of 2, not 1 of 4
+    assert.strictEqual(nv.superShifts, 2);
+    assert.ok(Math.abs(nv.superExceedPnl - 0.5) < 1e-9);
+    // pre-v1.16 docs recorded no specsInVote — still summarizable, not dropped
+    const legacy = summarizeConsensus([run(0), run(1)], {
+      AAAUSDT: { real: { pnl: 10, trades: 5, wins: 3, acc: 0.5, trueEdge: 0.1, rows: [] }, nulls: { 10: { pnl: 1, trades: 2 } } },
+    });
+    assert.strictEqual(legacy.pairs[0].nullVote.shifts, 1);
+  },
   async voteRuleMatchesTheTracker() {
     // Same semantics as tracker.js voteOf: outright majority wins, ANY tie
     // for the top count stands aside.

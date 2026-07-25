@@ -248,7 +248,8 @@ async function runAnalysis(params, onProgress = () => {}) {
   let tuning;
   let finalInfo;
   let predictFn;
-  let tau = null;
+  let trainPredictFn; // same model, training rows — scored through the same
+  let tau = null; //     decision rule as the test set (see `decide` below)
   let tauLadder = null;
   if (modelKind === 'logreg') {
     onProgress(`standardizing features (${featureCount} per chunk)`);
@@ -277,6 +278,7 @@ async function runAnalysis(params, onProgress = () => {}) {
       topWeights: featureSet === 'compressed' ? topWeights(model, featureNames) : null,
     };
     predictFn = (i) => predict(model, Xte[i]);
+    trainPredictFn = (i) => predict(model, Xtr[i]);
   } else {
     // Boosted trees: raw (unstandardized) features — thresholds don't care
     // about scale. Round count is tuned by early stopping on the same
@@ -292,17 +294,23 @@ async function runAnalysis(params, onProgress = () => {}) {
     const counts = new Map();
     for (const l of ysub) counts.set(l, (counts.get(l) || 0) + 1);
     const majLabel = [...counts.entries()].sort((a, b) => b[1] - a[1])[0][0];
-    const valMajorityAcc = yval.filter((l) => l === majLabel).length / yval.length;
+    // Same scale rule as the logreg ladder: when training is weighted, the
+    // prior reference must be weighted too, or boost and logreg specs in one
+    // directional screen get graded on different yardsticks.
+    const wval = weightsFor(yval);
+    const valMajorityAcc = wval
+      ? yval.reduce((s, l, i) => s + (l === majLabel ? wval[i] : 0), 0) / wval.reduce((a, b) => a + b, 0)
+      : yval.filter((l) => l === majLabel).length / yval.length;
 
     onProgress('boosting on the sub-train window (early stopping on validation)');
     const probe = await trainBoost(Xtr.slice(0, nSub), ysub, {
       Xval: Xtr.slice(nSub),
       yval,
       weights: weightsFor(ysub),
-      valWeights: weightsFor(yval),
+      valWeights: wval,
       onRound: (r) => { if (r % 10 === 0) onProgress(`boosting round ${r} (validation watch)`); },
     });
-    const valAcc = accuracyBoost(probe, Xtr.slice(nSub), yval);
+    const valAcc = accuracyBoost(probe, Xtr.slice(nSub), yval, wval);
     if (decision === 'directional') {
       // The probe never trained on the validation tail — its probabilities
       // there are honest, so tau tunes on them by paper P&L.
@@ -326,6 +334,7 @@ async function runAnalysis(params, onProgress = () => {}) {
       importance: featureSet === 'compressed' ? importanceTable(model, featureNames) : null,
     };
     predictFn = (i) => predictBoost(model, Xte[i]);
+    trainPredictFn = (i) => predictBoost(model, Xtr[i]);
   }
 
   if (decision === 'directional') {
@@ -338,6 +347,16 @@ async function runAnalysis(params, onProgress = () => {}) {
   const decide = decision === 'directional'
     ? (p) => ({ label: directionalCall(p.probs, tau), probs: p.probs })
     : (p) => p;
+  // trainAcc must score the SAME rule as test accuracy, or the two numbers
+  // differ by decision rule rather than by fit and the "far above test acc =
+  // memorization" reading breaks. Recompute it through `decide` once tau is known.
+  if (decision === 'directional') {
+    let hit = 0;
+    for (let i = 0; i < trainChunks.length; i++) {
+      if (decide(trainPredictFn(i)).label === ytr[i]) hit++;
+    }
+    finalInfo.trainAcc = trainChunks.length ? hit / trainChunks.length : null;
+  }
   const testRows = testChunks.map((c, i) => {
     const p = decide(predictFn(i));
     // one-shot paper book over the test window at this geometry's own
@@ -416,9 +435,15 @@ async function runAnalysis(params, onProgress = () => {}) {
 // the labelable chunks (at the given geometry) and subtract the 16-chunk
 // buffer. Used by the UI's "max" button so oversized shift requests aren't
 // guesswork.
-async function countRotations(tradeSymbol, compareSymbol, onProgress = () => {}, geometry = 'weekly-8d', weekdaysOnly = false) {
-  const trade = await loadSymbolAll(tradeSymbol, onProgress);
-  const compare = await loadSymbolAll(compareSymbol, onProgress);
+async function countRotations(tradeSymbol, compareSymbol, onProgress = () => {}, geometry = 'weekly-8d', weekdaysOnly = false, range = null) {
+  // The ceiling must be computed over the SAME months the screen will run on.
+  // Sizing from the whole cache while the screen honors a short form range
+  // quoted ceilings ~40x too high and queued that many pointless runs.
+  const months = range && !range.allLoaded && range.startMonth && range.endMonth
+    ? monthList(range.startMonth, range.endMonth)
+    : null;
+  const trade = months ? await loadSymbol(tradeSymbol, months, onProgress) : await loadSymbolAll(tradeSymbol, onProgress);
+  const compare = months ? await loadSymbol(compareSymbol, months, onProgress) : await loadSymbolAll(compareSymbol, onProgress);
   if (!trade.rows.length || !compare.rows.length) return { chunks: 0, maxRotations: 0 };
   const tradeFilled = forwardFill(toHourlyMap(trade.rows));
   const compareFilled = forwardFill(toHourlyMap(compare.rows));

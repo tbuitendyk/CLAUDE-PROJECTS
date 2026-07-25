@@ -275,7 +275,12 @@ function voteBook(group) {
       specsInVote: group.preds.length,
     };
   };
-  return { stats: bookStats('vote', 'pnl'), superStats: bookStats('sup', 'supPnl'), rows };
+  // The gate's quorum is ABSOLUTE (6), so a short grid silently runs a
+  // different rule — unreachable at 5 specs, unanimity at 6, 6-of-7 at 7 —
+  // and a forced all-stand-aside book is a structural constant, not a
+  // measurement. Emit no super book at all rather than a misleading one.
+  const complete = group.preds.length >= SPECS_PER_GRID;
+  return { stats: bookStats('vote', 'pnl'), superStats: complete ? bookStats('sup', 'supPnl') : null, rows };
 }
 
 function median(values) {
@@ -318,7 +323,15 @@ function summarizeConsensus(runs, votes = null) {
       const superStats = vt && vt.real ? vt.real.super || null : null;
       let nullVote = null;
       if (voteStats && vt.nulls) {
-        const nv = Object.values(vt.nulls);
+        // Pool ONLY null grids whose spec count matches the real grid. A
+        // degraded null ran a structurally different decision rule (a
+        // 7-spec vote cannot tie 4-4, so it takes round trips the real rule
+        // never would), which makes it a sample from a different machine —
+        // pooling it silently biases the p-value. Pre-v1.16 docs recorded
+        // no specsInVote; treat those as comparable rather than dropping them.
+        const nv = Object.values(vt.nulls).filter(
+          (s) => s.specsInVote == null || s.specsInVote === voteStats.specsInVote
+        );
         if (nv.length) {
           nullVote = {
             shifts: nv.length,

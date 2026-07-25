@@ -200,15 +200,23 @@ app.get('/api/rotations', async (req, res) => {
   const compareSymbol = String(req.query.compare || 'BTCUSDT').toUpperCase();
   const geometry = String(req.query.geometry || 'weekly-8d');
   const weekdaysOnly = req.query.weekdays === '1';
+  const allLoaded = req.query.allLoaded === '1';
+  const startMonth = String(req.query.startMonth || '');
+  const endMonth = String(req.query.endMonth || '');
   if (!pairs.length || pairs.length > 6 || pairs.some((p) => !SYMBOL_RE.test(p))) {
     return res.status(400).json({ error: 'pass 1-6 pairs like ?pairs=DOTUSDT,AVAXUSDT' });
   }
   if (!GEOMETRY_KEYS.includes(geometry)) {
     return res.status(400).json({ error: `geometry must be one of ${GEOMETRY_KEYS.join('/')}` });
   }
+  if (!allLoaded && (startMonth || endMonth) && !(/^\d{4}-\d{2}$/.test(startMonth) && /^\d{4}-\d{2}$/.test(endMonth))) {
+    return res.status(400).json({ error: 'months must be YYYY-MM' });
+  }
+  // The ceiling is quoted for the months the screen will actually use.
+  const range = { allLoaded, startMonth, endMonth };
   try {
     const out = {};
-    for (const p of pairs) out[p] = await countRotations(p, compareSymbol, () => {}, geometry, weekdaysOnly);
+    for (const p of pairs) out[p] = await countRotations(p, compareSymbol, () => {}, geometry, weekdaysOnly, range);
     const suggested = Math.min(1000, Math.max(0, ...Object.values(out).map((r) => r.maxRotations)));
     res.json({ pairs: out, suggested });
   } catch (err) {

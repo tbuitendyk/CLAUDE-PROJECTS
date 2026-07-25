@@ -218,11 +218,19 @@ function predictBoost(model, x) {
   return { label: CLASSES[best], probs: { '-1': p[0], 0: p[1], 1: p[2] } };
 }
 
-function accuracyBoost(model, X, y) {
+// Optional per-sample weights make this cost-weighted accuracy, matching the
+// weighted training objective (with balanced weights it is balanced accuracy,
+// chance 1/3) so a weighted model is never graded on an unweighted yardstick.
+function accuracyBoost(model, X, y, w = null) {
   if (X.length === 0) return null;
   let hit = 0;
-  for (let i = 0; i < X.length; i++) if (predictBoost(model, X[i]).label === y[i]) hit++;
-  return hit / X.length;
+  let sumW = 0;
+  for (let i = 0; i < X.length; i++) {
+    const wi = w ? w[i] : 1;
+    sumW += wi;
+    if (predictBoost(model, X[i]).label === y[i]) hit += wi;
+  }
+  return hit / sumW;
 }
 
 // Gain-share importance with names, for the report.

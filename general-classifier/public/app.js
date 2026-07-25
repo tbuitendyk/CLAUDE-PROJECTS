@@ -675,13 +675,22 @@
       if (!pairsRaw) throw new Error('enter a pair list first — computing exact rotations for all 17 pairs would take a while');
       const pairs = pairsRaw.split(',').map((p) => p.trim().toUpperCase()).filter(Boolean).join(',');
       setBatchStatus('computing exact rotation ceilings…');
-      const res = await fetch(`api/rotations?pairs=${encodeURIComponent(pairs)}&geometry=${encodeURIComponent($('geometry').value)}&weekdays=${$('weekdays').checked ? 1 : 0}`);
+      const q = new URLSearchParams({
+        pairs,
+        geometry: $('geometry').value,
+        weekdays: $('weekdays').checked ? '1' : '0',
+        allLoaded: allLoadedChecked() ? '1' : '0',
+        startMonth: $('start').value,
+        endMonth: $('end').value,
+      });
+      const res = await fetch(`api/rotations?${q}`);
       const body = await jsonBody(res);
       setBatchStatus('');
       if (!res.ok) throw new Error(body.error || `HTTP ${res.status}`);
       $('cons-null').value = body.suggested;
       const parts = Object.entries(body.pairs).map(([p, r]) => `${p}: ${r.chunks} weeks → ${r.maxRotations} rotations`);
-      batchViewEl.insertAdjacentHTML('afterbegin', `<p class="note">Exact ceilings on cached data — ${parts.map(esc).join(' · ')} · null shifts set to ${body.suggested}.</p>`);
+      const scope = allLoadedChecked() ? 'all loaded data' : `${esc($('start').value)}→${esc($('end').value)}`;
+      batchViewEl.insertAdjacentHTML('afterbegin', `<p class="note">Exact ceilings for the settings above (${scope}, ${esc($('geometry').value)}${$('weekdays').checked ? ', 24/5' : ''}) — ${parts.map(esc).join(' · ')} · null shifts set to ${body.suggested}.</p>`);
     } catch (err) {
       setBatchStatus('');
       batchErrorEl.hidden = false;

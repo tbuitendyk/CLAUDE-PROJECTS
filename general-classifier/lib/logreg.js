@@ -216,11 +216,17 @@ async function tuneAndTrain(Xtr, ytr, { lambdas = DEFAULT_LAMBDAS, onProgress = 
 
   // Reference for reading the ladder: a model that always guesses the
   // sub-train majority class, scored on the same validation weeks. Ladder
-  // rows at or below this are prior-convergence, not signal.
+  // rows at or below this are prior-convergence, not signal. It MUST be
+  // scored on the same scale as the rungs — when the ladder is weighted the
+  // rungs report balanced accuracy (chance 1/3) while an unweighted count
+  // fraction sits near the dormant share, which would brand genuinely
+  // skillful rungs as dead prior-convergence.
   const counts = new Map();
   for (const l of ysub) counts.set(l, (counts.get(l) || 0) + 1);
   const majLabel = [...counts.entries()].sort((a, b) => b[1] - a[1])[0][0];
-  const valMajorityAcc = yval.filter((l) => l === majLabel).length / yval.length;
+  const valMajorityAcc = wval
+    ? yval.reduce((s, l, i) => s + (l === majLabel ? wval[i] : 0), 0) / wval.reduce((a, b) => a + b, 0)
+    : yval.filter((l) => l === majLabel).length / yval.length;
 
   const ladder = [];
   const evalLambda = async (lambda) => {
