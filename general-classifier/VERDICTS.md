@@ -92,6 +92,28 @@ Protocol, one look:
   scans. Consequence of confirmation: FUTURE books may declare a 2023+
   training window; existing books are untouched.
 
+## Screen H1 — the hunter campaign (declared before running)
+
+Question: does the directional hunter (class-weighted training, ±1-only
+decisions, τ tuned on validation dollars) find tradable big-move edges the
+argmax machinery can't see?
+
+Protocol, declared breadth:
+- Classic consensus screen, decision = directional hunter, daily-3d, all
+  loaded data, 24/7, all 17 pairs, 0 null shifts, at three FIXED bands:
+  **±3%, ±5%, ±8%** — three distinct hunting regimes (common swings /
+  uncommon moves / tail), not tunings of one. τ self-tunes per run on
+  validation paper P&L; the band menu is the declared breadth.
+- **All three sweeps run regardless of interim results** — the denominator
+  is fixed at 3 × 17 = 51 looks by this declaration, not by enthusiasm.
+  No off-menu bands afterward; a new band is a new declaration.
+- Reading gate per pair-band: net > $0 at research friction ($0.25 round
+  trip) on ≥ 30 trades, with a τ that actually traded on validation
+  (a zero-validation-trade τ is absence of evidence, not conviction).
+- Anything clearing the gate earns a deep null (200–1000 shifts, that
+  pair and band only), read against the ledger's full denominator.
+  Nothing here earns belief, a book, or capital directly.
+
 ## Amendment log
 
 - *(none)*
