@@ -202,11 +202,16 @@
         <div class="field" style="min-width:220px">
           <label title="Which decision rules this book reports. All selected rules are declared up front and ALL are reported — none can be promoted later on live results.">Rules (all reported)</label>
           <div style="display:flex; gap:10px; flex-wrap:wrap; padding-top:6px">
-            <label class="check"><input type="checkbox" class="bk-rule" value="vote" checked> vote</label>
-            <label class="check"><input type="checkbox" class="bk-rule" value="q5" checked> 5/8</label>
-            <label class="check"><input type="checkbox" class="bk-rule" value="q6" checked> 6/8</label>
-            <label class="check"><input type="checkbox" class="bk-rule" value="q7" checked> 7/8</label>
-            <label class="check"><input type="checkbox" class="bk-rule" value="q8" checked> 8/8</label>
+            <label class="check" title="Majority of the 8 specs; ANY tie stands aside (including ties with the dormant class). The live tracker's exact rule — trades most often of the five.">
+              <input type="checkbox" class="bk-rule" value="vote" checked> vote</label>
+            <label class="check" title="Trade only when at least 5 of the 8 specs call the SAME direction. Absolute count, not plurality: 4 up vs 3 down stands aside.">
+              <input type="checkbox" class="bk-rule" value="q5" checked> 5/8</label>
+            <label class="check" title="At least 6 of 8 same-direction. The quorum pre-registered in the DOGE backtest (null exceed 0/200) and DOT (2% of 1000).">
+              <input type="checkbox" class="bk-rule" value="q6" checked> 6/8</label>
+            <label class="check" title="At least 7 of 8 same-direction. The rung with the best backtest dollars on DOGE and DOT (1% of 1000 on DOT) — identified AFTER seeing tables, which is exactly why it rides as one declared rule among five rather than 'the' rule.">
+              <input type="checkbox" class="bk-rule" value="q7" checked> 7/8</label>
+            <label class="check" title="Unanimous. Fires rarely (a handful of trades per hundred periods); its per-trade numbers ran hottest in backtests but on the thinnest samples.">
+              <input type="checkbox" class="bk-rule" value="q8" checked> 8/8</label>
           </div>
         </div>
         <div class="field" style="flex:1; min-width:260px">
@@ -242,8 +247,17 @@
         <div id="batch-status" class="status" style="margin-top:0" hidden></div>
       </div>
       <div class="controls" style="margin-top:10px">
+        <div class="field" style="min-width:270px">
+          <label title="Which screening protocol the Start button runs. Both use the months / geometry / band / 24-5 settings from the form at the top of the page.">Protocol</label>
+          <div style="display:flex; flex-direction:column; gap:4px; padding-top:4px">
+            <label class="check" title="The original screen: a fixed grid of 8 specs (4 feature views × 2 models) per pair. Scores each pair by agreement across its specs, simulates the vote / 6-of-8 gate books and the agreement gradient, and calibrates everything against label-shifted nulls.">
+              <input type="radio" name="protocol" id="proto-classic" checked> classic &mdash; 8-spec consensus grid</label>
+            <label class="check" title="Two-stage nested protocol. The training window splits into chronological halves A (early) and B (late); the test window stays untouched. STAGE 1 (half A): each of the 8 lenses trains on A's first 75% and is scored on A's tail — a lens PASSES only if it beats the tail's best constant guess, i.e. it detects signal on data it hasn't seen. STAGE 2 (half B): the passing lenses retrain on all of A and an agreement threshold is picked from a fixed menu (50 / 62.5 / 75 / 87.5 / 100% of passing lenses) by paper P&L on B; ties go stricter. VERDICT: passing lenses retrain on A+B and trade the test window once at that threshold. Null shifts replay the ENTIRE recipe — selection and threshold included — for every label rotation: whatever freedom the real run enjoyed, the null enjoys too. Zero lenses passing is a reported result (the book stands aside), not an error.">
+              <input type="radio" name="protocol" id="proto-metalens"> meta-lens &mdash; two-stage (select lenses, then threshold)</label>
+          </div>
+        </div>
         <div class="field" style="flex:1; min-width:260px">
-          <label for="cons-pairs">Consensus screen — pairs (comma-separated; empty = all 17)</label>
+          <label for="cons-pairs">Pairs (comma-separated; empty = all 17)</label>
           <input id="cons-pairs" type="text" placeholder="DOTUSDT, AVAXUSDT, SOLUSDT">
         </div>
         <div class="field">
@@ -251,7 +265,7 @@
           <input id="cons-null" type="number" min="0" max="1000" step="1" value="0">
         </div>
         <div class="field submit"><button id="cons-max" type="button" class="secondary" title="Compute the exact distinct-rotation ceiling for the pairs listed (on currently cached data) and fill it in">max</button></div>
-        <div class="field submit"><button id="cons-start" type="button">Start consensus screen</button></div>
+        <div class="field submit"><button id="cons-start" type="button">Start screen</button></div>
       </div>
       <p class="note">
         The consensus screen runs a FIXED spec grid per pair — 4 feature views (full / prices / volume / cross-asset)
@@ -277,6 +291,6 @@
     pruned to time / open / high / low / close / quote&nbsp;volume.
   </footer>
 
-  <script src="app.js?v=36"></script>
+  <script src="app.js?v=37"></script>
 </body>
 </html>

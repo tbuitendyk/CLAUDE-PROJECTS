@@ -522,4 +522,4 @@ async function loadData({ tradeSymbol, compareSymbol, startMonth, endMonth }, on
   return out;
 }
 
-module.exports = { runAnalysis, loadData, monthList, extractMetrics, deriveShift, countRotations, MIN_CHUNKS };
+module.exports = { runAnalysis, loadData, monthList, extractMetrics, deriveShift, countRotations, loadSymbol, loadSymbolAll, MIN_CHUNKS };

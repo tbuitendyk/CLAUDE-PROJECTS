@@ -195,6 +195,49 @@ app.post('/api/consensus', (req, res) => {
   }
 });
 
+// Meta-lens screen: the two-stage protocol (lens selection on half A,
+// agreement threshold on half B, verdict on the untouched test window),
+// with nulls that replay the whole recipe per rotation.
+app.post('/api/metalens', (req, res) => {
+  const b = req.body || {};
+  for (const m of ['startMonth', 'endMonth']) {
+    if (!b.allLoaded && b[m] !== undefined && !/^\d{4}-\d{2}$/.test(String(b[m]))) {
+      return res.status(400).json({ error: `${m} must be YYYY-MM` });
+    }
+  }
+  if (b.pairs !== undefined && (!Array.isArray(b.pairs) || !b.pairs.length || b.pairs.some((p) => !SYMBOL_RE.test(String(p).toUpperCase())))) {
+    return res.status(400).json({ error: 'pairs must be a non-empty array of symbols like DOTUSDT' });
+  }
+  const nullShifts = b.nullShifts === undefined ? 0 : Number(b.nullShifts);
+  if (!Number.isInteger(nullShifts) || nullShifts < 0 || nullShifts > 1000) {
+    return res.status(400).json({ error: 'nullShifts must be an integer 0..1000' });
+  }
+  const geometry = String(b.geometry || 'daily-3d');
+  if (!GEOMETRY_KEYS.includes(geometry)) {
+    return res.status(400).json({ error: `geometry must be one of ${GEOMETRY_KEYS.join('/')}` });
+  }
+  const dormant = b.dormantPct === undefined || b.dormantPct === 'auto' ? 'auto' : Number(b.dormantPct);
+  if (dormant !== 'auto' && (!Number.isFinite(dormant) || dormant <= 0 || dormant >= 50)) {
+    return res.status(400).json({ error: 'dormant range must be "auto" or a percentage between 0 and 50' });
+  }
+  try {
+    const id = batch.startMetalens({
+      startMonth: b.startMonth,
+      endMonth: b.endMonth,
+      compareSymbol: b.compareSymbol ? String(b.compareSymbol).toUpperCase() : undefined,
+      pairs: b.pairs ? b.pairs.map((p) => String(p).toUpperCase()) : undefined,
+      nullShifts,
+      geometry,
+      dormantPct: dormant,
+      weekdaysOnly: !!b.weekdaysOnly,
+      allLoaded: !!b.allLoaded,
+    });
+    res.json({ batchId: id });
+  } catch (err) {
+    res.status(409).json({ error: err.message });
+  }
+});
+
 // Exact null-shift ceilings for a comma-separated pair list, computed on the
 // currently cached data (no network). Powers the consensus "max" button.
 app.get('/api/rotations', async (req, res) => {

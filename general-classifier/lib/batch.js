@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const { runAnalysis, extractMetrics } = require('./pipeline');
+const { runMetaLens, extractMetaMetrics } = require('./metalens');
 const { pnlFor, voteOf, superOf } = require('./paper');
 
 // Pair screen: run the full pipeline for every (trade pair x model) combo
@@ -88,7 +89,11 @@ function getBatch(id) {
     // docs saved by older versions pick up new summary fields (e.g. median
     // paper P&L) without re-running anything.
     if (doc.summary && Array.isArray(doc.runs)) {
-      doc.summary = doc.kind === 'consensus' ? summarizeConsensus(doc.runs, doc.votes || null) : summarize(doc.runs);
+      doc.summary = doc.kind === 'consensus'
+        ? summarizeConsensus(doc.runs, doc.votes || null)
+        : doc.kind === 'metalens'
+          ? summarizeMetalens(doc.runs, doc.meta || null)
+          : summarize(doc.runs);
     }
     return doc;
   } catch {
@@ -602,9 +607,145 @@ function startConsensus(params) {
   return doc.id;
 }
 
+// ---- meta-lens screen ----------------------------------------------------------
+//
+// One RUN here is one complete two-stage recipe (selection on half A,
+// threshold on half B, verdict on test) — the null replays all of it per
+// rotation, which is the protocol's whole point. Runs per pair = shifts + 1.
+
+function summarizeMetalens(runs, meta) {
+  const done = runs.filter((r) => r.status === 'done');
+  const failed = runs.filter((r) => r.status === 'error');
+  const pairs = [...new Set(runs.map((r) => r.trade))];
+  const perPair = pairs.map((trade) => {
+    const real = done.find((r) => r.trade === trade && !r.shift);
+    const nullKey = (r) => r.effectiveShift ?? r.shift;
+    const byShift = new Map();
+    for (const r of done) {
+      if (r.trade !== trade || !r.shift) continue;
+      byShift.set(nullKey(r), r.metrics); // duplicate rotations collapse
+    }
+    const nulls = [...byShift.values()];
+    let nullStats = null;
+    if (real && nulls.length) {
+      nullStats = {
+        shifts: nulls.length,
+        exceedPnl: nulls.filter((n) => n.pnl >= real.metrics.pnl).length / nulls.length,
+        exceedEdge: nulls.filter((n) => (n.edge ?? -Infinity) >= (real.metrics.edge ?? -Infinity)).length / nulls.length,
+        medianPnl: median(nulls.map((n) => n.pnl)),
+        medianTrades: median(nulls.map((n) => n.trades)),
+        medianLensesPassed: median(nulls.map((n) => n.lensesPassed)),
+      };
+    }
+    return {
+      trade,
+      metrics: real ? real.metrics : null,
+      detail: meta && meta[trade] ? meta[trade] : null,
+      null: nullStats,
+    };
+  }).sort((a, b) => ((b.metrics && b.metrics.pnl) ?? -Infinity) - ((a.metrics && a.metrics.pnl) ?? -Infinity));
+  return {
+    kind: 'metalens',
+    pairs: perPair,
+    failed: failed.map((r) => ({ trade: r.trade, shift: r.shift || 0, error: r.error })),
+    done: done.length,
+    total: runs.length,
+  };
+}
+
+function startMetalens(params) {
+  if (batchRunning()) throw new Error(`batch ${activeBatch.id} is already running`);
+  const {
+    startMonth = '2018-01',
+    endMonth = '2026-06',
+    compareSymbol = 'BTCUSDT',
+    pairs = DEFAULT_PAIRS,
+    nullShifts = 0,
+    geometry = 'daily-3d',
+    dormantPct = 'auto',
+    weekdaysOnly = false,
+    allLoaded = false,
+  } = params || {};
+  const nShifts = Math.min(1000, Math.max(0, Math.floor(Number(nullShifts) || 0)));
+
+  const stamp = new Date().toISOString().replace(/[-:]/g, '').slice(0, 13).replace('T', '-');
+  const doc = {
+    id: `metalens-${stamp}`,
+    kind: 'metalens',
+    status: 'running',
+    startedAt: new Date().toISOString(),
+    finishedAt: null,
+    progress: '',
+    params: { protocol: 'metalens', dormantPct, startMonth, endMonth, compareSymbol, nullShifts: nShifts, geometry, weekdaysOnly, allLoaded },
+    runs: [],
+    meta: {}, // per pair: full stage1/stage2/test detail for the REAL run
+    summary: null,
+  };
+  for (const trade of pairs) {
+    if (trade === compareSymbol) continue;
+    for (let shift = 0; shift <= nShifts; shift++) {
+      doc.runs.push({ trade, compare: compareSymbol, shift, status: 'pending', error: null, metrics: null });
+    }
+  }
+  activeBatch = doc;
+  saveBatch(doc);
+
+  (async () => {
+    for (const run of doc.runs) {
+      if (doc.cancelRequested) break;
+      run.status = 'running';
+      const tag = `${run.trade}/meta${run.shift ? `/shift${run.shift}` : ''}`;
+      doc.progress = tag;
+      try {
+        const report = await runMetaLens(
+          {
+            tradeSymbol: run.trade,
+            compareSymbol: run.compare,
+            startMonth,
+            endMonth,
+            geometry,
+            dormantPct,
+            weekdaysOnly,
+            labelShiftFrac: run.shift > 0 ? run.shift / (nShifts + 1) : 0,
+            allLoaded,
+          },
+          (p) => {
+            doc.progress = `${tag}: ${p}`;
+          }
+        );
+        run.metrics = extractMetaMetrics(report);
+        run.effectiveShift = report.params.labelShift || 0;
+        run.status = 'done';
+        if (run.shift === 0) {
+          doc.meta[run.trade] = { stage1: report.stage1, stage2: report.stage2, test: report.test, data: report.data };
+        }
+      } catch (err) {
+        run.status = 'error';
+        run.error = err.message || String(err);
+      }
+      doc.summary = summarizeMetalens(doc.runs, doc.meta);
+      saveBatch(doc);
+    }
+    for (const r of doc.runs) if (r.status === 'running') r.status = 'error';
+    doc.status = doc.cancelRequested ? 'cancelled' : 'done';
+    doc.finishedAt = new Date().toISOString();
+    doc.progress = '';
+    saveBatch(doc);
+  })().catch((err) => {
+    doc.status = 'error';
+    doc.error = err.message || String(err);
+    doc.finishedAt = new Date().toISOString();
+    saveBatch(doc);
+  });
+
+  return doc.id;
+}
+
 module.exports = {
   startBatch,
   startConsensus,
+  startMetalens,
+  summarizeMetalens,
   getBatch,
   listBatches,
   batchRunning,

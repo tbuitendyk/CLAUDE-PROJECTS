@@ -497,6 +497,10 @@ function publicView(doc) {
   const settled = doc.periods.filter((p) => p.status === 'settled' && !p.postHorizon);
   const rules = {};
   for (const r of doc.config.rules) rules[r] = bookStats(settled, (p) => p.calls[r], r);
+  // reference only: each individual spec's own $100 book, same prices — the
+  // committee's members, never decision rules themselves
+  const specs = {};
+  for (const s of SPECS) specs[s.key] = bookStats(settled, (p) => p.predictions[s.key], s.key);
   return {
     id: doc.id,
     status: doc.status,
@@ -515,6 +519,7 @@ function publicView(doc) {
     liveCount: doc.periods.filter((p) => p.live).length,
     horizonDone: doc.periods.filter((p) => p.live && p.status !== 'pending' && !p.postHorizon).length,
     rules,
+    specs,
     amendments: doc.amendments,
     lineage: doc.lineage,
     periods: doc.periods.map((p) => ({

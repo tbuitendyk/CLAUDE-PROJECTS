@@ -495,6 +495,10 @@
     const header = `${esc(doc.id)} — ${esc(doc.status)}${doc.status === 'running' && doc.progress ? ` — ${esc(doc.progress)}` : ''}
       · ${doc.runs.filter((r) => r.status === 'done' || r.status === 'error').length}/${doc.runs.length} runs
       · dormant ±${esc(String(doc.params.dormantPct))}% · ${range} · ${esc(doc.params.geometry || 'weekly-8d')}${doc.params.weekdaysOnly ? ' · 24/5' : ''}${doc.params.decision === 'directional' ? ' · directional hunter' : ''} · vs ${esc(doc.params.compareSymbol)}`;
+    if (s && s.kind === 'metalens') {
+      renderMetalens(doc, s, header);
+      return;
+    }
     if (!s || !s.ranked.length) {
       batchViewEl.innerHTML = `<p class="note">${header}</p><p class="note">No completed runs yet.</p>`;
       return;
@@ -749,6 +753,66 @@
     });
   }
 
+  // Meta-lens screen rendering: one row per pair (a run here is one complete
+  // two-stage recipe), with the real run's stage detail expandable.
+  function renderMetalens(doc, s, header) {
+    const MT = {
+      lenses: 'How many of the 8 lenses passed stage 1 — beat the best constant guess on half A’s unseen tail. Zero passing is a legitimate result: the book stands aside everywhere.',
+      frac: 'The agreement threshold stage 2 chose on half B, from the fixed menu 50/62.5/75/87.5/100% of passing lenses. Ties go stricter. Chosen before the test window was ever touched.',
+      book: 'The meta-book’s paper P&L over the untouched test window: $100 per order, $1 round trip, entry/exit at the geometry’s candle opens.',
+      gpt: 'P&L before friction, per trade. Above $1.00 means the book beats its own fees.',
+      acc: 'Share of test periods where the meta-call matched the realized class, with (edge) = accuracy − the test window’s best constant guess.',
+      nullP: 'Share of label-shifted replays of the ENTIRE recipe — lens selection and threshold choice included — whose test book made at least as many dollars. Hover for how the null recipes behaved.',
+      nullE: 'Same, on accuracy edge instead of dollars.',
+      s1: 'Stage 1 scoreboard on half A’s tail: a lens passes only if accuracy beats the tail’s best constant guess.',
+      s2: 'Stage 2 menu on half B: each fixed agreement fraction’s paper P&L. The chosen row traded the test window.',
+    };
+    const th = (label, tip) => `<th title="${esc(tip)}">${label}</th>`;
+    const fmtE = (e) => (e == null ? '—' : (e >= 0 ? '+' : '') + (100 * e).toFixed(1) + '%');
+    const rows = s.pairs.map((p) => {
+      const m = p.metrics;
+      if (!m) return `<tr><td>${esc(p.trade)}</td><td colspan="8">no completed real run</td></tr>`;
+      const nullHover = p.null
+        ? ` title="Null recipes: median ${money(p.null.medianPnl)} on ${p.null.medianTrades} trades, median ${p.null.medianLensesPassed} lenses passing (real: ${money(m.pnl)} on ${m.trades} trades, ${m.lensesPassed} lenses). If noise recipes pass few lenses, lens selection itself is doing real filtering."`
+        : '';
+      return `<tr class="${m.pnl > 0 ? 'hilite' : ''}">
+        <td>${esc(p.trade)}</td>
+        <td>${m.lensesPassed}/8</td>
+        <td>${m.chosenFrac == null ? '—' : pct(m.chosenFrac, 1)}</td>
+        <td>${m.trades} (${m.wins} w)</td>
+        <td><strong>${money(m.pnl)}</strong></td>
+        <td>${m.grossPerTrade == null ? '—' : '$' + m.grossPerTrade.toFixed(2)}</td>
+        <td>${pct(m.accuracy)} (${fmtE(m.edge)})</td>
+        <td${nullHover}>${p.null ? `${pct(p.null.exceedPnl, 0)} of ${p.null.shifts}` : '—'}</td>
+        <td>${p.null ? pct(p.null.exceedEdge, 0) : '—'}</td>
+      </tr>`;
+    }).join('');
+    const details = s.pairs.filter((p) => p.detail).map((p) => {
+      const d = p.detail;
+      return `<details style="margin-top:8px"><summary class="note" style="cursor:pointer">${esc(p.trade)} — stage detail (halves A ${d.data.halves.A} / B ${d.data.halves.B} chunks, band ±${d.data.bandPct.toFixed(2)}%)</summary>
+        <div class="tablewrap" style="margin:6px 0"><table>
+          <tr>${th('lens (stage 1)', MT.s1)}<th>tail acc</th><th>best const</th><th>edge</th><th>passed</th></tr>
+          ${d.stage1.map((r) => `<tr class="${r.passed ? '' : 'miss'}"><td>${esc(r.key)}</td><td>${r.valAcc == null ? esc(r.error || '—') : pct(r.valAcc)}</td><td>${pct(r.bestConstant)}</td><td>${r.edge == null ? '—' : fmtE(r.edge)}</td><td>${r.passed ? 'yes' : 'no'}</td></tr>`).join('')}
+        </table></div>
+        ${d.stage2.menu.length ? `<div class="tablewrap" style="margin:6px 0"><table>
+          <tr>${th('agreement (stage 2)', MT.s2)}<th>B-half P&amp;L</th><th>trades</th></tr>
+          ${d.stage2.menu.map((r) => `<tr><td class="${r.frac === d.stage2.chosenFrac ? 'chosen' : ''}">${pct(r.frac, 1)}${r.frac === d.stage2.chosenFrac ? ' ← chosen' : ''}</td><td>${money(r.pnl)}</td><td>${r.trades}</td></tr>`).join('')}
+        </table></div>` : '<p class="note">no lenses passed stage 1 — the meta-book stood aside on the whole test window.</p>'}
+      </details>`;
+    }).join('');
+    batchViewEl.innerHTML = `
+      <p class="note">${header}</p>
+      <div class="tablewrap"><table>
+        <tr><th>pair</th>${th('lenses passed', MT.lenses)}${th('threshold', MT.frac)}${th('test trades', MT.book)}${th('P&amp;L', MT.book)}${th('gross/trade', MT.gpt)}${th('acc (edge)', MT.acc)}${th('null: P&amp;L exceed', MT.nullP)}${th('null: edge exceed', MT.nullE)}</tr>
+        ${rows}
+      </table></div>
+      ${details}
+      ${s.failed.length ? `<p class="note">Failed: ${s.failed.map((f) => `${esc(f.trade)}${f.shift ? `/shift${f.shift}` : ''} (${esc(f.error)})`).join(' · ')}</p>` : ''}
+      <p class="note">A meta-lens run is the whole two-stage recipe, so a null shift here re-runs lens selection AND the
+        threshold choice on rotated labels before trading the rotated test window — the noise floor gets every freedom
+        the real run had. The hover on the null column shows whether noise recipes even pass lenses.</p>`;
+  }
+
   // Batch row -> one-off run: copy the screen's config + the row's combo into
   // the form and fire the detailed report. Consensus rows carry a feature
   // VIEW (no form control for it) — passed through on the next submit only.
@@ -883,18 +947,19 @@
   });
 
   $('cons-start').addEventListener('click', async () => {
-    // The consensus grid is built around the ADAPTIVE band: it balances the
-    // classes per pair so the 8 specs are comparable and so a screen can be
-    // read against nulls calibrated on the same machine. A fixed band is the
-    // exception (wide-band hunter grids), and silently running one produces a
-    // screen that looks like its adaptive sibling but isn't comparable to it.
+    // The screening grids are built around the ADAPTIVE band: it balances the
+    // classes per pair so results can be read against nulls calibrated on the
+    // same machine. A fixed band is the exception (wide-band hunter grids),
+    // and silently running one produces a screen that looks like its adaptive
+    // sibling but isn't comparable to it.
     if (!$('autoband').checked
-      && !confirm(`Run the consensus screen at a FIXED ±${$('dormant').value}% band?\n\n`
-        + 'The grid normally uses the adaptive band ("auto — balance the classes"), and results '
+      && !confirm(`Run the screen at a FIXED ±${$('dormant').value}% band?\n\n`
+        + 'Screens normally use the adaptive band ("auto — balance the classes"), and results '
         + 'from a fixed band cannot be compared against nulls or screens computed with auto.\n\n'
         + 'Cancel to tick the auto checkbox first.')) return;
     try {
       batchErrorEl.hidden = true;
+      const useMeta = $('proto-metalens').checked;
       const pairsRaw = $('cons-pairs').value.trim();
       const body = {
         startMonth: $('start').value,
@@ -902,12 +967,12 @@
         allLoaded: allLoadedChecked(),
         nullShifts: Number($('cons-null').value) || 0,
         geometry: $('geometry').value,
-        decision: $('decision').value,
-        dormantPct: dormantValue(), // 'auto' = classic; a manual wide band feeds the big-move hunter
+        decision: $('decision').value, // classic only; the meta-lens endpoint ignores it
+        dormantPct: dormantValue(),
         weekdaysOnly: $('weekdays').checked,
       };
       if (pairsRaw) body.pairs = pairsRaw.split(',').map((p) => p.trim().toUpperCase()).filter(Boolean);
-      const res = await fetch('api/consensus', {
+      const res = await fetch(useMeta ? 'api/metalens' : 'api/consensus', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
@@ -1221,6 +1286,21 @@
   const bkErrEl = $('bk-error');
   const bkStatusEl = $('bk-status');
   const RULE_LABEL = { vote: 'vote (majority)', q5: '5 of 8', q6: '6 of 8', q7: '7 of 8', q8: '8 of 8' };
+  const RULE_TIP = {
+    vote: 'Majority of the 8 specs; ANY tie stands aside. The live tracker’s exact rule.',
+    q5: 'Trade only when ≥5 of 8 specs call the same direction. Absolute count — 4 up vs 3 down stands aside.',
+    q6: 'Trade only when ≥6 of 8 agree. The quorum pre-registered in the backtests.',
+    q7: 'Trade only when ≥7 of 8 agree. Best backtest dollars — chosen after seeing tables, hence one rule among five, never “the” rule.',
+    q8: 'Unanimous only. Rare, hottest per-trade backtest numbers, thinnest samples.',
+  };
+  const BK_COL_TIPS = `
+    <th title="All declared rules report every period. None can be promoted on live results.">rule</th>
+    <th title="Settled periods where this rule took a position (±1). Stand-asides are not trades.">trades</th>
+    <th title="Trades that closed positive after $1 round-trip fees.">wins</th>
+    <th title="Wins ÷ trades — the number the backtest gradients live or die by.">win rate</th>
+    <th title="Cumulative paper P&L: $100 per order, $0.50 per leg. Verdict-window periods only (post-horizon excluded).">P&amp;L</th>
+    <th title="P&L before friction, per trade. Above $1.00 = the rule beats its own fees.">gross/trade</th>
+    <th title="Of settled periods with a known outcome, how often the call matched the realized class. Stand-asides count as calls of 0, so a rarely-firing rule scores near the dormant share — read rare rules in dollars, not accuracy.">accuracy</th>`;
 
   function setBkStatus(text) {
     bkStatusEl.hidden = !text;
@@ -1247,13 +1327,17 @@
         </div>
       </div>`;
     }
-    const rows = Object.entries(b.rules).map(([r, s]) => `
-      <tr><td>${esc(RULE_LABEL[r] || r)}</td>
+    const statRow = (label, s, tip) => `
+      <tr><td title="${esc(tip || '')}">${label}</td>
         <td>${s.trades}</td><td>${s.wins}</td>
         <td>${s.trades ? pct(s.wins / s.trades) : '—'}</td>
         <td>${money(s.pnl)}</td>
         <td>${s.grossPerTrade == null ? '—' : '$' + s.grossPerTrade.toFixed(2)}</td>
-        <td>${s.scored ? pct(s.correct / s.scored) : '—'}</td></tr>`).join('');
+        <td>${s.scored ? pct(s.correct / s.scored) : '—'}</td></tr>`;
+    const rows = Object.entries(b.rules).map(([r, s]) => statRow(esc(RULE_LABEL[r] || r), s, RULE_TIP[r])).join('');
+    const specRows = b.specs
+      ? Object.entries(b.specs).map(([k, s]) => statRow(esc(k), s, 'Individual spec, reference only — never a decision rule. Each runs its own $100 book on identical prices so you can see whether the committee beats its members.')).join('')
+      : '';
     const hist = b.periods.slice(-30).reverse().map((p) => {
       const firstRule = cfg.rules[0];
       return `<tr>
@@ -1270,9 +1354,11 @@
       <p class="note">${head}</p>
       ${decl}
       <div class="tablewrap" style="margin-top:8px"><table>
-        <tr><th>rule</th><th>trades</th><th>wins</th><th>win rate</th><th>P&amp;L</th><th>gross/trade</th><th>accuracy</th></tr>
+        <tr>${BK_COL_TIPS}</tr>
         ${rows}
       </table></div>
+      ${specRows ? `<details style="margin-top:8px"><summary class="note" style="cursor:pointer">8 individual specs (reference — the committee's members)</summary>
+      <div class="tablewrap"><table><tr>${BK_COL_TIPS}</tr>${specRows}</table></div></details>` : ''}
       <details style="margin-top:8px"><summary class="note" style="cursor:pointer">last 30 periods (calls: ${cfg.rules.map((r) => esc(RULE_LABEL[r] || r)).join(' · ')}; P&amp;L column = ${esc(RULE_LABEL[cfg.rules[0]])})</summary>
       <div class="tablewrap"><table>
         <tr><th>period</th>${cfg.rules.map((r) => `<th>${esc(r)}</th>`).join('')}<th>actual</th><th>entry</th><th>exit</th><th>P&amp;L</th><th>status</th><th>prov.</th></tr>
