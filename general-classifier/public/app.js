@@ -550,6 +550,22 @@
         : pSign != null && pSign < 0.2
           ? 'Leaning the right way but short of significance — suggestive, not established.'
           : 'No replication: agreement does not track edge across pairs, and the single-pair gradient should be treated as an artifact of that window.';
+      // Compact verification matrix: one row per pair, win rate at each rung
+      // with its trade count, plus why a pair was excluded. Deliberately
+      // carries NO P&L — this table exists to audit the counts above, not to
+      // shop for a candidate.
+      const matrix = `<div class="tablewrap" style="margin:8px 0"><table>
+        <tr><th>pair</th>${GATE_Q.map((q) => `<th title="win rate (trades) at ${q}-of-8 agreement">${q}/8</th>`).join('')}<th>q8&gt;q5</th><th>monotone</th></tr>
+        ${withLadder.map((p) => {
+          const w = GATE_Q.map((q) => wr(p.gateLadder[q]));
+          const cmp = w[0] != null && w[3] != null ? (w[3] > w[0] ? 'yes' : 'no') : '— (no trades)';
+          const mono = w.every((v) => v != null) && w[1] > w[0] && w[2] > w[1] && w[3] > w[2] ? 'yes' : 'no';
+          return `<tr><td>${esc(p.trade)}</td>${GATE_Q.map((q, i) => {
+            const g = p.gateLadder[q];
+            return `<td>${w[i] == null ? '—' : pct(w[i])} <span class="note">(${g ? g.trades : 0})</span></td>`;
+          }).join('')}<td>${cmp}</td><td>${mono}</td></tr>`;
+        }).join('')}
+      </table></div>`;
       return `<div class="warnbox" style="margin-bottom:12px">
         <strong>Conviction hypothesis — replication test (pre-registered, gradient only)</strong><br>
         Win rate rises from 5-of-8 to unanimous in <strong>${rising} of ${comparable}</strong> pairs
@@ -557,9 +573,11 @@
         Strictly monotone across all four rungs in <strong>${monotone} of ${withLadder.length}</strong> pairs
         (chance ≈ 1 in 24, expected ${(withLadder.length / 24).toFixed(1)}, binomial p =
         <strong>${pMono == null ? '—' : pMono.toFixed(4)}</strong>).<br>
-        ${esc(verdict)}<br>
-        <em>These two numbers are the whole result of this screen. Reading the per-pair tables below for a
-        new candidate spends 17 more looks and worsens every p-value in the project.</em>
+        ${esc(verdict)}
+        ${matrix}
+        <em>These two numbers are the whole result of this screen; the matrix exists to audit them, which is why
+        it carries no P&amp;L. Reading the per-pair tables below for a new candidate spends 17 more looks and
+        worsens every p-value in the project.</em>
       </div>`;
     })();
     const voteHist = (pair) => {
