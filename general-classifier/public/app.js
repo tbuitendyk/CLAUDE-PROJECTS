@@ -52,6 +52,50 @@
     $('load-btn').disabled = on;
   });
 
+  // ---- form persistence -------------------------------------------------------
+  //
+  // Every screen is defined by these controls, so a reset silently redefines
+  // the experiment. A deploy ships a new app.js version, which reloads the
+  // page — that once turned an adaptive-band consensus screen into a fixed
+  // ±2% one (different labels, uncomparable to the null already computed).
+  // Settings now survive reloads; only an explicit change alters a run.
+  const FORM_KEY = 'gc.form.v1';
+  const PERSIST = ['dormant', 'trade', 'compare', 'start', 'end', 'geometry', 'features', 'model', 'decision', 'cons-pairs', 'cons-null'];
+  const PERSIST_CHECKS = ['autoband', 'allloaded', 'weekdays'];
+
+  function saveForm() {
+    try {
+      const state = {};
+      for (const id of PERSIST) state[id] = $(id).value;
+      for (const id of PERSIST_CHECKS) state[id] = $(id).checked;
+      localStorage.setItem(FORM_KEY, JSON.stringify(state));
+    } catch {
+      /* private mode / quota — persistence is a convenience, never required */
+    }
+  }
+
+  function restoreForm() {
+    let state;
+    try {
+      state = JSON.parse(localStorage.getItem(FORM_KEY) || 'null');
+    } catch {
+      state = null;
+    }
+    if (state) {
+      for (const id of PERSIST) if (state[id] != null && $(id)) $(id).value = state[id];
+      for (const id of PERSIST_CHECKS) if (state[id] != null && $(id)) $(id).checked = !!state[id];
+    }
+    // Always sync dependent disabled/required states, restored or not.
+    $('autoband').dispatchEvent(new Event('change'));
+    $('allloaded').dispatchEvent(new Event('change'));
+  }
+
+  for (const id of [...PERSIST, ...PERSIST_CHECKS]) {
+    const el = $(id);
+    if (el) el.addEventListener('change', saveForm);
+  }
+  restoreForm();
+
   // ---- CPU throttle (semi-auto balancer pattern) -----------------------------
 
   const cpuBtn = $('cpu-btn');
@@ -590,6 +634,7 @@
     $('dormant').disabled = auto;
     if (!auto) $('dormant').value = doc.params.dormantPct;
     pendingView = r.view && r.view !== 'full' ? r.view : null;
+    saveForm(); // programmatic changes fire no events; keep the stored state true
     window.scrollTo({ top: 0, behavior: 'smooth' });
     form.requestSubmit();
   }
@@ -599,7 +644,7 @@
 
   function fillPicker(batches) {
     batchPickEl.innerHTML = batches
-      .map((b) => `<option value="${esc(b.id)}">${esc(b.id)} — ${esc(b.status)} (${b.runsDone}/${b.runsTotal}, ±${esc(String(b.params.dormantPct))}%, ${esc(b.params.startMonth)}→${esc(b.params.endMonth)})</option>`)
+      .map((b) => `<option value="${esc(b.id)}">${esc(b.id)} — ${esc(b.status)} (${b.runsDone}/${b.runsTotal}, ±${esc(String(b.params.dormantPct))}%, ${esc(b.params.geometry || 'weekly-8d')}${b.params.weekdaysOnly ? '/24-5' : ''}${b.params.decision === 'directional' ? '/hunter' : ''}, ${b.params.allLoaded ? 'all loaded' : `${esc(b.params.startMonth)}→${esc(b.params.endMonth)}`})</option>`)
       .join('');
     const want = pickedBatch && batches.some((b) => b.id === pickedBatch) ? pickedBatch : (batches[0] || {}).id;
     if (want) batchPickEl.value = want;
@@ -699,6 +744,16 @@
   });
 
   $('cons-start').addEventListener('click', async () => {
+    // The consensus grid is built around the ADAPTIVE band: it balances the
+    // classes per pair so the 8 specs are comparable and so a screen can be
+    // read against nulls calibrated on the same machine. A fixed band is the
+    // exception (wide-band hunter grids), and silently running one produces a
+    // screen that looks like its adaptive sibling but isn't comparable to it.
+    if (!$('autoband').checked
+      && !confirm(`Run the consensus screen at a FIXED ±${$('dormant').value}% band?\n\n`
+        + 'The grid normally uses the adaptive band ("auto — balance the classes"), and results '
+        + 'from a fixed band cannot be compared against nulls or screens computed with auto.\n\n'
+        + 'Cancel to tick the auto checkbox first.')) return;
     try {
       batchErrorEl.hidden = true;
       const pairsRaw = $('cons-pairs').value.trim();
