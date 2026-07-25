@@ -197,6 +197,10 @@ module.exports = {
     };
     const s = summarizeConsensus([run(0), run(1)], votes);
     const nv = s.pairs[0].nullVote;
+    // null behaviour diagnostics come from the comparable nulls only
+    assert.strictEqual(nv.medianTrades, 4);
+    assert.strictEqual(nv.superMedianTrades, 2);
+    assert.ok(Math.abs(nv.superMedianPnl - 3.5) < 1e-9); // median of 9 and -2
     assert.strictEqual(nv.shifts, 2, 'only the two intact nulls are comparable');
     assert.ok(Math.abs(nv.exceedPnl - 0.5) < 1e-9); // 1 of 2, not 1 of 4
     assert.strictEqual(nv.superShifts, 2);

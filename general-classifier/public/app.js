@@ -545,8 +545,8 @@
             <td>${p.superVote ? `${pct(p.superVote.acc)} (${fmtE(p.superVote.trueEdge)})` : '—'}</td>
             <td>${p.null ? pct(p.null.medianNullFraction, 0) : '—'}</td>
             <td>${p.null ? `${pct(p.null.exceedRate, 0)} of ${p.null.shifts} shifts` : '—'}</td>
-            <td>${p.nullVote ? `${pct(p.nullVote.exceedPnl, 0)} of ${p.nullVote.shifts}` : '—'}</td>
-            <td>${p.nullVote && p.nullVote.superExceedPnl != null ? `${pct(p.nullVote.superExceedPnl, 0)} of ${p.nullVote.superShifts}` : '—'}</td>
+            <td${p.nullVote ? ` title="Null vote books: median ${money(p.nullVote.medianPnl)} on ${p.nullVote.medianTrades ?? '?'} trades (real: ${money(p.vote.pnl)} on ${p.vote.trades}). Similar trade counts mean the real book's TRADES were better; far fewer null trades would mean the real book simply acted more often."` : ''}>${p.nullVote ? `${pct(p.nullVote.exceedPnl, 0)} of ${p.nullVote.shifts}` : '—'}</td>
+            <td${p.nullVote && p.nullVote.superMedianPnl != null ? ` title="Null 6/8 gate books: median ${money(p.nullVote.superMedianPnl)} on ${p.nullVote.superMedianTrades ?? '?'} trades (real: ${money(p.superVote.pnl)} on ${p.superVote.trades}). If noise-trained specs rarely reach 6-of-8, the null gate fires far less often than the real one — that is a different (and stronger) finding than the real gate simply picking better trades."` : ''}>${p.nullVote && p.nullVote.superExceedPnl != null ? `${pct(p.nullVote.superExceedPnl, 0)} of ${p.nullVote.superShifts}` : '—'}</td>
           </tr>
           <tr class="votehist" data-pair="${esc(p.trade)}" hidden><td colspan="15">${'' /* filled on toggle */}</td></tr>`).join('')}
       </table></div>

@@ -333,17 +333,25 @@ function summarizeConsensus(runs, votes = null) {
           (s) => s.specsInVote == null || s.specsInVote === voteStats.specsInVote
         );
         if (nv.length) {
+          // medianTrades matters as much as the exceed rate: an exceed rate of
+          // 0% means something quite different when null books traded as often
+          // as the real one (the real book's TRADES were better) than when
+          // noise rarely fired at all (reaching agreement is itself the rare
+          // event). Same for the gate, where 6-of-8 under noise may be rare.
           nullVote = {
             shifts: nv.length,
             exceedPnl: nv.filter((s) => s.pnl >= vt.real.pnl).length / nv.length,
             exceedEdge: nv.filter((s) => (s.trueEdge ?? -Infinity) >= (vt.real.trueEdge ?? -Infinity)).length / nv.length,
             medianPnl: median(nv.map((s) => s.pnl)),
+            medianTrades: median(nv.map((s) => s.trades).filter((v) => v != null)),
           };
           const nvS = nv.filter((s) => s.super);
           if (superStats && nvS.length) {
             nullVote.superShifts = nvS.length;
             nullVote.superExceedPnl = nvS.filter((s) => s.super.pnl >= superStats.pnl).length / nvS.length;
             nullVote.superExceedEdge = nvS.filter((s) => (s.super.trueEdge ?? -Infinity) >= (superStats.trueEdge ?? -Infinity)).length / nvS.length;
+            nullVote.superMedianPnl = median(nvS.map((s) => s.super.pnl));
+            nullVote.superMedianTrades = median(nvS.map((s) => s.super.trades).filter((v) => v != null));
           }
         }
       }
