@@ -1297,10 +1297,11 @@
     <th title="All declared rules report every period. None can be promoted on live results.">rule</th>
     <th title="Settled periods where this rule took a position (±1). Stand-asides are not trades.">trades</th>
     <th title="Trades that closed positive after $1 round-trip fees.">wins</th>
-    <th title="Wins ÷ trades — the number the backtest gradients live or die by.">win rate</th>
+    <th title="Wins ÷ trades, in MONEY. A trade can win money without the exact class being right (e.g. long, price up 1%, actual class 0) — that's why this and trade acc can differ.">win rate</th>
     <th title="Cumulative paper P&L: $100 per order, $0.50 per leg. Verdict-window periods only (post-horizon excluded).">P&amp;L</th>
     <th title="P&L before friction, per trade. Above $1.00 = the rule beats its own fees.">gross/trade</th>
-    <th title="Of settled periods with a known outcome, how often the call matched the realized class. Stand-asides count as calls of 0, so a rarely-firing rule scores near the dormant share — read rare rules in dollars, not accuracy.">accuracy</th>`;
+    <th title="Of the periods this rule actually TRADED, how often its call matched the realized class exactly. The right accuracy for judging a rare-firing rule.">trade acc</th>
+    <th title="Across ALL settled periods, with stand-asides counted as calls of 0. For a rule that rarely fires this mostly measures how often the market sat still — e.g. 3-for-3 on trades can read 50% here because the market moved during 12 of 21 stand-asides. Judge rare rules by trade acc and dollars, not this.">all-period acc</th>`;
 
   function setBkStatus(text) {
     bkStatusEl.hidden = !text;
@@ -1333,6 +1334,7 @@
         <td>${s.trades ? pct(s.wins / s.trades) : '—'}</td>
         <td>${money(s.pnl)}</td>
         <td>${s.grossPerTrade == null ? '—' : '$' + s.grossPerTrade.toFixed(2)}</td>
+        <td>${s.tradeScored ? `${pct(s.tradeCorrect / s.tradeScored)} (${s.tradeCorrect}/${s.tradeScored})` : '—'}</td>
         <td>${s.scored ? pct(s.correct / s.scored) : '—'}</td></tr>`;
     const rows = Object.entries(b.rules).map(([r, s]) => statRow(esc(RULE_LABEL[r] || r), s, RULE_TIP[r])).join('');
     const specRows = b.specs

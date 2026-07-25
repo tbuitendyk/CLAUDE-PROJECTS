@@ -86,6 +86,10 @@ module.exports = {
     assert.ok(Math.abs(s.pnl - -2) < 1e-9);
     assert.strictEqual(s.correct, 2); // the win and the correct stand-aside
     assert.strictEqual(s.scored, 3);
+    // trade accuracy judges only the periods the rule acted on — the DOT
+    // "3-for-3 but 50%" confusion, split into its two honest numbers
+    assert.strictEqual(s.tradeCorrect, 1);
+    assert.strictEqual(s.tradeScored, 2);
   },
   async frozenBooksAreUnreachable() {
     const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'lib', 'books.js'), 'utf8');

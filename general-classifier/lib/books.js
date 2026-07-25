@@ -482,11 +482,20 @@ function bookStats(settled, callOf, key) {
   const traded = settled.filter((p) => callOf(p) !== 0);
   const scored = settled.filter((p) => p.actual !== null);
   const pnl = settled.reduce((sum, p) => sum + ((p.pnl && p.pnl[key]) || 0), 0);
+  // Two accuracies, deliberately separate: tradeCorrect/trades judges only
+  // the periods the rule acted on (did the class match when it dared a
+  // call), while correct/scored judges every period with stand-asides
+  // counted as calls of 0 — which for a rare-firing rule mostly measures
+  // how often the market sat still, not the rule. Both are honest; showing
+  // only the second one misled every careful reader who met it.
+  const tradedScored = traded.filter((p) => p.actual !== null);
   return {
     trades: traded.length,
     wins: traded.filter((p) => p.pnl && p.pnl[key] > 0).length,
     pnl,
     grossPerTrade: traded.length ? (pnl + traded.length) / traded.length : null,
+    tradeCorrect: tradedScored.filter((p) => callOf(p) === p.actual).length,
+    tradeScored: tradedScored.length,
     correct: scored.filter((p) => callOf(p) === p.actual).length,
     scored: scored.length,
   };
