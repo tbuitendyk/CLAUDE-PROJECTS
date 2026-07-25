@@ -513,6 +513,55 @@
     };
     const th = (label, tip) => `<th title="${esc(tip)}">${label}</th>`;
     const fmtE = (e) => (e == null ? '—' : (e >= 0 ? '+' : '') + (100 * e).toFixed(1) + '%');
+    // Exact upper-tail binomial P(X >= k | n, p) — n <= 17 here, so a direct
+    // sum is fine and avoids any approximation in a reported p-value.
+    const binomTail = (k, n, p) => {
+      const c = (nn, ii) => {
+        let r = 1;
+        for (let j = 0; j < ii; j++) r = (r * (nn - j)) / (j + 1);
+        return r;
+      };
+      let s = 0;
+      for (let i = k; i <= n; i++) s += c(n, i) * Math.pow(p, i) * Math.pow(1 - p, n - i);
+      return s;
+    };
+    // The conviction hypothesis, tested by REPLICATION across pairs rather
+    // than by a tighter p-value on any one of them. Both statistics are
+    // computed automatically and stated before the per-pair tables, so the
+    // test cannot be swapped for a friendlier one after the data is seen.
+    const withLadder = s.kind === 'consensus' && s.pairs ? s.pairs.filter((p) => p.gateLadder) : [];
+    const gradientSummary = withLadder.length < 2 ? '' : (() => {
+      const wr = (g) => (g && g.trades ? g.wins / g.trades : null);
+      let rising = 0;
+      let comparable = 0;
+      let monotone = 0;
+      for (const p of withLadder) {
+        const w = GATE_Q.map((q) => wr(p.gateLadder[q]));
+        if (w[0] != null && w[3] != null) {
+          comparable++;
+          if (w[3] > w[0]) rising++;
+        }
+        if (w.every((v) => v != null) && w[1] > w[0] && w[2] > w[1] && w[3] > w[2]) monotone++;
+      }
+      const pSign = comparable ? binomTail(rising, comparable, 0.5) : null;
+      const pMono = withLadder.length ? binomTail(monotone, withLadder.length, 1 / 24) : null;
+      const verdict = pSign != null && pSign < 0.05
+        ? 'The gradient replicates across pairs — evidence that agreement tracks edge as a general mechanism, not a DOGE artifact.'
+        : pSign != null && pSign < 0.2
+          ? 'Leaning the right way but short of significance — suggestive, not established.'
+          : 'No replication: agreement does not track edge across pairs, and the single-pair gradient should be treated as an artifact of that window.';
+      return `<div class="warnbox" style="margin-bottom:12px">
+        <strong>Conviction hypothesis — replication test (pre-registered, gradient only)</strong><br>
+        Win rate rises from 5-of-8 to unanimous in <strong>${rising} of ${comparable}</strong> pairs
+        (chance = 50%, binomial p = <strong>${pSign == null ? '—' : pSign.toFixed(4)}</strong>).<br>
+        Strictly monotone across all four rungs in <strong>${monotone} of ${withLadder.length}</strong> pairs
+        (chance ≈ 1 in 24, expected ${(withLadder.length / 24).toFixed(1)}, binomial p =
+        <strong>${pMono == null ? '—' : pMono.toFixed(4)}</strong>).<br>
+        ${esc(verdict)}<br>
+        <em>These two numbers are the whole result of this screen. Reading the per-pair tables below for a
+        new candidate spends 17 more looks and worsens every p-value in the project.</em>
+      </div>`;
+    })();
     const voteHist = (pair) => {
       const rows = doc.votes && doc.votes[pair] && doc.votes[pair].real && doc.votes[pair].real.rows;
       if (!rows) return '<p class="note">No vote trade rows stored for this pair (older screen?).</p>';
@@ -551,6 +600,7 @@
           </tr>
           <tr class="votehist" data-pair="${esc(p.trade)}" hidden><td colspan="15">${'' /* filled on toggle */}</td></tr>`).join('')}
       </table></div>
+      ${gradientSummary}
       ${s.pairs.filter((p) => p.gateLadder).map((p) => {
         const nv = p.nullVote || {};
         const rung = (q) => {
