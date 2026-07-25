@@ -1,7 +1,7 @@
 const { assert } = require('./helpers');
 const { FEATURE_NAMES, viewIndices } = require('../lib/features');
 const { summarizeConsensus, voteBook, gatesFromStored, SUPER_QUORUM, GATE_QUORUMS, CONSENSUS_VIEWS, CONSENSUS_MODELS } = require('../lib/batch');
-const { voteOf, superOf, pnlFor, directionalCall } = require('../lib/paper');
+const { voteOf, superOf, pnlAt, REAL_FEE_PER_LEG, directionalCall } = require('../lib/paper');
 const { deriveShift } = require('../lib/pipeline');
 
 module.exports = {
@@ -98,11 +98,11 @@ module.exports = {
     const { stats, superStats, rows } = voteBook(group);
     assert.deepStrictEqual(rows.map((r) => r.vote), [1, 1, -1]);
     assert.deepStrictEqual(rows.map((r) => r.sup), [1, 0, -1]);
-    // vote: +9 (long into +10%), -11 (long into -10%), +4 (short into -5%)
-    assert.ok(Math.abs(stats.pnl - (9 - 11 + 4)) < 1e-9);
+    // vote: +9.75 (long into +10%), -10.25 (long into -10%), +4.75 (short into -5%)
+    assert.ok(Math.abs(stats.pnl - (9.75 - 10.25 + 4.75)) < 1e-9);
     assert.strictEqual(stats.trades, 3);
     // super: skips the split period entirely — fewer trades, fewer fees
-    assert.ok(Math.abs(superStats.pnl - (9 + 4)) < 1e-9);
+    assert.ok(Math.abs(superStats.pnl - (9.75 + 4.75)) < 1e-9);
     assert.strictEqual(superStats.trades, 2);
     assert.strictEqual(superStats.wins, 2);
     // both books miss p2 (actual -1; vote said +1, super stood aside) -> 2/3 each
@@ -232,7 +232,7 @@ module.exports = {
     const { gates } = voteBook({ rows, preds, bestConstant: 0.5 });
     assert.ok(gates, 'a complete 8-spec grid produces the ladder');
     assert.deepStrictEqual(Object.keys(gates).map(Number), GATE_QUORUMS);
-    const perTrade = (q) => (gates[q].pnl + gates[q].trades) / gates[q].trades;
+    const perTrade = (q) => (gates[q].pnl + gates[q].trades * 2 * REAL_FEE_PER_LEG) / gates[q].trades;
     // trades fall as the quorum tightens
     assert.ok(gates[5].trades > gates[6].trades, `${gates[5].trades} > ${gates[6].trades}`);
     assert.ok(gates[6].trades > gates[7].trades);
@@ -278,9 +278,9 @@ module.exports = {
     const group = {
       bestConstant: 0.5,
       rows: [
-        { week: 'w1', actual: 1, entry: 100, exit: 110 }, // vote +1 -> +$9 win
+        { week: 'w1', actual: 1, entry: 100, exit: 110 }, // vote +1 -> +$9.75 win
         { week: 'w2', actual: 0, entry: 100, exit: 90 }, // tie -> stand aside, $0
-        { week: 'w3', actual: 1, entry: 100, exit: 105 }, // vote -1 -> -$6 loss
+        { week: 'w3', actual: 1, entry: 100, exit: 105 }, // vote -1 -> -$5.25 loss
         { week: 'w4', actual: -1, entry: null, exit: null }, // vote +1 but unpriced
       ],
       preds: [
@@ -291,11 +291,11 @@ module.exports = {
     };
     const { stats, rows } = voteBook(group);
     assert.deepStrictEqual(rows.map((r) => r.vote), [1, 0, -1, 1]);
-    assert.ok(Math.abs(rows[0].pnl - 9) < 1e-9); // 100*(110/100-1) - 1
+    assert.ok(Math.abs(rows[0].pnl - 9.75) < 1e-9); // 100*(110/100-1) - 0.25
     assert.strictEqual(rows[1].pnl, 0);
-    assert.ok(Math.abs(rows[2].pnl + 6) < 1e-9); // short into a +5% move
+    assert.ok(Math.abs(rows[2].pnl + 5.25) < 1e-9); // short into a +5% move
     assert.strictEqual(rows[3].pnl, null);
-    assert.ok(Math.abs(stats.pnl - 3) < 1e-9);
+    assert.ok(Math.abs(stats.pnl - 4.5) < 1e-9);
     assert.strictEqual(stats.trades, 2); // stand-aside and unpriced don't trade
     assert.strictEqual(stats.wins, 1);
     assert.strictEqual(stats.unpriced, 1);
@@ -304,7 +304,7 @@ module.exports = {
     assert.ok(Math.abs(stats.trueEdge - 0) < 1e-9); // 0.5 acc - 0.5 bestConstant
     assert.strictEqual(stats.specsInVote, 3);
     // book P&L is per-row pnlFor, so paper economics can never drift
-    assert.strictEqual(rows[0].pnl, pnlFor(1, 100, 110));
+    assert.strictEqual(rows[0].pnl, pnlAt(1, 100, 110));
   },
   async voteStatsMergeIntoTheSummary() {
     const run = (shift, edge) => ({

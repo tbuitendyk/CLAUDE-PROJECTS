@@ -17,6 +17,21 @@ function pnlFor(direction, entry, exit) {
   return gross - 2 * FEE_PER_LEG;
 }
 
+// Research friction, set 2026-07-26 (VERDICTS.md): Binance spot taker is
+// 0.10% per side and DOT/DOGE-class books quote ~1-2bp spreads at $100
+// size, so $0.125 per leg ($0.25 per round trip) covers reality with a
+// spread allowance. FEE_PER_LEG above stays $0.50 forever: it is the
+// DECLARED stress rate of the frozen live books (tracker, doge book,
+// engine book #1) and their records never reprice mid-flight. pnlFor is
+// their function and does not change; research paths use pnlAt.
+const REAL_FEE_PER_LEG = 0.125;
+
+function pnlAt(direction, entry, exit, feePerLeg = REAL_FEE_PER_LEG) {
+  if (direction === 0) return 0;
+  const gross = direction === 1 ? NOTIONAL * (exit / entry - 1) : NOTIONAL * (1 - exit / entry);
+  return gross - 2 * feePerLeg;
+}
+
 // Majority vote over an array of -1/0/+1 calls — the tracker's exact rule
 // (tracker.js voteOf, which takes the same counts over an object): the most
 // common call wins outright; ANY tie for the top stands aside. Shared here
@@ -61,4 +76,4 @@ function directionalCall(probs, tau) {
   return Math.max(up, down) >= tau ? label : 0;
 }
 
-module.exports = { NOTIONAL, FEE_PER_LEG, ENTRY_OFFSET_H, EXIT_OFFSET_H, pnlFor, voteOf, superOf, directionalCall };
+module.exports = { NOTIONAL, FEE_PER_LEG, REAL_FEE_PER_LEG, ENTRY_OFFSET_H, EXIT_OFFSET_H, pnlFor, pnlAt, voteOf, superOf, directionalCall };

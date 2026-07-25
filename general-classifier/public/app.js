@@ -511,10 +511,10 @@
       medEdge: 'Middle value of the specs’ true edges — the TYPICAL spec’s margin, immune to one lucky or one broken spec.',
       medBal: 'Middle value of the specs’ balanced accuracies. Chance = 33.3% whatever the class mix, so distance above 33.3% = real sorting skill.',
       medPaper: 'Middle value of the 8 specs’ one-shot $100 paper books over the test window (this geometry’s own entry/exit candles, $1 round trip) — the TYPICAL spec’s dollars, never the luckiest cell’s. (+N) = how many specs finished positive. Robustness check; the vote book to the right is the tradable number.',
-      votePnl: 'The tradable number: each test period the 8 specs VOTE (majority wins, any tie stands aside — the live tracker’s exact rule) and the vote trades one $100 order at this geometry’s entry/exit candles, $1 round trip. This is what the consensus strategy would actually have made over the test window. (W/T) = wins/trades. Click "trades" for the period-by-period history.',
+      votePnl: 'The tradable number: each test period the 8 specs VOTE (majority wins, any tie stands aside — the live tracker’s exact rule) and the vote trades one $100 order at this geometry’s entry/exit candles at research friction ($0.25 round trip since 2026-07-26; older screens $1). This is what the consensus strategy would actually have made over the test window. (W/T) = wins/trades. Click "trades" for the period-by-period history.',
       voteAcc: 'Share of test periods where the vote matched the realized class, with (edge) = vote accuracy − the best constant hindsight guess. Stand-asides count as calls of 0.',
       nullVote: 'Share of label-shifted reruns whose VOTE BOOK made at least as many dollars as the real one — the dollars version of the exceed rate. Small is good; the consensus-fraction exceed rate stays the primary test.',
-      superPnl: 'The fee-fighter: trades ONLY when 6+ of the 8 specs call the SAME direction (plurality doesn’t count — 5 up vs 3 down stands aside). Fewer trades, each backed by broad cross-method agreement, so less of any real edge goes to the $1 round trips. Same $100 economics as the vote book.',
+      superPnl: 'The fee-fighter: trades ONLY when 6+ of the 8 specs call the SAME direction (plurality doesn’t count — 5 up vs 3 down stands aside). Fewer trades, each backed by broad cross-method agreement, so less of any real edge goes to the $1 round trips. Same $100 economics and friction as the vote book.',
       superAcc: 'Share of test periods where the 6-of-8 gate call matched the realized class, with (edge) = accuracy − best constant hindsight guess. Stand-asides count as calls of 0, so a rarely-firing gate scores near the dormant share.',
       nullSuper: 'Share of label-shifted reruns whose 6-of-8 gate book made at least as many dollars as the real one. The gate’s own noise floor — judge the gate against this, not against the vote’s.',
       nullMed: 'Consensus the same grid typically fabricates when labels are time-shifted (nothing real to find) — the machine’s noise floor.',
@@ -533,7 +533,7 @@
       trainAcc: 'Accuracy on its own training weeks. Far above test acc = memorization; close to test acc = honest fit.',
       weeks: 'Training / test week counts — the sample sizes behind every other number.',
       picked: 'Auto-tuned hyperparameter: λ (regularization strength) for logreg, boosting rounds for boost. Extreme λ ≈ shrank toward predicting the prior.',
-      paperPnl: 'One-shot $100 paper book over this spec’s test weeks, tracker economics exactly (entry Tue 03:00 open, exit Thu 15:00 open, $1 round trip). Color metric: a handful of big-move weeks dominate it — rank by true edge, use this as the dollars reality-check.',
+      paperPnl: 'One-shot $100 paper book over this spec’s test weeks, research friction ($0.25 round trip since 2026-07-26; screens before that used $1). Color metric: a handful of big-move weeks dominate it — rank by true edge, use this as the dollars reality-check.',
       paperWT: 'Paper wins / trades: directional (±1) calls only; wins closed positive after fees.',
     };
     const th = (label, tip) => `<th title="${esc(tip)}">${label}</th>`;
@@ -657,10 +657,11 @@
       ${gradientSummary}
       ${s.pairs.filter((p) => p.gateLadder).map((p) => {
         const nv = p.nullVote || {};
+        const trip = 2 * (doc.params.feePerLeg ?? 0.5); // round trip at this screen's recorded rate
         const rung = (q) => {
           const g = p.gateLadder[q];
           if (!g) return '';
-          const gross = g.pnl + g.trades; // net + $1 round trip per trade
+          const gross = g.pnl + g.trades * trip;
           const per = g.trades ? gross / g.trades : null;
           return `<tr class="${q === 6 ? 'hilite' : ''}">
             <td class="nowrap">${q} of 8${q === 6 ? ' <strong>← pre-registered</strong>' : ''}</td>
@@ -759,8 +760,8 @@
     const MT = {
       lenses: 'How many of the 8 lenses passed stage 1 — beat the best constant guess on half A’s unseen tail. Zero passing is a legitimate result: the book stands aside everywhere.',
       frac: 'The agreement threshold stage 2 chose on half B, from the fixed menu 50/62.5/75/87.5/100% of passing lenses. Ties go stricter. Chosen before the test window was ever touched.',
-      book: 'The meta-book’s paper P&L over the untouched test window: $100 per order, $1 round trip, entry/exit at the geometry’s candle opens.',
-      gpt: 'P&L before friction, per trade. Above $1.00 means the book beats its own fees.',
+      book: 'The meta-book’s paper P&L over the untouched test window: $100 per order at research friction ($0.25 round trip), entry/exit at the geometry’s candle opens.',
+      gpt: 'P&L before friction, per trade. Positive above its round-trip cost means the book beats its own fees.',
       acc: 'Share of test periods where the meta-call matched the realized class, with (edge) = accuracy − the test window’s best constant guess.',
       nullP: 'Share of label-shifted replays of the ENTIRE recipe — lens selection and threshold choice included — whose test book made at least as many dollars. Hover for how the null recipes behaved.',
       nullE: 'Same, on accuracy edge instead of dollars.',
@@ -778,7 +779,7 @@
       return `<tr class="${m.pnl > 0 ? 'hilite' : ''}">
         <td>${esc(p.trade)}</td>
         <td>${m.lensesPassed}/8${m.forcedAll ? ' <strong title="Stage 1 passed nothing; the owner-enabled fallback ran stage 2 with ALL 8 lenses — agreement-only mode. This is a different claim than a selective run and is permanently marked as such.">⚑ forced all 8</strong>' : ''}</td>
-        <td>${m.chosenFrac == null ? '—' : pct(m.chosenFrac, 1)}</td>
+        <td>${m.standAside ? '<em title="No agreement fraction was profitable on half B, so no threshold was chosen and the book stood aside on the whole test window — the pre-registered stand-aside rule.">stood aside</em>' : m.chosenFrac == null ? '—' : pct(m.chosenFrac, 1)}</td>
         <td>${m.trades} (${m.wins} w)</td>
         <td><strong>${money(m.pnl)}</strong></td>
         <td>${m.grossPerTrade == null ? '—' : '$' + m.grossPerTrade.toFixed(2)}</td>
@@ -1303,8 +1304,8 @@
     <th title="Settled periods where this rule took a position (±1). Stand-asides are not trades.">trades</th>
     <th title="Trades that closed positive after $1 round-trip fees.">wins</th>
     <th title="Wins ÷ trades, in MONEY. A trade can win money without the exact class being right (e.g. long, price up 1%, actual class 0) — that's why this and trade acc can differ.">win rate</th>
-    <th title="Cumulative paper P&L: $100 per order, $0.50 per leg. Verdict-window periods only (post-horizon excluded).">P&amp;L</th>
-    <th title="P&L before friction, per trade. Above $1.00 = the rule beats its own fees.">gross/trade</th>
+    <th title="Cumulative paper P&L: $100 per order at the book's declared per-leg fee (shown in its protocol; book #1 declared $0.50/leg, newer books default $0.125/leg). Verdict-window periods only (post-horizon excluded).">P&amp;L</th>
+    <th title="P&L before friction, per trade. Above the book's round-trip cost = the rule beats its own fees.">gross/trade</th>
     <th title="Of the periods this rule actually TRADED, how often its call matched the realized class exactly. The right accuracy for judging a rare-firing rule.">trade acc</th>
     <th title="Across ALL settled periods, with stand-asides counted as calls of 0. For a rule that rarely fires this mostly measures how often the market sat still — e.g. 3-for-3 on trades can read 50% here because the market moved during 12 of 21 stand-asides. Judge rare rules by trade acc and dollars, not this.">all-period acc</th>`;
 

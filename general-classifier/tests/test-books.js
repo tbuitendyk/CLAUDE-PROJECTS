@@ -20,6 +20,9 @@ module.exports = {
     assert.strictEqual(ok.pair, 'DOTUSDT');
     assert.deepStrictEqual(ok.rules, ['vote', 'q7']);
     assert.strictEqual(ok.horizonPeriods, 90); // default verdict window
+    assert.strictEqual(ok.feePerLeg, 0.125); // research friction (VERDICTS.md)
+    assert.strictEqual(validateConfig({ pair: 'DOTUSDT', feePerLeg: 0.5 }).feePerLeg, 0.5);
+    assert.throws(() => validateConfig({ pair: 'DOTUSDT', feePerLeg: 2 }), /0\.\.1/);
     assert.throws(() => validateConfig({ pair: 'DOTUSDT', compareSymbol: 'DOTUSDT' }), /differ/);
     assert.throws(() => validateConfig({ pair: 'DOTUSDT', geometry: 'hourly-1h' }), /unknown geometry/);
     assert.throws(() => validateConfig({ pair: 'DOTUSDT', band: 60 }), /between 0 and 50/);

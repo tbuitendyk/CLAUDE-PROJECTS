@@ -2,7 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const { runAnalysis, extractMetrics } = require('./pipeline');
 const { runMetaLens, extractMetaMetrics } = require('./metalens');
-const { pnlFor, voteOf, superOf } = require('./paper');
+const { pnlAt, REAL_FEE_PER_LEG, voteOf, superOf } = require('./paper');
 
 // Pair screen: run the full pipeline for every (trade pair x model) combo
 // against one compare pair, sequentially, persisting after every run so a
@@ -157,7 +157,7 @@ function startBatch(params) {
     startedAt: new Date().toISOString(),
     finishedAt: null,
     progress: '',
-    params: { dormantPct, startMonth, endMonth, featureSet, compareSymbol, models, geometry, decision, weekdaysOnly, allLoaded },
+    params: { dormantPct, startMonth, endMonth, featureSet, compareSymbol, models, geometry, decision, weekdaysOnly, allLoaded, feePerLeg: REAL_FEE_PER_LEG },
     runs: [],
     summary: null,
   };
@@ -266,8 +266,8 @@ function voteBook(group) {
       actual: r.actual,
       entry: r.entry,
       exit: r.exit,
-      pnl: priced ? pnlFor(vote, r.entry, r.exit) : null,
-      supPnl: priced ? pnlFor(sup, r.entry, r.exit) : null,
+      pnl: priced ? pnlAt(vote, r.entry, r.exit) : null,
+      supPnl: priced ? pnlAt(sup, r.entry, r.exit) : null,
     };
   });
   // One book from any per-period decision rule, on identical prices.
@@ -283,7 +283,7 @@ function voteBook(group) {
       if (r.entry == null || r.exit == null) return;
       priced++;
       if (call === 0) return;
-      const p = pnlFor(call, r.entry, r.exit);
+      const p = pnlAt(call, r.entry, r.exit);
       pnl += p;
       trades++;
       if (p > 0) wins++;
@@ -490,6 +490,7 @@ function startConsensus(params) {
       decision,
       weekdaysOnly,
       allLoaded,
+      feePerLeg: REAL_FEE_PER_LEG,
     },
     runs: [],
     votes: {}, // per pair: { real: {stats + rows}, nulls: { [effectiveShift]: stats } }
@@ -678,7 +679,7 @@ function startMetalens(params) {
     startedAt: new Date().toISOString(),
     finishedAt: null,
     progress: '',
-    params: { protocol: 'metalens', dormantPct, startMonth, endMonth, compareSymbol, nullShifts: nShifts, geometry, weekdaysOnly, forceAllOnZeroPass, splitMode, allLoaded },
+    params: { protocol: 'metalens', dormantPct, startMonth, endMonth, compareSymbol, nullShifts: nShifts, geometry, weekdaysOnly, forceAllOnZeroPass, splitMode, allLoaded, feePerLeg: REAL_FEE_PER_LEG },
     runs: [],
     meta: {}, // per pair: full stage1/stage2/test detail for the REAL run
     summary: null,

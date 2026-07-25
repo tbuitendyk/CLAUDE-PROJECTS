@@ -3,7 +3,7 @@ const { toHourlyMap, forwardFill, buildChunks, scoreDiff, balancedBandPct, GEOME
 const { viewIndices } = require('./features');
 const { standardizeFit, standardizeApply, tuneAndTrain, predict: predictLogreg } = require('./logreg');
 const { trainBoost, predictBoost } = require('./boost');
-const { pnlFor } = require('./paper');
+const { pnlAt, REAL_FEE_PER_LEG } = require('./paper');
 const { loadSymbol, loadSymbolAll, monthList, deriveShift } = require('./pipeline');
 
 // META-LENS protocol (owner's design, agreed 2026-07-25):
@@ -60,6 +60,17 @@ const FRACTION_MENU = [0.5, 0.625, 0.75, 0.875, 1.0];
 const SPECS = [];
 for (const view of ['full', 'prices', 'volume', 'cross']) {
   for (const model of ['logreg', 'boost']) SPECS.push({ key: `${view}/${model}`, view, model });
+}
+
+// Threshold choice over the fixed menu: highest P&L, ties to the stricter
+// fraction — but if NOTHING on half B made money, the recipe found nothing
+// and the book stands aside rather than trading a least-bad default.
+function chooseFrac(menu) {
+  if (!menu.length) return { frac: null, standAside: true };
+  let best = menu[0];
+  for (const row of menu) if (row.pnl > best.pnl || (row.pnl === best.pnl && row.frac > best.frac)) best = row;
+  if (best.pnl <= 0) return { frac: null, standAside: true };
+  return { frac: best.frac, standAside: false };
 }
 
 // Meta call: direction backed by at least ceil(frac * m) of the m passing
@@ -201,7 +212,7 @@ function paperOver(chunks, callOf, tradeMap, geo) {
     priced++;
     const call = callOf(i);
     if (call === 0) return;
-    const p = pnlFor(call, entryC.open, exitC.open);
+    const p = pnlAt(call, entryC.open, exitC.open);
     pnl += p;
     trades++;
     if (p > 0) wins++;
@@ -300,19 +311,27 @@ async function runMetaLens(params, onProgress = () => {}) {
       const book = paperOver(B, (i) => metaCall(bCalls[i], frac), tradeFilled.map, geo);
       stage2.menu.push({ frac, ...book });
     }
-    let best = stage2.menu[0];
-    for (const row of stage2.menu) if (row.pnl > best.pnl || (row.pnl === best.pnl && row.frac > best.frac)) best = row;
-    stage2.chosenFrac = best.frac;
+    // STAND-ASIDE RULE (pre-registered 2026-07-26, VERDICTS.md era): if no
+    // rung on half B is profitable, there is no threshold worth choosing —
+    // "least bad" is noise selecting the strictest rung, and both DOT and
+    // DOGE runs demonstrated exactly that failure. The book stands aside on
+    // the whole test window instead: "this recipe found nothing" is the
+    // honest result.
+    const chosen = chooseFrac(stage2.menu);
+    stage2.chosenFrac = chosen.frac;
+    stage2.standAside = chosen.standAside;
 
-    // ---- verdict: retrain on A+B, trade the untouched test window ------------
-    for (const spec of committee.specs) {
-      onProgress(`final: retraining ${spec.key} on the full training window`);
-      finalModels.push(await trainOn(spec, trainChunks, nDays, onProgress));
+    if (!chosen.standAside) {
+      // ---- verdict: retrain on A+B, trade the untouched test window ----------
+      for (const spec of committee.specs) {
+        onProgress(`final: retraining ${spec.key} on the full training window`);
+        finalModels.push(await trainOn(spec, trainChunks, nDays, onProgress));
+      }
     }
   }
 
   const testCalls = testChunks.map((c) => finalModels.map((m) => m.predictOne(c)));
-  const callOf = (i) => (committee.specs.length ? metaCall(testCalls[i], stage2.chosenFrac) : 0);
+  const callOf = (i) => (committee.specs.length && stage2.chosenFrac != null ? metaCall(testCalls[i], stage2.chosenFrac) : 0);
   const book = paperOver(testChunks, callOf, tradeFilled.map, geo);
   const testConst = bestConstantOf(testChunks.map((c) => c.label));
   const hits = testChunks.filter((c, i) => callOf(i) === c.label).length;
@@ -346,7 +365,7 @@ async function runMetaLens(params, onProgress = () => {}) {
     stage2,
     test: {
       book,
-      grossPerTrade: book.trades ? (book.pnl + book.trades) / book.trades : null,
+      grossPerTrade: book.trades ? (book.pnl + book.trades * 2 * REAL_FEE_PER_LEG) / book.trades : null,
       accuracy: testAcc,
       bestConstant: testConst,
       edge: testAcc != null && testConst != null ? testAcc - testConst : null,
@@ -367,6 +386,7 @@ function extractMetaMetrics(report) {
     lensesPassed: report.stage1.filter((r) => r.passed).length,
     committeeSize: report.stage2.lenses.length,
     forcedAll: !!report.stage2.forcedAll,
+    standAside: !!report.stage2.standAside,
     lenses: report.stage2.lenses,
     chosenFrac: report.stage2.chosenFrac,
     pnl: report.test.book.pnl,
@@ -385,6 +405,7 @@ module.exports = {
   runMetaLens,
   extractMetaMetrics,
   metaCall,
+  chooseFrac,
   committeeFor,
   splitHalves,
   buildSplit,

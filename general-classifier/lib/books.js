@@ -5,7 +5,7 @@ const { toHourlyMap, forwardFill, buildChunks, balancedBandPct, GEOMETRIES } = r
 const { viewIndices } = require('./features');
 const { standardizeFit, standardizeApply, tuneAndTrain, predict: predictLogreg } = require('./logreg');
 const { trainBoost, predictBoost } = require('./boost');
-const { NOTIONAL, FEE_PER_LEG, pnlFor, voteOf, superOf } = require('./paper');
+const { NOTIONAL, FEE_PER_LEG, REAL_FEE_PER_LEG, pnlAt, voteOf, superOf } = require('./paper');
 
 // Generalized live paper-book engine: one machine, many books.
 //
@@ -138,7 +138,12 @@ function validateConfig(raw) {
     throw new Error('horizonPeriods must be an integer 5..1000');
   }
   const notes = c.notes ? String(c.notes).slice(0, 2000) : '';
-  return { pair, compareSymbol, geometry, band, startMonth, cutoff: cutoffStr, cutoffMs: cutoff, rules, horizonPeriods, notes };
+  // Per-book friction, frozen at declaration like everything else. Default
+  // is the research rate (VERDICTS.md); legacy books without the field are
+  // read at the old $0.50/leg stress rate they declared.
+  const feePerLeg = c.feePerLeg === undefined ? REAL_FEE_PER_LEG : Number(c.feePerLeg);
+  if (!Number.isFinite(feePerLeg) || feePerLeg < 0 || feePerLeg > 1) throw new Error('feePerLeg must be 0..1 dollars');
+  return { pair, compareSymbol, geometry, band, startMonth, cutoff: cutoffStr, cutoffMs: cutoff, rules, horizonPeriods, feePerLeg, notes };
 }
 
 function defaultCutoff() {
@@ -163,7 +168,7 @@ function generateDeclaration(config, preview, bookNumber) {
       (geo.labelMode === 'points' ? 'outcomes scored on the two candle opens.' : 'outcomes scored on the Tue/Thu 6h window averages.'),
     `Band: ${config.band === 'auto' ? `adaptive (33rd percentile of training |move|) — froze at ±${preview.bandPct.toFixed(2)}%` : `fixed ±${config.band}%`}, never recomputed.`,
     `Models: 8 specs (full/prices/volume/cross × logreg/boost), trained once on the ${preview.trainChunks} chunks whose outcomes completed before ${config.cutoff}, then frozen. No data from ${config.cutoff} onward influenced them.`,
-    `Economics: $${NOTIONAL} per order, $${FEE_PER_LEG.toFixed(2)} per leg. Positions may overlap; implied capital scales with hold length, not $${NOTIONAL}.`,
+    `Economics: $${NOTIONAL} per order, $${(config.feePerLeg ?? FEE_PER_LEG).toFixed(3)} per leg ($${(2 * (config.feePerLeg ?? FEE_PER_LEG)).toFixed(2)} per round trip). Positions may overlap; implied capital scales with hold length, not $${NOTIONAL}.`,
     ``,
     `Decision rules — declared now, ALL reported, none promotable on live results:`,
     ...config.rules.map((r) => `  ${r}: ${r === 'vote' ? 'majority of the 8 specs, any tie stands aside' : `trade only when ≥${r.slice(1)} of 8 specs call the same direction (absolute count, plurality never fires it)`}`),
@@ -478,7 +483,7 @@ async function tick(onProgress = () => {}) {
 
 // ---- status for the UI ---------------------------------------------------------------
 
-function bookStats(settled, callOf, key) {
+function bookStats(settled, callOf, key, roundTrip = 1) {
   const traded = settled.filter((p) => callOf(p) !== 0);
   const scored = settled.filter((p) => p.actual !== null);
   const pnl = settled.reduce((sum, p) => sum + ((p.pnl && p.pnl[key]) || 0), 0);
@@ -493,7 +498,7 @@ function bookStats(settled, callOf, key) {
     trades: traded.length,
     wins: traded.filter((p) => p.pnl && p.pnl[key] > 0).length,
     pnl,
-    grossPerTrade: traded.length ? (pnl + traded.length) / traded.length : null,
+    grossPerTrade: traded.length ? (pnl + traded.length * roundTrip) / traded.length : null,
     tradeCorrect: tradedScored.filter((p) => callOf(p) === p.actual).length,
     tradeScored: tradedScored.length,
     correct: scored.filter((p) => callOf(p) === p.actual).length,
@@ -504,12 +509,13 @@ function bookStats(settled, callOf, key) {
 function publicView(doc) {
   if (!doc) return null;
   const settled = doc.periods.filter((p) => p.status === 'settled' && !p.postHorizon);
+  const trip = 2 * (doc.config.feePerLeg === undefined ? FEE_PER_LEG : doc.config.feePerLeg);
   const rules = {};
-  for (const r of doc.config.rules) rules[r] = bookStats(settled, (p) => p.calls[r], r);
+  for (const r of doc.config.rules) rules[r] = bookStats(settled, (p) => p.calls[r], r, trip);
   // reference only: each individual spec's own $100 book, same prices — the
   // committee's members, never decision rules themselves
   const specs = {};
-  for (const s of SPECS) specs[s.key] = bookStats(settled, (p) => p.predictions[s.key], s.key);
+  for (const s of SPECS) specs[s.key] = bookStats(settled, (p) => p.predictions[s.key], s.key, trip);
   return {
     id: doc.id,
     status: doc.status,

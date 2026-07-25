@@ -1,5 +1,5 @@
 const { assert } = require('./helpers');
-const { metaCall, committeeFor, splitHalves, buildSplit, interlacedSplit, purgeChunks, bestConstantOf, FRACTION_MENU, BLOCK_DAYS, SPECS } = require('../lib/metalens');
+const { metaCall, chooseFrac, committeeFor, splitHalves, buildSplit, interlacedSplit, purgeChunks, bestConstantOf, FRACTION_MENU, BLOCK_DAYS, SPECS } = require('../lib/metalens');
 const { GEOMETRIES } = require('../lib/dataset');
 
 const DAY_MS = 24 * 3_600_000;
@@ -90,6 +90,20 @@ module.exports = {
     const inter = buildSplit(chunks, geo, 'interlaced');
     assert.strictEqual(inter.meta.mode, 'interlaced');
     assert.ok(inter.meta.purgedChunks > 0);
+  },
+  async noProfitableRungMeansStandAside() {
+    // the pre-registered rule that ends least-bad threshold selection: both
+    // DOT and DOGE chose 'unanimity' only because every option lost money
+    assert.deepStrictEqual(chooseFrac([]), { frac: null, standAside: true });
+    assert.deepStrictEqual(
+      chooseFrac([{ frac: 0.5, pnl: -481 }, { frac: 0.75, pnl: -300 }, { frac: 1, pnl: -144 }]),
+      { frac: null, standAside: true }
+    );
+    assert.deepStrictEqual(
+      chooseFrac([{ frac: 0.5, pnl: -10 }, { frac: 0.75, pnl: 22 }, { frac: 1, pnl: 22 }]),
+      { frac: 1, standAside: false } // profitable rungs exist; ties go stricter
+    );
+    assert.deepStrictEqual(chooseFrac([{ frac: 0.5, pnl: 0 }]), { frac: null, standAside: true }); // zero is not profit
   },
   async halvesAreChronological() {
     const chunks = Array.from({ length: 11 }, (_, i) => ({ startTs: i }));

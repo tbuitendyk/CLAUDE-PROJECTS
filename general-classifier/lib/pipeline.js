@@ -1,5 +1,5 @@
 const { monthlyKlines, cachedMonths, HOUR_MS } = require('./binance');
-const { pnlFor, directionalCall } = require('./paper');
+const { pnlAt, REAL_FEE_PER_LEG, directionalCall } = require('./paper');
 const { toHourlyMap, forwardFill, buildChunks, scoreDiff, balancedBandPct, GEOMETRIES } = require('./dataset');
 const { featureNamesFor, viewIndices } = require('./features');
 const { CLASSES, standardizeFit, standardizeApply, predict, accuracy, tuneAndTrain, trainSoftmax } = require('./logreg');
@@ -28,7 +28,7 @@ function tuneTau(valChunks, valProbs, tradeMap, geo) {
       const entryC = tradeMap.get(c.startTs + geo.entryOffsetH * HOUR_MS);
       const exitC = tradeMap.get(c.startTs + geo.exitOffsetH * HOUR_MS);
       if (!entryC || !exitC) return;
-      pnl += pnlFor(call, entryC.open, exitC.open);
+      pnl += pnlAt(call, entryC.open, exitC.open);
       trades++;
     });
     return { tau, pnl, trades };
@@ -375,7 +375,7 @@ async function runAnalysis(params, onProgress = () => {}) {
       diffPct: c.diffPct,
       entry,
       exit,
-      paperPnl: entry != null && exit != null ? pnlFor(p.label, entry, exit) : null,
+      paperPnl: entry != null && exit != null ? pnlAt(p.label, entry, exit) : null,
     };
   });
   const pairs = testRows.map((r) => ({ actual: r.actual, predicted: r.predicted }));
@@ -384,6 +384,7 @@ async function runAnalysis(params, onProgress = () => {}) {
   const priced = testRows.filter((r) => r.paperPnl !== null);
   const paperTrades = priced.filter((r) => r.predicted !== 0);
   const paper = {
+    feePerLeg: REAL_FEE_PER_LEG,
     pnl: priced.reduce((s, r) => s + r.paperPnl, 0),
     trades: paperTrades.length,
     wins: paperTrades.filter((r) => r.paperPnl > 0).length,
