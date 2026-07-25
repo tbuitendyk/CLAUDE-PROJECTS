@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>General Classifier</title>
-  <link rel="stylesheet" href="style.css?v=16">
+  <link rel="stylesheet" href="style.css?v=17">
 </head>
 <body>
   <header class="topbar">
@@ -16,7 +16,14 @@
     </div>
   </header>
 
+  <nav class="tabbar">
+    <button type="button" class="tab active" id="tab-btn-research" data-tab="research">Research</button>
+    <button type="button" class="tab" id="tab-btn-books" data-tab="books"
+      title="The live paper books — frozen pre-registered experiments verifying earlier setups in real time. A different category of work from the research tools, kept out of the way.">Paper books</button>
+  </nav>
+
   <main>
+    <div id="tab-research">
     <section class="intro">
       <h1>General Classifier</h1>
       <p>
@@ -104,7 +111,9 @@
     <div id="status" class="status" hidden></div>
     <div id="error" class="error" hidden></div>
     <div id="report" hidden></div>
+    </div><!-- /tab-research (batch section re-enters below; books live on their own tab) -->
 
+    <div id="tab-books" hidden>
     <div class="section" id="tracker-section">
       <h2>Live tracker (paper)</h2>
       <p class="note">
@@ -143,7 +152,9 @@
       <div id="doge-error" class="error" hidden></div>
       <div id="doge-view"></div>
     </div>
+    </div><!-- /tab-books -->
 
+    <div id="tab-research-2"><!-- research tab, part two: the batch tools -->
     <div class="section" id="batch-section">
       <h2>Pair screen (batch)</h2>
       <p class="note">
@@ -190,6 +201,7 @@
       <div id="batch-error" class="error" hidden></div>
       <div id="batch-view"></div>
     </div>
+    </div><!-- /tab-research-2 -->
   </main>
 
   <footer class="foot">
@@ -197,6 +209,6 @@
     pruned to time / open / high / low / close / quote&nbsp;volume.
   </footer>
 
-  <script src="app.js?v=34"></script>
+  <script src="app.js?v=35"></script>
 </body>
 </html>

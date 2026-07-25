@@ -97,6 +97,27 @@
   }
   restoreForm();
 
+  // ---- workspace tabs ----------------------------------------------------------
+  //
+  // Research (form, screens) vs Paper books (the live pre-registered
+  // experiments). Different categories of work: the books verify past
+  // setups in real time and shouldn't clutter — or distract from — the
+  // research tools. Selection survives reloads via the URL hash, so a
+  // bookmarked #books goes straight to the books.
+  const TAB_PANES = { research: ['tab-research', 'tab-research-2'], books: ['tab-books'] };
+  function showTab(name) {
+    const tab = TAB_PANES[name] ? name : 'research';
+    for (const [key, ids] of Object.entries(TAB_PANES)) {
+      for (const id of ids) $(id).hidden = key !== tab;
+    }
+    document.querySelectorAll('.tabbar .tab').forEach((b) => b.classList.toggle('active', b.dataset.tab === tab));
+    if (window.location.hash !== `#${tab}`) history.replaceState(null, '', `#${tab}`);
+  }
+  document.querySelectorAll('.tabbar .tab').forEach((b) => {
+    b.addEventListener('click', () => showTab(b.dataset.tab));
+  });
+  showTab((window.location.hash || '').replace('#', ''));
+
   // ---- CPU throttle (semi-auto balancer pattern) -----------------------------
 
   const cpuBtn = $('cpu-btn');
