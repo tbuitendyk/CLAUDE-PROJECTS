@@ -3,15 +3,19 @@
 # last, per pair: vote book net/trades/wins + the gate verdict per
 # VERDICTS.md amendment A1: net > $0 at recorded friction AND (>=30 trades
 # [lane a], OR >=10 trades with gross/trade >= $1.00 at a rate >= 7
-# trades/365 test days [lane b]). Read-only.
+# trades/365 test days [lane b]). Optional $1: a single batch id to read
+# instead of walking every directional consensus screen. Read-only.
 set -euo pipefail
+ONLY="${1:-}"
 
 curl -s http://127.0.0.1:8093/api/batches > /tmp/h1-batches.json
-IDS=$(python3 -c '
-import json
+IDS=$(ONLY="$ONLY" python3 -c '
+import json, os
 d = json.load(open("/tmp/h1-batches.json"))
+only = os.environ.get("ONLY", "")
 ids = [b["id"] for b in d["batches"]
-       if b["id"].startswith("consensus-") and (b.get("params") or {}).get("decision") == "directional"]
+       if b["id"].startswith("consensus-") and (b.get("params") or {}).get("decision") == "directional"
+       and (not only or b["id"] == only)]
 print("\n".join(reversed(ids)))')
 if [ -z "$IDS" ]; then echo "no directional consensus screens found"; exit 0; fi
 
@@ -49,6 +53,25 @@ for pair in s.get("pairs", []):
             taus.append(ch.split("tau=")[-1] if "tau=" in ch else "?")
     ratestr = f", {rate:.1f}t/yr" if v["trades"] else ""
     print(f"{pair['trade']}: vote {v['pnl']:+.2f} ({v['wins']}/{v['trades']}t, gross/t {('$%.2f' % gpt) if gpt is not None else '—'}{ratestr}){supstr} | taus {','.join(taus)} | GATE {'PASS(' + lane + ')' if gate else 'no'}")
+    # Null calibration (present once the doc is done and shifts ran): the
+    # vote-book dollars exceed rate is the pre-registered primary test.
+    nv = pair.get("nullVote")
+    if nv:
+        line = (f"  null vote: P&L exceed {100*nv['exceedPnl']:.1f}% of {nv['shifts']} shifts"
+                f" (null median {nv['medianPnl']:+.2f} on {nv.get('medianTrades','?')}t)"
+                f" | edge exceed {100*nv['exceedEdge']:.1f}%")
+        if nv.get("superShifts"):
+            line += f" | super P&L exceed {100*nv['superExceedPnl']:.1f}% of {nv['superShifts']}"
+        print(line)
+        ge = nv.get("gateExceed")
+        if ge:
+            rungs = " ".join(
+                f"q{q}:{100*ge[q]:.1f}% (med {nv['gateMedianPnl'][q]:+.2f}/{nv['gateMedianTrades'][q]}t)"
+                for q in sorted(ge, key=int))
+            print(f"  null gate ladder: {rungs}")
+    nc = pair.get("null")
+    if nc:
+        print(f"  null consensus: exceed {100*nc['exceedRate']:.1f}% of {nc['shifts']} shifts (median null fraction {nc['medianNullFraction']:.3f})")
     if gate:
         passing.append(f"{pair['trade']}({lane})")
 print()
