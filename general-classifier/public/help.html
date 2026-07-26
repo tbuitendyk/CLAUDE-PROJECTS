@@ -1,0 +1,474 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>General Classifier — User Guide</title>
+  <link rel="stylesheet" href="style.css?v=18">
+  <style>
+    /* Guide-only styling. Figures use the app's own CSS variables so they
+       render correctly in light and dark. */
+    main.guide { max-width: 980px; margin: 0 auto; padding: 0 20px 60px; }
+    main.guide h2 { font-size: 1.22rem; margin: 2.3rem 0 .6rem; padding-top: 1rem; border-top: 1px solid var(--border); }
+    main.guide h3 { font-size: 1rem; margin: 1.3rem 0 .4rem; }
+    main.guide p, main.guide li { font-size: .93rem; line-height: 1.6; color: var(--ink); }
+    main.guide code { background: var(--surface); border: 1px solid var(--border); border-radius: 4px; padding: .05rem .35rem; font-size: .85em; }
+    .toc { columns: 2; font-size: .9rem; }
+    .toc a { color: var(--accent); text-decoration: none; }
+    .term { font-weight: 600; }
+    .fig { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: .9rem 1rem; margin: .9rem 0 1.1rem; overflow-x: auto; }
+    .fig figcaption { color: var(--muted); font-size: .8rem; margin-top: .6rem; line-height: 1.45; }
+    .fig svg { display: block; max-width: 100%; height: auto; }
+    .fig table { font-size: .78rem; border-collapse: collapse; }
+    .fig th, .fig td { border: 1px solid var(--border); padding: .25rem .5rem; white-space: nowrap; }
+    .fig th { color: var(--muted); font-weight: 600; }
+    .mock-note { color: var(--muted); font-size: .78rem; }
+    .up { color: var(--up); } .down { color: var(--down); } .flat { color: var(--flat); }
+    dl.gloss dt { font-weight: 600; margin-top: .7rem; }
+    dl.gloss dd { margin: .15rem 0 0 0; color: var(--muted); font-size: .9rem; line-height: 1.5; }
+    .warn-note { border-left: 3px solid var(--accent); padding: .5rem .8rem; background: var(--surface); font-size: .88rem; margin: .8rem 0; }
+    .svglab { font: 11px/1.2 system-ui, sans-serif; fill: var(--muted); }
+    .svglab2 { font: 11px/1.2 system-ui, sans-serif; fill: var(--ink); font-weight: 600; }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="inner">
+      <a class="brand" href="https://www.buitendyk.ca/">buitendyk<span>.ca</span></a>
+      <span class="crumb">/ general classifier / user guide</span>
+      <a class="cpu-btn help-btn" href="index.html">Back to the app</a>
+    </div>
+  </header>
+  <main class="guide">
+
+    <p class="mock-note" style="margin-top:1rem">Tip: nearly every control, column header and protocol
+    option in the app carries a hover tooltip with its exact definition. This guide is the map — the
+    concepts, the honesty rules, and how the pieces fit together; the tooltips are the fine print.</p>
+
+    <h2 id="toc">Contents</h2>
+    <div class="toc">
+      <div><a href="#overview">1. What this tool is</a></div>
+      <div><a href="#run">2. Anatomy of a run (the form)</a></div>
+      <div><a href="#geometry">3. Chunk shapes &amp; scoring</a></div>
+      <div><a href="#training">4. Training honesty</a></div>
+      <div><a href="#decision">5. Decision modes</a></div>
+      <div><a href="#report">6. Reading a single-run report</a></div>
+      <div><a href="#screens">7. Screens (batch)</a></div>
+      <div><a href="#consensus">8. The consensus screen</a></div>
+      <div><a href="#nulls">9. Null calibration</a></div>
+      <div><a href="#metalens">10. The meta-lens screen</a></div>
+      <div><a href="#books">11. Paper books</a></div>
+      <div><a href="#ops">12. Data, CPU &amp; job control</a></div>
+      <div><a href="#gloss">13. Glossary</a></div>
+    </div>
+
+    <h2 id="overview">1. What this tool is</h2>
+    <p>A self-hosted laboratory that hunts for predictive structure in Binance hourly data — and is
+    built, above all, to <strong>not fool its operator</strong>. It cuts history into fixed-shape
+    chunks, scores each chunk by what the trade pair did <em>after</em> the chunk ended, trains a
+    classifier on the older 80% of samples, and reports how well it predicted the most recent 20% it
+    never saw. Every instrument carries its own honesty rails: best-constant baselines, label-shift
+    null calibration, pre-registered decision rules, and explicit "no signal found" verdicts.</p>
+    <ul>
+      <li><span class="term">No AI anywhere in the loop.</span> The only network traffic is downloading
+        public Binance candle archives; training and scoring are deterministic local arithmetic (a
+        pure-JS softmax regression and boosted trees with zero imports). Every result is reproducible
+        by recomputation.</li>
+      <li><span class="term">Data</span> comes exclusively from Binance's public bulk-data portal
+        (data.binance.vision — keyless monthly/daily zips) plus its keyless REST mirror for the
+        current partial month. Hourly spot klines, pruned to time / open / high / low / close /
+        quote volume, cached on disk forever.</li>
+      <li><span class="term">Two tabs.</span> <em>Research</em> holds the single-run form and the batch
+        screens. <em>Paper books</em> holds the live, frozen, pre-registered experiments — a different
+        category of work, deliberately kept out of the way.</li>
+      <li><span class="term">All times are UTC.</span></li>
+    </ul>
+
+    <h2 id="run">2. Anatomy of a run (the form)</h2>
+    <ul>
+      <li><span class="term">Dormant range ±%</span> — the do-nothing band. A period whose scoring move
+        stays inside it is class <span class="flat">0</span>; beyond it, <span class="up">+1</span> up or
+        <span class="down">−1</span> down. <em>auto — balance the classes</em> replaces the manual band
+        with the 33rd percentile of the |scoring move| computed on <strong>training samples only</strong>,
+        so the three classes split near-evenly and nothing about the test window leaks in.</li>
+      <li><span class="term">Trade pair / Compare pair</span> — the pair being predicted and the pair
+        supplying market context (default BTCUSDT). Both pairs' candles feed the features.</li>
+      <li><span class="term">Start / End month, all loaded data</span> — the history window; "all loaded"
+        uses everything cached on the server for those pairs.</li>
+      <li><span class="term">24/5 — weekday chunks only</span> — daily shapes only: keeps just the chunks
+        whose feature days AND entry land Mon–Fri (UTC), insulating training from weekend
+        microstructure. Costs samples (a 3-day chunk keeps only Monday starts). Ignored for the weekly
+        shape, which always spans weekends.</li>
+      <li><span class="term">Chunk shape, Features, Model, Decision</span> — see the next three
+        sections.</li>
+      <li><span class="term">Load Data vs Run Classifier</span> — Load Data prefetches the months for
+        the two pairs into the server cache; Run uses the cache and fetches anything still missing on
+        the fly. The "Available data on server" grid shows every pair/month already cached.</li>
+    </ul>
+
+    <h2 id="geometry">3. Chunk shapes &amp; scoring</h2>
+    <p>The <span class="term">geometry</span> decides how samples are cut and what "the move" means.
+    Nothing inside the chunk overlaps the scoring window — the label always comes from strictly after
+    the chunk ends.</p>
+
+    <figure class="fig">
+      <svg viewBox="0 0 900 130" width="900" height="130" role="img" aria-label="Weekly 8-day chunk timeline">
+        <rect x="20" y="30" width="440" height="26" rx="4" fill="var(--seq-250)"></rect>
+        <text x="240" y="47" text-anchor="middle" class="svglab2">8-day chunk — Mon 00:00 → next Mon 23:59 (192 hourly rows × both pairs)</text>
+        <line x1="20" y1="70" x2="880" y2="70" stroke="var(--border)" stroke-width="1"></line>
+        <text x="20" y="86" class="svglab">Mon</text><text x="460" y="86" class="svglab">Mon 23:59</text>
+        <rect x="520" y="30" width="60" height="26" rx="4" fill="var(--seq-450)"></rect>
+        <text x="550" y="24" text-anchor="middle" class="svglab">c1 = mean of Tue 00:00–05:59</text>
+        <rect x="740" y="30" width="60" height="26" rx="4" fill="var(--seq-450)"></rect>
+        <text x="770" y="24" text-anchor="middle" class="svglab">c2 = mean of Thu 12:00–17:59</text>
+        <text x="520" y="86" class="svglab">following Tue</text><text x="740" y="86" class="svglab">that Thu</text>
+        <path d="M 585 43 L 735 43" stroke="var(--accent)" stroke-width="1.6" marker-end="url(#arr)"></path>
+        <text x="660" y="38" text-anchor="middle" class="svglab2">score = (c2−c1)/c1 vs the band</text>
+        <text x="450" y="115" text-anchor="middle" class="svglab">Consecutive chunks step one week and overlap by one day. Gaps ≤ 3h are forward-filled flat; chunks over bigger holes are dropped and counted.</text>
+        <defs><marker id="arr" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 z" fill="var(--accent)"></path></marker></defs>
+      </svg>
+      <figcaption><strong>Weekly 8-day.</strong> Each chunk is scored by the trade pair's move from the
+      following Tuesday morning's 6-hour average to that week's Thursday afternoon's — inside the
+      dormant band scores <span class="flat">0</span>, above it <span class="up">+1</span>, below it
+      <span class="down">−1</span>.</figcaption>
+    </figure>
+
+    <figure class="fig">
+      <svg viewBox="0 0 900 120" width="900" height="120" role="img" aria-label="Daily 3-day chunk timeline">
+        <rect x="20" y="30" width="330" height="26" rx="4" fill="var(--seq-250)"></rect>
+        <text x="185" y="47" text-anchor="middle" class="svglab2">72h chunk (3 days), stepping every calendar day</text>
+        <rect x="400" y="30" width="14" height="26" rx="3" fill="var(--up)"></rect>
+        <text x="407" y="24" text-anchor="middle" class="svglab">entry: +73h — 01:00 open</text>
+        <rect x="700" y="30" width="14" height="26" rx="3" fill="var(--down)"></rect>
+        <text x="707" y="24" text-anchor="middle" class="svglab">exit: +114h — 18:00 open next day</text>
+        <path d="M 418 43 L 696 43" stroke="var(--accent)" stroke-width="1.6" marker-end="url(#arr2)"></path>
+        <text x="557" y="38" text-anchor="middle" class="svglab2">41-hour hold</text>
+        <line x1="20" y1="70" x2="880" y2="70" stroke="var(--border)" stroke-width="1"></line>
+        <text x="450" y="100" text-anchor="middle" class="svglab">Daily 1-day and 2-day shapes enter the same 01:00 candle and exit 18:00 the SAME day (17h hold). A new chunk (and prediction) exists every day — ~7× more samples than weekly.</text>
+        <defs><marker id="arr2" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 z" fill="var(--accent)"></path></marker></defs>
+      </svg>
+      <figcaption><strong>Daily shapes (1–4 days).</strong> Scored on two single candle opens instead of
+      window averages: enter 01:00 UTC the day after the chunk ends; exit 18:00 that day (1–2d) or the
+      following day (3–4d). Neighbouring chunks overlap heavily — the screens and splits account for
+      that (see interlaced purging, §10).</figcaption>
+    </figure>
+
+    <h3>Features</h3>
+    <ul>
+      <li><span class="term">Compressed (default)</span> — 44 engineered numbers per chunk: per asset,
+        the daily returns, total return, hourly volatility and its late-vs-early shift, trend slope and
+        acceleration, max drawdown/run-up, range, last-24h/6h momentum, daily-volume concentration;
+        plus 4 cross-asset features (relative return, relative last-24h, relative volatility, return
+        correlation). Few enough that the model cannot memorize ~300 weeks — training accuracy stays
+        meaningful.</li>
+      <li><span class="term">Raw hourly</span> — all 1,920 numbers (prices normalized to the chunk's
+        first open, volume to its chunk mean). Kept for A/B comparison; expect memorization at feasible
+        data sizes. Only the single-run form and the legacy quick screen honor it.</li>
+    </ul>
+
+    <h2 id="training">4. Training honesty</h2>
+    <figure class="fig">
+      <svg viewBox="0 0 900 100" width="900" height="100" role="img" aria-label="Train, validation and test split">
+        <rect x="20" y="30" width="500" height="26" rx="4" fill="var(--seq-250)"></rect>
+        <text x="270" y="47" text-anchor="middle" class="svglab2">train — older 80% of samples</text>
+        <rect x="520" y="30" width="130" height="26" rx="4" fill="var(--seq-450)"></rect>
+        <text x="585" y="47" text-anchor="middle" class="svglab2" fill="#fff">validation tail</text>
+        <rect x="660" y="30" width="220" height="26" rx="4" fill="var(--seq-100)"></rect>
+        <text x="770" y="47" text-anchor="middle" class="svglab2">test — most recent 20%, never touched</text>
+        <text x="450" y="82" text-anchor="middle" class="svglab">Everything is chronological: the model is always predicting FORWARD. The validation tail (the newest slice of the training window) tunes hyperparameters; the test window influences nothing.</text>
+      </svg>
+      <figcaption>The split. Features are z-scored with training-set statistics only; the adaptive band
+      is calibrated on training samples only; hyperparameters are chosen on the validation tail only.
+      Three separate walls between the model and the test window.</figcaption>
+    </figure>
+    <ul>
+      <li><span class="term">Logistic (linear)</span> — pure-JS multinomial softmax regression. The L2
+        strength λ is chosen from a ladder validated on the chronological tail of the training set; the
+        ladder auto-extends when the top λ wins, so a chosen λ is always an interior optimum. Iterations
+        auto-stop on convergence (the loss is convex — cycles are not a quality knob).</li>
+      <li><span class="term">Boosted trees (nonlinear)</span> — small trees on thresholds and
+        interactions. Rounds ARE a real quality knob, so they are tuned automatically: train on the
+        older three-quarters of the training window, watch log-loss on the newest quarter, keep the
+        best round count.</li>
+      <li><span class="term">The majority reference</span> — every validation table states what always
+        guessing the training-majority class would have scored. Ladder rows at or below it are the
+        model converging to the prior, not finding signal.</li>
+    </ul>
+
+    <h2 id="decision">5. Decision modes</h2>
+    <ul>
+      <li><span class="term">Argmax (3-class)</span> — classic prediction: the most probable of
+        −1 / 0 / +1 wins. The right mode for narrow bands where all three classes are live
+        possibilities.</li>
+      <li><span class="term">Directional hunter (±1 only, τ by $)</span> — built for WIDE dormant bands
+        (e.g. ±10%) where most periods are 0 and "always predict 0" would be rewarded. Training weights
+        the rare ±1 samples up; the trade call compares P(+1) vs P(−1) <em>only</em>, standing aside
+        when the winner's probability is below a threshold τ. τ comes from a fixed menu scored by paper
+        P&amp;L on the validation tail — dollars, not accuracy, pick how trigger-happy to be, and the
+        test window never influences it. 0 is never "predicted"; it's what happens when conviction is
+        absent. τ = 0 means always-in: trade every period, direction only.</li>
+    </ul>
+
+    <h2 id="report">6. Reading a single-run report</h2>
+    <ul>
+      <li><span class="term">The tiles</span> — test accuracy (with held-out sample count), the
+        majority-class baseline (always guess the most common class), the random baseline (33.3%),
+        the one-shot paper P&amp;L, and the training-window size. The verdict line under them states
+        plainly whether the model beat both baselines, barely edged the majority, or found nothing —
+        "that is an honest result, not a bug."</li>
+      <li><span class="term">Data section</span> — candle counts and gap-fills per pair, labelable
+        chunks (with how many were dropped over gaps or missing label data), feature count, the band
+        actually used (auto shows the derived ±%), and the class distribution overall / train / test.</li>
+      <li><span class="term">Hyperparameter section</span> — the λ ladder (logreg) or boosting-rounds
+        summary (boost), each against the majority reference; for the directional hunter, the chosen τ,
+        the class weights, and the full τ-vs-validation-dollars ladder.</li>
+      <li><span class="term">What the model leaned on</span> — top features by |weight| (logreg,
+        standardized scale) or by split-gain share (boost). Only trust these if the test accuracy
+        itself beats the baselines.</li>
+      <li><span class="term">Confusion matrix &amp; per-class metrics</span> — rows = actual, columns =
+        predicted, heat-shaded; precision / recall / F1 per class with supports.</li>
+      <li><span class="term">Held-out periods, one by one</span> — every test sample with actual,
+        predicted, the model's three probabilities, the realized move, and a one-shot $100 paper trade
+        at the geometry's own entry/exit candles. The paper total is dominated by a few big-move
+        periods — treat it as the dollars reality-check, not the ranking metric.</li>
+    </ul>
+
+    <h2 id="screens">7. Screens (batch)</h2>
+    <p>Three instruments, all persisting server-side and re-readable from the <em>Saved screens</em>
+    picker. While a screen runs, the view auto-polls every 5 seconds; <em>Refresh</em> forces an update
+    or re-renders after switching screens. <em>Stop jobs</em> is the kill switch: it stops the running
+    screen at its current run and aborts in-flight training within seconds (even with the CPU cap at
+    OFF); completed runs and saved results are kept, and the screen is marked cancelled.</p>
+    <div class="warn-note"><strong>Quick screen (legacy)</strong> — 17 pairs × 2 models, one spec each,
+    full view only: the original pre-consensus pulse-check (34 runs). It is the only screen honoring
+    raw features, but it has no feature views, no vote/gate books and NO null support — never a basis
+    for belief. For anything you might act on, use consensus or meta-lens.</div>
+
+    <h2 id="consensus">8. The consensus screen</h2>
+    <figure class="fig">
+      <svg viewBox="0 0 900 170" width="900" height="170" role="img" aria-label="The 8-spec grid">
+        <text x="450" y="18" text-anchor="middle" class="svglab2">one pair = 8 specs (4 feature views × 2 models), never judged by its best cell</text>
+        <g>
+          <rect x="130" y="30" width="150" height="24" rx="4" fill="var(--seq-100)"></rect><text x="205" y="46" text-anchor="middle" class="svglab">view: full (44)</text>
+          <rect x="290" y="30" width="150" height="24" rx="4" fill="var(--seq-100)"></rect><text x="365" y="46" text-anchor="middle" class="svglab">prices only</text>
+          <rect x="450" y="30" width="150" height="24" rx="4" fill="var(--seq-100)"></rect><text x="525" y="46" text-anchor="middle" class="svglab">volume only</text>
+          <rect x="610" y="30" width="150" height="24" rx="4" fill="var(--seq-100)"></rect><text x="685" y="46" text-anchor="middle" class="svglab">cross-asset only</text>
+        </g>
+        <text x="60" y="82" class="svglab">logreg</text>
+        <text x="60" y="112" class="svglab">boost</text>
+        <g>
+          <rect x="130" y="66" width="150" height="24" rx="4" fill="var(--seq-250)"></rect>
+          <rect x="290" y="66" width="150" height="24" rx="4" fill="var(--seq-250)"></rect>
+          <rect x="450" y="66" width="150" height="24" rx="4" fill="var(--seq-250)"></rect>
+          <rect x="610" y="66" width="150" height="24" rx="4" fill="var(--seq-250)"></rect>
+          <rect x="130" y="96" width="150" height="24" rx="4" fill="var(--seq-250)"></rect>
+          <rect x="290" y="96" width="150" height="24" rx="4" fill="var(--seq-250)"></rect>
+          <rect x="450" y="96" width="150" height="24" rx="4" fill="var(--seq-250)"></rect>
+          <rect x="610" y="96" width="150" height="24" rx="4" fill="var(--seq-250)"></rect>
+        </g>
+        <text x="450" y="150" text-anchor="middle" class="svglab">Every test period the 8 specs VOTE (majority wins, any tie stands aside) → the vote book trades $100 at the geometry's entry/exit candles. 6+ agreeing in the SAME direction → the super 6/8 book trades too.</text>
+      </svg>
+      <figcaption>The fixed spec grid. A pair's headline number is <em>agreement across methods</em> —
+      the consensus fraction — plus the dollars its actual voting strategy would have made. Adaptive
+      band per pair, full history, both models.</figcaption>
+    </figure>
+    <ul>
+      <li><span class="term">Per-pair columns</span> — specs done; how many beat their best-constant
+        baseline (positive true edge) and the resulting <strong>consensus fraction</strong>; the
+        <em>median</em> spec's true edge, balanced accuracy and paper dollars (medians are immune to
+        one lucky or broken cell); then the tradable numbers: <strong>vote P&amp;L</strong> (wins/trades
+        — click "trades" for the period-by-period history) and vote accuracy with its edge over the
+        best constant; the <strong>super 6/8 book</strong> (absolute count, not plurality — 5 up vs 3
+        down stands aside), aimed at fee drag: fewer trades, each backed by broad agreement.</li>
+      <li><span class="term">The gate ladder</span> — the agreement gradient at quorums 5, 6, 7 and 8
+        of 8: each rung's book, win rate and trades. When 2+ pairs carry ladders, the screen
+        auto-computes the pre-registered <strong>replication test</strong>: in how many pairs does win
+        rate rise from 5-of-8 to unanimous (chance 50%), and in how many is it strictly monotone across
+        all four rungs (chance 1 in 8 — the rungs are nested subsets, not independent orderings), each
+        with an exact binomial p. Those two numbers are the whole result; the audit matrix deliberately
+        carries no P&amp;L so it can't be shopped for candidates.</li>
+      <li><span class="term">Highlighted rows</span> — consensus ≥ 62.5% with positive median true
+        edge. A shortlist heuristic, not a verdict — the nulls decide what's real.</li>
+    </ul>
+
+    <h2 id="nulls">9. Null calibration (label-shift)</h2>
+    <figure class="fig">
+      <svg viewBox="0 0 900 120" width="900" height="120" role="img" aria-label="Circular label rotation">
+        <text x="450" y="16" text-anchor="middle" class="svglab2">null run = same features, labels circularly rotated in time — nothing real left to find</text>
+        <g>
+          <text x="20" y="46" class="svglab">real labels</text>
+          <g transform="translate(120,32)">
+            <rect width="56" height="20" x="0" fill="var(--up)" opacity=".8"></rect><rect width="56" height="20" x="60" fill="var(--flat)" opacity=".55"></rect><rect width="56" height="20" x="120" fill="var(--flat)" opacity=".55"></rect><rect width="56" height="20" x="180" fill="var(--down)" opacity=".8"></rect><rect width="56" height="20" x="240" fill="var(--up)" opacity=".8"></rect><rect width="56" height="20" x="300" fill="var(--flat)" opacity=".55"></rect><rect width="56" height="20" x="360" fill="var(--down)" opacity=".8"></rect><rect width="56" height="20" x="420" fill="var(--flat)" opacity=".55"></rect>
+          </g>
+          <text x="20" y="86" class="svglab">shifted (+3)</text>
+          <g transform="translate(120,72)">
+            <rect width="56" height="20" x="0" fill="var(--up)" opacity=".8"></rect><rect width="56" height="20" x="60" fill="var(--flat)" opacity=".55"></rect><rect width="56" height="20" x="120" fill="var(--down)" opacity=".8"></rect><rect width="56" height="20" x="180" fill="var(--flat)" opacity=".55"></rect><rect width="56" height="20" x="240" fill="var(--up)" opacity=".8"></rect><rect width="56" height="20" x="300" fill="var(--flat)" opacity=".55"></rect><rect width="56" height="20" x="360" fill="var(--flat)" opacity=".55"></rect><rect width="56" height="20" x="420" fill="var(--down)" opacity=".8"></rect>
+          </g>
+        </g>
+        <text x="450" y="112" text-anchor="middle" class="svglab">The whole grid re-runs per rotation — training, band, τ, vote and gate books included. Whatever freedom the real run enjoyed, the null enjoys too.</text>
+      </svg>
+      <figcaption>The noise floor. If a time-shifted world where the labels are decoupled from the
+      features "finds" as much as the real run did, the real result is what this machine fabricates
+      from nothing.</figcaption>
+    </figure>
+    <ul>
+      <li><span class="term">Exceed rates ≈ empirical p-values</span> — the share of distinct null
+        reruns that matched or beat the real run: on consensus fraction (the primary), on vote-book
+        dollars, on the super book, and per gate-ladder rung (each rung judged against its own noise
+        floor). 0% = noise never faked it that well.</li>
+      <li><span class="term">Distinct rotations are finite</span> — a pair only has ~(samples − buffer)
+        distinct rotations. Requests beyond the ceiling hit duplicate rotations, which are collapsed
+        into single samples rather than double-counted; the denominator always shows the true distinct
+        count. The <em>max</em> button computes the exact ceiling for the pairs listed and fills it
+        in.</li>
+      <li><span class="term">Read the medians too</span> — a 0% exceed rate means something different
+        when null books traded as often as the real one (the real book's trades were better) than when
+        noise almost never fired at all (reaching agreement is itself the rare event). The null tables
+        state median null P&amp;L and trades for exactly this reason.</li>
+      <li><span class="term">Cost</span> — every shift adds 8 more runs per pair; deep nulls
+        (200–1000 shifts) are for single-pair confirmation, not broad sweeps. All work obeys the CPU
+        cap.</li>
+      <li><span class="term">Family-wise honesty</span> — a low exceed rate on one pair drawn from a
+        many-look hunt does not survive correction across the looks. The project's rule (VERDICTS.md in
+        the repo): deep nulls are read against the declared denominator of the campaign that produced
+        the candidate, and nothing earns belief, a book, or capital directly.</li>
+    </ul>
+
+    <h2 id="metalens">10. The meta-lens screen (two-stage)</h2>
+    <figure class="fig">
+      <svg viewBox="0 0 900 150" width="900" height="150" role="img" aria-label="Meta-lens two-stage flow">
+        <rect x="20" y="30" width="250" height="34" rx="6" fill="var(--seq-250)"></rect>
+        <text x="145" y="45" text-anchor="middle" class="svglab2">STAGE 1 — half A (early)</text>
+        <text x="145" y="58" text-anchor="middle" class="svglab">each lens: train on A's first 75%, score on A's tail</text>
+        <rect x="330" y="30" width="250" height="34" rx="6" fill="var(--seq-250)"></rect>
+        <text x="455" y="45" text-anchor="middle" class="svglab2">STAGE 2 — half B (late)</text>
+        <text x="455" y="58" text-anchor="middle" class="svglab">passing lenses retrain on A; pick threshold by $ on B</text>
+        <rect x="640" y="30" width="240" height="34" rx="6" fill="var(--seq-450)"></rect>
+        <text x="760" y="45" text-anchor="middle" class="svglab2" fill="#fff">VERDICT — test window</text>
+        <text x="760" y="58" text-anchor="middle" class="svglab" fill="#fff">retrain on A+B, trade ONCE at that threshold</text>
+        <path d="M 272 47 L 326 47" stroke="var(--accent)" stroke-width="1.6" marker-end="url(#arr3)"></path>
+        <path d="M 582 47 L 636 47" stroke="var(--accent)" stroke-width="1.6" marker-end="url(#arr3)"></path>
+        <text x="450" y="95" text-anchor="middle" class="svglab">A lens PASSES stage 1 only if it beats the tail's best constant guess — signal on data it hasn't seen. The threshold menu is fixed (50 / 62.5 / 75 / 87.5 / 100% of passing lenses); ties go stricter.</text>
+        <text x="450" y="118" text-anchor="middle" class="svglab">Null shifts replay the ENTIRE recipe — lens selection and threshold choice included — per rotation.</text>
+        <defs><marker id="arr3" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 z" fill="var(--accent)"></path></marker></defs>
+      </svg>
+      <figcaption>The nested protocol: selection happens on data the verdict never touches. Zero lenses
+      passing is a reported result — the book stands aside — not an error.</figcaption>
+    </figure>
+    <ul>
+      <li><span class="term">Force all 8 on zero passing</span> — optional agreement-only mode:
+        continue with ALL 8 lenses as the committee and let stage 2 pick the threshold. Motivated by
+        DOT, where every individual lens was dead yet the 6-of-8 agreement gate survived a 1000-shift
+        null at 2% — a pair's signal can live in agreement alone. Forced runs are stamped
+        (<code>forced: all 8</code>) so they can never pass as selective ones; nulls inherit the
+        setting.</li>
+      <li><span class="term">Interlaced split (purged)</span> — instead of chronological halves,
+        alternate 49-day blocks between A and B so both span the whole history (both DOT and DOGE
+        showed the raw edge flipping sign between eras). Whole weeks keep weekday composition
+        identical; the odd multiple drifts across the calendar so blocks never line up with month-end
+        structure. Because neighbouring chunks overlap, the last 5 chunks of every block are PURGED
+        (2 for weekly geometry) — without that, interlacing would leak training data into the scoring
+        set. The test window stays chronological-last either way.</li>
+      <li><span class="term">Reading it</span> — per pair: lenses passed, committee size, chosen
+        threshold, and the one-shot test verdict (trades, P&amp;L, gross/trade, accuracy and edge),
+        with P&amp;L and edge exceed rates from the full-recipe nulls. The stage-1 scoreboard and
+        stage-2 menu render underneath so the recipe's choices are auditable.</li>
+    </ul>
+
+    <h2 id="books">11. Paper books (the second tab)</h2>
+    <p>Live, frozen, pre-registered experiments — the forward tests that decide whether a screened
+    result was real. Nothing here retrains, and the rules cannot move after the first live period.
+    Protocols and amendment logs live in the repo (TRACKER.md, TRACKER-DOGE.md, VERDICTS.md).</p>
+    <h3>Live tracker — DOT/AVAX weekly (Book 1)</h3>
+    <ul>
+      <li>Frozen consensus grids (8 specs per pair, trained through 2026-06, never retrained) predict
+        every week's Tue→Thu move. Majority vote is the headline; ties stand aside. $100 per order,
+        entry Tue 03:00 open, exit Thu 15:00 open, $0.50 friction per leg (the books' permanently
+        declared stress rate — research screens moved to $0.25/trip in 2026-07, so compare across that
+        boundary gross, not net).</li>
+      <li><span class="term">LIVE vs SEEDED</span> — a prediction is LIVE if recorded before its
+        outcome window opens (Thu 12:00 UTC); the anti-peeking guarantee is determinism — every
+        prediction is a pure function of the frozen weights and Binance's published candles, so it can
+        be verified by recomputation. Backfilled weeks are flagged SEEDED and reported alongside but
+        never count toward the verdict.</li>
+      <li><span class="term">Verdict</span> — at 26 LIVE weeks per pair: pass = vote-book P&amp;L &gt; 0
+        AND accuracy above the best-constant baseline of those same weeks. Both pairs are reported
+        regardless. Each of the 8 specs also runs its own $100 book for method comparison.</li>
+    </ul>
+    <h3>Live tracker II — DOGE daily-3d (Book 2)</h3>
+    <ul>
+      <li>A second, fully independent book (separate module and state — the DOT/AVAX record cannot be
+        perturbed by it). Frozen 8-spec grid predicts every day's 41-hour move: entry 01:00 UTC the day
+        after the 72-hour chunk closes, exit 18:00 the following day.</li>
+      <li><span class="term">Five rules declared in advance, all five reported</span> — the majority
+        vote plus quorums 5, 6, 7 and 8 of 8 — so nothing is promoted after the fact and no
+        multiplicity correction is owed. The backtest gradient to beat: win rate 53.7 / 57.4 / 62.6 /
+        67.3% across the four quorums.</li>
+      <li>Positions overlap (a signal a day against a 41-hour hold), so implied capital is ~$200–300,
+        not $100.</li>
+    </ul>
+    <h3>New paper books — the engine</h3>
+    <ul>
+      <li><span class="term">Draft first</span> — creating a book shows the data coverage, the would-be
+        adaptive band and the full generated protocol with nothing trained or frozen. Drafts can be
+        discarded freely.</li>
+      <li><span class="term">Declare &amp; initialize</span> — trains the 8 specs, freezes weights, band
+        and rules, and starts the record. From that moment the engine refuses all changes: the only
+        verbs left are view and retire. Retiring closes the record permanently (failure-by-default
+        unless net-positive on every primary rule at retirement).</li>
+      <li><span class="term">Permanent numbering</span> — every declared book gets the next number, and
+        the count of declared books is the honest denominator against any future winner. The form
+        fields (pair, geometry, band, history start, training cutoff, horizon in live periods, the
+        rule set, and the rationale) all go into the declaration verbatim.</li>
+      <li>The two original books run on their own frozen code, untouched by this engine.</li>
+    </ul>
+
+    <h2 id="ops">12. Data, CPU &amp; job control</h2>
+    <ul>
+      <li><span class="term">The cache</span> — every pair/month ever downloaded is parsed once and
+        kept forever in <code>data/cache/</code>; the "Available data on server" grid shows the
+        current coverage. The current partial month comes from the keyless REST mirror when
+        reachable.</li>
+      <li><span class="term">CPU button (header)</span> — service-wide cap on heavy work (training,
+        boosting, screens): cycles 100 / 90 / 75 / 50 / 25 / 10% / OFF. Applies LIVE to already-running
+        work within seconds; results are identical at any setting — only speed changes. OFF parks heavy
+        work in place until turned back up. Stored server-side, so every browser sees the same
+        setting.</li>
+      <li><span class="term">Stop jobs</span> — aborts the running screen and any in-flight training
+        within seconds, even while parked at OFF. Finished runs and saved results survive; the screen
+        is marked cancelled.</li>
+      <li><span class="term">Jobs poll</span> — long work runs as server-side jobs the page polls;
+        closing the tab never kills a screen.</li>
+    </ul>
+
+    <h2 id="gloss">13. Glossary</h2>
+    <dl class="gloss">
+      <dt>Dormant band</dt><dd>The ±% do-nothing zone. Moves inside it score 0; beyond it, ±1. "Auto" = the 33rd percentile of |move| on training samples only, balancing the classes.</dd>
+      <dt>Chunk / geometry</dt><dd>One sample: a fixed window of hourly candles from both pairs (weekly 8-day or daily 1–4-day), labeled by the trade pair's move strictly after it ends.</dd>
+      <dt>Spec</dt><dd>One method permutation: a feature view × a model. The consensus grid runs 8 per pair.</dd>
+      <dt>View</dt><dd>Feature slice: full 44 / prices-only / volume-only / cross-asset-only.</dd>
+      <dt>Best constant</dt><dd>Accuracy of always guessing the test window's most common class, in hindsight — the toughest do-nothing competitor.</dd>
+      <dt>True edge</dt><dd>Test accuracy − best constant. Positive = beat the smartest lazy strategy.</dd>
+      <dt>Balanced accuracy</dt><dd>Mean of the three per-class hit rates; 33.3% = chance for ANY know-nothing strategy regardless of class mix.</dd>
+      <dt>Consensus fraction</dt><dd>Specs with positive true edge ÷ specs done — agreement across methods, a pair's headline score.</dd>
+      <dt>Vote book</dt><dd>Majority vote of the 8 specs each test period (ties stand aside), trading $100 at the geometry's entry/exit candles. The tradable number.</dd>
+      <dt>Super 6/8 / quorum qN</dt><dd>Trades only when ≥N specs call the SAME direction (absolute count, not plurality). The agreement gradient is the ladder q5→q8.</dd>
+      <dt>Null shift / exceed rate</dt><dd>Full rerun with circularly time-rotated labels; the exceed rate is the share of distinct rotations matching or beating the real run — an empirical p-value.</dd>
+      <dt>Distinct rotations</dt><dd>The finite ceiling of usable label shifts (~samples − buffer); duplicates collapse into single null samples.</dd>
+      <dt>τ (tau)</dt><dd>The directional hunter's stand-aside threshold on the winning direction's probability, tuned by validation paper dollars. τ=0 = always in.</dd>
+      <dt>Lens</dt><dd>Meta-lens name for a spec when treated as a committee member subject to stage-1 selection.</dd>
+      <dt>Purged interlacing</dt><dd>Alternating 49-day A/B blocks with the last chunks of each block dropped so overlapping chunks can't leak across the boundary.</dd>
+      <dt>LIVE / SEEDED</dt><dd>Tracker provenance: recorded before the outcome window opens vs backfilled after. Only LIVE periods count toward a verdict.</dd>
+      <dt>Paper book</dt><dd>$100-per-order simulated record at declared friction. Research friction $0.25/round trip (since 2026-07-26); the frozen live books keep their declared $0.50/leg stress rate forever.</dd>
+      <dt>Horizon</dt><dd>The pre-registered number of LIVE settled periods after which a book's verdict is computed once and never moves again.</dd>
+    </dl>
+
+    <p class="mock-note" style="margin-top:2rem">Guide reflects the live build. The protocols'
+    letter-of-the-law versions live in the repo: README.md, TRACKER.md, TRACKER-DOGE.md, VERDICTS.md.</p>
+  </main>
+  <footer class="foot">
+    Data: Binance public bulk-data portal (data.binance.vision), hourly spot klines,
+    pruned to time / open / high / low / close / quote&nbsp;volume.
+  </footer>
+</body>
+</html>

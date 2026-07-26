@@ -87,6 +87,10 @@ button.danger { background: var(--page); color: var(--down); border: 1px solid v
   margin-left: auto; background: var(--page); color: var(--ink-2);
   border: 1px solid var(--baseline); padding: 4px 12px; font-size: 12px; font-weight: 600;
 }
+/* The Help control sits to the RIGHT of the CPU button: same chrome, but no
+   auto margin (that's the CPU button's job) and anchor styling normalized. */
+a.help-btn { margin-left: 0; text-decoration: none; color: var(--accent); border-color: var(--accent); line-height: normal; }
+a.help-btn:hover { background: var(--seq-100); }
 .topbar .inner { align-items: center; }
 tr.hilite td { background: var(--seq-100); }
 button.rowload { padding: 2px 8px; font-size: 11px; background: var(--page); color: var(--accent); border: 1px solid var(--accent); }
