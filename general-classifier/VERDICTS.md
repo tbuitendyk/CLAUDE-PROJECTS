@@ -115,6 +115,27 @@ Protocol, declared breadth:
   pair and band only), read against the ledger's full denominator.
   Nothing here earns belief, a book, or capital directly.
 
+## H1 deep-null results log (one look each, recorded as read)
+
+### UNIUSDT ±5% — consensus-20260726-0038, read 2026-07-26
+
+Vote book +$47.71 net on 43 trades (24 wins, gross/trade $1.36, 37.3
+trades/yr) — gate PASS, lane (a). Deep null, 1000 shifts:
+
+- **Vote P&L exceed 2.6%** (primary test). Super (q6) 2.8%. Gate ladder
+  q5 5.1% / q6 2.8% / q7 4.4% (q8 99.3% is vacuous — that rung almost
+  never fires). Consensus-fraction exceed 13.6%.
+- Null median book: $0.00 on 0 trades — under label-shift noise the
+  committee almost never agrees enough to trade, so part of the low exceed
+  rate is "agreement is itself rare under noise".
+- Edge exceed 79.9%: per-call accuracy is indistinguishable from noise.
+  Whatever is here lives in WHEN the book trades, not in call accuracy.
+
+**Verdict: misses the ≤2% forward-ticket bar; gray zone; no book on this
+result alone.** Read against H1's declared 51-look denominator, 2.6% is
+suggestive, not significant. Disposition of the UNI configuration is
+governed by A2 below.
+
 ## Amendment log
 
 - **A1 (2026-07-26) — H1 reading gate: low-frequency lane added.** The
@@ -142,3 +163,29 @@ Protocol, declared breadth:
   its deep null is still valid evidence, but it does not get to claim it
   survived a pre-registered gate. Candidates that passed the original
   ≥ 30 gate are unaffected.
+
+- **A2 (2026-07-26) — AVAX ±5% deep null declared as the H1 confirmation
+  look; joint book rule.** Timing disclosure: written AFTER UNI's ±5% deep
+  null was read (2.6%) and BEFORE AVAX's deep null was started or read.
+  AVAX earned its deep null under H1's own rule by passing the ±5% gate
+  (+$76.55 net, 79/157 trades, lane a); this amendment fixes how that one
+  look will be read, and what it buys, before the number exists.
+
+  Protocol: one consensus screen, AVAXUSDT only, exact param mirror of
+  consensus-20260726-0038 (±5% band, daily-3d, directional hunter, 1000
+  null shifts, $0.25 round trip, full history). One look, no re-runs.
+
+  Reading rule, fixed now:
+  - **AVAX vote P&L exceed ≤ 2%**: BOTH UNIUSDT and AVAXUSDT earn paper-book
+    forward tickets (fresh declarations, 180+ day horizon, min-activity
+    floor). The UNI ticket rides on joint replication — the same machinery
+    showing sub-2-3% noise floors on two pairs — not on its own 2.6%.
+  - **2–5%**: no automatic ticket; owner's call, default no books.
+  - **> 5%**: no books; both configurations return to hunt-only status.
+
+  Caveats recorded with the rule: (1) UNI and AVAX share calendar and
+  market beta, so a joint pass is replication across correlated pairs, not
+  two independent draws — the joint evidence is weaker than the product of
+  the two exceed rates; (2) the joint rule was written knowing UNI's
+  number, so the binding randomness is entirely in the AVAX look. The AVAX
+  bar stays at the original strict 2% for exactly that reason.
