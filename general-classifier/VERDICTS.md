@@ -189,3 +189,10 @@ governed by A2 below.
   the two exceed rates; (2) the joint rule was written knowing UNI's
   number, so the binding randomness is entirely in the AVAX look. The AVAX
   bar stays at the original strict 2% for exactly that reason.
+
+  Interruption disclosure (2026-07-26, before any result was read): the
+  first A2 run (consensus-20260726-1448) was killed at 6,667/8,008 runs by
+  a service deploy unrelated to the sweep — an infrastructure accident,
+  not a look. No summary or exceedance number from the partial doc was
+  ever computed or read, and it will not be. The run was relaunched
+  verbatim as consensus-20260726-2347; that doc is the A2 look.
