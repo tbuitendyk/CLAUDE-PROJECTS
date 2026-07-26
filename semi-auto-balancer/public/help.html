@@ -51,18 +51,22 @@
     <h2 id="toc">Contents</h2>
     <div class="toc">
       <div><a href="#overview">1. What this tool is</a></div>
-      <div><a href="#assets">2. Assets grid &amp; the tethered index</a></div>
-      <div><a href="#targets">3. Targets, basket &amp; value index</a></div>
-      <div><a href="#tuner">4. Sensitivity tuner</a></div>
-      <div><a href="#lab">5. Composition lab</a></div>
-      <div><a href="#pool">6. Candidate pool (exclusions)</a></div>
-      <div><a href="#ladder">7. Ladder Lab (BTC/USD)</a></div>
-      <div><a href="#monitors">8. Ladder monitors</a></div>
-      <div><a href="#sync">9. Exchange sync</a></div>
-      <div><a href="#sub">10. Sub-accounts &amp; trials</a></div>
-      <div><a href="#safety">11. Safety rails</a></div>
-      <div><a href="#notify">12. Notifications</a></div>
-      <div><a href="#gloss">13. Glossary</a></div>
+      <div><a href="#nav">2. Getting around the app</a></div>
+      <div><a href="#profiles">3. Profiles, settings &amp; the summary</a></div>
+      <div><a href="#assets">4. Assets grid &amp; the tethered index</a></div>
+      <div><a href="#targets">5. Targets, basket &amp; value index</a></div>
+      <div><a href="#tuner">6. Sensitivity tuner</a></div>
+      <div><a href="#lab">7. Composition lab</a></div>
+      <div><a href="#pool">8. Candidate pool (exclusions)</a></div>
+      <div><a href="#vision">9. Import from screenshot</a></div>
+      <div><a href="#ladder">10. Ladder Lab (BTC/USD)</a></div>
+      <div><a href="#monitors">11. Ladder monitors</a></div>
+      <div><a href="#sync">12. Exchange sync</a></div>
+      <div><a href="#sub">13. Sub-accounts &amp; trials</a></div>
+      <div><a href="#safety">14. Safety rails</a></div>
+      <div><a href="#notify">15. Notifications</a></div>
+      <div><a href="#data">16. Data sources &amp; housekeeping</a></div>
+      <div><a href="#gloss">17. Glossary</a></div>
     </div>
 
     <h2 id="overview">1. What this tool is</h2>
@@ -76,7 +80,49 @@
     laboratory with live rung monitors; <strong>sub-accounts</strong> let several profiles trade
     independently inside one exchange account for small real-allocation trials.</p>
 
-    <h2 id="assets">2. Assets grid &amp; the tethered index</h2>
+    <h2 id="nav">2. Getting around the app</h2>
+    <ul>
+      <li><span class="term">Login</span> — one shared password (set in the service's environment);
+        the session persists in your browser until logged out or expired.</li>
+      <li><span class="term">Header, left to right</span> — the <em>email pill</em> ("email alerts: on /
+        not configured") states whether the server can send email at all; <em>CPU</em> is the
+        service-wide cap on heavy work (see <a href="#lab">Composition lab</a>); <em>Tabs / Flow</em>
+        switches the profile detail between one flowing page and tabbed sections — remembered per
+        browser; <em>Ladder Lab</em> and <em>Help</em> open in new tabs.</li>
+      <li><span class="term">Auto-refresh</span> — the open profile re-polls the server every 2 minutes.
+        It never rebuilds the page while your cursor is in a field, and anything typed but not yet saved
+        survives every rebuild and even switching profiles and back (per-profile draft store) — a draft
+        clears itself the moment it's saved.</li>
+      <li><span class="term">Timestamps</span> — every time shown anywhere in the app is UTC and labeled
+        as such.</li>
+    </ul>
+
+    <h2 id="profiles">3. Profiles, settings &amp; the summary</h2>
+    <p>The left card lists profiles; each is one independent pool with its own assets, targets,
+    sensitivity, notifications and track record. <strong>Add profile</strong> asks for a name, the
+    sensitivity X and the poll cadence; the index currency comes later, by checkmarking a tethered
+    asset. In the detail header: <strong>Rename</strong>, <strong>Email status</strong> (sends an
+    on-demand status report to the profile's recipients — email and Telegram — and pops the send
+    outcome, including per-recipient failures), <strong>Poll now / Sync &amp; poll</strong> (see
+    <a href="#notify">Notifications</a>), <strong>Set new targets</strong>, and <strong>Delete
+    profile</strong>.</p>
+    <ul>
+      <li><span class="term">Sensitivity (price move %)</span> — the profile-wide X that the per-asset
+        triggers derive from (see the assets grid).</li>
+      <li><span class="term">Poll every (min)</span> — how often the scheduler reprices this profile and
+        evaluates alerts in the background; the meta line shows the cadence and the last poll time.</li>
+      <li><span class="term">Fee %/leg &amp; Spread %</span> — the profile's trading-cost model: taker fee
+        per leg and estimated spread/slippage per leg. Every backtest (tuner, lab) charges these on every
+        simulated leg. With an exchange linked, real fills continuously calibrate the fee figure — the
+        sync section shows the measured number.</li>
+      <li><span class="term">The summary block</span> — three lines: the <em>currency basket</em> (unit
+        growth from trading only), the <em>value</em> line (current value in the index currency, growth %
+        from its named baseline, the ✎ baseline editor, and the USD equivalent), and the
+        <em>annualized (compounding)</em> rate — shown once the record has about a week of runway,
+        "n/a — too soon" before that.</li>
+    </ul>
+
+    <h2 id="assets">4. Assets grid &amp; the tethered index</h2>
     <figure class="fig">
       <table>
         <thead><tr><th>Index</th><th>Symbol</th><th>Target %</th><th>Quantity</th><th>Price (USD)</th><th>Value (USD)</th><th>Actual %</th><th>Drift vs target</th><th>Trigger @</th><th>Status</th><th></th></tr></thead>
@@ -100,9 +146,17 @@
       <li><span class="term">Status</span> — the buy-freeze badge (click to unfreeze), the standing
         <em>ignore freeze</em> toggle (visible on every active asset, persists across freeze/unfreeze), and
         the depeg flag. See <a href="#safety">Safety rails</a>.</li>
+      <li><span class="term">Adding assets</span> — below the grid: <em>Search coin</em> finds any
+        CoinGecko-listed asset by name and adds it at quantity 0; <em>Add fiat currency</em> adds a fiat
+        row (cad, usd, mxn, …) priced off exchange rates — useful as a tethered index or to track a cash
+        sleeve. The ✕ column removes an asset (group-book protections apply on linked accounts — see
+        <a href="#sub">Sub-accounts</a>).</li>
+      <li><span class="term">Quantity</span> — editable in place on unlinked profiles (that IS how you
+        record your own trades there); read-only ground truth from the venue once an exchange account is
+        linked.</li>
     </ul>
 
-    <h2 id="targets">3. Targets, basket &amp; value index</h2>
+    <h2 id="targets">5. Targets, basket &amp; value index</h2>
     <p><strong>Set new targets</strong> opens the editor; targets (index included) must total 100%. Two
     chained series survive every change:</p>
     <ul>
@@ -123,7 +177,12 @@
     the index — a first deposit, a repair — not necessarily when you actually filled your orders).
     Every timestamp in this app is displayed in UTC and labeled as such.</p>
 
-    <h2 id="tuner">4. Sensitivity tuner (backtest)</h2>
+    <p><strong>Value history &amp; alert history</strong> (bottom of the page): the snapshots table shows
+    the chained basket level, value index, and totals (index currency and USD) over time — the raw series
+    behind the summary lines. The alert log lists every alert the profile ever raised, newest first, with
+    a 📧 marker on the ones that actually went out by email/Telegram (no recipients = logged only).</p>
+
+    <h2 id="tuner">6. Sensitivity tuner (backtest)</h2>
     <figure class="fig">
       <table>
         <thead><tr><th>X %</th><th>Basket</th><th>Value</th><th>vs hold</th><th>½ recent</th><th>¼ recent</th><th>Max DD</th><th>Trades</th><th>Fees</th><th></th></tr></thead>
@@ -151,9 +210,14 @@
       <li><span class="term">Idealize tether 1:1</span> — assumption toggle: treat a USD-stable tether as a
         perfect $1 peg (erases real wobble/depegs, e.g. USDC's 2023 SVB dip). Stated in the stamp when on;
         refuses non-USD-stable tethers.</li>
+      <li><span class="term">bars: daily / hourly</span> — daily replays the full ~4-year window; hourly
+        replays ~2 years at hourly bars for finer execution timing (the hourly cache auto-fills on demand
+        the first time). The stamp always states which granularity ran and the span in bars ≈ years.</li>
+      <li><span class="term">exec lag</span> — how long after the alert the simulated trades execute
+        (6h default, or 1h): the honesty gap between "the app told you" and "you actually traded".</li>
     </ul>
 
-    <h2 id="lab">5. Composition lab (mix search)</h2>
+    <h2 id="lab">7. Composition lab (mix search)</h2>
     <figure class="fig">
       <table>
         <thead><tr><th>Mix (targets) · ★</th><th>Types ✓</th><th>Bull</th><th>Bear</th><th>Range</th><th>Worst</th><th>Avg</th><th>Holdout</th><th>Return @ X · DD · vs mkt</th><th></th></tr></thead>
@@ -218,9 +282,12 @@
         Lab sweeps all honor it, and it applies to <em>already-running</em> work within seconds. Stored
         on the server, so every browser sees the same setting. It never changes results, only speed;
         polls, syncs, alerts and page loads are never throttled.</li>
+      <li><span class="term">Intensity</span> — how many combos the search samples: quick (~20k, about a
+        minute), standard (~100k, a few minutes), intensive (~1M, ~25 minutes at full CPU). More combos =
+        denser coverage of the same space, not a different method; the stamp records the count searched.</li>
     </ul>
 
-    <h2 id="pool">6. Candidate pool (exclusions &amp; 📌 pins)</h2>
+    <h2 id="pool">8. Candidate pool (exclusions &amp; 📌 pins)</h2>
     <p><strong>Candidate pool…</strong> (next to Run search) lists everything the lab would consider —
     held assets (marked •) and market candidates. <strong>Uncheck</strong> an asset to exclude it from
     every scope; saved per profile instantly, and named in the result stamp ("excluded by you: …").
@@ -235,7 +302,25 @@
     USDC⚓-companions BCH, XRP and PAXG, exclude BTC, and the search hunts for the 1–2 assets that best
     complete that fixed core.</p>
 
-    <h2 id="ladder">7. Ladder Lab (BTC/USD)</h2>
+    <h2 id="vision">9. Import from screenshot</h2>
+    <p>Snap or upload a screenshot of any trading app's balances screen and the holdings are read out
+    of the image (Claude vision with a structured schema — the reply is guaranteed machine-readable, no
+    fuzzy parsing) and offered as new current quantities. The flow is
+    <strong>preview-then-apply</strong>: every asset found is shown as a row with a checkbox and the
+    detected quantity; nothing changes until you click <em>Apply selected</em>. Holdings already in the
+    profile become quantity updates; holdings you don't have yet offer a coin picker (best CoinGecko
+    matches, ranked) and are <em>added</em> as new assets on apply; anything with no match is shown
+    skipped, never guessed.</p>
+    <ul>
+      <li>The section only appears when the server has an Anthropic API key configured; without it the
+        feature is absent, not broken.</li>
+      <li>Applying sets quantities the same way a manual edit does — so it's for unlinked profiles
+        (on synced accounts the venue is already ground truth, and group books refuse bare edits).</li>
+      <li>A successful apply also <strong>re-arms notifications</strong> — it counts as "you acted",
+        completing the alert cycle (see <a href="#notify">Notifications</a>).</li>
+    </ul>
+
+    <h2 id="ladder">10. Ladder Lab (BTC/USD)</h2>
     <p>Its own page (<strong>Ladder Lab</strong> header button, opens a new tab): a two-asset USD+BTC
     strategy laboratory for the cycle-ladder thesis — <em>buy rungs on drawdowns from the all-time high,
     sell rungs into strength anchored to the high you fell from</em>, with order sizing, a hard USD
@@ -267,7 +352,22 @@
       <li><span class="term">Sweep</span> — every configuration in the 78,732-point grid (entry rungs ×
         spacing × count × buy sizing × exit levels × spacing × count × sell sizing × reserve × DCA) is
         scored on the FULL history — deliberately no holdout; the synthetic-futures grid is the forward
-        test instead, and the caveat renders with every result. Score = MAR (CAGR ÷ max drawdown).</li>
+        test instead, and the caveat renders with every result. Score = MAR (CAGR ÷ max drawdown).
+        <strong>Fast pass (⅓ grid)</strong> samples every 3rd configuration — same coverage shape,
+        ~3× faster, for a quick look before committing to the full sweep. Costs are 0.5%/leg
+        throughout.</li>
+      <li><span class="term">Pick columns beyond the score</span> — each Top-selections row also shows
+        <em>Underwater</em> (longest stretch in days below a prior portfolio peak), <em>Min USD</em>
+        (the lowest the cash balance ever fell, as % of starting capital — how close the config came to
+        being unable to buy), <em>BTC share</em> (average fraction of the portfolio held in BTC), and
+        <em>Trades · fees</em>. Risk tiers cut at max drawdown &lt;30% (conservative), 30–50%
+        (balanced), &gt;50% (aggressive).</li>
+      <li><span class="term">Below the picks</span> — the <em>Stability plateaus</em> table (each
+        region's size and the parameter ranges it spans — anything inside performs comparably), a
+        <em>Baselines</em> table (HOLD BTC all-in day 1, PURE DCA spread evenly over the period, and
+        HOLD USD never buying — reference only, never "selected"), and a
+        <em>Parameter sensitivity</em> heatmap: each parameter value's mean risk-adjusted score
+        marginalized over the whole rest of the grid — which knobs matter, which are noise.</li>
       <li><span class="term">Plateaus &amp; picks</span> — each config's <em>robust score</em> is the worst
         MAR among itself and all one-step neighbors; connected high-robust regions are the plateaus. Picks
         are each plateau's best member plus the best per risk tier (max DD &lt;30 / 30–50 / &gt;50%), every
@@ -284,7 +384,7 @@
         click (next section).</li>
     </ul>
 
-    <h2 id="monitors">8. Ladder monitors</h2>
+    <h2 id="monitors">11. Ladder monitors</h2>
     <p>Live watching of an adopted ladder config (Ladder Lab page → Live monitors). The monitor checks
     the BTC price on its own cadence and notifies on rung crossings — buy rungs, anchored sell rungs,
     ladder re-anchor at a new ATH, and a monthly DCA reminder — by email and/or Telegram per its own
@@ -325,17 +425,46 @@
       <li><span class="term">Edit balances</span> — true the model up after real fills any time; rung
         state is untouched.</li>
       <li><span class="term">Check now / Test alert</span> — force an immediate evaluation; send a test
-        through the full comms path before trusting it.</li>
+        through the full comms path before trusting it. <span class="term">Pause</span> stops the
+        cadence without losing rung state; <span class="term">Delete</span> removes the monitor.</li>
+      <li><span class="term">New monitor (manual)</span> — the collapsed form under Live monitors
+        creates a monitor from ANY hand-entered configuration, no sweep required: name, anchor ATH,
+        check cadence (minutes), the full rung geometry (first buy −%, step %, rung count, buy fraction;
+        first sell ×, step ×, rung count, sell fraction), reserve %, DCA %/month, optional real
+        balances, and its own recipients list. "Adopt as monitor" is just this form pre-filled from a
+        pick.</li>
+      <li><span class="term">First-check behavior</span> — rungs the price has ALREADY passed alert
+        immediately on the monitor's first evaluation; that's confirmation the config is live, not a
+        signal to chase.</li>
+      <li><span class="term">Re-anchor announcements</span> — a new ATH always raises the anchor and
+        re-arms the entry ladder, but it's only <em>announced</em> when an epoch was actually underway
+        (a buy had fired); an uneventful grind to new highs re-anchors silently. The DCA reminder uses
+        ~30-day buckets, same as the simulator.</li>
     </ul>
 
-    <h2 id="sync">9. Exchange sync</h2>
+    <h2 id="sync">12. Exchange sync</h2>
     <p>Link a <strong>read-only</strong> API key (Kraken or Bitso). Balances and trades sync
     automatically; your quantities become ground truth from the venue. Detected deposits/withdrawals wait
     for confirmation before splicing the track record (auto-apply once you trust it). Real fills also
     calibrate the fee/spread costs the backtests use. The sync note warns when the key lacks history
     permissions.</p>
+    <ul>
+      <li><span class="term">Key hygiene</span> — create the key with balance/trade/ledger <em>query</em>
+        permissions only (no trade, no withdraw), and IP-pin it to the server where the venue supports
+        it. The app never needs more.</li>
+      <li><span class="term">Controls once linked</span> — <em>Sync every (min)</em> sets the background
+        cadence; <em>Sync now</em> forces one immediately; <em>Auto-apply detected flows</em> skips the
+        confirmation step once you trust the detection; <em>Unlink</em> disconnects the account (your
+        recorded quantities stay, they just stop tracking the venue). The fee line shows the
+        cost model currently in use and, once real fills have accumulated, the measured taker fee it
+        calibrated from them.</li>
+      <li><span class="term">Pending flows table</span> — each detected deposit/withdrawal shows the
+        venue timestamp, kind, and exact amount; on multi-profile accounts an <em>Apply to</em> picker
+        (pre-set to the best guess) chooses which linked profile receives the splice. Confirm to splice,
+        Dismiss if you already recorded it manually — confirming twice would double-count.</li>
+    </ul>
 
-    <h2 id="sub">10. Sub-accounts &amp; small real-allocation trials</h2>
+    <h2 id="sub">13. Sub-accounts &amp; small real-allocation trials</h2>
     <p>Several profiles can share ONE physical exchange account, each trading on its own alerts and
     tracking its own splice-continuous performance — the way to trial a lab mix with a small slice
     instead of the whole account. Found in the Exchange sync section once an account is linked.</p>
@@ -454,7 +583,7 @@
         snapshot annotates the affected profile visibly instead of falsifying its record.</li>
     </ul>
 
-    <h2 id="safety">11. Safety rails</h2>
+    <h2 id="safety">14. Safety rails</h2>
     <ul>
       <li><span class="term">Buy-freeze (🧊)</span> — an asset in a structural break (deep drawdown beyond
         its recovered envelope, or falling far more than the market) has BUY alerts suppressed; sells still
@@ -466,7 +595,7 @@
         valuation stays pinned 1:1.</li>
     </ul>
 
-    <h2 id="notify">12. Notifications</h2>
+    <h2 id="notify">15. Notifications</h2>
     <p>Per-profile recipients: email and/or Telegram (one bot token shared app-wide; each recipient
     <code>/start</code>s the bot, then "Find chat IDs"). The state machine:
     <strong>armed</strong> → alert sent → <strong>notified</strong> (quiet) → re-armed by the next sync,
@@ -478,8 +607,44 @@
     <em>Poll now</em>: prices and alerts only — a sub's balances change exclusively through the account
     sync, and its meta line shows "balances as of account sync …" so staleness is never hidden. Every
     variant remains the universal notification reset.</p>
+    <ul>
+      <li><span class="term">Alerts enabled</span> — the per-profile master switch. Off, or with no
+        recipients saved, alerts are still evaluated and written to the alert history (📧 marks the ones
+        that actually went out) — you just aren't messaged.</li>
+      <li><span class="term">Recipients</span> — any number of rows, each an email and/or a Telegram
+        chat ID, with a per-row <em>Test</em> button that sends a real Telegram message to that chat.
+        Setup once per app: paste the bot token from @BotFather, each recipient opens the bot and sends
+        <code>/start</code>, then <em>Find chat IDs</em> lists the waiting chats so the field fills
+        itself — no typing IDs by hand.</li>
+      <li><span class="term">On-demand report</span> — the <em>Email status</em> button (profile header)
+        sends the current full status to every recipient immediately, outside the alert cycle, and pops
+        the per-recipient send outcome. The header's email pill states whether the server can send email
+        at all.</li>
+      <li><span class="term">State line</span> — the line above the toggle always names the current
+        state (armed / notified / awaiting upload) and the time it auto re-arms.</li>
+    </ul>
 
-    <h2 id="gloss">13. Glossary</h2>
+    <h2 id="data">16. Data sources &amp; housekeeping</h2>
+    <ul>
+      <li><span class="term">Prices</span> — live valuation and alerting poll CoinGecko per profile at
+        the profile's cadence; fiat rows are priced off exchange rates. The service budgets its
+        CoinGecko calls internally, so many profiles share one quota politely.</li>
+      <li><span class="term">Backtest history</span> — daily bars come from a local cache: exchange
+        archives layered over CoinGecko's recent window, reaching ~4 years where the venue has them.
+        The hourly cache (~2 years) fills itself on demand the first time a tuner sweep asks for hourly
+        bars. Every stamp names its exact window and bar count.</li>
+      <li><span class="term">Token rebrands</span> — a curated splice table lets a renamed asset inherit
+        its predecessor's deep history at the fixed conversion ratio (e.g. POL ← MATIC 1:1,
+        2024-09-04), but only after a continuity check confirms the boundary is seamless. Deliberately
+        not auto-detected — each entry is explicit and auditable. Without it, a mid-life rename would
+        needlessly cap a multi-year backtest window.</li>
+      <li><span class="term">Value snapshots</span> — the periodic snapshots behind the Value history
+        table chain the basket and value series; corrections that reach back across an already-chained
+        snapshot annotate the profile rather than rewrite it (see the transaction log's rewind
+        rules).</li>
+    </ul>
+
+    <h2 id="gloss">17. Glossary</h2>
     <dl class="gloss">
       <dt>Sensitivity X</dt><dd>The profile-wide price-move threshold (%). Weight-normalized per asset into its Trigger @.</dd>
       <dt>Harvest edge</dt><dd>Value growth above holding the identical basket untouched — what rebalancing itself added, in percentage points.</dd>
@@ -500,6 +665,13 @@
       <dt>Carve-out</dt><dd>A virtual transfer between linked profiles — paired flow splices at live prices, no real trade, both track records continuous.</dd>
       <dt>Attribution</dt><dd>Deciding which linked profile owns a synced fill: unique holder → automatic; advice match (±15%, 36h) → automatic; ambiguous → inbox.</dd>
       <dt>Rewind</dt><dd>One-click reversal of any applied transaction. Appends a compensating entry (history never edited); attributed fills return to the inbox; cross-snapshot corrections annotate the profile visibly.</dd>
+      <dt>Cost model</dt><dd>The profile's Fee %/leg + Spread % settings — charged on every simulated leg in every backtest; calibrated from real fills once an exchange is linked.</dd>
+      <dt>Exec lag</dt><dd>Tuner setting: how long after the alert the simulated trades execute (6h or 1h) — the gap between being told and actually trading.</dd>
+      <dt>Annualized (compounding)</dt><dd>The value line's growth restated as a compound yearly rate; appears once the record has ~1 week of runway.</dd>
+      <dt>Fast pass</dt><dd>Ladder sweep option: sample every 3rd grid configuration — same coverage shape, ~3× faster, for a first look.</dd>
+      <dt>Underwater</dt><dd>Ladder pick column: the longest stretch (days) the portfolio spent below a prior peak.</dd>
+      <dt>Min USD</dt><dd>Ladder pick column: the lowest the USD balance ever fell, as % of starting capital — how close the config came to being unable to buy the next rung.</dd>
+      <dt>Rebrand splice</dt><dd>Curated inheritance of a renamed token's pre-rename history at the fixed conversion ratio, applied only after a continuity check (e.g. POL ← MATIC).</dd>
     </dl>
 
     <p class="kbd-note" style="margin-top:2rem">Guide reflects the live build. Sections and columns carry
