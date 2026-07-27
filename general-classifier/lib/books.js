@@ -484,8 +484,13 @@ async function tickBook(doc, maps, onProgress = () => {}) {
     p.entry = entryCandle.open;
     p.exit = exitCandle.open;
     p.pnl = {};
-    for (const [k, call] of Object.entries(p.predictions)) p.pnl[k] = pnlFor(call, p.entry, p.exit);
-    for (const r of config.rules) p.pnl[r] = pnlFor(p.calls[r], p.entry, p.exit);
+    // Each book settles at its OWN declared friction: config.feePerLeg for
+    // post-v1.25 declarations, the legacy $0.50 stress rate for books that
+    // declared before the field existed (their records never reprice). The
+    // frozen originals' fixed-fee helper is never used here.
+    const feeLeg = config.feePerLeg ?? FEE_PER_LEG;
+    for (const [k, call] of Object.entries(p.predictions)) p.pnl[k] = pnlAt(call, p.entry, p.exit, feeLeg);
+    for (const r of config.rules) p.pnl[r] = pnlAt(p.calls[r], p.entry, p.exit, feeLeg);
     p.actual = chunk.label;
     p.status = 'settled';
   }

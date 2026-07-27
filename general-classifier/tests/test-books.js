@@ -127,5 +127,9 @@ module.exports = {
     const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'lib', 'books.js'), 'utf8');
     assert.ok(!src.includes("require('./tracker')"), 'engine must not import the frozen tracker');
     assert.ok(!src.includes("require('./dogebook')"), 'engine must not import the frozen doge book');
+    // v1.25 regression guard: settlement prices with pnlAt at the book's own
+    // declared fee (legacy books: $0.50). pnlFor is the frozen originals'
+    // function — referencing it here was the "pnlFor is not defined" crash.
+    assert.ok(!src.includes('pnlFor'), 'engine settles via pnlAt at the declared fee, never pnlFor');
   },
 };
