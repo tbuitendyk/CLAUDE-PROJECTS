@@ -45,7 +45,8 @@ for i, l in enumerate(d.get("leaders") or [], 1):
     combo = l["trade"] + ("+" + l["ctx1"] if l.get("ctx1") else "") + ("+" + l["ctx2"] if l.get("ctx2") else "")
     print(f" {i:2d}. [{l['stage'][:4]}] {combo:<30s} {l['geometry']:<9s} {str(l['bandMode']):<4s}±{l['bandPct']:.2f}% "
           f"{l['decision'][:3]} {'24/5' if l.get('weekdaysOnly') else '24/7'} q{l['quorum']}/{l['members']} "
-          f"{l['gate'][:4]:<4s} d{l['dMult']}x t{l['tHours']}h | {l['pnl']:+8.2f} ({l['wins']}/{l['trades']}t "
+          f"{l['gate'][:4]:<4s} d{l['dMult']}x t{l['tHours']}h | {l['pnl']:+8.2f} "
+          f"vsCtl {('%+.2f' % (l['pnl'] - l['controlPnl'])) if l.get('controlPnl') is not None and l['gate'] != 'always' else '—':>8s} ({l['wins']}/{l['trades']}t "
           f"g/t {('%.2f' % l['grossPerTrade']) if l.get('grossPerTrade') is not None else '—'}) stops={l['stops']} amb={l['ambiguous']} "
           f"periods={l.get('testPeriods')}")
 EOF
