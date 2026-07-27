@@ -4,7 +4,13 @@
 # readings. Optional $1 = doc id (default: newest bracketlab doc).
 # Read-only; 8k-stdout safe.
 set -euo pipefail
-ID="${1:-}"
+# Optional $1 = docId or docId@N (print only the top N leaderboard rows —
+# deploy-control caps stdout at 8k and a full board overflows it).
+ARG="${1:-}"
+TOPN="${ARG##*@}"
+ID="${ARG%@*}"
+if [ "$TOPN" = "$ARG" ]; then TOPN=50; fi
+export TOPN
 if [ -z "$ID" ]; then
   ID=$(curl -s http://127.0.0.1:8093/api/batches | python3 -c '
 import json, sys
@@ -41,7 +47,9 @@ if nt:
           f"exceedSearch={nt.get('exceedSearch')} exceedSame={nt.get('exceedSame')} "
           f"medBest={nt.get('medianBestPnl')} medSame={nt.get('medianSamePnl')}")
 print("leaderboard:")
-for i, l in enumerate(d.get("leaders") or [], 1):
+import os
+topn = int(os.environ.get("TOPN", "50") or 50)
+for i, l in enumerate((d.get("leaders") or [])[:topn], 1):
     combo = l["trade"] + ("+" + l["ctx1"] if l.get("ctx1") else "") + ("+" + l["ctx2"] if l.get("ctx2") else "")
     print(f" {i:2d}. [{l['stage'][:4]}] {combo:<30s} {l['geometry']:<9s} {str(l['bandMode']):<4s}±{l['bandPct']:.2f}% "
           f"{l['decision'][:3]} {'24/5' if l.get('weekdaysOnly') else '24/7'} q{l['quorum']}/{l['members']} "
