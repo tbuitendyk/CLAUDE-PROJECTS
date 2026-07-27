@@ -495,6 +495,10 @@
     const header = `${esc(doc.id)} — ${esc(doc.status)}${doc.status === 'running' && doc.progress ? ` — ${esc(doc.progress)}` : ''}
       · ${doc.runs.filter((r) => r.status === 'done' || r.status === 'error').length}/${doc.runs.length} runs
       · dormant ±${esc(String(doc.params.dormantPct))}% · ${range} · ${esc(doc.params.geometry || 'weekly-8d')}${doc.params.weekdaysOnly ? ' · 24/5' : ''}${doc.params.decision === 'directional' ? ' · directional hunter' : ''} · vs ${esc(doc.params.compareSymbol)}`;
+    if (doc.kind === 'permscreen') {
+      renderPermScreen(doc, header);
+      return;
+    }
     if (s && s.kind === 'metalens') {
       renderMetalens(doc, s, header);
       return;
@@ -754,6 +758,210 @@
     });
   }
 
+  // Permutation screen: the staged pick workflow. Stage 1 renders every
+  // pair's 16 distinct members (8 specs × 2 training regimes, labeled with
+  // the protocol permutations each represents); the owner then checkboxes an
+  // asset, a member subset, reads the net-direction quorum menu, checkboxes
+  // rungs, and fires the null test on the frozen selection. All selections
+  // persist server-side.
+  async function permPost(id, path, body) {
+    batchErrorEl.hidden = true;
+    try {
+      const res = await fetch(`api/permscreen/${encodeURIComponent(id)}/${path}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const resBody = await jsonBody(res);
+      if (!res.ok) throw new Error(resBody.error || `HTTP ${res.status}`);
+      pickedBatch = id; // stay pinned to the doc being worked
+      refreshBatch();
+    } catch (err) {
+      batchErrorEl.hidden = false;
+      batchErrorEl.textContent = err.message;
+    }
+  }
+
+  function renderPermScreen(doc, header) {
+    const running = doc.status === 'running';
+    const sel = doc.selection || { pair: null, members: [], rungs: [] };
+    const fee = (doc.params.feePerLeg ?? 0.125);
+    const trip = 2 * fee;
+    const s = doc.summary;
+    const gpt = (m) => (m.paperTrades ? (m.paperPnl + m.paperTrades * trip) / m.paperTrades : null);
+    const stage = !sel.pair ? '2 — checkbox ONE asset to work'
+      : !doc.quorums ? '3 — checkbox the members to committee, then show the quorum table'
+        : !sel.rungs.length ? '5 — checkbox the rungs to keep, then fire the null test'
+          : doc.nullTest && doc.nullTest.status === 'done' ? '6 — null results below'
+            : doc.nullTest && doc.nullTest.status === 'running' ? '6 — null test running'
+              : '5/6 — rungs picked; fire the null test when ready';
+
+    const memberRow = (trade, key, m, selectable) => {
+      const met = m.metrics;
+      const checked = sel.members.includes(key) ? ' checked' : '';
+      const box = selectable && !running ? `<input type="checkbox" class="perm-member" data-key="${esc(key)}"${checked}>` : '';
+      return `<tr class="${(met.hindsightEdge ?? -1) > 0 ? 'hilite' : ''}">
+        <td>${box}</td>
+        <td>${esc(m.protocols.join(' · '))}</td>
+        <td>${esc(m.view)}/${esc(m.model)}</td>
+        <td>${met.paperPnl != null ? money(met.paperPnl) : '—'} <span class="note">(${met.paperWins ?? 0}/${met.paperTrades ?? 0}t)</span></td>
+        <td>${gpt(met) != null ? '$' + gpt(met).toFixed(2) : '—'}</td>
+        <td>${pct(met.testAcc)}</td>
+        <td>${pct(met.bestConstant)}</td>
+        <td>${met.hindsightEdge != null ? (met.hindsightEdge >= 0 ? '+' : '') + (100 * met.hindsightEdge).toFixed(1) + '%' : '—'}</td>
+        <td>${pct(met.balancedAcc)}</td>
+        <td>${met.directionalHits ?? 0}/${met.directionalCalls ?? 0}</td>
+        <td>${pct(met.trainAcc)}</td>
+        <td>${esc(met.chosen || '')}</td>
+      </tr>`;
+    };
+
+    const pairOrder = s && s.pairs ? s.pairs.map((p) => p.trade) : Object.keys(doc.perms || {});
+    const assetBlocks = pairOrder.map((trade) => {
+      const p = doc.perms[trade];
+      if (!p) return '';
+      const members = Object.entries(p.members || {})
+        .sort((a, b) => (b[1].metrics.paperPnl ?? -Infinity) - (a[1].metrics.paperPnl ?? -Infinity));
+      const isSel = sel.pair === trade;
+      const best = members[0] ? members[0][1].metrics.paperPnl : null;
+      return `<details ${isSel ? 'open' : ''}>
+        <summary><label class="check" style="display:inline">
+          <input type="radio" name="perm-asset" class="perm-asset" value="${esc(trade)}" ${isSel ? 'checked' : ''} ${running ? 'disabled' : ''}>
+          <strong>${esc(trade)}</strong></label>
+          · band ±${p.band != null ? p.band.toFixed(2) : '?'}% · ${members.length}/16 members · best ${best != null ? money(best) : '—'}
+          ${isSel ? ' · <strong>working this asset</strong>' : ''}</summary>
+        <div class="tablewrap" style="margin:6px 0"><table>
+          <tr><th title="Stage-3 checkbox (working asset only): include this member in the committee"></th>
+            <th title="The protocol permutations this training regime represents — per-spec, force-all changes nothing and the chronological meta-lens retrain IS the classic window">protocols</th>
+            <th>view/model</th>
+            <th title="One-shot $100 paper book over the shared test window, research friction">paper P&L (W/T)</th>
+            <th title="Per-trade result before the round-trip fee">gross/trade</th>
+            <th>test acc</th><th>best const</th><th title="test acc − best constant">true edge</th>
+            <th>bal acc</th><th title="directional hits/calls">±1 hits</th><th>train acc</th><th>picked</th></tr>
+          ${members.map(([key, m]) => memberRow(trade, key, m, isSel)).join('')}
+        </table></div>
+      </details>`;
+    }).join('');
+
+    const topTable = s && s.top && s.top.length ? `
+      <h3 style="margin:14px 0 4px">Top 20 by test paper P&L (all assets)</h3>
+      <div class="tablewrap"><table>
+        <tr><th>pair</th><th>member</th><th>protocols</th><th>P&L (W/T)</th><th>true edge</th><th>test acc</th><th>picked</th></tr>
+        ${s.top.map((t) => `<tr><td>${esc(t.trade)}</td><td>${esc(t.key)}</td><td>${esc((t.protocols || []).join(' · '))}</td>
+          <td>${money(t.pnl ?? 0)} <span class="note">(${t.wins ?? 0}/${t.trades ?? 0}t)</span></td>
+          <td>${t.hindsightEdge != null ? (t.hindsightEdge >= 0 ? '+' : '') + (100 * t.hindsightEdge).toFixed(1) + '%' : '—'}</td>
+          <td>${pct(t.testAcc)}</td><td>${esc(t.chosen || '')}</td></tr>`).join('')}
+      </table></div>` : '';
+
+    const membersBar = sel.pair && !running ? `
+      <div class="controls" style="margin:8px 0">
+        <div class="field submit"><button id="perm-members-go" type="button"
+          title="Save the checked members as the committee and compute the quorum menu (1..n, net-direction rule) over the shared test window">Show quorum table (save members)</button></div>
+        <span class="note">working ${esc(sel.pair)} — check members above, ${sel.members.length} saved</span>
+      </div>` : '';
+
+    let quorumBlock = '';
+    if (doc.quorums && sel.pair === doc.quorums.pair) {
+      const n = doc.quorums.members.length;
+      quorumBlock = `
+        <h3 style="margin:14px 0 4px">Quorum menu — ${n} member(s), net direction wins, best dollars first</h3>
+        <p class="note">Rule: each period the majority side among the committee wins; the book trades at rung k when the
+          winning side's absolute count reaches k; tied up/down stands aside. Accuracy scores every period (stand-asides
+          count as calls of 0); trade hit scores only the periods it traded.</p>
+        <div class="tablewrap"><table>
+          <tr><th title="Stage-5 checkbox: keep this rung for the null test"></th><th>rung</th><th>net P&L</th><th>trades</th><th>wins</th><th>gross/trade</th><th>acc</th><th>trade hit</th></tr>
+          ${doc.quorums.rows.map((r) => `<tr>
+            <td><input type="checkbox" class="perm-rung" data-k="${r.k}" ${sel.rungs.includes(r.k) ? 'checked' : ''} ${running ? 'disabled' : ''}></td>
+            <td>${r.k} of ${n}</td><td>${money(r.pnl)}</td><td>${r.trades}</td><td>${r.wins}</td>
+            <td>${r.grossPerTrade != null ? '$' + r.grossPerTrade.toFixed(2) : '—'}</td>
+            <td>${pct(r.acc)}</td><td>${pct(r.tradeHit)}</td></tr>`).join('')}
+        </table></div>
+        ${running ? '' : `<div class="controls" style="margin:8px 0">
+          <div class="field"><label for="perm-shifts">Null shifts</label><input id="perm-shifts" type="number" min="1" max="1000" step="1" value="200"></div>
+          <div class="field submit"><button id="perm-null-go" type="button"
+            title="Freeze the checked rungs and re-run ONLY the selected members under circularly shifted labels; each kept rung is judged against its own noise floor. This calibrates the picked book conditional on every pick made above — it is not a clean p-value, and it spends looks against the ledger.">Fire null test on checked rungs</button></div>
+        </div>`}`;
+    }
+
+    let nullBlock = '';
+    if (doc.nullTest) {
+      const nt = doc.nullTest;
+      if (nt.status === 'done' && nt.perRung) {
+        nullBlock = `
+          <h3 style="margin:14px 0 4px">Null test — ${nt.shifts} distinct rotations</h3>
+          <div class="tablewrap"><table>
+            <tr><th>rung</th><th>real net (trades)</th><th title="Share of label-shifted committees whose rung book made at least as many dollars">P&L exceed</th><th>null median $ / trades</th></tr>
+            ${Object.entries(nt.perRung).map(([k, r]) => `<tr>
+              <td>${k} of ${sel.members.length}</td>
+              <td>${money(r.real.pnl)} (${r.real.trades}t)</td>
+              <td><strong>${r.exceedPnl != null ? pct(r.exceedPnl) : '—'}</strong> of ${r.shifts}</td>
+              <td>${r.medianPnl != null ? money(r.medianPnl) : '—'} / ${r.medianTrades ?? '—'}t</td></tr>`).join('')}
+          </table></div>
+          <p class="note">Conditional calibration: every pick above (asset, members, rungs) was made after seeing test-window
+            results, and none of those picks replay inside the null. Read against the ledger's denominator; a forward book
+            is the only clean test.</p>`;
+      } else if (nt.status === 'running') {
+        nullBlock = `<p class="note">Null test running — ${nt.requestedShifts} shifts requested…</p>`;
+      } else if (nt.status === 'error') {
+        nullBlock = `<p class="warn-text">Null test failed: ${esc(nt.error || 'unknown error')}</p>`;
+      }
+    }
+
+    batchViewEl.innerHTML = `<p class="note">${header}</p>
+      <p class="note"><strong>Staged pick workflow — stage ${stage}.</strong> 16 distinct members per asset
+        (8 specs × 2 training regimes); the five protocol permutations collapse per-spec to those two regimes,
+        and every member shares the asset's band and test window, so quorum books over any subset are exact.</p>
+      ${topTable}
+      <h3 style="margin:14px 0 4px">Assets — pick one to work</h3>
+      ${assetBlocks}
+      ${membersBar}
+      ${quorumBlock}
+      ${nullBlock}`;
+
+    batchViewEl.querySelectorAll('.perm-asset').forEach((radio) => {
+      radio.addEventListener('change', () => {
+        if (radio.checked) permPost(doc.id, 'select', { pair: radio.value });
+      });
+    });
+    const membersGo = batchViewEl.querySelector('#perm-members-go');
+    if (membersGo) {
+      membersGo.addEventListener('click', () => {
+        const members = [...batchViewEl.querySelectorAll('.perm-member:checked')].map((b) => b.dataset.key);
+        permPost(doc.id, 'select', { members });
+      });
+    }
+    const nullGo = batchViewEl.querySelector('#perm-null-go');
+    if (nullGo) {
+      nullGo.addEventListener('click', async () => {
+        const rungs = [...batchViewEl.querySelectorAll('.perm-rung:checked')].map((b) => Number(b.dataset.k));
+        const shifts = Number(batchViewEl.querySelector('#perm-shifts').value) || 200;
+        if (!rungs.length) {
+          batchErrorEl.hidden = false;
+          batchErrorEl.textContent = 'check at least one rung first';
+          return;
+        }
+        batchErrorEl.hidden = true;
+        try {
+          let res = await fetch(`api/permscreen/${encodeURIComponent(doc.id)}/select`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ rungs }),
+          });
+          let body = await jsonBody(res);
+          if (!res.ok) throw new Error(body.error || `HTTP ${res.status}`);
+          res = await fetch(`api/permscreen/${encodeURIComponent(doc.id)}/null`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ shifts }),
+          });
+          body = await jsonBody(res);
+          if (!res.ok) throw new Error(body.error || `HTTP ${res.status}`);
+          pickedBatch = doc.id;
+          refreshBatch();
+        } catch (err) {
+          batchErrorEl.hidden = false;
+          batchErrorEl.textContent = err.message;
+        }
+      });
+    }
+  }
+
   // Meta-lens screen rendering: one row per pair (a run here is one complete
   // two-stage recipe), with the real run's stage detail expandable.
   function renderMetalens(doc, s, header) {
@@ -964,6 +1172,7 @@
     try {
       batchErrorEl.hidden = true;
       const useMeta = $('proto-metalens').checked;
+      const usePerm = $('proto-perm').checked;
       const pairsRaw = $('cons-pairs').value.trim();
       const body = {
         startMonth: $('start').value,
@@ -978,7 +1187,7 @@
         splitMode: $('proto-interlaced').checked ? 'interlaced' : 'chronological',
       };
       if (pairsRaw) body.pairs = pairsRaw.split(',').map((p) => p.trim().toUpperCase()).filter(Boolean);
-      const res = await fetch(useMeta ? 'api/metalens' : 'api/consensus', {
+      const res = await fetch(usePerm ? 'api/permscreen' : useMeta ? 'api/metalens' : 'api/consensus', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),

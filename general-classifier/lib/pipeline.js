@@ -18,6 +18,29 @@ const MIN_CHUNKS = 12;
 // higher tau (fewer, more confident trades).
 const TAU_GRID = [0, 0.34, 0.4, 0.45, 0.5, 0.55, 0.6];
 
+// The meta-lens interlaced split's PURGE, applied to a chronological training
+// window: 49-day (7-week) blocks, dropping the last ceil(exitOffset/step)
+// chunks of every block so overlapping chunks never straddle a block edge.
+// Mirrors lib/metalens.js interlacedSplit (kept separate — metalens requires
+// pipeline, so pipeline cannot import it back).
+function interlacedPurge(trainChunks, geo, blockDays = 49) {
+  if (!trainChunks.length) return trainChunks;
+  const purge = Math.ceil(geo.exitOffsetH / (geo.stepHours || 24));
+  const blockMs = blockDays * 24 * HOUR_MS;
+  const t0 = trainChunks[0].startTs;
+  const blocks = new Map();
+  for (const c of trainChunks) {
+    const b = Math.floor((c.startTs - t0) / blockMs);
+    if (!blocks.has(b)) blocks.set(b, []);
+    blocks.get(b).push(c);
+  }
+  const kept = [];
+  for (const [, list] of [...blocks.entries()].sort((a, b) => a[0] - b[0])) {
+    if (list.length > purge) kept.push(...list.slice(0, list.length - purge));
+  }
+  return kept;
+}
+
 function tuneTau(valChunks, valProbs, tradeMap, geo) {
   const ladder = TAU_GRID.map((tau) => {
     let pnl = 0;
@@ -213,7 +236,7 @@ async function runAnalysis(params, onProgress = () => {}) {
 
   const nTest = Math.max(2, Math.round(chunks.length * 0.2));
   const nTrain = chunks.length - nTest;
-  const trainChunks = chunks.slice(0, nTrain);
+  let trainChunks = chunks.slice(0, nTrain);
   const testChunks = chunks.slice(nTrain);
 
   // Adaptive band: calibrate on TRAINING weeks only (the test window never
@@ -223,6 +246,19 @@ async function runAnalysis(params, onProgress = () => {}) {
     dormantBandPct = balancedBandPct(trainChunks.map((c) => c.diffPct));
     onProgress(`adaptive band calibrated: ±${dormantBandPct.toFixed(2)}% (training weeks only)`);
     for (const c of chunks) c.label = scoreDiff(c.diffPct / 100, dormantBandPct / 100);
+  }
+
+  // Training-regime hook (permutation screen): 'interlaced' fits the model on
+  // the meta-lens interlaced variants' training set — the 49-day-block purged
+  // subset — while the band (calibrated above on the FULL training window)
+  // and the test window stay identical across regimes, so members trained
+  // under different regimes stay period-aligned and label-identical.
+  const trainRegime = params.trainRegime === 'interlaced' ? 'interlaced' : 'full';
+  if (trainRegime === 'interlaced') {
+    trainChunks = interlacedPurge(trainChunks, geo);
+    if (trainChunks.length < MIN_CHUNKS / 2) {
+      throw new Error(`only ${trainChunks.length} training chunks survive the interlaced purge — widen the range`);
+    }
   }
 
   const featureCount = chunks[0].x.length;
@@ -398,7 +434,7 @@ async function runAnalysis(params, onProgress = () => {}) {
 
   const fmtWeek = (c) => new Date(c.startTs).toISOString().slice(0, 10);
   return {
-    params: { dormantPct, tradeSymbol, compareSymbol, startMonth, endMonth, featureSet, model: modelKind, featureView, decision, labelShift, allLoaded, geometry, weekdaysOnly },
+    params: { dormantPct, tradeSymbol, compareSymbol, startMonth, endMonth, featureSet, model: modelKind, featureView, decision, trainRegime, labelShift, allLoaded, geometry, weekdaysOnly },
     data: {
       dormantBandPct,
       adaptiveBand,
@@ -523,4 +559,4 @@ async function loadData({ tradeSymbol, compareSymbol, startMonth, endMonth }, on
   return out;
 }
 
-module.exports = { runAnalysis, loadData, monthList, extractMetrics, deriveShift, countRotations, loadSymbol, loadSymbolAll, MIN_CHUNKS, tuneTau };
+module.exports = { runAnalysis, loadData, monthList, extractMetrics, deriveShift, countRotations, loadSymbol, loadSymbolAll, MIN_CHUNKS, tuneTau, interlacedPurge };

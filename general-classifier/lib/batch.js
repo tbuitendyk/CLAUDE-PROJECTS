@@ -93,7 +93,9 @@ function getBatch(id) {
         ? summarizeConsensus(doc.runs, doc.votes || null)
         : doc.kind === 'metalens'
           ? summarizeMetalens(doc.runs, doc.meta || null)
-          : summarize(doc.runs);
+          : doc.kind === 'permscreen'
+            ? summarizePermScreen(doc)
+            : summarize(doc.runs);
     }
     return doc;
   } catch {
@@ -746,10 +748,342 @@ function startMetalens(params) {
   return doc.id;
 }
 
+// ---- permutation screen (owner's staged pick workflow) -----------------------
+//
+// Stage 1: every pair × every spec × both TRAINING REGIMES, 0 nulls. The five
+// protocol permutations (classic, meta-lens 0-0/0-1/1-0/1-1) collapse per-spec
+// to two distinct training regimes — force-all only changes committee
+// behaviour, and the chronological meta-lens retrain (A+B) IS the classic
+// training window — so each pair yields 16 distinct members, each labeled
+// with the protocols it represents. Band and test window are shared across
+// regimes (see pipeline trainRegime), so every member's calls are
+// period-aligned and quorum books over any hand-picked subset are exact.
+//
+// Stages 2-5 are SELECTIONS persisted on the doc (pair -> members -> rungs),
+// with the quorum menu computed server-side from stored calls. Stage 6 fires
+// the null job over the frozen selection. The workflow is selection-heavy by
+// design: the null reads as a conditional calibration of the chosen book,
+// never as a clean p-value (the hand-picks cannot be replayed inside the
+// null). VERDICTS.md ledger rules apply to every look it produces.
+
+const PERM_REGIMES = [
+  { key: 'full', trainRegime: 'full', protocols: ['classic', 'ml 0-0', 'ml 1-0'] },
+  { key: 'interlaced', trainRegime: 'interlaced', protocols: ['ml 0-1', 'ml 1-1'] },
+];
+
+// Net-direction quorum call (owner's rule): the majority side wins; the book
+// trades at rung k when the winning side's ABSOLUTE count reaches k; a tied
+// up/down count stands aside at every rung.
+function permQuorumCall(callArrays, i, k) {
+  let up = 0;
+  let down = 0;
+  for (const calls of callArrays) {
+    const c = calls[i];
+    if (c === 1) up++;
+    else if (c === -1) down++;
+  }
+  if (up === down) return 0;
+  const winner = up > down ? 1 : -1;
+  return Math.max(up, down) >= k ? winner : 0;
+}
+
+function permQuorumBook(periods, callArrays, k, feePerLeg) {
+  let pnl = 0;
+  let trades = 0;
+  let wins = 0;
+  let correct = 0;
+  let scored = 0;
+  let tradeCorrect = 0;
+  periods.forEach((p, i) => {
+    const call = permQuorumCall(callArrays, i, k);
+    if (p.actual != null) {
+      scored++;
+      if (call === p.actual) correct++;
+    }
+    if (call === 0 || p.entry == null || p.exit == null) return;
+    const v = pnlAt(call, p.entry, p.exit, feePerLeg);
+    pnl += v;
+    trades++;
+    if (v > 0) wins++;
+    if (call === p.actual) tradeCorrect++;
+  });
+  return {
+    k,
+    pnl,
+    trades,
+    wins,
+    grossPerTrade: trades ? (pnl + trades * 2 * feePerLeg) / trades : null,
+    acc: scored ? correct / scored : null,
+    tradeHit: trades ? tradeCorrect / trades : null,
+  };
+}
+
+function summarizePermScreen(doc) {
+  const done = doc.runs.filter((r) => r.status === 'done').length;
+  const failed = doc.runs
+    .filter((r) => r.status === 'error')
+    .map((r) => ({ trade: r.trade, key: `${r.regime}/${r.view}/${r.model}`, error: r.error }));
+  const top = [];
+  const pairs = [];
+  for (const [trade, p] of Object.entries(doc.perms || {})) {
+    const members = Object.entries(p.members || {}).map(([key, m]) => ({ trade, key, ...m }));
+    members.sort((a, b) => (b.metrics.paperPnl ?? -Infinity) - (a.metrics.paperPnl ?? -Infinity));
+    pairs.push({ trade, band: p.band, members: members.length, best: members[0] ? { key: members[0].key, pnl: members[0].metrics.paperPnl } : null });
+    for (const m of members) top.push(m);
+  }
+  top.sort((a, b) => (b.metrics.paperPnl ?? -Infinity) - (a.metrics.paperPnl ?? -Infinity));
+  pairs.sort((a, b) => (b.best ? b.best.pnl : -Infinity) - (a.best ? a.best.pnl : -Infinity));
+  return { kind: 'permscreen', done, total: doc.runs.length, failed, pairs, top: top.slice(0, 20).map((m) => ({ trade: m.trade, key: m.key, protocols: m.protocols, pnl: m.metrics.paperPnl, trades: m.metrics.paperTrades, wins: m.metrics.paperWins, hindsightEdge: m.metrics.hindsightEdge, testAcc: m.metrics.testAcc, chosen: m.metrics.chosen })) };
+}
+
+function startPermScreen(params) {
+  if (batchRunning()) throw new Error(`batch ${activeBatch.id} is already running`);
+  const {
+    startMonth = '2018-01',
+    endMonth = '2026-06',
+    compareSymbol = 'BTCUSDT',
+    pairs = DEFAULT_PAIRS,
+    geometry = 'weekly-8d',
+    decision = 'argmax',
+    dormantPct = 'auto',
+    weekdaysOnly = false,
+    allLoaded = false,
+  } = params || {};
+
+  const stamp = new Date().toISOString().replace(/[-:]/g, '').slice(0, 13).replace('T', '-');
+  const doc = {
+    id: `permscreen-${stamp}`,
+    kind: 'permscreen',
+    status: 'running',
+    startedAt: new Date().toISOString(),
+    finishedAt: null,
+    progress: '',
+    params: { dormantPct, startMonth, endMonth, featureSet: 'compressed', compareSymbol, views: CONSENSUS_VIEWS, models: CONSENSUS_MODELS, regimes: PERM_REGIMES.map((r) => r.key), geometry, decision, weekdaysOnly, allLoaded, feePerLeg: REAL_FEE_PER_LEG },
+    runs: [],
+    perms: {}, // per pair: { band, periods:[{week,actual,entry,exit}], members:{ key: {regime,view,model,protocols,calls,metrics} } }
+    selection: { pair: null, members: [], rungs: [] },
+    quorums: null,
+    nullTest: null,
+    summary: null,
+  };
+  for (const trade of pairs) {
+    if (trade === compareSymbol) continue;
+    for (const regime of PERM_REGIMES) {
+      for (const view of CONSENSUS_VIEWS) {
+        for (const model of CONSENSUS_MODELS) {
+          doc.runs.push({ trade, compare: compareSymbol, regime: regime.key, view, model, shift: 0, status: 'pending', error: null, metrics: null });
+        }
+      }
+    }
+  }
+  activeBatch = doc;
+  saveBatch(doc);
+  runPermRuns(doc, doc.runs, null).then(() => {
+    doc.status = doc.cancelRequested ? 'cancelled' : 'done';
+    doc.finishedAt = new Date().toISOString();
+    doc.progress = '';
+    doc.summary = summarizePermScreen(doc);
+    saveBatch(doc);
+  }).catch((err) => {
+    doc.status = 'error';
+    doc.error = err.message || String(err);
+    doc.finishedAt = new Date().toISOString();
+    saveBatch(doc);
+  });
+  return doc.id;
+}
+
+// Shared run loop for stage 1 (shift 0, every member) and stage 6 (selected
+// members, shifts 1..N). nullCtx = { shifts, groups: Map(shift -> group) }.
+async function runPermRuns(doc, runs, nullCtx) {
+  const p = doc.params;
+  for (const run of runs) {
+    if (doc.cancelRequested) break;
+    run.status = 'running';
+    const tag = `${run.trade}/${run.regime}/${run.view}/${run.model}${run.shift ? `/shift${run.shift}` : ''}`;
+    doc.progress = (nullCtx ? 'null: ' : '') + tag;
+    try {
+      const report = await runAnalysis(
+        {
+          dormantPct: p.dormantPct,
+          tradeSymbol: run.trade,
+          compareSymbol: run.compare,
+          startMonth: p.startMonth,
+          endMonth: p.endMonth,
+          featureSet: 'compressed',
+          model: run.model,
+          featureView: run.view,
+          trainRegime: run.regime === 'interlaced' ? 'interlaced' : 'full',
+          labelShiftFrac: run.shift > 0 ? run.shift / (nullCtx.shifts + 1) : 0,
+          geometry: p.geometry,
+          decision: p.decision,
+          weekdaysOnly: p.weekdaysOnly,
+          allLoaded: p.allLoaded,
+        },
+        (prog) => {
+          doc.progress = `${nullCtx ? 'null: ' : ''}${tag}: ${prog}`;
+        }
+      );
+      run.metrics = extractMetrics(report);
+      run.effectiveShift = report.params.labelShift || 0;
+      run.status = 'done';
+      const rows = report.test.rows;
+      if (run.shift === 0) {
+        const pp = doc.perms[run.trade] || (doc.perms[run.trade] = { band: null, periods: null, members: {} });
+        pp.band = report.data.dormantBandPct;
+        if (!pp.periods) pp.periods = rows.map((r) => ({ week: r.weekStart, actual: r.actual, entry: r.entry, exit: r.exit }));
+        if (rows.length === pp.periods.length) {
+          const regime = PERM_REGIMES.find((r) => r.key === run.regime);
+          pp.members[`${run.regime}/${run.view}/${run.model}`] = {
+            regime: run.regime,
+            view: run.view,
+            model: run.model,
+            protocols: regime.protocols,
+            calls: rows.map((r) => r.predicted),
+            metrics: run.metrics,
+          };
+        } else {
+          run.status = 'error';
+          run.error = `test window misaligned (${rows.length} vs ${pp.periods.length} periods)`;
+        }
+      } else {
+        let g = nullCtx.groups.get(run.shift);
+        if (!g) {
+          g = { periods: null, calls: [], expected: doc.selection.members.length, effectiveShift: run.effectiveShift };
+          nullCtx.groups.set(run.shift, g);
+        }
+        if (!g.periods) g.periods = rows.map((r) => ({ actual: r.actual, entry: r.entry, exit: r.exit }));
+        if (rows.length === g.periods.length) g.calls.push(rows.map((r) => r.predicted));
+      }
+    } catch (err) {
+      run.status = 'error';
+      run.error = err.message || String(err);
+    }
+    doc.summary = summarizePermScreen(doc);
+    saveBatch(doc);
+  }
+  for (const r of runs) if (r.status === 'running') r.status = 'error';
+}
+
+// Stage 2/3/5 selections, persisted server-side so the workflow survives
+// reloads. Changing an earlier stage clears everything downstream of it.
+function permSelect(id, patch) {
+  const doc = getBatch(id);
+  if (!doc || doc.kind !== 'permscreen') throw new Error('unknown permutation screen');
+  if (doc.status === 'running') throw new Error('screen is still running');
+  if (patch.pair !== undefined) {
+    if (patch.pair !== null && !doc.perms[patch.pair]) throw new Error(`no results for pair "${patch.pair}"`);
+    doc.selection = { pair: patch.pair, members: [], rungs: [] };
+    doc.quorums = null;
+    doc.nullTest = null;
+  }
+  if (patch.members !== undefined) {
+    const pair = doc.selection.pair;
+    if (!pair) throw new Error('select an asset first');
+    const valid = doc.perms[pair].members;
+    const members = [...new Set(patch.members.map(String))];
+    if (!members.length) throw new Error('pick at least one member');
+    for (const m of members) if (!valid[m]) throw new Error(`unknown member "${m}"`);
+    doc.selection.members = members;
+    doc.selection.rungs = [];
+    doc.nullTest = null;
+    const periods = doc.perms[pair].periods;
+    const callArrays = members.map((m) => valid[m].calls);
+    const fee = doc.params.feePerLeg ?? REAL_FEE_PER_LEG;
+    const rows = [];
+    for (let k = 1; k <= members.length; k++) rows.push(permQuorumBook(periods, callArrays, k, fee));
+    rows.sort((a, b) => b.pnl - a.pnl);
+    doc.quorums = { pair, members, rows, computedAt: new Date().toISOString() };
+  }
+  if (patch.rungs !== undefined) {
+    if (!doc.quorums) throw new Error('compute the quorum table first (pick members)');
+    const n = doc.selection.members.length;
+    const rungs = [...new Set(patch.rungs.map(Number))].filter((k) => Number.isInteger(k) && k >= 1 && k <= n);
+    if (!rungs.length) throw new Error('pick at least one quorum rung');
+    doc.selection.rungs = rungs.sort((a, b) => a - b);
+    doc.nullTest = null;
+  }
+  saveBatch(doc);
+  return doc;
+}
+
+// Stage 6: null-calibrate the FROZEN selection. Retrains only the selected
+// members per label rotation and scores only the selected rungs.
+function startPermNull(id, shifts) {
+  if (batchRunning()) throw new Error(`batch ${activeBatch.id} is already running`);
+  const doc = getBatch(id);
+  if (!doc || doc.kind !== 'permscreen') throw new Error('unknown permutation screen');
+  const sel = doc.selection;
+  if (!sel.pair || !sel.members.length || !sel.rungs.length) throw new Error('selection incomplete: need asset, members and rungs');
+  const nShifts = Math.min(1000, Math.max(1, Math.floor(Number(shifts) || 0)));
+  const fee = doc.params.feePerLeg ?? REAL_FEE_PER_LEG;
+  const memberSpecs = sel.members.map((key) => {
+    const [regime, view, model] = key.split('/');
+    return { trade: sel.pair, compare: doc.params.compareSymbol, regime, view, model };
+  });
+  const nullRuns = [];
+  for (let s = 1; s <= nShifts; s++) {
+    for (const m of memberSpecs) nullRuns.push({ ...m, shift: s, status: 'pending', error: null, metrics: null });
+  }
+  doc.runs = doc.runs.filter((r) => !r.shift); // a re-fire replaces any older null runs
+  doc.runs.push(...nullRuns);
+  doc.status = 'running';
+  doc.cancelRequested = false;
+  doc.nullTest = { status: 'running', requestedShifts: nShifts, startedAt: new Date().toISOString(), perRung: null, shifts: 0 };
+  activeBatch = doc;
+  saveBatch(doc);
+
+  const nullCtx = { shifts: nShifts, groups: new Map() };
+  runPermRuns(doc, nullRuns, nullCtx).then(() => {
+    // Real rung books, recomputed from the frozen selection.
+    const periods = doc.perms[sel.pair].periods;
+    const callArrays = sel.members.map((m) => doc.perms[sel.pair].members[m].calls);
+    const real = {};
+    for (const k of sel.rungs) real[k] = permQuorumBook(periods, callArrays, k, fee);
+    // Null distribution: one sample per DISTINCT effective rotation whose
+    // member group completed in full — partial groups would run a different
+    // committee and bias the floor.
+    const byRotation = new Map();
+    for (const [, g] of nullCtx.groups) {
+      if (g.calls.length !== sel.members.length || !g.periods) continue;
+      byRotation.set(g.effectiveShift, g);
+    }
+    const perRung = {};
+    for (const k of sel.rungs) {
+      const nulls = [...byRotation.values()].map((g) => permQuorumBook(g.periods, g.calls, k, fee));
+      perRung[k] = {
+        real: real[k],
+        shifts: nulls.length,
+        exceedPnl: nulls.length ? nulls.filter((b) => b.pnl >= real[k].pnl).length / nulls.length : null,
+        medianPnl: median(nulls.map((b) => b.pnl)),
+        medianTrades: median(nulls.map((b) => b.trades)),
+      };
+    }
+    doc.nullTest = { ...doc.nullTest, status: doc.cancelRequested ? 'cancelled' : 'done', finishedAt: new Date().toISOString(), shifts: byRotation.size, perRung };
+    doc.status = doc.cancelRequested ? 'cancelled' : 'done';
+    doc.finishedAt = new Date().toISOString();
+    doc.progress = '';
+    saveBatch(doc);
+  }).catch((err) => {
+    doc.nullTest = { ...doc.nullTest, status: 'error', error: err.message || String(err) };
+    doc.status = 'error';
+    doc.error = err.message || String(err);
+    saveBatch(doc);
+  });
+  return { started: true, shifts: nShifts };
+}
+
 module.exports = {
   startBatch,
   startConsensus,
   startMetalens,
+  startPermScreen,
+  permSelect,
+  startPermNull,
+  permQuorumBook,
+  permQuorumCall,
+  summarizePermScreen,
+  PERM_REGIMES,
   summarizeMetalens,
   getBatch,
   listBatches,

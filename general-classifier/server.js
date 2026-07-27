@@ -150,6 +150,67 @@ app.post('/api/batch', (req, res) => {
   }
 });
 
+// Permutation screen: stage 1 of the owner's staged pick workflow — every
+// pair × every spec × both training regimes, 0 null shifts by design.
+app.post('/api/permscreen', (req, res) => {
+  const b = req.body || {};
+  for (const m of ['startMonth', 'endMonth']) {
+    if (!b.allLoaded && b[m] !== undefined && !/^\d{4}-\d{2}$/.test(String(b[m]))) {
+      return res.status(400).json({ error: `${m} must be YYYY-MM` });
+    }
+  }
+  if (b.pairs !== undefined && (!Array.isArray(b.pairs) || !b.pairs.length || b.pairs.some((p) => !SYMBOL_RE.test(String(p).toUpperCase())))) {
+    return res.status(400).json({ error: 'pairs must be a non-empty array of symbols like DOTUSDT' });
+  }
+  const geometry = String(b.geometry || 'weekly-8d');
+  if (!GEOMETRY_KEYS.includes(geometry)) {
+    return res.status(400).json({ error: `geometry must be one of ${GEOMETRY_KEYS.join('/')}` });
+  }
+  const decision = String(b.decision || 'argmax');
+  if (decision !== 'argmax' && decision !== 'directional') {
+    return res.status(400).json({ error: 'decision must be "argmax" or "directional"' });
+  }
+  const dormant = b.dormantPct === undefined || b.dormantPct === 'auto' ? 'auto' : Number(b.dormantPct);
+  if (dormant !== 'auto' && (!Number.isFinite(dormant) || dormant <= 0 || dormant >= 50)) {
+    return res.status(400).json({ error: 'dormant range must be "auto" or a percentage between 0 and 50' });
+  }
+  try {
+    const id = batch.startPermScreen({
+      startMonth: b.startMonth,
+      endMonth: b.endMonth,
+      compareSymbol: b.compareSymbol ? String(b.compareSymbol).toUpperCase() : undefined,
+      pairs: b.pairs ? b.pairs.map((p) => String(p).toUpperCase()) : undefined,
+      geometry,
+      decision,
+      dormantPct: dormant,
+      weekdaysOnly: !!b.weekdaysOnly,
+      allLoaded: !!b.allLoaded,
+    });
+    res.json({ batchId: id });
+  } catch (err) {
+    res.status(409).json({ error: err.message });
+  }
+});
+
+// Stages 2/3/5: persist the owner's selections (asset -> members -> rungs).
+app.post('/api/permscreen/:id/select', (req, res) => {
+  try {
+    const doc = batch.permSelect(req.params.id, req.body || {});
+    res.json({ ok: true, selection: doc.selection, quorums: doc.quorums });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// Stage 6: fire the null test over the frozen selection.
+app.post('/api/permscreen/:id/null', (req, res) => {
+  try {
+    res.json(batch.startPermNull(req.params.id, (req.body || {}).shifts));
+  } catch (err) {
+    res.status(409).json({ error: err.message });
+  }
+});
+
 app.post('/api/consensus', (req, res) => {
   const b = req.body || {};
   for (const m of ['startMonth', 'endMonth']) {
