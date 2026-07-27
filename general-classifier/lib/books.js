@@ -3,9 +3,10 @@ const path = require('path');
 const { monthlyKlines, dailyKlines, recentKlines, HOUR_MS } = require('./binance');
 const { toHourlyMap, forwardFill, buildChunks, balancedBandPct, GEOMETRIES } = require('./dataset');
 const { viewIndices } = require('./features');
-const { standardizeFit, standardizeApply, tuneAndTrain, predict: predictLogreg } = require('./logreg');
+const { standardizeFit, standardizeApply, tuneAndTrain, trainSoftmax, predict: predictLogreg, CLASSES } = require('./logreg');
 const { trainBoost, predictBoost } = require('./boost');
-const { NOTIONAL, FEE_PER_LEG, REAL_FEE_PER_LEG, pnlAt, voteOf, superOf } = require('./paper');
+const { NOTIONAL, FEE_PER_LEG, REAL_FEE_PER_LEG, pnlAt, voteOf, superOf, directionalCall } = require('./paper');
+const { tuneTau } = require('./pipeline');
 
 // Generalized live paper-book engine: one machine, many books.
 //
@@ -137,13 +138,23 @@ function validateConfig(raw) {
   if (!Number.isInteger(horizonPeriods) || horizonPeriods < 5 || horizonPeriods > 1000) {
     throw new Error('horizonPeriods must be an integer 5..1000');
   }
+  // Decision mode, frozen with everything else. 'argmax' = classic 3-class.
+  // 'directional' = the hunter: class-weighted training, ±1-only calls, each
+  // spec standing aside below its own τ (tuned on validation paper P&L at
+  // declaration time, then frozen). Required for books that forward-test a
+  // directional-hunter screen result — an argmax book at a wide fixed band
+  // would predict dormant nearly always and test a different machine.
+  const decision = c.decision === undefined ? 'argmax' : String(c.decision);
+  if (decision !== 'argmax' && decision !== 'directional') {
+    throw new Error('decision must be "argmax" or "directional"');
+  }
   const notes = c.notes ? String(c.notes).slice(0, 2000) : '';
   // Per-book friction, frozen at declaration like everything else. Default
   // is the research rate (VERDICTS.md); legacy books without the field are
   // read at the old $0.50/leg stress rate they declared.
   const feePerLeg = c.feePerLeg === undefined ? REAL_FEE_PER_LEG : Number(c.feePerLeg);
   if (!Number.isFinite(feePerLeg) || feePerLeg < 0 || feePerLeg > 1) throw new Error('feePerLeg must be 0..1 dollars');
-  return { pair, compareSymbol, geometry, band, startMonth, cutoff: cutoffStr, cutoffMs: cutoff, rules, horizonPeriods, feePerLeg, notes };
+  return { pair, compareSymbol, geometry, band, startMonth, cutoff: cutoffStr, cutoffMs: cutoff, rules, horizonPeriods, feePerLeg, decision, notes };
 }
 
 function defaultCutoff() {
@@ -168,6 +179,9 @@ function generateDeclaration(config, preview, bookNumber) {
       (geo.labelMode === 'points' ? 'outcomes scored on the two candle opens.' : 'outcomes scored on the Tue/Thu 6h window averages.'),
     `Band: ${config.band === 'auto' ? `adaptive (33rd percentile of training |move|) — froze at ±${preview.bandPct.toFixed(2)}%` : `fixed ±${config.band}%`}, never recomputed.`,
     `Models: 8 specs (full/prices/volume/cross × logreg/boost), trained once on the ${preview.trainChunks} chunks whose outcomes completed before ${config.cutoff}, then frozen. No data from ${config.cutoff} onward influenced them.`,
+    config.decision === 'directional'
+      ? `Decision: DIRECTIONAL HUNTER — class-weighted training (the rare ±1 chunks carry as much loss as the dormant majority); each spec compares P(+1) vs P(−1) only and stands aside below its own τ, tuned on the validation tail by paper P&L before declaration and frozen with the weights. 0 is never predicted — it is what happens when conviction is absent.`
+      : `Decision: argmax (classic 3-class — the most probable of −1/0/+1 is the call).`,
     `Economics: $${NOTIONAL} per order, $${(config.feePerLeg ?? FEE_PER_LEG).toFixed(3)} per leg ($${(2 * (config.feePerLeg ?? FEE_PER_LEG)).toFixed(2)} per round trip). Positions may overlap; implied capital scales with hold length, not $${NOTIONAL}.`,
     ``,
     `Decision rules — declared now, ALL reported, none promotable on live results:`,
@@ -275,32 +289,75 @@ function discardDraft(id) {
 
 const N_DAYS_OF = (geometry) => GEOMETRIES[geometry].featureHours / 24;
 
-async function trainSpec(spec, chunks, nDays) {
+async function trainSpec(spec, chunks, nDays, ctx = {}) {
   const idx = viewIndices(spec.view, nDays);
   const X = chunks.map((c) => idx.map((i) => c.x[i]));
   const y = chunks.map((c) => c.label);
+  // Directional hunter: balanced class weights from training counts (capped
+  // so a nearly-empty class can't dominate) — the pipeline's exact formula.
+  let classWeights = null;
+  if (ctx.decision === 'directional') {
+    const counts = {};
+    for (const c of CLASSES) counts[c] = y.filter((l) => l === c).length;
+    const present = CLASSES.filter((c) => counts[c] > 0);
+    classWeights = {};
+    for (const c of CLASSES) {
+      classWeights[c] = counts[c] > 0 ? Math.min(20, y.length / (present.length * counts[c])) : 1;
+    }
+  }
+  const weightsFor = (labels) => (classWeights ? labels.map((l) => classWeights[l]) : null);
+  const nVal = Math.max(3, Math.round(X.length * 0.25));
+  const nSub = X.length - nVal;
+  // τ tunes on validation probabilities from a probe that never trained on
+  // the tail — same honesty rule as the pipeline; the tail's paper P&L picks.
+  const tuneSpecTau = (valProbs) =>
+    tuneTau(chunks.slice(nSub), valProbs, ctx.tradeMap, ctx.geo).tau;
+
   if (spec.model === 'logreg') {
     const scaler = standardizeFit(X);
     const Z = standardizeApply(X, scaler);
-    const { model, chosenLambda } = await tuneAndTrain(Z, y, { onProgress: () => {} });
-    return { kind: 'logreg', view: spec.view, lambda: chosenLambda, f: model.f, W: Array.from(model.W), mean: Array.from(scaler.mean), std: Array.from(scaler.std) };
+    const { model, chosenLambda } = await tuneAndTrain(Z, y, { onProgress: () => {}, classWeights });
+    let tau = null;
+    if (ctx.decision === 'directional') {
+      const probe = await trainSoftmax(Z.slice(0, nSub), y.slice(0, nSub), chosenLambda, { weights: weightsFor(y.slice(0, nSub)) });
+      const valProbs = [];
+      for (let i = nSub; i < Z.length; i++) valProbs.push(predictLogreg(probe, Z[i]).probs);
+      tau = tuneSpecTau(valProbs);
+    }
+    return { kind: 'logreg', view: spec.view, lambda: chosenLambda, f: model.f, W: Array.from(model.W), mean: Array.from(scaler.mean), std: Array.from(scaler.std), decision: ctx.decision || 'argmax', tau, classWeights };
   }
-  const nVal = Math.max(3, Math.round(X.length * 0.25));
-  const nSub = X.length - nVal;
-  const probe = await trainBoost(X.slice(0, nSub), y.slice(0, nSub), { Xval: X.slice(nSub), yval: y.slice(nSub) });
-  const model = await trainBoost(X, y, { rounds: probe.bestRound });
-  return { kind: 'boost', view: spec.view, rounds: model.bestRound, priors: model.priors, trees: model.trees };
+  const probe = await trainBoost(X.slice(0, nSub), y.slice(0, nSub), {
+    Xval: X.slice(nSub),
+    yval: y.slice(nSub),
+    weights: weightsFor(y.slice(0, nSub)),
+    valWeights: weightsFor(y.slice(nSub)),
+  });
+  let tau = null;
+  if (ctx.decision === 'directional') {
+    const valProbs = [];
+    for (let i = nSub; i < X.length; i++) valProbs.push(predictBoost(probe, X[i]).probs);
+    tau = tuneSpecTau(valProbs);
+  }
+  const model = await trainBoost(X, y, { rounds: probe.bestRound, weights: weightsFor(y) });
+  return { kind: 'boost', view: spec.view, rounds: model.bestRound, priors: model.priors, trees: model.trees, decision: ctx.decision || 'argmax', tau, classWeights };
 }
 
 function predictSpec(saved, xFull, nDays) {
   const idx = viewIndices(saved.view, nDays);
   const x = idx.map((i) => xFull[i]);
+  let out;
   if (saved.kind === 'logreg') {
     const z = new Float64Array(x.length);
     for (let j = 0; j < x.length; j++) z[j] = (x[j] - saved.mean[j]) / saved.std[j];
-    return predictLogreg({ W: Float64Array.from(saved.W), f: saved.f }, z).label;
+    out = predictLogreg({ W: Float64Array.from(saved.W), f: saved.f }, z);
+  } else {
+    out = predictBoost({ priors: saved.priors, trees: saved.trees }, x);
   }
-  return predictBoost({ priors: saved.priors, trees: saved.trees }, x).label;
+  // Directional spec: the ACTION is the prediction — ±1 above its frozen τ,
+  // stand aside otherwise. Argmax specs (and all pre-existing books, which
+  // stored no decision field) keep the plain label.
+  if (saved.decision === 'directional') return directionalCall(out.probs, saved.tau);
+  return out.label;
 }
 
 async function declare(id, onProgress = () => {}) {
@@ -321,9 +378,10 @@ async function declare(id, onProgress = () => {}) {
   for (const c of trainChunks) c.label = scoreDiff(c.diffPct / 100, bandPct / 100);
 
   const models = {};
+  const specCtx = { decision: config.decision || 'argmax', tradeMap, geo: GEOMETRIES[config.geometry] };
   for (const spec of SPECS) {
-    onProgress(`freezing ${spec.key} (${trainChunks.length} training chunks)`);
-    models[spec.key] = await trainSpec(spec, trainChunks, nDays);
+    onProgress(`freezing ${spec.key} (${trainChunks.length} training chunks${specCtx.decision === 'directional' ? ', directional τ from validation $' : ''})`);
+    models[spec.key] = await trainSpec(spec, trainChunks, nDays, specCtx);
   }
 
   // the ticket is purchased exactly here — number assigned, never reused
@@ -618,6 +676,7 @@ module.exports = {
   bookStats,
   settleAfterH,
   isLiveRecording,
+  predictSpec,
   ALLOWED_RULES,
   SPECS,
 };

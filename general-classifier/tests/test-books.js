@@ -6,6 +6,7 @@ const {
   bookStats,
   settleAfterH,
   isLiveRecording,
+  predictSpec,
   ALLOWED_RULES,
   SPECS,
 } = require('../lib/books');
@@ -93,6 +94,34 @@ module.exports = {
     // "3-for-3 but 50%" confusion, split into its two honest numbers
     assert.strictEqual(s.tradeCorrect, 1);
     assert.strictEqual(s.tradeScored, 2);
+  },
+  async directionalDecisionIsFrozenAndHonored() {
+    // Config: decision is validated, defaults to argmax, survives round-trip.
+    assert.strictEqual(validateConfig({ pair: 'UNIUSDT' }).decision, 'argmax');
+    assert.strictEqual(validateConfig({ pair: 'UNIUSDT', decision: 'directional' }).decision, 'directional');
+    assert.throws(() => validateConfig({ pair: 'UNIUSDT', decision: 'both' }), /argmax.*directional/);
+    // The declaration states the decision mode explicitly, both ways.
+    const dir = validateConfig({ pair: 'UNIUSDT', decision: 'directional', band: 5 });
+    const dec = generateDeclaration(dir, { bandPct: 5, trainChunks: 500 }, 9);
+    assert.ok(dec.includes('DIRECTIONAL HUNTER'));
+    assert.ok(dec.includes('stands aside below its own τ'));
+    const arg = generateDeclaration(validateConfig({ pair: 'UNIUSDT' }), { bandPct: 5, trainChunks: 500 }, 9);
+    assert.ok(arg.includes('argmax'));
+    // predictSpec: a directional spec calls ±1 only above its frozen τ and
+    // stands aside below it; an argmax spec (and every pre-existing book,
+    // which stored no decision field) keeps the plain label. Empty-tree
+    // boost model → probabilities are exactly the priors.
+    // boost stores log-priors as an ARRAY in class order [-1, 0, 1]
+    const lp = (a, b, c) => [Math.log(a), Math.log(b), Math.log(c)];
+    const saved = { kind: 'boost', view: 'full', priors: lp(0.3, 0.2, 0.5), trees: [] };
+    const x = new Array(256).fill(0);
+    assert.strictEqual(predictSpec({ ...saved }, x, 3), 1); // argmax label
+    assert.strictEqual(predictSpec({ ...saved, decision: 'directional', tau: 0.5 }, x, 3), 1);
+    assert.strictEqual(predictSpec({ ...saved, decision: 'directional', tau: 0.55 }, x, 3), 0);
+    // Dormant-majority priors: argmax says 0, the hunter still compares ±1 only.
+    const dormant = { ...saved, priors: lp(0.25, 0.4, 0.35) };
+    assert.strictEqual(predictSpec({ ...dormant }, x, 3), 0);
+    assert.strictEqual(predictSpec({ ...dormant, decision: 'directional', tau: 0.34 }, x, 3), 1);
   },
   async frozenBooksAreUnreachable() {
     const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'lib', 'books.js'), 'utf8');

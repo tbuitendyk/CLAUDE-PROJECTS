@@ -136,6 +136,35 @@ result alone.** Read against H1's declared 51-look denominator, 2.6% is
 suggestive, not significant. Disposition of the UNI configuration is
 governed by A2 below.
 
+### AVAXUSDT ±5% — consensus-20260726-1448, read 2026-07-27 (owner-adjudicated)
+
+The doc was interrupted at 6,667/8,008 runs (deploy accident, disclosed
+under A2). The owner ruled the on-screen partial result IS the A2 look:
+833 distinct shifts of the declared 1,000, an interruption, not a
+selection — the exceed counts were not knowable when the run died. This
+supersedes the disclosure's "relaunch verbatim" plan; the relaunched doc
+(consensus-20260726-2347) was cancelled unread so A2 stays one look.
+
+Vote book +$76.55 net on 157 trades (79 wins), accuracy 54.3%
+(edge −14.3%); super 6/8 +$27.87 on 36 trades. Null calibration:
+
+- **Vote P&L exceed 1% of 832 shifts** (primary). Super 1% of 832.
+  Gate ladder: q5 1% (98t, gross/trade $0.89) / q6 1% (36t, $1.02) /
+  q7 97% and q8 99% (vacuous — those rungs never fired, 0 trades).
+- Consensus-fraction exceed 94%: ZERO of 8 specs had positive true edge.
+  As with DOT, whatever is here lives in the book — in WHEN it trades —
+  not in per-spec call accuracy. Same caveat as UNI's 79.9% edge exceed.
+- Gradient gross/trade rises $0.89 → $1.02 from q5 to q6; the tight rungs
+  are silent at this band.
+
+**Verdict per A2: 1% ≤ 2% — the joint ticket triggers. Both UNIUSDT
+(2.6% of 1,000) and AVAXUSDT (1% of 832) earn paper-book forward
+tickets.** Caveats carried: correlated pairs, UNI's number known when the
+rule was written, and the AVAX look at 833 of 1,000 declared shifts.
+Consequence executed: hunter paper books drafted for both pairs via the
+book engine (decision = directional added to the engine for exactly this;
+the frozen trackers are untouched). Declaration awaits owner sign-off.
+
 ## Amendment log
 
 - **A1 (2026-07-26) — H1 reading gate: low-frequency lane added.** The
