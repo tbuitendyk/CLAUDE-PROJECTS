@@ -1851,7 +1851,9 @@
         <td>${esc(l.geometry)}</td><td>${l.bandMode === 'auto' ? 'auto→' : ''}±${l.bandPct != null ? l.bandPct.toFixed(2) : '?'}%</td>
         <td>${esc(l.decision)}</td><td>${l.weekdaysOnly ? '24/5' : '24/7'}</td>
         <td>${l.quorum}/${l.members}</td><td>${esc(l.gate)}</td><td>${l.dMult}×</td><td>${l.tHours}h</td>
-        <td><strong>${money(l.pnl)}</strong></td><td>${l.wins}/${l.trades}</td>
+        <td><strong>${money(l.pnl)}</strong></td>
+        <td>${l.gate === 'always' || l.controlPnl == null ? '—' : `<span class="${l.pnl - l.controlPnl >= 0 ? 'up' : 'down'}">${money(l.pnl - l.controlPnl)}</span>`}</td>
+        <td>${l.wins}/${l.trades}</td>
         <td>${l.grossPerTrade != null ? '$' + l.grossPerTrade.toFixed(2) : '—'}</td>
         <td>${l.stops}</td><td>${l.ambiguous}</td>
       </tr>`;
@@ -1862,7 +1864,7 @@
       <div class="tablewrap"><table>
         <tr><th title="Pick a PROMOTED row as the null-test candidate"></th><th>#</th><th>stage</th><th>combo</th><th>shape</th><th>band</th><th>decision</th><th>24/x</th>
         <th title="Quorum rung over the member set (net direction wins)">quorum</th><th>gate</th><th title="Bracket distance, × the combo's band">d</th><th>t</th>
-        <th>net P&L</th><th>W/T</th><th>gross/trade</th><th title="Trades closed by the stop rail">stops</th><th title="Hourly bars where entry and stop both fell inside one bar — always resolved AGAINST the book">ambig</th></tr>
+        <th>net P&L</th><th title="This row's net minus the BEST always-gate (model-free) cell on the SAME combo+branch — the dollars the model added over blind bracket-chasing there. '—' on always rows (they ARE the control). Baseline ignores the min-trade floor.">vs control</th><th>W/T</th><th>gross/trade</th><th title="Trades closed by the stop rail">stops</th><th title="Hourly bars where entry and stop both fell inside one bar — always resolved AGAINST the book">ambig</th></tr>
         ${leadRows || '<tr><td colspan="17" class="note">nothing on the board yet</td></tr>'}
       </table></div></div>`;
 

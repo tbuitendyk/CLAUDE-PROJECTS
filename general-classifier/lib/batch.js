@@ -1216,10 +1216,20 @@ async function runBracketUnit(doc, combo, branch, stage, getMap, onRun) {
     for (let k = 2; k <= memberCalls.length; k++) streams.push({ quorum: k, calls: testChunks.map((_, i) => permQuorumCall(memberCalls, i, k)) });
   }
   let best = null;
+  let controlPnl = null;
   for (const s of streams) {
-    const cell = bracketLib.bestCell(bracketLib.execSweep(testChunks, s.calls, maps.trade, geo, bandPct, fee), doc.params.minTrades);
+    const rows = bracketLib.execSweep(testChunks, s.calls, maps.trade, geo, bandPct, fee);
+    if (controlPnl === null) {
+      // The model-free baseline for this unit: the BEST always-gate cell
+      // (identical for every stream — the control ignores calls). No
+      // min-trade floor: it's a yardstick, not a candidate.
+      const ctl = bracketLib.bestCell(rows.filter((r) => r.gate === 'always'), 0);
+      controlPnl = ctl ? ctl.pnl : null;
+    }
+    const cell = bracketLib.bestCell(rows, doc.params.minTrades);
     if (cell && (!best || cell.pnl > best.pnl)) best = { ...cell, quorum: s.quorum, members: memberCalls.length };
   }
+  if (best) best.controlPnl = controlPnl;
   return { best, bandPct, testPeriods: testChunks.length, chunks, testChunks, trainChunks, memberCalls, maps, geo };
 }
 
