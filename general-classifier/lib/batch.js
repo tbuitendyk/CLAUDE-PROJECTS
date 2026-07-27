@@ -35,6 +35,7 @@ let activeBatch = null; // one at a time; the UI polls this
       if (doc.status !== 'running') continue;
       for (const r of doc.runs) if (r.status === 'running') r.status = 'error';
       doc.status = 'interrupted';
+      if (doc.nullTest && doc.nullTest.status === 'running') doc.nullTest.status = 'interrupted';
       doc.finishedAt = doc.finishedAt || new Date().toISOString();
       doc.progress = '';
       fs.writeFileSync(file, JSON.stringify(doc, null, 1));
@@ -954,6 +955,20 @@ async function runPermRuns(doc, runs, nullCtx) {
         }
         if (!g.periods) g.periods = rows.map((r) => ({ actual: r.actual, entry: r.entry, exit: r.exit }));
         if (rows.length === g.periods.length) g.calls.push(rows.map((r) => r.predicted));
+        // LIVE null reading (same behaviour as the consensus screen): the
+        // moment a rotation's committee is complete, score the kept rungs,
+        // bank the sample (keyed by effective rotation, so duplicates
+        // collapse), and refresh the running exceed table. Partial
+        // committees are never banked — they'd be a different machine.
+        if (doc.nullTest && g.calls.length === g.expected && g.periods) {
+          const fee = doc.params.feePerLeg ?? REAL_FEE_PER_LEG;
+          const books = {};
+          for (const k of Object.keys(doc.nullTest.real || {})) {
+            books[k] = permQuorumBook(g.periods, g.calls, Number(k), fee);
+          }
+          doc.nullTest.samples[g.effectiveShift] = books;
+          permNullAggregate(doc);
+        }
       }
     } catch (err) {
       run.status = 'error';
@@ -1026,40 +1041,24 @@ function startPermNull(id, shifts) {
     for (const m of memberSpecs) nullRuns.push({ ...m, shift: s, status: 'pending', error: null, metrics: null });
   }
   doc.runs = doc.runs.filter((r) => !r.shift); // a re-fire replaces any older null runs
-  doc.runs.push(...nullRuns);
   doc.status = 'running';
   doc.cancelRequested = false;
-  doc.nullTest = { status: 'running', requestedShifts: nShifts, startedAt: new Date().toISOString(), perRung: null, shifts: 0 };
+  // Real rung books are fixed by the frozen selection — compute them up
+  // front so the exceed table can fill in LIVE as rotations complete.
+  const periods = doc.perms[sel.pair].periods;
+  const callArrays = sel.members.map((m) => doc.perms[sel.pair].members[m].calls);
+  const real = {};
+  for (const k of sel.rungs) real[k] = permQuorumBook(periods, callArrays, k, fee);
+  doc.nullTest = { status: 'running', requestedShifts: nShifts, startedAt: new Date().toISOString(), real, samples: {}, perRung: null, shifts: 0 };
+  doc.runs.push(...nullRuns);
   activeBatch = doc;
   saveBatch(doc);
 
   const nullCtx = { shifts: nShifts, groups: new Map() };
   runPermRuns(doc, nullRuns, nullCtx).then(() => {
-    // Real rung books, recomputed from the frozen selection.
-    const periods = doc.perms[sel.pair].periods;
-    const callArrays = sel.members.map((m) => doc.perms[sel.pair].members[m].calls);
-    const real = {};
-    for (const k of sel.rungs) real[k] = permQuorumBook(periods, callArrays, k, fee);
-    // Null distribution: one sample per DISTINCT effective rotation whose
-    // member group completed in full — partial groups would run a different
-    // committee and bias the floor.
-    const byRotation = new Map();
-    for (const [, g] of nullCtx.groups) {
-      if (g.calls.length !== sel.members.length || !g.periods) continue;
-      byRotation.set(g.effectiveShift, g);
-    }
-    const perRung = {};
-    for (const k of sel.rungs) {
-      const nulls = [...byRotation.values()].map((g) => permQuorumBook(g.periods, g.calls, k, fee));
-      perRung[k] = {
-        real: real[k],
-        shifts: nulls.length,
-        exceedPnl: nulls.length ? nulls.filter((b) => b.pnl >= real[k].pnl).length / nulls.length : null,
-        medianPnl: median(nulls.map((b) => b.pnl)),
-        medianTrades: median(nulls.map((b) => b.trades)),
-      };
-    }
-    doc.nullTest = { ...doc.nullTest, status: doc.cancelRequested ? 'cancelled' : 'done', finishedAt: new Date().toISOString(), shifts: byRotation.size, perRung };
+    permNullAggregate(doc);
+    doc.nullTest.status = doc.cancelRequested ? 'cancelled' : 'done';
+    doc.nullTest.finishedAt = new Date().toISOString();
     doc.status = doc.cancelRequested ? 'cancelled' : 'done';
     doc.finishedAt = new Date().toISOString();
     doc.progress = '';
@@ -1073,6 +1072,28 @@ function startPermNull(id, shifts) {
   return { started: true, shifts: nShifts };
 }
 
+// Recompute the running exceed table from the banked rotation samples.
+// Called after every completed rotation (live view) and at the end.
+function permNullAggregate(doc) {
+  const nt = doc.nullTest;
+  if (!nt || !nt.real) return;
+  const rotations = Object.values(nt.samples || {});
+  nt.shifts = rotations.length;
+  const perRung = {};
+  for (const [k, real] of Object.entries(nt.real)) {
+    const nulls = rotations.map((s) => s[k]).filter(Boolean);
+    perRung[k] = {
+      real,
+      shifts: nulls.length,
+      exceedPnl: nulls.length ? nulls.filter((b) => b.pnl >= real.pnl).length / nulls.length : null,
+      exceedAcc: nulls.length && real.acc != null ? nulls.filter((b) => (b.acc ?? -1) >= real.acc).length / nulls.length : null,
+      medianPnl: median(nulls.map((b) => b.pnl)),
+      medianTrades: median(nulls.map((b) => b.trades)),
+    };
+  }
+  nt.perRung = perRung;
+}
+
 module.exports = {
   startBatch,
   startConsensus,
@@ -1082,6 +1103,7 @@ module.exports = {
   startPermNull,
   permQuorumBook,
   permQuorumCall,
+  permNullAggregate,
   summarizePermScreen,
   PERM_REGIMES,
   summarizeMetalens,

@@ -886,22 +886,35 @@
     let nullBlock = '';
     if (doc.nullTest) {
       const nt = doc.nullTest;
-      if (nt.status === 'done' && nt.perRung) {
+      if (nt.perRung && Object.keys(nt.perRung).length) {
+        // Live exceed table — fills in rotation by rotation while the null
+        // runs (same behaviour as the consensus screen's null columns) and
+        // freezes when it finishes.
+        const title = nt.status === 'running'
+          ? `Null test — RUNNING: ${nt.shifts} of ${nt.requestedShifts} distinct rotations banked so far`
+          : nt.status === 'cancelled'
+            ? `Null test — CANCELLED at ${nt.shifts} distinct rotations (numbers below are valid for that sample)`
+            : `Null test — ${nt.shifts} distinct rotations`;
         nullBlock = `
-          <h3 style="margin:14px 0 4px">Null test — ${nt.shifts} distinct rotations</h3>
+          <h3 style="margin:14px 0 4px">${title}</h3>
           <div class="tablewrap"><table>
-            <tr><th>rung</th><th>real net (trades)</th><th title="Share of label-shifted committees whose rung book made at least as many dollars">P&L exceed</th><th>null median $ / trades</th></tr>
+            <tr><th>rung</th><th>real net (trades)</th>
+              <th title="Share of label-shifted committees whose rung book made at least as many dollars — the primary reading">P&L exceed</th>
+              <th title="Share of label-shifted committees whose rung matched the realized class at least as often (stand-asides count as 0-calls)">acc exceed</th>
+              <th title="The typical null committee at this rung — a low P&L exceed means something different when null books traded as often as the real one than when noise rarely agreed enough to fire">null median $ / trades</th></tr>
             ${Object.entries(nt.perRung).map(([k, r]) => `<tr>
               <td>${k} of ${sel.members.length}</td>
               <td>${money(r.real.pnl)} (${r.real.trades}t)</td>
               <td><strong>${r.exceedPnl != null ? pct(r.exceedPnl) : '—'}</strong> of ${r.shifts}</td>
+              <td>${r.exceedAcc != null ? pct(r.exceedAcc) : '—'}</td>
               <td>${r.medianPnl != null ? money(r.medianPnl) : '—'} / ${r.medianTrades ?? '—'}t</td></tr>`).join('')}
           </table></div>
+          ${nt.status === 'running' ? '<p class="note">Interim numbers move until the run completes — no action follows an interim look.</p>' : ''}
           <p class="note">Conditional calibration: every pick above (asset, members, rungs) was made after seeing test-window
             results, and none of those picks replay inside the null. Read against the ledger's denominator; a forward book
             is the only clean test.</p>`;
       } else if (nt.status === 'running') {
-        nullBlock = `<p class="note">Null test running — ${nt.requestedShifts} shifts requested…</p>`;
+        nullBlock = `<p class="note">Null test running — ${nt.requestedShifts} shifts requested; the exceed table appears here the moment the first rotation's committee completes…</p>`;
       } else if (nt.status === 'error') {
         nullBlock = `<p class="warn-text">Null test failed: ${esc(nt.error || 'unknown error')}</p>`;
       }

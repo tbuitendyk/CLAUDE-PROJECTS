@@ -1,5 +1,5 @@
 const { assert } = require('./helpers');
-const { permQuorumCall, permQuorumBook, PERM_REGIMES } = require('../lib/batch');
+const { permQuorumCall, permQuorumBook, permNullAggregate, PERM_REGIMES } = require('../lib/batch');
 const { interlacedPurge } = require('../lib/pipeline');
 const { GEOMETRIES } = require('../lib/dataset');
 
@@ -61,6 +61,37 @@ module.exports = {
     assert.deepStrictEqual(inter.protocols, ['ml 0-1', 'ml 1-1']);
     const covered = [...full.protocols, ...inter.protocols];
     assert.strictEqual(new Set(covered).size, 5);
+  },
+  async nullAggregateReadsLive() {
+    // The exceed table must be computable from whatever rotations have
+    // banked SO FAR (the live view) and dedupe by effective rotation
+    // (samples are keyed by it, so duplicates collapse upstream).
+    const doc = {
+      nullTest: {
+        status: 'running',
+        real: { 2: { pnl: 10, trades: 5, acc: 0.6 } },
+        samples: {
+          7: { 2: { pnl: 12, trades: 5, acc: 0.5 } }, // beats on $
+          19: { 2: { pnl: -3, trades: 1, acc: 0.7 } }, // beats on acc
+          31: { 2: { pnl: 0, trades: 0, acc: 0.4 } },
+          44: { 2: { pnl: 10, trades: 4, acc: 0.6 } }, // ties count as exceed
+        },
+        perRung: null,
+        shifts: 0,
+      },
+    };
+    permNullAggregate(doc);
+    const r = doc.nullTest.perRung['2'];
+    assert.strictEqual(doc.nullTest.shifts, 4);
+    assert.strictEqual(r.shifts, 4);
+    assert.ok(Math.abs(r.exceedPnl - 0.5) < 1e-9); // 12 and the tie at 10
+    assert.ok(Math.abs(r.exceedAcc - 0.5) < 1e-9); // 0.7 and the tie at 0.6
+    assert.ok(Math.abs(r.medianPnl - 5) < 1e-9); // median of -3,0,10,12
+    // aggregate is idempotent as more rotations bank
+    doc.nullTest.samples[52] = { 2: { pnl: 100, trades: 9, acc: 0.9 } };
+    permNullAggregate(doc);
+    assert.strictEqual(doc.nullTest.perRung['2'].shifts, 5);
+    assert.ok(Math.abs(doc.nullTest.perRung['2'].exceedPnl - 0.6) < 1e-9);
   },
   async interlacedPurgeDropsBlockTails() {
     // 98 days of daily-3d chunks = exactly two 49-day blocks; purge = 5/block
