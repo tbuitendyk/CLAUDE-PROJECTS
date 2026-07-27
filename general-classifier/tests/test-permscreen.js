@@ -51,16 +51,17 @@ module.exports = {
     const b2 = permQuorumBook([{ actual: 1, entry: null, exit: null }], [[1]], 1, fee);
     assert.strictEqual(b2.trades, 0);
   },
-  async regimeLabelsCoverAllFiveProtocols() {
+  async regimesArePlainlyLabeled() {
+    // At the spec level the five protocol permutations are exactly two
+    // realities — which window the model trains on. Plain language, per the
+    // owner: no protocol soup in the labels.
     assert.strictEqual(PERM_REGIMES.length, 2);
     const full = PERM_REGIMES.find((r) => r.key === 'full');
     const inter = PERM_REGIMES.find((r) => r.key === 'interlaced');
-    // bits are (force-all, interlaced): per-spec, force-all changes nothing
-    // and the chronological meta-lens retrain IS the classic window
-    assert.deepStrictEqual(full.protocols, ['classic', 'ml 0-0', 'ml 1-0']);
-    assert.deepStrictEqual(inter.protocols, ['ml 0-1', 'ml 1-1']);
-    const covered = [...full.protocols, ...inter.protocols];
-    assert.strictEqual(new Set(covered).size, 5);
+    assert.strictEqual(full.label, 'full training window');
+    assert.strictEqual(inter.label, 'interlaced-purged window');
+    assert.strictEqual(full.trainRegime, 'full');
+    assert.strictEqual(inter.trainRegime, 'interlaced');
   },
   async nullAggregateReadsLive() {
     // The exceed table must be computable from whatever rotations have

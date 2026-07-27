@@ -270,8 +270,8 @@
               title="Meta-lens only. Chronological split (default): group A is the early training era, B the late one — so stage 2 picks its threshold in one regime and applies it in another. Both DOT and DOGE showed the raw gross edge FLIPPING SIGN between eras, making that the dominant effect rather than a nuisance. Interlaced: alternate 49-day blocks (7 weeks) between the groups so every group spans the whole history. Whole weeks keep the weekday composition identical across blocks; an odd multiple drifts across the calendar so no block ever lines up with month-end structure. Neighbouring chunks overlap, so the last 5 chunks of every block are PURGED (2 for weekly geometry) — without that, interlacing would leak training data into the set meant to score it. The test window always stays chronological-last either way.">
               <input type="checkbox" id="proto-interlaced"> split: interlaced 49-day blocks (purged) instead of chronological halves</label>
             <label class="check"
-              title="Stage 1 of the staged pick workflow, 0 null shifts by design: every pair's 8 specs trained under BOTH training regimes that the five protocol permutations (classic, meta-lens 0-0 / 0-1 / 1-0 / 1-1, bits = force-all,interlaced) reduce to per-spec — the full training window (classic ≡ ml 0-0 ≡ ml 1-0; force-all only changes committee behaviour and the chronological meta-lens retrain IS the classic window) and the interlaced 49-day-block purged window (ml 0-1 ≡ ml 1-1). 16 distinct members per asset, period-aligned. On the finished screen: checkbox ONE asset, checkbox a member subset, read the 1..n quorum menu (net direction wins: the majority side trades when its absolute count reaches the rung; ties stand aside), checkbox the rungs to keep, then fire the null test on that frozen selection. The null is a conditional calibration of the picked book — hand-picks cannot be replayed inside it, so it is never a clean p-value.">
-              <input type="radio" name="protocol" id="proto-perm"> permutation matrix &mdash; specs &times; protocols, staged picks (0 nulls)</label>
+              title="Stage 1 of the staged pick workflow, 0 null shifts by design: every pair's 8 specs trained on BOTH training windows — the full training window, and the interlaced-purged window (49-day blocks with overlapping tails dropped). That is the only distinction the five protocol permutations (classic + four meta-lens variants) produce at the spec level: lens selection, thresholds and force-all are committee machinery, which this workflow replaces with YOUR picks. 16 members per asset, period-aligned. On the finished screen: checkbox ONE asset, checkbox a member subset, read the 1..n quorum menu (net direction wins: the majority side trades when its absolute count reaches the rung; ties stand aside), checkbox the rungs to keep, then fire the null test on that frozen selection. The null is a conditional calibration of the picked book — hand-picks cannot be replayed inside it, so it is never a clean p-value.">
+              <input type="radio" name="protocol" id="proto-perm"> staged picks &mdash; 8 specs &times; 2 training windows (0 nulls)</label>
           </div>
         </div>
         <div class="field" style="flex:1; min-width:260px">
@@ -309,6 +309,6 @@
     pruned to time / open / high / low / close / quote&nbsp;volume.
   </footer>
 
-  <script src="app.js?v=44"></script>
+  <script src="app.js?v=45"></script>
 </body>
 </html>

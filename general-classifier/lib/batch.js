@@ -767,9 +767,12 @@ function startMetalens(params) {
 // never as a clean p-value (the hand-picks cannot be replayed inside the
 // null). VERDICTS.md ledger rules apply to every look it produces.
 
+// Plain language, because at the spec level there are exactly TWO realities:
+// the five protocol permutations (classic, meta-lens 0-0/0-1/1-0/1-1)
+// collapse to which window the model trains on — nothing else survives.
 const PERM_REGIMES = [
-  { key: 'full', trainRegime: 'full', protocols: ['classic', 'ml 0-0', 'ml 1-0'] },
-  { key: 'interlaced', trainRegime: 'interlaced', protocols: ['ml 0-1', 'ml 1-1'] },
+  { key: 'full', trainRegime: 'full', label: 'full training window' },
+  { key: 'interlaced', trainRegime: 'interlaced', label: 'interlaced-purged window' },
 ];
 
 // Net-direction quorum call (owner's rule): the majority side wins; the book
@@ -834,7 +837,7 @@ function summarizePermScreen(doc) {
   }
   top.sort((a, b) => (b.metrics.paperPnl ?? -Infinity) - (a.metrics.paperPnl ?? -Infinity));
   pairs.sort((a, b) => (b.best ? b.best.pnl : -Infinity) - (a.best ? a.best.pnl : -Infinity));
-  return { kind: 'permscreen', done, total: doc.runs.length, failed, pairs, top: top.slice(0, 20).map((m) => ({ trade: m.trade, key: m.key, protocols: m.protocols, pnl: m.metrics.paperPnl, trades: m.metrics.paperTrades, wins: m.metrics.paperWins, hindsightEdge: m.metrics.hindsightEdge, testAcc: m.metrics.testAcc, chosen: m.metrics.chosen })) };
+  return { kind: 'permscreen', done, total: doc.runs.length, failed, pairs, top: top.slice(0, 20).map((m) => ({ trade: m.trade, key: m.key, regime: m.regime, pnl: m.metrics.paperPnl, trades: m.metrics.paperTrades, wins: m.metrics.paperWins, hindsightEdge: m.metrics.hindsightEdge, testAcc: m.metrics.testAcc, chosen: m.metrics.chosen })) };
 }
 
 function startPermScreen(params) {
@@ -939,7 +942,7 @@ async function runPermRuns(doc, runs, nullCtx) {
             regime: run.regime,
             view: run.view,
             model: run.model,
-            protocols: regime.protocols,
+            label: regime.label,
             calls: rows.map((r) => r.predicted),
             metrics: run.metrics,
           };

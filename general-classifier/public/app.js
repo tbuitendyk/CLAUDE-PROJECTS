@@ -782,6 +782,8 @@
     }
   }
 
+  const regimeLabel = (regime) => (regime === 'interlaced' ? 'interlaced-purged window' : 'full training window');
+
   function renderPermScreen(doc, header) {
     const running = doc.status === 'running';
     const sel = doc.selection || { pair: null, members: [], rungs: [] };
@@ -802,7 +804,7 @@
       const box = selectable && !running ? `<input type="checkbox" class="perm-member" data-key="${esc(key)}"${checked}>` : '';
       return `<tr class="${(met.hindsightEdge ?? -1) > 0 ? 'hilite' : ''}">
         <td>${box}</td>
-        <td>${esc(m.protocols.join(' · '))}</td>
+        <td>${esc(regimeLabel(m.regime))}</td>
         <td>${esc(m.view)}/${esc(m.model)}</td>
         <td>${met.paperPnl != null ? money(met.paperPnl) : '—'} <span class="note">(${met.paperWins ?? 0}/${met.paperTrades ?? 0}t)</span></td>
         <td>${gpt(met) != null ? '$' + gpt(met).toFixed(2) : '—'}</td>
@@ -832,7 +834,7 @@
           ${isSel ? ' · <strong>working this asset</strong>' : ''}</summary>
         <div class="tablewrap" style="margin:6px 0"><table>
           <tr><th title="Stage-3 checkbox (working asset only): include this member in the committee"></th>
-            <th title="The protocol permutations this training regime represents — per-spec, force-all changes nothing and the chronological meta-lens retrain IS the classic window">protocols</th>
+            <th title="Which window the member's model trained on — the only distinction that survives at the spec level; band and test window are shared, so members from both regimes stay period-aligned">training window</th>
             <th>view/model</th>
             <th title="One-shot $100 paper book over the shared test window, research friction">paper P&L (W/T)</th>
             <th title="Per-trade result before the round-trip fee">gross/trade</th>
@@ -846,8 +848,8 @@
     const topTable = s && s.top && s.top.length ? `
       <h3 style="margin:14px 0 4px">Top 20 by test paper P&L (all assets)</h3>
       <div class="tablewrap"><table>
-        <tr><th>pair</th><th>member</th><th>protocols</th><th>P&L (W/T)</th><th>true edge</th><th>test acc</th><th>picked</th></tr>
-        ${s.top.map((t) => `<tr><td>${esc(t.trade)}</td><td>${esc(t.key)}</td><td>${esc((t.protocols || []).join(' · '))}</td>
+        <tr><th>pair</th><th>member</th><th>training window</th><th>P&L (W/T)</th><th>true edge</th><th>test acc</th><th>picked</th></tr>
+        ${s.top.map((t) => `<tr><td>${esc(t.trade)}</td><td>${esc(t.key)}</td><td>${esc(regimeLabel(t.regime || String(t.key).split('/')[0]))}</td>
           <td>${money(t.pnl ?? 0)} <span class="note">(${t.wins ?? 0}/${t.trades ?? 0}t)</span></td>
           <td>${t.hindsightEdge != null ? (t.hindsightEdge >= 0 ? '+' : '') + (100 * t.hindsightEdge).toFixed(1) + '%' : '—'}</td>
           <td>${pct(t.testAcc)}</td><td>${esc(t.chosen || '')}</td></tr>`).join('')}
@@ -921,9 +923,9 @@
     }
 
     batchViewEl.innerHTML = `<p class="note">${header}</p>
-      <p class="note"><strong>Staged pick workflow — stage ${stage}.</strong> 16 distinct members per asset
-        (8 specs × 2 training regimes); the five protocol permutations collapse per-spec to those two regimes,
-        and every member shares the asset's band and test window, so quorum books over any subset are exact.</p>
+      <p class="note"><strong>Staged pick workflow — stage ${stage}.</strong> 16 members per asset: 8 specs ×
+        2 training windows (full, and interlaced-purged). That is all the five protocol permutations amount to at
+        the spec level. Every member shares the asset's band and test window, so quorum books over any subset are exact.</p>
       ${topTable}
       <h3 style="margin:14px 0 4px">Assets — pick one to work</h3>
       ${assetBlocks}
