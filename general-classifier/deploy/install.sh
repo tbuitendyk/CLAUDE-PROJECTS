@@ -29,8 +29,12 @@ SERVICE_USER="classifier"
 ENV_FILE="/etc/general-classifier/env"
 
 echo "==> Installing system packages"
-apt-get update -qq
-apt-get install -y --no-install-recommends rsync ca-certificates curl
+# apt update must not kill a code deploy: third-party repos rot (the old
+# NodeSource node_20.x list now 403s) while the packages this needs are
+# long since installed. Try the update, then verify the tools exist.
+apt-get update -qq || echo "    apt-get update failed (stale third-party repo?) — continuing with installed packages"
+apt-get install -y --no-install-recommends rsync ca-certificates curl \
+  || { command -v rsync >/dev/null && command -v curl >/dev/null && echo "    apt install failed but rsync/curl present — continuing"; }
 
 NODE_MAJOR="$(node -v 2>/dev/null | sed -n 's/^v\([0-9]*\).*/\1/p' || true)"
 if [[ -z "${NODE_MAJOR}" || "${NODE_MAJOR}" -lt 18 ]]; then
