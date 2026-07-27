@@ -57,9 +57,11 @@
       <div><a href="#consensus">8. The consensus screen</a></div>
       <div><a href="#nulls">9. Null calibration</a></div>
       <div><a href="#metalens">10. The meta-lens screen</a></div>
-      <div><a href="#books">11. Paper books</a></div>
-      <div><a href="#ops">12. Data, CPU &amp; job control</a></div>
-      <div><a href="#gloss">13. Glossary</a></div>
+      <div><a href="#permscreen">11. The staged-picks screen</a></div>
+      <div><a href="#bracketlab">12. The Bracket lab</a></div>
+      <div><a href="#books">13. Paper books</a></div>
+      <div><a href="#ops">14. Data, CPU &amp; job control</a></div>
+      <div><a href="#gloss">15. Glossary</a></div>
     </div>
 
     <h2 id="overview">1. What this tool is</h2>
@@ -78,9 +80,10 @@
         (data.binance.vision — keyless monthly/daily zips) plus its keyless REST mirror for the
         current partial month. Hourly spot klines, pruned to time / open / high / low / close /
         quote volume, cached on disk forever.</li>
-      <li><span class="term">Two tabs.</span> <em>Research</em> holds the single-run form and the batch
-        screens. <em>Paper books</em> holds the live, frozen, pre-registered experiments — a different
-        category of work, deliberately kept out of the way.</li>
+      <li><span class="term">Three tabs.</span> <em>Research</em> holds the single-run form and the batch
+        screens. <em>Bracket lab</em> is the execution-permutation system — combo sweeps scored through a
+        bracket-order simulator, nulls only on survivors. <em>Paper books</em> holds the live, frozen,
+        pre-registered experiments — a different category of work, deliberately kept out of the way.</li>
       <li><span class="term">All times are UTC.</span></li>
     </ul>
 
@@ -375,7 +378,85 @@
         stage-2 menu render underneath so the recipe's choices are auditable.</li>
     </ul>
 
-    <h2 id="books">11. Paper books (the second tab)</h2>
+    <h2 id="permscreen">11. The staged-picks screen (permutation matrix)</h2>
+    <p>A candidate-forging workflow where <strong>you</strong> are the selection mechanism, stage by
+    stage, with every pick persisted server-side. Stage 1 (0 nulls by design) runs every pair's 8 specs
+    under both <span class="term">training windows</span> — the <em>full training window</em> and the
+    <em>interlaced-purged window</em> (49-day blocks, overlapping tails dropped). Those two are all the
+    five protocol permutations (classic + four meta-lens variants) amount to at the spec level: lens
+    selection, thresholds and force-all are committee machinery, and in this workflow the committee is
+    yours. 16 members per asset, all sharing the asset's band and test window so their calls stay
+    period-aligned.</p>
+    <ul>
+      <li><span class="term">The stages</span> — checkbox ONE asset → checkbox a member subset → read the
+        quorum menu (1-of-n … n-of-n, best dollars first, with accuracy and trade-hit alongside) →
+        checkbox the rungs to keep → fire the null on that frozen selection. The view names the stage
+        you're on; selections survive reloads.</li>
+      <li><span class="term">The quorum rule</span> — net direction wins: the majority side among the
+        committee trades when its ABSOLUTE count reaches the rung; tied up/down stands aside.</li>
+      <li><span class="term">The null</span> — retrains only the picked members per label rotation,
+        judges only the kept rungs (each against its own noise floor), banks rotations LIVE so the
+        exceed table fills in while it runs, and reports P&amp;L exceed, accuracy exceed and null
+        medians. Read it as a <em>conditional calibration</em>: your hand-picks cannot be replayed
+        inside it, so it is never a clean p-value — the ledger's denominator applies, and a forward
+        book remains the only clean test.</li>
+    </ul>
+
+    <h2 id="bracketlab">12. The Bracket lab (execution permutations)</h2>
+    <p>Its own tab: a deliberately promiscuous search machine that sweeps <strong>asset combos ×
+    option branches × an execution menu</strong>, with a mechanical, stamped selection rule — and no
+    nulls in the sweep at all. The philosophy: shop widely and mechanically, then null-test only the
+    survivors, letting the null replay everything downstream of the combo.</p>
+    <figure class="fig">
+      <svg viewBox="0 0 900 150" width="900" height="150" role="img" aria-label="OCO bracket mechanics">
+        <line x1="60" y1="40" x2="860" y2="40" stroke="var(--up)" stroke-width="1.5" stroke-dasharray="6 3"></line>
+        <text x="65" y="32" class="svglab2">buy rail b = p(1+d) — stop-entry long; becomes the SHORT's stop if s fills first</text>
+        <line x1="60" y1="75" x2="860" y2="75" stroke="var(--border)" stroke-width="1.5"></line>
+        <text x="65" y="90" class="svglab">reference p = entry candle's open (the geometry's own entry hour)</text>
+        <line x1="60" y1="110" x2="860" y2="110" stroke="var(--down)" stroke-width="1.5" stroke-dasharray="6 3"></line>
+        <text x="65" y="127" class="svglab2">sell rail s = p(1−d) — stop-entry short; becomes the LONG's stop if b fills first</text>
+        <path d="M 500 75 L 540 40" stroke="var(--accent)" stroke-width="1.6" marker-end="url(#arrbr)"></path>
+        <text x="560" y="55" class="svglab">first rail touched opens the position; time exit at t if no stop hits</text>
+        <defs><marker id="arrbr" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 z" fill="var(--accent)"></path></marker></defs>
+      </svg>
+      <figcaption>The OCO bracket. Direction is chosen by the market, not the model — which is exactly
+      how a committee that predicts <em>activity</em> better than <em>direction</em> gets monetized.
+      d is band-relative (0.25/0.5/0.75/1.0/1.5 × the combo's own band); t ∈ 17/41/65h.</figcaption>
+    </figure>
+    <ul>
+      <li><span class="term">Combos</span> — checkbox any subset of <em>singles</em> (trade asset alone;
+        no cross view exists there), <em>doubles</em> (trade + one context — BTC is just one candidate),
+        and <em>triples</em> (trade + two contexts), over a universe you type (empty = all 17). Labels
+        always come from the trade asset, so every layout of a combo shares band and test window.</li>
+      <li><span class="term">Permute toggles</span> — each option runs <em>as set</em> or sweeps its whole
+        declared menu as extra branches: chunk shape (all 5), decision (both), band (auto / ±3 / ±5 / ±8),
+        24/7 vs 24/5 (weekly skips the redundant branch). The full unit count — combos × branches — and
+        the projected wall-clock render the moment you hit Start.</li>
+      <li><span class="term">Gates</span> — <em>always</em> (both rails every period — the control),
+        <em>on-active</em> (both rails only when the committee calls a move), <em>direction-filtered</em>
+        (only the rail matching the call). The committee is the majority vote in the slim stage and every
+        quorum rung 1..n at the promoted stage — all swept, never chosen by hand.</li>
+      <li><span class="term">Slim-then-promote</span> — every unit first runs a slim grid (logreg over the
+        views, full window); the top K by the declared rule are re-run on the full 16-member grid. The
+        rule is fixed: best net dollars over the whole menu, minimum-trade floor, ties to fewer trades.</li>
+      <li><span class="term">Honest fills</span> — hourly bars can't order intra-bar touches, so any bar
+        that spans both rails resolves AGAINST the book (entered, then stopped in the same bar) and is
+        counted in the <em>ambig</em> column. Results are conservative by construction; a fat ambig count
+        means d is small relative to hourly ranges.</li>
+      <li><span class="term">Live status</span> — phase (slim / promote / null), units and trainings done
+        over the full denominator, rate per minute, seconds per training, elapsed, ETA at current pace,
+        failures — and the leaderboard reranking as combos complete. Interim numbers are for watching,
+        not for stopping early; the promote rule fires mechanically at completion.</li>
+      <li><span class="term">The null, and what it can and cannot say</span> — pick a promoted survivor
+        and fire: per rotation the null retrains the full grid and gets EVERY freedom the machine had
+        downstream of the combo — the whole menu, all quorum rungs, the same best-cell rule. Two readings
+        render live: <em>best-of-menu exceed</em> (the search-replayed calibration) and <em>same-config
+        exceed</em> (conditional). What is NOT replayed — and cannot be, at tens of thousands of
+        trainings per rotation — is the combo search itself: that multiplicity stays on the stamp and
+        must be read against it. As everywhere: a forward book is the only clean test.</li>
+    </ul>
+
+    <h2 id="books">13. Paper books</h2>
     <p>Live, frozen, pre-registered experiments — the forward tests that decide whether a screened
     result was real. Nothing here retrains, and the rules cannot move after the first live period.
     Protocols and amendment logs live in the repo (TRACKER.md, TRACKER-DOGE.md, VERDICTS.md).</p>
@@ -423,7 +504,7 @@
       <li>The two original books run on their own frozen code, untouched by this engine.</li>
     </ul>
 
-    <h2 id="ops">12. Data, CPU &amp; job control</h2>
+    <h2 id="ops">14. Data, CPU &amp; job control</h2>
     <ul>
       <li><span class="term">The cache</span> — every pair/month ever downloaded is parsed once and
         kept forever in <code>data/cache/</code>; the "Available data on server" grid shows the
@@ -441,7 +522,7 @@
         closing the tab never kills a screen.</li>
     </ul>
 
-    <h2 id="gloss">13. Glossary</h2>
+    <h2 id="gloss">15. Glossary</h2>
     <dl class="gloss">
       <dt>Dormant band</dt><dd>The ±% do-nothing zone. Moves inside it score 0; beyond it, ±1. "Auto" = the 33rd percentile of |move| on training samples only, balancing the classes.</dd>
       <dt>Chunk / geometry</dt><dd>One sample: a fixed window of hourly candles from both pairs (weekly 8-day or daily 1–4-day), labeled by the trade pair's move strictly after it ends.</dd>
@@ -460,6 +541,12 @@
       <dt>Purged interlacing</dt><dd>Alternating 49-day A/B blocks with the last chunks of each block dropped so overlapping chunks can't leak across the boundary.</dd>
       <dt>LIVE / SEEDED</dt><dd>Tracker provenance: recorded before the outcome window opens vs backfilled after. Only LIVE periods count toward a verdict.</dd>
       <dt>Paper book</dt><dd>$100-per-order simulated record at declared friction. Research friction $0.25/round trip (since 2026-07-26); the frozen live books keep their declared $0.50/leg stress rate forever.</dd>
+      <dt>Combo / branch / unit</dt><dd>Bracket lab: a combo is the asset set (single/double/triple); a branch is one setting of the permutable options; a unit is one combo × branch — the denominator the counter counts through.</dd>
+      <dt>OCO bracket</dt><dd>Stop-entries at p±d; the first rail filled opens the position, the other rail becomes its stop; time exit at t. Direction chosen by the market.</dd>
+      <dt>Ambiguous bar</dt><dd>An hourly bar spanning both rails — fill order unknowable, always resolved against the book and counted.</dd>
+      <dt>Slim / promote</dt><dd>Bracket lab staging: a cheap logreg-view grid sweeps every unit; the declared top-K re-run on the full 16-member grid with quorum rungs.</dd>
+      <dt>Search-replayed exceed</dt><dd>Null reading where each rotation gets the machine's full downstream freedom (menu, quorums, selection rule) — the honest calibration for a mechanically-shopped survivor, conditional on its combo.</dd>
+      <dt>Training windows</dt><dd>The two per-spec realities the protocol permutations collapse to: the full training window, and the interlaced-purged window (49-day blocks, overlapping tails dropped).</dd>
       <dt>Horizon</dt><dd>The pre-registered number of LIVE settled periods after which a book's verdict is computed once and never moves again.</dd>
     </dl>
 
