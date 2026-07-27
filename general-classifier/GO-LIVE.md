@@ -1,0 +1,121 @@
+# GO-LIVE plan — live execution with real (small) capital
+
+Status: **PLANNING ONLY.** Nothing on this page is authorized. Every step
+below executes only on the owner's explicit go, step by step — "catalog it"
+is not "build it," and "build it" is not "run it." This file is the living
+backlog for the live-trading capability and the features feeding it.
+
+Purpose (owner's framing): buy higher-quality testing with small real
+amounts — real fills price the two assumptions every paper book leans on
+(entry-time execution and the fee/spread model). Ultimately the system
+pulls the trigger itself, with optimized execution and tuned trailing
+stops, managed either by our loop or by the exchange API.
+
+## Ground rules (standing)
+
+- **Owner's go-gate on every step.** No probes, no code, no keys, no orders
+  without an explicit instruction for that step.
+- **Never deploy while any screen, sweep or null is in flight.**
+- The frozen books and their records are untouchable; live trading is a new,
+  separately pre-registered record.
+- Clean-record framing: the first live pilot is declared in VERDICTS.md as
+  an **execution-fidelity pilot** (purpose: measure fill quality, slippage,
+  true friction vs the paper assumptions) — not an edge verification — so
+  its P&L can never contaminate a book's verdict. Per "What any success
+  buys", edge-based live sizing is still earned only by completed books.
+
+## Phase 0 — venue reality (first go)
+
+1. Read-only reachability probes from the VPS: KuCoin, Kraken, Bitso
+   (public endpoints only; no keys). Binance known-blocked (HTTP 451;
+   TRACKER.md amendment log).
+2. Fee table at pilot size, per venue: maker/taker tier, min order size /
+   min notional per pair (DOT, AVAX, UNI, DOGE), native order types
+   (stop-market / stop-limit / OCO / trailing).
+   Known so far: KuCoin spot ~0.1%/0.1% base, NO native trailing on spot;
+   Kraken ~0.25/0.40% low tier, HAS native trailing stops; Bitso thin book.
+3. Owner confirms account standing/jurisdiction per candidate venue
+   (Binance 451 and KuCoin regional limits may not be accidents; Kraken +
+   Bitso are the venues the balancer already uses with real accounts).
+4. **Decision: the live venue.** KuCoin if reachable + rates hold + account
+   is clean; else Kraken; else the Binance relay (below, with its ToS risk
+   accepted explicitly).
+
+## Phase 1 — strategy + sizing (second go)
+
+5. **Decision: what drives orders.** Cleanest fidelity test = mirror an
+   existing live paper book's calls (DOGE daily-3d or a hunter book) with
+   real clips. A bracket-lab survivor requires its null first, per the
+   lab's own workflow.
+6. Sizing from the chosen strategy's simulated drawdown:
+   `capital ≥ (min clip × max concurrent positions) + worst-streak buffer`.
+   Sketch at Kraken minimums (~$5–10 clips, t65h daily → ≤3 concurrent,
+   15–25-loser streaks at ~2d-wide stops): roughly $100–150. Compute
+   properly from the pinned strategy; the answer is the smallest amount
+   that survives the anticipated drawdown, per the owner.
+7. VERDICTS.md pre-registration page: purpose, venue, strategy mirrored,
+   clip size, capital, horizon, the fidelity metrics (fill rate vs paper
+   fills, realized slippage per leg, realized fee per leg, latency), and
+   what the pilot does NOT claim (edge).
+
+## Phase 2 — plumbing, advisory first (third go)
+
+8. Exchange adapter (trade-capable) for the chosen venue, in the classifier
+   service or a sibling module. Key security: separate exchange subaccount
+   funded with pilot capital only; withdraw permissions OFF; IP-pinned;
+   whitelist enforced in code (pair, side, max notional per order and per
+   day); kill switch that flattens and halts.
+9. **Advisory-with-apply mode first** (balancer pattern): the system
+   computes the order, shows it, owner confirms, it places. Runs this way
+   until the owner has watched enough correct proposals to flip the switch.
+10. Fill journal: every order, fill, fee, and the paper-twin's assumed
+    price recorded side by side — the pilot's actual product.
+
+## Phase 3 — full auto + optimized execution (fourth go)
+
+11. Auto mode: the service places orders unattended within the whitelist.
+12. Execution optimization backlog: maker-first entries where the venue's
+    fee spread rewards it; slippage-aware entry windows; partial-fill
+    handling; min-notional rounding rules; venue-outage behavior (park a
+    hard stop, halt entries).
+13. Trailing stops: belt-and-suspenders pattern — a resting hard stop
+    always parked at the exchange as backstop, our loop walking it up as
+    the trail (portable across venues; only option on KuCoin spot).
+    Exchange-native trailing (Kraken) as an alternative arm.
+14. **Trailing-stop tuning enters the Bracket lab as a swept execution
+    dimension** (trail distance × activation × step), so trail parameters
+    are chosen mechanically and null-tested like every other knob — never
+    hand-tuned on live money.
+
+## Phase 4 — the Binance relay (only if venue decision demands it)
+
+15. Architecture: classifier box emits signed trade INTENTS; a relay on an
+    unblocked device holds the API keys and executes; whitelist enforced at
+    the relay; either side can kill the loop; keys never touch the VPS.
+16. Honest flag, accepted before building: this deliberately routes around
+    a geo-block and carries Binance ToS risk on a funded account. Owner's
+    call, made explicitly.
+
+## Feature backlog (research side, feeding the above)
+
+- Bracket lab: dedupe the board's structural duplicates (always-gate rows
+  identical across decision branches and slim/promoted stages).
+- Bracket lab: doubles/triples sweep on a 6–8 asset universe (contexts are
+  where the ADA analysis says the information lives) — not yet run.
+- Bracket-lab survivor nulls before any survivor is considered for live.
+- vs-control column: DONE (2026-07-27). Live null tables: DONE.
+  Control-delta rerun of DOT singles: in progress as of this writing.
+- Trailing-stop simulation in lib/bracket.js (prerequisite for #14).
+- Real-friction feedback loop: once the pilot produces measured fee/spread
+  per leg, add it as a priceable friction preset next to the research and
+  stress rates.
+
+## Decisions currently open
+
+| # | Decision | Options | Status |
+|---|----------|---------|--------|
+| 1 | Live venue | KuCoin / Kraken / Bitso / Binance-relay | awaiting Phase 0 probes + owner |
+| 2 | Order driver | mirror a live paper book / nulled bracket survivor | open |
+| 3 | Autonomy path | advisory-with-apply → full auto (proposed) | open |
+| 4 | Trail management | our loop w/ parked backstop / exchange-native | open (venue-dependent) |
+| 5 | Pilot capital | formula in Phase 1 step 6 | needs strategy pinned |
