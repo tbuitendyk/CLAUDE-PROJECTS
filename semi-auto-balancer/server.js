@@ -737,8 +737,23 @@ app.get('/api/accounts/:id/subaccounts', async (req, res) => {
       summaryError,
       perCode: note.perCode || null,
       inbox: subaccounts.listInbox(accountId),
-      txnLog: subaccounts.listTxnLog(accountId, 50),
+      txnLog: subaccounts.listTxnLog(accountId, 100),
     });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Older txn-log pages ("Load older ↓"): keyset cursor = (beforeTs, beforeId)
+// of the last row the client already shows. done=true means entry #1 reached.
+app.get('/api/accounts/:id/txnlog', (req, res) => {
+  try {
+    const accountId = Number(req.params.id);
+    const limit = Math.min(500, Math.max(1, Number(req.query.limit) || 200));
+    const beforeTs = req.query.beforeTs !== undefined ? Number(req.query.beforeTs) : null;
+    const beforeId = req.query.beforeId !== undefined ? Number(req.query.beforeId) : null;
+    const rows = subaccounts.listTxnLogPage(accountId, { beforeTs, beforeId, limit });
+    res.json({ rows, done: rows.length < limit });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

@@ -97,6 +97,22 @@ function listTxnLog(accountId, limit = 50) {
     .map((r) => ({ ...r, deltas: r.deltas ? JSON.parse(r.deltas) : null }));
 }
 
+// Keyset page of the txn log, ordered like listTxnLog (ts DESC, id DESC).
+// (beforeTs, beforeId) is the cursor — the last row the client already has;
+// omit both for the newest page. Keyset (not OFFSET) so rows appended
+// between clicks can't shift the window and duplicate/skip entries.
+function listTxnLogPage(accountId, { beforeTs = null, beforeId = null, limit = 200 } = {}) {
+  const rows =
+    beforeTs != null
+      ? db
+          .prepare(
+            'SELECT * FROM txn_log WHERE account_id = ? AND (ts < ? OR (ts = ? AND id < ?)) ORDER BY ts DESC, id DESC LIMIT ?'
+          )
+          .all(accountId, beforeTs, beforeTs, beforeId ?? 0, limit)
+      : db.prepare('SELECT * FROM txn_log WHERE account_id = ? ORDER BY ts DESC, id DESC LIMIT ?').all(accountId, limit);
+  return rows.map((r) => ({ ...r, deltas: r.deltas ? JSON.parse(r.deltas) : null }));
+}
+
 // ---- attribution ------------------------------------------------------------
 // Decide which linked profile owns a synced fill. `holders` = linked
 // profiles (with their asset row) that hold the trade's BASE code. Returns
@@ -650,6 +666,7 @@ module.exports = {
   ensureAsset,
   logTxn,
   listTxnLog,
+  listTxnLogPage,
   attributeTrade,
   listInbox,
   assignQueuedTrade,

@@ -126,6 +126,13 @@ const client = {
   ok(s5.unexplained.length === 0 && s5.snapped.length === 1, 'dust residual snaps silently');
   ok(approx(assetBySym('btc').quantity, 0.17000000234, 1e-12), 'quantity snapped to the venue balance');
 
+  // --- E2: float-noise residuals (< 1e-9) are ignored, not snapped ---
+  VENUE.balances = [ { code: 'btc', amount: 0.17000000234 + 1e-13 }, { code: 'usdt', amount: 3997.4 } ];
+  const s5b = await sync.syncAccount(account.id, { client });
+  ok(s5b.snapped.length === 0 && s5b.unexplained.length === 0, 'sub-noise residual neither snaps nor surfaces');
+  ok(assetBySym('btc').quantity === 0.17000000234, 'sub-noise residual leaves the stored quantity untouched');
+  VENUE.balances = [ { code: 'btc', amount: 0.17000000234 }, { code: 'usdt', amount: 3997.4 } ];
+
   // --- F: venue currencies with no matching asset are reported, not guessed ---
   VENUE.balances = [ { code: 'btc', amount: 0.17000000234 }, { code: 'usdt', amount: 3997.4 }, { code: 'eth', amount: 1.5 } ];
   const s6 = await sync.syncAccount(account.id, { client });

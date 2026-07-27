@@ -319,9 +319,13 @@
                     </details>
                     <details style="margin-top:.6rem" open>
                       <summary class="muted" style="cursor:pointer">Transaction log — everything applied, each row rewindable once</summary>
-                      <div class="table-wrap"><table id="sub-log">
+                      <div class="table-wrap log-scroll"><table id="sub-log">
                         <thead><tr><th>When</th><th>Profile</th><th>What happened</th><th></th></tr></thead>
-                        <tbody></tbody></table></div>
+                        <tbody></tbody></table>
+                        <div style="text-align:center;padding:.35rem 0">
+                          <button id="sub-log-more" class="ghost" title="Fetch the next 200 older entries into this box — repeat to reach the very first entry">Load older ↓</button>
+                        </div>
+                      </div>
                     </details>
                   </div>
                 </div>

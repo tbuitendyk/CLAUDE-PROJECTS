@@ -177,6 +177,31 @@ const client = {
   ok(approx(qtyOf(shell.id, 'btc'), dust, 1e-12), 'the SHELL absorbed the dust, not a strategy profile');
   ok(approx(qtyOf(1, 'btc'), 0.3, 1e-12), 'Main btc clean');
 
+  // ---- float-noise residuals never snap, never log --------------------------
+  // Observed live: a 1.4e-14 stored-quantity tail produced an identical
+  // "dust snap → shell" txn_log entry every hourly sync, forever.
+  const snapRows = () => db.prepare("SELECT COUNT(*) c FROM txn_log WHERE account_id = ? AND kind = 'snap'").get(account.id).c;
+  const noiseBase = snapRows();
+  const btcPhys = 0.3 + dust;
+  VENUE.balances = VENUE.balances.map((b2) => (b2.code === 'btc' ? { code: 'btc', amount: btcPhys - 1.4e-14 } : b2));
+  s = await sync.syncAccount(account.id, { client });
+  ok(s.snapped.length === 0 && s.unexplained.length === 0, 'sub-noise residual neither snaps nor surfaces');
+  s = await sync.syncAccount(account.id, { client });
+  ok(snapRows() === noiseBase, 'repeated syncs over a noise residual write NO txn_log entries');
+  ok(approx(qtyOf(shell.id, 'btc'), dust, 1e-12) && approx(qtyOf(1, 'btc'), 0.3, 1e-12), 'noise residual left all quantities untouched');
+
+  // ---- negative dust an empty shell can't absorb: silent, not logged --------
+  // Real-size dust (≥ 1e-8) but negative, on an asset the shell holds none
+  // of: the clamp means nothing can move, so nothing may be logged either.
+  VENUE.balances = VENUE.balances.map((b2) => (b2.code === 'xrp' ? { code: 'xrp', amount: 1_260 - 1e-6 } : b2));
+  s = await sync.syncAccount(account.id, { client });
+  ok(s.snapped.length === 0 && s.unexplained.length === 0, 'unabsorbable negative dust stays silent (within tolerance)');
+  ok(snapRows() === noiseBase, 'zero-applied clamp writes no txn_log entry');
+  ok(approx(qtyOf(1, 'xrp'), 970, 1e-9) && approx(qtyOf(2, 'xrp'), 290, 1e-9), 'strategy xrp untouched by the clamp case');
+  VENUE.balances = VENUE.balances.map((b2) =>
+    b2.code === 'btc' ? { code: 'btc', amount: btcPhys } : b2.code === 'xrp' ? { code: 'xrp', amount: 1_260 } : b2
+  );
+
   // ---- baseline adoption: sole holder only ----------------------------------
   VENUE.balances.push({ code: 'sol', amount: 5 });
   s = await sync.syncAccount(account.id, { client });
@@ -424,6 +449,18 @@ const client = {
     PRICES = saved;
     ok(refused, 'funded delete with pricing down REFUSES (never delete-and-corrupt)');
     ok(db.prepare('SELECT * FROM assets WHERE id = ?').get(again.id) !== undefined, 'the refused row survives untouched');
+  }
+
+  // ---- txn log keyset paging (the "Load older ↓" backend) -------------------
+  {
+    const total = db.prepare('SELECT COUNT(*) c FROM txn_log WHERE account_id = ?').get(account.id).c;
+    ok(total >= 4, `enough txn_log rows accumulated to page over (${total})`);
+    const page1 = sub.listTxnLogPage(account.id, { limit: 3 });
+    const last = page1[page1.length - 1];
+    const rest = sub.listTxnLogPage(account.id, { beforeTs: last.ts, beforeId: last.id, limit: 10_000 });
+    const paged = [...page1, ...rest].map((r) => r.id);
+    ok(paged.length === total && new Set(paged).size === total, 'keyset pages cover the whole log exactly once, no dupes');
+    ok(paged.join(',') === sub.listTxnLog(account.id, 10_000).map((r) => r.id).join(','), 'paged order identical to the one-shot list');
   }
 
   console.log('test-subaccounts: all assertions passed');

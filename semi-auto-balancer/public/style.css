@@ -126,6 +126,10 @@ form.inline input { flex: 1; min-width: 200px; }
 /* Evaluated-period headline above analysis tables — prominent, not fine print */
 .window-line { font-weight: 600; font-size: .88rem; color: var(--text); margin: .35rem 0 .5rem; }
 .table-wrap { overflow-x: auto; }
+/* Fixed-height log viewer: the table scrolls inside the box (sticky header),
+   so unlimited history never lengthens the page. */
+.log-scroll { max-height: 320px; overflow-y: auto; border: 1px solid var(--border); border-radius: 6px; }
+.log-scroll thead th { position: sticky; top: 0; background: var(--card); z-index: 2; }
 .cell-input {
   width: 110px; padding: .25rem .4rem; font-size: .85rem;
   background: transparent; border-color: transparent;

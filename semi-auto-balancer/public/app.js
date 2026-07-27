@@ -2237,11 +2237,12 @@ async function loadSubaccounts(x) {
   renderCarveItems();
   restoreDrafts(state.selectedId);
 
-  // Transaction log.
+  // Transaction log — fixed-height scroll box. The panel ships the newest
+  // 100 rows; "Load older ↓" appends 200-row pages until entry #1.
   const lb = $('#sub-log tbody');
   lb.innerHTML = '';
   const nameOf = (id) => (data.profiles.find((p) => p.id === id) || { name: id ?? '—' }).name;
-  for (const rrow of data.txnLog) {
+  const txnRow = (rrow) => {
     const tr = document.createElement('tr');
     tr.innerHTML =
       `<td>${fmtUtc(rrow.ts)}</td><td>${nameOf(rrow.profile_id)}</td>` +
@@ -2278,8 +2279,30 @@ async function loadSubaccounts(x) {
       }
     }
     tr.appendChild(act);
-    lb.appendChild(tr);
-  }
+    return tr;
+  };
+  for (const rrow of data.txnLog) lb.appendChild(txnRow(rrow));
+  const moreBtn = $('#sub-log-more');
+  // Fewer rows than the panel's page size = the whole history is already here.
+  let logDone = data.txnLog.length < 100;
+  let logCursor = data.txnLog.length ? data.txnLog[data.txnLog.length - 1] : null;
+  moreBtn.classList.toggle('hidden', logDone);
+  moreBtn.disabled = false;
+  moreBtn.textContent = 'Load older ↓';
+  moreBtn.onclick = async () => {
+    if (logDone || !logCursor) return;
+    moreBtn.disabled = true;
+    moreBtn.textContent = 'loading…';
+    try {
+      const page = await api(`/accounts/${x.id}/txnlog?beforeTs=${logCursor.ts}&beforeId=${logCursor.id}&limit=200`);
+      for (const rrow of page.rows) lb.appendChild(txnRow(rrow));
+      if (page.rows.length) logCursor = page.rows[page.rows.length - 1];
+      logDone = page.done;
+      moreBtn.classList.toggle('hidden', logDone);
+    } catch (err) { alert(err.message); }
+    moreBtn.disabled = false;
+    moreBtn.textContent = 'Load older ↓';
+  };
 }
 
 async function linkSelectedProfile(selId, statusId) {

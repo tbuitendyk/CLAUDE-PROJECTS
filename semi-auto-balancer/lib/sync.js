@@ -30,6 +30,12 @@ const VENUES = { kraken, bitso };
 // and snaps to the venue balance silently.
 const RESIDUAL_ABS = 1e-8;
 const RESIDUAL_REL = 5e-4; // 0.05%
+// Below this, a residual is double-precision noise, not money: venue
+// quantities carry at most 8 decimals, so real dust is always ≥ 1e-8.
+// Noise residuals are ignored outright — no snap, no txn_log entry, no
+// quantity write (observed live: a 1.4e-14 NEAR float tail re-"snapped"
+// every hourly sync forever because an empty shell can't absorb it).
+const SNAP_NOISE = 1e-9;
 
 function makeClientFor(account) {
   const venue = VENUES[account.venue];
@@ -335,7 +341,7 @@ async function syncAccount(accountId, { client = null } = {}) {
         const residual = b.amount - expected;
         const tolerance = Math.max(RESIDUAL_ABS, RESIDUAL_REL * Math.max(Math.abs(b.amount), 1e-8));
         if (Math.abs(residual) <= tolerance) {
-          if (residual !== 0) {
+          if (Math.abs(residual) >= SNAP_NOISE) {
             const target = b.amount - (pendingByAsset.get(asset.id) || 0);
             summary.snapped.push({ symbol: asset.symbol, from: qtyById.get(asset.id), to: target });
             qtyById.set(asset.id, target);
@@ -651,23 +657,33 @@ async function syncAccountMulti(account, client, profiles) {
         const residual = b.amount - expected;
         const tolerance = Math.max(RESIDUAL_ABS, RESIDUAL_REL * Math.max(Math.abs(b.amount), 1e-8));
         if (Math.abs(residual) <= tolerance) {
-          if (residual !== 0 && shell) {
+          if (Math.abs(residual) >= SNAP_NOISE && shell) {
             // Dust lands in the shell — strategy track records never absorb
             // noise they didn't earn.
             let sAsset = matchVenueAsset(assetsOf.get(shell.id), b.code);
-            if (!sAsset) {
+            if (!sAsset && residual > 0) {
               sAsset = sub.ensureAsset(shell.id, holders[0].asset);
               assetsOf.get(shell.id).push(sAsset);
               qty.set(sAsset.id, sAsset.quantity);
             }
-            const next = Math.max(0, (qty.get(sAsset.id) || 0) + residual);
-            summary.snapped.push({ symbol: sAsset.symbol, from: qty.get(sAsset.id) || 0, to: next });
-            qty.set(sAsset.id, next);
-            sub.logTxn({
-              accountId: account.id, profileId: shell.id, kind: 'snap', ref: null,
-              deltas: [{ asset_id: sAsset.id, symbol: sAsset.symbol, delta: residual }],
-              note: `dust snap ${residual > 0 ? '+' : ''}${residual} ${sAsset.symbol.toUpperCase()} → shell`,
-            });
+            if (sAsset) {
+              const prev = qty.get(sAsset.id) || 0;
+              const next = Math.max(0, prev + residual);
+              // Log what actually moved, not what we wished: a negative
+              // residual against an empty shell clamps to zero applied, and
+              // a zero-applied "snap" must leave no trace or it re-logs on
+              // every sync until the end of time.
+              const applied = next - prev;
+              if (Math.abs(applied) >= SNAP_NOISE) {
+                summary.snapped.push({ symbol: sAsset.symbol, from: prev, to: next });
+                qty.set(sAsset.id, next);
+                sub.logTxn({
+                  accountId: account.id, profileId: shell.id, kind: 'snap', ref: null,
+                  deltas: [{ asset_id: sAsset.id, symbol: sAsset.symbol, delta: applied }],
+                  note: `dust snap ${applied > 0 ? '+' : ''}${applied} ${sAsset.symbol.toUpperCase()} → shell`,
+                });
+              }
+            }
           }
         } else {
           summary.unexplained.push({ code: b.code, residual });
