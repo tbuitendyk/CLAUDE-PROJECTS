@@ -91,6 +91,10 @@ button.danger { background: var(--page); color: var(--down); border: 1px solid v
    auto margin (that's the CPU button's job) and anchor styling normalized. */
 a.help-btn { margin-left: 0; text-decoration: none; color: var(--accent); border-color: var(--accent); line-height: normal; }
 a.help-btn:hover { background: var(--seq-100); }
+/* Paper-books pager: one book per page, controls repeated top and bottom. */
+.books-pager { display: flex; align-items: center; gap: 12px; margin: 14px 0; flex-wrap: wrap; }
+.books-pager .pager-label { color: var(--ink-2); font-size: 13px; font-weight: 600; }
+.books-pager button[disabled] { opacity: .4; cursor: default; }
 .topbar .inner { align-items: center; }
 tr.hilite td { background: var(--seq-100); }
 button.rowload { padding: 2px 8px; font-size: 11px; background: var(--page); color: var(--accent); border: 1px solid var(--accent); }

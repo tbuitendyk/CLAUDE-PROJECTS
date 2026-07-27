@@ -1379,13 +1379,82 @@
     </div>`;
   }
 
+  // ---- book pager: one book per page ----------------------------------------
+  // Page 1 = DOT/AVAX weekly tracker, page 2 = DOGE daily-3d (the two
+  // hard-coded frozen books), pages 3+ = engine books in declaration order
+  // (#1 → page 3, #2 → page 4, …; undeclared drafts trail in creation order).
+  // New declarations extend the run automatically.
+  let lastBooksAll = null;
+  let bookPage = 1;
+
+  function engineBooksOrdered(all) {
+    if (!all) return [];
+    const declared = all.books.filter((b) => b.bookNumber).sort((a, b) => a.bookNumber - b.bookNumber);
+    const drafts = all.books
+      .filter((b) => !b.bookNumber)
+      .sort((a, b) => String(a.createdAt || '').localeCompare(String(b.createdAt || '')));
+    return [...declared, ...drafts];
+  }
+
+  function renderBookPager() {
+    const list = engineBooksOrdered(lastBooksAll);
+    const total = 2 + Math.max(1, list.length);
+    if (bookPage > total) bookPage = total;
+    if (bookPage < 1) bookPage = 1;
+    const b = list[bookPage - 3];
+    const title = bookPage === 1
+      ? 'DOT/AVAX weekly tracker (frozen)'
+      : bookPage === 2
+        ? 'DOGE daily-3d (frozen)'
+        : b
+          ? b.bookNumber
+            ? `engine book #${b.bookNumber} — ${esc(b.config.pair)} ${esc(b.config.geometry)} (${esc(b.status)})`
+            : `draft — ${esc(b.config.pair)} ${esc(b.config.geometry)}`
+          : 'new paper books';
+    const html = `<button type="button" class="secondary" data-dir="-1"${bookPage <= 1 ? ' disabled' : ''}>&lsaquo; prev</button>
+      <span class="pager-label">book ${bookPage} of ${total} &middot; ${title}</span>
+      <button type="button" class="secondary" data-dir="1"${bookPage >= total ? ' disabled' : ''}>next &rsaquo;</button>`;
+    for (const id of ['books-pager-top', 'books-pager-bottom']) {
+      const el = $(id);
+      el.hidden = false;
+      el.innerHTML = html;
+      el.querySelectorAll('button').forEach((btn) =>
+        btn.addEventListener('click', () => {
+          bookPage += Number(btn.dataset.dir);
+          applyBookPage();
+        })
+      );
+    }
+    $('tracker-section').hidden = bookPage !== 1;
+    $('dogebook-section').hidden = bookPage !== 2;
+    $('books-section').hidden = bookPage < 3;
+  }
+
+  function applyBookPage() {
+    renderBookPager();
+    renderEngineView();
+  }
+
   function renderBooks(all) {
+    lastBooksAll = all;
+    applyBookPage();
+  }
+
+  function renderEngineView() {
+    if (bookPage < 3) return; // engine section is hidden on the frozen pages
+    const all = lastBooksAll;
+    if (!all) {
+      bkViewEl.innerHTML = '<p class="note">Loading books…</p>';
+      return;
+    }
+    const list = engineBooksOrdered(all);
     const active = all.books.filter((b) => b.status === 'live' || b.status === 'completed');
     const combined = active.length
       ? `<p class="note"><strong>${all.declaredCount}</strong> book(s) declared all-time — that count is the denominator
          against any winner. Active: ${active.map((b) => `#${b.bookNumber} ${esc(b.config.pair)}`).join(', ')}.</p>`
       : `<p class="note">${all.declaredCount ? `${all.declaredCount} book(s) declared all-time.` : 'No books yet.'} Create a draft above to begin.</p>`;
-    bkViewEl.innerHTML = combined + all.books.slice().reverse().map(bookCard).join('');
+    const shown = list[bookPage - 3];
+    bkViewEl.innerHTML = combined + (shown ? bookCard(shown) : '<p class="note">No engine books yet — create a draft above to begin.</p>');
     bkViewEl.querySelectorAll('.bk-declare').forEach((btn) => {
       btn.addEventListener('click', async () => {
         if (!confirm('Declare and initialize this book?\n\nThis trains and FREEZES the models, band and config permanently, '
@@ -1491,6 +1560,7 @@
 
   refreshBatch();
   refreshDataState();
+  applyBookPage(); // pager + page-1 visibility before any fetch lands
   refreshTracker();
   refreshDoge();
   refreshBooks();

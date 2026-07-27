@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>General Classifier</title>
-  <link rel="stylesheet" href="style.css?v=18">
+  <link rel="stylesheet" href="style.css?v=19">
 </head>
 <body>
   <header class="topbar">
@@ -116,6 +116,7 @@
     </div><!-- /tab-research (batch section re-enters below; books live on their own tab) -->
 
     <div id="tab-books" hidden>
+    <div id="books-pager-top" class="books-pager" hidden></div>
     <div class="section" id="tracker-section">
       <h2>Live tracker (paper)</h2>
       <p class="note">
@@ -227,6 +228,7 @@
       <div id="bk-error" class="error" hidden></div>
       <div id="bk-view"></div>
     </div>
+    <div id="books-pager-bottom" class="books-pager" hidden></div>
     </div><!-- /tab-books -->
 
     <div id="tab-research-2"><!-- research tab, part two: the batch tools -->
@@ -304,6 +306,6 @@
     pruned to time / open / high / low / close / quote&nbsp;volume.
   </footer>
 
-  <script src="app.js?v=41"></script>
+  <script src="app.js?v=42"></script>
 </body>
 </html>
