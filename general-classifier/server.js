@@ -150,6 +150,57 @@ app.post('/api/batch', (req, res) => {
   }
 });
 
+// Bracket lab: the execution-permutation sweep (combos × option branches ×
+// the OCO bracket menu), slim-then-promote, no nulls in the sweep.
+app.post('/api/bracketlab', (req, res) => {
+  const b = req.body || {};
+  for (const m of ['startMonth', 'endMonth']) {
+    if (!b.allLoaded && b[m] !== undefined && !/^\d{4}-\d{2}$/.test(String(b[m]))) {
+      return res.status(400).json({ error: `${m} must be YYYY-MM` });
+    }
+  }
+  if (b.universe !== undefined && (!Array.isArray(b.universe) || b.universe.some((p) => !SYMBOL_RE.test(String(p).toUpperCase())))) {
+    return res.status(400).json({ error: 'universe must be an array of symbols like DOTUSDT' });
+  }
+  if (b.set && b.set.band !== undefined && b.set.band !== 'auto') {
+    const v = Number(b.set.band);
+    if (!Number.isFinite(v) || v <= 0 || v >= 50) return res.status(400).json({ error: 'band must be "auto" or between 0 and 50' });
+  }
+  try {
+    const id = batch.startBracketLab({
+      universe: b.universe ? b.universe.map((p) => String(p).toUpperCase()) : undefined,
+      sizes: b.sizes,
+      startMonth: b.startMonth,
+      endMonth: b.endMonth,
+      allLoaded: !!b.allLoaded,
+      permute: b.permute,
+      set: b.set,
+      promoteK: b.promoteK,
+      minTrades: b.minTrades,
+    });
+    res.json({ batchId: id });
+  } catch (err) {
+    res.status(409).json({ error: err.message });
+  }
+});
+
+app.post('/api/bracketlab/:id/select', (req, res) => {
+  try {
+    const doc = batch.bracketSelect(req.params.id, req.body || {});
+    res.json({ ok: true, selection: doc.selection });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.post('/api/bracketlab/:id/null', (req, res) => {
+  try {
+    res.json(batch.startBracketNull(req.params.id, (req.body || {}).shifts));
+  } catch (err) {
+    res.status(409).json({ error: err.message });
+  }
+});
+
 // Permutation screen: stage 1 of the owner's staged pick workflow — every
 // pair × every spec × both training regimes, 0 null shifts by design.
 app.post('/api/permscreen', (req, res) => {

@@ -1097,11 +1097,398 @@ function permNullAggregate(doc) {
   nt.perRung = perRung;
 }
 
+// ---- bracket lab (owner's execution-permutation system) ----------------------
+//
+// Slim-then-promote sweep over asset COMBOS (singles/doubles/triples from a
+// chosen universe) × permutable option branches (geometry / decision / band /
+// 24-5), each scored through the full OCO-bracket execution menu
+// (gate × d × t, plus quorum rungs at the promoted stage) with the DECLARED
+// mechanical selection rule. No nulls in the sweep by design; the null stage
+// replays everything downstream of the surviving combo. Big searches are the
+// point — the stamp carries every menu and the full denominator, and the
+// ledger's rules apply to whatever crawls out.
+
+const bracketLib = require('./bracket');
+const { toHourlyMap, forwardFill, scoreDiff, balancedBandPct, GEOMETRIES: GEOS } = require('./dataset');
+const { loadSymbol, loadSymbolAll, monthList, deriveShift, MIN_CHUNKS, interlacedPurge } = require('./pipeline');
+
+const BRACKET_BAND_MENU = ['auto', 3, 5, 8];
+const BRACKET_GEOMETRIES = Object.keys(GEOS);
+
+function expandBracketPlan(p) {
+  const geometries = p.permute.geometry ? BRACKET_GEOMETRIES : [p.set.geometry];
+  const decisions = p.permute.decision ? ['argmax', 'directional'] : [p.set.decision];
+  const bands = p.permute.band ? BRACKET_BAND_MENU : [p.set.band];
+  const weekdays = p.permute.weekdays ? [false, true] : [!!p.set.weekdaysOnly];
+  const branches = [];
+  for (const geometry of geometries) {
+    for (const decision of decisions) {
+      for (const band of bands) {
+        for (const wd of weekdays) {
+          // weekly chunks always span weekends — the 24/5 branch would be an
+          // exact duplicate, so permutation skips it (an explicit setting
+          // passes through untouched; buildChunks ignores it there anyway)
+          if (p.permute.weekdays && wd && geometry === 'weekly-8d') continue;
+          branches.push({ geometry, decision, band, weekdaysOnly: wd });
+        }
+      }
+    }
+  }
+  const u = p.universe;
+  const combos = [];
+  if (p.sizes.singles) for (const a of u) combos.push({ trade: a, ctx1: null, ctx2: null, size: 1 });
+  if (p.sizes.doubles) for (const a of u) for (const b of u) if (b !== a) combos.push({ trade: a, ctx1: b, ctx2: null, size: 2 });
+  if (p.sizes.triples) {
+    for (const a of u) {
+      const rest = u.filter((x) => x !== a);
+      for (let i = 0; i < rest.length; i++) for (let j = i + 1; j < rest.length; j++) combos.push({ trade: a, ctx1: rest[i], ctx2: rest[j], size: 3 });
+    }
+  }
+  return { branches, combos };
+}
+
+const slimViewsFor = (size) => (size === 1 ? ['full', 'prices', 'volume'] : ['full', 'prices', 'volume', 'cross']);
+const unitKey = (c, b) => `${c.trade}|${c.ctx1 || ''}|${c.ctx2 || ''}|${b.geometry}|${b.decision}|${b.band}|${b.weekdaysOnly ? '24-5' : '24-7'}`;
+
+function bracketPerfTick(doc) {
+  const perf = doc.perf;
+  const elapsed = Date.now() - new Date(doc.startedAt).getTime();
+  perf.elapsedMs = elapsed;
+  perf.ratePerMin = perf.runsDone ? (perf.runsDone / elapsed) * 60_000 : null;
+  perf.secPerTraining = perf.runsDone ? elapsed / perf.runsDone / 1000 : null;
+  perf.etaMs = perf.runsDone ? (elapsed / perf.runsDone) * (perf.runsTotal - perf.runsDone) : null;
+}
+
+function pushLeader(doc, row) {
+  doc.leaders.push(row);
+  doc.leaders.sort((a, b) => b.pnl - a.pnl);
+  if (doc.leaders.length > (doc.params.detailK || 50)) doc.leaders.length = doc.params.detailK || 50;
+}
+
+// One unit end-to-end: build the combo dataset for a branch, train members,
+// vote, sweep the execution menu, return the best cell (or null) plus the
+// pieces the promoted stage / null replay need. memberSpec chooses slim
+// (logreg over views, full window) or full grid (both models × 2 windows).
+async function runBracketUnit(doc, combo, branch, stage, getMap, onRun) {
+  const geo = GEOS[branch.geometry];
+  const nDays = geo.featureHours / 24;
+  const maps = {
+    trade: await getMap(combo.trade),
+    ctx1: combo.ctx1 ? await getMap(combo.ctx1) : null,
+    ctx2: combo.ctx2 ? await getMap(combo.ctx2) : null,
+  };
+  const { chunks } = bracketLib.buildComboChunks(maps, branch.geometry, branch.weekdaysOnly);
+  if (chunks.length < MIN_CHUNKS) throw new Error(`only ${chunks.length} labelable chunks`);
+  const nTest = Math.max(2, Math.round(chunks.length * 0.2));
+  const trainChunks = chunks.slice(0, chunks.length - nTest);
+  const testChunks = chunks.slice(chunks.length - nTest);
+  const bandPct = branch.band === 'auto' ? balancedBandPct(trainChunks.map((c) => c.diffPct)) : Math.abs(branch.band);
+  for (const c of chunks) c.label = scoreDiff(c.diffPct / 100, bandPct / 100);
+  const views = bracketLib.comboViews(combo.size, nDays).views;
+  const specs = [];
+  for (const v of slimViewsFor(combo.size)) {
+    if (stage === 'slim') specs.push({ model: 'logreg', view: v, regime: 'full' });
+    else for (const model of ['logreg', 'boost']) for (const regime of ['full', 'interlaced']) specs.push({ model, view: v, regime });
+  }
+  const memberCalls = [];
+  for (const spec of specs) {
+    if (doc.cancelRequested) throw new Error('cancelled');
+    const fit = spec.regime === 'interlaced' ? interlacedPurge(trainChunks, geo) : trainChunks;
+    const { calls } = await bracketLib.trainMember({
+      model: spec.model,
+      viewIdx: views[spec.view],
+      trainChunks: fit,
+      testChunks,
+      decision: branch.decision,
+      tradeMap: maps.trade,
+      geo,
+    });
+    memberCalls.push(calls);
+    onRun(`${combo.trade}${combo.ctx1 ? '+' + combo.ctx1 : ''}${combo.ctx2 ? '+' + combo.ctx2 : ''}/${branch.geometry}/${spec.regime}/${spec.view}/${spec.model}`);
+  }
+  // committee streams: majority vote (slim) plus, at the promoted stage,
+  // every quorum rung over the full member set — all swept mechanically
+  const fee = doc.params.feePerLeg;
+  const streams = [];
+  const vote = testChunks.map((_, i) => permQuorumCall(memberCalls, i, 1));
+  streams.push({ quorum: 1, calls: vote });
+  if (stage === 'promoted') {
+    for (let k = 2; k <= memberCalls.length; k++) streams.push({ quorum: k, calls: testChunks.map((_, i) => permQuorumCall(memberCalls, i, k)) });
+  }
+  let best = null;
+  for (const s of streams) {
+    const cell = bracketLib.bestCell(bracketLib.execSweep(testChunks, s.calls, maps.trade, geo, bandPct, fee), doc.params.minTrades);
+    if (cell && (!best || cell.pnl > best.pnl)) best = { ...cell, quorum: s.quorum, members: memberCalls.length };
+  }
+  return { best, bandPct, testPeriods: testChunks.length, chunks, testChunks, trainChunks, memberCalls, maps, geo };
+}
+
+function startBracketLab(params) {
+  if (batchRunning()) throw new Error(`batch ${activeBatch.id} is already running`);
+  const p = {
+    universe: params.universe && params.universe.length ? params.universe : DEFAULT_PAIRS,
+    sizes: { singles: !!params.sizes?.singles, doubles: !!params.sizes?.doubles, triples: !!params.sizes?.triples },
+    startMonth: params.startMonth || '2018-01',
+    endMonth: params.endMonth || '2026-06',
+    allLoaded: !!params.allLoaded,
+    permute: { geometry: !!params.permute?.geometry, decision: !!params.permute?.decision, band: !!params.permute?.band, weekdays: !!params.permute?.weekdays },
+    set: {
+      geometry: GEOS[params.set?.geometry] ? params.set.geometry : 'daily-3d',
+      decision: params.set?.decision === 'directional' ? 'directional' : 'argmax',
+      band: params.set?.band === 'auto' || params.set?.band === undefined ? 'auto' : Number(params.set.band),
+      weekdaysOnly: !!params.set?.weekdaysOnly,
+    },
+    promoteK: Math.min(100, Math.max(1, Number(params.promoteK) || 25)),
+    minTrades: Math.max(1, Number(params.minTrades) || 10),
+    detailK: 50,
+    feePerLeg: REAL_FEE_PER_LEG,
+    dMults: bracketLib.D_MULTS,
+    tHours: bracketLib.T_HOURS,
+    gates: bracketLib.GATES,
+  };
+  if (!p.sizes.singles && !p.sizes.doubles && !p.sizes.triples) throw new Error('tick at least one combo size');
+  const { branches, combos } = expandBracketPlan(p);
+  const units = [];
+  for (const b of branches) for (const c of combos) units.push({ c, b });
+  const slimRuns = units.reduce((s, u) => s + slimViewsFor(u.c.size).length, 0);
+  const stamp = new Date().toISOString().replace(/[-:]/g, '').slice(0, 13).replace('T', '-');
+  const doc = {
+    id: `bracketlab-${stamp}`,
+    kind: 'bracketlab',
+    status: 'running',
+    startedAt: new Date().toISOString(),
+    finishedAt: null,
+    progress: '',
+    params: p,
+    plan: { branches: branches.length, combos: combos.length, units: units.length, slimRuns, promoteRuns: null },
+    perf: { phase: 'slim', unitsDone: 0, unitsTotal: units.length, runsDone: 0, runsTotal: slimRuns, ratePerMin: null, secPerTraining: null, elapsedMs: 0, etaMs: null },
+    leaders: [],
+    failures: [],
+    selection: null,
+    nullTest: null,
+    runs: [], // kept empty by design: at permutation scale, counters + leaders ARE the record
+  };
+  activeBatch = doc;
+  saveBatch(doc);
+
+  // Symbol maps are branch-independent; a small LRU keeps memory bounded on
+  // full-universe sweeps while giving near-perfect hit rates on sorted units.
+  const mapCache = new Map();
+  const getMap = async (sym) => {
+    if (mapCache.has(sym)) {
+      const v = mapCache.get(sym);
+      mapCache.delete(sym);
+      mapCache.set(sym, v);
+      return v;
+    }
+    const loaded = p.allLoaded ? await loadSymbolAll(sym, () => {}) : await loadSymbol(sym, monthList(p.startMonth, p.endMonth), () => {});
+    if (!loaded.rows.length) throw new Error(`no data for ${sym}`);
+    const filled = forwardFill(toHourlyMap(loaded.rows)).map;
+    mapCache.set(sym, filled);
+    if (mapCache.size > 8) mapCache.delete(mapCache.keys().next().value);
+    return filled;
+  };
+
+  (async () => {
+    for (const { c, b } of units) {
+      if (doc.cancelRequested) break;
+      const key = unitKey(c, b);
+      try {
+        const res = await runBracketUnit(doc, c, b, 'slim', getMap, (tag) => {
+          doc.perf.runsDone++;
+          doc.progress = `slim ${doc.perf.unitsDone + 1}/${units.length}: ${tag}`;
+          bracketPerfTick(doc);
+        });
+        if (res.best) {
+          pushLeader(doc, {
+            key,
+            stage: 'slim',
+            trade: c.trade,
+            ctx1: c.ctx1,
+            ctx2: c.ctx2,
+            size: c.size,
+            geometry: b.geometry,
+            decision: b.decision,
+            bandMode: b.band,
+            bandPct: res.bandPct,
+            weekdaysOnly: b.weekdaysOnly,
+            testPeriods: res.testPeriods,
+            ...res.best,
+          });
+        }
+      } catch (err) {
+        if (doc.failures.length < 200) doc.failures.push({ key, error: err.message || String(err) });
+      }
+      doc.perf.unitsDone++;
+      bracketPerfTick(doc);
+      saveBatch(doc);
+    }
+    // ---- promotion: top-K slim survivors re-run on the full member grid ----
+    if (!doc.cancelRequested) {
+      const promote = doc.leaders.filter((l) => l.stage === 'slim').slice(0, p.promoteK);
+      doc.plan.promoteRuns = promote.reduce((s, l) => s + slimViewsFor(l.size).length * 4, 0);
+      doc.perf.runsTotal += doc.plan.promoteRuns;
+      doc.perf.phase = 'promote';
+      let i = 0;
+      for (const l of promote) {
+        if (doc.cancelRequested) break;
+        i++;
+        const c = { trade: l.trade, ctx1: l.ctx1, ctx2: l.ctx2, size: l.size };
+        const b = { geometry: l.geometry, decision: l.decision, band: l.bandMode, weekdaysOnly: l.weekdaysOnly };
+        try {
+          const res = await runBracketUnit(doc, c, b, 'promoted', getMap, (tag) => {
+            doc.perf.runsDone++;
+            doc.progress = `promote ${i}/${promote.length}: ${tag}`;
+            bracketPerfTick(doc);
+          });
+          if (res.best) pushLeader(doc, { ...l, stage: 'promoted', ...res.best });
+        } catch (err) {
+          if (doc.failures.length < 200) doc.failures.push({ key: l.key + '|promote', error: err.message || String(err) });
+        }
+        bracketPerfTick(doc);
+        saveBatch(doc);
+      }
+    }
+    doc.status = doc.cancelRequested ? 'cancelled' : 'done';
+    doc.perf.phase = 'done';
+    doc.finishedAt = new Date().toISOString();
+    doc.progress = '';
+    saveBatch(doc);
+  })().catch((err) => {
+    doc.status = 'error';
+    doc.error = err.message || String(err);
+    doc.finishedAt = new Date().toISOString();
+    saveBatch(doc);
+  });
+  return doc.id;
+}
+
+// Stage-2 selection: pin one leader row (by its key + stage) for the null.
+function bracketSelect(id, patch) {
+  const doc = getBatch(id);
+  if (!doc || doc.kind !== 'bracketlab') throw new Error('unknown bracket-lab run');
+  if (doc.status === 'running') throw new Error('sweep is still running');
+  const row = doc.leaders.find((l) => l.key === patch.key && l.stage === (patch.stage || 'promoted'));
+  if (!row) throw new Error('unknown leader row (promoted rows are the null candidates)');
+  doc.selection = row;
+  doc.nullTest = null;
+  saveBatch(doc);
+  return doc;
+}
+
+// Null replay for the selected survivor: per rotation, retrain the unit's
+// full member grid on rotated labels and give the null EVERY freedom the
+// real machine had downstream of the combo — the whole execution menu and
+// all quorum rungs, best cell taken by the same declared rule. Also scores
+// the selected config's own cell for the conditional reading. Live tables.
+function startBracketNull(id, shifts) {
+  if (batchRunning()) throw new Error(`batch ${activeBatch.id} is already running`);
+  const doc = getBatch(id);
+  if (!doc || doc.kind !== 'bracketlab') throw new Error('unknown bracket-lab run');
+  const sel = doc.selection;
+  if (!sel) throw new Error('select a promoted leader row first');
+  const nShifts = Math.min(1000, Math.max(1, Math.floor(Number(shifts) || 0)));
+  const p = doc.params;
+  doc.status = 'running';
+  doc.cancelRequested = false;
+  doc.perf.phase = 'null';
+  doc.perf.runsTotal += nShifts * slimViewsFor(sel.size).length * 4;
+  doc.nullTest = { status: 'running', requestedShifts: nShifts, startedAt: new Date().toISOString(), real: { pnl: sel.pnl, trades: sel.trades }, samples: {}, shifts: 0, exceedSearch: null, exceedSame: null, medianBestPnl: null, medianSamePnl: null };
+  activeBatch = doc;
+  saveBatch(doc);
+
+  const mapCache = new Map();
+  const getMap = async (sym) => {
+    if (mapCache.has(sym)) return mapCache.get(sym);
+    const loaded = p.allLoaded ? await loadSymbolAll(sym, () => {}) : await loadSymbol(sym, monthList(p.startMonth, p.endMonth), () => {});
+    const filled = forwardFill(toHourlyMap(loaded.rows)).map;
+    mapCache.set(sym, filled);
+    return filled;
+  };
+  const c = { trade: sel.trade, ctx1: sel.ctx1, ctx2: sel.ctx2, size: sel.size };
+  const b = { geometry: sel.geometry, decision: sel.decision, band: sel.bandMode, weekdaysOnly: sel.weekdaysOnly };
+
+  (async () => {
+    for (let s = 1; s <= nShifts; s++) {
+      if (doc.cancelRequested) break;
+      try {
+        // rotate the label side across chunks (pipeline semantics), then
+        // re-run the ENTIRE downstream machine on the rotated world
+        const geo = GEOS[b.geometry];
+        const maps = { trade: await getMap(c.trade), ctx1: c.ctx1 ? await getMap(c.ctx1) : null, ctx2: c.ctx2 ? await getMap(c.ctx2) : null };
+        const { chunks } = bracketLib.buildComboChunks(maps, b.geometry, b.weekdaysOnly);
+        const rot = deriveShift(chunks.length, s / (nShifts + 1));
+        const src = chunks.map((ch) => ch.diffPct);
+        for (let i = 0; i < chunks.length; i++) chunks[i].diffPct = src[(i + rot) % chunks.length];
+        const nTest = Math.max(2, Math.round(chunks.length * 0.2));
+        const trainChunks = chunks.slice(0, chunks.length - nTest);
+        const testChunks = chunks.slice(chunks.length - nTest);
+        const bandPct = b.band === 'auto' ? balancedBandPct(trainChunks.map((ch) => ch.diffPct)) : Math.abs(b.band);
+        for (const ch of chunks) ch.label = scoreDiff(ch.diffPct / 100, bandPct / 100);
+        const views = bracketLib.comboViews(c.size, geo.featureHours / 24).views;
+        const memberCalls = [];
+        for (const v of slimViewsFor(c.size)) {
+          for (const model of ['logreg', 'boost']) {
+            for (const regime of ['full', 'interlaced']) {
+              if (doc.cancelRequested) throw new Error('cancelled');
+              const fit = regime === 'interlaced' ? interlacedPurge(trainChunks, geo) : trainChunks;
+              const { calls } = await bracketLib.trainMember({ model, viewIdx: views[v], trainChunks: fit, testChunks, decision: b.decision, tradeMap: maps.trade, geo });
+              memberCalls.push(calls);
+              doc.perf.runsDone++;
+              doc.progress = `null ${s}/${nShifts}: ${v}/${model}/${regime}`;
+              bracketPerfTick(doc);
+            }
+          }
+        }
+        let bestOfMenu = null;
+        let sameCell = null;
+        for (let k = 1; k <= memberCalls.length; k++) {
+          const stream = testChunks.map((_, i) => permQuorumCall(memberCalls, i, k));
+          const rows = bracketLib.execSweep(testChunks, stream, maps.trade, geo, bandPct, p.feePerLeg);
+          const cell = bracketLib.bestCell(rows, p.minTrades);
+          if (cell && (!bestOfMenu || cell.pnl > bestOfMenu.pnl)) bestOfMenu = cell;
+          if (k === sel.quorum) {
+            const same = rows.find((r) => r.gate === sel.gate && r.dMult === sel.dMult && r.tHours === sel.tHours);
+            if (same) sameCell = same;
+          }
+        }
+        doc.nullTest.samples[rot] = { best: bestOfMenu ? bestOfMenu.pnl : -Infinity, same: sameCell ? sameCell.pnl : null, sameTrades: sameCell ? sameCell.trades : null };
+        const vals = Object.values(doc.nullTest.samples);
+        doc.nullTest.shifts = vals.length;
+        doc.nullTest.exceedSearch = vals.filter((x) => x.best >= sel.pnl).length / vals.length;
+        const sames = vals.filter((x) => x.same != null);
+        doc.nullTest.exceedSame = sames.length ? sames.filter((x) => x.same >= sel.pnl).length / sames.length : null;
+        doc.nullTest.medianBestPnl = median(vals.map((x) => (x.best === -Infinity ? 0 : x.best)));
+        doc.nullTest.medianSamePnl = sames.length ? median(sames.map((x) => x.same)) : null;
+      } catch (err) {
+        if (doc.failures.length < 200) doc.failures.push({ key: `null-shift-${s}`, error: err.message || String(err) });
+      }
+      saveBatch(doc);
+    }
+    doc.nullTest.status = doc.cancelRequested ? 'cancelled' : 'done';
+    doc.nullTest.finishedAt = new Date().toISOString();
+    doc.status = doc.cancelRequested ? 'cancelled' : 'done';
+    doc.perf.phase = 'done';
+    doc.progress = '';
+    saveBatch(doc);
+  })().catch((err) => {
+    doc.nullTest = { ...(doc.nullTest || {}), status: 'error', error: err.message || String(err) };
+    doc.status = 'error';
+    doc.error = err.message || String(err);
+    saveBatch(doc);
+  });
+  return { started: true, shifts: nShifts };
+}
+
 module.exports = {
   startBatch,
   startConsensus,
   startMetalens,
   startPermScreen,
+  startBracketLab,
+  bracketSelect,
+  startBracketNull,
+  expandBracketPlan,
   permSelect,
   startPermNull,
   permQuorumBook,

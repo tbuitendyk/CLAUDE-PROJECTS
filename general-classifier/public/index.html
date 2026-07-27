@@ -20,6 +20,8 @@
 
   <nav class="tabbar">
     <button type="button" class="tab active" id="tab-btn-research" data-tab="research">Research</button>
+    <button type="button" class="tab" id="tab-btn-bracket" data-tab="bracket"
+      title="The execution-permutation lab: asset combos (singles/doubles/triples) × permutable options × the OCO bracket menu, slim-then-promote, live leaderboard, nulls only on survivors.">Bracket lab</button>
     <button type="button" class="tab" id="tab-btn-books" data-tab="books"
       title="The live paper books — frozen pre-registered experiments verifying earlier setups in real time. A different category of work from the research tools, kept out of the way.">Paper books</button>
   </nav>
@@ -114,6 +116,91 @@
     <div id="error" class="error" hidden></div>
     <div id="report" hidden></div>
     </div><!-- /tab-research (batch section re-enters below; books live on their own tab) -->
+
+    <div id="tab-bracket" hidden>
+    <section class="intro">
+      <h1>Bracket lab</h1>
+      <p>Sweeps asset <strong>combos</strong> (a trade asset alone, or with one or two context assets) &times;
+        any <strong>permuted options</strong> &times; the full <strong>OCO bracket execution menu</strong>:
+        stop-entries at p&plusmn;d off the entry candle, first rail filled becomes the position and the other its
+        stop, time exit at t. Slim grid first (logreg views), top combos promoted to the full 16-member grid with
+        quorum rungs. Selection is mechanical (best net $, min-trade floor) and every menu is stamped. No nulls
+        here by design &mdash; fire the null on a promoted survivor and it replays everything downstream of the
+        combo. Ambiguous hourly bars always resolve AGAINST the book and are counted.</p>
+    </section>
+    <form id="bl-form" class="controls" autocomplete="off" onsubmit="return false">
+      <div class="field" style="flex:1;min-width:280px">
+        <label for="bl-universe">Universe (comma-separated; empty = all 17)</label>
+        <input id="bl-universe" type="text" placeholder="DOTUSDT, AVAXUSDT, UNIUSDT, DOGEUSDT">
+      </div>
+      <div class="field" style="min-width:180px">
+        <label title="Which combo sizes to sweep — any subset">Combo sizes</label>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;padding-top:6px">
+          <label class="check"><input type="checkbox" id="bl-singles"> singles</label>
+          <label class="check"><input type="checkbox" id="bl-doubles" checked> doubles</label>
+          <label class="check"><input type="checkbox" id="bl-triples"> triples</label>
+        </div>
+      </div>
+      <div class="field">
+        <label for="bl-start">Start month</label>
+        <input id="bl-start" type="month" value="2019-01">
+      </div>
+      <div class="field">
+        <label class="check"><input type="checkbox" id="bl-allloaded" checked> all loaded data</label>
+        <label for="bl-end">End month</label>
+        <input id="bl-end" type="month" value="2026-06">
+      </div>
+      <div class="field">
+        <label class="check" title="Permute: sweep ALL five chunk shapes as extra branches"><input type="checkbox" id="bl-perm-geometry"> permute</label>
+        <label for="bl-geometry">Chunk shape</label>
+        <select id="bl-geometry">
+          <option value="weekly-8d">Weekly 8-day</option>
+          <option value="daily-1d">Daily 1-day</option>
+          <option value="daily-2d">Daily 2-day</option>
+          <option value="daily-3d" selected>Daily 3-day</option>
+          <option value="daily-4d">Daily 4-day</option>
+        </select>
+      </div>
+      <div class="field">
+        <label class="check" title="Permute: run BOTH decision modes as extra branches"><input type="checkbox" id="bl-perm-decision"> permute</label>
+        <label for="bl-decision">Decision</label>
+        <select id="bl-decision">
+          <option value="argmax" selected>Argmax (3-class)</option>
+          <option value="directional">Directional hunter</option>
+        </select>
+      </div>
+      <div class="field">
+        <label class="check" title="Permute: sweep the declared band menu (auto, ±3%, ±5%, ±8%) as extra branches"><input type="checkbox" id="bl-perm-band"> permute</label>
+        <label for="bl-band">Band (auto or ±%)</label>
+        <input id="bl-band" type="text" value="auto">
+      </div>
+      <div class="field">
+        <label class="check" title="Permute: run 24/7 AND 24/5 as extra branches (daily shapes; weekly skips the duplicate)"><input type="checkbox" id="bl-perm-weekdays"> permute</label>
+        <label class="check" style="margin-top:14px"><input type="checkbox" id="bl-weekdays"> 24/5 &mdash; weekday chunks only</label>
+      </div>
+      <div class="field">
+        <label for="bl-promotek" title="Mechanical promotion rule: top K slim survivors re-run on the full grid">promote top K</label>
+        <input id="bl-promotek" type="number" min="1" max="100" step="1" value="25">
+      </div>
+      <div class="field">
+        <label for="bl-mintrades" title="Selection floor: execution cells below this many test trades never win">min trades</label>
+        <input id="bl-mintrades" type="number" min="1" max="200" step="1" value="10">
+      </div>
+      <div class="field submit"><button id="bl-start-btn" type="button">Start sweep</button></div>
+      <div class="field submit"><button id="bl-stop" type="button" class="danger"
+        title="Kill switch: stops the sweep at its current training; everything completed so far stays persisted and readable.">Stop jobs</button></div>
+    </form>
+    <div class="controls" style="margin-top:10px">
+      <div class="field">
+        <label for="bl-pick">Saved sweeps</label>
+        <select id="bl-pick"></select>
+      </div>
+      <div class="field submit"><button id="bl-refresh" type="button" class="secondary">Refresh</button></div>
+      <div id="bl-status" class="status" style="margin-top:0" hidden></div>
+    </div>
+    <div id="bl-error" class="error" hidden></div>
+    <div id="bl-view"></div>
+    </div><!-- /tab-bracket -->
 
     <div id="tab-books" hidden>
     <div id="books-pager-top" class="books-pager" hidden></div>
@@ -309,6 +396,6 @@
     pruned to time / open / high / low / close / quote&nbsp;volume.
   </footer>
 
-  <script src="app.js?v=45"></script>
+  <script src="app.js?v=46"></script>
 </body>
 </html>

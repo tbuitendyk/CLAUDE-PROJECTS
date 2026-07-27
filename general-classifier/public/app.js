@@ -104,7 +104,7 @@
   // setups in real time and shouldn't clutter — or distract from — the
   // research tools. Selection survives reloads via the URL hash, so a
   // bookmarked #books goes straight to the books.
-  const TAB_PANES = { research: ['tab-research', 'tab-research-2'], books: ['tab-books'] };
+  const TAB_PANES = { research: ['tab-research', 'tab-research-2'], bracket: ['tab-bracket'], books: ['tab-books'] };
   function showTab(name) {
     const tab = TAB_PANES[name] ? name : 'research';
     for (const [key, ids] of Object.entries(TAB_PANES)) {
@@ -495,6 +495,10 @@
     const header = `${esc(doc.id)} — ${esc(doc.status)}${doc.status === 'running' && doc.progress ? ` — ${esc(doc.progress)}` : ''}
       · ${doc.runs.filter((r) => r.status === 'done' || r.status === 'error').length}/${doc.runs.length} runs
       · dormant ±${esc(String(doc.params.dormantPct))}% · ${range} · ${esc(doc.params.geometry || 'weekly-8d')}${doc.params.weekdaysOnly ? ' · 24/5' : ''}${doc.params.decision === 'directional' ? ' · directional hunter' : ''} · vs ${esc(doc.params.compareSymbol)}`;
+    if (doc.kind === 'bracketlab') {
+      batchViewEl.innerHTML = `<p class="note">${header}</p><p class="note">This is a Bracket lab sweep — view it on the <strong>Bracket lab</strong> tab.</p>`;
+      return;
+    }
     if (doc.kind === 'permscreen') {
       renderPermScreen(doc, header);
       return;
@@ -1782,9 +1786,219 @@
   });
   $('bk-refresh').addEventListener('click', () => refreshBooks(true));
 
+
+  // ---- bracket lab tab -------------------------------------------------------
+
+  const blViewEl = $('bl-view');
+  const blErrEl = $('bl-error');
+  const blPickEl = $('bl-pick');
+  let blPicked = null; // null = follow the latest bracketlab doc
+  let blTimer = null;
+
+  function setBlStatus(text) {
+    const el = $('bl-status');
+    el.hidden = !text;
+    el.innerHTML = text ? `<span class="spin">⟳</span>${esc(text)}` : '';
+  }
+
+  const fmtDur = (ms) => {
+    if (ms == null) return '—';
+    const m = Math.round(ms / 60000);
+    return m < 90 ? `${m}m` : m < 60 * 48 ? `${(m / 60).toFixed(1)}h` : `${(m / 1440).toFixed(1)}d`;
+  };
+
+  function comboLabel(l) {
+    return l.trade + (l.ctx1 ? '+' + l.ctx1 : '') + (l.ctx2 ? '+' + l.ctx2 : '');
+  }
+
+  function renderBracket(doc) {
+    if (!doc) {
+      blViewEl.innerHTML = '<p class="note">No bracket-lab sweeps yet — set the controls and Start sweep.</p>';
+      return;
+    }
+    const p = doc.params;
+    const perf = doc.perf || {};
+    const running = doc.status === 'running';
+    const sel = doc.selection;
+    const permuted = Object.entries(p.permute || {}).filter(([, v]) => v).map(([k]) => k);
+    const header = `${esc(doc.id)} — ${esc(doc.status)}${running && doc.progress ? ' — ' + esc(doc.progress) : ''}`;
+    const planLine = doc.plan
+      ? `${doc.plan.combos} combos × ${doc.plan.branches} branch(es) = ${doc.plan.units} units · slim runs ${doc.plan.slimRuns}`
+        + (doc.plan.promoteRuns != null ? ` · promote runs ${doc.plan.promoteRuns}` : '')
+      : '';
+    const perfBlock = `
+      <div class="section"><h2>Progress &amp; performance</h2>
+      <p class="note">${planLine}${permuted.length ? ' · permuted: ' + permuted.join(', ') : ' · no options permuted'}
+        · fee/trip $${(2 * p.feePerLeg).toFixed(2)} · d-grid ${p.dMults.join('/')}×band · t ${p.tHours.join('/')}h
+        · gates ${p.gates.join('/')} · rule: top net $ with ≥${p.minTrades} trades · promote top ${p.promoteK}</p>
+      <div class="tiles">
+        ${tile('Phase', esc(perf.phase || '—'), running ? 'running' : esc(doc.status))}
+        ${tile('Units', `${perf.unitsDone ?? 0} / ${perf.unitsTotal ?? '—'}`, 'combo × branch permutations')}
+        ${tile('Trainings', `${perf.runsDone ?? 0} / ${perf.runsTotal ?? '—'}`, 'the raw denominator count')}
+        ${tile('Rate', perf.ratePerMin ? perf.ratePerMin.toFixed(1) + '/min' : '—', perf.secPerTraining ? perf.secPerTraining.toFixed(1) + 's per training' : '')}
+        ${tile('Elapsed', fmtDur(perf.elapsedMs), '')}
+        ${tile('ETA', running ? fmtDur(perf.etaMs) : '—', running ? 'at current pace' : 'finished')}
+      </div>
+      ${doc.failures && doc.failures.length ? `<p class="note">${doc.failures.length} unit(s) failed — first: ${esc(doc.failures[0].key)}: ${esc(doc.failures[0].error)}</p>` : ''}
+      </div>`;
+
+    const leadRows = (doc.leaders || []).map((l, i) => {
+      const selectable = !running && l.stage === 'promoted';
+      const isSel = sel && sel.key === l.key && sel.stage === l.stage;
+      return `<tr class="${l.stage === 'promoted' ? 'hilite' : ''}">
+        <td>${selectable ? `<input type="radio" name="bl-sel" class="bl-sel" data-key="${esc(l.key)}" data-stage="${esc(l.stage)}" ${isSel ? 'checked' : ''}>` : ''}</td>
+        <td>${i + 1}</td><td>${esc(l.stage)}</td><td>${esc(comboLabel(l))}</td>
+        <td>${esc(l.geometry)}</td><td>${l.bandMode === 'auto' ? 'auto→' : ''}±${l.bandPct != null ? l.bandPct.toFixed(2) : '?'}%</td>
+        <td>${esc(l.decision)}</td><td>${l.weekdaysOnly ? '24/5' : '24/7'}</td>
+        <td>${l.quorum}/${l.members}</td><td>${esc(l.gate)}</td><td>${l.dMult}×</td><td>${l.tHours}h</td>
+        <td><strong>${money(l.pnl)}</strong></td><td>${l.wins}/${l.trades}</td>
+        <td>${l.grossPerTrade != null ? '$' + l.grossPerTrade.toFixed(2) : '—'}</td>
+        <td>${l.stops}</td><td>${l.ambiguous}</td>
+      </tr>`;
+    }).join('');
+    const leaderBlock = `
+      <div class="section"><h2>${running ? 'Live leaderboard — reranks as combos complete' : 'Survivor board'}</h2>
+      ${running ? '<p class="note">Interim numbers move until the sweep completes — for watching, not for stopping early. The promote rule fires mechanically at completion.</p>' : ''}
+      <div class="tablewrap"><table>
+        <tr><th title="Pick a PROMOTED row as the null-test candidate"></th><th>#</th><th>stage</th><th>combo</th><th>shape</th><th>band</th><th>decision</th><th>24/x</th>
+        <th title="Quorum rung over the member set (net direction wins)">quorum</th><th>gate</th><th title="Bracket distance, × the combo's band">d</th><th>t</th>
+        <th>net P&L</th><th>W/T</th><th>gross/trade</th><th title="Trades closed by the stop rail">stops</th><th title="Hourly bars where entry and stop both fell inside one bar — always resolved AGAINST the book">ambig</th></tr>
+        ${leadRows || '<tr><td colspan="17" class="note">nothing on the board yet</td></tr>'}
+      </table></div></div>`;
+
+    let nullBlock = '';
+    if (sel && !running) {
+      nullBlock += `<div class="controls" style="margin:8px 0">
+        <div class="field"><label for="bl-shifts">Null shifts</label><input id="bl-shifts" type="number" min="1" max="1000" step="1" value="200"></div>
+        <div class="field submit"><button id="bl-null-go" type="button"
+          title="Replays everything downstream of the combo per rotation: full member grid retrained, whole execution menu + quorum rungs swept, best cell taken by the same rule. The combo-search multiplicity is NOT replayed — read against the stamped denominator.">Fire null on selected survivor</button></div>
+        <span class="note">selected: ${esc(comboLabel(sel))} ${esc(sel.geometry)} q${sel.quorum} ${esc(sel.gate)} ${sel.dMult}× ${sel.tHours}h → ${money(sel.pnl)}</span>
+      </div>`;
+    }
+    if (doc.nullTest) {
+      const nt = doc.nullTest;
+      const title = nt.status === 'running'
+        ? `Null replay — RUNNING: ${nt.shifts} of ${nt.requestedShifts} rotations banked`
+        : `Null replay — ${nt.status}, ${nt.shifts} rotations`;
+      nullBlock += `<div class="section"><h2>${title}</h2>
+        <div class="tablewrap"><table>
+          <tr><th>reading</th><th>exceed</th><th>null median $</th></tr>
+          <tr><td title="Per rotation the null gets the WHOLE downstream search (menu + quorums + best-cell rule) — the honest, search-replayed p-value for this survivor given its combo">best-of-menu vs real ${money(nt.real ? nt.real.pnl : 0)}</td>
+            <td><strong>${nt.exceedSearch != null ? pct(nt.exceedSearch) : '—'}</strong> of ${nt.shifts}</td>
+            <td>${nt.medianBestPnl != null ? money(nt.medianBestPnl) : '—'}</td></tr>
+          <tr><td title="Only the selected cell's own config per rotation — the conditional reading">same-config only</td>
+            <td>${nt.exceedSame != null ? pct(nt.exceedSame) : '—'}</td>
+            <td>${nt.medianSamePnl != null ? money(nt.medianSamePnl) : '—'}</td></tr>
+        </table></div>
+        <p class="note">The combo itself was chosen from ${doc.plan ? doc.plan.units : '?'} searched units — that multiplicity is
+          not replayed here and must be read against the stamp. A forward book remains the only clean test.</p></div>`;
+    }
+
+    blViewEl.innerHTML = `<p class="note">${header}</p>${perfBlock}${leaderBlock}${nullBlock}`;
+    blViewEl.querySelectorAll('.bl-sel').forEach((radio) => {
+      radio.addEventListener('change', async () => {
+        if (!radio.checked) return;
+        try {
+          blErrEl.hidden = true;
+          const res = await fetch(`api/bracketlab/${encodeURIComponent(doc.id)}/select`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ key: radio.dataset.key, stage: radio.dataset.stage }),
+          });
+          const body = await jsonBody(res);
+          if (!res.ok) throw new Error(body.error || `HTTP ${res.status}`);
+          blPicked = doc.id;
+          refreshBracket();
+        } catch (err) { blErrEl.hidden = false; blErrEl.textContent = err.message; }
+      });
+    });
+    const nullGo = blViewEl.querySelector('#bl-null-go');
+    if (nullGo) nullGo.addEventListener('click', async () => {
+      try {
+        blErrEl.hidden = true;
+        const res = await fetch(`api/bracketlab/${encodeURIComponent(doc.id)}/null`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ shifts: Number(blViewEl.querySelector('#bl-shifts').value) || 200 }),
+        });
+        const body = await jsonBody(res);
+        if (!res.ok) throw new Error(body.error || `HTTP ${res.status}`);
+        blPicked = doc.id;
+        refreshBracket();
+      } catch (err) { blErrEl.hidden = false; blErrEl.textContent = err.message; }
+    });
+  }
+
+  async function refreshBracket() {
+    try {
+      blErrEl.hidden = true;
+      const listRes = await fetch('api/batches');
+      const list = (await jsonBody(listRes)).batches.filter((b) => b.id.startsWith('bracketlab-'));
+      blPickEl.innerHTML = list.map((b) => `<option value="${esc(b.id)}"${b.id === blPicked ? ' selected' : ''}>${esc(b.id)} (${esc(b.status)})</option>`).join('');
+      const id = blPicked || (list[0] && list[0].id);
+      if (!id) { renderBracket(null); return; }
+      const res = await fetch(`api/batch/${encodeURIComponent(id)}`);
+      const doc = await jsonBody(res);
+      if (!res.ok) throw new Error(doc.error || `HTTP ${res.status}`);
+      renderBracket(doc);
+      clearTimeout(blTimer);
+      if (doc.status === 'running') blTimer = setTimeout(refreshBracket, 5000);
+    } catch (err) {
+      blErrEl.hidden = false;
+      blErrEl.textContent = err.message;
+    }
+  }
+
+  blPickEl.addEventListener('change', () => { blPicked = blPickEl.value; refreshBracket(); });
+  $('bl-refresh').addEventListener('click', refreshBracket);
+  $('bl-stop').addEventListener('click', async () => {
+    if (!confirm('Stop the running sweep? Everything completed so far stays persisted.')) return;
+    try {
+      const res = await fetch('api/abort', { method: 'POST' });
+      const body = await jsonBody(res);
+      if (!res.ok) throw new Error(body.error || `HTTP ${res.status}`);
+      setBlStatus(body.cancelledBatch ? `stopping ${body.cancelledBatch}…` : 'nothing running — in-flight training aborted');
+      setTimeout(() => { setBlStatus(''); refreshBracket(); }, 2500);
+    } catch (err) { blErrEl.hidden = false; blErrEl.textContent = err.message; }
+  });
+  $('bl-start-btn').addEventListener('click', async () => {
+    try {
+      blErrEl.hidden = true;
+      const uni = $('bl-universe').value.trim();
+      const bandRaw = $('bl-band').value.trim().toLowerCase();
+      const body = {
+        universe: uni ? uni.split(',').map((x) => x.trim().toUpperCase()).filter(Boolean) : undefined,
+        sizes: { singles: $('bl-singles').checked, doubles: $('bl-doubles').checked, triples: $('bl-triples').checked },
+        startMonth: $('bl-start').value,
+        endMonth: $('bl-end').value,
+        allLoaded: $('bl-allloaded').checked,
+        permute: {
+          geometry: $('bl-perm-geometry').checked,
+          decision: $('bl-perm-decision').checked,
+          band: $('bl-perm-band').checked,
+          weekdays: $('bl-perm-weekdays').checked,
+        },
+        set: {
+          geometry: $('bl-geometry').value,
+          decision: $('bl-decision').value,
+          band: bandRaw === 'auto' || bandRaw === '' ? 'auto' : Number(bandRaw),
+          weekdaysOnly: $('bl-weekdays').checked,
+        },
+        promoteK: Number($('bl-promotek').value) || 25,
+        minTrades: Number($('bl-mintrades').value) || 10,
+      };
+      const res = await fetch('api/bracketlab', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+      });
+      const resBody = await jsonBody(res);
+      if (!res.ok) throw new Error(resBody.error || `HTTP ${res.status}`);
+      blPicked = null; // follow the sweep we just started
+      refreshBracket();
+    } catch (err) { blErrEl.hidden = false; blErrEl.textContent = err.message; }
+  });
+
   refreshBatch();
   refreshDataState();
   applyBookPage(); // pager + page-1 visibility before any fetch lands
+  refreshBracket();
   refreshTracker();
   refreshDoge();
   refreshBooks();
