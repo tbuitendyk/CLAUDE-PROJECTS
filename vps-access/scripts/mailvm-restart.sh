@@ -36,6 +36,7 @@ GUEST=192.168.56.129
 LOG=/var/log/mailvm-restart.log
 DOWN_SECS=180      # how long to wait for the guest to actually go down
 UP_SECS=900        # how long to wait for it to come back (1 vCPU, clamav)
+SETTLE_SECS=600    # how long mail gets to come back healthy after SSH returns
 export SSH_AUTH_SOCK=/run/mailvm-ssh-agent.sock
 SSH="ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o ConnectTimeout=15 root@${GUEST}"
 
@@ -123,40 +124,61 @@ if [ -z "$new_boot" ]; then
 fi
 log "boot id after:  $new_boot  (back after ${elapsed}s)"
 
-# ---- phase 3: verify, and start postfix if the boot left it down ---------
-# clamav and amavis are slow to settle on one core, so they are reported but
-# not required. Mail flow needs postfix, dovecot and the listening sockets.
-post=$($SSH 'bash -s' <<'R' 2>&1
+# ---- phase 3: settle, then verify -- retrying, because it needs it -------
+# Measured on the first live run: SSH answers about four minutes in, and at
+# that moment the guest's load average is EIGHTEEN — clamav loading its
+# database, amavis and spamd forking, all on one vCPU. postgresql was still
+# refusing on 5432 and came up on its own a few minutes later.
+#
+# And the standing quirk this box has had all along: postfix does NOT come up
+# by itself after a boot. That is what mailvm-postfix-check.sh was written
+# for, and it is why verification here must be a retry loop that also FIXES,
+# not a single snapshot. clamav/amavis/iredapd are reported but never
+# required — mail flows without them and they are the slowest to settle.
+log "verifying (retrying up to ${SETTLE_SECS}s — the guest is still starting)"
+start=$(date +%s)
+ok=0
+post=""
+while [ $(( $(date +%s) - start )) -lt "$SETTLE_SECS" ]; do
+  post=$($SSH 'bash -s' <<'R' 2>&1
 for s in postgresql postfix dovecot amavis clamav-daemon iredapd nginx; do
   printf "  %-16s %s\n" "$s" "$(systemctl is-active "$s" 2>/dev/null)"
 done
+# postgresql first: iRedMail's postfix does its lookups against it, so
+# starting postfix while the database is still down just fails differently.
+if [ "$(systemctl is-active postgresql 2>/dev/null)" != active ]; then
+  echo "  postgresql not active -> starting"
+  systemctl start postgresql 2>&1 | sed 's/^/    /'
+  sleep 3
+fi
 if [ "$(systemctl is-active postfix 2>/dev/null)" != active ]; then
-  echo "  postfix NOT active after boot -> starting"
+  echo "  postfix not active -> starting"
   systemctl start postfix 2>&1 | sed 's/^/    /'
   sleep 3
 fi
 echo "  postfix final : $(systemctl is-active postfix 2>/dev/null)"
 echo "  dovecot final : $(systemctl is-active dovecot 2>/dev/null)"
-echo "  listening 25/587: $(ss -ltn 2>/dev/null | grep -cE ':25 |:587 ') socket(s)"
+echo "  smtp sockets  : $(ss -ltn 2>/dev/null | grep -cE ':25 |:587 ')"
 echo "  uptime_s: $(cut -d. -f1 /proc/uptime)   load: $(cut -d' ' -f1-3 /proc/loadavg)"
 echo "VERIFY-OK"
 R
 )
-prc=$?
-log "post-restart state (rc=$prc):"
+  if printf '%s' "$post" | grep -q VERIFY-OK \
+     && printf '%s' "$post" | grep -q "postfix final : active" \
+     && printf '%s' "$post" | grep -q "dovecot final : active" \
+     && ! printf '%s' "$post" | grep -q "smtp sockets  : 0"; then
+    ok=1
+    break
+  fi
+  sleep 30   # spaced out: this guest's sshd saturates on its single core
+done
+
+log "post-restart state (after $(( $(date +%s) - start ))s of settling):"
 logblock "$post"
 
-if [ $prc -ne 0 ] || ! printf '%s' "$post" | grep -q VERIFY-OK; then
-  log "FAILED: could not verify the guest after reboot"
+if [ "$ok" -ne 1 ]; then
+  log "FAILED: guest rebooted but mail did not come back healthy. Manual attention needed."
   exit 4
-fi
-if ! printf '%s' "$post" | grep -q "postfix final : active"; then
-  log "FAILED: postfix is not active after the restart"
-  exit 5
-fi
-if ! printf '%s' "$post" | grep -q "dovecot final : active"; then
-  log "FAILED: dovecot is not active after the restart"
-  exit 6
 fi
 
 log "=== restart complete and verified ==="

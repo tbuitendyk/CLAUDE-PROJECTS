@@ -36,7 +36,10 @@ ExecStart=${TARGET}
 # The script talks to the guest over the shared agent socket.
 Environment=SSH_AUTH_SOCK=/run/mailvm-ssh-agent.sock
 # A restart that fails must be visible, not retried into a loop.
-TimeoutStartSec=600
+# Must exceed the script's own worst case — DOWN_SECS 180 + UP_SECS 900 +
+# SETTLE_SECS 600 = 1680s — or systemd would kill a restart that is still
+# legitimately waiting for a single-vCPU guest to finish booting clamav.
+TimeoutStartSec=2400
 UNIT
 
 echo "==> Writing the timer unit (09:00 UTC daily)"
