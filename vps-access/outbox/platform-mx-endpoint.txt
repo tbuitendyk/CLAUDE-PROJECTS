@@ -1,0 +1,59 @@
+Platform update — the Mexico host is named in one place, and the tunnel now proves where it lands
+
+tl;dr — Six scripts had the Mexico IP typed into them; now one config file does, and it accepts an IP or a DNS name equally, so whichever way you pin the address it is a one-line change instead of six. Added a guard that proves the tunnel actually exits in Mexico rather than assuming it because a listener came up — it passes right now (egress 78.12.190.144 in MX/Amazon, direct traffic still IONOS 74.208.226.14). Nothing previously reported is affected.
+
+WHAT CHANGED
+
+ - mx-endpoint.sh (new): the only place the Mexico host is named. Sourced by
+   the six scripts that used to carry the literal address. MX_HOST takes an IP
+   or a DNS name with no other edit.
+ - mx-verify-egress.sh (new): asserts the far end is what it should be.
+ - The six mx-* / relay scripts now source the config instead of hardcoding.
+
+WHY THIS DIRECTION NEEDED IT
+
+An EC2 public IPv4 survives a reboot but MOVES on stop/start. With the address
+typed into six files, an address change meant six edits and forgetting one
+left a script pointing at nothing. Worse, the failure is silent: bringing up
+the tunnel raises a healthy-looking SOCKS listener whether or not the far end
+is right, and the symptom would be Binance calls timing out — not an error
+that names the cause. That is a bad thing to discover with money live, and
+the live executor is the direction we are heading.
+
+The guard therefore checks three things rather than one:
+  * something actually exits through the tunnel;
+  * the exit IP DIFFERS from this VPS's direct IP (equal means traffic is not
+    being diverted at all, which a listener check cannot detect);
+  * the exit is in the expected country on the expected network.
+It says "do NOT trade through it" and exits non-zero when any of those fail.
+
+WHAT IT COULD BREAK, AND WHAT PROVES IT DID NOT
+
+Only the mx-* tunnel scripts were touched; nothing in the classifier engine,
+the books, or the mail path. Verified live just now:
+
+    configured endpoint : 78.12.190.144
+    egress IP via tunnel: 78.12.190.144
+    direct IP untouched : 74.208.226.14
+    egress identity     : Mexico / Amazon Data Services Mexico / AS16509
+    VERDICT: PASS
+
+The two IPs differing is the meaningful line — it proves diversion rather than
+mere existence of a listener.
+
+ANYTHING PREVIOUSLY REPORTED THAT THIS CHANGES
+
+Nothing.
+
+TWO NOTES
+
+ - I dropped the billing question. You checked the console twice; it is
+   settled and I am not going to keep worrying at it. A free 2 vCPU / 8 GB box
+   in the right jurisdiction is a genuine asset for the executor.
+ - Something else pushed aws-mex-probe.sh to the vps-access branch while I was
+   working. I rebased onto it rather than force-pushing over it. If that was
+   another session of mine rather than you, worth knowing we can collide.
+
+Cycle 1's census is still running; I will write when it lands.
+
+c.
