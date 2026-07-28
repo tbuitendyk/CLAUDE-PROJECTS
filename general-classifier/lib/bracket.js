@@ -190,7 +190,12 @@ function simBracket(periods, calls, tradeMap, geo, { dPct, tHours, gate, feePerL
 // The DECLARED menus. Never a continuous scan: d is band-relative so one grid
 // means the same thing across assets; t is absolute hours; gates as above.
 const D_MULTS = [0.25, 0.5, 0.75, 1.0, 1.5];
-const T_HOURS = [17, 41, 65];
+// Extended 2026-07-28 (owner): the first DOT sweep pinned every winner to
+// the old 65h ceiling — a clipped optimum. Same 17h+24k grid, so every
+// horizon exits at the same clock hour. Longer holds carry more drift and
+// more overlap (t/24 concurrent positions): judge them by vs-control and
+// per-dollar-deployed, never raw net.
+const T_HOURS = [17, 41, 65, 89, 113, 137, 161];
 
 // Sweep the whole execution menu over one call stream. Returns every cell
 // (the null replays this same freedom) tagged with its config.
