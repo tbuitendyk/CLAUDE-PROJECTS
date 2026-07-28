@@ -448,6 +448,31 @@ module.exports = {
     // and at minute resolution the ordering question does not arise here
     assert.strictEqual(m.trailAmbiguous, 0);
   },
+  async everyBracketParamSurvivesTheApi() {
+    // A parameter the orchestrator reads but the endpoint never forwards is
+    // invisible: the form offers it, the caller sends it, the server drops
+    // it, and the run silently does something else. That is exactly how
+    // "trailing" and "holdout" shipped unreachable — every trailing sweep ran
+    // with trailing off and looked like a real result.
+    const fs = require('fs');
+    const path = require('path');
+    const root = path.join(__dirname, '..');
+    const batchSrc = fs.readFileSync(path.join(root, 'lib', 'batch.js'), 'utf8');
+    const serverSrc = fs.readFileSync(path.join(root, 'server.js'), 'utf8');
+
+    const fn = batchSrc.slice(batchSrc.indexOf('function startBracketLab'));
+    const body = fn.slice(0, fn.indexOf('const { branches, combos }'));
+    const read = new Set([...body.matchAll(/params\.([A-Za-z_$][\w$]*)/g)].map((m) => m[1]));
+    read.delete('set');       // read as params.set?.x — forwarded as `set`
+    read.delete('sizes');     // ditto
+    read.delete('permute');   // ditto
+    assert.ok(read.size >= 8, `expected to find the param reads, found ${[...read]}`);
+
+    const call = serverSrc.slice(serverSrc.indexOf('batch.startBracketLab({'));
+    const forwarded = call.slice(0, call.indexOf('});'));
+    const missing = [...read].filter((k) => !new RegExp(`\\b${k}\\s*:`).test(forwarded));
+    assert.deepStrictEqual(missing, [], `startBracketLab reads these but the API never forwards them: ${missing.join(', ')}`);
+  },
   async bestCellHonorsFloorAndTies() {
     const rows = [
       { gate: 'always', dMult: 1, tHours: 17, pnl: 50, trades: 4 }, // under floor
