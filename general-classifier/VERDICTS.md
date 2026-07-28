@@ -401,6 +401,55 @@ band means the bracket layer is null generally and the branch is dead; any
 geometry at >=12/17 or <=5/17 is a LEAD only, owing a fresh declared test on
 data it was not chosen from, because five geometries is five looks.
 
+### Bracket layer — NULL ON EVERY GEOMETRY, branch closed (bracketlab-20260728-1010, 2026-07-28)
+
+Declared before firing (see the 0953 entry): the model-free cell — **always
+gate, d 1.0x band, t 161h**, adaptive band, argmax, 24/7 — scored across all
+five chunk shapes on the same 17 assets. 85 units, one declared cell apiece,
+every unit promoted. Reading rule fixed in advance: every geometry inside 6-11
+of 17 means the bracket layer is null generally and the branch is dead; any
+geometry at >=12 or <=5 is a LEAD only, owing a fresh declared test on data it
+was not chosen from, because five geometries is five looks.
+
+Result:
+
+    daily-1d    8/17   p = 0.69   total   +110.13   median  -21.03
+    daily-2d    8/17   p = 0.69   total    +69.89   median  -17.03
+    daily-3d    8/17   p = 0.69   total  -1062.23   median  -58.72
+    daily-4d    8/17   p = 0.69   total  -1111.17   median  -58.49
+    weekly-8d   9/17   p = 0.50   total   -179.38   median   +4.33
+
+**Verdict: the bracket execution layer is NULL on every chunk shape tested.**
+Five independent looks, all 8 or 9 of 17, none within three assets of the
+12/17 threshold and none near the 5/17 floor either. There is no geometry on
+which this mechanic works and no lead to follow.
+
+Descriptive, not a finding: the short chunks come out near breakeven in total
+dollars (+110, +70) while daily-3d and daily-4d are deeply negative (-1062,
+-1111), which is what a fixed 161h exit does when it is long relative to the
+chunk. The declared statistic is the count, and the count does not move.
+
+**The bracket branch is closed.** Chain of evidence, all pre-registered:
+1. Row 9 (directional, 65h) — replication failed, 7/17. Retired.
+2. Doubles-derived cell (on-active, 161h) — replication failed, 6/17. Retired.
+3. Classifier on vs off, declared control — coin flip: helps 8, hurts 9,
+   median difference -$0.37. The classifier neither adds nor subtracts.
+4. Model-free bracket across all five geometries — 8/8/8/8/9 of 17. Null.
+
+Steps 3 and 4 together say the branch does not fail because the classifier is
+weak. It fails because **the bracket mechanic has no edge to gate.** Every
+apparent winner on every board was drift: ZEC, XLM, XRP and ETH are positive
+with the gate, without it, and on nearly every chunk shape; the rest are
+negative the same way.
+
+Nothing here retires the classifier itself — the weekly-chunk direction
+question that Books 1-3 test forward is untouched by this and those books run
+on. What is retired is the idea that bracket/OCO execution over these chunk
+geometries is a place to look for edge.
+
+**Where the hunt goes next is the owner's call, not the session's.** No
+further bracket runs were fired after this result.
+
 ## Amendment log
 
 - **A1 (2026-07-26) — H1 reading gate: low-frequency lane added.** The
