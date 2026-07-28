@@ -1,3 +1,110 @@
-Classifier overnight #2 - multithreading is live, and what Run 3 is testing
+Classifier overnight #2 - threading is live and verified, Run 3 is firing
 
-PLACEHOLDER - gate verdict and timings filled in when the fixture run lands.
+MULTITHREADING: DEPLOYED AND GATED
+
+The long jobs now run on a pool of 3 worker threads instead of one. The rule I
+set for myself before starting was that a faster answer is worth nothing if it
+is a different answer, so the build had to reproduce a known result to the
+cent before I would trust it.
+
+The gate: re-run the exact DOT-singles replication that produced
+bracketlab-20260728-0741 on the old single-threaded code, and compare.
+
+   single-threaded (0741)   10.7 min
+   3 workers      (0941)     4.1 min          2.6x faster
+
+   DOT declared cell   +185.08 on 235 trades, 130 wins   - identical
+   replication         7/17 positive dollars             - identical
+                       5/17 positive vs control          - identical
+
+   VERDICT: PASS
+
+Identical to the cent, not merely close. If it had failed I would have pinned
+the pool back to one thread before running anything else; that path is still
+one settings change away and needs no deploy.
+
+Why it is safe to be identical: the tasks are pure - a rotation or a sweep
+unit shares nothing with any other - results are stored by task identity
+rather than by whichever worker finished first, and ties break on a full sort
+key so the finished board is a function of the SET of results, not their
+arrival order. The CPU cap still governs each worker's duty cycle, so the
+button now reads "CPU 90% x3" - the machine-wide draw is three times the
+number you set, and it used to quietly be one times it. Stop jobs now kills
+the workers outright rather than waiting for them to notice.
+
+What this buys in practice: the 90-minute doubles sweep becomes about 35
+minutes, and a 1000-rotation null becomes an overnight job rather than a
+two-night one.
+
+THREE FIXES THAT WENT IN WITH IT
+
+1. Replication mode was promoting only the top 25 units. The declared cell is
+   only read at the promoted stage, so every per-asset number in a replication
+   table was being conditioned on how the unit did in the cheap first pass -
+   exactly the selection effect replication exists to remove. It happened to
+   be harmless on everything run so far (17 units, 17 promoted either way) and
+   would have silently biased Run 4, which has 272. Replication now promotes
+   every unit. There is a regression test.
+
+2. The email script never actually worked through the deploy endpoint - the
+   helper installed on the box does not forward the argument, so every call
+   hit its usage message. Reports are now named in a version-controlled
+   pointer file instead, so which report went out stays auditable.
+
+3. Deleted a duplicate copy of the bracket unit logic that no longer had any
+   callers. Two copies of the same math is the one thing that can quietly
+   break the "parallel equals serial" guarantee.
+
+RUN 3 - FIRING NOW (bracketlab-20260728-0946)
+
+One declared configuration, scored on all 17 assets as singles:
+
+   gate        on-active
+   distance    1.0 x band
+   exit        161 hours
+   quorum      25% of the members
+   branch      daily-3d, auto band, argmax, 24/7
+
+Where each number came from - the rule was fixed before I read the finished
+board: take each knob's most common value counted over DISTINCT trade assets,
+break ties on row count. Counting distinct assets rather than rows matters,
+because one asset can put a dozen near-identical rows on a board and look like
+a consensus on its own.
+
+   gate       active   both surviving assets, 32 of 32 rows
+   exit       161h     both, 23 of 32 rows
+   distance   1.0x     both, 11 of 32 rows (ties 1.5x on assets, wins on rows)
+   quorum     ---      NO MODE: 3, 6, 8 and 12 of 16 all tie
+
+The quorum is the one knob I could not derive, because the board does not
+contain an answer - the winning committee size is a four-way tie. I set it to
+25%, the lowest bar, on the strength of the standing finding that committee
+size does not move the weights. That is the weak link in this declaration and
+I have put it on the record as such rather than dressing it up.
+
+Why singles when the config came from doubles: 17 assets as singles is 17
+independent looks, one apiece, which gives a plain binomial with no shopping
+tax to subtract. It is the same protocol that killed the DOT configuration in
+six minutes last night, and it is the cheapest way to find out whether this
+one is also a window artifact. Reading rule, same as that one and fixed now:
+12 or more of 16 fresh assets positive = a mechanism worth pursuing; 8 to 11 =
+ambiguous; under 8 = artifact, retire it.
+
+Then Run 4: the same declared cell on all 272 doubles. That pair of runs is
+what actually answers your question about whether doubles add anything the
+singles do not - both sides using a cell fixed in advance instead of the
+winner of a search.
+
+ONE THING I WOULD LIKE YOUR GO ON
+
+The exit horizon keeps coming out at the top of whatever menu it is offered.
+It was 65 hours when 65 was near the ceiling; on the doubles board it is 161
+hours, the largest value that exists, on 23 of 32 rows. An optimum sitting on
+the edge of the range is not an optimum, it is the edge. I have deliberately
+NOT widened the menu - changing it mid-hunt would add multiplicity to every
+result downstream and make tonight's runs harder to read. But it is a real
+question and it wants its own declared test: extend to roughly 185, 209 and
+233 hours and see whether the peak is interior. Say the word and I will set it
+up as a separate, declared run rather than folding it into the hunt.
+
+Results from Run 3 in the next email.
