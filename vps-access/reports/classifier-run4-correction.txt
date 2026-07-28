@@ -1,0 +1,90 @@
+Classifier overnight #4 - I overstated the last one. Here is the correction.
+
+WHAT I GOT WRONG
+
+An hour ago I sent you this, in bold:
+
+   "The committee's calls are SUBTRACTING value from bracket execution,
+    not adding it."
+
+That was an overstatement and I should not have sent it. I built it on the
+vs-control column, and vs-control compares against the BEST of 35 always-cells
+picked per asset with the answers already visible. That is a search-inflated
+baseline. It is the identical error I walked back for you this morning on the
+leaderboard column - and I made it again the same day, in the opposite
+direction. Once you know a baseline is inflated, anything that trails it looks
+like it is destroying value, whether it is or not.
+
+WHAT THE PROPER TEST SAYS
+
+Run 4 was the fix: the exact same declared cell as Run 3, same distance, same
+161-hour exit, same band, same 17 assets - with the gate set to ALWAYS instead
+of on-active. One declared cell on each side, no search anywhere. The only
+thing that differs between the two runs is the classifier.
+
+   MODEL-FREE alone            8 of 17 positive     p = 0.69
+   PAIRED, gate on vs gate off gate helps on 8 of 17, hurts on 9 of 17
+                               sign test p = 0.69
+                               median difference per asset  -$0.37
+   totals                      gated -$923    model-free -$1,062
+   activity                    the gate stood aside on 20.9% of periods
+
+So the gate IS doing something - it skips a fifth of the periods - and it
+makes no difference whatsoever. It does not subtract. It does not add. It is
+a coin flip.
+
+The $139 the gated version came out ahead by is not skill either. It is BNB,
+ETC and BCH, where both versions lose badly and the gate simply trades less of
+a losing book. Trading less of a loser is not an edge.
+
+THE CORRECTED FINDING, WHICH IS CLEANER THAN THE ONE I SENT
+
+   Both layers are null on this geometry. The bracket mechanic on its own is
+   8 of 17 - a coin flip. Adding the classifier makes it 6 of 17, and the
+   difference between them is noise.
+
+And the thing that explains the entire 0804 board: ZEC, XLM and XRP are
+positive WITH the gate and WITHOUT it. The other fourteen are negative either
+way. The board was ranking which assets went up over the test window. That is
+all it was ever ranking.
+
+The 14-of-17 number I refused to quote in the last email was indeed search
+inflation - the declared version of it came in at 8. I am glad I did not
+quote it, and I should have applied the same suspicion to the 16-of-17 in the
+same email.
+
+RUN 6 - RUNNING NOW (bracketlab-20260728-0959)
+
+One question left before this branch is either dead or interesting: is the
+null specific to daily-3d with a 161-hour exit, or is it general?
+
+Run 6 takes the model-free cell - the simpler layer, and the one whose failure
+makes the classifier question moot - and scores it across all five chunk
+shapes on the same 17 assets. About twenty minutes.
+
+Reading rule, fixed before firing:
+
+   every geometry lands in 6-11 of 17   the bracket layer is null generally.
+                                        The branch is dead and the hunt moves.
+   any geometry at 12 or more           a LEAD, not a result. Five geometries
+   any geometry at 5 or fewer           is five looks; the winner owes a fresh
+                                        declared test on data it was not
+                                        chosen from before it costs another
+                                        minute of the box.
+
+Nothing in it earns a paper book whatever it prints.
+
+STILL WAITING ON YOU, AS PROMISED
+
+Run 5 - the same cell on all 272 doubles, about three hours. My recommendation
+is now clearly DON'T. The cell is retired, the classifier is a coin flip, and
+adding context features changes only which periods get skipped - and skipping
+periods is exactly the thing we just measured as worthless. It would buy a
+formally complete answer to your original question at the cost of a whole
+night of the box. If you want the box to answer that question anyway, say so
+and I will run it - it is your call, not mine, and I said I would hold it.
+
+The exit-horizon ceiling test also still waits on your go.
+
+Everything above is in VERDICTS.md, including the correction, written against
+the entry it corrects rather than quietly replacing it.
