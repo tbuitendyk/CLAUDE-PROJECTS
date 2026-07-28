@@ -1,0 +1,90 @@
+Classifier overnight #6 - the bracket branch is dead. Here is the whole chain.
+
+THE RESULT
+
+Run 6 took the model-free bracket - no classifier at all, one cell declared in
+advance - and scored it on all five chunk shapes across the same 17 assets.
+
+   daily-1d    8 of 17 positive    p = 0.69
+   daily-2d    8 of 17             p = 0.69
+   daily-3d    8 of 17             p = 0.69
+   daily-4d    8 of 17             p = 0.69
+   weekly-8d   9 of 17             p = 0.50
+
+Five independent looks. Every one a coin flip. Not one within three assets of
+the 12-of-17 threshold I set before firing, and not one near the floor either -
+so there is no lead in the other direction to chase.
+
+The rule said: every geometry in the 6-11 band means the branch is dead.
+
+THE CHAIN, ALL OF IT PRE-REGISTERED
+
+1. Row 9 - direction-filtered gate, 65-hour exit. Replication failed, 7 of 17.
+   Retired.
+2. The doubles-derived cell - on-active gate, 161-hour exit. Replication
+   failed, 6 of 17. Retired.
+3. Classifier ON versus OFF, same declared cell both sides. Coin flip: helps
+   on 8 assets, hurts on 9, median difference thirty-seven cents.
+4. Model-free bracket on all five geometries. 8, 8, 8, 8, 9 of 17.
+
+Steps 3 and 4 are the ones that matter, and together they say something the
+first two could not. The branch does not fail because the classifier is weak.
+It fails because THERE IS NO EDGE THERE FOR THE CLASSIFIER TO GATE. The
+bracket mechanic itself - buy the breakout, sell the breakdown, exit on a
+clock - is worth nothing on these chunk shapes with or without a model
+attached.
+
+Everything that ever looked good on those boards was drift. ZEC, XLM, XRP and
+ETH come out positive with the gate, without the gate, and on nearly every
+chunk shape. The other thirteen come out negative the same way. The boards
+were sorting assets by whether they went up. That is the entire signal.
+
+WHAT THIS DOES NOT KILL
+
+The bracket branch is closed. The classifier is not.
+
+Books 1, 2 and 3 are untouched by any of this - they test the weekly-chunk
+direction question, not bracket execution, and they run on exactly as
+declared. I checked them tonight: all live, periods accruing, nothing stuck.
+Both DOT and AVAX books are standing aside on every period so far (23 of 27
+correct as stand-asides, no trades taken), which is the protocol working as
+written, not a fault.
+
+What is retired is the idea that OCO bracket execution over these chunk
+geometries is a place to look for edge. Four nights of screens, two candidate
+retirements, and now a clean null on the underlying mechanic.
+
+WHY I STOPPED FIRING JOBS
+
+The rule I wrote before Run 6 said a null on every geometry closes the branch.
+It closed. Firing more bracket runs after that would be exactly the behaviour
+this whole apparatus exists to prevent, and picking a NEW direction is your
+call, not mine - you lead the research, I code, deploy and recommend.
+
+So the box is idle and waiting on you. Three things are queued:
+
+   1. Run 5, the 272 doubles on the retired cell. My recommendation is still
+      DON'T, and Run 6 strengthens that - the mechanic underneath it is null.
+
+   2. The exit-horizon test. I would now also skip it. It was worth asking
+      when 161 hours looked like a suspicious ceiling; now that the mechanic
+      is null at every horizon-to-chunk ratio we have tried, a longer menu is
+      unlikely to find something the shorter ones missed.
+
+   3. A new direction. This is the real question and I do not want to pick it
+      while you are asleep. If it helps, the honest reading of the last four
+      nights is that we have been testing EXECUTION dressed up as prediction.
+      The one thing that has never been null is the original weekly-chunk
+      direction question, which is what the live books are already testing
+      forward. That may be the thing to invest in rather than a fifth
+      execution idea.
+
+STATE OF THE SYSTEM
+
+Threading live and gated, workers niced so they cannot starve your mail again,
+replication mode fixed to promote every unit, the search board's control
+column relabelled, six reports sent, everything logged in VERDICTS.md with the
+timing disclosures - including the one reading I had to withdraw.
+
+Nothing is running. Nothing is waiting on a timer. Say the word and I will
+pick it up.
