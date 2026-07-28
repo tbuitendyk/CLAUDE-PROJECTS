@@ -40,6 +40,28 @@ print()
 def tail(k, n):
     return sum(comb(n, i) for i in range(k, n + 1)) / (2 ** n) if n else None
 
+# Multi-rotation runs carry a shiftFrac per row: report each draw separately,
+# because the whole point is the spread.
+draws = sorted({r.get("shiftFrac") for r in rows if r.get("shiftFrac") is not None})
+if draws:
+    print(f"NULL DISTRIBUTION — {len(draws)} rotation(s), {len(rows)} census rows total")
+    print(f"{'shift':>7s} {'n':>4s} {'hold edge>0':>13s} {'share':>7s} {'med hold':>9s}")
+    tot = []
+    for d in draws:
+        g = [r for r in rows if r.get("shiftFrac") == d and r.get("holdEdge") is not None]
+        if not g:
+            continue
+        pos = sum(1 for r in g if r["holdEdge"] > 0)
+        med = sorted(r["holdEdge"] for r in g)[len(g) // 2]
+        tot.append(pos / len(g))
+        print(f"{d:>7.3f} {len(g):>4d} {pos:>6d}/{len(g):<6d} {100*pos/len(g):>6.1f}% {100*med:>8.2f}%")
+    if tot:
+        lo, hi = min(tot), max(tot)
+        mean = sum(tot) / len(tot)
+        print(f"\nnull share: mean {100*mean:.1f}%  range {100*lo:.1f}%-{100*hi:.1f}%")
+        print(f"cycle 1 (real outcomes) was 57.6% — {'ABOVE every draw' if 0.576 > hi else 'INSIDE the null spread'}")
+    print()
+
 groups = defaultdict(list)
 for r in rows:
     groups[(r["geometry"], r["decision"])].append(r)
