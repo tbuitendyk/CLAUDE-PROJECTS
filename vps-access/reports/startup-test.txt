@@ -1,0 +1,5 @@
+Classifier: overnight run started
+Test message confirming the automated reporting path works.
+
+The doubles discovery sweep (bracketlab-20260728-0804) is running; findings
+follow when it completes.
