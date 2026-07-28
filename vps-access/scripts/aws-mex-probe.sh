@@ -9,7 +9,7 @@ echo "== locate key aws-mex-deb13.pem on homsionos01 =="
 KEY=$(find /root /home /etc/deploy-control /root/claude-projects -maxdepth 5 -name 'aws-mex-deb13.pem' 2>/dev/null | head -1)
 echo "  key: ${KEY:-NOT FOUND}"
 echo "== existing scripts referencing the AWS box? =="
-grep -rlsE 'aws-mex-deb13|78\.12\.190\.144' /root /etc/deploy-control /usr/local 2>/dev/null | head -5 | sed 's/^/  /' || true
+timeout 20 grep -rlsE 'aws-mex-deb13|78\.12\.190\.144' --exclude-dir=.git --exclude-dir=node_modules --exclude-dir=cache /root/.ssh /etc/deploy-control /usr/local/sbin 2>/dev/null | head -5 | sed 's/^/  /' || true
 [ -n "$KEY" ] || { echo "No key found -- tell me where aws-mex-deb13.pem lives."; exit 0; }
 perm=$(stat -c '%a' "$KEY" 2>/dev/null); echo "  key perms: $perm $([ "$perm" = 600 ] || echo '(ssh wants 600)')"
 
