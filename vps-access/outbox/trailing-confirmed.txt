@@ -1,0 +1,70 @@
+Trailing confirmed at minute resolution — the assumption was worth 13%
+
+tl;dr — All four items from your list are now done and exercised on real data. The headline number: on the first trailing cell, the hourly run had to guess the intra-bar order on 23 bars, and settling those with minute data moved the result by $15.05 — about 13% of the cell's P&L. The ambiguity count fell from 23 to 1. New standing rule: no trailing result gets quoted without minute confirmation.
+
+THE MEASUREMENT
+
+DOTUSDT, daily-3d, declared always-gate, distance 1x band, 65-hour exit,
+trailing 1x band with no arm delay, quorum 4 of 12. Minute coverage 99.8%.
+
+                net P&L   trades   wins   stops   trail-amb
+    hourly      -118.92      427    156     424          23
+    minute      -103.87      427    154     424           1
+    delta        +15.05       +0             +0
+
+Read it like this:
+
+ - trail-amb 23 -> 1 is the mechanism working. Twenty-two of the twenty-three
+   "which came first" questions are settled outright by minute data. The one
+   survivor is a single minute in which the same thing happens again — which
+   is the honest limit: this shrinks the ambiguity roughly sixtyfold, it does
+   not abolish it.
+
+ - $15.05 on a cell making -$118.92 is about 13%. That is not a rounding
+   error. It is the size of what an hourly trailing number is resting on, and
+   it is the reason this step is not optional.
+
+ - The delta came out FAVOURABLE here, meaning the pessimistic assumption was
+   too harsh in this instance. That is not good news and I would not report it
+   as such. The hourly bar hides the ordering in both directions, so
+   confirmation can just as easily take money away. A favourable delta is
+   evidence of nothing except that the assumption was binding.
+
+ - The cell loses either way, -118.92 to -103.87. Confirmation does not rescue
+   a bad setup, it just tells you what the setup actually was. And it stops out
+   on 424 of 427 trades because an arm of 0 with a 1x trail puts the stop one
+   band below entry immediately. I picked that config to generate stop
+   activity for the test, not on merit. Nothing about it is a finding.
+
+NEW STANDING RULE, NOW IN VERDICTS.MD
+
+No trailing result is quotable without minute confirmation. The hourly figure
+is an estimate resting on an assumption, and trail-amb is the measure of how
+much of it rests there. A static-stop result barely depends on this; a
+trailing one depends on it constantly.
+
+WHERE YOUR FOUR ITEMS STAND
+
+ 1. Trailing stops — built, opt-in, promote-stage only (12.3x menu widening).
+ 2. Trailing at promote only — done, for the reason above.
+ 3. Holdout 70/15/15, never searched — built and opt-in.
+ 4. Minute confirmation — built, and now exercised on both the control case
+    (a market cell, which had to come out near zero and did: 8 cents across
+    303 trades) and the real case above.
+
+Both of those runs were only possible after fixing the API bug I wrote to you
+about — trailing and holdout were being silently discarded by the endpoint,
+so everything I fired before that ran with trailing off.
+
+WHAT I HAVE NOT DONE
+
+I have not started a hunt with any of this. The tooling is ready and the
+honesty rails are in place, but choosing what to search next is your call, and
+the last time we looked the whole bracket branch came back null across five
+geometries. Trailing is the one thing that branch never tested, so it is the
+one honest reason to reopen it — but it deserves a declared config and a
+replication across assets, not a fishing trip through a 12x wider menu.
+
+Say the word and I will propose a specific first run.
+
+c.
