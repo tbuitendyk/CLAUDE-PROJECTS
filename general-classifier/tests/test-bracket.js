@@ -1,5 +1,5 @@
 const { assert } = require('./helpers');
-const { comboViews, simBracket, simMarket, execSweep, bestCell, PER_ASSET, ENTRIES, D_MULTS, T_HOURS, GATES } = require('../lib/bracket');
+const { comboViews, simBracket, simMarket, holdControls, execSweep, bestCell, PER_ASSET, ENTRIES, D_MULTS, T_HOURS, GATES } = require('../lib/bracket');
 const { pnlAt } = require('../lib/paper');
 const { classifierMetrics } = require('../lib/metrics');
 const { expandBracketPlan, validateDeclared, declaredQuorumFor, promotionSet } = require('../lib/batch');
@@ -257,6 +257,40 @@ module.exports = {
     assert.ok(Math.abs(mt.balancedAcc - 0.5) < 1e-12);
     assert.ok(Math.abs(mt.balancedEdge - (0.5 - 1 / 3)) < 1e-12);
     assert.strictEqual(classifierMetrics([0], [], []), null);
+  },
+  async holdControlsAnswerTheDriftObjection() {
+    // Owner's method for factoring market direction out of a result: put
+    // long-and-hold and short-and-hold on the SAME window and make the
+    // strategy beat them.
+    const t0 = Date.UTC(2024, 0, 1);
+    const t1 = t0 + 24 * HOUR_MS;
+    const bars = {};
+    for (let h = 0; h <= 60; h++) bars[h] = [100 + h, 100 + h + 0.5, 100 + h - 0.5]; // steady uptrend
+    const m = mapFrom(t0, bars);
+    // two periods a day apart; entry offsets land at +0h and +24h
+    const periods = [{ startTs: t0 }, { startTs: t1 }];
+    const h = holdControls(periods, m, geo, 17, FEE);
+
+    // always-long = the same execution with the direction forced, so it must
+    // equal simMarket driven by a constant +1 stream
+    const forced = simMarket(periods, [1, 1], m, geo, { tHours: 17, feePerLeg: FEE });
+    assert.ok(Math.abs(h.alwaysLong - forced.pnl) < 1e-12);
+    assert.strictEqual(h.alwaysLongTrades, 2);
+    assert.ok(h.alwaysLong > 0);                    // trend is up
+    assert.ok(h.alwaysShort < 0);
+
+    // buy-and-hold spans first entry to last exit: open 100 -> open 141
+    assert.ok(Math.abs(h.buyHold - pnlAt(1, 100, 141, FEE)) < 1e-12);
+    assert.ok(Math.abs(h.shortHold - pnlAt(-1, 100, 141, FEE)) < 1e-12);
+    // and the two sides are NOT negatives of each other — both pay the fee
+    assert.ok(Math.abs((h.buyHold + h.shortHold) - -4 * FEE) < 1e-12);
+
+    // one round trip over the whole window beats paying it twice per period
+    assert.ok(h.buyHold > h.alwaysLong);
+    // empty window degrades rather than throwing
+    const none = holdControls([], m, geo, 17, FEE);
+    assert.strictEqual(none.buyHold, null);
+    assert.strictEqual(none.alwaysLong, 0);
   },
   async bestCellHonorsFloorAndTies() {
     const rows = [

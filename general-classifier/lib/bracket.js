@@ -245,6 +245,60 @@ function simBracket(periods, calls, tradeMap, geo, { dPct, tHours, gate, feePerL
   return { pnl, trades, wins, stops, ambiguous, unpriced, grossPerTrade: trades ? (pnl + trades * trip) / trades : null };
 }
 
+// ---- drift controls ------------------------------------------------------------
+//
+// The objection every result on this board has to answer: "you did not find a
+// strategy, you found an asset that went up." Owner's proposed answer, and it
+// is the right one — put long-and-hold and short-and-hold on the same window
+// and make the strategy beat them.
+//
+// TWO controls, because they answer different objections:
+//
+//   alwaysLong / alwaysShort  — the SAME execution, direction forced. Same
+//     period count, same horizon, same round-trip fee on every period. This
+//     is the honest like-for-like: it isolates the CALLS by holding
+//     everything else fixed. A straddle that cannot beat "be long every
+//     period" has not earned its complexity.
+//
+//   buyHold / shortHold — one position, first entry to last exit, one round
+//     trip. The classic benchmark, and the one that answers "why not just buy
+//     it and go away?" It carries almost no fee load, so it is the harder bar
+//     over a trending window and the easier one over a chopping window.
+//
+// Both are computed on the SAME test chunks as the cell they accompany, at
+// the cell's own horizon, so nothing about the comparison is rescaled.
+function holdControls(periods, tradeMap, geo, tHours, feePerLeg) {
+  const ones = periods.map(() => 1);
+  const negs = periods.map(() => -1);
+  const alwaysLong = simMarket(periods, ones, tradeMap, geo, { tHours, feePerLeg });
+  const alwaysShort = simMarket(periods, negs, tradeMap, geo, { tHours, feePerLeg });
+
+  // Single position across the whole window: enter at the first period's
+  // entry open, exit at the last period's exit open.
+  let buyHold = null;
+  let shortHold = null;
+  if (periods.length) {
+    const firstTs = periods[0].startTs + geo.entryOffsetH * HOUR_MS;
+    const lastTs = periods[periods.length - 1].startTs + geo.entryOffsetH * HOUR_MS;
+    const inBar = tradeMap.get(firstTs);
+    let outBar = null;
+    for (let h = 0; h <= 3 && !outBar; h++) outBar = tradeMap.get(lastTs + (tHours + h) * HOUR_MS);
+    if (inBar && outBar) {
+      // Both sides priced through the same helper. shortHold is NOT -buyHold:
+      // the fee is paid on both, so the two sum to -4 x feePerLeg, not zero.
+      buyHold = pnlAt(1, inBar.open, outBar.open, feePerLeg);
+      shortHold = pnlAt(-1, inBar.open, outBar.open, feePerLeg);
+    }
+  }
+  return {
+    alwaysLong: alwaysLong.pnl,
+    alwaysShort: alwaysShort.pnl,
+    alwaysLongTrades: alwaysLong.trades,
+    buyHold,
+    shortHold,
+  };
+}
+
 // ---- mechanical execution sweep ------------------------------------------------
 //
 // The DECLARED menus. Never a continuous scan: d is band-relative so one grid
@@ -357,4 +411,4 @@ async function trainMember({ model, viewIdx, trainChunks, testChunks, decision, 
   return { calls: testChunks.map((_, i) => callOf(i)), picked };
 }
 
-module.exports = { comboViews, buildComboChunks, simBracket, simMarket, execSweep, bestCell, trainMember, GATES, ENTRIES, D_MULTS, T_HOURS, PER_ASSET };
+module.exports = { comboViews, buildComboChunks, simBracket, simMarket, holdControls, execSweep, bestCell, trainMember, GATES, ENTRIES, D_MULTS, T_HOURS, PER_ASSET };

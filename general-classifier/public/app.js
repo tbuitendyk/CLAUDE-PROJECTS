@@ -1936,7 +1936,7 @@
           ${tile('Positive vs control', `${posVsCtl} / ${withCtl.length}`, pCtl == null ? '' : `binomial p = ${pCtl.toFixed(4)}`)}
         </div>
         <div class="tablewrap" style="margin-top:10px"><table class="bl-board">
-          <tr><th>asset</th><th>band</th><th>quorum</th><th>net P&L</th><th>vs control</th><th title="Exact 3-class match rate of the committee's calls">acc</th><th title="Accuracy minus the training-majority baseline">edge</th><th>W/T</th><th>gross/trade</th><th>stops</th></tr>
+          <tr><th>asset</th><th>band</th><th>quorum</th><th>net P&L</th><th>vs control</th><th title="Exact 3-class match rate of the committee's calls">acc</th><th title="Accuracy minus the training-majority baseline">edge</th><th title="Net minus the SAME execution with the direction forced long on every period — identical period count, horizon and fee load. Isolates the calls by holding everything else fixed: a setup that cannot beat 'be long every period' has not earned its complexity.">vs always-long</th><th title="Net minus buying at the first entry and selling at the last exit — one position, one round trip. The classic benchmark, and the one that answers 'why not just buy it and go away?'">vs buy-hold</th><th>W/T</th><th>gross/trade</th><th>stops</th></tr>
           ${rows.map((r) => `<tr>
             <td><strong>${esc(r.trade + (r.ctx1 ? '+' + r.ctx1 : '') + (r.ctx2 ? '+' + r.ctx2 : ''))}</strong></td>
             <td>±${r.bandPct != null ? r.bandPct.toFixed(2) : '?'}%</td>
@@ -1945,10 +1945,12 @@
             <td>${r.vsControl == null ? '—' : `<span class="${r.vsControl >= 0 ? 'up' : 'down'}">${money(r.vsControl)}</span>`}</td>
             <td>${r.metrics ? pct(r.metrics.testAcc) : '—'}</td>
             <td>${r.metrics ? signedPct(r.metrics.edge) : '—'}</td>
+            <td>${r.vsAlwaysLong == null ? '—' : `<span class="${r.vsAlwaysLong >= 0 ? 'up' : 'down'}">${money(r.vsAlwaysLong)}</span>`}</td>
+            <td>${r.vsBuyHold == null ? '—' : `<span class="${r.vsBuyHold >= 0 ? 'up' : 'down'}">${money(r.vsBuyHold)}</span>`}</td>
             <td>${r.wins}/${r.trades}</td>
             <td>${r.grossPerTrade != null ? '$' + r.grossPerTrade.toFixed(2) : '—'}</td>
             <td>${r.stops}${r.ambiguous ? ` <span class="cellsub">${r.ambiguous} amb</span>` : ''}</td></tr>`).join('')
-            || '<tr><td colspan="10" class="note">no declared-cell results yet — they fill in during the promote phase</td></tr>'}
+            || '<tr><td colspan="12" class="note">no declared-cell results yet — they fill in during the promote phase</td></tr>'}
         </table></div></div>`;
     }
 

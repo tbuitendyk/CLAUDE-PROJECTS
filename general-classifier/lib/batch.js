@@ -1436,6 +1436,9 @@ function startBracketLab(params) {
               grossPerTrade: d.grossPerTrade, stops: d.stops, ambiguous: d.ambiguous,
               controlPnl: d.controlPnl, vsControl: d.controlPnl == null ? null : d.pnl - d.controlPnl,
               metrics: d.metrics || null,
+              holds: d.holds || null,
+              vsAlwaysLong: d.holds ? d.pnl - d.holds.alwaysLong : null,
+              vsBuyHold: d.holds && d.holds.buyHold != null ? d.pnl - d.holds.buyHold : null,
             });
             const repKey = (r) => `${r.trade}|${r.ctx1 || ''}|${r.ctx2 || ''}|${r.geometry}`;
             doc.replication.sort((x, y) => (y.pnl - x.pnl) || (repKey(x) < repKey(y) ? -1 : repKey(x) > repKey(y) ? 1 : 0));

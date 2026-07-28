@@ -186,6 +186,13 @@ async function unitTask({ combo, branch, stage, params }) {
   if (best) best.metrics = classifierMetrics(trainLabels, testLabels, bestStream);
   if (declared) declared.metrics = classifierMetrics(trainLabels, testLabels, declaredStream);
 
+  // DRIFT CONTROLS at each cell's own horizon. "You found an asset that went
+  // up" is the standing objection to every number on this board; these are
+  // what answer it, so they travel WITH the cell rather than being something
+  // to work out later.
+  if (best) best.holds = bracketLib.holdControls(testChunks, maps.trade, geo, best.tHours, fee);
+  if (declared) declared.holds = bracketLib.holdControls(testChunks, maps.trade, geo, declared.tHours, fee);
+
   const out = { best, declared, bandPct, testPeriods: testChunks.length, members: memberCalls.length };
 
   // CALL EXPORT — off by default because it is per-period data and a
