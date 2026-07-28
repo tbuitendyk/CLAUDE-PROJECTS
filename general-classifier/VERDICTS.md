@@ -450,6 +450,49 @@ geometries is a place to look for edge.
 **Where the hunt goes next is the owner's call, not the session's.** No
 further bracket runs were fired after this result.
 
+### Method — minute confirmation, and the first measurement of the hourly assumption (2026-07-28)
+
+Not a verdict on a candidate; a rule about what may be quoted.
+
+An hourly bracket knows only OHLC, so when a bar both extends and touches the
+stop the data cannot say which came first. simBracket takes the pessimistic
+order and counts each occurrence in `trailAmbiguous`. With a STATIC stop that
+fires rarely (only a bar spanning both entry rails — 0 to 47 periods out of
+~500 across the runs logged above). With a TRAILING stop it fires on any bar
+that extends and retraces.
+
+**First measurement** (bracketlab-20260728-2132, DOTUSDT daily-3d, declared
+always-gate, d 1.0x, t 65h, trail 1.0x, arm 0, q4/12; minute coverage 99.8%):
+
+                net P&L   trades   wins   stops   trail-amb
+    hourly      -118.92      427    156     424          23
+    minute      -103.87      427    154     424           1
+    delta        +15.05       +0             +0
+
+The ambiguity count falls 23 -> 1: minute resolution settles 22 of the 23
+questions, and the survivor is a single minute in which the same thing happens
+again. The pessimistic assumption was worth **$15.05, about 13% of the cell's
+result** — material, and in this instance conservative.
+
+**Standing rule from this point: no trailing result is quotable without minute
+confirmation.** The hourly figure is an estimate resting on an assumption, and
+`trailAmbiguous` is how much of it rests there. Confirmation may move a number
+in EITHER direction — the hourly bar hides the ordering both ways — so a
+favourable delta is not evidence of anything either.
+
+Note on the cell itself: it is a loser before and after (-118.92 -> -103.87),
+and it stops out on 424 of 427 trades because arm=0 with trail=1x band puts
+the stop one band below entry immediately. It was chosen to generate stop
+activity for the test, not on merit, and nothing about it is a finding.
+
+**Also recorded: the API silently dropped `trailing` and `holdout`.**
+startBracketLab read them; server.js never forwarded them. Every run fired
+before this was fixed ran with trailing OFF regardless of what was requested.
+One conclusion was drawn and withdrawn on the strength of it ("trailing did
+not beat market entry on DOT" — trailing had never been swept). A test now
+derives the parameters the orchestrator consumes and asserts the endpoint
+forwards each one. Third silently-dropped-parameter defect in this system.
+
 ## Amendment log
 
 - **A1 (2026-07-26) — H1 reading gate: low-frequency lane added.** The
