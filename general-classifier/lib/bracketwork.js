@@ -211,6 +211,15 @@ async function unitTask({ combo, branch, stage, params }) {
   // the very call stream the winning cell traded. They describe the CALLS,
   // not the execution, so they are a property of the quorum rung rather than
   // of d/t/gate: two cells sharing a quorum share their metrics.
+  //
+  // WHY bestEdge EXISTS SEPARATELY (below). These metrics belong to whichever
+  // quorum won on MONEY, which makes them a P&L-selected sample — useless for
+  // asking "does this committee predict anything?", because the selection has
+  // already conditioned on the answer's downstream consequence. bestEdge
+  // instead takes the rung with the highest classification edge on the SEARCH
+  // window and reports what that rung did on the HOLDOUT. Select on search,
+  // judge on holdout, and never let money pick the rung you then evaluate as
+  // a predictor.
   if (best) best.metrics = classifierMetrics(trainLabels, testLabels, bestStream);
   if (declared) declared.metrics = classifierMetrics(trainLabels, testLabels, declaredStream);
 
@@ -246,7 +255,22 @@ async function unitTask({ combo, branch, stage, params }) {
   if (best) best.holdout = scoreHold(best, best.quorum);
   if (declared) declared.holdout = scoreHold(declared, declared.quorum);
 
-  const out = { best, declared, bandPct, testPeriods: testChunks.length, members: memberCalls.length };
+  // Per-rung classification quality, so prediction can be judged apart from
+  // execution. Cheap: every stream is already computed.
+  let bestEdge = null;
+  for (const st of streams) {
+    const mt = classifierMetrics(trainLabels, testLabels, st.calls);
+    if (!mt) continue;
+    if (!bestEdge || mt.edge > bestEdge.metrics.edge) {
+      bestEdge = { quorum: st.quorum, members: memberCalls.length, metrics: mt };
+    }
+  }
+  if (bestEdge && holdChunks.length) {
+    const hc = holdChunks.map((_, i) => quorumCall(holdCalls, i, bestEdge.quorum));
+    bestEdge.holdoutMetrics = classifierMetrics(trainLabels, holdLabels, hc);
+  }
+
+  const out = { best, declared, bestEdge, bandPct, testPeriods: testChunks.length, members: memberCalls.length };
 
   // CALL EXPORT — off by default because it is per-period data and a
   // 272-combo sweep would bloat the doc. On, it is what lets a bracket result

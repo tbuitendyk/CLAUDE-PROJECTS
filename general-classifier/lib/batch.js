@@ -1436,6 +1436,9 @@ function startBracketLab(params) {
               ...l, stage: 'promoted',
               bandPct: res.bandPct, testPeriods: res.testPeriods,
               ...res.best, declaredCell: res.declared || null,
+              // Prediction quality at the EDGE-selected rung, kept apart from
+              // the money-selected one above.
+              bestEdge: res.bestEdge || null,
             });
           }
           if (res.callSeries && doc.callSeries.length < CALL_SERIES_MAX) {
