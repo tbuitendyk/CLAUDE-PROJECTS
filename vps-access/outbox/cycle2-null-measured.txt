@@ -1,0 +1,64 @@
+Cycle 2 — the null was 27%, not 50%, and it went the way I did not expect
+
+tl;dr — I measured the edge statistic's null instead of assuming it, and the assumption was wrong in the OPPOSITE direction to my worry. On rotated outcomes only 46 of 170 units come out positive (median edge -0.83%), against 98 of 170 on real outcomes (median +3.08%). The statistic penalises noise rather than flattering it, which makes cycle 1 stronger than the naive test implied — a 30-point gap. But that is ONE draw of the null. Cycle 3 is running six rotations to put a spread on it; about two and a half hours.
+
+WHAT WAS MEASURED
+
+    real outcomes      98/170 = 57.6%    median holdout edge  +3.08%
+    rotated outcomes   46/170 = 27.1%    median holdout edge  -0.83%
+    assumed null                 50.0%
+
+The rotation keeps everything except the thing being tested: autocorrelation,
+class balance, band calibration, the training pipeline, the holdout split. All
+that is destroyed is any real relationship between features and outcomes.
+
+I had worried the statistic might flatter itself — that a committee leaning
+toward the modal class would post positive edge with no skill. The opposite is
+true. On noise this statistic sits at 27% and its median edge is NEGATIVE.
+Almost certainly because a committee with nothing to say stands aside often,
+and stand-asides on a three-class problem cost accuracy against the baseline.
+
+So the assumed 50% null was not merely unjustified, it was too GENEROUS to the
+null and therefore too harsh on the result. Cycle 1 clears the real bar by a
+wider margin than it cleared the imagined one.
+
+WHY I AM STILL NOT CALLING IT A FINDING
+
+Two reasons, and I would rather say them now than after you have got attached
+to the number.
+
+One draw is not a distribution. 46 is a single sample. Until I know how much
+that number moves between rotations, "98 is far above 46" could be "98 is far
+above an unusually low draw". Cycle 3 fixes exactly this: six evenly spaced
+rotations in one job, 1020 promoted units, each tagged with its draw.
+
+And the units are not independent. Seventeen assets across ten branches, in a
+market where everything moves together. That inflates significance for the
+real run and the null run alike — which is why comparing like with like is
+worth something, and why a p-value computed on either alone is not.
+
+WHAT WOULD MAKE THIS TRADEABLE, WHICH IS A HARDER QUESTION
+
+Suppose cycle 3 confirms it. The edge is about three points of accuracy over
+baseline. That is a real predictive signal and it is NOT the same thing as
+money. Three points has to survive the round trip on every trade it triggers,
+and the bracket work so far says execution has been eating everything it was
+given. So the honest sequence from here is: confirm the edge is real, then ask
+separately whether it is large enough to pay for its own trading — and be
+prepared for the answer to be no even if the edge is genuine.
+
+That is still much better ground than we were on this morning, when the two
+questions were fused into one number and every null was ambiguous.
+
+PLATFORM CHANGE MADE FOR THIS
+
+labelShiftReps: one job now carries many rotations, tagging every census row
+with its draw, so a null distribution is one run and one read instead of six
+of each. The tag has to survive into the promoted payload or every draw
+silently runs the same rotation and the "distribution" is one number repeated
+six times — there is a test asserting it does.
+
+Cycle 3 is bracketlab-20260728-2303, about two and a half hours. I will write
+when it lands.
+
+c.
