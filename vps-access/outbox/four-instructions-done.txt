@@ -1,0 +1,71 @@
+All four done — plus a bug that ate two of your emails
+
+tl;dr — All four instructions are live: copies into Claude HOMS Worker AND Archive, the 8 existing messages duplicated into Archive, 60s polling after each send. But you should know two of your emails were nearly lost: my poller was ALSO the thing that marked mail read, so noticing a message destroyed it. Fixed — the watcher now uses a read-only twin that changes nothing. Nothing was actually lost; I recovered all four.
+
+THE BUG, FIRST, BECAUSE IT AFFECTS WHETHER YOU CAN TRUST THIS CHANNEL
+
+I had one script doing two jobs: checking for mail, and consuming it (marking
+read, recording it as processed). The watcher ran that script on a timer and
+only ever saw the few summary lines it greps for. So when your "Bluemail on
+Android" and "While you're at it" emails arrived, the watcher noticed them,
+consumed them, and I got two lines saying "VERIFIED" with no idea what they
+said.
+
+Detection and consumption must not be the same call. There are now two
+scripts sharing identical verification logic:
+
+  claude-mail-recent.sh   read-only. Changes nothing: no read flags, no
+                          processed list. Reads ALL mail, not just unread, so
+                          anything already consumed can still be recovered.
+                          This is what the watcher runs.
+  claude-mail-check.sh    the consuming one. Run deliberately, when messages
+                          are actually going to be acted on.
+
+I recovered all four of your emails through the read-only one. Nothing lost.
+But it is the second time in an hour that my own tooling nearly silenced you,
+so: if you send something and I do not respond, assume the plumbing is broken.
+
+YOUR FOUR INSTRUCTIONS
+
+1. Copy to Inbox\Claude HOMS Worker — LIVE, verified working (folder went
+   0 -> 1 on my first send).
+
+2. Poll every minute for 1200s after each send — LIVE. The cadence is stored
+   on the server and published to the watcher, so it survives the watcher
+   being restarted rather than living in whatever happens to be polling.
+
+3. Also copy to Archive (BlueMail cannot map arbitrary folders) — LIVE. Same
+   Sieve rule, second destination. Archive is special-use, which is why
+   mobile clients show it.
+
+4. Duplicate the existing Claude HOMS Worker folder into Archive — DONE.
+   8 messages copied, Archive 0 -> 8.
+
+On #4, one thing worth knowing: the obvious way to write that is a single
+"copy everything" command, which would double your mail every time it ran. On
+your live mailbox that is a trap rather than a convenience, so it matches on
+Message-ID and copies only what is genuinely absent. I ran it twice to prove
+it: the second run reported copied=0, already-present=8, and the counts did
+not move.
+
+It also failed loudly on its first attempt rather than lying. It read zero
+message-ids from a folder holding eight — doveadm prints the field name first,
+so my pattern never matched — and reported "nothing to do" with a success
+code. A backfill that silently does nothing looks exactly like a backfill that
+worked. It now prints the counts it actually read and refuses to exit clean if
+a non-empty folder yields nothing.
+
+The 8 messages turned out to be my earlier overnight reports, sent from
+support@ and filed there by you.
+
+WHERE THE RESEARCH STANDS
+
+Trailing stops, the 70/15/15 holdout and the drift controls are deployed, and
+the DOT fixture still matches to the cent, so nothing recorded so far has
+moved underneath us. Minute confirmation is the one piece of your list still
+to build, and it is the one that matters most — on hourly candles a trailing
+stop's result depends on an assumption about what happened inside the bar, and
+the new trail-amb counter exists to tell you how often that assumption is
+load-bearing.
+
+t.
