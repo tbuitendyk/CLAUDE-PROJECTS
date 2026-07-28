@@ -1,0 +1,3 @@
+Classifier overnight #2 - multithreading is live, and what Run 3 is testing
+
+PLACEHOLDER - gate verdict and timings filled in when the fixture run lands.
