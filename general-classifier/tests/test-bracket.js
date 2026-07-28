@@ -379,6 +379,75 @@ module.exports = {
       assert.strictEqual(again.trades, r.trades);
     }
   },
+  async minuteResolutionSurvivesTheParser() {
+    // The hourly parser floors every timestamp to the hour. Feeding 1m files
+    // through it would collapse sixty candles onto one key and discard 59 of
+    // them silently, with a plausible-looking result — the worst possible
+    // failure for a confirmation step.
+    const { parseKlineCsv } = require('../lib/binance');
+    const csv = [
+      '1700000000000,10,11,9,10.5,1,0,100',
+      '1700000060000,10.5,12,10,11,1,0,100',
+      '1700000120000,11,13,10.5,12,1,0,100',
+    ].join('\n');
+    assert.strictEqual(new Set(parseKlineCsv(csv).map((r) => r.ts)).size, 1);          // 1h: collapses by design
+    assert.strictEqual(new Set(parseKlineCsv(csv, 60_000).map((r) => r.ts)).size, 3);  // 1m: all survive
+  },
+  async finerBarsResolveWhatHourlyBarsMustAssume() {
+    // The trail must already be LIVE for this to be about trailing at all —
+    // a bar that spans both ENTRY rails trips the entry ambiguity and closes
+    // the position before any trail exists.
+    //
+    // Setup: long at the 102 rail, trail rides up to a stop of 102.90, then
+    // one hour prints high 110 and low 102. Hourly cannot say whether the
+    // rally or the dip came first, so the book is charged the dip. Minute
+    // bars show the rally came first, which drags the stop to 107.80.
+    const t0 = Date.UTC(2024, 0, 1);
+    const E = t0 + geo.entryOffsetH * HOUR_MS;
+    const M = 60_000;
+    const bar = (o, h, l) => ({ open: o, high: h, low: l, close: o });
+
+    const hourly = new Map();
+    hourly.set(E, bar(100, 102.5, 99.5));          // entry: touches the 102 rail
+    hourly.set(E + HOUR_MS, bar(103, 105, 102.5)); // trail ratchets to 105*0.98
+    hourly.set(E + 2 * HOUR_MS, bar(105, 110, 102)); // extends AND dips: unknowable
+    for (let h = 3; h <= 20; h++) hourly.set(E + h * HOUR_MS, bar(108, 108.2, 107.8));
+
+    // The minute path must be CONSISTENT with the hourly bars, not merely
+    // plausible: hour 0 prints low 99.5, so that dip has to happen somewhere —
+    // and where it happens matters. Placed BEFORE the entry it is harmless;
+    // placed after, it stops the trail out at 99.96 and the finer run comes
+    // out worse. Both are legitimate readings of the same hourly bar, which is
+    // the whole reason this confirmation exists.
+    const minute = new Map();
+    for (let i = 0; i < 30; i++) minute.set(E + i * M, i === 10 ? bar(99.8, 100, 99.5) : bar(99.9, 100.1, 99.7));
+    minute.set(E + 30 * M, bar(101, 102.5, 100.8));            // the entry touch
+    for (let i = 31; i < 60; i++) minute.set(E + i * M, bar(102.6, 102.8, 102.5));
+    for (let i = 0; i < 60; i++) { const px = 103 + (i / 59) * 2; minute.set(E + HOUR_MS + i * M, bar(px, px + 0.05, px - 0.05)); }
+    for (let i = 0; i < 30; i++) { const px = 105 + (i / 29) * 5; minute.set(E + 2 * HOUR_MS + i * M, bar(px, px + 0.05, px - 0.05)); }
+    for (let i = 30; i < 60; i++) { const px = 110 - ((i - 30) / 29) * 8; minute.set(E + 2 * HOUR_MS + i * M, bar(px, px + 0.05, px - 0.05)); }
+    for (let h = 3; h <= 20; h++) for (let i = 0; i < 60; i++) minute.set(E + h * HOUR_MS + i * M, bar(108, 108.2, 107.8));
+
+    const cell = { entry: 'breakout', gate: 'always', dMult: 1, tHours: 17, trailMult: 1, armMult: 0 };
+    const h = simCell(cell, period(t0), [1], hourly, geo, 2, FEE, HOUR_MS);
+    const m = simCell(cell, period(t0), [1], minute, geo, 2, FEE, 60_000);
+
+    assert.strictEqual(h.trades, 1);
+    assert.strictEqual(m.trades, 1);
+    // hourly had to guess, and says so
+    assert.ok(h.trailAmbiguous >= 1, `expected an assumption, got ${h.trailAmbiguous}`);
+    assert.strictEqual(h.stops, 1);
+    // both stopped out, but the finer path stopped far higher up
+    assert.strictEqual(m.stops, 1);
+    // Here the rally genuinely came first, so the finer path stops far higher.
+    // NOTE: this is NOT a general guarantee — confirmation can move a number
+    // in either direction, because the hourly bar hides the ordering both
+    // ways. Asserting "finer is better" would bake in exactly the optimism
+    // this step exists to remove.
+    assert.ok(m.pnl > h.pnl + 3, `minute ${m.pnl.toFixed(2)} vs pessimistic hourly ${h.pnl.toFixed(2)}`);
+    // and at minute resolution the ordering question does not arise here
+    assert.strictEqual(m.trailAmbiguous, 0);
+  },
   async bestCellHonorsFloorAndTies() {
     const rows = [
       { gate: 'always', dMult: 1, tHours: 17, pnl: 50, trades: 4 }, // under floor

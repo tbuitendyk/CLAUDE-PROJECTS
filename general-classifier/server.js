@@ -200,6 +200,14 @@ app.post('/api/bracketlab/:id/select', (req, res) => {
   }
 });
 
+app.post('/api/bracketlab/:id/confirm', (req, res) => {
+  try {
+    res.json(batch.startBracketConfirm(req.params.id));
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
 app.post('/api/bracketlab/:id/null', (req, res) => {
   try {
     res.json(batch.startBracketNull(req.params.id, (req.body || {}).shifts));

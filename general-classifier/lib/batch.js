@@ -1121,6 +1121,7 @@ function permNullAggregate(doc) {
 
 const bracketLib = require('./bracket');
 const { createPool } = require('./pool');
+const { confirmCell } = require('./confirm');
 
 // The pool serving whichever heavy job is in flight, so the kill switch can
 // terminate its workers immediately (see cancelActive).
@@ -1490,6 +1491,64 @@ function startBracketLab(params) {
   return doc.id;
 }
 
+// MINUTE CONFIRMATION for the selected row. Runs on the MAIN THREAD, one
+// asset, on purpose: a minute window is ~700k candles, which is fine held once
+// and released and decidedly not fine held by four workers beside their hourly
+// maps. The existing batchRunning() mutex keeps it from overlapping a sweep.
+function startBracketConfirm(id) {
+  if (batchRunning()) throw new Error(`batch ${activeBatch.id} is already running`);
+  const doc = getBatch(id);
+  if (!doc || doc.kind !== 'bracketlab') throw new Error('unknown bracket-lab run');
+  const sel = doc.selection;
+  if (!sel) throw new Error('select a promoted leader row first');
+  doc.status = 'running';
+  doc.cancelRequested = false;
+  doc.perf.phase = 'confirm';
+  doc.confirm = { status: 'running', startedAt: new Date().toISOString(), cell: sel };
+  activeBatch = doc;
+  saveBatch(doc);
+
+  (async () => {
+    const out = await confirmCell({
+      combo: { trade: sel.trade, ctx1: sel.ctx1, ctx2: sel.ctx2, size: sel.size },
+      branch: { geometry: sel.geometry, decision: sel.decision, band: sel.bandMode, weekdaysOnly: sel.weekdaysOnly },
+      cell: sel,
+      quorum: sel.quorum,
+      params: doc.params,
+      onProgress: (msg) => {
+        doc.progress = `confirm: ${msg}`;
+        saveBatch(doc);
+      },
+    });
+    // The self-check: the hourly re-score must reproduce what the board says,
+    // or the minute number is being compared with a different trade.
+    const recorded = sel.pnl;
+    const drift = Math.abs(out.hourly.pnl - recorded);
+    doc.confirm = {
+      ...doc.confirm,
+      status: 'done',
+      finishedAt: new Date().toISOString(),
+      ...out,
+      recordedPnl: recorded,
+      selfCheck: drift < 0.005
+        ? 'PASS — hourly re-score reproduces the board row'
+        : `FAIL — hourly re-score is ${out.hourly.pnl.toFixed(2)} against a recorded ${recorded.toFixed(2)}; the minute figure below is NOT comparable`,
+      selfCheckOk: drift < 0.005,
+    };
+    doc.status = 'done';
+    doc.perf.phase = 'done';
+    doc.progress = '';
+    saveBatch(doc);
+  })().catch((err) => {
+    doc.confirm = { ...(doc.confirm || {}), status: 'error', error: err.message || String(err) };
+    doc.status = 'error';
+    doc.error = err.message || String(err);
+    doc.progress = '';
+    saveBatch(doc);
+  });
+  return { started: true, symbol: sel.trade };
+}
+
 // Stage-2 selection: pin one leader row (by its key + stage) for the null.
 function bracketSelect(id, patch) {
   const doc = getBatch(id);
@@ -1624,6 +1683,7 @@ module.exports = {
   startBracketLab,
   bracketSelect,
   startBracketNull,
+  startBracketConfirm,
   expandBracketPlan,
   promotionSet,
   validateDeclared,

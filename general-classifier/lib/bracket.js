@@ -109,7 +109,7 @@ const ENTRIES = ['breakout', 'market'];
 // The classifier's trade, priced with the books' own helper so a market cell
 // and a paper book cannot drift apart: same NOTIONAL, same round-trip fee,
 // same open-to-open arithmetic.
-function simMarket(periods, calls, tradeMap, geo, { tHours, feePerLeg }) {
+function simMarket(periods, calls, tradeMap, geo, { tHours, feePerLeg, stepMs = HOUR_MS }) {
   const trip = 2 * feePerLeg;
   let pnl = 0;
   let trades = 0;
@@ -127,7 +127,8 @@ function simMarket(periods, calls, tradeMap, geo, { tHours, feePerLeg }) {
     // Walk ≤3h forward over gaps for the exit, exactly as the breakout path's
     // time exit does, so the two modes treat missing candles identically.
     let exitBar = null;
-    for (let h = 0; h <= 3 && !exitBar; h++) exitBar = tradeMap.get(entryTs + (tHours + h) * HOUR_MS);
+    const gapSteps = Math.round((3 * HOUR_MS) / stepMs);
+    for (let h = 0; h <= gapSteps && !exitBar; h++) exitBar = tradeMap.get(entryTs + tHours * HOUR_MS + h * stepMs);
     if (!exitBar) {
       unpriced++;
       return;
@@ -158,7 +159,13 @@ function simMarket(periods, calls, tradeMap, geo, { tHours, feePerLeg }) {
 // occurrence is counted in trailAmbiguous, which is the number that says how
 // much of a given result rests on the assumption. Minute confirmation exists
 // to replace that assumption with the actual path.
-function simBracket(periods, calls, tradeMap, geo, { dPct, tHours, gate, feePerLeg, trailPct = null, armPct = 0 }) {
+// stepMs generalises the bar size. At the default it walks hourly candles and
+// is byte-identical to what it has always done; at 60_000 it walks the same
+// trade minute by minute, which is the ONLY way to settle a within-bar
+// ordering question rather than assume it. The rules are otherwise unchanged
+// on purpose — a minute run that also changed the fill logic would not be a
+// confirmation of anything.
+function simBracket(periods, calls, tradeMap, geo, { dPct, tHours, gate, feePerLeg, trailPct = null, armPct = 0, stepMs = HOUR_MS }) {
   const NOTIONAL = 100;
   const trip = 2 * feePerLeg;
   let pnl = 0;
@@ -193,8 +200,9 @@ function simBracket(periods, calls, tradeMap, geo, { dPct, tHours, gate, feePerL
     let stopLvl = null; // the LIVE stop; static at the opposite rail unless trailing
     let ext = null;     // best price seen since entry
     let armed = false;
-    for (let h = 0; h < tHours && out === null; h++) {
-      const bar = tradeMap.get(entryTs + h * HOUR_MS);
+    const steps = Math.round((tHours * HOUR_MS) / stepMs);
+    for (let h = 0; h < steps && out === null; h++) {
+      const bar = tradeMap.get(entryTs + h * stepMs);
       if (!bar) continue;
       if (dir === 0) {
         const hitB = sides.includes(1) && bar.high >= bRail;
@@ -278,8 +286,11 @@ function simBracket(periods, calls, tradeMap, geo, { dPct, tHours, gate, feePerL
     }
     if (dir !== 0 && out === null) {
       // time exit at the horizon candle's open (walk ≤3h forward over gaps)
+      // Gap tolerance is 3 HOURS either way; on minute bars that is 180 steps
+      // rather than 3, so the two resolutions forgive the same real absence.
       let exitBar = null;
-      for (let h = 0; h <= 3 && !exitBar; h++) exitBar = tradeMap.get(entryTs + (tHours + h) * HOUR_MS);
+      const gapSteps = Math.round((3 * HOUR_MS) / stepMs);
+      for (let h = 0; h <= gapSteps && !exitBar; h++) exitBar = tradeMap.get(entryTs + tHours * HOUR_MS + h * stepMs);
       if (!exitBar) {
         unpriced++;
         return;
@@ -415,15 +426,16 @@ function execSweep(periods, calls, tradeMap, geo, bandPct, feePerLeg, opts = {})
 // Used to score a chosen cell on the untouched holdout window, and it is the
 // same entry point minute confirmation will use — so the holdout and the
 // minute check can never be a different trade from the one that was selected.
-function simCell(cell, periods, calls, tradeMap, geo, bandPct, feePerLeg) {
+function simCell(cell, periods, calls, tradeMap, geo, bandPct, feePerLeg, stepMs = HOUR_MS) {
   if ((cell.entry || 'breakout') === 'market') {
-    return simMarket(periods, calls, tradeMap, geo, { tHours: cell.tHours, feePerLeg });
+    return simMarket(periods, calls, tradeMap, geo, { tHours: cell.tHours, feePerLeg, stepMs });
   }
   return simBracket(periods, calls, tradeMap, geo, {
     dPct: cell.dMult * bandPct,
     tHours: cell.tHours,
     gate: cell.gate,
     feePerLeg,
+    stepMs,
     trailPct: cell.trailMult == null ? null : cell.trailMult * bandPct,
     armPct: cell.armMult == null ? 0 : cell.armMult * bandPct,
   });

@@ -47,8 +47,14 @@ function unzipSingleEntry(buf) {
 // Kline CSV columns: 0 openTime, 1 open, 2 high, 3 low, 4 close, 5 volume,
 // 6 closeTime, 7 quoteVolume, ... openTime switched from milliseconds to
 // MICROseconds in 2025+ files; normalize by magnitude. Rows come back
-// pruned to time + the five fields the classifier uses, hour-bucketed.
-function parseKlineCsv(text) {
+// pruned to time + the five fields the classifier uses.
+//
+// bucketMs MATTERS. The hourly path floors every timestamp to the hour, which
+// is right for 1h files and catastrophic for 1m ones: all sixty minutes of an
+// hour would land on the same key and fifty-nine of them would be discarded
+// by the Map that consumes them — silently, with no error and a plausible
+// result. Minute callers pass 60_000.
+function parseKlineCsv(text, bucketMs = HOUR_MS) {
   const rows = [];
   for (const line of String(text).split('\n')) {
     const p = line.split(',');
@@ -63,7 +69,7 @@ function parseKlineCsv(text) {
     const quoteVolume = Number(p[7]);
     if (!(open > 0 && high > 0 && low > 0 && close > 0)) continue;
     rows.push({
-      ts: Math.floor(t / HOUR_MS) * HOUR_MS,
+      ts: Math.floor(t / bucketMs) * bucketMs,
       open,
       high,
       low,
@@ -75,17 +81,21 @@ function parseKlineCsv(text) {
   return rows;
 }
 
-function cachePath(symbol, year, month) {
+// Interval is part of the cache key AND the URL. 1m files are ~60x the rows
+// of 1h, so they are only ever fetched for a specific confirmation window —
+// never as part of a sweep. cacheState()/cachedMonths() match -1h- explicitly,
+// so minute files cannot pollute the hourly coverage grid the UI shows.
+function cachePath(symbol, year, month, interval = '1h') {
   const mm = String(month).padStart(2, '0');
-  return path.join(CACHE_DIR, `${symbol}-1h-${year}-${mm}.json`);
+  return path.join(CACHE_DIR, `${symbol}-${interval}-${year}-${mm}.json`);
 }
 
 // One monthly zip -> array of candle rows; null when that month has no file
 // (pre-listing / post-delisting months 404 — callers surface them as
 // "missing", not fatal). Past months never change, so a parsed month is
 // cached on disk and reused forever.
-async function monthlyKlines(symbol, year, month) {
-  const file = cachePath(symbol, year, month);
+async function monthlyKlines(symbol, year, month, interval = '1h') {
+  const file = cachePath(symbol, year, month, interval);
   try {
     const cached = JSON.parse(fs.readFileSync(file, 'utf8'));
     if (Array.isArray(cached)) return cached;
@@ -93,12 +103,12 @@ async function monthlyKlines(symbol, year, month) {
     /* no cache yet */
   }
   const mm = String(month).padStart(2, '0');
-  const url = `${DATA}/data/spot/monthly/klines/${symbol}/1h/${symbol}-1h-${year}-${mm}.zip`;
+  const url = `${DATA}/data/spot/monthly/klines/${symbol}/${interval}/${symbol}-${interval}-${year}-${mm}.zip`;
   const res = await fetch(url);
   if (res.status === 404) return null;
-  if (!res.ok) throw new Error(`binance data ${res.status} for ${symbol} ${year}-${mm}`);
+  if (!res.ok) throw new Error(`binance data ${res.status} for ${symbol} ${interval} ${year}-${mm}`);
   const buf = Buffer.from(await res.arrayBuffer());
-  const rows = parseKlineCsv(unzipSingleEntry(buf).toString('utf8'));
+  const rows = parseKlineCsv(unzipSingleEntry(buf).toString('utf8'), interval === '1m' ? 60_000 : HOUR_MS);
   try {
     fs.mkdirSync(CACHE_DIR, { recursive: true });
     // ATOMIC: worker threads read these files concurrently with the main
@@ -132,7 +142,7 @@ async function dailyKlines(symbol, year, month, day) {
   if (res.status === 404) return null;
   if (!res.ok) throw new Error(`binance daily ${res.status} for ${symbol} ${year}-${mm}-${dd}`);
   const buf = Buffer.from(await res.arrayBuffer());
-  const rows = parseKlineCsv(unzipSingleEntry(buf).toString('utf8'));
+  const rows = parseKlineCsv(unzipSingleEntry(buf).toString('utf8'), interval === '1m' ? 60_000 : HOUR_MS);
   try {
     fs.mkdirSync(CACHE_DIR, { recursive: true });
     // ATOMIC: worker threads read these files concurrently with the main
@@ -235,4 +245,4 @@ function cacheState() {
     .sort((a, b) => (a.symbol < b.symbol ? -1 : 1));
 }
 
-module.exports = { monthlyKlines, dailyKlines, recentKlines, unzipSingleEntry, parseKlineCsv, cacheState, cachedMonths, HOUR_MS };
+module.exports = { monthlyKlines, dailyKlines, recentKlines, unzipSingleEntry, parseKlineCsv, cacheState, cachedMonths, cachePath, HOUR_MS, MINUTE_MS: 60_000 };
