@@ -19,6 +19,20 @@ const { toHourlyMap, forwardFill, scoreDiff, balancedBandPct, GEOMETRIES } = req
 const { loadSymbol, loadSymbolAll, monthList, deriveShift, interlacedPurge, MIN_CHUNKS } = require('./pipeline');
 const bracketLib = require('./bracket');
 const { REAL_FEE_PER_LEG } = require('./paper');
+const { classifierMetrics } = require('./metrics');
+
+// One place that decides whether an execution cell IS the declared/selected
+// one. Market cells carry dMult null, so a bare triple-equality on dMult
+// would silently never match them; this also keeps the sweep path and the
+// null replay from drifting apart, which they previously could.
+function matchesDeclared(row, dec) {
+  if (!dec) return false;
+  const entry = dec.entry || 'breakout';
+  if ((row.entry || 'breakout') !== entry) return false;
+  if (row.tHours !== dec.tHours) return false;
+  if (entry === 'market') return true; // gate is definitionally directional, d irrelevant
+  return row.gate === dec.gate && row.dMult === dec.dMult;
+}
 
 // Per-thread symbol cache. Each worker keeps its own; hourly data is small
 // (~7 years of one symbol is on the order of 60k candles, tens of MB), so a
@@ -136,9 +150,13 @@ async function unitTask({ combo, branch, stage, params }) {
     }
   }
   const decQ = declaredQuorumFor(p.declared, memberCalls.length);
+  const trainLabels = trainChunks.map((c) => c.label);
+  const testLabels = testChunks.map((c) => c.label);
   let best = null;
   let declared = null;
   let controlPnl = null;
+  let bestStream = null;
+  let declaredStream = null;
   for (const s of streams) {
     const rows = bracketLib.execSweep(testChunks, s.calls, maps.trade, geo, bandPct, fee);
     if (controlPnl === null) {
@@ -146,15 +164,46 @@ async function unitTask({ combo, branch, stage, params }) {
       controlPnl = ctl ? ctl.pnl : null;
     }
     if (p.declared && s.quorum === decQ) {
-      const hit = rows.find((r) => r.gate === p.declared.gate && r.dMult === p.declared.dMult && r.tHours === p.declared.tHours);
-      if (hit) declared = { ...hit, quorum: s.quorum, members: memberCalls.length };
+      const hit = rows.find((r) => matchesDeclared(r, p.declared));
+      if (hit) {
+        declared = { ...hit, quorum: s.quorum, members: memberCalls.length };
+        declaredStream = s.calls;
+      }
     }
     const cell = bracketLib.bestCell(rows, p.minTrades);
-    if (cell && (!best || cell.pnl > best.pnl)) best = { ...cell, quorum: s.quorum, members: memberCalls.length };
+    if (cell && (!best || cell.pnl > best.pnl)) {
+      best = { ...cell, quorum: s.quorum, members: memberCalls.length };
+      bestStream = s.calls;
+    }
   }
   if (best) best.controlPnl = controlPnl;
   if (declared) declared.controlPnl = controlPnl;
-  return { best, declared, bandPct, testPeriods: testChunks.length, members: memberCalls.length };
+
+  // CLASSIFICATION METRICS — the general classifier's headline numbers, on
+  // the very call stream the winning cell traded. They describe the CALLS,
+  // not the execution, so they are a property of the quorum rung rather than
+  // of d/t/gate: two cells sharing a quorum share their metrics.
+  if (best) best.metrics = classifierMetrics(trainLabels, testLabels, bestStream);
+  if (declared) declared.metrics = classifierMetrics(trainLabels, testLabels, declaredStream);
+
+  const out = { best, declared, bandPct, testPeriods: testChunks.length, members: memberCalls.length };
+
+  // CALL EXPORT — off by default because it is per-period data and a
+  // 272-combo sweep would bloat the doc. On, it is what lets a bracket result
+  // seed a paper book or be re-scored later without re-running anything.
+  if (p.emitCalls) {
+    const stream = declaredStream || bestStream;
+    if (stream) {
+      out.callSeries = {
+        quorum: (declared || best).quorum,
+        members: memberCalls.length,
+        startTs: testChunks.map((c) => c.startTs),
+        calls: stream.slice(),
+        labels: testLabels.slice(),
+      };
+    }
+  }
+  return out;
 }
 
 // TASK 2 — one null rotation for a frozen selection. The rotated world gets
@@ -178,7 +227,7 @@ async function nullRotationTask({ combo, branch, params, shiftIndex, nShifts, se
     const cell = bracketLib.bestCell(rows, p.minTrades);
     if (cell && (!bestOfMenu || cell.pnl > bestOfMenu.pnl)) bestOfMenu = cell;
     if (k === selection.quorum) {
-      const same = rows.find((r) => r.gate === selection.gate && r.dMult === selection.dMult && r.tHours === selection.tHours);
+      const same = rows.find((r) => matchesDeclared(r, selection));
       if (same) sameCell = same;
     }
   }
@@ -190,4 +239,4 @@ async function nullRotationTask({ combo, branch, params, shiftIndex, nShifts, se
   };
 }
 
-module.exports = { unitTask, nullRotationTask, quorumCall, declaredQuorumFor, slimViewsFor, buildCombo, splitAndLabel, specsFor };
+module.exports = { unitTask, nullRotationTask, quorumCall, declaredQuorumFor, matchesDeclared, slimViewsFor, buildCombo, splitAndLabel, specsFor };

@@ -1,5 +1,7 @@
 const { assert } = require('./helpers');
-const { comboViews, simBracket, bestCell, PER_ASSET } = require('../lib/bracket');
+const { comboViews, simBracket, simMarket, execSweep, bestCell, PER_ASSET, ENTRIES, D_MULTS, T_HOURS, GATES } = require('../lib/bracket');
+const { pnlAt } = require('../lib/paper');
+const { classifierMetrics } = require('../lib/metrics');
 const { expandBracketPlan, validateDeclared, declaredQuorumFor, promotionSet } = require('../lib/batch');
 const { GEOMETRIES } = require('../lib/dataset');
 
@@ -131,6 +133,35 @@ module.exports = {
     assert.throws(() => validateDeclared({ gate: 'always', dMult: 1, tHours: 65, quorumRatio: 0 }), /quorumRatio/);
     assert.strictEqual(validateDeclared(null), null); // opt-in only
   },
+  async marketDeclarationRejectsMeaninglessParameters() {
+    // The classifier's own trade, declared. Gate and distance do not exist
+    // for it, and a silently-ignored parameter is how a declared config stops
+    // meaning what its author thought it meant — so they are refused, not
+    // dropped.
+    const dec = validateDeclared({ entry: 'market', tHours: 41, quorumRatio: 0.25 });
+    assert.strictEqual(dec.entry, 'market');
+    assert.strictEqual(dec.gate, 'directional'); // definitional, not a choice
+    assert.strictEqual(dec.dMult, null);
+    assert.ok(dec.label.includes('market'));
+    assert.throws(() => validateDeclared({ entry: 'market', dMult: 1, tHours: 41, quorum: 3 }), /dMult is meaningless/);
+    assert.throws(() => validateDeclared({ entry: 'market', gate: 'always', tHours: 41, quorum: 3 }), /must be omitted or/);
+    assert.throws(() => validateDeclared({ entry: 'nope', tHours: 41, quorum: 3 }), /entry must be one of/);
+    // breakout stays the default so every existing declaration is unchanged
+    assert.strictEqual(validateDeclared({ gate: 'active', dMult: 1, tHours: 161, quorum: 4 }).entry, 'breakout');
+
+    // matchesDeclared must find the market cell, which carries dMult null —
+    // the old triple-equality would never have matched it.
+    const { matchesDeclared } = require('../lib/bracketwork');
+    const marketRow = { entry: 'market', gate: 'directional', dMult: null, tHours: 41 };
+    const breakoutRow = { entry: 'breakout', gate: 'active', dMult: 1, tHours: 41 };
+    assert.ok(matchesDeclared(marketRow, dec));
+    assert.ok(!matchesDeclared(breakoutRow, dec));
+    const bdec = validateDeclared({ gate: 'active', dMult: 1, tHours: 41, quorum: 4 });
+    assert.ok(matchesDeclared(breakoutRow, bdec));
+    assert.ok(!matchesDeclared(marketRow, bdec));
+    // a legacy selection with no entry field must still read as breakout
+    assert.ok(matchesDeclared({ gate: 'active', dMult: 1, tHours: 41 }, { gate: 'active', dMult: 1, tHours: 41 }));
+  },
   async replicationPromotesEveryUnit() {
     // The declared cell is only read at the promoted stage. If replication
     // promoted the leaderboard's top-K, every per-asset number in the
@@ -152,6 +183,80 @@ module.exports = {
     const disc = promotionSet({ declared: null, promoteK: 1 }, doc, units);
     assert.strictEqual(disc.length, 1);
     assert.strictEqual(disc[0].trade, 'AUSDT');
+  },
+  async marketEntryIsTheBooksOwnTrade() {
+    // The whole point of the market mode: enter at the entry candle's OPEN in
+    // the called direction, hold to t, exit at that candle's open. No rails,
+    // so a bar that would have stopped a bracket does nothing here.
+    const t0 = Date.UTC(2024, 0, 1);
+    const bars = { 0: [100, 102.5, 90], 5: [95, 96, 80], 17: [105, 105, 104] };
+    for (const h of [1, 2, 3, 4]) bars[h] = [101, 101.5, 100.5];
+    const m = mapFrom(t0, bars);
+    const r = simMarket(period(t0), [1], m, geo, { tHours: 17, feePerLeg: FEE });
+    assert.strictEqual(r.trades, 1);
+    assert.strictEqual(r.stops, 0);        // structurally impossible here
+    assert.strictEqual(r.ambiguous, 0);
+    // priced with the BOOKS' own helper, not a re-derivation
+    assert.ok(Math.abs(r.pnl - pnlAt(1, 100, 105, FEE)) < 1e-12);
+    assert.strictEqual(r.wins, 1);
+    // and the same bars as a breakout WOULD have been stopped out — proving
+    // the two modes are genuinely different trades, not a relabelling
+    const b = simBracket(period(t0), [1], m, geo, { dPct: 2, tHours: 17, gate: 'always', feePerLeg: FEE });
+    assert.strictEqual(b.stops, 1);
+  },
+  async marketStandsAsideOnAZeroCall() {
+    // A dormant call is a stand-aside, exactly as the books treat it — not a
+    // skipped/unpriced period.
+    const t0 = Date.UTC(2024, 0, 1);
+    const m = mapFrom(t0, { 0: [100, 101, 99], 17: [105, 105, 104] });
+    const r = simMarket(period(t0), [0], m, geo, { tHours: 17, feePerLeg: FEE });
+    assert.strictEqual(r.trades, 0);
+    assert.strictEqual(r.pnl, 0);
+    assert.strictEqual(r.unpriced, 0);
+    // short call takes the other side of the same move
+    const down = simMarket(period(t0), [-1], m, geo, { tHours: 17, feePerLeg: FEE });
+    assert.ok(Math.abs(down.pnl - pnlAt(-1, 100, 105, FEE)) < 1e-12);
+  },
+  async execSweepCarriesMarketCellsWithoutDisturbingTheControl() {
+    const t0 = Date.UTC(2024, 0, 1);
+    const bars = { 0: [100, 101, 99] };
+    for (let h = 1; h <= 164; h++) bars[h] = [100 + h * 0.01, 100 + h * 0.01 + 0.5, 100 + h * 0.01 - 0.5];
+    const m = mapFrom(t0, bars);
+    const rows = execSweep(period(t0), [1], m, geo, 2, FEE);
+    const market = rows.filter((r) => r.entry === 'market');
+    const breakout = rows.filter((r) => r.entry === 'breakout');
+    assert.strictEqual(breakout.length, GATES.length * D_MULTS.length * T_HOURS.length);
+    assert.strictEqual(market.length, T_HOURS.length);         // one per horizon
+    assert.ok(market.every((r) => r.gate === 'directional'));   // definitionally
+    assert.ok(market.every((r) => r.dMult === null));           // no distance exists
+    // The always-gate control must be untouched by the addition, or every
+    // vs-control number recorded before this change would silently shift.
+    assert.ok(rows.filter((r) => r.gate === 'always').every((r) => r.entry === 'breakout'));
+    assert.deepStrictEqual(ENTRIES, ['breakout', 'market']);
+  },
+  async classifierMetricsMatchThePipelineDefinitions() {
+    // train majority is 0; test labels are deliberately NOT the same mix, so
+    // majorityBaseline and bestConstant come apart and a wrong one shows.
+    const train = [0, 0, 0, 0, 1, -1];
+    const test = [1, 1, -1, 0];
+    const calls = [1, 0, -1, 1];
+    const mt = classifierMetrics(train, test, calls);
+    assert.strictEqual(mt.testAcc, 2 / 4);          // idx 0 and 2 match
+    assert.strictEqual(mt.majorityClass, 0);        // from TRAIN counts
+    assert.strictEqual(mt.majorityBaseline, 1 / 4); // one 0 in test
+    assert.strictEqual(mt.edge, 2 / 4 - 1 / 4);
+    assert.strictEqual(mt.bestConstant, 2 / 4);     // two 1s in test
+    assert.strictEqual(mt.hindsightEdge, 0);
+    // directional: three non-zero calls, two exactly right. A +1 on a 0 label
+    // is a MISS — same as pipeline.js, which counts exact matches only.
+    assert.strictEqual(mt.directionalCalls, 3);
+    assert.strictEqual(mt.directionalHits, 2);
+    assert.strictEqual(mt.directionalHitRate, 2 / 3);
+    // balanced accuracy averages recall over classes PRESENT in test:
+    // +1 recall 1/2, -1 recall 1/1, 0 recall 0/1 → mean 1/2
+    assert.ok(Math.abs(mt.balancedAcc - 0.5) < 1e-12);
+    assert.ok(Math.abs(mt.balancedEdge - (0.5 - 1 / 3)) < 1e-12);
+    assert.strictEqual(classifierMetrics([0], [], []), null);
   },
   async bestCellHonorsFloorAndTies() {
     const rows = [

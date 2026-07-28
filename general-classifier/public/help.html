@@ -432,6 +432,28 @@
         declared menu as extra branches: chunk shape (all 5), decision (both), band (auto / ±3 / ±5 / ±8),
         24/7 vs 24/5 (weekly skips the redundant branch). The full unit count — combos × branches — and
         the projected wall-clock render the moment you hit Start.</li>
+      <li><span class="term">Entry mode — and why the lab now contains the classifier</span> —
+        <em>breakout</em> opens the position when price REACHES a rail at p(1±d); every cell this lab
+        could express before was one of these. <em>market</em> enters at the entry candle's open in the
+        called direction with no rails, holds to t and exits at the open — the general classifier's own
+        trade, and exactly what the live paper books do, priced with the books' own P&amp;L helper so the
+        two cannot drift apart. It could not be had by adding 0 to the d-grid: with both rails at p the
+        first bar spans both and the ambiguous-bar rule stops the position out every period. Market
+        entry is <em>directional</em> by definition — with no rails there is nothing for <em>always</em>
+        to place, and <em>active</em> collapses into directional — so it adds one cell per horizon, not
+        a whole plane. Consequence worth knowing: boards from before 2026-07-28 are not comparable
+        cell-for-cell, though the always-gate control is unchanged (market cells are directional and can
+        never enter it), so earlier replication readings stand.</li>
+      <li><span class="term">Classification metrics</span> — every board and replication row now also
+        carries <em>acc</em> and <em>edge</em>: the exact 3-class match rate of the committee's calls,
+        and that minus the training-majority baseline. Same definitions as the general classifier's own
+        screens — majority class from the TRAINING mix, balanced accuracy over classes present, and a
+        directional call that lands on a dormant period counted as a miss. They describe the CALLS, not
+        the execution, so every cell sharing a quorum rung shares them.</li>
+      <li><span class="term">Export per-period calls</span> — stores the committee's call for each test
+        period alongside the labels and timestamps, for the declared (or winning) cell. That is what
+        lets a bracket result seed a paper book or be re-scored later without re-running the sweep. Off
+        by default and capped at 50 units, since it is the only per-period structure in the document.</li>
       <li><span class="term">Gates</span> — <em>always</em> (both rails every period — the control),
         <em>on-active</em> (both rails only when the committee calls a move), <em>direction-filtered</em>
         (only the rail matching the call). The committee is the majority vote in the slim stage and every

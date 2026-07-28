@@ -1839,7 +1839,8 @@
       <div class="section"><h2>Progress &amp; performance</h2>
       <p class="note">${planLine}${permuted.length ? ' · permuted: ' + permuted.join(', ') : ' · no options permuted'}
         · fee/trip $${(2 * p.feePerLeg).toFixed(2)} · d-grid ${p.dMults.join('/')}×band · t ${p.tHours.join('/')}h
-        · gates ${p.gates.join('/')} · rule: top net $ with ≥${p.minTrades} trades · promote top ${p.promoteK}</p>
+        · gates ${p.gates.join('/')} · entry ${(p.entries || ['breakout']).join('/')}
+        · rule: top net $ with ≥${p.minTrades} trades · promote top ${p.promoteK}</p>
       <div class="tiles">
         ${tile('Phase', esc(perf.phase || '—'), running ? 'running' : esc(doc.status))}
         ${tile('Units', `${perf.unitsDone ?? 0} / ${perf.unitsTotal ?? '—'}`, 'combo × branch permutations')}
@@ -1851,6 +1852,14 @@
       ${doc.failures && doc.failures.length ? `<p class="note">${doc.failures.length} unit(s) failed — first: ${esc(doc.failures[0].key)}: ${esc(doc.failures[0].error)}</p>` : ''}
       </div>`;
 
+    // Market cells have no rails, so no distance — printing "d null×" would
+    // be worse than useless. They are the classifier's own trade and read as
+    // such.
+    const execCell = (r) => (r.entry === 'market'
+      ? `market entry<div class="cellsub">at open · t ${r.tHours}h</div>`
+      : `${esc(r.gate)}<div class="cellsub">d ${r.dMult}× · t ${r.tHours}h</div>`);
+    const pct = (v) => (v == null ? '—' : (100 * v).toFixed(1) + '%');
+    const signedPct = (v) => (v == null ? '—' : `<span class="${v >= 0 ? 'up' : 'down'}">${v >= 0 ? '+' : ''}${(100 * v).toFixed(1)}%</span>`);
     const leadRows = (doc.leaders || []).map((l, i) => {
       const selectable = !running && l.stage === 'promoted';
       const isSel = sel && sel.key === l.key && sel.stage === l.stage;
@@ -1860,10 +1869,13 @@
         <td>${i + 1}</td>
         <td><strong>${esc(comboLabel(l))}</strong> <span class="bl-stage">${l.stage === 'promoted' ? 'prom' : 'slim'}</span>
           <div class="cellsub">${esc(l.geometry)} · ${band} · ${esc(l.decision)} · ${l.weekdaysOnly ? '24/5' : '24/7'}</div></td>
-        <td>q${l.quorum}/${l.members} · ${esc(l.gate)}
-          <div class="cellsub">d ${l.dMult}× · t ${l.tHours}h</div></td>
+        <td>q${l.quorum}/${l.members} · ${execCell(l)}</td>
         <td><strong>${money(l.pnl)}</strong></td>
         <td>${l.gate === 'always' || l.controlPnl == null ? '—' : `<span class="${l.pnl - l.controlPnl >= 0 ? 'up' : 'down'}">${money(l.pnl - l.controlPnl)}</span>`}</td>
+        <td>${l.metrics ? pct(l.metrics.testAcc) : '—'}
+          <div class="cellsub">${l.metrics ? 'base ' + pct(l.metrics.majorityBaseline) : ''}</div></td>
+        <td>${l.metrics ? signedPct(l.metrics.edge) : '—'}
+          <div class="cellsub">${l.metrics && l.metrics.directionalCalls ? l.metrics.directionalHits + '/' + l.metrics.directionalCalls + ' dir' : ''}</div></td>
         <td>${l.wins}/${l.trades}
           <div class="cellsub">${l.grossPerTrade != null ? 'g/t $' + l.grossPerTrade.toFixed(2) : '—'}</div></td>
         <td>${l.stops}${l.ambiguous ? `<div class="cellsub">${l.ambiguous} amb</div>` : ''}</td>
@@ -1875,12 +1887,14 @@
       <div class="tablewrap"><table class="bl-board">
         <tr><th title="Pick a PROMOTED row as the null-test candidate"></th><th>#</th>
         <th title="Combo and stage; second line: chunk shape · band · decision · week mode">setup</th>
-        <th title="Quorum rung (net direction wins) and gate; second line: bracket distance × band and time horizon">execution</th>
+        <th title="Quorum rung (net direction wins) and how the position is opened. BREAKOUT cells state a gate plus the rail distance d×band; MARKET cells enter at the entry candle's open in the called direction with no rails — the general classifier's own trade, and what the live paper books do.">execution</th>
         <th>net P&L</th>
         <th title="This row's net minus the BEST always-gate (model-free) cell on the same combo+branch. On a SEARCH board this can never be negative: the row was picked as the best cell over a menu that already contained every always cell, so a gated winner beat the control by definition. Read it as how much gating won by, not as evidence that gating works. '—' on always rows (they ARE the control).">vs control*</th>
+        <th title="Share of test periods where the committee's call matched the label EXACTLY (3-class). Second line is the majority-class baseline, taken from the TRAINING mix — the same definitions the general classifier reports.">acc</th>
+        <th title="Accuracy minus that baseline: the classifier's headline edge. Second line counts directional calls that were exactly right — a +1 on a dormant period is a miss, as in the classifier.">edge</th>
         <th title="wins/trades; second line: gross per trade before the round-trip fee">W/T · g/t</th>
         <th title="Trades closed by the stop rail; (n amb) = hourly bars spanning both rails, always resolved AGAINST the book">stops</th></tr>
-        ${leadRows || '<tr><td colspan="8" class="note">nothing on the board yet</td></tr>'}
+        ${leadRows || '<tr><td colspan="10" class="note">nothing on the board yet</td></tr>'}
       </table></div>
       <p class="note">* <strong>vs control on a search board is not evidence.</strong> Each row is the best
         cell of a menu that already contains every always-gate (model-free) cell, so a row whose winner
@@ -1911,8 +1925,10 @@
       const q = p.declared.quorumRatio ? Math.round(p.declared.quorumRatio * 100) + '% of members' : p.declared.quorum;
       repBlock = `
         <div class="section"><h2>Replication — declared config on every asset</h2>
-        <p class="note">Declared before the run: <strong>${esc(p.declared.gate)} gate · d ${p.declared.dMult}× ·
-          t ${p.declared.tHours}h · quorum ${esc(String(q))}</strong>. One fixed cell scored on each asset — a single
+        <p class="note">Declared before the run: <strong>${p.declared.entry === 'market'
+            ? `market entry (at the open, called direction) · t ${p.declared.tHours}h`
+            : `${esc(p.declared.gate)} gate · d ${p.declared.dMult}× · t ${p.declared.tHours}h`} ·
+          quorum ${esc(String(q))}</strong>. One fixed cell scored on each asset — a single
           look apiece, so there is NO shopping tax and no branch correction owed. The reading is the binomial across
           assets, never any single row.</p>
         <div class="tiles">
@@ -1920,17 +1936,19 @@
           ${tile('Positive vs control', `${posVsCtl} / ${withCtl.length}`, pCtl == null ? '' : `binomial p = ${pCtl.toFixed(4)}`)}
         </div>
         <div class="tablewrap" style="margin-top:10px"><table class="bl-board">
-          <tr><th>asset</th><th>band</th><th>quorum</th><th>net P&L</th><th>vs control</th><th>W/T</th><th>gross/trade</th><th>stops</th></tr>
+          <tr><th>asset</th><th>band</th><th>quorum</th><th>net P&L</th><th>vs control</th><th title="Exact 3-class match rate of the committee's calls">acc</th><th title="Accuracy minus the training-majority baseline">edge</th><th>W/T</th><th>gross/trade</th><th>stops</th></tr>
           ${rows.map((r) => `<tr>
             <td><strong>${esc(r.trade + (r.ctx1 ? '+' + r.ctx1 : '') + (r.ctx2 ? '+' + r.ctx2 : ''))}</strong></td>
             <td>±${r.bandPct != null ? r.bandPct.toFixed(2) : '?'}%</td>
             <td>${r.quorum}/${r.members}</td>
             <td><span class="${r.pnl >= 0 ? 'up' : 'down'}"><strong>${money(r.pnl)}</strong></span></td>
             <td>${r.vsControl == null ? '—' : `<span class="${r.vsControl >= 0 ? 'up' : 'down'}">${money(r.vsControl)}</span>`}</td>
+            <td>${r.metrics ? pct(r.metrics.testAcc) : '—'}</td>
+            <td>${r.metrics ? signedPct(r.metrics.edge) : '—'}</td>
             <td>${r.wins}/${r.trades}</td>
             <td>${r.grossPerTrade != null ? '$' + r.grossPerTrade.toFixed(2) : '—'}</td>
             <td>${r.stops}${r.ambiguous ? ` <span class="cellsub">${r.ambiguous} amb</span>` : ''}</td></tr>`).join('')
-            || '<tr><td colspan="8" class="note">no declared-cell results yet — they fill in during the promote phase</td></tr>'}
+            || '<tr><td colspan="10" class="note">no declared-cell results yet — they fill in during the promote phase</td></tr>'}
         </table></div></div>`;
     }
 
@@ -1940,7 +1958,7 @@
         <div class="field"><label for="bl-shifts">Null shifts</label><input id="bl-shifts" type="number" min="1" max="1000" step="1" value="200"></div>
         <div class="field submit"><button id="bl-null-go" type="button"
           title="Replays everything downstream of the combo per rotation: full member grid retrained, whole execution menu + quorum rungs swept, best cell taken by the same rule. The combo-search multiplicity is NOT replayed — read against the stamped denominator.">Fire null on selected survivor</button></div>
-        <span class="note">selected: ${esc(comboLabel(sel))} ${esc(sel.geometry)} q${sel.quorum} ${esc(sel.gate)} ${sel.dMult}× ${sel.tHours}h → ${money(sel.pnl)}</span>
+        <span class="note">selected: ${esc(comboLabel(sel))} ${esc(sel.geometry)} q${sel.quorum} ${sel.entry === 'market' ? 'market' : `${esc(sel.gate)} ${sel.dMult}×`} ${sel.tHours}h → ${money(sel.pnl)}</span>
       </div>`;
     }
     if (doc.nullTest) {
@@ -2027,6 +2045,16 @@
       setTimeout(() => { setBlStatus(''); refreshBracket(); }, 2500);
     } catch (err) { blErrEl.hidden = false; blErrEl.textContent = err.message; }
   });
+  // Market entry has no gate and no rail distance. Hide them rather than
+  // leaving controls on screen whose values would be refused by the server.
+  const blSyncEntry = () => {
+    const market = $('bl-dec-entry').value === 'market';
+    $('bl-dec-gate-wrap').style.display = market ? 'none' : '';
+    $('bl-dec-d-wrap').style.display = market ? 'none' : '';
+  };
+  $('bl-dec-entry').addEventListener('change', blSyncEntry);
+  blSyncEntry();
+
   $('bl-start-btn').addEventListener('click', async () => {
     try {
       blErrEl.hidden = true;
@@ -2052,14 +2080,22 @@
         },
         promoteK: Number($('bl-promotek').value) || 25,
         minTrades: Number($('bl-mintrades').value) || 10,
+        emitCalls: $('bl-emit-calls').checked,
       };
       if ($('bl-declared-on').checked) {
-        body.declared = {
-          gate: $('bl-dec-gate').value,
-          dMult: Number($('bl-dec-d').value),
-          tHours: Number($('bl-dec-t').value),
-          quorumRatio: Number($('bl-dec-q').value),
-        };
+        const entry = $('bl-dec-entry').value;
+        // Market entry has no gate and no distance. The server REJECTS them
+        // rather than ignoring them, so send a declaration that means exactly
+        // what the form shows.
+        body.declared = entry === 'market'
+          ? { entry, tHours: Number($('bl-dec-t').value), quorumRatio: Number($('bl-dec-q').value) }
+          : {
+              entry,
+              gate: $('bl-dec-gate').value,
+              dMult: Number($('bl-dec-d').value),
+              tHours: Number($('bl-dec-t').value),
+              quorumRatio: Number($('bl-dec-q').value),
+            };
       }
       const res = await fetch('api/bracketlab', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),

@@ -13,6 +13,11 @@
 // asset, so every layout of one combo shares band, labels and test periods.
 
 const { HOUR_MS } = require('./binance');
+// pnlAt is the paper books' own P&L arithmetic. simMarket uses it directly so
+// a market cell and a live book can never drift apart. (paper is required
+// again further down for directionalCall; require caches, and pulling this
+// one up keeps it above its first use rather than relying on load order.)
+const { pnlAt } = require('./paper');
 const { buildChunks, GEOMETRIES } = require('./dataset');
 const { viewIndices } = require('./features');
 
@@ -81,6 +86,61 @@ function buildComboChunks(maps, geometry, weekdaysOnly) {
 // only when call ≠ 0; 'directional' places ONLY the rail matching the call
 // (+1 → buy-stop, −1 → sell-stop), the other rail existing purely as a stop.
 const GATES = ['always', 'active', 'directional'];
+
+// ENTRY MODES.
+//
+// 'breakout' is everything above: the position is opened by price REACHING a
+// rail at p(1±d). Every cell this lab could express before was one of these.
+//
+// 'market' is the general classifier's own trade, and it could not previously
+// be expressed at all: enter at the entry candle's OPEN in the called
+// direction, no rails, hold to t, exit at that candle's open. That is exactly
+// what the live paper books do, and it is why 0 could not simply be added to
+// D_MULTS — with both rails at p, the first bar spans both and the
+// ambiguous-bar rule stops the position out instantly, every period.
+//
+// Market entry is DIRECTIONAL only, and that is not a limitation but a
+// definition: with no rails there is nothing for 'always' to place and no
+// direction to take without a call, and 'active' (both rails when the
+// committee speaks) collapses into 'directional'. Emitting the degenerate
+// combinations would only pad the menu with duplicates.
+const ENTRIES = ['breakout', 'market'];
+
+// The classifier's trade, priced with the books' own helper so a market cell
+// and a paper book cannot drift apart: same NOTIONAL, same round-trip fee,
+// same open-to-open arithmetic.
+function simMarket(periods, calls, tradeMap, geo, { tHours, feePerLeg }) {
+  const trip = 2 * feePerLeg;
+  let pnl = 0;
+  let trades = 0;
+  let wins = 0;
+  let unpriced = 0;
+  periods.forEach((per, i) => {
+    const dir = calls ? calls[i] : 0;
+    if (dir === 0) return; // stood aside — the books' rule, not a skipped bar
+    const entryTs = per.startTs + geo.entryOffsetH * HOUR_MS;
+    const ref = tradeMap.get(entryTs);
+    if (!ref) {
+      unpriced++;
+      return;
+    }
+    // Walk ≤3h forward over gaps for the exit, exactly as the breakout path's
+    // time exit does, so the two modes treat missing candles identically.
+    let exitBar = null;
+    for (let h = 0; h <= 3 && !exitBar; h++) exitBar = tradeMap.get(entryTs + (tHours + h) * HOUR_MS);
+    if (!exitBar) {
+      unpriced++;
+      return;
+    }
+    const v = pnlAt(dir, ref.open, exitBar.open, feePerLeg);
+    pnl += v;
+    trades++;
+    if (v > 0) wins++;
+  });
+  // stops and ambiguous are structurally zero here: there are no rails to be
+  // stopped at and no bar that can span two of them.
+  return { pnl, trades, wins, stops: 0, ambiguous: 0, unpriced, grossPerTrade: trades ? (pnl + trades * trip) / trades : null };
+}
 
 function simBracket(periods, calls, tradeMap, geo, { dPct, tHours, gate, feePerLeg }) {
   const NOTIONAL = 100;
@@ -205,9 +265,20 @@ function execSweep(periods, calls, tradeMap, geo, bandPct, feePerLeg) {
     for (const dMult of D_MULTS) {
       for (const tHours of T_HOURS) {
         const r = simBracket(periods, calls, tradeMap, geo, { dPct: dMult * bandPct, tHours, gate, feePerLeg });
-        rows.push({ gate, dMult, tHours, ...r });
+        rows.push({ entry: 'breakout', gate, dMult, tHours, ...r });
       }
     }
+  }
+  // Market cells: one per horizon, directional only (see ENTRIES). Adding 7
+  // cells to 105 is a 6.7% widening of the menu — small, but it IS a widening,
+  // so boards from before 2026-07-28 are not comparable cell-for-cell.
+  //
+  // Note for anything reading the always-gate control: market cells are
+  // directional and can never enter it, so controlPnl is unchanged by this
+  // addition and prior replication readings stay valid.
+  for (const tHours of T_HOURS) {
+    const r = simMarket(periods, calls, tradeMap, geo, { tHours, feePerLeg });
+    rows.push({ entry: 'market', gate: 'directional', dMult: null, tHours, ...r });
   }
   return rows;
 }
@@ -286,4 +357,4 @@ async function trainMember({ model, viewIdx, trainChunks, testChunks, decision, 
   return { calls: testChunks.map((_, i) => callOf(i)), picked };
 }
 
-module.exports = { comboViews, buildComboChunks, simBracket, execSweep, bestCell, trainMember, GATES, D_MULTS, T_HOURS, PER_ASSET };
+module.exports = { comboViews, buildComboChunks, simBracket, simMarket, execSweep, bestCell, trainMember, GATES, ENTRIES, D_MULTS, T_HOURS, PER_ASSET };

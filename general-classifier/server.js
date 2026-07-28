@@ -183,6 +183,7 @@ app.post('/api/bracketlab', (req, res) => {
       set: b.set,
       promoteK: b.promoteK,
       minTrades: b.minTrades,
+      emitCalls: b.emitCalls,
     });
     res.json({ batchId: id });
   } catch (err) {

@@ -1181,13 +1181,31 @@ function declaredQuorumFor(dec, members) {
 
 function validateDeclared(raw) {
   if (!raw) return null;
-  const gate = String(raw.gate || '');
-  if (!bracketLib.GATES.includes(gate)) throw new Error(`declared.gate must be one of ${bracketLib.GATES.join('/')}`);
-  const dMult = Number(raw.dMult);
-  if (!bracketLib.D_MULTS.includes(dMult)) throw new Error(`declared.dMult must be one of ${bracketLib.D_MULTS.join('/')}`);
+  const entry = raw.entry === undefined ? 'breakout' : String(raw.entry);
+  if (!bracketLib.ENTRIES.includes(entry)) throw new Error(`declared.entry must be one of ${bracketLib.ENTRIES.join('/')}`);
   const tHours = Number(raw.tHours);
   if (!bracketLib.T_HOURS.includes(tHours)) throw new Error(`declared.tHours must be one of ${bracketLib.T_HOURS.join('/')}`);
-  const out = { gate, dMult, tHours };
+
+  // MARKET entry is the classifier's own trade: enter at the open in the
+  // called direction, no rails. There is no distance to declare and the gate
+  // is directional by definition, so demanding either would be asking for a
+  // number that does not exist. Reject them outright rather than accepting
+  // and ignoring — a silently ignored parameter is how a declared config
+  // stops meaning what its author thought it meant.
+  let out;
+  if (entry === 'market') {
+    if (raw.dMult !== undefined) throw new Error('declared.dMult is meaningless for market entry (no rails) — omit it');
+    if (raw.gate !== undefined && raw.gate !== 'directional') {
+      throw new Error("declared.gate must be omitted or 'directional' for market entry");
+    }
+    out = { entry, gate: 'directional', dMult: null, tHours };
+  } else {
+    const gate = String(raw.gate || '');
+    if (!bracketLib.GATES.includes(gate)) throw new Error(`declared.gate must be one of ${bracketLib.GATES.join('/')}`);
+    const dMult = Number(raw.dMult);
+    if (!bracketLib.D_MULTS.includes(dMult)) throw new Error(`declared.dMult must be one of ${bracketLib.D_MULTS.join('/')}`);
+    out = { entry, gate, dMult, tHours };
+  }
   if (raw.quorumRatio !== undefined) {
     const r = Number(raw.quorumRatio);
     if (!Number.isFinite(r) || r <= 0 || r > 1) throw new Error('declared.quorumRatio must be in (0,1]');
@@ -1197,9 +1215,16 @@ function validateDeclared(raw) {
     if (!Number.isInteger(q) || q < 1) throw new Error('declared.quorum must be a positive integer');
     out.quorum = q;
   }
-  out.label = `q${out.quorumRatio ? Math.round(out.quorumRatio * 12) + '/12(ratio)' : out.quorum} ${gate} d${dMult}x t${tHours}h`;
+  const q = out.quorumRatio ? `${Math.round(out.quorumRatio * 100)}%` : out.quorum;
+  out.label = out.entry === 'market'
+    ? `q${q} market t${out.tHours}h`
+    : `q${q} ${out.gate} d${out.dMult}x t${out.tHours}h`;
   return out;
 }
+// A call series is one entry per test period. 50 units of ~600 periods is a
+// few hundred KB of JSON — fine; 272 would not be. The cap is the reason
+// emitCalls can be left on for a replication run without thought.
+const CALL_SERIES_MAX = 50;
 const unitKey = (c, b) => `${c.trade}|${c.ctx1 || ''}|${c.ctx2 || ''}|${b.geometry}|${b.decision}|${b.band}|${b.weekdaysOnly ? '24-5' : '24-7'}`;
 
 function bracketPerfTick(doc) {
@@ -1273,11 +1298,16 @@ function startBracketLab(params) {
     // Replication mode ignores this entirely and promotes every unit (below).
     promoteK: Math.min(50, Math.max(1, Number(params.promoteK) || 25)),
     minTrades: Math.max(1, Number(params.minTrades) || 10),
+    // Per-period call export. Off by default: it is O(periods) per unit, and
+    // a 272-combo sweep would bloat the doc for data nobody asked for. On, it
+    // is what lets a bracket result seed a paper book or be re-scored later.
+    emitCalls: !!params.emitCalls,
     detailK: 50,
     feePerLeg: REAL_FEE_PER_LEG,
     dMults: bracketLib.D_MULTS,
     tHours: bracketLib.T_HOURS,
     gates: bracketLib.GATES,
+    entries: bracketLib.ENTRIES,
   };
   if (!p.sizes.singles && !p.sizes.doubles && !p.sizes.triples) throw new Error('tick at least one combo size');
   const { branches, combos } = expandBracketPlan(p);
@@ -1297,6 +1327,9 @@ function startBracketLab(params) {
     perf: { phase: 'slim', unitsDone: 0, unitsTotal: units.length, runsDone: 0, runsTotal: slimRuns, ratePerMin: null, secPerTraining: null, elapsedMs: 0, etaMs: null },
     leaders: [],
     replication: [], // declared-cell result per asset (replication mode)
+    // Per-period calls for the declared (or winning) cell, when emitCalls is
+    // on. Capped: this is the only unbounded-by-periods structure in the doc.
+    callSeries: [],
     failures: [],
     selection: null,
     nullTest: null,
@@ -1387,13 +1420,22 @@ function startBracketLab(params) {
               ...res.best, declaredCell: res.declared || null,
             });
           }
+          if (res.callSeries && doc.callSeries.length < CALL_SERIES_MAX) {
+            doc.callSeries.push({
+              key: l.key, trade: l.trade, ctx1: l.ctx1, ctx2: l.ctx2,
+              geometry: l.geometry, decision: l.decision, bandMode: l.bandMode,
+              bandPct: res.bandPct, ...res.callSeries,
+            });
+          }
           if (res.declared) {
             const d = res.declared;
             doc.replication.push({
               trade: l.trade, ctx1: l.ctx1, ctx2: l.ctx2, geometry: l.geometry, bandPct: res.bandPct,
+              entry: d.entry || 'breakout',
               quorum: d.quorum, members: d.members, pnl: d.pnl, trades: d.trades, wins: d.wins,
               grossPerTrade: d.grossPerTrade, stops: d.stops, ambiguous: d.ambiguous,
               controlPnl: d.controlPnl, vsControl: d.controlPnl == null ? null : d.pnl - d.controlPnl,
+              metrics: d.metrics || null,
             });
             const repKey = (r) => `${r.trade}|${r.ctx1 || ''}|${r.ctx2 || ''}|${r.geometry}`;
             doc.replication.sort((x, y) => (y.pnl - x.pnl) || (repKey(x) < repKey(y) ? -1 : repKey(x) > repKey(y) ? 1 : 0));
