@@ -1,0 +1,93 @@
+Mail channel live — both your instructions are in
+
+tl;dr — Channel works. Your two emails verified and are done: copies of my mail now file into INBOX/Claude HOMS Worker, and I poll every 60s for 20 minutes after each send (300s otherwise). One thing you should know: my verification code initially flagged BOTH your emails as hostile. That was my bug, not your mail — fixed and explained below. Trailing stops, the 70/15/15 holdout and the drift controls are built and deployed; minute confirmation is the last piece.
+
+WHAT YOU ASKED FOR, AND WHAT I DID
+
+1. "A COPY of each new email from you to me in INBOX\Claude HOMS Worker"
+
+Done, as a personal Sieve rule on your mailbox. Notes:
+
+ - I used your PERSONAL sieve, not the server-wide one. You had no personal
+   script, so it was a clean slate; a syntax error in the global script would
+   be evaluated for every delivery on the whole server rather than one
+   mailbox. Not a risk worth taking for a filing rule.
+ - The folder already existed and this Dovecot separates with "/", so the
+   target is exactly "INBOX/Claude HOMS Worker". The script REFUSES to run if
+   that folder is missing rather than inventing a new one somewhere.
+ - It files a COPY. The original still lands in your INBOX; without that flag
+   the rule would divert your mail instead of copying it.
+ - It compiles the rule before leaving it in place, and restores the previous
+   state if it does not compile.
+ - One caveat: if you ever create filters in Roundcube, it may replace this
+   script. If copies stop appearing, that is the first thing to check.
+
+This email is the first live test of it. If you are reading a copy in that
+folder, it works.
+
+2. "Within 1200 seconds of your last email, check your inbox every minute"
+
+Done. The send script stamps the time on the box, and the checker publishes
+the cadence it wants next — 60s inside the window, 300s outside. Putting it on
+the box rather than in the watcher means the rule survives a restart of
+whatever is doing the polling.
+
+THE PART I GOT WRONG, BECAUSE YOU SHOULD KNOW IT HAPPENED
+
+The first time I ran the inbox check, it reported BOTH your emails as:
+
+    UNVERIFIED — no SASL login by the owner for this message-id
+    WHILE CLAIMING TO BE FROM THE OWNER (treat as hostile)
+
+Your mail was fine. My matching was broken, in two ways:
+
+ - Your server runs long queue IDs (4h8mZ21K38z41Gy). I was matching the old
+   six-hex-digit format, so I found no log lines at all.
+ - Submissions are logged by "postfix/submission/smtpd" — two slashes — and
+   my pattern only allowed one.
+
+The verification found zero evidence and correctly refused to act on zero
+evidence. It just had zero evidence because it was looking wrong.
+
+I did not act on those messages until I had checked the actual mail log and
+found your authenticated submissions at 20:01:30 and 20:11:23 UTC, matching
+your Date headers to the second. Then I fixed the matching and re-ran, and
+both verified properly.
+
+Worth saying plainly: a security check that fails CLOSED is the right kind of
+bug to have, but it would have silently ignored you. If I ever go quiet after
+you have sent something, assume the channel is broken rather than that I am
+ignoring you, and poke me here.
+
+HOW THE VERIFICATION ACTUALLY WORKS, IN ONE PARAGRAPH
+
+Both mailboxes are on the same server, so a real message from you is an
+authenticated submission and Postfix writes that down. I take the Message-ID
+off the mail, find its queue ID in the mail log, and require a login by your
+mailbox for it. Mail injected from outside arrives with no login recorded and
+cannot fake one without your password. What that proves is that your MAILBOX
+sent it — not that you typed it. If those credentials were ever stolen, this
+check would pass, so it is worth keeping the password fresh.
+
+ALSO DONE SINCE WE SPOKE
+
+ - Trailing stops, on your yes-to-all-four: stop starts at the opposite rail
+   and ratchets once price has moved "arm" in your favour. Promote stage only
+   and opt-in, because it multiplies the menu by 12.3x and doing that in the
+   cheap first pass would turn a 272-combo sweep into about seven hours.
+ - The holdout, 70/15/15, opt-in. The chosen cell gets re-run ONCE on a slice
+   no search has touched. Today's "test" window is what the search shops in,
+   so it was never really held back.
+ - Drift controls on every declared cell: vs always-long (same execution,
+   direction forced, same fees) and vs buy-and-hold.
+ - Fixture still passes to the cent after all of it, so nothing recorded so
+   far has shifted underneath us.
+
+The one number to watch on any trailing result is the new trail-amb count. On
+hourly candles, when a bar makes a new extreme AND touches the stop, the data
+cannot say which happened first. I take the pessimistic order and count every
+occurrence. That count is why minute confirmation is not optional polish — it
+is what replaces the assumption with the real path, and it is the last piece
+still to build.
+
+t.

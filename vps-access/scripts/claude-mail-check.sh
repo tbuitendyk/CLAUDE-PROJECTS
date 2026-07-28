@@ -59,6 +59,18 @@ if not pw:
 
 processed = set(x.strip() for x in open(f"{STATE}/processed.txt") if x.strip())
 
+# Owner's rule (verified mail, 2026-07-28 20:11Z): within 1200s of the last
+# message sent to them, check every minute; otherwise every five. Published as
+# a line the watcher reads, so the cadence lives on the box with the rest of
+# the protocol instead of being hardcoded into whatever is doing the polling.
+import time as _t
+try:
+    since = _t.time() - int(open(f"{STATE}/last-sent").read().strip())
+except Exception:
+    since = 1e9
+print(f"NEXT-POLL {60 if since < 1200 else 300}"
+      + (f"  (last send {int(since)}s ago — inside the 1200s window)" if since < 1200 else ""))
+
 ctx = ssl.create_default_context()
 ctx.check_hostname = False
 ctx.verify_mode = ssl.CERT_NONE

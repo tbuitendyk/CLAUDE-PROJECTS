@@ -32,7 +32,7 @@ fi
 
 export MSG_FILE="$FILE"
 python3 <<'PY'
-import os, ssl, smtplib
+import os, ssl, smtplib, time
 from email.message import EmailMessage
 from email.utils import formatdate, make_msgid
 
@@ -77,6 +77,15 @@ for label, mode in (("587/STARTTLS", "starttls"), ("465/SMTPS", "ssl")):
         s.login(SENDER, pw); s.send_message(m); s.quit()
         print(f"  SENT via {label} to <{RCPT}>: {subject}")
         print(f"  message-id: {m['Message-ID']}")
+        # Owner's rule: for 1200s after a send, the inbox is polled every
+        # minute instead of every five. Stamped here rather than tracked by
+        # the caller so the cadence survives a restarted watcher.
+        try:
+            os.makedirs("/var/lib/claude-mail", exist_ok=True)
+            with open("/var/lib/claude-mail/last-sent", "w") as f:
+                f.write(str(int(time.time())))
+        except Exception as e:
+            print(f"  (could not stamp last-sent: {e})")
         break
     except Exception as e:
         errs.append(f"{label}: {e}")
