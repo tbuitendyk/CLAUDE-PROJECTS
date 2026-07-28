@@ -73,9 +73,13 @@ module.exports = {
     assert.ok(seen.has('bracketwork.js') && seen.has('logreg.js'), 'worker should reach the training code');
   },
   async poolSizeLeavesHeadroom() {
-    // Default must leave a core for nginx / the mail bridge / the event loop.
+    // Default must leave CPUs for the two VirtualBox guests, the host and the
+    // services already running here — four in total on the deploy box.
+    const os = require('os');
     const n = configuredSize();
-    assert.ok(n >= 1 && n <= 3, `pool size ${n} outside expected 1..3`);
+    assert.ok(n >= 1 && n <= 4, `pool size ${n} outside expected 1..4`);
+    assert.ok(n <= Math.max(1, os.cpus().length - 4) || n === 1,
+      `pool size ${n} does not leave 4 CPUs of ${os.cpus().length}`);
   },
   async workersRunNicedAndTheMainThreadDoesNot() {
     // A 3-worker job timed out the mail VM's SMTP sessions on the shared host.

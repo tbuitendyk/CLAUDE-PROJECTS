@@ -1,6 +1,6 @@
 // Worker pool for the long CPU-bound jobs (bracket sweeps, null replays).
 //
-// The host has 4 cores and the service used one. Every heavy job in this
+// The host has 8 logical CPUs and the service used one. Every heavy job in this
 // codebase is a stream of INDEPENDENT tasks — a null replay is N rotations
 // that share nothing, a sweep is N combo x branch units that share nothing —
 // so the win is available without touching the math.
@@ -29,9 +29,23 @@ const work = require('./bracketwork');
 
 const SETTINGS_FILE = path.join(__dirname, '..', 'data', 'settings.json');
 
-// Default: leave one core for nginx, the mail VM bridge, and this service's
-// own event loop. Overridable in data/settings.json (worker_threads) so the
-// pool can be retuned without a deploy.
+// Sizing, from the actual box: 8 logical CPUs (AMD EPYC-Milan, 4 physical
+// cores x SMT2). The owner's budget for them, and it is the right one:
+//   1  HOMSBUS02   (VirtualBox guest, 1 vCPU)
+//   1  HOMSMAIL03  (VirtualBox guest, 1 vCPU — and its sshd saturates on it,
+//                   which is why it is so easy to starve)
+//   1  the host itself
+//   1  the services already running here
+//   4  left for this pool
+// Hence RESERVED = 4 and a cap of 4. Overridable in data/settings.json
+// (worker_threads) so the pool can be retuned without a deploy.
+//
+// Headroom is NOT the only protection: workers also run at nice 19 (see
+// worker.js) so a 1-vCPU guest wins the scheduler regardless of how many
+// threads are busy. Sizing and priority are belt and braces, deliberately.
+const RESERVED_CPUS = 4;
+const MAX_WORKERS = 4;
+
 function configuredSize() {
   let cfg = null;
   try {
@@ -42,7 +56,7 @@ function configuredSize() {
   const cores = Math.max(1, os.cpus().length);
   const n = Number(cfg);
   if (Number.isFinite(n) && n >= 1) return Math.min(Math.floor(n), cores);
-  return Math.max(1, Math.min(cores - 1, 3));
+  return Math.max(1, Math.min(cores - RESERVED_CPUS, MAX_WORKERS));
 }
 
 class Pool {
