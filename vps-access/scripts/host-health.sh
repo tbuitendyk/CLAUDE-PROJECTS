@@ -28,8 +28,10 @@ echo "===== classifier THREAD priorities (workers must sit at nice 19) ====="
 # Per-process nice hides this: on Linux nice is per-thread, and the whole
 # point of the fix is that the workers are niced while the thread serving the
 # web UI is not. Only a per-thread listing can show that.
-cpid=$(pgrep -f "node .*general-classifier|/opt/general-classifier" | head -1)
-if [ -n "${cpid:-}" ]; then
+# The unit runs plain `node server.js`, so a command-line match finds nothing;
+# ask systemd for the PID instead.
+cpid=$(systemctl show -p MainPID --value general-classifier.service 2>/dev/null)
+if [ -n "${cpid:-}" ] && [ "$cpid" != "0" ]; then
   ps -L -o pid,tid,ni,pcpu,comm -p "$cpid" | head -12
   echo "  (expect: several TIDs at 19 = workers, the rest at 0)"
 else
