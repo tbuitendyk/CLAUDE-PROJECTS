@@ -1,0 +1,97 @@
+Classifier overnight #1 - the doubles sweep, and a column I have to walk back
+
+WHAT RAN
+
+bracketlab-20260728-0804, finished. All 17 assets, every DOUBLE (trade asset
++ one context) = 272 combos, one branch each: daily-3d chunks, auto band,
+argmax, 24/7. Slim grid on all 272, then the mechanical top 25 re-run on the
+full 16-member grid. 1h30m, no failures.
+
+THE THING I HAVE TO WALK BACK FIRST
+
+You asked for the control-delta column a few days ago, I built it, and I
+reported off it. On the replication table it is sound. On the search
+leaderboard it is not, and I should have caught that before putting numbers
+in front of you.
+
+The mechanism: every row on that board is the WINNER of a search over the
+whole execution menu - every gate, every bracket distance, every exit hour,
+every quorum rung. The control is the best "always" (model-free) cell out of
+that same menu. So the control is one of the candidates the winner already
+beat. If the winner is a gated cell it beat the control by definition; if the
+winner is an always cell it IS the control and the column shows a dash.
+
+That is exactly what the finished board shows: 32 of the top 50 rows won with
+a gate and all 32 are positive, the other 18 won ungated and show a dash. Not
+one negative anywhere. That is not a result, it is arithmetic.
+
+Where the same subtraction IS real: the replication table. There the cell is
+DECLARED before the run and cannot be swapped for a better one, while the
+control still gets its full 35-cell search - so the comparison actually runs
+against the candidate and can come out negative. That is why Run 1's "5 of 17
+positive vs control" was a meaningful, and damning, number for the DOT
+configuration. That reading stands.
+
+I have relabelled the column on the board, rewritten its tooltip, added a
+footnote under the table and a paragraph in the help. Nothing about how it is
+computed changed - only what it claims.
+
+WHAT THE BOARD ACTUALLY SAYS
+
+1. It is largely ranking drift, not skill. ZEC and XLM as the trade asset own
+   the entire top of the board. They are the two biggest movers in the
+   universe over the test window, and gross dollars from a bracket held for
+   days is mostly the asset's own trend.
+
+2. The base is narrower than it looked mid-run. Before the promote stage,
+   five assets had a gated winner on the board. After it, ZEC and XLM had
+   pushed UNI, ETH and XRP off the top 50 entirely. Two assets out of
+   seventeen.
+
+3. The exit horizon is pinned against the wall. 161 hours is the LARGEST
+   value in the menu, and it wins 23 of the 32 gated rows, on both surviving
+   assets. When the optimum sits on the edge of the search range you have not
+   found an optimum, you have found the edge - the same thing you flagged
+   about the 65-hour exit. I have NOT widened the menu: doing that mid-hunt
+   adds multiplicity to everything downstream. It deserves its own declared
+   test and I would like your go before I set one up.
+
+4. Quorum is noise, now demonstrably. Among promoted rows the winning rung is
+   a four-way tie - 3, 6, 8 and 12 out of 16 all appear on both assets, three
+   rows each. There is no modal committee size. That is consistent with every
+   earlier finding that lens and training-window permutations barely move the
+   weights, and it is the strongest version of it yet.
+
+5. Bracket distance is genuinely mixed: 1.0x on both assets (11 rows), 0.5x on
+   one (11 rows), 1.5x on both (9 rows).
+
+YOUR FIRST DECLARED QUESTION - "which doubles show a positive vs-control that
+the singles did not" - cannot be answered honestly off this board, for the
+reason above. It needs one declared config scored on both. That is the next
+two runs.
+
+YOUR SECOND DECLARED QUESTION - "does any config family recur across several
+different assets" - partly. Counting each knob's modal value over DISTINCT
+trade assets, ties broken on row count:
+
+   gate      active   both assets, 32 of 32 rows
+   exit      161h     both assets, 23 of 32 rows
+   distance  1.0x     both assets, 11 of 32 rows
+   quorum    no mode  four-way tie, see above
+
+Three of four knobs agree across both surviving assets. The fourth does not
+agree with itself.
+
+WHAT IS NEXT
+
+Deploying the multithreaded build now that the box is free, running the
+determinism gate against the DOT fixture, then firing Run 3: that declared
+config scored on all 17 assets as singles, one look apiece, which gives a
+clean binomial with no shopping tax to subtract. Then Run 4, the same declared
+config on all 272 doubles, which is what actually answers your first question.
+Configuration and reasoning in the next email.
+
+Two words of caution before those numbers arrive. The declaration rests on two
+assets, not five. And a hypothesis derived from a board is still owed a
+forward test even if it replicates - replication rules a configuration OUT
+cheaply, it does not rule one IN.
