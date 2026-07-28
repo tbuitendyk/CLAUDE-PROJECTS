@@ -1857,7 +1857,7 @@
     // such.
     const execCell = (r) => (r.entry === 'market'
       ? `market entry<div class="cellsub">at open · t ${r.tHours}h</div>`
-      : `${esc(r.gate)}<div class="cellsub">d ${r.dMult}× · t ${r.tHours}h</div>`);
+      : `${esc(r.gate)}${r.trailMult != null ? ` · trail ${r.trailMult}×/arm ${r.armMult}×` : ''}<div class="cellsub">d ${r.dMult}× · t ${r.tHours}h${r.trailAmbiguous ? ` · <strong>${r.trailAmbiguous} trail-amb</strong>` : ''}</div>`);
     const pct = (v) => (v == null ? '—' : (100 * v).toFixed(1) + '%');
     const signedPct = (v) => (v == null ? '—' : `<span class="${v >= 0 ? 'up' : 'down'}">${v >= 0 ? '+' : ''}${(100 * v).toFixed(1)}%</span>`);
     const leadRows = (doc.leaders || []).map((l, i) => {
@@ -1936,7 +1936,7 @@
           ${tile('Positive vs control', `${posVsCtl} / ${withCtl.length}`, pCtl == null ? '' : `binomial p = ${pCtl.toFixed(4)}`)}
         </div>
         <div class="tablewrap" style="margin-top:10px"><table class="bl-board">
-          <tr><th>asset</th><th>band</th><th>quorum</th><th>net P&L</th><th>vs control</th><th title="Exact 3-class match rate of the committee's calls">acc</th><th title="Accuracy minus the training-majority baseline">edge</th><th title="Net minus the SAME execution with the direction forced long on every period — identical period count, horizon and fee load. Isolates the calls by holding everything else fixed: a setup that cannot beat 'be long every period' has not earned its complexity.">vs always-long</th><th title="Net minus buying at the first entry and selling at the last exit — one position, one round trip. The classic benchmark, and the one that answers 'why not just buy it and go away?'">vs buy-hold</th><th>W/T</th><th>gross/trade</th><th>stops</th></tr>
+          <tr><th>asset</th><th>band</th><th>quorum</th><th>net P&L</th><th>vs control</th><th title="Exact 3-class match rate of the committee's calls">acc</th><th title="Accuracy minus the training-majority baseline">edge</th><th title="Net minus the SAME execution with the direction forced long on every period — identical period count, horizon and fee load. Isolates the calls by holding everything else fixed: a setup that cannot beat 'be long every period' has not earned its complexity.">vs always-long</th><th title="Net minus buying at the first entry and selling at the last exit — one position, one round trip. The classic benchmark, and the one that answers 'why not just buy it and go away?'">vs buy-hold</th><th title="The SAME cell re-run on the final 15% that no search ever touched, scored once. Second line: trades, and its own vs-always-long. This is the only column on this page that no selection process has shopped in.">HOLDOUT</th><th>W/T</th><th>gross/trade</th><th>stops</th></tr>
           ${rows.map((r) => `<tr>
             <td><strong>${esc(r.trade + (r.ctx1 ? '+' + r.ctx1 : '') + (r.ctx2 ? '+' + r.ctx2 : ''))}</strong></td>
             <td>±${r.bandPct != null ? r.bandPct.toFixed(2) : '?'}%</td>
@@ -1947,10 +1947,12 @@
             <td>${r.metrics ? signedPct(r.metrics.edge) : '—'}</td>
             <td>${r.vsAlwaysLong == null ? '—' : `<span class="${r.vsAlwaysLong >= 0 ? 'up' : 'down'}">${money(r.vsAlwaysLong)}</span>`}</td>
             <td>${r.vsBuyHold == null ? '—' : `<span class="${r.vsBuyHold >= 0 ? 'up' : 'down'}">${money(r.vsBuyHold)}</span>`}</td>
+            <td>${!r.holdout ? '—' : `<span class="${r.holdout.pnl >= 0 ? 'up' : 'down'}"><strong>${money(r.holdout.pnl)}</strong></span>
+              <div class="cellsub">${r.holdout.trades}t · vsAL ${money(r.holdout.vsAlwaysLong)}${r.holdout.trailAmbiguous ? ` · ${r.holdout.trailAmbiguous} amb` : ''}</div>`}</td>
             <td>${r.wins}/${r.trades}</td>
             <td>${r.grossPerTrade != null ? '$' + r.grossPerTrade.toFixed(2) : '—'}</td>
             <td>${r.stops}${r.ambiguous ? ` <span class="cellsub">${r.ambiguous} amb</span>` : ''}</td></tr>`).join('')
-            || '<tr><td colspan="12" class="note">no declared-cell results yet — they fill in during the promote phase</td></tr>'}
+            || '<tr><td colspan="13" class="note">no declared-cell results yet — they fill in during the promote phase</td></tr>'}
         </table></div></div>`;
     }
 
@@ -2053,8 +2055,12 @@
     const market = $('bl-dec-entry').value === 'market';
     $('bl-dec-gate-wrap').style.display = market ? 'none' : '';
     $('bl-dec-d-wrap').style.display = market ? 'none' : '';
+    $('bl-dec-trail-wrap').style.display = market ? 'none' : '';
+    // arm means nothing without a trail
+    $('bl-dec-arm-wrap').style.display = market || !$('bl-dec-trail').value ? 'none' : '';
   };
   $('bl-dec-entry').addEventListener('change', blSyncEntry);
+  $('bl-dec-trail').addEventListener('change', blSyncEntry);
   blSyncEntry();
 
   $('bl-start-btn').addEventListener('click', async () => {
@@ -2083,12 +2089,15 @@
         promoteK: Number($('bl-promotek').value) || 25,
         minTrades: Number($('bl-mintrades').value) || 10,
         emitCalls: $('bl-emit-calls').checked,
+        trailing: $('bl-trailing').checked,
+        holdout: $('bl-holdout').checked,
       };
       if ($('bl-declared-on').checked) {
         const entry = $('bl-dec-entry').value;
         // Market entry has no gate and no distance. The server REJECTS them
         // rather than ignoring them, so send a declaration that means exactly
         // what the form shows.
+        const trailRaw = $('bl-dec-trail').value;
         body.declared = entry === 'market'
           ? { entry, tHours: Number($('bl-dec-t').value), quorumRatio: Number($('bl-dec-q').value) }
           : {
@@ -2097,6 +2106,9 @@
               dMult: Number($('bl-dec-d').value),
               tHours: Number($('bl-dec-t').value),
               quorumRatio: Number($('bl-dec-q').value),
+              // armMult is refused by the server unless a trail is declared,
+              // so send neither rather than a meaningless pair.
+              ...(trailRaw ? { trailMult: Number(trailRaw), armMult: Number($('bl-dec-arm').value) } : {}),
             };
       }
       const res = await fetch('api/bracketlab', {

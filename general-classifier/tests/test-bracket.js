@@ -1,5 +1,5 @@
 const { assert } = require('./helpers');
-const { comboViews, simBracket, simMarket, holdControls, execSweep, bestCell, PER_ASSET, ENTRIES, D_MULTS, T_HOURS, GATES } = require('../lib/bracket');
+const { comboViews, simBracket, simMarket, holdControls, simCell, execSweep, bestCell, PER_ASSET, ENTRIES, D_MULTS, T_HOURS, GATES, TRAIL_MULTS, ARM_MULTS } = require('../lib/bracket');
 const { pnlAt } = require('../lib/paper');
 const { classifierMetrics } = require('../lib/metrics');
 const { expandBracketPlan, validateDeclared, declaredQuorumFor, promotionSet } = require('../lib/batch');
@@ -291,6 +291,93 @@ module.exports = {
     const none = holdControls([], m, geo, 17, FEE);
     assert.strictEqual(none.buyHold, null);
     assert.strictEqual(none.alwaysLong, 0);
+  },
+  async trailingStopRatchetsAndNeverLoosens() {
+    const t0 = Date.UTC(2024, 0, 1);
+    // p=100, d=2% -> long at 102. Then a run to 110, then a fade.
+    // trail = 2% of band(=2%) ... band is passed as dPct here, so use the
+    // simBracket primitive directly with explicit percentages.
+    const bars = { 0: [100, 102.5, 99.5] };
+    for (let h = 1; h <= 6; h++) bars[h] = [102 + h, 102 + h + 0.5, 102 + h - 0.5]; // up to ~108.5
+    bars[7] = [108, 108, 104];   // fade: trail from high 108.5 at 2% = 106.33 -> stopped
+    for (let h = 8; h < 17; h++) bars[h] = [104, 104.5, 103.5];
+    bars[17] = [104, 104, 103];
+    const m = mapFrom(t0, bars);
+    const trailed = simBracket(period(t0), [1], m, geo, { dPct: 2, tHours: 17, gate: 'always', feePerLeg: FEE, trailPct: 2, armPct: 0 });
+    const staticStop = simBracket(period(t0), [1], m, geo, { dPct: 2, tHours: 17, gate: 'always', feePerLeg: FEE });
+    // static stop never triggers (never revisits 98) and exits on the clock
+    assert.strictEqual(staticStop.stops, 0);
+    // trailing locks in the run instead of giving it back
+    assert.strictEqual(trailed.stops, 1);
+    assert.ok(trailed.pnl > staticStop.pnl, `${trailed.pnl} should beat ${staticStop.pnl}`);
+    // a trail never ratchets DOWN: exit must be above the original rail
+    assert.ok(trailed.pnl > 100 * (98 / 102 - 1));
+  },
+  async armDelaysTheTrailAndStaticIsUnchanged() {
+    const t0 = Date.UTC(2024, 0, 1);
+    // long at 102, drifts to 103 then fades to 99. With arm=0 the trail is
+    // live immediately and stops out near 103*0.98; with a big arm it never
+    // arms, so the original rail (98) is still the stop and nothing triggers.
+    const bars = { 0: [100, 102.5, 99.5], 1: [102.5, 103, 102], 2: [102, 102.5, 99.2] };
+    for (let h = 3; h < 17; h++) bars[h] = [99.5, 100, 99];
+    bars[17] = [99.5, 99.5, 99];
+    const m = mapFrom(t0, bars);
+    const eager = simBracket(period(t0), [1], m, geo, { dPct: 2, tHours: 17, gate: 'always', feePerLeg: FEE, trailPct: 2, armPct: 0 });
+    const lazy = simBracket(period(t0), [1], m, geo, { dPct: 2, tHours: 17, gate: 'always', feePerLeg: FEE, trailPct: 2, armPct: 10 });
+    assert.strictEqual(eager.stops, 1);
+    assert.strictEqual(lazy.stops, 0);   // never armed -> rail stop, never hit
+    assert.ok(eager.pnl > lazy.pnl);
+    // trailPct null must reproduce the pre-trailing behaviour exactly
+    const a = simBracket(period(t0), [1], m, geo, { dPct: 2, tHours: 17, gate: 'always', feePerLeg: FEE });
+    const b = simBracket(period(t0), [1], m, geo, { dPct: 2, tHours: 17, gate: 'always', feePerLeg: FEE, trailPct: null, armPct: 0 });
+    assert.deepStrictEqual(a, b);
+  },
+  async trailAmbiguityIsCountedNotHidden() {
+    const t0 = Date.UTC(2024, 0, 1);
+    // every bar makes a new high AND retraces past the trail — OHLC cannot
+    // order them, so each one is an assumption and must be disclosed.
+    const bars = { 0: [100, 102.5, 99.5] };
+    for (let h = 1; h <= 4; h++) bars[h] = [103, 104 + h, 100];
+    for (let h = 5; h < 17; h++) bars[h] = [103, 103.5, 102.5];
+    bars[17] = [103, 103, 102];
+    const m = mapFrom(t0, bars);
+    const r = simBracket(period(t0), [1], m, geo, { dPct: 2, tHours: 17, gate: 'always', feePerLeg: FEE, trailPct: 2, armPct: 0 });
+    assert.ok(r.trailAmbiguous >= 1, 'a bar that extends and stops out must be counted');
+    // and the static run reports zero of them, since it has no trail to race
+    const st = simBracket(period(t0), [1], m, geo, { dPct: 2, tHours: 17, gate: 'always', feePerLeg: FEE });
+    assert.strictEqual(st.trailAmbiguous, 0);
+  },
+  async trailingIsOptInAndMultipliesTheMenu() {
+    const t0 = Date.UTC(2024, 0, 1);
+    const bars = {};
+    for (let h = 0; h <= 164; h++) bars[h] = [100 + h * 0.01, 100 + h * 0.01 + 0.5, 100 + h * 0.01 - 0.5];
+    const m = mapFrom(t0, bars);
+    const base = execSweep(period(t0), [1], m, geo, 2, FEE);
+    const wide = execSweep(period(t0), [1], m, geo, 2, FEE, { trailing: true });
+    const plane = GATES.length * D_MULTS.length * T_HOURS.length;
+    assert.strictEqual(base.length, plane + T_HOURS.length);
+    assert.strictEqual(wide.length, plane * (1 + TRAIL_MULTS.length * ARM_MULTS.length) + T_HOURS.length);
+    // OFF must be byte-identical to the pre-trailing menu, or every board
+    // recorded so far stops being comparable
+    assert.ok(base.every((r) => r.trailMult === null && r.armMult === null));
+    // and the static cells inside the wide sweep must equal the base ones
+    const key = (r) => `${r.entry}|${r.gate}|${r.dMult}|${r.tHours}`;
+    const staticWide = new Map(wide.filter((r) => r.trailMult === null).map((r) => [key(r), r]));
+    for (const r of base) assert.deepStrictEqual(staticWide.get(key(r)), r);
+  },
+  async simCellReproducesTheSweptCell() {
+    // The holdout and minute confirmation must re-run the SELECTED trade, not
+    // a lookalike — so simCell has to agree with execSweep cell for cell.
+    const t0 = Date.UTC(2024, 0, 1);
+    const bars = { 0: [100, 103, 98] };
+    for (let h = 1; h <= 40; h++) bars[h] = [101 + h * 0.1, 101 + h * 0.1 + 0.8, 101 + h * 0.1 - 0.8];
+    const m = mapFrom(t0, bars);
+    const rows = execSweep(period(t0), [1], m, geo, 2, FEE, { trailing: true });
+    for (const r of rows.slice(0, 40)) {
+      const again = simCell(r, period(t0), [1], m, geo, 2, FEE);
+      assert.strictEqual(again.pnl, r.pnl, `simCell disagrees for ${JSON.stringify({ e: r.entry, g: r.gate, d: r.dMult, t: r.tHours, tr: r.trailMult })}`);
+      assert.strictEqual(again.trades, r.trades);
+    }
   },
   async bestCellHonorsFloorAndTies() {
     const rows = [

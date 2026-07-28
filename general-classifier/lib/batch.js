@@ -1204,7 +1204,17 @@ function validateDeclared(raw) {
     if (!bracketLib.GATES.includes(gate)) throw new Error(`declared.gate must be one of ${bracketLib.GATES.join('/')}`);
     const dMult = Number(raw.dMult);
     if (!bracketLib.D_MULTS.includes(dMult)) throw new Error(`declared.dMult must be one of ${bracketLib.D_MULTS.join('/')}`);
-    out = { entry, gate, dMult, tHours };
+    out = { entry, gate, dMult, tHours, trailMult: null, armMult: null };
+    if (raw.trailMult !== undefined && raw.trailMult !== null) {
+      const t = Number(raw.trailMult);
+      if (!bracketLib.TRAIL_MULTS.includes(t)) throw new Error(`declared.trailMult must be null or one of ${bracketLib.TRAIL_MULTS.join('/')}`);
+      const a = raw.armMult === undefined ? 0 : Number(raw.armMult);
+      if (!bracketLib.ARM_MULTS.includes(a)) throw new Error(`declared.armMult must be one of ${bracketLib.ARM_MULTS.join('/')}`);
+      out.trailMult = t;
+      out.armMult = a;
+    } else if (raw.armMult !== undefined) {
+      throw new Error('declared.armMult is meaningless without declared.trailMult — omit it');
+    }
   }
   if (raw.quorumRatio !== undefined) {
     const r = Number(raw.quorumRatio);
@@ -1216,9 +1226,10 @@ function validateDeclared(raw) {
     out.quorum = q;
   }
   const q = out.quorumRatio ? `${Math.round(out.quorumRatio * 100)}%` : out.quorum;
+  const trailBit = out.trailMult == null ? '' : ` trail${out.trailMult}x/arm${out.armMult}x`;
   out.label = out.entry === 'market'
     ? `q${q} market t${out.tHours}h`
-    : `q${q} ${out.gate} d${out.dMult}x t${out.tHours}h`;
+    : `q${q} ${out.gate} d${out.dMult}x t${out.tHours}h${trailBit}`;
   return out;
 }
 // A call series is one entry per test period. 50 units of ~600 periods is a
@@ -1302,12 +1313,18 @@ function startBracketLab(params) {
     // a 272-combo sweep would bloat the doc for data nobody asked for. On, it
     // is what lets a bracket result seed a paper book or be re-scored later.
     emitCalls: !!params.emitCalls,
+    // Trailing stops: a 12x menu widening, so opt-in and promote-stage only.
+    trailing: !!params.trailing,
+    // Three-way split (70/15/15) with a slice no search ever touches.
+    holdout: !!params.holdout,
     detailK: 50,
     feePerLeg: REAL_FEE_PER_LEG,
     dMults: bracketLib.D_MULTS,
     tHours: bracketLib.T_HOURS,
     gates: bracketLib.GATES,
     entries: bracketLib.ENTRIES,
+    trailMults: bracketLib.TRAIL_MULTS,
+    armMults: bracketLib.ARM_MULTS,
   };
   if (!p.sizes.singles && !p.sizes.doubles && !p.sizes.triples) throw new Error('tick at least one combo size');
   const { branches, combos } = expandBracketPlan(p);
@@ -1437,6 +1454,9 @@ function startBracketLab(params) {
               controlPnl: d.controlPnl, vsControl: d.controlPnl == null ? null : d.pnl - d.controlPnl,
               metrics: d.metrics || null,
               holds: d.holds || null,
+              trailMult: d.trailMult ?? null, armMult: d.armMult ?? null,
+              trailAmbiguous: d.trailAmbiguous ?? 0,
+              holdout: d.holdout || null,
               vsAlwaysLong: d.holds ? d.pnl - d.holds.alwaysLong : null,
               vsBuyHold: d.holds && d.holds.buyHold != null ? d.pnl - d.holds.buyHold : null,
             });

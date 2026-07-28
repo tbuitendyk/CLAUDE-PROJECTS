@@ -142,7 +142,23 @@ function simMarket(periods, calls, tradeMap, geo, { tHours, feePerLeg }) {
   return { pnl, trades, wins, stops: 0, ambiguous: 0, unpriced, grossPerTrade: trades ? (pnl + trades * trip) / trades : null };
 }
 
-function simBracket(periods, calls, tradeMap, geo, { dPct, tHours, gate, feePerLeg }) {
+// TRAILING STOPS (trailPct != null). The stop starts at the opposite rail and
+// ratchets to `extreme x (1 -/+ trail)` once price has moved `arm` in favour.
+// Both distances are band-relative, like d, so one grid means the same thing
+// across assets.
+//
+// WITHIN-BAR ORDER IS THE WHOLE PROBLEM, and it is why a trailing result on
+// hourly candles is not evidence. If a bar makes a new extreme and also
+// touches the stop, OHLC cannot say which came first, and the two orderings
+// give materially different money. This code takes the pessimistic one: the
+// adverse extreme is tested against the stop AS IT STOOD BEFORE this bar
+// could ratchet it. Same doctrine as the entry ambiguity — resolve against
+// the book — but far more frequent, because it fires on any bar that extends
+// and retraces rather than only on a bar spanning both entry rails. Every
+// occurrence is counted in trailAmbiguous, which is the number that says how
+// much of a given result rests on the assumption. Minute confirmation exists
+// to replace that assumption with the actual path.
+function simBracket(periods, calls, tradeMap, geo, { dPct, tHours, gate, feePerLeg, trailPct = null, armPct = 0 }) {
   const NOTIONAL = 100;
   const trip = 2 * feePerLeg;
   let pnl = 0;
@@ -150,8 +166,11 @@ function simBracket(periods, calls, tradeMap, geo, { dPct, tHours, gate, feePerL
   let wins = 0;
   let stops = 0;
   let ambiguous = 0;
+  let trailAmbiguous = 0;
   let unpriced = 0;
   const d = dPct / 100;
+  const trail = trailPct == null ? null : trailPct / 100;
+  const arm = armPct / 100;
   periods.forEach((per, i) => {
     const call = calls ? calls[i] : 0;
     let sides; // which rails may OPEN a position
@@ -171,6 +190,9 @@ function simBracket(periods, calls, tradeMap, geo, { dPct, tHours, gate, feePerL
     let dir = 0;
     let entry = null;
     let out = null; // exit price when closed by stop
+    let stopLvl = null; // the LIVE stop; static at the opposite rail unless trailing
+    let ext = null;     // best price seen since entry
+    let armed = false;
     for (let h = 0; h < tHours && out === null; h++) {
       const bar = tradeMap.get(entryTs + h * HOUR_MS);
       if (!bar) continue;
@@ -191,6 +213,8 @@ function simBracket(periods, calls, tradeMap, geo, { dPct, tHours, gate, feePerL
         if (hitB) {
           dir = 1;
           entry = bRail;
+          stopLvl = sRail;
+          ext = bRail;
           // the sell rail is now this long's stop — same bar may also stop it
           if (bar.low <= sRail) {
             ambiguous++;
@@ -203,6 +227,8 @@ function simBracket(periods, calls, tradeMap, geo, { dPct, tHours, gate, feePerL
         } else if (hitS) {
           dir = -1;
           entry = sRail;
+          stopLvl = bRail;
+          ext = sRail;
           if (bar.high >= bRail) {
             ambiguous++;
             stops++;
@@ -212,20 +238,42 @@ function simBracket(periods, calls, tradeMap, geo, { dPct, tHours, gate, feePerL
             break;
           }
         }
-      } else if (dir === 1 && bar.low <= sRail) {
-        stops++;
-        const v = NOTIONAL * (sRail / entry - 1) - trip;
-        pnl += v;
-        trades++;
-        if (v > 0) wins++;
-        out = sRail;
-      } else if (dir === -1 && bar.high >= bRail) {
-        stops++;
-        const v = NOTIONAL * (1 - bRail / entry) - trip;
-        pnl += v;
-        trades++;
-        if (v > 0) wins++;
-        out = bRail;
+      } else if (dir === 1) {
+        const hit = bar.low <= stopLvl;
+        const extended = trail != null && bar.high > ext;
+        if (hit && extended) trailAmbiguous++;
+        if (hit) {
+          stops++;
+          const v = NOTIONAL * (stopLvl / entry - 1) - trip;
+          pnl += v;
+          trades++;
+          if (v > 0) wins++;
+          out = stopLvl;
+        } else if (trail != null) {
+          if (bar.high > ext) ext = bar.high;
+          if (armed || ext >= entry * (1 + arm)) {
+            armed = true;
+            stopLvl = Math.max(stopLvl, ext * (1 - trail)); // ratchets only up
+          }
+        }
+      } else if (dir === -1) {
+        const hit = bar.high >= stopLvl;
+        const extended = trail != null && bar.low < ext;
+        if (hit && extended) trailAmbiguous++;
+        if (hit) {
+          stops++;
+          const v = NOTIONAL * (1 - stopLvl / entry) - trip;
+          pnl += v;
+          trades++;
+          if (v > 0) wins++;
+          out = stopLvl;
+        } else if (trail != null) {
+          if (bar.low < ext) ext = bar.low;
+          if (armed || ext <= entry * (1 - arm)) {
+            armed = true;
+            stopLvl = Math.min(stopLvl, ext * (1 + trail)); // ratchets only down
+          }
+        }
       }
     }
     if (dir !== 0 && out === null) {
@@ -242,7 +290,7 @@ function simBracket(periods, calls, tradeMap, geo, { dPct, tHours, gate, feePerL
       if (v > 0) wins++;
     }
   });
-  return { pnl, trades, wins, stops, ambiguous, unpriced, grossPerTrade: trades ? (pnl + trades * trip) / trades : null };
+  return { pnl, trades, wins, stops, ambiguous, trailAmbiguous, unpriced, grossPerTrade: trades ? (pnl + trades * trip) / trades : null };
 }
 
 // ---- drift controls ------------------------------------------------------------
@@ -311,15 +359,41 @@ const D_MULTS = [0.25, 0.5, 0.75, 1.0, 1.5];
 // per-dollar-deployed, never raw net.
 const T_HOURS = [17, 41, 65, 89, 113, 137, 161];
 
+// TRAILING GRID, band-relative like d. null = the static opposite-rail stop
+// this lab has always used. ARM delays the trail until price has moved that
+// far in favour, so arm=0 trails from the first bar and arm=1 is close to a
+// move-to-breakeven-then-trail rule.
+//
+// Swept ONLY at the promote stage and only when the owner opts in: 12 trailing
+// combinations multiply the 105-cell breakout plane by 13. On a 272-combo
+// doubles sweep, doing that in the cheap slim pass too would turn ~35 minutes
+// into roughly seven hours, and slim's job is ranking combos, not refining
+// execution.
+const TRAIL_MULTS = [0.5, 1.0, 1.5, 2.0];
+const ARM_MULTS = [0, 0.5, 1.0];
+
 // Sweep the whole execution menu over one call stream. Returns every cell
 // (the null replays this same freedom) tagged with its config.
-function execSweep(periods, calls, tradeMap, geo, bandPct, feePerLeg) {
+function execSweep(periods, calls, tradeMap, geo, bandPct, feePerLeg, opts = {}) {
   const rows = [];
+  // trailMult null = the static stop; the base menu is EXACTLY what it was
+  // before trailing existed, so a run with trailing off is bit-comparable
+  // with every board recorded so far.
+  const trails = opts.trailing ? [null, ...TRAIL_MULTS] : [null];
   for (const gate of GATES) {
     for (const dMult of D_MULTS) {
       for (const tHours of T_HOURS) {
-        const r = simBracket(periods, calls, tradeMap, geo, { dPct: dMult * bandPct, tHours, gate, feePerLeg });
-        rows.push({ entry: 'breakout', gate, dMult, tHours, ...r });
+        for (const trailMult of trails) {
+          const arms = trailMult == null ? [null] : ARM_MULTS;
+          for (const armMult of arms) {
+            const r = simBracket(periods, calls, tradeMap, geo, {
+              dPct: dMult * bandPct, tHours, gate, feePerLeg,
+              trailPct: trailMult == null ? null : trailMult * bandPct,
+              armPct: armMult == null ? 0 : armMult * bandPct,
+            });
+            rows.push({ entry: 'breakout', gate, dMult, tHours, trailMult, armMult, ...r });
+          }
+        }
       }
     }
   }
@@ -332,9 +406,27 @@ function execSweep(periods, calls, tradeMap, geo, bandPct, feePerLeg) {
   // addition and prior replication readings stay valid.
   for (const tHours of T_HOURS) {
     const r = simMarket(periods, calls, tradeMap, geo, { tHours, feePerLeg });
-    rows.push({ entry: 'market', gate: 'directional', dMult: null, tHours, ...r });
+    rows.push({ entry: 'market', gate: 'directional', dMult: null, trailMult: null, armMult: null, tHours, ...r });
   }
   return rows;
+}
+
+// Re-run ONE cell, exactly as the sweep produced it, on any set of periods.
+// Used to score a chosen cell on the untouched holdout window, and it is the
+// same entry point minute confirmation will use — so the holdout and the
+// minute check can never be a different trade from the one that was selected.
+function simCell(cell, periods, calls, tradeMap, geo, bandPct, feePerLeg) {
+  if ((cell.entry || 'breakout') === 'market') {
+    return simMarket(periods, calls, tradeMap, geo, { tHours: cell.tHours, feePerLeg });
+  }
+  return simBracket(periods, calls, tradeMap, geo, {
+    dPct: cell.dMult * bandPct,
+    tHours: cell.tHours,
+    gate: cell.gate,
+    feePerLeg,
+    trailPct: cell.trailMult == null ? null : cell.trailMult * bandPct,
+    armPct: cell.armMult == null ? 0 : cell.armMult * bandPct,
+  });
 }
 
 // The declared selection rule: best net dollars among cells clearing the
@@ -411,4 +503,4 @@ async function trainMember({ model, viewIdx, trainChunks, testChunks, decision, 
   return { calls: testChunks.map((_, i) => callOf(i)), picked };
 }
 
-module.exports = { comboViews, buildComboChunks, simBracket, simMarket, holdControls, execSweep, bestCell, trainMember, GATES, ENTRIES, D_MULTS, T_HOURS, PER_ASSET };
+module.exports = { comboViews, buildComboChunks, simBracket, simMarket, holdControls, simCell, execSweep, bestCell, trainMember, GATES, ENTRIES, D_MULTS, T_HOURS, TRAIL_MULTS, ARM_MULTS, PER_ASSET };

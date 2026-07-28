@@ -31,7 +31,13 @@ function matchesDeclared(row, dec) {
   if ((row.entry || 'breakout') !== entry) return false;
   if (row.tHours !== dec.tHours) return false;
   if (entry === 'market') return true; // gate is definitionally directional, d irrelevant
-  return row.gate === dec.gate && row.dMult === dec.dMult;
+  if (row.gate !== dec.gate || row.dMult !== dec.dMult) return false;
+  // null (static stop) must match null, not merely be falsy-equal to 0.
+  const rt = row.trailMult == null ? null : row.trailMult;
+  const dt = dec.trailMult == null ? null : dec.trailMult;
+  if (rt !== dt) return false;
+  if (dt == null) return true; // arm is meaningless without a trail
+  return (row.armMult == null ? null : row.armMult) === (dec.armMult == null ? null : dec.armMult);
 }
 
 // Per-thread symbol cache. Each worker keeps its own; hourly data is small
@@ -96,15 +102,27 @@ async function buildCombo(combo, branch, p) {
   return { geo, maps, chunks };
 }
 
-// Chronological 80/20 split, band calibrated on TRAINING chunks only, then
-// every chunk relabelled at that band.
-function splitAndLabel(chunks, branch) {
-  const nTest = Math.max(2, Math.round(chunks.length * 0.2));
-  const trainChunks = chunks.slice(0, chunks.length - nTest);
-  const testChunks = chunks.slice(chunks.length - nTest);
+// Chronological split, band calibrated on TRAINING chunks only, then every
+// chunk relabelled at that band.
+//
+// Default is 80/20 — unchanged, so every board recorded so far stays
+// comparable. With holdout on it becomes 70/15/15 and the last slice is
+// NEVER searched: the sweep picks its cell in the 15% search window, and the
+// chosen cell is scored once on the holdout. That distinction is the whole
+// point. Today's "test" window is what cell selection shops IN, so it is not
+// held back at all once a menu has been swept over it; only a slice no
+// search has touched can answer "does this work out of sample".
+function splitAndLabel(chunks, branch, holdout) {
+  const n = chunks.length;
+  const nHold = holdout ? Math.max(2, Math.round(n * 0.15)) : 0;
+  const nTest = Math.max(2, Math.round(n * (holdout ? 0.15 : 0.2)));
+  const trainChunks = chunks.slice(0, n - nTest - nHold);
+  const testChunks = chunks.slice(n - nTest - nHold, n - nHold);
+  const holdChunks = nHold ? chunks.slice(n - nHold) : [];
+  if (trainChunks.length < MIN_CHUNKS) throw new Error(`only ${trainChunks.length} training chunks after the split`);
   const bandPct = branch.band === 'auto' ? balancedBandPct(trainChunks.map((c) => c.diffPct)) : Math.abs(branch.band);
   for (const c of chunks) c.label = scoreDiff(c.diffPct / 100, bandPct / 100);
-  return { trainChunks, testChunks, bandPct };
+  return { trainChunks, testChunks, holdChunks, bandPct };
 }
 
 async function trainMembers(specs, views, trainChunks, testChunks, branch, maps, geo) {
@@ -138,10 +156,20 @@ function specsFor(size, stage) {
 async function unitTask({ combo, branch, stage, params }) {
   const p = params;
   const { geo, maps, chunks } = await buildCombo(combo, branch, p);
-  const { trainChunks, testChunks, bandPct } = splitAndLabel(chunks, branch);
+  const { trainChunks, testChunks, holdChunks, bandPct } = splitAndLabel(chunks, branch, p.holdout);
   const views = bracketLib.comboViews(combo.size, geo.featureHours / 24).views;
-  const memberCalls = await trainMembers(specsFor(combo.size, stage), views, trainChunks, testChunks, branch, maps, geo);
+  // ONE training pass covers both windows: members predict over search+holdout
+  // concatenated, then the calls are split. Training twice would be waste, and
+  // worse, an invitation for the two to be fitted differently.
+  const predictChunks = holdChunks.length ? [...testChunks, ...holdChunks] : testChunks;
+  const allCalls = await trainMembers(specsFor(combo.size, stage), views, trainChunks, predictChunks, branch, maps, geo);
+  const memberCalls = holdChunks.length ? allCalls.map((c) => c.slice(0, testChunks.length)) : allCalls;
+  const holdCalls = holdChunks.length ? allCalls.map((c) => c.slice(testChunks.length)) : null;
   const fee = p.feePerLeg ?? REAL_FEE_PER_LEG;
+  // Trailing is a PROMOTE-stage dimension only (see TRAIL_MULTS): 12x the menu
+  // in the cheap slim pass would turn a 272-combo sweep into a night's work,
+  // and slim ranks combos rather than refining execution.
+  const sweepOpts = { trailing: stage === 'promoted' && !!p.trailing };
 
   const streams = [{ quorum: 1, calls: testChunks.map((_, i) => quorumCall(memberCalls, i, 1)) }];
   if (stage === 'promoted') {
@@ -158,7 +186,7 @@ async function unitTask({ combo, branch, stage, params }) {
   let bestStream = null;
   let declaredStream = null;
   for (const s of streams) {
-    const rows = bracketLib.execSweep(testChunks, s.calls, maps.trade, geo, bandPct, fee);
+    const rows = bracketLib.execSweep(testChunks, s.calls, maps.trade, geo, bandPct, fee, sweepOpts);
     if (controlPnl === null) {
       const ctl = bracketLib.bestCell(rows.filter((r) => r.gate === 'always'), 0);
       controlPnl = ctl ? ctl.pnl : null;
@@ -192,6 +220,31 @@ async function unitTask({ combo, branch, stage, params }) {
   // to work out later.
   if (best) best.holds = bracketLib.holdControls(testChunks, maps.trade, geo, best.tHours, fee);
   if (declared) declared.holds = bracketLib.holdControls(testChunks, maps.trade, geo, declared.tHours, fee);
+
+  // HOLDOUT — the slice no search has touched. The chosen cell is re-run
+  // there exactly as selected (simCell, the same entry point the sweep used),
+  // scored ONCE, with its own drift controls and its own classification
+  // metrics. No cell is ever picked using these numbers; that is what makes
+  // them worth reading.
+  const holdLabels = holdChunks.map((c) => c.label);
+  const scoreHold = (cell, quorum) => {
+    if (!holdChunks.length || !cell) return null;
+    const calls = holdChunks.map((_, i) => quorumCall(holdCalls, i, quorum));
+    const r = bracketLib.simCell(cell, holdChunks, calls, maps.trade, geo, bandPct, fee);
+    const h = bracketLib.holdControls(holdChunks, maps.trade, geo, cell.tHours, fee);
+    return {
+      periods: holdChunks.length,
+      pnl: r.pnl, trades: r.trades, wins: r.wins, stops: r.stops,
+      ambiguous: r.ambiguous, trailAmbiguous: r.trailAmbiguous ?? 0,
+      grossPerTrade: r.grossPerTrade,
+      vsAlwaysLong: r.pnl - h.alwaysLong,
+      vsBuyHold: h.buyHold == null ? null : r.pnl - h.buyHold,
+      holds: h,
+      metrics: classifierMetrics(trainLabels, holdLabels, calls),
+    };
+  };
+  if (best) best.holdout = scoreHold(best, best.quorum);
+  if (declared) declared.holdout = scoreHold(declared, declared.quorum);
 
   const out = { best, declared, bandPct, testPeriods: testChunks.length, members: memberCalls.length };
 
