@@ -175,7 +175,46 @@ Two ways to get the Mexican IP, both needing a small MX-located box:
      Weigh against moving the whole stack (dubber, deploy-control, both
      balancers, classifier, nginx, mail VM).
 
-**BLOCKED PENDING OWNER: choose (a), (b) or (c) and provision the MX box.**
+### SOLVED 2026-07-28 — Mexico egress is live and verified
+
+Owner provisioned an AWS host in **mx-central-1 (Querétaro)**;
+`ssh -i /root/.ssh/aws-mex-deb13.pem admin@78.12.190.144` from the
+classifier VPS. Probed end to end:
+
+- **IP provenance is clean**: 78.12.190.144 =
+  ec2-78-12-190-144.mx-central-1.compute.amazonaws.com, AS16509 Amazon,
+  "Amazon Data Services Mexico", geolocates Queretaro MX in both ipinfo
+  and ip-api. Matches the account's Mexican KYC — no jurisdiction
+  mismatch, not a commercial-VPN range.
+- **Binance trading API answers HTTP 200 from the Mexico host** (ping and
+  time), where the US VPS gets 451 on every trading host.
+- **Split tunnel proven**: `mx-tunnel-up.sh` runs a detached SSH dynamic
+  forward (SOCKS5 on 127.0.0.1:1080). Through it Binance sees
+  78.12.190.144; direct traffic still exits 74.208.226.14 (IONOS US).
+  Application-layer only: no interface, route, iptables or package
+  change, so it is safe to run with sweeps in flight.
+- **Symbol filters retrieved** (clip sizing is now real, not sketched):
+  DOGEUSDT minNotional $1.00 step 1; DOTUSDT and AVAXUSDT minNotional
+  $5.00 step 0.01. **OCO and OTOCO both supported** — the exchange can
+  hold the bracket natively (entry triggers a stop/limit pair).
+
+Consequence: option (a) is chosen and working. WireGuard remains the more
+robust production form (the scripts are written and jurisdiction-neutral),
+but SSH -D is sufficient for read-only confirmation work today.
+
+**OPEN — two operational items before any key is pinned:**
+1. **Is 78.12.190.144 an Elastic IP or an auto-assigned EC2 public IP?**
+   Auto-assigned addresses CHANGE on instance stop/start, which would
+   silently break an IP-pinned API key. Allocate an Elastic IP before
+   pinning. (Owner to confirm/allocate.)
+2. **Tunnel persistence**: the SSH forward dies with its process or the
+   instance. Production needs autossh or a systemd unit (or WireGuard),
+   plus the watchdog already specced — tunnel down => halt new entries,
+   leave exchange-resident stops parked.
+
+**Still ordered: egress (done) -> read-only key -> Phase 2 plumbing.** No
+key exists yet and none is needed until the owner wants account-level
+confirmation (fee tier, balances, permissions).
 
 ### Superseded question (kept for the record)
 **Previously blocked on: the account's KYC country.** Endpoint
