@@ -12,7 +12,12 @@
 # 17 assets x 5 chunk shapes x both decision modes = 170 units. Holdout ON, so
 # every unit reports what its edge-selected rung did on a slice no search
 # touched. Trailing OFF: execution is irrelevant to this question and would
-# multiply the menu 12x for nothing.
+# multiply the menu 12x for nothing. edgeScreen ON, which promotes EVERY unit
+# and records a census row per unit off the leaderboard.
+#
+# The first attempt lacked edgeScreen and could only be read through the
+# money-ranked board — 29 rows of 170, showing 20/29 holdout-positive at
+# p=0.03, which is upward-biased by construction and was discarded.
 #
 # READING RULE, fixed before firing:
 #   * The number that counts is HOLDOUT edge at the edge-selected rung, never
@@ -37,6 +42,7 @@ curl -sS -X POST http://127.0.0.1:8093/api/bracketlab \
     "set": {"geometry": "daily-3d", "decision": "argmax", "band": "auto", "weekdaysOnly": false},
     "holdout": true,
     "trailing": false,
+    "edgeScreen": true,
     "promoteK": 50,
     "minTrades": 10
   }'
