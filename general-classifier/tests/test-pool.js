@@ -1,5 +1,7 @@
 const { assert } = require('./helpers');
 const { Pool, configuredSize } = require('../lib/pool');
+const fs = require('fs');
+const path = require('path');
 
 module.exports = {
   async inlineFallbackWhenNotParallel() {
@@ -42,6 +44,33 @@ module.exports = {
     assert.strictEqual(out[1].ok, false);
     assert.strictEqual(out[1].error, 'boom');
     assert.strictEqual(out[2].value, 3);
+  },
+  async workerNeverReachesStatefulModules() {
+    // The worker's transitive requires must exclude batch.js (whose top-level
+    // IIFE rewrites any doc still marked 'running' to 'interrupted' — a
+    // worker importing it would corrupt the very sweep it is executing) and
+    // the frozen books (module-level state + single-flight guards that are
+    // only valid inside one isolate; two threads ticking a live book would
+    // both write its state file and break a record that must never restart).
+    const LIB = path.join(__dirname, '..', 'lib');
+    const seen = new Set();
+    const walk = (file) => {
+      if (seen.has(file)) return;
+      seen.add(file);
+      let src;
+      try {
+        src = fs.readFileSync(path.join(LIB, file), 'utf8');
+      } catch {
+        return;
+      }
+      for (const m of src.matchAll(/require\('\.\/([\w-]+)'\)/g)) walk(`${m[1]}.js`);
+    };
+    walk('worker.js');
+    for (const forbidden of ['batch.js', 'tracker.js', 'dogebook.js', 'books.js']) {
+      assert.ok(!seen.has(forbidden), `worker must not transitively require ${forbidden} (reached: ${[...seen].join(', ')})`);
+    }
+    // and it must actually reach the real work, or the test proves nothing
+    assert.ok(seen.has('bracketwork.js') && seen.has('logreg.js'), 'worker should reach the training code');
   },
   async poolSizeLeavesHeadroom() {
     // Default must leave a core for nginx / the mail bridge / the event loop.

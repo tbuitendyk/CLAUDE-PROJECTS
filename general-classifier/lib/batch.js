@@ -1380,6 +1380,25 @@ function startBracketLab(params) {
   saveBatch(doc);
 
   (async () => {
+    // PRE-WARM: fetch every symbol this job will touch, serially, on THIS
+    // thread. Workers then only ever hit a warm cache — no concurrent
+    // fetches, no racing the refresh timers, no silently-dropped month.
+    const symbols = [...new Set(p.universe)];
+    doc.perf.phase = 'prewarm';
+    for (let i = 0; i < symbols.length; i++) {
+      if (doc.cancelRequested) break;
+      doc.progress = `pre-warming cache ${i + 1}/${symbols.length}: ${symbols[i]}`;
+      saveBatch(doc);
+      try {
+        if (p.allLoaded) await loadSymbolAll(symbols[i], () => {});
+        else await loadSymbol(symbols[i], monthList(p.startMonth, p.endMonth), () => {});
+      } catch (err) {
+        if (doc.failures.length < 200) doc.failures.push({ key: `prewarm:${symbols[i]}`, error: err.message || String(err) });
+      }
+    }
+    doc.perf.phase = 'slim';
+    saveBatch(doc);
+
     const slimPayloads = units.map(({ c, b }) => ({ combo: c, branch: b, stage: 'slim', params: p }));
     await pool.map('unit', slimPayloads, (settled, i) => {
       if (doc.cancelRequested) return;
@@ -1431,7 +1450,8 @@ function startBracketLab(params) {
               grossPerTrade: d.grossPerTrade, stops: d.stops, ambiguous: d.ambiguous,
               controlPnl: d.controlPnl, vsControl: d.controlPnl == null ? null : d.pnl - d.controlPnl,
             });
-            doc.replication.sort((x, y) => (y.pnl - x.pnl) || (x.trade < y.trade ? -1 : x.trade > y.trade ? 1 : 0));
+            const repKey = (r) => `${r.trade}|${r.ctx1 || ''}|${r.ctx2 || ''}|${r.geometry}`;
+            doc.replication.sort((x, y) => (y.pnl - x.pnl) || (repKey(x) < repKey(y) ? -1 : repKey(x) > repKey(y) ? 1 : 0));
           }
         } else if (!settled.ok && doc.failures.length < 200) {
           doc.failures.push({ key: l.key + '|promote', error: settled.error });
@@ -1516,6 +1536,22 @@ function startBracketNull(id, shifts) {
   saveBatch(doc);
 
   (async () => {
+    // PRE-WARM (see the sweep path): workers must only read the candle cache.
+    doc.perf.phase = 'prewarm';
+    for (const sym of [c.trade, c.ctx1, c.ctx2].filter(Boolean)) {
+      if (doc.cancelRequested) break;
+      doc.progress = `pre-warming cache: ${sym}`;
+      saveBatch(doc);
+      try {
+        if (p.allLoaded) await loadSymbolAll(sym, () => {});
+        else await loadSymbol(sym, monthList(p.startMonth, p.endMonth), () => {});
+      } catch (err) {
+        if (doc.failures.length < 200) doc.failures.push({ key: `prewarm:${sym}`, error: err.message || String(err) });
+      }
+    }
+    doc.perf.phase = 'null';
+    saveBatch(doc);
+
     const payloads = [];
     for (let s2 = 1; s2 <= nShifts; s2++) {
       payloads.push({ combo: c, branch: b, params: p, shiftIndex: s2, nShifts, selection: sel });

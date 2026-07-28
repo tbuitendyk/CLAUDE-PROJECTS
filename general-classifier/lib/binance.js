@@ -101,7 +101,13 @@ async function monthlyKlines(symbol, year, month) {
   const rows = parseKlineCsv(unzipSingleEntry(buf).toString('utf8'));
   try {
     fs.mkdirSync(CACHE_DIR, { recursive: true });
-    fs.writeFileSync(file, JSON.stringify(rows));
+    // ATOMIC: worker threads read these files concurrently with the main
+    // thread's refresh timers. A torn read would fall into the catch above,
+    // re-fetch, and on a 404 silently drop the month — changing the dataset
+    // a model trains on with no error surfaced. rename() is atomic on POSIX.
+    const tmp = `${file}.tmp${process.pid}`;
+    fs.writeFileSync(tmp, JSON.stringify(rows));
+    fs.renameSync(tmp, file);
   } catch (err) {
     console.error(`cache write failed for ${path.basename(file)}:`, err.message);
   }
@@ -129,7 +135,13 @@ async function dailyKlines(symbol, year, month, day) {
   const rows = parseKlineCsv(unzipSingleEntry(buf).toString('utf8'));
   try {
     fs.mkdirSync(CACHE_DIR, { recursive: true });
-    fs.writeFileSync(file, JSON.stringify(rows));
+    // ATOMIC: worker threads read these files concurrently with the main
+    // thread's refresh timers. A torn read would fall into the catch above,
+    // re-fetch, and on a 404 silently drop the month — changing the dataset
+    // a model trains on with no error surfaced. rename() is atomic on POSIX.
+    const tmp = `${file}.tmp${process.pid}`;
+    fs.writeFileSync(tmp, JSON.stringify(rows));
+    fs.renameSync(tmp, file);
   } catch (err) {
     console.error(`cache write failed for ${path.basename(file)}:`, err.message);
   }

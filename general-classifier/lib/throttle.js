@@ -47,7 +47,12 @@ function setCpuPct(v) {
   const settings = readSettings();
   settings.service_cpu_pct = pct;
   fs.mkdirSync(path.dirname(SETTINGS_FILE), { recursive: true });
-  fs.writeFileSync(SETTINGS_FILE, JSON.stringify(settings, null, 1));
+  // ATOMIC: worker threads poll this file every ~3s. A torn read yields
+  // clampPct(undefined) -> null -> CPU_DEFAULT, i.e. the owner presses OFF
+  // and a worker keeps running at 90%. rename() removes the window.
+  const tmp = `${SETTINGS_FILE}.tmp${process.pid}`;
+  fs.writeFileSync(tmp, JSON.stringify(settings, null, 1));
+  fs.renameSync(tmp, SETTINGS_FILE);
   cache = { v: pct, at: Date.now() };
   return pct;
 }
@@ -80,21 +85,29 @@ function throwIfAbortedSince(epoch) {
 // At 100% it degrades to a bare setImmediate (identical to the old
 // behavior); at OFF it parks in place, waking every 250ms to re-check.
 function makeYielder() {
-  let lastSleep = Date.now();
+  let busyStart = Date.now();
   const epoch = abortEpoch;
   return async () => {
     throwIfAbortedSince(epoch);
     while (currentCpuPct() <= 0) {
       throwIfAbortedSince(epoch);
       await new Promise((r) => setTimeout(r, 250));
+      busyStart = Date.now(); // parked time is not busy time
     }
     const pct = currentCpuPct();
-    const sleepMs = pct >= 100 ? 0 : Math.round((WORK_MS * (100 - pct)) / pct);
-    if (sleepMs > 0 && Date.now() - lastSleep >= WORK_MS) {
-      lastSleep = Date.now() + sleepMs;
+    const busyMs = Date.now() - busyStart;
+    if (pct < 100 && busyMs >= WORK_MS) {
+      // Sleep proportional to the time ACTUALLY spent busy, not to the
+      // nominal WORK_MS. Deriving it from the constant made any un-yielded
+      // quantum longer than 90ms inflate the duty cycle (measured: 25 ->
+      // 42%, 90 -> 106% of a core). This makes the cap mean what it says at
+      // any yield granularity — and with N workers the aggregate is N x pct.
+      const sleepMs = Math.round((busyMs * (100 - pct)) / pct);
       await new Promise((r) => setTimeout(r, sleepMs));
+      busyStart = Date.now();
     } else {
       await new Promise((r) => setImmediate(r));
+      if (busyMs >= WORK_MS) busyStart = Date.now();
     }
     throwIfAbortedSince(epoch);
   };

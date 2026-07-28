@@ -25,7 +25,7 @@ const { REAL_FEE_PER_LEG } = require('./paper');
 // handful of duplicates across 3-4 threads is a non-issue. Minute data would
 // NOT be — revisit before Phase 1.5 pulls 1m klines.
 const mapCache = new Map();
-const MAP_CACHE_MAX = 8;
+const MAP_CACHE_MAX = 4; // x poolSize; keep total map memory ~200MB, not ~400MB
 
 async function getMap(sym, p) {
   if (mapCache.has(sym)) {

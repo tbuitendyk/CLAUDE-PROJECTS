@@ -123,14 +123,21 @@
   const cpuBtn = $('cpu-btn');
   const CPU_STEPS = [100, 90, 75, 50, 25, 10, 0];
   let cpuPct = null;
+  let cpuThreads = 1;
 
   function showCpu() {
-    cpuBtn.textContent = cpuPct === null ? 'CPU …' : cpuPct <= 0 ? 'CPU OFF' : `CPU ${cpuPct}%`;
+    // The cap governs EACH worker's duty cycle, so the machine-wide draw is
+    // threads x pct. Show the multiplier rather than quietly redefining the
+    // number the owner has been reading for months.
+    cpuBtn.textContent = cpuPct === null ? 'CPU …'
+      : cpuPct <= 0 ? 'CPU OFF'
+      : cpuThreads > 1 ? `CPU ${cpuPct}% ×${cpuThreads}` : `CPU ${cpuPct}%`;
   }
   async function loadCpu() {
     try {
-      const res = await fetch('api/cpu');
-      cpuPct = (await jsonBody(res)).pct;
+      const body = await jsonBody(await fetch('api/cpu'));
+      cpuPct = body.pct;
+      cpuThreads = body.threads || 1;
     } catch {
       cpuPct = null;
     }
@@ -145,7 +152,9 @@
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ pct: next }),
       });
-      cpuPct = (await jsonBody(res)).pct;
+      const body = await jsonBody(res);
+      cpuPct = body.pct;
+      cpuThreads = body.threads || cpuThreads;
     } catch {
       /* leave display as-is */
     }

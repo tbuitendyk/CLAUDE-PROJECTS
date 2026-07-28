@@ -54,13 +54,20 @@ class Pool {
     this.pending = new Map();
     this.nextId = 1;
     this.stopped = false;
+    this._keepAlive = null;
     if (size > 1) {
       for (let i = 0; i < size; i++) {
         try {
           const w = new Worker(path.join(__dirname, 'worker.js'));
           w.on('message', (msg) => this._onMessage(w, msg));
           w.on('error', (err) => this._onWorkerError(w, err));
-          w.unref(); // never hold the process open
+          // A hard thread exit (OOM kill, process.exit inside the worker)
+          // emits ONLY 'exit' — no 'error'. Without this handler that lane
+          // would stall forever with no progress and no failure recorded.
+          w.on('exit', (code) => {
+            if (this.stopped) return; // our own terminate(), nothing to fail
+            this._onWorkerError(w, new Error(`worker exited (code ${code})`));
+          });
           this.workers.push(w);
           this.idle.push(w);
         } catch {
@@ -79,6 +86,7 @@ class Pool {
     this.pending.delete(msg.id);
     this.idle.push(w);
     this._drain();
+    this._refresh();
     if (!entry) return;
     if (msg.ok) entry.resolve(msg.result);
     else entry.reject(new Error(msg.error));
@@ -97,6 +105,18 @@ class Pool {
     this.idle = this.idle.filter((x) => x !== w);
   }
 
+  // Keep the event loop alive exactly while work is outstanding. Without
+  // this a standalone harness (the determinism fixture!) can exit early and
+  // look like it passed.
+  _refresh() {
+    if (this.pending.size > 0 && !this._keepAlive) {
+      this._keepAlive = setInterval(() => {}, 1 << 30);
+    } else if (this.pending.size === 0 && this._keepAlive) {
+      clearInterval(this._keepAlive);
+      this._keepAlive = null;
+    }
+  }
+
   _drain() {
     while (this.queue.length && this.idle.length && !this.stopped) {
       const task = this.queue.shift();
@@ -104,6 +124,7 @@ class Pool {
       this.pending.set(task.id, { ...task, worker: w });
       w.postMessage({ id: task.id, kind: task.kind, payload: task.payload });
     }
+    this._refresh();
   }
 
   run(kind, payload) {
@@ -163,6 +184,10 @@ class Pool {
     }
     this.workers = [];
     this.idle = [];
+    if (this._keepAlive) {
+      clearInterval(this._keepAlive);
+      this._keepAlive = null;
+    }
   }
 }
 
