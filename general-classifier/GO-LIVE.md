@@ -148,7 +148,37 @@ country from the account's registration, then confirm Binance serves it.
   another served venue.
 - Any other jurisdiction: verify Binance serves it before provisioning.
 
-**BLOCKED PENDING OWNER: state the account's KYC country.** Endpoint
+### RESOLVED 2026-07-28: account re-KYC'd to MEXICAN residency
+
+Binance serves Mexico (regulated subsidiary), so the account side is now
+coherent — the exit jurisdiction to target is **Mexico**, not Canada.
+Montreal/OVH Beauharnois stays withdrawn.
+
+**Reachability re-probed the same day (binance-trade-reachability.sh),
+keyless: STILL HTTP 451 on every trading host** — api, api1, api2, api3,
+api-gcp — while the data portal returns 200. VPS direct exit IP is
+74.208.226.14 (IONOS, US). The 451 is a PRE-AUTHENTICATION network-edge
+block: it fires before any API key is presented, so the re-KYC cannot and
+did not change it, and creating an API key changes nothing until a
+Mexican egress exists. Order of operations is therefore fixed:
+**Mexican egress FIRST, then key (IP-pinned to that egress).**
+
+Two ways to get the Mexican IP, both needing a small MX-located box:
+  a) **WireGuard split tunnel** (scripts already written, jurisdiction
+     neutral — just point them at an MX endpoint). Simplest: one config,
+     keys stay on the classifier VPS but IP-pinned to the MX exit.
+  b) **Execution relay on the MX box** (Phase 4 fallback): better key
+     hygiene (keys never on the US VPS), more moving parts.
+  c) If the whole VPS migrates off IONOS anyway (owner is evaluating),
+     **migrating it to a Mexican datacenter removes the tunnel entirely** —
+     no split, no watchdog, no extra box, IP natively matches the account.
+     Weigh against moving the whole stack (dubber, deploy-control, both
+     balancers, classifier, nginx, mail VM).
+
+**BLOCKED PENDING OWNER: choose (a), (b) or (c) and provision the MX box.**
+
+### Superseded question (kept for the record)
+**Previously blocked on: the account's KYC country.** Endpoint
 provisioning is on hold until then — the Montreal/OVH Beauharnois
 recommendation is WITHDRAWN unless the account is Canadian, in which case
 Binance itself is withdrawn. The wireguard scripts are jurisdiction-neutral
