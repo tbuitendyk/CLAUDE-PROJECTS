@@ -1,0 +1,64 @@
+Classifier overnight #5 - the threading broke your mail for ten minutes. Fixed.
+
+WHAT HAPPENED
+
+The overnight #4 email would not send. Both SMTP ports timed out - connect
+succeeded, then the session hung and died at 25 seconds. Same on a retry.
+
+The mail VM was not down. Ping fine, ports 25/587/465/143/993 all open, the
+VirtualBoxVM process running normally. But SSH into the guest was taking 12 to
+23 seconds and one attempt timed out during the banner exchange. That is a
+machine that is alive and starved, not a machine that has fallen over.
+
+The cause is the threading I deployed tonight. Three worker threads at full
+tilt on a four-core box leave the mail VM nothing to be interactive with. The
+CPU cap does not help here and I should have seen that when I wrote it: the
+cap is a DUTY CYCLE, so the workers still run at full priority during every
+busy slice - they just have gaps. Postfix does not care about the gaps, it
+cares about whether it gets scheduled inside its timeout.
+
+Mail was degraded from roughly 09:59 to 10:07, i.e. the length of one job.
+
+WHERE I WENT WRONG DIAGNOSING IT
+
+I cancelled the running job on the starvation hypothesis before I had any host
+data. Then, when the very next send attempt also failed, I concluded the
+hypothesis was wrong - that was too hasty in the other direction, because the
+VM needs a few minutes to dig out once the load stops. It sent fine on the
+attempt after that.
+
+Net cost: about ten minutes of compute on a cancelled diagnostic run, and one
+wrong conclusion I had to withdraw a few minutes later. The right order was
+host data first, hypothesis second. I have written a host-health script so
+that question has a cheap answer next time instead of a guess.
+
+THE FIX
+
+Every worker thread now sets itself to nice 19 - the bottom of the scheduler.
+
+Why this is the right lever rather than "use fewer threads":
+
+  * When the box is otherwise idle, a niced thread still gets the whole core.
+    The 2.6x speedup is untouched.
+  * When anything interactive wants CPU - your mail VM, nginx, the web UI -
+    it wins instantly, without the research job having to notice or cooperate.
+  * On Linux nice is per-thread, so this touches the workers and NOT the
+    thread serving the classifier's own web interface.
+
+Verified rather than assumed: with a worker running, exactly one thread of the
+process sits at nice 19 and every other thread is at 0. There is a test in the
+suite that asserts it, so it cannot quietly regress.
+
+Deployed. Run 6 has been re-fired (bracketlab-20260728-1010) and this email is
+being sent WHILE it runs at full tilt - if you are reading it, the fix works
+under exactly the load that broke it.
+
+ONE THING I DID NOT TOUCH
+
+Your mail VM has been sitting at ~53% average CPU for five days, and the host
+shows an unusually high interrupt rate. That may be completely normal for it
+and I have no baseline to compare against. I did not restart it, tune it, or
+change anything on it - it is a production service and that is your call, not
+a decision for an overnight loop. Flagging it in case it is news to you.
+
+Reports #1 through #4 all sent. Run 6 results in the next one.
