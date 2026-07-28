@@ -1845,27 +1845,33 @@
     const leadRows = (doc.leaders || []).map((l, i) => {
       const selectable = !running && l.stage === 'promoted';
       const isSel = sel && sel.key === l.key && sel.stage === l.stage;
+      const band = `${l.bandMode === 'auto' ? 'auto→' : ''}±${l.bandPct != null ? l.bandPct.toFixed(2) : '?'}%`;
       return `<tr class="${l.stage === 'promoted' ? 'hilite' : ''}">
         <td>${selectable ? `<input type="radio" name="bl-sel" class="bl-sel" data-key="${esc(l.key)}" data-stage="${esc(l.stage)}" ${isSel ? 'checked' : ''}>` : ''}</td>
-        <td>${i + 1}</td><td>${esc(l.stage)}</td><td>${esc(comboLabel(l))}</td>
-        <td>${esc(l.geometry)}</td><td>${l.bandMode === 'auto' ? 'auto→' : ''}±${l.bandPct != null ? l.bandPct.toFixed(2) : '?'}%</td>
-        <td>${esc(l.decision)}</td><td>${l.weekdaysOnly ? '24/5' : '24/7'}</td>
-        <td>${l.quorum}/${l.members}</td><td>${esc(l.gate)}</td><td>${l.dMult}×</td><td>${l.tHours}h</td>
+        <td>${i + 1}</td>
+        <td><strong>${esc(comboLabel(l))}</strong> <span class="bl-stage">${l.stage === 'promoted' ? 'prom' : 'slim'}</span>
+          <div class="cellsub">${esc(l.geometry)} · ${band} · ${esc(l.decision)} · ${l.weekdaysOnly ? '24/5' : '24/7'}</div></td>
+        <td>q${l.quorum}/${l.members} · ${esc(l.gate)}
+          <div class="cellsub">d ${l.dMult}× · t ${l.tHours}h</div></td>
         <td><strong>${money(l.pnl)}</strong></td>
         <td>${l.gate === 'always' || l.controlPnl == null ? '—' : `<span class="${l.pnl - l.controlPnl >= 0 ? 'up' : 'down'}">${money(l.pnl - l.controlPnl)}</span>`}</td>
-        <td>${l.wins}/${l.trades}</td>
-        <td>${l.grossPerTrade != null ? '$' + l.grossPerTrade.toFixed(2) : '—'}</td>
-        <td>${l.stops}</td><td>${l.ambiguous}</td>
+        <td>${l.wins}/${l.trades}
+          <div class="cellsub">${l.grossPerTrade != null ? 'g/t $' + l.grossPerTrade.toFixed(2) : '—'}</div></td>
+        <td>${l.stops}${l.ambiguous ? `<div class="cellsub">${l.ambiguous} amb</div>` : ''}</td>
       </tr>`;
     }).join('');
     const leaderBlock = `
       <div class="section"><h2>${running ? 'Live leaderboard — reranks as combos complete' : 'Survivor board'}</h2>
       ${running ? '<p class="note">Interim numbers move until the sweep completes — for watching, not for stopping early. The promote rule fires mechanically at completion.</p>' : ''}
-      <div class="tablewrap"><table>
-        <tr><th title="Pick a PROMOTED row as the null-test candidate"></th><th>#</th><th>stage</th><th>combo</th><th>shape</th><th>band</th><th>decision</th><th>24/x</th>
-        <th title="Quorum rung over the member set (net direction wins)">quorum</th><th>gate</th><th title="Bracket distance, × the combo's band">d</th><th>t</th>
-        <th>net P&L</th><th title="This row's net minus the BEST always-gate (model-free) cell on the SAME combo+branch — the dollars the model added over blind bracket-chasing there. '—' on always rows (they ARE the control). Baseline ignores the min-trade floor.">vs control</th><th>W/T</th><th>gross/trade</th><th title="Trades closed by the stop rail">stops</th><th title="Hourly bars where entry and stop both fell inside one bar — always resolved AGAINST the book">ambig</th></tr>
-        ${leadRows || '<tr><td colspan="17" class="note">nothing on the board yet</td></tr>'}
+      <div class="tablewrap"><table class="bl-board">
+        <tr><th title="Pick a PROMOTED row as the null-test candidate"></th><th>#</th>
+        <th title="Combo and stage; second line: chunk shape · band · decision · week mode">setup</th>
+        <th title="Quorum rung (net direction wins) and gate; second line: bracket distance × band and time horizon">execution</th>
+        <th>net P&L</th>
+        <th title="This row's net minus the BEST always-gate (model-free) cell on the SAME combo+branch — the dollars the model added over blind bracket-chasing there. '—' on always rows (they ARE the control). Baseline ignores the min-trade floor.">vs control</th>
+        <th title="wins/trades; second line: gross per trade before the round-trip fee">W/T · g/t</th>
+        <th title="Trades closed by the stop rail; (n amb) = hourly bars spanning both rails, always resolved AGAINST the book">stops</th></tr>
+        ${leadRows || '<tr><td colspan="8" class="note">nothing on the board yet</td></tr>'}
       </table></div></div>`;
 
     let nullBlock = '';
