@@ -1228,6 +1228,25 @@ function pushLeader(doc, row) {
   if (doc.leaders.length > (doc.params.detailK || 50)) doc.leaders.length = doc.params.detailK || 50;
 }
 
+// Which units get the full 16-member grid.
+//
+// REPLICATION MODE promotes EVERY unit. The declared cell is only ever read
+// at the promoted stage, so promoting a P&L-ranked top-K would quietly
+// condition the whole replication table on slim performance — precisely the
+// selection effect replication exists to remove. (The leaderboard is capped
+// at detailK rows besides, so top-K could never have covered a large
+// universe.) Discovery mode keeps the top-K rule: there, promotion IS the
+// selection step.
+function promotionSet(p, doc, units) {
+  if (p.declared) {
+    return units.map(({ c, b }) => ({
+      key: unitKey(c, b), trade: c.trade, ctx1: c.ctx1, ctx2: c.ctx2, size: c.size,
+      geometry: b.geometry, decision: b.decision, bandMode: b.band, weekdaysOnly: b.weekdaysOnly,
+    }));
+  }
+  return doc.leaders.filter((l) => l.stage === 'slim').slice(0, p.promoteK);
+}
+
 // A bracket unit end-to-end (build combo, train members, vote, sweep the
 // execution menu, take the best cell) lives in bracketwork.unitTask. It is
 // NOT duplicated here: the main thread and the workers must run the same
@@ -1249,7 +1268,10 @@ function startBracketLab(params) {
       weekdaysOnly: !!params.set?.weekdaysOnly,
     },
     declared: validateDeclared(params.declared),
-    promoteK: Math.min(100, Math.max(1, Number(params.promoteK) || 25)),
+    // Capped at detailK: the leaderboard only ever holds that many slim rows,
+    // so a larger promoteK was a plan number that could not be honoured.
+    // Replication mode ignores this entirely and promotes every unit (below).
+    promoteK: Math.min(50, Math.max(1, Number(params.promoteK) || 25)),
     minTrades: Math.max(1, Number(params.minTrades) || 10),
     detailK: 50,
     feePerLeg: REAL_FEE_PER_LEG,
@@ -1343,7 +1365,7 @@ function startBracketLab(params) {
 
     // ---- promotion: top-K slim survivors on the full member grid ----
     if (!doc.cancelRequested) {
-      const promote = doc.leaders.filter((l) => l.stage === 'slim').slice(0, p.promoteK);
+      const promote = promotionSet(p, doc, units);
       doc.plan.promoteRuns = promote.reduce((s2, l) => s2 + slimViewsFor(l.size).length * 4, 0);
       doc.perf.runsTotal += doc.plan.promoteRuns;
       doc.perf.phase = 'promote';
@@ -1358,7 +1380,13 @@ function startBracketLab(params) {
         const l = promote[i];
         if (settled.ok && settled.value) {
           const res = settled.value;
-          if (res.best) pushLeader(doc, { ...l, stage: 'promoted', ...res.best, declaredCell: res.declared || null });
+          if (res.best) {
+            pushLeader(doc, {
+              ...l, stage: 'promoted',
+              bandPct: res.bandPct, testPeriods: res.testPeriods,
+              ...res.best, declaredCell: res.declared || null,
+            });
+          }
           if (res.declared) {
             const d = res.declared;
             doc.replication.push({
@@ -1532,6 +1560,7 @@ module.exports = {
   bracketSelect,
   startBracketNull,
   expandBracketPlan,
+  promotionSet,
   validateDeclared,
   declaredQuorumFor,
   permSelect,

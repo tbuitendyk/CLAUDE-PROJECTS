@@ -1,6 +1,6 @@
 const { assert } = require('./helpers');
 const { comboViews, simBracket, bestCell, PER_ASSET } = require('../lib/bracket');
-const { expandBracketPlan, validateDeclared, declaredQuorumFor } = require('../lib/batch');
+const { expandBracketPlan, validateDeclared, declaredQuorumFor, promotionSet } = require('../lib/batch');
 const { GEOMETRIES } = require('../lib/dataset');
 
 const HOUR_MS = 3_600_000;
@@ -130,6 +130,28 @@ module.exports = {
     assert.throws(() => validateDeclared({ gate: 'always', dMult: 1, tHours: 50, quorum: 4 }), /tHours must be/);
     assert.throws(() => validateDeclared({ gate: 'always', dMult: 1, tHours: 65, quorumRatio: 0 }), /quorumRatio/);
     assert.strictEqual(validateDeclared(null), null); // opt-in only
+  },
+  async replicationPromotesEveryUnit() {
+    // The declared cell is only read at the promoted stage. If replication
+    // promoted the leaderboard's top-K, every per-asset number in the
+    // replication table would be conditioned on slim P&L — the exact
+    // selection effect the mode exists to remove.
+    const b = { geometry: 'daily-3d', decision: 'argmax', band: 'auto', weekdaysOnly: false };
+    const units = ['AUSDT', 'BUSDT', 'CUSDT'].map((t) => ({ c: { trade: t, ctx1: null, ctx2: null, size: 1 }, b }));
+    const doc = { leaders: [{ stage: 'slim', trade: 'AUSDT', size: 1, geometry: 'daily-3d', decision: 'argmax', bandMode: 'auto', weekdaysOnly: false, key: 'a' }] };
+
+    const dec = validateDeclared({ gate: 'active', dMult: 1, tHours: 161, quorumRatio: 0.25 });
+    const rep = promotionSet({ declared: dec, promoteK: 1 }, doc, units);
+    assert.strictEqual(rep.length, 3);               // every unit, promoteK ignored
+    assert.deepStrictEqual(rep.map((r) => r.trade), ['AUSDT', 'BUSDT', 'CUSDT']);
+    assert.strictEqual(rep[0].bandMode, 'auto');     // branch fields the payload needs
+    assert.strictEqual(rep[0].geometry, 'daily-3d');
+    assert.ok(rep[0].key);
+
+    // Discovery mode is untouched: promotion IS the selection step there.
+    const disc = promotionSet({ declared: null, promoteK: 1 }, doc, units);
+    assert.strictEqual(disc.length, 1);
+    assert.strictEqual(disc[0].trade, 'AUSDT');
   },
   async bestCellHonorsFloorAndTies() {
     const rows = [

@@ -446,7 +446,11 @@
         gets its full 35-cell search — so a positive there is a conservative result.</li>
       <li><span class="term">Slim-then-promote</span> — every unit first runs a slim grid (logreg over the
         views, full window); the top K by the declared rule are re-run on the full 16-member grid. The
-        rule is fixed: best net dollars over the whole menu, minimum-trade floor, ties to fewer trades.</li>
+        rule is fixed: best net dollars over the whole menu, minimum-trade floor, ties to fewer trades.
+        <em>Replication mode is the exception</em>: when a config is declared, EVERY unit is promoted, not
+        the top K. The declared cell is only read at the promoted stage, so promoting a P&amp;L-ranked
+        subset would silently condition the whole replication table on slim performance — the one thing
+        the mode exists to prevent.</li>
       <li><span class="term">Honest fills</span> — hourly bars can't order intra-bar touches, so any bar
         that spans both rails resolves AGAINST the book (entered, then stopped in the same bar) and is
         counted in the <em>ambig</em> column. Results are conservative by construction; a fat ambig count
