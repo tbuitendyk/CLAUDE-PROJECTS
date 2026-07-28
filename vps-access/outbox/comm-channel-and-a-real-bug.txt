@@ -1,0 +1,101 @@
+Minute confirmation done — and an API bug that made two of my results meaningless
+
+tl;dr — Minute confirmation is built, deployed and validated (delta of 8 cents across 303 trades on a control case that had to come out near zero). But I found a bug while testing it: the API silently dropped the "trailing" and "holdout" flags, so both features were unreachable and every "trailing" run I fired actually ran with trailing OFF. I briefly reported that trailing lost to market entry on DOT — that was wrong, trailing was never switched on. Fixed, with a test that catches the whole class. On your four points: signature fixed, tl;dr already enforced, folder duplication left alone, and email-as-prompt is partly buildable and partly not — details at the end.
+
+THE BUG, BECAUSE IT INVALIDATED SOMETHING I TOLD YOU
+
+startBracketLab reads params.trailing and params.holdout. server.js never
+forwarded them. So the toggles existed in the form, my scripts sent them, the
+endpoint threw them away, and the run proceeded with trailing off and no
+holdout — while producing a perfectly plausible board.
+
+It cost a wrong conclusion before I caught it. I fired a trailing sweep on
+DOT, saw no trailing cell on the board, and read that as "trailing did not
+beat market entry here". Trailing had never been swept. Withdrawn.
+
+There is now a test that reads which parameters the orchestrator actually
+consumes and asserts the endpoint forwards every one of them. I verified it by
+deleting the forwarding and watching it fail with exactly "trailing, holdout"
+before putting it back. This is the third silently-dropped-parameter bug in
+this system, so the test is worth more than the fix.
+
+MINUTE CONFIRMATION — DONE
+
+It re-runs a chosen cell minute by minute instead of assuming what happened
+inside each hour. Same cell, same calls, same fees, same rules; only the bar
+size changes, because a finer run that also changed the fill logic would
+confirm nothing.
+
+The validation was the strongest one available. The board's top row happened
+to be a MARKET cell — no rails, no stops — and for that case the hourly open
+IS the first minute's open, so a correct implementation had to return
+essentially zero difference:
+
+    hourly    +645.92   303 trades   192 wins   0 stops
+    minute    +645.83   303 trades   192 wins   0 stops
+    delta      -0.08
+
+Eight cents across 303 trades, with identical trade, win and stop counts, and
+the self-check confirming the hourly re-score reproduced the recorded row. The
+residue is real data gaps: the hourly data is forward-filled so missing
+candles are papered over, and the minute data deliberately is not.
+
+Two traps closed on the way, both of which would have failed silently:
+
+ - The kline parser floors every timestamp to the hour. Feeding minute files
+   through it would have collapsed sixty candles onto one and discarded 59,
+   with no error and a believable result.
+ - My first test asserted "minute beats hourly". It does not, in general. I
+   built a case where a dip landing after the entry rather than before made
+   the finer run WORSE. Both readings are legitimate views of the same hourly
+   bar, which is the entire reason this step exists. Asserting a direction
+   would have baked in the optimism the step is meant to remove.
+
+A declared trailing cell is running now so the feature gets exercised on the
+case it exists for. That is the last outstanding item from your list.
+
+YOUR FOUR POINTS
+
+1. BlueMail syncing the subfolder, two copies — noted, left alone as you said.
+
+2. Signature — you are right and it was confusing. I have been signing with
+   your initial. Worker mail signs "c." from here, and the send script now
+   REFUSES a message signed "t." so I cannot drift back into it.
+
+3. Email as prompt. Partly real today, partly not, and I would rather be
+   precise than agreeable:
+
+   (a) Works now, for this session. Your verified mail lands in my working
+       context and I act on it — that is exactly what happened with all four
+       of your earlier instructions. The limit is that it only holds while
+       this session is alive. There is no durable mail-to-session bridge yet.
+
+   (b) Model and effort by email is the part that does NOT work, and I want to
+       be straight about why rather than promise it. I cannot change my own
+       model or effort from inside a running session. Those are fixed when a
+       session is created. So the only version that could work is one where
+       each email spawns a FRESH session with the model you named — which
+       means losing the accumulated context that makes this one useful. That
+       is a real tradeoff, not a technicality: a fresh session would not know
+       about the trail-amb counter or why we retired row 9.
+
+   (c) Markup in your emails is easy and I suggest we do it regardless. If you
+       put lines like these at the very top:
+
+           session: classifier
+           model: opus
+           effort: high
+
+       I will parse and honour what is honourable and tell you plainly when
+       something is not — rather than silently ignoring it, which is the
+       failure mode this whole system keeps producing.
+
+   What I have NOT done: created any scheduled infrastructure on your account
+   to make this durable. That is persistent, it outlives this conversation,
+   and it is your call. If you want it, say so and I will propose the specific
+   shape before building anything.
+
+4. Complete response in every email, tl;dr at the top — the tl;dr is enforced
+   by the send script, so it cannot be forgotten. This email is the format.
+
+c.

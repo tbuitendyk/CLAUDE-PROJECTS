@@ -36,6 +36,16 @@ if ! printf '%s' "$FIRST" | grep -qi '^tl;dr'; then
   exit 2
 fi
 
+# The owner signs "t."; the worker signs "c.". Signing his initial back at him
+# reads as though he wrote it, which he flagged as confusing — so it is caught
+# here rather than left to memory.
+LAST=$(grep -v '^[[:space:]]*$' "$FILE" | tail -1 | tr -d '[:space:]')
+if [ "$LAST" = "t." ] || [ "$LAST" = "T." ]; then
+  echo "REFUSED: this message is signed 't.' — that is the owner's initial."
+  echo "  sign worker mail 'c.' instead."
+  exit 3
+fi
+
 export MSG_FILE="$FILE"
 python3 <<'PY'
 import os, ssl, smtplib, time
