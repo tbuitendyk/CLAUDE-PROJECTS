@@ -1267,15 +1267,23 @@ function pushLeader(doc, row) {
 
 // Which units get the full 16-member grid.
 //
-// REPLICATION MODE promotes EVERY unit. The declared cell is only ever read
-// at the promoted stage, so promoting a P&L-ranked top-K would quietly
-// condition the whole replication table on slim performance — precisely the
-// selection effect replication exists to remove. (The leaderboard is capped
-// at detailK rows besides, so top-K could never have covered a large
-// universe.) Discovery mode keeps the top-K rule: there, promotion IS the
-// selection step.
+// REPLICATION and EDGE-SCREEN modes promote EVERY unit; discovery keeps top-K.
+//
+// Replication: the declared cell is only ever read at the promoted stage, so
+// a P&L-ranked top-K would condition the whole table on slim performance.
+//
+// Edge screen: the question is "does the committee predict, anywhere", and a
+// board ranked by MONEY answers a different one. Units win on P&L partly
+// because their calls were good, so measuring edge on the P&L winners selects
+// on edge and biases the answer upward. Measured: a first attempt showed
+// 20/29 holdout-positive at p=0.03 from 29 money-selected rows out of 170
+// units — a finding-shaped number with no census behind it.
+//
+// (The leaderboard is capped at detailK besides, so top-K could never have
+// covered a large universe.) In discovery mode, promotion IS the selection
+// step and top-K is correct.
 function promotionSet(p, doc, units) {
-  if (p.declared) {
+  if (p.declared || p.edgeScreen) {
     return units.map(({ c, b }) => ({
       key: unitKey(c, b), trade: c.trade, ctx1: c.ctx1, ctx2: c.ctx2, size: c.size,
       geometry: b.geometry, decision: b.decision, bandMode: b.band, weekdaysOnly: b.weekdaysOnly,
@@ -1318,6 +1326,9 @@ function startBracketLab(params) {
     trailing: !!params.trailing,
     // Three-way split (70/15/15) with a slice no search ever touches.
     holdout: !!params.holdout,
+    // Edge screen: promote every unit and record its edge-selected rung, so
+    // the read is a census rather than the money winners.
+    edgeScreen: !!params.edgeScreen,
     detailK: 50,
     feePerLeg: REAL_FEE_PER_LEG,
     dMults: bracketLib.D_MULTS,
@@ -1348,6 +1359,8 @@ function startBracketLab(params) {
     // Per-period calls for the declared (or winning) cell, when emitCalls is
     // on. Capped: this is the only unbounded-by-periods structure in the doc.
     callSeries: [],
+    // Edge-screen census: one row per unit, never money-filtered.
+    edgeCensus: [],
     failures: [],
     selection: null,
     nullTest: null,
@@ -1439,6 +1452,21 @@ function startBracketLab(params) {
               // Prediction quality at the EDGE-selected rung, kept apart from
               // the money-selected one above.
               bestEdge: res.bestEdge || null,
+            });
+          }
+          if (p.edgeScreen && res.bestEdge) {
+            // Census row, kept OFF the leaderboard so nothing about it is
+            // conditioned on P&L.
+            doc.edgeCensus.push({
+              trade: l.trade, ctx1: l.ctx1, ctx2: l.ctx2,
+              geometry: l.geometry, decision: l.decision, bandPct: res.bandPct,
+              quorum: res.bestEdge.quorum, members: res.bestEdge.members,
+              searchEdge: res.bestEdge.metrics.edge,
+              searchAcc: res.bestEdge.metrics.testAcc,
+              holdEdge: res.bestEdge.holdoutMetrics ? res.bestEdge.holdoutMetrics.edge : null,
+              holdAcc: res.bestEdge.holdoutMetrics ? res.bestEdge.holdoutMetrics.testAcc : null,
+              holdDirHits: res.bestEdge.holdoutMetrics ? res.bestEdge.holdoutMetrics.directionalHits : null,
+              holdDirCalls: res.bestEdge.holdoutMetrics ? res.bestEdge.holdoutMetrics.directionalCalls : null,
             });
           }
           if (res.callSeries && doc.callSeries.length < CALL_SERIES_MAX) {
