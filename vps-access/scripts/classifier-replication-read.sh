@@ -40,7 +40,15 @@ perf = doc.get("perf") or {}
 q = f"{round(dec.get('quorumRatio', 0) * 100)}% of members" if dec.get("quorumRatio") else dec.get("quorum")
 print(f"=== {doc['id']}  status={doc['status']}  workers={perf.get('workers')}  "
       f"{round((perf.get('elapsedMs') or 0)/60000,1)}min  fails={len(doc.get('failures') or [])}")
-print(f"declared: {dec.get('gate')} gate, d{dec.get('dMult')}x, t{dec.get('tHours')}h, quorum {q}")
+# A market declaration has no gate and no distance; printing "dNonex" for it
+# is worse than printing nothing.
+if dec.get("entry") == "market":
+    print(f"declared: MARKET entry (at the open, called direction), t{dec.get('tHours')}h, quorum {q}")
+else:
+    print(f"declared: {dec.get('gate')} gate, d{dec.get('dMult')}x, t{dec.get('tHours')}h, quorum {q}")
+cs = doc.get("callSeries") or []
+if cs:
+    print(f"call export: {len(cs)} unit(s), {sum(len(c.get('calls') or []) for c in cs)} periods total")
 sizes = [k for k, v in (p.get("sizes") or {}).items() if v]
 print(f"branch: {p['set']['geometry']} / {p['set']['band']} / {p['set']['decision']} / "
       f"{'24-5' if p['set']['weekdaysOnly'] else '24-7'} | sizes={sizes} universe={len(p['universe'])}")
@@ -68,8 +76,12 @@ if len(rep) <= 40:
     for r in sorted(rep, key=combo):
         vs = ("%+.2f" % r["vsControl"]) if r.get("vsControl") is not None else "—"
         gpt = ("%.2f" % r["grossPerTrade"]) if r.get("grossPerTrade") is not None else "—"
+        m = r.get("metrics") or {}
+        acc = f"{100*m['testAcc']:.1f}%" if m.get("testAcc") is not None else "—"
+        edge = f"{100*m['edge']:+.1f}%" if m.get("edge") is not None else "—"
         print(f"  {combo(r):<26s} ±{r['bandPct']:.2f}% q{r['quorum']}/{r['members']} "
-              f"{r['pnl']:+9.2f}  vsCtl {vs:>9s}  ({r['wins']}/{r['trades']}t g/t {gpt}) stops={r['stops']}")
+              f"{r['pnl']:+9.2f}  vsCtl {vs:>9s}  acc {acc:>6s} edge {edge:>7s} "
+              f"({r['wins']}/{r['trades']}t g/t {gpt}) stops={r['stops']}")
 else:
     by = defaultdict(list)
     for r in scored:
