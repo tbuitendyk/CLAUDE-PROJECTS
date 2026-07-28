@@ -1148,6 +1148,40 @@ function expandBracketPlan(p) {
 }
 
 const slimViewsFor = (size) => (size === 1 ? ['full', 'prices', 'volume'] : ['full', 'prices', 'volume', 'cross']);
+
+// REPLICATION MODE. A declared config is a hypothesis fixed BEFORE the run:
+// the same execution cell scored on every asset, so each asset costs one
+// look instead of the ~1,260 a menu sweep spends. The quorum travels as a
+// RATIO of the member set (row 9's 4-of-12 = 1/3), so it means the same
+// thing whether a combo yields 12 members (singles) or 16 (with contexts).
+// Only the PROMOTED stage carries every rung, so declared cells are read
+// there; the slim stage only ever has the majority-vote stream.
+function declaredQuorumFor(dec, members) {
+  if (dec.quorumRatio) return Math.max(1, Math.min(members, Math.round(dec.quorumRatio * members)));
+  return Math.max(1, Math.min(members, dec.quorum || 1));
+}
+
+function validateDeclared(raw) {
+  if (!raw) return null;
+  const gate = String(raw.gate || '');
+  if (!bracketLib.GATES.includes(gate)) throw new Error(`declared.gate must be one of ${bracketLib.GATES.join('/')}`);
+  const dMult = Number(raw.dMult);
+  if (!bracketLib.D_MULTS.includes(dMult)) throw new Error(`declared.dMult must be one of ${bracketLib.D_MULTS.join('/')}`);
+  const tHours = Number(raw.tHours);
+  if (!bracketLib.T_HOURS.includes(tHours)) throw new Error(`declared.tHours must be one of ${bracketLib.T_HOURS.join('/')}`);
+  const out = { gate, dMult, tHours };
+  if (raw.quorumRatio !== undefined) {
+    const r = Number(raw.quorumRatio);
+    if (!Number.isFinite(r) || r <= 0 || r > 1) throw new Error('declared.quorumRatio must be in (0,1]');
+    out.quorumRatio = r;
+  } else {
+    const q = Number(raw.quorum);
+    if (!Number.isInteger(q) || q < 1) throw new Error('declared.quorum must be a positive integer');
+    out.quorum = q;
+  }
+  out.label = `q${out.quorumRatio ? Math.round(out.quorumRatio * 12) + '/12(ratio)' : out.quorum} ${gate} d${dMult}x t${tHours}h`;
+  return out;
+}
 const unitKey = (c, b) => `${c.trade}|${c.ctx1 || ''}|${c.ctx2 || ''}|${b.geometry}|${b.decision}|${b.band}|${b.weekdaysOnly ? '24-5' : '24-7'}`;
 
 function bracketPerfTick(doc) {
@@ -1217,8 +1251,15 @@ async function runBracketUnit(doc, combo, branch, stage, getMap, onRun) {
   }
   let best = null;
   let controlPnl = null;
+  let declared = null; // the DECLARED cell (replication mode): same config on
+                       // every asset, so each asset is ONE look, not thousands
+  const dec = doc.params.declared;
   for (const s of streams) {
     const rows = bracketLib.execSweep(testChunks, s.calls, maps.trade, geo, bandPct, fee);
+    if (dec && s.quorum === declaredQuorumFor(dec, memberCalls.length)) {
+      const hit = rows.find((r) => r.gate === dec.gate && r.dMult === dec.dMult && r.tHours === dec.tHours);
+      if (hit) declared = { ...hit, quorum: s.quorum, members: memberCalls.length };
+    }
     if (controlPnl === null) {
       // The model-free baseline for this unit: the BEST always-gate cell
       // (identical for every stream — the control ignores calls). No
@@ -1230,7 +1271,8 @@ async function runBracketUnit(doc, combo, branch, stage, getMap, onRun) {
     if (cell && (!best || cell.pnl > best.pnl)) best = { ...cell, quorum: s.quorum, members: memberCalls.length };
   }
   if (best) best.controlPnl = controlPnl;
-  return { best, bandPct, testPeriods: testChunks.length, chunks, testChunks, trainChunks, memberCalls, maps, geo };
+  if (declared) declared.controlPnl = controlPnl;
+  return { best, declared, bandPct, testPeriods: testChunks.length, chunks, testChunks, trainChunks, memberCalls, maps, geo };
 }
 
 function startBracketLab(params) {
@@ -1248,6 +1290,7 @@ function startBracketLab(params) {
       band: params.set?.band === 'auto' || params.set?.band === undefined ? 'auto' : Number(params.set.band),
       weekdaysOnly: !!params.set?.weekdaysOnly,
     },
+    declared: validateDeclared(params.declared),
     promoteK: Math.min(100, Math.max(1, Number(params.promoteK) || 25)),
     minTrades: Math.max(1, Number(params.minTrades) || 10),
     detailK: 50,
@@ -1273,6 +1316,7 @@ function startBracketLab(params) {
     plan: { branches: branches.length, combos: combos.length, units: units.length, slimRuns, promoteRuns: null },
     perf: { phase: 'slim', unitsDone: 0, unitsTotal: units.length, runsDone: 0, runsTotal: slimRuns, ratePerMin: null, secPerTraining: null, elapsedMs: 0, etaMs: null },
     leaders: [],
+    replication: [], // declared-cell result per asset (replication mode)
     failures: [],
     selection: null,
     nullTest: null,
@@ -1351,7 +1395,17 @@ function startBracketLab(params) {
             doc.progress = `promote ${i}/${promote.length}: ${tag}`;
             bracketPerfTick(doc);
           });
-          if (res.best) pushLeader(doc, { ...l, stage: 'promoted', ...res.best });
+          if (res.best) pushLeader(doc, { ...l, stage: 'promoted', ...res.best, declaredCell: res.declared || null });
+          if (res.declared) {
+            const d = res.declared;
+            doc.replication.push({
+              trade: l.trade, ctx1: l.ctx1, ctx2: l.ctx2, geometry: l.geometry, bandPct: res.bandPct,
+              quorum: d.quorum, members: d.members, pnl: d.pnl, trades: d.trades, wins: d.wins,
+              grossPerTrade: d.grossPerTrade, stops: d.stops, ambiguous: d.ambiguous,
+              controlPnl: d.controlPnl, vsControl: d.controlPnl == null ? null : d.pnl - d.controlPnl,
+            });
+            doc.replication.sort((a, b) => b.pnl - a.pnl);
+          }
         } catch (err) {
           if (doc.failures.length < 200) doc.failures.push({ key: l.key + '|promote', error: err.message || String(err) });
         }
@@ -1499,6 +1553,8 @@ module.exports = {
   bracketSelect,
   startBracketNull,
   expandBracketPlan,
+  validateDeclared,
+  declaredQuorumFor,
   permSelect,
   startPermNull,
   permQuorumBook,

@@ -1,6 +1,6 @@
 const { assert } = require('./helpers');
 const { comboViews, simBracket, bestCell, PER_ASSET } = require('../lib/bracket');
-const { expandBracketPlan } = require('../lib/batch');
+const { expandBracketPlan, validateDeclared, declaredQuorumFor } = require('../lib/batch');
 const { GEOMETRIES } = require('../lib/dataset');
 
 const HOUR_MS = 3_600_000;
@@ -111,6 +111,25 @@ module.exports = {
     });
     // 5 geo × 2 dec × 4 band × 2 wd = 80, minus weekly+24/5 duplicates (8)
     assert.strictEqual(perm.branches.length, 72);
+  },
+  async declaredConfigTravelsAsARatio() {
+    // Replication mode: the declared quorum is a FRACTION of the member set,
+    // so row 9's 4-of-12 means the same thing on a 16-member combo.
+    const dec = validateDeclared({ gate: 'directional', dMult: 1.5, tHours: 65, quorumRatio: 1 / 3 });
+    assert.strictEqual(dec.gate, 'directional');
+    assert.strictEqual(declaredQuorumFor(dec, 12), 4);   // singles: row 9 exactly
+    assert.strictEqual(declaredQuorumFor(dec, 16), 5);   // with contexts
+    assert.strictEqual(declaredQuorumFor(dec, 3), 1);    // slim grid
+    // absolute quorum still supported, and clamped to the member count
+    const abs = validateDeclared({ gate: 'active', dMult: 1, tHours: 41, quorum: 9 });
+    assert.strictEqual(declaredQuorumFor(abs, 12), 9);
+    assert.strictEqual(declaredQuorumFor(abs, 4), 4);
+    // menu membership is enforced — a declared cell must exist in the sweep
+    assert.throws(() => validateDeclared({ gate: 'nope', dMult: 1.5, tHours: 65, quorum: 4 }), /gate must be/);
+    assert.throws(() => validateDeclared({ gate: 'always', dMult: 0.9, tHours: 65, quorum: 4 }), /dMult must be/);
+    assert.throws(() => validateDeclared({ gate: 'always', dMult: 1, tHours: 50, quorum: 4 }), /tHours must be/);
+    assert.throws(() => validateDeclared({ gate: 'always', dMult: 1, tHours: 65, quorumRatio: 0 }), /quorumRatio/);
+    assert.strictEqual(validateDeclared(null), null); // opt-in only
   },
   async bestCellHonorsFloorAndTies() {
     const rows = [

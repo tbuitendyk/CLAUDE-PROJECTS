@@ -182,6 +182,37 @@
         <label for="bl-promotek" title="Mechanical promotion rule: top K slim survivors re-run on the full grid">promote top K</label>
         <input id="bl-promotek" type="number" min="1" max="100" step="1" value="25">
       </div>
+      <div class="field" style="min-width:250px">
+        <label class="check"
+          title="REPLICATION MODE. Instead of judging each asset by its best-shopped cell, score ONE fixed configuration on every asset — declared before the run, so each asset costs a single look instead of the ~1,260 a menu sweep spends. That turns 'best of thousands on one asset' into a clean binomial across assets: no shopping tax, no branch correction. The menu still runs (the board is unchanged); this adds a separate replication table reporting the declared cell per asset. Quorum travels as a RATIO of the member set, so 1/3 means 4-of-12 on singles and ~5-of-16 with contexts.">
+          <input type="checkbox" id="bl-declared-on"> replication: also score one DECLARED config per asset</label>
+        <div style="display:flex; gap:6px; flex-wrap:wrap; padding-top:4px">
+          <label class="check" style="gap:3px">gate
+            <select id="bl-dec-gate" style="min-width:auto;padding:4px 6px">
+              <option value="directional" selected>directional</option>
+              <option value="active">active</option>
+              <option value="always">always</option>
+            </select></label>
+          <label class="check" style="gap:3px">d
+            <select id="bl-dec-d" style="min-width:auto;padding:4px 6px">
+              <option value="0.25">0.25×</option><option value="0.5">0.5×</option>
+              <option value="0.75">0.75×</option><option value="1">1×</option>
+              <option value="1.5" selected>1.5×</option>
+            </select></label>
+          <label class="check" style="gap:3px">t
+            <select id="bl-dec-t" style="min-width:auto;padding:4px 6px">
+              <option value="17">17h</option><option value="41">41h</option>
+              <option value="65" selected>65h</option><option value="89">89h</option>
+              <option value="113">113h</option><option value="137">137h</option><option value="161">161h</option>
+            </select></label>
+          <label class="check" style="gap:3px" title="Quorum as a fraction of the member set — 1/3 reproduces row 9's 4-of-12">q ratio
+            <select id="bl-dec-q" style="min-width:auto;padding:4px 6px">
+              <option value="0.0834">1/12</option><option value="0.1667">1/6</option>
+              <option value="0.25">1/4</option><option value="0.3333" selected>1/3</option>
+              <option value="0.5">1/2</option><option value="0.6667">2/3</option><option value="1">all</option>
+            </select></label>
+        </div>
+      </div>
       <div class="field">
         <label for="bl-mintrades" title="Selection floor: execution cells below this many test trades never win">min trades</label>
         <input id="bl-mintrades" type="number" min="1" max="200" step="1" value="10">
@@ -396,6 +427,6 @@
     pruned to time / open / high / low / close / quote&nbsp;volume.
   </footer>
 
-  <script src="app.js?v=48"></script>
+  <script src="app.js?v=49"></script>
 </body>
 </html>

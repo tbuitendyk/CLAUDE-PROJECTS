@@ -168,6 +168,7 @@ app.post('/api/bracketlab', (req, res) => {
   }
   try {
     const id = batch.startBracketLab({
+      declared: b.declared,
       universe: b.universe ? b.universe.map((p) => String(p).toUpperCase()) : undefined,
       sizes: b.sizes,
       startMonth: b.startMonth,

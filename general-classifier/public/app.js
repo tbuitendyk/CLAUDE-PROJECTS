@@ -1874,6 +1874,51 @@
         ${leadRows || '<tr><td colspan="8" class="note">nothing on the board yet</td></tr>'}
       </table></div></div>`;
 
+    // Replication view: the declared cell scored on every asset. This is the
+    // honest cross-asset reading — one look per asset, so the binomial across
+    // them owes no shopping tax and no branch correction.
+    let repBlock = '';
+    if (p.declared) {
+      const rows = doc.replication || [];
+      const scored = rows.filter((r) => r.pnl != null);
+      const withCtl = scored.filter((r) => r.vsControl != null);
+      const pos = scored.filter((r) => r.pnl > 0).length;
+      const posVsCtl = withCtl.filter((r) => r.vsControl > 0).length;
+      const binomTailRep = (k, n) => {
+        if (!n) return null;
+        const c = (nn, ii) => { let r = 1; for (let j = 0; j < ii; j++) r = (r * (nn - j)) / (j + 1); return r; };
+        let acc = 0;
+        for (let i = k; i <= n; i++) acc += c(n, i) * Math.pow(0.5, n);
+        return acc;
+      };
+      const pPos = binomTailRep(pos, scored.length);
+      const pCtl = binomTailRep(posVsCtl, withCtl.length);
+      const q = p.declared.quorumRatio ? Math.round(p.declared.quorumRatio * 100) + '% of members' : p.declared.quorum;
+      repBlock = `
+        <div class="section"><h2>Replication — declared config on every asset</h2>
+        <p class="note">Declared before the run: <strong>${esc(p.declared.gate)} gate · d ${p.declared.dMult}× ·
+          t ${p.declared.tHours}h · quorum ${esc(String(q))}</strong>. One fixed cell scored on each asset — a single
+          look apiece, so there is NO shopping tax and no branch correction owed. The reading is the binomial across
+          assets, never any single row.</p>
+        <div class="tiles">
+          ${tile('Positive dollars', `${pos} / ${scored.length}`, pPos == null ? '' : `binomial p = ${pPos.toFixed(4)} (chance = 50%)`, true)}
+          ${tile('Positive vs control', `${posVsCtl} / ${withCtl.length}`, pCtl == null ? '' : `binomial p = ${pCtl.toFixed(4)}`)}
+        </div>
+        <div class="tablewrap" style="margin-top:10px"><table class="bl-board">
+          <tr><th>asset</th><th>band</th><th>quorum</th><th>net P&L</th><th>vs control</th><th>W/T</th><th>gross/trade</th><th>stops</th></tr>
+          ${rows.map((r) => `<tr>
+            <td><strong>${esc(r.trade + (r.ctx1 ? '+' + r.ctx1 : '') + (r.ctx2 ? '+' + r.ctx2 : ''))}</strong></td>
+            <td>±${r.bandPct != null ? r.bandPct.toFixed(2) : '?'}%</td>
+            <td>${r.quorum}/${r.members}</td>
+            <td><span class="${r.pnl >= 0 ? 'up' : 'down'}"><strong>${money(r.pnl)}</strong></span></td>
+            <td>${r.vsControl == null ? '—' : `<span class="${r.vsControl >= 0 ? 'up' : 'down'}">${money(r.vsControl)}</span>`}</td>
+            <td>${r.wins}/${r.trades}</td>
+            <td>${r.grossPerTrade != null ? '$' + r.grossPerTrade.toFixed(2) : '—'}</td>
+            <td>${r.stops}${r.ambiguous ? ` <span class="cellsub">${r.ambiguous} amb</span>` : ''}</td></tr>`).join('')
+            || '<tr><td colspan="8" class="note">no declared-cell results yet — they fill in during the promote phase</td></tr>'}
+        </table></div></div>`;
+    }
+
     let nullBlock = '';
     if (sel && !running) {
       nullBlock += `<div class="controls" style="margin:8px 0">
@@ -1902,7 +1947,7 @@
           not replayed here and must be read against the stamp. A forward book remains the only clean test.</p></div>`;
     }
 
-    blViewEl.innerHTML = `<p class="note">${header}</p>${perfBlock}${leaderBlock}${nullBlock}`;
+    blViewEl.innerHTML = `<p class="note">${header}</p>${perfBlock}${repBlock}${leaderBlock}${nullBlock}`;
     blViewEl.querySelectorAll('.bl-sel').forEach((radio) => {
       radio.addEventListener('change', async () => {
         if (!radio.checked) return;
@@ -1993,6 +2038,14 @@
         promoteK: Number($('bl-promotek').value) || 25,
         minTrades: Number($('bl-mintrades').value) || 10,
       };
+      if ($('bl-declared-on').checked) {
+        body.declared = {
+          gate: $('bl-dec-gate').value,
+          dMult: Number($('bl-dec-d').value),
+          tHours: Number($('bl-dec-t').value),
+          quorumRatio: Number($('bl-dec-q').value),
+        };
+      }
       const res = await fetch('api/bracketlab', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
       });
