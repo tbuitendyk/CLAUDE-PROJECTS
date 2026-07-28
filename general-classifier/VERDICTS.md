@@ -309,6 +309,50 @@ the replication table conditional on slim performance. It was harmless on the
 17-unit runs done so far (17 of 17 promoted either way) and would have
 silently biased Run 4.
 
+### Doubles-derived config — REPLICATION FAILED, configuration RETIRED (bracketlab-20260728-0946, 2026-07-28)
+
+Declared before the run, mechanically, from the finished 0804 doubles board
+(modal knob value over distinct trade assets, ties on row count):
+**daily-3d, adaptive band, argmax, 24/7, on-active gate, d 1.0x band, t 161h,
+quorum = 25% of the member set (3 of 12 on singles).** Scored on all 17 assets
+as singles, one fixed cell apiece. Pre-registered reading (same rule as row 9):
+>=12 of 16 fresh assets positive = mechanism; 8-11 = ambiguous; <8 = retire.
+The quorum term was flagged in advance as the one knob the board did not
+determine.
+
+Result — 4.0 min on 3 workers, no failures:
+- **positive dollars 6/17 (binomial p = 0.93)**
+- **positive vs control 1/17 (binomial p = 1.0000)**
+
+**Verdict: RETIRED.** Below the artifact threshold on dollars, and the
+vs-control reading is the worst yet recorded: on 16 of 17 assets the declared
+gated cell made LESS than the model-free always-gate control on the same
+asset. Even the three assets that made real money lost to their own controls
+(ZEC +391 vs control +423, XLM +297 vs +388, XRP +252 vs +309).
+
+**Standing finding, now on two independent declared configurations.** Row 9
+(direction-filtered, 65h, 1/3 quorum) lost to control on 12 of 17. This one
+(on-active, 161h, 25% quorum) lost on 16 of 17. Two configs, derived from
+different boards by different rules, fail the same way: **the committee's
+calls subtract value from bracket execution rather than adding it.** Any
+future bracket candidate must clear replication BEFORE earning a null, and
+must be read against a DECLARED control, not the search board's column.
+
+**Diagnostic raised by this result, and the run that answers it.** Backing the
+control out of the 0946 rows puts the model-free bracket in profit on 14 of 17
+assets. That number CANNOT be quoted: the control is the best of 35 always-
+cells picked per asset in-sample, so it is search-inflated by construction —
+the same error this file corrected for the search board's column. Run 4
+(bracketlab-20260728-0953) replaces it with ONE always-cell declared in
+advance at Run 3's own distance and horizon, making the pair a single-variable
+comparison: classifier on versus classifier off, everything else held.
+Declared AFTER reading 0946 — disclosed — with the reading rule fixed before
+firing: >=12 of 17 positive means the bracket mechanic carries the edge and
+the classifier layer is subtracting from it (which reframes the hunt and needs
+its own null before anything else); 8-11 means the 14/17 was search inflation;
+<8 means neither layer has anything on this geometry. It is a diagnostic
+baseline and earns no paper book on its own.
+
 ## Amendment log
 
 - **A1 (2026-07-26) — H1 reading gate: low-frequency lane added.** The
