@@ -14,14 +14,20 @@ echo
 echo "== journald has postfix? =="
 journalctl -u postfix --since '-6h' -n 3 --no-pager 2>/dev/null | sed 's/^/  /' || echo "  no journal access"
 echo
-echo "== last 3 messages addressed to claude@ (queue ids) =="
-qids=$(grep -h "to=<claude@homeandofficemicro.com>" /var/log/mail.log 2>/dev/null | tail -3 \
-       | sed -n 's/.*postfix\/[a-z]*\[[0-9]*\]: \([A-F0-9]\{6,\}\):.*/\1/p' | sort -u)
+echo "== most recent delivery TO theodore@ (queue ids, last 3) =="
+qids=$(grep -h "to=<theodore@homeandofficemicro.com>" /var/log/mail.log 2>/dev/null | tail -3 \
+       | sed -n "s/.*\\]: \\([^:]*\\): to=.*/\\1/p" | sort -u)
 echo "  qids: ${qids:-none}"
 for q in $qids; do
   echo "  ---- $q ----"
-  grep -h "$q" /var/log/mail.log 2>/dev/null | sed 's/^/    /' | cut -c1-200
+  grep -h -F "$q" /var/log/mail.log 2>/dev/null | tail -6 | sed 's/^/    /' | cut -c1-230
 done
+echo
+echo "== sieve / lmtp activity in the last 15 min =="
+grep -hiE "sieve|lmtp|fileinto" /var/log/mail.log 2>/dev/null | tail -12 | sed 's/^/  /' | cut -c1-230
+echo
+echo "== dovecot log for theodore (last 8) =="
+grep -h "theodore@homeandofficemicro.com" /var/log/dovecot.log 2>/dev/null | tail -8 | sed 's/^/  /' | cut -c1-230 || echo "  (no /var/log/dovecot.log)"
 echo
 echo "== do ANY submissions carry sasl_username in the last 6h? =="
 grep -h "sasl_username=" /var/log/mail.log 2>/dev/null | tail -5 | sed 's/^/  /' | cut -c1-180 || echo "  none at all"
