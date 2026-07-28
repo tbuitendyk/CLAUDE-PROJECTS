@@ -124,6 +124,36 @@ entitled to trade; the 451 reflects the VPS's US location, not the
 account. Residual risk noted once — Binance enforces by IP and tunneled
 access can be flagged — and accepted as the owner's call.
 
+### !! MONTREAL EXIT IS THE WRONG JURISDICTION (research 2026-07-28) !!
+
+**Binance formally exited CANADA in May 2023** and has not returned as of
+2026: it declined the CSA's Pre-Registration Undertaking, Canadians cannot
+open new accounts, and existing Canadian users were moved to
+withdrawal-only from 2023-10-01. Quebec's AMF is among the most active
+provincial crypto regulators. A Montreal/Quebec exit IP would therefore
+present the account as trading FROM a jurisdiction Binance has withdrawn
+from — plausibly triggering a withdrawal-only restriction. That is a
+WORSE outcome than the current US 451, which only blocks the VPS.
+
+**Rule that follows: the exit IP must match the ACCOUNT'S OWN KYC
+jurisdiction** — not merely "somewhere that isn't the US". Pick the exit
+country from the account's registration, then confirm Binance serves it.
+
+- **Mexico: SERVED.** Binance is operational and legal in Mexico in 2026,
+  with a regulated local subsidiary (Medá). If the account is Mexican, a
+  Mexico City exit is the coherent choice (owner's original instinct).
+- **Canada: NOT SERVED.** If the account is Canadian, Binance is off the
+  table entirely — use Kraken (serves Canada, native trailing stops,
+  already integrated read-only) and accept the ~4x fee drag, or pick
+  another served venue.
+- Any other jurisdiction: verify Binance serves it before provisioning.
+
+**BLOCKED PENDING OWNER: state the account's KYC country.** Endpoint
+provisioning is on hold until then — the Montreal/OVH Beauharnois
+recommendation is WITHDRAWN unless the account is Canadian, in which case
+Binance itself is withdrawn. The wireguard scripts are jurisdiction-neutral
+and stay valid for whatever exit country is chosen.
+
 15. **Preferred: split-tunnel WireGuard exit, Montreal.** Recommended
     endpoint: self-hosted WireGuard on an OVHcloud VPS in Beauharnois, QC
     (~$5-6/mo, dedicated IPv4 we control; datacenter IP is fine for API
