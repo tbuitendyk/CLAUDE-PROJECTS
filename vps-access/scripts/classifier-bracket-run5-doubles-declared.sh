@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# classifier-bracket-run4-doubles-declared.sh -- Run 4: the SAME declared
+# classifier-bracket-run5-doubles-declared.sh -- Run 5: the SAME declared
 # config as Run 3, scored on all 272 doubles.
 #
-# Run 3 (singles) and Run 4 (doubles) together are what actually answer the
+# Run 3 (singles) and Run 5 (doubles) together are what actually answer the
 # owner's first declared question -- "which doubles show a positive vs-control
 # that the singles did not" -- because both sides now use a cell fixed before
 # the run instead of the winner of a search.
