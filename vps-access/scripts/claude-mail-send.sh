@@ -24,9 +24,15 @@ fi
 FILE="$HERE/outbox/${NAME}.txt"
 [ -f "$FILE" ] || { echo "no such message: $FILE"; exit 1; }
 
-if ! sed -n '2p' "$FILE" | grep -qi '^tl;dr'; then
-  echo "REFUSED: line 2 of ${NAME}.txt must start with 'tl;dr'."
-  echo "  line 1 is the subject; line 2 is the summary the owner asked for."
+# The first NON-BLANK line after the subject must be the summary. Checking
+# line 2 literally was too strict — a blank line under the subject is the
+# natural way to write these, and the rule is "tl;dr at the top", not "on a
+# specific line number".
+FIRST=$(sed -n '2,$p' "$FILE" | grep -m1 -v '^[[:space:]]*$')
+if ! printf '%s' "$FIRST" | grep -qi '^tl;dr'; then
+  echo "REFUSED: the first non-blank line after the subject must start with 'tl;dr'."
+  echo "  line 1 is the subject; the summary comes next."
+  echo "  found instead: ${FIRST:0:80}"
   exit 2
 fi
 
