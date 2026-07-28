@@ -6,6 +6,11 @@
 # Exists so wall-clock can be compared ACROSS runs -- single-threaded versus
 # pooled, one universe versus another -- without opening each doc by hand.
 set -euo pipefail
+# Runner config first: the pool size the service WOULD use for the next job.
+# Worker threads only exist while a job runs, so a thread listing on an idle
+# box cannot answer this — the service has to be asked.
+echo "runner: $(curl -s http://127.0.0.1:8093/api/cpu)   (pct = per-worker duty cycle)"
+echo
 curl -s http://127.0.0.1:8093/api/batches > /tmp/bl-batches.json
 python3 <<'EOF'
 import json, urllib.request
