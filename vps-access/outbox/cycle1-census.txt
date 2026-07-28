@@ -1,0 +1,86 @@
+Cycle 1 census — one real finding, one number I refuse to quote, and cycle 2 firing
+
+tl;dr — Full census, 170 of 170 units, no money filter. Headline is 98/170 holdout-positive at "p=0.027", and I am NOT treating that as evidence, because the 50% null behind it is an assumption I have no right to make. The genuine finding is structural and uncomfortable: search-window edge is ANTI-correlated with holdout edge across chunk shapes, and weekly-8d — the geometry both live paper books run on — has by far the worst collapse of any shape tested. Cycle 2 is running now: the identical census on rotated outcomes, to find out what this statistic does when there is provably nothing to find.
+
+THE CENSUS
+
+    geometry    decision     n   hold edge>0   med hold   med search
+    daily-1d    argmax      17      10/17        3.66%       6.07%
+    daily-1d    directional 17      11/17        4.53%       5.62%
+    daily-2d    argmax      17      12/17        4.76%       5.86%
+    daily-2d    directional 17      10/17        3.68%       6.31%
+    daily-3d    argmax      17      11/17        3.34%       3.62%
+    daily-3d    directional 17      10/17        3.48%       4.36%
+    daily-4d    argmax      17      11/17        2.72%       3.05%
+    daily-4d    directional 17       9/17        0.69%       3.49%
+    weekly-8d   argmax      17       8/17        0.00%      10.77%
+    weekly-8d   directional 17       6/17       -3.92%       9.23%
+
+    POOLED  98/170   median holdout edge +3.08%
+
+WHY I WILL NOT QUOTE THE p-VALUE
+
+Two reasons, the second more serious than the first.
+
+The units are not independent. Seventeen assets appear in ten branches each,
+and crypto assets move together anyway. The effective sample is far below 170,
+so any binomial computed on it overstates itself.
+
+But the real problem: the 50% null is ASSUMED. "Edge above zero should happen
+half the time by chance" sounds obvious and is not established. Edge here is
+accuracy minus the training-majority baseline. A committee whose calls simply
+lean toward the modal class scores positive edge with no skill at all;
+stand-asides could push it the other way. Nobody knows which without measuring
+it — and measuring nulls instead of reasoning about them is the one discipline
+this project has held to everywhere else. The edge statistic was quietly
+getting a reasoned null. That is exactly the shape of every mistake I have
+made today.
+
+THE FINDING THAT DOES SURVIVE
+
+Look at the two rightmost columns as a pair — how much edge is lost between
+the window the rung was chosen on and the window nothing touched:
+
+    daily-3d argmax    3.62 -> 3.34    lost 0.3
+    daily-4d argmax    3.05 -> 2.72    lost 0.3
+    daily-1d dir       5.62 -> 4.53    lost 1.1
+    daily-2d argmax    5.86 -> 4.76    lost 1.1
+    daily-1d argmax    6.07 -> 3.66    lost 2.4
+    daily-2d dir       6.31 -> 3.68    lost 2.6
+    daily-4d dir       3.49 -> 0.69    lost 2.8
+    weekly-8d argmax  10.77 -> 0.00    lost 10.8
+    weekly-8d dir      9.23 -> -3.92   lost 13.2
+
+The geometry with the LARGEST in-sample edge has the WORST out-of-sample
+result. That is the textbook signature of overfitting, and it tracks sample
+count exactly: an 8-day chunk yields roughly an eighth as many samples as a
+1-day chunk, so weekly-8d has the most room to fit noise and duly does.
+
+The uncomfortable part: BOOKS 1 AND 2 RUN ON WEEKLY-8D. This screen says that
+is the most overfit-prone shape in the set. It does not invalidate them —
+they are forward tests, which is precisely the defence against this, and their
+whole point is that they cannot be overfit after the fact. But if you had
+asked me which geometry to start a new book on, this says weekly-8d would have
+been the worst available choice, and I would not have known that yesterday.
+
+Note also that the two shapes losing least, daily-3d and daily-4d, are the
+ones with the smallest in-sample edge. Chasing the biggest search number is
+actively the wrong instinct here.
+
+CYCLE 2 — FIRING NOW (bracketlab-20260728-2236)
+
+Identical census, outcomes rotated against features. Everything downstream
+survives — autocorrelation, class balance, band calibration, the whole
+pipeline — but any real feature-to-outcome relationship is destroyed.
+
+Reading rule, fixed before the result exists:
+  * rotated near 85/170 -> the statistic is honest, and cycle 1's 98 is worth
+    pursuing, still owed a correction for correlated units.
+  * rotated near 98/170 -> the statistic is biased, cycle 1 measured nothing,
+    and every edge number so far goes in the bin.
+  * rotated well above 98 -> worse again: real data underperforming noise
+    would say the features are actively misleading.
+
+About 22 minutes. I will write when it lands.
+
+c.
