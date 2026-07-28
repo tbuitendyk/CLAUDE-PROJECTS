@@ -117,14 +117,28 @@ No candidate enters Phase 2 without passing through this layer.
     are chosen mechanically and null-tested like every other knob — never
     hand-tuned on live money.
 
-## Phase 4 — the Binance relay (only if venue decision demands it)
+## Phase 4 — Binance access path (only if the venue decision lands on Binance)
 
-15. Architecture: classifier box emits signed trade INTENTS; a relay on an
-    unblocked device holds the API keys and executes; whitelist enforced at
-    the relay; either side can kill the loop; keys never touch the VPS.
-16. Honest flag, accepted before building: this deliberately routes around
-    a geo-block and carries Binance ToS risk on a funded account. Owner's
-    call, made explicitly.
+Owner's adjudication on record (2026-07-28): the account is non-US and
+entitled to trade; the 451 reflects the VPS's US location, not the
+account. Residual risk noted once — Binance enforces by IP and tunneled
+access can be flagged — and accepted as the owner's call.
+
+15. **Preferred: split-tunnel WireGuard exit (CA/MX).** A WireGuard
+    interface whose exit is a dedicated static IP in Canada/Mexico —
+    ideally our own endpoint on a small Toronto/Montreal VPS (never a
+    shared commercial VPN IP; Windscribe-style static-IP plans are the
+    fallback). Split at the APPLICATION layer: only the execution adapter
+    rides the tunnel (bound to the wg interface / local proxy); data
+    pulls and deploys stay direct. API key IP-PINNED to the exit address
+    — useless from anywhere else, including the VPS's direct line.
+    Tunnel watchdog: link down → halt new entries, alert, leave the
+    exchange-resident stops parked (the belt-and-suspenders trail design
+    is what makes an outage survivable).
+16. **Fallback: relay device.** Classifier box emits signed trade
+    INTENTS; a relay on an unblocked device holds the keys and executes
+    behind its own whitelist; either side kills the loop. Better key
+    hygiene (keys never touch the VPS), more moving parts.
 
 ## Feature backlog (research side, feeding the above)
 
