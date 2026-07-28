@@ -46,6 +46,29 @@ if nt:
     print(f"null: status={nt['status']} rotations={nt.get('shifts')}/{nt.get('requestedShifts')} "
           f"exceedSearch={nt.get('exceedSearch')} exceedSame={nt.get('exceedSame')} "
           f"medBest={nt.get('medianBestPnl')} medSame={nt.get('medianSamePnl')}")
+rep = d.get("replication") or []
+if rep:
+    dec = p.get("declared") or {}
+    q = f"{round(dec.get('quorumRatio',0)*100)}% of members" if dec.get("quorumRatio") else dec.get("quorum")
+    print(f"REPLICATION — declared: {dec.get('gate')} gate, d{dec.get('dMult')}x, t{dec.get('tHours')}h, quorum {q}")
+    scored = [r for r in rep if r.get("pnl") is not None]
+    withc = [r for r in scored if r.get("vsControl") is not None]
+    pos = sum(1 for r in scored if r["pnl"] > 0)
+    posc = sum(1 for r in withc if r["vsControl"] > 0)
+    def binom_tail(k, n):
+        if not n: return None
+        from math import comb
+        return sum(comb(n, i) for i in range(k, n + 1)) / (2 ** n)
+    pp, pc = binom_tail(pos, len(scored)), binom_tail(posc, len(withc))
+    print(f"  positive dollars: {pos}/{len(scored)}  binomial p={pp:.4f}" if pp is not None else "")
+    print(f"  positive vs ctl : {posc}/{len(withc)}  binomial p={pc:.4f}" if pc is not None else "")
+    for r in rep:
+        combo = r["trade"] + ("+" + r["ctx1"] if r.get("ctx1") else "") + ("+" + r["ctx2"] if r.get("ctx2") else "")
+        vs = ("%+.2f" % r["vsControl"]) if r.get("vsControl") is not None else "—"
+        print(f"  {combo:<14s} ±{r['bandPct']:.2f}% q{r['quorum']}/{r['members']} "
+              f"{r['pnl']:+8.2f}  vsCtl {vs:>8s}  ({r['wins']}/{r['trades']}t "
+              f"g/t {('%.2f' % r['grossPerTrade']) if r.get('grossPerTrade') is not None else '—'}) stops={r['stops']}")
+    print()
 print("leaderboard:")
 import os
 topn = int(os.environ.get("TOPN", "50") or 50)
