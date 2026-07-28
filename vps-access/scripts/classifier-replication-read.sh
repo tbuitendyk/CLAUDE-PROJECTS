@@ -63,21 +63,6 @@ print("reading rule (fixed in advance): >=12 of 16 fresh = mechanism; 8-11 = amb
 
 combo = lambda r: r["trade"] + ("+" + r["ctx1"] if r.get("ctx1") else "") + ("+" + r["ctx2"] if r.get("ctx2") else "")
 
-geoms = sorted({r["geometry"] for r in scored})
-if len(geoms) > 1:
-    # A geometry-permuted run is one declared look PER GEOMETRY, so the only
-    # honest summary is a binomial each — the pooled number above mixes five
-    # separate tests and means nothing on its own.
-    print(f"\nper GEOMETRY ({len(geoms)} branches — each is its own declared look, "
-          f"and the pooled line above should NOT be read):")
-    for gname in geoms:
-        rows = [r for r in scored if r["geometry"] == gname]
-        pn = sum(1 for r in rows if r["pnl"] > 0)
-        tot = sum(r["pnl"] for r in rows)
-        med = sorted(r["pnl"] for r in rows)[len(rows) // 2]
-        print(f"  {gname:<10s} positive {pn:>3d}/{len(rows):<3d}  binomial p = {tail(pn, len(rows)):.4f}  "
-              f"total {tot:+10.2f}  median {med:+9.2f}")
-
 if len(rep) <= 40:
     print("\nper combo (ordered by asset, NOT by result):")
     for r in sorted(rep, key=combo):
@@ -100,4 +85,18 @@ else:
         medc = sorted(r["vsControl"] for r in wc)[len(wc) // 2] if wc else None
         print(f"  {t:<10s} dollars {pn:>3d}/{n:<3d}  vsCtl {pc:>3d}/{len(wc):<3d}  "
               f"median {med:+9.2f}  median vsCtl {('%+9.2f' % medc) if medc is not None else '—':>9s}")
+geoms = sorted({r["geometry"] for r in scored})
+if len(geoms) > 1:
+    # A geometry-permuted run is one declared look PER GEOMETRY, so the only
+    # honest summary is a binomial each — the pooled number above mixes five
+    # separate tests and means nothing on its own.
+    print(f"\nper GEOMETRY ({len(geoms)} branches — each is its own declared look, "
+          f"and the pooled line above should NOT be read):")
+    for gname in geoms:
+        rows = [r for r in scored if r["geometry"] == gname]
+        pn = sum(1 for r in rows if r["pnl"] > 0)
+        tot = sum(r["pnl"] for r in rows)
+        med = sorted(r["pnl"] for r in rows)[len(rows) // 2]
+        print(f"  {gname:<10s} positive {pn:>3d}/{len(rows):<3d}  binomial p = {tail(pn, len(rows)):.4f}  "
+              f"total {tot:+10.2f}  median {med:+9.2f}")
 EOF
