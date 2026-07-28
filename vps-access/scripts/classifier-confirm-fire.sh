@@ -2,9 +2,9 @@
 # classifier-confirm-fire.sh -- run MINUTE CONFIRMATION on the selected row of
 # the newest bracketlab doc that has a selection.
 #
-# Picks a trailing candidate if one is on the board, since trailing is what
-# actually needs confirming: a static-stop result barely depends on intra-bar
-# order, a trailing one depends on it constantly.
+# Prefers the DECLARED cell when the run has one, since that is the hypothesis
+# under test; a search winner is rarely the config anybody intends to trade.
+# Falls back to the board's best row otherwise.
 set -euo pipefail
 python3 <<'EOF'
 import json, urllib.request
@@ -36,12 +36,20 @@ if not prom:
     print(f"{doc['id']}: no promoted rows to confirm")
     raise SystemExit(0)
 # prefer a trailing cell; that is the one whose number rests on an assumption
-pick = next((l for l in prom if l.get("trailMult") is not None), prom[0])
+pick = next((l for l in prom if l.get("declaredCell")), None)
+target = "declared"
+if pick is None:
+    pick = next((l for l in prom if l.get("trailMult") is not None), prom[0])
+    target = "best"
+shown = dict(pick)
+if target == "declared":
+    shown.update(pick["declaredCell"])
 print(f"doc {doc['id']}")
-print(f"selecting: {pick['trade']} {pick['geometry']} q{pick['quorum']}/{pick['members']} "
-      f"{pick.get('entry','breakout')}/{pick['gate']} d{pick.get('dMult')} t{pick['tHours']}h "
-      f"trail={pick.get('trailMult')} arm={pick.get('armMult')} -> {pick['pnl']:+.2f} "
-      f"(trailAmb={pick.get('trailAmbiguous', 0)})")
+print(f"target: {target}")
+print(f"selecting: {shown['trade']} {shown['geometry']} q{shown.get('quorum')}/{shown.get('members')} "
+      f"{shown.get('entry','breakout')}/{shown.get('gate')} d{shown.get('dMult')} t{shown.get('tHours')}h "
+      f"trail={shown.get('trailMult')} arm={shown.get('armMult')} -> {shown['pnl']:+.2f} "
+      f"(trailAmb={shown.get('trailAmbiguous', 0)})")
 post(f"{B}/api/bracketlab/{doc['id']}/select", {"key": pick["key"], "stage": "promoted"})
-print(post(f"{B}/api/bracketlab/{doc['id']}/confirm"))
+print(post(f"{B}/api/bracketlab/{doc['id']}/confirm", {"target": target}))
 EOF
