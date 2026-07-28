@@ -6,6 +6,23 @@
 #
 # Read-only. Changes nothing, starts nothing, stops nothing.
 set -uo pipefail
+echo "===== CPU inventory ====="
+echo "  nproc            : $(nproc 2>/dev/null || echo '?')"
+echo "  /proc/cpuinfo    : $(grep -c ^processor /proc/cpuinfo 2>/dev/null || echo '?')"
+lscpu 2>/dev/null | grep -E "^(Model name|CPU\(s\)|Thread\(s\) per core|Core\(s\) per socket|Socket\(s\)):" | sed 's/^/  /'
+echo "  node os.cpus()   : $(node -e 'console.log(require("os").cpus().length)' 2>/dev/null || echo 'node not on PATH')"
+echo
+echo "===== VirtualBox VMs (owner, name, allocated cpus/RAM) ====="
+for pid in $(pgrep -f VirtualBoxVM); do
+  owner=$(ps -o user= -p "$pid" | tr -d ' ')
+  name=$(tr '\0' ' ' < "/proc/$pid/cmdline" 2>/dev/null | sed -n 's/.*--comment \([^ ]*\).*/\1/p')
+  echo "  pid=$pid owner=$owner name=${name:-?}"
+  if command -v VBoxManage >/dev/null 2>&1 && [ -n "${name:-}" ]; then
+    sudo -n -u "$owner" VBoxManage showvminfo "$name" --machinereadable 2>/dev/null \
+      | grep -E "^(cpus|memory|VMState)=" | sed 's/^/      /' || echo "      (cannot query as $owner)"
+  fi
+done
+echo
 echo "===== uptime / load ====="
 uptime
 echo
