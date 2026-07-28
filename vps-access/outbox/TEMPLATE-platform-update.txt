@@ -1,0 +1,17 @@
+Platform update — <one line saying what changed>
+
+tl;dr — <what changed, why it was needed for the current direction, and whether anything already recorded is affected>
+
+WHAT CHANGED
+ - <file/behaviour>: <what it does now that it did not before>
+
+WHY THIS DIRECTION NEEDED IT
+ <the hypothesis or test from steps 1-2 that the platform could not support>
+
+WHAT IT COULD BREAK, AND WHAT PROVES IT DID NOT
+ <the determinism fixture, the test added, the before/after number>
+
+ANYTHING PREVIOUSLY REPORTED THAT THIS CHANGES
+ <or: nothing>
+
+c.
