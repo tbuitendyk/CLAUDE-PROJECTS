@@ -8,10 +8,19 @@
 # Reports live in git so every email sent is auditable after the fact — the
 # body is findings, never secrets. The SMTP password is read from
 # /etc/deploy-control/env (same path mail-test.sh uses), never the repo.
+#
+# The claude-deploy helper installed on this box does NOT forward the endpoint's
+# optional argument to the script, so `run-script send-report.sh <name>` arrives
+# here with no $1. With no argument this reads reports/NEXT, a one-line file
+# naming the report to send. That file is version-controlled like everything
+# else, so which report went out stays auditable — no mtime guessing.
 set -uo pipefail
-NAME="${1:-}"
-[ -n "$NAME" ] || { echo "usage: send-report.sh <report-name>"; exit 1; }
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+NAME="${1:-}"
+if [ -z "$NAME" ] && [ -f "$HERE/reports/NEXT" ]; then
+  NAME="$(tr -d ' \t\r\n' < "$HERE/reports/NEXT")"
+fi
+[ -n "$NAME" ] || { echo "usage: send-report.sh <report-name>  (or set reports/NEXT)"; exit 1; }
 FILE="$HERE/reports/${NAME}.txt"
 [ -f "$FILE" ] || { echo "no such report: $FILE"; exit 1; }
 export REPORT_FILE="$FILE"
