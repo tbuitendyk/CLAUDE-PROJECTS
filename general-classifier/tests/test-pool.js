@@ -77,4 +77,24 @@ module.exports = {
     const n = configuredSize();
     assert.ok(n >= 1 && n <= 3, `pool size ${n} outside expected 1..3`);
   },
+  async workersRunNicedAndTheMainThreadDoesNot() {
+    // A 3-worker job timed out the mail VM's SMTP sessions on the shared host.
+    // The CPU cap does not prevent that — it is a duty cycle, and the workers
+    // still contend at full priority during every busy slice. The fix is nice
+    // 19 per worker thread, which must NOT leak to the thread serving the UI.
+    const os = require('os');
+    const path = require('path');
+    const { Worker } = require('worker_threads');
+    const before = os.getPriority();
+    const w = new Worker(path.join(__dirname, '..', 'lib', 'worker.js'));
+    const res = await new Promise((resolve, reject) => {
+      w.once('message', resolve);
+      w.once('error', reject);
+      w.postMessage({ id: 1, kind: 'ping', payload: {} });
+    });
+    await w.terminate();
+    assert.ok(res.ok, `ping failed: ${res.error}`);
+    assert.strictEqual(res.result.priority, os.constants.priority.PRIORITY_LOW);
+    assert.strictEqual(os.getPriority(), before, 'main thread priority must be untouched');
+  },
 };
