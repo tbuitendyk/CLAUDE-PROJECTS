@@ -156,6 +156,23 @@ function specsFor(size, stage) {
 async function unitTask({ combo, branch, stage, params }) {
   const p = params;
   const { geo, maps, chunks } = await buildCombo(combo, branch, p);
+
+  // LABEL ROTATION for an edge census (params.labelShiftFrac). Identical
+  // mechanism to the null replay: rotate the OUTCOME side against the
+  // features, so autocorrelation, class balance and band calibration all
+  // survive while any real feature-to-outcome relationship is destroyed.
+  //
+  // This exists because "edge > 0 half the time" is an ASSUMPTION, not a
+  // known null. A committee whose calls tilt toward the modal class can post
+  // positive edge with no skill at all. This project's entire method rests on
+  // measuring nulls rather than reasoning about them, and the edge statistic
+  // had been getting a reasoned one.
+  if (p.labelShiftFrac) {
+    const rot = deriveShift(chunks.length, p.labelShiftFrac);
+    const src = chunks.map((c) => c.diffPct);
+    for (let i = 0; i < chunks.length; i++) chunks[i].diffPct = src[(i + rot) % chunks.length];
+  }
+
   const { trainChunks, testChunks, holdChunks, bandPct } = splitAndLabel(chunks, branch, p.holdout);
   const views = bracketLib.comboViews(combo.size, geo.featureHours / 24).views;
   // ONE training pass covers both windows: members predict over search+holdout

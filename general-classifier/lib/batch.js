@@ -1329,6 +1329,10 @@ function startBracketLab(params) {
     // Edge screen: promote every unit and record its edge-selected rung, so
     // the read is a census rather than the money winners.
     edgeScreen: !!params.edgeScreen,
+    // Rotate outcomes against features to measure the edge statistic's own
+    // null instead of assuming it is a coin flip.
+    labelShiftFrac: Number(params.labelShiftFrac) > 0 && Number(params.labelShiftFrac) < 1
+      ? Number(params.labelShiftFrac) : null,
     detailK: 50,
     feePerLeg: REAL_FEE_PER_LEG,
     dMults: bracketLib.D_MULTS,

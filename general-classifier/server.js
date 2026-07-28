@@ -187,6 +187,7 @@ app.post('/api/bracketlab', (req, res) => {
       trailing: b.trailing,
       holdout: b.holdout,
       edgeScreen: b.edgeScreen,
+      labelShiftFrac: b.labelShiftFrac,
     });
     res.json({ batchId: id });
   } catch (err) {
