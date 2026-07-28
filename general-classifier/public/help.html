@@ -526,7 +526,15 @@
         boosting, screens): cycles 100 / 90 / 75 / 50 / 25 / 10% / OFF. Applies LIVE to already-running
         work within seconds; results are identical at any setting — only speed changes. OFF parks heavy
         work in place until turned back up. Stored server-side, so every browser sees the same
-        setting.</li>
+        setting. The reading <code>×3</code> means the long jobs are running on three worker threads
+        and the cap governs EACH of them, so the machine-wide draw is three times the number shown.</li>
+      <li><span class="term">Why the cap alone is not enough, and what protects the box</span> — the cap
+        is a duty cycle: workers still run at FULL scheduler priority during every busy slice, they
+        just take gaps. That is invisible to a batch job and fatal to an interactive one — three
+        workers once starved the co-hosted mail VM badly enough that its SMTP sessions timed out.
+        Every worker thread therefore runs at <em>nice 19</em>, the bottom of the scheduler. It keeps
+        the full speed-up on an idle box (a lone niced thread still gets the whole core) and yields
+        instantly to anything interactive. The thread serving this web UI is deliberately NOT niced.</li>
       <li><span class="term">Stop jobs</span> — aborts the running screen and any in-flight training
         within seconds, even while parked at OFF. Finished runs and saved results survive; the screen
         is marked cancelled.</li>
