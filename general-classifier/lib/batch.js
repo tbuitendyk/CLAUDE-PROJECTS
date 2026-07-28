@@ -1284,10 +1284,11 @@ function pushLeader(doc, row) {
 // step and top-K is correct.
 function promotionSet(p, doc, units) {
   if (p.declared || p.edgeScreen) {
-    return units.map(({ c, b }) => ({
+    return units.map((u) => { const { c, b } = u; return ({
       key: unitKey(c, b), trade: c.trade, ctx1: c.ctx1, ctx2: c.ctx2, size: c.size,
       geometry: b.geometry, decision: b.decision, bandMode: b.band, weekdaysOnly: b.weekdaysOnly,
-    }));
+      shiftFrac: u.shiftFrac ?? null,
+    }); });
   }
   return doc.leaders.filter((l) => l.stage === 'slim').slice(0, p.promoteK);
 }
@@ -1333,6 +1334,10 @@ function startBracketLab(params) {
     // null instead of assuming it is a coin flip.
     labelShiftFrac: Number(params.labelShiftFrac) > 0 && Number(params.labelShiftFrac) < 1
       ? Number(params.labelShiftFrac) : null,
+    // How many DISTINCT rotations to run in one job. One rotation is a single
+    // draw of the null; a null you cannot put an error bar on is barely
+    // better than an assumed one.
+    labelShiftReps: Math.min(12, Math.max(0, Math.floor(Number(params.labelShiftReps) || 0))),
     detailK: 50,
     feePerLeg: REAL_FEE_PER_LEG,
     dMults: bracketLib.D_MULTS,
@@ -1346,6 +1351,18 @@ function startBracketLab(params) {
   const { branches, combos } = expandBracketPlan(p);
   const units = [];
   for (const b of branches) for (const c of combos) units.push({ c, b });
+  // Multi-rotation null: the same plan repeated at evenly spaced shifts, each
+  // tagged so the census can be grouped by draw. Expanding the unit list is
+  // all it takes — the existing pool, ordering and determinism rules apply
+  // unchanged.
+  if (p.labelShiftReps > 0) {
+    const base = units.slice();
+    units.length = 0;
+    for (let r = 1; r <= p.labelShiftReps; r++) {
+      const frac = r / (p.labelShiftReps + 1);
+      for (const u of base) units.push({ ...u, shiftFrac: frac });
+    }
+  }
   const slimRuns = units.reduce((s, u) => s + slimViewsFor(u.c.size).length, 0);
   const stamp = new Date().toISOString().replace(/[-:]/g, '').slice(0, 13).replace('T', '-');
   const doc = {
@@ -1406,7 +1423,7 @@ function startBracketLab(params) {
     doc.perf.phase = 'slim';
     saveBatch(doc);
 
-    const slimPayloads = units.map(({ c, b }) => ({ combo: c, branch: b, stage: 'slim', params: p }));
+    const slimPayloads = units.map(({ c, b, shiftFrac }) => ({ combo: c, branch: b, stage: 'slim', params: p, labelShiftFrac: shiftFrac ?? null }));
     await pool.map('unit', slimPayloads, (settled, i) => {
       if (doc.cancelRequested) return;
       const { c, b } = units[i];
@@ -1441,7 +1458,7 @@ function startBracketLab(params) {
       const promPayloads = promote.map((l) => ({
         combo: { trade: l.trade, ctx1: l.ctx1, ctx2: l.ctx2, size: l.size },
         branch: { geometry: l.geometry, decision: l.decision, band: l.bandMode, weekdaysOnly: l.weekdaysOnly },
-        stage: 'promoted', params: p,
+        stage: 'promoted', params: p, labelShiftFrac: l.shiftFrac ?? null,
       }));
       await pool.map('unit', promPayloads, (settled, i) => {
         if (doc.cancelRequested) return;
@@ -1464,6 +1481,7 @@ function startBracketLab(params) {
             doc.edgeCensus.push({
               trade: l.trade, ctx1: l.ctx1, ctx2: l.ctx2,
               geometry: l.geometry, decision: l.decision, bandPct: res.bandPct,
+              shiftFrac: l.shiftFrac ?? null,
               quorum: res.bestEdge.quorum, members: res.bestEdge.members,
               searchEdge: res.bestEdge.metrics.edge,
               searchAcc: res.bestEdge.metrics.testAcc,

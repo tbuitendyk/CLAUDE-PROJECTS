@@ -153,8 +153,11 @@ function specsFor(size, stage) {
 }
 
 // TASK 1 — one sweep unit (combo x branch) at the slim or promoted stage.
-async function unitTask({ combo, branch, stage, params }) {
+async function unitTask({ combo, branch, stage, params, labelShiftFrac }) {
   const p = params;
+  // Per-payload shift lets ONE job carry many rotations; falls back to the
+  // run-wide setting when a payload does not name one.
+  const shiftFrac = labelShiftFrac != null ? labelShiftFrac : p.labelShiftFrac;
   const { geo, maps, chunks } = await buildCombo(combo, branch, p);
 
   // LABEL ROTATION for an edge census (params.labelShiftFrac). Identical
@@ -167,8 +170,8 @@ async function unitTask({ combo, branch, stage, params }) {
   // positive edge with no skill at all. This project's entire method rests on
   // measuring nulls rather than reasoning about them, and the edge statistic
   // had been getting a reasoned one.
-  if (p.labelShiftFrac) {
-    const rot = deriveShift(chunks.length, p.labelShiftFrac);
+  if (shiftFrac) {
+    const rot = deriveShift(chunks.length, shiftFrac);
     const src = chunks.map((c) => c.diffPct);
     for (let i = 0; i < chunks.length; i++) chunks[i].diffPct = src[(i + rot) % chunks.length];
   }

@@ -473,6 +473,22 @@ module.exports = {
     const missing = [...read].filter((k) => !new RegExp(`\\b${k}\\s*:`).test(forwarded));
     assert.deepStrictEqual(missing, [], `startBracketLab reads these but the API never forwards them: ${missing.join(', ')}`);
   },
+  async rotationTagSurvivesPromotion() {
+    // A multi-rotation null is one job holding several draws. If the shift tag
+    // does not survive into the promoted payload, every draw silently runs the
+    // SAME rotation and the "distribution" is one number repeated.
+    const b = { geometry: 'daily-3d', decision: 'argmax', band: 'auto', weekdaysOnly: false };
+    const units = [
+      { c: { trade: 'AUSDT', ctx1: null, ctx2: null, size: 1 }, b, shiftFrac: 0.25 },
+      { c: { trade: 'AUSDT', ctx1: null, ctx2: null, size: 1 }, b, shiftFrac: 0.75 },
+    ];
+    const out = promotionSet({ edgeScreen: true, promoteK: 1 }, { leaders: [] }, units);
+    assert.strictEqual(out.length, 2);
+    assert.deepStrictEqual(out.map((r) => r.shiftFrac), [0.25, 0.75]);
+    // and an un-rotated run must carry null, not undefined-shaped noise
+    const plain = promotionSet({ edgeScreen: true }, { leaders: [] }, [{ c: units[0].c, b }]);
+    assert.strictEqual(plain[0].shiftFrac, null);
+  },
   async bestCellHonorsFloorAndTies() {
     const rows = [
       { gate: 'always', dMult: 1, tHours: 17, pnl: 50, trades: 4 }, // under floor
