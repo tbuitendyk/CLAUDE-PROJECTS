@@ -1,0 +1,78 @@
+The loop is running — and cycle 1's first number was a mirage
+
+tl;dr — Your six-step loop is now how I work, and the comms are durable (hourly heartbeat bound to this session, cheap by design). Cycle 1 asks a question we could never ask before: does the committee PREDICT anything, separately from whether the execution makes money. Its first pass produced 20 of 29 positive at p=0.03 — which I am throwing away, because those 29 were the money-winners of 170 units and selecting on money selects on edge. Re-running as a proper census now, ~45 minutes.
+
+THE LOOP
+
+Confirmed and adopted exactly as you set it out. The important property is the
+one you named: the VPS engine does the compute, so cycles cost box time rather
+than tokens, and I only spend at the two ends — forming the hypothesis and
+analysing the result. Monitoring in between is one watcher that stays silent
+unless something actually happens.
+
+Durability: an hourly heartbeat now fires into this session. It is written to
+be nearly free — re-arm the watcher, check mail once, advance only if a job
+finished, and it is explicitly told NOT to invent work to fill a slot or email
+to say nothing happened. The in-session watcher still does the fast polling;
+the heartbeat exists so the loop survives the session dying.
+
+THE HYPOTHESIS BEHIND CYCLE 1
+
+Every hunt we have run ranked cells by MONEY. That fuses two questions:
+
+    does the committee predict?        does the execution monetise it?
+
+A null on money could always have been either, which is why four nights of
+work kept producing ambiguous corpses. The acc/edge columns you now have make
+the first question askable on its own — and it is the one that matters,
+because if there is no prediction anywhere then no amount of execution tuning
+can help, and we should stop tuning execution and go looking somewhere else
+entirely.
+
+So cycle 1 is not a P&L screen. 17 assets x 5 chunk shapes x both decision
+modes, holdout on, trailing off. The only number that counts is holdout edge
+at the rung chosen by EDGE on the search window. Select on search, judge on
+holdout.
+
+WHY I AM DISCARDING THE FIRST RESULT
+
+It came back 20 of 29 positive on holdout edge, p = 0.03. That is exactly the
+shape of a finding and it is not one.
+
+The board is ranked by money and capped at fifty rows. So those 29 were the
+P&L winners of 170 units — and a unit wins on P&L partly BECAUSE its calls
+were good. Measuring edge on the money winners selects on edge. The number is
+biased upward by construction.
+
+What annoys me about it is that I built the edge-selected rung an hour earlier
+specifically to stop money from choosing what I then evaluate as a predictor,
+and then read the result through a money-ranked board anyway. Same error, one
+level up.
+
+The screen now promotes every unit and writes a census row per unit that never
+touches the leaderboard. Re-running as bracketlab-20260728-2211.
+
+READING RULE, FIXED BEFORE THE RESULT EXISTS
+
+ - Roughly half of 170 units should be positive on holdout edge by chance.
+ - A chunk shape or decision mode is interesting only if positive on a clear
+   majority of its 17 assets — and even then it is a LEAD owing its own
+   declared test, not a result.
+ - The pooled line mixes chunk shapes, decision modes and correlated assets. I
+   will report it and it is not the evidence; the groups are.
+ - If holdout edge is a coin flip everywhere: that closes execution tuning as
+   a direction. It would be the most useful null we have had, because it would
+   stop us spending nights on the wrong layer.
+
+ON THE LIVE TRADING TAB
+
+Not started, deliberately. It needs real keys, order placement, reconciliation
+and the Mexico egress path. It is the right destination but building a
+live-money scoreboard before one configuration survives replication AND
+holdout would be building the scoreboard before there is a game. Cycle 1 tells
+us whether there is a game.
+
+Next check on the engine is about 45 minutes out. I will write when it lands,
+or sooner if it fails.
+
+c.
