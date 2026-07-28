@@ -108,18 +108,31 @@ def body_of(m):
         return m.get_payload() or ""
 
 # ---- the proof: one ssh, all message-ids at once -------------------------
+#
+# TWO REGEX BUGS COST THE FIRST LIVE RUN, both fixed here and both worth
+# naming because either one silently turns genuine mail into "hostile":
+#   1. This server runs enable_long_queue_ids, so a queue id is
+#      4h8mZ21K38z41Gy, not the classic 6-hex-digit form.
+#   2. The logging process is postfix/submission/smtpd — TWO slashes — so a
+#      pattern expecting postfix/<word>[ never matched a submission line.
+# The rule now keys off the fixed text that is actually stable: the token
+# immediately before ": message-id=", whatever shape it happens to be.
 wanted = [hdr(m, "Message-ID").strip() for _, m in msgs]
-grep_pat = "|".join(re.escape(w.strip("<>")) for w in wanted if w) or "__none__"
-script = f"""
-for mid in {' '.join("'" + w.strip('<>').replace("'", "") + "'" for w in wanted if w)}; do
-  qids=$(grep -h "message-id=<$mid>" /var/log/mail.log /var/log/mail.log.1 2>/dev/null \\
-         | sed -n 's/.*postfix\\/[a-z]*\\[[0-9]*\\]: \\([A-F0-9]\\{{6,\\}}\\):.*/\\1/p' | sort -u)
-  echo "MID $mid"
-  for q in $qids; do
-    grep -h "$q: client=" /var/log/mail.log /var/log/mail.log.1 2>/dev/null | sed "s/^/  QLINE /"
-  done
-done
-"""
+# Message-ids go into a shell loop, so allow only characters that cannot
+# become shell syntax. Anything else simply fails to verify, which is the
+# safe direction.
+safe = [w.strip("<>") for w in wanted if w and re.fullmatch(r"[A-Za-z0-9._@+-]+", w.strip("<>"))]
+script = "\n".join([
+    "for mid in " + " ".join(f"'{x}'" for x in safe) + "; do",
+    '  echo "MID $mid"',
+    '  qids=$(grep -h -F "message-id=<$mid>" /var/log/mail.log /var/log/mail.log.1 2>/dev/null '
+    '| sed -n "s/.*\\]: \\([^:]*\\): message-id=.*/\\1/p" | sort -u)',
+    "  for q in $qids; do",
+    '    grep -h -F "$q: client=" /var/log/mail.log /var/log/mail.log.1 2>/dev/null | sed "s/^/  QLINE /"',
+    "  done",
+    "done",
+]) if safe else "true"
+
 verdicts = {}
 try:
     out = subprocess.run(
