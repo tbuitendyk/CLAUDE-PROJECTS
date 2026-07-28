@@ -1877,11 +1877,17 @@
         <th title="Combo and stage; second line: chunk shape · band · decision · week mode">setup</th>
         <th title="Quorum rung (net direction wins) and gate; second line: bracket distance × band and time horizon">execution</th>
         <th>net P&L</th>
-        <th title="This row's net minus the BEST always-gate (model-free) cell on the SAME combo+branch — the dollars the model added over blind bracket-chasing there. '—' on always rows (they ARE the control). Baseline ignores the min-trade floor.">vs control</th>
+        <th title="This row's net minus the BEST always-gate (model-free) cell on the same combo+branch. On a SEARCH board this can never be negative: the row was picked as the best cell over a menu that already contained every always cell, so a gated winner beat the control by definition. Read it as how much gating won by, not as evidence that gating works. '—' on always rows (they ARE the control).">vs control*</th>
         <th title="wins/trades; second line: gross per trade before the round-trip fee">W/T · g/t</th>
         <th title="Trades closed by the stop rail; (n amb) = hourly bars spanning both rails, always resolved AGAINST the book">stops</th></tr>
         ${leadRows || '<tr><td colspan="8" class="note">nothing on the board yet</td></tr>'}
-      </table></div></div>`;
+      </table></div>
+      <p class="note">* <strong>vs control on a search board is not evidence.</strong> Each row is the best
+        cell of a menu that already contains every always-gate (model-free) cell, so a row whose winner
+        is gated has beaten the control by construction — the column can only ever come out positive or
+        blank. It says how much gating won by; it does not say gating works. The column means something
+        only in the replication table below, where the cell is DECLARED before the run and the control
+        still gets its full search.</p></div>`;
 
     // Replication view: the declared cell scored on every asset. This is the
     // honest cross-asset reading — one look per asset, so the binomial across

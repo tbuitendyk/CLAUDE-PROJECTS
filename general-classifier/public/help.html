@@ -436,6 +436,14 @@
         <em>on-active</em> (both rails only when the committee calls a move), <em>direction-filtered</em>
         (only the rail matching the call). The committee is the majority vote in the slim stage and every
         quorum rung 1..n at the promoted stage — all swept, never chosen by hand.</li>
+      <li><span class="term">vs control — and why it proves nothing on a search board</span> — the column
+        is the row's net minus the best <em>always</em> cell on the same combo and branch. On the
+        leaderboard that difference cannot come out negative: the row won a search whose menu already
+        contained every always cell, so a gated winner has beaten the control by construction and an
+        always winner IS the control (shown as “—”). Read it as <em>how much gating won by</em>, never as
+        evidence that gating works. The same subtraction becomes real in the replication table, where the
+        cell is declared before the run and cannot be swapped for a better one, while the control still
+        gets its full 35-cell search — so a positive there is a conservative result.</li>
       <li><span class="term">Slim-then-promote</span> — every unit first runs a slim grid (logreg over the
         views, full window); the top K by the declared rule are re-run on the full 16-member grid. The
         rule is fixed: best net dollars over the whole menu, minimum-trade floor, ties to fewer trades.</li>
