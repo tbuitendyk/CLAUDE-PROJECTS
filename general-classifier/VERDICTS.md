@@ -216,6 +216,44 @@ capital, no belief on this result alone. The declared next step that would
 make it mean more is **replication** — the same fixed configuration tested on
 fresh assets — not a deeper null on DOT.
 
+### DOT row 9 — REPLICATION FAILED, configuration RETIRED (bracketlab-20260728-0741, 2026-07-28)
+
+Declared before the run (the config was already fixed in the entry above, so
+this was a genuine out-of-sample test of a pre-specified hypothesis):
+**daily-3d, adaptive band, argmax, 24/7, direction-filtered gate, d 1.5x band,
+t 65h, quorum = 1/3 of the member set (4 of 12 on singles).** Scored on all 17
+assets as singles, one fixed cell per asset — one look apiece, so no shopping
+tax and no branch correction is owed. Pre-registered reading: >=12 of 16 fresh
+assets positive = mechanism; 8-11 = ambiguous; <8 = window artifact, retire.
+
+Result:
+- **positive dollars 7/17 (binomial p = 0.83)**
+- **positive vs control 5/17 (binomial p = 0.98)**
+- Excluding DOT itself: **6 of 16** on dollars, **4 of 16** on vs-control.
+
+Both readings are WORSE than a coin flip. DOT is a lone outlier rather than
+the top of a distribution: gross/trade DOT $1.04, then a cliff to $0.58-0.63
+(ETC, DOGE), most of the field under $0.30, and five assets negative before
+the $0.25 round trip.
+
+**The gating actively destroyed value on most assets.** vs-control was
+negative on 12 of 17 — XLM -$503, XRP -$316, ZEC -$302. ZEC is the clean
+illustration: the declared cell made +$122 while the model-free always-gate
+control on the same asset made +$424.
+
+**Verdict: DOT row 9 was a window artifact. The configuration is RETIRED**
+per "What any success buys" — re-entering it requires new evidence (a new
+mechanism or new data era), not a re-run. Its 0.9% search-replayed null
+stands as correct and correctly caveated: it measured a real within-branch
+coincidence, which is exactly what the 72-branch family correction warned
+it might be.
+
+**Standing finding carried forward:** the direction-filtered gate does not
+generically improve bracket books — it hurt on ~70% of assets tested. Any
+future bracket candidate must clear replication BEFORE earning a deep null,
+not after. Cost note: this test took ~6 minutes of compute and closed a
+question a 6-hour null could not.
+
 ## Amendment log
 
 - **A1 (2026-07-26) — H1 reading gate: low-frequency lane added.** The
