@@ -4,8 +4,10 @@
 # guessing "it's free tier so probably 2 vCPU" is not a basis for a migration
 # decision.
 set -uo pipefail
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+. "$HERE/mx-endpoint.sh"
 KEY=/root/.ssh/aws-mex-deb13.pem
-HOST=admin@78.12.190.144
+HOST="$MX_SSH"
 ssh -i "$KEY" -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o ConnectTimeout=15 "$HOST" 'bash -s' <<'R' 2>&1
 echo "instance : $(curl -s --max-time 3 http://169.254.169.254/latest/meta-data/instance-type 2>/dev/null || echo '?')"
 echo "cpus     : $(nproc)"

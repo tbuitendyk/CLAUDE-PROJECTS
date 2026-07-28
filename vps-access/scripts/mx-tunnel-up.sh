@@ -10,9 +10,11 @@
 # otherwise it inherits stdout and hangs deploy-control's output capture
 # forever, which is exactly what bit the first two attempts.
 set -uo pipefail
-KEY=/root/.ssh/aws-mex-deb13.pem
-HOST=admin@78.12.190.144
-PORT=1080
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+. "$HERE/mx-endpoint.sh"
+KEY="$MX_KEY"
+HOST="$MX_SSH"
+PORT="$MX_SOCKS_PORT"
 
 echo "== clearing any existing tunnel =="
 pkill -f "ssh .*-D ${PORT}" 2>/dev/null && sleep 1 || true

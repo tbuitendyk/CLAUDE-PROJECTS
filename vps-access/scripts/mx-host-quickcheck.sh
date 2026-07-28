@@ -3,7 +3,9 @@
 # host: is the key present, is port 22 open, what is the IP's real
 # geolocation. Every step has a short timeout so this can never hang.
 set -uo pipefail
-IP="78.12.190.144"
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+. "$HERE/mx-endpoint.sh"
+IP="${MX_HOST}"
 echo "== key present? =="
 ls -l /root/aws-mex-deb13.pem /root/.ssh/aws-mex-deb13.pem 2>/dev/null || echo "  not in /root or /root/.ssh"
 timeout 20 find /root /home /etc/deploy-control -maxdepth 3 -name '*.pem' 2>/dev/null | head -5 || true

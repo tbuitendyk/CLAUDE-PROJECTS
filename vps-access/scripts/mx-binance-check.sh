@@ -5,8 +5,10 @@
 # capture_output forever, so tunnel setup lives in a separate script that
 # fully detaches.)
 set -uo pipefail
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+. "$HERE/mx-endpoint.sh"
 KEY=/root/.ssh/aws-mex-deb13.pem
-HOST=admin@78.12.190.144
+HOST="$MX_SSH"
 S=(-i "$KEY" -o StrictHostKeyChecking=accept-new -o ConnectTimeout=15 -o BatchMode=yes)
 echo "== ssh =="
 timeout 30 ssh "${S[@]}" "$HOST" 'echo "  OK $(hostname) $(uname -sr)"' </dev/null || { echo "  SSH FAILED"; exit 2; }

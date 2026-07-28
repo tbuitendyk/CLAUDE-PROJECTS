@@ -14,9 +14,11 @@
 # amount of tunnelling from here helps and we stop.
 set -uo pipefail
 
-HOST_IP="78.12.190.144"
-HOST="admin@${HOST_IP}"
-PORT=1080
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+. "$HERE/mx-endpoint.sh"
+HOST_IP="$MX_HOST"
+HOST="$MX_SSH"
+PORT="$MX_SOCKS_PORT"
 SSHOPT=(-o StrictHostKeyChecking=accept-new -o ConnectTimeout=20 -o BatchMode=yes -o ServerAliveInterval=15)
 
 echo "== 0. locate the key =="

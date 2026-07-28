@@ -4,8 +4,10 @@
 # back to this VPS. Every ssh/curl is hard-bounded; no system state is
 # changed here (dynamic forward only), so it is safe with jobs in flight.
 set -uo pipefail
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+. "$HERE/mx-endpoint.sh"
 KEY=/root/.ssh/aws-mex-deb13.pem
-HOST=admin@78.12.190.144
+HOST="$MX_SSH"
 PORT=1080
 S=(-i "$KEY" -o StrictHostKeyChecking=accept-new -o ConnectTimeout=15 -o BatchMode=yes)
 
