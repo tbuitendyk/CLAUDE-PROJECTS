@@ -58,6 +58,36 @@ stops, managed either by our loop or by the exchange API.
    fills, realized slippage per leg, realized fee per leg, latency), and
    what the pilot does NOT claim (edge).
 
+## Phase 1.5 — minute-resolution validation + trail tuning (gates every candidate)
+
+No candidate enters Phase 2 without passing through this layer.
+
+7a. **Minute-data pull, candidate-scoped.** For the proposed candidate's
+    pair(s) only, fetch 1-minute klines from the same keyless bulk portal
+    (monthly zips — no new data source, ~60× the hourly volume, so scoped
+    to candidates rather than the whole universe; cached like everything
+    else).
+7b. **Minute-resolution re-simulation of the candidate's bracket book.**
+    Purpose one: dissolve the hourly ambiguity — bars that spanned both
+    rails (resolved pessimistically at 1h) become 60 minute-bars where the
+    actual fill order is mostly determinable. Report the candidate's
+    numbers at both resolutions plus how many ambiguous fills flipped;
+    a candidate whose edge lived inside the hourly pessimism gap is
+    upgraded, one whose edge dies at minute resolution is caught BEFORE
+    money touches it.
+7c. **Trailing-stop protocol tuning at minute resolution.** Trail distance
+    × activation threshold × step size as a DECLARED menu (never a
+    continuous scan), swept mechanically over the candidate's trades at 1m
+    granularity — hourly bars are too coarse to walk a trail honestly.
+    Selection by the same best-net-dollars-with-floor rule, stamped.
+7d. **Honesty treatment for the trail layer.** Trail tuning is one more
+    selection on the same test window, so it gets the same medicine: the
+    candidate's null replay is extended to price the trail menu's freedom
+    (member calls from the rotated worlds re-priced through the trail
+    sweep at minute resolution — pricing is cheap even when training
+    isn't). The chosen trail protocol then freezes into the Phase 2+
+    declaration alongside gate/d/t/quorum.
+
 ## Phase 2 — plumbing, advisory first (third go)
 
 8. Exchange adapter (trade-capable) for the chosen venue, in the classifier
@@ -105,7 +135,13 @@ stops, managed either by our loop or by the exchange API.
 - Bracket-lab survivor nulls before any survivor is considered for live.
 - vs-control column: DONE (2026-07-27). Live null tables: DONE.
   Control-delta rerun of DOT singles: in progress as of this writing.
-- Trailing-stop simulation in lib/bracket.js (prerequisite for #14).
+- Minute-kline loader (bulk portal 1m monthly zips, candidate-scoped cache)
+  — prerequisite for Phase 1.5.
+- Minute-resolution bracket re-simulator + hourly-vs-minute ambiguity report
+  (Phase 1.5 step 7b).
+- Trailing-stop simulator (declared trail menu, minute resolution) + trail
+  freedom priced into the survivor null (Phase 1.5 steps 7c-7d; also feeds
+  #14's live trail management).
 - Real-friction feedback loop: once the pilot produces measured fee/spread
   per leg, add it as a priceable friction preset next to the research and
   stress rates.
@@ -119,3 +155,4 @@ stops, managed either by our loop or by the exchange API.
 | 3 | Autonomy path | advisory-with-apply → full auto (proposed) | open |
 | 4 | Trail management | our loop w/ parked backstop / exchange-native | open (venue-dependent) |
 | 5 | Pilot capital | formula in Phase 1 step 6 | needs strategy pinned |
+| 6 | Trail menu (distance × activation × step) | declared grid, TBD | open — set before Phase 1.5 first run |
