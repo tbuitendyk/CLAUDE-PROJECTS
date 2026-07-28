@@ -124,17 +124,22 @@ entitled to trade; the 451 reflects the VPS's US location, not the
 account. Residual risk noted once — Binance enforces by IP and tunneled
 access can be flagged — and accepted as the owner's call.
 
-15. **Preferred: split-tunnel WireGuard exit (CA/MX).** A WireGuard
-    interface whose exit is a dedicated static IP in Canada/Mexico —
-    ideally our own endpoint on a small Toronto/Montreal VPS (never a
-    shared commercial VPN IP; Windscribe-style static-IP plans are the
-    fallback). Split at the APPLICATION layer: only the execution adapter
-    rides the tunnel (bound to the wg interface / local proxy); data
-    pulls and deploys stay direct. API key IP-PINNED to the exit address
-    — useless from anywhere else, including the VPS's direct line.
-    Tunnel watchdog: link down → halt new entries, alert, leave the
-    exchange-resident stops parked (the belt-and-suspenders trail design
-    is what makes an outage survivable).
+15. **Preferred: split-tunnel WireGuard exit, Montreal.** Recommended
+    endpoint: self-hosted WireGuard on an OVHcloud VPS in Beauharnois, QC
+    (~$5-6/mo, dedicated IPv4 we control; datacenter IP is fine for API
+    use). Reputable commercial fallback: Windscribe static IP. Split at
+    the APPLICATION layer via `Table = off` — the wg0 interface exists
+    but reroutes nothing; only the execution adapter sends its Binance
+    calls out `--interface wg0`. Data pulls, deploys, site: direct,
+    untouched. API key IP-PINNED to the Montreal exit — useless from
+    anywhere else, including the VPS's direct line. Watchdog
+    (wireguard-tunnel-check.sh) before every entry: tunnel down / wrong
+    exit IP → halt entries, resting exchange-side stops stay parked.
+    SCRIPTS READY (vps-access: wireguard-montreal-setup.sh,
+    wireguard-tunnel-check.sh, wireguard-montreal-runbook.md). BLOCKED ON:
+    owner provisioning the Montreal endpoint (payment/identity — the
+    session cannot create the account) + placing wg0.conf + no job in
+    flight before install.
 16. **Fallback: relay device.** Classifier box emits signed trade
     INTENTS; a relay on an unblocked device holds the keys and executes
     behind its own whitelist; either side kills the loop. Better key
