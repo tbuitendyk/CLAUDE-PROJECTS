@@ -254,6 +254,61 @@ future bracket candidate must clear replication BEFORE earning a deep null,
 not after. Cost note: this test took ~6 minutes of compute and closed a
 question a 6-hour null could not.
 
+### Doubles sweep — bracketlab-20260728-0804, read 2026-07-28
+
+All 17 assets x every double (trade + one context) = 272 combos on one branch
+(daily-3d, auto band, argmax, 24/7). Slim grid on all 272, mechanical top 25
+promoted. 1h30m, no failures. **Discovery run — no verdict is claimed from it.**
+
+**METHOD CORRECTION, recorded because it changes how an earlier deliverable
+must be read.** The `vs control` column on a SEARCH leaderboard is not
+evidence and never was. Each row is the argmax of a menu that already contains
+every always-gate (model-free) cell, so a row whose winner is gated has beaten
+the control by construction, and a row whose winner is ungated *is* the
+control. The column can only come out positive or blank. The finished 0804
+board shows exactly that: 32 of the top 50 rows gated, all 32 positive; the
+other 18 blank; not one negative anywhere.
+
+The same subtraction stays valid in REPLICATION mode, where the cell is
+declared before the run and cannot be swapped for a better one while the
+control keeps its full 35-cell search — which is why the DOT row 9 entry above
+could report vs-control negative on 12 of 17 assets. That reading is
+unaffected. The column has been relabelled in the UI (`vs control*`), with a
+footnote under the board and a paragraph in the help.
+
+What the board does say, none of it a candidate:
+- **Drift, not skill.** ZEC and XLM as trade asset own the whole top of the
+  board; they are the two largest movers in the test window.
+- **The base narrowed under promotion.** Five assets had gated winners at the
+  slim stage; after promotion ZEC and XLM had displaced UNI, ETH and XRP from
+  the top 50 entirely. Two of seventeen.
+- **The exit horizon is pinned at the menu ceiling.** 161h — the largest value
+  offered — wins 23 of the 32 gated rows on both surviving assets. An optimum
+  on the edge of the search range is not an optimum. The menu was NOT widened;
+  doing so mid-hunt would add multiplicity to everything downstream. Flagged to
+  the owner as deserving its own declared test.
+- **Quorum has no mode.** Among promoted rows the winning rung is a four-way
+  tie (3, 6, 8, 12 of 16 — both assets, three rows each). Strongest evidence
+  yet for the standing finding that committee diversity does not move the
+  weights.
+
+**Declared for Run 3 / Run 4, fixed before either was fired:** modal knob
+values counted over DISTINCT trade assets, ties broken on row count —
+**active gate, d 1.0x band, t 161h, quorum = 25% of the member set**, on
+daily-3d / auto / argmax / 24-7. The quorum term is the one knob NOT derived
+from the board (there is no mode); it is on the record as the weak link.
+Run 3 scores that cell on 17 singles (one look apiece, clean binomial); Run 4
+scores the same cell on all 272 doubles. Same pre-registered reading rule as
+row 9: >=12 of 16 fresh assets positive = mechanism; 8-11 = ambiguous;
+<8 = artifact, retire.
+
+**Tooling fix made in the same session:** replication mode now promotes EVERY
+unit rather than the leaderboard's top K. The declared cell is only read at
+the promoted stage, so a P&L-ranked promotion made every per-asset number in
+the replication table conditional on slim performance. It was harmless on the
+17-unit runs done so far (17 of 17 promoted either way) and would have
+silently biased Run 4.
+
 ## Amendment log
 
 - **A1 (2026-07-26) — H1 reading gate: low-frequency lane added.** The
