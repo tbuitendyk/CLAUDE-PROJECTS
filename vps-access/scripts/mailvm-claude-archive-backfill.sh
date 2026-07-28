@@ -15,9 +15,14 @@ U=theodore@homeandofficemicro.com
 SRC="INBOX/Claude HOMS Worker"
 DST="Archive"
 
+# doveadm prints the FIELD NAME first, so a line reads
+#   hdr.message-id: Message-ID: <abc@host>
+# An anchored ^Message-ID: match therefore never fires — which is exactly why
+# the first run reported "no messages" against a folder holding eight. Pull
+# the angle-bracketed token instead; that is stable whatever the prefix.
 ids_in() {
   doveadm fetch -u "$U" hdr.message-id mailbox "$1" all 2>/dev/null \
-    | sed -n 's/^[Mm]essage-[Ii][Dd]: *//p' | tr -d ' \r' | sed 's/^<//; s/>$//' | grep -v '^$' | sort -u
+    | grep -o "<[^>]*@[^>]*>" | tr -d "<>" | grep -v "^$" | sort -u
 }
 
 before_src=$(doveadm mailbox status -u "$U" messages "$SRC" 2>/dev/null)
@@ -26,7 +31,13 @@ echo "before: $before_src | $before_dst"
 
 SRC_IDS=$(ids_in "$SRC")
 DST_IDS=$(ids_in "$DST")
-[ -n "$SRC_IDS" ] || { echo "source folder has no messages — nothing to do"; exit 0; }
+SRC_N=$(printf '%s\n' "$SRC_IDS" | grep -c . || true)
+echo "message-ids read: source=$SRC_N dest=$(printf '%s\n' "$DST_IDS" | grep -c . || true)"
+if [ "$SRC_N" -eq 0 ]; then
+  echo "FAILED: could not read any message-ids from '$SRC' — refusing to report success."
+  echo "  raw sample:"; doveadm fetch -u "$U" hdr.message-id mailbox "$SRC" all 2>&1 | head -4 | sed "s/^/    /"
+  exit 1
+fi
 
 copied=0; skipped=0
 while IFS= read -r mid; do
