@@ -353,6 +353,54 @@ its own null before anything else); 8-11 means the 14/17 was search inflation;
 <8 means neither layer has anything on this geometry. It is a diagnostic
 baseline and earns no paper book on its own.
 
+### Model-free baseline + the paired reading — CORRECTION (bracketlab-20260728-0953, 2026-07-28)
+
+Declared before firing, after reading 0946 (timing disclosed there): the same
+cell as Run 3 with the gate set to **always** — daily-3d, adaptive band,
+argmax, 24/7, d 1.0x band, t 161h, 17 assets as singles. One declared cell per
+asset on both sides, so Run 3 vs Run 4 is a single-variable comparison:
+classifier on versus classifier off, everything else held.
+
+Result — 4.2 min on 3 workers, no failures:
+- **positive dollars 8/17 (binomial p = 0.69)** — the declared 8-11 band:
+  coin flip. The bracket mechanic has nothing on this geometry either.
+- positive vs control 0/17, as expected by construction (the control is the
+  best of 35 always-cells; a declared always-cell can only equal or trail it).
+  SOL came in at exactly 0.00, i.e. the declared cell WAS the best cell there —
+  a clean confirmation that the control is what this file says it is.
+
+**CORRECTION to the 0946 entry above.** That entry, and the email sent with
+it, said the committee's calls "subtract value from bracket execution". That
+overstated the evidence, and it did so by leaning on vs-control — a best-of-35
+in-sample baseline — which is the same search-inflation error this file had
+corrected for the leaderboard column earlier the same day, applied in the
+opposite direction. Against a DECLARED control the picture is flat:
+
+    gate helps on 8 of 17, hurts on 9 of 17    sign test p = 0.69
+    median per-asset difference                -$0.37
+    total dollars   gated -$923.27   model-free -$1,062.24
+    the gate stood aside on 20.9% of periods, so it IS acting — to no effect
+
+The gated total is $139 better, but that comes entirely from BNB, ETC and BCH,
+where both versions lose heavily and the gate merely trades less of a losing
+book. It is not evidence of skill.
+
+**Corrected standing finding.** The classifier layer neither adds nor
+subtracts measurably on bracket execution; **both layers are null on daily-3d
+at a 161h exit.** Every apparent success on the 0804 board was drift: ZEC, XLM
+and XRP are positive with the gate and without it, and the other fourteen
+assets are negative either way. The earlier "12 of 17" and "16 of 17"
+vs-control readings stand only as statements about a search-inflated baseline,
+not about the classifier, and are not to be quoted as the latter.
+
+**Run 6 (bracketlab-20260728-0959) fired to test whether the null is general.**
+The model-free cell — the simpler layer, whose failure makes the other moot —
+scored across all five chunk shapes on the same 17 assets. Diagnostic, not a
+candidate hunt; reading rule fixed before firing: every geometry in the 6-11
+band means the bracket layer is null generally and the branch is dead; any
+geometry at >=12/17 or <=5/17 is a LEAD only, owing a fresh declared test on
+data it was not chosen from, because five geometries is five looks.
+
 ## Amendment log
 
 - **A1 (2026-07-26) — H1 reading gate: low-frequency lane added.** The
