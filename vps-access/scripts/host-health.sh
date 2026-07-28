@@ -24,6 +24,18 @@ echo
 echo "===== classifier + VM processes ====="
 ps -eo pid,comm,pcpu,pmem,rss,nice,stat,etime | grep -Ei "node|VirtualBox|vbox" | grep -v grep || echo "  none"
 echo
+echo "===== classifier THREAD priorities (workers must sit at nice 19) ====="
+# Per-process nice hides this: on Linux nice is per-thread, and the whole
+# point of the fix is that the workers are niced while the thread serving the
+# web UI is not. Only a per-thread listing can show that.
+cpid=$(pgrep -f "node .*general-classifier|/opt/general-classifier" | head -1)
+if [ -n "${cpid:-}" ]; then
+  ps -L -o pid,tid,ni,pcpu,comm -p "$cpid" | head -12
+  echo "  (expect: several TIDs at 19 = workers, the rest at 0)"
+else
+  echo "  classifier process not found"
+fi
+echo
 echo "===== VirtualBox guest allocation ====="
 if command -v VBoxManage >/dev/null 2>&1; then
   vm=$(VBoxManage list runningvms | head -1 | sed 's/^"\(.*\)".*/\1/')
