@@ -165,6 +165,57 @@ Consequence executed: hunter paper books drafted for both pairs via the
 book engine (decision = directional added to the engine for exactly this;
 the frozen trackers are untouched). Declaration awaits owner sign-off.
 
+## Bracket-lab results log (execution-permutation sweeps)
+
+### DOTUSDT singles — bracketlab-20260727-2323, read 2026-07-28
+
+The lab's first null-tested candidate. Sweep: DOT alone (singles), all four
+options permuted = 72 branches, 516 trainings; slim grid then top-25
+promoted to the full 12-member grid with quorum rungs.
+
+**Candidate (leaderboard row 9, promoted):** daily-3d, adaptive band frozen
+at ±2.13%, argmax, 24/7, quorum **4 of 12**, **direction-filtered** gate,
+rails at **1.5x band**, horizon **65h**.
+Test window: 427 periods. **+$185.08 on 235 trades** (130 wins, gross/trade
+$1.04, 40 stops, 0 ambiguous fills) at research friction ($0.25/round trip).
+**vs control +$173.80** — the best model-free (always-gate) cell on the same
+branch made only ~$11.28, so essentially all of the dollars came from the
+committee's gating, not from blind bracket-chasing.
+
+**Null replay, 1000 rotations** (12,516 trainings, 6.4h, 0 failures). Each
+rotation retrained the full grid on circularly shifted labels and was handed
+the SAME downstream freedom the real machine had — whole execution menu, all
+quorum rungs, same best-cell rule:
+
+- **best-of-menu (search-replayed) exceed: 0.9% of 1000**, null median
+  **+$122.13**
+- same-config-only exceed: 0.1%, null median +$101.71
+
+**Methodological finding worth preserving: the 0.1% -> 0.9% gap is the
+measured price of within-branch cherry-picking — a factor of ~9.** The naive
+(same-config) reading would have overstated significance ninefold. This is
+the first direct measurement of the search tax in this project, and it
+justifies the search-replayed null as the default reading everywhere.
+
+**What is NOT priced:** the candidate was the best of **72 branches**, and
+that multiplicity cannot be replayed (it would mean 72 x 12 trainings inside
+every rotation). Crude Bonferroni 0.9% x 72 = 65%; independent-branch
+1-(1-0.009)^72 = 48%; branches are heavily correlated (one asset, one
+history, overlapping geometries) so the honest range is **~10-25%**.
+
+**Also load-bearing:** the null median of +$122 means a committee trained on
+scrambled labels, allowed to shop, typically finds +$122 in this window. The
+real book's excess over the noise floor is therefore about **$63, not $185** —
+roughly $110 of the apparent edge is purchasable with a large enough menu in
+any world, real or fake. Capital note: a 65h hold on daily signals runs up to
+3 concurrent positions (~$300 implied, not $100).
+
+**Verdict: survived its within-branch search replay at 0.9%; does NOT survive
+the 72-branch family correction; forward test required.** No book, no
+capital, no belief on this result alone. The declared next step that would
+make it mean more is **replication** — the same fixed configuration tested on
+fresh assets — not a deeper null on DOT.
+
 ## Amendment log
 
 - **A1 (2026-07-26) — H1 reading gate: low-frequency lane added.** The
