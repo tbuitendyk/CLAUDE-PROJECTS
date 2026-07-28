@@ -202,7 +202,7 @@ app.post('/api/bracketlab/:id/select', (req, res) => {
 
 app.post('/api/bracketlab/:id/confirm', (req, res) => {
   try {
-    res.json(batch.startBracketConfirm(req.params.id));
+    res.json(batch.startBracketConfirm(req.params.id, (req.body || {}).target || 'best'));
   } catch (err) {
     res.status(400).json({ error: err.message });
   }

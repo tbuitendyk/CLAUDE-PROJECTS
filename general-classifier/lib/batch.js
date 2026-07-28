@@ -1495,16 +1495,31 @@ function startBracketLab(params) {
 // asset, on purpose: a minute window is ~700k candles, which is fine held once
 // and released and decidedly not fine held by four workers beside their hourly
 // maps. The existing batchRunning() mutex keeps it from overlapping a sweep.
-function startBracketConfirm(id) {
+function startBracketConfirm(id, target = 'best') {
   if (batchRunning()) throw new Error(`batch ${activeBatch.id} is already running`);
   const doc = getBatch(id);
   if (!doc || doc.kind !== 'bracketlab') throw new Error('unknown bracket-lab run');
-  const sel = doc.selection;
-  if (!sel) throw new Error('select a promoted leader row first');
+  const row = doc.selection;
+  if (!row) throw new Error('select a promoted leader row first');
+
+  // TWO things are worth confirming, and they are different cells.
+  //   'best'     — the row that won the search on this combo.
+  //   'declared' — the cell fixed before the run, recorded alongside it.
+  // The declared one is usually the one that matters: it is the hypothesis
+  // under test, and a search winner is rarely the config anybody intends to
+  // trade. Only cells the run actually produced can be named — confirming an
+  // arbitrary cell would defeat the point of confirming what was chosen.
+  let sel = row;
+  if (target === 'declared') {
+    if (!row.declaredCell) throw new Error('this row carries no declared cell — was the run started with a declared config?');
+    sel = { ...row, ...row.declaredCell };
+  } else if (target !== 'best') {
+    throw new Error("confirm target must be 'best' or 'declared'");
+  }
   doc.status = 'running';
   doc.cancelRequested = false;
   doc.perf.phase = 'confirm';
-  doc.confirm = { status: 'running', startedAt: new Date().toISOString(), cell: sel };
+  doc.confirm = { status: 'running', startedAt: new Date().toISOString(), cell: sel, target };
   activeBatch = doc;
   saveBatch(doc);
 
