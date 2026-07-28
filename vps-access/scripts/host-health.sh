@@ -23,6 +23,10 @@ for pid in $(pgrep -f VirtualBoxVM); do
   fi
 done
 echo
+echo "===== disk (classifier cache lives under /opt/general-classifier/data) ====="
+df -h / /opt 2>/dev/null | sort -u
+du -sh /opt/general-classifier/data/cache 2>/dev/null || echo "  no classifier cache yet"
+echo
 echo "===== uptime / load ====="
 uptime
 echo
