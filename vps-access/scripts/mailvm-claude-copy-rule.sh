@@ -14,6 +14,10 @@
 #
 # :copy keeps the message in INBOX as well — a COPY was asked for, not a move.
 #
+# TWO destinations as of 2026-07-28 21:04Z (verified mail): BlueMail on Android
+# will not map arbitrary server-side folders, so a copy also goes to the
+# special-use Archive folder, which mobile clients do show.
+#
 # COMPILE BEFORE ACTIVATING. An uncompilable script is logged and skipped by
 # Dovecot rather than bouncing mail, but it would silently mean "no rule", so
 # sievec has to pass before the file is left in place; on failure the previous
@@ -26,16 +30,19 @@ ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o ConnectTimeout=20 ro
 set -uo pipefail
 USER_ADDR=theodore@homeandofficemicro.com
 FOLDER="INBOX/Claude HOMS Worker"
+FOLDER2="Archive"
 HOME_DIR=$(doveadm user -f home "$USER_ADDR" 2>/dev/null)
 [ -n "$HOME_DIR" ] || { echo "FAILED: cannot resolve home for $USER_ADDR"; exit 1; }
 SIEVE_DIR="$HOME_DIR/sieve"
 SIEVE="$SIEVE_DIR/dovecot.sieve"
 
 # Confirm the destination exists; refuse rather than invent a folder.
-if ! doveadm mailbox list -u "$USER_ADDR" 2>/dev/null | grep -qxF "$FOLDER"; then
-  echo "FAILED: mailbox '$FOLDER' does not exist for $USER_ADDR — not creating one"
-  exit 1
-fi
+for f in "$FOLDER" "$FOLDER2"; do
+  if ! doveadm mailbox list -u "$USER_ADDR" 2>/dev/null | grep -qxF "$f"; then
+    echo "FAILED: mailbox '$f' does not exist for $USER_ADDR — not creating one"
+    exit 1
+  fi
+done
 
 mkdir -p "$SIEVE_DIR"
 [ -f "$SIEVE" ] && cp -a "$SIEVE" "${SIEVE}.bak-$(date +%Y%m%d%H%M%S)"
@@ -51,6 +58,9 @@ if allof (
   envelope :is "to" "theodore@homeandofficemicro.com"
 ) {
   fileinto :copy "INBOX/Claude HOMS Worker";
+  # Also Archive: BlueMail on Android will not map arbitrary server-side
+  # folders, but it does show the special-use Archive.
+  fileinto :copy "Archive";
 }
 # --- end claude worker copy ---
 SIEVE_EOF
