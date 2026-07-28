@@ -113,6 +113,17 @@ function batchRunning() {
 function cancelActive() {
   if (!batchRunning()) return null;
   activeBatch.cancelRequested = true;
+  // Terminating workers is harder and faster than a cooperative flag, and
+  // matches what "Stop jobs" has always promised: in-flight training dies
+  // within seconds, completed results are kept.
+  if (activePool) {
+    try {
+      activePool.abort();
+    } catch {
+      /* already gone */
+    }
+    activePool = null;
+  }
   return activeBatch.id;
 }
 
@@ -1109,6 +1120,11 @@ function permNullAggregate(doc) {
 // ledger's rules apply to whatever crawls out.
 
 const bracketLib = require('./bracket');
+const { createPool } = require('./pool');
+
+// The pool serving whichever heavy job is in flight, so the kill switch can
+// terminate its workers immediately (see cancelActive).
+let activePool = null;
 const { toHourlyMap, forwardFill, scoreDiff, balancedBandPct, GEOMETRIES: GEOS } = require('./dataset');
 const { loadSymbol, loadSymbolAll, monthList, deriveShift, MIN_CHUNKS, interlacedPurge } = require('./pipeline');
 
@@ -1193,9 +1209,20 @@ function bracketPerfTick(doc) {
   perf.etaMs = perf.runsDone ? (elapsed / perf.runsDone) * (perf.runsTotal - perf.runsDone) : null;
 }
 
+// TOTAL order, not merely "by pnl": with tasks completing in worker-race
+// order, an unresolved tie would make the retained top-K depend on arrival
+// order. Tiebreaking on key+stage makes the final board a pure function of
+// the SET of results, so parallel output is byte-identical to serial.
+function leaderCmp(a, b) {
+  if (b.pnl !== a.pnl) return b.pnl - a.pnl;
+  const ka = `${a.key}|${a.stage}`;
+  const kb = `${b.key}|${b.stage}`;
+  return ka < kb ? -1 : ka > kb ? 1 : 0;
+}
+
 function pushLeader(doc, row) {
   doc.leaders.push(row);
-  doc.leaders.sort((a, b) => b.pnl - a.pnl);
+  doc.leaders.sort(leaderCmp);
   if (doc.leaders.length > (doc.params.detailK || 50)) doc.leaders.length = doc.params.detailK || 50;
 }
 
@@ -1343,58 +1370,58 @@ function startBracketLab(params) {
     return filled;
   };
 
+  // PARALLEL SWEEP. Each unit is a pure task (bracketwork.unitTask), so the
+  // pool runs poolSize at once while ALL doc mutation stays here on the main
+  // thread. pool.map preserves input order, and leaderCmp is a total order,
+  // so the finished board does not depend on which worker finished first.
+  const pool = createPool();
+  activePool = pool;
+  doc.perf.workers = pool.parallel ? pool.workers.length : 1;
+  saveBatch(doc);
+
   (async () => {
-    for (const { c, b } of units) {
-      if (doc.cancelRequested) break;
+    const slimPayloads = units.map(({ c, b }) => ({ combo: c, branch: b, stage: 'slim', params: p }));
+    await pool.map('unit', slimPayloads, (settled, i) => {
+      if (doc.cancelRequested) return;
+      const { c, b } = units[i];
       const key = unitKey(c, b);
-      try {
-        const res = await runBracketUnit(doc, c, b, 'slim', getMap, (tag) => {
-          doc.perf.runsDone++;
-          doc.progress = `slim ${doc.perf.unitsDone + 1}/${units.length}: ${tag}`;
-          bracketPerfTick(doc);
+      if (settled.ok && settled.value && settled.value.best) {
+        const res = settled.value;
+        pushLeader(doc, {
+          key, stage: 'slim',
+          trade: c.trade, ctx1: c.ctx1, ctx2: c.ctx2, size: c.size,
+          geometry: b.geometry, decision: b.decision, bandMode: b.band,
+          bandPct: res.bandPct, weekdaysOnly: b.weekdaysOnly,
+          testPeriods: res.testPeriods,
+          ...res.best,
         });
-        if (res.best) {
-          pushLeader(doc, {
-            key,
-            stage: 'slim',
-            trade: c.trade,
-            ctx1: c.ctx1,
-            ctx2: c.ctx2,
-            size: c.size,
-            geometry: b.geometry,
-            decision: b.decision,
-            bandMode: b.band,
-            bandPct: res.bandPct,
-            weekdaysOnly: b.weekdaysOnly,
-            testPeriods: res.testPeriods,
-            ...res.best,
-          });
-        }
-      } catch (err) {
-        if (doc.failures.length < 200) doc.failures.push({ key, error: err.message || String(err) });
+      } else if (!settled.ok && doc.failures.length < 200) {
+        doc.failures.push({ key, error: settled.error });
       }
       doc.perf.unitsDone++;
+      doc.perf.runsDone += slimViewsFor(c.size).length;
+      doc.progress = `slim ${doc.perf.unitsDone}/${units.length}: ${c.trade}${c.ctx1 ? '+' + c.ctx1 : ''}${c.ctx2 ? '+' + c.ctx2 : ''}`;
       bracketPerfTick(doc);
       saveBatch(doc);
-    }
-    // ---- promotion: top-K slim survivors re-run on the full member grid ----
+    });
+
+    // ---- promotion: top-K slim survivors on the full member grid ----
     if (!doc.cancelRequested) {
       const promote = doc.leaders.filter((l) => l.stage === 'slim').slice(0, p.promoteK);
-      doc.plan.promoteRuns = promote.reduce((s, l) => s + slimViewsFor(l.size).length * 4, 0);
+      doc.plan.promoteRuns = promote.reduce((s2, l) => s2 + slimViewsFor(l.size).length * 4, 0);
       doc.perf.runsTotal += doc.plan.promoteRuns;
       doc.perf.phase = 'promote';
-      let i = 0;
-      for (const l of promote) {
-        if (doc.cancelRequested) break;
-        i++;
-        const c = { trade: l.trade, ctx1: l.ctx1, ctx2: l.ctx2, size: l.size };
-        const b = { geometry: l.geometry, decision: l.decision, band: l.bandMode, weekdaysOnly: l.weekdaysOnly };
-        try {
-          const res = await runBracketUnit(doc, c, b, 'promoted', getMap, (tag) => {
-            doc.perf.runsDone++;
-            doc.progress = `promote ${i}/${promote.length}: ${tag}`;
-            bracketPerfTick(doc);
-          });
+      saveBatch(doc);
+      const promPayloads = promote.map((l) => ({
+        combo: { trade: l.trade, ctx1: l.ctx1, ctx2: l.ctx2, size: l.size },
+        branch: { geometry: l.geometry, decision: l.decision, band: l.bandMode, weekdaysOnly: l.weekdaysOnly },
+        stage: 'promoted', params: p,
+      }));
+      await pool.map('unit', promPayloads, (settled, i) => {
+        if (doc.cancelRequested) return;
+        const l = promote[i];
+        if (settled.ok && settled.value) {
+          const res = settled.value;
           if (res.best) pushLeader(doc, { ...l, stage: 'promoted', ...res.best, declaredCell: res.declared || null });
           if (res.declared) {
             const d = res.declared;
@@ -1404,21 +1431,27 @@ function startBracketLab(params) {
               grossPerTrade: d.grossPerTrade, stops: d.stops, ambiguous: d.ambiguous,
               controlPnl: d.controlPnl, vsControl: d.controlPnl == null ? null : d.pnl - d.controlPnl,
             });
-            doc.replication.sort((a, b) => b.pnl - a.pnl);
+            doc.replication.sort((x, y) => (y.pnl - x.pnl) || (x.trade < y.trade ? -1 : x.trade > y.trade ? 1 : 0));
           }
-        } catch (err) {
-          if (doc.failures.length < 200) doc.failures.push({ key: l.key + '|promote', error: err.message || String(err) });
+        } else if (!settled.ok && doc.failures.length < 200) {
+          doc.failures.push({ key: l.key + '|promote', error: settled.error });
         }
+        doc.perf.runsDone += slimViewsFor(l.size).length * 4;
+        doc.progress = `promote ${i + 1}/${promote.length}: ${l.trade}${l.ctx1 ? '+' + l.ctx1 : ''}`;
         bracketPerfTick(doc);
         saveBatch(doc);
-      }
+      });
     }
+    pool.abort();
+    if (activePool === pool) activePool = null;
     doc.status = doc.cancelRequested ? 'cancelled' : 'done';
     doc.perf.phase = 'done';
     doc.finishedAt = new Date().toISOString();
     doc.progress = '';
     saveBatch(doc);
   })().catch((err) => {
+    try { pool.abort(); } catch { /* gone */ }
+    if (activePool === pool) activePool = null;
     doc.status = 'error';
     doc.error = err.message || String(err);
     doc.finishedAt = new Date().toISOString();
@@ -1472,51 +1505,28 @@ function startBracketNull(id, shifts) {
   const c = { trade: sel.trade, ctx1: sel.ctx1, ctx2: sel.ctx2, size: sel.size };
   const b = { geometry: sel.geometry, decision: sel.decision, band: sel.bandMode, weekdaysOnly: sel.weekdaysOnly };
 
+  // PARALLEL NULL REPLAY — the biggest win available. Rotations share
+  // nothing: each retrains the full member grid on its own rotated world and
+  // returns one sample. Samples stay keyed by EFFECTIVE rotation so duplicates
+  // still collapse, and the exceed arithmetic is pure counting, hence
+  // order-independent. The live table keeps filling in as rotations land.
+  const pool = createPool();
+  activePool = pool;
+  doc.perf.workers = pool.parallel ? pool.workers.length : 1;
+  saveBatch(doc);
+
   (async () => {
-    for (let s = 1; s <= nShifts; s++) {
-      if (doc.cancelRequested) break;
-      try {
-        // rotate the label side across chunks (pipeline semantics), then
-        // re-run the ENTIRE downstream machine on the rotated world
-        const geo = GEOS[b.geometry];
-        const maps = { trade: await getMap(c.trade), ctx1: c.ctx1 ? await getMap(c.ctx1) : null, ctx2: c.ctx2 ? await getMap(c.ctx2) : null };
-        const { chunks } = bracketLib.buildComboChunks(maps, b.geometry, b.weekdaysOnly);
-        const rot = deriveShift(chunks.length, s / (nShifts + 1));
-        const src = chunks.map((ch) => ch.diffPct);
-        for (let i = 0; i < chunks.length; i++) chunks[i].diffPct = src[(i + rot) % chunks.length];
-        const nTest = Math.max(2, Math.round(chunks.length * 0.2));
-        const trainChunks = chunks.slice(0, chunks.length - nTest);
-        const testChunks = chunks.slice(chunks.length - nTest);
-        const bandPct = b.band === 'auto' ? balancedBandPct(trainChunks.map((ch) => ch.diffPct)) : Math.abs(b.band);
-        for (const ch of chunks) ch.label = scoreDiff(ch.diffPct / 100, bandPct / 100);
-        const views = bracketLib.comboViews(c.size, geo.featureHours / 24).views;
-        const memberCalls = [];
-        for (const v of slimViewsFor(c.size)) {
-          for (const model of ['logreg', 'boost']) {
-            for (const regime of ['full', 'interlaced']) {
-              if (doc.cancelRequested) throw new Error('cancelled');
-              const fit = regime === 'interlaced' ? interlacedPurge(trainChunks, geo) : trainChunks;
-              const { calls } = await bracketLib.trainMember({ model, viewIdx: views[v], trainChunks: fit, testChunks, decision: b.decision, tradeMap: maps.trade, geo });
-              memberCalls.push(calls);
-              doc.perf.runsDone++;
-              doc.progress = `null ${s}/${nShifts}: ${v}/${model}/${regime}`;
-              bracketPerfTick(doc);
-            }
-          }
-        }
-        let bestOfMenu = null;
-        let sameCell = null;
-        for (let k = 1; k <= memberCalls.length; k++) {
-          const stream = testChunks.map((_, i) => permQuorumCall(memberCalls, i, k));
-          const rows = bracketLib.execSweep(testChunks, stream, maps.trade, geo, bandPct, p.feePerLeg);
-          const cell = bracketLib.bestCell(rows, p.minTrades);
-          if (cell && (!bestOfMenu || cell.pnl > bestOfMenu.pnl)) bestOfMenu = cell;
-          if (k === sel.quorum) {
-            const same = rows.find((r) => r.gate === sel.gate && r.dMult === sel.dMult && r.tHours === sel.tHours);
-            if (same) sameCell = same;
-          }
-        }
-        doc.nullTest.samples[rot] = { best: bestOfMenu ? bestOfMenu.pnl : -Infinity, same: sameCell ? sameCell.pnl : null, sameTrades: sameCell ? sameCell.trades : null };
+    const payloads = [];
+    for (let s2 = 1; s2 <= nShifts; s2++) {
+      payloads.push({ combo: c, branch: b, params: p, shiftIndex: s2, nShifts, selection: sel });
+    }
+    let doneCount = 0;
+    await pool.map('nullRotation', payloads, (settled, i) => {
+      if (doc.cancelRequested) return;
+      doneCount++;
+      if (settled.ok && settled.value) {
+        const r = settled.value;
+        doc.nullTest.samples[r.rot] = { best: r.best, same: r.same, sameTrades: r.sameTrades };
         const vals = Object.values(doc.nullTest.samples);
         doc.nullTest.shifts = vals.length;
         doc.nullTest.exceedSearch = vals.filter((x) => x.best >= sel.pnl).length / vals.length;
@@ -1524,11 +1534,16 @@ function startBracketNull(id, shifts) {
         doc.nullTest.exceedSame = sames.length ? sames.filter((x) => x.same >= sel.pnl).length / sames.length : null;
         doc.nullTest.medianBestPnl = median(vals.map((x) => (x.best === -Infinity ? 0 : x.best)));
         doc.nullTest.medianSamePnl = sames.length ? median(sames.map((x) => x.same)) : null;
-      } catch (err) {
-        if (doc.failures.length < 200) doc.failures.push({ key: `null-shift-${s}`, error: err.message || String(err) });
+      } else if (!settled.ok && doc.failures.length < 200) {
+        doc.failures.push({ key: `null-shift-${i + 1}`, error: settled.error });
       }
+      doc.perf.runsDone += slimViewsFor(c.size).length * 4;
+      doc.progress = `null ${doneCount}/${nShifts} (${doc.nullTest.shifts} distinct banked)`;
+      bracketPerfTick(doc);
       saveBatch(doc);
-    }
+    });
+    pool.abort();
+    if (activePool === pool) activePool = null;
     doc.nullTest.status = doc.cancelRequested ? 'cancelled' : 'done';
     doc.nullTest.finishedAt = new Date().toISOString();
     doc.status = doc.cancelRequested ? 'cancelled' : 'done';
@@ -1536,6 +1551,8 @@ function startBracketNull(id, shifts) {
     doc.progress = '';
     saveBatch(doc);
   })().catch((err) => {
+    try { pool.abort(); } catch { /* gone */ }
+    if (activePool === pool) activePool = null;
     doc.nullTest = { ...(doc.nullTest || {}), status: 'error', error: err.message || String(err) };
     doc.status = 'error';
     doc.error = err.message || String(err);

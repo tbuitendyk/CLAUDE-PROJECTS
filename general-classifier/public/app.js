@@ -1835,7 +1835,7 @@
         ${tile('Phase', esc(perf.phase || '—'), running ? 'running' : esc(doc.status))}
         ${tile('Units', `${perf.unitsDone ?? 0} / ${perf.unitsTotal ?? '—'}`, 'combo × branch permutations')}
         ${tile('Trainings', `${perf.runsDone ?? 0} / ${perf.runsTotal ?? '—'}`, 'the raw denominator count')}
-        ${tile('Rate', perf.ratePerMin ? perf.ratePerMin.toFixed(1) + '/min' : '—', perf.secPerTraining ? perf.secPerTraining.toFixed(1) + 's per training' : '')}
+        ${tile('Rate', perf.ratePerMin ? perf.ratePerMin.toFixed(1) + '/min' : '—', (perf.secPerTraining ? perf.secPerTraining.toFixed(1) + 's/training' : '') + (perf.workers > 1 ? ` · ${perf.workers} threads` : ''))}
         ${tile('Elapsed', fmtDur(perf.elapsedMs), '')}
         ${tile('ETA', running ? fmtDur(perf.etaMs) : '—', running ? 'at current pace' : 'finished')}
       </div>
