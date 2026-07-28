@@ -1,0 +1,96 @@
+Classifier overnight #3 - Run 3 failed, and it failed in an interesting way
+
+THE RESULT
+
+Run 3 scored the declared cell - on-active gate, 1.0x distance, 161-hour exit,
+25% quorum - on all 17 assets as singles. Four minutes on the new threading.
+
+   positive dollars     6 of 17     binomial p = 0.93
+   positive vs control  1 of 17     binomial p = 1.0000
+
+The pre-registered rule said under 8 of 16 means window artifact, retire it.
+So it is retired. No argument, no re-run, no second look. That is the second
+declared configuration killed in two nights, and both times the replication
+did it in minutes where a null would have taken hours and answered a narrower
+question.
+
+But look at the second line. On 16 of 17 assets the model's gated cell made
+LESS money than the model-free control on the same asset. Not "failed to beat
+it" - actively lost to it. Even the three assets that made real money lost to
+their own controls:
+
+   ZEC   +391   control +423
+   XLM   +297   control +388
+   XRP   +252   control +309
+
+THE PATTERN THAT IS NOW TWO FOR TWO
+
+Row 9 last night: direction-filtered gate, 65-hour exit, 1/3 quorum. Lost to
+control on 12 of 17.
+Run 3 tonight: on-active gate, 161-hour exit, 25% quorum. Lost to control on
+16 of 17.
+
+Two configurations, derived from different boards by different rules, failing
+the same way. The honest summary is no longer "this candidate did not
+replicate". It is:
+
+   The committee's calls are SUBTRACTING value from bracket execution,
+   not adding it.
+
+Every time the classifier is allowed to decide when to place the brackets, it
+does worse than placing them every period. That is a finding about the whole
+approach, not about one setup, and it is worth more than either candidate was.
+
+THE OBVIOUS NEXT QUESTION, AND WHY I DID NOT ANSWER IT WITH THE NUMBER I HAVE
+
+If the model subtracts, what does the bracket mechanic do on its own? Backing
+the control out of the Run 3 rows puts the model-free bracket in profit on 14
+of 17 assets.
+
+I am not going to quote that number as a finding, and you should not either.
+It is the same mistake I corrected this morning in the other direction: that
+control is the BEST of 35 always-cells picked per asset with the answers in
+front of it. Best-of-35, seventeen times, is a search - of course it looks
+good. Quoting it would be exactly the error I just walked back.
+
+RUN 4 - RUNNING NOW (bracketlab-20260728-0953)
+
+So I replaced it with a real test. Run 4 is identical to Run 3 in every
+respect except one: the gate is ALWAYS instead of on-active. Same distance,
+same 161-hour exit, same chunks, same band, same 17 assets. One cell, declared
+in advance, no search on either side.
+
+That makes the pair a clean single-variable comparison - classifier on versus
+classifier off, everything else held. Whatever the difference is, it is the
+classifier.
+
+Reading rule, fixed before I fired it, and disclosed as declared AFTER seeing
+Run 3 because that is what the timing was:
+
+   12 or more of 17 positive  the bracket mechanic itself carries the edge and
+                              the classifier layer is subtracting from it. That
+                              reframes the hunt and earns its own null before
+                              anything else happens.
+   8 to 11                    coin flip; the 14 of 17 was search inflation and
+                              the mechanic has nothing either.
+   under 8                    neither layer has anything on this geometry and
+                              the search boards were reading drift end to end.
+
+It is a diagnostic. Nothing in it earns a paper book on its own, whatever it
+says.
+
+WHAT I AM NOT DOING WITHOUT YOU
+
+Two things are queued behind your judgement rather than mine:
+
+1. The exit-horizon ceiling test from the last email. Still want your go.
+
+2. Run 5, the same declared cell on all 272 doubles - about three hours. It
+   answers your original question about whether doubles add anything singles
+   do not. But if Run 4 says the classifier is the problem, spending three
+   hours re-testing a retired cell with more context features attached is
+   probably the wrong use of the box, and I would rather ask than assume. I
+   will hold it until Run 4 reads out and tell you which way I think it should
+   go in the next email.
+
+Everything above is logged in VERDICTS.md with the timing disclosures.
