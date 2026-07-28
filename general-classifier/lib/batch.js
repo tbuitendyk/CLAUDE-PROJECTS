@@ -1125,8 +1125,10 @@ const { createPool } = require('./pool');
 // The pool serving whichever heavy job is in flight, so the kill switch can
 // terminate its workers immediately (see cancelActive).
 let activePool = null;
-const { toHourlyMap, forwardFill, scoreDiff, balancedBandPct, GEOMETRIES: GEOS } = require('./dataset');
-const { loadSymbol, loadSymbolAll, monthList, deriveShift, MIN_CHUNKS, interlacedPurge } = require('./pipeline');
+// Candle→chunk→label plumbing now lives in bracketwork.js (the workers run
+// it); this thread only needs geometry metadata and the cache pre-warm.
+const { GEOMETRIES: GEOS } = require('./dataset');
+const { loadSymbol, loadSymbolAll, monthList } = require('./pipeline');
 
 const BRACKET_BAND_MENU = ['auto', 3, 5, 8];
 const BRACKET_GEOMETRIES = Object.keys(GEOS);
@@ -1226,81 +1228,10 @@ function pushLeader(doc, row) {
   if (doc.leaders.length > (doc.params.detailK || 50)) doc.leaders.length = doc.params.detailK || 50;
 }
 
-// One unit end-to-end: build the combo dataset for a branch, train members,
-// vote, sweep the execution menu, return the best cell (or null) plus the
-// pieces the promoted stage / null replay need. memberSpec chooses slim
-// (logreg over views, full window) or full grid (both models × 2 windows).
-async function runBracketUnit(doc, combo, branch, stage, getMap, onRun) {
-  const geo = GEOS[branch.geometry];
-  const nDays = geo.featureHours / 24;
-  const maps = {
-    trade: await getMap(combo.trade),
-    ctx1: combo.ctx1 ? await getMap(combo.ctx1) : null,
-    ctx2: combo.ctx2 ? await getMap(combo.ctx2) : null,
-  };
-  const { chunks } = bracketLib.buildComboChunks(maps, branch.geometry, branch.weekdaysOnly);
-  if (chunks.length < MIN_CHUNKS) throw new Error(`only ${chunks.length} labelable chunks`);
-  const nTest = Math.max(2, Math.round(chunks.length * 0.2));
-  const trainChunks = chunks.slice(0, chunks.length - nTest);
-  const testChunks = chunks.slice(chunks.length - nTest);
-  const bandPct = branch.band === 'auto' ? balancedBandPct(trainChunks.map((c) => c.diffPct)) : Math.abs(branch.band);
-  for (const c of chunks) c.label = scoreDiff(c.diffPct / 100, bandPct / 100);
-  const views = bracketLib.comboViews(combo.size, nDays).views;
-  const specs = [];
-  for (const v of slimViewsFor(combo.size)) {
-    if (stage === 'slim') specs.push({ model: 'logreg', view: v, regime: 'full' });
-    else for (const model of ['logreg', 'boost']) for (const regime of ['full', 'interlaced']) specs.push({ model, view: v, regime });
-  }
-  const memberCalls = [];
-  for (const spec of specs) {
-    if (doc.cancelRequested) throw new Error('cancelled');
-    const fit = spec.regime === 'interlaced' ? interlacedPurge(trainChunks, geo) : trainChunks;
-    const { calls } = await bracketLib.trainMember({
-      model: spec.model,
-      viewIdx: views[spec.view],
-      trainChunks: fit,
-      testChunks,
-      decision: branch.decision,
-      tradeMap: maps.trade,
-      geo,
-    });
-    memberCalls.push(calls);
-    onRun(`${combo.trade}${combo.ctx1 ? '+' + combo.ctx1 : ''}${combo.ctx2 ? '+' + combo.ctx2 : ''}/${branch.geometry}/${spec.regime}/${spec.view}/${spec.model}`);
-  }
-  // committee streams: majority vote (slim) plus, at the promoted stage,
-  // every quorum rung over the full member set — all swept mechanically
-  const fee = doc.params.feePerLeg;
-  const streams = [];
-  const vote = testChunks.map((_, i) => permQuorumCall(memberCalls, i, 1));
-  streams.push({ quorum: 1, calls: vote });
-  if (stage === 'promoted') {
-    for (let k = 2; k <= memberCalls.length; k++) streams.push({ quorum: k, calls: testChunks.map((_, i) => permQuorumCall(memberCalls, i, k)) });
-  }
-  let best = null;
-  let controlPnl = null;
-  let declared = null; // the DECLARED cell (replication mode): same config on
-                       // every asset, so each asset is ONE look, not thousands
-  const dec = doc.params.declared;
-  for (const s of streams) {
-    const rows = bracketLib.execSweep(testChunks, s.calls, maps.trade, geo, bandPct, fee);
-    if (dec && s.quorum === declaredQuorumFor(dec, memberCalls.length)) {
-      const hit = rows.find((r) => r.gate === dec.gate && r.dMult === dec.dMult && r.tHours === dec.tHours);
-      if (hit) declared = { ...hit, quorum: s.quorum, members: memberCalls.length };
-    }
-    if (controlPnl === null) {
-      // The model-free baseline for this unit: the BEST always-gate cell
-      // (identical for every stream — the control ignores calls). No
-      // min-trade floor: it's a yardstick, not a candidate.
-      const ctl = bracketLib.bestCell(rows.filter((r) => r.gate === 'always'), 0);
-      controlPnl = ctl ? ctl.pnl : null;
-    }
-    const cell = bracketLib.bestCell(rows, doc.params.minTrades);
-    if (cell && (!best || cell.pnl > best.pnl)) best = { ...cell, quorum: s.quorum, members: memberCalls.length };
-  }
-  if (best) best.controlPnl = controlPnl;
-  if (declared) declared.controlPnl = controlPnl;
-  return { best, declared, bandPct, testPeriods: testChunks.length, chunks, testChunks, trainChunks, memberCalls, maps, geo };
-}
+// A bracket unit end-to-end (build combo, train members, vote, sweep the
+// execution menu, take the best cell) lives in bracketwork.unitTask. It is
+// NOT duplicated here: the main thread and the workers must run the same
+// code or the determinism guarantee is worth nothing.
 
 function startBracketLab(params) {
   if (batchRunning()) throw new Error(`batch ${activeBatch.id} is already running`);
@@ -1352,23 +1283,9 @@ function startBracketLab(params) {
   activeBatch = doc;
   saveBatch(doc);
 
-  // Symbol maps are branch-independent; a small LRU keeps memory bounded on
-  // full-universe sweeps while giving near-perfect hit rates on sorted units.
-  const mapCache = new Map();
-  const getMap = async (sym) => {
-    if (mapCache.has(sym)) {
-      const v = mapCache.get(sym);
-      mapCache.delete(sym);
-      mapCache.set(sym, v);
-      return v;
-    }
-    const loaded = p.allLoaded ? await loadSymbolAll(sym, () => {}) : await loadSymbol(sym, monthList(p.startMonth, p.endMonth), () => {});
-    if (!loaded.rows.length) throw new Error(`no data for ${sym}`);
-    const filled = forwardFill(toHourlyMap(loaded.rows)).map;
-    mapCache.set(sym, filled);
-    if (mapCache.size > 8) mapCache.delete(mapCache.keys().next().value);
-    return filled;
-  };
+  // Symbol maps are built inside the workers (bracketwork.js owns that LRU).
+  // This thread only pre-warms the on-disk candle cache below, so it never
+  // holds a second copy of the same ~200MB of candles.
 
   // PARALLEL SWEEP. Each unit is a pure task (bracketwork.unitTask), so the
   // pool runs poolSize at once while ALL doc mutation stays here on the main
@@ -1514,14 +1431,9 @@ function startBracketNull(id, shifts) {
   activeBatch = doc;
   saveBatch(doc);
 
-  const mapCache = new Map();
-  const getMap = async (sym) => {
-    if (mapCache.has(sym)) return mapCache.get(sym);
-    const loaded = p.allLoaded ? await loadSymbolAll(sym, () => {}) : await loadSymbol(sym, monthList(p.startMonth, p.endMonth), () => {});
-    const filled = forwardFill(toHourlyMap(loaded.rows)).map;
-    mapCache.set(sym, filled);
-    return filled;
-  };
+  // No map cache here any more: every rotation builds its own maps inside the
+  // worker (bracketwork.js owns that LRU now), so a copy on this thread would
+  // be a second ~200MB of the same candles doing nothing.
   const c = { trade: sel.trade, ctx1: sel.ctx1, ctx2: sel.ctx2, size: sel.size };
   const b = { geometry: sel.geometry, decision: sel.decision, band: sel.bandMode, weekdaysOnly: sel.weekdaysOnly };
 
@@ -1580,6 +1492,20 @@ function startBracketNull(id, shifts) {
     });
     pool.abort();
     if (activePool === pool) activePool = null;
+    if (doc.cancelRequested) {
+      // A cancelled SERIAL null banked rotations 1..k — a prefix. A cancelled
+      // PARALLEL null banks whatever the lanes had finished, which is a
+      // scattered subset of 1..requested. The exceed rate is still an honest
+      // estimate over the rotations it holds, but the record must not let a
+      // later reader assume a prefix.
+      doc.nullTest.partial = {
+        banked: doc.nullTest.shifts,
+        dispatched: doneCount,
+        requested: nShifts,
+        contiguous: false,
+        note: 'cancelled mid-run; banked rotations are a scattered subset of 1..requested, not a prefix',
+      };
+    }
     doc.nullTest.status = doc.cancelRequested ? 'cancelled' : 'done';
     doc.nullTest.finishedAt = new Date().toISOString();
     doc.status = doc.cancelRequested ? 'cancelled' : 'done';
