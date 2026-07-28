@@ -31,6 +31,36 @@ branch's root `CLAUDE.md` carries this same "Working style" section. When
 creating a new branch/project (branches are created from here, the control
 plane), seed its `CLAUDE.md` with this header so the behavior carries forward.
 
+## The box: settled facts, do not re-litigate
+
+These have each been raised and answered more than once. They are recorded so
+a session reads them instead of rediscovering them and proposing the same
+change again.
+
+- **8 logical CPUs** — AMD EPYC-Milan, 4 sockets x 1 core x 2 threads.
+  `nproc` is 8. Check with `run-script host-health.sh` rather than assuming;
+  note a Claude Code sandbox has its OWN core count, which is not this box's.
+- **The VirtualBox guests get ONE vCPU each, and that is fixed.** It is an
+  IONOS constraint, not a VirtualBox setting we have failed to change and not
+  an oversight. HOMSMAIL03 and HOMSBUS02 are both `cpus=1` permanently. Do NOT
+  propose adding vCPUs to a guest — the answer has already been given several
+  times. Design around one core per guest.
+- Consequence, and the reason it keeps looking like a bug: HOMSMAIL03 runs the
+  whole iRedMail stack (postgresql, postfix, dovecot, amavis, clamav, iredapd,
+  nginx) on that single core and sits at a load average around 1.4-1.7. It is
+  oversubscribed by design and will stay that way. Repeated SSH handshakes
+  alone can saturate its sshd, so on-box scripts use ONE session, not several.
+- Anything CPU-hungry on the host must therefore leave the guests real room:
+  the classifier pool reserves 4 logical CPUs and its worker threads run at
+  nice 19 so a 1-vCPU guest always wins the scheduler.
+- A daily graceful restart of HOMSMAIL03 runs at 09:00 UTC
+  (`mailvm-restart.timer`; script `scripts/mailvm-restart.sh`, log
+  `/var/log/mailvm-restart.log`). It snapshots the guest before rebooting.
+- `VBoxManage` run as root reports both guests as `poweroff` while their
+  processes are plainly serving — the registry root sees is not the one the
+  running VMs came from. Do not act on VM-level power state until that is
+  untangled.
+
 ## Driving the VPS (how deploys happen)
 
 SSH (port 22) is blocked from Claude Code cloud sessions — everything goes
