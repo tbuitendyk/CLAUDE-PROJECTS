@@ -1,0 +1,138 @@
+Step 7 amended — and the first audit under it cut our edge by two thirds
+
+tl;dr you asked that step 7 force me to dig into a finished run, hunt for
+weaknesses in the measurement myself, and insert fixes before the next step
+whatever it was. Done, and it is now enforced by a gate: no new job fires
+until the last completed one has a written audit. The first audit under the
+rule immediately found the biggest problem yet -- our score was mostly
+grading calls the system never traded on. Measured properly, our advantage
+over noise is 1.9 points, not the 5.8 I reported an hour ago. It is still
+positive and still above every scramble, but it is a third the size.
+
+THE AMENDED STEP 7
+
+  7. Analyse hard, audit the instrument, then loop.
+     a. Go DEEPLY into the numbers and correlate them against the task stated
+        BEFORE the run. Did it answer that, or a neighbouring easier one?
+     b. ACTIVELY HUNT for weaknesses in the measurement -- do not wait to be
+        shown them. What does the metric count that it should not, what does
+        it omit, are the two arms the same population, and is any part of the
+        number achievable with no skill?
+     c. The next planned step is PROVISIONAL, ALWAYS. It does not proceed
+        until (b) is fixed. Intervening steps are inserted as often as
+        necessary, with no budget on them and no reluctance permitted.
+     d. Write it to reports/audit-<jobid>.md. No new job fires without one.
+     e. Every incorrect assumption found becomes a QC-REGISTER entry.
+
+  Added underneath: "a defect found by the owner is a defect that already
+  shaped a decision. The standard is finding them unprompted."
+
+Enforced, not promised: require-previous-audit.sh refuses to launch when the
+last completed run has no audit, and refuses a stub audit too, because a stub
+reads as done.
+
+WHAT THE FIRST AUDIT FOUND
+
+Question 3 of the template is "what does the metric count that it should
+not?", and the answer was large.
+
+Our score graded all three answers: down, flat, and up. But "flat" means the
+system stands aside and places no trade. So a setup that committed to a
+direction ONCE and said flat for the other 130 periods was being graded
+almost entirely on its flat calls. We were substantially measuring "can it
+tell when nothing happens" and calling it trading skill.
+
+The measure that corresponds to money is narrower: of the periods where it
+actually committed to a direction, how often was it right?
+
+TABLE 1 -- OUR EDGE OVER NOISE, THREE WAYS OF MEASURING IT
+What it measures: how far real market data beats scrambled data, where the
+scrambled data has nothing predictable in it. The gap is the whole point.
+
+  measure                     real     noise     gap
+  all-units share            57.6%     54.1%   +3.5 pts
+  active-only share          56.6%     50.8%   +5.8 pts
+  DIRECTIONAL ACCURACY       36.09%    34.23%  +1.9 pts   <- the real one
+
+  KEY  all-units       = every test setup counted, including ones that never
+                         traded
+       active-only     = only setups that placed at least one trade
+       directional     = of the individual decisions where it committed to
+        accuracy         up or down, the share it got right
+       real            = job -2211, live market data, held-back period
+       noise           = job -0041, six scrambled runs
+       (all figures are accuracy percentages, NOT money)
+
+So the headcount overstated the effect roughly threefold.
+
+WHY 36% IS NOT AS BAD AS IT LOOKS
+
+Three possible answers -- down, flat, up -- so blind guessing scores near
+33%, not 50%. Against 50% this reads as a catastrophe; against its own noise
+level of 34.23% it is a small positive. This is exactly why I keep insisting
+on comparing to the measured noise and never to a number that feels natural.
+
+AND ONE GENUINELY GOOD PIECE OF NEWS
+
+The six scrambles scored 33.40, 33.61, 33.88, 34.20, 35.13, 35.14 on this
+measure -- a spread of 1.7 points, against roughly 13 points for the old
+headcount. Our 36.09% sits above all six.
+
+That tightness matters. The new measure pools about 20,000 individual trading
+decisions instead of 170 setup-level verdicts, so it is far more precise and
+can settle the question with far fewer scrambles.
+
+WHAT HAPPENS TO CYCLE 6
+
+It keeps running -- it does not need killing. Its records already include the
+committed calls and hits per scramble, so the 19 scrambles it is producing
+give exactly what this measure needs. Relaunching would burn five hours for
+nothing.
+
+But its primary measure changes to directional accuracy, and I have written
+the reading rule to reports/CYCLE6-READING-RULE.md and committed it at
+02:46 UTC, before the run finishes, so the timestamp proves the rule came
+before the numbers:
+
+  GATE: the 19 scrambles must agree within 2.5 points, else nothing is read.
+  Then, against our 36.09%:
+    above all 19    -> 0.05. Predicts direction better than noise. Then owed
+                       the money question, which is separate and harder.
+    above 18 of 19  -> 0.10. Suggestive. No live money.
+    weaker          -> the directional edge closes.
+
+Honest disclosure recorded in the audit: cycle 6 was fired BEFORE this audit
+existed, because the rule did not exist yet. Under the new rule the audit
+comes first. It cost nothing this time by luck rather than design -- had the
+audit demanded a different universe, five hours would have been wasted. The
+gate exists so the next one cannot.
+
+THREE NEW QC ITEMS (22-24)
+
+  22  A classification score is not a trading score. Score committed
+      decisions, not stand-asides.
+  23  Removing non-participants does not make two groups comparable. Real:
+      77.6% of setups traded 21+ times; scrambled: 59.8%. Still different
+      after dropping the zeroes.
+  24  A headcount does not summarise per-decision data -- it throws away the
+      power and keeps the contamination. It overstated this by 3x.
+
+Also on the open list, and I would rather flag it than have you find it: the
+real census -2211 has not been re-run since several code changes. The full
+test suite and the determinism fixture pass, so I expect it reproduces, but
+expecting is not the same as having checked. If cycle 6 comes back positive,
+re-running that census is the first thing I do before anyone says the word
+"live".
+
+LOOP LEDGER
+
+  L1  job -2158   first edge screen, invalid by construction. Discarded.
+  L2  job -2211   the real census. 36.09% directional (revised measure).
+  L3  job -2236   one-scramble null: 27%. RETRACTED, broken construction.
+  L4  job -2303   six scrambles -> 14.7%-91.2%. Instrument broken.
+  L5  job -0041   corrected null. Gate passed. AUDITED -- found the flat-call
+                  contamination above.
+  L6  job -0235   RUNNING, 19 scrambles, ~07:00 UTC. Now judged on
+                  directional accuracy against a rule fixed in advance.
+
+c.
