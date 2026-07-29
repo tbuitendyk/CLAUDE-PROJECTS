@@ -1,5 +1,13 @@
 #!/usr/bin/env bash
-# classifier-edge-read.sh -- read the EDGE screen off the newest bracketlab doc.
+# classifier-edge-read.sh -- read the EDGE screen off a bracketlab doc.
+#
+# WHICH DOC. By default the newest one carrying an edge census. To read an
+# OLDER run, put its id in vps-access/reports/EDGE-JOB and commit it -- the
+# same pattern outbox/NEXT uses, and for the same reason: the installed
+# claude-deploy helper does not forward arguments to the script, so a job id
+# cannot arrive over the wire. Selecting the newest run silently was fine
+# while there was only one; with a run history it meant older cycles could not
+# be re-read at all, and their numbers were simply lost.
 #
 # Reports holdout edge at the edge-selected quorum rung, grouped by chunk shape
 # and decision mode. States plainly how much of the run it can actually see:
@@ -7,6 +15,8 @@
 # all reach it, this is a P&L-selected sample and says so rather than
 # pretending to be a census.
 set -euo pipefail
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+export SELFILE="$HERE/reports/EDGE-JOB"
 python3 <<'EOF'
 import json, urllib.request
 from collections import defaultdict
@@ -17,12 +27,41 @@ def get(u):
         return json.load(r)
 
 B = "http://127.0.0.1:8093"
+import os
+SELFILE = os.environ.get("SELFILE", "")
+want = ""
+if SELFILE:
+    try:
+        # Comment lines allowed so the file can explain itself in place.
+        for line in open(SELFILE):
+            line = line.strip()
+            if line and not line.startswith("#"):
+                want = line
+                break
+    except Exception:
+        want = ""
+
+ids = [b["id"] for b in get(f"{B}/api/batches")["batches"] if b["id"].startswith("bracketlab-")]
 doc = None
-for i in [b["id"] for b in get(f"{B}/api/batches")["batches"] if b["id"].startswith("bracketlab-")]:
-    d = get(f"{B}/api/batch/{i}")
-    if d.get("edgeCensus"):
-        doc = d
-        break
+if want:
+    if want not in ids:
+        print(f"requested job {want!r} is not in the batch list.")
+        print("known bracketlab ids (newest first):")
+        for i in ids[:15]:
+            print("  ", i)
+        raise SystemExit(1)
+    doc = get(f"{B}/api/batch/{want}")
+    if not doc.get("edgeCensus"):
+        print(f"job {want} carries no edge CENSUS — it was not run with edgeScreen,")
+        print("so there is nothing here that is not selected on P&L.")
+        raise SystemExit(1)
+    print(f"(reading {want}, pinned by reports/EDGE-JOB)")
+else:
+    for i in ids:
+        d = get(f"{B}/api/batch/{i}")
+        if d.get("edgeCensus"):
+            doc = d
+            break
 if doc is None:
     print("no doc carries an edge CENSUS. A screen read off the money-ranked")
     print("leaderboard selects on edge and is not evidence — re-run with edgeScreen.")
@@ -59,7 +98,12 @@ if draws:
         lo, hi = min(tot), max(tot)
         mean = sum(tot) / len(tot)
         print(f"\nnull share: mean {100*mean:.1f}%  range {100*lo:.1f}%-{100*hi:.1f}%")
-        print(f"cycle 1 (real outcomes) was 57.6% — {'ABOVE every draw' if 0.576 > hi else 'INSIDE the null spread'}")
+        print(f"cycle 1 (real outcomes, job -2158) was 57.6% — {'ABOVE every draw' if 0.576 > hi else 'INSIDE the null spread'}")
+        if (hi - lo) > 0.25:
+            print("WARNING: the draws span more than 25 points. Draws that disagree")
+            print("  this much are not draws of one statistic — check that the null")
+            print("  construction holds the majority baseline fixed (labelShiftScope)")
+            print("  before reading the comparison above as meaning anything.")
     print()
 
 groups = defaultdict(list)

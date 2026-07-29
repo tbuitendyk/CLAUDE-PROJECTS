@@ -1,0 +1,4 @@
+# Which bracketlab job classifier-edge-read.sh should read.
+# Put a single job id below (e.g. bracketlab-20260728-2236) to pin an older
+# run; leave it with no id to read the newest run carrying an edge census.
+# Arguments cannot be passed over the deploy API, which is why this is a file.
