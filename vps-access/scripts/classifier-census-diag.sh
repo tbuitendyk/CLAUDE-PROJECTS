@@ -108,6 +108,24 @@ if dc:
         rates = sorted(r["holdDirHits"] / r["holdDirCalls"] for r in g)
         med = rates[len(rates)//2]
         print(f"  units with >={floor:>2d} calls: {len(g):>4d}   pooled hit rate {100*h/c:>6.2f}%   median unit {100*med:>6.2f}%")
+    draws = sorted({r.get("shiftFrac") for r in dc if r.get("shiftFrac") is not None})
+    if draws:
+        print()
+        print("  per scramble (the spread is what says whether 36.09% is outside noise):")
+        rates = []
+        for d in draws:
+            g = [r for r in dc if r.get("shiftFrac") == d]
+            c = sum(r["holdDirCalls"] for r in g); h = sum(r["holdDirHits"] for r in g)
+            if not c: continue
+            rates.append(h / c)
+            print(f"    shift {d:.3f}: {h:>6d}/{c:<7d} = {100*h/c:>6.2f}%")
+        if len(rates) > 1:
+            lo, hi = min(rates), max(rates)
+            mean = sum(rates) / len(rates)
+            var = sum((x - mean) ** 2 for x in rates) / (len(rates) - 1)
+            sd = var ** 0.5
+            print(f"    mean {100*mean:.2f}%  range {100*lo:.2f}%-{100*hi:.2f}%  sd {100*sd:.2f} pts")
+            print(f"    real run (-2211) was 36.09% -> {(0.3609-mean)/sd:+.2f} sd from this null's mean")
     print("  NOTE: a 3-class problem, so 'chance' is not 50% — it depends on how")
     print("        often the market was flat. Compare against the null, never against 50.")
 
