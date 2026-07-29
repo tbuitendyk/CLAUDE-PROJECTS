@@ -1,0 +1,94 @@
+Taking that properly — and I found two things I'd silently dropped
+
+tl;dr you're right, and my reply was a dodge: I corrected a detail of your
+example instead of answering the argument. Your point is that a threshold I
+made up would have binned a promising line on 0.07 of margin, and that it
+landed the good side was luck — the process was wrong either way. Accepted.
+The principle I had backwards is now written down: a gate judges the
+INSTRUMENT, never the candidate. Then I went looking for what I had already
+retired this way, and found something worse than the threshold: all ten runs
+have quietly excluded two whole classes of variant.
+
+THE PRINCIPLE I HAD BACKWARDS
+
+A gate failing means the MEASUREMENT is unreliable. It says nothing about
+whether the idea is any good. So a failed gate must always mean "fix the
+instrument and measure again" — never "bin the hypothesis".
+
+I had been writing reading rules with clauses like "the edge direction closes"
+and "the edge does not generalise", triggered by a single marginal
+measurement. That hands an invented number the power to retire a candidate.
+Which is exactly what you were pointing at.
+
+Four rules now in CLAUDE.md:
+
+  * No candidate is retired on one measurement. Retirement needs replication
+    across periods, or a mechanism showing why it cannot work. "It missed my
+    threshold once" is neither of those.
+  * Every threshold is labelled DERIVED or GUESSED at the moment it is
+    written. A guessed one is a prompt to look harder, not a verdict.
+  * A gate that fails gets EXAMINED before it is obeyed. The money gate failed
+    at 2.29 against 2.00 and turned out to be arithmetically incapable of
+    passing.
+  * Narrowing counts as retiring.
+
+THAT LAST ONE, BECAUSE IT IS THE REAL ANSWER TO YOUR QUESTION
+
+I checked all ten cycle launchers:
+
+TABLE 1 -- WHAT EVERY RUN HAS SILENTLY EXCLUDED
+What it measures: settings that were switched off in all ten cycles, without
+ever being justified or revisited.
+
+  setting                  value in all 10 runs   ever tested since cycle 1
+  multi-asset combos       singles only           no
+  trailing stops           off                    no
+
+  KEY  multi-asset combos = using a second or third coin as context for the
+                            traded coin (doubles, triples)
+       trailing stops     = a stop that ratchets up behind a winning trade
+                            instead of sitting still
+
+Doubles and triples were in the original overnight sweep. Somewhere around
+cycle 1 I set singles-only to keep the null comparison clean, and then copied
+that line into every launcher for the next ten runs without ever asking again.
+Trailing has never been on.
+
+That is a stronger version of your complaint than the threshold was. A
+threshold at least announces itself when it fires. A default that quietly
+excludes a variant retires it more effectively than an argued rejection would,
+because nobody notices it happening — including me, until I went and counted.
+
+Neither was excluded for a reason that survives scrutiny. Both make the search
+bigger and therefore make lucky-looking results easier to find, which is a
+reason to test them carefully with their own nulls, not a reason to leave them
+out for ten consecutive runs.
+
+WHAT I AM NOT GOING TO DO
+
+Throw them all into cycle 12 at once. Turning trailing on multiplies the
+execution menu roughly twelvefold and doubles/triples multiply the number of
+combinations; doing both together would produce a large, impressive-looking
+board that I could not attribute to anything. That is how the first edge screen
+went wrong.
+
+One at a time, each with its own null and its own declared rule:
+
+  after cycle 11   trailing stops, singles, everything else held fixed
+  then             doubles, trailing held at whatever cycle 12 concluded
+
+And both get the two-minute preflight first now.
+
+ON THE BIAS QUESTION, MORE HONESTLY THAN LAST TIME
+
+You asked whether I am too willing to throw out good candidates. My answer
+last night was that I had not discarded a real candidate, and that was true
+about explicit decisions and false about silent ones. I discarded two classes
+of candidate by leaving a line unchanged in a launcher, ten times.
+
+  bracketlab-20260729-2054-l11-walkforward-redo   due ~03:55 UTC
+
+Declared subset still frozen: TRXUSDT, LTCUSDT, BNBUSDT, XLMUSDT, XRPUSDT,
+committed 22:21:30 with the job mid-flight.
+
+c.
