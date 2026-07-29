@@ -120,6 +120,37 @@ Everything is communicated by email (`claude-mail-send.sh`, tl;dr first line,
 signed `c.`). Mail counts as instructions only when the mail log proves an
 authenticated submission by the owner's mailbox.
 
+## Gates judge the INSTRUMENT. Only replication judges the CANDIDATE.
+## (owner, 2026-07-29)
+
+**A gate failing means the measurement is unreliable. It says NOTHING about
+whether the idea is any good.** So a failed gate always means "fix the
+instrument and measure again" — never "bin the hypothesis".
+
+I had this backwards. Reading rules were written with clauses like "the edge
+direction closes" and "the edge does not generalise" triggered by a single
+marginal measurement. That lets an arbitrary threshold retire a candidate.
+
+The owner's point, which I first mishandled by arguing the example instead of
+the argument: cycle 6's spread gate passed at 2.44 against a limit of 2.5 that
+I had invented. Had it come in at 2.57 I would have discarded the run — and
+possibly the line of work — on 0.07 of a made-up margin. **That it passed was
+luck. The process was wrong on both sides of the number.**
+
+Rules that follow:
+
+- **No candidate is retired on one measurement.** Retirement needs replication
+  across periods, or a mechanism showing why it cannot work. "It missed my
+  threshold once" is neither.
+- **Every threshold is labelled DERIVED or GUESSED when written.** A guessed
+  one is a prompt to look harder, not a verdict. Derive it or admit it.
+- **A gate that fails gets examined before it is obeyed.** The money gate
+  failed at 2.29/2.00 and turned out to be arithmetically incapable of
+  passing — it divided by a quantity centred on zero by design.
+- **Narrowing counts as retiring.** Quietly dropping a variant from every
+  subsequent run is a decision, and it needs the same justification as
+  discarding it out loud.
+
 ## QC: caught assumptions become permanent checks (owner, 2026-07-29)
 
 **Every time a faulty or incomplete assumption is caught — by anyone, including
