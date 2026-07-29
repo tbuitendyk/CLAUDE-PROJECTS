@@ -1835,12 +1835,44 @@
       ? `${doc.plan.combos} combos × ${doc.plan.branches} branch(es) = ${doc.plan.units} units · slim runs ${doc.plan.slimRuns}`
         + (doc.plan.promoteRuns != null ? ` · promote runs ${doc.plan.promoteRuns}` : '')
       : '';
+    // WHAT THIS RUN IS FOR, stated on the page rather than only in an email.
+    const descBlock = doc.description
+      ? `<p class="jobdesc">${esc(doc.description)}</p>`
+      : '<p class="jobdesc jobdesc-missing">No description was recorded for this run.</p>';
+
+    // EVERY SETTING THAT SHAPES THE RESULT, on the page, for the job actually
+    // running (owner, 2026-07-29). Previously the note listed the execution
+    // grid only, so the things that decide what a number MEANS — whether a
+    // holdout was held back, whether the outcomes were scrambled and how, and
+    // whether the census was kept off the money-ranked board — were invisible
+    // here and had to be taken on trust from whatever launched the job. A
+    // dropped setting has already invalidated one conclusion on this project;
+    // this is the page where that becomes visible instead of silent.
+    const yn = (v) => (v ? '<strong>on</strong>' : 'off');
+    const nullDesc = p.labelShiftReps > 0
+      ? `<strong>${p.labelShiftReps} scramble(s)</strong>, ${esc(p.labelShiftScope || 'series')}-scope`
+      : (p.labelShiftFrac ? `1 scramble, ${esc(p.labelShiftScope || 'series')}-scope` : '<strong>none — real outcomes</strong>');
+    const settingsBlock = `
+      <table class="settings">
+        <tr><th>Outcomes</th><td>${nullDesc}</td>
+            <th>Held-back slice</th><td>${p.holdout ? '<strong>yes</strong> — 70/15/15' : 'no — 80/20, nothing held back'}</td></tr>
+        <tr><th>Census</th><td>${yn(p.edgeScreen)}${p.edgeScreen ? ' — every unit recorded, not just money winners' : ''}</td>
+            <th>Trailing stops</th><td>${yn(p.trailing)}</td></tr>
+        <tr><th>Universe</th><td>${(p.universe || []).length} symbols${p.set && p.set.geometry ? '' : ''}</td>
+            <th>Sizes</th><td>${Object.entries(p.sizes || {}).filter(([, v]) => v).map(([k]) => esc(k)).join(', ') || '—'}</td></tr>
+        <tr><th>Permuted</th><td>${permuted.length ? esc(permuted.join(', ')) : 'nothing — single branch'}</td>
+            <th>Fixed</th><td>${esc((p.set && p.set.geometry) || '—')} · ${esc((p.set && p.set.decision) || '—')} · band ${esc(String((p.set && p.set.band) || '—'))}</td></tr>
+        <tr><th>Execution grid</th><td>d ${p.dMults.join('/')}×band · t ${p.tHours.join('/')}h · gates ${p.gates.join('/')} · entry ${(p.entries || ['breakout']).join('/')}</td>
+            <th>Fees</th><td>$${(2 * p.feePerLeg).toFixed(2)} per round trip</td></tr>
+        <tr><th>Selection rule</th><td>top net $ with ≥${p.minTrades} trades</td>
+            <th>Promoted</th><td>top ${p.promoteK}</td></tr>
+      </table>`;
+
     const perfBlock = `
       <div class="section"><h2>Progress &amp; performance</h2>
-      <p class="note">${planLine}${permuted.length ? ' · permuted: ' + permuted.join(', ') : ' · no options permuted'}
-        · fee/trip $${(2 * p.feePerLeg).toFixed(2)} · d-grid ${p.dMults.join('/')}×band · t ${p.tHours.join('/')}h
-        · gates ${p.gates.join('/')} · entry ${(p.entries || ['breakout']).join('/')}
-        · rule: top net $ with ≥${p.minTrades} trades · promote top ${p.promoteK}</p>
+      ${descBlock}
+      <p class="note">${planLine}</p>
+      ${settingsBlock}
       <div class="tiles">
         ${tile('Phase', esc(perf.phase || '—'), running ? 'running' : esc(doc.status))}
         ${tile('Units', `${perf.unitsDone ?? 0} / ${perf.unitsTotal ?? '—'}`, 'combo × branch permutations')}

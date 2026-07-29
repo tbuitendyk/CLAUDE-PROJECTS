@@ -175,3 +175,41 @@ tr.miss td { background: var(--miss-bg); }
 }
 .tabbar .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
 .tabbar .tab:hover { color: var(--accent); }
+
+/* Job description — what the run is FOR, stated directly under the
+   Progress & performance heading so intent sits beside the numbers rather
+   than only in an email thread. */
+.jobdesc {
+  margin: 0 0 .6rem;
+  padding: .5rem .7rem;
+  border-left: 3px solid var(--accent, #4a9eff);
+  background: rgba(74, 158, 255, .07);
+  font-size: .95rem;
+  line-height: 1.45;
+}
+.jobdesc-missing {
+  border-left-color: #b58900;
+  background: rgba(181, 137, 0, .09);
+  font-style: italic;
+  opacity: .85;
+}
+/* Settings actually in force for THIS run. Every value that changes what a
+   number means, on the page, for the job that is running. */
+table.settings {
+  border-collapse: collapse;
+  margin: .5rem 0 .8rem;
+  font-size: .85rem;
+  width: 100%;
+}
+table.settings th {
+  text-align: right;
+  padding: .18rem .5rem .18rem 0;
+  white-space: nowrap;
+  opacity: .7;
+  font-weight: 500;
+  width: 1%;
+}
+table.settings td {
+  padding: .18rem 1.2rem .18rem 0;
+}
+table.settings tr:nth-child(even) { background: rgba(127, 127, 127, .05); }

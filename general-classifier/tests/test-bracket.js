@@ -543,6 +543,53 @@ module.exports = {
     assert.strictEqual(b.nTest, s2.testChunks.length);
     assert.strictEqual(b.nHold, s2.holdChunks.length);
   },
+  async jobIdsAreHumanReadableAndStillMachineSafe() {
+    // Owner, 2026-07-29: a wall of bare timestamps meant the only way to tell
+    // one run from another was to look each up — which is how three runs'
+    // results got attributed to the wrong job ids in a report.
+    //
+    // The slug must not break anything: job ids are used as FILENAMES
+    // (reports/audit-<id>.md), pasted into shell scripts, matched exactly by
+    // reports/EDGE-JOB, and filtered on the `bracketlab-` prefix.
+    const { idSlug } = require('../lib/batch');
+    const cases = [
+      [{ labelShiftReps: 19, labelShiftScope: 'window', edgeScreen: true, holdout: true }, '-null19-win-census'],
+      // holdout OFF is called out loudly: a run with nothing held back cannot
+      // answer an out-of-sample question, and that must be visible in the id.
+      [{ labelShiftReps: 19, labelShiftScope: 'window', edgeScreen: true }, '-null19-win-census-noholdout'],
+      [{ edgeScreen: true, holdout: true }, '-real-census'],
+      [{ labelShiftFrac: 0.5, holdout: true }, '-null1'],
+      [{ declared: {}, trailing: true, holdout: true }, '-real-declared-trail'],
+      [{ holdout: false }, '-real-noholdout'],
+      [{ label: 'Cycle 6 — the BIG one!!', holdout: true }, '-cycle-6-the-big-one'],
+    ];
+    for (const [p, want] of cases) {
+      assert.strictEqual(idSlug(p), want, `idSlug(${JSON.stringify(p)})`);
+    }
+    // Machine-safety, checked on the assembled id rather than the slug alone.
+    for (const [p] of cases) {
+      const id = `bracketlab-20260729-0235${idSlug(p)}`;
+      assert.ok(/^bracketlab-[0-9]{8}-[0-9]{4}[a-z0-9-]*$/.test(id), `unsafe id: ${id}`);
+      assert.ok(id.startsWith('bracketlab-'), 'prefix filters must still match');
+      assert.ok(!/[^A-Za-z0-9._-]/.test(id), `id is used as a filename: ${id}`);
+      assert.ok(id.length <= 64, `id too long for comfort: ${id}`);
+    }
+    // A hostile label must not escape into a path or a shell word.
+    const nasty = idSlug({ label: '../../etc/passwd; rm -rf /' });
+    assert.ok(!nasty.includes('/') && !nasty.includes('.') && !nasty.includes(';'),
+      `label sanitisation failed: ${nasty}`);
+
+    // AND IT MUST ACTUALLY BE WIRED IN. Testing idSlug alone would pass
+    // happily while the id template ignored it — a working function that
+    // nothing calls is precisely the failure mode this suite keeps catching.
+    const fs = require('fs');
+    const path = require('path');
+    const src = fs.readFileSync(path.join(__dirname, '..', 'lib', 'batch.js'), 'utf8');
+    assert.ok(/id: `bracketlab-\$\{stamp\}\$\{idSlug\(/.test(src),
+      'the bracketlab id must be built from idSlug(), not the bare timestamp');
+    assert.ok(/description: p\.description/.test(src),
+      'the run document must carry the description');
+  },
   async drawCountCanReachTheConventionalThreshold() {
     // The draw count sets a FLOOR on the strongest claim available: beating
     // all N draws gives a rank-based p of 1/(N+1). A cap of 12 floors that at

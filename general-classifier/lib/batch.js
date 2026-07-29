@@ -1298,6 +1298,31 @@ function promotionSet(p, doc, units) {
 // NOT duplicated here: the main thread and the workers must run the same
 // code or the determinism guarantee is worth nothing.
 
+// A short, human-readable tag derived from what the run actually IS, appended
+// to the timestamp so a job list can be read at a glance. Kept to a handful of
+// characters and a fixed alphabet: this ends up in a job id that is used as a
+// filename (reports/audit-<id>.md) and pasted into shell scripts.
+//
+// An explicit `label` wins; otherwise it is inferred from the settings, which
+// matters because the inferred one cannot drift out of step with the run.
+function idSlug(p) {
+  const raw = (p.label || '').trim();
+  if (raw) {
+    const clean = raw.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 32);
+    if (clean) return `-${clean}`;
+  }
+  const bits = [];
+  if (p.labelShiftReps > 0) bits.push(`null${p.labelShiftReps}`);
+  else if (p.labelShiftFrac) bits.push('null1');
+  else bits.push('real');
+  if (p.labelShiftScope === 'window') bits.push('win');
+  if (p.edgeScreen) bits.push('census');
+  if (p.declared) bits.push('declared');
+  if (p.trailing) bits.push('trail');
+  if (!p.holdout) bits.push('noholdout');
+  return `-${bits.join('-')}`;
+}
+
 function startBracketLab(params) {
   if (batchRunning()) throw new Error(`batch ${activeBatch.id} is already running`);
   const p = {
@@ -1352,6 +1377,10 @@ function startBracketLab(params) {
     // so its draws are not comparable to each other or to the real result.
     // Default stays 'series' so previously recorded boards keep their meaning.
     labelShiftScope: params.labelShiftScope === 'window' ? 'window' : 'series',
+    // What this run is FOR, in a sentence, and a short tag for its id. Both
+    // are stored with the run so intent and identity travel with the numbers.
+    description: typeof params.description === 'string' ? params.description.slice(0, 600) : '',
+    label: typeof params.label === 'string' ? params.label.slice(0, 40) : '',
     detailK: 50,
     feePerLeg: REAL_FEE_PER_LEG,
     dMults: bracketLib.D_MULTS,
@@ -1379,9 +1408,19 @@ function startBracketLab(params) {
   }
   const slimRuns = units.reduce((s, u) => s + slimViewsFor(u.c.size).length, 0);
   const stamp = new Date().toISOString().replace(/[-:]/g, '').slice(0, 13).replace('T', '-');
+  // HUMAN-MEANINGFUL JOB IDS (owner, 2026-07-29). A wall of timestamps means
+  // the only way to tell -2303 from -0041 is to look each one up, which is
+  // exactly how their results got attributed to the wrong runs in a report.
+  // The slug is APPENDED so every existing consumer still works: scripts
+  // filter on the `bracketlab-` prefix and match ids exactly, and the
+  // timestamp keeps its position and sort order.
   const doc = {
-    id: `bracketlab-${stamp}`,
+    id: `bracketlab-${stamp}${idSlug(p)}`,
     kind: 'bracketlab',
+    // A sentence, written when the job is fired, saying what this run is FOR.
+    // Stored with the run so the intent survives next to the numbers instead
+    // of only in an email thread.
+    description: p.description || '',
     status: 'running',
     startedAt: new Date().toISOString(),
     finishedAt: null,
@@ -1774,6 +1813,7 @@ module.exports = {
   startMetalens,
   startPermScreen,
   startBracketLab,
+  idSlug,
   bracketSelect,
   startBracketNull,
   startBracketConfirm,
