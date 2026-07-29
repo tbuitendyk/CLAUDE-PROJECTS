@@ -104,6 +104,48 @@ if nets:
         print("  unstable as the headcount was. DO NOT read a comparison. ***")
     else:
         print("  gate passed: the scrambles agree closely enough to compare against.")
+    # ---- POOLED PER-TRADE MONEY --------------------------------------------
+    # Summing 170 unit totals throws away the per-trade data and inherits the
+    # variance of a handful of large trades — the identical fault as QC 24,
+    # where a unit-level headcount discarded 20,000 decisions and overstated
+    # an effect threefold. The better-conditioned statistic pools across every
+    # TRADE, exactly as directional accuracy pools across every decision.
+    #
+    # Declared here BEFORE any real arm exists, so it cannot have been chosen
+    # to flatter a result — the real census carrying money has not been run.
+    def per_trade(g):
+        tr = sum(r["holdTrades"] or 0 for r in g)
+        return (sum(r["holdPnl"] for r in g) / tr, tr) if tr else (None, 0)
+    print()
+    print("TABLE 2 — MONEY PER TRADE (better conditioned than the totals above)")
+    print("What it measures: the same money, divided by the number of trades that")
+    print("  produced it. Totals are dominated by a few large trades; this pools")
+    print("  across every trade, so it is far less noisy.")
+    print()
+    print("  KEY  $/trade = net dollars per trade after fees, pooled")
+    print("       trades  = how many trades that average is over")
+    print()
+    pts = []
+    for d in draws:
+        g = [r for r in priced if r.get("shiftFrac") == d]
+        v, tr = per_trade(g)
+        if v is None: continue
+        pts.append(v)
+        print(f"  shift {d:.3f}: {v:>8.4f} $/trade  over {tr:,} trades")
+    if pts:
+        plo, phi, pmid = min(pts), max(pts), median(pts)
+        pspread = phi - plo
+        print(f"\n  scramble $/trade: median {pmid:.4f}  range {plo:.4f} to {phi:.4f}"
+              f"  spread {pspread:.4f}")
+        pmag = abs(pmid) if pmid else 1.0
+        print(f"  spread-to-magnitude ratio: {pspread/pmag:.2f}"
+              f"  ({'STABLE' if pspread <= 2*pmag else 'still unstable'})")
+    if real:
+        v, tr = per_trade(real)
+        if v is not None:
+            print(f"\n  REAL: {v:.4f} $/trade over {tr:,} trades")
+            if pts:
+                print(f"  beats {sum(1 for x in pts if v > x)} of {len(pts)} scrambles")
     if real:
         rnet = sum(r["holdPnl"] for r in real)
         above = sum(1 for x in nets if rnet > x)
