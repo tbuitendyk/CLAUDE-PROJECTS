@@ -1,0 +1,88 @@
+Audited every parameter — five more silent narrowings, and one that was unreachable
+
+tl;dr your framing resolves the tension I had been fumbling: narrow fields ARE
+the right tool, and the fault was narrowing by inertia rather than by decision.
+I audited all eleven settings across all ten runs. Two I had already found.
+Five more were frozen by copy-paste. One was worse than frozen — hard-coded
+where no launcher could reach it — and it happens to be the single dimension
+this whole result depends on: the trading fee. It is now settable, and it jumps
+the queue ahead of trailing stops.
+
+TABLE 1 -- EVERY SETTING, AND WHETHER IT WAS HELD FIXED ON PURPOSE
+What it measures: which knobs have been frozen across all ten runs, and
+whether that was a decision or an accident.
+
+  setting            value in all 10   on purpose?
+  multi-asset        singles only      NO - inertia
+  trailing stops     off               NO - inertia
+  trading fee        0.125/leg         NO - UNREACHABLE, see below
+  dormant band       always "auto"     NO - inertia
+  weekdays           always 24/7       NO - inertia
+  min trades         10                partly
+  promote cap        50                yes, it is a display cap
+  the 17 coins       same 17           yes, but they are survivors
+  execution grid     library constants effectively hard-coded
+  held-back slice    on                yes, deliberate
+  scramble scope     window            yes, series was proven broken
+
+  KEY  multi-asset  = using a second/third coin as context for the traded one
+       dormant band = the +/-% move below which a period counts as "flat" --
+                      this defines every label, so it shapes everything
+       min trades   = the floor below which a setup is ignored
+       survivors    = coins that still exist today; ones that died are absent
+
+THE ONE THAT WAS NOT EVEN REACHABLE
+
+The trading fee was hard-coded inside the engine. No launcher could change it.
+That is the same class of fault as the API silently dropping "trailing" and
+"holdout" earlier this week, and it matters more, because cycle 9's entire
+result stands on the fee: 86 cents of every dollar earned goes to fees, and
+break-even sits only 16% above the cost we ASSUME.
+
+So the one number the answer depends on could not be moved.
+
+Worse, my own guard test could not see it. That test checks every setting the
+engine reads from the caller is actually forwarded — but a setting sourced from
+a constant is never read from the caller, so nothing looked missing. It
+reported all clear.
+
+The guard now checks the other direction too: anything the sweep consumes must
+be traceable back to something a caller can set. And I had to fix that check
+three times before it worked — the first two versions passed the suite while
+detecting nothing, which is its own lesson and is now QC 44: a check is not
+trusted until the fault is put back and it fails.
+
+WHY THE FEE NOW JUMPS AHEAD OF TRAILING STOPS
+
+I told you last night trailing was next. It is not, and here is the reasoning:
+
+1. It decides whether anything else matters. If the edge dies at realistic
+   execution costs, trailing and multi-asset are moot.
+2. It expands nothing. Changing the fee re-scores the same trades; it adds no
+   new dimension to search, so it cannot manufacture a lucky winner. In
+   selection-risk terms it is the safest test available.
+3. It has never been examined, and now we know it could not have been.
+
+ORDER FROM HERE, ONE VARIABLE PER RUN
+
+  cycle 12   fee sweep       0.10 / 0.125 / 0.20 / 0.30 / 0.40 per leg
+  cycle 13   trailing on     singles, fee fixed at whatever 12 says is real
+  cycle 14   multi-asset     trailing fixed at whatever 13 concludes
+  later      band, weekdays, min trades
+
+Each with its own null, its own rule written before firing, and the two-minute
+preflight first.
+
+Your two-phase framing is now written into the working rules: wide and free
+when choosing a MECHANISM, where the output is a direction and never a result
+because a null over a huge menu is not worth building; then strictly one
+variable per run when drilling in, trimming the candidate space as evidence
+arrives. And the discipline that was missing — a variable held fixed must be
+held fixed ON PURPOSE, named with a reason and a date to revisit.
+
+  bracketlab-20260729-2054-l11-walkforward-redo   due ~03:55 UTC
+
+Declared subset still frozen and untouched: TRXUSDT, LTCUSDT, BNBUSDT,
+XLMUSDT, XRPUSDT.
+
+c.
