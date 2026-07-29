@@ -1337,7 +1337,14 @@ function startBracketLab(params) {
     // How many DISTINCT rotations to run in one job. One rotation is a single
     // draw of the null; a null you cannot put an error bar on is barely
     // better than an assumed one.
-    labelShiftReps: Math.min(12, Math.max(0, Math.floor(Number(params.labelShiftReps) || 0))),
+    // Cap raised 12 -> 24. The number of draws sets a FLOOR on the strongest
+    // claim available: if the real result beats all N draws, the rank-based
+    // p is 1/(N+1). Twelve draws floor that at 0.077, so a perfect outcome
+    // still could not reach the conventional 0.05 — the cap, not the data,
+    // would be deciding the answer. Nineteen draws puts the floor at exactly
+    // 0.05. 24 leaves headroom without inviting all-night runs by accident
+    // (each draw is 170 units, roughly 15 minutes on 4 workers).
+    labelShiftReps: Math.min(24, Math.max(0, Math.floor(Number(params.labelShiftReps) || 0))),
     // 'window' rotates inside train/search/holdout separately, which holds
     // every window's class balance — and therefore the majority baseline that
     // `edge` is scored against — identical across draws and identical to the

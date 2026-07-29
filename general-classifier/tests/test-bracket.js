@@ -543,6 +543,21 @@ module.exports = {
     assert.strictEqual(b.nTest, s2.testChunks.length);
     assert.strictEqual(b.nHold, s2.holdChunks.length);
   },
+  async drawCountCanReachTheConventionalThreshold() {
+    // The draw count sets a FLOOR on the strongest claim available: beating
+    // all N draws gives a rank-based p of 1/(N+1). A cap of 12 floors that at
+    // 0.077, so the CAP rather than the data would decide whether anything
+    // can ever be called significant. 19 draws is the first count whose floor
+    // reaches 0.05, so the cap must admit at least that.
+    const fs = require('fs');
+    const path = require('path');
+    const src = fs.readFileSync(path.join(__dirname, '..', 'lib', 'batch.js'), 'utf8');
+    const m = src.match(/labelShiftReps:\s*Math\.min\((\d+),/);
+    assert.ok(m, 'could not find the labelShiftReps cap');
+    const cap = Number(m[1]);
+    assert.ok(cap >= 19,
+      `draw cap ${cap} floors the best achievable p at ${(1 / (cap + 1)).toFixed(3)}, above 0.05`);
+  },
   async rotationTagSurvivesPromotion() {
     // A multi-rotation null is one job holding several draws. If the shift tag
     // does not survive into the promoted payload, every draw silently runs the
