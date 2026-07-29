@@ -473,6 +473,76 @@ module.exports = {
     const missing = [...read].filter((k) => !new RegExp(`\\b${k}\\s*:`).test(forwarded));
     assert.deepStrictEqual(missing, [], `startBracketLab reads these but the API never forwards them: ${missing.join(', ')}`);
   },
+  async windowRotationHoldsTheBaselineTheEdgeIsScoredAgainst() {
+    // edge = accuracy - majorityBaseline. A null draw scored against a SOFTER
+    // baseline posts positive edge more easily with no change in skill, so a
+    // rotation scheme that moves the baseline is not producing draws of the
+    // same statistic. Measured on BTC/ZEC daily-3d (908 chunks), series-scope
+    // rotation moved the holdout baseline from 0.265 to 0.419 across seven
+    // draws while the real run sat at 0.353.
+    //
+    // Window scope must hold every window's label multiset EXACTLY — that is
+    // what pins the band (calibrated on train) and the baseline (a function of
+    // the train modal class and the holdout counts).
+    const { rotateLabels, splitAndLabel, splitBounds } = require('../lib/bracketwork');
+    const { classifierMetrics } = require('../lib/metrics');
+    const branch = { band: 'auto' };
+    // A deliberately drifting series, so the epochs genuinely differ and a
+    // series rotation has something to smear.
+    const mk = () => Array.from({ length: 120 }, (_, i) => ({
+      diffPct: Math.sin(i / 7) * 3 + i * 0.05 - 3,
+    }));
+
+    const counts = (cs) => {
+      const d = { '-1': 0, 0: 0, 1: 0 };
+      for (const c of cs) d[c.label] += 1;
+      return `${d['-1']}/${d['0']}/${d['1']}`;
+    };
+    const measure = (chunks) => {
+      const s = splitAndLabel(chunks, branch, true);
+      return {
+        band: s.bandPct,
+        train: counts(s.trainChunks),
+        hold: counts(s.holdChunks),
+        baseline: classifierMetrics(
+          s.trainChunks.map((c) => c.label),
+          s.holdChunks.map((c) => c.label),
+          s.holdChunks.map(() => 0),
+        ).majorityBaseline,
+      };
+    };
+
+    const real = measure(mk());
+    let windowMoved = 0;
+    let seriesMoved = 0;
+    for (const frac of [0.143, 0.286, 0.429, 0.571, 0.714, 0.857]) {
+      const w = mk();
+      rotateLabels(w, frac, 'window', true);
+      const mw = measure(w);
+      assert.strictEqual(mw.band, real.band, `window scope must not move the band (shift ${frac})`);
+      assert.strictEqual(mw.train, real.train, `window scope must hold train balance (shift ${frac})`);
+      assert.strictEqual(mw.hold, real.hold, `window scope must hold holdout balance (shift ${frac})`);
+      assert.strictEqual(mw.baseline, real.baseline, `window scope must hold the baseline (shift ${frac})`);
+
+      const s = mk();
+      rotateLabels(s, frac, 'series', true);
+      const ms = measure(s);
+      if (ms.baseline !== real.baseline) seriesMoved++;
+      // and the window rotation must actually SHUFFLE, not no-op
+      const before = mk();
+      if (w.some((c, i) => c.diffPct !== before[i].diffPct)) windowMoved++;
+    }
+    assert.strictEqual(windowMoved, 6, 'window rotation must actually permute every draw');
+    assert.ok(seriesMoved >= 3,
+      `series scope should move the baseline on most draws (moved on ${seriesMoved}/6) — if it stopped doing so, this test no longer demonstrates the confound it exists for`);
+
+    // and the bounds helper must agree with the splitter it feeds
+    const b = splitBounds(120, true);
+    const s2 = splitAndLabel(mk(), branch, true);
+    assert.strictEqual(b.nTrain, s2.trainChunks.length);
+    assert.strictEqual(b.nTest, s2.testChunks.length);
+    assert.strictEqual(b.nHold, s2.holdChunks.length);
+  },
   async rotationTagSurvivesPromotion() {
     // A multi-rotation null is one job holding several draws. If the shift tag
     // does not survive into the promoted payload, every draw silently runs the

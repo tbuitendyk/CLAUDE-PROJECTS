@@ -1338,6 +1338,13 @@ function startBracketLab(params) {
     // draw of the null; a null you cannot put an error bar on is barely
     // better than an assumed one.
     labelShiftReps: Math.min(12, Math.max(0, Math.floor(Number(params.labelShiftReps) || 0))),
+    // 'window' rotates inside train/search/holdout separately, which holds
+    // every window's class balance — and therefore the majority baseline that
+    // `edge` is scored against — identical across draws and identical to the
+    // unrotated run. 'series' (default) rotates the whole series and does not,
+    // so its draws are not comparable to each other or to the real result.
+    // Default stays 'series' so previously recorded boards keep their meaning.
+    labelShiftScope: params.labelShiftScope === 'window' ? 'window' : 'series',
     detailK: 50,
     feePerLeg: REAL_FEE_PER_LEG,
     dMults: bracketLib.D_MULTS,
@@ -1482,6 +1489,17 @@ function startBracketLab(params) {
               trade: l.trade, ctx1: l.ctx1, ctx2: l.ctx2,
               geometry: l.geometry, decision: l.decision, bandPct: res.bandPct,
               shiftFrac: l.shiftFrac ?? null,
+              shiftScope: p.labelShiftScope || 'series',
+              // THE YARDSTICK, recorded alongside the score. edge = accuracy -
+              // majorityBaseline, so a draw measured against a softer baseline
+              // posts positive edge more easily with no change in skill. Under
+              // series-scope rotation that baseline moved 15 points across
+              // draws, which made the pooled null a mixture rather than a null.
+              // Storing it means any future census can be read conditionally
+              // instead of taken on trust.
+              holdBaseline: res.bestEdge.holdoutMetrics ? res.bestEdge.holdoutMetrics.majorityBaseline : null,
+              holdBestConst: res.bestEdge.holdoutMetrics ? res.bestEdge.holdoutMetrics.bestConstant : null,
+              searchBaseline: res.bestEdge.metrics ? res.bestEdge.metrics.majorityBaseline : null,
               quorum: res.bestEdge.quorum, members: res.bestEdge.members,
               searchEdge: res.bestEdge.metrics.edge,
               searchAcc: res.bestEdge.metrics.testAcc,

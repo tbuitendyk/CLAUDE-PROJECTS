@@ -112,10 +112,78 @@ async function buildCombo(combo, branch, p) {
 // point. Today's "test" window is what cell selection shops IN, so it is not
 // held back at all once a menu has been swept over it; only a slice no
 // search has touched can answer "does this work out of sample".
-function splitAndLabel(chunks, branch, holdout) {
-  const n = chunks.length;
+// The split boundaries, as their own function so the label rotation below can
+// respect exactly the same windows splitAndLabel will use. Deriving them twice
+// from duplicated arithmetic is how the two silently drift apart.
+function splitBounds(n, holdout) {
   const nHold = holdout ? Math.max(2, Math.round(n * 0.15)) : 0;
   const nTest = Math.max(2, Math.round(n * (holdout ? 0.15 : 0.2)));
+  return { nTrain: n - nTest - nHold, nTest, nHold };
+}
+
+// LABEL ROTATION, in two scopes.
+//
+// 'series' (the original): rotate diffPct across the whole series, then split.
+// Autocorrelation and the overall class mix survive, and the feature-to-outcome
+// link dies. But the split is POSITIONAL, so each rotation hands the holdout
+// window outcomes from a different market epoch. Measured on BTC/ZEC daily-3d
+// over 908 chunks, the majority baseline that `edge` is scored against ranged
+// from 0.265 to 0.419 across seven rotations, with the real (unrotated) run at
+// 0.353. Since edge = accuracy - baseline, draws measured against a baseline
+// 9 points softer than the real run's are not draws of the same statistic, and
+// pooling them produces a "null" that is really a mixture over baselines.
+//
+// 'window': rotate WITHIN each of train / search / holdout separately. Each
+// window keeps its own diffPct multiset exactly, so the band calibrated on
+// train is unchanged, every window's class balance is unchanged, and the
+// majority baseline is identical in every draw AND identical to the real run's.
+// The feature-to-outcome pairing is still destroyed inside each window, which
+// is the thing the null is supposed to break. This is the scope to use when
+// the question is "is this edge real", because it is the only one where the
+// null and the measurement are scored against the same yardstick.
+//
+// 'series' is kept as the default so every board recorded so far still means
+// what it meant when it was recorded.
+// Displacement for a rotation applied INSIDE one split window.
+//
+// pipeline.js's deriveShift is calibrated for a whole series: it needs n >= 20
+// and always displaces by at least 8, a guard band so an autocorrelated label
+// series is not merely nudged. A 15% holdout window is routinely 18-30 chunks,
+// where that rule either throws or eats the whole window. So the guard band is
+// scaled to the window (len/8, capped at the original 8) and the requested
+// fraction spans what is left. Small windows still get a real permutation
+// rather than an exception or a near-identity shift.
+function windowShift(len, frac) {
+  const lo = Math.max(1, Math.min(Math.floor(len / 8), 8));
+  const hi = len - lo;
+  if (hi <= lo) return Math.max(1, Math.floor(len / 2));
+  return Math.max(1, Math.min(len - 1, Math.round(lo + frac * (hi - lo))));
+}
+
+function rotateLabels(chunks, shiftFrac, scope, holdout) {
+  const n = chunks.length;
+  const src = chunks.map((c) => c.diffPct);
+  if (scope !== 'window') {
+    const rot = deriveShift(n, shiftFrac);
+    for (let i = 0; i < n; i++) chunks[i].diffPct = src[(i + rot) % n];
+    return { scope: 'series', rots: [deriveShift(n, shiftFrac)] };
+  }
+  const { nTrain, nTest, nHold } = splitBounds(n, holdout);
+  const ranges = [[0, nTrain], [nTrain, nTrain + nTest], [nTrain + nTest, n]];
+  const rots = [];
+  for (const [lo, hi] of ranges) {
+    const len = hi - lo;
+    if (len < 4) { rots.push(0); continue; }
+    const rot = windowShift(len, shiftFrac);
+    rots.push(rot);
+    for (let i = 0; i < len; i++) chunks[lo + i].diffPct = src[lo + ((i + rot) % len)];
+  }
+  return { scope: 'window', rots };
+}
+
+function splitAndLabel(chunks, branch, holdout) {
+  const n = chunks.length;
+  const { nHold, nTest } = splitBounds(n, holdout);
   const trainChunks = chunks.slice(0, n - nTest - nHold);
   const testChunks = chunks.slice(n - nTest - nHold, n - nHold);
   const holdChunks = nHold ? chunks.slice(n - nHold) : [];
@@ -170,11 +238,7 @@ async function unitTask({ combo, branch, stage, params, labelShiftFrac }) {
   // positive edge with no skill at all. This project's entire method rests on
   // measuring nulls rather than reasoning about them, and the edge statistic
   // had been getting a reasoned one.
-  if (shiftFrac) {
-    const rot = deriveShift(chunks.length, shiftFrac);
-    const src = chunks.map((c) => c.diffPct);
-    for (let i = 0; i < chunks.length; i++) chunks[i].diffPct = src[(i + rot) % chunks.length];
-  }
+  if (shiftFrac) rotateLabels(chunks, shiftFrac, p.labelShiftScope, p.holdout);
 
   const { trainChunks, testChunks, holdChunks, bandPct } = splitAndLabel(chunks, branch, p.holdout);
   const views = bracketLib.comboViews(combo.size, geo.featureHours / 24).views;
@@ -343,4 +407,4 @@ async function nullRotationTask({ combo, branch, params, shiftIndex, nShifts, se
   };
 }
 
-module.exports = { unitTask, nullRotationTask, quorumCall, declaredQuorumFor, matchesDeclared, slimViewsFor, buildCombo, splitAndLabel, specsFor };
+module.exports = { unitTask, nullRotationTask, quorumCall, declaredQuorumFor, matchesDeclared, slimViewsFor, buildCombo, splitAndLabel, splitBounds, rotateLabels, specsFor };

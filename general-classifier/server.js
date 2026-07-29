@@ -231,6 +231,7 @@ app.post('/api/bracketlab', (req, res) => {
       edgeScreen: b.edgeScreen,
       labelShiftFrac: b.labelShiftFrac,
       labelShiftReps: b.labelShiftReps,
+      labelShiftScope: b.labelShiftScope,
     });
     res.json({ batchId: id });
   } catch (err) {
