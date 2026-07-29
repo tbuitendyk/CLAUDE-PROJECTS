@@ -1,0 +1,185 @@
+Cycle 5: the fix worked, and the edge does not survive it
+
+tl;dr the corrected null ran clean and its six draws now agree within 9.4
+points instead of 76.5, so the instrument is fixed. Read through it, our
+57.6% is above all six draws -- but only by half a point over the top one,
+and with six draws the strongest claim arithmetic allows is p = 0.14. That is
+not significant. The bigger casualty: the null itself scored p = 0.0047 on
+data it could not possibly predict, which means every binomial p-value this
+project has quoted, including cycle 1's p = 0.027, was never valid. One real
+lead survives, and weekly-8d -- what the live books run on -- comes out worse
+than noise. Also: outbound mail broke for a few minutes tonight and part of
+that was my doing; detail at the end.
+
+
+THE INSTRUMENT IS FIXED
+
+    job -2303 (old)   draws ranged 14.7% - 91.2%   spread 76.5 points
+    job -0041 (new)   draws ranged 47.6% - 57.1%   spread  9.4 points
+
+That is what a working null looks like: six independent scrambles landing in
+the same neighbourhood. The gate I pre-registered was 15 points and it passed
+at 9.4. 1020 units, zero failures, 94 minutes.
+
+The tool confirmed the setting reached the run from the run's own record
+rather than from the launcher that set it -- that check exists because a
+dropped setting silently invalidated a conclusion earlier this week.
+
+
+THE RESULT, STATED HONESTLY
+
+    real run (job -2211)      57.6%
+    the six null draws        47.6, 54.1, 54.7, 54.7, 56.5, 57.1
+    mean of the null          54.1%
+
+So the real result is above every draw. I do not want that phrase doing more
+work than it can carry:
+
+  * The margin over the TOP draw is 0.5 of a point.
+  * With six draws, "beat all of them" is the best outcome available, and its
+    p-value is 1/7 = 0.14. Even a perfect result could not have done better
+    than 0.14 with this many draws.
+  * Fitting a curve to the six draws puts 57.6% at about the 86th percentile.
+    Same answer from a different direction: p ~ 0.14.
+
+Conventionally that is not significant. My read: the aggregate edge is NOT
+established. It sits at the top edge of noise, which is a reason to keep
+looking, not a reason to trade.
+
+Note also the null is 54%, not 50%. The statistic has a built-in upward tilt
+of about four points. Anyone comparing a raw score against "50% = chance"
+would have credited us with roughly four points of skill that are not there.
+That is precisely what the whole null exercise was for.
+
+
+THE BIGGEST FINDING IS ABOUT OUR P-VALUES
+
+Look at what the SCRAMBLED run produced on its own group table:
+
+    daily-2d argmax   65/102   binomial p = 0.0036
+    POOLED            552/1020 binomial p = 0.0047
+
+That is noise. There is nothing to predict in it. And it produced p = 0.005.
+
+So the binomial p-values printed on every board this project has produced are
+worthless -- the test assumes the 170 units are independent draws, and they
+emphatically are not. Seventeen coins that all move together, and five chunk
+shapes that are overlapping views of the same days. Cycle 1's "p = 0.0274"
+was never evidence. I am retracting it.
+
+The measured null is the only valid yardstick. This is the second retraction
+in two emails, and both were cases of a number that looked like evidence
+because it had the right shape.
+
+
+WHERE THERE IS STILL SOMETHING, AND WHERE THERE IS NOT
+
+Real versus null, group by group. The right-hand block is the one to read --
+how much the typical unit beat its baseline by, real minus noise:
+
+  group                    real%   null%   diff | realMed  nullMed    diff
+  daily-1d argmax          58.8%   57.8%   +1.0 |   3.66%    0.91%  +2.75
+  daily-1d directional     64.7%   62.7%   +2.0 |   4.53%    3.88%  +0.65
+  daily-2d argmax          70.6%   63.7%   +6.9 |   4.76%    1.36%  +3.40
+  daily-2d directional     58.8%   61.8%   -2.9 |   3.68%    3.90%  -0.22
+  daily-3d argmax          64.7%   60.8%   +3.9 |   3.34%    1.14%  +2.20
+  daily-3d directional     58.8%   52.9%   +5.9 |   3.48%    1.67%  +1.81
+  daily-4d argmax          64.7%   53.9%  +10.8 |   2.72%    0.45%  +2.27
+  daily-4d directional     52.9%   49.0%   +3.9 |   0.69%   -0.22%  +0.91
+  weekly-8d argmax         47.1%   39.2%   +7.8 |   0.00%    0.00%  +0.00
+  weekly-8d directional    35.3%   39.2%   -3.9 |  -3.92%   -3.64%  -0.28
+
+The one pattern that holds up: all four ARGMAX daily rows beat their own
+noise on median edge by a consistent +2.2 to +3.4 points. Same direction,
+similar size, four times. The directional rows are erratic and mostly
+smaller.
+
+Honest caveat, and it is a big one: those four rows are not four independent
+confirmations. daily-1d through daily-4d step forward one day at a time and
+differ only in how far back they look, so they are overlapping cuts of the
+same history. Four consistent readings of one thing, not four things. And
+each real group is only 17 units, so the left-hand headcounts are very noisy
+-- daily-4d argmax's +10.8 and daily-2d directional's -2.9 are both mostly
+sampling noise.
+
+WEEKLY-8d IS THE PROBLEM. It is the only family that beats nothing:
+median edge 0.00% and -3.92%, no better than its own noise, and the worst
+group in both runs. It also has the largest collapse from search window to
+holdout -- searching finds +10.77%, holdout delivers 0.00%. On top of the
+shrinkage finding from earlier (weekly-8d loses 10.8-13.2 accuracy points
+search-to-holdout, the daily shapes lose 0.3) and its holdout being about 19
+data points wide, that is now three independent reasons to distrust it.
+
+Books 1 and 2 run on weekly-8d. I am not touching them -- the protocol says
+frozen once live and I will not break that on my own say-so. But you should
+know the geometry underneath them is the weakest thing on the board, and I
+would not add money to it.
+
+
+QC NOW RUNS WITHOUT ME
+
+Per your point about wanting this happening when you are not watching, the
+checks are in the tool and print on every read, before any comparison:
+participation rate, a mute column per draw, active-only share beside
+all-units, and the 15-point gate that refuses to show a comparison when it
+fails. I fired it at the broken job first to watch it fail, because a check
+nobody has seen fail is not a check.
+
+It caught a third confound on its first outing: scrambling makes the models
+go SILENT. 2.4% of units never trade in the real run; about 15% never trade
+in the scrambled ones, and those silent units are scored as wins on their
+flat calls alone. Two different populations being compared as one.
+
+
+THE MAIL BREAK, INCLUDING MY PART IN IT
+
+Outbound mail failed tonight on both 587 and 465. IMAP on the same guest
+answered normally, which ruled out the guest being down or starved and
+isolated it to postfix -- so I restarted postfix alone rather than bouncing
+your mail server.
+
+Two things I want on the record. First, my initial restart attempt hit a
+two-minute timeout part-way through and left postfix STOPPED for about three
+minutes; the outage in the middle was mine, not the original fault's. Second,
+I do not know what wedged it in the first place. The logs show postfix
+running and simply not answering, with no error. I am not going to invent a
+cause. If it recurs I will have the logs to compare against.
+
+Separately, host-health.sh reported VMState="poweroff" for both guests at the
+same moment one of them was serving mail. That reading is wrong and I have
+noted it -- worth knowing before anyone trusts that script in an emergency.
+
+
+LOOP LEDGER
+
+  L0  overnight    doubles sweep + unattended plumbing. CODE: 4-thread pool
+                   at nice 19; mail scripts.
+  L1  job -2158    first edge screen, invalid by construction. Discarded.
+  L2  job -2211    the real census: 98/170 = 57.6%. Its p-value now RETRACTED.
+  L3  job -2236    one-rotation null: 27%. RETRACTED (broken construction).
+  L4  job -2303    six rotations -> 14.7%-91.2%. Instrument broken.
+                   CODE: null fix, worker self-test, job pinning, spread warning.
+  L5  job -0041    the corrected null. Gate passed at 9.4 points. Edge NOT
+                   established: p = 0.14 at best.
+                   CODE: participation diagnostic, QC folded into the reader,
+                   targeted postfix restart.
+
+
+WHAT I THINK WE DO NEXT
+
+Not more of the same. Six more draws cannot rescue a 0.5-point margin, and
+running draws until one of them clears is exactly the trap this week has been
+about.
+
+The one thing worth a real test is the argmax/daily family, declared in
+advance and on its own: fixed geometry, fixed decision mode, fixed quorum,
+its own null, and judged on money after fees rather than on accuracy points.
+Three points of accuracy is a different and much lower bar than three points
+that survive a round trip in fees, and we have never yet asked the second
+question of this signal.
+
+I would rather put the box time into that one honest test than into another
+broad sweep. Say the word and I will script it; if you would rather go a
+different way, tell me and I will drop it.
+
+c.
