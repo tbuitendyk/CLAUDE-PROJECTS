@@ -1,0 +1,146 @@
+Correction to that ledger, plus cycle 3 final and cycle 5 away
+
+tl;dr I got the job IDs wrong in the ledger I sent you 40 minutes ago. I told
+you I was using job IDs precisely because they were unambiguous, and then
+attached the wrong numbers to them. Corrected table below -- please read that
+one and discard the previous. I also said one run's numbers were lost; they
+were not, and the fix I shipped afterwards retrieved them in a single call.
+Cycle 3 finished clean at 1020/1020 and confirms the verdict: the null was
+broken, not the market. Both code changes are deployed, the worker priority
+question is answered (PASS, kernel-verified), and the corrected null is
+running now -- results around 02:15 UTC.
+
+
+THE CORRECTION
+
+What I sent you:      L1 = job -2158, L2 = -2211, L3 = -2236 (numbers lost)
+What is actually true:
+
+  job -2158  22:58* 170 units  The FIRST edge screen -- and it was run
+                               WITHOUT the census flag, so it read through the
+                               money-ranked board. This is the 20-of-29 at
+                               p=0.03 I discarded last night as upward-biased.
+                               It carries no census at all. Correctly binned.
+
+  job -2211  23:11  170 units  THE CENSUS. 98/170 = 57.6% holdout-edge
+                               positive, median +3.08%, p = 0.0274. This is
+                               the number the whole week turns on.
+
+  job -2236  23:36  170 units  The one-rotation null. 46/170 = 27%, median
+                               -0.83%. These are the numbers I told you were
+                               unrecoverable. They were recoverable.
+
+  job -2303  00:03  1020 units Six rotations. The broken one.
+
+  job -0041  01:41  1020 units Running now: the corrected null.
+
+(*times as the job IDs record them.)
+
+Two things went wrong and they are different faults. Mixing up which job was
+which is sloppiness. Telling you a result was unrecoverable, when the honest
+statement was "I have not built the means to read it yet", is worse -- it
+presents a gap in my tooling as a fact about the world. The distinction
+matters because one of those invites someone to go and look, and the other
+closes the question.
+
+Related, and also a correction: I described that read script as accepting a
+job ID and ignoring it. It never accepted one. The deploy API cannot forward
+arguments to scripts at all, and the script was written knowing that. The
+effect I reported was right -- older runs could not be read -- but I
+described the mechanism wrongly.
+
+
+CYCLE 3 FINAL -- job -2303, 1020/1020 units, 0 failures, 96.6 minutes
+
+    shift    n     hold edge > 0    share    median hold
+    0.143   170       25/170        14.7%      -5.78%
+    0.286   170       47/170        27.6%      -0.63%
+    0.429   170       43/170        25.3%      -1.25%
+    0.571   170       82/170        48.2%       0.00%
+    0.714   170      155/170        91.2%     +11.51%
+    0.857   170      106/170        62.4%      +3.18%
+
+    mean 44.9%, range 14.7% to 91.2%
+
+Unchanged from the partial read, which is itself worth something: the last
+rotation landed where the partial data said it would.
+
+The verdict stands and it is the one I pre-registered before firing: when the
+draws disagree this violently, the statistic is unstable and is not used to
+decide anything. The 57.6% is INSIDE this spread -- but I want to be careful
+that you do not read that as "so the edge is dead". It is not evidence either
+way. The instrument was mis-built; a mis-built instrument does not produce a
+weak result, it produces no result. That is why cycle 5 exists rather than a
+conclusion.
+
+
+DEPLOYED, AND THE PRIORITY QUESTION IS CLOSED
+
+Both changes are live. The worker self-test on the box:
+
+    configured pool size : 4
+    workers booted       : 4   parallel=True
+    distinct threads     : 4
+       tid 140610  nice=19      tid 140612  nice=19
+       tid 140611  nice=19      tid 140613  nice=19
+    PASS
+
+So the health probe's apparent problem was never real. The pool is built per
+job and torn down after it, so between jobs there are simply no worker
+threads on the box to find -- the probe was reporting an absence and I read
+it as a fault. The mail VM is protected exactly as intended. I would rather
+have chased that and found nothing than assumed it.
+
+
+CODE UPDATES SINCE THE LAST EMAIL (standing rule)
+
+  * The edge reader can now be pointed at any job, via a committed file
+    (arguments cannot cross the deploy API). This is what recovered -2236.
+  * It now REFUSES to let a wide draw spread be read as a result -- it prints
+    a warning above 25 points and names the likely cause. It fired correctly
+    on -2303, which is the first time a tool here has caught this class of
+    fault instead of me catching it afterwards.
+  * It also reads the null's construction back off the run document rather
+    than trusting the launcher that was supposed to set it. A silently
+    dropped parameter cost us a whole conclusion earlier this week; that
+    specific failure can no longer happen quietly.
+  * The worker self-test script above.
+
+
+THE LOOP LEDGER (corrected, and now by what each run WAS)
+
+  L0  overnight       doubles sweep + the plumbing to run unattended.
+                      CODE: 4-thread worker pool at nice 19; mail scripts.
+  L1  job -2158       first edge screen, invalid by construction (read
+                      through the money-ranked board). Discarded, correctly.
+                      CODE: census kept strictly off the money leaderboard.
+  L2  job -2211       the real census. 98/170 = 57.6%, median +3.08%.
+                      Side-finding that still stands: weekly-8d loses 10.8-
+                      13.2 accuracy points search-to-holdout, daily-3d/4d
+                      lose 0.3. Books 1 and 2 run on weekly-8d.
+                      CODE: edge-selected rung, judged apart from P&L.
+  L3  job -2236       first measured null, one rotation. 46/170 = 27%.
+                      CODE: label rotation.
+  L4  job -2303       six rotations -> 14.7% to 91.2%. Instrument broken.
+                      CODE: many rotations per job; then the diagnosis and
+                      the fix; worker self-test; the reader fixes above.
+  L5  job -0041       running: the corrected null. ~02:15 UTC.
+
+
+WHAT CYCLE 5 WILL AND WILL NOT SETTLE
+
+It is a byte-for-byte mirror of L2 with one thing changed, so it can only
+answer one question: is 57.6% more than this machinery produces on outcomes
+it cannot possibly predict?
+
+Before I read that comparison at all, the six draws have to agree with each
+other -- if they still spread more than about 15 points, the construction is
+STILL wrong and I go back to the instrument rather than to the market. That
+gate is fixed now, in writing, before the numbers exist.
+
+And even the good outcome is modest. If 57.6% clears every draw, what we have
+is roughly three points of holdout accuracy. Whether three points survives
+fees is a different and harder question than whether it is real, and I would
+not want the first answer read as the second.
+
+c.
