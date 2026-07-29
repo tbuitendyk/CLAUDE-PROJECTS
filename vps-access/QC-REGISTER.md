@@ -58,6 +58,10 @@ a number looked *encouraging*.
 | 33 | A gate that suits one statistic suits another | A spread-to-magnitude ratio is meaningless for a statistic centred at ZERO by construction — dividing by a near-zero median makes any spread look enormous. Borrowed from the accuracy headcount, where the null sits near 50% and a wide spread really does mean a broken build | Gates are per-statistic and must be DERIVED. For zero-centred quantities use the rank test, which assumes nothing about spread | CYCLE8 rule replacement, `classifier-money-read.sh` | MANUAL |
 | 34 | A census change applies to runs already made | Deployed the money census at 08:10, ran the null at 08:11, and the real arm was from 07:29 — so the null carried money and the real arm did not. A 5-hour run with nothing to compare against | After ANY census change, re-run BOTH arms on the identical build before comparing | this register | MANUAL |
 
+| 35 | Two results from one run describe the same configuration | The money cell is chosen by search-window MONEY (35,678 trades); the accuracy rung by search-window EDGE (19,913 calls). Different selections — so the accuracy edge cannot be said to "convert" into the money result | State which selection produced which number; never let one validate the other | audit template Q5 | MANUAL |
+| 36 | A headline dollar figure is achievable | $1,469.95 is a sum over 170 overlapping setups on 17 coins — ~10 simultaneous configurations per coin. Nobody could trade it. It is a statistical aggregate for comparison against the same aggregate on noise | Never quote a census total as profit; say what it is | audit template Q3 | MANUAL |
+| 37 | A positive net result is robust | Fees consume 85.9% of this gross edge. Net $0.0412/trade sits on gross $0.2912 against assumed costs of $0.2500 — 16% headroom. A worse fee tier or ordinary slippage makes it negative, and none of that is visible in the net figure | Report gross, fees and break-even cost beside every net number | `classifier-money-verdict.sh` (to add), audit Q6 | MANUAL |
+
 ## Open gaps — items not yet enforced by anything but discipline
 
 These are listed because a MANUAL item with no owner is a lie.
