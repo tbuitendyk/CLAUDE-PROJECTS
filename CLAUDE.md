@@ -89,6 +89,15 @@ Minimise freestanding jargon. Any term of art gets a short plain-language gloss
 at least once per response, every response — not once and then assumed. This is
 an ongoing requirement, not a one-off.
 
+**Every table gets a NAME and a KEY.** The name says what the table measures and
+what it is for. The key defines every column heading in plain words, including
+the units — and in particular whether a number is accuracy points or money,
+because those get confused and the difference decides whether something is
+tradeable. A table dropped in with bare headings makes the owner do the
+decoding; that is the writer's job, not the reader's. This applies to tables in
+chat, in email, and to the tables the VPS scripts print, since those get pasted
+into email verbatim.
+
 The live paper tracker's pre-registered protocol lives in
 `general-classifier/TRACKER.md` — frozen DOT/AVAX models, $100 paper books.
 **Do not alter tracker mechanics, models, or evaluation rules after the
