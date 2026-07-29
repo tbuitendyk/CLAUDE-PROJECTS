@@ -62,6 +62,10 @@ a number looked *encouraging*.
 | 36 | A headline dollar figure is achievable | $1,469.95 is a sum over 170 overlapping setups on 17 coins — ~10 simultaneous configurations per coin. Nobody could trade it. It is a statistical aggregate for comparison against the same aggregate on noise | Never quote a census total as profit; say what it is | audit template Q3 | MANUAL |
 | 37 | A positive net result is robust | Fees consume 85.9% of this gross edge. Net $0.0412/trade sits on gross $0.2912 against assumed costs of $0.2500 — 16% headroom. A worse fee tier or ordinary slippage makes it negative, and none of that is visible in the net figure | Report gross, fees and break-even cost beside every net number | `classifier-money-verdict.sh` (to add), audit Q6 | MANUAL |
 
+| 38 | `null` unambiguously means "none" | Against a value-based fallback it means "inherit the default". `labelShiftFrac != null ? labelShiftFrac : p.labelShiftFrac` turned the real arm's explicit null into the run-wide 0.5 | Resolve optional per-item overrides by KEY PRESENCE (`hasOwnProperty`), never by value | `theRealArmCannotBeSecretlyScrambled` (test-bracket.js) | AUTOMATED — watched failing |
+| 39 | A run with zero failures ran correctly | Failure count counts crashes, not correctness. Cycle 10: 3400 units, 0 failures, 407 minutes, void — its real arm was a scramble | Never read "fails=0" as validity. Check an invariant of the OUTPUT: here, that no two arms are bit-identical | `classifier-money-precision.sh`; audit Q5 | MANUAL |
+| 40 | A fix cannot introduce a fault | The r=0 real arm was added to make a MISSING real arm impossible (QC 34) and instead made a FAKE one inevitable, same file, same day | After any structural fix, verify the artefact it produces is what it claims. An exact tie between arms is the cheap tell | this register; audit Q8 | MANUAL |
+
 ## Open gaps — items not yet enforced by anything but discipline
 
 These are listed because a MANUAL item with no owner is a lie.
