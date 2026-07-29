@@ -1,0 +1,128 @@
+A third confound, and the QC now lives in the tool
+
+tl;dr you told me you want the quality control happening when you are NOT
+watching. Fair, and the fix is not me promising to be more careful -- I have
+moved the checks into the read tool so they run whether or not I remember.
+Proof they work: pointed at last night's broken run they refuse to print the
+comparison at all. Along the way I found a THIRD confound I was not looking
+for: scrambling the answers does not just make the models wrong, it makes
+them go silent. 2.4% of units never trade in the real run; about 15% never
+trade in the scrambled ones. Those two things were never the same population,
+and I had been comparing them as if they were.
+
+
+HOW THIS CAME UP, INCLUDING THE PART THAT IS MY FAULT
+
+In my last note I wrote that a number in the table was "cheap to check" and
+then did not check it. You called that out. You were right to, and the
+specific failure is worth naming: it is the same failure as the four code
+bugs this week, just moved up a layer. A wrong measurement does not announce
+itself. It hands you a plausible number and you build on it.
+
+So I checked. My hypothesis was WRONG. I had guessed that a lot of units were
+collapsing to "predict the most common answer" and scoring a hollow zero.
+Only 89 of 1020 rows sit at exactly zero, and only 3 of those 89 were
+abstentions. That guess was simply false.
+
+But checking it turned up something I was not hunting for, which is worse.
+
+
+THE THIRD CONFOUND: THE MODELS GO QUIET WHEN SCRAMBLED
+
+A unit's committee can decline to call a direction. It says "flat" and stands
+aside. It cannot then win or lose a penny.
+
+But accuracy is scored on all three answers -- down, flat, up -- so a
+committee that says "nothing will happen" every single period still gets
+graded, and beats the baseline whenever the test window happens to hold more
+flat periods than the training window's most common answer. It is recorded as
+a WIN. It never placed a trade.
+
+    real run (job -2211)        4 of 170 units silent    2.4%
+    scrambled runs             ~15 of every 100 silent  ~15%
+
+Six times as many. And the silent ones win far more often than average -- 58%
+to 72% depending on the run -- so they are pumping up the scrambled side of
+the comparison with units that barely exist on the real side.
+
+Worse, the silence rate is not even stable between scrambles. Last night's six
+draws ran 4.1%, 8.2%, 11.8%, 13.5%, 17.6%, 31.2%, and it tracks the result
+almost step for step. So this was a second engine driving that 14.7%-to-91.2%
+spread, sitting underneath the baseline fault I already fixed.
+
+To be clear about what this does and does not mean: it does NOT say the real
+result is fake. It says the comparison I was going to make was between two
+different populations, and I would not have known.
+
+
+WHAT THE NUMBERS LOOK LIKE BOTH WAYS
+
+Counting only units that actually traded:
+
+                        real (-2211)    scrambled     margin
+    all units              57.6%          53.5%      +4.1 pts
+    active only            56.6%          50.3%      +6.3 pts
+
+I am NOT adopting the second line. I found it after looking, and it happens
+to flatter us, which is exactly when changing your yardstick is indefensible.
+The pre-registered rule stands on the all-units number. Active-only is
+printed alongside, permanently labelled post-hoc, and it is a lead rather
+than a result. If it eventually matters, it earns its own declared test.
+
+Both lines are also provisional -- the corrected run is still going.
+
+
+THE ACTUAL FIX: QC THAT DOES NOT DEPEND ON ME
+
+Every check below now prints on EVERY read, before any comparison, and the
+tool refuses to show the comparison when a gate fails:
+
+  * PARTICIPATION -- how many units never traded, how many of those are
+    nonetheless counted as wins, and a warning above 5% naming the real run's
+    2.4% as the reference.
+  * A MUTE COLUMN per draw, so a silence rate that swings 4% to 31% is
+    visible on the face of the table instead of needing a separate hunt.
+  * ACTIVE-ONLY share printed next to all-units, always.
+  * THE SANITY GATE at 15 points, the figure I pre-registered before firing
+    the corrected run. Over that, it prints GATE FAILED and tells the reader
+    to go back to the instrument.
+
+Proof rather than assertion -- pointed at last night's broken job it says:
+
+    *** GATE FAILED: the draws span more than 15 points. ***
+    These are not draws of one statistic. The construction is still
+    wrong. DO NOT read the comparison below.
+
+A check nobody has watched fail is not a check, so I fired it at the run that
+should fail it before trusting it.
+
+
+LOOP LEDGER
+
+  L0  overnight    doubles sweep + unattended plumbing. CODE: 4-thread pool
+                   at nice 19; mail scripts.
+  L1  job -2158    first edge screen, invalid by construction. Discarded.
+  L2  job -2211    the real census: 98/170 = 57.6%, median +3.08%.
+  L3  job -2236    first measured null, one rotation: 46/170 = 27%.
+                   NOW RETRACTED -- see below.
+  L4  job -2303    six rotations -> 14.7% to 91.2%. Instrument broken.
+                   CODE: the null fix; worker self-test; reader can pin a
+                   job; reader warns on wide spreads.
+  L5  job -0041    running, 85 min in. The corrected null.
+                   CODE: participation diagnostic; QC folded into the reader.
+
+RETRACTION, since it is still in your inbox from earlier: L3's headline --
+"the real null is 27%, so cycle 1 is stronger than it looks" -- was an
+artifact of the broken construction. The corrected null is landing near 50%,
+not 27%. That reframes our result from 57.6%-against-27% (a wide, exciting
+margin) to 57.6%-against-about-51% (roughly six points). Still positive so
+far, much thinner than advertised, and thin margins are precisely where fees
+decide whether a thing is tradeable.
+
+
+WHAT I OWE YOU NEXT
+
+The corrected run finishes shortly. It gets read through the gate above, and
+if the gate fails I will tell you it failed rather than working around it.
+
+c.
