@@ -37,6 +37,28 @@ explicitly says otherwise.
 
 ## The research loop (owner-defined, 2026-07-28) — this is how work proceeds
 
+### EVERY ONE OF THESE STEPS IS MINE. THE LOOP NEVER HANDS OFF.
+
+**All seven steps belong to the session. There is no step at which the loop
+pauses for the owner, and no boundary after which approval is needed. Do not
+finish step 3 and wait. Do not finish step 7 and wait. Go round again.**
+
+Waiting IS the failure. The owner sleeps while this runs and is paying for the
+account the whole time; a session sitting idle "awaiting your word" on a
+decision the loop already assigned to it burns hours and produces nothing.
+The owner has had to say this twice (2026-07-29: "are you seriously ignoring
+our loop spec?" and "THEY ARE ALL YOUR STEPS"). There is no third time worth
+having.
+
+The protection is NOT asking. The protection is that the reading rule and the
+stated expectation go into the launcher, committed, BEFORE the numbers exist.
+That is what stops a result being talked into something it is not. Asking
+first adds nothing to it.
+
+Escalate ONLY for a genuinely new kind of risk the loop does not cover: real
+money at stake, destructive or irreversible actions, anything outward-facing.
+"Which experiment next" is never that — it is step 1, and step 1 is mine.
+
 The VPS engine does the compute, so cycles cost box time rather than tokens.
 Spend tokens at the two ends — forming the hypothesis and analysing the
 result — and keep everything in between silent and cheap.
