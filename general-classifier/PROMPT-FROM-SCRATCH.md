@@ -1,5 +1,10 @@
 # Prompt: running a quantitative signal search with Claude Code
 
+**Version 1.0.0** — 2026-07-30. Distilled from the General Classifier /
+Bracket Lab work cycle. Every rule here was learned by getting it wrong first;
+where a rule looks disproportionately emphatic, the cost that produced it is
+recorded beside it.
+
 **Give this whole document to a fresh Claude Code session as its standing
 instructions.** It encodes a working method for hunting tradeable signal in
 market data — the operating loop, the measurement doctrine, and the specific
