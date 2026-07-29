@@ -1,0 +1,132 @@
+You were right about the metric — cycle 6 away on the corrected one
+
+tl;dr you caught me defending a measure I had already proved was broken, on
+the grounds that I declared it first. That was stubbornness, not rigour, and I
+have switched. The correct measure counts only test setups that actually
+placed a trade, because one that never trades cannot tell us anything about
+trading. On that measure our result is 56.6% against noise of 50.8% -- a
+margin of 5.8 points rather than the 3.5 the old measure showed. Cycle 6 is
+running to settle it properly: 19 scrambles instead of 6, because with only 6
+the arithmetic caps how strong a claim is possible, and the cap rather than
+the data was deciding the answer. Results around 07:00 UTC.
+
+
+WHERE I WAS WRONG
+
+I told you I would not switch measures because I found the better one after
+looking. The distinction I failed to make:
+
+  * METRIC SHOPPING is trying several measures and keeping whichever flatters
+    you. That is what declaring a measure in advance exists to prevent.
+  * METRIC CORRECTION is discovering your measure counts things that cannot
+    possibly express the quantity you are asking about, and removing them.
+    That is repairing a broken instrument.
+
+Setups whose models never call a direction never place a trade. They cannot
+win or lose a penny. Counting them in a score meant to detect tradeable
+direction is not a defensible choice I had committed to -- it is a fault.
+
+There is a clean test for which of the two I was doing, and I should have
+applied it myself: the correction moved BOTH sides down, noise from 54.1% to
+50.8% and our result from 57.6% to 56.6%. A cherry-pick only ever moves the
+side you want moved. It also came from a mechanism argument rather than from
+noticing a nicer number.
+
+This is now QC register item 21, with the three conditions any future
+mid-stream metric change has to satisfy, stated at the time: argued from
+mechanism, moves both arms, old measure still reported alongside.
+
+
+THE NUMBERS ON THE CORRECT MEASURE
+
+TABLE 1 -- OUR RESULT VERSUS LUCK, BOTH MEASURES
+What it measures: how often a test setup beat its own do-nothing baseline.
+"Our result" is the real market data; "luck" is the average across six
+scrambled runs where nothing was predictable. Higher is better, and the gap
+between the two columns is the only thing that means anything.
+
+  measure                        our result    luck    gap
+  active-only  [PRIMARY]            56.6%     50.8%   +5.8
+  all-units    [legacy]             57.6%     54.1%   +3.5
+
+  KEY  active-only = counts only setups that actually placed a trade
+       all-units   = counts every setup, including ones that never traded
+       our result  = job -2211, real market data, held-back period
+       luck        = mean of the six scrambled runs, job -0041
+       (all figures are accuracy percentages, not money)
+
+So the corrected measure makes the effect look somewhat stronger, not weaker.
+That is worth stating plainly given I resisted the change.
+
+
+WHY 19 SCRAMBLES AND NOT 6
+
+This is arithmetic, not method. If our result beats every one of N scrambles,
+the strongest claim that supports is roughly 1 in (N+1).
+
+    6 scrambles  -> best possible claim is 1 in 7  = 0.14
+   19 scrambles  -> best possible claim is 1 in 20 = 0.05
+
+At six, even a flawless outcome could not have reached the conventional bar.
+The DRAW COUNT was deciding the answer instead of the data. Our result beat
+all six, which is the best available outcome there, and still only earns 0.14.
+
+So cycle 6 changes exactly one thing: 19 scrambles. Same universe, same
+construction, same everything else.
+
+To be clear this is not "keep running scrambles until one comes out right" --
+that is precisely the trap this week has been about. The count and the
+decision rule are both fixed in the launcher, in writing, before any number
+exists, and the run gets read once.
+
+
+THE RULE, FIXED IN ADVANCE
+
+  GATE FIRST: the 19 scrambles must agree within 15 points of each other. If
+  they do not, the instrument has broken again and nothing else is read.
+
+  Then, on the active-only figure, against our 56.6%:
+    beats all 19       -> claim of 0.05. The edge has survived an honest
+                          test. It is then owed the MONEY question, which is
+                          separate and harder: does the margin survive fees.
+    beats 18 of 19     -> claim of 0.10. Suggestive. No live money on it.
+    anything weaker    -> the aggregate edge closes. What is left is the
+                          argmax/daily lead, which would need its own
+                          declared test rather than another sweep.
+
+  The old all-units figure is reported but decides nothing. If the two
+  measures disagree, active-only governs and I will report the disagreement
+  loudly, because that would itself be a finding.
+
+
+CODE UPDATES (standing rule)
+
+  * The scramble-count cap was 12, which floored the best possible claim at
+    0.077 -- the cap silently made 0.05 unreachable. Raised to 24, with a
+    test that fails if anyone lowers it below 19. Deployed and verified.
+  * Active-only is now the primary line in the read tool, with all-units kept
+    beside it.
+  * Every table the tools print now carries a NAME saying what it measures
+    and a KEY defining each column, including whether the figure is accuracy
+    or money. That was your other note and it applies to the scripts as well
+    as to my writing, since their output gets pasted into these emails.
+  * host-health.sh no longer reports VBoxManage's VM state, which claimed both
+    guests were powered off while one was serving your mail. It now reports
+    the process plus live connection probes. Verified: all three mail
+    services reachable.
+  * The misleading "p" column is renamed and footnoted -- scrambled data
+    scored 0.0047 on it, so it never meant what its name implied.
+
+
+LOOP LEDGER
+
+  L0  overnight    doubles sweep + unattended plumbing.
+  L1  job -2158    first edge screen, invalid by construction. Discarded.
+  L2  job -2211    the real census. 56.6% active-only / 57.6% all-units.
+  L3  job -2236    one-scramble null: 27%. RETRACTED, broken construction.
+  L4  job -2303    six scrambles -> 14.7%-91.2%. Instrument broken.
+  L5  job -0041    corrected null, six scrambles. Gate passed at 9.4 points.
+                   Edge not established: 0.14 was the best available.
+  L6  job -0235    RUNNING. 19 scrambles. ~4-5 hours, results ~07:00 UTC.
+
+c.
