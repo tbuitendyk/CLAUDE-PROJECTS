@@ -543,6 +543,29 @@ module.exports = {
     assert.strictEqual(b.nTest, s2.testChunks.length);
     assert.strictEqual(b.nHold, s2.holdChunks.length);
   },
+  async aMultiScrambleJobCarriesItsOwnRealArm() {
+    // Cycle 8 ran 19 scrambles and had NOTHING to compare them against: the
+    // expansion started at r=1, so the job produced only nulls, and the real
+    // arm came from an earlier job on an earlier build. Five hours for no
+    // comparison (QC 34). Both arms must ride in the same job.
+    const fs = require('fs');
+    const path = require('path');
+    const src = fs.readFileSync(path.join(__dirname, '..', 'lib', 'batch.js'), 'utf8');
+    const loop = src.slice(src.indexOf('if (p.labelShiftReps > 0) {'));
+    const body = loop.slice(0, loop.indexOf('const slimRuns'));
+    assert.ok(/for \(let r = 0; r <= p\.labelShiftReps; r\+\+\)/.test(body),
+      'the scramble expansion must start at r = 0 so the real arm is included');
+    assert.ok(/r === 0 \? null :/.test(body),
+      'r = 0 must carry shiftFrac null — the unscrambled real arm');
+
+    // And the arithmetic: N scrambles must yield N+1 slices, not N.
+    const REPS = 19;
+    const fracs = [];
+    for (let r = 0; r <= REPS; r++) fracs.push(r === 0 ? null : r / (REPS + 1));
+    assert.strictEqual(fracs.length, REPS + 1, 'N scrambles => N+1 slices');
+    assert.strictEqual(fracs.filter((f) => f === null).length, 1, 'exactly one real arm');
+    assert.strictEqual(new Set(fracs.filter((f) => f !== null)).size, REPS, 'scrambles must be distinct');
+  },
   async jobIdsAreHumanReadableAndStillMachineSafe() {
     // Owner, 2026-07-29: a wall of bare timestamps meant the only way to tell
     // one run from another was to look each up — which is how three runs'

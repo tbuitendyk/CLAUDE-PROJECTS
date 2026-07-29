@@ -1401,8 +1401,19 @@ function startBracketLab(params) {
   if (p.labelShiftReps > 0) {
     const base = units.slice();
     units.length = 0;
-    for (let r = 1; r <= p.labelShiftReps; r++) {
-      const frac = r / (p.labelShiftReps + 1);
+    // THE REAL ARM SHIPS WITH ITS OWN NULL. r = 0 is the unscrambled run.
+    //
+    // This loop used to start at 1, so a multi-scramble job produced nulls and
+    // nothing to compare them against. Cycle 8 spent five hours measuring 19
+    // scrambles whose real arm had been recorded on an earlier build, by a
+    // separate job, before a census change — so there was no comparison at all
+    // and the run had to be redone (QC 34).
+    //
+    // Carrying both arms in ONE job makes that structurally impossible: same
+    // build, same data range, same code path, same moment. It is one extra
+    // 170-unit slice, which is nothing against a 19-scramble run.
+    for (let r = 0; r <= p.labelShiftReps; r++) {
+      const frac = r === 0 ? null : r / (p.labelShiftReps + 1);
       for (const u of base) units.push({ ...u, shiftFrac: frac });
     }
   }
