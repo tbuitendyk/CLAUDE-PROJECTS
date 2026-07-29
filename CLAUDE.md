@@ -78,9 +78,22 @@ result — and keep everything in between silent and cheap.
    hours or five days.
 5. **Re-arm.** If a job is not finished when checked, re-arm the check timer
    at an interval that matches how long it actually has left.
-6. **Watch cheaply.** Throughout 4 and 5, monitor for incoming mail
-   continuously but as token-cheap as possible: one watcher, silent unless
-   something real happens.
+6. **Watch cheaply — and NEVER poll a running job on a short timer.**
+   Throughout 4 and 5, monitor for incoming mail continuously but as
+   token-cheap as possible: one watcher, silent unless something real happens.
+
+   **NON-NEGOTIABLE (owner, 2026-07-29): never check a running job more often
+   than it could plausibly need. Not every 2 minutes. Ever.** A five-hour run
+   cannot finish in its first four hours, so checking it in that window is
+   pure waste — of requests, and of tokens every time a check wakes the
+   session. Estimate the finish time, then check on a schedule derived from
+   the time REMAINING: hourly at most while more than an hour out, tightening
+   only as it comes due.
+
+   Mail and jobs are SEPARATE cadences and must not share a timer. Mail stays
+   at the owner's 300s because that governs responsiveness to the owner; the job
+   gets its own, far slower schedule. Putting both on one timer is exactly how
+   a five-hour job got polled 141 times.
 7. **Analyse hard, audit the instrument, then loop.** On completion:
    a. Go DEEPLY into the numbers the run produced, and correlate them against
       the task that was stated BEFORE the run. Did it answer that question, or
