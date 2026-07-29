@@ -43,6 +43,8 @@ a number looked *encouraging*.
 | 23 | Removing non-participants makes two arms comparable | It does not. Real run: 77.6% of setups made 21+ trades; scrambled: 59.8%. The arms still differ after the zero bucket is dropped | Check the whole activity distribution, not just zero; prefer per-decision pooling, which is robust to it | `classifier-census-diag.sh` call-count buckets | AUTOMATED |
 | 24 | A unit-level headcount summarises the data | 170 yes/nos discard the 19,913 decisions underneath and inherit flat-call contamination. The headcount overstated the effect ~3x (5.8 pts vs 1.9 pts) | Report the per-decision metric beside any headcount | `classifier-census-diag.sh` | AUTOMATED |
 
+| 25 | One exit code can serve two failures | `claude-mail-send.sh` returned 3 for both "message malformed" (never retry) and "transport failed" (always retry). Any automated caller would have to get one of them wrong | Malformed = 2/3, transport = 4. Distinct codes for opposite responses | `claude-mail-send.sh` | AUTOMATED |
+
 ## Open gaps — items not yet enforced by anything but discipline
 
 These are listed because a MANUAL item with no owner is a lie.

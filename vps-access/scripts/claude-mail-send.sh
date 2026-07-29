@@ -106,5 +106,14 @@ for label, mode in (("587/STARTTLS", "starttls"), ("465/SMTPS", "ssl")):
     except Exception as e:
         errs.append(f"{label}: {e}")
 else:
-    print("  FAILED on both ports: " + " | ".join(errs)); raise SystemExit(3)
+    # Exit 4, NOT 3. Exit 2 and 3 mean "this message is malformed" -- never
+    # retry those, the message needs editing. A transport failure is the
+    # opposite: the message is fine and retrying is exactly right. Sharing an
+    # exit code between them means any automated caller must either retry a
+    # malformed message forever or refuse to retry a network blip. Postfix on
+    # the mail guest has now timed out twice tonight and succeeded on the
+    # immediate retry, so this distinction is live, not theoretical.
+    print("  FAILED on both ports: " + " | ".join(errs))
+    print("  (exit 4 = TRANSPORT failure, message is fine, retry is correct)")
+    raise SystemExit(4)
 PY
