@@ -543,6 +543,48 @@ module.exports = {
     assert.strictEqual(b.nTest, s2.testChunks.length);
     assert.strictEqual(b.nHold, s2.holdChunks.length);
   },
+  async theRealArmCannotBeSecretlyScrambled() {
+    // THIS BUG DESTROYED CYCLE 10 — 407 minutes, 3400 units, zero failures,
+    // entirely worthless. unitTask resolved the per-unit shift as
+    //   labelShiftFrac != null ? labelShiftFrac : p.labelShiftFrac
+    // so the r=0 real arm, which passes null to mean "do not rotate me",
+    // fell through to the run-wide 0.5 and was rotated. It came out
+    // BIT-IDENTICAL to the r=10 scramble (-4703.2297069861515), so a scramble
+    // was compared against 19 scrambles. Nothing crashed; the numbers were
+    // plausible; only an impossible exact tie exposed it.
+    //
+    // The rule: PRESENCE of the key decides, never its value. An explicit
+    // null or 0 means no rotation and the run-wide default must not win.
+    const fs = require('fs');
+    const path = require('path');
+    const raw = fs.readFileSync(path.join(__dirname, '..', 'lib', 'bracketwork.js'), 'utf8');
+    // Strip comment lines: the comment above the fix QUOTES the broken form in
+    // order to explain it, and a naive grep over the whole file flags the
+    // explanation as the defect. Check the CODE.
+    const src = raw.split('\n').filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l)).join('\n');
+    assert.ok(/hasOwnProperty\.call\(task, 'labelShiftFrac'\)/.test(src),
+      'the per-unit shift must be resolved by KEY PRESENCE, not by value — '
+      + 'a value test lets an explicit null inherit the run-wide rotation');
+    assert.ok(!/labelShiftFrac != null \? labelShiftFrac : p\.labelShiftFrac/.test(src),
+      'the value-based fallback that broke cycle 10 must not come back');
+
+    // And the resolution itself, exercised directly.
+    const resolve = (task, runWide) => (
+      Object.prototype.hasOwnProperty.call(task, 'labelShiftFrac')
+        ? task.labelShiftFrac : runWide);
+    assert.strictEqual(resolve({ labelShiftFrac: null }, 0.5), null,
+      'explicit null must mean NO rotation even when the run sets 0.5');
+    assert.strictEqual(resolve({ labelShiftFrac: 0 }, 0.5), 0,
+      'explicit 0 must mean NO rotation even when the run sets 0.5');
+    assert.strictEqual(resolve({ labelShiftFrac: 0.25 }, 0.5), 0.25,
+      'an explicit shift must be honoured');
+    assert.strictEqual(resolve({}, 0.5), 0.5,
+      'a payload that names no shift may still inherit the run-wide one');
+    // And falsy shifts must not rotate at all.
+    for (const f of [null, 0, undefined]) {
+      assert.ok(!f, `shiftFrac ${String(f)} must be falsy so 'if (shiftFrac)' skips rotation`);
+    }
+  },
   async aMultiScrambleJobCarriesItsOwnRealArm() {
     // Cycle 8 ran 19 scrambles and had NOTHING to compare them against: the
     // expansion started at r=1, so the job produced only nulls, and the real

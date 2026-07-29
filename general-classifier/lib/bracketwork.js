@@ -221,11 +221,27 @@ function specsFor(size, stage) {
 }
 
 // TASK 1 — one sweep unit (combo x branch) at the slim or promoted stage.
-async function unitTask({ combo, branch, stage, params, labelShiftFrac }) {
+async function unitTask(task) {
+  const { combo, branch, stage, params } = task;
   const p = params;
-  // Per-payload shift lets ONE job carry many rotations; falls back to the
-  // run-wide setting when a payload does not name one.
-  const shiftFrac = labelShiftFrac != null ? labelShiftFrac : p.labelShiftFrac;
+  // Per-payload shift lets ONE job carry many rotations.
+  //
+  // THE FALLBACK MUST BE KEYED ON PRESENCE, NOT ON VALUE. It used to read
+  // `labelShiftFrac != null ? labelShiftFrac : p.labelShiftFrac`, so a payload
+  // that deliberately said "do not rotate this one" by passing null fell
+  // straight through to the run-wide setting and got rotated anyway.
+  //
+  // That silently destroyed cycle 10. The r=0 real arm passed null, inherited
+  // the run-wide 0.5, and came out BIT-IDENTICAL to the r=10 scramble — so a
+  // scramble was compared against 19 scrambles and unsurprisingly landed
+  // mid-pack. The run looked healthy: 3400 units, zero failures, sensible
+  // numbers. Only an implausible exact tie gave it away.
+  //
+  // Presence of the key is now the question, so an explicit null or 0 means
+  // NO ROTATION and cannot be overridden by the run-wide default.
+  const shiftFrac = Object.prototype.hasOwnProperty.call(task, 'labelShiftFrac')
+    ? task.labelShiftFrac
+    : p.labelShiftFrac;
   const { geo, maps, chunks } = await buildCombo(combo, branch, p);
 
   // LABEL ROTATION for an edge census (params.labelShiftFrac). Identical
