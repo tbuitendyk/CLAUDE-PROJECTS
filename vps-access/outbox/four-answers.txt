@@ -1,0 +1,137 @@
+Four answers, and you're right about two of them
+
+tl;dr you asked me not to be agreeable, so: you are right about the small
+tests and I have built one — it catches cycle 10's bug in under two minutes,
+proven. You are right that pooling can bury a concentrated effect, so I have
+frozen a five-asset subset while cycle 11 is still running, timestamped so it
+cannot be adjusted afterwards. On trailing stops you are right that I have
+been deferring, and my reasons are real but not sufficient. On being too quick
+to discard, I partly disagree — your specific example did not happen, but
+there is a worse version of it that did, and the diagnosis is different from
+the one you offered.
+
+1. THE GOOD-LOOKING ASSETS — CAN WE PURSUE THEM?
+
+Not the ones that looked best on the held-back slice. That is precisely the
+selection fault, and the null proves it bites: individual scrambled setups
+also post strong-looking numbers, because the best of 170 draws from noise
+looks impressive by construction. Pursuing those is how people convince
+themselves for years.
+
+BUT your underlying objection is correct and I had not acted on it: a pooled
+test across 17 assets that all move together can DILUTE an effect concentrated
+in a few. If the edge lives in three assets and is absent in fourteen, the
+aggregate understates it. That is a real cost of how I have been measuring.
+
+So I have separated selection from evaluation rather than refusing:
+
+TABLE 1 -- ASSETS RANKED ON THE SETTINGS WINDOW, NOT THE ANSWER
+What it measures: how well each asset predicted on the slice used to CHOOSE
+settings. Ranking here is legitimate because it is not the data the subset
+will be judged on.
+
+  asset      median edge        asset      median edge
+  TRXUSDT       16.32%          UNIUSDT        3.49%
+  LTCUSDT       13.85%          AVAXUSDT       3.17%
+  BNBUSDT       10.88%          ZECUSDT        2.14%
+  XLMUSDT        9.91%          BCHUSDT        1.67%
+  XRPUSDT        9.86%          ADAUSDT        0.90%
+  SOLUSDT        9.19%          ETCUSDT        0.00%
+  ATOMUSDT       7.29%          DOGEUSDT      -1.83%
+  ETHUSDT        7.00%          DOTUSDT       -2.19%
+  LINKUSDT       5.79%
+
+  KEY  median edge = typical accuracy points above the do-nothing baseline,
+                     measured on the settings-selection window
+       (accuracy points, NOT money)
+
+DECLARED SUBSET: TRXUSDT, LTCUSDT, BNBUSDT, XLMUSDT, XRPUSDT
+
+Committed at 22:21:30 UTC with cycle 11 running at 2588 of 3400 units. The
+timestamp is the point — the list cannot be adjusted once I see how it did.
+Selection used data from about 2025-09 onward; evaluation is cycle 11's
+held-back slice, roughly 2025-01 to 2025-06. No overlap.
+
+One look, no re-ranking, no "top 3 instead of top 5" afterwards. And a caveat
+I am recording now rather than discovering later: the ranking is a PREDICTION
+measure and the evaluation is MONEY, and we already know those two pick
+different configurations.
+
+2. TRAILING STOPS — AM I WAITING FOR SIGNAL CONFIRMATION?
+
+Partly, but that is a flattering way to put it. The plainer answer: I have
+deferred it repeatedly and never scheduled it.
+
+The reasons are real. Trailing multiplies the menu of execution settings
+roughly twelvefold, and every extra setting to shop through makes it easier to
+find something that looks good by luck — the same selection problem, worse. And
+on hourly candles a trailing stop cannot be resolved honestly: when a bar both
+makes a new extreme and touches the stop, nothing in the data says which came
+first. That is why minute confirmation exists.
+
+But those are reasons to test it CAREFULLY, not reasons to keep not testing
+it. You approved it days ago. It goes next after cycle 11 resolves — not
+alongside, because changing two things at once would leave neither answered.
+
+3. SMALL TESTS BEFORE LONG RUNS — YES, AND IT IS BUILT
+
+You are straightforwardly right and this was the most useful of the four.
+Cycle 10 spent 6.8 hours to reveal a bug that a two-minute run would have
+caught.
+
+There is now a two-minute preflight: 2 assets, 1 geometry, 2 scrambles, and it
+checks that the real arm is genuinely unscrambled, that money and trade counts
+are recorded, that the scramble tag matches the run, and above all that no two
+arms are bit-identical.
+
+I pointed it at cycle 10 to prove it works rather than assert it:
+
+  ok   a real arm exists (170 rows)
+  ok   scrambles exist (3230 rows)
+  FAIL the real arm is NOT bit-identical to any scramble
+       — TIED WITH ['0.500']: the real arm was scrambled
+  SMOKE FAIL — DO NOT fire a long job.
+
+Two minutes instead of 6.8 hours. It runs before every long job from now on.
+
+4. AM I TOO QUICK TO DISCARD? PARTLY — BUT NOT WHERE YOU THINK
+
+Your specific example did not happen. The 2.44-against-2.5 gate PASSED; I
+reported the narrow margin and then read the result and acted on it. Nothing
+was nearly cancelled there.
+
+Where you are right, and it is worse: the MONEY gate. I set a rule saying the
+19 scrambles had to agree within a 2-to-1 ratio, they came in at 2.29, and I
+refused to read the comparison. Then I worked out the gate was mathematically
+inappropriate — it divides by a number that sits near zero by design, so it can
+fail no matter what. I nearly let a rule I had invented forty minutes earlier
+block a real result.
+
+So the fault is not excess scepticism. It is that I INVENT thresholds by
+guess and then treat them as law. 2-to-1, 15 points, 2.5 points — I made all
+of those up. A guessed threshold deserves exactly the scrutiny I give a
+guessed metric, and it was not getting it.
+
+Where I will push back: I have not discarded a real candidate. Cycle 9's
+positive result I kept, and I am replicating it right now rather than
+explaining it away. What I discarded were broken MEASUREMENTS — the 27% null,
+the binomial p-values, cycle 10 — and those were right to discard; keeping any
+of them would have had us building on numbers that meant nothing.
+
+And the bias runs both ways, which is the part I would want you to know:
+cycle 10 was a NEGATIVE result that matched the expectation I had put in
+writing, and I nearly accepted it without checking. So I am not uniformly
+harsh — I was about to be credulous in the direction of my own prediction.
+That is the more dangerous failure and it is the one that nearly happened.
+
+WHAT THIS CHANGES GOING FORWARD
+
+  * Two-minute preflight before any long job. Built and proven.
+  * Thresholds get DERIVED and justified, or labelled as guesses when they
+    cannot be. A gate that fails gets examined, not just obeyed.
+  * The declared subset is evaluated once, on cycle 11.
+  * Trailing stops are next after cycle 11.
+
+  bracketlab-20260729-2054-l11-walkforward-redo   due ~03:55 UTC
+
+c.
