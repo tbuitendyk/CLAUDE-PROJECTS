@@ -72,6 +72,16 @@ plan = doc.get("plan") or {}
 rows = doc.get("edgeCensus") or []
 print(f"=== {doc['id']} status={doc['status']} {round((perf.get('elapsedMs') or 0)/60000,1)}min")
 print(f"planned units: {plan.get('units')}   CENSUS rows: {len(rows)}")
+# Prove the null's construction from the DOC, not from the launcher that was
+# supposed to set it. A dropped parameter once invalidated a whole conclusion
+# here (trailing/holdout never reached the sweep), so the scope the run
+# actually used is read back rather than assumed.
+scope_p = p.get("labelShiftScope") or "series"
+scopes_seen = sorted({r.get("shiftScope") for r in rows if r.get("shiftScope")})
+print(f"null construction: labelShiftScope={scope_p}"
+      + (f"   census rows report: {','.join(scopes_seen)}" if scopes_seen else "   (rows predate scope tagging)"))
+if scopes_seen and any(x != scope_p for x in scopes_seen):
+    print("  WARNING: the doc's setting and the rows disagree — do not read this run.")
 if plan.get("units") and len(rows) < plan["units"]:
     print(f"note: {plan['units'] - len(rows)} unit(s) produced no census row (failed or too few chunks)")
 print()
