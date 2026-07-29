@@ -87,6 +87,30 @@ if known:
     for k in sorted(buckets):
         print(f"    {names[k]:>8s} : {buckets[k]:>5d}  ({100*buckets[k]/len(known):.1f}%)")
 
+# DIRECTIONAL ACCURACY -- the metric that actually corresponds to money.
+# "edge" scores all three answers including flat, so a unit that makes one
+# directional call and 130 flat calls is graded almost entirely on its flat
+# calls, which is baseline-like behaviour dressed as prediction. The question
+# that matters for trading is narrower: WHEN IT COMMITTED, was it right?
+dc = [r for r in rows if r.get("holdDirCalls") and r.get("holdDirHits") is not None]
+if dc:
+    tot_calls = sum(r["holdDirCalls"] for r in dc)
+    tot_hits = sum(r["holdDirHits"] for r in dc)
+    print()
+    print("DIRECTIONAL ACCURACY (only the periods where a direction was called)")
+    print(f"  units with >=1 directional call : {len(dc)}")
+    print(f"  total directional calls         : {tot_calls}")
+    print(f"  hits                            : {tot_hits}  ({100*tot_hits/tot_calls:.2f}%)")
+    for floor in (1, 5, 10, 20):
+        g = [r for r in dc if r["holdDirCalls"] >= floor]
+        if not g: continue
+        c = sum(r["holdDirCalls"] for r in g); h = sum(r["holdDirHits"] for r in g)
+        rates = sorted(r["holdDirHits"] / r["holdDirCalls"] for r in g)
+        med = rates[len(rates)//2]
+        print(f"  units with >={floor:>2d} calls: {len(g):>4d}   pooled hit rate {100*h/c:>6.2f}%   median unit {100*med:>6.2f}%")
+    print("  NOTE: a 3-class problem, so 'chance' is not 50% — it depends on how")
+    print("        often the market was flat. Compare against the null, never against 50.")
+
 # Effective sample: units that actually expressed an opinion.
 if known:
     active = len(known) - len(silent)
