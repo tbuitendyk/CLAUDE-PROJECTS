@@ -45,6 +45,10 @@ a number looked *encouraging*.
 
 | 25 | One exit code can serve two failures | `claude-mail-send.sh` returned 3 for both "message malformed" (never retry) and "transport failed" (always retry). Any automated caller would have to get one of them wrong | Malformed = 2/3, transport = 4. Distinct codes for opposite responses | `claude-mail-send.sh` | AUTOMATED |
 
+| 26 | A gate that passes is a pass like any other | Cycle 6's spread gate passed at 2.44 against a 2.5 limit — 0.06 points from discarding the run | Report the MARGIN on every gate, not just the verdict. A near-miss is information about the instrument | audit template Q2 | MANUAL |
+| 27 | The significance floor is the significance | With N draws the rank test cannot go below 1/(N+1). "p = 0.05" on 19 draws means "the best this design can say", not "a strong effect" | State the floor beside the result | `classifier-edge-read.sh` prints the floor | AUTOMATED |
+| 28 | Metrics measuring related things will agree | They did not. Directional accuracy put cycle 6 above all 19 scrambles; the active-only headcount put it INSIDE, 2.2 points below the top draw | When metrics disagree, the disagreement IS the finding. Which one governs must be declared in advance, with the reason | CYCLE6-READING-RULE, audit Q9 | MANUAL |
+
 ## Open gaps — items not yet enforced by anything but discipline
 
 These are listed because a MANUAL item with no owner is a lie.
