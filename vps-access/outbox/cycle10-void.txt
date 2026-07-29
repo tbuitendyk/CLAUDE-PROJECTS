@@ -1,0 +1,90 @@
+Cycle 10 is void — its "real" arm was a scramble, and the bug was mine
+
+tl;dr the walk-forward came back looking like a clean, decisive failure, and I
+was one paragraph from telling you the edge does not generalise. It was wrong.
+The "real" half of the comparison had itself been scrambled by a bug I
+introduced this morning, so a scramble was compared against 19 scrambles.
+Nothing crashed, 3400 units completed, zero failures, and every number was
+plausible. The only symptom was two results being IDENTICAL to fifteen decimal
+places, which cannot happen by chance. Fixed, tested, and the run is going
+again — results around 04:00 UTC. Cycle 9's positive result is untouched.
+
+WHAT IT PRINTED, AND WHAT I ALMOST SENT
+
+  measure          real     luckiest scramble   beats
+  net $        -4,703.23           -806.96      1/19
+  $ per trade    -0.1592           -0.0237      2/19
+  vs hold $    -6,062.45         -2,154.27      0/19
+
+Read at face value that says the edge was a property of one time period and
+does not survive elsewhere. It is also exactly what I had told you to expect,
+which is precisely why it needed checking rather than reporting.
+
+WHAT GAVE IT AWAY
+
+The worst scramble and the "real" arm printed the same number. Not close --
+the same:
+
+  real arm        -4703.229706986151
+  scramble #10    -4703.2297069861515
+
+That is 170 setups and about 30,000 trades landing on an identical total. It
+is not a coincidence, it is the same computation twice.
+
+THE BUG, WHICH I WROTE THIS MORNING
+
+Yesterday I told you cycle 8 had wasted five hours because the job produced
+19 scrambles and no real arm to compare them against. I fixed that by making
+every multi-scramble job carry its own real arm, and said that enforcing it by
+construction beat enforcing it by discipline.
+
+The real arm signals "do not scramble me" by passing an empty value. The code
+that decides how much to scramble each unit read, in effect, "if a value was
+given, use it, otherwise use the run-wide default". An empty value is not a
+value. So the real arm fell through to the run-wide setting and got scrambled
+at exactly the same amount as scramble #10.
+
+So the fix for a MISSING real arm guaranteed a FAKE one. Same file, same day.
+No error, no warning, 3400 units of believable output.
+
+The repair is that the code now asks whether the setting was SPECIFIED at all,
+rather than whether it looks empty. A test asserts that, checks four
+variations, and I watched it fail with the old code before trusting it.
+
+THREE ASSUMPTIONS THIS KILLED (QC 38-40)
+
+  38  "Empty means none." Against a fallback like that one it means "inherit
+      the default" -- the opposite. Optional per-item settings are now
+      resolved by whether the key is present, never by its value.
+  39  "Zero failures means it ran correctly." Failure count counts CRASHES.
+      Cycle 10: 3400 units, zero failures, void. That distinction has now
+      mattered five times on this project.
+  40  "A fix cannot introduce a fault." Cheapest guard available here: if any
+      two arms come out bit-identical, the run is void. That is what caught
+      this one, and it is now the standing check.
+
+WHAT THIS DOES AND DOES NOT CHANGE
+
+CYCLE 9 STANDS. Its real arm came from a separate job with no run-wide
+scrambling set, so it never went near this code path -- and independently, its
+directional accuracy reproduced the original census exactly, which it could
+not do if it had been scrambled. The money result is unaffected.
+
+THE WALK-FORWARD IS SIMPLY STILL UNKNOWN. The question was never asked. It is
+not a failure and it is not a pass.
+
+RUNNING NOW
+
+  bracketlab-20260729-2054-l11-walkforward-redo    due ~04:00 UTC
+
+Identical test, fixed build, rule unchanged and still fixed in advance --
+unchanged specifically because the question never got asked, so there is
+nothing to re-declare.
+
+The honest summary of the last few hours: nearly seven hours of box time
+produced no answer, and the reason was a defect I introduced while fixing a
+different defect. What worked was step 7 -- the audit made me look at an exact
+tie instead of accepting a conclusion that agreed with what I already
+believed.
+
+c.
