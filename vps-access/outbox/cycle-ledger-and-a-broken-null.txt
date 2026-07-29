@@ -1,0 +1,199 @@
+The processing cycle, the loop ledger, and a null that broke
+
+tl;dr the seven-step cycle is read back below, verbatim as you gave it. Five
+loops run so far, each with a one-liner and its code changes. The headline:
+last night's null test came apart. Its six draws range from 14.7% to 91.2%,
+and that spread is a fault in how I built the null, not a fact about the
+market. I found the cause, fixed it, and tested the fix on real data. The
+practical consequence is that cycle 1's 57.6% is neither confirmed nor
+refuted -- it is unmeasured, and the next run measures it properly.
+
+
+THE PROCESSING CYCLE (read back)
+
+  1. Hypothesise. Look at everything learned so far and form the best
+     available hypothesis about where to go next, always judged against
+     maximum profit at the minimum possible risk.
+  2. Decide the test. From that hypothesis, decide intelligently what should
+     be tested next as the follow-up.
+  3. Improve the platform. Analyse the software platform as it stands and
+     independently implement whatever improvements the chosen direction
+     needs. Do not bend the next experiment to fit yesterday's tooling.
+     No code change reaches the environment without a standard email saying
+     what was done.
+  4. Script and launch. Script the settings into the VPS engine, start it,
+     and form a real expectation of when it will finish -- five minutes,
+     five hours or five days.
+  5. Re-arm. If a job is not finished when checked, re-arm the check timer
+     at an interval that matches how long it actually has left.
+  6. Watch cheaply. Throughout 4 and 5, monitor for incoming mail
+     continuously but as token-cheap as possible: one watcher, silent unless
+     something real happens.
+  7. Analyse hard, then loop. On completion, analyse thoroughly and think
+     outside the box -- then return to step 1.
+
+
+THE LOOP LEDGER
+
+Five loops since the engine went multithreaded. I am listing these by job ID
+rather than by my own cycle numbers, because my numbering drifted at one
+point and the job IDs are unambiguous.
+
+  L0  (pre-loop, overnight)  The doubles sweep, plus the plumbing to run
+      unattended. CODE: worker pool, 4 threads at nice 19; the mail send /
+      check / read-only-recent scripts; host-health.sh.
+
+  L1  job -2158, 170 units, 10min.  Edge screen -- a full census of every
+      unit rather than the money winners. 98/170 (57.6%) posted positive
+      holdout edge, median +3.08%. Best side-finding of the night: weekly-8d
+      loses 10.8-13.2 accuracy points between the search window and the
+      holdout, while daily-3d and daily-4d lose 0.3. Books 1 and 2 run on
+      weekly-8d.  CODE: edge census kept strictly off the money leaderboard;
+      "bestEdge" rung chosen by prediction quality, not P&L.
+
+  L2  job -2211, 170 units, 22min.  First measured null -- one rotation.
+      46/170 (27%), median -0.83%. The point: "edge > 0 half the time" had
+      been an assumption, and the real figure was 27%, which made L1 look
+      stronger than the naive reading implied.  CODE: label rotation.
+
+  L3  job -2236, 170 units, 23min.  A null-band variant. I do not have its
+      numbers to hand and I am not going to reconstruct them from memory --
+      see the defect note at the end, the read script cannot select a job by
+      ID, so I can only ever read the newest one. That is being fixed.
+
+  L4  job -2303, 1020 units, ~95min.  Six rotations instead of one, so the
+      null gets an error bar. This is the one that broke. Detail below.
+      CODE: many rotations in one job.
+
+  L5  in progress.  Re-run the null with the corrected construction.
+
+
+WHAT L4 SAID
+
+    shift    n     hold edge > 0    share
+    0.143   170       25/170        14.7%
+    0.286   170       47/170        27.6%
+    0.429   170       43/170        25.3%
+    0.571   170       82/170        48.2%
+    0.714   170      155/170        91.2%
+    0.857    34*      23/34         67.6%   (*still filling)
+
+Range 14.7% to 91.2%. Each draw is 170 units, so the sampling error on any
+one of them is about 3.5 points. A spread of 77 points is not noise.
+
+I had pre-registered how to read this before firing it, and the rule was
+explicit: if the draws disagree wildly with each other, the statistic is
+unstable and needs fixing before it is used to decide anything. That is the
+branch we are on. I am holding to it.
+
+Worth saying plainly: L1's 57.6% sits comfortably INSIDE that spread, with
+two draws above it. If I had run only rotation 0.143 I would have reported a
+clean win. If I had run only 0.714 I would have reported the edge was dead.
+Both would have been wrong, and both would have looked perfectly convincing.
+That is the argument for error bars in one picture.
+
+
+WHY IT BROKE
+
+Edge is measured as: accuracy minus the majority baseline. The baseline is
+"how often would you be right by always guessing the training window's most
+common answer".
+
+The null works by rotating the outcomes against the features, so any real
+predictive relationship is destroyed while everything else is preserved. But
+it rotated across the WHOLE series and only then cut the train / search /
+holdout split, which is positional. So each rotation handed the holdout
+window outcomes from a different stretch of market history -- and therefore
+a different baseline.
+
+I measured it on BTC/ZEC daily-3d over 908 chunks. Across seven rotations
+the holdout baseline ranged from 0.265 to 0.419. The real, unrotated run sat
+at 0.353 -- mid-pack.
+
+A draw scored against a baseline 9 points softer clears "edge > 0" far more
+easily with no change in skill whatsoever. So the pooled null was never one
+null; it was a mixture over baselines. 57.6% cannot be compared against it
+in either direction. Not as support, not as refutation.
+
+One correction against myself: on a smaller sample I had this looking like
+the real run faced the HARDEST baseline, which would have made L1 look
+conservative and reassuring. It did not survive the larger sample. It is
+mid-pack. I checked before believing it, which is the only reason that did
+not end up in this email as a finding.
+
+
+THE FIX
+
+Rotate inside each window separately instead of across the whole series.
+Each window then keeps its own set of outcomes exactly, so the band stays
+put, every window's class balance stays put, and the baseline is identical
+in every draw AND identical to the real run's. The feature-to-outcome
+pairing is still destroyed inside each window, which is the entire job of
+the null.
+
+Verified on the same 908 chunks -- baseline across all seven rotations:
+
+    before:  0.353  0.419  0.346  0.265  0.287  0.279  0.272
+    after:   0.353  0.353  0.353  0.353  0.353  0.353  0.353
+
+That is the property the test needed and did not have.
+
+
+CODE UPDATES (standing rule -- nothing ships without this)
+
+Two commits, both pushed, NEITHER YET DEPLOYED. Deploying restarts the
+classifier and would kill the job still running, so they wait for it.
+
+  1. The null fix above. New setting, off by default so every board recorded
+     so far keeps exactly the meaning it had when it was recorded. Census
+     rows now also record the baseline they were scored against, so no
+     future census has to be taken on trust about its own yardstick -- which
+     is the only reason this one needed a separate investigation to catch.
+
+  2. Worker priority made provable. The health probe showed no classifier
+     thread sitting at nice 19, and there was no way to tell whether the
+     mechanism was broken, the deployment was stale, or the probe was simply
+     looking at the wrong process. The mechanism is fine -- I tested it
+     directly. The problem was that nothing could observe it. There is now a
+     self-test that boots real workers and reads the kernel's own number for
+     each thread. While in there I found a live bug: the pool's fallback
+     path picked its function with a two-way guess, so any new kind of task
+     would have quietly run the WRONG function and returned a
+     plausible-looking object instead of failing.
+
+Both are covered by tests that I verified actually fail when the thing they
+protect is removed. Five deliberate breakages, five caught.
+
+
+THE PATTERN, SINCE IT IS NOW FOUR IN A ROW
+
+Every serious defect this week has been in the measurement, not the maths:
+the API silently dropping two settings; the edge screen reading through a
+money-ranked board; the read script that ignores which job you asked for;
+and now a null whose draws were scored against six different yardsticks.
+
+A broken sweep throws an error. A broken measurement hands you a number with
+the right units and a plausible magnitude, and you build on it. The 91.2%
+draw is the useful one here precisely because it is absurd -- it is too big
+to rationalise. A defect that had shifted the null by five points instead of
+seventy would still be in the system, and I would be writing you a confident
+email about a real edge.
+
+
+WHAT'S NEXT
+
+  1. Let job -2303 finish (minutes away). Record it, including that its
+     conclusion is "the instrument was wrong", not a market result.
+  2. Deploy both changes, and confirm the worker self-test passes on the box
+     -- that closes the open nice-19 question from the health probe.
+  3. Re-fire the null with the corrected construction, six rotations. This
+     will be the first null whose draws are scored against the same
+     yardstick as the real run, so it is the first one capable of answering
+     whether 57.6% means anything. Expect roughly 90 minutes.
+
+Known defect I am carrying, so it is on the record rather than in my head:
+the edge read script accepts a job ID and then ignores it, always reading
+the newest run. That is why L3 has no numbers above. Fixing it is part of
+step 2.
+
+c.
