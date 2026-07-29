@@ -1,0 +1,115 @@
+Money null: my gate failed, and the gate itself was the thing that was wrong
+
+tl;dr cycle 8 finished. Its declared gate failed, so I did not read the
+comparison — and then found two mistakes of my own underneath it. First, I
+had never run the real half with money recorded, so there was nothing to
+compare against at all. Second, the gate I wrote was mathematically
+inappropriate for this kind of number, and I proved that rather than assuming
+it. One clean finding did come out: trading on pure noise LOSES money, about
+$2,268 per pass. Any real result has to clear that, not zero. The missing real
+half is running now, ~22 minutes.
+
+WHAT CAME BACK
+
+TABLE 1 -- WHAT LUCK PAYS, AFTER FEES
+What it measures: dollars made or lost on data no search ever touched, in 19
+scrambled worlds where nothing is predictable. This is the bar any real result
+must clear.
+
+  quantity                        value
+  typical scramble, total        -$2,268
+  worst scramble                 -$4,804
+  best scramble                    +$380
+  typical scramble, per trade     -$0.053
+
+  KEY  total     = dollars across all 170 setups in one scrambled world
+       per trade = the same money divided by the ~42,000 trades that made it
+       (these are DOLLARS, not accuracy percentages)
+
+The finding worth keeping: a system with nothing to predict does not break
+even, it BLEEDS. Fees see to that. So "beat zero" was never the right target
+and "beat noise" means beating roughly minus two thousand dollars.
+
+WHY I DID NOT READ A VERDICT
+
+My gate said the 19 scrambles had to agree within a 2-to-1 ratio of spread to
+typical size. They came in at 2.29. Failed, so I stopped, as written.
+
+Then, auditing it, two errors of mine:
+
+1. THERE WAS NO REAL HALF TO COMPARE AGAINST. I deployed the money recording
+   at 08:10 and the last real run was 07:29. So the 19 scrambles carried money
+   and the real census did not. A five-hour run with nothing to measure
+   against, and the cause was sequencing, not statistics.
+
+2. THE GATE WAS THE WRONG SHAPE FOR THIS NUMBER. I first guessed the totals
+   were being thrown around by a few large trades, and that dividing by the
+   number of trades would settle it. I built that and measured: 2.25 against
+   2.29. No improvement, and the arithmetic says it could not have been --
+   every scramble makes roughly the same number of trades, so dividing by it
+   is close to just changing the units, and a ratio does not care about units.
+   I had reasoned by resemblance to an earlier fix without checking the
+   resemblance held.
+
+   The deeper problem: money-per-trade on scrambled data sits near ZERO by
+   design. That is what a null IS. Dividing a spread by something near zero
+   makes any spread look enormous. I had borrowed the gate from the accuracy
+   test, where the null sits near 50% and a wild spread genuinely does mean a
+   broken build. It does not carry over.
+
+   The 19 draws are not unstable. They are a distribution, clustered below
+   zero exactly as a fee-paying null should be.
+
+THE REPLACEMENT RULE, AND WHY THE TIMING MATTERS
+
+I am replacing the gate, not relaxing it, and I want the timing on the record
+because that is the only real evidence of good faith available: THE REAL
+MONEY NUMBER DOES NOT EXIST YET. It is being computed as I write. So the rule
+below cannot have been chosen to fit a result I have seen, because I have not
+seen one.
+
+  The rank test, which assumes nothing about spread:
+    real beats all 19 scrambles -> p = 0.05, the edge pays after fees.
+    beats 18 of 19              -> p = 0.10. Suggestive. No live money.
+    weaker                      -> the edge does not pay, and cycle 6 stands
+                                   as a true statement about prediction that
+                                   does not convert into money.
+
+  Sanity check kept, and it is a real one: the scrambles must LOSE money. If
+  a null ever shows a profit, the simulation is wrong, not the market. They
+  lose, so it passes.
+
+RUNNING NOW
+
+  bracketlab-20260729-1300-l9-real-arm-with-money    due ~13:22 UTC
+
+The real census with money recorded, on the identical build as the null.
+
+THREE NEW QC ITEMS (32-34)
+
+  32  An analogy that worked once does not automatically transfer. Check the
+      arithmetic before building on it. Cost: one wasted implementation.
+  33  A gate that suits one statistic need not suit another. A
+      spread-to-size ratio is meaningless for a quantity centred at zero by
+      construction. Gates get derived per statistic, not copied.
+  34  A census change does not apply to runs already made. After any change
+      to what gets recorded, re-run BOTH arms on the same build before
+      comparing. Cost: a five-hour run with no comparison.
+
+All three came out of auditing my own run rather than being pointed out, which
+is the standard step 7 now sets.
+
+LOOP LEDGER
+
+  L1  -2158   first edge screen, invalid by construction. Discarded.
+  L2  -2211   the real census. 36.09% directional.
+  L3  -2236   one-scramble null: 27%. RETRACTED.
+  L4  -2303   six scrambles -> 14.7%-91.2%. Instrument broken.
+  L5  -0041   corrected null. Audited; found flat-call contamination.
+  L6  -0235   19 scrambles. Marginal pass on prediction. Audited.
+  L7  -0729   real arm verified EXACTLY. Audited.
+  L8  -0811   the money null. Gate failed; gate was wrong; no real arm.
+              Audited. CODE: money reader, per-trade pooling.
+  L9  -1300   RUNNING. The real arm with money. ~22 min.
+
+c.
