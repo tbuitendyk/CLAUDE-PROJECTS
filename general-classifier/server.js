@@ -232,6 +232,7 @@ app.post('/api/bracketlab', (req, res) => {
       labelShiftFrac: b.labelShiftFrac,
       labelShiftReps: b.labelShiftReps,
       labelShiftScope: b.labelShiftScope,
+      feePerLeg: b.feePerLeg,
       description: b.description,
       label: b.label,
     });

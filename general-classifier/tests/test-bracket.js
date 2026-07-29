@@ -472,6 +472,32 @@ module.exports = {
     const forwarded = call.slice(0, call.indexOf('});'));
     const missing = [...read].filter((k) => !new RegExp(`\\b${k}\\s*:`).test(forwarded));
     assert.deepStrictEqual(missing, [], `startBracketLab reads these but the API never forwards them: ${missing.join(', ')}`);
+
+    // BLIND SPOT THIS CHECK USED TO HAVE. It scans for `params.X`, so a
+    // setting HARD-CODED from a constant is invisible: nothing reads it from
+    // params, so nothing looks missing. feePerLeg sat like that — the one
+    // dimension cycle 9's result depends on (fees eat 86% of the gross edge)
+    // could not be varied from any launcher, and this test said all was well.
+    //
+    // So also check the other direction: anything the worker reads off the
+    // params object as `p.X` must be SOURCED from `params.X` in batch.js.
+    const workSrc = fs.readFileSync(path.join(root, 'lib', 'bracketwork.js'), 'utf8');
+    const consumed = new Set([...workSrc.matchAll(/\bp\.([A-Za-z_$][\w$]*)/g)].map((m) => m[1]));
+    // Derived inside the orchestrator rather than supplied by the caller.
+    const INTERNAL = new Set(['labelShiftFrac', 'declared', 'set', 'sizes', 'permute', 'universe']);
+    // "Sourced from params" = `params.<key>` appears anywhere in batch.js.
+    // A per-line regex was too narrow: real definitions span lines and contain
+    // commas (`Math.max(1, Number(params.minTrades) || 10)`), so it reported
+    // reachable settings as hard-coded.
+    // Scoped to startBracketLab's OWN body, not the whole file. batch.js holds
+    // several job types and others read `params.feePerLeg` for themselves — a
+    // file-wide search therefore made the bracketlab fee look reachable while
+    // it was hard-coded. Same slice the forwarding check above uses.
+    const unreachable = [...consumed].filter((k) => !INTERNAL.has(k)
+      && new RegExp(`\\b${k}\\s*:`).test(body)
+      && !body.includes(`params.${k}`));
+    assert.deepStrictEqual(unreachable, [],
+      `the sweep reads these but batch.js hard-codes them, so no caller can set them: ${unreachable.join(', ')}`);
   },
   async windowRotationHoldsTheBaselineTheEdgeIsScoredAgainst() {
     // edge = accuracy - majorityBaseline. A null draw scored against a SOFTER

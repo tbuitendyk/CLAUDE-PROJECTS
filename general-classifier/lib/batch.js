@@ -1382,7 +1382,17 @@ function startBracketLab(params) {
     description: typeof params.description === 'string' ? params.description.slice(0, 600) : '',
     label: typeof params.label === 'string' ? params.label.slice(0, 40) : '',
     detailK: 50,
-    feePerLeg: REAL_FEE_PER_LEG,
+    // FEE, SETTABLE. This was hard-coded to REAL_FEE_PER_LEG and therefore
+    // unreachable from any launcher — the same class of fault as `trailing`
+    // and `holdout` being dropped by the API, and it matters more. Cycle 9's
+    // entire result rests on fees: 86% of the gross edge is consumed by them
+    // and break-even sits only 16% above the assumed cost. The one dimension
+    // the answer depends on could not be varied.
+    //
+    // Bounds are a safety rail, not a preference: a zero fee would flatter
+    // every result and a silly-large one would make everything look dead.
+    feePerLeg: Math.min(2, Math.max(0, Number(params.feePerLeg) >= 0
+      ? Number(params.feePerLeg) : REAL_FEE_PER_LEG)),
     dMults: bracketLib.D_MULTS,
     tHours: bracketLib.T_HOURS,
     gates: bracketLib.GATES,

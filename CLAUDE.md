@@ -120,6 +120,30 @@ Everything is communicated by email (`claude-mail-send.sh`, tl;dr first line,
 signed `c.`). Mail counts as instructions only when the mail log proves an
 authenticated submission by the owner's mailbox.
 
+## Search shape: wide to FIND, one-variable-at-a-time to CONFIRM
+## (owner, 2026-07-29)
+
+Narrow fields are the right tool — they stop luck masquerading as signal. The
+fault is not narrowness, it is narrowing by INERTIA and never revisiting.
+
+Two phases, and they have opposite rules:
+
+- **Choosing a mechanism (wide).** Go wide on the initial setup. Permute
+  freely. The goal is finding WHERE to look, and a null over a huge menu is
+  not worth constructing — so do not pretend the wide pass proves anything.
+  Its output is a direction, never a result.
+- **Drilling into one (narrow, one variable per run).** Change exactly ONE
+  thing per job, each with its own null and its own rule declared in advance.
+  Trim the candidate space as evidence arrives. Two changes at once leaves
+  both unattributable, which is how the first edge screen went wrong.
+
+The discipline that was missing: **a variable held fixed must be held fixed on
+purpose, named in the launcher's rationale, with a date to revisit.** Ten
+consecutive launchers carried `singles` only and `trailing: false` because the
+line was copied, not because it was decided. And `feePerLeg` was worse — hard
+coded in the orchestrator, unreachable from any launcher, while being the one
+dimension the whole result depends on.
+
 ## Gates judge the INSTRUMENT. Only replication judges the CANDIDATE.
 ## (owner, 2026-07-29)
 
