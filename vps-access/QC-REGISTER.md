@@ -39,6 +39,10 @@ a number looked *encouraging*.
 | 21 | A pre-registered metric must never be changed, even once shown to be broken | Pre-registration exists to stop metric SHOPPING (keeping whichever measure flatters you). It does not require keeping a measure proven to count things that cannot express the quantity — that is stubbornness wearing rigour's clothes. Caught by the owner, 2026-07-29 | A metric may be corrected mid-stream **only** when: (a) the fault is argued from MECHANISM, not from the number improving; (b) the correction moves BOTH the real result and the null, not just the favourable one; (c) the old measure keeps being reported beside the new one. All three, stated at the time | this register | MANUAL |
 | 20 | Acting on a hypothesis before gathering data is fine | A job was cancelled on a guess; the real cause was contention | Gather the cheap evidence first | `host-health.sh` exists so the question is cheap | MANUAL |
 
+| 22 | A classification score is a trading score | `edge` grades flat calls, which place no trade. A setup with 1 committed call and 130 flat calls was graded almost entirely on the flats | Primary measure is pooled directional accuracy: of the periods where a direction was called, how often it was right | `classifier-census-diag.sh`, CYCLE6-READING-RULE | AUTOMATED (reported) / MANUAL (which measure governs) |
+| 23 | Removing non-participants makes two arms comparable | It does not. Real run: 77.6% of setups made 21+ trades; scrambled: 59.8%. The arms still differ after the zero bucket is dropped | Check the whole activity distribution, not just zero; prefer per-decision pooling, which is robust to it | `classifier-census-diag.sh` call-count buckets | AUTOMATED |
+| 24 | A unit-level headcount summarises the data | 170 yes/nos discard the 19,913 decisions underneath and inherit flat-call contamination. The headcount overstated the effect ~3x (5.8 pts vs 1.9 pts) | Report the per-decision metric beside any headcount | `classifier-census-diag.sh` | AUTOMATED |
+
 ## Open gaps — items not yet enforced by anything but discipline
 
 These are listed because a MANUAL item with no owner is a lie.
