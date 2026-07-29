@@ -197,11 +197,23 @@ if draws:
         else:
             print("\n  gate passed: draws agree within 15 points, so they can be")
             print("  compared against the real run.")
-            print(f"  cycle 1 (real outcomes, job -2211) was 57.6% all-units / 56.6% active-only")
-            print(f"  -> all-units:   {'ABOVE every draw' if 0.576 > hi else 'INSIDE the null spread'}")
+            # PRIMARY = active-only. Silent units never place a trade, so they
+            # cannot express tradeable direction and do not belong in a score
+            # meant to detect it. Corrected 2026-07-29 after the owner pointed
+            # out that keeping a measure already shown to be broken, purely
+            # because it was declared first, is stubbornness rather than rigour.
+            # The correction moved BOTH arms down (null 54.1->50.8, real
+            # 57.6->56.6), which is the check that it is not a cherry-pick.
+            # All-units stays printed beside it for continuity with old boards.
+            print(f"  real run (job -2211): 56.6% ACTIVE-ONLY [primary]  /  57.6% all-units [legacy]")
             if atot:
-                print(f"  -> active-only: {'ABOVE every draw' if 0.566 > max(atot) else 'INSIDE the null spread'}"
-                      "   (POST-HOC metric, found after looking — a lead, not a result)")
+                amax = max(atot)
+                print(f"  -> PRIMARY (active-only): {'ABOVE every draw' if 0.566 > amax else 'INSIDE the null spread'}"
+                      f"   top draw {100*amax:.1f}%, margin {100*(0.566-amax):+.1f} pts")
+                n = len(atot)
+                print(f"     rank-based p floor with {n} draw(s): {1/(n+1):.3f}"
+                      f"  ({'CANNOT reach 0.05 — run more draws' if 1/(n+1) > 0.05 else 'can reach 0.05'})")
+            print(f"  -> legacy (all-units):    {'ABOVE every draw' if 0.576 > hi else 'INSIDE the null spread'}")
     print()
 
 groups = defaultdict(list)
