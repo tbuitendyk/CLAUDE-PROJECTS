@@ -1553,6 +1553,28 @@ function startBracketLab(params) {
               holdAcc: res.bestEdge.holdoutMetrics ? res.bestEdge.holdoutMetrics.testAcc : null,
               holdDirHits: res.bestEdge.holdoutMetrics ? res.bestEdge.holdoutMetrics.directionalHits : null,
               holdDirCalls: res.bestEdge.holdoutMetrics ? res.bestEdge.holdoutMetrics.directionalCalls : null,
+              // THE MONEY ARM. Accuracy counts a wrong call identically
+              // whether the market went nowhere or hard the other way; P&L
+              // does not. A system can be right more often than noise and
+              // still lose, if its mistakes are larger than its wins — so
+              // money needs its own census and cannot be inferred from the
+              // accuracy one.
+              //
+              // These come from the cell chosen on the SEARCH window and
+              // scored once on the holdout, so they are out-of-sample. They
+              // are recorded for EVERY unit and never money-ranked: reading
+              // money off the leaderboard is the selection fault that
+              // invalidated the first edge screen (job -2158).
+              holdPnl: res.best && res.best.holdout ? res.best.holdout.pnl : null,
+              holdTrades: res.best && res.best.holdout ? res.best.holdout.trades : null,
+              holdWins: res.best && res.best.holdout ? res.best.holdout.wins : null,
+              holdGrossPerTrade: res.best && res.best.holdout ? res.best.holdout.grossPerTrade : null,
+              // Doing nothing clever, on the same slice, so "did it beat just
+              // holding" is answerable rather than assumed.
+              holdAlwaysLong: res.best && res.best.holdout && res.best.holdout.holds
+                ? res.best.holdout.holds.alwaysLong : null,
+              holdBuyHold: res.best && res.best.holdout && res.best.holdout.holds
+                ? res.best.holdout.holds.buyHold : null,
             });
           }
           if (res.callSeries && doc.callSeries.length < CALL_SERIES_MAX) {
