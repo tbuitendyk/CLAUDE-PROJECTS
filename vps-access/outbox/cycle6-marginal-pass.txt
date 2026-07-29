@@ -1,0 +1,154 @@
+Cycle 6: a pass, but the weakest one the design can produce
+
+tl;dr the system beat all 19 scrambles on the measure that matters, which is
+the first time anything here has cleared an honest test. Do not celebrate yet.
+It cleared by 0.24 of a point, the "0.05" is the best number 19 scrambles can
+ever produce rather than a strong result, and two of the three measures say it
+FAILED. On top of that the real half of the comparison was produced by older
+code and has never been re-checked. I have not gone on to the money question.
+Instead I fired a 22-minute run to re-measure the real half on today's build,
+because a 0.24-point margin cannot absorb any drift at all. Your three
+interface requests are built, tested and deployed.
+
+
+THE RESULT, READ THROUGH THE RULE I FIXED IN ADVANCE
+
+Gate first, as declared: the 19 scrambles had to agree within 2.5 points.
+They spanned 2.44. Passed -- with 0.06 of a point to spare, which is close
+enough to having binned the whole run that it is worth saying out loud.
+
+TABLE 1 -- DOES IT PREDICT DIRECTION BETTER THAN NOISE?
+What it measures: of the moments where the system actually committed to a
+trade, how often it was right. Scrambled runs have nothing to predict, so
+they show what luck alone earns. Higher is better; only the gap matters.
+
+  arm                          score     spread
+  real market data            36.09%     single measurement
+  19 scrambled runs           34.48%     33.41% - 35.85%
+  gap (the skill part)        +1.61 pts
+
+  KEY  score   = share of committed up/down calls that were correct
+       spread  = lowest to highest across the 19 scrambled runs
+       (accuracy percentages, NOT money)
+
+Verdict per the declared rule: above all 19 -> p = 0.05.
+
+THREE REASONS TO HOLD THE CHAMPAGNE
+
+1. 0.05 IS THE FLOOR, NOT THE FINDING. With 19 scrambles the strongest claim
+   arithmetic permits is 1 in 20. So "p = 0.05" here means "the best this
+   design could possibly have said", not "a strong effect".
+
+2. THE MARGIN IS 0.24 OF A POINT. One scramble reached 35.85%. We reached
+   36.09%. That is the entire result.
+
+3. TWO OF THREE MEASURES SAY IT FAILED.
+
+TABLE 2 -- THE SAME RUN, THREE WAYS OF SCORING IT
+What it measures: whether the conclusion depends on which yardstick is used.
+It does, and that disagreement is itself a finding.
+
+  measure                  real     scramble range    verdict
+  directional accuracy    36.09%    33.41 - 35.85%    ABOVE all 19
+  active-only share       56.6%     48.6  - 58.8%     INSIDE, 2.2 below top
+  all-units share         57.6%     51.8  - 59.4%     INSIDE
+
+  KEY  directional accuracy = of committed trades, share correct [PRIMARY]
+       active-only share    = of setups that traded, share beating their own
+                              do-nothing baseline
+       all-units share      = same, counting setups that never traded
+
+My declared rule says directional accuracy governs and any disagreement gets
+reported loudly. I am honouring that, and I picked it before seeing this. But
+a result that passes on my chosen measure and fails on the other two deserves
+suspicion rather than a victory lap.
+
+The likely explanation, offered as a story rather than a fact: the headcount
+measures squash roughly 22,000 individual decisions down into 170 verdicts,
+so their own noise spans 10 points and they simply cannot resolve a 1.6-point
+effect. The directional measure keeps the decisions and its noise spans 2.4
+points. That favours the primary measure -- but it is reasoning, not proof,
+and it is recorded as such.
+
+ONE CHECK THAT CAME OUT CLEAN
+
+I was worried the result might be an artifact of the scrambled runs trading
+less often than the real one. It is not:
+
+  pooled across all decisions   real 36.09%   noise 34.48%   +1.61
+  typical individual setup      real 35.21%   noise 33.33%   +1.88
+
+Two different ways of averaging, same direction, same size. That objection is
+answered.
+
+WHAT I DID INSTEAD OF MOVING ON
+
+The plan was to go to the money question next. Step 7 says the next step is
+provisional until the weaknesses are fixed, and the audit found a blocking
+one: OUR REAL NUMBER, 36.09%, WAS PRODUCED BY A JOB RUN ON OLDER CODE. Since
+then the null was rewritten, the split helper refactored, the census extended,
+the draw cap raised and the job naming changed. The test suite and the
+determinism fixture pass, so I expect it reproduces -- but expecting is not
+checking, and a 0.24-point margin cannot absorb any drift whatsoever.
+
+So the intervening step is running now, ~22 minutes:
+
+  bracketlab-20260729-0729-l7-verify-real-arm
+
+Rule fixed before firing: within 0.1 points of 36.09% and cycle 6 stands, and
+the money question is next. More than 0.1 points and cycle 6's comparison is
+void until I find out why -- including if it moves in our favour.
+
+YOUR THREE INTERFACE REQUESTS -- BUILT, TESTED, DEPLOYED
+
+1. Every setting that shapes a result now shows on the page for the running
+   job, in a table, with the ones that decide what a number MEANS first --
+   whether a slice was held back, whether outcomes were scrambled and how,
+   whether the census was kept off the money-ranked board. Those were
+   invisible before and had to be taken on trust from whatever fired the job.
+
+2. A description field, written when the job is fired and stored with it,
+   shown directly beneath the Progress & performance heading. A run with no
+   description says so in a warning colour rather than showing blank.
+
+3. Job names now carry their settings. The job above named itself
+   "l7-verify-real-arm"; cycle 6 would have been "null19-win-census". The tag
+   is INFERRED from the settings rather than typed, so it cannot drift out of
+   step with what the job actually did, and holdout=off is called out in the
+   name because a run with nothing held back cannot answer an out-of-sample
+   question. Names stay safe as filenames and in scripts.
+
+Worth reporting one bug I caused and caught: my first test checked the naming
+function in isolation, and a deliberate break showed the job id could stop
+using it entirely with the tests still green. A working function that nothing
+calls is the same failure as the rest of this week. Fixed, four deliberate
+breaks now fail the suite.
+
+THREE NEW QC ITEMS (26-28)
+
+  26  A gate that passes by 0.06 points is not a pass like any other. Report
+      the margin, not just the verdict.
+  27  The significance floor is not the significance. 19 draws makes 0.05 the
+      best possible answer.
+  28  Metrics that measure related things need not agree. When they disagree
+      that IS the finding, and which one governs must be declared in advance.
+
+LOOP LEDGER
+
+  L1  -2158   first edge screen, invalid by construction. Discarded.
+  L2  -2211   the real census. 36.09% directional -- now being re-verified.
+  L3  -2236   one-scramble null: 27%. RETRACTED.
+  L4  -2303   six scrambles -> 14.7%-91.2%. Instrument broken.
+  L5  -0041   corrected null. Audited; found the flat-call contamination that
+              cut the apparent edge by two thirds.
+  L6  -0235   19 scrambles, 290 min, no failures. MARGINAL PASS on the primary
+              measure, failed on the other two. Audited.
+              CODE: job descriptions, settings on the page, readable job names.
+  L7  -0729   RUNNING. Re-verifying the real arm. ~22 min.
+
+Bottom line: this is the first thing on this project that has survived an
+honest test, and it survived it by a whisker on one measure out of three. It
+is a lead worth one cheap confirmation. It is not grounds for live money and
+I will not present it as such.
+
+c.
