@@ -92,28 +92,99 @@ def tail(k, n):
 # Multi-rotation runs carry a shiftFrac per row: report each draw separately,
 # because the whole point is the spread.
 draws = sorted({r.get("shiftFrac") for r in rows if r.get("shiftFrac") is not None})
+
+# ---- MANDATORY QC, printed every time ------------------------------------
+# These checks are in the TOOL, not in anyone's discipline. Every one of them
+# exists because a real defect got past a human read of this same table:
+#   * the draw spread     -> job -2303's null ranged 14.7%-91.2% and was
+#                            nearly reported as a market result
+#   * the silent units    -> units whose committee never makes a directional
+#                            call score edge on their flat calls alone. They
+#                            cannot win or lose money, they are counted as
+#                            wins, and rotation produces ~6x more of them
+#                            (2.4% real vs ~15% rotated), so the two
+#                            populations are not comparable
+# The rule is: this block prints unconditionally, before any comparison.
+def silent_rate(g):
+    known = [r for r in g if r.get("holdDirCalls") is not None]
+    if not known:
+        return None, 0, 0
+    mute = [r for r in known if r["holdDirCalls"] == 0]
+    return len(mute) / len(known), len(mute), len(known)
+
+def shares(g):
+    """all-units and active-only positive-edge share."""
+    have = [r for r in g if r.get("holdEdge") is not None]
+    if not have:
+        return None
+    pos = [r for r in have if r["holdEdge"] > 0]
+    act = [r for r in have if r.get("holdDirCalls") is None or r["holdDirCalls"] > 0]
+    apos = [r for r in act if r["holdEdge"] > 0]
+    return {
+        "n": len(have), "pos": len(pos), "share": len(pos) / len(have),
+        "an": len(act), "apos": len(apos),
+        "ashare": (len(apos) / len(act)) if act else None,
+        "med": sorted(r["holdEdge"] for r in have)[len(have) // 2],
+    }
+
+allsr, allmute, allknown = silent_rate(rows)
+if allsr is not None:
+    print(f"PARTICIPATION: {allmute}/{allknown} units ({100*allsr:.1f}%) never made a "
+          f"directional call in the holdout.")
+    mute_pos = [r for r in rows if r.get("holdDirCalls") == 0 and (r.get("holdEdge") or 0) > 0]
+    if allmute:
+        print(f"  of those, {len(mute_pos)} ({100*len(mute_pos)/allmute:.1f}%) are still counted as "
+              f"edge > 0 on their flat calls alone.")
+    if allsr > 0.05:
+        print("  WARNING: above 5%. The headcount below is diluted by units that")
+        print("    cannot trade. Compare against the REAL run's silent rate before")
+        print("    reading any margin -- job -2211 sits at 2.4%, so a rotated run")
+        print("    near 15% is NOT the same population of units.")
+    print()
+
 if draws:
     print(f"NULL DISTRIBUTION — {len(draws)} rotation(s), {len(rows)} census rows total")
-    print(f"{'shift':>7s} {'n':>4s} {'hold edge>0':>13s} {'share':>7s} {'med hold':>9s}")
+    print(f"{'shift':>7s} {'n':>4s} {'hold edge>0':>13s} {'share':>7s} {'active':>8s} {'mute':>6s} {'med hold':>9s}")
     tot = []
+    atot = []
     for d in draws:
-        g = [r for r in rows if r.get("shiftFrac") == d and r.get("holdEdge") is not None]
-        if not g:
+        g = [r for r in rows if r.get("shiftFrac") == d]
+        st = shares(g)
+        if not st:
             continue
-        pos = sum(1 for r in g if r["holdEdge"] > 0)
-        med = sorted(r["holdEdge"] for r in g)[len(g) // 2]
-        tot.append(pos / len(g))
-        print(f"{d:>7.3f} {len(g):>4d} {pos:>6d}/{len(g):<6d} {100*pos/len(g):>6.1f}% {100*med:>8.2f}%")
+        sr, _, _ = silent_rate(g)
+        tot.append(st["share"])
+        if st["ashare"] is not None:
+            atot.append(st["ashare"])
+        ash = f"{100*st['ashare']:.1f}%" if st["ashare"] is not None else "-"
+        srs = f"{100*sr:.1f}%" if sr is not None else "-"
+        print(f"{d:>7.3f} {st['n']:>4d} {st['pos']:>6d}/{st['n']:<6d} {100*st['share']:>6.1f}% "
+              f"{ash:>8s} {srs:>6s} {100*st['med']:>8.2f}%")
     if tot:
         lo, hi = min(tot), max(tot)
         mean = sum(tot) / len(tot)
-        print(f"\nnull share: mean {100*mean:.1f}%  range {100*lo:.1f}%-{100*hi:.1f}%")
-        print(f"cycle 1 (real outcomes, job -2211) was 57.6% — {'ABOVE every draw' if 0.576 > hi else 'INSIDE the null spread'}")
-        if (hi - lo) > 0.25:
-            print("WARNING: the draws span more than 25 points. Draws that disagree")
-            print("  this much are not draws of one statistic — check that the null")
-            print("  construction holds the majority baseline fixed (labelShiftScope)")
-            print("  before reading the comparison above as meaning anything.")
+        spread = hi - lo
+        print(f"\nnull share (all units): mean {100*mean:.1f}%  range {100*lo:.1f}%-{100*hi:.1f}%"
+              f"  spread {100*spread:.1f} pts")
+        if atot:
+            print(f"null share (active only): mean {100*sum(atot)/len(atot):.1f}%  "
+                  f"range {100*min(atot):.1f}%-{100*max(atot):.1f}%")
+        # THE SANITY GATE, pre-registered before job -0041 was fired.
+        if spread > 0.15:
+            print()
+            print("  *** GATE FAILED: the draws span more than 15 points. ***")
+            print("  These are not draws of one statistic. The construction is still")
+            print("  wrong. DO NOT read the comparison below -- go back to the")
+            print("  instrument. (Baseline drift and silent-unit rate are the two")
+            print("  known causes; both are printed above.)")
+        else:
+            print("\n  gate passed: draws agree within 15 points, so they can be")
+            print("  compared against the real run.")
+            print(f"  cycle 1 (real outcomes, job -2211) was 57.6% all-units / 56.6% active-only")
+            print(f"  -> all-units:   {'ABOVE every draw' if 0.576 > hi else 'INSIDE the null spread'}")
+            if atot:
+                print(f"  -> active-only: {'ABOVE every draw' if 0.566 > max(atot) else 'INSIDE the null spread'}"
+                      "   (POST-HOC metric, found after looking — a lead, not a result)")
     print()
 
 groups = defaultdict(list)
