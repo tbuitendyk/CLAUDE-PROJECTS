@@ -26,6 +26,17 @@ const path = require('path');
 const fs = require('fs');
 const { Worker } = require('worker_threads');
 const work = require('./bracketwork');
+const { threadNice } = require('./threadnice');
+
+// Task kinds runnable on THIS thread when the pool has no workers. Must stay
+// in step with TASKS in worker.js — the self-test below asserts that.
+// NOTE: worker.js is deliberately NOT required here; it renices its own thread
+// to 19 at load, which on the main thread would cripple the web server.
+const INLINE = {
+  unit: work.unitTask,
+  nullRotation: work.nullRotationTask,
+  ping: async () => ({ priority: os.getPriority(), pid: process.pid, ...threadNice() }),
+};
 
 const SETTINGS_FILE = path.join(__dirname, '..', 'data', 'settings.json');
 
@@ -145,8 +156,15 @@ class Pool {
     if (this.stopped) return Promise.reject(new Error('pool stopped'));
     if (!this.parallel) {
       // Inline fallback — identical code path, just on this thread.
-      const fn = kind === 'unit' ? work.unitTask : work.nullRotationTask;
-      return fn(payload);
+      //
+      // Dispatch by NAME, not by a two-way guess. The old form mapped every
+      // non-'unit' kind onto nullRotationTask, so a new task kind would have
+      // run the wrong function and returned a plausible object instead of
+      // failing. An unknown kind must be an error here, exactly as it is in
+      // the worker.
+      const fn = INLINE[kind];
+      if (!fn) return Promise.reject(new Error(`unknown task kind: ${kind}`));
+      return Promise.resolve(fn(payload));
     }
     const id = this.nextId++;
     return new Promise((resolve, reject) => {

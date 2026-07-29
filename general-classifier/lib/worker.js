@@ -11,6 +11,7 @@
 const os = require('os');
 const { parentPort } = require('worker_threads');
 const work = require('./bracketwork');
+const { threadNice } = require('./threadnice');
 
 // NICE THE WORKER TO THE FLOOR. This box also hosts the owner's mail VM, and
 // a 3-worker job made its SMTP sessions time out — connect succeeded (that is
@@ -36,7 +37,15 @@ const TASKS = {
   nullRotation: work.nullRotationTask,
   // Introspection, so the nice level above is a testable property rather than
   // a comment nobody can check.
-  ping: async () => ({ priority: os.getPriority(), pid: process.pid }),
+  //
+  // os.getPriority() alone is a weak witness: it would agree with the comment
+  // even on a platform that silently ignored the request. So also read the
+  // KERNEL's own number for this thread out of procfs (field 19 of
+  // /proc/self/task/<tid>/stat, 1-indexed, counted after the comm field so a
+  // process name containing spaces or ')' cannot shift it). Where procfs is
+  // absent, nice comes back null and the caller reports "unverifiable"
+  // instead of a false pass.
+  ping: async () => ({ priority: os.getPriority(), pid: process.pid, ...threadNice() }),
 };
 
 parentPort.on('message', async (msg) => {

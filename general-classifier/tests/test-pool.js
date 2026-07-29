@@ -100,5 +100,44 @@ module.exports = {
     assert.ok(res.ok, `ping failed: ${res.error}`);
     assert.strictEqual(res.result.priority, os.constants.priority.PRIORITY_LOW);
     assert.strictEqual(os.getPriority(), before, 'main thread priority must be untouched');
+    // os.getPriority() only reports what Node believes it asked for. Assert
+    // the KERNEL's own number too, or this test would still pass on a
+    // platform that accepted the call and ignored it.
+    if (res.result.nice != null) {
+      assert.strictEqual(res.result.nice, 19, 'kernel nice for the worker thread');
+      const { threadNice } = require('../lib/threadnice');
+      assert.strictEqual(threadNice().nice, 0, 'kernel nice for the main thread');
+      assert.notStrictEqual(res.result.tid, threadNice().tid, 'worker must be a distinct thread');
+    }
+  },
+  async inlineDispatchRefusesUnknownKinds() {
+    // The inline fallback used to be `kind === 'unit' ? unitTask :
+    // nullRotationTask`, so ANY new task kind silently ran the null-rotation
+    // code and returned a plausible-looking object. That is the failure mode
+    // this codebase keeps hitting: not a crash, a wrong number with the right
+    // shape. An unknown kind must be an error, as it is in the worker.
+    const p = new Pool(1);
+    assert.strictEqual(p.parallel, false);
+    await assert.rejects(() => p.run('no-such-kind', {}), /unknown task kind/);
+    p.abort();
+  },
+  async inlineAndWorkerAgreeOnTaskKinds() {
+    // The inline table in pool.js and TASKS in worker.js are two lists that
+    // must not drift: a kind present in only one runs in parallel but not in
+    // fallback, or vice versa, and the difference shows up only on the box
+    // where the pool failed to boot. Compared by source text because
+    // requiring worker.js here would renice THIS thread to 19.
+    const src = fs.readFileSync(path.join(__dirname, '..', 'lib', 'worker.js'), 'utf8');
+    const poolSrc = fs.readFileSync(path.join(__dirname, '..', 'lib', 'pool.js'), 'utf8');
+    const kindsIn = (text, marker) => {
+      const start = text.indexOf(marker);
+      assert.ok(start >= 0, `could not find ${marker}`);
+      const body = text.slice(start, text.indexOf('};', start));
+      return new Set([...body.matchAll(/^\s{2}(\w+):/gm)].map((m) => m[1]));
+    };
+    const worker = kindsIn(src, 'const TASKS = {');
+    const inline = kindsIn(poolSrc, 'const INLINE = {');
+    assert.ok(worker.size >= 3, `expected the worker to expose several kinds, saw ${[...worker]}`);
+    assert.deepStrictEqual([...worker].sort(), [...inline].sort());
   },
 };

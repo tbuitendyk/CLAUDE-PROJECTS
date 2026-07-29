@@ -5,7 +5,7 @@ const { runAnalysis, loadData, countRotations } = require('./lib/pipeline');
 const { GEOMETRIES } = require('./lib/dataset');
 const { cacheState, cachedMonths, monthlyKlines } = require('./lib/binance');
 const throttle = require('./lib/throttle');
-const { configuredSize } = require('./lib/pool');
+const { configuredSize, createPool } = require('./lib/pool');
 const batch = require('./lib/batch');
 const tracker = require('./lib/tracker');
 const dogebook = require('./lib/dogebook');
@@ -42,6 +42,48 @@ app.post('/api/cpu', (req, res) => {
     res.json({ pct: throttle.setCpuPct((req.body || {}).pct), threads: configuredSize() });
   } catch (err) {
     res.status(400).json({ error: err.message });
+  }
+});
+
+// WORKER SELF-TEST. The pool is created per job and torn down after it, so
+// there is no long-lived set of threads to inspect between runs, and `ps` on
+// the host cannot tell the pool's threads apart from any other node thread.
+// That left "workers run at nice 19" as a claim in a comment: the one shape of
+// bug this codebase keeps producing — instrumentation that fails silently.
+//
+// So prove it on demand instead. This boots a real pool at the configured
+// size, asks each worker for the kernel's own nice value for its thread, and
+// tears the pool down. Cost is a few hundred ms of otherwise idle threads, so
+// it is safe to run while a job is in flight.
+//
+// Distinct TIDs matter as much as the nice values: N replies from one worker
+// would satisfy a naive check while saying nothing about the other three.
+app.get('/api/selftest/workers', async (req, res) => {
+  const size = configuredSize();
+  const pool = createPool();
+  try {
+    const settled = await pool.map('ping', Array.from({ length: pool.workers.length || 1 }, () => ({})));
+    const rows = settled.filter((r) => r && r.ok).map((r) => r.value);
+    const tids = new Set(rows.map((r) => r.tid).filter((t) => t != null));
+    const niced = rows.filter((r) => r.nice === 19);
+    res.json({
+      configuredSize: size,
+      workersBooted: pool.workers.length,
+      parallel: pool.parallel,
+      replies: rows,
+      distinctThreads: tids.size,
+      // Unverifiable (no procfs) is reported as such rather than as a pass.
+      verifiable: rows.every((r) => r.nice != null),
+      // Inline fallback runs on the main thread, which SHOULD be nice 0 — so
+      // the pass condition only applies when real workers booted.
+      ok: pool.parallel
+        ? niced.length === rows.length && rows.length > 0 && tids.size === rows.length
+        : null,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  } finally {
+    pool.abort();
   }
 });
 
