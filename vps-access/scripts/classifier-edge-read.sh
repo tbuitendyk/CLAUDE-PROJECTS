@@ -143,7 +143,24 @@ if allsr is not None:
     print()
 
 if draws:
-    print(f"NULL DISTRIBUTION — {len(draws)} rotation(s), {len(rows)} census rows total")
+    print("TABLE 1 — THE FAKE-DATA TEST (the null distribution)")
+    print("What it measures: the answers were deliberately slid out of line with")
+    print("  the questions, so there is nothing left to predict. Each row is one")
+    print("  such scramble. It shows how often the machine STILL looks like it is")
+    print("  winning. That is the score luck alone earns, and any real result has")
+    print("  to beat it. All rows should look alike; if they do not, the test")
+    print("  itself is broken.")
+    print(f"Scope: {len(draws)} scramble(s), {len(rows)} test setups in total.")
+    print()
+    print("  KEY   shift   = how far the answers were slid (a fraction of the series)")
+    print("        n       = test setups in this scramble (1 setup = 1 coin x 1 time-")
+    print("                  window shape x 1 decision mode)")
+    print("        edge>0  = setups that beat their own do-nothing baseline")
+    print("        share   = the same, as a percentage — THIS is the null score")
+    print("        active  = share counting only setups that actually placed a trade")
+    print("        mute    = setups whose models never called a direction at all")
+    print("        med hold= typical margin over baseline, in accuracy points (NOT money)")
+    print()
     print(f"{'shift':>7s} {'n':>4s} {'hold edge>0':>13s} {'share':>7s} {'active':>8s} {'mute':>6s} {'med hold':>9s}")
     tot = []
     atot = []
@@ -197,6 +214,26 @@ for r in rows:
 # pooled p = 0.0047 and 0.0036 on one group. Naming it "p" invited exactly the
 # reading it cannot support, so it is renamed to what it actually is: a naive
 # coin-flip tail probability, kept only for continuity with older boards.
+print("TABLE 2 — RESULTS BROKEN OUT BY SETUP TYPE")
+print("What it measures: the same win-rate as Table 1, but split by the shape of")
+print("  the time window and by how the models turn probabilities into a call.")
+print("  Read THIS rather than the pooled line at the bottom: pooling mixes")
+print("  window shapes and coins that all move together.")
+print()
+print("  KEY   geometry  = time-window shape. daily-Nd steps forward one day and")
+print("                    looks back N days, so daily-1d..4d OVERLAP heavily.")
+print("                    weekly-8d steps once a week.")
+print("        decision  = argmax: always call the most likely of down/flat/up.")
+print("                    directional: only call up/down when confident, else")
+print("                    stand aside.")
+print("        n         = test setups in this group")
+print("        edge>0    = setups beating their own do-nothing baseline")
+print("        naive*    = see footnote — NOT a significance score")
+print("        med hold  = typical margin over baseline on the HELD-BACK data")
+print("                    (accuracy points, not money). This is the evidence.")
+print("        med search= same on the data used to pick settings. Always")
+print("                    flattering, never evidence.")
+print()
 print(f"{'geometry':<11s} {'decision':<12s} {'n':>3s} {'hold edge>0':>13s} {'naive*':>7s} {'med hold':>9s} {'med search':>11s}")
 for k in sorted(groups):
     g = [r for r in groups[k] if r.get("holdEdge") is not None]
