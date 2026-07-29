@@ -16,10 +16,28 @@ echo "===== VirtualBox VMs (owner, name, allocated cpus/RAM) ====="
 for pid in $(pgrep -f VirtualBoxVM); do
   owner=$(ps -o user= -p "$pid" | tr -d ' ')
   name=$(tr '\0' ' ' < "/proc/$pid/cmdline" 2>/dev/null | sed -n 's/.*--comment \([^ ]*\).*/\1/p')
-  echo "  pid=$pid owner=$owner name=${name:-?}"
+  echo "  pid=$pid owner=$owner name=${name:-?}  RUNNING (its process is alive)"
   if command -v VBoxManage >/dev/null 2>&1 && [ -n "${name:-}" ]; then
+    # cpus/memory are the machine's CONFIG and are reliable. VMState is NOT:
+    # on 2026-07-29 this reported VMState="poweroff" for HOMSMAIL03 at the
+    # same moment that guest was serving IMAP and its mail logs. Root's
+    # VBoxManage spawns its own VBoxSVC, which does not see the session held
+    # by the instance that actually started the VM, so it reports a live
+    # machine as powered off. Anyone acting on that would restart a healthy
+    # server, or worse, believe a dead one was fine. So it is dropped, and
+    # liveness is taken from the process plus the reachability probe below.
     sudo -n -u "$owner" VBoxManage showvminfo "$name" --machinereadable 2>/dev/null \
-      | grep -E "^(cpus|memory|VMState)=" | sed 's/^/      /' || echo "      (cannot query as $owner)"
+      | grep -E "^(cpus|memory)=" | sed 's/^/      /' || echo "      (cannot query as $owner)"
+  fi
+done
+echo
+echo "  guest reachability (the only liveness signal that means anything):"
+for hostport in "192.168.56.129:22:HOMSMAIL03-ssh" "192.168.56.129:143:HOMSMAIL03-imap" "192.168.56.129:587:HOMSMAIL03-smtp"; do
+  h=${hostport%%:*}; rest=${hostport#*:}; prt=${rest%%:*}; label=${rest#*:}
+  if timeout 5 bash -c "echo > /dev/tcp/$h/$prt" 2>/dev/null; then
+    echo "      OK    $label ($h:$prt)"
+  else
+    echo "      DOWN  $label ($h:$prt)"
   fi
 done
 echo

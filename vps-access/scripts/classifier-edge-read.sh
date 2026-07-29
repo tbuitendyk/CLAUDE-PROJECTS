@@ -191,7 +191,13 @@ groups = defaultdict(list)
 for r in rows:
     groups[(r["geometry"], r["decision"])].append(r)
 
-print(f"{'geometry':<11s} {'decision':<12s} {'n':>3s} {'hold edge>0':>13s} {'p':>7s} {'med hold':>9s} {'med search':>11s}")
+# The column formerly labelled "p" is NOT a significance test. It assumes the
+# units are independent draws; they are 17 coins that move together across 5
+# overlapping chunk shapes. Scrambled data — with nothing to predict — scored
+# pooled p = 0.0047 and 0.0036 on one group. Naming it "p" invited exactly the
+# reading it cannot support, so it is renamed to what it actually is: a naive
+# coin-flip tail probability, kept only for continuity with older boards.
+print(f"{'geometry':<11s} {'decision':<12s} {'n':>3s} {'hold edge>0':>13s} {'naive*':>7s} {'med hold':>9s} {'med search':>11s}")
 for k in sorted(groups):
     g = [r for r in groups[k] if r.get("holdEdge") is not None]
     if not g:
@@ -208,7 +214,11 @@ if allg:
     pos = sum(1 for r in allg if r["holdEdge"] > 0)
     med = sorted(r["holdEdge"] for r in allg)[len(allg) // 2]
     print()
-    print(f"POOLED holdout edge > 0: {pos}/{len(allg)}   binomial p = {tail(pos, len(allg)):.4f}   median {100*med:+.2f}%")
+    print(f"POOLED holdout edge > 0: {pos}/{len(allg)}   naive* = {tail(pos, len(allg)):.4f}   median {100*med:+.2f}%")
+    print()
+    print("  * NOT a p-value and NOT evidence. It assumes independent units.")
+    print("    Scrambled data scored naive* = 0.0047 pooled. The ONLY valid")
+    print("    comparison is against the measured null above.")
     print()
     print("Only the HOLDOUT column is evidence. Search-window edge is what the rung")
     print("was chosen on, so it is selected-for by construction. The pooled line mixes")
