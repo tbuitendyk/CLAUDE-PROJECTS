@@ -1,0 +1,76 @@
+The loop steps, as they currently stand
+
+tl;dr the seven steps below are the live text from CLAUDE.md, verbatim,
+including the step 7 amendment you asked for. Nothing else in this message.
+Ledger and status at the bottom.
+
+============================================================
+THE RESEARCH LOOP — current text
+============================================================
+
+Spend tokens at the two ends — forming the hypothesis and analysing the
+result — and keep everything in between silent and cheap.
+
+1. Hypothesise. Look at everything learned so far and form the best
+   available hypothesis about where to go next, always judged against
+   *maximum profit at the minimum possible risk*.
+2. Decide the test. From that hypothesis, decide intelligently what should
+   be tested next as the follow-up.
+3. Improve the platform. Analyse the software platform as it stands and
+   independently implement whatever improvements the chosen direction needs.
+   Do not bend the next experiment to fit yesterday's tooling.
+   No code change reaches the environment without a standard email saying
+   what was done. Not "usually" — never.
+4. Script and launch. Script the settings into the VPS engine, start it,
+   and form a real expectation of when it will finish — five minutes, five
+   hours or five days.
+5. Re-arm. If a job is not finished when checked, re-arm the check timer
+   at an interval that matches how long it actually has left.
+6. Watch cheaply. Throughout 4 and 5, monitor for incoming mail
+   continuously but as token-cheap as possible: one watcher, silent unless
+   something real happens.
+7. Analyse hard, audit the instrument, then loop. On completion:
+   a. Go DEEPLY into the numbers the run produced, and correlate them against
+      the task that was stated BEFORE the run. Did it answer that question, or
+      a neighbouring one that happens to be easier?
+   b. Actively hunt for weaknesses in the measurement itself — do not wait
+      to be shown them. Ask what the metric counts that it should not, what it
+      omits that it should include, whether the two arms being compared are the
+      same population, and whether any part of the reported number is
+      achievable with no skill at all.
+   c. The next planned step is PROVISIONAL, always. Whatever was planned
+      next does not proceed until the weaknesses found in (b) are fixed.
+      Intervening steps are inserted as often as necessary — there is no budget
+      on this and no reluctance permitted — until the metrics are sound.
+   d. Write the findings to vps-access/reports/audit-<jobid>.md using
+      reports/AUDIT-TEMPLATE.md. No new job is fired until the previous
+      completed run has one (require-previous-audit.sh enforces this).
+   e. Every incorrect assumption uncovered becomes a QC-REGISTER entry.
+   Only then return to step 1.
+
+   The point of (b) and (c): a defect found by the owner is a defect that
+   already shaped a decision. The standard is finding them unprompted.
+
+
+============================================================
+
+LOOP LEDGER
+
+  L1  job -2158   first edge screen, invalid by construction. Discarded.
+  L2  job -2211   the real census. 36.09% directional accuracy.
+  L3  job -2236   one-scramble null: 27%. RETRACTED, broken construction.
+  L4  job -2303   six scrambles -> 14.7%-91.2%. Instrument broken.
+                  CODE: null fix, worker self-test, job pinning, spread gate.
+  L5  job -0041   corrected null. Gate passed at 9.4 points. AUDITED — found
+                  the flat-call contamination that cut the edge by two thirds.
+                  CODE: participation diagnostic, QC in the reader, directional
+                  accuracy, audit gate, step 7 amendment.
+  L6  job -0235   RUNNING, 190 min in, 3230 units, no failures. 19 scrambles,
+                  judged on directional accuracy against the rule committed at
+                  02:46 UTC before the numbers existed.
+
+Running longer than my 4-5 hour estimate but progressing normally and not
+stalled — the unit counter shows all work dispatched and the census still
+filling. I will read it through the declared gate the moment it lands.
+
+c.
