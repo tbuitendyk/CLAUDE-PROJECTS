@@ -1,0 +1,4 @@
+# Put a job id here to run classifier-smoke.sh in check-only mode against an
+# existing run instead of firing a new tiny job. Leave empty for normal
+# preflight use. (The deploy API forwards neither args nor env vars.)
+bracketlab-20260729-1328-l10-walkforward-2025-06

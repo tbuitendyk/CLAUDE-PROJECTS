@@ -12,12 +12,16 @@
 # check it. Requires a free engine, so this is a PREFLIGHT, not something to
 # run alongside a real job.
 #
-# MODE 2 (CHECK_ONLY=<job-id>): run the invariants against an existing doc.
-# Used to prove the checks work by pointing them at a run known to be broken.
+# MODE 2: put a job id in reports/SMOKE-CHECK-JOB and the invariants run
+# against that existing doc instead of firing anything. A committed file
+# because the deploy API forwards neither arguments NOR environment variables
+# — same reason reports/EDGE-JOB exists. Used to prove the checks work by
+# pointing them at a run known to be broken.
 set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 B="http://127.0.0.1:8093"
 
+CHECK_ONLY="$(grep -v '^#' "$HERE/reports/SMOKE-CHECK-JOB" 2>/dev/null | head -1 | tr -d ' \r\n' || true)"
 if [ -z "${CHECK_ONLY:-}" ]; then
   echo "== firing a tiny job (2 assets, 1 geometry, 2 scrambles + real arm) =="
   OUT=$(curl -sS -X POST "$B/api/bracketlab" -H "Content-Type: application/json" -d '{
