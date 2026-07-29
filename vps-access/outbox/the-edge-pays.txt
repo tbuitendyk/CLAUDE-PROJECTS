@@ -1,0 +1,124 @@
+The edge pays after fees — and 86% of it goes to the fees
+
+tl;dr the money test came back positive and it beat all 19 scrambled worlds on
+every single measure, which is the first unambiguous result this project has
+produced. Then I audited it, and the important number was one that appeared in
+no table until I went looking: fees eat 86% of the gross edge, leaving 16%
+headroom over what we ASSUME trading costs. No live money follows from this.
+The next test — does it survive in a different period at all — is running now,
+because every scramble so far came from the same four-month window.
+
+THE RESULT
+
+TABLE 1 -- REAL MARKET DATA AGAINST 19 SCRAMBLED WORLDS, ON MONEY
+What it measures: dollars on data no search ever touched, after fees. The 19
+scrambled worlds have nothing to predict, so they show what luck pays. Beating
+all 19 is the strongest claim 19 draws allow.
+
+  measure              real     luckiest scramble    beats
+  net $            1,469.95              380.45      19/19
+  median setup $       9.88                3.59      19/19
+  setups in profit    55.9%               52.4%      19/19
+  $ per trade        0.0412              0.0091      19/19
+  vs buy-and-hold  1,385.92              457.88      19/19
+
+  KEY  real              = live market data, held-back slice
+       luckiest scramble = the best of 19 worlds with nothing to predict
+       beats             = how many of the 19 the real result exceeds
+       vs buy-and-hold   = net dollars minus what simply holding would have made
+       (dollar figures are DOLLARS; "setups in profit" is a share)
+
+Sanity check passed: 18 of the 19 scrambled worlds LOSE money, as anything
+paying fees with nothing to predict must. Margin over the luckiest scramble:
+$1,089.50 — a real margin, unlike cycle 6's 0.24 of a point.
+
+It also beat simply buying and holding by $1,386, so this is not just long
+exposure in a rising market.
+
+NOW THE PART THAT MATTERS MORE
+
+TABLE 2 -- WHERE THE MONEY ACTUALLY GOES, PER TRADE
+What it measures: the same result broken into what the strategy earns before
+costs, what costs take, and what is left. Each trade is $100 of stock.
+
+  gross earned before costs    $0.2912   (0.291% of the $100 traded)
+  trading costs assumed        $0.2500   (0.250%)
+  left over                    $0.0412   (0.041%)
+
+  KEY  gross  = what the strategy makes before any fees
+       costs  = Binance fees plus a spread allowance, as ASSUMED by the
+                simulator, not measured on the venue
+       (all DOLLARS per trade on $100 traded)
+
+Fees take 86 cents of every dollar the strategy earns. Break-even is at 0.291%
+per round trip and we are assuming 0.250%. That is 16% of headroom.
+
+Binance's own taker fee is 0.10% per side, so 0.20% round trip before any
+spread or any slippage. If real execution costs 0.30% — which an ordinary bad
+fill or a worse fee tier would do — THE EDGE IS NEGATIVE.
+
+This did not appear anywhere until step 7 made me ask what the net number was
+hiding. It is now a permanent reporting rule: gross, fees and break-even go
+beside every net figure.
+
+THREE THINGS THE HEADLINE MUST NOT BE READ AS
+
+1. $1,469.95 IS NOT PROFIT WE WOULD HAVE MADE. It is the sum over 170 setups
+   across 17 coins — about ten overlapping configurations per coin, all held
+   at once. Nobody could trade that. It is a statistical aggregate whose only
+   job is being compared against the same aggregate computed on noise.
+
+2. THIS DOES NOT CONFIRM THE ACCURACY RESULT. The money figure comes from a
+   setup chosen by money; the accuracy figure from a rung chosen by accuracy.
+   35,678 trades against 19,913 calls — different selections, different
+   objects. Neither validates the other. I nearly wrote that it did.
+
+3. IT RESTS ON ONE FOUR-MONTH WINDOW. Every one of the 19 scrambles was drawn
+   from the same held-back slice. A scrambled world tests "better than noise
+   in this period"; it cannot test "holds in another period", because the
+   noise shares the period.
+
+WHAT IS RUNNING
+
+  bracketlab-20260729-1328-l10-walkforward-2025-06     ~5 hours
+
+The identical test with the data ending June 2025, so the held-back slice
+lands on a completely different stretch of history with no overlap. Rule fixed
+before firing: beats all 19 and the edge is not a property of one period;
+weaker and cycle 9 was period-specific, which is the answer rather than an
+invitation to try windows until one works.
+
+My expectation, on the record ahead of the numbers: I expect the DIRECTION to
+survive, because the margin was wide. What I doubt is the SIZE, since 86% of
+it is already going to fees and a different period could push net through
+zero.
+
+CODE UPDATE (standing rule)
+
+A multi-scramble job now carries its own real arm. Cycle 8 spent five hours
+measuring 19 scrambles with nothing to compare them against, because the loop
+that generates them started at scramble 1 and never produced the unscrambled
+case; the real arm came from a different job on an older build. I had written
+that up as a discipline rule — "re-run both arms after a census change" — and
+then the very next run needed it. Discipline was the wrong fix. Both arms now
+ride in one job by construction: one build, one data range, one moment.
+Reverting it fails the test suite.
+
+FOUR NEW QC ITEMS (34-37), all from auditing my own run
+
+  34  A census change does not apply to runs already made.
+  35  Two numbers from one run need not describe the same configuration.
+  36  A census total is not achievable profit.
+  37  A positive net result is not robust. Report gross, fees and break-even
+      beside every net figure — 86% eaten is invisible in the net alone.
+
+WHERE THIS LEAVES US
+
+The system predicts direction better than noise, and after fees it makes money
+against noise, in one window, on a measure that cannot be traded directly. The
+honest position: this is the first thing here worth continuing to test, and it
+is a long way from being worth funding. The order is walk-forward first, then
+execution cost measured on the actual venue rather than assumed in a
+simulator, and only then any conversation about stake.
+
+c.
