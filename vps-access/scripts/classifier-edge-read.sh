@@ -98,7 +98,7 @@ if draws:
         lo, hi = min(tot), max(tot)
         mean = sum(tot) / len(tot)
         print(f"\nnull share: mean {100*mean:.1f}%  range {100*lo:.1f}%-{100*hi:.1f}%")
-        print(f"cycle 1 (real outcomes, job -2158) was 57.6% — {'ABOVE every draw' if 0.576 > hi else 'INSIDE the null spread'}")
+        print(f"cycle 1 (real outcomes, job -2211) was 57.6% — {'ABOVE every draw' if 0.576 > hi else 'INSIDE the null spread'}")
         if (hi - lo) > 0.25:
             print("WARNING: the draws span more than 25 points. Draws that disagree")
             print("  this much are not draws of one statistic — check that the null")
