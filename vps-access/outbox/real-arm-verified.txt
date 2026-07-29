@@ -1,0 +1,95 @@
+Real arm reproduces EXACTLY — cycle 6 stands, money question is next
+
+tl;dr the re-check came back not just within tolerance but identical to every
+digit: same 19,913 trades, same 7,187 wins, same 36.09%. So the code changes
+since that number was first produced changed nothing, and cycle 6's marginal
+pass is real rather than an artifact of drift. That clears the blocker. The
+next question is the one that decides whether any of this is worth money, and
+it is not answered yet.
+
+THE VERIFICATION
+
+TABLE 1 -- DOES THE REAL HALF OF THE COMPARISON STILL REPRODUCE?
+What it measures: the same census re-run on today's build against the original
+from job -2211. The rule fixed before firing allowed a 0.1-point drift.
+
+  quantity                    original    today      difference
+  committed trades              19,913     19,913          0
+  correct calls                  7,187      7,187          0
+  directional accuracy          36.09%     36.09%       0.00
+  typical individual setup      35.21%     35.21%       0.00
+  setups beating baseline       98/170     98/170          0
+  setups that never traded       4 (2.4%)   4 (2.4%)       0
+
+  KEY  original = job -2211, run before the null was rewritten, the split
+                  helper refactored, the census extended and the draw cap
+                  raised
+       today    = bracketlab-20260729-0729-l7-verify-real-arm
+       (accuracy percentages, not money)
+
+Identical, not merely close. Nineteen minutes well spent: it was the entire
+foundation of a 0.24-point margin and it was resting on an assumption.
+
+For the first time in this sequence the audit did NOT force another
+intervening step. The blocker it was fired to clear is cleared exactly, and
+I have recorded that no incorrect assumption surfaced — rather than skipping
+the audit because the news was good.
+
+WHERE THAT LEAVES US
+
+  * The system predicts direction 1.61 points better than noise.
+  * That clears the bar I set in advance, at the weakest significance the
+    design can produce, on one measure of three.
+  * The real half is now verified rather than assumed.
+
+WHAT IT DOES NOT YET TELL US, AND THIS IS THE IMPORTANT PART
+
+Accuracy scores a wrong call the same way whether the market went nowhere or
+went hard the other way. Money does not. A system can be right more often
+than noise and still lose, if the times it is wrong cost more than the times
+it is right earn.
+
+So 1.61 points of accuracy is NOT a claim about profit, and I do not want it
+read as one. On roughly 20,000 trades, fees alone are a large number.
+
+CODE UPDATE (standing rule)
+
+The money question needs its own census and I have built it. The numbers
+already existed -- the simulator scores the chosen setup once on the
+held-back slice, which is out-of-sample by construction -- but they never
+reached the census, so money could only be read off the money-ranked
+leaderboard. That is precisely the selection fault that invalidated our very
+first screen back at job -2158: ranking by money and then reading money off
+the top tells you about the ranking, not the market.
+
+Every unit now records held-back P&L, trade count, wins, gross per trade, and
+two do-nothing controls on the same slice -- always-long, and buy-and-hold --
+so "did it beat simply holding" is answerable instead of assumed. Unfiltered,
+every unit, never money-ranked. Tests pass; deployed with the next run.
+
+WHAT I PROPOSE NEXT
+
+The money version of exactly the test we just passed: net P&L after fees on
+the held-back slice, real against the same 19 scrambles, with the reading rule
+fixed before firing. Same shape, different question.
+
+My honest expectation, stated in advance so it cannot be adjusted afterwards:
+1.61 points of directional accuracy is thin, and I think there is a real
+chance it does not survive fees. If it does not, that is a clean answer and
+better than finding out with live money.
+
+LOOP LEDGER
+
+  L1  -2158   first edge screen, invalid by construction. Discarded.
+  L2  -2211   the real census. 36.09% directional.
+  L3  -2236   one-scramble null: 27%. RETRACTED.
+  L4  -2303   six scrambles -> 14.7%-91.2%. Instrument broken.
+  L5  -0041   corrected null. Audited; found flat-call contamination.
+  L6  -0235   19 scrambles. Marginal pass on the primary measure, failed on
+              the other two. Audited.
+  L7  -0729   real arm verified EXACTLY. Audited. No new QC items -- the
+              assumption it tested turned out correct.
+              CODE: held-back money recorded per unit, with controls.
+  L8          proposed: the money null.
+
+c.
