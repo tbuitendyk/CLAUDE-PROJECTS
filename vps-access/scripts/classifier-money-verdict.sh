@@ -17,8 +17,18 @@ def get(u):
 B = "http://127.0.0.1:8093"
 real_doc = get(f"{B}/api/batch/{os.environ['REALJOB']}")
 null_doc = get(f"{B}/api/batch/{os.environ['NULLJOB']}")
-R = [r for r in (real_doc.get("edgeCensus") or []) if r.get("holdPnl") is not None]
-N = [r for r in (null_doc.get("edgeCensus") or []) if r.get("holdPnl") is not None]
+# Split by SCRAMBLE TAG, not by document. Both arms now ride in one job (the
+# r=0 real arm), so filtering on the doc alone would put the scrambles into
+# the real arm and compare a set against itself. Filtering on shiftFrac is
+# correct whether the arms came from one job or two.
+R = [r for r in (real_doc.get("edgeCensus") or [])
+     if r.get("holdPnl") is not None and r.get("shiftFrac") is None]
+N = [r for r in (null_doc.get("edgeCensus") or [])
+     if r.get("holdPnl") is not None and r.get("shiftFrac") is not None]
+if not R or not N:
+    print(f"real rows {len(R)}, scramble rows {len(N)} — need both. "
+          "Check MONEY-REAL-JOB / MONEY-NULL-JOB.")
+    raise SystemExit(1)
 print(f"real arm : {real_doc['id']}  ({len(R)} priced setups)")
 print(f"null arm : {null_doc['id']}  ({len(N)} priced setups)")
 print()
