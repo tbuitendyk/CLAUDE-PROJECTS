@@ -209,13 +209,27 @@ function splitByLayout(chunks, branch, geo, layout, p) {
   const seed = Number(p.interlaceSeed) || 0;
   const { train, search, hold, meta } = applyLayout(chunks, geo, layout, seed);
   if (train.length < MIN_CHUNKS) throw new Error(`only ${train.length} training chunks under the ${layout} layout`);
+  // THE INVARIANT HOLDS ON ACTUAL PERIODS, NOT JUST POTENTIAL ONES. Real
+  // data has missing-candle gaps, and the gaps do not fall evenly: the
+  // first layout smoke (2026-07-30) found the interlaced arm's eval blocks
+  // — which land in older, gappier eras — carrying 501/498 chunks against
+  // the chronological arm's gapless 504. So each arm computes BOTH layouts
+  // (cheap, deterministic), takes the common per-set count, and trims its
+  // OWN eval sets from the end (latest starts dropped first). Both arms
+  // reach identical targets independently — no cross-arm communication,
+  // same result every time.
+  const other = applyLayout(chunks, geo, layout === 'interlaced' ? 'chronological' : 'interlaced', seed);
+  const nSearch = Math.min(search.length, other.search.length);
+  const nHold = Math.min(hold.length, other.hold.length);
+  meta.evalTrimmed = { search: search.length - nSearch, hold: hold.length - nHold };
+  search.length = nSearch;
+  hold.length = nHold;
   let bandSource = train;
   if (p.sharedBand && branch.band === 'auto') {
     // Shared-band switch for strict arm-to-arm comparisons: the band comes
     // from chunks that are TRAIN IN BOTH layouts — unseen as evaluation by
     // either arm, so sharing leaks nothing while removing the band as a
     // second difference channel between the arms.
-    const other = applyLayout(chunks, geo, layout === 'interlaced' ? 'chronological' : 'interlaced', seed);
     const otherTrain = new Set(other.train.map((c) => c.startTs));
     const common = train.filter((c) => otherTrain.has(c.startTs));
     if (common.length >= MIN_CHUNKS) { bandSource = common; meta.bandFrom = 'common-train'; }

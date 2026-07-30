@@ -71,6 +71,32 @@ module.exports = {
     }
   },
 
+  async gappyDataStillYieldsIdenticalActualPeriods() {
+    // What the first layout smoke caught on real data (2026-07-30): missing-
+    // candle gaps do not fall evenly, so the interlaced arm's eval blocks —
+    // landing in older, gappier eras — carried fewer ACTUAL chunks than the
+    // chronological arm's gapless recent windows (501/498 vs 504). The
+    // invariant is about actual periods, so both arms must trim to the
+    // common per-set count, deterministically, with no cross-arm talk.
+    const geo = GEOMETRIES['daily-3d'];
+    const branch = { band: 'auto', decision: 'argmax' };
+    const p = { interlaceSeed: 11, sharedBand: false };
+    const gappy = synthChunks(2 * GROUP_DAYS + 40, 1)
+      // knock holes in the OLD half only, where interlaced eval blocks live
+      // and chronological ones never do
+      .filter((c) => {
+        const d = (c.startTs - T0) / DAY_MS;
+        return !(d > 60 && d < 66) && !(d > 300 && d < 303);
+      });
+    const a = splitByLayout(gappy.map((c) => ({ ...c })), branch, geo, 'chronological', p);
+    const b = splitByLayout(gappy.map((c) => ({ ...c })), branch, geo, 'interlaced', p);
+    assert.strictEqual(a.testChunks.length, b.testChunks.length, 'actual search periods must match despite gaps');
+    assert.strictEqual(a.holdChunks.length, b.holdChunks.length, 'actual holdout periods must match despite gaps');
+    const trimmed = a.layoutMeta.evalTrimmed.search + a.layoutMeta.evalTrimmed.hold
+      + b.layoutMeta.evalTrimmed.search + b.layoutMeta.evalTrimmed.hold;
+    assert.ok(trimmed > 0, 'the gaps above must actually force a trim, or this test checks nothing');
+  },
+
   async theTrainingSetPaysAllPurge() {
     const geo = GEOMETRIES['daily-3d'];
     const chunks = synthChunks(2 * GROUP_DAYS + 30, 1);
