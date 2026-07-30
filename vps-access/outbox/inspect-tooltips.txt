@@ -1,0 +1,22 @@
+Inspect tables now explain themselves on hover
+
+tl;dr you flagged that the new inspect tables had no tooltips — fixed and
+deployed. Every column in the member table now states on hover what it
+measures, its units, and how to read it; the agreement matrix names the member
+behind every row and column header, and every cell explains which pair it
+scores, why a dash means "not enough shared commitments to score", and flags
+80%+ agreement as one opinion counted twice. Refresh the page and hover
+anywhere.
+
+Detail worth having in the tooltips rather than the manual: the tuning column
+says outright that it reads flattering (the committee was tuned there), and
+the "active" column warns that near-zero means a member's solo accuracy is
+mostly about predicting nothing happening — the flat-call trap, stated where
+you meet it.
+
+No behaviour changed — text only. Standing rule: no code reaches the
+environment without this note.
+
+Still holding at the L14 consult.
+
+c.
