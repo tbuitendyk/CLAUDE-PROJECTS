@@ -143,7 +143,19 @@ Rule going forward: **anything the board displays must first exist in the
 census.** A number that can be seen but not retrieved is a number that cannot
 be checked later.
 
-## 5. Also outstanding, lower priority
+## 5. L14 protocol (owner, 2026-07-30)
+
+**L14 (freezing models to run forward) includes a HARD STOP before anything is
+frozen.** The owner selects the candidates interactively with the session —
+the session prepares the board and the numbers, then stops and talks. No
+autonomous selection. This is a deliberate exception to the no-handoff loop
+rule, ordered by the owner for this step specifically.
+
+Agenda for that consult, also owner-ordered: decide when scrambled-comparison
+(null shift) testing is applied to survivors picked off the search board —
+before freezing, after freezing, or both.
+
+## 6. Also outstanding, lower priority
 
 - The symbol cache (`getMap`) keys on symbol alone and returns a cached range
   on a hit, **ignoring the requested date range**. Per-job worker pools mean
