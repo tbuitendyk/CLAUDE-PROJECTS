@@ -653,7 +653,10 @@ app.post('/api/bracketlab/null-verdict', (req, res) => {
   const nullDoc = batch.getBatch(String(b.nullId || ''));
   if (!realDoc) return res.status(400).json({ error: 'unknown real run' });
   if (!nullDoc) return res.status(400).json({ error: 'unknown scramble run' });
-  const sel = b.trade ? { trade: String(b.trade), geometry: String(b.geometry || ''), decision: String(b.decision || '') } : null;
+  const sel = b.trade ? {
+    trade: String(b.trade), geometry: String(b.geometry || ''), decision: String(b.decision || ''),
+    ...(b.windowLayout ? { windowLayout: String(b.windowLayout) } : {}),
+  } : null;
   try {
     res.json(nullVerdict(realDoc, nullDoc, sel));
   } catch (err) {
@@ -666,6 +669,11 @@ app.post('/api/bracketlab/null-verdict', (req, res) => {
 // setting matches — compareDocs refuses otherwise, naming the differences.
 app.post('/api/bracketlab/compare', (req, res) => {
   const b = req.body || {};
+  // Run ids are hostile until proven otherwise — pinned to the same strict
+  // shape the inspect endpoint uses, so nothing here can walk the filesystem.
+  const ID_RE = /^bracketlab-[A-Za-z0-9-]+$/;
+  if (!ID_RE.test(String(b.a || ''))) return res.status(400).json({ error: 'bad run id (a)' });
+  if (b.b && !ID_RE.test(String(b.b))) return res.status(400).json({ error: 'bad run id (b)' });
   const docA = batch.getBatch(String(b.a || ''));
   if (!docA) return res.status(400).json({ error: 'unknown run (a)' });
   const docB = b.b ? batch.getBatch(String(b.b)) : null;

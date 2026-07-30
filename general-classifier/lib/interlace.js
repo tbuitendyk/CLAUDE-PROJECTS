@@ -95,17 +95,23 @@ function planIntervals(spanDays, layout, seed) {
 }
 
 // Assign chunks to sets and purge the TRAINING side. A training chunk is
-// dropped when its candle reach could intersect any evaluation chunk's
-// candle reach — evaluation sets always keep every chunk in their intervals.
-function applyLayout(chunks, geo, layout, seed) {
+// dropped when its candles could intersect any candle an evaluation chunk
+// touches — features, label window, or TRADE PATH. Evaluation sets always
+// keep every chunk in their intervals.
+//
+// opts.execEndH: how far past a chunk's start its EXECUTION can reach —
+// entry offset + the job's longest timeout + the simulator's 3h gap-scan.
+// The first version purged only max(featureHours, exitOffsetH) and the
+// audit (2026-07-30, confirmed numerically) showed eval trades at the
+// default menu's long timeouts running through candles that surviving
+// train chunks used as features — one-sided contamination of the
+// interlaced arm, the exact bias the layout comparison exists to measure.
+function applyLayout(chunks, geo, layout, seed, opts = {}) {
   if (!chunks.length) throw new Error('no chunks to lay out');
   const t0 = chunks[0].startTs;
   const spanDays = Math.floor((chunks[chunks.length - 1].startTs - t0) / DAY_MS) + 1;
   const plan = planIntervals(spanDays, layout, seed);
-  // One chunk's candles reach this far past its start (features or the exit
-  // horizon, whichever is longer). Two chunks share candles iff their starts
-  // are closer than this.
-  const reachMs = Math.max(geo.featureHours, geo.exitOffsetH) * HOUR_MS;
+  const reachMs = Math.max(geo.featureHours, geo.exitOffsetH, opts.execEndH || 0) * HOUR_MS;
   const evalIvs = plan.intervals
     .filter((iv) => iv.set !== 'train')
     .map((iv) => ({ set: iv.set, a: t0 + iv.startDay * DAY_MS, b: t0 + iv.endDay * DAY_MS }));
@@ -159,7 +165,7 @@ function rotateWithinIntervals(chunks, layout, seed, shiftFrac, shiftFn) {
     for (let i = 0; i < chunks.length; i++) {
       if (chunks[i].startTs >= a && chunks[i].startTs < b) idx.push(i);
     }
-    if (idx.length < 4) continue;
+    if (idx.length < 2) continue; // one chunk cannot rotate; everything else must
     const rot = shiftFn(idx.length, shiftFrac);
     for (let k = 0; k < idx.length; k++) {
       chunks[idx[k]].diffPct = src[idx[(k + rot) % idx.length]];

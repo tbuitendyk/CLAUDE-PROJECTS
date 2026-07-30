@@ -814,9 +814,15 @@ module.exports = {
     const out = promotionSet({ edgeScreen: true, promoteK: 1 }, { leaders: [] }, units);
     assert.strictEqual(out.length, 2);
     assert.deepStrictEqual(out.map((r) => r.shiftFrac), [0.25, 0.75]);
-    // and an un-rotated run must carry null, not undefined-shaped noise
+    // A unit with NO stance must promote with NO shiftFrac key at all —
+    // presence is the stance (audit 2026-07-30): forcing null here is what
+    // made run-wide labelShiftFrac jobs silently never rotate, because an
+    // explicit null means "this unit must not rotate".
     const plain = promotionSet({ edgeScreen: true }, { leaders: [] }, [{ c: units[0].c, b }]);
-    assert.strictEqual(plain[0].shiftFrac, null);
+    assert.ok(!('shiftFrac' in plain[0]), 'no stance must stay absent, not become an explicit null');
+    // ...while a REAL arm inside a reps job (explicit null) keeps its null.
+    const realArm = promotionSet({ edgeScreen: true }, { leaders: [] }, [{ c: units[0].c, b, shiftFrac: null }]);
+    assert.strictEqual(realArm[0].shiftFrac, null);
   },
   async bestCellHonorsFloorAndTies() {
     const rows = [

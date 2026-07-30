@@ -28,7 +28,12 @@ function drawsOf(doc) {
     .map((r) => r.shiftFrac))].sort((a, b) => a - b);
 }
 
-const keyOf = (r) => `${r.trade}|${r.geometry}|${r.decision}`;
+// The pairing key includes the window-layout ARM when a doc carries mixed
+// arms (a windowLayout='both' run). Without it, find() grabbed whichever
+// arm was pushed first — a nondeterministic cross-match between two
+// different measurement geometries (audit 2026-07-30, confirmed major).
+const keyOf = (r) => `${r.trade}|${r.geometry}|${r.decision}${r.windowLayout && r.windowLayout !== 'legacy' ? `|${r.windowLayout}` : ''}`;
+const isMixed = (rows) => new Set(rows.map((r) => r.windowLayout || 'legacy')).size > 1;
 
 function rank(real, draws) {
   const beats = draws.filter((d) => real > d.value).length;
@@ -60,7 +65,10 @@ function nullVerdict(realDoc, nullDoc, sel) {
   };
 
   if (sel && sel.trade) {
-    const k = `${sel.trade}|${sel.geometry}|${sel.decision}`;
+    if (isMixed(real) && !sel.windowLayout) {
+      throw new Error('this run holds BOTH layout arms — pick the setup with its arm (chronological/interlaced)');
+    }
+    const k = `${sel.trade}|${sel.geometry}|${sel.decision}${sel.windowLayout && sel.windowLayout !== 'legacy' ? `|${sel.windowLayout}` : ''}`;
     const mine = real.find((r) => keyOf(r) === k);
     if (!mine) throw new Error(`setup ${k} not in ${realDoc.id}'s real rows`);
     const draws = shifts.map((s) => {

@@ -87,6 +87,13 @@ function quorumCall(callArrays, i, k) {
   let down = 0;
   for (const calls of callArrays) {
     const c = calls[i];
+    // LOUD ON SHAPE ERRORS. The null replay passed member OBJECTS here for
+    // weeks (audit 2026-07-30, critical): every vote read undefined, every
+    // committee stood aside, and the "null distribution" was a committee-
+    // free world — silently. A wrong shape must crash, not abstain.
+    if (c !== 1 && c !== -1 && c !== 0) {
+      throw new Error(`quorumCall got a non-vote (${c === undefined ? 'undefined' : typeof c}) — pass call ARRAYS, not member objects`);
+    }
     if (c === 1) up++;
     else if (c === -1) down++;
   }
@@ -207,7 +214,15 @@ function splitAndLabel(chunks, branch, holdout) {
 // only, then band + label exactly as the legacy path does.
 function splitByLayout(chunks, branch, geo, layout, p) {
   const seed = Number(p.interlaceSeed) || 0;
-  const { train, search, hold, meta } = applyLayout(chunks, geo, layout, seed);
+  // The purge must cover the EXECUTION path, not just the label window
+  // (audit 2026-07-30, confirmed major): a trade entered at entryOffsetH can
+  // stay open for the longest timeout on this job's menu plus the 3h
+  // gap-scan, far past exitOffsetH — and train chunks whose features sit in
+  // that path would let the committee train on candles that price its own
+  // evaluation trades.
+  const tMax = Math.max(...(Array.isArray(p.tHours) && p.tHours.length ? p.tHours : bracketLib.T_HOURS));
+  const opts = { execEndH: geo.entryOffsetH + tMax + 3 };
+  const { train, search, hold, meta } = applyLayout(chunks, geo, layout, seed, opts);
   if (train.length < MIN_CHUNKS) throw new Error(`only ${train.length} training chunks under the ${layout} layout`);
   // THE INVARIANT HOLDS ON ACTUAL PERIODS, NOT JUST POTENTIAL ONES. Real
   // data has missing-candle gaps, and the gaps do not fall evenly: the
@@ -218,7 +233,7 @@ function splitByLayout(chunks, branch, geo, layout, p) {
   // OWN eval sets from the end (latest starts dropped first). Both arms
   // reach identical targets independently — no cross-arm communication,
   // same result every time.
-  const other = applyLayout(chunks, geo, layout === 'interlaced' ? 'chronological' : 'interlaced', seed);
+  const other = applyLayout(chunks, geo, layout === 'interlaced' ? 'chronological' : 'interlaced', seed, opts);
   const nSearch = Math.min(search.length, other.search.length);
   const nHold = Math.min(hold.length, other.hold.length);
   meta.evalTrimmed = { search: search.length - nSearch, hold: hold.length - nHold };
@@ -510,12 +525,37 @@ async function unitTask(task) {
 async function nullRotationTask({ combo, branch, params, shiftIndex, nShifts, selection }) {
   const p = params;
   const { geo, maps, chunks } = await buildCombo(combo, branch, p);
-  const rot = deriveShift(chunks.length, shiftIndex / (nShifts + 1));
-  const src = chunks.map((c) => c.diffPct);
-  for (let i = 0; i < chunks.length; i++) chunks[i].diffPct = src[(i + rot) % chunks.length];
-  const { trainChunks, testChunks, bandPct } = splitAndLabel(chunks, branch);
+  // THE NULL RUNS THE SAME MACHINE (audit 2026-07-30, two confirmed majors
+  // fixed here):
+  //  1. It splits exactly as the real run did — same layout, same holdout,
+  //     same seed — where it used to split 80/20 legacy regardless, so a
+  //     layout-run's null was measured on a different window than sel.pnl.
+  //  2. Under a layout, rotation stays inside each block interval, never
+  //     crossing a set boundary (contract for layout nulls). Legacy jobs
+  //     keep the whole-series rotation their recorded results used.
+  const layout = (selection && selection.layoutArm)
+    || (p.windowLayout && p.windowLayout !== 'legacy' && p.windowLayout !== 'both' ? p.windowLayout : null);
+  const frac = shiftIndex / (nShifts + 1);
+  let rot;
+  if (layout) {
+    rotateWithinIntervals(chunks, layout, p.interlaceSeed, frac, windowShift);
+    rot = null;
+  } else {
+    rot = deriveShift(chunks.length, frac);
+    const src = chunks.map((c) => c.diffPct);
+    for (let i = 0; i < chunks.length; i++) chunks[i].diffPct = src[(i + rot) % chunks.length];
+  }
+  const split = layout
+    ? splitByLayout(chunks, branch, geo, layout, p)
+    : splitAndLabel(chunks, branch, p.holdout);
+  const { trainChunks, testChunks, bandPct } = split;
   const views = bracketLib.comboViews(combo.size, geo.featureHours / 24).views;
-  const memberCalls = await trainMembers(specsFor(combo.size, 'promoted'), views, trainChunks, testChunks, branch, maps, geo);
+  // trainMembers returns member OBJECTS ({calls, model, picked, spec}) since
+  // L12. This line consumed them as call arrays for weeks — every quorum
+  // vote read undefined and the whole null was a committee-free world
+  // (audit 2026-07-30, CRITICAL). quorumCall now also throws on that shape.
+  const members = await trainMembers(specsFor(combo.size, 'promoted'), views, trainChunks, testChunks, branch, maps, geo);
+  const memberCalls = members.map((m) => m.calls);
   const fee = p.feePerLeg ?? REAL_FEE_PER_LEG;
   let bestOfMenu = null;
   let sameCell = null;

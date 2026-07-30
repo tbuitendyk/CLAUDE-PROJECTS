@@ -2040,8 +2040,12 @@
           <div class="cellsub">${h.grossPerTrade != null ? 'g/t $' + h.grossPerTrade.toFixed(2) : '—'}</div></td>
         <td>${h.stops}${h.ambiguous ? `<div class="cellsub">${h.ambiguous} amb</div>` : ''}</td>`
         : '<td class="blk-l note" colspan="5">no held-back window in this run</td>';
+      // Arm-aware: on a 'both' run the same setup exists once per layout,
+      // and the wrong pick would open the other arm's members (audit
+      // 2026-07-30). Rows and leaders without layout info match as before.
       const censusRow = (doc.edgeCensus || []).find((r) => !r.shiftFrac
-        && r.trade === l.trade && r.geometry === l.geometry && r.decision === l.decision);
+        && r.trade === l.trade && r.geometry === l.geometry && r.decision === l.decision
+        && (!l.layoutArm || r.windowLayout === l.layoutArm));
       const dumpFile = censusRow && censusRow.modelFile ? censusRow.modelFile.split('/').pop() : null;
       return `<tr class="${l.stage === 'promoted' ? 'hilite' : ''}">
         <td>${selectable ? `<input type="radio" name="bl-sel" class="bl-sel" data-key="${esc(l.key)}" data-stage="${esc(l.stage)}" ${isSel ? 'checked' : ''}>` : ''}
@@ -2240,8 +2244,11 @@
       } catch { /* dropdowns stay empty; the button will say why */ }
       (doc.leaders || []).filter((l) => l.stage === 'promoted').forEach((l) => {
         const o = document.createElement('option');
-        o.value = JSON.stringify({ trade: l.trade, geometry: l.geometry, decision: l.decision });
-        o.textContent = `${comboLabel(l)} · ${l.geometry} · ${l.decision}`;
+        o.value = JSON.stringify({
+          trade: l.trade, geometry: l.geometry, decision: l.decision,
+          ...(l.layoutArm ? { windowLayout: l.layoutArm } : {}),
+        });
+        o.textContent = `${comboLabel(l)} · ${l.geometry} · ${l.decision}${l.layoutArm ? ` · ${l.layoutArm}` : ''}`;
         setupSel.appendChild(o);
       });
       $('bl-v-go').addEventListener('click', async () => {

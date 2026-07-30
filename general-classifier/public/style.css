@@ -228,7 +228,8 @@ table.settings tr:nth-child(even) { background: rgba(127, 127, 127, .05); }
 .bl-board .tune .cellsub { font-size: .7rem; }
 /* The ruled divider between blocks: a real border carried through the header
    and every row, on the cell so it survives the row striping. */
-.bl-board .blk-l { border-left: 2px solid rgba(127, 127, 127, .55); }
+.bl-board .blk-l,
+.tablewrap .blk-l { border-left: 2px solid rgba(127, 127, 127, .55); }
 .bl-board .grp {
   text-align: center;
   font-size: .72rem;

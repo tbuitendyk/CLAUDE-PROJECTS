@@ -99,8 +99,8 @@ function compareDocs(docA, docB) {
   if (diffs.length) {
     throw new Error(`runs cannot be linked — settings differ beyond the layout: ${diffs.join(', ')}`);
   }
-  const la = docA.params.windowLayout;
-  const lb = docB.params.windowLayout;
+  const la = docA.params.windowLayout || 'legacy';
+  const lb = docB.params.windowLayout || 'legacy';
   if (la === lb) throw new Error(`both runs use the "${la}" layout — a comparison needs one of each`);
   if (la === 'legacy' || lb === 'legacy' || la === 'both' || lb === 'both') {
     throw new Error('linking needs one chronological and one interlaced run (quota-first layouts only)');

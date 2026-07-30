@@ -1240,6 +1240,14 @@ function validateDeclared(raw) {
 // few hundred KB of JSON — fine; 272 would not be. The cap is the reason
 // emitCalls can be left on for a replication run without thought.
 const CALL_SERIES_MAX = 50;
+// A unit's ROTATION STANCE rides on key PRESENCE, exactly like the unitTask
+// fallback it feeds (QC 38): a unit that never mentions shiftFrac defers to
+// the run-wide labelShiftFrac; an explicit null means THIS unit must not
+// rotate. The old payload builders collapsed both cases to an explicit null,
+// so labelShiftFrac-only jobs never rotated at all and discovery-mode
+// promotion reran scrambled slim rows unrotated (audit 2026-07-30).
+const shiftStance = (o) => (Object.prototype.hasOwnProperty.call(o, 'shiftFrac') ? { labelShiftFrac: o.shiftFrac ?? null } : {});
+
 const unitKey = (c, b) => `${c.trade}|${c.ctx1 || ''}|${c.ctx2 || ''}|${b.geometry}|${b.decision}|${b.band}|${b.weekdaysOnly ? '24-5' : '24-7'}`;
 
 function bracketPerfTick(doc) {
@@ -1313,11 +1321,12 @@ function pushLeader(doc, row) {
 function promotionSet(p, doc, units) {
   if (p.declared || p.edgeScreen) {
     return units.map((u) => { const { c, b } = u; return ({
-      key: unitKey(c, b) + (u.layoutArm ? `|${u.layoutArm}` : ''),
+      key: unitKey(c, b) + (u.layoutArm ? `|${u.layoutArm}` : '')
+        + (u.shiftFrac != null ? `|s${u.shiftFrac.toFixed(3)}` : ''),
       trade: c.trade, ctx1: c.ctx1, ctx2: c.ctx2, size: c.size,
       geometry: b.geometry, decision: b.decision, bandMode: b.band, weekdaysOnly: b.weekdaysOnly,
-      shiftFrac: u.shiftFrac ?? null,
       layoutArm: u.layoutArm ?? null,
+      ...(Object.prototype.hasOwnProperty.call(u, 'shiftFrac') ? { shiftFrac: u.shiftFrac ?? null } : {}),
     }); });
   }
   return doc.leaders.filter((l) => l.stage === 'slim').slice(0, p.promoteK);
@@ -1474,6 +1483,12 @@ function startBracketLab(params) {
   // A layout job without a holdout would leave the quota half-defined; the
   // layouts are three-way splits by construction.
   if (p.windowLayout !== 'legacy') p.holdout = true;
+  // A 'both' job exists to be compared, and the comparison reads the census
+  // (edgeCensus rows are what compare.js pairs). Without edgeScreen a both
+  // run would also let its two arms COMPETE for the same top-K promotion
+  // slots, silently unbalancing the very comparison it was fired for
+  // (audit 2026-07-30, confirmed major). So both => census mode, always.
+  if (p.windowLayout === 'both') p.edgeScreen = true;
   const { branches, combos } = expandBracketPlan(p);
   const units = [];
   for (const b of branches) for (const c of combos) units.push({ c, b });
@@ -1580,11 +1595,13 @@ function startBracketLab(params) {
     doc.perf.phase = 'slim';
     saveBatch(doc);
 
-    const slimPayloads = units.map(({ c, b, shiftFrac, layoutArm }) => ({ combo: c, branch: b, stage: 'slim', params: p, labelShiftFrac: shiftFrac ?? null, layoutArm: layoutArm ?? null }));
+    const slimPayloads = units.map((u) => ({ combo: u.c, branch: u.b, stage: 'slim', params: p, layoutArm: u.layoutArm ?? null, ...shiftStance(u) }));
     await pool.map('unit', slimPayloads, (settled, i) => {
       if (doc.cancelRequested) return;
       const { c, b, layoutArm } = units[i];
-      const key = unitKey(c, b) + (layoutArm ? `|${layoutArm}` : '');
+      const u = units[i];
+      const key = unitKey(c, b) + (layoutArm ? `|${layoutArm}` : '')
+        + (u.shiftFrac != null ? `|s${u.shiftFrac.toFixed(3)}` : '');
       if (settled.ok && settled.value && settled.value.best) {
         const res = settled.value;
         pushLeader(doc, {
@@ -1594,6 +1611,7 @@ function startBracketLab(params) {
           bandPct: res.bandPct, weekdaysOnly: b.weekdaysOnly,
           testPeriods: res.testPeriods,
           layoutArm: layoutArm ?? null,
+          ...(Object.prototype.hasOwnProperty.call(u, 'shiftFrac') ? { shiftFrac: u.shiftFrac ?? null } : {}),
           ...res.best,
         });
       } else if (!settled.ok && doc.failures.length < 200) {
@@ -1609,15 +1627,15 @@ function startBracketLab(params) {
     // ---- promotion: top-K slim survivors on the full member grid ----
     if (!doc.cancelRequested) {
       const promote = promotionSet(p, doc, units);
-      doc.plan.promoteRuns = promote.reduce((s2, l) => s2 + slimViewsFor(l.size).length * 4, 0);
+      doc.plan.promoteRuns = promote.reduce((s2, l) => s2 + slimViewsFor(l.size).length * 2, 0);
       doc.perf.runsTotal += doc.plan.promoteRuns;
       doc.perf.phase = 'promote';
       saveBatch(doc);
       const promPayloads = promote.map((l) => ({
         combo: { trade: l.trade, ctx1: l.ctx1, ctx2: l.ctx2, size: l.size },
         branch: { geometry: l.geometry, decision: l.decision, band: l.bandMode, weekdaysOnly: l.weekdaysOnly },
-        stage: 'promoted', params: p, labelShiftFrac: l.shiftFrac ?? null,
-        layoutArm: l.layoutArm ?? null,
+        stage: 'promoted', params: p, layoutArm: l.layoutArm ?? null,
+        ...shiftStance(l),
       }));
       await pool.map('unit', promPayloads, (settled, i) => {
         if (doc.cancelRequested) return;
@@ -1684,6 +1702,9 @@ function startBracketLab(params) {
               layoutGroups: res.layoutMeta ? res.layoutMeta.groups : null,
               layoutEvalDays: res.layoutMeta ? res.layoutMeta.evalDays : null,
               layoutPurged: res.layoutMeta ? res.layoutMeta.purgedTrainChunks : null,
+              // 'common-train' or the degrade note — a sharedBand run whose
+              // common set was too small must say so where the numbers live.
+              layoutBandFrom: res.layoutMeta ? (res.layoutMeta.bandFrom ?? null) : null,
               holdPeriods: res.best && res.best.holdout ? res.best.holdout.periods : null,
               searchPeriods: res.testPeriods ?? null,
               // THE YARDSTICK, recorded alongside the score. edge = accuracy -
@@ -1774,6 +1795,7 @@ function startBracketLab(params) {
             const d = res.declared;
             doc.replication.push({
               trade: l.trade, ctx1: l.ctx1, ctx2: l.ctx2, geometry: l.geometry, bandPct: res.bandPct,
+              windowLayout: res.layoutMeta ? res.layoutMeta.layout : 'legacy',
               entry: d.entry || 'breakout',
               quorum: d.quorum, members: d.members, pnl: d.pnl, trades: d.trades, wins: d.wins,
               grossPerTrade: d.grossPerTrade, stops: d.stops, ambiguous: d.ambiguous,
@@ -1792,7 +1814,7 @@ function startBracketLab(params) {
         } else if (!settled.ok && doc.failures.length < 200) {
           doc.failures.push({ key: l.key + '|promote', error: settled.error });
         }
-        doc.perf.runsDone += slimViewsFor(l.size).length * 4;
+        doc.perf.runsDone += slimViewsFor(l.size).length * 2;
         doc.progress = `promote ${i + 1}/${promote.length}: ${l.trade}${l.ctx1 ? '+' + l.ctx1 : ''}`;
         bracketPerfTick(doc);
         saveBatch(doc);
@@ -1855,6 +1877,7 @@ function startBracketConfirm(id, target = 'best') {
       cell: sel,
       quorum: sel.quorum,
       params: doc.params,
+      layoutArm: sel.layoutArm ?? null,
       onProgress: (msg) => {
         doc.progress = `confirm: ${msg}`;
         saveBatch(doc);
@@ -1918,7 +1941,7 @@ function startBracketNull(id, shifts) {
   doc.status = 'running';
   doc.cancelRequested = false;
   doc.perf.phase = 'null';
-  doc.perf.runsTotal += nShifts * slimViewsFor(sel.size).length * 4;
+  doc.perf.runsTotal += nShifts * slimViewsFor(sel.size).length * 2;
   doc.nullTest = { status: 'running', requestedShifts: nShifts, startedAt: new Date().toISOString(), real: { pnl: sel.pnl, trades: sel.trades }, samples: {}, shifts: 0, exceedSearch: null, exceedSame: null, medianBestPnl: null, medianSamePnl: null };
   activeBatch = doc;
   saveBatch(doc);
@@ -1977,7 +2000,7 @@ function startBracketNull(id, shifts) {
       } else if (!settled.ok && doc.failures.length < 200) {
         doc.failures.push({ key: `null-shift-${i + 1}`, error: settled.error });
       }
-      doc.perf.runsDone += slimViewsFor(c.size).length * 4;
+      doc.perf.runsDone += slimViewsFor(c.size).length * 2;
       doc.progress = `null ${doneCount}/${nShifts} (${doc.nullTest.shifts} distinct banked)`;
       bracketPerfTick(doc);
       saveBatch(doc);
@@ -2016,6 +2039,7 @@ function startBracketNull(id, shifts) {
 }
 
 module.exports = {
+  shiftStance,
   startBatch,
   startConsensus,
   startMetalens,

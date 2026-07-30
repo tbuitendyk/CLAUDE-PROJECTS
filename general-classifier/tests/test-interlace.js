@@ -1,7 +1,10 @@
 const { assert } = require('./helpers');
 const { planIntervals, applyLayout, rotateWithinIntervals, GROUP_DAYS, EVAL_BLOCK_DAYS } = require('../lib/interlace');
-const { splitByLayout, windowShift } = require('../lib/bracketwork');
+const { splitByLayout, windowShift, quorumCall } = require('../lib/bracketwork');
 const { compareDocs, settingsDiff } = require('../lib/compare');
+const { nullVerdict } = require('../lib/verdict');
+const { shiftStance } = require('../lib/batch');
+const { T_HOURS } = require('../lib/bracket');
 const { GEOMETRIES } = require('../lib/dataset');
 
 const DAY_MS = 86_400_000;
@@ -186,6 +189,83 @@ module.exports = {
     assert.strictEqual(both.mode, 'both-job');
     assert.strictEqual(both.pairedCount, 1);
     assert.strictEqual(both.arms.a, 'chronological');
+  },
+
+  async trainingNeverSeesAnEvalTradePath() {
+    // Audit 2026-07-30, confirmed major: purging only the label window let
+    // eval trades at the menu's long timeouts run through candles that
+    // surviving train chunks used as features — one-sided contamination of
+    // the interlaced arm. The production path must purge out to the longest
+    // execution horizon on the job's menu.
+    const geo = GEOMETRIES['daily-3d'];
+    const branch = { band: 'auto', decision: 'argmax' };
+    const p = { interlaceSeed: 4 };
+    const HOUR = 3_600_000;
+    const tMax = Math.max(...T_HOURS);
+    const { trainChunks, testChunks, holdChunks } = splitByLayout(synthChunks(2 * GROUP_DAYS + 25, 1), branch, geo, 'interlaced', p);
+    for (const e of [...testChunks, ...holdChunks]) {
+      const pathEnd = e.startTs + (geo.entryOffsetH + tMax + 3) * HOUR;
+      for (const t of trainChunks) {
+        const featEnd = t.startTs + geo.featureHours * HOUR;
+        assert.ok(featEnd <= e.startTs || t.startTs >= pathEnd,
+          `train features [${t.startTs},${featEnd}) overlap an eval trade path ending ${pathEnd}`);
+      }
+    }
+  },
+
+  async quorumCallRefusesNonVoteShapes() {
+    // Audit 2026-07-30, CRITICAL: the null replay passed member OBJECTS
+    // where call arrays belong; every vote read undefined and the committee
+    // silently stood aside in every rotated world. Wrong shapes must crash.
+    const memberObjects = [{ calls: [1, -1], model: {} }, { calls: [1, 0], model: {} }];
+    let threw = false;
+    try { quorumCall(memberObjects, 0, 1); } catch { threw = true; }
+    assert.ok(threw, 'quorumCall must throw on member objects, not count them as abstentions');
+    assert.strictEqual(quorumCall([[1, -1], [1, 0]], 0, 2), 1, 'real call arrays still work');
+  },
+
+  async rotationStanceRidesOnKeyPresence() {
+    // Audit 2026-07-30, confirmed major: payload builders collapsed "no
+    // stance" and "explicitly unrotated" into the same explicit null, so a
+    // run-wide labelShiftFrac job never rotated and discovery promotion
+    // reran scrambled slim rows unrotated. Presence of the key IS the
+    // stance (QC 38 class).
+    assert.deepStrictEqual(shiftStance({}), {}, 'no stance -> defer to the run-wide setting');
+    assert.deepStrictEqual(shiftStance({ shiftFrac: null }), { labelShiftFrac: null }, 'explicit null -> never rotate');
+    assert.deepStrictEqual(shiftStance({ shiftFrac: 0.25 }), { labelShiftFrac: 0.25 }, 'a draw keeps its own rotation');
+  },
+
+  async nullVerdictKeepsTheArmsApart() {
+    const params = { windowLayout: 'both' };
+    const row = (layout, shift, pnl) => ({
+      trade: 'AUSDT', geometry: 'daily-3d', decision: 'argmax',
+      shiftFrac: shift, holdPnl: pnl, windowLayout: layout,
+    });
+    const realDoc = { id: 'r', params, edgeCensus: [row('chronological', null, 10), row('interlaced', null, 99)] };
+    const nullDoc = {
+      id: 'n', params,
+      edgeCensus: [row('chronological', 0.25, -5), row('interlaced', 0.25, -7),
+        row('chronological', 0.5, -6), row('interlaced', 0.5, 120)],
+    };
+    // naming the arm pairs against that arm only
+    const v = nullVerdict(realDoc, nullDoc, { trade: 'AUSDT', geometry: 'daily-3d', decision: 'argmax', windowLayout: 'chronological' });
+    assert.strictEqual(v.perSetup.real, 10);
+    assert.deepStrictEqual(v.perSetup.draws.map((d) => d.value), [-5, -6], 'chronological setup must rank against chronological draws only');
+    // omitting the arm on a mixed doc is refused, not guessed
+    let threw = null;
+    try { nullVerdict(realDoc, nullDoc, { trade: 'AUSDT', geometry: 'daily-3d', decision: 'argmax' }); } catch (err) { threw = err.message; }
+    assert.ok(threw && threw.includes('arm'), `must ask for the arm, got: ${threw}`);
+  },
+
+  async legacyRunsGetAPlainRefusalNotUndefined() {
+    const params = { universe: ['AUSDT'], holdout: true };
+    const row = { trade: 'AUSDT', geometry: 'daily-3d', decision: 'argmax', shiftFrac: null, holdPnl: 5 };
+    const A = { id: 'a', params: { ...params }, edgeCensus: [row] };
+    const B = { id: 'b', params: { ...params }, edgeCensus: [row] };
+    let msg = null;
+    try { compareDocs(A, B); } catch (err) { msg = err.message; }
+    assert.ok(msg && !msg.includes('undefined'), `refusal must not print "undefined": ${msg}`);
+    assert.ok(msg.includes('legacy') || msg.includes('quota-first'), `refusal names the real problem: ${msg}`);
   },
 
   async settingsDiffIgnoresOnlyTheAllowlist() {

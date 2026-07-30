@@ -26,18 +26,26 @@
 const bracketLib = require('./bracket');
 const { loadMinuteWindow } = require('./minute');
 const { HOUR_MS } = require('./binance');
-const { buildCombo, splitAndLabel, specsFor, quorumCall, declaredQuorumFor } = require('./bracketwork');
+const { buildCombo, splitAndLabel, splitByLayout, specsFor, quorumCall, declaredQuorumFor } = require('./bracketwork');
 const { REAL_FEE_PER_LEG } = require('./paper');
 const { GEOMETRIES } = require('./dataset');
 
-async function confirmCell({ combo, branch, cell, quorum, params, onProgress = () => {} }) {
+async function confirmCell({ combo, branch, cell, quorum, params, layoutArm = null, onProgress = () => {} }) {
   const p = params;
   const fee = p.feePerLeg ?? REAL_FEE_PER_LEG;
   const geo = GEOMETRIES[branch.geometry];
 
   onProgress('rebuilding the unit on hourly data');
   const built = await buildCombo(combo, branch, p);
-  const { trainChunks, testChunks, holdChunks, bandPct } = splitAndLabel(built.chunks, branch, p.holdout);
+  // The rebuild must split exactly as the original unit did — layout runs
+  // included — or the self-check below refuses (audit 2026-07-30): a layout
+  // row rebuilt on the legacy split is a different trade, and comparing its
+  // minute path would confirm nothing.
+  const layout = layoutArm
+    || (p.windowLayout && p.windowLayout !== 'legacy' && p.windowLayout !== 'both' ? p.windowLayout : null);
+  const { trainChunks, testChunks, holdChunks, bandPct } = layout
+    ? splitByLayout(built.chunks, branch, geo, layout, p)
+    : splitAndLabel(built.chunks, branch, p.holdout);
   const views = bracketLib.comboViews(combo.size, geo.featureHours / 24).views;
   const predictChunks = holdChunks.length ? [...testChunks, ...holdChunks] : testChunks;
 
