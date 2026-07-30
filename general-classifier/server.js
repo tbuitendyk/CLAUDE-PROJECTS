@@ -239,6 +239,9 @@ app.post('/api/bracketlab', (req, res) => {
       entries: b.entries,
       description: b.description,
       label: b.label,
+      windowLayout: b.windowLayout,
+      interlaceSeed: b.interlaceSeed,
+      sharedBand: b.sharedBand,
     });
     res.json({ batchId: id });
   } catch (err) {
@@ -595,6 +598,7 @@ app.get('/api/batches', (req, res) => res.json({ running: batch.batchRunning(), 
 
 const { inspectDump } = require('./lib/inspect');
 const { nullVerdict, realRows, drawsOf } = require('./lib/verdict');
+const { compareDocs } = require('./lib/compare');
 
 // Which runs can play which role in a null verdict — feeds the dropdowns so
 // the owner picks from runs that actually qualify instead of guessing.
@@ -607,7 +611,11 @@ app.get('/api/bracketlab/verdict-sources', (req, res) => {
     const real = realRows(doc).length;
     const draws = drawsOf(doc).length;
     if (!real && !draws) continue;
-    out.push({ id: doc.id, realRows: real, scrambleDraws: draws, status: doc.status });
+    out.push({
+      id: doc.id, realRows: real, scrambleDraws: draws, status: doc.status,
+      windowLayout: (doc.params && doc.params.windowLayout) || 'legacy',
+      engineVersion: (doc.params && doc.params.engineVersion) || null,
+    });
   }
   res.json({ sources: out });
 });
@@ -648,6 +656,22 @@ app.post('/api/bracketlab/null-verdict', (req, res) => {
   const sel = b.trade ? { trade: String(b.trade), geometry: String(b.geometry || ''), decision: String(b.decision || '') } : null;
   try {
     res.json(nullVerdict(realDoc, nullDoc, sel));
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// Layout comparison (owner's workflow criteria, 2026-07-30): one 'both' run
+// compares its own two arms; two separate runs link ONLY when every stored
+// setting matches — compareDocs refuses otherwise, naming the differences.
+app.post('/api/bracketlab/compare', (req, res) => {
+  const b = req.body || {};
+  const docA = batch.getBatch(String(b.a || ''));
+  if (!docA) return res.status(400).json({ error: 'unknown run (a)' });
+  const docB = b.b ? batch.getBatch(String(b.b)) : null;
+  if (b.b && !docB) return res.status(400).json({ error: 'unknown run (b)' });
+  try {
+    res.json(compareDocs(docA, docB));
   } catch (err) {
     res.status(400).json({ error: err.message });
   }

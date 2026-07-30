@@ -1868,6 +1868,51 @@
         ${d.committee.searchTrades}/${d.committee.searchPeriods} tuning periods.</p>`;
   }
 
+  function renderCompare(d) {
+    const m$ = (v) => (v == null ? '—' : (v < 0 ? '-' : '+') + '$' + Math.abs(v).toFixed(2));
+    const shortKey = (k) => k.replace(/\|+/g, ' ').trim();
+    const rows = d.paired.slice(0, 40).map((p) => `<tr>
+      <td title="asset · geometry · decision rule">${esc(shortKey(p.key))}</td>
+      <td class="${p.a.holdPnl >= 0 ? 'up' : 'down'}">${m$(p.a.holdPnl)}</td>
+      <td>${p.a.holdTrades ?? '—'}</td>
+      <td>${m$(p.a.holdPerTrade)}</td>
+      <td class="blk-l ${p.b.holdPnl >= 0 ? 'up' : 'down'}">${m$(p.b.holdPnl)}</td>
+      <td>${p.b.holdTrades ?? '—'}</td>
+      <td>${m$(p.b.holdPerTrade)}</td>
+      <td class="blk-l ${p.dHoldPnl >= 0 ? 'up' : 'down'}"><strong>${m$(p.dHoldPnl)}</strong></td>
+    </tr>`).join('');
+    return `
+      <h3>${esc(d.arms.a)} vs ${esc(d.arms.b)} — ${d.jobs.map(esc).join(' + ')}</h3>
+      ${d.warnings.map((w) => `<p class="note" style="color:#c33"><strong>${esc(w)}</strong></p>`).join('')}
+      <p class="note"><strong>Paired setups table.</strong> One row per setup measured under BOTH window
+        geometries — the only like-for-like comparison here, since the two arms' held-back windows are
+        different calendar periods (recent stretch vs sprinkled through history).
+        KEY — <em>setup</em>: asset, time-period shape, decision rule.
+        <em>held-back $</em>: money the chosen cell made on that arm's held-back window, dollars per $100
+        book. <em>trades</em>: trades it actually took there (differing counts between arms is a finding,
+        not an error — potential trade days are forced identical, opinions are not).
+        <em>$/trade</em>: money per trade, the rate that compares fairly across arms.
+        <em>Δ held-back $</em>: ${esc(d.arms.b)} minus ${esc(d.arms.a)} — positive means the interlaced-side
+        arm earned more. Sorted by largest absolute difference; first 40 shown, all stored.</p>
+      <div class="tablewrap"><table>
+        <tr><th rowspan="2" title="asset · shape · decision">setup</th>
+          <th colspan="3" title="the ${esc(d.arms.a)} arm">${esc(d.arms.a)}</th>
+          <th colspan="3" class="blk-l" title="the ${esc(d.arms.b)} arm">${esc(d.arms.b)}</th>
+          <th rowspan="2" class="blk-l" title="${esc(d.arms.b)} held-back money minus ${esc(d.arms.a)} held-back money">Δ held-back $</th></tr>
+        <tr><th>held-back $</th><th>trades</th><th>$/trade</th>
+          <th class="blk-l">held-back $</th><th>trades</th><th>$/trade</th></tr>
+        ${rows}</table></div>
+      <p class="note"><strong>Survivor overlap.</strong> Of each arm's top 10 setups by held-back money,
+        <strong>${d.survivorOverlap.sharedCount}</strong> appear in both top-10s. High overlap means the two
+        geometries crown the same setups — evidence the ranking reflects the setups rather than the era the
+        evaluation windows landed in. The shared ones: ${d.survivorOverlap.shared.length ? d.survivorOverlap.shared.map((k) => esc(shortKey(k))).join(', ') : '(none)'}.</p>
+      <p class="note"><strong>Totals (read the label).</strong> ${esc(d.arms.a)}: ${m$(d.totals.a.holdPnl)}
+        over ${d.totals.a.holdTrades} trades in ${d.totals.a.setups} setups ·
+        ${esc(d.arms.b)}: ${m$(d.totals.b.holdPnl)} over ${d.totals.b.holdTrades} trades in
+        ${d.totals.b.setups} setups. ${esc(d.totals.note)}</p>
+      ${d.mode === 'linked' ? `<p class="note">Linked runs: every stored setting was verified identical before this comparison rendered (${d.onlyA} setups only in A, ${d.onlyB} only in B were left unpaired).</p>` : ''}`;
+  }
+
   function renderVerdict(d) {
     const m$ = (v) => (v == null ? '—' : (v < 0 ? '-' : '+') + '$' + Math.abs(v).toFixed(2));
     const drawsTable = (t) => `<div class="tablewrap"><table>
@@ -2141,7 +2186,17 @@
         setup <select id="bl-v-setup"><option value="">— board best only —</option></select>
         <button id="bl-v-go">run the tests</button></p>
       <div id="bl-verdict-out"></div></div>`;
-    blViewEl.innerHTML = `<p class="note">${header}</p>${perfBlock}${repBlock}${leaderBlock}${inspectBlock}${verdictBlock}${nullBlock}`;
+    const compareBlock = `
+      <div class="section"><h2>Layout comparison — same settings, two window geometries</h2>
+      <p class="note">Compares the <strong>chronological</strong> and <strong>interlaced</strong> arms of one
+        run (or two separate runs). Two separate runs link ONLY when every stored setting matches — the
+        comparison refuses otherwise and names the differences, so nothing gets compared that is not
+        comparable. Fires no compute; reads stored results.</p>
+      <p class="note">run A <select id="bl-c-a"></select>
+        run B <select id="bl-c-b"><option value="">— A is a "both" run —</option></select>
+        <button id="bl-c-go">compare</button></p>
+      <div id="bl-compare-out"></div></div>`;
+    blViewEl.innerHTML = `<p class="note">${header}</p>${perfBlock}${repBlock}${leaderBlock}${inspectBlock}${verdictBlock}${compareBlock}${nullBlock}`;
     // ---- inside view ------------------------------------------------------
     blViewEl.querySelectorAll('.bl-inspect').forEach((btn) => {
       btn.addEventListener('click', async () => {
@@ -2173,6 +2228,15 @@
           .map((x) => `<option value="${esc(x.id)}" ${x.id === doc.id ? 'selected' : ''}>${esc(x.id)} (${x.realRows} real)</option>`).join('');
         nullSel.innerHTML = srcs.filter((x) => x.scrambleDraws > 0)
           .map((x) => `<option value="${esc(x.id)}">${esc(x.id)} (${x.scrambleDraws} scrambles)</option>`).join('');
+        const cA = $('bl-c-a');
+        const cB = $('bl-c-b');
+        if (cA) {
+          const layoutTag = (x) => x.windowLayout && x.windowLayout !== 'legacy' ? ` [${x.windowLayout}]` : '';
+          const opts = srcs.filter((x) => x.realRows > 0)
+            .map((x) => `<option value="${esc(x.id)}">${esc(x.id)}${esc(layoutTag(x))}</option>`).join('');
+          cA.innerHTML = opts;
+          cB.innerHTML = '<option value="">— A is a "both" run —</option>' + opts;
+        }
       } catch { /* dropdowns stay empty; the button will say why */ }
       (doc.leaders || []).filter((l) => l.stage === 'promoted').forEach((l) => {
         const o = document.createElement('option');
@@ -2194,6 +2258,23 @@
           out.innerHTML = renderVerdict(d);
         } catch (err) {
           out.innerHTML = `<p class="note">could not run the tests: ${esc(err.message)}</p>`;
+        }
+      });
+      const cGo = $('bl-c-go');
+      if (cGo) cGo.addEventListener('click', async () => {
+        const out = $('bl-compare-out');
+        out.innerHTML = '<p class="note">reading both arms…</p>';
+        try {
+          const body = { a: $('bl-c-a').value };
+          if ($('bl-c-b').value) body.b = $('bl-c-b').value;
+          const r = await fetch('api/bracketlab/compare', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+          });
+          const d = await r.json();
+          if (!r.ok) throw new Error(d.error || r.status);
+          out.innerHTML = renderCompare(d);
+        } catch (err) {
+          out.innerHTML = `<p class="note">could not compare: ${esc(err.message)}</p>`;
         }
       });
     })();
@@ -2304,6 +2385,9 @@
         emitCalls: $('bl-emit-calls').checked,
         trailing: $('bl-trailing').checked,
         holdout: $('bl-holdout').checked,
+        windowLayout: $('bl-layout').value,
+        interlaceSeed: Number($('bl-ilseed').value) || 1,
+        sharedBand: $('bl-sharedband').checked,
       };
       if ($('bl-declared-on').checked) {
         const entry = $('bl-dec-entry').value;

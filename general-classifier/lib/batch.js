@@ -10,6 +10,9 @@ const { pnlAt, REAL_FEE_PER_LEG, voteOf, superOf } = require('./paper');
 // (survives deploys — install.sh rsync excludes data/).
 
 const BATCH_DIR = path.join(__dirname, '..', 'data', 'batches');
+// Stamped into every bracket job's stored settings: identical parameters do
+// not guarantee identical machinery when the code changed between two runs.
+const ENGINE_VERSION = require('../package.json').version;
 
 // High-market-cap USDT pairs with long Binance spot history (all listed
 // 2017–2020, still major in mid-2026). Pairs that turn out to have no data
@@ -1310,9 +1313,11 @@ function pushLeader(doc, row) {
 function promotionSet(p, doc, units) {
   if (p.declared || p.edgeScreen) {
     return units.map((u) => { const { c, b } = u; return ({
-      key: unitKey(c, b), trade: c.trade, ctx1: c.ctx1, ctx2: c.ctx2, size: c.size,
+      key: unitKey(c, b) + (u.layoutArm ? `|${u.layoutArm}` : ''),
+      trade: c.trade, ctx1: c.ctx1, ctx2: c.ctx2, size: c.size,
       geometry: b.geometry, decision: b.decision, bandMode: b.band, weekdaysOnly: b.weekdaysOnly,
       shiftFrac: u.shiftFrac ?? null,
+      layoutArm: u.layoutArm ?? null,
     }); });
   }
   return doc.leaders.filter((l) => l.stage === 'slim').slice(0, p.promoteK);
@@ -1445,8 +1450,30 @@ function startBracketLab(params) {
     entries: pickMenu(params.entries, bracketLib.ENTRIES),
     trailMults: bracketLib.TRAIL_MULTS,
     armMults: bracketLib.ARM_MULTS,
+    // WINDOW LAYOUT (owner's design, 2026-07-30). 'legacy' is the untouched
+    // 70/15/15 percentage split every existing launcher gets by default.
+    // 'chronological' and 'interlaced' are the QUOTA-FIRST layouts (identical
+    // potential trade days per window in both, train-side purge — see
+    // lib/interlace.js). 'both' runs every unit twice, one arm per layout,
+    // sharing one seed, for the in-job comparison.
+    windowLayout: ['legacy', 'chronological', 'interlaced', 'both'].includes(params.windowLayout)
+      ? params.windowLayout : 'legacy',
+    // Seeded, RECORDED randomness: same settings -> same block slotting,
+    // forever. No unrecorded coin-flips anywhere.
+    interlaceSeed: Number.isFinite(Number(params.interlaceSeed))
+      ? Math.floor(Number(params.interlaceSeed)) : 1,
+    // Strict arm-to-arm comparison switch: band fit on the chunks that are
+    // train in BOTH layouts, so the band cannot differ between arms.
+    sharedBand: !!params.sharedBand,
+    // Identical stored parameters do not guarantee identical machinery if
+    // the code changed between two runs — the comparison surface checks this
+    // and warns loudly on mismatch.
+    engineVersion: ENGINE_VERSION,
   };
   if (!p.sizes.singles && !p.sizes.doubles && !p.sizes.triples) throw new Error('tick at least one combo size');
+  // A layout job without a holdout would leave the quota half-defined; the
+  // layouts are three-way splits by construction.
+  if (p.windowLayout !== 'legacy') p.holdout = true;
   const { branches, combos } = expandBracketPlan(p);
   const units = [];
   for (const b of branches) for (const c of combos) units.push({ c, b });
@@ -1471,6 +1498,16 @@ function startBracketLab(params) {
     for (let r = 0; r <= p.labelShiftReps; r++) {
       const frac = r === 0 ? null : r / (p.labelShiftReps + 1);
       for (const u of base) units.push({ ...u, shiftFrac: frac });
+    }
+  }
+  // 'both' doubles the unit list: one arm per layout, everything else —
+  // including any scramble expansion above — identical. The cleanest
+  // comparison possible, because nothing else CAN differ.
+  if (p.windowLayout === 'both') {
+    const base = units.slice();
+    units.length = 0;
+    for (const arm of ['chronological', 'interlaced']) {
+      for (const u of base) units.push({ ...u, layoutArm: arm });
     }
   }
   const slimRuns = units.reduce((s, u) => s + slimViewsFor(u.c.size).length, 0);
@@ -1543,11 +1580,11 @@ function startBracketLab(params) {
     doc.perf.phase = 'slim';
     saveBatch(doc);
 
-    const slimPayloads = units.map(({ c, b, shiftFrac }) => ({ combo: c, branch: b, stage: 'slim', params: p, labelShiftFrac: shiftFrac ?? null }));
+    const slimPayloads = units.map(({ c, b, shiftFrac, layoutArm }) => ({ combo: c, branch: b, stage: 'slim', params: p, labelShiftFrac: shiftFrac ?? null, layoutArm: layoutArm ?? null }));
     await pool.map('unit', slimPayloads, (settled, i) => {
       if (doc.cancelRequested) return;
-      const { c, b } = units[i];
-      const key = unitKey(c, b);
+      const { c, b, layoutArm } = units[i];
+      const key = unitKey(c, b) + (layoutArm ? `|${layoutArm}` : '');
       if (settled.ok && settled.value && settled.value.best) {
         const res = settled.value;
         pushLeader(doc, {
@@ -1556,6 +1593,7 @@ function startBracketLab(params) {
           geometry: b.geometry, decision: b.decision, bandMode: b.band,
           bandPct: res.bandPct, weekdaysOnly: b.weekdaysOnly,
           testPeriods: res.testPeriods,
+          layoutArm: layoutArm ?? null,
           ...res.best,
         });
       } else if (!settled.ok && doc.failures.length < 200) {
@@ -1579,6 +1617,7 @@ function startBracketLab(params) {
         combo: { trade: l.trade, ctx1: l.ctx1, ctx2: l.ctx2, size: l.size },
         branch: { geometry: l.geometry, decision: l.decision, band: l.bandMode, weekdaysOnly: l.weekdaysOnly },
         stage: 'promoted', params: p, labelShiftFrac: l.shiftFrac ?? null,
+        layoutArm: l.layoutArm ?? null,
       }));
       await pool.map('unit', promPayloads, (settled, i) => {
         if (doc.cancelRequested) return;
@@ -1637,6 +1676,16 @@ function startBracketLab(params) {
               geometry: l.geometry, decision: l.decision, bandPct: res.bandPct,
               shiftFrac: l.shiftFrac ?? null,
               shiftScope: p.labelShiftScope || 'series',
+              // WINDOW LAYOUT this row was measured under, with the seed and
+              // the layout's own bookkeeping — a comparison row that cannot
+              // say which geometry produced it is not comparable to anything.
+              windowLayout: res.layoutMeta ? res.layoutMeta.layout : 'legacy',
+              interlaceSeed: res.layoutMeta ? res.layoutMeta.seed : null,
+              layoutGroups: res.layoutMeta ? res.layoutMeta.groups : null,
+              layoutEvalDays: res.layoutMeta ? res.layoutMeta.evalDays : null,
+              layoutPurged: res.layoutMeta ? res.layoutMeta.purgedTrainChunks : null,
+              holdPeriods: res.best && res.best.holdout ? res.best.holdout.periods : null,
+              searchPeriods: res.testPeriods ?? null,
               // THE YARDSTICK, recorded alongside the score. edge = accuracy -
               // majorityBaseline, so a draw measured against a softer baseline
               // posts positive edge more easily with no change in skill. Under

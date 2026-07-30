@@ -17,6 +17,7 @@
 
 const { toHourlyMap, forwardFill, scoreDiff, balancedBandPct, GEOMETRIES } = require('./dataset');
 const { loadSymbol, loadSymbolAll, monthList, deriveShift, MIN_CHUNKS } = require('./pipeline');
+const { applyLayout, rotateWithinIntervals } = require('./interlace');
 const bracketLib = require('./bracket');
 const { REAL_FEE_PER_LEG } = require('./paper');
 const { classifierMetrics } = require('./metrics');
@@ -200,6 +201,31 @@ function splitAndLabel(chunks, branch, holdout) {
   return { trainChunks, testChunks, holdChunks, bandPct };
 }
 
+// QUOTA-FIRST WINDOW LAYOUTS (owner's design, 2026-07-30) — see
+// lib/interlace.js for the geometry. This is the layout-aware sibling of
+// splitAndLabel: assign chunks by calendar interval, purge the TRAIN side
+// only, then band + label exactly as the legacy path does.
+function splitByLayout(chunks, branch, geo, layout, p) {
+  const seed = Number(p.interlaceSeed) || 0;
+  const { train, search, hold, meta } = applyLayout(chunks, geo, layout, seed);
+  if (train.length < MIN_CHUNKS) throw new Error(`only ${train.length} training chunks under the ${layout} layout`);
+  let bandSource = train;
+  if (p.sharedBand && branch.band === 'auto') {
+    // Shared-band switch for strict arm-to-arm comparisons: the band comes
+    // from chunks that are TRAIN IN BOTH layouts — unseen as evaluation by
+    // either arm, so sharing leaks nothing while removing the band as a
+    // second difference channel between the arms.
+    const other = applyLayout(chunks, geo, layout === 'interlaced' ? 'chronological' : 'interlaced', seed);
+    const otherTrain = new Set(other.train.map((c) => c.startTs));
+    const common = train.filter((c) => otherTrain.has(c.startTs));
+    if (common.length >= MIN_CHUNKS) { bandSource = common; meta.bandFrom = 'common-train'; }
+    else meta.bandFrom = 'own-train (common set too small)';
+  }
+  const bandPct = branch.band === 'auto' ? balancedBandPct(bandSource.map((c) => c.diffPct)) : Math.abs(branch.band);
+  for (const c of chunks) c.label = scoreDiff(c.diffPct / 100, bandPct / 100);
+  return { trainChunks: train, testChunks: search, holdChunks: hold, bandPct, layoutMeta: meta };
+}
+
 async function trainMembers(specs, views, trainChunks, testChunks, branch, maps, geo) {
   const out = [];
   for (const spec of specs) {
@@ -272,9 +298,23 @@ async function unitTask(task) {
   // positive edge with no skill at all. This project's entire method rests on
   // measuring nulls rather than reasoning about them, and the edge statistic
   // had been getting a reasoned one.
-  if (shiftFrac) rotateLabels(chunks, shiftFrac, p.labelShiftScope, p.holdout);
+  // WINDOW LAYOUT. A unit-level arm tag (from a 'both' job) wins; otherwise
+  // the run-wide setting applies; 'legacy' (the default) is the untouched
+  // pre-2026-07-30 path, byte-identical for every existing launcher.
+  const layout = task.layoutArm
+    || (p.windowLayout && p.windowLayout !== 'legacy' && p.windowLayout !== 'both' ? p.windowLayout : null);
+  if (shiftFrac) {
+    // Null draws must enjoy exactly the freedoms the real run had: under a
+    // layout, outcomes rotate WITHIN each block interval, never across a
+    // set boundary; the legacy path keeps its window/series scopes.
+    if (layout) rotateWithinIntervals(chunks, layout, p.interlaceSeed, shiftFrac, windowShift);
+    else rotateLabels(chunks, shiftFrac, p.labelShiftScope, p.holdout);
+  }
 
-  const { trainChunks, testChunks, holdChunks, bandPct } = splitAndLabel(chunks, branch, p.holdout);
+  const split = layout
+    ? splitByLayout(chunks, branch, geo, layout, p)
+    : splitAndLabel(chunks, branch, p.holdout);
+  const { trainChunks, testChunks, holdChunks, bandPct } = split;
   const views = bracketLib.comboViews(combo.size, geo.featureHours / 24).views;
   // ONE training pass covers both windows: members predict over search+holdout
   // concatenated, then the calls are split. Training twice would be waste, and
@@ -394,7 +434,7 @@ async function unitTask(task) {
     bestEdge.holdoutMetrics = classifierMetrics(trainLabels, holdLabels, hc);
   }
 
-  const out = { best, declared, bestEdge, bandPct, testPeriods: testChunks.length, members: memberCalls.length };
+  const out = { best, declared, bestEdge, bandPct, testPeriods: testChunks.length, members: memberCalls.length, layoutMeta: split.layoutMeta || null };
 
   // MEMBER DUMP — everything the run learned, so it can be kept.
   // "Time is more valuable than storage" (owner, 2026-07-30). Models are
@@ -407,6 +447,7 @@ async function unitTask(task) {
     out.memberDump = {
       shiftFrac: shiftFrac ?? null,
       bandPct,
+      layout: split.layoutMeta || null,
       specs: members.map((m) => ({ ...m.spec, picked: m.picked })),
       models: isReal ? members.map((m) => m.model) : null,
       votes: {
@@ -483,4 +524,4 @@ async function nullRotationTask({ combo, branch, params, shiftIndex, nShifts, se
   };
 }
 
-module.exports = { unitTask, nullRotationTask, quorumCall, declaredQuorumFor, matchesDeclared, slimViewsFor, buildCombo, splitAndLabel, splitBounds, rotateLabels, specsFor };
+module.exports = { unitTask, nullRotationTask, quorumCall, declaredQuorumFor, matchesDeclared, slimViewsFor, buildCombo, splitAndLabel, splitByLayout, splitBounds, rotateLabels, windowShift, specsFor };
