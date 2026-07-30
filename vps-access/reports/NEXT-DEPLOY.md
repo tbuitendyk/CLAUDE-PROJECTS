@@ -56,11 +56,33 @@ exist (`best.holdout`, `:355`) and are simply not displayed.
 So the board's headline number is selected-on-itself, unlabelled, and has been
 read as a result for eleven cycles.
 
-To do:
-- Held-back figures become the primary columns.
-- Settings-choosing figures kept beside them, clearly marked as the window the
-  row was picked on and therefore flattering by construction.
-- Label every column with which window it came from.
+### Layout spec (owner, 2026-07-30)
+
+Both sets shown. Held-back gets the full treatment because it is what matters;
+the tuning-window set is compressed to make room.
+
+    [ ] #  setup  execution | TUNED ON SETTINGS WINDOW | HELD-BACK (what matters)
+                            | P&L        acc    W/T   | net P&L  acc   edge  W/T · g/t  stops
+                            | vs ctl     edge   g/t   |
+                            |  (small, light)          |  (full size)
+
+- Settings-window block: pairs stacked two-deep in one field each, in the small
+  light style already used for the sub-lines under `setup` and `execution`.
+  Net P&L over vs-control in one column; accuracy over edge in one column;
+  wins/trades over gross-per-trade in one column. Stops folded in or dropped
+  if it does not fit.
+- Held-back block: all of net P&L, accuracy, edge, wins/trades, gross-per-trade
+  and stops, at normal size.
+- Group headers over each block so which window a number came from is
+  unmissable rather than inferred from a tooltip.
+- Table may go WIDER if needed. **No horizontal scrollbar** — owner's standing
+  requirement, so column count and widths get checked against the narrowest
+  viewport before this ships.
+- Drop the `vs control*` asterisk footnote from the held-back block: there the
+  comparison IS meaningful, because the cell was chosen before that window was
+  scored. Keep the warning on the settings-window side only.
+
+### Also
 
 Also rename the variables. `testChunks` is the window we SHOP on and
 `holdChunks` is the genuinely held-back one, so "test" in this codebase means
