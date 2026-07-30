@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# classifier-cycle9-real-money-arm.sh -- re-measure the REAL census on
+# classifier-cycle13-reproduce-l9.sh -- reference check AFTER the L12 build.
 # today's build, because a 0.24-point margin cannot absorb any drift.
 #
 # WHY THIS COMES BEFORE THE MONEY QUESTION. Cycle 6 put the real run 0.24
@@ -39,6 +39,6 @@ curl -sS -X POST http://127.0.0.1:8093/api/bracketlab \
     "promoteK": 50,
     "minTrades": 10,
     "label": "L13 reproduce and keep L9",
-    "description": "The REAL census with money recorded, on the identical build as the cycle 8 null. Cycle 8 ran 19 scrambles carrying held-back P&L, but the money census was deployed at 08:10 and the last real run was 07:29 — so the null had money and the real arm did not, and there was nothing to compare against. This supplies the missing arm. Reading rule replaced BEFORE this number exists (see audit of -0811): the old spread-to-magnitude gate is meaningless for a statistic centred at zero by construction, so the rank test governs instead — real beats all 19 scrambles = the edge pays after fees at p=0.05; 18 of 19 = suggestive, no live money; weaker = the edge does not pay and cycle 6 stands as prediction that does not convert into money. Sanity check retained: the scrambles must LOSE money, and they do (median -$2,268, -0.053 per trade)."
+    "description": "L13: reproduce L9 exactly on the L12 build, and KEEP everything this time — models for all 170 setups, all 12 raw votes per period, per-member scores, both windows uncapped. Reading rule, declared before firing: directional accuracy 36.09% (7,187 of 19,913), net +$1,469.95, 98/170 beating baseline — EXACT match = engine sound after the L12 changes and L9 becomes a permanent dataset; ANY drift = stop, nothing else fires until the cause is found. Exactness across days is a fair bar: L7 reproduced L2 to every digit one day later. This is the reference check that was skipped before L10/L11, now run AFTER the code change instead of before it."
   }'
 echo
