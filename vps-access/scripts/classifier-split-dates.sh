@@ -23,7 +23,7 @@ cd /opt/general-classifier
 # identical. Separate processes are the fix here; the underlying cache bug is
 # logged separately.
 for SPEC in "ALL" "TRIM"; do
-node -e '
+SPEC="$SPEC" node -e '
 (async () => {
   const SPEC = process.env.SPEC;
   const { buildCombo, splitBounds } = require("./lib/bracketwork");
@@ -56,5 +56,5 @@ node -e '
     console.log("");
   }
 })().catch((e) => { console.error(e.message); process.exit(1); });
-' SPEC="$SPEC"
+'
 done
