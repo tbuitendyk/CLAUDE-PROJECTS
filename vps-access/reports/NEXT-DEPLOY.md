@@ -42,7 +42,32 @@ Until this exists, the platform cannot test a frozen model on new data, which
 is the test that actually matters — and is why cycle 11 answered the wrong
 question.
 
-## 3. Also outstanding, lower priority
+## 3. Show the HELD-BACK numbers on the board — NOT BUILT
+
+Owner, 2026-07-30: "well of course show the holdback data ... that's what the
+whole point is."
+
+Every column on the bracket-lab board — net P&L, accuracy, edge, gross per
+trade, stops — is computed on the SETTINGS-CHOOSING window, the same stretch
+each row was selected on. `bracketwork.js:323` scores accuracy against
+`testLabels`, and `:289` sweeps on `testChunks`. The held-back figures already
+exist (`best.holdout`, `:355`) and are simply not displayed.
+
+So the board's headline number is selected-on-itself, unlabelled, and has been
+read as a result for eleven cycles.
+
+To do:
+- Held-back figures become the primary columns.
+- Settings-choosing figures kept beside them, clearly marked as the window the
+  row was picked on and therefore flattering by construction.
+- Label every column with which window it came from.
+
+Also rename the variables. `testChunks` is the window we SHOP on and
+`holdChunks` is the genuinely held-back one, so "test" in this codebase means
+the opposite of what it normally implies. That name sits under every number on
+the board and is a standing trap for whoever reads it next.
+
+## 4. Also outstanding, lower priority
 
 - The symbol cache (`getMap`) keys on symbol alone and returns a cached range
   on a hit, **ignoring the requested date range**. Per-job worker pools mean
