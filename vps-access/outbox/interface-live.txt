@@ -1,0 +1,87 @@
+The inspection & null-test interface is live — and its first output matters
+
+tl;dr both panels you ordered are deployed on the Bracket Lab tab: an INSPECT
+button on every promoted board row opens the 12 members of that setup
+individually, and a NULL TESTS panel runs the two scrambled-data comparisons
+against any pair of stored runs — all read-only, nothing fired, every table
+carrying its own name and key. While verifying the endpoints I necessarily saw
+the first result, so you get it straight: row #1 (UNI daily-4d) beats ITS OWN
+noise 19 of 19 — but FAILS the selection-aware test, beating only 9 of 19
+noise-boards' best rows. Being top of this board is currently NOT better than
+being top of a board built on nothing. That is the honest price of picking
+winners after looking, and it is now a number you can compute yourself with
+two dropdowns and a button.
+
+WHERE EVERYTHING IS
+
+Bracket Lab tab, under the Survivor board:
+
+1. INSIDE A SETUP. Click "inspect" on any promoted row. You get:
+   - the member table: each of the 12 models' OWN accuracy and edge on both
+     windows, how often it commits to a direction at all, and — when the
+     committee actually traded — how often that member voted with the trade.
+   - the agreement matrix: for every pair of members, of the periods where
+     both committed, the percentage where they agreed. Cells at 80%+ are
+     highlighted red: those pairs are one opinion counted twice. This is how
+     you see how many INDEPENDENT opinions "12 members" really is.
+   Works on any run from today onward; older runs saved nothing and say so.
+
+2. NULL TESTS. Pick a real run, pick a scramble run, pick a setup (or leave
+   it at "board best"), press the button. Two verdicts appear with their
+   rules printed beside them:
+   - PER-SETUP: is this setup better than its own noise? Its real held-back
+     dollars against the same setup in each scrambled world.
+   - SELECTION-AWARE: is topping the board better than topping a NOISE board?
+     Each scrambled world contributes its own best-of-170. This is the test
+     that prices in the fact that the winner was picked after looking.
+   Plus a sanity line: the scrambled population must mostly lose (fees). If
+   noise ever profits, the simulation is broken and the panel says so in bold.
+
+FIRST OUTPUT, VERIFYING THE TOOL ON YOUR ROW #1
+
+  setup: UNIUSDT daily-4d confident-only, market entry, 4-of-12, held-back
+  net +$382.37 on 217 trades
+
+  per-setup test        beats 19/19   PASS   (better than its own noise)
+  selection-aware test  beats  9/19   FAIL   (noise boards' best rows beat it
+                                              in more than half the worlds)
+  sanity                54% of scrambled setups lose   OK
+
+READING THAT HONESTLY
+
+The pass says UNI-4d's result is not what that setup produces on nothing.
+The fail says the STRENGTH OF BEING #1 is fully explained by picking the best
+of 170 — a noise board's best row usually looks this good too. Consistent
+with both: there may be modest real signal spread across the board (the
+aggregate evidence we already have) without any single row being
+distinguishable from a well-picked fluke.
+
+Which is precisely why the freeze decision is yours to make with both numbers
+in front of you, and why the forward paper test — not this window — is the
+real judge of whatever we freeze.
+
+One inspector detail from the same verification: this setup's individual
+members are extremely quiet (member 1 commits on ~1% of periods alone), so
+its trades come from rare moments of overlap, not constant opinions. Worth
+seeing on the matrix yourself.
+
+COACHING COMES NEXT
+
+You said build first, coach after. The panels each carry their keys, but say
+the word and I will walk you through a worked read of one inspect view and
+one verdict, column by column, on whichever row you choose.
+
+CODE THAT WENT LIVE (standing rule): the two panels, three read-only
+endpoints with strict path handling (hostile paths verified refused), pure
+analysis libraries with unit tests, and mutations watched failing — including
+one where the selection test quietly tracked the picked setup through the
+scrambles instead of taking each world's own best, which would have made the
+test flattering and wrong.
+
+LOOP LEDGER
+  L12  keep everything; board shows the window that matters — deployed
+  L13  L9 reproduced exactly, 170 model files saved — audited
+  L14-prep  the interface above — deployed and verified
+  L14  waiting on our consult, now with the tools in your hands
+
+c.
