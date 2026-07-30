@@ -41,7 +41,15 @@ print(f"\n== L15 SELECTION BOARD — interlaced arm, holdout money, top 15 of {l
 print("   (holdout $ per $100 book | trades | $/trade | prediction edge pts | quorum | cell)")
 for r in sorted(inter, key=lambda r:-(r['holdPnl'] or -9e9))[:15]:
     gt=(r['holdPnl']/r['holdTrades']) if r['holdTrades'] else 0
-    print(f"  {r['trade']:9s} {r['geometry']:9s} {r['decision']:11s} ${r['holdPnl']:+9.2f} {r['holdTrades']:4d}t ${gt:+6.2f}/t edge {r['holdEdge'] if r['holdEdge'] is not None else '—'} q{r['cellQuorum']} {r['cellEntry']}/{r['cellGate']}/d{r['cellDMult']}/t{r['cellTHours']}h")
+    val=lambda v: f"{v:+8.2f}" if v is not None else '     —'
+    vsl=(r['holdPnl']-r['holdAlwaysLong']) if r.get('holdAlwaysLong') is not None else None
+    vbh=(r['holdPnl']-r['holdBuyHold']) if r.get('holdBuyHold') is not None else None
+    e=r['holdEdge']
+    print(f"  {r['trade']:9s} {r['geometry']:9s} {r['decision']:11s} ${r['holdPnl']:+9.2f} {r['holdTrades']:4d}t ${gt:+6.2f}/t edge {f'{100*e:+5.1f}pt' if e is not None else '    —'} vsLong {val(vsl)} vsHold {val(vbh)} q{r['cellQuorum']} {r['cellEntry']}/{r['cellGate']}/d{r['cellDMult']}/t{r['cellTHours']}h")
+skill=sum(1 for r in sorted(inter, key=lambda r:-(r['holdPnl'] or -9e9))[:15] if r.get('holdAlwaysLong') is not None and (r['holdPnl']-r['holdAlwaysLong'])>0)
+print(f"  top-15 rows beating their own always-long control: {skill}/15")
+dup=len(inter)-len({(r['trade'],r['geometry'],r['cellEntry'],r['cellGate'],r['cellDMult'],r['cellTHours'],r['cellQuorum'],round(r['holdPnl'] or 0,2)) for r in inter})
+print(f"  argmax/directional rows landing on the IDENTICAL winning cell+money: {dup} of {len(inter)} (population is effectively smaller)")
 cmp=post(f"{B}/api/bracketlab/compare", {"a": JOB})
 ov=cmp["survivorOverlap"]
 print(f"\n== SURVIVOR OVERLAP: {ov['sharedCount']}/10 setups shared between the arms' top-10s ==")
