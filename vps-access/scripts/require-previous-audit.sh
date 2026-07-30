@@ -32,8 +32,14 @@ import sys, json
 try: bs = json.load(sys.stdin)['batches']
 except Exception: raise SystemExit
 for b in bs:
-    if b['id'].startswith('bracketlab-') and b.get('status') == 'done':
-        print(b['id']); break
+    if not (b['id'].startswith('bracketlab-') and b.get('status') == 'done'):
+        continue
+    # Preflights are not experiments: no reading rule, no findings, nothing to
+    # audit. Skipping them here is a carve-out, not a loophole — the gate
+    # exists to force analysis of runs that were meant to answer a question.
+    if '-smoke' in b['id'] or '-cost-probe' in b['id']:
+        continue
+    print(b['id']); break
 " 2>/dev/null)
 
 if [ -z "$LAST" ]; then
