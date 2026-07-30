@@ -92,7 +92,36 @@ Also rename the variables. `testChunks` is the window we SHOP on and
 the opposite of what it normally implies. That name sits under every number on
 the board and is a standing trap for whoever reads it next.
 
-## 4. Also outstanding, lower priority
+## 4. Store BOTH windows' figures for EVERY setup, uncapped — NOT BUILT
+
+Owner, 2026-07-30: "save all those numbers of course. time is more valuable
+than storage."
+
+**Decouple storage from display.** The leaderboard is capped at 50 rows and
+sorted by profit, so it discards the worst performers — precisely the ones
+worth investigating. Cycle 11's four XRP disasters could not be traced because
+their execution settings existed only on a board that excluded them.
+
+The census holds all 170 setups and is never sorted by outcome. It should
+therefore carry EVERYTHING, for every setup:
+
+Already stored: held-back P&L, trades, wins, gross-per-trade, accuracy, edge,
+directional hits/calls, the baseline it was scored against, always-long and
+buy-and-hold controls, and (new) the execution settings + within-bar ambiguity.
+
+Still missing — currently only on the capped leaderboard:
+- settings-window net P&L, trades, wins, gross-per-trade, stops
+- settings-window vs-control
+- held-back stops as its own field
+
+Add those so both windows are fully recorded for all 170. Display can stay
+capped; storage must not be.
+
+Rule going forward: **anything the board displays must first exist in the
+census.** A number that can be seen but not retrieved is a number that cannot
+be checked later.
+
+## 5. Also outstanding, lower priority
 
 - The symbol cache (`getMap`) keys on symbol alone and returns a cached range
   on a hit, **ignoring the requested date range**. Per-job worker pools mean
