@@ -61,20 +61,23 @@ read as a result for eleven cycles.
 Both sets shown. Held-back gets the full treatment because it is what matters;
 the tuning-window set is compressed to make room.
 
-    [ ] #  setup  execution | TUNED ON SETTINGS WINDOW | HELD-BACK (what matters)
-                            | P&L        acc    W/T   | net P&L  acc   edge  W/T · g/t  stops
-                            | vs ctl     edge   g/t   |
-                            |  (small, light)          |  (full size)
+    [ ] #  setup  execution ‖ TUNED ON SETTINGS WINDOW ‖ HELD-BACK — what matters
+                            ‖ P&L      acc    W/T   st ‖ net P&L  acc   edge  W/T · g/t  stops
+                            ‖ vs ctl   edge   g/t      ‖
+                            ‖    (small, light)        ‖        (full size)
 
 - Settings-window block: pairs stacked two-deep in one field each, in the small
   light style already used for the sub-lines under `setup` and `execution`.
   Net P&L over vs-control in one column; accuracy over edge in one column;
-  wins/trades over gross-per-trade in one column. Stops folded in or dropped
-  if it does not fit.
+  wins/trades over gross-per-trade in one column. **Stops kept on this side
+  too** (owner, 2026-07-30) — small, single line.
 - Held-back block: all of net P&L, accuracy, edge, wins/trades, gross-per-trade
   and stops, at normal size.
 - Group headers over each block so which window a number came from is
   unmissable rather than inferred from a tooltip.
+- **A vertical divider between the two blocks** (owner, 2026-07-30) — a real
+  ruled border, carried down every row and through the header, not just a gap.
+  It has to survive the row striping.
 - Table may go WIDER if needed. **No horizontal scrollbar** — owner's standing
   requirement, so column count and widths get checked against the narrowest
   viewport before this ships.
