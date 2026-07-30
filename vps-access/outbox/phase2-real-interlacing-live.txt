@@ -1,0 +1,57 @@
+Phase 2 shipped: real interlacing is live, with the comparison surface
+
+tl;dr your window-layout design is deployed and verified end to end on real
+data: quota-first sizing, your a/b/c slotting, train-side purge, seeded and
+stored, selectable per job, with the built-in and linked comparisons. The
+first smoke's comparison already favours the interlaced arm on both test
+assets — read as a smoke, not a finding.
+
+WHAT SHIPPED (engine 1.26.0, reversible as one commit per your constraint)
+- Window layout selector on the bracket-lab form, per job:
+    legacy         today's 70/15/15 percent split, byte-identical default
+    chronological  quota-first: evaluation windows sized in whole 63-day
+                   blocks, contiguous at the recent end, train-side purge
+    interlaced     the same quota sprinkled through history: groups of
+                   5x49-day training + 2x63-day evaluation blocks, slotted
+                   by your rule (search-or-holdout-first coin flip, first
+                   eval block in position 2 or 3, second in 5/6/7), so
+                   evaluation blocks can never touch
+    both           every setup twice, one arm per layout, one seed --
+                   double compute, built-in comparison
+- The seed is stored with the job: same settings = same layout, forever.
+- Shared-band switch for strict comparisons: one band fit on chunks that
+  are training in BOTH layouts, so the band cannot differ between arms.
+- Null scrambles under a layout rotate outcomes inside each block, never
+  across a set boundary -- noise gets exactly the freedoms the real run had.
+- Comparison panel in the interface: paired per-setup table (money per
+  trade, so the arms compare fairly), survivor overlap between the two
+  top-10s, and totals labeled as cross-population. A "both" run compares
+  its own arms; two separate runs link ONLY when every stored setting is
+  identical -- the endpoint refuses otherwise and names the differences,
+  and it warns loudly when engine versions differ.
+
+YOUR INVARIANT, ENFORCED AND THEN CORRECTED BY REALITY
+For any time-period shape, both layouts hold identical trade-period counts
+in search and holdout. The unit test proved it on clean data; the FIRST
+end-to-end smoke on real data then FAILED it (504 vs 501/498) -- missing-
+candle gaps fall unevenly, and the interlaced blocks land in older,
+gappier eras. Fix: both arms trim their evaluation sets to the common
+per-set count, deterministically. Second smoke: 501=501 and 498=498 on
+both assets, PASS. That failure-then-fix is QC 50: equal potential slots
+do not imply equal actual periods, and only real-data smokes catch that
+class of fault.
+
+THE SMOKE'S OWN COMPARISON (2 assets, daily-3d, shared band -- a smoke,
+not evidence)
+  BTCUSDT  chronological -$361.75 (447 trades)   interlaced +$236.92 (501)
+  ETHUSDT  chronological  +$43.63 (360 trades)   interlaced +$381.35 (501)
+Money is $ per $100 book on each arm's held-back window; the two arms'
+windows are different calendar periods, which is the entire point of the
+comparison and the reason to read per-trade rates, not raw sums.
+
+NEXT
+The full instrument is in your hands in the interface. When you want the
+real thing: a 17-asset "both" run, all shapes, is the natural first job --
+say the word and it fires under the standard preflight.
+
+c.
