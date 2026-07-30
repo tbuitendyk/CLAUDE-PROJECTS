@@ -1,0 +1,49 @@
+Phase 1 shipped: echo committee members removed (QC 49)
+
+tl;dr the fake "interlaced" committee regime is gone; committees are now 6
+genuinely distinct members; 148 tests pass; deployed and smoke-verified end
+to end. (You also just received a duplicate of the old tooltips mail — my
+mistake with the outbox mechanism, ignore it.)
+
+WHAT CHANGED
+- Every bracket-lab committee had 12 seats, but 6 were near-copies of the
+  other 6: the "interlaced" training variant never interlaced anything, it
+  only trimmed ~10% of the same training window at seams that protected
+  nothing. Those 6 echo seats are gone. A committee is now one member per
+  (data view x model type): 6 seats for single assets, 8 with context
+  assets. Every vote is a distinct opinion, so agreement levels now mean
+  what they appear to mean.
+- The inspect panel still opens old saved setups (their members show the
+  historical third label); new setups show two-part members.
+- The meta-lens screen is untouched -- its interlaced split is your
+  original design working as specified. The old permutation screen is also
+  untouched; it still carries the dead regime toggle and can be retired
+  separately if you want.
+
+VERIFICATION
+- New guard test: every committee seat must be a unique (view, model) pair
+  with no extra dimensions. Watched failing first: with the regime
+  reintroduced it fails "12 !== 6". QC 49 upgraded to AUTOMATED.
+- Full suite: 148 tests pass.
+- Deployed, service healthy. Two-minute smoke job on the live engine:
+  PASS, and its saved dumps carry exactly 6 vote streams per unit where
+  the old engine wrote 12.
+
+KNOWN CONSEQUENCES, ON THE RECORD
+- New boards are not comparable to the L9/L13 record (those committees
+  were 12 seats, half echoes). The old record stays intact and readable.
+- Minute-confirmation of cells from OLD jobs would now rebuild a different
+  committee; its self-check will refuse rather than compare apples to
+  oranges. Confirm new jobs, not pre-change ones.
+- Quorum menus on new runs go 1..6 (1..8 with contexts). Agreement
+  percentages will read lower and mean more.
+
+NEXT
+Phase 2 as specced with you: quota-first window sizing (identical
+potential trade days per shape in both modes), 49-day train / 63-day eval
+blocks, your 2-or-3 / 5-6-or-7 slotting, seeded and stored, train-side
+purge, chronological / interlaced / both selectable, and the comparison
+that refuses unless all stored settings match. Starting now; reversible as
+one commit per your constraint.
+
+c.
