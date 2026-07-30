@@ -14,9 +14,21 @@ win 55.9%, vs hold $1,385.92 — every declared figure identical to L9. Runtime
 21.5 min vs L9's 21.8. Persistence verified: 170/170 files, 0 write failures,
 real-arm file carries 12 models + 12 vote streams + 12 per-member scores.
 
-## 3–5. Metric counts / omits / populations
-No change to any metric this run — that was the point. One arm, reference
-check. Nothing new found.
+## 3. What does the metric COUNT that it should not?
+Nothing new — every metric is L9's, bit for bit, which was the declared
+point. The standing caveats on those metrics (census total sums 170
+overlapping setups, QC 36; accuracy counts stand-asides, QC 35) carry over
+unchanged and are recorded against L9.
+
+## 4. What does the metric OMIT that it should include?
+Nothing beyond L9's recorded omissions (fee sensitivity, QC 37). This run
+added the one thing the record DID omit — the fitted models, votes and
+per-member scores now on disk — which was its purpose.
+
+## 5. Are the two compared arms the same population?
+Yes, trivially: the comparison is L13-vs-L9 on the identical configuration,
+same data range, same split, same committee. Runtime differed (21.5 vs 21.8
+min); every number matched exactly.
 
 ## 6. No-skill share
 Unchanged from the L9 audit (noise pays ~34.2% of directional calls; the
@@ -33,13 +45,21 @@ Not this run's job; L9's null (cycle 8's 19 scrambles) stands.
   itself. Re-pinned explicitly before reading.
 - *Model files would carry models.* Verified on disk, not assumed.
 
-## 9. Is the planned next step still correct?
-Yes: HARD STOP for the L14 consult (owner-ordered exception to the no-handoff
-rule). The owner selects freeze candidates interactively; null-shift timing on
-survivors is the standing agenda item. Nothing fires until that conversation.
+## 9. Is the previously planned next step STILL correct?
+It was not, and it changed (owner consult, 2026-07-30, after this note was
+first written): the freeze consult moved to L15, and L14 became the rebuild
+of THIS run's search on the corrected instrument — 6-member committees
+(the 12-seat committees here were half echoes, QC 49) under both window
+layouts (quota-first chronological + interlaced, phase 2). L13's board is
+therefore CONTEXT for the L15 selection, not its source; the L14 board
+supersedes it. L13's role — proving the engine reproduces L9 and keeping
+L9's data permanently — is untouched by any of that.
 
-## 10. New QC entries
+## 10. New QC-REGISTER entries
 - **48** — a selector file pinned for one investigation silently redirects the
   next. Every reader now prints the doc id it actually read (already true —
   which is what caught it); pins get reset as part of reading, not left for
   the next session to trip on.
+- (Post-run, same day: the interlacing investigation and phase-2 code audit
+  added 49-53. They belong to the platform work that followed this run, not
+  to L13 itself, and are recorded in the register with their own tests.)
