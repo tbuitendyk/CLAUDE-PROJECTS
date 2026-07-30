@@ -1596,6 +1596,30 @@ function startBracketLab(params) {
                 ? res.best.holdout.holds.alwaysLong : null,
               holdBuyHold: res.best && res.best.holdout && res.best.holdout.holds
                 ? res.best.holdout.holds.buyHold : null,
+              // THE SETTINGS THAT EARNED THE MONEY, recorded every time.
+              //
+              // The census stored what each setup made but not WHICH execution
+              // settings made it, so a suspicious figure could not be traced to
+              // the trade that caused it. The winning settings appeared only on
+              // the profit-ranked leaderboard, which is capped and therefore
+              // excludes exactly the setups worth investigating.
+              //
+              // Cost of that gap: cycle 11's four worst setups averaged losses
+              // per trade up to 4x the widest stop on the menu. Whether that is
+              // unprotected market entry (legitimate — market cells carry no
+              // stop rails) or a pricing fault could not be determined from the
+              // record at all, only by re-running.
+              cellEntry: res.best ? (res.best.entry || 'breakout') : null,
+              cellGate: res.best ? (res.best.gate ?? null) : null,
+              cellDMult: res.best ? (res.best.dMult ?? null) : null,
+              cellTHours: res.best ? (res.best.tHours ?? null) : null,
+              cellTrailMult: res.best ? (res.best.trailMult ?? null) : null,
+              cellArmMult: res.best ? (res.best.armMult ?? null) : null,
+              cellQuorum: res.best ? (res.best.quorum ?? null) : null,
+              // How much of the result rests on an unknowable within-bar
+              // ordering. Meaningless to report money without it.
+              cellAmbiguous: res.best && res.best.holdout
+                ? (res.best.holdout.ambiguous ?? null) : null,
             });
           }
           if (res.callSeries && doc.callSeries.length < CALL_SERIES_MAX) {

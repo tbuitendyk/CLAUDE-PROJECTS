@@ -611,6 +611,32 @@ module.exports = {
       assert.ok(!f, `shiftFrac ${String(f)} must be falsy so 'if (shiftFrac)' skips rotation`);
     }
   },
+  async everyMoneyFigureRecordsTheSettingsThatEarnedIt() {
+    // A money figure with no record of the trade that produced it cannot be
+    // investigated. Cycle 11's four worst setups lost up to 4x the widest stop
+    // per trade, and whether that was unprotected market entry or a pricing
+    // fault was UNANSWERABLE from the stored record — the winning settings
+    // lived only on the profit-ranked leaderboard, which is capped and so
+    // excludes precisely the setups worth looking at.
+    //
+    // Owner, 2026-07-30: record the execution settings every time.
+    const fs = require('fs');
+    const path = require('path');
+    const src = fs.readFileSync(path.join(__dirname, '..', 'lib', 'batch.js'), 'utf8');
+    const start = src.indexOf('doc.edgeCensus.push({');
+    assert.ok(start > 0, 'could not find the census push');
+    const block = src.slice(start, src.indexOf('});', start));
+    // Money is recorded...
+    for (const f of ['holdPnl', 'holdTrades']) {
+      assert.ok(block.includes(`${f}:`), `census must record ${f}`);
+    }
+    // ...so the settings behind it must be too.
+    for (const f of ['cellEntry', 'cellGate', 'cellDMult', 'cellTHours',
+                     'cellTrailMult', 'cellArmMult', 'cellQuorum', 'cellAmbiguous']) {
+      assert.ok(block.includes(`${f}:`),
+        `census records money but not ${f} — an untraceable figure`);
+    }
+  },
   async aMultiScrambleJobCarriesItsOwnRealArm() {
     // Cycle 8 ran 19 scrambles and had NOTHING to compare them against: the
     // expansion started at r=1, so the job produced only nulls, and the real
