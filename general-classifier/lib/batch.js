@@ -1172,7 +1172,7 @@ const slimViewsFor = (size) => (size === 1 ? ['full', 'prices', 'volume'] : ['fu
 // the same execution cell scored on every asset, so each asset costs one
 // look instead of the ~1,260 a menu sweep spends. The quorum travels as a
 // RATIO of the member set (row 9's 4-of-12 = 1/3), so it means the same
-// thing whether a combo yields 12 members (singles) or 16 (with contexts).
+// thing whether a combo yields 6 members (singles) or 8 (with contexts).
 // Only the PROMOTED stage carries every rung, so declared cells are read
 // there; the slim stage only ever has the majority-vote stream.
 function declaredQuorumFor(dec, members) {

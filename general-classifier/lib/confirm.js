@@ -45,13 +45,11 @@ async function confirmCell({ combo, branch, cell, quorum, params, onProgress = (
   const memberCalls = [];
   for (let i = 0; i < specs.length; i++) {
     const spec = specs[i];
-    onProgress(`member ${i + 1}/${specs.length} (${spec.model}/${spec.view}/${spec.regime})`);
-    const { interlacedPurge } = require('./pipeline');
-    const fit = spec.regime === 'interlaced' ? interlacedPurge(trainChunks, geo) : trainChunks;
+    onProgress(`member ${i + 1}/${specs.length} (${spec.model}/${spec.view})`);
     const { calls } = await bracketLib.trainMember({
       model: spec.model,
       viewIdx: views[spec.view],
-      trainChunks: fit,
+      trainChunks,
       testChunks: predictChunks,
       decision: branch.decision,
       tradeMap: built.maps.trade,

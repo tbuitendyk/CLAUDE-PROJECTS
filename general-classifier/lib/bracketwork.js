@@ -16,7 +16,7 @@
 // before it is trusted.
 
 const { toHourlyMap, forwardFill, scoreDiff, balancedBandPct, GEOMETRIES } = require('./dataset');
-const { loadSymbol, loadSymbolAll, monthList, deriveShift, interlacedPurge, MIN_CHUNKS } = require('./pipeline');
+const { loadSymbol, loadSymbolAll, monthList, deriveShift, MIN_CHUNKS } = require('./pipeline');
 const bracketLib = require('./bracket');
 const { REAL_FEE_PER_LEG } = require('./paper');
 const { classifierMetrics } = require('./metrics');
@@ -203,11 +203,10 @@ function splitAndLabel(chunks, branch, holdout) {
 async function trainMembers(specs, views, trainChunks, testChunks, branch, maps, geo) {
   const out = [];
   for (const spec of specs) {
-    const fit = spec.regime === 'interlaced' ? interlacedPurge(trainChunks, geo) : trainChunks;
     const { calls, model, picked } = await bracketLib.trainMember({
       model: spec.model,
       viewIdx: views[spec.view],
-      trainChunks: fit,
+      trainChunks,
       testChunks,
       decision: branch.decision,
       tradeMap: maps.trade,
@@ -221,11 +220,20 @@ async function trainMembers(specs, views, trainChunks, testChunks, branch, maps,
   return out;
 }
 
+// The committee: one member per (view x model). The old second "regime"
+// dimension (full vs "interlaced") was removed 2026-07-30 on the owner's
+// order: it never interlaced anything — it only trimmed ~10% of the same
+// contiguous window at internal 49-day seams that protected nothing — so
+// half the committee were near-copies of the other half, inflating quorum
+// counts without adding an opinion (QC 49). Promoted committees are now 6
+// members (singles) / 8 (with contexts), and every vote is a distinct view
+// of the data. Real interlacing returns as a WINDOW LAYOUT in phase 2,
+// not as a member variant.
 function specsFor(size, stage) {
   const specs = [];
   for (const v of slimViewsFor(size)) {
-    if (stage === 'slim') specs.push({ model: 'logreg', view: v, regime: 'full' });
-    else for (const model of ['logreg', 'boost']) for (const regime of ['full', 'interlaced']) specs.push({ model, view: v, regime });
+    if (stage === 'slim') specs.push({ model: 'logreg', view: v });
+    else for (const model of ['logreg', 'boost']) specs.push({ model, view: v });
   }
   return specs;
 }

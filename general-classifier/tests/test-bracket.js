@@ -781,6 +781,27 @@ module.exports = {
     assert.ok(cap >= 19,
       `draw cap ${cap} floors the best achievable p at ${(1 / (cap + 1)).toFixed(3)}, above 0.05`);
   },
+  async everyCommitteeSeatIsADistinctOpinion() {
+    // The removed "regime" dimension (2026-07-30, QC 49) filled half the
+    // committee with near-copies — same view, same algorithm, ~90% identical
+    // training rows — so quorum counts read inflated. This guards against any
+    // member dimension that does not change what the member LOOKS AT or HOW
+    // it learns: every promoted seat must be a unique (view, model) pair and
+    // specs must carry nothing else.
+    const { specsFor } = require('../lib/bracketwork');
+    for (const [size, views] of [[1, 3], [2, 4], [3, 4]]) {
+      const prom = specsFor(size, 'promoted');
+      assert.strictEqual(prom.length, views * 2, `promoted committee for size ${size}`);
+      const keys = new Set(prom.map((s) => `${s.view}|${s.model}`));
+      assert.strictEqual(keys.size, prom.length, 'duplicate (view, model) seats');
+      for (const s of prom) {
+        assert.deepStrictEqual(Object.keys(s).sort(), ['model', 'view'],
+          `spec carries extra dimensions: ${JSON.stringify(s)}`);
+      }
+      const slim = specsFor(size, 'slim');
+      assert.strictEqual(slim.length, views, `slim committee for size ${size}`);
+    }
+  },
   async rotationTagSurvivesPromotion() {
     // A multi-rotation null is one job holding several draws. If the shift tag
     // does not survive into the promoted payload, every draw silently runs the

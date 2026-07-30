@@ -1825,29 +1825,33 @@
   function renderInspect(d, label) {
     const pc = (v) => (v == null ? '—' : (100 * v).toFixed(1) + '%');
     const sp = (v) => (v == null ? '—' : `<span class="${v >= 0 ? 'up' : 'down'}">${v >= 0 ? '+' : ''}${(100 * v).toFixed(1)}%</span>`);
+    // Dumps saved before 2026-07-30 carry a third spec field ("regime") from
+    // the removed near-duplicate member dimension; show it when present so
+    // old records stay readable.
+    const specLabel = (s) => [s.model, s.view, s.regime].filter(Boolean).map(esc).join(' · ');
     const rows = d.members.map((m) => `<tr>
       <td>${m.i + 1}</td>
-      <td>${esc(m.spec.model)} · ${esc(m.spec.view)} · ${esc(m.spec.regime)}</td>
+      <td>${specLabel(m.spec)}</td>
       <td>${m.search ? pc(m.search.testAcc) : '—'} ${m.search ? sp(m.search.edge) : ''}</td>
       <td>${m.hold ? pc(m.hold.testAcc) : '—'} ${m.hold ? sp(m.hold.edge) : ''}</td>
       <td>${m.hold && m.hold.directionalCalls ? `${m.hold.directionalHits}/${m.hold.directionalCalls}` : '—'}</td>
       <td>${pc(m.activeHold ?? m.activeSearch)}</td>
       <td>${pc(m.withTradeHold)}</td>
     </tr>`).join('');
-    const pw = d.pairwise.map((row, a) => `<tr><th title="member ${a + 1}: ${esc(d.members[a].spec.model)} · ${esc(d.members[a].spec.view)} · ${esc(d.members[a].spec.regime)}">${a + 1}</th>${row.map((v, b) =>
+    const pw = d.pairwise.map((row, a) => `<tr><th title="member ${a + 1}: ${specLabel(d.members[a].spec)}">${a + 1}</th>${row.map((v, b) =>
       `<td title="${a === b ? 'same member' : v == null ? `members ${a + 1} and ${b + 1}: fewer than 5 periods where both committed — not enough to score` : `members ${a + 1} and ${b + 1} agreed on ${Math.round(100 * v)}% of the periods where both committed${v >= 0.8 ? ' — effectively one opinion counted twice' : ''}`}" class="${v != null && v >= 0.8 && a !== b ? 'pw-hot' : ''}">${a === b ? '·' : v == null ? '—' : Math.round(100 * v)}</td>`).join('')}</tr>`).join('');
     return `
       <h3>${esc(label)} — quorum ${d.quorum}, band ±${d.bandPct != null ? d.bandPct.toFixed(2) : '?'}%</h3>
       <p class="note"><strong>Member table.</strong> One row per committee member.
-        KEY — <em>member</em>: model type · data view · training variant.
+        KEY — <em>member</em>: model type · data view (older saved setups show a third part, a now-removed training variant).
         <em>tuning / held-back</em>: that member's OWN accuracy (and edge vs baseline) on each window — accuracy points, not money.
         <em>dir hits</em>: held-back directional calls it got exactly right.
         <em>active</em>: how often it commits to a direction at all.
         <em>with trade</em>: when the committee traded, how often this member voted with the traded direction —
         high for the same few members every time means one opinion echoed, not twelve.</p>
       <div class="tablewrap"><table>
-        <tr><th title="Member number, 1-12 — matches the rows and columns of the agreement matrix below">#</th>
-        <th title="What this member is: model type (logreg = weighted-sum / boost = stack of decision rules) · which slice of the data it sees (full / prices only / volume only) · training variant (full history, or interlaced = periods adjacent to the evaluation data dropped so answers cannot bleed across)">member</th>
+        <tr><th title="Member number — matches the rows and columns of the agreement matrix below">#</th>
+        <th title="What this member is: model type (logreg = weighted-sum / boost = stack of decision rules) · which slice of the data it sees (full / prices only / volume only). Setups saved before 2026-07-30 show a third part — a 'full'/'interlaced' training variant that was removed because the two variants were near-copies of each other (the 'interlaced' one never interlaced; it only dropped ~10% of the same training window)">member</th>
         <th title="This member's OWN accuracy on the tuning window, with its edge (accuracy minus the always-guess-the-commonest baseline) beside it. Accuracy points, not money. The committee was tuned on this window, so these read flattering.">tuning</th>
         <th title="The same two figures on the HELD-BACK window — the slice nothing was chosen with. This is the pair that matters.">held-back</th>
         <th title="Held-back directional calls this member got exactly right / the directional calls it made. A call of up or down on a flat period counts as a miss.">dir hits</th>
@@ -1857,9 +1861,9 @@
       <p class="note"><strong>Agreement matrix (${d.pairwiseWindow} window).</strong>
         KEY — cell (a,b): of the periods where BOTH members committed to a direction, the percentage where they
         agreed. — means fewer than 5 shared commitments. Values ≥80% are highlighted: members that near-always
-        agree are one opinion counted twice, so "12 members" may be far fewer real opinions.</p>
+        agree are one opinion counted twice, so the committee may hold fewer real opinions than seats.</p>
       <div class="tablewrap"><table class="pw">
-        <tr><th title="Rows and columns are member numbers from the table above"></th>${d.members.map((m) => `<th title="member ${m.i + 1}: ${esc(m.spec.model)} · ${esc(m.spec.view)} · ${esc(m.spec.regime)}">${m.i + 1}</th>`).join('')}</tr>${pw}</table></div>
+        <tr><th title="Rows and columns are member numbers from the table above"></th>${d.members.map((m) => `<th title="member ${m.i + 1}: ${specLabel(m.spec)}">${m.i + 1}</th>`).join('')}</tr>${pw}</table></div>
       <p class="note">committee at quorum ${d.quorum}: ${d.committee.holdTrades}/${d.committee.holdPeriods} held-back periods traded,
         ${d.committee.searchTrades}/${d.committee.searchPeriods} tuning periods.</p>`;
   }
@@ -1996,7 +2000,7 @@
       const dumpFile = censusRow && censusRow.modelFile ? censusRow.modelFile.split('/').pop() : null;
       return `<tr class="${l.stage === 'promoted' ? 'hilite' : ''}">
         <td>${selectable ? `<input type="radio" name="bl-sel" class="bl-sel" data-key="${esc(l.key)}" data-stage="${esc(l.stage)}" ${isSel ? 'checked' : ''}>` : ''}
-          ${l.stage === 'promoted' && dumpFile ? `<button class="bl-inspect" data-file="${esc(dumpFile)}" data-quorum="${l.quorum}" data-label="${esc(comboLabel(l))} ${esc(l.geometry)} ${esc(l.decision)}" title="Open the 12 members of this setup individually">inspect</button>` : ''}</td>
+          ${l.stage === 'promoted' && dumpFile ? `<button class="bl-inspect" data-file="${esc(dumpFile)}" data-quorum="${l.quorum}" data-label="${esc(comboLabel(l))} ${esc(l.geometry)} ${esc(l.decision)}" title="Open this setup's committee members individually">inspect</button>` : ''}</td>
         <td>${i + 1}</td>
         <td><strong>${esc(comboLabel(l))}</strong> <span class="bl-stage">${l.stage === 'promoted' ? 'prom' : 'slim'}</span>
           <div class="cellsub">${esc(l.geometry)} · ${band} · ${esc(l.decision)} · ${l.weekdaysOnly ? '24/5' : '24/7'}</div></td>
@@ -2122,7 +2126,7 @@
     // (owner, 2026-07-30: every check runnable from the interface,
     // generalized, not just the ones that matter for one row).
     const inspectBlock = `
-      <div class="section"><h2>Inside a setup — the 12 members individually</h2>
+      <div class="section"><h2>Inside a setup — the committee members individually</h2>
       <p class="note">Click <em>inspect</em> on any promoted row above. Runs from 2026-07-30 onward
         save every member's fitted model, votes and solo scores; older runs saved nothing and will say so.</p>
       <div id="bl-inspect-out"></div></div>`;
