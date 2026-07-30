@@ -1,0 +1,66 @@
+L13: exact reproduction, everything saved — stopping for the L14 consult
+
+tl;dr the engine reproduced L9 to the last digit on the new build — same
+36.09% accuracy on the same 7,187-of-19,913 calls, same +$1,469.95, same
+98-of-170 — and this time nothing was thrown away: all 170 setups' models,
+votes and per-member scores are on disk (17 MB, zero write failures). The
+engine is sound after the L12 changes, L9 is now a permanent dataset, and I
+have STOPPED as agreed. The next move is ours together: picking which
+candidates to freeze and run forward, and settling when scrambled testing
+applies to survivors picked off the board.
+
+THE REPRODUCTION
+
+TABLE 1 -- L9 AGAINST ITS REPRODUCTION ON THE NEW BUILD
+What it measures: the same census, re-run after every platform change, against
+the original. The rule (declared before firing) demanded EXACT.
+
+  quantity                        L9 (original)   L13 (new build)
+  directional calls / hits        19,913 / 7,187  19,913 / 7,187
+  directional accuracy                 36.09%          36.09%
+  setups beating baseline              98/170          98/170
+  net money, held-back            +$1,469.95      +$1,469.95
+  typical setup / in profit       $9.88 / 55.9%   $9.88 / 55.9%
+  vs buy-and-hold                 +$1,385.92      +$1,385.92
+
+  KEY  (dollar rows are DOLLARS on the held-back slice; accuracy rows are
+       percentages of committed calls; identical means identical to the digit)
+
+WHAT IS NOW SAVED, PERMANENTLY
+
+  170 files, one per setup: the 12 fitted models each (weights and trees, the
+  actual product), every member's raw votes over both windows (so ANY
+  agreement threshold can be rebuilt without recomputing anything), each
+  member scored alone on both windows, labels and timestamps. Zero write
+  failures, and a failed write would land in the run's failure list rather
+  than vanish.
+
+ONE CATCH, CAUGHT
+
+  My first read of L13 silently returned L9's numbers — a selector file was
+  still pinned to L9 from yesterday's investigation, and for a REPRODUCTION
+  check the wrong doc looks exactly right. The printed doc id in the reader's
+  header is what exposed it. QC item 48; pins now get reset by the read that
+  used them.
+
+STOPPED, AS AGREED — THE L14 CONSULT AGENDA
+
+  1. You pick the freeze candidates interactively off the new board (held-back
+     numbers full size, sorted on; tuning numbers compressed behind the
+     divider). The saved per-member scores mean we can also look INSIDE any
+     setup at which of its 12 members earned the votes.
+  2. When does scrambled-comparison testing apply to survivors picked off the
+     board — before freezing, after, or both? My opening position: a
+     board-picked row is the best of 170 draws, so it owes its own scrambled
+     test BEFORE we freeze it; roughly 15 minutes per candidate.
+  3. Then L14 runs the frozen picks forward on paper, costing nothing while
+     anything else computes.
+
+Nothing is running. Nothing fires until we have talked.
+
+LOOP LEDGER
+  L12  platform: keep everything, show the window that matters — deployed
+  L13  reproduce L9 on the new build: EXACT, and saved. Audited.
+  L14  waiting on our consult.
+
+c.
