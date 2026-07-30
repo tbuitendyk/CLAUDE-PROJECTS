@@ -76,6 +76,8 @@ a number looked *encouraging*.
 | 46 | An approved next step survives its own premise | The fee sweep was approved before cycle 11 removed its purpose. Fees cannot explain a failure the scrambles also paid — every scramble paid the same fee and the real arm still came last | An approval is for a QUESTION, not for a job. When step 7 removes the question, say so and re-plan rather than executing the approved thing | loop step 7c; this register | MANUAL |
 | 47 | Overlapping geometries give independent evidence | Cycle 11's four worst setups were one asset (XRPUSDT) in daily-1d/2d/3d/4d — re-cuts of the same days, so one failure counted four times, 44.9% of the total loss from three rows | Report per-asset concentration beside any total | `classifier-cycle11-diag.sh` | AUTOMATED (for this shape) |
 
+| 48 | A pinned selector applies only to the investigation that pinned it | EDGE-JOB stayed pinned to L9 for a day; the first L13 read silently returned L9's numbers — which, being a reproduction check, LOOKED exactly right | Every reader prints the doc id it read (this is what caught it); reset pins as part of the read that used them | `classifier-*-read.sh` headers | AUTOMATED (id printed) / MANUAL (reset habit) |
+
 ## Open gaps — items not yet enforced by anything but discipline
 
 These are listed because a MANUAL item with no owner is a lie.
