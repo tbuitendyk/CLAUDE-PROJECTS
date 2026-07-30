@@ -1,0 +1,59 @@
+L14 read: the two window geometries crown DIFFERENT winners — most "winners" are the tide
+
+tl;dr L14 finished clean (340/340, zero failures, 21.6 min, every
+invariant held). The era-spanning arm reverses the recent-window story:
+survivor overlap between the two boards is 1 setup in 10, and once the
+drift controls are applied, only a handful of rows show anything beyond
+the era's tide. One setup survives every filter: ATOM daily-1d. Your L15
+freeze consult now has its board.
+
+TABLE: ARM TOTALS. What each window geometry says in aggregate. KEY —
+"holdout $": paper dollars per $100 book summed over all 170 setups (a
+statistical aggregate for comparison, NOT tradeable profit, QC 36);
+"positive": setups with positive holdout money. The two arms' windows are
+different calendar periods — context, never one number.
+  chronological (recent windows)   +$2,965   38,402 trades   92/170 positive
+  interlaced (era-spanning)        -$5,355   46,746 trades   77/170 positive
+
+THE HEADLINE. Same 170 setups, same committees, same band, same trade-day
+counts — and the boards agree on 1 of their top 10. The recent-window
+board (every board before today) was substantially ranking WHERE the
+evaluation window landed, not what the setup does. Your interlacing
+instinct, quantified.
+
+TABLE: TOP OF THE L15 SELECTION BOARD (interlaced arm, by holdout money),
+CONTROL-FILTERED. KEY — "edge": prediction accuracy above the
+guess-the-commonest baseline on held-back data, in percentage points;
+"vs long": holdout money minus what always-going-long the same periods
+earns (the valid drift control under scattered windows, QC 54); a
+negative vs-long means the row UNDERPERFORMS doing nothing clever.
+  ATOMUSDT daily-1d argmax   +$462  190t  edge +7.0pt  vs long +$560  <- real
+  BCH d1/d3/d4 family        +$303..$404  edge NEGATIVE vs long +$370..$481  <- execution effect, not prediction; suspicious
+  ETHUSDT block (6 rows)     +$294..$422  edge ~0      vs long -$685..-$741  <- diluted drift, fails control
+  DOGE rows                  +$346..$380  edge ~0      vs long -$539..-$573  <- fails control
+
+Only 5 of the top 15 money rows beat their own always-long control.
+ATOM daily-1d argmax is the single setup that beats both controls,
+carries real prediction edge, AND appears in both arms' top-10s.
+
+INSTRUMENT NOTES (step 7b, recorded before conclusions):
+- The vs-buy-hold control is INVALID under interlacing (it rides market
+  moves through the training gaps between eval blocks — DOGE showed
+  -$8,287 against it purely from the 2021 mania). vs-always-long is the
+  valid control. QC 54.
+- The interlaced arm trains on ~10-17% fewer chunks (purge at 12 seams vs
+  2), so arm differences conflate era-mixing with training size. Open
+  one-knob run to equalize. QC 55.
+- 29/170 rows are argmax/directional twins on identical cells; effective
+  population ~155.
+
+WHAT WAITS ON YOU — the L15 freeze consult (your hard stop). On the
+table: the full board in the interface (Layout comparison panel works on
+this run), my shortlist (ATOM daily-1d as the serious candidate; the BCH
+family as a question), and the declared next step for any pick: per-setup
+AND selection-aware null verdicts — now arm-aware — before anything is
+frozen for forward paper. Audit note written
+(reports/audit-bracketlab-20260730-2306-l14-both-layouts.md); QC 54-55
+registered. No job is running; nothing fires until we talk.
+
+c.
