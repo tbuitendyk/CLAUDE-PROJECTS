@@ -85,6 +85,28 @@ the tuning-window set is compressed to make room.
   comparison IS meaningful, because the cell was chosen before that window was
   scored. Keep the warning on the settings-window side only.
 
+### Sort order (owner, 2026-07-30)
+
+**Sort the board by HELD-BACK performance, not settings-window performance.**
+Ranking on the window the settings were chosen on ranks rows by how well they
+were fitted, which is what made the old board worthless.
+
+Primary sort: held-back net P&L, with the existing minimum-trades floor so a
+two-trade fluke cannot top the board.
+
+**But carry a warning in the header, because sorting moves the selection
+problem rather than removing it.** The held-back window is meaningful only
+because nothing was chosen using it; rank 170 setups on it and the top row's
+figure becomes the maximum of 170 draws. So:
+
+- The top row is a **LEAD**, to be declared and tested on fresh data — never a
+  result.
+- The evidence remains the AGGREGATE across all 170 against the scrambled
+  comparisons, which is not selected on anything.
+- Header wording to that effect, in the same spirit as the existing
+  `vs control*` footnote, which correctly warns that a selected column cannot
+  come out negative.
+
 ### Also
 
 Also rename the variables. `testChunks` is the window we SHOP on and
