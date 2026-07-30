@@ -1834,8 +1834,8 @@
       <td>${pc(m.activeHold ?? m.activeSearch)}</td>
       <td>${pc(m.withTradeHold)}</td>
     </tr>`).join('');
-    const pw = d.pairwise.map((row, a) => `<tr><th>${a + 1}</th>${row.map((v, b) =>
-      `<td class="${v != null && v >= 0.8 && a !== b ? 'pw-hot' : ''}">${a === b ? '·' : v == null ? '—' : Math.round(100 * v)}</td>`).join('')}</tr>`).join('');
+    const pw = d.pairwise.map((row, a) => `<tr><th title="member ${a + 1}: ${esc(d.members[a].spec.model)} · ${esc(d.members[a].spec.view)} · ${esc(d.members[a].spec.regime)}">${a + 1}</th>${row.map((v, b) =>
+      `<td title="${a === b ? 'same member' : v == null ? `members ${a + 1} and ${b + 1}: fewer than 5 periods where both committed — not enough to score` : `members ${a + 1} and ${b + 1} agreed on ${Math.round(100 * v)}% of the periods where both committed${v >= 0.8 ? ' — effectively one opinion counted twice' : ''}`}" class="${v != null && v >= 0.8 && a !== b ? 'pw-hot' : ''}">${a === b ? '·' : v == null ? '—' : Math.round(100 * v)}</td>`).join('')}</tr>`).join('');
     return `
       <h3>${esc(label)} — quorum ${d.quorum}, band ±${d.bandPct != null ? d.bandPct.toFixed(2) : '?'}%</h3>
       <p class="note"><strong>Member table.</strong> One row per committee member.
@@ -1846,14 +1846,20 @@
         <em>with trade</em>: when the committee traded, how often this member voted with the traded direction —
         high for the same few members every time means one opinion echoed, not twelve.</p>
       <div class="tablewrap"><table>
-        <tr><th>#</th><th>member</th><th>tuning</th><th>held-back</th><th>dir hits</th><th>active</th><th>with trade</th></tr>
+        <tr><th title="Member number, 1-12 — matches the rows and columns of the agreement matrix below">#</th>
+        <th title="What this member is: model type (logreg = weighted-sum / boost = stack of decision rules) · which slice of the data it sees (full / prices only / volume only) · training variant (full history, or interlaced = periods adjacent to the evaluation data dropped so answers cannot bleed across)">member</th>
+        <th title="This member's OWN accuracy on the tuning window, with its edge (accuracy minus the always-guess-the-commonest baseline) beside it. Accuracy points, not money. The committee was tuned on this window, so these read flattering.">tuning</th>
+        <th title="The same two figures on the HELD-BACK window — the slice nothing was chosen with. This is the pair that matters.">held-back</th>
+        <th title="Held-back directional calls this member got exactly right / the directional calls it made. A call of up or down on a flat period counts as a miss.">dir hits</th>
+        <th title="How often this member commits to a direction at all (held-back window). Near 0% = it almost always says 'flat' and its solo accuracy is mostly about predicting nothing happening.">active</th>
+        <th title="When the COMMITTEE actually traded, how often this member's own vote matched the traded direction. High for the same few members every time = one opinion echoed; spread around = genuine shifting agreement.">with trade</th></tr>
         ${rows}</table></div>
       <p class="note"><strong>Agreement matrix (${d.pairwiseWindow} window).</strong>
         KEY — cell (a,b): of the periods where BOTH members committed to a direction, the percentage where they
         agreed. — means fewer than 5 shared commitments. Values ≥80% are highlighted: members that near-always
         agree are one opinion counted twice, so "12 members" may be far fewer real opinions.</p>
       <div class="tablewrap"><table class="pw">
-        <tr><th></th>${d.members.map((m) => `<th>${m.i + 1}</th>`).join('')}</tr>${pw}</table></div>
+        <tr><th title="Rows and columns are member numbers from the table above"></th>${d.members.map((m) => `<th title="member ${m.i + 1}: ${esc(m.spec.model)} · ${esc(m.spec.view)} · ${esc(m.spec.regime)}">${m.i + 1}</th>`).join('')}</tr>${pw}</table></div>
       <p class="note">committee at quorum ${d.quorum}: ${d.committee.holdTrades}/${d.committee.holdPeriods} held-back periods traded,
         ${d.committee.searchTrades}/${d.committee.searchPeriods} tuning periods.</p>`;
   }
