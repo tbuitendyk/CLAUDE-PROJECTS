@@ -391,9 +391,17 @@ function execSweep(periods, calls, tradeMap, geo, bandPct, feePerLeg, opts = {})
   // before trailing existed, so a run with trailing off is bit-comparable
   // with every board recorded so far.
   const trails = opts.trailing ? [null, ...TRAIL_MULTS] : [null];
-  for (const gate of GATES) {
-    for (const dMult of D_MULTS) {
-      for (const tHours of T_HOURS) {
+  // The grid is SETTABLE (owner audit 2026-07-30): these were module
+  // constants, unreachable from any launcher — the same fault class as the
+  // hard-coded fee. Defaults are the identical constants, so every run that
+  // does not ask for a custom grid is bit-comparable with every board so far.
+  const gates = opts.gates || GATES;
+  const dMults = opts.dMults || D_MULTS;
+  const tHoursList = opts.tHours || T_HOURS;
+  const entries = opts.entries || ENTRIES;
+  for (const gate of gates) {
+    for (const dMult of dMults) {
+      for (const tHours of tHoursList) {
         for (const trailMult of trails) {
           const arms = trailMult == null ? [null] : ARM_MULTS;
           for (const armMult of arms) {
@@ -415,7 +423,7 @@ function execSweep(periods, calls, tradeMap, geo, bandPct, feePerLeg, opts = {})
   // Note for anything reading the always-gate control: market cells are
   // directional and can never enter it, so controlPnl is unchanged by this
   // addition and prior replication readings stay valid.
-  for (const tHours of T_HOURS) {
+  if (entries.includes('market')) for (const tHours of tHoursList) {
     const r = simMarket(periods, calls, tradeMap, geo, { tHours, feePerLeg });
     rows.push({ entry: 'market', gate: 'directional', dMult: null, trailMult: null, armMult: null, tHours, ...r });
   }
@@ -482,11 +490,18 @@ async function trainMember({ model, viewIdx, trainChunks, testChunks, decision, 
   let tau = null;
   let picked;
   let callOf;
+  let saved;
   if (model === 'logreg') {
     const scaler = standardizeFit(Xtr);
     const Ztr = standardizeApply(Xtr, scaler);
     const Zte = standardizeApply(Xte, scaler);
     const { model: m, chosenLambda } = await tuneAndTrain(Ztr, ytr, { onProgress: () => {}, classWeights });
+    // THE FITTED MODEL IS THE PRODUCT (owner, 2026-07-30). Eleven cycles
+    // discarded every model at this return; only the calls survived, so
+    // nothing found could ever be re-applied to new data. Serialize the same
+    // shape lib/books.js stores and reloads for the frozen paper trackers.
+    saved = { kind: 'logreg', lambda: chosenLambda, f: m.f, W: Array.from(m.W),
+      mean: Array.from(scaler.mean), std: Array.from(scaler.std) };
     if (decision === 'directional') {
       const probe = await trainSoftmax(Ztr.slice(0, nSub), ytr.slice(0, nSub), chosenLambda, { weights: wFor(ytr.slice(0, nSub)) });
       const valProbs = [];
@@ -506,13 +521,36 @@ async function trainMember({ model, viewIdx, trainChunks, testChunks, decision, 
       ({ tau } = tuneTau(trainChunks.slice(nSub), valProbs, tradeMap, geo));
     }
     const m = await trainBoost(Xtr, ytr, { rounds: probe.bestRound, weights: wFor(ytr) });
+    saved = { kind: 'boost', rounds: m.bestRound, priors: m.priors, trees: m.trees };
     picked = `rounds=${m.bestRound}${tau != null ? `, tau=${tau}` : ''}`;
     callOf = (i) => {
       const out = predictBoost(m, Xte[i]);
       return decision === 'directional' ? directionalCall(out.probs, tau) : out.label;
     };
   }
-  return { calls: testChunks.map((_, i) => callOf(i)), picked };
+  return {
+    calls: testChunks.map((_, i) => callOf(i)),
+    picked,
+    model: { ...saved, decision, tau, classWeights },
+  };
 }
 
-module.exports = { comboViews, buildComboChunks, simBracket, simMarket, holdControls, simCell, execSweep, bestCell, trainMember, GATES, ENTRIES, D_MULTS, T_HOURS, TRAIL_MULTS, ARM_MULTS, PER_ASSET };
+// Predict from a SERIALIZED member — the reload half of the round trip, and
+// the thing that makes a saved model worth more than a comment. x is the
+// view-projected feature vector (the same slice trainMember saw). Must agree
+// with the live callOf above to the last call; the test reintroduces a broken
+// field and watches this disagree.
+function predictMember(saved, x) {
+  let out;
+  if (saved.kind === 'logreg') {
+    const z = new Float64Array(x.length);
+    for (let j = 0; j < x.length; j++) z[j] = (x[j] - saved.mean[j]) / saved.std[j];
+    out = predictLogreg({ W: Float64Array.from(saved.W), f: saved.f }, z);
+  } else {
+    out = predictBoost({ priors: saved.priors, trees: saved.trees }, x);
+  }
+  if (saved.decision === 'directional') return directionalCall(out.probs, saved.tau);
+  return out.label;
+}
+
+module.exports = { comboViews, buildComboChunks, simBracket, simMarket, holdControls, simCell, execSweep, bestCell, trainMember, predictMember, GATES, ENTRIES, D_MULTS, T_HOURS, TRAIL_MULTS, ARM_MULTS, PER_ASSET };

@@ -611,6 +611,62 @@ module.exports = {
       assert.ok(!f, `shiftFrac ${String(f)} must be falsy so 'if (shiftFrac)' skips rotation`);
     }
   },
+  async savedModelsReproduceTheirOwnLiveCalls() {
+    // THE ROUND TRIP. A saved model that does not reproduce the exact calls
+    // its live twin made is not a saved model — it is a different model with
+    // the same name. Eleven cycles discarded every fitted model at return;
+    // this pins the serialize/reload path for both kinds.
+    const { trainMember, predictMember } = require('../lib/bracket');
+    // Deterministic synthetic data: 3 features, label follows feature 0's sign
+    // with a dead zone, so both model kinds have something learnable.
+    const mk = (n, seed) => Array.from({ length: n }, (_, i) => {
+      const a = Math.sin(i * 0.7 + seed), b = Math.cos(i * 1.3 + seed), c = Math.sin(i * 2.1 + seed * 2);
+      return { x: [a, b, c], label: a > 0.3 ? 1 : a < -0.3 ? -1 : 0 };
+    });
+    const trainChunks = mk(60, 1);
+    const testChunks = mk(17, 9);
+    for (const kind of ['logreg', 'boost']) {
+      const { calls, model } = await trainMember({
+        model: kind, viewIdx: [0, 1, 2], trainChunks, testChunks,
+        decision: 'argmax', tradeMap: null, geo: null,
+      });
+      assert.ok(model && model.kind === kind, `${kind}: model must be returned`);
+      // Serialize THROUGH JSON — that is how it will live on disk.
+      const revived = JSON.parse(JSON.stringify(model));
+      const replayed = testChunks.map((c) => predictMember(revived, c.x));
+      assert.deepStrictEqual(replayed, calls,
+        `${kind}: reloaded model must reproduce its own live calls exactly`);
+    }
+  },
+  async symbolCacheRespectsTheDateRange() {
+    // getMap cached by symbol alone and returned the FIRST range loaded for
+    // any later request — two runs with different endMonths came back
+    // identical in one process (2026-07-30). Same combo, two ranges, one
+    // process: the chunk counts must differ.
+    const { buildCombo } = require('../lib/bracketwork');
+    const combo = { trade: 'BTCUSDT', ctx1: null, ctx2: null, size: 1 };
+    const branch = { geometry: 'daily-3d', decision: 'argmax', band: 'auto', weekdaysOnly: false };
+    const a = await buildCombo(combo, branch, { startMonth: '2024-01', endMonth: '2024-06' });
+    const b = await buildCombo(combo, branch, { startMonth: '2024-01', endMonth: '2024-11' });
+    assert.ok(b.chunks.length > a.chunks.length,
+      `a longer range must yield more chunks (${a.chunks.length} vs ${b.chunks.length}) — the cache is ignoring the range`);
+  },
+  async boardSortsPromotedRowsByHoldoutAndSlimBySearch() {
+    // Owner, 2026-07-30: sort by held-back money. But promotion slices slim
+    // rows in board order, so slim MUST stay in search order or the holdout
+    // leaks into selection. Stage-aware, floor-aware.
+    const { leaderCmp } = require('../lib/batch');
+    const P = (key, holdPnl, trades, searchPnl = 0) => ({
+      key, stage: 'promoted', pnl: searchPnl,
+      holdout: holdPnl == null ? null : { pnl: holdPnl, trades },
+    });
+    const S = (key, pnl) => ({ key, stage: 'slim', pnl });
+    const rows = [S('s-lo', 5), P('p-thin', 900, 2), P('p-best', 100, 40), S('s-hi', 50), P('p-mid', 60, 40), P('p-none', null, 0)];
+    rows.sort((a, b) => leaderCmp(a, b, 10));
+    assert.deepStrictEqual(rows.map((r) => r.key),
+      ['p-best', 'p-mid', 'p-thin', 'p-none', 's-hi', 's-lo'],
+      'promoted by holdout (floored rows sink), then slim by search');
+  },
   async everyMoneyFigureRecordsTheSettingsThatEarnedIt() {
     // A money figure with no record of the trade that produced it cannot be
     // investigated. Cycle 11's four worst setups lost up to 4x the widest stop
@@ -632,7 +688,10 @@ module.exports = {
     }
     // ...so the settings behind it must be too.
     for (const f of ['cellEntry', 'cellGate', 'cellDMult', 'cellTHours',
-                     'cellTrailMult', 'cellArmMult', 'cellQuorum', 'cellAmbiguous']) {
+                     'cellTrailMult', 'cellArmMult', 'cellQuorum', 'cellAmbiguous',
+                     // both windows, every setup, uncapped (owner, 2026-07-30)
+                     'searchPnl', 'searchTrades', 'searchWins', 'searchGrossPerTrade',
+                     'searchStops', 'vsControl', 'holdStops', 'modelFile']) {
       assert.ok(block.includes(`${f}:`),
         `census records money but not ${f} — an untraceable figure`);
     }

@@ -1896,37 +1896,65 @@
       const selectable = !running && l.stage === 'promoted';
       const isSel = sel && sel.key === l.key && sel.stage === l.stage;
       const band = `${l.bandMode === 'auto' ? 'auto→' : ''}±${l.bandPct != null ? l.bandPct.toFixed(2) : '?'}%`;
+      const h = l.holdout || null;
+      const hm = h && h.metrics ? h.metrics : null;
+      // The tuning-window figures, compressed: stacked pairs in the small
+      // light style. These are the numbers the row was PICKED on — flattering
+      // by construction, so they get the quiet styling on purpose.
+      const tuneBlock = `
+        <td class="tune blk-l">${money(l.pnl)}
+          <div class="cellsub">${l.gate === 'always' || l.controlPnl == null ? '—' : 'vs ' + money(l.pnl - l.controlPnl)}</div></td>
+        <td class="tune">${l.metrics ? pct(l.metrics.testAcc) : '—'}
+          <div class="cellsub">${l.metrics ? signedPct(l.metrics.edge) : ''}</div></td>
+        <td class="tune">${l.wins}/${l.trades}
+          <div class="cellsub">${l.grossPerTrade != null ? '$' + l.grossPerTrade.toFixed(2) : ''}</div></td>
+        <td class="tune">${l.stops}${l.ambiguous ? `<div class="cellsub">${l.ambiguous} amb</div>` : ''}</td>`;
+      // The held-back figures, full size: nothing was chosen using this
+      // window, so these are the ones that matter.
+      const holdBlock = h ? `
+        <td class="blk-l"><strong>${money(h.pnl)}</strong></td>
+        <td>${hm ? pct(hm.testAcc) : '—'}
+          <div class="cellsub">${hm ? 'base ' + pct(hm.majorityBaseline) : ''}</div></td>
+        <td>${hm ? signedPct(hm.edge) : '—'}
+          <div class="cellsub">${hm && hm.directionalCalls ? hm.directionalHits + '/' + hm.directionalCalls + ' dir' : ''}</div></td>
+        <td>${h.wins}/${h.trades}
+          <div class="cellsub">${h.grossPerTrade != null ? 'g/t $' + h.grossPerTrade.toFixed(2) : '—'}</div></td>
+        <td>${h.stops}${h.ambiguous ? `<div class="cellsub">${h.ambiguous} amb</div>` : ''}</td>`
+        : '<td class="blk-l note" colspan="5">no held-back window in this run</td>';
       return `<tr class="${l.stage === 'promoted' ? 'hilite' : ''}">
         <td>${selectable ? `<input type="radio" name="bl-sel" class="bl-sel" data-key="${esc(l.key)}" data-stage="${esc(l.stage)}" ${isSel ? 'checked' : ''}>` : ''}</td>
         <td>${i + 1}</td>
         <td><strong>${esc(comboLabel(l))}</strong> <span class="bl-stage">${l.stage === 'promoted' ? 'prom' : 'slim'}</span>
           <div class="cellsub">${esc(l.geometry)} · ${band} · ${esc(l.decision)} · ${l.weekdaysOnly ? '24/5' : '24/7'}</div></td>
         <td>q${l.quorum}/${l.members} · ${execCell(l)}</td>
-        <td><strong>${money(l.pnl)}</strong></td>
-        <td>${l.gate === 'always' || l.controlPnl == null ? '—' : `<span class="${l.pnl - l.controlPnl >= 0 ? 'up' : 'down'}">${money(l.pnl - l.controlPnl)}</span>`}</td>
-        <td>${l.metrics ? pct(l.metrics.testAcc) : '—'}
-          <div class="cellsub">${l.metrics ? 'base ' + pct(l.metrics.majorityBaseline) : ''}</div></td>
-        <td>${l.metrics ? signedPct(l.metrics.edge) : '—'}
-          <div class="cellsub">${l.metrics && l.metrics.directionalCalls ? l.metrics.directionalHits + '/' + l.metrics.directionalCalls + ' dir' : ''}</div></td>
-        <td>${l.wins}/${l.trades}
-          <div class="cellsub">${l.grossPerTrade != null ? 'g/t $' + l.grossPerTrade.toFixed(2) : '—'}</div></td>
-        <td>${l.stops}${l.ambiguous ? `<div class="cellsub">${l.ambiguous} amb</div>` : ''}</td>
+        ${tuneBlock}
+        ${holdBlock}
       </tr>`;
     }).join('');
     const leaderBlock = `
       <div class="section"><h2>${running ? 'Live leaderboard — reranks as combos complete' : 'Survivor board'}</h2>
       ${running ? '<p class="note">Interim numbers move until the sweep completes — for watching, not for stopping early. The promote rule fires mechanically at completion.</p>' : ''}
+      <p class="note"><strong>Sorted by HELD-BACK net P&L</strong> (rows under the min-trades floor sink).
+        The top row is a <strong>LEAD to declare and test on fresh data — never a result</strong>: ranking 170
+        setups on the held-back window makes the top figure the best of 170 draws. The evidence is the
+        aggregate census against its scrambled comparisons, which is not selected on anything.</p>
       <div class="tablewrap"><table class="bl-board">
+        <tr class="grp-row"><th colspan="4"></th>
+          <th colspan="4" class="grp grp-tune blk-l" title="Numbers from the window the trading settings were CHOSEN on. Flattering by construction — the row won because it scored best here.">tuned on settings window</th>
+          <th colspan="5" class="grp grp-hold blk-l" title="Scored ONCE with settings already committed. Nothing was chosen using this window.">HELD-BACK — what matters</th></tr>
         <tr><th title="Pick a PROMOTED row as the null-test candidate"></th><th>#</th>
         <th title="Combo and stage; second line: chunk shape · band · decision · week mode">setup</th>
         <th title="Quorum rung (net direction wins) and how the position is opened. BREAKOUT cells state a gate plus the rail distance d×band; MARKET cells enter at the entry candle's open in the called direction with no rails — the general classifier's own trade, and what the live paper books do.">execution</th>
-        <th>net P&L</th>
-        <th title="This row's net minus the BEST always-gate (model-free) cell on the same combo+branch. On a SEARCH board this can never be negative: the row was picked as the best cell over a menu that already contained every always cell, so a gated winner beat the control by definition. Read it as how much gating won by, not as evidence that gating works. '—' on always rows (they ARE the control).">vs control*</th>
-        <th title="Share of test periods where the committee's call matched the label EXACTLY (3-class). Second line is the majority-class baseline, taken from the TRAINING mix — the same definitions the general classifier reports.">acc</th>
-        <th title="Accuracy minus that baseline: the classifier's headline edge. Second line counts directional calls that were exactly right — a +1 on a dormant period is a miss, as in the classifier.">edge</th>
-        <th title="wins/trades; second line: gross per trade before the round-trip fee">W/T · g/t</th>
-        <th title="Trades closed by the stop rail; (n amb) = hourly bars spanning both rails, always resolved AGAINST the book">stops</th></tr>
-        ${leadRows || '<tr><td colspan="10" class="note">nothing on the board yet</td></tr>'}
+        <th class="tune blk-l" title="Settings-window net P&L over vs-control. vs-control can NEVER be negative here: the row was picked as the best cell of a menu already containing every always-gate (model-free) cell. It says how much gating won by, not that gating works.">P&L<div class="cellsub">vs ctl*</div></th>
+        <th class="tune" title="Settings-window accuracy over edge (accuracy minus the training-mix baseline). Accuracy points, not money.">acc<div class="cellsub">edge</div></th>
+        <th class="tune" title="Settings-window wins/trades over gross per trade before the round-trip fee">W/T<div class="cellsub">g/t</div></th>
+        <th class="tune" title="Settings-window trades closed by the stop rail">st</th>
+        <th class="blk-l" title="Held-back net dollars after fees, the sort key">net P&L</th>
+        <th title="Held-back accuracy; second line the majority baseline it is scored against">acc</th>
+        <th title="Held-back accuracy minus baseline; second line directional hits/calls">edge</th>
+        <th title="Held-back wins/trades; second line gross per trade before the round-trip fee">W/T · g/t</th>
+        <th title="Held-back trades closed by the stop rail; (n amb) = bars spanning both rails, resolved AGAINST the book">stops</th></tr>
+        ${leadRows || '<tr><td colspan="13" class="note">nothing on the board yet</td></tr>'}
       </table></div>
       <p class="note">* <strong>vs control on a search board is not evidence.</strong> Each row is the best
         cell of a menu that already contains every always-gate (model-free) cell, so a row whose winner

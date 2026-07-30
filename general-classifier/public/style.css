@@ -213,3 +213,32 @@ table.settings td {
   padding: .18rem 1.2rem .18rem 0;
 }
 table.settings tr:nth-child(even) { background: rgba(127, 127, 127, .05); }
+
+/* Survivor board, two-block layout (owner spec, 2026-07-30): tuning-window
+   figures compressed and quiet — they are the numbers the row was PICKED on,
+   flattering by construction; held-back figures full size — nothing was
+   chosen using that window, so they are the ones that matter. */
+.bl-board .tune {
+  font-size: .78rem;
+  opacity: .72;
+  padding-left: .35rem;
+  padding-right: .35rem;
+  white-space: nowrap;
+}
+.bl-board .tune .cellsub { font-size: .7rem; }
+/* The ruled divider between blocks: a real border carried through the header
+   and every row, on the cell so it survives the row striping. */
+.bl-board .blk-l { border-left: 2px solid rgba(127, 127, 127, .55); }
+.bl-board .grp {
+  text-align: center;
+  font-size: .72rem;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+  opacity: .75;
+  padding: .15rem .4rem;
+}
+.bl-board .grp-hold { opacity: 1; font-weight: 700; }
+/* Wider is fine; a horizontal scrollbar is not. Let the board take the full
+   panel and squeeze paddings before ever overflowing. */
+.bl-board { width: 100%; }
+.bl-board td, .bl-board th { padding-left: .4rem; padding-right: .4rem; }

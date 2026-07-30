@@ -48,10 +48,17 @@ const mapCache = new Map();
 const MAP_CACHE_MAX = 4; // x poolSize; keep total map memory ~200MB, not ~400MB
 
 async function getMap(sym, p) {
-  if (mapCache.has(sym)) {
-    const v = mapCache.get(sym);
-    mapCache.delete(sym);
-    mapCache.set(sym, v); // LRU touch
+  // The cache key MUST include the date range. Keyed on symbol alone, a
+  // process that loaded one range and then requested another silently got the
+  // first — it broke a split-boundary diagnostic on 2026-07-30 by reporting
+  // two different runs as identical. Per-job worker pools masked it in real
+  // jobs; that is luck, not protection.
+  const rangeKey = p.allLoaded ? 'all' : `${p.startMonth || ''}..${p.endMonth || ''}`;
+  const key = `${sym}|${rangeKey}`;
+  if (mapCache.has(key)) {
+    const v = mapCache.get(key);
+    mapCache.delete(key);
+    mapCache.set(key, v); // LRU touch
     return v;
   }
   const loaded = p.allLoaded
@@ -59,7 +66,7 @@ async function getMap(sym, p) {
     : await loadSymbol(sym, monthList(p.startMonth, p.endMonth), () => {});
   if (!loaded.rows.length) throw new Error(`no data for ${sym}`);
   const filled = forwardFill(toHourlyMap(loaded.rows)).map;
-  mapCache.set(sym, filled);
+  mapCache.set(key, filled);
   if (mapCache.size > MAP_CACHE_MAX) mapCache.delete(mapCache.keys().next().value);
   return filled;
 }
@@ -197,7 +204,7 @@ async function trainMembers(specs, views, trainChunks, testChunks, branch, maps,
   const out = [];
   for (const spec of specs) {
     const fit = spec.regime === 'interlaced' ? interlacedPurge(trainChunks, geo) : trainChunks;
-    const { calls } = await bracketLib.trainMember({
+    const { calls, model, picked } = await bracketLib.trainMember({
       model: spec.model,
       viewIdx: views[spec.view],
       trainChunks: fit,
@@ -206,7 +213,10 @@ async function trainMembers(specs, views, trainChunks, testChunks, branch, maps,
       tradeMap: maps.trade,
       geo,
     });
-    out.push(calls);
+    // The fitted model rides along instead of dying here — the orchestrator
+    // decides what to persist. calls-only was how eleven cycles threw away
+    // everything they found (owner, 2026-07-30).
+    out.push({ calls, model, picked, spec });
   }
   return out;
 }
@@ -262,14 +272,20 @@ async function unitTask(task) {
   // concatenated, then the calls are split. Training twice would be waste, and
   // worse, an invitation for the two to be fitted differently.
   const predictChunks = holdChunks.length ? [...testChunks, ...holdChunks] : testChunks;
-  const allCalls = await trainMembers(specsFor(combo.size, stage), views, trainChunks, predictChunks, branch, maps, geo);
+  const members = await trainMembers(specsFor(combo.size, stage), views, trainChunks, predictChunks, branch, maps, geo);
+  const allCalls = members.map((m) => m.calls);
   const memberCalls = holdChunks.length ? allCalls.map((c) => c.slice(0, testChunks.length)) : allCalls;
   const holdCalls = holdChunks.length ? allCalls.map((c) => c.slice(testChunks.length)) : null;
   const fee = p.feePerLeg ?? REAL_FEE_PER_LEG;
   // Trailing is a PROMOTE-stage dimension only (see TRAIL_MULTS): 12x the menu
   // in the cheap slim pass would turn a 272-combo sweep into a night's work,
   // and slim ranks combos rather than refining execution.
-  const sweepOpts = { trailing: stage === 'promoted' && !!p.trailing };
+  const sweepOpts = {
+    trailing: stage === 'promoted' && !!p.trailing,
+    // Custom grid if the launcher set one; undefined falls back to the
+    // library constants inside execSweep.
+    dMults: p.dMults, tHours: p.tHours, gates: p.gates, entries: p.entries,
+  };
 
   const streams = [{ quorum: 1, calls: testChunks.map((_, i) => quorumCall(memberCalls, i, 1)) }];
   if (stage === 'promoted') {
@@ -372,6 +388,41 @@ async function unitTask(task) {
 
   const out = { best, declared, bestEdge, bandPct, testPeriods: testChunks.length, members: memberCalls.length };
 
+  // MEMBER DUMP — everything the run learned, so it can be kept.
+  // "Time is more valuable than storage" (owner, 2026-07-30). Models are
+  // saved for the REAL arm; scrambled arms keep votes and scores only (their
+  // models are junk by construction, their votes let any agreement threshold
+  // be rebuilt without recomputing). The orchestrator writes this to disk —
+  // the doc served over HTTP never carries it.
+  if (stage === 'promoted') {
+    const isReal = !shiftFrac;
+    out.memberDump = {
+      shiftFrac: shiftFrac ?? null,
+      bandPct,
+      specs: members.map((m) => ({ ...m.spec, picked: m.picked })),
+      models: isReal ? members.map((m) => m.model) : null,
+      votes: {
+        search: memberCalls,
+        hold: holdCalls,
+      },
+      labels: {
+        search: testLabels,
+        hold: holdChunks.length ? holdLabels : null,
+      },
+      startTs: {
+        search: testChunks.map((c) => c.startTs),
+        hold: holdChunks.map((c) => c.startTs),
+      },
+      // Each member scored ALONE, both windows — the committee score hid the
+      // individuals for eleven cycles.
+      perMember: members.map((m, i) => ({
+        spec: m.spec,
+        search: classifierMetrics(trainLabels, testLabels, memberCalls[i]),
+        hold: holdChunks.length ? classifierMetrics(trainLabels, holdLabels, holdCalls[i]) : null,
+      })),
+    };
+  }
+
   // CALL EXPORT — off by default because it is per-period data and a
   // 272-combo sweep would bloat the doc. On, it is what lets a bracket result
   // seed a paper book or be re-scored later without re-running anything.
@@ -407,7 +458,8 @@ async function nullRotationTask({ combo, branch, params, shiftIndex, nShifts, se
   let sameCell = null;
   for (let k = 1; k <= memberCalls.length; k++) {
     const stream = testChunks.map((_, i) => quorumCall(memberCalls, i, k));
-    const rows = bracketLib.execSweep(testChunks, stream, maps.trade, geo, bandPct, fee);
+    const rows = bracketLib.execSweep(testChunks, stream, maps.trade, geo, bandPct, fee,
+      { dMults: p.dMults, tHours: p.tHours, gates: p.gates, entries: p.entries });
     const cell = bracketLib.bestCell(rows, p.minTrades);
     if (cell && (!bestOfMenu || cell.pnl > bestOfMenu.pnl)) bestOfMenu = cell;
     if (k === selection.quorum) {

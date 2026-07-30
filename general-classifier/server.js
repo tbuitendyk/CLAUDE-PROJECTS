@@ -233,6 +233,10 @@ app.post('/api/bracketlab', (req, res) => {
       labelShiftReps: b.labelShiftReps,
       labelShiftScope: b.labelShiftScope,
       feePerLeg: b.feePerLeg,
+      dMults: b.dMults,
+      tHours: b.tHours,
+      gates: b.gates,
+      entries: b.entries,
       description: b.description,
       label: b.label,
     });

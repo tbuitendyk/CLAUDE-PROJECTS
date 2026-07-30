@@ -1252,16 +1252,41 @@ function bracketPerfTick(doc) {
 // order, an unresolved tie would make the retained top-K depend on arrival
 // order. Tiebreaking on key+stage makes the final board a pure function of
 // the SET of results, so parallel output is byte-identical to serial.
-function leaderCmp(a, b) {
+// STAGE-AWARE SORT (owner, 2026-07-30: "sort this board by good hold-out
+// data, not good test data").
+//
+// Slim rows keep SEARCH-window order because promotionSet slices them in this
+// order — promotion is the search window's job, and sorting slim rows by
+// holdout would smuggle the holdout into SELECTION, poisoning the one window
+// whose meaning depends on never being chosen with.
+//
+// Promoted rows sort by HELD-BACK money — display and retention only; their
+// holdout is already committed and scored, so ranking them on it selects
+// nothing. Rows failing the minTrades floor (or with no holdout at all) sink,
+// so a two-trade fluke cannot top the board.
+function leaderCmp(a, b, minTrades = 1) {
+  if (a.stage !== b.stage) return a.stage === 'promoted' ? -1 : 1;
+  const tie = () => {
+    const ka = `${a.key}|${a.stage}`;
+    const kb = `${b.key}|${b.stage}`;
+    return ka < kb ? -1 : ka > kb ? 1 : 0;
+  };
+  if (a.stage === 'promoted') {
+    const qa = a.holdout && (a.holdout.trades || 0) >= minTrades ? 1 : 0;
+    const qb = b.holdout && (b.holdout.trades || 0) >= minTrades ? 1 : 0;
+    if (qa !== qb) return qb - qa;
+    const ha = a.holdout ? a.holdout.pnl : -Infinity;
+    const hb = b.holdout ? b.holdout.pnl : -Infinity;
+    if (hb !== ha) return hb - ha;
+    return tie();
+  }
   if (b.pnl !== a.pnl) return b.pnl - a.pnl;
-  const ka = `${a.key}|${a.stage}`;
-  const kb = `${b.key}|${b.stage}`;
-  return ka < kb ? -1 : ka > kb ? 1 : 0;
+  return tie();
 }
 
 function pushLeader(doc, row) {
   doc.leaders.push(row);
-  doc.leaders.sort(leaderCmp);
+  doc.leaders.sort((a, b) => leaderCmp(a, b, doc.params.minTrades || 1));
   if (doc.leaders.length > (doc.params.detailK || 50)) doc.leaders.length = doc.params.detailK || 50;
 }
 
@@ -1321,6 +1346,23 @@ function idSlug(p) {
   if (p.trailing) bits.push('trail');
   if (!p.holdout) bits.push('noholdout');
   return `-${bits.join('-')}`;
+}
+
+// Menu validators for the settable execution grid. A bad value is an error,
+// not a silent fallback — a silently-dropped setting is how "trailing" ran
+// off for a week while looking on.
+function numMenu(given, dflt, ok) {
+  if (given == null) return dflt;
+  if (!Array.isArray(given) || !given.length) throw new Error('grid list must be a non-empty array');
+  const out = given.map(Number);
+  if (out.some((v) => !Number.isFinite(v) || !ok(v))) throw new Error(`bad grid value in [${given}]`);
+  return [...new Set(out)].sort((a, b) => a - b);
+}
+function pickMenu(given, allowed) {
+  if (given == null) return allowed;
+  if (!Array.isArray(given) || !given.length) throw new Error('menu list must be a non-empty array');
+  for (const g of given) if (!allowed.includes(g)) throw new Error(`"${g}" is not one of ${allowed.join('/')}`);
+  return [...new Set(given)];
 }
 
 function startBracketLab(params) {
@@ -1393,10 +1435,14 @@ function startBracketLab(params) {
     // every result and a silly-large one would make everything look dead.
     feePerLeg: Math.min(2, Math.max(0, Number(params.feePerLeg) >= 0
       ? Number(params.feePerLeg) : REAL_FEE_PER_LEG)),
-    dMults: bracketLib.D_MULTS,
-    tHours: bracketLib.T_HOURS,
-    gates: bracketLib.GATES,
-    entries: bracketLib.ENTRIES,
+    // The execution grid is SETTABLE (owner audit 2026-07-30). These were
+    // constants, unreachable from any launcher — the fault class that hid the
+    // fee. Defaults are the identical constants; a run that does not ask for
+    // a custom grid is bit-comparable with every board recorded so far.
+    dMults: numMenu(params.dMults, bracketLib.D_MULTS, (v) => v > 0 && v <= 10),
+    tHours: numMenu(params.tHours, bracketLib.T_HOURS, (v) => Number.isInteger(v) && v > 0 && v <= 500),
+    gates: pickMenu(params.gates, bracketLib.GATES),
+    entries: pickMenu(params.entries, bracketLib.ENTRIES),
     trailMults: bracketLib.TRAIL_MULTS,
     armMults: bracketLib.ARM_MULTS,
   };
@@ -1549,6 +1595,40 @@ function startBracketLab(params) {
               bestEdge: res.bestEdge || null,
             });
           }
+          // MEMBER DUMP TO DISK — models (real arm), raw votes, per-member
+          // scores. Written for EVERY promoted unit regardless of edgeScreen:
+          // "time is more valuable than storage" (owner, 2026-07-30). Never
+          // into the doc — the doc is served over HTTP and stays light.
+          let modelFile = null;
+          if (res.memberDump) {
+            try {
+              const dir = path.join(BATCH_DIR, '..', 'models', doc.id);
+              fs.mkdirSync(dir, { recursive: true });
+              const tag = l.shiftFrac == null ? 'real' : `s${l.shiftFrac.toFixed(3)}`;
+              const fname = `${l.key.replace(/[^A-Za-z0-9._-]+/g, '_')}-${tag}.json`;
+              fs.writeFileSync(path.join(dir, fname), JSON.stringify({
+                job: doc.id, key: l.key,
+                trade: l.trade, ctx1: l.ctx1, ctx2: l.ctx2,
+                geometry: l.geometry, decision: l.decision,
+                weekdaysOnly: l.weekdaysOnly ?? null,
+                params: { holdout: p.holdout, feePerLeg: p.feePerLeg, labelShiftScope: p.labelShiftScope },
+                best: res.best ? {
+                  entry: res.best.entry || 'breakout', gate: res.best.gate ?? null,
+                  dMult: res.best.dMult ?? null, tHours: res.best.tHours ?? null,
+                  trailMult: res.best.trailMult ?? null, armMult: res.best.armMult ?? null,
+                  quorum: res.best.quorum ?? null,
+                } : null,
+                ...res.memberDump,
+              }));
+              modelFile = `models/${doc.id}/${fname}`;
+              doc.modelFiles = (doc.modelFiles || 0) + 1;
+            } catch (err) {
+              // A failed save must be VISIBLE, not silent — a dump everyone
+              // believes exists is worse than none.
+              if (doc.failures.length < 200) doc.failures.push({ key: l.key, error: `model dump: ${err.message}` });
+            }
+            delete res.memberDump;
+          }
           if (p.edgeScreen && res.bestEdge) {
             // Census row, kept OFF the leaderboard so nothing about it is
             // conditioned on P&L.
@@ -1616,6 +1696,18 @@ function startBracketLab(params) {
               cellTrailMult: res.best ? (res.best.trailMult ?? null) : null,
               cellArmMult: res.best ? (res.best.armMult ?? null) : null,
               cellQuorum: res.best ? (res.best.quorum ?? null) : null,
+              // BOTH WINDOWS, EVERY SETUP, UNCAPPED (owner, 2026-07-30).
+              // These lived only on the profit-ranked, capped leaderboard, so
+              // the worst setups — the ones worth investigating — lost theirs.
+              // Display may stay capped; storage must not be.
+              searchPnl: res.best ? (res.best.pnl ?? null) : null,
+              searchTrades: res.best ? (res.best.trades ?? null) : null,
+              searchWins: res.best ? (res.best.wins ?? null) : null,
+              searchGrossPerTrade: res.best ? (res.best.grossPerTrade ?? null) : null,
+              searchStops: res.best ? (res.best.stops ?? null) : null,
+              vsControl: res.best && res.best.controlPnl != null ? res.best.pnl - res.best.controlPnl : null,
+              holdStops: res.best && res.best.holdout ? (res.best.holdout.stops ?? null) : null,
+              modelFile: modelFile,
               // How much of the result rests on an unknowable within-bar
               // ordering. Meaningless to report money without it.
               cellAmbiguous: res.best && res.best.holdout
@@ -1881,6 +1973,7 @@ module.exports = {
   startPermScreen,
   startBracketLab,
   idSlug,
+  leaderCmp,
   bracketSelect,
   startBracketNull,
   startBracketConfirm,
