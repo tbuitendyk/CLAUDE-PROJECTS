@@ -1,0 +1,70 @@
+L12 deployed: everything a run learns is now kept. L13 (reproduce L9) running.
+
+tl;dr the platform changes you ordered are live and verified end to end on a
+tiny run: fitted models saved with each member's own scores, all 12 raw votes
+per period kept (any agreement threshold rebuildable without recomputing),
+both windows' figures stored for every setup uncapped, the board redesigned
+with held-back numbers full size as the sort key and tuning numbers compressed
+behind a ruled divider, plus the two traps fixed (date-blind cache, unreachable
+execution grid). L13 is running now: reproduce L9 exactly on the new build and
+keep it this time. Rule declared before firing: exact match to 36.09% /
++$1,469.95 / 98-of-170 = engine sound and L9 becomes a permanent dataset; any
+drift = full stop. Result in ~20 minutes; I read it through the rule and stop
+at the L14 consult as agreed.
+
+WHAT WENT LIVE (standing rule: no code reaches the environment without this)
+
+1. MODELS PERSIST. Each promoted setup writes a file: the 12 fitted models
+   (real data only — scrambled arms' models are junk by construction), every
+   member's raw votes over both windows, each member scored ALONE on both
+   windows, labels and timestamps. Verified on disk before L13 fired: 6 of 6
+   files written, 12 vote streams and 12 per-member score rows each, zero
+   write failures, and a failed save lands in the run's failure list rather
+   than vanishing.
+
+2. CENSUS UNCAPPED, BOTH WINDOWS. The tuning-window money (and vs-control,
+   and stop counts) now stored for every setup, not just the capped top-50 —
+   the gap that made the XRP losses untraceable.
+
+3. THE BOARD, per your spec: held-back block full size, sorted on, min-trades
+   floor so a two-trade fluke cannot top it; tuning block compressed in the
+   small light style with stops kept; ruled divider through header and every
+   row; header states the top row is a LEAD to test, never a result.
+   One subtlety worth knowing: promoted rows sort by held-back money, but the
+   slim preliminary rows still sort by tuning-window money — promotion picks
+   from that list, and sorting IT by held-back would quietly use the held-back
+   window to select, which is the one thing it must never do.
+
+4. Cache keys on symbol+date-range (was symbol only — returned the first range
+   loaded for any later request). Execution grid settable from a launcher
+   (was hard-coded constants, the same fault class as the fee).
+
+Every new check was watched failing before being trusted: un-standardized
+model reload, date-blind cache key, floor-less sort. One of those mutations
+initially PASSED because it broke only one side of a comparison function —
+an inconsistent comparator has undefined sort order and happened to look
+right. The fair version fails properly. QC item 44 keeps earning its place.
+
+Also: the audit gate refused to fire L13 because the newest completed run was
+the two-minute smoke preflight, which has no audit. Preflights answer no
+question, so the gate now skips ids containing -smoke / -cost-probe — a
+carve-out with a stated reason, not a loophole.
+
+L13 READING RULE (committed in the launcher before the numbers exist)
+
+  EXACT match — 7,187 of 19,913 directional calls, +$1,469.95 net, 98/170
+  beating baseline — means the L12 changes altered nothing and L9's models
+  are now saved for good. Fair bar: L7 reproduced L2 to the digit a day later.
+
+  ANY drift means the engine changed behaviour and NOTHING else fires until
+  the cause is found.
+
+Then, as agreed: hard stop for the L14 consult — we pick the candidates to
+freeze together, and settle when scrambled testing applies to survivors
+picked off the board.
+
+LOOP LEDGER
+  L12  platform build above — deployed, smoke-verified
+  L13  RUNNING (~20 min): reproduce L9 on the new build, keeping everything
+
+c.
