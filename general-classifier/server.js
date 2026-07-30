@@ -591,6 +591,68 @@ app.post('/api/abort', (req, res) => {
 
 app.get('/api/batches', (req, res) => res.json({ running: batch.batchRunning(), batches: batch.listBatches() }));
 
+// ---- owner-operable inspection + null verdicts (read-only over stored data) --
+
+const { inspectDump } = require('./lib/inspect');
+const { nullVerdict, realRows, drawsOf } = require('./lib/verdict');
+
+// Which runs can play which role in a null verdict — feeds the dropdowns so
+// the owner picks from runs that actually qualify instead of guessing.
+app.get('/api/bracketlab/verdict-sources', (req, res) => {
+  const out = [];
+  for (const b of batch.listBatches()) {
+    if (!String(b.id).startsWith('bracketlab-')) continue;
+    const doc = batch.getBatch(b.id);
+    if (!doc || !Array.isArray(doc.edgeCensus) || !doc.edgeCensus.length) continue;
+    const real = realRows(doc).length;
+    const draws = drawsOf(doc).length;
+    if (!real && !draws) continue;
+    out.push({ id: doc.id, realRows: real, scrambleDraws: draws, status: doc.status });
+  }
+  res.json({ sources: out });
+});
+
+// Serve one saved member dump, analysed. Path inputs are hostile until proven
+// otherwise: id and file are pinned to strict shapes and the resolved path
+// must stay inside the models directory.
+app.get('/api/bracketlab/:id/inspect', (req, res) => {
+  const id = String(req.params.id || '');
+  const file = String(req.query.file || '');
+  const quorum = Number(req.query.quorum) || 1;
+  if (!/^bracketlab-[A-Za-z0-9-]+$/.test(id)) return res.status(400).json({ error: 'bad job id' });
+  if (!/^[A-Za-z0-9._-]+\.json$/.test(file) || file.includes('..')) return res.status(400).json({ error: 'bad file name' });
+  const base = path.join(__dirname, 'data', 'models');
+  const full = path.resolve(base, id, file);
+  if (!full.startsWith(path.resolve(base) + path.sep)) return res.status(400).json({ error: 'bad path' });
+  let dump;
+  try {
+    dump = JSON.parse(require('fs').readFileSync(full, 'utf8'));
+  } catch {
+    return res.status(404).json({ error: 'no saved dump for that setup (runs before 2026-07-30 saved nothing)' });
+  }
+  try {
+    res.json({ job: id, file, meta: { trade: dump.trade, geometry: dump.geometry, decision: dump.decision, best: dump.best || null }, ...inspectDump(dump, quorum) });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// The two null tests over stored runs. POST because it names two docs and an
+// optional setup; it computes only — nothing is fired.
+app.post('/api/bracketlab/null-verdict', (req, res) => {
+  const b = req.body || {};
+  const realDoc = batch.getBatch(String(b.realId || ''));
+  const nullDoc = batch.getBatch(String(b.nullId || ''));
+  if (!realDoc) return res.status(400).json({ error: 'unknown real run' });
+  if (!nullDoc) return res.status(400).json({ error: 'unknown scramble run' });
+  const sel = b.trade ? { trade: String(b.trade), geometry: String(b.geometry || ''), decision: String(b.decision || '') } : null;
+  try {
+    res.json(nullVerdict(realDoc, nullDoc, sel));
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
 app.get('/api/batch/:id', (req, res) => {
   const doc = batch.getBatch(req.params.id);
   if (!doc) return res.status(404).json({ error: 'unknown batch' });

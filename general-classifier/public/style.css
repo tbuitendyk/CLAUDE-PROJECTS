@@ -242,3 +242,9 @@ table.settings tr:nth-child(even) { background: rgba(127, 127, 127, .05); }
    panel and squeeze paddings before ever overflowing. */
 .bl-board { width: 100%; }
 .bl-board td, .bl-board th { padding-left: .4rem; padding-right: .4rem; }
+
+/* Inside-a-setup: pairwise agreement matrix. Hot cells (>=80%) mark member
+   pairs that near-always agree — one opinion counted twice. */
+table.pw td, table.pw th { text-align: center; padding: .1rem .35rem; font-size: .78rem; }
+table.pw .pw-hot { background: rgba(214, 39, 40, .22); font-weight: 700; }
+.bl-inspect { font-size: .7rem; padding: 0 .3rem; margin-top: .15rem; cursor: pointer; }

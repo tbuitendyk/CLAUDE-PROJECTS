@@ -1820,6 +1820,70 @@
     return l.trade + (l.ctx1 ? '+' + l.ctx1 : '') + (l.ctx2 ? '+' + l.ctx2 : '');
   }
 
+  // TABLES CARRY A NAME AND A KEY (owner's standing rule) — these render for
+  // the owner to operate alone, so nothing is assumed known.
+  function renderInspect(d, label) {
+    const pc = (v) => (v == null ? '—' : (100 * v).toFixed(1) + '%');
+    const sp = (v) => (v == null ? '—' : `<span class="${v >= 0 ? 'up' : 'down'}">${v >= 0 ? '+' : ''}${(100 * v).toFixed(1)}%</span>`);
+    const rows = d.members.map((m) => `<tr>
+      <td>${m.i + 1}</td>
+      <td>${esc(m.spec.model)} · ${esc(m.spec.view)} · ${esc(m.spec.regime)}</td>
+      <td>${m.search ? pc(m.search.testAcc) : '—'} ${m.search ? sp(m.search.edge) : ''}</td>
+      <td>${m.hold ? pc(m.hold.testAcc) : '—'} ${m.hold ? sp(m.hold.edge) : ''}</td>
+      <td>${m.hold && m.hold.directionalCalls ? `${m.hold.directionalHits}/${m.hold.directionalCalls}` : '—'}</td>
+      <td>${pc(m.activeHold ?? m.activeSearch)}</td>
+      <td>${pc(m.withTradeHold)}</td>
+    </tr>`).join('');
+    const pw = d.pairwise.map((row, a) => `<tr><th>${a + 1}</th>${row.map((v, b) =>
+      `<td class="${v != null && v >= 0.8 && a !== b ? 'pw-hot' : ''}">${a === b ? '·' : v == null ? '—' : Math.round(100 * v)}</td>`).join('')}</tr>`).join('');
+    return `
+      <h3>${esc(label)} — quorum ${d.quorum}, band ±${d.bandPct != null ? d.bandPct.toFixed(2) : '?'}%</h3>
+      <p class="note"><strong>Member table.</strong> One row per committee member.
+        KEY — <em>member</em>: model type · data view · training variant.
+        <em>tuning / held-back</em>: that member's OWN accuracy (and edge vs baseline) on each window — accuracy points, not money.
+        <em>dir hits</em>: held-back directional calls it got exactly right.
+        <em>active</em>: how often it commits to a direction at all.
+        <em>with trade</em>: when the committee traded, how often this member voted with the traded direction —
+        high for the same few members every time means one opinion echoed, not twelve.</p>
+      <div class="tablewrap"><table>
+        <tr><th>#</th><th>member</th><th>tuning</th><th>held-back</th><th>dir hits</th><th>active</th><th>with trade</th></tr>
+        ${rows}</table></div>
+      <p class="note"><strong>Agreement matrix (${d.pairwiseWindow} window).</strong>
+        KEY — cell (a,b): of the periods where BOTH members committed to a direction, the percentage where they
+        agreed. — means fewer than 5 shared commitments. Values ≥80% are highlighted: members that near-always
+        agree are one opinion counted twice, so "12 members" may be far fewer real opinions.</p>
+      <div class="tablewrap"><table class="pw">
+        <tr><th></th>${d.members.map((m) => `<th>${m.i + 1}</th>`).join('')}</tr>${pw}</table></div>
+      <p class="note">committee at quorum ${d.quorum}: ${d.committee.holdTrades}/${d.committee.holdPeriods} held-back periods traded,
+        ${d.committee.searchTrades}/${d.committee.searchPeriods} tuning periods.</p>`;
+  }
+
+  function renderVerdict(d) {
+    const m$ = (v) => (v == null ? '—' : (v < 0 ? '-' : '+') + '$' + Math.abs(v).toFixed(2));
+    const drawsTable = (t) => `<div class="tablewrap"><table>
+      <tr><th>scramble</th><th>value</th></tr>
+      ${t.draws.map((x) => `<tr><td>${x.shift.toFixed(3)}${x.setup ? ' · ' + esc(x.setup.replace(/\|/g, ' ')) : ''}</td>
+        <td class="${t.real > x.value ? 'up' : 'down'}">${m$(x.value)}</td></tr>`).join('')}
+    </table></div>`;
+    const block = (title, t, what) => t ? `
+      <h3>${title} — ${t.passes ? 'PASS' : 'FAIL'} (beats ${t.beats}/${t.n})</h3>
+      <p class="note">${what}
+        KEY — <em>real</em>: held-back dollars on genuine data. <em>scrambles</em>: the same quantity in
+        worlds with nothing to predict. Beating all ${t.n} is the strongest claim ${t.n} draws allow
+        (p floor ${t.pFloor ? t.pFloor.toFixed(3) : '—'}) — a floor, never a measure of strength.</p>
+      <p><strong>real ${m$(t.real)}</strong>${t.realBestSetup ? ' (' + esc((t.setup || t.realBestSetup).replace(/\|/g, ' ')) + ')' : t.setup ? ' (' + esc(t.setup.replace(/\|/g, ' ')) + ')' : ''}
+        vs scrambles: best ${m$(Math.max(...t.draws.map((x) => x.value)))}, worst ${m$(Math.min(...t.draws.map((x) => x.value)))}</p>
+      ${drawsTable(t)}` : '';
+    return `
+      <p class="note">real: ${esc(d.realJob)} · scrambles: ${esc(d.nullJob)} (${d.drawCount} draws)</p>
+      ${block('Per-setup test', d.perSetup, 'Is this setup better than ITS OWN noise? Same setup, same machinery, scrambled outcomes.')}
+      ${block('Selection-aware test', d.selection, 'Is topping the board better than topping a NOISE board? Each scramble contributes its own best-of-board — this prices in that the winner was picked after looking.')}
+      <p class="note">sanity: ${d.sanity.scrambleRows} scrambled setups, ${(100 * d.sanity.negativeShare).toFixed(1)}% losing money —
+        ${d.sanity.ok ? 'as fees demand.' : '<strong>NOISE IS PROFITING: the simulation is broken; do not read the tests above.</strong>'}</p>
+      <p class="note"><strong>What a pass buys:</strong> this window only. It stops obvious luck being frozen;
+        the forward paper test after freezing is the real judge.</p>`;
+  }
+
   function renderBracket(doc) {
     if (!doc) {
       blViewEl.innerHTML = '<p class="note">No bracket-lab sweeps yet — set the controls and Start sweep.</p>';
@@ -1921,8 +1985,12 @@
           <div class="cellsub">${h.grossPerTrade != null ? 'g/t $' + h.grossPerTrade.toFixed(2) : '—'}</div></td>
         <td>${h.stops}${h.ambiguous ? `<div class="cellsub">${h.ambiguous} amb</div>` : ''}</td>`
         : '<td class="blk-l note" colspan="5">no held-back window in this run</td>';
+      const censusRow = (doc.edgeCensus || []).find((r) => !r.shiftFrac
+        && r.trade === l.trade && r.geometry === l.geometry && r.decision === l.decision);
+      const dumpFile = censusRow && censusRow.modelFile ? censusRow.modelFile.split('/').pop() : null;
       return `<tr class="${l.stage === 'promoted' ? 'hilite' : ''}">
-        <td>${selectable ? `<input type="radio" name="bl-sel" class="bl-sel" data-key="${esc(l.key)}" data-stage="${esc(l.stage)}" ${isSel ? 'checked' : ''}>` : ''}</td>
+        <td>${selectable ? `<input type="radio" name="bl-sel" class="bl-sel" data-key="${esc(l.key)}" data-stage="${esc(l.stage)}" ${isSel ? 'checked' : ''}>` : ''}
+          ${l.stage === 'promoted' && dumpFile ? `<button class="bl-inspect" data-file="${esc(dumpFile)}" data-quorum="${l.quorum}" data-label="${esc(comboLabel(l))} ${esc(l.geometry)} ${esc(l.decision)}" title="Open the 12 members of this setup individually">inspect</button>` : ''}</td>
         <td>${i + 1}</td>
         <td><strong>${esc(comboLabel(l))}</strong> <span class="bl-stage">${l.stage === 'promoted' ? 'prom' : 'slim'}</span>
           <div class="cellsub">${esc(l.geometry)} · ${band} · ${esc(l.decision)} · ${l.weekdaysOnly ? '24/5' : '24/7'}</div></td>
@@ -2044,7 +2112,82 @@
           not replayed here and must be read against the stamp. A forward book remains the only clean test.</p></div>`;
     }
 
-    blViewEl.innerHTML = `<p class="note">${header}</p>${perfBlock}${repBlock}${leaderBlock}${nullBlock}`;
+    // INSIDE VIEW + NULL TESTS — owner-operable, read-only over stored data
+    // (owner, 2026-07-30: every check runnable from the interface,
+    // generalized, not just the ones that matter for one row).
+    const inspectBlock = `
+      <div class="section"><h2>Inside a setup — the 12 members individually</h2>
+      <p class="note">Click <em>inspect</em> on any promoted row above. Runs from 2026-07-30 onward
+        save every member's fitted model, votes and solo scores; older runs saved nothing and will say so.</p>
+      <div id="bl-inspect-out"></div></div>`;
+    const verdictBlock = `
+      <div class="section"><h2>Null tests — is a result better than scrambled data?</h2>
+      <p class="note">Compares a REAL run against a SCRAMBLE run (both already on disk — this fires nothing).
+        Two tests: <strong>per-setup</strong> (is this setup better than its own noise?) and
+        <strong>selection-aware</strong> (is topping the board better than topping a noise board? —
+        the honest test for any row picked off a board, since the best of 170 looks good even on noise).</p>
+      <p class="note">real run <select id="bl-v-real"></select>
+        scramble run <select id="bl-v-null"></select>
+        setup <select id="bl-v-setup"><option value="">— board best only —</option></select>
+        <button id="bl-v-go">run the tests</button></p>
+      <div id="bl-verdict-out"></div></div>`;
+    blViewEl.innerHTML = `<p class="note">${header}</p>${perfBlock}${repBlock}${leaderBlock}${inspectBlock}${verdictBlock}${nullBlock}`;
+    // ---- inside view ------------------------------------------------------
+    blViewEl.querySelectorAll('.bl-inspect').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const out = $('bl-inspect-out');
+        out.innerHTML = '<p class="note">reading the saved members…</p>';
+        try {
+          const r = await fetch(`api/bracketlab/${encodeURIComponent(doc.id)}/inspect?file=${encodeURIComponent(btn.dataset.file)}&quorum=${encodeURIComponent(btn.dataset.quorum)}`);
+          const d = await r.json();
+          if (!r.ok) throw new Error(d.error || r.status);
+          out.innerHTML = renderInspect(d, btn.dataset.label);
+          out.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        } catch (err) {
+          out.innerHTML = `<p class="note">could not inspect: ${esc(err.message)}</p>`;
+        }
+      });
+    });
+
+    // ---- null tests ---------------------------------------------------------
+    (async () => {
+      const realSel = $('bl-v-real');
+      const nullSel = $('bl-v-null');
+      const setupSel = $('bl-v-setup');
+      if (!realSel) return;
+      try {
+        const r = await fetch('api/bracketlab/verdict-sources');
+        const d = await r.json();
+        const srcs = d.sources || [];
+        realSel.innerHTML = srcs.filter((x) => x.realRows > 0)
+          .map((x) => `<option value="${esc(x.id)}" ${x.id === doc.id ? 'selected' : ''}>${esc(x.id)} (${x.realRows} real)</option>`).join('');
+        nullSel.innerHTML = srcs.filter((x) => x.scrambleDraws > 0)
+          .map((x) => `<option value="${esc(x.id)}">${esc(x.id)} (${x.scrambleDraws} scrambles)</option>`).join('');
+      } catch { /* dropdowns stay empty; the button will say why */ }
+      (doc.leaders || []).filter((l) => l.stage === 'promoted').forEach((l) => {
+        const o = document.createElement('option');
+        o.value = JSON.stringify({ trade: l.trade, geometry: l.geometry, decision: l.decision });
+        o.textContent = `${comboLabel(l)} · ${l.geometry} · ${l.decision}`;
+        setupSel.appendChild(o);
+      });
+      $('bl-v-go').addEventListener('click', async () => {
+        const out = $('bl-verdict-out');
+        out.innerHTML = '<p class="note">comparing against the scrambled worlds…</p>';
+        const body = { realId: realSel.value, nullId: nullSel.value };
+        if (setupSel.value) Object.assign(body, JSON.parse(setupSel.value));
+        try {
+          const r = await fetch('api/bracketlab/null-verdict', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+          });
+          const d = await r.json();
+          if (!r.ok) throw new Error(d.error || r.status);
+          out.innerHTML = renderVerdict(d);
+        } catch (err) {
+          out.innerHTML = `<p class="note">could not run the tests: ${esc(err.message)}</p>`;
+        }
+      });
+    })();
+
     blViewEl.querySelectorAll('.bl-sel').forEach((radio) => {
       radio.addEventListener('change', async () => {
         if (!radio.checked) return;
