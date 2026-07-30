@@ -1,0 +1,64 @@
+Code audit done (1 critical, 6 majors — all fixed), L14 is running
+
+tl;dr the adversarial audit you asked for found real defects — including a
+CRITICAL one that predates this week — all confirmed findings are fixed,
+tested, deployed and smoke-verified, and L14 (the 17-asset search on the
+corrected instrument, both window layouts) fired at 23:06 UTC, expected
+done ~23:30.
+
+HOW THE AUDIT RAN
+Four independent reviewers read the shipped code against your stated
+design contract; every major finding was then attacked by two skeptics who
+both had to uphold it. 20 agents, 22 raw findings, 7 confirmed (1 critical,
+6 major), 1 refuted on impact, 11 minors. The three worst:
+
+1. CRITICAL, and OLDER THAN PHASE 2: the survivor-null replay (the
+   interface button that scrambles a selected row's world) has been broken
+   since L12 — it fed member objects where vote arrays belong, so every
+   vote read as an abstention and every "null world" was a committee that
+   never traded. Nothing you have been shown used that path (L9/L13 nulls
+   ran the census machinery, which is separate), but it sat armed. Fixed,
+   and vote-counting now CRASHES on a wrong shape instead of abstaining —
+   silence was the whole failure mode. QC 51.
+2. The purge was too narrow: it protected the label window but an
+   evaluation TRADE can stay open far longer, so trades could run through
+   candles the committee had trained on — a bias hitting only the
+   interlaced arm, i.e. exactly the comparison phase 2 exists to make.
+   Purge now reaches to the longest timeout on the job's own menu. QC 52.
+3. A rerun of QC 38's null-vs-absent confusion in new code: run-wide
+   scramble settings were silently never applied, and promoted reruns of
+   scrambled rows lost their rotation. All rotation stances now ride on
+   key presence through one audited helper. QC 53.
+
+Also fixed: null replays now split exactly as the real run did (layout,
+holdout, per-block rotation); 'both' jobs always run census mode so the
+arms cannot compete for promotion slots; arm identity travels everywhere
+(board rows, verdict dropdown, inspect button, replication rows); minute
+confirmation is layout-aware; compare ids are pinned against hostile
+input; and several smaller honesty items. Every fix has a test that was
+WATCHED FAILING with the fault reintroduced. 162 tests pass. Both
+preflight smokes pass on the deployed engine.
+
+YOUR OTHER TWO ITEMS, CLOSED EARLIER TONIGHT
+- Old data: nothing to convert — the schema scan walked all 38 stored runs
+  (16,178 census rows) and both dump generations through the new readers
+  on the live box: SCHEMA SCAN PASS.
+- Shoehorning old results into the new structure: declined on principle —
+  old boards are not comparable (12-seat echo committees) and old models
+  cannot be re-scored on interlaced windows without leakage. Re-running is
+  the honest path, which is what L14 is.
+
+L14, FIRED UNDER THE COMMITTED READING RULE
+bracketlab-20260730-2306-l14-both-layouts: 17 assets x 5 shapes x 2
+decisions, 6-member committees, chronological + interlaced arms in one
+job, shared band, seed 1, no scrambles (nulls run on SELECTED survivors at
+the L15 consult — declared). Reading rule committed in the launcher before
+the numbers existed: paired per-setup holdout money per trade + survivor
+overlap; the L15 selection board is the interlaced arm sorted by holdout
+money; no candidate retired on this run. Expectation ~25 minutes; checked
+on the remaining-time schedule.
+
+The L15 freeze consult — your hard stop — is the next thing that waits for
+you, with the L14 board and its comparisons on the table.
+
+c.
