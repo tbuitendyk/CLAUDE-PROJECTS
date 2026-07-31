@@ -1236,10 +1236,6 @@ function validateDeclared(raw) {
     : `q${q} ${out.gate} d${out.dMult}x t${out.tHours}h${trailBit}`;
   return out;
 }
-// A call series is one entry per test period. 50 units of ~600 periods is a
-// few hundred KB of JSON — fine; 272 would not be. The cap is the reason
-// emitCalls can be left on for a replication run without thought.
-const CALL_SERIES_MAX = 50;
 // A unit's ROTATION STANCE rides on key PRESENCE, exactly like the unitTask
 // fallback it feeds (QC 38): a unit that never mentions shiftFrac defers to
 // the run-wide labelShiftFrac; an explicit null means THIS unit must not
@@ -1403,7 +1399,6 @@ function startBracketLab(params) {
     // Per-period call export. Off by default: it is O(periods) per unit, and
     // a 272-combo sweep would bloat the doc for data nobody asked for. On, it
     // is what lets a bracket result seed a paper book or be re-scored later.
-    emitCalls: !!params.emitCalls,
     // Trailing stops: a 12x menu widening, so opt-in and promote-stage only.
     trailing: !!params.trailing,
     // Three-way split (70/15/15) with a slice no search ever touches.
@@ -1549,9 +1544,6 @@ function startBracketLab(params) {
     perf: { phase: 'slim', unitsDone: 0, unitsTotal: units.length, runsDone: 0, runsTotal: slimRuns, ratePerMin: null, secPerTraining: null, elapsedMs: 0, etaMs: null },
     leaders: [],
     replication: [], // declared-cell result per asset (replication mode)
-    // Per-period calls for the declared (or winning) cell, when emitCalls is
-    // on. Capped: this is the only unbounded-by-periods structure in the doc.
-    callSeries: [],
     // Edge-screen census: one row per unit, never money-filtered.
     edgeCensus: [],
     failures: [],
@@ -1782,13 +1774,6 @@ function startBracketLab(params) {
               // ordering. Meaningless to report money without it.
               cellAmbiguous: res.best && res.best.holdout
                 ? (res.best.holdout.ambiguous ?? null) : null,
-            });
-          }
-          if (res.callSeries && doc.callSeries.length < CALL_SERIES_MAX) {
-            doc.callSeries.push({
-              key: l.key, trade: l.trade, ctx1: l.ctx1, ctx2: l.ctx2,
-              geometry: l.geometry, decision: l.decision, bandMode: l.bandMode,
-              bandPct: res.bandPct, ...res.callSeries,
             });
           }
           if (res.declared) {
