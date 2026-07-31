@@ -1399,6 +1399,13 @@ function wfParams(params) {
   if (!Number.isFinite(feePerLeg) || feePerLeg < 0 || feePerLeg > 2) {
     throw new Error(`feePerLeg must be dollars from 0 to 2 — got ${JSON.stringify(params.feePerLeg)}`);
   }
+  // The null arm's seed (audit 9a). Blank = the real arm. Malformed is a
+  // loud refusal like every other number here: a null run silently landing
+  // on the real arm would be the worst possible version of QC 60.
+  const nullShiftSeed = blank(params.nullShiftSeed) ? null : Number(params.nullShiftSeed);
+  if (nullShiftSeed !== null && (!Number.isInteger(nullShiftSeed) || nullShiftSeed < 1 || nullShiftSeed > 1e9)) {
+    throw new Error(`nullShiftSeed must be a whole number from 1 to 1e9 — got ${JSON.stringify(params.nullShiftSeed)}`);
+  }
   if (!blank(params.set?.geometry) && !GEOS[params.set.geometry]) {
     throw new Error(`unknown geometry ${JSON.stringify(params.set.geometry)} — one of: ${Object.keys(GEOS).join(', ')}`);
   }
@@ -1417,6 +1424,8 @@ function wfParams(params) {
     band: 'auto',
     minTradesSlice,
     feePerLeg,
+    nullShiftSeed: nullShiftSeed || undefined,
+    arm: nullShiftSeed ? 'null' : 'real',
     dMults: numMenu(params.dMults, bracketLib.D_MULTS, (v) => v > 0 && v <= 10),
     tHours: numMenu(params.tHours, bracketLib.T_HOURS, (v) => Number.isInteger(v) && v > 0 && v <= 500),
     gates: pickMenu(params.gates, bracketLib.GATES),

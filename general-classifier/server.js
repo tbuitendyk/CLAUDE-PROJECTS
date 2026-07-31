@@ -743,6 +743,7 @@ app.post('/api/walkforward', (req, res) => {
       tHours: b.tHours,
       gates: b.gates,
       entries: b.entries,
+      nullShiftSeed: b.nullShiftSeed,
       description: b.description,
       label: b.label,
     });

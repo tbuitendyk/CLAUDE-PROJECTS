@@ -105,11 +105,11 @@ function generate(symbol, signalUntilDay, seed) {
   return written;
 }
 
-async function runUnit(symbol) {
+async function runUnit(symbol, extra = {}) {
   return wfUnitTask({
     combo: { trade: symbol, ctx1: null, ctx2: null, size: 1 },
     branch: { geometry: 'daily-1d', decision: 'argmax', band: 'auto', weekdaysOnly: false },
-    params: { allLoaded: true, minTradesSlice: 5, feePerLeg: 0.125 },
+    params: { allLoaded: true, minTradesSlice: 5, feePerLeg: 0.125, ...extra },
   });
 }
 
@@ -141,6 +141,12 @@ async function runUnit(symbol) {
     const noi = await step('WFNOI (pure noise)', () => runUnit('WFNOIUSDT'));
     const s42 = await step('WFS42 (seed control)', () => runUnit('WFS42USDT'));
     const sig2 = await step('WFSIG determinism twin', () => runUnit('WFSIGUSDT'));
+    // THE NULL ARM against the planted signal: rotated votes on the coin
+    // with a REAL planted edge. If the rotation machinery is honest, the
+    // edge dies; if the "null" still earns on a signal we planted, the
+    // null is broken and no market null count can be believed.
+    const sigN = await step('WFSIG null arm (seed 7)', () => runUnit('WFSIGUSDT', { nullShiftSeed: 7 }));
+    const sigN2 = await step('WFSIG null determinism twin', () => runUnit('WFSIGUSDT', { nullShiftSeed: 7 }));
 
     const $ = (v) => (v < 0 ? '-' : '+') + '$' + Math.abs(v).toFixed(2);
     // Per-fold detail for diagnosis: B1's first failure showed three
@@ -178,6 +184,17 @@ async function runUnit(symbol) {
     chk('B2', dieLate < dieEarly / 3, `and stops after death: late ${$(dieLate)} vs early ${$(dieEarly)}`);
     chk('C1', noi.agg.holdTotal < sig.agg.holdTotal / 3, `noise invents nothing: ${$(noi.agg.holdTotal)} vs signal ${$(sig.agg.holdTotal)}`);
     chk('D1', JSON.stringify(sig.folds) === JSON.stringify(sig2.folds), 'byte-identical rerun');
+    const sigVsL = sig.agg.holdTotal - sig.agg.alwaysLongTotal;
+    const sigNVsL = sigN.agg.holdTotal - sigN.agg.alwaysLongTotal;
+    console.log(`WFSIG-null: total ${$(sigN.agg.holdTotal)} vs real ${$(sig.agg.holdTotal)}; vs-long ${$(sigNVsL)} vs real ${$(sigVsL)}`);
+    // N-margins: direction DERIVED (rotated votes cannot carry the planted
+    // 70%-follow edge), the 1/4 factor GUESSED like C1's 1/3.
+    chk('N1', sigN.agg.holdTotal < sig.agg.holdTotal / 4,
+      `the null arm destroys the planted money: ${$(sigN.agg.holdTotal)} vs real ${$(sig.agg.holdTotal)}`);
+    chk('N2', sigNVsL < sigVsL / 4,
+      `and the planted skill-vs-long: ${$(sigNVsL)} vs real ${$(sigVsL)}`);
+    chk('N3', JSON.stringify(sigN.folds) === JSON.stringify(sigN2.folds), 'null arm byte-identical on the same seed');
+    chk('N4', JSON.stringify(sigN.folds) !== JSON.stringify(sig.folds), 'and actually different from the real arm');
     console.log(checks.every(Boolean) ? '\nWALK-FORWARD PLANTED CHECK PASS' : '\nWALK-FORWARD PLANTED CHECK FAIL');
     process.exitCode = checks.every(Boolean) ? 0 : 1;
   } finally {

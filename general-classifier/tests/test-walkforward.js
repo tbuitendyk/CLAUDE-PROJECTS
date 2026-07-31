@@ -1,5 +1,5 @@
 const { assert } = require('./helpers');
-const { foldGrid, foldSlices, reachMs, TEST_WEEKS, HOLD_WEEKS, STEP_WEEKS, WARMUP_WEEKS } = require('../lib/walkforward');
+const { foldGrid, foldSlices, reachMs, foldNullOffset, rotateCalls, TEST_WEEKS, HOLD_WEEKS, STEP_WEEKS, WARMUP_WEEKS } = require('../lib/walkforward');
 const { GEOMETRIES } = require('../lib/dataset');
 
 const DAY = 86_400_000;
@@ -71,5 +71,32 @@ module.exports = {
       for (const c of trainChunks) assert.ok(c.startTs + reach <= f.testStart, 'train purged by the full reach');
       for (const c of testChunks) assert.ok(c.startTs + reach <= f.holdStart, 'test trades must not touch hold candles');
     }
+  },
+  async theNullRotationPreservesTheCommitteeButNotTheDates() {
+    // The null arm's whole claim: rotating every member by the SAME offset
+    // keeps the committee's internal agreement exactly (same votes, same
+    // concurrences) while moving every vote off its date. A per-member
+    // offset would fake a different committee, not a lucky one.
+    const m1 = [1, 0, -1, 1, 1, 0, -1, 0, 1, -1, 0, 1];
+    const m2 = [1, -1, -1, 0, 1, 1, -1, 0, 0, -1, 1, 1];
+    const agree = (a, b) => a.reduce((s, v, i) => s + (v === b[i] ? 1 : 0), 0);
+    const off = foldNullOffset(101, 'DOTUSDT|daily-3d|argmax', 4);
+    const r1 = rotateCalls(m1, off);
+    const r2 = rotateCalls(m2, off);
+    assert.strictEqual(agree(r1, r2), agree(m1, m2), 'common rotation must preserve pairwise agreement');
+    assert.deepStrictEqual([...r1].sort(), [...m1].sort(), 'the multiset of votes is unchanged');
+    assert.notDeepStrictEqual(r1, m1, 'the dates must actually move');
+    // never a zero shift: a null fold must not silently be the real fold
+    for (let i = 0; i < 200; i++) {
+      const o = foldNullOffset(7, 'X|g|d', i);
+      assert.notDeepStrictEqual(rotateCalls(m1, o), m1, `offset at fold ${i} left the calls in place`);
+    }
+    // deterministic in (seed, unit, fold); different folds move differently
+    assert.strictEqual(foldNullOffset(101, 'k', 3), foldNullOffset(101, 'k', 3));
+    assert.notStrictEqual(foldNullOffset(101, 'k', 3), foldNullOffset(101, 'k', 4));
+    assert.notStrictEqual(foldNullOffset(101, 'k', 3), foldNullOffset(102, 'k', 3));
+    // tiny slices cannot rotate and must come back untouched copies
+    assert.deepStrictEqual(rotateCalls([1], 5), [1]);
+    assert.deepStrictEqual(rotateCalls([], 5), []);
   },
 };

@@ -47,6 +47,21 @@ module.exports = {
     assert.strictEqual(p.minTradesSlice, 5);
     assert.ok(p.feePerLeg > 0);
   },
+  async theNullArmIsExplicitNeverAccidental() {
+    // A null run silently landing on the real arm (or the reverse) would be
+    // the worst version of QC 60: a five-hour job answering the wrong
+    // question with plausible numbers. Blank = real, stated loudly; a seed
+    // = null, carried through; garbage = refusal.
+    const real = wfParams({});
+    assert.strictEqual(real.p.arm, 'real');
+    assert.strictEqual(real.p.nullShiftSeed, undefined);
+    const nul = wfParams({ nullShiftSeed: 101 });
+    assert.strictEqual(nul.p.arm, 'null');
+    assert.strictEqual(nul.p.nullShiftSeed, 101);
+    assert.throws(() => wfParams({ nullShiftSeed: 'lucky' }), /nullShiftSeed/);
+    assert.throws(() => wfParams({ nullShiftSeed: 0 }), /nullShiftSeed/);
+    assert.throws(() => wfParams({ nullShiftSeed: 2.5 }), /nullShiftSeed/);
+  },
   async weeklyEightDayIsExcludedFromWalkforwardLoudly() {
     // week-long chunks can never fill an 8-week slice once the execution
     // purge trims its tail, so every weekly-8d fold would "skip". The

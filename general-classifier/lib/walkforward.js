@@ -79,6 +79,37 @@ function foldSlices(chunks, f, reach) {
   };
 }
 
+// ---- the NULL ARM (audit-walkforward-...-wf1.md, 9a) ------------------------
+// The zero-skill baseline: inside each fold, every member's vote stream is
+// rotated by the SAME offset within its slice. The committee's internal
+// agreement pattern — how often members concur, the rhythm of the votes —
+// is preserved exactly; alignment with what the market did is destroyed.
+// Selection and scoring then run bit-identically to the real arm, so the
+// null measures what the PICKING MACHINERY can extract from votes that
+// carry no information. Training is untouched: the null nulls the votes'
+// dates, not the learning (one knob, attributable).
+//
+// The offset is deterministic in (seed, unit, fold): reruns are
+// byte-identical, and different seeds give independent draws of the
+// whole-board luck count.
+const { mulberry32 } = require('./interlace');
+
+function foldNullOffset(seed, unitKey, foldIdx) {
+  let h = (Number(seed) >>> 0) || 1;
+  const s = `${unitKey}|${foldIdx}`;
+  for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 2654435761) >>> 0;
+  return 1 + Math.floor(mulberry32(h)() * 1_000_003);
+}
+
+// Cyclic shift by 1..len-1 positions — never 0, so no null fold can
+// silently be the real fold wearing the wrong name.
+function rotateCalls(calls, offset) {
+  const n = calls.length;
+  if (n < 2) return calls.slice();
+  const k = 1 + (offset % (n - 1));
+  return calls.map((_, i) => calls[(i + k) % n]);
+}
+
 // All folds for one (coin, shape, decision) unit. Serial inside the task;
 // units parallelize across workers.
 async function wfUnitTask({ combo, branch, params }) {
@@ -124,6 +155,17 @@ async function wfUnitTask({ combo, branch, params }) {
     }
     const testCalls = members.map((m) => m.calls.slice(0, testChunks.length));
     const holdCalls = members.map((m) => m.calls.slice(testChunks.length));
+    if (p.nullShiftSeed) {
+      // Null arm: one common rotation per fold (see the block comment
+      // above). memberHoldEdges below are computed from the rotated calls
+      // too — in a null doc every number is a null number.
+      const unitKey = `${combo.trade}|${branch.geometry}|${branch.decision}`;
+      const off = foldNullOffset(p.nullShiftSeed, unitKey, folds.length);
+      for (let mI = 0; mI < members.length; mI++) {
+        testCalls[mI] = rotateCalls(testCalls[mI], off);
+        holdCalls[mI] = rotateCalls(holdCalls[mI], off);
+      }
+    }
 
     // Pick the assembly on the test slice: every agreement level, whole menu.
     let best = null;
@@ -169,6 +211,11 @@ async function wfUnitTask({ combo, branch, params }) {
 
   const scored = folds.filter((f) => !f.skipped);
   const pnls = scored.map((f) => f.holdPnl).sort((a, b) => a - b);
+  // Drift-adjusted skill series (audit 9b): per fold, holdout money minus
+  // always-going-long the same slice — the rank key the stated question
+  // actually asks about. The raw money quantiles stay reported beside it
+  // (QC 21c: the old measure keeps being printed next to the new one).
+  const skills = scored.map((f) => f.holdPnl - (f.alwaysLong || 0)).sort((a, b) => a - b);
   // Interpolated quantile: the old floor(f*n) rank sat one element high on
   // even-length sets, biasing every reported median upward or downward by
   // luck of parity.
@@ -188,6 +235,9 @@ async function wfUnitTask({ combo, branch, params }) {
       holdMedian: q(pnls, 0.5),
       iqrLo: q(pnls, 0.25), iqrHi: q(pnls, 0.75),
       foldsPositive: scored.filter((f) => f.holdPnl > 0).length,
+      skillMedian: q(skills, 0.5),
+      skillLo: q(skills, 0.25), skillHi: q(skills, 0.75),
+      skillPositive: scored.filter((f) => f.holdPnl - (f.alwaysLong || 0) > 0).length,
       holdTrades: scored.reduce((s, f) => s + f.holdTrades, 0),
       holdWins: scored.reduce((s, f) => s + f.holdWins, 0),
       alwaysLongTotal: scored.reduce((s, f) => s + (f.alwaysLong || 0), 0),
@@ -195,4 +245,4 @@ async function wfUnitTask({ combo, branch, params }) {
   };
 }
 
-module.exports = { wfUnitTask, foldGrid, foldSlices, reachMs, TEST_WEEKS, HOLD_WEEKS, STEP_WEEKS, WARMUP_WEEKS };
+module.exports = { wfUnitTask, foldGrid, foldSlices, reachMs, foldNullOffset, rotateCalls, TEST_WEEKS, HOLD_WEEKS, STEP_WEEKS, WARMUP_WEEKS };

@@ -194,17 +194,23 @@
 
   function renderWalkforward(doc) {
     const running = doc.status === 'running';
+    const isNull = doc.params && doc.params.arm === 'null';
     const header = `${esc(doc.id)} — ${esc(doc.status)}${doc.perf ? ` · ${doc.perf.unitsDone}/${doc.perf.unitsTotal} setups` : ''}`
       + (running && doc.perf && doc.perf.etaMs ? ` · ~${Math.round(doc.perf.etaMs / 60000)} min left` : '')
       + (doc.description ? ` · ${esc(doc.description)}` : '');
+    // Rank by drift-adjusted skill when the engine recorded it (1.29+);
+    // older docs fall back to raw fold money and say so in the column.
+    const rankOf = (r) => (r.skillMedian ?? r.holdMedian ?? -Infinity);
     const rows = (doc.wfRows || []).slice()
-      .sort((x, y) => (y.holdMedian ?? -Infinity) - (x.holdMedian ?? -Infinity))
+      .sort((x, y) => rankOf(y) - rankOf(x))
       .map((r, i) => {
         const pt = r.holdTrades ? r.holdTotal / r.holdTrades : null;
         return `<tr>
         <td>${i + 1}</td>
         <td><strong>${esc(r.trade)}</strong> ${esc(r.geometry)} ${esc(r.decision)}</td>
         <td>${r.foldsScored}/${r.foldsPlanned}</td>
+        <td class="${(r.skillMedian ?? 0) >= 0 ? 'up' : 'down'}"><strong>${r.skillMedian == null ? '—' : m$wf(r.skillMedian)}</strong>
+          <div class="cellsub">${r.skillMedian == null ? 'not recorded by this engine version' : `${r.skillPositive}/${r.foldsScored} folds beat long`}</div></td>
         <td class="${(r.holdMedian ?? 0) >= 0 ? 'up' : 'down'}"><strong>${m$wf(r.holdMedian)}</strong>
           <div class="cellsub">${m$wf(r.iqrLo)} … ${m$wf(r.iqrHi)}</div></td>
         <td>${r.foldsPositive}/${r.foldsScored}</td>
@@ -215,27 +221,33 @@
       </tr>`;
       }).join('');
     return `<p class="note">${header}</p>
+      ${isNull ? `<p class="note down"><strong>NULL ARM — this board is the luck yardstick, not a result.</strong>
+        Every member's votes were rotated inside each fold (seed ${esc(String(doc.params.nullShiftSeed))}), so they carry
+        no information about the market; whatever passes here passes by luck. Nothing on this board can be selected.</p>` : ''}
       <div class="section"><h2>Walk-forward board</h2>
       <p class="note"><strong>One row per setup; every number is HOLDOUT money</strong> — earned on 8-week
         slices the fold's settings never saw, summed or summarized across all folds.
         KEY — <em>folds</em>: holdout slices scored / planned (skips = thin data or the safety
         margin that keeps a fold's trades out of the next slice; never selection).
-        <em>median fold $</em>: the middle fold's holdout money, per $100 book — the sort key, because a
-        median cannot be carried by one lucky era; second line = the middle half's range (25th…75th
-        percentile). <em>positive</em>: folds that made money. <em>total $</em>: summed across all folds —
+        <em>skill med $</em>: the middle fold's holdout money MINUS always-going-long the same slice, per $100
+        book — the sort key (audit 9b): raw fold money rewards riding a rising market, this subtracts the ride;
+        second line = folds that beat always-long. <em>median fold $</em>: the middle fold's raw holdout money,
+        kept beside the new key (QC 21); second line = the middle half's range (25th…75th percentile).
+        <em>positive</em>: folds that made money. <em>total $</em>: summed across all folds —
         one coin's whole history, so unlike the retired boards this IS one setup's stitched record; second
         line = total minus always-going-long the same slices (the skill question). <em>W/T</em>: wins over
         trades, with money per trade under it.</p>
       <div class="tablewrap"><table>
-        <tr><th title="Rank by median fold holdout money">#</th>
+        <tr><th title="Rank by median drift-adjusted fold money (skill med $); older docs without it rank by raw median">#</th>
         <th title="coin · chunk shape · decision rule">setup</th>
         <th title="Holdout slices scored / planned. Skips mean thin data (gaps, a short history) or the safety margin that keeps a fold's trades out of the next slice — never selection. Each skipped fold states its reason in the fold table.">folds</th>
-        <th title="The middle fold's holdout money per $100 book — the sort key. A median cannot be carried by one lucky era. Second line: 25th to 75th percentile fold.">median fold $</th>
+        <th title="The middle fold's holdout money minus always-going-long the same slice — the sort key. Positive means the machinery typically beat holding. Second line: how many folds beat always-long.">skill med $</th>
+        <th title="The middle fold's raw holdout money per $100 book, kept beside the drift-adjusted key. Second line: 25th to 75th percentile fold.">median fold $</th>
         <th title="Folds whose holdout slice made money">positive</th>
         <th title="All folds' holdout money summed — this setup's stitched record over its whole history. Second line: the same total minus always-going-long the same slices; positive means the machinery beat doing nothing clever.">total $ <div class="cellsub">vs long</div></th>
         <th title="Holdout wins over trades across all folds; money per trade beneath">W/T</th>
         <th title="Per-fold detail">detail</th></tr>
-        ${rows || '<tr><td colspan="8" class="note">no setups scored yet</td></tr>'}</table></div>
+        ${rows || '<tr><td colspan="9" class="note">no setups scored yet</td></tr>'}</table></div>
       <p class="note">Read with the standing cautions: totals across SETUPS still overlap (QC 36/47 —
         re-cuts of one coin are not independent), and nothing here has faced its noise comparison yet.</p>
       ${doc.failures && doc.failures.length ? `<p class="note down"><strong>${doc.failures.length} setup(s) failed to run</strong> — these are missing from the board, not scored at zero. First: ${esc(doc.failures[0].key)}: ${esc(doc.failures[0].error)}</p>` : ''}
