@@ -46,9 +46,6 @@ if dec.get("entry") == "market":
     print(f"declared: MARKET entry (at the open, called direction), t{dec.get('tHours')}h, quorum {q}")
 else:
     print(f"declared: {dec.get('gate')} gate, d{dec.get('dMult')}x, t{dec.get('tHours')}h, quorum {q}")
-cs = doc.get("callSeries") or []
-if cs:
-    print(f"call export: {len(cs)} unit(s), {sum(len(c.get('calls') or []) for c in cs)} periods total")
 sizes = [k for k, v in (p.get("sizes") or {}).items() if v]
 print(f"branch: {p['set']['geometry']} / {p['set']['band']} / {p['set']['decision']} / "
       f"{'24-5' if p['set']['weekdaysOnly'] else '24-7'} | sizes={sizes} universe={len(p['universe'])}")
