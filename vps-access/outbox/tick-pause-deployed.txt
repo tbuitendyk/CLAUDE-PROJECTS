@@ -1,0 +1,26 @@
+Done: book refresh ticks now pause during sweeps — deploying engine 1.29.0
+
+tl;dr as ordered: the tracker, DOGE book and paper-book 30-minute
+refresh ticks now skip while any screen or sweep is running, closing the
+last named gap in the cache-write guard. The frozen book code itself is
+untouched — the pause lives at the timers in the server wiring, so
+lib/tracker.js and lib/dogebook.js remain byte-identical. Deploying now
+(nothing is running; WF1 is done and audited).
+
+Why nothing is lost by a pause: the books are deterministic on candle
+history — a skipped tick just means the next tick after the batch ends
+reads the same candles and settles the same trades with the same
+numbers, only later on the clock. The books' own self-heal path (missed
+days arrive flagged, never lost) is the mechanism that guarantees it.
+
+With this, the full guard now reads: while a screen or sweep runs —
+Load Data refused; single runs and rotation quotes refused only if they
+would download; book drafts refused; the 6-hour new-month auto-refresh
+and all three 30-minute book ticks skip. Everything resumes by itself
+the moment the job finishes.
+
+Meanwhile the null-arm build (the zero-skill baseline WF1's audit
+demands) is next on the bench; you'll hear when it has passed its own
+planted calibration.
+
+c.
