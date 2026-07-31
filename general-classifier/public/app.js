@@ -143,10 +143,11 @@
     let html;
     let quiet = false;
     if (!runningJob) {
-      // "Refused" claims are deliberately scoped: every SCREEN/SWEEP start
-      // checks the running batch and refuses, but the single-run and
-      // load-data paths do not — so the strip never claims they would.
-      // And no idle claim is made before the first poll has answered.
+      // "Refused" claims are scoped to what the engine actually refuses:
+      // screen/sweep starts, Load Data, and any single run that would
+      // download (the cache-write guard, 2026-07-31). Fully-cached single
+      // runs stay allowed and the strip makes no claim about them.
+      // No idle claim is made before the first poll has answered.
       html = runBannerKnown ? 'No screen or sweep is running.' : 'Checking for a running job…';
       quiet = true;
     } else if (runningJob.tab === active) {
@@ -155,7 +156,8 @@
     } else {
       const label = labels[runningJob.tab];
       html = `A <strong>${esc(label)}</strong> job is running: ${esc(runningJob.id)} — `
-        + `${runningJob.done}/${runningJob.total} done. Another screen or sweep cannot start until it finishes.`
+        + `${runningJob.done}/${runningJob.total} done. Another screen or sweep, Load Data, and any run `
+        + `needing a download are refused until it finishes.`
         + `<button type="button" id="runbanner-go">Open the ${esc(label)} tab</button>`;
     }
     if (html === runBannerHtml) return; // no churn: keeps focus and clicks alive

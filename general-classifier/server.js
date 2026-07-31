@@ -7,6 +7,7 @@ const { cacheState, cachedMonths, monthlyKlines } = require('./lib/binance');
 const throttle = require('./lib/throttle');
 const { configuredSize, createPool } = require('./lib/pool');
 const batch = require('./lib/batch');
+const guard = require('./lib/guard');
 const tracker = require('./lib/tracker');
 const dogebook = require('./lib/dogebook');
 const books = require('./lib/books');
@@ -102,6 +103,10 @@ app.post('/api/load', (req, res) => {
   if (!/^\d{4}-\d{2}$/.test(startMonth) || !/^\d{4}-\d{2}$/.test(endMonth)) {
     return res.status(400).json({ error: 'months must be YYYY-MM' });
   }
+  // Cache-write guard (owner, 2026-07-31): a running sweep's workers read
+  // the candle cache; writing months into it mid-run splits the dataset.
+  const loadStop = guard.loadRefusal(batch.batchRunning());
+  if (loadStop) return res.status(409).json({ error: loadStop });
   const jobId = startJob((setProgress) => loadData({ tradeSymbol, compareSymbol, startMonth, endMonth }, setProgress));
   res.json({ jobId });
 });
@@ -144,6 +149,12 @@ app.post('/api/run', (req, res) => {
   if (decision !== 'argmax' && decision !== 'directional') {
     return res.status(400).json({ error: 'decision must be "argmax" or "directional"' });
   }
+  // Cache-write guard (owner, 2026-07-31): only runs that would DOWNLOAD
+  // are refused mid-sweep — "all loaded data" and fully-cached ranges read
+  // the cache without touching the network and stay allowed.
+  const runStop = guard.runRefusal(batch.batchRunning(),
+    { allLoaded, tradeSymbol, compareSymbol, startMonth, endMonth }, cachedMonths);
+  if (runStop) return res.status(409).json({ error: runStop });
   const jobId = startJob((setProgress) =>
     runAnalysis({ dormantPct, tradeSymbol, compareSymbol, startMonth, endMonth, featureSet, model, featureView, decision, geometry, weekdaysOnly: !!b.weekdaysOnly, allLoaded }, setProgress)
   );
