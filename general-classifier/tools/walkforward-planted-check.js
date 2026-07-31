@@ -115,7 +115,19 @@ async function runUnit(symbol) {
 
 (async () => {
   const cleanup = [];
+  // Progress lines with times: the first run of this tool sat for hours with
+  // an EMPTY log because nothing printed until every unit finished — a wedge
+  // and normal progress looked identical from outside. Each unit is minutes;
+  // a unit line older than ~30 min means stuck, and the log says where.
+  const t = () => new Date().toISOString().slice(11, 19);
+  const step = async (label, fn) => {
+    console.log(`[${t()} UTC] ${label}...`);
+    const r = await fn();
+    console.log(`[${t()} UTC] ${label} done`);
+    return r;
+  };
   try {
+    console.log(`walk-forward planted check — engine ${require('../package.json').version}`);
     cleanup.push(...generate('WFSIGUSDT', DAYS, 41));
     cleanup.push(...generate('WFDIEUSDT', 720, 42));
     cleanup.push(...generate('WFNOIUSDT', 0, 43));
@@ -124,11 +136,11 @@ async function runUnit(symbol) {
     // per-fold selection noise, not the death; if it passes, the death
     // somehow contaminates alive folds and the harness is suspect.
     cleanup.push(...generate('WFS42USDT', DAYS, 42));
-    const sig = await runUnit('WFSIGUSDT');
-    const die = await runUnit('WFDIEUSDT');
-    const noi = await runUnit('WFNOIUSDT');
-    const s42 = await runUnit('WFS42USDT');
-    const sig2 = await runUnit('WFSIGUSDT'); // determinism twin
+    const sig = await step('WFSIG (stationary signal)', () => runUnit('WFSIGUSDT'));
+    const die = await step('WFDIE (signal dies day 720)', () => runUnit('WFDIEUSDT'));
+    const noi = await step('WFNOI (pure noise)', () => runUnit('WFNOIUSDT'));
+    const s42 = await step('WFS42 (seed control)', () => runUnit('WFS42USDT'));
+    const sig2 = await step('WFSIG determinism twin', () => runUnit('WFSIGUSDT'));
 
     const $ = (v) => (v < 0 ? '-' : '+') + '$' + Math.abs(v).toFixed(2);
     // Per-fold detail for diagnosis: B1's first failure showed three
