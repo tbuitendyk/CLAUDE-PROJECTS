@@ -225,6 +225,7 @@ app.post('/api/bracketlab', (req, res) => {
       set: b.set,
       promoteK: b.promoteK,
       minTrades: b.minTrades,
+      emitCalls: b.emitCalls,
       trailing: b.trailing,
       holdout: b.holdout,
       edgeScreen: b.edgeScreen,

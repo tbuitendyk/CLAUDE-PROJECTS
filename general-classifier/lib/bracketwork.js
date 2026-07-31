@@ -501,6 +501,21 @@ async function unitTask(task) {
     };
   }
 
+  // CALL EXPORT — off by default because it is per-period data and a
+  // 272-combo sweep would bloat the doc. On, it is what lets a bracket result
+  // seed a paper book or be re-scored later without re-running anything.
+  if (p.emitCalls) {
+    const stream = declaredStream || bestStream;
+    if (stream) {
+      out.callSeries = {
+        quorum: (declared || best).quorum,
+        members: memberCalls.length,
+        startTs: testChunks.map((c) => c.startTs),
+        calls: stream.slice(),
+        labels: testLabels.slice(),
+      };
+    }
+  }
   return out;
 }
 
