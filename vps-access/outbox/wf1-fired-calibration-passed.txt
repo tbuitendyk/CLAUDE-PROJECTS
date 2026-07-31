@@ -1,0 +1,50 @@
+Calibration PASSED on the fixed engine — WF1 (136 setups) fired at 14:58 UTC
+
+tl;dr the fake-coin calibration now passes ALL six declared criteria on the
+fixed engine — including the one that failed before the review — the
+one-unit smoke ran clean end to end, and WF1, the first real walk-forward
+sweep (17 coins x 4 daily shapes x 2 decision rules = 136 setups), fired
+at 14:58 UTC. Expected done in roughly 5-9 hours, so results land this
+evening and are on your screen in the morning. It is checked hourly, on
+the job's own cadence.
+
+CALIBRATION VERDICT (fake coins with known answers, criteria declared
+before the run; "hold" = money on the 8-week slice the settings never saw)
+
+  ok  A1  planted signal harvested: +$310.47, 11/13 folds positive
+  ok  A2  and it beats always-going-long by +$469.68
+  ok  B1  dying signal earns while alive: +$6.60   <- the one that failed
+  ok  B2  and stops after death: -$116.07 late vs +$6.60 alive
+  ok  C1  pure noise invents nothing: -$1.25
+  ok  D1  byte-identical rerun (same inputs, same cents)
+
+Two honest footnotes. B1's margin is small — the alive era only has a
+handful of folds after the one-year warm-up, so most of the discriminating
+power sits in A1/A2/B2/C1, which are unambiguous. And the seed-control
+coin matches the dying coin's alive era to the cent (+$6.60 = +$6.60),
+which is exactly what "deterministic, and the planted death does not leak
+backwards in time" predicts. The instrument also now correctly LOSES money
+(-$116) trading a signal that no longer exists — before the fix it could
+not tell that signal from noise at all.
+
+SMOKE (machinery check only, numbers deliberately not judged): DOT,
+daily-3d, 30/30 folds scored, zero skipped; the job list row, the board
+row and the fold-by-fold table all render through the exact plumbing the
+review found broken. For the record its holdout total was -$522 but
++$1,159 against always-long — DOT fell hard over those years and the
+machinery lost far less than holding would have. That is one unranked
+data point, nothing more.
+
+WF1, NOW RUNNING: walkforward-20260731-145820-wf1. Each of the 136 setups
+is scored as a distribution over ~25-30 held-out 8-week slices marching
+through its whole history, settings re-picked fresh each fold (your
+re-vote idea is the spine of it). The reading rules R1-R5 were committed
+in classifier-wf1-launch.sh BEFORE the run fired — per-setup support
+thresholds, the beat-the-drift control, the one-coin-is-one-evidence-unit
+rule, the thin-setup floor, and what counts as a direction versus a
+finding. The audit gate confirmed the seed-3 run's audit before allowing
+the launch.
+
+Next mail: the WF1 read through those rules, with the audit file.
+
+c.
