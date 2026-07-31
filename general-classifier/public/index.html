@@ -228,7 +228,9 @@
               <option value="0.1667">1/6 (1 of 6 · 1 of 8)</option><option value="0.3333" selected>1/3 (2 of 6 · 3 of 8)</option>
               <option value="0.5">1/2 (3 of 6 · 4 of 8)</option><option value="0.6667">2/3 (4 of 6 · 5 of 8)</option>
               <option value="0.8334">5/6 (5 of 6 · 7 of 8)</option><option value="1">all (6 of 6 · 8 of 8)</option>
-            </select></label>
+              <option value="exact">exact count &rarr;</option>
+            </select><input id="bl-dec-qn" type="number" min="1" max="8" step="1" value="4" style="width:56px;padding:4px 6px" hidden
+              title="An EXACT number of agreeing members, used instead of a fraction. Pick this when you want a specific count — 2 of 8, 6 of 8 — rather than a fraction that lands differently on different committee sizes. It is capped at the committee's size at run time, so a 6 declared against a 6-member single-asset committee means unanimous."></label>
         </div>
       </div>
       <div class="field" style="min-width:250px">

@@ -2364,6 +2364,11 @@
   $('bl-dec-trail').addEventListener('change', blSyncEntry);
   blSyncEntry();
 
+  // The exact-count box only exists when 'exact count' is chosen.
+  $('bl-dec-q').addEventListener('change', () => {
+    $('bl-dec-qn').hidden = $('bl-dec-q').value !== 'exact';
+  });
+
   $('bl-start-btn').addEventListener('click', async () => {
     try {
       blErrEl.hidden = true;
@@ -2402,14 +2407,21 @@
         // rather than ignoring them, so send a declaration that means exactly
         // what the form shows.
         const trailRaw = $('bl-dec-trail').value;
+        // Agreement level: a fraction of the committee, or an exact count
+        // when the owner wants a specific number rather than one that lands
+        // differently on 6- and 8-member committees.
+        const qSel = $('bl-dec-q').value;
+        const qPart = qSel === 'exact'
+          ? { quorum: Number($('bl-dec-qn').value) || 1 }
+          : { quorumRatio: Number(qSel) };
         body.declared = entry === 'market'
-          ? { entry, tHours: Number($('bl-dec-t').value), quorumRatio: Number($('bl-dec-q').value) }
+          ? { entry, tHours: Number($('bl-dec-t').value), ...qPart }
           : {
               entry,
               gate: $('bl-dec-gate').value,
               dMult: Number($('bl-dec-d').value),
               tHours: Number($('bl-dec-t').value),
-              quorumRatio: Number($('bl-dec-q').value),
+              ...qPart,
               // armMult is refused by the server unless a trail is declared,
               // so send neither rather than a meaningless pair.
               ...(trailRaw ? { trailMult: Number(trailRaw), armMult: Number($('bl-dec-arm').value) } : {}),
