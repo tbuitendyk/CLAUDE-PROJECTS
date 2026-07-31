@@ -123,7 +123,7 @@
       <p>Sweeps asset <strong>combos</strong> (a trade asset alone, or with one or two context assets) &times;
         any <strong>permuted options</strong> &times; the full <strong>OCO bracket execution menu</strong>:
         stop-entries at p&plusmn;d off the entry candle, first rail filled becomes the position and the other its
-        stop, time exit at t. Slim grid first (logreg views), top combos promoted to the full 16-member grid with
+        stop, time exit at t. Slim grid first (logreg views), top combos promoted to the full committee (6 members for singles, 8 with context assets) with
         quorum rungs. Selection is mechanical (best net $, min-trade floor) and every menu is stamped. No nulls
         here by design &mdash; fire the null on a promoted survivor and it replays everything downstream of the
         combo. Ambiguous hourly bars always resolve AGAINST the book and are counted.</p>
@@ -184,7 +184,7 @@
       </div>
       <div class="field" style="min-width:250px">
         <label class="check"
-          title="REPLICATION MODE. Instead of judging each asset by its best-shopped cell, score ONE fixed configuration on every asset — declared before the run, so each asset costs a single look instead of the ~1,260 a menu sweep spends. That turns 'best of thousands on one asset' into a clean binomial across assets: no shopping tax, no branch correction. The menu still runs (the board is unchanged); this adds a separate replication table reporting the declared cell per asset. Quorum travels as a RATIO of the member set, so 1/3 means 4-of-12 on singles and ~5-of-16 with contexts.">
+          title="REPLICATION MODE. Instead of judging each asset by its best-shopped cell, score ONE fixed configuration on every asset — declared before the run, so each asset costs a single look instead of the ~1,260 a menu sweep spends. That turns 'best of thousands on one asset' into a clean binomial across assets: no shopping tax, no branch correction. The menu still runs (the board is unchanged); this adds a separate replication table reporting the declared cell per asset. Quorum travels as a RATIO of the member set, so 1/3 means 2-of-6 on singles and ~3-of-8 with contexts (committees are one member per data-view x model type since 2026-07-30; boards recorded before then had 12/16 seats, half of them near-duplicates).">
           <input type="checkbox" id="bl-declared-on"> replication: also score one DECLARED config per asset</label>
         <div style="display:flex; gap:6px; flex-wrap:wrap; padding-top:4px">
           <label class="check" style="gap:3px"
@@ -223,7 +223,7 @@
             <select id="bl-dec-arm" style="min-width:auto;padding:4px 6px">
               <option value="0" selected>0×</option><option value="0.5">0.5×</option><option value="1">1×</option>
             </select></label>
-          <label class="check" style="gap:3px" title="Quorum as a fraction of the member set — 1/3 reproduces row 9's 4-of-12">q ratio
+          <label class="check" style="gap:3px" title="Quorum as a fraction of the member set, so it means the same thing whatever the committee size — 1/3 is 2-of-6 on singles, ~3-of-8 with context assets. (Pre-2026-07-30 boards had 12/16 seats: the same 1/3 was 4-of-12 there.)">q ratio
             <select id="bl-dec-q" style="min-width:auto;padding:4px 6px">
               <option value="0.0834">1/12</option><option value="0.1667">1/6</option>
               <option value="0.25">1/4</option><option value="0.3333" selected>1/3</option>
