@@ -19,7 +19,6 @@ curl -sS -X POST http://127.0.0.1:8093/api/bracketlab \
     "permute": {"geometry": false, "decision": false, "band": false, "weekdays": false},
     "set": {"geometry": "daily-3d", "decision": "directional", "band": "auto", "weekdaysOnly": false},
     "declared": {"entry": "market", "tHours": 65, "quorumRatio": 0.3333},
-    "emitCalls": true,
     "promoteK": 25,
     "minTrades": 10
   }'
