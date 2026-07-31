@@ -1,0 +1,39 @@
+Decay curves measured; the retool blueprint is ready for your review
+
+tl;dr H1a is done: member knowledge fades with a half-life of roughly a
+year (with a small never-quite-dead residue); assembly knowledge dies in
+months. The curves retrodict the L14 layout paradox exactly. Your stacked
+train/test/hold design is written up as DESIGN-WALKFORWARD.md with its
+parameters DERIVED from the curves — 8-week slices, 8-week steps, ~30
+folds spanning every era, re-voting built into every fold. Nothing gets
+built until you review it.
+
+THE CURVES (816 unit-windows, 3 seeds, ~97k block pairs; shuffle floor
++0.001)
+  gap        member skill   assembly skill
+  <6mo          0.35            0.38
+  6-12mo        0.24            0.12
+  1-2y          0.19            0.10
+  2-4y          0.07            0.02
+  >4y           0.04            0.01
+Member = correlation of a member's relative skill across that time gap;
+assembly = same for the six agreement levels' skill profile.
+
+WHY THIS EXPLAINS L14: the chronological arm picks assemblies right next
+to its holdout (first row: 0.38); the interlaced arm picks them years
+away (~0.01-0.10). The +$2,965 vs -$5,355 split is these numbers wearing
+money.
+
+THE BLUEPRINT (reports/DESIGN-WALKFORWARD.md, pre-registered)
+Folds march through history: train (trailing-weighted) -> test slice
+(assembly re-picked fresh) -> hold slice (scored once) -> step 8 weeks.
+~30 hold slices per coin spanning every era; the verdict is the
+distribution, so placement noise dies by construction (QC 57). Calibrated
+on planted rotating-view data before any real read (QC 56); nulls replay
+the entire per-fold recipe (H1e). Cost: ~5-6h box time for the full
+sweep; 20-min single-asset pilot first.
+
+Ln loops remain on hold per your direction. Awaiting your review of the
+design.
+
+c.
