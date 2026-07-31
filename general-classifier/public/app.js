@@ -1844,7 +1844,7 @@
       <h3>${esc(label)} — quorum ${d.quorum}, band ±${d.bandPct != null ? d.bandPct.toFixed(2) : '?'}%</h3>
       <p class="note"><strong>Member table.</strong> One row per committee member.
         KEY — <em>member</em>: model type · data view (older saved setups show a third part, a now-removed training variant).
-        <em>tuning / held-back</em>: that member's OWN accuracy (and edge vs baseline) on each window — accuracy points, not money.
+        <em>test / held-back</em>: that member's OWN accuracy (and edge vs baseline) on each window — accuracy points, not money.
         <em>dir hits</em>: held-back directional calls it got exactly right.
         <em>active</em>: how often it commits to a direction at all.
         <em>with trade</em>: when the committee traded, how often this member voted with the traded direction —
@@ -1852,7 +1852,7 @@
       <div class="tablewrap"><table>
         <tr><th title="Member number — matches the rows and columns of the agreement matrix below">#</th>
         <th title="What this member is: model type (logreg = weighted-sum / boost = stack of decision rules) · which slice of the data it sees (full / prices only / volume only). Setups saved before 2026-07-30 show a third part — a 'full'/'interlaced' training variant that was removed because the two variants were near-copies of each other (the 'interlaced' one never interlaced; it only dropped ~10% of the same training window)">member</th>
-        <th title="This member's OWN accuracy on the tuning window, with its edge (accuracy minus the always-guess-the-commonest baseline) beside it. Accuracy points, not money. The committee was tuned on this window, so these read flattering.">tuning</th>
+        <th title="This member's OWN accuracy on the TEST window, with its edge (accuracy minus the always-guess-the-commonest baseline) beside it. Accuracy points, not money. The committee's settings were chosen on this window, so these read flattering.">test</th>
         <th title="The same two figures on the HELD-BACK window — the slice nothing was chosen with. This is the pair that matters.">held-back</th>
         <th title="Held-back directional calls this member got exactly right / the directional calls it made. A call of up or down on a flat period counts as a miss.">dir hits</th>
         <th title="How often this member commits to a direction at all (held-back window). Near 0% = it almost always says 'flat' and its solo accuracy is mostly about predicting nothing happening.">active</th>
@@ -1865,7 +1865,7 @@
       <div class="tablewrap"><table class="pw">
         <tr><th title="Rows and columns are member numbers from the table above"></th>${d.members.map((m) => `<th title="member ${m.i + 1}: ${specLabel(m.spec)}">${m.i + 1}</th>`).join('')}</tr>${pw}</table></div>
       <p class="note">committee at quorum ${d.quorum}: ${d.committee.holdTrades}/${d.committee.holdPeriods} held-back periods traded,
-        ${d.committee.searchTrades}/${d.committee.searchPeriods} tuning periods.</p>`;
+        ${d.committee.searchTrades}/${d.committee.searchPeriods} test periods.</p>`;
   }
 
   function renderCompare(d) {
@@ -2070,22 +2070,22 @@
         The top row is a <strong>LEAD to declare and test on fresh data — never a result</strong>: ranking 170
         setups on the held-back window makes the top figure the best of 170 draws. The evidence is the
         aggregate census against its scrambled comparisons, which is not selected on anything.</p>`
-        : `<p class="note"><strong>Sorted by SETTINGS-WINDOW net P&L — this run held nothing back.</strong>
+        : `<p class="note"><strong>Sorted by TEST-WINDOW net P&L — this run held nothing back.</strong>
         Every row won its own settings on this same window, so the ranking is a ranking of how well each
         setup fitted the data it was fitted on. It cannot say whether anything works out of sample, and
         the null tests below are unavailable for this run. Tick "hold back a final 15%" (or pick the
         chronological or interlaced layout) to get a board that can.</p>`}
       <div class="tablewrap"><table class="bl-board">
         <tr class="grp-row"><th colspan="4"></th>
-          <th colspan="4" class="grp grp-tune blk-l" title="Numbers from the window the trading settings were CHOSEN on. Flattering by construction — the row won because it scored best here.">tuned on settings window</th>
+          <th colspan="4" class="grp grp-tune blk-l" title="Numbers from the TEST window — the window each row's trading settings were chosen on. Flattering by construction: the row won because it scored best here.">TEST WINDOW — where settings were chosen</th>
           <th colspan="5" class="grp grp-hold blk-l" title="Scored ONCE with settings already committed. Nothing was chosen using this window.">HELD-BACK — what matters</th></tr>
         <tr><th title="Pick a PROMOTED row as the null-test candidate"></th><th>#</th>
         <th title="Combo and stage; second line: chunk shape · band · decision · week mode">setup</th>
         <th title="Quorum rung (net direction wins) and how the position is opened. BREAKOUT cells state a gate plus the rail distance d×band; MARKET cells enter at the entry candle's open in the called direction with no rails — the general classifier's own trade, and what the live paper books do.">execution</th>
-        <th class="tune blk-l" title="Settings-window net P&L over vs-control. vs-control can NEVER be negative here: the row was picked as the best cell of a menu already containing every always-gate (model-free) cell. It says how much gating won by, not that gating works.">P&L<div class="cellsub">vs ctl*</div></th>
-        <th class="tune" title="Settings-window accuracy over edge (accuracy minus the training-mix baseline). Accuracy points, not money.">acc<div class="cellsub">edge</div></th>
-        <th class="tune" title="Settings-window wins/trades over gross per trade before the round-trip fee">W/T<div class="cellsub">g/t</div></th>
-        <th class="tune" title="Settings-window trades closed by the stop rail">st</th>
+        <th class="tune blk-l" title="Test-window net P&L over vs-control. vs-control can NEVER be negative here: the row was picked as the best cell of a menu already containing every always-gate (model-free) cell. It says how much gating won by, not that gating works.">P&L<div class="cellsub">vs ctl*</div></th>
+        <th class="tune" title="Test-window accuracy over edge (accuracy minus the training-mix baseline). Accuracy points, not money.">acc<div class="cellsub">edge</div></th>
+        <th class="tune" title="Test-window wins/trades over gross per trade before the round-trip fee">W/T<div class="cellsub">g/t</div></th>
+        <th class="tune" title="Test-window trades closed by the stop rail">st</th>
         <th class="blk-l" title="Held-back net dollars after fees, the sort key">net P&L</th>
         <th title="Held-back accuracy; second line the majority baseline it is scored against">acc</th>
         <th title="Held-back accuracy minus baseline; second line directional hits/calls">edge</th>
