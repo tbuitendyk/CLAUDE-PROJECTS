@@ -2058,13 +2058,23 @@
         ${holdBlock}
       </tr>`;
     }).join('');
+    // Did this run hold anything back? A legacy run with the box unticked did
+    // not, and everything that reads held-back numbers has to say so rather
+    // than render empty (owner, 2026-07-31).
+    const hasHold = (doc.leaders || []).some((l) => l.holdout)
+      || (doc.edgeCensus || []).some((r) => r.holdPnl != null);
     const leaderBlock = `
       <div class="section"><h2>${running ? 'Live leaderboard — reranks as combos complete' : 'Survivor board'}</h2>
       ${running ? '<p class="note">Interim numbers move until the sweep completes — for watching, not for stopping early. The promote rule fires mechanically at completion.</p>' : ''}
-      <p class="note"><strong>Sorted by HELD-BACK net P&L</strong> (rows under the min-trades floor sink).
+      ${hasHold ? `<p class="note"><strong>Sorted by HELD-BACK net P&L</strong> (rows under the min-trades floor sink).
         The top row is a <strong>LEAD to declare and test on fresh data — never a result</strong>: ranking 170
         setups on the held-back window makes the top figure the best of 170 draws. The evidence is the
-        aggregate census against its scrambled comparisons, which is not selected on anything.</p>
+        aggregate census against its scrambled comparisons, which is not selected on anything.</p>`
+        : `<p class="note"><strong>Sorted by SETTINGS-WINDOW net P&L — this run held nothing back.</strong>
+        Every row won its own settings on this same window, so the ranking is a ranking of how well each
+        setup fitted the data it was fitted on. It cannot say whether anything works out of sample, and
+        the null tests below are unavailable for this run. Tick "hold back a final 15%" (or pick the
+        chronological or interlaced layout) to get a board that can.</p>`}
       <div class="tablewrap"><table class="bl-board">
         <tr class="grp-row"><th colspan="4"></th>
           <th colspan="4" class="grp grp-tune blk-l" title="Numbers from the window the trading settings were CHOSEN on. Flattering by construction — the row won because it scored best here.">tuned on settings window</th>
@@ -2179,7 +2189,12 @@
       <p class="note">Click <em>inspect</em> on any promoted row above. Runs from 2026-07-30 onward
         save every member's fitted model, votes and solo scores; older runs saved nothing and will say so.</p>
       <div id="bl-inspect-out"></div></div>`;
-    const verdictBlock = `
+    const verdictBlock = !hasHold ? `
+      <div class="section"><h2>Null tests — is a result better than scrambled data?</h2>
+      <p class="note"><strong>Unavailable for this run: nothing was held back.</strong> Both tests compare
+        held-back money against the same figure in scrambled worlds, and this run has no held-back window
+        to compare. Re-run it with the holdout on (or under the chronological or interlaced layout) and
+        the tests apply.</p></div>` : `
       <div class="section"><h2>Null tests — is a result better than scrambled data?</h2>
       <p class="note">Compares a REAL run against a SCRAMBLE run (both already on disk — this fires nothing).
         Two tests: <strong>per-setup</strong> (is this setup better than its own noise?) and
@@ -2223,7 +2238,7 @@
       const realSel = $('bl-v-real');
       const nullSel = $('bl-v-null');
       const setupSel = $('bl-v-setup');
-      if (!realSel) return;
+      if (!realSel || !nullSel || !setupSel) return; // panel not rendered (no held-back window)
       try {
         const r = await fetch('api/bracketlab/verdict-sources');
         const d = await r.json();

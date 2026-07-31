@@ -1282,6 +1282,17 @@ function leaderCmp(a, b, minTrades = 1) {
     const qa = a.holdout && (a.holdout.trades || 0) >= minTrades ? 1 : 0;
     const qb = b.holdout && (b.holdout.trades || 0) >= minTrades ? 1 : 0;
     if (qa !== qb) return qb - qa;
+    // Rows that HAVE a held-back number rank on it. Rows that do not — a run
+    // fired without a holdout, where none exists at all — fall back to the
+    // settings-window money (owner, 2026-07-31). Previously they all tied at
+    // -Infinity and the board came out in alphabetical order, ranked by
+    // nothing, with no sign that the order was meaningless. Rows WITH a
+    // held-back number still outrank rows without (the qualifier above), so
+    // this fallback can never pull an unjudged row above a judged one.
+    if (!a.holdout && !b.holdout) {
+      if (b.pnl !== a.pnl) return b.pnl - a.pnl;
+      return tie();
+    }
     const ha = a.holdout ? a.holdout.pnl : -Infinity;
     const hb = b.holdout ? b.holdout.pnl : -Infinity;
     if (hb !== ha) return hb - ha;

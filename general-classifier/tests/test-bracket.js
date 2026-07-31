@@ -667,6 +667,28 @@ module.exports = {
       ['p-best', 'p-mid', 'p-thin', 'p-none', 's-hi', 's-lo'],
       'promoted by holdout (floored rows sink), then slim by search');
   },
+  async aBoardWithNoHeldBackWindowRanksOnTheSettingsWindow() {
+    // Owner, 2026-07-31: a legacy run with the holdout unticked has no
+    // held-back number at all, so every promoted row used to tie and the
+    // board came out in ALPHABETICAL order — ranked by nothing, with no sign
+    // that the order was meaningless. Those rows now rank on the settings
+    // window, which is all that exists for them.
+    const { leaderCmp } = require('../lib/batch');
+    const P = (key, searchPnl) => ({ key, stage: 'promoted', pnl: searchPnl, holdout: null });
+    // The money order must DISAGREE with the alphabetical one, or the test
+    // cannot tell the two behaviours apart — the first version of this test
+    // passed happily against the old code for exactly that reason (QC 44).
+    const rows = [P('mid', 100), P('alpha', 10), P('zeta', 300)];
+    rows.sort((a, b) => leaderCmp(a, b, 10));
+    assert.deepStrictEqual(rows.map((r) => r.key), ['zeta', 'mid', 'alpha'],
+      'no-holdout rows must rank by settings-window money, not by name');
+    // ...and a judged row still outranks an unjudged one, however rich the
+    // unjudged one looks on the window it was fitted on.
+    const mixed = [P('rich-unjudged', 9999), { key: 'judged', stage: 'promoted', pnl: 0, holdout: { pnl: 1, trades: 40 } }];
+    mixed.sort((a, b) => leaderCmp(a, b, 10));
+    assert.deepStrictEqual(mixed.map((r) => r.key), ['judged', 'rich-unjudged'],
+      'a held-back number must always outrank a settings-window one');
+  },
   async everyMoneyFigureRecordsTheSettingsThatEarnedIt() {
     // A money figure with no record of the trade that produced it cannot be
     // investigated. Cycle 11's four worst setups lost up to 4x the widest stop
