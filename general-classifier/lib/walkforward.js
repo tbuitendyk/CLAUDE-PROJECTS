@@ -114,6 +114,12 @@ function rotateCalls(calls, offset) {
 // units parallelize across workers.
 async function wfUnitTask({ combo, branch, params }) {
   const p = params;
+  // Arm safety at the task level too, not only in wfParams: a direct
+  // caller passing 0/NaN must not silently run the REAL arm under a null
+  // flag (review 2026-08-01) — refusing to guess which arm this is.
+  if (p.nullShiftSeed !== undefined && (!Number.isInteger(p.nullShiftSeed) || p.nullShiftSeed < 1)) {
+    throw new Error(`nullShiftSeed is present but not a whole number >= 1 (${JSON.stringify(p.nullShiftSeed)}) — which arm is this?`);
+  }
   const { geo, maps, chunks } = await buildCombo(combo, branch, p);
   const fee = p.feePerLeg ?? REAL_FEE_PER_LEG;
   const reach = reachMs(geo, p.tHours);

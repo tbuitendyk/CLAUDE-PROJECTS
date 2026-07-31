@@ -98,5 +98,15 @@ module.exports = {
     // tiny slices cannot rotate and must come back untouched copies
     assert.deepStrictEqual(rotateCalls([1], 5), [1]);
     assert.deepStrictEqual(rotateCalls([], 5), []);
+    // and the task itself refuses an ambiguous arm — a present-but-broken
+    // seed must never silently run the real arm under a null flag
+    const { wfUnitTask } = require('../lib/walkforward');
+    for (const bad of [0, NaN, 2.5, 'lucky']) {
+      await assert.rejects(
+        () => wfUnitTask({ combo: { trade: 'X', size: 1 }, branch: { geometry: 'daily-1d', decision: 'argmax', band: 'auto' }, params: { nullShiftSeed: bad } }),
+        /nullShiftSeed/,
+        `seed ${String(bad)} must be refused at the task level`,
+      );
+    }
   },
 };

@@ -1499,7 +1499,11 @@ function startWalkforward(params) {
           const fname = `${key.replace(/[^A-Za-z0-9._-]+/g, '_')}.json`;
           fs.writeFileSync(path.join(dir, fname), JSON.stringify({
             job: doc.id, trade: c.trade, geometry: b.geometry, decision: b.decision,
-            params: { minTradesSlice: p.minTradesSlice, feePerLeg: p.feePerLeg }, folds: res.folds,
+            // arm + seed IN the detail file: a null run's fold numbers must
+            // never be readable as real ones by a consumer that only has
+            // the file (review 2026-08-01 — the calibration ledgers will
+            // read these without the doc)
+            params: { minTradesSlice: p.minTradesSlice, feePerLeg: p.feePerLeg, arm: p.arm || 'real', nullShiftSeed: p.nullShiftSeed || null }, folds: res.folds,
           }));
           detailFile = fname;
         } catch (err) {

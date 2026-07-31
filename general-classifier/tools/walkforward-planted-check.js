@@ -191,8 +191,15 @@ async function runUnit(symbol, extra = {}) {
     // 70%-follow edge), the 1/4 factor GUESSED like C1's 1/3.
     chk('N1', sigN.agg.holdTotal < sig.agg.holdTotal / 4,
       `the null arm destroys the planted money: ${$(sigN.agg.holdTotal)} vs real ${$(sig.agg.holdTotal)}`);
-    chk('N2', sigNVsL < sigVsL / 4,
-      `and the planted skill-vs-long: ${$(sigNVsL)} vs real ${$(sigVsL)}`);
+    // N2 is anchored at the NOISE coin's level, not at zero: always-long on
+    // these zero-drift coins bleeds fees, so a zero-anchored quarter-margin
+    // would demand the null LOSE an amount set by fee drag rather than by
+    // information destruction — an honest null could false-FAIL (review
+    // 2026-08-01). Anchor = machinery-on-pure-noise; the null must close
+    // at least 3/4 of the signal-to-noise gap [factor GUESSED, like C1].
+    const noiVsL = noi.agg.holdTotal - noi.agg.alwaysLongTotal;
+    chk('N2', sigNVsL < noiVsL + (sigVsL - noiVsL) / 4,
+      `and closes 3/4 of the signal-to-noise skill gap: null ${$(sigNVsL)} vs noise anchor ${$(noiVsL)}, real ${$(sigVsL)}`);
     chk('N3', JSON.stringify(sigN.folds) === JSON.stringify(sigN2.folds), 'null arm byte-identical on the same seed');
     chk('N4', JSON.stringify(sigN.folds) !== JSON.stringify(sig.folds), 'and actually different from the real arm');
     console.log(checks.every(Boolean) ? '\nWALK-FORWARD PLANTED CHECK PASS' : '\nWALK-FORWARD PLANTED CHECK FAIL');
