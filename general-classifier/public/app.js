@@ -150,7 +150,8 @@
       <div class="section"><h2>Walk-forward board</h2>
       <p class="note"><strong>One row per setup; every number is HOLDOUT money</strong> — earned on 8-week
         slices the fold's settings never saw, summed or summarized across all folds.
-        KEY — <em>folds</em>: holdout slices scored / planned (skips = thin data).
+        KEY — <em>folds</em>: holdout slices scored / planned (skips = thin data or the safety
+        margin that keeps a fold's trades out of the next slice; never selection).
         <em>median fold $</em>: the middle fold's holdout money, per $100 book — the sort key, because a
         median cannot be carried by one lucky era; second line = the middle half's range (25th…75th
         percentile). <em>positive</em>: folds that made money. <em>total $</em>: summed across all folds —
@@ -160,7 +161,7 @@
       <div class="tablewrap"><table>
         <tr><th title="Rank by median fold holdout money">#</th>
         <th title="coin · chunk shape · decision rule">setup</th>
-        <th title="Holdout slices scored / planned. Skips mean thin data (gaps or a short history), never selection.">folds</th>
+        <th title="Holdout slices scored / planned. Skips mean thin data (gaps, a short history) or the safety margin that keeps a fold's trades out of the next slice — never selection. Each skipped fold states its reason in the fold table.">folds</th>
         <th title="The middle fold's holdout money per $100 book — the sort key. A median cannot be carried by one lucky era. Second line: 25th to 75th percentile fold.">median fold $</th>
         <th title="Folds whose holdout slice made money">positive</th>
         <th title="All folds' holdout money summed — this setup's stitched record over its whole history. Second line: the same total minus always-going-long the same slices; positive means the machinery beat doing nothing clever.">total $ <div class="cellsub">vs long</div></th>
@@ -169,6 +170,7 @@
         ${rows || '<tr><td colspan="8" class="note">no setups scored yet</td></tr>'}</table></div>
       <p class="note">Read with the standing cautions: totals across SETUPS still overlap (QC 36/47 —
         re-cuts of one coin are not independent), and nothing here has faced its noise comparison yet.</p>
+      ${doc.failures && doc.failures.length ? `<p class="note down"><strong>${doc.failures.length} setup(s) failed to run</strong> — these are missing from the board, not scored at zero. First: ${esc(doc.failures[0].key)}: ${esc(doc.failures[0].error)}</p>` : ''}
       <div id="wf-detail-out"></div></div>`;
   }
 
@@ -205,7 +207,12 @@
       if (!ids.length) { wfViewEl.innerHTML = '<p class="note">No walk-forward runs yet. Start one above.</p>'; return; }
       const doc = await (await fetch(`api/batch/${encodeURIComponent(ids[0])}`)).json();
       wfCurrent = doc.id;
+      // The 5s poll redraws the board; an open fold table must survive the
+      // redraw or the owner loses their place every five seconds.
+      const openDetail = $('wf-detail-out');
+      const keepDetail = openDetail && openDetail.innerHTML ? openDetail.innerHTML : '';
       wfViewEl.innerHTML = renderWalkforward(doc);
+      if (keepDetail) $('wf-detail-out').innerHTML = keepDetail;
       wfViewEl.querySelectorAll('.wf-detail').forEach((btn) => {
         btn.addEventListener('click', async () => {
           const out = $('wf-detail-out');
@@ -232,7 +239,9 @@
         body: JSON.stringify({
           universe: uni ? uni.split(',').map((x) => x.trim().toUpperCase()).filter(Boolean) : undefined,
           permute: { geometry: $('wf-perm-geometry').checked, decision: $('wf-perm-decision').checked },
-          minTradesSlice: Number($('wf-mintrades').value) || 5,
+          // sent raw: a mis-typed value must be rejected loudly by the
+          // engine, not silently corrected here
+          minTradesSlice: $('wf-mintrades').value.trim() || undefined,
           description: $('wf-desc').value.trim(),
         }),
       });

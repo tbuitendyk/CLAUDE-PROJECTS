@@ -697,6 +697,12 @@ app.post('/api/walkforward', (req, res) => {
       set: b.set,
       minTradesSlice: b.minTradesSlice,
       feePerLeg: b.feePerLeg,
+      // the execution menu — dropped by the first version, so a launcher's
+      // narrowed menu silently ran the full default sweep
+      dMults: b.dMults,
+      tHours: b.tHours,
+      gates: b.gates,
+      entries: b.entries,
       description: b.description,
       label: b.label,
     });
@@ -715,7 +721,7 @@ app.get('/api/walkforward/:id/unit', (req, res) => {
   if (!/^[A-Za-z0-9._-]+\.json$/.test(file)) return res.status(400).json({ error: 'bad file name' });
   const base = path.join(__dirname, 'data', 'wf', id);
   const full = path.resolve(base, file);
-  if (!full.startsWith(path.resolve(base))) return res.status(400).json({ error: 'bad path' });
+  if (!full.startsWith(path.resolve(base) + path.sep)) return res.status(400).json({ error: 'bad path' });
   try {
     res.json(JSON.parse(require('fs').readFileSync(full, 'utf8')));
   } catch {

@@ -1,5 +1,5 @@
 const { assert } = require('./helpers');
-const { foldGrid, reachMs, TEST_WEEKS, HOLD_WEEKS, STEP_WEEKS, WARMUP_WEEKS } = require('../lib/walkforward');
+const { foldGrid, foldSlices, reachMs, TEST_WEEKS, HOLD_WEEKS, STEP_WEEKS, WARMUP_WEEKS } = require('../lib/walkforward');
 const { GEOMETRIES } = require('../lib/dataset');
 
 const DAY = 86_400_000;
@@ -38,12 +38,38 @@ module.exports = {
     // the longest trade the menu allows.
     for (const [name, geo] of Object.entries(GEOMETRIES)) {
       const r = reachMs(geo, [17, 161]);
-      const expect = Math.max(geo.featureHours, geo.exitOffsetH, geo.entryOffsetH + 161 + 3) * 3_600_000;
+      const expect = Math.max(geo.featureHours, geo.exitOffsetH + 3, geo.entryOffsetH + 161 + 3) * 3_600_000;
       assert.strictEqual(r, expect, `${name}: reach must be the max of the three horizons`);
       assert.ok(r >= (geo.entryOffsetH + 161 + 3) * 3_600_000, `${name}: reach covers entry+timeout+gap-scan`);
     }
-    // a custom shorter menu narrows the reach only down to the label window
+    // With a menu short enough that the EXIT horizon dominates, the reach
+    // must still let the exit candle (or the weekly 6h window's tail) CLOSE:
+    // exit+3, never bare exit. The old arithmetic passed every long-menu
+    // case and understated exactly here.
     const d1 = GEOMETRIES['daily-1d'];
-    assert.strictEqual(reachMs(d1, [17]), Math.max(d1.featureHours, d1.exitOffsetH, d1.entryOffsetH + 17 + 3) * 3_600_000);
+    assert.strictEqual(reachMs(d1, [14]), (d1.exitOffsetH + 3) * 3_600_000,
+      'daily-1d with a 14h timeout: the exit candle itself sets the reach, and it has to close');
+  },
+  async trainSliceNeverRepeatsOrLeaksAChunk() {
+    // QC 58: the first walk-forward cut weighted recency by DUPLICATING the
+    // trailing 104 weeks of train chunks. The duplicates landed in the
+    // members' last-25% validation slice, so lambda / boost rounds / tau
+    // were tuned on rows the model had already memorized. The train slice
+    // must be duplicate-free, and the three slices must never share a chunk.
+    const chunks = [];
+    for (let d = 0; d < 900; d++) chunks.push({ startTs: T0 + d * DAY });
+    const reach = reachMs(GEOMETRIES['daily-3d'], [161]);
+    const grid = foldGrid(T0, T0 + 899 * DAY);
+    assert.ok(grid.length >= 3, 'need several folds for this to mean anything');
+    for (const f of grid) {
+      const { trainChunks, testChunks, holdChunks } = foldSlices(chunks, f, reach);
+      const train = new Set(trainChunks.map((c) => c.startTs));
+      assert.strictEqual(train.size, trainChunks.length, 'no chunk may appear twice in the train slice');
+      for (const c of [...testChunks, ...holdChunks]) {
+        assert.ok(!train.has(c.startTs), 'train must not share a chunk with test or hold');
+      }
+      for (const c of trainChunks) assert.ok(c.startTs + reach <= f.testStart, 'train purged by the full reach');
+      for (const c of testChunks) assert.ok(c.startTs + reach <= f.holdStart, 'test trades must not touch hold candles');
+    }
   },
 };

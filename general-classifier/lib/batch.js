@@ -29,22 +29,37 @@ let activeBatch = null; // one at a time; the UI polls this
 // service died or was restarted mid-screen (deploys included). Mark it
 // honestly so the picker never shows a zombie as alive. Completed runs and
 // the summary-so-far are already persisted and stay usable.
+//
+// markInterrupted is pure and exported for the tests: walkforward docs have
+// no runs array, and the old sweep crashed on the first one — aborting the
+// sweep for every doc after it, so a zombie could show as alive (QC 58).
+function markInterrupted(doc) {
+  if (Array.isArray(doc.runs)) {
+    for (const r of doc.runs) if (r.status === 'running') r.status = 'error';
+  }
+  doc.status = 'interrupted';
+  if (doc.nullTest && doc.nullTest.status === 'running') doc.nullTest.status = 'interrupted';
+  doc.finishedAt = doc.finishedAt || new Date().toISOString();
+  doc.progress = '';
+  return doc;
+}
+
 (() => {
+  let files = [];
   try {
-    for (const f of fs.readdirSync(BATCH_DIR)) {
-      if (!f.endsWith('.json')) continue;
-      const file = path.join(BATCH_DIR, f);
+    files = fs.readdirSync(BATCH_DIR).filter((f) => f.endsWith('.json'));
+  } catch {
+    return; /* no batch dir yet */
+  }
+  for (const f of files) {
+    const file = path.join(BATCH_DIR, f);
+    try {
       const doc = JSON.parse(fs.readFileSync(file, 'utf8'));
       if (doc.status !== 'running') continue;
-      for (const r of doc.runs) if (r.status === 'running') r.status = 'error';
-      doc.status = 'interrupted';
-      if (doc.nullTest && doc.nullTest.status === 'running') doc.nullTest.status = 'interrupted';
-      doc.finishedAt = doc.finishedAt || new Date().toISOString();
-      doc.progress = '';
-      fs.writeFileSync(file, JSON.stringify(doc, null, 1));
+      fs.writeFileSync(file, JSON.stringify(markInterrupted(doc), null, 1));
+    } catch {
+      /* one unreadable doc must not abort the sweep for the rest */
     }
-  } catch {
-    /* no batch dir yet */
   }
 })();
 
@@ -57,6 +72,24 @@ function saveBatch(doc) {
   fs.writeFileSync(batchFile(doc.id), JSON.stringify(doc, null, 1));
 }
 
+// One picker row from a doc on disk. Pure and exported for the tests:
+// walkforward docs carry unit progress in perf instead of a runs array, and
+// the old inline version threw on them — the doc silently vanished from the
+// picker (QC 58).
+function listRow(d) {
+  const runs = Array.isArray(d.runs) ? d.runs : null;
+  return {
+    id: d.id,
+    kind: d.kind || 'screen',
+    status: d.status,
+    startedAt: d.startedAt,
+    finishedAt: d.finishedAt || null,
+    runsDone: runs ? runs.filter((r) => r.status !== 'pending').length : (d.perf?.unitsDone ?? 0),
+    runsTotal: runs ? runs.length : (d.perf?.unitsTotal ?? 0),
+    params: d.params,
+  };
+}
+
 function listBatches() {
   let files = [];
   try {
@@ -67,16 +100,7 @@ function listBatches() {
   return files
     .map((f) => {
       try {
-        const d = JSON.parse(fs.readFileSync(path.join(BATCH_DIR, f), 'utf8'));
-        return {
-          id: d.id,
-          status: d.status,
-          startedAt: d.startedAt,
-          finishedAt: d.finishedAt || null,
-          runsDone: d.runs.filter((r) => r.status !== 'pending').length,
-          runsTotal: d.runs.length,
-          params: d.params,
-        };
+        return listRow(JSON.parse(fs.readFileSync(path.join(BATCH_DIR, f), 'utf8')));
       } catch {
         return null;
       }
@@ -1361,20 +1385,38 @@ function promotionSet(p, doc, units) {
 // carries per-unit aggregates only, so the polled record stays light.
 const { wfUnitTask } = require('./walkforward');
 
-function startWalkforward(params) {
-  if (batchRunning()) throw new Error(`batch ${activeBatch.id} is already running`);
+// Normalizes and validates a walk-forward request. Pure and exported for the
+// tests. Numbers are rejected LOUDLY: the old version fell back to defaults
+// on a malformed feePerLeg or minTradesSlice, which is exactly how a
+// mis-typed launcher runs five hours at the wrong fee (QC 58).
+function wfParams(params) {
+  const blank = (v) => v === undefined || v === null || v === '';
+  const minTradesSlice = blank(params.minTradesSlice) ? 5 : Number(params.minTradesSlice);
+  if (!Number.isFinite(minTradesSlice) || minTradesSlice < 1 || minTradesSlice > 50) {
+    throw new Error(`minTradesSlice must be a number from 1 to 50 — got ${JSON.stringify(params.minTradesSlice)}`);
+  }
+  const feePerLeg = blank(params.feePerLeg) ? REAL_FEE_PER_LEG : Number(params.feePerLeg);
+  if (!Number.isFinite(feePerLeg) || feePerLeg < 0 || feePerLeg > 2) {
+    throw new Error(`feePerLeg must be dollars from 0 to 2 — got ${JSON.stringify(params.feePerLeg)}`);
+  }
+  if (!blank(params.set?.geometry) && !GEOS[params.set.geometry]) {
+    throw new Error(`unknown geometry ${JSON.stringify(params.set.geometry)} — one of: ${Object.keys(GEOS).join(', ')}`);
+  }
+  if (!blank(params.set?.decision) && !['argmax', 'directional'].includes(params.set.decision)) {
+    throw new Error(`unknown decision ${JSON.stringify(params.set.decision)} — argmax or directional`);
+  }
   const p = {
     universe: params.universe && params.universe.length ? params.universe : DEFAULT_PAIRS,
     permute: { geometry: params.permute?.geometry !== false, decision: params.permute?.decision !== false },
     set: {
-      geometry: GEOS[params.set?.geometry] ? params.set.geometry : 'daily-3d',
-      decision: params.set?.decision === 'directional' ? 'directional' : 'argmax',
+      geometry: params.set?.geometry || 'daily-3d',
+      decision: params.set?.decision || 'argmax',
     },
     // walk-forward always uses the whole cached history: folds ARE the range
     allLoaded: true,
     band: 'auto',
-    minTradesSlice: Math.min(50, Math.max(1, Number(params.minTradesSlice) || 5)),
-    feePerLeg: Math.min(2, Math.max(0, Number(params.feePerLeg) >= 0 ? Number(params.feePerLeg) : REAL_FEE_PER_LEG)),
+    minTradesSlice,
+    feePerLeg,
     dMults: numMenu(params.dMults, bracketLib.D_MULTS, (v) => v > 0 && v <= 10),
     tHours: numMenu(params.tHours, bracketLib.T_HOURS, (v) => Number.isInteger(v) && v > 0 && v <= 500),
     gates: pickMenu(params.gates, bracketLib.GATES),
@@ -1383,8 +1425,21 @@ function startWalkforward(params) {
     label: typeof params.label === 'string' ? params.label.slice(0, 40) : '',
     engineVersion: ENGINE_VERSION,
   };
-  const geoms = p.permute.geometry ? Object.keys(GEOS) : [p.set.geometry];
+  // weekly-8d steps a whole week per chunk, so an 8-week slice holds at most
+  // 8 chunks and the execution-reach purge always eats the tail — no fold
+  // can ever clear the 8-chunk floor. Excluded honestly here rather than
+  // reported per-fold as a data gap that isn't one.
+  const geoms = (p.permute.geometry ? Object.keys(GEOS) : [p.set.geometry]).filter((g) => g !== 'weekly-8d');
+  if (!geoms.length) {
+    throw new Error('weekly-8d cannot form a walk-forward fold (week-long chunks never fill an 8-week slice once the execution purge trims it) — pick a daily shape');
+  }
   const decs = p.permute.decision ? ['argmax', 'directional'] : [p.set.decision];
+  return { p, geoms, decs };
+}
+
+function startWalkforward(params) {
+  if (batchRunning()) throw new Error(`batch ${activeBatch.id} is already running`);
+  const { p, geoms, decs } = wfParams(params);
   const units = [];
   for (const trade of p.universe) {
     for (const geometry of geoms) {
@@ -1396,7 +1451,8 @@ function startWalkforward(params) {
       }
     }
   }
-  const stamp = new Date().toISOString().replace(/[-:]/g, '').slice(0, 13).replace('T', '-');
+  // Seconds resolution: two launches inside one minute must not share an id.
+  const stamp = new Date().toISOString().replace(/[-:]/g, '').slice(0, 15).replace('T', '-');
   const slug = (p.label || 'walkforward').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 32);
   const doc = {
     id: `walkforward-${stamp}-${slug}`,
@@ -1421,9 +1477,10 @@ function startWalkforward(params) {
   (async () => {
     const payloads = units.map((u) => ({ combo: u.c, branch: u.b, params: p }));
     await pool.map('wfUnit', payloads, (settled, i) => {
-      if (doc.cancelRequested) return;
       const { c, b } = units[i];
       const key = `${c.trade}|${b.geometry}|${b.decision}`;
+      // A unit that finished before the owner hit cancel is real work and is
+      // kept; only the abort-errors of in-flight units are dropped as noise.
       if (settled.ok && settled.value) {
         const res = settled.value;
         let detailFile = null;
@@ -1440,7 +1497,7 @@ function startWalkforward(params) {
           if (doc.failures.length < 200) doc.failures.push({ key, error: `fold dump: ${err.message}` });
         }
         doc.wfRows.push({ trade: c.trade, geometry: b.geometry, decision: b.decision, detailFile, ...res.agg });
-      } else if (!settled.ok && doc.failures.length < 200) {
+      } else if (!settled.ok && !doc.cancelRequested && doc.failures.length < 200) {
         doc.failures.push({ key, error: settled.error });
       }
       doc.perf.unitsDone++;
@@ -2165,6 +2222,9 @@ function startBracketNull(id, shifts) {
 module.exports = {
   shiftStance,
   startWalkforward,
+  wfParams,
+  listRow,
+  markInterrupted,
   startBatch,
   startConsensus,
   startMetalens,

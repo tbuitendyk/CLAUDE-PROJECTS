@@ -4,9 +4,13 @@
 //
 // THE FOLD. At fold time t:
 //   TRAIN  every chunk whose candles end safely before t (purged by the
-//          full execution reach), with the trailing 104 weeks counted
-//          TWICE — the recency weighting derived from the ~1-year member
-//          half-life measured in H1a. [weight factor 2 is GUESSED; a knob]
+//          full execution reach). Recency weighting (the ~1-year member
+//          half-life measured in H1a) is deliberately ABSENT: the first
+//          cut implemented it by duplicating the trailing 104 weeks, which
+//          put byte-copies of training rows into the members' validation
+//          slice and tuned lambda / boost rounds / tau in-sample (QC 58).
+//          It returns only as true per-row sample weights, never by
+//          repeating rows.
 //   TEST   the next 8 weeks: members vote, and the assembly — agreement
 //          level x execution cell — is picked HERE, fresh, per fold.
 //          Chunks whose trades could run into the hold slice are excluded
@@ -36,7 +40,6 @@ const TEST_WEEKS = 8; // derived: assembly transfer is strong only at <6mo gaps
 const HOLD_WEEKS = 8;
 const STEP_WEEKS = 8; // hold slices tile history exactly
 const WARMUP_WEEKS = 52; // minimum training history before the first fold [GUESSED]
-const RECENCY_WEEKS = 104; // trailing window counted twice [derived scale, GUESSED factor]
 
 // The uniform fold grid over a coin's chunk span. Same arithmetic for every
 // coin: identical spans yield identical grids (the count invariant).
@@ -56,10 +59,24 @@ function foldGrid(firstTs, lastTs) {
 
 // One chunk's full candle reach past its start: features, label window, or
 // the longest possible execution path — same arithmetic the layout purge
-// used (QC 52).
+// used (QC 52). The +3 on the exit offset covers every shape: the weekly
+// label averages a 6h window whose last candle closes 3h past the offset,
+// and a point exit's own candle still has to close.
 function reachMs(geo, tHoursMenu) {
   const tMax = Math.max(...(Array.isArray(tHoursMenu) && tHoursMenu.length ? tHoursMenu : bracketLib.T_HOURS));
-  return Math.max(geo.featureHours, geo.exitOffsetH, geo.entryOffsetH + tMax + 3) * HOUR_MS;
+  return Math.max(geo.featureHours, geo.exitOffsetH + 3, geo.entryOffsetH + tMax + 3) * HOUR_MS;
+}
+
+// The three slices of one fold, each purged so nothing trained or picked can
+// touch a later slice's candles. Pure and exported so the purge arithmetic
+// is testable on its own — the review caught the inline version training on
+// duplicated rows, which no test could see (QC 58).
+function foldSlices(chunks, f, reach) {
+  return {
+    trainChunks: chunks.filter((c) => c.startTs + reach <= f.testStart),
+    testChunks: chunks.filter((c) => c.startTs >= f.testStart && c.startTs + reach <= f.holdStart),
+    holdChunks: chunks.filter((c) => c.startTs >= f.holdStart && c.startTs < f.holdEnd),
+  };
 }
 
 // All folds for one (coin, shape, decision) unit. Serial inside the task;
@@ -76,24 +93,24 @@ async function wfUnitTask({ combo, branch, params }) {
   const folds = [];
 
   for (const f of grid) {
-    // TRAIN: strictly pre-test, purged by the full reach, recent 104w twice.
-    const trainBase = chunks.filter((c) => c.startTs + reach <= f.testStart);
-    const recent = trainBase.filter((c) => c.startTs >= f.testStart - RECENCY_WEEKS * WEEK_MS);
-    const trainChunks = [...trainBase, ...recent];
-    if (trainBase.length < MIN_CHUNKS) {
+    const { trainChunks, testChunks, holdChunks } = foldSlices(chunks, f, reach);
+    if (trainChunks.length < MIN_CHUNKS) {
       folds.push({ testStart: f.testStart, skipped: 'insufficient train history' });
       continue;
     }
-    // TEST for picking: trades must not be able to touch hold candles.
-    const testChunks = chunks.filter((c) => c.startTs >= f.testStart && c.startTs + reach <= f.holdStart);
-    const holdChunks = chunks.filter((c) => c.startTs >= f.holdStart && c.startTs < f.holdEnd);
-    if (testChunks.length < 8 || holdChunks.length < 8) {
-      folds.push({ testStart: f.testStart, skipped: 'slice too thin (data gap)' });
+    // Honest skip reasons: a thin hold slice can only be missing data, but a
+    // thin test slice can also be the execution purge eating its tail.
+    if (holdChunks.length < 8) {
+      folds.push({ testStart: f.testStart, skipped: 'hold slice too thin (data gap)' });
+      continue;
+    }
+    if (testChunks.length < 8) {
+      folds.push({ testStart: f.testStart, skipped: 'test slice too thin (data gap or execution purge)' });
       continue;
     }
     // Band on this fold's training data only, then every chunk relabeled.
     const bandPct = branch.band === 'auto'
-      ? balancedBandPct(trainBase.map((c) => c.diffPct))
+      ? balancedBandPct(trainChunks.map((c) => c.diffPct))
       : Math.abs(branch.band);
     for (const c of chunks) c.label = scoreDiff(c.diffPct / 100, bandPct / 100);
 
@@ -127,7 +144,7 @@ async function wfUnitTask({ combo, branch, params }) {
     const hstream = holdChunks.map((_, i) => quorumCall(holdCalls, i, best.quorum));
     const r = bracketLib.simCell(best, holdChunks, hstream, maps.trade, geo, bandPct, fee);
     const ctl = bracketLib.holdControls(holdChunks, maps.trade, geo, best.tHours, fee);
-    const trainLabels = trainBase.map((c) => c.label);
+    const trainLabels = trainChunks.map((c) => c.label);
     const holdLabels = holdChunks.map((c) => c.label);
     folds.push({
       testStart: f.testStart,
@@ -152,7 +169,16 @@ async function wfUnitTask({ combo, branch, params }) {
 
   const scored = folds.filter((f) => !f.skipped);
   const pnls = scored.map((f) => f.holdPnl).sort((a, b) => a - b);
-  const q = (arr, f) => (arr.length ? arr[Math.min(arr.length - 1, Math.floor(f * arr.length))] : null);
+  // Interpolated quantile: the old floor(f*n) rank sat one element high on
+  // even-length sets, biasing every reported median upward or downward by
+  // luck of parity.
+  const q = (arr, f) => {
+    if (!arr.length) return null;
+    const x = f * (arr.length - 1);
+    const lo = Math.floor(x);
+    const hi = Math.ceil(x);
+    return arr[lo] + (arr[hi] - arr[lo]) * (x - lo);
+  };
   return {
     folds,
     agg: {
@@ -169,4 +195,4 @@ async function wfUnitTask({ combo, branch, params }) {
   };
 }
 
-module.exports = { wfUnitTask, foldGrid, reachMs, TEST_WEEKS, HOLD_WEEKS, STEP_WEEKS, WARMUP_WEEKS, RECENCY_WEEKS };
+module.exports = { wfUnitTask, foldGrid, foldSlices, reachMs, TEST_WEEKS, HOLD_WEEKS, STEP_WEEKS, WARMUP_WEEKS };
