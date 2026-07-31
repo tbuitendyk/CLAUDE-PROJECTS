@@ -1354,6 +1354,119 @@ function promotionSet(p, doc, units) {
   return doc.leaders.filter((l) => l.stage === 'slim').slice(0, p.promoteK);
 }
 
+// ---- WALK-FORWARD orchestration (DESIGN-WALKFORWARD.md, 2026-07-31) --------
+// The stacked instrument: per unit, wfUnitTask runs every fold serially;
+// units parallelize across the pool. Per-fold detail goes to DISK
+// (data/wf/<jobId>/<key>.json — the calibration ledgers read it); the doc
+// carries per-unit aggregates only, so the polled record stays light.
+const { wfUnitTask } = require('./walkforward');
+
+function startWalkforward(params) {
+  if (batchRunning()) throw new Error(`batch ${activeBatch.id} is already running`);
+  const p = {
+    universe: params.universe && params.universe.length ? params.universe : DEFAULT_PAIRS,
+    permute: { geometry: params.permute?.geometry !== false, decision: params.permute?.decision !== false },
+    set: {
+      geometry: GEOS[params.set?.geometry] ? params.set.geometry : 'daily-3d',
+      decision: params.set?.decision === 'directional' ? 'directional' : 'argmax',
+    },
+    // walk-forward always uses the whole cached history: folds ARE the range
+    allLoaded: true,
+    band: 'auto',
+    minTradesSlice: Math.min(50, Math.max(1, Number(params.minTradesSlice) || 5)),
+    feePerLeg: Math.min(2, Math.max(0, Number(params.feePerLeg) >= 0 ? Number(params.feePerLeg) : REAL_FEE_PER_LEG)),
+    dMults: numMenu(params.dMults, bracketLib.D_MULTS, (v) => v > 0 && v <= 10),
+    tHours: numMenu(params.tHours, bracketLib.T_HOURS, (v) => Number.isInteger(v) && v > 0 && v <= 500),
+    gates: pickMenu(params.gates, bracketLib.GATES),
+    entries: pickMenu(params.entries, bracketLib.ENTRIES),
+    description: typeof params.description === 'string' ? params.description.slice(0, 600) : '',
+    label: typeof params.label === 'string' ? params.label.slice(0, 40) : '',
+    engineVersion: ENGINE_VERSION,
+  };
+  const geoms = p.permute.geometry ? Object.keys(GEOS) : [p.set.geometry];
+  const decs = p.permute.decision ? ['argmax', 'directional'] : [p.set.decision];
+  const units = [];
+  for (const trade of p.universe) {
+    for (const geometry of geoms) {
+      for (const decision of decs) {
+        units.push({
+          c: { trade, ctx1: null, ctx2: null, size: 1 },
+          b: { geometry, decision, band: 'auto', weekdaysOnly: false },
+        });
+      }
+    }
+  }
+  const stamp = new Date().toISOString().replace(/[-:]/g, '').slice(0, 13).replace('T', '-');
+  const slug = (p.label || 'walkforward').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 32);
+  const doc = {
+    id: `walkforward-${stamp}-${slug}`,
+    kind: 'walkforward',
+    description: p.description || '',
+    status: 'running',
+    startedAt: new Date().toISOString(),
+    finishedAt: null,
+    progress: '',
+    params: p,
+    perf: { unitsDone: 0, unitsTotal: units.length, elapsedMs: 0, etaMs: null, workers: null },
+    wfRows: [], // one aggregate row per unit; fold detail lives on disk
+    failures: [],
+  };
+  activeBatch = doc;
+  saveBatch(doc);
+  const pool = createPool();
+  activePool = pool;
+  doc.perf.workers = pool.parallel ? pool.workers.length : 1;
+  saveBatch(doc);
+  const t0 = Date.now();
+  (async () => {
+    const payloads = units.map((u) => ({ combo: u.c, branch: u.b, params: p }));
+    await pool.map('wfUnit', payloads, (settled, i) => {
+      if (doc.cancelRequested) return;
+      const { c, b } = units[i];
+      const key = `${c.trade}|${b.geometry}|${b.decision}`;
+      if (settled.ok && settled.value) {
+        const res = settled.value;
+        let detailFile = null;
+        try {
+          const dir = path.join(BATCH_DIR, '..', 'wf', doc.id);
+          fs.mkdirSync(dir, { recursive: true });
+          const fname = `${key.replace(/[^A-Za-z0-9._-]+/g, '_')}.json`;
+          fs.writeFileSync(path.join(dir, fname), JSON.stringify({
+            job: doc.id, trade: c.trade, geometry: b.geometry, decision: b.decision,
+            params: { minTradesSlice: p.minTradesSlice, feePerLeg: p.feePerLeg }, folds: res.folds,
+          }));
+          detailFile = fname;
+        } catch (err) {
+          if (doc.failures.length < 200) doc.failures.push({ key, error: `fold dump: ${err.message}` });
+        }
+        doc.wfRows.push({ trade: c.trade, geometry: b.geometry, decision: b.decision, detailFile, ...res.agg });
+      } else if (!settled.ok && doc.failures.length < 200) {
+        doc.failures.push({ key, error: settled.error });
+      }
+      doc.perf.unitsDone++;
+      doc.perf.elapsedMs = Date.now() - t0;
+      doc.perf.etaMs = doc.perf.unitsDone ? Math.round((doc.perf.elapsedMs / doc.perf.unitsDone) * (units.length - doc.perf.unitsDone)) : null;
+      doc.progress = `walk-forward ${doc.perf.unitsDone}/${units.length}: ${c.trade} ${b.geometry}/${b.decision}`;
+      saveBatch(doc);
+    });
+    doc.status = doc.cancelRequested ? 'cancelled' : 'done';
+    doc.finishedAt = new Date().toISOString();
+    doc.perf.elapsedMs = Date.now() - t0;
+    saveBatch(doc);
+    activeBatch = null;
+    activePool = null;
+    pool.abort();
+  })().catch((err) => {
+    doc.status = 'error';
+    doc.failures.push({ key: 'run', error: err.message });
+    saveBatch(doc);
+    activeBatch = null;
+    activePool = null;
+    pool.abort();
+  });
+  return doc.id;
+}
+
 // A bracket unit end-to-end (build combo, train members, vote, sweep the
 // execution menu, take the best cell) lives in bracketwork.unitTask. It is
 // NOT duplicated here: the main thread and the workers must run the same
@@ -2051,6 +2164,7 @@ function startBracketNull(id, shifts) {
 
 module.exports = {
   shiftStance,
+  startWalkforward,
   startBatch,
   startConsensus,
   startMetalens,

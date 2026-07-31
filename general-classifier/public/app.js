@@ -104,7 +104,7 @@
   // setups in real time and shouldn't clutter — or distract from — the
   // research tools. Selection survives reloads via the URL hash, so a
   // bookmarked #books goes straight to the books.
-  const TAB_PANES = { research: ['tab-research', 'tab-research-2'], bracket: ['tab-bracket'], books: ['tab-books'] };
+  const TAB_PANES = { research: ['tab-research', 'tab-research-2'], bracket: ['tab-bracket'], walkforward: ['tab-walkforward'], books: ['tab-books'] };
   function showTab(name) {
     const tab = TAB_PANES[name] ? name : 'research';
     for (const [key, ids] of Object.entries(TAB_PANES)) {
@@ -117,6 +117,132 @@
     b.addEventListener('click', () => showTab(b.dataset.tab));
   });
   showTab((window.location.hash || '').replace('#', ''));
+
+
+  // ---- walk-forward tab (DESIGN-WALKFORWARD.md) ------------------------------
+  const wfViewEl = $('wf-view');
+  const wfErrEl = $('wf-error');
+  const m$wf = (v) => (v == null ? '—' : (v < 0 ? '-' : '+') + '$' + Math.abs(v).toFixed(2));
+
+  function renderWalkforward(doc) {
+    const running = doc.status === 'running';
+    const header = `${esc(doc.id)} — ${esc(doc.status)}${doc.perf ? ` · ${doc.perf.unitsDone}/${doc.perf.unitsTotal} setups` : ''}`
+      + (running && doc.perf && doc.perf.etaMs ? ` · ~${Math.round(doc.perf.etaMs / 60000)} min left` : '')
+      + (doc.description ? ` · ${esc(doc.description)}` : '');
+    const rows = (doc.wfRows || []).slice()
+      .sort((x, y) => (y.holdMedian ?? -Infinity) - (x.holdMedian ?? -Infinity))
+      .map((r, i) => {
+        const pt = r.holdTrades ? r.holdTotal / r.holdTrades : null;
+        return `<tr>
+        <td>${i + 1}</td>
+        <td><strong>${esc(r.trade)}</strong> ${esc(r.geometry)} ${esc(r.decision)}</td>
+        <td>${r.foldsScored}/${r.foldsPlanned}</td>
+        <td class="${(r.holdMedian ?? 0) >= 0 ? 'up' : 'down'}"><strong>${m$wf(r.holdMedian)}</strong>
+          <div class="cellsub">${m$wf(r.iqrLo)} … ${m$wf(r.iqrHi)}</div></td>
+        <td>${r.foldsPositive}/${r.foldsScored}</td>
+        <td class="${(r.holdTotal ?? 0) >= 0 ? 'up' : 'down'}">${m$wf(r.holdTotal)}
+          <div class="cellsub">${m$wf(r.holdTotal - (r.alwaysLongTotal || 0))} vs long</div></td>
+        <td>${r.holdWins}/${r.holdTrades}<div class="cellsub">${m$wf(pt)}/t</div></td>
+        <td>${r.detailFile ? `<button class="wf-detail" data-file="${esc(r.detailFile)}" data-label="${esc(r.trade)} ${esc(r.geometry)} ${esc(r.decision)}" title="Every fold of this setup: when, which settings were picked, and what the holdout slice paid">folds</button>` : '—'}</td>
+      </tr>`;
+      }).join('');
+    return `<p class="note">${header}</p>
+      <div class="section"><h2>Walk-forward board</h2>
+      <p class="note"><strong>One row per setup; every number is HOLDOUT money</strong> — earned on 8-week
+        slices the fold's settings never saw, summed or summarized across all folds.
+        KEY — <em>folds</em>: holdout slices scored / planned (skips = thin data).
+        <em>median fold $</em>: the middle fold's holdout money, per $100 book — the sort key, because a
+        median cannot be carried by one lucky era; second line = the middle half's range (25th…75th
+        percentile). <em>positive</em>: folds that made money. <em>total $</em>: summed across all folds —
+        one coin's whole history, so unlike the retired boards this IS one setup's stitched record; second
+        line = total minus always-going-long the same slices (the skill question). <em>W/T</em>: wins over
+        trades, with money per trade under it.</p>
+      <div class="tablewrap"><table>
+        <tr><th title="Rank by median fold holdout money">#</th>
+        <th title="coin · chunk shape · decision rule">setup</th>
+        <th title="Holdout slices scored / planned. Skips mean thin data (gaps or a short history), never selection.">folds</th>
+        <th title="The middle fold's holdout money per $100 book — the sort key. A median cannot be carried by one lucky era. Second line: 25th to 75th percentile fold.">median fold $</th>
+        <th title="Folds whose holdout slice made money">positive</th>
+        <th title="All folds' holdout money summed — this setup's stitched record over its whole history. Second line: the same total minus always-going-long the same slices; positive means the machinery beat doing nothing clever.">total $ <div class="cellsub">vs long</div></th>
+        <th title="Holdout wins over trades across all folds; money per trade beneath">W/T</th>
+        <th title="Per-fold detail">detail</th></tr>
+        ${rows || '<tr><td colspan="8" class="note">no setups scored yet</td></tr>'}</table></div>
+      <p class="note">Read with the standing cautions: totals across SETUPS still overlap (QC 36/47 —
+        re-cuts of one coin are not independent), and nothing here has faced its noise comparison yet.</p>
+      <div id="wf-detail-out"></div></div>`;
+  }
+
+  function renderWfDetail(d, label) {
+    const rows = (d.folds || []).map((f) => f.skipped
+      ? `<tr><td>${new Date(f.testStart).toISOString().slice(0, 10)}</td><td colspan="6" class="note">skipped — ${esc(f.skipped)}</td></tr>`
+      : `<tr><td>${new Date(f.testStart).toISOString().slice(0, 10)}</td>
+         <td>${esc(f.cell.entry)}/${esc(String(f.cell.gate ?? '-'))}/d${f.cell.dMult ?? '-'}/t${f.cell.tHours}h q${f.cell.quorum}</td>
+         <td class="${f.testPnl >= 0 ? 'up' : 'down'}">${m$wf(f.testPnl)}</td>
+         <td class="${f.holdPnl >= 0 ? 'up' : 'down'}"><strong>${m$wf(f.holdPnl)}</strong></td>
+         <td>${f.holdWins}/${f.holdTrades}</td>
+         <td class="${(f.holdPnl - (f.alwaysLong || 0)) >= 0 ? 'up' : 'down'}">${m$wf(f.holdPnl - (f.alwaysLong || 0))}</td>
+         <td>${f.holdStops}${f.holdAmbiguous ? ` (${f.holdAmbiguous} amb)` : ''}</td></tr>`).join('');
+    return `<h3>${esc(label)} — every fold</h3>
+      <p class="note"><strong>Fold table.</strong> One row per fold, oldest first.
+      KEY — <em>fold</em>: the test slice's start date. <em>picked settings</em>: entry/gate/stop distance/
+      timeout/agreement level chosen on that fold's test slice. <em>test $</em>: what the pick made on the
+      slice it was picked on (flattering by construction). <em>holdout $</em>: what it made on the next
+      8 weeks, which it never saw — the honest column. <em>W/T</em>: holdout wins/trades.
+      <em>vs long</em>: holdout money minus always-going-long the same slice. <em>stops</em>: holdout trades
+      ended by the stop rail (amb = bars that spanned both rails, resolved against the book).</p>
+      <div class="tablewrap"><table>
+      <tr><th>fold</th><th>picked settings</th><th>test $</th><th>holdout $</th><th>W/T</th><th>vs long</th><th>stops</th></tr>
+      ${rows}</table></div>`;
+  }
+
+  let wfCurrent = null;
+  let wfTimer = null;
+  async function refreshWalkforward() {
+    try {
+      wfErrEl.hidden = true;
+      const list = await (await fetch('api/batches')).json();
+      const ids = (list.batches || []).map((b) => b.id).filter((id) => String(id).startsWith('walkforward-'));
+      if (!ids.length) { wfViewEl.innerHTML = '<p class="note">No walk-forward runs yet. Start one above.</p>'; return; }
+      const doc = await (await fetch(`api/batch/${encodeURIComponent(ids[0])}`)).json();
+      wfCurrent = doc.id;
+      wfViewEl.innerHTML = renderWalkforward(doc);
+      wfViewEl.querySelectorAll('.wf-detail').forEach((btn) => {
+        btn.addEventListener('click', async () => {
+          const out = $('wf-detail-out');
+          out.innerHTML = '<p class="note">reading fold detail…</p>';
+          try {
+            const r = await fetch(`api/walkforward/${encodeURIComponent(wfCurrent)}/unit?file=${encodeURIComponent(btn.dataset.file)}`);
+            const d = await r.json();
+            if (!r.ok) throw new Error(d.error || r.status);
+            out.innerHTML = renderWfDetail(d, btn.dataset.label);
+            out.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+          } catch (err) { out.innerHTML = `<p class="note">could not read folds: ${esc(err.message)}</p>`; }
+        });
+      });
+      clearTimeout(wfTimer);
+      if (doc.status === 'running') wfTimer = setTimeout(refreshWalkforward, 5000);
+    } catch (err) { wfErrEl.hidden = false; wfErrEl.textContent = err.message; }
+  }
+  $('wf-start').addEventListener('click', async () => {
+    try {
+      wfErrEl.hidden = true;
+      const uni = $('wf-universe').value.trim();
+      const res = await fetch('api/walkforward', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          universe: uni ? uni.split(',').map((x) => x.trim().toUpperCase()).filter(Boolean) : undefined,
+          permute: { geometry: $('wf-perm-geometry').checked, decision: $('wf-perm-decision').checked },
+          minTradesSlice: Number($('wf-mintrades').value) || 5,
+          description: $('wf-desc').value.trim(),
+        }),
+      });
+      const body = await res.json();
+      if (!res.ok) throw new Error(body.error || `HTTP ${res.status}`);
+      refreshWalkforward();
+    } catch (err) { wfErrEl.hidden = false; wfErrEl.textContent = err.message; }
+  });
+  $('wf-refresh').addEventListener('click', refreshWalkforward);
+  refreshWalkforward();
 
   // ---- CPU throttle (semi-auto balancer pattern) -----------------------------
 

@@ -35,6 +35,7 @@ const { threadNice } = require('./threadnice');
 const INLINE = {
   unit: work.unitTask,
   nullRotation: work.nullRotationTask,
+  wfUnit: require('./walkforward').wfUnitTask,
   ping: async () => ({ priority: os.getPriority(), pid: process.pid, ...threadNice() }),
 };
 

@@ -684,6 +684,45 @@ app.post('/api/bracketlab/compare', (req, res) => {
   }
 });
 
+// ---- walk-forward (DESIGN-WALKFORWARD.md) ----------------------------------
+app.post('/api/walkforward', (req, res) => {
+  const b = req.body || {};
+  if (b.universe !== undefined && (!Array.isArray(b.universe) || b.universe.some((x) => !SYMBOL_RE.test(String(x).toUpperCase())))) {
+    return res.status(400).json({ error: 'universe must be an array of symbols like DOTUSDT' });
+  }
+  try {
+    const id = batch.startWalkforward({
+      universe: b.universe ? b.universe.map((x) => String(x).toUpperCase()) : undefined,
+      permute: b.permute,
+      set: b.set,
+      minTradesSlice: b.minTradesSlice,
+      feePerLeg: b.feePerLeg,
+      description: b.description,
+      label: b.label,
+    });
+    res.json({ batchId: id });
+  } catch (err) {
+    res.status(409).json({ error: err.message });
+  }
+});
+
+// Per-unit fold detail. Path inputs are hostile until proven otherwise —
+// same pinning as the inspect endpoint.
+app.get('/api/walkforward/:id/unit', (req, res) => {
+  const id = String(req.params.id || '');
+  const file = String(req.query.file || '');
+  if (!/^walkforward-[A-Za-z0-9-]+$/.test(id)) return res.status(400).json({ error: 'bad run id' });
+  if (!/^[A-Za-z0-9._-]+\.json$/.test(file)) return res.status(400).json({ error: 'bad file name' });
+  const base = path.join(__dirname, 'data', 'wf', id);
+  const full = path.resolve(base, file);
+  if (!full.startsWith(path.resolve(base))) return res.status(400).json({ error: 'bad path' });
+  try {
+    res.json(JSON.parse(require('fs').readFileSync(full, 'utf8')));
+  } catch {
+    res.status(404).json({ error: 'no fold detail for that unit' });
+  }
+});
+
 app.get('/api/batch/:id', (req, res) => {
   const doc = batch.getBatch(req.params.id);
   if (!doc) return res.status(404).json({ error: 'unknown batch' });

@@ -35,6 +35,7 @@ try {
 const TASKS = {
   unit: work.unitTask,
   nullRotation: work.nullRotationTask,
+  wfUnit: require('./walkforward').wfUnitTask,
   // Introspection, so the nice level above is a testable property rather than
   // a comment nobody can check.
   //

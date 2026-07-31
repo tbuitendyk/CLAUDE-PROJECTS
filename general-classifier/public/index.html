@@ -22,6 +22,8 @@
     <button type="button" class="tab active" id="tab-btn-research" data-tab="research">Research</button>
     <button type="button" class="tab" id="tab-btn-bracket" data-tab="bracket"
       title="The execution-permutation lab: asset combos (singles/doubles/triples) × permutable options × the OCO bracket menu, slim-then-promote, live leaderboard, nulls only on survivors.">Bracket lab</button>
+    <button type="button" class="tab" id="tab-btn-walkforward" data-tab="walkforward"
+      title="The walk-forward instrument: train/test/holdout folds marching through the whole history. Every 8 weeks the trading settings are re-picked on fresh recent data and judged once on the next 8 weeks — the verdict is the distribution over every era, not one window's luck.">Walk-forward</button>
     <button type="button" class="tab" id="tab-btn-books" data-tab="books"
       title="The live paper books — frozen pre-registered experiments verifying earlier setups in real time. A different category of work from the research tools, kept out of the way.">Paper books</button>
   </nav>
@@ -284,6 +286,42 @@
     <div id="bl-error" class="error" hidden></div>
     <div id="bl-view"></div>
     </div><!-- /tab-bracket -->
+
+    <div id="tab-walkforward" hidden>
+    <section class="intro">
+      <h1>Walk-forward</h1>
+      <p>Marches train / test / holdout folds through the entire history of each coin. Per fold: models train
+        on everything before the fold (recent two years counted twice), the trade settings and agreement level
+        are picked on an 8-week <strong>test</strong> slice, and that pick is scored once on the next 8-week
+        <strong>holdout</strong> slice. Step 8 weeks, repeat — every era takes its turn as clean holdout. The
+        result per setup is a <strong>distribution over ~25&ndash;30 folds</strong>, which is what makes it
+        immune to the single-window placement luck that retired the previous instruments (QC 57).</p>
+    </section>
+    <form class="controls" autocomplete="off" onsubmit="return false">
+      <div class="field" style="min-width:340px">
+        <label for="wf-universe" title="Comma-separated coins to sweep. Empty = the standard 17-coin universe.">coins (empty = all 17)</label>
+        <input id="wf-universe" type="text" placeholder="e.g. ATOMUSDT, BCHUSDT">
+      </div>
+      <div class="field">
+        <label class="check" title="Run all five chunk shapes (weekly 8-day, daily 1-4 day) for every coin. Off = just daily 3-day.">
+          <input type="checkbox" id="wf-perm-geometry" checked> all chunk shapes</label>
+        <label class="check" title="Run both decision rules (argmax and directional hunter) for every setup. Off = just argmax.">
+          <input type="checkbox" id="wf-perm-decision" checked> both decision rules</label>
+      </div>
+      <div class="field">
+        <label for="wf-mintrades" title="Per-fold selection floor: on each 8-week test slice, a candidate setting must have made at least this many trades to be picked. Guards each fold's pick against three-trade flukes.">min trades per slice</label>
+        <input id="wf-mintrades" type="number" min="1" max="50" step="1" value="5">
+      </div>
+      <div class="field" style="min-width:280px">
+        <label for="wf-desc" title="Stored with the run so the intent survives next to the numbers.">what this run is for</label>
+        <input id="wf-desc" type="text" placeholder="one sentence">
+      </div>
+      <div class="field submit"><button id="wf-start" type="button">Start walk-forward</button></div>
+      <div class="field submit"><button id="wf-refresh" type="button" class="secondary">Refresh</button></div>
+    </form>
+    <div id="wf-error" class="error" hidden></div>
+    <div id="wf-view"><p class="note">Loading&hellip;</p></div>
+    </div><!-- /tab-walkforward -->
 
     <div id="tab-books" hidden>
     <div id="books-pager-top" class="books-pager" hidden></div>
