@@ -16,9 +16,15 @@ declared cadence."
 - Setup-level money transfer: +0.05 (recent), **-0.45 era-mixed** — the
   best-shopped result anti-predicts its own holdout. Winner's curse at
   the assembly level.
-Status: SUPPORTIVE, NOT YET SURVIVING — no noise comparison has run on the
-member-level correlations, and "durable" has only been measured across two
-windows.
+Status: REFINED BY H1a (2026-07-31). Both layers decay, at very different
+speeds: member relative skill fades with a half-life of roughly a YEAR
+(0.35 at <6mo gaps -> 0.24 at 6-12mo -> 0.04 past 4y, floor 0.001) with a
+small residue that never quite dies; assembly skill dies in MONTHS (0.38
+at <6mo -> 0.12 at 6-12mo -> ~0.01 past 2y). 816 unit-windows, 3 seeds,
+~97k block pairs. The curves RETRODICT the L14 layout paradox: the
+chronological arm picks assemblies at first-row gaps (transfer 0.38), the
+interlaced arm at multi-year gaps (~0.01-0.10). H1b's scramble floor for
+these correlations is still owed; the shuffle floor stands in meanwhile.
 
 ## Declared test program (each step gates the next; instrument rules apply)
 - **H1a — DECAY CURVES, lag-resolved (free, pure read).** The owner's
