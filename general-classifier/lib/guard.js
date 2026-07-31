@@ -3,12 +3,20 @@
 // new month files mid-run hands later units a different history than
 // earlier ones — one job, two datasets, and nothing in the output says so.
 //
-// While a batch runs:
-//   - Load Data is refused outright (its whole purpose is to write months);
-//   - a single classifier run is refused ONLY if it would have to fetch.
-//     "All loaded data" mode and fully-cached ranges read the cache without
-//     ever touching the network (lib/pipeline.js loadSymbolAll) — those
-//     stay allowed.
+// While a batch runs, the guarded write paths refuse:
+//   - Load Data and book-draft creation, outright (they exist to fetch);
+//   - a single classifier run or a rotation-ceiling quote, ONLY if it
+//     would have to fetch. "All loaded data" mode and fully-cached ranges
+//     read the cache without touching the network (lib/pipeline.js
+//     loadSymbolAll) — those stay allowed.
+//
+// HONEST SCOPE — what this guard does NOT cover (named, not implied away):
+//   - the 6-hourly new-month auto-refresh is gated at its own timer in
+//     server.js, not here;
+//   - the tracker/doge/books 30-minute ticks can still write recent-day
+//     files mid-batch. Pausing them brushes the frozen paper-book
+//     protocols, so that is an OWNER decision, queued, not taken;
+//   - tracker/dogebook one-time inits (long since run on the box).
 // Pure decision functions, exported for the tests; server.js wires them.
 
 // 'YYYY-MM' walk, inclusive. Malformed input yields [] — the endpoint has
@@ -32,9 +40,9 @@ function monthList(startMonth, endMonth) {
   return out;
 }
 
-function loadRefusal(runningId) {
+function loadRefusal(runningId, action = 'Load Data') {
   if (!runningId) return null;
-  return `refused while ${runningId} is running: Load Data writes the candle cache that job's workers are reading. Wait for it to finish.`;
+  return `refused while ${runningId} is running: ${action} writes the candle cache that job's workers are reading. Wait for it to finish.`;
 }
 
 function runRefusal(runningId, { allLoaded, tradeSymbol, compareSymbol, startMonth, endMonth }, cachedMonthsFn) {

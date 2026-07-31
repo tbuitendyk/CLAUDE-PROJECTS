@@ -1,6 +1,7 @@
-// The cache-write guard (owner-ordered 2026-07-31): while a screen/sweep
-// runs, nothing may write the candle cache its workers are reading. Load
-// Data always writes; a single run writes only when months are missing.
+// The cache-write guard (owner-ordered 2026-07-31): the guarded write
+// paths — Load Data, book drafts, downloading runs, downloading rotation
+// quotes — refuse while a screen/sweep is reading the cache. The guard's
+// header in lib/guard.js names what it deliberately does NOT cover.
 const { assert } = require('./helpers');
 const { monthList, loadRefusal, runRefusal } = require('../lib/guard');
 
@@ -25,6 +26,11 @@ module.exports = {
     assert.strictEqual(runRefusal('walkforward-x', { ...REQ, allLoaded: true, endMonth: '2024-09' }, cached), null);
     // no job running: everything passes
     assert.strictEqual(runRefusal(null, { ...REQ, endMonth: '2024-05' }, cached), null);
+    // a hole in the COMPARE pair's cache alone must refuse too — a guard
+    // that only checks the trade pair passes every other case here
+    const lopsided = (sym) => (sym === 'BTCUSDT' ? ['2024-01', '2024-02'] : CACHED[sym] || []);
+    const msg2 = runRefusal('walkforward-x', REQ, lopsided);
+    assert.ok(msg2 && msg2.includes('BTCUSDT 2024-03'), `compare-side hole refuses: ${msg2}`);
   },
   async theMonthWalkCrossesYearsAndRefusesGarbage() {
     assert.deepStrictEqual(monthList('2023-11', '2024-02'), ['2023-11', '2023-12', '2024-01', '2024-02']);

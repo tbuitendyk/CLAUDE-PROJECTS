@@ -455,6 +455,15 @@ app.get('/api/rotations', async (req, res) => {
     return res.status(400).json({ error: 'months must be YYYY-MM' });
   }
   // The ceiling is quoted for the months the screen will actually use.
+  // Cache-write guard: an explicit uncached range would DOWNLOAD here (the
+  // "no network" comment above was stale) — refused while a batch runs.
+  const rotRunning = batch.batchRunning();
+  if (rotRunning) {
+    for (const p of pairs) {
+      const stop = guard.runRefusal(rotRunning, { allLoaded, tradeSymbol: p, compareSymbol, startMonth, endMonth }, cachedMonths);
+      if (stop) return res.status(409).json({ error: stop });
+    }
+  }
   const range = { allLoaded, startMonth, endMonth };
   try {
     const out = {};
@@ -470,6 +479,10 @@ app.get('/api/rotations', async (req, res) => {
 // newly PUBLISHED monthly zips (the bulk portal posts a month a few days
 // after it ends) for each cached symbol. Purely additive; never re-downloads.
 async function refreshNewMonths() {
+  // Cache-write guard: a newly published month landing mid-batch changes
+  // the dataset later units read ("all loaded" jobs re-read the cache per
+  // unit). Skip the tick; the next one catches up after the batch ends.
+  if (batch.batchRunning()) return;
   const now = new Date();
   for (const { symbol } of cacheState()) {
     const have = new Set(cachedMonths(symbol));
@@ -552,6 +565,10 @@ app.post('/api/books', (req, res) => {
   } catch (err) {
     return res.status(400).json({ error: err.message });
   }
+  // Cache-write guard: a draft walks every month to the present for both
+  // pairs and downloads what is missing.
+  const draftStop = guard.loadRefusal(batch.batchRunning(), 'Creating a book draft');
+  if (draftStop) return res.status(409).json({ error: draftStop });
   const jobId = startJob((setProgress) => books.createDraft(req.body, setProgress));
   res.json({ jobId });
 });

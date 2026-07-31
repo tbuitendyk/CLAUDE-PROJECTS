@@ -142,7 +142,11 @@ async function dailyKlines(symbol, year, month, day) {
   if (res.status === 404) return null;
   if (!res.ok) throw new Error(`binance daily ${res.status} for ${symbol} ${year}-${mm}-${dd}`);
   const buf = Buffer.from(await res.arrayBuffer());
-  const rows = parseKlineCsv(unzipSingleEntry(buf).toString('utf8'), interval === '1m' ? 60_000 : HOUR_MS);
+  // This function is 1h-only (filename and URL both pin -1h-). The old line
+  // read monthlyKlines' `interval` variable, which does not exist in this
+  // scope — every cache-miss fetch threw ReferenceError, so the daily-zip
+  // tier of the fallback ladder silently never worked (review, 2026-07-31).
+  const rows = parseKlineCsv(unzipSingleEntry(buf).toString('utf8'), HOUR_MS);
   try {
     fs.mkdirSync(CACHE_DIR, { recursive: true });
     // ATOMIC: worker threads read these files concurrently with the main
