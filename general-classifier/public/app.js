@@ -2384,8 +2384,15 @@
   // Each agreement box exists only when the run will contain committees of
   // that size (owner, 2026-07-31): 6 members for singles, 8 with contexts.
   const syncQ = () => {
+    const anySize = $('bl-singles').checked || $('bl-doubles').checked || $('bl-triples').checked;
     $('bl-dec-q6-wrap').hidden = !$('bl-singles').checked;
     $('bl-dec-q8-wrap').hidden = !($('bl-doubles').checked || $('bl-triples').checked);
+    // A run with no combo size ticked has nothing to sweep; the server
+    // refuses it, so the button says so up front rather than letting the
+    // click produce an error (owner, 2026-07-31).
+    const btn = $('bl-start-btn');
+    btn.disabled = !anySize;
+    btn.title = anySize ? '' : 'tick at least one combo size (singles, doubles or triples)';
   };
   ['bl-singles', 'bl-doubles', 'bl-triples'].forEach((id) => $(id).addEventListener('change', syncQ));
   syncQ();
