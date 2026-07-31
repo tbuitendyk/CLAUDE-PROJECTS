@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>General Classifier</title>
-  <link rel="stylesheet" href="style.css?v=21">
+  <link rel="stylesheet" href="style.css?v=22">
 </head>
 <body>
   <header class="topbar">
@@ -245,7 +245,14 @@
           <input type="checkbox" id="bl-holdout"> hold back a final 15% (never searched)</label>
         <span id="bl-holdout-note" class="note" hidden>always on for the chronological and interlaced layouts</span>
       </div>
-      <div class="field" style="min-width:280px">
+      
+      <div class="field">
+        <label for="bl-mintrades" title="Selection floor: execution cells below this many test trades never win">min trades</label>
+        <input id="bl-mintrades" type="number" min="1" max="200" step="1" value="10">
+      </div>
+      <details class="archived" style="flex-basis:100%">
+        <summary title="The window-layout instrument (legacy / chronological / interlaced / both) is retired from daily use: the seed check showed single-placement holdout verdicts are window-placement noise (QC 57). It stays runnable here for reproducing the recorded runs; new work uses the walk-forward instrument.">archived instrument — window layouts (retired from daily use, QC 57)</summary>
+        <div class="field" style="min-width:280px">
         <label for="bl-layout"
           title="WHERE THE THREE WINDOWS LIVE ON THE CALENDAR. legacy: today's split — train on the oldest 70%, pick settings in the next 15%, judge on the most recent 15% (percent-sized, unchanged from every earlier run). chronological + interlaced are the QUOTA-FIRST pair built for comparison: both size their evaluation windows as whole 63-day (9-week) blocks — G groups' worth each for search and holdout — so FOR ANY SHAPE both contain exactly the same number of potential trade days per window. chronological puts them contiguous at the recent end; interlaced sprinkles them through the whole history (5 training blocks of 49 days + 2 evaluation blocks per 371-day group, slotted by the seeded random rule: search-or-holdout-first coin flip, first eval block in position 2 or 3, second in 5, 6 or 7), so a verdict spans every era instead of one. both: runs every setup twice, one arm per layout, same seed, for the built-in comparison — double the compute. All purge (chunks trimmed so no candle is shared between training and evaluation) is paid by the TRAINING set in both quota layouts, so evaluation counts stay exact.">window layout</label>
         <select id="bl-layout">
@@ -261,10 +268,7 @@
           title="STRICT COMPARISON SWITCH (auto-band runs only). Each arm normally calibrates its own dormant band on its own training set, which makes the band a second difference channel between the arms. With this on, both arms use one band fit on the chunks that are TRAINING IN BOTH layouts — unseen as evaluation by either arm, so nothing leaks and the layout is the only variable left. Default off: a band fit on the arm's own training set is the methodologically proper per-arm behaviour.">
           <input type="checkbox" id="bl-sharedband"> shared band across arms</label>
       </div>
-      <div class="field">
-        <label for="bl-mintrades" title="Selection floor: execution cells below this many test trades never win">min trades</label>
-        <input id="bl-mintrades" type="number" min="1" max="200" step="1" value="10">
-      </div>
+      </details>
       <div class="field submit"><button id="bl-start-btn" type="button">Start sweep</button></div>
       <div class="field submit"><button id="bl-stop" type="button" class="danger"
         title="Kill switch: stops the sweep at its current training; everything completed so far stays persisted and readable.">Stop jobs</button></div>

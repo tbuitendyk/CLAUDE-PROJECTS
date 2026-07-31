@@ -2206,6 +2206,7 @@
         <button id="bl-v-go">run the tests</button></p>
       <div id="bl-verdict-out"></div></div>`;
     const compareBlock = `
+      <details class="archived section-archive"><summary title="Part of the retired window-layout instrument (QC 57): compares the chronological and interlaced arms of the recorded runs. Kept for reading the historical record; new comparisons come from the walk-forward instrument.">archived — layout comparison (historical runs)</summary>
       <div class="section"><h2>Layout comparison — same settings, two window geometries</h2>
       <p class="note">Compares the <strong>chronological</strong> and <strong>interlaced</strong> arms of one
         run (or two separate runs). Two separate runs link ONLY when every stored setting matches — the
@@ -2214,7 +2215,7 @@
       <p class="note">run A <select id="bl-c-a"></select>
         run B <select id="bl-c-b"><option value="">— A is a "both" run —</option></select>
         <button id="bl-c-go">compare</button></p>
-      <div id="bl-compare-out"></div></div>`;
+      <div id="bl-compare-out"></div></div></details>`;
     blViewEl.innerHTML = `<p class="note">${header}</p>${perfBlock}${repBlock}${leaderBlock}${inspectBlock}${verdictBlock}${compareBlock}${nullBlock}`;
     // ---- inside view ------------------------------------------------------
     blViewEl.querySelectorAll('.bl-inspect').forEach((btn) => {

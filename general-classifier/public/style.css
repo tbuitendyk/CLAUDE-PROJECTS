@@ -253,3 +253,8 @@ table.settings tr:nth-child(even) { background: rgba(127, 127, 127, .05); }
 table.pw td, table.pw th { text-align: center; padding: .1rem .35rem; font-size: .78rem; }
 table.pw .pw-hot { background: rgba(214, 39, 40, .22); font-weight: 700; }
 .bl-inspect { font-size: .7rem; padding: 0 .3rem; margin-top: .15rem; cursor: pointer; }
+
+/* Archived instruments: present, runnable, out of the way. */
+details.archived { opacity: .75; }
+details.archived > summary { cursor: pointer; font-size: .85em; color: #888; padding: 4px 0; }
+details.archived[open] { opacity: 1; }
