@@ -2406,7 +2406,6 @@
         },
         promoteK: Number($('bl-promotek').value) || 25,
         minTrades: Number($('bl-mintrades').value) || 10,
-        emitCalls: $('bl-emit-calls').checked,
         trailing: $('bl-trailing').checked,
         holdout: $('bl-holdout').checked,
         windowLayout: $('bl-layout').value,

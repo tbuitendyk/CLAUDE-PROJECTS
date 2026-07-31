@@ -242,11 +242,6 @@
           <input type="checkbox" id="bl-holdout"> hold back a final 15% (never searched)</label>
         <span id="bl-holdout-note" class="note" hidden>always on for the chronological and interlaced layouts</span>
       </div>
-      <div class="field" style="min-width:230px">
-        <label class="check"
-          title="Store the committee's per-period call for each declared (or winning) cell, alongside the labels and period timestamps. That is what lets a bracket result seed a paper book or be re-scored later without re-running the sweep. Off by default because it is per-period data; capped at 50 units so a replication run can leave it on without thought.">
-          <input type="checkbox" id="bl-emit-calls"> export per-period calls</label>
-      </div>
       <div class="field" style="min-width:280px">
         <label for="bl-layout"
           title="WHERE THE THREE WINDOWS LIVE ON THE CALENDAR. legacy: today's split — train on the oldest 70%, pick settings in the next 15%, judge on the most recent 15% (percent-sized, unchanged from every earlier run). chronological + interlaced are the QUOTA-FIRST pair built for comparison: both size their evaluation windows as whole 63-day (9-week) blocks — G groups' worth each for search and holdout — so FOR ANY SHAPE both contain exactly the same number of potential trade days per window. chronological puts them contiguous at the recent end; interlaced sprinkles them through the whole history (5 training blocks of 49 days + 2 evaluation blocks per 371-day group, slotted by the seeded random rule: search-or-holdout-first coin flip, first eval block in position 2 or 3, second in 5, 6 or 7), so a verdict spans every era instead of one. both: runs every setup twice, one arm per layout, same seed, for the built-in comparison — double the compute. All purge (chunks trimmed so no candle is shared between training and evaluation) is paid by the TRAINING set in both quota layouts, so evaluation counts stay exact.">window layout</label>
