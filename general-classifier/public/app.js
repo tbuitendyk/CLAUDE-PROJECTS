@@ -129,6 +129,7 @@
   // (caught by the pre-deploy review, 2026-07-31).
   let runningJob = null; // { id, tab, done, total } or null
   let runBannerHtml = null; // last painted content — repaint only on change
+  let runBannerKnown = false; // no idle claim until one poll has actually answered
   function ownerTabOf(id) {
     return String(id).startsWith('bracketlab-') ? 'bracket'
       : String(id).startsWith('walkforward-') ? 'walkforward' : 'research';
@@ -145,7 +146,8 @@
       // "Refused" claims are deliberately scoped: every SCREEN/SWEEP start
       // checks the running batch and refuses, but the single-run and
       // load-data paths do not — so the strip never claims they would.
-      html = 'No screen or sweep is running.';
+      // And no idle claim is made before the first poll has answered.
+      html = runBannerKnown ? 'No screen or sweep is running.' : 'Checking for a running job…';
       quiet = true;
     } else if (runningJob.tab === active) {
       html = `The running job is on this tab: ${esc(runningJob.id)} — ${runningJob.done}/${runningJob.total} done.`;
@@ -169,10 +171,12 @@
       const list = await (await fetch('api/batches')).json();
       const r = (list.batches || []).find((b) => b.status === 'running');
       runningJob = r ? { id: r.id, tab: ownerTabOf(r.id), done: r.runsDone, total: r.runsTotal } : null;
+      runBannerKnown = true;
     } catch { /* keep the last known state; this strip is a convenience, not a record */ }
     paintRunBanner();
   }
   setInterval(pollRunBanner, 10000);
+  document.addEventListener('visibilitychange', pollRunBanner); // refresh promptly on tab refocus
   pollRunBanner();
 
   document.querySelectorAll('.tabbar .tab').forEach((b) => {
