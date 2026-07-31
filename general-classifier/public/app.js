@@ -2369,6 +2369,18 @@
     $('bl-dec-qn').hidden = $('bl-dec-q').value !== 'exact';
   });
 
+  // The holdout checkbox only decides anything under the legacy layout: the
+  // chronological and interlaced layouts are three-window by construction and
+  // force it on. Show that instead of letting the box sit there lying.
+  const syncHoldout = () => {
+    const forced = $('bl-layout').value !== 'legacy';
+    const box = $('bl-holdout');
+    if (forced) { box.checked = true; box.disabled = true; } else { box.disabled = false; }
+    $('bl-holdout-note').hidden = !forced;
+  };
+  $('bl-layout').addEventListener('change', syncHoldout);
+  syncHoldout();
+
   $('bl-start-btn').addEventListener('click', async () => {
     try {
       blErrEl.hidden = true;
