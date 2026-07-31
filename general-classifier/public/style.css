@@ -258,3 +258,10 @@ table.pw .pw-hot { background: rgba(214, 39, 40, .22); font-weight: 700; }
 details.archived { opacity: .75; }
 details.archived > summary { cursor: pointer; font-size: .85em; color: #888; padding: 4px 0; }
 details.archived[open] { opacity: 1; }
+
+/* Cross-tab running-job notice: shows on every tab except the one that
+   displays the job natively (owner, 2026-07-31 — a walk-forward run was
+   invisible from the Bracket lab tab and the machine read as idle). */
+.runbanner { margin: 0 0 14px; padding: 8px 14px; font-size: .85rem; color: var(--ink);
+  border: 1px solid var(--accent); border-radius: 6px; background: rgba(42, 120, 214, .08); }
+.runbanner button { margin-left: .6rem; font-size: .78rem; cursor: pointer; }

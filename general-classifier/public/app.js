@@ -112,11 +112,48 @@
     }
     document.querySelectorAll('.tabbar .tab').forEach((b) => b.classList.toggle('active', b.dataset.tab === tab));
     if (window.location.hash !== `#${tab}`) history.replaceState(null, '', `#${tab}`);
+    paintRunBanner(); // the running-job strip hides on the tab that shows the job natively
   }
   document.querySelectorAll('.tabbar .tab').forEach((b) => {
     b.addEventListener('click', () => showTab(b.dataset.tab));
   });
   showTab((window.location.hash || '').replace('#', ''));
+
+  // ---- cross-tab running-job notice ----------------------------------------
+  // One job runs at a time, but each tab lists only its own kind, so a job
+  // of another kind was invisible: a walk-forward sweep owned the machine
+  // while the Bracket lab tab read as idle (owner, 2026-07-31). This strip
+  // shows on every tab EXCEPT the one displaying the job natively. It only
+  // READS the batch list the tabs already use — it cannot touch the job.
+  let runningJob = null; // { id, tab, done, total } or null
+  function ownerTabOf(id) {
+    return String(id).startsWith('bracketlab-') ? 'bracket'
+      : String(id).startsWith('walkforward-') ? 'walkforward' : 'research';
+  }
+  function paintRunBanner() {
+    const el = $('runbanner');
+    if (!el) return;
+    const activeBtn = document.querySelector('.tabbar .tab.active');
+    const active = activeBtn ? activeBtn.dataset.tab : 'research';
+    if (!runningJob || runningJob.tab === active) { el.hidden = true; return; }
+    const label = { bracket: 'Bracket lab', walkforward: 'Walk-forward', research: 'Research' }[runningJob.tab];
+    el.innerHTML = `A <strong>${esc(label)}</strong> job is running: ${esc(runningJob.id)}`
+      + ` — ${runningJob.done}/${runningJob.total} done. Starting another job before it finishes will be refused.`
+      + `<button type="button" id="runbanner-go">Open the ${esc(label)} tab</button>`;
+    $('runbanner-go').addEventListener('click', () => showTab(runningJob.tab));
+    el.hidden = false;
+  }
+  async function pollRunBanner() {
+    if (document.hidden) return; // nobody is looking; don't poll for it
+    try {
+      const list = await (await fetch('api/batches')).json();
+      const r = (list.batches || []).find((b) => b.status === 'running');
+      runningJob = r ? { id: r.id, tab: ownerTabOf(r.id), done: r.runsDone, total: r.runsTotal } : null;
+    } catch { /* keep the last known state; this strip is a convenience, not a record */ }
+    paintRunBanner();
+  }
+  setInterval(pollRunBanner, 10000);
+  pollRunBanner();
 
 
   // ---- walk-forward tab (DESIGN-WALKFORWARD.md) ------------------------------
