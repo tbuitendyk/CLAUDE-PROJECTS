@@ -223,11 +223,11 @@
             <select id="bl-dec-arm" style="min-width:auto;padding:4px 6px">
               <option value="0" selected>0×</option><option value="0.5">0.5×</option><option value="1">1×</option>
             </select></label>
-          <label class="check" style="gap:3px" title="Quorum as a fraction of the member set, so it means the same thing whatever the committee size — 1/3 is 2-of-6 on singles, ~3-of-8 with context assets. (Pre-2026-07-30 boards had 12/16 seats: the same 1/3 was 4-of-12 there.)">q ratio
+          <label class="check" style="gap:3px" title="Agreement level as a fraction of the committee, so one declaration means the same thing at any committee size. A single asset has 6 members (3 data views x 2 model types); adding one or two context assets adds a fourth view — how this coin moves against them — for 8 members. Each option below shows both counts: singles first, with-contexts second. (Boards recorded before 2026-07-30 had 12/16 seats, half of them near-duplicates, so the same fraction was a different count there.)">q ratio
             <select id="bl-dec-q" style="min-width:auto;padding:4px 6px">
-              <option value="0.1667">1/6 (1 of 6)</option><option value="0.3333" selected>1/3 (2 of 6)</option>
-              <option value="0.5">1/2 (3 of 6)</option><option value="0.6667">2/3 (4 of 6)</option>
-              <option value="0.8334">5/6 (5 of 6)</option><option value="1">all (6 of 6)</option>
+              <option value="0.1667">1/6 (1 of 6 · 1 of 8)</option><option value="0.3333" selected>1/3 (2 of 6 · 3 of 8)</option>
+              <option value="0.5">1/2 (3 of 6 · 4 of 8)</option><option value="0.6667">2/3 (4 of 6 · 5 of 8)</option>
+              <option value="0.8334">5/6 (5 of 6 · 7 of 8)</option><option value="1">all (6 of 6 · 8 of 8)</option>
             </select></label>
         </div>
       </div>
