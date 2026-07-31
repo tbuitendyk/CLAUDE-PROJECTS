@@ -526,8 +526,20 @@ app.post('/api/tracker/init', (req, res) => {
 // Weekly heartbeat: predictions post at Tue 00:xx, settlements after Thu
 // 18:00; a 30-minute cadence catches both promptly and self-heals after
 // downtime (missed weeks arrive flagged as seeded, never lost).
-setInterval(() => tracker.tick().catch((err) => console.error('tracker tick failed:', err.message)), 30 * 60 * 1000);
-setTimeout(() => tracker.tick().catch((err) => console.error('tracker tick failed:', err.message)), 20 * 1000);
+// Cache-write guard, tick edition (owner-ordered, 2026-07-31: "pause the
+// tracker/DOGE/books 30-minute ticks during sweeps"). The ticks fetch
+// recent-day candles and write them into the cache a running sweep's
+// workers are reading. Gated HERE at the timers so lib/tracker.js and
+// lib/dogebook.js stay byte-identical (the paper-book freeze). Skipped
+// ticks lose nothing: the books are deterministic on candle history and
+// self-heal on the first tick after the batch ends.
+function tickUnlessBatch(name, fn) {
+  if (batch.batchRunning()) return;
+  fn().catch((err) => console.error(`${name} tick failed:`, err.message));
+}
+
+setInterval(() => tickUnlessBatch('tracker', () => tracker.tick()), 30 * 60 * 1000);
+setTimeout(() => tickUnlessBatch('tracker', () => tracker.tick()), 20 * 1000);
 
 // ---- second live paper book: DOGE daily-3d (TRACKER-DOGE.md) -----------------
 // Entirely separate state and endpoints from the frozen DOT/AVAX tracker.
@@ -552,8 +564,8 @@ app.post('/api/dogebook/init', (req, res) => {
 // Daily geometry: a new chunk closes every day and settlement lands 115h
 // later, so a 30-minute cadence catches both promptly and self-heals after
 // downtime (missed days arrive flagged unseen, never lost).
-setInterval(() => dogebook.tick().catch((err) => console.error('dogebook tick failed:', err.message)), 30 * 60 * 1000);
-setTimeout(() => dogebook.tick().catch((err) => console.error('dogebook tick failed:', err.message)), 40 * 1000);
+setInterval(() => tickUnlessBatch('dogebook', () => dogebook.tick()), 30 * 60 * 1000);
+setTimeout(() => tickUnlessBatch('dogebook', () => dogebook.tick()), 40 * 1000);
 
 // ---- generalized paper books (owner-created, code-enforced freeze) -----------
 
@@ -606,8 +618,8 @@ app.post('/api/books/refresh', async (req, res) => {
   }
 });
 
-setInterval(() => books.tick().catch((err) => console.error('books tick failed:', err.message)), 30 * 60 * 1000);
-setTimeout(() => books.tick().catch((err) => console.error('books tick failed:', err.message)), 60 * 1000);
+setInterval(() => tickUnlessBatch('books', () => books.tick()), 30 * 60 * 1000);
+setTimeout(() => tickUnlessBatch('books', () => books.tick()), 60 * 1000);
 
 // Owner's kill switch: stops the active screen at its current run AND
 // aborts every in-flight heavy loop (single runs, tracker init) at its next

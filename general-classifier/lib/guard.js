@@ -10,13 +10,13 @@
 //     read the cache without touching the network (lib/pipeline.js
 //     loadSymbolAll) — those stay allowed.
 //
-// HONEST SCOPE — what this guard does NOT cover (named, not implied away):
-//   - the 6-hourly new-month auto-refresh is gated at its own timer in
-//     server.js, not here;
-//   - the tracker/doge/books 30-minute ticks can still write recent-day
-//     files mid-batch. Pausing them brushes the frozen paper-book
-//     protocols, so that is an OWNER decision, queued, not taken;
-//   - tracker/dogebook one-time inits (long since run on the box).
+// HONEST SCOPE — what is guarded elsewhere or not at all:
+//   - the 6-hourly new-month auto-refresh and the tracker/doge/books
+//     30-minute ticks are gated at their own timers in server.js
+//     (tickUnlessBatch; the tick pause was owner-ordered 2026-07-31,
+//     placed at the timers so the frozen book modules stay untouched);
+//   - tracker/dogebook one-time inits (long since run on the box) are
+//     not guarded.
 // Pure decision functions, exported for the tests; server.js wires them.
 
 // 'YYYY-MM' walk, inclusive. Malformed input yields [] — the endpoint has

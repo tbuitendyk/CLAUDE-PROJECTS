@@ -1,7 +1,8 @@
 // The cache-write guard (owner-ordered 2026-07-31): the guarded write
 // paths — Load Data, book drafts, downloading runs, downloading rotation
-// quotes — refuse while a screen/sweep is reading the cache. The guard's
-// header in lib/guard.js names what it deliberately does NOT cover.
+// quotes — refuse while a screen/sweep is reading the cache; the
+// background timers (auto-refresh and the book ticks) are gated at their
+// timers in server.js. lib/guard.js's header states the exact scope.
 const { assert } = require('./helpers');
 const { monthList, loadRefusal, runRefusal } = require('../lib/guard');
 
