@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(bash .claude/vps-run.sh *)",
+      "Bash(curl -sS --max-time * -X POST https://deploy.buitendyk.ca/run *)",
+      "Bash(node tests/run.js)",
+      "Bash(npm test)",
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(git push -q origin *)",
+      "Bash(git push -q -u origin *)",
+      "Bash(git fetch -q origin *)",
+      "Bash(git pull -q origin *)",
+      "Bash(git reset --hard -q origin/*)",
+      "Bash(bash -n *)",
+      "Bash(chmod +x *)"
+    ]
+  }
+}
