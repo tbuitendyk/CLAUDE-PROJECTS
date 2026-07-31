@@ -24,9 +24,16 @@ Then step forward by DELTA and repeat, marching to the present.
                  slices tiling all of history]
   folds          ~2,000 days of history yields roughly 30 folds per coin;
                  every era contributes hold slices by construction
-  train window   all history to t_k with 2x weight on the trailing 104
-                 weeks [GUESSED weighting shape; the 1-2y scale is derived,
-                 the factor 2 is not — a one-knob experiment later]
+  train window   all history to t_k, purged by the full execution reach.
+                 UNWEIGHTED (amended 2026-07-31): the 2x-recency plan was
+                 first implemented by DUPLICATING the trailing 104 weeks,
+                 which put byte-copies of training rows into the members'
+                 validation slice and tuned lambda/boost-rounds/tau
+                 in-sample (QC 58). Recency weighting is DEFERRED until it
+                 can be done as true per-row sample weights inside the
+                 trainers — never by repeating rows. The 1-2y scale stays
+                 derived; the factor stays GUESSED; the knob stays a
+                 one-knob experiment for later.
 
 ## What the design buys
 - Placement noise averaged away: the verdict is a DISTRIBUTION over ~30

@@ -1,0 +1,65 @@
+Review found 8 real defects — all fixed; recalibrating now, sweep fires today
+
+tl;dr the pre-authorized code review confirmed 8 defects in the new
+walk-forward engine — including the one that made the fake-coin
+calibration fail — all are fixed and each fix has a test that was watched
+catching the fault. Deploying now, re-running the fake-coin calibration on
+the fixed engine (must pass before anything real runs), then a one-unit
+smoke, then the 17-coin sweep fires. Expected: calibration verdict within
+the hour, sweep results tonight, on your screen in the morning. Any slip
+and you get a mail immediately — no more silent nights.
+
+THE HEADLINE DEFECT (and why the calibration failed)
+The walk-forward design weighted recent history heavier by COPYING the
+last two years of training rows. The copies also landed in the slice each
+model uses to check itself while training — so the models were grading
+themselves on questions they had already memorized, and their tuning knobs
+were set too loose. That is exactly what the fake-coin test caught: the
+coin whose signal dies mid-history scored the same in its alive era as on
+pure noise, because the mistuned models could not tell the difference.
+Weighting is now removed entirely; it only comes back as proper per-row
+weights, never by copying rows. (QC 58.)
+
+THE OTHER SEVEN, in one line each:
+- The job list silently hid walk-forward runs (crashed on their format).
+- A restart could mislabel dead jobs as alive for the same reason. (QC 59)
+- The weekly-8d shape can never score a walk-forward fold; it used to
+  fail every fold and blame "data gap". Now it is refused up front with
+  the real reason, and skip messages only name causes that can actually
+  happen. (QC 61)
+- The web endpoint dropped a launcher's custom execution menu — a
+  narrowed run silently ran the full default menu instead.
+- A mis-typed fee or trade floor was silently "corrected" to a default;
+  now it refuses loudly, naming the field and the bad value. (QC 60)
+- The safety margin that keeps a fold's trades out of the next slice was
+  3 hours short in one configuration.
+- Assorted smaller ones: cancelled runs now keep their finished units,
+  the median is computed without a small upward/downward bias, an open
+  fold table no longer vanishes every 5 seconds, failed setups are shown
+  as MISSING on the board instead of silently absent.
+
+Full list with tests: commit 6846bd0; QC register items 58-62.
+
+THE OLD SEED-CONTROL RUN (WFS42) — killed, and here is the honest reason
+It was still running on the OLD, contaminated engine, and its log was
+empty after hours — I cannot yet tell you if it was slow or stuck (the
+tool printed nothing until the very end; it now prints a timestamped line
+per stage so stuck and slow look different). Its question — was the
+calibration failure noise or contamination — was answered at the code
+level by the review. The full calibration rerun on the FIXED engine
+includes the same seed-control coin, so nothing is lost.
+
+WHAT FIRES, IN ORDER (each step gated on the one before)
+1. Deploy engine 1.27.0 (this mail is the standard notice).
+2. Fake-coin calibration on the fixed engine — all declared criteria must
+   pass. ~30-60 min.
+3. One-unit smoke (DOT, daily-3d) to prove the service path end to end.
+4. WF1: 17 coins x 4 daily shapes x 2 decision rules = 136 setups.
+   Reading rules R1-R5 are committed in classifier-wf1-launch.sh BEFORE
+   the run — the sort of pre-registration that stops a result being
+   talked into something it is not. Expected 6-12 hours; checked on the
+   job's own cadence, not the mail timer.
+
+Next mail: calibration verdict + smoke result + WF1 fire time.
+
+c.

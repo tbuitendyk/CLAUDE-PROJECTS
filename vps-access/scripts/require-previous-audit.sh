@@ -32,7 +32,10 @@ import sys, json
 try: bs = json.load(sys.stdin)['batches']
 except Exception: raise SystemExit
 for b in bs:
-    if not (b['id'].startswith('bracketlab-') and b.get('status') == 'done'):
+    # Walk-forward jobs are experiments too: this gate covered only
+    # bracketlab- ids until the 2026-07-31 review caught the exemption
+    # (QC 59) — a whole job kind could have fired unaudited follow-ups.
+    if not (b['id'].startswith(('bracketlab-', 'walkforward-')) and b.get('status') == 'done'):
         continue
     # Preflights are not experiments: no reading rule, no findings, nothing to
     # audit. Skipping them here is a carve-out, not a loophole — the gate
@@ -43,7 +46,7 @@ for b in bs:
 " 2>/dev/null)
 
 if [ -z "$LAST" ]; then
-  echo "audit gate: no completed bracketlab job found — nothing to audit, proceeding."
+  echo "audit gate: no completed bracketlab/walkforward job found — nothing to audit, proceeding."
   return 0 2>/dev/null || exit 0
 fi
 
