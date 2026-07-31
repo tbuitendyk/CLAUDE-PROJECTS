@@ -1178,10 +1178,7 @@ const slimViewsFor = (size) => (size === 1 ? ['full', 'prices', 'volume'] : ['fu
 // thing whether a combo yields 6 members (singles) or 8 (with contexts).
 // Only the PROMOTED stage carries every rung, so declared cells are read
 // there; the slim stage only ever has the majority-vote stream.
-function declaredQuorumFor(dec, members) {
-  if (dec.quorumRatio) return Math.max(1, Math.min(members, Math.round(dec.quorumRatio * members)));
-  return Math.max(1, Math.min(members, dec.quorum || 1));
-}
+const { declaredQuorumFor } = require('./bracketwork');
 
 function validateDeclared(raw) {
   if (!raw) return null;
@@ -1220,7 +1217,22 @@ function validateDeclared(raw) {
       throw new Error('declared.armMult is meaningless without declared.trailMult — omit it');
     }
   }
-  if (raw.quorumRatio !== undefined) {
+  // PER-SIZE COUNTS (owner, 2026-07-31). Committees are 6 members for a
+  // single coin and 8 with context coins, so a declaration may name a count
+  // for each. Either alone is valid — a run that ticks only one combo size
+  // only needs one.
+  if (raw.quorumSingles !== undefined || raw.quorumContexts !== undefined) {
+    const each = (v, cap, name) => {
+      if (v === undefined) return undefined;
+      const n = Number(v);
+      if (!Number.isInteger(n) || n < 1 || n > cap) throw new Error(`declared.${name} must be a whole number from 1 to ${cap}`);
+      return n;
+    };
+    const qs = each(raw.quorumSingles, 6, 'quorumSingles');
+    const qc = each(raw.quorumContexts, 8, 'quorumContexts');
+    if (qs !== undefined) out.quorumSingles = qs;
+    if (qc !== undefined) out.quorumContexts = qc;
+  } else if (raw.quorumRatio !== undefined) {
     const r = Number(raw.quorumRatio);
     if (!Number.isFinite(r) || r <= 0 || r > 1) throw new Error('declared.quorumRatio must be in (0,1]');
     out.quorumRatio = r;
@@ -1229,7 +1241,10 @@ function validateDeclared(raw) {
     if (!Number.isInteger(q) || q < 1) throw new Error('declared.quorum must be a positive integer');
     out.quorum = q;
   }
-  const q = out.quorumRatio ? `${Math.round(out.quorumRatio * 100)}%` : out.quorum;
+  const q = out.quorumSingles != null || out.quorumContexts != null
+    ? [out.quorumSingles != null ? `${out.quorumSingles}/6` : null,
+       out.quorumContexts != null ? `${out.quorumContexts}/8` : null].filter(Boolean).join('+')
+    : out.quorumRatio ? `${Math.round(out.quorumRatio * 100)}%` : out.quorum;
   const trailBit = out.trailMult == null ? '' : ` trail${out.trailMult}x/arm${out.armMult}x`;
   out.label = out.entry === 'market'
     ? `q${q} market t${out.tHours}h`

@@ -2379,10 +2379,14 @@
   $('bl-dec-trail').addEventListener('change', blSyncEntry);
   blSyncEntry();
 
-  // The exact-count box only exists when 'exact count' is chosen.
-  $('bl-dec-q').addEventListener('change', () => {
-    $('bl-dec-qn').hidden = $('bl-dec-q').value !== 'exact';
-  });
+  // The 8-member box exists only when the run will contain 8-member
+  // committees — i.e. when doubles or triples are ticked (owner, 2026-07-31).
+  const syncQ8 = () => {
+    $('bl-dec-q8-wrap').hidden = !($('bl-doubles').checked || $('bl-triples').checked);
+  };
+  $('bl-doubles').addEventListener('change', syncQ8);
+  $('bl-triples').addEventListener('change', syncQ8);
+  syncQ8();
 
   // The holdout checkbox only decides anything under the legacy layout: the
   // chronological and interlaced layouts are three-window by construction and
@@ -2436,10 +2440,11 @@
         // Agreement level: a fraction of the committee, or an exact count
         // when the owner wants a specific number rather than one that lands
         // differently on 6- and 8-member committees.
-        const qSel = $('bl-dec-q').value;
-        const qPart = qSel === 'exact'
-          ? { quorum: Number($('bl-dec-qn').value) || 1 }
-          : { quorumRatio: Number(qSel) };
+        // A count per committee size, sent only for the sizes this run
+        // actually contains.
+        const qPart = {};
+        if ($('bl-singles').checked) qPart.quorumSingles = Number($('bl-dec-q6').value);
+        if ($('bl-doubles').checked || $('bl-triples').checked) qPart.quorumContexts = Number($('bl-dec-q8').value);
         body.declared = entry === 'market'
           ? { entry, tHours: Number($('bl-dec-t').value), ...qPart }
           : {

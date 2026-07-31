@@ -65,7 +65,7 @@ async function confirmCell({ combo, branch, cell, quorum, params, layoutArm = nu
     });
     memberCalls.push(calls);
   }
-  const q = quorum || declaredQuorumFor(p.declared, memberCalls.length) || 1;
+  const q = quorum || declaredQuorumFor(p.declared, memberCalls.length, combo.size) || 1;
   const searchCalls = memberCalls.map((c) => c.slice(0, testChunks.length));
   const calls = testChunks.map((_, i) => quorumCall(searchCalls, i, q));
 

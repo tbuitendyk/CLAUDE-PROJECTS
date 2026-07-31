@@ -223,14 +223,17 @@
             <select id="bl-dec-arm" style="min-width:auto;padding:4px 6px">
               <option value="0" selected>0×</option><option value="0.5">0.5×</option><option value="1">1×</option>
             </select></label>
-          <label class="check" style="gap:3px" title="Agreement level as a fraction of the committee, so one declaration means the same thing at any committee size. A single asset has 6 members (3 data views x 2 model types); adding one or two context assets adds a fourth view — how this coin moves against them — for 8 members. Each option below shows both counts: singles first, with-contexts second. (Boards recorded before 2026-07-30 had 12/16 seats, half of them near-duplicates, so the same fraction was a different count there.)">q ratio
-            <select id="bl-dec-q" style="min-width:auto;padding:4px 6px">
-              <option value="0.1667">1/6 (1 of 6 · 1 of 8)</option><option value="0.3333" selected>1/3 (2 of 6 · 3 of 8)</option>
-              <option value="0.5">1/2 (3 of 6 · 4 of 8)</option><option value="0.6667">2/3 (4 of 6 · 5 of 8)</option>
-              <option value="0.8334">5/6 (5 of 6 · 7 of 8)</option><option value="1">all (6 of 6 · 8 of 8)</option>
-              <option value="exact">exact count &rarr;</option>
-            </select><input id="bl-dec-qn" type="number" min="1" max="8" step="1" value="4" style="width:56px;padding:4px 6px" hidden
-              title="An EXACT number of agreeing members, used instead of a fraction. Pick this when you want a specific count — 2 of 8, 6 of 8 — rather than a fraction that lands differently on different committee sizes. It is capped at the committee's size at run time, so a 6 declared against a 6-member single-asset committee means unanimous."></label>
+          <label class="check" style="gap:3px" title="How many members must agree for the declared config to trade. A count PER COMMITTEE SIZE, because the two sizes cannot share one number: a single coin has 6 members, a combo with context coins has 8. The second box appears only when doubles or triples are ticked. (Boards recorded before 2026-07-30 had 12/16 seats, half of them near-duplicates, so an old declaration means a different count.)">agree
+            <select id="bl-dec-q6" style="min-width:auto;padding:4px 6px"
+              title="How many of a SINGLE coin's 6 members must agree. A single-coin committee is 3 data views (everything / prices only / volume only) x 2 model types.">
+              <option value="1">1/6</option><option value="2" selected>2/6</option><option value="3">3/6</option>
+              <option value="4">4/6</option><option value="5">5/6</option><option value="6">6/6</option>
+            </select><span id="bl-dec-q8-wrap" hidden> &nbsp;with contexts <select id="bl-dec-q8" style="min-width:auto;padding:4px 6px"
+              title="How many of a CONTEXT combo's 8 members must agree. Adding one or two context coins adds a fourth data view — how this coin moves against them — so those committees hold 8 members. Shown only when doubles or triples are ticked, because only then does the run contain any.">
+              <option value="1">1/8</option><option value="2">2/8</option><option value="3" selected>3/8</option>
+              <option value="4">4/8</option><option value="5">5/8</option><option value="6">6/8</option>
+              <option value="7">7/8</option><option value="8">8/8</option>
+            </select></span></label>
         </div>
       </div>
       <div class="field" style="min-width:250px">

@@ -74,10 +74,30 @@ async function getMap(sym, p) {
 
 const slimViewsFor = (size) => (size === 1 ? ['full', 'prices', 'volume'] : ['full', 'prices', 'volume', 'cross']);
 
-function declaredQuorumFor(dec, members) {
+// How many members must agree, for THIS committee.
+//
+// Committees come in two sizes and only two: 6 for a single coin (3 data
+// views x 2 model types), 8 with one or two context coins (a fourth view
+// appears). A declaration may therefore name a count PER SIZE — owner,
+// 2026-07-31 — because one number cannot mean the same thing on both: an
+// exact 7 is 7-of-8 on a context combo and silently unanimous on a single.
+//
+// `size` is the combo size (1 = single). Older declarations carrying a
+// single ratio or count still work exactly as before.
+function declaredQuorumFor(dec, members, size = null) {
   if (!dec) return null;
-  if (dec.quorumRatio) return Math.max(1, Math.min(members, Math.round(dec.quorumRatio * members)));
-  return Math.max(1, Math.min(members, dec.quorum || 1));
+  const clamp = (v) => Math.max(1, Math.min(members, v));
+  if (dec.quorumSingles != null || dec.quorumContexts != null) {
+    // Fall back to whichever was declared if this run mixes sizes and only
+    // one was named — clamped, never guessed at.
+    const isSingle = size != null ? size === 1 : members <= 6;
+    const pick = isSingle
+      ? (dec.quorumSingles ?? dec.quorumContexts)
+      : (dec.quorumContexts ?? dec.quorumSingles);
+    return clamp(pick);
+  }
+  if (dec.quorumRatio) return clamp(Math.round(dec.quorumRatio * members));
+  return clamp(dec.quorum || 1);
 }
 
 // Net-direction quorum call (owner's rule): majority side wins; it trades at
@@ -370,7 +390,7 @@ async function unitTask(task) {
       streams.push({ quorum: k, calls: testChunks.map((_, i) => quorumCall(memberCalls, i, k)) });
     }
   }
-  const decQ = declaredQuorumFor(p.declared, memberCalls.length);
+  const decQ = declaredQuorumFor(p.declared, memberCalls.length, combo.size);
   const trainLabels = trainChunks.map((c) => c.label);
   const testLabels = testChunks.map((c) => c.label);
   let best = null;

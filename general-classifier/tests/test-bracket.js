@@ -133,6 +133,29 @@ module.exports = {
     assert.throws(() => validateDeclared({ gate: 'always', dMult: 1, tHours: 65, quorumRatio: 0 }), /quorumRatio/);
     assert.strictEqual(validateDeclared(null), null); // opt-in only
   },
+  async aDeclaredAgreementCountIsPerCommitteeSize() {
+    // Owner, 2026-07-31: committees are 6 members for a single coin and 8
+    // with context coins, and one number cannot serve both — an exact 7 is
+    // 7-of-8 on a context combo and SILENTLY UNANIMOUS on a single. So a
+    // declaration names a count per size.
+    const dec = validateDeclared({ gate: 'active', dMult: 1, tHours: 65, quorumSingles: 4, quorumContexts: 7 });
+    assert.strictEqual(declaredQuorumFor(dec, 6, 1), 4, 'single combo uses the 6-member count');
+    assert.strictEqual(declaredQuorumFor(dec, 8, 2), 7, 'context combo uses the 8-member count');
+    assert.strictEqual(declaredQuorumFor(dec, 8, 3), 7, 'triples are context combos too');
+    assert.ok(dec.label.includes('4/6') && dec.label.includes('7/8'), `label must show both: ${dec.label}`);
+    // Only one named (a run that ticks one combo size) applies to whatever
+    // it meets, clamped — never a guess.
+    const onlySingles = validateDeclared({ gate: 'active', dMult: 1, tHours: 65, quorumSingles: 5 });
+    assert.strictEqual(declaredQuorumFor(onlySingles, 6, 1), 5);
+    assert.strictEqual(declaredQuorumFor(onlySingles, 8, 2), 5);
+    // Ranges are enforced per size: 7 is impossible on a 6-member committee.
+    assert.throws(() => validateDeclared({ gate: 'active', dMult: 1, tHours: 65, quorumSingles: 7 }), /1 to 6/);
+    assert.throws(() => validateDeclared({ gate: 'active', dMult: 1, tHours: 65, quorumContexts: 9 }), /1 to 8/);
+    // Older declarations keep working untouched.
+    const legacy = validateDeclared({ gate: 'active', dMult: 1, tHours: 65, quorumRatio: 1 / 3 });
+    assert.strictEqual(declaredQuorumFor(legacy, 6, 1), 2);
+    assert.strictEqual(declaredQuorumFor(legacy, 8, 2), 3);
+  },
   async marketDeclarationRejectsMeaninglessParameters() {
     // The classifier's own trade, declared. Gate and distance do not exist
     // for it, and a silently-ignored parameter is how a declared config stops
