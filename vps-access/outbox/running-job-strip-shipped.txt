@@ -1,0 +1,38 @@
+Interface: every tab now says what is running — shipped without touching WF1
+
+tl;dr your running-job notice is live. Every tab now carries a slim strip
+that always tells the truth about the machine: which screen or sweep is
+running, how far along it is, and a button to jump to the tab that shows
+it. It shipped by updating ONLY the interface files on disk — the engine
+process was not restarted, and WF1 kept computing through the whole thing.
+
+WHAT YOU WILL SEE (hard-refresh the page once)
+- On any tab that does not show the running job: a highlighted strip —
+  "A Walk-forward job is running: walkforward-20260731-145820-wf1 —
+  N/136 done. Another screen or sweep cannot start until it finishes."
+  with an "Open the Walk-forward tab" button.
+- On the tab that shows the job, and when nothing is running: the same
+  strip in muted grey, stating exactly that. It never appears or
+  disappears, so nothing below it ever jumps while you reach for it.
+
+THE REVIEW EARNED ITS KEEP AGAIN. Before shipping, the pre-deploy review
+caught three things in my first version, one of them serious: a
+line-ordering mistake that would have crashed the page on load and killed
+every control — including your only cancel button for the running sweep —
+while the code parsed cleanly and all 172 tests stayed green. Tests prove
+the maths; they prove nothing about the page. That is now QC 63, and the
+strip's wording was also tightened so it only claims refusals the engine
+actually makes: screens and sweeps are refused while one runs; the single
+Run Classifier and Load Data buttons are NOT blocked by the engine today.
+
+ONE THING THAT SHOULD CHANGE LATER, flagged by the same review: Load Data
+can write into the candle cache while a running sweep's workers are
+reading it. Unrelated to today's change and it has always been so, but it
+deserves a proper engine guard. That is an engine change requiring a
+restart, so it waits until WF1 finishes; I will include it with the next
+engine deploy unless you object.
+
+WF1 status at send time is in the strip itself now; it keeps its hourly
+checks and you get the full read when it lands.
+
+c.
