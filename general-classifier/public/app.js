@@ -2381,12 +2381,14 @@
 
   // The 8-member box exists only when the run will contain 8-member
   // committees — i.e. when doubles or triples are ticked (owner, 2026-07-31).
-  const syncQ8 = () => {
+  // Each agreement box exists only when the run will contain committees of
+  // that size (owner, 2026-07-31): 6 members for singles, 8 with contexts.
+  const syncQ = () => {
+    $('bl-dec-q6-wrap').hidden = !$('bl-singles').checked;
     $('bl-dec-q8-wrap').hidden = !($('bl-doubles').checked || $('bl-triples').checked);
   };
-  $('bl-doubles').addEventListener('change', syncQ8);
-  $('bl-triples').addEventListener('change', syncQ8);
-  syncQ8();
+  ['bl-singles', 'bl-doubles', 'bl-triples'].forEach((id) => $(id).addEventListener('change', syncQ));
+  syncQ();
 
   // The holdout checkbox only decides anything under the legacy layout: the
   // chronological and interlaced layouts are three-window by construction and
