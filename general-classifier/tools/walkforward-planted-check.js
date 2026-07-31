@@ -125,6 +125,17 @@ async function runUnit(symbol) {
     const sig2 = await runUnit('WFSIGUSDT'); // determinism twin
 
     const $ = (v) => (v < 0 ? '-' : '+') + '$' + Math.abs(v).toFixed(2);
+    // Per-fold detail for diagnosis: B1's first failure showed three
+    // near-identical sums (early/late/noise all ~ -$74), which is a pattern
+    // to explain, not a number to accept.
+    for (const [nm, u] of [['WFSIG', sig], ['WFDIE', die], ['WFNOI', noi]]) {
+      console.log(`\n${nm} folds:`);
+      for (const f of u.folds) {
+        const d = new Date(f.testStart).toISOString().slice(0, 10);
+        if (f.skipped) { console.log(`  ${d}  skipped: ${f.skipped}`); continue; }
+        console.log(`  ${d}  hold ${$(f.holdPnl)} (${f.holdTrades}t)  test ${$(f.testPnl)}  q${f.cell.quorum} ${f.cell.entry}/${f.cell.gate ?? '-'}/t${f.cell.tHours}h  band ±${f.bandPct.toFixed(2)}%`);
+      }
+    }
     const sum = (fs2, f) => fs2.filter((x) => !x.skipped && f(x)).reduce((s, x) => s + x.holdPnl, 0);
     const deathTs = T0 + 720 * 24 * HOUR;
     const lateTs = T0 + 780 * 24 * HOUR;
