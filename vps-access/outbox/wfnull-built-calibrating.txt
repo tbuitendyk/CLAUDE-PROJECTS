@@ -1,0 +1,37 @@
+Luck baseline built and reviewed — deploying, calibrating, firing overnight
+
+tl;dr the walk-forward luck baseline (the "null arm") is built, tested and
+adversarially reviewed; deploying engine 1.30.0 now, then it must pass the
+fake-coin gate — the rotated votes have to destroy the planted coin's edge
+— and only then does the full 136-setup null run fire for overnight. The
+board also now ranks by the drift-adjusted key the WF1 audit ordered, with
+the old raw column kept beside it.
+
+HOW THE NULL WORKS, in one paragraph: same walk, same folds, same six
+members, same picking machinery — but inside every fold, all six members'
+votes slide together by one random offset. The committee still agrees with
+itself exactly as often (same votes, same consensus rhythm) but the votes
+no longer line up with what the market did. Whatever such a run "earns" is
+what our machinery extracts from pure luck; the count of setups passing
+our rules on rotated votes is the line WF1's 7 survivors must clear. The
+rules for reading it (NR1-NR4) are committed in the launcher before the
+run, including: one seed is ONE draw — a second seed runs before any
+selection decision no matter how the first looks.
+
+THE REVIEW EARNED ITS KEEP A THIRD TIME. Three fixes before shipping:
+- the fold detail files now carry their arm (real/null) inside the file,
+  so a null run's numbers can never be mistaken for real ones by a future
+  reader that only has the file;
+- a broken seed (zero, a typo) now refuses loudly at both the request and
+  the engine level instead of silently running the REAL arm under a null
+  flag — the worst possible mislabel;
+- one calibration threshold was accidentally set by fee arithmetic rather
+  than by information destruction and could have failed an honest null;
+  it is now anchored to the machinery's own pure-noise level.
+
+SEQUENCE FROM HERE (each step gated): deploy 1.30.0 -> fake-coin gate
+(criteria N1-N4 added to the planted check; ~1h) -> fire WF-NULL seed 101
+(~5-6h) -> morning mail has the luck count next to WF1's 7 survivors,
+both computed by the same arithmetic. Any slip, you hear immediately.
+
+c.
