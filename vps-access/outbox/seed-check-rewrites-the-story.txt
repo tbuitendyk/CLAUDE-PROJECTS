@@ -1,0 +1,49 @@
+Seed check: the era-luck finding survives; the board and the aggregate do not
+
+tl;dr the interlaced instrument's core finding is placement-robust (recent
+-window boards rank a different world, overlap 0-1 of 10 under every
+seed), but single-seed boards and aggregates are themselves placement
+noise: the 170-setup total flipped from -$5.9k to +$13.0k between seeds,
+and ATOM daily-1d went rank 1 -> 38 -> 146. No one-seed board may pick
+freeze candidates. The member layer keeps being the only stable stratum —
+H1 strengthens.
+
+THE FOUR DECLARED READS (thresholds committed in the launchers before
+either seed fired)
+  R1 overlap with the chronological board: 1/10, 1/10, 0/10  -- HOLDS
+  R2 aggregate keeps its negative sign: -$5.3k, -$5.9k, +$13.0k -- FAILS
+     (seed 3's board is EIGHT DOGE re-cuts; one wild coin's placement
+     swings the total ~$18k. QC 47 concentration, now sign-flipping.)
+  R3 ATOM daily-1d positive + beats always-long everywhere: +$462 rank 1,
+     +$79 rank 38, -$141 rank 146 -- FAILS. Its prediction edge stayed
+     positive every seed (+7.0/+3.9/+2.7pt): the member-level signal
+     persists while the money rank evaporates.
+  R4 inter-seed top-10 agreement: 2/10, 4/10, 0/10 -- single-seed boards
+     are mostly window placement.
+
+ALSO RUN TONIGHT, SAME VERIFICATION ARC (your suspicion, worked through)
+- Planted-signal calibration: the engine recovers a known planted rule
+  under both layouts and finds ~nothing in pure noise (7/7 declared
+  criteria; two earlier failures were my fake data accidentally
+  containing real structure, which the engine correctly found). QC 56.
+- Independent recomputation: ATOM's +$462.38 / 190 trades / 104 wins
+  reproduced to the cent in a separate Python program from the saved
+  votes and raw candles.
+- Member-durability read (your hypothesis, H1): member skill transfers
+  (+0.56 recent, +0.34 era-mixed; rank stability +0.43/+0.54) while
+  setup-level money transfers at +0.05 / -0.45 — the winner's curse.
+  Pre-registered as reports/H1-DURABLE-MEMBERS.md with tests H1a-H1e;
+  H1a is now lag-resolved decay curves so the re-vote cadence becomes a
+  DERIVED number.
+
+WHERE THIS LEAVES L15 (your hard stop, whenever you want it)
+The question is no longer "which board row do we freeze" — QC 57 forbids
+selecting from any single-seed board. The live options on the table:
+(a) select on cross-seed evidence (money that survives all three
+placements), (b) select on member durability per H1, or (c) run H1a's
+decay curves first and let them shape the selection credential. My
+declared position: (c) then (b); money ranks have earned no trust at any
+seed. Audit notes written for seed 2, seed 3 + combined read; QC 57
+registered.
+
+c.
