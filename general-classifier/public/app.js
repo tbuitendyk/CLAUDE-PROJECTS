@@ -2385,8 +2385,20 @@
   // that size (owner, 2026-07-31): 6 members for singles, 8 with contexts.
   const syncQ = () => {
     const anySize = $('bl-singles').checked || $('bl-doubles').checked || $('bl-triples').checked;
-    $('bl-dec-q6-wrap').hidden = !$('bl-singles').checked;
-    $('bl-dec-q8-wrap').hidden = !($('bl-doubles').checked || $('bl-triples').checked);
+    // GREY OUT, NEVER HIDE (owner, 2026-07-31). Both boxes stay where they
+    // are so the row keeps its shape and the "agree" label keeps its
+    // context; the one whose committee size this run will not contain is
+    // simply disabled. Controls that appear and vanish move everything
+    // around them.
+    const setOff = (wrapId, selId, off, why) => {
+      $(selId).disabled = off;
+      $(wrapId).classList.toggle('ctl-off', off);
+      $(wrapId).title = off ? why : '';
+    };
+    setOff('bl-dec-q6-wrap', 'bl-dec-q6', !$('bl-singles').checked,
+      'this run has no single-coin committees — tick "singles" to set their agreement level');
+    setOff('bl-dec-q8-wrap', 'bl-dec-q8', !($('bl-doubles').checked || $('bl-triples').checked),
+      'this run has no context committees — tick "doubles" or "triples" to set their agreement level');
     // A run with no combo size ticked has nothing to sweep; the server
     // refuses it, so the button says so up front rather than letting the
     // click produce an error (owner, 2026-07-31).

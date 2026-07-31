@@ -81,6 +81,10 @@ button {
   padding: 9px 22px; font: inherit; font-weight: 600; cursor: pointer;
 }
 button:disabled { opacity: 0.55; cursor: default; }
+/* A control whose setting cannot apply to this run: dimmed in place, never
+   removed, so nothing on the form moves as boxes are ticked. */
+select:disabled, input:disabled { opacity: .5; cursor: default; }
+.ctl-off { opacity: .5; }
 button.secondary { background: var(--page); color: var(--accent); border: 1px solid var(--accent); }
 button.danger { background: var(--page); color: var(--down); border: 1px solid var(--down); }
 .cpu-btn {
