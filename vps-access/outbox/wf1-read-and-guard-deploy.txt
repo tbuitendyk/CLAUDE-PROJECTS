@@ -1,0 +1,63 @@
+WF1 done: 136/136 clean — 7 setups beat their drift control; deploying your guard now
+
+tl;dr the first walk-forward sweep finished with every setup scored and
+zero failures. Read through the rules committed before launch: 22 of 136
+setups look good on raw fold money, but most of that is the market's own
+tide — only 7 setups ALSO beat always-going-long, and they cluster in
+three coins (DOT, AVAX, BCH), mostly by losing less through declines.
+Nothing is selected yet: the honest gap is that walk-forward has no
+zero-skill baseline on real data, and building that null arm is the next
+job before anything gets promoted. The audit is written and committed.
+Right after this mail I deploy engine 1.28.0 with your Load Data guard.
+
+TABLE: the 7 setups passing BOTH declared money rules. NAME: WF1 survivors
+of R1 (middle fold's holdout money positive AND more winning folds than
+losing) and R2 (total holdout money beats always-going-long the same
+slices). KEY — med $: the middle fold's holdout dollars per $100 book.
+vs long $: total holdout dollars minus always-going-long, positive =
+machinery beat doing nothing clever; every figure is money on 8-week
+slices the settings never saw, all folds across the coin's history.
+
+  DOT  4-day argmax        med +$11.55   vs long +$1,951
+  AVAX 4-day argmax        med  +$8.75   vs long +$1,158
+  DOT  2-day argmax        med  +$2.87   vs long +$2,037
+  BCH  4-day directional   med  +$2.00   vs long +$1,316
+  AVAX 2-day directional   med  +$1.73   vs long   +$860
+  AVAX 1-day directional   med  +$1.49   vs long   +$609
+  BCH  3-day directional   med  +$1.37   vs long   +$718
+
+Worth noticing: DOT and AVAX are the two coins your frozen paper tracker
+trades — an echo, not proof. And BCH directional holds up across three
+adjacent chunk shapes (2/3/4-day), the cleanest family in the run.
+
+WHAT THE AUDIT FLAGGED (reports/audit-walkforward-20260731-145820-wf1.md)
+1. The board's sort key argues with its own control: it ranks by raw
+   fold money, so coins that simply rose (ETC, BNB, ADA) sit above the
+   real skill rows. The rank key changes to drift-adjusted fold money —
+   a reporting fix, declared before anything reads it, no re-run needed.
+2. The bigger one: nobody has measured how many of 136 setups would pass
+   both rules on ZERO-skill calls. The planted fake-coin check proves the
+   instrument measures; it does not give the luck baseline on real
+   market data. So the next job is the walk-forward NULL arm — same fold
+   machinery, calls carrying no information, calibrated first on the
+   fake coins (it must destroy the planted signal's edge to be believed).
+   Until that count exists, even the 7 survivors are unquotable.
+6 coins (LINK, LTC, UNI, ZEC, XRP, SOL) showed nothing in any of their 8
+cuts — useful negative territory for the map.
+
+DEPLOYING NOW, engine 1.28.0 (the run is over, restart is safe):
+- your ordered guard: Load Data refused during any screen/sweep; a single
+  run refused only if it would download; same for rotation quotes; book
+  drafts refused outright;
+- the 6-hourly auto-refresh skips while a batch runs (July's zips land in
+  days — without this they would have changed the dataset mid-sweep);
+- a fallback-path crash fixed (daily-zip fetches have thrown a scoping
+  error since the code was written — that tier never worked until now).
+Still yours to call: the tracker/DOGE/books 30-minute refresh ticks can
+also write recent-day files mid-sweep; pausing them touches the frozen
+paper-book cadence, so I have not — say pause or leave.
+
+Next: build + calibrate the null arm, then read WF1 against it. Morning
+mail will have whichever of those has landed.
+
+c.
