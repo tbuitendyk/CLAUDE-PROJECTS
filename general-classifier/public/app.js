@@ -114,18 +114,21 @@
     if (window.location.hash !== `#${tab}`) history.replaceState(null, '', `#${tab}`);
     paintRunBanner(); // the running-job strip hides on the tab that shows the job natively
   }
-  document.querySelectorAll('.tabbar .tab').forEach((b) => {
-    b.addEventListener('click', () => showTab(b.dataset.tab));
-  });
-  showTab((window.location.hash || '').replace('#', ''));
-
   // ---- cross-tab running-job notice ----------------------------------------
   // One job runs at a time, but each tab lists only its own kind, so a job
   // of another kind was invisible: a walk-forward sweep owned the machine
-  // while the Bracket lab tab read as idle (owner, 2026-07-31). This strip
-  // shows on every tab EXCEPT the one displaying the job natively. It only
-  // READS the batch list the tabs already use — it cannot touch the job.
+  // while the Bracket lab tab read as idle (owner, 2026-07-31). The strip is
+  // ALWAYS present with a truthful state — idle, running-elsewhere (loud),
+  // or running-on-this-tab (quiet) — so it never appears or vanishes under
+  // a control the owner is about to click. It only READS the batch list the
+  // tabs already use; it cannot touch the job.
+  //
+  // This whole block must stay ABOVE the initial showTab() call below:
+  // showTab paints the strip, and painting reads runningJob — declared-
+  // after would be a boot-time ReferenceError that kills the entire page
+  // (caught by the pre-deploy review, 2026-07-31).
   let runningJob = null; // { id, tab, done, total } or null
+  let runBannerHtml = null; // last painted content — repaint only on change
   function ownerTabOf(id) {
     return String(id).startsWith('bracketlab-') ? 'bracket'
       : String(id).startsWith('walkforward-') ? 'walkforward' : 'research';
@@ -135,13 +138,30 @@
     if (!el) return;
     const activeBtn = document.querySelector('.tabbar .tab.active');
     const active = activeBtn ? activeBtn.dataset.tab : 'research';
-    if (!runningJob || runningJob.tab === active) { el.hidden = true; return; }
-    const label = { bracket: 'Bracket lab', walkforward: 'Walk-forward', research: 'Research' }[runningJob.tab];
-    el.innerHTML = `A <strong>${esc(label)}</strong> job is running: ${esc(runningJob.id)}`
-      + ` — ${runningJob.done}/${runningJob.total} done. Starting another job before it finishes will be refused.`
-      + `<button type="button" id="runbanner-go">Open the ${esc(label)} tab</button>`;
-    $('runbanner-go').addEventListener('click', () => showTab(runningJob.tab));
-    el.hidden = false;
+    const labels = { bracket: 'Bracket lab', walkforward: 'Walk-forward', research: 'Research' };
+    let html;
+    let quiet = false;
+    if (!runningJob) {
+      // "Refused" claims are deliberately scoped: every SCREEN/SWEEP start
+      // checks the running batch and refuses, but the single-run and
+      // load-data paths do not — so the strip never claims they would.
+      html = 'No screen or sweep is running.';
+      quiet = true;
+    } else if (runningJob.tab === active) {
+      html = `The running job is on this tab: ${esc(runningJob.id)} — ${runningJob.done}/${runningJob.total} done.`;
+      quiet = true;
+    } else {
+      const label = labels[runningJob.tab];
+      html = `A <strong>${esc(label)}</strong> job is running: ${esc(runningJob.id)} — `
+        + `${runningJob.done}/${runningJob.total} done. Another screen or sweep cannot start until it finishes.`
+        + `<button type="button" id="runbanner-go">Open the ${esc(label)} tab</button>`;
+    }
+    if (html === runBannerHtml) return; // no churn: keeps focus and clicks alive
+    runBannerHtml = html;
+    el.innerHTML = html;
+    el.classList.toggle('quiet', quiet);
+    const go = $('runbanner-go');
+    if (go) go.addEventListener('click', () => showTab(runningJob.tab));
   }
   async function pollRunBanner() {
     if (document.hidden) return; // nobody is looking; don't poll for it
@@ -154,6 +174,11 @@
   }
   setInterval(pollRunBanner, 10000);
   pollRunBanner();
+
+  document.querySelectorAll('.tabbar .tab').forEach((b) => {
+    b.addEventListener('click', () => showTab(b.dataset.tab));
+  });
+  showTab((window.location.hash || '').replace('#', ''));
 
 
   // ---- walk-forward tab (DESIGN-WALKFORWARD.md) ------------------------------
