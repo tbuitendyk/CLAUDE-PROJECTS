@@ -119,16 +119,22 @@ async function runUnit(symbol) {
     cleanup.push(...generate('WFSIGUSDT', DAYS, 41));
     cleanup.push(...generate('WFDIEUSDT', 720, 42));
     cleanup.push(...generate('WFNOIUSDT', 0, 43));
+    // THE SEED CONTROL (diagnosis of B1's first failure): stationary signal
+    // on the DYING coin's seed. If this one also fails, the fault is
+    // per-fold selection noise, not the death; if it passes, the death
+    // somehow contaminates alive folds and the harness is suspect.
+    cleanup.push(...generate('WFS42USDT', DAYS, 42));
     const sig = await runUnit('WFSIGUSDT');
     const die = await runUnit('WFDIEUSDT');
     const noi = await runUnit('WFNOIUSDT');
+    const s42 = await runUnit('WFS42USDT');
     const sig2 = await runUnit('WFSIGUSDT'); // determinism twin
 
     const $ = (v) => (v < 0 ? '-' : '+') + '$' + Math.abs(v).toFixed(2);
     // Per-fold detail for diagnosis: B1's first failure showed three
     // near-identical sums (early/late/noise all ~ -$74), which is a pattern
     // to explain, not a number to accept.
-    for (const [nm, u] of [['WFSIG', sig], ['WFDIE', die], ['WFNOI', noi]]) {
+    for (const [nm, u] of [['WFSIG', sig], ['WFDIE', die], ['WFNOI', noi], ['WFS42', s42]]) {
       console.log(`\n${nm} folds:`);
       for (const f of u.folds) {
         const d = new Date(f.testStart).toISOString().slice(0, 10);
@@ -145,6 +151,9 @@ async function runUnit(symbol) {
     console.log(`WFSIG: total ${$(sig.agg.holdTotal)} over ${sig.agg.foldsScored} folds, ${sig.agg.foldsPositive} positive, vs-long ${$(sig.agg.holdTotal - sig.agg.alwaysLongTotal)}`);
     console.log(`WFDIE: early(alive) ${$(dieEarly)}  late(dead) ${$(dieLate)}  [death planted at day 720]`);
     console.log(`WFNOI: total ${$(noi.agg.holdTotal)} over ${noi.agg.foldsScored} folds, ${noi.agg.foldsPositive} positive`);
+    console.log(`WFS42: total ${$(s42.agg.holdTotal)} over ${s42.agg.foldsScored} folds, ${s42.agg.foldsPositive} positive, vs-long ${$(s42.agg.holdTotal - s42.agg.alwaysLongTotal)}  [seed control for B1]`);
+    const s42early = sum(s42.folds, (f) => f.testStart + (8 + 8) * 7 * 24 * HOUR <= deathTs);
+    console.log(`DIAGNOSIS: same-era folds — WFDIE(alive) ${$(dieEarly)} vs WFS42(same seed, no death) ${$(s42early)}`);
 
     const checks = [];
     const chk = (id, ok, msg) => { checks.push(ok); console.log(`  ${ok ? 'ok  ' : 'FAIL'} ${id}: ${msg}`); };
