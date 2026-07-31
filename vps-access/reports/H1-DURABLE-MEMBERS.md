@@ -21,9 +21,15 @@ member-level correlations, and "durable" has only been measured across two
 windows.
 
 ## Declared test program (each step gates the next; instrument rules apply)
-- **H1a — member durability across MANY eras (free, pure read).** Score
-  each saved member's votes within each 63-day held-back block separately;
-  durable = skill consistent block-to-block, not just window-to-window.
+- **H1a — DECAY CURVES, lag-resolved (free, pure read).** The owner's
+  sharpening (2026-07-31): establish the TEMPORAL character of each layer,
+  not a yes/no. Score each member AND each agreement level within every
+  63-day block; then correlate skill between block pairs AS A FUNCTION OF
+  THE TIME GAP between them. Two curves out: member-skill persistence vs
+  lag, and best-assembly identity vs lag. Flat = coin knowledge; falling =
+  era knowledge, and the crossing into noise is that layer's half-life.
+  THE RE-VOTE CADENCE N IN H1d IS THEN DERIVED (well inside the assembly
+  half-life), not guessed — per the DERIVED/GUESSED threshold rule.
 - **H1b — the noise floor for durability (compute).** Scrambled-label
   draws with member dumps; recompute the member-transfer correlations per
   draw. Real members must beat all draws (rank test, p-floor 1/(N+1)).
