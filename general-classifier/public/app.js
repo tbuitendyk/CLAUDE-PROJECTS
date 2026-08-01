@@ -194,10 +194,57 @@
 
   function renderWalkforward(doc) {
     const running = doc.status === 'running';
-    const isNull = doc.params && doc.params.arm === 'null';
-    const header = `${esc(doc.id)} — ${esc(doc.status)}${doc.perf ? ` · ${doc.perf.unitsDone}/${doc.perf.unitsTotal} setups` : ''}`
-      + (running && doc.perf && doc.perf.etaMs ? ` · ~${Math.round(doc.perf.etaMs / 60000)} min left` : '')
-      + (doc.description ? ` · ${esc(doc.description)}` : '');
+    const p = doc.params || {};
+    const perf = doc.perf || {};
+    const isNull = p.arm === 'null';
+    const header = `${esc(doc.id)} — ${esc(doc.status)}${running && doc.progress ? ' — ' + esc(doc.progress) : ''}`;
+
+    // The same three-part job block the Bracket lab carries (owner,
+    // 2026-08-01): what the run is FOR, every setting that shapes what its
+    // numbers mean, and live progress tiles — on the page, not on trust.
+    const descBlock = doc.description
+      ? `<p class="jobdesc">${esc(doc.description)}</p>`
+      : '<p class="jobdesc jobdesc-missing">No description was recorded for this run.</p>';
+    const uni = p.universe || [];
+    const shapes = p.permute && p.permute.geometry
+      ? 'all daily shapes — 1/2/3/4-day (weekly-8d excluded: week-long chunks can never fill an 8-week window past the safety margin)'
+      : esc((p.set && p.set.geometry) || '—');
+    const decs = p.permute && p.permute.decision
+      ? 'both — argmax and directional'
+      : esc((p.set && p.set.decision) || '—');
+    const planLine = perf.unitsTotal
+      ? `${uni.length} coins × ${p.permute && p.permute.geometry ? 4 : 1} shape(s) × ${p.permute && p.permute.decision ? 2 : 1} decision rule(s) = ${perf.unitsTotal} setups`
+      : '';
+    const settingsBlock = `
+      <table class="settings">
+        <tr><th>Arm</th><td>${isNull
+          ? `<strong>NULL — votes rotated inside each fold (seed ${esc(String(p.nullShiftSeed))}); this run is the luck yardstick</strong>`
+          : 'real — members’ actual votes'}</td>
+            <th>Universe</th><td>${uni.length} coins${uni.length ? ` <span class="cellsub" title="${esc(uni.join(', '))}">(hover for the list)</span>` : ''}</td></tr>
+        <tr><th>Chunk shapes</th><td>${shapes}</td>
+            <th>Decision rules</th><td>${decs}</td></tr>
+        <tr><th>Windows</th><td>train = all history before each fold (purged by the full trade reach) · test 8 weeks · holdout 8 weeks · step 8 weeks</td>
+            <th>Warm-up</th><td>52 weeks of history before the first fold</td></tr>
+        <tr><th>Execution grid</th><td>d ${(p.dMults || []).join('/')}×band · t ${(p.tHours || []).join('/')}h · gates ${(p.gates || []).join('/')} · entry ${(p.entries || []).join('/')}</td>
+            <th>Fees</th><td>$${p.feePerLeg != null ? (2 * p.feePerLeg).toFixed(2) : '—'} per round trip</td></tr>
+        <tr><th>Pick rule</th><td>per fold: best net $ on the test window across agreement levels 1–6 × the grid, ≥${p.minTradesSlice ?? '—'} trades</td>
+            <th>Engine</th><td>${esc(p.engineVersion || 'before 1.26')}</td></tr>
+      </table>`;
+    const ratePerMin = perf.elapsedMs > 0 && perf.unitsDone > 0 ? perf.unitsDone / (perf.elapsedMs / 60000) : null;
+    const perfBlock = `
+      <div class="section"><h2>Progress &amp; performance</h2>
+      ${descBlock}
+      <p class="note">${planLine}</p>
+      ${settingsBlock}
+      <div class="tiles">
+        ${tile('Status', esc(doc.status), running && doc.progress ? esc(doc.progress) : '')}
+        ${tile('Setups', `${perf.unitsDone ?? 0} / ${perf.unitsTotal ?? '—'}`, 'coin × shape × decision')}
+        ${tile('Rate', ratePerMin ? ratePerMin.toFixed(1) + '/min' : '—', perf.workers > 1 ? `${perf.workers} threads` : '')}
+        ${tile('Elapsed', fmtDur(perf.elapsedMs), '')}
+        ${tile('ETA', running ? fmtDur(perf.etaMs) : '—', running ? 'at current pace' : 'finished')}
+      </div>
+      </div>`;
+
     // Rank by drift-adjusted skill when the engine recorded it (1.29+);
     // older docs fall back to raw fold money and say so in the column.
     const rankOf = (r) => (r.skillMedian ?? r.holdMedian ?? -Infinity);
@@ -224,6 +271,7 @@
       ${isNull ? `<p class="note down"><strong>NULL ARM — this board is the luck yardstick, not a result.</strong>
         Every member's votes were rotated inside each fold (seed ${esc(String(doc.params.nullShiftSeed))}), so they carry
         no information about the market; whatever passes here passes by luck. Nothing on this board can be selected.</p>` : ''}
+      ${perfBlock}
       <div class="section"><h2>Walk-forward board</h2>
       <p class="note"><strong>One row per setup; every number is HOLDOUT money</strong> — earned on 8-week
         slices the fold's settings never saw, summed or summarized across all folds.
