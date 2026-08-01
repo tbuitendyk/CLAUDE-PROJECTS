@@ -1,0 +1,24 @@
+Walk-forward tab now carries the full job block — shipped without touching the null run
+
+tl;dr as asked: the Walk-forward tab now shows the same Progress &
+performance block as the Bracket lab — the run's description, every
+setting that shapes what its numbers mean (arm real/null with seed,
+universe with the full coin list on hover, chunk shapes, decision rules,
+window lengths and warm-up, execution grid, fees per round trip, the
+per-fold pick rule, engine version), and live tiles for status, setups
+done, rate, elapsed and ETA. Shipped by the restart-free static path, so
+the null sweep kept running through it. Hard-refresh once to pick it up.
+
+The pre-ship review passed the block and caught four stale labels that
+rode along: the tab intro still described the old two-years-counted-twice
+training (removed at QC 58 — now it states the purge truthfully), the
+all-chunk-shapes tickbox still claimed five shapes (weekly is refused,
+with the reason, since 1.27), an unreachable engine-version fallback that
+could only ever print a falsehood now says "not recorded", and the ETA
+tile on BOTH tabs now states the real terminal status (a cancelled run no
+longer reads "finished").
+
+The null sweep is unaffected and past the two-thirds mark; the luck-count
+comparison against WF1's 7 survivors goes out when it lands.
+
+c.
