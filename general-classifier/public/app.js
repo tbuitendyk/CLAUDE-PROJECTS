@@ -142,6 +142,13 @@
     const activeBtn = document.querySelector('.tabbar .tab.active');
     const active = activeBtn ? activeBtn.dataset.tab : 'research';
     const labels = { bracket: 'Bracket lab', walkforward: 'Walk-forward', research: 'Research' };
+    // Which fold-method section shows this job, and is it visible? A job
+    // hidden behind the method dropdown must make the strip go LOUD, not
+    // quiet — the strip exists so a running job is never invisible.
+    const jobMethod = runningJob && String(runningJob.id).startsWith('walkforward-') ? 'walkforward'
+      : runningJob && String(runningJob.id).startsWith('bracketlab-') ? 'sweep' : null;
+    const methodEl = jobMethod ? $(`bl-method-${jobMethod}`) : null;
+    const methodHidden = !!(methodEl && methodEl.hidden);
     let html;
     let quiet = false;
     if (!runningJob) {
@@ -152,9 +159,13 @@
       // No idle claim is made before the first poll has answered.
       html = runBannerKnown ? 'No screen or sweep is running.' : 'Checking for a running job…';
       quiet = true;
-    } else if (runningJob.tab === active) {
+    } else if (runningJob.tab === active && !methodHidden) {
       html = `The running job is on this tab: ${esc(runningJob.id)} — ${runningJob.done}/${runningJob.total} done.`;
       quiet = true;
+    } else if (runningJob.tab === active && methodHidden) {
+      html = `A job is running on this tab but its section is hidden by the fold-method choice: `
+        + `${esc(runningJob.id)} — ${runningJob.done}/${runningJob.total} done.`
+        + `<button type="button" id="runbanner-go">Show the running job</button>`;
     } else {
       const label = labels[runningJob.tab];
       html = `A <strong>${esc(label)}</strong> job is running: ${esc(runningJob.id)} — `
@@ -167,7 +178,15 @@
     el.innerHTML = html;
     el.classList.toggle('quiet', quiet);
     const go = $('runbanner-go');
-    if (go) go.addEventListener('click', () => showTab(runningJob.tab));
+    if (go) {
+      go.addEventListener('click', () => {
+        // land the owner where the job is actually VISIBLE: right tab AND
+        // the right fold-method section
+        showTab(runningJob.tab);
+        if (jobMethod) showFoldMethod(jobMethod);
+        paintRunBanner();
+      });
+    }
   }
   async function pollRunBanner() {
     if (document.hidden) return; // nobody is looking; don't poll for it
@@ -406,7 +425,14 @@
   $('wfnull-start').addEventListener('click', async () => {
     try {
       wfErrEl.hidden = true;
-      const seed = Number($('wfnull-seed').value);
+      // sent raw, like the trade floor: a mis-typed seed must be rejected
+      // loudly by the engine — Number() here could turn garbage into
+      // Infinity, which JSON silently drops, which would run the REAL arm
+      // under a null label (the exact fault the arm guards exist for)
+      const seed = $('wfnull-seed').value.trim();
+      // an empty seed means "blank" to the engine, and blank means the
+      // REAL arm — refuse here rather than fire the wrong arm politely
+      if (!seed) throw new Error('enter a seed (a whole number, 1-999) — without one this would fire a REAL run, not a null run');
       const uni = $('wf-universe').value.trim();
       const res = await fetch('api/walkforward', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -442,10 +468,17 @@
       const coinRows = Object.entries(d.perCoin)
         .sort((a, b) => b[1].supported - a[1].supported)
         .map(([c, v]) => `<tr><td>${esc(c)}</td><td>${v.supported}/${v.setups}</td></tr>`).join('');
+      const pairNote = d.realSetupsTotal != null && d.setups !== d.realSetupsTotal
+        ? ` <strong class="down">(only ${d.setups} of the real run's ${d.realSetupsTotal} setups could be paired — the rest are missing from a null run; treat this verdict with suspicion)</strong>`
+        : '';
+      const exclNote = d.excluded && d.excluded.length
+        ? `<p class="note">Excluded from the yardstick: ${d.excluded.map((x) => `${esc(x.id)} — ${esc(x.why)}`).join('; ')}.</p>`
+        : '';
       out.innerHTML = `
         <p class="note">Compared: <strong>${esc(d.realId)}</strong> (real) against ${d.nullIds.length} null runs
           (${d.nullIds.map(esc).join(', ')}).</p>
-        <p><strong>Paired-supported setups</strong> — real: <strong>${d.realCount}</strong> of ${d.setups}
+        ${exclNote}
+        <p><strong>Paired-supported setups</strong> — real: <strong>${d.realCount}</strong> of ${d.setups}${pairNote}
           · luck counts: ${luck} · the line: ${d.line} · ${verdict}</p>
         <div class="tablewrap"><table>
           <tr><th title="coin · chunk length · voting style">setup</th>

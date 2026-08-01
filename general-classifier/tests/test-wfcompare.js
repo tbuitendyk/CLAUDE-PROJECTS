@@ -14,7 +14,7 @@ const N1 = {
 };
 const N2 = {
   'AAA daily-1d argmax': { 100: 0, 200: 2, 300: -4 },
-  'BBB daily-2d argmax': { 100: 1, 200: 1, 300: 4 },
+  'BBB daily-2d argmax': { 100: 1, 200: 1, 300: -6 },
 };
 
 module.exports = {
@@ -37,12 +37,15 @@ module.exports = {
     const rows = pairedRows(REAL, [N1, N2]);
     assert.strictEqual(supportedCount(rows), 1);
     const out = compareRuns(REAL, [N1, N2]);
+    // hand-computed EXACT expectations (an asymmetric fixture, so the line
+    // assertion cannot be satisfied by recomputing the same formula on the
+    // wrong inputs): N1-vs-N2 supports AAA (d: +2,+2,+10) AND BBB
+    // (d: -4,+2,+8, med +2, pos 2/3) -> 2; N2-vs-N1 supports nothing
+    // (AAA d: -2,-2,-10; BBB d: +4,-2,-8) -> 0.
     assert.strictEqual(out.realCount, 1);
-    assert.strictEqual(out.luckCounts.length, 2, 'each null scored against the rest');
-    const mx = Math.max(...out.luckCounts);
-    const mn = Math.min(...out.luckCounts);
-    assert.strictEqual(out.line, mx + (mx - mn), 'line = max luck count + spread');
-    assert.strictEqual(out.distinguishable, out.realCount > out.line);
+    assert.deepStrictEqual(out.luckCounts, [2, 0], 'each null scored against the rest, asymmetric by construction');
+    assert.strictEqual(out.line, 4, 'line = max(2) + spread(2) — exact, not recomputed');
+    assert.strictEqual(out.distinguishable, false, '1 is not above 4');
     assert.ok(out.perCoin.AAA && out.perCoin.AAA.setups === 1);
   },
   async fewerThanTwoNullsIsRefusedLoudly() {

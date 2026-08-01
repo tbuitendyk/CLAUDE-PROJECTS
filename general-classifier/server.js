@@ -768,18 +768,55 @@ app.get('/api/wfnull/compare', (req, res) => {
     const rows = batch.listBatches().filter((b) => String(b.id).startsWith('walkforward-') && b.status === 'done');
     const docs = rows.map((r) => batch.getBatch(r.id)).filter(Boolean);
     const isNull = (d) => d.params && d.params.arm === 'null';
-    const minorOf = (v) => { const m = /^1\.(\d+)/.exec(String(v || '')); return m ? Number(m[1]) : 0; };
+    // Deal-built nulls only (register 66): engine 1.31+ — parsed as real
+    // semver so a future 2.x does not silently exclude every new null.
+    const dealBuilt = (v) => {
+      const m = /^(\d+)\.(\d+)/.exec(String(v || ''));
+      if (!m) return false;
+      const major = Number(m[1]);
+      const minor = Number(m[2]);
+      return major > 1 || (major === 1 && minor >= 31);
+    };
+    // Same-population fingerprint: the whole point of the paired read is
+    // identical windows under identical settings. A null fired with a
+    // different fee, floor, menu or coin list must not silently join the
+    // yardstick (this codebase's signature defect class).
+    const fp = (d) => JSON.stringify({
+      u: [...(d.params.universe || [])].sort(),
+      pg: !!(d.params.permute && d.params.permute.geometry),
+      pd: !!(d.params.permute && d.params.permute.decision),
+      m: d.params.minTradesSlice, f: d.params.feePerLeg,
+      dm: d.params.dMults, th: d.params.tHours, g: d.params.gates, e: d.params.entries,
+    });
     const real = req.query.real
       ? docs.find((d) => d.id === String(req.query.real) && !isNull(d))
       : docs.find((d) => !isNull(d) && !d.id.includes('-smoke'));
     if (!real) return res.status(404).json({ error: 'no completed real walk-forward run found' });
-    const nulls = docs.filter((d) => isNull(d) && minorOf(d.params.engineVersion) >= 31);
+    const realFp = fp(real);
+    const excluded = [];
+    const nulls = docs.filter((d) => {
+      if (!isNull(d)) return false;
+      if (d.id.includes('-smoke')) { excluded.push({ id: d.id, why: 'smoke run (preflight, not an experiment)' }); return false; }
+      if (!dealBuilt(d.params.engineVersion)) { excluded.push({ id: d.id, why: `superseded construction (engine ${d.params.engineVersion || 'unknown'} — register 66)` }); return false; }
+      if (fp(d) !== realFp) { excluded.push({ id: d.id, why: 'settings differ from the real run (coins, fee, floor or menu) — not the same population' }); return false; }
+      return true;
+    });
     if (nulls.length < 2) {
-      return res.status(409).json({ error: `need at least 2 completed null runs built the register-66 way (engine 1.31+); found ${nulls.length} — fire them from the null-run control above` });
+      return res.status(409).json({
+        error: `need at least 2 completed null runs built the register-66 way with the SAME settings as the real run; found ${nulls.length}`,
+        excluded,
+      });
     }
     const wfDir = path.join(__dirname, 'data', 'wf');
-    const out = wfcompare.compareRuns(wfcompare.loadRun(wfDir, real.id), nulls.map((d) => wfcompare.loadRun(wfDir, d.id)));
-    res.json({ realId: real.id, nullIds: nulls.map((d) => d.id), ...out });
+    const realFolds = wfcompare.loadRun(wfDir, real.id);
+    const out = wfcompare.compareRuns(realFolds, nulls.map((d) => wfcompare.loadRun(wfDir, d.id)));
+    res.json({
+      realId: real.id,
+      nullIds: nulls.map((d) => d.id),
+      excluded,
+      realSetupsTotal: Object.keys(realFolds).length,
+      ...out,
+    });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
