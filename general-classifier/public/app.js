@@ -239,7 +239,7 @@
     const settingsBlock = `
       <table class="settings">
         <tr><th>Arm</th><td>${isNull
-          ? `<strong>NULL — each member's real vote mix dealt onto random days, per fold (seed ${esc(String(p.nullShiftSeed))}); this run is the luck yardstick</strong>`
+          ? `<strong>NULL — each member's real vote mix dealt onto random days, per fold (seed ${esc(String(p.nullShiftSeed))}); this run is a null run, the yardstick</strong>`
           : 'real — members’ actual votes'}</td>
             <th>Universe</th><td>${uni.length} coins${uni.length ? ` <span class="cellsub" title="${esc(uni.join(', '))}">(hover for the list)</span>` : ''}</td></tr>
         <tr><th>Chunk shapes</th><td>${shapes}</td>
@@ -289,9 +289,9 @@
       </tr>`;
       }).join('');
     return `<p class="note">${header}</p>
-      ${isNull ? `<p class="note down"><strong>NULL ARM — this board is the luck yardstick, not a result.</strong>
+      ${isNull ? `<p class="note down"><strong>NULL RUN — this board is the yardstick, not a result.</strong>
         Each member's real vote mix was dealt onto random days inside each fold (seed ${esc(String(doc.params.nullShiftSeed))}),
-        so the votes carry no knowledge of the days they trade; whatever passes here passes by luck.
+        so the votes carry no knowledge of the days they trade; whatever passes here passes by chance.
         Nothing on this board can be selected. (Runs from engines before 1.31 used the retired
         rotation construction — register entry 66 — and are superseded.)</p>` : ''}
       ${perfBlock}
@@ -442,7 +442,7 @@
           minTradesSlice: $('wf-mintrades').value.trim() || undefined,
           nullShiftSeed: seed,
           label: `wfnull2-s${seed}`,
-          description: `null run seed ${seed} (vote mix dealt onto random days, register entry 66) — the luck yardstick; selects nothing`,
+          description: `null run seed ${seed} (vote mix dealt onto random days, register entry 66) — the yardstick; selects nothing`,
         }),
       });
       const body = await res.json();
@@ -459,10 +459,10 @@
       const r = await fetch('api/wfnull/compare');
       const d = await r.json();
       if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`);
-      const luck = d.luckCounts.join(', ');
+      const nullCounts = d.luckCounts.join(', ');
       const verdict = d.distinguishable
-        ? '<strong class="up">ABOVE the line</strong> — the real board’s lead over luck sits outside the observed luck variation. Nothing is selected by this alone: replication rules come next, declared first.'
-        : '<strong class="down">NOT above the line</strong> — the real board cannot be told from luck by this read.';
+        ? '<strong class="up">ABOVE the line</strong> — the real board’s lead sits outside the null runs’ own variation. Nothing is selected by this alone: replication rules come next, declared first.'
+        : '<strong class="down">NOT above the line</strong> — the real board cannot be told from the null runs by this read.';
       const topRows = d.top.map((t) => `<tr><td>${esc(t.key)}</td>
         <td class="${t.med >= 0 ? 'up' : 'down'}">${m$wf(t.med)}</td><td>${t.pos}/${t.n}</td></tr>`).join('');
       const coinRows = Object.entries(d.perCoin)
@@ -479,15 +479,15 @@
           (${d.nullIds.map(esc).join(', ')}).</p>
         ${exclNote}
         <p><strong>Paired-supported setups</strong> — real: <strong>${d.realCount}</strong> of ${d.setups}${pairNote}
-          · luck counts: ${luck} · the line: ${d.line} · ${verdict}</p>
+          · null runs’ counts: ${nullCounts} · the line: ${d.line} · ${verdict}</p>
         <div class="tablewrap"><table>
           <tr><th title="coin · chunk length · voting style">setup</th>
           <th title="the middle fold of (real holdout money minus the null runs' average) — dollars per $100 book">pair med $</th>
-          <th title="folds where real beat the null average / paired folds">beat luck</th></tr>
+          <th title="folds where the real run came out ahead of the null runs’ average / paired folds">beat null avg</th></tr>
           ${topRows}</table></div>
         <p class="note">Top 15 by paired median — reported, never selected from.
           KEY — <em>pair med $</em>: middle fold of (real money minus null average) on identical windows;
-          <em>beat luck</em>: folds where real came out ahead.</p>
+          <em>beat null avg</em>: folds where the real run came out ahead of the null runs’ average.</p>
         <div class="tablewrap"><table>
           <tr><th>coin</th><th title="paired-supported setups out of that coin's cuts — one coin is ONE evidence unit however many cuts it has">supported</th></tr>
           ${coinRows}</table></div>`;

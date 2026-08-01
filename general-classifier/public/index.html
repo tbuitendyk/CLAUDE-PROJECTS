@@ -124,7 +124,7 @@
     <section class="intro">
       <h1>Bracket lab</h1>
       <p>The workbench. Pick the fold method below &mdash; each method carries its own description,
-        controls and boards. Null runs (the luck yardstick) fire from the walk-forward section.</p>
+        controls and boards. Null runs fire from the walk-forward section.</p>
     </section>
     <form class="controls" autocomplete="off" onsubmit="return false">
       <div class="field" style="min-width:440px">
@@ -172,14 +172,14 @@
     <div id="wf-view"><p class="note">Loading&hellip;</p></div>
 
     <div class="section">
-      <h2>Null run &mdash; the luck yardstick</h2>
+      <h2>Null runs</h2>
       <p class="note">Re-runs the whole system with each member's real vote mix dealt onto random days
-        (zero market knowledge by construction &mdash; register entry 66). Same coins, shapes, rules and menu
+        (zero market knowledge by construction &mdash; register entry 66; the yardstick every skill claim must beat). Same coins, shapes, rules and menu
         as the real runs. At least two completed null runs are needed before the verdict below can be computed;
         one null run takes about as long as a real run.</p>
       <form class="controls" autocomplete="off" onsubmit="return false">
         <div class="field">
-          <label for="wfnull-seed" title="Whole number 1-999. Different seeds give independent luck draws; the same seed always reproduces the same null run exactly.">Seed</label>
+          <label for="wfnull-seed" title="Whole number 1-999. Different seeds give independent null runs; the same seed always reproduces the same null run exactly.">Seed</label>
           <input id="wfnull-seed" type="number" min="1" max="999" step="1" value="101">
         </div>
         <div class="field submit"><button id="wfnull-start" type="button" class="secondary">Fire null run</button></div>
@@ -190,8 +190,8 @@
       <p class="note"><strong>The declared read.</strong> For every setup, fold by fold on identical windows:
         real votes' holdout money minus the average of the null runs' money. A setup counts as
         <em>paired-supported</em> when the middle fold of that difference is positive AND more than half its
-        folds are. The luck reference: each null run scored against the others the same way. The line a real
-        signal must clear: the highest luck count plus the spread between luck counts.</p>
+        folds are. The reference: each null run scored against the others the same way. The line a real
+        signal must clear: the highest null run count plus the spread between the null runs' counts.</p>
       <div class="field submit"><button id="wfnull-compare" type="button">Compute real vs null</button></div>
       <div id="wfnull-compare-out"></div>
     </div>
@@ -576,6 +576,6 @@
     pruned to time / open / high / low / close / quote&nbsp;volume.
   </footer>
 
-  <script src="app.js?v=56"></script>
+  <script src="app.js?v=57"></script>
 </body>
 </html>
