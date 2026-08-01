@@ -1,0 +1,48 @@
+Final verdict from the luck runs: the current committee's edge cannot be told from luck
+
+tl;dr the four-luck-run comparison finished and the answer is clear and
+honest: the real committee beats the luck arms in 26 of 136 setups —
+and the luck arms beat EACH OTHER in 26 to 38. Our board sits at the
+bottom of luck's own range. By the rule declared before the numbers
+existed: this committee design's edge, if any, is too small for this
+bench to certify. Nothing was selected, nothing real was destroyed, and
+the redesign now waits for your debrief, exactly as you ordered. No
+further jobs will fire until we talk.
+
+THE NUMBERS (all counts out of 136 setups; a "win" = fold-by-fold money
+beats the average of the reference luck runs, in the median and in more
+than half the folds):
+  real committee vs the four luck runs:  26
+  each luck run vs the other three:      38, 28, 33, 26
+  pre-declared line for a real signal:   50 (highest luck count plus
+                                          their spread)
+
+Also owed to you: the "47% lead" I reported yesterday evening was
+partly an artifact of MY comparison, not the market. The real side was
+being measured against a smoother reference (average of two luck runs)
+than the luck sides were (one run each) — a construction flaw that
+manufactured most of the lead. The four-run version fixes the
+asymmetry, and with the slight remaining bias actually FAVOURING the
+real side, the lead still vanished. That flaw is register entry 65,
+caught by our own instrument discipline before any decision leaned on
+it.
+
+WHAT THIS MEANS, plainly: the coins may still be predictable, and the
+six models may still know things — but the current design (this
+committee, these windows, this re-vote scheme) does not turn whatever
+they know into an edge this bench can distinguish from shuffled votes.
+That is worth every hour it cost, because the alternative was
+discovering it with money.
+
+WHAT IS BANKED FOR THE REDESIGN: a proven bench (fake-coin calibrated,
+twice self-correcting), a luck-arm yardstick, every member's individual
+score on every 8-week stretch of every coin (the raw material for your
+per-coin tuning and member-weighting ideas), and 65 register entries of
+traps we can no longer fall into.
+
+The plain-language debrief you asked for is written and waiting
+(reports/DEBRIEF-2026-08-01.md, no jargon) — say "debrief" whenever
+you're ready and we go through the whole picture before deciding
+anything new. Until then: monitoring only.
+
+c.
