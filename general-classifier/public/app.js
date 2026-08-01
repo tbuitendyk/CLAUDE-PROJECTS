@@ -228,7 +228,7 @@
         <tr><th>Execution grid</th><td>d ${(p.dMults || []).join('/')}×band · t ${(p.tHours || []).join('/')}h · gates ${(p.gates || []).join('/')} · entry ${(p.entries || []).join('/')}</td>
             <th>Fees</th><td>$${p.feePerLeg != null ? (2 * p.feePerLeg).toFixed(2) : '—'} per round trip</td></tr>
         <tr><th>Pick rule</th><td>per fold: best net $ on the test window across agreement levels 1–6 × the grid, ≥${p.minTradesSlice ?? '—'} trades</td>
-            <th>Engine</th><td>${esc(p.engineVersion || 'before 1.26')}</td></tr>
+            <th>Engine</th><td>${esc(p.engineVersion || 'not recorded')}</td></tr>
       </table>`;
     const ratePerMin = perf.elapsedMs > 0 && perf.unitsDone > 0 ? perf.unitsDone / (perf.elapsedMs / 60000) : null;
     const perfBlock = `
@@ -241,7 +241,7 @@
         ${tile('Setups', `${perf.unitsDone ?? 0} / ${perf.unitsTotal ?? '—'}`, 'coin × shape × decision')}
         ${tile('Rate', ratePerMin ? ratePerMin.toFixed(1) + '/min' : '—', perf.workers > 1 ? `${perf.workers} threads` : '')}
         ${tile('Elapsed', fmtDur(perf.elapsedMs), '')}
-        ${tile('ETA', running ? fmtDur(perf.etaMs) : '—', running ? 'at current pace' : 'finished')}
+        ${tile('ETA', running ? fmtDur(perf.etaMs) : '—', running ? 'at current pace' : esc(doc.status))}
       </div>
       </div>`;
 
@@ -2261,7 +2261,7 @@
         ${tile('Trainings', `${perf.runsDone ?? 0} / ${perf.runsTotal ?? '—'}`, 'the raw denominator count')}
         ${tile('Rate', perf.ratePerMin ? perf.ratePerMin.toFixed(1) + '/min' : '—', (perf.secPerTraining ? perf.secPerTraining.toFixed(1) + 's/training' : '') + (perf.workers > 1 ? ` · ${perf.workers} threads` : ''))}
         ${tile('Elapsed', fmtDur(perf.elapsedMs), '')}
-        ${tile('ETA', running ? fmtDur(perf.etaMs) : '—', running ? 'at current pace' : 'finished')}
+        ${tile('ETA', running ? fmtDur(perf.etaMs) : '—', running ? 'at current pace' : esc(doc.status))}
       </div>
       ${doc.failures && doc.failures.length ? `<p class="note">${doc.failures.length} unit(s) failed — first: ${esc(doc.failures[0].key)}: ${esc(doc.failures[0].error)}</p>` : ''}
       </div>`;

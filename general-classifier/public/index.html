@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>General Classifier</title>
-  <link rel="stylesheet" href="style.css?v=23">
+  <link rel="stylesheet" href="style.css?v=24">
 </head>
 <body>
   <header class="topbar">
@@ -292,7 +292,8 @@
     <section class="intro">
       <h1>Walk-forward</h1>
       <p>Marches train / test / holdout folds through the entire history of each coin. Per fold: models train
-        on everything before the fold (recent two years counted twice), the trade settings and agreement level
+        on everything before the fold (purged so no training candle can touch a later slice's trades), the
+        trade settings and agreement level
         are picked on an 8-week <strong>test</strong> slice, and that pick is scored once on the next 8-week
         <strong>holdout</strong> slice. Step 8 weeks, repeat — every era takes its turn as clean holdout. The
         result per setup is a <strong>distribution over ~25&ndash;30 folds</strong>, which is what makes it
@@ -304,7 +305,7 @@
         <input id="wf-universe" type="text" placeholder="e.g. ATOMUSDT, BCHUSDT">
       </div>
       <div class="field">
-        <label class="check" title="Run all five chunk shapes (weekly 8-day, daily 1-4 day) for every coin. Off = just daily 3-day.">
+        <label class="check" title="Run all four daily chunk shapes (1–4 day) for every coin. Weekly 8-day cannot fill an 8-week fold and is refused by the engine. Off = just daily 3-day.">
           <input type="checkbox" id="wf-perm-geometry" checked> all chunk shapes</label>
         <label class="check" title="Run both decision rules (argmax and directional hunter) for every setup. Off = just argmax.">
           <input type="checkbox" id="wf-perm-decision" checked> both decision rules</label>
@@ -518,6 +519,6 @@
     pruned to time / open / high / low / close / quote&nbsp;volume.
   </footer>
 
-  <script src="app.js?v=54"></script>
+  <script src="app.js?v=55"></script>
 </body>
 </html>
