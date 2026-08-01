@@ -58,6 +58,12 @@ RULES OF THIS DOCUMENT
 | null run | 4 (computed as its own phase-3 walk) | the whole system re-run with each member's real vote mix DEALT onto random days per fold (register 66, owner-designed) - zero date knowledge by construction, everything else identical; THE yardstick: real results must beat the null runs'. The earlier slide-off-dates construction leaked knowledge at small offsets and is superseded |
 | reading rule | 4 | a pass/fail sentence committed in the launcher before the run fired; results are read only through these |
 
+## The gate between phases
+
+| Term | Phase | Means exactly |
+|---|---|---|
+| planted check | gate before 4 | fabricated coins with KNOWN answers (a planted pattern, a pattern that dies mid-history, pure noise) run through the real machinery; every engine release must pass all its declared criteria — including proving a null run destroys the planted pattern — before any real run may be read |
+
 ## Phase 5 — DECIDE
 | Term | Phase | Means exactly |
 |---|---|---|
@@ -69,4 +75,7 @@ recipe / trade recipe, cell -> dial combination
 experiment -> setup
 stretch, slice -> window
 quorum -> agreement level (owner-facing text)
-luck committee, null arm -> null run
+luck committee, null arm, luck test, luck run, luck arm, luck yardstick, luck draw -> null run
+fake-coin gate, fake-coin test -> planted check
+("luck"/"chance" as ordinary descriptive words inside a sentence are fine;
+MINTING NAMES with them is what is forbidden)

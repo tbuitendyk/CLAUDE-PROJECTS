@@ -8,7 +8,7 @@
 # DECLARED READ (unchanged from classifier-wfnull-launch-s103.sh, now on
 # the clean construction): no single seed carries a verdict; when all
 # four exist, the four-arm paired read applies the pre-declared line —
-# real must exceed max(luck-vs-rest counts) + their spread. The old
+# real must exceed max(null-vs-rest counts) + their spread. The old
 # rotation-built runs (wfnull-s101..104) are SUPERSEDED (register 66)
 # and excluded from comparison by the engine.
 set -uo pipefail
