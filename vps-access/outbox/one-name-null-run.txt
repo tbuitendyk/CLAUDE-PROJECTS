@@ -1,0 +1,14 @@
+Fixed: one name — "null run" — on every surface, and the alias list is banned in writing
+
+tl;dr the term is "null run", everywhere, full stop. Every alias I coined
+— "luck test", "luck run", "luck arm", "luck yardstick", "luck draw",
+"null arm" — is now on the glossary's retired list, and every screen,
+table heading, tooltip and reader script that carried one has been
+rewritten to the one name. "Luck" and "chance" survive only as ordinary
+words inside explanations, never as names. The planted fake-coin gate
+also had two names; it is now only "planted check", defined in the
+glossary. Shipped to the interface without touching the null run that's
+computing (seed 101, running now; 102-104 follow with the re-measured
+verdict after).
+
+c.
