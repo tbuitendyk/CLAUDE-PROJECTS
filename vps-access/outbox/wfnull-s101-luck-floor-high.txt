@@ -1,0 +1,53 @@
+Luck baseline result: the 7 survivors are NOT yet distinguishable from luck
+
+tl;dr the first luck draw came back high: on votes that carry no market
+information, 5 of 136 setups still pass the same two rules that 7 real
+setups pass. By the rule declared before the run, that reads NOT
+DISTINGUISHABLE from luck on this draw — so nothing is selected, the
+second luck draw (seed 102) fired at 03:00 UTC with its own verdict rule
+declared, and one of our two scoring rules is retired outright because
+the luck run exposed it as broken. This is the instrument doing its job:
+better to learn this tonight than after money followed it.
+
+TABLE: luck floor vs real board. NAME: of 136 setups, how many pass each
+rule set on real votes vs on rotated (informationless) votes. KEY —
+R1: the middle fold makes money AND more winning folds than half.
+R1+R2: R1 plus total holdout money beats always-going-long.
+S1: drift-adjusted — median per-fold (money minus always-long) positive
+AND more than half of folds beat always-long. All money = holdout
+dollars per $100 book.
+
+            R1     R1+R2    S1
+  real      22       7      63
+  null      15       5      57
+
+WHAT EACH COLUMN SAYS, plainly:
+- R1+R2, the headline: 7 real vs 5 by luck. The declared line (real must
+  be at least double) is not met. On one draw, the real board's edge
+  over luck is two setups — that is not evidence, it is a shrug.
+- S1 is the useful embarrassment: 57 informationless setups "beat
+  always-going-long". Mechanism: our picker chooses the best trade cell
+  each fold, and cells that trade rarely — or stand aside — beat holding
+  a falling coin no matter what the votes know. So "beats the market"
+  was largely measuring the machinery's option to sit out, not vote
+  skill. S1 is retired as a support rule (QC 64); from now on the luck
+  arm itself is the yardstick every skill claim is measured against,
+  and "vs always-long" is just a descriptive column.
+
+WHAT THIS DOES AND DOES NOT MEAN. It does NOT say the members know
+nothing — DOT daily-4d's median skill of +$85/fold may still be real.
+It says our COUNTING rules cannot yet tell it from luck, partly because
+counts throw away size. Declared next steps, in order:
+1. Seed 102 (running, done ~08:30 UTC): if the two-seed rule also reads
+   not-distinguishable — the likely outcome — no third seed; instead
+2. the sharper paired instrument: same setup, same folds, real votes vs
+   rotated votes, per-setup difference — which uses magnitudes instead
+   of counts and is exactly where DOT's +$85 either survives or dies.
+   Its rules get declared in a launcher before it runs.
+Audit committed: reports/audit-walkforward-20260731-215808-wfnull-s101.md.
+
+Your auto-tune request stays parked behind this on purpose: tuning the
+window lengths against a board we cannot yet separate from luck would
+tune toward luck.
+
+c.
