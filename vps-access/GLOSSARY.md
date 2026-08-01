@@ -27,7 +27,7 @@ RULES OF THIS DOCUMENT
 ## Phase 2 — LAUNCH
 | Term | Phase | Means exactly |
 |---|---|---|
-| walk-forward | 2-4 | the name of the whole current method, and of the tab that runs it: training only ever moves forward through history (train on the past -> pick on the test window -> score on the holdout window -> slide forward). Replaced the retired random-window-placement method that lives on the Bracket lab tab |
+| walk-forward | 2-4 | the name of the current fold method: training only ever moves forward through history (train -> pick on the test window -> score on the holdout window -> slide forward). Lives on the BRACKET LAB tab as the default choice of the fold-method dropdown (owner reorganization 2026-08-01); the retired single-split layouts sit in the same dropdown's sweep option |
 | setup | 2 defined, 3 executed | one coin + one chunk length + one voting style; the unit of testing; 136 exist |
 | voting style | 2 chosen, 3b acts | how members turn readings into votes: most-likely-wins (up/down/flat compete; flat = no trade) or direction-hunter (up vs down; abstains when unsure) |
 | launcher | 2 | the committed script that fires a run, carrying the phase-4 reading rules written before any result exists |
@@ -55,7 +55,7 @@ RULES OF THIS DOCUMENT
 |---|---|---|
 | board | 4 | the results table, one row per setup, holdout money only |
 | always-long line | 4 (computed in 3c) | the tide gauge: going long every trade slot on the same windows; context only, judges nothing |
-| null run | 4 (computed as its own phase-3 walk) | the whole system re-run with votes scrambled off their dates - no market knowledge, everything else identical; THE yardstick: real results must beat the null runs'; four exist (seeds 101-104) |
+| null run | 4 (computed as its own phase-3 walk) | the whole system re-run with each member's real vote mix DEALT onto random days per fold (register 66, owner-designed) - zero date knowledge by construction, everything else identical; THE yardstick: real results must beat the null runs'. The earlier slide-off-dates construction leaked knowledge at small offsets and is superseded |
 | reading rule | 4 | a pass/fail sentence committed in the launcher before the run fired; results are read only through these |
 
 ## Phase 5 — DECIDE

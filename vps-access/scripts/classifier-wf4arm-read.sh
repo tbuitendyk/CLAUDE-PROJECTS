@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
-# classifier-wf4arm-read.sh -- THE DERIVED-THRESHOLD READ (read-only),
+# classifier-wf4arm-read.sh -- THE DERIVED-THRESHOLD READ (read-only)
+# on the REBUILT null runs (wfnull2, QC 66 deal construction); the old
+# rotation-built runs are superseded and no longer read here.
 # committed before seed 104's numbers exist. Implements exactly the line
 # declared in classifier-wfnull-launch-s103.sh:
 #
@@ -25,7 +27,7 @@ from collections import defaultdict
 bs = json.load(sys.stdin)['batches']
 def pick(tag):
     return next((b['id'] for b in bs if str(b['id']).startswith('walkforward-') and tag in b['id'] and b['status'] == 'done'), None)
-ids = {t: pick(t) for t in ['-wf1', '-wfnull-s101', '-wfnull-s102', '-wfnull-s103', '-wfnull-s104']}
+ids = {t: pick(t) for t in ['-wf1', '-wfnull2-s101', '-wfnull2-s102', '-wfnull2-s103', '-wfnull2-s104']}
 missing = [t for t, v in ids.items() if not v]
 if missing:
     print('not ready — missing:', ', '.join(missing)); raise SystemExit(1)
@@ -39,7 +41,7 @@ def folds_by_unit(jobid):
     return out
 
 REAL = folds_by_unit(ids['-wf1'])
-NULLS = [folds_by_unit(ids[f'-wfnull-s10{i}']) for i in (1, 2, 3, 4)]
+NULLS = [folds_by_unit(ids[f'-wfnull2-s10{i}']) for i in (1, 2, 3, 4)]
 
 def med(xs):
     xs = sorted(xs)
