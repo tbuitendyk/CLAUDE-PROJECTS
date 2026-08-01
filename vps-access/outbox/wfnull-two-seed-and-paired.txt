@@ -1,0 +1,57 @@
+Morning read: luck floor confirmed twice; paired test says real leads luck by 47% but under the declared bar
+
+tl;dr the second luck draw came back almost identical to the first (5 of
+136 informationless setups pass the headline rules, both times), so by
+the rule declared before the run, the counting rules cannot separate
+your 7 real survivors from luck — and, as declared, no third seed was
+spent on counts. The sharper paired test then ran (rules committed
+first): fold by fold, on identical slices, 28 real setups beat the luck
+arms against a luck-beats-luck floor of 19. That is 47% above the floor
+but under the declared safety bar of double — so still no selection.
+The bar itself was a guess, though, and the register says guessed
+thresholds get derived, not obeyed blindly: two more luck draws (seeds
+103, 104) are running today to measure the luck spread properly and set
+a derived line, declared in the launcher before the numbers exist.
+
+TABLE: the two luck draws vs the real board. NAME: setups (of 136)
+passing each rule set. KEY: R1 = middle fold makes money AND more
+winning folds than half; R1+R2 = R1 plus total beats always-going-long.
+
+              R1    R1+R2
+  real        22      7
+  luck s101   15      5
+  luck s102   18      5
+
+Identical headline luck counts across seeds: the floor is real, not a
+seed accident.
+
+TABLE: the paired test (matched folds — same coin, same 8-week slice,
+real votes vs the average of both luck arms). NAME: paired-supported =
+median per-fold edge over luck positive AND more than half of folds
+beat luck. KEY: floor = the two luck arms run against each other by the
+same formula.
+
+  paired-supported: real 28 of 136 · luck floor 19 · declared bar 38
+  verdict: NOT distinguishable under the declared rule
+
+WHAT MOVED, worth your eye (directions, not findings):
+- ATOM 1-day argmax leads the paired board: +$21.30 per fold over luck,
+  beating luck in 26 of 39 folds. The DOT family stays strong (3 of the
+  top 5). UNI leads per-coin with 5 of 8 cuts paired-supported.
+- AVAX — which looked good under the raw rules — drops to 0 of 8 when
+  luck is the yardstick: its apparent skill was achievable by the luck
+  arms. This is exactly the mistake the null instrument exists to catch.
+
+RUNNING NOW: seed 103 (fired 06:59 UTC, ~12:30 finish), then seed 104
+(~18:00). Then the four-luck-arm read with the derived line: real must
+sit OUTSIDE the observed luck variation (above the highest luck count by
+more than the luck counts' own spread). If real clears that, we move to
+replication rules for the ATOM/DOT/UNI directions; if not, the honest
+conclusion is that this committee's edge, if any, is too small for this
+instrument to see, and the hypothesis work (your auto-tune loop among
+it) proceeds with that knowledge instead of an illusion.
+
+Audits committed for both luck runs; QC 64 stands (beating
+always-going-long is not skill — the luck arm is the yardstick now).
+
+c.
