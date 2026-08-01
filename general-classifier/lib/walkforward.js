@@ -79,35 +79,45 @@ function foldSlices(chunks, f, reach) {
   };
 }
 
-// ---- the NULL ARM (audit-walkforward-...-wf1.md, 9a) ------------------------
-// The zero-skill baseline: inside each fold, every member's vote stream is
-// rotated by the SAME offset within its slice. The committee's internal
-// agreement pattern — how often members concur, the rhythm of the votes —
-// is preserved exactly; alignment with what the market did is destroyed.
-// Selection and scoring then run bit-identically to the real arm, so the
-// null measures what the PICKING MACHINERY can extract from votes that
-// carry no information. Training is untouched: the null nulls the votes'
-// dates, not the learning (one knob, attributable).
+// ---- the NULL RUN (QC 66, owner-redesigned 2026-08-01) ----------------------
+// The zero-knowledge baseline. The FIRST construction slid each fold's
+// votes off their dates by a common rotation — and the owner caught the
+// flaw from first principles: chunks step one day apart and overlap, so a
+// slide landing within a few days of its origin (a regular occurrence at
+// both ends of the window) still reads largely the same market. That
+// yardstick was part-informed, and any keep-out patch would have needed a
+// GUESSED "relevance distance".
 //
-// The offset is deterministic in (seed, unit, fold): reruns are
-// byte-identical, and different seeds give independent draws of the
-// whole-board luck count.
+// The rebuilt construction: per fold, per member, per slice, the member's
+// REAL vote mix — the exact multiset of ups/downs/stand-asides it actually
+// produced — is DEALT onto random days (a seeded shuffle). Zero date
+// knowledge by construction: no vote retains any tie to the day it was
+// formed for, so there is no distance to assume. Vote habits are preserved
+// statistically (same mix per member); the committee's day-by-day
+// agreement structure is deliberately NOT preserved — that is part of what
+// gets randomized, per the owner's design.
+//
+// Deterministic in (seed, unit, fold, member, slice): reruns are
+// byte-identical, and different seeds give independent luck draws.
 const { mulberry32 } = require('./interlace');
 
-function foldNullOffset(seed, unitKey, foldIdx) {
+function nullRng(seed, unitKey, foldIdx, memberIdx, slice) {
   let h = (Number(seed) >>> 0) || 1;
-  const s = `${unitKey}|${foldIdx}`;
+  const s = `${unitKey}|${foldIdx}|${memberIdx}|${slice}`;
   for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 2654435761) >>> 0;
-  return 1 + Math.floor(mulberry32(h)() * 1_000_003);
+  return mulberry32(h);
 }
 
-// Cyclic shift by 1..len-1 positions — never 0, so no null fold can
-// silently be the real fold wearing the wrong name.
-function rotateCalls(calls, offset) {
-  const n = calls.length;
-  if (n < 2) return calls.slice();
-  const k = 1 + (offset % (n - 1));
-  return calls.map((_, i) => calls[(i + k) % n]);
+// Seeded Fisher-Yates: the same votes, dealt onto random positions.
+function dealVotes(calls, rng) {
+  const out = calls.slice();
+  for (let i = out.length - 1; i > 0; i--) {
+    const j = Math.floor(rng() * (i + 1));
+    const t = out[i];
+    out[i] = out[j];
+    out[j] = t;
+  }
+  return out;
 }
 
 // All folds for one (coin, shape, decision) unit. Serial inside the task;
@@ -162,14 +172,14 @@ async function wfUnitTask({ combo, branch, params }) {
     const testCalls = members.map((m) => m.calls.slice(0, testChunks.length));
     const holdCalls = members.map((m) => m.calls.slice(testChunks.length));
     if (p.nullShiftSeed) {
-      // Null arm: one common rotation per fold (see the block comment
-      // above). memberHoldEdges below are computed from the rotated calls
-      // too — in a null doc every number is a null number.
+      // Null run (QC 66 construction): each member's real vote mix, dealt
+      // onto random days, per slice. memberHoldEdges below are computed
+      // from the dealt calls too — in a null doc every number is a null
+      // number.
       const unitKey = `${combo.trade}|${branch.geometry}|${branch.decision}`;
-      const off = foldNullOffset(p.nullShiftSeed, unitKey, folds.length);
       for (let mI = 0; mI < members.length; mI++) {
-        testCalls[mI] = rotateCalls(testCalls[mI], off);
-        holdCalls[mI] = rotateCalls(holdCalls[mI], off);
+        testCalls[mI] = dealVotes(testCalls[mI], nullRng(p.nullShiftSeed, unitKey, folds.length, mI, 'test'));
+        holdCalls[mI] = dealVotes(holdCalls[mI], nullRng(p.nullShiftSeed, unitKey, folds.length, mI, 'hold'));
       }
     }
 
@@ -251,4 +261,4 @@ async function wfUnitTask({ combo, branch, params }) {
   };
 }
 
-module.exports = { wfUnitTask, foldGrid, foldSlices, reachMs, foldNullOffset, rotateCalls, TEST_WEEKS, HOLD_WEEKS, STEP_WEEKS, WARMUP_WEEKS };
+module.exports = { wfUnitTask, foldGrid, foldSlices, reachMs, nullRng, dealVotes, TEST_WEEKS, HOLD_WEEKS, STEP_WEEKS, WARMUP_WEEKS };

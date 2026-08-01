@@ -8,6 +8,7 @@ const throttle = require('./lib/throttle');
 const { configuredSize, createPool } = require('./lib/pool');
 const batch = require('./lib/batch');
 const guard = require('./lib/guard');
+const wfcompare = require('./lib/wfcompare');
 const tracker = require('./lib/tracker');
 const dogebook = require('./lib/dogebook');
 const books = require('./lib/books');
@@ -755,6 +756,35 @@ app.post('/api/walkforward', (req, res) => {
 
 // Per-unit fold detail. Path inputs are hostile until proven otherwise —
 // same pinning as the inspect endpoint.
+// Real-vs-null on the page (owner-ordered, 2026-08-01): the declared
+// paired read, previously reachable only through scripts and email.
+// Auto-discovers the newest completed real run and every completed null
+// run built the QC-66 way (deal construction, engine 1.31+); older
+// rotation-built null runs are EXCLUDED — mixing constructions would
+// compare against a part-informed yardstick. Refuses honestly when fewer
+// than two matching null runs exist.
+app.get('/api/wfnull/compare', (req, res) => {
+  try {
+    const rows = batch.listBatches().filter((b) => String(b.id).startsWith('walkforward-') && b.status === 'done');
+    const docs = rows.map((r) => batch.getBatch(r.id)).filter(Boolean);
+    const isNull = (d) => d.params && d.params.arm === 'null';
+    const minorOf = (v) => { const m = /^1\.(\d+)/.exec(String(v || '')); return m ? Number(m[1]) : 0; };
+    const real = req.query.real
+      ? docs.find((d) => d.id === String(req.query.real) && !isNull(d))
+      : docs.find((d) => !isNull(d) && !d.id.includes('-smoke'));
+    if (!real) return res.status(404).json({ error: 'no completed real walk-forward run found' });
+    const nulls = docs.filter((d) => isNull(d) && minorOf(d.params.engineVersion) >= 31);
+    if (nulls.length < 2) {
+      return res.status(409).json({ error: `need at least 2 completed null runs built the register-66 way (engine 1.31+); found ${nulls.length} — fire them from the null-run control above` });
+    }
+    const wfDir = path.join(__dirname, 'data', 'wf');
+    const out = wfcompare.compareRuns(wfcompare.loadRun(wfDir, real.id), nulls.map((d) => wfcompare.loadRun(wfDir, d.id)));
+    res.json({ realId: real.id, nullIds: nulls.map((d) => d.id), ...out });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.get('/api/walkforward/:id/unit', (req, res) => {
   const id = String(req.params.id || '');
   const file = String(req.query.file || '');

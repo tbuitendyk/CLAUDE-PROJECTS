@@ -1,5 +1,5 @@
 const { assert } = require('./helpers');
-const { foldGrid, foldSlices, reachMs, foldNullOffset, rotateCalls, TEST_WEEKS, HOLD_WEEKS, STEP_WEEKS, WARMUP_WEEKS } = require('../lib/walkforward');
+const { foldGrid, foldSlices, reachMs, nullRng, dealVotes, TEST_WEEKS, HOLD_WEEKS, STEP_WEEKS, WARMUP_WEEKS } = require('../lib/walkforward');
 const { GEOMETRIES } = require('../lib/dataset');
 
 const DAY = 86_400_000;
@@ -72,32 +72,37 @@ module.exports = {
       for (const c of testChunks) assert.ok(c.startTs + reach <= f.holdStart, 'test trades must not touch hold candles');
     }
   },
-  async theNullRotationPreservesTheCommitteeButNotTheDates() {
-    // The null arm's whole claim: rotating every member by the SAME offset
-    // keeps the committee's internal agreement exactly (same votes, same
-    // concurrences) while moving every vote off its date. A per-member
-    // offset would fake a different committee, not a lucky one.
+  async theNullDealKeepsEachMembersMixButNoDateStructure() {
+    // QC 66 (owner-redesigned): the null run DEALS each member's real vote
+    // mix onto random days. What must hold: the mix is exactly preserved
+    // (same count of ups/downs/stand-asides), the order genuinely moves,
+    // reruns are byte-identical, and members shuffle INDEPENDENTLY — the
+    // old common-rotation construction (which the owner caught leaking
+    // market knowledge at small offsets) preserved date structure that
+    // this construction must NOT preserve.
     const m1 = [1, 0, -1, 1, 1, 0, -1, 0, 1, -1, 0, 1];
     const m2 = [1, -1, -1, 0, 1, 1, -1, 0, 0, -1, 1, 1];
-    const agree = (a, b) => a.reduce((s, v, i) => s + (v === b[i] ? 1 : 0), 0);
-    const off = foldNullOffset(101, 'DOTUSDT|daily-3d|argmax', 4);
-    const r1 = rotateCalls(m1, off);
-    const r2 = rotateCalls(m2, off);
-    assert.strictEqual(agree(r1, r2), agree(m1, m2), 'common rotation must preserve pairwise agreement');
-    assert.deepStrictEqual([...r1].sort(), [...m1].sort(), 'the multiset of votes is unchanged');
-    assert.notDeepStrictEqual(r1, m1, 'the dates must actually move');
-    // never a zero shift: a null fold must not silently be the real fold
-    for (let i = 0; i < 200; i++) {
-      const o = foldNullOffset(7, 'X|g|d', i);
-      assert.notDeepStrictEqual(rotateCalls(m1, o), m1, `offset at fold ${i} left the calls in place`);
-    }
-    // deterministic in (seed, unit, fold); different folds move differently
-    assert.strictEqual(foldNullOffset(101, 'k', 3), foldNullOffset(101, 'k', 3));
-    assert.notStrictEqual(foldNullOffset(101, 'k', 3), foldNullOffset(101, 'k', 4));
-    assert.notStrictEqual(foldNullOffset(101, 'k', 3), foldNullOffset(102, 'k', 3));
-    // tiny slices cannot rotate and must come back untouched copies
-    assert.deepStrictEqual(rotateCalls([1], 5), [1]);
-    assert.deepStrictEqual(rotateCalls([], 5), []);
+    const d1 = dealVotes(m1, nullRng(101, 'DOTUSDT|daily-3d|argmax', 4, 0, 'test'));
+    const d1again = dealVotes(m1, nullRng(101, 'DOTUSDT|daily-3d|argmax', 4, 0, 'test'));
+    const d2 = dealVotes(m2, nullRng(101, 'DOTUSDT|daily-3d|argmax', 4, 1, 'test'));
+    assert.deepStrictEqual([...d1].sort(), [...m1].sort(), 'the multiset of votes is unchanged');
+    assert.deepStrictEqual([...d2].sort(), [...m2].sort(), 'every member keeps its own mix');
+    assert.deepStrictEqual(d1, d1again, 'same seed, same deal — byte-identical');
+    assert.notDeepStrictEqual(d1, m1, 'the dates must actually move (verified non-identity for this case)');
+    // members are dealt independently: dealing the SAME votes under member
+    // index 0 vs 1 must give different arrangements of the same mix — a
+    // shared transformation (the old rotation) would give the same one.
+    assert.notDeepStrictEqual(
+      dealVotes(m1, nullRng(101, 'k', 3, 0, 'test')),
+      dealVotes(m1, nullRng(101, 'k', 3, 1, 'test')),
+      'each member gets its own deal, not a shared one');
+    // and the deal is distinct across seed, fold, and slice
+    assert.notDeepStrictEqual(dealVotes(m1, nullRng(101, 'k', 3, 0, 'test')), dealVotes(m1, nullRng(102, 'k', 3, 0, 'test')), 'seed changes the deal');
+    assert.notDeepStrictEqual(dealVotes(m1, nullRng(101, 'k', 3, 0, 'test')), dealVotes(m1, nullRng(101, 'k', 4, 0, 'test')), 'fold changes the deal');
+    assert.notDeepStrictEqual(dealVotes(m1, nullRng(101, 'k', 3, 0, 'test')), dealVotes(m1, nullRng(101, 'k', 3, 0, 'hold')), 'slice changes the deal');
+    // tiny slices come back as untouched copies, never crash
+    assert.deepStrictEqual(dealVotes([1], nullRng(1, 'k', 0, 0, 'test')), [1]);
+    assert.deepStrictEqual(dealVotes([], nullRng(1, 'k', 0, 0, 'test')), []);
     // and the task itself refuses an ambiguous arm — a present-but-broken
     // seed must never silently run the real arm under a null flag
     const { wfUnitTask } = require('../lib/walkforward');

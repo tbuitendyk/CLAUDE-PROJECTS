@@ -23,7 +23,7 @@
     <button type="button" class="tab" id="tab-btn-bracket" data-tab="bracket"
       title="The execution-permutation lab: asset combos (singles/doubles/triples) × permutable options × the OCO bracket menu, slim-then-promote, live leaderboard, nulls only on survivors.">Bracket lab</button>
     <button type="button" class="tab" id="tab-btn-walkforward" data-tab="walkforward"
-      title="The walk-forward instrument: train/test/holdout folds marching through the whole history. Every 8 weeks the trading settings are re-picked on fresh recent data and judged once on the next 8 weeks — the verdict is the distribution over every era, not one window's luck.">Walk-forward</button>
+      title="Per-coin tuning of the time periods: how strongly recent history is weighted when training members, and how long a committee vote stays valid before re-voting. Its outputs feed the Bracket lab. The tuning instrument is designed with the owner before anything runs here.">History weighting &amp; re-vote interval</button>
     <button type="button" class="tab" id="tab-btn-books" data-tab="books"
       title="The live paper books — frozen pre-registered experiments verifying earlier setups in real time. A different category of work from the research tools, kept out of the way.">Paper books</button>
   </nav>
@@ -131,6 +131,78 @@
         here by design &mdash; fire the null on a promoted survivor and it replays everything downstream of the
         combo. Ambiguous hourly bars always resolve AGAINST the book and are counted.</p>
     </section>
+    <form class="controls" autocomplete="off" onsubmit="return false">
+      <div class="field" style="min-width:440px">
+        <label for="bl-foldmethod"
+          title="How measuring windows are formed. Walk-forward (the proven method, default): train, test, hold, in that order, within every fold, marching through all of history. Single-split sweep: the older machinery, kept selectable — its retired window layouts live in its archived section — to re-prove what doesn't work.">Fold method</label>
+        <select id="bl-foldmethod">
+          <option value="walkforward" selected>Walk-forward &mdash; train, test, hold, every fold (default)</option>
+          <option value="sweep">Single-split sweep &mdash; retired window layouts inside</option>
+        </select>
+      </div>
+    </form>
+
+    <div id="bl-method-walkforward">
+    <section class="intro">
+      <p>Walk-forward marches train / test / holdout folds through the entire history of each coin. Per fold:
+        members train on everything before the fold (purged so no training candle can touch a later window's
+        trades), the dial combination and agreement level are picked on an 8-week <strong>test window</strong>,
+        and that pick is scored once on the next 8-week <strong>holdout window</strong>. Step 8 weeks, repeat —
+        every era takes its turn as clean holdout. Runs single-coin committees (6 members) today; context-coin
+        committees are sweep-only until extended.</p>
+    </section>
+    <form class="controls" autocomplete="off" onsubmit="return false">
+      <div class="field" style="min-width:340px">
+        <label for="wf-universe" title="Comma-separated coins to sweep. Empty = the standard 17-coin universe.">coins (empty = all 17)</label>
+        <input id="wf-universe" type="text" placeholder="e.g. ATOMUSDT, BCHUSDT">
+      </div>
+      <div class="field">
+        <label class="check" title="Run all four daily chunk shapes (1–4 day) for every coin. Weekly 8-day cannot fill an 8-week fold and is refused by the engine. Off = just daily 3-day.">
+          <input type="checkbox" id="wf-perm-geometry" checked> all chunk shapes</label>
+        <label class="check" title="Run both decision rules (argmax and directional hunter) for every setup. Off = just argmax.">
+          <input type="checkbox" id="wf-perm-decision" checked> both decision rules</label>
+      </div>
+      <div class="field">
+        <label for="wf-mintrades" title="Per-fold selection floor: on each 8-week test slice, a candidate setting must have made at least this many trades to be picked. Guards each fold's pick against three-trade flukes.">min trades per slice</label>
+        <input id="wf-mintrades" type="number" min="1" max="50" step="1" value="5">
+      </div>
+      <div class="field" style="min-width:280px">
+        <label for="wf-desc" title="Stored with the run so the intent survives next to the numbers.">what this run is for</label>
+        <input id="wf-desc" type="text" placeholder="one sentence">
+      </div>
+      <div class="field submit"><button id="wf-start" type="button">Start walk-forward</button></div>
+      <div class="field submit"><button id="wf-refresh" type="button" class="secondary">Refresh</button></div>
+    </form>
+    <div id="wf-error" class="error" hidden></div>
+    <div id="wf-view"><p class="note">Loading&hellip;</p></div>
+
+    <div class="section">
+      <h2>Null run &mdash; the luck yardstick</h2>
+      <p class="note">Re-runs the whole system with each member's real vote mix dealt onto random days
+        (zero market knowledge by construction &mdash; register entry 66). Same coins, shapes, rules and menu
+        as the real runs. At least two completed null runs are needed before the verdict below can be computed;
+        one null run takes about as long as a real run.</p>
+      <form class="controls" autocomplete="off" onsubmit="return false">
+        <div class="field">
+          <label for="wfnull-seed" title="Whole number 1-999. Different seeds give independent luck draws; the same seed always reproduces the same null run exactly.">Seed</label>
+          <input id="wfnull-seed" type="number" min="1" max="999" step="1" value="101">
+        </div>
+        <div class="field submit"><button id="wfnull-start" type="button" class="secondary">Fire null run</button></div>
+      </form>
+    </div>
+    <div class="section">
+      <h2>Real vs null &mdash; the verdict</h2>
+      <p class="note"><strong>The declared read.</strong> For every setup, fold by fold on identical windows:
+        real votes' holdout money minus the average of the null runs' money. A setup counts as
+        <em>paired-supported</em> when the middle fold of that difference is positive AND more than half its
+        folds are. The luck reference: each null run scored against the others the same way. The line a real
+        signal must clear: the highest luck count plus the spread between luck counts.</p>
+      <div class="field submit"><button id="wfnull-compare" type="button">Compute real vs null</button></div>
+      <div id="wfnull-compare-out"></div>
+    </div>
+    </div><!-- /bl-method-walkforward -->
+
+    <div id="bl-method-sweep" hidden>
     <form id="bl-form" class="controls" autocomplete="off" onsubmit="return false">
       <div class="field" style="flex:1;min-width:280px">
         <label for="bl-universe">Universe (comma-separated; empty = all 17)</label>
@@ -286,43 +358,23 @@
     </div>
     <div id="bl-error" class="error" hidden></div>
     <div id="bl-view"></div>
+    </div><!-- /bl-method-sweep -->
     </div><!-- /tab-bracket -->
 
     <div id="tab-walkforward" hidden>
     <section class="intro">
-      <h1>Walk-forward</h1>
-      <p>Marches train / test / holdout folds through the entire history of each coin. Per fold: models train
-        on everything before the fold (purged so no training candle can touch a later slice's trades), the
-        trade settings and agreement level
-        are picked on an 8-week <strong>test</strong> slice, and that pick is scored once on the next 8-week
-        <strong>holdout</strong> slice. Step 8 weeks, repeat — every era takes its turn as clean holdout. The
-        result per setup is a <strong>distribution over ~25&ndash;30 folds</strong>, which is what makes it
-        immune to the single-window placement luck that retired the previous instruments (QC 57).</p>
+      <h1>History weighting &amp; re-vote interval</h1>
+      <p>This page has ONE job, not yet built: tune, per coin, the time periods the workbench uses —
+        (a) how strongly recent history is weighted when training members, (b) how long a committee
+        vote stays valid before it must be re-cast, and (c) how each coin's data is divided for testing.
+        Its outputs will feed the Bracket lab as per-coin settings.</p>
+      <p class="note">Current state: the workbench runs on GLOBAL defaults measured once across all coins —
+        re-pick the dials and agreement level every 8 weeks, train on all history with a 52-week minimum —
+        from the decay study (member skill fades over ~a year; a committee's pick goes stale in months).
+        The raw material for per-coin tuning is already banked: every member's score on every holdout
+        window of every coin, from the first full walk-forward run. The tuning instrument itself is
+        designed with the owner before anything runs here — nothing on this page launches work.</p>
     </section>
-    <form class="controls" autocomplete="off" onsubmit="return false">
-      <div class="field" style="min-width:340px">
-        <label for="wf-universe" title="Comma-separated coins to sweep. Empty = the standard 17-coin universe.">coins (empty = all 17)</label>
-        <input id="wf-universe" type="text" placeholder="e.g. ATOMUSDT, BCHUSDT">
-      </div>
-      <div class="field">
-        <label class="check" title="Run all four daily chunk shapes (1–4 day) for every coin. Weekly 8-day cannot fill an 8-week fold and is refused by the engine. Off = just daily 3-day.">
-          <input type="checkbox" id="wf-perm-geometry" checked> all chunk shapes</label>
-        <label class="check" title="Run both decision rules (argmax and directional hunter) for every setup. Off = just argmax.">
-          <input type="checkbox" id="wf-perm-decision" checked> both decision rules</label>
-      </div>
-      <div class="field">
-        <label for="wf-mintrades" title="Per-fold selection floor: on each 8-week test slice, a candidate setting must have made at least this many trades to be picked. Guards each fold's pick against three-trade flukes.">min trades per slice</label>
-        <input id="wf-mintrades" type="number" min="1" max="50" step="1" value="5">
-      </div>
-      <div class="field" style="min-width:280px">
-        <label for="wf-desc" title="Stored with the run so the intent survives next to the numbers.">what this run is for</label>
-        <input id="wf-desc" type="text" placeholder="one sentence">
-      </div>
-      <div class="field submit"><button id="wf-start" type="button">Start walk-forward</button></div>
-      <div class="field submit"><button id="wf-refresh" type="button" class="secondary">Refresh</button></div>
-    </form>
-    <div id="wf-error" class="error" hidden></div>
-    <div id="wf-view"><p class="note">Loading&hellip;</p></div>
     </div><!-- /tab-walkforward -->
 
     <div id="tab-books" hidden>
@@ -519,6 +571,6 @@
     pruned to time / open / high / low / close / quote&nbsp;volume.
   </footer>
 
-  <script src="app.js?v=55"></script>
+  <script src="app.js?v=56"></script>
 </body>
 </html>

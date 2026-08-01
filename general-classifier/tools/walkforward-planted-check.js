@@ -141,10 +141,10 @@ async function runUnit(symbol, extra = {}) {
     const noi = await step('WFNOI (pure noise)', () => runUnit('WFNOIUSDT'));
     const s42 = await step('WFS42 (seed control)', () => runUnit('WFS42USDT'));
     const sig2 = await step('WFSIG determinism twin', () => runUnit('WFSIGUSDT'));
-    // THE NULL ARM against the planted signal: rotated votes on the coin
-    // with a REAL planted edge. If the rotation machinery is honest, the
-    // edge dies; if the "null" still earns on a signal we planted, the
-    // null is broken and no market null count can be believed.
+    // THE NULL RUN against the planted signal (QC 66 construction: each
+    // member's vote mix dealt onto random days). If the deal machinery is
+    // honest, the planted edge dies; if the "null" still earns on a signal
+    // we planted, the null is broken and no market null count matters.
     const sigN = await step('WFSIG null arm (seed 7)', () => runUnit('WFSIGUSDT', { nullShiftSeed: 7 }));
     const sigN2 = await step('WFSIG null determinism twin', () => runUnit('WFSIGUSDT', { nullShiftSeed: 7 }));
 
