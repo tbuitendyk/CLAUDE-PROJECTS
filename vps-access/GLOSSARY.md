@@ -27,6 +27,7 @@ RULES OF THIS DOCUMENT
 ## Phase 2 — LAUNCH
 | Term | Phase | Means exactly |
 |---|---|---|
+| walk-forward | 2-4 | the name of the whole current method, and of the tab that runs it: training only ever moves forward through history (train on the past -> pick on the test window -> score on the holdout window -> slide forward). Replaced the retired random-window-placement method that lives on the Bracket lab tab |
 | setup | 2 defined, 3 executed | one coin + one chunk length + one voting style; the unit of testing; 136 exist |
 | voting style | 2 chosen, 3b acts | how members turn readings into votes: most-likely-wins (up/down/flat compete; flat = no trade) or direction-hunter (up vs down; abstains when unsure) |
 | launcher | 2 | the committed script that fires a run, carrying the phase-4 reading rules written before any result exists |
