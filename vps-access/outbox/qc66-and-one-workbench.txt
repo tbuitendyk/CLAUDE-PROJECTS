@@ -1,0 +1,34 @@
+Your two orders shipped together: the luck test rebuilt your way, and one workbench again
+
+tl;dr both go-items are deployed as a single release. The luck test now
+works exactly as you designed it — each member's real mix of votes dealt
+onto random days, zero market knowledge by construction, nothing left to
+assume (register entry 66, credited to you). And the interface fork is
+undone: the Bracket lab is the one workbench again, with a "fold method"
+dropdown — walk-forward (train, test, hold, every fold) as the default,
+the retired layouts still selectable inside the sweep option — and the
+extra tab is now what you always thought it was: "History weighting &
+re-vote interval", holding only the per-coin tuning purpose, launching
+nothing. Hard-refresh once to pick it all up.
+
+ALSO NOW ON THE PAGE (no more script-only magic): a "Fire null run"
+control with a seed box, right in the workbench's walk-forward section,
+and a "Real vs null" button that computes the declared verdict — real
+board against the luck runs, the line it must clear, top setups, and the
+per-coin view — with every column explained in plain words. The engine
+refuses to mix constructions: old rotation-built luck runs are labeled
+superseded on their boards and excluded from the verdict.
+
+WHAT RUNS NEXT (already sequenced, one at a time, audits between): four
+rebuilt luck runs, seeds 101-104, ~5.5 hours each — the first fires as
+soon as the fake-coin gate passes on the deployed engine (the rebuilt
+luck test must destroy the planted pattern before it may judge real
+data). All four should be done within about a day; then the same
+pre-declared line gets applied to the CLEAN yardstick and you get the
+re-measured verdict. Until then the old verdict stays stamped
+provisional, as agreed.
+
+The full release went through the adversarial review before deploy, as
+always; anything it caught was fixed first.
+
+c.
