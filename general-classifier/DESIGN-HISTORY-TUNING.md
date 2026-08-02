@@ -38,17 +38,15 @@ the models.
   GUESSED (proposed start: the effective amount of the weakest setup
   that demonstrably worked); revisited once real probe results show
   where quality degrades.
+- **Age dial CLOSED (owner, 2026-08-02):** smooth per-day half-life
+  discount (each training example's weight halves per half-life of
+  age; nothing discarded). Candidate values: 6, 12, 24, 36 months,
+  plus no-discount as control — five age settings.
 - **Age discount applies to TRAINING only.** Test and hold scoring
   are never age-weighted; the dials change what members learn from,
   not how they are graded.
 
 ## PROPOSED, not yet accepted
-
-- **Age dial form:** discount-by-age with one number — the half-life,
-  the age at which a training day counts half as much. Candidates
-  derived from the H1a decay table (3, 6, 12 months) plus a
-  no-discount control arm. Alternative on the table: hard cutoff
-  (last N months only), which is the extreme case of the same dial.
 - **Re-vote dial meaning:** (a) committee re-votes on a fixed
   calendar every K days, or (b) an agreement once formed stays in
   force K days, then must be re-formed or the position closes.
