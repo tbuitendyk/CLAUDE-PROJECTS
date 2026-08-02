@@ -227,3 +227,36 @@ Design NOT complete: open on rulings A-D above. Next artifact after
 those rulings: the rule-2 build-order paragraph (which will also carry
 the declared picking metric, fold-combining rule, hold reading rule,
 and null comparison rule, each labeled DERIVED or GUESSED).
+
+## THE COMING BUILD — standing acceptance rule and manifest
+## (owner, 2026-08-03)
+
+**Acceptance rule: every component tweaked or implemented in the next
+release must make sense — kill the irrelevant, propose the missing.**
+No null test ships un-rebuilt, un-calibrated, or without a declared
+reading rule. Design-and-audit phase until the owner orders the build;
+nothing is touched front or back before that.
+
+Manifest (each item ships with plain-language why/how/when copy on the
+page, per WORKFLOW.md, which is the master text):
+1. History Tuning per this ledger (rulings C and D still open).
+2. Window-layout control: legacy 80/20 and 70/15/15 only; holdout
+   checkbox removed; interlaced machinery purged; reserve layout
+   61/13/13/13 added.
+3. Below-the-board reorganization: one null-tests section (both
+   tools, each naming the chance layer it prices), inspect labeled
+   as microscope, general compare-two-runs tool (differences always
+   listed; attributable only at exactly one difference).
+4. Both null tools rebuilt on the register-66 dealt-votes
+   construction; planted check for the sweep pipeline built and
+   passed before either is trusted.
+5. Declared reading rules printed by every null launcher: pass/fail
+   sentence, draw count, resolution floor.
+6. Settings visibility: window layout in the job header settings
+   table; arm tags on historical twin rows; gate/entry column with
+   cells matching the header format (active/breakout).
+7. Vocabulary purge of all user-facing strings (retired words out),
+   with a repo check keeping them out.
+8. Flagged for owner ruling, not yet in scope: legacy quick screen
+   and staged-picks protocol on the research tab (both nullless —
+   kill candidates under the acceptance rule).
