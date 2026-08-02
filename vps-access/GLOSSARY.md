@@ -40,6 +40,37 @@ let us derive it. ("Effective training days" = the weight-adjusted amount
 of training data the members really saw — equals calendar days when no
 age discount is applied, shrinks as the discount strengthens.)
 
+**History Tuning** (phase 5, DECIDE; optional second pass) — the
+Bracket lab feature that tunes the two time dials on ONE selected
+survivor: the age half-life (member training) and the retune cadence
+(the five trade variables re-picked every R weeks). Design ledger:
+DESIGN-HISTORY-TUNING.md.
+
+**pass** (History Tuning) — one complete run-through of the selected
+setup under one dial setting (one half-life x one retune setting).
+The grid is 35 passes per split.
+
+**split** (History Tuning) — one train/test/hold placement through
+history. Three splits (early/middle/late), expanding training, six
+disjoint test/hold windows. NEVER called a fold — fold stays reserved
+for the retired walk-forward instrument's step.
+
+**reference pass** — the pass with both dials off: members trained
+once with no age discount, trade variables picked once and never
+retuned. The untuned baseline that makes "did tuning beat not tuning"
+answerable.
+
+**retune** — the re-picking of the five trade variables on recent
+data every R weeks. The ONLY word for this ("re-vote" is retired).
+
+**decision trail** — the machine-readable record of every retrain and
+retune a pass performed (dates, lookbacks, candidates scored, winners
+picked). No trail, no null, no claim.
+
+**reading rule** — the pass/fail sentence stored in the run's record
+BEFORE it fires; the results page prints its verdict through it. It
+binds the instrument and the session, never the owner.
+
 ## Phase 3 — WALK (per setup, fold by fold)
 | Term | Phase | Means exactly |
 |---|---|---|
@@ -79,6 +110,10 @@ age discount is applied, shrinks as the discount strengthens.)
 | register | 5 | the numbered list of every trap ever caught (65 entries), each with its permanent check |
 
 ## Retired words — never use again
+
+- re-vote → retune
+- arm (History Tuning context) → pass / reference pass
+- fold (for History Tuning placements) → split
 recipe / trade recipe, cell -> dial combination
 experiment -> setup
 stretch, slice -> window
