@@ -42,16 +42,25 @@ the models.
   discount (each training example's weight halves per half-life of
   age; nothing discarded). Candidate values: 6, 12, 24, 36 months,
   plus no-discount as control — five age settings.
+- **Member retraining rides the half-life (owner, 2026-08-02):**
+  members are retrained periodically as the pass walks forward, and
+  the retraining interval equals the half-life setting itself
+  (6-month half-life = retrain every 6 months; no-discount control =
+  trained once, never retrained). Each retrain uses all history up to
+  that date, discounted by the same half-life. One number drives both
+  the discount curve and the retraining calendar.
 - **Age discount applies to TRAINING only.** Test and hold scoring
   are never age-weighted; the dials change what members learn from,
   not how they are graded.
 
 ## PROPOSED, not yet accepted
-- **Re-vote dial meaning:** (a) committee re-votes on a fixed
-  calendar every K days, or (b) an agreement once formed stays in
-  force K days, then must be re-formed or the position closes.
-  Session lean: (b). Candidates from the committee-decay curve:
-  7, 14, 28 days plus current behavior as control.
+- **Retune cadence (replaces 're-vote'; owner's level-2 framing,
+  2026-08-02):** the 5-variable combination (agreement level, gate,
+  entry method, tripwire/target distance, time limit) stays in force
+  R calendar weeks, then is retuned on recent data. Candidate R:
+  4, 8, 12 weeks, plus never-retuned-within-the-pass as control.
+  The lookback scoring each retune's candidates = a whole-number
+  multiple m of R (owner; the integer m still to be chosen).
 - **Grading protocol:** all passes are picked on the TEST 15% only;
   the results table is test-slice numbers. A separate "confirm
   winner" action runs the single chosen dial pair ONCE on the hold
