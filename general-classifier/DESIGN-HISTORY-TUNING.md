@@ -54,13 +54,15 @@ the models.
   not how they are graded.
 
 ## PROPOSED, not yet accepted
-- **Retune cadence (replaces 're-vote'; owner's level-2 framing,
-  2026-08-02):** the 5-variable combination (agreement level, gate,
-  entry method, tripwire/target distance, time limit) stays in force
-  R calendar weeks, then is retuned on recent data. Candidate R:
-  4, 8, 12 weeks, plus never-retuned-within-the-pass as control.
-  The lookback scoring each retune's candidates = a whole-number
-  multiple m of R (owner; the integer m still to be chosen).
+- **Retune cadence CLOSED (owner, 2026-08-02):** the 5-variable
+  combination (agreement level, gate, entry method, tripwire/target
+  distance, time limit) stays in force R calendar weeks, then is
+  retuned on recent data — ALL FIVE re-picked each retune ("that's
+  the point of the exercise"). Candidate R: 4, 8, 12 weeks, plus
+  never-retuned-within-the-pass as control. Lookback per retune =
+  m x R with m auto-permuted over {1, 2}. Combination-dial settings
+  per probe: 3 R x 2 m + 1 control = 7; with 5 age settings the
+  grid is 35 passes per fold.
 - **Grading protocol:** all passes are picked on the TEST 15% only;
   the results table is test-slice numbers. A separate "confirm
   winner" action runs the single chosen dial pair ONCE on the hold
