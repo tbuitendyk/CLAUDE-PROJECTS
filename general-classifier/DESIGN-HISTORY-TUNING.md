@@ -18,8 +18,11 @@ the models.
 - **One survivor at a time.** The probe runs on a single selected
   survivor-board row, not a fleet.
 - **Activation rule.** "History Tuning" activates only for rows from
-  70/15/15-structure runs; otherwise the control stays inactive with
-  the reason written on it.
+  70/15/15-structure runs AND whose gate actually uses the votes
+  (directional or active). Always-gate rows are excluded (owner,
+  2026-08-02): the always gate enters regardless of votes, so both
+  tuning dials would act on nothing. Inactive control states the
+  reason in words.
 - **Nothing hides: effective training days.** Every pass reports the
   weight-adjusted amount of training data its members actually saw
   (sum of per-day age weights, expressed in days). With no age
