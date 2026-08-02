@@ -1,0 +1,22 @@
+For your approval: the history-timeframe probe, added inside the Bracket lab
+
+tl;dr One paragraph, per the new rule. Nothing builds until you say go.
+
+You asked (your point 3) for pass-through probes of the historic data
+with selected existing models, to find the best history timeframes per
+asset configuration. I will ADD one new section inside the Bracket lab
+— no existing control moved or changed — called "History window probe":
+you pick one or more of the existing proven asset configurations, pick
+a list of history-window lengths to try (for example 6, 12, 18, 24
+months — the list is editable), and the probe re-runs each
+configuration identically except that training only sees the chosen
+window of history. It reports one named table with a key: net paper
+dollars per window length per configuration, graded on a final
+untouched stretch of history that played no part in choosing the
+winner. Existing models and methodology untouched; results feed your
+step 4 null tests when YOU decide a setup looks good.
+
+Reply "go" and it gets built exactly as written; reply with changes and
+the paragraph comes back revised first.
+
+c.
