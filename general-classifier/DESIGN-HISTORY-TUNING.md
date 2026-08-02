@@ -268,6 +268,5 @@ page, per WORKFLOW.md, which is the master text):
    only; sweep + null boards + two reads = survivors; + History Tuning
    + replication + paper book = the full evidence chain). WORKFLOW.md
    is the master text it renders.
-9. Flagged for owner ruling, not yet in scope: legacy quick screen
-   and staged-picks protocol on the research tab (both nullless —
-   kill candidates under the acceptance rule).
+9. RULED OUT OF SCOPE (owner, 2026-08-03): the Research tab is left
+   alone entirely — this build is the Bracket lab only.
