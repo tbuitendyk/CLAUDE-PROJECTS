@@ -210,7 +210,17 @@ B. RULED (owner, 2026-08-03): both options, in roles. (1) Board runs
    original run's search+holdout ranges where history allows; any hold
    that overlaps them is downgraded to instrument-reading-only, with
    the binding grade from a forward paper book. Needs the owner's yes.
-C. **Window-boundary rule.** Close-at-boundary contradicts the
+C. RULED (owner, 2026-08-03): Rule 2 — don't start what can't
+   finish — with PER-CELL reach purge to conserve maximum data: near
+   a window edge, a candidate cell opens no new trade whose own
+   worst-case lifetime (its time limit + entry offset + settlement)
+   would cross the boundary. The zone is computed per cell, never a
+   fixed constant (41h cell ≈ 2-3 days, 161h ≈ 7-8; the old ~10-day
+   figure was the worst case only). Declared property: shorter-limit
+   cells trade closer to edges — true in live use, identical for real
+   and null passes. Close-at-boundary is dead: no amputated trades,
+   no new simulator plumbing. ORIGINAL ISSUE (for the record):
+   **window-boundary rule contradicted the simulator.** Close-at-boundary contradicts the
    simulator (it walks trades to their own horizon, boundary-blind);
    the codebase convention is purge-out (a trade whose reach crosses
    a boundary is never opened). Adopting purge-out avoids new
