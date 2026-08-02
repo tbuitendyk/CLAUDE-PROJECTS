@@ -49,6 +49,16 @@ the models.
   trained once, never retrained). Each retrain uses all history up to
   that date, discounted by the same half-life. One number drives both
   the discount curve and the retraining calendar.
+- **The decision trail is recorded, fully (owner, 2026-08-02):**
+  every pass writes its complete dynamic trajectory, machine-readable:
+  each retrain date (with half-life and effective training days at
+  that moment); each retune date, its lookback, all candidate
+  combinations scored and the winner picked; and the exact periods
+  each configuration was in force across test and hold. Purpose: the
+  null check must replay the SAME schedule with the SAME freedoms on
+  informationless votes (register 64 — machinery freedom manufactures
+  apparent skill), so the overfitting granted by dynamic shopping is
+  priced into the null, not ignored. No trail, no null, no claim.
 - **Age discount applies to TRAINING only.** Test and hold scoring
   are never age-weighted; the dials change what members learn from,
   not how they are graded.
