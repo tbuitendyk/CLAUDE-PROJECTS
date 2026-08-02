@@ -1,0 +1,48 @@
+Done as ordered: interface rewound to the real Bracket lab, null campaign killed
+
+tl;dr The interface is back to the Bracket lab you built your results
+with — full controls front and center, no dropdown, no archived
+section, no mystery tab. Seed 102 is killed and no further null runs
+fire. Hard-refresh once to pick it up. Two genuine cautions for the
+timeframe-tuning work are at the bottom; both are about not fooling
+ourselves, neither is a request to run more null sweeps.
+
+WHAT CHANGED (live now, engine untouched, nothing restarted):
+- The Bracket lab pane is exactly the pre-fork one (restored from the
+  last commit before the walk-forward fork, plus only what you ordered
+  by name: the running-job strip on every tab, and the data-load
+  guard). The fold-method dropdown, the archived-layouts section and
+  the walk-forward machinery are off the page.
+- The "History weighting & re-vote interval" tab is gone. Its purpose
+  — finding each asset's best history timeframes — comes back as
+  controls ADDED INSIDE the Bracket lab, per your four-point plan, and
+  only after you approve the one-paragraph proposal first.
+- Killed: walkforward-20260802-015906-wfnull2-s102 at 46/136. Nothing
+  new fires. The campaign is closed on your order.
+- Found and fixed while rewinding: the research tab has been showing
+  an error instead of pair screens whenever the newest job on the box
+  was a walk-forward one — its picker assumed every job document was a
+  pair screen. That crash was real and is register entry 67. Part of
+  what made the interface look broken was exactly this.
+- Bookkeeping code changes, same release: a stop script for the active
+  job (classifier-abort-active.sh) and the per-seed reader rewritten to
+  plain vocabulary. All committed, all in the ledger.
+
+THE TWO CAUTIONS YOU ASKED FOR (plain words, no jargon):
+1. "Proven" still has one step left — and it is YOUR step 4, nothing
+   new. The signals are strong candidates; the final check that random
+   votes cannot produce the same numbers is the null test you already
+   put at the end of your plan. Until a strengthened setup passes it,
+   I will write "promising", not "proven".
+2. When we tune timeframes, the winner must be checked on data that
+   played no part in picking it. If the same stretch of history both
+   chooses the best timeframe and grades it, the grade flatters — every
+   candidate gets many tries and the luckiest try wins. The tuning
+   sweeps should set aside a final untouched stretch for the grade.
+   That is a design habit, not extra runs.
+
+Next from me: nothing builds until you approve the one-paragraph
+proposal for the timeframe probes. It arrives in your inbox right
+after this mail.
+
+c.
