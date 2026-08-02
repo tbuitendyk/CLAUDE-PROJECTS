@@ -32,6 +32,14 @@ RULES OF THIS DOCUMENT
 | voting style | 2 chosen, 3b acts | how members turn readings into votes: most-likely-wins (up/down/flat compete; flat = no trade) or direction-hunter (up vs down; abstains when unsure) |
 | launcher | 2 | the committed script that fires a run, carrying the phase-4 reading rules written before any result exists |
 
+**training floor** (phase 2, LAUNCH) — the minimum number of effective
+training days a pass must have before it is allowed to run. A pass below
+the training floor refuses at launch and prints its effective number
+instead of producing a result. First value GUESSED until probe results
+let us derive it. ("Effective training days" = the weight-adjusted amount
+of training data the members really saw — equals calendar days when no
+age discount is applied, shrinks as the discount strengthens.)
+
 ## Phase 3 — WALK (per setup, fold by fold)
 | Term | Phase | Means exactly |
 |---|---|---|
