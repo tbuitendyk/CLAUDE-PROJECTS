@@ -25,12 +25,16 @@ the models.
   (sum of per-day age weights, expressed in days). With no age
   discount this equals calendar days; with discounting it shrinks.
   A column in the results table, always.
-- **A refusal floor.** Any pass whose effective training days fall
-  below the floor refuses to run, loudly, stating its number — it
-  never returns a plausible-looking result from starved members.
-  The floor's first value is labeled GUESSED (proposed start: the
-  effective amount of the weakest setup that demonstrably worked);
-  revisited once real probe results show where quality degrades.
+- **A training floor, SYSTEM-WIDE (owner, 2026-08-02).** The training
+  floor = the minimum effective training days a run must have to be
+  allowed to run. It applies to EVERY launch in the system, not just
+  History Tuning: for undiscounted runs effective days equal calendar
+  days, so it is one check at launch. Any run below the floor refuses
+  loudly, stating its number — it never returns a plausible-looking
+  result from starved members. The floor's first value is labeled
+  GUESSED (proposed start: the effective amount of the weakest setup
+  that demonstrably worked); revisited once real probe results show
+  where quality degrades.
 - **Age discount applies to TRAINING only.** Test and hold scoring
   are never age-weighted; the dials change what members learn from,
   not how they are graded.
