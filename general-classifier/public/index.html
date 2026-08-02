@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>General Classifier</title>
-  <link rel="stylesheet" href="style.css?v=24">
+  <link rel="stylesheet" href="style.css?v=25">
 </head>
 <body>
   <header class="topbar">
@@ -21,15 +21,13 @@
   <nav class="tabbar">
     <button type="button" class="tab active" id="tab-btn-research" data-tab="research">Research</button>
     <button type="button" class="tab" id="tab-btn-bracket" data-tab="bracket"
-      title="The workbench. Pick the fold method inside: walk-forward (train, test, hold, every fold — the default) or the single-split sweep (combos × options × the bracket menu; the retired window layouts live in its archived section). Launch runs, fire null runs, watch progress, read boards — all here.">Bracket lab</button>
-    <button type="button" class="tab" id="tab-btn-walkforward" data-tab="walkforward"
-      title="Per-coin tuning of the time periods: how strongly recent history is weighted when training members, and how long a committee vote stays valid before re-voting. Its outputs feed the Bracket lab. The tuning instrument is designed with the owner before anything runs here.">History weighting &amp; re-vote interval</button>
+      title="The execution-permutation lab: asset combos (singles/doubles/triples) × permutable options × the OCO bracket menu, slim-then-promote, live leaderboard, nulls only on survivors.">Bracket lab</button>
     <button type="button" class="tab" id="tab-btn-books" data-tab="books"
       title="The live paper books — frozen pre-registered experiments verifying earlier setups in real time. A different category of work from the research tools, kept out of the way.">Paper books</button>
   </nav>
 
   <main>
-    <div id="runbanner" class="runbanner quiet">Checking for a running job…</div>
+    <div id="runbanner" class="runbanner quiet">Checking for a running job&hellip;</div>
     <div id="tab-research">
     <section class="intro">
       <h1>General Classifier</h1>
@@ -123,90 +121,13 @@
     <div id="tab-bracket" hidden>
     <section class="intro">
       <h1>Bracket lab</h1>
-      <p>The workbench. Pick the fold method below &mdash; each method carries its own description,
-        controls and boards. Null runs fire from the walk-forward section.</p>
-    </section>
-    <form class="controls" autocomplete="off" onsubmit="return false">
-      <div class="field" style="min-width:440px">
-        <label for="bl-foldmethod"
-          title="How measuring windows are formed. Walk-forward (the proven method, default): train, test, hold, in that order, within every fold, marching through all of history. Single-split sweep: the older machinery, kept selectable — its retired window layouts live in its archived section — to re-prove what doesn't work.">Fold method</label>
-        <select id="bl-foldmethod">
-          <option value="walkforward" selected>Walk-forward &mdash; train, test, hold, every fold (default)</option>
-          <option value="sweep">Single-split sweep &mdash; retired window layouts inside</option>
-        </select>
-      </div>
-    </form>
-
-    <div id="bl-method-walkforward">
-    <section class="intro">
-      <p>Walk-forward marches train / test / holdout folds through the entire history of each coin. Per fold:
-        members train on everything before the fold (purged so no training candle can touch a later window's
-        trades), the dial combination and agreement level are picked on an 8-week <strong>test window</strong>,
-        and that pick is scored once on the next 8-week <strong>holdout window</strong>. Step 8 weeks, repeat —
-        every era takes its turn as clean holdout. Runs single-coin committees (6 members) today; context-coin
-        committees are sweep-only until extended.</p>
-    </section>
-    <form class="controls" autocomplete="off" onsubmit="return false">
-      <div class="field" style="min-width:340px">
-        <label for="wf-universe" title="Comma-separated coins to sweep. Empty = the standard 17-coin universe.">coins (empty = all 17)</label>
-        <input id="wf-universe" type="text" placeholder="e.g. ATOMUSDT, BCHUSDT">
-      </div>
-      <div class="field">
-        <label class="check" title="Run all four daily chunk shapes (1–4 day) for every coin. Weekly 8-day cannot fill an 8-week fold and is refused by the engine. Off = just daily 3-day.">
-          <input type="checkbox" id="wf-perm-geometry" checked> all chunk shapes</label>
-        <label class="check" title="Run both decision rules (argmax and directional hunter) for every setup. Off = just argmax.">
-          <input type="checkbox" id="wf-perm-decision" checked> both decision rules</label>
-      </div>
-      <div class="field">
-        <label for="wf-mintrades" title="Per-fold selection floor: on each 8-week test slice, a candidate setting must have made at least this many trades to be picked. Guards each fold's pick against three-trade flukes.">min trades per slice</label>
-        <input id="wf-mintrades" type="number" min="1" max="50" step="1" value="5">
-      </div>
-      <div class="field" style="min-width:280px">
-        <label for="wf-desc" title="Stored with the run so the intent survives next to the numbers.">what this run is for</label>
-        <input id="wf-desc" type="text" placeholder="one sentence">
-      </div>
-      <div class="field submit"><button id="wf-start" type="button">Start walk-forward</button></div>
-      <div class="field submit"><button id="wf-refresh" type="button" class="secondary">Refresh</button></div>
-    </form>
-    <div id="wf-error" class="error" hidden></div>
-    <div id="wf-view"><p class="note">Loading&hellip;</p></div>
-
-    <div class="section">
-      <h2>Null runs</h2>
-      <p class="note">Re-runs the whole system with each member's real vote mix dealt onto random days
-        (zero market knowledge by construction &mdash; register entry 66; the yardstick every skill claim must beat). Same coins, shapes, rules and menu
-        as the real runs. At least two completed null runs are needed before the verdict below can be computed;
-        one null run takes about as long as a real run.</p>
-      <form class="controls" autocomplete="off" onsubmit="return false">
-        <div class="field">
-          <label for="wfnull-seed" title="Whole number 1-999. Different seeds give independent null runs; the same seed always reproduces the same null run exactly.">Seed</label>
-          <input id="wfnull-seed" type="number" min="1" max="999" step="1" value="101">
-        </div>
-        <div class="field submit"><button id="wfnull-start" type="button" class="secondary">Fire null run</button></div>
-      </form>
-    </div>
-    <div class="section">
-      <h2>Real vs null &mdash; the verdict</h2>
-      <p class="note"><strong>The declared read.</strong> For every setup, fold by fold on identical windows:
-        real votes' holdout money minus the average of the null runs' money. A setup counts as
-        <em>paired-supported</em> when the middle fold of that difference is positive AND more than half its
-        folds are. The reference: each null run scored against the others the same way. The line a real
-        signal must clear: the highest null run count plus the spread between the null runs' counts.</p>
-      <div class="field submit"><button id="wfnull-compare" type="button">Compute real vs null</button></div>
-      <div id="wfnull-compare-out"></div>
-    </div>
-    </div><!-- /bl-method-walkforward -->
-
-    <div id="bl-method-sweep" hidden>
-    <section class="intro">
-      <p>The single-split sweep: asset <strong>combos</strong> (a trade asset alone, or with one or two
-        context assets) &times; any <strong>permuted options</strong> &times; the full
-        <strong>OCO bracket execution menu</strong>: stop-entries at p&plusmn;d off the entry candle, first
-        rail filled becomes the position and the other its stop, time exit at t. Slim grid first, top combos
-        promoted to the full committee (6 members for singles, 8 with context assets) with agreement-level
-        rungs. Selection is mechanical (best net $, min-trade floor) and every menu is stamped. Its own null
-        machinery works on promoted survivors only. Ambiguous hourly bars always resolve AGAINST the book and
-        are counted. The retired window layouts live in the archived section below.</p>
+      <p>Sweeps asset <strong>combos</strong> (a trade asset alone, or with one or two context assets) &times;
+        any <strong>permuted options</strong> &times; the full <strong>OCO bracket execution menu</strong>:
+        stop-entries at p&plusmn;d off the entry candle, first rail filled becomes the position and the other its
+        stop, time exit at t. Slim grid first (logreg views), top combos promoted to the full committee (6 members for singles, 8 with context assets) with
+        quorum rungs. Selection is mechanical (best net $, min-trade floor) and every menu is stamped. No nulls
+        here by design &mdash; fire the null on a promoted survivor and it replays everything downstream of the
+        combo. Ambiguous hourly bars always resolve AGAINST the book and are counted.</p>
     </section>
     <form id="bl-form" class="controls" autocomplete="off" onsubmit="return false">
       <div class="field" style="flex:1;min-width:280px">
@@ -325,14 +246,7 @@
           <input type="checkbox" id="bl-holdout"> hold back a final 15% (never searched)</label>
         <span id="bl-holdout-note" class="note" hidden>always on for the chronological and interlaced layouts</span>
       </div>
-      
-      <div class="field">
-        <label for="bl-mintrades" title="Selection floor: execution cells below this many test trades never win">min trades</label>
-        <input id="bl-mintrades" type="number" min="1" max="200" step="1" value="10">
-      </div>
-      <details class="archived" style="flex-basis:100%">
-        <summary title="The window-layout instrument (legacy / chronological / interlaced / both) is retired from daily use: the seed check showed single-placement holdout verdicts are window-placement noise (QC 57). It stays runnable here for reproducing the recorded runs; new work uses the walk-forward instrument.">archived instrument — window layouts (retired from daily use, QC 57)</summary>
-        <div class="field" style="min-width:280px">
+      <div class="field" style="min-width:280px">
         <label for="bl-layout"
           title="WHERE THE THREE WINDOWS LIVE ON THE CALENDAR. legacy: today's split — train on the oldest 70%, pick settings in the next 15%, judge on the most recent 15% (percent-sized, unchanged from every earlier run). chronological + interlaced are the QUOTA-FIRST pair built for comparison: both size their evaluation windows as whole 63-day (9-week) blocks — G groups' worth each for search and holdout — so FOR ANY SHAPE both contain exactly the same number of potential trade days per window. chronological puts them contiguous at the recent end; interlaced sprinkles them through the whole history (5 training blocks of 49 days + 2 evaluation blocks per 371-day group, slotted by the seeded random rule: search-or-holdout-first coin flip, first eval block in position 2 or 3, second in 5, 6 or 7), so a verdict spans every era instead of one. both: runs every setup twice, one arm per layout, same seed, for the built-in comparison — double the compute. All purge (chunks trimmed so no candle is shared between training and evaluation) is paid by the TRAINING set in both quota layouts, so evaluation counts stay exact.">window layout</label>
         <select id="bl-layout">
@@ -348,7 +262,10 @@
           title="STRICT COMPARISON SWITCH (auto-band runs only). Each arm normally calibrates its own dormant band on its own training set, which makes the band a second difference channel between the arms. With this on, both arms use one band fit on the chunks that are TRAINING IN BOTH layouts — unseen as evaluation by either arm, so nothing leaks and the layout is the only variable left. Default off: a band fit on the arm's own training set is the methodologically proper per-arm behaviour.">
           <input type="checkbox" id="bl-sharedband"> shared band across arms</label>
       </div>
-      </details>
+      <div class="field">
+        <label for="bl-mintrades" title="Selection floor: execution cells below this many test trades never win">min trades</label>
+        <input id="bl-mintrades" type="number" min="1" max="200" step="1" value="10">
+      </div>
       <div class="field submit"><button id="bl-start-btn" type="button">Start sweep</button></div>
       <div class="field submit"><button id="bl-stop" type="button" class="danger"
         title="Kill switch: stops the sweep at its current training; everything completed so far stays persisted and readable.">Stop jobs</button></div>
@@ -363,24 +280,7 @@
     </div>
     <div id="bl-error" class="error" hidden></div>
     <div id="bl-view"></div>
-    </div><!-- /bl-method-sweep -->
     </div><!-- /tab-bracket -->
-
-    <div id="tab-walkforward" hidden>
-    <section class="intro">
-      <h1>History weighting &amp; re-vote interval</h1>
-      <p>This page has ONE job, not yet built: tune, per coin, the time periods the workbench uses —
-        (a) how strongly recent history is weighted when training members, (b) how long a committee
-        vote stays valid before it must be re-cast, and (c) how each coin's data is divided for testing.
-        Its outputs will feed the Bracket lab as per-coin settings.</p>
-      <p class="note">Current state: the workbench runs on GLOBAL defaults measured once across all coins —
-        re-pick the dials and agreement level every 8 weeks, train on all history with a 52-week minimum —
-        from the decay study (member skill fades over ~a year; a committee's pick goes stale in months).
-        The raw material for per-coin tuning is already banked: every member's score on every holdout
-        window of every coin, from the first full walk-forward run. The tuning instrument itself is
-        designed with the owner before anything runs here — nothing on this page launches work.</p>
-    </section>
-    </div><!-- /tab-walkforward -->
 
     <div id="tab-books" hidden>
     <div id="books-pager-top" class="books-pager" hidden></div>
@@ -576,6 +476,6 @@
     pruned to time / open / high / low / close / quote&nbsp;volume.
   </footer>
 
-  <script src="app.js?v=57"></script>
+  <script src="app.js?v=58"></script>
 </body>
 </html>

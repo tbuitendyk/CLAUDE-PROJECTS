@@ -104,7 +104,7 @@
   // setups in real time and shouldn't clutter — or distract from — the
   // research tools. Selection survives reloads via the URL hash, so a
   // bookmarked #books goes straight to the books.
-  const TAB_PANES = { research: ['tab-research', 'tab-research-2'], bracket: ['tab-bracket'], walkforward: ['tab-walkforward'], books: ['tab-books'] };
+  const TAB_PANES = { research: ['tab-research', 'tab-research-2'], bracket: ['tab-bracket'], books: ['tab-books'] };
   function showTab(name) {
     const tab = TAB_PANES[name] ? name : 'research';
     for (const [key, ids] of Object.entries(TAB_PANES)) {
@@ -116,12 +116,12 @@
   }
   // ---- cross-tab running-job notice ----------------------------------------
   // One job runs at a time, but each tab lists only its own kind, so a job
-  // of another kind was invisible: a walk-forward sweep owned the machine
-  // while the Bracket lab tab read as idle (owner, 2026-07-31). The strip is
-  // ALWAYS present with a truthful state — idle, running-elsewhere (loud),
-  // or running-on-this-tab (quiet) — so it never appears or vanishes under
-  // a control the owner is about to click. It only READS the batch list the
-  // tabs already use; it cannot touch the job.
+  // of another kind was invisible: a sweep owned the machine while another
+  // tab read as idle (owner, 2026-07-31). The strip is ALWAYS present with
+  // a truthful state — idle, running-elsewhere (loud), or running-on-this-
+  // tab (quiet) — so it never appears or vanishes under a control the owner
+  // is about to click. It only READS the batch list the tabs already use;
+  // it cannot touch the job.
   //
   // This whole block must stay ABOVE the initial showTab() call below:
   // showTab paints the strip, and painting reads runningJob — declared-
@@ -131,24 +131,16 @@
   let runBannerHtml = null; // last painted content — repaint only on change
   let runBannerKnown = false; // no idle claim until one poll has actually answered
   function ownerTabOf(id) {
-    // walkforward jobs live on the Bracket lab tab since the 2026-08-01
-    // reorganization: one workbench, methods chosen by dropdown.
-    return String(id).startsWith('bracketlab-') || String(id).startsWith('walkforward-')
-      ? 'bracket' : 'research';
+    if (String(id).startsWith('bracketlab-')) return 'bracket';
+    if (String(id).startsWith('walkforward-')) return null; // no tab renders these since the 2026-08-02 rewind
+    return 'research';
   }
   function paintRunBanner() {
     const el = $('runbanner');
     if (!el) return;
     const activeBtn = document.querySelector('.tabbar .tab.active');
     const active = activeBtn ? activeBtn.dataset.tab : 'research';
-    const labels = { bracket: 'Bracket lab', walkforward: 'Walk-forward', research: 'Research' };
-    // Which fold-method section shows this job, and is it visible? A job
-    // hidden behind the method dropdown must make the strip go LOUD, not
-    // quiet — the strip exists so a running job is never invisible.
-    const jobMethod = runningJob && String(runningJob.id).startsWith('walkforward-') ? 'walkforward'
-      : runningJob && String(runningJob.id).startsWith('bracketlab-') ? 'sweep' : null;
-    const methodEl = jobMethod ? $(`bl-method-${jobMethod}`) : null;
-    const methodHidden = !!(methodEl && methodEl.hidden);
+    const labels = { bracket: 'Bracket lab', research: 'Research', books: 'Paper books' };
     let html;
     let quiet = false;
     if (!runningJob) {
@@ -157,18 +149,19 @@
       // download (the cache-write guard, 2026-07-31). Fully-cached single
       // runs stay allowed and the strip makes no claim about them.
       // No idle claim is made before the first poll has answered.
-      html = runBannerKnown ? 'No screen or sweep is running.' : 'Checking for a running job…';
+      html = runBannerKnown ? 'No screen or sweep is running.' : 'Checking for a running job\u2026';
       quiet = true;
-    } else if (runningJob.tab === active && !methodHidden) {
-      html = `The running job is on this tab: ${esc(runningJob.id)} — ${runningJob.done}/${runningJob.total} done.`;
+    } else if (runningJob.tab === active) {
+      html = `The running job is on this tab: ${esc(runningJob.id)} \u2014 ${runningJob.done}/${runningJob.total} done.`;
       quiet = true;
-    } else if (runningJob.tab === active && methodHidden) {
-      html = `A job is running on this tab but its section is hidden by the fold-method choice: `
-        + `${esc(runningJob.id)} — ${runningJob.done}/${runningJob.total} done.`
-        + `<button type="button" id="runbanner-go">Show the running job</button>`;
+    } else if (!runningJob.tab) {
+      // a job kind no tab renders (e.g. a leftover walk-forward doc): stay
+      // loud everywhere — the strip exists so a running job is never invisible
+      html = `A background job is running: ${esc(runningJob.id)} \u2014 ${runningJob.done}/${runningJob.total} done. `
+        + `Another screen or sweep, Load Data, and any run needing a download are refused until it finishes.`;
     } else {
       const label = labels[runningJob.tab];
-      html = `A <strong>${esc(label)}</strong> job is running: ${esc(runningJob.id)} — `
+      html = `A <strong>${esc(label)}</strong> job is running: ${esc(runningJob.id)} \u2014 `
         + `${runningJob.done}/${runningJob.total} done. Another screen or sweep, Load Data, and any run `
         + `needing a download are refused until it finishes.`
         + `<button type="button" id="runbanner-go">Open the ${esc(label)} tab</button>`;
@@ -180,10 +173,7 @@
     const go = $('runbanner-go');
     if (go) {
       go.addEventListener('click', () => {
-        // land the owner where the job is actually VISIBLE: right tab AND
-        // the right fold-method section
         showTab(runningJob.tab);
-        if (jobMethod) showFoldMethod(jobMethod);
         paintRunBanner();
       });
     }
@@ -206,293 +196,6 @@
     b.addEventListener('click', () => showTab(b.dataset.tab));
   });
   showTab((window.location.hash || '').replace('#', ''));
-
-
-  // ---- walk-forward tab (DESIGN-WALKFORWARD.md) ------------------------------
-  const wfViewEl = $('wf-view');
-  const wfErrEl = $('wf-error');
-  const m$wf = (v) => (v == null ? '—' : (v < 0 ? '-' : '+') + '$' + Math.abs(v).toFixed(2));
-
-  function renderWalkforward(doc) {
-    const running = doc.status === 'running';
-    const p = doc.params || {};
-    const perf = doc.perf || {};
-    const isNull = p.arm === 'null';
-    const header = `${esc(doc.id)} — ${esc(doc.status)}${running && doc.progress ? ' — ' + esc(doc.progress) : ''}`;
-
-    // The same three-part job block the Bracket lab carries (owner,
-    // 2026-08-01): what the run is FOR, every setting that shapes what its
-    // numbers mean, and live progress tiles — on the page, not on trust.
-    const descBlock = doc.description
-      ? `<p class="jobdesc">${esc(doc.description)}</p>`
-      : '<p class="jobdesc jobdesc-missing">No description was recorded for this run.</p>';
-    const uni = p.universe || [];
-    const shapes = p.permute && p.permute.geometry
-      ? 'all daily shapes — 1/2/3/4-day (weekly-8d excluded: week-long chunks can never fill an 8-week window past the safety margin)'
-      : esc((p.set && p.set.geometry) || '—');
-    const decs = p.permute && p.permute.decision
-      ? 'both — argmax and directional'
-      : esc((p.set && p.set.decision) || '—');
-    const planLine = perf.unitsTotal
-      ? `${uni.length} coins × ${p.permute && p.permute.geometry ? 4 : 1} shape(s) × ${p.permute && p.permute.decision ? 2 : 1} decision rule(s) = ${perf.unitsTotal} setups`
-      : '';
-    const settingsBlock = `
-      <table class="settings">
-        <tr><th>Arm</th><td>${isNull
-          ? `<strong>NULL — each member's real vote mix dealt onto random days, per fold (seed ${esc(String(p.nullShiftSeed))}); this run is a null run, the yardstick</strong>`
-          : 'real — members’ actual votes'}</td>
-            <th>Universe</th><td>${uni.length} coins${uni.length ? ` <span class="cellsub" title="${esc(uni.join(', '))}">(hover for the list)</span>` : ''}</td></tr>
-        <tr><th>Chunk shapes</th><td>${shapes}</td>
-            <th>Decision rules</th><td>${decs}</td></tr>
-        <tr><th>Windows</th><td>train = all history before each fold (purged by the full trade reach) · test 8 weeks · holdout 8 weeks · step 8 weeks</td>
-            <th>Warm-up</th><td>52 weeks of history before the first fold</td></tr>
-        <tr><th>Execution grid</th><td>d ${(p.dMults || []).join('/')}×band · t ${(p.tHours || []).join('/')}h · gates ${(p.gates || []).join('/')} · entry ${(p.entries || []).join('/')}</td>
-            <th>Fees</th><td>$${p.feePerLeg != null ? (2 * p.feePerLeg).toFixed(2) : '—'} per round trip</td></tr>
-        <tr><th>Pick rule</th><td>per fold: best net $ on the test window across agreement levels 1–6 × the grid, ≥${p.minTradesSlice ?? '—'} trades</td>
-            <th>Engine</th><td>${esc(p.engineVersion || 'not recorded')}</td></tr>
-      </table>`;
-    const ratePerMin = perf.elapsedMs > 0 && perf.unitsDone > 0 ? perf.unitsDone / (perf.elapsedMs / 60000) : null;
-    const perfBlock = `
-      <div class="section"><h2>Progress &amp; performance</h2>
-      ${descBlock}
-      <p class="note">${planLine}</p>
-      ${settingsBlock}
-      <div class="tiles">
-        ${tile('Status', esc(doc.status), running && doc.progress ? esc(doc.progress) : '')}
-        ${tile('Setups', `${perf.unitsDone ?? 0} / ${perf.unitsTotal ?? '—'}`, 'coin × shape × decision')}
-        ${tile('Rate', ratePerMin ? ratePerMin.toFixed(1) + '/min' : '—', perf.workers > 1 ? `${perf.workers} threads` : '')}
-        ${tile('Elapsed', fmtDur(perf.elapsedMs), '')}
-        ${tile('ETA', running ? fmtDur(perf.etaMs) : '—', running ? 'at current pace' : esc(doc.status))}
-      </div>
-      </div>`;
-
-    // Rank by drift-adjusted skill when the engine recorded it (1.29+);
-    // older docs fall back to raw fold money and say so in the column.
-    const rankOf = (r) => (r.skillMedian ?? r.holdMedian ?? -Infinity);
-    const rows = (doc.wfRows || []).slice()
-      .sort((x, y) => rankOf(y) - rankOf(x))
-      .map((r, i) => {
-        const pt = r.holdTrades ? r.holdTotal / r.holdTrades : null;
-        return `<tr>
-        <td>${i + 1}</td>
-        <td><strong>${esc(r.trade)}</strong> ${esc(r.geometry)} ${esc(r.decision)}</td>
-        <td>${r.foldsScored}/${r.foldsPlanned}</td>
-        <td class="${(r.skillMedian ?? 0) >= 0 ? 'up' : 'down'}"><strong>${r.skillMedian == null ? '—' : m$wf(r.skillMedian)}</strong>
-          <div class="cellsub">${r.skillMedian == null ? 'not recorded by this engine version' : `${r.skillPositive}/${r.foldsScored} folds beat long`}</div></td>
-        <td class="${(r.holdMedian ?? 0) >= 0 ? 'up' : 'down'}"><strong>${m$wf(r.holdMedian)}</strong>
-          <div class="cellsub">${m$wf(r.iqrLo)} … ${m$wf(r.iqrHi)}</div></td>
-        <td>${r.foldsPositive}/${r.foldsScored}</td>
-        <td class="${(r.holdTotal ?? 0) >= 0 ? 'up' : 'down'}">${m$wf(r.holdTotal)}
-          <div class="cellsub">${m$wf(r.holdTotal - (r.alwaysLongTotal || 0))} vs long</div></td>
-        <td>${r.holdWins}/${r.holdTrades}<div class="cellsub">${m$wf(pt)}/t</div></td>
-        <td>${r.detailFile ? `<button class="wf-detail" data-file="${esc(r.detailFile)}" data-label="${esc(r.trade)} ${esc(r.geometry)} ${esc(r.decision)}" title="Every fold of this setup: when, which settings were picked, and what the holdout slice paid">folds</button>` : '—'}</td>
-      </tr>`;
-      }).join('');
-    return `<p class="note">${header}</p>
-      ${isNull ? `<p class="note down"><strong>NULL RUN — this board is the yardstick, not a result.</strong>
-        Each member's real vote mix was dealt onto random days inside each fold (seed ${esc(String(doc.params.nullShiftSeed))}),
-        so the votes carry no knowledge of the days they trade; whatever passes here passes by chance.
-        Nothing on this board can be selected. (Runs from engines before 1.31 used the retired
-        rotation construction — register entry 66 — and are superseded.)</p>` : ''}
-      ${perfBlock}
-      <div class="section"><h2>Walk-forward board</h2>
-      <p class="note"><strong>One row per setup; every number is HOLDOUT money</strong> — earned on 8-week
-        slices the fold's settings never saw, summed or summarized across all folds.
-        KEY — <em>folds</em>: holdout slices scored / planned (skips = thin data or the safety
-        margin that keeps a fold's trades out of the next slice; never selection).
-        <em>skill med $</em>: the middle fold's holdout money MINUS always-going-long the same slice, per $100
-        book — the sort key (audit 9b): raw fold money rewards riding a rising market, this subtracts the ride;
-        second line = folds that beat always-long. <em>median fold $</em>: the middle fold's raw holdout money,
-        kept beside the new key (QC 21); second line = the middle half's range (25th…75th percentile).
-        <em>positive</em>: folds that made money. <em>total $</em>: summed across all folds —
-        one coin's whole history, so unlike the retired boards this IS one setup's stitched record; second
-        line = total minus always-going-long the same slices (the skill question). <em>W/T</em>: wins over
-        trades, with money per trade under it.</p>
-      <div class="tablewrap"><table>
-        <tr><th title="Rank by median drift-adjusted fold money (skill med $); older docs without it rank by raw median">#</th>
-        <th title="coin · chunk shape · decision rule">setup</th>
-        <th title="Holdout slices scored / planned. Skips mean thin data (gaps, a short history) or the safety margin that keeps a fold's trades out of the next slice — never selection. Each skipped fold states its reason in the fold table.">folds</th>
-        <th title="The middle fold's holdout money minus always-going-long the same slice — the sort key. Positive means the machinery typically beat holding. Second line: how many folds beat always-long.">skill med $</th>
-        <th title="The middle fold's raw holdout money per $100 book, kept beside the drift-adjusted key. Second line: 25th to 75th percentile fold.">median fold $</th>
-        <th title="Folds whose holdout slice made money">positive</th>
-        <th title="All folds' holdout money summed — this setup's stitched record over its whole history. Second line: the same total minus always-going-long the same slices; positive means the machinery beat doing nothing clever.">total $ <div class="cellsub">vs long</div></th>
-        <th title="Holdout wins over trades across all folds; money per trade beneath">W/T</th>
-        <th title="Per-fold detail">detail</th></tr>
-        ${rows || '<tr><td colspan="9" class="note">no setups scored yet</td></tr>'}</table></div>
-      <p class="note">Read with the standing cautions: totals across SETUPS still overlap (QC 36/47 —
-        re-cuts of one coin are not independent), and nothing here has faced its noise comparison yet.</p>
-      ${doc.failures && doc.failures.length ? `<p class="note down"><strong>${doc.failures.length} setup(s) failed to run</strong> — these are missing from the board, not scored at zero. First: ${esc(doc.failures[0].key)}: ${esc(doc.failures[0].error)}</p>` : ''}
-      <div id="wf-detail-out"></div></div>`;
-  }
-
-  function renderWfDetail(d, label) {
-    const rows = (d.folds || []).map((f) => f.skipped
-      ? `<tr><td>${new Date(f.testStart).toISOString().slice(0, 10)}</td><td colspan="6" class="note">skipped — ${esc(f.skipped)}</td></tr>`
-      : `<tr><td>${new Date(f.testStart).toISOString().slice(0, 10)}</td>
-         <td>${esc(f.cell.entry)}/${esc(String(f.cell.gate ?? '-'))}/d${f.cell.dMult ?? '-'}/t${f.cell.tHours}h q${f.cell.quorum}</td>
-         <td class="${f.testPnl >= 0 ? 'up' : 'down'}">${m$wf(f.testPnl)}</td>
-         <td class="${f.holdPnl >= 0 ? 'up' : 'down'}"><strong>${m$wf(f.holdPnl)}</strong></td>
-         <td>${f.holdWins}/${f.holdTrades}</td>
-         <td class="${(f.holdPnl - (f.alwaysLong || 0)) >= 0 ? 'up' : 'down'}">${m$wf(f.holdPnl - (f.alwaysLong || 0))}</td>
-         <td>${f.holdStops}${f.holdAmbiguous ? ` (${f.holdAmbiguous} amb)` : ''}</td></tr>`).join('');
-    return `<h3>${esc(label)} — every fold</h3>
-      <p class="note"><strong>Fold table.</strong> One row per fold, oldest first.
-      KEY — <em>fold</em>: the test slice's start date. <em>picked settings</em>: entry/gate/stop distance/
-      timeout/agreement level chosen on that fold's test slice. <em>test $</em>: what the pick made on the
-      slice it was picked on (flattering by construction). <em>holdout $</em>: what it made on the next
-      8 weeks, which it never saw — the honest column. <em>W/T</em>: holdout wins/trades.
-      <em>vs long</em>: holdout money minus always-going-long the same slice. <em>stops</em>: holdout trades
-      ended by the stop rail (amb = bars that spanned both rails, resolved against the book).</p>
-      <div class="tablewrap"><table>
-      <tr><th>fold</th><th>picked settings</th><th>test $</th><th>holdout $</th><th>W/T</th><th>vs long</th><th>stops</th></tr>
-      ${rows}</table></div>`;
-  }
-
-  let wfCurrent = null;
-  let wfTimer = null;
-  async function refreshWalkforward() {
-    try {
-      wfErrEl.hidden = true;
-      const list = await (await fetch('api/batches')).json();
-      const ids = (list.batches || []).map((b) => b.id).filter((id) => String(id).startsWith('walkforward-'));
-      if (!ids.length) { wfViewEl.innerHTML = '<p class="note">No walk-forward runs yet. Start one above.</p>'; return; }
-      const doc = await (await fetch(`api/batch/${encodeURIComponent(ids[0])}`)).json();
-      wfCurrent = doc.id;
-      // The 5s poll redraws the board; an open fold table must survive the
-      // redraw or the owner loses their place every five seconds.
-      const openDetail = $('wf-detail-out');
-      const keepDetail = openDetail && openDetail.innerHTML ? openDetail.innerHTML : '';
-      wfViewEl.innerHTML = renderWalkforward(doc);
-      if (keepDetail) $('wf-detail-out').innerHTML = keepDetail;
-      wfViewEl.querySelectorAll('.wf-detail').forEach((btn) => {
-        btn.addEventListener('click', async () => {
-          const out = $('wf-detail-out');
-          out.innerHTML = '<p class="note">reading fold detail…</p>';
-          try {
-            const r = await fetch(`api/walkforward/${encodeURIComponent(wfCurrent)}/unit?file=${encodeURIComponent(btn.dataset.file)}`);
-            const d = await r.json();
-            if (!r.ok) throw new Error(d.error || r.status);
-            out.innerHTML = renderWfDetail(d, btn.dataset.label);
-            out.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-          } catch (err) { out.innerHTML = `<p class="note">could not read folds: ${esc(err.message)}</p>`; }
-        });
-      });
-      clearTimeout(wfTimer);
-      if (doc.status === 'running') wfTimer = setTimeout(refreshWalkforward, 5000);
-    } catch (err) { wfErrEl.hidden = false; wfErrEl.textContent = err.message; }
-  }
-  $('wf-start').addEventListener('click', async () => {
-    try {
-      wfErrEl.hidden = true;
-      const uni = $('wf-universe').value.trim();
-      const res = await fetch('api/walkforward', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          universe: uni ? uni.split(',').map((x) => x.trim().toUpperCase()).filter(Boolean) : undefined,
-          permute: { geometry: $('wf-perm-geometry').checked, decision: $('wf-perm-decision').checked },
-          // sent raw: a mis-typed value must be rejected loudly by the
-          // engine, not silently corrected here
-          minTradesSlice: $('wf-mintrades').value.trim() || undefined,
-          description: $('wf-desc').value.trim(),
-        }),
-      });
-      const body = await res.json();
-      if (!res.ok) throw new Error(body.error || `HTTP ${res.status}`);
-      refreshWalkforward();
-    } catch (err) { wfErrEl.hidden = false; wfErrEl.textContent = err.message; }
-  });
-  $('wf-refresh').addEventListener('click', refreshWalkforward);
-  refreshWalkforward();
-
-  // ---- fold-method selector (owner reorganization, 2026-08-01) --------------
-  // One workbench: the Bracket lab tab hosts both methods; this dropdown
-  // switches which section shows. Explicit user choice, like the tabs —
-  // remembered across reloads.
-  const foldMethodEl = $('bl-foldmethod');
-  function showFoldMethod(method) {
-    const m = method === 'sweep' ? 'sweep' : 'walkforward';
-    $('bl-method-walkforward').hidden = m !== 'walkforward';
-    $('bl-method-sweep').hidden = m !== 'sweep';
-    foldMethodEl.value = m;
-    try { localStorage.setItem('bl-foldmethod', m); } catch { /* private mode */ }
-  }
-  foldMethodEl.addEventListener('change', () => showFoldMethod(foldMethodEl.value));
-  try { showFoldMethod(localStorage.getItem('bl-foldmethod') || 'walkforward'); } catch { showFoldMethod('walkforward'); }
-
-  // ---- null run: fire from the page (owner-ordered, 2026-08-01) -------------
-  // Mirrors the real-run form's universe and trade floor so the two arms
-  // stay the same population; the engine stamps the arm into the job.
-  $('wfnull-start').addEventListener('click', async () => {
-    try {
-      wfErrEl.hidden = true;
-      // sent raw, like the trade floor: a mis-typed seed must be rejected
-      // loudly by the engine — Number() here could turn garbage into
-      // Infinity, which JSON silently drops, which would run the REAL arm
-      // under a null label (the exact fault the arm guards exist for)
-      const seed = $('wfnull-seed').value.trim();
-      // an empty seed means "blank" to the engine, and blank means the
-      // REAL arm — refuse here rather than fire the wrong arm politely
-      if (!seed) throw new Error('enter a seed (a whole number, 1-999) — without one this would fire a REAL run, not a null run');
-      const uni = $('wf-universe').value.trim();
-      const res = await fetch('api/walkforward', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          universe: uni ? uni.split(',').map((x) => x.trim().toUpperCase()).filter(Boolean) : undefined,
-          permute: { geometry: $('wf-perm-geometry').checked, decision: $('wf-perm-decision').checked },
-          minTradesSlice: $('wf-mintrades').value.trim() || undefined,
-          nullShiftSeed: seed,
-          label: `wfnull2-s${seed}`,
-          description: `null run seed ${seed} (vote mix dealt onto random days, register entry 66) — the yardstick; selects nothing`,
-        }),
-      });
-      const body = await res.json();
-      if (!res.ok) throw new Error(body.error || `HTTP ${res.status}`);
-      refreshWalkforward();
-    } catch (err) { wfErrEl.hidden = false; wfErrEl.textContent = err.message; }
-  });
-
-  // ---- real vs null: the verdict, on the page --------------------------------
-  $('wfnull-compare').addEventListener('click', async () => {
-    const out = $('wfnull-compare-out');
-    out.innerHTML = '<p class="note">computing — reading every fold of every run…</p>';
-    try {
-      const r = await fetch('api/wfnull/compare');
-      const d = await r.json();
-      if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`);
-      const nullCounts = d.luckCounts.join(', ');
-      const verdict = d.distinguishable
-        ? '<strong class="up">ABOVE the line</strong> — the real board’s lead sits outside the null runs’ own variation. Nothing is selected by this alone: replication rules come next, declared first.'
-        : '<strong class="down">NOT above the line</strong> — the real board cannot be told from the null runs by this read.';
-      const topRows = d.top.map((t) => `<tr><td>${esc(t.key)}</td>
-        <td class="${t.med >= 0 ? 'up' : 'down'}">${m$wf(t.med)}</td><td>${t.pos}/${t.n}</td></tr>`).join('');
-      const coinRows = Object.entries(d.perCoin)
-        .sort((a, b) => b[1].supported - a[1].supported)
-        .map(([c, v]) => `<tr><td>${esc(c)}</td><td>${v.supported}/${v.setups}</td></tr>`).join('');
-      const pairNote = d.realSetupsTotal != null && d.setups !== d.realSetupsTotal
-        ? ` <strong class="down">(only ${d.setups} of the real run's ${d.realSetupsTotal} setups could be paired — the rest are missing from a null run; treat this verdict with suspicion)</strong>`
-        : '';
-      const exclNote = d.excluded && d.excluded.length
-        ? `<p class="note">Excluded from the yardstick: ${d.excluded.map((x) => `${esc(x.id)} — ${esc(x.why)}`).join('; ')}.</p>`
-        : '';
-      out.innerHTML = `
-        <p class="note">Compared: <strong>${esc(d.realId)}</strong> (real) against ${d.nullIds.length} null runs
-          (${d.nullIds.map(esc).join(', ')}).</p>
-        ${exclNote}
-        <p><strong>Paired-supported setups</strong> — real: <strong>${d.realCount}</strong> of ${d.setups}${pairNote}
-          · null runs’ counts: ${nullCounts} · the line: ${d.line} · ${verdict}</p>
-        <div class="tablewrap"><table>
-          <tr><th title="coin · chunk length · voting style">setup</th>
-          <th title="the middle fold of (real holdout money minus the null runs' average) — dollars per $100 book">pair med $</th>
-          <th title="folds where the real run came out ahead of the null runs’ average / paired folds">beat null avg</th></tr>
-          ${topRows}</table></div>
-        <p class="note">Top 15 by paired median — reported, never selected from.
-          KEY — <em>pair med $</em>: middle fold of (real money minus null average) on identical windows;
-          <em>beat null avg</em>: folds where the real run came out ahead of the null runs’ average.</p>
-        <div class="tablewrap"><table>
-          <tr><th>coin</th><th title="paired-supported setups out of that coin's cuts — one coin is ONE evidence unit however many cuts it has">supported</th></tr>
-          ${coinRows}</table></div>`;
-    } catch (err) { out.innerHTML = `<p class="note down">could not compute: ${esc(err.message)}</p>`; }
-  });
 
   // ---- CPU throttle (semi-auto balancer pattern) -----------------------------
 
@@ -875,6 +578,12 @@
   }
 
   function renderBatch(doc) {
+    if (doc.kind === 'walkforward') {
+      // Defensive only (the picker filters these out): a walk-forward doc has
+      // no runs array, so the header below would throw on it.
+      batchViewEl.innerHTML = `<p class="note">${esc(doc.id)} — a retired walk-forward job, not a pair screen. Its records live in the reports ledger.</p>`;
+      return;
+    }
     const s = doc.summary;
     const range = doc.params.allLoaded ? 'all loaded data' : `${esc(doc.params.startMonth)}→${esc(doc.params.endMonth)}`;
     const header = `${esc(doc.id)} — ${esc(doc.status)}${doc.status === 'running' && doc.progress ? ` — ${esc(doc.progress)}` : ''}
@@ -1476,12 +1185,16 @@
       const res = await fetch('api/batches');
       const body = await jsonBody(res);
       if (!res.ok) throw new Error(body.error || `HTTP ${res.status}`);
-      if (!body.batches.length) {
+      // Walk-forward docs (retired from this interface, 2026-08-02) are not
+      // pair screens: they have no runs array and none of the screen params,
+      // so they neither belong in this picker nor survive renderBatch.
+      const screens = body.batches.filter((b) => b.kind !== 'walkforward');
+      if (!screens.length) {
         batchViewEl.innerHTML = '<p class="note">No pair screens have been run yet.</p>';
         setBatchStatus('');
         return;
       }
-      const targetId = fillPicker(body.batches);
+      const targetId = fillPicker(screens);
       const res2 = await fetch(`api/batch/${targetId}`);
       const doc = await jsonBody(res2);
       if (!res2.ok) throw new Error(doc.error || `HTTP ${res2.status}`);
@@ -2374,7 +2087,7 @@
         ${tile('Trainings', `${perf.runsDone ?? 0} / ${perf.runsTotal ?? '—'}`, 'the raw denominator count')}
         ${tile('Rate', perf.ratePerMin ? perf.ratePerMin.toFixed(1) + '/min' : '—', (perf.secPerTraining ? perf.secPerTraining.toFixed(1) + 's/training' : '') + (perf.workers > 1 ? ` · ${perf.workers} threads` : ''))}
         ${tile('Elapsed', fmtDur(perf.elapsedMs), '')}
-        ${tile('ETA', running ? fmtDur(perf.etaMs) : '—', running ? 'at current pace' : esc(doc.status))}
+        ${tile('ETA', running ? fmtDur(perf.etaMs) : '—', running ? 'at current pace' : 'finished')}
       </div>
       ${doc.failures && doc.failures.length ? `<p class="note">${doc.failures.length} unit(s) failed — first: ${esc(doc.failures[0].key)}: ${esc(doc.failures[0].error)}</p>` : ''}
       </div>`;
@@ -2582,7 +2295,6 @@
         <button id="bl-v-go">run the tests</button></p>
       <div id="bl-verdict-out"></div></div>`;
     const compareBlock = `
-      <details class="archived section-archive"><summary title="Part of the retired window-layout instrument (QC 57): compares the chronological and interlaced arms of the recorded runs. Kept for reading the historical record; new comparisons come from the walk-forward instrument.">archived — layout comparison (historical runs)</summary>
       <div class="section"><h2>Layout comparison — same settings, two window geometries</h2>
       <p class="note">Compares the <strong>chronological</strong> and <strong>interlaced</strong> arms of one
         run (or two separate runs). Two separate runs link ONLY when every stored setting matches — the
@@ -2591,7 +2303,7 @@
       <p class="note">run A <select id="bl-c-a"></select>
         run B <select id="bl-c-b"><option value="">— A is a "both" run —</option></select>
         <button id="bl-c-go">compare</button></p>
-      <div id="bl-compare-out"></div></div></details>`;
+      <div id="bl-compare-out"></div></div>`;
     blViewEl.innerHTML = `<p class="note">${header}</p>${perfBlock}${repBlock}${leaderBlock}${inspectBlock}${verdictBlock}${compareBlock}${nullBlock}`;
     // ---- inside view ------------------------------------------------------
     blViewEl.querySelectorAll('.bl-inspect').forEach((btn) => {
