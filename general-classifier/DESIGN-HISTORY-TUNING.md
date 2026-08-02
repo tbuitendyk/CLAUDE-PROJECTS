@@ -187,7 +187,23 @@ A. RULED (owner, 2026-08-03): retrains are anchored to the DATA
    (b) keep the coupling, relabel H>=12 arms "discount-only", and add
    ONE arm — no discount + periodic retrain — so the retrain effect
    is attributable. Session recommendation: (b).
-B. **Hold contamination by prior selection.** The survivor was picked
+B. RULED (owner, 2026-08-03): both options, in roles. (1) Board runs
+   may carry a RESERVE: layout 61/13/13/13 — the final 13% of history
+   untouched by the board run, sealed for the History Tuning winner's
+   binding grade. Launcher prints the reserve length in weeks and
+   refuses below a minimum (GUESSED first value). (2) For survivors
+   whose original run carried no reserve (all current ones), the
+   History Tuning run's entire timeline ends where the original run's
+   test window begins — every window clean by construction, refuse at
+   launch if three splits above the training floor no longer fit; the
+   binding grade is then the forward paper book. One-touch rule: a
+   reserve grade is ONE VERIFICATION EVENT — the winner's grade and
+   its matched null draws together, published once; nothing is ever
+   re-picked from reserve results. History Tuning remains an OPTIONAL
+   second step always; null-sweep-then-select on first-pass boards is
+   unaffected (nulls replay their real counterpart's windows, never
+   consuming extra data). ORIGINAL ISSUE (for the record): **hold
+   contamination by prior selection.** The survivor was picked
    on the most recent history; late-placement holds re-grade data the
    setup already had to look good on (H1 measured this anti-predicting
    at era distance). Options: pin placements so holds fall outside the
