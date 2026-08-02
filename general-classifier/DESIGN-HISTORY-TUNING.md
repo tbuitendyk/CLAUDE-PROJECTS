@@ -65,6 +65,16 @@ the models.
 
 ## AGREED — final rulings (owner, 2026-08-02)
 
+- **Retune dial CLOSED (owner, 2026-08-02) — restored after an edit
+  wiped it (caught by the independent design review):** the 5-variable
+  combination (agreement level, gate, entry method, tripwire/target
+  distance, time limit) stays in force R calendar weeks, then ALL FIVE
+  are re-picked on recent data ("that's the point of the exercise").
+  Candidates: R = 4, 8, 12 weeks, plus never-retuned as control.
+  Lookback per retune = m x R, with m auto-permuted over {1, 2}.
+  Combination settings: 3 R x 2 m + 1 never-control = 7; with the
+  5 age settings the grid is 35 passes per fold, 105 across 3 folds.
+
 - **Folds: three**, placed early / middle / late through history —
   105 passes total on the selected setup. One fold ranks an era;
   three rank the dials.
