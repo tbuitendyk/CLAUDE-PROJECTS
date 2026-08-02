@@ -166,7 +166,17 @@ session record; the substance:
 
 ### NEEDS OWNER RULING
 
-A. **The retrain coupling is structurally broken for long half-lives.**
+A. RULED (owner, 2026-08-03): retrains are anchored to the DATA
+   CALENDAR, not the walk — a milestone every half-life counted from
+   the start of loaded history (60 months at H=12: retrains at months
+   13, 25, 37, 49), regardless of where test/hold windows fall. At
+   each milestone the 6 members are retrained fresh on all history so
+   far with the half-life discount; old members are discarded (the
+   snapshot-blending variant was considered and set aside — it would
+   change the committee's voting arithmetic). Every H arm now
+   genuinely retrains; the walk-length objection is void. ORIGINAL
+   ISSUE (for the record): **the retrain coupling was structurally
+   broken for long half-lives.**
    A ~10.8-month test window cannot contain a 12/24/36-month retrain
    interval: H=24/36 arms never retrain at all (their retrain calendar
    is identical to the control's), H=12 first retrains inside hold.
