@@ -257,6 +257,17 @@ page, per WORKFLOW.md, which is the master text):
    cells matching the header format (active/breakout).
 7. Vocabulary purge of all user-facing strings (retired words out),
    with a repo check keeping them out.
-8. Flagged for owner ruling, not yet in scope: legacy quick screen
+8. **Bracket lab help page (owner, 2026-08-03):** the lab's Help
+   opens a DEDICATED page for the Bracket lab that explains everything
+   thoroughly and IN ORDER: each page component shown with a graphical
+   reference (an annotated visual replica of that component, callouts
+   pointing at its controls, drawn in HTML/SVG so it always matches
+   the shipped page), usage guidelines per component, and the PATHS
+   through the interface compared side by side — what each path
+   achieves and what it cannot claim (e.g., sweep-and-look = direction
+   only; sweep + null boards + two reads = survivors; + History Tuning
+   + replication + paper book = the full evidence chain). WORKFLOW.md
+   is the master text it renders.
+9. Flagged for owner ruling, not yet in scope: legacy quick screen
    and staged-picks protocol on the research tab (both nullless —
    kill candidates under the acceptance rule).
