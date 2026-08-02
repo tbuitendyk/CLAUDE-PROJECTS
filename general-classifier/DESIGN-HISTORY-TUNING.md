@@ -63,39 +63,39 @@ the models.
   are never age-weighted; the dials change what members learn from,
   not how they are graded.
 
-## PROPOSED, not yet accepted
-- **Retune cadence CLOSED (owner, 2026-08-02):** the 5-variable
-  combination (agreement level, gate, entry method, tripwire/target
-  distance, time limit) stays in force R calendar weeks, then is
-  retuned on recent data — ALL FIVE re-picked each retune ("that's
-  the point of the exercise"). Candidate R: 4, 8, 12 weeks, plus
-  never-retuned-within-the-pass as control. Lookback per retune =
-  m x R with m auto-permuted over {1, 2}. Combination-dial settings
-  per probe: 3 R x 2 m + 1 control = 7; with 5 age settings the
-  grid is 35 passes per fold.
-- **Grading protocol:** all passes are picked on the TEST 15% only;
-  the results table is test-slice numbers. A separate "confirm
-  winner" action runs the single chosen dial pair ONCE on the hold
-  15% and stamps that as the grade. The hold is touched exactly once
-  and never shopped on.
-- **Search shape:** full grid as the FIND pass (~4 age × 4 re-vote =
-  16 passes on the one setup), declared direction-finding per the
-  wide-to-find rule; the confirm step is the narrow phase.
+## AGREED — final rulings (owner, 2026-08-02)
 
-## OPEN — must be settled before any build order
+- **Folds: three**, placed early / middle / late through history —
+  105 passes total on the selected setup. One fold ranks an era;
+  three rank the dials.
+- **Grading:** picking happens on TEST stretches only. The winner is
+  declared ONCE, on combined test performance across all three folds
+  (never per fold — that would be three shopping trips). The declared
+  winner is then graded on the three HOLD stretches, each touched
+  exactly once.
+- **Training floor first value: 180 effective days, GUESSED.**
+  Arithmetic constraint that sets the ceiling: a half-life discount
+  caps effective training at ~1.44 x half-life regardless of loaded
+  history; the 6-month arm caps at ~262 effective days, so any floor
+  above that would make the 6-month candidate structurally
+  unrunnable (the money-gate disease). 180 sits under the cap and
+  still catches genuinely starved runs.
+- **Slice boundary: nothing survives a boundary.** Any position open
+  when a test/hold stretch ends is closed at that stretch's final
+  price and counted there; every stretch starts flat; no agreement
+  carries across. The existing simulator's edge behavior gets
+  VERIFIED at build time, not assumed — any mismatch is reported.
+- **Real-time feedback (owner):** the monitoring environment provides
+  constant meaningful live progress — which fold, which dial pair,
+  retrains/retunes completed, effective training days, and partial
+  results as they land. No silent grinding.
+- **Review requirements (owner):** (1) a complete adversarial code
+  review after the implementation is written, before deploy (QC 63
+  practice, full scope); (2) an INDEPENDENT design review of this
+  document by fresh eyes before the build order is issued.
 
-1. Owner's answers to the age-dial form and re-vote meaning (above).
-2. **The deepest fork — "recent vs old MODELS":** when the age
-   discount is active, are members still trained ONCE at the 70%
-   boundary (one model per member, old days discounted)? Or does the
-   owner mean literally recent and old MODELS — members re-trained
-   periodically as time advances, with vote influence weighted by
-   model age? The two mechanisms are different machines; the words
-   so far fit both.
-3. The floor's starting value and exactly which historical setup
-   anchors it.
-4. Edge rules at slice boundaries when a K-day agreement is in force
-   as a slice ends (position forced closed? carried?). Must match
-   whatever the existing simulator already does, stated explicitly.
-5. Cost statement: the launcher must show pass count x estimated
-   minutes before anything fires.
+## Status
+
+Design COMPLETE pending the independent design review. Next artifact:
+the rule-2 build-order paragraph for the owner's go, incorporating
+any review findings.
