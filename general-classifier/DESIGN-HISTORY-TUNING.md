@@ -226,14 +226,27 @@ C. RULED (owner, 2026-08-03): Rule 2 — don't start what can't
    a boundary is never opened). Adopting purge-out avoids new
    simulator plumbing and matches every existing instrument — but it
    changes the owner's ruled sentence. Needs the owner's yes.
-D. **Placement geometry must be pinned.** Three 70/15/15 splits of
+D. RULED (owner, 2026-08-03): expanding-training splits. The usable
+   span (loaded history minus the original run's test+hold months per
+   ruling B, or minus the sealed reserve) carves its back stretch into
+   six equal, disjoint test/hold windows (~6 months each on today's
+   data): early split trains 1-14, tests 15-20, holds 21-26; middle
+   trains 1-26, tests 27-32, holds 33-38; late trains 1-38, tests
+   39-44, holds 45-50. Training always = ALL history before the
+   split's test window. Floors checked per arm at launch with dates
+   printed; refuse on any failure. Recipe applies proportionally to
+   the real span at launch. ORIGINAL ISSUE (for the record):
+   **placement geometry was undefined.** Three 70/15/15 splits of
    sub-spans: the spans, anchors and overlaps are undefined and every
    retrain/floor number depends on them. A concrete proposal comes
    with the build order once A-C are ruled.
 
 ## Status
 
-Design NOT complete: open on rulings A-D above. Next artifact after
+Rulings A-D all CLOSED (2026-08-03). Remaining before the build order:
+declared reading rules (picking metric, split-combining rule, hold
+rule, null comparison rule — each DERIVED/GUESSED), glossary update
+(new terms defined, collisions settled), declared null draw counts. Next artifact after
 those rulings: the rule-2 build-order paragraph (which will also carry
 the declared picking metric, fold-combining rule, hold reading rule,
 and null comparison rule, each labeled DERIVED or GUESSED).
