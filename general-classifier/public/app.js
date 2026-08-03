@@ -1970,19 +1970,24 @@
       <td>${m$(p.b.holdPerTrade)}</td>
       <td class="blk-l ${p.dHoldPnl >= 0 ? 'up' : 'down'}"><strong>${m$(p.dHoldPnl)}</strong></td>
     </tr>`).join('');
+    const diffList = (d.differences && d.differences.length)
+      ? `<p class="note"><strong>Settings that differ (listed before anything else, always):</strong> ${d.differences.map((x) => `${esc(x.key)} (${esc(JSON.stringify(x.a))} vs ${esc(JSON.stringify(x.b))})${x.shaping ? '' : ' [cosmetic]'}`).join(' · ')}</p>`
+      : '<p class="note"><strong>No settings differ between these runs.</strong></p>';
+    const stamp = d.attributable
+      ? `<p class="note" style="color:var(--accent)"><strong>ATTRIBUTABLE:</strong> exactly one result-shaping setting differs (${esc(d.attributableTo || '')}) — the paired money differences below measure that setting's effect.</p>`
+      : '';
     return `
       <h3>${esc(d.arms.a)} vs ${esc(d.arms.b)} — ${d.jobs.map(esc).join(' + ')}</h3>
+      ${diffList}${stamp}
       ${d.warnings.map((w) => `<p class="note" style="color:#c33"><strong>${esc(w)}</strong></p>`).join('')}
-      <p class="note"><strong>Paired setups table.</strong> One row per setup measured under BOTH window
-        geometries — the only like-for-like comparison here, since the two arms' held-back windows are
-        different calendar periods (recent stretch vs sprinkled through history).
+      <p class="note"><strong>Paired setups table.</strong> One row per setup present in BOTH runs.
         KEY — <em>setup</em>: asset, time-period shape, decision rule.
-        <em>held-back $</em>: money the chosen cell made on that arm's held-back window, dollars per $100
-        book. <em>trades</em>: trades it actually took there (differing counts between arms is a finding,
-        not an error — potential trade days are forced identical, opinions are not).
-        <em>$/trade</em>: money per trade, the rate that compares fairly across arms.
-        <em>Δ held-back $</em>: ${esc(d.arms.b)} minus ${esc(d.arms.a)} — positive means the interlaced-side
-        arm earned more. Sorted by largest absolute difference; first 40 shown, all stored.</p>
+        <em>held-back $</em>: money the chosen cell made on that run's hold window, dollars per $100
+        book. <em>trades</em>: trades it actually took there (differing counts is a finding, not an
+        error). <em>$/trade</em>: money per trade, the rate that compares fairly.
+        <em>Δ held-back $</em>: B minus A. If the two runs' hold windows are different calendar periods,
+        compare per-setup rows and rates, never the sums. Sorted by largest absolute difference; first
+        40 shown, all stored.</p>
       <div class="tablewrap"><table>
         <tr><th rowspan="2" title="asset · shape · decision">setup</th>
           <th colspan="3" title="the ${esc(d.arms.a)} arm">${esc(d.arms.a)}</th>

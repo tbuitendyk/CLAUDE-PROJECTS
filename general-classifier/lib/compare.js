@@ -84,40 +84,55 @@ function compareRows(rowsA, rowsB, armA, armB) {
 }
 
 // One entry point for both paths: a 'both' doc alone, or two linked docs.
+// THE GENERAL COMPARISON (owner ruling, 2026-08-03): any two stored runs.
+// Every differing setting is LISTED FIRST; shared rows are paired; the money
+// deltas are stamped ATTRIBUTABLE only when exactly ONE result-shaping
+// setting differs — the one-variable rule as a tool. With more differences
+// the comparison still shows but proves nothing, and says so. The old
+// same-settings refusal (built for the retired layout face-off) is gone
+// with the interlaced purge; historical 'both' runs still compare their own
+// two arms.
+const NEVER_ATTRIBUTABLE = new Set(['description', 'label', 'engineVersion']);
+
 function compareDocs(docA, docB) {
   const warnings = [];
   if (!docB || docB.id === docA.id) {
     if (!docA.params || docA.params.windowLayout !== 'both') {
-      throw new Error(`${docA.id} is not a 'both' run — pass a second run id to link`);
+      throw new Error(`${docA.id} is a single run — pick a second run to compare against`);
     }
     const rowsA = realRowsFor(docA, 'chronological');
     const rowsB = realRowsFor(docA, 'interlaced');
     if (!rowsA.length || !rowsB.length) throw new Error(`${docA.id} is missing an arm (${rowsA.length} chronological rows, ${rowsB.length} interlaced)`);
-    return { mode: 'both-job', jobs: [docA.id], warnings, ...compareRows(rowsA, rowsB, 'chronological', 'interlaced') };
+    return { mode: 'both-job', jobs: [docA.id], warnings, differences: [], attributable: true, attributableTo: 'windowLayout (historical both-run)', ...compareRows(rowsA, rowsB, 'chronological', 'interlaced') };
   }
   const diffs = settingsDiff(docA.params, docB.params);
-  if (diffs.length) {
-    throw new Error(`runs cannot be linked — settings differ beyond the layout: ${diffs.join(', ')}`);
-  }
-  const la = docA.params.windowLayout || 'legacy';
-  const lb = docB.params.windowLayout || 'legacy';
-  if (la === lb) throw new Error(`both runs use the "${la}" layout — a comparison needs one of each`);
-  if (la === 'legacy' || lb === 'legacy' || la === 'both' || lb === 'both') {
-    throw new Error('linking needs one chronological and one interlaced run (quota-first layouts only)');
-  }
+  const shaping = diffs.filter((k) => !NEVER_ATTRIBUTABLE.has(k));
+  const attributable = shaping.length === 1;
   if ((docA.params.engineVersion || '?') !== (docB.params.engineVersion || '?')) {
     warnings.push(`ENGINE VERSIONS DIFFER (${docA.params.engineVersion || '?'} vs ${docB.params.engineVersion || '?'}): identical settings ran on different code — read deltas with suspicion`);
   }
-  const rowsA = realRowsFor(docA, la);
-  const rowsB = realRowsFor(docB, lb);
-  if (!rowsA.length || !rowsB.length) throw new Error('one of the runs has no real (unscrambled) money rows for its layout');
-  const orderAisChrono = la === 'chronological';
+  if (!attributable) {
+    warnings.push(shaping.length === 0
+      ? 'NO result-shaping setting differs — the runs are twins; any delta is noise or engine drift'
+      : `NOT ATTRIBUTABLE: ${shaping.length} result-shaping settings differ (${shaping.join(', ')}) — the paired deltas below can inform but cannot prove which setting caused what`);
+  }
+  const rowsA = realRowsFor(docA, docA.params.windowLayout === 'both' ? 'chronological' : null);
+  const rowsB = realRowsFor(docB, docB.params.windowLayout === 'both' ? 'chronological' : null);
+  if (!rowsA.length || !rowsB.length) throw new Error('one of the runs has no real money rows with a hold window — compare needs held-back results on both sides');
   return {
-    mode: 'linked',
-    jobs: orderAisChrono ? [docA.id, docB.id] : [docB.id, docA.id],
+    mode: 'general',
+    jobs: [docA.id, docB.id],
     warnings,
-    ...(orderAisChrono ? compareRows(rowsA, rowsB, la, lb) : compareRows(rowsB, rowsA, lb, la)),
+    differences: diffs.map((k) => ({
+      key: k,
+      a: docA.params ? docA.params[k] : undefined,
+      b: docB.params ? docB.params[k] : undefined,
+      shaping: !NEVER_ATTRIBUTABLE.has(k),
+    })),
+    attributable,
+    attributableTo: attributable ? shaping[0] : null,
+    ...compareRows(rowsA, rowsB, docA.id.slice(-20), docB.id.slice(-20)),
   };
 }
 
-module.exports = { compareDocs, compareRows, settingsDiff, ALLOW_DIFF };
+module.exports = { compareDocs, compareRows, settingsDiff, ALLOW_DIFF, NEVER_ATTRIBUTABLE };
