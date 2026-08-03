@@ -25,13 +25,53 @@ use it, when to use it — and what it can NOT tell you. The recommended workflo
 <strong>load data &rarr; board sweep &rarr; null boards &rarr; two reads &rarr; (optional) History Tuning
 &rarr; replication &rarr; paper book.</strong> Money claims only ever come from the end of that chain.</p>
 
-<h2>1 — The sweep form</h2>
-<div class="mock"><span class="tag">form</span> Universe · combo sizes · permuted options · execution menu ·
-  <strong>window layout ▾</strong> · min trades · Start sweep</div>
+<h2>1 — Data on server (the data manager)</h2>
+<div class="mock"><span class="tag">table</span> pair · months · from · to · manage
+  (<em>Refresh</em> / <em>Trim</em> / <em>Purge</em>)
+  <br><span class="tag">controls</span> Download new pairs (symbols + month range) · <strong>Global
+  Refresh</strong> · Refresh report (printed here when the job finishes)</div>
+<p class="callout">&uarr; First section of the lab on purpose: everything downstream reads from this
+cache, and a gap in it silently shrinks every window.</p>
+<p><strong>Why:</strong> every sweep, null board, and tuning pass reads the local cache, never the
+exchange. If the cache is stale, every "all loaded data" run quietly ends early. <strong>How:</strong>
+the table shows what is cached per pair, counting day-files too — the <em>to</em> column is the latest
+actual DATE loaded, not just the latest month. <em>Refresh</em> re-fetches one pair from its newest
+cached month to now (falling back to day-by-day files when the exchange has not yet published the
+current month's bundle). <em>Global Refresh</em> does that for every cached pair. <em>Download</em>
+adds new pairs over a chosen month range. <em>Trim</em> keeps only a range and DELETES the rest;
+<em>Purge</em> deletes the whole pair — both destructive, both confirm first. Every write refuses
+while a job is running. When a refresh finishes, its report (what each pair fetched) prints right
+here in the section. <strong>When:</strong> once per new month, or before any run that needs months
+or pairs not yet loaded. <strong>Not for:</strong> nothing here judges signal — it only feeds the
+instruments.</p>
+
+<h2>2 — The sweep form</h2>
+<div class="mock"><span class="tag">form</span> Universe · description · combo sizes · month range /
+  all loaded · chunk shape · decision · band · 24/5 (each with a <em>permute</em> tick) · promote top K ·
+  replication (declared config) · trailing stops · <strong>window layout ▾</strong> · null boards ·
+  min trades · Start sweep · Stop jobs</div>
 <p class="callout">&uarr; The window layout dropdown is the decision that shapes every number downstream.</p>
 <p><strong>Why:</strong> the wide pass — every setup (coin &times; chunk shape &times; decision style)
 against the whole execution menu. Its output is a DIRECTION (promising rows), never a result.
-<strong>The three layouts:</strong></p>
+<strong>The pieces:</strong></p>
+<ul>
+  <li><strong>Description</strong> — one optional line on why this run exists. It rides in the job
+    heading forever; future-you will thank present-you.</li>
+  <li><strong>Permute ticks</strong> — each ticked option (chunk shape, decision, band, 24/5) is swept
+    as extra branches instead of held at one value. Wide-to-find: permute freely when hunting, hold
+    variables fixed on purpose when confirming.</li>
+  <li><strong>Promote top K</strong> — the mechanical promotion rule: the cheap slim pass ranks combos,
+    the top K re-run on the full committee and full menu.</li>
+  <li><strong>Replication (declared config)</strong> — scores ONE fixed configuration on every asset,
+    declared before the run: one look per asset, no shopping. A separate table on the finished board.</li>
+  <li><strong>Trailing stops</strong> — adds the trailing-stop plane at the promote stage. Read the
+    trail-amb column (bars where the hourly candle cannot say whether the new extreme or the stop came
+    first — counted pessimistically) before believing any trailing number.</li>
+  <li><strong>Null boards</strong> — companion boards with each member's real vote mix dealt onto random
+    days (dates destroyed, mix kept). With N boards the finest honest claim is 1 in N+1; 9 boards can
+    never say better than 1 in 10. Each one costs a full extra sweep. These feed Tool 2 below.</li>
+</ul>
+<p><strong>The three window layouts:</strong></p>
 <ul>
   <li><strong>70/15/15</strong> — train on the oldest 70%, pick the trade settings in the next 15% (the
     test window), grade the pick once on the newest 15% (the hold window). The standard.</li>
@@ -42,19 +82,28 @@ against the whole execution menu. Its output is a DIRECTION (promising rows), ne
     one-touch final exam on data nothing ever shopped on. Cost: the board trains on slightly less and
     picks on slightly older windows — the honest price of a sealed exam.</li>
 </ul>
-<p><strong>Null boards:</strong> set the null-board count on the form and the sweep ships with companion
-boards whose members trained on real data but had their votes dealt onto random days (each member's real
-mix of up/down/stand-aside, dates destroyed). Those boards feed Tool 2 below.</p>
+<p>Every launch prints the full plan (combos &times; branches &times; boards = units) and refuses
+loudly below the training floor — the minimum effective training days (180) under which member models
+return plausible-looking numbers from starved training.</p>
 
-<h2>2 — The job header</h2>
+<h2>3 — Saved sweeps</h2>
+<div class="mock"><span class="tag">picker</span> Saved sweeps ▾ · Refresh · live status line while a
+  job runs</div>
+<p><strong>Why:</strong> every finished or running job is a stored document; pick one to render its
+board below. Old runs stay readable forever — including runs made under retired constructions, which
+are labeled as historical reading only.</p>
+
+<h2>4 — The job header</h2>
 <div class="mock"><span class="tag">header</span> job id — status · description · <strong>settings
-  table: every setting that shapes the result</strong> — window layout, outcomes, execution grid, fees,
-  floors</div>
+  table: every setting that shapes the result</strong> — window layout, data months ("all loaded at
+  launch" spelled out), universe, outcomes, execution grid, fees, floors, engine version · verbatim
+  parameters fold-out</div>
 <p><strong>Why:</strong> a number whose settings are invisible is a number you cannot trust. The rule for
-this table: every setting that shapes the result, on the page — including the window layout. If a setting
-is missing here, that is a defect; say so.</p>
+this table: every setting that shapes the result, on the page — including the window layout. The
+verbatim fold-out shows the exact stored parameters, unabridged. If a setting is missing here, that is
+a defect; say so.</p>
 
-<h2>3 — The survivor board</h2>
+<h2>5 — The survivor board</h2>
 <div class="mock"><span class="tag">board</span> setup · q&nbsp;·&nbsp;<strong>gate/entry</strong> ·
   TEST WINDOW (chosen on — flattering) · HELD-BACK (what matters) — e.g. <em>active/breakout</em>,
   <em>directional/market</em></div>
@@ -66,7 +115,7 @@ committed; they are the only honest columns on the board. <strong>The gates:</st
 ignored (baseline only, never tunable); active = the committee decides WHEN to trade, price decides the
 direction; directional = the committee decides when AND which way.</p>
 
-<h2>4 — Null tests (two tools, two layers of chance)</h2>
+<h2>6 — Null tests (two tools, two layers of chance)</h2>
 <div class="mock"><span class="tag">tool 1</span> This row against its null runs — fires N null rounds
   <br><span class="tag">tool 2</span> The board against a null board — reads stored boards, fires nothing</div>
 <p><strong>Why two:</strong> a good number can arise without signal from the shopping INSIDE one row
@@ -77,7 +126,7 @@ for any row you picked off a board; resolution limited by the null-board count a
 worth acting on passes both.</strong> Both use the dealt-votes construction: real vote mix, zero date
 knowledge; the label-rotation construction was retired after it was shown to leak market knowledge.</p>
 
-<h2>5 — History Tuning (optional second pass)</h2>
+<h2>7 — History Tuning (optional second pass)</h2>
 <div class="mock"><span class="tag">panel</span> select a survivor &rarr; History Tuning activates (or
   says in words why not) &rarr; 105 passes &rarr; dial-pair board &rarr; null draws &rarr; reserve grade
   (one touch, final)</div>
@@ -93,13 +142,13 @@ the investment — this is hours of compute. <strong>The reserve grade:</strong>
 used the 61/13/13/13 layout, one button fires the winner + reference + 19 null draws over the sealed
 reserve as ONE verification event, ever. A failed reserve is a dead end, never a hint.</p>
 
-<h2>6 — Inside a setup (microscope)</h2>
+<h2>8 — Inside a setup (microscope)</h2>
 <div class="mock"><span class="tag">inspect</span> one row's committee: each member's model, votes, solo
   score</div>
 <p><strong>Why:</strong> to understand WHY a row behaves as it does before spending null tests on it.
 <strong>Never evidence:</strong> nothing here is out-of-sample.</p>
 
-<h2>7 — Compare two runs</h2>
+<h2>9 — Compare two runs</h2>
 <div class="mock"><span class="tag">compare</span> run A vs run B &rarr; every differing setting listed
   first &rarr; shared rows paired &rarr; ATTRIBUTABLE stamp only at exactly one difference</div>
 <p><strong>Why:</strong> "did this one change help?" needs paired reading with the differences named. The
