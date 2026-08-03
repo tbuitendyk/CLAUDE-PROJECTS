@@ -2176,6 +2176,7 @@
           holdout: r.holdPnl == null ? null : {
             pnl: r.holdPnl, trades: r.holdTrades, wins: r.holdWins,
             grossPerTrade: r.holdGrossPerTrade, stops: r.holdStops,
+            holds: { alwaysLong: r.holdAlwaysLong, buyHold: r.holdBuyHold },
             metrics: { testAcc: r.holdAcc, edge: r.holdEdge, majorityBaseline: r.holdBaseline,
               directionalHits: r.holdDirHits, directionalCalls: r.holdDirCalls },
           },
@@ -2209,8 +2210,13 @@
         <td class="tune">${l.stops}${l.ambiguous ? `<div class="cellsub">${l.ambiguous} amb</div>` : ''}</td>`;
       // The held-back figures, full size: nothing was chosen using this
       // window, so these are the ones that matter.
+      // vs long: this row's held-back money minus holding the coin long the
+      // whole window (same periods, same fees). Positive = the votes beat
+      // doing nothing clever; it is how drift is separated from skill.
+      const vsLong = h && h.holds && h.holds.alwaysLong != null ? h.pnl - h.holds.alwaysLong : null;
       const holdBlock = h ? `
-        <td class="blk-l"><strong>${money(h.pnl)}</strong></td>
+        <td class="blk-l"><strong>${money(h.pnl)}</strong>
+          ${vsLong != null ? `<div class="cellsub" title="Held-back money minus being long the whole window — positive means the votes beat drift">vs long <span class="${vsLong >= 0 ? 'up' : 'down'}">${money(vsLong)}</span></div>` : ''}</td>
         <td>${hm ? pct(hm.testAcc) : '—'}
           <div class="cellsub">${hm ? 'base ' + pct(hm.majorityBaseline) : ''}</div></td>
         <td>${hm ? signedPct(hm.edge) : '—'}
