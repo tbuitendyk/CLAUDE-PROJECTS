@@ -455,7 +455,16 @@ async function unitTask(task) {
     bestEdge.holdoutMetrics = classifierMetrics(trainLabels, holdLabels, hc);
   }
 
-  const out = { best, declared, bestEdge, bandPct, testPeriods: testChunks.length, members: memberCalls.length, layoutMeta: split.layoutMeta || null };
+  const out = { best, declared, bestEdge, bandPct, testPeriods: testChunks.length, members: memberCalls.length, layoutMeta: split.layoutMeta || null,
+    // Window stamps (review finding 9): the run's ACTUAL boundaries, so a
+    // later History Tuning launch reads the recorded truth instead of
+    // recomputing it from a cache that has since grown.
+    windowStamps: {
+      testStartTs: testChunks[0] ? testChunks[0].startTs : null,
+      holdStartTs: holdChunks[0] ? holdChunks[0].startTs : null,
+      reserveFromTs: split.reserve ? split.reserve.fromTs : null,
+      reserveToTs: split.reserve ? split.reserve.toTs : null,
+    } };
 
   // MEMBER DUMP — everything the run learned, so it can be kept.
   // "Time is more valuable than storage" (owner, 2026-07-30). Models are
@@ -557,6 +566,7 @@ async function nullRotationTask({ combo, branch, params, shiftIndex, nShifts, se
   }
   return {
     rot,
+    shiftIndex,
     best: bestOfMenu ? bestOfMenu.pnl : -Infinity,
     same: sameCell ? sameCell.pnl : null,
     sameTrades: sameCell ? sameCell.trades : null,

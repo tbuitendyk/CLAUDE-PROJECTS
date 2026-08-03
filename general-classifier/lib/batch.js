@@ -1483,11 +1483,17 @@ function htParams(params) {
   }
   const combo = need('combo'); // { trade, ctx1, ctx2, size }
   const branch = need('branch'); // { geometry, decision, weekdaysOnly, band }
+  if (branch.geometry === 'weekly-8d') {
+    throw new Error('activation refused: weekly-8d chunks step 7 days, so the effective-training-days '
+      + 'arithmetic (built for day-stepping chunks) would judge the floor in units 7x too small. '
+      + 'History Tuning covers the daily shapes; weekly-8d is structurally out.');
+  }
   const p = {
     sourceBatchId,
     combo,
     branch,
     declaredCell: { ...cell },
+    windowStamps: params.windowStamps || null,
     // data window carried from the source run, unchanged (CLOSED 1)
     allLoaded: src.params.allLoaded, startMonth: src.params.startMonth, endMonth: src.params.endMonth,
     dormantPct: src.params.dormantPct, compareSymbol: src.params.compareSymbol,
@@ -1496,7 +1502,11 @@ function htParams(params) {
     gates: (src.params.gates || []).filter((g) => g !== 'always'),
     entries: src.params.entries,
     feePerLeg: src.params.feePerLeg ?? params.feePerLeg,
-    minTradesPerLookbackWeek: Number(params.minTradesPerLookbackWeek ?? 0.75), // GUESSED, printed
+    minTradesPerLookbackWeek: (() => {
+      const v = Number(params.minTradesPerLookbackWeek ?? 0.75); // GUESSED, printed
+      if (!Number.isFinite(v) || v <= 0) throw new Error(`minTradesPerLookbackWeek must be a positive number (got ${params.minTradesPerLookbackWeek})`);
+      return v;
+    })(),
     label: params.label || '', description: params.description || '',
     engineVersion: ENGINE_VERSION,
     readingRules: HT.READING_RULES, // stamped BEFORE anything computes
@@ -1508,6 +1518,12 @@ function htParams(params) {
 
 function startHistoryTuning(params) {
   if (batchRunning()) throw new Error(`batch ${activeBatch.id} is already running`);
+  // Claim the slot SYNCHRONOUSLY: htLaunch awaits a chunk build before its
+  // doc exists, and two POSTs in that window would both pass the check
+  // (review finding 8). The placeholder is released on any refusal.
+  const claim = { id: 'historytuning-pending', kind: 'historytuning', status: 'running', params: {}, perf: {} };
+  activeBatch = claim;
+  const release = (err) => { if (activeBatch === claim) { activeBatch = null; } throw err; };
   const HT = require('./historytuning');
   // NULL DRAW (trail-replay): inherits the REAL run's stamped params
   // verbatim — same splits, same usable span, same menu — plus a seed.
@@ -1524,14 +1540,15 @@ function startHistoryTuning(params) {
     }
     const p2 = { ...real.params, nullShiftSeed: seed, arm: 'null', replayOf: real.id,
       label: params.label || `htnull-s${seed}`, description: params.description || `null draw seed ${seed} of ${real.id} — no verdict alone; selects nothing` };
-    return htLaunch(p2, HT);
+    return htLaunch(p2, HT, claim).catch(release);
   }
-  const p = htParams(params);
+  let p;
+  try { p = htParams(params); } catch (err) { release(err); }
   p.arm = 'real';
-  return htLaunch(p, HT);
+  return htLaunch(p, HT, claim).catch(release);
 }
 
-function htLaunch(p, HT) {
+function htLaunch(p, HT, claim) {
   return (async () => {
     // The usable span (ruling B): reserve runs stop at the seal; others stop
     // where the source run's test window began. Computed from the same
@@ -1540,14 +1557,31 @@ function htLaunch(p, HT) {
     const { chunks } = await buildCombo(p.combo, p.branch, p);
     if (chunks.length < 50) throw new Error(`only ${chunks.length} chunks buildable — not enough history`);
     const src = getBatch(p.sourceBatchId);
+    // RULING B needs the SOURCE RUN'S boundaries, not today's: with allLoaded
+    // data the cache grows weekly and a recomputed boundary slides into
+    // months the source's selection already searched (review finding 9).
+    // New boards stamp window boundaries per row; the launch payload carries
+    // them and they are authoritative. Fixed-month sources are deterministic
+    // and may recompute; allLoaded sources without stamps refuse loudly.
     let usableEndTs;
-    if (src.params.windowLayout === 'reserve61') {
+    if (p.windowStamps && p.windowStamps.testStartTs) {
+      usableEndTs = p.windowStamps.testStartTs;
+      if (src.params.windowLayout === 'reserve61') {
+        if (!p.windowStamps.reserveFromTs) throw new Error('the selected row carries no reserve stamps — re-run the board on the current engine');
+        p.reserveFromTs = p.windowStamps.reserveFromTs;
+        p.reserveToTs = p.windowStamps.reserveToTs;
+      }
+    } else if (src.params.allLoaded && !p.splits) {
+      throw new Error('this board ran on all-loaded data and its rows carry no window stamps — '
+        + 'the selection boundary cannot be recomputed honestly once the cache has grown. '
+        + 'Re-run the board on the current engine (rows now stamp their windows) and tune from that.');
+    } else if (src.params.windowLayout === 'reserve61') {
       const nReserve = Math.max(2, Math.round(chunks.length * 0.13));
       const preReserve = chunks.length - nReserve;
       const { nTest, nHold } = splitBounds(preReserve, true);
       usableEndTs = chunks[preReserve - nTest - nHold].startTs; // pre-reserve test start
       p.reserveFromTs = chunks[preReserve].startTs;
-      p.reserveToTs = chunks[chunks.length - 1].startTs;
+      p.reserveToTs = chunks[chunks.length - 1].endTs; // one seal meaning: [fromTs, last chunk's endTs]
     } else {
       const { nTest, nHold } = splitBounds(chunks.length, true);
       usableEndTs = chunks[chunks.length - nTest - nHold].startTs;
@@ -1562,8 +1596,27 @@ function htLaunch(p, HT) {
     }
 
     const grid = HT.dialGrid();
+    // FLOOR AT LAUNCH (ruling D / adopted fix 6): clearance computed from
+    // calendar arithmetic BEFORE anything runs; an age arm below the floor on
+    // ANY split is excluded from ALL splits and never spends compute.
+    const Hlib = require('./history');
+    const geoOf = require('./dataset').GEOMETRIES ? null : null; // geo comes from the built chunks below
+    const floorPlan = [];
+    const starvedAges = new Set();
+    for (const age of HT.AGE_SETTINGS) {
+      for (const split of p.splits) {
+        const trainable = chunks.filter((c) => c.startTs < split.testStartTs); // calendar approximation; the pass applies the full reach purge
+        const { effectiveDays } = Hlib.ageWeights(trainable.map((c) => ({ endTs: c.startTs })), split.testStartTs, age.halfLifeDays);
+        const refusal = Hlib.floorRefusal(effectiveDays, `${split.name} split, ${age.label}`);
+        floorPlan.push({ age: age.key, split: split.name, effectiveDays: Math.round(effectiveDays), refused: !!refusal });
+        if (refusal) starvedAges.add(age.key);
+      }
+    }
+    p.floorPlan = floorPlan;
+    const liveGrid = grid.filter((g) => !starvedAges.has(g.age.key));
+    if (!liveGrid.length) throw new Error(`every age setting fails the training floor at launch — ${JSON.stringify(floorPlan.filter((f) => f.refused))}`);
     const units = [];
-    for (const dial of grid) for (const split of geom.splits) units.push({ dial, split });
+    for (const dial of liveGrid) for (const split of p.splits) units.push({ dial, split });
 
     const stamp = new Date().toISOString().replace(/[-:]/g, '').slice(0, 15).replace('T', '-');
     const slug = (p.label || 'historytuning').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 32);
@@ -1580,7 +1633,7 @@ function htLaunch(p, HT) {
       htRows: [],
       failures: [],
     };
-    activeBatch = doc;
+    activeBatch = doc; // takes over the synchronous claim
     saveBatch(doc);
     const pool = createPool();
     activePool = pool;
@@ -1629,23 +1682,22 @@ function htLaunch(p, HT) {
       // in the read (adopted review fix 6) — recorded on the doc so the
       // renderer and the audit apply the same exclusion.
       const refusedArms = new Set(doc.htRows.filter((r) => r.refused).map((r) => `${r.ageKey}|${r.retuneKey}`));
+      for (const age of [...starvedAges]) for (const g of grid) if (g.age.key === age) refusedArms.add(`${g.age.key}|${g.retune.key}`);
       doc.excludedArms = [...refusedArms];
       doc.status = doc.cancelRequested ? 'cancelled' : 'done';
       doc.finishedAt = new Date().toISOString();
       doc.perf.elapsedMs = Date.now() - t0;
       saveBatch(doc);
-      activeBatch = null;
-      activePool = null;
+      if (activeBatch && activeBatch.id === doc.id) { activeBatch = null; activePool = null; }
       pool.abort();
     })().catch((err) => {
       doc.status = 'error';
       doc.failures.push({ key: 'run', error: err.message });
       saveBatch(doc);
-      activeBatch = null;
-      activePool = null;
+      if (activeBatch && activeBatch.id === doc.id) { activeBatch = null; activePool = null; }
       pool.abort();
     });
-    return { batchId: doc.id, units: units.length, splits: geom.splits, windowDays: geom.windowDays };
+    return { batchId: doc.id, units: units.length, splits: p.splits, windowDays: p.windowDays };
   })();
 }
 
@@ -1678,14 +1730,21 @@ function startReserveGrade(params) {
   // The winner by the STAMPED reading rules: combined test dollars across
   // the three splits, excluded arms out (they refused a floor somewhere).
   const excluded = new Set(real.excludedArms || []);
-  const byArm = new Map();
+  const armAgg = new Map();
   for (const r of real.htRows) {
     if (r.refused || r.skipped) continue;
     const k = `${r.ageKey}|${r.retuneKey}`;
     if (excluded.has(k)) continue;
-    byArm.set(k, (byArm.get(k) || 0) + (r.testPnl || 0));
+    const cur = armAgg.get(k) || { test: 0, splits: 0 };
+    cur.test += r.testPnl || 0;
+    cur.splits++;
+    armAgg.set(k, cur);
   }
-  if (!byArm.size) throw new Error('no arm survived the floors — nothing to grade');
+  // The stamped combining rule says SUM ACROSS THE THREE test windows — an
+  // arm with a skipped or failed split competes on fewer windows and gets a
+  // free pass on its worst one, so it is out (review finding 5).
+  const byArm = new Map([...armAgg.entries()].filter(([, v]) => v.splits === 3).map(([k, v]) => [k, v.test]));
+  if (!byArm.size) throw new Error('no arm has all three splits scored above the floors — nothing to grade');
   const winnerKey = [...byArm.entries()].sort((a, b2) => b2[1] - a[1])[0][0];
   const [ageKey, retuneKey] = winnerKey.split('|');
   const grid = HT.dialGrid();
@@ -1701,6 +1760,16 @@ function startReserveGrade(params) {
   };
   const p = {
     ...real.params,
+    readingRules: {
+      ...real.params.readingRules,
+      nullRule: {
+        label: 'GUESSED (count) / DERIVED (construction)',
+        text: 'RESERVE-GRADE CONSTRUCTION: the 19 null draws replay the WINNER\'S schedule only (not best-of-grid) '
+          + 'over the sealed reserve — the grid pick already happened on pre-reserve data the reserve never touched, '
+          + 'so the reserve verdict prices the winner\'s own walk, not the grid shopping. The winner must exceed '
+          + 'every draw; resolution floor 1 in 20, printed.',
+      },
+    },
     mode: 'reserve-grade', replayOf: real.id, arm: 'real',
     usableEndTs: real.params.reserveToTs, // the walk needs the reserve candles
     splits: [reserveSplit],
@@ -1764,6 +1833,12 @@ function htGradeLaunch(p, winnerDial, referenceDial, split) {
     const w = row('winner');
     const ref = row('reference');
     const nulls = doc.htRows.filter((r) => r.tag && r.tag.startsWith('null-') && !r.refused && !r.skipped);
+    if (!w || !ref) {
+      doc.verdict = {
+        passed: false,
+        sentence: `GRADE UNUSABLE: the ${!w ? 'winner' : 'reference'} pass ${!w && !ref ? 'and reference pass ' : ''}refused or failed on the reserve — the one-touch event is spent with nothing provable. Recorded as a dead end.`,
+      };
+    }
     if (w && ref) {
       const beatsRef = w.holdPnl > ref.holdPnl;
       const nullsAbove = nulls.filter((n) => n.holdPnl >= w.holdPnl).length;
@@ -2023,7 +2098,13 @@ function startBracketLab(params) {
     // old docs still display). Unknown values REFUSE loudly: a layout
     // decides what every downstream number means (QC 60).
     windowLayout: (() => {
-      const v = params.windowLayout ?? 'legacy80';
+      if (params.holdout !== undefined && params.windowLayout === undefined) {
+        throw new Error("'holdout' is retired (2026-08-03) — the layout decides the hold window. Say windowLayout: 'split70' (70/15/15), 'legacy80' (80/20) or 'reserve61'.");
+      }
+      if (params.windowLayout === undefined) {
+        throw new Error("windowLayout is required: 'legacy80' | 'split70' | 'reserve61' — a layout decides what every downstream number means, so it is never defaulted silently");
+      }
+      const v = params.windowLayout;
       if (!['legacy80', 'split70', 'reserve61'].includes(v)) {
         throw new Error(`unknown window layout '${v}' — the options are legacy80, split70, reserve61`
           + (['chronological', 'interlaced', 'both', 'legacy'].includes(v)
@@ -2191,6 +2272,7 @@ function startBracketLab(params) {
             pushLeader(doc, {
               ...l, stage: 'promoted',
               bandPct: res.bandPct, testPeriods: res.testPeriods,
+              windowStamps: res.windowStamps || null,
               ...res.best, declaredCell: res.declared || null,
               // Prediction quality at the EDGE-selected rung, kept apart from
               // the money-selected one above.
@@ -2528,7 +2610,7 @@ function startBracketNull(id, shifts) {
       doneCount++;
       if (settled.ok && settled.value) {
         const r = settled.value;
-        doc.nullTest.samples[r.rot] = { best: r.best, same: r.same, sameTrades: r.sameTrades };
+        doc.nullTest.samples[r.shiftIndex] = { best: r.best, same: r.same, sameTrades: r.sameTrades };
         const vals = Object.values(doc.nullTest.samples);
         doc.nullTest.shifts = vals.length;
         doc.nullTest.exceedSearch = vals.filter((x) => x.best >= sel.pnl).length / vals.length;

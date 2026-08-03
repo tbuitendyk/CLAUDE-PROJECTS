@@ -25,9 +25,9 @@
 // told about.
 const ALLOW_DIFF = new Set(['windowLayout', 'description', 'label', 'engineVersion']);
 
-function settingsDiff(pa, pb) {
+function settingsDiff(pa, pb, skip = ALLOW_DIFF) {
   const keys = [...new Set([...Object.keys(pa || {}), ...Object.keys(pb || {})])];
-  return keys.filter((k) => !ALLOW_DIFF.has(k)
+  return keys.filter((k) => !skip.has(k)
     && JSON.stringify(pa ? pa[k] : undefined) !== JSON.stringify(pb ? pb[k] : undefined));
 }
 
@@ -105,7 +105,10 @@ function compareDocs(docA, docB) {
     if (!rowsA.length || !rowsB.length) throw new Error(`${docA.id} is missing an arm (${rowsA.length} chronological rows, ${rowsB.length} interlaced)`);
     return { mode: 'both-job', jobs: [docA.id], warnings, differences: [], attributable: true, attributableTo: 'windowLayout (historical both-run)', ...compareRows(rowsA, rowsB, 'chronological', 'interlaced') };
   }
-  const diffs = settingsDiff(docA.params, docB.params);
+  // Every difference is listed — including windowLayout, THE canonical
+  // one-variable comparison (review finding 7: the old ALLOW_DIFF filter
+  // made layout-only pairs read as twins).
+  const diffs = settingsDiff(docA.params, docB.params, new Set());
   const shaping = diffs.filter((k) => !NEVER_ATTRIBUTABLE.has(k));
   const attributable = shaping.length === 1;
   if ((docA.params.engineVersion || '?') !== (docB.params.engineVersion || '?')) {

@@ -141,6 +141,10 @@ async function runPass({
   const trail = { retrains: [], retunes: [], segments: [] };
   const tMaxMenu = Math.max(...(menuOpts.tHours || bracketLib.T_HOURS));
   const menuReach = reachMsFor(geo, tMaxMenu);
+  // Training purge covers EVERYTHING a chunk can know: its features, its
+  // label resolution, and the longest menu trade (review: menuReach alone
+  // leaks under short menus — the label resolves at exitOffset regardless).
+  const trainReach = Math.max(geo.featureHours, (geo.exitOffsetH ?? 0) + 3, geo.entryOffsetH + tMaxMenu + 3) * 3600 * 1000;
 
   // Generations: opening training at testStart + every calendar milestone
   // (from the START of usable history, ruling A) that lands inside the walk.
@@ -164,7 +168,7 @@ async function runPass({
     const gEnd = genDates[gi + 1] ?? split.holdEndTs;
     // Purge: train only on chunks whose full execution reach settles before
     // the generation date (QC 58 class; review fix 1).
-    const trainSet = chunks.filter((c) => c.startTs + menuReach <= gAt);
+    const trainSet = chunks.filter((c) => c.startTs + trainReach <= gAt);
     const { weights, effectiveDays } = H.ageWeights(
       trainSet.map((c) => ({ endTs: c.startTs })), gAt, age.halfLifeDays,
     );
@@ -204,9 +208,28 @@ async function runPass({
   // winners on these dealt calls.
   if (nullShiftSeed) {
     const { nullRng, dealVotes } = require('./walkforward');
+    // Deal WITHIN each (generation x test/hold bucket) segment — the design's
+    // own construction: each segment keeps its real vote mix, dates destroyed,
+    // and neither generations' habits nor the test/hold boundary get smeared
+    // (review finding 4; matches the walkforward per-slice dealing).
+    const segOf = (i) => {
+      const ts = walkChunks[i].startTs;
+      let g = 0;
+      for (let k = 1; k < genDates.length; k++) if (ts >= genDates[k]) g = k;
+      return `${g}|${ts < split.testEndTs ? 'test' : 'hold'}`;
+    };
+    const segments = new Map();
+    for (let i = 0; i < walkChunks.length; i++) {
+      const key = segOf(i);
+      if (!segments.has(key)) segments.set(key, []);
+      segments.get(key).push(i);
+    }
     for (let s2 = 0; s2 < memberCalls.length; s2++) {
-      const rng = nullRng(nullShiftSeed, `${dial.age.key}|${dial.retune.key}|${split.name}`, 0, s2, 'walk');
-      memberCalls[s2] = dealVotes(memberCalls[s2], rng);
+      for (const [segKey, idx] of segments) {
+        const rng = nullRng(nullShiftSeed, `${dial.age.key}|${dial.retune.key}|${split.name}|${segKey}`, 0, s2, 'walk');
+        const dealt = dealVotes(idx.map((i) => memberCalls[s2][i]), rng);
+        idx.forEach((i, k) => { memberCalls[s2][i] = dealt[k]; });
+      }
     }
   }
 
@@ -276,7 +299,8 @@ async function runPass({
         const ts = walkChunks[i].startTs;
         if (ts >= lbFrom && ts < lbTo && ts >= split.testStartTs) lookIdx.push(i);
       }
-      const lookWeeks = Math.max(1, (lbTo - lbFrom) / WEEK_MS);
+      const effFrom = Math.max(lbFrom, split.testStartTs);
+      const lookWeeks = Math.max(1, (lbTo - effFrom) / WEEK_MS);
       const minTrades = Math.max(1, Math.round(minTradesPerLookbackWeek * lookWeeks));
       let picked = null;
       if (lookIdx.length) {
@@ -300,7 +324,7 @@ async function runPass({
         }
       }
       trail.retunes.push({
-        at, lookbackFromTs: lbFrom, lookbackToTs: lbTo, lookbackChunks: lookIdx.length,
+        at, lookbackFromTs: lbFrom, lookbackEffFromTs: effFrom, lookbackToTs: lbTo, lookbackChunks: lookIdx.length,
         minTrades, picked: picked ? { ...picked } : null, kept: !picked,
       });
       if (picked) cell = picked; // no candidate cleared the floor -> incumbent stays (review fix 7b)
