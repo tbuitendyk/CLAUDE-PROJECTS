@@ -140,6 +140,8 @@
       <div class="field" style="flex:1;min-width:280px">
         <label for="bl-universe">Universe (comma-separated; empty = all 17)</label>
         <input id="bl-universe" type="text" placeholder="DOTUSDT, AVAXUSDT, UNIUSDT, DOGEUSDT">
+        <label for="bl-desc" style="margin-top:4px" title="Optional. One line on why this run exists — it rides in the job heading forever, so future-you knows what this board was for.">description (why this run exists)</label>
+        <input id="bl-desc" type="text" placeholder="e.g. ATOM retest on the clean instruments">
       </div>
       <div class="field" style="min-width:180px">
         <label title="Which combo sizes to sweep — any subset">Combo sizes</label>
@@ -477,6 +479,6 @@
     pruned to time / open / high / low / close / quote&nbsp;volume.
   </footer>
 
-  <script src="app.js?v=61"></script>
+  <script src="app.js?v=62"></script>
 </body>
 </html>

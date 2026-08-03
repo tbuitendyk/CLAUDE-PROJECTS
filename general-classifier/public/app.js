@@ -2052,7 +2052,7 @@
     // WHAT THIS RUN IS FOR, stated on the page rather than only in an email.
     const descBlock = doc.description
       ? `<p class="jobdesc">${esc(doc.description)}</p>`
-      : '<p class="jobdesc jobdesc-missing">No description was recorded for this run.</p>';
+      : '<p class="jobdesc jobdesc-missing">No description was given at launch (the field is optional — and older runs had no field at all).</p>';
 
     // EVERY SETTING THAT SHAPES THE RESULT, on the page, for the job actually
     // running (owner, 2026-07-29). Previously the note listed the execution
@@ -2818,6 +2818,7 @@
         trailing: $('bl-trailing').checked,
         windowLayout: $('bl-layout').value,
         labelShiftReps: Number($('bl-nullboards').value) || 0,
+        description: $('bl-desc').value.trim(),
       };
       if ($('bl-declared-on').checked) {
         const entry = $('bl-dec-entry').value;
