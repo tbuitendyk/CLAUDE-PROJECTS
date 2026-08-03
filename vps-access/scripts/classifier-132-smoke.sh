@@ -7,7 +7,7 @@ set -uo pipefail
 B="http://127.0.0.1:8093"
 echo "healthz: $(curl -sS --max-time 10 $B/api/healthz)"
 echo "engine:  $(node -e "console.log(require('/opt/general-classifier/package.json').version)")"
-echo "data-state symbols: $(curl -sS --max-time 10 $B/api/data-state | python3 -c 'import sys,json; print(len(json.load(sys.stdin)[\"symbols\"]))')"
+echo "data-state symbols: $(curl -sS --max-time 10 $B/api/data-state | python3 -c 'import sys,json; print(len(json.load(sys.stdin).get("symbols",[])))')" 
 echo "-- retired layout must refuse:"
 curl -sS --max-time 10 -X POST $B/api/bracketlab -H 'Content-Type: application/json' \
   -d '{"universe":["DOTUSDT"],"sizes":{"singles":true},"windowLayout":"interlaced"}' | head -c 300; echo
