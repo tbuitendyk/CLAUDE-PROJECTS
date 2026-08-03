@@ -1,0 +1,17 @@
+Menu grid is live — every permutation for any row, one click
+
+tl;dr 1.35.0 deployed while the box was idle. Hard-refresh, then press
+"menu grid" next to any promoted row's inspect button: every
+combination of agreement level, gate, entry, distance, time limit (and
+trailing, when the run swept it) re-scored from that row's stored
+votes in seconds — thousands of cells, sorted by test money. Test
+window only, on purpose: held-back money stays with the one declared
+cell, because printing it for every cell would turn the graded window
+into another shopping window. The grid self-checks against the stored
+record and refuses if the data has changed since the run. A test
+proves grid money exactly equals sweep money for the same cell.
+
+Note: the restart reset the planted check to NOT CHECKED for 1.35.0 —
+one press before your next null readings.
+
+c.
