@@ -60,3 +60,23 @@ module.exports = {
     }
   },
 };
+
+// Tool 2's per-setup reading on a single-layout doc: the caller names the
+// setup without a layout (there is only one), and the reader must still
+// find it among rows stamped split70 (owner hit this on row 30, 2026-08-04).
+module.exports.aPerSetupReadingFindsRowsOnASingleLayoutDoc = async function () {
+  const { nullVerdict } = require('../lib/verdict');
+  const row = (extra) => ({
+    trade: 'LTCUSDT', ctx1: null, ctx2: null, geometry: 'daily-4d', decision: 'argmax',
+    windowLayout: 'split70', shiftFrac: null, nullDealSeed: null, holdPnl: 10, ...extra,
+  });
+  const doc = {
+    id: 'x', edgeCensus: [
+      row({ holdPnl: 43.94 }),
+      ...[1, 2, 3].map((s) => row({ nullDealSeed: s, holdPnl: -5 * s })),
+    ],
+  };
+  const v = nullVerdict(doc, doc, { trade: 'LTCUSDT', geometry: 'daily-4d', decision: 'argmax' });
+  assert.ok(v.perSetup, 'the setup must be found without the caller naming the layout');
+  assert.strictEqual(v.perSetup.beats, 3);
+};

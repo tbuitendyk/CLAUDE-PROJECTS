@@ -2523,7 +2523,20 @@
         .map((x) => `<option value="${esc(x.id)}" ${x.id === doc.id ? 'selected' : ''}>${esc(x.id)} (${x.realRows} real)</option>`).join('');
       nullSel.innerHTML = srcs.filter((x) => x.scrambleDraws > 0)
         .map((x) => `<option value="${esc(x.id)}">${esc(x.id)} (${x.scrambleDraws} null draws)</option>`).join('');
-      (doc.leaders || []).filter((l) => l.stage === 'promoted').forEach((l) => {
+      // The setup list comes from the CENSUS (every real setup, uncapped),
+      // not the capped leader list — the board itself reads from the census
+      // now, so a row on screen must always be offered here too (owner
+      // caught row 30 missing, 2026-08-04). Leader-only docs (no census)
+      // fall back to their promoted leaders.
+      const censusSetups = (doc.edgeCensus || [])
+        .filter((r) => r.nullDealSeed == null && !r.shiftFrac && r.holdPnl != null);
+      const setupSrc = censusSetups.length ? censusSetups
+        : (doc.leaders || []).filter((l) => l.stage === 'promoted' && l.nullDealSeed == null);
+      const seenSetups = new Set();
+      setupSrc.forEach((l) => {
+        const dedup = `${l.trade}|${l.ctx1 || ''}|${l.ctx2 || ''}|${l.geometry}|${l.decision}|${l.layoutArm || l.windowLayout || ''}`;
+        if (seenSetups.has(dedup)) return;
+        seenSetups.add(dedup);
         const o = document.createElement('option');
         o.value = JSON.stringify({
           trade: l.trade, geometry: l.geometry, decision: l.decision,

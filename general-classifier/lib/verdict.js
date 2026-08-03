@@ -83,7 +83,12 @@ function nullVerdict(realDoc, nullDoc, sel) {
     if (isMixed(real) && !sel.windowLayout) {
       throw new Error('this run holds BOTH layout arms — pick the setup with its arm (chronological/interlaced)');
     }
-    const k = `${sel.trade}|${sel.geometry}|${sel.decision}${sel.windowLayout && sel.windowLayout !== 'legacy' ? `|${sel.windowLayout}` : ''}`;
+    // Single-layout docs: the caller need not name the layout — there is
+    // only one, so it is filled in from the rows themselves. Without this,
+    // rows stamped split70 could never be found by a plain
+    // trade/geometry/decision request (owner hit it on row 30, 2026-08-04).
+    const layout = sel.windowLayout || (real[0] && real[0].windowLayout) || 'legacy';
+    const k = `${sel.trade}|${sel.geometry}|${sel.decision}${layout && layout !== 'legacy' ? `|${layout}` : ''}`;
     const mine = real.find((r) => keyOf(r) === k);
     if (!mine) throw new Error(`setup ${k} not in ${realDoc.id}'s real rows`);
     const draws = shifts.map((s) => {
