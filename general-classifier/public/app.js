@@ -1991,13 +1991,13 @@
         40 shown, all stored.</p>
       <div class="tablewrap"><table>
         <tr><th rowspan="2" title="asset · shape · decision">setup</th>
-          <th colspan="3" title="the ${esc(d.arms.a)} arm">${esc(d.arms.a)}</th>
-          <th colspan="3" class="blk-l" title="the ${esc(d.arms.b)} arm">${esc(d.arms.b)}</th>
+          <th colspan="3" title="the ${esc(d.arms.a)} side">${esc(d.arms.a)}</th>
+          <th colspan="3" class="blk-l" title="the ${esc(d.arms.b)} side">${esc(d.arms.b)}</th>
           <th rowspan="2" class="blk-l" title="${esc(d.arms.b)} held-back money minus ${esc(d.arms.a)} held-back money">Δ held-back $</th></tr>
         <tr><th>held-back $</th><th>trades</th><th>$/trade</th>
           <th class="blk-l">held-back $</th><th>trades</th><th>$/trade</th></tr>
         ${rows}</table></div>
-      <p class="note"><strong>Survivor overlap.</strong> Of each arm's top 10 setups by held-back money,
+      <p class="note"><strong>Survivor overlap.</strong> Of each side's top 10 setups by held-back money,
         <strong>${d.survivorOverlap.sharedCount}</strong> appear in both top-10s. High overlap means the two
         geometries crown the same setups — evidence the ranking reflects the setups rather than the era the
         evaluation windows landed in. The shared ones: ${d.survivorOverlap.shared.length ? d.survivorOverlap.shared.map((k) => esc(shortKey(k))).join(', ') : '(none)'}.</p>
@@ -2379,7 +2379,7 @@
         const opts = srcs.filter((x) => x.realRows > 0)
           .map((x) => `<option value="${esc(x.id)}">${esc(x.id)}${esc(layoutTag(x))}</option>`).join('');
         cA.innerHTML = opts;
-        cB.innerHTML = '<option value="">— pick run B (empty compares a historical both-run\u2019s own two arms) —</option>' + opts;
+        cB.innerHTML = '<option value="">— pick run B (empty compares a historical both-run\u2019s own two sides) —</option>' + opts;
         const cGo = $('bl-c-go');
         if (cGo) {
           cGo.addEventListener('click', async () => {
