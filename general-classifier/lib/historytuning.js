@@ -318,7 +318,13 @@ async function runPass({
         if (bestRow) {
           picked = {
             quorum: bestQ, gate: bestRow.gate, entry: bestRow.entry, dMult: bestRow.dMult,
-            tHours: bestRow.tHours, trailMult: bestRow.trailMult ?? null, armMult: bestRow.armMult ?? null,
+            tHours: bestRow.tHours,
+            // TRAILING IS HELD FIXED ON PURPOSE (design fix 10): the retune
+            // menu never sweeps it, and the declared cell's trailing setting
+            // carries through every retuned cell unchanged — it must not
+            // silently switch off at the first retune (review finding).
+            // Revisit: with the first replication round.
+            trailMult: declaredCell.trailMult ?? null, armMult: declaredCell.armMult ?? null,
             bandPct: cell.bandPct,
           };
         }

@@ -132,6 +132,10 @@
         tests live below the survivor board, each stating which layer of chance it prices. Ambiguous hourly
         bars always resolve AGAINST the book and are counted.</p>
     </section>
+    <div class="section">
+      <h2>Data on server</h2>
+      <div id="bl-data"><p class="note">Loading…</p></div>
+    </div>
     <form id="bl-form" class="controls" autocomplete="off" onsubmit="return false">
       <div class="field" style="flex:1;min-width:280px">
         <label for="bl-universe">Universe (comma-separated; empty = all 17)</label>
@@ -253,6 +257,11 @@
           <option value="legacy80">legacy 80/20 — train / test, nothing held back</option>
           <option value="reserve61">61/13/13/13 — like 70/15/15 with the final 13% of history SEALED for a later History Tuning grade</option>
         </select>
+      </div>
+      <div class="field">
+        <label for="bl-nullboards"
+          title="NULL BOARDS. The sweep ships with this many companion boards whose members trained on the real data but had each member's votes dealt onto random days (real vote mix, zero date knowledge — the register-66 construction). They power the 'board against a null board' reading below the survivor table. 0 = none. RESOLUTION: with N null boards the finest honest claim is 1 in N+1 — 9 boards can never say better than 1 in 10. COST: each null board is a full extra sweep.">null boards</label>
+        <input id="bl-nullboards" type="number" min="0" max="19" step="1" value="0">
       </div>
       <div class="field">
         <label for="bl-mintrades" title="Selection floor: execution cells below this many test trades never win">min trades</label>

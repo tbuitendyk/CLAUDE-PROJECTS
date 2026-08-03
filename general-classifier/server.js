@@ -93,6 +93,91 @@ app.get('/api/selftest/workers', async (req, res) => {
 
 app.get('/api/data-state', (req, res) => res.json({ symbols: cacheState() }));
 
+
+// ---- data management (owner order, 2026-08-03): the "available data on
+// server" section gains download / refresh / purge / range controls. All
+// writes sit behind the cache-write guard; purges also refuse mid-job.
+const dataFs = require('fs');
+const dataPath = require('path');
+const DATA_CACHE_DIR = dataPath.join(__dirname, 'data', 'cache');
+const currentMonth = () => new Date().toISOString().slice(0, 7);
+
+app.post('/api/data/download', (req, res) => {
+  const b = req.body || {};
+  const symbols = (Array.isArray(b.symbols) ? b.symbols : []).map((x) => String(x).trim().toUpperCase()).filter(Boolean);
+  if (!symbols.length || symbols.some((x) => !SYMBOL_RE.test(x))) {
+    return res.status(400).json({ error: 'symbols must be a list like ["DOTUSDT","PEPEUSDT"]' });
+  }
+  if (!/^\d{4}-\d{2}$/.test(String(b.startMonth)) || !/^\d{4}-\d{2}$/.test(String(b.endMonth))) {
+    return res.status(400).json({ error: 'months must be YYYY-MM' });
+  }
+  const loadStop = guard.loadRefusal(batch.batchRunning());
+  if (loadStop) return res.status(409).json({ error: loadStop });
+  const { monthList: ml, loadSymbol } = require('./lib/pipeline');
+  const months = ml(String(b.startMonth), String(b.endMonth));
+  const jobId = startJob(async (setProgress) => {
+    const out = {};
+    for (const sym of symbols) {
+      const { rows, missing } = await loadSymbol(sym, months, setProgress);
+      out[sym] = { candles: rows.length, monthsRequested: months.length, missingMonths: missing };
+    }
+    return out;
+  });
+  res.json({ jobId });
+});
+
+// Refresh one asset (or every cached asset) from its newest cached month to
+// the current month. Re-fetches the newest cached month too — it may have
+// been partial when first downloaded.
+app.post('/api/data/refresh', (req, res) => {
+  const one = req.body && req.body.symbol ? String(req.body.symbol).trim().toUpperCase() : null;
+  if (one && !SYMBOL_RE.test(one)) return res.status(400).json({ error: 'symbol must look like DOTUSDT' });
+  const loadStop = guard.loadRefusal(batch.batchRunning());
+  if (loadStop) return res.status(409).json({ error: loadStop });
+  const state = cacheState();
+  const targets = one ? state.filter((s2) => s2.symbol === one) : state;
+  if (!targets.length) return res.status(400).json({ error: one ? `${one} has no cached data — use download` : 'nothing cached yet' });
+  const { monthList: ml, loadSymbol } = require('./lib/pipeline');
+  const jobId = startJob(async (setProgress) => {
+    const out = {};
+    for (const t of targets) {
+      const months = ml(t.to, currentMonth());
+      const { rows, missing } = await loadSymbol(t.symbol, months, setProgress);
+      out[t.symbol] = { refreshedFrom: t.to, candles: rows.length, missingMonths: missing };
+    }
+    return out;
+  });
+  res.json({ jobId, refreshing: targets.map((t) => t.symbol) });
+});
+
+// Purge: an entire asset, or the months of one asset OUTSIDE a kept range
+// (that is how the month range shrinks; growing it is a download). Purge is
+// destructive and refuses while anything runs.
+app.post('/api/data/purge', (req, res) => {
+  const b = req.body || {};
+  const sym = String(b.symbol || '').trim().toUpperCase();
+  if (!SYMBOL_RE.test(sym)) return res.status(400).json({ error: 'symbol must look like DOTUSDT' });
+  if (batch.batchRunning()) return res.status(409).json({ error: 'a job is running — purge refuses while anything reads the cache' });
+  const keepFrom = b.keepFrom ? String(b.keepFrom) : null;
+  const keepTo = b.keepTo ? String(b.keepTo) : null;
+  if ((keepFrom && !/^\d{4}-\d{2}$/.test(keepFrom)) || (keepTo && !/^\d{4}-\d{2}$/.test(keepTo))) {
+    return res.status(400).json({ error: 'keepFrom/keepTo must be YYYY-MM' });
+  }
+  let files = [];
+  try { files = dataFs.readdirSync(DATA_CACHE_DIR); } catch { files = []; }
+  const victims = files.filter((f) => {
+    const m = new RegExp(`^${sym}-1h-(\\d{4}-\\d{2})(?:-\\d{2})?\\.json$`).exec(f);
+    if (!m) return false;
+    if (!keepFrom && !keepTo) return true; // whole asset
+    const month = m[1];
+    return (keepFrom && month < keepFrom) || (keepTo && month > keepTo);
+  });
+  for (const f of victims) {
+    try { dataFs.unlinkSync(dataPath.join(DATA_CACHE_DIR, f)); } catch { /* reported below via recount */ }
+  }
+  res.json({ purged: victims.length, symbol: sym, kept: keepFrom || keepTo ? { keepFrom, keepTo } : null });
+});
+
 app.post('/api/load', (req, res) => {
   const b = req.body || {};
   const tradeSymbol = String(b.tradeSymbol || '').trim().toUpperCase();
@@ -728,6 +813,80 @@ app.post('/api/bracketlab/compare', (req, res) => {
 // ---- walk-forward (DESIGN-WALKFORWARD.md) ----------------------------------
 
 // ---- History Tuning (design ledger; owner build order 2026-08-03) ----------
+
+// The machine verdict for a REAL History Tuning run, computed THROUGH the
+// stamped reading rules from the docs on disk (review finding 5: the rules
+// must produce a printed sentence, never a table for interpretation).
+app.get('/api/historytuning/:id/verdict', (req, res) => {
+  try {
+    const doc = batch.getBatch(req.params.id);
+    if (!doc || doc.kind !== 'historytuning') return res.status(404).json({ error: 'unknown History Tuning run' });
+    if (doc.params.arm === 'null' || doc.params.mode) return res.status(400).json({ error: 'verdicts print on the REAL run' });
+    if (doc.status !== 'done') return res.status(400).json({ error: `run is ${doc.status}` });
+    const excluded = new Set(doc.excludedArms || []);
+    const agg = new Map();
+    for (const r of doc.htRows || []) {
+      if (r.refused || r.skipped) continue;
+      const k = `${r.ageKey}|${r.retuneKey}`;
+      if (excluded.has(k)) continue;
+      const cur = agg.get(k) || { test: 0, hold: 0, holdWins: 0, splits: 0, holds: {} };
+      cur.test += r.testPnl || 0;
+      cur.hold += r.holdPnl || 0;
+      cur.holds[r.split] = r.holdPnl || 0;
+      cur.splits++;
+      agg.set(k, cur);
+    }
+    const full = [...agg.entries()].filter(([, v]) => v.splits === 3);
+    if (!full.length) return res.json({ sentence: 'NO VERDICT: no dial pair scored all three splits above the floors.' });
+    full.sort((a, b) => b[1].test - a[1].test);
+    const [winKey, win] = full[0];
+    const ref = agg.get('none|never');
+    if (!ref || ref.splits !== 3) return res.json({ sentence: 'NO VERDICT: the reference pass did not score all three splits — nothing to beat.' });
+    const winsVsRef = ['early', 'middle', 'late'].filter((sp) => (win.holds[sp] ?? 0) > (ref.holds[sp] ?? 0)).length;
+    const holdPassed = win.hold > ref.hold && winsVsRef >= 2;
+    // Null rule: every finished null draw of this run, same aggregation,
+    // its own best-of-grid combined hold.
+    const draws = batch.listBatches().filter((b) => b.kind === 'historytuning'
+      && b.params && b.params.replayOf === doc.id && b.params.arm === 'null' && b.status === 'done');
+    const drawBests = [];
+    for (const d of draws) {
+      const dd = batch.getBatch(d.id);
+      const a2 = new Map();
+      for (const r of dd.htRows || []) {
+        if (r.refused || r.skipped) continue;
+        const k = `${r.ageKey}|${r.retuneKey}`;
+        const cur = a2.get(k) || { test: 0, hold: 0, splits: 0 };
+        cur.test += r.testPnl || 0;
+        cur.hold += r.holdPnl || 0;
+        cur.splits++;
+        a2.set(k, cur);
+      }
+      const f2 = [...a2.entries()].filter(([, v]) => v.splits === 3);
+      if (f2.length) {
+        f2.sort((a, b) => b[1].test - a[1].test);
+        drawBests.push({ seed: dd.params.nullShiftSeed, hold: f2[0][1].hold });
+      }
+    }
+    const nullsAtOrAbove = drawBests.filter((d) => d.hold >= win.hold).length;
+    const nullPassed = drawBests.length > 0 && nullsAtOrAbove === 0;
+    const holdSentence = holdPassed
+      ? `HOLD RULE PASSED: the winner (${winKey}) beat the reference pass on combined hold dollars ($${win.hold.toFixed(2)} vs $${ref.hold.toFixed(2)}) and in ${winsVsRef} of 3 hold windows.`
+      : `HOLD RULE FAILED: tuning did not strengthen this survivor (winner ${winKey}: $${win.hold.toFixed(2)} vs reference $${ref.hold.toFixed(2)}, ${winsVsRef} of 3 windows).`;
+    const nullSentence = drawBests.length === 0
+      ? 'NULL RULE PENDING: no finished null draws yet — no claim until they exist.'
+      : nullPassed
+        ? `NULL RULE PASSED so far: the winner exceeds every one of ${drawBests.length} null draws (resolution floor 1 in ${drawBests.length + 1}; the declared count is 19).`
+        : `NULL RULE FAILED: ${nullsAtOrAbove} of ${drawBests.length} null draws matched or beat the winner.`;
+    res.json({
+      winner: winKey, winnerHold: win.hold, referenceHold: ref.hold, holdWindowsWon: winsVsRef,
+      holdPassed, drawCount: drawBests.length, nullsAtOrAbove, nullPassed,
+      sentence: `${holdSentence} ${nullSentence}`,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.post('/api/historytuning', async (req, res) => {
   const b = req.body || {};
   try {

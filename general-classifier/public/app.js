@@ -132,6 +132,7 @@
   let runBannerKnown = false; // no idle claim until one poll has actually answered
   function ownerTabOf(id) {
     if (String(id).startsWith('bracketlab-')) return 'bracket';
+    if (String(id).startsWith('historytuning-')) return 'bracket'; // the HT panel lives on the Bracket lab
     if (String(id).startsWith('walkforward-')) return null; // no tab renders these since the 2026-08-02 rewind
     return 'research';
   }
@@ -1942,7 +1943,7 @@
         <tr><th title="Member number — matches the rows and columns of the agreement matrix below">#</th>
         <th title="What this member is: model type (logreg = weighted-sum / boost = stack of decision rules) · which slice of the data it sees (full / prices only / volume only). Setups saved before 2026-07-30 show a third part — a 'full'/'interlaced' training variant that was removed because the two variants were near-copies of each other (the 'interlaced' one never interlaced; it only dropped ~10% of the same training window)">member</th>
         <th title="This member's OWN accuracy on the TEST window, with its edge (accuracy minus the always-guess-the-commonest baseline) beside it. Accuracy points, not money. The committee's settings were chosen on this window, so these read flattering.">test</th>
-        <th title="The same two figures on the HELD-BACK window — the slice nothing was chosen with. This is the pair that matters.">held-back</th>
+        <th title="The same two figures on the HELD-BACK window — the window nothing was chosen with. This is the pair that matters.">held-back</th>
         <th title="Held-back directional calls this member got exactly right / the directional calls it made. A call of up or down on a flat period counts as a miss.">dir hits</th>
         <th title="How often this member commits to a direction at all (held-back window). Near 0% = it almost always says 'flat' and its solo accuracy is mostly about predicting nothing happening.">active</th>
         <th title="When the COMMITTEE actually traded, how often this member's own vote matched the traded direction. High for the same few members every time = one opinion echoed; spread around = genuine shifting agreement.">with trade</th></tr>
@@ -2010,24 +2011,24 @@
   function renderVerdict(d) {
     const m$ = (v) => (v == null ? '—' : (v < 0 ? '-' : '+') + '$' + Math.abs(v).toFixed(2));
     const drawsTable = (t) => `<div class="tablewrap"><table>
-      <tr><th>scramble</th><th>value</th></tr>
+      <tr><th>null draw</th><th>value</th></tr>
       ${t.draws.map((x) => `<tr><td>${x.shift.toFixed(3)}${x.setup ? ' · ' + esc(x.setup.replace(/\|/g, ' ')) : ''}</td>
         <td class="${t.real > x.value ? 'up' : 'down'}">${m$(x.value)}</td></tr>`).join('')}
     </table></div>`;
     const block = (title, t, what) => t ? `
       <h3>${title} — ${t.passes ? 'PASS' : 'FAIL'} (beats ${t.beats}/${t.n})</h3>
       <p class="note">${what}
-        KEY — <em>real</em>: held-back dollars on genuine data. <em>scrambles</em>: the same quantity in
+        KEY — <em>real</em>: held-back dollars on genuine data. <em>null draws</em>: the same quantity in
         worlds with nothing to predict. Beating all ${t.n} is the strongest claim ${t.n} draws allow
         (p floor ${t.pFloor ? t.pFloor.toFixed(3) : '—'}) — a floor, never a measure of strength.</p>
       <p><strong>real ${m$(t.real)}</strong>${t.realBestSetup ? ' (' + esc((t.setup || t.realBestSetup).replace(/\|/g, ' ')) + ')' : t.setup ? ' (' + esc(t.setup.replace(/\|/g, ' ')) + ')' : ''}
-        vs scrambles: best ${m$(Math.max(...t.draws.map((x) => x.value)))}, worst ${m$(Math.min(...t.draws.map((x) => x.value)))}</p>
+        vs null draws: best ${m$(Math.max(...t.draws.map((x) => x.value)))}, worst ${m$(Math.min(...t.draws.map((x) => x.value)))}</p>
       ${drawsTable(t)}` : '';
     return `
-      <p class="note">real: ${esc(d.realJob)} · scrambles: ${esc(d.nullJob)} (${d.drawCount} draws)</p>
-      ${block('Per-setup test', d.perSetup, 'Is this setup better than ITS OWN noise? Same setup, same machinery, scrambled outcomes.')}
-      ${block('Selection-aware test', d.selection, 'Is topping the board better than topping a NOISE board? Each scramble contributes its own best-of-board — this prices in that the winner was picked after looking.')}
-      <p class="note">sanity: ${d.sanity.scrambleRows} scrambled setups, ${(100 * d.sanity.negativeShare).toFixed(1)}% losing money —
+      <p class="note">real: ${esc(d.realJob)} · null boards: ${esc(d.nullJob)} (${d.drawCount} draws, ${esc(d.construction || '')})</p>
+      ${block('Per-setup test', d.perSetup, 'Is this setup better than ITS OWN noise? Same setup, same machinery, dealt votes.')}
+      ${block('Selection-aware test', d.selection, 'Is topping the board better than topping a NOISE board? Each null draw contributes its own best-of-board — this prices in that the winner was picked after looking.')}
+      <p class="note">sanity: ${d.sanity.scrambleRows} null-draw setups, ${(100 * d.sanity.negativeShare).toFixed(1)}% losing money —
         ${d.sanity.ok ? 'as fees demand.' : '<strong>NOISE IS PROFITING: the simulation is broken; do not read the tests above.</strong>'}</p>
       <p class="note"><strong>What a pass buys:</strong> this window only. It stops obvious chance results being frozen;
         the forward paper test after freezing is the real judge.</p>`;
@@ -2056,19 +2057,19 @@
     // EVERY SETTING THAT SHAPES THE RESULT, on the page, for the job actually
     // running (owner, 2026-07-29). Previously the note listed the execution
     // grid only, so the things that decide what a number MEANS — whether a
-    // holdout was held back, whether the outcomes were scrambled and how, and
+    // holdout was held back, whether the votes were informationless (a null draw) and how, and
     // whether the census was kept off the money-ranked board — were invisible
     // here and had to be taken on trust from whatever launched the job. A
     // dropped setting has already invalidated one conclusion on this project;
     // this is the page where that becomes visible instead of silent.
     const yn = (v) => (v ? '<strong>on</strong>' : 'off');
     const nullDesc = p.labelShiftReps > 0
-      ? `<strong>${p.labelShiftReps} scramble(s)</strong>, ${esc(p.labelShiftScope || 'series')}-scope`
-      : (p.labelShiftFrac ? `1 scramble, ${esc(p.labelShiftScope || 'series')}-scope` : '<strong>none — real outcomes</strong>');
+      ? `<strong>${p.labelShiftReps} null board(s)</strong>, ${esc(p.labelShiftScope || 'series')}-scope`
+      : (p.labelShiftFrac ? `1 rotation-built null (RETIRED construction, historical doc)` : '<strong>none — real outcomes</strong>');
     const settingsBlock = `
       <table class="settings">
         <tr><th>Outcomes</th><td>${nullDesc}</td>
-            <th>Held-back slice</th><td>${p.holdout ? '<strong>yes</strong> — 70/15/15' : 'no — 80/20, nothing held back'}</td></tr>
+            <th>Hold window</th><td>${p.holdout ? '<strong>yes</strong> — 70/15/15' : 'no — 80/20, nothing held back'}</td></tr>
         <tr><th>Census</th><td>${yn(p.edgeScreen)}${p.edgeScreen ? ' — every unit recorded, not just money winners' : ''}</td>
             <th>Trailing stops</th><td>${yn(p.trailing)}</td></tr>
         <tr><th>Universe</th><td>${(p.universe || []).length} symbols${p.set && p.set.geometry ? '' : ''}</td>
@@ -2166,7 +2167,7 @@
       ${hasHold ? `<p class="note"><strong>Sorted by HELD-BACK net P&L</strong> (rows under the min-trades floor sink).
         The top row is a <strong>LEAD to declare and test on fresh data — never a result</strong>: ranking 170
         setups on the held-back window makes the top figure the best of 170 draws. The evidence is the
-        aggregate census against its scrambled comparisons, which is not selected on anything.</p>`
+        aggregate census against its null-draw comparisons, which is not selected on anything.</p>`
         : `<p class="note"><strong>Sorted by TEST-WINDOW net P&L — this run held nothing back.</strong>
         Every row won its own settings on this same window, so the ranking is a ranking of how well each
         setup fitted the data it was fitted on. It cannot say whether anything works out of sample, and
@@ -2256,20 +2257,20 @@
         <p class="note">WHY: prices the shopping INSIDE this row. Each null round retrains the committee on
           the real data, deals each member's votes onto random days (register 66 construction — real vote
           mix, zero date knowledge), re-runs the whole menu and every agreement level, and keeps its best.
-          The count of null rounds beating the real money is the reading. WHAT IT CANNOT SEE: that this row
+          The count of null runs beating the real money is the reading. WHAT IT CANNOT SEE: that this row
           was picked off a board of many — Tool 2 prices that. COST: fires a real job (~minutes per 100
           rounds on one row).</p>
         <div class="controls" style="margin:8px 0">
-        <div class="field"><label for="bl-shifts">Null rounds</label><input id="bl-shifts" type="number" min="1" max="1000" step="1" value="200"></div>
-        <div class="field submit"><button id="bl-null-go" type="button">Fire null rounds on the selected survivor</button></div>
+        <div class="field"><label for="bl-shifts">Null runs</label><input id="bl-shifts" type="number" min="1" max="1000" step="1" value="200"></div>
+        <div class="field submit"><button id="bl-null-go" type="button">Fire null runs on the selected survivor</button></div>
         <span class="note">selected: ${esc(comboLabel(sel))} ${esc(sel.geometry)} q${sel.quorum} ${sel.entry === 'market' ? 'directional/market' : `${esc(sel.gate)}/breakout ${sel.dMult}×`} ${sel.tHours}h → ${money(sel.pnl)}</span>
       </div></div>`;
     }
     if (doc.nullTest) {
       const nt = doc.nullTest;
       const title = nt.status === 'running'
-        ? `Null rounds — RUNNING: ${nt.shifts} of ${nt.requestedShifts} banked`
-        : `Null rounds — ${nt.status}, ${nt.shifts} of them`;
+        ? `Null runs — RUNNING: ${nt.shifts} of ${nt.requestedShifts} banked`
+        : `Null runs — ${nt.status}, ${nt.shifts} of them`;
       nullBlock += `<div class="section"><h2>${title}</h2>
         <div class="tablewrap"><table>
           <tr><th>reading</th><th>exceed</th><th>null median $</th></tr>
@@ -2334,8 +2335,8 @@
         construction). A row worth acting on passes both. Neither tool fires from here by accident:
         each states what it costs before it runs.</p></div>`;
     const htBlock = '<div id="bl-ht-panel"></div>';
-    blViewEl.innerHTML = `<p class="note">${header}</p>${perfBlock}${repBlock}${leaderBlock}${htBlock}${nullIntro}${nullBlock}${verdictBlock}${inspectBlock}${compareBlock}`;
-    renderHtPanel(doc, sel).catch(() => {});
+    blViewEl.innerHTML = `<p class="note">${header}</p>${perfBlock}${repBlock}${leaderBlock}${nullIntro}${nullBlock}${verdictBlock}${htBlock}${inspectBlock}${compareBlock}`;
+    renderHtPanel(doc, sel).catch((err) => { const el2 = $('bl-ht-panel'); if (el2) el2.innerHTML = `<p class="note">History Tuning panel failed to load: ${esc(err.message)}</p>`; });
     // ---- inside view ------------------------------------------------------
     blViewEl.querySelectorAll('.bl-inspect').forEach((btn) => {
       btn.addEventListener('click', async () => {
@@ -2358,25 +2359,44 @@
       const realSel = $('bl-v-real');
       const nullSel = $('bl-v-null');
       const setupSel = $('bl-v-setup');
-      if (!realSel || !nullSel || !setupSel) return; // panel not rendered (no held-back window)
+      let srcs = [];
       try {
         const r = await fetch('api/bracketlab/verdict-sources');
         const d = await r.json();
-        const srcs = d.sources || [];
-        realSel.innerHTML = srcs.filter((x) => x.realRows > 0)
-          .map((x) => `<option value="${esc(x.id)}" ${x.id === doc.id ? 'selected' : ''}>${esc(x.id)} (${x.realRows} real)</option>`).join('');
-        nullSel.innerHTML = srcs.filter((x) => x.scrambleDraws > 0)
-          .map((x) => `<option value="${esc(x.id)}">${esc(x.id)} (${x.scrambleDraws} scrambles)</option>`).join('');
-        const cA = $('bl-c-a');
-        const cB = $('bl-c-b');
-        if (cA) {
-          const layoutTag = (x) => x.windowLayout && x.windowLayout !== 'legacy' ? ` [${x.windowLayout}]` : '';
-          const opts = srcs.filter((x) => x.realRows > 0)
-            .map((x) => `<option value="${esc(x.id)}">${esc(x.id)}${esc(layoutTag(x))}</option>`).join('');
-          cA.innerHTML = opts;
-          cB.innerHTML = '<option value="">— A is a "both" run —</option>' + opts;
+        srcs = d.sources || [];
+      } catch { /* dropdowns stay empty; the buttons will say why */ }
+      // Compare-two-runs wires on EVERY board (review: it used to die behind
+      // the verdict tool's no-hold early return — rendered, dead, silent).
+      const cA = $('bl-c-a');
+      const cB = $('bl-c-b');
+      if (cA) {
+        const layoutTag = (x) => x.windowLayout && x.windowLayout !== 'legacy' ? ` [${x.windowLayout}]` : '';
+        const opts = srcs.filter((x) => x.realRows > 0)
+          .map((x) => `<option value="${esc(x.id)}">${esc(x.id)}${esc(layoutTag(x))}</option>`).join('');
+        cA.innerHTML = opts;
+        cB.innerHTML = '<option value="">— pick run B (empty compares a historical both-run\u2019s own two arms) —</option>' + opts;
+        const cGo = $('bl-c-go');
+        if (cGo) {
+          cGo.addEventListener('click', async () => {
+            const out = $('bl-compare-out');
+            out.innerHTML = '<p class="note">comparing…</p>';
+            try {
+              const r2 = await fetch('api/bracketlab/compare', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ a: cA.value, b: cB.value || null }),
+              });
+              const d2 = await r2.json();
+              if (!r2.ok) throw new Error(d2.error || r2.status);
+              out.innerHTML = renderCompare(d2);
+            } catch (err) { out.innerHTML = `<p class="warn-text">${esc(err.message)}</p>`; }
+          });
         }
-      } catch { /* dropdowns stay empty; the button will say why */ }
+      }
+      if (!realSel || !nullSel || !setupSel) return; // verdict tool not rendered (no hold window)
+      realSel.innerHTML = srcs.filter((x) => x.realRows > 0)
+        .map((x) => `<option value="${esc(x.id)}" ${x.id === doc.id ? 'selected' : ''}>${esc(x.id)} (${x.realRows} real)</option>`).join('');
+      nullSel.innerHTML = srcs.filter((x) => x.scrambleDraws > 0)
+        .map((x) => `<option value="${esc(x.id)}">${esc(x.id)} (${x.scrambleDraws} null draws)</option>`).join('');
       (doc.leaders || []).filter((l) => l.stage === 'promoted').forEach((l) => {
         const o = document.createElement('option');
         o.value = JSON.stringify({
@@ -2388,7 +2408,7 @@
       });
       $('bl-v-go').addEventListener('click', async () => {
         const out = $('bl-verdict-out');
-        out.innerHTML = '<p class="note">comparing against the scrambled worlds…</p>';
+        out.innerHTML = '<p class="note">comparing against the null boards…</p>';
         const body = { realId: realSel.value, nullId: nullSel.value };
         if (setupSel.value) Object.assign(body, JSON.parse(setupSel.value));
         try {
@@ -2402,23 +2422,7 @@
           out.innerHTML = `<p class="note">could not run the tests: ${esc(err.message)}</p>`;
         }
       });
-      const cGo = $('bl-c-go');
-      if (cGo) cGo.addEventListener('click', async () => {
-        const out = $('bl-compare-out');
-        out.innerHTML = '<p class="note">reading both arms…</p>';
-        try {
-          const body = { a: $('bl-c-a').value };
-          if ($('bl-c-b').value) body.b = $('bl-c-b').value;
-          const r = await fetch('api/bracketlab/compare', {
-            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
-          });
-          const d = await r.json();
-          if (!r.ok) throw new Error(d.error || r.status);
-          out.innerHTML = renderCompare(d);
-        } catch (err) {
-          out.innerHTML = `<p class="note">could not compare: ${esc(err.message)}</p>`;
-        }
-      });
+      // (compare wiring moved ABOVE the verdict guard — review finding)
     })();
 
     blViewEl.querySelectorAll('.bl-sel').forEach((radio) => {
@@ -2458,13 +2462,17 @@
   async function renderHtPanel(doc, sel) {
     const el = $('bl-ht-panel');
     if (!el) return;
+    if (doc && doc.status === 'running' && String(doc.id).startsWith('bracketlab-')) {
+      el.innerHTML = '<div class="section"><h2>History Tuning — strengthen a proven setup (optional second pass)</h2><p class="note">available when the sweep finishes</p></div>';
+      return;
+    }
     const list = await (await fetch('api/batches')).json();
     const htDocs = (list.batches || []).filter((b) => b.id.startsWith('historytuning-'));
     let launcher = '';
     if (sel && doc && doc.status === 'done') {
       const srcOk = doc.params.windowLayout === 'split70' || doc.params.windowLayout === 'reserve61'
         || ((doc.params.windowLayout === undefined || doc.params.windowLayout === 'legacy') && doc.params.holdout);
-      const gateOk = sel.gate !== 'always' || sel.entry === 'market';
+      const gateOk = sel.gate !== 'always';
       const why = !srcOk ? 'this run is not a 70/15/15 structure — History Tuning needs a test AND hold window'
         : !gateOk ? 'this row uses the always gate — it enters regardless of votes, so both tuning dials would act on nothing'
           : null;
@@ -2482,10 +2490,20 @@
     } else if (!htDocs.length) {
       launcher = '<p class="note">Select a promoted row on a finished 70/15/15 board to activate the launcher. Runs appear here once fired.</p>';
     }
+    // Real runs are ALWAYS rendered (a stack of newer null draws must never
+    // push the run that owns them off the panel — review finding); draws and
+    // grades group under their real run.
     let runsHtml = '';
-    for (const b of htDocs.slice(0, 4)) {
-      const r = await (await fetch(`api/batch/${encodeURIComponent(b.id)}`)).json();
-      runsHtml += renderHtRun(r);
+    const docsFull = [];
+    for (const b of htDocs.slice(0, 12)) {
+      docsFull.push(await (await fetch(`api/batch/${encodeURIComponent(b.id)}`)).json());
+    }
+    const reals = docsFull.filter((r) => (r.params || {}).arm !== 'null' && !(r.params || {}).mode);
+    for (const real of reals.slice(0, 2)) {
+      runsHtml += renderHtRun(real, docsFull);
+      for (const child of docsFull.filter((r) => (r.params || {}).replayOf === real.id)) {
+        runsHtml += renderHtRun(child, docsFull);
+      }
     }
     el.innerHTML = `<div class="section"><h2>History Tuning — strengthen a proven setup (optional second pass)</h2>${launcher}${runsHtml}</div>`;
     const go = el.querySelector('#bl-ht-go');
@@ -2496,9 +2514,10 @@
             method: 'POST', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               sourceBatchId: doc.id,
+              windowStamps: sel.windowStamps || null,
               combo: { trade: sel.trade, ctx1: sel.ctx1 || null, ctx2: sel.ctx2 || null, size: sel.size || 1 },
-              branch: { geometry: sel.geometry, decision: sel.decision, band: 'auto', weekdaysOnly: !!sel.weekdaysOnly },
-              declaredCell: { quorum: sel.quorum, gate: sel.gate, entry: sel.entry, dMult: sel.dMult, tHours: sel.tHours, trailMult: sel.trailMult ?? null, armMult: sel.armMult ?? null, bandPct: sel.bandPct },
+              branch: { geometry: sel.geometry, decision: sel.decision, band: sel.bandMode === 'auto' || !sel.bandMode ? 'auto' : sel.bandPct, weekdaysOnly: !!sel.weekdaysOnly },
+              declaredCell: { quorum: sel.quorum, gate: sel.gate, entry: sel.entry || 'breakout', dMult: sel.dMult, tHours: sel.tHours, trailMult: sel.trailMult ?? null, armMult: sel.armMult ?? null, bandPct: sel.bandPct },
             }),
           });
           const body = await jsonBody(res);
@@ -2507,6 +2526,13 @@
         } catch (err) { blErrEl.hidden = false; blErrEl.textContent = err.message; }
       });
     }
+    el.querySelectorAll('[data-ht-verdict]').forEach(async (dv) => {
+      try {
+        const r2 = await fetch(`api/historytuning/${encodeURIComponent(dv.dataset.htVerdict)}/verdict`);
+        const v = await r2.json();
+        dv.innerHTML = r2.ok ? `<strong>${esc(v.sentence)}</strong>` : `<em>${esc(v.error || 'verdict unavailable')}</em>`;
+      } catch (err) { dv.innerHTML = `<em>verdict unavailable: ${esc(err.message)}</em>`; }
+    });
     el.querySelectorAll('[data-ht-null]').forEach((btn) => btn.addEventListener('click', async () => {
       try {
         const res = await fetch('api/historytuning/null', {
@@ -2532,7 +2558,7 @@
     }));
   }
 
-  function renderHtRun(r) {
+  function renderHtRun(r, siblings = []) {
     const p = r.params || {};
     const head = `<h3>${esc(r.id)} — ${esc(r.status)}${r.status === 'running' && r.progress ? ' — ' + esc(r.progress) : ''}${p.arm === 'null' ? ' <span class="bl-stage">null draw</span>' : ''}${p.mode === 'reserve-grade' ? ' <span class="bl-stage">reserve grade</span>' : ''}</h3>`;
     if (p.mode === 'reserve-grade') {
@@ -2569,17 +2595,27 @@
         <td>$${v.test.toFixed(2)}</td><td>${v.effMin === Infinity ? '—' : v.effMin.toFixed(0)}</td>
         <td>${k === refKey ? 'REFERENCE' : ''}${k === winner ? ' WINNER' : ''}</td><td>${holdCells}</td></tr>`;
     }).join('');
+    const shaping = `<p class="note">Shaping numbers: training floor ${esc(String(p.trainingFloorDays ?? 180))} effective days (GUESSED) ·
+      retune trade floor ${esc(String(p.minTradesPerLookbackWeek ?? '?'))} trades/lookback-week (GUESSED) ·
+      window ${esc(String(p.windowDays ?? '?'))} days per test/hold · minimum training run-up 425 days (GUESSED) ·
+      reserve61 splits are 60.9/13.05/13.05/13 exactly (the faithful 70/15/15-of-87%). Trailing held fixed at the
+      declared cell's setting through every retune; revisit with the first replication round.</p>`;
     const rules = p.readingRules ? `<details><summary class="note" style="cursor:pointer">The four reading rules stamped into this run (click)</summary>
       ${Object.entries(p.readingRules).map(([k, v]) => `<p class="note"><strong>${esc(k)}</strong> [${esc(v.label)}]: ${esc(v.text)}</p>`).join('')}</details>` : '';
-    const excludedNote = excluded.size ? `<p class="note">Arms excluded (failed a training floor on some split, so dropped from ALL splits): ${[...excluded].map(esc).join(', ')}</p>` : '';
+    const excludedNote = excluded.size ? `<p class="note">Dial pairs excluded (failed a training floor on some split, so dropped from ALL splits): ${[...excluded].map(esc).join(', ')}</p>` : '';
+    const myDraws = (siblings || []).filter((d) => (d.params || {}).replayOf === r.id && (d.params || {}).arm === 'null');
+    const usedSeeds = myDraws.map((d) => Number(d.params.nullShiftSeed) || 0);
+    const nextSeed = usedSeeds.reduce((a, b) => Math.max(a, b), 100) + 1;
+    const verdictDiv = r.status === 'done' && p.arm !== 'null' && !p.mode
+      ? `<div data-ht-verdict="${esc(r.id)}" class="note"><em>computing the stamped verdict…</em></div>` : '';
     const nullBtn = r.status === 'done' && p.arm !== 'null' && !p.mode
-      ? `<p class="note"><button data-ht-null="${esc(r.id)}" data-seed="${(p.lastNullSeed || 0) + 101}">Fire a trail-replay null draw (seed ${(p.lastNullSeed || 0) + 101})</button>
-         — each draw replays the full grid on dealt votes, inheriting only the calendar; 19 draws is the declared count (floor 1 in 20).</p>` : '';
+      ? `<p class="note"><button data-ht-null="${esc(r.id)}" data-seed="${nextSeed}">Fire trail-replay null draw ${myDraws.length + 1} of 19 (seed ${nextSeed})</button>
+         — each draw replays the full grid on dealt votes, inheriting only the calendar. 19 is the declared count (floor 1 in 20); the server refuses repeated seeds.</p>` : '';
     const gradeBtn = r.status === 'done' && p.arm !== 'null' && !p.mode && p.reserveFromTs
       ? `<p class="note"><button data-ht-grade="${esc(r.id)}">Run the reserve grade — one touch, final</button>
          — the winner's walk, the reference pass's walk and 19 null draws over the sealed reserve, fired together, once, ever.</p>`
       : (r.status === 'done' && p.arm !== 'null' && !p.mode ? '<p class="note">No reserve exists for this setup (its board run predates the reserve layout) — the binding grade is the forward paper book.</p>' : '');
-    return `<div class="section">${head}${rules}${excludedNote}
+    return `<div class="section">${head}${shaping}${rules}${excludedNote}
       <p class="note">TABLE: the dial-pair board. NAME: combined TEST money per dial pair (the picking read).
         KEY: age = the half-life setting; retune = cadence and lookback; test $ = net paper dollars per $100
         book summed across the three test windows (picked on, flattering by construction); eff. days = the
@@ -2588,8 +2624,87 @@
       <div class="tablewrap"><table>
         <tr><th>#</th><th>age</th><th>retune</th><th>test $</th><th>eff. days</th><th></th><th>hold $ (e/m/l)</th></tr>
         ${armRows || '<tr><td colspan="7" class="note">rows appear as passes finish</td></tr>'}
-      </table></div>${nullBtn}${gradeBtn}</div>`;
+      </table></div>${verdictDiv}${nullBtn}${gradeBtn}</div>`;
   }
+
+
+  // ---- Bracket lab data manager (owner order, 2026-08-03) --------------------
+  async function renderDataManager() {
+    const el = $('bl-data');
+    if (!el) return;
+    let symbols = [];
+    try {
+      const res = await fetch('api/data-state');
+      const body = await jsonBody(res);
+      if (!res.ok) throw new Error(body.error || `HTTP ${res.status}`);
+      symbols = body.symbols || [];
+    } catch (err) {
+      el.innerHTML = `<p class="note">data state unavailable: ${esc(err.message)}</p>`;
+      return;
+    }
+    el.innerHTML = `
+      <p class="note">WHY: everything below reads from this cache — a gap here silently shrinks every window.
+        HOW: manage per asset, download new pairs, or refresh everything. WHEN: before any sweep needing months
+        not listed. Every write refuses while a job runs; purge and trim DELETE data — the only way back is
+        downloading again.</p>
+      <div class="tablewrap"><table>
+        <tr><th>pair</th><th>months</th><th>from</th><th>to</th><th title="Refresh re-fetches from the newest cached month (it may have been partial) through the current month. Trim keeps only a range, deleting the rest. Purge deletes the whole asset. Growing a range = Download below.">manage</th></tr>
+        ${symbols.map((s2) => `
+          <tr><td>${esc(s2.symbol)}</td><td>${s2.months}</td><td>${esc(s2.from)}</td><td>${esc(s2.to)}</td>
+            <td><button type="button" class="ds-refresh" data-sym="${esc(s2.symbol)}">refresh to latest</button>
+              <button type="button" class="ds-trim" data-sym="${esc(s2.symbol)}" data-from="${esc(s2.from)}" data-to="${esc(s2.to)}">trim…</button>
+              <button type="button" class="ds-purge" data-sym="${esc(s2.symbol)}">purge…</button></td></tr>`).join('')
+        || '<tr><td colspan="5" class="note">nothing cached yet — download below</td></tr>'}
+      </table></div>
+      <div class="controls" style="margin:8px 0">
+        <div class="field" style="min-width:260px"><label for="ds-newpairs" title="Comma-separated pairs — any Binance USDT pair, not just the 17">download new pair(s)</label>
+          <input id="ds-newpairs" type="text" placeholder="PEPEUSDT, SUIUSDT"></div>
+        <div class="field"><label for="ds-from">from</label><input id="ds-from" type="month"></div>
+        <div class="field"><label for="ds-to">to</label><input id="ds-to" type="month"></div>
+        <div class="field submit"><button type="button" id="ds-download">Download</button></div>
+        <div class="field submit"><button type="button" id="ds-refresh-all" title="Every cached pair: fetch from its newest cached month through the current month">Global Refresh</button></div>
+      </div>
+      <div id="ds-status" class="note"></div>`;
+    const dsStatus = (m) => { const e2 = $('ds-status'); if (e2) e2.textContent = m; };
+    const dsCall = async (url, bodyObj, confirmMsg) => {
+      if (confirmMsg && !confirm(confirmMsg)) return;
+      try {
+        const r2 = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(bodyObj) });
+        const d2 = await jsonBody(r2);
+        if (!r2.ok) throw new Error(d2.error || `HTTP ${r2.status}`);
+        if (d2.jobId) {
+          dsStatus(`working… (job ${d2.jobId})`);
+          await poll(d2.jobId, dsStatus);
+          dsStatus('done');
+        } else {
+          dsStatus(`done: ${d2.purged != null ? `${d2.purged} cached file(s) deleted` : JSON.stringify(d2)}`);
+        }
+        renderDataManager();
+        refreshDataState();
+      } catch (err) { dsStatus(`refused or failed: ${err.message}`); }
+    };
+    el.querySelectorAll('.ds-refresh').forEach((b) => b.addEventListener('click', () => dsCall('api/data/refresh', { symbol: b.dataset.sym })));
+    el.querySelectorAll('.ds-purge').forEach((b) => b.addEventListener('click', () => dsCall('api/data/purge', { symbol: b.dataset.sym },
+      `DELETE every cached month of ${b.dataset.sym}? The only way back is downloading again.`)));
+    el.querySelectorAll('.ds-trim').forEach((b) => b.addEventListener('click', () => {
+      const keepFrom = prompt(`${b.dataset.sym}: keep FROM month (YYYY-MM). Cached: ${b.dataset.from} to ${b.dataset.to}. Months BEFORE this are deleted.`, b.dataset.from);
+      if (!keepFrom) return;
+      const keepTo = prompt(`${b.dataset.sym}: keep TO month (YYYY-MM). Months AFTER this are deleted.`, b.dataset.to);
+      if (!keepTo) return;
+      dsCall('api/data/purge', { symbol: b.dataset.sym, keepFrom, keepTo },
+        `${b.dataset.sym}: DELETE everything outside ${keepFrom}..${keepTo}?`);
+    }));
+    const dl = $('ds-download');
+    if (dl) dl.addEventListener('click', () => {
+      const syms = ($('ds-newpairs').value || '').split(',').map((x) => x.trim().toUpperCase()).filter(Boolean);
+      if (!syms.length) { dsStatus('name at least one pair, like PEPEUSDT'); return; }
+      if (!$('ds-from').value || !$('ds-to').value) { dsStatus('pick both months'); return; }
+      dsCall('api/data/download', { symbols: syms, startMonth: $('ds-from').value, endMonth: $('ds-to').value });
+    });
+    const ra = $('ds-refresh-all');
+    if (ra) ra.addEventListener('click', () => dsCall('api/data/refresh', {}));
+  }
+  renderDataManager();
 
   async function refreshBracket() {
     try {
@@ -2697,6 +2812,7 @@
         minTrades: Number($('bl-mintrades').value) || 10,
         trailing: $('bl-trailing').checked,
         windowLayout: $('bl-layout').value,
+        labelShiftReps: Number($('bl-nullboards').value) || 0,
       };
       if ($('bl-declared-on').checked) {
         const entry = $('bl-dec-entry').value;

@@ -18,14 +18,27 @@
 // effect. Passing clears THIS window only; the forward paper test after
 // freezing is the real judge. This gate exists to stop obvious luck being
 // frozen, nothing more.
+// TWO NULL CONSTRUCTIONS EXIST ON DISK. Docs from 2026-08-03 onward carry
+// deal-built draws (nullDealSeed, register 66 — each member's real vote mix
+// dealt onto random days); older docs carry rotation-built draws
+// (shiftFrac), a construction register 66 discredited. This reader speaks
+// both so history stays readable, but it TAGS every verdict with the
+// construction it was measured against — a rotation verdict is a historical
+// reading, never current evidence.
+function drawTag(r) {
+  if (r.nullDealSeed != null) return `deal-s${r.nullDealSeed}`;
+  if (r.shiftFrac) return `rot-${r.shiftFrac}`;
+  return null;
+}
+
 function realRows(doc) {
-  return (doc.edgeCensus || []).filter((r) => !r.shiftFrac && r.holdPnl != null);
+  return (doc.edgeCensus || []).filter((r) => !drawTag(r) && r.holdPnl != null);
 }
 
 function drawsOf(doc) {
   return [...new Set((doc.edgeCensus || [])
-    .filter((r) => r.shiftFrac && r.holdPnl != null)
-    .map((r) => r.shiftFrac))].sort((a, b) => a - b);
+    .filter((r) => drawTag(r) && r.holdPnl != null)
+    .map((r) => drawTag(r)))].sort();
 }
 
 // The pairing key includes the window-layout ARM when a doc carries mixed
@@ -52,12 +65,14 @@ function nullVerdict(realDoc, nullDoc, sel) {
   const real = realRows(realDoc);
   if (!real.length) throw new Error(`${realDoc.id} has no real (unscrambled) money rows`);
   const shifts = drawsOf(nullDoc);
-  if (!shifts.length) throw new Error(`${nullDoc.id} has no scrambled money rows`);
-  const nullCensus = (nullDoc.edgeCensus || []).filter((r) => r.shiftFrac && r.holdPnl != null);
+  if (!shifts.length) throw new Error(`${nullDoc.id} has no null-board money rows (neither deal-built nor rotation-built)`);
+  const nullCensus = (nullDoc.edgeCensus || []).filter((r) => drawTag(r) && r.holdPnl != null);
+  const construction = nullCensus.some((r) => r.nullDealSeed != null) ? 'deal (register 66)' : 'rotation (RETIRED construction — historical reading only, never current evidence)';
 
   const out = {
     realJob: realDoc.id,
     nullJob: nullDoc.id,
+    construction,
     drawCount: shifts.length,
     perSetup: null,
     selection: null,
@@ -72,7 +87,7 @@ function nullVerdict(realDoc, nullDoc, sel) {
     const mine = real.find((r) => keyOf(r) === k);
     if (!mine) throw new Error(`setup ${k} not in ${realDoc.id}'s real rows`);
     const draws = shifts.map((s) => {
-      const row = nullCensus.find((r) => r.shiftFrac === s && keyOf(r) === k);
+      const row = nullCensus.find((r) => drawTag(r) === s && keyOf(r) === k);
       return { shift: s, value: row ? row.holdPnl : null };
     }).filter((d) => d.value != null);
     out.perSetup = { setup: k, ...rank(mine.holdPnl, draws) };
@@ -82,7 +97,7 @@ function nullVerdict(realDoc, nullDoc, sel) {
   // scrambled world. The maximum is taken over the SAME population both sides.
   const bestReal = real.reduce((a, r) => (r.holdPnl > a.holdPnl ? r : a));
   const selDraws = shifts.map((s) => {
-    const g = nullCensus.filter((r) => r.shiftFrac === s);
+    const g = nullCensus.filter((r) => drawTag(r) === s);
     if (!g.length) return null;
     const m = g.reduce((a, r) => (r.holdPnl > a.holdPnl ? r : a));
     return { shift: s, value: m.holdPnl, setup: keyOf(m) };

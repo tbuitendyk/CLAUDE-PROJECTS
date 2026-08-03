@@ -76,6 +76,19 @@ function saveBatch(doc) {
 // walkforward docs carry unit progress in perf instead of a runs array, and
 // the old inline version threw on them — the doc silently vanished from the
 // picker (QC 58).
+
+// Inclusive month count between 'YYYY-MM' strings; null on unparseable input
+// (the floor check then defers to the data-driven checks downstream).
+function monthSpan(a, b) {
+  const m = (x) => {
+    const mm = /^(\d{4})-(\d{2})$/.exec(String(x || ''));
+    return mm ? Number(mm[1]) * 12 + Number(mm[2]) : null;
+  };
+  const A = m(a);
+  const B = m(b);
+  return A != null && B != null && B >= A ? B - A + 1 : null;
+}
+
 function listRow(d) {
   const runs = Array.isArray(d.runs) ? d.runs : null;
   return {
@@ -1536,7 +1549,22 @@ function startHistoryTuning(params) {
     if (real.params.arm === 'null') throw new Error('replayOf must point at the REAL run, not another null draw');
     const seed = Number(params.nullShiftSeed);
     if (!Number.isInteger(seed) || seed < 1 || seed > 1e9) {
-      throw new Error(`nullShiftSeed must be an integer 1..1e9 (got ${params.nullShiftSeed}) — a null draw without a valid seed would run as a REAL arm under a null label`);
+      throw new Error(`nullShiftSeed must be an integer 1..1e9 (got ${params.nullShiftSeed}) — a null draw without a valid seed would run as a REAL pass under a null label`);
+    }
+    // The deal is deterministic per seed: a repeated seed is the SAME draw
+    // counted twice — 19 copies of one draw would dress resolution 1-in-2 as
+    // 1-in-20 (review finding). Refuse.
+    for (const b of listBatches()) {
+      if (b.kind === 'historytuning' && b.params && b.params.replayOf === real.id
+          && Number(b.params.nullShiftSeed) === seed) {
+        throw new Error(`seed ${seed} was already drawn for ${real.id} (${b.id}) — a repeated seed is the same draw twice, not a second draw`);
+      }
+    }
+    // No trail, no null, no claim (owner rule): the draw replays the real
+    // run's schedule, and a run that failed to record its trail cannot be
+    // replayed honestly.
+    if ((real.htRows || []).some((r) => !r.refused && !r.skipped && !r.trailFile)) {
+      throw new Error(`${real.id} has passes with missing trail files — no trail, no null, no claim. Investigate the trail-dump failures before drawing.`);
     }
     const p2 = { ...real.params, nullShiftSeed: seed, arm: 'null', replayOf: real.id,
       label: params.label || `htnull-s${seed}`, description: params.description || `null draw seed ${seed} of ${real.id} — no verdict alone; selects nothing` };
@@ -2118,6 +2146,28 @@ function startBracketLab(params) {
     engineVersion: ENGINE_VERSION,
   };
   if (!p.sizes.singles && !p.sizes.doubles && !p.sizes.triples) throw new Error('tick at least one combo size');
+  // SYSTEM-WIDE TRAINING FLOOR (owner ruling): every launch checks it. For
+  // undiscounted runs effective days = calendar days, so this is one cheap
+  // arithmetic check on the month range. reserve61 trains on 61%, split70 on
+  // 70%, legacy80 on 80% of the range.
+  {
+    const H2 = require('./history');
+    const months = p.allLoaded ? null : monthSpan(p.startMonth, p.endMonth);
+    // null months (allLoaded or unparseable) => the per-unit chunk checks govern
+    if (months != null) {
+      const share = p.windowLayout === 'reserve61' ? 0.609 : p.windowLayout === 'split70' ? 0.7 : 0.8;
+      const trainDays = months * 30.44 * share;
+      const refusal = H2.floorRefusal(trainDays, `${p.windowLayout}: ~${months} loaded months x ${Math.round(share * 100)}% training share`);
+      if (refusal) throw new Error(refusal);
+    }
+  }
+  // RULING B: a reserve exists to hold a real exam — print its length, refuse
+  // a token one (GUESSED minimum, 8 weeks).
+  if (p.windowLayout === 'reserve61' && !p.allLoaded && monthSpan(p.startMonth, p.endMonth) != null) {
+    const weeks = Math.round((monthSpan(p.startMonth, p.endMonth) * 30.44 * 0.13) / 7);
+    if (weeks < 8) throw new Error(`refused: the sealed reserve would be ~${weeks} weeks — below the 8-week minimum (GUESSED). Load more history.`);
+    p.reserveWeeksPlanned = weeks;
+  }
   // The layout DECIDES the hold window — no separate checkbox exists any
   // more (owner order: the checkbox-plus-option pairing encoded two splits
   // ambiguously). legacy80 has no hold; split70 and reserve61 do.
