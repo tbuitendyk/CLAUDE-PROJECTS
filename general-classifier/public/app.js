@@ -2013,7 +2013,7 @@
     const m$ = (v) => (v == null ? '—' : (v < 0 ? '-' : '+') + '$' + Math.abs(v).toFixed(2));
     const drawsTable = (t) => `<div class="tablewrap"><table>
       <tr><th>null draw</th><th>value</th></tr>
-      ${t.draws.map((x) => `<tr><td>${x.shift.toFixed(3)}${x.setup ? ' · ' + esc(x.setup.replace(/\|/g, ' ')) : ''}</td>
+      ${t.draws.map((x) => `<tr><td>${typeof x.shift === 'number' ? x.shift.toFixed(3) : esc(String(x.shift))}${x.setup ? ' · ' + esc(x.setup.replace(/\|/g, ' ')) : ''}</td>
         <td class="${t.real > x.value ? 'up' : 'down'}">${m$(x.value)}</td></tr>`).join('')}
     </table></div>`;
     const block = (title, t, what) => t ? `
