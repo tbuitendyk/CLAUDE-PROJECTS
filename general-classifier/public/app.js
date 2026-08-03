@@ -2327,7 +2327,41 @@
     // them owes no shopping tax and no branch correction.
     let repBlock = '';
     if (p.declared) {
-      const rows = doc.replication || [];
+      // REAL rows only — null copies also score the declared cell (that is
+      // their job), but they must never enter the cross-coin count (QC 72).
+      // Rows recorded before the tag existed (1.34.0 and earlier): the real
+      // copy of each coin finished first (results are handled in launch
+      // order, and the real block is queued first), so the first-recorded
+      // row per coin is the real one. Tagged docs need no such inference.
+      const allRep = doc.replication || [];
+      const tagged = allRep.some((r) => 'nullDealSeed' in r);
+      let rows;
+      let repNote = '';
+      if (tagged) {
+        rows = allRep.filter((r) => r.nullDealSeed == null);
+      } else if (hasDealNulls) {
+        // A coin whose REAL copy failed must be DROPPED, not silently
+        // represented by its first null copy (failure keys for null copies
+        // carry a |n marker; real-copy failures do not).
+        const realFailed = new Set((doc.failures || [])
+          .filter((f) => !/\|n\d+/.test(f.key || ''))
+          .map((f) => String(f.key || '').split('|')[0].split('+')[0]));
+        const seen = new Set();
+        rows = allRep.filter((r) => {
+          const k = r.trade + '|' + (r.ctx1 || '') + '|' + (r.ctx2 || '');
+          if (seen.has(k) || realFailed.has(r.trade)) return false;
+          seen.add(k);
+          return true;
+        });
+        repNote = `<p class="note">This run recorded ${allRep.length} declared-cell rows without marking which
+          copy scored them (fixed in the next release). Shown: each coin's first-recorded row. That is the
+          real copy: real copies are queued before all null copies, same-coin copies sit 17 queue slots
+          apart, and at most a handful of units run at once — so a coin's real row always lands first.
+          ${realFailed.size ? `${realFailed.size} coin(s) whose real copy FAILED are dropped entirely rather than shown as a null copy.` : ''}
+          The ${allRep.length - rows.length} null-copy rows are excluded from every count here.</p>`;
+      } else {
+        rows = allRep;
+      }
       const scored = rows.filter((r) => r.pnl != null);
       const withCtl = scored.filter((r) => r.vsControl != null);
       const pos = scored.filter((r) => r.pnl > 0).length;
@@ -2344,6 +2378,7 @@
       const q = p.declared.quorumRatio ? Math.round(p.declared.quorumRatio * 100) + '% of members' : p.declared.quorum;
       repBlock = `
         <div class="section"><h2>Replication — declared config on every asset</h2>
+        ${repNote}
         <p class="note">Declared before the run: <strong>${p.declared.entry === 'market'
             ? `market entry (at the open, called direction) · t ${p.declared.tHours}h`
             : `${esc(p.declared.gate)} gate · d ${p.declared.dMult}× · t ${p.declared.tHours}h`} ·

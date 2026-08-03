@@ -2529,6 +2529,11 @@ function startBracketLab(params) {
           if (res.declared) {
             const d = res.declared;
             doc.replication.push({
+              // WHICH COPY scored this row. Without the tag, real and
+              // null-copy declared scores were indistinguishable and the
+              // cross-coin count mixed them 1:9 (owner's run exposed it,
+              // 2026-08-04 — QC 72).
+              nullDealSeed: l.nullDealSeed ?? null,
               trade: l.trade, ctx1: l.ctx1, ctx2: l.ctx2, geometry: l.geometry, bandPct: res.bandPct,
               // layoutMeta only ever came from the retired quota layouts, so
               // this fallback stamped 'legacy' on split70/reserve61 rows —
