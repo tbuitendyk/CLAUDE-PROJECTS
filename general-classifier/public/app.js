@@ -2121,6 +2121,31 @@
       : `${esc(r.gate)}/breakout${r.trailMult != null ? ` · trail ${r.trailMult}×/arm ${r.armMult}×` : ''}<div class="cellsub">d ${r.dMult}× · t ${r.tHours}h${r.trailAmbiguous ? ` · <strong>${r.trailAmbiguous} trail-amb</strong>` : ''}</div>`);
     const pct = (v) => (v == null ? '—' : (100 * v).toFixed(1) + '%');
     const signedPct = (v) => (v == null ? '—' : `<span class="${v >= 0 ? 'up' : 'down'}">${v >= 0 ? '+' : ''}${(100 * v).toFixed(1)}%</span>`);
+    // "vs nulls" at a glance (owner order, 2026-08-04): for each row, how many
+    // of its null copies (same setup, votes dealt onto random days) its
+    // held-back money beat. Same reading as Tool 2's per-setup line, one
+    // click fewer. The column only exists when the run carries dealt-vote
+    // null rows — old boards stay exactly as they were.
+    const vnKey = (r) => `${r.trade}|${r.geometry}|${r.decision}`;
+    const vnNulls = new Map();
+    const vnReal = new Map();
+    for (const r of (doc.edgeCensus || [])) {
+      if (r.holdPnl == null) continue;
+      if (r.nullDealSeed != null) {
+        if (!vnNulls.has(vnKey(r))) vnNulls.set(vnKey(r), []);
+        vnNulls.get(vnKey(r)).push(r.holdPnl);
+      } else if (!r.shiftFrac) vnReal.set(vnKey(r), r.holdPnl);
+    }
+    const hasDealNulls = vnNulls.size > 0;
+    const vsNullsCell = (l) => {
+      if (!hasDealNulls) return '';
+      if (l.nullDealSeed != null) return '<td>—</td>'; // a null copy has no null set of its own
+      const real = vnReal.get(vnKey(l));
+      const nulls = vnNulls.get(vnKey(l)) || [];
+      if (real == null || !nulls.length) return '<td>—</td>';
+      const beats = nulls.filter((v) => real > v).length;
+      return `<td class="${beats === nulls.length ? 'up' : ''}"><strong>${beats}/${nulls.length}</strong></td>`;
+    };
     const leadRows = (doc.leaders || []).map((l, i) => {
       const selectable = !running && l.stage === 'promoted';
       const isSel = sel && sel.key === l.key && sel.stage === l.stage;
@@ -2166,6 +2191,7 @@
         <td>q${l.quorum}/${l.members} · ${execCell(l)}</td>
         ${tuneBlock}
         ${holdBlock}
+        ${vsNullsCell(l)}
       </tr>`;
     }).join('');
     // Did this run hold anything back? A legacy run with the box unticked did
@@ -2188,7 +2214,7 @@
       <div class="tablewrap"><table class="bl-board">
         <tr class="grp-row"><th colspan="4"></th>
           <th colspan="4" class="grp grp-tune blk-l" title="Numbers from the TEST window — the window each row's trading settings were chosen on. Flattering by construction: the row won because it scored best here.">TEST WINDOW — where settings were chosen</th>
-          <th colspan="5" class="grp grp-hold blk-l" title="Scored ONCE with settings already committed. Nothing was chosen using this window.">HELD-BACK — what matters</th></tr>
+          <th colspan="${hasDealNulls ? 6 : 5}" class="grp grp-hold blk-l" title="Scored ONCE with settings already committed. Nothing was chosen using this window.">HELD-BACK — what matters</th></tr>
         <tr><th title="Pick a PROMOTED row as the null-test candidate"></th><th>#</th>
         <th title="Combo and stage; second line: chunk shape · band · decision · week mode">setup</th>
         <th title="AGREEMENT LEVEL, then GATE/ENTRY in that order — no entry without the gate passing. Gate: does the committee's vote permit a trade (active = trade only when the vote is non-zero, direction settled by whichever trigger price hits first; directional = only the voted direction can open; always = votes ignored — baseline rows only). Entry: how the position opens (breakout = price reaches a trigger rail; market = immediately at the open, directional-only by construction). Second line: trigger distance d×band and time limit t.">q · gate/entry</th>
@@ -2200,8 +2226,9 @@
         <th title="Held-back accuracy; second line the majority baseline it is scored against">acc</th>
         <th title="Held-back accuracy minus baseline; second line directional hits/calls">edge</th>
         <th title="Held-back wins/trades; second line gross per trade before the round-trip fee">W/T · g/t</th>
-        <th title="Held-back trades closed by the stop rail; (n amb) = bars spanning both rails, resolved AGAINST the book">stops</th></tr>
-        ${leadRows || '<tr><td colspan="13" class="note">nothing on the board yet</td></tr>'}
+        <th title="Held-back trades closed by the stop rail; (n amb) = bars spanning both rails, resolved AGAINST the book">stops</th>
+        ${hasDealNulls ? '<th title="How many of this row\'s null copies its held-back money beat. Each copy is the same setup with its votes dealt onto random days. Nine null boards means the best possible is 9/9 — a 1-in-10 result, same reading as Tool 2\'s per-row line. While the sweep is still running the count moves as copies finish; judge only when done.">vs nulls</th>' : ''}</tr>
+        ${leadRows || `<tr><td colspan="${hasDealNulls ? 14 : 13}" class="note">nothing on the board yet</td></tr>`}
       </table></div>
       <p class="note">* <strong>vs control on a search board is not evidence.</strong> Each row is the best
         cell of a menu that already contains every always-gate (model-free) cell, so a row whose winner
