@@ -102,6 +102,26 @@ const dataPath = require('path');
 const DATA_CACHE_DIR = dataPath.join(__dirname, 'data', 'cache');
 const currentMonth = () => new Date().toISOString().slice(0, 7);
 
+
+// Backfill a month that has no published bundle yet, day by day — the same
+// path the paper books use to stay current (owner caught the refresh
+// fetching nothing while July's bundles are unpublished, 2026-08-03).
+async function backfillDailies(symbol, monthStr, setProgress) {
+  const { dailyKlines } = require('./lib/binance');
+  const [y, m] = monthStr.split('-').map(Number);
+  const daysInMonth = new Date(Date.UTC(y, m, 0)).getUTCDate();
+  const today = new Date();
+  let fetched = 0;
+  for (let d = 1; d <= daysInMonth; d++) {
+    const dayDate = Date.UTC(y, m - 1, d);
+    if (dayDate >= Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate())) break; // today is never a finished day file
+    setProgress(`${symbol} ${monthStr}-${String(d).padStart(2, '0')} (day file)`);
+    const rows = await dailyKlines(symbol, y, m, d);
+    if (rows && rows.length) fetched++;
+  }
+  return fetched;
+}
+
 app.post('/api/data/download', (req, res) => {
   const b = req.body || {};
   const symbols = (Array.isArray(b.symbols) ? b.symbols : []).map((x) => String(x).trim().toUpperCase()).filter(Boolean);
@@ -119,7 +139,11 @@ app.post('/api/data/download', (req, res) => {
     const out = {};
     for (const sym of symbols) {
       const { rows, missing } = await loadSymbol(sym, months, setProgress);
-      out[sym] = { candles: rows.length, monthsRequested: months.length, missingMonths: missing };
+      const backfilled = {};
+      for (const mm of missing) {
+        backfilled[mm] = await backfillDailies(sym, mm, setProgress);
+      }
+      out[sym] = { candles: rows.length, monthsRequested: months.length, monthsWithoutBundles: missing, dayFilesFetched: backfilled };
     }
     return out;
   });
@@ -143,7 +167,11 @@ app.post('/api/data/refresh', (req, res) => {
     for (const t of targets) {
       const months = ml((t.toMonth || t.to).slice(0, 7), currentMonth());
       const { rows, missing } = await loadSymbol(t.symbol, months, setProgress);
-      out[t.symbol] = { refreshedFrom: t.to, candles: rows.length, missingMonths: missing };
+      const backfilled = {};
+      for (const mm of missing) {
+        backfilled[mm] = await backfillDailies(t.symbol, mm, setProgress);
+      }
+      out[t.symbol] = { refreshedFrom: t.to, candles: rows.length, monthsWithoutBundles: missing, dayFilesFetched: backfilled };
     }
     return out;
   });
