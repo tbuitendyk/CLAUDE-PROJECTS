@@ -198,7 +198,12 @@ const DEFAULT_LAMBDAS = [0.01, 0.03, 0.1, 0.3, 1, 3, 10, 30];
 // the TOP of the ladder, the ladder auto-extends (×~3 per rung, up to 4
 // times) so an edge pick always means "the interior optimum", never "the
 // fence was too close".
-async function tuneAndTrain(Xtr, ytr, { lambdas = DEFAULT_LAMBDAS, onProgress = () => {}, classWeights = null } = {}) {
+// exampleWeights: optional per-example weights aligned with Xtr/ytr (the
+// History Tuning age discount). They multiply into classWeights everywhere,
+// INCLUDING the validation ladder and the majority reference — lambda must
+// be chosen for the weighted objective (same rule as classWeights, stated
+// per the design ledger). All-ones reproduces the unweighted math exactly.
+async function tuneAndTrain(Xtr, ytr, { lambdas = DEFAULT_LAMBDAS, onProgress = () => {}, classWeights = null, exampleWeights = null } = {}) {
   const n = Xtr.length;
   const nVal = Math.max(3, Math.round(n * 0.25));
   const nSub = n - nVal;
@@ -210,9 +215,13 @@ async function tuneAndTrain(Xtr, ytr, { lambdas = DEFAULT_LAMBDAS, onProgress = 
   // classWeights (label -> weight) makes training cost-sensitive AND scores
   // the validation ladder with the same weights, so lambda is chosen for the
   // weighted objective, not for "predict the dormant majority".
-  const wFor = classWeights ? (labels) => labels.map((l) => classWeights[l] ?? 1) : () => null;
-  const wsub = wFor(ysub);
-  const wval = wFor(yval);
+  const wFor = (labels, offset) => {
+    if (!classWeights && !exampleWeights) return null;
+    return labels.map((l, i) => (classWeights ? (classWeights[l] ?? 1) : 1)
+      * (exampleWeights ? exampleWeights[offset + i] : 1));
+  };
+  const wsub = wFor(ysub, 0);
+  const wval = wFor(yval, nSub);
 
   // Reference for reading the ladder: a model that always guesses the
   // sub-train majority class, scored on the same validation weeks. Ladder
@@ -256,7 +265,7 @@ async function tuneAndTrain(Xtr, ytr, { lambdas = DEFAULT_LAMBDAS, onProgress = 
   const best = pickBest();
   onProgress(`retraining on full training set at lambda=${best.lambda}`);
   const model = await trainSoftmax(Xtr, ytr, best.lambda, {
-    weights: wFor(ytr),
+    weights: wFor(ytr, 0),
     onIter: (i) => onProgress(`retraining at lambda=${best.lambda} (iteration ${i})`),
   });
   return { model, ladder, chosenLambda: best.lambda, valSize: nVal, valMajorityAcc };
