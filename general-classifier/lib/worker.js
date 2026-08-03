@@ -35,6 +35,7 @@ try {
 const TASKS = {
   unit: work.unitTask,
   nullRotation: work.nullRotationTask,
+  menuGrid: work.menuGridTask,
   wfUnit: require('./walkforward').wfUnitTask,
   htPass: require('./historytuning').htPassTask,
   // Introspection, so the nice level above is a testable property rather than

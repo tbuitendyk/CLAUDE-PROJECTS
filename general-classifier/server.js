@@ -890,6 +890,52 @@ app.get('/api/bracketlab/:id/inspect', (req, res) => {
   }
 });
 
+// THE FULL MENU GRID for one promoted row (owner order, 2026-08-04): every
+// execution-menu permutation re-scored from the row's stored member votes —
+// no retraining, test window only (browsing held-back money cell-by-cell
+// would turn the graded window into another shopping window). The task
+// self-checks that the reconstructed windows match the stored record and
+// refuses otherwise.
+app.post('/api/bracketlab/:id/menugrid', (req, res) => {
+  const id = String(req.params.id || '');
+  const file = String((req.body || {}).file || '');
+  if (!/^bracketlab-[A-Za-z0-9-]+$/.test(id)) return res.status(400).json({ error: 'bad job id' });
+  if (!/^[A-Za-z0-9._-]+\.json$/.test(file) || file.includes('..')) return res.status(400).json({ error: 'bad file name' });
+  if (batch.batchRunning()) return res.status(409).json({ error: 'a sweep is running — the grid recompute waits so it cannot slow it down' });
+  const doc = batch.getBatch(id);
+  if (!doc || doc.kind !== 'bracketlab') return res.status(404).json({ error: 'unknown run' });
+  const base = path.join(__dirname, 'data', 'models');
+  const full = path.resolve(base, id, file);
+  if (!full.startsWith(path.resolve(base) + path.sep)) return res.status(400).json({ error: 'bad path' });
+  let dump;
+  try {
+    dump = JSON.parse(require('fs').readFileSync(full, 'utf8'));
+  } catch {
+    return res.status(404).json({ error: 'no saved record for that row (runs before 2026-07-30 saved nothing)' });
+  }
+  const p = doc.params;
+  const band = p.permute && p.permute.band ? null : ((p.set && p.set.band) ?? 'auto');
+  const weekdaysOnly = dump.weekdaysOnly != null ? dump.weekdaysOnly
+    : (p.permute && p.permute.weekdays ? null : !!(p.set && p.set.weekdaysOnly));
+  if (band == null || weekdaysOnly == null) {
+    return res.status(400).json({ error: 'this run permuted band/24-5 and the stored record does not say which branch this row used — re-run the sweep for a grid' });
+  }
+  const combo = { trade: dump.trade, ctx1: dump.ctx1 || null, ctx2: dump.ctx2 || null, size: 1 + (dump.ctx1 ? 1 : 0) + (dump.ctx2 ? 1 : 0) };
+  const branch = { geometry: dump.geometry, decision: dump.decision, band, weekdaysOnly };
+  const jobId = startJob(async (setProgress) => {
+    setProgress(`re-scoring the full menu for ${combo.trade} ${branch.geometry} from the stored votes`);
+    const pool = require('./lib/pool').createPool(1);
+    try {
+      const [settled] = await pool.map('menuGrid', [{ combo, branch, params: p, dump }]);
+      if (!settled.ok) throw new Error(settled.error);
+      return { unit: { ...combo, geometry: branch.geometry, decision: branch.decision }, trailingSwept: !!p.trailing, ...settled.value };
+    } finally {
+      pool.abort();
+    }
+  });
+  res.json({ jobId });
+});
+
 // The two null tests over stored runs. POST because it names two docs and an
 // optional setup; it computes only — nothing is fired.
 app.post('/api/bracketlab/null-verdict', (req, res) => {

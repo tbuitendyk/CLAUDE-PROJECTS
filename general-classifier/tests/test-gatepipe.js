@@ -65,3 +65,38 @@ module.exports = {
     }
   },
 };
+
+// The menu grid re-scores a promoted row's stored votes across the whole
+// execution menu. Equivalence is the contract: the grid must contain the
+// exact cell the sweep chose, at the same money — same machinery or nothing.
+// And a grid on shifted windows must REFUSE, never render fiction.
+module.exports.menuGridMatchesTheSweepAndRefusesShiftedWindows = async function () {
+  const { unitTask, menuGridTask } = require('../lib/bracketwork');
+  planted.generatePlanted({ fromMonth: '2024-01', toDate: '2025-06-30' });
+  const combo = { trade: planted.PLANTED_SYMBOL, ctx1: null, ctx2: null, size: 1 };
+  const branch = { geometry: 'daily-1d', decision: 'argmax', band: 'auto', weekdaysOnly: false };
+  const params = {
+    allLoaded: true, windowLayout: 'split70', holdout: true, minTrades: 5, feePerLeg: 0.125,
+    dMults: [1], tHours: [41], gates: ['directional'], entries: ['breakout', 'market'], trailing: false,
+  };
+  try {
+    const res = await unitTask({ combo, branch, stage: 'promoted', params });
+    assert.ok(res.memberDump && res.best, 'promoted unit must dump members and pick a best cell');
+    const grid = await menuGridTask({ combo, branch, params, dump: res.memberDump });
+    assert.strictEqual(grid.cells.length, 6 * 2, '6 agreement levels x (1 breakout cell + 1 market cell)');
+    const twin = grid.cells.find((c) => c.quorum === res.best.quorum
+      && c.entry === (res.best.entry || 'breakout') && c.tHours === res.best.tHours
+      && (c.entry === 'market' || c.dMult === res.best.dMult));
+    assert.ok(twin, 'the sweep-chosen cell must exist in the grid');
+    assert.ok(Math.abs(twin.pnl - res.best.pnl) < 1e-9, `grid money must equal sweep money (${twin.pnl} vs ${res.best.pnl})`);
+    const tampered = JSON.parse(JSON.stringify(res.memberDump));
+    tampered.startTs.search[0] += 3600000;
+    let err = null;
+    try { await menuGridTask({ combo, branch, params, dump: tampered }); } catch (e) { err = e; }
+    assert.ok(err && /data cut|fiction/.test(err.message), 'shifted windows must refuse');
+  } finally {
+    for (const f of fs.readdirSync(CACHE)) {
+      if (f.startsWith(`${planted.PLANTED_SYMBOL}-1h-`)) fs.rmSync(path.join(CACHE, f), { force: true });
+    }
+  }
+};

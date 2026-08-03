@@ -577,4 +577,55 @@ async function nullRotationTask({ combo, branch, params, shiftIndex, nShifts, se
   };
 }
 
-module.exports = { unitTask, nullRotationTask, quorumCall, declaredQuorumFor, matchesDeclared, slimViewsFor, buildCombo, splitAndLabel, splitBounds, rotateLabels, windowShift, specsFor };
+// TASK 3 — the FULL menu grid for one promoted unit, from its stored votes
+// (owner order, 2026-08-04: "we need to see the whole results ... zillions of
+// permutations"). No retraining: the model dump recorded every member's
+// test-window calls, so the whole execution menu re-scores from the record.
+// TEST WINDOW ONLY, on purpose: printing held-back money for thousands of
+// cells would turn the graded window into another shopping window.
+// SELF-CHECKING: the reconstructed test chunks must match the dump's recorded
+// chunk timestamps and band exactly, or the grid refuses — a grid silently
+// scored on a different data cut is the classic instrument lie.
+async function menuGridTask({ combo, branch, params, dump }) {
+  const p = params;
+  if (!dump || !dump.votes || !Array.isArray(dump.votes.search)) {
+    throw new Error('this row\'s stored record carries no member votes — grids need a promoted row from an engine 1.29+ run');
+  }
+  const { geo, maps, chunks } = await buildCombo(combo, branch, p);
+  let workChunks = chunks;
+  if (p.windowLayout === 'reserve61') {
+    const nReserve = Math.max(2, Math.round(workChunks.length * 0.13));
+    workChunks = workChunks.slice(0, workChunks.length - nReserve);
+  }
+  const split = splitAndLabel(workChunks, branch, p.holdout);
+  const { testChunks, bandPct } = split;
+  const st = dump.startTs && dump.startTs.search;
+  if (!st || st.length !== testChunks.length || st[0] !== testChunks[0].startTs
+      || st[st.length - 1] !== testChunks[testChunks.length - 1].startTs) {
+    throw new Error('the stored votes do not line up with today\'s data cut (the cache changed since this run) — re-run the sweep; a grid on shifted windows would be fiction');
+  }
+  const gridBand = dump.bandPct ?? bandPct;
+  if (dump.bandPct != null && Math.abs(dump.bandPct - bandPct) > 1e-9) {
+    throw new Error('the recorded band no longer matches a fresh cut of the same data — re-run the sweep');
+  }
+  const calls = dump.votes.search;
+  const fee = p.feePerLeg ?? REAL_FEE_PER_LEG;
+  const cells = [];
+  for (let k = 1; k <= calls.length; k++) {
+    const stream = testChunks.map((_, i) => quorumCall(calls, i, k));
+    const rows = bracketLib.execSweep(testChunks, stream, maps.trade, geo, gridBand, fee, {
+      dMults: p.dMults, tHours: p.tHours, gates: p.gates, entries: p.entries,
+      trailing: !!p.trailing,
+    });
+    for (const r of rows) cells.push({ quorum: k, members: calls.length, ...r });
+  }
+  return {
+    window: 'test',
+    testChunkCount: testChunks.length,
+    bandPct: gridBand,
+    quorums: calls.length,
+    cells,
+  };
+}
+
+module.exports = { unitTask, nullRotationTask, menuGridTask, quorumCall, declaredQuorumFor, matchesDeclared, slimViewsFor, buildCombo, splitAndLabel, splitBounds, rotateLabels, windowShift, specsFor };

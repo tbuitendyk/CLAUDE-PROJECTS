@@ -1913,6 +1913,35 @@
 
   // TABLES CARRY A NAME AND A KEY (owner's standing rule) — these render for
   // the owner to operate alone, so nothing is assumed known.
+  // The full execution-menu grid for one row: every cell, test window only.
+  function renderMenuGrid(d, label) {
+    const m$ = (v) => (v == null ? '—' : `<span class="${v >= 0 ? 'up' : 'down'}">${(v < 0 ? '-' : '+')}$${Math.abs(v).toFixed(2)}</span>`);
+    const cells = (d.cells || []).slice().sort((a, b) => (b.pnl ?? -Infinity) - (a.pnl ?? -Infinity));
+    const cellName = (c) => (c.entry === 'market'
+      ? `q${c.quorum} · directional/market · t ${c.tHours}h`
+      : `q${c.quorum} · ${esc(c.gate)}/breakout · d ${c.dMult}× · t ${c.tHours}h${c.trailMult != null ? ` · trail ${c.trailMult}×/arm ${c.armMult}×` : ''}`);
+    return `
+      <h3>Menu grid — ${esc(label)} (${cells.length.toLocaleString()} permutations)</h3>
+      <p class="note">Every combination of agreement level × gate × entry × trigger distance × time limit
+        ${d.trailingSwept ? '× trailing stop × arming distance ' : ''}re-scored from this row's stored votes on
+        ${d.testChunkCount} test-window periods (band ±${d.bandPct != null ? d.bandPct.toFixed(2) : '?'}%).
+        <strong>TEST WINDOW ONLY, on purpose:</strong> held-back money stays with the one declared cell —
+        printing it for thousands of cells would turn the graded window into another shopping window.
+        Read the SHAPE here (does money hold across neighboring settings, or spike on one cell?), never a
+        single number. Sorted by test money, best first.</p>
+      <div class="tablewrap" style="max-height:440px;overflow-y:auto"><table>
+        <tr><th>#</th><th>cell — agreement · gate/entry · distance · time limit · trailing</th>
+          <th>test $</th><th>W/T</th><th>g/t $</th><th title="stop-rail exits; amb = bars that touched both rails, resolved AGAINST the book; trail-amb = bars where extreme-vs-stop order is unknowable on hourly candles">stops</th></tr>
+        ${cells.map((c, i) => `<tr>
+          <td>${i + 1}</td><td>${cellName(c)}</td>
+          <td><strong>${m$(c.pnl)}</strong></td>
+          <td>${c.wins}/${c.trades}</td>
+          <td>${c.grossPerTrade != null ? c.grossPerTrade.toFixed(2) : '—'}</td>
+          <td>${c.stops}${c.ambiguous ? ` · ${c.ambiguous} amb` : ''}${c.trailAmbiguous ? ` · ${c.trailAmbiguous} trail-amb` : ''}</td>
+        </tr>`).join('')}
+      </table></div>`;
+  }
+
   function renderInspect(d, label) {
     const pc = (v) => (v == null ? '—' : (100 * v).toFixed(1) + '%');
     const sp = (v) => (v == null ? '—' : `<span class="${v >= 0 ? 'up' : 'down'}">${v >= 0 ? '+' : ''}${(100 * v).toFixed(1)}%</span>`);
@@ -2234,7 +2263,8 @@
       const dumpFile = censusRow && censusRow.modelFile ? censusRow.modelFile.split('/').pop() : null;
       return `<tr class="${l.stage === 'promoted' ? 'hilite' : ''}">
         <td>${selectable ? `<input type="radio" name="bl-sel" class="bl-sel" data-key="${esc(l.key)}" data-stage="${esc(l.stage)}" ${isSel ? 'checked' : ''}>` : ''}
-          ${l.stage === 'promoted' && dumpFile ? `<button class="bl-inspect" data-file="${esc(dumpFile)}" data-quorum="${l.quorum}" data-label="${esc(comboLabel(l))} ${esc(l.geometry)} ${esc(l.decision)}" title="Open this setup's committee members individually">inspect</button>` : ''}</td>
+          ${l.stage === 'promoted' && dumpFile ? `<button class="bl-inspect" data-file="${esc(dumpFile)}" data-quorum="${l.quorum}" data-label="${esc(comboLabel(l))} ${esc(l.geometry)} ${esc(l.decision)}" title="Open this setup's committee members individually">inspect</button>
+          <button class="bl-grid" data-file="${esc(dumpFile)}" data-label="${esc(comboLabel(l))} ${esc(l.geometry)} ${esc(l.decision)}" title="Every execution-menu permutation for this row — agreement level × gate × entry × distance × time limit (× trailing when swept) — re-scored from the stored votes. Test window only, on purpose.">menu grid</button>` : ''}</td>
         <td>${i + 1}</td>
         <td><strong>${esc(comboLabel(l))}</strong> <span class="bl-stage">${l.stage === 'promoted' ? 'prom' : 'slim'}</span>${l.layoutArm ? ` <span class="bl-stage">${esc(l.layoutArm)}</span>` : ''}${l.nullDealSeed != null ? ` <span class="bl-stage">null n${l.nullDealSeed}</span>` : ''}
           <div class="cellsub">${esc(l.geometry)} · ${band} · ${esc(l.decision)} · ${l.weekdaysOnly ? '24/5' : '24/7'}</div></td>
@@ -2456,7 +2486,8 @@
         votes and solo score, individually. WHEN: diagnosing a row before deciding whether it deserves
         the null tests. NEVER evidence: nothing shown here is out-of-sample. Click <em>inspect</em> on any
         promoted row above; runs from 2026-07-30 onward save the members, older runs will say so.</p>
-      <div id="bl-inspect-out"></div></div>`;
+      <div id="bl-inspect-out"></div>
+      <div id="bl-menugrid-out"></div></div>`;
     const verdictBlock = !hasHold ? `
       <div class="section"><h3>Tool 2 — the board against a null board</h3>
       <p class="note"><strong>Unavailable for this run: nothing was held back.</strong> Both readings compare
@@ -2514,6 +2545,27 @@
           out.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
         } catch (err) {
           out.innerHTML = `<p class="note">could not inspect: ${esc(err.message)}</p>`;
+        }
+      });
+    });
+
+    // ---- menu grid: every permutation for one row (owner order 2026-08-04) --
+    blViewEl.querySelectorAll('.bl-grid').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const out = $('bl-menugrid-out');
+        out.innerHTML = '<p class="note">re-scoring the full menu from the stored votes…</p>';
+        try {
+          const r = await fetch(`api/bracketlab/${encodeURIComponent(doc.id)}/menugrid`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ file: btn.dataset.file }),
+          });
+          const d = await r.json();
+          if (!r.ok) throw new Error(d.error || r.status);
+          const result = await poll(d.jobId, (m) => { out.innerHTML = `<p class="note">${esc(m)}</p>`; });
+          out.innerHTML = renderMenuGrid(result, btn.dataset.label);
+          out.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        } catch (err) {
+          out.innerHTML = `<p class="note">could not build the grid: ${esc(err.message)}</p>`;
         }
       });
     });
