@@ -2072,16 +2072,21 @@
             <th>Hold window</th><td>${p.holdout ? '<strong>yes</strong> — 70/15/15' : 'no — 80/20, nothing held back'}</td></tr>
         <tr><th>Census</th><td>${yn(p.edgeScreen)}${p.edgeScreen ? ' — every unit recorded, not just money winners' : ''}</td>
             <th>Trailing stops</th><td>${yn(p.trailing)}</td></tr>
-        <tr><th>Universe</th><td>${(p.universe || []).length} symbols${p.set && p.set.geometry ? '' : ''}</td>
+        <tr><th title="Which months of history this run read. ALL LOADED means whatever was in the cache at launch — the coverage table at the top of this tab shows what that was.">Data months</th><td>${p.allLoaded ? '<strong>all loaded at launch</strong>' : `${esc(p.startMonth || '?')} to ${esc(p.endMonth || '?')}`}</td>
+            <th>Engine</th><td>${esc(p.engineVersion || 'not recorded')}</td></tr>
+        <tr><th>Universe</th><td>${(p.universe || []).length} symbols: ${esc((p.universe || []).join(', ') || '—')}</td>
             <th>Sizes</th><td>${Object.entries(p.sizes || {}).filter(([, v]) => v).map(([k]) => esc(k)).join(', ') || '—'}</td></tr>
         <tr><th>Permuted</th><td>${permuted.length ? esc(permuted.join(', ')) : 'nothing — single branch'}</td>
-            <th>Fixed</th><td>${esc((p.set && p.set.geometry) || '—')} · ${esc((p.set && p.set.decision) || '—')} · band ${esc(String((p.set && p.set.band) || '—'))}</td></tr>
-        <tr><th title="Where the windows live on the calendar — decides what every number means">Window layout</th><td>${esc(p.windowLayout === 'reserve61' ? '61/13/13/13 — final 13% SEALED for a History Tuning grade' : p.windowLayout === 'split70' ? '70/15/15 — train / test / hold' : p.windowLayout === 'legacy80' ? 'legacy 80/20 — nothing held back' : (p.windowLayout || 'legacy') + (p.holdout ? ' (70/15/15)' : ' (80/20)'))}</td></tr>
+            <th>Fixed</th><td>${esc((p.set && p.set.geometry) || '—')} · ${esc((p.set && p.set.decision) || '—')} · band ${esc(String((p.set && p.set.band) || '—'))} · ${p.set && p.set.weekdaysOnly ? '24/5' : '24/7'}</td></tr>
+        <tr><th title="Where the windows live on the calendar — decides what every number means">Window layout</th><td>${esc(p.windowLayout === 'reserve61' ? '61/13/13/13 — final 13% SEALED for a History Tuning grade' : p.windowLayout === 'split70' ? '70/15/15 — train / test / hold' : p.windowLayout === 'legacy80' ? 'legacy 80/20 — nothing held back' : (p.windowLayout || 'legacy') + (p.holdout ? ' (70/15/15)' : ' (80/20)'))}</td>
+            <th>Declared cell</th><td>${p.declared ? esc(JSON.stringify(p.declared)) : 'none'}</td></tr>
         <tr><th>Execution grid</th><td>d ${p.dMults.join('/')}×band · t ${p.tHours.join('/')}h · gates ${p.gates.join('/')} · entry ${(p.entries || ['breakout']).join('/')}</td>
             <th>Fees</th><td>$${(2 * p.feePerLeg).toFixed(2)} per round trip</td></tr>
         <tr><th>Selection rule</th><td>top net $ with ≥${p.minTrades} trades</td>
             <th>Promoted</th><td>top ${p.promoteK}</td></tr>
-      </table>`;
+      </table>
+      <details><summary class="note" style="cursor:pointer">The COMPLETE stored settings record, verbatim (click) — if a setting is not in the table above, it is still here; nothing recorded can be invisible.</summary>
+        <pre style="white-space:pre-wrap;font-size:.75rem">${esc(JSON.stringify(p, null, 2))}</pre></details>`;
 
     const perfBlock = `
       <div class="section"><h2>Progress &amp; performance</h2>
