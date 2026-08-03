@@ -1,0 +1,11 @@
+Board is non-null only; asset predictability summary added
+
+tl;dr Hard-refresh. Null copies no longer appear on the board, ever.
+Above the table: assets ranked by predictability — the share of
+real-vs-null match-ups the real setups won on held-back money (100% =
+every real setup beat every null copy). For the sweep running now the
+display hides null copies; from the next run on they never take board
+slots at all (that part needs the restart, queued). Nothing restarted,
+sweep untouched.
+
+c.
