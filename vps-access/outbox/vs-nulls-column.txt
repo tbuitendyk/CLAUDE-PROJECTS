@@ -1,0 +1,9 @@
+The vs nulls column is live
+
+tl;dr Hard-refresh the page. The board now has a "vs nulls" column:
+each row shows how many of its nine null copies it beat on held-back
+money. 9/9 is the best possible — a 1-in-10 result. Rows still moving
+while the sweep runs; judge only when it finishes. Static file change
+only, nothing restarted, your sweep untouched.
+
+c.
