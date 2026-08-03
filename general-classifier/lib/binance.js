@@ -272,6 +272,13 @@ function monthFromDayFiles(symbol, year, month) {
   return rows.length ? rows : null;
 }
 
+// EVERY month with data on disk for a symbol, in either storage form —
+// the one answer to "is this month cached" (QC 70: three separate views of
+// coverage existed; any consumer asking that question uses THIS one).
+function coveredMonths(symbol) {
+  return [...new Set([...cachedMonths(symbol), ...cachedDayMonths(symbol)])].sort();
+}
+
 // What's on disk: per symbol, how many months are cached and the span they
 // cover. Powers the UI's "available data" area.
 function cacheState() {
@@ -321,4 +328,4 @@ function cacheState() {
     .sort((a, b) => (a.symbol < b.symbol ? -1 : 1));
 }
 
-module.exports = { monthlyKlines, dailyKlines, recentKlines, unzipSingleEntry, parseKlineCsv, cacheState, cachedMonths, cachedDayMonths, monthFromDayFiles, cachePath, HOUR_MS, MINUTE_MS: 60_000 };
+module.exports = { monthlyKlines, dailyKlines, recentKlines, unzipSingleEntry, parseKlineCsv, cacheState, cachedMonths, cachedDayMonths, coveredMonths, monthFromDayFiles, cachePath, HOUR_MS, MINUTE_MS: 60_000 };

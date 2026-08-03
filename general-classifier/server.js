@@ -3,7 +3,7 @@ const express = require('express');
 const { startJob, getJob } = require('./lib/jobs');
 const { runAnalysis, loadData, countRotations } = require('./lib/pipeline');
 const { GEOMETRIES } = require('./lib/dataset');
-const { cacheState, cachedMonths, monthlyKlines } = require('./lib/binance');
+const { cacheState, cachedMonths, coveredMonths, monthlyKlines } = require('./lib/binance');
 const throttle = require('./lib/throttle');
 const { configuredSize, createPool } = require('./lib/pool');
 const batch = require('./lib/batch');
@@ -318,8 +318,10 @@ app.post('/api/run', (req, res) => {
   // Cache-write guard (owner, 2026-07-31): only runs that would DOWNLOAD
   // are refused mid-sweep — "all loaded data" and fully-cached ranges read
   // the cache without touching the network and stay allowed.
+  // coveredMonths, not cachedMonths: a month held as day files is on disk
+  // and needs no download, so it must not trigger the mid-job refusal (QC 70).
   const runStop = guard.runRefusal(batch.batchRunning(),
-    { allLoaded, tradeSymbol, compareSymbol, startMonth, endMonth }, cachedMonths);
+    { allLoaded, tradeSymbol, compareSymbol, startMonth, endMonth }, coveredMonths);
   if (runStop) return res.status(409).json({ error: runStop });
   const jobId = startJob((setProgress) =>
     runAnalysis({ dormantPct, tradeSymbol, compareSymbol, startMonth, endMonth, featureSet, model, featureView, decision, geometry, weekdaysOnly: !!b.weekdaysOnly, allLoaded }, setProgress)
@@ -626,7 +628,7 @@ app.get('/api/rotations', async (req, res) => {
   const rotRunning = batch.batchRunning();
   if (rotRunning) {
     for (const p of pairs) {
-      const stop = guard.runRefusal(rotRunning, { allLoaded, tradeSymbol: p, compareSymbol, startMonth, endMonth }, cachedMonths);
+      const stop = guard.runRefusal(rotRunning, { allLoaded, tradeSymbol: p, compareSymbol, startMonth, endMonth }, coveredMonths);
       if (stop) return res.status(409).json({ error: stop });
     }
   }
@@ -651,6 +653,13 @@ async function refreshNewMonths() {
   if (batch.batchRunning()) return;
   const now = new Date();
   for (const { symbol } of cacheState()) {
+    // The fabricated planted-check pair is generated, never fetched — asking
+    // Binance for it would 404 every tick forever.
+    if (symbol === planted.PLANTED_SYMBOL) continue;
+    // cachedMonths (bundle months only) is DELIBERATE here: this tick's job
+    // is fetching newly PUBLISHED bundles, and a month already held as day
+    // files still wants its bundle when Binance posts it (the bundle is the
+    // durable form; reads prefer it automatically).
     const have = new Set(cachedMonths(symbol));
     for (let back = 1; back <= 2; back++) {
       const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - back, 1));

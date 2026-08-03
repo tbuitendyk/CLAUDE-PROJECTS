@@ -103,6 +103,23 @@ module.exports = {
       for (const f of Object.keys(files)) fs.rmSync(path.join(dir, f), { force: true });
     }
   },
+  // QC 70 second face: "is this month cached" has ONE answer for every
+  // consumer that decides behavior on it (the mid-job download guard used
+  // the bundle-only list and would refuse runs over months fully on disk).
+  async coveredMonthsCountsBothStorageForms() {
+    const fs = require('fs');
+    const path = require('path');
+    const { coveredMonths } = require('../lib/binance');
+    const dir = path.join(__dirname, '..', 'data', 'cache');
+    fs.mkdirSync(dir, { recursive: true });
+    const files = ['TESTCVUSDT-1h-2025-01.json', 'TESTCVUSDT-1h-2025-02-01.json'];
+    try {
+      for (const f of files) fs.writeFileSync(path.join(dir, f), '[]');
+      assert.deepStrictEqual(coveredMonths('TESTCVUSDT'), ['2025-01', '2025-02']);
+    } finally {
+      for (const f of files) fs.rmSync(path.join(dir, f), { force: true });
+    }
+  },
   async cachedMonthsScansOnlyMonthlyFilesForTheSymbol() {
     const fs = require('fs');
     const path = require('path');
