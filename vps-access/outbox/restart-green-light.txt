@@ -1,0 +1,50 @@
+GREEN LIGHT — data visible everywhere, proven on the box; restart when ready
+
+tl;dr 1.33.0 is deployed and verified. The data problem is fixed at the
+root and PROVEN through a sweep's own eyes on the live box:
+
+  ATOMUSDT: 63,615 candles, 2019-04-29 .. 2026-08-02 23:00
+  DOTUSDT:  52,182 candles, 2020-08-18 .. 2026-08-02 23:00
+
+That last date is the point: sweeps now read to August 2, not June 30.
+Restart your sweep whenever you like. One suggestion first: press the
+new planted-check button (top of the Bracket lab, above Data on
+server) BEFORE starting the sweep — it takes minutes, and it stamps
+this engine as calibrated before your null boards get read. Hard-
+refresh the page first.
+
+What "fixed at the root" means: there is now ONE answer to "what data
+do we have". A month on disk is a month every reader sees — sweeps,
+walk-forward, research runs, screens — whether it arrived as a whole-
+month bundle or as the day-by-day files Binance publishes before the
+bundle exists. The mismatch that wasted your last two launches cannot
+recur without a test failing loudly (register entries 70 and 71).
+
+The review you mandated caught something big before it cost you a
+third launch. The rebuilt null construction (each member's real vote
+mix dealt onto random days) was applied at the first, cheap stage of
+every sweep — and silently DROPPED at the promotion stage, where the
+census rows that null boards are read from actually get written. In
+plain terms: the null boards in your cancelled sweep were running as
+copies of the real board. The reads would have refused loudly rather
+than lied, but nine null boards of compute would have been waste.
+Fixed, with two new tests that run the real pipeline stages end to
+end on the fabricated pair — both were watched failing first. The
+same sweep of tests also caught that the "this row against its null
+runs" tool would have crashed on every use; also fixed and now
+executed end to end by the suite.
+
+The planted-check button works as you ordered: top of the lab, current
+release number, PASS / FAIL / NOT CHECKED with version numbers quoted.
+It reads NOT CHECKED right now — honest, because 1.33.0 has never been
+gated. One press regenerates the fake coin (spanning your real data,
+oldest to newest — every refresh, download, trim and purge keeps it in
+step) and fires it through the exact machinery your real sweeps use.
+The fabricated pair is refused by every real launcher on the service,
+so it can never contaminate a real result.
+
+Suggested order: hard refresh -> press planted check -> when the strip
+says PASS, start your sweep. If the strip says FAIL, do not start —
+that is the gate doing its job, and I will already be on it.
+
+c.
