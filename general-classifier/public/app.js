@@ -2685,8 +2685,20 @@
         if (!r2.ok) throw new Error(d2.error || `HTTP ${r2.status}`);
         if (d2.jobId) {
           dsStatus(`working… (job ${d2.jobId})`);
-          await poll(d2.jobId, dsStatus);
-          dsStatus('done');
+          const result = await poll(d2.jobId, dsStatus);
+          // The REPORT belongs on the page, not in anyone's head (owner,
+          // 2026-08-03): per asset — what came as bundles, which months had
+          // no published bundle yet, and how many day files filled them.
+          const el3 = $('ds-status');
+          if (el3 && result && typeof result === 'object') {
+            el3.innerHTML = '<strong>Refresh report:</strong> ' + Object.entries(result).map(([sym, r]) => {
+              const gaps = (r.monthsWithoutBundles || r.missingMonths || []);
+              const days = r.dayFilesFetched ? Object.entries(r.dayFilesFetched).map(([mm, n]) => `${mm}: ${n} day files`).join(', ') : '';
+              return `${esc(sym)} — ${r.candles || 0} bundle candles${gaps.length ? `; no bundle yet for ${gaps.map(esc).join('/')}${days ? ` (filled: ${esc(days)})` : ' (NOT filled — say so if you see this)'}` : ''}`;
+            }).join(' · ');
+          } else {
+            dsStatus('done');
+          }
         } else {
           dsStatus(`done: ${d2.purged != null ? `${d2.purged} cached file(s) deleted` : JSON.stringify(d2)}`);
         }
