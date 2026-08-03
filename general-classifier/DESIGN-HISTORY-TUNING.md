@@ -293,3 +293,21 @@ page, per WORKFLOW.md, which is the master text):
    is the master text it renders.
 9. RULED OUT OF SCOPE (owner, 2026-08-03): the Research tab is left
    alone entirely — this build is the Bracket lab only.
+
+## ADDED BY OWNER ORDER (2026-08-03, during the build)
+
+- **Data management in the research tab's "available data on server"
+  section**: specify NEW pairs for download; per-asset "Refresh To
+  Latest"; "Global Refresh" across everything already downloaded; purge
+  data per asset; increase/decrease the month range of available data
+  per asset. Guard behavior unchanged: refuses while a job runs.
+
+## READING RULES & DRAW COUNTS — OWNER-APPROVED (closing the Status gap)
+
+The four reading rules (picking DERIVED, combining GUESSED, hold
+GUESSED, null GUESSED-count/DERIVED-construction) and the draw counts
+(200 null rounds for the per-row tool; 19 trail-replay draws, floor
+1 in 20) were approved by the owner in chat on 2026-08-03 ("as long as
+the declared reading rules don't restrict my choices... i'm ok with
+them" + draw counts standing as proposed). Recorded here so the
+contract document and the code agree (review finding 18).
