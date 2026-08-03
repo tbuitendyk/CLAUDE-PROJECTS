@@ -472,7 +472,13 @@ const { trainBoost, predictBoost } = require('./boost');
 const { tuneTau } = require('./pipeline');
 const { directionalCall } = require('./paper');
 
-async function trainMember({ model, viewIdx, trainChunks, testChunks, decision, tradeMap, geo }) {
+// ageWeights: optional per-example weights aligned with trainChunks (the
+// History Tuning age discount). They multiply into the directional class
+// weights everywhere training happens — the lambda ladder, the boost probe,
+// and the final refits. Tau tuning stays unweighted on purpose: it optimizes
+// money on the most recent validation window, which is already the most
+// recent data by position (stated per the design ledger).
+async function trainMember({ model, viewIdx, trainChunks, testChunks, decision, tradeMap, geo, ageWeights = null }) {
   const Xtr = trainChunks.map((c) => viewIdx.map((i) => c.x[i]));
   const ytr = trainChunks.map((c) => c.label);
   const Xte = testChunks.map((c) => viewIdx.map((i) => c.x[i]));
@@ -484,7 +490,11 @@ async function trainMember({ model, viewIdx, trainChunks, testChunks, decision, 
     classWeights = {};
     for (const cl of CLASSES) classWeights[cl] = counts[cl] > 0 ? Math.min(20, ytr.length / (present.length * counts[cl])) : 1;
   }
-  const wFor = (labels) => (classWeights ? labels.map((l) => classWeights[l]) : null);
+  const wFor = (labels, offset = 0) => {
+    if (!classWeights && !ageWeights) return null;
+    return labels.map((l, i) => (classWeights ? classWeights[l] : 1)
+      * (ageWeights ? ageWeights[offset + i] : 1));
+  };
   const nVal = Math.max(3, Math.round(Xtr.length * 0.25));
   const nSub = Xtr.length - nVal;
   let tau = null;
@@ -495,7 +505,7 @@ async function trainMember({ model, viewIdx, trainChunks, testChunks, decision, 
     const scaler = standardizeFit(Xtr);
     const Ztr = standardizeApply(Xtr, scaler);
     const Zte = standardizeApply(Xte, scaler);
-    const { model: m, chosenLambda } = await tuneAndTrain(Ztr, ytr, { onProgress: () => {}, classWeights });
+    const { model: m, chosenLambda } = await tuneAndTrain(Ztr, ytr, { onProgress: () => {}, classWeights, exampleWeights: ageWeights });
     // THE FITTED MODEL IS THE PRODUCT (owner, 2026-07-30). Eleven cycles
     // discarded every model at this return; only the calls survived, so
     // nothing found could ever be re-applied to new data. Serialize the same
@@ -503,7 +513,7 @@ async function trainMember({ model, viewIdx, trainChunks, testChunks, decision, 
     saved = { kind: 'logreg', lambda: chosenLambda, f: m.f, W: Array.from(m.W),
       mean: Array.from(scaler.mean), std: Array.from(scaler.std) };
     if (decision === 'directional') {
-      const probe = await trainSoftmax(Ztr.slice(0, nSub), ytr.slice(0, nSub), chosenLambda, { weights: wFor(ytr.slice(0, nSub)) });
+      const probe = await trainSoftmax(Ztr.slice(0, nSub), ytr.slice(0, nSub), chosenLambda, { weights: wFor(ytr.slice(0, nSub), 0) });
       const valProbs = [];
       for (let i = nSub; i < Ztr.length; i++) valProbs.push(predictLogreg(probe, Ztr[i]).probs);
       ({ tau } = tuneTau(trainChunks.slice(nSub), valProbs, tradeMap, geo));
@@ -514,13 +524,13 @@ async function trainMember({ model, viewIdx, trainChunks, testChunks, decision, 
       return decision === 'directional' ? directionalCall(out.probs, tau) : out.label;
     };
   } else {
-    const probe = await trainBoost(Xtr.slice(0, nSub), ytr.slice(0, nSub), { Xval: Xtr.slice(nSub), yval: ytr.slice(nSub), weights: wFor(ytr.slice(0, nSub)), valWeights: wFor(ytr.slice(nSub)) });
+    const probe = await trainBoost(Xtr.slice(0, nSub), ytr.slice(0, nSub), { Xval: Xtr.slice(nSub), yval: ytr.slice(nSub), weights: wFor(ytr.slice(0, nSub), 0), valWeights: wFor(ytr.slice(nSub), nSub) });
     if (decision === 'directional') {
       const valProbs = [];
       for (let i = nSub; i < Xtr.length; i++) valProbs.push(predictBoost(probe, Xtr[i]).probs);
       ({ tau } = tuneTau(trainChunks.slice(nSub), valProbs, tradeMap, geo));
     }
-    const m = await trainBoost(Xtr, ytr, { rounds: probe.bestRound, weights: wFor(ytr) });
+    const m = await trainBoost(Xtr, ytr, { rounds: probe.bestRound, weights: wFor(ytr, 0) });
     saved = { kind: 'boost', rounds: m.bestRound, priors: m.priors, trees: m.trees };
     picked = `rounds=${m.bestRound}${tau != null ? `, tau=${tau}` : ''}`;
     callOf = (i) => {
