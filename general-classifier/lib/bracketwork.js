@@ -17,7 +17,6 @@
 
 const { toHourlyMap, forwardFill, scoreDiff, balancedBandPct, GEOMETRIES } = require('./dataset');
 const { loadSymbol, loadSymbolAll, monthList, deriveShift, MIN_CHUNKS } = require('./pipeline');
-const { applyLayout, rotateWithinIntervals } = require('./interlace');
 const bracketLib = require('./bracket');
 const { REAL_FEE_PER_LEG } = require('./paper');
 const { classifierMetrics } = require('./metrics');
@@ -230,50 +229,11 @@ function splitAndLabel(chunks, branch, holdout) {
 
 // QUOTA-FIRST WINDOW LAYOUTS (owner's design, 2026-07-30) — see
 // lib/interlace.js for the geometry. This is the layout-aware sibling of
-// splitAndLabel: assign chunks by calendar interval, purge the TRAIN side
-// only, then band + label exactly as the legacy path does.
-function splitByLayout(chunks, branch, geo, layout, p) {
-  const seed = Number(p.interlaceSeed) || 0;
-  // The purge must cover the EXECUTION path, not just the label window
-  // (audit 2026-07-30, confirmed major): a trade entered at entryOffsetH can
-  // stay open for the longest timeout on this job's menu plus the 3h
-  // gap-scan, far past exitOffsetH — and train chunks whose features sit in
-  // that path would let the committee train on candles that price its own
-  // evaluation trades.
-  const tMax = Math.max(...(Array.isArray(p.tHours) && p.tHours.length ? p.tHours : bracketLib.T_HOURS));
-  const opts = { execEndH: geo.entryOffsetH + tMax + 3 };
-  const { train, search, hold, meta } = applyLayout(chunks, geo, layout, seed, opts);
-  if (train.length < MIN_CHUNKS) throw new Error(`only ${train.length} training chunks under the ${layout} layout`);
-  // THE INVARIANT HOLDS ON ACTUAL PERIODS, NOT JUST POTENTIAL ONES. Real
-  // data has missing-candle gaps, and the gaps do not fall evenly: the
-  // first layout smoke (2026-07-30) found the interlaced arm's eval blocks
-  // — which land in older, gappier eras — carrying 501/498 chunks against
-  // the chronological arm's gapless 504. So each arm computes BOTH layouts
-  // (cheap, deterministic), takes the common per-set count, and trims its
-  // OWN eval sets from the end (latest starts dropped first). Both arms
-  // reach identical targets independently — no cross-arm communication,
-  // same result every time.
-  const other = applyLayout(chunks, geo, layout === 'interlaced' ? 'chronological' : 'interlaced', seed, opts);
-  const nSearch = Math.min(search.length, other.search.length);
-  const nHold = Math.min(hold.length, other.hold.length);
-  meta.evalTrimmed = { search: search.length - nSearch, hold: hold.length - nHold };
-  search.length = nSearch;
-  hold.length = nHold;
-  let bandSource = train;
-  if (p.sharedBand && branch.band === 'auto') {
-    // Shared-band switch for strict arm-to-arm comparisons: the band comes
-    // from chunks that are TRAIN IN BOTH layouts — unseen as evaluation by
-    // either arm, so sharing leaks nothing while removing the band as a
-    // second difference channel between the arms.
-    const otherTrain = new Set(other.train.map((c) => c.startTs));
-    const common = train.filter((c) => otherTrain.has(c.startTs));
-    if (common.length >= MIN_CHUNKS) { bandSource = common; meta.bandFrom = 'common-train'; }
-    else meta.bandFrom = 'own-train (common set too small)';
-  }
-  const bandPct = branch.band === 'auto' ? balancedBandPct(bandSource.map((c) => c.diffPct)) : Math.abs(branch.band);
-  for (const c of chunks) c.label = scoreDiff(c.diffPct / 100, bandPct / 100);
-  return { trainChunks: train, testChunks: search, holdChunks: hold, bandPct, layoutMeta: meta };
-}
+// (splitByLayout and the quota layouts were purged 2026-08-03 on the
+// owner's order: the interlaced construction broke the signal it was
+// meant to test. Historical quota-layout docs remain viewable; nothing
+// can run them. lib/interlace.js survives for the research tab and the
+// retired walk-forward module only.)
 
 async function trainMembers(specs, views, trainChunks, testChunks, branch, maps, geo) {
   const out = [];
@@ -347,22 +307,25 @@ async function unitTask(task) {
   // positive edge with no skill at all. This project's entire method rests on
   // measuring nulls rather than reasoning about them, and the edge statistic
   // had been getting a reasoned one.
-  // WINDOW LAYOUT. A unit-level arm tag (from a 'both' job) wins; otherwise
-  // the run-wide setting applies; 'legacy' (the default) is the untouched
-  // pre-2026-07-30 path, byte-identical for every existing launcher.
-  const layout = task.layoutArm
-    || (p.windowLayout && p.windowLayout !== 'legacy' && p.windowLayout !== 'both' ? p.windowLayout : null);
-  if (shiftFrac) {
-    // Null draws must enjoy exactly the freedoms the real run had: under a
-    // layout, outcomes rotate WITHIN each block interval, never across a
-    // set boundary; the legacy path keeps its window/series scopes.
-    if (layout) rotateWithinIntervals(chunks, layout, p.interlaceSeed, shiftFrac, windowShift);
-    else rotateLabels(chunks, shiftFrac, p.labelShiftScope, p.holdout);
+  // WINDOW LAYOUT (owner ruling, 2026-08-03): three explicit options, all
+  // percentage splits on the same battle-tested path. legacy80 = 80/20;
+  // split70 = 70/15/15; reserve61 = seal the FINAL 13% of chunks (stamped,
+  // untouched by this run — a later History Tuning winner's binding grade
+  // happens there), then 70/15/15 on the rest. The quota layouts
+  // (chronological/interlaced/both) are purged from new runs; task.layoutArm
+  // exists only on historical docs, which never re-run through here.
+  let workChunks = chunks;
+  let reserveMeta = null;
+  if (p.windowLayout === 'reserve61') {
+    const nReserve = Math.max(2, Math.round(workChunks.length * 0.13));
+    const sealed = workChunks.slice(workChunks.length - nReserve);
+    reserveMeta = { chunks: nReserve, fromTs: sealed[0].startTs, toTs: sealed[sealed.length - 1].endTs };
+    workChunks = workChunks.slice(0, workChunks.length - nReserve);
   }
+  if (shiftFrac) rotateLabels(workChunks, shiftFrac, p.labelShiftScope, p.holdout);
 
-  const split = layout
-    ? splitByLayout(chunks, branch, geo, layout, p)
-    : splitAndLabel(chunks, branch, p.holdout);
+  const split = splitAndLabel(workChunks, branch, p.holdout);
+  if (reserveMeta) split.reserve = reserveMeta;
   const { trainChunks, testChunks, holdChunks, bandPct } = split;
   const views = bracketLib.comboViews(combo.size, geo.featureHours / 24).views;
   // ONE training pass covers both windows: members predict over search+holdout
@@ -538,21 +501,28 @@ async function nullRotationTask({ combo, branch, params, shiftIndex, nShifts, se
   //  2. Under a layout, rotation stays inside each block interval, never
   //     crossing a set boundary (contract for layout nulls). Legacy jobs
   //     keep the whole-series rotation their recorded results used.
-  const layout = (selection && selection.layoutArm)
-    || (p.windowLayout && p.windowLayout !== 'legacy' && p.windowLayout !== 'both' ? p.windowLayout : null);
-  const frac = shiftIndex / (nShifts + 1);
-  let rot;
-  if (layout) {
-    rotateWithinIntervals(chunks, layout, p.interlaceSeed, frac, windowShift);
-    rot = null;
-  } else {
-    rot = deriveShift(chunks.length, frac);
-    const src = chunks.map((c) => c.diffPct);
-    for (let i = 0; i < chunks.length; i++) chunks[i].diffPct = src[(i + rot) % chunks.length];
+  // Quota-layout survivors (historical docs) can no longer fire replays:
+  // the interlaced machinery is purged (owner, 2026-08-03) and a null that
+  // exercises retired machinery calibrates nothing. Old boards stay
+  // viewable; only their replay button refuses.
+  if (selection && selection.layoutArm) {
+    throw new Error('null replay unavailable: this survivor came from a retired quota-layout run '
+      + '(interlaced purge, 2026-08-03). Re-run the setup under a current layout first.');
   }
-  const split = layout
-    ? splitByLayout(chunks, branch, geo, layout, p)
-    : splitAndLabel(chunks, branch, p.holdout);
+  // reserve61: the null must see exactly the data the real run saw — the
+  // sealed reserve stays sealed here too.
+  let workChunks = chunks;
+  if (p.windowLayout === 'reserve61') {
+    const nReserve = Math.max(2, Math.round(workChunks.length * 0.13));
+    workChunks = workChunks.slice(0, workChunks.length - nReserve);
+  }
+  const frac = shiftIndex / (nShifts + 1);
+  const rot = deriveShift(workChunks.length, frac);
+  {
+    const src = workChunks.map((c) => c.diffPct);
+    for (let i = 0; i < workChunks.length; i++) workChunks[i].diffPct = src[(i + rot) % workChunks.length];
+  }
+  const split = splitAndLabel(workChunks, branch, p.holdout);
   const { trainChunks, testChunks, bandPct } = split;
   const views = bracketLib.comboViews(combo.size, geo.featureHours / 24).views;
   // trainMembers returns member OBJECTS ({calls, model, picked, spec}) since
@@ -583,4 +553,4 @@ async function nullRotationTask({ combo, branch, params, shiftIndex, nShifts, se
   };
 }
 
-module.exports = { unitTask, nullRotationTask, quorumCall, declaredQuorumFor, matchesDeclared, slimViewsFor, buildCombo, splitAndLabel, splitByLayout, splitBounds, rotateLabels, windowShift, specsFor };
+module.exports = { unitTask, nullRotationTask, quorumCall, declaredQuorumFor, matchesDeclared, slimViewsFor, buildCombo, splitAndLabel, splitBounds, rotateLabels, windowShift, specsFor };

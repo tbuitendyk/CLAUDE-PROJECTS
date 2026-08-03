@@ -1663,36 +1663,35 @@ function startBracketLab(params) {
     entries: pickMenu(params.entries, bracketLib.ENTRIES),
     trailMults: bracketLib.TRAIL_MULTS,
     armMults: bracketLib.ARM_MULTS,
-    // WINDOW LAYOUT (owner's design, 2026-07-30). 'legacy' is the untouched
-    // 70/15/15 percentage split every existing launcher gets by default.
-    // 'chronological' and 'interlaced' are the QUOTA-FIRST layouts (identical
-    // potential trade days per window in both, train-side purge — see
-    // lib/interlace.js). 'both' runs every unit twice, one arm per layout,
-    // sharing one seed, for the in-job comparison.
-    windowLayout: ['legacy', 'chronological', 'interlaced', 'both'].includes(params.windowLayout)
-      ? params.windowLayout : 'legacy',
-    // Seeded, RECORDED randomness: same settings -> same block slotting,
-    // forever. No unrecorded coin-flips anywhere.
-    interlaceSeed: Number.isFinite(Number(params.interlaceSeed))
-      ? Math.floor(Number(params.interlaceSeed)) : 1,
-    // Strict arm-to-arm comparison switch: band fit on the chunks that are
-    // train in BOTH layouts, so the band cannot differ between arms.
-    sharedBand: !!params.sharedBand,
+    // WINDOW LAYOUT (owner's ruling, 2026-08-03): exactly three explicit
+    // options, each naming its splits. 'legacy80' = 80/20 train/test, no
+    // hold window. 'split70' = 70/15/15 train/test/hold. 'reserve61' =
+    // 61/13/13/13 — the final 13% of history SEALED (never touched by this
+    // run) for a later History Tuning winner's binding grade; the remaining
+    // 87% gets the 70/15/15 treatment. The old quota layouts
+    // (chronological/interlaced/both) are PURGED — the interlaced
+    // construction broke the signal it was meant to test (owner order;
+    // old docs still display). Unknown values REFUSE loudly: a layout
+    // decides what every downstream number means (QC 60).
+    windowLayout: (() => {
+      const v = params.windowLayout ?? 'legacy80';
+      if (!['legacy80', 'split70', 'reserve61'].includes(v)) {
+        throw new Error(`unknown window layout '${v}' — the options are legacy80, split70, reserve61`
+          + (['chronological', 'interlaced', 'both', 'legacy'].includes(v)
+            ? ` ('${v}' was retired 2026-08-03; old runs remain viewable)` : ''));
+      }
+      return v;
+    })(),
     // Identical stored parameters do not guarantee identical machinery if
     // the code changed between two runs — the comparison surface checks this
     // and warns loudly on mismatch.
     engineVersion: ENGINE_VERSION,
   };
   if (!p.sizes.singles && !p.sizes.doubles && !p.sizes.triples) throw new Error('tick at least one combo size');
-  // A layout job without a holdout would leave the quota half-defined; the
-  // layouts are three-way splits by construction.
-  if (p.windowLayout !== 'legacy') p.holdout = true;
-  // A 'both' job exists to be compared, and the comparison reads the census
-  // (edgeCensus rows are what compare.js pairs). Without edgeScreen a both
-  // run would also let its two arms COMPETE for the same top-K promotion
-  // slots, silently unbalancing the very comparison it was fired for
-  // (audit 2026-07-30, confirmed major). So both => census mode, always.
-  if (p.windowLayout === 'both') p.edgeScreen = true;
+  // The layout DECIDES the hold window — no separate checkbox exists any
+  // more (owner order: the checkbox-plus-option pairing encoded two splits
+  // ambiguously). legacy80 has no hold; split70 and reserve61 do.
+  p.holdout = p.windowLayout !== 'legacy80';
   const { branches, combos } = expandBracketPlan(p);
   const units = [];
   for (const b of branches) for (const c of combos) units.push({ c, b });
@@ -1717,16 +1716,6 @@ function startBracketLab(params) {
     for (let r = 0; r <= p.labelShiftReps; r++) {
       const frac = r === 0 ? null : r / (p.labelShiftReps + 1);
       for (const u of base) units.push({ ...u, shiftFrac: frac });
-    }
-  }
-  // 'both' doubles the unit list: one arm per layout, everything else —
-  // including any scramble expansion above — identical. The cleanest
-  // comparison possible, because nothing else CAN differ.
-  if (p.windowLayout === 'both') {
-    const base = units.slice();
-    units.length = 0;
-    for (const arm of ['chronological', 'interlaced']) {
-      for (const u of base) units.push({ ...u, layoutArm: arm });
     }
   }
   const slimRuns = units.reduce((s, u) => s + slimViewsFor(u.c.size).length, 0);
