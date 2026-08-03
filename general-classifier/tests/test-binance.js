@@ -75,6 +75,34 @@ module.exports = {
   async rejectsGarbage() {
     assert.throws(() => unzipSingleEntry(Buffer.from('definitely not a zip file at all......')), /not a zip/);
   },
+  // QC 70. The coverage table counts day files (a month whose bundle Binance
+  // has not published yet lives as SYM-1h-YYYY-MM-DD.json pieces), but the
+  // sweep read path listed MONTHLY files only — so on 2026-08-03 the table
+  // said "to 2026-08-02" while every all-loaded sweep silently ended at
+  // June 30. The read side must see exactly what the coverage table counts.
+  async dayFileOnlyMonthsAreReadBySweeps() {
+    const fs = require('fs');
+    const path = require('path');
+    const { loadSymbolAll } = require('../lib/pipeline');
+    const dir = path.join(__dirname, '..', 'data', 'cache');
+    fs.mkdirSync(dir, { recursive: true });
+    const janRows = [{ ts: Date.UTC(2025, 0, 31, 23), open: 1, high: 1, low: 1, close: 1, quoteVolume: 1 }];
+    const feb01 = [{ ts: Date.UTC(2025, 1, 1, 0), open: 2, high: 2, low: 2, close: 2, quoteVolume: 1 }];
+    const feb02 = [{ ts: Date.UTC(2025, 1, 2, 0), open: 3, high: 3, low: 3, close: 3, quoteVolume: 1 }];
+    const files = {
+      'TESTDFUSDT-1h-2025-01.json': janRows,     // published bundle month
+      'TESTDFUSDT-1h-2025-02-02.json': feb02,    // day-file-only month, written out of order
+      'TESTDFUSDT-1h-2025-02-01.json': feb01,
+    };
+    try {
+      for (const [f, rows] of Object.entries(files)) fs.writeFileSync(path.join(dir, f), JSON.stringify(rows));
+      const { rows } = await loadSymbolAll('TESTDFUSDT', () => {});
+      assert.strictEqual(rows.length, 3, `sweeps must read day-file months too (got ${rows.length} rows — the day files are invisible)`);
+      assert.deepStrictEqual(rows.map((r) => r.open), [1, 2, 3], 'monthly then day files, day files in day order');
+    } finally {
+      for (const f of Object.keys(files)) fs.rmSync(path.join(dir, f), { force: true });
+    }
+  },
   async cachedMonthsScansOnlyMonthlyFilesForTheSymbol() {
     const fs = require('fs');
     const path = require('path');

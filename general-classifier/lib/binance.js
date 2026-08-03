@@ -224,6 +224,54 @@ function cachedMonths(symbol) {
   return months.sort();
 }
 
+// Months covered ONLY by day files, and the assembly that turns them into
+// month rows. A month whose bundle Binance has not published yet lives as
+// SYM-1h-YYYY-MM-DD.json pieces (written by the day-file backfill). The
+// coverage table counts them — so the sweep read path must read them too,
+// or "to 2026-08-02" on screen coexists with sweeps that end June 30
+// (QC 70: caught 2026-08-03, one all-loaded sweep into the mismatch).
+function cachedDayMonths(symbol) {
+  let files = [];
+  try {
+    files = fs.readdirSync(CACHE_DIR);
+  } catch {
+    return [];
+  }
+  const months = new Set();
+  for (const f of files) {
+    const m = new RegExp(`^${symbol}-1h-(\\d{4}-\\d{2})-\\d{2}\\.json$`).exec(f);
+    if (m) months.add(m[1]);
+  }
+  return [...months].sort();
+}
+
+// All rows a month's day files hold, in day order; null when there are none.
+// Callers prefer the monthly bundle when one is cached — day files only ever
+// stand in for a month the bulk portal has not published.
+function monthFromDayFiles(symbol, year, month) {
+  const mm = String(month).padStart(2, '0');
+  let files = [];
+  try {
+    files = fs.readdirSync(CACHE_DIR);
+  } catch {
+    return null;
+  }
+  const days = files
+    .filter((f) => new RegExp(`^${symbol}-1h-${year}-${mm}-\\d{2}\\.json$`).test(f))
+    .sort();
+  if (!days.length) return null;
+  const rows = [];
+  for (const f of days) {
+    try {
+      const dayRows = JSON.parse(fs.readFileSync(path.join(CACHE_DIR, f), 'utf8'));
+      if (Array.isArray(dayRows)) for (const r of dayRows) rows.push(r);
+    } catch {
+      /* torn read: skip the piece rather than fail the month */
+    }
+  }
+  return rows.length ? rows : null;
+}
+
 // What's on disk: per symbol, how many months are cached and the span they
 // cover. Powers the UI's "available data" area.
 function cacheState() {
@@ -273,4 +321,4 @@ function cacheState() {
     .sort((a, b) => (a.symbol < b.symbol ? -1 : 1));
 }
 
-module.exports = { monthlyKlines, dailyKlines, recentKlines, unzipSingleEntry, parseKlineCsv, cacheState, cachedMonths, cachePath, HOUR_MS, MINUTE_MS: 60_000 };
+module.exports = { monthlyKlines, dailyKlines, recentKlines, unzipSingleEntry, parseKlineCsv, cacheState, cachedMonths, cachedDayMonths, monthFromDayFiles, cachePath, HOUR_MS, MINUTE_MS: 60_000 };

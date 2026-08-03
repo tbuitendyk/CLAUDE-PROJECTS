@@ -1,4 +1,4 @@
-const { monthlyKlines, cachedMonths, HOUR_MS } = require('./binance');
+const { monthlyKlines, cachedMonths, cachedDayMonths, monthFromDayFiles, HOUR_MS } = require('./binance');
 const { pnlAt, REAL_FEE_PER_LEG, directionalCall } = require('./paper');
 const { toHourlyMap, forwardFill, buildChunks, scoreDiff, balancedBandPct, GEOMETRIES } = require('./dataset');
 const { featureNamesFor, viewIndices } = require('./features');
@@ -99,24 +99,38 @@ async function loadSymbol(symbol, months, onProgress) {
     const mm = `${year}-${String(month).padStart(2, '0')}`;
     onProgress(`downloading ${symbol} ${mm}`);
     const monthRows = await monthlyKlines(symbol, year, month);
-    if (monthRows === null) missing.push(mm);
-    else for (const r of monthRows) rows.push(r); // no spread-push: keeps arg counts off the call stack
+    if (monthRows === null) {
+      // No published bundle. The month still counts as "missing" (that is
+      // what tells the refresh flow to backfill day files), but any day
+      // files already on disk are READ — the read side must see what the
+      // coverage table counts (QC 70).
+      missing.push(mm);
+      const dayRows = monthFromDayFiles(symbol, year, month);
+      if (dayRows) for (const r of dayRows) rows.push(r);
+    } else for (const r of monthRows) rows.push(r); // no spread-push: keeps arg counts off the call stack
   }
   return { rows, missing };
 }
 
 // "All loaded data" mode: read exactly the months already cached on disk
-// for this symbol — never touches the network.
+// for this symbol — never touches the network. Both storage forms count:
+// whole-month bundles AND day-file months (QC 70 — day files used to be
+// invisible here, so sweeps ended months before the coverage table's "to"
+// date). monthlyKlines is only called for months whose bundle file exists
+// on disk, so it always cache-hits and the no-network guarantee holds.
 async function loadSymbolAll(symbol, onProgress) {
   const { currentAbortEpoch, throwIfAbortedSince } = require('./throttle');
   const epoch = currentAbortEpoch();
   const rows = [];
-  const list = cachedMonths(symbol);
+  const monthly = new Set(cachedMonths(symbol));
+  const list = [...new Set([...monthly, ...cachedDayMonths(symbol)])].sort();
   for (const mm of list) {
     throwIfAbortedSince(epoch);
     onProgress(`reading cached ${symbol} ${mm}`);
     const [year, month] = mm.split('-').map(Number);
-    const monthRows = await monthlyKlines(symbol, year, month);
+    const monthRows = monthly.has(mm)
+      ? await monthlyKlines(symbol, year, month)
+      : monthFromDayFiles(symbol, year, month);
     if (monthRows) for (const r of monthRows) rows.push(r);
   }
   return { rows, missing: [], cachedMonthCount: list.length };
