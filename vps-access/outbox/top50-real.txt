@@ -1,0 +1,10 @@
+Top 50 real candidates now display — one click needed from you
+
+tl;dr Hard-refresh. The board now rebuilds from the full stored record,
+so it shows the top 50 REAL setups — the ones null copies had crowded
+off the stored list. All 50 are selectable for the null tools. This
+needed an engine restart (your run was done), and a new engine version
+always starts NOT CHECKED — so press the planted check once (minutes)
+and the PASS comes back before you lean on the null readings.
+
+c.
