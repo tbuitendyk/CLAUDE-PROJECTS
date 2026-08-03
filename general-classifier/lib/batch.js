@@ -1509,7 +1509,29 @@ function htParams(params) {
 function startHistoryTuning(params) {
   if (batchRunning()) throw new Error(`batch ${activeBatch.id} is already running`);
   const HT = require('./historytuning');
+  // NULL DRAW (trail-replay): inherits the REAL run's stamped params
+  // verbatim — same splits, same usable span, same menu — plus a seed.
+  // The null inherits DATES AND LOOKBACKS ONLY; every retune and the grid
+  // pick happen on its own dealt votes (review fix 5).
+  if (params.replayOf) {
+    const real = getBatch(String(params.replayOf));
+    if (!real || real.kind !== 'historytuning') throw new Error(`replayOf: unknown History Tuning run '${params.replayOf}'`);
+    if (real.status !== 'done') throw new Error(`replayOf: ${real.id} is ${real.status} — null draws replay finished runs only`);
+    if (real.params.arm === 'null') throw new Error('replayOf must point at the REAL run, not another null draw');
+    const seed = Number(params.nullShiftSeed);
+    if (!Number.isInteger(seed) || seed < 1 || seed > 1e9) {
+      throw new Error(`nullShiftSeed must be an integer 1..1e9 (got ${params.nullShiftSeed}) — a null draw without a valid seed would run as a REAL arm under a null label`);
+    }
+    const p2 = { ...real.params, nullShiftSeed: seed, arm: 'null', replayOf: real.id,
+      label: params.label || `htnull-s${seed}`, description: params.description || `null draw seed ${seed} of ${real.id} — no verdict alone; selects nothing` };
+    return htLaunch(p2, HT);
+  }
   const p = htParams(params);
+  p.arm = 'real';
+  return htLaunch(p, HT);
+}
+
+function htLaunch(p, HT) {
   return (async () => {
     // The usable span (ruling B): reserve runs stop at the seal; others stop
     // where the source run's test window began. Computed from the same
@@ -1530,12 +1552,14 @@ function startHistoryTuning(params) {
       const { nTest, nHold } = splitBounds(chunks.length, true);
       usableEndTs = chunks[chunks.length - nTest - nHold].startTs;
     }
-    p.usableStartTs = chunks[0].startTs;
-    p.usableEndTs = usableEndTs;
-    const geom = HT.splitGeometry(p.usableStartTs, p.usableEndTs);
-    if (geom.refusal) throw new Error(geom.refusal);
-    p.splits = geom.splits;
-    p.windowDays = geom.windowDays;
+    if (!p.splits) {
+      p.usableStartTs = chunks[0].startTs;
+      p.usableEndTs = usableEndTs;
+      const geom = HT.splitGeometry(p.usableStartTs, p.usableEndTs);
+      if (geom.refusal) throw new Error(geom.refusal);
+      p.splits = geom.splits;
+      p.windowDays = geom.windowDays;
+    }
 
     const grid = HT.dialGrid();
     const units = [];
@@ -1577,7 +1601,7 @@ function startHistoryTuning(params) {
               fs.mkdirSync(dir, { recursive: true });
               const fname = `${key.replace(/[^A-Za-z0-9._-]+/g, '_')}.json`;
               fs.writeFileSync(path.join(dir, fname), JSON.stringify({
-                job: doc.id, dial: u.dial, split: { ...u.split }, arm: 'real',
+                job: doc.id, dial: u.dial, split: { ...u.split }, arm: p.arm || 'real', nullShiftSeed: p.nullShiftSeed || null,
                 readingRules: p.readingRules, trail: res.trail,
               }));
               trailFile = fname;
