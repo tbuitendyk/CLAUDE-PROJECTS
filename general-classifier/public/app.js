@@ -2146,7 +2146,11 @@
       const beats = nulls.filter((v) => real > v).length;
       return `<td class="${beats === nulls.length ? 'up' : ''}"><strong>${beats}/${nulls.length}</strong></td>`;
     };
-    const leadRows = (doc.leaders || []).map((l, i) => {
+    // Null copies NEVER display on the board (owner order, 2026-08-04) —
+    // they are comparison material, not trade candidates. The engine stopped
+    // recording them as leaders in the same change; this filter also cleans
+    // boards recorded before that (like the run in flight when it shipped).
+    const leadRows = (doc.leaders || []).filter((l) => l.nullDealSeed == null).map((l, i) => {
       const selectable = !running && l.stage === 'promoted';
       const isSel = sel && sel.key === l.key && sel.stage === l.stage;
       const band = `${l.bandMode === 'auto' ? 'auto→' : ''}±${l.bandPct != null ? l.bandPct.toFixed(2) : '?'}%`;
@@ -2199,8 +2203,43 @@
     // than render empty (owner, 2026-07-31).
     const hasHold = (doc.leaders || []).some((l) => l.holdout)
       || (doc.edgeCensus || []).some((r) => r.holdPnl != null);
-    const leaderBlock = `
-      <div class="section"><h2>${running ? 'Live leaderboard — reranks as combos complete' : 'Survivor board'}</h2>
+    // Asset predictability summary (owner order, 2026-08-04). Per asset:
+    // of all real-vs-null money match-ups on the held-back window, the share
+    // the real setups won. Every real setup above every null copy = 100%;
+    // every null copy above every real setup = 0%.
+    let assetSummary = '';
+    if (hasDealNulls) {
+      const byAsset = new Map();
+      for (const r of (doc.edgeCensus || [])) {
+        if (r.holdPnl == null || r.shiftFrac) continue;
+        const asset = r.trade + (r.ctx1 ? '+' + r.ctx1 : '') + (r.ctx2 ? '+' + r.ctx2 : '');
+        if (!byAsset.has(asset)) byAsset.set(asset, { real: [], nulls: [] });
+        byAsset.get(asset)[r.nullDealSeed != null ? 'nulls' : 'real'].push(r.holdPnl);
+      }
+      const scored = [...byAsset.entries()]
+        .filter(([, g]) => g.real.length && g.nulls.length)
+        .map(([asset, g]) => {
+          let won = 0;
+          for (const rv of g.real) for (const nv of g.nulls) if (rv > nv) won++;
+          return { asset, pct: (100 * won) / (g.real.length * g.nulls.length), nReal: g.real.length, nNull: g.nulls.length };
+        })
+        .sort((a, b) => b.pct - a.pct);
+      if (scored.length) {
+        assetSummary = `
+        <div class="section"><h2>Asset predictability — best to worst</h2>
+        <p class="note">For each asset: of all real-vs-null match-ups on held-back money, the share the
+          real setups won. 100% = every real setup beat every null copy. 0% = every null copy beat every
+          real setup. ${running ? 'Counts grow until the sweep finishes — do not judge yet.' : ''}</p>
+        <div class="tablewrap"><table>
+          <tr><th>rank</th><th>asset</th><th title="Share of real-vs-null match-ups won on held-back money">predictability</th><th title="Real setups scored so far / null copies scored so far">real / null rows</th></tr>
+          ${scored.map((s2, i) => `<tr><td>${i + 1}</td><td><strong>${esc(s2.asset)}</strong></td>
+            <td class="${s2.pct >= 50 ? 'up' : 'down'}"><strong>${s2.pct.toFixed(1)}%</strong></td>
+            <td>${s2.nReal} / ${s2.nNull}</td></tr>`).join('')}
+        </table></div></div>`;
+      }
+    }
+    const leaderBlock = `${assetSummary}
+      <div class="section"><h2>${running ? 'Live leaderboard (non-null only) — reranks as combos complete' : 'Survivor board — top non-null results'}</h2>
       ${running ? '<p class="note">Interim numbers move until the sweep completes — for watching, not for stopping early. The promote rule fires mechanically at completion.</p>' : ''}
       ${hasHold ? `<p class="note"><strong>Sorted by HELD-BACK net P&L</strong> (rows under the min-trades floor sink).
         The top row is a <strong>LEAD to declare and test on fresh data — never a result</strong>: ranking 170

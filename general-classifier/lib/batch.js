@@ -1370,6 +1370,10 @@ function leaderCmp(a, b, minTrades = 1) {
 }
 
 function pushLeader(doc, row) {
+  // Null copies never sit on the board (owner order, 2026-08-04): they are
+  // comparison material, never trade candidates, and they were eating the
+  // 50 capped slots. They live in full in the census.
+  if (row.nullDealSeed != null) return;
   doc.leaders.push(row);
   doc.leaders.sort((a, b) => leaderCmp(a, b, doc.params.minTrades || 1));
   if (doc.leaders.length > (doc.params.detailK || 50)) doc.leaders.length = doc.params.detailK || 50;
