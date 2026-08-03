@@ -1446,6 +1446,185 @@ function wfParams(params) {
   return { p, geoms, decs };
 }
 
+
+// ---- HISTORY TUNING (design ledger, all rulings closed 2026-08-03) ---------
+// One selected survivor; 35 dial passes x 3 splits; reference pass first;
+// reading rules stamped BEFORE anything computes; full decision trail per
+// pass on disk for the trail-replay null. Loud validation throughout (QC 60).
+function htParams(params) {
+  const HT = require('./historytuning');
+  const need = (k) => {
+    if (params[k] == null) throw new Error(`History Tuning launch is missing '${k}' — nothing is defaulted silently`);
+    return params[k];
+  };
+  const sourceBatchId = String(need('sourceBatchId'));
+  const src = getBatch(sourceBatchId);
+  if (!src) throw new Error(`unknown source run '${sourceBatchId}'`);
+  if (src.kind !== 'bracketlab') throw new Error('History Tuning tunes Bracket lab survivors only');
+  // ACTIVATION RULE (owner): 70/15/15-structure runs only (split70 or
+  // reserve61 — legacy80 has no hold window and old quota layouts are
+  // retired), AND the gate must use the votes.
+  const srcLayout = src.params.windowLayout;
+  const okLayout = srcLayout === 'split70' || srcLayout === 'reserve61'
+    || (srcLayout === undefined && src.params.holdout) // pre-rename split70 docs
+    || (srcLayout === 'legacy' && src.params.holdout);
+  if (!okLayout) {
+    throw new Error(`activation refused: the source run's layout (${srcLayout || 'legacy 80/20'}) is not `
+      + 'a 70/15/15 structure. History Tuning needs a test AND hold window in the source.');
+  }
+  const cell = need('declaredCell');
+  for (const k of ['quorum', 'gate', 'entry', 'tHours', 'bandPct']) {
+    if (cell[k] == null) throw new Error(`declaredCell.${k} is missing — the survivor row carries it`);
+  }
+  if (cell.entry !== 'market' && cell.dMult == null) throw new Error('declaredCell.dMult is missing for a breakout cell');
+  if (cell.gate === 'always') {
+    throw new Error('activation refused: this row uses the always gate — it enters regardless of votes, '
+      + 'so both tuning dials would act on nothing (owner ruling, 2026-08-02)');
+  }
+  const combo = need('combo'); // { trade, ctx1, ctx2, size }
+  const branch = need('branch'); // { geometry, decision, weekdaysOnly, band }
+  const p = {
+    sourceBatchId,
+    combo,
+    branch,
+    declaredCell: { ...cell },
+    // data window carried from the source run, unchanged (CLOSED 1)
+    allLoaded: src.params.allLoaded, startMonth: src.params.startMonth, endMonth: src.params.endMonth,
+    dormantPct: src.params.dormantPct, compareSymbol: src.params.compareSymbol,
+    // the menu the retunes shop from — the source run's, unchanged
+    dMults: src.params.dMults, tHours: src.params.tHours,
+    gates: (src.params.gates || []).filter((g) => g !== 'always'),
+    entries: src.params.entries,
+    feePerLeg: src.params.feePerLeg ?? params.feePerLeg,
+    minTradesPerLookbackWeek: Number(params.minTradesPerLookbackWeek ?? 0.75), // GUESSED, printed
+    label: params.label || '', description: params.description || '',
+    engineVersion: ENGINE_VERSION,
+    readingRules: HT.READING_RULES, // stamped BEFORE anything computes
+    trainingFloorDays: require('./history').TRAINING_FLOOR_DAYS,
+  };
+  if (p.feePerLeg == null) throw new Error('feePerLeg is missing from the source run and the launch');
+  return p;
+}
+
+function startHistoryTuning(params) {
+  if (batchRunning()) throw new Error(`batch ${activeBatch.id} is already running`);
+  const HT = require('./historytuning');
+  const p = htParams(params);
+  return (async () => {
+    // The usable span (ruling B): reserve runs stop at the seal; others stop
+    // where the source run's test window began. Computed from the same
+    // chunk-building the passes use — no second arithmetic to disagree.
+    const { buildCombo, splitBounds } = require('./bracketwork');
+    const { chunks } = await buildCombo(p.combo, p.branch, p);
+    if (chunks.length < 50) throw new Error(`only ${chunks.length} chunks buildable — not enough history`);
+    const src = getBatch(p.sourceBatchId);
+    let usableEndTs;
+    if (src.params.windowLayout === 'reserve61') {
+      const nReserve = Math.max(2, Math.round(chunks.length * 0.13));
+      const preReserve = chunks.length - nReserve;
+      const { nTest, nHold } = splitBounds(preReserve, true);
+      usableEndTs = chunks[preReserve - nTest - nHold].startTs; // pre-reserve test start
+      p.reserveFromTs = chunks[preReserve].startTs;
+      p.reserveToTs = chunks[chunks.length - 1].startTs;
+    } else {
+      const { nTest, nHold } = splitBounds(chunks.length, true);
+      usableEndTs = chunks[chunks.length - nTest - nHold].startTs;
+    }
+    p.usableStartTs = chunks[0].startTs;
+    p.usableEndTs = usableEndTs;
+    const geom = HT.splitGeometry(p.usableStartTs, p.usableEndTs);
+    if (geom.refusal) throw new Error(geom.refusal);
+    p.splits = geom.splits;
+    p.windowDays = geom.windowDays;
+
+    const grid = HT.dialGrid();
+    const units = [];
+    for (const dial of grid) for (const split of geom.splits) units.push({ dial, split });
+
+    const stamp = new Date().toISOString().replace(/[-:]/g, '').slice(0, 15).replace('T', '-');
+    const slug = (p.label || 'historytuning').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 32);
+    const doc = {
+      id: `historytuning-${stamp}-${slug}`,
+      kind: 'historytuning',
+      description: p.description || '',
+      status: 'running',
+      startedAt: new Date().toISOString(),
+      finishedAt: null,
+      progress: '',
+      params: p,
+      perf: { unitsDone: 0, unitsTotal: units.length, elapsedMs: 0, etaMs: null, workers: null },
+      htRows: [],
+      failures: [],
+    };
+    activeBatch = doc;
+    saveBatch(doc);
+    const pool = createPool();
+    activePool = pool;
+    doc.perf.workers = pool.parallel ? pool.workers.length : 1;
+    saveBatch(doc);
+    const t0 = Date.now();
+    (async () => {
+      const payloads = units.map((u) => ({ combo: p.combo, branch: p.branch, dial: u.dial, split: u.split, params: p }));
+      await pool.map('htPass', payloads, (settled, i) => {
+        const u = units[i];
+        const key = `${u.dial.age.key}|${u.dial.retune.key}|${u.split.name}`;
+        if (settled.ok && settled.value) {
+          const res = settled.value;
+          let trailFile = null;
+          if (res.trail) {
+            try {
+              const dir = path.join(BATCH_DIR, '..', 'ht', doc.id);
+              fs.mkdirSync(dir, { recursive: true });
+              const fname = `${key.replace(/[^A-Za-z0-9._-]+/g, '_')}.json`;
+              fs.writeFileSync(path.join(dir, fname), JSON.stringify({
+                job: doc.id, dial: u.dial, split: { ...u.split }, arm: 'real',
+                readingRules: p.readingRules, trail: res.trail,
+              }));
+              trailFile = fname;
+            } catch (err) {
+              if (doc.failures.length < 200) doc.failures.push({ key, error: `trail dump: ${err.message}` });
+            }
+          }
+          doc.htRows.push({
+            ageKey: u.dial.age.key, retuneKey: u.dial.retune.key, split: u.split.name,
+            reference: !!u.dial.reference, refused: res.refused || null, skipped: res.skipped || null,
+            testPnl: res.testPnl ?? null, holdPnl: res.holdPnl ?? null, trades: res.trades ?? 0,
+            effectiveDays: res.effectiveDays ?? null, retrains: res.retrains ?? 0, retunes: res.retunes ?? 0,
+            trailFile,
+          });
+        } else if (!settled.ok && !doc.cancelRequested && doc.failures.length < 200) {
+          doc.failures.push({ key, error: settled.error });
+        }
+        doc.perf.unitsDone++;
+        doc.perf.elapsedMs = Date.now() - t0;
+        doc.perf.etaMs = doc.perf.unitsDone ? Math.round((doc.perf.elapsedMs / doc.perf.unitsDone) * (units.length - doc.perf.unitsDone)) : null;
+        doc.progress = `history tuning ${doc.perf.unitsDone}/${units.length}: ${key}`;
+        saveBatch(doc);
+      });
+      // An arm that failed its floor on ANY split is dropped from ALL splits
+      // in the read (adopted review fix 6) — recorded on the doc so the
+      // renderer and the audit apply the same exclusion.
+      const refusedArms = new Set(doc.htRows.filter((r) => r.refused).map((r) => `${r.ageKey}|${r.retuneKey}`));
+      doc.excludedArms = [...refusedArms];
+      doc.status = doc.cancelRequested ? 'cancelled' : 'done';
+      doc.finishedAt = new Date().toISOString();
+      doc.perf.elapsedMs = Date.now() - t0;
+      saveBatch(doc);
+      activeBatch = null;
+      activePool = null;
+      pool.abort();
+    })().catch((err) => {
+      doc.status = 'error';
+      doc.failures.push({ key: 'run', error: err.message });
+      saveBatch(doc);
+      activeBatch = null;
+      activePool = null;
+      pool.abort();
+    });
+    return { batchId: doc.id, units: units.length, splits: geom.splits, windowDays: geom.windowDays };
+  })();
+}
+
 function startWalkforward(params) {
   if (batchRunning()) throw new Error(`batch ${activeBatch.id} is already running`);
   const { p, geoms, decs } = wfParams(params);
@@ -2232,6 +2411,7 @@ module.exports = {
   startMetalens,
   startPermScreen,
   startBracketLab,
+  startHistoryTuning,
   idSlug,
   leaderCmp,
   bracketSelect,

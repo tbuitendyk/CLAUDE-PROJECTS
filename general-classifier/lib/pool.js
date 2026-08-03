@@ -36,6 +36,7 @@ const INLINE = {
   unit: work.unitTask,
   nullRotation: work.nullRotationTask,
   wfUnit: require('./walkforward').wfUnitTask,
+  htPass: require('./historytuning').htPassTask,
   ping: async () => ({ priority: os.getPriority(), pid: process.pid, ...threadNice() }),
 };
 

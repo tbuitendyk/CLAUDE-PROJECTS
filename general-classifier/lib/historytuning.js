@@ -309,3 +309,36 @@ module.exports = {
   runPass,
   reachMsFor,
 };
+
+// ---- worker entry -----------------------------------------------------------
+// One payload = one dial pair walked through one split. Serializable in,
+// serializable out; the orchestrator (lib/batch.js) owns the doc.
+async function htPassTask(payload) {
+  const { combo, branch, dial, split, params: p } = payload;
+  const { buildCombo } = require('./bracketwork');
+  const { scoreDiff } = require('./dataset');
+  const { geo, maps, chunks } = await buildCombo(combo, branch, p);
+  // Ruling B: the usable span was computed at launch (selection-window
+  // truncation or reserve seal). Everything outside it does not exist for
+  // this run.
+  const usable = chunks.filter((c) => c.startTs >= p.usableStartTs && c.startTs < p.usableEndTs);
+  // The setup is carried UNCHANGED (design ledger): the survivor's recorded
+  // band labels every chunk, exactly as its board run labeled them.
+  const bandPct = p.declaredCell.bandPct;
+  for (const c of usable) c.label = scoreDiff(c.diffPct / 100, bandPct / 100);
+  return runPass({
+    chunks: usable,
+    geo,
+    maps,
+    branch,
+    comboSize: combo.size,
+    dial,
+    split,
+    declaredCell: p.declaredCell,
+    menuOpts: { dMults: p.dMults, tHours: p.tHours, gates: p.gates, entries: p.entries },
+    feePerLeg: p.feePerLeg,
+    minTradesPerLookbackWeek: p.minTradesPerLookbackWeek,
+  });
+}
+
+module.exports.htPassTask = htPassTask;
