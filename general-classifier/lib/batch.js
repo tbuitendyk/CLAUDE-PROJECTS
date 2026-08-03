@@ -2175,6 +2175,12 @@ function startBracketLab(params) {
   // more (owner order: the checkbox-plus-option pairing encoded two splits
   // ambiguously). legacy80 has no hold; split70 and reserve61 do.
   p.holdout = p.windowLayout !== 'legacy80';
+  // NULL BOARDS EXIST TO BE READ, and the board-against-null-board reading
+  // pairs CENSUS rows — without the census the whole null expansion would
+  // compute and then be unreadable (owner caught this from the heading,
+  // 2026-08-03: 'Census off' next to '9 null boards'). Same rule the old
+  // both-layout jobs had, same reason.
+  if (p.labelShiftReps > 0) p.edgeScreen = true;
   const { branches, combos } = expandBracketPlan(p);
   const units = [];
   for (const b of branches) for (const c of combos) units.push({ c, b });

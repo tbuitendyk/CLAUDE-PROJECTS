@@ -2076,7 +2076,7 @@
       <table class="settings">
         <tr><th>Outcomes</th><td>${nullDesc}</td>
             <th>Hold window</th><td>${p.holdout ? '<strong>yes</strong> — see Window layout' : 'no — nothing held back'}</td></tr>
-        <tr><th>Census</th><td>${yn(p.edgeScreen)}${p.edgeScreen ? ' — every unit recorded, not just money winners' : ''}</td>
+        <tr><th title="The census records EVERY setup's chosen-cell result — all 170 rows, winners and losers — not just the promoted top. The null-board reading pairs census rows, so runs with null boards force it on.">Census</th><td>${yn(p.edgeScreen)}${p.edgeScreen ? ((p.labelShiftReps || 0) > 0 ? ' — forced on: the null-board reading pairs census rows' : ' — every unit recorded, not just money winners') : ' — only promoted winners recorded'}</td>
             <th>Trailing stops</th><td>${yn(p.trailing)}</td></tr>
         <tr><th title="Which months of history this run read. ALL LOADED means whatever was in the cache at launch — the coverage table at the top of this tab shows what that was.">Data months</th><td>${p.allLoaded ? '<strong>all loaded at launch</strong>' : `${esc(p.startMonth || '?')} to ${esc(p.endMonth || '?')}`}</td>
             <th>Engine</th><td>${esc(p.engineVersion || 'not recorded')}</td></tr>
