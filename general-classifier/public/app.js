@@ -2045,8 +2045,14 @@
     const sel = doc.selection;
     const permuted = Object.entries(p.permute || {}).filter(([, v]) => v).map(([k]) => k);
     const header = `${esc(doc.id)} — ${esc(doc.status)}${running && doc.progress ? ' — ' + esc(doc.progress) : ''}`;
+    // The equation must EQUAL ITSELF (owner catch, 2026-08-03: it printed
+    // 17 x 10 = 1700 because the null-board factor was omitted from the
+    // formula while being included in the total).
+    const boardsFactor = (p.labelShiftReps || 0) > 0 ? (p.labelShiftReps + 1) : 1;
     const planLine = doc.plan
-      ? `${doc.plan.combos} combos × ${doc.plan.branches} branch(es) = ${doc.plan.units} units · slim runs ${doc.plan.slimRuns}`
+      ? `${doc.plan.combos} combos × ${doc.plan.branches} branch(es)`
+        + (boardsFactor > 1 ? ` × ${boardsFactor} boards (1 real + ${p.labelShiftReps} null)` : '')
+        + ` = ${doc.plan.units} units · slim runs ${doc.plan.slimRuns}`
         + (doc.plan.promoteRuns != null ? ` · promote runs ${doc.plan.promoteRuns}` : '')
       : '';
     // WHAT THIS RUN IS FOR, stated on the page rather than only in an email.
@@ -2069,7 +2075,7 @@
     const settingsBlock = `
       <table class="settings">
         <tr><th>Outcomes</th><td>${nullDesc}</td>
-            <th>Hold window</th><td>${p.holdout ? '<strong>yes</strong> — 70/15/15' : 'no — 80/20, nothing held back'}</td></tr>
+            <th>Hold window</th><td>${p.holdout ? '<strong>yes</strong> — see Window layout' : 'no — nothing held back'}</td></tr>
         <tr><th>Census</th><td>${yn(p.edgeScreen)}${p.edgeScreen ? ' — every unit recorded, not just money winners' : ''}</td>
             <th>Trailing stops</th><td>${yn(p.trailing)}</td></tr>
         <tr><th title="Which months of history this run read. ALL LOADED means whatever was in the cache at launch — the coverage table at the top of this tab shows what that was.">Data months</th><td>${p.allLoaded ? '<strong>all loaded at launch</strong>' : `${esc(p.startMonth || '?')} to ${esc(p.endMonth || '?')}`}</td>
