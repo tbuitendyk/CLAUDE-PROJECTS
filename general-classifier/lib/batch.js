@@ -1649,6 +1649,152 @@ function htLaunch(p, HT) {
   })();
 }
 
+
+// THE RESERVE GRADE — one touch, final (owner design + ruling B). Fires the
+// winner's walk, the reference pass's walk, and the declared null draws over
+// the sealed reserve as ONE verification event. Refuses if the reserve was
+// ever graded before; nothing is ever re-picked from reserve results.
+const NULL_DRAWS_RESERVE = 19; // GUESSED (owner-approved); floor 1/20 printed
+
+function startReserveGrade(params) {
+  if (batchRunning()) throw new Error(`batch ${activeBatch.id} is already running`);
+  const HT = require('./historytuning');
+  const real = getBatch(String(params.sourceHtRunId || ''));
+  if (!real || real.kind !== 'historytuning') throw new Error(`unknown History Tuning run '${params.sourceHtRunId}'`);
+  if (real.status !== 'done') throw new Error(`${real.id} is ${real.status} — grade finished runs only`);
+  if (real.params.arm === 'null') throw new Error('grade the REAL run, not a null draw');
+  if (!real.params.reserveFromTs) {
+    throw new Error('no reserve exists for this setup: its board run was not a reserve61 layout — '
+      + 'the binding grade is the forward paper book (WORKFLOW.md step 7)');
+  }
+  // ONE VERIFICATION EVENT: any prior grade of this run, finished or not,
+  // makes another refuse.
+  for (const b of listBatches()) {
+    if (b.kind === 'historytuning' && b.params && b.params.mode === 'reserve-grade'
+        && b.params.replayOf === real.id) {
+      throw new Error(`the reserve was already touched for ${real.id} (${b.id}) — one verification event, ever`);
+    }
+  }
+  // The winner by the STAMPED reading rules: combined test dollars across
+  // the three splits, excluded arms out (they refused a floor somewhere).
+  const excluded = new Set(real.excludedArms || []);
+  const byArm = new Map();
+  for (const r of real.htRows) {
+    if (r.refused || r.skipped) continue;
+    const k = `${r.ageKey}|${r.retuneKey}`;
+    if (excluded.has(k)) continue;
+    byArm.set(k, (byArm.get(k) || 0) + (r.testPnl || 0));
+  }
+  if (!byArm.size) throw new Error('no arm survived the floors — nothing to grade');
+  const winnerKey = [...byArm.entries()].sort((a, b2) => b2[1] - a[1])[0][0];
+  const [ageKey, retuneKey] = winnerKey.split('|');
+  const grid = HT.dialGrid();
+  const winnerDial = grid.find((g) => g.age.key === ageKey && g.retune.key === retuneKey);
+  const referenceDial = grid.find((g) => g.reference);
+  const reserveSplit = {
+    name: 'reserve',
+    trainStartTs: real.params.usableStartTs,
+    testStartTs: real.params.reserveFromTs,
+    testEndTs: real.params.reserveFromTs, // empty test window: every dollar is hold
+    holdStartTs: real.params.reserveFromTs,
+    holdEndTs: real.params.reserveToTs,
+  };
+  const p = {
+    ...real.params,
+    mode: 'reserve-grade', replayOf: real.id, arm: 'real',
+    usableEndTs: real.params.reserveToTs, // the walk needs the reserve candles
+    splits: [reserveSplit],
+    winnerKey,
+    label: params.label || 'reserve-grade',
+    description: `one-touch reserve grade of ${real.id}: winner ${winnerKey} vs reference vs ${NULL_DRAWS_RESERVE} null draws; `
+      + `resolution floor 1 in ${NULL_DRAWS_RESERVE + 1}`,
+  };
+  return htGradeLaunch(p, winnerDial, referenceDial, reserveSplit);
+}
+
+function htGradeLaunch(p, winnerDial, referenceDial, split) {
+  const units = [
+    { dial: winnerDial, split, seed: null, tag: 'winner' },
+    { dial: referenceDial, split, seed: null, tag: 'reference' },
+  ];
+  for (let seed = 1; seed <= NULL_DRAWS_RESERVE; seed++) units.push({ dial: winnerDial, split, seed, tag: `null-s${seed}` });
+  const stamp = new Date().toISOString().replace(/[-:]/g, '').slice(0, 15).replace('T', '-');
+  const doc = {
+    id: `historytuning-${stamp}-${(p.label || 'reserve-grade').toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 32)}`,
+    kind: 'historytuning',
+    description: p.description, status: 'running',
+    startedAt: new Date().toISOString(), finishedAt: null, progress: '', params: p,
+    perf: { unitsDone: 0, unitsTotal: units.length, elapsedMs: 0, etaMs: null, workers: null },
+    htRows: [], failures: [],
+  };
+  activeBatch = doc;
+  saveBatch(doc);
+  const pool = createPool();
+  activePool = pool;
+  doc.perf.workers = pool.parallel ? pool.workers.length : 1;
+  saveBatch(doc);
+  const t0 = Date.now();
+  (async () => {
+    const payloads = units.map((u) => ({
+      combo: p.combo, branch: p.branch, dial: u.dial, split: u.split,
+      params: { ...p, nullShiftSeed: u.seed },
+    }));
+    await pool.map('htPass', payloads, (settled, i) => {
+      const u = units[i];
+      if (settled.ok && settled.value) {
+        const res = settled.value;
+        doc.htRows.push({
+          ageKey: u.dial.age.key, retuneKey: u.dial.retune.key, split: u.split.name, tag: u.tag,
+          nullSeed: u.seed, refused: res.refused || null, skipped: res.skipped || null,
+          testPnl: res.testPnl ?? null, holdPnl: res.holdPnl ?? null, trades: res.trades ?? 0,
+          effectiveDays: res.effectiveDays ?? null, retrains: res.retrains ?? 0, retunes: res.retunes ?? 0,
+        });
+      } else if (!settled.ok && !doc.cancelRequested && doc.failures.length < 200) {
+        doc.failures.push({ key: u.tag, error: settled.error });
+      }
+      doc.perf.unitsDone++;
+      doc.perf.elapsedMs = Date.now() - t0;
+      doc.perf.etaMs = doc.perf.unitsDone ? Math.round((doc.perf.elapsedMs / doc.perf.unitsDone) * (units.length - doc.perf.unitsDone)) : null;
+      doc.progress = `reserve grade ${doc.perf.unitsDone}/${units.length}: ${u.tag}`;
+      saveBatch(doc);
+    });
+    // The stamped verdict, computed by the machine through the rules —
+    // never re-decided by a reader (owner-approved reading rules).
+    const row = (t) => doc.htRows.find((r) => r.tag === t && !r.refused && !r.skipped);
+    const w = row('winner');
+    const ref = row('reference');
+    const nulls = doc.htRows.filter((r) => r.tag && r.tag.startsWith('null-') && !r.refused && !r.skipped);
+    if (w && ref) {
+      const beatsRef = w.holdPnl > ref.holdPnl;
+      const nullsAbove = nulls.filter((n) => n.holdPnl >= w.holdPnl).length;
+      doc.verdict = {
+        winnerHoldPnl: w.holdPnl, referenceHoldPnl: ref.holdPnl,
+        nullDraws: nulls.length, nullsAtOrAbove: nullsAbove,
+        resolutionFloor: `1 in ${nulls.length + 1}`,
+        passed: beatsRef && nullsAbove === 0,
+        sentence: beatsRef && nullsAbove === 0
+          ? `PASSED: the winner beat the reference pass on reserve dollars and no null draw matched it (floor 1 in ${nulls.length + 1}).`
+          : `FAILED: ${!beatsRef ? 'the winner did not beat the reference pass on the reserve' : `${nullsAbove} of ${nulls.length} null draws matched or beat the winner`} — tuning did not strengthen this survivor. A failed reserve is a dead end, never a hint.`,
+      };
+    }
+    doc.status = doc.cancelRequested ? 'cancelled' : 'done';
+    doc.finishedAt = new Date().toISOString();
+    doc.perf.elapsedMs = Date.now() - t0;
+    saveBatch(doc);
+    activeBatch = null;
+    activePool = null;
+    pool.abort();
+  })().catch((err) => {
+    doc.status = 'error';
+    doc.failures.push({ key: 'run', error: err.message });
+    saveBatch(doc);
+    activeBatch = null;
+    activePool = null;
+    pool.abort();
+  });
+  return doc.id;
+}
+
 function startWalkforward(params) {
   if (batchRunning()) throw new Error(`batch ${activeBatch.id} is already running`);
   const { p, geoms, decs } = wfParams(params);
@@ -2443,6 +2589,7 @@ module.exports = {
   startPermScreen,
   startBracketLab,
   startHistoryTuning,
+  startReserveGrade,
   idSlug,
   leaderCmp,
   bracketSelect,

@@ -726,6 +726,35 @@ app.post('/api/bracketlab/compare', (req, res) => {
 });
 
 // ---- walk-forward (DESIGN-WALKFORWARD.md) ----------------------------------
+
+// ---- History Tuning (design ledger; owner build order 2026-08-03) ----------
+app.post('/api/historytuning', async (req, res) => {
+  const b = req.body || {};
+  try {
+    const out = await batch.startHistoryTuning(b);
+    res.json(typeof out === 'string' ? { batchId: out } : out);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+app.post('/api/historytuning/null', async (req, res) => {
+  const b = req.body || {};
+  try {
+    const out = await batch.startHistoryTuning({ replayOf: b.replayOf, nullShiftSeed: b.nullShiftSeed, label: b.label });
+    res.json(typeof out === 'string' ? { batchId: out } : out);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+app.post('/api/historytuning/reserve-grade', (req, res) => {
+  try {
+    const id = batch.startReserveGrade({ sourceHtRunId: (req.body || {}).sourceHtRunId });
+    res.json({ batchId: id });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
 app.post('/api/walkforward', (req, res) => {
   const b = req.body || {};
   if (b.universe !== undefined && (!Array.isArray(b.universe) || b.universe.some((x) => !SYMBOL_RE.test(String(x).toUpperCase())))) {
