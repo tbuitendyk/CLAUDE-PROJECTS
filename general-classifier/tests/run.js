@@ -1,5 +1,5 @@
 // Tiny test runner: node tests/run.js
-const files = ['test-binance.js', 'test-dataset.js', 'test-features.js', 'test-logreg.js', 'test-boost.js', 'test-throttle.js', 'test-consensus.js', 'test-tracker.js', 'test-dogebook.js', 'test-books.js', 'test-metalens.js', 'test-permscreen.js', 'test-bracket.js', 'test-pool.js', 'test-inspect.js', 'test-walkforward.js', 'test-batchdoc.js', 'test-guard.js', 'test-wfcompare.js', 'test-history.js', 'test-layouts.js', 'test-historytuning.js', 'test-planted.js', 'test-vocabulary.js', 'test-htlaunch.js', 'test-plantedgate.js', 'test-gatepipe.js'];
+const files = ['test-binance.js', 'test-dataset.js', 'test-features.js', 'test-logreg.js', 'test-boost.js', 'test-throttle.js', 'test-consensus.js', 'test-tracker.js', 'test-dogebook.js', 'test-books.js', 'test-metalens.js', 'test-permscreen.js', 'test-bracket.js', 'test-pool.js', 'test-inspect.js', 'test-walkforward.js', 'test-batchdoc.js', 'test-guard.js', 'test-wfcompare.js', 'test-history.js', 'test-layouts.js', 'test-historytuning.js', 'test-planted.js', 'test-vocabulary.js', 'test-htlaunch.js', 'test-plantedgate.js', 'test-gatepipe.js', 'test-censusselect.js'];
 
 let failures = 0;
 (async () => {

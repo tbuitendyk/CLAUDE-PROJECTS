@@ -2147,10 +2147,50 @@
       return `<td class="${beats === nulls.length ? 'up' : ''}"><strong>${beats}/${nulls.length}</strong></td>`;
     };
     // Null copies NEVER display on the board (owner order, 2026-08-04) —
-    // they are comparison material, not trade candidates. The engine stopped
-    // recording them as leaders in the same change; this filter also cleans
-    // boards recorded before that (like the run in flight when it shipped).
-    const leadRows = (doc.leaders || []).filter((l) => l.nullDealSeed == null).map((l, i) => {
+    // they are comparison material, not trade candidates. On runs that
+    // carry null copies, the stored leader list was capped WITH them in it,
+    // so real setups got crowded out; the board therefore rebuilds from the
+    // census (which holds every real setup, uncapped): top 50 real rows by
+    // held-back money, rows under the min-trades floor sinking, same as the
+    // leader rule. Runs without null copies render their leaders as before.
+    const boardRows = (() => {
+      if (!hasDealNulls) return (doc.leaders || []).filter((l) => l.nullDealSeed == null);
+      const minT = (p && p.minTrades) || 1;
+      const set = (p && p.set) || {};
+      const rows = (doc.edgeCensus || [])
+        .filter((r) => r.nullDealSeed == null && !r.shiftFrac)
+        .map((r) => ({
+          key: `census|${r.trade}|${r.ctx1 || ''}|${r.ctx2 || ''}|${r.geometry}|${r.decision}`,
+          fromCensus: true, stage: 'promoted',
+          trade: r.trade, ctx1: r.ctx1, ctx2: r.ctx2, size: 1 + (r.ctx1 ? 1 : 0) + (r.ctx2 ? 1 : 0),
+          geometry: r.geometry, decision: r.decision,
+          bandMode: r.bandMode ?? set.band ?? 'auto', bandPct: r.bandPct,
+          weekdaysOnly: r.weekdaysOnly ?? !!set.weekdaysOnly,
+          quorum: r.cellQuorum, members: r.members,
+          gate: r.cellGate, entry: r.cellEntry, dMult: r.cellDMult, tHours: r.cellTHours,
+          trailMult: r.cellTrailMult, armMult: r.cellArmMult,
+          pnl: r.searchPnl, trades: r.searchTrades, wins: r.searchWins,
+          grossPerTrade: r.searchGrossPerTrade, stops: r.searchStops,
+          controlPnl: r.vsControl != null && r.searchPnl != null ? r.searchPnl - r.vsControl : null,
+          metrics: { testAcc: r.searchAcc, edge: r.searchEdge, majorityBaseline: r.searchBaseline },
+          holdout: r.holdPnl == null ? null : {
+            pnl: r.holdPnl, trades: r.holdTrades, wins: r.holdWins,
+            grossPerTrade: r.holdGrossPerTrade, stops: r.holdStops,
+            metrics: { testAcc: r.holdAcc, edge: r.holdEdge, majorityBaseline: r.holdBaseline,
+              directionalHits: r.holdDirHits, directionalCalls: r.holdDirCalls },
+          },
+        }));
+      rows.sort((a, b) => {
+        const fa = a.holdout && a.holdout.trades >= minT ? 1 : 0;
+        const fb = b.holdout && b.holdout.trades >= minT ? 1 : 0;
+        if (fb !== fa) return fb - fa;
+        const ha = a.holdout ? a.holdout.pnl : -Infinity;
+        const hb = b.holdout ? b.holdout.pnl : -Infinity;
+        return hb - ha;
+      });
+      return rows.slice(0, 50);
+    })();
+    const leadRows = boardRows.map((l, i) => {
       const selectable = !running && l.stage === 'promoted';
       const isSel = sel && sel.key === l.key && sel.stage === l.stage;
       const band = `${l.bandMode === 'auto' ? 'auto→' : ''}±${l.bandPct != null ? l.bandPct.toFixed(2) : '?'}%`;

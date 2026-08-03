@@ -2425,6 +2425,11 @@ function startBracketLab(params) {
             doc.edgeCensus.push({
               trade: l.trade, ctx1: l.ctx1, ctx2: l.ctx2,
               geometry: l.geometry, decision: l.decision, bandPct: res.bandPct,
+              // WHICH branch produced this row, for the permuted dimensions
+              // that are not already stored per-row: census-backed selection
+              // needs them (rows without these refuse selection when the
+              // dimension was permuted).
+              bandMode: l.bandMode ?? null, weekdaysOnly: l.weekdaysOnly ?? null,
               shiftFrac: l.shiftFrac ?? null,
               nullDealSeed: l.nullDealSeed ?? null,
               shiftScope: p.labelShiftScope || 'series',
@@ -2651,11 +2656,50 @@ function bracketSelect(id, patch) {
   if (!doc || doc.kind !== 'bracketlab') throw new Error('unknown bracket-lab run');
   if (doc.status === 'running') throw new Error('sweep is still running');
   const row = doc.leaders.find((l) => l.key === patch.key && l.stage === (patch.stage || 'promoted'));
-  if (!row) throw new Error('unknown leader row (promoted rows are the null candidates)');
-  doc.selection = row;
-  doc.nullTest = null;
-  saveBatch(doc);
-  return doc;
+  if (row) {
+    doc.selection = row;
+    doc.nullTest = null;
+    saveBatch(doc);
+    return doc;
+  }
+  // CENSUS-BACKED SELECTION (owner order, 2026-08-04). Null copies used to
+  // eat the 50 capped leader slots, crowding real setups off the stored
+  // board; the display now rebuilds the board from the census, so a row can
+  // be on screen without a leader entry behind it. The census row carries
+  // everything the null replay and History Tuning need — except, on rows
+  // recorded before 1.34.0, which BAND / 24-5 branch produced it, so those
+  // fall back to the run's fixed setting and REFUSE when that dimension was
+  // permuted (guessing the branch would test a different setup).
+  if (String(patch.key || '').startsWith('census|')) {
+    const [, trade, ctx1, ctx2, geometry, decision] = String(patch.key).split('|');
+    const r = (doc.edgeCensus || []).find((x) => x.nullDealSeed == null && !x.shiftFrac
+      && x.trade === trade && (x.ctx1 || '') === ctx1 && (x.ctx2 || '') === ctx2
+      && x.geometry === geometry && x.decision === decision);
+    if (!r) throw new Error('setup not found in this run\'s census');
+    const p = doc.params || {};
+    const bandMode = r.bandMode ?? (p.permute && p.permute.band ? null : ((p.set && p.set.band) ?? 'auto'));
+    if (bandMode == null) {
+      throw new Error('this run permuted the band and its rows (recorded before 1.34.0) do not say which band branch each row used — re-run the sweep to select this row');
+    }
+    const weekdaysOnly = r.weekdaysOnly ?? (p.permute && p.permute.weekdays ? null : !!(p.set && p.set.weekdaysOnly));
+    if (weekdaysOnly == null) {
+      throw new Error('this run permuted 24/5 and its rows (recorded before 1.34.0) do not say which branch each row used — re-run the sweep to select this row');
+    }
+    doc.selection = {
+      key: patch.key, stage: 'promoted', fromCensus: true,
+      trade, ctx1: ctx1 || null, ctx2: ctx2 || null, size: 1 + (ctx1 ? 1 : 0) + (ctx2 ? 1 : 0),
+      geometry, decision, bandMode, weekdaysOnly, bandPct: r.bandPct ?? null,
+      quorum: r.cellQuorum, members: r.members ?? null,
+      gate: r.cellGate, entry: r.cellEntry, dMult: r.cellDMult, tHours: r.cellTHours,
+      trailMult: r.cellTrailMult ?? null, armMult: r.cellArmMult ?? null,
+      pnl: r.searchPnl ?? null, trades: r.searchTrades ?? null,
+      holdout: r.holdPnl != null ? { pnl: r.holdPnl, trades: r.holdTrades ?? null } : null,
+    };
+    doc.nullTest = null;
+    saveBatch(doc);
+    return doc;
+  }
+  throw new Error('unknown leader row (promoted rows are the null candidates)');
 }
 
 // Null replay for the selected survivor: per rotation, retrain the unit's
