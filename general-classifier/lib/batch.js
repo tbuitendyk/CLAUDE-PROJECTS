@@ -1704,7 +1704,9 @@ function htLaunch(p, HT, claim) {
         doc.perf.unitsDone++;
         doc.perf.elapsedMs = Date.now() - t0;
         doc.perf.etaMs = doc.perf.unitsDone ? Math.round((doc.perf.elapsedMs / doc.perf.unitsDone) * (units.length - doc.perf.unitsDone)) : null;
-        doc.progress = `history tuning ${doc.perf.unitsDone}/${units.length}: ${key}`;
+        const lastRow = doc.htRows[doc.htRows.length - 1];
+        doc.progress = `history tuning ${doc.perf.unitsDone}/${units.length}: ${key}`
+          + (lastRow && lastRow.effectiveDays != null ? ` (last: ${Math.round(lastRow.effectiveDays)} eff. days, ${lastRow.retrains} retrains, ${lastRow.retunes} retunes)` : '');
         saveBatch(doc);
       });
       // An arm that failed its floor on ANY split is dropped from ALL splits

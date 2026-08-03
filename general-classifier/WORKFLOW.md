@@ -12,14 +12,16 @@ Load data → board sweep → null boards → two reads → (optional)
 History Tuning → replication → paper book. Money claims only ever
 come from the END of the chain, never the middle.
 
-## Step 1 — Load data (Research tab)
+## Step 1 — Data on server (first section of the Bracket lab)
 
 WHY: everything downstream reads from the local cache; a gap in the
 cache silently shrinks every window.
-HOW: set the month range, press Load Data. The guard refuses while a
-job is running.
-WHEN: once per new month, or before any run that needs months you
-have not loaded yet.
+HOW: the data manager sits at the top of the Bracket lab (owner order,
+2026-08-03): per-asset refresh-to-latest, Global Refresh, download new
+pairs over a month range, trim a range, purge an asset. Purge and trim
+DELETE data. Every write refuses while a job runs.
+WHEN: once per new month, or before any run that needs months or pairs
+you have not loaded yet.
 
 ## Step 2 — The board sweep
 
@@ -96,10 +98,15 @@ WHEN: the final step, always.
 ## The tools around the chain (and when they are NOT for)
 
 - **Planted check** — WHY: an instrument must be calibrated before
-  its readings count. Plants a known fake pattern; the real pipeline
-  must find it, the null construction must destroy it. WHEN: before
-  trusting any rebuilt or modified null tool; after any engine change
-  touching members or nulls. NOT for judging real setups.
+  its readings count. Two halves, stated honestly: (1) AUTOMATED — the
+  test suite plants a known pattern in a synthetic market and verifies
+  the real call stream harvests it through the real simulator while
+  ten dealt-vote streams do not (runs on every build); (2) MANUAL
+  GATE — before the first REAL decision leans on a rebuilt null tool,
+  a through-pipeline planted run (a fabricated pair pushed through the
+  full sweep machinery on the box) must pass, and its record is
+  audited like any job. WHEN: after any engine change touching
+  members or nulls. NOT for judging real setups.
 - **Compare two runs** — WHY: A/B questions need paired reading with
   the differences named. Lists every setting difference between two
   stored runs; money differences are stamped attributable only when
