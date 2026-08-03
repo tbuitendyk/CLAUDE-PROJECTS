@@ -1,0 +1,65 @@
+The build is live: History Tuning, three layouts, rebuilt null tools, data manager, lab guide
+
+tl;dr Release 1.32.0 is deployed and verified — the whole nine-item
+build you ordered, plus the data manager you added mid-build. Hard
+refresh once. Nothing runs until you fire it. The adversarial review
+you insisted on caught all three new instruments DEAD on arrival —
+fixed before deploy, and that lesson is now register entries 68 and 69.
+
+WHAT'S ON THE PAGE NOW (Bracket lab, top to bottom):
+- DATA ON SERVER (first section, your order): per-asset refresh to
+  latest, Global Refresh, download any new pairs over a month range,
+  trim a range, purge an asset. Purge and trim delete data and say so;
+  every write refuses while a job runs.
+- THE SWEEP FORM: exactly three window layouts, each naming its
+  splits — 70/15/15, legacy 80/20, and 61/13/13/13 with the final 13%
+  SEALED for a later History Tuning grade. The holdout checkbox is
+  gone; retired layouts refuse at launch by name. New "null boards"
+  field: the sweep ships with dealt-vote companion boards, and the
+  form states the resolution its count buys.
+- THE SURVIVOR BOARD: the q · gate/entry column (cells match the
+  header: active/breakout, directional/market), window layout in the
+  settings table, arm tags on historical twin rows.
+- NULL TESTS, one section, two tools, each stating which layer of
+  chance it prices, its cost, and its blind spot. Both rebuilt on the
+  dealt-votes construction; the old label-rotation is retired and
+  historical rotation verdicts are tagged as historical readings.
+- HISTORY TUNING: select a survivor, one button, 105 passes (35 dial
+  pairs x 3 splits, reference pass first, floors checked at launch
+  with the plan stamped). The verdict prints as a machine sentence
+  through the four reading rules you approved — never a table for
+  interpretation. Null draws: 19 declared, repeated seeds refuse, no
+  trail no null no claim. Reserve grade: one touch, ever, winner +
+  reference + 19 draws together.
+- INSIDE A SETUP (labeled: a microscope, not evidence) and COMPARE
+  TWO RUNS (differences always listed first; money differences
+  stamped ATTRIBUTABLE only when exactly one setting differs).
+- The "lab guide" link by the title opens the Bracket lab's own help
+  page: every component in order, what each is for and NOT for, and
+  the three paths compared by what they can honestly claim.
+
+THE REVIEW STORY, STRAIGHT: three independent reviewers (page-boot,
+engine, spec-fidelity) produced ~45 findings. The worst: History
+Tuning's launcher, the per-row null tool, and the board-verdict
+reader were ALL broken at runtime while the test suite stayed green —
+no test crossed the wiring layer. All fixed; launch-crossing tests now
+exist and were watched failing (they caught a bug in my own fix
+round). Register 69 records the lesson; register 68 records the
+vocabulary guard (an automated scan now bans retired words from every
+user-facing file — it caught four live "luck" strings on the old page).
+
+TWO HONEST GAPS, ON THE RECORD:
+1. Before the first REAL decision leans on a rebuilt null tool, the
+   through-pipeline planted run must pass on the box (a fabricated
+   pair through the full sweep machinery). The automated planted check
+   covers the deal construction and simulator; this second half is a
+   declared manual gate, not yet run.
+2. The dial-pair board seals hold dollars until a winner is declared —
+   but only the page seals them; the numbers exist in the stored run
+   file. Presentation-level protection, noted per the register.
+
+Everything went out reviewed, tested (all suites green), smoked on the
+box (health, version, refusals, page stamps), and is committed on both
+branches.
+
+c.
