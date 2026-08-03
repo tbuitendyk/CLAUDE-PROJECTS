@@ -141,7 +141,7 @@ app.post('/api/data/refresh', (req, res) => {
   const jobId = startJob(async (setProgress) => {
     const out = {};
     for (const t of targets) {
-      const months = ml(t.to, currentMonth());
+      const months = ml((t.toMonth || t.to).slice(0, 7), currentMonth());
       const { rows, missing } = await loadSymbol(t.symbol, months, setProgress);
       out[t.symbol] = { refreshedFrom: t.to, candles: rows.length, missingMonths: missing };
     }

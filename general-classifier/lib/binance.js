@@ -233,18 +233,42 @@ function cacheState() {
   } catch {
     return [];
   }
+  // Coverage counts BOTH storage forms: whole-month bundles and the daily
+  // pieces that hold a month until Binance publishes its bundle (owner,
+  // 2026-08-03: the table hid freshly refreshed days). `to` is the latest
+  // covered date in either form; `toMonth` stays machine-friendly YYYY-MM
+  // for the refresh arithmetic.
   const bySymbol = new Map();
+  const entry = (symbol) => {
+    if (!bySymbol.has(symbol)) bySymbol.set(symbol, { months: new Set(), latest: '' });
+    return bySymbol.get(symbol);
+  };
   for (const f of files) {
-    const m = /^([A-Z0-9]+)-1h-(\d{4}-\d{2})\.json$/.exec(f);
-    if (!m) continue;
-    const [, symbol, month] = m;
-    if (!bySymbol.has(symbol)) bySymbol.set(symbol, []);
-    bySymbol.get(symbol).push(month);
+    let m = /^([A-Z0-9]+)-1h-(\d{4}-\d{2})\.json$/.exec(f);
+    if (m) {
+      const e = entry(m[1]);
+      e.months.add(m[2]);
+      if (m[2] > e.latest.slice(0, 7)) e.latest = m[2];
+      continue;
+    }
+    m = /^([A-Z0-9]+)-1h-(\d{4}-\d{2})-(\d{2})\.json$/.exec(f);
+    if (m) {
+      const e = entry(m[1]);
+      e.months.add(m[2]);
+      const day = `${m[2]}-${m[3]}`;
+      if (day > e.latest) e.latest = day;
+    }
   }
   return [...bySymbol.entries()]
-    .map(([symbol, months]) => {
-      months.sort();
-      return { symbol, months: months.length, from: months[0], to: months[months.length - 1] };
+    .map(([symbol, e]) => {
+      const months = [...e.months].sort();
+      return {
+        symbol,
+        months: months.length,
+        from: months[0],
+        to: e.latest.length > 7 ? e.latest : months[months.length - 1],
+        toMonth: months[months.length - 1],
+      };
     })
     .sort((a, b) => (a.symbol < b.symbol ? -1 : 1));
 }
