@@ -1,0 +1,8 @@
+vs long now under each row's held-back money
+
+tl;dr Hard-refresh. Under every row's held-back net P&L there is now
+"vs long ±$": that row's money minus just holding the coin long the
+whole window, same periods and fees. Positive = the votes beat drift.
+Static change only, nothing restarted.
+
+c.
