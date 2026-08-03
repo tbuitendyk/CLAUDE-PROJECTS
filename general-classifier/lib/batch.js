@@ -1892,9 +1892,12 @@ function startBracketLab(params) {
     // Carrying both arms in ONE job makes that structurally impossible: same
     // build, same data range, same code path, same moment. It is one extra
     // 170-unit slice, which is nothing against a 19-scramble run.
+    // REBUILT NULL (register 66, 2026-08-03): the companion boards are no
+    // longer label-rotated — members train on real data and each member's
+    // calls are dealt onto random days per draw (real vote mix, zero date
+    // knowledge). r = 0 stays the real arm.
     for (let r = 0; r <= p.labelShiftReps; r++) {
-      const frac = r === 0 ? null : r / (p.labelShiftReps + 1);
-      for (const u of base) units.push({ ...u, shiftFrac: frac });
+      for (const u of base) units.push({ ...u, nullDealSeed: r === 0 ? null : r });
     }
   }
   const slimRuns = units.reduce((s, u) => s + slimViewsFor(u.c.size).length, 0);
@@ -1964,13 +1967,14 @@ function startBracketLab(params) {
     doc.perf.phase = 'slim';
     saveBatch(doc);
 
-    const slimPayloads = units.map((u) => ({ combo: u.c, branch: u.b, stage: 'slim', params: p, layoutArm: u.layoutArm ?? null, ...shiftStance(u) }));
+    const slimPayloads = units.map((u) => ({ combo: u.c, branch: u.b, stage: 'slim', params: p, layoutArm: u.layoutArm ?? null, nullDealSeed: u.nullDealSeed ?? null, ...shiftStance(u) }));
     await pool.map('unit', slimPayloads, (settled, i) => {
       if (doc.cancelRequested) return;
       const { c, b, layoutArm } = units[i];
       const u = units[i];
       const key = unitKey(c, b) + (layoutArm ? `|${layoutArm}` : '')
-        + (u.shiftFrac != null ? `|s${u.shiftFrac.toFixed(3)}` : '');
+        + (u.shiftFrac != null ? `|s${u.shiftFrac.toFixed(3)}` : '')
+        + (u.nullDealSeed != null ? `|n${u.nullDealSeed}` : '');
       if (settled.ok && settled.value && settled.value.best) {
         const res = settled.value;
         pushLeader(doc, {
@@ -1981,6 +1985,7 @@ function startBracketLab(params) {
           testPeriods: res.testPeriods,
           layoutArm: layoutArm ?? null,
           ...(Object.prototype.hasOwnProperty.call(u, 'shiftFrac') ? { shiftFrac: u.shiftFrac ?? null } : {}),
+          ...(u.nullDealSeed != null ? { nullDealSeed: u.nullDealSeed } : {}),
           ...res.best,
         });
       } else if (!settled.ok && doc.failures.length < 200) {
@@ -2004,6 +2009,7 @@ function startBracketLab(params) {
         combo: { trade: l.trade, ctx1: l.ctx1, ctx2: l.ctx2, size: l.size },
         branch: { geometry: l.geometry, decision: l.decision, band: l.bandMode, weekdaysOnly: l.weekdaysOnly },
         stage: 'promoted', params: p, layoutArm: l.layoutArm ?? null,
+        nullDealSeed: l.nullDealSeed ?? null,
         ...shiftStance(l),
       }));
       await pool.map('unit', promPayloads, (settled, i) => {
@@ -2030,7 +2036,7 @@ function startBracketLab(params) {
             try {
               const dir = path.join(BATCH_DIR, '..', 'models', doc.id);
               fs.mkdirSync(dir, { recursive: true });
-              const tag = l.shiftFrac == null ? 'real' : `s${l.shiftFrac.toFixed(3)}`;
+              const tag = l.nullDealSeed != null ? `n${l.nullDealSeed}` : (l.shiftFrac == null ? 'real' : `s${l.shiftFrac.toFixed(3)}`);
               const fname = `${l.key.replace(/[^A-Za-z0-9._-]+/g, '_')}-${tag}.json`;
               fs.writeFileSync(path.join(dir, fname), JSON.stringify({
                 job: doc.id, key: l.key,
@@ -2062,6 +2068,7 @@ function startBracketLab(params) {
               trade: l.trade, ctx1: l.ctx1, ctx2: l.ctx2,
               geometry: l.geometry, decision: l.decision, bandPct: res.bandPct,
               shiftFrac: l.shiftFrac ?? null,
+              nullDealSeed: l.nullDealSeed ?? null,
               shiftScope: p.labelShiftScope || 'series',
               // WINDOW LAYOUT this row was measured under, with the seed and
               // the layout's own bookkeeping — a comparison row that cannot

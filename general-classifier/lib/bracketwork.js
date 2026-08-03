@@ -322,8 +322,9 @@ async function unitTask(task) {
     reserveMeta = { chunks: nReserve, fromTs: sealed[0].startTs, toTs: sealed[sealed.length - 1].endTs };
     workChunks = workChunks.slice(0, workChunks.length - nReserve);
   }
-  if (shiftFrac) rotateLabels(workChunks, shiftFrac, p.labelShiftScope, p.holdout);
-
+  // (Label rotation retired 2026-08-03, register 66: null boards now deal
+  // votes AFTER training — see below. task.shiftFrac survives only on
+  // historical docs and is never re-run.)
   const split = splitAndLabel(workChunks, branch, p.holdout);
   if (reserveMeta) split.reserve = reserveMeta;
   const { trainChunks, testChunks, holdChunks, bandPct } = split;
@@ -333,7 +334,15 @@ async function unitTask(task) {
   // worse, an invitation for the two to be fitted differently.
   const predictChunks = holdChunks.length ? [...testChunks, ...holdChunks] : testChunks;
   const members = await trainMembers(specsFor(combo.size, stage), views, trainChunks, predictChunks, branch, maps, geo);
-  const allCalls = members.map((m) => m.calls);
+  // Null-board arm (register 66 deal construction): the member's real vote
+  // mix over the WHOLE prediction span, dealt onto random days —
+  // independently per member, per draw, per unit.
+  let allCalls = members.map((m) => m.calls);
+  if (task.nullDealSeed) {
+    const { nullRng, dealVotes } = require('./walkforward');
+    allCalls = allCalls.map((calls, mI) => dealVotes(calls,
+      nullRng(task.nullDealSeed, `${combo.trade}|${branch.geometry}|${branch.decision}|${stage}`, 0, mI, 'board')));
+  }
   const memberCalls = holdChunks.length ? allCalls.map((c) => c.slice(0, testChunks.length)) : allCalls;
   const holdCalls = holdChunks.length ? allCalls.map((c) => c.slice(testChunks.length)) : null;
   const fee = p.feePerLeg ?? REAL_FEE_PER_LEG;
@@ -516,12 +525,11 @@ async function nullRotationTask({ combo, branch, params, shiftIndex, nShifts, se
     const nReserve = Math.max(2, Math.round(workChunks.length * 0.13));
     workChunks = workChunks.slice(0, workChunks.length - nReserve);
   }
-  const frac = shiftIndex / (nShifts + 1);
-  const rot = deriveShift(workChunks.length, frac);
-  {
-    const src = workChunks.map((c) => c.diffPct);
-    for (let i = 0; i < workChunks.length; i++) workChunks[i].diffPct = src[(i + rot) % workChunks.length];
-  }
+  // REBUILT NULL (register 66, 2026-08-03): no more label rotation — that
+  // construction leaked market knowledge at small offsets (day-stepping
+  // chunks overlap). Members train on the REAL data exactly as the real run
+  // did; each member's TEST CALLS are then dealt onto random days (real
+  // vote mix, zero date knowledge), independently per member per round.
   const split = splitAndLabel(workChunks, branch, p.holdout);
   const { trainChunks, testChunks, bandPct } = split;
   const views = bracketLib.comboViews(combo.size, geo.featureHours / 24).views;
@@ -530,7 +538,9 @@ async function nullRotationTask({ combo, branch, params, shiftIndex, nShifts, se
   // vote read undefined and the whole null was a committee-free world
   // (audit 2026-07-30, CRITICAL). quorumCall now also throws on that shape.
   const members = await trainMembers(specsFor(combo.size, 'promoted'), views, trainChunks, testChunks, branch, maps, geo);
-  const memberCalls = members.map((m) => m.calls);
+  const { nullRng, dealVotes } = require('./walkforward');
+  const memberCalls = members.map((m, mI) => dealVotes(m.calls,
+    nullRng(shiftIndex + 1, `${combo.trade}|${branch.geometry}|${branch.decision}`, 0, mI, 'replay')));
   const fee = p.feePerLeg ?? REAL_FEE_PER_LEG;
   let bestOfMenu = null;
   let sameCell = null;

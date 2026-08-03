@@ -135,7 +135,7 @@ function activeGeneration(milestones, t, testStartTs) {
 
 async function runPass({
   chunks, geo, maps, branch, comboSize, dial, split, declaredCell, menuOpts,
-  feePerLeg, minTradesPerLookbackWeek, onProgress = () => {},
+  feePerLeg, minTradesPerLookbackWeek, nullShiftSeed = null, onProgress = () => {},
 }) {
   const { age, retune } = dial;
   const trail = { retrains: [], retunes: [], segments: [] };
@@ -193,6 +193,21 @@ async function runPass({
       for (let k = 0; k < ownIdx.length; k++) memberCalls[s][ownIdx[k]] = calls[k];
     }
     trail.retrains.push({ at: gAt, effectiveDays, chunks: trainSet.length });
+  }
+
+  // NULL ARM (QC 66 construction): each member's real mix of walk calls is
+  // dealt onto random days — independently per member, per dial cell, per
+  // split (review fix 3: informationless votes are untrained, so without a
+  // per-cell deal the null grid would collapse to far fewer distinguishable
+  // options than the real grid and under-price the shopping). The null
+  // inherits DATES AND LOOKBACKS only; every retune below picks its own
+  // winners on these dealt calls.
+  if (nullShiftSeed) {
+    const { nullRng, dealVotes } = require('./walkforward');
+    for (let s2 = 0; s2 < memberCalls.length; s2++) {
+      const rng = nullRng(nullShiftSeed, `${dial.age.key}|${dial.retune.key}|${split.name}`, 0, s2, 'walk');
+      memberCalls[s2] = dealVotes(memberCalls[s2], rng);
+    }
   }
 
   // Quorum streams once (agreement level is one of the retunable five).
@@ -338,6 +353,7 @@ async function htPassTask(payload) {
     menuOpts: { dMults: p.dMults, tHours: p.tHours, gates: p.gates, entries: p.entries },
     feePerLeg: p.feePerLeg,
     minTradesPerLookbackWeek: p.minTradesPerLookbackWeek,
+    nullShiftSeed: p.nullShiftSeed || null,
   });
 }
 
