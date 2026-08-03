@@ -489,6 +489,13 @@ module.exports = {
     read.delete('set');       // read as params.set?.x — forwarded as `set`
     read.delete('sizes');     // ditto
     read.delete('permute');   // ditto
+    // DELIBERATELY not forwarded (the opposite fault class): the planted-check
+    // flag and its stamped rules may only enter through POST /api/planted-gate,
+    // which builds them itself (lib/planted.gateParams). If the public sweep
+    // endpoint forwarded plantedGate, any caller could dress a real-looking
+    // run in the reserved pair's clothing — the guard exists to prevent that.
+    read.delete('plantedGate');
+    read.delete('plantedRules');
     assert.ok(read.size >= 8, `expected to find the param reads, found ${[...read]}`);
 
     const call = serverSrc.slice(serverSrc.indexOf('batch.startBracketLab({'));

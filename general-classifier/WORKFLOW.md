@@ -101,12 +101,20 @@ WHEN: the final step, always.
   its readings count. Two halves, stated honestly: (1) AUTOMATED — the
   test suite plants a known pattern in a synthetic market and verifies
   the real call stream harvests it through the real simulator while
-  ten dealt-vote streams do not (runs on every build); (2) MANUAL
-  GATE — before the first REAL decision leans on a rebuilt null tool,
-  a through-pipeline planted run (a fabricated pair pushed through the
-  full sweep machinery on the box) must pass, and its record is
-  audited like any job. WHEN: after any engine change touching
-  members or nulls. NOT for judging real setups.
+  ten dealt-vote streams do not (runs on every build); (2) THE GATE
+  BUTTON (owner order, 2026-08-03) — the strip at the very top of the
+  Bracket lab shows the current release number and the gate status
+  (PASS / FAIL / NOT CHECKED, versions quoted). One button regenerates
+  the fabricated pair — always spanning the real data's oldest-to-
+  newest dates; the data machinery keeps it there — and fires it
+  through the full sweep + null-board pipeline, the real front door.
+  The reading rules are stamped at launch: the board finds the plant,
+  profits, beats always-long, and every null board destroys it. PASS
+  holds for that engine version only — a new release starts NOT
+  CHECKED, and the null tools carry a warning until the gate passes.
+  WHEN: once per release, before any real decision leans on the null
+  tools. NOT for judging real setups — the fabricated pair never
+  enters a real run (the launcher refuses it).
 - **Compare two runs** — WHY: A/B questions need paired reading with
   the differences named. Lists every setting difference between two
   stored runs; money differences are stamped attributable only when

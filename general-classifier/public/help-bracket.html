@@ -25,7 +25,24 @@ use it, when to use it — and what it can NOT tell you. The recommended workflo
 <strong>load data &rarr; board sweep &rarr; null boards &rarr; two reads &rarr; (optional) History Tuning
 &rarr; replication &rarr; paper book.</strong> Money claims only ever come from the end of that chain.</p>
 
-<h2>1 — Data on server (the data manager)</h2>
+<h2>1 — Release &amp; planted check (the strip at the very top)</h2>
+<div class="mock"><span class="tag">strip</span> Release 1.33.0 — planted check: <strong>PASS / FAIL /
+  NOT CHECKED</strong> (versions quoted) · last gate fold-out · <em>Run the planted check</em></div>
+<p class="callout">&uarr; The instrument's calibration certificate. NOT CHECKED is the honest default
+for every new release.</p>
+<p><strong>Why:</strong> before its readings on real coins count, the machinery proves itself on a KNOWN
+answer. The button regenerates a fabricated pair carrying a planted rule (the day after an up day
+follows it 70% of the time, zero drift — so holding it earns nothing but fees) and fires it through the
+full sweep + null-board pipeline: same launcher, same workers, same board reader as every real run.
+<strong>PASS means</strong>: the board found the plant, profited on it, beat always-long, and every null
+board destroyed it — all under reading rules stamped at launch. <strong>The version rule:</strong> a
+PASS belongs to the engine version that earned it; a new release starts NOT CHECKED, and the null tools
+below carry a warning until the gate passes on the running engine. <strong>The fabricated pair:</strong>
+lives in the data table like any pair (marked fabricated), always spans the real data's oldest-to-newest
+dates (the data machinery regenerates it after every refresh and download), is never downloaded from
+Binance, and is refused by every real run.</p>
+
+<h2>2 — Data on server (the data manager)</h2>
 <div class="mock"><span class="tag">table</span> pair · months · from · to · manage
   (<em>Refresh</em> / <em>Trim</em> / <em>Purge</em>)
   <br><span class="tag">controls</span> Download new pairs (symbols + month range) · <strong>Global
@@ -45,7 +62,7 @@ here in the section. <strong>When:</strong> once per new month, or before any ru
 or pairs not yet loaded. <strong>Not for:</strong> nothing here judges signal — it only feeds the
 instruments.</p>
 
-<h2>2 — The sweep form</h2>
+<h2>3 — The sweep form</h2>
 <div class="mock"><span class="tag">form</span> Universe · description · combo sizes · month range /
   all loaded · chunk shape · decision · band · 24/5 (each with a <em>permute</em> tick) · promote top K ·
   replication (declared config) · trailing stops · <strong>window layout ▾</strong> · null boards ·
@@ -86,14 +103,14 @@ against the whole execution menu. Its output is a DIRECTION (promising rows), ne
 loudly below the training floor — the minimum effective training days (180) under which member models
 return plausible-looking numbers from starved training.</p>
 
-<h2>3 — Saved sweeps</h2>
+<h2>4 — Saved sweeps</h2>
 <div class="mock"><span class="tag">picker</span> Saved sweeps ▾ · Refresh · live status line while a
   job runs</div>
 <p><strong>Why:</strong> every finished or running job is a stored document; pick one to render its
 board below. Old runs stay readable forever — including runs made under retired constructions, which
 are labeled as historical reading only.</p>
 
-<h2>4 — The job header</h2>
+<h2>5 — The job header</h2>
 <div class="mock"><span class="tag">header</span> job id — status · description · <strong>settings
   table: every setting that shapes the result</strong> — window layout, data months ("all loaded at
   launch" spelled out), universe, outcomes, execution grid, fees, floors, engine version · verbatim
@@ -103,7 +120,7 @@ this table: every setting that shapes the result, on the page — including the 
 verbatim fold-out shows the exact stored parameters, unabridged. If a setting is missing here, that is
 a defect; say so.</p>
 
-<h2>5 — The survivor board</h2>
+<h2>6 — The survivor board</h2>
 <div class="mock"><span class="tag">board</span> setup · q&nbsp;·&nbsp;<strong>gate/entry</strong> ·
   TEST WINDOW (chosen on — flattering) · HELD-BACK (what matters) — e.g. <em>active/breakout</em>,
   <em>directional/market</em></div>
@@ -115,7 +132,7 @@ committed; they are the only honest columns on the board. <strong>The gates:</st
 ignored (baseline only, never tunable); active = the committee decides WHEN to trade, price decides the
 direction; directional = the committee decides when AND which way.</p>
 
-<h2>6 — Null tests (two tools, two layers of chance)</h2>
+<h2>7 — Null tests (two tools, two layers of chance)</h2>
 <div class="mock"><span class="tag">tool 1</span> This row against its null runs — fires N null rounds
   <br><span class="tag">tool 2</span> The board against a null board — reads stored boards, fires nothing</div>
 <p><strong>Why two:</strong> a good number can arise without signal from the shopping INSIDE one row
@@ -126,7 +143,7 @@ for any row you picked off a board; resolution limited by the null-board count a
 worth acting on passes both.</strong> Both use the dealt-votes construction: real vote mix, zero date
 knowledge; the label-rotation construction was retired after it was shown to leak market knowledge.</p>
 
-<h2>7 — History Tuning (optional second pass)</h2>
+<h2>8 — History Tuning (optional second pass)</h2>
 <div class="mock"><span class="tag">panel</span> select a survivor &rarr; History Tuning activates (or
   says in words why not) &rarr; 105 passes &rarr; dial-pair board &rarr; null draws &rarr; reserve grade
   (one touch, final)</div>
@@ -142,13 +159,13 @@ the investment — this is hours of compute. <strong>The reserve grade:</strong>
 used the 61/13/13/13 layout, one button fires the winner + reference + 19 null draws over the sealed
 reserve as ONE verification event, ever. A failed reserve is a dead end, never a hint.</p>
 
-<h2>8 — Inside a setup (microscope)</h2>
+<h2>9 — Inside a setup (microscope)</h2>
 <div class="mock"><span class="tag">inspect</span> one row's committee: each member's model, votes, solo
   score</div>
 <p><strong>Why:</strong> to understand WHY a row behaves as it does before spending null tests on it.
 <strong>Never evidence:</strong> nothing here is out-of-sample.</p>
 
-<h2>9 — Compare two runs</h2>
+<h2>10 — Compare two runs</h2>
 <div class="mock"><span class="tag">compare</span> run A vs run B &rarr; every differing setting listed
   first &rarr; shared rows paired &rarr; ATTRIBUTABLE stamp only at exactly one difference</div>
 <p><strong>Why:</strong> "did this one change help?" needs paired reading with the differences named. The

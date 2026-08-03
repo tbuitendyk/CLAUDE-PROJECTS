@@ -1893,6 +1893,7 @@
   const blPickEl = $('bl-pick');
   let blPicked = null; // null = follow the latest bracketlab doc
   let blTimer = null;
+  let blWasRunning = false;
 
   function setBlStatus(text) {
     const el = $('bl-status');
@@ -2344,10 +2345,12 @@
         board of many. The two tools below price those two layers against null runs — same machinery,
         votes replaced by each member's real vote mix dealt onto random days (zero date knowledge by
         construction). A row worth acting on passes both. Neither tool fires from here by accident:
-        each states what it costs before it runs.</p></div>`;
+        each states what it costs before it runs.</p>
+      <div id="bl-null-gatewarn"></div></div>`;
     const htBlock = '<div id="bl-ht-panel"></div>';
     blViewEl.innerHTML = `<p class="note">${header}</p>${perfBlock}${repBlock}${leaderBlock}${nullIntro}${nullBlock}${verdictBlock}${htBlock}${inspectBlock}${compareBlock}`;
     renderHtPanel(doc, sel).catch((err) => { const el2 = $('bl-ht-panel'); if (el2) el2.innerHTML = `<p class="note">History Tuning panel failed to load: ${esc(err.message)}</p>`; });
+    fillGateWarning();
     // ---- inside view ------------------------------------------------------
     blViewEl.querySelectorAll('.bl-inspect').forEach((btn) => {
       btn.addEventListener('click', async () => {
@@ -2639,6 +2642,74 @@
   }
 
 
+  // ---- planted-check strip (owner order, 2026-08-03): top of the lab, above
+  // Data on server — the current release number and the instrument's gate
+  // status, PASS / FAIL / NOT CHECKED, versions quoted. -----------------------
+  let plantedStatusCache = null;
+  async function fetchPlantedStatus(force) {
+    if (plantedStatusCache && !force) return plantedStatusCache;
+    const r = await fetch('api/planted-gate/status');
+    const d = await jsonBody(r);
+    if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`);
+    plantedStatusCache = d;
+    return d;
+  }
+  // The warning the null tools carry while the running engine holds no PASS:
+  // readings from an uncalibrated instrument are not readings.
+  function fillGateWarning() {
+    const el = $('bl-null-gatewarn');
+    if (!el) return;
+    if (!plantedStatusCache) {
+      fetchPlantedStatus().then(fillGateWarning).catch(() => {});
+      return;
+    }
+    const s = plantedStatusCache;
+    el.innerHTML = s.state === 'PASS' ? ''
+      : `<p class="error">CAUTION — ${esc(s.detail)}. Run the planted check (top of this page) before leaning on either tool: it proves this engine finds a KNOWN planted signal and that its null boards destroy it.</p>`;
+  }
+  async function renderPlantedGate(force) {
+    const el = $('bl-gate');
+    if (!el) return;
+    let s;
+    try {
+      s = await fetchPlantedStatus(force);
+    } catch (err) {
+      el.innerHTML = `<p class="note">planted-check status unavailable: ${esc(err.message)}</p>`;
+      return;
+    }
+    const last = s.lastGate;
+    el.innerHTML = `
+      <h2>Release ${esc(s.engineVersion)} — planted check: ${esc(s.state)}</h2>
+      <p class="note">${esc(s.detail)}.
+        WHY: before its readings on real coins count, the instrument proves itself on a KNOWN answer — a
+        fabricated pair carrying a planted rule (next day follows today, 70% of the time, zero drift) is
+        pushed through the full sweep + null-board machinery, the real front door end to end. PASS means:
+        it found the plant, profited, beat always-long, and every null board destroyed it. HOW: one button,
+        one short sweep on the fabricated pair with four null boards. WHEN: once per release — a new engine
+        version starts NOT CHECKED, because a changed engine is a new instrument.</p>
+      ${s.running ? `<p class="note">a planted check is running now: ${esc(s.running)} — watch it under Saved sweeps</p>` : ''}
+      ${last ? `<details><summary>last gate: ${esc(last.id)} on engine ${esc(last.engineVersion)} — ${last.pass ? 'PASS' : 'FAIL'}</summary>
+        <p class="note">${(last.sentences || []).map(esc).join('<br>')}</p></details>` : ''}
+      <p><button type="button" id="bl-gate-run">Run the planted check</button>
+        <span id="bl-gate-msg" class="note"></span></p>`;
+    const btn = $('bl-gate-run');
+    if (btn) btn.addEventListener('click', async () => {
+      if (!confirm('Run the planted check now? It regenerates the fabricated pair over the real data\'s span and fires one short sweep (fabricated pair only, four null boards). Refuses while any job runs.')) return;
+      const msg = $('bl-gate-msg');
+      try {
+        const r = await fetch('api/planted-gate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+        const d = await jsonBody(r);
+        if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`);
+        await renderPlantedGate(true); // re-render replaces the strip, so the message goes into the FRESH element below
+        const msg2 = $('bl-gate-msg');
+        if (msg2) msg2.textContent = `gate sweep fired: ${d.batchId} — fabricated pair regenerated ${d.planted.fromMonth}..${d.planted.toDate}. It runs like any sweep; the status here updates when it finishes.`;
+        refreshBracket();
+      } catch (err) {
+        if (msg) msg.textContent = `refused or failed: ${err.message}`;
+      }
+    });
+  }
+
   // ---- Bracket lab data manager (owner order, 2026-08-03) --------------------
   async function renderDataManager() {
     const el = $('bl-data');
@@ -2660,11 +2731,15 @@
         downloading again.</p>
       <div class="tablewrap"><table>
         <tr><th>pair</th><th>months</th><th>from</th><th>to</th><th title="Refresh re-fetches from the newest cached month (it may have been partial) through the current month. Trim keeps only a range, deleting the rest. Purge deletes the whole asset. Growing a range = Download below.">manage</th></tr>
-        ${symbols.map((s2) => `
+        ${symbols.map((s2) => (s2.symbol === 'PLANTEDUSDT' ? `
+          <tr><td>${esc(s2.symbol)} <span class="note">fabricated planted-check pair — generated to mirror the real data's date span, never downloaded</span></td>
+            <td>${s2.months}</td><td>${esc(s2.from)}</td><td>${esc(s2.to)}</td>
+            <td><button type="button" class="ds-refresh" data-sym="${esc(s2.symbol)}">regenerate to span</button>
+              <button type="button" class="ds-purge" data-sym="${esc(s2.symbol)}">purge…</button></td></tr>` : `
           <tr><td>${esc(s2.symbol)}</td><td>${s2.months}</td><td>${esc(s2.from)}</td><td>${esc(s2.to)}</td>
             <td><button type="button" class="ds-refresh" data-sym="${esc(s2.symbol)}">refresh to latest</button>
               <button type="button" class="ds-trim" data-sym="${esc(s2.symbol)}" data-from="${esc(s2.from)}" data-to="${esc(s2.to)}">trim…</button>
-              <button type="button" class="ds-purge" data-sym="${esc(s2.symbol)}">purge…</button></td></tr>`).join('')
+              <button type="button" class="ds-purge" data-sym="${esc(s2.symbol)}">purge…</button></td></tr>`)).join('')
         || '<tr><td colspan="5" class="note">nothing cached yet — download below</td></tr>'}
       </table></div>
       <div class="controls" style="margin:8px 0">
@@ -2728,6 +2803,7 @@
     if (ra) ra.addEventListener('click', () => dsCall('api/data/refresh', {}));
   }
   renderDataManager();
+  renderPlantedGate();
 
   async function refreshBracket() {
     try {
@@ -2743,6 +2819,10 @@
       renderBracket(doc);
       clearTimeout(blTimer);
       if (doc.status === 'running') blTimer = setTimeout(refreshBracket, 5000);
+      // A planted-check run that just finished changes the strip at the top —
+      // re-read it on the running->done transition (cheap: one local scan).
+      if (blWasRunning && doc.status !== 'running') renderPlantedGate(true);
+      blWasRunning = doc.status === 'running';
     } catch (err) {
       blErrEl.hidden = false;
       blErrEl.textContent = err.message;

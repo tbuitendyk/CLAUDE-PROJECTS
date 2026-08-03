@@ -23,6 +23,7 @@ const SCAN = [
   'lib/history.js',
   'lib/compare.js',
   'lib/verdict.js',
+  'lib/planted.js',
 ];
 const BANNED = /\bluck\w*\b/i;
 

@@ -311,3 +311,37 @@ GUESSED, null GUESSED-count/DERIVED-construction) and the draw counts
 the declared reading rules don't restrict my choices... i'm ok with
 them" + draw counts standing as proposed). Recorded here so the
 contract document and the code agree (review finding 18).
+
+## ADDED BY OWNER ORDER (2026-08-03, evening) — the planted-check button
+
+Owner's placement and integration orders, verbatim in substance:
+- The planted check becomes a BUTTON at the TOP of the Bracket lab
+  interface, ABOVE the "Data on server" section, quoting the current
+  release number and the gate status — PASS or FAIL or NOT CHECKED —
+  with version numbers quoted.
+- The fake-coin data generation integrates into the data-updating
+  machinery so the fabricated pair's history always spans oldest-to-
+  newest of the real loaded data (regenerated on refresh/download).
+- Acknowledged consequence (owner): the check's code must be kept
+  current with every release — hence the version rule: a PASS belongs
+  to the engine version that earned it; a new release starts NOT
+  CHECKED.
+Design (agreed in chat before the go): caller-not-copy — the button
+fires ONE ordinary sweep on the reserved fabricated pair
+(PLANTEDUSDT) through the real front door with four null boards;
+reading rules stamped at launch (G1 find+profit DERIVED, G2 beats
+always-long DERIVED, G3 every null board below a quarter of the real
+best — direction DERIVED, factor GUESSED); the reserved pair is
+refused in every real run and by History Tuning; the null tools carry
+a warning while the running engine holds no PASS. Shipped in 1.33.0.
+
+## ADOPTED AS STANDARD PROTOCOL (owner, 2026-08-03) — twin paper books
+
+After a History Tuning winner survives its grade, the forward paper
+test runs as TWIN books: the TUNED configuration and its UNTUNED
+reference, declared together, same coin, same rules window. The
+forward record then answers "did tuning help" with zero lookback,
+instead of assuming the reserve grade generalizes. (Owner's addition
+during the roadmap consult: "why wouldn't we run another check of the
+'final candidate' results after 7 to see if the history tuning is
+working?")

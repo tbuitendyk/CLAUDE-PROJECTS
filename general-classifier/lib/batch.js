@@ -1474,6 +1474,9 @@ function htParams(params) {
   const src = getBatch(sourceBatchId);
   if (!src) throw new Error(`unknown source run '${sourceBatchId}'`);
   if (src.kind !== 'bracketlab') throw new Error('History Tuning tunes Bracket lab survivors only');
+  if (src.params && src.params.plantedGate) {
+    throw new Error('activation refused: that run is the planted check — a calibration of the instrument on a fabricated pair. Its rows judge the pipeline, never candidates.');
+  }
   // ACTIVATION RULE (owner): 70/15/15-structure runs only (split70 or
   // reserve61 — legacy80 has no hold window and old quota layouts are
   // retired), AND the gate must use the votes.
@@ -2149,6 +2152,22 @@ function startBracketLab(params) {
     engineVersion: ENGINE_VERSION,
   };
   if (!p.sizes.singles && !p.sizes.doubles && !p.sizes.triples) throw new Error('tick at least one combo size');
+  // PLANTED CHECK plumbing (owner order, 2026-08-03). The fabricated pair is
+  // RESERVED: it never meets a real run (its candles carry a known planted
+  // rule — any board it sat on would be judging fiction), and a gate run
+  // sweeps exactly that one pair through this same front door. The gate's
+  // reading rules ride in the params so they are stamped before compute.
+  {
+    const { PLANTED_SYMBOL } = require('./planted');
+    p.plantedGate = !!params.plantedGate;
+    p.plantedRules = p.plantedGate ? (params.plantedRules || null) : null;
+    if (!p.plantedGate && p.universe.includes(PLANTED_SYMBOL)) {
+      throw new Error(`${PLANTED_SYMBOL} is the reserved fabricated pair for the planted check — it never enters a real run (the planted-check button at the top of the lab is how it is used)`);
+    }
+    if (p.plantedGate && (p.universe.length !== 1 || p.universe[0] !== PLANTED_SYMBOL)) {
+      throw new Error(`a planted-check run sweeps exactly [${PLANTED_SYMBOL}] and nothing else`);
+    }
+  }
   // SYSTEM-WIDE TRAINING FLOOR (owner ruling): every launch checks it. For
   // undiscounted runs effective days = calendar days, so this is one cheap
   // arithmetic check on the month range. reserve61 trains on 61%, split70 on

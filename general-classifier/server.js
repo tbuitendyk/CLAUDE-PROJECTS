@@ -122,11 +122,16 @@ async function backfillDailies(symbol, monthStr, setProgress) {
   return fetched;
 }
 
+const planted = require('./lib/planted');
+
 app.post('/api/data/download', (req, res) => {
   const b = req.body || {};
   const symbols = (Array.isArray(b.symbols) ? b.symbols : []).map((x) => String(x).trim().toUpperCase()).filter(Boolean);
   if (!symbols.length || symbols.some((x) => !SYMBOL_RE.test(x))) {
     return res.status(400).json({ error: 'symbols must be a list like ["DOTUSDT","PEPEUSDT"]' });
+  }
+  if (symbols.includes(planted.PLANTED_SYMBOL)) {
+    return res.status(400).json({ error: `${planted.PLANTED_SYMBOL} is the fabricated planted-check pair — it is generated, never downloaded` });
   }
   if (!/^\d{4}-\d{2}$/.test(String(b.startMonth)) || !/^\d{4}-\d{2}$/.test(String(b.endMonth))) {
     return res.status(400).json({ error: 'months must be YYYY-MM' });
@@ -145,6 +150,12 @@ app.post('/api/data/download', (req, res) => {
       }
       out[sym] = { candles: rows.length, monthsRequested: months.length, monthsWithoutBundles: missing, dayFilesFetched: backfilled };
     }
+    // The fabricated pair mirrors the real data's date span (owner order,
+    // 2026-08-03) — new real months mean it regenerates to match.
+    if (planted.plantedExists()) {
+      setProgress(`regenerating ${planted.PLANTED_SYMBOL} to the new span`);
+      out[planted.PLANTED_SYMBOL] = { regenerated: true, ...planted.generatePlanted(planted.plantedSpan()) };
+    }
     return out;
   });
   res.json({ jobId });
@@ -159,8 +170,16 @@ app.post('/api/data/refresh', (req, res) => {
   const loadStop = guard.loadRefusal(batch.batchRunning());
   if (loadStop) return res.status(409).json({ error: loadStop });
   const state = cacheState();
-  const targets = one ? state.filter((s2) => s2.symbol === one) : state;
-  if (!targets.length) return res.status(400).json({ error: one ? `${one} has no cached data — use download` : 'nothing cached yet' });
+  // The fabricated pair never touches Binance: refreshing it means
+  // regenerating it over the real data's current span. On a Global Refresh
+  // it regenerates LAST, after every real pair has fetched, so the span it
+  // mirrors is the refreshed one.
+  const wantsPlanted = !one || one === planted.PLANTED_SYMBOL;
+  const targets = (one ? state.filter((s2) => s2.symbol === one) : state)
+    .filter((s2) => s2.symbol !== planted.PLANTED_SYMBOL);
+  if (!targets.length && !(wantsPlanted && planted.plantedExists())) {
+    return res.status(400).json({ error: one ? `${one} has no cached data — use download` : 'nothing cached yet' });
+  }
   const { monthList: ml, loadSymbol } = require('./lib/pipeline');
   const jobId = startJob(async (setProgress) => {
     const out = {};
@@ -172,6 +191,10 @@ app.post('/api/data/refresh', (req, res) => {
         backfilled[mm] = await backfillDailies(t.symbol, mm, setProgress);
       }
       out[t.symbol] = { refreshedFrom: t.to, candles: rows.length, monthsWithoutBundles: missing, dayFilesFetched: backfilled };
+    }
+    if (wantsPlanted && planted.plantedExists()) {
+      setProgress(`regenerating ${planted.PLANTED_SYMBOL} to the refreshed span`);
+      out[planted.PLANTED_SYMBOL] = { regenerated: true, ...planted.generatePlanted(planted.plantedSpan()) };
     }
     return out;
   });
@@ -204,6 +227,35 @@ app.post('/api/data/purge', (req, res) => {
     try { dataFs.unlinkSync(dataPath.join(DATA_CACHE_DIR, f)); } catch { /* reported below via recount */ }
   }
   res.json({ purged: victims.length, symbol: sym, kept: keepFrom || keepTo ? { keepFrom, keepTo } : null });
+});
+
+// ---- the planted check (owner order, 2026-08-03): instrument gate as a
+// button. POST regenerates the fabricated pair over the real data's span and
+// fires ONE ordinary sweep on it through the real front door — caller, not
+// copy. GET is the status strip at the top of the lab: current release,
+// PASS / FAIL / NOT CHECKED with the versions quoted.
+const RELEASE_VERSION = require('./package.json').version;
+
+app.get('/api/planted-gate/status', (req, res) => {
+  try {
+    res.json(planted.gateStatus(RELEASE_VERSION));
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/planted-gate', (req, res) => {
+  if (batch.batchRunning()) {
+    return res.status(409).json({ error: 'a job is running — the planted check regenerates cache data and fires a sweep, so it waits' });
+  }
+  try {
+    const span = planted.plantedSpan();
+    const gen = planted.generatePlanted(span); // throws loudly when no real data is cached
+    const id = batch.startBracketLab(planted.gateParams());
+    res.json({ batchId: id, planted: gen });
+  } catch (err) {
+    res.status(409).json({ error: err.message });
+  }
 });
 
 app.post('/api/load', (req, res) => {
