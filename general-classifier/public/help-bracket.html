@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bracket lab — the guide</title>
+<link rel="stylesheet" href="style.css?v=26">
+<style>
+  .mock { border: 1px solid var(--ink-2); border-radius: 6px; padding: 10px 14px; margin: 10px 0;
+    background: rgba(128,128,128,.05); font-size: .85rem; }
+  .mock .tag { display: inline-block; border: 1px solid var(--accent); color: var(--accent);
+    border-radius: 4px; padding: 0 6px; font-size: .75rem; margin-right: 6px; }
+  .callout { color: var(--accent); font-size: .8rem; margin: 2px 0 8px; }
+  .path { border-left: 3px solid var(--accent); padding-left: 12px; margin: 12px 0; }
+  .path.weak { border-left-color: var(--ink-2); }
+  h2 { margin-top: 28px; }
+  main { max-width: 900px; margin: 0 auto; padding: 20px; }
+</style>
+</head>
+<body>
+<main>
+<h1>The Bracket lab, component by component</h1>
+<p>This page walks the lab in the order it appears on screen. Every component says why it exists, how to
+use it, when to use it — and what it can NOT tell you. The recommended workflow in one line:
+<strong>load data &rarr; board sweep &rarr; null boards &rarr; two reads &rarr; (optional) History Tuning
+&rarr; replication &rarr; paper book.</strong> Money claims only ever come from the end of that chain.</p>
+
+<h2>1 — The sweep form</h2>
+<div class="mock"><span class="tag">form</span> Universe · combo sizes · permuted options · execution menu ·
+  <strong>window layout ▾</strong> · min trades · Start sweep</div>
+<p class="callout">&uarr; The window layout dropdown is the decision that shapes every number downstream.</p>
+<p><strong>Why:</strong> the wide pass — every setup (coin &times; chunk shape &times; decision style)
+against the whole execution menu. Its output is a DIRECTION (promising rows), never a result.
+<strong>The three layouts:</strong></p>
+<ul>
+  <li><strong>70/15/15</strong> — train on the oldest 70%, pick the trade settings in the next 15% (the
+    test window), grade the pick once on the newest 15% (the hold window). The standard.</li>
+  <li><strong>legacy 80/20</strong> — nothing held back. A coarse look; rows from it can never be
+    evidence and never qualify for History Tuning.</li>
+  <li><strong>61/13/13/13</strong> — the 70/15/15 treatment on the first 87% of history, with the final
+    13% SEALED: this run never touches it. It exists so a History Tuning winner can later take a
+    one-touch final exam on data nothing ever shopped on. Cost: the board trains on slightly less and
+    picks on slightly older windows — the honest price of a sealed exam.</li>
+</ul>
+<p><strong>Null boards:</strong> set the null-board count on the form and the sweep ships with companion
+boards whose members trained on real data but had their votes dealt onto random days (each member's real
+mix of up/down/stand-aside, dates destroyed). Those boards feed Tool 2 below.</p>
+
+<h2>2 — The job header</h2>
+<div class="mock"><span class="tag">header</span> job id — status · description · <strong>settings
+  table: every setting that shapes the result</strong> — window layout, outcomes, execution grid, fees,
+  floors</div>
+<p><strong>Why:</strong> a number whose settings are invisible is a number you cannot trust. The rule for
+this table: every setting that shapes the result, on the page — including the window layout. If a setting
+is missing here, that is a defect; say so.</p>
+
+<h2>3 — The survivor board</h2>
+<div class="mock"><span class="tag">board</span> setup · q&nbsp;·&nbsp;<strong>gate/entry</strong> ·
+  TEST WINDOW (chosen on — flattering) · HELD-BACK (what matters) — e.g. <em>active/breakout</em>,
+  <em>directional/market</em></div>
+<p class="callout">&uarr; gate first, then entry — no entry without the gate passing. Cells match the
+header format exactly.</p>
+<p><strong>Reading it:</strong> the TEST columns are where each row's settings were CHOSEN — the best of
+many tries, flattering by construction. The HELD-BACK columns were scored once with settings already
+committed; they are the only honest columns on the board. <strong>The gates:</strong> always = votes
+ignored (baseline only, never tunable); active = the committee decides WHEN to trade, price decides the
+direction; directional = the committee decides when AND which way.</p>
+
+<h2>4 — Null tests (two tools, two layers of chance)</h2>
+<div class="mock"><span class="tag">tool 1</span> This row against its null runs — fires N null rounds
+  <br><span class="tag">tool 2</span> The board against a null board — reads stored boards, fires nothing</div>
+<p><strong>Why two:</strong> a good number can arise without signal from the shopping INSIDE one row
+(menu &times; agreement levels, best kept), and separately from PICKING the best row off a board of many.
+Tool 1 prices the first (hundreds of dealt-vote rounds on one row — fine resolution, blind to the board
+layer). Tool 2 prices the second (the real board's best vs a null board's best — the reading that matters
+for any row you picked off a board; resolution limited by the null-board count and printed). <strong>A row
+worth acting on passes both.</strong> Both use the dealt-votes construction: real vote mix, zero date
+knowledge; the label-rotation construction was retired after it was shown to leak market knowledge.</p>
+
+<h2>5 — History Tuning (optional second pass)</h2>
+<div class="mock"><span class="tag">panel</span> select a survivor &rarr; History Tuning activates (or
+  says in words why not) &rarr; 105 passes &rarr; dial-pair board &rarr; null draws &rarr; reserve grade
+  (one touch, final)</div>
+<p><strong>Why:</strong> a survivor was measured under fixed assumptions about how much history matters.
+This tunes two dials for that one setup: the <strong>age half-life</strong> (how strongly old training
+data fades — members retrained at every half-life milestone counted from the start of history) and the
+<strong>retune cadence</strong> (how often the five trade variables — agreement level, gate, entry,
+tripwire distance, time limit — are re-picked on recent results). The untuned reference pass runs first so
+"did tuning beat not tuning" always has an answer. Picking happens on test windows only; holds are graded
+once; four reading rules are stamped into the run before anything computes and the verdict prints through
+them. <strong>When:</strong> only on rows that passed both null tests, and only when the setup deserves
+the investment — this is hours of compute. <strong>The reserve grade:</strong> if the setup's board run
+used the 61/13/13/13 layout, one button fires the winner + reference + 19 null draws over the sealed
+reserve as ONE verification event, ever. A failed reserve is a dead end, never a hint.</p>
+
+<h2>6 — Inside a setup (microscope)</h2>
+<div class="mock"><span class="tag">inspect</span> one row's committee: each member's model, votes, solo
+  score</div>
+<p><strong>Why:</strong> to understand WHY a row behaves as it does before spending null tests on it.
+<strong>Never evidence:</strong> nothing here is out-of-sample.</p>
+
+<h2>7 — Compare two runs</h2>
+<div class="mock"><span class="tag">compare</span> run A vs run B &rarr; every differing setting listed
+  first &rarr; shared rows paired &rarr; ATTRIBUTABLE stamp only at exactly one difference</div>
+<p><strong>Why:</strong> "did this one change help?" needs paired reading with the differences named. The
+honesty rule is the one-variable rule as a tool: money differences prove something only when exactly one
+setting differs; with more, the comparison shows but is stamped not-attributable.</p>
+
+<h2>The paths compared — what each can claim</h2>
+<div class="path weak"><strong>Sweep and look.</strong> You get a board and its flattering test columns.
+Claim earned: "here is a direction worth checking." Nothing more — not even from the held-back column,
+because you looked at 170 of them.</div>
+<div class="path weak"><strong>Sweep + null boards + both reads.</strong> Rows that pass both are
+<em>survivors</em>: their numbers exceed what informationless votes produced through the same machinery,
+inside the row and across the board. Claim earned: "worth tuning, worth replicating." Still not "it
+works."</div>
+<div class="path"><strong>The full chain: + History Tuning + its nulls + reserve grade (or paper book)
++ replication.</strong> The winner beat the untuned reference under stamped rules, no null draw matched
+it, and it repeated somewhere it was never selected. Claim earned: "this works, within the resolution
+floors printed on its record." This is the only path that earns that sentence — and the forward paper
+book remains the final word.</div>
+
+<p class="note">Master text: WORKFLOW.md in the repository. Vocabulary: GLOSSARY.md — one term per thing,
+defined at first use, retired words stay retired.</p>
+</main>
+</body>
+</html>

@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>General Classifier</title>
-  <link rel="stylesheet" href="style.css?v=25">
+  <link rel="stylesheet" href="style.css?v=26">
 </head>
 <body>
   <header class="topbar">
@@ -21,7 +21,7 @@
   <nav class="tabbar">
     <button type="button" class="tab active" id="tab-btn-research" data-tab="research">Research</button>
     <button type="button" class="tab" id="tab-btn-bracket" data-tab="bracket"
-      title="The execution-permutation lab: asset combos (singles/doubles/triples) × permutable options × the OCO bracket menu, slim-then-promote, live leaderboard, nulls only on survivors.">Bracket lab</button>
+      title="The workbench: sweeps, the survivor board, both null tests, History Tuning, and the run comparison — every tool states why, how, when, and what it costs.">Bracket lab</button>
     <button type="button" class="tab" id="tab-btn-books" data-tab="books"
       title="The live paper books — frozen pre-registered experiments verifying earlier setups in real time. A different category of work from the research tools, kept out of the way.">Paper books</button>
   </nav>
@@ -120,14 +120,17 @@
 
     <div id="tab-bracket" hidden>
     <section class="intro">
-      <h1>Bracket lab</h1>
+      <h1>Bracket lab <a href="help-bracket.html" target="_blank" style="font-size:.6em"
+        title="The lab's own guide: every component in on-screen order, what each tool is for and NOT for, and the paths through the interface compared — what each one can and cannot claim.">lab guide</a></h1>
       <p>Sweeps asset <strong>combos</strong> (a trade asset alone, or with one or two context assets) &times;
-        any <strong>permuted options</strong> &times; the full <strong>OCO bracket execution menu</strong>:
-        stop-entries at p&plusmn;d off the entry candle, first rail filled becomes the position and the other its
-        stop, time exit at t. Slim grid first (logreg views), top combos promoted to the full committee (6 members for singles, 8 with context assets) with
-        quorum rungs. Selection is mechanical (best net $, min-trade floor) and every menu is stamped. No nulls
-        here by design &mdash; fire the null on a promoted survivor and it replays everything downstream of the
-        combo. Ambiguous hourly bars always resolve AGAINST the book and are counted.</p>
+        any <strong>permuted options</strong> &times; the full <strong>OCO bracket execution menu</strong>
+        (one-cancels-the-other: a profit target and a tripwire placed together; whichever price touches first
+        executes and cancels the other; the time limit closes whatever remains). Slim grid first, top combos
+        promoted to the full committee (6 members for singles, 8 with context assets) with every agreement
+        level. Selection is mechanical (best net $, min-trade floor) and every menu is stamped. The window
+        layout is chosen explicitly &mdash; 80/20, 70/15/15, or 61/13/13/13 with the final 13% sealed. Null
+        tests live below the survivor board, each stating which layer of chance it prices. Ambiguous hourly
+        bars always resolve AGAINST the book and are counted.</p>
     </section>
     <form id="bl-form" class="controls" autocomplete="off" onsubmit="return false">
       <div class="field" style="flex:1;min-width:280px">
@@ -241,26 +244,15 @@
         <label class="check"
           title="TRAILING STOPS. The stop starts at the opposite rail and ratchets to (best price x trail) once price has moved 'arm' in your favour; both distances are band-relative like d. Swept only at the PROMOTE stage and only when ticked: 12 trailing combinations multiply the 105-cell breakout plane by 13, and doing that in the cheap slim pass would turn a 272-combo sweep into a night's work. WARNING: a trailing result on hourly candles rests on an assumption — when a bar makes a new extreme AND touches the stop, OHLC cannot say which came first. This code takes the pessimistic order and counts every occurrence in the trail-amb column. Read that count before believing any trailing number; minute confirmation is what replaces the assumption with the real path.">
           <input type="checkbox" id="bl-trailing"> sweep trailing stops (promote stage)</label>
-        <label class="check"
-          title="THREE-WAY SPLIT, 70/15/15. Without this, the 20% test window is where the trading settings get CHOSEN, so nothing is held back once a menu has been swept over it. With this on, settings are chosen in a 15% test window and the chosen cell is scored ONCE on a final 15% holdout that no search has touched, with its own buy-and-hold comparison and accuracy figures. Changes every number — boards run with it are not comparable to boards run without it.">
-          <input type="checkbox" id="bl-holdout"> hold back a final 15% (never searched)</label>
-        <span id="bl-holdout-note" class="note" hidden>always on for the chronological and interlaced layouts</span>
       </div>
       <div class="field" style="min-width:280px">
         <label for="bl-layout"
-          title="WHERE THE THREE WINDOWS LIVE ON THE CALENDAR. legacy: today's split — train on the oldest 70%, pick settings in the next 15%, judge on the most recent 15% (percent-sized, unchanged from every earlier run). chronological + interlaced are the QUOTA-FIRST pair built for comparison: both size their evaluation windows as whole 63-day (9-week) blocks — G groups' worth each for search and holdout — so FOR ANY SHAPE both contain exactly the same number of potential trade days per window. chronological puts them contiguous at the recent end; interlaced sprinkles them through the whole history (5 training blocks of 49 days + 2 evaluation blocks per 371-day group, slotted by the seeded random rule: search-or-holdout-first coin flip, first eval block in position 2 or 3, second in 5, 6 or 7), so a verdict spans every era instead of one. both: runs every setup twice, one arm per layout, same seed, for the built-in comparison — double the compute. All purge (chunks trimmed so no candle is shared between training and evaluation) is paid by the TRAINING set in both quota layouts, so evaluation counts stay exact.">window layout</label>
+          title="WHERE THE WINDOWS LIVE ON THE CALENDAR — chosen here, never by a separate checkbox. 70/15/15: train on the oldest 70%, pick the trade settings in the next 15% (the test window), grade the pick ONCE on the most recent 15% (the hold window) that no search has touched. legacy 80/20: train on 80%, pick on 20%, nothing held back — a coarse look, never evidence. 61/13/13/13: the 70/15/15 treatment applied to the first 87% of history, with the final 13% SEALED — this run never touches it; it exists so a later History Tuning winner can take its one-touch final exam on data nothing ever shopped on. The retired layouts (chronological / interlaced / both) refuse at launch: the interlaced construction broke the signal it was meant to test; old runs remain viewable.">window layout</label>
         <select id="bl-layout">
-          <option value="legacy" selected>legacy (80/20, or 70/15/15 with holdout ticked)</option>
-          <option value="chronological">chronological (quota-first, purged)</option>
-          <option value="interlaced">interlaced (49/63-day blocks, seeded)</option>
-          <option value="both">both chronological and interlaced</option>
+          <option value="split70" selected>70/15/15 — train / test / hold</option>
+          <option value="legacy80">legacy 80/20 — train / test, nothing held back</option>
+          <option value="reserve61">61/13/13/13 — like 70/15/15 with the final 13% of history SEALED for a later History Tuning grade</option>
         </select>
-        <label for="bl-ilseed" style="margin-top:4px"
-          title="The stored random seed that slots the interlaced evaluation blocks. Same settings + same seed = the same block layout, forever — no unrecorded coin-flips. Change it only to draw a different (but equally valid) layout on purpose.">layout seed</label>
-        <input id="bl-ilseed" type="number" step="1" value="1" style="width:90px">
-        <label class="check" style="margin-top:4px"
-          title="STRICT COMPARISON SWITCH (auto-band runs only). Each arm normally calibrates its own dormant band on its own training set, which makes the band a second difference channel between the arms. With this on, both arms use one band fit on the chunks that are TRAINING IN BOTH layouts — unseen as evaluation by either arm, so nothing leaks and the layout is the only variable left. Default off: a band fit on the arm's own training set is the methodologically proper per-arm behaviour.">
-          <input type="checkbox" id="bl-sharedband"> shared band across arms</label>
       </div>
       <div class="field">
         <label for="bl-mintrades" title="Selection floor: execution cells below this many test trades never win">min trades</label>
@@ -476,6 +468,6 @@
     pruned to time / open / high / low / close / quote&nbsp;volume.
   </footer>
 
-  <script src="app.js?v=58"></script>
+  <script src="app.js?v=59"></script>
 </body>
 </html>

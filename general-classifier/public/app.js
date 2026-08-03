@@ -610,9 +610,9 @@
       specs: 'How many of the 8 method permutations (4 feature views × 2 models) completed for this pair.',
       posEdge: 'How many of the specs beat their best-constant baseline (true edge > 0).',
       consensus: 'positive ÷ specs done. The pair’s headline agreement score across methods.',
-      medEdge: 'Middle value of the specs’ true edges — the TYPICAL spec’s margin, immune to one lucky or one broken spec.',
+      medEdge: 'Middle value of the specs’ true edges — the TYPICAL spec’s margin, immune to one outlier or one broken spec.',
       medBal: 'Middle value of the specs’ balanced accuracies. Chance = 33.3% whatever the class mix, so distance above 33.3% = real sorting skill.',
-      medPaper: 'Middle value of the 8 specs’ one-shot $100 paper books over the test window (this geometry’s own entry/exit candles, $1 round trip) — the TYPICAL spec’s dollars, never the luckiest cell’s. (+N) = how many specs finished positive. Robustness check; the vote book to the right is the tradable number.',
+      medPaper: 'Middle value of the 8 specs’ one-shot $100 paper books over the test window (this geometry’s own entry/exit candles, $1 round trip) — the TYPICAL spec’s dollars, never the best single cell’s. (+N) = how many specs finished positive. Robustness check; the vote book to the right is the tradable number.',
       votePnl: 'The tradable number: each test period the 8 specs VOTE (majority wins, any tie stands aside — the live tracker’s exact rule) and the vote trades one $100 order at this geometry’s entry/exit candles at research friction ($0.25 round trip since 2026-07-26; older screens $1). This is what the consensus strategy would actually have made over the test window. (W/T) = wins/trades. Click "trades" for the period-by-period history.',
       voteAcc: 'Share of test periods where the vote matched the realized class, with (edge) = vote accuracy − the best constant hindsight guess. Stand-asides count as calls of 0.',
       nullVote: 'Share of label-shifted reruns whose VOTE BOOK made at least as many dollars as the real one — the dollars version of the exceed rate. Small is good; the consensus-fraction exceed rate stays the primary test.',
@@ -807,7 +807,7 @@
     const weakWarning = maxTestWeeks < 20
       ? `<div class="warnbox">⚠ <strong>Statistically weak screen:</strong> only ${maxTestWeeks} test weeks per combo —
          each week is worth ${(100 / maxTestWeeks).toFixed(0)} points of accuracy, so every edge in this table is
-         within luck's reach. Widen the month range (the batch uses the form's months) and re-run before believing anything here.</div>`
+         within a null run's reach. Widen the month range (the batch uses the form's months) and re-run before believing anything here.</div>`
       : '';
     batchViewEl.innerHTML = `
       <p class="note">${header}${s.positiveEdge != null ? ` · ${s.positiveEdge} of ${s.done} completed combos beat their baseline` : ''}</p>
@@ -2024,7 +2024,7 @@
       ${block('Selection-aware test', d.selection, 'Is topping the board better than topping a NOISE board? Each scramble contributes its own best-of-board — this prices in that the winner was picked after looking.')}
       <p class="note">sanity: ${d.sanity.scrambleRows} scrambled setups, ${(100 * d.sanity.negativeShare).toFixed(1)}% losing money —
         ${d.sanity.ok ? 'as fees demand.' : '<strong>NOISE IS PROFITING: the simulation is broken; do not read the tests above.</strong>'}</p>
-      <p class="note"><strong>What a pass buys:</strong> this window only. It stops obvious luck being frozen;
+      <p class="note"><strong>What a pass buys:</strong> this window only. It stops obvious chance results being frozen;
         the forward paper test after freezing is the real judge.</p>`;
   }
 
@@ -2070,6 +2070,7 @@
             <th>Sizes</th><td>${Object.entries(p.sizes || {}).filter(([, v]) => v).map(([k]) => esc(k)).join(', ') || '—'}</td></tr>
         <tr><th>Permuted</th><td>${permuted.length ? esc(permuted.join(', ')) : 'nothing — single branch'}</td>
             <th>Fixed</th><td>${esc((p.set && p.set.geometry) || '—')} · ${esc((p.set && p.set.decision) || '—')} · band ${esc(String((p.set && p.set.band) || '—'))}</td></tr>
+        <tr><th title="Where the windows live on the calendar — decides what every number means">Window layout</th><td>${esc(p.windowLayout === 'reserve61' ? '61/13/13/13 — final 13% SEALED for a History Tuning grade' : p.windowLayout === 'split70' ? '70/15/15 — train / test / hold' : p.windowLayout === 'legacy80' ? 'legacy 80/20 — nothing held back' : (p.windowLayout || 'legacy') + (p.holdout ? ' (70/15/15)' : ' (80/20)'))}</td></tr>
         <tr><th>Execution grid</th><td>d ${p.dMults.join('/')}×band · t ${p.tHours.join('/')}h · gates ${p.gates.join('/')} · entry ${(p.entries || ['breakout']).join('/')}</td>
             <th>Fees</th><td>$${(2 * p.feePerLeg).toFixed(2)} per round trip</td></tr>
         <tr><th>Selection rule</th><td>top net $ with ≥${p.minTrades} trades</td>
@@ -2095,9 +2096,11 @@
     // Market cells have no rails, so no distance — printing "d null×" would
     // be worse than useless. They are the classifier's own trade and read as
     // such.
+    // Cell content MATCHES the header format, same separator (owner order):
+    // header 'gate/entry' -> cells 'active/breakout', 'directional/market'.
     const execCell = (r) => (r.entry === 'market'
-      ? `market entry<div class="cellsub">at open · t ${r.tHours}h</div>`
-      : `${esc(r.gate)}${r.trailMult != null ? ` · trail ${r.trailMult}×/arm ${r.armMult}×` : ''}<div class="cellsub">d ${r.dMult}× · t ${r.tHours}h${r.trailAmbiguous ? ` · <strong>${r.trailAmbiguous} trail-amb</strong>` : ''}</div>`);
+      ? `directional/market<div class="cellsub">at open · t ${r.tHours}h</div>`
+      : `${esc(r.gate)}/breakout${r.trailMult != null ? ` · trail ${r.trailMult}×/arm ${r.armMult}×` : ''}<div class="cellsub">d ${r.dMult}× · t ${r.tHours}h${r.trailAmbiguous ? ` · <strong>${r.trailAmbiguous} trail-amb</strong>` : ''}</div>`);
     const pct = (v) => (v == null ? '—' : (100 * v).toFixed(1) + '%');
     const signedPct = (v) => (v == null ? '—' : `<span class="${v >= 0 ? 'up' : 'down'}">${v >= 0 ? '+' : ''}${(100 * v).toFixed(1)}%</span>`);
     const leadRows = (doc.leaders || []).map((l, i) => {
@@ -2140,7 +2143,7 @@
         <td>${selectable ? `<input type="radio" name="bl-sel" class="bl-sel" data-key="${esc(l.key)}" data-stage="${esc(l.stage)}" ${isSel ? 'checked' : ''}>` : ''}
           ${l.stage === 'promoted' && dumpFile ? `<button class="bl-inspect" data-file="${esc(dumpFile)}" data-quorum="${l.quorum}" data-label="${esc(comboLabel(l))} ${esc(l.geometry)} ${esc(l.decision)}" title="Open this setup's committee members individually">inspect</button>` : ''}</td>
         <td>${i + 1}</td>
-        <td><strong>${esc(comboLabel(l))}</strong> <span class="bl-stage">${l.stage === 'promoted' ? 'prom' : 'slim'}</span>
+        <td><strong>${esc(comboLabel(l))}</strong> <span class="bl-stage">${l.stage === 'promoted' ? 'prom' : 'slim'}</span>${l.layoutArm ? ` <span class="bl-stage">${esc(l.layoutArm)}</span>` : ''}${l.nullDealSeed != null ? ` <span class="bl-stage">null n${l.nullDealSeed}</span>` : ''}
           <div class="cellsub">${esc(l.geometry)} · ${band} · ${esc(l.decision)} · ${l.weekdaysOnly ? '24/5' : '24/7'}</div></td>
         <td>q${l.quorum}/${l.members} · ${execCell(l)}</td>
         ${tuneBlock}
@@ -2170,7 +2173,7 @@
           <th colspan="5" class="grp grp-hold blk-l" title="Scored ONCE with settings already committed. Nothing was chosen using this window.">HELD-BACK — what matters</th></tr>
         <tr><th title="Pick a PROMOTED row as the null-test candidate"></th><th>#</th>
         <th title="Combo and stage; second line: chunk shape · band · decision · week mode">setup</th>
-        <th title="Quorum rung (net direction wins) and how the position is opened. BREAKOUT cells state a gate plus the rail distance d×band; MARKET cells enter at the entry candle's open in the called direction with no rails — the general classifier's own trade, and what the live paper books do.">execution</th>
+        <th title="AGREEMENT LEVEL, then GATE/ENTRY in that order — no entry without the gate passing. Gate: does the committee's vote permit a trade (active = trade only when the vote is non-zero, direction settled by whichever trigger price hits first; directional = only the voted direction can open; always = votes ignored — baseline rows only). Entry: how the position opens (breakout = price reaches a trigger rail; market = immediately at the open, directional-only by construction). Second line: trigger distance d×band and time limit t.">q · gate/entry</th>
         <th class="tune blk-l" title="Test-window net P&L over vs-control. vs-control can NEVER be negative here: the row was picked as the best cell of a menu already containing every always-gate (model-free) cell. It says how much gating won by, not that gating works.">P&L<div class="cellsub">vs ctl*</div></th>
         <th class="tune" title="Test-window accuracy over edge (accuracy minus the training-mix baseline). Accuracy points, not money.">acc<div class="cellsub">edge</div></th>
         <th class="tune" title="Test-window wins/trades over gross per trade before the round-trip fee">W/T<div class="cellsub">g/t</div></th>
@@ -2244,18 +2247,24 @@
 
     let nullBlock = '';
     if (sel && !running) {
-      nullBlock += `<div class="controls" style="margin:8px 0">
-        <div class="field"><label for="bl-shifts">Null shifts</label><input id="bl-shifts" type="number" min="1" max="1000" step="1" value="200"></div>
-        <div class="field submit"><button id="bl-null-go" type="button"
-          title="Replays everything downstream of the combo per rotation: full member grid retrained, whole execution menu + quorum rungs swept, best cell taken by the same rule. The combo-search multiplicity is NOT replayed — read against the stamped denominator.">Fire null on selected survivor</button></div>
-        <span class="note">selected: ${esc(comboLabel(sel))} ${esc(sel.geometry)} q${sel.quorum} ${sel.entry === 'market' ? 'market' : `${esc(sel.gate)} ${sel.dMult}×`} ${sel.tHours}h → ${money(sel.pnl)}</span>
-      </div>`;
+      nullBlock += `<div class="section"><h3>Tool 1 — this row against its null runs</h3>
+        <p class="note">WHY: prices the shopping INSIDE this row. Each null round retrains the committee on
+          the real data, deals each member's votes onto random days (register 66 construction — real vote
+          mix, zero date knowledge), re-runs the whole menu and every agreement level, and keeps its best.
+          The count of null rounds beating the real money is the reading. WHAT IT CANNOT SEE: that this row
+          was picked off a board of many — Tool 2 prices that. COST: fires a real job (~minutes per 100
+          rounds on one row).</p>
+        <div class="controls" style="margin:8px 0">
+        <div class="field"><label for="bl-shifts">Null rounds</label><input id="bl-shifts" type="number" min="1" max="1000" step="1" value="200"></div>
+        <div class="field submit"><button id="bl-null-go" type="button">Fire null rounds on the selected survivor</button></div>
+        <span class="note">selected: ${esc(comboLabel(sel))} ${esc(sel.geometry)} q${sel.quorum} ${sel.entry === 'market' ? 'directional/market' : `${esc(sel.gate)}/breakout ${sel.dMult}×`} ${sel.tHours}h → ${money(sel.pnl)}</span>
+      </div></div>`;
     }
     if (doc.nullTest) {
       const nt = doc.nullTest;
       const title = nt.status === 'running'
-        ? `Null replay — RUNNING: ${nt.shifts} of ${nt.requestedShifts} rotations banked`
-        : `Null replay — ${nt.status}, ${nt.shifts} rotations`;
+        ? `Null rounds — RUNNING: ${nt.shifts} of ${nt.requestedShifts} banked`
+        : `Null rounds — ${nt.status}, ${nt.shifts} of them`;
       nullBlock += `<div class="section"><h2>${title}</h2>
         <div class="tablewrap"><table>
           <tr><th>reading</th><th>exceed</th><th>null median $</th></tr>
@@ -2274,37 +2283,54 @@
     // (owner, 2026-07-30: every check runnable from the interface,
     // generalized, not just the ones that matter for one row).
     const inspectBlock = `
-      <div class="section"><h2>Inside a setup — the committee members individually</h2>
-      <p class="note">Click <em>inspect</em> on any promoted row above. Runs from 2026-07-30 onward
-        save every member's fitted model, votes and solo scores; older runs saved nothing and will say so.</p>
+      <div class="section"><h2>Inside a setup — a microscope, NOT a null test</h2>
+      <p class="note">WHY: to see WHY a row behaves as it does — each committee member's fitted model,
+        votes and solo score, individually. WHEN: diagnosing a row before deciding whether it deserves
+        the null tests. NEVER evidence: nothing shown here is out-of-sample. Click <em>inspect</em> on any
+        promoted row above; runs from 2026-07-30 onward save the members, older runs will say so.</p>
       <div id="bl-inspect-out"></div></div>`;
     const verdictBlock = !hasHold ? `
-      <div class="section"><h2>Null tests — is a result better than scrambled data?</h2>
-      <p class="note"><strong>Unavailable for this run: nothing was held back.</strong> Both tests compare
-        held-back money against the same figure in scrambled worlds, and this run has no held-back window
-        to compare. Re-run it with the holdout on (or under the chronological or interlaced layout) and
-        the tests apply.</p></div>` : `
-      <div class="section"><h2>Null tests — is a result better than scrambled data?</h2>
-      <p class="note">Compares a REAL run against a SCRAMBLE run (both already on disk — this fires nothing).
-        Two tests: <strong>per-setup</strong> (is this setup better than its own noise?) and
-        <strong>selection-aware</strong> (is topping the board better than topping a noise board? —
-        the honest test for any row picked off a board, since the best of 170 looks good even on noise).</p>
+      <div class="section"><h3>Tool 2 — the board against a null board</h3>
+      <p class="note"><strong>Unavailable for this run: nothing was held back.</strong> Both readings compare
+        hold-window money against the same figure on null boards, and this run has no hold window.
+        Re-run under the 70/15/15 or 61/13/13/13 layout and the tool applies.</p></div>` : `
+      <div class="section"><h3>Tool 2 — the board against a null board</h3>
+      <p class="note">WHY: prices the OTHER layer — picking the best row off a board of many, which
+        manufactures a good-looking number by itself. Compares a real board against a null board already
+        on disk (a board whose members trained on real data but had their votes dealt onto random days —
+        launch one by setting "null boards" on the sweep form). Two readings: <strong>per-setup</strong>
+        (this row's seat vs the same seat on the null board) and <strong>selection-aware</strong> (the real
+        board's best vs the null board's best — the reading that matters for any row you picked off a
+        board). COST: fires nothing; reads stored results. RESOLUTION: with N null boards the finest
+        honest claim is 1 in N+1 — the reading prints it.</p>
       <p class="note">real run <select id="bl-v-real"></select>
-        scramble run <select id="bl-v-null"></select>
+        null board <select id="bl-v-null"></select>
         setup <select id="bl-v-setup"><option value="">— board best only —</option></select>
-        <button id="bl-v-go">run the tests</button></p>
+        <button id="bl-v-go">run the readings</button></p>
       <div id="bl-verdict-out"></div></div>`;
     const compareBlock = `
-      <div class="section"><h2>Layout comparison — same settings, two window geometries</h2>
-      <p class="note">Compares the <strong>chronological</strong> and <strong>interlaced</strong> arms of one
-        run (or two separate runs). Two separate runs link ONLY when every stored setting matches — the
-        comparison refuses otherwise and names the differences, so nothing gets compared that is not
-        comparable. Fires no compute; reads stored results.</p>
+      <div class="section"><h2>Compare two runs — NOT a null test</h2>
+      <p class="note">WHY: A/B questions ("did this one change help?") need paired reading with the
+        differences named, never eyeballed across two screens. HOW: pick any two stored runs; every
+        setting that differs is listed first; rows the runs share are paired with their money differences.
+        The honesty rule: money differences are stamped ATTRIBUTABLE only when exactly ONE setting
+        differs — with more, the comparison still shows but proves nothing (the one-variable rule as a
+        tool). WHEN: any time two runs need comparing. Fires no compute; reads stored results.</p>
       <p class="note">run A <select id="bl-c-a"></select>
-        run B <select id="bl-c-b"><option value="">— A is a "both" run —</option></select>
+        run B <select id="bl-c-b"><option value="">— pick run B —</option></select>
         <button id="bl-c-go">compare</button></p>
       <div id="bl-compare-out"></div></div>`;
-    blViewEl.innerHTML = `<p class="note">${header}</p>${perfBlock}${repBlock}${leaderBlock}${inspectBlock}${verdictBlock}${compareBlock}${nullBlock}`;
+    const nullIntro = `
+      <div class="section"><h2>Null tests — can informationless votes produce this result?</h2>
+      <p class="note">A good number can arise two ways without any real signal: from the shopping INSIDE one
+        row (the menu and agreement levels tried and the best kept), and from PICKING the best row off a
+        board of many. The two tools below price those two layers against null runs — same machinery,
+        votes replaced by each member's real vote mix dealt onto random days (zero date knowledge by
+        construction). A row worth acting on passes both. Neither tool fires from here by accident:
+        each states what it costs before it runs.</p></div>`;
+    const htBlock = '<div id="bl-ht-panel"></div>';
+    blViewEl.innerHTML = `<p class="note">${header}</p>${perfBlock}${repBlock}${leaderBlock}${htBlock}${nullIntro}${nullBlock}${verdictBlock}${inspectBlock}${compareBlock}`;
+    renderHtPanel(doc, sel).catch(() => {});
     // ---- inside view ------------------------------------------------------
     blViewEl.querySelectorAll('.bl-inspect').forEach((btn) => {
       btn.addEventListener('click', async () => {
@@ -2422,6 +2448,144 @@
     });
   }
 
+  // ---- HISTORY TUNING (WORKFLOW.md step 5; design ledger) --------------------
+  const HT_AGE_LABELS = { none: 'no discount (control)', '6mo': '6-month half-life', '12mo': '12-month', '24mo': '24-month', '36mo': '36-month' };
+  async function renderHtPanel(doc, sel) {
+    const el = $('bl-ht-panel');
+    if (!el) return;
+    const list = await (await fetch('api/batches')).json();
+    const htDocs = (list.batches || []).filter((b) => b.id.startsWith('historytuning-'));
+    let launcher = '';
+    if (sel && doc && doc.status === 'done') {
+      const srcOk = doc.params.windowLayout === 'split70' || doc.params.windowLayout === 'reserve61'
+        || ((doc.params.windowLayout === undefined || doc.params.windowLayout === 'legacy') && doc.params.holdout);
+      const gateOk = sel.gate !== 'always' || sel.entry === 'market';
+      const why = !srcOk ? 'this run is not a 70/15/15 structure — History Tuning needs a test AND hold window'
+        : !gateOk ? 'this row uses the always gate — it enters regardless of votes, so both tuning dials would act on nothing'
+          : null;
+      launcher = `
+        <p class="note">WHY: a survivor was measured with fixed assumptions about how much history matters.
+          This tunes the two time dials for THIS setup — the age half-life (how strongly old training data
+          fades, with members retrained at every half-life milestone) and the retune cadence (how often the
+          five trade variables are re-picked on recent results). 35 dial pairs × 3 splits = 105 passes, the
+          untuned reference pass first, picking on test windows only, holds touched once at the end. The
+          four reading rules are stamped into the run before anything computes. WHEN: only on a row that
+          has passed both null tests above. COST: fires a long job (hours); the box does the work.</p>
+        ${why ? `<p class="note"><button disabled>History Tuning</button> — inactive: ${esc(why)}.</p>`
+          : `<p class="note"><button id="bl-ht-go">History Tuning: tune the selected survivor</button>
+             <span class="note">selected: ${esc(comboLabel(sel))} ${esc(sel.geometry)} ${esc(sel.decision)} q${sel.quorum}</span></p>`}`;
+    } else if (!htDocs.length) {
+      launcher = '<p class="note">Select a promoted row on a finished 70/15/15 board to activate the launcher. Runs appear here once fired.</p>';
+    }
+    let runsHtml = '';
+    for (const b of htDocs.slice(0, 4)) {
+      const r = await (await fetch(`api/batch/${encodeURIComponent(b.id)}`)).json();
+      runsHtml += renderHtRun(r);
+    }
+    el.innerHTML = `<div class="section"><h2>History Tuning — strengthen a proven setup (optional second pass)</h2>${launcher}${runsHtml}</div>`;
+    const go = el.querySelector('#bl-ht-go');
+    if (go) {
+      go.addEventListener('click', async () => {
+        try {
+          const res = await fetch('api/historytuning', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              sourceBatchId: doc.id,
+              combo: { trade: sel.trade, ctx1: sel.ctx1 || null, ctx2: sel.ctx2 || null, size: sel.size || 1 },
+              branch: { geometry: sel.geometry, decision: sel.decision, band: 'auto', weekdaysOnly: !!sel.weekdaysOnly },
+              declaredCell: { quorum: sel.quorum, gate: sel.gate, entry: sel.entry, dMult: sel.dMult, tHours: sel.tHours, trailMult: sel.trailMult ?? null, armMult: sel.armMult ?? null, bandPct: sel.bandPct },
+            }),
+          });
+          const body = await jsonBody(res);
+          if (!res.ok) throw new Error(body.error || `HTTP ${res.status}`);
+          renderHtPanel(doc, sel);
+        } catch (err) { blErrEl.hidden = false; blErrEl.textContent = err.message; }
+      });
+    }
+    el.querySelectorAll('[data-ht-null]').forEach((btn) => btn.addEventListener('click', async () => {
+      try {
+        const res = await fetch('api/historytuning/null', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ replayOf: btn.dataset.htNull, nullShiftSeed: Number(btn.dataset.seed) }),
+        });
+        const body = await jsonBody(res);
+        if (!res.ok) throw new Error(body.error || `HTTP ${res.status}`);
+        renderHtPanel(doc, sel);
+      } catch (err) { blErrEl.hidden = false; blErrEl.textContent = err.message; }
+    }));
+    el.querySelectorAll('[data-ht-grade]').forEach((btn) => btn.addEventListener('click', async () => {
+      if (!confirm('The reserve grade is ONE verification event, ever, for this run — the winner, the reference pass and 19 null draws fire together, and the reserve is spent. Proceed?')) return;
+      try {
+        const res = await fetch('api/historytuning/reserve-grade', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sourceHtRunId: btn.dataset.htGrade }),
+        });
+        const body = await jsonBody(res);
+        if (!res.ok) throw new Error(body.error || `HTTP ${res.status}`);
+        renderHtPanel(doc, sel);
+      } catch (err) { blErrEl.hidden = false; blErrEl.textContent = err.message; }
+    }));
+  }
+
+  function renderHtRun(r) {
+    const p = r.params || {};
+    const head = `<h3>${esc(r.id)} — ${esc(r.status)}${r.status === 'running' && r.progress ? ' — ' + esc(r.progress) : ''}${p.arm === 'null' ? ' <span class="bl-stage">null draw</span>' : ''}${p.mode === 'reserve-grade' ? ' <span class="bl-stage">reserve grade</span>' : ''}</h3>`;
+    if (p.mode === 'reserve-grade') {
+      const v = r.verdict;
+      return `<div class="section">${head}${v ? `
+        <p class="note"><strong>${esc(v.sentence)}</strong></p>
+        <p class="note">winner reserve $${(v.winnerHoldPnl ?? 0).toFixed(2)} · reference $${(v.referenceHoldPnl ?? 0).toFixed(2)} ·
+          null draws at or above the winner: ${v.nullsAtOrAbove}/${v.nullDraws} · resolution floor ${esc(v.resolutionFloor)}</p>`
+        : '<p class="note">verdict appears when the event completes</p>'}</div>`;
+    }
+    const rows = r.htRows || [];
+    const excluded = new Set(r.excludedArms || []);
+    const byArm = new Map();
+    for (const row of rows) {
+      if (row.refused || row.skipped) continue;
+      const k = `${row.ageKey}|${row.retuneKey}`;
+      const cur = byArm.get(k) || { test: 0, holds: {}, effMin: Infinity, splits: 0 };
+      cur.test += row.testPnl || 0;
+      cur.holds[row.split] = row.holdPnl;
+      cur.effMin = Math.min(cur.effMin, row.effectiveDays ?? Infinity);
+      cur.splits++;
+      byArm.set(k, cur);
+    }
+    const ranked = [...byArm.entries()].filter(([k]) => !excluded.has(k)).sort((a, b) => b[1].test - a[1].test);
+    const refKey = 'none|never';
+    const winner = r.status === 'done' && ranked.length ? ranked[0][0] : null;
+    const armRows = ranked.slice(0, 12).map(([k, v], i) => {
+      const [age, ret] = k.split('|');
+      const showHold = r.status === 'done' && (k === winner || k === refKey);
+      const holdCells = showHold
+        ? ['early', 'middle', 'late'].map((sp) => `$${(v.holds[sp] ?? 0).toFixed(0)}`).join(' / ')
+        : '<span class="note">sealed until the winner is declared</span>';
+      return `<tr><td>${i + 1}</td><td>${esc(HT_AGE_LABELS[age] || age)}</td><td>${esc(ret)}</td>
+        <td>$${v.test.toFixed(2)}</td><td>${v.effMin === Infinity ? '—' : v.effMin.toFixed(0)}</td>
+        <td>${k === refKey ? 'REFERENCE' : ''}${k === winner ? ' WINNER' : ''}</td><td>${holdCells}</td></tr>`;
+    }).join('');
+    const rules = p.readingRules ? `<details><summary class="note" style="cursor:pointer">The four reading rules stamped into this run (click)</summary>
+      ${Object.entries(p.readingRules).map(([k, v]) => `<p class="note"><strong>${esc(k)}</strong> [${esc(v.label)}]: ${esc(v.text)}</p>`).join('')}</details>` : '';
+    const excludedNote = excluded.size ? `<p class="note">Arms excluded (failed a training floor on some split, so dropped from ALL splits): ${[...excluded].map(esc).join(', ')}</p>` : '';
+    const nullBtn = r.status === 'done' && p.arm !== 'null' && !p.mode
+      ? `<p class="note"><button data-ht-null="${esc(r.id)}" data-seed="${(p.lastNullSeed || 0) + 101}">Fire a trail-replay null draw (seed ${(p.lastNullSeed || 0) + 101})</button>
+         — each draw replays the full grid on dealt votes, inheriting only the calendar; 19 draws is the declared count (floor 1 in 20).</p>` : '';
+    const gradeBtn = r.status === 'done' && p.arm !== 'null' && !p.mode && p.reserveFromTs
+      ? `<p class="note"><button data-ht-grade="${esc(r.id)}">Run the reserve grade — one touch, final</button>
+         — the winner's walk, the reference pass's walk and 19 null draws over the sealed reserve, fired together, once, ever.</p>`
+      : (r.status === 'done' && p.arm !== 'null' && !p.mode ? '<p class="note">No reserve exists for this setup (its board run predates the reserve layout) — the binding grade is the forward paper book.</p>' : '');
+    return `<div class="section">${head}${rules}${excludedNote}
+      <p class="note">TABLE: the dial-pair board. NAME: combined TEST money per dial pair (the picking read).
+        KEY: age = the half-life setting; retune = cadence and lookback; test $ = net paper dollars per $100
+        book summed across the three test windows (picked on, flattering by construction); eff. days = the
+        smallest effective training days any split saw; hold $ = the three hold windows early/middle/late,
+        shown ONLY for the winner and the reference pass — holds are graded once, never shopped.</p>
+      <div class="tablewrap"><table>
+        <tr><th>#</th><th>age</th><th>retune</th><th>test $</th><th>eff. days</th><th></th><th>hold $ (e/m/l)</th></tr>
+        ${armRows || '<tr><td colspan="7" class="note">rows appear as passes finish</td></tr>'}
+      </table></div>${nullBtn}${gradeBtn}</div>`;
+  }
+
   async function refreshBracket() {
     try {
       blErrEl.hidden = true;
@@ -2498,17 +2662,8 @@
   ['bl-singles', 'bl-doubles', 'bl-triples'].forEach((id) => $(id).addEventListener('change', syncQ));
   syncQ();
 
-  // The holdout checkbox only decides anything under the legacy layout: the
-  // chronological and interlaced layouts are three-window by construction and
-  // force it on. Show that instead of letting the box sit there lying.
-  const syncHoldout = () => {
-    const forced = $('bl-layout').value !== 'legacy';
-    const box = $('bl-holdout');
-    if (forced) { box.checked = true; box.disabled = true; } else { box.disabled = false; }
-    $('bl-holdout-note').hidden = !forced;
-  };
-  $('bl-layout').addEventListener('change', syncHoldout);
-  syncHoldout();
+  // The layout DECIDES the hold window (owner, 2026-08-03) — the old
+  // checkbox-plus-option pairing that encoded two splits ambiguously is gone.
 
   $('bl-start-btn').addEventListener('click', async () => {
     try {
@@ -2536,10 +2691,7 @@
         promoteK: Number($('bl-promotek').value) || 25,
         minTrades: Number($('bl-mintrades').value) || 10,
         trailing: $('bl-trailing').checked,
-        holdout: $('bl-holdout').checked,
         windowLayout: $('bl-layout').value,
-        interlaceSeed: Number($('bl-ilseed').value) || 1,
-        sharedBand: $('bl-sharedband').checked,
       };
       if ($('bl-declared-on').checked) {
         const entry = $('bl-dec-entry').value;
