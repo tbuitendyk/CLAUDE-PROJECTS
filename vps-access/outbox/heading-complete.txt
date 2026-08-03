@@ -1,0 +1,19 @@
+The job heading now shows every selected option, verbatim record included
+
+tl;dr Done as ordered: the Bracket lab job heading now carries ALL of a
+run's chosen settings — including the one you caught missing (data
+months: "all loaded at launch" or the exact range), the full universe
+list spelled out, the engine version, and the declared cell. Under the
+table sits a fold-out with the COMPLETE stored settings record,
+verbatim — so even a setting nobody thought to give a labeled row can
+never be invisible again. Static deploy, nothing restarted, no effect
+on anything you're running. Hard-refresh to pick it up.
+
+Also on the record from your driving session: the July 30 board's twin
+rows carry no visible arm labels (the field the board reads postdates
+that run) — my pointing you at "the row tagged chronological" was
+wrong about what your screen shows. Fresh runs have no twins at all;
+the old board stays history. If you want the old board's labels
+back-filled for display, say so and it becomes a build item.
+
+c.
