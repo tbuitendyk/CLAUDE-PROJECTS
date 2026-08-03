@@ -2362,10 +2362,13 @@
       } else {
         rows = allRep;
       }
-      const scored = rows.filter((r) => r.pnl != null);
-      const withCtl = scored.filter((r) => r.vsControl != null);
-      const pos = scored.filter((r) => r.pnl > 0).length;
-      const posVsCtl = withCtl.filter((r) => r.vsControl > 0).length;
+      // The tiles count the HELD-BACK window only (owner order, 2026-08-04):
+      // test-window aggregates flattered the recipe (16/17 there vs 5/17
+      // held-back on the same run) and answered no declared rule.
+      const holdRows = rows.filter((r) => r.holdout && r.holdout.pnl != null);
+      const holdPos = holdRows.filter((r) => r.holdout.pnl > 0).length;
+      const withVsL = holdRows.filter((r) => r.holdout.vsAlwaysLong != null);
+      const vsLPos = withVsL.filter((r) => r.holdout.vsAlwaysLong > 0).length;
       const binomTailRep = (k, n) => {
         if (!n) return null;
         const c = (nn, ii) => { let r = 1; for (let j = 0; j < ii; j++) r = (r * (nn - j)) / (j + 1); return r; };
@@ -2373,8 +2376,8 @@
         for (let i = k; i <= n; i++) acc += c(n, i) * Math.pow(0.5, n);
         return acc;
       };
-      const pPos = binomTailRep(pos, scored.length);
-      const pCtl = binomTailRep(posVsCtl, withCtl.length);
+      const pPos = binomTailRep(holdPos, holdRows.length);
+      const pCtl = binomTailRep(vsLPos, withVsL.length);
       const q = p.declared.quorumRatio ? Math.round(p.declared.quorumRatio * 100) + '% of members' : p.declared.quorum;
       repBlock = `
         <div class="section"><h2>Replication — declared config on every asset</h2>
@@ -2386,11 +2389,11 @@
           look apiece, so there is NO shopping tax and no branch correction owed. The reading is the binomial across
           assets, never any single row.</p>
         <div class="tiles">
-          ${tile('Positive dollars', `${pos} / ${scored.length}`, pPos == null ? '' : `binomial p = ${pPos.toFixed(4)} (chance = 50%)`, true)}
-          ${tile('Positive vs control', `${posVsCtl} / ${withCtl.length}`, pCtl == null ? '' : `binomial p = ${pCtl.toFixed(4)}`)}
+          ${tile('Held-back positive', `${holdPos} / ${holdRows.length}`, pPos == null ? '' : `binomial p = ${pPos.toFixed(4)} (chance = 50%)`, true)}
+          ${tile('Beat always-long (held-back)', `${vsLPos} / ${withVsL.length}`, pCtl == null ? '' : `binomial p = ${pCtl.toFixed(4)}`)}
         </div>
         <div class="tablewrap" style="margin-top:10px"><table class="bl-board">
-          <tr><th>asset</th><th>band</th><th>quorum</th><th>net P&L</th><th>vs control</th><th title="Exact 3-class match rate of the committee's calls">acc</th><th title="Accuracy minus the training-majority baseline">edge</th><th title="Net minus the SAME execution with the direction forced long on every period — identical period count, horizon and fee load. Isolates the calls by holding everything else fixed: a setup that cannot beat 'be long every period' has not earned its complexity.">vs always-long</th><th title="Net minus buying at the first entry and selling at the last exit — one position, one round trip. The classic benchmark, and the one that answers 'why not just buy it and go away?'">vs buy-hold</th><th title="The SAME cell re-run on the final 15% that no search ever touched, scored once. Second line: trades, and its own vs-always-long. This is the only column on this page that no selection process has shopped in.">HOLDOUT</th><th>W/T</th><th>gross/trade</th><th>stops</th></tr>
+          <tr><th>asset</th><th>band</th><th>quorum</th><th title="TEST-WINDOW money — the window settings get to flatter themselves on. Context only; the tiles and any declared rule read HOLDOUT.">test P&L</th><th title="TEST-WINDOW comparison — context only">vs control</th><th title="Exact 3-class match rate of the committee's calls">acc</th><th title="Accuracy minus the training-majority baseline">edge</th><th title="Net minus the SAME execution with the direction forced long on every period — identical period count, horizon and fee load. Isolates the calls by holding everything else fixed: a setup that cannot beat 'be long every period' has not earned its complexity.">vs always-long</th><th title="Net minus buying at the first entry and selling at the last exit — one position, one round trip. The classic benchmark, and the one that answers 'why not just buy it and go away?'">vs buy-hold</th><th title="The SAME cell re-run on the final 15% that no search ever touched, scored once. Second line: trades, and its own vs-always-long. This is the only column on this page that no selection process has shopped in.">HOLDOUT</th><th>W/T</th><th>gross/trade</th><th>stops</th></tr>
           ${rows.map((r) => `<tr>
             <td><strong>${esc(r.trade + (r.ctx1 ? '+' + r.ctx1 : '') + (r.ctx2 ? '+' + r.ctx2 : ''))}</strong></td>
             <td>±${r.bandPct != null ? r.bandPct.toFixed(2) : '?'}%</td>
