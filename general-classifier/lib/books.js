@@ -118,6 +118,9 @@ function validateConfig(raw) {
   if (!/^[A-Z0-9]{5,20}$/.test(pair)) throw new Error('pair must look like DOTUSDT');
   if (!/^[A-Z0-9]{5,20}$/.test(compareSymbol)) throw new Error('compare pair must look like BTCUSDT');
   if (pair === compareSymbol) throw new Error('pair and compare must differ');
+  if (pair === 'PLANTEDUSDT' || compareSymbol === 'PLANTEDUSDT') {
+    throw new Error('PLANTEDUSDT is the reserved fabricated pair for the planted check — a paper book on fiction proves nothing');
+  }
   const geometry = String(c.geometry || 'daily-3d');
   if (!GEOMETRIES[geometry]) throw new Error(`unknown geometry "${geometry}"`);
   const band = c.band === 'auto' || c.band === undefined ? 'auto' : Number(c.band);

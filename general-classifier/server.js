@@ -3,7 +3,7 @@ const express = require('express');
 const { startJob, getJob } = require('./lib/jobs');
 const { runAnalysis, loadData, countRotations } = require('./lib/pipeline');
 const { GEOMETRIES } = require('./lib/dataset');
-const { cacheState, cachedMonths, coveredMonths, monthlyKlines } = require('./lib/binance');
+const { cacheState, cachedMonths, monthlyKlines } = require('./lib/binance');
 const throttle = require('./lib/throttle');
 const { configuredSize, createPool } = require('./lib/pool');
 const batch = require('./lib/batch');
@@ -171,14 +171,21 @@ app.post('/api/data/refresh', (req, res) => {
   if (loadStop) return res.status(409).json({ error: loadStop });
   const state = cacheState();
   // The fabricated pair never touches Binance: refreshing it means
-  // regenerating it over the real data's current span. On a Global Refresh
-  // it regenerates LAST, after every real pair has fetched, so the span it
-  // mirrors is the refreshed one.
-  const wantsPlanted = !one || one === planted.PLANTED_SYMBOL;
+  // regenerating it over the real data's current span, and that happens
+  // after EVERY refresh that leaves real data on disk — single-pair
+  // refreshes included — so the pair can never trail the data it mirrors.
+  // On a Global Refresh it regenerates LAST, after every real pair fetched.
+  const hasRealData = state.some((s2) => s2.symbol !== planted.PLANTED_SYMBOL);
   const targets = (one ? state.filter((s2) => s2.symbol === one) : state)
     .filter((s2) => s2.symbol !== planted.PLANTED_SYMBOL);
-  if (!targets.length && !(wantsPlanted && planted.plantedExists())) {
-    return res.status(400).json({ error: one ? `${one} has no cached data — use download` : 'nothing cached yet' });
+  if (one === planted.PLANTED_SYMBOL && !hasRealData) {
+    return res.status(400).json({ error: `${planted.PLANTED_SYMBOL} mirrors the real data's date span and nothing real is cached — download real pairs first` });
+  }
+  if (one === planted.PLANTED_SYMBOL && !planted.plantedExists()) {
+    return res.status(400).json({ error: `${planted.PLANTED_SYMBOL} has never been generated — the planted-check button (top of the Bracket lab) creates it` });
+  }
+  if (!targets.length && one !== planted.PLANTED_SYMBOL) {
+    return res.status(400).json({ error: one ? `${one} has no cached data — use download` : (hasRealData ? 'nothing to refresh' : 'nothing cached yet') });
   }
   const { monthList: ml, loadSymbol } = require('./lib/pipeline');
   const jobId = startJob(async (setProgress) => {
@@ -192,7 +199,7 @@ app.post('/api/data/refresh', (req, res) => {
       }
       out[t.symbol] = { refreshedFrom: t.to, candles: rows.length, monthsWithoutBundles: missing, dayFilesFetched: backfilled };
     }
-    if (wantsPlanted && planted.plantedExists()) {
+    if (planted.plantedExists()) {
       setProgress(`regenerating ${planted.PLANTED_SYMBOL} to the refreshed span`);
       out[planted.PLANTED_SYMBOL] = { regenerated: true, ...planted.generatePlanted(planted.plantedSpan()) };
     }
@@ -226,7 +233,19 @@ app.post('/api/data/purge', (req, res) => {
   for (const f of victims) {
     try { dataFs.unlinkSync(dataPath.join(DATA_CACHE_DIR, f)); } catch { /* reported below via recount */ }
   }
-  res.json({ purged: victims.length, symbol: sym, kept: keepFrom || keepTo ? { keepFrom, keepTo } : null });
+  // A purge/trim of REAL data changes the span the fabricated pair mirrors —
+  // regenerate it in the same breath (fast, deterministic, no network).
+  let plantedRegen = null;
+  if (sym !== planted.PLANTED_SYMBOL && planted.plantedExists()) {
+    const span = planted.plantedSpan();
+    plantedRegen = span ? { regenerated: true, ...planted.generatePlanted(span) } : { removed: true };
+    if (!span) {
+      for (const f of dataFs.readdirSync(DATA_CACHE_DIR)) {
+        if (f.startsWith(`${planted.PLANTED_SYMBOL}-1h-`)) { try { dataFs.unlinkSync(dataPath.join(DATA_CACHE_DIR, f)); } catch { /* recount */ } }
+      }
+    }
+  }
+  res.json({ purged: victims.length, symbol: sym, kept: keepFrom || keepTo ? { keepFrom, keepTo } : null, planted: plantedRegen });
 });
 
 // ---- the planted check (owner order, 2026-08-03): instrument gate as a
@@ -245,8 +264,13 @@ app.get('/api/planted-gate/status', (req, res) => {
 });
 
 app.post('/api/planted-gate', (req, res) => {
-  if (batch.batchRunning()) {
-    return res.status(409).json({ error: 'a job is running — the planted check regenerates cache data and fires a sweep, so it waits' });
+  // BOTH kinds of work refuse it: batches (sweeps) AND data jobs
+  // (downloads/refreshes). A refresh job's tail regenerates the fabricated
+  // pair — overlapping the gate would rewrite the pair's candles under the
+  // gate sweep's workers (review 2026-08-03, MAJOR).
+  const busy = batch.batchRunning() || require('./lib/jobs').anyJobRunning();
+  if (busy) {
+    return res.status(409).json({ error: `${busy} is running — the planted check regenerates cache data and fires a sweep, so it refuses while ANY job or sweep runs` });
   }
   try {
     const span = planted.plantedSpan();
@@ -318,10 +342,14 @@ app.post('/api/run', (req, res) => {
   // Cache-write guard (owner, 2026-07-31): only runs that would DOWNLOAD
   // are refused mid-sweep — "all loaded data" and fully-cached ranges read
   // the cache without touching the network and stay allowed.
-  // coveredMonths, not cachedMonths: a month held as day files is on disk
-  // and needs no download, so it must not trigger the mid-job refusal (QC 70).
+  // cachedMonths (bundle months only), DELIBERATELY, even after QC 70: a
+  // ranged run over a day-file month still PROBES Binance for that month's
+  // bundle, and if it published overnight the probe WRITES it mid-job —
+  // the exact hazard this guard exists for. Day-file months therefore
+  // refuse here (loud and conservative); "all loaded data" mode reads them
+  // without any probe and stays allowed (review 2026-08-03).
   const runStop = guard.runRefusal(batch.batchRunning(),
-    { allLoaded, tradeSymbol, compareSymbol, startMonth, endMonth }, coveredMonths);
+    { allLoaded, tradeSymbol, compareSymbol, startMonth, endMonth }, cachedMonths);
   if (runStop) return res.status(409).json({ error: runStop });
   const jobId = startJob((setProgress) =>
     runAnalysis({ dormantPct, tradeSymbol, compareSymbol, startMonth, endMonth, featureSet, model, featureView, decision, geometry, weekdaysOnly: !!b.weekdaysOnly, allLoaded }, setProgress)
@@ -628,7 +656,7 @@ app.get('/api/rotations', async (req, res) => {
   const rotRunning = batch.batchRunning();
   if (rotRunning) {
     for (const p of pairs) {
-      const stop = guard.runRefusal(rotRunning, { allLoaded, tradeSymbol: p, compareSymbol, startMonth, endMonth }, coveredMonths);
+      const stop = guard.runRefusal(rotRunning, { allLoaded, tradeSymbol: p, compareSymbol, startMonth, endMonth }, cachedMonths);
       if (stop) return res.status(409).json({ error: stop });
     }
   }
@@ -822,6 +850,9 @@ app.get('/api/bracketlab/verdict-sources', (req, res) => {
     if (!String(b.id).startsWith('bracketlab-')) continue;
     const doc = batch.getBatch(b.id);
     if (!doc || !Array.isArray(doc.edgeCensus) || !doc.edgeCensus.length) continue;
+    // The planted-check calibration judges the instrument, never candidates —
+    // its board never plays a role in a real null verdict.
+    if (doc.params && doc.params.plantedGate) continue;
     const real = realRows(doc).length;
     const draws = drawsOf(doc).length;
     if (!real && !draws) continue;

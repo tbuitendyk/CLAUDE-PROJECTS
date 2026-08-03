@@ -186,8 +186,20 @@ function topWeights(model, names, count = 12) {
     .slice(0, count);
 }
 
+// Research-tab entries (single runs, Load Data, rotation quotes) also refuse
+// the fabricated planted-check pair — it carries a KNOWN planted rule, so
+// any real-looking result on it is fiction (review 2026-08-03: the refusal
+// covered only the Bracket lab launcher).
+function refusePlanted(...symbols) {
+  const { PLANTED_SYMBOL } = require('./planted');
+  if (symbols.includes(PLANTED_SYMBOL)) {
+    throw new Error(`${PLANTED_SYMBOL} is the reserved fabricated pair for the planted check — it never enters a real run`);
+  }
+}
+
 async function runAnalysis(params, onProgress = () => {}) {
   const { dormantPct, tradeSymbol, compareSymbol, startMonth, endMonth } = params;
+  refusePlanted(tradeSymbol, compareSymbol);
   const adaptiveBand = dormantPct === 'auto';
   const featureSet = params.featureSet === 'raw' ? 'raw' : 'compressed';
   const modelKind = params.model === 'boost' ? 'boost' : 'logreg';
@@ -564,6 +576,7 @@ function extractMetrics(report) {
 // Download/cache the months for both symbols WITHOUT running an analysis —
 // the "Load Data" phase. Returns a per-symbol summary for the data-state UI.
 async function loadData({ tradeSymbol, compareSymbol, startMonth, endMonth }, onProgress = () => {}) {
+  refusePlanted(tradeSymbol, compareSymbol);
   const months = monthList(startMonth, endMonth);
   const out = {};
   for (const symbol of [tradeSymbol, compareSymbol]) {

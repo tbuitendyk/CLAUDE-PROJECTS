@@ -565,7 +565,11 @@ async function nullRotationTask({ combo, branch, params, shiftIndex, nShifts, se
     }
   }
   return {
-    rot,
+    // `rot` (the retired rotation fraction) died with the label-rotation
+    // construction, but its name survived here — an undeclared identifier
+    // in a return object throws on EVERY call, so Tool 1's replay was dead
+    // on arrival. The consumer keys on shiftIndex alone. Executed end to
+    // end by tests/test-gatepipe.js on the fabricated pair.
     shiftIndex,
     best: bestOfMenu ? bestOfMenu.pnl : -Infinity,
     same: sameCell ? sameCell.pnl : null,

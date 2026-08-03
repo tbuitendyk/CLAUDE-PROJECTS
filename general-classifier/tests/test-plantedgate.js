@@ -23,7 +23,8 @@ function gateDoc(id, engineVersion, nullBests) {
   return {
     id, kind: 'bracketlab', status: 'done',
     startedAt: new Date().toISOString(), finishedAt: new Date().toISOString(),
-    params: { plantedGate: true, engineVersion, windowLayout: 'split70' },
+    params: { plantedGate: true, engineVersion, windowLayout: 'split70', labelShiftReps: nullBests.length },
+    failures: [],
     edgeCensus: [
       censusRow({ holdPnl: 100, holdAlwaysLong: -5 }),
       ...nullBests.map((v, i) => censusRow({ nullDealSeed: i + 1, holdPnl: v, holdAlwaysLong: -5 })),
@@ -137,6 +138,49 @@ module.exports = {
     const noLong = planted.gateVerdict(doc);
     assert.strictEqual(noLong.pass, false);
     assert.ok(noLong.sentences.some((s) => /unreadable counts as failed/.test(s)));
+    // THE BOUNDARY: a null board landing exactly ON the quarter-line fails —
+    // the rule is "below", and a sign slip (< vs <=) must not survive.
+    const onLine = planted.gateVerdict(gateDoc('g4', '1.33.0', [25, 1, 1, 1]));
+    assert.strictEqual(onLine.pass, false, 'exactly the quarter-line is NOT below it');
+    // A shrunken population fails: three boards scored where four were
+    // declared reads as a pass earned on fewer draws than stamped.
+    const shrunk = gateDoc('g5', '1.33.0', [1, 1, 1]);
+    shrunk.params.labelShiftReps = 4;
+    assert.strictEqual(planted.gateVerdict(shrunk).pass, false);
+    // Zero null boards can never pass.
+    assert.strictEqual(planted.gateVerdict(gateDoc('g6', '1.33.0', [])).pass, false);
+    // Recorded unit failures fail the calibration outright.
+    const withFailures = gateDoc('g7', '1.33.0', [1, 1, 1, 1]);
+    withFailures.failures = [{ key: 'x', error: 'boom' }];
+    const fv = planted.gateVerdict(withFailures);
+    assert.strictEqual(fv.pass, false);
+    assert.ok(fv.sentences.some((s) => /FAIL G4/.test(s)));
+  },
+  async staleDayFilesInsideABundledMonthDoNotShrinkTheSpan() {
+    // Review 2026-08-03: a leftover day file inside the newest BUNDLED month
+    // made cacheState's `to` read '…-07-15' while the bundle covers July 31 —
+    // the fabricated pair would then trail the real data it mirrors.
+    fs.mkdirSync(CACHE, { recursive: true });
+    const files = ['REALCCUSDT-1h-2099-01.json', 'REALCCUSDT-1h-2099-01-15.json'];
+    try {
+      for (const f of files) fs.writeFileSync(path.join(CACHE, f), '[]');
+      assert.strictEqual(planted.plantedSpan().toDate, '2099-01-31', 'the bundle\'s full month wins over its stale day file');
+    } finally {
+      for (const f of files) fs.rmSync(path.join(CACHE, f), { force: true });
+    }
+  },
+  async anUnreadableNewestGateRecordBlocksOlderVerdicts() {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'planted-gate-'));
+    try {
+      fs.writeFileSync(path.join(dir, 'bracketlab-20990101-0006-planted-gate.json'),
+        JSON.stringify(gateDoc('bracketlab-20990101-0006-planted-gate', '9.9.8', [1, 2, 3, 4])));
+      fs.writeFileSync(path.join(dir, 'bracketlab-20990102-0000-planted-gate.json'), '{ torn json');
+      const s = planted.gateStatus('9.9.8', dir);
+      assert.strictEqual(s.state, 'NOT CHECKED', 'an older PASS must not shadow an unreadable newer record');
+      assert.ok(/unreadable/.test(s.detail));
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
   },
   async aPassBelongsToItsEngineVersionOnly() {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'planted-gate-'));

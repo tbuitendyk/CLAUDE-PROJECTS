@@ -273,8 +273,10 @@ function monthFromDayFiles(symbol, year, month) {
 }
 
 // EVERY month with data on disk for a symbol, in either storage form —
-// the one answer to "is this month cached" (QC 70: three separate views of
-// coverage existed; any consumer asking that question uses THIS one).
+// the answer to "is this month readable from disk" (QC 70). One deliberate
+// non-consumer: the mid-job download guard keys on BUNDLE months only,
+// because a ranged run over a day-file month still probes for the bundle
+// and could write it mid-job — see the guard wiring in server.js.
 function coveredMonths(symbol) {
   return [...new Set([...cachedMonths(symbol), ...cachedDayMonths(symbol)])].sort();
 }

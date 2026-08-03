@@ -21,9 +21,10 @@
 const fs = require('fs');
 const path = require('path');
 const { mulberry32 } = require('./interlace');
-const { cacheState, HOUR_MS } = require('./binance');
+const { cacheState, cachedMonths, HOUR_MS } = require('./binance');
 
 const CACHE_DIR = path.join(__dirname, '..', 'data', 'cache');
+let tmpSeq = 0;
 
 // The reserved symbol. It never enters a real run (the launcher refuses it),
 // is never downloaded from Binance (the data endpoints regenerate it
@@ -40,7 +41,8 @@ const PLANTED_SEED = 41;
 const GATE_RULES = {
   G1: 'find and profit: the real board\'s best held-back money is positive [DERIVED: a 70%-follow rule pays in every era]',
   G2: 'beats always-long: that same row\'s held-back money exceeds holding the pair long [DERIVED: the fabricated pair has zero drift, so holding earns nothing but fees]',
-  G3: 'the null boards destroy it: EVERY null board\'s best held-back money is below a quarter of the real board\'s [direction DERIVED: dealt votes cannot carry the planted rule; the 1/4 factor GUESSED, mirrors the automated check\'s margin]',
+  G3: 'the null boards destroy it: EVERY null board\'s best held-back money is below a quarter of the real board\'s, and every DECLARED board is present [direction DERIVED: dealt votes cannot carry the planted rule; the 1/4 factor GUESSED, mirrors the automated check\'s margin]',
+  G4: 'no unit failures recorded in the gate run [DERIVED: a calibration with missing pieces proves nothing]',
 };
 
 // ---- candle generation (ported from tools/walkforward-planted-check.js) ---
@@ -86,16 +88,23 @@ function plantedSpan() {
   if (!real.length) return null;
   let fromMonth = null;
   let toDate = null;
+  const endOfMonth = (mm) => {
+    const [y, m] = mm.split('-').map(Number);
+    return `${mm}-${String(new Date(Date.UTC(y, m, 0)).getUTCDate()).padStart(2, '0')}`;
+  };
   for (const s of real) {
     if (fromMonth === null || s.from < fromMonth) fromMonth = s.from;
-    // `to` is either YYYY-MM (bundle months only) or YYYY-MM-DD (day files);
-    // normalize a bundle month to its last covered day.
-    let end = s.to;
-    if (end.length === 7) {
-      const [y, m] = end.split('-').map(Number);
-      end = `${end}-${String(new Date(Date.UTC(y, m, 0)).getUTCDate()).padStart(2, '0')}`;
+    // Coverage ends at the LATER of: the newest day-file date, or the last
+    // day of the newest BUNDLE month. cacheState's `to` alone understates
+    // when stale day files linger inside the newest bundled month (its
+    // '2026-07-15' hides the bundle's July 31 — review 2026-08-03). A
+    // month's end-of-month only counts when a bundle actually covers it.
+    const candidates = [s.to.length > 7 ? s.to : endOfMonth(s.to)];
+    const bundles = cachedMonths(s.symbol);
+    if (bundles.length) candidates.push(endOfMonth(bundles[bundles.length - 1]));
+    for (const end of candidates) {
+      if (toDate === null || end > toDate) toDate = end;
     }
-    if (toDate === null || end > toDate) toDate = end;
   }
   return { fromMonth, toDate };
 }
@@ -158,7 +167,10 @@ function generatePlanted(span) {
   let written = 0;
   for (const [month, rows] of byMonth) {
     const file = path.join(CACHE_DIR, `${PLANTED_SYMBOL}-1h-${month}.json`);
-    const tmp = `${file}.tmp${process.pid}`;
+    // pid alone is NOT unique here: two regenerations in one process (a data
+    // job's tail and a gate press) would share temp names and rename() could
+    // throw mid-write. A per-call counter keeps every writer distinct.
+    const tmp = `${file}.tmp${process.pid}-${++tmpSeq}`;
     fs.writeFileSync(tmp, JSON.stringify(rows));
     fs.renameSync(tmp, file);
     written++;
@@ -239,12 +251,27 @@ function gateVerdict(doc) {
   const draws = v.selection ? v.selection.draws : [];
   const limit = best.holdPnl / 4;
   const offenders = draws.filter((d) => d.value >= limit);
-  const g3 = draws.length > 0 && offenders.length === 0 && g1;
+  // "EVERY null board" means every DECLARED board: a board that vanished
+  // (all its rows skipped) shrinks the population silently, which reads as
+  // a pass earned on fewer draws than stamped (review 2026-08-03). The
+  // stamped count is in the run's own parameters.
+  const declared = Number(doc.params?.labelShiftReps) || 0;
+  const g3 = draws.length > 0 && draws.length === declared && offenders.length === 0 && g1;
   out.checks.push({ rule: 'G3', text: GATE_RULES.G3, pass: g3 });
   out.sentences.push(draws.length === 0
     ? 'FAIL G3: no null boards in the gate run — the rule cannot be applied'
-    : `${g3 ? 'ok  ' : 'FAIL'} G3: ${draws.length} null boards, best of each ${draws.map((d) => money(d.value)).join(', ')} against the quarter-line ${money(limit)}`
-      + (offenders.length ? ` — ${offenders.length} at or above it` : ''));
+    : draws.length !== declared
+      ? `FAIL G3: ${draws.length} null boards scored but ${declared} were declared — a shrunken population is not the stamped rule`
+      : `${g3 ? 'ok  ' : 'FAIL'} G3: ${draws.length} null boards, best of each ${draws.map((d) => money(d.value)).join(', ')} against the quarter-line ${money(limit)}`
+        + (offenders.length ? ` — ${offenders.length} at or above it` : ''));
+
+  // A calibration run with recorded unit failures is not a calibration:
+  // whatever failed might be exactly the piece being calibrated.
+  const failures = Array.isArray(doc.failures) ? doc.failures.length : 0;
+  out.checks.push({ rule: 'G4', text: GATE_RULES.G4, pass: failures === 0 });
+  out.sentences.push(failures === 0
+    ? 'ok   G4: no unit failures recorded'
+    : `FAIL G4: ${failures} failure(s) recorded in the gate run — fix the cause and re-run the check`);
 
   out.pass = out.checks.every((c) => c.pass);
   out.sentences.push(out.pass
@@ -265,11 +292,18 @@ function gateStatus(currentVersion, batchesDir) {
     files = fs.readdirSync(dir).filter((f) => f.endsWith('.json') && f.includes('planted-gate'));
   } catch { files = []; }
   const docs = [];
+  const unreadable = [];
   for (const f of files) {
     try {
       const d = JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8'));
       if (d && d.kind === 'bracketlab' && d.params && d.params.plantedGate) docs.push(d);
-    } catch { /* unreadable doc: skipped, surfaced by absence */ }
+    } catch {
+      // An unreadable gate record must not be SKIPPED into silence — the
+      // filename carries the timestamp, so if it is newer than every
+      // readable record, an older PASS would otherwise shadow whatever
+      // this one said (review 2026-08-03).
+      unreadable.push(f);
+    }
   }
   docs.sort((a, b) => (a.startedAt < b.startedAt ? 1 : -1));
   const running = docs.find((d) => d.status === 'running') || null;
@@ -281,6 +315,13 @@ function gateStatus(currentVersion, batchesDir) {
     running: running ? running.id : null,
     lastGate: null,
   };
+  const newestUnreadable = unreadable.sort().pop() || null;
+  if (newestUnreadable && (!latestDone || newestUnreadable > `${latestDone.id}.json`)) {
+    out.state = 'NOT CHECKED';
+    out.detail = `the newest gate record (${newestUnreadable}) is unreadable — no verdict stands until a fresh gate runs`;
+    out.unreadable = unreadable;
+    return out;
+  }
   if (latestDone) {
     const verdict = gateVerdict(latestDone);
     out.lastGate = {

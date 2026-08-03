@@ -2692,9 +2692,17 @@
         <p class="note">${(last.sentences || []).map(esc).join('<br>')}</p></details>` : ''}
       <p><button type="button" id="bl-gate-run">Run the planted check</button>
         <span id="bl-gate-msg" class="note"></span></p>`;
+    // While a gate sweep runs, the strip re-reads itself on a light timer —
+    // independent of the board's polling, which stops whenever a finished
+    // sweep is pinned in the picker (review 2026-08-03: the "updates when it
+    // finishes" sentence was false in exactly that case). The refreshed
+    // status also re-fills the null-tools warning below.
+    fillGateWarning();
+    clearTimeout(renderPlantedGate.timer);
+    if (s.running) renderPlantedGate.timer = setTimeout(() => renderPlantedGate(true), 5000);
     const btn = $('bl-gate-run');
     if (btn) btn.addEventListener('click', async () => {
-      if (!confirm('Run the planted check now? It regenerates the fabricated pair over the real data\'s span and fires one short sweep (fabricated pair only, four null boards). Refuses while any job runs.')) return;
+      if (!confirm('Run the planted check now? It regenerates the fabricated pair over the real data\'s span and fires one short sweep (fabricated pair only, four null boards). Refuses while any job or sweep runs.')) return;
       const msg = $('bl-gate-msg');
       try {
         const r = await fetch('api/planted-gate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
@@ -2767,6 +2775,7 @@
           const el3 = $('ds-status');
           if (el3 && result && typeof result === 'object') {
             el3.innerHTML = '<strong>Refresh report:</strong> ' + Object.entries(result).map(([sym, r]) => {
+              if (r.regenerated) return `${esc(sym)} — fabricated pair regenerated over ${esc(r.fromMonth)}..${esc(r.toDate)} (${r.months} months, seed ${r.seed})`;
               const gaps = (r.monthsWithoutBundles || r.missingMonths || []);
               const days = r.dayFilesFetched ? Object.entries(r.dayFilesFetched).map(([mm, n]) => `${mm}: ${n} day files`).join(', ') : '';
               return `${esc(sym)} — ${r.candles || 0} bundle candles${gaps.length ? `; no bundle yet for ${gaps.map(esc).join('/')}${days ? ` (filled: ${esc(days)})` : ' (NOT filled — say so if you see this)'}` : ''}`;

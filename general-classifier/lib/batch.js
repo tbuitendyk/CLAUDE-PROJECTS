@@ -188,6 +188,17 @@ function summarize(runs) {
   };
 }
 
+// The fabricated planted-check pair never enters ANY real launcher — not
+// just the Bracket lab. The review (2026-08-03) found the refusal lived in
+// one launcher while six others would ingest the pair; every start* now
+// runs its pair list through this.
+function refusePlantedPairs(symbols, what) {
+  const { PLANTED_SYMBOL } = require('./planted');
+  if ((symbols || []).filter(Boolean).includes(PLANTED_SYMBOL)) {
+    throw new Error(`${PLANTED_SYMBOL} is the reserved fabricated pair for the planted check — it never enters ${what}`);
+  }
+}
+
 function startBatch(params) {
   if (batchRunning()) throw new Error(`batch ${activeBatch.id} is already running`);
   const {
@@ -203,6 +214,7 @@ function startBatch(params) {
     weekdaysOnly = false,
     allLoaded = false,
   } = params || {};
+  refusePlantedPairs([...pairs, compareSymbol], 'a pair screen');
 
   const stamp = new Date().toISOString().replace(/[-:]/g, '').slice(0, 13).replace('T', '-');
   const doc = {
@@ -521,6 +533,7 @@ function startConsensus(params) {
     weekdaysOnly = false,
     allLoaded = false,
   } = params || {};
+  refusePlantedPairs([...pairs, compareSymbol], 'a consensus screen');
   const nShifts = Math.min(1000, Math.max(0, Math.floor(Number(nullShifts) || 0)));
 
   const stamp = new Date().toISOString().replace(/[-:]/g, '').slice(0, 13).replace('T', '-');
@@ -723,6 +736,7 @@ function startMetalens(params) {
     splitMode = 'chronological',
     allLoaded = false,
   } = params || {};
+  refusePlantedPairs([...pairs, compareSymbol], 'a metalens screen');
   const nShifts = Math.min(1000, Math.max(0, Math.floor(Number(nullShifts) || 0)));
 
   const stamp = new Date().toISOString().replace(/[-:]/g, '').slice(0, 13).replace('T', '-');
@@ -904,6 +918,7 @@ function startPermScreen(params) {
     weekdaysOnly = false,
     allLoaded = false,
   } = params || {};
+  refusePlantedPairs([...pairs, compareSymbol], 'a permutation screen');
 
   const stamp = new Date().toISOString().replace(/[-:]/g, '').slice(0, 13).replace('T', '-');
   const doc = {
@@ -1380,12 +1395,20 @@ function pushLeader(doc, row) {
 function promotionSet(p, doc, units) {
   if (p.declared || p.edgeScreen) {
     return units.map((u) => { const { c, b } = u; return ({
+      // The key carries EVERY arm marker. Dropping one here silently merges
+      // arms downstream: the null-deal seed was missing (caught by the
+      // 2026-08-03 adversarial review, BLOCKER) — every census sweep's null
+      // boards ran un-dealt at the promote stage, bit-identical to the real
+      // arm, their census rows tagged real, and the five gate arms shared
+      // one key so their model dumps overwrote each other.
       key: unitKey(c, b) + (u.layoutArm ? `|${u.layoutArm}` : '')
-        + (u.shiftFrac != null ? `|s${u.shiftFrac.toFixed(3)}` : ''),
+        + (u.shiftFrac != null ? `|s${u.shiftFrac.toFixed(3)}` : '')
+        + (u.nullDealSeed != null ? `|n${u.nullDealSeed}` : ''),
       trade: c.trade, ctx1: c.ctx1, ctx2: c.ctx2, size: c.size,
       geometry: b.geometry, decision: b.decision, bandMode: b.band, weekdaysOnly: b.weekdaysOnly,
       layoutArm: u.layoutArm ?? null,
       ...(Object.prototype.hasOwnProperty.call(u, 'shiftFrac') ? { shiftFrac: u.shiftFrac ?? null } : {}),
+      ...(u.nullDealSeed != null ? { nullDealSeed: u.nullDealSeed } : {}),
     }); });
   }
   return doc.leaders.filter((l) => l.stage === 'slim').slice(0, p.promoteK);
@@ -1907,6 +1930,7 @@ function htGradeLaunch(p, winnerDial, referenceDial, split) {
 function startWalkforward(params) {
   if (batchRunning()) throw new Error(`batch ${activeBatch.id} is already running`);
   const { p, geoms, decs } = wfParams(params);
+  refusePlantedPairs(p.universe, 'a walk-forward run');
   const units = [];
   for (const trade of p.universe) {
     for (const geometry of geoms) {
@@ -2403,7 +2427,10 @@ function startBracketLab(params) {
               // WINDOW LAYOUT this row was measured under, with the seed and
               // the layout's own bookkeeping — a comparison row that cannot
               // say which geometry produced it is not comparable to anything.
-              windowLayout: res.layoutMeta ? res.layoutMeta.layout : 'legacy',
+              // layoutMeta only ever came from the retired quota layouts, so
+              // this fallback stamped 'legacy' on split70/reserve61 rows —
+              // the stored parameters are the truth (review 2026-08-03).
+              windowLayout: res.layoutMeta ? res.layoutMeta.layout : (p.windowLayout || 'legacy'),
               interlaceSeed: res.layoutMeta ? res.layoutMeta.seed : null,
               layoutGroups: res.layoutMeta ? res.layoutMeta.groups : null,
               layoutEvalDays: res.layoutMeta ? res.layoutMeta.evalDays : null,
@@ -2494,7 +2521,10 @@ function startBracketLab(params) {
             const d = res.declared;
             doc.replication.push({
               trade: l.trade, ctx1: l.ctx1, ctx2: l.ctx2, geometry: l.geometry, bandPct: res.bandPct,
-              windowLayout: res.layoutMeta ? res.layoutMeta.layout : 'legacy',
+              // layoutMeta only ever came from the retired quota layouts, so
+              // this fallback stamped 'legacy' on split70/reserve61 rows —
+              // the stored parameters are the truth (review 2026-08-03).
+              windowLayout: res.layoutMeta ? res.layoutMeta.layout : (p.windowLayout || 'legacy'),
               entry: d.entry || 'breakout',
               quorum: d.quorum, members: d.members, pnl: d.pnl, trades: d.trades, wins: d.wins,
               grossPerTrade: d.grossPerTrade, stops: d.stops, ambiguous: d.ambiguous,
