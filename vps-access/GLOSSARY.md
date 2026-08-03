@@ -40,6 +40,25 @@ let us derive it. ("Effective training days" = the weight-adjusted amount
 of training data the members really saw — equals calendar days when no
 age discount is applied, shrinks as the discount strengthens.)
 
+**dial pair** (History Tuning) — one age setting combined with one
+retune setting; the grid is 35 dial pairs.
+
+**null board** (phase 4, JUDGE) — a companion board from the same sweep
+whose members trained on real data but had each member's votes dealt
+onto random days (register 66). Powers the board-against-null-board
+reading. Set the count on the sweep form; N boards can never claim
+finer than 1 in N+1.
+
+**null draw / trail-replay null draw** (History Tuning) — one full
+replay of a History Tuning run's grid and calendar on dealt votes,
+each draw picking its own winners. Declared count 19 (floor 1 in 20);
+repeated seeds refuse.
+
+**reserve grade** (History Tuning) — the one-touch final exam on the
+sealed reserve: the winner's walk + the reference pass's walk + the 19
+null draws, fired together, once, ever. A failed reserve is a dead
+end, never a hint.
+
 **History Tuning** (phase 5, DECIDE; optional second pass) — the
 Bracket lab feature that tunes the two time dials on ONE selected
 survivor: the age half-life (member training) and the retune cadence
