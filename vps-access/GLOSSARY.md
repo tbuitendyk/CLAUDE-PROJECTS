@@ -132,6 +132,9 @@ binds the instrument and the session, never the owner.
 
 - re-vote → retune
 - arm (History Tuning context) → pass / reference pass
+- arm (as a side of any comparison or two-layout run) → side. (The
+  trailing-stop "arm" distance on the sweep form is a different,
+  legitimate widget term and stays.)
 - fold (for History Tuning placements) → split
 recipe / trade recipe, cell -> dial combination
 experiment -> setup
