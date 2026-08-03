@@ -392,7 +392,7 @@ function consensusOf(specs) {
     medianTrueEdge: median(edges),
     medianBalancedAcc: median(specs.map((r) => r.metrics.balancedAcc).filter((v) => v != null)),
     // Same never-best-cell logic as the edges: the TYPICAL spec's one-shot
-    // $100 paper book over the test window, not the luckiest one's.
+    // $100 paper book over the test window, not the best single cell's.
     medianPaperPnl: pnls.length ? median(pnls) : null,
     positivePaper: pnls.filter((v) => v > 0).length,
   };
@@ -1531,18 +1531,17 @@ function htParams(params) {
 
 function startHistoryTuning(params) {
   if (batchRunning()) throw new Error(`batch ${activeBatch.id} is already running`);
-  // Claim the slot SYNCHRONOUSLY: htLaunch awaits a chunk build before its
-  // doc exists, and two POSTs in that window would both pass the check
-  // (review finding 8). The placeholder is released on any refusal.
-  const claim = { id: 'historytuning-pending', kind: 'historytuning', status: 'running', params: {}, perf: {} };
-  activeBatch = claim;
-  const release = (err) => { if (activeBatch === claim) { activeBatch = null; } throw err; };
   const HT = require('./historytuning');
-  // NULL DRAW (trail-replay): inherits the REAL run's stamped params
-  // verbatim — same splits, same usable span, same menu — plus a seed.
-  // The null inherits DATES AND LOOKBACKS ONLY; every retune and the grid
-  // pick happen on its own dealt votes (review fix 5).
+  // ALL synchronous validation happens BEFORE the slot is claimed — a
+  // refusal must never leave a phantom claim wedging batchRunning() (caught
+  // by test-htlaunch.js, watched failing). The claim then closes the async
+  // window between here and the doc existing (review finding 8).
+  let p;
   if (params.replayOf) {
+    // NULL DRAW (trail-replay): inherits the REAL run's stamped params
+    // verbatim — same splits, same usable span, same menu — plus a seed.
+    // The null inherits DATES AND LOOKBACKS ONLY; every retune and the grid
+    // pick happen on its own dealt votes (review fix 5).
     const real = getBatch(String(params.replayOf));
     if (!real || real.kind !== 'historytuning') throw new Error(`replayOf: unknown History Tuning run '${params.replayOf}'`);
     if (real.status !== 'done') throw new Error(`replayOf: ${real.id} is ${real.status} — null draws replay finished runs only`);
@@ -1566,13 +1565,15 @@ function startHistoryTuning(params) {
     if ((real.htRows || []).some((r) => !r.refused && !r.skipped && !r.trailFile)) {
       throw new Error(`${real.id} has passes with missing trail files — no trail, no null, no claim. Investigate the trail-dump failures before drawing.`);
     }
-    const p2 = { ...real.params, nullShiftSeed: seed, arm: 'null', replayOf: real.id,
+    p = { ...real.params, nullShiftSeed: seed, arm: 'null', replayOf: real.id,
       label: params.label || `htnull-s${seed}`, description: params.description || `null draw seed ${seed} of ${real.id} — no verdict alone; selects nothing` };
-    return htLaunch(p2, HT, claim).catch(release);
+  } else {
+    p = htParams(params);
+    p.arm = 'real';
   }
-  let p;
-  try { p = htParams(params); } catch (err) { release(err); }
-  p.arm = 'real';
+  const claim = { id: 'historytuning-pending', kind: 'historytuning', status: 'running', params: {}, perf: {} };
+  activeBatch = claim;
+  const release = (err) => { if (activeBatch === claim) { activeBatch = null; } throw err; };
   return htLaunch(p, HT, claim).catch(release);
 }
 

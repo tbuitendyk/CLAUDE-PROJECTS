@@ -78,7 +78,7 @@ the models.
 - **Folds: three**, placed early / middle / late through history —
   105 passes total on the selected setup. One fold ranks an era;
   three rank the dials.
-- **Grading:** picking happens on TEST stretches only. The winner is
+- **Grading:** picking happens on TEST windows only. The winner is
   declared ONCE, on combined test performance across all three folds
   (never per fold — that would be three shopping trips). The declared
   winner is then graded on the three HOLD windows, each touched
@@ -122,8 +122,8 @@ session record; the substance:
    lookback ends one reach before the retune date.
 3. **The null is rebuilt per cell**: informationless votes are
    untrained, so the age axis would collapse in a naive null (35 real
-   options vs ~7 null options — best-of-35 beats best-of-7 on pure
-   luck). Fix: an independent QC-66 vote deal per grid cell and per
+   options vs ~7 null options — best-of-35 beats best-of-7 on chance
+   alone). Fix: an independent QC-66 vote deal per grid cell and per
    retrain segment; the null inherits DATES AND LOOKBACKS ONLY and
    picks its own winners at every retune and at the grid pick. Null
    draw count N declared before launch (resolution floor 1/(N+1));
@@ -228,7 +228,7 @@ C. RULED (owner, 2026-08-03): Rule 2 — don't start what can't
    changes the owner's ruled sentence. Needs the owner's yes.
 D. RULED (owner, 2026-08-03): expanding-training splits. The usable
    span (loaded history minus the original run's test+hold months per
-   ruling B, or minus the sealed reserve) carves its back stretch into
+   ruling B, or minus the sealed reserve) carves its back span into
    six equal, disjoint test/hold windows (~6 months each on today's
    data): early split trains 1-14, tests 15-20, holds 21-26; middle
    trains 1-26, tests 27-32, holds 33-38; late trains 1-38, tests

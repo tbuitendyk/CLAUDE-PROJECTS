@@ -16,7 +16,7 @@
 // Both use the rank test: beats all N draws -> p = 1/(N+1), and with N draws
 // that floor is the strongest claim available — never read it as a large
 // effect. Passing clears THIS window only; the forward paper test after
-// freezing is the real judge. This gate exists to stop obvious luck being
+// freezing is the real judge. This gate exists to stop obvious chance results being
 // frozen, nothing more.
 // TWO NULL CONSTRUCTIONS EXIST ON DISK. Docs from 2026-08-03 onward carry
 // deal-built draws (nullDealSeed, register 66 — each member's real vote mix

@@ -16,6 +16,13 @@ const SCAN = [
   'public/app.js',
   'WORKFLOW.md',
   'OWNER-SPEC.md',
+  'DESIGN-HISTORY-TUNING.md',
+  // error strings in these reach the owner through HTTP 400s
+  'lib/batch.js',
+  'lib/historytuning.js',
+  'lib/history.js',
+  'lib/compare.js',
+  'lib/verdict.js',
 ];
 const BANNED = /\bluck\w*\b/i;
 
