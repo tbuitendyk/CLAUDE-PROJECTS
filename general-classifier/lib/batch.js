@@ -1551,6 +1551,7 @@ function htParams(params) {
       return v;
     })(),
     label: params.label || '', description: params.description || '',
+    campaign: require('./campaign').getCampaign() || null,
     engineVersion: ENGINE_VERSION,
     readingRules: HT.READING_RULES, // stamped BEFORE anything computes
     trainingFloorDays: require('./history').TRAINING_FLOOR_DAYS,
@@ -2070,6 +2071,23 @@ function pickMenu(given, allowed) {
   return [...new Set(given)];
 }
 
+// POST-RUN NOTES (owner order, 2026-08-04): a freely editable note stored on
+// the run itself — rationale, what was learned, whether to reconsult. Edits
+// refuse while the run computes: the orchestrator saves the doc continuously
+// and a concurrent note write would be silently overwritten.
+function setBatchNotes(id, text) {
+  const doc = getBatch(String(id || ''));
+  if (!doc) throw new Error('unknown run');
+  if (!['bracketlab', 'historytuning', 'walkforward'].includes(doc.kind)) {
+    throw new Error('notes live on bracket-lab, History Tuning and walk-forward runs');
+  }
+  if (doc.status === 'running') throw new Error('the run is still computing — notes save after it finishes');
+  doc.notes = String(text ?? '').slice(0, 20000);
+  doc.notesEditedAt = new Date().toISOString();
+  saveBatch(doc);
+  return { id: doc.id, notes: doc.notes, notesEditedAt: doc.notesEditedAt };
+}
+
 function startBracketLab(params) {
   if (batchRunning()) throw new Error(`batch ${activeBatch.id} is already running`);
   const p = {
@@ -2178,6 +2196,9 @@ function startBracketLab(params) {
     // the code changed between two runs — the comparison surface checks this
     // and warns loudly on mismatch.
     engineVersion: ENGINE_VERSION,
+    // The owner's current campaign name rides on every launch (owner order,
+    // 2026-08-04) so the saved-runs list groups a cycle's runs at a glance.
+    campaign: require('./campaign').getCampaign() || null,
   };
   if (!p.sizes.singles && !p.sizes.doubles && !p.sizes.triples) throw new Error('tick at least one combo size');
   // PLANTED CHECK plumbing (owner order, 2026-08-03). The fabricated pair is
@@ -2840,6 +2861,7 @@ module.exports = {
   startBracketConfirm,
   expandBracketPlan,
   promotionSet,
+  setBatchNotes,
   validateDeclared,
   declaredQuorumFor,
   permSelect,

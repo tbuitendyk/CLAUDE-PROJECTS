@@ -2529,7 +2529,31 @@
         each states what it costs before it runs.</p>
       <div id="bl-null-gatewarn"></div></div>`;
     const htBlock = '<div id="bl-ht-panel"></div>';
-    blViewEl.innerHTML = `<p class="note">${header}</p>${perfBlock}${repBlock}${leaderBlock}${nullIntro}${nullBlock}${verdictBlock}${htBlock}${inspectBlock}${compareBlock}`;
+    // OWNER'S NOTES, right at the top (owner order, 2026-08-04): a freely
+    // editable field on the run itself — rationale, what was learned,
+    // whether to reconsult. Saves after the run finishes (the engine refuses
+    // while it computes, so a note can never be overwritten by the job).
+    const notesBlock = `
+      <div class="section"><h3>Notes${p.campaign ? ` · campaign [${esc(p.campaign)}]` : ''}</h3>
+      <textarea id="bl-notes" rows="3" style="width:100%;box-sizing:border-box" placeholder="Why this run existed, what it showed, what to revisit — yours to edit any time after the run.">${esc(doc.notes || '')}</textarea>
+      <p><button type="button" id="bl-notes-save"${running ? ' disabled title="saves after the run finishes"' : ''}>save notes</button>
+        <span id="bl-notes-msg" class="note">${doc.notesEditedAt ? `last saved ${esc(doc.notesEditedAt.slice(0, 16).replace('T', ' '))} UTC` : ''}</span></p></div>`;
+    blViewEl.innerHTML = `<p class="note">${header}</p>${notesBlock}${perfBlock}${repBlock}${leaderBlock}${nullIntro}${nullBlock}${verdictBlock}${htBlock}${inspectBlock}${compareBlock}`;
+    const notesSave = $('bl-notes-save');
+    if (notesSave) notesSave.addEventListener('click', async () => {
+      const msg = $('bl-notes-msg');
+      try {
+        const r = await fetch(`api/bracketlab/${encodeURIComponent(doc.id)}/notes`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text: $('bl-notes').value }),
+        });
+        const d = await jsonBody(r);
+        if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`);
+        doc.notes = d.notes;
+        doc.notesEditedAt = d.notesEditedAt;
+        msg.textContent = `saved ${d.notesEditedAt.slice(0, 16).replace('T', ' ')} UTC`;
+      } catch (err) { msg.textContent = `refused: ${err.message}`; }
+    });
     renderHtPanel(doc, sel).catch((err) => { const el2 = $('bl-ht-panel'); if (el2) el2.innerHTML = `<p class="note">History Tuning panel failed to load: ${esc(err.message)}</p>`; });
     fillGateWarning();
     // ---- inside view ------------------------------------------------------
@@ -2933,6 +2957,34 @@
     });
   }
 
+  // ---- campaign control (owner order, 2026-08-04) ---------------------------
+  async function renderCampaign() {
+    const el = $('bl-campaign');
+    if (!el) return;
+    let name = '';
+    try {
+      const r = await fetch('api/campaign');
+      name = ((await jsonBody(r)).name) || '';
+    } catch { /* control still renders; set will surface any error */ }
+    el.innerHTML = `
+      <p class="note"><strong>Campaign:</strong>
+        <input id="bl-camp-name" type="text" maxlength="40" value="${esc(name)}" placeholder="e.g. ltc-drill-aug04" style="min-width:200px">
+        <button type="button" id="bl-camp-set">set</button>
+        <span id="bl-camp-msg"></span><br>
+        Every run launched while a campaign is set carries its name — the saved-runs list shows
+        <em>[campaign] run-id</em>, so one glance says which runs belong to the same cycle of tests.
+        Clear the box and press set to stop tagging.</p>`;
+    $('bl-camp-set').addEventListener('click', async () => {
+      const msg = $('bl-camp-msg');
+      try {
+        const r = await fetch('api/campaign', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: $('bl-camp-name').value }) });
+        const d = await jsonBody(r);
+        if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`);
+        msg.textContent = d.name ? `tagging new runs as [${d.name}]` : 'campaign cleared — new runs untagged';
+      } catch (err) { msg.textContent = `refused: ${err.message}`; }
+    });
+  }
+
   // ---- Bracket lab data manager (owner order, 2026-08-03) --------------------
   async function renderDataManager() {
     const el = $('bl-data');
@@ -3028,13 +3080,19 @@
   }
   renderDataManager();
   renderPlantedGate();
+  renderCampaign();
 
   async function refreshBracket() {
     try {
       blErrEl.hidden = true;
       const listRes = await fetch('api/batches');
       const list = (await jsonBody(listRes)).batches.filter((b) => b.id.startsWith('bracketlab-'));
-      blPickEl.innerHTML = list.map((b) => `<option value="${esc(b.id)}"${b.id === blPicked ? ' selected' : ''}>${esc(b.id)} (${esc(b.status)})</option>`).join('');
+      // Campaign prefix first (owner order, 2026-08-04): the generic ids say
+      // nothing, so runs from the same cycle of tests announce themselves.
+      blPickEl.innerHTML = list.map((b) => {
+        const camp = b.params && b.params.campaign ? `[${b.params.campaign}] ` : '';
+        return `<option value="${esc(b.id)}"${b.id === blPicked ? ' selected' : ''}>${esc(camp)}${esc(b.id)} (${esc(b.status)})</option>`;
+      }).join('');
       const id = blPicked || (list[0] && list[0].id);
       if (!id) { renderBracket(null); return; }
       const res = await fetch(`api/batch/${encodeURIComponent(id)}`);

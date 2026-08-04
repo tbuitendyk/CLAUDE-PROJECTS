@@ -255,6 +255,27 @@ app.post('/api/data/purge', (req, res) => {
 // PASS / FAIL / NOT CHECKED with the versions quoted.
 const RELEASE_VERSION = require('./package.json').version;
 
+// ---- campaign name + post-run notes (owner orders, 2026-08-04) --------------
+const campaign = require('./lib/campaign');
+
+app.get('/api/campaign', (req, res) => res.json({ name: campaign.getCampaign() }));
+
+app.post('/api/campaign', (req, res) => {
+  try {
+    res.json({ name: campaign.setCampaign((req.body || {}).name) });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.post('/api/bracketlab/:id/notes', (req, res) => {
+  try {
+    res.json(batch.setBatchNotes(req.params.id, (req.body || {}).text));
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
 app.get('/api/planted-gate/status', (req, res) => {
   try {
     res.json(planted.gateStatus(RELEASE_VERSION));
