@@ -144,3 +144,5 @@ luck committee, null arm, luck test, luck run, luck arm, luck yardstick, luck dr
 fake-coin gate, fake-coin test -> planted check
 ("luck"/"chance" as ordinary descriptive words inside a sentence are fine;
 MINTING NAMES with them is what is forbidden)
+
+- **Up/Down Hunter** — the decision style formerly displayed as "directional hunter" (stored value stays `directional` in old records). Renamed 2026-08-04 because the word collided with the *directional gate*: on screen, "directional" now ALWAYS means the gate, never the decision style.
