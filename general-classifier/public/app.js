@@ -1977,7 +1977,7 @@
     const rankLine = candIdx >= 0
       ? `<p class="note"><strong>Your cell sits at #${candIdx + 1} of ${cells.length}</strong> in the table below (marked ▶).` +
         (d.holdAvg != null && cand.holdPnl != null
-          ? ` HELD-BACK comparison: your cell ${cand.holdPnl >= 0 ? '+' : '-'}$${Math.abs(cand.holdPnl).toFixed(2)} vs the average of all ${d.holdCellCount.toLocaleString()} setups ${d.holdAvg >= 0 ? '+' : '-'}$${Math.abs(d.holdAvg).toFixed(2)} (${(100 * d.holdPosShare).toFixed(0)}% of setups positive). Every setup was scored once on the graded window but ONLY the average is disclosed — per-setup held-back numbers would let the graded window be shopped.`
+          ? ` HELD-BACK comparison: your cell ${cand.holdPnl >= 0 ? '+' : '-'}$${Math.abs(cand.holdPnl).toFixed(2)} vs the average of the ${d.holdCellCount.toLocaleString()} setups that actually traded ${d.holdAvg >= 0 ? '+' : '-'}$${Math.abs(d.holdAvg).toFixed(2)} (${(100 * d.holdPosShare).toFixed(0)}% of them positive; ${(d.holdAllCellCount ?? 0).toLocaleString()} cells total — never-traded cells and duplicate always-gate copies are excluded so the average cannot be dragged toward zero by cells that did nothing). Every setup was scored once on the graded window but ONLY the average is disclosed — per-setup held-back numbers would let the graded window be shopped.`
           : '')
         + '</p>'
       : '';
@@ -2122,6 +2122,7 @@
       ${drawsTable(t)}` : '';
     return `
       <p class="note">real: ${esc(d.realJob)} · null boards: ${esc(d.nullJob)} (${d.drawCount} draws, ${esc(d.construction || '')})</p>
+      ${d.paramMismatch ? `<p class="note"><strong style="color:#c33">SETTINGS MISMATCH:</strong> the two jobs differ on ${d.paramMismatch.fields.map(esc).join(', ')} — ${esc(d.paramMismatch.note)}</p>` : ''}
       ${block('Per-setup test', d.perSetup, 'Is this setup better than ITS OWN noise? Same setup, same machinery, dealt votes.')}
       ${block('Selection-aware test', d.selection, 'Is topping the board better than topping a NOISE board? Each null draw contributes its own best-of-board — this prices in that the winner was picked after looking.')}
       <p class="note">sanity: ${d.sanity.scrambleRows} null-draw setups, ${(100 * d.sanity.negativeShare).toFixed(1)}% losing money —
@@ -2223,7 +2224,7 @@
     // held-back money beat. Same reading as Tool 2's per-setup line, one
     // click fewer. The column only exists when the run carries dealt-vote
     // null rows — old boards stay exactly as they were.
-    const vnKey = (r) => `${r.trade}|${r.geometry}|${r.decision}`;
+    const vnKey = (r) => `${r.trade}|${r.ctx1 || ''}|${r.ctx2 || ''}|${r.geometry}|${r.decision}`; // ctx included (review 2026-08-04)
     const vnNulls = new Map();
     const vnReal = new Map();
     for (const r of (doc.edgeCensus || [])) {
@@ -2264,6 +2265,7 @@
           bandMode: r.bandMode ?? set.band ?? 'auto', bandPct: r.bandPct,
           weekdaysOnly: r.weekdaysOnly ?? !!set.weekdaysOnly,
           quorum: r.cellQuorum, members: r.members,
+          edgeRungQuorum: r.quorum ?? null, // acc/edge fields were measured at THIS rung, not the money cell's
           gate: r.cellGate, entry: r.cellEntry, dMult: r.cellDMult, tHours: r.cellTHours,
           trailMult: r.cellTrailMult, armMult: r.cellArmMult,
           pnl: r.searchPnl, trades: r.searchTrades, wins: r.searchWins,
@@ -2301,7 +2303,7 @@
         <td class="tune blk-l">${money(l.pnl)}
           <div class="cellsub">${l.gate === 'always' || l.controlPnl == null ? '—' : 'vs ' + money(l.pnl - l.controlPnl)}</div></td>
         <td class="tune">${l.metrics ? pct(l.metrics.testAcc) : '—'}
-          <div class="cellsub">${l.metrics ? signedPct(l.metrics.edge) : ''}</div></td>
+          <div class="cellsub">${l.metrics ? signedPct(l.metrics.edge) : ''}${l.edgeRungQuorum != null && l.edgeRungQuorum !== l.quorum ? ` @q${l.edgeRungQuorum}` : ''}</div></td>
         <td class="tune">${l.wins}/${l.trades}
           <div class="cellsub">${l.grossPerTrade != null ? '$' + l.grossPerTrade.toFixed(2) : ''}</div></td>
         <td class="tune">${l.stops}${l.ambiguous ? `<div class="cellsub">${l.ambiguous} amb</div>` : ''}</td>`;
@@ -2325,8 +2327,9 @@
       // Arm-aware: on a 'both' run the same setup exists once per layout,
       // and the wrong pick would open the other arm's members (audit
       // 2026-07-30). Rows and leaders without layout info match as before.
-      const censusRow = (doc.edgeCensus || []).find((r) => !r.shiftFrac
-        && r.trade === l.trade && r.geometry === l.geometry && r.decision === l.decision
+      const censusRow = (doc.edgeCensus || []).find((r) => !r.shiftFrac && r.nullDealSeed == null
+        && r.trade === l.trade && (r.ctx1 || null) === (l.ctx1 || null) && (r.ctx2 || null) === (l.ctx2 || null)
+        && r.geometry === l.geometry && r.decision === l.decision
         && (!l.layoutArm || r.windowLayout === l.layoutArm));
       const dumpFile = censusRow && censusRow.modelFile ? censusRow.modelFile.split('/').pop() : null;
       return `<tr class="${l.stage === 'promoted' ? 'hilite' : ''}">
@@ -2777,7 +2780,8 @@
         seenSetups.add(dedup);
         const o = document.createElement('option');
         o.value = JSON.stringify({
-          trade: l.trade, geometry: l.geometry, decision: l.decision,
+          trade: l.trade, ctx1: l.ctx1 || null, ctx2: l.ctx2 || null,
+          geometry: l.geometry, decision: l.decision,
           ...(l.layoutArm ? { windowLayout: l.layoutArm } : {}),
         });
         o.textContent = `${comboLabel(l)} · ${l.geometry} · ${decName(l.decision)}${l.layoutArm ? ` · ${l.layoutArm}` : ''}`;

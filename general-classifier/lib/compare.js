@@ -25,10 +25,13 @@
 // told about.
 const ALLOW_DIFF = new Set(['windowLayout', 'description', 'label', 'engineVersion']);
 
+// absent, null and undefined are the SAME recorded state — docs from
+// before a key existed must not show phantom differences (review 2026-08-04).
+const normVal = (v) => (v === undefined ? null : v);
 function settingsDiff(pa, pb, skip = ALLOW_DIFF) {
   const keys = [...new Set([...Object.keys(pa || {}), ...Object.keys(pb || {})])];
   return keys.filter((k) => !skip.has(k)
-    && JSON.stringify(pa ? pa[k] : undefined) !== JSON.stringify(pb ? pb[k] : undefined));
+    && JSON.stringify(normVal(pa ? pa[k] : undefined)) !== JSON.stringify(normVal(pb ? pb[k] : undefined)));
 }
 
 const keyOf = (r) => `${r.trade}|${r.ctx1 || ''}|${r.ctx2 || ''}|${r.geometry}|${r.decision}`;
@@ -92,7 +95,14 @@ function compareRows(rowsA, rowsB, armA, armB) {
 // same-settings refusal (built for the retired layout face-off) is gone
 // with the interlaced purge; historical 'both' runs still compare their own
 // two arms.
-const NEVER_ATTRIBUTABLE = new Set(['description', 'label', 'engineVersion']);
+const NEVER_ATTRIBUTABLE = new Set(['description', 'label', 'engineVersion',
+  // Review 2026-08-04: pure labels and companion records never shape money.
+  'campaign', 'plantedGate', 'plantedRules',
+  // Derived twins of real settings — counting them makes every canonical
+  // one-variable pair read as two differences: holdout follows windowLayout,
+  // edgeScreen follows labelShiftReps, reserveWeeksPlanned exists only under
+  // reserve61.
+  'holdout', 'edgeScreen', 'reserveWeeksPlanned']);
 
 function compareDocs(docA, docB) {
   const warnings = [];

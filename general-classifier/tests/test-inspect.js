@@ -77,7 +77,7 @@ module.exports = {
     // population, not BBB tracked through the draws)
     assert.strictEqual(v.selection.beats, 3);
     assert.deepStrictEqual(v.selection.draws.map((d) => d.setup),
-      ['BBB|daily-3d|argmax', 'AAA|daily-3d|argmax', 'CCC|daily-3d|argmax']);
+      ['BBB|||daily-3d|argmax', 'AAA|||daily-3d|argmax', 'CCC|||daily-3d|argmax']); // keys carry ctx slots since 2026-08-04
     // sanity counts the POPULATION (5 of 9 rows negative), not the maxima
     assert.ok(Math.abs(v.sanity.negativeShare - 5 / 9) < 1e-9);
     // and a weaker real board must FAIL the selection test: drop BBB to 200

@@ -215,7 +215,8 @@ app.post('/api/data/purge', (req, res) => {
   const b = req.body || {};
   const sym = String(b.symbol || '').trim().toUpperCase();
   if (!SYMBOL_RE.test(sym)) return res.status(400).json({ error: 'symbol must look like DOTUSDT' });
-  if (batch.batchRunning()) return res.status(409).json({ error: 'a job is running — purge refuses while anything reads the cache' });
+  if (batch.batchRunning()) return res.status(409).json({ error: 'a sweep is running — purge refuses while anything reads the cache' });
+  { const j = require('./lib/jobs').anyJobRunning(); if (j) return res.status(409).json({ error: `data/analysis job ${j} is running — purge refuses while anything reads or writes the cache` }); }
   const keepFrom = b.keepFrom ? String(b.keepFrom) : null;
   const keepTo = b.keepTo ? String(b.keepTo) : null;
   if ((keepFrom && !/^\d{4}-\d{2}$/.test(keepFrom)) || (keepTo && !/^\d{4}-\d{2}$/.test(keepTo))) {
@@ -714,6 +715,10 @@ async function refreshNewMonths() {
       const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - back, 1));
       const mm = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
       if (have.has(mm)) continue;
+      // Re-check per fetch, not just at entry: each download awaits the
+      // network for seconds, and a sweep launched in that window would
+      // otherwise get cache writes mid-run despite the guard above.
+      if (batch.batchRunning()) return;
       try {
         const rows = await monthlyKlines(symbol, d.getUTCFullYear(), d.getUTCMonth() + 1);
         if (rows) console.log(`auto-refresh: cached ${symbol} ${mm} (${rows.length} candles)`);

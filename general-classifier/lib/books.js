@@ -1,3 +1,4 @@
+let bookSeq = 0;
 const fs = require('fs');
 const path = require('path');
 const { monthlyKlines, dailyKlines, recentKlines, HOUR_MS } = require('./binance');
@@ -69,7 +70,7 @@ function readRegistry() {
 
 function writeRegistry(reg) {
   fs.mkdirSync(BOOKS_DIR, { recursive: true });
-  fs.writeFileSync(REGISTRY, JSON.stringify(reg));
+  { const __t = REGISTRY + '.tmp' + process.pid + '-' + (++bookSeq); fs.writeFileSync(__t, JSON.stringify(reg)); fs.renameSync(__t, REGISTRY); }
 }
 
 function bookFile(id) {
@@ -79,7 +80,7 @@ function bookFile(id) {
 
 function saveBook(doc) {
   fs.mkdirSync(BOOKS_DIR, { recursive: true });
-  fs.writeFileSync(bookFile(doc.id), JSON.stringify(doc));
+  { const __t = bookFile(doc.id) + '.tmp' + process.pid + '-' + (++bookSeq); fs.writeFileSync(__t, JSON.stringify(doc)); fs.renameSync(__t, bookFile(doc.id)); }
 }
 
 function loadBook(id) {
@@ -401,7 +402,16 @@ async function declare(id, onProgress = () => {}) {
   doc.declaration = generateDeclaration(config, { ...doc.preview, bandPct, trainChunks: trainChunks.length }, doc.bookNumber);
   saveBook(doc);
   onProgress('frozen — seeding the record since cutoff');
-  await tickBook(doc, { compareMap, tradeMap }, onProgress);
+  // The seed tick takes the same lock as the scheduler's tick pass. Without
+  // it, a concurrent tick could save a stale copy of this book over the
+  // seed's settled periods (or the seed over the tick's).
+  while (ticking) await new Promise((r) => setTimeout(r, 500));
+  ticking = true;
+  try {
+    await tickBook(doc, { compareMap, tradeMap }, onProgress);
+  } finally {
+    ticking = false;
+  }
   return publicView(loadBook(id));
 }
 
@@ -500,6 +510,17 @@ async function tickBook(doc, maps, onProgress = () => {}) {
 
   doc.periods.sort((a, b) => a.chunkStart - b.chunkStart);
 
+  // Reload-before-save: if the owner retired this book while this tick was
+  // in flight (ticks await network fetches for minutes), the in-memory copy
+  // is stale and saving it would silently REVERT the retirement. Discard
+  // this tick's work instead — the next tick re-settles the same periods
+  // from the same candles, so nothing is lost; a reverted retirement is.
+  const fresh = loadBook(doc.id);
+  if (fresh && fresh.status === 'retired' && doc.status !== 'retired') {
+    onProgress(`${doc.id}: retired mid-tick — tick discarded to preserve the retirement`);
+    return;
+  }
+
   // horizon check: the verdict window closes at N live periods, permanently
   const liveDone = doc.periods.filter((p) => p.live && p.status !== 'pending').length;
   if (doc.status === 'live' && liveDone >= config.horizonPeriods) {
@@ -533,8 +554,16 @@ async function tick(onProgress = () => {}) {
       symbols.add(b.config.pair);
       symbols.add(b.config.compareSymbol);
     }
+    // The timer gate (tickUnlessBatch) checks once at entry, but each symbol
+    // fetch below awaits the network and WRITES the cache — a sweep launched
+    // mid-tick would see the dataset change under it. Re-check per symbol
+    // and abort; the next tick after the sweep self-heals.
+    const { batchRunning } = require('./batch');
     const maps = {};
-    for (const s of symbols) maps[s] = await fullHourlyMap(s, '2026-01', onProgress);
+    for (const s of symbols) {
+      if (batchRunning()) { onProgress('sweep started mid-tick — books tick aborted'); return; }
+      maps[s] = await fullHourlyMap(s, '2026-01', onProgress);
+    }
     for (const b of books) {
       try {
         await tickBook(b, { tradeMap: maps[b.config.pair], compareMap: maps[b.config.compareSymbol] }, onProgress);
@@ -627,7 +656,20 @@ function statusAll() {
 }
 
 async function refreshPrices(onProgress = () => {}) {
-  // light refresh: recent candles per live pair, fill knowable entries
+  // light refresh: recent candles per live pair, fill knowable entries.
+  // Takes the same lock as tick(): both rewrite the same book files, and an
+  // unguarded refresh saving mid-tick would overwrite the tick's settlements
+  // with the stale copies it loaded before the tick began.
+  if (ticking) return;
+  ticking = true;
+  try {
+    await refreshPricesInner(onProgress);
+  } finally {
+    ticking = false;
+  }
+}
+
+async function refreshPricesInner(onProgress = () => {}) {
   const books = listBooks().filter((b) => b.status === 'live' || b.status === 'completed');
   const now = Date.now();
   const byPair = new Map();
@@ -663,6 +705,10 @@ async function refreshPrices(onProgress = () => {}) {
           if (c) p.entry = c.open;
         }
       }
+      // Same reload-before-save rule as tickBook: never let a stale copy
+      // loaded before the network fetch revert a retirement saved since.
+      const fresh = loadBook(b.id);
+      if (fresh && fresh.status === 'retired' && b.status !== 'retired') continue;
       saveBook(b);
     }
   }

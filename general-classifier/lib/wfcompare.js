@@ -77,13 +77,23 @@ function compareRuns(real, nulls) {
 function loadRun(wfDir, jobId) {
   const dir = path.join(wfDir, jobId);
   const out = {};
+  const unreadable = [];
   for (const f of fs.readdirSync(dir)) {
     if (!f.endsWith('.json')) continue;
-    const d = JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8'));
+    let d;
+    try {
+      d = JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8'));
+    } catch {
+      // One torn fold file must not 500 the whole comparison forever —
+      // report it BY NAME instead (review 2026-08-04, D9).
+      unreadable.push(f);
+      continue;
+    }
     const key = `${d.trade} ${d.geometry} ${d.decision}`;
     out[key] = {};
     for (const fold of d.folds) if (!fold.skipped) out[key][fold.testStart] = fold.holdPnl;
   }
+  if (unreadable.length) out.__unreadable = unreadable;
   return out;
 }
 

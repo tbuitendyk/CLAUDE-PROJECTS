@@ -15,6 +15,7 @@ const DATA = 'https://data.binance.vision';
 // carry yet. Two hosts tried in order; some networks pass one but not the
 // other (same pattern as the semi-auto balancer).
 const API_HOSTS = ['https://api.binance.vision', 'https://api.binance.com'];
+let tmpSeq = 0;
 const HOUR_MS = 3_600_000;
 const CACHE_DIR = path.join(__dirname, '..', 'data', 'cache');
 
@@ -115,7 +116,7 @@ async function monthlyKlines(symbol, year, month, interval = '1h') {
     // thread's refresh timers. A torn read would fall into the catch above,
     // re-fetch, and on a 404 silently drop the month — changing the dataset
     // a model trains on with no error surfaced. rename() is atomic on POSIX.
-    const tmp = `${file}.tmp${process.pid}`;
+    const tmp = `${file}.tmp${process.pid}-${++tmpSeq}-${Math.floor(Math.random()*1e6)}`;
     fs.writeFileSync(tmp, JSON.stringify(rows));
     fs.renameSync(tmp, file);
   } catch (err) {
@@ -153,7 +154,7 @@ async function dailyKlines(symbol, year, month, day) {
     // thread's refresh timers. A torn read would fall into the catch above,
     // re-fetch, and on a 404 silently drop the month — changing the dataset
     // a model trains on with no error surfaced. rename() is atomic on POSIX.
-    const tmp = `${file}.tmp${process.pid}`;
+    const tmp = `${file}.tmp${process.pid}-${++tmpSeq}-${Math.floor(Math.random()*1e6)}`;
     fs.writeFileSync(tmp, JSON.stringify(rows));
     fs.renameSync(tmp, file);
   } catch (err) {

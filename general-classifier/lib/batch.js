@@ -39,6 +39,7 @@ function markInterrupted(doc) {
   }
   doc.status = 'interrupted';
   if (doc.nullTest && doc.nullTest.status === 'running') doc.nullTest.status = 'interrupted';
+  if (doc.confirm && doc.confirm.status === 'running') doc.confirm.status = 'interrupted';
   doc.finishedAt = doc.finishedAt || new Date().toISOString();
   doc.progress = '';
   return doc;
@@ -56,20 +57,59 @@ function markInterrupted(doc) {
     try {
       const doc = JSON.parse(fs.readFileSync(file, 'utf8'));
       if (doc.status !== 'running') continue;
-      fs.writeFileSync(file, JSON.stringify(markInterrupted(doc), null, 1));
+      {
+        const tmp = `${file}.tmp${process.pid}-boot`;
+        fs.writeFileSync(tmp, JSON.stringify(markInterrupted(doc), null, 1));
+        fs.renameSync(tmp, file);
+      }
     } catch {
       /* one unreadable doc must not abort the sweep for the rest */
     }
   }
 })();
 
+let saveSeq = 0;
+// Atomic file write for every on-disk record (QC 75): dumps, fold files,
+// docs. A torn record is a record deleted.
+function atomicWrite(file, data) {
+  const tmp = `${file}.tmp${process.pid}-${++saveSeq}`;
+  fs.writeFileSync(tmp, data);
+  fs.renameSync(tmp, file);
+}
+
+// The failure list caps at 200 to keep docs light, but a SILENT cap hides
+// the breadth of a breakage: past the cap the counter still ticks, so the
+// reader always knows how many more failed than the list shows.
+function recordFailure(doc, key, error) {
+  if (doc.failures.length < 200) doc.failures.push({ key, error });
+  else doc.failuresDropped = (doc.failuresDropped || 0) + 1;
+}
+
+// QC 74 (owner law, 2026-08-04): computed records are NEVER deleted. When a
+// tool is re-fired over an existing result — a new null test, a fresh
+// selection, another confirm — the old result moves to doc.priorResults
+// with a timestamp instead of being overwritten. Nothing archives when
+// there is nothing to archive (first fire).
+function archivePrior(doc, kind, value) {
+  if (value == null) return;
+  doc.priorResults = doc.priorResults || [];
+  doc.priorResults.push({ kind, archivedAt: new Date().toISOString(), value });
+}
+
 function batchFile(id) {
   return path.join(BATCH_DIR, `${id}.json`);
 }
 
 function saveBatch(doc) {
+  // ATOMIC (QC 75, 2026-08-04): this file IS the run's record and gets
+  // rewritten after every unit — a crash mid-write used to leave truncated
+  // JSON that every reader silently skipped, so a finished run could vanish
+  // from the picker with no trace. tmp+rename, like the candle cache.
   fs.mkdirSync(BATCH_DIR, { recursive: true });
-  fs.writeFileSync(batchFile(doc.id), JSON.stringify(doc, null, 1));
+  const file = batchFile(doc.id);
+  const tmp = `${file}.tmp${process.pid}-${++saveSeq}`;
+  fs.writeFileSync(tmp, JSON.stringify(doc, null, 1));
+  fs.renameSync(tmp, file);
 }
 
 // One picker row from a doc on disk. Pure and exported for the tests:
@@ -144,6 +184,16 @@ function getBatch(id) {
   }
 }
 
+// D2 (review 2026-08-04): the cache-write guard was one-directional — jobs
+// refused while a batch ran, but a batch could start over a running job's
+// writes. Both directions now refuse.
+function launchRefusal() {
+  if (activeBatch && activeBatch.status === 'running') return `batch ${activeBatch.id} is already running`;
+  const j = require('./jobs').anyJobRunning();
+  if (j) return `data/analysis job ${j} is running — a sweep launched over its cache writes would read two datasets`;
+  return null;
+}
+
 function batchRunning() {
   return activeBatch && activeBatch.status === 'running' ? activeBatch.id : null;
 }
@@ -200,7 +250,7 @@ function refusePlantedPairs(symbols, what) {
 }
 
 function startBatch(params) {
-  if (batchRunning()) throw new Error(`batch ${activeBatch.id} is already running`);
+  { const stop = launchRefusal(); if (stop) throw new Error(stop); }
   const {
     dormantPct = 5,
     startMonth = '2018-01',
@@ -216,7 +266,7 @@ function startBatch(params) {
   } = params || {};
   refusePlantedPairs([...pairs, compareSymbol], 'a pair screen');
 
-  const stamp = new Date().toISOString().replace(/[-:]/g, '').slice(0, 13).replace('T', '-');
+  const stamp = new Date().toISOString().replace(/[-:]/g, '').slice(0, 15).replace('T', '-');
   const doc = {
     id: `screen-${stamp}`,
     status: 'running',
@@ -520,7 +570,7 @@ function summarizeConsensus(runs, votes = null) {
 }
 
 function startConsensus(params) {
-  if (batchRunning()) throw new Error(`batch ${activeBatch.id} is already running`);
+  { const stop = launchRefusal(); if (stop) throw new Error(stop); }
   const {
     startMonth = '2018-01',
     endMonth = '2026-06',
@@ -536,7 +586,7 @@ function startConsensus(params) {
   refusePlantedPairs([...pairs, compareSymbol], 'a consensus screen');
   const nShifts = Math.min(1000, Math.max(0, Math.floor(Number(nullShifts) || 0)));
 
-  const stamp = new Date().toISOString().replace(/[-:]/g, '').slice(0, 13).replace('T', '-');
+  const stamp = new Date().toISOString().replace(/[-:]/g, '').slice(0, 15).replace('T', '-');
   const doc = {
     id: `consensus-${stamp}`,
     kind: 'consensus',
@@ -722,7 +772,7 @@ function summarizeMetalens(runs, meta) {
 }
 
 function startMetalens(params) {
-  if (batchRunning()) throw new Error(`batch ${activeBatch.id} is already running`);
+  { const stop = launchRefusal(); if (stop) throw new Error(stop); }
   const {
     startMonth = '2018-01',
     endMonth = '2026-06',
@@ -739,7 +789,7 @@ function startMetalens(params) {
   refusePlantedPairs([...pairs, compareSymbol], 'a metalens screen');
   const nShifts = Math.min(1000, Math.max(0, Math.floor(Number(nullShifts) || 0)));
 
-  const stamp = new Date().toISOString().replace(/[-:]/g, '').slice(0, 13).replace('T', '-');
+  const stamp = new Date().toISOString().replace(/[-:]/g, '').slice(0, 15).replace('T', '-');
   const doc = {
     id: `metalens-${stamp}`,
     kind: 'metalens',
@@ -906,7 +956,7 @@ function summarizePermScreen(doc) {
 }
 
 function startPermScreen(params) {
-  if (batchRunning()) throw new Error(`batch ${activeBatch.id} is already running`);
+  { const stop = launchRefusal(); if (stop) throw new Error(stop); }
   const {
     startMonth = '2018-01',
     endMonth = '2026-06',
@@ -920,7 +970,7 @@ function startPermScreen(params) {
   } = params || {};
   refusePlantedPairs([...pairs, compareSymbol], 'a permutation screen');
 
-  const stamp = new Date().toISOString().replace(/[-:]/g, '').slice(0, 13).replace('T', '-');
+  const stamp = new Date().toISOString().replace(/[-:]/g, '').slice(0, 15).replace('T', '-');
   const doc = {
     id: `permscreen-${stamp}`,
     kind: 'permscreen',
@@ -1057,6 +1107,7 @@ function permSelect(id, patch) {
   if (doc.status === 'running') throw new Error('screen is still running');
   if (patch.pair !== undefined) {
     if (patch.pair !== null && !doc.perms[patch.pair]) throw new Error(`no results for pair "${patch.pair}"`);
+    archivePrior(doc, 'permSelection', { quorums: doc.quorums ?? null, nullTest: doc.nullTest ?? null });
     doc.selection = { pair: patch.pair, members: [], rungs: [] };
     doc.quorums = null;
     doc.nullTest = null;
@@ -1068,6 +1119,7 @@ function permSelect(id, patch) {
     const members = [...new Set(patch.members.map(String))];
     if (!members.length) throw new Error('pick at least one member');
     for (const m of members) if (!valid[m]) throw new Error(`unknown member "${m}"`);
+    archivePrior(doc, 'nullTest', doc.nullTest);
     doc.selection.members = members;
     doc.selection.rungs = [];
     doc.nullTest = null;
@@ -1077,6 +1129,7 @@ function permSelect(id, patch) {
     const rows = [];
     for (let k = 1; k <= members.length; k++) rows.push(permQuorumBook(periods, callArrays, k, fee));
     rows.sort((a, b) => b.pnl - a.pnl);
+    archivePrior(doc, 'quorums', doc.quorums);
     doc.quorums = { pair, members, rows, computedAt: new Date().toISOString() };
   }
   if (patch.rungs !== undefined) {
@@ -1084,6 +1137,7 @@ function permSelect(id, patch) {
     const n = doc.selection.members.length;
     const rungs = [...new Set(patch.rungs.map(Number))].filter((k) => Number.isInteger(k) && k >= 1 && k <= n);
     if (!rungs.length) throw new Error('pick at least one quorum rung');
+    archivePrior(doc, 'nullTest', doc.nullTest);
     doc.selection.rungs = rungs.sort((a, b) => a - b);
     doc.nullTest = null;
   }
@@ -1094,7 +1148,7 @@ function permSelect(id, patch) {
 // Stage 6: null-calibrate the FROZEN selection. Retrains only the selected
 // members per label rotation and scores only the selected rungs.
 function startPermNull(id, shifts) {
-  if (batchRunning()) throw new Error(`batch ${activeBatch.id} is already running`);
+  { const stop = launchRefusal(); if (stop) throw new Error(stop); }
   const doc = getBatch(id);
   if (!doc || doc.kind !== 'permscreen') throw new Error('unknown permutation screen');
   const sel = doc.selection;
@@ -1109,7 +1163,14 @@ function startPermNull(id, shifts) {
   for (let s = 1; s <= nShifts; s++) {
     for (const m of memberSpecs) nullRuns.push({ ...m, shift: s, status: 'pending', error: null, metrics: null });
   }
-  doc.runs = doc.runs.filter((r) => !r.shift); // a re-fire replaces any older null runs
+  // QC 74: a re-fire ARCHIVES the older null job before replacing it.
+  {
+    const oldNullRuns = doc.runs.filter((r) => r.shift);
+    if (oldNullRuns.length || doc.nullTest) {
+      archivePrior(doc, 'permNull', { nullTest: doc.nullTest ?? null, runs: oldNullRuns });
+    }
+  }
+  doc.runs = doc.runs.filter((r) => !r.shift);
   doc.status = 'running';
   doc.cancelRequested = false;
   // Real rung books are fixed by the frozen selection — compute them up
@@ -1232,12 +1293,25 @@ const slimViewsFor = (size) => (size === 1 ? ['full', 'prices', 'volume'] : ['fu
 // there; the slim stage only ever has the majority-vote stream.
 const { declaredQuorumFor } = require('./bracketwork');
 
-function validateDeclared(raw) {
+function validateDeclared(raw, menus) {
   if (!raw) return null;
+  // Validate against the RUN's grid, not only the library's (review
+  // 2026-08-04): a custom-grid run computes only its own cells, and the
+  // declared cell is FOUND among them — a declared value outside the run's
+  // menus would run for hours and then hand back an empty replication
+  // table. Callers without menus (tests, old paths) get the library grid.
+  const m = {
+    entries: (menus && menus.entries) || bracketLib.ENTRIES,
+    gates: (menus && menus.gates) || bracketLib.GATES,
+    dMults: (menus && menus.dMults) || bracketLib.D_MULTS,
+    tHours: (menus && menus.tHours) || bracketLib.T_HOURS,
+    trailMults: (menus && menus.trailMults) || bracketLib.TRAIL_MULTS,
+    armMults: (menus && menus.armMults) || bracketLib.ARM_MULTS,
+  };
   const entry = raw.entry === undefined ? 'breakout' : String(raw.entry);
-  if (!bracketLib.ENTRIES.includes(entry)) throw new Error(`declared.entry must be one of ${bracketLib.ENTRIES.join('/')}`);
+  if (!m.entries.includes(entry)) throw new Error(`declared.entry must be one of ${m.entries.join('/')} (this run's grid)`);
   const tHours = Number(raw.tHours);
-  if (!bracketLib.T_HOURS.includes(tHours)) throw new Error(`declared.tHours must be one of ${bracketLib.T_HOURS.join('/')}`);
+  if (!m.tHours.includes(tHours)) throw new Error(`declared.tHours must be one of ${m.tHours.join('/')} (this run's grid)`);
 
   // MARKET entry is the classifier's own trade: enter at the open in the
   // called direction, no rails. There is no distance to declare and the gate
@@ -1254,15 +1328,15 @@ function validateDeclared(raw) {
     out = { entry, gate: 'directional', dMult: null, tHours };
   } else {
     const gate = String(raw.gate || '');
-    if (!bracketLib.GATES.includes(gate)) throw new Error(`declared.gate must be one of ${bracketLib.GATES.join('/')}`);
+    if (!m.gates.includes(gate)) throw new Error(`declared.gate must be one of ${m.gates.join('/')} (this run's grid)`);
     const dMult = Number(raw.dMult);
-    if (!bracketLib.D_MULTS.includes(dMult)) throw new Error(`declared.dMult must be one of ${bracketLib.D_MULTS.join('/')}`);
+    if (!m.dMults.includes(dMult)) throw new Error(`declared.dMult must be one of ${m.dMults.join('/')} (this run's grid)`);
     out = { entry, gate, dMult, tHours, trailMult: null, armMult: null };
     if (raw.trailMult !== undefined && raw.trailMult !== null) {
       const t = Number(raw.trailMult);
-      if (!bracketLib.TRAIL_MULTS.includes(t)) throw new Error(`declared.trailMult must be null or one of ${bracketLib.TRAIL_MULTS.join('/')}`);
+      if (!m.trailMults.includes(t)) throw new Error(`declared.trailMult must be null or one of ${m.trailMults.join('/')}`);
       const a = raw.armMult === undefined ? 0 : Number(raw.armMult);
-      if (!bracketLib.ARM_MULTS.includes(a)) throw new Error(`declared.armMult must be one of ${bracketLib.ARM_MULTS.join('/')}`);
+      if (!m.armMults.includes(a)) throw new Error(`declared.armMult must be one of ${m.armMults.join('/')}`);
       out.trailMult = t;
       out.armMult = a;
     } else if (raw.armMult !== undefined) {
@@ -1561,7 +1635,7 @@ function htParams(params) {
 }
 
 function startHistoryTuning(params) {
-  if (batchRunning()) throw new Error(`batch ${activeBatch.id} is already running`);
+  { const stop = launchRefusal(); if (stop) throw new Error(stop); }
   const HT = require('./historytuning');
   // ALL synchronous validation happens BEFORE the slot is claimed — a
   // refusal must never leave a phantom claim wedging batchRunning() (caught
@@ -1694,6 +1768,7 @@ function htLaunch(p, HT, claim) {
       failures: [],
     };
     activeBatch = doc; // takes over the synchronous claim
+    if (claim.cancelRequested) { doc.status = 'cancelled'; doc.finishedAt = new Date().toISOString(); activeBatch = null; saveBatch(doc); throw new Error('cancelled by owner during launch'); }
     saveBatch(doc);
     const pool = createPool();
     activePool = pool;
@@ -1713,13 +1788,13 @@ function htLaunch(p, HT, claim) {
               const dir = path.join(BATCH_DIR, '..', 'ht', doc.id);
               fs.mkdirSync(dir, { recursive: true });
               const fname = `${key.replace(/[^A-Za-z0-9._-]+/g, '_')}.json`;
-              fs.writeFileSync(path.join(dir, fname), JSON.stringify({
+              atomicWrite(path.join(dir, fname), JSON.stringify({
                 job: doc.id, dial: u.dial, split: { ...u.split }, arm: p.arm || 'real', nullShiftSeed: p.nullShiftSeed || null,
                 readingRules: p.readingRules, trail: res.trail,
               }));
               trailFile = fname;
             } catch (err) {
-              if (doc.failures.length < 200) doc.failures.push({ key, error: `trail dump: ${err.message}` });
+              recordFailure(doc, key, `trail dump: ${err.message}`);
             }
           }
           doc.htRows.push({
@@ -1729,8 +1804,8 @@ function htLaunch(p, HT, claim) {
             effectiveDays: res.effectiveDays ?? null, retrains: res.retrains ?? 0, retunes: res.retunes ?? 0,
             trailFile,
           });
-        } else if (!settled.ok && !doc.cancelRequested && doc.failures.length < 200) {
-          doc.failures.push({ key, error: settled.error });
+        } else if (!settled.ok && !doc.cancelRequested) {
+          recordFailure(doc, key, settled.error);
         }
         doc.perf.unitsDone++;
         doc.perf.elapsedMs = Date.now() - t0;
@@ -1771,7 +1846,7 @@ function htLaunch(p, HT, claim) {
 const NULL_DRAWS_RESERVE = 19; // GUESSED (owner-approved); floor 1/20 printed
 
 function startReserveGrade(params) {
-  if (batchRunning()) throw new Error(`batch ${activeBatch.id} is already running`);
+  { const stop = launchRefusal(); if (stop) throw new Error(stop); }
   const HT = require('./historytuning');
   const real = getBatch(String(params.sourceHtRunId || ''));
   if (!real || real.kind !== 'historytuning') throw new Error(`unknown History Tuning run '${params.sourceHtRunId}'`);
@@ -1880,8 +1955,8 @@ function htGradeLaunch(p, winnerDial, referenceDial, split) {
           testPnl: res.testPnl ?? null, holdPnl: res.holdPnl ?? null, trades: res.trades ?? 0,
           effectiveDays: res.effectiveDays ?? null, retrains: res.retrains ?? 0, retunes: res.retunes ?? 0,
         });
-      } else if (!settled.ok && !doc.cancelRequested && doc.failures.length < 200) {
-        doc.failures.push({ key: u.tag, error: settled.error });
+      } else if (!settled.ok && !doc.cancelRequested) {
+        recordFailure(doc, u.tag, settled.error);
       }
       doc.perf.unitsDone++;
       doc.perf.elapsedMs = Date.now() - t0;
@@ -1933,7 +2008,7 @@ function htGradeLaunch(p, winnerDial, referenceDial, split) {
 }
 
 function startWalkforward(params) {
-  if (batchRunning()) throw new Error(`batch ${activeBatch.id} is already running`);
+  { const stop = launchRefusal(); if (stop) throw new Error(stop); }
   const { p, geoms, decs } = wfParams(params);
   refusePlantedPairs(p.universe, 'a walk-forward run');
   const units = [];
@@ -1984,7 +2059,7 @@ function startWalkforward(params) {
           const dir = path.join(BATCH_DIR, '..', 'wf', doc.id);
           fs.mkdirSync(dir, { recursive: true });
           const fname = `${key.replace(/[^A-Za-z0-9._-]+/g, '_')}.json`;
-          fs.writeFileSync(path.join(dir, fname), JSON.stringify({
+          atomicWrite(path.join(dir, fname), JSON.stringify({
             job: doc.id, trade: c.trade, geometry: b.geometry, decision: b.decision,
             // arm + seed IN the detail file: a null run's fold numbers must
             // never be readable as real ones by a consumer that only has
@@ -1994,11 +2069,11 @@ function startWalkforward(params) {
           }));
           detailFile = fname;
         } catch (err) {
-          if (doc.failures.length < 200) doc.failures.push({ key, error: `fold dump: ${err.message}` });
+          recordFailure(doc, key, `fold dump: ${err.message}`);
         }
         doc.wfRows.push({ trade: c.trade, geometry: b.geometry, decision: b.decision, detailFile, ...res.agg });
-      } else if (!settled.ok && !doc.cancelRequested && doc.failures.length < 200) {
-        doc.failures.push({ key, error: settled.error });
+      } else if (!settled.ok && !doc.cancelRequested) {
+        recordFailure(doc, key, settled.error);
       }
       doc.perf.unitsDone++;
       doc.perf.elapsedMs = Date.now() - t0;
@@ -2089,7 +2164,17 @@ function setBatchNotes(id, text) {
 }
 
 function startBracketLab(params) {
-  if (batchRunning()) throw new Error(`batch ${activeBatch.id} is already running`);
+  { const stop = launchRefusal(); if (stop) throw new Error(stop); }
+  // The execution grid resolves FIRST so the declared cell can be validated
+  // against the grid this run will actually compute (see validateDeclared).
+  const grid = {
+    dMults: numMenu(params.dMults, bracketLib.D_MULTS, (v) => v > 0 && v <= 10),
+    tHours: numMenu(params.tHours, bracketLib.T_HOURS, (v) => Number.isInteger(v) && v > 0 && v <= 500),
+    gates: pickMenu(params.gates, bracketLib.GATES),
+    entries: pickMenu(params.entries, bracketLib.ENTRIES),
+    trailMults: bracketLib.TRAIL_MULTS,
+    armMults: bracketLib.ARM_MULTS,
+  };
   const p = {
     universe: params.universe && params.universe.length ? params.universe : DEFAULT_PAIRS,
     sizes: { singles: !!params.sizes?.singles, doubles: !!params.sizes?.doubles, triples: !!params.sizes?.triples },
@@ -2103,7 +2188,7 @@ function startBracketLab(params) {
       band: params.set?.band === 'auto' || params.set?.band === undefined ? 'auto' : Number(params.set.band),
       weekdaysOnly: !!params.set?.weekdaysOnly,
     },
-    declared: validateDeclared(params.declared),
+    declared: validateDeclared(params.declared, grid),
     // Capped at detailK: the leaderboard only ever holds that many slim rows,
     // so a larger promoteK was a plan number that could not be honoured.
     // Replication mode ignores this entirely and promotes every unit (below).
@@ -2161,12 +2246,12 @@ function startBracketLab(params) {
     // constants, unreachable from any launcher — the fault class that hid the
     // fee. Defaults are the identical constants; a run that does not ask for
     // a custom grid is bit-comparable with every board recorded so far.
-    dMults: numMenu(params.dMults, bracketLib.D_MULTS, (v) => v > 0 && v <= 10),
-    tHours: numMenu(params.tHours, bracketLib.T_HOURS, (v) => Number.isInteger(v) && v > 0 && v <= 500),
-    gates: pickMenu(params.gates, bracketLib.GATES),
-    entries: pickMenu(params.entries, bracketLib.ENTRIES),
-    trailMults: bracketLib.TRAIL_MULTS,
-    armMults: bracketLib.ARM_MULTS,
+    dMults: grid.dMults,
+    tHours: grid.tHours,
+    gates: grid.gates,
+    entries: grid.entries,
+    trailMults: grid.trailMults,
+    armMults: grid.armMults,
     // WINDOW LAYOUT (owner's ruling, 2026-08-03): exactly three explicit
     // options, each naming its splits. 'legacy80' = 80/20 train/test, no
     // hold window. 'split70' = 70/15/15 train/test/hold. 'reserve61' =
@@ -2201,6 +2286,11 @@ function startBracketLab(params) {
     campaign: require('./campaign').getCampaign() || null,
   };
   if (!p.sizes.singles && !p.sizes.doubles && !p.sizes.triples) throw new Error('tick at least one combo size');
+  // A declared trail cell only exists when the run computes trail cells:
+  // without this, the run finishes and the replication table is empty.
+  if (p.declared && p.declared.trailMult != null && !p.trailing) {
+    throw new Error('declared.trailMult needs trailing stops ticked on — a run without trail cells can never find the declared cell');
+  }
   // PLANTED CHECK plumbing (owner order, 2026-08-03). The fabricated pair is
   // RESERVED: it never meets a real run (its candles carry a known planted
   // rule — any board it sat on would be judging fiction), and a gate run
@@ -2279,7 +2369,7 @@ function startBracketLab(params) {
     }
   }
   const slimRuns = units.reduce((s, u) => s + slimViewsFor(u.c.size).length, 0);
-  const stamp = new Date().toISOString().replace(/[-:]/g, '').slice(0, 13).replace('T', '-');
+  const stamp = new Date().toISOString().replace(/[-:]/g, '').slice(0, 15).replace('T', '-');
   // HUMAN-MEANINGFUL JOB IDS (owner, 2026-07-29). A wall of timestamps means
   // the only way to tell -2303 from -0041 is to look each one up, which is
   // exactly how their results got attributed to the wrong runs in a report.
@@ -2339,7 +2429,7 @@ function startBracketLab(params) {
         if (p.allLoaded) await loadSymbolAll(symbols[i], () => {});
         else await loadSymbol(symbols[i], monthList(p.startMonth, p.endMonth), () => {});
       } catch (err) {
-        if (doc.failures.length < 200) doc.failures.push({ key: `prewarm:${symbols[i]}`, error: err.message || String(err) });
+        recordFailure(doc, `prewarm:${symbols[i]}`, err.message || String(err));
       }
     }
     doc.perf.phase = 'slim';
@@ -2347,7 +2437,9 @@ function startBracketLab(params) {
 
     const slimPayloads = units.map((u) => ({ combo: u.c, branch: u.b, stage: 'slim', params: p, layoutArm: u.layoutArm ?? null, nullDealSeed: u.nullDealSeed ?? null, ...shiftStance(u) }));
     await pool.map('unit', slimPayloads, (settled, i) => {
-      if (doc.cancelRequested) return;
+      // Cancel keeps every COMPLETED result (QC 74): workers are being
+      // terminated, but a unit that already finished is computed record and
+      // is pushed like any other — only termination errors are skipped.
       const { c, b, layoutArm } = units[i];
       const u = units[i];
       const key = unitKey(c, b) + (layoutArm ? `|${layoutArm}` : '')
@@ -2377,8 +2469,18 @@ function startBracketLab(params) {
           ...(u.nullDealSeed != null ? { nullDealSeed: u.nullDealSeed } : {}),
           ...res.best,
         });
-      } else if (!settled.ok && doc.failures.length < 200) {
-        doc.failures.push({ key, error: settled.error });
+      } else if (settled.ok && settled.value && !settled.value.best) {
+        doc.slimResults = doc.slimResults || [];
+        doc.slimResults.push({
+          key, trade: c.trade, ctx1: c.ctx1, ctx2: c.ctx2,
+          geometry: b.geometry, decision: b.decision,
+          nullDealSeed: u.nullDealSeed ?? null,
+          pnl: null, trades: null, holdPnl: null,
+          noCell: `trained, but no cell reached ${p.minTrades} test trades (QC 74: recorded, not dropped)`,
+        });
+      } else if (!settled.ok && !doc.cancelRequested) {
+        // cancel terminates workers — their termination errors are noise
+        recordFailure(doc, key, settled.error);
       }
       doc.perf.unitsDone++;
       doc.perf.runsDone += slimViewsFor(c.size).length;
@@ -2402,7 +2504,7 @@ function startBracketLab(params) {
         ...shiftStance(l),
       }));
       await pool.map('unit', promPayloads, (settled, i) => {
-        if (doc.cancelRequested) return;
+        // Same rule as the slim stage: cancel never drops a finished result.
         const l = promote[i];
         if (settled.ok && settled.value) {
           const res = settled.value;
@@ -2428,7 +2530,7 @@ function startBracketLab(params) {
               fs.mkdirSync(dir, { recursive: true });
               const tag = l.nullDealSeed != null ? `n${l.nullDealSeed}` : (l.shiftFrac == null ? 'real' : `s${l.shiftFrac.toFixed(3)}`);
               const fname = `${l.key.replace(/[^A-Za-z0-9._-]+/g, '_')}-${tag}.json`;
-              fs.writeFileSync(path.join(dir, fname), JSON.stringify({
+              atomicWrite(path.join(dir, fname), JSON.stringify({
                 job: doc.id, key: l.key,
                 trade: l.trade, ctx1: l.ctx1, ctx2: l.ctx2,
                 geometry: l.geometry, decision: l.decision,
@@ -2447,7 +2549,7 @@ function startBracketLab(params) {
             } catch (err) {
               // A failed save must be VISIBLE, not silent — a dump everyone
               // believes exists is worse than none.
-              if (doc.failures.length < 200) doc.failures.push({ key: l.key, error: `model dump: ${err.message}` });
+              recordFailure(doc, l.key, `model dump: ${err.message}`);
             }
             delete res.memberDump;
           }
@@ -2568,6 +2670,19 @@ function startBracketLab(params) {
               cellAmbiguous: res.best && res.best.holdout
                 ? (res.best.holdout.ambiguous ?? null) : null,
             });
+          } else {
+            // No qualifying cell at all: still a record (QC 74).
+            
+            doc.edgeCensus.push({
+              trade: l.trade, ctx1: l.ctx1, ctx2: l.ctx2,
+              geometry: l.geometry, decision: l.decision, bandPct: res.bandPct ?? null,
+              bandMode: l.bandMode ?? null, weekdaysOnly: l.weekdaysOnly ?? null,
+              shiftFrac: l.shiftFrac ?? null, nullDealSeed: l.nullDealSeed ?? null,
+              windowLayout: res.layoutMeta ? res.layoutMeta.layout : (p.windowLayout || 'legacy'),
+              windowStamps: res.windowStamps || null,
+              noCell: `no execution cell reached ${p.minTrades} test trades — recorded so the denominator stays honest (QC 74)`,
+              holdPnl: null, searchPnl: null,
+            });
           }
           if (res.declared) {
             const d = res.declared;
@@ -2597,8 +2712,17 @@ function startBracketLab(params) {
             const repKey = (r) => `${r.trade}|${r.ctx1 || ''}|${r.ctx2 || ''}|${r.geometry}`;
             doc.replication.sort((x, y) => (y.pnl - x.pnl) || (repKey(x) < repKey(y) ? -1 : repKey(x) > repKey(y) ? 1 : 0));
           }
-        } else if (!settled.ok && doc.failures.length < 200) {
-          doc.failures.push({ key: l.key + '|promote', error: settled.error });
+        } else if (settled.ok && settled.value && !settled.value.best) {
+        doc.slimResults = doc.slimResults || [];
+        doc.slimResults.push({
+          key, trade: c.trade, ctx1: c.ctx1, ctx2: c.ctx2,
+          geometry: b.geometry, decision: b.decision,
+          nullDealSeed: u.nullDealSeed ?? null,
+          pnl: null, trades: null, holdPnl: null,
+          noCell: `trained, but no cell reached ${p.minTrades} test trades (QC 74: recorded, not dropped)`,
+        });
+      } else if (!settled.ok && !doc.cancelRequested) {
+          recordFailure(doc, l.key + '|promote', settled.error);
         }
         doc.perf.runsDone += slimViewsFor(l.size).length * 2;
         doc.progress = `promote ${i + 1}/${promote.length}: ${l.trade}${l.ctx1 ? '+' + l.ctx1 : ''}`;
@@ -2629,7 +2753,7 @@ function startBracketLab(params) {
 // and released and decidedly not fine held by four workers beside their hourly
 // maps. The existing batchRunning() mutex keeps it from overlapping a sweep.
 function startBracketConfirm(id, target = 'best') {
-  if (batchRunning()) throw new Error(`batch ${activeBatch.id} is already running`);
+  { const stop = launchRefusal(); if (stop) throw new Error(stop); }
   const doc = getBatch(id);
   if (!doc || doc.kind !== 'bracketlab') throw new Error('unknown bracket-lab run');
   const row = doc.selection;
@@ -2649,6 +2773,7 @@ function startBracketConfirm(id, target = 'best') {
   } else if (target !== 'best') {
     throw new Error("confirm target must be 'best' or 'declared'");
   }
+  archivePrior(doc, 'confirm', doc.confirm); // QC 74: re-fire archives, never destroys
   doc.status = 'running';
   doc.cancelRequested = false;
   doc.perf.phase = 'confirm';
@@ -2705,6 +2830,7 @@ function bracketSelect(id, patch) {
   if (doc.status === 'running') throw new Error('sweep is still running');
   const row = doc.leaders.find((l) => l.key === patch.key && l.stage === (patch.stage || 'promoted'));
   if (row) {
+    archivePrior(doc, 'nullTest', doc.nullTest);
     doc.selection = row;
     doc.nullTest = null;
     saveBatch(doc);
@@ -2744,6 +2870,7 @@ function bracketSelect(id, patch) {
       holdout: r.holdPnl != null ? { pnl: r.holdPnl, trades: r.holdTrades ?? null } : null,
       windowStamps: r.windowStamps ?? null,
     };
+    archivePrior(doc, 'nullTest', doc.nullTest); // QC 74: same rule as the leader branch above
     doc.nullTest = null;
     saveBatch(doc);
     return doc;
@@ -2757,13 +2884,14 @@ function bracketSelect(id, patch) {
 // all quorum rungs, best cell taken by the same declared rule. Also scores
 // the selected config's own cell for the conditional reading. Live tables.
 function startBracketNull(id, shifts) {
-  if (batchRunning()) throw new Error(`batch ${activeBatch.id} is already running`);
+  { const stop = launchRefusal(); if (stop) throw new Error(stop); }
   const doc = getBatch(id);
   if (!doc || doc.kind !== 'bracketlab') throw new Error('unknown bracket-lab run');
   const sel = doc.selection;
   if (!sel) throw new Error('select a promoted leader row first');
   const nShifts = Math.min(1000, Math.max(1, Math.floor(Number(shifts) || 0)));
   const p = doc.params;
+  archivePrior(doc, 'nullTest', doc.nullTest); // QC 74: re-fire archives, never destroys
   doc.status = 'running';
   doc.cancelRequested = false;
   doc.perf.phase = 'null';
@@ -2799,7 +2927,7 @@ function startBracketNull(id, shifts) {
         if (p.allLoaded) await loadSymbolAll(sym, () => {});
         else await loadSymbol(sym, monthList(p.startMonth, p.endMonth), () => {});
       } catch (err) {
-        if (doc.failures.length < 200) doc.failures.push({ key: `prewarm:${sym}`, error: err.message || String(err) });
+        recordFailure(doc, `prewarm:${sym}`, err.message || String(err));
       }
     }
     doc.perf.phase = 'null';
@@ -2823,8 +2951,17 @@ function startBracketNull(id, shifts) {
         doc.nullTest.exceedSame = sames.length ? sames.filter((x) => x.same >= sel.pnl).length / sames.length : null;
         doc.nullTest.medianBestPnl = median(vals.map((x) => (x.best === -Infinity ? 0 : x.best)));
         doc.nullTest.medianSamePnl = sames.length ? median(sames.map((x) => x.same)) : null;
-      } else if (!settled.ok && doc.failures.length < 200) {
-        doc.failures.push({ key: `null-shift-${i + 1}`, error: settled.error });
+      } else if (settled.ok && settled.value && !settled.value.best) {
+        doc.slimResults = doc.slimResults || [];
+        doc.slimResults.push({
+          key, trade: c.trade, ctx1: c.ctx1, ctx2: c.ctx2,
+          geometry: b.geometry, decision: b.decision,
+          nullDealSeed: u.nullDealSeed ?? null,
+          pnl: null, trades: null, holdPnl: null,
+          noCell: `trained, but no cell reached ${p.minTrades} test trades (QC 74: recorded, not dropped)`,
+        });
+      } else if (!settled.ok) {
+        recordFailure(doc, `null-shift-${i + 1}`, settled.error);
       }
       doc.perf.runsDone += slimViewsFor(c.size).length * 2;
       doc.progress = `null ${doneCount}/${nShifts} (${doc.nullTest.shifts} distinct banked)`;
@@ -2886,6 +3023,8 @@ module.exports = {
   promotionSet,
   setBatchNotes,
   validateDeclared,
+  archivePrior,
+  recordFailure,
   declaredQuorumFor,
   permSelect,
   startPermNull,

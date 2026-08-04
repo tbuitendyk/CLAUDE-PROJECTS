@@ -45,7 +45,10 @@ function drawsOf(doc) {
 // arms (a windowLayout='both' run). Without it, find() grabbed whichever
 // arm was pushed first — a nondeterministic cross-match between two
 // different measurement geometries (audit 2026-07-30, confirmed major).
-const keyOf = (r) => `${r.trade}|${r.geometry}|${r.decision}${r.windowLayout && r.windowLayout !== 'legacy' ? `|${r.windowLayout}` : ''}`;
+// Pairing key carries the FULL setup identity: contexts included (review
+// 2026-08-04 HIGH: without ctx, a singles+doubles run scored whichever
+// DOT-family row was pushed first under the picked row's name).
+const keyOf = (r) => `${r.trade}|${r.ctx1 || ''}|${r.ctx2 || ''}|${r.geometry}|${r.decision}${r.windowLayout && r.windowLayout !== 'legacy' ? `|${r.windowLayout}` : ''}`;
 const isMixed = (rows) => new Set(rows.map((r) => r.windowLayout || 'legacy')).size > 1;
 
 function rank(real, draws) {
@@ -77,7 +80,26 @@ function nullVerdict(realDoc, nullDoc, sel) {
     perSetup: null,
     selection: null,
     sanity: null,
+    paramMismatch: null,
   };
+
+  // Cross-doc guard (review 2026-08-04): the two jobs may have been launched
+  // with different measurement settings. The reading still runs — history
+  // must stay readable — but a mismatch is NAMED in the output, because two
+  // moneys measured under different fees or window layouts are not the same
+  // quantity and the comparison quietly stops meaning what it looks like.
+  {
+    const WATCH = ['windowLayout', 'feePerLeg', 'startMonth', 'endMonth', 'minTrades', 'labelShiftScope', 'allLoaded'];
+    const rp = realDoc.params || {};
+    const np = nullDoc.params || {};
+    const fields = WATCH.filter((k) => JSON.stringify(rp[k] ?? null) !== JSON.stringify(np[k] ?? null));
+    if (fields.length && realDoc.id !== nullDoc.id) {
+      out.paramMismatch = {
+        fields,
+        note: 'these settings differ between the real job and the null job — their dollar figures are not measured the same way; read with care',
+      };
+    }
+  }
 
   if (sel && sel.trade) {
     if (isMixed(real) && !sel.windowLayout) {
@@ -88,7 +110,7 @@ function nullVerdict(realDoc, nullDoc, sel) {
     // rows stamped split70 could never be found by a plain
     // trade/geometry/decision request (owner hit it on row 30, 2026-08-04).
     const layout = sel.windowLayout || (real[0] && real[0].windowLayout) || 'legacy';
-    const k = `${sel.trade}|${sel.geometry}|${sel.decision}${layout && layout !== 'legacy' ? `|${layout}` : ''}`;
+    const k = `${sel.trade}|${sel.ctx1 || ''}|${sel.ctx2 || ''}|${sel.geometry}|${sel.decision}${layout && layout !== 'legacy' ? `|${layout}` : ''}`;
     const mine = real.find((r) => keyOf(r) === k);
     if (!mine) throw new Error(`setup ${k} not in ${realDoc.id}'s real rows`);
     const draws = shifts.map((s) => {

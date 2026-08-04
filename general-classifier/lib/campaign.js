@@ -32,7 +32,9 @@ function getCampaign() {
 function setCampaign(raw) {
   const name = sanitizeCampaign(raw);
   fs.mkdirSync(path.dirname(FILE), { recursive: true });
-  fs.writeFileSync(FILE, JSON.stringify({ name, setAt: new Date().toISOString() }));
+  const tmp = `${FILE}.tmp${process.pid}-${Date.now()}`;
+  fs.writeFileSync(tmp, JSON.stringify({ name, setAt: new Date().toISOString() }));
+  fs.renameSync(tmp, FILE);
   return name;
 }
 

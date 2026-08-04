@@ -131,6 +131,14 @@ class Pool {
     }
     this.workers = this.workers.filter((x) => x !== w);
     this.idle = this.idle.filter((x) => x !== w);
+    // D4 (review 2026-08-04): if the LAST worker died, queued tasks would
+    // wait forever for an idle worker and the batch would wedge as
+    // 'running' until a restart. Fail them loudly instead — the
+    // orchestrator records them like any failed unit.
+    if (this.workers.length === 0 && this.queue.length) {
+      const stranded = this.queue.splice(0);
+      for (const t of stranded) t.reject(new Error('every worker died — task stranded (recorded, not wedged)'));
+    }
   }
 
   // Keep the event loop alive exactly while work is outstanding. Without

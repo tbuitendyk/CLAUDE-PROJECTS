@@ -629,9 +629,24 @@ async function menuGridTask({ combo, branch, params, dump }) {
   let holdCellCount = 0;
   const { holdChunks } = split;
   const holdCalls = dump.votes.hold;
+  // Same alignment rule as the test window above: stored hold votes applied
+  // to shifted hold windows would be fiction with the right units.
+  const hst = dump.startTs && dump.startTs.hold;
+  if (holdChunks.length && Array.isArray(hst)
+      && (hst.length !== holdChunks.length || hst[0] !== holdChunks[0].startTs
+          || hst[hst.length - 1] !== holdChunks[holdChunks.length - 1].startTs)) {
+    throw new Error('the stored HOLD votes do not line up with today\'s data cut — re-run the sweep; a hold average on shifted windows would be fiction');
+  }
   if (holdChunks.length && Array.isArray(holdCalls) && holdCalls.length === calls.length) {
+    // COMPOSITION MATTERS (review 2026-08-04 MODERATE): cells that never
+    // traded contribute exactly $0 and always-gate cells ignore the votes,
+    // so the identical always row repeats once per agreement level. Both
+    // dilute the average toward zero and flatter any trading candidate. The
+    // aggregate is therefore taken over cells that TRADED, with always-gate
+    // cells counted once, and both denominators are disclosed.
     let sum = 0;
     let pos = 0;
+    let allCells = 0;
     for (let k = 1; k <= holdCalls.length; k++) {
       const stream = holdChunks.map((_, i) => quorumCall(holdCalls, i, k));
       const rows = bracketLib.execSweep(holdChunks, stream, maps.trade, geo, gridBand, fee, {
@@ -639,6 +654,9 @@ async function menuGridTask({ combo, branch, params, dump }) {
         trailing: !!p.trailing,
       });
       for (const r of rows) {
+        allCells++;
+        if (r.gate === 'always' && k > 1) continue; // identical to k=1: count once
+        if (!r.trades) continue;                     // never traded: $0 by absence, not skill
         holdCellCount++;
         sum += r.pnl;
         if (r.pnl > 0) pos++;
@@ -646,6 +664,7 @@ async function menuGridTask({ combo, branch, params, dump }) {
     }
     holdAvg = holdCellCount ? sum / holdCellCount : null;
     holdPosShare = holdCellCount ? pos / holdCellCount : null;
+    var holdAllCellCount = allCells;
   }
   return {
     window: 'test',
@@ -657,6 +676,7 @@ async function menuGridTask({ combo, branch, params, dump }) {
     holdAvg,
     holdPosShare,
     holdCellCount,
+    holdAllCellCount: typeof holdAllCellCount !== 'undefined' ? holdAllCellCount : 0,
   };
 }
 

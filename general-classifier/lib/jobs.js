@@ -23,7 +23,14 @@ function startJob(fn) {
       job.error = err.message || String(err);
       job.status = 'error';
     }
-    while (jobs.size > KEEP) jobs.delete(jobs.keys().next().value);
+    // Never evict a RUNNING job (D3, review 2026-08-04): eviction blinded
+    // anyJobRunning() and orphaned live pollers.
+    if (jobs.size > KEEP) {
+      for (const [id2, j2] of jobs) {
+        if (jobs.size <= KEEP) break;
+        if (j2.status !== 'running') jobs.delete(id2);
+      }
+    }
   })();
   return id;
 }
