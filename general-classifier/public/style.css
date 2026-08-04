@@ -150,6 +150,11 @@ tr.miss td { background: var(--miss-bg); }
 
 .cls { font-weight: 700; }
 .cls.up { color: var(--up); }
+/* Generic verdict colors: any cell or badge marked up/down reads green/red —
+   the planted-check state, vs-nulls, vs-long and predictability cells rely
+   on these (they were .cls-scoped only, so those read uncolored). */
+.up { color: var(--up); font-weight: 600; }
+.down { color: var(--down); font-weight: 600; }
 .cls.down { color: var(--down); }
 .cls.flat { color: var(--flat); }
 

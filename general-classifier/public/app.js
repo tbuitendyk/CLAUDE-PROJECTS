@@ -2918,7 +2918,8 @@
     }
     const last = s.lastGate;
     el.innerHTML = `
-      <h2>Release ${esc(s.engineVersion)} — planted check: ${esc(s.state)}</h2>
+      <h2>Release ${esc(s.engineVersion)} — planted check:
+        <strong class="${s.state === 'PASS' ? 'up' : 'down'}">${esc(s.state)}</strong></h2>
       <p class="note">${esc(s.detail)}.
         WHY: before its readings on real coins count, the instrument proves itself on a KNOWN answer — a
         fabricated pair carrying a planted rule (next day follows today, 70% of the time, zero drift) is
