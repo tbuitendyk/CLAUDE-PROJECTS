@@ -2534,7 +2534,7 @@
         <div class="controls" style="margin:8px 0">
         <div class="field"><label for="bl-shifts">Null runs</label><input id="bl-shifts" type="number" min="1" max="1000" step="1" value="200"></div>
         <div class="field submit"><button id="bl-null-go" type="button">Fire null runs on the selected survivor</button></div>
-        <span class="note">selected: ${esc(comboLabel(sel))} ${esc(sel.geometry)} q${sel.quorum} ${sel.entry === 'market' ? 'directional/market' : `${esc(sel.gate)}/breakout ${sel.dMult}×`} ${sel.tHours}h → ${money(sel.pnl)}</span>
+        <span class="note">selected: ${esc(comboLabel(sel))} ${esc(sel.geometry)} q${sel.quorum} ${sel.entry === 'market' ? 'directional/market' : `${esc(sel.gate)}/breakout ${sel.dMult}×`} ${sel.tHours}h — test-window ${money(sel.pnl)} (this tool judges HERE: each scrambled world re-shops the whole menu in the same window, and its best find must beat this number)${sel.holdout && sel.holdout.pnl != null ? ` · held-back ${money(sel.holdout.pnl)} (Tool 2's window — not judged by this tool)` : ''}</span>
       </div></div>`;
     }
     if (doc.nullTest) {
