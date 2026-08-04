@@ -15,6 +15,6 @@ for (const f of files) {
   if (d.description) console.log(`    desc: ${String(d.description).slice(0, 160)}`);
   if (p.plantedGate) console.log("    (planted check)");
   if (p.declared) console.log(`    declared: ${JSON.stringify(p.declared).slice(0, 120)}`);
-  if (d.notes) console.log(`    notes: ${String(d.notes).slice(0, 100)}`);
+  if (d.notes) console.log(`    notes: ${String(d.notes).slice(0, 4000)}`);
 }
 '
