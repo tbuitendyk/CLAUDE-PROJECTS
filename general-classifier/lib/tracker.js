@@ -57,7 +57,12 @@ function loadState() {
 
 function saveState() {
   fs.mkdirSync(path.dirname(STATE_FILE), { recursive: true });
-  fs.writeFileSync(STATE_FILE, JSON.stringify(state));
+  // Owner-authorized exception to the freeze (2026-08-04, "yes"): tmp+rename
+  // so a crash mid-write can never tear the live record (QC 75). The bytes
+  // written are identical — only the write path changed, nothing else.
+  const tmp = `${STATE_FILE}.tmp${process.pid}`;
+  fs.writeFileSync(tmp, JSON.stringify(state));
+  fs.renameSync(tmp, STATE_FILE);
 }
 
 function initialized() {
