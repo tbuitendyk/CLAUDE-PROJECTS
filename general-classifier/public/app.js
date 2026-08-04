@@ -2112,7 +2112,7 @@
         <td class="${t.real > x.value ? 'up' : 'down'}">${m$(x.value)}</td></tr>`).join('')}
     </table></div>`;
     const block = (title, t, what) => t ? `
-      <h3>${title} — ${t.passes ? 'PASS' : 'FAIL'} (beats ${t.beats}/${t.n})</h3>
+      <h3>${title} — <strong class="${t.passes ? 'up' : 'down'}">${t.passes ? 'PASS' : 'FAIL'}</strong> (beats ${t.beats}/${t.n})</h3>
       <p class="note">${what}
         KEY — <em>real</em>: held-back dollars on genuine data. <em>null draws</em>: the same quantity in
         worlds with nothing to predict. Beating all ${t.n} is the strongest claim ${t.n} draws allow
@@ -2126,7 +2126,7 @@
       ${block('Per-setup test', d.perSetup, 'Is this setup better than ITS OWN noise? Same setup, same machinery, dealt votes.')}
       ${block('Selection-aware test', d.selection, 'Is topping the board better than topping a NOISE board? Each null draw contributes its own best-of-board — this prices in that the winner was picked after looking.')}
       <p class="note">sanity: ${d.sanity.scrambleRows} null-draw setups, ${(100 * d.sanity.negativeShare).toFixed(1)}% losing money —
-        ${d.sanity.ok ? 'as fees demand.' : '<strong>NOISE IS PROFITING: the simulation is broken; do not read the tests above.</strong>'}</p>
+        ${d.sanity.ok ? '<strong class="up">PASS — noise mostly loses, as fees demand.</strong>' : '<strong class="down">FAIL — NOISE IS PROFITING: the simulation is broken; do not read the tests above.</strong>'}</p>
       <p class="note"><strong>What a pass buys:</strong> this window only. It stops obvious chance results being frozen;
         the forward paper test after freezing is the real judge.</p>`;
   }
