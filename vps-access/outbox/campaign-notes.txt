@@ -1,0 +1,20 @@
+Campaign names + editable run notes are live
+
+tl;dr 1.36.0 deployed (box was idle). Hard-refresh. Two additions,
+both yours:
+
+1. CAMPAIGN — a box at the top of the lab (under the planted-check
+strip). Type a name like "ltc-drill-aug04", press set, and every run
+you launch carries it: the saved-runs list reads "[ltc-drill-aug04]
+bracketlab-..." so one glance groups a cycle's runs. Clear + set to
+stop tagging. Runs from before today stay untagged.
+
+2. NOTES — select any run and a Notes box sits at the very top. Type
+whatever you want (rationale, what it showed, whether to reconsult),
+press save; it stores on the run itself, editable forever after the
+run finishes.
+
+Restart reset the planted check to NOT CHECKED for 1.36.0 — one press
+before your next null readings.
+
+c.
