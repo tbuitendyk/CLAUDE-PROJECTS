@@ -2846,9 +2846,14 @@
 
   // ---- HISTORY TUNING (WORKFLOW.md step 5; design ledger) --------------------
   const HT_AGE_LABELS = { none: 'no discount (control)', '6mo': '6-month half-life', '12mo': '12-month', '24mo': '24-month', '36mo': '36-month' };
+  let htPollTimer = null;
   async function renderHtPanel(doc, sel) {
     const el = $('bl-ht-panel');
     if (!el) return;
+    // One timer, ever: a running tuning job re-renders this panel every few
+    // seconds so the dial-pair board fills live and the finished verdict
+    // appears WITHOUT a manual reload (owner hit the stale panel, 2026-08-04).
+    if (htPollTimer) { clearTimeout(htPollTimer); htPollTimer = null; }
     if (doc && doc.status === 'running' && String(doc.id).startsWith('bracketlab-')) {
       el.innerHTML = '<div class="section"><h2>History Tuning — strengthen a proven setup (optional second pass)</h2><p class="note">available when the sweep finishes</p></div>';
       return;
@@ -2893,6 +2898,9 @@
       }
     }
     el.innerHTML = `<div class="section"><h2>History Tuning — strengthen a proven setup (optional second pass)</h2>${launcher}${runsHtml}</div>`;
+    if (docsFull.some((r) => r.status === 'running')) {
+      htPollTimer = setTimeout(() => { renderHtPanel(doc, sel).catch(() => {}); }, 5000);
+    }
     const go = el.querySelector('#bl-ht-go');
     if (go) {
       go.addEventListener('click', async () => {
