@@ -2987,7 +2987,7 @@
         ? ['early', 'middle', 'late'].map((sp) => `$${(v.holds[sp] ?? 0).toFixed(0)}`).join(' / ')
         : '<span class="note">sealed until the winner is declared</span>';
       return `<tr><td>${i + 1}</td><td>${esc(HT_AGE_LABELS[age] || age)}</td><td>${esc(ret)}</td>
-        <td>$${v.test.toFixed(2)}</td><td>${v.effMin === Infinity ? '—' : v.effMin.toFixed(0)}</td>
+        <td>$${v.test.toFixed(2)}${v.splits < 3 ? ` <span class="note">(${v.splits}/3 splits so far — partial, not comparable yet)</span>` : ''}</td><td>${v.effMin === Infinity ? '—' : v.effMin.toFixed(0)}</td>
         <td>${k === refKey ? 'REFERENCE' : ''}${k === winner ? ' WINNER' : ''}</td><td>${holdCells}</td></tr>`;
     }).join('');
     const shaping = `<p class="note">Shaping numbers: training floor ${esc(String(p.trainingFloorDays ?? 180))} effective days (GUESSED) ·
@@ -3011,11 +3011,12 @@
          — the winner's walk, the reference pass's walk and 19 null draws over the sealed reserve, fired together, once, ever.</p>`
       : (r.status === 'done' && p.arm !== 'null' && !p.mode ? '<p class="note">No reserve exists for this setup (its board run predates the reserve layout) — the binding grade is the forward paper book.</p>' : '');
     return `<div class="section">${head}${shaping}${rules}${excludedNote}
-      <p class="note">TABLE: the dial-pair board. NAME: combined TEST money per dial pair (the picking read).
+      <p class="note">TABLE: the dial-pair board${r.status === 'running' ? ' — FILLING LIVE as passes finish (refreshes itself every few seconds)' : ''}. NAME: combined TEST money per dial pair (the picking read).
         KEY: age = the half-life setting; retune = cadence and lookback; test $ = net paper dollars per $100
-        book summed across the three test windows (picked on, flattering by construction); eff. days = the
-        smallest effective training days any split saw; hold $ = the three hold windows early/middle/late,
-        shown ONLY for the winner and the reference pass — holds are graded once, never shopped.</p>
+        book summed across the three test windows (picked on, flattering by construction) — a row marked
+        "partial" has not finished all three splits yet, so its sum cannot be compared with complete rows;
+        eff. days = the smallest effective training days any split saw; hold $ = the three hold windows
+        early/middle/late, shown ONLY for the winner and the reference pass — holds are graded once, never shopped.</p>
       <div class="tablewrap"><table>
         <tr><th>#</th><th>age</th><th>retune</th><th>test $</th><th>eff. days</th><th></th><th>hold $ (e/m/l)</th></tr>
         ${armRows || '<tr><td colspan="7" class="note">rows appear as passes finish</td></tr>'}
