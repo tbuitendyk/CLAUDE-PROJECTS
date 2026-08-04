@@ -3,6 +3,7 @@ const path = require('path');
 const { runAnalysis, extractMetrics } = require('./pipeline');
 const { runMetaLens, extractMetaMetrics } = require('./metalens');
 const { pnlAt, REAL_FEE_PER_LEG, voteOf, superOf } = require('./paper');
+const { stampManifest } = require('./manifest');
 
 // Pair screen: run the full pipeline for every (trade pair x model) combo
 // against one compare pair, sequentially, persisting after every run so a
@@ -2432,6 +2433,11 @@ function startBracketLab(params) {
         recordFailure(doc, `prewarm:${symbols[i]}`, err.message || String(err));
       }
     }
+    // DATA MANIFEST (QC 77): stamp exactly which candle files this run reads,
+    // AFTER the prewarm settles the cache and while the cache-write guards
+    // hold it frozen for the run's duration. Two runs are data-comparable
+    // if and only if their overall digests match.
+    doc.dataManifest = stampManifest(doc.id, symbols);
     doc.perf.phase = 'slim';
     saveBatch(doc);
 
@@ -2778,6 +2784,8 @@ function startBracketConfirm(id, target = 'best') {
   doc.cancelRequested = false;
   doc.perf.phase = 'confirm';
   doc.confirm = { status: 'running', startedAt: new Date().toISOString(), cell: sel, target };
+  // Confirm reads the cache at ITS fire time — own stamp (QC 77).
+  doc.confirm.dataManifest = stampManifest(`${doc.id}-confirm-${Date.now().toString(36)}`, [sel.trade, sel.ctx1, sel.ctx2].filter(Boolean));
   activeBatch = doc;
   saveBatch(doc);
 
@@ -2930,6 +2938,9 @@ function startBracketNull(id, shifts) {
         recordFailure(doc, `prewarm:${sym}`, err.message || String(err));
       }
     }
+    // The null replay reads the cache at ITS OWN fire time, which may be
+    // days after the original board — so it gets its own stamp (QC 77).
+    doc.nullTest.dataManifest = stampManifest(`${doc.id}-null-${Date.now().toString(36)}`, [c.trade, c.ctx1, c.ctx2].filter(Boolean));
     doc.perf.phase = 'null';
     saveBatch(doc);
 

@@ -2189,6 +2189,12 @@
             <th>Fees</th><td>$${(2 * p.feePerLeg).toFixed(2)} per round trip</td></tr>
         <tr><th>Selection rule</th><td>top net $ with ≥${p.minTrades} trades</td>
             <th>Promoted</th><td>top ${p.promoteK}</td></tr>
+        <tr><th title="A fingerprint of every candle file this run read, taken at launch. Two runs are data-comparable exactly when these match — if the fingerprint differs, the cache moved between the fire times (the books' price heartbeat and the bundle refresher both write to it).">Data fingerprint</th>
+            <td colspan="3">${doc.dataManifest && doc.dataManifest.overallDigest
+              ? `<code>${esc(doc.dataManifest.overallDigest.slice(0, 16))}</code> — ${Object.keys(doc.dataManifest.symbols || {}).length} coins, ${Object.values(doc.dataManifest.symbols || {}).reduce((s, x) => s + (x.files || 0), 0)} files, stamped ${esc(String(doc.dataManifest.at || '').replace('T', ' ').slice(0, 16))} UTC (per-file detail in ${esc(doc.dataManifest.detailFile || 'the manifest file')})`
+              : doc.dataManifest && doc.dataManifest.error
+                ? `<strong class="down">stamp failed: ${esc(doc.dataManifest.error)}</strong>`
+                : 'none — run predates the data fingerprint (engine 1.40.0)'}</td></tr>
       </table>
       <details><summary class="note" style="cursor:pointer">The COMPLETE stored settings record, verbatim (click) — if a setting is not in the table above, it is still here; nothing recorded can be invisible.</summary>
         <pre style="white-space:pre-wrap;font-size:.75rem">${esc(JSON.stringify(p, null, 2))}</pre></details>`;

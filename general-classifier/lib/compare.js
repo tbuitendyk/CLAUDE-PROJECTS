@@ -124,6 +124,17 @@ function compareDocs(docA, docB) {
   if ((docA.params.engineVersion || '?') !== (docB.params.engineVersion || '?')) {
     warnings.push(`ENGINE VERSIONS DIFFER (${docA.params.engineVersion || '?'} vs ${docB.params.engineVersion || '?'}): identical settings ran on different code — read deltas with suspicion`);
   }
+  // QC 77: identical settings mean nothing if the two runs read different
+  // candle files. The manifest digests decide it in one glance; runs from
+  // before the manifest existed compare silently, as before.
+  {
+    const { manifestDiff } = require('./manifest');
+    const md = manifestDiff(docA.dataManifest, docB.dataManifest);
+    if (md && !md.same) {
+      const names = [...md.changed, ...md.onlyA, ...md.onlyB];
+      warnings.push(`CANDLE DATA DIFFERS between the runs (${names.join(', ') || 'overall digest'}): the cache moved between fire times — deltas mix setting effects with data effects`);
+    }
+  }
   if (!attributable) {
     warnings.push(shaping.length === 0
       ? 'NO result-shaping setting differs — the runs are twins; any delta is noise or engine drift'

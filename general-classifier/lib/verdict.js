@@ -93,6 +93,13 @@ function nullVerdict(realDoc, nullDoc, sel) {
     const rp = realDoc.params || {};
     const np = nullDoc.params || {};
     const fields = WATCH.filter((k) => JSON.stringify(rp[k] ?? null) !== JSON.stringify(np[k] ?? null));
+    // Data manifest (QC 77): identical settings mean nothing if the two jobs
+    // read different candle files — the digests answer that in one glance.
+    if (realDoc.id !== nullDoc.id) {
+      const { manifestDiff } = require('./manifest');
+      const md = manifestDiff(realDoc.dataManifest, nullDoc.dataManifest);
+      if (md && !md.same) fields.push(`candle data (${[...md.changed, ...md.onlyA, ...md.onlyB].join(', ') || 'digest'})`);
+    }
     if (fields.length && realDoc.id !== nullDoc.id) {
       out.paramMismatch = {
         fields,
