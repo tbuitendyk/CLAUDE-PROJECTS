@@ -1,0 +1,4 @@
+UI: History Tuning table fills live during the run (no restart)
+tl;dr: while a tuning job runs, the dial-pair board now fills row by row every few seconds and labels itself "FILLING LIVE"; rows that have not finished all three calendar splits are marked "(n/3 splits so far - partial, not comparable yet)" so a half-done sum can never be read against a complete one. Static deploy, app.js v90; refresh to pick it up.
+
+c.
