@@ -1,0 +1,31 @@
+1.40.0 live: every run now stamps a data fingerprint - "did the data change?" is one glance now
+tl;dr: the manifest stamp you ordered is built, tested and deployed (service restarted while nothing ran, health checks green). Every new run records a fingerprint of exactly which candle files it read; two runs are data-comparable exactly when the fingerprints match, and the tools now say so out loud.
+
+What you get, where:
+
+- Every new sweep stamps, at launch, a content fingerprint of every candle
+  file it reads - overall and per coin. It shows on the run's settings table
+  as "Data fingerprint", with the stamp time and a pointer to the per-file
+  detail kept on disk. Null replays and minute confirms stamp their own,
+  because they read the cache at THEIR fire time, not the board's.
+
+- Tool 2 and the run-comparison view now check fingerprints automatically:
+  if two jobs read different candle data, the warning names WHICH coins
+  moved (e.g. "candle data (UNIUSDT)") instead of leaving it to forensics.
+
+- Content-based, not date-based: a bundle re-delivered with identical
+  candles does NOT flag as a change - only actually-different candles do.
+  Pinned by test, including the watched failure: with the fingerprint
+  deliberately blinded to content, the suite catches it.
+
+- Runs from before today read "none - run predates the data fingerprint".
+  Yesterday's UNI mystery would have been the one-glance case: 0611 and
+  0733 would show different fingerprints, differing on exactly
+  UNIUSDT/DOTUSDT/AVAXUSDT/DOGEUSDT/BTCUSDT.
+
+QC 77 is now marked AUTOMATED in the register. Engine is 1.40.0; the planted
+check needs a fresh PASS before the next real read (engine changed again).
+Your LTC path is unchanged: planted check, Tool 1 + Tool 2 on the 0733
+board, then History Tuning.
+
+c.
