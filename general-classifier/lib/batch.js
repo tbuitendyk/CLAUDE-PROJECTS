@@ -2939,7 +2939,8 @@ function startBracketNull(id, shifts) {
     }
     let doneCount = 0;
     await pool.map('nullRotation', payloads, (settled, i) => {
-      if (doc.cancelRequested) return;
+      // Same rule as the sweep stages: cancel never drops a finished
+      // rotation — each one banked is a null draw paid for (QC 74).
       doneCount++;
       if (settled.ok && settled.value) {
         const r = settled.value;
@@ -2951,16 +2952,8 @@ function startBracketNull(id, shifts) {
         doc.nullTest.exceedSame = sames.length ? sames.filter((x) => x.same >= sel.pnl).length / sames.length : null;
         doc.nullTest.medianBestPnl = median(vals.map((x) => (x.best === -Infinity ? 0 : x.best)));
         doc.nullTest.medianSamePnl = sames.length ? median(sames.map((x) => x.same)) : null;
-      } else if (settled.ok && settled.value && !settled.value.best) {
-        doc.slimResults = doc.slimResults || [];
-        doc.slimResults.push({
-          key, trade: c.trade, ctx1: c.ctx1, ctx2: c.ctx2,
-          geometry: b.geometry, decision: b.decision,
-          nullDealSeed: u.nullDealSeed ?? null,
-          pnl: null, trades: null, holdPnl: null,
-          noCell: `trained, but no cell reached ${p.minTrades} test trades (QC 74: recorded, not dropped)`,
-        });
-      } else if (!settled.ok) {
+      } else if (!settled.ok && !doc.cancelRequested) {
+        // cancel terminates workers — their termination errors are noise
         recordFailure(doc, `null-shift-${i + 1}`, settled.error);
       }
       doc.perf.runsDone += slimViewsFor(c.size).length * 2;
