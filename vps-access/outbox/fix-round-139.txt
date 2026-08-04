@@ -1,0 +1,39 @@
+1.39.0 ready: bug hunt fixed ~25 defects - say "go" to deploy, plus one yes/no
+tl;dr: the bug hunt you ordered found ~25 real defects, all fixed in 1.39.0 (built, tested, pushed, NOT yet deployed - needs a restart, so say "go" when nothing is running). Worst two could delete finished run records or un-retire a paper book. One yes/no question at the bottom.
+
+You asked what other time bombs were ticking. Three independent reviewers went through the code; everything they found that survived verification is fixed.
+
+The two worst (both fixed):
+
+- Records could be TORN by a crash. Every run's record file is rewritten
+  after every unit, in place, so a crash or restart mid-write left a
+  half-written file that every reader silently skipped - a finished
+  multi-hour run would simply vanish from the picker. Paper books had the
+  same exposure, and a torn book file re-offered the "initialize" button as
+  if the record never existed. Every record now writes to a temp file first
+  and swaps in whole, all-or-nothing (QC 75).
+
+- Stopping a sweep threw away finished results. "Stop jobs" dropped results
+  workers had ALREADY completed. Under your no-deletion law they are now
+  kept; only genuinely unfinished work is lost.
+
+Also fixed, briefly: pressing retire on a book while a background price
+update was mid-flight could silently un-retire it; a sweep could launch on
+top of a running download's cache writes (the guard only worked one way);
+a declared replication cell using a custom grid value could run for hours
+and hand back an empty table (now refused at launch, with the reason);
+several lookups ignored context coins in a setup's name and could pair the
+wrong rows on future multi-coin runs (QC 76); plus roughly fifteen smaller
+ones. Seven new tests, each one watched failing with its bug deliberately
+put back before being trusted.
+
+Deploy: needs a service restart, so I have not touched the box. Nothing is
+lost by waiting. When nothing is running, say "go".
+
+One yes/no: the two FROZEN books (DOT/AVAX weekly, DOGE daily) have the same
+torn-write exposure. The fix is the identical 3-line all-or-nothing write -
+it cannot change any number they produce - but those files are under your
+no-touch rule, so they stay untouched without your say-so. Yes = they get
+exactly that change and nothing else; no = everything above still proceeds.
+
+c.
