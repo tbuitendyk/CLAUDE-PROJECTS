@@ -69,8 +69,34 @@ late-era-heavy. The honest next judge, per protocol, is the forward paper
 book on the UNTUNED setup - time only runs one way there. Recommended and
 proposed to the owner; awaiting his word.
 
+## AMENDMENT (2026-08-04, later same day): the combining-rule check, done late
+
+The stamped combining rule says "the audit must check the winner is not
+carried by one split alone." The audit above omitted that check; the owner's
+question about the mechanism prompted it. RESULT: the winner WAS carried by
+one split — none|r8m1's +$122.21 total = -128.33 early +222.89 middle
++27.65 late. The verdict crowned a single-window artifact, exactly the case
+the rule anticipated. This strengthens the HOLD-RULE failure (the "winner"
+was luck-shaped from the start) and indicts the mechanism's construction:
+best-of-35-by-test is selected FOR window luck (winner's curse), then graded
+against an unselected reference — the deck is stacked toward "tuning fails"
+whether or not tuning helps.
+
+CONTAMINATION DISCLOSURE: diagnosing the instrument required reading the
+non-winner arms' hold columns from the stored rows (the UI seals them; the
+record keeps them, correctly, under QC 74). In those rows, 36mo|never beat
+the reference on ALL THREE hold windows (-43 vs -62, -24 vs -39, +79 vs
++64). Because that was seen AFTER unsealing, it may never be used to promote
+that arm — holds were peeked, so any such promotion would be shopping the
+graded window. It is recorded here solely as (a) proof the winner's-curse
+construction hid a consistent arm from the verdict, and (b) a hypothesis
+that a FUTURE pre-registered one-arm test may cite as its origin, with the
+contamination named.
+
 ## Findings for the QC register
 
-None new (the stale-panel behaviour is a UI gap fixed in-session, same class
-as the existing QC 63 note on page-boot/panel defects being invisible to the
-node suite).
+QC 78: a stamped rule that assigns the AUDIT a check does not enforce that
+check — mine skipped it until the owner's question forced it. Fix: audit
+obligations named in reading rules must be computed by the verdict endpoint
+itself (e.g. print 'winner carried by one split: YES/NO' with the numbers),
+so the reader cannot omit them. MANUAL until that ships.
