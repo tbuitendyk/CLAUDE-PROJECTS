@@ -142,6 +142,10 @@ td.nowrap { white-space: nowrap; }
 #batch-view table, #tracker-view table { font-size: 12.5px; }
 #batch-view th, #batch-view td, #tracker-view th, #tracker-view td { padding: 5px 7px; }
 th { color: var(--ink-2); font-weight: 600; font-size: 12px; }
+/* Tables inside a vertically scrolling wrap keep their headings readable:
+   the header row pins to the top of the scroll box (owner order, 2026-08-04). */
+.scrolly { overflow-y: auto; }
+.scrolly th { position: sticky; top: 0; background: var(--page); z-index: 2; }
 th[title] { cursor: help; text-decoration: underline dotted var(--muted); text-underline-offset: 3px; }
 th:first-child, td:first-child { text-align: left; }
 tr:last-child td { border-bottom: 0; }

@@ -1991,7 +1991,7 @@
         printing it for thousands of cells would turn the graded window into another shopping window.
         Read the SHAPE here (does money hold across neighboring settings, or spike on one cell?), never a
         single number. Sorted by test money, best first.</p>
-      <div class="tablewrap" style="max-height:440px;overflow-y:auto"><table>
+      <div class="tablewrap scrolly" style="max-height:440px"><table>
         <tr><th>#</th><th>cell — agreement · gate/entry · distance · time limit · trailing</th>
           <th>test $</th><th>W/T</th><th>g/t $</th><th title="stop-rail exits; amb = bars that touched both rails, resolved AGAINST the book; trail-amb = bars where extreme-vs-stop order is unknowable on hourly candles">stops</th></tr>
         ${cells.map((c, i) => `<tr${isCand(c) ? ' class="hilite"' : ''}>
