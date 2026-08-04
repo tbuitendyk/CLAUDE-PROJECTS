@@ -18,13 +18,30 @@ Union Trading Academy website (`uniontradingacademy.com/`).
 ## The project
 
 - **Domain:** `uniontradingacademy.com`, held in the owner's IONOS Mexico
-  (ionos.mx) account.
+  (ionos.mx) account, together with the web hosting.
 - **Mandate:** build and host the site using tools available from IONOS
   (ionos.mx). Claude runs the design, the owner signs off on direction.
-- **Hosting / deploy approach: NOT YET DECIDED.** Candidates depend on what
-  IONOS currently offers (webspace + SFTP, git-based deploys, etc.). Do not
-  scaffold deploy tooling until this is settled with the owner — then record
-  the decision here and replace this bullet.
+- **Owner's target workflow:** design offline (in this branch) with Claude,
+  upload new versions deliberately, and ALWAYS retain the option to revert
+  the live site to any prior date's configuration.
+
+## Current state (verified 2026-08-04)
+
+- The front page is designed (more or less) in **IONOS MyWebsite Now** — the
+  site-builder at `editor.mywebsite-now.com` (es-MX locale). It is Spanish-
+  language: "Union Trading Academy — Order Flow | Volume Profile | Trading
+  Profesional"; nav Inicio / Proyectos / Contáctanos. Reference screenshot:
+  `uniontradingacademy.com/reference/2026-08-04-mywebsite-editor-front-page.jpg`.
+- That design is **not yet published**: `https://uniontradingacademy.com/`
+  serves the IONOS "Construction" placeholder (HTTP 503, IONOS Webserver).
+- **DO NOT change anything live (builder content, publish state, DNS, panel
+  settings) without the owner's explicit permission.** Read-only inspection
+  is fine.
+- **Hosting / deploy approach: NOT YET DECIDED.** The builder has no git/file
+  interface, which conflicts with the dated-revert requirement — the fork
+  (stay in MyWebsite Now vs. rebuild as code in git deployed to IONOS
+  webspace) is with the owner. Do not scaffold deploy tooling until this is
+  settled — then record the decision here and replace this bullet.
 
 Note this deliberately differs from `www.buitendyk.ca` (the `website` branch),
 which is served from the owner's IONOS VPS via the `deploy-website` action on
