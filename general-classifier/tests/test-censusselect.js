@@ -22,6 +22,7 @@ function docWithCensusOnlyRow(id, params) {
     edgeCensus: [{
       trade: 'LTCUSDT', ctx1: null, ctx2: null, geometry: 'daily-1d', decision: 'argmax',
       nullDealSeed: null, shiftFrac: null, windowLayout: 'split70', bandPct: 1.4,
+      windowStamps: { testStartTs: 1700000000000 },
       cellQuorum: 3, cellGate: 'directional', cellEntry: 'breakout', cellDMult: 1, cellTHours: 41,
       cellTrailMult: null, cellArmMult: null, members: 6,
       searchPnl: 40, searchTrades: 20, holdPnl: 25, holdTrades: 14,
@@ -43,6 +44,8 @@ module.exports = {
       assert.strictEqual(doc.selection.bandMode, 'auto');
       assert.strictEqual(doc.selection.weekdaysOnly, false);
       assert.strictEqual(doc.selection.pnl, 40);
+      assert.strictEqual(doc.selection.windowStamps.testStartTs, 1700000000000,
+        'window stamps must survive census-backed selection (QC 73: capped lists are lossy)');
     } finally {
       fs.rmSync(path.join(BATCH_DIR, `${id}.json`), { force: true });
     }

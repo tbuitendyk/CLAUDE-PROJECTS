@@ -2446,6 +2446,12 @@ function startBracketLab(params) {
             doc.edgeCensus.push({
               trade: l.trade, ctx1: l.ctx1, ctx2: l.ctx2,
               geometry: l.geometry, decision: l.decision, bandPct: res.bandPct,
+              // WINDOW STAMPS on the UNCAPPED record (QC 73, 2026-08-04):
+              // they lived only on the capped leader list, so any row pushed
+              // past the cap lost the one field History Tuning must trust.
+              // A capped list is a lossy record; nothing authoritative may
+              // live only there.
+              windowStamps: res.windowStamps || null,
               // WHICH branch produced this row, for the permuted dimensions
               // that are not already stored per-row: census-backed selection
               // needs them (rows without these refuse selection when the
@@ -2720,6 +2726,7 @@ function bracketSelect(id, patch) {
       trailMult: r.cellTrailMult ?? null, armMult: r.cellArmMult ?? null,
       pnl: r.searchPnl ?? null, trades: r.searchTrades ?? null,
       holdout: r.holdPnl != null ? { pnl: r.holdPnl, trades: r.holdTrades ?? null } : null,
+      windowStamps: r.windowStamps ?? null,
     };
     doc.nullTest = null;
     saveBatch(doc);
