@@ -1,0 +1,35 @@
+1.39.0 is live; your 0733 board finished clean - press the planted check, then the two null reads on LTC
+tl;dr: deployed 1.39.0 (restart done, health checks green) and applied the authorized crash-safe write to both frozen books. Your morning re-run finished clean: 170/170 units, 0 failures, and the LTC candidate reproduced at position 29. Next: press the planted check (engine changed), then Tool 1 + Tool 2 on the LTC row, then History Tuning.
+
+DEPLOY. The service restarted onto 1.39.0 at 14:15 UTC and came up healthy:
+endpoints check passes end to end (run list, inspect, hostile-path refusal,
+verdict math). The two frozen books got exactly the 3-line all-or-nothing
+write you approved, nothing else - the freeze tests still pass. One extra
+catch during final verification: a third "stop drops finished results" spot
+in the null-replay path, plus a stray dead code block next to it; both fixed
+and included in what deployed.
+
+YOUR RUN (bracketlab-20260804-0733-null9-census, done in 1h35m, 0 failures).
+It did what it was fired to do: same board as 0611, rebuilt on the current
+engine, so every stored row now carries the window stamps History Tuning
+demanded. Your LTC setup (daily-4d, classic 3-class, 5-of-6 agreement,
+direction gate, no rails, 137h hold) is at position 29 of the top 50 -
+it was 30 on the old board. Its board line: +$43.94 in the test window on
+23/33 winning trades, +$96.63 ahead of always-long. Remember the board
+column is the shopping window - the numbers that count are the held-back
+column and the two null reads, on THIS board (the old board's passes do not
+carry over).
+
+YOUR NEXT THREE CLICKS, in order:
+1. Planted check (top of the lab). The engine version changed, so the old
+   PASS no longer applies - this must show PASS on 1.39.0 first.
+2. Select the LTC row on the 0733 run, then run Tool 1 (row vs its own 9
+   scrambled copies) and Tool 2 (board top vs 9 scrambled board tops), both
+   read on held-back dollars.
+3. If both pass: History Tuning on that row - the refusal you hit before is
+   gone. The reserve grade stays untouched until we walk through it together.
+
+Audit for the run is written and committed (reports/audit-bracketlab-
+20260804-0733-null9-census.md). Nothing new for the QC register.
+
+c.
