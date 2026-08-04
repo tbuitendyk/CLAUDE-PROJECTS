@@ -2140,7 +2140,9 @@
     const running = doc.status === 'running';
     const sel = doc.selection;
     const permuted = Object.entries(p.permute || {}).filter(([, v]) => v).map(([k]) => k);
-    const header = `${esc(doc.id)} — ${esc(doc.status)}${running && doc.progress ? ' — ' + esc(doc.progress) : ''}`;
+    const header = `${esc(doc.id)} — ${esc(doc.status)}${running && doc.progress ? ' — ' + esc(doc.progress) : ''}
+      <button type="button" id="bl-copy-settings" style="margin-left:10px"
+        title="Fill the sweep form above with THIS run's stored settings — universe, sizes, data range, chunk shape, decision, band, permutes, layout, null boards, trailing, min trades, promote K, and the declared config if one exists. Nothing launches; the form is just set so a re-run is the same run.">copy settings into the form</button>`;
     // The equation must EQUAL ITSELF (owner catch, 2026-08-03: it printed
     // 17 x 10 = 1700 because the null-board factor was omitted from the
     // formula while being included in the total).
@@ -2615,6 +2617,52 @@
       notesTa.addEventListener('input', fitNotes);
       fitNotes();
     }
+    // COPY SETTINGS INTO THE FORM (owner order, 2026-08-04): every control
+    // the form owns is set from this run's stored parameters, so a re-run is
+    // the same run without re-typing. Sets values only — launches nothing.
+    const copyBtn = $('bl-copy-settings');
+    if (copyBtn) copyBtn.addEventListener('click', () => {
+      const setVal = (id, v) => { const e2 = $(id); if (e2 != null && v != null) e2.value = String(v); };
+      const setChk = (id, v) => { const e2 = $(id); if (e2) e2.checked = !!v; };
+      setVal('bl-universe', (p.universe || []).join(', '));
+      setChk('bl-singles', p.sizes && p.sizes.singles);
+      setChk('bl-doubles', p.sizes && p.sizes.doubles);
+      setChk('bl-triples', p.sizes && p.sizes.triples);
+      setChk('bl-allloaded', p.allLoaded);
+      setVal('bl-start', p.startMonth);
+      setVal('bl-end', p.endMonth);
+      setVal('bl-geometry', p.set && p.set.geometry);
+      setVal('bl-decision', p.set && p.set.decision);
+      setVal('bl-band', p.set ? String(p.set.band) : null);
+      setChk('bl-weekdays', p.set && p.set.weekdaysOnly);
+      setChk('bl-perm-geometry', p.permute && p.permute.geometry);
+      setChk('bl-perm-decision', p.permute && p.permute.decision);
+      setChk('bl-perm-band', p.permute && p.permute.band);
+      setChk('bl-perm-weekdays', p.permute && p.permute.weekdays);
+      setVal('bl-promotek', p.promoteK);
+      setVal('bl-mintrades', p.minTrades);
+      setChk('bl-trailing', p.trailing);
+      setVal('bl-layout', p.windowLayout);
+      setVal('bl-nullboards', p.labelShiftReps ?? 0);
+      setChk('bl-declared-on', !!p.declared);
+      if (p.declared) {
+        setVal('bl-dec-entry', p.declared.entry);
+        if (p.declared.entry !== 'market') {
+          setVal('bl-dec-gate', p.declared.gate);
+          setVal('bl-dec-d', p.declared.dMult);
+        }
+        setVal('bl-dec-t', p.declared.tHours);
+        if (p.declared.quorumSingles != null) setVal('bl-dec-q6', p.declared.quorumSingles);
+        if (p.declared.quorumContexts != null) setVal('bl-dec-q8', p.declared.quorumContexts);
+        setVal('bl-dec-trail', p.declared.trailMult ?? '');
+        if (p.declared.armMult != null) setVal('bl-dec-arm', p.declared.armMult);
+      }
+      setVal('bl-desc', ''); // intent never copies — a re-run states its own purpose
+      document.querySelectorAll('#bl-form select, #bl-form input').forEach((e2) => e2.dispatchEvent(new Event('change')));
+      const formEl = document.getElementById('bl-form');
+      if (formEl) formEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+
     const notesSave = $('bl-notes-save');
     if (notesSave) notesSave.addEventListener('click', async () => {
       const msg = $('bl-notes-msg');
