@@ -490,7 +490,7 @@
 
       ${r.tuning.tau != null ? `
       <div class="section">
-        <h2>Directional hunter — threshold tuned by validation paper P&amp;L</h2>
+        <h2>Up/Down Hunter — threshold tuned by validation paper P&amp;L</h2>
         <div class="tiles">
           ${tile('Chosen τ', String(r.tuning.tau), r.tuning.tau === 0 ? 'always in — trade every period, direction only' : 'stand aside below this directional probability', true)}
           ${tile('Class weights', CLASSES.map((c) => `${clsName(c)}&thinsp;×${(r.tuning.classWeights[String(c)] ?? 1).toFixed(2)}`).join(' '), 'training loss multipliers (balanced on training counts)')}
@@ -589,7 +589,7 @@
     const range = doc.params.allLoaded ? 'all loaded data' : `${esc(doc.params.startMonth)}→${esc(doc.params.endMonth)}`;
     const header = `${esc(doc.id)} — ${esc(doc.status)}${doc.status === 'running' && doc.progress ? ` — ${esc(doc.progress)}` : ''}
       · ${doc.runs.filter((r) => r.status === 'done' || r.status === 'error').length}/${doc.runs.length} runs
-      · dormant ±${esc(String(doc.params.dormantPct))}% · ${range} · ${esc(doc.params.geometry || 'weekly-8d')}${doc.params.weekdaysOnly ? ' · 24/5' : ''}${doc.params.decision === 'directional' ? ' · directional hunter' : ''} · vs ${esc(doc.params.compareSymbol)}`;
+      · dormant ±${esc(String(doc.params.dormantPct))}% · ${range} · ${esc(doc.params.geometry || 'weekly-8d')}${doc.params.weekdaysOnly ? ' · 24/5' : ''}${doc.params.decision === 'directional' ? ' · up/down hunter' : ''} · vs ${esc(doc.params.compareSymbol)}`;
     if (doc.kind === 'bracketlab') {
       batchViewEl.innerHTML = `<p class="note">${header}</p><p class="note">This is a Bracket lab sweep — view it on the <strong>Bracket lab</strong> tab.</p>`;
       return;
@@ -1907,6 +1907,10 @@
     return m < 90 ? `${m}m` : m < 60 * 48 ? `${(m / 60).toFixed(1)}h` : `${(m / 1440).toFixed(1)}d`;
   };
 
+  // DISPLAY NAME for the decision style (owner order, 2026-08-04): the style
+  // stored as 'directional' shows as 'up/down hunter' everywhere, so the word
+  // 'directional' on screen ALWAYS means the gate and never the decision.
+  const decName = (d) => (d === 'directional' ? 'up/down hunter' : d);
   function comboLabel(l) {
     return l.trade + (l.ctx1 ? '+' + l.ctx1 : '') + (l.ctx2 ? '+' + l.ctx2 : '');
   }
@@ -2325,13 +2329,13 @@
       const dumpFile = censusRow && censusRow.modelFile ? censusRow.modelFile.split('/').pop() : null;
       return `<tr class="${l.stage === 'promoted' ? 'hilite' : ''}">
         <td>${selectable ? `<input type="radio" name="bl-sel" class="bl-sel" data-key="${esc(l.key)}" data-stage="${esc(l.stage)}" ${isSel ? 'checked' : ''}>` : ''}
-          ${l.stage === 'promoted' && dumpFile ? `<button class="bl-inspect" data-file="${esc(dumpFile)}" data-quorum="${l.quorum}" data-label="${esc(comboLabel(l))} ${esc(l.geometry)} ${esc(l.decision)}" title="Open this setup's committee members individually">inspect</button>
-          <button class="bl-grid" data-file="${esc(dumpFile)}" data-label="${esc(comboLabel(l))} ${esc(l.geometry)} ${esc(l.decision)}"
+          ${l.stage === 'promoted' && dumpFile ? `<button class="bl-inspect" data-file="${esc(dumpFile)}" data-quorum="${l.quorum}" data-label="${esc(comboLabel(l))} ${esc(l.geometry)} ${esc(decName(l.decision))}" title="Open this setup's committee members individually">inspect</button>
+          <button class="bl-grid" data-file="${esc(dumpFile)}" data-label="${esc(comboLabel(l))} ${esc(l.geometry)} ${esc(decName(l.decision))}"
             data-cell="${esc(JSON.stringify({ quorum: l.quorum, gate: l.gate ?? null, entry: l.entry || 'breakout', dMult: l.dMult ?? null, tHours: l.tHours, trailMult: l.trailMult ?? null, armMult: l.armMult ?? null, holdPnl: l.holdout ? l.holdout.pnl : null }))}"
             title="Every execution-menu permutation for this row — agreement level × gate × entry × distance × time limit (× trailing when swept) — re-scored from the stored votes, with a plateau view around this row's cell on top. Test window only, on purpose.">menu grid</button>` : ''}</td>
         <td>${i + 1}</td>
         <td><strong>${esc(comboLabel(l))}</strong> <span class="bl-stage">${l.stage === 'promoted' ? 'prom' : 'slim'}</span>${l.layoutArm ? ` <span class="bl-stage">${esc(l.layoutArm)}</span>` : ''}${l.nullDealSeed != null ? ` <span class="bl-stage">null n${l.nullDealSeed}</span>` : ''}
-          <div class="cellsub">${esc(l.geometry)} · ${band} · ${esc(l.decision)} · ${l.weekdaysOnly ? '24/5' : '24/7'}</div></td>
+          <div class="cellsub">${esc(l.geometry)} · ${band} · ${esc(decName(l.decision))} · ${l.weekdaysOnly ? '24/5' : '24/7'}</div></td>
         <td>q${l.quorum}/${l.members} · ${execCell(l)}</td>
         ${tuneBlock}
         ${holdBlock}
@@ -2728,7 +2732,7 @@
           trade: l.trade, geometry: l.geometry, decision: l.decision,
           ...(l.layoutArm ? { windowLayout: l.layoutArm } : {}),
         });
-        o.textContent = `${comboLabel(l)} · ${l.geometry} · ${l.decision}${l.layoutArm ? ` · ${l.layoutArm}` : ''}`;
+        o.textContent = `${comboLabel(l)} · ${l.geometry} · ${decName(l.decision)}${l.layoutArm ? ` · ${l.layoutArm}` : ''}`;
         setupSel.appendChild(o);
       });
       $('bl-v-go').addEventListener('click', async () => {
@@ -2811,7 +2815,7 @@
           has passed both null tests above. COST: fires a long job (hours); the box does the work.</p>
         ${why ? `<p class="note"><button disabled>History Tuning</button> — inactive: ${esc(why)}.</p>`
           : `<p class="note"><button id="bl-ht-go">History Tuning: tune the selected survivor</button>
-             <span class="note">selected: ${esc(comboLabel(sel))} ${esc(sel.geometry)} ${esc(sel.decision)} q${sel.quorum}</span></p>`}`;
+             <span class="note">selected: ${esc(comboLabel(sel))} ${esc(sel.geometry)} ${esc(decName(sel.decision))} q${sel.quorum}</span></p>`}`;
     } else if (!htDocs.length) {
       launcher = '<p class="note">Select a promoted row on a finished 70/15/15 board to activate the launcher. Runs appear here once fired.</p>';
     }

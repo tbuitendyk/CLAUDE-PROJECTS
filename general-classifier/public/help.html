@@ -203,7 +203,7 @@
       <li><span class="term">Argmax (3-class)</span> — classic prediction: the most probable of
         −1 / 0 / +1 wins. The right mode for narrow bands where all three classes are live
         possibilities.</li>
-      <li><span class="term">Directional hunter (±1 only, τ by $)</span> — built for WIDE dormant bands
+      <li><span class="term">Up/Down Hunter (±1 only, τ by $)</span> — built for WIDE dormant bands
         (e.g. ±10%) where most periods are 0 and "always predict 0" would be rewarded. Training weights
         the rare ±1 samples up; the trade call compares P(+1) vs P(−1) <em>only</em>, standing aside
         when the winner's probability is below a threshold τ. τ comes from a fixed menu scored by paper
@@ -223,7 +223,7 @@
         chunks (with how many were dropped over gaps or missing label data), feature count, the band
         actually used (auto shows the derived ±%), and the class distribution overall / train / test.</li>
       <li><span class="term">Hyperparameter section</span> — the λ ladder (logreg) or boosting-rounds
-        summary (boost), each against the majority reference; for the directional hunter, the chosen τ,
+        summary (boost), each against the majority reference; for the Up/Down Hunter, the chosen τ,
         the class weights, and the full τ-vs-validation-dollars ladder.</li>
       <li><span class="term">What the model leaned on</span> — top features by |weight| (logreg,
         standardized scale) or by split-gain share (boost). Only trust these if the test accuracy
@@ -578,7 +578,7 @@
       <dt>Super 6/8 / quorum qN</dt><dd>Trades only when ≥N specs call the SAME direction (absolute count, not plurality). The agreement gradient is the ladder q5→q8.</dd>
       <dt>Null shift / exceed rate</dt><dd>Full rerun with circularly time-rotated labels; the exceed rate is the share of distinct rotations matching or beating the real run — an empirical p-value.</dd>
       <dt>Distinct rotations</dt><dd>The finite ceiling of usable label shifts (~samples − buffer); duplicates collapse into single null samples.</dd>
-      <dt>τ (tau)</dt><dd>The directional hunter's stand-aside threshold on the winning direction's probability, tuned by validation paper dollars. τ=0 = always in.</dd>
+      <dt>τ (tau)</dt><dd>The Up/Down Hunter's stand-aside threshold on the winning direction's probability, tuned by validation paper dollars. τ=0 = always in.</dd>
       <dt>Lens</dt><dd>Meta-lens name for a spec when treated as a committee member subject to stage-1 selection.</dd>
       <dt>Purged interlacing</dt><dd>Alternating 49-day A/B blocks with the last chunks of each block dropped so overlapping chunks can't leak across the boundary.</dd>
       <dt>LIVE / SEEDED</dt><dd>Tracker provenance: recorded before the outcome window opens vs backfilled after. Only LIVE periods count toward a verdict.</dd>
