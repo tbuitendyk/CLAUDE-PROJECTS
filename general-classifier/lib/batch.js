@@ -2355,6 +2355,17 @@ function startBracketLab(params) {
         + (u.nullDealSeed != null ? `|n${u.nullDealSeed}` : '');
       if (settled.ok && settled.value && settled.value.best) {
         const res = settled.value;
+        // UNCAPPED slim record (QC 74): the leader list caps at 50 for
+        // display, and slim rows beyond it used to vanish. Compact on
+        // purpose — the full result lives in the promoted stage.
+        doc.slimResults = doc.slimResults || [];
+        doc.slimResults.push({
+          key, trade: c.trade, ctx1: c.ctx1, ctx2: c.ctx2,
+          geometry: b.geometry, decision: b.decision, bandPct: res.bandPct,
+          nullDealSeed: u.nullDealSeed ?? null,
+          pnl: res.best.pnl ?? null, trades: res.best.trades ?? null,
+          holdPnl: res.best.holdout ? res.best.holdout.pnl : null,
+        });
         pushLeader(doc, {
           key, stage: 'slim',
           trade: c.trade, ctx1: c.ctx1, ctx2: c.ctx2, size: c.size,
@@ -2440,9 +2451,13 @@ function startBracketLab(params) {
             }
             delete res.memberDump;
           }
-          if (p.edgeScreen && res.bestEdge) {
-            // Census row, kept OFF the leaderboard so nothing about it is
-            // conditioned on P&L.
+          if (res.best || res.bestEdge) {
+            // Census row for EVERY promoted unit, kept OFF the leaderboard so
+            // nothing about it is conditioned on P&L. QC 74 (owner law,
+            // 2026-08-04): computed records are NEVER deleted — the capped
+            // leader list is display only, this is the record. Previously
+            // only edge-screen runs wrote census rows, so a discovery run's
+            // promoted results beyond the display cap simply vanished.
             doc.edgeCensus.push({
               trade: l.trade, ctx1: l.ctx1, ctx2: l.ctx2,
               geometry: l.geometry, decision: l.decision, bandPct: res.bandPct,
@@ -2483,16 +2498,17 @@ function startBracketLab(params) {
               // draws, which made the pooled null a mixture rather than a null.
               // Storing it means any future census can be read conditionally
               // instead of taken on trust.
-              holdBaseline: res.bestEdge.holdoutMetrics ? res.bestEdge.holdoutMetrics.majorityBaseline : null,
-              holdBestConst: res.bestEdge.holdoutMetrics ? res.bestEdge.holdoutMetrics.bestConstant : null,
-              searchBaseline: res.bestEdge.metrics ? res.bestEdge.metrics.majorityBaseline : null,
-              quorum: res.bestEdge.quorum, members: res.bestEdge.members,
-              searchEdge: res.bestEdge.metrics.edge,
-              searchAcc: res.bestEdge.metrics.testAcc,
-              holdEdge: res.bestEdge.holdoutMetrics ? res.bestEdge.holdoutMetrics.edge : null,
-              holdAcc: res.bestEdge.holdoutMetrics ? res.bestEdge.holdoutMetrics.testAcc : null,
-              holdDirHits: res.bestEdge.holdoutMetrics ? res.bestEdge.holdoutMetrics.directionalHits : null,
-              holdDirCalls: res.bestEdge.holdoutMetrics ? res.bestEdge.holdoutMetrics.directionalCalls : null,
+              holdBaseline: res.bestEdge && res.bestEdge.holdoutMetrics ? res.bestEdge.holdoutMetrics.majorityBaseline : null,
+              holdBestConst: res.bestEdge && res.bestEdge.holdoutMetrics ? res.bestEdge.holdoutMetrics.bestConstant : null,
+              searchBaseline: res.bestEdge && res.bestEdge.metrics ? res.bestEdge.metrics.majorityBaseline : null,
+              quorum: res.bestEdge ? res.bestEdge.quorum : (res.best ? res.best.quorum : null),
+              members: res.bestEdge ? res.bestEdge.members : (res.members ?? null),
+              searchEdge: res.bestEdge && res.bestEdge.metrics ? res.bestEdge.metrics.edge : null,
+              searchAcc: res.bestEdge && res.bestEdge.metrics ? res.bestEdge.metrics.testAcc : null,
+              holdEdge: res.bestEdge && res.bestEdge.holdoutMetrics ? res.bestEdge.holdoutMetrics.edge : null,
+              holdAcc: res.bestEdge && res.bestEdge.holdoutMetrics ? res.bestEdge.holdoutMetrics.testAcc : null,
+              holdDirHits: res.bestEdge && res.bestEdge.holdoutMetrics ? res.bestEdge.holdoutMetrics.directionalHits : null,
+              holdDirCalls: res.bestEdge && res.bestEdge.holdoutMetrics ? res.bestEdge.holdoutMetrics.directionalCalls : null,
               // THE MONEY ARM. Accuracy counts a wrong call identically
               // whether the market went nowhere or hard the other way; P&L
               // does not. A system can be right more often than noise and
