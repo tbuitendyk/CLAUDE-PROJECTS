@@ -1,0 +1,4 @@
+UI: null-verdict PASS/FAIL now green/red (no restart)
+tl;dr: Tool 2's three lines (per-setup, selection-aware, sanity) now show PASS in bold green and FAIL in bold red, same as the planted check. Static deploy, nothing restarted; refresh to pick up app.js v88.
+
+c.
