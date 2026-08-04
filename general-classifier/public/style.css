@@ -146,6 +146,11 @@ th { color: var(--ink-2); font-weight: 600; font-size: 12px; }
    the header row pins to the top of the scroll box (owner order, 2026-08-04). */
 .scrolly { overflow-y: auto; }
 .scrolly th { position: sticky; top: 0; background: var(--page); z-index: 2; }
+/* Data-manager tables: pair names hug their width, the manage buttons sit in
+   one row without wrapping (owner order, 2026-08-04). */
+.ds-table th:first-child, .ds-table td:first-child { width: 1%; white-space: nowrap; text-align: left; }
+.ds-table td:last-child, .ds-table th:last-child { white-space: nowrap; text-align: left; }
+.ds-table td:last-child button { padding: 3px 8px; font-size: 12px; margin-right: 4px; }
 th[title] { cursor: help; text-decoration: underline dotted var(--muted); text-underline-offset: 3px; }
 th:first-child, td:first-child { text-align: left; }
 tr:last-child td { border-bottom: 0; }

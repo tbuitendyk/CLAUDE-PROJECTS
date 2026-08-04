@@ -946,7 +946,7 @@
 
     const topTable = s && s.top && s.top.length ? `
       <h3 style="margin:14px 0 4px">Top 20 by test paper P&L (all assets)</h3>
-      <div class="tablewrap"><table>
+      <div class="tablewrap"><table class="ds-table">
         <tr><th>pair</th><th>member</th><th>training window</th><th>P&L (W/T)</th><th>true edge</th><th>test acc</th><th>picked</th></tr>
         ${s.top.map((t) => `<tr><td>${esc(t.trade)}</td><td>${esc(t.key)}</td><td>${esc(regimeLabel(t.regime || String(t.key).split('/')[0]))}</td>
           <td>${money(t.pnl ?? 0)} <span class="note">(${t.wins ?? 0}/${t.trades ?? 0}t)</span></td>
@@ -1128,7 +1128,7 @@
     }).join('');
     batchViewEl.innerHTML = `
       <p class="note">${header}</p>
-      <div class="tablewrap"><table>
+      <div class="tablewrap"><table class="ds-table">
         <tr><th>pair</th>${th('lenses passed', MT.lenses)}${th('threshold', MT.frac)}${th('test trades', MT.book)}${th('P&amp;L', MT.book)}${th('gross/trade', MT.gpt)}${th('acc (edge)', MT.acc)}${th('null: P&amp;L exceed', MT.nullP)}${th('null: edge exceed', MT.nullE)}</tr>
         ${rows}
       </table></div>
@@ -3081,7 +3081,7 @@
         HOW: manage per asset, download new pairs, or refresh everything. WHEN: before any sweep needing months
         not listed. Every write refuses while a job runs; purge and trim DELETE data — the only way back is
         downloading again.</p>
-      <div class="tablewrap"><table>
+      <div class="tablewrap"><table class="ds-table">
         <tr><th>pair</th><th>months</th><th>from</th><th>to</th><th title="Refresh re-fetches from the newest cached month (it may have been partial) through the current month. Trim keeps only a range, deleting the rest. Purge deletes the whole asset. Growing a range = Download below.">manage</th></tr>
         ${symbols.map((s2) => (s2.symbol === 'PLANTEDUSDT' ? `
           <tr><td>${esc(s2.symbol)} <span class="note">fabricated planted-check pair — generated to mirror the real data's date span, never downloaded</span></td>
