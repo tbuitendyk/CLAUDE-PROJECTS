@@ -1,0 +1,26 @@
+History Tuning read + audit done; tuning is a NO for LTC; live panel fixed
+tl;dr: your tuning run completed clean (105/105, 6 min) - the stamped verdict is HOLD RULE FAILED: the best dial pair made +$122 in the shopping windows then lost -$121 on the graded windows vs the untuned reference's -$37. Tuning does not strengthen the LTC setup; no null draws to fire, reserve grade stays untouched. The panel that showed you nothing now refreshes itself (app.js v89, no restart). Audit committed.
+
+Reading, in plain words: the two time dials (how fast old training data
+fades, how often the five trade variables get re-picked) were tried 35 ways
+across three calendar splits. The pair that looked best where picking is
+allowed lost more than double the untuned reference where grading happens,
+winning only 1 of 3 graded windows. By the rules stamped before the run,
+that closes the tuning branch: nothing to defend with null draws, nothing
+for the reserve grade to grade.
+
+The candidate itself is NOT retired by this - one instrument, one question.
+But note the untuned reference's own graded windows: -$62 / -$39 / +$64
+(early/middle/late). Profit lives in the latest third only, which points
+the same direction as the 17-coin replication miss: LTC-specific and
+late-era-heavy. The honest next judge is the forward paper book on the
+UNTUNED setup - reply "book" and I'll walk you through declaring it
+(twin-book plan as discussed).
+
+Also shipped: the History Tuning panel now refreshes itself every few
+seconds while a tuning job runs, so the board fills live and the verdict
+appears without a manual reload. Static deploy, nothing restarted.
+
+Audit: reports/audit-historytuning-20260804-204431.md.
+
+c.
