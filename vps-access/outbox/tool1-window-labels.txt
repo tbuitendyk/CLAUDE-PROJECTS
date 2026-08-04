@@ -1,0 +1,12 @@
+UI fix live: Tool 1's "selected" line now names its windows (no restart)
+tl;dr: the unlabeled dollar in Tool 1's "selected:" line is fixed on the live page (static deploy, nothing restarted). It now reads: test-window +$43.94 (what each scrambled world's best find must beat) - held-back +$82.41 (Tool 2's window, not judged by this tool).
+
+Why the test amount stays in that line: Tool 1's construction judges the
+SHOPPING window on purpose - each scrambled world retrains, re-shops the
+whole execution menu in the same search window, and its best find is
+compared to your row's test money. Same freedom, same window, both sides.
+Held-back dollars are Tool 2's quantity, and the line now says exactly
+that instead of showing a bare number. Refresh the page to pick it up
+(app.js v87).
+
+c.
