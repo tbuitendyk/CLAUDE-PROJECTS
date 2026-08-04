@@ -1,6 +1,6 @@
 {
   "name": "general-classifier",
-  "version": "1.36.0",
+  "version": "1.37.0",
   "description": "General Classifier: trains a pure-JS softmax classifier on weekly 8-day chunks of Binance hourly data, scored by the following Tue/Thu move, and reports out-of-sample correlation metrics.",
   "main": "server.js",
   "type": "commonjs",

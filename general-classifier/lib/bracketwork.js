@@ -619,12 +619,44 @@ async function menuGridTask({ combo, branch, params, dump }) {
     });
     for (const r of rows) cells.push({ quorum: k, members: calls.length, ...r });
   }
+  // HELD-BACK AGGREGATE ONLY (owner order, 2026-08-04): every cell is scored
+  // once on the hold window from the stored hold votes, but individual
+  // held-back numbers NEVER leave this function — only their average and the
+  // share positive. Printing them per cell would turn the graded window into
+  // another shopping window; an average cannot be shopped from.
+  let holdAvg = null;
+  let holdPosShare = null;
+  let holdCellCount = 0;
+  const { holdChunks } = split;
+  const holdCalls = dump.votes.hold;
+  if (holdChunks.length && Array.isArray(holdCalls) && holdCalls.length === calls.length) {
+    let sum = 0;
+    let pos = 0;
+    for (let k = 1; k <= holdCalls.length; k++) {
+      const stream = holdChunks.map((_, i) => quorumCall(holdCalls, i, k));
+      const rows = bracketLib.execSweep(holdChunks, stream, maps.trade, geo, gridBand, fee, {
+        dMults: p.dMults, tHours: p.tHours, gates: p.gates, entries: p.entries,
+        trailing: !!p.trailing,
+      });
+      for (const r of rows) {
+        holdCellCount++;
+        sum += r.pnl;
+        if (r.pnl > 0) pos++;
+      }
+    }
+    holdAvg = holdCellCount ? sum / holdCellCount : null;
+    holdPosShare = holdCellCount ? pos / holdCellCount : null;
+  }
   return {
     window: 'test',
     testChunkCount: testChunks.length,
+    holdChunkCount: holdChunks.length,
     bandPct: gridBand,
     quorums: calls.length,
     cells,
+    holdAvg,
+    holdPosShare,
+    holdCellCount,
   };
 }
 

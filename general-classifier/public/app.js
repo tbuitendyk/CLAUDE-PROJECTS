@@ -1967,12 +1967,23 @@
   function renderMenuGrid(d, label, cand) {
     const m$ = (v) => (v == null ? '—' : `<span class="${v >= 0 ? 'up' : 'down'}">${(v < 0 ? '-' : '+')}$${Math.abs(v).toFixed(2)}</span>`);
     const cells = (d.cells || []).slice().sort((a, b) => (b.pnl ?? -Infinity) - (a.pnl ?? -Infinity));
+    const FIELDS = ['quorum', 'gate', 'entry', 'dMult', 'tHours', 'trailMult', 'armMult'];
+    const isCand = (c) => cand && FIELDS.every((k) => (c[k] ?? null) === (cand[k] ?? null));
+    const candIdx = cand ? cells.findIndex(isCand) : -1;
+    const rankLine = candIdx >= 0
+      ? `<p class="note"><strong>Your cell sits at #${candIdx + 1} of ${cells.length}</strong> in the table below (marked ▶).` +
+        (d.holdAvg != null && cand.holdPnl != null
+          ? ` HELD-BACK comparison: your cell ${cand.holdPnl >= 0 ? '+' : '-'}$${Math.abs(cand.holdPnl).toFixed(2)} vs the average of all ${d.holdCellCount.toLocaleString()} setups ${d.holdAvg >= 0 ? '+' : '-'}$${Math.abs(d.holdAvg).toFixed(2)} (${(100 * d.holdPosShare).toFixed(0)}% of setups positive). Every setup was scored once on the graded window but ONLY the average is disclosed — per-setup held-back numbers would let the graded window be shopped.`
+          : '')
+        + '</p>'
+      : '';
     const cellName = (c) => (c.entry === 'market'
       ? `q${c.quorum} · directional/market · t ${c.tHours}h`
       : `q${c.quorum} · ${esc(c.gate)}/breakout · d ${c.dMult}× · t ${c.tHours}h${c.trailMult != null ? ` · trail ${c.trailMult}×/arm ${c.armMult}×` : ''}`);
     return `
       ${renderPlateau(cells, cand)}
       <h3>Menu grid — ${esc(label)} (${cells.length.toLocaleString()} permutations)</h3>
+      ${rankLine}
       <p class="note">Every combination of agreement level × gate × entry × trigger distance × time limit
         ${d.trailingSwept ? '× trailing stop × arming distance ' : ''}re-scored from this row's stored votes on
         ${d.testChunkCount} test-window periods (band ±${d.bandPct != null ? d.bandPct.toFixed(2) : '?'}%).
@@ -1983,8 +1994,8 @@
       <div class="tablewrap" style="max-height:440px;overflow-y:auto"><table>
         <tr><th>#</th><th>cell — agreement · gate/entry · distance · time limit · trailing</th>
           <th>test $</th><th>W/T</th><th>g/t $</th><th title="stop-rail exits; amb = bars that touched both rails, resolved AGAINST the book; trail-amb = bars where extreme-vs-stop order is unknowable on hourly candles">stops</th></tr>
-        ${cells.map((c, i) => `<tr>
-          <td>${i + 1}</td><td>${cellName(c)}</td>
+        ${cells.map((c, i) => `<tr${isCand(c) ? ' class="hilite"' : ''}>
+          <td>${i + 1}</td><td>${isCand(c) ? '▶ ' : ''}${cellName(c)}</td>
           <td><strong>${m$(c.pnl)}</strong></td>
           <td>${c.wins}/${c.trades}</td>
           <td>${c.grossPerTrade != null ? c.grossPerTrade.toFixed(2) : '—'}</td>
@@ -2316,7 +2327,7 @@
         <td>${selectable ? `<input type="radio" name="bl-sel" class="bl-sel" data-key="${esc(l.key)}" data-stage="${esc(l.stage)}" ${isSel ? 'checked' : ''}>` : ''}
           ${l.stage === 'promoted' && dumpFile ? `<button class="bl-inspect" data-file="${esc(dumpFile)}" data-quorum="${l.quorum}" data-label="${esc(comboLabel(l))} ${esc(l.geometry)} ${esc(l.decision)}" title="Open this setup's committee members individually">inspect</button>
           <button class="bl-grid" data-file="${esc(dumpFile)}" data-label="${esc(comboLabel(l))} ${esc(l.geometry)} ${esc(l.decision)}"
-            data-cell="${esc(JSON.stringify({ quorum: l.quorum, gate: l.gate ?? null, entry: l.entry || 'breakout', dMult: l.dMult ?? null, tHours: l.tHours, trailMult: l.trailMult ?? null, armMult: l.armMult ?? null }))}"
+            data-cell="${esc(JSON.stringify({ quorum: l.quorum, gate: l.gate ?? null, entry: l.entry || 'breakout', dMult: l.dMult ?? null, tHours: l.tHours, trailMult: l.trailMult ?? null, armMult: l.armMult ?? null, holdPnl: l.holdout ? l.holdout.pnl : null }))}"
             title="Every execution-menu permutation for this row — agreement level × gate × entry × distance × time limit (× trailing when swept) — re-scored from the stored votes, with a plateau view around this row's cell on top. Test window only, on purpose.">menu grid</button>` : ''}</td>
         <td>${i + 1}</td>
         <td><strong>${esc(comboLabel(l))}</strong> <span class="bl-stage">${l.stage === 'promoted' ? 'prom' : 'slim'}</span>${l.layoutArm ? ` <span class="bl-stage">${esc(l.layoutArm)}</span>` : ''}${l.nullDealSeed != null ? ` <span class="bl-stage">null n${l.nullDealSeed}</span>` : ''}

@@ -87,6 +87,9 @@ module.exports.menuGridMatchesTheSweepAndRefusesShiftedWindows = async function 
     const twin = grid.cells.find((c) => c.quorum === res.best.quorum
       && c.entry === (res.best.entry || 'breakout') && c.tHours === res.best.tHours
       && (c.entry === 'market' || c.dMult === res.best.dMult));
+    assert.ok(grid.cells.every((c) => c.holdPnl === undefined && c.holdout === undefined),
+      'per-cell held-back numbers must NEVER leave the engine — only the average is disclosed');
+    assert.ok(grid.holdAvg == null || Number.isFinite(grid.holdAvg), 'hold average is a number when a hold window exists');
     assert.ok(twin, 'the sweep-chosen cell must exist in the grid');
     assert.ok(Math.abs(twin.pnl - res.best.pnl) < 1e-9, `grid money must equal sweep money (${twin.pnl} vs ${res.best.pnl})`);
     const tampered = JSON.parse(JSON.stringify(res.memberDump));
