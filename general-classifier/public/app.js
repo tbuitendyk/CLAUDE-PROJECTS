@@ -1913,14 +1913,65 @@
 
   // TABLES CARRY A NAME AND A KEY (owner's standing rule) — these render for
   // the owner to operate alone, so nothing is assumed known.
+  // PLATEAU VIEW (owner order, 2026-08-04): above the full grid, one small
+  // table per setting — each varies ONLY that setting and holds the rest at
+  // the candidate cell's values, candidate marked. Neighbors earning similar
+  // money = plateau (sturdy pick). The candidate alone earning = needle
+  // (one step away collapses — distrust it). Test-window money, like the
+  // whole grid.
+  function renderPlateau(cells, cand) {
+    if (!cand) return '';
+    const m$ = (v) => (v == null ? '—' : `<span class="${v >= 0 ? 'up' : 'down'}">${(v < 0 ? '-' : '+')}$${Math.abs(v).toFixed(2)}</span>`);
+    const FIELDS = ['quorum', 'gate', 'entry', 'dMult', 'tHours', 'trailMult', 'armMult'];
+    const eq = (a, b) => (a ?? null) === (b ?? null);
+    const isCand = (c) => FIELDS.every((k) => eq(c[k], cand[k]));
+    const group = (skip, title, fmt, extraSame) => {
+      const rows = cells.filter((c) => FIELDS.every((k) => k === skip || eq(c[k], cand[k]))
+        && (!extraSame || extraSame(c)));
+      if (rows.length < 2) return '';
+      rows.sort((a, b) => (a[skip] ?? -1) === (b[skip] ?? -1) ? ((a.armMult ?? -1) - (b.armMult ?? -1))
+        : (typeof a[skip] === 'string' ? String(a[skip]).localeCompare(String(b[skip])) : (a[skip] ?? -1) - (b[skip] ?? -1)));
+      return `<div style="display:inline-block;vertical-align:top;margin:0 14px 10px 0">
+        <strong>${title}</strong>
+        <table>
+          <tr><th>${title}</th><th>test $</th><th>W/T</th></tr>
+          ${rows.map((c) => `<tr${isCand(c) ? ' class="hilite"' : ''}>
+            <td>${isCand(c) ? '▶ ' : ''}${fmt(c)}</td>
+            <td>${m$(c.pnl)}</td><td>${c.wins}/${c.trades}</td></tr>`).join('')}
+        </table></div>`;
+    };
+    const blocks = [
+      group('quorum', 'agreement', (c) => `${c.quorum}/${c.members}`),
+      group('tHours', 'time limit', (c) => `${c.tHours}h`),
+    ];
+    if (cand.entry !== 'market') {
+      blocks.push(group('dMult', 'trigger distance', (c) => `${c.dMult}×`));
+      blocks.push(group('gate', 'gate', (c) => c.gate));
+      // Trailing axis: static plus each trail distance. Arm pinned to the
+      // candidate's (0 when the candidate is static) so only one thing moves.
+      blocks.push(group('trailMult', 'trailing stop', (c) => (c.trailMult == null ? 'static' : `${c.trailMult}×`),
+        (c) => (c.trailMult == null ? true : (c.armMult ?? 0) === (cand.armMult ?? 0))));
+    }
+    const body = blocks.filter(Boolean).join('');
+    if (!body) return '';
+    return `<h3>Plateau view — one setting moved at a time, the rest held at your cell</h3>
+      <p class="note">KEY — each little table changes exactly ONE setting; ▶ marks your cell. Neighbors
+        earning similar money = a plateau (the pick is sturdy). Your row alone earning while neighbors
+        collapse = a needle (one step away falls apart — distrust it). Money is TEST-WINDOW money,
+        dollars per $100, same as the full grid below.
+        ${cand.entry === 'market' ? 'Market entry has no trigger distance, gate choice or trailing — only agreement and time limit can move.' : ''}</p>
+      <div>${body}</div>`;
+  }
+
   // The full execution-menu grid for one row: every cell, test window only.
-  function renderMenuGrid(d, label) {
+  function renderMenuGrid(d, label, cand) {
     const m$ = (v) => (v == null ? '—' : `<span class="${v >= 0 ? 'up' : 'down'}">${(v < 0 ? '-' : '+')}$${Math.abs(v).toFixed(2)}</span>`);
     const cells = (d.cells || []).slice().sort((a, b) => (b.pnl ?? -Infinity) - (a.pnl ?? -Infinity));
     const cellName = (c) => (c.entry === 'market'
       ? `q${c.quorum} · directional/market · t ${c.tHours}h`
       : `q${c.quorum} · ${esc(c.gate)}/breakout · d ${c.dMult}× · t ${c.tHours}h${c.trailMult != null ? ` · trail ${c.trailMult}×/arm ${c.armMult}×` : ''}`);
     return `
+      ${renderPlateau(cells, cand)}
       <h3>Menu grid — ${esc(label)} (${cells.length.toLocaleString()} permutations)</h3>
       <p class="note">Every combination of agreement level × gate × entry × trigger distance × time limit
         ${d.trailingSwept ? '× trailing stop × arming distance ' : ''}re-scored from this row's stored votes on
@@ -2264,7 +2315,9 @@
       return `<tr class="${l.stage === 'promoted' ? 'hilite' : ''}">
         <td>${selectable ? `<input type="radio" name="bl-sel" class="bl-sel" data-key="${esc(l.key)}" data-stage="${esc(l.stage)}" ${isSel ? 'checked' : ''}>` : ''}
           ${l.stage === 'promoted' && dumpFile ? `<button class="bl-inspect" data-file="${esc(dumpFile)}" data-quorum="${l.quorum}" data-label="${esc(comboLabel(l))} ${esc(l.geometry)} ${esc(l.decision)}" title="Open this setup's committee members individually">inspect</button>
-          <button class="bl-grid" data-file="${esc(dumpFile)}" data-label="${esc(comboLabel(l))} ${esc(l.geometry)} ${esc(l.decision)}" title="Every execution-menu permutation for this row — agreement level × gate × entry × distance × time limit (× trailing when swept) — re-scored from the stored votes. Test window only, on purpose.">menu grid</button>` : ''}</td>
+          <button class="bl-grid" data-file="${esc(dumpFile)}" data-label="${esc(comboLabel(l))} ${esc(l.geometry)} ${esc(l.decision)}"
+            data-cell="${esc(JSON.stringify({ quorum: l.quorum, gate: l.gate ?? null, entry: l.entry || 'breakout', dMult: l.dMult ?? null, tHours: l.tHours, trailMult: l.trailMult ?? null, armMult: l.armMult ?? null }))}"
+            title="Every execution-menu permutation for this row — agreement level × gate × entry × distance × time limit (× trailing when swept) — re-scored from the stored votes, with a plateau view around this row's cell on top. Test window only, on purpose.">menu grid</button>` : ''}</td>
         <td>${i + 1}</td>
         <td><strong>${esc(comboLabel(l))}</strong> <span class="bl-stage">${l.stage === 'promoted' ? 'prom' : 'slim'}</span>${l.layoutArm ? ` <span class="bl-stage">${esc(l.layoutArm)}</span>` : ''}${l.nullDealSeed != null ? ` <span class="bl-stage">null n${l.nullDealSeed}</span>` : ''}
           <div class="cellsub">${esc(l.geometry)} · ${band} · ${esc(l.decision)} · ${l.weekdaysOnly ? '24/5' : '24/7'}</div></td>
@@ -2594,7 +2647,7 @@
           const d = await r.json();
           if (!r.ok) throw new Error(d.error || r.status);
           const result = await poll(d.jobId, (m) => { out.innerHTML = `<p class="note">${esc(m)}</p>`; });
-          out.innerHTML = renderMenuGrid(result, btn.dataset.label);
+          out.innerHTML = renderMenuGrid(result, btn.dataset.label, btn.dataset.cell ? JSON.parse(btn.dataset.cell) : null);
           out.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
         } catch (err) {
           out.innerHTML = `<p class="note">could not build the grid: ${esc(err.message)}</p>`;
