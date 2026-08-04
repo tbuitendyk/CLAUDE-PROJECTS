@@ -1,0 +1,9 @@
+# Generic patterns shared by every sub-project. Each sub-project may add its
+# own .gitignore for project-specific paths (build artifacts, secrets, etc).
+__pycache__/
+*.pyc
+.venv/
+venv/
+.env
+node_modules/
+.DS_Store
