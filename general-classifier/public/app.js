@@ -2539,6 +2539,14 @@
       <p><button type="button" id="bl-notes-save"${running ? ' disabled title="saves after the run finishes"' : ''}>save notes</button>
         <span id="bl-notes-msg" class="note">${doc.notesEditedAt ? `last saved ${esc(doc.notesEditedAt.slice(0, 16).replace('T', ' '))} UTC` : ''}</span></p></div>`;
     blViewEl.innerHTML = `<p class="note">${header}</p>${notesBlock}${perfBlock}${repBlock}${leaderBlock}${nullIntro}${nullBlock}${verdictBlock}${htBlock}${inspectBlock}${compareBlock}`;
+    // The notes box sizes itself to its content on load and while typing
+    // (owner order, 2026-08-04), capped at 600px then scrolling.
+    const notesTa = $('bl-notes');
+    if (notesTa) {
+      const fitNotes = () => { notesTa.style.height = 'auto'; notesTa.style.height = Math.min(notesTa.scrollHeight + 2, 600) + 'px'; };
+      notesTa.addEventListener('input', fitNotes);
+      fitNotes();
+    }
     const notesSave = $('bl-notes-save');
     if (notesSave) notesSave.addEventListener('click', async () => {
       const msg = $('bl-notes-msg');
