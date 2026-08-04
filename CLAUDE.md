@@ -37,11 +37,14 @@ Union Trading Academy website (`uniontradingacademy.com/`).
 - **DO NOT change anything live (builder content, publish state, DNS, panel
   settings) without the owner's explicit permission.** Read-only inspection
   is fine.
-- **Hosting / deploy approach: NOT YET DECIDED.** The builder has no git/file
-  interface, which conflicts with the dated-revert requirement — the fork
-  (stay in MyWebsite Now vs. rebuild as code in git deployed to IONOS
-  webspace) is with the owner. Do not scaffold deploy tooling until this is
-  settled — then record the decision here and replace this bullet.
+- **DECIDED (owner, 2026-08-04): rebuild the site as code in git** on this
+  branch, recreating the MyWebsite Now front-page design faithfully; the
+  builder page becomes reference-only. Every published version must be a git
+  commit so the live site can be reverted to any prior date's configuration.
+- **Deploy target still open** (depends on what the IONOS contract includes):
+  IONOS webspace via SFTP vs. IONOS Deploy Now. Owner provided read-only
+  panel access in-session to inventory this — credentials live in the session
+  only and MUST NEVER be committed to git. Record the target here once known.
 
 Note this deliberately differs from `www.buitendyk.ca` (the `website` branch),
 which is served from the owner's IONOS VPS via the `deploy-website` action on
