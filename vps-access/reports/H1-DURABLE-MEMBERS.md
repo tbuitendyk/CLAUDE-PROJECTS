@@ -62,3 +62,16 @@ setup freezes the perishable layer with the durable one.
 ## Where it sits in the loop
 Seed check (running) -> combined read -> L15 consult (owner hard stop,
 with H1 on the table) -> H1a/H1b as the next cycles.
+
+## Status note (2026-08-05) — the decay numbers are UNCONFIRMED-LEADS
+H1b (the scramble floor these curves were owed) was never run; no audit
+exists. The ~1yr member and ~2-3mo assembly half-lives are therefore
+wide-phase directions, not results — and must be cited as
+UNCONFIRMED-LEAD (QC 79). Update from the confirm phase so far: the
+training-fade OPERATIONALIZATION of the member-layer number failed a
+fair paired test on LTCUSDT three ways (HT v2, audits httwo-032404/
+-033500/-033647; family-corrected, menu exhausted). Note the fade test
+and these correlation curves measure DIFFERENT quantities: skill-ranking
+drift does not imply that down-weighting old training data earns money.
+The assembly-layer number (re-vote cadence) has never had its
+one-variable paired test; it remains an untested direction, not a find.
