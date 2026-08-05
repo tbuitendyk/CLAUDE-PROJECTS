@@ -1,0 +1,4 @@
+Platform note: read-only transparency script added at your request
+tl;dr: one new script, classifier-h1a-show-one.sh, committed and run on your instruction. It changes nothing and computes nothing new - it unpacks the decay table's <6mo member correlation (0.352) down to day-by-day right/wrong counting on one stored committee, prints the arithmetic in the open, then re-derives the pooled 0.352 from all 488 block pairs. Output shown to you in chat; rerunnable any time. No engine, UI, or data changes.
+
+c.
