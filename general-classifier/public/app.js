@@ -2897,10 +2897,63 @@
         runsHtml += renderHtRun(child, docsFull);
       }
     }
-    el.innerHTML = `<div class="section"><h2>History Tuning — strengthen a proven setup (optional second pass)</h2>${launcher}${runsHtml}</div>`;
-    if (docsFull.some((r) => r.status === 'running')) {
+    // ---- HT v2: the paired age-dial instrument (DESIGN-HT2.md) ----------
+    let v2 = '';
+    let v2full = [];
+    try {
+      const ex = await (await fetch('api/httwo/exams')).json();
+      const v2docs = (list.batches || []).filter((b) => b.kind === 'httwo' || b.id.startsWith('httwo-'));
+      for (const b of v2docs.slice(0, 8)) v2full.push(await (await fetch(`api/batch/${encodeURIComponent(b.id)}`)).json());
+      const anyRunning = v2full.some((r) => r.status === 'running') || (doc && doc.status === 'running');
+      const selOk = sel && doc && doc.status === 'done' && sel.gate !== 'always';
+      v2 = `<h3>Age-dial instrument (HT v2) — one declared half-life vs the reference, ~20 paired folds, the row's frozen trading cell in both</h3>
+        <p class="note">No menus, no re-picking: the only difference between the two arms is how strongly old training
+          data fades. The verdict is a coin-flip test on the per-fold dollar differences and it prints with EVERY run,
+          pass or fail. Before it may touch a real coin, the instrument must pass two exams on fabricated pairs with
+          KNOWN answers: find the late-only planted rule (A), and find nothing in the uniform one (B).</p>
+        <p class="note">Exams on this engine: <strong class="${ex.ready ? 'up' : 'down'}">${ex.ready ? 'CLEARED' : 'NOT CLEARED'}</strong> — ${esc(ex.detail)}</p>
+        <p class="note">
+          <button id="ht2-exam-a" ${anyRunning ? 'disabled' : ''}>Run exam A (late-rule pair — must find it)</button>
+          <button id="ht2-exam-b" ${anyRunning ? 'disabled' : ''}>Run exam B (stationary pair — must find nothing)</button>
+          &nbsp;·&nbsp; real candidate: half-life
+          <select id="ht2-hl"><option>12mo</option><option>24mo</option><option>36mo</option></select>
+          <button id="ht2-go" ${!anyRunning && ex.ready && selOk ? '' : 'disabled'}>Run the paired test on the selected row</button>
+          ${!ex.ready ? '<span class="note">(real-candidate button unlocks when both exams stand on this engine)</span>' : ''}
+        </p>
+        ${v2full.map((r) => `<div class="section"><h3>${esc(r.id)} — ${esc(r.status)}${r.status === 'running' && r.progress ? ' — ' + esc(r.progress) : ''}</h3>
+          <p class="note">${esc((r.params && r.params.description) || '')}</p>
+          ${r.status === 'done' ? `<div data-ht2-verdict="${esc(r.id)}" class="note"><em>computing the stamped verdict…</em></div>` : ''}</div>`).join('')}`;
+    } catch (err) {
+      v2 = `<p class="note">HT v2 block failed to load: ${esc(err.message)}</p>`;
+    }
+    el.innerHTML = `<div class="section"><h2>History Tuning — strengthen a proven setup (optional second pass)</h2>${launcher}${runsHtml}<hr>${v2}</div>`;
+    if (docsFull.some((r) => r.status === 'running') || v2full.some((r) => r.status === 'running')) {
       htPollTimer = setTimeout(() => { renderHtPanel(doc, sel).catch(() => {}); }, 5000);
     }
+    const fireV2 = async (body) => {
+      try {
+        blErrEl.hidden = true;
+        const res = await fetch('api/httwo', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+        const d2 = await jsonBody(res);
+        if (!res.ok) throw new Error(d2.error || `HTTP ${res.status}`);
+        renderHtPanel(doc, sel).catch(() => {});
+      } catch (err) { blErrEl.hidden = false; blErrEl.textContent = err.message; }
+    };
+    const exA = el.querySelector('#ht2-exam-a');
+    if (exA) exA.addEventListener('click', () => fireV2({ examPair: 'PLANTEDLATEUSDT' }));
+    const exB = el.querySelector('#ht2-exam-b');
+    if (exB) exB.addEventListener('click', () => fireV2({ examPair: 'PLANTEDUSDT' }));
+    const goV2 = el.querySelector('#ht2-go');
+    if (goV2) goV2.addEventListener('click', () => fireV2({ sourceBatchId: doc.id, halfLifeKey: el.querySelector('#ht2-hl').value }));
+    el.querySelectorAll('[data-ht2-verdict]').forEach(async (dv) => {
+      try {
+        const r2 = await fetch(`api/httwo/${encodeURIComponent(dv.dataset.ht2Verdict)}/verdict`);
+        const v = await jsonBody(r2);
+        if (!r2.ok) throw new Error(v.error || `HTTP ${r2.status}`);
+        dv.innerHTML = `<strong class="${v.pass ? 'up' : 'down'}">${v.pass ? 'PASS' : 'NO EFFECT SHOWN'}</strong> — `
+          + v.sentences.map(esc).join('<br>');
+      } catch (err) { dv.innerHTML = `verdict unavailable: ${esc(err.message)}`; }
+    });
     const go = el.querySelector('#bl-ht-go');
     if (go) {
       go.addEventListener('click', async () => {
