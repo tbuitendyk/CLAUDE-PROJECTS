@@ -38,7 +38,11 @@ function followShare(sym, fromDay, toDay) {
   const days = [];
   for (let i = 0; i + 24 <= rows.length; i += 24) {
     const open = rows[i].open;
-    const out18 = rows[i + 17].close;
+    // The planted outcome is the hour-18 price, which the generator places
+    // at closes[17] — the close of the hour-16 ROW (rows[h].close =
+    // closes[h+1]). One row later is already a bridge step toward the day's
+    // own trend close and leaks trend into the outcome reading.
+    const out18 = rows[i + 16].close;
     const close24 = rows[i + 23].close;
     days.push({ trend: Math.sign(close24 - open), outcome: Math.sign(out18 - open) });
   }
@@ -64,17 +68,21 @@ module.exports = {
 
   async latePairIsDeterministicAndCarriesTheRuleOnlyLate() {
     try {
-      const a = planted.generatePlantedLate(SPAN);
+      // A STATISTICALLY ADEQUATE span. On 110 rule-off days a fair coin
+      // lands 60% about one time in fifty (this seed did exactly that on a
+      // 167-day span — verified against the generator's own rng replay), so
+      // small spans cannot test the construction. Three years gives ~730
+      // rule-off days (sd ~1.9%) and ~365 rule-on days (sd ~2.4%).
+      const span3y = { fromMonth: '2019-01', toDate: '2021-12-31' };
+      const a = planted.generatePlantedLate(span3y);
       const d1 = digestOf('PLANTEDLATEUSDT');
-      planted.generatePlantedLate(SPAN);
+      planted.generatePlantedLate(span3y);
       assert.strictEqual(digestOf('PLANTEDLATEUSDT'), d1, 'same span must give the same bytes');
       assert.ok(a.ruleOnDay > 0, 'the rule boundary must exist');
       const before = followShare('PLANTEDLATEUSDT', 0, a.ruleOnDay);
       const after = followShare('PLANTEDLATEUSDT', a.ruleOnDay, 100000);
-      // The plant is 70% follow; rule-off is a fresh coin (~50%). The candle
-      // bridges add noise, so the bar is a clear separation, not exact rates.
-      assert.ok(after.share > 0.6, `rule-on era must follow >60% (got ${(100 * after.share).toFixed(1)}% over ${after.n} days)`);
-      assert.ok(before.share < 0.58, `rule-off era must sit near a coin flip (got ${(100 * before.share).toFixed(1)}% over ${before.n} days)`);
+      assert.ok(after.share > 0.64, `rule-on era must follow ~70% (got ${(100 * after.share).toFixed(1)}% over ${after.n} days)`);
+      assert.ok(before.share < 0.56, `rule-off era must sit near a coin flip (got ${(100 * before.share).toFixed(1)}% over ${before.n} days)`);
       assert.ok(after.share - before.share > 0.1, 'the eras must be separated by the plant');
     } finally { cleanup(); }
   },
