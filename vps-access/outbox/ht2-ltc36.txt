@@ -1,0 +1,29 @@
+LTC 36mo age-dial: NO EFFECT SHOWN (p 0.07 vs declared 0.05) — not retired, replication is the next move
+tl;dr: your LTC run came back +$226.40 over 20 folds but p = 0.070 against the pre-declared 0.05 line, so the recorded verdict is NO EFFECT SHOWN. The measurement itself is clean (20/20 folds, none dropped, no one-fold carry). The candidate is not retired on one reading - the pre-declared next test is the same 36mo paired run on a DIFFERENT promoted survivor row, and I have written its reading rule into the audit before it fires.
+
+How to read 0.07 honestly, using the exams as a ruler (same engine, same
+20 folds): the planted KNOWN-real effect read p 0.021 with 13/20 folds
+positive; the KNOWN-nothing pair read p 0.82 with 9/20. Your LTC reading
+(p 0.07, 11/20) sits near the known-real end - but the whole point of
+committing the rule in advance is that "near" does not count. The honest
+sentence is: at 20 folds the instrument cannot tell an effect of this
+size from noise on this pair.
+
+What happens next, declared now in audit-httwo-20260805-032404.md:
+- Replication across assets: same 36mo test, same rules, on another
+  promoted row from the 0733 board. Select that row on the board, same
+  36mo dropdown, same button - whenever you want it to go.
+- If the sibling ALSO shows nothing: the 36mo lead is retired (failed
+  replication + contaminated origin), and that retirement is legitimate.
+- If it PASSES: LTC's 0.07 gets re-counted as a near-miss consistent with
+  a small real effect, and I design a fresh higher-resolution run.
+- What I will NOT do: re-run LTC with more folds because 0.07 was close.
+  That is optional stopping - shopping for a pass after peeking.
+
+The mis-click earlier cost nothing: the accidental v1 job completed clean
+(105/105 in 6 minutes - the "hours" note on that button is stale, from
+before multithreading) and its dial numbers stay behind the curtain. Two
+UI fixes queued so it cannot recur: demote the legacy v1 launcher, fix
+the stale cost note. Standard email when they deploy.
+
+c.
