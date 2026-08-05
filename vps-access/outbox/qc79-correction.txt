@@ -1,0 +1,15 @@
+Correction: I mischaracterized the decay-curve table's standing - the record is now fixed
+tl;dr: I told you the H1a half-lives table was "never a valid confirmation." That was wrong, and you caught it. The table (2026-07-31 email) shipped WITH a shuffle floor of +0.001 - the measured correlations sit 35-380x above it - and the design derived from it went to your review before anything was built. I had cited a status-file line ("H1b still owed") as a verdict without pulling the artifact, then dressed it up with an analogy to the money-null failures that does not apply to a floored correlation read. QC 79 is rewritten to record MY caught assumption, and the H1 file's status note is corrected.
+
+Where things truly stand:
+- The decay curves: a strongly-floored result. One declared formality
+  remains - H1b, the scrambled-label rank test (stricter than the
+  interim floor). Cheap compute on stored data; should run before the
+  numbers are ever cited as CONFIRMED.
+- The LTC fade nulls do NOT contradict the curves. The fade attacked
+  the member layer - the layer the curves measure as DURABLE. The
+  perishable layer they found (assembly/quorum, dead in months) maps
+  to re-vote cadence - which has never had its one-variable paired
+  test. That, not training-fade, is what the table actually points at.
+
+c.
