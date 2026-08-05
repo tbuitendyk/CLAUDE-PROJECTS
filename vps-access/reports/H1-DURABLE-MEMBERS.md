@@ -63,15 +63,20 @@ setup freezes the perishable layer with the durable one.
 Seed check (running) -> combined read -> L15 consult (owner hard stop,
 with H1 on the table) -> H1a/H1b as the next cycles.
 
-## Status note (2026-08-05) — the decay numbers are UNCONFIRMED-LEADS
-H1b (the scramble floor these curves were owed) was never run; no audit
-exists. The ~1yr member and ~2-3mo assembly half-lives are therefore
-wide-phase directions, not results — and must be cited as
-UNCONFIRMED-LEAD (QC 79). Update from the confirm phase so far: the
-training-fade OPERATIONALIZATION of the member-layer number failed a
-fair paired test on LTCUSDT three ways (HT v2, audits httwo-032404/
--033500/-033647; family-corrected, menu exhausted). Note the fade test
-and these correlation curves measure DIFFERENT quantities: skill-ranking
-drift does not imply that down-weighting old training data earns money.
-The assembly-layer number (re-vote cadence) has never had its
-one-variable paired test; it remains an untested direction, not a find.
+
+## Status note (2026-08-05, corrected the same day — see QC 79)
+The first version of this note called the decay curves "unconfirmed
+leads," citing the owed H1b — written without pulling the primary
+artifact. Corrected standing: the curves shipped WITH a shuffle floor
+(+0.001; observed 0.35/0.38 at short gaps, 35-380x the floor) and the
+design derived from them went to owner review. They are a strongly-
+floored result awaiting one declared formality: H1b, the scrambled-label
+rank-test replaying the member-dump computation per draw (p-floor
+1/(N+1)), still not run. Run it before citing the numbers as CONFIRMED.
+Relation to the HT v2 LTC fade nulls (audits httwo-032404/-033500/
+-033647): not a contradiction. The fade test attacked the MEMBER layer —
+the layer these curves measure as durable (half-life ~1yr, never-dying
+residue) — and found no dollar gain on one pair. The layer the curves
+measure as perishable (assembly/quorum, dead in months) maps to re-vote
+cadence, which has never had its one-variable paired test. That test,
+not training-fade, is the cash-out these curves actually point at.
