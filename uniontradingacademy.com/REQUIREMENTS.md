@@ -81,8 +81,8 @@ be cancelled at the client's discretion once v1 is live).
 
 | # | Decision | Status |
 |---|----------|--------|
-| 1 | Hosting product (Web Hosting vs Deploy Now paid) | OPEN — owner |
-| 2 | Form/booking stack (Calendly-only / Tally+Calendly / Sheets) | OPEN — owner |
-| 3 | Payment provider (Mercado Pago / Stripe / PayPal) | OPEN — client |
-| 4 | WhatsApp = wa.me click-to-chat + manual replies | proposed |
-| 5 | Site build proceeds as static HTML/CSS/JS in this repo | decided (owner 2026-08-04) |
+| 1 | Hosting: **IONOS shared Web Hosting** (webspace/SFTP; Standard tier suffices) | DECIDED (owner 2026-08-05) — product purchase + domain pointing pending client action |
+| 2 | Booking/capture: **Calendly-only**, qualification questions as Calendly invitee questions, inline embed | DECIDED (owner 2026-08-05) — client Calendly account + event URL pending |
+| 3 | Payments: **Mercado Pago payment links** (hosted checkout) | DECIDED (owner 2026-08-05) — client MP account pending; site ships stub |
+| 4 | WhatsApp: **wa.me click-to-chat**, prospect-initiated, manual replies | DECIDED (owner 2026-08-05) — academy number pending |
+| 5 | Site build: static HTML/CSS/JS in this repo | DECIDED (owner 2026-08-04) |
