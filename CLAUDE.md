@@ -56,16 +56,22 @@ Union Trading Academy website (`uniontradingacademy.com/`).
   timestamped-backup scripting. Hosting recommendation updated there:
   shared Web Hosting (webspace/SFTP), superseding the Deploy Now-free idea
   (video size + live-state backups rule the free tier out).
-- **Account inventory (verified in-panel, read-only, 2026-08-05):** the
-  client's IONOS account holds exactly two contracts — `113205858 IONOS
-  MyWebsite Now Plus` (the domain `uniontradingacademy.com` rides on it as
-  "Dominio adicional", renews 02/08/2027) and `113205853 IONOS
-  marketingRadar`. **No webspace/Web Hosting, no Deploy Now** → nothing to
-  SFTP to today; a hosting product must be added before the coded site can go
-  live. Claude's recommendation: IONOS Deploy Now free tier (GitHub-push
-  deploys, staging previews, revert = redeploy a prior commit) — awaiting
-  owner decision. The included free email account for the domain is not yet
-  configured.
+- **Account inventory (updated 2026-08-05, later):** the client's IONOS
+  account now holds THREE contracts — `113205858 IONOS MyWebsite Now Plus`
+  (builder; `uniontradingacademy.com` rides on it as "Dominio adicional",
+  renews 02/08/2027), `113205853 IONOS marketingRadar`, and **`113249653
+  IONOS Web Hosting Plus`** (purchased 2026-08-05: $20 MXN/mes × 6, then
+  $120/mes; 200 GB webspace, SFTP) — the deploy target. A second domain
+  `orderflowvolumeprofile.com` was taken during hosting checkout and serves
+  as the interim dev domain until `uniontradingacademy.com` is re-pointed.
+  Beware the name collision: "MyWebsite Now Plus" (builder) ≠ "Web Hosting
+  Plus" (webspace) — both end in "Plus", both ~$20 promos.
+- **⚠ Domain flag (2026-08-05):** the panel shows `uniontradingacademy.com`
+  needs registrant contact-data confirmation ("Se requiere confirmación de
+  los datos de contacto") — an ICANN verification email must be actioned or
+  the domain can eventually be suspended. Owner/client to click the link
+  (resend available in Dominios & SSL).
+- The included free email account for the domain is still not configured.
 - **Design baseline captured:** full builder capture (exact DOM, all assets,
   full-page shots of all 5 pages) in
   `uniontradingacademy.com/reference/builder-capture/`.
