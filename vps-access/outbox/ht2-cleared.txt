@@ -1,0 +1,30 @@
+HT v2 is live and exam-CLEARED: it found the planted late-only rule and refused the fake one
+tl;dr: the new paired age-dial instrument is built, deployed (1.41.0) and has passed both entrance exams: it FOUND a fabricated rule that lives only in recent history (+$262.74 paired, p 0.021, 13/20 folds, no one-fold carry) and correctly found NOTHING in the fabricated stationary pair (p 0.82). The real-candidate button is now unlocked on your page. Nothing fires on a real coin without your word.
+
+What got built (DESIGN-HT2.md, committed before the code):
+
+- TWO ARMS ONLY: reference training vs ONE declared half-life (12/24/36
+  months), walked over 20 paired folds, trading your row's FROZEN cell in
+  both arms. No menus, no re-picking, no winner's curse - the v1 faults
+  are gone by construction, not by patch.
+- The verdict prints with EVERY run, pass or fail: a coin-flip test on the
+  per-fold dollar differences (10,000 resamples), plus the
+  carried-by-one-fold check computed by the endpoint itself so no audit
+  can skip it again.
+- ENTRANCE EXAMS, both now on your page with green/red state: a second
+  fabricated pair (PLANTEDLATEUSDT) whose day-follows-day rule exists only
+  in the final third of history. Exam A: the instrument must find that -
+  it did. Exam B: it must find nothing in the original stationary pair -
+  it did. The gate re-locks on every engine release, same as the planted
+  check.
+- The old stationary pair is untouched: the generator refactor reproduces
+  it byte for byte, pinned by test.
+
+Where this leaves the LTC question: the instrument is ready, and the one
+hypothesis on the table (36-month half-life) came from opening the v1
+curtain, so its label says so. Fire it from the page if you want it -
+Age-dial instrument block, half-life 36mo, "Run the paired test on the
+selected row" (your LTC selection still stands on the 0733 run). Audits
+for both exams are committed.
+
+c.
