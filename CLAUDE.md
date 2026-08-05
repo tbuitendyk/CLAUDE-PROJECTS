@@ -45,6 +45,11 @@ Union Trading Academy website (`uniontradingacademy.com/`).
   IONOS webspace via SFTP vs. IONOS Deploy Now. Owner provided read-only
   panel access in-session to inventory this — credentials live in the session
   only and MUST NEVER be committed to git. Record the target here once known.
+- **Panel login paused mid-flow (2026-08-04):** login reached IONOS's
+  new-device check, which emails a 6-digit code to the account address; owner
+  will supply the code next session. Resume with
+  `uniontradingacademy.com/tools/ionos-panel-recon/` (README has the full
+  sandbox-browser runbook — do not re-debug TLS/proxy from scratch).
 
 Note this deliberately differs from `www.buitendyk.ca` (the `website` branch),
 which is served from the owner's IONOS VPS via the `deploy-website` action on
