@@ -38,6 +38,7 @@ const TASKS = {
   menuGrid: work.menuGridTask,
   wfUnit: require('./walkforward').wfUnitTask,
   htPass: require('./historytuning').htPassTask,
+  htTwoFold: require('./httwo').htTwoFoldTask,
   // Introspection, so the nice level above is a testable property rather than
   // a comment nobody can check.
   //

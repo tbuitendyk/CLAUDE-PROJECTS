@@ -3006,6 +3006,153 @@ function startBracketNull(id, shifts) {
   return { started: true, shifts: nShifts };
 }
 
+
+// ---- HISTORY TUNING v2: the paired age-dial instrument (DESIGN-HT2.md) -----
+// One pre-declared half-life vs the reference, ~20 paired folds, frozen
+// cell, sign-flip null on every verdict. Entrance exams on the two
+// fabricated pairs gate real use (R4).
+function startHtTwo(params) {
+  { const stop = launchRefusal(); if (stop) throw new Error(stop); }
+  const T2 = require('./httwo');
+  const planted = require('./planted');
+  const halfLifeKey = String(params.halfLifeKey || '12mo');
+  if (!T2.HALF_LIVES[halfLifeKey]) throw new Error(`halfLifeKey must be one of ${Object.keys(T2.HALF_LIVES).join('/')}`);
+  let p;
+  if (params.examPair) {
+    const pair = String(params.examPair).toUpperCase();
+    if (!planted.PLANTED_SYMBOLS.includes(pair)) throw new Error('examPair must be one of the reserved fabricated pairs');
+    if (!planted.plantedExists(pair)) {
+      if (pair === planted.PLANTED_LATE_SYMBOL) planted.generatePlantedLate(planted.plantedSpan());
+      else planted.generatePlanted(planted.plantedSpan());
+    }
+    p = {
+      exam: true,
+      combo: { trade: pair, ctx1: null, ctx2: null, size: 1 },
+      branch: { geometry: 'daily-1d', decision: 'argmax', band: 'auto', weekdaysOnly: false },
+      // The exam cell mirrors the planted gate's own winning shape — a fixed
+      // recipe, never shopped: 3-of-6 agreement, direction gate, market
+      // entry, 17h hold. bandPct is calibrated on the pre-fold era at launch.
+      declaredCell: { quorum: 3, gate: 'directional', entry: 'market', dMult: null, tHours: 17, trailMult: null, armMult: null, bandPct: null },
+      allLoaded: true, startMonth: null, endMonth: null,
+      feePerLeg: REAL_FEE_PER_LEG,
+      label: params.label || (pair === planted.PLANTED_LATE_SYMBOL ? 'ht2-exam-a-late' : 'ht2-exam-b-flat'),
+      description: `HT v2 entrance exam on ${pair} — known answer: age-weighting must ${pair === planted.PLANTED_LATE_SYMBOL ? 'WIN (the rule lives only in the final third)' : 'FIND NOTHING (the rule is uniform over all history)'}`,
+    };
+  } else {
+    const src = getBatch(String(params.sourceBatchId || ''));
+    if (!src || src.kind !== 'bracketlab') throw new Error('sourceBatchId must name a finished bracket-lab run');
+    if (src.status !== 'done') throw new Error(`${src.id} is ${src.status} — tune finished boards only`);
+    const sel = src.selection;
+    if (!sel) throw new Error('select a promoted row on the source run first');
+    const status = T2.examStatus(ENGINE_VERSION, listBatches().map((b) => getBatch(b.id)).filter(Boolean));
+    if (!status.ready) throw new Error(`refused (R4): ${status.detail}`);
+    if (sel.gate === 'always') throw new Error('this row uses the always gate — the age dial would act on nothing');
+    if (sel.geometry === 'weekly-8d') throw new Error('weekly-8d is structurally out — the effective-days arithmetic is day-stepped');
+    if (!sel.windowStamps || !sel.windowStamps.testStartTs) throw new Error('the selected row carries no window stamps — re-run the board on the current engine');
+    p = {
+      exam: false,
+      sourceBatchId: src.id,
+      combo: { trade: sel.trade, ctx1: sel.ctx1 || null, ctx2: sel.ctx2 || null, size: sel.size },
+      branch: { geometry: sel.geometry, decision: sel.decision, band: sel.bandMode, weekdaysOnly: sel.weekdaysOnly },
+      declaredCell: { quorum: sel.quorum, gate: sel.gate, entry: sel.entry, dMult: sel.dMult ?? null, tHours: sel.tHours, trailMult: sel.trailMult ?? null, armMult: sel.armMult ?? null, bandPct: sel.bandPct },
+      windowStamps: sel.windowStamps,
+      allLoaded: src.params.allLoaded, startMonth: src.params.startMonth, endMonth: src.params.endMonth,
+      feePerLeg: src.params.feePerLeg,
+      label: params.label || `ht2-${halfLifeKey}-${sel.trade.toLowerCase()}`,
+      description: params.description || `HT v2 paired: ${halfLifeKey} half-life vs reference on ${sel.trade} ${sel.geometry} ${sel.decision} q${sel.quorum}. Hypothesis origin: the v1 design read (curtain opened 2026-08-04) — contaminated for selection, cited as origin only.`,
+    };
+  }
+  p.halfLifeKey = halfLifeKey;
+  p.halfLifeDays = T2.HALF_LIVES[halfLifeKey];
+  p.campaign = require('./campaign').getCampaign() || null;
+  p.engineVersion = ENGINE_VERSION;
+  p.readingRules = T2.READING_RULES_V2; // stamped BEFORE anything computes
+  p.trainingFloorDays = require('./history').TRAINING_FLOOR_DAYS;
+  if (p.feePerLeg == null) throw new Error('feePerLeg is missing from the source run and the launch');
+
+  const claim = { id: 'httwo-pending', kind: 'httwo', status: 'running', params: {}, perf: {} };
+  activeBatch = claim;
+  const release = (err) => { if (activeBatch === claim) { activeBatch = null; } throw err; };
+  return ht2Launch(p, T2, claim).catch(release);
+}
+
+function ht2Launch(p, T2, claim) {
+  return (async () => {
+    const { buildCombo } = require('./bracketwork');
+    const { chunks } = await buildCombo(p.combo, p.branch, p);
+    if (chunks.length < 50) throw new Error(`only ${chunks.length} chunks buildable — not enough history`);
+    p.usableStartTs = chunks[0].startTs;
+    p.usableEndTs = p.exam ? chunks[chunks.length - 1].startTs + 1 : p.windowStamps.testStartTs;
+    const geom = T2.foldGeometry(p.usableStartTs, p.usableEndTs);
+    if (geom.refusal) throw new Error(geom.refusal);
+    p.foldCount = geom.k;
+    p.windowDays = geom.windowDays;
+    if (p.exam) {
+      // Exam band: calibrated once on the pre-fold era, deterministic for a
+      // given fabricated span — stamped so the record carries it.
+      const { balancedBandPct } = require('./dataset');
+      const preFold = chunks.filter((c) => c.startTs < geom.folds[0].foldStartTs);
+      if (preFold.length < 100) throw new Error(`only ${preFold.length} pre-fold chunks on the exam pair — regenerate it over a longer span`);
+      p.declaredCell.bandPct = balancedBandPct(preFold.map((c) => c.diffPct));
+    }
+    if (p.declaredCell.bandPct == null) throw new Error('the declared cell carries no band — cannot label chunks');
+
+    const stamp = new Date().toISOString().replace(/[-:]/g, '').slice(0, 15).replace('T', '-');
+    const doc = {
+      id: `httwo-${stamp}${idSlug(p)}`,
+      kind: 'httwo',
+      status: 'running',
+      startedAt: new Date().toISOString(),
+      params: p,
+      progress: 'building folds',
+      foldRows: [],
+      failures: [],
+      perf: { unitsDone: 0, unitsTotal: geom.k, phase: 'folds' },
+    };
+    activeBatch = doc; // takes over the synchronous claim
+    if (claim.cancelRequested) { doc.status = 'cancelled'; doc.finishedAt = new Date().toISOString(); activeBatch = null; saveBatch(doc); throw new Error('cancelled by owner during launch'); }
+    doc.dataManifest = stampManifest(doc.id, [p.combo.trade, p.combo.ctx1, p.combo.ctx2].filter(Boolean));
+    saveBatch(doc);
+    const pool = createPool();
+    activePool = pool;
+    const t0 = Date.now();
+
+    (async () => {
+      const payloads = geom.folds.map((fold) => ({ combo: p.combo, branch: p.branch, fold, params: p }));
+      await pool.map('htTwoFold', payloads, (settled, i) => {
+        // Cancel keeps every COMPLETED fold (QC 74); termination errors are noise.
+        if (settled.ok && settled.value) {
+          doc.foldRows.push(settled.value);
+        } else if (!settled.ok && !doc.cancelRequested) {
+          recordFailure(doc, `fold-${i}`, settled.error);
+        }
+        doc.perf.unitsDone++;
+        doc.perf.elapsedMs = Date.now() - t0;
+        doc.progress = `paired folds ${doc.perf.unitsDone}/${geom.k} (${p.halfLifeKey} vs reference)`;
+        saveBatch(doc);
+      });
+      pool.abort();
+      if (activePool === pool) activePool = null;
+      doc.foldRows.sort((a, b) => (a.fold ?? 0) - (b.fold ?? 0));
+      doc.status = doc.cancelRequested ? 'cancelled' : 'done';
+      doc.finishedAt = new Date().toISOString();
+      doc.progress = '';
+      saveBatch(doc);
+      if (activeBatch && activeBatch.id === doc.id) activeBatch = null;
+    })().catch((err) => {
+      pool.abort();
+      if (activePool === pool) activePool = null;
+      doc.status = 'error';
+      doc.error = err.message || String(err);
+      doc.finishedAt = new Date().toISOString();
+      doc.progress = '';
+      saveBatch(doc);
+      if (activeBatch && activeBatch.id === doc.id) activeBatch = null;
+    });
+    return { started: true, id: doc.id, folds: geom.k, windowDays: geom.windowDays };
+  })();
+}
+
 module.exports = {
   shiftStance,
   startWalkforward,
@@ -3018,6 +3165,7 @@ module.exports = {
   startPermScreen,
   startBracketLab,
   startHistoryTuning,
+  startHtTwo,
   startReserveGrade,
   idSlug,
   leaderCmp,

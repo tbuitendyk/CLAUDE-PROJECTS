@@ -38,6 +38,7 @@ const INLINE = {
   menuGrid: work.menuGridTask,
   wfUnit: require('./walkforward').wfUnitTask,
   htPass: require('./historytuning').htPassTask,
+  htTwoFold: require('./httwo').htTwoFoldTask,
   ping: async () => ({ priority: os.getPriority(), pid: process.pid, ...threadNice() }),
 };
 

@@ -1089,6 +1089,36 @@ app.get('/api/historytuning/:id/verdict', (req, res) => {
   }
 });
 
+// ---- History Tuning v2: the paired age-dial instrument (DESIGN-HT2.md) ----
+app.post('/api/httwo', async (req, res) => {
+  const b = req.body || {};
+  try {
+    const out = await batch.startHtTwo(b);
+    res.json(out);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+app.get('/api/httwo/exams', (req, res) => {
+  try {
+    const T2 = require('./lib/httwo');
+    const docs = batch.listBatches().filter((x) => x.kind === 'httwo').map((x) => batch.getBatch(x.id)).filter(Boolean);
+    res.json(T2.examStatus(RELEASE_VERSION, docs));
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+app.get('/api/httwo/:id/verdict', (req, res) => {
+  try {
+    const T2 = require('./lib/httwo');
+    const doc = batch.getBatch(String(req.params.id));
+    if (!doc || doc.kind !== 'httwo') return res.status(404).json({ error: 'unknown HT v2 run' });
+    res.json(T2.httwoVerdict(doc));
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.post('/api/historytuning', async (req, res) => {
   const b = req.body || {};
   try {
