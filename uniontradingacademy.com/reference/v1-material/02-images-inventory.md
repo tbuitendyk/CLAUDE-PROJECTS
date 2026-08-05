@@ -36,6 +36,17 @@ minimum the logo pack exports. Design cues noted per image.
    Mentoría Personalizada (1 a 1), Trading en Vivo, Desarrollo de Criterio.
    → Rebuild this natively as a responsive HTML section, not as a flat image.
 
+## Builder-capture asset identification (checked 2026-08-05)
+
+- `res/.../91e58d89-…` = the "arhitectura" TEMPLATE PLACEHOLDER logo (not
+  UTA) — the builder header still used it; do not carry into the rebuild.
+- `res/.../c726cbfb-…` (and similar square photo sets) = template stock
+  photos (furniture etc.) — template leftovers, not brand material.
+- The real UTA logo exists in the capture only *embedded inside the hero
+  artwork* (2000px art with logo + order-flow chart). A standalone logo
+  file (SVG/PNG from the designer pack) is still wanted; until it arrives,
+  v1 can use the hero art and a recreated wordmark for nav/footer.
+
 ## Palette / type cues across the set
 
 - Blues: vivid gradient blue (≈ #1E6FF2 range) into deep navy; silver/gray
