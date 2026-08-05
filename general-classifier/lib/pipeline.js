@@ -191,9 +191,10 @@ function topWeights(model, names, count = 12) {
 // any real-looking result on it is fiction (review 2026-08-03: the refusal
 // covered only the Bracket lab launcher).
 function refusePlanted(...symbols) {
-  const { PLANTED_SYMBOL } = require('./planted');
-  if (symbols.includes(PLANTED_SYMBOL)) {
-    throw new Error(`${PLANTED_SYMBOL} is the reserved fabricated pair for the planted check — it never enters a real run`);
+  const { PLANTED_SYMBOLS } = require('./planted');
+  const hit = symbols.find((x) => PLANTED_SYMBOLS.includes(x));
+  if (hit) {
+    throw new Error(`${hit} is a reserved fabricated pair — it never enters a real run`);
   }
 }
 

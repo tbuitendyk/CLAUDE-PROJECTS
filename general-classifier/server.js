@@ -130,8 +130,12 @@ app.post('/api/data/download', (req, res) => {
   if (!symbols.length || symbols.some((x) => !SYMBOL_RE.test(x))) {
     return res.status(400).json({ error: 'symbols must be a list like ["DOTUSDT","PEPEUSDT"]' });
   }
-  if (symbols.includes(planted.PLANTED_SYMBOL)) {
-    return res.status(400).json({ error: `${planted.PLANTED_SYMBOL} is the fabricated planted-check pair — it is generated, never downloaded` });
+  {
+    const hit = symbols.find((x) => planted.PLANTED_SYMBOLS.includes(x));
+    if (hit) return res.status(400).json({ error: `${hit} is a reserved fabricated pair — it is generated, never downloaded` });
+  }
+  if (false) {
+    return res.status(400).json({ error: 'unreachable' });
   }
   if (!/^\d{4}-\d{2}$/.test(String(b.startMonth)) || !/^\d{4}-\d{2}$/.test(String(b.endMonth))) {
     return res.status(400).json({ error: 'months must be YYYY-MM' });
@@ -155,6 +159,9 @@ app.post('/api/data/download', (req, res) => {
     if (planted.plantedExists()) {
       setProgress(`regenerating ${planted.PLANTED_SYMBOL} to the new span`);
       out[planted.PLANTED_SYMBOL] = { regenerated: true, ...planted.generatePlanted(planted.plantedSpan()) };
+      if (planted.plantedExists(planted.PLANTED_LATE_SYMBOL)) {
+        out[planted.PLANTED_LATE_SYMBOL] = { regenerated: true, ...planted.generatePlantedLate(planted.plantedSpan()) };
+      }
     }
     return out;
   });
@@ -202,6 +209,9 @@ app.post('/api/data/refresh', (req, res) => {
     if (planted.plantedExists()) {
       setProgress(`regenerating ${planted.PLANTED_SYMBOL} to the refreshed span`);
       out[planted.PLANTED_SYMBOL] = { regenerated: true, ...planted.generatePlanted(planted.plantedSpan()) };
+      if (planted.plantedExists(planted.PLANTED_LATE_SYMBOL)) {
+        out[planted.PLANTED_LATE_SYMBOL] = { regenerated: true, ...planted.generatePlantedLate(planted.plantedSpan()) };
+      }
     }
     return out;
   });
@@ -705,7 +715,7 @@ async function refreshNewMonths() {
   for (const { symbol } of cacheState()) {
     // The fabricated planted-check pair is generated, never fetched — asking
     // Binance for it would 404 every tick forever.
-    if (symbol === planted.PLANTED_SYMBOL) continue;
+    if (planted.isPlanted(symbol)) continue;
     // cachedMonths (bundle months only) is DELIBERATE here: this tick's job
     // is fetching newly PUBLISHED bundles, and a month already held as day
     // files still wants its bundle when Binance posts it (the bundle is the

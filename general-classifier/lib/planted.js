@@ -31,10 +31,21 @@ let tmpSeq = 0;
 // instead), and every gate run sweeps exactly this one pair.
 const PLANTED_SYMBOL = 'PLANTEDUSDT';
 
+// SECOND reserved pair (HT v2 exams, DESIGN-HT2.md): identical construction
+// except the planted rule is OFF for the first ~2/3 of the span and switches
+// ON for the final third. An age-weighted trainer has a KNOWN advantage
+// here and a known non-advantage on the stationary pair — together they are
+// the paired instrument's entrance exam (QC 56).
+const PLANTED_LATE_SYMBOL = 'PLANTEDLATEUSDT';
+const PLANTED_SYMBOLS = [PLANTED_SYMBOL, PLANTED_LATE_SYMBOL];
+const isPlanted = (s) => PLANTED_SYMBOLS.includes(s);
+
 // Fixed generator seed: the gate is a per-engine-version calibration, so two
 // gate runs on the same engine and the same data span must see the same
 // fabricated market.
 const PLANTED_SEED = 41;
+const PLANTED_LATE_SEED = 43;
+const PLANTED_LATE_RULE_ON_FRAC = 2 / 3; // rule silent before this fraction of days
 
 // READING RULES, stamped into the gate run's params at launch — written
 // before the numbers exist, like every reading rule (owner spec).
@@ -84,7 +95,7 @@ function dayCandles(pOpen, trendPct, outcomePct, rng) {
 // old as the oldest"). Null when nothing real is cached — a gate without
 // real data has nothing to calibrate for.
 function plantedSpan() {
-  const real = cacheState().filter((s) => s.symbol !== PLANTED_SYMBOL);
+  const real = cacheState().filter((s) => !isPlanted(s.symbol));
   if (!real.length) return null;
   let fromMonth = null;
   let toDate = null;
@@ -109,11 +120,13 @@ function plantedSpan() {
   return { fromMonth, toDate };
 }
 
-// Regenerate the fabricated pair over a span: delete every existing planted
-// cache file, then write monthly files (the last one partial when the span
-// ends mid-month). Deterministic for a given span: fixed seed, stationary
-// planted rule alive the whole way, zero drift.
-function generatePlanted(span) {
+// Regenerate a fabricated pair over a span: delete every existing file for
+// that symbol, then write monthly files (the last one partial when the span
+// ends mid-month). Deterministic for a given span: fixed seed, zero drift.
+// ruleOnFrac = the fraction of days BEFORE which the planted rule is silent
+// (0 = the stationary pair, byte-identical to the pre-refactor generator:
+// the rule-off branch draws nothing extra from the rng when never taken).
+function generateFabricated(span, symbol, seed, ruleOnFrac) {
   if (!span || !span.fromMonth || !span.toDate) {
     throw new Error('the planted pair needs real cached data to copy its date span from — load data first');
   }
@@ -123,8 +136,9 @@ function generatePlanted(span) {
   const endDay = Date.UTC(ty, tm - 1, td);
   const days = Math.floor((endDay - t0) / (24 * HOUR_MS)) + 1;
   if (!(days >= 1)) throw new Error(`planted span is empty (${span.fromMonth} .. ${span.toDate})`);
+  const ruleOnDay = Math.floor(days * ruleOnFrac);
 
-  const rng = mulberry32(PLANTED_SEED);
+  const rng = mulberry32(seed);
   // Trend days come in shuffled 20-day blocks of ten ups and ten downs, so
   // the up/down mix is balanced in every era (zero drift by construction).
   const trends = [];
@@ -142,7 +156,12 @@ function generatePlanted(span) {
   for (let d = 0; d < days; d++) {
     const prevTrend = d === 0 ? 1 : trends[d - 1];
     const follow = rng() < 0.7 ? 1 : -1; // THE PLANT: next day follows today, 70%
-    const outcomePct = prevTrend * follow * magOf();
+    // Before the rule switches on, the outcome direction is a fresh coin —
+    // no relation to yesterday. The extra rng() lives INSIDE the branch so a
+    // ruleOnFrac of 0 (the stationary pair) draws exactly the pre-refactor
+    // stream and reproduces its bytes.
+    const dir = d >= ruleOnDay ? prevTrend * follow : (rng() < 0.5 ? 1 : -1);
+    const outcomePct = dir * magOf();
     const trendPct = trends[d] > 0 ? 1.5 : (1 / 1.015 - 1) * 100;
     const rows = dayCandles(price, trendPct, outcomePct, rng);
     for (let h = 0; h < 24; h++) {
@@ -160,13 +179,13 @@ function generatePlanted(span) {
   // leave stale months behind, or the fabricated pair outlives the real data
   // it is supposed to mirror.
   for (const f of fs.readdirSync(CACHE_DIR)) {
-    if (f.startsWith(`${PLANTED_SYMBOL}-1h-`)) {
+    if (f.startsWith(`${symbol}-1h-`)) {
       try { fs.unlinkSync(path.join(CACHE_DIR, f)); } catch { /* recount below */ }
     }
   }
   let written = 0;
   for (const [month, rows] of byMonth) {
-    const file = path.join(CACHE_DIR, `${PLANTED_SYMBOL}-1h-${month}.json`);
+    const file = path.join(CACHE_DIR, `${symbol}-1h-${month}.json`);
     // pid alone is NOT unique here: two regenerations in one process (a data
     // job's tail and a gate press) would share temp names and rename() could
     // throw mid-write. A per-call counter keeps every writer distinct.
@@ -175,15 +194,25 @@ function generatePlanted(span) {
     fs.renameSync(tmp, file);
     written++;
   }
-  return { symbol: PLANTED_SYMBOL, fromMonth: span.fromMonth, toDate: span.toDate, days, months: written, seed: PLANTED_SEED };
+  return { symbol, fromMonth: span.fromMonth, toDate: span.toDate, days, months: written, seed, ruleOnDay: ruleOnFrac > 0 ? ruleOnDay : null };
+}
+
+// The stationary pair (the planted check's subject) — rule alive the whole way.
+function generatePlanted(span) {
+  return generateFabricated(span, PLANTED_SYMBOL, PLANTED_SEED, 0);
+}
+
+// The late-rule pair (HT v2 exam A's subject) — rule on for the final third.
+function generatePlantedLate(span) {
+  return generateFabricated(span, PLANTED_LATE_SYMBOL, PLANTED_LATE_SEED, PLANTED_LATE_RULE_ON_FRAC);
 }
 
 // True when the fabricated pair currently has cache files — the data
 // endpoints regenerate it after every real refresh/download ONLY if it
 // exists (a box that never ran the gate carries no fabricated data).
-function plantedExists() {
+function plantedExists(symbol = PLANTED_SYMBOL) {
   try {
-    return fs.readdirSync(CACHE_DIR).some((f) => f.startsWith(`${PLANTED_SYMBOL}-1h-`));
+    return fs.readdirSync(CACHE_DIR).some((f) => f.startsWith(`${symbol}-1h-`));
   } catch {
     return false;
   }
@@ -343,4 +372,9 @@ function gateStatus(currentVersion, batchesDir) {
   return out;
 }
 
-module.exports = { PLANTED_SYMBOL, PLANTED_SEED, GATE_RULES, plantedSpan, generatePlanted, plantedExists, gateParams, gateVerdict, gateStatus };
+module.exports = {
+  PLANTED_SYMBOL, PLANTED_LATE_SYMBOL, PLANTED_SYMBOLS, isPlanted,
+  PLANTED_SEED, PLANTED_LATE_SEED, PLANTED_LATE_RULE_ON_FRAC,
+  GATE_RULES, plantedSpan, generatePlanted, generatePlantedLate, plantedExists,
+  gateParams, gateVerdict, gateStatus,
+};

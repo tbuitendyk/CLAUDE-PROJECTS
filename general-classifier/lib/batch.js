@@ -244,9 +244,10 @@ function summarize(runs) {
 // one launcher while six others would ingest the pair; every start* now
 // runs its pair list through this.
 function refusePlantedPairs(symbols, what) {
-  const { PLANTED_SYMBOL } = require('./planted');
-  if ((symbols || []).filter(Boolean).includes(PLANTED_SYMBOL)) {
-    throw new Error(`${PLANTED_SYMBOL} is the reserved fabricated pair for the planted check — it never enters ${what}`);
+  const { PLANTED_SYMBOLS } = require('./planted');
+  const hit = (symbols || []).filter(Boolean).find((x) => PLANTED_SYMBOLS.includes(x));
+  if (hit) {
+    throw new Error(`${hit} is a reserved fabricated pair (planted check / instrument exams) — it never enters ${what}`);
   }
 }
 
@@ -2298,11 +2299,11 @@ function startBracketLab(params) {
   // sweeps exactly that one pair through this same front door. The gate's
   // reading rules ride in the params so they are stamped before compute.
   {
-    const { PLANTED_SYMBOL } = require('./planted');
+    const { PLANTED_SYMBOL, PLANTED_SYMBOLS } = require('./planted');
     p.plantedGate = !!params.plantedGate;
     p.plantedRules = p.plantedGate ? (params.plantedRules || null) : null;
-    if (!p.plantedGate && p.universe.includes(PLANTED_SYMBOL)) {
-      throw new Error(`${PLANTED_SYMBOL} is the reserved fabricated pair for the planted check — it never enters a real run (the planted-check button at the top of the lab is how it is used)`);
+    if (!p.plantedGate && p.universe.some((x) => PLANTED_SYMBOLS.includes(x))) {
+      throw new Error(`${p.universe.find((x) => PLANTED_SYMBOLS.includes(x))} is a reserved fabricated pair — it never enters a real run (the planted-check button and the instrument exams are how they are used)`);
     }
     if (p.plantedGate && (p.universe.length !== 1 || p.universe[0] !== PLANTED_SYMBOL)) {
       throw new Error(`a planted-check run sweeps exactly [${PLANTED_SYMBOL}] and nothing else`);
