@@ -1,0 +1,79 @@
+# Union Trading Academy — deploy any branch/tag/commit of this repo to the
+# IONOS webspace over SFTP. Backs up the live site first (skippable).
+# Revert = run this again with an older ref (or a backup/… branch).
+#
+# Secrets: UTA_SFTP_HOST / UTA_SFTP_USER / UTA_SFTP_PASSWORD
+# Optional repository variable: UTA_REMOTE_DIR (default "/site")
+name: UTA deploy site
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Branch, tag or commit to deploy"
+        required: true
+        default: "uniontradingacademy"
+      skip_backup:
+        description: "Skip the pre-deploy live backup"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+jobs:
+  backup:
+    if: ${{ !inputs.skip_backup }}
+    uses: ./.github/workflows/backup-uta.yml
+
+  deploy:
+    needs: [backup]
+    if: ${{ always() && (needs.backup.result == 'success' || needs.backup.result == 'skipped') }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout requested ref
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+          fetch-depth: 1
+
+      - name: Locate site root
+        id: site
+        run: |
+          # Normal branches carry the site under this path; backup/… branches ARE the site.
+          if [ -d "uniontradingacademy.com/sites/uniontradingacademy.com" ]; then
+            echo "dir=uniontradingacademy.com/sites/uniontradingacademy.com" >> "$GITHUB_OUTPUT"
+          elif [ -f "BACKUP.md" ]; then
+            echo "dir=." >> "$GITHUB_OUTPUT"
+          else
+            echo "::error::No site directory found in ref '${{ inputs.ref }}'"; exit 1
+          fi
+
+      - name: Install lftp
+        run: sudo apt-get update -q && sudo apt-get install -y -q lftp
+
+      - name: Mirror site up to webspace
+        env:
+          H: ${{ secrets.UTA_SFTP_HOST }}
+          U: ${{ secrets.UTA_SFTP_USER }}
+          P: ${{ secrets.UTA_SFTP_PASSWORD }}
+          RDIR: ${{ vars.UTA_REMOTE_DIR || '/site' }}
+          SRC: ${{ steps.site.outputs.dir }}
+        run: |
+          test -n "$H" || { echo "::error::UTA_SFTP_HOST secret not set"; exit 1; }
+          lftp -u "$U","$P" "sftp://$H" -e "
+            set sftp:auto-confirm yes;
+            set net:max-retries 3;
+            mirror -R --delete --verbose --parallel=4 \
+              --exclude-glob .git* --exclude-glob BACKUP.md \
+              \"$SRC\" \"$RDIR\";
+            bye"
+
+      - name: Tag this deploy
+        if: ${{ !startsWith(inputs.ref, 'backup/') }}
+        run: |
+          STAMP=$(date -u +%Y%m%d-%H%M%S)
+          git config user.name  "uta-deploy-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git tag "deploy/$STAMP" HEAD
+          git push origin "deploy/$STAMP"
+          echo "::notice::Deployed ref '${{ inputs.ref }}' and tagged deploy/$STAMP"

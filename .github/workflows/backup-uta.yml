@@ -1,0 +1,67 @@
+# Union Trading Academy — snapshot the LIVE IONOS webspace into a
+# timestamped git branch (backup/YYYYMMDD-HHMMSS). GitHub-native only.
+#
+# Secrets (repo settings):
+#   UTA_SFTP_HOST      e.g. access123456789.webspace-data.io
+#   UTA_SFTP_USER      SFTP user from the IONOS panel
+#   UTA_SFTP_PASSWORD  its password
+# Optional repository variable:
+#   UTA_REMOTE_DIR     webspace directory the domain points to (default "/site")
+name: UTA backup live site
+on:
+  workflow_dispatch: {}
+  workflow_call: {}
+
+permissions:
+  contents: write
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout (for git identity/remote)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Install lftp
+        run: sudo apt-get update -q && sudo apt-get install -y -q lftp
+
+      - name: Mirror live webspace down
+        env:
+          H: ${{ secrets.UTA_SFTP_HOST }}
+          U: ${{ secrets.UTA_SFTP_USER }}
+          P: ${{ secrets.UTA_SFTP_PASSWORD }}
+          RDIR: ${{ vars.UTA_REMOTE_DIR || '/site' }}
+        run: |
+          test -n "$H" || { echo "::error::UTA_SFTP_HOST secret not set"; exit 1; }
+          mkdir -p live-snapshot
+          lftp -u "$U","$P" "sftp://$H" -e "
+            set sftp:auto-confirm yes;
+            set net:max-retries 3;
+            mirror --verbose --parallel=4 \"$RDIR\" ./live-snapshot;
+            bye"
+          echo "Files mirrored: $(find live-snapshot -type f | wc -l)"
+
+      - name: Commit snapshot to timestamped branch
+        run: |
+          STAMP=$(date -u +%Y%m%d-%H%M%S)
+          BR="backup/$STAMP"
+          git config user.name  "uta-backup-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git switch --orphan "$BR"
+          # keep only the snapshot + a manifest on this branch
+          find . -mindepth 1 -maxdepth 1 ! -name live-snapshot ! -name .git -exec rm -rf {} +
+          mv live-snapshot/* . 2>/dev/null || true
+          rmdir live-snapshot 2>/dev/null || true
+          {
+            echo "# Live-site backup"
+            echo
+            echo "- Taken (UTC): $STAMP"
+            echo "- Source: sftp://${{ secrets.UTA_SFTP_HOST }}${{ vars.UTA_REMOTE_DIR || '/site' }}"
+            echo "- Restore: deploy this branch with the 'UTA deploy site' workflow."
+          } > BACKUP.md
+          git add -A
+          git commit -m "backup: live uniontradingacademy.com webspace @ $STAMP (UTC)"
+          git push origin "$BR"
+          echo "::notice::Backup pushed to branch $BR"
