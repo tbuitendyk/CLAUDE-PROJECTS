@@ -1,0 +1,24 @@
+Age-weighting on LTC: dead. Three clean measurements, menu exhausted, reference stands unbeaten
+tl;dr: 24mo came back +$32.43, p 0.43 - noise, same as 12mo. The 36mo near-miss (p 0.07) now reads as a lucky draw: a real fade effect would have put 24mo between 12 and 36, and it landed on the floor instead. Fading old training data does not help your LTC setup; nothing changes on any live book. The instrument is fine - it passed both known-answer exams and delivered three disappointing answers cleanly, which is precisely what a good instrument does with a bad hypothesis.
+
+The three LTC runs (total = faded arm's paper dollars minus unfaded,
+20 held-out stretches, per $100; p = odds luck alone makes that total):
+  12mo: +$33.67, 8/20 positive, p 0.456
+  24mo: +$32.43, 10/20 positive, p 0.433
+  36mo: +$226.40, 11/20 positive, p 0.070 (read at the family-corrected
+        0.0167 line - three tries on one pair - so: not shown)
+
+Origin check: this whole lead came from the v1 curtain opening, which
+was flagged contaminated at birth. It has now failed a fair test three
+ways on the pair it was born on. Audits committed for all three runs.
+
+One clean closure move remains, your call, no urgency: 36mo on a
+DIFFERENT promoted 0733 row (six minutes). If that also shows nothing,
+the age-weighting hypothesis is formally retired under the declared
+replication rule. My expectation is nothing.
+
+Also queued from tonight: demote the legacy v1 History Tuning button
+(caused your mis-click) and fix its stale "hours" cost note. Standard
+email when deployed.
+
+c.
