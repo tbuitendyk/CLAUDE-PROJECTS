@@ -46,8 +46,16 @@ Union Trading Academy website (`uniontradingacademy.com/`).
   GitHub project alone (GitHub-native tooling only), so the whole project can
   later transfer to the client's GitHub. No VPS/deploy-control coupling, no
   Claude-specific glue in the pipeline.
-- **Design inputs:** owner supplies material as *guidance* for v1.0.0 —
-  explicitly NOT a hard template; interpret intent, confirm direction.
+- **Design inputs:** owner supplied material as *guidance* for v1.0.0 —
+  explicitly NOT a hard template; interpret intent, confirm direction. The
+  content stream CLOSED 2026-08-05; raw material in
+  `uniontradingacademy.com/reference/v1-material/`.
+- **v1 scope:** `uniontradingacademy.com/REQUIREMENTS.md` — hidden-live
+  publishing under `/dev-ver`, self-hosted video, automated booking/capture,
+  wa.me WhatsApp follow-up, payment links, and GitHub-Actions deploy +
+  timestamped-backup scripting. Hosting recommendation updated there:
+  shared Web Hosting (webspace/SFTP), superseding the Deploy Now-free idea
+  (video size + live-state backups rule the free tier out).
 - **Account inventory (verified in-panel, read-only, 2026-08-05):** the
   client's IONOS account holds exactly two contracts — `113205858 IONOS
   MyWebsite Now Plus` (the domain `uniontradingacademy.com` rides on it as
