@@ -41,15 +41,30 @@ Union Trading Academy website (`uniontradingacademy.com/`).
   branch, recreating the MyWebsite Now front-page design faithfully; the
   builder page becomes reference-only. Every published version must be a git
   commit so the live site can be reverted to any prior date's configuration.
-- **Deploy target still open** (depends on what the IONOS contract includes):
-  IONOS webspace via SFTP vs. IONOS Deploy Now. Owner provided read-only
-  panel access in-session to inventory this — credentials live in the session
-  only and MUST NEVER be committed to git. Record the target here once known.
-- **Panel login paused mid-flow (2026-08-04):** login reached IONOS's
-  new-device check, which emails a 6-digit code to the account address; owner
-  will supply the code next session. Resume with
-  `uniontradingacademy.com/tools/ionos-panel-recon/` (README has the full
-  sandbox-browser runbook — do not re-debug TLS/proxy from scratch).
+- **HARD REQUIREMENT (owner, 2026-08-05): zero Claude dependency.** The site,
+  its deploys, maintenance, and revert path must be fully functional from the
+  GitHub project alone (GitHub-native tooling only), so the whole project can
+  later transfer to the client's GitHub. No VPS/deploy-control coupling, no
+  Claude-specific glue in the pipeline.
+- **Design inputs:** owner supplies material as *guidance* for v1.0.0 —
+  explicitly NOT a hard template; interpret intent, confirm direction.
+- **Account inventory (verified in-panel, read-only, 2026-08-05):** the
+  client's IONOS account holds exactly two contracts — `113205858 IONOS
+  MyWebsite Now Plus` (the domain `uniontradingacademy.com` rides on it as
+  "Dominio adicional", renews 02/08/2027) and `113205853 IONOS
+  marketingRadar`. **No webspace/Web Hosting, no Deploy Now** → nothing to
+  SFTP to today; a hosting product must be added before the coded site can go
+  live. Claude's recommendation: IONOS Deploy Now free tier (GitHub-push
+  deploys, staging previews, revert = redeploy a prior commit) — awaiting
+  owner decision. The included free email account for the domain is not yet
+  configured.
+- **Design baseline captured:** full builder capture (exact DOM, all assets,
+  full-page shots of all 5 pages) in
+  `uniontradingacademy.com/reference/builder-capture/`.
+- Panel access runbook lives in
+  `uniontradingacademy.com/tools/ionos-panel-recon/` (sandbox-browser fixes —
+  do not re-debug TLS/proxy from scratch). Credentials live in the session
+  only and MUST NEVER be committed to git.
 
 Note this deliberately differs from `www.buitendyk.ca` (the `website` branch),
 which is served from the owner's IONOS VPS via the `deploy-website` action on
