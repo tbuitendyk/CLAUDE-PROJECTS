@@ -8,3 +8,4 @@
 2026-08-06T21:05Z deploy branch tip (proxy-push trigger test; Actions confirmed enabled by owner)
 2026-08-06T21:12Z deploy branch tip (API-commit trigger test via GitHub App)
 2026-08-06T23:55Z deploy branch tip (secrets in — first real deploy)
+2026-08-07T00:05Z deploy branch tip (fix: secrets inherit for backup call)

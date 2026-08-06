@@ -114,9 +114,12 @@ Union Trading Academy website (`uniontradingacademy.com/`).
   Still true: API workflow_dispatch → 403 for the integration; tag pushes
   → 403 via git proxy; UTA workflows never appear in the Actions tab's
   left-hand workflow list (default branch is `vps-access`) — find runs
-  under Actions → "All workflows". Both test runs failed exactly at the
-  designed guard: secrets empty → "UTA_SFTP_HOST secret not set". Secrets
-  are the ONLY remaining blocker.
+  under Actions → "All workflows". Runs 1–3 failed with empty secrets EVEN
+  AFTER the owner stored them correctly (Secrets tab → Repository secrets):
+  the backup job is a reusable-workflow call, and called workflows don't
+  inherit caller secrets — fixed 2026-08-06 eve by adding `secrets:
+  inherit` to the backup job in deploy-uta.yml (don't remove it).
+  Owner-side config was right all along.
 - **⚠ Domain flag (2026-08-05):** the panel shows `uniontradingacademy.com`
   needs registrant contact-data confirmation ("Se requiere confirmación de
   los datos de contacto") — an ICANN verification email must be actioned or

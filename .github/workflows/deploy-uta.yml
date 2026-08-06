@@ -32,6 +32,8 @@ jobs:
   backup:
     if: ${{ !inputs.skip_backup }}
     uses: ./.github/workflows/backup-uta.yml
+    # Called workflows do NOT inherit the caller's secrets by default.
+    secrets: inherit
 
   deploy:
     needs: [backup]
