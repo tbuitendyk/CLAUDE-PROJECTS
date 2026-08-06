@@ -96,26 +96,27 @@ Union Trading Academy website (`uniontradingacademy.com/`).
   email to the registrant address **`uniontrading777@gmail.com`** (Reg-C:
   UnionTrading Academy / Francisco Javier Espinosa Magana, León MX). The
   client must open that mailbox and click the IONOS verification link.
-- **Deploy triggers — HUMAN COMMIT REQUIRED (root-caused 2026-08-06 eve):**
-  "UTA deploy site" fires when a change to the root `DEPLOY-REQUEST` marker
-  file lands on `uniontradingacademy` **via the owner's own credentials**
-  (GitHub web/mobile file editor → append a line → commit). Deploys the
-  branch tip; ordinary site commits never auto-deploy; backup always runs
-  on the marker path and tolerates a missing `/site` on the first deploy.
-  Earlier "Actions disabled?" theory was WRONG — owner confirmed "Allow all
-  actions" was already set. The proven cause: **no Claude-session write
-  path generates workflow-triggering events.** Verified empirically:
-  git-proxy marker push `a0789d8` → no run (2 min polling); GitHub-API
-  commit `461ca8d` (authored as owner, actor = app) → no run; API
-  workflow_dispatch → 403; tag push → 403. Sessions CAN watch runs +
-  logs read-only (public API / MCP reads) and push fixes — they cannot
-  fire deploys. Net: owner-in-the-loop per deploy is enforced by GitHub
-  itself (fine for handover; zero Claude dependency holds). Also note the
-  default branch is `vps-access`, so UTA workflows never appear in the
-  Actions tab's workflow list — find runs under the repo's Actions → "All
-  workflows". Optional future (owner sign-off needed, touches `vps-access`):
-  a cron poller workflow on the default branch could restore session-fired
-  deploys.
+- **Deploy trigger VERIFIED WORKING (2026-08-06 eve):** a commit changing
+  the root `DEPLOY-REQUEST` marker on `uniontradingacademy` fires "UTA
+  deploy site" — **from any committer, Claude sessions included** (proven:
+  git-proxy push `a0789d8` → run 31131717160; GitHub-API commit `461ca8d`
+  → run 31131844789; both event=push). Runs appear with ~10–60 s lag.
+  Deploys the branch tip; ordinary site commits never auto-deploy; backup
+  always runs on the marker path and tolerates a missing `/site` first
+  time. Two earlier failed theories, so nobody re-litigates: (1) "Actions
+  disabled" — false, owner confirmed allow-all was always on; the
+  historical no-run on `b19e59f` was because that commit *introduced* the
+  push trigger (new workflows register but don't fire on the push that
+  adds them; every later marker commit fires). (2) "session pushes can't
+  trigger CI" (briefly recorded here) — false; that conclusion came from
+  polling the *unauthenticated* runs API while rate-limited (error bodies
+  parsed as zero runs). Lesson: poll runs via authenticated MCP reads.
+  Still true: API workflow_dispatch → 403 for the integration; tag pushes
+  → 403 via git proxy; UTA workflows never appear in the Actions tab's
+  left-hand workflow list (default branch is `vps-access`) — find runs
+  under Actions → "All workflows". Both test runs failed exactly at the
+  designed guard: secrets empty → "UTA_SFTP_HOST secret not set". Secrets
+  are the ONLY remaining blocker.
 - **⚠ Domain flag (2026-08-05):** the panel shows `uniontradingacademy.com`
   needs registrant contact-data confirmation ("Se requiere confirmación de
   los datos de contacto") — an ICANN verification email must be actioned or
