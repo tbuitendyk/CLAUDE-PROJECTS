@@ -96,13 +96,21 @@ Union Trading Academy website (`uniontradingacademy.com/`).
   email to the registrant address **`uniontrading777@gmail.com`** (Reg-C:
   UnionTrading Academy / Francisco Javier Espinosa Magana, León MX). The
   client must open that mailbox and click the IONOS verification link.
-- **Deploy triggers:** "UTA deploy site" runs via workflow_dispatch (Actions
-  tab) OR by committing a change to the root `DEPLOY-REQUEST` marker file on
+- **Deploy triggers:** "UTA deploy site" runs via workflow_dispatch OR by
+  committing a change to the root `DEPLOY-REQUEST` marker file on
   `uniontradingacademy` (deploys the branch tip; ordinary site commits never
   auto-deploy). The marker path exists because this environment's git proxy
   allows branch pushes but 403s tag pushes and the GitHub integration lacks
   Actions-write. Backup always runs on the marker path and tolerates a
   missing `/site` on the first-ever deploy.
+- **⚠ Actions likely disabled repo-wide (found 2026-08-06):** the marker
+  push (`b19e59f`) produced NO workflow run, the YAML parses clean, and the
+  repo has never run a single user workflow. Owner: check GitHub → repo
+  Settings → Actions → General → allow actions. Also note the repo default
+  branch is `vps-access`, so UTA workflows never appear in the Actions tab's
+  workflow list / Run-workflow UI; the marker file (editable from mobile
+  web) is the practical trigger. After enabling Actions, a FRESH marker
+  commit is needed (past pushes don't fire retroactively).
 - **⚠ Domain flag (2026-08-05):** the panel shows `uniontradingacademy.com`
   needs registrant contact-data confirmation ("Se requiere confirmación de
   los datos de contacto") — an ICANN verification email must be actioned or
