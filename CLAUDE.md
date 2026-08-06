@@ -96,11 +96,13 @@ Union Trading Academy website (`uniontradingacademy.com/`).
   email to the registrant address **`uniontrading777@gmail.com`** (Reg-C:
   UnionTrading Academy / Francisco Javier Espinosa Magana, León MX). The
   client must open that mailbox and click the IONOS verification link.
-- **Deploy triggers:** "UTA deploy site" runs via workflow_dispatch OR by
-  pushing a tag `deploy-request/<stamp>` at the commit to deploy (added
-  because integrations without Actions-write can still push tags; backup
-  always runs on the tag path and now tolerates a missing `/site` on the
-  first-ever deploy).
+- **Deploy triggers:** "UTA deploy site" runs via workflow_dispatch (Actions
+  tab) OR by committing a change to the root `DEPLOY-REQUEST` marker file on
+  `uniontradingacademy` (deploys the branch tip; ordinary site commits never
+  auto-deploy). The marker path exists because this environment's git proxy
+  allows branch pushes but 403s tag pushes and the GitHub integration lacks
+  Actions-write. Backup always runs on the marker path and tolerates a
+  missing `/site` on the first-ever deploy.
 - **⚠ Domain flag (2026-08-05):** the panel shows `uniontradingacademy.com`
   needs registrant contact-data confirmation ("Se requiere confirmación de
   los datos de contacto") — an ICANN verification email must be actioned or

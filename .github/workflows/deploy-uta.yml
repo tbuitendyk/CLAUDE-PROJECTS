@@ -16,11 +16,14 @@ on:
         description: "Skip the pre-deploy live backup"
         type: boolean
         default: false
-  # Alternative GitHub-native trigger: push a tag like deploy-request/20260806-1200
-  # at the commit to deploy (backup always runs on this path).
+  # Alternative GitHub-native trigger: commit a change to the DEPLOY-REQUEST
+  # marker file on the site branch (deploys that branch tip; backup always
+  # runs on this path). Ordinary site commits never auto-deploy.
   push:
-    tags:
-      - "deploy-request/**"
+    branches:
+      - "uniontradingacademy"
+    paths:
+      - "DEPLOY-REQUEST"
 
 permissions:
   contents: write

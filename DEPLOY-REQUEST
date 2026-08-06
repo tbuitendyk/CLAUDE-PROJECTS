@@ -1,0 +1,7 @@
+# UTA deploy marker
+#
+# Committing a change to this file on the `uniontradingacademy` branch
+# triggers the "UTA deploy site" workflow for the branch tip (see
+# .github/workflows/deploy-uta.yml). Append a line per request.
+#
+2026-08-06T20:20Z deploy branch tip (first end-to-end run; probe for secrets)
