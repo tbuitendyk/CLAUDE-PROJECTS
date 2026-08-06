@@ -5,3 +5,4 @@
 # .github/workflows/deploy-uta.yml). Append a line per request.
 #
 2026-08-06T20:20Z deploy branch tip (first end-to-end run; probe for secrets)
+2026-08-06T21:05Z deploy branch tip (proxy-push trigger test; Actions confirmed enabled by owner)
