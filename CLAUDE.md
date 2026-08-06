@@ -66,6 +66,14 @@ Union Trading Academy website (`uniontradingacademy.com/`).
   as the interim dev domain until `uniontradingacademy.com` is re-pointed.
   Beware the name collision: "MyWebsite Now Plus" (builder) ≠ "Web Hosting
   Plus" (webspace) — both end in "Plus", both ~$20 promos.
+- **Provisioning status (verified 2026-08-06 ~06:20 UTC):** the payment
+  review cleared — contract `113249653` is active in the panel (activation
+  05/08/2026, renews 04/08/2027). BUT the hosting overview
+  (`my.ionos.mx/webhosting`, contract selected) still returns IONOS Error
+  500 — webspace provisioning not finished — and `orderflowvolumeprofile.com`
+  is NOT yet issued (absent from Dominios & SSL and from contract line
+  items). SFTP setup, `/site` folder, and domain assignment remain blocked
+  until the panel opens; automated re-checks every ~3 h are armed.
 - **⚠ Domain flag (2026-08-05):** the panel shows `uniontradingacademy.com`
   needs registrant contact-data confirmation ("Se requiere confirmación de
   los datos de contacto") — an ICANN verification email must be actioned or
