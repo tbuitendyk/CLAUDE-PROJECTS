@@ -1,0 +1,9 @@
+Your 20,400-unit board finished clean — ready to browse
+tl;dr: the big discovery run you fired Wednesday evening (bracketlab-20260805-193433) completed all 20,400 units with zero failures in 23.2 hours. The board is on the page now. As a discovery run it selects nothing by itself - browse at leisure; any row you want pursued goes through the usual selection -> nulls -> declared-instrument path.
+
+One operational note: the sweep started at ~37 units/min and settled to
+~10/min as it hit the heavier setups, which is why my finish estimates
+kept sliding from ~04:30 to ~08:00 UTC. Recorded in the audit for
+honest ETAs on future boards this size.
+
+c.
