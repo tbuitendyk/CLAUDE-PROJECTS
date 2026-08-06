@@ -1,5 +1,8 @@
-// Read-only IONOS panel recon over CDP to the long-lived headless Chromium.
-// NEVER clicks publish/save/edit actions.
+// IONOS panel driver over CDP to the long-lived headless Chromium.
+// Default posture is read-only recon; write actions (fill/click on forms)
+// are permitted ONLY for flows the owner explicitly pre-approved (e.g. the
+// 2026-08-06 Web Hosting Plus setup: SFTP account, /site folder, domain
+// assignment). Never touch the MyWebsite Now builder or live-domain DNS.
 const { chromium } = require('playwright');
 const fs = require('fs');
 
@@ -97,13 +100,39 @@ async function main() {
     } else if (step === 'shot-full') {
       await dump(page, process.argv[3] || 'full', { fullPage: true });
     } else if (step === 'click-text') {
-      // clicks a link/button by its visible text — used ONLY for navigation, never for edit/publish actions
+      // clicks a link/button by its visible text (navigation, or owner-approved form actions)
       const target = page.locator(`a:has-text("${process.argv[3]}"), button:has-text("${process.argv[3]}")`).first();
       await target.waitFor({ state: 'visible', timeout: 15000 });
       await target.click();
       await page.waitForLoadState('domcontentloaded').catch(() => {});
       await page.waitForTimeout(8000);
       await dump(page, process.argv[4] || 'after-click', { text: true });
+    } else if (step === 'fill') {
+      // fill <css-selector> <value> — owner-approved form flows only
+      const el = page.locator(process.argv[3]).first();
+      await el.waitFor({ state: 'visible', timeout: 15000 });
+      await el.fill(process.argv[4]);
+      console.log('filled', process.argv[3]);
+    } else if (step === 'type') {
+      // type <css-selector> <value> — clears then types with real key events (for pickier meters)
+      const el = page.locator(process.argv[3]).first();
+      await el.waitFor({ state: 'attached', timeout: 15000 });
+      await el.click({ force: true }).catch(() => {});
+      await el.fill('');
+      await el.pressSequentially(process.argv[4], { delay: 40 });
+      console.log('typed', process.argv[3]);
+    } else if (step === 'js') {
+      // js <expression> — evaluate in page, print JSON result (inspection/verification)
+      const r = await page.evaluate(process.argv[3]);
+      console.log(JSON.stringify(r));
+    } else if (step === 'click') {
+      // click <css-selector> [tag] — owner-approved form flows only
+      const el = page.locator(process.argv[3]).first();
+      await el.waitFor({ state: 'visible', timeout: 15000 });
+      await el.click();
+      await page.waitForLoadState('domcontentloaded').catch(() => {});
+      await page.waitForTimeout(8000);
+      await dump(page, process.argv[4] || 'after-click-sel', { text: true });
     }
   } catch (e) {
     console.log('ERROR:', e.message.split('\n').slice(0, 3).join(' | '));
