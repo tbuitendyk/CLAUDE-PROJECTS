@@ -74,11 +74,33 @@ Union Trading Academy website (`uniontradingacademy.com/`).
   "GitHub Actions deploy (UTA site)"; password lives ONLY in the session
   scratchpad and the GitHub secret — never in git), and the domain is
   connected to webspace dir **`/site`** (panel confirmed "Se ha establecido
-  la conexión del dominio con el espacio web"). The interim domain has no
-  SSL cert yet ("Nivel de seguridad del dominio: bajo") — "Activar SSL"
-  left for owner decision. NEXT: owner sets repo secrets
-  `UTA_SFTP_HOST/USER/PASSWORD`, then dispatch "UTA deploy site" and verify
-  `/dev-ver` on the interim domain.
+  la conexión del dominio con el espacio web"). NEXT: owner sets repo
+  secrets `UTA_SFTP_HOST/USER/PASSWORD`, then run "UTA deploy site" and
+  verify `/dev-ver` on the interim domain.
+- **Provisioning shuffle + restore (2026-08-06 afternoon UTC):** when the
+  order finished provisioning it ALSO executed a domain reorganization —
+  panel notifications "Transferencia de dominio en tu ID de cliente" /
+  "Información sobre tu pedido: uniontradingacademy.com". Net effect:
+  `uniontradingacademy.com` moved contracts 113205858 → 113249653, was cut
+  from the builder, and currently has **NO DNS records** (site was never
+  published, so nothing user-visible was lost); the automation also
+  re-pointed `orderflowvolumeprofile.com` at MyWebsite NOW, silently
+  undoing the morning webspace connection. Restored ~14:15 UTC:
+  `orderflowvolumeprofile.com` → webspace `/site` reconnected
+  (panel-confirmed; SFTP account unaffected). SSL for the interim domain
+  self-provisioned during the day — real Sectigo wildcard
+  `*.orderflowvolumeprofile.com`, strict TLS verifies; no action was
+  needed. Re-pointing `uniontradingacademy.com` (now conveniently already
+  on the hosting contract) awaits owner sign-off on v1 content.
+- **ICANN verification:** no in-panel confirm exists — the link arrives by
+  email to the registrant address **`uniontrading777@gmail.com`** (Reg-C:
+  UnionTrading Academy / Francisco Javier Espinosa Magana, León MX). The
+  client must open that mailbox and click the IONOS verification link.
+- **Deploy triggers:** "UTA deploy site" runs via workflow_dispatch OR by
+  pushing a tag `deploy-request/<stamp>` at the commit to deploy (added
+  because integrations without Actions-write can still push tags; backup
+  always runs on the tag path and now tolerates a missing `/site` on the
+  first-ever deploy).
 - **⚠ Domain flag (2026-08-05):** the panel shows `uniontradingacademy.com`
   needs registrant contact-data confirmation ("Se requiere confirmación de
   los datos de contacto") — an ICANN verification email must be actioned or

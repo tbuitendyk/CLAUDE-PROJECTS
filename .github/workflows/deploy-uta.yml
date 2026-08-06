@@ -16,6 +16,11 @@ on:
         description: "Skip the pre-deploy live backup"
         type: boolean
         default: false
+  # Alternative GitHub-native trigger: push a tag like deploy-request/20260806-1200
+  # at the commit to deploy (backup always runs on this path).
+  push:
+    tags:
+      - "deploy-request/**"
 
 permissions:
   contents: write
@@ -33,7 +38,9 @@ jobs:
       - name: Checkout requested ref
         uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.ref }}
+          # workflow_dispatch supplies inputs.ref; a deploy-request/** tag push
+          # deploys the tagged commit (github.ref).
+          ref: ${{ inputs.ref || github.ref }}
           fetch-depth: 1
 
       - name: Locate site root
@@ -45,7 +52,7 @@ jobs:
           elif [ -f "BACKUP.md" ]; then
             echo "dir=." >> "$GITHUB_OUTPUT"
           else
-            echo "::error::No site directory found in ref '${{ inputs.ref }}'"; exit 1
+            echo "::error::No site directory found in ref '${{ inputs.ref || github.ref }}'"; exit 1
           fi
 
       - name: Install lftp
@@ -69,11 +76,12 @@ jobs:
             bye"
 
       - name: Tag this deploy
-        if: ${{ !startsWith(inputs.ref, 'backup/') }}
+        # Skip when a backup snapshot was deployed (restore), whichever trigger asked for it.
+        if: ${{ steps.site.outputs.dir != '.' }}
         run: |
           STAMP=$(date -u +%Y%m%d-%H%M%S)
           git config user.name  "uta-deploy-bot"
           git config user.email "actions@users.noreply.github.com"
           git tag "deploy/$STAMP" HEAD
           git push origin "deploy/$STAMP"
-          echo "::notice::Deployed ref '${{ inputs.ref }}' and tagged deploy/$STAMP"
+          echo "::notice::Deployed ref '${{ inputs.ref || github.ref }}' and tagged deploy/$STAMP"

@@ -36,11 +36,18 @@ jobs:
         run: |
           test -n "$H" || { echo "::error::UTA_SFTP_HOST secret not set"; exit 1; }
           mkdir -p live-snapshot
-          lftp -u "$U","$P" "sftp://$H" -e "
-            set sftp:auto-confirm yes;
-            set net:max-retries 3;
-            mirror --verbose --parallel=4 \"$RDIR\" ./live-snapshot;
-            bye"
+          # Distinguish "remote dir missing (first deploy)" from real SFTP failures:
+          if lftp -u "$U","$P" "sftp://$H" -e "set sftp:auto-confirm yes; cls \"$RDIR\" > /dev/null; bye" 2>/dev/null; then
+            lftp -u "$U","$P" "sftp://$H" -e "
+              set sftp:auto-confirm yes;
+              set net:max-retries 3;
+              mirror --verbose --parallel=4 \"$RDIR\" ./live-snapshot;
+              bye"
+          elif lftp -u "$U","$P" "sftp://$H" -e "set sftp:auto-confirm yes; cls / > /dev/null; bye"; then
+            echo "::notice::Remote dir $RDIR does not exist yet (first deploy) — recording an empty snapshot."
+          else
+            echo "::error::Cannot reach the webspace over SFTP (host/credentials/network)"; exit 1
+          fi
           echo "Files mirrored: $(find live-snapshot -type f | wc -l)"
 
       - name: Commit snapshot to timestamped branch
