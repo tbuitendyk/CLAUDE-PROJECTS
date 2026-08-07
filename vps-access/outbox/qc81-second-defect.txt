@@ -1,0 +1,34 @@
+Second null defect found, fixed and deployed — run D's pass is withdrawn too, third measurement running
+tl;dr: run D came back a PASS on the corrected null, against my stated prediction of failure, and I recorded being wrong. Then I chased one more objection the audit had raised but never actually tested, and it was real: the null arm was trading LESS OFTEN than the arm it judges. Your candidate traded 310 of 364 held-back periods; all nineteen null draws traded between 255 and 296. The real arm sat completely outside the range of its own control. That is not a fair test, so run D's pass is withdrawn as well. Fixed as 1.43.0, deployed, and the third measurement (run E) is running now — about 20 minutes.
+
+WHY IT HAPPENED, in plain terms. The committee only takes a position when
+its members are not tied. The old null shuffled each member's votes
+separately, which breaks up the agreement between them, creates more
+ties, and so quietly reduces how often the null trades. Nothing to do
+with skill — pure construction. The fix moves every member by the SAME
+shuffle, so the committee's whole voting pattern slides through time
+unchanged: the null now makes exactly the same number of up, down and
+stand-aside calls as the real arm, and differs only in WHEN. That is the
+question a null is supposed to ask.
+
+The new check asserts that equality at every agreement level, driving the
+real worker on the fabricated pair. I watched it fail with the old
+construction restored, then pass. 232/232 green. Registered as QC 81.
+
+RELATED GAP, stated plainly: the walk-forward path deals per member too
+and has the same flaw. No walk-forward null result is evidence until it
+is fixed the same way. I have NOT fixed it in the same release, because
+changing two things at once makes both unattributable.
+
+WHAT HAS NOT CHANGED. The money. $13.03 net on 310 trades, fees taking
+$77.50 of $90.53 gross, break-even fee $0.146/leg against $0.125
+charged, and always-short made $478.32 on the same window with no model.
+Whatever run E says, this candidate is not a Binance test-trade
+candidate. Finding one that is remains the job.
+
+Run E's reading rule is stamped and includes its own instrument check:
+the null trade counts must now BRACKET the real arm's 310 instead of
+sitting below it. If they do not, 1.43.0 did not do what it claims and
+the verdict is void whichever way it falls.
+
+c.
