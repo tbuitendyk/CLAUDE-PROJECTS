@@ -149,3 +149,54 @@ module.exports.nullArmsAreDealtWithinTheirOwnSlice = async function () {
     }
   }
 };
+
+// QC 81: a null arm must be dealt with ONE permutation shared by all members.
+// Dealing members independently destroys their agreement as well as their
+// timing, and the committee only trades when its members are not tied — so
+// independent deals make the null trade less often than the real arm for
+// reasons unrelated to skill (measured: real 310 of 364 periods, all 19
+// independent draws 255-296). A shared permutation preserves the multiset of
+// quorum calls exactly, so trade count and direction mix match by
+// construction and only market alignment is destroyed.
+module.exports.nullArmsPreserveCommitteeAgreementAndTradeCount = async function () {
+  const { unitTask, quorumCall } = require('../lib/bracketwork');
+  planted.generatePlanted({ fromMonth: '2024-01', toDate: '2025-06-30' });
+  const combo = { trade: planted.PLANTED_SYMBOL, ctx1: null, ctx2: null, size: 1 };
+  const branch = { geometry: 'daily-1d', decision: 'argmax', band: 'auto', weekdaysOnly: false };
+  const params = {
+    allLoaded: true, windowLayout: 'split70', holdout: true, minTrades: 5, feePerLeg: 0.125,
+    dMults: [1], tHours: [41], gates: ['directional'], entries: ['market'], trailing: false,
+  };
+  // The committee's decision per period, tallied over the window: how many
+  // periods it calls up, down, or stands aside. A correct null moves these
+  // through time; it must not change how many of each there are.
+  const callMix = (votes, k) => {
+    const c = { up: 0, down: 0, aside: 0 };
+    for (let i = 0; i < votes[0].length; i++) {
+      const q = quorumCall(votes, i, k);
+      c[q === 1 ? 'up' : q === -1 ? 'down' : 'aside']++;
+    }
+    return `${c.up}/${c.down}/${c.aside}`;
+  };
+  try {
+    const real = await unitTask({ combo, branch, stage: 'promoted', params });
+    const nul = await unitTask({ combo, branch, stage: 'promoted', params, nullDealSeed: 1 });
+    const rv = real.memberDump.votes, nv = nul.memberDump.votes;
+    for (const slice of ['search', 'hold']) {
+      if (!rv[slice] || !rv[slice].length) continue;
+      for (let k = 1; k <= rv[slice].length; k++) {
+        assert.strictEqual(callMix(nv[slice], k), callMix(rv[slice], k),
+          `${slice} slice, ${k}-of-${rv[slice].length}: the null committee must make the SAME number of `
+          + `up/down/aside calls as the real one (real ${callMix(rv[slice], k)} vs null ${callMix(nv[slice], k)}). `
+          + 'A mismatch means members were dealt independently, so the null trades a different amount than '
+          + 'the arm it judges — QC 81.');
+      }
+    }
+    const moved = rv.hold.some((calls, m) => calls.some((v, i) => v !== nv.hold[m][i]));
+    assert.ok(moved, 'the null deal must actually move votes through time');
+  } finally {
+    for (const f of fs.readdirSync(CACHE)) {
+      if (f.startsWith(`${planted.PLANTED_SYMBOL}-1h-`)) fs.rmSync(path.join(CACHE, f), { force: true });
+    }
+  }
+};

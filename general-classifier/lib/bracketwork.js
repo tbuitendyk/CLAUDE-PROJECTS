@@ -352,14 +352,38 @@ async function unitTask(task) {
   let memberCalls = holdChunks.length ? allCalls.map((c) => c.slice(0, testChunks.length)) : allCalls;
   let holdCalls = holdChunks.length ? allCalls.map((c) => c.slice(testChunks.length)) : null;
   if (task.nullDealSeed) {
-    const { nullRng, dealVotes } = require('./walkforward');
+    const { nullRng } = require('./walkforward');
     const unitKey = `${combo.trade}|${branch.geometry}|${branch.decision}|${stage}`;
-    memberCalls = memberCalls.map((calls, mI) => dealVotes(calls,
-      nullRng(task.nullDealSeed, unitKey, 0, mI, 'test')));
-    if (holdCalls) {
-      holdCalls = holdCalls.map((calls, mI) => dealVotes(calls,
-        nullRng(task.nullDealSeed, unitKey, 0, mI, 'hold')));
-    }
+    // ONE permutation per slice, applied to EVERY member — QC 81.
+    //
+    // Dealing each member independently (the construction here until 1.43.0)
+    // destroys the AGREEMENT between members as well as the timing. That is
+    // one thing too many. The committee only takes a position when its members
+    // are not tied, so independent deals break ties apart and the null arm
+    // trades less often than the real arm — for reasons that have nothing to
+    // do with skill. Measured on run D's candidate: the real arm traded 310 of
+    // 364 periods while all nineteen independent-deal draws traded 255-296. A
+    // real arm cannot be judged against a control it out-participates by
+    // construction.
+    //
+    // Permuting every member by the SAME order moves the committee's whole
+    // vote pattern through time without changing it: the multiset of quorum
+    // calls is preserved exactly, so trade count and direction mix match the
+    // real arm by construction and the ONLY thing destroyed is alignment with
+    // what the market actually did. That is the question the null exists to
+    // ask.
+    const dealTogether = (arrs, slice) => {
+      if (!arrs.length || !arrs[0].length) return arrs;
+      const rng = nullRng(task.nullDealSeed, unitKey, 0, 0, slice);
+      const order = arrs[0].map((_, i) => i);
+      for (let i = order.length - 1; i > 0; i--) {
+        const j = Math.floor(rng() * (i + 1));
+        const t = order[i]; order[i] = order[j]; order[j] = t;
+      }
+      return arrs.map((calls) => order.map((k) => calls[k]));
+    };
+    memberCalls = dealTogether(memberCalls, 'test');
+    if (holdCalls) holdCalls = dealTogether(holdCalls, 'hold');
   }
   const fee = p.feePerLeg ?? REAL_FEE_PER_LEG;
   // Trailing is a PROMOTE-stage dimension only (see TRAIL_MULTS): 12x the menu
