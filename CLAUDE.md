@@ -139,7 +139,13 @@ Union Trading Academy website (`uniontradingacademy.com/`).
   `uniontradingacademy.com` connected to webspace `/site` (domains table
   shows BOTH domains → contract 113249653, dir `/site`); DNS live minutes
   later (apex + www → 74.208.236.33); `http://uniontradingacademy.com/`
-  serves the real site. PENDING: IONOS SSL for the new domain
+  serves the real site. WhatsApp click-to-chat ACTIVE (524792265252,
+  owner tap-test confirmed 2026-08-07); noindex metas dropped at launch
+  (gracias keeps its). Remaining functional gaps, all awaiting client
+  account values (see CONFIG.md): CALENDLY_URL (booking), VIDEO_SRC
+  (file), MERCADOPAGO_LINK (offer/price undecided). Owner intent: client
+  test-drives the full funnel at the live URL once Calendly is wired.
+  PENDING: IONOS SSL for the new domain
   (self-provisions; the interim domain took hours). WHEN
   `curl -sS https://uniontradingacademy.com/` succeeds from the sandbox
   (egress gateway validates upstream certs, so success = real cert):
