@@ -129,9 +129,25 @@ Union Trading Academy website (`uniontradingacademy.com/`).
   (`625da33`) — keep both. Deploy loop henceforth: append a line to
   `DEPLOY-REQUEST` on this branch → ~2 min → live, with an automatic
   pre-deploy snapshot of the live webspace to a `backup/…` branch every
-  time. NEXT: owner reviews `/dev-ver` for content sign-off; client
-  clicks the ICANN mail (`uniontrading777@gmail.com`); re-point
-  `uniontradingacademy.com` only after sign-off.
+  time. (Sign-off arrived and the re-point happened 2026-08-07 — see the
+  LAUNCH bullet; the ICANN mail click is still pending on the client.)
+- **LAUNCH IN PROGRESS (2026-08-07 ~00:45 UTC):** owner chose
+  `uniontradingacademy.com` as the main URL (full site at root) with
+  `orderflowvolumeprofile.com` redirecting to it. DONE: `dev-ver/`
+  promoted to the site root (robots opened; `/dev-ver/* → /*` 301 in
+  `.htaccess`) and deployed (run 6, verified); panel:
+  `uniontradingacademy.com` connected to webspace `/site` (domains table
+  shows BOTH domains → contract 113249653, dir `/site`); DNS live minutes
+  later (apex + www → 74.208.236.33); `http://uniontradingacademy.com/`
+  serves the real site. PENDING: IONOS SSL for the new domain
+  (self-provisions; the interim domain took hours). WHEN
+  `curl -sS https://uniontradingacademy.com/` succeeds from the sandbox
+  (egress gateway validates upstream certs, so success = real cert):
+  extend site `.htaccess` with (a) any-orderflowvolumeprofile-host 301 →
+  `https://uniontradingacademy.com/$1`, (b) force-https, (c)
+  `www.uniontradingacademy.com` → apex; marker-deploy; verify all
+  host/scheme combos 301 → https apex. Do NOT ship force-https while the
+  cert is still pending — it would break the http-only window.
 - **⚠ Domain flag (2026-08-05):** the panel shows `uniontradingacademy.com`
   needs registrant contact-data confirmation ("Se requiere confirmación de
   los datos de contacto") — an ICANN verification email must be actioned or
