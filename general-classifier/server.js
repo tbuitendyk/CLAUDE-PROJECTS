@@ -1108,6 +1108,23 @@ app.get('/api/httwo/exams', (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+// Forward books: out-of-sample money records for setups whose backtest window
+// is spent (lib/forwardbook.js; pre-registered in vps-access
+// reports/FORWARD-BOOKS.md before any forward number existed). Recomputed on
+// demand rather than stored — training and scoring are frozen to dates, so the
+// record is a deterministic function of the cached data and cannot drift.
+// Trains members, so it refuses while a sweep holds the box.
+app.get('/api/forwardbooks', async (req, res) => {
+  const busy = batch.batchRunning() || require('./lib/jobs').anyJobRunning();
+  if (busy) return res.status(409).json({ error: `${busy} is running — forward books train members, so they wait their turn` });
+  try {
+    const fbook = require('./lib/forwardbook');
+    res.json(await fbook.scoreAll({}));
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.get('/api/httwo/:id/verdict', (req, res) => {
   try {
     const T2 = require('./lib/httwo');
