@@ -137,3 +137,83 @@ forward read is treated as meaningful.
 report committee participation against their backtest rate, and flag a
 collapse, rather than reporting a small loss on two trades as though it were a
 result. Becomes an entry once the mechanism above is confirmed.
+
+---
+
+## ADDENDUM 2 — the silence hypothesis is REFUTED, and it exposed a framing error in my own books
+
+### The declared test, run on both rules and both coins (confound removed)
+Per-member directional-call rate, in-sample vs forward:
+
+  coin  decision      in-sample  forward  retains
+  LTC   argmax            33.7%    20.5%     61%
+  LTC   directional       37.1%    38.4%    104%
+  XLM   argmax            69.8%    78.6%    113%
+  XLM   directional        3.2%     2.7%     85%
+
+Reading rule required directional to drop ~10x forward while argmax held.
+NOTHING drops forward. REFUTED. `directional` is not a rule that goes silent
+out of sample.
+
+What the table shows instead: XLM/directional was ALREADY near-mute IN SAMPLE
+(3.2%). It never spoke; it did not stop speaking.
+
+### That contradicted the board, so I checked, and the board is not wrong — I am
+The discovery row for XLM/directional traded 240 of 325 periods. A 3.2% call
+rate cannot produce that. Both cannot be the same committee.
+
+Same specification, same scored periods, training window as the only difference:
+
+  XLM directional   trained on first 70% (as the board did): 50.8% calls, committee 243/325
+                    trained on train+test (as my books do):   8.2% calls, committee 105/325
+  LTC argmax        trained on first 70% (as the board did): 36.6% calls, committee 226/364
+                    trained on train+test (as my books do):  42.9% calls, committee 241/364
+
+TWO CONCLUSIONS, and the first is good news:
+
+1. THE ENGINE REPRODUCES. Construction A recovers the board almost exactly —
+   243 committee calls against 240 recorded trades for XLM, 226 against 224 for
+   LTC. The discovery numbers are real and re-derivable. That is a genuine
+   validation of determinism, obtained as a by-product.
+
+2. MY FORWARD BOOKS TEST SOMETHING OTHER THAN WHAT THEY CLAIM. FORWARD-BOOKS.md
+   says a book that retrains "has stopped being a forward test of the thing that
+   was selected" — and then specifies training on ALL data to 2026-06-30, which
+   is exactly a retrain. The two sentences contradict each other and I did not
+   notice. For LTC the retrained committee is close to the selected one (36.6%
+   vs 42.9%), so F1 is roughly the intended artifact. For XLM it is a 6x
+   different committee, so F2 and F3's forward numbers say NOTHING about the
+   setups that cleared the money screen.
+
+### Consequences, stated plainly
+- F2/F3 forward results are WITHDRAWN as evidence about the money-screen
+  clearers. They remain a valid record of something else (the recipe retrained),
+  and under R4 they stay in the record rather than being deleted.
+- F1's forward +$27.43 is closer to the intended artifact but is still a
+  retrained committee, not the selected one. Downgraded from "the leader's
+  forward record" to "the leader's RECIPE, retrained, forward record".
+- The books keep running unchanged. R4 forbids re-specifying them, and the
+  correct repair is a SECOND, separately pre-registered set that reproduces the
+  selected models exactly (train on the board's own 70% window), not an edit to
+  these.
+
+### The finding underneath, which outranks all three books
+Adding ~325 recent periods to XLM/directional's training set cuts its member
+call rate from 50.8% to 8.2%. A recipe whose behaviour changes six-fold on how
+much history it is given is fragile in a way no backtest on a fixed split can
+show. This is now the most important open question in the project, ahead of any
+individual candidate:
+DECLARED NEXT TEST — train the same specification on a sliding set of training
+extents (50%, 60%, 70%, 80%, 90%, 100% of history to the freeze) and plot call
+rate and net money against extent, for both coins and both decision rules. A
+setup whose money swings with training extent is not tradeable at any backtest
+value. Reading rule: stability means net money keeps its SIGN and call rate
+stays within a factor of two across extents; anything else disqualifies the
+setup from a Binance test regardless of its other numbers.
+
+### QC candidate, now with a named cause
+"A frozen book must state whether it reproduces the SELECTED model or retrains
+the recipe, and its training window must be asserted against the run that
+selected it." Becomes an entry with the next release, enforced by a test that
+compares reconstructed committee participation against the selecting run's
+recorded trade count.
