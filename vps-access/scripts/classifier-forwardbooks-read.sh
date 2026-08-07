@@ -21,11 +21,11 @@ for b in d["books"]:
           b["combo"]["ctx2"], b["branch"]["geometry"], b["branch"]["decision"]))
     c = b["cell"]
     print("   frozen cell: %d-of-%d, %s entry, %s gate, t%dh, band %.2f%%" % (
-          c["quorum"], len(b.get("members", [])) or 0, c["entry"], c["gate"], c["tHours"], b["bandPct"]))
+          c["quorum"], b.get("committee", 0), c["entry"], c["gate"], c["tHours"], b["bandPct"]))
     if b.get("pending"):
         print("   PENDING:", b["pending"]); continue
     print("   TRADES: %d over %d forward periods (%s .. %s)" % (b["trades"], b["periods"],
-          f(b["firstPeriodTs"]), f(b["lastPeriodTs"])))
+          f(b.get("firstPeriodTs")), f(b.get("lastPeriodTs"))))
     if b.get("thinness"): print("   THIN:", b["thinness"])
     be = b["breakEvenPerLeg"]; hr = b["feeHeadroomPct"]
     print("   R1 forward net money : $%.2f   (wins %s)" % (b["net"], b.get("wins")))
