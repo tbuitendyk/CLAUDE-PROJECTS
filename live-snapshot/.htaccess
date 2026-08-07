@@ -1,0 +1,19 @@
+# Union Trading Academy — Apache config (IONOS shared hosting)
+
+RewriteEngine On
+
+# 1) Interim dev domain → main domain. Runs before any HTTPS rule so it works
+#    over plain HTTP (the interim domain's TLS is not needed for this hop).
+RewriteCond %{HTTP_HOST} (^|\.)orderflowvolumeprofile\.com$ [NC]
+RewriteRule ^(.*)$ https://uniontradingacademy.com/$1 [R=301,L]
+
+# 2) www → apex
+RewriteCond %{HTTP_HOST} ^www\.uniontradingacademy\.com$ [NC]
+RewriteRule ^(.*)$ https://uniontradingacademy.com/$1 [R=301,L]
+
+# 3) The site lived under /dev-ver during hidden-live development; keep old
+#    links working now that the same content is served at the root.
+RewriteRule ^dev-ver/?(.*)$ /$1 [R=301,L]
+
+# 4) Force HTTPS — added only once the probe confirms how this server
+#    reports the request scheme (a wrong guess causes a redirect loop).
