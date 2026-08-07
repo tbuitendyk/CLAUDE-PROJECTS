@@ -72,13 +72,10 @@ jobs:
           SRC: ${{ steps.site.outputs.dir }}
         run: |
           test -n "$H" || { echo "::error::UTA_SFTP_HOST secret not set"; exit 1; }
-          lftp -u "$U","$P" "sftp://$H" -e "
-            set sftp:auto-confirm yes;
-            set net:max-retries 3;
-            mirror -R --delete --verbose --parallel=4 \
-              --exclude-glob .git* --exclude-glob BACKUP.md \
-              \"$SRC\" \"$RDIR\";
-            bye"
+          # NOTE: no quotes around $SRC/$RDIR inside the lftp script — lftp
+          # keeps embedded quote chars as part of the path (run 31132909675).
+          # Paths must stay space-free.
+          lftp -u "$U","$P" "sftp://$H" -e "set sftp:auto-confirm yes; set net:max-retries 3; mirror -R --delete --verbose --parallel=4 --exclude-glob .git* --exclude-glob BACKUP.md $SRC $RDIR; bye"
 
       - name: Tag this deploy
         # Skip when a backup snapshot was deployed (restore), whichever trigger asked for it.

@@ -36,13 +36,11 @@ jobs:
         run: |
           test -n "$H" || { echo "::error::UTA_SFTP_HOST secret not set"; exit 1; }
           mkdir -p live-snapshot
-          # Distinguish "remote dir missing (first deploy)" from real SFTP failures:
-          if lftp -u "$U","$P" "sftp://$H" -e "set sftp:auto-confirm yes; cls \"$RDIR\" > /dev/null; bye" 2>/dev/null; then
-            lftp -u "$U","$P" "sftp://$H" -e "
-              set sftp:auto-confirm yes;
-              set net:max-retries 3;
-              mirror --verbose --parallel=4 \"$RDIR\" ./live-snapshot;
-              bye"
+          # Distinguish "remote dir missing (first deploy)" from real SFTP failures.
+          # NOTE: no quotes around $RDIR inside lftp scripts — lftp keeps embedded
+          # quote chars as part of the path (run 31132909675). Paths stay space-free.
+          if lftp -u "$U","$P" "sftp://$H" -e "set sftp:auto-confirm yes; cls $RDIR > /dev/null; bye" 2>/dev/null; then
+            lftp -u "$U","$P" "sftp://$H" -e "set sftp:auto-confirm yes; set net:max-retries 3; mirror --verbose --parallel=4 $RDIR ./live-snapshot; bye"
           elif lftp -u "$U","$P" "sftp://$H" -e "set sftp:auto-confirm yes; cls / > /dev/null; bye"; then
             echo "::notice::Remote dir $RDIR does not exist yet (first deploy) — recording an empty snapshot."
           else
