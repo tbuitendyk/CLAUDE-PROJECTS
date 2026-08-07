@@ -145,8 +145,20 @@ Union Trading Academy website (`uniontradingacademy.com/`).
   account values (see CONFIG.md): CALENDLY_URL (booking), VIDEO_SRC
   (file), MERCADOPAGO_LINK (offer/price undecided). Owner intent: client
   test-drives the full funnel at the live URL once Calendly is wired.
-  PENDING: IONOS SSL for the new domain
-  (self-provisions; the interim domain took hours). WHEN
+  PENDING: IONOS SSL for the new domain — still not issued at 14 h
+  (diagnosed 2026-08-07T14:10Z). Ruled OUT as causes: DNS (apex+www A/AAAA
+  resolve to IONOS 74.208.236.33 / 2607:f1c0:100f:f000::200, NS correctly
+  delegated to ui-dns), CAA (no records), registry suspension (RDAP shows
+  only `client transfer prohibited`, identical to the working interim
+  domain — so the pending ICANN click is NOT what blocks the cert), and
+  sandbox/proxy artifacts (SSL Labs, scanning externally, reports "Failed
+  to communicate with the secure server" + zero certChains on BOTH IPs —
+  the cert truly does not exist server-side). Remaining hypotheses, both
+  needing panel access: IONOS provisioning simply queued/slow, or the
+  contract move (113205858 → 113249653) left the hosting package's SSL
+  entitlement unattached so it needs a manual activation in Dominios &
+  SSL. Panel re-login requires a 6-digit code emailed to the account —
+  owner must relay it. WHEN
   `curl -sS https://uniontradingacademy.com/` succeeds from the sandbox
   (egress gateway validates upstream certs, so success = real cert):
   extend site `.htaccess` with (a) any-orderflowvolumeprofile-host 301 →
