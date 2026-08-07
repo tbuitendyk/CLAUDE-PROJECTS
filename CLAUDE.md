@@ -167,12 +167,17 @@ Union Trading Academy website (`uniontradingacademy.com/`).
   SERVER_PORT 443 directly; `X-Forwarded-Proto` is unset on HTTPS). Verified
   matrix: http apex, http/https www, http orderflow, and `/dev-ver/` all
   301 → `https://uniontradingacademy.com/` (200).
-- **Known cosmetic gap:** `https://orderflowvolumeprofile.com/` does not
-  complete TLS since the reassignment (its cert is still valid + "Asignado"
-  in-panel, so IONOS's vhost reinstall is expected to settle it). No user
-  impact — `http://` on that host 301s to the main domain, and it was only
-  ever an interim dev URL. Re-check; if it persists, the panel's "Expedir un
-  nuevo certificado" on that cert forces a reinstall.
+- **Interim-domain TLS gap: RESOLVED (2026-08-07T18:35Z).** Reassigning the
+  duplicate cert left `https://orderflowvolumeprofile.com/` unable to
+  complete TLS for ~3 h (cert still valid + "Asignado", but IONOS never
+  reinstalled that vhost; no user impact since `http://` 301'd correctly).
+  It did NOT self-heal. Owner-approved fix, worked in <4 min: Dominios &
+  SSL → Certificados → the `*.orderflowvolumeprofile.com` row's context
+  menu → **"Expedir un nuevo certificado"** → confirm (no checkbox; the
+  panel notes a cert may be re-issued as often as needed, so this is safe
+  and repeatable). Lesson: after ANY cert reassignment on this contract,
+  re-issue the *other* domain's cert to force its vhost reinstall.
+  Full matrix now green including https on BOTH domains.
 - **Remaining functional gaps, all awaiting client account values** (see
   CONFIG.md): `CALENDLY_URL` (booking — last piece before the client can
   test-drive the whole funnel), `VIDEO_SRC` (file; yt-dlp + ffmpeg are
