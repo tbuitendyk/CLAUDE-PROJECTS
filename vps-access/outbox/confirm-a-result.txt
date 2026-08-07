@@ -1,0 +1,16 @@
+Confirm run A: LTC+XRP+BCH PASSED its null gauntlet 9/9 - with one big caveat. Run B fired.
+tl;dr: the first prospect survived fair structure. On the untouched hold window, the declared cell (direction gate, no rails, 161h, 1-of-8) scored skill of +$670.85 against always-long, and beat ALL NINE informationless null draws (their range: +$306 to +$506) - chance odds 1 in 10. The caveat that keeps this honest: its RAW hold money was only +$13 on 310 trades. Nearly all the "skill" is that always-long lost $658 in that window. The vote-alignment signal is real (the nulls share the same sit-out machinery and still lost to it), but as a trade it has not yet MADE money on unseen data - it has lost less. Status per the pre-stamped rule: survived once, replicate before anything real. Run B (DOGE+ADA+DOT, its native daily-3d directional branch, same declared cell) is fired: bracketlab-20260807-053117, ~3h.
+
+TABLE: candidate vs its nine nulls (hold window, per $100 book).
+KEY: skill = declared cell dollars minus always-long dollars on the
+same window; null = same members, same vote mix, dealt onto random
+days (no market information by construction).
+  real     +$670.85   (raw money +$13.03, 310 trades)
+  nulls    +$305.70 .. +$506.17  (all nine below real)
+
+Also recorded in the audit: the old breadth check (R2) saturated - all
+60 triples look "skilled" against always-long, in the real arm AND all
+nulls (QC 64's lesson again), so run B upgrades R2 to a null-relative
+count, declared in its launcher before it fired.
+
+c.
