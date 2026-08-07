@@ -131,6 +131,16 @@ function splitFrozen(chunks, trainThrough = TRAIN_THROUGH, scoreFrom = SCORE_FRO
   };
 }
 
+// A control figure may arrive as a number or as {pnl}. Missing is null, never
+// undefined: undefined vanishes from JSON and turns a reporting gap into a
+// crash somewhere downstream.
+function numOf(v) {
+  if (v == null) return null;
+  if (typeof v === 'number') return Number.isFinite(v) ? v : null;
+  if (typeof v === 'object' && typeof v.pnl === 'number') return v.pnl;
+  return null;
+}
+
 // One book, scored end to end. Deterministic given the cached data.
 async function scoreBook(book, opts = {}) {
   const fee = opts.feePerLeg ?? REAL_FEE_PER_LEG;
@@ -204,8 +214,11 @@ async function scoreBook(book, opts = {}) {
     breakEvenPerLeg: legs ? gross / legs : null,
     feeHeadroomPct: legs ? 100 * (gross / legs / fee - 1) : null,
     // R5 — the comparison that matters.
-    alwaysLong: holds.alwaysLong ? holds.alwaysLong.pnl : null,
-    alwaysShort: holds.alwaysShort ? holds.alwaysShort.pnl : null,
+    // holdControls returns these as plain numbers on some paths and as
+    // {pnl} objects on others; reading .pnl blindly produced undefined, which
+    // JSON silently dropped and the reader then crashed on. Take either.
+    alwaysLong: numOf(holds.alwaysLong),
+    alwaysShort: numOf(holds.alwaysShort),
     // R3 — thinness is reported, never hidden.
     verdictAllowed: trades >= VERDICT_FLOOR_TRADES,
     verdictFloorTrades: VERDICT_FLOOR_TRADES,

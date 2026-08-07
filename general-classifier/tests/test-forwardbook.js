@@ -180,3 +180,38 @@ module.exports.scoreBookRunsEndToEndOnTheFabricatedPair = async function () {
     }
   }
 };
+
+// Every field the reader prints must be PRESENT — undefined vanishes from JSON
+// and turns a reporting gap into a crash at the far end, which happened twice
+// while building this (lastPeriodTs, then the no-skill controls).
+module.exports.aScoredBookCarriesEveryFieldItPromises = async function () {
+  const fs = require('fs');
+  const pathMod = require('path');
+  const planted = require('../lib/planted');
+  const CACHE = pathMod.join(__dirname, '..', 'data', 'cache');
+  planted.generatePlanted({ fromMonth: '2024-01', toDate: '2025-06-30' });
+  const book = {
+    id: 'TEST2', note: 'field completeness',
+    combo: { trade: planted.PLANTED_SYMBOL, ctx1: null, ctx2: null, size: 1 },
+    branch: { geometry: 'daily-1d', decision: 'argmax', band: 1.5, weekdaysOnly: false },
+    stage: 'slim', members: fb.BOOKS[0].members.slice(0, 3),
+    cell: { quorum: 1, entry: 'market', gate: 'directional', dMult: null, tHours: 41, trailMult: null, armMult: null },
+    backtest: { net: 0, trades: 0, breakEvenPerLeg: 0 },
+  };
+  try {
+    const r = await fb.scoreBook(book, { trainThrough: Date.UTC(2025, 2, 31), scoreFrom: Date.UTC(2025, 3, 1) });
+    if (r.pending) return;
+    // Round-trip through JSON: that is how the reader actually sees it.
+    const seen = JSON.parse(JSON.stringify(r));
+    for (const k of ['id', 'committee', 'periods', 'trades', 'net', 'gross', 'fee',
+      'firstPeriodTs', 'lastPeriodTs', 'verdictAllowed', 'alwaysLong', 'alwaysShort']) {
+      assert.ok(k in seen, `scored book must carry '${k}' after a JSON round-trip — a field that reads `
+        + 'undefined disappears here and crashes the reader instead of reporting a gap');
+    }
+    assert.ok(seen.lastPeriodTs > seen.firstPeriodTs, 'the scored window must run forwards');
+  } finally {
+    for (const f of fs.readdirSync(CACHE)) {
+      if (f.startsWith(`${planted.PLANTED_SYMBOL}-1h-`)) fs.rmSync(pathMod.join(CACHE, f), { force: true });
+    }
+  }
+};
