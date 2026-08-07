@@ -1,0 +1,58 @@
+Money screen: 3 setups clear the cost floor, and the leader survives fees nearly 4x what we pay
+tl;dr: I ran the declared money screen. Three of the fifty scored setups clear "positive after fees AND 50% cost headroom", and the leader is in a different league from the arm we spent all day confirming: $158.32 net on 224 trades, break-even fee $0.4784 per leg against the $0.125 we pay - it would still make money at nearly four times our costs. It also wins 56.7% of its trades against 49.0% for the confirmed arm. Two things stop this being good news yet: it searched only 0.2% of the board, and the window it looks good on is the same window I selected it on, so that window is spent as evidence. The only honest test is data no run has touched, and we now have about five weeks of it.
+
+TABLE: setups clearing the declared cost floor, held-back window, per $100
+book. KEY: net $ = paper dollars after fees; break-even $/leg = the trading
+cost at which the setup makes exactly zero (higher is safer); headroom =
+how much costs could rise before it stops working.
+
+  net $  trades  break-even $/leg  headroom  setup
+ 158.32     224            0.4784    282.7%  LTC+XRP+BCH daily-4d, 4-member, 1-of-4, market, 137h
+  40.96     240            0.2103     68.3%  XLM+DOT+TRX daily-4d, 4-member, 1-of-4, breakout, 161h
+  30.81     242            0.1887     50.9%  XLM+DOT+TRX daily-4d, 8-member, 1-of-8, breakout, 161h
+  13.03     310            0.1460     16.8%  (for contrast: the arm confirmed in runs C/D/E)
+
+WHY THE LEADER IS DIFFERENT, and it is instructive: it trades only 224 of
+364 periods (62%) where the confirmed arm trades 85%. It stands aside far
+more often, and that is exactly where the cost headroom comes from. Fewer,
+better trades beat more, thinner ones once fees are real.
+
+THE HONEST CAVEATS, which matter more than the numbers:
+- COVERAGE 0.2%. Only 50 of 20,400 units ever get a held-back score,
+  because scoring it is reserved for setups already promoted on the
+  search window. That is the right design - it keeps the held-back
+  window clean - but it means this screen looked at fifty setups, not
+  twenty thousand.
+- THE WINDOW IS SPENT. I selected this row BY its held-back money, so
+  that money can no longer serve as evidence for it. No null test on
+  that window repairs this.
+- I HAD SEEN IT BEFORE. The run A launcher names this exact row and
+  declines to chase it as menu re-shopping. The screen was declared in
+  advance; the row was not unseen. Calling it a fresh discovery would
+  be false.
+- It is a 4-member committee, so it cannot be reproduced by the
+  8-member path. Substituting 1-of-8 would be testing a different setup
+  and calling it the same one.
+
+WHAT SETTLES IT: the cache now runs to 2026-08-02/06 while every window
+above ends 2026-06 - about five weeks nothing has touched. That is only
+~9 periods and maybe 5-6 trades, far too thin for a verdict, and I will
+report it as thin. Its value is being the first honest forward record,
+and a forward record is what a Binance test-trade decision should rest
+on rather than any backtest.
+
+MY NEXT MOVES: build a forward-scoring path that takes a frozen setup
+(including 4-member ones) and scores it over a named date window, then
+pre-register all three clearers as frozen forward books BEFORE any
+forward number exists, so the record cannot be re-picked afterwards.
+
+ONE QUESTION FOR YOU, not blocking - I will proceed either way and you
+can overrule: promotion currently ranks on search-window money with no
+cost sensitivity, so a setup that only works at fees below what we
+actually pay can still be promoted and take a slot. Adding fee headroom
+to the SEARCH-window ranking is legitimate (that window is for
+selecting) and would aim the whole hunt at tradeable setups instead of
+merely paper-profitable ones. Say if you would rather I left promotion
+alone.
+
+c.
