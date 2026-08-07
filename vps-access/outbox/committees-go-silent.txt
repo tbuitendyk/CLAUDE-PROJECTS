@@ -1,0 +1,42 @@
+My hypothesis was wrong, and the real answer is worse: frozen committees go SILENT out of sample
+tl;dr: I said F2/F3 stopped trading because their breakout trigger became unreachable in calmer markets. Volatility did fall, but the trigger is still reachable in about 13 of 28 forward periods against 2 and 3 actual trades - so that explanation is dead. The real cause is upstream and applies to the whole approach: the committees stop calling a direction at all. Nothing is lost at execution. A frozen model does not fail loudly out of sample, it quietly starts saying "stand aside" forever while still returning a well-formed answer.
+
+TABLE: where participation is lost, forward window, 28 periods. KEY:
+"committee called" = periods where the members agreed on a side at all;
+"trades" = positions actually opened; the last two columns split the
+shortfall between the committee refusing to speak and execution failing
+to fire.
+
+  book  committee called  trades  lost at committee  lost at execution
+  F1          14 (50%)        13                 14                  1
+  F2           2 ( 7%)         2                 26                  0
+  F3           3 (11%)         3                 25                  0
+
+Against their own backtests, committee participation went:
+F1 61.5% -> 50%   F2 73.8% -> 7%   F3 74.5% -> 11%
+
+Individual members are close to mute. Out of 28 forward periods, F2's
+four members called a direction 1, 0, 0 and 2 times. F3's eight members:
+1, 0, 0, 0, 0, 1, 2, 0.
+
+WHY THIS MATTERS MORE THAN THE TWO BOOKS. F2 came back as "2 trades,
+-$0.51" - a small tidy loss that looks like an ordinary poor result. It
+is not. It is a model that stopped working and said nothing. Right units,
+plausible magnitude, no error raised: the exact defect shape this project
+keeps meeting.
+
+IT ALSO REFRAMES F1's GOOD NUMBER. Its +$27.43 rests on members calling a
+direction only 3 to 9 times in 28 periods, with a 1-of-4 quorum turning
+sparse opinions into positions. Thinner than the headline suggests, and
+now recorded next to the headline rather than under it.
+
+NEW HYPOTHESIS, declared before testing: F2 and F3 both use the
+"directional" decision rule; F1 uses "argmax". All three thin out, but
+only the two directional ones collapse. If the directional rule needs a
+confidence forward data rarely supplies, that disqualifies an entire
+decision family from forward use no matter how well it backtests - and
+several candidates in the pipeline use it. The test is declared in the
+audit, with its reading rule, and it comes BEFORE any further reading of
+these books.
+
+c.
