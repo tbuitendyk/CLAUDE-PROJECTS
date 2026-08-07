@@ -180,6 +180,7 @@ async function scoreBook(book, opts = {}) {
   return {
     id: book.id,
     note: book.note,
+    committee: book.members.length,
     combo: book.combo,
     branch: book.branch,
     cell: book.cell,
