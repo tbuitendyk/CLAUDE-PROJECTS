@@ -96,3 +96,68 @@ worth the box time.
 ## QC register
 QC 82 added: a declared instrument check needs a tolerance derived from the
 mechanism it tests.
+
+---
+
+## ADDENDUM (same day) — the declared money screen ran; result and its limits
+
+Floor declared before running: net > 0 after fees AND break-even fee >=
+$0.1875/leg (50% headroom over the $0.125 charged).
+
+COVERAGE, stated first because it bounds everything: only 50 of the 20,400
+units carry a held-back number at all. Hold is scored for PROMOTED units only,
+and promotion is by search-window money — by design, so the hold window is
+never used to select. The screen therefore searched 0.2% of the board. It is a
+screen over the 50 units that were already promoted, not over the space.
+
+  rows with positive held-back net money: 6 of 50
+  rows ALSO clearing 50% fee headroom:    3 of 50
+
+  net$   trades  break-even$/leg  headroom  setup
+ 158.32     224          0.4784    282.7%   LTC+XRP+BCH daily-4d argmax SLIM q1/4 market t137
+  40.96     240          0.2103     68.3%   XLM+DOT+TRX daily-4d directional SLIM q1/4 breakout t161
+  30.81     242          0.1887     50.9%   XLM+DOT+TRX daily-4d directional prom q1/8 breakout t161
+ (for contrast, the arm confirmed in runs C/D/E: $13.03, 310t, $0.1460, 16.8%)
+
+THE LEADER IS A DIFFERENT ANIMAL FROM THE CONFIRMED CANDIDATE, and the
+differences are the interesting part:
+- 4-member SLIM committee, not the 8-member promoted one. It CANNOT be
+  reproduced by the promoted declared-cell path, which builds 8 members for a
+  size-3 combo. Testing it needs slim specs; substituting q1/8 would be testing
+  a different cell and calling it the same one.
+- Win rate 127/224 = 56.7%, against 49.0% for the confirmed q1/8 arm.
+- Participation 224 of 364 periods = 61.5%, against 85.2%. It stands aside far
+  more, and that is where the fee headroom comes from.
+- Still under always-short ($158.32 vs $393.36) on the same falling window, but
+  by a factor of 2.5 rather than 37.
+
+HONESTY ABOUT ITS STANDING, which is weaker than the numbers look:
+- Its held-back money is EXACTLY what I just selected on, so that window is
+  spent as evidence for this row. No null test on this window can repair that.
+- I had already seen this row before the screen existed — the run A launcher
+  names it and declines to chase it as menu re-shopping. So the screen was
+  pre-registered but the row was not unseen. Calling this a fresh discovery
+  would be false.
+- Slim rows carry no windowStamps (the QC 73 surface), so its window boundaries
+  are inferred from the run, not read off the row.
+
+WHAT WOULD ACTUALLY SETTLE IT: data no run has touched. Cache now holds through
+2026-08-02/06 while every window above ends 2026-06 — roughly five weeks
+genuinely unseen. On daily-4d with 137h holds that is about 9 periods and maybe
+5-6 trades: far too thin for a verdict, and it must be reported as thin. Its
+value is that it is the first honest forward record, and a forward record is
+what a Binance test-trade decision should rest on rather than any backtest.
+
+NEXT STEPS, in order:
+1. PLATFORM (step 3 of the loop): a forward-scoring path that takes a FROZEN
+   cell — including slim specs — and scores it over a named date window, so a
+   candidate can accumulate an out-of-sample money record from today onward.
+   This is the tracker pattern (TRACKER.md) generalised to an arbitrary cell.
+2. Pre-register the three floor-clearers as frozen forward books before any
+   forward number exists, so the record cannot be re-picked afterwards.
+3. Separately, a platform question worth putting to the owner: promotion ranks
+   on search-window money with no cost sensitivity, so a setup that only works
+   at fees below what we pay can still be promoted. Adding fee headroom to the
+   SEARCH-window ranking is legitimate (the search window is for selecting) and
+   would point the whole hunt at tradeable setups rather than merely profitable
+   -on-paper ones.
