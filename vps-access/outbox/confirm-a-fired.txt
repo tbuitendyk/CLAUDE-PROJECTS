@@ -1,0 +1,19 @@
+Confirm run A fired: LTC+XRP+BCH through fair structure, rules stamped first
+tl;dr: on your word I fired the narrow-phase test of the strongest 193433 prospect. Job bracketlab-20260807-022033-triples-confirm-a-ltc-xrp-bch: the LTC+XRP+BCH triple family (6-coin universe, all 60 triples) on daily-4d argmax, ONE declared cell (market entry = direction gate + no rails, 161h, 1-of-8 quorum), 70/15/15 train/test/hold, plus 9 label-shift null draws. 600 units; expect roughly an hour, audit + email when it reads.
+
+The reading rules went into the committed launcher BEFORE launch:
+- R1 verdict: the candidate triple's hold-window skill-over-drift must
+  beat all 9 null draws (p-floor 1/10, derived from draw count).
+- R2 breadth (context only): positive-hold count across all 60 triples,
+  real vs nulls. No threshold - any would be a guess.
+- R3: a fail does not retire the candidate; a pass does not promote it
+  past "survived once - replicate".
+- R4: thin cells print as thin; draw counts quoted beside every number.
+
+Also declared: I am NOT chasing the even bigger q1/4 t137h slim row -
+that would be re-shopping the execution menu the discovery board already
+opened. Fixed variables are named in the launcher with revisit dates.
+Run B (DOGE+ADA+DOT, daily-3d directional, same declared cell) fires
+only after A's audit, per the gate.
+
+c.
