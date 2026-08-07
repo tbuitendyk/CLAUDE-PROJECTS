@@ -101,6 +101,27 @@ function assertFrozenMembersMatchEngine() {
   }
 }
 
+// The frozen split, as a pure function so it can be tested without market data
+// — the first version keyed on a chunk field (endTs) that does not exist, which
+// silently matched nothing and was caught only by the guard below. Chunks carry
+// startTs only, so a period's span is inferred from the spacing between them.
+//
+// A training period must END at or before the cutoff, not merely start before
+// it: a period that straddles the cutoff has its outcome in forward territory,
+// which is exactly the leak this freeze exists to prevent.
+function splitFrozen(chunks, trainThrough = TRAIN_THROUGH, scoreFrom = SCORE_FROM) {
+  if (chunks.length < 2) return { trainChunks: chunks.slice(), fwdChunks: [], periodMs: null };
+  const gaps = [];
+  for (let i = 1; i < chunks.length; i++) gaps.push(chunks[i].startTs - chunks[i - 1].startTs);
+  gaps.sort((a, b) => a - b);
+  const periodMs = gaps[Math.floor(gaps.length / 2)]; // median spacing: robust to listing gaps
+  return {
+    periodMs,
+    trainChunks: chunks.filter((c) => c.startTs + periodMs <= trainThrough),
+    fwdChunks: chunks.filter((c) => c.startTs >= scoreFrom),
+  };
+}
+
 // One book, scored end to end. Deterministic given the cached data.
 async function scoreBook(book, opts = {}) {
   const fee = opts.feePerLeg ?? REAL_FEE_PER_LEG;
@@ -112,9 +133,14 @@ async function scoreBook(book, opts = {}) {
   const bandPct = Math.abs(book.branch.band);
   for (const c of chunks) c.label = scoreDiff(c.diffPct / 100, bandPct / 100);
 
-  const trainChunks = chunks.filter((c) => c.endTs <= TRAIN_THROUGH);
-  const fwdChunks = chunks.filter((c) => c.startTs >= SCORE_FROM);
-  if (!trainChunks.length) throw new Error(`forward book ${book.id}: no training chunks at or before the freeze date`);
+  const { trainChunks, fwdChunks, periodMs } = splitFrozen(chunks);
+  if (!trainChunks.length) {
+    const iso = (t) => (t ? new Date(t).toISOString().slice(0, 10) : 'n/a');
+    throw new Error(`forward book ${book.id}: no training chunks at or before the freeze date. `
+      + `${chunks.length} chunks span ${iso(chunks[0] && chunks[0].startTs)}..`
+      + `${iso(chunks[chunks.length - 1] && chunks[chunks.length - 1].startTs)}, period ${periodMs}ms, `
+      + `cutoff ${iso(TRAIN_THROUGH)} — a failure here means the split keyed on something the chunks do not carry.`);
+  }
   if (!fwdChunks.length) {
     return {
       id: book.id, note: book.note, combo: book.combo, branch: book.branch, cell: book.cell,
@@ -184,5 +210,5 @@ async function scoreAll(opts = {}) {
 
 module.exports = {
   BOOKS, TRAIN_THROUGH, SCORE_FROM, VERDICT_FLOOR_TRADES,
-  scoreBook, scoreAll, assertFrozenMembersMatchEngine,
+  scoreBook, scoreAll, assertFrozenMembersMatchEngine, splitFrozen,
 };

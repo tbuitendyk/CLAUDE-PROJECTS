@@ -88,3 +88,43 @@ module.exports.everyTestFileIsRegisteredWithTheRunner = function () {
     `these test files exist but are not in tests/run.js, so they run nothing while the suite reports success: `
     + missing.join(', '));
 };
+
+// The split is the whole freeze, and its first version keyed on a chunk field
+// that does not exist — it matched nothing and would have been a silent wrong
+// record had the guard not thrown. Tested here on fabricated chunks so it needs
+// no market data and cannot regress unnoticed.
+module.exports.theFrozenSplitPutsNoTrainingPeriodPastTheCutoff = function () {
+  const DAY = 86400000;
+  const cutoff = Date.UTC(2026, 5, 30, 23, 59, 59);
+  const from = Date.UTC(2026, 6, 1);
+  // 4-day periods running from 2026-05-01 to 2026-08-01
+  const chunks = [];
+  for (let t = Date.UTC(2026, 4, 1); t < Date.UTC(2026, 7, 1); t += 4 * DAY) chunks.push({ startTs: t });
+  const { trainChunks, fwdChunks, periodMs } = fb.splitFrozen(chunks, cutoff, from);
+  assert.strictEqual(periodMs, 4 * DAY, 'period length is inferred from the spacing between chunks');
+  assert.ok(trainChunks.length > 0 && fwdChunks.length > 0, 'both sides of the split must be non-empty here');
+
+  const lastTrain = trainChunks[trainChunks.length - 1];
+  assert.ok(lastTrain.startTs + periodMs <= cutoff,
+    'the last training period must END at or before the cutoff — a period straddling it has its outcome in '
+    + 'forward territory, which is the leak the freeze exists to prevent');
+  assert.ok(fwdChunks[0].startTs >= from, 'the first scored period must start on or after the scoring date');
+  // No period may appear on both sides.
+  const trainSet = new Set(trainChunks.map((c) => c.startTs));
+  assert.ok(!fwdChunks.some((c) => trainSet.has(c.startTs)), 'no period may be both trained on and scored');
+};
+
+module.exports.theSplitDoesNotSilentlyReturnNothing = function () {
+  const DAY = 86400000;
+  const chunks = [];
+  for (let t = Date.UTC(2026, 0, 1); t < Date.UTC(2026, 3, 1); t += 4 * DAY) chunks.push({ startTs: t });
+  // All chunks are well before the scoring date: training full, forward empty.
+  const r = fb.splitFrozen(chunks);
+  assert.strictEqual(r.trainChunks.length, chunks.length, 'chunks entirely before the cutoff all train');
+  assert.strictEqual(r.fwdChunks.length, 0, 'and none of them are scored');
+  // The real defect was the opposite: a split that matched NOTHING on either
+  // side while looking like a valid empty result.
+  assert.ok(r.trainChunks.length > 0,
+    'a split that returns nothing on both sides is the silent-wrong-record failure — it must be impossible '
+    + 'for well-formed chunks');
+};
