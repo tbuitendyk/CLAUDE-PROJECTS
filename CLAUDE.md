@@ -74,9 +74,8 @@ Union Trading Academy website (`uniontradingacademy.com/`).
   "GitHub Actions deploy (UTA site)"; password lives ONLY in the session
   scratchpad and the GitHub secret — never in git), and the domain is
   connected to webspace dir **`/site`** (panel confirmed "Se ha establecido
-  la conexión del dominio con el espacio web"). NEXT: owner sets repo
-  secrets `UTA_SFTP_HOST/USER/PASSWORD`, then run "UTA deploy site" and
-  verify `/dev-ver` on the interim domain.
+  la conexión del dominio con el espacio web"). (Secrets set by owner
+  2026-08-06 eve; pipeline verified live — see PIPELINE LIVE bullet.)
 - **Provisioning shuffle + restore (2026-08-06 afternoon UTC):** when the
   order finished provisioning it ALSO executed a domain reorganization —
   panel notifications "Transferencia de dominio en tu ID de cliente" /
@@ -120,6 +119,19 @@ Union Trading Academy website (`uniontradingacademy.com/`).
   inherit caller secrets — fixed 2026-08-06 eve by adding `secrets:
   inherit` to the backup job in deploy-uta.yml (don't remove it).
   Owner-side config was right all along.
+- **PIPELINE LIVE END-TO-END (2026-08-07T00:01Z):** first real deploy
+  succeeded on `625da33` — backup branch `backup/20260806-235802`
+  (first-run empty snapshot), site mirrored to `/site`, tag
+  `deploy/20260807-000148`; `https://orderflowvolumeprofile.com/` (root
+  placeholder) and `/dev-ver/` (full site) both serve HTTP 200 with real
+  UTA content. Fixes that got it green: `secrets: inherit` on the backup
+  call (`0b4df8a`) and stripping embedded quotes from lftp mirror paths
+  (`625da33`) — keep both. Deploy loop henceforth: append a line to
+  `DEPLOY-REQUEST` on this branch → ~2 min → live, with an automatic
+  pre-deploy snapshot of the live webspace to a `backup/…` branch every
+  time. NEXT: owner reviews `/dev-ver` for content sign-off; client
+  clicks the ICANN mail (`uniontrading777@gmail.com`); re-point
+  `uniontradingacademy.com` only after sign-off.
 - **⚠ Domain flag (2026-08-05):** the panel shows `uniontradingacademy.com`
   needs registrant contact-data confirmation ("Se requiere confirmación de
   los datos de contacto") — an ICANN verification email must be actioned or
