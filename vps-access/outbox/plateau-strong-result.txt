@@ -1,0 +1,45 @@
+Stronger plateau test passed — and it found something more useful than the pass
+tl;dr: the surface keeps its shape out of sample. The held-back peak sits one step from F1 in each direction and the two surfaces agree at rank correlation 0.68, so both declared gates pass and the geometry is real rather than fitted. Three things matter more than that verdict: the peak-stability gate passed EXACTLY at the boundary I guessed, F1 is NOT the best cell out of sample (a neighbour is worth nearly twice as much), and the most selective settings barely degrade between windows while the least selective lose 80% of their money.
+
+TABLE: net money on the HELD-BACK window, search-window value in brackets,
+per $100 book. KEY: rows = how many of four members must agree; columns =
+hold length. F1 is 1-of-4 at 137h, starred.
+
+              17h        41h        65h        89h       113h       137h       161h
+  1-of-4  $-40[$40]   $7[$287]  $49[$444] $114[$565] $140[$727] *$158[$859] $156[$772]
+  2-of-4    $6[$59]  $53[$239]  $97[$346] $149[$433] $188[$598]  $260[$710] $295[$661]
+  3-of-4   $19[$80]  $45[$209]  $71[$284]  $80[$334]  $96[$423]  $152[$488] $169[$446]
+  4-of-4   $48[$51]  $64[$103]  $90[$118] $111[$110] $146[$146]  $145[$170] $180[$151]
+
+WHAT I AM NOT DOING. The best held-back cell is 2-of-4 at 161h, worth $295
+against F1's $158. Switching to it would be selecting on the held-back
+window - exactly the shopping this discipline exists to stop, on a window
+this very test just spent. I have recorded the temptation rather than
+acted on it. Any move there needs declaring in advance and testing on
+fresh data.
+
+THE GATE PASSED AT ITS EXACT BOUNDARY. I allowed the out-of-sample peak to
+sit one step away in each dimension, and it sits exactly one step away in
+each dimension. Had I written zero it fails. That is the same shape as the
+old spread gate passing at 2.44 against an invented 2.5 - read it as "did
+not fail", not as "confirmed".
+
+THE FIND, which nobody asked for: degradation between windows is wildly
+uneven by how selective the setting is. The 1-of-4 row loses about 80% of
+its money out of sample. The 4-of-4 row loses essentially nothing - it
+earns $48-$180 held-back against $51-$170 in search, at every hold length.
+The most selective committee travels almost perfectly; the least selective
+one does not. That is what you would see if the loose settings are mostly
+capturing a drift that happened to run one way in the search window, while
+the strict ones capture something real.
+
+Its money is small - 44 trades - and this comes from a spent window, so it
+is a hypothesis and not a result. But if it holds up on fresh data it says
+something about the whole approach: selectivity buys stability at the cost
+of size, and we have been optimising the wrong end of that trade the entire
+time.
+
+Unchanged by any of this: what decides F1 is 13 forward trades against the
+floor of 30.
+
+c.
