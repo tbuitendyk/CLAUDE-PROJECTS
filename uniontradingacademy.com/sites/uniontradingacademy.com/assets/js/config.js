@@ -6,8 +6,9 @@
    ============================================================ */
 window.UTA_CONFIG = {
   // Número de WhatsApp de la academia, con código de país y sin "+".
-  // Ejemplo México: "5215512345678"
-  WHATSAPP_NUMBER: "",
+  // Si WhatsApp reporta "número inválido" al abrir el chat, probar el
+  // formato antiguo mexicano con "1" tras el 52: "5214792265252".
+  WHATSAPP_NUMBER: "524792265252",
 
   // Texto pre-llenado del chat (general y de confirmación de cita).
   WHATSAPP_TEXT: "Hola, quiero más información sobre la mentoría de Union Trading Academy.",
@@ -18,7 +19,7 @@ window.UTA_CONFIG = {
   CALENDLY_URL: "",
 
   // Video principal de la landing (auto-alojado), p. ej.:
-  // "assets/media/presentacion.mp4"  (relativo a /dev-ver/)
+  // "assets/media/presentacion.mp4"  (relativo a la raíz del sitio)
   VIDEO_SRC: "",
 
   // Link de pago de Mercado Pago (checkout alojado), cuando exista.

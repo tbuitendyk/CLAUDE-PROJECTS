@@ -7,7 +7,7 @@ credentials go only into GitHub repo Secrets.
 
 ## 1. Site configuration (edit one file)
 
-`sites/uniontradingacademy.com/dev-ver/assets/js/config.js`:
+`sites/uniontradingacademy.com/assets/js/config.js`:
 
 | Key | What | Example |
 |-----|------|---------|
@@ -22,7 +22,7 @@ credentials go only into GitHub repo Secrets.
   Ciudad de México). Add the qualification questions as invitee questions
   (edad, objetivo, ingresos aproximados, principales retos — from
   `reference/v1-material/01-landing-copy.txt` and the funnel PDF). Set the
-  event's redirect after booking to `https://www.uniontradingacademy.com/dev-ver/gracias/`.
+  event's redirect after booking to `https://uniontradingacademy.com/gracias/`.
 - **Mercado Pago**: merchant account; create a payment link when the offer
   and price are defined.
 - **WhatsApp**: any normal number works (wa.me); the free WhatsApp Business
