@@ -1,0 +1,5 @@
+# Union Trading Academy — Apache config (IONOS shared hosting)
+
+# The site lived under /dev-ver during hidden-live development; keep old
+# links working now that the same content is served at the root.
+RedirectMatch 301 ^/dev-ver/?(.*)$ /$1
