@@ -14,3 +14,4 @@
 2026-08-07T01:10Z deploy branch tip (activate WhatsApp number)
 2026-08-07T01:15Z deploy branch tip (drop noindex metas — launch-day checklist item)
 2026-08-07T14:40Z deploy branch tip (redirects: orderflow→main, www→apex, dev-ver→root; + scheme probe)
+2026-08-07T14:55Z deploy branch tip (force-https; remove scheme probe)
