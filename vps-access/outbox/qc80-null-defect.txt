@@ -1,0 +1,46 @@
+Withdrawing the LTC pass: the null test itself was broken, and every null result we have is affected
+tl;dr: I put the 19/19 pass through a hostile audit before reporting it as a result, and the audit found a real defect in the code that generates the null comparisons. Every null arm's hold window was dealt the POOLED vote mix of two windows while the real arm kept the hold window's own mix - so in a one-directional window the real arm got credit for its overall directional lean, not just its timing, which is the only thing the null is supposed to test. The LTC pass is WITHDRAWN. Run B's fail is withdrawn too. Nothing is retired and nothing is promoted. Fix is written, tested and pushed as 1.42.0, but I need your word on one thing before it can go live (bottom).
+
+HOW IT WAS CAUGHT. Six hostile reviewers, each told to destroy the result
+from a different angle, then every serious objection handed to a second
+reviewer told to destroy the objection. 59 objections, 49 serious, almost
+all refuted. One survived - and I then confirmed it myself by reading the
+source rather than taking the reviewer's word, because that is the rule
+now.
+
+THE CORROBORATION FROM YOUR OWN DATA. Table: each ordering of the same
+three coins against its own 19 null draws. KEY: skill $ = the arm's
+paper dollars minus always-long, per $100 book; null mean/sd = the same
+figure across 19 informationless draws; z = how many standard deviations
+the real arm sits above (+) or below (-) its nulls.
+
+  ordering        skill $   null mean   null sd      z    beat
+  LTC traded       670.85      413.93     77.94   +3.30   19/19
+  BCH traded       936.98     1071.60     33.32   -4.04    0/19
+  XRP traded      1012.39     1083.49     50.83   -1.40    3/19
+
+A null that removes information should not be able to place two arms of
+the SAME window and the SAME three coins at +3.3 and -4.0. That is the
+fingerprint of a broken control, not of an edge and an anti-edge.
+
+WHAT SURVIVES REGARDLESS. The money never worked: $13.03 net on 310
+trades, fees ate $77.50 of $90.53 gross, break-even fee is $0.146/leg
+against the $0.125 we charge - 17% of headroom - and simply holding a
+short position through that same window made $478.32 with no model at
+all. Even a clean pass would not have been tradeable.
+
+FIX. Engine 1.42.0: null arms are dealt within their own slice, matching
+what the walk-forward path has always done. New test drives the real
+worker on the fabricated pair and asserts it. I watched it FAIL with the
+bug put back, then pass. 231/231 green. Registered as QC 80.
+
+YOUR CALL, AND IT IS BLOCKING. The deploy script pulls the
+general-classifier branch. My work is on claude/general-classifier-7q9oxt
+and I am not permitted to push to another branch without your say-so.
+May I merge 1.42.0 into general-classifier and deploy? Once it is live
+the re-measurement (run D: same universe, same cell, same 19 seeds, on
+the corrected null) takes about 20 minutes. My expectation, stated
+before it runs: the candidate FAILS, because the fix removes the lean
+credit that plausibly produced the whole margin.
+
+c.
