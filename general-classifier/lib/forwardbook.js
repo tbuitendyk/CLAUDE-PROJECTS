@@ -109,15 +109,24 @@ function assertFrozenMembersMatchEngine() {
 // A training period must END at or before the cutoff, not merely start before
 // it: a period that straddles the cutoff has its outcome in forward territory,
 // which is exactly the leak this freeze exists to prevent.
-function splitFrozen(chunks, trainThrough = TRAIN_THROUGH, scoreFrom = SCORE_FROM) {
-  if (chunks.length < 2) return { trainChunks: chunks.slice(), fwdChunks: [], periodMs: null };
+// outcomeMs is how long after a period STARTS its trade is finished — for
+// daily-4d that is exitOffsetH = 138h, nearly six days, while periods step
+// every 24h. Using the STEP as if it were the SPAN (the first version did)
+// leaves training periods whose outcome lands inside the scoring window, which
+// is the leak the freeze exists to prevent. It was ~5 periods of 2397 here:
+// small, but small is not the same as declared.
+function splitFrozen(chunks, trainThrough = TRAIN_THROUGH, scoreFrom = SCORE_FROM, outcomeMs = 0) {
+  if (chunks.length < 2) return { trainChunks: chunks.slice(), fwdChunks: [], periodMs: null, outcomeMs };
   const gaps = [];
   for (let i = 1; i < chunks.length; i++) gaps.push(chunks[i].startTs - chunks[i - 1].startTs);
   gaps.sort((a, b) => a - b);
   const periodMs = gaps[Math.floor(gaps.length / 2)]; // median spacing: robust to listing gaps
+  const span = Math.max(periodMs, outcomeMs);
   return {
     periodMs,
-    trainChunks: chunks.filter((c) => c.startTs + periodMs <= trainThrough),
+    outcomeMs,
+    span,
+    trainChunks: chunks.filter((c) => c.startTs + span <= trainThrough),
     fwdChunks: chunks.filter((c) => c.startTs >= scoreFrom),
   };
 }
@@ -137,8 +146,9 @@ async function scoreBook(book, opts = {}) {
   // The three real books always use the frozen constants: scoreAll never
   // passes these, and the tests pin the constants, so a book cannot be
   // re-based by moving a date.
-  const { trainChunks, fwdChunks, periodMs } = splitFrozen(
-    chunks, opts.trainThrough ?? TRAIN_THROUGH, opts.scoreFrom ?? SCORE_FROM,
+  const outcomeMs = (geo.exitOffsetH || 0) * 3600000;
+  const { trainChunks, fwdChunks, periodMs, span } = splitFrozen(
+    chunks, opts.trainThrough ?? TRAIN_THROUGH, opts.scoreFrom ?? SCORE_FROM, outcomeMs,
   );
   if (!trainChunks.length) {
     const iso = (t) => (t ? new Date(t).toISOString().slice(0, 10) : 'n/a');
@@ -176,10 +186,13 @@ async function scoreBook(book, opts = {}) {
     bandPct,
     fee,
     trainChunks: trainChunks.length,
-    trainThrough: TRAIN_THROUGH,
-    scoreFrom: SCORE_FROM,
+    trainThrough: opts.trainThrough ?? TRAIN_THROUGH,
+    scoreFrom: opts.scoreFrom ?? SCORE_FROM,
+    periodMs,
+    outcomeMs,
+    trainSpanMs: span,
     firstPeriodTs: fwdChunks[0].startTs,
-    lastPeriodTs: fwdChunks[fwdChunks.length - 1].endTs,
+    lastPeriodTs: fwdChunks[fwdChunks.length - 1].startTs + outcomeMs,
     periods: fwdChunks.length,
     // R1 — the only verdict that counts, and it is forward money only.
     net: res.pnl,

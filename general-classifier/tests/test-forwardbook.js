@@ -100,14 +100,18 @@ module.exports.theFrozenSplitPutsNoTrainingPeriodPastTheCutoff = function () {
   // 4-day periods running from 2026-05-01 to 2026-08-01
   const chunks = [];
   for (let t = Date.UTC(2026, 4, 1); t < Date.UTC(2026, 7, 1); t += 4 * DAY) chunks.push({ startTs: t });
-  const { trainChunks, fwdChunks, periodMs } = fb.splitFrozen(chunks, cutoff, from);
+  const OUTCOME = 138 * 3600000; // daily-4d: the trade closes 138h after the period starts
+  const { trainChunks, fwdChunks, periodMs, span } = fb.splitFrozen(chunks, cutoff, from, OUTCOME);
   assert.strictEqual(periodMs, 4 * DAY, 'period length is inferred from the spacing between chunks');
+  assert.strictEqual(span, Math.max(4 * DAY, OUTCOME),
+    'the training span must be the OUTCOME horizon when it exceeds the step — using the step as if it were '
+    + 'the span is what let training outcomes land inside the scoring window');
   assert.ok(trainChunks.length > 0 && fwdChunks.length > 0, 'both sides of the split must be non-empty here');
 
   const lastTrain = trainChunks[trainChunks.length - 1];
-  assert.ok(lastTrain.startTs + periodMs <= cutoff,
-    'the last training period must END at or before the cutoff — a period straddling it has its outcome in '
-    + 'forward territory, which is the leak the freeze exists to prevent');
+  assert.ok(lastTrain.startTs + OUTCOME <= cutoff,
+    'the last training period must have its TRADE CLOSED at or before the cutoff — a period whose outcome '
+    + 'lands past it is trained on forward price action, which is the leak the freeze exists to prevent');
   assert.ok(fwdChunks[0].startTs >= from, 'the first scored period must start on or after the scoring date');
   // No period may appear on both sides.
   const trainSet = new Set(trainChunks.map((c) => c.startTs));
