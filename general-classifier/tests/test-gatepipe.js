@@ -103,3 +103,49 @@ module.exports.menuGridMatchesTheSweepAndRefusesShiftedWindows = async function 
     }
   }
 };
+
+// QC 80: a null arm's votes must be a re-deal of THAT SLICE's own votes.
+// Until 1.42.0 the board path dealt across the concatenated test+hold span, so
+// a null arm's hold window carried the POOLED mix of both windows while the
+// real arm kept the hold window's own mix. In a one-directional window that
+// difference is worth money on its own, and it flattered every real arm.
+// Drives the real worker on the fabricated pair — the only kind of check that
+// would have caught it (a unit test of dealVotes alone passes either way).
+module.exports.nullArmsAreDealtWithinTheirOwnSlice = async function () {
+  const { unitTask } = require('../lib/bracketwork');
+  planted.generatePlanted({ fromMonth: '2024-01', toDate: '2025-06-30' });
+  const combo = { trade: planted.PLANTED_SYMBOL, ctx1: null, ctx2: null, size: 1 };
+  const branch = { geometry: 'daily-1d', decision: 'argmax', band: 'auto', weekdaysOnly: false };
+  const params = {
+    allLoaded: true, windowLayout: 'split70', holdout: true, minTrades: 5, feePerLeg: 0.125,
+    dMults: [1], tHours: [41], gates: ['directional'], entries: ['market'], trailing: false,
+  };
+  const tally = (calls) => {
+    const c = { '-1': 0, 0: 0, 1: 0 };
+    for (const v of calls) c[String(v)] = (c[String(v)] || 0) + 1;
+    return `${c['-1']}/${c['0']}/${c['1']}`;
+  };
+  try {
+    const real = await unitTask({ combo, branch, stage: 'promoted', params });
+    const nul = await unitTask({ combo, branch, stage: 'promoted', params, nullDealSeed: 1 });
+    const rv = real.memberDump.votes, nv = nul.memberDump.votes;
+    assert.ok(rv.hold && nv.hold && rv.hold.length === nv.hold.length,
+      'both arms must dump a hold slice with the same member count');
+    for (let m = 0; m < rv.hold.length; m++) {
+      assert.strictEqual(nv.hold[m].length, rv.hold[m].length,
+        `member ${m}: null hold slice must be the same length as real`);
+      assert.strictEqual(tally(nv.hold[m]), tally(rv.hold[m]),
+        `member ${m}: null hold votes must be a PERMUTATION of the real hold votes `
+        + `(down/flat/up real ${tally(rv.hold[m])} vs null ${tally(nv.hold[m])}) — a differing mix means `
+        + 'the deal crossed the slice boundary and the null is carrying pooled-window direction');
+      assert.strictEqual(tally(nv.search[m]), tally(rv.search[m]),
+        `member ${m}: null search votes must be a permutation of the real search votes`);
+    }
+    const moved = rv.hold.some((calls, m) => calls.some((v, i) => v !== nv.hold[m][i]));
+    assert.ok(moved, 'the null deal must actually move votes — an identity shuffle is not a null');
+  } finally {
+    for (const f of fs.readdirSync(CACHE)) {
+      if (f.startsWith(`${planted.PLANTED_SYMBOL}-1h-`)) fs.rmSync(path.join(CACHE, f), { force: true });
+    }
+  }
+};

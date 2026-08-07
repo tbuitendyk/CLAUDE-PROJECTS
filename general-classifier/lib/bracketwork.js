@@ -335,16 +335,32 @@ async function unitTask(task) {
   const predictChunks = holdChunks.length ? [...testChunks, ...holdChunks] : testChunks;
   const members = await trainMembers(specsFor(combo.size, stage), views, trainChunks, predictChunks, branch, maps, geo);
   // Null-board arm (register 66 deal construction): the member's real vote
-  // mix over the WHOLE prediction span, dealt onto random days —
-  // independently per member, per draw, per unit.
-  let allCalls = members.map((m) => m.calls);
+  // mix, dealt onto random days — independently per member, per draw, per
+  // unit, and PER SLICE.
+  //
+  // Per slice matters, and getting it wrong is QC 80. Dealing across the
+  // concatenated test+hold span (the construction here until 1.42.0) hands
+  // each null arm the POOLED vote mix of both windows, while the real arm
+  // keeps each window's own mix. In a one-directional hold window that gap
+  // is worth money to whichever arm is less wrong-way — so the real arm was
+  // being credited for its overall directional lean, not just its timing,
+  // and no amount of extra draws could have revealed it. Slice-local deals
+  // remove timing information ONLY, which is what the null is for.
+  // lib/walkforward.js has always done it this way; this brings the board
+  // path into line with it.
+  const allCalls = members.map((m) => m.calls);
+  let memberCalls = holdChunks.length ? allCalls.map((c) => c.slice(0, testChunks.length)) : allCalls;
+  let holdCalls = holdChunks.length ? allCalls.map((c) => c.slice(testChunks.length)) : null;
   if (task.nullDealSeed) {
     const { nullRng, dealVotes } = require('./walkforward');
-    allCalls = allCalls.map((calls, mI) => dealVotes(calls,
-      nullRng(task.nullDealSeed, `${combo.trade}|${branch.geometry}|${branch.decision}|${stage}`, 0, mI, 'board')));
+    const unitKey = `${combo.trade}|${branch.geometry}|${branch.decision}|${stage}`;
+    memberCalls = memberCalls.map((calls, mI) => dealVotes(calls,
+      nullRng(task.nullDealSeed, unitKey, 0, mI, 'test')));
+    if (holdCalls) {
+      holdCalls = holdCalls.map((calls, mI) => dealVotes(calls,
+        nullRng(task.nullDealSeed, unitKey, 0, mI, 'hold')));
+    }
   }
-  const memberCalls = holdChunks.length ? allCalls.map((c) => c.slice(0, testChunks.length)) : allCalls;
-  const holdCalls = holdChunks.length ? allCalls.map((c) => c.slice(testChunks.length)) : null;
   const fee = p.feePerLeg ?? REAL_FEE_PER_LEG;
   // Trailing is a PROMOTE-stage dimension only (see TRAIL_MULTS): 12x the menu
   // in the cheap slim pass would turn a 272-combo sweep into a night's work,
