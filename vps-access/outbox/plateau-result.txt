@@ -1,0 +1,40 @@
+Plateau check: F1 is not a knife-edge — but my test was too easy to pass, and the decay across windows is still the real story
+tl;dr: F1 sits on a plateau, not a spike. Its neighbouring settings all make money and all sit within 3x of it, so the cell was found rather than fitted to a razor's edge. Two honest caveats: every one of the 28 settings on the menu was profitable on that window, which made my "majority profitable" condition impossible to fail, so the pass is worth less than a passed test usually is. And the grid changes nothing about the number that matters most - the same cell earns $859 on the window it was picked on, $158 on held-back data, and $27 forward.
+
+TABLE: net money by hold length and agreement level, search window, per
+$100 book. KEY: rows = how many of the four members must agree; columns =
+how long a position is held; (t) = trades taken. F1 is 1-of-4 at 137h.
+
+              17h     41h     65h     89h    113h    137h    161h
+  1-of-4     $40    $287    $444    $565    $727   *$859    $772   (253 trades)
+  2-of-4     $59    $239    $346    $433    $598    $710    $661   (193 trades)
+  3-of-4     $80    $209    $284    $334    $423    $488    $446   (125 trades)
+  4-of-4     $51    $103    $118    $110    $146    $170    $151   ( 44 trades)
+
+WHAT THE GRID ACTUALLY TELLS US, which is more useful than the verdict:
+- The trade count never changes across a row. Market entry takes every
+  committee call, so hold length only decides WHEN a position closes, not
+  which ones open. That dimension is an exit knob, not a selection knob.
+- Money climbs steadily with hold length to 137h then falls back at 161h,
+  and the curve has the SAME shape in all four rows. That is what capturing
+  a directional drift over five to six days looks like, not a sharp timing
+  effect.
+- F1 sits at the top of its row. Not a knife-edge, since its neighbours are
+  close - but the top of a hill all the same, and picking the top of a hill
+  still flatters the number. The row averages about $528 against F1's $859.
+
+WHY I AM NOT BANKING THE PASS. All 28 settings were profitable, so my
+"majority of neighbours profitable" condition was satisfied before the run
+started. A gate that cannot fail tells you nothing. The only condition that
+did real work was the 3x proximity one. And 28-out-of-28 is itself the old
+lesson resurfacing: when every setting wins, the window is flattering
+everything and profitability stops carrying information.
+
+A STRONGER VERSION, for your decision: compare the SHAPE of this surface
+between the search window and the held-back one. If the peak stays at 137h
+the geometry is real; if it moves, the setting is fitted. That costs
+spending the held-back window across all 28 cells, which is not free - so
+it is worth doing once, deliberately, and only if you want it. I have not
+run it.
+
+c.
