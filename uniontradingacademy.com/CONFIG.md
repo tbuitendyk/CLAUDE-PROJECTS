@@ -53,14 +53,14 @@ credentials go only into GitHub repo Secrets.
   `backup/YYYYMMDD-HHMMSS` containing exactly what is live.
 - **Revert to any prior date**: run "UTA deploy site" with an older
   `deploy/…` tag or any `backup/…` branch as the ref.
-- **Launch day** (later): move `dev-ver/` content to the site root in a
-  commit (and drop the `noindex` metas + robots `Disallow`), then deploy.
+- **Launch day** — DONE 2026-08-07: content moved to the site root, robots
+  opened, `noindex` metas dropped (`gracias/` keeps its `noindex` on purpose).
 
 ## 6. Video file
 
 Target ≤ 95 MB so it can live in git (GitHub's hard limit is 100 MB/file):
 10 min at 720p H.264 ~1–1.3 Mbps fits. Place it at
-`sites/uniontradingacademy.com/dev-ver/assets/media/presentacion.mp4`,
+`sites/uniontradingacademy.com/assets/media/presentacion.mp4`,
 set `VIDEO_SRC`, commit, deploy. If the delivered file is larger,
 re-encode it (or upload it once by SFTP outside git and still set
 `VIDEO_SRC`).
@@ -68,6 +68,6 @@ re-encode it (or upload it once by SFTP outside git and still set
 ## 7. Pending content from the client
 
 - Legal pages: real razón social, domicilio, RFC, contact email
-  (`dev-ver/aviso-legal/`, `dev-ver/privacidad/` — marked `[PENDIENTE]`).
+  (`aviso-legal/`, `privacidad/` — marked `[PENDIENTE]`).
 - Social profile URLs (footer/social icons are placeholders until then).
 - The 10-minute video and the short thank-you-page video.

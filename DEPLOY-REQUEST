@@ -12,3 +12,4 @@
 2026-08-07T00:12Z deploy branch tip (fix: lftp quoting in mirror paths)
 2026-08-07T00:25Z deploy branch tip (promote /dev-ver to site root; robots open; 301s)
 2026-08-07T01:10Z deploy branch tip (activate WhatsApp number)
+2026-08-07T01:15Z deploy branch tip (drop noindex metas — launch-day checklist item)
