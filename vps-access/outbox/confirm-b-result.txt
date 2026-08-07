@@ -1,0 +1,16 @@
+Confirm run B: DOGE+ADA+DOT FAILED its nulls cleanly - the family story is dead, one lead survives. Run C fired.
+tl;dr: the second prospect showed no signal on fair structure. Its declared cell scored skill +$242.01 on the hold window - sitting MID-PACK of its nine informationless null draws (+$199 to +$369, it beat only 3) - and lost real money outright (-$627 raw on 321 trades). So the "direction-gate family" from the discovery board did not replicate: one candidate passed, one failed. What survives is the single LTC+XRP+BCH lead at one-in-ten odds with ~zero raw money. Run C is fired to sharpen exactly that: same structure, 19 null draws instead of 9, p-floor 0.05 (bracketlab-20260807-085851, ~1h).
+
+Why extending run A's pass with more draws is fair play and not
+peeking: new draws can only DEMOTE the candidate (it must now beat all
+19), never rescue it. That rule is stamped in the committed launcher,
+along with the outcome map: beats all 19 -> lead stands at p 0.05,
+still money-less, next step would be a fresh period; lands mid-pack ->
+run A's 9/9 is recorded as a luck draw and the lead is parked.
+
+Also: the upgraded breadth check behaved (13 of 60 triples beat all
+their own nulls vs ~6 by chance - mild, correlated, context only),
+confirming the null-relative construction fixed run A's saturated
+version. Audits for both runs are committed.
+
+c.
