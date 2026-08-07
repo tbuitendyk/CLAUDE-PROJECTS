@@ -1,0 +1,45 @@
+Stability test done: your #2 money-screen setup is disqualified, and F1 is the only thing left standing
+tl;dr: I varied ONLY how much history the models are trained on, holding the scored periods identical, and the results split the field cleanly. The XLM setup that came second on the money screen swings from -$85.77 to +$101.27 depending purely on training extent, with its trading rate moving by a factor of 63. Its $40.96 selection figure was one draw from a range straddling zero - a different extent would have flipped its sign and it would never have been a candidate. The LTC setup (F1) holds a positive sign across every extent at a 1.6x spread. F1 is now the only candidate here that has never failed a declared test.
+
+TABLE: money and activity as a function of training extent, scored on the
+SAME held-back periods every time. KEY: net money range = lowest and
+highest across 50%-100% of available history; call-rate spread = how much
+the models' willingness to call a direction moves; the rule (declared
+before the run) is sign must hold and spread must stay under 2x.
+
+  setup                      net money range        call spread  verdict
+  LTC argmax   (F1)          +$204.50 .. +$341.26         x1.6   STABLE
+  LTC directional            +$120.61 .. +$437.41         x2.1   marginal fail
+  XLM directional (F2/F3)     -$85.77 .. +$101.27        x63.6   DISQUALIFIED
+  XLM argmax                  -$77.97 ..  +$70.97         x1.2   sign flips
+
+WHY THIS TEST EXISTS AT ALL: a backtest number does not just measure the
+setup, it measures the setup plus however much history you happened to
+feed it. For F2 the second part dominated completely. That is registered
+as QC 83 and is now a standing gate - nothing reaches a live-money
+conversation without passing it, because a number from an unstable setup
+is one draw from a range nobody looked at.
+
+IT ALSO KILLS MY LAST LEFTOVER SUSPICION. I had wondered whether the
+"directional" rule was inherently fragile. It is not: LTC/directional
+keeps a positive sign at every extent. The instability tracks the COIN,
+not the rule.
+
+WHAT F1 HAS NOW SURVIVED, in order: three different null constructions
+(19 of 19 under each, two of them rebuilt specifically to be harder), the
+declared money screen at 283% fee headroom, and now training-extent
+stability. Nothing has caught it yet.
+
+WHAT IT STILL LACKS is the only thing that counts: a forward record of
+any size. Thirteen trades against the floor of thirty I set before any
+number existed. That accumulates on its own and no amount of further
+backtesting substitutes for it.
+
+Scope limits, so you are not over-reading the table: all of these are
+scored on the window F1 was selected on, so the absolute dollars are not
+fresh evidence - the STABILITY finding is what is valid here. And the
+2x and sign thresholds are guesses I declared in advance; failing them
+bars a setup from money, it does not prove the idea is worthless. F2 is
+barred, not retired.
+
+c.
