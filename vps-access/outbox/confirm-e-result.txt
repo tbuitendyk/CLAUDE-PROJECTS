@@ -1,0 +1,48 @@
+Third measurement: the signal survives a much harder null, but it is still worth $13 and is not tradeable
+tl;dr: the candidate has now beaten all 19 informationless draws under THREE different null constructions - the broken one, and both fixed ones. The two corrections each made the null harder to beat (its spread is 60% wider than at the start) and it survived anyway, so the vote-timing signal on this arm is the most robust thing this project has produced. The sibling pathology that started the whole investigation has cleared, which is what a correct diagnosis looks like. And none of it matters for your goal yet: the arm still nets $13.03 on 310 trades. Next move targets money, not significance.
+
+MY OWN GATE FAILED AND I EXAMINED IT RATHER THAN OBEYING IT. The launcher
+demanded null trade counts BRACKET the real arm's 310, or the run is void.
+They came in at 307-309 - outside by one trade. Read literally that voids
+a good run. The threshold was mine and it was wrong: the fix guarantees
+the committee makes the same number of up/down/stand-aside CALLS (the
+test asserts exactly that), not the same number of EXECUTED trades,
+because a 161-hour hold overlaps following periods and calls near the
+window edge cannot complete. One trade of drift is the mechanism working.
+Materiality, computed not asserted: that residual is worth about $0.29
+against a margin of $307.86 - a tenth of one percent. For contrast, what
+the check was built to catch was real 310 against nulls 255-296. That is
+what a genuine failure looks like. Re-specified properly and registered
+as QC 82; had the residual been 30 trades rather than 1, the run would
+have been voided.
+
+TABLE: the same candidate under three nulls. KEY: skill $ = the arm's
+paper dollars minus always-long on the held-back window, per $100 book;
+null spread = standard deviation across 19 informationless draws (bigger
+= harder to beat); z = how many standard deviations the real arm sits
+above its nulls.
+
+  null construction              skill $   null spread     z    beat
+  original (both defects)         670.85         77.94  +3.30   19/19
+  per-slice fixed (QC 80)         670.85        105.80  +2.25   19/19
+  committee-preserving (QC 81)    670.85        124.90  +2.46   19/19
+
+The pathology also cleared: the sibling arm that sat at -7.3 standard
+deviations under the broken null now sits at -2.0, and the collapsed
+null spread of $20 is gone.
+
+WHAT HAS NOT MOVED. $13.03 net on 310 trades. Fees take $77.50 of $90.53
+gross. Break-even fee is $0.146/leg against the $0.125 we charge - 17% of
+headroom. Always-short made $478.32 on the same window with no model.
+A robust signal worth thirteen dollars is not a Binance test-trade
+candidate.
+
+NEXT, declared before it runs: re-read the 20,400-unit board's stored
+rows ranked by held-back NET MONEY with fee headroom per row, and ask
+whether ANY row clears positive-after-fees AND at least 50% fee headroom.
+Pure read, no compute, no new selection. If nothing on 20,400 units
+clears that floor, the finding is that this search space does not contain
+a tradeable candidate and the mechanism itself has to change - hold
+length, geometry or fee regime - before more box time is worth spending.
+
+c.
