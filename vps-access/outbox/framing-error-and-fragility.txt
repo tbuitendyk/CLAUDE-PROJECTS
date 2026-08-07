@@ -1,0 +1,44 @@
+Correction: my forward books test a retrained recipe, not the setups that were selected — and the engine reproduces your board exactly
+tl;dr: two things, one good and one a correction against myself. GOOD: rebuilding the discovery board's setups from scratch reproduces it almost exactly - 243 committee calls against 240 recorded trades on XLM, 226 against 224 on LTC. Those numbers are real and re-derivable. THE CORRECTION: my forward books train on all history to the freeze, which is a RETRAIN, while the same document says a book that retrains is no longer testing the thing that was selected. Both sentences are mine and they contradict each other. For XLM it matters enormously, so F2 and F3's forward numbers are withdrawn as evidence about the money-screen setups.
+
+WHAT KILLED MY LAST HYPOTHESIS. I said the "directional" decision rule goes
+silent out of sample. Ran it on both rules and both coins to remove the
+coin/rule confound. Nothing goes silent forward - the retention rates are
+61%, 104%, 113% and 85%. Refuted outright. What the numbers showed instead
+is that XLM/directional was ALREADY near-mute in sample, at a 3.2% call
+rate. It never spoke; it did not stop speaking.
+
+THAT CONTRADICTED YOUR BOARD, so I checked which of us was wrong, and it
+was me. Same specification, same scored periods, training window as the
+only difference:
+
+  XLM directional  trained as the board did : 50.8% calls, 243/325 committee
+                   trained as my books do   :  8.2% calls, 105/325 committee
+  LTC argmax       trained as the board did : 36.6% calls, 226/364 committee
+                   trained as my books do   : 42.9% calls, 241/364 committee
+
+So: your board reproduces (243 vs 240 trades, 226 vs 224). My books do
+not reproduce what your board selected - for XLM they build a committee
+six times less active. F2 and F3 were never testing the setups that
+cleared the money screen. F1 is close to the intended thing (36.6 vs
+42.9), so its +$27.43 stands as "the leader's RECIPE retrained", not "the
+leader's forward record". Downgraded, not deleted. The books keep running
+untouched because my own rule forbids re-specifying them; the repair is a
+second, separately pre-registered set, not an edit.
+
+THE FINDING UNDERNEATH IS BIGGER THAN ANY OF THE THREE BOOKS. Adding
+about 325 recent periods to XLM/directional's training set cut its call
+rate from 50.8% to 8.2%. A recipe whose behaviour swings six-fold on how
+much history you give it is fragile in a way no backtest on a fixed split
+can reveal. That is now the most important open question here, ahead of
+any individual candidate.
+
+DECLARED NEXT TEST, rule stated before it runs: train the same
+specification at 50/60/70/80/90/100% of history and plot call rate and
+net money against training extent, both coins, both decision rules.
+Stability means net money keeps its SIGN and the call rate stays within a
+factor of two across extents. Anything else disqualifies the setup from a
+Binance test regardless of how good its other numbers look. I would
+rather find this now than after you have money on it.
+
+c.
