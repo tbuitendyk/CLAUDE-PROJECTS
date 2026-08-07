@@ -720,4 +720,4 @@ async function menuGridTask({ combo, branch, params, dump }) {
   };
 }
 
-module.exports = { unitTask, nullRotationTask, menuGridTask, quorumCall, declaredQuorumFor, matchesDeclared, slimViewsFor, buildCombo, splitAndLabel, splitBounds, rotateLabels, windowShift, specsFor };
+module.exports = { unitTask, nullRotationTask, menuGridTask, quorumCall, trainMembers, declaredQuorumFor, matchesDeclared, slimViewsFor, buildCombo, splitAndLabel, splitBounds, rotateLabels, windowShift, specsFor };

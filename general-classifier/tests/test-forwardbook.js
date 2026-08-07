@@ -128,3 +128,51 @@ module.exports.theSplitDoesNotSilentlyReturnNothing = function () {
     'a split that returns nothing on both sides is the silent-wrong-record failure — it must be impossible '
     + 'for well-formed chunks');
 };
+
+// End-to-end on the fabricated pair. The frozen-spec tests above are all pure,
+// so nothing exercised the scoring PATH — and it shipped to the box twice with
+// errors a single integration run would have caught (a chunk field that does
+// not exist, then a helper that is not exported). This drives the real thing.
+module.exports.scoreBookRunsEndToEndOnTheFabricatedPair = async function () {
+  const fs = require('fs');
+  const pathMod = require('path');
+  const planted = require('../lib/planted');
+  const CACHE = pathMod.join(__dirname, '..', 'data', 'cache');
+  // A test-only book: the real three are frozen and must never be edited.
+  planted.generatePlanted({ fromMonth: '2024-01', toDate: '2025-06-30' });
+  const book = {
+    id: 'TEST', note: 'fabricated pair',
+    combo: { trade: planted.PLANTED_SYMBOL, ctx1: null, ctx2: null, size: 1 },
+    branch: { geometry: 'daily-1d', decision: 'argmax', band: 1.5, weekdaysOnly: false },
+    stage: 'slim',
+    members: fb.BOOKS[0].members.slice(0, 3),
+    cell: { quorum: 1, entry: 'market', gate: 'directional', dMult: null, tHours: 41, trailMult: null, armMult: null },
+    backtest: { net: 0, trades: 0, breakEvenPerLeg: 0 },
+  };
+  try {
+    // Cutoff and scoring date inside the fabricated span so both sides exist.
+    const saveT = fb.TRAIN_THROUGH;
+    const r = await fb.scoreBook(book, {
+      trainThrough: Date.UTC(2025, 2, 31), scoreFrom: Date.UTC(2025, 3, 1),
+    });
+    assert.ok(r && typeof r === 'object', 'scoreBook must return a result object');
+    assert.strictEqual(r.id, 'TEST');
+    assert.ok(r.trainChunks > 0, 'the fabricated pair must yield training periods');
+    if (!r.pending) {
+      assert.ok(Number.isFinite(r.net), 'forward net money must be a number');
+      assert.ok(Number.isInteger(r.trades) && r.trades >= 0, 'trade count must be a whole number');
+      assert.strictEqual(typeof r.verdictAllowed, 'boolean', 'the verdict floor must be reported, not implied');
+      if (r.trades > 0) {
+        assert.ok(Number.isFinite(r.breakEvenPerLeg), 'break-even fee must be computed when trades exist');
+        // gross = net + fees paid; the identity must hold exactly.
+        assert.ok(Math.abs(r.gross - (r.net + r.trades * 2 * r.fee)) < 1e-9,
+          'gross must equal net plus fees paid — if this drifts the cost numbers are fiction');
+      }
+    }
+    assert.strictEqual(saveT, fb.TRAIN_THROUGH, 'scoring must not mutate the frozen constants');
+  } finally {
+    for (const f of fs.readdirSync(CACHE)) {
+      if (f.startsWith(`${planted.PLANTED_SYMBOL}-1h-`)) fs.rmSync(pathMod.join(CACHE, f), { force: true });
+    }
+  }
+};

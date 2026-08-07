@@ -133,7 +133,13 @@ async function scoreBook(book, opts = {}) {
   const bandPct = Math.abs(book.branch.band);
   for (const c of chunks) c.label = scoreDiff(c.diffPct / 100, bandPct / 100);
 
-  const { trainChunks, fwdChunks, periodMs } = splitFrozen(chunks);
+  // Date overrides exist for the end-to-end test on the fabricated pair ONLY.
+  // The three real books always use the frozen constants: scoreAll never
+  // passes these, and the tests pin the constants, so a book cannot be
+  // re-based by moving a date.
+  const { trainChunks, fwdChunks, periodMs } = splitFrozen(
+    chunks, opts.trainThrough ?? TRAIN_THROUGH, opts.scoreFrom ?? SCORE_FROM,
+  );
   if (!trainChunks.length) {
     const iso = (t) => (t ? new Date(t).toISOString().slice(0, 10) : 'n/a');
     throw new Error(`forward book ${book.id}: no training chunks at or before the freeze date. `
