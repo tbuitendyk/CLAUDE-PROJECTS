@@ -131,41 +131,55 @@ Union Trading Academy website (`uniontradingacademy.com/`).
   pre-deploy snapshot of the live webspace to a `backup/…` branch every
   time. (Sign-off arrived and the re-point happened 2026-08-07 — see the
   LAUNCH bullet; the ICANN mail click is still pending on the client.)
-- **LAUNCH IN PROGRESS (2026-08-07 ~00:45 UTC):** owner chose
-  `uniontradingacademy.com` as the main URL (full site at root) with
-  `orderflowvolumeprofile.com` redirecting to it. DONE: `dev-ver/`
-  promoted to the site root (robots opened; `/dev-ver/* → /*` 301 in
-  `.htaccess`) and deployed (run 6, verified); panel:
-  `uniontradingacademy.com` connected to webspace `/site` (domains table
-  shows BOTH domains → contract 113249653, dir `/site`); DNS live minutes
-  later (apex + www → 74.208.236.33); `http://uniontradingacademy.com/`
-  serves the real site. WhatsApp click-to-chat ACTIVE (524792265252,
-  owner tap-test confirmed 2026-08-07); noindex metas dropped at launch
-  (gracias keeps its). Remaining functional gaps, all awaiting client
-  account values (see CONFIG.md): CALENDLY_URL (booking), VIDEO_SRC
-  (file), MERCADOPAGO_LINK (offer/price undecided). Owner intent: client
-  test-drives the full funnel at the live URL once Calendly is wired.
-  PENDING: IONOS SSL for the new domain — still not issued at 14 h
-  (diagnosed 2026-08-07T14:10Z). Ruled OUT as causes: DNS (apex+www A/AAAA
-  resolve to IONOS 74.208.236.33 / 2607:f1c0:100f:f000::200, NS correctly
-  delegated to ui-dns), CAA (no records), registry suspension (RDAP shows
-  only `client transfer prohibited`, identical to the working interim
-  domain — so the pending ICANN click is NOT what blocks the cert), and
-  sandbox/proxy artifacts (SSL Labs, scanning externally, reports "Failed
-  to communicate with the secure server" + zero certChains on BOTH IPs —
-  the cert truly does not exist server-side). Remaining hypotheses, both
-  needing panel access: IONOS provisioning simply queued/slow, or the
-  contract move (113205858 → 113249653) left the hosting package's SSL
-  entitlement unattached so it needs a manual activation in Dominios &
-  SSL. Panel re-login requires a 6-digit code emailed to the account —
-  owner must relay it. WHEN
-  `curl -sS https://uniontradingacademy.com/` succeeds from the sandbox
-  (egress gateway validates upstream certs, so success = real cert):
-  extend site `.htaccess` with (a) any-orderflowvolumeprofile-host 301 →
-  `https://uniontradingacademy.com/$1`, (b) force-https, (c)
-  `www.uniontradingacademy.com` → apex; marker-deploy; verify all
-  host/scheme combos 301 → https apex. Do NOT ship force-https while the
-  cert is still pending — it would break the http-only window.
+- **LAUNCHED (2026-08-07T15:00Z) — `https://uniontradingacademy.com/` is
+  the canonical URL, HTTPS live, all redirects verified.** Owner chose the
+  main domain to serve the full site at root with
+  `orderflowvolumeprofile.com` redirecting to it. Done: `dev-ver/` promoted
+  to site root, robots opened, `noindex` metas dropped (gracias keeps its);
+  domain connected to webspace `/site`; DNS live (apex + www →
+  74.208.236.33 / 2607:f1c0:100f:f000::200); WhatsApp click-to-chat ACTIVE
+  (524792265252, owner tap-test confirmed).
+- **THE SSL ROOT CAUSE — read this before debugging IONOS certs again.**
+  The cert never "self-provisions" for a domain added to a contract later.
+  Web Hosting Plus includes exactly **2 SSL Starter Wildcard slots**, and
+  the 2026-08-06 provisioning shuffle had burned BOTH on
+  `*.orderflowvolumeprofile.com` (the same domain, twice — two distinct
+  certs, UUIDs `2ed558ae-…` and `18c78a23-…`). With the portfolio at
+  "2 de 2 utilizados", the panel offered `uniontradingacademy.com` only
+  PAID certs — the "Activar" button under Certificado SSL on the domain
+  page just redirects to `ssl.ionos.mx/certificates/upsell`, and
+  "Configurar certificado" is the same upsell in disguise. **The free fix:**
+  Dominios & SSL → Certificados → row context menu → "Reasignar certificado
+  SSL" → pick the target domain → accept terms. Owner approved
+  2026-08-07; the duplicate (`18c78a23-…`) was reassigned and the cert
+  installed within ~1 minute. Portfolio now correctly reads one wildcard
+  per domain (orderflow → 02/02/2027, UTA → 03/02/2027). Ruled out along
+  the way, so nobody re-checks: DNS, CAA (none), registry status (RDAP
+  clean, identical to the working domain — the pending ICANN click does
+  NOT block certs), and sandbox/proxy artifacts (SSL Labs externally
+  confirmed zero certChains).
+- **Redirect layer live** in `sites/uniontradingacademy.com/.htaccess`:
+  any-orderflow-host → `https://uniontradingacademy.com/$1`, `www` → apex,
+  `/dev-ver/*` → `/*`, then force-HTTPS. Rule ORDER matters: the orderflow
+  hop must precede force-HTTPS so it works over plain HTTP (that domain's
+  own TLS is not needed). Force-HTTPS uses `%{HTTPS} !=on`, verified
+  loop-safe by a temporary PHP probe (Apache reports `HTTPS=on` +
+  SERVER_PORT 443 directly; `X-Forwarded-Proto` is unset on HTTPS). Verified
+  matrix: http apex, http/https www, http orderflow, and `/dev-ver/` all
+  301 → `https://uniontradingacademy.com/` (200).
+- **Known cosmetic gap:** `https://orderflowvolumeprofile.com/` does not
+  complete TLS since the reassignment (its cert is still valid + "Asignado"
+  in-panel, so IONOS's vhost reinstall is expected to settle it). No user
+  impact — `http://` on that host 301s to the main domain, and it was only
+  ever an interim dev URL. Re-check; if it persists, the panel's "Expedir un
+  nuevo certificado" on that cert forces a reinstall.
+- **Remaining functional gaps, all awaiting client account values** (see
+  CONFIG.md): `CALENDLY_URL` (booking — last piece before the client can
+  test-drive the whole funnel), `VIDEO_SRC` (file; yt-dlp + ffmpeg are
+  installed and a YouTube/Drive link can be ingested), `MERCADOPAGO_LINK`
+  (blocked on the offer/price decision; account is free to open, ~3.5–4%+IVA
+  per charge, and only the public `mpago.la/…` link is ever needed — never
+  credentials).
 - **⚠ Domain flag (2026-08-05):** the panel shows `uniontradingacademy.com`
   needs registrant contact-data confirmation ("Se requiere confirmación de
   los datos de contacto") — an ICANN verification email must be actioned or
