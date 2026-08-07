@@ -74,3 +74,66 @@ below the floor at which the pre-registration permits a verdict. The books
 accumulate; the next read is worth taking when F1 approaches 30 forward trades,
 which at ~13 per five weeks is roughly seven more weeks. No Binance trade is
 authorised or implied by anything here.
+
+---
+
+## ADDENDUM — the declared hypothesis was REFUTED, and what replaced it matters more
+
+### The frozen-trigger hypothesis is dead
+Declared: F2/F3 stopped trading because their breakout needs a 2.415% move
+(1.5 x the frozen 1.61% band) and forward volatility fell.
+
+Volatility DID fall — XLM median |period move| 3.12% (last 400 training
+periods) -> 1.90% forward, and the share of periods clearing the trigger fell
+60.0% -> 46.4%. But 46.4% of 28 periods is about 13 periods where the trigger
+IS reachable, against 2 and 3 actual trades. The hypothesis is directionally
+right and quantitatively nowhere near sufficient. REFUTED as the explanation.
+
+### What is actually happening: the committees went silent
+Decomposing participation into "did the committee call a side" and "did
+execution then fire":
+
+  book  fwd periods  committee called  trades  lost at committee  lost at execution
+  F1             28        14 (50%)        13                 14                  1
+  F2             28         2 ( 7%)         2                 26                  0
+  F3             28         3 (11%)         3                 25                  0
+
+Nothing is lost at execution. The loss is entirely upstream: the members stop
+calling a direction at all. Per-member directional calls out of 28 forward
+periods — F1: 3, 3, 8, 9. F2: 1, 0, 0, 2. F3: 1, 0, 0, 0, 0, 1, 2, 0.
+
+Against their own backtests (committee participation): F1 61.5% -> 50%,
+F2 73.8% -> 7%, F3 74.5% -> 11%.
+
+### This is a finding about the whole approach, not about two books
+A frozen committee does not fail loudly out of sample — it goes QUIET. It keeps
+returning a well-formed answer ("stand aside") while having stopped saying
+anything. On F2/F3 that produced a book with two trades and a plausible-looking
+tiny loss, which is exactly the shape of defect this project keeps meeting:
+right units, plausible magnitude, no error raised.
+
+It also reframes F1. Its +$27.43 rests on members that call a direction only
+3-9 times in 28 periods; the committee's 50% comes from a 1-of-4 quorum turning
+a few sparse opinions into a position. That is a thinner basis than the headline
+suggests, and it is now recorded next to the headline.
+
+### New hypothesis, declared before it is tested
+F2 and F3 use decision `directional`; F1 uses `argmax`. All three degrade, but
+only the two `directional` books collapse. HYPOTHESIS: the `directional`
+decision rule requires a confidence that forward data rarely supplies, so it
+goes silent out of sample while `argmax` merely thins. If true it is a property
+of an entire decision family, and it would disqualify `directional` setups from
+forward use regardless of how well they backtest.
+TEST, declared now: measure per-member directional-call rate for the same
+committees on training-era periods versus forward periods, for both decision
+rules, on the same coins. Reading rule: if `directional` members drop by an
+order of magnitude while `argmax` members drop by less than half, the hypothesis
+stands and every `directional` candidate in the pipeline is suspect.
+This test comes BEFORE any further reading of F2/F3, and before the next
+forward read is treated as meaningful.
+
+### QC candidate (not yet an entry — no named cause)
+"A frozen model that stops trading has failed, and must say so." Books should
+report committee participation against their backtest rate, and flag a
+collapse, rather than reporting a small loss on two trades as though it were a
+result. Becomes an entry once the mechanism above is confirmed.
