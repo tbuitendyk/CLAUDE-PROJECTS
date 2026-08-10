@@ -86,5 +86,12 @@ M.logout()
 print(f"BRIEF-COUNT {len(rows)}")
 for mid, date, frm, subj in rows:
     print(f"BRIEF-MSG {mid} | {date} | {frm} | {subj}")
+# LAST LINE ON PURPOSE. The deploy endpoint returns only the TAIL of stdout, and
+# this listing grows by one line per message forever, so one day it will overrun
+# the cap too. The watcher fingerprints THIS line, never the listing: a count
+# plus the newest message-id is enough to detect any arrival, and being last it
+# survives every truncation the listing above will eventually suffer.
+newest = rows[-1][0] if rows else "none"
+print(f"BRIEF-STATE {len(rows)}|{newest}")
 print("BRIEF-OK (headers only; NOT verified; not marked read)")
 PY
