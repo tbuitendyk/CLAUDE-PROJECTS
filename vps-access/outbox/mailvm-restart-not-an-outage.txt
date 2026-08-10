@@ -1,0 +1,69 @@
+Mail looked dead this morning. It was the daily restart, and I misread it — two fixes committed
+
+tl;dr: a heartbeat found the mailbox unreachable with every service port refused,
+and I treated it as an outage. It was the scheduled 09:00 UTC restart, caught four
+and a half minutes in. Nothing was wrong and I took no action on the VM. Two code
+changes went in as a result, both read-only or watcher-side, plus QC 84. No research
+job was touched and no result is affected.
+
+
+WHAT I SAW. A routine mail check came back "IMAP login FAILED: No route to host".
+The liveness probe then showed the mail guest answering ping normally while all
+seven service ports — ssh, the three smtp ports, both imap ports and postgres —
+refused connections. Ping working while nothing serves usually means a machine
+booted but its software stack did not.
+
+WHAT IT ACTUALLY WAS. The daily restart. Its log, timestamps verbatim:
+
+  09:00:14  restart requested
+  09:00:22  pre-restart snapshot: all seven services active, mail queue empty,
+            zero out-of-memory kills since boot
+  09:00:29  guest went down after 5s
+  09:03:28  new boot id, back after 179s
+  09:03:28  verifying (retrying up to 600s — the guest is still starting)
+
+The restart timer had fired 4 minutes 45 seconds before I looked. I read the
+mailbox in the middle of a reboot that happens every morning. By my next check
+ssh and both imap ports were open and mail read normally.
+
+WHAT I DID NOT DO, and why it matters. I did not power-cycle anything. The
+restart script's own header refuses to act in exactly this state — ssh down, and
+VBoxManage reporting the VM as "poweroff" while its process is plainly alive —
+because a hard cycle on a mail server can drop a message mid-delivery, and a
+power action taken against state we cannot read is a guess. That refusal was
+written before today and it was right today. The recovery script would have
+declined as well, since it detects the running process.
+
+WHAT CHANGED. Two things, both committed and pushed to vps-access.
+
+  1. scripts/mailvm-outage-diag.sh — NEW, read-only. It gathers what the host
+     can see from outside the guest: the restart log, timer state, host disk and
+     memory, the VM process age, and out-of-memory kills. It takes no action of
+     any kind. Its FIRST question is now "are we inside the restart window?" and
+     it prints an EXPECTED banner when a restart is under 20 minutes old, so the
+     next reader is told the boring explanation before the alarming one.
+
+  2. The mail watcher now requires TWO consecutive failed polls before it raises
+     anything. One miss is "unknown", not "down". Left as it was, it would have
+     cried wolf every morning at nine.
+
+I should flag one weakness in my own fix rather than let you find it. The
+20-minute window is a GUESS, not a derived figure. What was measured today is
+about 3 minutes to boot plus a verify loop budgeted at 600 seconds; 20 minutes is
+a loose envelope drawn around that, not a bound anything proves. If a restart ever
+genuinely hangs, that guess buys it 20 minutes of silence before the watcher
+complains.
+
+QC 84 is added: "a health probe returning everything-is-refused means something
+has broken". It is marked AUTOMATED only for the diagnostic's ordering, which I
+watched behave on synthetic logs at five minutes (banner shown), three hours (no
+banner) and an empty log (neither). The judgement that a persistent failure is
+real stays MANUAL, because no script can make that call.
+
+WHERE THE RESEARCH STANDS. Unchanged. No batch job is running, none was touched,
+and the forward books keep accumulating on their own — the next read worth having
+is when F1 approaches 30 forward trades, roughly seven weeks out at the rate it
+has been trading. Nothing here touches the classifier, the engine, or any number
+either of us has looked at.
+
+c.
