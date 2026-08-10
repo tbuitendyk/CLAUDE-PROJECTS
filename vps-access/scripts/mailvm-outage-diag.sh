@@ -44,9 +44,16 @@ ps -o pid,etime,rss,stat,comm -p "$(pgrep -f "VirtualBoxVM.*--comment $VM" | hea
   || echo "  (no VirtualBoxVM process matching $VM)"
 
 echo
-echo "== host kernel messages mentioning the VM or OOM (last 40) =="
-dmesg -T 2>/dev/null | grep -iE 'oom|killed process|vbox|virtualbox' | tail -40 | sed 's/^/  /' \
-  || echo "  (dmesg unreadable or nothing matching)"
+echo "== host kernel: OOM kills only (UFW/vboxnet chatter excluded -- it drowns"
+echo "   everything else, and the deploy endpoint returns only the TAIL of stdout) =="
+dmesg -T 2>/dev/null | grep -iE 'out of memory|killed process|oom-kill' | tail -10 | sed 's/^/  /' \
+  || true
+echo "  (end of OOM extract)"
+
+echo
+echo "== last UFW block from the guest (timing clue only, one line) =="
+dmesg -T 2>/dev/null | grep 'UFW BLOCK' | grep 'SRC=192.168.56.129' | tail -1 | cut -c1-120 | sed 's/^/  /' \
+  || echo "  (none)"
 
 echo
 echo "== guest reachability right now =="
