@@ -20,6 +20,28 @@ set -uo pipefail
 GUEST=192.168.56.129
 VM=HOMSMAIL03
 
+echo "== FIRST QUESTION: are we simply inside the daily 09:00 UTC restart? =="
+echo "   (2026-08-10: a session read 'all ports refused', called it an outage and"
+echo "    built this script -- when it had just caught the scheduled reboot at"
+echo "    T+4min. Check this BEFORE concluding anything is wrong.)"
+last_req=$(grep 'restart requested' /var/log/mailvm-restart.log 2>/dev/null | tail -1)
+last_done=$(grep 'restart complete and verified' /var/log/mailvm-restart.log 2>/dev/null | tail -1)
+echo "  last requested: ${last_req:-none}"
+echo "  last verified : ${last_done:-none}"
+if [ -n "$last_req" ]; then
+  req_ts=$(printf '%s' "$last_req" | awk '{print $1}')
+  req_s=$(date -u -d "$req_ts" +%s 2>/dev/null || echo 0)
+  now_s=$(date -u +%s)
+  age=$(( now_s - req_s ))
+  if [ "$req_s" -gt 0 ] && [ "$age" -lt 1200 ]; then
+    echo "  >>> A restart was requested ${age}s ago (< 20 min). Refused ports are"
+    echo "      EXPECTED right now. Re-check in a few minutes before doing anything."
+  else
+    echo "  last restart was ${age}s ago -- too long to explain refused ports."
+  fi
+fi
+
+echo
 echo "== when did the daily restart last succeed? (tail of restart log) =="
 if [ -r /var/log/mailvm-restart.log ]; then
   tail -40 /var/log/mailvm-restart.log | sed 's/^/  /'
