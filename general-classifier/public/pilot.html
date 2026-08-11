@@ -339,16 +339,19 @@ function agoStr(iso) {
 }
 function freshLine() {
   if (!LATEST_FRESH.length) return '';
+  // measure from the candle CLOSE (throughUtc), not its open stamp: a just-closed
+  // hour is stamped an hour earlier, so open-age would read ~1h "stale" the instant
+  // it lands. stale > 2h behind the close, matching the server.
+  const closeAge = (f) => f.throughUtc ? (Date.now() - Date.parse(f.throughUtc))/3600000 : null;
   const parts = LATEST_FRESH.map(f => {
-    const ageH = f.newestCandleUtc ? (Date.now() - Date.parse(f.newestCandleUtc))/3600000 : null;
-    const stale = ageH == null || ageH > 3; // matches server DATA_STALE_HOURS
+    const a = closeAge(f); const stale = a == null || a > 2;
     const sym = f.symbol.replace('USDT','');
-    const when = f.newestCandleUtc ? `${f.newestCandleUtc.slice(11,16)} (${agoStr(f.newestCandleUtc)})` : 'none';
+    const when = f.throughUtc ? `${f.throughUtc.slice(11,16)} (${agoStr(f.throughUtc)})` : 'none';
     return `<span class="${stale?'warn':'pos'}">${sym} ${when}</span>`;
   }).join(' · ');
-  const anyStale = LATEST_FRESH.some(f => { const a = f.newestCandleUtc ? (Date.now()-Date.parse(f.newestCandleUtc))/3600000 : null; return a==null||a>3; });
-  return `<div style="margin-top:.4rem"><b>Trigger data — newest candle:</b> ${parts}`
-    + (anyStale ? ' <span class="warn">· data is behind; refresh not caught up</span>' : ' <span class="muted">· up to date</span>') + '</div>';
+  const anyStale = LATEST_FRESH.some(f => { const a = closeAge(f); return a == null || a > 2; });
+  return `<div style="margin-top:.4rem"><b>Trigger data — complete through (UTC):</b> ${parts}`
+    + (anyStale ? ' <span class="warn">· data is behind; refresh not caught up</span>' : ' <span class="muted">· current (newest closed hour)</span>') + '</div>';
 }
 function renderStatus() {
   const s = LATEST_STATUS;

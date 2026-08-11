@@ -244,17 +244,21 @@ module.exports.liveStatusCountsPositionsAndSchedulesNextExit = function () {
   assert.ok(exit && exit.whenUtc === new Date(exitTs * 1000).toISOString(), 'exit item carries the absolute exit time');
 };
 
-module.exports.dataFreshnessFlagsStalePairsAndFormats = function () {
+module.exports.dataFreshnessMeasuresFromCandleCloseNotOpenStamp = function () {
   const now = Date.UTC(2026, 7, 12, 1, 0, 0); // 2026-08-12 01:00 UTC
+  const H = 3600000;
   const df = pv.dataFreshness([
-    { symbol: 'LTCUSDT', ts: now - 1 * 3600000 }, // 1h old -> fresh
-    { symbol: 'XRPUSDT', ts: now - 5 * 3600000 }, // 5h old -> stale (>3h)
-    { symbol: 'BCHUSDT', ts: null },              // missing -> stale
+    { symbol: 'LTCUSDT', ts: now - 1 * H },   // opened 1h ago, closes now -> fresh (close-age 0)
+    { symbol: 'XRPUSDT', ts: now - 2.5 * H }, // open-age 2.5h BUT closed only 1.5h ago -> still fresh
+    { symbol: 'BCHUSDT', ts: now - 5 * H },   // closed 4h ago -> stale
+    { symbol: 'DOGEUSDT', ts: null },         // missing -> stale
   ], now);
-  assert.strictEqual(df[0].stale, false, '1h old is fresh');
-  assert.ok(Math.abs(df[0].ageHours - 1) < 1e-9, 'age in hours');
-  assert.strictEqual(df[0].newestCandleUtc, new Date(now - 3600000).toISOString(), 'newest candle ISO');
-  assert.strictEqual(df[1].stale, true, '5h old is stale');
-  assert.strictEqual(df[2].stale, true, 'missing candle is stale');
-  assert.strictEqual(df[2].newestCandleUtc, null, 'missing -> null time');
+  assert.strictEqual(df[0].stale, false, 'just-closed candle is fresh');
+  assert.strictEqual(df[0].throughUtc, new Date(now).toISOString(), 'complete-through = open stamp + 1h');
+  assert.ok(Math.abs(df[0].closedAgeHours - 0) < 1e-9, 'closed-age measured from the candle close');
+  assert.strictEqual(df[1].stale, false, 'open-age 2.5h but closed only 1.5h ago -> fresh (the artifact fix)');
+  assert.ok(Math.abs(df[1].closedAgeHours - 1.5) < 1e-9);
+  assert.strictEqual(df[2].stale, true, 'closed 4h ago -> stale');
+  assert.strictEqual(df[3].stale, true, 'missing -> stale');
+  assert.strictEqual(df[3].throughUtc, null, 'missing -> null through-time');
 };

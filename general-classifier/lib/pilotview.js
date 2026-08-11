@@ -21,23 +21,28 @@ const MODEL_FEE_PER_LEG = 0.125; // the assumption the pilot measures against
 const F1_ENTRY_HOUR_UTC = 1;
 const F1_HOLD_HOURS = 137;
 const F1_PAIRS = ['LTCUSDT', 'XRPUSDT', 'BCHUSDT']; // F1 combo: trade + two context pairs
-// The newest CLOSED hourly candle normally trails 'now' by ~1-2h (the current hour
-// is still forming, plus publish lag on the keyless mirror), so only flag as stale
-// when the data is CLEARLY behind — > 3h means the refresh has not kept up and a
-// trigger could compute on a short window.
-const DATA_STALE_HOURS = 3;
+// Staleness is measured from the CLOSE of the newest candle, not its open-time
+// stamp. Candles are stamped by open time and only CLOSED candles are cached, so a
+// just-finalized candle is stamped a full hour earlier — measuring from the stamp
+// would read "1h stale" the instant it lands. The data is complete through ts+1h;
+// within an hour of that is normal (the next hour has not closed yet + a little
+// publish/tick lag), so flag only past 2h behind the close.
+const DATA_STALE_HOURS = 2;
 
-// Per-pair data freshness for the screen: the newest cached candle time and its
-// age, so the owner can see the trigger inputs are current before arming. Pure
+// Per-pair data freshness for the screen, so the owner can see the trigger inputs
+// are current before arming. `throughUtc` is the hour the data is COMPLETE through
+// (candle close = stamp + 1h); `closedAgeHours` is how long since that close. Pure
 // over supplied (symbol, ts) pairs + a clock, so it is unit-testable.
 function dataFreshness(pairsWithTs, nowMs) {
   return pairsWithTs.map(({ symbol, ts }) => {
-    const ageHours = ts != null ? (nowMs - ts) / 3600000 : null;
+    const throughMs = ts != null ? ts + 3600000 : null;
+    const closedAgeHours = throughMs != null ? (nowMs - throughMs) / 3600000 : null;
     return {
       symbol,
       newestCandleUtc: ts != null ? new Date(ts).toISOString() : null,
-      ageHours: ageHours != null ? Math.round(ageHours * 100) / 100 : null,
-      stale: ageHours == null || ageHours > DATA_STALE_HOURS,
+      throughUtc: throughMs != null ? new Date(throughMs).toISOString() : null,
+      closedAgeHours: closedAgeHours != null ? Math.round(closedAgeHours * 100) / 100 : null,
+      stale: closedAgeHours == null || closedAgeHours > DATA_STALE_HOURS,
     };
   });
 }
