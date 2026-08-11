@@ -1192,6 +1192,20 @@ function writeStopSweep(obj) {
   fs.writeFileSync(`${f}.tmp`, JSON.stringify(obj));
   fs.renameSync(`${f}.tmp`, f);
 }
+// The APPLIED stop is separate from the scan (owner: running the scan must NOT set
+// a stop — it shows options; the owner then CHOOSES one or none). fixed-stop.json
+// holds the chosen value the VPS sync carries; stopPct null = no stop (the sync
+// then removes FIXED_STOP_PCT from the box).
+function fixedStopPath() { return path.join(__dirname, 'data', 'pilot', 'fixed-stop.json'); }
+function readFixedStop() {
+  try { return JSON.parse(fs.readFileSync(fixedStopPath(), 'utf8')); } catch (_) { return { stopPct: null }; }
+}
+function writeFixedStop(obj) {
+  fs.mkdirSync(path.join(__dirname, 'data', 'pilot'), { recursive: true });
+  const f = fixedStopPath();
+  fs.writeFileSync(`${f}.tmp`, JSON.stringify(obj));
+  fs.renameSync(`${f}.tmp`, f);
+}
 // eligible setups for stop tuning: the live/prospective books WITHOUT an existing
 // protective stop (a market entry with no trailing stop). The bracket-lab control
 // is offered only for these — a breakout cell already stops at its opposite rail.
@@ -1221,8 +1235,9 @@ app.post('/api/pilot/stopsweep', (req, res) => {
     (async () => {
       try {
         const r = await computeSetupStop(book, {});
-        // `active` marks this value as the one the sync should carry to the box.
-        writeStopSweep({ status: 'done', bookId, active: true,
+        // The scan only SHOWS options — it applies nothing. The owner chooses a
+        // value (or none) via POST /api/pilot/stop-apply.
+        writeStopSweep({ status: 'done', bookId,
           finishedUtc: new Date().toISOString(), ...r });
       } catch (e) {
         writeStopSweep({ status: 'error', bookId,
@@ -1236,6 +1251,25 @@ app.post('/api/pilot/stopsweep', (req, res) => {
     stopSweepRunning = false;
     res.status(500).json({ error: err.message });
   }
+});
+// The owner's CHOICE of stop after seeing the scan: a positive fraction to apply,
+// or null/0 to clear (no stop). Only this drives the live engine — a scan never
+// does. Writes a risk parameter; opens nothing.
+app.get('/api/pilot/fixed-stop', (req, res) => res.json(readFixedStop()));
+app.post('/api/pilot/stop-apply', (req, res) => {
+  try {
+    const raw = req.body ? req.body.stopPct : null;
+    let v = null;
+    if (raw != null && raw !== '') {
+      v = Number(raw);
+      if (!Number.isFinite(v) || v <= 0) {
+        return res.status(400).json({ error: 'stopPct must be a positive fraction (e.g. 0.11 for 11%), or null to clear' });
+      }
+      if (v >= 1) return res.status(400).json({ error: 'stopPct is a fraction of entry price; refusing a value >= 1' });
+    }
+    writeFixedStop({ stopPct: v, by: 'owner', utc: new Date().toISOString() });
+    res.json({ ok: true, fixedStop: readFixedStop() });
+  } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 app.get('/api/httwo/:id/verdict', (req, res) => {

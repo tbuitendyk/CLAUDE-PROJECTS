@@ -2141,13 +2141,18 @@
     const pct = (v) => (v == null ? '—' : (v * 100).toFixed(2) + '%');
     let cands = [];
     let sweep = null;
+    let applied = { stopPct: null };
     try { cands = ((await (await fetch('api/pilot/stop-candidates')).json()).candidates) || []; } catch (_) { /* offline */ }
     try { sweep = await (await fetch('api/pilot/stopsweep')).json(); } catch (_) { /* none */ }
+    try { applied = await (await fetch('api/pilot/fixed-stop')).json(); } catch (_) { /* none */ }
     if (!cands.length) {
       el.innerHTML = '<b>Protective stop tuner.</b> No live setup without an existing stop — nothing to tune here.';
       return;
     }
-    let html = '<b>Protective stop tuner</b> — for a live setup with no protective stop, tune over FULL history the tightest %-from-entry fixed stop that stops out no money-making entry, then set it on the live engine.<div style="margin-top:.45rem">';
+    const appliedTxt = applied && applied.stopPct != null
+      ? `<span class="pos">${pct(applied.stopPct)}</span> applied`
+      : `<span class="muted">none applied (no stop)</span>`;
+    let html = `<b>Protective stop tuner</b> — scan a live setup's full history for the fixed stop that loses no winner, SEE the both-sides effect, then choose a value or none. Running a scan applies nothing. Currently: ${appliedTxt}.<div style="margin-top:.45rem">`;
     for (const c of cands) {
       const running = sweep && sweep.status === 'running' && sweep.bookId === c.id;
       html += `<div style="margin:.3rem 0">${c.id} · <b>${c.combo.trade}</b> · hold ${c.cell.tHours}h · market entry, no stop `
@@ -2167,7 +2172,7 @@
       if (Array.isArray(sweep.curve) && sweep.curve.length) {
         curveTbl = '<table style="margin-top:.45rem;border-collapse:collapse;font-size:.82rem">'
           + '<thead><tr>'
-          + ['give up top winners', 'stop', 'winners cut', 'winner $ given up', 'losers cut', 'loss-side $', 'NET $'].map((h) => `<th style="text-align:right;padding:.15rem .5rem;border-bottom:1px solid #345">${h}</th>`).join('')
+          + ['give up top winners', 'stop', 'winners cut', 'winner $ given up', 'losers cut', 'loss-side $', 'NET $', ''].map((h) => `<th style="text-align:right;padding:.15rem .5rem;border-bottom:1px solid #345">${h}</th>`).join('')
           + '</tr></thead><tbody>'
           + sweep.curve.map((c) => `<tr>`
             + `<td style="text-align:right;padding:.12rem .5rem">${c.sacrificeTopWinners}</td>`
@@ -2177,14 +2182,18 @@
             + `<td style="text-align:right;padding:.12rem .5rem">${c.losersCut}</td>`
             + `<td style="text-align:right;padding:.12rem .5rem;color:${(c.loserPnlDeltaUsd || 0) >= 0 ? '#4c9' : '#c88'}">${usd(c.loserPnlDeltaUsd)}</td>`
             + `<td style="text-align:right;padding:.12rem .5rem;font-weight:bold;color:${(c.netPnlDeltaUsd || 0) >= 0 ? '#4c9' : '#c88'}">${usd(c.netPnlDeltaUsd)}</td>`
+            + `<td style="text-align:right;padding:.12rem .5rem"><button type="button" class="secondary stop-apply-btn" data-stop="${c.stopPct}">apply ${pct(c.stopPct)}</button></td>`
             + `</tr>`).join('')
           + '</tbody></table>'
-          + `<div class="muted" style="font-size:.72rem;margin-top:.2rem">$ figures are per the $${sweep.clipUsd || 10} clip across all ${cc.priced || 0} historical entries (comparison, not the live book). NET = winner $ given up + loss-side $ vs no stop; positive means the stop helps.</div>`;
+          + `<div class="muted" style="font-size:.72rem;margin-top:.2rem">$ figures are per the $${sweep.clipUsd || 10} clip across all ${cc.priced || 0} historical entries (comparison, not the live book). NET = winner $ given up + loss-side $ vs no stop; positive means the stop helps.</div>`
+          + `<div style="margin-top:.4rem">Or apply a custom stop: <input type="number" step="0.5" min="0.1" max="99" id="stop-custom-pct" placeholder="e.g. 25" style="width:5rem"> % `
+          + `<button type="button" class="secondary stop-apply-custom-btn">apply custom</button> `
+          + `<button type="button" class="secondary stop-clear-btn">No stop (clear)</button></div>`;
       }
       html += `<div style="margin-top:.4rem;padding:.4rem .5rem;background:#0d2b17;border-radius:4px">`
-        + `<b>Determined stop for ${sweep.bookId}: <span style="color:#4c9">${pct(sweep.stopPct)}</span></b> — preserves all ${cc.winners || 0} winners, cuts ${cc.losersCutByStop || 0} of ${cc.losers || 0} losers, over ${cc.priced || 0} entries (${span}). `
+        + `<b>Scan result for ${sweep.bookId} — tightest stop that loses no winner: <span style="color:#4c9">${pct(sweep.stopPct)}</span></b>, ${cc.winners || 0} winners / ${cc.losers || 0} losers over ${cc.priced || 0} entries (${span}). `
         + `${sweep.binding ? `Binding: a ${sweep.binding.side} that dipped ${pct(sweep.binding.mae)}. ` : ''}`
-        + `Now carried to the live engine — see the pilot screen.${curveTbl}</div>`;
+        + `Applying nothing until you choose below.${curveTbl}</div>`;
     }
     el.innerHTML = html;
     el.querySelectorAll('.stoptune-btn').forEach((b) => b.addEventListener('click', async () => {
@@ -2203,6 +2212,28 @@
       };
       setTimeout(poll, 1500);
     }));
+    // apply a chosen stop (a curve value, a custom value, or clear = no stop)
+    const applyStop = async (stopPct) => {
+      try {
+        const r = await fetch('api/pilot/stop-apply', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ stopPct }),
+        });
+        if (!r.ok) { const e = await r.json().catch(() => ({})); alert('apply failed: ' + (e.error || r.status)); }
+      } catch (e) { alert('apply failed: ' + e); }
+      await renderStopTuner();
+    };
+    el.querySelectorAll('.stop-apply-btn').forEach((b) => b.addEventListener('click',
+      () => applyStop(Number(b.dataset.stop))));
+    const clearBtn = el.querySelector('.stop-clear-btn');
+    if (clearBtn) clearBtn.addEventListener('click', () => applyStop(null));
+    const customBtn = el.querySelector('.stop-apply-custom-btn');
+    if (customBtn) customBtn.addEventListener('click', () => {
+      const input = el.querySelector('#stop-custom-pct');
+      const p = input && parseFloat(input.value);
+      if (!p || p <= 0) { alert('enter a stop percent, e.g. 25'); return; }
+      applyStop(p / 100); // the field is in percent; the engine wants a fraction
+    });
   }
 
   function renderBracket(doc) {
