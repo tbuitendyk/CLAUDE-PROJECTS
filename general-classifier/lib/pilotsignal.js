@@ -52,11 +52,16 @@ function actionableChunk(chunks, geo, tHours, now) {
 async function computeSignal(now, opts = {}) {
   assertFrozenMembersMatchEngine();
   const fee = 0; // fees are the executor's real-world business; the signal is fee-agnostic
-  const params = { allLoaded: true, feePerLeg: fee };
+  // includeUnlabeled: the live decision is on the CURRENT chunk, whose outcome
+  // window has not completed — without this the newest available chunk is ~6
+  // days old (waiting for its label) and we would enter as it should be closing.
+  const params = { allLoaded: true, feePerLeg: fee, includeUnlabeled: true };
   const { geo, maps, chunks } = await buildCombo(F1.combo, F1.branch, params);
 
   const bandPct = Math.abs(F1.branch.band);
-  for (const c of chunks) c.label = scoreDiff(c.diffPct / 100, bandPct / 100);
+  // Label only chunks whose outcome is known; the current (target) chunk has
+  // diffPct == null and is used for prediction, where its label is never read.
+  for (const c of chunks) c.label = c.diffPct == null ? null : scoreDiff(c.diffPct / 100, bandPct / 100);
 
   const outcomeMs = (geo.exitOffsetH || 0) * 3600000;
   const { trainChunks } = splitFrozen(chunks, TRAIN_THROUGH, opts.scoreFrom, outcomeMs);

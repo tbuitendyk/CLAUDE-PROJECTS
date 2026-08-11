@@ -53,6 +53,34 @@ module.exports.newestOpenChunkWinsWhenSeveralOverlap = function () {
     'among overlapping open chunks the newest (the one entering now) is the decision');
 };
 
+// The live decision needs the CURRENT chunk, whose +138h outcome window has not
+// completed. buildComboChunks must keep it when includeUnlabeled is set and drop
+// it otherwise — the difference between deciding today and deciding six days late.
+module.exports.includeUnlabeledKeepsTheCurrentOutcomelessChunk = function () {
+  const bracketLib = require('../lib/bracket');
+  const HOUR = 3600000;
+  const t0 = Date.parse('2026-06-01T00:00:00Z'); // a UTC day boundary
+  // hourly candles from day0 00:00 to +140h — enough to LABEL the day0 chunk
+  // (+138h) but not the day1 chunk (+162h), which is therefore outcomeless.
+  const map = new Map();
+  for (let h = 0; h <= 140; h++) {
+    const ts = t0 + h * HOUR;
+    const px = 100 + Math.sin(h / 5); // some movement so features aren't degenerate
+    map.set(ts, { ts, open: px, high: px + 0.5, low: px - 0.5, close: px, quoteVolume: 1000 });
+  }
+  const maps = { trade: map, ctx1: map, ctx2: map };
+  const labeled = bracketLib.buildComboChunks(maps, 'daily-4d', false, false).chunks;
+  const withUnlabeled = bracketLib.buildComboChunks(maps, 'daily-4d', false, true).chunks;
+  assert.strictEqual(withUnlabeled.length > labeled.length, true,
+    'includeUnlabeled must keep more chunks than the labelled-only build');
+  const newest = withUnlabeled[withUnlabeled.length - 1];
+  assert.strictEqual(newest.label, null,
+    'the newest kept chunk is the current outcomeless one (label null) — the live decision');
+  // and the labelled-only build must NOT contain that outcomeless chunk
+  assert.strictEqual(labeled.some((c) => c.startTs === newest.startTs), false,
+    'the labelled-only path (every existing caller) is unchanged: no outcomeless chunk');
+};
+
 // The pilot must ride the SAME frozen instrument as the F1 forward book; if the
 // two ever point at different coins or cells, the live fills stop being twins
 // of the paper record. This makes that drift tamper-evident.

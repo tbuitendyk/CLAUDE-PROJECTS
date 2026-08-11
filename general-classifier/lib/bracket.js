@@ -48,8 +48,12 @@ function comboViews(size, nDays) {
 // Assemble one combo's chunks. maps = { trade, ctx1?, ctx2? } (forward-filled
 // hourly maps). Returns { chunks, featureCount } with diffPct/label fields
 // from the trade asset (labels assigned by the caller once the band is set).
-function buildComboChunks(maps, geometry, weekdaysOnly) {
-  const opts = { geometry, weekdaysOnly };
+function buildComboChunks(maps, geometry, weekdaysOnly, includeUnlabeled = false) {
+  // includeUnlabeled keeps chunks whose outcome window (+exitOffsetH) has not
+  // completed yet — needed ONLY by the live pilot, which must decide on the
+  // CURRENT chunk (features complete, outcome still in the future). Every other
+  // caller leaves it false, so labelled-only behaviour is unchanged.
+  const opts = { geometry, weekdaysOnly, includeUnlabeled };
   const nDays = GEOMETRIES[geometry].featureHours / 24;
   const P = PER_ASSET(nDays);
   if (!maps.ctx1) {

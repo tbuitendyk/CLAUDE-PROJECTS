@@ -131,7 +131,7 @@ async function buildCombo(combo, branch, p) {
     ctx1: combo.ctx1 ? await getMap(combo.ctx1, p) : null,
     ctx2: combo.ctx2 ? await getMap(combo.ctx2, p) : null,
   };
-  const { chunks } = bracketLib.buildComboChunks(maps, branch.geometry, branch.weekdaysOnly);
+  const { chunks } = bracketLib.buildComboChunks(maps, branch.geometry, branch.weekdaysOnly, p.includeUnlabeled);
   if (chunks.length < MIN_CHUNKS) throw new Error(`only ${chunks.length} labelable chunks`);
   return { geo, maps, chunks };
 }
