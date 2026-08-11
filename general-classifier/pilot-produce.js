@@ -34,7 +34,7 @@ const b = require('./lib/binance');
         process.stderr.write('pilot-produce: exchange-time fetch failed, using OS clock: ' + e.message + '\n');
       }
     }
-    const out = await computeSignal(now);
+    let out = await computeSignal(now);
     // Persist the live decision so the mirror check has an AUTHORITATIVE record
     // of what we decided on, checked later against a fresh recompute — never
     // against a re-read that may have silently swapped data source (finding 7).
