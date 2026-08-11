@@ -113,6 +113,14 @@ async function computeSignal(now, opts = {}) {
   // is what makes the executor's fill-vs-decision deviation meaningful.
   const bar = maps.trade.get(entryTs);
   const priceAt = bar ? bar.open : null;
+  // Never ship an actionable intent without a real decision price: the executor
+  // checks the fill against it, and a null would either crash or drop the intent
+  // to .bad while the paper twin still books the trade — a silent divergence
+  // (review finding 8). If the entry bar is not present, wait.
+  if (call !== 0 && priceAt == null) {
+    return { ok: true, actionable: false,
+      note: `entry bar (${new Date(entryTs).toISOString()}) not present yet — no decision price; waiting` };
+  }
 
   const perMember = memberCalls.map((c) => c[0]);
   // input hash: the chunk id + the exact per-member votes + quorum, so the

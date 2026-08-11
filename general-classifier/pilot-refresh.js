@@ -48,18 +48,30 @@ function writeDayFiles(sym, rows) {
 
 (async () => {
   let ok = true;
+  // A candle is CLOSED (safe to cache) only once its whole hour is past. The
+  // decision must use finalized OHLC exactly as training did; a still-forming
+  // hour is a 5-minute stub and out-of-distribution (review finding 6, FATAL).
+  const closedCutoff = () => Math.floor(Date.now() / HOUR) * HOUR; // start of the current (forming) hour
   for (const sym of SYMS) {
     try {
       const loaded = await loadSymbolAll(sym, () => {});      // 1. full history
       const rows = loaded.rows || [];
       const last = rows.length ? rows[rows.length - 1].ts : (Date.now() - 400 * 24 * HOUR);
       const gapH = Math.round((Date.now() - last) / HOUR);
-      const fresh = await b.recentKlines(sym, last + HOUR);    // 2. current tail (SOCKS)
+      // Re-fetch the last 24h (not just from last+HOUR): earlier runs each left
+      // ONE forming-hour stub at their boundary, so overwrite the whole recent
+      // window with finalized values (writeDayFiles dedups by ts). Then drop the
+      // current forming hour so a stub is never cached going forward.
+      const cutoff = closedCutoff();
+      const since = Math.min(last, Date.now() - 24 * HOUR);
+      const raw = await b.recentKlines(sym, since);          // 2. current tail (SOCKS)
+      const fresh = raw.filter((r) => r.ts < cutoff);        // closed hours only
+      const dropped = raw.length - fresh.length;
       const files = writeDayFiles(sym, fresh);
       const newest = fresh.length ? new Date(fresh[fresh.length - 1].ts).toISOString().slice(0, 16)
         : new Date(last).toISOString().slice(0, 16);
-      console.log(`${sym}: history rows=${rows.length} (gap ${gapH}h), +${fresh.length} fresh hours, `
-        + `${files} day-files, newest ${newest}Z`);
+      console.log(`${sym}: history rows=${rows.length} (gap ${gapH}h), +${fresh.length} closed hours `
+        + `(${dropped} forming dropped), ${files} day-files, newest ${newest}Z`);
     } catch (err) {
       ok = false;
       console.error(`${sym}: refresh FAILED: ${err.message}`);
