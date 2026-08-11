@@ -27,6 +27,43 @@ const {
 
 const F1 = BOOKS.find((b) => b.id === 'F1');
 
+// Bump on ANY change to the F1 live mechanics (members, band, quorum, geometry,
+// decision rule, feature layout). It rides in the input_hash so a code/config
+// drift that changes the live call is provable after the fact: the archival
+// recompute produces a different hash and the mirror check breaks (finding 26/7).
+const CONFIG_VERSION = 'f1-v1-2026-08-11';
+
+const HOUR_MS = 3600000;
+const SIDE_MAP = { 1: 'LONG', '-1': 'SHORT', 0: 'FLAT' };
+
+// Run the frozen F1 committee on a SINGLE target chunk and return its call,
+// per-member votes, entry price, and the (widened) input hash. Shared by the
+// live producer (computeSignal) and the archival recompute (computeSignalForChunk)
+// so the mirror check compares like with like — the very same code path that
+// decided the live trade is the one re-run against fresh data.
+async function committeeCall(target, trainChunks, maps, geo, views, bandPct) {
+  const members = await trainMembers(F1.members, views, trainChunks, [target], F1.branch, maps, geo);
+  const perMember = members.map((m) => m.calls[0]);
+  const call = quorumCall(members.map((m) => m.calls), 0, F1.cell.quorum);
+  const entryTs = target.startTs + (geo.entryOffsetH || 0) * HOUR_MS;
+  const bar = maps.trade.get(entryTs);
+  const priceAt = bar ? bar.open : null;
+  const side = SIDE_MAP[String(call)] || 'FLAT';
+  // input hash WIDENED (finding 26): beyond {chunk, votes, quorum, band} it now
+  // pins side, symbol, the decision price, the train cutoff and a config version,
+  // so any drift in those is provable after the fact — the recompute's hash will
+  // differ. decision_price is rounded so float noise cannot spuriously break it.
+  const inputHash = crypto.createHash('sha256')
+    .update(JSON.stringify({
+      chunk: target.startTs, perMember, quorum: F1.cell.quorum, band: bandPct,
+      side, symbol: F1.combo.trade,
+      decision_price: priceAt == null ? null : Math.round(priceAt * 1e8) / 1e8,
+      train_through: TRAIN_THROUGH, config_version: CONFIG_VERSION,
+    }))
+    .digest('hex').slice(0, 16);
+  return { call, perMember, side, priceAt, inputHash, entryTs };
+}
+
 // A chunk is ACTIONABLE now if its entry hour has arrived (start + entryOffsetH
 // in the past) but its trade has not yet closed (start + tHours in the future).
 // The executor's concurrency/dedup guards mean emitting for every actionable
@@ -77,7 +114,6 @@ async function computeSignal(now, opts = {}) {
   // (e.g. the owner arms mid-day, or a tick was missed), do NOT chase a stale
   // mid-hold entry — wait for the next period. This keeps live fills aligned
   // with the paper book's entry-hour open instead of drifting in late.
-  const HOUR_MS = 3600000;
   const ENTRY_FRESH_H = 3;
   const entryTs = target.startTs + (geo.entryOffsetH || 0) * HOUR_MS;
   const entryAgeH = (now - entryTs) / HOUR_MS;
@@ -103,16 +139,12 @@ async function computeSignal(now, opts = {}) {
   }
 
   const views = bracketLib.comboViews(F1.combo.size, geo.featureHours / 24).views;
-  const members = await trainMembers(F1.members, views, trainChunks, [target], F1.branch, maps, geo);
-  const memberCalls = members.map((m) => m.calls);
-  const call = quorumCall(memberCalls, 0, F1.cell.quorum); // +1 long, -1 short, 0 flat
-
   // decision price: the trade pair's OPEN at the entry hour, read from the same
   // map the market simulator reads (bracket.js simMarket: `const p = ref.open`
   // at entryTs = startTs + entryOffsetH). Matching field and timestamp exactly
   // is what makes the executor's fill-vs-decision deviation meaningful.
-  const bar = maps.trade.get(entryTs);
-  const priceAt = bar ? bar.open : null;
+  const { call, perMember, side, priceAt, inputHash } =
+    await committeeCall(target, trainChunks, maps, geo, views, bandPct);
   // Never ship an actionable intent without a real decision price: the executor
   // checks the fill against it, and a null would either crash or drop the intent
   // to .bad while the paper twin still books the trade — a silent divergence
@@ -122,30 +154,71 @@ async function computeSignal(now, opts = {}) {
       note: `entry bar (${new Date(entryTs).toISOString()}) not present yet — no decision price; waiting` };
   }
 
-  const perMember = memberCalls.map((c) => c[0]);
-  // input hash: the chunk id + the exact per-member votes + quorum, so the
-  // archival recomputation can prove the live decision matched (mirror check).
-  const inputHash = crypto.createHash('sha256')
-    .update(JSON.stringify({ chunk: target.startTs, perMember, quorum: F1.cell.quorum, band: bandPct }))
-    .digest('hex').slice(0, 16);
-
-  const sideMap = { 1: 'LONG', '-1': 'SHORT', 0: 'FLAT' };
   return {
     ok: true,
     actionable: true,
     intent: {
       schema: 1,
       symbol: F1.combo.trade,
-      side: sideMap[String(call)] || 'FLAT',
+      side,
       chunk_start: new Date(target.startTs).toISOString(),
       decision_price: priceAt,
       input_hash: inputHash,
       per_member: perMember,
       quorum: F1.cell.quorum,
+      config_version: CONFIG_VERSION,
+      train_through: TRAIN_THROUGH,
+      band_pct: bandPct,
       ts: Math.floor(now / 1000),
       produced_utc: new Date(now).toISOString(),
     },
   };
 }
 
-module.exports = { computeSignal, actionableChunk, F1 };
+// ARCHIVAL RECOMPUTE for the mirror check (finding 26). Re-run the F1 committee
+// for a SPECIFIC chunk_start against CURRENT data, with no freshness/actionable
+// gating, and return the decision fields. The mirror check compares this to what
+// the live decision recorded: if the day-file data has since been revised or the
+// monthly bundle published different candles (finding 7), or the engine changed,
+// the recomputed side / votes / hash diverge and the pilot is halted.
+async function computeSignalForChunk(chunkStartMs, opts = {}) {
+  assertFrozenMembersMatchEngine();
+  const params = { allLoaded: true, feePerLeg: 0, includeUnlabeled: true };
+  const { geo, maps, chunks } = await buildCombo(F1.combo, F1.branch, params);
+  const bandPct = Math.abs(F1.branch.band);
+  for (const c of chunks) c.label = c.diffPct == null ? null : scoreDiff(c.diffPct / 100, bandPct / 100);
+  const outcomeMs = (geo.exitOffsetH || 0) * 3600000;
+  const { trainChunks } = splitFrozen(chunks, TRAIN_THROUGH, opts.scoreFrom, outcomeMs);
+  if (!trainChunks.length) throw new Error('pilotsignal: no training chunks at/before freeze');
+
+  const target = chunks.find((c) => c.startTs === chunkStartMs);
+  if (!target) {
+    return { found: false, chunk_start: new Date(chunkStartMs).toISOString(),
+      note: 'chunk not present in current data (its 96h feature window is not complete in cache)' };
+  }
+  // guard: every pair must carry the last feature candle, exactly as the live
+  // producer required — a recompute on a short window would be a false break.
+  const lastFeatureTs = target.startTs + (geo.featureHours - 1) * HOUR_MS;
+  for (const [name, m] of [['trade', maps.trade], ['ctx1', maps.ctx1], ['ctx2', maps.ctx2]]) {
+    if (m && !m.get(lastFeatureTs)) {
+      return { found: false, chunk_start: new Date(chunkStartMs).toISOString(),
+        note: `current data missing ${name} feature candle ${new Date(lastFeatureTs).toISOString()} — cannot recompute yet` };
+    }
+  }
+  const views = bracketLib.comboViews(F1.combo.size, geo.featureHours / 24).views;
+  const { side, perMember, priceAt, inputHash } =
+    await committeeCall(target, trainChunks, maps, geo, views, bandPct);
+  return {
+    found: true,
+    chunk_start: new Date(target.startTs).toISOString(),
+    side,
+    per_member: perMember,
+    decision_price: priceAt,
+    input_hash: inputHash,
+    quorum: F1.cell.quorum,
+    band_pct: bandPct,
+    config_version: CONFIG_VERSION,
+  };
+}
+
+module.exports = { computeSignal, computeSignalForChunk, actionableChunk, F1, CONFIG_VERSION };

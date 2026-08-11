@@ -227,6 +227,8 @@ async function refresh() {
   const dead = d.present && (hbAgeMin == null || hbAgeMin > DEAD_HB_MIN);
 
   const strips = [];
+  const mirrorBreaks = d.mirror && d.mirror.breaks ? d.mirror.breaks : 0;
+  if (mirrorBreaks > 0) strips.push(`<div class="banner halted">⛔ MIRROR BREAK — ${mirrorBreaks} live decision${mirrorBreaks>1?'s':''} no longer reproduce against fresh data (the paper twin has drifted). The box is halted; investigate before re-arming. See incidents / mirror below.</div>`);
   if (dead) strips.push(`<div class="banner halted">⛔ EXECUTOR SILENT — last heartbeat ${hbAgeMin==null?'never':hbAgeMin.toFixed(0)+' min ago'} (box runs every ~10 min). Scheduled exits are NOT firing; any open position can ride the market unhedged. Check the box.</div>`);
   if (d.halted) strips.push(`<div class="banner halted">⛔ HALT set — new entries stopped; scheduled exits still run. See incidents.</div>`);
   else if (!armed) strips.push(`<div class="banner stopped">■ engine STOPPED — press START to run. Any open positions still exit on schedule.</div>`);
@@ -244,6 +246,7 @@ async function refresh() {
     tile('Fill dev max', d.fillDeviationMax==null?'—':(d.fillDeviationMax*100).toFixed(3)+'%', d.fillDeviationMax!=null&&d.fillDeviationMax>0.01?'warn':'') +
     tile('Consec. rejects', d.consecutiveRejects, d.consecutiveRejects>=2?'warn':'') +
     tile('Executor heartbeat', hbAgeMin==null?'never':hbAgeMin.toFixed(0)+' min', dead?'warn':'') +
+    tile('Mirror check', d.mirror==null?'—':(mirrorBreaks>0?mirrorBreaks+' BREAK':'clean ('+d.mirror.checked+')'), mirrorBreaks>0?'warn':(d.mirror&&d.mirror.checked?'pos':'')) +
     tile('Dust trade', d.dustDone?'done':'not yet') +
     tile('Journal events', d.eventCount);
 

@@ -279,6 +279,10 @@ function status(file = JOURNAL) {
   const st = derive(events);
   // "pending" when the owner's request and the box's confirmed state disagree
   const armPending = req != null && req.armed !== st.armed;
+  // mirror check verdict (findings 26/7): the VPS recompute writes mirror.json;
+  // a break means a live decision no longer reproduces against fresh data.
+  let mirror = null;
+  try { mirror = require('./pilotmirror').readMirror(); } catch (_) { mirror = null; }
   return {
     present: true,
     preregistration: 'general-classifier/PILOT-F1.md',
@@ -287,6 +291,7 @@ function status(file = JOURNAL) {
     anatomy: anat,
     armRequest: req,
     armPending,
+    mirror,
     ...st,
   };
 }
