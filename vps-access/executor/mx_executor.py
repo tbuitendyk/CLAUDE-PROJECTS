@@ -35,6 +35,7 @@ import hashlib
 import hmac
 import json
 import os
+import re
 import sys
 import time
 import urllib.error
@@ -259,21 +260,34 @@ class Binance:
                                 {"symbol": SYMBOL}, signed=False)
         return float(body["price"]) if code == 200 else None
 
-    def margin_order(self, side, qty, side_effect):
+    def margin_order(self, side, qty, side_effect, client_id=None):
         """Place an isolated-margin MARKET order. side: BUY|SELL.
-        side_effect: NO_SIDE_EFFECT | MARGIN_BUY (auto-borrow) | AUTO_REPAY."""
+        side_effect: NO_SIDE_EFFECT | MARGIN_BUY (auto-borrow) | AUTO_REPAY.
+        client_id (newClientOrderId) is DETERMINISTIC per (role, chunk): Binance
+        rejects a duplicate client id, so a resend after a crash/timeout is a
+        no-op at the venue instead of a second trade (review findings 1-2)."""
         params = {"symbol": SYMBOL, "isIsolated": "TRUE", "side": side,
                   "type": "MARKET", "quantity": f"{qty:.3f}",
                   "sideEffectType": side_effect,
                   "newOrderRespType": "FULL"}
+        if client_id:
+            params["newClientOrderId"] = client_id
         if not self.live:
             jlog("DRYRUN_ORDER", **params)
             # fabricate a fill at last price so dry runs exercise the paths
             p = self.price() or 0.0
-            return 200, {"orderId": 0, "status": "FILLED", "dryrun": True,
+            return 200, {"orderId": 0, "clientOrderId": client_id or "", "status": "FILLED",
+                         "dryrun": True,
                          "fills": [{"price": f"{p}", "qty": f"{qty:.3f}",
                                     "commission": "0", "commissionAsset": "USDT"}]}
         return self._http("POST", "/sapi/v1/margin/order", params, signed=True)
+
+    def query_order(self, client_id):
+        """Look up an isolated-margin order by its deterministic client id, so a
+        dangling ORDER_SENT/ORDER_UNKNOWN can be resolved against the venue."""
+        return self._http("GET", "/sapi/v1/margin/order",
+                          {"symbol": SYMBOL, "isIsolated": "TRUE",
+                           "origClientOrderId": client_id}, signed=True)
 
     def isolated_account(self):
         return self._http("GET", "/sapi/v1/margin/isolated/account",
@@ -385,21 +399,109 @@ def fills_summary(body):
     return px, qty, fee_quote, base_comm
 
 
-def place(bx, action, side, qty, side_effect, ctx):
-    """Send one order and journal it. Returns (ok, fill_px, fee_quote,
-    filled_qty, base_comm)."""
+def client_id(role, chunk_start):
+    """Deterministic order id per (role, chunk): a resend is a no-op at the
+    venue. <=36 chars, alphanumeric + dashes. Roles without a chunk (dust,
+    sweep) fold a coarse day bucket so they stay stable within a run."""
+    c = re.sub(r"[^0-9A-Za-z]", "", str(chunk_start or "na"))[:14]
+    return f"f1-{role}-{c}"[:36]
+
+
+def place(bx, action, side, qty, side_effect, ctx, cid=None):
+    """Send one order and journal it. Returns (status, fill_px, fee_quote,
+    filled_qty, base_comm) where status is 'filled' | 'unknown' | 'rejected'.
+    'unknown' (a transport error, http 0) is NOT a reject: the order may have
+    filled, so the caller must not proceed as if it did — the next run's
+    recovery resolves it by client id."""
     jlog("ORDER_SENT", action=action, side=side, qty=qty,
-         side_effect=side_effect, live=bx.live, **ctx)
-    code, body = bx.margin_order(side, qty, side_effect)
+         side_effect=side_effect, client_id=cid, live=bx.live, **ctx)
+    code, body = bx.margin_order(side, qty, side_effect, cid)
     if code == 200 and body.get("status") == "FILLED":
         px, fq, fee, base_comm = fills_summary(body)
-        jlog("ORDER_ACK", action=action, http=code,
+        jlog("ORDER_ACK", action=action, http=code, client_id=cid,
              order_id=body.get("orderId"), fill_price=px, fill_qty=fq,
              fee_quote=fee, base_comm=base_comm, **ctx)
-        return True, px, fee, fq, base_comm
-    jlog("ORDER_REJECT", action=action, http=code,
+        return "filled", px, fee, fq, base_comm
+    if code == 0:
+        jlog("ORDER_UNKNOWN", action=action, http=code, client_id=cid,
+             body=json.dumps(body)[:200], **ctx)
+        return "unknown", None, 0.0, 0.0, 0.0
+    jlog("ORDER_REJECT", action=action, http=code, client_id=cid,
          body=json.dumps(body)[:300], **ctx)
-    return False, None, 0.0, 0.0, 0.0
+    return "rejected", None, 0.0, 0.0, 0.0
+
+
+TERMINAL_ORDER_EVENTS = {"ORDER_ACK", "ORDER_REJECT", "ORDER_RESOLVED", "ORDER_VOID"}
+
+
+def resolve_dangling(bx):
+    """Recover orders that were SENT but whose outcome was never journaled — a
+    crash/reboot/timeout between the venue executing and the journal recording
+    (review findings 1-2). Each is looked up by its deterministic client id; a
+    confirmed fill is booked (an ENTRY gets its exit_due_ts so it WILL close),
+    an order that never executed is voided, and a still-unreachable one is left
+    for next run. Runs before anything else so a recovered position is present
+    for exits and reconcile."""
+    events = journal_events()
+    sent, terminated = {}, set()
+    for e in events:
+        cid = e.get("client_id")
+        if not cid:
+            continue
+        ev = e.get("event")
+        if ev == "ORDER_SENT":
+            sent[cid] = e
+        elif ev in TERMINAL_ORDER_EVENTS:
+            terminated.add(cid)
+    dangling = [cid for cid in sent if cid not in terminated]
+    if not dangling:
+        return
+    st = derive(events)
+    for cid in dangling:
+        s = sent[cid]
+        action, chunk = s.get("action"), s.get("chunk_start")
+        code, body = bx.query_order(cid)
+        if code == 0:
+            jlog("RECOVER_DEFER", client_id=cid, note="venue unreachable; retry next run")
+            continue
+        if code != 200:
+            jlog("ORDER_VOID", client_id=cid, action=action, chunk_start=chunk,
+                 http=code, note="order not found at venue — never executed")
+            continue
+        status = body.get("status")
+        if status in ("NEW", "PARTIALLY_FILLED", "PENDING_NEW"):
+            jlog("RECOVER_DEFER", client_id=cid, status=status, note="still working")
+            continue
+        if status != "FILLED":
+            jlog("ORDER_VOID", client_id=cid, action=action, chunk_start=chunk, status=status)
+            continue
+        try:
+            eq = float(body["executedQty"])
+            cq = float(body["cummulativeQuoteQty"])
+            px = cq / eq if eq else 0.0
+            ft = (body.get("updateTime") or body.get("time") or int(time.time() * 1000)) / 1000.0
+        except (KeyError, ValueError, ZeroDivisionError):
+            jlog("RECOVER_DEFER", client_id=cid, note="unparseable fill; retry")
+            continue
+        jlog("ORDER_RESOLVED", client_id=cid, action=action, chunk_start=chunk,
+             fill_price=px, fill_qty=eq, status="FILLED")
+        if action == "ENTRY":
+            side = s.get("pos_side") or ("LONG" if s.get("side") == "BUY" else "SHORT")
+            jlog("ENTRY_FILL", chunk_start=chunk, side=side, qty=eq,
+                 ordered_qty=s.get("qty"), price=px, fee_quote=0.0, recovered=True,
+                 decision_price=px, fill_deviation=0.0,
+                 exit_due_ts=ft + HOLD_HOURS * 3600)
+        elif action == "EXIT":
+            p = st["open"].get(chunk)
+            entry_price = p["entry_price"] if p else px
+            side = p["side"] if p else (s.get("pos_side") or "LONG")
+            qty_traded = p["qty"] if p else eq
+            gross = (px - entry_price) * qty_traded
+            if side == "SHORT":
+                gross = -gross
+            jlog("EXIT_FILL", chunk_start=chunk, side=side, qty=qty_traded,
+                 price=px, fee_quote=0.0, pnl=round(gross, 4), recovered=True)
+        # dust/shortdust/sweep: ORDER_RESOLVED alone is enough (manual books)
 
 
 # ---- the run mode ------------------------------------------------------------
@@ -412,6 +514,11 @@ def do_run(bx):
         jlog("KILL_TRANSPORT", note="cannot reach venue for clock sync; "
              "no orders this run")
         return 1
+
+    # 0a) RECOVER any order sent-but-unresolved before anything else, so a
+    # crash-orphaned position is booked (with its exit_due_ts) and can close.
+    resolve_dangling(bx)
+    st = derive(journal_events())
 
     # 0) sweep: when the journal says we are FLAT, any free base is leftover
     # dust from short-close buffers. Convert whole lots back to USDT before
@@ -485,8 +592,9 @@ def do_run(bx):
                 jlog("EXIT_SKIPPED", chunk_start=p["chunk_start"],
                      reason="no free base to sell")
                 continue
-            ok, px, fee, fq, _ = place(bx, "EXIT", "SELL", sell_qty, "AUTO_REPAY",
-                                       {"chunk_start": p["chunk_start"]})
+            status, px, fee, fq, _ = place(bx, "EXIT", "SELL", sell_qty, "AUTO_REPAY",
+                                           {"chunk_start": p["chunk_start"]},
+                                           cid=client_id("exit", p["chunk_start"]))
             qty_traded = sell_qty
         else:  # SHORT: buy back THIS leg's borrow plus a buffer for the LTC fee.
             # Target from p['qty'] (the nominal borrow, known exactly because the
@@ -507,17 +615,22 @@ def do_run(bx):
                 buy_qty = min(target, ceil_step(debt * (1 + SHORT_CLOSE_FEE_BUFFER)))
             else:
                 buy_qty = target
-            ok, px, fee, fq, _ = place(bx, "EXIT", "BUY", buy_qty, "AUTO_REPAY",
-                                       {"chunk_start": p["chunk_start"], "leg_qty": p["qty"]})
+            status, px, fee, fq, _ = place(bx, "EXIT", "BUY", buy_qty, "AUTO_REPAY",
+                                           {"chunk_start": p["chunk_start"], "leg_qty": p["qty"]},
+                                           cid=client_id("exit", p["chunk_start"]))
             qty_traded = p["qty"]  # economic size of the short, for P&L
-        if ok:
+        if status == "filled":
             gross = (px - p["entry_price"]) * qty_traded
             if p["side"] == "SHORT":
                 gross = -gross
             jlog("EXIT_FILL", chunk_start=p["chunk_start"], side=p["side"],
                  qty=qty_traded, price=px, fee_quote=fee,
                  pnl=round(gross - fee, 4))
-        else:
+        elif status == "unknown":
+            # transport error: the close MAY have filled. Do not halt or retry
+            # blind — recovery resolves it by client id next run.
+            jlog("EXIT_INFLIGHT", chunk_start=p["chunk_start"], side=p["side"])
+        else:  # rejected
             # An exit that will not fill is serious: the position stays open and
             # exposed. Surface it immediately (halt new entries; exits keep
             # retrying next run) rather than waiting for the 3-reject kill. A
@@ -612,9 +725,16 @@ def do_run(bx):
             continue
         buy_side = "BUY" if it["side"] == "LONG" else "SELL"
         side_eff = "NO_SIDE_EFFECT" if it["side"] == "LONG" else "MARGIN_BUY"
-        ok, px, fee, fq, base_comm = place(bx, "ENTRY", buy_side, qty, side_eff,
-                                           {"chunk_start": it["chunk_start"]})
-        if ok:
+        status, px, fee, fq, base_comm = place(bx, "ENTRY", buy_side, qty, side_eff,
+                                               {"chunk_start": it["chunk_start"],
+                                                "pos_side": it["side"]},
+                                               cid=client_id("entry", it["chunk_start"]))
+        if status == "unknown":
+            # transport error: the entry MAY have filled. Leave it for recovery
+            # (which resolves by client id and, if filled, books ENTRY_FILL with
+            # the right exit_due_ts). Do NOT record a position or a reject here.
+            jlog("ENTRY_INFLIGHT", chunk_start=it["chunk_start"], side=it["side"])
+        elif status == "filled":
             # store what the EXIT will act on, UNFLOORED so it matches the
             # exchange balance for reconcile across many concurrent positions
             # (flooring each one drifts expect below actual and false-halts —
@@ -669,8 +789,8 @@ def do_dust(bx, yes):
         print("clip under exchange minimum; aborting")
         return 1
     jlog("DUST_START", price=price, qty=qty, live=bx.live)
-    ok1, px1, fee1, fq1, bc1 = place(bx, "DUST_BUY", "BUY", qty, "NO_SIDE_EFFECT", {})
-    if not ok1:
+    ok1, px1, fee1, fq1, bc1 = place(bx, "DUST_BUY", "BUY", qty, "NO_SIDE_EFFECT", {}, cid=client_id("dustbuy", "dust"))
+    if ok1 != "filled":
         jlog("DUST_ABORT", stage="buy")
         return 1
     time.sleep(2)
@@ -678,8 +798,8 @@ def do_dust(bx, yes):
     # floored to the lot step. Prefer the real free balance if we can read it.
     fb = bx.free_base()
     sell_qty = floor_step(fb if fb is not None else (fq1 or qty) - bc1)
-    ok2, px2, fee2, fq2, _ = place(bx, "DUST_SELL", "SELL", sell_qty, "AUTO_REPAY", {})
-    if not ok2:
+    ok2, px2, fee2, fq2, _ = place(bx, "DUST_SELL", "SELL", sell_qty, "AUTO_REPAY", {}, cid=client_id("dustsell", "dust"))
+    if ok2 != "filled":
         jlog("DUST_ABORT", stage="sell",
              note="BOUGHT BUT NOT SOLD -- position open, reconcile will see it")
         return 1
@@ -714,16 +834,16 @@ def do_shortdust(bx, yes):
         print("clip under exchange minimum; aborting")
         return 1
     jlog("SHORTDUST_START", price=price, qty=qty, live=bx.live)
-    ok1, px1, fee1, fq1, _ = place(bx, "SHORTDUST_SELL", "SELL", qty, "MARGIN_BUY", {})
-    if not ok1:
+    ok1, px1, fee1, fq1, _ = place(bx, "SHORTDUST_SELL", "SELL", qty, "MARGIN_BUY", {}, cid=client_id("sdsell", "sdust"))
+    if ok1 != "filled":
         jlog("SHORTDUST_ABORT", stage="open")
         return 1
     time.sleep(2)
     debt = bx.borrowed_base()
     need = debt if debt is not None else (fq1 or qty)
     buy_qty = ceil_step(max(need, qty) * (1 + SHORT_CLOSE_FEE_BUFFER))
-    ok2, px2, fee2, fq2, _ = place(bx, "SHORTDUST_BUY", "BUY", buy_qty, "AUTO_REPAY", {})
-    if not ok2:
+    ok2, px2, fee2, fq2, _ = place(bx, "SHORTDUST_BUY", "BUY", buy_qty, "AUTO_REPAY", {}, cid=client_id("sdbuy", "sdust"))
+    if ok2 != "filled":
         jlog("SHORTDUST_ABORT", stage="close",
              note="SOLD-SHORT BUT NOT REPAID -- borrow open, reconcile will see it")
         return 1

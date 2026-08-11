@@ -33,6 +33,7 @@ class MockBinance(BaseHTTPRequestHandler):
     commission = "0.01"
     commission_asset = "USDT"
     orders = []               # captured order params
+    placed = {}               # newClientOrderId -> venue order record (recovery lookup)
 
     def _send(self, obj, code=200):
         body = json.dumps(obj).encode()
@@ -47,6 +48,15 @@ class MockBinance(BaseHTTPRequestHandler):
             return self._send({"serverTime": int(time.time() * 1000)})
         if self.path.startswith("/api/v3/ticker/price"):
             return self._send({"symbol": "LTCUSDT", "price": self.price})
+        if self.path.startswith("/sapi/v1/margin/order"):
+            # order lookup by origClientOrderId (recovery path)
+            import urllib.parse as _up
+            q = _up.parse_qs(self.path.split("?", 1)[1] if "?" in self.path else "")
+            cid = (q.get("origClientOrderId") or [""])[0]
+            rec = MockBinance.placed.get(cid)
+            if rec is None:
+                return self._send({"code": -2013, "msg": "Order does not exist."}, 400)
+            return self._send(rec)
         if self.path.startswith("/sapi/v1/margin/isolated/account"):
             if self.net_asset is not None:
                 na = self.net_asset
@@ -87,8 +97,20 @@ class MockBinance(BaseHTTPRequestHandler):
                     MockBinance.borrowed += qty
                 else:
                     MockBinance.base_bal -= qty
+            # record the FILLED order so the recovery path can look it up by its
+            # deterministic client id (origClientOrderId), the way Binance would.
+            cid = params.get("newClientOrderId")
+            if cid:
+                px = float(MockBinance.price)
+                MockBinance.placed[cid] = {
+                    "status": "FILLED",
+                    "executedQty": f"{qty:.3f}",
+                    "cummulativeQuoteQty": f"{qty * px:.8f}",
+                    "updateTime": int(time.time() * 1000),
+                }
             return self._send({"orderId": len(MockBinance.orders),
                                "status": "FILLED",
+                               "clientOrderId": params.get("newClientOrderId", ""),
                                "fills": [{"price": MockBinance.price,
                                           "qty": params.get("quantity", "0"),
                                           "commission": MockBinance.commission,
@@ -133,6 +155,7 @@ class ExecutorTest(unittest.TestCase):
         MockBinance.commission = "0.01"
         MockBinance.commission_asset = "USDT"
         MockBinance.orders = []
+        MockBinance.placed = {}
 
     def tearDown(self):
         shutil.rmtree(self.home, ignore_errors=True)
@@ -479,6 +502,59 @@ class ExecutorTest(unittest.TestCase):
         MockBinance.price = "100.00"             # -$100 unrealized on 1.0 @ 200 -> 100
         self.x.do_run(self.bx())
         self.assertTrue(self.x.halted(), 'mark-to-market drawdown beyond the limit must HALT')
+
+    # -- order-lifecycle recovery (crash between send and journal) ----------
+    def test_orders_carry_deterministic_client_id(self):
+        # every real order must carry a newClientOrderId so a resend after a
+        # crash is a no-op at the venue and recovery can look it up.
+        self.write_intent(side="LONG", chunk="2026-08-07T00:00Z")
+        self.x.do_run(self.bx())
+        entry = [o for o in MockBinance.orders if o.get("side") == "BUY"][-1]
+        self.assertIn("newClientOrderId", entry)
+        self.assertEqual(entry["newClientOrderId"],
+                         self.x.client_id("entry", "2026-08-07T00:00Z"))
+
+    def test_recovery_books_orphaned_entry_fill(self):
+        # an ENTRY was SENT but the process died before the ack was journaled.
+        # The venue actually filled it. Recovery must find it by client id and
+        # book an ENTRY_FILL(recovered=True) carrying a future exit_due_ts so it
+        # WILL close, without ever re-sending the order.
+        cid = self.x.client_id("entry", "2026-08-07T00:00Z")
+        self.x.jlog("ORDER_SENT", action="ENTRY", side="BUY", qty=0.1,
+                    side_effect="NO_SIDE_EFFECT", client_id=cid, live=True,
+                    chunk_start="2026-08-07T00:00Z", pos_side="LONG")
+        MockBinance.placed[cid] = {"status": "FILLED", "executedQty": "0.100",
+                                   "cummulativeQuoteQty": "10.00000000",
+                                   "updateTime": int(time.time() * 1000)}
+        MockBinance.net_asset = "0.100"   # exchange really holds the recovered long
+        orders_before = len(MockBinance.orders)
+        self.x.do_run(self.bx())
+        fills = [e for e in self.x.journal_events()
+                 if e["event"] == "ENTRY_FILL" and e.get("recovered")]
+        self.assertEqual(len(fills), 1, "the orphaned fill must be booked exactly once")
+        self.assertIn("exit_due_ts", fills[0])
+        self.assertGreater(fills[0]["exit_due_ts"], time.time(),
+                           "recovered entry must carry a future exit so it closes")
+        self.assertIn("ORDER_RESOLVED", self.events())
+        # recovery reconciles the record only — it must NOT re-send the order
+        resent = [o for o in MockBinance.orders[orders_before:]
+                  if o.get("newClientOrderId") == cid]
+        self.assertEqual(resent, [], "recovery must not re-send a recovered order")
+
+    def test_recovery_voids_order_that_never_executed(self):
+        # an ENTRY was SENT but the venue has no such order (it never reached the
+        # matching engine). Recovery must VOID it: open no position, send nothing.
+        cid = self.x.client_id("entry", "2026-08-08T00:00Z")
+        self.x.jlog("ORDER_SENT", action="ENTRY", side="BUY", qty=0.1,
+                    side_effect="NO_SIDE_EFFECT", client_id=cid, live=True,
+                    chunk_start="2026-08-08T00:00Z", pos_side="LONG")
+        # MockBinance.placed has no cid -> lookup returns 400 / -2013
+        self.x.do_run(self.bx())
+        ev = self.events()
+        self.assertIn("ORDER_VOID", ev)
+        self.assertNotIn("ENTRY_FILL", ev)
+        st = self.x.derive(self.x.journal_events())
+        self.assertEqual(len(st["open"]), 0, "a never-executed order must open nothing")
 
     def test_dry_mode_sends_no_orders(self):
         with open(os.path.join(self.home, ".executor-env"), "w") as f:
