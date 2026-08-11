@@ -19,7 +19,11 @@ SSH="ssh -i $KEY -o BatchMode=yes -o ConnectTimeout=15 -o StrictHostKeyChecking=
 STAMP=$(date -u +%Y%m%dT%H%M%SZ)
 
 [ -f "$KEY" ] || { echo "no key at $KEY"; exit 1; }
-[ -f "$APPDIR/pilot-produce.js" ] || { echo "no pilot-produce.js in $APPDIR"; exit 1; }
+
+ARM_ONLY=0
+[ "${1:-}" = "--arm-only" ] && ARM_ONLY=1
+
+[ "$ARM_ONLY" = 1 ] || [ -f "$APPDIR/pilot-produce.js" ] || { echo "no pilot-produce.js in $APPDIR"; exit 1; }
 
 # ---- reconcile the owner's MASTER SWITCH to the box ----------------------
 # The screen's START/STOP button writes data/pilot/arm-request.json on the VPS.
@@ -35,6 +39,10 @@ if [ -f "$REQ" ]; then
     "cd ~/pilot 2>/dev/null; python3 ~/mx_executor.py $mode --source=owner" \
     2>&1 | sed 's/^/  /' || echo "  (could not reach box to set master switch; will retry next run)"
 fi
+
+# In --arm-only mode (the frequent sync) we stop here: no data refresh, no
+# signal produced. The hourly tick does the produce+push.
+[ "$ARM_ONLY" = 1 ] && exit 0
 
 echo "== produce F1 intent =="
 OUT=$(cd "$APPDIR" && node pilot-produce.js 2>&1)

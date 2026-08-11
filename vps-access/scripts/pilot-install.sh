@@ -1,0 +1,148 @@
+#!/usr/bin/env bash
+# pilot-install.sh -- install (or refresh) the PERSISTENT, REBOOT-CLEAN pilot
+# infrastructure. Idempotent: safe to re-run after every deploy; it rewrites the
+# units and installed scripts from this branch, so the schedule is version-
+# controlled rather than living in someone's memory.
+#
+# Owner requirements (2026-08-11):
+#   * continuous + current data for LTCUSDT/XRPUSDT/BCHUSDT
+#   * timing on ACTUAL wall-clock (systemd OnCalendar), not elapsed-time timers
+#   * a host bounce must come up clean and keep running with NO manual
+#     STOP/START — so every unit is `enable`d with Persistent=true, the tunnel
+#     auto-reconnects, and the master switch (ARM) lives in a file that survives
+#     reboots on both machines.
+#
+# WHAT RUNS WHERE
+#   VPS host (systemd, root):
+#     pilot-tunnel.service  persistent SOCKS5 tunnel to the Mexico box
+#                           (Restart=always) so the VPS can fetch live klines
+#     pilot-tick.timer      hourly at :05 UTC -> refresh F1 data (via tunnel),
+#                           compute the signal, push the intent to the box
+#     pilot-sync.timer      every 5 min -> carry the owner's START/STOP to the
+#                           box and pull the journal back for the live screen
+#   Mexico box (cron, admin):
+#     */10 * * * *          mx_executor.py run -> reconcile, close due trades,
+#                           open new ones when ARMED. LIVE=1 set here; ARM is
+#                           the owner's switch and gates all entries.
+set -euo pipefail
+
+BOX_HOST=ec2-78-13-103-81.mx-central-1.compute.amazonaws.com
+BOX_USER=admin
+KEY=/root/.ssh/aws-mex-deb13-new.pem
+APP=/opt/general-classifier
+SOCKS=127.0.0.1:1080
+REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+SSH="ssh -i $KEY -o BatchMode=yes -o ConnectTimeout=20 -o StrictHostKeyChecking=accept-new"
+
+[ -f "$KEY" ] || { echo "no key at $KEY"; exit 1; }
+[ -d "$APP" ] || { echo "classifier not deployed at $APP"; exit 1; }
+
+echo "== installing orchestrator scripts to /usr/local/sbin =="
+
+install -m 755 /dev/stdin /usr/local/sbin/pilot-tick.sh <<TICK
+#!/usr/bin/env bash
+# hourly: keep F1 data current, compute the signal, push the intent to the box.
+set -uo pipefail
+export PILOT_SOCKS=$SOCKS
+# wait for the tunnel to answer (systemd starts it, but order isn't guaranteed)
+for i in \$(seq 1 20); do
+  timeout 8 curl -s -m 6 --socks5-hostname $SOCKS https://api.binance.com/api/v3/ping >/dev/null 2>&1 && break
+  sleep 3
+done
+cd $APP && PILOT_SOCKS=$SOCKS node pilot-refresh.js
+/usr/local/sbin/pilot-produce-and-push.sh
+TICK
+
+# the intent producer + pusher (installed copy of the branch script)
+install -m 755 "$REPO/scripts/pilot-produce-and-push.sh" /usr/local/sbin/pilot-produce-and-push.sh
+# the journal-sync + arm-reconcile (installed copy)
+install -m 755 "$REPO/scripts/pilot-sync-journal.sh" /usr/local/sbin/pilot-sync-journal.sh
+
+install -m 755 /dev/stdin /usr/local/sbin/pilot-sync.sh <<SYNC
+#!/usr/bin/env bash
+# every 5 min: carry the owner's START/STOP to the box, pull the journal back.
+set -uo pipefail
+/usr/local/sbin/pilot-produce-and-push.sh --arm-only 2>/dev/null || true
+/usr/local/sbin/pilot-sync-journal.sh
+SYNC
+
+echo "== systemd unit: persistent SOCKS tunnel =="
+cat > /etc/systemd/system/pilot-tunnel.service <<UNIT
+[Unit]
+Description=Pilot SOCKS tunnel to the Mexico trading box (live Binance data)
+After=network-online.target
+Wants=network-online.target
+[Service]
+Type=simple
+ExecStart=/usr/bin/ssh -i $KEY -o StrictHostKeyChecking=accept-new -o BatchMode=yes -o ExitOnForwardFailure=yes -o ServerAliveInterval=20 -o ServerAliveCountMax=3 -N -D $SOCKS $BOX_USER@$BOX_HOST
+Restart=always
+RestartSec=10
+[Install]
+WantedBy=multi-user.target
+UNIT
+
+echo "== systemd units: tick (hourly) and sync (5 min), wall-clock =="
+cat > /etc/systemd/system/pilot-tick.service <<UNIT
+[Unit]
+Description=Pilot tick — refresh F1 data, compute signal, push intent
+After=pilot-tunnel.service network-online.target
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/pilot-tick.sh
+UNIT
+cat > /etc/systemd/system/pilot-tick.timer <<UNIT
+[Unit]
+Description=Pilot tick hourly at :05 UTC
+[Timer]
+OnCalendar=*-*-* *:05:00 UTC
+Persistent=true
+[Install]
+WantedBy=timers.target
+UNIT
+
+cat > /etc/systemd/system/pilot-sync.service <<UNIT
+[Unit]
+Description=Pilot sync — carry START/STOP to the box, pull the journal
+After=pilot-tunnel.service network-online.target
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/pilot-sync.sh
+UNIT
+cat > /etc/systemd/system/pilot-sync.timer <<UNIT
+[Unit]
+Description=Pilot sync every 5 minutes
+[Timer]
+OnCalendar=*-*-* *:00/5:00 UTC
+Persistent=true
+[Install]
+WantedBy=timers.target
+UNIT
+
+echo "== enable + start (enable = survives reboot) =="
+systemctl daemon-reload
+systemctl enable --now pilot-tunnel.service
+systemctl enable --now pilot-tick.timer
+systemctl enable --now pilot-sync.timer
+
+echo "== configure the Mexico box: LIVE=1 (ARM still gates all entries) + cron =="
+$SSH "$BOX_USER@$BOX_HOST" 'bash -s' <<'BOX'
+set -uo pipefail
+mkdir -p ~/pilot
+if grep -qE '^LIVE=' ~/.executor-env 2>/dev/null; then
+  sed -i 's/^LIVE=.*/LIVE=1/' ~/.executor-env
+else
+  echo 'LIVE=1' >> ~/.executor-env
+fi
+echo "  LIVE now: $(grep -E '^LIVE=' ~/.executor-env)"
+# wall-clock cron every 10 min; survives reboot (cron is enabled by default).
+( crontab -l 2>/dev/null | grep -v 'mx_executor.py run' ; \
+  echo '*/10 * * * * /usr/bin/python3 $HOME/mx_executor.py run >> $HOME/pilot/cron.log 2>&1' ) | crontab -
+echo "  crontab:"; crontab -l | sed 's/^/    /'
+echo "  master switch (ARM) present? $([ -f ~/pilot/ARM ] && echo YES || echo NO — engine STOPPED until owner presses START)"
+BOX
+
+echo
+echo "== status =="
+systemctl --no-pager status pilot-tunnel.service | sed -n '1,4p'
+systemctl list-timers --all 2>/dev/null | grep -i pilot | sed 's/^/  /' || true
+echo "install complete."
