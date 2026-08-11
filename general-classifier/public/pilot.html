@@ -128,11 +128,11 @@ async function post(path) {
 }
 $('#btnStart').onclick = () => {
   if (confirm('START the live engine? Once started, the deterministic executor will open real $10 LTC positions when the committee calls a side. This is real money.'))
-    post('/api/pilot/arm');
+    post('api/pilot/arm');
 };
 $('#btnStop').onclick = () => {
   if (confirm('STOP the engine? No new positions will open. Positions already open will still exit on schedule.'))
-    post('/api/pilot/disarm');
+    post('api/pilot/disarm');
 };
 
 function renderConfig(c) {
@@ -193,7 +193,7 @@ function renderDecisions(list) {
 
 async function refresh() {
   let d;
-  try { d = await (await fetch('/api/pilot')).json(); }
+  try { d = await (await fetch('api/pilot')).json(); }
   catch (e) { $('#banner').innerHTML = `<div class="banner stale">cannot reach /api/pilot: ${e}</div>`; return; }
 
   renderConfig(d.config);
