@@ -1,0 +1,40 @@
+Correction: F1 wins ~56% of its trades, not 2.7% — I had a fee-units bug (your question caught it)
+
+tl;dr: you asked whether F1 really loses 97% of the time. It does not — that 2.7%
+figure in my last email was wrong, and your question caught a real bug. F1 wins
+about 56% of its trades (970 of 1729). The bug: the $0.125-per-leg fee is DOLLARS on
+a $100 clip (a 0.25% round trip), but my stop code treated 0.125 as a fraction — a
+25% round-trip hurdle — so only trades that moved more than 25% in their favour got
+counted as winners. Fixed, tested, redeployed, and logged as a permanent QC check
+(94). The one piece of good news: the CONCLUSION does not change — a fixed stop is
+still net-negative for F1 at every level, so "no stop on F1" still stands. F1's
+config is untouched; still STOPPED, no stop.
+
+WHAT WAS WRONG, and what was NOT:
+  - WRONG: the win rate (2.7% -> really 56.1%) and the stop VALUE (I reported the
+    tightest preserve-all stop as 11.4%; corrected it is 34.9%, because with the
+    real winner set the deepest-dipping winner dipped 34.9%).
+  - NOT wrong: the both-sides "does a stop help" comparison. That number is the
+    difference between stopping and riding to exit, and BOTH pay the same fee, so
+    the fee cancels out of it. Every stop level was net-negative before and still
+    is — the fee bug mislabelled which trades were winners, but it did not change
+    the verdict that a stop costs money on F1.
+
+CORRECTED F1/LTCUSDT NUMBERS (1729 entries, 2019-2026, $10 clip, comparison figures):
+  - Win rate: 56.1% (970 winners, 759 losers).
+  - Tightest stop that spares every winner: 34.9%.
+  - Every stop level is still net-negative: the least-bad is the loosest (34.9%,
+    about -$9 over seven years); tightening it only makes it worse (-$14, -$18,
+    -$28 as you give up the top 1/2/3 winners), and the tail-only stops (12-40%)
+    run -$6 to -$45. No stop level beats no stop.
+
+So the decision holds for the right reason now: F1 wins more than half its trades,
+and a fixed stop still does not help it, because its losers tend to recover from
+their dips before the 137h exit. If F1's forward edge is thin, that is about the
+edge, not a 2.7% win rate — I was wrong to imply otherwise, and I have corrected the
+tuner and locked the units with a test so a dollar-as-fraction slip cannot recur.
+
+The Bracket Lab control now shows these corrected numbers, and you can still scan any
+candidate and choose a stop or none. Nothing is applied to F1.
+
+c.
