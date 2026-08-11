@@ -34,6 +34,7 @@ class MockBinance(BaseHTTPRequestHandler):
     commission_asset = "USDT"
     orders = []               # captured order params
     placed = {}               # newClientOrderId -> venue order record (recovery lookup)
+    time_skew_ms = 0          # exchange serverTime minus box OS clock (clock tests)
 
     def _send(self, obj, code=200):
         body = json.dumps(obj).encode()
@@ -45,7 +46,9 @@ class MockBinance(BaseHTTPRequestHandler):
 
     def do_GET(self):
         if self.path.startswith("/api/v3/time"):
-            return self._send({"serverTime": int(time.time() * 1000)})
+            # time_skew_ms lets a test push exchange time away from the box OS
+            # clock, exercising the exchange-synced age check and CLOCK_DRIFT.
+            return self._send({"serverTime": int(time.time() * 1000) + MockBinance.time_skew_ms})
         if self.path.startswith("/api/v3/ticker/price"):
             return self._send({"symbol": "LTCUSDT", "price": self.price})
         if self.path.startswith("/sapi/v1/margin/order"):
@@ -156,6 +159,7 @@ class ExecutorTest(unittest.TestCase):
         MockBinance.commission_asset = "USDT"
         MockBinance.orders = []
         MockBinance.placed = {}
+        MockBinance.time_skew_ms = 0
 
     def tearDown(self):
         shutil.rmtree(self.home, ignore_errors=True)
@@ -220,8 +224,27 @@ class ExecutorTest(unittest.TestCase):
     def test_stale_intent_never_trades(self):
         self.write_intent(age=self.x.INTENT_MAX_AGE_S + 5)
         self.x.do_run(self.bx())
-        self.assertIn("INTENT_INVALID", self.events())
-        self.assertNotIn("ENTRY_FILL", self.events())
+        ev = self.events()
+        self.assertIn("INTENT_INVALID", ev)
+        self.assertIn("INTENT_STALE", ev)   # LOUD, not silently dropped (finding 3)
+        self.assertNotIn("ENTRY_FILL", ev)
+
+    def test_intent_age_uses_exchange_synced_time(self):
+        # a FRESH intent (ts=now) must read as stale when exchange time is far
+        # ahead of the box OS clock — proving the age check uses exchange-synced
+        # time, not the raw OS clock (finding 3).
+        MockBinance.time_skew_ms = (self.x.INTENT_MAX_AGE_S + 120) * 1000
+        self.write_intent(side="LONG", age=0)
+        self.x.do_run(self.bx())
+        ev = self.events()
+        self.assertIn("INTENT_STALE", ev)
+        self.assertNotIn("ENTRY_FILL", ev)
+
+    def test_clock_drift_emits_loud_incident(self):
+        MockBinance.time_skew_ms = 10000   # exchange 10s ahead of the box OS clock
+        self.write_intent(side="LONG")
+        self.x.do_run(self.bx())
+        self.assertIn("CLOCK_DRIFT", self.events())
 
     def test_duplicate_chunk_never_reopens(self):
         self.write_intent(chunk="2026-08-07T00:00Z")

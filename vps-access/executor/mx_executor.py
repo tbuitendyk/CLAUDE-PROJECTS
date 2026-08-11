@@ -52,6 +52,7 @@ MIN_NOTIONAL = 5.0         # exchange minimum, probed 2026-08-11
 HOLD_HOURS = 137           # F1 cell tHours
 MAX_CONCURRENT = 6         # 137h / 24h step, derived
 INTENT_MAX_AGE_S = 1800    # an intent older than 30 min is stale, never traded
+CLOCK_DRIFT_LIMIT_MS = 5000 # box OS clock this far from exchange time -> loud
 ARM_MAX_AGE_S = 1800       # dead-man: ARM must be re-stamped by the control plane
                            # within 30 min (sync runs ~every 5 min) or the box
                            # self-disarms — a fail-safe kill on control-plane loss
@@ -523,6 +524,19 @@ def do_run(bx):
              "no orders this run")
         return 1
 
+    # Exchange-synced clock for the CROSS-HOST intent-age check (finding 3): the
+    # VPS stamps the intent ts and the box checks its age, so two drifting OS
+    # clocks could silently discard every intent as "stale" and stop all entries
+    # with the screen still green. Basing the age check on Binance-synced time
+    # removes the box's contribution; chrony on both hosts (pilot-install.sh)
+    # removes the VPS's. If the box OS clock is far from exchange time, say so
+    # LOUDLY so a systemic NTP failure is visible, not silent.
+    now_exch = time.time() + bx.offset_ms / 1000.0
+    if abs(bx.offset_ms) > CLOCK_DRIFT_LIMIT_MS:
+        jlog("CLOCK_DRIFT", offset_ms=bx.offset_ms, limit_ms=CLOCK_DRIFT_LIMIT_MS,
+             note="box OS clock differs from exchange by more than the limit — "
+                  "check chrony/timesyncd; intent-age now uses exchange time")
+
     # 0a) RECOVER any order sent-but-unresolved before anything else, so a
     # crash-orphaned position is booked (with its exit_due_ts) and can close.
     resolve_dangling(bx)
@@ -719,10 +733,19 @@ def do_run(bx):
         if it.get("side") not in ("LONG", "SHORT", "FLAT"): problems.append("side")
         if not isinstance(it.get("chunk_start"), str): problems.append("chunk_start")
         if not isinstance(it.get("decision_price"), (int, float)): problems.append("decision_price")
-        age = now - it.get("ts", 0)
-        if age > INTENT_MAX_AGE_S: problems.append(f"stale({int(age)}s)")
-        if problems:
-            jlog("INTENT_INVALID", file=name, problems=problems)
+        # age against EXCHANGE-synced time, not the raw OS clock (finding 3)
+        age = now_exch - it.get("ts", 0)
+        stale = age > INTENT_MAX_AGE_S
+        if stale:
+            # LOUD: a systemic clock drift would otherwise discard every intent to
+            # .bad and stop all entries with nothing on the screen. Emit a distinct
+            # incident the alert timer emails on, instead of a silent INTENT_INVALID.
+            jlog("INTENT_STALE", file=name, chunk_start=it.get("chunk_start"),
+                 age_s=int(age), intent_ts=it.get("ts"),
+                 now_exchange=round(now_exch, 3), offset_ms=bx.offset_ms)
+        if problems or stale:
+            jlog("INTENT_INVALID", file=name,
+                 problems=problems + ([f"stale({int(age)}s)"] if stale else []))
             os.rename(path, path + ".bad")
             continue
         events_now = journal_events()

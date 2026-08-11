@@ -50,7 +50,7 @@ DEAD_HB_MIN = 25.0        # box exec runs every 10 min; 2.5 missed cycles = dead
 STALE_SYNC_MIN = 30.0     # VPS sync runs every 5 min; 6 missed cycles = stalled
 INCIDENT_EVENTS = {"RECONCILE_MISMATCH", "RECONCILE_UNREADABLE", "KILL_PRICE_DRIFT",
                    "KILL_TRANSPORT", "EXIT_OVERDUE", "MIRROR_BREAK", "ORDER_REJECT",
-                   "HALT_SET", "ARM_STALE"}
+                   "HALT_SET", "ARM_STALE", "INTENT_STALE", "CLOCK_DRIFT"}
 HEARTBEAT_EVENTS = {"CLOCK_SYNC", "BALANCE", "RECONCILE_OK"}
 
 def now():

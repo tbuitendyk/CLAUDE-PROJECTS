@@ -139,6 +139,22 @@ Persistent=true
 WantedBy=timers.target
 UNIT
 
+echo "== time sync: keep the VPS OS clock NTP-disciplined (finding 3) =="
+# The VPS stamps intent timestamps; if its OS clock drifts from the box's, every
+# intent reads as stale and entries silently stop. Prefer whatever NTP daemon is
+# present; install chrony only if NEITHER chrony nor systemd-timesyncd is active.
+if ! systemctl is-active --quiet chrony 2>/dev/null \
+   && ! systemctl is-active --quiet chronyd 2>/dev/null \
+   && ! systemctl is-active --quiet systemd-timesyncd 2>/dev/null; then
+  (apt-get update -qq && apt-get install -y -qq chrony) 2>&1 | tail -1 || echo "  (chrony install failed — check NTP manually)"
+  systemctl enable --now chrony 2>/dev/null || systemctl enable --now chronyd 2>/dev/null || true
+fi
+if [ "$(timedatectl show -p NTPSynchronized --value 2>/dev/null)" = "yes" ]; then
+  echo "  VPS NTP: synced"
+else
+  echo "  VPS NTP: NOT synced yet — 'chronyc tracking' / 'timedatectl' to inspect"
+fi
+
 echo "== enable + start (enable = survives reboot) =="
 systemctl daemon-reload
 systemctl enable --now pilot-tunnel.service
@@ -182,6 +198,17 @@ UNIT
 sudo systemctl daemon-reload
 sudo systemctl enable --now pilot-exec.timer
 echo "  box timer: $(systemctl is-enabled pilot-exec.timer 2>/dev/null) / $(systemctl is-active pilot-exec.timer 2>/dev/null)"
+# time sync on the box (finding 3): the box checks intent age, so its OS clock
+# must stay disciplined. Prefer whatever NTP daemon is present; the executor also
+# re-bases the age check on exchange time and emits CLOCK_DRIFT if the OS clock is
+# far off, so this is defence in depth.
+if ! systemctl is-active --quiet chrony 2>/dev/null \
+   && ! systemctl is-active --quiet chronyd 2>/dev/null \
+   && ! systemctl is-active --quiet systemd-timesyncd 2>/dev/null; then
+  sudo apt-get update -qq && sudo apt-get install -y -qq chrony 2>&1 | tail -1 || true
+  sudo systemctl enable --now chrony 2>/dev/null || sudo systemctl enable --now chronyd 2>/dev/null || true
+fi
+echo "  box NTP synced: $(timedatectl show -p NTPSynchronized --value 2>/dev/null || echo unknown)"
 systemctl list-timers pilot-exec.timer --all 2>/dev/null | grep pilot-exec | sed 's/^/    /' || true
 echo "  master switch (ARM) present? $([ -f ~/pilot/ARM ] && echo YES || echo 'NO — engine STOPPED until owner presses START')"
 BOX
