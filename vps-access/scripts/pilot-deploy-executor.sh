@@ -21,12 +21,21 @@ if [ ! -f ~/.executor-env ]; then echo "  NO ~/.executor-env — stop"; exit 1; 
 perms=$(stat -c %a ~/.executor-env)
 [ "$perms" = "600" ] || { chmod 600 ~/.executor-env; echo "  env perms were $perms — tightened to 600"; }
 echo "  env keys present: $(grep -cE '^(BINANCE_KEY|BINANCE_SECRET)=' ~/.executor-env)/2"
-echo "  LIVE=$(grep -E '^LIVE=' ~/.executor-env | cut -d= -f2)"
-grep -qE '^LIVE=0$' ~/.executor-env || { echo "  LIVE is not 0 — refusing the dry chain"; exit 1; }
+LIVE=$(grep -E '^LIVE=' ~/.executor-env | cut -d= -f2)
+echo "  LIVE=$LIVE"
 echo "== status (read-only) =="
 python3 ~/mx_executor.py status
-echo "== one dry run cycle (signed READS only: clock, account, balance) =="
-python3 ~/mx_executor.py run; echo "  exit: $?"
+if [ "$LIVE" = "0" ]; then
+  # initial dry deploy: exercise the READ path (clock sync + signed account read)
+  echo "== one dry run cycle (signed READS only: clock, account, balance) =="
+  python3 ~/mx_executor.py run; echo "  exit: $?"
+else
+  # in-place update of an already-live box: DO NOT run a cycle here (the
+  # pilot-exec.timer does that). ARM is the gate; with it absent nothing opens.
+  echo "== LIVE=$LIVE — executor updated in place; pilot-exec.timer runs cycles =="
+  echo "  ARM: $([ -f ~/pilot/ARM ] && echo 'PRESENT' || echo 'ABSENT — STOPPED, opens nothing new')"
+  echo "  baseline: $([ -f ~/pilot/arm-baseline.json ] && cat ~/pilot/arm-baseline.json || echo 'none (fresh arm-auth state)')"
+fi
 echo "== journal tail =="
 tail -12 ~/pilot/journal.jsonl 2>/dev/null | sed 's/^/  /'
 R
