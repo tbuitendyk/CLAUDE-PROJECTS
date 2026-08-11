@@ -1175,6 +1175,7 @@ def do_run(bx):
         try:
             a = acct["assets"][0]
             jlog("BALANCE", base_net=a["baseAsset"]["netAsset"],
+                 base_free=a["baseAsset"]["free"],
                  quote_free=a["quoteAsset"]["free"],
                  quote_net=a["quoteAsset"]["netAsset"])
         except (KeyError, IndexError):
