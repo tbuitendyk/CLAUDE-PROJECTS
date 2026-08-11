@@ -1,0 +1,70 @@
+Protective-stop tuner is built and live — but the F1 number is pinned by ONE trade, so read this before you set it
+
+tl;dr: the protective-stop tuner you asked for is built, verified on real data, and
+live on the Bracket Lab. One click runs the full-history sweep, shows the value,
+and sets it on the live engine (it shows on the pilot screen too). For F1/LTCUSDT
+it computes 11.4% — but that number is held up entirely by a SINGLE winning trade
+that dipped 11.4% before it recovered; the next-deepest winner only dipped 8.1%.
+And at 11.4% the stop, taken across all the losing trades, slightly LOSES money
+rather than saving it. So before you press it, you may want to decide whether
+"preserve EVERY winner" is really the rule you want, because giving up just that
+one outlier winner tightens the stop to 8.1%, and giving up two takes it to 7.0%.
+Nothing is set until you choose. The box is still STOPPED.
+
+WHAT IS BUILT (all deployed):
+  - On the Bracket Lab, a "Protective stop tuner" panel appears for any live setup
+    that has no stop already (F1 is the only one; breakout setups already stop at
+    their opposite rail, so they are correctly excluded).
+  - One button runs the tune over the WHOLE history (start to end, no holdback),
+    using the SAME frozen committee the live engine trades — so the stop is tuned
+    on exactly the entries you would take live, not a lookalike.
+  - The determined value shows on the panel with its winners-preserved / losers-cut
+    summary, and it is carried to the live engine and shown on the pilot screen.
+  - The engine already enforces it: every order gets the hard stop; a breach closes
+    that position at once and is logged and alerted. Until a value is set it is
+    simply inactive.
+
+THE F1/LTCUSDT RESULT (verified on real data, 1729 entries, 2019-11 to 2026-08):
+  47 winners, 1682 losers. The tightest stop that spares all 47 winners is 11.4%.
+
+  TABLE: the "sacrifice curve" — how tight the stop gets if you allow the deepest
+  winning trades to be stopped out. KEY: winners given up = how many of the very
+  deepest-dipping winners you would sacrifice; stop = the resulting fixed stop as a
+  percent of entry price; each row still spares every OTHER winner.
+
+    winners given up      stop
+    0 (your current rule)  11.42%
+    1                       8.13%
+    2                       7.01%
+    3                       6.07%
+    5                       5.77%
+
+  The winners' dip depths, deepest first: 11.4%, 8.1%, 7.0%, 6.1%, 5.9%, 5.8%, 5.6%,
+  5.5%, 4.6%, 4.4%... — so ONE trade sits far out on its own and drags the stop from
+  ~8% up to 11.4%.
+
+TWO HONEST CAVEATS I would not want you to set the stop without:
+  1. At 11.4% the stop is net NEGATIVE across the losers (about -4.8 in summed
+     percent terms): it caps the very worst losses, but it also clips a number of
+     losers that would have recovered to a smaller loss, and on balance the second
+     effect wins. A tighter stop (giving up 1-2 winners) cuts the bad losers sooner
+     and is likely to help rather than hurt — but it is your call, because your
+     stated rule was "lose no money-making entry."
+  2. This is full-history IN-SAMPLE, including the 2021 crash, on purpose (you said
+     start-to-end, no holdback). That is the right call for a PROTECTIVE stop — you
+     want the deepest a winner ever dipped across every regime — but it is why the
+     number (11.4%) is large and why the in-sample win count is low (F1's edge is
+     thin, as you already flagged).
+
+YOUR CALL:
+  - Keep "spare every winner" -> 11.4%. Press the button and it goes live.
+  - Or spare all-but-the-1-or-2-deepest winners -> ~8% / ~7%, a tighter and probably
+    money-saving stop. If you want this, say the word and I will add a "give up the N
+    deepest winners" (or "tightest stop that stays net-positive") option to the tuner
+    so you can dial it from the page rather than take my number for it.
+
+Either way the box stays STOPPED until you set the stop AND press START. Nothing
+about F1's models or geometry changed — this only adds the protective stop you
+asked for.
+
+c.
