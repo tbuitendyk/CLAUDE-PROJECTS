@@ -125,6 +125,11 @@ def derive(events):
                 "chunk_start": e["chunk_start"], "side": e["side"],
                 "qty": e["qty"], "entry_price": e["price"],
                 "entry_ts": e["ts"], "exit_due_ts": e["exit_due_ts"],
+                # the entry fee (USDT-valued). For a SHORT it was charged in USDT
+                # separately from the borrow, so the exit must subtract it from
+                # P&L (finding 17); for a LONG it was charged in LTC and is already
+                # embedded in the fee-shrunk qty, so it is NOT subtracted again.
+                "entry_fee": e.get("fee_quote", 0.0),
             }
             consecutive_rejects = 0
         elif ev == "EXIT_FILL":
@@ -337,12 +342,15 @@ def load_env():
 # ---- order helpers -----------------------------------------------------------
 import math
 
-# Buying to close a short must cover borrowed+interest AFTER the buy fee is taken
-# in LTC, so it rounds UP with a small buffer. GUESSED at 0.3% — comfortably
-# above the observed ~10bps taker fee plus interest over a 137h hold, so the
-# repay always fully clears the loan; the tiny surplus becomes harmless base
-# dust rather than a residual borrow that would accrue interest and, worse, hide
-# under the reconcile tolerance while compounding.
+# Buying to close a short must cover the debt AFTER the buy fee is taken in LTC,
+# so it rounds UP with a small buffer. DERIVED (2026-08-11): the final short
+# close is now sized from LIVE debt (borrowed_base includes accrued interest),
+# so this buffer no longer has to absorb 137h of interest — it covers only the
+# taker fee, observed at ~10bps (0.1%) on the long and short dust round trips.
+# 0.3% = ~3x that fee, so AUTO_REPAY fully clears the loan; the tiny surplus
+# becomes harmless base dust (swept when flat) rather than a residual borrow.
+# The post-repay residual assertion on the final leg halts loudly if it ever
+# under-repays anyway, so a wrong buffer fails safe instead of compounding.
 SHORT_CLOSE_FEE_BUFFER = 0.003
 
 
@@ -572,6 +580,12 @@ def do_run(bx):
          open_legs=len(st["open"]), price=px_now)
 
     # 3) due exits ALWAYS run, halted or not (PILOT-F1.md section 4)
+    # Track how many shorts are open across the whole book so the FINAL short
+    # close can clear the entire remaining debt — nominal per-leg sizing is
+    # interest-blind and pools its unrepaid interest onto whoever closes last
+    # (finding 18). A short that is NOT due this run keeps this count above 1,
+    # so a due close never repays a still-open sibling's borrow.
+    shorts_remaining = sum(1 for q in st["open"].values() if q["side"] == "SHORT")
     for p in sorted(st["open"].values(), key=lambda x: x["exit_due_ts"]):
         if now < p["exit_due_ts"]:
             continue
@@ -596,13 +610,8 @@ def do_run(bx):
                                            {"chunk_start": p["chunk_start"]},
                                            cid=client_id("exit", p["chunk_start"]))
             qty_traded = sell_qty
-        else:  # SHORT: buy back THIS leg's borrow plus a buffer for the LTC fee.
-            # Target from p['qty'] (the nominal borrow, known exactly because the
-            # open SELL fee was in USDT), NOT from the pooled debt — buying the
-            # whole pool would repay every sibling short at once. borrowed_base()
-            # is only an upper sanity cap. Round UP so AUTO_REPAY fully clears
-            # this leg; the small surplus is swept as dust when flat.
-            target = ceil_step(p["qty"] * (1 + SHORT_CLOSE_FEE_BUFFER))
+        else:  # SHORT: buy back the borrow plus a small buffer for the LTC fee.
+            is_last_short = (shorts_remaining <= 1)
             debt = bx.borrowed_base()
             if debt is not None:
                 if debt < QTY_STEP:
@@ -612,9 +621,20 @@ def do_run(bx):
                     jlog("EXIT_SKIPPED", chunk_start=p["chunk_start"],
                          reason="no borrow outstanding to repay")
                     continue
-                buy_qty = min(target, ceil_step(debt * (1 + SHORT_CLOSE_FEE_BUFFER)))
+                if is_last_short:
+                    # the ONLY open short: clear the ENTIRE remaining debt, which
+                    # is this leg's nominal PLUS all interest that accrued and
+                    # pooled onto the final close. Sized from LIVE debt, so it is
+                    # correct regardless of the interest rate (finding 18). The
+                    # buffer now covers only the ~0.1% taker fee.
+                    buy_qty = ceil_step(debt * (1 + SHORT_CLOSE_FEE_BUFFER))
+                else:
+                    # a sibling short is still open: repay only THIS leg's share
+                    # (nominal + buffer), never the whole pool, capped by debt.
+                    buy_qty = min(ceil_step(p["qty"] * (1 + SHORT_CLOSE_FEE_BUFFER)),
+                                  ceil_step(debt * (1 + SHORT_CLOSE_FEE_BUFFER)))
             else:
-                buy_qty = target
+                buy_qty = ceil_step(p["qty"] * (1 + SHORT_CLOSE_FEE_BUFFER))
             status, px, fee, fq, _ = place(bx, "EXIT", "BUY", buy_qty, "AUTO_REPAY",
                                            {"chunk_start": p["chunk_start"], "leg_qty": p["qty"]},
                                            cid=client_id("exit", p["chunk_start"]))
@@ -623,9 +643,27 @@ def do_run(bx):
             gross = (px - p["entry_price"]) * qty_traded
             if p["side"] == "SHORT":
                 gross = -gross
+            # cost accounting (finding 17): for a SHORT subtract the entry SELL
+            # fee (USDT, separate from the borrow) and accrued interest — the
+            # extra LTC bought beyond nominal to clear the debt, valued at close,
+            # booked on the FINAL short where the pooled interest lands. For a
+            # LONG the entry fee was in LTC and is already embedded in the
+            # fee-shrunk qty, so it is not subtracted again.
+            entry_fee = p.get("entry_fee", 0.0) if p["side"] == "SHORT" else 0.0
+            interest_cost = 0.0
+            if p["side"] == "SHORT":
+                shorts_remaining -= 1
+                if is_last_short and debt is not None:
+                    interest_cost = max(0.0, debt - p["qty"]) * px
+                    resid = bx.borrowed_base()
+                    if resid is not None and resid >= QTY_STEP:
+                        set_halt("executor", f"short close for {p['chunk_start']} left "
+                                 f"residual borrow {resid:.6f} after the final leg — "
+                                 "under-repaid; borrow still accruing interest")
             jlog("EXIT_FILL", chunk_start=p["chunk_start"], side=p["side"],
-                 qty=qty_traded, price=px, fee_quote=fee,
-                 pnl=round(gross - fee, 4))
+                 qty=qty_traded, price=px, fee_quote=fee, entry_fee=entry_fee,
+                 interest_cost=round(interest_cost, 6),
+                 pnl=round(gross - fee - entry_fee - interest_cost, 4))
         elif status == "unknown":
             # transport error: the close MAY have filled. Do not halt or retry
             # blind — recovery resolves it by client id next run.

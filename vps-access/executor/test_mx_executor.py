@@ -459,6 +459,63 @@ class ExecutorTest(unittest.TestCase):
         self.assertTrue(MockBinance.borrowed < self.x.QTY_STEP,
                         'both borrows fully repaid, none left orphaned')
 
+    def test_last_short_close_clears_full_live_debt_including_interest(self):
+        # finding 18: over a 137h hold the borrow accrues interest, so the live
+        # debt exceeds the nominal 0.1. The FINAL short close must size from the
+        # LIVE debt and clear it, not from the interest-blind nominal.
+        now = time.time()
+        self.x.jlog("ENTRY_FILL", chunk_start="s1", side="SHORT", qty=0.1,
+                    price=100.0, exit_due_ts=now - 60)
+        # debt clearly ABOVE the nominal-plus-buffer size (0.1*1.003 -> 0.101):
+        # interest exaggerated to 0.102 so nominal sizing would visibly UNDER-
+        # repay (leaving 0.001 residual) while live-debt sizing clears it.
+        MockBinance.borrowed = 0.102
+        # offset the free base so the exchange net (0.002 - 0.102 = -0.1) matches
+        # the nominal short, keeping the CURRENT reconcile happy — this test
+        # isolates the finding-18 close sizing, NOT the separate finding-19
+        # reconcile-vs-interest false-halt (a should-fix-soon left for later).
+        MockBinance.base_bal = 0.002
+        self._advance_and_run(0)
+        buys = [o for o in MockBinance.orders if o.get("side") == "BUY"]
+        self.assertEqual(len(buys), 1)
+        self.assertTrue(float(buys[-1]["quantity"]) >= 0.102,
+                        'must buy the live debt (nominal+interest), not the nominal 0.101')
+        self.assertTrue(MockBinance.borrowed < self.x.QTY_STEP,
+                        'the final close must clear the interest-inflated debt to zero')
+        self.assertFalse(self.x.halted(), 'a clean full repay must not halt')
+
+    def test_short_close_residual_borrow_halts(self):
+        # if the AUTO_REPAY under-repays (here forced by an outsized LTC buy fee
+        # eating into the received qty), the final leg leaves a residual borrow.
+        # That must HALT loudly, never be popped silently.
+        now = time.time()
+        self.x.jlog("ENTRY_FILL", chunk_start="s1", side="SHORT", qty=0.1,
+                    price=100.0, exit_due_ts=now - 60)
+        MockBinance.borrowed = 0.1
+        MockBinance.commission_asset = "LTC"
+        MockBinance.commission = "0.02"   # huge fee: received << ordered -> under-repay
+        self._advance_and_run(0)
+        self.assertTrue(MockBinance.borrowed >= self.x.QTY_STEP,
+                        'the outsized fee must leave a residual borrow')
+        self.assertTrue(self.x.halted(), 'a residual borrow after the final close must HALT')
+
+    def test_short_pnl_charges_interest_and_entry_fee(self):
+        # finding 17: realized P&L for a short must subtract the entry SELL fee
+        # (USDT) and the accrued interest, so the loss kill is not optimistic.
+        now = time.time()
+        # entered short at 100 with a $0.01 USDT entry fee; price unchanged at
+        # exit, so a naive pnl would be ~0. Interest pushed debt to 0.1005.
+        self.x.jlog("ENTRY_FILL", chunk_start="s1", side="SHORT", qty=0.1,
+                    price=100.0, fee_quote=0.01, exit_due_ts=now - 60)
+        MockBinance.borrowed = 0.1005
+        MockBinance.price = "100.00"      # flat market -> gross ~ 0
+        self._advance_and_run(0)
+        ex = [e for e in self.x.journal_events() if e["event"] == "EXIT_FILL"][-1]
+        # entry fee 0.01 + interest (0.1005-0.1)*100 = 0.05, both subtracted
+        self.assertLess(ex["pnl"], -0.04, 'entry fee + interest must drag pnl clearly negative')
+        self.assertAlmostEqual(ex["entry_fee"], 0.01, places=6)
+        self.assertGreater(ex["interest_cost"], 0.0, 'accrued interest must be charged')
+
     def test_dust_sweep_when_flat_clears_buffer_surplus(self):
         # short-close buffers leave sub-lot free base; when flat it must be swept
         # so it can't accumulate past the reconcile tolerance and false-halt.
