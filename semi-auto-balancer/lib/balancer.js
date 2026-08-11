@@ -169,6 +169,8 @@ function evaluateProfile(profile, usdPrices, now) {
           actualPct,
           targetPct: target,
           deltaIndex: valueRel - (target / 100) * totalRel, // >0 overweight
+          holdRel: valueRel,
+          targetRel: (target / 100) * totalRel,
         };
         continue;
       }
@@ -199,6 +201,11 @@ function evaluateProfile(profile, usdPrices, now) {
           action: deltaRel > 0 ? 'BUY' : 'SELL',
           quantity: Math.abs(deltaRel) / p.rel,
           indexAmount: Math.abs(deltaRel),
+          // The stale-proof numbers: an hour later the quantity above is
+          // outdated, but "trade until the position's value reads ≈ targetRel"
+          // still lands on target.
+          holdRel: valueRel,
+          targetRel: (target / 100) * totalRel,
         };
         breaches.push(breach);
         if (!active) newBreaches.push(breach);

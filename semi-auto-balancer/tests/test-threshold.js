@@ -62,6 +62,25 @@ const bigBreach = r.breaches.find((b) => b.asset.symbol === 'big');
 ok(bigBreach.action === 'SELL', 'overweight big asset -> SELL');
 ok(bigBreach.thresholdPct != null && approx(bigBreach.thresholdPct, 4.1666666, 1e-3), 'breach carries its effective threshold (~4.17% drift)');
 
+// Stale-proof advice: the breach carries the holding's current value and its
+// target value (target% × pool) in the index currency, and the message shows
+// both — an hour later "trade until the position reads ≈ target" still works.
+{
+  const pool = 4000 + 56 * 110.5 + 4 * 100; // usdt + big + sml at these prices
+  ok(approx(bigBreach.holdRel, 56 * 110.5, 1e-9), 'breach carries the current holding value');
+  ok(approx(bigBreach.targetRel, 0.56 * pool, 1e-9), 'breach carries the target value (target% × pool)');
+  ok(r.indexNote && approx(r.indexNote.targetRel, 0.40 * pool, 1e-9), 'tether note carries its target value too');
+  const mailer = require('../lib/mailer');
+  const text = mailer.buildText({
+    profile: db.prepare('SELECT * FROM profiles WHERE id = 1').get(),
+    alerts: [bigBreach],
+    indexNote: r.indexNote,
+  });
+  ok(/-> SELL .*holding ≈ 6188\.00 \S+, target ≈ 5929\.28/.test(text), 'advice line shows holding and target index values');
+  const noteHalf = text.split('Note:')[1] || '';
+  ok(/holding ≈ 4000\.00 \S+, target ≈ 4235\.20/.test(noteHalf), 'tether note shows holding and target too');
+}
+
 // Tether: never trades, note only — even when its share drifts.
 r = evalWith({ ...BASE, bigcoin: 60, smallcoin: 60 }); // crypto crashes, tether overweight
 ok(!r.breaches.some((b) => b.asset.symbol === 'usdt'), 'tether never breaches (note only)');

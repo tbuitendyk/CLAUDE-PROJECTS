@@ -58,7 +58,10 @@ function buildText(event) {
       `  actual ${al.actualPct.toFixed(2)}% of pool vs target ${al.targetPct}% ` +
         `(drift ${al.driftRelPct >= 0 ? '+' : ''}${al.driftRelPct.toFixed(1)}% of target, trigger ±${al.thresholdPct != null ? al.thresholdPct.toFixed(1) : profile.threshold_pct}% ` +
         `≈ a ${profile.threshold_pct}% price move)`,
-      `  -> ${al.action} ${fmtQty(al.quantity)} ${sym}  (≈ ${fmt(al.indexAmount)} ${idx})`,
+      `  -> ${al.action} ${fmtQty(al.quantity)} ${sym}  (≈ ${fmt(al.indexAmount)} ${idx})` +
+        (al.targetRel != null
+          ? `  — holding ≈ ${fmt(al.holdRel)} ${idx}, target ≈ ${fmt(al.targetRel)} ${idx}`
+          : ''),
     ].join('\n');
   });
 
@@ -68,8 +71,11 @@ function buildText(event) {
     noteText =
       `\n\nNote: index asset ${indexNote.symbol.toUpperCase()} is ${dir} by ` +
       `${fmt(Math.abs(indexNote.deltaIndex))} ${idx} ` +
-      `(actual ${indexNote.actualPct.toFixed(2)}% vs target ${indexNote.targetPct}%) — no trade recommended; ` +
-      `it absorbs the residual from the trades above.`;
+      `(actual ${indexNote.actualPct.toFixed(2)}% vs target ${indexNote.targetPct}%` +
+      (indexNote.targetRel != null
+        ? `; holding ≈ ${fmt(indexNote.holdRel)} ${idx}, target ≈ ${fmt(indexNote.targetRel)} ${idx}`
+        : '') +
+      `) — no trade recommended; it absorbs the residual from the trades above.`;
   }
 
   // With a linked read-only exchange account the loop closes itself: the
