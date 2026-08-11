@@ -163,6 +163,16 @@ module.exports.armRefusalEventsSurfaceAsIncidents = function () {
   }
 };
 
+module.exports.fixedStopSurfacesAsIncident = function () {
+  // a hard fixed-stop close is a real money event — it must show on the screen.
+  const st = derive([
+    { event: 'FIXED_STOP', utc: 't1', chunk_start: 'c1', side: 'LONG',
+      entry_price: 100, price: 94, stop_pct: 0.05, adverse_pct: 0.06 },
+  ]);
+  assert.strictEqual(st.incidents.length, 1, 'FIXED_STOP surfaces as an incident');
+  assert.strictEqual(st.incidents[0].kind, 'FIXED_STOP');
+};
+
 module.exports.haltSetReflectsImmediatelyAndClears = function () {
   let st = derive([{ event: 'HALT_SET', source: 'executor', reason: 'x' }]);
   assert.strictEqual(st.halted, true, 'HALT_SET reflects the halt at once (not a cycle later)');

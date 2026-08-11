@@ -96,6 +96,7 @@ function derive(events) {
       case 'RECONCILE_UNREADABLE':
       case 'KILL_TRANSPORT':
       case 'EXIT_OVERDUE':
+      case 'FIXED_STOP':
       case 'MIRROR_BREAK':
       case 'INTENT_STALE':
       case 'CLOCK_DRIFT':
