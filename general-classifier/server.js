@@ -1171,6 +1171,62 @@ app.post('/api/pilot/disarm', (req, res) => {
   catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// PROTECTIVE-STOP TUNER (owner 2026-08-11). For a prospective live setup that has
+// no existing stop, replay its frozen committee over the WHOLE history and tune
+// the tightest fixed stop that loses no winner. The result is persisted to
+// data/pilot/stop-sweep.json; the VPS sync (pilot-produce-and-push.sh) carries the
+// determined FIXED_STOP_PCT to the box, and the live screen shows it. Heavy
+// (loads full history + trains), so it runs in the background and the UI polls.
+// This writes a RISK PARAMETER, not an authorization to trade — it opens nothing.
+let stopSweepRunning = false;
+function stopSweepPath() {
+  const dir = path.join(__dirname, 'data', 'pilot');
+  fs.mkdirSync(dir, { recursive: true });
+  return path.join(dir, 'stop-sweep.json');
+}
+function readStopSweep() {
+  try { return JSON.parse(fs.readFileSync(stopSweepPath(), 'utf8')); } catch (_) { return { status: 'idle' }; }
+}
+function writeStopSweep(obj) {
+  const f = stopSweepPath();
+  fs.writeFileSync(`${f}.tmp`, JSON.stringify(obj));
+  fs.renameSync(`${f}.tmp`, f);
+}
+app.get('/api/pilot/stopsweep', (req, res) => res.json(readStopSweep()));
+app.post('/api/pilot/stopsweep', (req, res) => {
+  try {
+    if (stopSweepRunning) return res.json({ ok: true, status: 'running' });
+    const { BOOKS } = require('./lib/forwardbook');
+    const { computeSetupStop, hasExistingStop } = require('./lib/stopsweep');
+    const bookId = String((req.body && req.body.bookId) || 'F1');
+    const book = BOOKS.find((b) => b.id === bookId);
+    if (!book) return res.status(404).json({ error: `no such setup ${bookId}` });
+    if (hasExistingStop(book.cell)) {
+      return res.status(400).json({ error: `setup ${bookId} already has a protective stop; tuning does not apply` });
+    }
+    stopSweepRunning = true;
+    writeStopSweep({ status: 'running', bookId, startedUtc: new Date().toISOString() });
+    // fire and forget; the UI polls GET /api/pilot/stopsweep
+    (async () => {
+      try {
+        const r = await computeSetupStop(book, {});
+        // `active` marks this value as the one the sync should carry to the box.
+        writeStopSweep({ status: 'done', bookId, active: true,
+          finishedUtc: new Date().toISOString(), ...r });
+      } catch (e) {
+        writeStopSweep({ status: 'error', bookId,
+          finishedUtc: new Date().toISOString(), error: String((e && e.message) || e).slice(0, 300) });
+      } finally {
+        stopSweepRunning = false;
+      }
+    })();
+    res.json({ ok: true, status: 'running', bookId });
+  } catch (err) {
+    stopSweepRunning = false;
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.get('/api/httwo/:id/verdict', (req, res) => {
   try {
     const T2 = require('./lib/httwo');
