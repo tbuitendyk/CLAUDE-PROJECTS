@@ -4,6 +4,24 @@
 const { assert } = require('./helpers');
 const { HOUR_MS } = require('../lib/binance');
 const { entriesFromCalls, hasExistingStop } = require('../lib/stopsweep');
+const { entryOutcome } = require('../lib/stoptuner');
+const { REAL_FEE_PER_LEG, NOTIONAL } = require('../lib/paper');
+
+module.exports.feeMustBeFractionalNotDollars = function () {
+  // REGRESSION (2026-08-11): REAL_FEE_PER_LEG is $0.125 on the $100 notional, i.e.
+  // 0.00125 as a FRACTION. The stop tuner works in fractional returns; feeding the
+  // dollar 0.125 straight in made a 25% round-trip hurdle and mislabelled 97% of
+  // trades as losers. Pin the conversion and the direction of the bug.
+  const frac = REAL_FEE_PER_LEG / NOTIONAL;
+  assert.ok(Math.abs(frac - 0.00125) < 1e-9, `fractional fee is 0.00125, got ${frac}`);
+  const map = new Map();
+  map.set(0, { open: 100, high: 100, low: 100, close: 100 });
+  map.set(3 * HOUR_MS, { open: 100.5, high: 100.5, low: 100.5, close: 100.5 }); // +0.5%
+  // with the CORRECT fractional fee, a +0.5% move clears the ~0.25% hurdle -> winner
+  assert.ok(entryOutcome(0, 'LONG', map, 3, frac).netPct > 0, 'a +0.5% move is a winner at the real fee');
+  // with the DOLLAR value used as a fraction (the bug), the same trade is a loser
+  assert.ok(entryOutcome(0, 'LONG', map, 3, REAL_FEE_PER_LEG).netPct < 0, 'the dollar-as-fraction bug flips it to a loser');
+};
 
 module.exports.onlyMarketNoTrailSetupsAreStoplessAndTunable = function () {
   // F1-shape: market entry, no trailing stop -> HAS NO existing stop (tunable)
