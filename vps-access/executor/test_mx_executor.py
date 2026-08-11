@@ -28,6 +28,7 @@ class MockBinance(BaseHTTPRequestHandler):
     price = "100.00"
     reject_orders = False
     price_fails = False        # when True the ticker returns 500 -> price() is None
+    force_status = None        # override the order status string (partial/expired fill tests)
     net_asset = None          # override netAsset/free; None -> use tracked balances
     base_bal = 0.0            # tracked free LTC after fills
     borrowed = 0.0            # tracked LTC debt (short open borrows, close repays)
@@ -114,8 +115,13 @@ class MockBinance(BaseHTTPRequestHandler):
                     "cummulativeQuoteQty": f"{qty * px:.8f}",
                     "updateTime": int(time.time() * 1000),
                 }
+            # force_status lets a test return a non-FILLED status while the order
+            # still executed (executedQty>0 + fills), exercising the partial/
+            # expired-fill booking path.
+            st = MockBinance.force_status or "FILLED"
             return self._send({"orderId": len(MockBinance.orders),
-                               "status": "FILLED",
+                               "status": st,
+                               "executedQty": params.get("quantity", "0"),
                                "clientOrderId": params.get("newClientOrderId", ""),
                                "fills": [{"price": MockBinance.price,
                                           "qty": params.get("quantity", "0"),
@@ -156,6 +162,7 @@ class ExecutorTest(unittest.TestCase):
         MockBinance.price = "100.00"
         MockBinance.reject_orders = False
         MockBinance.price_fails = False
+        MockBinance.force_status = None
         MockBinance.net_asset = None
         MockBinance.base_bal = 0.0
         MockBinance.borrowed = 0.0
@@ -809,6 +816,17 @@ class ExecutorTest(unittest.TestCase):
         self.assertNotIn("ENTRY_FILL", ev)
         st = self.x.derive(self.x.journal_events())
         self.assertEqual(len(st["open"]), 0, "a never-executed order must open nothing")
+
+    def test_partial_or_expired_fill_with_executed_qty_is_booked(self):
+        # RE-REVIEW order-lifecycle: a 200 with status EXPIRED but executedQty>0
+        # executed part of the clip — it must be BOOKED (ENTRY_FILL), never a
+        # reject (which would orphan the position and spuriously creep the kill).
+        MockBinance.force_status = "EXPIRED"
+        self.write_intent(side="LONG", chunk="2026-08-07T00:00Z")
+        self.x.do_run(self.bx())
+        ev = self.events()
+        self.assertIn("ENTRY_FILL", ev, "an executed EXPIRED order must be booked as a fill")
+        self.assertNotIn("ORDER_REJECT", ev)
 
     def test_dry_mode_sends_no_orders(self):
         with open(os.path.join(self.home, ".executor-env"), "w") as f:

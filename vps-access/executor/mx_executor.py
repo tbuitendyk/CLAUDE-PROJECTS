@@ -537,12 +537,33 @@ def place(bx, action, side, qty, side_effect, ctx, cid=None):
     jlog("ORDER_SENT", action=action, side=side, qty=qty,
          side_effect=side_effect, client_id=cid, live=bx.live, **ctx)
     code, body = bx.margin_order(side, qty, side_effect, cid)
-    if code == 200 and body.get("status") == "FILLED":
-        px, fq, fee, base_comm = fills_summary(body)
-        jlog("ORDER_ACK", action=action, http=code, client_id=cid,
-             order_id=body.get("orderId"), fill_price=px, fill_qty=fq,
-             fee_quote=fee, base_comm=base_comm, **ctx)
-        return "filled", px, fee, fq, base_comm
+    if code == 200:
+        status = body.get("status")
+        try:
+            executed = float(body.get("executedQty", 0) or 0)
+        except (TypeError, ValueError):
+            executed = 0.0
+        # Any 200 that EXECUTED SOME QUANTITY is a fill, not a reject — a
+        # PARTIALLY_FILLED or EXPIRED market order that filled part of the clip
+        # must be BOOKED (else the executed position is an orphan with no exit,
+        # and a spurious reject creeps toward the kill) — re-review order-lifecycle.
+        if status == "FILLED" or executed > 0 or body.get("fills"):
+            px, fq, fee, base_comm = fills_summary(body)
+            jlog("ORDER_ACK", action=action, http=code, client_id=cid,
+                 order_id=body.get("orderId"), status=status, fill_price=px, fill_qty=fq,
+                 fee_quote=fee, base_comm=base_comm, **ctx)
+            return "filled", px, fee, fq, base_comm
+        # accepted but nothing executed yet (NEW/PENDING) — treat as UNKNOWN so the
+        # next run's recovery resolves it by client id, never a phantom or a reject.
+        if status in ("NEW", "PARTIALLY_FILLED", "PENDING_NEW", "ACCEPTED"):
+            jlog("ORDER_UNKNOWN", action=action, http=code, client_id=cid,
+                 status=status, body=json.dumps(body)[:200], **ctx)
+            return "unknown", None, 0.0, 0.0, 0.0
+        # a 200 that executed nothing and is terminal (EXPIRED/REJECTED/CANCELED)
+        # is a genuine no-fill.
+        jlog("ORDER_REJECT", action=action, http=code, client_id=cid,
+             status=status, body=json.dumps(body)[:300], **ctx)
+        return "rejected", None, 0.0, 0.0, 0.0
     if code == 0:
         jlog("ORDER_UNKNOWN", action=action, http=code, client_id=cid,
              body=json.dumps(body)[:200], **ctx)
@@ -663,7 +684,10 @@ def do_run(bx):
     # cycle and creeps toward the reject-kill (the live 2026-08-11 bug). Selling a
     # flat sellable balance is safe housekeeping whether it is accumulated dust or
     # an unknown long — either way the desired flat = all-USDT state is reached.
-    if not st["open"] and not halted() and px:
+    # Only while ARMED: a STOPPED box places NO orders at all (re-review
+    # control-plane E); its leftover base is simply tolerated by reconcile until
+    # the engine is running again.
+    if not st["open"] and not halted() and armed() and px:
         fb = bx.free_base()
         if fb is not None and fb >= QTY_STEP:
             sweep = floor_step(fb)
