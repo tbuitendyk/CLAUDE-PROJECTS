@@ -611,6 +611,41 @@ class ExecutorTest(unittest.TestCase):
         self.assertFalse(self.x.armed(), "a replayed pre-STOP arm must not re-arm")
         self.assertIn("ARM_REPLAY_REJECTED", self.events())
 
+    def test_future_dated_stop_does_not_brick_arming(self):
+        # RE-REVIEW LIVENESS: a STOP carrying a FUTURE-dated utc (clock glitch on
+        # the screen host, or an injected disarm timestamped hours ahead) must NOT
+        # ratchet the watermark into the future. If it did, every legitimate arm
+        # afterward would be rejected as "not newer than the watermark" until
+        # wall-clock caught up — a denial-of-arming brick. The STOP itself still
+        # fires; only the watermark advance is suppressed.
+        s = self._set_secret()
+        u1 = self._utc(30)
+        self.x.honor_arm_request(True, "owner", nonce="n1", utc=u1, hmac_sig=self._sig(s, "n1", u1))
+        self.assertTrue(self.x.armed())
+        # STOP with a utc 2 hours in the FUTURE
+        self.x.honor_arm_request(False, "owner", nonce="nstop", utc=self._utc(-7200))
+        self.assertFalse(self.x.armed(), "the STOP still stops the box")
+        # a genuine fresh START now (real, current utc) must still arm
+        u2 = self._utc(0)
+        self.x.honor_arm_request(True, "owner", nonce="n2", utc=u2, hmac_sig=self._sig(s, "n2", u2))
+        self.assertTrue(self.x.armed(),
+                        "a future-dated STOP must not brick later legitimate arming")
+
+    def test_future_dated_arm_beyond_skew_is_refused(self):
+        # RE-REVIEW LIVENESS: the same brick via the ARM path — a validly-signed
+        # arm whose utc is far in the FUTURE would set the watermark ahead and lock
+        # out later arms. The freshness window is two-sided: a utc beyond the small
+        # clock-skew tolerance ahead of the box is refused.
+        s = self._set_secret()
+        self.x.set_arm(False, "test")
+        uf = self._utc(-7200)  # 2 hours ahead
+        self.x.honor_arm_request(True, "owner", nonce="nf", utc=uf, hmac_sig=self._sig(s, "nf", uf))
+        self.assertFalse(self.x.armed(), "a far-future-dated arm must not arm")
+        # and it must not have poisoned the watermark: a genuine fresh START arms
+        u = self._utc(0)
+        self.x.honor_arm_request(True, "owner", nonce="ng", utc=u, hmac_sig=self._sig(s, "ng", u))
+        self.assertTrue(self.x.armed(), "a fresh START still arms after a rejected future arm")
+
     def test_short_round_trip_fully_repays_despite_base_fee(self):
         # THE SHORT MIRROR of the dust bug: the close BUY fee is taken in LTC,
         # so buying exactly the borrowed qty would leave a residual borrow.

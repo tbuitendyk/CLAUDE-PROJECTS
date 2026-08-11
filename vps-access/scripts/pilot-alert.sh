@@ -52,7 +52,19 @@ STALE_MIRROR_MIN = 90.0   # mirror runs on the hourly tick; >90 min = missed one
 INCIDENT_EVENTS = {"RECONCILE_MISMATCH", "RECONCILE_UNREADABLE", "KILL_PRICE_DRIFT",
                    "KILL_TRANSPORT", "EXIT_OVERDUE", "MIRROR_BREAK", "ORDER_REJECT",
                    "HALT_SET", "ARM_STALE", "INTENT_STALE", "CLOCK_DRIFT"}
-HEARTBEAT_EVENTS = {"CLOCK_SYNC", "BALANCE", "RECONCILE_OK"}
+# A heartbeat must prove the FULL executor loop ran, not just its first step.
+# CLOCK_SYNC fires early each cycle before any Binance account call; if the box
+# hangs after it (network to the exchange down, auth wedged) it keeps emitting
+# CLOCK_SYNC while placing/closing nothing — a "green" dead executor. Only
+# BALANCE/RECONCILE_OK, which require a completed authenticated round-trip, count
+# as a live heartbeat (re-review liveness L1).
+HEARTBEAT_EVENTS = {"BALANCE", "RECONCILE_OK"}
+# Transport/clock incidents are transient ENVIRONMENTAL blips (a network stall to
+# the exchange, a momentary clock skew) that harm nothing when nothing is on the
+# line. Page for them only when something is AT RISK (armed, or a position open);
+# a deliberately-stopped, flat box must not wake the owner for a passing blip
+# (re-review liveness L2). Position/money incidents always page.
+AT_RISK_GATED_INCIDENTS = {"KILL_TRANSPORT", "CLOCK_DRIFT"}
 
 def now():
     return time.time()
@@ -76,7 +88,7 @@ with open(JOURNAL) as f:
 armed = halted = False
 open_pos = {}
 last_hb_ts = None
-last_incident = None  # (ts, kind)
+incident_latest = {}   # kind -> latest ts seen (de-dup by KIND, not per-occurrence)
 for e in events:
     ev = e.get("event")
     if ev == "RUN_STATUS":
@@ -96,7 +108,10 @@ for e in events:
         if ev == "ORDER_REJECT" and e.get("action") not in ("ENTRY", "EXIT"):
             pass
         else:
-            last_incident = (e.get("ts", 0), ev)
+            # keep the LATEST ts per kind: a burst of the same kind collapses to a
+            # single alert, and a genuinely later occurrence still re-pages (its ts
+            # passes the persisted per-kind watermark below).
+            incident_latest[ev] = max(e.get("ts", 0), incident_latest.get(ev, 0))
 
 n_open = len(open_pos)
 at_risk = armed or n_open > 0   # something a dead box could mishandle
@@ -114,10 +129,6 @@ if at_risk and (hb_age_min is None or hb_age_min > DEAD_HB_MIN):
                                 f"Open positions: {n_open}.")
 if at_risk and sync_age_min > STALE_SYNC_MIN:
     active["stale_sync"] = f"Journal not synced for {sync_age_min:.0f} min — the live screen is blind."
-if last_incident:
-    inc_ts, inc_kind = last_incident
-    active[f"incident:{inc_kind}@{int(inc_ts)}"] = f"New incident: {inc_kind}."
-
 # mirror-check health (re-review): a mirror that ERRORED (ok:false) or has gone
 # STALE has stopped verifying the paper twin while the box may be trading — page
 # the owner so the drift detector cannot fail silent. Only when something is at
@@ -136,7 +147,7 @@ if at_risk and os.path.exists(mirror_path):
     except Exception:
         pass
 
-# de-dupe on transition: load the set of keys we last alerted on
+# de-dupe on transition: load the CONDITION keys and per-kind incident watermarks
 prev = {"keys": []}
 try:
     with open(STATE) as f:
@@ -144,24 +155,45 @@ try:
 except Exception:
     pass
 prev_keys = set(prev.get("keys", []))
-cur_keys = set(active.keys())
+cur_keys = set(active.keys())          # CONDITIONS only (halt/heartbeat/sync/mirror)
+prev_inc_wm = prev.get("inc_wm", {})   # kind -> last-paged ts
+
+# Incidents are edge events, de-duped by KIND via a monotonic per-kind watermark:
+# a kind fires when its latest ts is strictly newer than the last ts we paged for
+# that kind. This keeps incidents OUT of the condition set (so a latching incident
+# cannot poison the conditions' all-clear), collapses a same-window burst to one
+# alert, and still re-pages a genuinely later occurrence. Transport/clock kinds
+# are suppressed entirely when nothing is at risk.
+cur_inc_wm = dict(prev_inc_wm)
+new_incidents = {}   # kind -> latest ts, only those newly firing this run
+for kind, ts in incident_latest.items():
+    if kind in AT_RISK_GATED_INCIDENTS and not at_risk:
+        continue
+    if ts > prev_inc_wm.get(kind, 0):
+        new_incidents[kind] = ts
+        cur_inc_wm[kind] = ts
 
 def persist():
     tmp = STATE + ".tmp"
     with open(tmp, "w") as f:
-        json.dump({"keys": sorted(cur_keys), "utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        json.dump({"keys": sorted(cur_keys), "inc_wm": cur_inc_wm,
+                   "utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
                    "armed": armed, "halted": halted, "open": n_open}, f)
     os.replace(tmp, STATE)
 
-# fire when a NEW condition appears, or when everything clears (transition back)
+# fire when a NEW condition appears, a NEW incident kind fires, or when all the
+# CONDITIONS clear (transition back to quiet). A cleared all-clear is about the
+# ongoing conditions only — incidents are point-in-time and never "clear".
 new_keys = cur_keys - prev_keys
 cleared = bool(prev_keys) and not cur_keys
-if not new_keys and not cleared:
-    persist()   # no change worth mailing (advance timestamp only)
+if not new_keys and not new_incidents and not cleared:
+    persist()   # no change worth mailing (advance timestamp/watermarks only)
     raise SystemExit(0)
 
 # ---- compose ----
-if cleared:
+# all-clear only when the ongoing CONDITIONS cleared and no new incident fired
+show_all_clear = cleared and not new_incidents
+if show_all_clear:
     subject = "PILOT: all clear"
     tldr = "tl;dr the pilot alert conditions have all cleared."
     lines = [tldr, "", "Previously alerting on: " + ", ".join(sorted(prev_keys)),
@@ -169,12 +201,16 @@ if cleared:
              f"heartbeat={'—' if hb_age_min is None else f'{hb_age_min:.0f}m'} "
              f"sync={sync_age_min:.0f}m."]
 else:
+    inc_keys = [f"incident:{k}" for k in sorted(new_incidents)]
+    subj_keys = sorted(active.keys()) + inc_keys
     worst = "dead_heartbeat" in active or "halted" in active
-    subject = "PILOT ALERT: " + "; ".join(sorted(active.keys()))
+    subject = "PILOT ALERT: " + "; ".join(subj_keys)
     tldr = "tl;dr the live pilot needs attention — " + ("EXECUTOR/HALT issue." if worst else "see below.")
     lines = [tldr, ""]
     for k in sorted(active.keys()):
         lines.append("• " + active[k])
+    for k in sorted(new_incidents):
+        lines.append(f"• New incident: {k}.")
     lines += ["",
               f"State: armed={armed} halted={halted} open_positions={n_open} "
               f"heartbeat={'never' if hb_age_min is None else f'{hb_age_min:.0f} min ago'} "

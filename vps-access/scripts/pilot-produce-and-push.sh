@@ -52,6 +52,34 @@ except Exception:
 PY
 ) || { want=0; nonce='-'; utc='-'; hmac='-'; }
 fi
+
+# MIRROR-BREAK DEAD-MAN (re-review liveness): if the drift detector has found a
+# confirmed break (mirror.json breaks>=1), the live book has diverged from its
+# paper twin and the instrument is unreliable. STOP re-stamping ARM — carry an
+# unconditional disarm (utc='-' so the box watermark is NOT advanced), which
+# drops the box's master switch at once and, because the keepalive ceases, keeps
+# it down via the dead-man. Re-arming then requires a deliberate fresh START from
+# the owner (the standing arm-request goes stale within the freshness window) —
+# a drift break must never auto-re-arm. A mirror ERROR (ok:false, breaks:0) is a
+# separate, already-paged alert and does NOT force disarm, to avoid churning the
+# switch on a transient detector hiccup.
+MIRROR="$APPDIR/data/pilot/mirror.json"
+if [ "$want" = "1" ] && [ -f "$MIRROR" ]; then
+  brk=$(python3 - "$MIRROR" <<'PY'
+import json, sys
+try:
+    d = json.load(open(sys.argv[1]))
+    print("1" if int(d.get("breaks", 0)) >= 1 else "0")
+except Exception:
+    print("0")
+PY
+)
+  if [ "$brk" = "1" ]; then
+    echo "== MIRROR BREAK detected — forcing DISARM (dead-man); re-arm needs a fresh owner START =="
+    want=0; nonce='-'; utc='-'; hmac='-'
+  fi
+fi
+
 mode=$([ "$want" = "1" ] && echo arm || echo disarm)
 echo "== master switch: reconcile -> $mode =="
 $SSH "$BOX_USER@$BOX_HOST" \

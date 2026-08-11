@@ -93,6 +93,9 @@ ARM = os.path.join(PILOT, "ARM")
 ARM_BASELINE = os.path.join(PILOT, "arm-baseline.json")
 ARM_REQUEST_FRESH_S = 900  # a genuine START's request utc must be within this;
                            # an older request is a stale replay and is refused
+ARM_CLOCK_SKEW_S = 120     # tolerance for a request utc slightly AHEAD of the box
+                           # clock (host skew); beyond this a future-dated arm is
+                           # refused so it cannot ratchet the watermark forward
 ENVFILE = os.path.join(HOME, ".executor-env")
 
 
@@ -293,7 +296,13 @@ def honor_arm_request(armed, source, nonce=None, utc=None, hmac_sig=None):
         # pre-STOP arm request cannot replay back in, and drop the honored flag so
         # a keepalive of the old nonce cannot silently re-arm.
         set_arm(False, source)
-        new_wm = utc if (utc and (not wm or _utc_newer(utc, wm))) else wm
+        # Advance the watermark to this disarm's utc, but ONLY if that utc is not
+        # future-dated (re-review liveness): a clock glitch or an injected STOP with
+        # a utc hours ahead would otherwise ratchet the watermark into the future
+        # and BRICK every legitimate arm until wall-clock caught up. A future utc
+        # (negative age) is ignored for watermarking; the STOP itself still fires.
+        advance = utc and _utc_age_s(utc) >= 0 and (not wm or _utc_newer(utc, wm))
+        new_wm = utc if advance else wm
         _write_baseline(base.get("nonce", "stop"), honored=False, watermark_utc=new_wm)
         return
 
@@ -319,8 +328,12 @@ def honor_arm_request(armed, source, nonce=None, utc=None, hmac_sig=None):
         return
     # a NEW nonce: arm only if the request is FRESH. A stale request (old utc, e.g.
     # replayed by the level-triggered sync after a wipe) becomes an un-honored
-    # baseline and is refused until a genuine fresh START arrives.
-    if _utc_age_s(utc) <= ARM_REQUEST_FRESH_S:
+    # baseline and is refused until a genuine fresh START arrives. The window is
+    # two-sided: a FUTURE-dated utc (age < -ARM_CLOCK_SKEW_S) is refused too, so a
+    # signed arm carrying a glitched clock cannot ratchet the watermark into the
+    # future and brick later legitimate arms.
+    age = _utc_age_s(utc)
+    if -ARM_CLOCK_SKEW_S <= age <= ARM_REQUEST_FRESH_S:
         _write_baseline(nonce, honored=True, watermark_utc=utc)
         set_arm(True, source)
     else:
