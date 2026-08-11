@@ -77,12 +77,29 @@ async function computeSignal(now, opts = {}) {
   // (e.g. the owner arms mid-day, or a tick was missed), do NOT chase a stale
   // mid-hold entry — wait for the next period. This keeps live fills aligned
   // with the paper book's entry-hour open instead of drifting in late.
+  const HOUR_MS = 3600000;
   const ENTRY_FRESH_H = 3;
-  const entryTs = target.startTs + (geo.entryOffsetH || 0) * 3600000;
-  const entryAgeH = (now - entryTs) / 3600000;
+  const entryTs = target.startTs + (geo.entryOffsetH || 0) * HOUR_MS;
+  const entryAgeH = (now - entryTs) / HOUR_MS;
   if (entryAgeH > ENTRY_FRESH_H) {
     return { ok: true, actionable: false,
       note: `newest entry was ${entryAgeH.toFixed(1)}h ago (> ${ENTRY_FRESH_H}h) — not chasing a stale entry; waiting for the next period` };
+  }
+
+  // DECIDE ON THE FULL 96h WINDOW, INCLUDING ITS MOST-RECENT CANDLE (owner,
+  // 2026-08-11) — the decision must use exactly the data training used. The
+  // chunk only exists if its 96h run is complete (candleRun), but make the
+  // guarantee explicit and refuse rather than decide on a window the refresh
+  // has not caught up to: require every pair to carry the last feature candle
+  // (startTs + featureHours-1h). A missed candle means "wait", never a decision
+  // on a short or stale window.
+  const lastFeatureTs = target.startTs + (geo.featureHours - 1) * HOUR_MS;
+  for (const [name, m] of [['trade', maps.trade], ['ctx1', maps.ctx1], ['ctx2', maps.ctx2]]) {
+    if (m && !m.get(lastFeatureTs)) {
+      return { ok: true, actionable: false,
+        note: `data not caught up: ${name} is missing the decision's most-recent candle `
+          + `(${new Date(lastFeatureTs).toISOString()}) — refresh has not reached it; waiting` };
+    }
   }
 
   const views = bracketLib.comboViews(F1.combo.size, geo.featureHours / 24).views;
@@ -94,8 +111,6 @@ async function computeSignal(now, opts = {}) {
   // map the market simulator reads (bracket.js simMarket: `const p = ref.open`
   // at entryTs = startTs + entryOffsetH). Matching field and timestamp exactly
   // is what makes the executor's fill-vs-decision deviation meaningful.
-  const HOUR_MS = 3600000;
-  const entryTs = target.startTs + (geo.entryOffsetH || 0) * HOUR_MS;
   const bar = maps.trade.get(entryTs);
   const priceAt = bar ? bar.open : null;
 
