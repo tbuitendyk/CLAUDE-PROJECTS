@@ -1,0 +1,73 @@
+The both-sides stop numbers you asked for — and they say F1 does not want a fixed stop at all
+
+tl;dr: you asked to see, for cutting the top one/two/three winners, the effect on BOTH
+sides — winners forfeited vs losers saved — in real money. Here it is, and it is
+decisive: for F1 a fixed protective stop LOSES money at every level I can set it, and
+loses MORE the tighter it gets. The reason is concrete — F1's losing positions mostly
+recover from their dip before the 137h exit, so cutting them at the stop locks a
+bigger loss than riding to the close. No stop, tight or loose, comes out ahead of no
+stop at all. The tuner and the Bracket Lab control now show this whole comparison. So
+the real decision is not "what stop" but "does F1 get a stop at all" — and its own
+history says no. Nothing is set; the box is STOPPED with no stop configured.
+
+The figures are per the live $10 clip, summed across all 1729 historical entries
+(2019-11 to 2026-08), as a comparison — not the live book's realized P&L.
+
+TABLE 1 — TIGHTER: give up the deepest winners to tighten the stop. KEY: give up =
+how many of the very deepest-dipping winners you sacrifice; stop = the resulting
+fixed stop; winner $ given up = the winning profit those sacrificed winners made,
+now forfeited; losers cut = losing trades stopped early; loss-side $ = the change on
+those losers (+ saves, - costs); NET $ = total change vs no stop (+ means the stop
+helps).
+
+  give up   stop     winner $ given up   losers cut   loss-side $   NET $
+     0      11.42%          $0              349          -$48.28    -$48.28
+     1       8.13%         -$0.57           580          -$87.33    -$91.21
+     2       7.01%         -$0.75           672          -$96.74   -$103.89
+     3       6.07%         -$1.52           756          -$97.10   -$107.93
+
+TABLE 2 — LOOSER: keep every winner, raise the stop so it catches only the deepest
+losers (tail-only insurance). KEY: same columns; winners cut is 0 throughout.
+
+  stop     losers cut   NET $
+  12%          327      -$44.92
+  15%          221      -$37.07
+  20%          123      -$29.14
+  25%           70      -$21.29
+  30%           43      -$22.33
+  40%           13      -$6.17
+
+Every row of both tables is negative. Even a 40% stop — which only ever touches the
+13 most extreme dips in seven years — still loses $6, because even those 13 recovered
+enough by the exit that stopping them was worse. The least-bad fixed stop is no stop.
+
+WHERE I PUSHED ON MY OWN NUMBER, so you are not taking it on faith:
+  - This is pure expected P&L. It does NOT credit a stop for FREEING THE $10 CLIP: a
+    position riding a long dip ties up one of your six slots; stopping it frees that
+    slot for a new entry. If your book often sits at the 6-position cap, a stop has a
+    capital/opportunity value my number ignores. (F1 rarely fills all six, so this is
+    probably small — but it is the one real argument for a stop the table misses.)
+  - It is an average over history, not TAIL protection. A stop still caps the worst
+    single position, which has value beyond expected P&L even when the average is
+    negative — that is what you originally asked it for ("runaway loss"). But the
+    data says even 40%+ dips recover here, so F1's single-position ruin risk on a
+    137h $10 clip is already small.
+  - My "stopped" outcome is the stop LEVEL; a live stop fills at the next tick's
+    market price, which OVERSHOOTS the level. So the real stop is a touch WORSE than
+    every number above, never better. The finding is conservative.
+
+MY READ: on F1's own full history, a fixed protective stop is counterproductive — it
+does not avoid runaway loss, it manufactures realized losses out of dips that would
+have recovered. I would not put one on F1 on this evidence. If you want tail
+insurance anyway, a LOOSE stop (25-30%) costs the least (~$21-22 over seven years)
+while still capping a genuine blow-up. Your call — and it may differ for a FUTURE
+pair whose losers do not recover the way F1's do, which is exactly why the tuner is
+now a general, per-setup tool.
+
+WHAT IS BUILT AND LIVE: the tuner, the Bracket Lab control (only for setups without a
+stop), the both-sides curve display, the carry-to-engine, and the engine's hard stop
+are all deployed. No value is set on the box; F1 remains STOPPED with no stop. Say
+the word for either "set 11.4%", "set a loose 25-30% tail stop", or "no stop on F1",
+and I will wire it — or leave it to you and the control.
+
+c.
