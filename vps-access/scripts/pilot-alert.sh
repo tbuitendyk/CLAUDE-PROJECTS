@@ -54,7 +54,7 @@ INCIDENT_COOLDOWN_MIN = 60.0  # re-page a recurring incident KIND at most this o
                               # once then hourly, not on every alert run (re-review S1)
 INCIDENT_EVENTS = {"RECONCILE_MISMATCH", "RECONCILE_UNREADABLE", "KILL_PRICE_DRIFT",
                    "KILL_TRANSPORT", "EXIT_OVERDUE", "MIRROR_BREAK", "ORDER_REJECT",
-                   "HALT_SET", "ARM_STALE", "INTENT_STALE", "CLOCK_DRIFT"}
+                   "HALT_SET", "ARM_STALE", "INTENT_STALE", "CLOCK_DRIFT", "FIXED_STOP"}
 # A heartbeat must prove the executor loop ran PAST the due-exit step, not just
 # its opening. CLOCK_SYNC fires before any account call, and RECONCILE_OK fires at
 # step 1 — BEFORE due exits run (step 3). A box that reconciles then dies in the

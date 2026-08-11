@@ -510,6 +510,69 @@ class ExecutorTest(unittest.TestCase):
         self.assertTrue(MockBinance.base_bal < self.x.QTY_STEP,
                         'the exit should sweep holdings down to sub-lot dust')
 
+    def _set_stop(self, pct):
+        with open(os.path.join(self.home, ".executor-env"), "w") as f:
+            f.write(f"BINANCE_KEY=k\nBINANCE_SECRET=s\nLIVE=1\n"
+                    f"FIXED_STOP_PCT={pct}\nBASE=http://127.0.0.1:{self.port}\n")
+
+    def test_long_fixed_stop_closes_on_adverse_move(self):
+        # OWNER 2026-08-11: every order carries a hard fixed stop. A LONG whose hold
+        # is NOT yet due must close NOW when price falls past entry*(1-stop).
+        self._set_stop(0.05)
+        now = time.time()
+        self.x.jlog("ENTRY_FILL", chunk_start="c1", side="LONG", qty=0.1,
+                    price=100.0, exit_due_ts=now + 9999)   # NOT due on time
+        MockBinance.base_bal = 0.1
+        MockBinance.price = "94.00"                        # -6%, past the 5% stop
+        self.x.do_run(self.bx())
+        ev = self.events()
+        self.assertIn("FIXED_STOP", ev, "a stop breach must journal FIXED_STOP")
+        ex = [e for e in self.x.journal_events() if e["event"] == "EXIT_FILL"]
+        self.assertTrue(ex, "the stopped position is closed")
+        self.assertEqual(ex[-1].get("reason"), "fixed_stop", "the close is tagged as a stop, not scheduled")
+
+    def test_long_fixed_stop_not_hit_holds_position(self):
+        # within the stop and not yet due -> the position stays open.
+        self._set_stop(0.05)
+        now = time.time()
+        self.x.jlog("ENTRY_FILL", chunk_start="c1", side="LONG", qty=0.1,
+                    price=100.0, exit_due_ts=now + 9999)
+        MockBinance.base_bal = 0.1
+        MockBinance.price = "96.00"                        # -4%, inside the 5% stop
+        self.x.do_run(self.bx())
+        ev = self.events()
+        self.assertNotIn("FIXED_STOP", ev)
+        self.assertNotIn("EXIT_FILL", ev)
+        st = self.x.derive(self.x.journal_events())
+        self.assertEqual(len(st["open"]), 1, "an unbreached, not-due position holds")
+
+    def test_short_fixed_stop_closes_on_adverse_move(self):
+        # a SHORT is stopped when price RISES past entry*(1+stop).
+        self._set_stop(0.05)
+        now = time.time()
+        self.x.jlog("ENTRY_FILL", chunk_start="s1", side="SHORT", qty=0.1,
+                    price=100.0, exit_due_ts=now + 9999)
+        MockBinance.borrowed = 0.1
+        MockBinance.price = "106.00"                       # +6%, past the 5% stop
+        self.x.do_run(self.bx())
+        ev = self.events()
+        self.assertIn("FIXED_STOP", ev)
+        ex = [e for e in self.x.journal_events() if e["event"] == "EXIT_FILL"]
+        self.assertTrue(ex and ex[-1].get("reason") == "fixed_stop")
+
+    def test_no_stop_configured_rides_through_drawdown(self):
+        # with no FIXED_STOP_PCT in the env, a deep adverse move does NOT trigger a
+        # stop close (the stop is disabled until the sweep provides a value).
+        now = time.time()
+        self.x.jlog("ENTRY_FILL", chunk_start="c1", side="LONG", qty=0.1,
+                    price=100.0, exit_due_ts=now + 9999)
+        MockBinance.base_bal = 0.1
+        MockBinance.price = "80.00"                        # -20%, but no stop set
+        self.x.do_run(self.bx())
+        self.assertNotIn("FIXED_STOP", self.events())
+        st = self.x.derive(self.x.journal_events())
+        self.assertEqual(len(st["open"]), 1, "no stop configured -> no stop close")
+
     def test_master_switch_off_blocks_entries(self):
         self.x.set_arm(False, "test")   # owner has not pressed START
         self.write_intent(side="LONG")

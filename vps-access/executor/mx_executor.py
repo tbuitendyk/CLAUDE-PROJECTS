@@ -61,6 +61,14 @@ RECV_WINDOW = 10000
 FILL_DEV_LIMIT = 0.010     # kill: fill >1.0% from decision price (GUESSED)
 REJECT_LIMIT = 3           # kill: 3 consecutive rejects (GUESSED)
 LOSS_LIMIT_USD = 50.0      # kill: cumulative pilot loss (GUESSED)
+FIXED_STOP_PCT_DEFAULT = 0.0  # hard per-order stop as a fraction of entry price.
+                           # 0 = NO stop until the full-history sweep provides one.
+                           # Owner (2026-08-11): every live order must carry a fixed
+                           # protective stop tuned so no money-making entry is lost.
+                           # The runtime value comes from FIXED_STOP_PCT in the env
+                           # (set at deploy from the sweep) so it is tunable without
+                           # a code change; this constant is only the fail-safe
+                           # fallback when the env is silent.
 RECONCILE_TOL = QTY_STEP   # 1 lot step of drift tolerated while positions are open
 # when FLAT, un-sellable sub-min-notional base (short-close buffer dust the
 # exchange won't let us sell) is tolerated up to MIN_NOTIONAL/price*1.2, computed
@@ -499,6 +507,19 @@ def load_env():
     return env
 
 
+def fixed_stop_pct():
+    """The hard per-order stop as a POSITIVE fraction of entry price, or 0.0 if no
+    stop is configured. Read live from FIXED_STOP_PCT in the env so the swept value
+    can be set at deploy without a code change; a malformed or absent value falls
+    back to the module default (0 = disabled), never crashes."""
+    raw = load_env().get("FIXED_STOP_PCT", "")
+    try:
+        v = float(raw) if raw not in (None, "") else FIXED_STOP_PCT_DEFAULT
+    except (TypeError, ValueError):
+        return 0.0
+    return v if v > 0 else 0.0
+
+
 # ---- order helpers -----------------------------------------------------------
 import math
 
@@ -886,11 +907,31 @@ def do_run(bx):
     # (finding 18). A short that is NOT due this run keeps this count above 1,
     # so a due close never repays a still-open sibling's borrow.
     shorts_remaining = sum(1 for q in st["open"].values() if q["side"] == "SHORT")
+    stop_pct = fixed_stop_pct()
     for p in sorted(st["open"].values(), key=lambda x: x["exit_due_ts"]):
-        if now < p["exit_due_ts"]:
+        # A position exits for one of two reasons: its scheduled hold elapsed, OR
+        # the market moved adversely past the hard fixed stop (owner 2026-08-11:
+        # every order carries a protective stop against runaway loss). The stop is
+        # a fraction of the entry price — a LONG is stopped when price falls to
+        # entry*(1-stop), a SHORT when price rises to entry*(1+stop). Checked at
+        # tick resolution against the same market `px` the mtm kill uses; the close
+        # fills at market, which may overshoot the level (recorded in FIXED_STOP).
+        due = now >= p["exit_due_ts"]
+        stop_hit = False
+        ep = p.get("entry_price")
+        if stop_pct and px is not None and ep:
+            stop_hit = (px <= ep * (1 - stop_pct)) if p["side"] == "LONG" \
+                else (px >= ep * (1 + stop_pct))
+        if not (due or stop_hit):
             continue
+        exit_reason = "scheduled" if due else "fixed_stop"
+        if stop_hit and not due:
+            adverse = ((ep - px) / ep) if p["side"] == "LONG" else ((px - ep) / ep)
+            jlog("FIXED_STOP", chunk_start=p["chunk_start"], side=p["side"],
+                 entry_price=ep, price=px, stop_pct=stop_pct,
+                 adverse_pct=round(adverse, 5))
         overdue_h = (now - p["exit_due_ts"]) / 3600
-        if overdue_h > 0.5:
+        if due and overdue_h > 0.5:
             jlog("EXIT_OVERDUE", chunk_start=p["chunk_start"],
                  overdue_hours=round(overdue_h, 2))
         if p["side"] == "LONG":
@@ -977,7 +1018,7 @@ def do_run(bx):
                                  "under-repaid; borrow still accruing interest")
             jlog("EXIT_FILL", chunk_start=p["chunk_start"], side=p["side"],
                  qty=qty_traded, price=px, fee_quote=fee, entry_fee=entry_fee,
-                 interest_cost=round(interest_cost, 6),
+                 interest_cost=round(interest_cost, 6), reason=exit_reason,
                  pnl=round(gross - fee - entry_fee - interest_cost, 4))
         elif status == "unknown":
             # transport error: the close MAY have filled. Do not halt or retry
@@ -999,7 +1040,8 @@ def do_run(bx):
     # even on a quiet day with no orders
     jlog("RUN_STATUS", armed=armed(), halted=halted(),
          open=len(st["open"]), realized=round(st["realized"], 4), live=bx.live,
-         arm_secret=bool(load_env().get("PILOT_ARM_SECRET", "")))
+         arm_secret=bool(load_env().get("PILOT_ARM_SECRET", "")),
+         fixed_stop_pct=stop_pct)
     if not armed():
         if arm_present():
             jlog("ARM_STALE", reason="dead-man: ARM not refreshed within "
