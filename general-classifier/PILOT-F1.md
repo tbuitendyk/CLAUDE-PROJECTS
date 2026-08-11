@@ -175,24 +175,30 @@ Blockers and status:
 | 24+25+27 | No liveness signal / suppressed staleness / no alerting | FIXED — banner off executor heartbeat in all states; VPS alert timer emails on halt/dead-heartbeat/stale-sync/incident |
 | 3 | Intent age on un-synced OS clock, no NTP | FIXED — exchange-synced age check, loud INTENT_STALE/CLOCK_DRIFT, chrony on both hosts |
 | 8 | Actionable intent can ship decision_price=null | FIXED — null-price guard in the producer |
-| 12+15 | Arm has no owner auth; flat-book wipe silently re-arms | FIXED (code) — nonce+freshness edge closes the wipe-rearm (15); HMAC auth (12) activates once the owner provisions a shared secret (§10) |
-| 21 | Public deploy endpoint transitively controls the trading box | OWNER — infra, see §10 |
+| 12+15 | Arm has no owner auth; flat-book wipe silently re-arms | FIXED — nonce+freshness+monotonic-watermark edge; arm now REQUIRES a shared secret + valid HMAC (fail-safe), STOP is unconditional. Owner provisions the secret to arm (§10) |
+| 21 | Public deploy endpoint transitively controls the trading box | OWNER — infra, deferred by owner 2026-08-11 (blast radius key-capped) |
 
-## 10. Remaining owner actions before arm
+## 10. Pre-arm status (post re-review, 2026-08-11)
 
-These cannot be closed by code alone; the owner must complete them and the
-review must be re-run clean before the master switch is pressed:
+The end-to-end adversarial review was re-run after the fixes: verdict
+GO_WITH_FIXES, five of six dimensions clean, every trading/money/mirror/liveness
+blocker adversarially confirmed closed. Its two arm-blockers (B1, B2) — both in
+the arm/disarm control plane — are now fixed in code and re-verified by test:
 
-- **Arm authentication (findings 12, 15).** SHIPPED in code: arming is now
-  nonce/edge-triggered and freshness-gated, so a stale request after a disk wipe
-  cannot silently re-arm (15 closed with no secret needed). To turn on the HMAC
-  authentication layer (12), the owner provisions a shared secret on BOTH the VPS
-  UI (env `PILOT_ARM_SECRET`) and the box (`~/.executor-env`); until then the box
-  journals ARM_UNAUTHENTICATED and the freshness+nonce edge plus the batch-1
-  dead-man are the guard, with blast radius key-capped.
-- **Deploy endpoint hardening (finding 21).** Add an IP allowlist to
-  deploy.buitendyk.ca (Claude egress only), remove the trading-box scripts from
-  the public run-script set (or gate them behind a separate non-public action),
-  and rotate + stop logging DEPLOY_API_TOKEN. Infra + owner.
-- **Re-run the end-to-end adversarial review** and confirm all blockers closed
-  and none reopened. Only then arm.
+- **Arm authentication (findings 12/15, re-review B1/B2).** DONE in code. STOP is
+  now UNCONDITIONAL (a kill switch is never gated behind auth). Arming now
+  REQUIRES a shared secret (`PILOT_ARM_SECRET`) and a valid HMAC — with no secret
+  the box REFUSES to arm (fail-safe), so nothing can open a live position without
+  owner crypto. A monotonic watermark stops a captured request replaying past a
+  STOP; the dead-man still self-disarms on control-plane loss. **The one owner
+  step to arm: set the same `PILOT_ARM_SECRET` in the box `~/.executor-env` and
+  the VPS UI env; until then the rig cannot arm.**
+- **Deploy endpoint hardening (finding 21).** Owner deferred (2026-08-11):
+  accepted risk, backstopped by the key scoping (sub-account / no-withdrawal /
+  IP-whitelisted / ~$150–200 cap). IP allowlist + token rotation remain available
+  if desired.
+- **Non-blocking should-fix-soon** (all fail safe today) tracked from the
+  re-review: mirror fails-open on an internal error (page/halt on stale
+  mirror.json), decision-record write is best-effort (gate the ship on it),
+  found:false can mask vanished data as pending, and the hash tripwire is
+  informational-only. None blocks arming; scheduled as follow-ups.
