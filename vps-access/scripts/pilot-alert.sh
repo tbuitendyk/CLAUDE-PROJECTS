@@ -91,7 +91,12 @@ for e in events:
     if ev in HEARTBEAT_EVENTS:
         last_hb_ts = e.get("ts", last_hb_ts)
     if ev in INCIDENT_EVENTS:
-        last_incident = (e.get("ts", 0), ev)
+        # a housekeeping SWEEP reject is not a trading incident — only page on
+        # ENTRY/EXIT rejects (re-review).
+        if ev == "ORDER_REJECT" and e.get("action") not in ("ENTRY", "EXIT"):
+            pass
+        else:
+            last_incident = (e.get("ts", 0), ev)
 
 n_open = len(open_pos)
 at_risk = armed or n_open > 0   # something a dead box could mishandle
