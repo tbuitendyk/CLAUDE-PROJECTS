@@ -124,7 +124,11 @@ systemctl enable --now pilot-tunnel.service
 systemctl enable --now pilot-tick.timer
 systemctl enable --now pilot-sync.timer
 
-echo "== configure the Mexico box: LIVE=1 (ARM still gates all entries) + cron =="
+echo "== configure the Mexico box: LIVE=1 (ARM still gates all entries) + systemd timer =="
+# The box has no cron but has systemd + passwordless sudo, so a SYSTEM timer is
+# the cleanest reboot-safe, wall-clock scheduler (auto-starts on boot, no login
+# needed). It runs the executor as admin so it reads ~/.executor-env and writes
+# ~/pilot.
 $SSH "$BOX_USER@$BOX_HOST" 'bash -s' <<'BOX'
 set -uo pipefail
 mkdir -p ~/pilot
@@ -134,11 +138,30 @@ else
   echo 'LIVE=1' >> ~/.executor-env
 fi
 echo "  LIVE now: $(grep -E '^LIVE=' ~/.executor-env)"
-# wall-clock cron every 10 min; survives reboot (cron is enabled by default).
-( crontab -l 2>/dev/null | grep -v 'mx_executor.py run' ; \
-  echo '*/10 * * * * /usr/bin/python3 $HOME/mx_executor.py run >> $HOME/pilot/cron.log 2>&1' ) | crontab -
-echo "  crontab:"; crontab -l | sed 's/^/    /'
-echo "  master switch (ARM) present? $([ -f ~/pilot/ARM ] && echo YES || echo NO — engine STOPPED until owner presses START)"
+sudo tee /etc/systemd/system/pilot-exec.service >/dev/null <<UNIT
+[Unit]
+Description=Pilot executor run (reconcile, close due trades, open when armed)
+After=network-online.target
+Wants=network-online.target
+[Service]
+Type=oneshot
+User=admin
+ExecStart=/usr/bin/python3 /home/admin/mx_executor.py run
+UNIT
+sudo tee /etc/systemd/system/pilot-exec.timer >/dev/null <<UNIT
+[Unit]
+Description=Pilot executor every 10 minutes (wall-clock UTC)
+[Timer]
+OnCalendar=*-*-* *:00/10:00 UTC
+Persistent=true
+[Install]
+WantedBy=timers.target
+UNIT
+sudo systemctl daemon-reload
+sudo systemctl enable --now pilot-exec.timer
+echo "  box timer: $(systemctl is-enabled pilot-exec.timer 2>/dev/null) / $(systemctl is-active pilot-exec.timer 2>/dev/null)"
+systemctl list-timers pilot-exec.timer --all 2>/dev/null | grep pilot-exec | sed 's/^/    /' || true
+echo "  master switch (ARM) present? $([ -f ~/pilot/ARM ] && echo YES || echo 'NO — engine STOPPED until owner presses START')"
 BOX
 
 echo
