@@ -20,6 +20,27 @@ const MODEL_FEE_PER_LEG = 0.125; // the assumption the pilot measures against
 // its scheduled exit. Frozen: do not change (TRACKER.md locks F1 after week one).
 const F1_ENTRY_HOUR_UTC = 1;
 const F1_HOLD_HOURS = 137;
+const F1_PAIRS = ['LTCUSDT', 'XRPUSDT', 'BCHUSDT']; // F1 combo: trade + two context pairs
+// The newest CLOSED hourly candle normally trails 'now' by ~1-2h (the current hour
+// is still forming, plus publish lag on the keyless mirror), so only flag as stale
+// when the data is CLEARLY behind — > 3h means the refresh has not kept up and a
+// trigger could compute on a short window.
+const DATA_STALE_HOURS = 3;
+
+// Per-pair data freshness for the screen: the newest cached candle time and its
+// age, so the owner can see the trigger inputs are current before arming. Pure
+// over supplied (symbol, ts) pairs + a clock, so it is unit-testable.
+function dataFreshness(pairsWithTs, nowMs) {
+  return pairsWithTs.map(({ symbol, ts }) => {
+    const ageHours = ts != null ? (nowMs - ts) / 3600000 : null;
+    return {
+      symbol,
+      newestCandleUtc: ts != null ? new Date(ts).toISOString() : null,
+      ageHours: ageHours != null ? Math.round(ageHours * 100) / 100 : null,
+      stale: ageHours == null || ageHours > DATA_STALE_HOURS,
+    };
+  });
+}
 
 // Build the human-readable "current status / next actions" the screen shows: what
 // the system will do next, why, and when (absolute UTC; the page live-counts down).
@@ -411,7 +432,15 @@ function status(file = JOURNAL) {
     stopCarryError,
     ...st,
     liveStatus: liveStatus(st, Date.now()),
+    dataFreshness: (() => {
+      // newest cached candle per F1 pair, so the screen shows the trigger inputs
+      // are current. Lazy-require binance so derive() stays dependency-free.
+      try {
+        const binance = require('./binance');
+        return dataFreshness(F1_PAIRS.map((s) => ({ symbol: s, ts: binance.newestCandleTs(s) })), Date.now());
+      } catch (_) { return []; }
+    })(),
   };
 }
 
-module.exports = { status, config, anatomy, derive, liveStatus, readJournal, JOURNAL, MODEL_FEE_PER_LEG };
+module.exports = { status, config, anatomy, derive, liveStatus, dataFreshness, readJournal, JOURNAL, MODEL_FEE_PER_LEG };

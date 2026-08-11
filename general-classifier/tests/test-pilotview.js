@@ -243,3 +243,18 @@ module.exports.liveStatusCountsPositionsAndSchedulesNextExit = function () {
   const exit = ls.items.find((i) => i.what.startsWith('Close the LONG'));
   assert.ok(exit && exit.whenUtc === new Date(exitTs * 1000).toISOString(), 'exit item carries the absolute exit time');
 };
+
+module.exports.dataFreshnessFlagsStalePairsAndFormats = function () {
+  const now = Date.UTC(2026, 7, 12, 1, 0, 0); // 2026-08-12 01:00 UTC
+  const df = pv.dataFreshness([
+    { symbol: 'LTCUSDT', ts: now - 1 * 3600000 }, // 1h old -> fresh
+    { symbol: 'XRPUSDT', ts: now - 5 * 3600000 }, // 5h old -> stale (>3h)
+    { symbol: 'BCHUSDT', ts: null },              // missing -> stale
+  ], now);
+  assert.strictEqual(df[0].stale, false, '1h old is fresh');
+  assert.ok(Math.abs(df[0].ageHours - 1) < 1e-9, 'age in hours');
+  assert.strictEqual(df[0].newestCandleUtc, new Date(now - 3600000).toISOString(), 'newest candle ISO');
+  assert.strictEqual(df[1].stale, true, '5h old is stale');
+  assert.strictEqual(df[2].stale, true, 'missing candle is stale');
+  assert.strictEqual(df[2].newestCandleUtc, null, 'missing -> null time');
+};

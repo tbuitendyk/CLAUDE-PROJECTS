@@ -372,4 +372,30 @@ function cacheState() {
     .sort((a, b) => (a.symbol < b.symbol ? -1 : 1));
 }
 
-module.exports = { monthlyKlines, dailyKlines, recentKlines, socksServerTime, unzipSingleEntry, parseKlineCsv, cacheState, cachedMonths, cachedDayMonths, coveredMonths, monthFromDayFiles, cachePath, HOUR_MS, MINUTE_MS: 60_000 };
+// Newest cached hourly-candle timestamp (ms) for a symbol — the freshness the F1
+// triggers actually compute on. LIGHT: reads only the newest day-file (current
+// partial month) and the newest month bundle, taking the max `ts`; it never loads
+// full history. Returns null if nothing is cached. Used by the live pilot screen
+// so the owner can see the data is caught up before arming.
+function newestCandleTs(symbol) {
+  let files = [];
+  try { files = fs.readdirSync(CACHE_DIR); } catch { return null; }
+  const days = files.filter((f) => new RegExp(`^${symbol}-1h-\\d{4}-\\d{2}-\\d{2}\\.json$`).test(f)).sort();
+  const months = files.filter((f) => new RegExp(`^${symbol}-1h-\\d{4}-\\d{2}\\.json$`).test(f)).sort();
+  const candidates = [];
+  if (days.length) candidates.push(days[days.length - 1]);
+  if (months.length) candidates.push(months[months.length - 1]);
+  let newest = null;
+  for (const f of candidates) {
+    try {
+      const rows = JSON.parse(fs.readFileSync(path.join(CACHE_DIR, f), 'utf8'));
+      for (const r of rows) {
+        const t = r && typeof r.ts === 'number' ? r.ts : null;
+        if (t != null && (newest == null || t > newest)) newest = t;
+      }
+    } catch { /* skip an unreadable file */ }
+  }
+  return newest;
+}
+
+module.exports = { monthlyKlines, dailyKlines, recentKlines, socksServerTime, unzipSingleEntry, parseKlineCsv, cacheState, cachedMonths, cachedDayMonths, coveredMonths, monthFromDayFiles, cachePath, newestCandleTs, HOUR_MS, MINUTE_MS: 60_000 };

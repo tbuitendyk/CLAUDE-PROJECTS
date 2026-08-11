@@ -315,18 +315,40 @@ async function refresh() {
   $('#foot').textContent = `synced ${d.journalSyncedUtc||'—'} · refreshes every 30s · this page reads and carries your switch; it does not decide trades`;
 
   LATEST_STATUS = d.liveStatus || null;
+  LATEST_FRESH = d.dataFreshness || [];
   renderStatus();
 }
 
 // --- live "what's next" status + UTC clock (tick locally every second so
 // countdowns move without re-polling; absolute UTC targets come from the server) ---
 let LATEST_STATUS = null;
+let LATEST_FRESH = [];
 function untilStr(iso) {
   if (!iso) return '';
   const ms = Date.parse(iso) - Date.now();
   if (ms <= 0) return 'now / due';
   const h = Math.floor(ms/3600000), m = Math.floor((ms%3600000)/60000), s = Math.floor((ms%60000)/1000);
   return h>0 ? `in ${h}h ${m}m` : (m>0 ? `in ${m}m ${s}s` : `in ${s}s`);
+}
+function agoStr(iso) {
+  if (!iso) return '—';
+  const ms = Date.now() - Date.parse(iso);
+  if (ms < 0) return 'just now';
+  const h = Math.floor(ms/3600000), m = Math.floor((ms%3600000)/60000);
+  return h>0 ? `${h}h ${m}m ago` : `${m}m ago`;
+}
+function freshLine() {
+  if (!LATEST_FRESH.length) return '';
+  const parts = LATEST_FRESH.map(f => {
+    const ageH = f.newestCandleUtc ? (Date.now() - Date.parse(f.newestCandleUtc))/3600000 : null;
+    const stale = ageH == null || ageH > 3; // matches server DATA_STALE_HOURS
+    const sym = f.symbol.replace('USDT','');
+    const when = f.newestCandleUtc ? `${f.newestCandleUtc.slice(11,16)} (${agoStr(f.newestCandleUtc)})` : 'none';
+    return `<span class="${stale?'warn':'pos'}">${sym} ${when}</span>`;
+  }).join(' · ');
+  const anyStale = LATEST_FRESH.some(f => { const a = f.newestCandleUtc ? (Date.now()-Date.parse(f.newestCandleUtc))/3600000 : null; return a==null||a>3; });
+  return `<div style="margin-top:.4rem"><b>Trigger data — newest candle:</b> ${parts}`
+    + (anyStale ? ' <span class="warn">· data is behind; refresh not caught up</span>' : ' <span class="muted">· up to date</span>') + '</div>';
 }
 function renderStatus() {
   const s = LATEST_STATUS;
@@ -341,7 +363,8 @@ function renderStatus() {
          + `<tr><td colspan="2" style="text-align:left" class="muted" title="why">↳ ${it.why||''}</td></tr>`;
   }).join('');
   el.innerHTML = `<div style="margin-bottom:.4rem">${posLine}</div>`
-    + `<table style="width:100%"><tbody>${rows}</tbody></table>`;
+    + `<table style="width:100%"><tbody>${rows}</tbody></table>`
+    + freshLine();
 }
 function tickClock() {
   const c = document.getElementById('utcClock');
