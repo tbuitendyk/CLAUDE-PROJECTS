@@ -1,0 +1,77 @@
+Pre-arm e2e review done: 8 defects found and fixed (each watched-failing), deployed; box still STOPPED
+
+tl;dr: I ran the final pre-arm end-to-end adversarial review of the live trading
+environment across four independent lenses (executor, control-plane, stop-math,
+observability/mail). It found EIGHT fixable defects — one that could disable a
+stop, one remote-code path into the trading box, and a mail-verification spoof
+among them. All eight are fixed, and for every one I reintroduced the bug and
+watched a new test FAIL, then pass with the fix. Classifier and executor are
+redeployed. The box is STILL STOPPED — ARM is absent; nothing trades until you
+press START — and F1 still carries no stop. On these grounds the environment is
+ARM-SAFE, i.e. safe to start when you choose; the decision is yours.
+
+WHAT "watched-failing" MEANS (plain words): a test that I confirmed catches the
+bug — I put the bug back, saw the test go red, removed the bug, saw it go green.
+A test nobody has seen fail is not a check. All 8 have been seen failing.
+
+TABLE: pre-arm review findings. KEY — Area: which lens found it. Severity:
+BLOCKER = must fix before live; HARDENING = defence-in-depth. Was: the defect.
+Now: the fix, each with a committed watched-failing test.
+
+  #  Area      Sev       Was -> Now
+  1  executor  BLOCKER   The exit loop reused one variable for both the market
+                         price and each order's fill price. If an earlier exit
+                         came back "unknown" (a network blip) it blanked the
+                         price and SILENTLY switched off the stop for every other
+                         open position that cycle. -> fill price kept separate;
+                         a two-position test proves the later stop still fires.
+  2  control   BLOCKER   The arm request's security tokens were pasted into a
+                         command run ON the trading box. A corrupt or tampered
+                         token could have run arbitrary commands there. -> tokens
+                         are now shape-checked first; anything off-shape becomes a
+                         safe DISARM that carries nothing and cannot inject.
+  3  control   HARDENING You could set a stop so tight it would trigger on normal
+                         hourly noise and churn winners into losses. -> a 0.5%
+                         floor (twice the round-trip fee) is enforced.
+  4  control   BLOCKER   A corrupt stop file was read as "no stop" — a disk glitch
+                         could SILENTLY strip a protective stop you had set. -> a
+                         corrupt file now leaves the box's stop UNCHANGED and
+                         shows a red note on the pilot screen.
+  5  stop-math BLOCKER   The stop's "keep every winner" boundary used <=, which
+                         would stop out the very winner that set the boundary. ->
+                         made strict (<); the boundary winner is preserved.
+  6  stop-math HARDENING The stop tuner and the live forward-book counted slightly
+                         different sets of trades near data gaps. -> the tuner now
+                         walks up to 3h over a gap exactly as the book does; they
+                         price the same trades.
+  7  observ.   BLOCKER   Several alarms were silenced by conditions read from a
+                         stalled feed (so a stall could hide itself), a repeat
+                         incident could be swallowed, and a refused START never
+                         paged. -> stall alarms fire on staleness alone; repeats
+                         are delayed not dropped; entry vs exit rejects and all
+                         arm-refusals now page.
+  8  mail      BLOCKER   Mail verification could be spoofed: an attacker reusing a
+                         Message-ID you had legitimately sent elsewhere could get
+                         their own mail to claude@ accepted as yours. -> the
+                         owner's login AND the delivery to claude@ must now be on
+                         the SAME server queue-id, which an outsider cannot forge.
+
+Everything above is committed, pushed, and deployed. The classifier restarted
+clean; the executor installed and its timer is running; the install itself
+reports "master switch (ARM) present? NO — engine STOPPED until owner presses
+START." Each finding is logged as a permanent QC check (register items 95-103),
+and pilot-alert.sh now has its own committed test harness (a gap I had left open).
+
+TWO HONEST CAVEATS, on the record:
+  - Finding 8's fix depends on how postfix logs delivery to claude@. The unit
+    test covers the decision logic; the live mail-log format is confirmed on your
+    NEXT phone send. Every verdict now prints the bound queue-id, so if a genuine
+    message of yours ever reads UNVERIFIED I can see why at a glance and loosen
+    it — it will fail safe (rejected), never accept a fake.
+  - F1's edge itself is unchanged by any of this: still positive and ahead of
+    buy-and-hold in the forward window, still thin (17 trades, under the 30-trade
+    bar), still no stop. This review hardened the MACHINERY, not the edge.
+
+Nothing here arms anything. F1 remains STOPPED with no stop until you press START.
+
+c.
