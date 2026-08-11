@@ -18,7 +18,7 @@ const { buildCombo, trainMembers, quorumCall } = require('./bracketwork');
 const bracketLib = require('./bracket');
 const { scoreDiff } = require('./dataset');
 const { splitFrozen, TRAIN_THROUGH, SCORE_FROM } = require('./forwardbook');
-const { REAL_FEE_PER_LEG } = require('./paper');
+const { REAL_FEE_PER_LEG, NOTIONAL } = require('./paper');
 const { tuneFixedStop } = require('./stoptuner');
 const { HOUR_MS } = require('./binance');
 
@@ -49,8 +49,14 @@ async function computeSetupStop(book, opts = {}) {
     throw new Error(`setup ${book.id} already has a protective stop `
       + `(entry=${book.cell.entry}, trailMult=${book.cell.trailMult}) — stop tuning does not apply`);
   }
-  const fee = opts.feePerLeg ?? REAL_FEE_PER_LEG;
-  const params = { allLoaded: true, feePerLeg: fee };
+  // REAL_FEE_PER_LEG is DOLLARS on the $NOTIONAL paper clip ($0.125 on $100 =
+  // 0.125%). The stop tuner works in FRACTIONAL returns, so the fee must be a
+  // fraction too: $0.125/$100 = 0.00125. (Passing the dollar 0.125 straight in
+  // made a 25% round-trip hurdle instead of 0.25% and misclassified almost every
+  // trade as a loser — caught 2026-08-11 by the owner asking why F1 'won' 2.7%.)
+  const feeUsd = opts.feePerLegUsd ?? REAL_FEE_PER_LEG;
+  const feeFrac = opts.feePerLeg ?? (feeUsd / NOTIONAL);
+  const params = { allLoaded: true, feePerLeg: feeUsd };
   const { geo, maps, chunks } = await buildCombo(book.combo, book.branch, params);
 
   // frozen band + labels, exactly as scoreBook (never re-derived on new data)
@@ -79,7 +85,7 @@ async function computeSetupStop(book, opts = {}) {
   const entries = entriesFromCalls(scoreChunks, calls, geo);
   const tune = tuneFixedStop(entries, maps.trade, {
     holdHours: book.cell.tHours,
-    feePerLeg: fee,
+    feePerLeg: feeFrac,
     marginFrac: opts.marginFrac || 0,
   });
   return {
