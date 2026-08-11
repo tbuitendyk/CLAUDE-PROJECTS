@@ -163,6 +163,15 @@ module.exports.armRefusalEventsSurfaceAsIncidents = function () {
   }
 };
 
+module.exports.runStatusCarriesTheFixedStopBeingApplied = function () {
+  const st = derive([
+    { event: 'RUN_STATUS', armed: false, halted: false, fixed_stop_pct: 0.073 },
+  ]);
+  assert.strictEqual(st.fixedStopPct, 0.073, 'the box-applied fixed stop surfaces for the screen');
+  const none = derive([{ event: 'RUN_STATUS', armed: false, halted: false }]);
+  assert.strictEqual(none.fixedStopPct, null, 'no stop reported -> null (screen shows none set)');
+};
+
 module.exports.fixedStopSurfacesAsIncident = function () {
   // a hard fixed-stop close is a real money event — it must show on the screen.
   const st = derive([

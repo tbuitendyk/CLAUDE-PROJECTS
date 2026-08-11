@@ -113,6 +113,7 @@
     document.querySelectorAll('.tabbar .tab').forEach((b) => b.classList.toggle('active', b.dataset.tab === tab));
     if (window.location.hash !== `#${tab}`) history.replaceState(null, '', `#${tab}`);
     paintRunBanner(); // the running-job strip hides on the tab that shows the job natively
+    if (tab === 'bracket') renderStopTuner();
   }
   // ---- cross-tab running-job notice ----------------------------------------
   // One job runs at a time, but each tab lists only its own kind, so a job
@@ -2129,6 +2130,60 @@
         ${d.sanity.ok ? '<strong class="up">PASS — noise mostly loses, as fees demand.</strong>' : '<strong class="down">FAIL — NOISE IS PROFITING: the simulation is broken; do not read the tests above.</strong>'}</p>
       <p class="note"><strong>What a pass buys:</strong> this window only. It stops obvious chance results being frozen;
         the forward paper test after freezing is the real judge.</p>`;
+  }
+
+  // Protective-stop tuner panel (owner 2026-08-11). Offered only for live setups
+  // with no existing stop; runs the full-history tune, shows the value, and it is
+  // carried to the live engine (visible on the pilot screen).
+  async function renderStopTuner() {
+    const el = $('stop-tuner');
+    if (!el) return;
+    const pct = (v) => (v == null ? '—' : (v * 100).toFixed(2) + '%');
+    let cands = [];
+    let sweep = null;
+    try { cands = ((await (await fetch('api/pilot/stop-candidates')).json()).candidates) || []; } catch (_) { /* offline */ }
+    try { sweep = await (await fetch('api/pilot/stopsweep')).json(); } catch (_) { /* none */ }
+    if (!cands.length) {
+      el.innerHTML = '<b>Protective stop tuner.</b> No live setup without an existing stop — nothing to tune here.';
+      return;
+    }
+    let html = '<b>Protective stop tuner</b> — for a live setup with no protective stop, tune over FULL history the tightest %-from-entry fixed stop that stops out no money-making entry, then set it on the live engine.<div style="margin-top:.45rem">';
+    for (const c of cands) {
+      const running = sweep && sweep.status === 'running' && sweep.bookId === c.id;
+      html += `<div style="margin:.3rem 0">${c.id} · <b>${c.combo.trade}</b> · hold ${c.cell.tHours}h · market entry, no stop `
+        + `<button type="button" class="secondary stoptune-btn" data-book="${c.id}"${running ? ' disabled' : ''}>${running ? 'Tuning…' : 'Tune protective stop (full history)'}</button></div>`;
+    }
+    html += '</div>';
+    if (sweep && sweep.status === 'running') {
+      html += `<div class="muted" style="margin-top:.35rem">Running the full-history sweep for ${sweep.bookId} — loads all history and can take up to a minute. The value appears here and on the live screen when done.</div>`;
+    } else if (sweep && sweep.status === 'error') {
+      html += `<div style="margin-top:.35rem;color:#c33">Last tune failed: ${sweep.error || ''}</div>`;
+    } else if (sweep && sweep.status === 'done' && sweep.stopPct != null) {
+      const cc = sweep.counts || {};
+      const fh = sweep.fullHistory || {};
+      const span = `${(fh.firstChunkUtc || '').slice(0, 10)}→${(fh.lastChunkUtc || '').slice(0, 10)}`;
+      html += `<div style="margin-top:.4rem;padding:.4rem .5rem;background:#0d2b17;border-radius:4px">`
+        + `<b>Determined stop for ${sweep.bookId}: <span style="color:#4c9">${pct(sweep.stopPct)}</span></b> — preserves all ${cc.winners || 0} winners, cuts ${cc.losersCutByStop || 0} of ${cc.losers || 0} losers, over ${cc.priced || 0} entries (${span}). `
+        + `${sweep.binding ? `Binding: a ${sweep.binding.side} that dipped ${pct(sweep.binding.mae)}. ` : ''}`
+        + `Now carried to the live engine — see the pilot screen.</div>`;
+    }
+    el.innerHTML = html;
+    el.querySelectorAll('.stoptune-btn').forEach((b) => b.addEventListener('click', async () => {
+      b.disabled = true; b.textContent = 'Tuning…';
+      try {
+        await fetch('api/pilot/stopsweep', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ bookId: b.dataset.book }),
+        });
+      } catch (_) { /* the poll will reflect state */ }
+      const poll = async () => {
+        let s = null;
+        try { s = await (await fetch('api/pilot/stopsweep')).json(); } catch (_) { /* retry */ }
+        await renderStopTuner();
+        if (s && s.status === 'running') setTimeout(poll, 3000);
+      };
+      setTimeout(poll, 1500);
+    }));
   }
 
   function renderBracket(doc) {

@@ -70,6 +70,8 @@
     <button class="master stop" id="btnStop">STOP engine</button>
   </div>
 
+  <div class="cfg" id="stopBox" style="margin-top:.5rem"></div>
+
   <h2>Tested configuration — how these trades are set up</h2>
   <div class="cfg" id="cfg"></div>
 
@@ -207,6 +209,22 @@ async function refresh() {
     : armed ? '<span class="pos">RUNNING</span>' : '<span class="muted">STOPPED</span>';
   $('#btnStart').disabled = armed && !pending;
   $('#btnStop').disabled = !armed && !pending;
+
+  // Protective fixed stop — what the box is APPLYING now, and the tuner's result.
+  const pct = (v) => (v == null ? null : (v * 100).toFixed(2) + '%');
+  const applied = pct(d.fixedStopPct);
+  let stopHtml = applied
+    ? `<b>Protective stop:</b> <span class="pos">${applied}</span> applied to every order (hard stop against runaway loss).`
+    : `<b>Protective stop:</b> <span class="warn">none set</span> — tune one on the Bracket Lab before going live.`;
+  const sw = d.stopSweep;
+  if (sw && sw.status === 'running') stopHtml += ` <span class="muted">· tuning in progress…</span>`;
+  else if (sw && sw.status === 'error') stopHtml += ` <span class="warn">· last tune failed: ${sw.error||''}</span>`;
+  else if (sw && sw.status === 'done' && sw.stopPct != null) {
+    const c = sw.counts || {};
+    stopHtml += ` <span class="muted">· tuned ${pct(sw.stopPct)} over full history (${c.winners||0} winners preserved, ${c.losersCutByStop||0} losers cut of ${c.losers||0}; ${c.priced||0} entries)`
+      + `${sw.binding ? `, binding ${sw.binding.side} MAE ${pct(sw.binding.mae)}` : ''}.</span>`;
+  }
+  $('#stopBox').innerHTML = stopHtml;
 
   if (!d.present) {
     $('#banner').innerHTML = `<div class="banner stopped">No pilot journal yet — the executor has not run or has not synced. ${d.note||''}</div>`;

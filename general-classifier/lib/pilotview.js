@@ -39,6 +39,7 @@ function derive(events) {
   let armed = false;      // owner's master switch, as the box last reported it
   let halted = false;
   let armedBy = null;
+  let fixedStopPct = null; // the hard per-order stop the box is applying (RUN_STATUS)
   const closed = [];
   const legCosts = [];   // realized cost per leg, from fills that carry it
   const fillDeviations = [];
@@ -85,7 +86,10 @@ function derive(events) {
         incidents.push({ utc: e.utc, kind: 'ORDER_REJECT', detail: e.body || '' }); break;
       case 'ORDER_ACK': consecutiveRejects = 0; break;
       case 'DUST_DONE': dustDone = true; break;
-      case 'RUN_STATUS': armed = !!e.armed; halted = !!e.halted; break;
+      case 'RUN_STATUS':
+        armed = !!e.armed; halted = !!e.halted;
+        if (e.fixed_stop_pct != null) fixedStopPct = e.fixed_stop_pct;
+        break;
       case 'ARM_SET': armed = true; armedBy = e.source || null; break;
       case 'ARM_CLEAR': armed = false; armedBy = e.source || null; break;
       // reflect a halt the instant it is journaled, not a cycle later at the next
@@ -143,6 +147,7 @@ function derive(events) {
     armed,
     halted,
     armedBy,
+    fixedStopPct,
     openPositions: Object.values(open).sort((a, b) => a.exit_due_ts - b.exit_due_ts),
     closedRecent: closed.slice(-20).reverse(),
     realizedPnl: round(realized, 4),
@@ -303,6 +308,12 @@ function status(file = JOURNAL) {
   // a break means a live decision no longer reproduces against fresh data.
   let mirror = null;
   try { mirror = require('./pilotmirror').readMirror(); } catch (_) { mirror = null; }
+  // the protective-stop tuner's latest result (determined value + provenance), so
+  // the screen can show the swept stop alongside what the box is actually applying.
+  let stopSweep = null;
+  try {
+    stopSweep = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'data', 'pilot', 'stop-sweep.json'), 'utf8'));
+  } catch (_) { stopSweep = null; }
   return {
     present: true,
     preregistration: 'general-classifier/PILOT-F1.md',
@@ -312,6 +323,7 @@ function status(file = JOURNAL) {
     armRequest: req,
     armPending,
     mirror,
+    stopSweep,
     ...st,
   };
 }

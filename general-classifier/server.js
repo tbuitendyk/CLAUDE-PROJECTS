@@ -1192,6 +1192,17 @@ function writeStopSweep(obj) {
   fs.writeFileSync(`${f}.tmp`, JSON.stringify(obj));
   fs.renameSync(`${f}.tmp`, f);
 }
+// eligible setups for stop tuning: the live/prospective books WITHOUT an existing
+// protective stop (a market entry with no trailing stop). The bracket-lab control
+// is offered only for these — a breakout cell already stops at its opposite rail.
+app.get('/api/pilot/stop-candidates', (req, res) => {
+  try {
+    const { BOOKS } = require('./lib/forwardbook');
+    const { hasExistingStop } = require('./lib/stopsweep');
+    res.json({ candidates: BOOKS.filter((b) => !hasExistingStop(b.cell))
+      .map((b) => ({ id: b.id, combo: b.combo, cell: b.cell })) });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
 app.get('/api/pilot/stopsweep', (req, res) => res.json(readStopSweep()));
 app.post('/api/pilot/stopsweep', (req, res) => {
   try {
