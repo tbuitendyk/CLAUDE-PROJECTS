@@ -1,0 +1,77 @@
+Pilot F1: two more adversarial reviews fixed and deployed — the box is ready to arm, here is what changed
+
+tl;dr: since my last note I put the live pilot through two more rounds of hostile
+review and fixed everything they found. The money maths and the arm-authentication
+core were both confirmed CORRECT by the reviewers. What the reviews actually caught
+was a cluster of "silent failure" holes — not in the trading, but in the WATCHER:
+ways a dead box could look alive on the screen, or a refused START could leave you
+staring at a spinner with no reason given. All closed, each with a test I watched
+fail first. The box is still STOPPED and opens nothing until you press START.
+Nothing here needs a decision from you except, when you're ready, to go live.
+
+WHAT I DID, IN ORDER. Two review-and-fix passes, both deployed to the VPS and the
+Mexico box, box kept STOPPED throughout:
+
+  Pass 1 — the four "minor" items I'd flagged plus a re-check. Fixed a real money
+  bug (see below), tightened the borrow-interest safety check, and reordered the
+  hourly tick so the drift check runs before we ship a new decision.
+
+  Pass 2 — a fresh three-angle hostile review (one reviewer each on: arming/liveness,
+  money accounting, and alerting), each told to BREAK the code, not bless it.
+
+THE ONE REAL MONEY BUG, now fixed. On a long trade the fee you pay to OPEN was
+being silently dropped from the profit number. It cancelled out of the arithmetic
+in a way that looked right, so every long round-trip was reported ~one fee too
+profitable. The money reviewer re-derived a full trade by hand to the cent and
+confirmed both the bug and the fix. This matters because the whole pilot exists to
+measure whether the real fees leave any profit — an over-stated profit is exactly
+the thing that would fool us.
+
+THE SILENT-FAILURE HOLES the alerting/liveness reviewers found — all now closed.
+
+  TABLE: what could have failed quietly, and what now catches it. KEY: "hole" = the
+  state that used to produce no signal; "now" = the fix. All are watcher-side, none
+  touch the trade path.
+
+  hole                                             now
+  a box that froze mid-cycle kept a stale          heartbeat is measured from an event
+  "I'm alive" signal and read green while           logged AFTER the exit step, so a freeze
+  scheduled exits never fired                       in the exit loop now shows as dead
+  a box armed but frozen before its first full     the watcher now reads the arm/disarm
+  cycle read as "not at risk" -> no page at all     events directly, so an armed dead box pages
+  you press START, the box refuses it (bad          the four refusal reasons now show on the
+  clock, wrong secret) -> screen spins forever      screen, so a refused START says why
+  the drift detector's file deleted/corrupt ->      an absent or corrupt verdict, while a
+  box trades unverified, nobody told                position is open, now pages you
+  a persistent fault re-emailed every few           a per-fault cooldown: one page, then at
+  minutes -> you learn to ignore alerts             most hourly, so alerts stay meaningful
+
+Plus: the START button now judges "is this request fresh" against EXCHANGE time
+rather than the box's own clock, so a drifted box clock can't silently refuse you;
+and a crash-recovered short trade now books an estimated borrow cost so its profit
+can't be over-stated either.
+
+WHAT I DID NOT "fix", on purpose — three accepted risks, all fail-safe (they end in
+"stopped" or "false alarm", never "trading when it shouldn't"):
+  - The kill switch trusts the delivery channel. It protects against the channel
+    DYING (dead-man self-disarm), not against a channel that lies. Within "the VPS
+    and its SSH link are trusted", that's the real boundary — worth you knowing.
+  - A corrupted arm-record file could, in a sub-15-minute window, let a captured old
+    START re-arm. Writes are atomic, so this is near-impossible in practice.
+  - A backwards clock jump of hours could false-halt the book (a deadlock, not a
+    loss). Both machines keep their clocks disciplined to internet time.
+
+GO-LIVE CHECKLIST, when you want it:
+  1. The same one-line arm secret is set on the box and the VPS. (Done — the
+     provisioner matched them by fingerprint; a mismatch now shows on the screen
+     instead of silently refusing.)
+  2. Both clocks agree (the installer checks this; both read "synced" right now).
+  3. The screen shows STOPPED until you press START. (It does.)
+
+WHERE IT STANDS. Everything above is committed, tested (62 executor checks + the
+classifier suite, every new behaviour watched failing then passing), and deployed.
+The box is STOPPED, the master switch is absent, the shared secret is in place, both
+clocks are synced. It will open nothing until you press START. Full detail is in
+PILOT-F1.md section 11.
+
+c.
