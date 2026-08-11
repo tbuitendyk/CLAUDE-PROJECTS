@@ -88,6 +88,9 @@ function derive(events) {
       case 'RUN_STATUS': armed = !!e.armed; halted = !!e.halted; break;
       case 'ARM_SET': armed = true; armedBy = e.source || null; break;
       case 'ARM_CLEAR': armed = false; armedBy = e.source || null; break;
+      // reflect a halt the instant it is journaled, not a cycle later at the next
+      // RUN_STATUS — a mid-run KILL/HALT otherwise lags the banner (re-review).
+      case 'HALT_CLEAR': halted = false; break;
       case 'KILL_PRICE_DRIFT':
       case 'RECONCILE_MISMATCH':
       case 'RECONCILE_UNREADABLE':
@@ -98,6 +101,7 @@ function derive(events) {
       case 'CLOCK_DRIFT':
       case 'ARM_STALE':
       case 'HALT_SET':
+        if (e.event === 'HALT_SET') halted = true;  // reflect the halt at once
         incidents.push({ utc: e.utc, kind: e.event, detail: JSON.stringify(
           Object.fromEntries(Object.entries(e)
             .filter(([k]) => !['event', 'ts', 'utc'].includes(k)))) });

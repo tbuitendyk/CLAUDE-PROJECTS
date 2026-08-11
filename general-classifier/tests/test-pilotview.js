@@ -114,3 +114,10 @@ module.exports.configReportsTheTestedF1SpecFromTheAuthoritativeSource = function
   assert.strictEqual(c.model.entryOffsetH, 97, 'entry offset comes from the daily-4d geometry');
   assert.strictEqual(c.execution.clipUsd, 10, 'clip size is shown for the owner');
 };
+
+module.exports.haltSetReflectsImmediatelyAndClears = function () {
+  let st = derive([{ event: 'HALT_SET', source: 'executor', reason: 'x' }]);
+  assert.strictEqual(st.halted, true, 'HALT_SET reflects the halt at once (not a cycle later)');
+  st = derive([{ event: 'HALT_SET' }, { event: 'HALT_CLEAR' }]);
+  assert.strictEqual(st.halted, false, 'HALT_CLEAR lifts it');
+};
