@@ -115,19 +115,40 @@ def hdr(m, k):
     except Exception:
         return v
 
+def _html_to_text(h):
+    # crude but dependency-free: drop scripts/styles, turn breaks into newlines,
+    # strip tags, unescape entities. Enough to READ a phone-sent HTML mail.
+    import re as _re, html as _html
+    h = _re.sub(r"(?is)<(script|style)[^>]*>.*?</\1>", " ", h)
+    h = _re.sub(r"(?i)<br\s*/?>", "\n", h)
+    h = _re.sub(r"(?i)</(p|div|tr|li|h[1-6])>", "\n", h)
+    h = _re.sub(r"(?s)<[^>]+>", "", h)
+    h = _html.unescape(h)
+    return _re.sub(r"\n[ \t]*\n\s*\n+", "\n\n", h).strip()
+
 def body_of(m):
     if m.is_multipart():
+        html = None
         for part in m.walk():
-            if part.get_content_type() == "text/plain":
+            ct = part.get_content_type()
+            if ct == "text/plain":
                 try:
                     return part.get_payload(decode=True).decode(part.get_content_charset() or "utf-8", "replace")
                 except Exception:
                     continue
-        return ""
+            elif ct == "text/html" and html is None:
+                try:
+                    html = part.get_payload(decode=True).decode(part.get_content_charset() or "utf-8", "replace")
+                except Exception:
+                    html = None
+        # a phone client (Bluemail) often sends HTML-only; fall back to it so a
+        # genuine owner message is READABLE rather than an empty body (2026-08-11).
+        return _html_to_text(html) if html else ""
     try:
-        return m.get_payload(decode=True).decode(m.get_content_charset() or "utf-8", "replace")
+        raw = m.get_payload(decode=True).decode(m.get_content_charset() or "utf-8", "replace")
     except Exception:
         return m.get_payload() or ""
+    return _html_to_text(raw) if m.get_content_type() == "text/html" else raw
 
 # ---- the proof: one ssh, all message-ids at once -------------------------
 #
