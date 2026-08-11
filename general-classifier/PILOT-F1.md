@@ -143,3 +143,55 @@ until F1's forward book reaches its 30-trade reading, then its execution
 report is written: realized cost-per-leg distribution vs $0.125, fill
 deviation distribution, borrow costs, and every operational incident. That
 report — not the pilot's P&L — is its deliverable.
+
+## 9. Pre-arm safety verification (end-to-end adversarial review, 2026-08-11)
+
+Before arming, the live environment was put through an end-to-end adversarial
+review. Verdict: GO_WITH_FIXES — do not arm until the blockers below are closed.
+This section is the standing record of their resolution; the rig stays STOPPED
+(ARM absent, dead-man self-disarming) until every row is GREEN and the review
+is re-run clean.
+
+**The true loss ceiling is the API key's scoping, not the executor's $10/$50
+limits** (finding 20, FATAL — a stolen key ignores in-code limits). Owner
+confirmed IN WRITING (2026-08-11): the key belongs to a **dedicated sub-account**
+funded only with pilot capital, **withdrawals DISABLED**, **spot+margin trade
+only**, and it lives ONLY on the Mexico box (never the VPS). **The declared
+maximum loss is the funded sub-account balance (~$150–200)** — CLIP_USD and
+LOSS_LIMIT_USD are NOT the cap and must not be described as such.
+
+Blockers and status:
+
+| # | Blocker | Status |
+|---|---|---|
+| 6 | Partial in-progress candles cached & never finalized (train/serve mismatch) | FIXED — closed-hours-only cache, boundary re-fetch, finalized-candle guard |
+| 20 | Blast radius = key scoping, unproven | CLOSED — owner confirmation above (sub-account / no-withdrawal / spot+margin) |
+| 26+7 | Mirror check advertised but never computed | FIXED — computeSignalForChunk recompute vs recorded decision; MIRROR_BREAK halts the box |
+| 1+2 | Order lifecycle not atomic/idempotent/recoverable | FIXED — deterministic client ids + resolve_dangling recovery |
+| 16 | Loss kill blind to open positions | FIXED — mark-to-market kill each run |
+| 17 | Realized P&L excludes short entry fee + interest | FIXED — both folded into the short exit P&L |
+| 18 | Short-close under-repayment (interest-blind buffer) | FIXED — final close sized from live debt + residual-borrow HALT |
+| 13+14 | STOP not fail-safe; no box dead-man | FIXED — dead-man self-disarm on control-plane loss; missing request = DISARM |
+| 24+25+27 | No liveness signal / suppressed staleness / no alerting | FIXED — banner off executor heartbeat in all states; VPS alert timer emails on halt/dead-heartbeat/stale-sync/incident |
+| 3 | Intent age on un-synced OS clock, no NTP | FIXED — exchange-synced age check, loud INTENT_STALE/CLOCK_DRIFT, chrony on both hosts |
+| 8 | Actionable intent can ship decision_price=null | FIXED — null-price guard in the producer |
+| 12+15 | Arm has no owner auth; flat-book wipe silently re-arms | see §10 — code + owner provisioning |
+| 21 | Public deploy endpoint transitively controls the trading box | OWNER — infra, see §10 |
+
+## 10. Remaining owner actions before arm
+
+These cannot be closed by code alone; the owner must complete them and the
+review must be re-run clean before the master switch is pressed:
+
+- **Arm authentication (findings 12, 15).** The screen HMACs the arm-request
+  with a shared secret the box validates, and arming is nonce/edge-triggered so
+  a stale request after a disk wipe cannot silently re-arm. This needs a shared
+  secret provisioned on BOTH the VPS UI and the box (like the mail password),
+  which is an owner step. Until then, the batch-1 dead-man is the operative
+  guard (control-plane loss ⇒ self-disarm) and blast radius stays key-capped.
+- **Deploy endpoint hardening (finding 21).** Add an IP allowlist to
+  deploy.buitendyk.ca (Claude egress only), remove the trading-box scripts from
+  the public run-script set (or gate them behind a separate non-public action),
+  and rotate + stop logging DEPLOY_API_TOKEN. Infra + owner.
+- **Re-run the end-to-end adversarial review** and confirm all blockers closed
+  and none reopened. Only then arm.
