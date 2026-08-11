@@ -27,8 +27,9 @@ class MockBinance(BaseHTTPRequestHandler):
     what lets the fee-shrink fix be tested end to end."""
     price = "100.00"
     reject_orders = False
-    net_asset = None          # override netAsset/free; None -> use tracked base_bal
+    net_asset = None          # override netAsset/free; None -> use tracked balances
     base_bal = 0.0            # tracked free LTC after fills
+    borrowed = 0.0            # tracked LTC debt (short open borrows, close repays)
     commission = "0.01"
     commission_asset = "USDT"
     orders = []               # captured order params
@@ -47,9 +48,15 @@ class MockBinance(BaseHTTPRequestHandler):
         if self.path.startswith("/api/v3/ticker/price"):
             return self._send({"symbol": "LTCUSDT", "price": self.price})
         if self.path.startswith("/sapi/v1/margin/isolated/account"):
-            na = self.net_asset if self.net_asset is not None else f"{MockBinance.base_bal:.6f}"
+            if self.net_asset is not None:
+                na = self.net_asset
+                return self._send({"assets": [{
+                    "baseAsset": {"netAsset": na, "free": na, "borrowed": "0", "interest": "0"},
+                    "quoteAsset": {"free": "200.0", "netAsset": "200.0"}}]})
+            net = MockBinance.base_bal - MockBinance.borrowed
             return self._send({"assets": [{
-                "baseAsset": {"netAsset": na, "free": na, "borrowed": "0"},
+                "baseAsset": {"netAsset": f"{net:.6f}", "free": f"{MockBinance.base_bal:.6f}",
+                              "borrowed": f"{MockBinance.borrowed:.6f}", "interest": "0"},
                 "quoteAsset": {"free": "200.0", "netAsset": "200.0"}}]})
         return self._send({"unexpected": self.path}, 404)
 
@@ -62,13 +69,24 @@ class MockBinance(BaseHTTPRequestHandler):
             if MockBinance.reject_orders:
                 return self._send({"code": -2010, "msg": "rejected"}, 400)
             qty = float(params.get("quantity", "0"))
+            side = params.get("side")
+            eff = params.get("sideEffectType", "NO_SIDE_EFFECT")
             comm = float(MockBinance.commission)
-            # update tracked balance the way Binance would: BUY adds base (minus
-            # base-denominated fee); SELL removes base.
-            if params.get("side") == "BUY":
-                MockBinance.base_bal += qty - (comm if MockBinance.commission_asset == "LTC" else 0)
-            else:
-                MockBinance.base_bal -= qty
+            base_fee = comm if MockBinance.commission_asset == "LTC" else 0.0
+            # simulate isolated-margin bookkeeping the way Binance would
+            if side == "BUY":
+                received = qty - base_fee            # fee taken in LTC
+                if eff == "AUTO_REPAY":
+                    repay = min(received, MockBinance.borrowed)
+                    MockBinance.borrowed -= repay
+                    MockBinance.base_bal += received - repay
+                else:
+                    MockBinance.base_bal += received
+            else:  # SELL
+                if eff == "MARGIN_BUY":              # open short: borrow then sell
+                    MockBinance.borrowed += qty
+                else:
+                    MockBinance.base_bal -= qty
             return self._send({"orderId": len(MockBinance.orders),
                                "status": "FILLED",
                                "fills": [{"price": MockBinance.price,
@@ -111,6 +129,7 @@ class ExecutorTest(unittest.TestCase):
         MockBinance.reject_orders = False
         MockBinance.net_asset = None
         MockBinance.base_bal = 0.0
+        MockBinance.borrowed = 0.0
         MockBinance.commission = "0.01"
         MockBinance.commission_asset = "USDT"
         MockBinance.orders = []
@@ -338,6 +357,43 @@ class ExecutorTest(unittest.TestCase):
         self.x.set_arm(True, "owner")
         self.assertTrue(self.x.armed())
         self.assertIn("ARM_SET", self.events())
+
+    def test_short_round_trip_fully_repays_despite_base_fee(self):
+        # THE SHORT MIRROR of the dust bug: the close BUY fee is taken in LTC,
+        # so buying exactly the borrowed qty would leave a residual borrow.
+        # With the fee charged in base, the short dust must still fully repay.
+        MockBinance.commission_asset = "LTC"
+        MockBinance.commission = "0.0004"
+        rc = self.x.do_shortdust(self.bx(), yes=True)
+        self.assertEqual(rc, 0, 'short dust must complete')
+        done = [e for e in self.x.journal_events() if e["event"] == "SHORTDUST_DONE"]
+        self.assertTrue(done, 'a SHORTDUST_DONE must be journaled')
+        self.assertTrue(done[0]["fully_repaid"], 'the borrow must be fully repaid, no residual')
+        self.assertTrue(MockBinance.borrowed < self.x.QTY_STEP,
+                        'no residual borrow may remain on the exchange')
+        sells = [o for o in MockBinance.orders if o.get("side") == "SELL"]
+        buys = [o for o in MockBinance.orders if o.get("side") == "BUY"]
+        self.assertEqual(sells[0]["sideEffectType"], "MARGIN_BUY", 'open borrows')
+        self.assertEqual(buys[-1]["sideEffectType"], "AUTO_REPAY", 'close repays')
+        self.assertTrue(float(buys[-1]["quantity"]) > float(sells[0]["quantity"]),
+                        'close buys slightly MORE than borrowed to cover the LTC fee')
+
+    def test_short_entry_then_scheduled_exit_repays_borrow(self):
+        # a real short opened via an intent, then exited on schedule
+        MockBinance.commission_asset = "LTC"
+        MockBinance.commission = "0.0003"
+        self.write_intent(side="SHORT", chunk="2026-08-07T00:00Z")
+        self.x.do_run(self.bx())
+        self.assertTrue(MockBinance.borrowed > 0, 'short open must create a borrow')
+        real_time = self.x.time.time
+        self.x.time.time = lambda: real_time() + 200 * 3600
+        try:
+            self.x.do_run(self.bx())
+        finally:
+            self.x.time.time = real_time
+        self.assertIn("EXIT_FILL", self.events())
+        self.assertTrue(MockBinance.borrowed < self.x.QTY_STEP,
+                        'the scheduled short exit must clear the borrow')
 
     def test_dry_mode_sends_no_orders(self):
         with open(os.path.join(self.home, ".executor-env"), "w") as f:

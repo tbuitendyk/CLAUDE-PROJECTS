@@ -113,6 +113,7 @@ def derive(events):
     consecutive_rejects = 0
     realized = 0.0
     dust_done = False
+    shortdust_done = False
     for e in events:
         ev = e.get("event")
         if ev == "ENTRY_FILL":
@@ -133,8 +134,11 @@ def derive(events):
             consecutive_rejects = 0
         elif ev == "DUST_DONE":
             dust_done = True
+        elif ev == "SHORTDUST_DONE":
+            shortdust_done = True
     return {"open": pos, "consecutive_rejects": consecutive_rejects,
-            "realized": realized, "dust_done": dust_done}
+            "realized": realized, "dust_done": dust_done,
+            "shortdust_done": shortdust_done}
 
 
 def intent_seen(events, chunk_start):
@@ -262,6 +266,20 @@ class Binance:
                 return None
         return None
 
+    def borrowed_base(self):
+        """Base-asset debt (borrowed + accrued interest) in the isolated wallet,
+        or None if unreadable. A short close must buy back enough to clear this
+        AFTER the LTC buy fee, so it reads the real figure rather than assuming
+        the nominal borrowed quantity."""
+        code, acct = self.isolated_account()
+        if code == 200 and not acct.get("dryrun"):
+            try:
+                b = acct["assets"][0]["baseAsset"]
+                return float(b.get("borrowed", 0) or 0) + float(b.get("interest", 0) or 0)
+            except (KeyError, IndexError, ValueError):
+                return None
+        return None
+
 
 def load_env():
     env = {}
@@ -278,10 +296,27 @@ def load_env():
 
 
 # ---- order helpers -----------------------------------------------------------
+import math
+
+# Buying to close a short must cover borrowed+interest AFTER the buy fee is taken
+# in LTC, so it rounds UP with a small buffer. GUESSED at 0.3% — comfortably
+# above the observed ~10bps taker fee plus interest over a 137h hold, so the
+# repay always fully clears the loan; the tiny surplus becomes harmless base
+# dust rather than a residual borrow that would accrue interest and, worse, hide
+# under the reconcile tolerance while compounding.
+SHORT_CLOSE_FEE_BUFFER = 0.003
+
+
 def floor_step(qty):
-    """Round DOWN to the lot step. Used everywhere a real quantity is sent, so
-    fee-shrunk balances never round UP into 'insufficient balance'."""
+    """Round DOWN to the lot step. Used where selling: fee-shrunk balances must
+    never round UP into 'insufficient balance'."""
     return round(int(round(qty / QTY_STEP, 6)) * QTY_STEP, 3)
+
+
+def ceil_step(qty):
+    """Round UP to the lot step. Used where buying to repay a short: we must
+    end up holding AT LEAST the borrowed amount after the LTC fee."""
+    return round(math.ceil(round(qty / QTY_STEP, 6)) * QTY_STEP, 3)
 
 
 def clip_qty(price):
@@ -399,10 +434,18 @@ def do_run(bx):
             ok, px, fee, fq, _ = place(bx, "EXIT", "SELL", sell_qty, "AUTO_REPAY",
                                        {"chunk_start": p["chunk_start"]})
             qty_traded = fq or sell_qty
-        else:  # SHORT: buy back the borrowed amount, auto-repaying the loan
-            ok, px, fee, fq, _ = place(bx, "EXIT", "BUY", p["qty"], "AUTO_REPAY",
-                                       {"chunk_start": p["chunk_start"]})
-            qty_traded = fq or p["qty"]
+        else:  # SHORT: buy back enough to FULLY repay borrowed + interest.
+            # The buy fee is taken in LTC, so buying exactly the borrowed amount
+            # leaves a residual borrow. Read the real debt and round UP with a
+            # buffer so AUTO_REPAY clears it; the small surplus is harmless dust.
+            debt = bx.borrowed_base()
+            need = debt if debt is not None else p["qty"]
+            buy_qty = ceil_step(need * (1 + SHORT_CLOSE_FEE_BUFFER))
+            if buy_qty < p["qty"]:
+                buy_qty = ceil_step(p["qty"] * (1 + SHORT_CLOSE_FEE_BUFFER))
+            ok, px, fee, fq, _ = place(bx, "EXIT", "BUY", buy_qty, "AUTO_REPAY",
+                                       {"chunk_start": p["chunk_start"], "debt": need})
+            qty_traded = p["qty"]  # economic size of the short, for P&L
         if ok:
             gross = (px - p["entry_price"]) * qty_traded
             if p["side"] == "SHORT":
@@ -564,6 +607,50 @@ def do_dust(bx, yes):
     return 0
 
 
+# ---- short dust mode ---------------------------------------------------------
+def do_shortdust(bx, yes):
+    """One $10 SHORT round trip: open (SELL + auto-borrow) -> close (BUY +
+    auto-repay). Proves the short path the long dust never touched, and — the
+    reason it exists — that the close FULLY repays the borrow despite the LTC
+    buy fee. Plumbing only; P&L void."""
+    st = derive(journal_events())
+    if st["shortdust_done"]:
+        print("short dust already recorded; refusing to repeat")
+        return 1
+    if halted():
+        print("HALT flag set; refusing")
+        return 1
+    if bx.live and not yes:
+        print("LIVE=1 but --yes missing; refusing")
+        return 1
+    price = bx.price()
+    if price is None:
+        print("no price; aborting")
+        return 1
+    qty = clip_qty(price)
+    jlog("SHORTDUST_START", price=price, qty=qty, live=bx.live)
+    ok1, px1, fee1, fq1, _ = place(bx, "SHORTDUST_SELL", "SELL", qty, "MARGIN_BUY", {})
+    if not ok1:
+        jlog("SHORTDUST_ABORT", stage="open")
+        return 1
+    time.sleep(2)
+    debt = bx.borrowed_base()
+    need = debt if debt is not None else (fq1 or qty)
+    buy_qty = ceil_step(max(need, qty) * (1 + SHORT_CLOSE_FEE_BUFFER))
+    ok2, px2, fee2, fq2, _ = place(bx, "SHORTDUST_BUY", "BUY", buy_qty, "AUTO_REPAY", {})
+    if not ok2:
+        jlog("SHORTDUST_ABORT", stage="close",
+             note="SOLD-SHORT BUT NOT REPAID -- borrow open, reconcile will see it")
+        return 1
+    resid = bx.borrowed_base()
+    jlog("SHORTDUST_DONE", open_price=px1, close_price=px2, qty=qty, buy_qty=buy_qty,
+         borrowed=need, residual_borrow=resid,
+         fully_repaid=(resid is not None and resid < QTY_STEP),
+         fees=round(fee1 + fee2, 6),
+         round_trip_cost=round(px2 * buy_qty - px1 * qty + fee1 + fee2, 6))
+    return 0
+
+
 # ---- status ------------------------------------------------------------------
 def do_status():
     st = derive(journal_events())
@@ -575,6 +662,7 @@ def do_status():
         "realized_pnl": round(st["realized"], 4),
         "consecutive_rejects": st["consecutive_rejects"],
         "dust_done": st["dust_done"],
+        "shortdust_done": st["shortdust_done"],
         "journal_lines": len(journal_events()),
     }, indent=2))
     return 0
@@ -588,6 +676,8 @@ def main():
         return do_run(bx)
     if mode == "dust":
         return do_dust(bx, "--yes" in sys.argv)
+    if mode == "shortdust":
+        return do_shortdust(bx, "--yes" in sys.argv)
     if mode == "arm":
         set_arm(True, source_arg())
         print("ARMED (master switch ON)")
