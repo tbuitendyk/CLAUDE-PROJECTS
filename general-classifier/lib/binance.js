@@ -17,6 +17,17 @@ function socksKlines(proxy, symbol, cursor) {
   return parsed;
 }
 
+// Binance server time (ms) via the same SOCKS tunnel — so the VPS can stamp a
+// live decision from EXCHANGE time instead of its own OS clock, and the box's
+// exchange-synced age check then compares like with like (re-review liveness).
+function socksServerTime(proxy) {
+  const out = execFileSync('curl', ['-s', '-m', '15', '--socks5-hostname', proxy,
+    'https://api.binance.com/api/v3/time'], { maxBuffer: 1 << 20 });
+  const parsed = JSON.parse(out.toString() || 'null');
+  if (parsed && parsed.code && parsed.msg) throw new Error(`binance time ${parsed.code}: ${parsed.msg}`);
+  return parsed && typeof parsed.serverTime === 'number' ? parsed.serverTime : null;
+}
+
 // Binance public bulk-data channel (data.binance.vision): static monthly
 // 1h-kline CSVs in single-entry zips, stable URL scheme, no account and no
 // key. Same surface the semi-auto balancer uses; here we keep FIVE columns
@@ -361,4 +372,4 @@ function cacheState() {
     .sort((a, b) => (a.symbol < b.symbol ? -1 : 1));
 }
 
-module.exports = { monthlyKlines, dailyKlines, recentKlines, unzipSingleEntry, parseKlineCsv, cacheState, cachedMonths, cachedDayMonths, coveredMonths, monthFromDayFiles, cachePath, HOUR_MS, MINUTE_MS: 60_000 };
+module.exports = { monthlyKlines, dailyKlines, recentKlines, socksServerTime, unzipSingleEntry, parseKlineCsv, cacheState, cachedMonths, cachedDayMonths, coveredMonths, monthFromDayFiles, cachePath, HOUR_MS, MINUTE_MS: 60_000 };

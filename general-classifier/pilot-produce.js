@@ -16,10 +16,25 @@
 // difference between "nothing to do" and "broken".
 const { computeSignal } = require('./lib/pilotsignal');
 const mirror = require('./lib/pilotmirror');
+const b = require('./lib/binance');
 
 (async () => {
   try {
-    const out = await computeSignal(Date.now());
+    // Stamp the decision from EXCHANGE time when the tunnel is up, so the intent
+    // ts and the executor's exchange-synced age check share one clock and OS
+    // drift on either host cannot gate entries (re-review liveness). Fall back to
+    // the OS clock (chrony-disciplined) with a warning if the fetch fails.
+    let now = Date.now();
+    const socks = process.env.PILOT_SOCKS;
+    if (socks) {
+      try {
+        const st = b.socksServerTime(socks);
+        if (st) now = st;
+      } catch (e) {
+        process.stderr.write('pilot-produce: exchange-time fetch failed, using OS clock: ' + e.message + '\n');
+      }
+    }
+    const out = await computeSignal(now);
     // Persist the live decision so the mirror check has an AUTHORITATIVE record
     // of what we decided on, checked later against a fresh recompute — never
     // against a re-read that may have silently swapped data source (finding 7).
