@@ -388,6 +388,18 @@ def do_run(bx):
              "no orders this run")
         return 1
 
+    # 0) sweep: when the journal says we are FLAT, any free base is leftover
+    # dust from short-close buffers. Convert whole lots back to USDT before
+    # reconcile so the buffer surplus can never accumulate past the reconcile
+    # tolerance and false-halt (review finding, 2026-08-11). Sub-lot remainder
+    # (< one lot step) is harmless and always stays under tolerance.
+    if not st["open"] and not halted():
+        fb = bx.free_base()
+        if fb is not None and fb >= QTY_STEP:
+            sweep = floor_step(fb)
+            jlog("DUST_SWEEP", qty=sweep, free_base=fb)
+            place(bx, "SWEEP", "SELL", sweep, "AUTO_REPAY", {})
+
     # 1) reconcile: exchange net position vs journal-derived
     code, acct = bx.isolated_account()
     if code == 200 and not acct.get("dryrun"):
@@ -423,28 +435,42 @@ def do_run(bx):
             jlog("EXIT_OVERDUE", chunk_start=p["chunk_start"],
                  overdue_hours=round(overdue_h, 2))
         if p["side"] == "LONG":
-            # sell what we ACTUALLY hold (fees shrink the balance below the
-            # bought qty; selling the nominal qty is what broke the dust trade).
+            # Size from THIS position (p['qty']), never the wallet. Isolated
+            # margin pools all longs in one balance, so selling free_base() would
+            # dump every concurrent long at once. free_base is only a cap, so a
+            # fee-shrunk balance still can't oversell. (Fatal bug caught by the
+            # 2026-08-11 money-math review — the dust never exposed it because it
+            # only ever had one position open.)
             fb = bx.free_base()
-            sell_qty = floor_step(fb if fb is not None else p["qty"])
+            sell_qty = floor_step(min(p["qty"], fb) if fb is not None else p["qty"])
             if not sell_qty:
                 jlog("EXIT_SKIPPED", chunk_start=p["chunk_start"],
                      reason="no free base to sell")
                 continue
             ok, px, fee, fq, _ = place(bx, "EXIT", "SELL", sell_qty, "AUTO_REPAY",
                                        {"chunk_start": p["chunk_start"]})
-            qty_traded = fq or sell_qty
-        else:  # SHORT: buy back enough to FULLY repay borrowed + interest.
-            # The buy fee is taken in LTC, so buying exactly the borrowed amount
-            # leaves a residual borrow. Read the real debt and round UP with a
-            # buffer so AUTO_REPAY clears it; the small surplus is harmless dust.
+            qty_traded = sell_qty
+        else:  # SHORT: buy back THIS leg's borrow plus a buffer for the LTC fee.
+            # Target from p['qty'] (the nominal borrow, known exactly because the
+            # open SELL fee was in USDT), NOT from the pooled debt — buying the
+            # whole pool would repay every sibling short at once. borrowed_base()
+            # is only an upper sanity cap. Round UP so AUTO_REPAY fully clears
+            # this leg; the small surplus is swept as dust when flat.
+            target = ceil_step(p["qty"] * (1 + SHORT_CLOSE_FEE_BUFFER))
             debt = bx.borrowed_base()
-            need = debt if debt is not None else p["qty"]
-            buy_qty = ceil_step(need * (1 + SHORT_CLOSE_FEE_BUFFER))
-            if buy_qty < p["qty"]:
-                buy_qty = ceil_step(p["qty"] * (1 + SHORT_CLOSE_FEE_BUFFER))
+            if debt is not None:
+                if debt < QTY_STEP:
+                    # no loan outstanding — the short is already flat on the
+                    # exchange. Buying anyway (AUTO_REPAY with nothing to repay)
+                    # would open a naked LONG. Skip and let reconcile surface it.
+                    jlog("EXIT_SKIPPED", chunk_start=p["chunk_start"],
+                         reason="no borrow outstanding to repay")
+                    continue
+                buy_qty = min(target, ceil_step(debt * (1 + SHORT_CLOSE_FEE_BUFFER)))
+            else:
+                buy_qty = target
             ok, px, fee, fq, _ = place(bx, "EXIT", "BUY", buy_qty, "AUTO_REPAY",
-                                       {"chunk_start": p["chunk_start"], "debt": need})
+                                       {"chunk_start": p["chunk_start"], "leg_qty": p["qty"]})
             qty_traded = p["qty"]  # economic size of the short, for P&L
         if ok:
             gross = (px - p["entry_price"]) * qty_traded
@@ -453,6 +479,15 @@ def do_run(bx):
             jlog("EXIT_FILL", chunk_start=p["chunk_start"], side=p["side"],
                  qty=qty_traded, price=px, fee_quote=fee,
                  pnl=round(gross - fee, 4))
+        else:
+            # An exit that will not fill is serious: the position stays open and
+            # exposed. Surface it immediately (halt new entries; exits keep
+            # retrying next run) rather than waiting for the 3-reject kill. A
+            # likely cause on tiny clips is MIN_NOTIONAL after an adverse move —
+            # the position is worth under $5 and cannot be market-closed.
+            set_halt("executor", f"EXIT for {p['chunk_start']} ({p['side']}) did "
+                     "not fill — see ORDER_REJECT; if min-notional, the position "
+                     "is under $5 and needs manual handling")
 
     # 4) fresh intents -> new entries (need the master switch ON and no halt)
     st = derive(journal_events())  # refresh after exits
@@ -537,12 +572,13 @@ def do_run(bx):
         ok, px, fee, fq, base_comm = place(bx, "ENTRY", buy_side, qty, side_eff,
                                            {"chunk_start": it["chunk_start"]})
         if ok:
-            # store what the EXIT will actually act on: for a long, the base we
-            # can sell after the buy-side fee is taken in LTC; for a short, the
-            # borrowed amount we must buy back. Storing the nominal qty here is
-            # what made the exit fail 'insufficient balance'.
+            # store what the EXIT will act on, UNFLOORED so it matches the
+            # exchange balance for reconcile across many concurrent positions
+            # (flooring each one drifts expect below actual and false-halts —
+            # review finding). The exit floors only at order time. Long: base
+            # held after the LTC buy fee; short: borrowed amount to repay.
             if it["side"] == "LONG":
-                held = floor_step((fq or qty) - base_comm)
+                held = round((fq or qty) - base_comm, 8)
             else:
                 held = fq or qty
             fill_dev = abs(px - it["decision_price"]) / it["decision_price"]
@@ -586,6 +622,9 @@ def do_dust(bx, yes):
         print("no price; aborting")
         return 1
     qty = clip_qty(price)
+    if qty is None:
+        print("clip under exchange minimum; aborting")
+        return 1
     jlog("DUST_START", price=price, qty=qty, live=bx.live)
     ok1, px1, fee1, fq1, bc1 = place(bx, "DUST_BUY", "BUY", qty, "NO_SIDE_EFFECT", {})
     if not ok1:
@@ -628,6 +667,9 @@ def do_shortdust(bx, yes):
         print("no price; aborting")
         return 1
     qty = clip_qty(price)
+    if qty is None:
+        print("clip under exchange minimum; aborting")
+        return 1
     jlog("SHORTDUST_START", price=price, qty=qty, live=bx.live)
     ok1, px1, fee1, fq1, _ = place(bx, "SHORTDUST_SELL", "SELL", qty, "MARGIN_BUY", {})
     if not ok1:

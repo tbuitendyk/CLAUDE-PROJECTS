@@ -253,7 +253,7 @@ class ExecutorTest(unittest.TestCase):
         # short entered at 110, exits at 100 -> profit
         self.x.jlog("ENTRY_FILL", chunk_start="s1", side="SHORT", qty=0.1,
                     price=110.0, exit_due_ts=time.time() - 1)
-        MockBinance.net_asset = "-0.100"
+        MockBinance.borrowed = 0.1   # the open short's real loan
         self.x.do_run(self.bx())
         fills = [e for e in self.x.journal_events() if e["event"] == "EXIT_FILL"]
         self.assertEqual(len(fills), 1)
@@ -394,6 +394,55 @@ class ExecutorTest(unittest.TestCase):
         self.assertIn("EXIT_FILL", self.events())
         self.assertTrue(MockBinance.borrowed < self.x.QTY_STEP,
                         'the scheduled short exit must clear the borrow')
+
+    def _advance_and_run(self, hours):
+        real_time = self.x.time.time
+        self.x.time.time = lambda: real_time() + hours * 3600
+        try:
+            self.x.do_run(self.bx())
+        finally:
+            self.x.time.time = real_time
+
+    def test_two_longs_first_exit_sells_only_its_own(self):
+        # FATAL bug from the review: isolated margin pools all longs; the first
+        # exit must sell only its own size, not the whole wallet.
+        now = time.time()
+        self.x.jlog("ENTRY_FILL", chunk_start="L1", side="LONG", qty=0.1,
+                    price=100.0, exit_due_ts=now - 60)
+        self.x.jlog("ENTRY_FILL", chunk_start="L2", side="LONG", qty=0.1,
+                    price=100.0, exit_due_ts=now - 30)
+        MockBinance.base_bal = 0.2   # both longs pooled in one wallet
+        self._advance_and_run(0)
+        sells = [o for o in MockBinance.orders if o.get("side") == "SELL"]
+        self.assertEqual(len(sells), 2, 'each long exits with its own order')
+        for o in sells:
+            self.assertEqual(float(o["quantity"]), 0.1,
+                             'must sell one position (0.1), never the pooled 0.2')
+        self.assertTrue(MockBinance.base_bal < self.x.QTY_STEP, 'both longs closed')
+
+    def test_two_shorts_first_close_repays_only_its_own(self):
+        now = time.time()
+        self.x.jlog("ENTRY_FILL", chunk_start="S1", side="SHORT", qty=0.1,
+                    price=100.0, exit_due_ts=now - 60)
+        self.x.jlog("ENTRY_FILL", chunk_start="S2", side="SHORT", qty=0.1,
+                    price=100.0, exit_due_ts=now - 30)
+        MockBinance.borrowed = 0.2   # both shorts pooled into one loan
+        self._advance_and_run(0)
+        buys = [o for o in MockBinance.orders if o.get("side") == "BUY"]
+        self.assertEqual(len(buys), 2, 'each short closes with its own buy')
+        for o in buys:
+            self.assertTrue(float(o["quantity"]) < 0.15,
+                            'must buy back ~one leg (~0.10), never the pooled 0.2')
+        self.assertTrue(MockBinance.borrowed < self.x.QTY_STEP,
+                        'both borrows fully repaid, none left orphaned')
+
+    def test_dust_sweep_when_flat_clears_buffer_surplus(self):
+        # short-close buffers leave sub-lot free base; when flat it must be swept
+        # so it can't accumulate past the reconcile tolerance and false-halt.
+        MockBinance.base_bal = 0.05   # leftover dust, no open positions
+        self.x.do_run(self.bx())
+        self.assertIn("DUST_SWEEP", self.events())
+        self.assertTrue(MockBinance.base_bal < self.x.QTY_STEP, 'dust swept to USDT')
 
     def test_dry_mode_sends_no_orders(self):
         with open(os.path.join(self.home, ".executor-env"), "w") as f:
