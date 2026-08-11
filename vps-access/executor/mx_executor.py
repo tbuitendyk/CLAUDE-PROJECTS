@@ -60,6 +60,13 @@ PILOT = os.path.join(HOME, "pilot")
 JOURNAL = os.path.join(PILOT, "journal.jsonl")
 INTENTS = os.path.join(PILOT, "intents")
 HALT = os.path.join(PILOT, "HALT")
+# ARM is the owner's MASTER SWITCH. No new position opens unless this file is
+# present (owner pressed START on the live screen). It is the inverse of HALT:
+# HALT is an emergency stop, ARM is "the engine is running because I said so".
+# Absent by default, so a fresh box, a redeploy, or a wiped disk all come up
+# STOPPED. Like HALT, ARM never blocks a scheduled EXIT -- stopping the engine
+# means "open nothing new", never "abandon an open position".
+ARM = os.path.join(PILOT, "ARM")
 ENVFILE = os.path.join(HOME, ".executor-env")
 
 
@@ -138,6 +145,10 @@ def halted():
     return os.path.exists(HALT)
 
 
+def armed():
+    return os.path.exists(ARM)
+
+
 def set_halt(source, reason):
     os.makedirs(PILOT, exist_ok=True)
     with open(HALT, "w") as f:
@@ -145,6 +156,24 @@ def set_halt(source, reason):
                             "utc": time.strftime("%Y-%m-%dT%H:%M:%SZ",
                                                  time.gmtime())}))
     jlog("HALT_SET", source=source, reason=reason)
+
+
+def set_arm(on, source):
+    """Owner's master switch. on=True creates ARM, False removes it. Every
+    flip is journaled so the live screen shows who started/stopped and when."""
+    os.makedirs(PILOT, exist_ok=True)
+    if on:
+        with open(ARM, "w") as f:
+            f.write(json.dumps({"source": source,
+                                "utc": time.strftime("%Y-%m-%dT%H:%M:%SZ",
+                                                     time.gmtime())}))
+        jlog("ARM_SET", source=source)
+    else:
+        try:
+            os.remove(ARM)
+        except FileNotFoundError:
+            pass
+        jlog("ARM_CLEAR", source=source)
 
 
 # ---- Binance client (stdlib only) -------------------------------------------
@@ -328,8 +357,15 @@ def do_run(bx):
                  qty=p["qty"], price=px, fee_quote=fee,
                  pnl=round(gross - fee, 4))
 
-    # 4) fresh intents -> new entries (skipped while halted)
+    # 4) fresh intents -> new entries (need the master switch ON and no halt)
     st = derive(journal_events())  # refresh after exits
+    # one status line per run so the live screen always shows current state,
+    # even on a quiet day with no orders
+    jlog("RUN_STATUS", armed=armed(), halted=halted(),
+         open=len(st["open"]), realized=round(st["realized"], 4), live=bx.live)
+    if not armed():
+        jlog("ENTRIES_SKIPPED", reason="master switch OFF (owner has not pressed START)")
+        return 0
     if halted():
         jlog("ENTRIES_SKIPPED", reason="halt flag set")
         return 0
@@ -464,6 +500,7 @@ def do_dust(bx, yes):
 def do_status():
     st = derive(journal_events())
     print(json.dumps({
+        "armed": armed(),
         "halted": halted(),
         "halt_info": open(HALT).read() if halted() else None,
         "open_positions": list(st["open"].values()),
@@ -483,10 +520,25 @@ def main():
         return do_run(bx)
     if mode == "dust":
         return do_dust(bx, "--yes" in sys.argv)
+    if mode == "arm":
+        set_arm(True, source_arg())
+        print("ARMED (master switch ON)")
+        return 0
+    if mode == "disarm":
+        set_arm(False, source_arg())
+        print("DISARMED (master switch OFF)")
+        return 0
     if mode == "status":
         return do_status()
-    print(f"unknown mode {mode}; use run|dust|status")
+    print(f"unknown mode {mode}; use run|dust|arm|disarm|status")
     return 2
+
+
+def source_arg():
+    for a in sys.argv:
+        if a.startswith("--source="):
+            return a.split("=", 1)[1]
+    return "unknown"
 
 
 if __name__ == "__main__":

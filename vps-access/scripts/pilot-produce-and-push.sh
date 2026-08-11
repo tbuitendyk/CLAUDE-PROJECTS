@@ -21,6 +21,21 @@ STAMP=$(date -u +%Y%m%dT%H%M%SZ)
 [ -f "$KEY" ] || { echo "no key at $KEY"; exit 1; }
 [ -f "$APPDIR/pilot-produce.js" ] || { echo "no pilot-produce.js in $APPDIR"; exit 1; }
 
+# ---- reconcile the owner's MASTER SWITCH to the box ----------------------
+# The screen's START/STOP button writes data/pilot/arm-request.json on the VPS.
+# We carry that intent to the box's ARM flag here (the executor journals the
+# flip, so the screen confirms it). The executor opens NOTHING unless ARM is
+# present, so a missing request file leaves the engine stopped by default.
+REQ="$APPDIR/data/pilot/arm-request.json"
+if [ -f "$REQ" ]; then
+  want=$(python3 -c "import json;print('1' if json.load(open('$REQ')).get('armed') else '0')" 2>/dev/null || echo 0)
+  mode=$([ "$want" = "1" ] && echo arm || echo disarm)
+  echo "== master switch: owner requests $mode =="
+  $SSH "$BOX_USER@$BOX_HOST" \
+    "cd ~/pilot 2>/dev/null; python3 ~/mx_executor.py $mode --source=owner" \
+    2>&1 | sed 's/^/  /' || echo "  (could not reach box to set master switch; will retry next run)"
+fi
+
 echo "== produce F1 intent =="
 OUT=$(cd "$APPDIR" && node pilot-produce.js 2>&1)
 rc=$?

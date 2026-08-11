@@ -92,6 +92,9 @@ class ExecutorTest(unittest.TestCase):
         with open(os.path.join(self.home, ".executor-env"), "w") as f:
             f.write(f"BINANCE_KEY=k\nBINANCE_SECRET=s\nLIVE=1\n"
                     f"BASE=http://127.0.0.1:{self.port}\n")
+        # most tests exercise the trading path, so arm by default; the arm-gate
+        # tests below disarm explicitly.
+        self.x.set_arm(True, "test")
         MockBinance.price = "100.00"
         MockBinance.reject_orders = False
         MockBinance.net_asset = None
@@ -248,6 +251,36 @@ class ExecutorTest(unittest.TestCase):
         self.assertIn("DUST_DONE", self.events())
         rc2 = self.x.do_dust(self.bx(), yes=True)
         self.assertEqual(rc2, 1)
+
+    def test_master_switch_off_blocks_entries(self):
+        self.x.set_arm(False, "test")   # owner has not pressed START
+        self.write_intent(side="LONG")
+        self.x.do_run(self.bx())
+        ev = self.events()
+        self.assertIn("ENTRIES_SKIPPED", ev)
+        self.assertNotIn("ENTRY_FILL", ev)
+        self.assertEqual(MockBinance.orders, [])
+
+    def test_master_switch_off_still_runs_due_exits(self):
+        self.x.jlog("ENTRY_FILL", chunk_start="c1", side="LONG", qty=0.1,
+                    price=100.0, exit_due_ts=time.time() - 60)
+        MockBinance.net_asset = "0.100"
+        self.x.set_arm(False, "test")   # engine stopped, but a position is open
+        self.x.do_run(self.bx())
+        self.assertIn("EXIT_FILL", self.events())  # exit ran despite STOP
+
+    def test_run_status_records_armed_state_every_run(self):
+        self.write_intent(side="LONG")
+        self.x.do_run(self.bx())
+        statuses = [e for e in self.x.journal_events() if e["event"] == "RUN_STATUS"]
+        self.assertTrue(statuses and statuses[-1]["armed"] is True)
+
+    def test_arm_disarm_modes_toggle_the_flag(self):
+        self.x.set_arm(False, "test")
+        self.assertFalse(self.x.armed())
+        self.x.set_arm(True, "owner")
+        self.assertTrue(self.x.armed())
+        self.assertIn("ARM_SET", self.events())
 
     def test_dry_mode_sends_no_orders(self):
         with open(os.path.join(self.home, ".executor-env"), "w") as f:
