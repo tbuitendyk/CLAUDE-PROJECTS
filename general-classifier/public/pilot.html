@@ -215,13 +215,24 @@ async function refresh() {
 
   const syncAgeMin = d.journalSyncedUtc ? (Date.now() - Date.parse(d.journalSyncedUtc))/60000 : null;
   const hbAgeMin = d.lastHeartbeatUtc ? (Date.now() - Date.parse(d.lastHeartbeatUtc))/60000 : null;
+  // Executor liveness, NOT journal-sync mtime, is the real health signal: the
+  // VPS sync rewrites the file mtime every 5 min even when the box content never
+  // changed, so a dead executor would otherwise show a green "synced 2 min ago"
+  // while an overdue exit rides the market (review finding 24). The box exec runs
+  // every ~10 min; no heartbeat within DEAD_HB_MIN means it is not running.
+  // Scheduled exits fire in EVERY arm/halt state, so a dead executor is dangerous
+  // in all of them — the dead strip therefore shows regardless of armed/halted
+  // (finding 25), never suppressed by a STOPPED/HALT short-circuit.
+  const DEAD_HB_MIN = 25;
+  const dead = d.present && (hbAgeMin == null || hbAgeMin > DEAD_HB_MIN);
 
-  let banner;
-  if (d.halted) banner = `<div class="banner halted">⛔ HALT set — new entries stopped; scheduled exits still run. See incidents.</div>`;
-  else if (!armed) banner = `<div class="banner stopped">■ engine STOPPED — press START to run. Any open positions still exit on schedule.</div>`;
-  else if (syncAgeMin != null && syncAgeMin > 90) banner = `<div class="banner stale">⚠ journal last synced ${syncAgeMin.toFixed(0)} min ago — sync may be stalled</div>`;
-  else banner = `<div class="banner running">● RUNNING — journal synced ${syncAgeMin==null?'—':syncAgeMin.toFixed(0)+' min ago'}</div>`;
-  $('#banner').innerHTML = banner;
+  const strips = [];
+  if (dead) strips.push(`<div class="banner halted">⛔ EXECUTOR SILENT — last heartbeat ${hbAgeMin==null?'never':hbAgeMin.toFixed(0)+' min ago'} (box runs every ~10 min). Scheduled exits are NOT firing; any open position can ride the market unhedged. Check the box.</div>`);
+  if (d.halted) strips.push(`<div class="banner halted">⛔ HALT set — new entries stopped; scheduled exits still run. See incidents.</div>`);
+  else if (!armed) strips.push(`<div class="banner stopped">■ engine STOPPED — press START to run. Any open positions still exit on schedule.</div>`);
+  else if (syncAgeMin != null && syncAgeMin > 90) strips.push(`<div class="banner stale">⚠ journal last synced ${syncAgeMin.toFixed(0)} min ago — sync may be stalled</div>`);
+  else if (!dead) strips.push(`<div class="banner running">● RUNNING — heartbeat ${hbAgeMin==null?'—':hbAgeMin.toFixed(0)+' min ago'}, journal synced ${syncAgeMin==null?'—':syncAgeMin.toFixed(0)+' min ago'}</div>`);
+  $('#banner').innerHTML = strips.join('');
 
   const feeCls = d.realizedFeePerLegAvg == null ? '' : (d.realizedFeePerLegAvg <= d.modelFeePerLeg ? 'pos' : 'warn');
   $('#tiles').innerHTML =
@@ -232,7 +243,7 @@ async function refresh() {
     tile('Fill dev avg', d.fillDeviationAvg==null?'—':(d.fillDeviationAvg*100).toFixed(3)+'%') +
     tile('Fill dev max', d.fillDeviationMax==null?'—':(d.fillDeviationMax*100).toFixed(3)+'%', d.fillDeviationMax!=null&&d.fillDeviationMax>0.01?'warn':'') +
     tile('Consec. rejects', d.consecutiveRejects, d.consecutiveRejects>=2?'warn':'') +
-    tile('Executor heartbeat', hbAgeMin==null?'—':hbAgeMin.toFixed(0)+' min', hbAgeMin!=null&&hbAgeMin>90?'warn':'') +
+    tile('Executor heartbeat', hbAgeMin==null?'never':hbAgeMin.toFixed(0)+' min', dead?'warn':'') +
     tile('Dust trade', d.dustDone?'done':'not yet') +
     tile('Journal events', d.eventCount);
 
