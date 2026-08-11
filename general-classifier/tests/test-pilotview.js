@@ -207,3 +207,39 @@ module.exports.noBalanceEventLeavesWalletBalanceNull = function () {
   ]);
   assert.strictEqual(st.walletBalance, null, 'no BALANCE -> null (screen shows "no snapshot yet")');
 };
+
+module.exports.liveStatusStoppedFlatBlocksEntryAndSchedulesNextEntryAt0100Utc = function () {
+  const st = pv.derive([{ event: 'RUN_STATUS', armed: false, halted: false }]);
+  const ls = pv.liveStatus(st, Date.UTC(2026, 7, 11, 12, 0, 0)); // 2026-08-11 12:00 UTC
+  assert.strictEqual(ls.openPositions, 0, 'no open positions');
+  assert.strictEqual(ls.armed, false);
+  assert.strictEqual(ls.nextEntryUtc, '2026-08-12T01:00:00.000Z', 'next entry is the NEXT 01:00 UTC (noon is past today 01:00)');
+  const entry = ls.items.find((i) => i.what.startsWith('Open a new position'));
+  assert.ok(entry && entry.whenUtc === null && /STOPPED/.test(entry.why), 'entry is BLOCKED while stopped');
+  assert.ok(ls.items.some((i) => /Recompute the live signal/.test(i.what)), 'recompute item always present');
+  assert.ok(!ls.items.some((i) => /^Close the/.test(i.what)), 'no exit item when flat');
+};
+
+module.exports.liveStatusRunningSchedulesNextEntryToday = function () {
+  const st = pv.derive([{ event: 'ARM_SET', source: 'owner' }]);
+  const ls = pv.liveStatus(st, Date.UTC(2026, 7, 11, 0, 30, 0)); // 00:30 UTC -> today 01:00
+  assert.strictEqual(ls.armed, true);
+  assert.strictEqual(ls.nextEntryUtc, '2026-08-11T01:00:00.000Z');
+  const entry = ls.items.find((i) => i.what.startsWith('Evaluate the next entry'));
+  assert.ok(entry && entry.whenUtc === '2026-08-11T01:00:00.000Z', 'running: entry scheduled at 01:00 UTC');
+};
+
+module.exports.liveStatusCountsPositionsAndSchedulesNextExit = function () {
+  const now = 1786500000000;
+  const exitTs = Math.floor(now / 1000) + 3600 * 10; // 10h out, in seconds (journal convention)
+  const st = pv.derive([
+    { event: 'ENTRY_FILL', chunk_start: '2026-08-10T00:00Z', side: 'LONG', qty: 0.1, price: 100, exit_due_ts: exitTs },
+    { event: 'ARM_SET', source: 'owner' },
+  ]);
+  const ls = pv.liveStatus(st, now);
+  assert.strictEqual(ls.openLong, 1, 'one long open');
+  assert.strictEqual(ls.openShort, 0);
+  assert.strictEqual(ls.nextExitUtc, new Date(exitTs * 1000).toISOString(), 'next exit is the position exit_due_ts (seconds->ms)');
+  const exit = ls.items.find((i) => i.what.startsWith('Close the LONG'));
+  assert.ok(exit && exit.whenUtc === new Date(exitTs * 1000).toISOString(), 'exit item carries the absolute exit time');
+};

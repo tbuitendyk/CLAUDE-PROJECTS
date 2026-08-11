@@ -13,6 +13,68 @@ const path = require('path');
 const JOURNAL = path.join(__dirname, '..', 'data', 'pilot', 'journal.jsonl');
 const MODEL_FEE_PER_LEG = 0.125; // the assumption the pilot measures against
 
+// F1 frozen geometry (daily-4d), for the "what happens next" status. A daily chunk
+// starts at 00:00 UTC (dataset.js dailyStarts = ceil(ts/DAY)*DAY) and its entry
+// hour is start + entryOffsetH(97) = 01:00 UTC — so the committee evaluates a NEW
+// entry once per day at 01:00 UTC, and a taken position is held tHours(137) before
+// its scheduled exit. Frozen: do not change (TRACKER.md locks F1 after week one).
+const F1_ENTRY_HOUR_UTC = 1;
+const F1_HOLD_HOURS = 137;
+
+// Build the human-readable "current status / next actions" the screen shows: what
+// the system will do next, why, and when (absolute UTC; the page live-counts down).
+// Pure over the derived state + a supplied clock, so it is unit-testable.
+function liveStatus(st, nowMs) {
+  const iso = (t) => new Date(t).toISOString();
+  const d = new Date(nowMs);
+  // next daily entry evaluation: the next 01:00:00 UTC strictly after now
+  let nextEntry = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), F1_ENTRY_HOUR_UTC, 0, 0, 0);
+  if (nextEntry <= nowMs) nextEntry += 24 * 3600000;
+
+  const opens = (st.openPositions || []).filter((p) => p && p.exit_due_ts);
+  const openLong = opens.filter((p) => p.side === 'LONG').length;
+  const openShort = opens.filter((p) => p.side === 'SHORT').length;
+  const nextExitPos = opens.slice().sort((a, b) => a.exit_due_ts - b.exit_due_ts)[0] || null;
+  const armed = !!st.armed;
+  const halted = !!st.halted;
+
+  const items = [];
+  // 1) the next ENTRY (gated by arm/halt)
+  if (!armed) {
+    items.push({ what: 'Open a new position', whenUtc: null,
+      why: `engine is STOPPED — nothing opens until you press START. When running, the F1 committee evaluates a new entry daily at 0${F1_ENTRY_HOUR_UTC}:00 UTC.` });
+  } else if (halted) {
+    items.push({ what: 'Open a new position', whenUtc: null,
+      why: 'HALT is set — new entries are blocked; open positions still exit on schedule.' });
+  } else {
+    items.push({ what: 'Evaluate the next entry (LONG / SHORT / FLAT)', whenUtc: iso(nextEntry),
+      why: `the frozen F1 committee decides the next daily position; it opens a $10 clip only if the call is not FLAT.` });
+  }
+  // 2) the next scheduled EXIT (runs armed OR stopped)
+  if (nextExitPos) {
+    items.push({ what: `Close the ${nextExitPos.side} position opened ${String(nextExitPos.chunk_start).slice(0, 16)}`,
+      whenUtc: iso(nextExitPos.exit_due_ts * 1000),
+      why: `its ${F1_HOLD_HOURS}h hold elapses; scheduled exits run whether the engine is armed or stopped.` });
+  }
+  // 3) background recompute cadence
+  items.push({ what: 'Recompute the live signal against fresh candles', whenUtc: null,
+    why: 'runs every hour; it can only OPEN a position at the daily entry window above (it re-checks and ships nothing otherwise).' });
+
+  return {
+    serverUtc: iso(nowMs),
+    entryHourUtc: F1_ENTRY_HOUR_UTC,
+    holdHours: F1_HOLD_HOURS,
+    nextEntryUtc: iso(nextEntry),
+    nextExitUtc: nextExitPos ? iso(nextExitPos.exit_due_ts * 1000) : null,
+    openPositions: opens.length,
+    openLong,
+    openShort,
+    armed,
+    halted,
+    items,
+  };
+}
+
 function readJournal(file = JOURNAL) {
   let text;
   try {
@@ -348,7 +410,8 @@ function status(file = JOURNAL) {
     stopSweep,
     stopCarryError,
     ...st,
+    liveStatus: liveStatus(st, Date.now()),
   };
 }
 
-module.exports = { status, config, anatomy, derive, readJournal, JOURNAL, MODEL_FEE_PER_LEG };
+module.exports = { status, config, anatomy, derive, liveStatus, readJournal, JOURNAL, MODEL_FEE_PER_LEG };

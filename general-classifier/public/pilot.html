@@ -51,7 +51,7 @@
 </style>
 </head>
 <body>
-  <h1>F1 live pilot — execution fidelity</h1>
+  <h1>F1 live pilot — execution fidelity <span id="utcClock" style="float:right;font-size:.8rem;font-weight:normal;color:#6b7686;font-variant-numeric:tabular-nums" title="all system actions are on UTC">—</span></h1>
   <div class="sub">Pre-registration: <code>PILOT-F1.md</code>. Pilot P&amp;L is <b>void as edge evidence</b> —
     this screen measures execution, not whether F1 works. All trading logic runs as deterministic
     code on the Mexico box with no AI in the path; this page displays its journal and carries your
@@ -72,6 +72,9 @@
 
   <div class="cfg" id="stopBox" style="margin-top:.5rem"></div>
   <div class="cfg" id="balBox" style="margin-top:.5rem"></div>
+
+  <h2>Current status — what happens next</h2>
+  <div id="statusPanel" class="cfg muted">loading…</div>
 
   <h2>Tested configuration — how these trades are set up</h2>
   <div class="cfg" id="cfg"></div>
@@ -310,7 +313,44 @@ async function refresh() {
     || '<tr><td colspan="3" class="muted">no events yet</td></tr>';
 
   $('#foot').textContent = `synced ${d.journalSyncedUtc||'—'} · refreshes every 30s · this page reads and carries your switch; it does not decide trades`;
+
+  LATEST_STATUS = d.liveStatus || null;
+  renderStatus();
 }
+
+// --- live "what's next" status + UTC clock (tick locally every second so
+// countdowns move without re-polling; absolute UTC targets come from the server) ---
+let LATEST_STATUS = null;
+function untilStr(iso) {
+  if (!iso) return '';
+  const ms = Date.parse(iso) - Date.now();
+  if (ms <= 0) return 'now / due';
+  const h = Math.floor(ms/3600000), m = Math.floor((ms%3600000)/60000), s = Math.floor((ms%60000)/1000);
+  return h>0 ? `in ${h}h ${m}m` : (m>0 ? `in ${m}m ${s}s` : `in ${s}s`);
+}
+function renderStatus() {
+  const s = LATEST_STATUS;
+  const el = document.getElementById('statusPanel');
+  if (!el) return;
+  if (!s) { el.innerHTML = '<span class="muted">no status yet — the executor has not reported.</span>'; return; }
+  const posLine = `<b>Open positions:</b> ${s.openPositions} (${s.openLong} long / ${s.openShort} short) · `
+    + `<b>engine:</b> ${s.halted ? '<span class="warn">HALTED</span>' : (s.armed ? '<span class="pos">RUNNING</span>' : '<span class="warn">STOPPED</span>')}`;
+  const rows = (s.items||[]).map(it => {
+    const when = it.whenUtc ? `<span class="pos">${untilStr(it.whenUtc)}</span> <span class="muted">(${it.whenUtc.replace('T',' ').slice(0,16)} UTC)</span>` : '<span class="muted">—</span>';
+    return `<tr><td style="text-align:left"><b>${it.what}</b></td><td style="white-space:nowrap">${when}</td></tr>`
+         + `<tr><td colspan="2" style="text-align:left" class="muted" title="why">↳ ${it.why||''}</td></tr>`;
+  }).join('');
+  el.innerHTML = `<div style="margin-bottom:.4rem">${posLine}</div>`
+    + `<table style="width:100%"><tbody>${rows}</tbody></table>`;
+}
+function tickClock() {
+  const c = document.getElementById('utcClock');
+  if (c) c.textContent = new Date().toISOString().replace('T',' ').slice(0,19) + ' UTC';
+  renderStatus(); // refresh countdowns each second
+}
+setInterval(tickClock, 1000);
+tickClock();
+
 refresh();
 setInterval(refresh, 30000);
 </script>
