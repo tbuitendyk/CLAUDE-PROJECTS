@@ -48,6 +48,7 @@ DRYRUN = os.environ.get("DRYRUN", "0") == "1"
 
 DEAD_HB_MIN = 25.0        # box exec runs every 10 min; 2.5 missed cycles = dead
 STALE_SYNC_MIN = 30.0     # VPS sync runs every 5 min; 6 missed cycles = stalled
+STALE_MIRROR_MIN = 90.0   # mirror runs on the hourly tick; >90 min = missed one
 INCIDENT_EVENTS = {"RECONCILE_MISMATCH", "RECONCILE_UNREADABLE", "KILL_PRICE_DRIFT",
                    "KILL_TRANSPORT", "EXIT_OVERDUE", "MIRROR_BREAK", "ORDER_REJECT",
                    "HALT_SET", "ARM_STALE", "INTENT_STALE", "CLOCK_DRIFT"}
@@ -111,6 +112,24 @@ if at_risk and sync_age_min > STALE_SYNC_MIN:
 if last_incident:
     inc_ts, inc_kind = last_incident
     active[f"incident:{inc_kind}@{int(inc_ts)}"] = f"New incident: {inc_kind}."
+
+# mirror-check health (re-review): a mirror that ERRORED (ok:false) or has gone
+# STALE has stopped verifying the paper twin while the box may be trading — page
+# the owner so the drift detector cannot fail silent. Only when something is at
+# risk (armed or a position open).
+mirror_path = os.path.join(os.path.dirname(JOURNAL), "mirror.json")
+if at_risk and os.path.exists(mirror_path):
+    try:
+        mj = json.load(open(mirror_path))
+        mj_age_min = (now() - os.stat(mirror_path).st_mtime) / 60.0
+        if mj.get("ok") is False:
+            active["mirror_error"] = ("Mirror check ERRORED — the drift detector is not verifying: "
+                                      + str(mj.get("error", ""))[:140])
+        elif mj_age_min > STALE_MIRROR_MIN:
+            active["mirror_stale"] = (f"Mirror check has not run for {mj_age_min:.0f} min "
+                                      "(tick is hourly) — the drift detector may be dead.")
+    except Exception:
+        pass
 
 # de-dupe on transition: load the set of keys we last alerted on
 prev = {"keys": []}
