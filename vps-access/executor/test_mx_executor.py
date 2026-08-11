@@ -190,8 +190,8 @@ class ExecutorTest(unittest.TestCase):
     def test_replay_matches_lifecycle(self):
         self.x.jlog("ENTRY_FILL", chunk_start="c1", side="LONG", qty=0.1,
                     price=100.0, exit_due_ts=time.time() + 10)
-        self.x.jlog("ORDER_REJECT")
-        self.x.jlog("ORDER_REJECT")
+        self.x.jlog("ORDER_REJECT", action="ENTRY")
+        self.x.jlog("ORDER_REJECT", action="ENTRY")
         st = self.x.derive(self.x.journal_events())
         self.assertEqual(len(st["open"]), 1)
         self.assertEqual(st["consecutive_rejects"], 2)
@@ -288,6 +288,16 @@ class ExecutorTest(unittest.TestCase):
         self.write_intent(chunk="2026-08-04T00:00Z")
         self.x.do_run(self.bx())
         self.assertTrue(self.x.halted())
+
+    def test_sweep_rejects_do_not_count_toward_reject_kill(self):
+        # a housekeeping SWEEP that rejects (e.g. sub-min-notional dust) must NOT
+        # accrue toward the reject-kill — otherwise un-sellable dust would halt the
+        # box on arm (the live 2026-08-11 accumulation).
+        for _ in range(5):
+            self.x.jlog("ORDER_REJECT", action="SWEEP", http=400)
+        st = self.x.derive(self.x.journal_events())
+        self.assertEqual(st["consecutive_rejects"], 0,
+                         'SWEEP rejects are housekeeping, not trading failures')
 
     def test_reconcile_mismatch_halts_entries(self):
         MockBinance.net_asset = "0.500"   # exchange says 0.5 LTC, journal says 0

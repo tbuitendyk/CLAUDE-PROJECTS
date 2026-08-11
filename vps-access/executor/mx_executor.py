@@ -154,7 +154,12 @@ def derive(events):
                 realized += e.get("pnl", 0.0)
             consecutive_rejects = 0
         elif ev == "ORDER_REJECT":
-            consecutive_rejects += 1
+            # only ENTRY/EXIT rejects count toward the reject-kill — a failed
+            # housekeeping SWEEP (e.g. sub-min-notional dust that cannot be sold)
+            # is not a trading failure and must not creep the box toward a halt
+            # (the live 2026-08-11 sweep-reject accumulation).
+            if e.get("action") in ("ENTRY", "EXIT"):
+                consecutive_rejects += 1
         elif ev in ("ORDER_ACK", "ENTRY_FILL", "EXIT_FILL"):
             consecutive_rejects = 0
         elif ev == "DUST_DONE":
