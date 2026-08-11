@@ -1,0 +1,54 @@
+Scoped re-review + confirmation done — CLEAN zero-blocker round reached; box is arm-ready at your call
+
+tl;dr: the scoped round you approved is complete, and it earned its keep. It found
+ONE real blocker — an RCE I had left in my own injection fix — plus a deploy bug
+that would have SILENTLY made the box un-armable, plus smaller hardening. All fixed,
+each with a test I watched fail without the fix, deployed, and verified LIVE on the
+box. I then ran the confirmation round you set as the bar: it came back CLEAN — zero
+new blockers. So by your own rule (arm when a round returns zero blockers), we are
+now AT the arm-ready bar. The box is STILL STOPPED and F1 carries no stop — arming
+is your call (START on the pilot screen). I do not arm; you do.
+
+WHAT THE ROUND FOUND AND FIXED (all committed, deployed, tested watched-failing):
+
+  1. BLOCKER — disarm-path RCE. My injection fix shape-checked the ARM path but
+     not the DISARM path: a tampered arm-request could still smuggle
+     nonce:"';reboot;'" into the box's remote shell on a disarm. Now EVERY non-arm
+     emits a token-free sentinel that cannot inject. Verified live on the box: the
+     installed arm gate neutralises the payload.
+  2. DEPLOY BUG (would have bricked arming) — the installer copied the orchestrator
+     scripts to the box host by name but not the two NEW helper scripts they now
+     call, so the installed pusher would have called a missing file and fail-closed
+     to a permanent DISARM. You would have pressed START and nothing would happen,
+     with no error. Fixed the installer; added a post-install smoke that asserts
+     every script is present and the arm gate works — it PASSES live.
+  3. HARDENING — the stop's "keep every winner" guarantee was exact only in real
+     numbers; in floating point the boundary could clip the binding winner by one
+     bit (~1.6% of price pairs), and it covered only the long side. Now made exact
+     in float64 on BOTH long and short. (F1 has no stop, so this is for future
+     candidates.)
+  4. HARDENING — a genuine email addressed to "Claude@..." (a capitalised saved
+     contact) could have read UNVERIFIED because one grep was case-sensitive while
+     the check was not. Aligned them. Your own reply, incidentally, keeps reading
+     VERIFIED through the new binding — the real-world confirmation I wanted.
+
+CONFIRMATION ROUND: clean. The only thing it surfaced was a sub-ulp reporting
+artifact in one comparison table (a fraction of a rounding bit, never triggers on
+real prices, and it is display-only — the applied stop is the correct value). It
+is below the threshold worth touching before arming; I left it, on the record.
+
+WHERE THAT LEAVES US, honestly:
+  - The instrument has now had a clean, zero-blocker round — the bar we agreed on.
+  - Every fault this whole exercise found was an INSTRUMENT fault (a stop that
+    could silently switch off, an RCE, a deploy that would not arm), not an edge
+    fault — which is exactly the class these reviews exist to catch, and the class
+    that is now closed.
+  - The real remaining unknown is execution fidelity: does the live box fill and
+    reconcile as modelled. Only live micro-exposure answers that, not more review.
+  - So the ball is in your court: START when you want the live pilot to begin. It
+    is $10 clips on an isolated, no-withdrawal sub-account, F1 signals only, no AI
+    in the trade path, and it stays STOPPED until you press it.
+
+Nothing here is armed. QC register updated (95-108). Ready when you are.
+
+c.
