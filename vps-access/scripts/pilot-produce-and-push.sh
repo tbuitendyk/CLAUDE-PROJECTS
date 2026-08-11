@@ -86,42 +86,45 @@ $SSH "$BOX_USER@$BOX_HOST" \
   "python3 ~/mx_executor.py $mode --source=owner --nonce='$nonce' --utc='$utc' --hmac='$hmac'" \
   2>&1 | sed 's/^/  /' || echo "  (box unreachable; if armed, dead-man self-disarms — fail-safe)"
 
-# Carry the tuned protective stop to the box (owner 2026-08-11). The stop tuner
-# (bracket-lab control -> classifier) writes data/pilot/stop-sweep.json with the
-# determined FIXED_STOP_PCT; carry it into the box's ~/.executor-env so every order
-# gets the hard stop, and the live screen shows it. Idempotent — the box rewrites
-# its env only when the value CHANGES. A risk parameter, never an authorization to
+# Carry the owner's CHOSEN protective stop to the box (owner 2026-08-11). Running
+# the scan applies NOTHING; the owner chooses a value (or none) which the classifier
+# writes to data/pilot/fixed-stop.json. This carries that choice into the box's
+# ~/.executor-env: a positive value sets FIXED_STOP_PCT; no value (or a cleared
+# choice) REMOVES it so the box runs with no stop. Idempotent — the box env is
+# rewritten only on a real change. A risk parameter, never an authorization to
 # trade: it opens nothing, and it is carried regardless of arm/mirror state.
-SWEEP="$APPDIR/data/pilot/stop-sweep.json"
-DESIRED_STOP=$(python3 - "$SWEEP" <<'PY'
+FIXEDSTOP="$APPDIR/data/pilot/fixed-stop.json"
+DESIRED_STOP=$(python3 - "$FIXEDSTOP" <<'PY'
 import json, sys
 try:
     d = json.load(open(sys.argv[1]))
     v = d.get("stopPct")
-    if d.get("status") == "done" and d.get("active") and isinstance(v, (int, float)) and v > 0:
-        print(f"{float(v):.6f}")
-    else:
-        print("")
+    print(f"{float(v):.6f}" if isinstance(v, (int, float)) and v > 0 else "")
 except Exception:
     print("")
 PY
 )
-if [ -n "$DESIRED_STOP" ]; then
-  echo "== carry fixed stop -> box: FIXED_STOP_PCT=$DESIRED_STOP =="
-  $SSH "$BOX_USER@$BOX_HOST" "DESIRED='$DESIRED_STOP' bash -s" 2>&1 <<'RSTOP' | sed 's/^/  /' || echo "  (box unreachable; stop carry retried next sync)"
+echo "== carry fixed stop -> box: ${DESIRED_STOP:-<none: no stop>} =="
+$SSH "$BOX_USER@$BOX_HOST" "DESIRED='$DESIRED_STOP' bash -s" 2>&1 <<'RSTOP' | sed 's/^/  /' || echo "  (box unreachable; stop carry retried next sync)"
 ENV=~/.executor-env
 cur=$(grep -E '^FIXED_STOP_PCT=' "$ENV" 2>/dev/null | tail -1 | cut -d= -f2)
-if [ "$cur" = "$DESIRED" ]; then
+if [ -z "$DESIRED" ]; then
+  if [ -n "$cur" ]; then
+    tmp=$(mktemp); grep -vE '^FIXED_STOP_PCT=' "$ENV" 2>/dev/null > "$tmp" || true
+    chmod 600 "$tmp"; mv "$tmp" "$ENV"
+    echo "stop CLEARED (was $cur) — box now runs with NO stop"
+  else
+    echo "no stop set (as intended)"
+  fi
+elif [ "$cur" = "$DESIRED" ]; then
   echo "stop already set to $DESIRED"
 else
-  tmp=$(mktemp)
-  grep -vE '^FIXED_STOP_PCT=' "$ENV" 2>/dev/null > "$tmp" || true
+  tmp=$(mktemp); grep -vE '^FIXED_STOP_PCT=' "$ENV" 2>/dev/null > "$tmp" || true
   echo "FIXED_STOP_PCT=$DESIRED" >> "$tmp"
   chmod 600 "$tmp"; mv "$tmp" "$ENV"
   echo "stop updated: ${cur:-<unset>} -> $DESIRED"
 fi
 RSTOP
-fi
 
 # In --arm-only mode (the frequent sync) we stop here: no data refresh, no
 # signal produced. The hourly tick does the produce+push.
