@@ -2162,10 +2162,29 @@
       const cc = sweep.counts || {};
       const fh = sweep.fullHistory || {};
       const span = `${(fh.firstChunkUtc || '').slice(0, 10)}→${(fh.lastChunkUtc || '').slice(0, 10)}`;
+      const usd = (v) => (v == null ? '—' : `${v < 0 ? '-' : ''}$${Math.abs(v).toFixed(2)}`);
+      let curveTbl = '';
+      if (Array.isArray(sweep.curve) && sweep.curve.length) {
+        curveTbl = '<table style="margin-top:.45rem;border-collapse:collapse;font-size:.82rem">'
+          + '<thead><tr>'
+          + ['give up top winners', 'stop', 'winners cut', 'winner $ given up', 'losers cut', 'loss-side $', 'NET $'].map((h) => `<th style="text-align:right;padding:.15rem .5rem;border-bottom:1px solid #345">${h}</th>`).join('')
+          + '</tr></thead><tbody>'
+          + sweep.curve.map((c) => `<tr>`
+            + `<td style="text-align:right;padding:.12rem .5rem">${c.sacrificeTopWinners}</td>`
+            + `<td style="text-align:right;padding:.12rem .5rem">${pct(c.stopPct)}</td>`
+            + `<td style="text-align:right;padding:.12rem .5rem">${c.winnersForfeited}</td>`
+            + `<td style="text-align:right;padding:.12rem .5rem;color:#c88">${usd(-Math.abs(c.winnerProfitForfeitedUsd || 0))}</td>`
+            + `<td style="text-align:right;padding:.12rem .5rem">${c.losersCut}</td>`
+            + `<td style="text-align:right;padding:.12rem .5rem;color:${(c.loserPnlDeltaUsd || 0) >= 0 ? '#4c9' : '#c88'}">${usd(c.loserPnlDeltaUsd)}</td>`
+            + `<td style="text-align:right;padding:.12rem .5rem;font-weight:bold;color:${(c.netPnlDeltaUsd || 0) >= 0 ? '#4c9' : '#c88'}">${usd(c.netPnlDeltaUsd)}</td>`
+            + `</tr>`).join('')
+          + '</tbody></table>'
+          + `<div class="muted" style="font-size:.72rem;margin-top:.2rem">$ figures are per the $${sweep.clipUsd || 10} clip across all ${cc.priced || 0} historical entries (comparison, not the live book). NET = winner $ given up + loss-side $ vs no stop; positive means the stop helps.</div>`;
+      }
       html += `<div style="margin-top:.4rem;padding:.4rem .5rem;background:#0d2b17;border-radius:4px">`
         + `<b>Determined stop for ${sweep.bookId}: <span style="color:#4c9">${pct(sweep.stopPct)}</span></b> — preserves all ${cc.winners || 0} winners, cuts ${cc.losersCutByStop || 0} of ${cc.losers || 0} losers, over ${cc.priced || 0} entries (${span}). `
         + `${sweep.binding ? `Binding: a ${sweep.binding.side} that dipped ${pct(sweep.binding.mae)}. ` : ''}`
-        + `Now carried to the live engine — see the pilot screen.</div>`;
+        + `Now carried to the live engine — see the pilot screen.${curveTbl}</div>`;
     }
     el.innerHTML = html;
     el.querySelectorAll('.stoptune-btn').forEach((b) => b.addEventListener('click', async () => {
