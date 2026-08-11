@@ -51,6 +51,9 @@ MIN_NOTIONAL = 5.0         # exchange minimum, probed 2026-08-11
 HOLD_HOURS = 137           # F1 cell tHours
 MAX_CONCURRENT = 6         # 137h / 24h step, derived
 INTENT_MAX_AGE_S = 1800    # an intent older than 30 min is stale, never traded
+ARM_MAX_AGE_S = 1800       # dead-man: ARM must be re-stamped by the control plane
+                           # within 30 min (sync runs ~every 5 min) or the box
+                           # self-disarms — a fail-safe kill on control-plane loss
 RECV_WINDOW = 10000
 FILL_DEV_LIMIT = 0.010     # kill: fill >1.0% from decision price (GUESSED)
 REJECT_LIMIT = 3           # kill: 3 consecutive rejects (GUESSED)
@@ -152,6 +155,23 @@ def halted():
 
 
 def armed():
+    """Armed = the ARM file is present AND was refreshed recently. The control
+    plane re-stamps it every sync (~5 min); if the VPS/tunnel dies while armed,
+    the stamp goes stale and the box SELF-DISARMS (dead-man). So a STOP that
+    cannot reach the box still takes effect, and any control-plane failure fails
+    SAFE — no new entries open past the dead-man window (review findings 13-15).
+    Exits are never gated on this."""
+    if not os.path.exists(ARM):
+        return False
+    try:
+        with open(ARM) as f:
+            ts = json.load(f).get("ts", 0)
+    except Exception:
+        return False
+    return (time.time() - ts) <= ARM_MAX_AGE_S
+
+
+def arm_present():
     return os.path.exists(ARM)
 
 
@@ -165,21 +185,26 @@ def set_halt(source, reason):
 
 
 def set_arm(on, source):
-    """Owner's master switch. on=True creates ARM, False removes it. Every
-    flip is journaled so the live screen shows who started/stopped and when."""
+    """Owner's master switch. on=True writes/refreshes ARM with a fresh
+    timestamp (the control plane calls this every sync as a keepalive); False
+    removes it. Journals only on a real transition so the keepalive does not
+    spam the journal, while the timestamp is always refreshed for the dead-man."""
     os.makedirs(PILOT, exist_ok=True)
     if on:
+        was = armed()  # fresh-armed before this call?
         with open(ARM, "w") as f:
-            f.write(json.dumps({"source": source,
-                                "utc": time.strftime("%Y-%m-%dT%H:%M:%SZ",
-                                                     time.gmtime())}))
-        jlog("ARM_SET", source=source)
+            f.write(json.dumps({"source": source, "ts": round(time.time(), 3),
+                                "utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}))
+        if not was:
+            jlog("ARM_SET", source=source)  # transition: off/stale -> armed
     else:
+        existed = os.path.exists(ARM)
         try:
             os.remove(ARM)
         except FileNotFoundError:
             pass
-        jlog("ARM_CLEAR", source=source)
+        if existed:
+            jlog("ARM_CLEAR", source=source)
 
 
 # ---- Binance client (stdlib only) -------------------------------------------
@@ -421,10 +446,23 @@ def do_run(bx):
         jlog("RECONCILE_UNREADABLE", http=code, body=json.dumps(acct)[:200])
         set_halt("executor", f"cannot read account (http {code})")
 
-    # 2) kill: cumulative loss
-    if st["realized"] < -LOSS_LIMIT_USD and not halted():
-        set_halt("executor", f"cumulative loss {st['realized']:.2f} "
-                             f"beyond -{LOSS_LIMIT_USD}")
+    # 2) kill: cumulative loss, MARK-TO-MARKET. Realized alone is blind to open
+    # positions, so several concurrent shorts could bleed unbounded on a rally
+    # and never trip the limit (review finding 16). Add the unrealized P&L of
+    # every open leg at the current price so the kill sees the true drawdown.
+    mtm = st["realized"]
+    px_now = bx.price()
+    if px_now is not None:
+        for p in st["open"].values():
+            leg = (px_now - p["entry_price"]) * p["qty"]
+            if p["side"] == "SHORT":
+                leg = -leg
+            mtm += leg
+    if mtm < -LOSS_LIMIT_USD and not halted():
+        set_halt("executor", f"mark-to-market loss {mtm:.2f} "
+                             f"(realized {st['realized']:.2f} + open legs) beyond -{LOSS_LIMIT_USD}")
+    jlog("PNL_MTM", realized=round(st["realized"], 4), mark_to_market=round(mtm, 4),
+         open_legs=len(st["open"]), price=px_now)
 
     # 3) due exits ALWAYS run, halted or not (PILOT-F1.md section 4)
     for p in sorted(st["open"].values(), key=lambda x: x["exit_due_ts"]):
@@ -496,7 +534,12 @@ def do_run(bx):
     jlog("RUN_STATUS", armed=armed(), halted=halted(),
          open=len(st["open"]), realized=round(st["realized"], 4), live=bx.live)
     if not armed():
-        jlog("ENTRIES_SKIPPED", reason="master switch OFF (owner has not pressed START)")
+        if arm_present():
+            jlog("ARM_STALE", reason="dead-man: ARM not refreshed within "
+                 f"{ARM_MAX_AGE_S}s — control plane lost contact; self-disarmed")
+            jlog("ENTRIES_SKIPPED", reason="master switch STALE (dead-man tripped)")
+        else:
+            jlog("ENTRIES_SKIPPED", reason="master switch OFF (owner has not pressed START)")
         return 0
     if halted():
         jlog("ENTRIES_SKIPPED", reason="halt flag set")

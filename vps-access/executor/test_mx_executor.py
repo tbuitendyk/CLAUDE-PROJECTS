@@ -444,6 +444,42 @@ class ExecutorTest(unittest.TestCase):
         self.assertIn("DUST_SWEEP", self.events())
         self.assertTrue(MockBinance.base_bal < self.x.QTY_STEP, 'dust swept to USDT')
 
+    def test_deadman_stale_arm_blocks_entries_but_exits_run(self):
+        # ARM present but not refreshed within ARM_MAX_AGE_S -> self-disarm.
+        import json as _j
+        arm = self.x.ARM
+        with open(arm, 'w') as f:
+            _j.dump({'source': 'owner', 'ts': time.time() - self.x.ARM_MAX_AGE_S - 60}, f)
+        self.assertFalse(self.x.armed(), 'a stale ARM must read as disarmed (dead-man)')
+        # a due position must still exit despite the stale switch
+        self.x.jlog("ENTRY_FILL", chunk_start="d1", side="LONG", qty=0.1,
+                    price=100.0, exit_due_ts=time.time() - 60)
+        MockBinance.base_bal = 0.1
+        self.write_intent(side="LONG", chunk="2026-08-09T00:00Z")
+        self.x.do_run(self.bx())
+        ev = self.events()
+        self.assertIn("ARM_STALE", ev)
+        self.assertIn("EXIT_FILL", ev)          # exit ran
+        self.assertNotIn("ENTRY_FILL", [e for e in ev if e == "ENTRY_FILL"][1:])  # no NEW entry
+
+    def test_fresh_arm_keepalive_does_not_spam_journal(self):
+        self.x.set_arm(True, "owner")            # transition -> ARM_SET
+        self.x.set_arm(True, "owner")            # keepalive -> no new ARM_SET
+        self.x.set_arm(True, "owner")
+        self.assertEqual(self.events().count("ARM_SET"), 1,
+                         'keepalive re-stamps the timestamp without spamming ARM_SET')
+
+    def test_mtm_loss_kill_sees_open_positions(self):
+        # an open long deep underwater must trip the loss kill even with zero
+        # realized P&L (mark-to-market, not realized-only).
+        self.x.set_arm(True, "test")
+        self.x.jlog("ENTRY_FILL", chunk_start="u1", side="LONG", qty=1.0,
+                    price=200.0, exit_due_ts=time.time() + 9999)
+        MockBinance.base_bal = 1.0
+        MockBinance.price = "100.00"             # -$100 unrealized on 1.0 @ 200 -> 100
+        self.x.do_run(self.bx())
+        self.assertTrue(self.x.halted(), 'mark-to-market drawdown beyond the limit must HALT')
+
     def test_dry_mode_sends_no_orders(self):
         with open(os.path.join(self.home, ".executor-env"), "w") as f:
             f.write(f"BINANCE_KEY=k\nBINANCE_SECRET=s\nLIVE=0\n"

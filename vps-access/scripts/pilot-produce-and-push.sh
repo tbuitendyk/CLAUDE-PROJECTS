@@ -27,18 +27,23 @@ ARM_ONLY=0
 
 # ---- reconcile the owner's MASTER SWITCH to the box ----------------------
 # The screen's START/STOP button writes data/pilot/arm-request.json on the VPS.
-# We carry that intent to the box's ARM flag here (the executor journals the
-# flip, so the screen confirms it). The executor opens NOTHING unless ARM is
-# present, so a missing request file leaves the engine stopped by default.
+# We carry that intent to the box every run. When armed, this re-stamps the box
+# ARM file (dead-man keepalive). Two fail-safe rules (review findings 13-14):
+#   * a MISSING request file means DISARM, never "leave as-is" — absence must
+#     not fail open to a still-armed box.
+#   * if armed:true but the box is UNREACHABLE, we simply stop re-stamping; the
+#     box's dead-man then self-disarms within ARM_MAX_AGE_S. So even a swallowed
+#     SSH error cannot leave the box trading.
 REQ="$APPDIR/data/pilot/arm-request.json"
+want=0
 if [ -f "$REQ" ]; then
   want=$(python3 -c "import json;print('1' if json.load(open('$REQ')).get('armed') else '0')" 2>/dev/null || echo 0)
-  mode=$([ "$want" = "1" ] && echo arm || echo disarm)
-  echo "== master switch: owner requests $mode =="
-  $SSH "$BOX_USER@$BOX_HOST" \
-    "cd ~/pilot 2>/dev/null; python3 ~/mx_executor.py $mode --source=owner" \
-    2>&1 | sed 's/^/  /' || echo "  (could not reach box to set master switch; will retry next run)"
 fi
+mode=$([ "$want" = "1" ] && echo arm || echo disarm)
+echo "== master switch: reconcile -> $mode =="
+$SSH "$BOX_USER@$BOX_HOST" \
+  "python3 ~/mx_executor.py $mode --source=owner" \
+  2>&1 | sed 's/^/  /' || echo "  (box unreachable; if armed, dead-man self-disarms — fail-safe)"
 
 # In --arm-only mode (the frequent sync) we stop here: no data refresh, no
 # signal produced. The hourly tick does the produce+push.
