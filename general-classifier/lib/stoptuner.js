@@ -104,17 +104,23 @@ function tuneFixedStop(entries, map, opts = {}) {
     : null;
   let stopPct = maxWinnerMae == null ? null : maxWinnerMae * (1 + marginFrac);
   // FLOAT64 BOUNDARY GUARD (re-review 2026-08-11). In exact arithmetic
-  // stopPct == the binding winner's mae (at marginFrac=0), so entry*(1-stopPct)
-  // == its low `worst` and the strict engine boundary (px < entry*(1-stop))
-  // spares it. But that round-trip can land ~1 ulp ABOVE `worst` in float64
-  // (~1.6% of random price pairs), and strict `<` would then stop the very
-  // winner the stop exists to preserve. Nudge stopPct up by the minimum that
-  // puts the binding winner's boundary AT or below its actual low. Bounded to a
-  // few ulps; economically zero (~1e-17), and it makes the preserve-every-winner
-  // guarantee exact rather than "exact up to rounding".
+  // stopPct == the binding winner's mae (at marginFrac=0), so the recomputed
+  // boundary equals its adverse extreme `worst` and the strict engine boundary
+  // spares it. But that round-trip can land ~1 ulp on the WRONG side of `worst`
+  // in float64 (~1.6% of random price pairs), and the strict engine inequality
+  // would then stop the very winner the stop exists to preserve. Nudge stopPct up
+  // by the minimum that puts the binding winner's boundary on the safe side of
+  // its own extreme. SIDE-AWARE: a LONG is stopped when px < entry*(1-stop) and
+  // its `worst` is a LOW (< entry) — the boundary must sit AT or below it; a SHORT
+  // is stopped when px > entry*(1+stop) and its `worst` is a HIGH (> entry) — the
+  // boundary must sit AT or above it. Bounded to a few ulps; economically zero
+  // (~1e-17); makes the preserve-every-winner guarantee exact, not "up to rounding".
   if (binding && stopPct != null) {
+    const clipsBindingWinner = () => (binding.side === 'LONG'
+      ? binding.entry * (1 - stopPct) > binding.worst    // boundary above the low
+      : binding.entry * (1 + stopPct) < binding.worst);  // boundary below the high
     let guard = 0;
-    while (binding.entry * (1 - stopPct) > binding.worst && guard < 16) {
+    while (clipsBindingWinner() && guard < 16) {
       stopPct *= (1 + Number.EPSILON);
       guard++;
     }

@@ -181,6 +181,18 @@ module.exports.float64BoundaryGuardPreservesTheBindingWinner = function () {
     `binding winner's strict boundary must be at/below its low: got ${entry * (1 - r.stopPct)} > ${low}`);
 };
 
+// the SHORT side of the same guard: a short is stopped when px > entry*(1+stop)
+// and its adverse extreme is a HIGH, so the boundary must sit AT or ABOVE the high.
+// This pair puts entry*(1+mae) 1 ulp BELOW the high; a long-only guard would miss it.
+module.exports.float64BoundaryGuardPreservesTheBindingShortWinner = function () {
+  const map = new Map();
+  const entry = 10, high = 11.5007; // entry*(1+mae) lands 1 ulp below this high
+  putHold(map, 0, { entry, exit: 9, high }); // SHORT net winner (price fell to 9)
+  const r = tuneFixedStop([{ entryTs: 0, side: 'SHORT' }], map, { holdHours: 3, feePerLeg: 0.001 });
+  assert.ok(entry * (1 + r.stopPct) >= high,
+    `short binding winner's strict boundary must be at/above its high: got ${entry * (1 + r.stopPct)} < ${high}`);
+};
+
 module.exports.entryOutcomeReportsMaeAndPnl = function () {
   const map = new Map();
   putHold(map, 0, { entry: 200, exit: 220, low: 190 });
