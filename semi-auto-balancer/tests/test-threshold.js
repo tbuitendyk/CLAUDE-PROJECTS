@@ -115,4 +115,36 @@ db.prepare("UPDATE profiles SET notify_state = 'notified' WHERE id = 1").run();
   ok(rRep === null, 'per-asset quiet: repeats of already-notified breaches stay silent');
 }
 
+// --- account-wide context for grouped (sub-account) profiles ---
+// The venue screen shows the SUM across sub-accounts; a shared asset's
+// advice must carry that number and the value the screen should read after
+// this profile's trade. Sole-holder assets stay clean (no duplicate line).
+{
+  db.prepare("INSERT INTO profiles (name, threshold_pct, poll_minutes, created_at) VALUES ('G1', 10, 15, 0)").run();
+  db.prepare("INSERT INTO profiles (name, threshold_pct, poll_minutes, created_at) VALUES ('G2', 10, 15, 0)").run();
+  const g1 = db.prepare("SELECT id FROM profiles WHERE name = 'G1'").get().id;
+  const g2 = db.prepare("SELECT id FROM profiles WHERE name = 'G2'").get().id;
+  const acct = db
+    .prepare(
+      "INSERT INTO exchange_accounts (profile_id, venue, api_key, api_secret, last_trade_ts, last_ledger_ts, created_at) VALUES (?, 'kraken', 'k', 's', 0, 0, 0)"
+    )
+    .run(g1).lastInsertRowid;
+  db.prepare('UPDATE profiles SET exchange_account_id = ? WHERE id IN (?, ?)').run(acct, g1, g2);
+  addAsset.run(g1, 'tether', 'usdt', 500, 50, 1, 500);
+  addAsset.run(g1, 'bigcoin', 'big', 5, 50, 0, 5);
+  addAsset.run(g2, 'bigcoin', 'big', 20, 100, 0, 20); // sibling slice of the same coin
+  PRICES = { tether: 1, bigcoin: 130 }; // G1: big 650 of 1150 pool → overweight
+  const gp = db.prepare('SELECT * FROM profiles WHERE id = ?').get(g1);
+  const rg = bal.evaluateProfile(gp, PRICES, Date.now());
+  const gb = rg.breaches.find((b) => b.asset.symbol === 'big');
+  ok(gb && gb.action === 'SELL', 'grouped fixture: shared asset breaches');
+  ok(approx(gb.accountHoldRel, 25 * 130, 1e-9), 'account-wide holding sums across linked profiles (25 big)');
+  ok(approx(gb.accountAfterRel, 25 * 130 + (575 - 650), 1e-9), "account-wide after = account now + this profile's delta");
+  ok(rg.indexNote && rg.indexNote.accountHoldRel == null, 'sole-holder tether: no account-wide context attached');
+  const mailer = require('../lib/mailer');
+  const text = mailer.buildText({ profile: gp, alerts: [gb], indexNote: rg.indexNote });
+  ok(/account-wide BIG ≈ 3250\.00 \S+ now → trade until ≈ 3175\.00/.test(text), 'message shows account-wide now → trade-until');
+  ok((text.match(/account-wide/g) || []).length === 1, 'sole-holder assets do not grow the extra line');
+}
+
 console.log('threshold calibration tests pass');

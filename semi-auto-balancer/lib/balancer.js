@@ -148,6 +148,40 @@ function evaluateProfile(profile, usdPrices, now) {
     totalUsd += p.asset.quantity * p.usd;
   }
 
+  // Account-wide context: when this profile is one slice of a multi-profile
+  // exchange group, the venue screen shows the SUM across slices — advice
+  // must be comparable to that screen, so shared assets also carry the
+  // account-level value. Keyed by coingecko_id with the usd/fiat:usd pseudo
+  // forms folded together (both exist in the wild for the same venue cash).
+  const gkey = (cg) => (cg === 'usd' ? 'fiat:usd' : cg);
+  let groupQty = null;
+  if (profile.exchange_account_id) {
+    const rows = db
+      .prepare(
+        `SELECT a.coingecko_id cg, a.quantity q
+           FROM assets a JOIN profiles p2 ON p2.id = a.profile_id
+          WHERE p2.exchange_account_id = ?`
+      )
+      .all(profile.exchange_account_id);
+    const linked = db
+      .prepare('SELECT COUNT(*) c FROM profiles WHERE exchange_account_id = ?')
+      .get(profile.exchange_account_id).c;
+    if (linked > 1) {
+      groupQty = new Map();
+      for (const r of rows) groupQty.set(gkey(r.cg), (groupQty.get(gkey(r.cg)) || 0) + r.q);
+    }
+  }
+  // Attaches accountHoldRel/accountAfterRel to a breach or note when the
+  // asset is genuinely shared (siblings hold a nonzero amount too).
+  const accountContext = (asset, rel, deltaRel) => {
+    const total = groupQty && groupQty.get(gkey(asset.coingecko_id));
+    if (!(total > asset.quantity + 1e-12)) return null;
+    return {
+      accountHoldRel: total * rel,
+      accountAfterRel: deltaRel == null ? null : total * rel + deltaRel,
+    };
+  };
+
   const breaches = [];
   const newBreaches = [];
   let indexNote = null;
@@ -171,6 +205,7 @@ function evaluateProfile(profile, usdPrices, now) {
           deltaIndex: valueRel - (target / 100) * totalRel, // >0 overweight
           holdRel: valueRel,
           targetRel: (target / 100) * totalRel,
+          ...(accountContext(p.asset, p.rel, null) || {}),
         };
         continue;
       }
@@ -206,6 +241,7 @@ function evaluateProfile(profile, usdPrices, now) {
           // still lands on target.
           holdRel: valueRel,
           targetRel: (target / 100) * totalRel,
+          ...(accountContext(p.asset, p.rel, deltaRel) || {}),
         };
         breaches.push(breach);
         if (!active) newBreaches.push(breach);

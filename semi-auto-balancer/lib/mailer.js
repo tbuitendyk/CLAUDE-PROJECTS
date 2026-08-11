@@ -61,6 +61,11 @@ function buildText(event) {
       `  -> ${al.action} ${fmtQty(al.quantity)} ${sym}  (≈ ${fmt(al.indexAmount)} ${idx})` +
         (al.targetRel != null
           ? `  — holding ≈ ${fmt(al.holdRel)} ${idx}, target ≈ ${fmt(al.targetRel)} ${idx}`
+          : '') +
+        // Shared across sub-accounts: the venue screen shows the account-wide
+        // position, so give the number that screen should read after trading.
+        (al.accountHoldRel != null
+          ? `\n     account-wide ${sym} ≈ ${fmt(al.accountHoldRel)} ${idx} now → trade until ≈ ${fmt(al.accountAfterRel)} ${idx}`
           : ''),
     ].join('\n');
   });
@@ -74,6 +79,9 @@ function buildText(event) {
       `(actual ${indexNote.actualPct.toFixed(2)}% vs target ${indexNote.targetPct}%` +
       (indexNote.targetRel != null
         ? `; holding ≈ ${fmt(indexNote.holdRel)} ${idx}, target ≈ ${fmt(indexNote.targetRel)} ${idx}`
+        : '') +
+      (indexNote.accountHoldRel != null
+        ? `; account-wide ≈ ${fmt(indexNote.accountHoldRel)} ${idx}`
         : '') +
       `) — no trade recommended; it absorbs the residual from the trades above.`;
   }
