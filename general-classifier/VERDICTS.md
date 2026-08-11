@@ -553,3 +553,16 @@ forwards each one. Third silently-dropped-parameter defect in this system.
   not a look. No summary or exceedance number from the partial doc was
   ever computed or read, and it will not be. The run was relaunched
   verbatim as consensus-20260726-2347; that doc is the A2 look.
+
+## Pilot — F1 live execution-fidelity (PILOT-F1.md; no P&L verdict ever)
+
+Declared 2026-08-11 on the owner's go ("we're going to go live, small trades
+long and short"). Purpose: measure execution reality — realized fee per leg,
+fill vs decision price, borrow cost, operational failures — on LTCUSDT
+isolated margin at $10 clips, mirroring the F1 forward book 1:1. **This book
+has no success/failure P&L rule by design: its P&L is void as edge evidence
+in either direction and is never pooled with forward-book money.** Its
+deliverable is the execution report defined in PILOT-F1.md §8. The F1
+forward paper book (30-trade floor) remains the only judge of the edge, and
+live sizing remains a separate future decision. All trading logic runs as
+deterministic code on timers with no AI in the path (PILOT-F1.md §4).
