@@ -95,6 +95,30 @@ module.exports.marginFracWidensTheStopAwayFromTheBoundary = function () {
   assert.ok(Math.abs(r.stopPct - 0.06) < 1e-9, `.05 widened by 20% = .06, got ${r.stopPct}`);
 };
 
+module.exports.sacrificeCurveShowsBothSidesPerStopLevel = function () {
+  const map = new Map();
+  putHold(map, 0, { entry: 100, exit: 110, low: 95 });            // A: winner, MAE .05
+  putHold(map, 10 * HOUR_MS, { entry: 100, exit: 105, low: 98 }); // B: winner, MAE .02
+  putHold(map, 20 * HOUR_MS, { entry: 100, exit: 92, low: 90 });  // C: loser,  MAE .10
+  const r = tuneFixedStop(
+    [{ entryTs: 0, side: 'LONG' }, { entryTs: 10 * HOUR_MS, side: 'LONG' }, { entryTs: 20 * HOUR_MS, side: 'LONG' }],
+    map, { holdHours: 3, feePerLeg: 0.001, clipUsd: 10 },
+  );
+  // k=0: preserve all winners (stop just above .05). No winner cut; loser C is cut.
+  const c0 = r.curve[0];
+  assert.strictEqual(c0.sacrificeTopWinners, 0);
+  assert.strictEqual(c0.winnersForfeited, 0, 'preserving all winners forfeits none');
+  assert.strictEqual(c0.losersCut, 1, 'the deep loser is still cut');
+  // cutting C at ~-5.2% instead of riding to ~-8.2% SAVES ~ $0.30 on the $10 clip
+  assert.ok(Math.abs(c0.netPnlDeltaUsd - 0.30) < 1e-6, `k0 net ${c0.netPnlDeltaUsd}`);
+  // k=1: give up the deepest winner A (stop just above .02); B preserved, C cut.
+  const c1 = r.curve[1];
+  assert.strictEqual(c1.winnersForfeited, 1, 'the one outlier winner is sacrificed');
+  assert.ok(Math.abs(c1.winnerProfitForfeitedUsd - 0.98) < 1e-6, `A profit given up ${c1.winnerProfitForfeitedUsd}`);
+  assert.strictEqual(c1.losersCut, 1);
+  assert.ok(Math.abs(c1.netPnlDeltaUsd - (-0.60)) < 1e-6, `k1 net ${c1.netPnlDeltaUsd}`);
+};
+
 module.exports.entryOutcomeReportsMaeAndPnl = function () {
   const map = new Map();
   putHold(map, 0, { entry: 200, exit: 220, low: 190 });

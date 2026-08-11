@@ -101,11 +101,46 @@ function tuneFixedStop(entries, map, opts = {}) {
     }
   }
 
+  // SACRIFICE CURVE (owner 2026-08-11): the "preserve every winner" stop can be
+  // pinned by one outlier winner. So for k = 0,1,2,3 of the DEEPEST winners given
+  // up, report the tightest stop that still spares the rest AND the real both-sides
+  // money at that stop: the winning profit forfeited by stopping those k winners,
+  // and how the losing side changes (cut sooner). netPnlDeltaUsd is the sum — a
+  // positive number means the stop makes more on the losers it saves than it gives
+  // up on the winners it sacrifices. Figures are per the $clipUsd clip across ALL
+  // priced historical entries, for comparison (not the live book's realized P&L).
+  const clipUsd = opts.clipUsd || 10;
+  const winnerMaes = winners.map((w) => w.mae).sort((a, b) => b - a);
+  const curve = [];
+  for (let k = 0; k <= Math.min(3, winnerMaes.length - 1); k++) {
+    const S = winnerMaes[k]; // stop just above the (k+1)th-deepest winner spares it
+    const stoppedNet = -S - 2 * feePerLeg;
+    let wCount = 0; let wProfit = 0; let wDelta = 0; let lCount = 0; let lDelta = 0;
+    for (const p of per) {
+      if (p.mae > S) { // strict: the stop sits just above S, sparing the winner at S
+        const delta = (stoppedNet - p.netPct) * clipUsd;
+        if (p.winner) { wCount++; wProfit += p.netPct * clipUsd; wDelta += delta; }
+        else { lCount++; lDelta += delta; }
+      }
+    }
+    curve.push({
+      sacrificeTopWinners: k,
+      stopPct: round(S, 6),
+      winnersForfeited: wCount,
+      winnerProfitForfeitedUsd: round(wProfit, 2), // the winning $ we give up
+      losersCut: lCount,
+      loserPnlDeltaUsd: round(lDelta, 2),          // + = saved on the losers
+      netPnlDeltaUsd: round(wDelta + lDelta, 2),   // total change vs no stop
+    });
+  }
+
   return {
     stopPct,                       // the tightest fixed stop that loses no winner
     marginFrac,
     holdHours,
     feePerLeg,
+    clipUsd,
+    curve,
     counts: {
       entries: entries.length,
       priced: per.length,
