@@ -1,0 +1,45 @@
+F1 forward-window numbers for the record — 70.6% win, +$20.64, but thin (17 trades, no verdict)
+
+tl;dr: filing F1's authoritative forward-window performance, straight from
+forwardbook.scoreBook (the same path the verdict figures use), read-only. On the
+true out-of-sample window since the freeze it has won 12 of 17 trades (70.6%) for
++$20.64 per $100 clip, ahead of holding long — but 17 trades is below the project's
+30-trade floor, so this is promising, NOT a verdict. Nothing changed on F1; still
+STOPPED, no stop.
+
+TABLE: F1/LTCUSDT forward window (post-freeze, out-of-sample). KEY: net/gross =
+paper dollars per $100 clip; win rate = trades net-positive after the $0.125/leg
+round-trip fee; always-long/short = the same window held one-directionally, the
+no-skill controls; break-even/leg = the fee at which the edge would vanish.
+
+  window            2026-07-01 .. 2026-08-11 (since the 2026-06-30 freeze)
+  periods / trades  37 periods, 17 trades taken
+  wins / win rate   12 / 17  =  70.6%
+  net               +$20.64
+  gross             +$24.89   (fee $0.125/leg)
+  vs always-long    +$8.69    (F1 beat it)
+  vs always-short   -$25.19   (the wrong side lost badly)
+  break-even fee    $0.732/leg  vs $0.125 charged -> ~486% headroom
+  verdict           NONE CLAIMED — 17 trades is under the 30-trade floor (thin)
+
+RECONCILING THREE NUMBERS so the record is unambiguous:
+  - 70.6%  — this forward window (6 weeks, 17 trades), the live-relevant slice.
+  - 56%    — full-history win rate (1729 entries, 2019-2026, in-sample-heavy,
+             includes the 2021 crash) from the corrected stop tuner. A much larger,
+             harsher population.
+  - 2.7%   — my earlier fee-units bug. Wrong, fixed, and logged as QC 94.
+
+HONEST CAVEATS, on the record:
+  - 17 trades is a small sample; a 70% win rate on it can move a lot with a few
+    trades. The engine itself withholds a verdict below 30 trades for this reason.
+  - This is forward money since the freeze only; it is NOT the larger early-August
+    backtest figure (~$13 on ~310 trades) you may remember — that was a different,
+    longer window.
+  - The forward window is only ~6 weeks because the models were frozen 2026-06-30;
+    it grows one period at a time as real out-of-sample data accrues.
+
+So the standing picture: F1's live-relevant edge is positive and ahead of buy-and-
+hold so far, thin and unproven by the project's own bar, and (separately) does not
+want a fixed protective stop. F1 remains STOPPED with no stop until you decide.
+
+c.
