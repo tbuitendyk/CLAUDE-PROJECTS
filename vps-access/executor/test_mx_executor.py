@@ -22,10 +22,15 @@ sys.path.insert(0, HERE)
 
 
 class MockBinance(BaseHTTPRequestHandler):
-    """Scriptable fake venue. Class attrs steer behaviour per test."""
+    """Scriptable fake venue. Class attrs steer behaviour per test. It tracks a
+    real base-asset balance so BUY/SELL and free_base() are consistent — that is
+    what lets the fee-shrink fix be tested end to end."""
     price = "100.00"
     reject_orders = False
-    net_asset = None          # None -> mirror expectations not asserted
+    net_asset = None          # override netAsset/free; None -> use tracked base_bal
+    base_bal = 0.0            # tracked free LTC after fills
+    commission = "0.01"
+    commission_asset = "USDT"
     orders = []               # captured order params
 
     def _send(self, obj, code=200):
@@ -42,9 +47,9 @@ class MockBinance(BaseHTTPRequestHandler):
         if self.path.startswith("/api/v3/ticker/price"):
             return self._send({"symbol": "LTCUSDT", "price": self.price})
         if self.path.startswith("/sapi/v1/margin/isolated/account"):
-            na = "0.000" if self.net_asset is None else self.net_asset
+            na = self.net_asset if self.net_asset is not None else f"{MockBinance.base_bal:.6f}"
             return self._send({"assets": [{
-                "baseAsset": {"netAsset": na, "free": na},
+                "baseAsset": {"netAsset": na, "free": na, "borrowed": "0"},
                 "quoteAsset": {"free": "200.0", "netAsset": "200.0"}}]})
         return self._send({"unexpected": self.path}, 404)
 
@@ -56,13 +61,20 @@ class MockBinance(BaseHTTPRequestHandler):
         if self.path.startswith("/sapi/v1/margin/order"):
             if MockBinance.reject_orders:
                 return self._send({"code": -2010, "msg": "rejected"}, 400)
-            qty = params.get("quantity", "0")
+            qty = float(params.get("quantity", "0"))
+            comm = float(MockBinance.commission)
+            # update tracked balance the way Binance would: BUY adds base (minus
+            # base-denominated fee); SELL removes base.
+            if params.get("side") == "BUY":
+                MockBinance.base_bal += qty - (comm if MockBinance.commission_asset == "LTC" else 0)
+            else:
+                MockBinance.base_bal -= qty
             return self._send({"orderId": len(MockBinance.orders),
                                "status": "FILLED",
                                "fills": [{"price": MockBinance.price,
-                                          "qty": qty,
-                                          "commission": "0.01",
-                                          "commissionAsset": "USDT"}]})
+                                          "qty": params.get("quantity", "0"),
+                                          "commission": MockBinance.commission,
+                                          "commissionAsset": MockBinance.commission_asset}]})
         return self._send({"unexpected": self.path}, 404)
 
     def log_message(self, *a):
@@ -98,6 +110,9 @@ class ExecutorTest(unittest.TestCase):
         MockBinance.price = "100.00"
         MockBinance.reject_orders = False
         MockBinance.net_asset = None
+        MockBinance.base_bal = 0.0
+        MockBinance.commission = "0.01"
+        MockBinance.commission_asset = "USDT"
         MockBinance.orders = []
 
     def tearDown(self):
@@ -251,6 +266,48 @@ class ExecutorTest(unittest.TestCase):
         self.assertIn("DUST_DONE", self.events())
         rc2 = self.x.do_dust(self.bx(), yes=True)
         self.assertEqual(rc2, 1)
+
+    def test_buy_fee_in_base_shrinks_the_sell_qty(self):
+        # THE DUST BUG (2026-08-11): Binance took the buy fee in LTC, so selling
+        # the bought qty failed 'insufficient balance'. The sell must use the
+        # net received, floored. With a base-denominated fee the dust must still
+        # complete, and the sell qty must be below the buy qty.
+        MockBinance.commission_asset = "LTC"
+        MockBinance.commission = "0.001"
+        rc = self.x.do_dust(self.bx(), yes=True)
+        self.assertEqual(rc, 0, 'dust must complete even when the fee is taken in base')
+        self.assertIn("DUST_DONE", self.events())
+        buys = [o for o in MockBinance.orders if o.get("side") == "BUY"]
+        sells = [o for o in MockBinance.orders if o.get("side") == "SELL"]
+        self.assertTrue(float(sells[-1]["quantity"]) < float(buys[-1]["quantity"]),
+                        'sell qty must be reduced below the bought qty by the base fee')
+
+    def test_long_exit_sells_free_base_after_fee_not_nominal(self):
+        # a long was entered; the buy fee was in LTC so we hold slightly less
+        # than the ordered qty. The exit must sell the free balance, not the
+        # nominal 0.1, and must succeed.
+        MockBinance.commission_asset = "LTC"
+        MockBinance.commission = "0.0005"
+        self.write_intent(side="LONG", chunk="2026-08-07T00:00Z")
+        self.x.do_run(self.bx())
+        held = MockBinance.base_bal
+        self.assertTrue(0 < held < 0.1, 'we should hold slightly less than the 0.1 ordered')
+        # now force the exit
+        import json as _j, os as _os
+        # rewrite the stored position to be due, then run again
+        self.x.jlog  # noop ref
+        # make the open position due by editing exit_due_ts via a fresh EXIT run:
+        ev = self.x.journal_events()
+        # append a due version is unnecessary — reload with time far ahead:
+        real_time = self.x.time.time
+        self.x.time.time = lambda: real_time() + 200 * 3600
+        try:
+            self.x.do_run(self.bx())
+        finally:
+            self.x.time.time = real_time
+        self.assertIn("EXIT_FILL", self.events())
+        self.assertTrue(MockBinance.base_bal < self.x.QTY_STEP,
+                        'the exit should sweep holdings down to sub-lot dust')
 
     def test_master_switch_off_blocks_entries(self):
         self.x.set_arm(False, "test")   # owner has not pressed START

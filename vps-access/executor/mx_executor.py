@@ -43,6 +43,8 @@ import urllib.request
 
 # ---- constants (PILOT-F1.md; change = protocol change = record restarts) ----
 SYMBOL = "LTCUSDT"
+BASE_ASSET = "LTC"         # what a BUY receives and a SELL delivers
+QUOTE_ASSET = "USDT"       # what the wallet is funded in
 CLIP_USD = 10.0            # $ notional per position; the executor owns this
 QTY_STEP = 0.001           # LOT_SIZE stepSize, probed 2026-08-11
 MIN_NOTIONAL = 5.0         # exchange minimum, probed 2026-08-11
@@ -248,6 +250,18 @@ class Binance:
         return self._http("GET", "/sapi/v1/margin/isolated/account",
                           {"symbols": SYMBOL}, signed=True)
 
+    def free_base(self):
+        """Free (sellable) base-asset balance in the isolated wallet, or None if
+        unreadable. Exits read this so they sell/repay what is ACTUALLY held
+        after fees, never the nominal quantity."""
+        code, acct = self.isolated_account()
+        if code == 200 and not acct.get("dryrun"):
+            try:
+                return float(acct["assets"][0]["baseAsset"]["free"])
+            except (KeyError, IndexError, ValueError):
+                return None
+        return None
+
 
 def load_env():
     env = {}
@@ -264,41 +278,68 @@ def load_env():
 
 
 # ---- order helpers -----------------------------------------------------------
+def floor_step(qty):
+    """Round DOWN to the lot step. Used everywhere a real quantity is sent, so
+    fee-shrunk balances never round UP into 'insufficient balance'."""
+    return round(int(round(qty / QTY_STEP, 6)) * QTY_STEP, 3)
+
+
 def clip_qty(price):
     """$10 notional rounded DOWN to the lot step; refuse if under exchange min."""
-    qty = int((CLIP_USD / price) / QTY_STEP) * QTY_STEP
-    qty = round(qty, 3)
+    qty = floor_step(CLIP_USD / price)
     if qty * price < MIN_NOTIONAL:
         return None
     return qty
 
 
 def fills_summary(body):
-    """Weighted fill price, total qty, commission in quote terms best-effort."""
+    """Weighted fill price, total qty, commission (in QUOTE terms), and the
+    part of the commission charged in the BASE asset.
+
+    WHY base_comm matters (learned from the dust trade, 2026-08-11): Binance
+    takes the taker fee on a BUY out of the asset RECEIVED — LTC — so after a
+    $10 buy you hold slightly LESS LTC than you bought. Selling the full bought
+    quantity then fails 'insufficient balance'. The caller must sell
+    filled_qty - base_comm, floored. Fee is valued in USDT so the screen's
+    realized cost/leg is real regardless of which asset the fee was charged in."""
     fills = body.get("fills") or []
     if not fills:
-        return None, None, 0.0
+        return None, None, 0.0, 0.0
     qty = sum(float(f["qty"]) for f in fills)
     px = sum(float(f["price"]) * float(f["qty"]) for f in fills) / qty
-    fee = sum(float(f.get("commission", 0)) for f in fills
-              if f.get("commissionAsset") in ("USDT",))
-    return px, qty, fee
+    fee_quote = 0.0
+    base_comm = 0.0
+    for f in fills:
+        c = float(f.get("commission", 0) or 0)
+        asset = f.get("commissionAsset")
+        if asset == QUOTE_ASSET:
+            fee_quote += c
+        elif asset == BASE_ASSET:
+            fee_quote += c * float(f["price"])
+            base_comm += c
+        else:
+            # BNB or other: not valued here. The pilot disables BNB-fee payment
+            # (PILOT-F1.md), so this branch should not fire; if it does, the fee
+            # is under-counted and that is logged, not silently zero.
+            jlog("FEE_ASSET_UNVALUED", asset=asset, amount=c)
+    return px, qty, fee_quote, base_comm
 
 
 def place(bx, action, side, qty, side_effect, ctx):
-    """Send one order and journal the outcome. Returns (ok, fill_px, fee)."""
+    """Send one order and journal it. Returns (ok, fill_px, fee_quote,
+    filled_qty, base_comm)."""
     jlog("ORDER_SENT", action=action, side=side, qty=qty,
          side_effect=side_effect, live=bx.live, **ctx)
     code, body = bx.margin_order(side, qty, side_effect)
     if code == 200 and body.get("status") == "FILLED":
-        px, fq, fee = fills_summary(body)
+        px, fq, fee, base_comm = fills_summary(body)
         jlog("ORDER_ACK", action=action, http=code,
              order_id=body.get("orderId"), fill_price=px, fill_qty=fq,
-             fee_quote=fee, **ctx)
-        return True, px, fee
+             fee_quote=fee, base_comm=base_comm, **ctx)
+        return True, px, fee, fq, base_comm
     jlog("ORDER_REJECT", action=action, http=code,
          body=json.dumps(body)[:300], **ctx)
-    return False, None, 0.0
+    return False, None, 0.0, 0.0, 0.0
 
 
 # ---- the run mode ------------------------------------------------------------
@@ -346,15 +387,28 @@ def do_run(bx):
         if overdue_h > 0.5:
             jlog("EXIT_OVERDUE", chunk_start=p["chunk_start"],
                  overdue_hours=round(overdue_h, 2))
-        side = "SELL" if p["side"] == "LONG" else "BUY"
-        ok, px, fee = place(bx, "EXIT", side, p["qty"], "AUTO_REPAY",
-                            {"chunk_start": p["chunk_start"]})
+        if p["side"] == "LONG":
+            # sell what we ACTUALLY hold (fees shrink the balance below the
+            # bought qty; selling the nominal qty is what broke the dust trade).
+            fb = bx.free_base()
+            sell_qty = floor_step(fb if fb is not None else p["qty"])
+            if not sell_qty:
+                jlog("EXIT_SKIPPED", chunk_start=p["chunk_start"],
+                     reason="no free base to sell")
+                continue
+            ok, px, fee, fq, _ = place(bx, "EXIT", "SELL", sell_qty, "AUTO_REPAY",
+                                       {"chunk_start": p["chunk_start"]})
+            qty_traded = fq or sell_qty
+        else:  # SHORT: buy back the borrowed amount, auto-repaying the loan
+            ok, px, fee, fq, _ = place(bx, "EXIT", "BUY", p["qty"], "AUTO_REPAY",
+                                       {"chunk_start": p["chunk_start"]})
+            qty_traded = fq or p["qty"]
         if ok:
-            gross = (px - p["entry_price"]) * p["qty"]
+            gross = (px - p["entry_price"]) * qty_traded
             if p["side"] == "SHORT":
                 gross = -gross
             jlog("EXIT_FILL", chunk_start=p["chunk_start"], side=p["side"],
-                 qty=p["qty"], price=px, fee_quote=fee,
+                 qty=qty_traded, price=px, fee_quote=fee,
                  pnl=round(gross - fee, 4))
 
     # 4) fresh intents -> new entries (need the master switch ON and no halt)
@@ -437,12 +491,20 @@ def do_run(bx):
             continue
         buy_side = "BUY" if it["side"] == "LONG" else "SELL"
         side_eff = "NO_SIDE_EFFECT" if it["side"] == "LONG" else "MARGIN_BUY"
-        ok, px, fee = place(bx, "ENTRY", buy_side, qty, side_eff,
-                            {"chunk_start": it["chunk_start"]})
+        ok, px, fee, fq, base_comm = place(bx, "ENTRY", buy_side, qty, side_eff,
+                                           {"chunk_start": it["chunk_start"]})
         if ok:
+            # store what the EXIT will actually act on: for a long, the base we
+            # can sell after the buy-side fee is taken in LTC; for a short, the
+            # borrowed amount we must buy back. Storing the nominal qty here is
+            # what made the exit fail 'insufficient balance'.
+            if it["side"] == "LONG":
+                held = floor_step((fq or qty) - base_comm)
+            else:
+                held = fq or qty
             fill_dev = abs(px - it["decision_price"]) / it["decision_price"]
             jlog("ENTRY_FILL", chunk_start=it["chunk_start"], side=it["side"],
-                 qty=qty, price=px, fee_quote=fee,
+                 qty=held, ordered_qty=qty, price=px, fee_quote=fee,
                  decision_price=it["decision_price"],
                  fill_deviation=round(fill_dev, 5),
                  exit_due_ts=now + HOLD_HOURS * 3600)
@@ -482,19 +544,23 @@ def do_dust(bx, yes):
         return 1
     qty = clip_qty(price)
     jlog("DUST_START", price=price, qty=qty, live=bx.live)
-    ok1, px1, fee1 = place(bx, "DUST_BUY", "BUY", qty, "NO_SIDE_EFFECT", {})
+    ok1, px1, fee1, fq1, bc1 = place(bx, "DUST_BUY", "BUY", qty, "NO_SIDE_EFFECT", {})
     if not ok1:
         jlog("DUST_ABORT", stage="buy")
         return 1
     time.sleep(2)
-    ok2, px2, fee2 = place(bx, "DUST_SELL", "SELL", qty, "AUTO_REPAY", {})
+    # sell what we actually received: bought qty minus the LTC-denominated fee,
+    # floored to the lot step. Prefer the real free balance if we can read it.
+    fb = bx.free_base()
+    sell_qty = floor_step(fb if fb is not None else (fq1 or qty) - bc1)
+    ok2, px2, fee2, fq2, _ = place(bx, "DUST_SELL", "SELL", sell_qty, "AUTO_REPAY", {})
     if not ok2:
         jlog("DUST_ABORT", stage="sell",
              note="BOUGHT BUT NOT SOLD -- position open, reconcile will see it")
         return 1
-    jlog("DUST_DONE", buy_price=px1, sell_price=px2, qty=qty,
+    jlog("DUST_DONE", buy_price=px1, sell_price=px2, buy_qty=qty, sell_qty=sell_qty,
          fees=round(fee1 + fee2, 6),
-         round_trip_cost=round((px1 - px2) * qty + fee1 + fee2, 6))
+         round_trip_cost=round(px1 * qty - px2 * sell_qty + fee1 + fee2, 6))
     return 0
 
 
