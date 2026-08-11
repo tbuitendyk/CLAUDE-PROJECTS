@@ -1143,11 +1143,24 @@ app.get('/api/pilot', (req, res) => {
 // keeps the classifier server out of the trade path — it writes a flag, nothing
 // more. Sessions must never call these: START/STOP is the owner's alone.
 function writeArmRequest(on, by) {
+  const crypto = require('crypto');
   const dir = path.join(__dirname, 'data', 'pilot');
   fs.mkdirSync(dir, { recursive: true });
-  const rec = { armed: on, by, utc: new Date().toISOString() };
+  // Each button press mints a FRESH nonce + utc so the box can edge-trigger on a
+  // genuine START and refuse a stale replay (findings 12/15). If a shared secret
+  // is provisioned (PILOT_ARM_SECRET, held by this UI process and the box), the
+  // request is HMAC-signed so only the owner's UI can authorise an arm; without
+  // it the box falls back to the freshness+nonce edge and journals unauthenticated.
+  const nonce = crypto.randomBytes(9).toString('hex');
+  const utc = new Date().toISOString();
+  const rec = { armed: on, by, utc, nonce };
+  const secret = process.env.PILOT_ARM_SECRET || '';
+  if (secret) {
+    rec.hmac = crypto.createHmac('sha256', secret)
+      .update(`${on ? 1 : 0}|${nonce}|${utc}`).digest('hex');
+  }
   fs.writeFileSync(path.join(dir, 'arm-request.json'), JSON.stringify(rec));
-  return rec;
+  return { armed: on, by, utc, nonce, authenticated: !!secret };
 }
 app.post('/api/pilot/arm', (req, res) => {
   try { res.json({ ok: true, request: writeArmRequest(true, 'owner') }); }
