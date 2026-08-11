@@ -1,6 +1,21 @@
 const fs = require('fs');
 const path = require('path');
 const zlib = require('zlib');
+const { execFileSync } = require('child_process');
+
+// Fetch one page of hourly klines via curl through a SOCKS5 proxy (the Mexico
+// tunnel). Synchronous by design: the refresh path calls it a handful of times
+// and a blocking curl is simpler and more robust here than wiring a SOCKS agent
+// into Node's fetch (which has no native SOCKS support). Returns the parsed
+// kline array or throws.
+function socksKlines(proxy, symbol, cursor) {
+  const url = `https://api.binance.com/api/v3/klines?symbol=${symbol}&interval=1h&startTime=${cursor}&limit=1000`;
+  const out = execFileSync('curl', ['-s', '-m', '30', '--socks5-hostname', proxy, url],
+    { maxBuffer: 64 * 1024 * 1024 });
+  const parsed = JSON.parse(out.toString() || 'null');
+  if (parsed && parsed.code && parsed.msg) throw new Error(`binance REST ${parsed.code}: ${parsed.msg}`);
+  return parsed;
+}
 
 // Binance public bulk-data channel (data.binance.vision): static monthly
 // 1h-kline CSVs in single-entry zips, stable URL scheme, no account and no
@@ -169,20 +184,35 @@ async function dailyKlines(symbol, year, month, day) {
 async function recentKlines(symbol, sinceMs) {
   const rows = [];
   let cursor = Math.max(0, sinceMs || 0);
+  // PILOT_SOCKS (e.g. "127.0.0.1:1080") routes the live-kline fetch through the
+  // Mexico SOCKS tunnel. The VPS is geo-blocked from Binance's REST hosts, so
+  // without this the current partial month cannot be fetched and F1's data goes
+  // stale; the box the tunnel exits through reaches api.binance.com fine. Same
+  // public keyless klines, just un-geo-blocked. Falls back to the direct hosts.
+  const socks = process.env.PILOT_SOCKS;
   for (let page = 0; page < 4; page++) {
     let data = null;
     let lastErr = null;
-    for (const host of API_HOSTS) {
+    if (socks) {
       try {
-        const res = await fetch(`${host}/api/v3/klines?symbol=${symbol}&interval=1h&startTime=${cursor}&limit=1000`);
-        if (res.ok) {
-          data = await res.json();
-          break;
-        }
-        lastErr = new Error(`binance REST ${res.status}`);
-        if (res.status === 400) return rows; // real answer (unknown symbol), not connectivity
+        data = socksKlines(socks, symbol, cursor);
       } catch (err) {
-        lastErr = err;
+        lastErr = err; // tunnel hiccup — fall through to the direct hosts
+      }
+    }
+    if (data === null) {
+      for (const host of API_HOSTS) {
+        try {
+          const res = await fetch(`${host}/api/v3/klines?symbol=${symbol}&interval=1h&startTime=${cursor}&limit=1000`);
+          if (res.ok) {
+            data = await res.json();
+            break;
+          }
+          lastErr = new Error(`binance REST ${res.status}`);
+          if (res.status === 400) return rows; // real answer (unknown symbol), not connectivity
+        } catch (err) {
+          lastErr = err;
+        }
       }
     }
     if (data === null) throw lastErr || new Error('binance REST unreachable');
