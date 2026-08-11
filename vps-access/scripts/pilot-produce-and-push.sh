@@ -1,0 +1,55 @@
+#!/usr/bin/env bash
+# pilot-produce-and-push.sh -- VPS timer step: compute the current F1 intent
+# and ship it to the Mexico box. Deterministic, no AI (PILOT-F1.md section 4).
+#
+# Flow: run pilot-produce.js inside the deployed classifier -> if it yields an
+# actionable intent, write it to a temp file and scp it into the box's
+# ~/pilot/intents/ where the executor will validate and act on it.
+#
+# Idempotent by construction: the intent's chunk_start keys the executor's
+# dedup, so re-running within the same period ships the same intent and the
+# executor ignores the duplicate. Ships NOTHING when nothing is actionable.
+set -uo pipefail
+
+APPDIR="${APPDIR:-/opt/general-classifier}"    # deployed classifier root
+BOX_HOST=ec2-78-13-103-81.mx-central-1.compute.amazonaws.com
+BOX_USER=admin
+KEY="${MX_KEY:-/root/.ssh/aws-mex-deb13-new.pem}"
+SSH="ssh -i $KEY -o BatchMode=yes -o ConnectTimeout=15 -o StrictHostKeyChecking=accept-new"
+STAMP=$(date -u +%Y%m%dT%H%M%SZ)
+
+[ -f "$KEY" ] || { echo "no key at $KEY"; exit 1; }
+[ -f "$APPDIR/pilot-produce.js" ] || { echo "no pilot-produce.js in $APPDIR"; exit 1; }
+
+echo "== produce F1 intent =="
+OUT=$(cd "$APPDIR" && node pilot-produce.js 2>&1)
+rc=$?
+if [ $rc -ne 0 ]; then echo "producer failed:"; echo "$OUT" | sed 's/^/  /'; exit 1; fi
+
+# actionable? (pure text checks; jq is not assumed present on the VPS)
+if printf '%s' "$OUT" | grep -q '"actionable":false'; then
+  echo "nothing actionable this run (no chunk whose entry has arrived)"; exit 0
+fi
+if ! printf '%s' "$OUT" | grep -q '"intent"'; then
+  echo "no intent in producer output:"; echo "$OUT" | sed 's/^/  /'; exit 1
+fi
+
+# extract just the intent object (producer wraps it as {ok,actionable,intent:{...}})
+INTENT=$(printf '%s' "$OUT" | python3 -c "import sys,json; print(json.dumps(json.load(sys.stdin)['intent']))")
+side=$(printf '%s' "$INTENT" | python3 -c "import sys,json; print(json.load(sys.stdin)['side'])")
+chunk=$(printf '%s' "$INTENT" | python3 -c "import sys,json; print(json.load(sys.stdin)['chunk_start'])")
+echo "  intent: side=$side chunk=$chunk"
+
+if [ "$side" = "FLAT" ]; then
+  echo "committee is FLAT this period — no position to open, nothing shipped"; exit 0
+fi
+
+TMP=$(mktemp)
+printf '%s\n' "$INTENT" > "$TMP"
+echo "== ship to box intents/ =="
+$SSH "$BOX_USER@$BOX_HOST" 'mkdir -p ~/pilot/intents' || { echo "ssh mkdir failed"; rm -f "$TMP"; exit 1; }
+scp -i "$KEY" -o BatchMode=yes -o StrictHostKeyChecking=accept-new \
+    "$TMP" "$BOX_USER@$BOX_HOST:~/pilot/intents/intent-$STAMP.json"
+rc=$?
+rm -f "$TMP"
+[ $rc -eq 0 ] && echo "shipped intent-$STAMP.json" || { echo "scp failed"; exit 1; }
