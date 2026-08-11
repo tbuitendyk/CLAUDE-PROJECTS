@@ -17,10 +17,29 @@ const F1 = BOOKS.find((b) => b.id === "F1");
   const pct = (v) => (v == null ? "n/a" : (v * 100).toFixed(3) + "%");
   // winner MAEs, deepest first: shows whether ONE outlier is forcing the stop, and
   // how much tighter the stop would be if the k deepest winners were sacrificed.
+  // LOOSER-stop probe: stops ABOVE the deepest winner (11.4%) preserve every winner
+  // and cut only the very deepest losers — is a tail-only stop net-positive? (Same
+  // both-sides accounting on the already-computed per-entry table.)
+  const per = r.perEntry || [];
+  const clip = r.clipUsd || 10;
+  const fee = r.feePerLeg || 0.001;
+  const looseProbe = [0.12, 0.15, 0.20, 0.25, 0.30, 0.40].map((S) => {
+    const stoppedNet = -S - 2 * fee;
+    let w = 0; let l = 0; let net = 0;
+    for (const p of per) {
+      if (p.maePct > S) {
+        const delta = (stoppedNet - p.netPct) * clip;
+        net += delta;
+        if (p.winner) w++; else l++;
+      }
+    }
+    return { stop: pct(S), winnersCut: w, losersCut: l, net: Math.round(net * 100) / 100 };
+  });
   console.log("STOP_VERIFY_OK " + JSON.stringify({
     stopPct: r.stopPct,
     stopPctHuman: pct(r.stopPct),
     clipUsd: r.clipUsd,
+    looseProbe,
     counts: r.counts,
     binding: r.binding ? { side: r.binding.side, maeHuman: pct(r.binding.mae) } : null,
     fullHistory: r.fullHistory,
