@@ -404,6 +404,68 @@ class ExecutorTest(unittest.TestCase):
         self.assertTrue(self.x.armed())
         self.assertIn("ARM_SET", self.events())
 
+    # -- arm authentication: nonce + freshness + HMAC (findings 12/15) --------
+    def _utc(self, ago=0):
+        return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() - ago))
+
+    def test_arm_fresh_start_arms(self):
+        self.x.set_arm(False, "test")
+        self.x.honor_arm_request(True, "owner", nonce="n1", utc=self._utc(0))
+        self.assertTrue(self.x.armed(), "a fresh, new-nonce START must arm")
+        self.assertIn("ARM_UNAUTHENTICATED", self.events())  # no secret configured
+
+    def test_arm_stale_request_refuses(self):
+        self.x.set_arm(False, "test")
+        self.x.honor_arm_request(True, "owner", nonce="nstale", utc=self._utc(3600))
+        self.assertFalse(self.x.armed(), "a stale (old-utc) arm request must not arm")
+        self.assertIn("ARM_STALE_REQUEST", self.events())
+
+    def test_arm_keepalive_same_nonce_does_not_respam(self):
+        self.x.set_arm(False, "test")
+        self.x.honor_arm_request(True, "owner", nonce="n1", utc=self._utc(0))
+        self.assertTrue(self.x.armed())
+        n_before = self.events().count("ARM_SET")
+        self.x.honor_arm_request(True, "owner", nonce="n1", utc=self._utc(0))  # keepalive
+        self.assertTrue(self.x.armed())
+        self.assertEqual(self.events().count("ARM_SET"), n_before,
+                         "a same-nonce keepalive re-stamps the dead-man without a new ARM_SET")
+
+    def test_wipe_then_stale_request_does_not_rearm(self):
+        # armed on n1; a disk wipe loses ~/pilot (baseline + ARM); the stale
+        # request replayed by the sync must NOT re-arm — a wiped box needs a
+        # genuine fresh START (finding 15).
+        self.x.set_arm(False, "test")
+        self.x.honor_arm_request(True, "owner", nonce="n1", utc=self._utc(0))
+        self.assertTrue(self.x.armed())
+        for f in (self.x.ARM, self.x.ARM_BASELINE):
+            try:
+                os.remove(f)
+            except FileNotFoundError:
+                pass
+        self.x.honor_arm_request(True, "owner", nonce="n1", utc=self._utc(3600))
+        self.assertFalse(self.x.armed(), "a wiped box must not auto-rearm from a stale request")
+        # a genuine fresh START (new nonce, fresh utc) then arms
+        self.x.honor_arm_request(True, "owner", nonce="n2", utc=self._utc(0))
+        self.assertTrue(self.x.armed(), "a fresh START after a wipe arms normally")
+
+    def test_hmac_required_when_secret_configured(self):
+        import hmac as _h
+        import hashlib as _hh
+        secret = "s3cr3t"
+        with open(os.path.join(self.home, ".executor-env"), "w") as f:
+            f.write(f"BINANCE_KEY=k\nBINANCE_SECRET=s\nLIVE=1\nPILOT_ARM_SECRET={secret}\n"
+                    f"BASE=http://127.0.0.1:{self.port}\n")
+        self.x.set_arm(False, "test")
+        utc = self._utc(0)
+        # a forged/invalid HMAC is refused
+        self.x.honor_arm_request(True, "owner", nonce="nx", utc=utc, hmac_sig="deadbeef")
+        self.assertFalse(self.x.armed(), "an invalid HMAC must not arm")
+        self.assertIn("ARM_HMAC_INVALID", self.events())
+        # the owner UI's valid HMAC arms
+        good = _h.new(secret.encode(), f"1|nx2|{utc}".encode(), _hh.sha256).hexdigest()
+        self.x.honor_arm_request(True, "owner", nonce="nx2", utc=utc, hmac_sig=good)
+        self.assertTrue(self.x.armed(), "a validly-signed fresh START arms")
+
     def test_short_round_trip_fully_repays_despite_base_fee(self):
         # THE SHORT MIRROR of the dust bug: the close BUY fee is taken in LTC,
         # so buying exactly the borrowed qty would leave a residual borrow.

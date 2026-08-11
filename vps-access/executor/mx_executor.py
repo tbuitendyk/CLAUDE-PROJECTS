@@ -31,6 +31,7 @@ ENV FILE (~/.executor-env, chmod 600, never journaled):
   LIVE=0               BASE=https://api.binance.com
 """
 
+import calendar
 import hashlib
 import hmac
 import json
@@ -74,6 +75,12 @@ HALT = os.path.join(PILOT, "HALT")
 # STOPPED. Like HALT, ARM never blocks a scheduled EXIT -- stopping the engine
 # means "open nothing new", never "abandon an open position".
 ARM = os.path.join(PILOT, "ARM")
+# arm-authentication state (findings 12/15). The baseline records the last arm
+# nonce the box has seen, so arming is edge-triggered on a NEW nonce and a stale
+# request replayed after a disk wipe cannot silently re-arm.
+ARM_BASELINE = os.path.join(PILOT, "arm-baseline.json")
+ARM_REQUEST_FRESH_S = 900  # a genuine START's request utc must be within this;
+                           # an older request is a stale replay and is refused
 ENVFILE = os.path.join(HOME, ".executor-env")
 
 
@@ -212,6 +219,84 @@ def set_arm(on, source):
             pass
         if existed:
             jlog("ARM_CLEAR", source=source)
+
+
+def _read_baseline():
+    try:
+        with open(ARM_BASELINE) as f:
+            return json.load(f)
+    except Exception:
+        return None
+
+
+def _write_baseline(nonce, honored):
+    os.makedirs(PILOT, exist_ok=True)
+    tmp = ARM_BASELINE + ".tmp"
+    with open(tmp, "w") as f:
+        json.dump({"nonce": nonce, "honored": bool(honored),
+                   "utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}, f)
+    os.replace(tmp, ARM_BASELINE)
+
+
+def _utc_age_s(utc_str):
+    """Seconds since an ISO-8601 UTC timestamp; unparseable/absent reads as very
+    old, so a malformed request is treated as stale (fail-safe)."""
+    try:
+        base = str(utc_str).replace("Z", "").split(".")[0]
+        t = time.strptime(base, "%Y-%m-%dT%H:%M:%S")
+        return time.time() - calendar.timegm(t)
+    except Exception:
+        return 10 ** 9
+
+
+def honor_arm_request(armed, source, nonce=None, utc=None, hmac_sig=None):
+    """The owner's master switch WITH authentication (findings 12/15).
+
+    Finding 12 — if PILOT_ARM_SECRET is configured (on the box), the request must
+    carry a valid HMAC over {armed,nonce,utc}; an unsigned or forged request is
+    refused. Without a secret the HMAC is skipped (fail-open) and the request is
+    journaled as unauthenticated, so the freshness+nonce edge below is the guard.
+
+    Finding 15 — arming is edge-triggered on a NEW nonce whose request is FRESH.
+    A stale arm-request replayed after a disk wipe (old utc, or a nonce already
+    seen) adopts the nonce as an UN-honored baseline and does NOT arm, so a wiped
+    box requires a genuine fresh START before it trades again. A host bounce that
+    preserves ~/pilot keeps the honored baseline and resumes, exactly as before."""
+    secret = load_env().get("PILOT_ARM_SECRET", "")
+    if secret:
+        expect = hmac.new(secret.encode(),
+                          f"{1 if armed else 0}|{nonce}|{utc}".encode(),
+                          hashlib.sha256).hexdigest()
+        if not hmac_sig or not hmac.compare_digest(expect, hmac_sig):
+            jlog("ARM_HMAC_INVALID", source=source, nonce=nonce)
+            return
+    elif armed:
+        jlog("ARM_UNAUTHENTICATED", source=source,
+             note="no PILOT_ARM_SECRET configured; freshness+nonce edge is the guard")
+
+    if not armed:
+        set_arm(False, source)
+        if nonce:
+            _write_baseline(nonce, honored=False)
+        return
+
+    base = _read_baseline()
+    if base and base.get("nonce") == nonce:
+        if base.get("honored"):
+            set_arm(True, source)   # keepalive: re-stamp the dead-man, no freshness gate
+        # else: same un-honored nonce -> keep waiting for a genuine fresh START
+        return
+    # a NEW nonce (or no baseline yet): arm only if the request is FRESH. A stale
+    # request (old utc, e.g. replayed by the level-triggered sync after a wipe)
+    # becomes an un-honored baseline and is refused until a real START arrives.
+    if _utc_age_s(utc) <= ARM_REQUEST_FRESH_S:
+        _write_baseline(nonce, honored=True)
+        set_arm(True, source)
+    else:
+        _write_baseline(nonce, honored=False)
+        jlog("ARM_STALE_REQUEST", source=source, nonce=nonce, age_s=int(_utc_age_s(utc)),
+             note="arm request older than the freshness window — refusing to re-arm "
+                  "without a fresh START (finding 15)")
 
 
 # ---- Binance client (stdlib only) -------------------------------------------
@@ -945,11 +1030,13 @@ def main():
     if mode == "shortdust":
         return do_shortdust(bx, "--yes" in sys.argv)
     if mode == "arm":
-        set_arm(True, source_arg())
-        print("ARMED (master switch ON)")
+        honor_arm_request(True, source_arg(), arg_val("--nonce"), arg_val("--utc"),
+                          arg_val("--hmac"))
+        print("arm request processed (armed iff authenticated + fresh new nonce)")
         return 0
     if mode == "disarm":
-        set_arm(False, source_arg())
+        honor_arm_request(False, source_arg(), arg_val("--nonce"), arg_val("--utc"),
+                          arg_val("--hmac"))
         print("DISARMED (master switch OFF)")
         return 0
     if mode == "halt":
@@ -976,6 +1063,17 @@ def reason_arg():
         if a.startswith("--reason="):
             return a.split("=", 1)[1]
     return ""
+
+
+def arg_val(flag):
+    """Return the value of --flag=value, or None. A placeholder '-' (used by the
+    push script when a field is absent) reads as None."""
+    pre = flag + "="
+    for a in sys.argv:
+        if a.startswith(pre):
+            v = a.split("=", 1)[1]
+            return None if v in ("", "-") else v
+    return None
 
 
 if __name__ == "__main__":

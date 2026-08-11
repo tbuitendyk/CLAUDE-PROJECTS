@@ -35,14 +35,27 @@ ARM_ONLY=0
 #     box's dead-man then self-disarms within ARM_MAX_AGE_S. So even a swallowed
 #     SSH error cannot leave the box trading.
 REQ="$APPDIR/data/pilot/arm-request.json"
-want=0
+want=0; nonce='-'; utc='-'; hmac='-'
 if [ -f "$REQ" ]; then
-  want=$(python3 -c "import json;print('1' if json.load(open('$REQ')).get('armed') else '0')" 2>/dev/null || echo 0)
+  # carry the whole authenticated request (nonce/utc/hmac) to the box, not just
+  # armed:true — the box validates the HMAC and the freshness+nonce edge before
+  # honoring it (findings 12/15).
+  read -r want nonce utc hmac < <(python3 - "$REQ" <<'PY'
+import json, sys
+def s(v):
+    return str(v) if v not in (None, "") else "-"
+try:
+    d = json.load(open(sys.argv[1]))
+    print(("1" if d.get("armed") else "0"), s(d.get("nonce")), s(d.get("utc")), s(d.get("hmac")))
+except Exception:
+    print("0", "-", "-", "-")
+PY
+) || { want=0; nonce='-'; utc='-'; hmac='-'; }
 fi
 mode=$([ "$want" = "1" ] && echo arm || echo disarm)
 echo "== master switch: reconcile -> $mode =="
 $SSH "$BOX_USER@$BOX_HOST" \
-  "python3 ~/mx_executor.py $mode --source=owner" \
+  "python3 ~/mx_executor.py $mode --source=owner --nonce='$nonce' --utc='$utc' --hmac='$hmac'" \
   2>&1 | sed 's/^/  /' || echo "  (box unreachable; if armed, dead-man self-disarms — fail-safe)"
 
 # In --arm-only mode (the frequent sync) we stop here: no data refresh, no
