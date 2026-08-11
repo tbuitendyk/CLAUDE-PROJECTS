@@ -72,6 +72,18 @@ async function computeSignal(now, opts = {}) {
     return { ok: true, actionable: false,
       note: 'no chunk whose entry hour has arrived and whose hold is still open' };
   }
+  // Only enter NEAR the real entry hour. The tick runs hourly, so a chunk is
+  // picked up within ~1h of its +97h entry; if its entry is already hours old
+  // (e.g. the owner arms mid-day, or a tick was missed), do NOT chase a stale
+  // mid-hold entry — wait for the next period. This keeps live fills aligned
+  // with the paper book's entry-hour open instead of drifting in late.
+  const ENTRY_FRESH_H = 3;
+  const entryTs = target.startTs + (geo.entryOffsetH || 0) * 3600000;
+  const entryAgeH = (now - entryTs) / 3600000;
+  if (entryAgeH > ENTRY_FRESH_H) {
+    return { ok: true, actionable: false,
+      note: `newest entry was ${entryAgeH.toFixed(1)}h ago (> ${ENTRY_FRESH_H}h) — not chasing a stale entry; waiting for the next period` };
+  }
 
   const views = bracketLib.comboViews(F1.combo.size, geo.featureHours / 24).views;
   const members = await trainMembers(F1.members, views, trainChunks, [target], F1.branch, maps, geo);
