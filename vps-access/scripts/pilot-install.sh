@@ -62,6 +62,13 @@ TICK
 
 # the intent producer + pusher (installed copy of the branch script)
 install -m 755 "$REPO/scripts/pilot-produce-and-push.sh" /usr/local/sbin/pilot-produce-and-push.sh
+# its sibling helpers — pilot-produce-and-push.sh resolves these via its own dir
+# ($HERE), which is /usr/local/sbin once installed, so they MUST be installed
+# alongside it. Without pilot-arm-fields.sh the arm reconcile fail-closes to a
+# permanent DISARM (box never arms); without pilot-stop-state.sh the stop carry
+# breaks. (2026-08-11 re-review: these new helpers were added without this install.)
+install -m 755 "$REPO/scripts/pilot-arm-fields.sh" /usr/local/sbin/pilot-arm-fields.sh
+install -m 755 "$REPO/scripts/pilot-stop-state.sh" /usr/local/sbin/pilot-stop-state.sh
 # the journal-sync + arm-reconcile (installed copy)
 install -m 755 "$REPO/scripts/pilot-sync-journal.sh" /usr/local/sbin/pilot-sync-journal.sh
 # push alerting — email the owner on halt/dead-heartbeat/stale-sync/new-incident
