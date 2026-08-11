@@ -188,3 +188,22 @@ module.exports.haltSetReflectsImmediatelyAndClears = function () {
   st = derive([{ event: 'HALT_SET' }, { event: 'HALT_CLEAR' }]);
   assert.strictEqual(st.halted, false, 'HALT_CLEAR lifts it');
 };
+
+module.exports.balanceSnapshotSurfacesUsdtAndLtcFromTheLatestBalanceEvent = function () {
+  const st = derive([
+    { event: 'BALANCE', utc: '2026-08-11T22:00:00Z', base_net: '0.001', base_free: '0.001', quote_free: '150.5', quote_net: '150.5' },
+    { event: 'BALANCE', utc: '2026-08-11T23:00:00Z', base_net: '0.00133575', base_free: '0.00133575', quote_free: '199.87083761', quote_net: '199.87083761' },
+  ]);
+  assert.ok(st.walletBalance, 'a BALANCE event populates walletBalance');
+  assert.strictEqual(st.walletBalance.utc, '2026-08-11T23:00:00Z', 'the LATEST snapshot wins');
+  assert.ok(Math.abs(st.walletBalance.usdtFree - 199.87083761) < 1e-8, 'USDT free parsed');
+  assert.ok(Math.abs(st.walletBalance.ltcFree - 0.00133575) < 1e-8, 'LTC free parsed');
+  assert.ok(Math.abs(st.walletBalance.usdtNet - 199.87083761) < 1e-8, 'USDT net parsed');
+};
+
+module.exports.noBalanceEventLeavesWalletBalanceNull = function () {
+  const st = derive([
+    { event: 'RUN_STATUS', armed: false, halted: false },
+  ]);
+  assert.strictEqual(st.walletBalance, null, 'no BALANCE -> null (screen shows "no snapshot yet")');
+};

@@ -45,6 +45,7 @@ function derive(events) {
   const fillDeviations = [];
   const incidents = [];  // anything the screen should surface in red
   const decisions = {};  // chunk_start -> the committee's call, votes and fate
+  let walletBalance = null; // latest isolated-wallet snapshot (USDT + LTC), per run
 
   for (const e of events) {
     switch (e.event) {
@@ -86,6 +87,18 @@ function derive(events) {
         incidents.push({ utc: e.utc, kind: 'ORDER_REJECT', detail: e.body || '' }); break;
       case 'ORDER_ACK': consecutiveRejects = 0; break;
       case 'DUST_DONE': dustDone = true; break;
+      case 'BALANCE': {
+        // the isolated-wallet snapshot the executor takes at the end of EVERY run
+        // (~10 min cadence). The screen shows the LATEST one with its timestamp, so
+        // the balances are "as of the last run", never presented as real-time.
+        const n = (v) => { const x = Number(v); return Number.isFinite(x) ? x : null; };
+        walletBalance = {
+          utc: e.utc || null,
+          usdtFree: n(e.quote_free), usdtNet: n(e.quote_net),
+          ltcFree: n(e.base_free), ltcNet: n(e.base_net),
+        };
+        break;
+      }
       case 'RUN_STATUS':
         armed = !!e.armed; halted = !!e.halted;
         if (e.fixed_stop_pct != null) fixedStopPct = e.fixed_stop_pct;
@@ -150,6 +163,7 @@ function derive(events) {
     fixedStopPct,
     openPositions: Object.values(open).sort((a, b) => a.exit_due_ts - b.exit_due_ts),
     closedRecent: closed.slice(-20).reverse(),
+    walletBalance,   // {usdtFree,usdtNet,ltcFree,ltcNet,utc} as of the last run
     realizedPnl: round(realized, 4),
     consecutiveRejects,
     dustDone,

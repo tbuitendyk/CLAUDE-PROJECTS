@@ -71,6 +71,7 @@
   </div>
 
   <div class="cfg" id="stopBox" style="margin-top:.5rem"></div>
+  <div class="cfg" id="balBox" style="margin-top:.5rem"></div>
 
   <h2>Tested configuration — how these trades are set up</h2>
   <div class="cfg" id="cfg"></div>
@@ -255,8 +256,26 @@ async function refresh() {
   else if (!dead) strips.push(`<div class="banner running">● RUNNING — heartbeat ${hbAgeMin==null?'—':hbAgeMin.toFixed(0)+' min ago'}, journal synced ${syncAgeMin==null?'—':syncAgeMin.toFixed(0)+' min ago'}</div>`);
   $('#banner').innerHTML = strips.join('');
 
+  // sub-account wallet balances (USDT + LTC), as of the last executor run. The box
+  // snapshots them every ~10 min and syncs them here; they are NOT real-time ticks,
+  // so we stamp the age. free = spendable; net = free minus any borrow.
+  const wb = d.walletBalance;
+  const wbAgeMin = wb && wb.utc ? (Date.now() - Date.parse(wb.utc)) / 60000 : null;
+  const wbAge = wbAgeMin == null ? '—' : (wbAgeMin < 1 ? '<1 min' : wbAgeMin.toFixed(0) + ' min') + ' ago';
+  const usdt = wb && wb.usdtFree != null ? '$' + wb.usdtFree.toFixed(2) : '—';
+  const ltc = wb && wb.ltcFree != null ? wb.ltcFree.toFixed(6) + ' LTC' : '—';
+  const wbStale = wbAgeMin != null && wbAgeMin > 30;
+  $('#balBox').innerHTML = wb
+    ? `<b>Sub-account wallet</b> (as of last run, ${wbAge}): <span class="${wbStale?'warn':'pos'}">${usdt} USDT</span> · <span class="${wbStale?'warn':''}">${ltc}</span>`
+      + (wb.usdtNet !== wb.usdtFree || wb.ltcNet !== wb.ltcFree
+          ? ` <span class="muted">· net: $${(wb.usdtNet??0).toFixed(2)} USDT / ${(wb.ltcNet??0).toFixed(6)} LTC (free minus borrow)</span>` : '')
+      + (wbStale ? ` <span class="warn">· stale (executor not reporting)</span>` : '')
+    : `<b>Sub-account wallet:</b> <span class="muted">no balance snapshot yet — the executor reports it each run</span>`;
+
   const feeCls = d.realizedFeePerLegAvg == null ? '' : (d.realizedFeePerLegAvg <= d.modelFeePerLeg ? 'pos' : 'warn');
   $('#tiles').innerHTML =
+    tile('USDT (free)', wb && wb.usdtFree != null ? '$'+wb.usdtFree.toFixed(2) : '—', wbStale?'warn':'') +
+    tile('LTC (free)', wb && wb.ltcFree != null ? wb.ltcFree.toFixed(6) : '—', wbStale?'warn':'') +
     tile('Realized P&L', money(d.realizedPnl), cls(d.realizedPnl)) +
     tile('Open positions', d.openPositions.length) +
     tile('Fee/leg: model', '$'+d.modelFeePerLeg.toFixed(3)) +
