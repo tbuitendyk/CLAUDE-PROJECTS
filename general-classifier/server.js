@@ -1136,6 +1136,28 @@ app.get('/api/pilot', (req, res) => {
   }
 });
 
+// The owner's MASTER SWITCH. These endpoints only record the owner's intent in
+// a request file; they place no orders and do not touch the box. The VPS timer
+// (pilot-produce-and-push.sh) reconciles the box's ARM flag to this request on
+// its next run, and the screen shows "pending" until the box confirms. This
+// keeps the classifier server out of the trade path — it writes a flag, nothing
+// more. Sessions must never call these: START/STOP is the owner's alone.
+function writeArmRequest(on, by) {
+  const dir = path.join(__dirname, 'data', 'pilot');
+  fs.mkdirSync(dir, { recursive: true });
+  const rec = { armed: on, by, utc: new Date().toISOString() };
+  fs.writeFileSync(path.join(dir, 'arm-request.json'), JSON.stringify(rec));
+  return rec;
+}
+app.post('/api/pilot/arm', (req, res) => {
+  try { res.json({ ok: true, request: writeArmRequest(true, 'owner') }); }
+  catch (err) { res.status(500).json({ error: err.message }); }
+});
+app.post('/api/pilot/disarm', (req, res) => {
+  try { res.json({ ok: true, request: writeArmRequest(false, 'owner') }); }
+  catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 app.get('/api/httwo/:id/verdict', (req, res) => {
   try {
     const T2 = require('./lib/httwo');

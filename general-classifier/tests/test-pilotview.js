@@ -53,3 +53,31 @@ module.exports.absentJournalIsAStateNotAnError = function () {
   const s = pv.status('/nonexistent/path/journal.jsonl');
   assert.strictEqual(s.present, false, 'a missing journal reports present:false, never throws');
 };
+
+module.exports.runStatusCarriesTheMasterSwitchState = function () {
+  let st = derive([{ event: 'RUN_STATUS', armed: true, halted: false, open: 0 }]);
+  assert.strictEqual(st.armed, true, 'armed state comes from the latest RUN_STATUS');
+  st = derive([
+    { event: 'RUN_STATUS', armed: true, halted: false },
+    { event: 'ARM_CLEAR', source: 'owner' },
+  ]);
+  assert.strictEqual(st.armed, false, 'a later ARM_CLEAR turns the switch off');
+};
+
+module.exports.fullLogIsNewestFirstAndFlattened = function () {
+  const st = derive([
+    { event: 'ARM_SET', utc: 't1', source: 'owner' },
+    { event: 'ENTRY_FILL', utc: 't2', chunk_start: 'c1', side: 'LONG', qty: 0.1, price: 100, exit_due_ts: 2e9 },
+  ]);
+  assert.strictEqual(st.log[0].event, 'ENTRY_FILL', 'log is newest-first');
+  assert.strictEqual(st.log[0].detail.side, 'LONG', 'log flattens the event fields into detail');
+};
+
+module.exports.configReportsTheTestedF1SpecFromTheAuthoritativeSource = function () {
+  const c = pv.config();
+  assert.strictEqual(c.model.tradedPair, 'LTCUSDT', 'config shows the traded pair from forwardbook');
+  assert.strictEqual(c.model.quorum, 1, 'quorum matches the F1 book');
+  assert.strictEqual(c.model.holdHours, 137, 'hold matches the F1 cell');
+  assert.strictEqual(c.model.entryOffsetH, 97, 'entry offset comes from the daily-4d geometry');
+  assert.strictEqual(c.execution.clipUsd, 10, 'clip size is shown for the owner');
+};

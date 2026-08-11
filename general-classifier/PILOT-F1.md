@@ -66,11 +66,19 @@ project's standing no-AI-in-classification constraint to execution:
 - Claude sessions are **read-only observers and maintainers**: they read the
   journal, report, and propose code changes through the normal email+deploy
   discipline. No trade ever waits on, or is altered by, a session's opinion.
-- The single override channel is a **halt flag**: owner-operable from the
-  live screen; a session may also set it in an emergency. Every use is
-  journaled with who/what set it and is reported by email the same day.
-  Halt stops NEW entries; scheduled exits still run (halting exits would
-  convert a software doubt into unmanaged market exposure).
+- **The owner's MASTER SWITCH (ARM) is the primary control.** The executor
+  opens NO position unless the ARM flag is set, and the flag is set only by the
+  owner pressing START on the live screen (a session must never arm it). It is
+  absent by default, so a fresh box, a redeploy, or a wiped disk all come up
+  STOPPED. The button writes an arm-request on the VPS; the produce timer
+  carries it to the box and the executor journals the flip, so the screen shows
+  "pending" until the box confirms and then RUNNING/STOPPED.
+- A separate **halt flag** is the emergency stop: owner-operable, and a session
+  may also set it if something looks wrong. Every use of either flag is
+  journaled with who set it and reported by email the same day.
+- Neither ARM-off nor HALT ever blocks a scheduled EXIT. Stopping the engine
+  means "open nothing new", never "abandon an open position" — freezing an exit
+  would convert a software doubt into unmanaged market exposure.
 
 ## 5. Journal, live screen, and the mirror-break detector
 
