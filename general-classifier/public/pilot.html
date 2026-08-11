@@ -42,6 +42,12 @@
   .cfg .lbl { color: #8b96a5; } .cfg .val { font-variant-numeric: tabular-nums; }
   .logbox { max-height: 380px; overflow-y: auto; border: 1px solid #232a35; border-radius: 8px; }
   .logbox table { margin: 0; }
+  .pipe { background: #12161d; border: 1px solid #232a35; border-radius: 8px; padding: .7rem .9rem;
+          margin-bottom: 1rem; font-size: .82rem; line-height: 1.5; }
+  .pipe p { margin: .35rem 0; }
+  .pipe .fname { color: #9db4d0; font-size: .75rem; }
+  .vote-up { color: #4ec9a5; font-weight: 700; } .vote-dn { color: #e06c75; font-weight: 700; }
+  .vote-as { color: #6b7686; }
 </style>
 </head>
 <body>
@@ -66,6 +72,22 @@
 
   <h2>Tested configuration — how these trades are set up</h2>
   <div class="cfg" id="cfg"></div>
+
+  <h2>How the decision is made — the full pipeline</h2>
+  <div class="pipe" id="pipeline"></div>
+
+  <h2>The committee — who votes, and what each member sees</h2>
+  <table id="committee"><thead><tr>
+    <th>member</th><th>model</th><th>view</th><th>features seen</th><th>what that view means</th>
+  </tr></thead><tbody></tbody></table>
+
+  <h2>How the comparison assets enter the equation</h2>
+  <div class="pipe" id="features"></div>
+
+  <h2>Decisions — each day's votes and what became of them</h2>
+  <table id="decisions"><thead><tr>
+    <th>decision window</th><th>member votes (full, prices, volume, cross)</th><th>call</th><th>decision price</th><th>fate</th>
+  </tr></thead><tbody></tbody></table>
 
   <div class="grid" id="tiles"></div>
 
@@ -139,12 +161,44 @@ function renderConfig(c) {
     row('Kill: cum. loss', '$' + x.killRules.cumulativeLossUsd);
 }
 
+function renderAnatomy(a) {
+  if (!a || a.error) { $('#pipeline').innerHTML = `<span class="muted">anatomy unavailable: ${a && a.error || '—'}</span>`; return; }
+  $('#pipeline').innerHTML = a.pipeline.map(s => `<p>${s}</p>`).join('');
+  $('#committee tbody').innerHTML = a.committee.map((m, i) =>
+    `<tr><td>member ${i+1}</td><td style="text-align:left">${m.model}</td><td>${m.view}</td>
+     <td>${m.featuresSeen} of ${a.features.totalVector}</td>
+     <td style="text-align:left" class="muted">${m.viewMeaning}</td></tr>`).join('');
+  $('#features').innerHTML =
+    `<p><b>${a.features.note}</b></p>
+     <p>Each asset contributes ${a.features.perAsset} numbers: <span class="fname">${a.features.perAssetNames.join(', ')}</span></p>
+     <p>Each comparison pair adds ${a.features.crossPerPair} cross features: <span class="fname">${a.features.crossNames.join(', ')}</span> —
+        this is where the comparison assets bite: relative strength, relative volume, and how tightly the traded pair has been tracking them.</p>
+     <p>Voting: ${a.voting.rule}. Dormant band: ±${a.voting.dormantBandPct}% — ${a.voting.labelRule}.</p>`;
+}
+
+const vcls = (v) => v === 1 ? 'vote-up' : v === -1 ? 'vote-dn' : 'vote-as';
+const vtxt = (v) => v === 1 ? 'UP' : v === -1 ? 'DOWN' : 'aside';
+function renderDecisions(list) {
+  $('#decisions tbody').innerHTML = (list && list.length) ? list.map(dec => {
+    const votes = Array.isArray(dec.votes)
+      ? dec.votes.map(v => `<span class="${vcls(v)}">${vtxt(v)}</span>`).join(' · ')
+      : '<span class="muted">not recorded</span>';
+    return `<tr><td>${(dec.chunk_start||'').slice(0,16)}</td>
+      <td style="text-align:left">${votes}</td>
+      <td class="${dec.side==='LONG'?'vote-up':dec.side==='SHORT'?'vote-dn':'vote-as'}">${dec.side}</td>
+      <td>${dec.decision_price??'—'}</td>
+      <td style="text-align:left" class="muted">${dec.fate}</td></tr>`;
+  }).join('') : '<tr><td colspan="5" class="muted">no decisions journaled yet</td></tr>';
+}
+
 async function refresh() {
   let d;
   try { d = await (await fetch('/api/pilot')).json(); }
   catch (e) { $('#banner').innerHTML = `<div class="banner stale">cannot reach /api/pilot: ${e}</div>`; return; }
 
   renderConfig(d.config);
+  renderAnatomy(d.anatomy);
+  renderDecisions(d.decisions);
 
   // master switch state
   const armed = !!d.armed, pending = !!d.armPending;

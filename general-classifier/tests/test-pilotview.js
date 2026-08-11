@@ -73,6 +73,39 @@ module.exports.fullLogIsNewestFirstAndFlattened = function () {
   assert.strictEqual(st.log[0].detail.side, 'LONG', 'log flattens the event fields into detail');
 };
 
+module.exports.anatomyIsReadFromTheEngineNotTypedIn = function () {
+  const a = pv.anatomy();
+  const cv = require('../lib/bracket').comboViews(3, 4);
+  assert.strictEqual(a.features.totalVector, cv.featureCount,
+    'total feature count must equal the engine\'s comboViews figure');
+  assert.strictEqual(a.committee.length, 4, 'four members, as frozen');
+  const byView = Object.fromEntries(a.committee.map((m) => [m.view, m.featuresSeen]));
+  for (const v of ['full', 'prices', 'volume', 'cross']) {
+    assert.strictEqual(byView[v], cv.views[v].length,
+      `member view '${v}' must report the engine's real feature count`);
+  }
+  assert.ok(a.features.crossNames.includes('ret_correlation'),
+    'the cross features (how comparison assets enter) are listed by name');
+  assert.strictEqual(a.voting.quorum, 1, 'voting rule shows the frozen 1-of-4 quorum');
+  assert.strictEqual(a.pipeline.length, 6, 'the pipeline explains all six stages');
+};
+
+module.exports.decisionsCarryVotesAndTheirFate = function () {
+  const st = derive([
+    { event: 'INTENT_SEEN', utc: 't1', chunk_start: '2026-08-10T00:00Z', side: 'LONG',
+      per_member: [1, 0, 0, 1], quorum: 1, decision_price: 100.1, input_hash: 'aa' },
+    { event: 'ENTRY_FILL', utc: 't2', chunk_start: '2026-08-10T00:00Z', side: 'LONG',
+      qty: 0.1, price: 100.2, exit_due_ts: 2e9 },
+    { event: 'INTENT_SEEN', utc: 't3', chunk_start: '2026-08-11T00:00Z', side: 'FLAT',
+      per_member: [0, 0, 0, 0], quorum: 1, decision_price: 101 },
+  ]);
+  assert.strictEqual(st.decisions.length, 2, 'every seen intent is a decision row');
+  assert.strictEqual(st.decisions[0].chunk_start, '2026-08-11T00:00Z', 'newest decision first');
+  assert.strictEqual(st.decisions[0].fate, 'flat — no trade');
+  assert.deepStrictEqual(st.decisions[1].votes, [1, 0, 0, 1], 'per-member votes surface for the screen');
+  assert.strictEqual(st.decisions[1].fate, 'filled', 'a decision that traded says so');
+};
+
 module.exports.configReportsTheTestedF1SpecFromTheAuthoritativeSource = function () {
   const c = pv.config();
   assert.strictEqual(c.model.tradedPair, 'LTCUSDT', 'config shows the traded pair from forwardbook');
