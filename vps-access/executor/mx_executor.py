@@ -406,7 +406,9 @@ def do_run(bx):
             continue
         jlog("INTENT_SEEN", chunk_start=it["chunk_start"], side=it["side"],
              decision_price=it["decision_price"],
-             input_hash=it.get("input_hash", ""), file=name)
+             input_hash=it.get("input_hash", ""),
+             per_member=it.get("per_member"), quorum=it.get("quorum"),
+             file=name)
         os.rename(path, path + ".done")
         if it["side"] == "FLAT":
             continue
