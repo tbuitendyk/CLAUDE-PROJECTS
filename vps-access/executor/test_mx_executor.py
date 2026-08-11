@@ -817,6 +817,27 @@ class ExecutorTest(unittest.TestCase):
         st = self.x.derive(self.x.journal_events())
         self.assertEqual(len(st["open"]), 0, "a never-executed order must open nothing")
 
+    def test_recovered_exit_books_conservative_pnl(self):
+        # a crash after an EXIT filled but before it was journaled: recovery books
+        # the exit with a CONSERVATIVE fee estimate + estimated flag, not the
+        # optimistic gross (re-review money-math).
+        now = time.time()
+        self.x.jlog("ENTRY_FILL", chunk_start="c1", side="LONG", qty=0.1,
+                    price=100.0, exit_due_ts=now - 60)
+        cid = self.x.client_id("exit", "c1")
+        self.x.jlog("ORDER_SENT", action="EXIT", side="SELL", qty=0.1,
+                    client_id=cid, live=True, chunk_start="c1")
+        MockBinance.placed[cid] = {"status": "FILLED", "executedQty": "0.100",
+                                   "cummulativeQuoteQty": "10.10000000",
+                                   "updateTime": int(now * 1000)}
+        MockBinance.base_bal = 0.1
+        self.x.do_run(self.bx())
+        ex = [e for e in self.x.journal_events()
+              if e["event"] == "EXIT_FILL" and e.get("recovered")]
+        self.assertEqual(len(ex), 1)
+        self.assertTrue(ex[0].get("pnl_estimated"), "a recovered exit P&L is flagged estimated")
+        self.assertGreater(ex[0]["fee_quote"], 0, "recovered exit books an estimated fee, not zero")
+
     def test_partial_or_expired_fill_with_executed_qty_is_booked(self):
         # RE-REVIEW order-lifecycle: a 200 with status EXPIRED but executedQty>0
         # executed part of the clip — it must be BOOKED (ENTRY_FILL), never a

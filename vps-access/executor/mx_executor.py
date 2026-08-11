@@ -66,10 +66,14 @@ RECONCILE_TOL = QTY_STEP   # 1 lot step of drift tolerated while positions are o
 # exchange won't let us sell) is tolerated up to MIN_NOTIONAL/price*1.2, computed
 # live in do_run — the sweep clears anything sellable (finding 19 + the live
 # 2026-08-11 sub-notional reject deadlock).
-MAX_SHORT_INTEREST_FRAC = 0.02  # exchange borrow legitimately exceeds the nominal
-                           # by accrued interest; cap the tolerated excess at 2% of
-                           # nominal (137h interest is ~0.1–0.3%), above which it is
-                           # a real discrepancy, not interest
+MAX_SHORT_INTEREST_FRAC = 0.05  # exchange borrow legitimately exceeds the nominal
+                           # by accrued interest; tolerate an excess up to 5% of
+                           # nominal. 137h interest is ~0.1–0.5%, so 5% is generous
+                           # headroom (re-review: a tighter 2% could false-halt at a
+                           # high margin rate) yet far below a real discrepancy — an
+                           # extra borrowed position would be ~100%+ of nominal
+FEE_RATE_EST = 0.001       # ~0.1% taker fee, used only to keep a RECOVERED exit's
+                           # P&L from overstating (the crash lost the real fee)
 
 HOME = os.path.expanduser("~")
 PILOT = os.path.join(HOME, "pilot")
@@ -381,9 +385,13 @@ class Binance:
     def margin_order(self, side, qty, side_effect, client_id=None):
         """Place an isolated-margin MARKET order. side: BUY|SELL.
         side_effect: NO_SIDE_EFFECT | MARGIN_BUY (auto-borrow) | AUTO_REPAY.
-        client_id (newClientOrderId) is DETERMINISTIC per (role, chunk): Binance
-        rejects a duplicate client id, so a resend after a crash/timeout is a
-        no-op at the venue instead of a second trade (review findings 1-2)."""
+        client_id (newClientOrderId) is DETERMINISTIC per (role, chunk). Binance
+        rejects a duplicate client id only while the prior order is still OPEN, so
+        this alone does NOT guarantee resend-idempotency for a FILLED/closed order
+        (the id can be reused once terminal). The real protection against a
+        double-trade is resolve_dangling(): it queries the venue by client id and
+        books/voids the prior send BEFORE any new order, so a crash-orphaned fill
+        is reconciled rather than blindly re-sent (review findings 1-2)."""
         params = {"symbol": SYMBOL, "isIsolated": "TRUE", "side": side,
                   "type": "MARKET", "quantity": f"{qty:.3f}",
                   "sideEffectType": side_effect,
@@ -641,8 +649,15 @@ def resolve_dangling(bx):
             gross = (px - entry_price) * qty_traded
             if side == "SHORT":
                 gross = -gross
+            # the crash lost the real fee/interest, so book a CONSERVATIVE estimate
+            # rather than the optimistic gross: an ~0.1% exit taker fee, plus (for a
+            # short) the recorded entry fee, so a recovered exit's P&L is not
+            # overstated and cannot flatter the loss kill (re-review money-math).
+            fee_est = FEE_RATE_EST * px * qty_traded
+            entry_fee = (p.get("entry_fee", 0.0) if (p and side == "SHORT") else 0.0)
             jlog("EXIT_FILL", chunk_start=chunk, side=side, qty=qty_traded,
-                 price=px, fee_quote=0.0, pnl=round(gross, 4), recovered=True)
+                 price=px, fee_quote=round(fee_est, 6), pnl=round(gross - fee_est - entry_fee, 4),
+                 recovered=True, pnl_estimated=True)
         # dust/shortdust/sweep: ORDER_RESOLVED alone is enough (manual books)
 
 
