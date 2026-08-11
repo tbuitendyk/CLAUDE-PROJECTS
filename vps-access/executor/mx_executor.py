@@ -952,9 +952,15 @@ def main():
         set_arm(False, source_arg())
         print("DISARMED (master switch OFF)")
         return 0
+    if mode == "halt":
+        # emergency stop, settable from the control plane (e.g. the VPS mirror
+        # check on a MIRROR_BREAK). Blocks NEW entries; scheduled exits still run.
+        set_halt(source_arg(), reason_arg() or "manual halt")
+        print("HALTED (new entries stopped; scheduled exits still run)")
+        return 0
     if mode == "status":
         return do_status()
-    print(f"unknown mode {mode}; use run|dust|arm|disarm|status")
+    print(f"unknown mode {mode}; use run|dust|shortdust|arm|disarm|halt|status")
     return 2
 
 
@@ -963,6 +969,13 @@ def source_arg():
         if a.startswith("--source="):
             return a.split("=", 1)[1]
     return "unknown"
+
+
+def reason_arg():
+    for a in sys.argv:
+        if a.startswith("--reason="):
+            return a.split("=", 1)[1]
+    return ""
 
 
 if __name__ == "__main__":

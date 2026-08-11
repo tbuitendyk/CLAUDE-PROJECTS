@@ -51,6 +51,9 @@ for i in \$(seq 1 20); do
 done
 cd $APP && PILOT_SOCKS=$SOCKS node pilot-refresh.js
 /usr/local/sbin/pilot-produce-and-push.sh
+# mirror check: recompute recent live decisions against fresh data; halt the box
+# on any divergence (findings 26/7). Runs after refresh so it sees current data.
+/usr/local/sbin/pilot-mirror.sh || true
 TICK
 
 # the intent producer + pusher (installed copy of the branch script)
@@ -60,6 +63,8 @@ install -m 755 "$REPO/scripts/pilot-sync-journal.sh" /usr/local/sbin/pilot-sync-
 # push alerting — email the owner on halt/dead-heartbeat/stale-sync/new-incident
 # (review finding 27: observability was pull-only; the owner sleeps while it runs)
 install -m 755 "$REPO/scripts/pilot-alert.sh" /usr/local/sbin/pilot-alert.sh
+# mirror check — recompute recent live decisions vs fresh data, halt on drift
+install -m 755 "$REPO/scripts/pilot-mirror.sh" /usr/local/sbin/pilot-mirror.sh
 
 install -m 755 /dev/stdin /usr/local/sbin/pilot-sync.sh <<SYNC
 #!/usr/bin/env bash
