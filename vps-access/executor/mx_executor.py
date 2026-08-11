@@ -62,10 +62,10 @@ FILL_DEV_LIMIT = 0.010     # kill: fill >1.0% from decision price (GUESSED)
 REJECT_LIMIT = 3           # kill: 3 consecutive rejects (GUESSED)
 LOSS_LIMIT_USD = 50.0      # kill: cumulative pilot loss (GUESSED)
 RECONCILE_TOL = QTY_STEP   # 1 lot step of drift tolerated while positions are open
-DUST_RECONCILE_TOL = 0.02  # when FLAT, sub-clip leftover base is dust to be swept,
-                           # NOT an orphan — tolerate up to this (well under a
-                           # $5/$10 position ≈ 0.11–0.22 LTC) so leftover dust never
-                           # false-halts and deadlocks the sweep (finding 19)
+# when FLAT, un-sellable sub-min-notional base (short-close buffer dust the
+# exchange won't let us sell) is tolerated up to MIN_NOTIONAL/price*1.2, computed
+# live in do_run — the sweep clears anything sellable (finding 19 + the live
+# 2026-08-11 sub-notional reject deadlock).
 MAX_SHORT_INTEREST_FRAC = 0.02  # exchange borrow legitimately exceeds the nominal
                            # by accrued interest; cap the tolerated excess at 2% of
                            # nominal (137h interest is ~0.1–0.3%), above which it is
@@ -635,18 +635,25 @@ def do_run(bx):
     resolve_dangling(bx)
     st = derive(journal_events())
 
-    # 0) sweep: when the journal says we are FLAT, sub-clip free base is leftover
-    # dust from short-close buffers. Convert whole lots back to USDT before
-    # reconcile so the buffer surplus can never accumulate past the reconcile
-    # tolerance and false-halt (review finding, 2026-08-11). BOUNDED to the dust
-    # ceiling: a free base ABOVE it is a potential ORPHAN, not dust — never sweep
-    # it away (that would hide a real position); leave it for reconcile to halt on.
-    if not st["open"] and not halted():
+    px = bx.price()  # fetched once, reused by the sweep, reconcile, and the kill
+
+    # 0) sweep: when FLAT, flatten any SELLABLE free base to USDT — short-close
+    # buffer dust that has accumulated past the exchange minimum, or an unknown
+    # long. Sub-minimum leftover CANNOT be sold ($5 min-notional) so it is left in
+    # place (reconcile tolerates it); attempting a sub-$5 sell just rejects every
+    # cycle and creeps toward the reject-kill (the live 2026-08-11 bug). Selling a
+    # flat sellable balance is safe housekeeping whether it is accumulated dust or
+    # an unknown long — either way the desired flat = all-USDT state is reached.
+    if not st["open"] and not halted() and px:
         fb = bx.free_base()
-        if fb is not None and QTY_STEP <= fb <= DUST_RECONCILE_TOL:
+        if fb is not None and fb >= QTY_STEP:
             sweep = floor_step(fb)
-            jlog("DUST_SWEEP", qty=sweep, free_base=fb)
-            place(bx, "SWEEP", "SELL", sweep, "AUTO_REPAY", {})
+            if sweep and sweep * px >= MIN_NOTIONAL:
+                jlog("DUST_SWEEP", qty=sweep, free_base=fb)
+                place(bx, "SWEEP", "SELL", sweep, "AUTO_REPAY", {})
+            else:
+                jlog("DUST_SUBMIN", free_base=fb,
+                     note="leftover base below MIN_NOTIONAL; cannot sell; tolerated by reconcile")
 
     # 1) reconcile: exchange holdings vs journal, INTEREST-AWARE and dust-tolerant
     # (finding 19). netAsset nets out borrow+interest, so a single nominal net
@@ -673,7 +680,13 @@ def do_run(bx):
             jlog("RECONCILE_UNREADABLE", body=json.dumps(acct)[:200])
         else:
             long_drift = abs(free_base - long_qty)
-            long_tol = DUST_RECONCILE_TOL if flat else RECONCILE_TOL
+            # when FLAT, tolerate un-sellable sub-min-notional dust — the sweep
+            # clears anything sellable, so a flat book only ever carries dust the
+            # exchange will not let us sell. When positions are open, stay tight.
+            if flat and px:
+                long_tol = max(RECONCILE_TOL, MIN_NOTIONAL / px * 1.2)
+            else:
+                long_tol = RECONCILE_TOL
             short_excess = borrowed - short_nominal
             interest_cap = max(RECONCILE_TOL, short_nominal * MAX_SHORT_INTEREST_FRAC)
             problems = []
@@ -700,10 +713,9 @@ def do_run(bx):
     # and never trip the limit (review finding 16). Add the unrealized P&L of
     # every open leg at the current price so the kill sees the true drawdown.
     mtm = st["realized"]
-    px_now = bx.price()
-    if px_now is not None:
+    if px is not None:
         for p in st["open"].values():
-            leg = (px_now - p["entry_price"]) * p["qty"]
+            leg = (px - p["entry_price"]) * p["qty"]
             if p["side"] == "SHORT":
                 leg = -leg
             mtm += leg
@@ -711,7 +723,7 @@ def do_run(bx):
         set_halt("executor", f"mark-to-market loss {mtm:.2f} "
                              f"(realized {st['realized']:.2f} + open legs) beyond -{LOSS_LIMIT_USD}")
     jlog("PNL_MTM", realized=round(st["realized"], 4), mark_to_market=round(mtm, 4),
-         open_legs=len(st["open"]), price=px_now)
+         open_legs=len(st["open"]), price=px)
 
     # 3) due exits ALWAYS run, halted or not (PILOT-F1.md section 4)
     # Track how many shorts are open across the whole book so the FINAL short

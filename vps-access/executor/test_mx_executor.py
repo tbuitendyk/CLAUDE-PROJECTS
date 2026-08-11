@@ -296,22 +296,29 @@ class ExecutorTest(unittest.TestCase):
         self.assertTrue(self.x.halted())
 
     # -- interest-aware / dust-tolerant reconcile (finding 19) ----------------
-    def test_flat_book_subclip_dust_does_not_halt(self):
-        # THE LIVE DEADLOCK (2026-08-11): a flat book with sub-clip leftover dust
-        # (0.00134 LTC) must NOT reconcile-halt — otherwise the sweep that would
-        # clear it is blocked by the very halt it caused.
-        MockBinance.base_bal = 0.00134   # leftover dust, no open positions
+    def test_flat_book_subnotional_dust_not_swept_no_halt(self):
+        # THE LIVE DEADLOCK (2026-08-11): a flat book with sub-$5 dust (0.00134
+        # LTC ~ $0.13 at price 100) CANNOT be sold (min-notional), so the sweep
+        # must NOT attempt it (a rejected sub-notional sell every cycle creeps
+        # toward the reject-kill) and reconcile must tolerate it, not halt.
+        MockBinance.base_bal = 0.00134   # ~$0.13 leftover dust, no open positions
         self.x.do_run(self.bx())
+        self.assertIn("DUST_SUBMIN", self.events())
+        self.assertNotIn("DUST_SWEEP", self.events())
+        sweeps = [o for o in MockBinance.orders if o.get("side") == "SELL"]
+        self.assertEqual(sweeps, [], 'no sub-notional sweep order may be sent')
         self.assertIn("RECONCILE_OK", self.events())
-        self.assertFalse(self.x.halted(), 'flat-book sub-clip dust must not halt')
+        self.assertFalse(self.x.halted(), 'flat sub-notional dust must not halt')
 
-    def test_flat_book_real_orphan_still_halts(self):
-        # a flat journal but a real ~$7 position (0.15 LTC) on the exchange is an
-        # orphan, well above the dust ceiling — it MUST still halt.
-        MockBinance.base_bal = 0.15
+    def test_flat_book_sellable_balance_is_swept(self):
+        # a flat book with a SELLABLE free base (0.06 LTC ~ $6 at price 100 >= $5)
+        # is flattened to USDT — accumulated dust grown past the minimum, or an
+        # unknown long; either way the flat = all-USDT state is reached.
+        MockBinance.base_bal = 0.06
         self.x.do_run(self.bx())
-        self.assertIn("RECONCILE_MISMATCH", self.events())
-        self.assertTrue(self.x.halted())
+        self.assertIn("DUST_SWEEP", self.events())
+        self.assertTrue(MockBinance.base_bal < self.x.QTY_STEP, 'sellable free base flattened')
+        self.assertFalse(self.x.halted())
 
     def test_open_short_interest_within_cap_does_not_halt(self):
         # an open short whose exchange debt exceeds the nominal by accrued
@@ -649,14 +656,6 @@ class ExecutorTest(unittest.TestCase):
         self.assertLess(ex["pnl"], -0.04, 'entry fee + interest must drag pnl clearly negative')
         self.assertAlmostEqual(ex["entry_fee"], 0.01, places=6)
         self.assertGreater(ex["interest_cost"], 0.0, 'accrued interest must be charged')
-
-    def test_dust_sweep_when_flat_clears_buffer_surplus(self):
-        # short-close buffers leave sub-lot free base; when flat it must be swept
-        # so it can't accumulate past the reconcile tolerance and false-halt.
-        MockBinance.base_bal = 0.005  # sub-clip leftover dust, no open positions
-        self.x.do_run(self.bx())
-        self.assertIn("DUST_SWEEP", self.events())
-        self.assertTrue(MockBinance.base_bal < self.x.QTY_STEP, 'dust swept to USDT')
 
     def test_deadman_stale_arm_blocks_entries_but_exits_run(self):
         # ARM present but not refreshed within ARM_MAX_AGE_S -> self-disarm.
