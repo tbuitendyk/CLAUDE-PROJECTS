@@ -557,6 +557,13 @@ def place(bx, action, side, qty, side_effect, ctx, cid=None):
         # and a spurious reject creeps toward the kill) — re-review order-lifecycle.
         if status == "FILLED" or executed > 0 or body.get("fills"):
             px, fq, fee, base_comm = fills_summary(body)
+            # a "filled" with no usable fill price (empty/malformed fills) cannot be
+            # booked safely — treat as UNKNOWN so recovery resolves it, rather than
+            # crash later comparing a None price (re-review order-lifecycle minor).
+            if px is None:
+                jlog("ORDER_UNKNOWN", action=action, http=code, client_id=cid,
+                     status=status, body=json.dumps(body)[:200], **ctx)
+                return "unknown", None, 0.0, 0.0, 0.0
             jlog("ORDER_ACK", action=action, http=code, client_id=cid,
                  order_id=body.get("orderId"), status=status, fill_price=px, fill_qty=fq,
                  fee_quote=fee, base_comm=base_comm, **ctx)
@@ -572,7 +579,12 @@ def place(bx, action, side, qty, side_effect, ctx, cid=None):
         jlog("ORDER_REJECT", action=action, http=code, client_id=cid,
              status=status, body=json.dumps(body)[:300], **ctx)
         return "rejected", None, 0.0, 0.0, 0.0
-    if code == 0:
+    # AMBIGUOUS outcome (re-review B1): a transport error (code 0) OR an HTTP 5xx /
+    # 429 / 418 means the order MAY have executed — Binance documents 504 as
+    # explicitly unknown. Never book these as a reject (which would orphan a real
+    # fill and creep the reject-kill); return UNKNOWN so recovery resolves them by
+    # client id. Only an authoritative 4xx (below) is a genuine reject.
+    if code == 0 or code >= 500 or code in (429, 418):
         jlog("ORDER_UNKNOWN", action=action, http=code, client_id=cid,
              body=json.dumps(body)[:200], **ctx)
         return "unknown", None, 0.0, 0.0, 0.0
@@ -611,8 +623,13 @@ def resolve_dangling(bx):
         s = sent[cid]
         action, chunk = s.get("action"), s.get("chunk_start")
         code, body = bx.query_order(cid)
-        if code == 0:
-            jlog("RECOVER_DEFER", client_id=cid, note="venue unreachable; retry next run")
+        # AMBIGUOUS lookup (re-review B1): a transport error OR an HTTP 5xx/429/418
+        # is not evidence the order never executed — DEFER and retry, never VOID (a
+        # void would permanently forget a real fill). Only an authoritative 4xx
+        # (e.g. -2013 not found) means the order truly never reached the venue.
+        if code == 0 or code >= 500 or code in (429, 418):
+            jlog("RECOVER_DEFER", client_id=cid, http=code,
+                 note="venue unreachable/ambiguous; retry next run")
             continue
         if code != 200:
             jlog("ORDER_VOID", client_id=cid, action=action, chunk_start=chunk,
@@ -692,26 +709,25 @@ def do_run(bx):
 
     px = bx.price()  # fetched once, reused by the sweep, reconcile, and the kill
 
-    # 0) sweep: when FLAT, flatten any SELLABLE free base to USDT — short-close
-    # buffer dust that has accumulated past the exchange minimum, or an unknown
-    # long. Sub-minimum leftover CANNOT be sold ($5 min-notional) so it is left in
-    # place (reconcile tolerates it); attempting a sub-$5 sell just rejects every
-    # cycle and creeps toward the reject-kill (the live 2026-08-11 bug). Selling a
-    # flat sellable balance is safe housekeeping whether it is accumulated dust or
-    # an unknown long — either way the desired flat = all-USDT state is reached.
-    # Only while ARMED: a STOPPED box places NO orders at all (re-review
-    # control-plane E); its leftover base is simply tolerated by reconcile until
-    # the engine is running again.
-    if not st["open"] and not halted() and armed() and px:
+    # 0) sweep: keep free base ≈ the summed OPEN LONG holdings by flattening any
+    # SELLABLE EXCESS to USDT — short-close buffer dust or an unknown long. Runs
+    # whether or not the book is flat: with up to 6 concurrent 137h holds the book
+    # is essentially never flat, so a flat-only sweep let dust accumulate and
+    # false-HALT reconcile within a few closes (re-review B2). Sub-min-notional
+    # excess cannot be sold and is left for reconcile to tolerate. Only while
+    # ARMED — a STOPPED box places NO orders at all (control-plane E).
+    if not halted() and armed() and px:
         fb = bx.free_base()
-        if fb is not None and fb >= QTY_STEP:
-            sweep = floor_step(fb)
+        long_held = sum(p["qty"] for p in st["open"].values() if p["side"] == "LONG")
+        excess = (fb - long_held) if fb is not None else 0.0
+        if excess >= QTY_STEP:
+            sweep = floor_step(excess)
             if sweep and sweep * px >= MIN_NOTIONAL:
-                jlog("DUST_SWEEP", qty=sweep, free_base=fb)
+                jlog("DUST_SWEEP", qty=sweep, free_base=fb, long_held=round(long_held, 6))
                 place(bx, "SWEEP", "SELL", sweep, "AUTO_REPAY", {})
             else:
-                jlog("DUST_SUBMIN", free_base=fb,
-                     note="leftover base below MIN_NOTIONAL; cannot sell; tolerated by reconcile")
+                jlog("DUST_SUBMIN", free_base=fb, excess=round(excess, 6),
+                     note="excess base below MIN_NOTIONAL; cannot sell; tolerated by reconcile")
 
     # 1) reconcile: exchange holdings vs journal, INTEREST-AWARE and dust-tolerant
     # (finding 19). netAsset nets out borrow+interest, so a single nominal net
@@ -741,16 +757,18 @@ def do_run(bx):
             short_excess = borrowed - short_nominal
             interest_cap = max(RECONCILE_TOL, short_nominal * MAX_SHORT_INTEREST_FRAC)
             problems = []
-            # long side: when FLAT, tolerate un-sellable sub-min-notional dust (the
-            # sweep clears anything sellable). If the price is unavailable this cycle
-            # the dust tolerance cannot be sized, so DEFER the long-side check rather
-            # than apply the tight open-position tolerance and false-halt on leftover
-            # dust (re-review px==None residual). When positions are open, stay tight.
-            if flat and not px:
+            # long side: tolerate un-sellable sub-min-notional dust in EVERY state,
+            # not just flat (re-review B2) — the sweep keeps free base ≈ open long
+            # holdings by flattening any sellable excess, so what remains is always
+            # sub-$5 dust the exchange won't let us sell. A real orphan (>= the $5
+            # minimum) is SWEPT (flattened), so it never sits here masked. If the
+            # price is unavailable this cycle the tolerance cannot be sized, so
+            # DEFER rather than apply the tight tolerance and false-halt on dust.
+            if not px:
                 jlog("RECONCILE_DEFER", free_base=free_base,
-                     reason="no price to size the flat dust tolerance; long-side check deferred")
+                     reason="no price to size the dust tolerance; long-side check deferred")
             else:
-                long_tol = max(RECONCILE_TOL, MIN_NOTIONAL / px * 1.2) if (flat and px) else RECONCILE_TOL
+                long_tol = max(RECONCILE_TOL, MIN_NOTIONAL / px * 1.2)
                 if long_drift > long_tol:
                     problems.append(f"long base {free_base:.6f} vs journal {long_qty:.6f}")
             if short_excess < -RECONCILE_TOL:

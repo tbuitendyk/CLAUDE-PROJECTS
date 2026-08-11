@@ -29,6 +29,7 @@ class MockBinance(BaseHTTPRequestHandler):
     reject_orders = False
     price_fails = False        # when True the ticker returns 500 -> price() is None
     force_status = None        # override the order status string (partial/expired fill tests)
+    order_5xx = False          # when True the order POST returns 503 (ambiguous)
     net_asset = None          # override netAsset/free; None -> use tracked balances
     base_bal = 0.0            # tracked free LTC after fills
     borrowed = 0.0            # tracked LTC debt (short open borrows, close repays)
@@ -85,6 +86,8 @@ class MockBinance(BaseHTTPRequestHandler):
         if self.path.startswith("/sapi/v1/margin/order"):
             if MockBinance.reject_orders:
                 return self._send({"code": -2010, "msg": "rejected"}, 400)
+            if MockBinance.order_5xx:
+                return self._send({"code": -1001, "msg": "internal error"}, 503)
             qty = float(params.get("quantity", "0"))
             side = params.get("side")
             eff = params.get("sideEffectType", "NO_SIDE_EFFECT")
@@ -163,6 +166,7 @@ class ExecutorTest(unittest.TestCase):
         MockBinance.reject_orders = False
         MockBinance.price_fails = False
         MockBinance.force_status = None
+        MockBinance.order_5xx = False
         MockBinance.net_asset = None
         MockBinance.base_bal = 0.0
         MockBinance.borrowed = 0.0
@@ -370,6 +374,18 @@ class ExecutorTest(unittest.TestCase):
         self.x.do_run(self.bx())
         self.assertIn("RECONCILE_MISMATCH", self.events())
         self.assertTrue(self.x.halted())
+
+    def test_nonflat_book_dust_does_not_halt(self):
+        # RE-REVIEW B2: with an open position (NON-FLAT), sub-min-notional
+        # short-close buffer dust in free base must NOT false-halt reconcile —
+        # the old flat-only tolerance wedged the pilot within a few closes.
+        self.x.jlog("ENTRY_FILL", chunk_start="s1", side="SHORT", qty=0.1,
+                    price=100.0, exit_due_ts=time.time() + 9999)
+        MockBinance.borrowed = 0.1       # the open short
+        MockBinance.base_bal = 0.0014    # sub-min dust in free base, book non-flat
+        self.x.do_run(self.bx())
+        self.assertIn("RECONCILE_OK", self.events())
+        self.assertFalse(self.x.halted(), 'non-flat sub-min dust must not halt')
 
     def test_unhalt_clears_the_halt(self):
         self.x.set_halt("test", "stuck")
@@ -837,6 +853,21 @@ class ExecutorTest(unittest.TestCase):
         self.assertEqual(len(ex), 1)
         self.assertTrue(ex[0].get("pnl_estimated"), "a recovered exit P&L is flagged estimated")
         self.assertGreater(ex[0]["fee_quote"], 0, "recovered exit books an estimated fee, not zero")
+
+    def test_server_error_5xx_is_unknown_not_reject(self):
+        # RE-REVIEW B1: an HTTP 5xx (order MAY have filled — Binance documents 504
+        # as unknown) must be UNKNOWN/inflight, never a terminal reject that would
+        # orphan a real fill and creep the reject-kill.
+        MockBinance.order_5xx = True
+        self.write_intent(side="LONG", chunk="2026-08-07T00:00Z")
+        self.x.do_run(self.bx())
+        ev = self.events()
+        self.assertIn("ORDER_UNKNOWN", ev)
+        self.assertIn("ENTRY_INFLIGHT", ev)
+        self.assertNotIn("ORDER_REJECT", ev)
+        self.assertNotIn("ENTRY_FILL", ev)
+        st = self.x.derive(self.x.journal_events())
+        self.assertEqual(st["consecutive_rejects"], 0, "a 5xx must not count as a reject")
 
     def test_partial_or_expired_fill_with_executed_qty_is_booked(self):
         # RE-REVIEW order-lifecycle: a 200 with status EXPIRED but executedQty>0
