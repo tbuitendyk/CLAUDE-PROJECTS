@@ -58,18 +58,25 @@ async function computeSetupStop(book, opts = {}) {
   for (const c of chunks) c.label = scoreDiff(c.diffPct / 100, bandPct / 100);
 
   // train the LIVE frozen members on the frozen train window, then predict them
-  // on EVERY chunk so we get the setup's calls across the WHOLE history.
+  // across the WHOLE history. We score the UNION of the two production-proven,
+  // feature-complete chunk sets — trainChunks (used to fit the members, so they
+  // have features) and fwdChunks (scored live) — rather than the raw chunk list,
+  // whose earliest entries lack a complete feature window and would make a member
+  // emit a non-vote that quorumCall (correctly) refuses. In-sample prediction on
+  // the train chunks is deliberate: the owner wants the deepest a winner ever
+  // dipped across ALL data, which is a robustness estimate, not a performance one.
   const outcomeMs = (geo.exitOffsetH || 0) * 3600000;
-  const { trainChunks } = splitFrozen(
+  const { trainChunks, fwdChunks } = splitFrozen(
     chunks, opts.trainThrough ?? TRAIN_THROUGH, opts.scoreFrom ?? SCORE_FROM, outcomeMs,
   );
   if (!trainChunks.length) throw new Error(`setup ${book.id}: no training chunks at/before the freeze date`);
+  const scoreChunks = [...trainChunks, ...fwdChunks].sort((a, b) => a.startTs - b.startTs);
   const views = bracketLib.comboViews(book.combo.size, geo.featureHours / 24).views;
-  const members = await trainMembers(book.members, views, trainChunks, chunks, book.branch, maps, geo);
+  const members = await trainMembers(book.members, views, trainChunks, scoreChunks, book.branch, maps, geo);
   const memberCalls = members.map((m) => m.calls);
-  const calls = chunks.map((_, i) => quorumCall(memberCalls, i, book.cell.quorum));
+  const calls = scoreChunks.map((_, i) => quorumCall(memberCalls, i, book.cell.quorum));
 
-  const entries = entriesFromCalls(chunks, calls, geo);
+  const entries = entriesFromCalls(scoreChunks, calls, geo);
   const tune = tuneFixedStop(entries, maps.trade, {
     holdHours: book.cell.tHours,
     feePerLeg: fee,
@@ -79,9 +86,9 @@ async function computeSetupStop(book, opts = {}) {
     setup: { id: book.id, combo: book.combo, cell: book.cell, holdHours: book.cell.tHours },
     trainThrough: opts.trainThrough ?? TRAIN_THROUGH,
     fullHistory: {
-      chunks: chunks.length,
-      firstChunkUtc: chunks.length ? new Date(chunks[0].startTs).toISOString() : null,
-      lastChunkUtc: chunks.length ? new Date(chunks[chunks.length - 1].startTs).toISOString() : null,
+      chunks: scoreChunks.length,
+      firstChunkUtc: scoreChunks.length ? new Date(scoreChunks[0].startTs).toISOString() : null,
+      lastChunkUtc: scoreChunks.length ? new Date(scoreChunks[scoreChunks.length - 1].startTs).toISOString() : null,
     },
     ...tune,
   };
