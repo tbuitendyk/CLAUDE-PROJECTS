@@ -94,6 +94,9 @@ function derive(events) {
       case 'KILL_TRANSPORT':
       case 'EXIT_OVERDUE':
       case 'MIRROR_BREAK':
+      case 'INTENT_STALE':
+      case 'CLOCK_DRIFT':
+      case 'ARM_STALE':
       case 'HALT_SET':
         incidents.push({ utc: e.utc, kind: e.event, detail: JSON.stringify(
           Object.fromEntries(Object.entries(e)
