@@ -9,9 +9,13 @@
 //
 // The tightest such stop is CLOSED-FORM, not a grid search: an entry is stopped
 // out iff its Maximum Adverse Excursion (MAE, the deepest the price moved AGAINST
-// the position during the hold, as a fraction of entry) is >= the stop. So the
-// tightest stop that preserves EVERY winner is exactly max(MAE) over the winners
-// -- any tighter stops a winner; any looser is not as tight as possible. MAE is
+// the position during the hold, as a fraction of entry) STRICTLY exceeds the stop.
+// The engine boundary is strict (px < ep*(1-stop) for a long, px > ep*(1+stop) for
+// a short), so a position whose MAE equals the stop is preserved, not cut. So the
+// tightest stop that preserves EVERY winner is exactly max(MAE) over the winners:
+// at that stop the deepest winner sits ON the boundary and survives (strict), one
+// tick tighter would cut it, and looser is not as tight as possible. This is why
+// marginFrac=0 is SAFE — the strict boundary already spares the binding winner. MAE is
 // read from hourly bar extremes (bar.low for a long, bar.high for a short) and is
 // UNAMBIGUOUS -- unlike a stop-vs-target race, the adverse extreme does not depend
 // on within-bar ordering, so the primary answer needs no minute data.
@@ -28,16 +32,28 @@ const { HOUR_MS } = require('./binance');
 // Returns { priced, mae, grossPct, netPct, entry, exit, worst } or {priced:false}.
 function entryOutcome(entryTs, side, map, holdHours, feePerLeg = 0) {
   const e0 = map.get(entryTs);
-  const exitTs = entryTs + holdHours * HOUR_MS;
-  const eExit = map.get(exitTs);
-  if (!e0 || !eExit) return { priced: false };
+  if (!e0) return { priced: false };
   const entry = e0.open;
+  // Walk <=3h forward over gaps for the EXIT bar, EXACTLY as bracket.js (the
+  // authoritative forward book, lines 133-135) does, so the tuner and the book
+  // price the SAME population. Before this, a missing exact-exit bar dropped the
+  // entry as unpriced here while the book counted it — the two disagreed on which
+  // trades exist, so the tuner's winner/loser set was a different population from
+  // the one being traded (STOPMATH BUG 3, 2026-08-11 e2e review).
+  let eExit = null;
+  let exitStepH = holdHours;
+  for (let g = 0; g <= 3; g++) {
+    const cand = map.get(entryTs + (holdHours + g) * HOUR_MS);
+    if (cand) { eExit = cand; exitStepH = holdHours + g; break; }
+  }
+  if (!eExit) return { priced: false };
   const exit = eExit.open; // open-to-open, matching the market-entry convention
   if (!(entry > 0) || !(exit > 0)) return { priced: false };
-  // adverse extreme over [entry, exit): a long is hurt by lows, a short by highs
+  // adverse extreme over the ACTUAL hold [entry, exit): a long is hurt by lows,
+  // a short by highs. The window extends to the gap-resolved exit so a stretched
+  // hold's later adverse ticks are not missed.
   let worst = entry;
-  const steps = Math.round((holdHours * HOUR_MS) / HOUR_MS); // = holdHours, explicit
-  for (let h = 0; h < steps; h++) {
+  for (let h = 0; h < exitStepH; h++) {
     const bar = map.get(entryTs + h * HOUR_MS);
     if (!bar) continue;
     if (side === 'LONG') { if (bar.low < worst) worst = bar.low; }
@@ -83,8 +99,13 @@ function tuneFixedStop(entries, map, opts = {}) {
     ? winners.reduce((a, b) => (b.mae > a.mae ? b : a))
     : null;
 
-  // What the stop does to the losers it now cuts: a loser whose MAE >= stopPct
-  // would exit at ~ -stopPct (minus fees) instead of riding to its no-stop netPct.
+  // What the stop does to the losers it now cuts: a loser whose MAE STRICTLY
+  // exceeds stopPct exits at ~ -stopPct (minus fees) instead of riding to its
+  // no-stop netPct. The predicate is STRICT (mae > stopPct), matching BOTH the
+  // engine's strict stop boundary (mx_executor: px < ep*(1-stop) / px > ep*(1+stop))
+  // and the sacrifice curve below — so a position sitting exactly at the bound is
+  // preserved, never counted as cut (STOPMATH BUG 1/2, 2026-08-11 e2e review). It
+  // was `>=`, which over-counted by one boundary loser and contradicted the curve.
   // CONSERVATIVE accounting: the stop only helps when the capped loss is smaller
   // than the ride-to-exit loss; if the loser had recovered to a shallower loss by
   // exit, the stop makes it WORSE. We report both so the trade-off is explicit,
@@ -93,7 +114,7 @@ function tuneFixedStop(entries, map, opts = {}) {
   let deltaOnLosers = 0; // sum of (stopped outcome - no-stop outcome), net pct
   if (stopPct != null) {
     for (const p of losers) {
-      if (p.mae >= stopPct) {
+      if (p.mae > stopPct) {
         cut++;
         const stoppedNet = -stopPct - 2 * feePerLeg; // exit at the stop, pay fees
         deltaOnLosers += stoppedNet - p.netPct;

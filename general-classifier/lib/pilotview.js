@@ -314,6 +314,14 @@ function status(file = JOURNAL) {
   try {
     stopSweep = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'data', 'pilot', 'stop-sweep.json'), 'utf8'));
   } catch (_) { stopSweep = null; }
+  // stop-carry error (CONTROL BUG 4): the VPS sync writes this when fixed-stop.json
+  // is present but unreadable/off-shape — it then leaves the box stop UNTOUCHED
+  // rather than clearing it. Surface it in red so a corrupt risk-file is visible,
+  // not silent. Cleared automatically on the next healthy carry.
+  let stopCarryError = null;
+  try {
+    stopCarryError = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'data', 'pilot', 'stop-carry-error.json'), 'utf8'));
+  } catch (_) { stopCarryError = null; }
   return {
     present: true,
     preregistration: 'general-classifier/PILOT-F1.md',
@@ -324,6 +332,7 @@ function status(file = JOURNAL) {
     armPending,
     mirror,
     stopSweep,
+    stopCarryError,
     ...st,
   };
 }

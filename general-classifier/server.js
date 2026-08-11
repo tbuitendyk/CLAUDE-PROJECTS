@@ -1266,6 +1266,17 @@ app.post('/api/pilot/stop-apply', (req, res) => {
         return res.status(400).json({ error: 'stopPct must be a positive fraction (e.g. 0.11 for 11%), or null to clear' });
       }
       if (v >= 1) return res.status(400).json({ error: 'stopPct is a fraction of entry price; refusing a value >= 1' });
+      // MINIMUM-STOP FLOOR (CONTROL BUG 2, 2026-08-11 e2e review). A stop tighter
+      // than ordinary hourly noise stops out on microstructure wiggle, not on a
+      // real adverse move — it converts winners into fee-paying losses and can
+      // churn a position out on the first tick. DERIVED floor = 0.5%: it is 2x
+      // the 0.25% round-trip fee (below which a triggered stop is a guaranteed
+      // net loss) and sits above typical LTC hourly-bar noise. The scan never
+      // proposes anything this tight; this only guards a hand-typed value.
+      const MIN_STOP_PCT = 0.005;
+      if (v < MIN_STOP_PCT) {
+        return res.status(400).json({ error: `stopPct ${v} is below the ${MIN_STOP_PCT} floor (0.5%); a tighter stop triggers on noise, not on real moves. Choose a wider stop or clear it.` });
+      }
     }
     writeFixedStop({ stopPct: v, by: 'owner', utc: new Date().toISOString() });
     res.json({ ok: true, fixedStop: readFixedStop() });

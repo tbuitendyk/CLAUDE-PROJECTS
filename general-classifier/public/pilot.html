@@ -224,6 +224,7 @@ async function refresh() {
     stopHtml += ` <span class="muted">· tuned ${pct(sw.stopPct)} over full history (${c.winners||0} winners preserved, ${c.losersCutByStop||0} losers cut of ${c.losers||0}; ${c.priced||0} entries)`
       + `${sw.binding ? `, binding ${sw.binding.side} MAE ${pct(sw.binding.mae)}` : ''}.</span>`;
   }
+  if (d.stopCarryError) stopHtml += ` <span class="warn">· ⚠ stop file unreadable on the sync host (${(d.stopCarryError.utc||'').slice(0,16)}) — box stop left UNCHANGED, not cleared. Re-apply on the Bracket Lab.</span>`;
   $('#stopBox').innerHTML = stopHtml;
 
   if (!d.present) {

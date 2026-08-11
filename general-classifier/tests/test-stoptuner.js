@@ -119,6 +119,55 @@ module.exports.sacrificeCurveShowsBothSidesPerStopLevel = function () {
   assert.ok(Math.abs(c1.netPnlDeltaUsd - (-0.60)) < 1e-6, `k1 net ${c1.netPnlDeltaUsd}`);
 };
 
+// STOPMATH BUG 1/2 (2026-08-11 e2e review): the engine stop boundary is STRICT
+// (px < ep*(1-stop)), so a position sitting EXACTLY at the stop is preserved, not
+// cut. The tuner's loser-cut count must use the same strict predicate (mae > stop),
+// not the old weak `>=`, or it over-reports the losers the live engine would cut.
+module.exports.loserExactlyAtStopIsSparedStrictBoundary = function () {
+  const map = new Map();
+  // winner A, MAE .05 -> tightest stop = .05
+  putHold(map, 0, { entry: 100, exit: 110, low: 95 });
+  // loser B, MAE EXACTLY .05 (dips to 95), exits -3%: sits ON the boundary
+  putHold(map, 10 * HOUR_MS, { entry: 100, exit: 97, low: 95 });
+  // loser C, MAE .06 (dips to 94): STRICTLY breaches the stop
+  putHold(map, 20 * HOUR_MS, { entry: 100, exit: 97, low: 94 });
+  const r = tuneFixedStop(
+    [{ entryTs: 0, side: 'LONG' }, { entryTs: 10 * HOUR_MS, side: 'LONG' }, { entryTs: 20 * HOUR_MS, side: 'LONG' }],
+    map, { holdHours: 3, feePerLeg: 0.001 },
+  );
+  assert.ok(Math.abs(r.stopPct - 0.05) < 1e-9, `stop = max winner MAE .05, got ${r.stopPct}`);
+  assert.strictEqual(r.counts.losersCutByStop, 1,
+    'only the loser STRICTLY past the stop (MAE .06) is cut; the one exactly at .05 is spared (strict boundary, matches engine)');
+};
+
+// STOPMATH BUG 3 (2026-08-11 e2e review): the exit lookup walks <=3h forward over
+// gaps, EXACTLY as bracket.js (the authoritative forward book) does, so the tuner
+// prices the same population the book trades. An entry whose exact-exit bar is
+// missing but has a bar within 3h must be PRICED, not dropped as unpriced.
+module.exports.exitGapWithinThreeHoursIsPricedNotDropped = function () {
+  const map = new Map();
+  map.set(0, { open: 100, high: 100, low: 96, close: 100 });
+  map.set(1 * HOUR_MS, { open: 100, high: 100, low: 96, close: 100 });
+  map.set(2 * HOUR_MS, { open: 100, high: 100, low: 96, close: 100 });
+  // nominal exit at 3h is MISSING (data gap); the next bar is 2h late at 5h
+  map.set(5 * HOUR_MS, { open: 108, high: 108, low: 108, close: 108 });
+  const o = entryOutcome(0, 'LONG', map, 3, 0.001);
+  assert.ok(o.priced, 'an exit within 3h of the nominal bar is priced, not dropped as unpriced');
+  assert.ok(Math.abs(o.exit - 108) < 1e-9, 'exit is taken from the gap-resolved bar (108)');
+  assert.ok(Math.abs(o.mae - 0.04) < 1e-9, `MAE walks the stretched hold [0..5): dips to 96 -> .04, got ${o.mae}`);
+};
+
+module.exports.exitGapBeyondThreeHoursIsUnpriced = function () {
+  const map = new Map();
+  map.set(0, { open: 100, high: 100, low: 100, close: 100 });
+  map.set(1 * HOUR_MS, { open: 100, high: 100, low: 100, close: 100 });
+  map.set(2 * HOUR_MS, { open: 100, high: 100, low: 100, close: 100 });
+  // exit only at 7h = 4h past the nominal 3h exit -> beyond the 3h tolerance
+  map.set(7 * HOUR_MS, { open: 108, high: 108, low: 108, close: 108 });
+  const o = entryOutcome(0, 'LONG', map, 3, 0.001);
+  assert.ok(!o.priced, 'an exit more than 3h past nominal is not priced (matches bracket.js tolerance)');
+};
+
 module.exports.entryOutcomeReportsMaeAndPnl = function () {
   const map = new Map();
   putHold(map, 0, { entry: 200, exit: 220, low: 190 });
