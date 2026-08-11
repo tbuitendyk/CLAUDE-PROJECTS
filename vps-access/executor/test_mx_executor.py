@@ -27,6 +27,7 @@ class MockBinance(BaseHTTPRequestHandler):
     what lets the fee-shrink fix be tested end to end."""
     price = "100.00"
     reject_orders = False
+    price_fails = False        # when True the ticker returns 500 -> price() is None
     net_asset = None          # override netAsset/free; None -> use tracked balances
     base_bal = 0.0            # tracked free LTC after fills
     borrowed = 0.0            # tracked LTC debt (short open borrows, close repays)
@@ -50,6 +51,8 @@ class MockBinance(BaseHTTPRequestHandler):
             # clock, exercising the exchange-synced age check and CLOCK_DRIFT.
             return self._send({"serverTime": int(time.time() * 1000) + MockBinance.time_skew_ms})
         if self.path.startswith("/api/v3/ticker/price"):
+            if MockBinance.price_fails:
+                return self._send({"code": -1000, "msg": "unavailable"}, 500)
             return self._send({"symbol": "LTCUSDT", "price": self.price})
         if self.path.startswith("/sapi/v1/margin/order"):
             # order lookup by origClientOrderId (recovery path)
@@ -152,6 +155,7 @@ class ExecutorTest(unittest.TestCase):
         self.x.set_arm(True, "test")
         MockBinance.price = "100.00"
         MockBinance.reject_orders = False
+        MockBinance.price_fails = False
         MockBinance.net_asset = None
         MockBinance.base_bal = 0.0
         MockBinance.borrowed = 0.0
@@ -320,6 +324,16 @@ class ExecutorTest(unittest.TestCase):
         self.assertIn("RECONCILE_OK", self.events())
         self.assertFalse(self.x.halted(), 'flat sub-notional dust must not halt')
 
+    def test_flat_dust_defers_when_price_unavailable(self):
+        # RE-REVIEW residual: when the price GET fails, the flat dust tolerance
+        # cannot be sized — DEFER the long-side check rather than apply the tight
+        # open-position tolerance and spuriously halt on leftover dust.
+        MockBinance.base_bal = 0.00134
+        MockBinance.price_fails = True
+        self.x.do_run(self.bx())
+        self.assertIn("RECONCILE_DEFER", self.events())
+        self.assertFalse(self.x.halted(), 'no price must defer the dust check, not halt')
+
     def test_flat_book_sellable_balance_is_swept(self):
         # a flat book with a SELLABLE free base (0.06 LTC ~ $6 at price 100 >= $5)
         # is flattened to USDT — accumulated dust grown past the minimum, or an
@@ -472,67 +486,107 @@ class ExecutorTest(unittest.TestCase):
         self.assertTrue(self.x.armed())
         self.assertIn("ARM_SET", self.events())
 
-    # -- arm authentication: nonce + freshness + HMAC (findings 12/15) --------
+    # -- arm authentication: secret-gated arm, unconditional disarm, replay ----
     def _utc(self, ago=0):
         return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() - ago))
 
-    def test_arm_fresh_start_arms(self):
+    def _set_secret(self, secret="s3cr3t"):
+        with open(os.path.join(self.home, ".executor-env"), "w") as f:
+            f.write(f"BINANCE_KEY=k\nBINANCE_SECRET=s\nLIVE=1\nPILOT_ARM_SECRET={secret}\n"
+                    f"BASE=http://127.0.0.1:{self.port}\n")
+        return secret
+
+    def _sig(self, secret, nonce, utc):
+        import hmac as _h
+        import hashlib as _hh
+        return _h.new(secret.encode(), f"1|{nonce}|{utc}".encode(), _hh.sha256).hexdigest()
+
+    def test_arm_refuses_without_secret(self):
+        # RE-REVIEW B1: arming a live rig with NO PILOT_ARM_SECRET is refused,
+        # fail-safe — nonce/freshness alone is not authorization to open trades.
         self.x.set_arm(False, "test")
         self.x.honor_arm_request(True, "owner", nonce="n1", utc=self._utc(0))
-        self.assertTrue(self.x.armed(), "a fresh, new-nonce START must arm")
-        self.assertIn("ARM_UNAUTHENTICATED", self.events())  # no secret configured
+        self.assertFalse(self.x.armed(), "no secret -> must not arm")
+        self.assertIn("ARM_NO_SECRET", self.events())
+
+    def test_arm_fresh_start_with_secret_arms(self):
+        s = self._set_secret()
+        self.x.set_arm(False, "test")
+        u = self._utc(0)
+        self.x.honor_arm_request(True, "owner", nonce="n1", utc=u, hmac_sig=self._sig(s, "n1", u))
+        self.assertTrue(self.x.armed(), "a validly-signed fresh START arms")
 
     def test_arm_stale_request_refuses(self):
+        s = self._set_secret()
         self.x.set_arm(False, "test")
-        self.x.honor_arm_request(True, "owner", nonce="nstale", utc=self._utc(3600))
+        u = self._utc(3600)
+        self.x.honor_arm_request(True, "owner", nonce="nstale", utc=u, hmac_sig=self._sig(s, "nstale", u))
         self.assertFalse(self.x.armed(), "a stale (old-utc) arm request must not arm")
         self.assertIn("ARM_STALE_REQUEST", self.events())
 
     def test_arm_keepalive_same_nonce_does_not_respam(self):
+        s = self._set_secret()
         self.x.set_arm(False, "test")
-        self.x.honor_arm_request(True, "owner", nonce="n1", utc=self._utc(0))
+        u = self._utc(0)
+        self.x.honor_arm_request(True, "owner", nonce="n1", utc=u, hmac_sig=self._sig(s, "n1", u))
         self.assertTrue(self.x.armed())
         n_before = self.events().count("ARM_SET")
-        self.x.honor_arm_request(True, "owner", nonce="n1", utc=self._utc(0))  # keepalive
+        self.x.honor_arm_request(True, "owner", nonce="n1", utc=u, hmac_sig=self._sig(s, "n1", u))
         self.assertTrue(self.x.armed())
         self.assertEqual(self.events().count("ARM_SET"), n_before,
                          "a same-nonce keepalive re-stamps the dead-man without a new ARM_SET")
 
     def test_wipe_then_stale_request_does_not_rearm(self):
-        # armed on n1; a disk wipe loses ~/pilot (baseline + ARM); the stale
-        # request replayed by the sync must NOT re-arm — a wiped box needs a
-        # genuine fresh START (finding 15).
+        s = self._set_secret()
         self.x.set_arm(False, "test")
-        self.x.honor_arm_request(True, "owner", nonce="n1", utc=self._utc(0))
+        u1 = self._utc(0)
+        self.x.honor_arm_request(True, "owner", nonce="n1", utc=u1, hmac_sig=self._sig(s, "n1", u1))
         self.assertTrue(self.x.armed())
         for f in (self.x.ARM, self.x.ARM_BASELINE):
             try:
                 os.remove(f)
             except FileNotFoundError:
                 pass
-        self.x.honor_arm_request(True, "owner", nonce="n1", utc=self._utc(3600))
+        us = self._utc(3600)
+        self.x.honor_arm_request(True, "owner", nonce="n1", utc=us, hmac_sig=self._sig(s, "n1", us))
         self.assertFalse(self.x.armed(), "a wiped box must not auto-rearm from a stale request")
-        # a genuine fresh START (new nonce, fresh utc) then arms
-        self.x.honor_arm_request(True, "owner", nonce="n2", utc=self._utc(0))
+        u2 = self._utc(0)
+        self.x.honor_arm_request(True, "owner", nonce="n2", utc=u2, hmac_sig=self._sig(s, "n2", u2))
         self.assertTrue(self.x.armed(), "a fresh START after a wipe arms normally")
 
     def test_hmac_required_when_secret_configured(self):
-        import hmac as _h
-        import hashlib as _hh
-        secret = "s3cr3t"
-        with open(os.path.join(self.home, ".executor-env"), "w") as f:
-            f.write(f"BINANCE_KEY=k\nBINANCE_SECRET=s\nLIVE=1\nPILOT_ARM_SECRET={secret}\n"
-                    f"BASE=http://127.0.0.1:{self.port}\n")
+        s = self._set_secret()
         self.x.set_arm(False, "test")
-        utc = self._utc(0)
-        # a forged/invalid HMAC is refused
-        self.x.honor_arm_request(True, "owner", nonce="nx", utc=utc, hmac_sig="deadbeef")
+        u = self._utc(0)
+        self.x.honor_arm_request(True, "owner", nonce="nx", utc=u, hmac_sig="deadbeef")
         self.assertFalse(self.x.armed(), "an invalid HMAC must not arm")
         self.assertIn("ARM_HMAC_INVALID", self.events())
-        # the owner UI's valid HMAC arms
-        good = _h.new(secret.encode(), f"1|nx2|{utc}".encode(), _hh.sha256).hexdigest()
-        self.x.honor_arm_request(True, "owner", nonce="nx2", utc=utc, hmac_sig=good)
+        self.x.honor_arm_request(True, "owner", nonce="nx2", utc=u, hmac_sig=self._sig(s, "nx2", u))
         self.assertTrue(self.x.armed(), "a validly-signed fresh START arms")
+
+    def test_disarm_is_unconditional_even_with_secret(self):
+        # RE-REVIEW B2: STOP must work even with an absent/garbage HMAC — a kill
+        # switch is never gated behind authentication.
+        s = self._set_secret()
+        u = self._utc(0)
+        self.x.honor_arm_request(True, "owner", nonce="n1", utc=u, hmac_sig=self._sig(s, "n1", u))
+        self.assertTrue(self.x.armed())
+        self.x.honor_arm_request(False, "owner", nonce=None, utc=None, hmac_sig=None)
+        self.assertFalse(self.x.armed(), "an unsigned STOP must still stop the box")
+
+    def test_arm_replay_after_stop_is_rejected(self):
+        # RE-REVIEW C: a captured, validly-signed arm request cannot re-arm after a
+        # STOP — the monotonic watermark rejects a utc not newer than the last STOP.
+        s = self._set_secret()
+        u_arm = self._utc(60)
+        self.x.honor_arm_request(True, "owner", nonce="n1", utc=u_arm, hmac_sig=self._sig(s, "n1", u_arm))
+        self.assertTrue(self.x.armed())
+        self.x.honor_arm_request(False, "owner", nonce="n2", utc=self._utc(0))  # STOP now
+        self.assertFalse(self.x.armed())
+        # replay the ORIGINAL (older) arm request verbatim -> rejected
+        self.x.honor_arm_request(True, "owner", nonce="n1", utc=u_arm, hmac_sig=self._sig(s, "n1", u_arm))
+        self.assertFalse(self.x.armed(), "a replayed pre-STOP arm must not re-arm")
+        self.assertIn("ARM_REPLAY_REJECTED", self.events())
 
     def test_short_round_trip_fully_repays_despite_base_fee(self):
         # THE SHORT MIRROR of the dust bug: the close BUY fee is taken in LTC,

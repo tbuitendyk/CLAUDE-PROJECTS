@@ -242,11 +242,11 @@ def _read_baseline():
         return None
 
 
-def _write_baseline(nonce, honored):
+def _write_baseline(nonce, honored, watermark_utc=None):
     os.makedirs(PILOT, exist_ok=True)
     tmp = ARM_BASELINE + ".tmp"
     with open(tmp, "w") as f:
-        json.dump({"nonce": nonce, "honored": bool(honored),
+        json.dump({"nonce": nonce, "honored": bool(honored), "watermark_utc": watermark_utc,
                    "utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}, f)
     os.replace(tmp, ARM_BASELINE)
 
@@ -262,51 +262,65 @@ def _utc_age_s(utc_str):
         return 10 ** 9
 
 
+def _utc_newer(a, b):
+    """True if timestamp a is strictly more recent than b (smaller age)."""
+    return _utc_age_s(a) < _utc_age_s(b)
+
+
 def honor_arm_request(armed, source, nonce=None, utc=None, hmac_sig=None):
-    """The owner's master switch WITH authentication (findings 12/15).
+    """The owner's master switch WITH authentication (findings 12/15, re-review B1/B2).
 
-    Finding 12 — if PILOT_ARM_SECRET is configured (on the box), the request must
-    carry a valid HMAC over {armed,nonce,utc}; an unsigned or forged request is
-    refused. Without a secret the HMAC is skipped (fail-open) and the request is
-    journaled as unauthenticated, so the freshness+nonce edge below is the guard.
+    DISARM is UNCONDITIONAL and handled FIRST — a kill switch must never be gated
+    behind authentication (re-review B2). An unsigned or missing STOP still stops.
 
-    Finding 15 — arming is edge-triggered on a NEW nonce whose request is FRESH.
-    A stale arm-request replayed after a disk wipe (old utc, or a nonce already
-    seen) adopts the nonce as an UN-honored baseline and does NOT arm, so a wiped
-    box requires a genuine fresh START before it trades again. A host bounce that
-    preserves ~/pilot keeps the honored baseline and resumes, exactly as before."""
-    secret = load_env().get("PILOT_ARM_SECRET", "")
-    if secret:
-        expect = hmac.new(secret.encode(),
-                          f"{1 if armed else 0}|{nonce}|{utc}".encode(),
-                          hashlib.sha256).hexdigest()
-        if not hmac_sig or not hmac.compare_digest(expect, hmac_sig):
-            jlog("ARM_HMAC_INVALID", source=source, nonce=nonce)
-            return
-    elif armed:
-        jlog("ARM_UNAUTHENTICATED", source=source,
-             note="no PILOT_ARM_SECRET configured; freshness+nonce edge is the guard")
+    ARM requires a configured PILOT_ARM_SECRET and a valid HMAC over {1,nonce,utc}
+    (finding 12). Arming a live-money rig with NO secret is REFUSED, fail-safe
+    (re-review B1): the nonce/freshness edge alone is not authorization to open
+    trades. Arming is edge-triggered on a NEW nonce whose request is FRESH and
+    strictly newer than the last honored-arm/STOP watermark, so neither a stale
+    replay after a disk wipe (finding 15) nor a captured request replayed after a
+    STOP (re-review C) can re-arm. A host bounce that preserves ~/pilot keeps the
+    honored baseline and resumes."""
+    base = _read_baseline() or {}
+    wm = base.get("watermark_utc")
 
     if not armed:
+        # UNCONDITIONAL STOP. Advance the watermark to this disarm so a captured
+        # pre-STOP arm request cannot replay back in, and drop the honored flag so
+        # a keepalive of the old nonce cannot silently re-arm.
         set_arm(False, source)
-        if nonce:
-            _write_baseline(nonce, honored=False)
+        new_wm = utc if (utc and (not wm or _utc_newer(utc, wm))) else wm
+        _write_baseline(base.get("nonce", "stop"), honored=False, watermark_utc=new_wm)
         return
 
-    base = _read_baseline()
-    if base and base.get("nonce") == nonce:
-        if base.get("honored"):
-            set_arm(True, source)   # keepalive: re-stamp the dead-man, no freshness gate
-        # else: same un-honored nonce -> keep waiting for a genuine fresh START
+    secret = load_env().get("PILOT_ARM_SECRET", "")
+    if not secret:
+        jlog("ARM_NO_SECRET", source=source,
+             note="refusing to arm: no PILOT_ARM_SECRET configured on the box — "
+                  "provision the shared arm secret to enable arming (fail-safe)")
         return
-    # a NEW nonce (or no baseline yet): arm only if the request is FRESH. A stale
-    # request (old utc, e.g. replayed by the level-triggered sync after a wipe)
-    # becomes an un-honored baseline and is refused until a real START arrives.
+    expect = hmac.new(secret.encode(), f"1|{nonce}|{utc}".encode(), hashlib.sha256).hexdigest()
+    if not hmac_sig or not hmac.compare_digest(expect, hmac_sig):
+        jlog("ARM_HMAC_INVALID", source=source, nonce=nonce)
+        return
+
+    # keepalive of the current armed session: re-stamp the dead-man, no freshness gate
+    if base.get("nonce") == nonce and base.get("honored"):
+        set_arm(True, source)
+        return
+    # monotonic replay guard: an arm must be strictly newer than the last honored
+    # arm or STOP, so a captured valid request cannot re-arm after a disarm.
+    if wm and not _utc_newer(utc, wm):
+        jlog("ARM_REPLAY_REJECTED", source=source, nonce=nonce, utc=utc, watermark=wm)
+        return
+    # a NEW nonce: arm only if the request is FRESH. A stale request (old utc, e.g.
+    # replayed by the level-triggered sync after a wipe) becomes an un-honored
+    # baseline and is refused until a genuine fresh START arrives.
     if _utc_age_s(utc) <= ARM_REQUEST_FRESH_S:
-        _write_baseline(nonce, honored=True)
+        _write_baseline(nonce, honored=True, watermark_utc=utc)
         set_arm(True, source)
     else:
-        _write_baseline(nonce, honored=False)
+        _write_baseline(nonce, honored=False, watermark_utc=wm)
         jlog("ARM_STALE_REQUEST", source=source, nonce=nonce, age_s=int(_utc_age_s(utc)),
              note="arm request older than the freshness window — refusing to re-arm "
                   "without a fresh START (finding 15)")
@@ -685,18 +699,21 @@ def do_run(bx):
             jlog("RECONCILE_UNREADABLE", body=json.dumps(acct)[:200])
         else:
             long_drift = abs(free_base - long_qty)
-            # when FLAT, tolerate un-sellable sub-min-notional dust — the sweep
-            # clears anything sellable, so a flat book only ever carries dust the
-            # exchange will not let us sell. When positions are open, stay tight.
-            if flat and px:
-                long_tol = max(RECONCILE_TOL, MIN_NOTIONAL / px * 1.2)
-            else:
-                long_tol = RECONCILE_TOL
             short_excess = borrowed - short_nominal
             interest_cap = max(RECONCILE_TOL, short_nominal * MAX_SHORT_INTEREST_FRAC)
             problems = []
-            if long_drift > long_tol:
-                problems.append(f"long base {free_base:.6f} vs journal {long_qty:.6f}")
+            # long side: when FLAT, tolerate un-sellable sub-min-notional dust (the
+            # sweep clears anything sellable). If the price is unavailable this cycle
+            # the dust tolerance cannot be sized, so DEFER the long-side check rather
+            # than apply the tight open-position tolerance and false-halt on leftover
+            # dust (re-review px==None residual). When positions are open, stay tight.
+            if flat and not px:
+                jlog("RECONCILE_DEFER", free_base=free_base,
+                     reason="no price to size the flat dust tolerance; long-side check deferred")
+            else:
+                long_tol = max(RECONCILE_TOL, MIN_NOTIONAL / px * 1.2) if (flat and px) else RECONCILE_TOL
+                if long_drift > long_tol:
+                    problems.append(f"long base {free_base:.6f} vs journal {long_qty:.6f}")
             if short_excess < -RECONCILE_TOL:
                 problems.append(f"borrow {borrowed:.6f} below journal shorts {short_nominal:.6f}")
             elif short_excess > interest_cap:
@@ -834,7 +851,8 @@ def do_run(bx):
     # one status line per run so the live screen always shows current state,
     # even on a quiet day with no orders
     jlog("RUN_STATUS", armed=armed(), halted=halted(),
-         open=len(st["open"]), realized=round(st["realized"], 4), live=bx.live)
+         open=len(st["open"]), realized=round(st["realized"], 4), live=bx.live,
+         arm_secret=bool(load_env().get("PILOT_ARM_SECRET", "")))
     if not armed():
         if arm_present():
             jlog("ARM_STALE", reason="dead-man: ARM not refreshed within "
