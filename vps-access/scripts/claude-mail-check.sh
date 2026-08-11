@@ -137,10 +137,14 @@ safe = [w.strip("<>") for w in wanted if w and re.fullmatch(r"[A-Za-z0-9._@+-]+"
 script = "\n".join([
     "for mid in " + " ".join(f"'{x}'" for x in safe) + "; do",
     '  echo "MID $mid"',
-    '  qids=$(grep -h -F "message-id=<$mid>" /var/log/mail.log /var/log/mail.log.1 2>/dev/null '
+    # grep -a: a stray non-ASCII byte in the mail log must not make grep skip the
+    # whole file as "binary" and read a genuine SASL-authenticated message as
+    # UNVERIFIED (2026-08-11 root cause). -a forces text; it does not relax the
+    # check. Kept identical to claude-mail-recent.sh.
+    '  qids=$(grep -a -h -F "message-id=<$mid>" /var/log/mail.log /var/log/mail.log.1 2>/dev/null '
     '| sed -n "s/.*\\]: \\([^:]*\\): message-id=.*/\\1/p" | sort -u)',
     "  for q in $qids; do",
-    '    grep -h -F "$q: client=" /var/log/mail.log /var/log/mail.log.1 2>/dev/null | sed "s/^/  QLINE /"',
+    '    grep -a -h -F "$q: client=" /var/log/mail.log /var/log/mail.log.1 2>/dev/null | sed "s/^/  QLINE /"',
     "  done",
     "done",
 ]) if safe else "true"

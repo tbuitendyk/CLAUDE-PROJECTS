@@ -144,13 +144,20 @@ wanted = [hdr(m, "Message-ID").strip() for _, m in msgs]
 # become shell syntax. Anything else simply fails to verify, which is the
 # safe direction.
 safe = [w.strip("<>") for w in wanted if w and re.fullmatch(r"[A-Za-z0-9._@+-]+", w.strip("<>"))]
+# grep -a (--text): the mail log can carry a stray non-ASCII byte (an accented
+# display name, an IDN hostname in a client= line). Without -a, grep declares the
+# whole file "binary" and SILENTLY skips it — finding no queue id and reading a
+# genuinely SASL-authenticated owner message as UNVERIFIED (2026-08-11: a real
+# phone submission that DID carry sasl_username=theodore was rejected this way).
+# -a forces text processing; it does NOT relax the check — the real sasl line
+# must still be present for the message-id's queue id.
 script = "\n".join([
     "for mid in " + " ".join(f"'{x}'" for x in safe) + "; do",
     '  echo "MID $mid"',
-    '  qids=$(grep -h -F "message-id=<$mid>" /var/log/mail.log /var/log/mail.log.1 2>/dev/null '
+    '  qids=$(grep -a -h -F "message-id=<$mid>" /var/log/mail.log /var/log/mail.log.1 2>/dev/null '
     '| sed -n "s/.*\\]: \\([^:]*\\): message-id=.*/\\1/p" | sort -u)',
     "  for q in $qids; do",
-    '    grep -h -F "$q: client=" /var/log/mail.log /var/log/mail.log.1 2>/dev/null | sed "s/^/  QLINE /"',
+    '    grep -a -h -F "$q: client=" /var/log/mail.log /var/log/mail.log.1 2>/dev/null | sed "s/^/  QLINE /"',
     "  done",
     "done",
 ]) if safe else "true"
