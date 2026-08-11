@@ -168,6 +168,19 @@ module.exports.exitGapBeyondThreeHoursIsUnpriced = function () {
   assert.ok(!o.priced, 'an exit more than 3h past nominal is not priced (matches bracket.js tolerance)');
 };
 
+// RE-REVIEW 2026-08-11: at marginFrac=0 the recomputed boundary entry*(1-mae) can
+// land ~1 ulp ABOVE the binding winner's low in float64, and the engine's strict
+// `px < entry*(1-stop)` would then stop the very winner the stop preserves. The
+// float64 guard nudges stopPct so the boundary sits AT or below the low.
+module.exports.float64BoundaryGuardPreservesTheBindingWinner = function () {
+  const map = new Map();
+  const entry = 134.53252052864894, low = 114.67127875175676; // this pair: boundary 1 ulp > low
+  putHold(map, 0, { entry, exit: 140, low }); // net winner
+  const r = tuneFixedStop([{ entryTs: 0, side: 'LONG' }], map, { holdHours: 3, feePerLeg: 0.001 });
+  assert.ok(entry * (1 - r.stopPct) <= low,
+    `binding winner's strict boundary must be at/below its low: got ${entry * (1 - r.stopPct)} > ${low}`);
+};
+
 module.exports.entryOutcomeReportsMaeAndPnl = function () {
   const map = new Map();
   putHold(map, 0, { entry: 200, exit: 220, low: 190 });

@@ -14,8 +14,11 @@
 // a short), so a position whose MAE equals the stop is preserved, not cut. So the
 // tightest stop that preserves EVERY winner is exactly max(MAE) over the winners:
 // at that stop the deepest winner sits ON the boundary and survives (strict), one
-// tick tighter would cut it, and looser is not as tight as possible. This is why
-// marginFrac=0 is SAFE — the strict boundary already spares the binding winner. MAE is
+// tick tighter would cut it, and looser is not as tight as possible. In exact
+// arithmetic marginFrac=0 is therefore the tightest safe stop; a float64 boundary
+// guard (see tuneFixedStop) nudges it up by a few ulps where the round-trip would
+// otherwise clip the binding winner, so the preserve-every-winner guarantee holds
+// in floating point too. (marginFrac remains available for live tick-vs-bar slack.) MAE is
 // read from hourly bar extremes (bar.low for a long, bar.high for a short) and is
 // UNAMBIGUOUS -- unlike a stop-vs-target race, the adverse extreme does not depend
 // on within-bar ordering, so the primary answer needs no minute data.
@@ -50,8 +53,10 @@ function entryOutcome(entryTs, side, map, holdHours, feePerLeg = 0) {
   const exit = eExit.open; // open-to-open, matching the market-entry convention
   if (!(entry > 0) || !(exit > 0)) return { priced: false };
   // adverse extreme over the ACTUAL hold [entry, exit): a long is hurt by lows,
-  // a short by highs. The window extends to the gap-resolved exit so a stretched
-  // hold's later adverse ticks are not missed.
+  // a short by highs. The upper bound is the gap-resolved exit index — the extra
+  // indices in [holdHours, exitStepH) are the gap's ABSENT bars (the walk took the
+  // first present bar as the exit), so they are skipped by `if (!bar) continue`
+  // and contribute nothing; the bound just keeps the window aligned with the exit.
   let worst = entry;
   for (let h = 0; h < exitStepH; h++) {
     const bar = map.get(entryTs + h * HOUR_MS);
@@ -93,11 +98,27 @@ function tuneFixedStop(entries, map, opts = {}) {
   // the tightest stop that stops out NO winner = the deepest adverse move any
   // winner survived. If there are no winners, the winner constraint is vacuous.
   const maxWinnerMae = winners.length ? Math.max(...winners.map((p) => p.mae)) : null;
-  const stopPct = maxWinnerMae == null ? null : maxWinnerMae * (1 + marginFrac);
   // which winner sits at the bound (the binding constraint) -- useful to eyeball
   const binding = winners.length
     ? winners.reduce((a, b) => (b.mae > a.mae ? b : a))
     : null;
+  let stopPct = maxWinnerMae == null ? null : maxWinnerMae * (1 + marginFrac);
+  // FLOAT64 BOUNDARY GUARD (re-review 2026-08-11). In exact arithmetic
+  // stopPct == the binding winner's mae (at marginFrac=0), so entry*(1-stopPct)
+  // == its low `worst` and the strict engine boundary (px < entry*(1-stop))
+  // spares it. But that round-trip can land ~1 ulp ABOVE `worst` in float64
+  // (~1.6% of random price pairs), and strict `<` would then stop the very
+  // winner the stop exists to preserve. Nudge stopPct up by the minimum that
+  // puts the binding winner's boundary AT or below its actual low. Bounded to a
+  // few ulps; economically zero (~1e-17), and it makes the preserve-every-winner
+  // guarantee exact rather than "exact up to rounding".
+  if (binding && stopPct != null) {
+    let guard = 0;
+    while (binding.entry * (1 - stopPct) > binding.worst && guard < 16) {
+      stopPct *= (1 + Number.EPSILON);
+      guard++;
+    }
+  }
 
   // What the stop does to the losers it now cuts: a loser whose MAE STRICTLY
   // exceeds stopPct exits at ~ -stopPct (minus fees) instead of riding to its
@@ -134,7 +155,11 @@ function tuneFixedStop(entries, map, opts = {}) {
   const winnerMaes = winners.map((w) => w.mae).sort((a, b) => b - a);
   const curve = [];
   for (let k = 0; k <= Math.min(3, winnerMaes.length - 1); k++) {
-    const S = winnerMaes[k]; // stop just above the (k+1)th-deepest winner spares it
+    // stop just above the (k+1)th-deepest winner spares it. Apply marginFrac here
+    // TOO (re-review 2026-08-11): counts.losersCutByStop cuts at the margin-widened
+    // stopPct, so the curve must widen by the same margin or the two loser tallies
+    // in one report disagree whenever marginFrac>0 (they coincide at the deployed 0).
+    const S = winnerMaes[k] * (1 + marginFrac);
     const stoppedNet = -S - 2 * feePerLeg;
     let wCount = 0; let wProfit = 0; let wDelta = 0; let lCount = 0; let lDelta = 0;
     for (const p of per) {
