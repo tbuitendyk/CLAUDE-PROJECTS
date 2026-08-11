@@ -175,7 +175,7 @@ Blockers and status:
 | 24+25+27 | No liveness signal / suppressed staleness / no alerting | FIXED — banner off executor heartbeat in all states; VPS alert timer emails on halt/dead-heartbeat/stale-sync/incident |
 | 3 | Intent age on un-synced OS clock, no NTP | FIXED — exchange-synced age check, loud INTENT_STALE/CLOCK_DRIFT, chrony on both hosts |
 | 8 | Actionable intent can ship decision_price=null | FIXED — null-price guard in the producer |
-| 12+15 | Arm has no owner auth; flat-book wipe silently re-arms | see §10 — code + owner provisioning |
+| 12+15 | Arm has no owner auth; flat-book wipe silently re-arms | FIXED (code) — nonce+freshness edge closes the wipe-rearm (15); HMAC auth (12) activates once the owner provisions a shared secret (§10) |
 | 21 | Public deploy endpoint transitively controls the trading box | OWNER — infra, see §10 |
 
 ## 10. Remaining owner actions before arm
@@ -183,12 +183,13 @@ Blockers and status:
 These cannot be closed by code alone; the owner must complete them and the
 review must be re-run clean before the master switch is pressed:
 
-- **Arm authentication (findings 12, 15).** The screen HMACs the arm-request
-  with a shared secret the box validates, and arming is nonce/edge-triggered so
-  a stale request after a disk wipe cannot silently re-arm. This needs a shared
-  secret provisioned on BOTH the VPS UI and the box (like the mail password),
-  which is an owner step. Until then, the batch-1 dead-man is the operative
-  guard (control-plane loss ⇒ self-disarm) and blast radius stays key-capped.
+- **Arm authentication (findings 12, 15).** SHIPPED in code: arming is now
+  nonce/edge-triggered and freshness-gated, so a stale request after a disk wipe
+  cannot silently re-arm (15 closed with no secret needed). To turn on the HMAC
+  authentication layer (12), the owner provisions a shared secret on BOTH the VPS
+  UI (env `PILOT_ARM_SECRET`) and the box (`~/.executor-env`); until then the box
+  journals ARM_UNAUTHENTICATED and the freshness+nonce edge plus the batch-1
+  dead-man are the guard, with blast radius key-capped.
 - **Deploy endpoint hardening (finding 21).** Add an IP allowlist to
   deploy.buitendyk.ca (Claude egress only), remove the trading-box scripts from
   the public run-script set (or gate them behind a separate non-public action),
