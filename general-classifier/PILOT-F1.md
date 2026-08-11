@@ -202,3 +202,55 @@ the arm/disarm control plane — are now fixed in code and re-verified by test:
   mirror.json), decision-record write is best-effort (gate the ship on it),
   found:false can mask vanished data as pending, and the hash tripwire is
   informational-only. None blocks arming; scheduled as follow-ups.
+
+## 11. Round-2 re-review + fixes (2026-08-11)
+
+A second, three-lens adversarial review (arm/liveness, money-math, alerting) was
+run against the round-1 fixes. Money verdict: **MONEY_SOUND** — the long entry-fee
+correction was confirmed correct to the cent, and the reconcile/residual changes
+only ever tighten safety. The arm-auth core (HMAC, monotonic watermark, future-utc
+clamp) was confirmed sound. The liveness/observability lenses found a cluster of
+**silent-failure** gaps; all are now fixed in code and covered by watched-failing
+tests:
+
+- **Heartbeat proved too early.** `RECONCILE_OK` fires before the due-exit step, so
+  a box that reconciled then died in the exit loop read "green" while exits never
+  fired. Heartbeat is now `RUN_STATUS`/`BALANCE` (both emitted AFTER exits), in the
+  alert and the screen identically.
+- **Alert was blind to arm/halt edges.** It derived `armed`/`halted` only from
+  `RUN_STATUS`; a box armed via the CLI but hung before its first run cycle read
+  `at_risk=false` and suppressed every liveness page — a silent dead-armed box. The
+  alert now honors `ARM_SET`/`ARM_CLEAR`/`HALT_CLEAR` like the screen.
+- **Silently-refused arm.** A START the box refuses (stale/future request, replay,
+  no secret, bad HMAC) left the screen "arm pending" forever with no reason. Those
+  four `ARM_*` events now surface as screen incidents.
+- **Arm freshness judged on the box OS clock.** A skewed box clock could silently
+  refuse a legitimate START. The arm path now judges freshness against
+  EXCHANGE-synced time (falling back to the OS clock only if the sync fails).
+- **Mirror could fail silent.** A deleted/corrupt `mirror.json`, or one that
+  verified nothing, read as healthy. The alert now pages on an absent verdict while
+  a position is open, on a corrupt verdict, and on `checked:0` with a position open.
+- **Alert fatigue.** A per-kind incident cooldown caps a re-stamped condition to one
+  page per hour instead of one per alert run.
+- **Recovered-short P&L.** The crash-recovery exit now books a conservative borrow-
+  interest estimate for a short, so a recovered P&L cannot be overstated.
+
+**Accepted residual risks (fail-safe, documented rather than fixed):**
+
+- **Trust model.** The dead-man protects against carrier DEATH, not a carrier that
+  LIES: anyone able to replay a captured keepalive keeps an already-armed box armed
+  (it cannot arm a stopped box). Within the "VPS + SSH is trusted" model this is the
+  real boundary; a STOP takes effect only if the carrier is honest.
+- **Corrupt arm-baseline.** An unreadable `arm-baseline.json` drops the replay
+  watermark, so a captured <15-min arm could re-arm a stopped box. Narrow: writes
+  are atomic (`tmp`+`os.replace`), so torn files are near-impossible.
+- **Reconcile interest cap on a backward clock step.** An hours-scale backward jump
+  can false-halt a multi-short book (deadlock, not loss). Both hosts are
+  NTP-disciplined.
+
+**Go-live checklist (owner):**
+1. The same `PILOT_ARM_SECRET` is set on the box and the VPS (the provisioner
+   fingerprint-matches both; a mismatch now shows on the screen as `ARM_NO_SECRET`
+   / `ARM_HMAC_INVALID` instead of a silent refusal).
+2. Box and VPS clocks agree (NTP up on both — the installer verifies this).
+3. The box shows STOPPED (ARM absent) until you press START.

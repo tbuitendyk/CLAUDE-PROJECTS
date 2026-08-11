@@ -125,13 +125,42 @@ module.exports.clockSyncAloneIsNotALiveHeartbeat = function () {
   ]);
   assert.strictEqual(st.lastHeartbeatUtc, null,
     'CLOCK_SYNC alone (no authed round-trip) is not a heartbeat');
-  // a BALANCE or RECONCILE_OK — proof the authenticated loop completed — is one.
+  // a BALANCE — the end-of-loop snapshot — is a live heartbeat.
   st = derive([
     { event: 'CLOCK_SYNC', utc: 't-clock', drift_ms: 4 },
     { event: 'BALANCE', utc: 't-balance', free: 42 },
   ]);
   assert.strictEqual(st.lastHeartbeatUtc, 't-balance',
     'a completed BALANCE round-trip is a live heartbeat');
+};
+
+module.exports.reconcileOkIsNotAHeartbeatButRunStatusIs = function () {
+  // RE-REVIEW LIVENESS: RECONCILE_OK fires at step 1, BEFORE due exits (step 3), so
+  // a box that reconciles then dies in the exit loop would read green off a stale
+  // RECONCILE_OK while exits never fire. RUN_STATUS is journaled AFTER the exit
+  // loop, so IT certifies exits ran.
+  let st = derive([
+    { event: 'CLOCK_SYNC', utc: 't-clock' },
+    { event: 'RECONCILE_OK', utc: 't-recon', free_base: 0 },
+  ]);
+  assert.strictEqual(st.lastHeartbeatUtc, null,
+    'RECONCILE_OK fires before exits — it is no longer a heartbeat');
+  st = derive([
+    { event: 'RECONCILE_OK', utc: 't-recon', free_base: 0 },
+    { event: 'RUN_STATUS', utc: 't-status', armed: true, halted: false },
+  ]);
+  assert.strictEqual(st.lastHeartbeatUtc, 't-status',
+    'RUN_STATUS (post-exit) is the live heartbeat');
+};
+
+module.exports.armRefusalEventsSurfaceAsIncidents = function () {
+  // RE-REVIEW A1/A4: a START the box REFUSES (stale/future, replay, no secret, bad
+  // HMAC) must be visible on the screen, not a silent forever-pending arm.
+  for (const kind of ['ARM_STALE_REQUEST', 'ARM_REPLAY_REJECTED', 'ARM_NO_SECRET', 'ARM_HMAC_INVALID']) {
+    const st = derive([{ event: kind, utc: 't1', source: 'owner' }]);
+    assert.strictEqual(st.incidents.length, 1, `${kind} must surface as an incident`);
+    assert.strictEqual(st.incidents[0].kind, kind, `${kind} incident carries its kind`);
+  }
 };
 
 module.exports.haltSetReflectsImmediatelyAndClears = function () {

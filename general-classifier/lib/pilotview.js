@@ -100,6 +100,14 @@ function derive(events) {
       case 'INTENT_STALE':
       case 'CLOCK_DRIFT':
       case 'ARM_STALE':
+      // arm REFUSAL events (re-review A1/A4): when the owner presses START but the
+      // box refuses it — stale/future request, replay after STOP, no secret, or a
+      // bad HMAC — the screen would otherwise sit at "arm pending" forever with no
+      // reason. Surface each as an incident so a silently-refused arm is visible.
+      case 'ARM_STALE_REQUEST':
+      case 'ARM_REPLAY_REJECTED':
+      case 'ARM_NO_SECRET':
+      case 'ARM_HMAC_INVALID':
       case 'HALT_SET':
         if (e.event === 'HALT_SET') halted = true;  // reflect the halt at once
         incidents.push({ utc: e.utc, kind: e.event, detail: JSON.stringify(
@@ -111,14 +119,15 @@ function derive(events) {
   }
 
   const avg = (a) => (a.length ? a.reduce((x, y) => x + y, 0) / a.length : null);
-  // A live heartbeat must prove the executor's FULL loop ran, not just its first
-  // step. CLOCK_SYNC fires early each cycle before any authenticated Binance call;
-  // a box that hangs after it (exchange network down, auth wedged) keeps emitting
-  // CLOCK_SYNC while trading nothing — a "green" dead executor. Only BALANCE and
-  // RECONCILE_OK, which require a completed authenticated round-trip, count as a
-  // live heartbeat (re-review liveness L1). Kept byte-identical to pilot-alert.sh.
+  // A live heartbeat must prove the loop ran PAST the due-exit step. CLOCK_SYNC
+  // fires before any account call, and RECONCILE_OK fires at step 1 — BEFORE due
+  // exits (step 3). A box that reconciles then dies in the exit loop keeps
+  // re-emitting RECONCILE_OK while scheduled exits never fire, reading falsely
+  // green. RUN_STATUS is journaled every run right AFTER the exit loop, so it
+  // certifies exits completed; BALANCE is the end-of-loop snapshot. Kept
+  // byte-identical to pilot-alert.sh (re-review liveness).
   const lastHeartbeat = [...events].reverse().find((e) =>
-    ['BALANCE', 'RECONCILE_OK'].includes(e.event));
+    ['RUN_STATUS', 'BALANCE'].includes(e.event));
 
   // the full event log the owner asked for: everything the executor did, newest
   // first, lightly flattened so the screen can print it verbatim.
