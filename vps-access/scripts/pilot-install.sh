@@ -57,6 +57,9 @@ TICK
 install -m 755 "$REPO/scripts/pilot-produce-and-push.sh" /usr/local/sbin/pilot-produce-and-push.sh
 # the journal-sync + arm-reconcile (installed copy)
 install -m 755 "$REPO/scripts/pilot-sync-journal.sh" /usr/local/sbin/pilot-sync-journal.sh
+# push alerting — email the owner on halt/dead-heartbeat/stale-sync/new-incident
+# (review finding 27: observability was pull-only; the owner sleeps while it runs)
+install -m 755 "$REPO/scripts/pilot-alert.sh" /usr/local/sbin/pilot-alert.sh
 
 install -m 755 /dev/stdin /usr/local/sbin/pilot-sync.sh <<SYNC
 #!/usr/bin/env bash
@@ -118,11 +121,30 @@ Persistent=true
 WantedBy=timers.target
 UNIT
 
+cat > /etc/systemd/system/pilot-alert.service <<UNIT
+[Unit]
+Description=Pilot alert — email owner on halt/dead-heartbeat/stale-sync/incident
+After=network-online.target
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/pilot-alert.sh
+UNIT
+cat > /etc/systemd/system/pilot-alert.timer <<UNIT
+[Unit]
+Description=Pilot alert every 15 minutes
+[Timer]
+OnCalendar=*-*-* *:00/15:00 UTC
+Persistent=true
+[Install]
+WantedBy=timers.target
+UNIT
+
 echo "== enable + start (enable = survives reboot) =="
 systemctl daemon-reload
 systemctl enable --now pilot-tunnel.service
 systemctl enable --now pilot-tick.timer
 systemctl enable --now pilot-sync.timer
+systemctl enable --now pilot-alert.timer
 
 echo "== configure the Mexico box: LIVE=1 (ARM still gates all entries) + systemd timer =="
 # The box has no cron but has systemd + passwordless sudo, so a SYSTEM timer is
