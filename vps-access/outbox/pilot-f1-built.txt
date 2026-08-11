@@ -1,0 +1,99 @@
+Live F1 pilot: built, tested, pre-registered — waiting on your API key to trade
+
+tl;dr: your go is done as an execution-fidelity pilot. Venue confirmed from the
+new Mexico box (Binance answers, not 451'd; LTC margin allowed, $5 minimum). The
+whole chain is written, committed and tested with no keys and no live orders:
+a deterministic executor with 15 passing tests, a signal producer that reuses
+the frozen F1 committee, and the live trade screen you asked for. All trading
+logic is plain code on timers — no AI anywhere in the path, exactly as you
+required. Two things are yours to do before the first real order (a sub-account
+key, and a dust trade you approve); nothing trades until then.
+
+
+WHAT YOU ASKED FOR, AND WHERE IT LANDED
+
+You said three things: go live with small trades long and short; a live screen
+tracking everything in real time; and all trading logic independent of my
+oversight. All three are now written into a pre-registration committed BEFORE
+any key exists (general-classifier/PILOT-F1.md, and a matching book line in
+VERDICTS.md), so the rules were fixed before the money.
+
+- SMALL, LONG AND SHORT. LTCUSDT only (that is the single pair F1 actually
+  trades; XRP and BCH are inputs to the decision, never bought or sold). $10 a
+  position, up to 6 open at once, so about $60 deployed plus the short side's
+  collateral. Long and short both go through isolated margin, which also turns
+  the short-side borrow cost into a number we MEASURE instead of guess.
+
+- REAL-TIME SCREEN. A new page in the classifier (same login as the rest of the
+  site) shows open and closed positions, realized profit, the number the pilot
+  exists to find — realized cost per leg against the $0.125 the paper model
+  assumes — plus fill slippage, executor heartbeat, and any kill or halt. It
+  refreshes on the journal-sync cadence and states plainly that it only reads,
+  never trades.
+
+- INDEPENDENT OF ME. The signal is deterministic engine math on a timer; the
+  executor is a separate, plain-Python program on the Mexico box that validates
+  a machine-readable order-intent and places it, or does nothing. I am a
+  read-only observer: I can read the journal, report, and propose code changes
+  through the normal deploy path, but no trade waits on me or can be changed by
+  me. The one human lever is a HALT button on the screen (I can also set it in
+  an emergency) — it stops new entries; scheduled exits still run, because
+  freezing an exit would turn a software doubt into an open, unmanaged position.
+
+
+VENUE CHECK FROM THE NEW BOX (read-only, no keys)
+
+ssh works with aws-mex-deb13-new.pem. Egress is Querétaro, Mexico (Amazon), not
+the US exit that Binance blocks. api.binance.com answered HTTP 200. LTCUSDT is
+TRADING, margin allowed, minimum order $5, lot step 0.001, clock NTP-synced.
+Everything the pilot needs is reachable from there.
+
+
+WHAT IS BUILT AND TESTED (no keys, no live orders, all committed)
+
+- The executor (vps-access/executor/mx_executor.py): deterministic, pure
+  standard library, keeps an append-only journal that IS its memory, reconciles
+  the exchange against that journal every run, and fails safe — on anything odd
+  it halts new entries but still runs due exits. Kill rules are all in, each
+  labelled a guess so we sharpen them with real data: 3 rejects in a row, a fill
+  more than 1% off the decision price, an exchange/journal mismatch, a missed
+  exit, or cumulative loss past $50. 15 tests drive the whole path against a
+  fake Binance on localhost, including the live-order signing path.
+
+- The signal producer (general-classifier/lib/pilotsignal.js): computes the
+  current committee call by reusing the EXACT frozen F1 members the forward book
+  uses, so every live fill has a paper twin. It emits an intent carrying only a
+  direction and the decision price — never a size, so a bad intent can point a
+  fixed $10 clip the wrong way but can never enlarge it.
+
+- The screen and its data (lib/pilotview.js, /api/pilot, public/pilot.html),
+  plus the two VPS timer scripts that ship intents to the box and pull the
+  journal back. Full test suite green; the server boots clean with the new page.
+
+
+THE TWO THINGS ONLY YOU CAN DO
+
+1. Create the Binance API key — ideally on a DEDICATED sub-account funded with
+   only the pilot money (~$150–200 covers the clips and short collateral),
+   because any trade-key can move everything in the account it lives in, so the
+   sub-account is what actually caps the loss at the stake. Permissions: spot
+   AND margin trading ON, withdrawals OFF, and restrict it to the box's IP
+   78.13.103.81. Put the key and secret in a file on the Mexico box (not on the
+   VPS — I do not want a trading credential sharing a machine with the deploy
+   endpoint) and tell me the path.
+
+2. Approve the dust trade. Once the key is on the box I will arm the plumbing
+   with live OFF, then run ONE $10 buy-then-sell round trip, declared as a
+   plumbing test with its P&L void, and email you its full journal — the fill
+   prices, the real fee per leg, the reconciliation. You read that and say go;
+   only then do the timers arm and the model start driving.
+
+
+ONE STANDING HONESTY NOTE, unchanged from before: this pilot measures
+EXECUTION, not whether F1 makes money. F1's edge is still unproven — its forward
+paper book is at 13 of the 30 trades our own rule requires before any verdict,
+and the pilot's profit or loss, either way, says nothing about that. What the
+pilot buys is that when trade 30 arrives (~5-7 weeks), we already know exactly
+what it costs to trade this thing for real.
+
+c.
