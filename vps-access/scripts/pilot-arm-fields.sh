@@ -37,13 +37,21 @@ except Exception:
 PY
 ) || disarm
 
-# Only an ARM carries authorization tokens into the remote shell, so only an ARM
-# is gated. A stray space/newline inside a field also lands here: `read` mis-splits
-# it, the pieces fail the strict patterns, and we degrade to disarm (fail-safe).
+# A stray space/newline inside a field also lands here: `read` mis-splits it, the
+# pieces fail the strict patterns, and we degrade to disarm (fail-safe).
+#
+# CRITICAL (re-review 2026-08-11): a NON-arm must ALSO emit sentinels, never its
+# raw fields. A disarm is unconditional on the box and ignores the tokens — but
+# the tokens are still interpolated into the box's remote SHELL upstream of the
+# executor, so a clean-parsing `armed:false` request carrying `nonce:"';reboot;'"`
+# would inject at the shell layer if we passed it through. So: an ARM is
+# shape-gated; ANYTHING ELSE degrades to the token-free disarm sentinel.
 if [ "$want" = "1" ]; then
   printf '%s' "$nonce" | grep -qE '^[0-9a-f]{18}$' || disarm
   printf '%s' "$hmac"  | grep -qE '^[0-9a-f]{64}$' || disarm
   printf '%s' "$utc"   | grep -qE '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\.[0-9]+)?Z$' || disarm
+else
+  disarm   # non-arm carries NO tokens into the remote shell -> safe sentinel tuple
 fi
 
 printf '%s %s %s %s\n' "$want" "$nonce" "$utc" "$hmac"

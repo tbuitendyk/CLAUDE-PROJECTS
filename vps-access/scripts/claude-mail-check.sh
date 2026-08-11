@@ -152,7 +152,7 @@ script = "\n".join([
     # each line tagged with its queue id. Kept identical to claude-mail-recent.sh.
     "  for q in $qids; do",
     '    grep -a -h -F "$q: client=" /var/log/mail.log /var/log/mail.log.1 2>/dev/null | sed "s/^/  QSASL $q /"',
-    f'    grep -a -h -F "$q: to=<{MBOX}>" /var/log/mail.log /var/log/mail.log.1 2>/dev/null | sed "s/^/  QTO $q /"',
+    f'    grep -a -i -h -F "$q: to=<{MBOX}>" /var/log/mail.log /var/log/mail.log.1 2>/dev/null | sed "s/^/  QTO $q /"',  # -i: match the helper's case-insensitive recipient check
     "  done",
     "done",
 ]) if safe else "true"

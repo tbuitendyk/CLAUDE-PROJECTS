@@ -193,7 +193,7 @@ script = "\n".join([
     '| sed -n "s/.*\\]: \\([^:]*\\): message-id=.*/\\1/p" | sort -u)',
     "  for q in $qids; do",
     '    grep -a -h -F "$q: client=" /var/log/mail.log /var/log/mail.log.1 2>/dev/null | sed "s/^/  QSASL $q /"',
-    f'    grep -a -h -F "$q: to=<{MBOX}>" /var/log/mail.log /var/log/mail.log.1 2>/dev/null | sed "s/^/  QTO $q /"',
+    f'    grep -a -i -h -F "$q: to=<{MBOX}>" /var/log/mail.log /var/log/mail.log.1 2>/dev/null | sed "s/^/  QTO $q /"',  # -i: postfix logs the recipient localpart verbatim; the helper matches case-insensitively, so match the same way here
     "  done",
     "done",
 ]) if safe else "true"

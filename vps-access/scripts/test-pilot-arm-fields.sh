@@ -57,6 +57,12 @@ expect "truncated hmac -> fail-safe disarm" "0 - - -"
 writereq _ "{\"armed\":false}"
 expect "disarm request -> 0 - - -" "0 - - -"
 
+# 6b) RE-REVIEW BLOCKER: a clean-parsing armed:false request CARRYING a malicious
+# token must NOT pass it through — the disarm path is interpolated into the box's
+# remote shell just like the arm path, so it must emit sentinels, not raw fields.
+writereq _ "{\"armed\":false,\"nonce\":\"';reboot;'\"}"
+expect "disarm with injection payload -> fail-safe sentinels" "0 - - -"
+
 # 7) missing file -> fail-safe disarm
 rm -f "$TMP/req.json"
 got="$(bash "$SUT" "$TMP/req.json")"
