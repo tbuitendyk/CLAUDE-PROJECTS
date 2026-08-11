@@ -115,6 +115,25 @@ module.exports.configReportsTheTestedF1SpecFromTheAuthoritativeSource = function
   assert.strictEqual(c.execution.clipUsd, 10, 'clip size is shown for the owner');
 };
 
+module.exports.clockSyncAloneIsNotALiveHeartbeat = function () {
+  // RE-REVIEW LIVENESS L1: a box that hangs after stepping its clock keeps
+  // emitting CLOCK_SYNC while placing/closing nothing. That must NOT read as a
+  // live heartbeat, or the screen shows a dead executor as green.
+  let st = derive([
+    { event: 'CLOCK_SYNC', utc: 't-clock', drift_ms: 4 },
+    { event: 'CLOCK_SYNC', utc: 't-clock2', drift_ms: 5 },
+  ]);
+  assert.strictEqual(st.lastHeartbeatUtc, null,
+    'CLOCK_SYNC alone (no authed round-trip) is not a heartbeat');
+  // a BALANCE or RECONCILE_OK — proof the authenticated loop completed — is one.
+  st = derive([
+    { event: 'CLOCK_SYNC', utc: 't-clock', drift_ms: 4 },
+    { event: 'BALANCE', utc: 't-balance', free: 42 },
+  ]);
+  assert.strictEqual(st.lastHeartbeatUtc, 't-balance',
+    'a completed BALANCE round-trip is a live heartbeat');
+};
+
 module.exports.haltSetReflectsImmediatelyAndClears = function () {
   let st = derive([{ event: 'HALT_SET', source: 'executor', reason: 'x' }]);
   assert.strictEqual(st.halted, true, 'HALT_SET reflects the halt at once (not a cycle later)');

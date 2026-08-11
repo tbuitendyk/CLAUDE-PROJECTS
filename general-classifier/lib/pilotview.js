@@ -111,8 +111,14 @@ function derive(events) {
   }
 
   const avg = (a) => (a.length ? a.reduce((x, y) => x + y, 0) / a.length : null);
+  // A live heartbeat must prove the executor's FULL loop ran, not just its first
+  // step. CLOCK_SYNC fires early each cycle before any authenticated Binance call;
+  // a box that hangs after it (exchange network down, auth wedged) keeps emitting
+  // CLOCK_SYNC while trading nothing — a "green" dead executor. Only BALANCE and
+  // RECONCILE_OK, which require a completed authenticated round-trip, count as a
+  // live heartbeat (re-review liveness L1). Kept byte-identical to pilot-alert.sh.
   const lastHeartbeat = [...events].reverse().find((e) =>
-    ['CLOCK_SYNC', 'BALANCE', 'RECONCILE_OK'].includes(e.event));
+    ['BALANCE', 'RECONCILE_OK'].includes(e.event));
 
   // the full event log the owner asked for: everything the executor did, newest
   // first, lightly flattened so the screen can print it verbatim.
