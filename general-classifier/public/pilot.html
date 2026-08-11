@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>F1 live pilot — execution fidelity</title>
+<link rel="stylesheet" href="style.css">
+<style>
+  body { font-family: -apple-system, system-ui, sans-serif; margin: 0; padding: 1.2rem;
+         background: #0e1116; color: #d6dce5; }
+  h1 { font-size: 1.15rem; margin: 0 0 .2rem; }
+  .sub { color: #8b96a5; font-size: .8rem; margin-bottom: 1rem; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: .6rem; margin-bottom: 1.1rem; }
+  .tile { background: #171c24; border: 1px solid #232a35; border-radius: 8px; padding: .6rem .7rem; }
+  .tile .k { color: #8b96a5; font-size: .68rem; text-transform: uppercase; letter-spacing: .04em; }
+  .tile .v { font-size: 1.15rem; margin-top: .2rem; font-variant-numeric: tabular-nums; }
+  .pos { color: #4ec9a5; } .neg { color: #e06c75; } .warn { color: #e5c07b; }
+  table { width: 100%; border-collapse: collapse; font-size: .8rem; margin-bottom: 1.2rem; }
+  th, td { text-align: right; padding: .35rem .5rem; border-bottom: 1px solid #232a35; font-variant-numeric: tabular-nums; }
+  th:first-child, td:first-child { text-align: left; }
+  th { color: #8b96a5; font-weight: 600; font-size: .68rem; text-transform: uppercase; }
+  h2 { font-size: .82rem; text-transform: uppercase; letter-spacing: .05em; color: #8b96a5; margin: 1.2rem 0 .4rem; }
+  .banner { padding: .55rem .8rem; border-radius: 6px; margin-bottom: 1rem; font-size: .85rem; }
+  .halted { background: #3a1d1f; border: 1px solid #e06c75; color: #f2a7ad; }
+  .running { background: #16281f; border: 1px solid #2f5e46; color: #7fd3ab; }
+  .stale { background: #2f2a17; border: 1px solid #e5c07b; color: #e5c07b; }
+  .muted { color: #6b7686; }
+  code { color: #9db4d0; }
+</style>
+</head>
+<body>
+  <h1>F1 live pilot — execution fidelity</h1>
+  <div class="sub">Pre-registration: <code>PILOT-F1.md</code>. Pilot P&amp;L is <b>void as edge evidence</b> —
+    this screen measures execution, not whether F1 works. All trading logic runs as deterministic
+    code on the Mexico box with no AI in the path; this page only displays its journal.</div>
+
+  <div id="banner"></div>
+  <div class="grid" id="tiles"></div>
+
+  <h2>Open positions</h2>
+  <table id="open"><thead><tr>
+    <th>chunk (decision)</th><th>side</th><th>qty</th><th>entry</th><th>age (h)</th><th>exit due</th>
+  </tr></thead><tbody></tbody></table>
+
+  <h2>Recent closed</h2>
+  <table id="closed"><thead><tr>
+    <th>chunk</th><th>side</th><th>entry</th><th>exit</th><th>P&amp;L ($)</th>
+  </tr></thead><tbody></tbody></table>
+
+  <h2>Incidents (kills, halts, rejects, mirror-breaks)</h2>
+  <table id="incidents"><thead><tr><th>utc</th><th>kind</th><th>detail</th></tr></thead><tbody></tbody></table>
+
+  <div class="sub muted" id="foot"></div>
+
+<script>
+const $ = (s) => document.querySelector(s);
+const money = (v) => v == null ? '—' : (v >= 0 ? '+' : '') + v.toFixed(4);
+const cls = (v) => v == null ? '' : v > 0 ? 'pos' : v < 0 ? 'neg' : '';
+const ageH = (dueTs, holdH=137) => {
+  if (!dueTs) return '—';
+  const entryMs = dueTs*1000 - holdH*3600000;
+  return ((Date.now() - entryMs)/3600000).toFixed(1);
+};
+
+function tile(k, v, klass='') { return `<div class="tile"><div class="k">${k}</div><div class="v ${klass}">${v}</div></div>`; }
+
+async function refresh() {
+  let d;
+  try { d = await (await fetch('/api/pilot')).json(); }
+  catch (e) { $('#banner').innerHTML = `<div class="banner stale">cannot reach /api/pilot: ${e}</div>`; return; }
+
+  if (!d.present) {
+    $('#banner').innerHTML = `<div class="banner stale">No pilot journal yet — the executor has not run or has not synced. ${d.note||''}</div>`;
+    $('#tiles').innerHTML = ''; return;
+  }
+
+  // staleness of the journal sync (a system that trades daily should sync often)
+  const syncAgeMin = d.journalSyncedUtc ? (Date.now() - Date.parse(d.journalSyncedUtc))/60000 : null;
+  const hbAgeMin = d.lastHeartbeatUtc ? (Date.now() - Date.parse(d.lastHeartbeatUtc))/60000 : null;
+
+  let banner;
+  const halted = d.incidents.some(i => i.kind === 'HALT_SET') && /* still halted if last halt has no clear-after */ true;
+  if (d.incidents.some(i => i.kind === 'HALT_SET'))
+    banner = `<div class="banner halted">⛔ HALT present in journal — new entries stopped; scheduled exits still run. Check incidents below.</div>`;
+  else if (syncAgeMin != null && syncAgeMin > 90)
+    banner = `<div class="banner stale">⚠ journal last synced ${syncAgeMin.toFixed(0)} min ago — sync may be stalled</div>`;
+  else
+    banner = `<div class="banner running">● live — journal synced ${syncAgeMin==null?'—':syncAgeMin.toFixed(0)+' min ago'}</div>`;
+  $('#banner').innerHTML = banner;
+
+  const feeCls = d.realizedFeePerLegAvg == null ? '' :
+    (d.realizedFeePerLegAvg <= d.modelFeePerLeg ? 'pos' : 'warn');
+  $('#tiles').innerHTML =
+    tile('Realized P&L', money(d.realizedPnl), cls(d.realizedPnl)) +
+    tile('Open positions', d.openPositions.length) +
+    tile('Fee/leg: model', '$'+d.modelFeePerLeg.toFixed(3)) +
+    tile('Fee/leg: realized avg', d.realizedFeePerLegAvg==null?'—':'$'+d.realizedFeePerLegAvg.toFixed(4), feeCls) +
+    tile('Fill dev avg', d.fillDeviationAvg==null?'—':(d.fillDeviationAvg*100).toFixed(3)+'%') +
+    tile('Fill dev max', d.fillDeviationMax==null?'—':(d.fillDeviationMax*100).toFixed(3)+'%',
+         d.fillDeviationMax!=null && d.fillDeviationMax>0.01 ? 'warn':'') +
+    tile('Consec. rejects', d.consecutiveRejects, d.consecutiveRejects>=2?'warn':'') +
+    tile('Executor heartbeat', hbAgeMin==null?'—':hbAgeMin.toFixed(0)+' min', hbAgeMin!=null&&hbAgeMin>90?'warn':'') +
+    tile('Dust trade', d.dustDone?'done':'not yet') +
+    tile('Journal events', d.eventCount);
+
+  $('#open tbody').innerHTML = d.openPositions.length ? d.openPositions.map(p =>
+    `<tr><td>${(p.chunk_start||'').slice(0,16)}</td><td class="${p.side==='LONG'?'pos':'neg'}">${p.side}</td>
+     <td>${p.qty}</td><td>${p.entry_price??'—'}</td><td>${ageH(p.exit_due_ts)}</td>
+     <td>${p.exit_due_ts?new Date(p.exit_due_ts*1000).toISOString().slice(0,16):'—'}</td></tr>`).join('')
+    : '<tr><td colspan="6" class="muted">none open</td></tr>';
+
+  $('#closed tbody').innerHTML = d.closedRecent.length ? d.closedRecent.map(c =>
+    `<tr><td>${(c.chunk_start||'').slice(0,16)}</td><td class="${c.side==='LONG'?'pos':'neg'}">${c.side}</td>
+     <td>${c.entry_price??'—'}</td><td>${c.exit_price??'—'}</td><td class="${cls(c.pnl)}">${money(c.pnl)}</td></tr>`).join('')
+    : '<tr><td colspan="5" class="muted">none closed yet</td></tr>';
+
+  $('#incidents tbody').innerHTML = d.incidents.length ? d.incidents.map(i =>
+    `<tr><td>${(i.utc||'').slice(0,19)}</td><td class="warn">${i.kind}</td>
+     <td style="text-align:left" class="muted">${(i.detail||'').slice(0,120)}</td></tr>`).join('')
+    : '<tr><td colspan="3" class="muted">none — clean</td></tr>';
+
+  $('#foot').textContent = `synced ${d.journalSyncedUtc||'—'} · refreshes every 30s · this page reads, it does not trade`;
+}
+refresh();
+setInterval(refresh, 30000);
+</script>
+</body>
+</html>

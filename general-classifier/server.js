@@ -1125,6 +1125,17 @@ app.get('/api/forwardbooks', async (req, res) => {
   }
 });
 
+// Live pilot screen data (PILOT-F1.md). Read-only view of the executor's
+// journal synced from the Mexico box. No trading logic lives here — this only
+// renders what the deterministic executor already did (independence rule §4).
+app.get('/api/pilot', (req, res) => {
+  try {
+    res.json(require('./lib/pilotview').status());
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.get('/api/httwo/:id/verdict', (req, res) => {
   try {
     const T2 = require('./lib/httwo');
