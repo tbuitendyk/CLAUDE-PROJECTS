@@ -912,16 +912,22 @@ def do_run(bx):
         # A position exits for one of two reasons: its scheduled hold elapsed, OR
         # the market moved adversely past the hard fixed stop (owner 2026-08-11:
         # every order carries a protective stop against runaway loss). The stop is
-        # a fraction of the entry price — a LONG is stopped when price falls to
-        # entry*(1-stop), a SHORT when price rises to entry*(1+stop). Checked at
-        # tick resolution against the same market `px` the mtm kill uses; the close
-        # fills at market, which may overshoot the level (recorded in FIXED_STOP).
+        # a fraction of the entry price — a LONG is stopped when price falls BELOW
+        # entry*(1-stop), a SHORT when price rises ABOVE entry*(1+stop). The
+        # inequality is STRICT (< / >), NOT weak: the tuner sets the stop to the
+        # deepest MAE any winner survived, so the binding winner sits EXACTLY on
+        # entry*(1-stop). A weak <= would stop that winner out and break the tuner's
+        # "preserve every winner" guarantee at marginFrac=0 (STOPMATH BUG 1,
+        # 2026-08-11 e2e review); strict spares a position sitting on the boundary
+        # and cuts only one that strictly breaches it. Checked at tick resolution
+        # against the same market `px` the mtm kill uses; the close fills at market,
+        # which may overshoot the level (recorded in FIXED_STOP).
         due = now >= p["exit_due_ts"]
         stop_hit = False
         ep = p.get("entry_price")
         if stop_pct and px is not None and ep:
-            stop_hit = (px <= ep * (1 - stop_pct)) if p["side"] == "LONG" \
-                else (px >= ep * (1 + stop_pct))
+            stop_hit = (px < ep * (1 - stop_pct)) if p["side"] == "LONG" \
+                else (px > ep * (1 + stop_pct))
         if not (due or stop_hit):
             continue
         exit_reason = "scheduled" if due else "fixed_stop"
@@ -947,9 +953,9 @@ def do_run(bx):
                 jlog("EXIT_SKIPPED", chunk_start=p["chunk_start"],
                      reason="no free base to sell")
                 continue
-            status, px, fee, fq, _ = place(bx, "EXIT", "SELL", sell_qty, "AUTO_REPAY",
-                                           {"chunk_start": p["chunk_start"]},
-                                           cid=client_id("exit", p["chunk_start"]))
+            status, fill_px, fee, fq, _ = place(bx, "EXIT", "SELL", sell_qty, "AUTO_REPAY",
+                                                {"chunk_start": p["chunk_start"]},
+                                                cid=client_id("exit", p["chunk_start"]))
             qty_traded = sell_qty
         else:  # SHORT: buy back the borrow plus a small buffer for the LTC fee.
             is_last_short = (shorts_remaining <= 1)
@@ -976,12 +982,16 @@ def do_run(bx):
                                   ceil_step(debt * (1 + SHORT_CLOSE_FEE_BUFFER)))
             else:
                 buy_qty = ceil_step(p["qty"] * (1 + SHORT_CLOSE_FEE_BUFFER))
-            status, px, fee, fq, _ = place(bx, "EXIT", "BUY", buy_qty, "AUTO_REPAY",
-                                           {"chunk_start": p["chunk_start"], "leg_qty": p["qty"]},
-                                           cid=client_id("exit", p["chunk_start"]))
+            status, fill_px, fee, fq, _ = place(bx, "EXIT", "BUY", buy_qty, "AUTO_REPAY",
+                                                {"chunk_start": p["chunk_start"], "leg_qty": p["qty"]},
+                                                cid=client_id("exit", p["chunk_start"]))
             qty_traded = p["qty"]  # economic size of the short, for P&L
         if status == "filled":
-            gross = (px - p["entry_price"]) * qty_traded
+            # Book from the FILL price, NOT the loop's market `px` — `px` is the
+            # single market quote used by the fixed-stop check for EVERY position
+            # this run, so it must not be shadowed by an exit fill (re-review: a
+            # prior exit returning None was disabling later positions' stops).
+            gross = (fill_px - p["entry_price"]) * qty_traded
             if p["side"] == "SHORT":
                 gross = -gross
             # cost accounting (finding 17 + re-review money-math): subtract the
@@ -1011,13 +1021,13 @@ def do_run(bx):
                                  f"only {repaid:.6f} of leg {p['qty']:.6f} — borrow "
                                  f"{resid:.6f} still outstanding and accruing interest")
                 if is_last_short and debt is not None:
-                    interest_cost = max(0.0, debt - p["qty"]) * px
+                    interest_cost = max(0.0, debt - p["qty"]) * fill_px
                     if resid is not None and resid >= QTY_STEP:
                         set_halt("executor", f"short close for {p['chunk_start']} left "
                                  f"residual borrow {resid:.6f} after the final leg — "
                                  "under-repaid; borrow still accruing interest")
             jlog("EXIT_FILL", chunk_start=p["chunk_start"], side=p["side"],
-                 qty=qty_traded, price=px, fee_quote=fee, entry_fee=entry_fee,
+                 qty=qty_traded, price=fill_px, fee_quote=fee, entry_fee=entry_fee,
                  interest_cost=round(interest_cost, 6), reason=exit_reason,
                  pnl=round(gross - fee - entry_fee - interest_cost, 4))
         elif status == "unknown":

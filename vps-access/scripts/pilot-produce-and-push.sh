@@ -35,23 +35,17 @@ ARM_ONLY=0
 #     box's dead-man then self-disarms within ARM_MAX_AGE_S. So even a swallowed
 #     SSH error cannot leave the box trading.
 REQ="$APPDIR/data/pilot/arm-request.json"
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Parse AND shape-validate the request in one place (pilot-arm-fields.sh). It
+# carries the whole authenticated request (nonce/utc/hmac) to the box — the box
+# validates the HMAC and the freshness+nonce edge before honoring it (findings
+# 12/15) — but ONLY after the fields pass a strict shape gate here, because they
+# are interpolated into the remote shell that toggles the LIVE box's master
+# switch (CONTROL BUG 1, 2026-08-11 e2e review). Any off-shape/tampered/missing
+# request degrades to a fail-safe disarm ('0 - - -'); it can never arm or inject.
 want=0; nonce='-'; utc='-'; hmac='-'
-if [ -f "$REQ" ]; then
-  # carry the whole authenticated request (nonce/utc/hmac) to the box, not just
-  # armed:true — the box validates the HMAC and the freshness+nonce edge before
-  # honoring it (findings 12/15).
-  read -r want nonce utc hmac < <(python3 - "$REQ" <<'PY'
-import json, sys
-def s(v):
-    return str(v) if v not in (None, "") else "-"
-try:
-    d = json.load(open(sys.argv[1]))
-    print(("1" if d.get("armed") else "0"), s(d.get("nonce")), s(d.get("utc")), s(d.get("hmac")))
-except Exception:
-    print("0", "-", "-", "-")
-PY
-) || { want=0; nonce='-'; utc='-'; hmac='-'; }
-fi
+read -r want nonce utc hmac < <(bash "$HERE/pilot-arm-fields.sh" "$REQ") \
+  || { want=0; nonce='-'; utc='-'; hmac='-'; }
 
 # MIRROR-BREAK DEAD-MAN (re-review liveness): if the drift detector has found a
 # confirmed break (mirror.json breaks>=1), the live book has diverged from its
@@ -94,21 +88,43 @@ $SSH "$BOX_USER@$BOX_HOST" \
 # rewritten only on a real change. A risk parameter, never an authorization to
 # trade: it opens nothing, and it is carried regardless of arm/mirror state.
 FIXEDSTOP="$APPDIR/data/pilot/fixed-stop.json"
-DESIRED_STOP=$(python3 - "$FIXEDSTOP" <<'PY'
-import json, sys
-try:
-    d = json.load(open(sys.argv[1]))
-    v = d.get("stopPct")
-    print(f"{float(v):.6f}" if isinstance(v, (int, float)) and v > 0 else "")
-except Exception:
-    print("")
+# THREE distinct states, never conflated (CONTROL BUG 3/4, 2026-08-11 e2e review):
+#   SET <v>  file parses, stopPct is a valid live stop (>= 0.5% floor, < 1). Emit
+#            it at FULL precision — the old .6f truncated a sub-1e-6 value to a
+#            fake "0.000000" that the box read as NO stop.
+#   CLEAR    file absent, or stopPct is null / <= 0. This is the owner INTENDING
+#            no stop, so clearing the box is correct.
+#   ERROR    file is PRESENT but unreadable/invalid, or carries a positive-but-
+#            off-shape value (below the 0.5% noise floor, or >= 1). A corrupt file
+#            must NEVER be read as "clear the stop" — a disk glitch would then
+#            silently strip a protective stop the owner set. On ERROR we touch
+#            NOTHING on the box (retain the current stop) and surface loudly.
+STOP_STATE=$(bash "$HERE/pilot-stop-state.sh" "$FIXEDSTOP")
+kind=${STOP_STATE%% *}
+val=${STOP_STATE#* }
+[ "$kind" = "$val" ] && val=""           # CLEAR/ERROR carry no value; SET carries one
+ERRFLAG="$APPDIR/data/pilot/stop-carry-error.json"
+if [ "$kind" = "ERROR" ]; then
+  echo "== fixed-stop.json PRESENT but UNREADABLE/OFF-SHAPE — NOT touching the box stop"
+  echo "   (retaining whatever the box currently runs); surfacing for the owner =="
+  python3 - "$ERRFLAG" "$FIXEDSTOP" <<'PY' 2>/dev/null || true
+import json, sys, time
+open(sys.argv[1], "w").write(json.dumps({
+    "kind": "STOP_CARRY_ERROR",
+    "file": sys.argv[2],
+    "note": "fixed-stop.json is present but unreadable or off-shape; box stop left unchanged",
+    "utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+}))
 PY
-)
-echo "== carry fixed stop -> box: ${DESIRED_STOP:-<none: no stop>} =="
-$SSH "$BOX_USER@$BOX_HOST" "DESIRED='$DESIRED_STOP' bash -s" 2>&1 <<'RSTOP' | sed 's/^/  /' || echo "  (box unreachable; stop carry retried next sync)"
+else
+  # healthy carry -> clear any stale error flag so the surfaced incident resolves
+  rm -f "$ERRFLAG" 2>/dev/null || true
+  [ "$kind" = "SET" ] && echo "== carry fixed stop -> box: $val ==" \
+                      || echo "== carry fixed stop -> box: <none: no stop> =="
+  $SSH "$BOX_USER@$BOX_HOST" "STATE='$kind' DESIRED='$val' bash -s" 2>&1 <<'RSTOP' | sed 's/^/  /' || echo "  (box unreachable; stop carry retried next sync)"
 ENV=~/.executor-env
 cur=$(grep -E '^FIXED_STOP_PCT=' "$ENV" 2>/dev/null | tail -1 | cut -d= -f2)
-if [ -z "$DESIRED" ]; then
+if [ "$STATE" = "CLEAR" ]; then
   if [ -n "$cur" ]; then
     tmp=$(mktemp); grep -vE '^FIXED_STOP_PCT=' "$ENV" 2>/dev/null > "$tmp" || true
     chmod 600 "$tmp"; mv "$tmp" "$ENV"
@@ -125,6 +141,7 @@ else
   echo "stop updated: ${cur:-<unset>} -> $DESIRED"
 fi
 RSTOP
+fi
 
 # In --arm-only mode (the frequent sync) we stop here: no data refresh, no
 # signal produced. The hourly tick does the produce+push.

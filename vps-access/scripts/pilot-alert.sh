@@ -19,13 +19,16 @@
 #   dead_heartbeat  no CLOCK_SYNC/BALANCE/RECONCILE_OK within DEAD_HB_MIN — the
 #                   executor is not running; scheduled exits are NOT firing
 #   stale_sync      journal not synced within STALE_SYNC_MIN — screen is blind
-#   incident:<k>@ts a new RECONCILE_MISMATCH / KILL_* / EXIT_OVERDUE /
-#                   MIRROR_BREAK / ORDER_REJECT since the last alert
+#   incident:<k>@ts a new RECONCILE_MISMATCH / KILL_* / EXIT_OVERDUE / MIRROR_BREAK
+#                   / ORDER_REJECT_{ENTRY,EXIT} / ARM_{HMAC_INVALID,REPLAY_REJECTED,
+#                   NO_SECRET,STALE_REQUEST} since the last alert
 #
-# dead_heartbeat and stale_sync only fire when there is something AT RISK
-# (armed, or an open position whose scheduled exit could be missed) so a
-# deliberately-stopped, flat box does not page anyone. halted and incidents
-# always fire — they only exist because something happened.
+# dead_heartbeat only fires when something is AT RISK (armed, or an open position
+# whose scheduled exit could be missed) so a deliberately-stopped, flat box does
+# not page for box-side quiet. stale_sync fires on STALENESS ALONE (GAP-1): a
+# stalled sync makes the at_risk reading itself untrustworthy, so screen-blindness
+# is always worth one page. halted and incidents always fire — they only exist
+# because something happened.
 set -uo pipefail
 
 JOURNAL="${1:-/opt/general-classifier/data/pilot/journal.jsonl}"
@@ -54,7 +57,14 @@ INCIDENT_COOLDOWN_MIN = 60.0  # re-page a recurring incident KIND at most this o
                               # once then hourly, not on every alert run (re-review S1)
 INCIDENT_EVENTS = {"RECONCILE_MISMATCH", "RECONCILE_UNREADABLE", "KILL_PRICE_DRIFT",
                    "KILL_TRANSPORT", "EXIT_OVERDUE", "MIRROR_BREAK", "ORDER_REJECT",
-                   "HALT_SET", "ARM_STALE", "INTENT_STALE", "CLOCK_DRIFT", "FIXED_STOP"}
+                   "HALT_SET", "ARM_STALE", "INTENT_STALE", "CLOCK_DRIFT", "FIXED_STOP",
+                   # ARM-REFUSAL events (GAP-4, 2026-08-11 e2e review): the box journals
+                   # these when it REFUSES an arm request. A bad HMAC or a replayed nonce
+                   # is a tampering/mis-config signal, and a no-secret/stale refusal means
+                   # a START press silently did NOT arm — the owner presses START and
+                   # nothing happens, with no page. These were invisible to the alerter.
+                   "ARM_NO_SECRET", "ARM_HMAC_INVALID", "ARM_REPLAY_REJECTED",
+                   "ARM_STALE_REQUEST"}
 # A heartbeat must prove the executor loop ran PAST the due-exit step, not just
 # its opening. CLOCK_SYNC fires before any account call, and RECONCILE_OK fires at
 # step 1 — BEFORE due exits run (step 3). A box that reconciles then dies in the
@@ -120,10 +130,17 @@ for e in events:
     if ev in HEARTBEAT_EVENTS:
         last_hb_ts = e.get("ts", last_hb_ts)
     if ev in INCIDENT_EVENTS:
-        # a housekeeping SWEEP reject is not a trading incident — only page on
-        # ENTRY/EXIT rejects (re-review).
-        if ev == "ORDER_REJECT" and e.get("action") not in ("ENTRY", "EXIT"):
-            pass
+        if ev == "ORDER_REJECT":
+            # split ENTRY vs EXIT into DISTINCT kinds (GAP-3b, 2026-08-11 e2e review).
+            # An EXIT reject (a position that will not close, exposed to the market)
+            # is far more serious than an ENTRY reject, and collapsing both to one
+            # "ORDER_REJECT" kind let an EXIT reject arriving inside an ENTRY reject's
+            # cooldown be swallowed. A housekeeping SWEEP reject is not a trading
+            # incident and is dropped.
+            action = e.get("action")
+            if action in ("ENTRY", "EXIT"):
+                k = f"ORDER_REJECT_{action}"
+                incident_latest[k] = max(e.get("ts", 0), incident_latest.get(k, 0))
         else:
             # keep the LATEST ts per kind: a burst of the same kind collapses to a
             # single alert, and a genuinely later occurrence still re-pages (its ts
@@ -144,7 +161,15 @@ if at_risk and (hb_age_min is None or hb_age_min > DEAD_HB_MIN):
     active["dead_heartbeat"] = (f"Executor SILENT — last heartbeat {age} (runs every ~10 min). "
                                 f"Scheduled exits are NOT firing; an open position can ride unhedged. "
                                 f"Open positions: {n_open}.")
-if at_risk and sync_age_min > STALE_SYNC_MIN:
+if sync_age_min > STALE_SYNC_MIN:
+    # GAP-1 (2026-08-11 e2e review): stale_sync fires on STALENESS ALONE, NOT gated
+    # on at_risk. at_risk is derived from the LAST synced RUN_STATUS — but a stalled
+    # sync means that reading is itself stale, so the box could have armed and opened
+    # a position AFTER the freeze and we would never see it. Gating the "I am blind"
+    # alarm on the possibly-blind state is unsound. A retired, deliberately-stopped
+    # pilot pages this ONCE (de-duped by condition key), an acceptable price for
+    # never going silently blind on a live one. (dead_heartbeat stays at_risk-gated:
+    # that reads box-side liveness, not screen blindness.)
     active["stale_sync"] = f"Journal not synced for {sync_age_min:.0f} min — the live screen is blind."
 # mirror-check health (re-review): a mirror that ERRORED (ok:false) or has gone
 # STALE has stopped verifying the paper twin while the box may be trading — page
@@ -211,12 +236,16 @@ for kind, ts in incident_latest.items():
     if kind in AT_RISK_GATED_INCIDENTS and not at_risk:
         continue
     if ts > prev_inc_wm.get(kind, 0):
-        # advance the watermark regardless, so a suppressed occurrence is not
-        # re-paged the instant the cooldown lifts; page only if the cooldown for
-        # this kind has elapsed.
-        cur_inc_wm[kind] = ts
         if _now_wall - prev_inc_paged.get(kind, 0) < _cooldown_s:
+            # Suppressed by cooldown — do NOT advance the watermark (GAP-3a,
+            # 2026-08-11 e2e review). Advancing it here silently SWALLOWED a
+            # genuinely-distinct later occurrence: it moved the watermark past the
+            # new ts without paging, so when the cooldown lifted that occurrence was
+            # no longer "newer than the watermark" and never fired. Leaving the
+            # watermark where it was means the newest occurrence still pages the
+            # moment the cooldown elapses — delayed, never dropped.
             continue
+        cur_inc_wm[kind] = ts
         new_incidents[kind] = ts
         cur_inc_paged[kind] = _now_wall
 

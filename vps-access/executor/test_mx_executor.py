@@ -560,6 +560,49 @@ class ExecutorTest(unittest.TestCase):
         ex = [e for e in self.x.journal_events() if e["event"] == "EXIT_FILL"]
         self.assertTrue(ex and ex[-1].get("reason") == "fixed_stop")
 
+    def test_fixed_stop_boundary_is_strict_long(self):
+        # STOPMATH BUG 1 (2026-08-11 e2e review): the stop boundary is STRICT (<),
+        # not weak (<=). A LONG at entry 100 with a 50% stop has its boundary at
+        # exactly entry*(1-0.5)=50.00 (chosen so the level is EXACTLY representable
+        # in float). Price sitting ON the boundary must NOT stop out — that is the
+        # binding winner's level, which the tuner's "preserve every winner"
+        # guarantee requires to survive. A weak <= would wrongly cut it.
+        self._set_stop(0.5)
+        now = time.time()
+        self.x.jlog("ENTRY_FILL", chunk_start="c1", side="LONG", qty=0.1,
+                    price=100.0, exit_due_ts=now + 9999)
+        MockBinance.base_bal = 0.1
+        MockBinance.price = "50.00"                        # EXACTLY entry*(1-stop)
+        self.x.do_run(self.bx())
+        self.assertNotIn("FIXED_STOP", self.events(),
+                         "a LONG exactly on the stop boundary is preserved (strict <)")
+        st = self.x.derive(self.x.journal_events())
+        self.assertEqual(len(st["open"]), 1, "the boundary position stays open")
+
+    def test_fixed_stop_strictly_below_boundary_still_stops_long(self):
+        # the companion: one tick BELOW the boundary DOES stop (protection intact).
+        self._set_stop(0.5)
+        now = time.time()
+        self.x.jlog("ENTRY_FILL", chunk_start="c1", side="LONG", qty=0.1,
+                    price=100.0, exit_due_ts=now + 9999)
+        MockBinance.base_bal = 0.1
+        MockBinance.price = "49.99"                        # strictly past the boundary
+        self.x.do_run(self.bx())
+        self.assertIn("FIXED_STOP", self.events(),
+                      "a LONG strictly past the stop is cut")
+
+    def test_fixed_stop_boundary_is_strict_short(self):
+        # SHORT boundary at exactly entry*(1+0.5)=150.00 must be preserved (strict >).
+        self._set_stop(0.5)
+        now = time.time()
+        self.x.jlog("ENTRY_FILL", chunk_start="s1", side="SHORT", qty=0.1,
+                    price=100.0, exit_due_ts=now + 9999)
+        MockBinance.borrowed = 0.1
+        MockBinance.price = "150.00"                       # EXACTLY entry*(1+stop)
+        self.x.do_run(self.bx())
+        self.assertNotIn("FIXED_STOP", self.events(),
+                         "a SHORT exactly on the stop boundary is preserved (strict >)")
+
     def test_no_stop_configured_rides_through_drawdown(self):
         # with no FIXED_STOP_PCT in the env, a deep adverse move does NOT trigger a
         # stop close (the stop is disabled until the sweep provides a value).
@@ -572,6 +615,36 @@ class ExecutorTest(unittest.TestCase):
         self.assertNotIn("FIXED_STOP", self.events())
         st = self.x.derive(self.x.journal_events())
         self.assertEqual(len(st["open"]), 1, "no stop configured -> no stop close")
+
+    def test_earlier_unknown_exit_does_not_disable_a_later_positions_stop(self):
+        # RE-REVIEW 2026-08-11 (px-shadow blocker): the exit loop fetches ONE
+        # market quote (`px`) up front and every position's fixed-stop check reads
+        # it. A regression once assigned the per-order fill price back into `px`,
+        # so when an EARLIER due exit returned "unknown" (transport 503, fill
+        # price None) it clobbered `px` to None and SILENTLY disabled the stop
+        # check for every LATER position in the same run. Two positions:
+        #   - c1 LONG, DUE now  -> exits first; order_5xx makes it return unknown
+        #   - s2 SHORT, NOT due, market +6% past the 5% stop -> MUST still stop out
+        # With the bug, s2's FIXED_STOP is never journaled (px was None). With the
+        # fix (fill price kept in a separate `fill_px`), s2 stops out normally.
+        self._set_stop(0.05)
+        now = time.time()
+        self.x.jlog("ENTRY_FILL", chunk_start="c1", side="LONG", qty=0.1,
+                    price=100.0, exit_due_ts=now - 60)      # DUE -> exits this run
+        self.x.jlog("ENTRY_FILL", chunk_start="s2", side="SHORT", qty=0.1,
+                    price=100.0, exit_due_ts=now + 9999)    # NOT due; stop must fire
+        MockBinance.base_bal = 0.1
+        MockBinance.borrowed = 0.1
+        MockBinance.price = "106.00"                        # +6%, past the SHORT's 5% stop
+        MockBinance.order_5xx = True                        # the DUE exit returns "unknown"
+        self.x.do_run(self.bx())
+        stops = [e for e in self.x.journal_events()
+                 if e["event"] == "FIXED_STOP" and e.get("chunk_start") == "s2"]
+        self.assertTrue(stops, "s2's stop must fire even though c1's earlier exit "
+                               "returned unknown (px must not be shadowed)")
+        # and the earlier due exit was genuinely the ambiguous/unknown case
+        self.assertIn("EXIT_INFLIGHT", self.events(),
+                      "the earlier due exit returned unknown (transport 503)")
 
     def test_master_switch_off_blocks_entries(self):
         self.x.set_arm(False, "test")   # owner has not pressed START

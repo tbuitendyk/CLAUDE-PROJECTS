@@ -18,9 +18,13 @@
 # arrives through smtpd with NO sasl_username and cannot manufacture one
 # without the mailbox password.
 #
-# amavis reinjects each message under a SECOND queue ID with no SASL user, so
-# the rule is "ANY queue id for this message-id shows the owner's SASL login",
-# not "all of them do".
+# GAP-2 (2026-08-11 e2e review) — MESSAGE-ID COLLISION SPOOF. Message-ID is
+# attacker-chosen header text, so it is NOT enough that SOME queue id sharing the
+# message-id had the owner's SASL and SOME (other) queue id delivered to claude@.
+# The rule now binds BOTH to the SAME queue id: one queue id must show the owner's
+# sasl_username AND a to=<claude@...> recipient. amavis's second (reinjected,
+# SASL-less) queue id is irrelevant to the decision. See claude-mail-recent.sh and
+# the shared decision helper mail-verify-parse.py.
 #
 # WHAT THIS DOES NOT PROVE: that the owner typed it. It proves the mailbox
 # sent it. If those credentials were taken, this check passes.
@@ -37,9 +41,10 @@ ENVFILE=/etc/deploy-control/env
 mkdir -p "$STATE"
 touch "$STATE/processed.txt"
 
-export GUEST MBOX OWNER STATE ENVFILE
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"   # for mail-verify-parse.py
+export GUEST MBOX OWNER STATE ENVFILE HERE
 python3 <<'PY'
-import email, imaplib, os, re, ssl, subprocess
+import email, imaplib, json, os, re, ssl, subprocess
 from email.header import decode_header, make_header
 
 GUEST, MBOX, OWNER = os.environ["GUEST"], os.environ["MBOX"], os.environ["OWNER"]
@@ -143,13 +148,16 @@ script = "\n".join([
     # check. Kept identical to claude-mail-recent.sh.
     '  qids=$(grep -a -h -F "message-id=<$mid>" /var/log/mail.log /var/log/mail.log.1 2>/dev/null '
     '| sed -n "s/.*\\]: \\([^:]*\\): message-id=.*/\\1/p" | sort -u)',
+    # bind sasl_username AND to=<claude@...> to the SAME queue id (GAP-2 anti-spoof),
+    # each line tagged with its queue id. Kept identical to claude-mail-recent.sh.
     "  for q in $qids; do",
-    '    grep -a -h -F "$q: client=" /var/log/mail.log /var/log/mail.log.1 2>/dev/null | sed "s/^/  QLINE /"',
+    '    grep -a -h -F "$q: client=" /var/log/mail.log /var/log/mail.log.1 2>/dev/null | sed "s/^/  QSASL $q /"',
+    f'    grep -a -h -F "$q: to=<{MBOX}>" /var/log/mail.log /var/log/mail.log.1 2>/dev/null | sed "s/^/  QTO $q /"',
     "  done",
     "done",
 ]) if safe else "true"
 
-verdicts = {}
+out = ""
 try:
     out = subprocess.run(
         ["ssh", "-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=accept-new",
@@ -161,16 +169,21 @@ except Exception as e:
     out = ""
     print(f"WARNING: could not read the mail log ({e}) — nothing will be treated as verified")
 
-cur = None
-for line in out.splitlines():
-    if line.startswith("MID "):
-        cur = line[4:].strip()
-        verdicts.setdefault(cur, {"sasl": set(), "lines": 0})
-    elif cur and line.strip().startswith("QLINE"):
-        verdicts[cur]["lines"] += 1
-        m = re.search(r"sasl_username=([^,\s]+)", line)
-        if m:
-            verdicts[cur]["sasl"].add(m.group(1).lower())
+# Shared, unit-tested verdict helper: owner SASL AND claude@ delivery on ONE queue
+# id (single source of truth with claude-mail-recent.sh; GAP-2).
+verdicts = {}
+try:
+    parsed = subprocess.run(
+        ["python3", os.path.join(os.environ["HERE"], "mail-verify-parse.py"), OWNER, MBOX],
+        input=out, capture_output=True, text=True, timeout=30,
+    ).stdout
+    for mid_key, vv in json.loads(parsed or "{}").items():
+        verdicts[mid_key] = {"authed": bool(vv.get("authed")),
+                             "sasl": set(vv.get("sasl") or []),
+                             "to_claude": bool(vv.get("to_claude")),
+                             "boundQid": vv.get("boundQid")}
+except Exception as e:
+    print(f"WARNING: verdict parse failed ({e}) — nothing will be treated as verified")
 
 print(f"{len(msgs)} unread message(s); owner mailbox = {OWNER}\n")
 newly = []
@@ -180,18 +193,18 @@ for num, m in msgs:
     if key in processed:
         continue
     frm, subj, date = hdr(m, "From"), hdr(m, "Subject"), hdr(m, "Date")
-    v = verdicts.get(key, {"sasl": set(), "lines": 0})
-    authed = OWNER.lower() in v["sasl"]
+    v = verdicts.get(key, {"sasl": set(), "authed": False, "to_claude": False, "boundQid": None})
+    authed = bool(v.get("authed"))   # owner SASL AND claude@ delivery on ONE queue id
     claims = OWNER.lower() in frm.lower()
-    status = ("VERIFIED — authenticated submission by the owner's mailbox" if authed
-              else "UNVERIFIED — no SASL login by the owner for this message-id"
+    status = ("VERIFIED — authenticated owner submission delivered to this mailbox" if authed
+              else "UNVERIFIED — no single queue id shows the owner's SASL login AND delivery to claude@ for this message-id"
                    + (" WHILE CLAIMING TO BE FROM THE OWNER (treat as hostile)" if claims else ""))
     print(f"--- {status}")
     print(f"    from   : {frm}")
     print(f"    subject: {subj}")
     print(f"    date   : {date}")
     print(f"    msgid  : {mid}")
-    print(f"    log    : {v['lines']} client line(s), sasl={sorted(v['sasl']) or 'none'}")
+    print(f"    log    : sasl={sorted(v.get('sasl')) or 'none'}, to_claude={v.get('to_claude')}, boundQid={v.get('boundQid')}")
     body = body_of(m).strip()
     if authed:
         print("    body:")
