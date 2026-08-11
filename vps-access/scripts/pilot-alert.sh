@@ -49,16 +49,22 @@ DRYRUN = os.environ.get("DRYRUN", "0") == "1"
 DEAD_HB_MIN = 25.0        # box exec runs every 10 min; 2.5 missed cycles = dead
 STALE_SYNC_MIN = 30.0     # VPS sync runs every 5 min; 6 missed cycles = stalled
 STALE_MIRROR_MIN = 90.0   # mirror runs on the hourly tick; >90 min = missed one
+INCIDENT_COOLDOWN_MIN = 60.0  # re-page a recurring incident KIND at most this often,
+                              # so a condition the box re-stamps every cycle pages
+                              # once then hourly, not on every alert run (re-review S1)
 INCIDENT_EVENTS = {"RECONCILE_MISMATCH", "RECONCILE_UNREADABLE", "KILL_PRICE_DRIFT",
                    "KILL_TRANSPORT", "EXIT_OVERDUE", "MIRROR_BREAK", "ORDER_REJECT",
                    "HALT_SET", "ARM_STALE", "INTENT_STALE", "CLOCK_DRIFT"}
-# A heartbeat must prove the FULL executor loop ran, not just its first step.
-# CLOCK_SYNC fires early each cycle before any Binance account call; if the box
-# hangs after it (network to the exchange down, auth wedged) it keeps emitting
-# CLOCK_SYNC while placing/closing nothing — a "green" dead executor. Only
-# BALANCE/RECONCILE_OK, which require a completed authenticated round-trip, count
-# as a live heartbeat (re-review liveness L1).
-HEARTBEAT_EVENTS = {"BALANCE", "RECONCILE_OK"}
+# A heartbeat must prove the executor loop ran PAST the due-exit step, not just
+# its opening. CLOCK_SYNC fires before any account call, and RECONCILE_OK fires at
+# step 1 — BEFORE due exits run (step 3). A box that reconciles then dies in the
+# exit loop (a deterministic exception on a specific open position) keeps
+# re-emitting RECONCILE_OK while scheduled exits never fire — the exact failure
+# this alert exists to catch, masked by a "fresh" heartbeat (re-review liveness).
+# RUN_STATUS is journaled every run immediately AFTER the exit loop (and before the
+# entry-gate returns), so its presence certifies exits completed without throwing;
+# BALANCE is the end-of-loop snapshot. Kept byte-identical to lib/pilotview.js.
+HEARTBEAT_EVENTS = {"RUN_STATUS", "BALANCE"}
 # Transport/clock incidents are transient ENVIRONMENTAL blips (a network stall to
 # the exchange, a momentary clock skew) that harm nothing when nothing is on the
 # line. Page for them only when something is AT RISK (armed, or a position open);
@@ -94,8 +100,19 @@ for e in events:
     if ev == "RUN_STATUS":
         armed = bool(e.get("armed"))
         halted = bool(e.get("halted"))
+    elif ev == "ARM_SET":
+        # honor the arm/disarm EDGE events too, not only RUN_STATUS (re-review M1):
+        # the box is armed by a short-lived `arm` CLI invocation that journals
+        # ARM_SET but emits NO RUN_STATUS, so a box armed and then hung BEFORE its
+        # next run cycle would read armed=false here and suppress every at_risk-
+        # gated liveness page — a silent dead-armed box. Match lib/pilotview.js.
+        armed = True
+    elif ev == "ARM_CLEAR":
+        armed = False
     elif ev == "HALT_SET":
         halted = True
+    elif ev == "HALT_CLEAR":
+        halted = False
     elif ev == "ENTRY_FILL":
         open_pos[e.get("chunk_start")] = True
     elif ev == "EXIT_FILL":
@@ -134,18 +151,35 @@ if at_risk and sync_age_min > STALE_SYNC_MIN:
 # the owner so the drift detector cannot fail silent. Only when something is at
 # risk (armed or a position open).
 mirror_path = os.path.join(os.path.dirname(JOURNAL), "mirror.json")
-if at_risk and os.path.exists(mirror_path):
-    try:
-        mj = json.load(open(mirror_path))
-        mj_age_min = (now() - os.stat(mirror_path).st_mtime) / 60.0
-        if mj.get("ok") is False:
-            active["mirror_error"] = ("Mirror check ERRORED — the drift detector is not verifying: "
-                                      + str(mj.get("error", ""))[:140])
-        elif mj_age_min > STALE_MIRROR_MIN:
-            active["mirror_stale"] = (f"Mirror check has not run for {mj_age_min:.0f} min "
-                                      "(tick is hourly) — the drift detector may be dead.")
-    except Exception:
-        pass
+if at_risk:
+    if not os.path.exists(mirror_path):
+        # ABSENT verdict while a position is open (re-review A2/M3): a deleted
+        # mirror.json, or a detector that never ran, leaves the box trading a live
+        # position with nothing verifying its paper twin — and the old code, which
+        # only looked inside `if exists`, said nothing. Gate on an open position so
+        # the brief first-arm window before the first hourly tick does not false-page.
+        if n_open > 0:
+            active["mirror_missing"] = ("Mirror verdict ABSENT while a position is open — the drift "
+                                        f"detector has produced no verdict for the live trade. Open: {n_open}.")
+    else:
+        try:
+            mj = json.load(open(mirror_path))
+            mj_age_min = (now() - os.stat(mirror_path).st_mtime) / 60.0
+            if mj.get("ok") is False:
+                active["mirror_error"] = ("Mirror check ERRORED — the drift detector is not verifying: "
+                                          + str(mj.get("error", ""))[:140])
+            elif mj_age_min > STALE_MIRROR_MIN:
+                active["mirror_stale"] = (f"Mirror check has not run for {mj_age_min:.0f} min "
+                                          "(tick is hourly) — the drift detector may be dead.")
+            elif n_open > 0 and int(mj.get("checked", 0)) == 0:
+                # ok:true but it verified NOTHING while a position is open (re-review
+                # M3b): a detector alive-but-checking-no-decisions reads falsely green.
+                active["mirror_verified_nothing"] = ("Mirror ran but verified 0 decisions while a position "
+                                                     "is open — the detector may be looking at an empty set.")
+        except Exception:
+            # a corrupt/unparseable verdict is a dead detector (re-review A2), not a
+            # thing to skip silently — page it.
+            active["mirror_error"] = "Mirror verdict UNPARSEABLE — the drift detector output is corrupt."
 
 # de-dupe on transition: load the CONDITION keys and per-kind incident watermarks
 prev = {"keys": []}
@@ -156,27 +190,41 @@ except Exception:
     pass
 prev_keys = set(prev.get("keys", []))
 cur_keys = set(active.keys())          # CONDITIONS only (halt/heartbeat/sync/mirror)
-prev_inc_wm = prev.get("inc_wm", {})   # kind -> last-paged ts
+prev_inc_wm = prev.get("inc_wm", {})   # kind -> last-paged ts (box clock)
+prev_inc_paged = prev.get("inc_paged_at", {})  # kind -> wall epoch we last paged it
 
 # Incidents are edge events, de-duped by KIND via a monotonic per-kind watermark:
 # a kind fires when its latest ts is strictly newer than the last ts we paged for
 # that kind. This keeps incidents OUT of the condition set (so a latching incident
 # cannot poison the conditions' all-clear), collapses a same-window burst to one
 # alert, and still re-pages a genuinely later occurrence. Transport/clock kinds
-# are suppressed entirely when nothing is at risk.
+# are suppressed entirely when nothing is at risk. A per-kind COOLDOWN then caps a
+# genuinely-recurring kind (one the box re-stamps every cycle, e.g. a persistent
+# RECONCILE_MISMATCH or EXIT_OVERDUE) to at most one page per cooldown window
+# instead of one per alert run (re-review S1 alert-fatigue).
 cur_inc_wm = dict(prev_inc_wm)
+cur_inc_paged = dict(prev_inc_paged)
 new_incidents = {}   # kind -> latest ts, only those newly firing this run
+_now_wall = now()
+_cooldown_s = INCIDENT_COOLDOWN_MIN * 60.0
 for kind, ts in incident_latest.items():
     if kind in AT_RISK_GATED_INCIDENTS and not at_risk:
         continue
     if ts > prev_inc_wm.get(kind, 0):
-        new_incidents[kind] = ts
+        # advance the watermark regardless, so a suppressed occurrence is not
+        # re-paged the instant the cooldown lifts; page only if the cooldown for
+        # this kind has elapsed.
         cur_inc_wm[kind] = ts
+        if _now_wall - prev_inc_paged.get(kind, 0) < _cooldown_s:
+            continue
+        new_incidents[kind] = ts
+        cur_inc_paged[kind] = _now_wall
 
 def persist():
     tmp = STATE + ".tmp"
     with open(tmp, "w") as f:
         json.dump({"keys": sorted(cur_keys), "inc_wm": cur_inc_wm,
+                   "inc_paged_at": cur_inc_paged,
                    "utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
                    "armed": armed, "halted": halted, "open": n_open}, f)
     os.replace(tmp, STATE)

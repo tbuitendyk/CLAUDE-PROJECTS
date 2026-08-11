@@ -608,6 +608,23 @@ class ExecutorTest(unittest.TestCase):
         self.x.honor_arm_request(True, "owner", nonce="n2", utc=u2, hmac_sig=self._sig(s, "n2", u2))
         self.assertTrue(self.x.armed(), "a fresh START after a wipe arms normally")
 
+    def test_arm_freshness_uses_provided_clock_not_os(self):
+        # RE-REVIEW A1: the arm freshness check must be judged against the clock the
+        # caller provides (the arm CLI passes EXCHANGE-synced time), so a skewed box
+        # OS clock cannot silently refuse a legitimate START. Same fresh request:
+        # stale against a clock skewed +5000s, fresh against true time.
+        s = self._set_secret()
+        self.x.set_arm(False, "test")
+        u = self._utc(0)
+        self.x.honor_arm_request(True, "owner", nonce="nc", utc=u,
+                                 hmac_sig=self._sig(s, "nc", u), now_s=time.time() + 5000)
+        self.assertFalse(self.x.armed(), "freshness must be judged against now_s, not the OS clock")
+        self.assertIn("ARM_STALE_REQUEST", self.events())
+        u2 = self._utc(0)
+        self.x.honor_arm_request(True, "owner", nonce="nc2", utc=u2,
+                                 hmac_sig=self._sig(s, "nc2", u2), now_s=time.time())
+        self.assertTrue(self.x.armed(), "a fresh request under true (exchange) time arms")
+
     def test_hmac_required_when_secret_configured(self):
         s = self._set_secret()
         self.x.set_arm(False, "test")
@@ -941,6 +958,33 @@ class ExecutorTest(unittest.TestCase):
         self.assertEqual(len(ex), 1)
         self.assertTrue(ex[0].get("pnl_estimated"), "a recovered exit P&L is flagged estimated")
         self.assertGreater(ex[0]["fee_quote"], 0, "recovered exit books an estimated fee, not zero")
+
+    def test_recovered_short_exit_books_conservative_interest(self):
+        # RE-REVIEW money-math: a recovered SHORT exit must also net a CONSERVATIVE
+        # borrow-interest estimate (the crash lost the live debt), not just the fee
+        # — else its recovered P&L is overstated and could flatter the loss kill.
+        now = time.time()
+        # short opened ~137h ago (exit due now), so the age-scaled interest is near
+        # its full-hold maximum.
+        self.x.jlog("ENTRY_FILL", chunk_start="s1", side="SHORT", qty=0.1,
+                    price=100.0, fee_quote=0.01, exit_due_ts=now - 60)
+        cid = self.x.client_id("exit", "s1")
+        self.x.jlog("ORDER_SENT", action="EXIT", side="BUY", qty=0.1,
+                    client_id=cid, live=True, chunk_start="s1")
+        MockBinance.placed[cid] = {"status": "FILLED", "executedQty": "0.100",
+                                   "cummulativeQuoteQty": "10.00000000",
+                                   "updateTime": int(now * 1000)}
+        MockBinance.borrowed = 0.1
+        self.x.do_run(self.bx())
+        ex = [e for e in self.x.journal_events()
+              if e["event"] == "EXIT_FILL" and e.get("recovered")][-1]
+        self.assertTrue(ex.get("pnl_estimated"))
+        self.assertGreater(ex.get("interest_cost", 0), 0,
+                           "a recovered short must book an estimated borrow interest")
+        # flat market (100->100), gross 0; pnl must be clearly negative from
+        # fee_est + entry_fee + interest_est, not ~0.
+        self.assertLess(ex["pnl"], -0.02,
+                        "recovered short P&L nets fee + entry fee + estimated interest")
 
     def test_server_error_5xx_is_unknown_not_reject(self):
         # RE-REVIEW B1: an HTTP 5xx (order MAY have filled — Binance documents 504

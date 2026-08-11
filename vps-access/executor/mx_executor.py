@@ -274,13 +274,17 @@ def _write_baseline(nonce, honored, watermark_utc=None):
     os.replace(tmp, ARM_BASELINE)
 
 
-def _utc_age_s(utc_str):
+def _utc_age_s(utc_str, now=None):
     """Seconds since an ISO-8601 UTC timestamp; unparseable/absent reads as very
-    old, so a malformed request is treated as stale (fail-safe)."""
+    old, so a malformed request is treated as stale (fail-safe). `now` defaults to
+    the OS clock; the arm path passes EXCHANGE-synced time so a skewed box OS clock
+    cannot brick a legitimate START (re-review A1). Relative comparisons
+    (_utc_newer) leave it None because the reference cancels."""
+    ref = time.time() if now is None else now
     try:
         base = str(utc_str).replace("Z", "").split(".")[0]
         t = time.strptime(base, "%Y-%m-%dT%H:%M:%S")
-        return time.time() - calendar.timegm(t)
+        return ref - calendar.timegm(t)
     except Exception:
         return 10 ** 9
 
@@ -290,8 +294,14 @@ def _utc_newer(a, b):
     return _utc_age_s(a) < _utc_age_s(b)
 
 
-def honor_arm_request(armed, source, nonce=None, utc=None, hmac_sig=None):
+def honor_arm_request(armed, source, nonce=None, utc=None, hmac_sig=None, now_s=None):
     """The owner's master switch WITH authentication (findings 12/15, re-review B1/B2).
+
+    `now_s` is the reference clock for the freshness/future checks. The arm CLI
+    passes EXCHANGE-synced time so a skewed box OS clock cannot silently refuse a
+    legitimate START (re-review A1); it defaults to the OS clock. The monotonic
+    watermark comparisons stay relative (both sides minted on the same clock) and
+    are unaffected.
 
     DISARM is UNCONDITIONAL and handled FIRST — a kill switch must never be gated
     behind authentication (re-review B2). An unsigned or missing STOP still stops.
@@ -317,7 +327,7 @@ def honor_arm_request(armed, source, nonce=None, utc=None, hmac_sig=None):
         # a utc hours ahead would otherwise ratchet the watermark into the future
         # and BRICK every legitimate arm until wall-clock caught up. A future utc
         # (negative age) is ignored for watermarking; the STOP itself still fires.
-        advance = utc and _utc_age_s(utc) >= 0 and (not wm or _utc_newer(utc, wm))
+        advance = utc and _utc_age_s(utc, now_s) >= 0 and (not wm or _utc_newer(utc, wm))
         new_wm = utc if advance else wm
         _write_baseline(base.get("nonce", "stop"), honored=False, watermark_utc=new_wm)
         return
@@ -348,15 +358,15 @@ def honor_arm_request(armed, source, nonce=None, utc=None, hmac_sig=None):
     # two-sided: a FUTURE-dated utc (age < -ARM_CLOCK_SKEW_S) is refused too, so a
     # signed arm carrying a glitched clock cannot ratchet the watermark into the
     # future and brick later legitimate arms.
-    age = _utc_age_s(utc)
+    age = _utc_age_s(utc, now_s)
     if -ARM_CLOCK_SKEW_S <= age <= ARM_REQUEST_FRESH_S:
         _write_baseline(nonce, honored=True, watermark_utc=utc)
         set_arm(True, source)
     else:
         _write_baseline(nonce, honored=False, watermark_utc=wm)
-        jlog("ARM_STALE_REQUEST", source=source, nonce=nonce, age_s=int(_utc_age_s(utc)),
-             note="arm request older than the freshness window — refusing to re-arm "
-                  "without a fresh START (finding 15)")
+        jlog("ARM_STALE_REQUEST", source=source, nonce=nonce, age_s=int(_utc_age_s(utc, now_s)),
+             note="arm request outside the freshness window (stale or future) — refusing "
+                  "to arm without a fresh START (finding 15 / re-review A1)")
 
 
 # ---- Binance client (stdlib only) -------------------------------------------
@@ -704,8 +714,24 @@ def resolve_dangling(bx):
             # safely subtracts nothing when the fee is genuinely unknown.
             fee_est = FEE_RATE_EST * px * qty_traded
             entry_fee = (p.get("entry_fee", 0.0) if p else 0.0)
+            # a recovered SHORT also owes borrow interest the scheduled path books
+            # from live debt (re-review money-math): the crash lost the live debt,
+            # so estimate it CONSERVATIVELY (over-charge, never under) from the
+            # rate ceiling x the leg's age, clamped to the full hold — so a
+            # recovered short's P&L is not overstated. Age from exit_due_ts when the
+            # entry record survives, else assume the full hold.
+            interest_est = 0.0
+            if side == "SHORT":
+                if p and p.get("exit_due_ts"):
+                    age_h = (time.time() - (p["exit_due_ts"] - HOLD_HOURS * 3600)) / 3600.0
+                    age_h = min(max(0.0, age_h), HOLD_HOURS)
+                else:
+                    age_h = HOLD_HOURS
+                interest_est = MAX_BORROW_RATE_HR * age_h * px * qty_traded
             jlog("EXIT_FILL", chunk_start=chunk, side=side, qty=qty_traded,
-                 price=px, fee_quote=round(fee_est, 6), pnl=round(gross - fee_est - entry_fee, 4),
+                 price=px, fee_quote=round(fee_est, 6),
+                 interest_cost=round(interest_est, 6),
+                 pnl=round(gross - fee_est - entry_fee - interest_est, 4),
                  recovered=True, pnl_estimated=True)
         # dust/shortdust/sweep: ORDER_RESOLVED alone is enough (manual books)
 
@@ -1221,8 +1247,14 @@ def main():
     if mode == "shortdust":
         return do_shortdust(bx, "--yes" in sys.argv)
     if mode == "arm":
+        # Judge freshness against EXCHANGE time, not the box OS clock (re-review A1):
+        # sync best-effort, then hand honor_arm_request the exchange-adjusted now so
+        # a skewed box clock cannot silently refuse a legitimate START. On a failed
+        # sync offset_ms stays 0 → falls back to the OS clock (prior behavior).
+        bx.sync_clock()
+        exch_now = time.time() + bx.offset_ms / 1000.0
         honor_arm_request(True, source_arg(), arg_val("--nonce"), arg_val("--utc"),
-                          arg_val("--hmac"))
+                          arg_val("--hmac"), now_s=exch_now)
         print("arm request processed (armed iff authenticated + fresh new nonce)")
         return 0
     if mode == "disarm":
