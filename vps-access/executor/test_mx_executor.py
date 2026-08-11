@@ -387,6 +387,37 @@ class ExecutorTest(unittest.TestCase):
         self.assertIn("RECONCILE_OK", self.events())
         self.assertFalse(self.x.halted(), 'non-flat sub-min dust must not halt')
 
+    def test_young_short_overborrow_halts_under_derived_cap(self):
+        # RE-REVIEW: the interest cap is DERIVED from rate x AGE, not a flat frac.
+        # A short open only ~1h cannot have accrued 3% interest, so a 3% excess
+        # borrow is an over-borrow and must HALT — even though the old flat 5% cap
+        # would have tolerated it. This is exactly what age-scaling buys us.
+        now = time.time()
+        self.x.jlog("ENTRY_FILL", chunk_start="s1", side="SHORT", qty=0.1,
+                    price=100.0, exit_due_ts=now + self.x.HOLD_HOURS * 3600 - 3600)  # ~1h old
+        MockBinance.borrowed = 0.103    # 3% excess — impossible as 1h interest
+        self.x.do_run(self.bx())
+        self.assertIn("RECONCILE_MISMATCH", self.events())
+        self.assertTrue(self.x.halted(),
+                        'a 3% excess on a 1h-old short exceeds the age-derived cap and must halt')
+
+    def test_non_final_short_close_underrepay_halts(self):
+        # RE-REVIEW: the residual assertion fires on EVERY short close, not only the
+        # final one. With two shorts open, the FIRST (non-final) close must still
+        # HALT if its AUTO_REPAY barely reduced the borrow (here an outsized LTC
+        # fee eats the received qty), instead of passing quietly with debt intact.
+        now = time.time()
+        self.x.jlog("ENTRY_FILL", chunk_start="s1", side="SHORT", qty=0.1,
+                    price=100.0, exit_due_ts=now - 60)          # due -> closes now
+        self.x.jlog("ENTRY_FILL", chunk_start="s2", side="SHORT", qty=0.1,
+                    price=100.0, exit_due_ts=now + 9999)         # NOT due -> keeps it non-final
+        MockBinance.borrowed = 0.2
+        MockBinance.commission_asset = "LTC"
+        MockBinance.commission = "0.02"    # huge fee: received << ordered -> under-repay
+        self._advance_and_run(0)
+        self.assertTrue(self.x.halted(),
+                        'a non-final short close that under-repaid must HALT, not pass silently')
+
     def test_unhalt_clears_the_halt(self):
         self.x.set_halt("test", "stuck")
         self.assertTrue(self.x.halted())
@@ -778,6 +809,28 @@ class ExecutorTest(unittest.TestCase):
         self.assertLess(ex["pnl"], -0.04, 'entry fee + interest must drag pnl clearly negative')
         self.assertAlmostEqual(ex["entry_fee"], 0.01, places=6)
         self.assertGreater(ex["interest_cost"], 0.0, 'accrued interest must be charged')
+
+    def test_long_pnl_subtracts_entry_fee(self):
+        # RE-REVIEW money-math: realized P&L for a LONG must subtract the entry
+        # BUY fee. The old code skipped it on the theory that the LTC entry fee is
+        # "already in the fee-shrunk qty" — but the shrink lowers the exit and the
+        # entry cost basis symmetrically, so it cancels out of gross and the fee
+        # was UNACCOUNTED, overstating the tradeability number by one entry fee.
+        now = time.time()
+        # long entered at 100 with a $0.02 entry fee; flat market at exit and NO
+        # exit fee, so a correct pnl is exactly -0.02 (the entry fee), not 0.
+        self.x.jlog("ENTRY_FILL", chunk_start="l1", side="LONG", qty=0.1,
+                    price=100.0, fee_quote=0.02, exit_due_ts=now - 60)
+        MockBinance.base_bal = 0.1
+        MockBinance.price = "100.00"        # flat market -> gross 0
+        MockBinance.commission = "0"        # isolate: no exit fee
+        MockBinance.commission_asset = "USDT"
+        self._advance_and_run(0)
+        ex = [e for e in self.x.journal_events() if e["event"] == "EXIT_FILL"][-1]
+        self.assertAlmostEqual(ex["entry_fee"], 0.02, places=6,
+                               msg="the long's entry fee must be recorded on the close")
+        self.assertAlmostEqual(ex["pnl"], -0.02, places=4,
+                               msg="realized P&L must net the entry fee, not overstate to 0")
 
     def test_deadman_stale_arm_blocks_entries_but_exits_run(self):
         # ARM present but not refreshed within ARM_MAX_AGE_S -> self-disarm.

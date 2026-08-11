@@ -50,10 +50,14 @@ for i in \$(seq 1 20); do
   sleep 3
 done
 cd $APP && PILOT_SOCKS=$SOCKS node pilot-refresh.js
-/usr/local/sbin/pilot-produce-and-push.sh
-# mirror check: recompute recent live decisions against fresh data; halt the box
-# on any divergence (findings 26/7). Runs after refresh so it sees current data.
+# mirror check FIRST (re-review tick-order): recompute recent live decisions
+# against the fresh data and halt the box on any divergence, BEFORE producing a
+# new intent. A tick that reveals the instrument has drifted then ships NOTHING —
+# pilot-produce-and-push reads the break in mirror.json and forces a DISARM
+# instead of shipping a fresh intent. Running produce first could ship an intent
+# on data the very next step proves unreliable.
 /usr/local/sbin/pilot-mirror.sh || true
+/usr/local/sbin/pilot-produce-and-push.sh
 TICK
 
 # the intent producer + pusher (installed copy of the branch script)

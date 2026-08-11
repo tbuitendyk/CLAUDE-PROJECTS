@@ -71,9 +71,25 @@ MAX_SHORT_INTEREST_FRAC = 0.05  # exchange borrow legitimately exceeds the nomin
                            # nominal. 137h interest is ~0.1–0.5%, so 5% is generous
                            # headroom (re-review: a tighter 2% could false-halt at a
                            # high margin rate) yet far below a real discrepancy — an
-                           # extra borrowed position would be ~100%+ of nominal
+                           # extra borrowed position would be ~100%+ of nominal.
+                           # NOTE: this flat frac is a fallback CEILING only; the
+                           # live cap below is DERIVED per-leg from rate x age.
+MAX_BORROW_RATE_HR = 0.0005  # GUESSED-conservative hourly isolated-margin borrow
+                           # rate ceiling. Real LTC isolated is ~0.01-0.02%/hr, so
+                           # 0.05%/hr is 2.5-5x generous. The reconcile interest cap
+                           # is DERIVED from this x each open short's AGE, so a young
+                           # short tolerates little excess (catching an over-borrow
+                           # early) while a full 137h hold tolerates ~6.8% — more
+                           # honest than a flat frac that is identical at hour 1 and
+                           # hour 137. Age is clamped to 2x HOLD so a clock glitch
+                           # cannot inflate the cap without bound.
 FEE_RATE_EST = 0.001       # ~0.1% taker fee, used only to keep a RECOVERED exit's
                            # P&L from overstating (the crash lost the real fee)
+RESIDUAL_REPAY_TOL_FRAC = 0.05  # a short close's AUTO_REPAY must reduce the borrow
+                           # by at least (1-this) x the leg's nominal; a legit repay
+                           # clears ~100%+ (buffer covers the fee), so 5% slack
+                           # absorbs fee/rounding while still catching a repay that
+                           # barely moved the debt. GUESSED, generous side.
 
 HOME = os.path.expanduser("~")
 PILOT = os.path.join(HOME, "pilot")
@@ -680,11 +696,14 @@ def resolve_dangling(bx):
             if side == "SHORT":
                 gross = -gross
             # the crash lost the real fee/interest, so book a CONSERVATIVE estimate
-            # rather than the optimistic gross: an ~0.1% exit taker fee, plus (for a
-            # short) the recorded entry fee, so a recovered exit's P&L is not
-            # overstated and cannot flatter the loss kill (re-review money-math).
+            # rather than the optimistic gross: an ~0.1% exit taker fee, plus the
+            # recorded ENTRY-leg fee on EITHER side (re-review money-math — a long's
+            # entry fee is real cost, not embedded in the qty), so a recovered
+            # exit's P&L is not overstated and cannot flatter the loss kill. A
+            # recovered-entry long has entry_fee=0 (the crash lost it), so this
+            # safely subtracts nothing when the fee is genuinely unknown.
             fee_est = FEE_RATE_EST * px * qty_traded
-            entry_fee = (p.get("entry_fee", 0.0) if (p and side == "SHORT") else 0.0)
+            entry_fee = (p.get("entry_fee", 0.0) if p else 0.0)
             jlog("EXIT_FILL", chunk_start=chunk, side=side, qty=qty_traded,
                  price=px, fee_quote=round(fee_est, 6), pnl=round(gross - fee_est - entry_fee, 4),
                  recovered=True, pnl_estimated=True)
@@ -768,7 +787,24 @@ def do_run(bx):
         else:
             long_drift = abs(free_base - long_qty)
             short_excess = borrowed - short_nominal
-            interest_cap = max(RECONCILE_TOL, short_nominal * MAX_SHORT_INTEREST_FRAC)
+            # DERIVED interest cap: sum over each open short of qty x rate x AGE,
+            # not a flat frac of nominal. A short's legitimate excess borrow is the
+            # interest it has accrued, which grows with how long it has been open —
+            # so the tolerance should too. Age is derived from the stored
+            # exit_due_ts (entry = exit_due - HOLD) and clamped to 2x HOLD so a
+            # future-dated position or clock glitch cannot inflate the cap. Floored
+            # at RECONCILE_TOL and ceiled at the flat MAX_SHORT_INTEREST_FRAC so
+            # neither a zero-age nor an absurd-age leg breaks the check.
+            AGE_CLAMP_S = 2 * HOLD_HOURS * 3600
+            derived_cap = 0.0
+            for p_ in st["open"].values():
+                if p_["side"] != "SHORT":
+                    continue
+                entry_ts = p_["exit_due_ts"] - HOLD_HOURS * 3600
+                age_s = min(max(0.0, now - entry_ts), AGE_CLAMP_S)
+                derived_cap += p_["qty"] * MAX_BORROW_RATE_HR * (age_s / 3600.0)
+            interest_cap = min(max(RECONCILE_TOL, derived_cap),
+                               max(RECONCILE_TOL, short_nominal * MAX_SHORT_INTEREST_FRAC))
             problems = []
             # long side: tolerate un-sellable sub-min-notional dust in EVERY state,
             # not just flat (re-review B2) — the sweep keeps free base ≈ open long
@@ -881,19 +917,34 @@ def do_run(bx):
             gross = (px - p["entry_price"]) * qty_traded
             if p["side"] == "SHORT":
                 gross = -gross
-            # cost accounting (finding 17): for a SHORT subtract the entry SELL
-            # fee (USDT, separate from the borrow) and accrued interest — the
-            # extra LTC bought beyond nominal to clear the debt, valued at close,
-            # booked on the FINAL short where the pooled interest lands. For a
-            # LONG the entry fee was in LTC and is already embedded in the
-            # fee-shrunk qty, so it is not subtracted again.
-            entry_fee = p.get("entry_fee", 0.0) if p["side"] == "SHORT" else 0.0
+            # cost accounting (finding 17 + re-review money-math): subtract the
+            # ENTRY-leg fee on BOTH sides. It was wrong to skip it for a LONG on
+            # the theory that the LTC entry fee is "already in the fee-shrunk qty":
+            # the shrink lowers the exit-proceeds basis AND the entry cost basis
+            # by the same amount, so it cancels out of `gross` and the entry fee
+            # ends up entirely UNACCOUNTED — realized P&L (the tradeability
+            # number) was overstated by one entry fee per long round-trip. A short
+            # additionally carries accrued interest — the extra LTC bought beyond
+            # nominal to clear the debt, valued at close, booked on the FINAL short
+            # where the pooled interest lands.
+            entry_fee = p.get("entry_fee", 0.0)
             interest_cost = 0.0
             if p["side"] == "SHORT":
                 shorts_remaining -= 1
+                # Residual assertion on EVERY short close (re-review): the
+                # AUTO_REPAY must actually REDUCE the borrow by ~this leg's size. A
+                # repay that silently fails, or an outsized fee eating the received
+                # qty, leaves debt still accruing — that must HALT, not pass quietly.
+                # (The final leg is additionally required to clear the pool to ~0.)
+                resid = bx.borrowed_base()
+                if debt is not None and resid is not None:
+                    repaid = debt - resid
+                    if repaid < p["qty"] * (1 - RESIDUAL_REPAY_TOL_FRAC):
+                        set_halt("executor", f"short close for {p['chunk_start']} repaid "
+                                 f"only {repaid:.6f} of leg {p['qty']:.6f} — borrow "
+                                 f"{resid:.6f} still outstanding and accruing interest")
                 if is_last_short and debt is not None:
                     interest_cost = max(0.0, debt - p["qty"]) * px
-                    resid = bx.borrowed_base()
                     if resid is not None and resid >= QTY_STEP:
                         set_halt("executor", f"short close for {p['chunk_start']} left "
                                  f"residual borrow {resid:.6f} after the final leg — "
