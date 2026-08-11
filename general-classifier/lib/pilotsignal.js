@@ -49,15 +49,17 @@ async function committeeCall(target, trainChunks, maps, geo, views, bandPct) {
   const bar = maps.trade.get(entryTs);
   const priceAt = bar ? bar.open : null;
   const side = SIDE_MAP[String(call)] || 'FLAT';
-  // input hash WIDENED (finding 26): beyond {chunk, votes, quorum, band} it now
-  // pins side, symbol, the decision price, the train cutoff and a config version,
-  // so any drift in those is provable after the fact — the recompute's hash will
-  // differ. decision_price is rounded so float noise cannot spuriously break it.
+  // input hash (finding 26): pins the chunk, votes, quorum, band, side, symbol,
+  // train cutoff and config version, so any drift in the DECISION MACHINERY is
+  // provable after the fact — the recompute's hash differs and the mirror breaks
+  // on it (re-review: the hash tripwire is now a real break, not informational).
+  // decision_price is deliberately NOT hashed: it has its own tolerance-based
+  // check in the mirror, so a benign finalized-candle price revision must not
+  // trip this config-drift hash.
   const inputHash = crypto.createHash('sha256')
     .update(JSON.stringify({
       chunk: target.startTs, perMember, quorum: F1.cell.quorum, band: bandPct,
       side, symbol: F1.combo.trade,
-      decision_price: priceAt == null ? null : Math.round(priceAt * 1e8) / 1e8,
       train_through: TRAIN_THROUGH, config_version: CONFIG_VERSION,
     }))
     .digest('hex').slice(0, 16);

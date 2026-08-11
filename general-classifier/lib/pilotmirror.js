@@ -31,6 +31,18 @@ const PRICE_TOL = 0.005;
 // recompute that could not run yet (data not caught up) is PENDING, not a break.
 function compareDecision(recorded, recomputed) {
   if (!recomputed || recomputed.found === false) {
+    // A recorded decision had a COMPLETE feature window at production time
+    // (window_complete). If the recompute now cannot find that window, the data
+    // it rode has VANISHED/regressed under it — a real divergence, not benign
+    // 'pending' (re-review). Only a record without the flag (legacy/unknown)
+    // stays pending.
+    if (recorded.window_complete) {
+      const note = (recomputed && recomputed.note) || 'recompute found no data';
+      return { chunk_start: recorded.chunk_start, ok: false, break: true,
+        reason: `data vanished under a completed decision — ${note}`,
+        recorded: { side: recorded.side, per_member: recorded.per_member, input_hash: recorded.input_hash },
+        recomputed: null };
+    }
     return { chunk_start: recorded.chunk_start, ok: true, break: false, pending: true,
       reason: (recomputed && recomputed.note) || 'no recompute available' };
   }
@@ -51,15 +63,21 @@ function compareDecision(recorded, recomputed) {
   } else if ((rp == null) !== (cp == null)) {
     reasons.push(`decision_price ${rp} -> ${cp}`);
   }
+  // the input hash covers the DECISION MACHINERY (chunk, votes, quorum, band,
+  // side, symbol, train cutoff, config version) but NOT the price. An unexplained
+  // hash divergence therefore means a config/engine drift changed a covered field
+  // — a REAL break now, not merely informational (re-review). Price is checked
+  // separately above with its tolerance, so a benign price revision won't trip it.
   const hashDiff = !!(recorded.input_hash && recomputed.input_hash
     && recorded.input_hash !== recomputed.input_hash);
+  if (hashDiff) reasons.push(`input_hash ${recorded.input_hash} -> ${recomputed.input_hash} (config/engine drift)`);
   const isBreak = reasons.length > 0;
   return {
     chunk_start: recorded.chunk_start,
     ok: !isBreak,
     break: isBreak,
     hash_diff: hashDiff,
-    reason: isBreak ? reasons.join('; ') : (hashDiff ? 'hash differs within price tolerance' : 'match'),
+    reason: isBreak ? reasons.join('; ') : 'match',
     recorded: { side: recorded.side, per_member: rv, decision_price: rp, input_hash: recorded.input_hash },
     recomputed: { side: recomputed.side, per_member: cv, decision_price: cp, input_hash: recomputed.input_hash },
   };

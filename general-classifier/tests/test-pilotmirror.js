@@ -53,13 +53,31 @@ module.exports.notYetRecomputableIsPendingNotBreak = function () {
   assert.strictEqual(v.pending, true, 'it is pending');
 };
 
-module.exports.hashDiffAloneWithinPriceTolDoesNotBreak = function () {
-  // votes+side identical, price within tol, but hash differs (e.g. config bump):
-  // reported as informational, not a hard break on its own.
+module.exports.hashDiffBreaks = function () {
+  // votes+side identical, price within tol, but the input hash differs — the hash
+  // covers the decision machinery (config/engine), so an unexplained divergence
+  // is a REAL break (re-review), not informational.
   const v = m.compareDecision(rec({ input_hash: 'old' }),
     recomp({ input_hash: 'new', decision_price: 100.2 }));
-  assert.strictEqual(v.break, false, 'hash diff alone within price tolerance is not a break');
-  assert.strictEqual(v.hash_diff, true, 'but the hash difference is flagged');
+  assert.strictEqual(v.break, true, 'an unexplained hash divergence is a mirror break');
+  assert.strictEqual(v.hash_diff, true);
+  assert.ok(/input_hash/.test(v.reason));
+};
+
+module.exports.vanishedDataOnCompletedDecisionBreaks = function () {
+  // a decision recorded with a complete window whose data later cannot be
+  // recomputed = the data vanished under it = break, not benign pending.
+  const v = m.compareDecision(rec({ window_complete: true }),
+    { found: false, note: 'missing feature candle' });
+  assert.strictEqual(v.break, true, 'vanished data under a completed decision breaks');
+  assert.ok(/vanished/.test(v.reason));
+};
+
+module.exports.foundFalseWithoutCompleteFlagIsPending = function () {
+  // a record with no window_complete flag (legacy) stays conservatively pending.
+  const v = m.compareDecision(rec(), { found: false, note: 'not caught up' });
+  assert.strictEqual(v.break, false);
+  assert.strictEqual(v.pending, true);
 };
 
 module.exports.writeThenLoadRoundTrips = function () {

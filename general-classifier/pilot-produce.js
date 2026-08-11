@@ -36,10 +36,18 @@ const mirror = require('./lib/pilotmirror');
           config_version: out.intent.config_version,
           train_through: out.intent.train_through,
           produced_utc: out.intent.produced_utc,
+          // an actionable intent required a complete feature window at decision
+          // time, so if a later recompute cannot find that window the DATA
+          // vanished — the mirror treats that as a break, not benign 'pending'.
+          window_complete: true,
         });
       } catch (e) {
-        // recording is best-effort; never block the intent on a disk hiccup
-        process.stderr.write('pilot-produce: could not record decision: ' + e.message + '\n');
+        // FAIL CLOSED (re-review): a live fill with no recorded decision has no
+        // mirror twin — the exact gap the mirror exists to close. If the record
+        // cannot be persisted, do NOT ship an actionable intent this tick; the
+        // next tick retries and ships once the record lands.
+        process.stderr.write('pilot-produce: decision record write FAILED, withholding intent: ' + e.message + '\n');
+        out = { ok: true, actionable: false, note: 'decision record write failed; intent withheld this tick' };
       }
     }
     process.stdout.write(JSON.stringify(out) + '\n');

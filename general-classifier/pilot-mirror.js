@@ -50,6 +50,19 @@ const LOOKBACK_DAYS = 12; // recheck the recent window; a 137h hold + settle fit
     for (const b of breaks) console.log(`  BREAK ${b.chunk_start}: ${b.reason}`);
     process.exit(breaks.length ? 2 : 0);
   } catch (err) {
+    // FAIL LOUD, not silent (re-review): a mirror that cannot run is an
+    // unreliable instrument. Stamp an ok:false verdict so the screen and the VPS
+    // alert timer can see the drift-detector has stopped verifying (a stale or
+    // ok:false mirror.json is an alert condition), instead of the error being
+    // swallowed by the tick's `|| true`.
+    try {
+      m.writeMirror({
+        utc: new Date().toISOString(),
+        checked: 0, breaks: 0, pending: 0, ok: false,
+        error: String(err && err.message || err).slice(0, 300),
+        results: [],
+      });
+    } catch (_) { /* best effort */ }
     process.stderr.write('pilot-mirror FAILED: ' + err.message + '\n');
     process.exit(1);
   }
