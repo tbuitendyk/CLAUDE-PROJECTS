@@ -61,7 +61,15 @@ RECV_WINDOW = 10000
 FILL_DEV_LIMIT = 0.010     # kill: fill >1.0% from decision price (GUESSED)
 REJECT_LIMIT = 3           # kill: 3 consecutive rejects (GUESSED)
 LOSS_LIMIT_USD = 50.0      # kill: cumulative pilot loss (GUESSED)
-RECONCILE_TOL = QTY_STEP   # 1 lot step of drift tolerated
+RECONCILE_TOL = QTY_STEP   # 1 lot step of drift tolerated while positions are open
+DUST_RECONCILE_TOL = 0.02  # when FLAT, sub-clip leftover base is dust to be swept,
+                           # NOT an orphan — tolerate up to this (well under a
+                           # $5/$10 position ≈ 0.11–0.22 LTC) so leftover dust never
+                           # false-halts and deadlocks the sweep (finding 19)
+MAX_SHORT_INTEREST_FRAC = 0.02  # exchange borrow legitimately exceeds the nominal
+                           # by accrued interest; cap the tolerated excess at 2% of
+                           # nominal (137h interest is ~0.1–0.3%), above which it is
+                           # a real discrepancy, not interest
 
 HOME = os.path.expanduser("~")
 PILOT = os.path.join(HOME, "pilot")
@@ -627,35 +635,62 @@ def do_run(bx):
     resolve_dangling(bx)
     st = derive(journal_events())
 
-    # 0) sweep: when the journal says we are FLAT, any free base is leftover
+    # 0) sweep: when the journal says we are FLAT, sub-clip free base is leftover
     # dust from short-close buffers. Convert whole lots back to USDT before
     # reconcile so the buffer surplus can never accumulate past the reconcile
-    # tolerance and false-halt (review finding, 2026-08-11). Sub-lot remainder
-    # (< one lot step) is harmless and always stays under tolerance.
+    # tolerance and false-halt (review finding, 2026-08-11). BOUNDED to the dust
+    # ceiling: a free base ABOVE it is a potential ORPHAN, not dust — never sweep
+    # it away (that would hide a real position); leave it for reconcile to halt on.
     if not st["open"] and not halted():
         fb = bx.free_base()
-        if fb is not None and fb >= QTY_STEP:
+        if fb is not None and QTY_STEP <= fb <= DUST_RECONCILE_TOL:
             sweep = floor_step(fb)
             jlog("DUST_SWEEP", qty=sweep, free_base=fb)
             place(bx, "SWEEP", "SELL", sweep, "AUTO_REPAY", {})
 
-    # 1) reconcile: exchange net position vs journal-derived
+    # 1) reconcile: exchange holdings vs journal, INTEREST-AWARE and dust-tolerant
+    # (finding 19). netAsset nets out borrow+interest, so a single nominal net
+    # comparison false-halts as short interest accrues, and a flat book's sub-clip
+    # leftover is dust to be swept — not an orphan. Both false-halts deadlock the
+    # sweep (which is gated on not-halted), so we check the two sides SEPARATELY:
+    #   long side  — free base should equal the journal's long qty (+ sub-clip dust)
+    #   short side — exchange debt should be the journal's short nominal PLUS bounded
+    #                accrued interest (interest only ADDS; a deficit means a short
+    #                vanished and still halts)
     code, acct = bx.isolated_account()
     if code == 200 and not acct.get("dryrun"):
+        free_base = borrowed = None
         try:
-            a = acct["assets"][0]
-            net_base = (float(a["baseAsset"]["netAsset"]))
+            b = acct["assets"][0]["baseAsset"]
+            free_base = float(b.get("free", 0) or 0)
+            borrowed = float(b.get("borrowed", 0) or 0) + float(b.get("interest", 0) or 0)
         except (KeyError, IndexError, ValueError):
-            net_base = None
-        expect = sum((+p["qty"] if p["side"] == "LONG" else -p["qty"])
-                     for p in st["open"].values())
-        if net_base is None:
+            pass
+        long_qty = sum(p["qty"] for p in st["open"].values() if p["side"] == "LONG")
+        short_nominal = sum(p["qty"] for p in st["open"].values() if p["side"] == "SHORT")
+        flat = not st["open"]
+        if free_base is None or borrowed is None:
             jlog("RECONCILE_UNREADABLE", body=json.dumps(acct)[:200])
-        elif abs(net_base - expect) > RECONCILE_TOL:
-            jlog("RECONCILE_MISMATCH", exchange=net_base, journal=expect)
-            set_halt("executor", f"reconcile mismatch {net_base} vs {expect}")
         else:
-            jlog("RECONCILE_OK", exchange=net_base, journal=expect)
+            long_drift = abs(free_base - long_qty)
+            long_tol = DUST_RECONCILE_TOL if flat else RECONCILE_TOL
+            short_excess = borrowed - short_nominal
+            interest_cap = max(RECONCILE_TOL, short_nominal * MAX_SHORT_INTEREST_FRAC)
+            problems = []
+            if long_drift > long_tol:
+                problems.append(f"long base {free_base:.6f} vs journal {long_qty:.6f}")
+            if short_excess < -RECONCILE_TOL:
+                problems.append(f"borrow {borrowed:.6f} below journal shorts {short_nominal:.6f}")
+            elif short_excess > interest_cap:
+                problems.append(f"borrow {borrowed:.6f} exceeds shorts {short_nominal:.6f} beyond interest")
+            if problems:
+                jlog("RECONCILE_MISMATCH", free_base=free_base, borrowed=borrowed,
+                     long_qty=round(long_qty, 6), short_nominal=round(short_nominal, 6),
+                     flat=flat, problems=problems)
+                set_halt("executor", "reconcile mismatch: " + "; ".join(problems))
+            else:
+                jlog("RECONCILE_OK", free_base=free_base, borrowed=borrowed,
+                     long_qty=round(long_qty, 6), short_nominal=round(short_nominal, 6))
     elif code != 200 and bx.live:
         jlog("RECONCILE_UNREADABLE", http=code, body=json.dumps(acct)[:200])
         set_halt("executor", f"cannot read account (http {code})")
@@ -1045,9 +1080,23 @@ def main():
         set_halt(source_arg(), reason_arg() or "manual halt")
         print("HALTED (new entries stopped; scheduled exits still run)")
         return 0
+    if mode == "unhalt":
+        # clear the HALT flag after the cause has been examined/resolved. A halt
+        # never self-clears (gates judge the instrument), so this is the explicit
+        # recovery lever — e.g. after fixing the reconcile dust deadlock.
+        if halted():
+            try:
+                os.remove(HALT)
+            except FileNotFoundError:
+                pass
+            jlog("HALT_CLEAR", source=source_arg(), reason=reason_arg() or "manual clear")
+            print("UNHALTED (halt flag cleared)")
+        else:
+            print("not halted; nothing to clear")
+        return 0
     if mode == "status":
         return do_status()
-    print(f"unknown mode {mode}; use run|dust|shortdust|arm|disarm|halt|status")
+    print(f"unknown mode {mode}; use run|dust|shortdust|arm|disarm|halt|unhalt|status")
     return 2
 
 

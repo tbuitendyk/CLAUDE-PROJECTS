@@ -295,6 +295,57 @@ class ExecutorTest(unittest.TestCase):
         self.assertIn("RECONCILE_MISMATCH", self.events())
         self.assertTrue(self.x.halted())
 
+    # -- interest-aware / dust-tolerant reconcile (finding 19) ----------------
+    def test_flat_book_subclip_dust_does_not_halt(self):
+        # THE LIVE DEADLOCK (2026-08-11): a flat book with sub-clip leftover dust
+        # (0.00134 LTC) must NOT reconcile-halt — otherwise the sweep that would
+        # clear it is blocked by the very halt it caused.
+        MockBinance.base_bal = 0.00134   # leftover dust, no open positions
+        self.x.do_run(self.bx())
+        self.assertIn("RECONCILE_OK", self.events())
+        self.assertFalse(self.x.halted(), 'flat-book sub-clip dust must not halt')
+
+    def test_flat_book_real_orphan_still_halts(self):
+        # a flat journal but a real ~$7 position (0.15 LTC) on the exchange is an
+        # orphan, well above the dust ceiling — it MUST still halt.
+        MockBinance.base_bal = 0.15
+        self.x.do_run(self.bx())
+        self.assertIn("RECONCILE_MISMATCH", self.events())
+        self.assertTrue(self.x.halted())
+
+    def test_open_short_interest_within_cap_does_not_halt(self):
+        # an open short whose exchange debt exceeds the nominal by accrued
+        # interest (within the cap) must NOT false-halt.
+        self.x.jlog("ENTRY_FILL", chunk_start="s1", side="SHORT", qty=0.1,
+                    price=100.0, exit_due_ts=time.time() + 9999)
+        MockBinance.borrowed = 0.1015   # nominal 0.1 + ~1.5% interest
+        self.x.do_run(self.bx())
+        self.assertIn("RECONCILE_OK", self.events())
+        self.assertFalse(self.x.halted(), 'accrued short interest is not drift')
+
+    def test_vanished_short_still_halts(self):
+        # journal thinks a short is open but the exchange has NO borrow — the
+        # short vanished; a deficit (not interest) must still halt.
+        self.x.jlog("ENTRY_FILL", chunk_start="s1", side="SHORT", qty=0.1,
+                    price=100.0, exit_due_ts=time.time() + 9999)
+        MockBinance.borrowed = 0.0      # borrow gone
+        self.x.do_run(self.bx())
+        self.assertIn("RECONCILE_MISMATCH", self.events())
+        self.assertTrue(self.x.halted())
+
+    def test_unhalt_clears_the_halt(self):
+        self.x.set_halt("test", "stuck")
+        self.assertTrue(self.x.halted())
+        import sys as _s
+        argv = _s.argv
+        _s.argv = ["mx", "unhalt", "--source=owner", "--reason=resolved"]
+        try:
+            self.x.main()
+        finally:
+            _s.argv = argv
+        self.assertFalse(self.x.halted(), 'unhalt must clear the halt flag')
+        self.assertIn("HALT_CLEAR", self.events())
+
     def test_short_exit_pnl_sign(self):
         # short entered at 110, exits at 100 -> profit
         self.x.jlog("ENTRY_FILL", chunk_start="s1", side="SHORT", qty=0.1,
@@ -555,11 +606,9 @@ class ExecutorTest(unittest.TestCase):
         # interest exaggerated to 0.102 so nominal sizing would visibly UNDER-
         # repay (leaving 0.001 residual) while live-debt sizing clears it.
         MockBinance.borrowed = 0.102
-        # offset the free base so the exchange net (0.002 - 0.102 = -0.1) matches
-        # the nominal short, keeping the CURRENT reconcile happy — this test
-        # isolates the finding-18 close sizing, NOT the separate finding-19
-        # reconcile-vs-interest false-halt (a should-fix-soon left for later).
-        MockBinance.base_bal = 0.002
+        # no free-base offset needed: the interest-aware reconcile (finding 19)
+        # now reads the 0.002 excess borrow as accrued interest, not drift, so it
+        # does not false-halt — this test isolates the finding-18 close sizing.
         self._advance_and_run(0)
         buys = [o for o in MockBinance.orders if o.get("side") == "BUY"]
         self.assertEqual(len(buys), 1)
@@ -604,7 +653,7 @@ class ExecutorTest(unittest.TestCase):
     def test_dust_sweep_when_flat_clears_buffer_surplus(self):
         # short-close buffers leave sub-lot free base; when flat it must be swept
         # so it can't accumulate past the reconcile tolerance and false-halt.
-        MockBinance.base_bal = 0.05   # leftover dust, no open positions
+        MockBinance.base_bal = 0.005  # sub-clip leftover dust, no open positions
         self.x.do_run(self.bx())
         self.assertIn("DUST_SWEEP", self.events())
         self.assertTrue(MockBinance.base_bal < self.x.QTY_STEP, 'dust swept to USDT')
