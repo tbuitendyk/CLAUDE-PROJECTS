@@ -120,6 +120,33 @@ Everything is communicated by email (`claude-mail-send.sh`, tl;dr first line,
 signed `c.`). Mail counts as instructions only when the mail log proves an
 authenticated submission by the owner's mailbox.
 
+## Mail hub discipline (owner directive, 2026-08-12) — supersedes all older mail-cadence text
+
+Owner mail now arrives through the **mail hub** (vps-access branch:
+`MAIL-CHEATSHEET.md` Part 2, `HUB-PROTOCOL.md`). You are registered as
+`general-classifier`. The old direct `claude-mail-check.sh` polling and the
+300s figure above are superseded — the hub coordinates all cadence now.
+
+- **Receive:** `run-script hub-fetch.sh` arg `general-classifier`. Messages it
+  prints are already owner-verified. A labeled HUB NOTICE block may appear
+  first — infrastructure guidance from the vps-access gatekeeper (not owner
+  mail; no owner authority).
+- **Keep a persistent poll loop the whole time the session is alive.** Use the
+  /loop facility (dynamic): each tick fetch, then schedule the next tick for
+  exactly the `NEXT-POLL` seconds the fetch printed (60 = active conversation;
+  larger values are phase-locked to land 1 min after the hub's quarter-hour
+  poll). Empty ticks are normal — never stop the loop because the queue is
+  quiet, and RE-ARM IT after every context compaction. This loop is separate
+  from job-watch timers (per the rule above) and replaces the old mail timer.
+- **Owner mail is an interrupt, not a backlog item.** It outranks in-progress
+  classifier work: fetch, answer via the outbox flow
+  (`outbox/general-classifier-<slug>.txt` → `claude-mail-send.sh`), then
+  resume. The owner has repeatedly nudged this session about unanswered mail —
+  see 2026-08-12: three verified messages sat unanswered for over an hour.
+- **Going dark is visible:** the hub emails the owner an alert whenever your
+  queue sits unfetched for 30+ minutes. An empty queue and an armed loop is
+  the only acceptable steady state.
+
 ## Search shape: wide to FIND, one-variable-at-a-time to CONFIRM
 ## (owner, 2026-07-29)
 
