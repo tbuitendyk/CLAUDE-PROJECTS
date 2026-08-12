@@ -1,0 +1,65 @@
+Morning report: Live Trading release phases 0-7 built overnight, F1 untouched
+
+tl;dr — Worked the approved plan continuously through the night. Phases 0-7 of
+the 10-phase plan are BUILT, TESTED, and (for the classifier half) DEPLOYED.
+Your running F1 pilot and its open LONG were never touched — engine RUNNING the
+whole time, and NO executor code has gone to the Mexico box (that waits for the
+Phase-10 review, exactly as planned). The golden parity gate is still computing
+on the VPS; its verdict lands in a follow-up. Nothing needs your input — the two
+Phase-10 owner gates you pre-authorized are the only decisions left, and they're
+a long way off.
+
+WHAT'S BUILT (every step committed, full suite green at each — ~45 new tests):
+
+  Phase 0-1  Setup registry. A "trading setup" is now a first-class record:
+             immutable config snapshot, state machine (draft/paper/live/
+             stopped/retired), per-setup clip/stop/key/server, CSRF-guarded
+             HTTP surface. Retiring a live setup is a deliberate two-step.
+
+  Phase 2    Generalized signal engine (lib/live/signal.js): the exact F1
+             decision path, parameterized by any greenlighted config. Same
+             primitives, same guards, same hash. GOLDEN PARITY GATE written:
+             F1 through the new engine must reproduce the old pilotsignal
+             byte-for-byte on the real cache before anything goes live on it.
+             (Computing now; verdict to follow.)
+
+  Phase 3    Executor generalized (built, NOT on the box). Schema-2 intents
+             carry their own clip/hold/stop; a per-box ALLOWLIST fail-closed
+             (no file = no trades; symbol + clip-cap cross-checked so a
+             compromised control plane can't resize or re-point a setup).
+             PAPER mode books simulated fills at the model's own fee rate,
+             invisible to reconcile and the loss kill. Your F1 (schema-1) is
+             byte-preserved: all 72 original executor tests still pass.
+
+  Phase 4    Greenlight + shuttle. A greenlight records WHO/WHEN/WHY over the
+             lab's own selected row, freezing the config (band as a number,
+             engine version, data manifest, campaign provenance). The shuttle
+             button mints a draft setup from it. "No hand-built live configs"
+             is now structural — the shuttle is the only door.
+
+  Phase 5    Live Trading TAB (public/livetrading.html), deployed. Sub-tabs,
+             dark (F1 style) + light (lab style) themes, paper "not real money"
+             badges. Setups pager, greenlights + shuttle, setup detail with the
+             frozen config, operational editor, and state controls.
+
+  Phase 6    Per-setup book + execution fidelity (view). Each setup's real and
+             paper ledgers derived separately from the synced journal, with
+             unrealized P&L and the fidelity numbers (fill deviation, fee/leg)
+             the pilot exists to measure. Wired into the detail tab.
+
+  Phase 7    Data catalog + repair (point 19). A server-controlled statement of
+             the data each setup needs; deleted months are flagged MISSING and
+             re-fetched from the public channel — a rebuild, not a crash.
+
+KEY: "schema-2" = the generalized intent format for arbitrary setups;
+"schema-1" = your F1's existing format, deliberately left byte-identical so the
+two rails never interfere. "fail-closed" = a missing control file makes the box
+REFUSE rather than guess.
+
+STILL IN THE QUEUE (continuing): the parity verdict; per-setup mirror +
+alerting (6.1/6.2); execution-target + exchange adapters (8, the seams for the
+future subscriber-worker + alt-exchange work); migration/polish (9); and the
+Phase-10 adversarial review that gates the box deploy. Plan checkboxes in
+general-classifier/IMPLEMENTATION-PLAN.md are current.
+
+c.
