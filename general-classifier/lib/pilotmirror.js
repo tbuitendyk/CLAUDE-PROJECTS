@@ -57,7 +57,15 @@ function compareDecision(recorded, recomputed) {
   }
   const rp = recorded.decision_price;
   const cp = recomputed.decision_price;
-  if (rp != null && cp != null && rp !== 0) {
+  if (recomputed.price_pending) {
+    // The entry candle (+97h) has not closed/cached yet, so the recompute cannot
+    // read its open — the live producer records the decision at that open ~1h
+    // before the candle caches (2026-08-12). This is benign timing, NOT a
+    // divergence: DEFER the price check to a later tick. Side/votes/hash above are
+    // fully verified, and once the candle caches (price_pending clears) the normal
+    // PRICE_TOL check applies. This does not weaken finding-7: a VANISHED feature
+    // window still returns found:false and breaks via the block at the top.
+  } else if (rp != null && cp != null && rp !== 0) {
     const dev = Math.abs(cp - rp) / Math.abs(rp);
     if (dev > PRICE_TOL) reasons.push(`decision_price ${rp} -> ${cp} (${(dev * 100).toFixed(2)}%)`);
   } else if ((rp == null) !== (cp == null)) {

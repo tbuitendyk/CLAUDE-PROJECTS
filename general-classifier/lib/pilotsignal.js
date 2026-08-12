@@ -242,6 +242,13 @@ async function computeSignalForChunk(chunkStartMs, opts = {}) {
     await committeeCall(target, trainChunks, maps, geo, views, bandPct);
   return {
     found: true,
+    // The live producer now records the decision at the entry candle's OPEN, ~1h
+    // BEFORE that candle closes and lands in the cache. So a recompute in that
+    // window finds the chunk and full feature set but cannot yet read the +97h
+    // entry bar — priceAt is null. That is benign timing, NOT a divergence: flag it
+    // price_pending so the mirror defers ONLY the price check (side/votes/hash are
+    // fully verified) instead of reading real-vs-null as a break (2026-08-12 review).
+    price_pending: priceAt == null,
     chunk_start: new Date(target.startTs).toISOString(),
     side,
     per_member: perMember,

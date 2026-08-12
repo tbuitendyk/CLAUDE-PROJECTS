@@ -99,3 +99,31 @@ module.exports.writeThenLoadRoundTrips = function () {
 module.exports.loadMissingDirIsEmpty = function () {
   assert.deepStrictEqual(m.loadDecisions('/no/such/dir/xyz'), [], 'a missing dir yields no decisions');
 };
+
+module.exports.pendingEntryPriceDefersInsteadOfBreaking = function () {
+  // 2026-08-12: the live producer records the decision at the entry OPEN ~1h before
+  // that candle caches, so a mirror recompute in between reads decision_price=null
+  // with price_pending=true. That must DEFER the price check, not break real-vs-null.
+  const v = m.compareDecision(rec({ decision_price: 88.5 }),
+    recomp({ decision_price: null, price_pending: true }));
+  assert.strictEqual(v.break, false, 'a pending entry candle defers the price check, not a break');
+  assert.strictEqual(v.ok, true);
+};
+
+module.exports.realVsNullWithoutPendingStillBreaks = function () {
+  // guard: the deferral applies ONLY when price_pending is set; a real-vs-null price
+  // with no pending flag is still a divergence and must break (finding-7 protection).
+  const v = m.compareDecision(rec({ decision_price: 88.5 }),
+    recomp({ decision_price: null }));
+  assert.strictEqual(v.break, true, 'real-vs-null price without price_pending still breaks');
+  assert.ok(/decision_price/.test(v.reason));
+};
+
+module.exports.pendingPriceStillCatchesSideDrift = function () {
+  // pending defers ONLY the price check; a side/vote/hash divergence during the
+  // pending window must still break.
+  const v = m.compareDecision(rec({ side: 'LONG', decision_price: 88.5 }),
+    recomp({ side: 'SHORT', decision_price: null, price_pending: true }));
+  assert.strictEqual(v.break, true, 'a side flip still breaks even while the price is pending');
+  assert.ok(/side LONG -> SHORT/.test(v.reason));
+};
