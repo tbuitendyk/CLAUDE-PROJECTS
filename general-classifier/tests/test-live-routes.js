@@ -148,6 +148,35 @@ module.exports.greenlightAndShuttleOverTheWire = async function () {
   });
 };
 
+module.exports.catalogAndStatusEndpointsOverTheWire = async function () {
+  reg.createSetup({ id: 'wire-d', name: 'status probe', ownerId: 'owner',
+    configSnapshot: f1Config(), clipUsd: 10 });
+  await withServer(async () => {
+    // catalog GET serves the required-vs-present shape
+    const c = await req('GET', '/api/live/catalog');
+    assert.strictEqual(c.status, 200, c.body);
+    const cj = c.json();
+    assert.ok('ok' in cj && Array.isArray(cj.entries), 'catalog shape');
+    // repair is CSRF-guarded like every mutator
+    const evil = await req('POST', '/api/live/catalog/repair', {}, { Origin: 'https://evil.example.com' });
+    assert.strictEqual(evil.status, 403, evil.body);
+    // same-site repair runs (no active setups in this scratch world -> no fetches)
+    const ok = await req('POST', '/api/live/catalog/repair', {}, ORIGIN);
+    assert.strictEqual(ok.status, 200, ok.body);
+    assert.ok(Array.isArray(ok.json().fetched));
+    // per-setup status: 200 with a book for a real id, 404 for unknown
+    const st = await req('GET', '/api/live/setups/wire-d/status');
+    assert.strictEqual(st.status, 200, st.body);
+    assert.ok('fidelity' in st.json() && 'openPositions' in st.json());
+    const nf = await req('GET', '/api/live/setups/nope-xyz/status');
+    assert.strictEqual(nf.status, 404);
+    // malformed JSON on a live mutator returns the JSON error, not HTML (QC 115)
+    const mal = await req('POST', '/api/live/setups/wire-d/config', '{oops', ORIGIN);
+    assert.strictEqual(mal.status, 400, mal.body);
+    assert.ok(!/<html/i.test(mal.body), 'JSON error, never an HTML stack page');
+  });
+};
+
 module.exports.keyRefNeverLeavesTheServerAsAValue = async function () {
   reg.createSetup({ id: 'wire-c', name: 'key test', ownerId: 'owner',
     configSnapshot: f1Config(), clipUsd: 10, keyRef: 'sub-acct-key-1' });
