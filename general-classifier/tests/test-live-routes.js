@@ -59,7 +59,7 @@ async function withServer(fn) {
 
 module.exports.liveSetupLifecycleOverTheWire = async function () {
   const s = reg.createSetup({ id: 'wire-a', name: 'wire test', ownerId: 'owner',
-    configSnapshot: f1Config(), clipUsd: 10 });
+    configSnapshot: f1Config(), clipUsd: 10, keyRef: 'sub-acct-wire' });  // R7: live needs a sub-account
   await withServer(async () => {
     // list + detail
     const list = (await req('GET', '/api/live/setups')).json();

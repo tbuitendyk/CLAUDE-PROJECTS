@@ -181,6 +181,19 @@ function transition(id, to, by = 'owner', note) {
     if (target && !targetServes(target, s.tradedPair)) {
       errs.push(`symbol ${s.tradedPair}: target '${target.id}' serves ${JSON.stringify(target.symbols)} — not this pair`);
     }
+    // R7: going LIVE (placing REAL orders) requires the setup's OWN sub-account
+    // (keyRef). F1 and any other setup sharing one isolated-margin sub-account
+    // mingle their balance AND borrow pool, so multi-day short interest pools onto
+    // whichever leg closes last and cross-contaminates per-setup/F1 realized —
+    // physically unavoidable on a shared account. A distinct keyRef keeps each
+    // setup's money isolated. (PAPER places no orders, so it needs none.) The
+    // executor must ROUTE this keyRef before a live setup is truly isolated —
+    // tracked as open gap G8; this gate records and enforces the requirement at
+    // the door so a live setup can never be created without its own sub-account.
+    if (to === 'live' && !(typeof s.keyRef === 'string' && s.keyRef.trim())) {
+      errs.push('a LIVE setup needs its own sub-account keyRef so its balance and '
+        + 'borrow pool never mingle with F1 or another setup (set keyRef first)');
+    }
     if (errs.length) {
       const e = new Error(`cannot go ${to}: ${errs.join('; ')}`);
       e.code = 'NOT_LIVE_EXECUTABLE';

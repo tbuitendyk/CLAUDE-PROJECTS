@@ -118,7 +118,7 @@ module.exports.configSnapshotAndIdentityAreImmutable = function () {
 };
 
 module.exports.stateMachineAllowsDeclaredPathsOnly = function () {
-  const s = mkSetup();
+  const s = mkSetup({ keyRef: 'sub-acct-1' });   // R7: live needs its own sub-account
   // draft -> paper -> live -> stopped -> live (restart) -> stopped -> retired
   reg.transition(s.id, 'paper');
   reg.transition(s.id, 'live');
@@ -139,7 +139,7 @@ module.exports.stateMachineAllowsDeclaredPathsOnly = function () {
 module.exports.draftBypassStraightToLiveIsAllowed = function () {
   // NEXT-RELEASE point 15 (owner amendment): paper is OPTIONAL — deeper-pocket
   // users go straight to live.
-  const s = mkSetup();
+  const s = mkSetup({ keyRef: 'sub-acct-2' });   // R7: live needs its own sub-account
   const live = reg.transition(s.id, 'live');
   assert.strictEqual(live.state, 'live');
 };
@@ -172,9 +172,24 @@ module.exports.listReturnsCreatedSetupsSortedByCreation = function () {
 
 // ---- R10: only a live-EXECUTABLE geometry/symbol may go paper or live --------
 module.exports.f1ShapeSetupMayGoPaperAndLive = function () {
-  const s = mkSetup();  // F1: market entry, directional gate, LTCUSDT
+  const s = mkSetup({ keyRef: 'sub-acct-3' });  // F1 shape; R7: live needs a sub-account
   assert.strictEqual(reg.transition(s.id, 'paper').state, 'paper',
     'the F1 market/directional shape is live-executable');
+  assert.strictEqual(reg.transition(s.id, 'live').state, 'live');
+};
+
+module.exports.liveRequiresItsOwnSubAccountKeyRef = function () {
+  // R7: a setup sharing one sub-account with F1 mingles balance + borrow pool, so
+  // multi-day short interest pools onto whoever closes last and cross-contaminates
+  // realized. Going LIVE without a distinct keyRef is refused; PAPER needs none.
+  const s = mkSetup();  // no keyRef
+  assert.strictEqual(reg.transition(s.id, 'paper').state, 'paper', 'paper needs no sub-account');
+  let err = null;
+  try { reg.transition(s.id, 'live'); } catch (e) { err = e; }
+  assert.ok(err && err.code === 'NOT_LIVE_EXECUTABLE', `expected refusal, got ${err && err.code}`);
+  assert.ok(/keyRef|sub-account/.test(err.message), err.message);
+  // with its own sub-account it may go live
+  reg.updateSetup(s.id, { keyRef: 'sub-acct-own' });
   assert.strictEqual(reg.transition(s.id, 'live').state, 'live');
 };
 
