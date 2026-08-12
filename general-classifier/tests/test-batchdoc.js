@@ -5,7 +5,10 @@
 // crash aborted the sweep for every doc after it), and the param normalizer
 // silently corrected malformed numbers instead of refusing.
 const { assert } = require('./helpers');
-const { listRow, markInterrupted, wfParams } = require('../lib/batch');
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
+const { listRow, markInterrupted, wfParams, getBatch } = require('../lib/batch');
 
 module.exports = {
   async thePickerListsWalkforwardDocs() {
@@ -72,5 +75,22 @@ module.exports = {
     assert.ok(geoms.length >= 4, 'the daily shapes all remain');
     assert.throws(() => wfParams({ permute: { geometry: false }, set: { geometry: 'weekly-8d' } }), /weekly-8d/);
     assert.throws(() => wfParams({ permute: { geometry: false }, set: { geometry: 'weekly8d' } }), /unknown geometry/);
+  },
+
+  // R11: getBatch must never let a traversal-shaped id path-join out of the
+  // batches dir into an arbitrary .json read (the greenlight endpoint passed an
+  // unvalidated runId straight in).
+  getBatchRefusesPathTraversalIds() {
+    const BATCH_DIR = path.join(__dirname, '..', 'data', 'batches');
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gc-trav-'));
+    const sentinel = path.join(dir, 'secret.json');
+    fs.writeFileSync(sentinel, JSON.stringify({ kind: 'bracketlab', id: 'x', runs: [] }));
+    // an id that, unguarded, path-joins BATCH_DIR/<rel>.json onto the sentinel
+    const rel = path.relative(BATCH_DIR, sentinel).replace(/\.json$/, '');
+    assert.ok(rel.includes('..'), 'the crafted id really does traverse upward');
+    assert.strictEqual(getBatch(rel), null, 'a traversal id must not read a file outside the batches dir');
+    // ordinary ids still resolve normally (a nonexistent one -> null, not a throw)
+    assert.strictEqual(getBatch('definitely-not-a-real-run-xyz'), null);
+    fs.rmSync(dir, { recursive: true, force: true });
   },
 };

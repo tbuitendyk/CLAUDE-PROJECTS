@@ -164,7 +164,14 @@ function listBatches() {
 }
 
 function getBatch(id) {
-  if (activeBatch && activeBatch.id === id) return activeBatch;
+  // R11: batch ids are internal slugs (a letter/digit then letters/digits/._-).
+  // Reject any traversal-shaped id BEFORE it path-joins into a read, so an
+  // unvalidated runId (e.g. from the greenlight endpoint, where setup/greenlight
+  // ids are validated but this one was not) can never escape BATCH_DIR into an
+  // arbitrary .json read. Guards every caller, not just that one route.
+  const s = String(id);
+  if (!/^[A-Za-z0-9][A-Za-z0-9_.-]*$/.test(s) || s.includes('..')) return null;
+  if (activeBatch && activeBatch.id === s) return activeBatch;
   try {
     const doc = JSON.parse(fs.readFileSync(batchFile(id), 'utf8'));
     // The runs are the record; the summary is derived. Rebuild it on read so
