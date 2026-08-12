@@ -10,8 +10,16 @@ a cron cycle on the VPS is the only mailbox consumer. Machine protocol detail:
 need — follow it top to bottom and you're onboarded.**
 
 Terminology: a *registered project session* is the Claude conversation working
-one project branch. The disposable cloud container it happens to run in is
-irrelevant to the hub — names identify sessions, not machines.
+one project branch — one item in the owner's Code list in the Claude app. The
+disposable cloud container it happens to run in is irrelevant to the hub —
+names identify sessions, not machines.
+
+CURRENT GATEKEEPER (2026-08-12): the Code-list item named "VPS deploy setup"
+(branch vps-access) is the live hub session — it holds the dispatcher's wakeup
+chain and heartbeat. Do not delete that item while the hub is in service. If
+it is ever lost: open any new session on vps-access and give it one command —
+"/loop tick the mail hub as gatekeeper+dispatcher per HUB-PROTOCOL.md" — and
+the role resumes; mail queues safely on the VPS in the meantime.
 
 ---
 
