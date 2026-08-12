@@ -39,7 +39,13 @@ function loadDecisions(setupId, dir = decisionsDir()) {
 // throws — a recompute that cannot run yet is PENDING, a real divergence is a
 // BREAK (compareDecision decides which). `recompute` is injectable for tests.
 async function checkSetup(setup, opts = {}) {
-  const n = opts.recent || 10;
+  // R17: a flat newest-10 window can miss decisions whose positions are still
+  // OPEN. Cover at least the whole hold window (ceil(tHours/24) concurrent
+  // positions) plus a 10-decision margin, so every unclosed position's decision
+  // is re-verified, never just the newest 10. Floor at 10; caller may override.
+  const holdChunks = Math.ceil((setup.configSnapshot && setup.configSnapshot.cell
+    && setup.configSnapshot.cell.tHours ? setup.configSnapshot.cell.tHours : 24) / 24);
+  const n = opts.recent || Math.max(10, holdChunks + 10);
   const recompute = opts.recompute || ((chunkMs) => signal.computeSignalForChunk(setup, chunkMs));
   const records = loadDecisions(setup.id, opts.dir).slice(-n);
   const results = [];

@@ -14,7 +14,10 @@ const OUT = path.join(__dirname, 'data', 'live', 'mirror.json');
 (async () => {
   try {
     const now = Date.now();
-    const active = reg.listSetups().filter((s) => s.state === 'paper' || s.state === 'live');
+    // R17: also mirror STOPPED setups — stopping halts new entries but existing
+    // positions still exit, so their decisions must keep being re-verified for
+    // drift; only draft (never traded) and retired (done) are skipped.
+    const active = reg.listSetups().filter((s) => ['paper', 'live', 'stopped'].includes(s.state));
     const results = [];
     for (const s of active) {
       try {

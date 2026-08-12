@@ -95,3 +95,20 @@ module.exports.noDecisionsIsAnEmptyCleanResult = async function () {
   assert.strictEqual(r.ok, true);
   assert.strictEqual(r.breaks, 0);
 };
+
+module.exports.mirrorWindowCoversTheHoldNotJustNewestTen = async function () {
+  // R17: the recompute window covers the whole hold (ceil(tHours/24)+10), so a
+  // decision whose position could still be open is re-verified — not capped at 10.
+  const records = [];
+  for (let i = 1; i <= 15; i++) {
+    records.push(rec({ chunk_start: `2026-08-${String(i).padStart(2, '0')}T00:00:00.000Z` }));
+  }
+  writeDecisions('s-hold', records);
+  const setup = { id: 's-hold', configSnapshot: { cell: { tHours: 137 } } };  // holdChunks=6 -> n=16
+  const r = await mirror.checkSetup(setup, {
+    recompute: async () => ({ found: true, price_pending: false, side: 'LONG',
+      per_member: [0, 0, 1, 0], input_hash: 'h1', decision_price: 45.55 }),
+  });
+  assert.strictEqual(r.checked, 15, 'all 15 decisions checked (hold window > 10), not capped at 10');
+  assert.strictEqual(r.breaks, 0);
+};
