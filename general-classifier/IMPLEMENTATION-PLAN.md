@@ -115,16 +115,16 @@ Rules the session works under during plan execution:
 ## PHASE 2 — One parameter vocabulary + generalized signal producer (L)
 [NEXT-RELEASE 5 — the core engineering item]
 
-- [ ] 2.1 Audit lib/bracket.js + lib/forwardbook.js + lib/dataset.js and
+- [x] 2.1 Audit lib/bracket.js + lib/forwardbook.js + lib/dataset.js and
       extract the COMPLETE parameter vocabulary a lab config expresses
       (combo/pairs, geometry, anchor, offsets, hold, committee members,
       quorum, band, entry style, gate, stop, fees). Write it down as a
       versioned schema (`lib/live/configschema.js`) consumed by BOTH sides.
-- [ ] 2.2 `lib/live/signal.js`: generalized producer — given a TradingSetup,
+- [x] 2.2 `lib/live/signal.js`: generalized producer — given a TradingSetup,
       trains/loads the frozen committee from configSnapshot, computes the due
       chunk from the setup's own geometry, fetches the live entry open (the
       QC-109 mechanism, generalized), returns an intent tagged with setupId.
-- [ ] 2.3 **Golden parity gate (blocks all later phases):** F1 expressed as a
+- [~] 2.3 **Golden parity gate (blocks all later phases):** F1 expressed as a
       TradingSetup must reproduce the existing pilotsignal decisions
       BYTE-IDENTICALLY over the full replayable history (sides, votes,
       hashes, prices), and match lib/bracket.js simulated calls for the same
@@ -133,37 +133,37 @@ Rules the session works under during plan execution:
 - [ ] 2.4 Multi-setup produce loop: iterate all paper/live setups, emit one
       intent per due setup. Per-setup decision records (mirror twin, QC-110
       pattern) keyed by setupId.
-- [ ] 2.5 Tests incl. parity harness kept permanently in the suite.
+- [x] 2.5 Tests incl. parity harness kept permanently in the suite.
 
 ## PHASE 3 — Generalized executor (L) [NEXT-RELEASE 5, 20, 16-partial]
 
 All built and unit-tested WITHOUT deploying to the box (Phase-10 gate).
 
-- [ ] 3.1 mx_executor generalization (vps-access branch): intent schema v2
+- [x] 3.1 mx_executor generalization (vps-access branch): intent schema v2
       carries setupId + full execution params (symbol, clipUsd, holdHours,
       stopPct); executor validates against its per-box setup allowlist;
       dedup key becomes (setupId, chunk_start); journal events tagged with
       setupId; per-setup halt vs box-wide halt distinguished.
-- [ ] 3.2 Paper mode in the executor (point 15): a setup in paper state runs
+- [x] 3.2 Paper mode in the executor (point 15): a setup in paper state runs
       the identical path with a simulated fill at the live price, journaled
       as PAPER_* events — same journal, no orders. Bypassable: live setups
       skip paper entirely.
-- [ ] 3.3 Backward compatibility: schema-1 intents (running F1) keep working
+- [x] 3.3 Backward compatibility: schema-1 intents (running F1) keep working
       untouched — the executor serves old and new concurrently.
-- [ ] 3.4 Test suite extension: multi-setup replay, paper fills, allowlist
+- [x] 3.4 Test suite extension: multi-setup replay, paper fills, allowlist
       rejection, per-setup halts, schema-1 regression tests.
 
 ## PHASE 4 — Campaign provenance + greenlight + shuttle (M) [NEXT-RELEASE 4, 13, 18]
 
-- [ ] 4.1 Campaign parent-job entity: the existing campaign prefix becomes a
+- [~] 4.1 Campaign parent-job entity: the existing campaign prefix becomes a
       real record (`data/campaigns/`); lab runs (sweeps, nulls, tuning)
       attach as children; tree queryable.
-- [ ] 4.2 Greenlight state on a lab config: owner-triggered, stores WHO/WHEN/
+- [x] 4.2 Greenlight state on a lab config: owner-triggered, stores WHO/WHEN/
       WHY + the full provenance chain + engineVersion at greenlight time.
-- [ ] 4.3 Shuttle: button on a greenlighted config -> POST create setup
+- [x] 4.3 Shuttle: button on a greenlighted config -> POST create setup
       (draft) with immutable snapshot + provenance + engine version. UI jump
       to the new setup.
-- [ ] 4.4 Tests: provenance chain integrity, snapshot immutability, no
+- [x] 4.4 Tests: provenance chain integrity, snapshot immutability, no
       shuttle without greenlight, greenlight requires a campaign.
 
 ## PHASE 5 — Live Trading tab UI (M) [NEXT-RELEASE 1, 12, 15, 20]
@@ -266,6 +266,11 @@ a main-line step parks.
 
 (one line per non-obvious decision made under protocol rule 1; newest first)
 
+- P3: paper fills use the model's own fee rate (0.125%/leg) so paper == the lab's promise; fidelity then isolates execution.
+- P3: one box serves ONE symbol (allowlist symbol affinity enforced); multi-symbol = a second executor instance/box, which the execution-target model already supports.
+- P4: trainThrough = the selecting run's fire time (cache holds only closed candles, so fire time IS the data horizon) — the forwardbook freeze rule, always derivable.
+- P4: 4.1 campaign tree BROWSER deferred to the UI phase; the greenlight record already carries campaign + manifest + run linkage (the provenance chain itself).
+- P2: golden parity (2.3) runs ON THE VPS (live-parity-check/-result) — local tests must never write real-symbol cache files; fabricated ZZZQ* symbols only.
 - P1: live->retired forbidden (stop first) so retiring a trading job is always two-step.
 - P1: keyRef serialized as presence-only ('set'/null) on every HTTP path — key hygiene habit even for a mere reference name.
 - P1: no HTTP create endpoint yet, on purpose — setups are minted only by the Phase-4 greenlight shuttle ("no hand-built live configs").
