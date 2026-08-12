@@ -24,26 +24,43 @@ rc=$?
 echo "$OUT" | tail -3 | sed 's/^/  /'
 [ $rc -ne 0 ] && { echo "producer failed"; exit 1; }
 
-echo "== carry the allowlist (fail-closed twin on the box) =="
+SCP="scp -q -i $KEY -o BatchMode=yes -o StrictHostKeyChecking=accept-new"
+
+# R14: carry the allowlist ATOMICALLY (scp to a dot-temp, then mv on the box) so
+# the box's fail-closed reader can never load a half-written allowlist. And track
+# the result: if the carry FAILED we must NOT ship intents this tick — a fresh
+# intent acting against a STALE box allowlist (the box keeps its previous list on
+# failure) is exactly what the allowlist exists to prevent. Intents wait in the
+# outbox and retry next tick, when the allowlist and the intents can go together.
+echo "== carry the allowlist (fail-closed twin on the box), atomically =="
 ALLOW="$APPDIR/data/live/setups-allow.json"
+allow_ok=1
 if [ -f "$ALLOW" ]; then
-  scp -q -i "$KEY" -o BatchMode=yes -o StrictHostKeyChecking=accept-new \
-      "$ALLOW" "$BOX_USER@$BOX_HOST:~/pilot/setups-allow.json" \
-    && echo "  allowlist carried" || echo "  allowlist carry FAILED (box keeps its previous list)"
+  if $SCP "$ALLOW" "$BOX_USER@$BOX_HOST:~/pilot/.setups-allow.json.tmp" \
+     && $SSH "$BOX_USER@$BOX_HOST" 'mv ~/pilot/.setups-allow.json.tmp ~/pilot/setups-allow.json'; then
+    echo "  allowlist carried (atomic)"
+  else
+    allow_ok=0
+    echo "  allowlist carry FAILED — NOT shipping intents this tick (box keeps its previous list)"
+  fi
 fi
 
 echo "== ship intents =="
 OUTBOX="$APPDIR/data/live/outbox"
 shopt -s nullglob
 shipped=0
-for f in "$OUTBOX"/intent2-*.json; do
-  base=$(basename "$f")
-  if scp -q -i "$KEY" -o BatchMode=yes -o StrictHostKeyChecking=accept-new \
-      "$f" "$BOX_USER@$BOX_HOST:~/pilot/intents/$base"; then
-    mv "$f" "$f.shipped"
-    shipped=$((shipped+1))
-  else
-    echo "  ship FAILED for $base (kept in outbox; retried next tick)"
-  fi
-done
+if [ "$allow_ok" -eq 1 ]; then
+  for f in "$OUTBOX"/intent2-*.json; do
+    base=$(basename "$f")
+    # ATOMIC: land under a dot-temp name (the executor's intent loop matches only
+    # *.json, so the temp is invisible) then mv into place on the box.
+    if $SCP "$f" "$BOX_USER@$BOX_HOST:~/pilot/intents/.$base.tmp" \
+       && $SSH "$BOX_USER@$BOX_HOST" "mv ~/pilot/intents/.$base.tmp ~/pilot/intents/$base"; then
+      mv "$f" "$f.shipped"
+      shipped=$((shipped+1))
+    else
+      echo "  ship FAILED for $base (kept in outbox; retried next tick)"
+    fi
+  done
+fi
 echo "  shipped $shipped intent(s)"
