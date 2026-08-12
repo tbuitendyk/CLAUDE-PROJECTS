@@ -663,6 +663,14 @@ class ExecutorTest(unittest.TestCase):
 
     # ---- schema-2: generalized setups (IMPLEMENTATION-PLAN phase 3) --------
     def write_allow(self, entries):
+        # R5: the box now PINS paper-vs-real and the hold from the allowlist. A
+        # plain test allowlist defaults to state 'live' + a generous hold cap so a
+        # real fill is authorized; tests that exercise the pins set state/hold
+        # explicitly (e.g. state 'paper' to prove a tampered intent stays paper).
+        for e in entries.values():
+            if isinstance(e, dict):
+                e.setdefault("state", "live")
+                e.setdefault("max_hold_hours", 100000)
         os.makedirs(os.path.join(self.home, "pilot"), exist_ok=True)
         with open(os.path.join(self.home, "pilot", "setups-allow.json"), "w") as f:
             json.dump(entries, f)
@@ -835,6 +843,38 @@ class ExecutorTest(unittest.TestCase):
         self.assertEqual(f.get("hold_hours"), 48, "recovered entry keeps its own hold, not 137")
         self.assertEqual(f.get("stop_pct"), 0.05, "recovered entry keeps its own stop, not stopless")
         self.assertAlmostEqual(f["exit_due_ts"], now + 48 * 3600, delta=120)
+
+    def test_schema2_paper_setup_intent_cannot_place_real_order(self):
+        # R5 (BLOCKER): the box pins paper-vs-real from the ALLOWLIST. A paper-state
+        # setup whose intent was TAMPERED to paper:false must STILL book paper —
+        # never a real order. Without the pin the intent's own flag drove real money.
+        self.write_allow({"s-p": {"symbol": "LTCUSDT", "max_clip_usd": 25, "state": "paper"}})
+        self.write_intent2(setup_id="s-p", clip=20.0, hold=48, paper=False)  # tampered
+        self.x.do_run(self.bx())
+        ev = self.events()
+        self.assertIn("PAPER_ENTRY_FILL", ev, "a paper-state setup must book paper")
+        self.assertNotIn("ENTRY_FILL", ev, "a paper-state setup must NEVER place a real order")
+        self.assertEqual(MockBinance.orders, [], "no real order for a paper-state setup")
+
+    def test_schema2_live_setup_places_real_order(self):
+        # R5 counterpart: a live-state setup with paper:false DOES place a real order.
+        self.write_allow({"s-l": {"symbol": "LTCUSDT", "max_clip_usd": 25, "state": "live"}})
+        self.write_intent2(setup_id="s-l", clip=20.0, hold=48, paper=False)
+        self.x.do_run(self.bx())
+        ev = self.events()
+        self.assertIn("ENTRY_FILL", ev, "a live-state setup places a real order")
+        self.assertNotIn("PAPER_ENTRY_FILL", ev)
+
+    def test_schema2_hold_beyond_allowlist_cap_is_refused(self):
+        # R5: the allowlist bounds the hold so a tampered intent cannot hold a real
+        # position indefinitely. hold_hours above max_hold_hours -> INTENT_INVALID.
+        self.write_allow({"s-h": {"symbol": "LTCUSDT", "max_clip_usd": 25,
+                                  "state": "live", "max_hold_hours": 200}})
+        self.write_intent2(setup_id="s-h", clip=20.0, hold=999)  # 999 > 200
+        self.x.do_run(self.bx())
+        bad = [e for e in self.x.journal_events() if e["event"] == "INTENT_INVALID"]
+        self.assertTrue(any("hold_cap" in (e.get("problems") or []) for e in bad))
+        self.assertEqual(MockBinance.orders, [], "over-long hold placed no order")
 
     def test_schema2_real_position_does_not_crowd_out_f1_entry(self):
         # R2: 5 schema-1 (F1) opens + 1 schema-2 REAL open = 6 total = MAX_CONCURRENT.

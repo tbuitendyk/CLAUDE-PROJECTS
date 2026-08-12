@@ -1342,6 +1342,11 @@ def do_run(bx):
                     cap = allow_entry.get("max_clip_usd")
                     if not isinstance(cap, (int, float)) or it["clip_usd"] > cap:
                         problems.append("clip_cap")
+                    # R5: the allowlist bounds the hold so a tampered/buggy intent
+                    # cannot hold a real position indefinitely.
+                    hcap = allow_entry.get("max_hold_hours")
+                    if isinstance(hcap, (int, float)) and it["hold_hours"] > hcap:
+                        problems.append("hold_cap")
         # age against EXCHANGE-synced time, not the raw OS clock (finding 3)
         age = now_exch - it.get("ts", 0)
         stale = age > INTENT_MAX_AGE_S
@@ -1365,12 +1370,17 @@ def do_run(bx):
                  **({"setup_id": it["setup_id"]} if is2 else {}))
             os.rename(path, path + ".dup")
             continue
+        # R5: paper-vs-real is decided by the ALLOWLIST, not the intent — a paper
+        # setup can NEVER place a real order whatever its own flag says (only a
+        # setup the box was told is 'live' can). A live setup honors its intent
+        # (normally paper:false). eff_paper is what everything downstream uses.
+        eff_paper = (bool(it.get("paper")) or allow_entry.get("state") != "live") if is2 else False
         jlog("INTENT_SEEN", chunk_start=it["chunk_start"], side=it["side"],
              decision_price=it["decision_price"],
              input_hash=it.get("input_hash", ""),
              per_member=it.get("per_member"), quorum=it.get("quorum"),
              file=name,
-             **({"setup_id": it["setup_id"], "paper": it["paper"]} if is2 else {}))
+             **({"setup_id": it["setup_id"], "paper": eff_paper} if is2 else {}))
         os.rename(path, path + ".done")
         if it["side"] == "FLAT":
             continue
@@ -1387,7 +1397,7 @@ def do_run(bx):
             # per-SETUP concurrency: this setup's own open (or paper) positions
             # against its allowlisted cap; default = the schema-1 derivation
             # (hold / daily step).
-            book = stx["paper_open"] if it["paper"] else stx["open"]
+            book = stx["paper_open"] if eff_paper else stx["open"]
             mine = sum(1 for p in book.values() if p.get("setup_id") == it["setup_id"])
             cap = allow_entry.get("max_concurrent")
             if not isinstance(cap, int) or cap < 1:
@@ -1414,7 +1424,7 @@ def do_run(bx):
                  reason="no price")
             continue
         dev = abs(price - it["decision_price"]) / it["decision_price"]
-        if is2 and it["paper"]:
+        if is2 and eff_paper:
             # PAPER FILL (NEXT-RELEASE point 15): identical decision path, no
             # order — the fill IS the current market price, fees at the model's
             # own per-leg rate so paper matches what the lab promised. Deviation
