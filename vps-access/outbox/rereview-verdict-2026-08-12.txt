@@ -1,0 +1,99 @@
+Scoped re-review verdict — NOT clean: generalized rail shares F1's kill switches; fixing all, deploy stays gated
+
+tl;dr: the scoped re-review of the generalized (multi-setup) trading rail came
+back NOT clean — it found a cluster of confirmed defects, several of them
+blockers, all on the NEW generalized code, none on the live F1 pilot. The
+running F1 rail and its open $10 LTC long are NOT endangered: the generalized
+rail is inert today (no setup is paper or live, so it produces no orders). The
+single root theme is rail isolation — the generalized rail was built as extra
+branches inside the same box engine that runs F1, and it silently SHARES F1's
+kill-switches, its 6-slot position cap, its order-id space, and the journal
+your F1 screen reads. That is the one thing you said must never happen ("keep
+both, never both writing orders for the same setup, F1 untouched"). I am fixing
+every confirmed item now, each with a test I have watched fail without the fix,
+and the box deploy (plan 10.3) STAYS GATED until a fresh scoped round comes back
+with zero blockers — your stated bar. Nothing about F1 changes in the meantime.
+The arm decision remains yours.
+
+HOW THIS ROUND WORKED (plain words): I ran five independent adversarial reviewers
+over the generalized money path (money-math, rails-independence, control-security,
+instrument-integrity, liveness/failure-modes), then had a separate skeptic try to
+REFUTE each raised defect at the line-number level, several reproduced end to end
+with the engine's own mock exchange. Only defects that survived refutation are
+listed. This is the same "watched-failing" bar as before: a defect nobody could
+make a test catch is not counted.
+
+WHY F1 IS SAFE RIGHT NOW: every one of these defects needs a generalized setup to
+be in PAPER or LIVE state to bite. The only registered setup (f1-pilot) is DRAFT,
+which produces no intents and never enters the box allowlist. So the shared
+kill-switches and shared cap have nothing to share with — F1 runs alone. The
+defects would bite the moment a setup is flipped to paper/live, which is exactly
+the step this gate exists to protect. That is why the gate held.
+
+TABLE: confirmed re-review findings. KEY — # is my tracking id. Sev: BLOCKER =
+must fix before any generalized setup goes paper/live; MAJOR = breaks the
+F1-untouched guarantee or the instrument; MINOR = accounting/observability, no
+funds at risk. Was: the defect. Fix: what I am changing (each with a
+watched-failing test).
+
+  #   Sev      Was  ->  Fix
+  R1  MAJOR    A generalized order reject / loss / price-drift / exit-reject trips
+               the box-wide kill that also stops F1's own model-called entries,
+               and generalized order-acks dilute F1's own reject-kill.
+               -> per-rail (and per-setup) reject counters, loss limit and drift/
+               exit halts; F1's kills see only F1's events.
+  R2  MAJOR    One generalized real position fills the 6-slot box cap that is
+               sized to F1's own saturation, so F1 silently drops an entry the
+               model called (and the drop is unrecoverable — the intent is
+               consumed before the cap check).
+               -> a separate exposure budget for generalized setups; F1's cap
+               counts only F1 positions.
+  R3  BLOCKER  Every generalized order for a setup collapses to ONE exchange
+               order-id (the id is truncated to 14 chars and the setup name eats
+               the budget), so crash-recovery-by-id is defeated: an orphaned real
+               fill is never reconciled — silently liquidated, or it halts the box.
+               -> order ids hashed to stay unique per (setup, week, leg); F1 ids
+               unchanged, byte for byte.
+  R4  BLOCKER  A crash-recovered generalized entry loses its own hold length and
+               its stop — it inherits F1's 137-hour hold and trades STOPLESS,
+               against your every-order-carries-a-stop rule.
+               -> the hold and stop ride in the order record the recovery reads.
+  R5  BLOCKER  The box trusts the "paper" flag from the intent, not the allowlist,
+               and the allowlist does not carry it — so a tampered or buggy intent
+               can drive a PAPER-only setup to place REAL orders within its clip.
+               hold length and stop are likewise uncapped box-side.
+               -> the allowlist pins paper-vs-real and bounds hold/stop; a paper
+               setup can never place a real order whatever the intent says.
+  R6  MAJOR    Generalized events (even in PAPER mode) land in the one journal your
+               F1 screen and F1 alerter read keyed on bare timestamp, so they
+               overwrite F1 rows, add generalized P&L into F1's realized total, and
+               corrupt F1's at-risk / heartbeat alerting.
+               -> the F1 screen and F1 alerter filter to F1-only events (the
+               executor's own replay was already made rail-safe; these two old
+               readers were missed).
+  R7  MINOR    Multi-day short-borrow interest is pooled and booked onto whichever
+               rail's short closes last, cross-contaminating F1 and per-setup P&L.
+               -> interest attributed to each position from its own debt and age.
+  R8  MINOR    Paper books stop measuring whenever the box is disarmed or halted —
+               paper entries sit behind the same arm/halt gate as real orders, so
+               a real-money fault silently blanks the paper measurement.
+               -> paper entries book regardless of arm/halt (they place no order).
+  R9  MINOR    The setup screen sums paper and real unrealized P&L into one
+               number after a paper->live switch.
+               -> unrealized split into real and paper, as realized already is.
+  R10 MINOR    A non-LTC generalized setup can be minted and paper-run, but the box
+               silently rejects its orders on the hardcoded symbol, invisibly.
+               -> visible refusal at mint/produce, not a silent box drop.
+  R11 MINOR    An unvalidated run id in one greenlight endpoint path-joins into an
+               arbitrary file read (path traversal).
+               -> the id is validated like every other id before use.
+
+WHAT HAPPENS NEXT (no reply needed): I fix R1-R11 in order, each committed with a
+watched-failing test and a QC-register entry; I re-run the full test suites green;
+I run one more scoped adversarial round over just these fixes; and only when that
+round is zero-blocker do I deploy the generalized executor to the box (10.3) —
+with F1 still running untouched through it, exactly as we agreed. I will send the
+clean-round verdict when it lands. If any single fix turns out to need a real
+design call from you, I will flag that one and keep going on the rest.
+
+c.
