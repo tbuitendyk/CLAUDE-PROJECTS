@@ -316,6 +316,7 @@ async function refresh() {
 
   LATEST_STATUS = d.liveStatus || null;
   LATEST_FRESH = d.dataFreshness || [];
+  LATEST_PREVIEW = d.previewDecision || null;
   renderStatus();
 }
 
@@ -323,6 +324,27 @@ async function refresh() {
 // countdowns move without re-polling; absolute UTC targets come from the server) ---
 let LATEST_STATUS = null;
 let LATEST_FRESH = [];
+let LATEST_PREVIEW = null;
+function previewLine() {
+  const p = LATEST_PREVIEW;
+  if (!p) return '';
+  if (!p.available) {
+    return `<div style="margin-bottom:.5rem" class="muted">Next decision: ${p.note || 'not yet computable'}</div>`;
+  }
+  const entMs = p.entry_utc ? Date.parse(p.entry_utc) : null;
+  const past = entMs != null && entMs <= Date.now();
+  const whenAbs = p.entry_utc ? p.entry_utc.replace('T',' ').slice(0,16) + ' UTC' : '';
+  let label, cls;
+  if (p.side === 'LONG') { label = '▲ open a LONG'; cls = 'pos'; }
+  else if (p.side === 'SHORT') { label = '▼ open a SHORT'; cls = 'neg'; }
+  else { label = '■ STAND DOWN — no position'; cls = 'warn'; }
+  const votes = Array.isArray(p.per_member) ? ` <span class="muted">· votes [${p.per_member.join(',')}], quorum ${p.quorum}</span>` : '';
+  const when = entMs == null ? '' : (past ? '(entering now)' : '(' + untilStr(p.entry_utc).replace(/^in /,'in ') + ')');
+  return `<div style="margin-bottom:.5rem;padding:.45rem;border:1px solid #2a3140;border-radius:5px">`
+    + `<b>Plan for the next entry (${whenAbs}):</b> <span class="${cls}" style="font-weight:bold">${label}</span> <span class="muted">${when}</span>${votes}`
+    + `<div class="muted" style="font-size:.7rem;margin-top:.2rem">the committee's call is fixed once the 96h feature window closes; only the entry price waits for ${whenAbs}. Opens only if armed and not halted.</div>`
+    + `</div>`;
+}
 function untilStr(iso) {
   if (!iso) return '';
   const ms = Date.parse(iso) - Date.now();
@@ -365,7 +387,8 @@ function renderStatus() {
     return `<tr><td style="text-align:left"><b>${it.what}</b></td><td style="white-space:nowrap">${when}</td></tr>`
          + `<tr><td colspan="2" style="text-align:left" class="muted" title="why">↳ ${it.why||''}</td></tr>`;
   }).join('');
-  el.innerHTML = `<div style="margin-bottom:.4rem">${posLine}</div>`
+  el.innerHTML = previewLine()
+    + `<div style="margin-bottom:.4rem">${posLine}</div>`
     + `<table style="width:100%"><tbody>${rows}</tbody></table>`
     + freshLine();
 }

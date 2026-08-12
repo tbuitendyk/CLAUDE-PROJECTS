@@ -14,7 +14,9 @@
 // Exit 0 with an intent, 0 with {actionable:false} when nothing is due, non-zero
 // only on a real failure (no data, engine mismatch) so the caller can tell the
 // difference between "nothing to do" and "broken".
-const { computeSignal } = require('./lib/pilotsignal');
+const fs = require('fs');
+const path = require('path');
+const { computeSignal, computePreview } = require('./lib/pilotsignal');
 const mirror = require('./lib/pilotmirror');
 const b = require('./lib/binance');
 
@@ -81,6 +83,24 @@ const b = require('./lib/binance');
         out = { ok: true, actionable: false, note: 'decision record write failed; intent withheld this tick' };
       }
     }
+    // DECISION PREVIEW (owner 2026-08-12): compute the PLAN for the upcoming entry
+    // (LONG/SHORT/STAND-DOWN) as soon as its feature window closes, and write it for
+    // the screen. Read-only, display-only — never ships an intent or records a
+    // mirror decision, so a preview failure never affects trading. Atomic write.
+    try {
+      const preview = await computePreview(now).catch((e) => {
+        process.stderr.write('pilot-produce: preview compute failed: ' + (e && e.message) + '\n');
+        return { available: false, note: 'preview compute failed' };
+      });
+      const pf = path.join(__dirname, 'data', 'pilot', 'preview.json');
+      fs.mkdirSync(path.dirname(pf), { recursive: true });
+      const tmp = `${pf}.tmp${process.pid}`;
+      fs.writeFileSync(tmp, JSON.stringify({ ...preview, written_utc: new Date(now).toISOString() }));
+      fs.renameSync(tmp, pf);
+    } catch (e) {
+      process.stderr.write('pilot-produce: preview write failed: ' + (e && e.message) + '\n');
+    }
+
     process.stdout.write(JSON.stringify(out) + '\n');
     process.exit(0);
   } catch (err) {

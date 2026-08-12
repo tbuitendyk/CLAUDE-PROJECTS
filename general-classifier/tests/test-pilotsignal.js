@@ -102,3 +102,25 @@ module.exports.chooseEntryOpenPrefersCacheThenLiveThenNull = function () {
   assert.strictEqual(ps.chooseEntryOpen(0, 0), null, 'zero is not a real price -> null');
   assert.strictEqual(ps.chooseEntryOpen(-5, 101), 101, 'a bad cache value falls through to live');
 };
+
+module.exports.previewableIsTheChunkWithFeaturesClosedAndEntryPending = function () {
+  const chunks = [];
+  for (let d = 1; d <= 12; d++) chunks.push(chunkAt(`2026-08-${String(d).padStart(2, '0')}T00:00:00Z`));
+  const aug5 = Date.parse('2026-08-05T00:00:00Z'); // features close +96h (Aug 9 00:00); entry +97h (Aug 9 01:00)
+  const now = aug5 + 96 * HOUR + 5 * 60000; // Aug 9 00:05 — window closed, entry pending
+  const got = ps.previewableChunk(chunks, GEO, now);
+  assert.ok(got && new Date(got.startTs).toISOString() === '2026-08-05T00:00:00.000Z',
+    'previewable = the chunk whose 96h window has closed and whose entry is still ahead');
+};
+
+module.exports.previewableIsNullBeforeFeatureWindowCloses = function () {
+  const chunks = [chunkAt('2026-08-05T00:00:00Z')];
+  const now = Date.parse('2026-08-05T00:00:00Z') + 90 * HOUR; // before +96h
+  assert.strictEqual(ps.previewableChunk(chunks, GEO, now), null, 'nothing to preview until the window closes');
+};
+
+module.exports.previewableIsNullOnceEntryHasArrived = function () {
+  const chunks = [chunkAt('2026-08-05T00:00:00Z')];
+  const now = Date.parse('2026-08-05T00:00:00Z') + 97 * HOUR + 10 * 60000; // just past entry
+  assert.strictEqual(ps.previewableChunk(chunks, GEO, now), null, 'past the entry hour it is actionable, not previewable');
+};

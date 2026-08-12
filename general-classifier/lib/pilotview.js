@@ -424,6 +424,12 @@ function status(file = JOURNAL) {
   try {
     stopCarryError = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'data', 'pilot', 'stop-carry-error.json'), 'utf8'));
   } catch (_) { stopCarryError = null; }
+  // decision preview (owner 2026-08-12): the PLAN for the upcoming entry, written by
+  // the producer once the feature window closes (~1h before entry). Display-only.
+  let previewDecision = null;
+  try {
+    previewDecision = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'data', 'pilot', 'preview.json'), 'utf8'));
+  } catch (_) { previewDecision = null; }
   return {
     present: true,
     preregistration: 'general-classifier/PILOT-F1.md',
@@ -435,6 +441,7 @@ function status(file = JOURNAL) {
     mirror,
     stopSweep,
     stopCarryError,
+    previewDecision,
     ...st,
     liveStatus: liveStatus(st, Date.now()),
     dataFreshness: (() => {

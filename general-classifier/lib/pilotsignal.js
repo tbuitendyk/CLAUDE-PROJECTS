@@ -85,6 +85,27 @@ function actionableChunk(chunks, geo, tHours, now) {
   return best;
 }
 
+// A chunk is PREVIEWABLE when its feature window has CLOSED (start + featureHours
+// in the past — so the committee call is fully determined) but its entry hour has
+// NOT arrived yet (start + entryOffsetH in the future). That is the position we
+// PLAN to open at the upcoming entry hour: the direction is knowable ~1h ahead
+// because only the entry PRICE waits for the entry candle, not the decision. For
+// daily-4d this window is 00:00→01:00 UTC each day; outside it there is nothing to
+// preview. Returns the nearest such chunk, or null.
+function previewableChunk(chunks, geo, now) {
+  const featureMs = geo.featureHours * 3600000;
+  const entryMs = (geo.entryOffsetH || 0) * 3600000;
+  let best = null;
+  for (const c of chunks) {
+    const featuresCloseAt = c.startTs + featureMs; // last feature candle has closed by here
+    const entryAt = c.startTs + entryMs;
+    if (featuresCloseAt <= now && now < entryAt) {
+      if (!best || c.startTs > best.startTs) best = c;
+    }
+  }
+  return best;
+}
+
 // The entry price is the entry candle's OPEN: prefer the CLOSED-cache value (the
 // canonical, finalized candle); fall back to a live-fetched open only when the
 // candle has not closed yet. Both are the same immutable open, so preferring the
@@ -260,4 +281,52 @@ async function computeSignalForChunk(chunkStartMs, opts = {}) {
   };
 }
 
-module.exports = { computeSignal, computeSignalForChunk, actionableChunk, chooseEntryOpen, F1, CONFIG_VERSION };
+// DECISION PREVIEW (owner 2026-08-12): compute the committee call for the chunk we
+// PLAN to enter at the upcoming entry hour, as soon as its feature window has closed
+// — ~1h before entry. Uses the SAME committeeCall path as the live entry, so the
+// preview is byte-identical to the decision that will execute (the features are
+// frozen once the window closes; only the entry PRICE waits for the entry candle).
+// Read-only: records NO mirror decision and ships NO intent. Returns { available,
+// side, per_member, entry_utc, ... } or { available:false, note } outside the window.
+async function computePreview(now, opts = {}) {
+  assertFrozenMembersMatchEngine();
+  const params = { allLoaded: true, feePerLeg: 0, includeUnlabeled: true };
+  const { geo, maps, chunks } = await buildCombo(F1.combo, F1.branch, params);
+  const bandPct = Math.abs(F1.branch.band);
+  for (const c of chunks) c.label = c.diffPct == null ? null : scoreDiff(c.diffPct / 100, bandPct / 100);
+  const outcomeMs = (geo.exitOffsetH || 0) * 3600000;
+  const { trainChunks } = splitFrozen(chunks, TRAIN_THROUGH, opts.scoreFrom, outcomeMs);
+  if (!trainChunks.length) throw new Error('pilotsignal: no training chunks at/before freeze');
+
+  const target = previewableChunk(chunks, geo, now);
+  if (!target) {
+    return { available: false,
+      note: 'no decision to preview — the next entry’s 96h feature window has not closed yet' };
+  }
+  const entryAt = target.startTs + (geo.entryOffsetH || 0) * HOUR_MS;
+  // the window has closed, but the last feature candle caches a few minutes after
+  // its close — say "shortly" rather than compute on a short window (false signal).
+  const lastFeatureTs = target.startTs + (geo.featureHours - 1) * HOUR_MS;
+  for (const [name, m] of [['trade', maps.trade], ['ctx1', maps.ctx1], ['ctx2', maps.ctx2]]) {
+    if (m && !m.get(lastFeatureTs)) {
+      return { available: false,
+        note: `feature window closed but ${name}'s last candle is not cached yet — preview available shortly`,
+        entry_utc: new Date(entryAt).toISOString() };
+    }
+  }
+  const views = bracketLib.comboViews(F1.combo.size, geo.featureHours / 24).views;
+  const { side, perMember } = await committeeCall(target, trainChunks, maps, geo, views, bandPct);
+  return {
+    available: true,
+    side,                        // 'LONG' | 'SHORT' | 'FLAT' — the PLAN for entry_utc
+    per_member: perMember,
+    quorum: F1.cell.quorum,
+    band_pct: bandPct,
+    chunk_start: new Date(target.startTs).toISOString(),
+    entry_utc: new Date(entryAt).toISOString(),
+    computed_utc: new Date(now).toISOString(),
+    config_version: CONFIG_VERSION,
+  };
+}
+
+module.exports = { computeSignal, computeSignalForChunk, computePreview, actionableChunk, previewableChunk, chooseEntryOpen, F1, CONFIG_VERSION };
