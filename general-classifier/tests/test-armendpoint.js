@@ -22,7 +22,7 @@ const ROOT = path.join(__dirname, '..');
 const SERVER = path.join(ROOT, 'server.js');
 const ARM_REQ = path.join(ROOT, 'data', 'pilot', 'arm-request.json');
 // per-run port so a stray earlier server (or a parallel run) does not collide
-const PORT = 18000 + (process.pid % 1000);
+const PORT = 18000 + (process.pid % 400) + Math.floor(Math.random() * 400);
 
 function req(method, p, body, extraHeaders) {
   return new Promise((resolve, reject) => {

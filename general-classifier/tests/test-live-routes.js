@@ -9,7 +9,7 @@ const os = require('os');
 const path = require('path');
 
 const ROOT = path.join(__dirname, '..');
-const PORT = 19200 + (process.pid % 500);
+const PORT = 19200 + (process.pid % 400) + Math.floor(Math.random() * 400);
 const ORIGIN = { Origin: 'https://www.buitendyk.ca' };  // same-site (CSRF-allowed)
 
 const SCRATCH = fs.mkdtempSync(path.join(os.tmpdir(), 'gc-liveroutes-'));
