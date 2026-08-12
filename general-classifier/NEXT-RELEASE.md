@@ -381,3 +381,21 @@ key decryption works, control-plane reachability) and report a green/red
 checklist back to the tab. Region guidance matters because exchange
 reachability is geographic (the reason today's execution box is in Mexico);
 the guide should encode "which regions work for which exchange."
+
+## Amendment to 15 (owner, 2026-08-12): paper trades live in the same tab
+
+Paper trading is integrated under the SAME Live Trading tab with IDENTICAL
+display and formatting as live setups — the only difference is a clear marker
+that it is a paper trade, not real money. No separate paper view.
+
+## 24. UTS look and feel: consistent across tabs, dark + light modes
+
+Owner (2026-08-12): The UTS interface needs consistency across all tabs.
+Provide a DARK mode styled like the existing F1 test page (pilot.html) and a
+LIGHT mode styled like the existing Bracket Lab. Owner preference: the more
+technical/compressed style of the F1 test page sets the tone.
+
+[feasibility] Straightforward: one shared stylesheet with theme tokens
+(dark/light), the pilot page's compact technical density as the baseline.
+Actionable now: the new Live Trading tab (built from scratch) adopts this
+shared-token approach from day one, so it carries into UTS unchanged.
