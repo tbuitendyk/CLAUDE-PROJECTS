@@ -11,6 +11,11 @@ first — then do the work.
 - If there's a real fork or a missing detail, check in briefly before spending effort.
 - Verify facts instead of guessing (e.g., check an address/mailbox/branch exists
   rather than assuming its spelling).
+- **Under-promise, over-deliver (owner directive, 2026-08-12).** Saying "I'll
+  do it" and then not doing it is disobedience. Never claim a future behavior
+  unless the mechanism that guarantees it is verifiably in place (armed
+  wakeup, cron entry, committed hook); otherwise state plainly what is NOT
+  guaranteed. Deliver more than was promised, never less.
 - **The owner drives all testing and UI evaluation.** Sessions verify code
   correctness only (unit tests, deploy health checks) and never run or
   interpret analyses through the interface unless explicitly asked. The owner
