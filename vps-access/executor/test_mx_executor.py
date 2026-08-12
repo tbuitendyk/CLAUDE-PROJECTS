@@ -668,6 +668,31 @@ class ExecutorTest(unittest.TestCase):
         self.assertNotIn("ENTRY_FILL", ev)
         self.assertEqual(MockBinance.orders, [])
 
+    def test_disarmed_run_preserves_intent_for_a_later_armed_fire(self):
+        # QC 113: the prime-at-01:00 design fires the executor twice near the entry
+        # (the 01:01 entry timer and the 01:10 regular timer). That is idempotent
+        # ONLY because a DISARMED run returns BEFORE the intent loop — it logs no
+        # INTENT_SEEN and leaves the intent file in place — so a later ARMED fire
+        # can still open it. If INTENT_SEEN were ever logged ahead of the arm gate,
+        # a disarmed early fire would mark the intent seen and the armed fire would
+        # skip it as a duplicate: the day's entry silently lost. Pin both halves so
+        # a reordering regression fails here, not in production.
+        self.x.set_arm(False, "test")          # owner has not pressed START yet
+        self.write_intent(side="LONG", chunk="2026-08-07T00:00Z")
+        intent_path = os.path.join(self.x.INTENTS, "intent-2026-08-07.json")
+        self.x.do_run(self.bx())
+        ev = self.events()
+        self.assertNotIn("INTENT_SEEN", ev)    # disarmed run must NOT mark it seen
+        self.assertNotIn("ENTRY_FILL", ev)
+        self.assertTrue(os.path.exists(intent_path))        # file untouched...
+        self.assertFalse(os.path.exists(intent_path + ".done"))  # ...not consumed
+        # owner presses START; the SAME preserved intent must still fill
+        self.x.set_arm(True, "owner")
+        self.x.do_run(self.bx())
+        ev2 = self.events()
+        self.assertIn("INTENT_SEEN", ev2)
+        self.assertIn("ENTRY_FILL", ev2)
+
     def test_master_switch_off_still_runs_due_exits(self):
         self.x.jlog("ENTRY_FILL", chunk_start="c1", side="LONG", qty=0.1,
                     price=100.0, exit_due_ts=time.time() - 60)

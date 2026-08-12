@@ -60,6 +60,33 @@ cd $APP && PILOT_SOCKS=$SOCKS node pilot-refresh.js
 /usr/local/sbin/pilot-produce-and-push.sh
 TICK
 
+# entry-aligned tick (owner 2026-08-12: prime at 01:00, don't fire 5 min late).
+# Fires right after F1's frozen 01:00 UTC entry so the intent carries the LIVE
+# 01:00 open and the box fills ~01:01 instead of ~01:10. It runs the SAME
+# produce-and-push as the :05 tick (master-switch reconcile + mirror-break dead-man
+# + stop carry + produce + push) but SKIPS the data refresh and mirror recompute:
+# the feature window closed at 00:00 and the :05 tick already refreshed that data
+# and ran the mirror on it, and the entry OPEN is fetched LIVE by pilot-produce.js
+# (not from cache). The next :05 tick re-runs refresh+mirror as the backstop.
+# Worst case this step no-ops (e.g. tunnel down, or a prior :05 refresh failed so
+# the feature window is incomplete -> produce ships nothing) and the ordinary :05
+# tick ships the intent ~4 min later. Stale cache can only WITHHOLD an intent, never
+# fabricate one (an incomplete window is simply not actionable), so the fallback is
+# always a later fill, never a wrong trade — and the executor's 30-min staleness
+# window covers the gap.
+install -m 755 /dev/stdin /usr/local/sbin/pilot-tick-entry.sh <<TICKENTRY
+#!/usr/bin/env bash
+set -uo pipefail
+export PILOT_SOCKS=$SOCKS
+# wait briefly for the persistent tunnel (Restart=always keeps it up; breaks on
+# first success, ~instant when healthy) so the live-open fetch can reach Binance.
+for i in \$(seq 1 20); do
+  timeout 8 curl -s -m 6 --socks5-hostname $SOCKS https://api.binance.com/api/v3/ping >/dev/null 2>&1 && break
+  sleep 3
+done
+cd $APP && /usr/local/sbin/pilot-produce-and-push.sh
+TICKENTRY
+
 # the intent producer + pusher (installed copy of the branch script)
 install -m 755 "$REPO/scripts/pilot-produce-and-push.sh" /usr/local/sbin/pilot-produce-and-push.sh
 # its sibling helpers — pilot-produce-and-push.sh resolves these via its own dir
@@ -115,6 +142,31 @@ Description=Pilot tick hourly at :05 UTC
 [Timer]
 OnCalendar=*-*-* *:05:00 UTC
 Persistent=true
+[Install]
+WantedBy=timers.target
+UNIT
+
+# entry-aligned produce (owner 2026-08-12): ship the intent right after F1's frozen
+# 01:00 UTC entry so the box can fill ~01:01 with the live 01:00 open, instead of
+# waiting for the :05 tick (~01:06 produce, ~01:10 fill). Hardcoded to the frozen
+# entry hour; the ordinary :05 tick stays as the backstop.
+cat > /etc/systemd/system/pilot-tick-entry.service <<UNIT
+[Unit]
+Description=Pilot entry tick — produce+push the 01:00 intent with the live open
+After=pilot-tunnel.service network-online.target
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/pilot-tick-entry.sh
+UNIT
+cat > /etc/systemd/system/pilot-tick-entry.timer <<UNIT
+[Unit]
+Description=Pilot entry tick at 01:00:15 UTC (F1 frozen entry hour)
+[Timer]
+OnCalendar=*-*-* 01:00:15 UTC
+# Persistent=false ON PURPOSE: this timer only tightens fill latency AT the 01:00
+# boundary. A retro-fire after downtime (e.g. boot at 03:00) would produce ~2h past
+# the trained open with no benefit; the Persistent :05 tick is the recovery path.
+Persistent=false
 [Install]
 WantedBy=timers.target
 UNIT
@@ -175,6 +227,7 @@ echo "== enable + start (enable = survives reboot) =="
 systemctl daemon-reload
 systemctl enable --now pilot-tunnel.service
 systemctl enable --now pilot-tick.timer
+systemctl enable --now pilot-tick-entry.timer
 systemctl enable --now pilot-sync.timer
 systemctl enable --now pilot-alert.timer
 
@@ -211,9 +264,34 @@ Persistent=true
 [Install]
 WantedBy=timers.target
 UNIT
+sudo tee /etc/systemd/system/pilot-exec-entry.service >/dev/null <<UNIT
+[Unit]
+Description=Pilot executor entry run — fill the 01:00 entry right after the intent lands
+After=network-online.target
+Wants=network-online.target
+[Service]
+Type=oneshot
+User=admin
+ExecStart=/usr/bin/python3 /home/admin/mx_executor.py run
+UNIT
+sudo tee /etc/systemd/system/pilot-exec-entry.timer >/dev/null <<UNIT
+[Unit]
+Description=Pilot executor entry at 01:01:00 UTC (right after the 01:00 intent lands)
+[Timer]
+OnCalendar=*-*-* 01:01:00 UTC
+# Persistent=false ON PURPOSE (matches pilot-tick-entry.timer): fills only AT the
+# 01:01 boundary, never a retro-fire after downtime — the Persistent :00/10 exec
+# timer is the recovery path. The executor's chunk_start dedup makes this extra
+# entry fire idempotent against the regular timer regardless.
+Persistent=false
+[Install]
+WantedBy=timers.target
+UNIT
 sudo systemctl daemon-reload
 sudo systemctl enable --now pilot-exec.timer
+sudo systemctl enable --now pilot-exec-entry.timer
 echo "  box timer: $(systemctl is-enabled pilot-exec.timer 2>/dev/null) / $(systemctl is-active pilot-exec.timer 2>/dev/null)"
+echo "  box entry timer: $(systemctl is-enabled pilot-exec-entry.timer 2>/dev/null) / $(systemctl is-active pilot-exec-entry.timer 2>/dev/null)"
 # time sync on the box (finding 3): the box checks intent age, so its OS clock
 # must stay disciplined. Prefer whatever NTP daemon is present; the executor also
 # re-bases the age check on exchange time and emits CLOCK_DRIFT if the OS clock is
@@ -225,7 +303,7 @@ if ! systemctl is-active --quiet chrony 2>/dev/null \
   sudo systemctl enable --now chrony 2>/dev/null || sudo systemctl enable --now chronyd 2>/dev/null || true
 fi
 echo "  box NTP synced: $(timedatectl show -p NTPSynchronized --value 2>/dev/null || echo unknown)"
-systemctl list-timers pilot-exec.timer --all 2>/dev/null | grep pilot-exec | sed 's/^/    /' || true
+systemctl list-timers 'pilot-exec*.timer' --all 2>/dev/null | grep pilot-exec | sed 's/^/    /' || true
 echo "  master switch (ARM) present? $([ -f ~/pilot/ARM ] && echo YES || echo 'NO — engine STOPPED until owner presses START')"
 BOX
 
