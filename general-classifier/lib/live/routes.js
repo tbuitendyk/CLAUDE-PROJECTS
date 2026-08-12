@@ -72,6 +72,16 @@ function installLiveRoutes(app, { csrfGuard }) {
     catch (e) { res.status(errStatus(e)).json({ error: e.message }); }
   });
 
+  // ---- data catalog + repair (plan phase 7) -------------------------------
+  app.get('/api/live/catalog', (req, res) => {
+    try { res.json(require('./catalog').buildCatalog()); }
+    catch (e) { res.status(500).json({ error: e.message }); }
+  });
+  app.post('/api/live/catalog/repair', csrfGuard, async (req, res) => {
+    try { res.json(await require('./catalog').repair()); }
+    catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
   // ---- greenlight + shuttle (plan phase 4) --------------------------------
   const gl = require('./greenlight');
 
