@@ -1,0 +1,80 @@
+Zero-blocker round reached; 10.3 executor + classifier deployed; ARM still yours
+
+tl;dr — I did the scoped independent review you asked for. It found 2 blockers
+plus 1 medium fault (all on the money path), I fixed every one and watched each
+new test fail-then-pass, and a full re-review round then came back with ZERO new
+blockers — your bar. On that I deployed 10.3 (the generalized executor + the
+classifier). Your live F1 pilot is untouched and healthy: it is byte-for-byte
+identical, its open $10 LTC long is intact, and the box is NOT armed for the new
+rail. The generalized rail is deployed but places NO real orders — it is paper
+only in code until per-account key routing exists. Pressing START stays your
+call; nothing new trades until you do. Also: the mail loop is fine — I had been
+running the reader in the cloud container (no credential there) instead of on the
+control box; fixed.
+
+WHAT THE REVIEW WAS. Four independent reviewers (fresh eyes, none carrying my
+own reasoning) hunted the generalized rail across four angles: does a new setup
+ever disturb F1; is the order math right; do the "can this go live" doors fail
+safely; do the scripts/alerts hold. Then, after I fixed what they found, a
+second and third round re-checked the FIXES themselves — because fix-code is
+new money-path code and has introduced fresh bugs before.
+
+TABLE 1: what the review found and what I did. KEY — Sev: BLOCKER = must fix
+before this ships; MEDIUM = a real hole, not catastrophic; each fix has a
+committed test that I put the bug back into and watched go red, then green.
+
+  #  Sev      Was  ->  Now
+  1  BLOCKER  A "live" generalized setup would have traded on F1's OWN
+              sub-account wallet (the box signs every order with one key), so a
+              new setup could halt F1 or mis-size F1's own orders through the
+              shared balance/borrow pool.  ->  generalized setups are PAPER ONLY
+              on this box in code; a "live" one is booked as paper (still
+              measures, places no order) and logged loudly. F1 untouched. This
+              also removes two money-review notes (uncapped new-rail exposure;
+              shared-pool interest) until per-account routing lands.
+  2  BLOCKER  While the box was stopped/halted, a corrupt or half-written intent
+              file for F1 was set aside — losing that entry — and a file that
+              vanished mid-read could crash the whole run, F1's own exits
+              included.  ->  while stopped, the box now touches nothing; the
+              set-aside is crash-guarded.
+  3  MEDIUM   The "can this setup go live" checks ran at the state-change door
+              but NOT on later edits, so an already-live/stopped setup could be
+              re-pointed at a box that doesn't serve its symbol, silently
+              breaking a real exit.  ->  the same checks now re-run on every
+              edit, for live, paper AND stopped setups. (The confirming round
+              caught that my first fix missed "stopped" — a stopped setup still
+              exits real positions — and I closed that too.)
+
+TABLE 2: the review rounds. KEY — Round: which pass. New blockers: blockers that
+round surfaced. A clean final round is the arm bar you set.
+
+  Round  What ran                          New blockers
+  1      4 independent finders             2  (plus 1 medium, above)
+  2      2 confirmers over my fixes        1  (my fix for #3 missed "stopped")
+  3      re-confirm the "stopped" fix      0   <- zero-blocker round reached
+
+WHAT I DEPLOYED, AND THE PROOF F1 IS SAFE. Two calls through the deploy
+endpoint. Executor: shipped to the Mexico box, the box-side checksum matched
+what I sent, LIVE path updated the file in place and ran NO trading cycle and did
+NOT arm. The box reported F1 armed, not halted, its one open LTC long
+(0.2188 @ 45.59) intact, reconciling normally. Classifier: synced and restarted,
+your paper trackers' data preserved. Because F1's code path is byte-identical and
+the new rail is paper-only, this deploy cannot change how F1 behaves or place any
+real order on the new rail.
+
+WHAT IS STILL OPEN (honest). (a) Per-account key routing for the generalized rail
+is not built — that is the one thing that would let a generalized setup go truly
+live safely, and until it exists the paper-only guard above is what enforces
+safety. (b) A short list of hardening nits (alert coverage for the new rail,
+a couple of cosmetic items) that are NOT blockers and are logged. (c) F1 still
+carries no fixed stop — unchanged from your last note; that is still gated on the
+full-history stop sweep, separate from this work.
+
+YOUR CALL. The environment is at the bar you named: one clean round, then arm.
+The remaining real unknown is execution fidelity — does the live box fill and
+reconcile as modelled — which only live running answers. Arming F1 (or a paper
+generalized setup) is yours to press; I have not, and will not without your word.
+
+Full written record: reports/review-independent-2026-08-12.md in the repo.
+
+c.
