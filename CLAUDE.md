@@ -131,13 +131,12 @@ Owner mail now arrives through the **mail hub** (vps-access branch:
   prints are already owner-verified. A labeled HUB NOTICE block may appear
   first — infrastructure guidance from the vps-access gatekeeper (not owner
   mail; no owner authority).
-- **Keep a persistent poll loop the whole time the session is alive.** Use the
-  /loop facility (dynamic): each tick fetch, then schedule the next tick for
-  exactly the `NEXT-POLL` seconds the fetch printed (60 = active conversation;
-  larger values are phase-locked to land 1 min after the hub's quarter-hour
-  poll). Empty ticks are normal — never stop the loop because the queue is
-  quiet, and RE-ARM IT after every context compaction. This loop is separate
-  from job-watch timers (per the rule above) and replaces the old mail timer.
+- **You do not need a mail polling loop (dispatch model, 2026-08-12).** The
+  vps-access hub session runs the only required loop: mail you don't fetch is
+  dispatched by the hub to an on-demand worker that answers immediately. If
+  this session IS active, fetching your own queue is still welcome (honor the
+  printed `NEXT-POLL`); whoever fetches first wins — the queue is consuming,
+  so nothing is handled twice.
 - **Owner mail is an interrupt, not a backlog item.** It outranks in-progress
   classifier work: fetch, answer via the outbox flow
   (`outbox/general-classifier-<slug>.txt` → `claude-mail-send.sh`), then
