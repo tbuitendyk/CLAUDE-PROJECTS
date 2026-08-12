@@ -38,6 +38,12 @@ function allowlistFrom(setups) {
       symbol: s.tradedPair,
       max_clip_usd: s.clipUsd,
       max_concurrent: Math.max(1, Math.ceil(s.configSnapshot.cell.tHours / 24)),
+      // R5: the box PINS paper-vs-real and the hold from THIS allowlist, not the
+      // intent's own fields — so a tampered/buggy intent can neither drive a paper
+      // setup to place REAL orders nor hold a real position indefinitely. Only a
+      // setup the registry says is 'live' can ever place a real order.
+      state: s.state,                              // 'paper' | 'live'
+      max_hold_hours: s.configSnapshot.cell.tHours,
     };
   }
   return allow;
