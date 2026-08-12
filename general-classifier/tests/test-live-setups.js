@@ -215,6 +215,27 @@ module.exports.updateSetupReRunsTheLiveGateSoRoutingCantBeBlankedPastTheDoor = f
   assert.strictEqual(upd.keyRef, 'sub-acct-live', 'routing untouched by a safe update');
 };
 
+module.exports.updateSetupGateAlsoCoversStoppedSetupsWindingDownRealExits = function () {
+  // Confirming re-review 2026-08-12: a STOPPED setup is not quiet — stopping halts
+  // new entries but existing real positions still EXIT, routed by executionTargetRef.
+  // Re-pointing a stopped setup at a box that doesn't serve its symbol would silently
+  // misroute the real exit of a live position. So the updateSetup gate must cover
+  // 'stopped' too, not just paper/live. Tripwire: drop 'stopped' from the gate
+  // condition and the bad re-point is accepted, failing this test.
+  const s = mkSetup({ keyRef: 'sub-acct-stop' });
+  assert.strictEqual(reg.transition(s.id, 'live').state, 'live');
+  assert.strictEqual(reg.transition(s.id, 'stopped').state, 'stopped'); // mandated winddown
+  let err = null;
+  try { reg.updateSetup(s.id, { executionTargetRef: 'no-such-box' }); } catch (e) { err = e; }
+  assert.ok(err && err.code === 'NOT_LIVE_EXECUTABLE',
+    `re-pointing a stopped setup at a dangling target must be refused, got ${err && err.code}`);
+  // the rejected update never wrote — routing intact for the real exit
+  assert.notStrictEqual(reg.getSetup(s.id).executionTargetRef, 'no-such-box');
+  // a safe field update on a stopped setup still works (no over-block)
+  const upd = reg.updateSetup(s.id, { name: 'winding-down' });
+  assert.strictEqual(upd.name, 'winding-down');
+};
+
 module.exports.unexecutableGeometryIsRefusedAtPaperTransition = function () {
   // a breakout / active-gate / trailing / arm cell would be SILENTLY mis-traded
   // as market/hold-to-t by the live executor — refuse it at the door to paper.

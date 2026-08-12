@@ -178,10 +178,17 @@ function updateSetup(id, patch, by = 'owner') {
   for (const k of offered) next[k] = patch[k];
   const errors = validateOperational(next);
   if (errors.length) { const e = new Error(errors.join('; ')); e.code = 'BAD_SETUP'; throw e; }
-  // A setup that is already trading (paper/live) must re-clear the live gate after
-  // the patch — re-pointing its target at a box that does not serve its symbol, or
-  // blanking a LIVE setup's keyRef, would otherwise slip past the transition door.
-  if (s.state === 'paper' || s.state === 'live') {
+  // A setup that is already trading — paper, live, OR stopped — must re-clear the
+  // live gate after the patch. 'stopped' is included deliberately: stopping halts
+  // NEW entries but existing real positions still EXIT, and those exits are routed
+  // by executionTargetRef (see live-mirror.js / pilotview.js — scheduled exits run
+  // whether armed or stopped). Re-pointing a stopped setup at a box that does not
+  // serve its symbol would silently misroute the real exit of a live position — the
+  // exact silent-rejection hazard the transition gate exists to stop, now with live
+  // money at risk. Passing `s.state` as `to` means a stopped setup is checked for
+  // target/geometry but not spuriously required to carry keyRef (that fires only on
+  // to==='live'). draft (never traded) and retired (no open positions) are excluded.
+  if (s.state === 'paper' || s.state === 'live' || s.state === 'stopped') {
     const gerr = liveGateErrors(next, s.state);
     if (gerr.length) {
       const e = new Error(`update would break ${s.state} execution: ${gerr.join('; ')}`);
