@@ -34,7 +34,23 @@ const b = require('./lib/binance');
         process.stderr.write('pilot-produce: exchange-time fetch failed, using OS clock: ' + e.message + '\n');
       }
     }
-    let out = await computeSignal(now);
+    // Live entry-open fetcher: when the entry candle has not closed yet, read its
+    // OPEN from the exchange (through the same Mexico tunnel that feeds the cache),
+    // so the live entry uses the trained decision price ~5 min into the hour instead
+    // of waiting an hour for the candle to close. recentKlines returns the forming
+    // candle with its final open; we take ONLY the row whose ts is exactly the entry
+    // hour, and only its open. Any failure returns null -> the signal waits.
+    const liveOpenFetcher = async (symbol, entryTs) => {
+      try {
+        const rows = await b.recentKlines(symbol, entryTs);
+        const row = Array.isArray(rows) ? rows.find((r) => r.ts === entryTs) : null;
+        return row && row.open > 0 ? row.open : null;
+      } catch (e) {
+        process.stderr.write('pilot-produce: liveOpenFetcher failed: ' + (e && e.message) + '\n');
+        return null;
+      }
+    };
+    let out = await computeSignal(now, { liveOpenFetcher });
     // Persist the live decision so the mirror check has an AUTHORITATIVE record
     // of what we decided on, checked later against a fresh recompute — never
     // against a re-read that may have silently swapped data source (finding 7).

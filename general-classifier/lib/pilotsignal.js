@@ -85,6 +85,17 @@ function actionableChunk(chunks, geo, tHours, now) {
   return best;
 }
 
+// The entry price is the entry candle's OPEN: prefer the CLOSED-cache value (the
+// canonical, finalized candle); fall back to a live-fetched open only when the
+// candle has not closed yet. Both are the same immutable open, so preferring the
+// cache when present keeps a decision reproducible from disk alone. Returns null
+// when neither is a real positive price (the caller then WAITS). Pure/testable.
+function chooseEntryOpen(cachedOpen, liveOpen) {
+  if (typeof cachedOpen === 'number' && cachedOpen > 0) return cachedOpen;
+  if (typeof liveOpen === 'number' && liveOpen > 0) return liveOpen;
+  return null;
+}
+
 // Compute the committee call for a SINGLE target chunk. trainMembers evaluates
 // members on the chunks handed to it as the "forward" set, so we pass just the
 // target: this yields that chunk's per-member calls under the frozen weights.
@@ -147,13 +158,32 @@ async function computeSignal(now, opts = {}) {
   // is what makes the executor's fill-vs-decision deviation meaningful.
   const { call, perMember, side, priceAt, inputHash } =
     await committeeCall(target, trainChunks, maps, geo, views, bandPct);
-  // Never ship an actionable intent without a real decision price: the executor
-  // checks the fill against it, and a null would either crash or drop the intent
-  // to .bad while the paper twin still books the trade — a silent divergence
-  // (review finding 8). If the entry bar is not present, wait.
-  if (call !== 0 && priceAt == null) {
+  // ENTRY PRICE = the entry candle's OPEN, exactly as the trained model and the
+  // forward book use it (bracket.js simMarket: ref.open at entryTs). Prefer the
+  // closed-cache value; but the tick that first sees the entry hour runs ~5 min
+  // INTO the entry candle, which has not closed, so the cache does not hold it yet.
+  // Rather than wait a full hour for it to close (which pushed the live fill ~1h
+  // past the trained entry — owner, 2026-08-11), read the OPEN live from the
+  // exchange: a candle's open is FINAL the instant the hour begins, so the live
+  // value equals the value the closed candle will carry. Only the OPEN is read;
+  // the still-forming high/low/close are never used (features stay closed-only, so
+  // the "forming candle is out-of-distribution" rule holds). The live source is the
+  // same one that later writes the cached day-file (recentKlines), so the mirror's
+  // decision_price recompute matches. If NEITHER cache nor live yields a real open,
+  // WAIT — never ship an intent without a decision price (review finding 8).
+  let entryOpen = chooseEntryOpen(priceAt, null);
+  if (call !== 0 && entryOpen == null && typeof opts.liveOpenFetcher === 'function') {
+    let live = null;
+    try {
+      live = await opts.liveOpenFetcher(F1.combo.trade, entryTs);
+    } catch (e) {
+      process.stderr.write('pilotsignal: live entry-open fetch failed: ' + (e && e.message) + '\n');
+    }
+    entryOpen = chooseEntryOpen(priceAt, live);
+  }
+  if (call !== 0 && entryOpen == null) {
     return { ok: true, actionable: false,
-      note: `entry bar (${new Date(entryTs).toISOString()}) not present yet — no decision price; waiting` };
+      note: `entry candle open (${new Date(entryTs).toISOString()}) not available from cache or live yet — waiting` };
   }
 
   return {
@@ -164,7 +194,7 @@ async function computeSignal(now, opts = {}) {
       symbol: F1.combo.trade,
       side,
       chunk_start: new Date(target.startTs).toISOString(),
-      decision_price: priceAt,
+      decision_price: entryOpen,
       input_hash: inputHash,
       per_member: perMember,
       quorum: F1.cell.quorum,
@@ -223,4 +253,4 @@ async function computeSignalForChunk(chunkStartMs, opts = {}) {
   };
 }
 
-module.exports = { computeSignal, computeSignalForChunk, actionableChunk, F1, CONFIG_VERSION };
+module.exports = { computeSignal, computeSignalForChunk, actionableChunk, chooseEntryOpen, F1, CONFIG_VERSION };

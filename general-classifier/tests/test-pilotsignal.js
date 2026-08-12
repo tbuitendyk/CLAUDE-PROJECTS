@@ -93,3 +93,12 @@ module.exports.pilotTradesExactlyTheF1ForwardBookInstrument = function () {
   assert.strictEqual(ps.F1.cell.entry, 'market', 'F1 is the market-entry cell');
   assert.strictEqual(ps.F1.cell.tHours, 137, 'hold must match F1');
 };
+
+module.exports.chooseEntryOpenPrefersCacheThenLiveThenNull = function () {
+  assert.strictEqual(ps.chooseEntryOpen(100, 101), 100, 'closed-cache open wins when present');
+  assert.strictEqual(ps.chooseEntryOpen(null, 101), 101, 'live open used when cache is absent');
+  assert.strictEqual(ps.chooseEntryOpen(undefined, 101), 101, 'undefined cache -> live');
+  assert.strictEqual(ps.chooseEntryOpen(null, null), null, 'neither -> null (the signal waits)');
+  assert.strictEqual(ps.chooseEntryOpen(0, 0), null, 'zero is not a real price -> null');
+  assert.strictEqual(ps.chooseEntryOpen(-5, 101), 101, 'a bad cache value falls through to live');
+};
