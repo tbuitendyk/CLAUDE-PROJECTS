@@ -15,7 +15,7 @@ irrelevant — never touch IMAP directly.
   (:01/:16/:31/:46), so routed mail waits ~1 minute, not up to a period.
   `hub-fetch.sh` computes `NEXT-POLL <seconds>` to land the caller on that
   grid automatically — honoring it IS the coordination; no clock math needed
-  container-side.
+  session-side.
 - Any mail interaction (verified inbound, or an outbound send) switches both
   hub and project sessions to **every 1 minute for the next 20 minutes**
   (`NEXT-POLL 60`).
