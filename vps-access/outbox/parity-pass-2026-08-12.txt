@@ -1,0 +1,21 @@
+Parity gate PASSED — the generalized engine is byte-identical to F1
+
+tl;dr — The golden parity gate I flagged as computing has finished: PASS. F1
+run through the new generalized engine reproduced the existing pilotsignal
+decisions BYTE-FOR-BYTE over 12 recent chunks on the real VPS cache — zero
+divergences (side, votes, decision price, and the machinery hash all matched).
+
+Why this matters: it was the plan's one hard gate. A greenlighted config's
+evidence is only meaningful if the engine that trades it is the same instrument
+that was measured. Parity proves the generalization did not quietly change what
+F1 means, so everything built on top of it (setups, executor, paper mode,
+mirror) stands on a verified-identical base. Nothing goes live on the new
+engine until parity reads PASS, and it does.
+
+I also finished the per-setup mirror (the F1 drift detector, generalized), so
+phase 6 is essentially complete. Phases 0-7 are now built and tested; the
+remaining work is per-setup alerting, the execution-target/exchange adapter
+seams, migration polish, and the Phase-10 adversarial review that gates the
+box deploy. F1 and your open LONG remain untouched, engine RUNNING.
+
+c.
