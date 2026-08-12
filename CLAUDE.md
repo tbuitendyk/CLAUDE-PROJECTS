@@ -26,6 +26,18 @@ first — then do the work.
 - Verify facts instead of guessing (e.g., check an address/mailbox/branch
   exists rather than assuming its spelling).
 
+**Harness-backed persistence rule (owner directive, 2026-08-12).** A promise
+to "keep working" is not a schedule: when a turn ends, the session stops
+existing until something re-invokes it, and intentions held in context do not
+survive that. Therefore: whenever the owner asks for ongoing, overnight,
+multi-hour, or run-to-completion work, arm a HARNESS-BACKED loop in that same
+turn — /loop (ScheduleWakeup or CronCreate) — and end EVERY subsequent turn by
+re-arming the next wakeup until the work is genuinely done. Never accept such
+a task with only a verbal commitment; if the loop is not armed, say so instead
+of promising. (Background: the 2026-08-11 overnight classifier project died by
+sleep despite full advance permissions — the mechanism was missing, not the
+authorization.)
+
 **This applies on every branch, and new ones inherit it.** Every project
 branch's root `CLAUDE.md` carries this same "Working style" section. When
 creating a new branch/project (branches are created from here, the control
