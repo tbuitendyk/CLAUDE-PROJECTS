@@ -1145,7 +1145,7 @@ app.get('/api/pilot', (req, res) => {
 function writeArmRequest(on, by) {
   const crypto = require('crypto');
   const dir = path.join(__dirname, 'data', 'pilot');
-  fs.mkdirSync(dir, { recursive: true });
+  dataFs.mkdirSync(dir, { recursive: true });
   // Each button press mints a FRESH nonce + utc so the box can edge-trigger on a
   // genuine START and refuse a stale replay (findings 12/15). If a shared secret
   // is provisioned (PILOT_ARM_SECRET, held by this UI process and the box), the
@@ -1159,7 +1159,7 @@ function writeArmRequest(on, by) {
     rec.hmac = crypto.createHmac('sha256', secret)
       .update(`${on ? 1 : 0}|${nonce}|${utc}`).digest('hex');
   }
-  fs.writeFileSync(path.join(dir, 'arm-request.json'), JSON.stringify(rec));
+  dataFs.writeFileSync(path.join(dir, 'arm-request.json'), JSON.stringify(rec));
   return { armed: on, by, utc, nonce, authenticated: !!secret };
 }
 app.post('/api/pilot/arm', (req, res) => {
@@ -1181,16 +1181,16 @@ app.post('/api/pilot/disarm', (req, res) => {
 let stopSweepRunning = false;
 function stopSweepPath() {
   const dir = path.join(__dirname, 'data', 'pilot');
-  fs.mkdirSync(dir, { recursive: true });
+  dataFs.mkdirSync(dir, { recursive: true });
   return path.join(dir, 'stop-sweep.json');
 }
 function readStopSweep() {
-  try { return JSON.parse(fs.readFileSync(stopSweepPath(), 'utf8')); } catch (_) { return { status: 'idle' }; }
+  try { return JSON.parse(dataFs.readFileSync(stopSweepPath(), 'utf8')); } catch (_) { return { status: 'idle' }; }
 }
 function writeStopSweep(obj) {
   const f = stopSweepPath();
-  fs.writeFileSync(`${f}.tmp`, JSON.stringify(obj));
-  fs.renameSync(`${f}.tmp`, f);
+  dataFs.writeFileSync(`${f}.tmp`, JSON.stringify(obj));
+  dataFs.renameSync(`${f}.tmp`, f);
 }
 // The APPLIED stop is separate from the scan (owner: running the scan must NOT set
 // a stop — it shows options; the owner then CHOOSES one or none). fixed-stop.json
@@ -1198,13 +1198,13 @@ function writeStopSweep(obj) {
 // then removes FIXED_STOP_PCT from the box).
 function fixedStopPath() { return path.join(__dirname, 'data', 'pilot', 'fixed-stop.json'); }
 function readFixedStop() {
-  try { return JSON.parse(fs.readFileSync(fixedStopPath(), 'utf8')); } catch (_) { return { stopPct: null }; }
+  try { return JSON.parse(dataFs.readFileSync(fixedStopPath(), 'utf8')); } catch (_) { return { stopPct: null }; }
 }
 function writeFixedStop(obj) {
-  fs.mkdirSync(path.join(__dirname, 'data', 'pilot'), { recursive: true });
+  dataFs.mkdirSync(path.join(__dirname, 'data', 'pilot'), { recursive: true });
   const f = fixedStopPath();
-  fs.writeFileSync(`${f}.tmp`, JSON.stringify(obj));
-  fs.renameSync(`${f}.tmp`, f);
+  dataFs.writeFileSync(`${f}.tmp`, JSON.stringify(obj));
+  dataFs.renameSync(`${f}.tmp`, f);
 }
 // eligible setups for stop tuning: the live/prospective books WITHOUT an existing
 // protective stop (a market entry with no trailing stop). The bracket-lab control
