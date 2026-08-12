@@ -272,12 +272,25 @@ class ExecutorTest(unittest.TestCase):
         self.assertEqual(self.events().count("ENTRY_FILL"), 1)
         self.assertIn("INTENT_DUPLICATE", self.events())
 
-    def test_price_drift_beyond_limit_halts_without_order(self):
-        self.write_intent(price=90.0)  # market 100 -> 11% drift
+    def test_catastrophic_price_drift_halts_without_order(self):
+        # only a CATASTROPHIC (>20%) decision-vs-market gap is a broken price and
+        # halts before ordering (owner 2026-08-12: the backstop, not a trade filter).
+        self.write_intent(price=70.0)  # market 100 -> ~43% drift, clearly broken
         self.x.do_run(self.bx())
         self.assertIn("KILL_PRICE_DRIFT", self.events())
         self.assertTrue(self.x.halted())
         self.assertNotIn("ENTRY_FILL", self.events())
+
+    def test_moderate_drift_within_backstop_still_enters(self):
+        # OWNER 2026-08-12: the training entered UNCONDITIONALLY at the open, so live
+        # must NOT skip a trade because the market moved a few % between the decision
+        # price and the fill. An 11% gap (well under the 20% catastrophic backstop)
+        # enters normally; the deviation is recorded, not filtered.
+        self.write_intent(price=90.0)  # market 100 -> 11% drift: within the backstop
+        self.x.do_run(self.bx())
+        self.assertNotIn("KILL_PRICE_DRIFT", self.events())
+        self.assertFalse(self.x.halted())
+        self.assertIn("ENTRY_FILL", self.events())
 
     def test_halt_blocks_entries_but_exits_still_run(self):
         # open a position due for exit, then halt, then run

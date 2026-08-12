@@ -58,7 +58,16 @@ ARM_MAX_AGE_S = 1800       # dead-man: ARM must be re-stamped by the control pla
                            # within 30 min (sync runs ~every 5 min) or the box
                            # self-disarms — a fail-safe kill on control-plane loss
 RECV_WINDOW = 10000
-FILL_DEV_LIMIT = 0.010     # kill: fill >1.0% from decision price (GUESSED)
+# CATASTROPHIC-ONLY backstop, NOT a trade filter (owner 2026-08-12). The training
+# / forward book entered UNCONDITIONALLY at the entry candle's open — it never
+# skipped a trade because the market moved a few % between the decision price and
+# the fill — so the live test must not either, or it diverges from the model it is
+# measuring. This kept only as a sanity guard against a genuinely BROKEN price (a
+# stale/garbage decision_price, or a flash-crash-tier event): 20% is far outside any
+# normal LTC hourly move, so it never filters a real trade, only an insane one. The
+# fill_deviation is still RECORDED on every ENTRY_FILL regardless — that measurement
+# is the pilot's job and is untouched.
+FILL_DEV_LIMIT = 0.20      # kill only a CATASTROPHIC (>20%) decision-vs-fill gap
 REJECT_LIMIT = 3           # kill: 3 consecutive rejects (GUESSED)
 LOSS_LIMIT_USD = 50.0      # kill: cumulative pilot loss (GUESSED)
 FIXED_STOP_PCT_DEFAULT = 0.0  # hard per-order stop as a fraction of entry price.
