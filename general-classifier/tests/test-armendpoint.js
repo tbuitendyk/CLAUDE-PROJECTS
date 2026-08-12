@@ -110,6 +110,17 @@ module.exports.sameSiteOriginIsAcceptedAndWrites = async function () {
   });
 };
 
+// Robustness: an Origin whose host EQUALS the request's own Host is same-origin and
+// accepted even if that host is not in the allowlist — so an unexpected serving host
+// cannot break the button. (Here Host is spoofed to a non-allowlisted value that the
+// Origin matches; a cross-site Origin would NOT match Host and stays refused.)
+module.exports.originMatchingHostIsAcceptedEvenIfNotAllowlisted = async function () {
+  await withServer(async () => {
+    const r = await req('POST', '/api/pilot/disarm', {}, { Origin: 'https://example.test', Host: 'example.test' });
+    assert(r.status === 200, `origin==Host expected 200, got ${r.status} — body: ${r.body}`);
+  });
+};
+
 // Fail-OPEN on absence: a request with NO Origin/Referer (e.g. the live screen's
 // fetch as a proxy may present it, or a non-browser client) is NOT blocked — so the
 // guard can never break the running button even if a proxy strips those headers.

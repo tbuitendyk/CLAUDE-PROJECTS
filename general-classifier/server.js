@@ -1184,7 +1184,15 @@ function sameSiteOrNoBrowserOrigin(req) {
   let host = null;
   try { host = new URL(src).hostname; } catch (_) { host = null; }
   if (!host) return true;                // unparseable -> do not block a legit request
-  return ALLOWED.has(host);
+  if (ALLOWED.has(host.toLowerCase())) return true;
+  // ALSO accept when the Origin/Referer host equals the request's OWN Host header —
+  // a self-consistent same-origin request, whatever host the site is served under.
+  // This makes the guard robust to an unexpected serving host (belt to the ALLOWED
+  // suspenders), so it still cannot break the legit button; a cross-site forgery
+  // (Origin=attacker, Host=our site) still mismatches and is refused.
+  const reqHost = (req.get('Host') || '').split(':')[0].toLowerCase();
+  if (reqHost && host.toLowerCase() === reqHost) return true;
+  return false;
 }
 function csrfGuard(req, res, next) {
   if (sameSiteOrNoBrowserOrigin(req)) return next();
