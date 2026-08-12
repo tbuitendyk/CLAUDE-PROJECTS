@@ -51,6 +51,9 @@ receiving its mail — via the hub — with no changes on its side.
 - Install/refresh after editing `hub-cycle-core.sh`: `run-script hub-setup.sh`.
 - Disable (fall back to direct polling): remove
   `/var/lib/claude-mail/hub/ENABLED`.
+- **Doc-sync rule:** any change to hub scripts, flows, cadence, or conventions
+  MUST update `MAIL-CHEATSHEET.md` in the same commit (owner directive — that
+  file is the single onboarding source and must never drift).
 - On-box layout: `/var/lib/claude-mail/hub/{registry,inbox/<name>,delivered/<name>,log}`,
   `default-route`, `last-cycle`; interaction clock shared with the send path at
   `/var/lib/claude-mail/last-sent`.

@@ -76,7 +76,10 @@ change again.
   routes it to per-container hub inboxes; registered sessions fetch with
   `run-script hub-fetch.sh <name>` and send via the outbox flow as before.
   Cadence: 15-min polls, 1-min for 20 min after any interaction. Full
-  protocol: `vps-access/HUB-PROTOCOL.md`.
+  protocol: `vps-access/HUB-PROTOCOL.md`. **Doc-sync rule (owner directive):
+  any change to hub scripts, flows, cadence, or conventions MUST update
+  `vps-access/MAIL-CHEATSHEET.md` in the same commit — that file is the single
+  onboarding source the owner points sessions at, and it must never drift.**
 - `VBoxManage` run as root reports both guests as `poweroff` while their
   processes are plainly serving — the registry root sees is not the one the
   running VMs came from. Do not act on VM-level power state until that is
