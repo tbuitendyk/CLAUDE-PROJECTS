@@ -360,3 +360,24 @@ doesn't invalidate a greenlight.
   land).
 - Selling point that falls out: "we can't see how big you trade, and we
   don't charge you for it."
+
+## 22. Thorough help system
+
+Owner (2026-08-12): A very thorough help system throughout — screenshots and
+examples everywhere, tooltips on everything.
+
+## 23. Guided VPS selection, setup, and verification
+
+Owner (2026-08-12): Because the product asks users to distribute engine
+functionality to configurable back ends, the system must provide guided VPS
+selection and setup — pointing users at sensible options (e.g. an AWS server
+in Mexico, or an IONOS VPS in Mexico) — with direct in-product support for
+performing that setup AND verifying it works.
+
+[feasibility] The verification half is the part to design deliberately: after
+guided provisioning, the worker/agent should run a self-check the user can see
+(connectivity to the exchange from that region, time sync, data path writable,
+key decryption works, control-plane reachability) and report a green/red
+checklist back to the tab. Region guidance matters because exchange
+reachability is geographic (the reason today's execution box is in Mexico);
+the guide should encode "which regions work for which exchange."
