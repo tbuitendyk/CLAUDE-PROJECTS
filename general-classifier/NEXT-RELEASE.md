@@ -399,3 +399,33 @@ technical/compressed style of the F1 test page sets the tone.
 (dark/light), the pilot page's compact technical density as the baseline.
 Actionable now: the new Live Trading tab (built from scratch) adopts this
 shared-token approach from day one, so it carries into UTS unchanged.
+
+---
+## Delivery map (plan 9.2 — which phase delivers which point; honest gaps)
+
+| Point | Delivered by | Status/gap |
+|---|---|---|
+| 1 Live Trading tab | Phase 5 (livetrading.html) | shipped; portal tile (website branch) pending |
+| 2 zero-AI surface | all phases (deterministic code only) | structural |
+| 3 per-setup config/keys/servers | Phases 1, 8 (registry, targets); keyRef plumbing | key CAPTURE UI = UTS (11) |
+| 4 greenlight shuttle | Phase 4 | shipped |
+| 5 generalized engine | Phases 2-3 (+ parity PASS) | executor deploy = plan 10.3 |
+| 6 build here, factor later | lib/live/ + livetrading.html boundary | structural |
+| 7 alt exchanges | Phase 8.2 adapter seam | future adapter = UTS |
+| 8 setup page | — | UTS |
+| 9 subscriber CPU | transport-neutral messages + targets (8.1) | worker dial-out = UTS |
+| 10 subscriber DB/login | ownerId on every record | UTS |
+| 11 zero-knowledge keys | keyRef presence-only discipline | custody flow = UTS |
+| 12 two-tier tabs | Phase 5 sub-tabs (Live Trading born in shape) | Bracket Lab reorg = UTS |
+| 13 provenance under one job | Phase 4 (campaign+manifest+run in greenlight) | tree BROWSER = UTS |
+| 14 guided lab flow | — | UTS (data model ready via 13) |
+| 15 optional paper | Phase 3 paper mode + state machine bypass | shipped (badge in tab) |
+| 16 safety rails per setup | Phases 3, 6 (allowlist, stops, mirror, alerting) | disarm-on-break wiring with 10.3 |
+| 17 fidelity per setup | Phase 6 (view + tab) | shipped |
+| 18 engine version in provenance | version.js in greenlight/setup | shipped |
+| 19 catalog + repair | Phase 7 | shipped (worker form = UTS) |
+| 20 per-setup trade size | Phase 1 clipUsd + allowlist clip cap | shipped |
+| 21 pricing | decided direction recorded | UTS |
+| 22 help system | — | UTS |
+| 23 guided VPS setup | targets registry is the hook | UTS |
+| 24 theming | Phase 5 tokens (dark F1 / light lab) | shipped |
