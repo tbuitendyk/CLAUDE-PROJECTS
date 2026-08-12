@@ -107,4 +107,49 @@ echo "$result" | while IFS= read -r ln; do log "$ln"; done
 if echo "$result" | grep -q '^ROUTED=[1-9]'; then
   echo "$now" > "$STATE/last-sent"    # inbound interaction -> fast window
 fi
+
+# Stale-queue alert (2026-08-12 incident: the classifier session went dark and
+# owner mail sat unfetched with no signal). If any container queue holds a
+# message older than 30 min, email the owner -- at most once per 2 hours.
+stale=""
+for d in "$HUB"/inbox/*/; do
+  [ -d "$d" ] || continue
+  cname=$(basename "$d")
+  for f in "$d"*.txt; do
+    [ -f "$f" ] || continue
+    age=$(( now - $(stat -c %Y "$f") ))
+    [ "$age" -ge 1800 ] && stale="$stale$cname: $(basename "$f") unfetched for $((age/60)) min\n"
+  done
+done
+if [ -n "$stale" ]; then
+  last_alert=$(cat "$HUB/last-stale-alert" 2>/dev/null || echo 0)
+  case "$last_alert" in (*[!0-9]*|"") last_alert=0;; esac
+  if [ $((now - last_alert)) -ge 7200 ]; then
+    echo "$now" > "$HUB/last-stale-alert"
+    export STALE_BODY="$(printf "$stale")"
+    python3 <<'PY' >>"$LOG" 2>&1
+import os, ssl, smtplib
+from email.message import EmailMessage
+from email.utils import formatdate, make_msgid
+pw=None
+for line in open("/etc/deploy-control/env"):
+    if line.startswith("CLAUDE_MAIL_PASSWORD="): pw=line.split("=",1)[1].strip(); break
+m=EmailMessage()
+m["From"]="Claude Mail Hub <claude@homeandofficemicro.com>"
+m["To"]="theodore@homeandofficemicro.com"
+m["Subject"]="Mail hub alert: container not picking up its mail"
+m["Date"]=formatdate(localtime=True); m["Message-ID"]=make_msgid(domain="homeandofficemicro.com")
+m.set_content("tl;dr A container session has stopped fetching its hub queue -- "
+              "your mail to it is verified and waiting, but unanswered. Wake that "
+              "session (open it / send it a prompt) and it will pick everything up.\n\n"
+              + os.environ.get("STALE_BODY","") +
+              "\nThis alert repeats at most once every 2 hours while mail sits unfetched.\n\nc.\n")
+ctx=ssl.create_default_context(); ctx.check_hostname=False; ctx.verify_mode=ssl.CERT_NONE
+s=smtplib.SMTP("192.168.56.129",587,timeout=25); s.ehlo(); s.starttls(context=ctx); s.ehlo()
+s.login("claude@homeandofficemicro.com",pw); s.send_message(m); s.quit()
+print("STALE-ALERT emailed to owner")
+PY
+    log "STALE-ALERT sent: $(printf "$stale" | tr '\n' '; ')"
+  fi
+fi
 exit 0

@@ -46,6 +46,9 @@ That's the whole instruction — Part 2 below is self-contained.
 ### Health
 Any session: run-script hub-status.sh (registry, queues, cadence, credential
 audit, log tail). Hub log on the box: /var/lib/claude-mail/hub/log/hub.log.
+If a container stops picking up its mail for 30+ min, the hub EMAILS YOU an
+alert automatically (at most once per 2 h) -- the fix is to wake that
+container's session; its mail waits in the queue.
 
 ---
 

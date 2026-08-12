@@ -56,6 +56,11 @@ receiving its mail — via the hub — with no changes on its side.
 - Install/refresh after editing `hub-cycle-core.sh`: `run-script hub-setup.sh`.
 - Disable (fall back to direct polling): remove
   `/var/lib/claude-mail/hub/ENABLED`.
+- **Stale-queue alert:** if any container leaves routed mail unfetched for
+  30+ minutes, the cycle emails the owner (subject "Mail hub alert: container
+  not picking up its mail"), at most once per 2 h. Recovery tools:
+  `hub-requeue.sh <name>` (restore fetched-but-unhandled mail to the queue),
+  `hub-queue-peek.sh` (read-only queue timeline).
 - **Doc-sync rule:** any change to hub scripts, flows, cadence, or conventions
   MUST update `MAIL-CHEATSHEET.md` in the same commit (owner directive — that
   file is the single onboarding source and must never drift).
