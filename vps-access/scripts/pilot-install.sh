@@ -223,6 +223,58 @@ else
   echo "  VPS NTP: NOT synced yet — 'chronyc tracking' / 'timedatectl' to inspect"
 fi
 
+# ---- GENERALIZED RAIL (IMPLEMENTATION-PLAN 10.3+): its own timers, fully ----
+# separate from the F1 pilot's. live-tick at :08 (after the :05 F1 tick has
+# refreshed the shared candle cache) runs the multi-setup produce+push and the
+# per-setup mirror; live-alert pages per-setup incidents every 15 min offset
+# from pilot-alert. While no setup is in paper/live state these are no-ops
+# that ship nothing (drafts never produce; empty allowlist keeps the box
+# fail-closed for schema-2).
+install -m 755 /dev/stdin /usr/local/sbin/live-tick.sh <<LIVETICK
+#!/usr/bin/env bash
+set -uo pipefail
+export PILOT_SOCKS=$SOCKS
+/usr/local/sbin/live-produce-and-push.sh || true
+cd $APP && node live-mirror.js || true
+LIVETICK
+install -m 755 "$REPO/scripts/live-produce-and-push.sh" /usr/local/sbin/live-produce-and-push.sh
+install -m 755 "$REPO/scripts/live-alert.sh" /usr/local/sbin/live-alert.sh
+
+cat > /etc/systemd/system/live-tick.service <<UNIT
+[Unit]
+Description=Generalized-rail tick — multi-setup produce+push, per-setup mirror
+After=pilot-tunnel.service network-online.target
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/live-tick.sh
+UNIT
+cat > /etc/systemd/system/live-tick.timer <<UNIT
+[Unit]
+Description=Generalized-rail tick hourly at :08 UTC (after the F1 tick's refresh)
+[Timer]
+OnCalendar=*-*-* *:08:00 UTC
+Persistent=true
+[Install]
+WantedBy=timers.target
+UNIT
+cat > /etc/systemd/system/live-alert.service <<UNIT
+[Unit]
+Description=Generalized-rail alerting — per-setup incident pages
+After=network-online.target
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/live-alert.sh
+UNIT
+cat > /etc/systemd/system/live-alert.timer <<UNIT
+[Unit]
+Description=Generalized-rail alert every 15 minutes (offset from pilot-alert)
+[Timer]
+OnCalendar=*-*-* *:07/15:00 UTC
+Persistent=true
+[Install]
+WantedBy=timers.target
+UNIT
+
 echo "== enable + start (enable = survives reboot) =="
 systemctl daemon-reload
 systemctl enable --now pilot-tunnel.service
@@ -230,6 +282,8 @@ systemctl enable --now pilot-tick.timer
 systemctl enable --now pilot-tick-entry.timer
 systemctl enable --now pilot-sync.timer
 systemctl enable --now pilot-alert.timer
+systemctl enable --now live-tick.timer
+systemctl enable --now live-alert.timer
 
 echo "== configure the Mexico box: LIVE=1 (ARM still gates all entries) + systemd timer =="
 # The box has no cron but has systemd + passwordless sudo, so a SYSTEM timer is
