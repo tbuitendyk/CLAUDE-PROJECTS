@@ -76,8 +76,64 @@ To close when the generalized rail actually goes live (needs G8).
 
 ## Round 2 — confirming re-review of the fixes
 
-<!-- FILL IN when the two confirming reviewers return -->
+Two fresh reviewers over the fix diffs.
 
-## Deploy-gate decision
+- **Executor fixes (BLOCKER 1 + 2 + shell): CONFIRMED, no new blocker.** Traced
+  every schema-2 order path (entry, blocked pre-check, exits, sweep, stop,
+  short-close, resolve_dangling) and confirmed all sealed — no real schema-2 order
+  can be created, and none exists historically, so the exit path (correctly NOT
+  gated, since exiting a real position is always the safe action) has nothing to
+  act on. Paper twin is invisible to reconcile and the borrow/repay path. F1
+  byte-identical on both changed paths. Shell fix genuinely fail-closed. Two NITs
+  (a slightly-broad `except OSError` that cannot cause an order fault; corrupt-json
+  cleanup on a permanently-stopped box) — no action.
+- **Classifier updateSetup gate: NEW BLOCKER — `stopped` omitted.** The first fix
+  covered paper/live but a stopped setup still EXITS real positions routed by
+  executionTargetRef, so a bad re-point would silently misroute a live exit. A
+  third unguarded door. transition() equivalence and paper/live over-block checks
+  were clean; only the state coverage was incomplete.
 
-<!-- FILL IN: gate met iff round-2 returns zero new blockers -->
+**Fix:** added `stopped` to the updateSetup gate (QC 137 updated), passing
+`s.state` so target/geometry is enforced without spuriously demanding keyRef.
+Watched-failing test added.
+
+## Round 3 — re-confirm of the stopped fix
+
+One reviewer, full completeness pass. **GATE COMPLETE, NO NEW BLOCKER.** Verified:
+stopped re-point to a dangling/non-serving target is refused; keyRef demanded on
+no state but live; draft safe (re-gated at its trade door) and retired safe under
+the current design; no legitimate update over-blocked; transition() byte-identical.
+Two NITs: the "retired ⇒ flat" assumption is unenforced (recorded as gap G10 — not
+reachable until G8), and a stopped setup with a pre-existing broken target now
+needs its routing repaired in the same patch as any edit (fail-closed friction, no
+action).
+
+## Verdict
+
+**A full round (round 3) came back with ZERO new blockers.** Two blockers and one
+moderate found by the independent review, all fixed and watched-failing; the one
+regression introduced by a fix (the stopped gap) was caught by the confirming pass
+and fixed. Both suites green (97 executor + 28 live). The owner's arm bar — "ZERO
+new blockers, hardening nits are fine" — is met for the code.
+
+## Deploy-gate decision (10.3 box deploy)
+
+**HELD** — not on the review (which now passes) but on two hard constraints of
+this execution container, either of which alone forbids a safe live-money deploy:
+
+1. **No mail channel.** `/etc/deploy-control/env` is absent and
+   `CLAUDE_MAIL_PASSWORD` is unset here, so I can neither send the loop-mandated
+   change-email ("no code change reaches the environment without a standard email")
+   nor receive a STOP. Deploying live-money infra with no channel to the owner is
+   the exact outward-facing/irreversible case to hold on.
+2. **Cannot verify control-box sync.** The deploy runs pilot-deploy-executor.sh on
+   the control box against ITS checkout of vps-access. I pushed to origin but
+   cannot confirm the control box has pulled 078f0cb, so firing the API risks
+   shipping stale executor code to the live box with no way to see what shipped.
+
+Everything is staged and pushed (vps-access 078f0cb, classifier/general-classifier
+2f6f35a). The deploy is one command — `pilot-deploy-executor.sh` (LIVE=1: updates
+the file in place, runs NO cycle, does NOT arm) — once the mail channel is restored
+and control-box sync is confirmed. F1 is byte-identical and schema-2 is paper-only,
+so the deploy itself is low-risk; the hold is about communication and verifiability,
+not code risk.

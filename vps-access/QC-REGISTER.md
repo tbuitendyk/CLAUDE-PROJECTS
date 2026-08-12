@@ -264,6 +264,16 @@ These are listed because a MANUAL item with no owner is a lie.
   and batch.js getBatch validates String(id) but reads batchFile(id) (harmless for
   real HTTP string params). NOT_LIVE_EXECUTABLE returns HTTP 500 not the intended
   400 (cosmetic). To fix when the generalized rail actually goes live (needs G8).
+- **G10 — 'retired ⇒ flat' is assumed, not enforced (confirming re-review
+  2026-08-12).** The updateSetup live-gate excludes `retired` on the premise that a
+  retired setup has no open positions, but nothing forces a setup flat before
+  retiring: `stopped→retired` / `paper→retired` carry no open-position check, and
+  updateSetup has no state guard, so a retired setup's executionTargetRef could be
+  re-pointed ungated. NOT reachable today — the per-setup executor that would route
+  those orders is unbuilt (G8), and the normal path retires only after `stopped`
+  exits complete. Named enforcement when G8 lands: refuse `→retired` while the
+  setup has open positions, OR keep retired out of executor selection (as
+  catalog.js already keeps non-paper/live out of required-pairs). MANUAL until then.
 
 ## How an item gets added
 
