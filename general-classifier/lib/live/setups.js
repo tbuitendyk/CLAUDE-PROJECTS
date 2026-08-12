@@ -139,6 +139,31 @@ function listSetups() {
 // is an error, not a merge — silence here would be how a live setup's meaning
 // drifts (the point-4 immutability promise).
 const MUTABLE = new Set(['name', 'clipUsd', 'stopPct', 'executionTargetRef', 'keyRef']);
+
+// The live-executability gate, shared by the transition door AND updateSetup. It
+// answers "may this setup honestly TRADE in state `to`?": the geometry must be one
+// the executor implements, the target box must serve the traded symbol, and a LIVE
+// setup must carry its own sub-account keyRef. Factored out (independent review
+// 2026-08-12) because updateSetup can mutate executionTargetRef/keyRef — the very
+// routing/isolation fields the transition door guards — so an already-trading setup
+// must re-clear the same gate, or it is a second unguarded door into the exact
+// states transition() refuses.
+function liveGateErrors(s, to) {
+  const errs = [];
+  const le = liveExecutable(s.configSnapshot);
+  if (!le.ok) errs.push(...le.errors);
+  let target = null;
+  try { target = resolveForSetup(s); } catch (e) { errs.push(e.message); }
+  if (target && !targetServes(target, s.tradedPair)) {
+    errs.push(`symbol ${s.tradedPair}: target '${target.id}' serves ${JSON.stringify(target.symbols)} — not this pair`);
+  }
+  if (to === 'live' && !(typeof s.keyRef === 'string' && s.keyRef.trim())) {
+    errs.push('a LIVE setup needs its own sub-account keyRef so its balance and '
+      + 'borrow pool never mingle with F1 or another setup (set keyRef first)');
+  }
+  return errs;
+}
+
 function updateSetup(id, patch, by = 'owner') {
   const s = getSetup(id);
   if (!s) { const e = new Error(`no such setup ${id}`); e.code = 'NOT_FOUND'; throw e; }
@@ -153,6 +178,17 @@ function updateSetup(id, patch, by = 'owner') {
   for (const k of offered) next[k] = patch[k];
   const errors = validateOperational(next);
   if (errors.length) { const e = new Error(errors.join('; ')); e.code = 'BAD_SETUP'; throw e; }
+  // A setup that is already trading (paper/live) must re-clear the live gate after
+  // the patch — re-pointing its target at a box that does not serve its symbol, or
+  // blanking a LIVE setup's keyRef, would otherwise slip past the transition door.
+  if (s.state === 'paper' || s.state === 'live') {
+    const gerr = liveGateErrors(next, s.state);
+    if (gerr.length) {
+      const e = new Error(`update would break ${s.state} execution: ${gerr.join('; ')}`);
+      e.code = 'NOT_LIVE_EXECUTABLE';
+      throw e;
+    }
+  }
   atomicWrite(fileFor(id), next);
   return next;
 }
@@ -172,28 +208,17 @@ function transition(id, to, by = 'owner', note) {
   // does not implement (breakout/active/trailing/arm) — it would be silently
   // mis-traded as market/hold-to-t — and a symbol the target box does not serve
   // (the box would reject every intent invisibly). Surfaced as a 400 in the UI.
+  // R7: going LIVE (placing REAL orders) requires the setup's OWN sub-account
+  // (keyRef). F1 and any other setup sharing one isolated-margin sub-account mingle
+  // their balance AND borrow pool, so multi-day short interest pools onto whichever
+  // leg closes last and cross-contaminates per-setup/F1 realized — physically
+  // unavoidable on a shared account. A distinct keyRef keeps each setup's money
+  // isolated. (PAPER places no orders, so it needs none.) The executor must ROUTE
+  // this keyRef before a live setup is truly isolated — tracked as open gap G8;
+  // this gate records and enforces the requirement at the door. Shared with
+  // updateSetup via liveGateErrors so both doors into a trading state agree.
   if (to === 'paper' || to === 'live') {
-    const errs = [];
-    const le = liveExecutable(s.configSnapshot);
-    if (!le.ok) errs.push(...le.errors);
-    let target = null;
-    try { target = resolveForSetup(s); } catch (e) { errs.push(e.message); }
-    if (target && !targetServes(target, s.tradedPair)) {
-      errs.push(`symbol ${s.tradedPair}: target '${target.id}' serves ${JSON.stringify(target.symbols)} — not this pair`);
-    }
-    // R7: going LIVE (placing REAL orders) requires the setup's OWN sub-account
-    // (keyRef). F1 and any other setup sharing one isolated-margin sub-account
-    // mingle their balance AND borrow pool, so multi-day short interest pools onto
-    // whichever leg closes last and cross-contaminates per-setup/F1 realized —
-    // physically unavoidable on a shared account. A distinct keyRef keeps each
-    // setup's money isolated. (PAPER places no orders, so it needs none.) The
-    // executor must ROUTE this keyRef before a live setup is truly isolated —
-    // tracked as open gap G8; this gate records and enforces the requirement at
-    // the door so a live setup can never be created without its own sub-account.
-    if (to === 'live' && !(typeof s.keyRef === 'string' && s.keyRef.trim())) {
-      errs.push('a LIVE setup needs its own sub-account keyRef so its balance and '
-        + 'borrow pool never mingle with F1 or another setup (set keyRef first)');
-    }
+    const errs = liveGateErrors(s, to);
     if (errs.length) {
       const e = new Error(`cannot go ${to}: ${errs.join('; ')}`);
       e.code = 'NOT_LIVE_EXECUTABLE';

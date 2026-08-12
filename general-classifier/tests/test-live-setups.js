@@ -193,6 +193,28 @@ module.exports.liveRequiresItsOwnSubAccountKeyRef = function () {
   assert.strictEqual(reg.transition(s.id, 'live').state, 'live');
 };
 
+module.exports.updateSetupReRunsTheLiveGateSoRoutingCantBeBlankedPastTheDoor = function () {
+  // Independent review 2026-08-12: updateSetup mutates executionTargetRef/keyRef —
+  // the routing/isolation fields the transition door guards. An already-LIVE setup
+  // must re-clear the same gate, or updateSetup is a SECOND unguarded door: blanking
+  // a live setup's keyRef would re-mingle its borrow/balance pool with F1. Tripwire —
+  // drop the updateSetup gate and the blank is accepted, failing this test.
+  const s = mkSetup({ keyRef: 'sub-acct-live' });
+  assert.strictEqual(reg.transition(s.id, 'live').state, 'live');
+  let err = null;
+  try { reg.updateSetup(s.id, { keyRef: '' }); } catch (e) { err = e; }
+  assert.ok(err && err.code === 'NOT_LIVE_EXECUTABLE',
+    `blanking a live setup's keyRef must be refused, got ${err && err.code}`);
+  assert.ok(/keyRef|sub-account/.test(err.message), err.message);
+  // the rejected update never wrote — the live setup still carries its own key
+  assert.strictEqual(reg.getSetup(s.id).keyRef, 'sub-acct-live');
+  // the safe operational surface (clip/name/stop) still updates on a live setup —
+  // the gate closes the routing door without over-blocking the tunable fields
+  const upd = reg.updateSetup(s.id, { clipUsd: 30, name: 'tuned' });
+  assert.strictEqual(upd.clipUsd, 30);
+  assert.strictEqual(upd.keyRef, 'sub-acct-live', 'routing untouched by a safe update');
+};
+
 module.exports.unexecutableGeometryIsRefusedAtPaperTransition = function () {
   // a breakout / active-gate / trailing / arm cell would be SILENTLY mis-traded
   // as market/hold-to-t by the live executor — refuse it at the door to paper.
