@@ -1,0 +1,41 @@
+Night build under way: phases 0-4 of the Live Trading release built + tested
+
+tl;dr — Working the approved plan continuously. Phases 0-4 are BUILT and
+TESTED (setup registry, generalized signal engine, generalized executor with
+paper mode, greenlight+shuttle). The classifier was deployed twice tonight
+(additive modules only — the running F1 pilot and your open LONG are
+untouched, engine RUNNING). The golden parity gate is computing on the VPS
+now. No executor code has gone to the Mexico box — that waits for the
+Phase-10 adversarial review, as planned. Nothing needed from you.
+
+Done so far (each committed + full test suites green at every step):
+  * Phase 0-1  TradingSetup registry: immutable config snapshots, state
+    machine (draft/paper/live/stopped/retired), per-setup clip/stop/key/server
+    fields, CSRF-guarded HTTP surface. 14 new tests.
+  * Phase 2    lib/live/signal.js — the F1 decision path parameterized by any
+    greenlighted config (same primitives, same guards, same hash recipe).
+    9 new tests on fabricated symbols (never touching real cache files).
+    PARITY GATE: F1 through the new engine must reproduce pilotsignal
+    byte-for-byte on the real cache — running on the VPS now (~15 min compute;
+    verdict lands in the next mail or the morning report).
+  * Phase 3    Executor generalized (NOT deployed): schema-2 intents carry
+    setup_id + clip/hold/stop/paper; per-box ALLOWLIST fail-closed (no file =
+    no schema-2 trades; symbol + clip-cap cross-checks); PAPER mode books
+    simulated fills with the model's own fee rate, invisible to reconcile and
+    the loss kill. Schema-1 (your running F1) byte-preserved — 72 original
+    tests untouched and green, 79 total now.
+  * Phase 4    Greenlight (WHO/WHEN/WHY + frozen band + engine version + data
+    manifest + campaign provenance) and the shuttle button minting draft
+    setups. "No hand-built live configs" is now structural.
+
+KEY: "parity gate" = proof the generalized engine is the SAME instrument as
+the one your F1 evidence was measured on; nothing goes live on it until that
+reads PASS. "fail-closed" = when a control file is missing the box refuses
+trades rather than guessing.
+
+Next in the queue tonight: multi-setup produce loop + allowlist carry, the
+Live Trading tab UI (born with sub-tabs + paper badges), per-setup safety
+rails, data catalog. Morning report will include the parity verdict and the
+updated plan checkboxes.
+
+c.
