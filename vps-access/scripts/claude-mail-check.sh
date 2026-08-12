@@ -33,6 +33,18 @@
 # marked read — so nothing is silently swallowed.
 set -uo pipefail
 
+# HUB DELEGATION (2026-08-11). When the mail hub is enabled, the hub's cron
+# cycle is the ONLY consumer of the mailbox (it runs this script in BYPASS
+# mode below and routes verified mail to per-container inboxes). A legacy
+# caller -- e.g. the general-classifier session polling this script directly --
+# is transparently handed its routed queue instead, so nothing double-consumes
+# the mailbox and existing pollers keep working unchanged.
+# Protocol: vps-access/HUB-PROTOCOL.md
+if [ -f /var/lib/claude-mail/hub/ENABLED ] && [ "${CLAUDE_MAIL_HUB_BYPASS:-0}" != 1 ]; then
+  exec bash "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/hub-fetch.sh" \
+    "$(cat /var/lib/claude-mail/hub/default-route 2>/dev/null || echo general-classifier)"
+fi
+
 GUEST=192.168.56.129
 MBOX=claude@homeandofficemicro.com
 OWNER=theodore@homeandofficemicro.com

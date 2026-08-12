@@ -71,6 +71,12 @@ change again.
   typed it.
 - Every outbound message starts with a `tl;dr` line — enforced by the send
   script, at the owner's request.
+- **Mail hub (2026-08-11).** The vps-access session is the gatekeeper: a cron
+  cycle on the host is the only mailbox consumer — it verifies inbound and
+  routes it to per-container hub inboxes; registered sessions fetch with
+  `run-script hub-fetch.sh <name>` and send via the outbox flow as before.
+  Cadence: 15-min polls, 1-min for 20 min after any interaction. Full
+  protocol: `vps-access/HUB-PROTOCOL.md`.
 - `VBoxManage` run as root reports both guests as `poweroff` while their
   processes are plainly serving — the registry root sees is not the one the
   running VMs came from. Do not act on VM-level power state until that is
