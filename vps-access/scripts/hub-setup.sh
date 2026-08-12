@@ -19,9 +19,12 @@ cat > /etc/cron.d/claude-mail-hub <<'CRON'
 CRON
 chmod 644 /etc/cron.d/claude-mail-hub
 
-# founding registrations
-bash "$HERE/hub-register.sh" general-classifier/default
-bash "$HERE/hub-register.sh" vps-access
+# founding registrations: the hub session (vps-access) is the DEFAULT route --
+# unaddressed owner mail lands with the gatekeeper, who passes it on
+# (hub-reroute.sh). Legacy direct pollers stay pinned to general-classifier.
+bash "$HERE/hub-register.sh" general-classifier
+bash "$HERE/hub-register.sh" vps-access/default
+echo general-classifier > "$HUB/legacy-route"
 
 touch "$HUB/ENABLED"
 echo "hub ENABLED."

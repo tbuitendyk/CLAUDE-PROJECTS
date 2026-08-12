@@ -41,8 +41,11 @@ set -uo pipefail
 # the mailbox and existing pollers keep working unchanged.
 # Protocol: vps-access/HUB-PROTOCOL.md
 if [ -f /var/lib/claude-mail/hub/ENABLED ] && [ "${CLAUDE_MAIL_HUB_BYPASS:-0}" != 1 ]; then
+  # legacy-route, NOT default-route: legacy callers are the pre-hub pollers
+  # (general-classifier), while the default route for unaddressed mail is the
+  # hub session itself (vps-access) -- two different things.
   exec bash "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/hub-fetch.sh" \
-    "$(cat /var/lib/claude-mail/hub/default-route 2>/dev/null || echo general-classifier)"
+    "$(cat /var/lib/claude-mail/hub/legacy-route 2>/dev/null || echo general-classifier)"
 fi
 
 GUEST=192.168.56.129

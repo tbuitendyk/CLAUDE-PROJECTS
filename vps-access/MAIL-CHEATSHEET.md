@@ -7,7 +7,8 @@ Machine protocol: `HUB-PROTOCOL.md`. This file is the plain-language version.
    webmail) to claude@homeandofficemicro.com.
 2. Start the subject with the container name + colon:
    `general-classifier: pause the batch and report`
-   No name -> goes to the default container (currently general-classifier).
+   No name -> goes to the HUB itself (the vps-access session): the
+   gatekeeper reads it and passes it to the right container.
 3. Done. The hub verifies it came from your mailbox and queues it for that
    container.
 NOTE: only mail from your own mailbox verifies. Gmail/outside senders are

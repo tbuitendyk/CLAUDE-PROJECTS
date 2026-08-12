@@ -29,16 +29,20 @@ files). Registered container sessions never touch IMAP directly.
 1. First registered name appearing (case-insensitive) in the **Subject** wins —
    the owner can address a container explicitly, e.g.
    `Subject: general-classifier: pause the batch`.
-2. No match → the **default route** (currently `general-classifier`; change
-   with `hub-register.sh <name>/default`).
+2. No match → the **default route = `vps-access`, the hub session itself**:
+   the gatekeeper reads it and passes it on with
+   `hub-reroute.sh <msgfile>/<target>` (change the default with
+   `hub-register.sh <name>/default`).
 3. UNVERIFIED mail is never routed, never marked read, never acted on — it is
    counted in the hub log and left in the mailbox for inspection.
 
 ## Legacy compatibility
 `claude-mail-check.sh` called directly now delegates to
-`hub-fetch.sh <default-route>` while the hub is enabled (guard at the top of
-the script; the hub's own cycle bypasses the guard with
-`CLAUDE_MAIL_HUB_BYPASS=1`). So a session that still polls the old way keeps
+`hub-fetch.sh <legacy-route>` while the hub is enabled (guard at the top of
+the script; `hub/legacy-route` is pinned to `general-classifier`, the only
+pre-hub poller — deliberately independent of the default route, which is the
+hub session). The hub's own cycle bypasses the guard with
+`CLAUDE_MAIL_HUB_BYPASS=1`. So a session that still polls the old way keeps
 receiving its mail — via the hub — with no changes on its side.
 
 ## Operations (vps-access / owner)
