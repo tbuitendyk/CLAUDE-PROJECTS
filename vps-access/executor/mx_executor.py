@@ -70,6 +70,17 @@ RECV_WINDOW = 10000
 FILL_DEV_LIMIT = 0.20      # kill only a CATASTROPHIC (>20%) decision-vs-fill gap
 REJECT_LIMIT = 3           # kill: 3 consecutive rejects (GUESSED)
 LOSS_LIMIT_USD = 50.0      # kill: cumulative pilot loss (GUESSED)
+# Isolation guard (independent review 2026-08-12, BLOCKER 1). This box holds ONE
+# isolated-margin sub-account key (F1's) and every setup trades the SAME LTCUSDT
+# wallet + borrow pool. A REAL schema-2 order would therefore land on F1's own
+# wallet — re-coupling the rails through shared reconcile-halt and shared
+# short-close sizing, which a single wallet cannot rail-split. Until per-setup
+# sub-account key routing exists (open gap G8), schema-2 is PAPER-ONLY on the F1
+# box: a setup the allowlist marks 'live' is booked as paper here (safe, still
+# measures) and the unsupported-live request is logged loudly. Flip to True ONLY
+# in the same change that lands per-setup key routing AND a box-wide real-exposure
+# ceiling across both rails (review N1/N2).
+S2_LIVE_ROUTING = False
 FIXED_STOP_PCT_DEFAULT = 0.0  # hard per-order stop as a fraction of entry price.
                            # 0 = NO stop until the full-history sweep provides one.
                            # Owner (2026-08-11): every live order must carry a fixed
@@ -1306,8 +1317,21 @@ def do_run(bx):
             with open(path) as fh:
                 it = json.load(fh)
         except (json.JSONDecodeError, OSError) as e:
+            # BLOCKER 2 (F1 byte-identity): while the REAL rail is blocked the old
+            # pre-loop early-return touched NOTHING. A parse failure here could be a
+            # torn/corrupt REAL (F1) intent; setting it aside (.bad) while disarmed/
+            # halted would consume a period the box must leave for a later armed run.
+            # So while blocked, leave it untouched and retry next run.
+            if real_blocked:
+                continue
             jlog("INTENT_INVALID", file=name, error=str(e)[:100])
-            os.rename(path, path + ".bad")
+            # never let a file that vanished mid-run (a control-plane race between
+            # listdir and rename) raise and abort the whole run — that would skip
+            # F1's own scheduled exits.
+            try:
+                os.rename(path, path + ".bad")
+            except OSError:
+                pass
             continue
         # R8: when the REAL rail is blocked (disarmed / halted / reject-killed), a
         # REAL intent is LEFT UNTOUCHED for a later armed run — byte-identical to the
@@ -1320,6 +1344,11 @@ def do_run(bx):
             _allow = setups_allow().get(it.get("setup_id")) if _is2 else None
             _eff_paper = _is2 and (bool(it.get("paper"))
                                    or (isinstance(_allow, dict) and _allow.get("state") != "live"))
+            # BLOCKER 1: with schema-2 paper-only on the F1 box, a would-be-real
+            # schema-2 intent is effectively paper here, so it still MEASURES while
+            # the real rail is blocked (R8) rather than being skipped as if real.
+            if _is2 and not S2_LIVE_ROUTING:
+                _eff_paper = True
             if not _eff_paper:
                 continue
         # mechanical validation -- every failure is journaled and the file
@@ -1422,7 +1451,19 @@ def do_run(bx):
         # setup can NEVER place a real order whatever its own flag says (only a
         # setup the box was told is 'live' can). A live setup honors its intent
         # (normally paper:false). eff_paper is what everything downstream uses.
-        eff_paper = (bool(it.get("paper")) or allow_entry.get("state") != "live") if is2 else False
+        # BLOCKER 1 (isolation guard): a would-be-REAL schema-2 order is refused on
+        # the F1 box (S2_LIVE_ROUTING False) — it can only share F1's one wallet, so
+        # it is booked as PAPER here and the unsupported-live request logged loudly.
+        if is2:
+            wants_real = (not bool(it.get("paper"))) and allow_entry.get("state") == "live"
+            eff_paper = (not wants_real) or (not S2_LIVE_ROUTING)
+            if wants_real and not S2_LIVE_ROUTING:
+                jlog("S2_LIVE_UNSUPPORTED", chunk_start=it["chunk_start"],
+                     setup_id=it["setup_id"],
+                     reason="schema-2 live needs per-setup sub-account routing (G8); "
+                            "booked PAPER on the F1 box so no real order shares F1's wallet")
+        else:
+            eff_paper = False
         jlog("INTENT_SEEN", chunk_start=it["chunk_start"], side=it["side"],
              decision_price=it["decision_price"],
              input_hash=it.get("input_hash", ""),

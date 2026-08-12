@@ -43,6 +43,13 @@ if [ -f "$ALLOW" ]; then
     allow_ok=0
     echo "  allowlist carry FAILED — NOT shipping intents this tick (box keeps its previous list)"
   fi
+else
+  # FAIL-CLOSED (independent review 2026-08-12): a MISSING local allowlist is not
+  # "nothing to carry" — it means this tick carried NO fresh list, so shipping
+  # intents would act against whatever STALE list the box still holds, exactly what
+  # R14 exists to prevent. Withhold intents until a real allowlist is produced.
+  allow_ok=0
+  echo "  no local allowlist at $ALLOW — NOT shipping intents this tick (fail-closed)"
 fi
 
 echo "== ship intents =="

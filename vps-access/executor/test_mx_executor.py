@@ -686,6 +686,9 @@ class ExecutorTest(unittest.TestCase):
             json.dump(it, f)
 
     def test_schema2_allowlisted_live_intent_fills_with_its_own_params(self):
+        # post-G8 mechanics: assume a box that ROUTES a distinct sub-account key
+        # per setup, so a real schema-2 order is safe (see S2_LIVE_ROUTING guard).
+        self.x.S2_LIVE_ROUTING = True
         self.write_allow({"s-alpha": {"symbol": "LTCUSDT", "max_clip_usd": 25}})
         self.write_intent2(clip=20.0, hold=48)
         t0 = time.time()
@@ -749,6 +752,9 @@ class ExecutorTest(unittest.TestCase):
         self.assertAlmostEqual(st["paper_realized"], 2.0 - 0.0525, places=4)
 
     def test_schema2_dedup_is_per_setup_and_never_blocks_schema1(self):
+        # post-G8 mechanics: assume a box that ROUTES a distinct sub-account key
+        # per setup, so a real schema-2 order is safe (see S2_LIVE_ROUTING guard).
+        self.x.S2_LIVE_ROUTING = True
         self.write_allow({"s-a": {"symbol": "LTCUSDT", "max_clip_usd": 25},
                           "s-b": {"symbol": "LTCUSDT", "max_clip_usd": 25}})
         chunk = "2026-08-07T00:00Z"
@@ -772,6 +778,9 @@ class ExecutorTest(unittest.TestCase):
         self.assertTrue(any(f.get("setup_id") is None for f in fills))
 
     def test_schema2_position_uses_its_own_stop_not_the_global(self):
+        # post-G8 mechanics: assume a box that ROUTES a distinct sub-account key
+        # per setup, so a real schema-2 order is safe (see S2_LIVE_ROUTING guard).
+        self.x.S2_LIVE_ROUTING = True
         self.write_allow({"s-stop": {"symbol": "LTCUSDT", "max_clip_usd": 25}})
         self.write_intent2(setup_id="s-stop", clip=20.0, hold=999, stop=0.05)
         self.x.do_run(self.bx())
@@ -807,6 +816,9 @@ class ExecutorTest(unittest.TestCase):
                          "schema-1 (F1) client ids must never change")
 
     def test_schema2_entry_order_sent_carries_riders_for_recovery(self):
+        # post-G8 mechanics: assume a box that ROUTES a distinct sub-account key
+        # per setup, so a real schema-2 order is safe (see S2_LIVE_ROUTING guard).
+        self.x.S2_LIVE_ROUTING = True
         # R4 (QC 118): the ENTRY ORDER_SENT meta must carry hold_hours/stop_pct/
         # clip_usd. Without them a crash-recovered schema-2 entry falls back to
         # F1's HOLD_HOURS=137 and stop_pct=None (stopless), against the setup's own
@@ -857,6 +869,9 @@ class ExecutorTest(unittest.TestCase):
         self.assertEqual(MockBinance.orders, [], "no real order for a paper-state setup")
 
     def test_schema2_live_setup_places_real_order(self):
+        # post-G8 mechanics: assume a box that ROUTES a distinct sub-account key
+        # per setup, so a real schema-2 order is safe (see S2_LIVE_ROUTING guard).
+        self.x.S2_LIVE_ROUTING = True
         # R5 counterpart: a live-state setup with paper:false DOES place a real order.
         self.write_allow({"s-l": {"symbol": "LTCUSDT", "max_clip_usd": 25, "state": "live"}})
         self.write_intent2(setup_id="s-l", clip=20.0, hold=48, paper=False)
@@ -920,6 +935,9 @@ class ExecutorTest(unittest.TestCase):
                          "a schema-2 ACK must not reset F1's reject streak")
 
     def test_schema2_price_drift_halts_only_its_setup_not_the_box(self):
+        # post-G8 mechanics: assume a box that ROUTES a distinct sub-account key
+        # per setup, so a real schema-2 order is safe (see S2_LIVE_ROUTING guard).
+        self.x.S2_LIVE_ROUTING = True
         # R1: a schema-2 pre-order price drift beyond the backstop halts ONLY that
         # setup (per-setup halt), never the box — F1 keeps trading.
         self.write_allow({"s-d": {"symbol": "LTCUSDT", "max_clip_usd": 25}})
@@ -961,20 +979,23 @@ class ExecutorTest(unittest.TestCase):
         # consume a schema-2 intent (INTENT_SEEN + .done) — else one exchange hiccup
         # permanently forfeits the generalized-rail entry the model called. The intent
         # stays and fills next run when the price returns.
-        self.write_allow({"s-alpha": {"symbol": "LTCUSDT", "max_clip_usd": 25}})
+        # a PAPER schema-2 intent still fetches the price before INTENT_SEEN (the
+        # paper fill IS the market price), so the retry path is exercised without a
+        # real order — no S2_LIVE_ROUTING needed.
+        self.write_allow({"s-alpha": {"symbol": "LTCUSDT", "max_clip_usd": 25, "state": "paper"}})
         self.write_intent2(setup_id="s-alpha", side="LONG", chunk="2026-08-07T00:00Z",
-                           clip=20.0, hold=48)
+                           clip=20.0, hold=48, paper=True)
         MockBinance.price_fails = True
         self.x.do_run(self.bx())
         ev = self.events()
         self.assertNotIn("INTENT_SEEN", ev, "a no-price run must NOT consume the schema-2 intent")
-        self.assertNotIn("ENTRY_FILL", ev)
+        self.assertNotIn("PAPER_ENTRY_FILL", ev)
         self.assertTrue(any(n.endswith(".json") for n in os.listdir(self.x.INTENTS)),
                         "the schema-2 intent is kept as .json for the next run")
-        # price returns -> the kept intent fills
+        # price returns -> the kept intent fills (paper)
         MockBinance.price_fails = False
         self.x.do_run(self.bx())
-        self.assertIn("ENTRY_FILL", self.events(), "the kept intent fills once price returns")
+        self.assertIn("PAPER_ENTRY_FILL", self.events(), "the kept intent fills once price returns")
 
     def test_transient_no_price_leaves_F1_byte_identical(self):
         # CARDINAL: R18 is scoped to schema-2 ONLY. The live F1 (schema-1) path must
@@ -994,6 +1015,60 @@ class ExecutorTest(unittest.TestCase):
                          "the F1 intent is consumed (.done), NOT kept for retry")
         self.assertTrue(any(n.endswith(".done") for n in os.listdir(self.x.INTENTS)),
                         "the F1 intent was renamed .done exactly as the live pilot does")
+
+    def test_schema2_live_is_refused_paper_only_on_the_f1_box(self):
+        # BLOCKER 1 (independent review 2026-08-12): the F1 box holds ONE isolated
+        # sub-account key; a REAL schema-2 order would land on F1's OWN shared LTCUSDT
+        # wallet, re-coupling the rails through shared reconcile-halt + short-close
+        # sizing. Until per-setup sub-account routing (gap G8) exists, a schema-2 setup
+        # the allowlist marks 'live' must be booked PAPER here — NEVER a real order —
+        # and the unsupported-live request logged loudly. Tripwire: flipping
+        # S2_LIVE_ROUTING to True (or dropping the guard) makes a real order appear.
+        self.write_allow({"s-live": {"symbol": "LTCUSDT", "max_clip_usd": 25, "state": "live"}})
+        self.write_intent2(setup_id="s-live", side="LONG", clip=20.0, hold=48, paper=False)
+        self.x.do_run(self.bx())
+        ev = self.events()
+        self.assertIn("S2_LIVE_UNSUPPORTED", ev, "the unsupported-live request is logged loudly")
+        self.assertIn("PAPER_ENTRY_FILL", ev, "the setup still measures as paper")
+        self.assertNotIn("ENTRY_FILL", ev, "no REAL entry fill for a schema-2 live setup on this box")
+        self.assertEqual(MockBinance.orders, [], "no real order hits F1's shared wallet")
+
+    def test_blocked_rail_leaves_a_corrupt_f1_intent_untouched(self):
+        # BLOCKER 2: while the REAL rail is blocked (disarmed/halted) the box must touch
+        # NOTHING — a torn/corrupt F1 intent stays .json for a later armed run, exactly
+        # as the pre-R8 pre-loop early-return did. Setting it aside (.bad) while
+        # disarmed could forfeit that period's entry. Tripwire: dropping the
+        # `if real_blocked: continue` guard makes a disarmed run .bad the torn intent.
+        self.x.set_arm(False, "test")
+        os.makedirs(self.x.INTENTS, exist_ok=True)
+        p = os.path.join(self.x.INTENTS, "intent-torn.json")
+        with open(p, "w") as f:
+            f.write("{partial")   # a torn / not-yet-complete write
+        self.x.do_run(self.bx())
+        self.assertNotIn("INTENT_INVALID", self.events(),
+                         "a blocked run must not set aside a torn intent")
+        self.assertTrue(os.path.exists(p), "the torn intent is left as .json for a later armed run")
+        self.assertFalse(os.path.exists(p + ".bad"), "nothing renamed while the real rail is blocked")
+
+    def test_vanished_intent_file_mid_run_does_not_abort(self):
+        # BLOCKER 2: a corrupt intent whose file vanishes between listdir and the
+        # set-aside rename (a control-plane race) must NOT raise and abort the whole
+        # run — that would skip F1's OWN scheduled exits. The rename is guarded.
+        # Tripwire: removing the try/except lets FileNotFoundError abort do_run.
+        os.makedirs(self.x.INTENTS, exist_ok=True)
+        with open(os.path.join(self.x.INTENTS, "intent-bad.json"), "w") as f:
+            f.write("{not json")
+        real_rename = self.x.os.rename
+        def flaky_rename(src, dst):
+            if str(dst).endswith(".bad"):
+                raise FileNotFoundError(2, "No such file or directory", dst)
+            return real_rename(src, dst)
+        self.x.os.rename = flaky_rename
+        try:
+            self.x.do_run(self.bx())   # must not raise
+        finally:
+            self.x.os.rename = real_rename
+        self.assertIn("RUN_STATUS", self.events(), "the run completed despite the vanished intent")
 
     def test_paper_intent_books_even_when_disarmed(self):
         # R8: paper is pure measurement (no orders), so a disarmed box must STILL
