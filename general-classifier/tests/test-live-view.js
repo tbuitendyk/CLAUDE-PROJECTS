@@ -69,6 +69,24 @@ module.exports.paperAndRealUnrealizedAreSeparate = function () {
   });
 };
 
+module.exports.fidelityCountsOnlyRealNonRecoveredFills = function () {
+  // R16: execution fidelity measures REAL, non-recovered fills vs their decision
+  // price. A recovered fill fabricates deviation 0.0 (decision price lost in the
+  // crash) and a paper fill is the lab twin — neither belongs in the real average.
+  withJournal([
+    { event: 'ENTRY_FILL', setup_id: 'f', chunk_start: 'c1', side: 'LONG', qty: 0.2, price: 100, fill_deviation: 0.01, exit_due_ts: 2e9 },
+    { event: 'ENTRY_FILL', setup_id: 'f', chunk_start: 'c2', side: 'LONG', qty: 0.2, price: 100, fill_deviation: 0.0, recovered: true, exit_due_ts: 3e9 },
+    { event: 'PAPER_ENTRY_FILL', setup_id: 'f', chunk_start: 'p1', side: 'LONG', qty: 0.2, price: 100, fill_deviation: 0.02, exit_due_ts: 4e9 },
+  ], (f) => {
+    const b = view.deriveSetup(view.readJournal(f).events, 'f');
+    assert.strictEqual(b.fidelity.fills, 1, 'only the real non-recovered fill counts for real fidelity');
+    assert.ok(Math.abs(b.fidelity.fillDeviationAvg - 0.01) < 1e-9, 'real 0.01, not diluted by a fabricated 0.0');
+    assert.strictEqual(b.fidelity.recoveredFills, 1, 'recovered fill counted separately');
+    assert.strictEqual(b.fidelity.paperFills, 1, 'paper fill counted separately');
+    assert.ok(Math.abs(b.fidelity.paperFillDeviationAvg - 0.02) < 1e-9, 'paper deviation in its own bucket');
+  });
+};
+
 module.exports.eventsOfOtherSetupsAreIgnored = function () {
   withJournal([
     { event: 'ENTRY_FILL', setup_id: 'a', chunk_start: 'c1', side: 'LONG', qty: 0.2, price: 100, exit_due_ts: 2e9 },

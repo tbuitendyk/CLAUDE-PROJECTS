@@ -37,7 +37,13 @@ const avg = (a) => (a.length ? a.reduce((x, y) => x + y, 0) / a.length : null);
 function deriveSetup(events, setupId) {
   const open = {}; const paperOpen = {};
   let realized = 0; let paperRealized = 0;
-  const closed = []; const fills = []; const legCosts = [];
+  // R16: execution fidelity measures ONE population — REAL, non-recovered fills vs
+  // their decision price. A recovered fill fabricates fill_deviation=0.0 (the crash
+  // lost the decision price), and a paper fill is the lab twin, not live execution;
+  // pooling either into the real average flatters or muddies the number the pilot
+  // exists to produce. Keep them in separate buckets.
+  const closed = []; const fills = []; const paperFills = []; const legCosts = [];
+  let recoveredFills = 0;
   const incidents = [];
   let markPrice = null; let markUtc = null;
 
@@ -56,7 +62,10 @@ function deriveSetup(events, setupId) {
         open[key(e)] = { chunk_start: e.chunk_start, side: e.side, qty: e.qty,
           entry_price: e.price, entry_utc: e.utc, exit_due_ts: e.exit_due_ts,
           decision_price: e.decision_price, fill_deviation: e.fill_deviation, paper: false };
-        if (typeof e.fill_deviation === 'number') fills.push(e.fill_deviation);
+        // recovered fills carry a FABRICATED 0.0 deviation (the decision price was
+        // lost in the crash) — count them, but keep them OUT of the real average.
+        if (e.recovered) recoveredFills += 1;
+        else if (typeof e.fill_deviation === 'number') fills.push(e.fill_deviation);
         if (typeof e.fee_quote === 'number') legCosts.push(e.fee_quote);
         break;
       case 'EXIT_FILL': {
@@ -71,7 +80,7 @@ function deriveSetup(events, setupId) {
         paperOpen[key(e)] = { chunk_start: e.chunk_start, side: e.side, qty: e.qty,
           entry_price: e.price, entry_utc: e.utc, exit_due_ts: e.exit_due_ts,
           decision_price: e.decision_price, fill_deviation: e.fill_deviation, paper: true };
-        if (typeof e.fill_deviation === 'number') fills.push(e.fill_deviation);
+        if (typeof e.fill_deviation === 'number') paperFills.push(e.fill_deviation);
         break;
       case 'PAPER_EXIT_FILL': {
         const p = paperOpen[key(e)]; delete paperOpen[key(e)];
@@ -120,10 +129,15 @@ function deriveSetup(events, setupId) {
     // EXECUTION FIDELITY (point 17): the numbers the pilot exists to measure,
     // per setup — is live matching what the lab promised?
     fidelity: {
+      // REAL, non-recovered fills only — the live-vs-lab execution question
       fills: fills.length,
       fillDeviationAvg: round(avg(fills), 6),
       fillDeviationMax: fills.length ? round(Math.max(...fills), 6) : null,
       realizedFeePerLegAvg: round(avg(legCosts), 6),
+      // kept separate so neither dilutes the real number (R16)
+      recoveredFills,
+      paperFills: paperFills.length,
+      paperFillDeviationAvg: round(avg(paperFills), 6),
     },
     incidents: incidents.slice(-20).reverse(),
   };
