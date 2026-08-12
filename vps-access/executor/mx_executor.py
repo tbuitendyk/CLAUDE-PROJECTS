@@ -113,6 +113,11 @@ PILOT = os.path.join(HOME, "pilot")
 JOURNAL = os.path.join(PILOT, "journal.jsonl")
 INTENTS = os.path.join(PILOT, "intents")
 HALT = os.path.join(PILOT, "HALT")
+# Per-box allowlist for schema-2 (generalized) intents: setup_id -> limits.
+# Carried by the control plane like fixed-stop; FAIL-CLOSED — no file means
+# every schema-2 intent is refused, so a box trades only setups it was
+# explicitly told to serve (IMPLEMENTATION-PLAN 3.1 defense in depth).
+SETUPS_ALLOW = os.path.join(PILOT, "setups-allow.json")
 # ARM is the owner's MASTER SWITCH. No new position opens unless this file is
 # present (owner pressed START on the live screen). It is the inverse of HALT:
 # HALT is an emergency stop, ARM is "the engine is running because I said so".
@@ -166,18 +171,32 @@ def journal_events():
 
 
 # ---- derived state (replay, single source of truth) -------------------------
+def pos_key(e):
+    """Position key: schema-1 events (no setup_id) keep the ORIGINAL key
+    (chunk_start alone) so every historical journal replays byte-identically;
+    schema-2 events key on (setup_id, chunk_start) so two setups can hold the
+    same period without colliding."""
+    sid = e.get("setup_id")
+    return e["chunk_start"] if sid is None else f"{sid}|{e['chunk_start']}"
+
+
 def derive(events):
     """Replay the journal into current state. Positions are keyed by
-    chunk_start so one period can never open twice."""
-    pos = {}            # chunk_start -> position dict
+    chunk_start (schema-1) or setup_id|chunk_start (schema-2) so one period
+    per setup can never open twice. PAPER positions replay into their own
+    book: they hold no exchange assets, so reconcile and the mark-to-market
+    kill must never see them."""
+    pos = {}            # key -> position dict (REAL money)
+    paper = {}          # key -> position dict (paper twin, no orders)
     consecutive_rejects = 0
     realized = 0.0
+    paper_realized = 0.0
     dust_done = False
     shortdust_done = False
     for e in events:
         ev = e.get("event")
         if ev == "ENTRY_FILL":
-            pos[e["chunk_start"]] = {
+            pos[pos_key(e)] = {
                 "chunk_start": e["chunk_start"], "side": e["side"],
                 "qty": e["qty"], "entry_price": e["price"],
                 "entry_ts": e["ts"], "exit_due_ts": e["exit_due_ts"],
@@ -186,13 +205,30 @@ def derive(events):
                 # P&L (finding 17); for a LONG it was charged in LTC and is already
                 # embedded in the fee-shrunk qty, so it is NOT subtracted again.
                 "entry_fee": e.get("fee_quote", 0.0),
+                # schema-2 riders (None on schema-1 positions -> globals apply)
+                "setup_id": e.get("setup_id"),
+                "hold_hours": e.get("hold_hours"),
+                "stop_pct": e.get("stop_pct"),
             }
             consecutive_rejects = 0
         elif ev == "EXIT_FILL":
-            p = pos.pop(e["chunk_start"], None)
+            p = pos.pop(pos_key(e), None)
             if p:
                 realized += e.get("pnl", 0.0)
             consecutive_rejects = 0
+        elif ev == "PAPER_ENTRY_FILL":
+            paper[pos_key(e)] = {
+                "chunk_start": e["chunk_start"], "side": e["side"],
+                "qty": e["qty"], "entry_price": e["price"],
+                "entry_ts": e["ts"], "exit_due_ts": e["exit_due_ts"],
+                "setup_id": e.get("setup_id"),
+                "hold_hours": e.get("hold_hours"),
+                "stop_pct": e.get("stop_pct"),
+            }
+        elif ev == "PAPER_EXIT_FILL":
+            p = paper.pop(pos_key(e), None)
+            if p:
+                paper_realized += e.get("pnl", 0.0)
         elif ev == "ORDER_REJECT":
             # only ENTRY/EXIT rejects count toward the reject-kill — a failed
             # housekeeping SWEEP (e.g. sub-min-notional dust that cannot be sold)
@@ -206,14 +242,54 @@ def derive(events):
             dust_done = True
         elif ev == "SHORTDUST_DONE":
             shortdust_done = True
-    return {"open": pos, "consecutive_rejects": consecutive_rejects,
-            "realized": realized, "dust_done": dust_done,
-            "shortdust_done": shortdust_done}
+    return {"open": pos, "paper_open": paper, "consecutive_rejects": consecutive_rejects,
+            "realized": realized, "paper_realized": paper_realized,
+            "dust_done": dust_done, "shortdust_done": shortdust_done}
 
 
 def intent_seen(events, chunk_start):
-    return any(e.get("event") == "INTENT_SEEN" and
+    """Schema-1 dedup: counts only schema-1-origin INTENT_SEEN events (those
+    without a setup_id), so a schema-2 twin seeing the same period can never
+    consume the running F1 pilot's intent — the two rails stay independent
+    (owner cutover decision: keep both; never both ordering for one setup)."""
+    return any(e.get("event") == "INTENT_SEEN" and e.get("setup_id") is None and
                e.get("chunk_start") == chunk_start for e in events)
+
+
+def intent_seen2(events, setup_id, chunk_start):
+    """Schema-2 dedup: one period per SETUP."""
+    return any(e.get("event") == "INTENT_SEEN" and e.get("setup_id") == setup_id and
+               e.get("chunk_start") == chunk_start for e in events)
+
+
+def setups_allow():
+    """Read the per-box schema-2 allowlist. FAIL-CLOSED: absent or unreadable
+    means {} — every schema-2 intent refused. Shape:
+      { "<setup_id>": { "symbol": "LTCUSDT", "max_clip_usd": 25,
+                        "max_concurrent": 6 } }
+    max_concurrent defaults to ceil(hold_hours/24) at use time when absent."""
+    try:
+        with open(SETUPS_ALLOW) as fh:
+            d = json.load(fh)
+        return d if isinstance(d, dict) else {}
+    except Exception:
+        return {}
+
+
+def clip_qty_usd(price, usd):
+    """Arbitrary $ notional rounded DOWN to the lot step; None if under the
+    exchange minimum. clip_qty() below stays byte-identical for schema-1."""
+    qty = floor_step(usd / price)
+    if qty * price < MIN_NOTIONAL:
+        return None
+    return qty
+
+
+# Paper fills model the model's OWN fee assumption ($0.0125 per $10 leg =
+# 0.125% of notional per leg), so a paper book is comparable to the lab's
+# numbers — the fidelity question "does live match paper" then isolates
+# execution, not fee-model drift.
+PAPER_FEE_RATE = 0.00125
 
 
 # ---- halt flag ---------------------------------------------------------------
@@ -723,12 +799,19 @@ def resolve_dangling(bx):
              fill_price=px, fill_qty=eq, status="FILLED")
         if action == "ENTRY":
             side = s.get("pos_side") or ("LONG" if s.get("side") == "BUY" else "SHORT")
+            # schema-2 riders survive the crash inside the ORDER_SENT meta, so a
+            # recovered generalized entry books its OWN hold/stop, not F1's.
+            sid = s.get("setup_id")
+            hold_h = s.get("hold_hours") if sid is not None and isinstance(s.get("hold_hours"), (int, float)) else HOLD_HOURS
             jlog("ENTRY_FILL", chunk_start=chunk, side=side, qty=eq,
                  ordered_qty=s.get("qty"), price=px, fee_quote=0.0, recovered=True,
                  decision_price=px, fill_deviation=0.0,
-                 exit_due_ts=ft + HOLD_HOURS * 3600)
+                 exit_due_ts=ft + hold_h * 3600,
+                 **({"setup_id": sid, "hold_hours": hold_h,
+                     "stop_pct": s.get("stop_pct"), "clip_usd": s.get("clip_usd")} if sid is not None else {}))
         elif action == "EXIT":
-            p = st["open"].get(chunk)
+            sid = s.get("setup_id")
+            p = st["open"].get(chunk if sid is None else f"{sid}|{chunk}")
             entry_price = p["entry_price"] if p else px
             side = p["side"] if p else (s.get("pos_side") or "LONG")
             qty_traded = p["qty"] if p else eq
@@ -752,17 +835,19 @@ def resolve_dangling(bx):
             # entry record survives, else assume the full hold.
             interest_est = 0.0
             if side == "SHORT":
+                hold_h2 = (p.get("hold_hours") if p and p.get("hold_hours") else HOLD_HOURS)
                 if p and p.get("exit_due_ts"):
-                    age_h = (time.time() - (p["exit_due_ts"] - HOLD_HOURS * 3600)) / 3600.0
-                    age_h = min(max(0.0, age_h), HOLD_HOURS)
+                    age_h = (time.time() - (p["exit_due_ts"] - hold_h2 * 3600)) / 3600.0
+                    age_h = min(max(0.0, age_h), hold_h2)
                 else:
-                    age_h = HOLD_HOURS
+                    age_h = hold_h2
                 interest_est = MAX_BORROW_RATE_HR * age_h * px * qty_traded
             jlog("EXIT_FILL", chunk_start=chunk, side=side, qty=qty_traded,
                  price=px, fee_quote=round(fee_est, 6),
                  interest_cost=round(interest_est, 6),
                  pnl=round(gross - fee_est - entry_fee - interest_est, 4),
-                 recovered=True, pnl_estimated=True)
+                 recovered=True, pnl_estimated=True,
+                 **({"setup_id": sid} if sid is not None else {}))
         # dust/shortdust/sweep: ORDER_RESOLVED alone is enough (manual books)
 
 
@@ -851,13 +936,13 @@ def do_run(bx):
             # future-dated position or clock glitch cannot inflate the cap. Floored
             # at RECONCILE_TOL and ceiled at the flat MAX_SHORT_INTEREST_FRAC so
             # neither a zero-age nor an absurd-age leg breaks the check.
-            AGE_CLAMP_S = 2 * HOLD_HOURS * 3600
             derived_cap = 0.0
             for p_ in st["open"].values():
                 if p_["side"] != "SHORT":
                     continue
-                entry_ts = p_["exit_due_ts"] - HOLD_HOURS * 3600
-                age_s = min(max(0.0, now - entry_ts), AGE_CLAMP_S)
+                hold_h_ = p_.get("hold_hours") or HOLD_HOURS
+                entry_ts = p_["exit_due_ts"] - hold_h_ * 3600
+                age_s = min(max(0.0, now - entry_ts), 2 * hold_h_ * 3600)
                 derived_cap += p_["qty"] * MAX_BORROW_RATE_HR * (age_s / 3600.0)
             interest_cap = min(max(RECONCILE_TOL, derived_cap),
                                max(RECONCILE_TOL, short_nominal * MAX_SHORT_INTEREST_FRAC))
@@ -934,17 +1019,22 @@ def do_run(bx):
         due = now >= p["exit_due_ts"]
         stop_hit = False
         ep = p.get("entry_price")
-        if stop_pct and px is not None and ep:
-            stop_hit = (px < ep * (1 - stop_pct)) if p["side"] == "LONG" \
-                else (px > ep * (1 + stop_pct))
+        # schema-2 positions carry their OWN stop (per-setup, NEXT-RELEASE 16);
+        # None means the setup runs stopless regardless of the box-global env.
+        # Schema-1 positions (no stop_pct key) keep the global exactly as before.
+        eff_stop = p["stop_pct"] if "stop_pct" in p and p.get("setup_id") is not None else stop_pct
+        if eff_stop and px is not None and ep:
+            stop_hit = (px < ep * (1 - eff_stop)) if p["side"] == "LONG" \
+                else (px > ep * (1 + eff_stop))
         if not (due or stop_hit):
             continue
         exit_reason = "scheduled" if due else "fixed_stop"
         if stop_hit and not due:
             adverse = ((ep - px) / ep) if p["side"] == "LONG" else ((px - ep) / ep)
             jlog("FIXED_STOP", chunk_start=p["chunk_start"], side=p["side"],
-                 entry_price=ep, price=px, stop_pct=stop_pct,
-                 adverse_pct=round(adverse, 5))
+                 entry_price=ep, price=px, stop_pct=eff_stop,
+                 adverse_pct=round(adverse, 5),
+                 **({"setup_id": p["setup_id"]} if p.get("setup_id") else {}))
         overdue_h = (now - p["exit_due_ts"]) / 3600
         if due and overdue_h > 0.5:
             jlog("EXIT_OVERDUE", chunk_start=p["chunk_start"],
@@ -962,9 +1052,11 @@ def do_run(bx):
                 jlog("EXIT_SKIPPED", chunk_start=p["chunk_start"],
                      reason="no free base to sell")
                 continue
+            xk = (f"{p['setup_id']}-{p['chunk_start']}" if p.get("setup_id") else p["chunk_start"])
             status, fill_px, fee, fq, _ = place(bx, "EXIT", "SELL", sell_qty, "AUTO_REPAY",
-                                                {"chunk_start": p["chunk_start"]},
-                                                cid=client_id("exit", p["chunk_start"]))
+                                                {"chunk_start": p["chunk_start"],
+                                                 **({"setup_id": p["setup_id"]} if p.get("setup_id") else {})},
+                                                cid=client_id("exit", xk))
             qty_traded = sell_qty
         else:  # SHORT: buy back the borrow plus a small buffer for the LTC fee.
             is_last_short = (shorts_remaining <= 1)
@@ -991,9 +1083,11 @@ def do_run(bx):
                                   ceil_step(debt * (1 + SHORT_CLOSE_FEE_BUFFER)))
             else:
                 buy_qty = ceil_step(p["qty"] * (1 + SHORT_CLOSE_FEE_BUFFER))
+            xk = (f"{p['setup_id']}-{p['chunk_start']}" if p.get("setup_id") else p["chunk_start"])
             status, fill_px, fee, fq, _ = place(bx, "EXIT", "BUY", buy_qty, "AUTO_REPAY",
-                                                {"chunk_start": p["chunk_start"], "leg_qty": p["qty"]},
-                                                cid=client_id("exit", p["chunk_start"]))
+                                                {"chunk_start": p["chunk_start"], "leg_qty": p["qty"],
+                                                 **({"setup_id": p["setup_id"]} if p.get("setup_id") else {})},
+                                                cid=client_id("exit", xk))
             qty_traded = p["qty"]  # economic size of the short, for P&L
         if status == "filled":
             # Book from the FILL price, NOT the loop's market `px` — `px` is the
@@ -1038,7 +1132,8 @@ def do_run(bx):
             jlog("EXIT_FILL", chunk_start=p["chunk_start"], side=p["side"],
                  qty=qty_traded, price=fill_px, fee_quote=fee, entry_fee=entry_fee,
                  interest_cost=round(interest_cost, 6), reason=exit_reason,
-                 pnl=round(gross - fee - entry_fee - interest_cost, 4))
+                 pnl=round(gross - fee - entry_fee - interest_cost, 4),
+                 **({"setup_id": p["setup_id"]} if p.get("setup_id") else {}))
         elif status == "unknown":
             # transport error: the close MAY have filled. Do not halt or retry
             # blind — recovery resolves it by client id next run.
@@ -1053,12 +1148,42 @@ def do_run(bx):
                      "not fill — see ORDER_REJECT; if min-notional, the position "
                      "is under $5 and needs manual handling")
 
+    # 3b) PAPER exits — the paper twin follows the identical schedule/stop
+    # rules, marks at the same market px, and journals PAPER_EXIT_FILL. No
+    # orders, no balances; runs in EVERY arm/halt state exactly like real
+    # exits so a paper book can never silently stop measuring. Fees at the
+    # model's own per-leg rate (PAPER_FEE_RATE) so paper == the lab's promise.
+    for p in sorted(st["paper_open"].values(), key=lambda x: x["exit_due_ts"]):
+        due = now >= p["exit_due_ts"]
+        stop_hit = False
+        ep = p.get("entry_price")
+        psp = p.get("stop_pct")
+        if psp and px is not None and ep:
+            stop_hit = (px < ep * (1 - psp)) if p["side"] == "LONG" \
+                else (px > ep * (1 + psp))
+        if not (due or stop_hit):
+            continue
+        if px is None:
+            jlog("PAPER_EXIT_DEFERRED", chunk_start=p["chunk_start"],
+                 setup_id=p.get("setup_id"), reason="no price this run")
+            continue
+        gross = (px - ep) * p["qty"]
+        if p["side"] == "SHORT":
+            gross = -gross
+        fees = PAPER_FEE_RATE * p["qty"] * (ep + px)  # both legs at the model rate
+        jlog("PAPER_EXIT_FILL", chunk_start=p["chunk_start"], setup_id=p.get("setup_id"),
+             side=p["side"], qty=p["qty"], price=px,
+             reason=("scheduled" if due else "fixed_stop"),
+             pnl=round(gross - fees, 4))
+
     # 4) fresh intents -> new entries (need the master switch ON and no halt)
     st = derive(journal_events())  # refresh after exits
     # one status line per run so the live screen always shows current state,
     # even on a quiet day with no orders
     jlog("RUN_STATUS", armed=armed(), halted=halted(),
          open=len(st["open"]), realized=round(st["realized"], 4), live=bx.live,
+         open_paper=len(st["paper_open"]),
+         paper_realized=round(st["paper_realized"], 4),
          arm_secret=bool(load_env().get("PILOT_ARM_SECRET", "")),
          fixed_stop_pct=stop_pct)
     if not armed():
@@ -1091,11 +1216,39 @@ def do_run(bx):
         # mechanical validation -- every failure is journaled and the file
         # is set aside; nothing is ever "interpreted"
         problems = []
-        if it.get("schema") != 1: problems.append("schema")
+        is2 = it.get("schema") == 2
+        if it.get("schema") not in (1, 2): problems.append("schema")
         if it.get("symbol") != SYMBOL: problems.append("symbol")
         if it.get("side") not in ("LONG", "SHORT", "FLAT"): problems.append("side")
         if not isinstance(it.get("chunk_start"), str): problems.append("chunk_start")
         if not isinstance(it.get("decision_price"), (int, float)): problems.append("decision_price")
+        allow_entry = None
+        if is2:
+            # schema-2 (generalized setups, IMPLEMENTATION-PLAN 3.1): the intent
+            # carries its execution params, and the box CROSS-CHECKS them against
+            # its own allowlist — a compromised control plane cannot resize a clip
+            # or point a setup at a symbol this box was never told to serve.
+            if not isinstance(it.get("setup_id"), str) or not it.get("setup_id"):
+                problems.append("setup_id")
+            if not isinstance(it.get("clip_usd"), (int, float)) or it.get("clip_usd", 0) <= 0:
+                problems.append("clip_usd")
+            if not isinstance(it.get("hold_hours"), (int, float)) or it.get("hold_hours", 0) <= 0:
+                problems.append("hold_hours")
+            if not isinstance(it.get("paper"), bool):
+                problems.append("paper")
+            sp = it.get("stop_pct")
+            if sp is not None and (not isinstance(sp, (int, float)) or sp <= 0 or sp >= 1):
+                problems.append("stop_pct")
+            if not problems:
+                allow_entry = setups_allow().get(it["setup_id"])
+                if not isinstance(allow_entry, dict):
+                    problems.append("allowlist")          # fail-closed: unknown setup
+                else:
+                    if allow_entry.get("symbol") != it.get("symbol"):
+                        problems.append("allowlist_symbol")
+                    cap = allow_entry.get("max_clip_usd")
+                    if not isinstance(cap, (int, float)) or it["clip_usd"] > cap:
+                        problems.append("clip_cap")
         # age against EXCHANGE-synced time, not the raw OS clock (finding 3)
         age = now_exch - it.get("ts", 0)
         stale = age > INTENT_MAX_AGE_S
@@ -1112,20 +1265,39 @@ def do_run(bx):
             os.rename(path, path + ".bad")
             continue
         events_now = journal_events()
-        if intent_seen(events_now, it["chunk_start"]):
-            jlog("INTENT_DUPLICATE", chunk_start=it["chunk_start"], file=name)
+        dup = (intent_seen2(events_now, it["setup_id"], it["chunk_start"]) if is2
+               else intent_seen(events_now, it["chunk_start"]))
+        if dup:
+            jlog("INTENT_DUPLICATE", chunk_start=it["chunk_start"], file=name,
+                 **({"setup_id": it["setup_id"]} if is2 else {}))
             os.rename(path, path + ".dup")
             continue
         jlog("INTENT_SEEN", chunk_start=it["chunk_start"], side=it["side"],
              decision_price=it["decision_price"],
              input_hash=it.get("input_hash", ""),
              per_member=it.get("per_member"), quorum=it.get("quorum"),
-             file=name)
+             file=name,
+             **({"setup_id": it["setup_id"], "paper": it["paper"]} if is2 else {}))
         os.rename(path, path + ".done")
         if it["side"] == "FLAT":
             continue
         stx = derive(journal_events())
-        if len(stx["open"]) >= MAX_CONCURRENT:
+        if is2:
+            # per-SETUP concurrency: this setup's own open (or paper) positions
+            # against its allowlisted cap; default = the schema-1 derivation
+            # (hold / daily step).
+            book = stx["paper_open"] if it["paper"] else stx["open"]
+            mine = sum(1 for p in book.values() if p.get("setup_id") == it["setup_id"])
+            cap = allow_entry.get("max_concurrent")
+            if not isinstance(cap, int) or cap < 1:
+                cap = max(1, math.ceil(it["hold_hours"] / 24.0))
+            if mine >= cap:
+                jlog("ENTRY_SKIPPED", chunk_start=it["chunk_start"], setup_id=it["setup_id"],
+                     reason=f"setup concurrency cap {cap}")
+                continue
+        # the box-wide REAL-position cap guards real exposure regardless of
+        # schema; paper positions hold nothing and do not count against it.
+        if not (is2 and it["paper"]) and len(stx["open"]) >= MAX_CONCURRENT:
             jlog("ENTRY_SKIPPED", chunk_start=it["chunk_start"],
                  reason=f"concurrency cap {MAX_CONCURRENT}")
             continue
@@ -1135,6 +1307,26 @@ def do_run(bx):
                  reason="no price")
             continue
         dev = abs(price - it["decision_price"]) / it["decision_price"]
+        if is2 and it["paper"]:
+            # PAPER FILL (NEXT-RELEASE point 15): identical decision path, no
+            # order — the fill IS the current market price, fees at the model's
+            # own per-leg rate so paper matches what the lab promised. Deviation
+            # recorded for fidelity; the drift kill is for real money only (a
+            # paper measurement must never halt the live box).
+            hold_s = int(it["hold_hours"] * 3600)
+            qty2 = clip_qty_usd(price, it["clip_usd"])
+            if qty2 is None:
+                jlog("ENTRY_SKIPPED", chunk_start=it["chunk_start"], setup_id=it["setup_id"],
+                     reason="clip under exchange minimum")
+                continue
+            jlog("PAPER_ENTRY_FILL", chunk_start=it["chunk_start"], setup_id=it["setup_id"],
+                 side=it["side"], qty=qty2, price=price,
+                 decision_price=it["decision_price"],
+                 fill_deviation=round(dev, 5),
+                 clip_usd=it["clip_usd"], hold_hours=it["hold_hours"],
+                 stop_pct=it.get("stop_pct"),
+                 exit_due_ts=now + hold_s)
+            continue
         if dev > FILL_DEV_LIMIT:
             jlog("KILL_PRICE_DRIFT", chunk_start=it["chunk_start"],
                  decision=it["decision_price"], market=price,
@@ -1142,22 +1334,25 @@ def do_run(bx):
             set_halt("executor", f"market {dev:.2%} from decision price "
                                  "before order; entries halted")
             break
-        qty = clip_qty(price)
+        qty = clip_qty_usd(price, it["clip_usd"]) if is2 else clip_qty(price)
         if qty is None:
             jlog("ENTRY_SKIPPED", chunk_start=it["chunk_start"],
                  reason="clip under exchange minimum")
             continue
         buy_side = "BUY" if it["side"] == "LONG" else "SELL"
         side_eff = "NO_SIDE_EFFECT" if it["side"] == "LONG" else "MARGIN_BUY"
+        cid_key = f"{it['setup_id']}-{it['chunk_start']}" if is2 else it["chunk_start"]
         status, px, fee, fq, base_comm = place(bx, "ENTRY", buy_side, qty, side_eff,
                                                {"chunk_start": it["chunk_start"],
-                                                "pos_side": it["side"]},
-                                               cid=client_id("entry", it["chunk_start"]))
+                                                "pos_side": it["side"],
+                                                **({"setup_id": it["setup_id"]} if is2 else {})},
+                                               cid=client_id("entry", cid_key))
         if status == "unknown":
             # transport error: the entry MAY have filled. Leave it for recovery
             # (which resolves by client id and, if filled, books ENTRY_FILL with
             # the right exit_due_ts). Do NOT record a position or a reject here.
-            jlog("ENTRY_INFLIGHT", chunk_start=it["chunk_start"], side=it["side"])
+            jlog("ENTRY_INFLIGHT", chunk_start=it["chunk_start"], side=it["side"],
+                 **({"setup_id": it["setup_id"]} if is2 else {}))
         elif status == "filled":
             # store what the EXIT will act on, UNFLOORED so it matches the
             # exchange balance for reconcile across many concurrent positions
@@ -1169,11 +1364,14 @@ def do_run(bx):
             else:
                 held = fq or qty
             fill_dev = abs(px - it["decision_price"]) / it["decision_price"]
+            hold_s = int(it["hold_hours"] * 3600) if is2 else HOLD_HOURS * 3600
             jlog("ENTRY_FILL", chunk_start=it["chunk_start"], side=it["side"],
                  qty=held, ordered_qty=qty, price=px, fee_quote=fee,
                  decision_price=it["decision_price"],
                  fill_deviation=round(fill_dev, 5),
-                 exit_due_ts=now + HOLD_HOURS * 3600)
+                 exit_due_ts=now + hold_s,
+                 **({"setup_id": it["setup_id"], "hold_hours": it["hold_hours"],
+                     "stop_pct": it.get("stop_pct"), "clip_usd": it["clip_usd"]} if is2 else {}))
             if fill_dev > FILL_DEV_LIMIT:
                 set_halt("executor", f"fill deviated {fill_dev:.2%} "
                                      "from decision price")

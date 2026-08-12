@@ -659,6 +659,138 @@ class ExecutorTest(unittest.TestCase):
         self.assertIn("EXIT_INFLIGHT", self.events(),
                       "the earlier due exit returned unknown (transport 503)")
 
+
+
+    # ---- schema-2: generalized setups (IMPLEMENTATION-PLAN phase 3) --------
+    def write_allow(self, entries):
+        os.makedirs(os.path.join(self.home, "pilot"), exist_ok=True)
+        with open(os.path.join(self.home, "pilot", "setups-allow.json"), "w") as f:
+            json.dump(entries, f)
+
+    def write_intent2(self, setup_id="s-alpha", side="LONG", chunk="2026-08-07T00:00Z",
+                      price=100.0, clip=20.0, hold=48, stop=None, paper=False, age=0):
+        os.makedirs(self.x.INTENTS, exist_ok=True)
+        it = {"schema": 2, "setup_id": setup_id, "symbol": "LTCUSDT", "side": side,
+              "chunk_start": chunk, "decision_price": price, "input_hash": "abc",
+              "clip_usd": clip, "hold_hours": hold, "stop_pct": stop, "paper": paper,
+              "ts": time.time() - age}
+        with open(os.path.join(self.x.INTENTS, f"intent2-{setup_id}-{chunk[:10]}.json"), "w") as f:
+            json.dump(it, f)
+
+    def test_schema2_allowlisted_live_intent_fills_with_its_own_params(self):
+        self.write_allow({"s-alpha": {"symbol": "LTCUSDT", "max_clip_usd": 25}})
+        self.write_intent2(clip=20.0, hold=48)
+        t0 = time.time()
+        self.x.do_run(self.bx())
+        fills = [e for e in self.x.journal_events() if e["event"] == "ENTRY_FILL"]
+        self.assertEqual(len(fills), 1)
+        f = fills[0]
+        self.assertEqual(f["setup_id"], "s-alpha")
+        self.assertEqual(f["hold_hours"], 48)
+        self.assertEqual(f["clip_usd"], 20.0)
+        # $20 at price 100 -> 0.2 LTC ordered (fee shrinks held qty slightly)
+        self.assertAlmostEqual(f["ordered_qty"], 0.2, places=6)
+        self.assertAlmostEqual(f["exit_due_ts"], t0 + 48 * 3600, delta=30)
+
+    def test_schema2_without_allowlist_is_refused_failclosed(self):
+        self.write_intent2()  # no allowlist file at all
+        self.x.do_run(self.bx())
+        ev = self.events()
+        self.assertIn("INTENT_INVALID", ev)
+        self.assertNotIn("ENTRY_FILL", ev)
+        self.assertEqual(MockBinance.orders, [])
+        bad = [e for e in self.x.journal_events() if e["event"] == "INTENT_INVALID"]
+        self.assertTrue(any("allowlist" in (e.get("problems") or []) for e in bad))
+
+    def test_schema2_clip_above_cap_and_wrong_symbol_are_refused(self):
+        self.write_allow({"s-alpha": {"symbol": "LTCUSDT", "max_clip_usd": 15}})
+        self.write_intent2(clip=20.0)
+        self.x.do_run(self.bx())
+        bad = [e for e in self.x.journal_events() if e["event"] == "INTENT_INVALID"]
+        self.assertTrue(any("clip_cap" in (e.get("problems") or []) for e in bad))
+        self.assertEqual(MockBinance.orders, [])
+        # wrong symbol affinity
+        self.write_allow({"s-beta": {"symbol": "XLMUSDT", "max_clip_usd": 25}})
+        self.write_intent2(setup_id="s-beta", chunk="2026-08-08T00:00Z")
+        self.x.do_run(self.bx())
+        bad = [e for e in self.x.journal_events() if e["event"] == "INTENT_INVALID"]
+        self.assertTrue(any("allowlist_symbol" in (e.get("problems") or []) for e in bad))
+
+    def test_schema2_paper_intent_places_no_order_and_books_paper_roundtrip(self):
+        self.write_allow({"s-paper": {"symbol": "LTCUSDT", "max_clip_usd": 25}})
+        self.write_intent2(setup_id="s-paper", clip=20.0, hold=0.0004, paper=True)  # ~1.4s hold
+        self.x.do_run(self.bx())
+        ev = self.events()
+        self.assertIn("PAPER_ENTRY_FILL", ev)
+        self.assertNotIn("ENTRY_FILL", ev)
+        self.assertNotIn("ORDER_SENT", ev)  # no orders at all
+        self.assertEqual(MockBinance.orders, [])
+        st = self.x.derive(self.x.journal_events())
+        self.assertEqual(len(st["paper_open"]), 1)
+        self.assertEqual(len(st["open"]), 0)
+        time.sleep(2)  # let the tiny hold elapse
+        MockBinance.price = "110.00"
+        self.x.do_run(self.bx())
+        ev = self.events()
+        self.assertIn("PAPER_EXIT_FILL", ev)
+        self.assertEqual(MockBinance.orders, [], "paper never places orders")
+        st = self.x.derive(self.x.journal_events())
+        self.assertEqual(len(st["paper_open"]), 0)
+        self.assertAlmostEqual(st["realized"], 0.0, places=9)  # real book untouched
+        # LONG 0.2 @100 -> 110: gross 2.0 minus model fees 0.00125*0.2*210=0.0525
+        self.assertAlmostEqual(st["paper_realized"], 2.0 - 0.0525, places=4)
+
+    def test_schema2_dedup_is_per_setup_and_never_blocks_schema1(self):
+        self.write_allow({"s-a": {"symbol": "LTCUSDT", "max_clip_usd": 25},
+                          "s-b": {"symbol": "LTCUSDT", "max_clip_usd": 25}})
+        chunk = "2026-08-07T00:00Z"
+        self.write_intent2(setup_id="s-a", chunk=chunk)
+        self.x.do_run(self.bx())
+        # duplicate for the SAME setup -> refused
+        self.write_intent2(setup_id="s-a", chunk=chunk)
+        self.x.do_run(self.bx())
+        self.assertIn("INTENT_DUPLICATE", self.events())
+        # DIFFERENT setup, same chunk -> its own fill
+        self.write_intent2(setup_id="s-b", chunk=chunk)
+        self.x.do_run(self.bx())
+        fills = [e for e in self.x.journal_events() if e["event"] == "ENTRY_FILL"]
+        self.assertEqual(sorted(f["setup_id"] for f in fills), ["s-a", "s-b"])
+        # and SCHEMA-1 on the same chunk still fills — the F1 rails are
+        # independent of any schema-2 twin (owner: keep both, never colliding)
+        self.write_intent(side="LONG", chunk=chunk)
+        self.x.do_run(self.bx())
+        fills = [e for e in self.x.journal_events() if e["event"] == "ENTRY_FILL"]
+        self.assertEqual(len(fills), 3)
+        self.assertTrue(any(f.get("setup_id") is None for f in fills))
+
+    def test_schema2_position_uses_its_own_stop_not_the_global(self):
+        self.write_allow({"s-stop": {"symbol": "LTCUSDT", "max_clip_usd": 25}})
+        self.write_intent2(setup_id="s-stop", clip=20.0, hold=999, stop=0.05)
+        self.x.do_run(self.bx())
+        self.assertIn("ENTRY_FILL", self.events())
+        # adverse move past the per-position stop; NO global stop configured
+        MockBinance.price = "94.00"   # -6% < -5% stop
+        MockBinance.net_asset = "0.2"
+        self.x.do_run(self.bx())
+        ev = self.events()
+        self.assertIn("FIXED_STOP", ev)
+        self.assertIn("EXIT_FILL", ev)
+        x = [e for e in self.x.journal_events() if e["event"] == "EXIT_FILL"][-1]
+        self.assertEqual(x["setup_id"], "s-stop")
+
+    def test_paper_positions_are_invisible_to_reconcile(self):
+        # a paper long is open, the exchange book is FLAT — reconcile must not
+        # expect any base holdings for it
+        self.x.jlog("PAPER_ENTRY_FILL", chunk_start="c-p", setup_id="s-p", side="LONG",
+                    qty=0.2, price=100.0, exit_due_ts=time.time() + 3600)
+        MockBinance.net_asset = "0.0"
+        self.x.do_run(self.bx())
+        ev = self.events()
+        self.assertIn("RECONCILE_OK", ev)
+        self.assertNotIn("RECONCILE_MISMATCH", ev)
+        rs = [e for e in self.x.journal_events() if e["event"] == "RUN_STATUS"][-1]
+        self.assertEqual(rs["open_paper"], 1)
+
     def test_master_switch_off_blocks_entries(self):
         self.x.set_arm(False, "test")   # owner has not pressed START
         self.write_intent(side="LONG")
