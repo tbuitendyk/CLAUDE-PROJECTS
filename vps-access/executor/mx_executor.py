@@ -673,12 +673,26 @@ def fills_summary(body):
     return px, qty, fee_quote, base_comm
 
 
-def client_id(role, chunk_start):
-    """Deterministic order id per (role, chunk): a resend is a no-op at the
-    venue. <=36 chars, alphanumeric + dashes. Roles without a chunk (dust,
-    sweep) fold a coarse day bucket so they stay stable within a run."""
-    c = re.sub(r"[^0-9A-Za-z]", "", str(chunk_start or "na"))[:14]
-    return f"f1-{role}-{c}"[:36]
+def client_id(role, chunk_start, setup_id=None):
+    """Deterministic order id per (role, chunk[, setup]): a resend is a no-op at
+    the venue. <=36 chars, alphanumeric + dashes.
+
+    Schema-1 (setup_id is None) keeps the ORIGINAL formula BYTE-FOR-BYTE, so the
+    running F1 pilot's ids never change and every historical journal still
+    matches on recovery. Roles without a chunk (dust, sweep) fold a coarse day
+    bucket so they stay stable within a run.
+
+    Schema-2 HASHES (setup_id, chunk_start) instead of truncating: the old
+    14-char alnum bucket held exactly F1's fixed-width ISO stamp, but a
+    variable-length setup id eats that budget and collapses EVERY chunk of a
+    setup to one id — which silently defeats crash-recovery-by-id (an orphaned
+    real fill is never resolved). The hash is unique per (setup, chunk, role),
+    within the 36-char venue limit. (QC 117 / re-review R3.)"""
+    if setup_id is None:
+        c = re.sub(r"[^0-9A-Za-z]", "", str(chunk_start or "na"))[:14]
+        return f"f1-{role}-{c}"[:36]
+    h = hashlib.sha256(f"{setup_id}\x1f{chunk_start}".encode()).hexdigest()[:18]
+    return f"s2-{role}-{h}"[:36]
 
 
 def place(bx, action, side, qty, side_effect, ctx, cid=None):
@@ -1052,11 +1066,10 @@ def do_run(bx):
                 jlog("EXIT_SKIPPED", chunk_start=p["chunk_start"],
                      reason="no free base to sell")
                 continue
-            xk = (f"{p['setup_id']}-{p['chunk_start']}" if p.get("setup_id") else p["chunk_start"])
             status, fill_px, fee, fq, _ = place(bx, "EXIT", "SELL", sell_qty, "AUTO_REPAY",
                                                 {"chunk_start": p["chunk_start"],
                                                  **({"setup_id": p["setup_id"]} if p.get("setup_id") else {})},
-                                                cid=client_id("exit", xk))
+                                                cid=client_id("exit", p["chunk_start"], p.get("setup_id")))
             qty_traded = sell_qty
         else:  # SHORT: buy back the borrow plus a small buffer for the LTC fee.
             is_last_short = (shorts_remaining <= 1)
@@ -1083,11 +1096,10 @@ def do_run(bx):
                                   ceil_step(debt * (1 + SHORT_CLOSE_FEE_BUFFER)))
             else:
                 buy_qty = ceil_step(p["qty"] * (1 + SHORT_CLOSE_FEE_BUFFER))
-            xk = (f"{p['setup_id']}-{p['chunk_start']}" if p.get("setup_id") else p["chunk_start"])
             status, fill_px, fee, fq, _ = place(bx, "EXIT", "BUY", buy_qty, "AUTO_REPAY",
                                                 {"chunk_start": p["chunk_start"], "leg_qty": p["qty"],
                                                  **({"setup_id": p["setup_id"]} if p.get("setup_id") else {})},
-                                                cid=client_id("exit", xk))
+                                                cid=client_id("exit", p["chunk_start"], p.get("setup_id")))
             qty_traded = p["qty"]  # economic size of the short, for P&L
         if status == "filled":
             # Book from the FILL price, NOT the loop's market `px` — `px` is the
@@ -1341,12 +1353,17 @@ def do_run(bx):
             continue
         buy_side = "BUY" if it["side"] == "LONG" else "SELL"
         side_eff = "NO_SIDE_EFFECT" if it["side"] == "LONG" else "MARGIN_BUY"
-        cid_key = f"{it['setup_id']}-{it['chunk_start']}" if is2 else it["chunk_start"]
         status, px, fee, fq, base_comm = place(bx, "ENTRY", buy_side, qty, side_eff,
                                                {"chunk_start": it["chunk_start"],
                                                 "pos_side": it["side"],
-                                                **({"setup_id": it["setup_id"]} if is2 else {})},
-                                               cid=client_id("entry", cid_key))
+                                                # R4: schema-2 riders ride in the ORDER_SENT meta so a
+                                                # crash-recovered entry books its OWN hold/stop/clip,
+                                                # never F1's 137h/stopless default (the recovery reader
+                                                # in resolve_dangling already expects these keys).
+                                                **({"setup_id": it["setup_id"], "hold_hours": it["hold_hours"],
+                                                    "stop_pct": it.get("stop_pct"), "clip_usd": it["clip_usd"]} if is2 else {})},
+                                               cid=client_id("entry", it["chunk_start"],
+                                                             it["setup_id"] if is2 else None))
         if status == "unknown":
             # transport error: the entry MAY have filled. Leave it for recovery
             # (which resolves by client id and, if filled, books ENTRY_FILL with

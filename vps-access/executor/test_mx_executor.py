@@ -778,6 +778,64 @@ class ExecutorTest(unittest.TestCase):
         x = [e for e in self.x.journal_events() if e["event"] == "EXIT_FILL"][-1]
         self.assertEqual(x["setup_id"], "s-stop")
 
+    def test_schema2_client_ids_are_unique_per_chunk_not_collapsed(self):
+        # R3 (QC 117): the OLD client_id truncated the key to 14 alnum chars, so a
+        # realistic setup id (registry mints 'setup-<ts36>-<hex6>', 19 alnum) ate
+        # the whole budget and EVERY chunk of that setup produced the SAME id —
+        # crash-recovery-by-id was silently defeated. Two chunks of one setup must
+        # now yield DISTINCT ids, and schema-1 must stay byte-identical.
+        import re as _re
+        sid = "setup-mdyy8sa1b0c1"  # 17 alnum, like an auto-generated registry id
+        a = self.x.client_id("entry", "2026-08-11T00:00Z", sid)
+        b = self.x.client_id("entry", "2026-08-18T00:00Z", sid)
+        self.assertNotEqual(a, b, "two chunks of one setup must not collapse to one client id")
+        self.assertTrue(len(a) <= 36 and len(b) <= 36, "client ids stay within the venue limit")
+        # exit ids are also distinct per chunk, and distinct from the entry leg
+        ax = self.x.client_id("exit", "2026-08-11T00:00Z", sid)
+        self.assertNotIn(ax, (a, b), "the exit leg id differs from the entry leg")
+        # schema-1 is BYTE-IDENTICAL to the original truncating formula
+        old = f"f1-entry-{_re.sub(r'[^0-9A-Za-z]', '', '2026-08-11T00:00Z')[:14]}"[:36]
+        self.assertEqual(self.x.client_id("entry", "2026-08-11T00:00Z"), old,
+                         "schema-1 (F1) client ids must never change")
+
+    def test_schema2_entry_order_sent_carries_riders_for_recovery(self):
+        # R4 (QC 118): the ENTRY ORDER_SENT meta must carry hold_hours/stop_pct/
+        # clip_usd. Without them a crash-recovered schema-2 entry falls back to
+        # F1's HOLD_HOURS=137 and stop_pct=None (stopless), against the setup's own
+        # declared hold+stop. This pins the WRITER (the entry site).
+        self.write_allow({"s-r": {"symbol": "LTCUSDT", "max_clip_usd": 25}})
+        self.write_intent2(setup_id="s-r", clip=20.0, hold=48, stop=0.05)
+        self.x.do_run(self.bx())
+        sent = [e for e in self.x.journal_events()
+                if e["event"] == "ORDER_SENT" and e.get("action") == "ENTRY"
+                and e.get("setup_id") == "s-r"]
+        self.assertEqual(len(sent), 1, "the schema-2 entry must journal one ORDER_SENT")
+        self.assertEqual(sent[0].get("hold_hours"), 48)
+        self.assertEqual(sent[0].get("stop_pct"), 0.05)
+        self.assertEqual(sent[0].get("clip_usd"), 20.0)
+
+    def test_schema2_recovered_entry_keeps_its_own_hold_and_stop(self):
+        # R4 end to end: an ORDER_SENT carrying the riders (as the fixed entry site
+        # writes) recovers to an ENTRY_FILL with the setup's OWN 48h hold and 5%
+        # stop — not F1's 137h/stopless default.
+        now = time.time()
+        cid = self.x.client_id("entry", "2026-08-07T00:00Z", "s-r")
+        self.x.jlog("ORDER_SENT", action="ENTRY", side="BUY", qty=0.2,
+                    side_effect="NO_SIDE_EFFECT", client_id=cid, live=True,
+                    chunk_start="2026-08-07T00:00Z", pos_side="LONG",
+                    setup_id="s-r", hold_hours=48, stop_pct=0.05, clip_usd=20.0)
+        MockBinance.placed[cid] = {"status": "FILLED", "executedQty": "0.200",
+                                   "cummulativeQuoteQty": "20.00000000",
+                                   "updateTime": int(now * 1000)}
+        MockBinance.net_asset = "0.200"
+        self.x.do_run(self.bx())
+        f = [e for e in self.x.journal_events()
+             if e["event"] == "ENTRY_FILL" and e.get("recovered")][-1]
+        self.assertEqual(f.get("setup_id"), "s-r")
+        self.assertEqual(f.get("hold_hours"), 48, "recovered entry keeps its own hold, not 137")
+        self.assertEqual(f.get("stop_pct"), 0.05, "recovered entry keeps its own stop, not stopless")
+        self.assertAlmostEqual(f["exit_due_ts"], now + 48 * 3600, delta=120)
+
     def test_paper_positions_are_invisible_to_reconcile(self):
         # a paper long is open, the exchange book is FLAT — reconcile must not
         # expect any base holdings for it
