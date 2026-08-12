@@ -64,3 +64,14 @@ if [ "$allow_ok" -eq 1 ]; then
   done
 fi
 echo "  shipped $shipped intent(s)"
+
+# R15: terminal-state files (shipped intents locally; .done/.dup/.bad on the box)
+# are inert once written but accumulate forever. Sweep those older than 7 days so
+# the outbox and the box's intents dir stay bounded. Only touches ALREADY-terminal
+# files — never a live .json intent, never a decision log — so it cannot affect
+# trading. Best-effort: a failed sweep is not a tick failure.
+echo "== housekeeping: prune terminal-state files older than 7 days =="
+find "$OUTBOX" -maxdepth 1 -type f -name 'intent2-*.json.shipped' -mtime +7 -delete 2>/dev/null || true
+$SSH "$BOX_USER@$BOX_HOST" \
+  'find ~/pilot/intents -maxdepth 1 -type f \( -name "*.done" -o -name "*.dup" -o -name "*.bad" \) -mtime +7 -delete 2>/dev/null || true' \
+  2>/dev/null || echo "  (box prune skipped — box unreachable this tick)"
