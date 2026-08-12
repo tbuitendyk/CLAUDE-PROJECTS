@@ -1207,6 +1207,10 @@ app.post('/api/pilot/disarm', csrfGuard, (req, res) => {
   catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// Live Trading tab backend (IMPLEMENTATION-PLAN phase 1+). One-line mount so
+// the module boundary holds — all live-trading code lives in lib/live/.
+require('./lib/live/routes').installLiveRoutes(app, { csrfGuard });
+
 // PROTECTIVE-STOP TUNER (owner 2026-08-11). For a prospective live setup that has
 // no existing stop, replay its frozen committee over the WHOLE history and tune
 // the tightest fixed stop that loses no winner. The result is persisted to

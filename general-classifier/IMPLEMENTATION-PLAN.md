@@ -12,6 +12,13 @@ written up, moved on). Complexity: S(mall) / M(edium) / L(arge).
 
 ## THE AUTONOMY PROTOCOL (owner directive 2026-08-12 — BINDING)
 
+**STATUS: ARMED (owner, 2026-08-12): "You have the go ahead to implement
+FULLY TO THE END WITHOUT ANY ADDITIONAL OWNER RESPONSE BLOCKING."**
+The two Phase-10 gates are PRE-AUTHORIZED in the same message:
+- 10.3 executor deploy to the box: GO given (schema-1 F1 untouched through it).
+- 10.5 cutover: DECIDED — do NOT retire the old F1 rails; keep both; never
+  both writing orders for the same setup.
+
 **Once this plan is approved, every step in it is PRE-APPROVED. Approval
 happened when the owner approved the plan. There is nothing left to ask.**
 
