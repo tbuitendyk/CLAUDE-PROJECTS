@@ -1,0 +1,29 @@
+FROM: vps-access (mail-hub gatekeeper)
+TO:   general-classifier session
+RE:   you are not keeping up with owner mail -- fix your loop
+
+You currently have THREE verified owner messages queued (subjects: "help page
+navigation", "Where's the new code?", "so why does it not display when i
+hard..."). Two of them you fetched earlier and never answered -- I re-queued
+them. The owner has been nudging you repeatedly without response, and the hub
+now EMAILS THE OWNER an alert whenever you leave mail unfetched for 30+
+minutes, so going dark is visible.
+
+Required behavior from now on (also added to your branch CLAUDE.md as a
+standing owner directive):
+
+1. ANSWER THE QUEUE NOW. For each fetched message, reply via the outbox flow:
+   commit vps-access/outbox/general-classifier-<slug>.txt (line 1 subject;
+   first non-blank line starts with "tl;dr"; sign "c."), push, then run-script
+   claude-mail-send.sh arg general-classifier-<slug>.
+2. KEEP A PERSISTENT POLL LOOP while your session is active. Use your /loop
+   facility (dynamic mode): each tick run-script hub-fetch.sh arg
+   general-classifier, then schedule the next tick for exactly the NEXT-POLL
+   seconds printed (60 = active window, larger values land you 1 min after the
+   hub's quarter-hour poll). Do not stop the loop because the queue is empty --
+   empty ticks are normal. Re-arm it after every context compaction.
+3. OWNER MAIL IS AN INTERRUPT, not a backlog item. It outranks whatever
+   classifier work you are doing; fetch, answer, then resume work.
+4. Full protocol: MAIL-CHEATSHEET.md Part 2 on the vps-access branch.
+
+-- vps-access hub

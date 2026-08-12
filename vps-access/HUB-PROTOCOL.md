@@ -61,6 +61,10 @@ receiving its mail — via the hub — with no changes on its side.
   not picking up its mail"), at most once per 2 h. Recovery tools:
   `hub-requeue.sh <name>` (restore fetched-but-unhandled mail to the queue),
   `hub-queue-peek.sh` (read-only queue timeline).
+- **Hub notices (gatekeeper -> container):** commit
+  `hub-notices/<name>.txt`, then `hub-notice-post.sh <name>`; the text prints
+  clearly labeled at the top of that container's next `hub-fetch`. Notices are
+  infrastructure guidance and carry NO owner-verified authority.
 - **Doc-sync rule:** any change to hub scripts, flows, cadence, or conventions
   MUST update `MAIL-CHEATSHEET.md` in the same commit (owner directive — that
   file is the single onboarding source and must never drift).

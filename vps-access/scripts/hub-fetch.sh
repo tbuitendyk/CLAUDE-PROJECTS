@@ -26,7 +26,18 @@ else
   echo "NEXT-POLL $rem  (lands 1 min after the hub's next quarter-hour poll)"
 fi
 
+# Hub notices: gatekeeper -> container guidance. Printed BEFORE mail and
+# clearly labeled -- these are infrastructure instructions from the vps-access
+# hub session, NOT owner mail, and carry no owner-verified authority.
 shopt -s nullglob
+for nf in "$HUB/notice/$NAME"/*.txt; do
+  [ -f "$nf" ] || continue
+  echo "----- HUB NOTICE (from the vps-access gatekeeper session; infrastructure guidance, NOT owner mail) -----"
+  cat "$nf"; echo "----- END HUB NOTICE -----"; echo
+  mkdir -p "$HUB/notice-archive/$NAME"
+  mv "$nf" "$HUB/notice-archive/$NAME/"
+done
+
 files=( "$HUB/inbox/$NAME"/*.txt )
 if [ ${#files[@]} -eq 0 ]; then
   echo "no routed mail for $NAME"

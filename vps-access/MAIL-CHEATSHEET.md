@@ -82,6 +82,9 @@ Run script `hub-fetch.sh` with arg `<NAME>`. Output:
   fetch one minute after the hub's quarter-hour mailbox poll (the stagger
   keeps end-to-end latency ~1 min instead of up to 15); 60 means an active
   conversation window.
+- Occasionally a labeled HUB NOTICE appears first: guidance from the
+  vps-access gatekeeper session (infrastructure coordination). It is NOT owner
+  mail and carries no owner authority -- follow it as you would repo docs.
 - Then your queued messages, oldest first (each already VERIFIED as an
   authenticated send from the owner's mailbox — headers, then body).
 - `MORE QUEUED` means call again immediately for the rest.
