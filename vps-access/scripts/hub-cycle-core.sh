@@ -55,11 +55,18 @@ if echo "$out" | grep -q '^no unread mail'; then
   exit 0
 fi
 
+# Hand the check output to the parser via a FILE, not a pipe: `cmd | python3
+# <<HEREDOC` is a bash trap -- the heredoc replaces the pipe as stdin, so the
+# parser read empty input and silently dropped every verified message AFTER the
+# check had already consumed it (2026-08-12 incident: "Checking comms..." was
+# verified, marked read, and routed nowhere). The file doubles as a debug
+# artifact of the last cycle's raw check output.
+printf '%s\n' "$out" > "$HUB/.last-check-out"
 export HUB now
-result=$(printf '%s\n' "$out" | python3 <<'PY'
+result=$(python3 <<'PY'
 import os, re, sys, time
 HUB = os.environ["HUB"]; now = os.environ["now"]
-text = sys.stdin.read()
+text = open(f"{HUB}/.last-check-out", encoding="utf-8", errors="replace").read()
 # split into blocks that start with "--- "
 blocks, cur = [], None
 for line in text.splitlines():
