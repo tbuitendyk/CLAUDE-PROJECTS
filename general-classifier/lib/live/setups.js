@@ -18,7 +18,8 @@
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
-const { validateConfig } = require('./configschema');
+const { validateConfig, liveExecutable } = require('./configschema');
+const { resolveForSetup, targetServes } = require('./targets');
 const { ENGINE_VERSION, SETUP_SCHEMA_VERSION } = require('./version');
 
 // Resolved per call (not at module load) so tests can point the registry at a
@@ -165,6 +166,26 @@ function transition(id, to, by = 'owner', note) {
     const e = new Error(`illegal transition ${s.state} -> ${to} (allowed: ${allowed.join(', ') || 'none'})`);
     e.code = 'BAD_TRANSITION';
     throw e;
+  }
+  // R10: entering paper/live is the point a setup would actually TRADE, so gate
+  // it on what the live rail can honestly execute. Refuse a geometry the executor
+  // does not implement (breakout/active/trailing/arm) — it would be silently
+  // mis-traded as market/hold-to-t — and a symbol the target box does not serve
+  // (the box would reject every intent invisibly). Surfaced as a 400 in the UI.
+  if (to === 'paper' || to === 'live') {
+    const errs = [];
+    const le = liveExecutable(s.configSnapshot);
+    if (!le.ok) errs.push(...le.errors);
+    let target = null;
+    try { target = resolveForSetup(s); } catch (e) { errs.push(e.message); }
+    if (target && !targetServes(target, s.tradedPair)) {
+      errs.push(`symbol ${s.tradedPair}: target '${target.id}' serves ${JSON.stringify(target.symbols)} — not this pair`);
+    }
+    if (errs.length) {
+      const e = new Error(`cannot go ${to}: ${errs.join('; ')}`);
+      e.code = 'NOT_LIVE_EXECUTABLE';
+      throw e;
+    }
   }
   const next = { ...s, state: to };
   next.stateHistory = [...(s.stateHistory || []),

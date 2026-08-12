@@ -91,4 +91,28 @@ function validateConfig(cfg) {
   return { ok: errors.length === 0, errors };
 }
 
-module.exports = { validateConfig, SYMBOL_RE };
+// R10: validateConfig accepts the FULL lab vocabulary (breakout, active gate,
+// trailing/arm mults) because the LAB can search all of it. But the LIVE executor
+// implements exactly ONE execution shape: market entry, hold to cell.tHours, an
+// optional fixed stop. It does NOT implement breakout entry, the active gate, a
+// trailing stop, or an arm gate — so a greenlighted cell using any of those would
+// be SILENTLY traded as market/hold-to-t, a DIFFERENT strategy from the one the
+// lab measured and the owner cleared. This gate refuses such a config at the door
+// to paper/live (the F1 shape — market/directional/no trail/no arm/no dMult —
+// passes unchanged). Returns { ok, errors }; never throws.
+function liveExecutable(cfg) {
+  const errors = [];
+  const cell = (cfg && cfg.cell) || {};
+  if (cell.entry !== 'market') {
+    fail(errors, `cell.entry '${cell.entry}': the live executor only does MARKET entry (breakout is lab-only)`);
+  }
+  if (cell.gate !== 'directional') {
+    fail(errors, `cell.gate '${cell.gate}': the live executor only does the DIRECTIONAL gate (active is lab-only)`);
+  }
+  if (cell.trailMult != null) fail(errors, 'cell.trailMult: the live executor has no trailing stop — must be null');
+  if (cell.armMult != null) fail(errors, 'cell.armMult: the live executor has no arm gate — must be null');
+  if (cell.dMult != null) fail(errors, 'cell.dMult: only breakout entry uses dMult; the live executor does not');
+  return { ok: errors.length === 0, errors };
+}
+
+module.exports = { validateConfig, liveExecutable, SYMBOL_RE };

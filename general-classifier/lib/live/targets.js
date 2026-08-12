@@ -26,8 +26,20 @@ const BUILTIN = {
     host: 'ec2-78-13-103-81.mx-central-1.compute.amazonaws.com',
     user: 'admin',
     note: 'Mexico AWS box (the original pilot executor host)',
+    // R10: which symbols this box's executor actually serves. mx_executor.py
+    // hardcodes SYMBOL=LTCUSDT, so a setup on any other pair would be silently
+    // rejected by the box (INTENT_INVALID:symbol) — refuse it at the door
+    // instead. A future box serving more pairs lists them here.
+    symbols: ['LTCUSDT'],
   },
 };
+
+// R10: does this target's box serve the given symbol? A target with no declared
+// symbols list is treated as serving anything (a custom box the owner vouches for).
+function targetServes(target, symbol) {
+  if (!target || !Array.isArray(target.symbols)) return true;
+  return target.symbols.includes(symbol);
+}
 
 function listTargets() {
   let stored = {};
@@ -54,4 +66,4 @@ function resolveForSetup(setup) {
   return t;
 }
 
-module.exports = { listTargets, getTarget, resolveForSetup, targetsFile, BUILTIN };
+module.exports = { listTargets, getTarget, resolveForSetup, targetServes, targetsFile, BUILTIN };

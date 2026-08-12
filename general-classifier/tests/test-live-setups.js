@@ -169,3 +169,44 @@ module.exports.listReturnsCreatedSetupsSortedByCreation = function () {
   const ids = list.map((x) => x.id);
   assert.ok(ids.indexOf(a.id) < ids.indexOf(b.id), 'creation order preserved');
 };
+
+// ---- R10: only a live-EXECUTABLE geometry/symbol may go paper or live --------
+module.exports.f1ShapeSetupMayGoPaperAndLive = function () {
+  const s = mkSetup();  // F1: market entry, directional gate, LTCUSDT
+  assert.strictEqual(reg.transition(s.id, 'paper').state, 'paper',
+    'the F1 market/directional shape is live-executable');
+  assert.strictEqual(reg.transition(s.id, 'live').state, 'live');
+};
+
+module.exports.unexecutableGeometryIsRefusedAtPaperTransition = function () {
+  // a breakout / active-gate / trailing / arm cell would be SILENTLY mis-traded
+  // as market/hold-to-t by the live executor — refuse it at the door to paper.
+  for (const [mut, needle] of [
+    [(c) => { c.cell.entry = 'breakout'; c.cell.dMult = 2; }, 'MARKET entry'],
+    [(c) => { c.cell.gate = 'active'; }, 'DIRECTIONAL gate'],
+    [(c) => { c.cell.trailMult = 1.5; }, 'trailing stop'],
+    [(c) => { c.cell.armMult = 1.2; }, 'arm gate'],
+  ]) {
+    const cfg = f1Config(); mut(cfg);
+    const s = mkSetup({ configSnapshot: cfg });
+    let err = null;
+    try { reg.transition(s.id, 'paper'); } catch (e) { err = e; }
+    assert.ok(err && err.code === 'NOT_LIVE_EXECUTABLE',
+      `expected NOT_LIVE_EXECUTABLE, got ${err && err.code}: ${err && err.message}`);
+    assert.ok(err.message.includes(needle), `error names the unsupported feature: ${err.message}`);
+    assert.strictEqual(reg.getSetup(s.id).state, 'draft', 'refused setup stays a draft (never traded)');
+  }
+};
+
+module.exports.unservedSymbolIsRefusedAtPaperTransition = function () {
+  // the box serves only LTCUSDT; a setup on another pair would have every intent
+  // silently rejected by the box — refuse it at the door instead.
+  const cfg = f1Config(); cfg.combo.trade = 'XRPUSDT';
+  const s = mkSetup({ configSnapshot: cfg });
+  assert.strictEqual(s.tradedPair, 'XRPUSDT');
+  let err = null;
+  try { reg.transition(s.id, 'paper'); } catch (e) { err = e; }
+  assert.ok(err && err.code === 'NOT_LIVE_EXECUTABLE',
+    `expected NOT_LIVE_EXECUTABLE, got ${err && err.code}: ${err && err.message}`);
+  assert.ok(/XRPUSDT/.test(err.message) && /serves/.test(err.message), err.message);
+};
