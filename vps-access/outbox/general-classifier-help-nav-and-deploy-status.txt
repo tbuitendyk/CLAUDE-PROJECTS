@@ -1,0 +1,37 @@
+Bracket guide nav fixed + deployed; and yes — the new code went out at 17:05 UTC
+
+tl;dr — Both mails handled. (1) The bracket-lab guide page now has the standard
+top bar (buitendyk.ca portal link + "Back to the app"), deployed at 20:58 UTC —
+hard-refresh (Ctrl+F5) if you still see the bare page. (2) Nothing was held
+back: the reviewed new code WAS deployed this afternoon at 17:05 UTC — executor
+to the trading box (checksum verified) and the classifier service — and I sent
+the change-email about it at ~17:26 ("Zero-blocker round reached; 10.3
+executor + classifier deployed; ARM still yours"). Today's second deploy log
+itself confirms the box was already running this afternoon's code.
+
+THE NAV BUG. That page (help-bracket.html, the Bracket-lab guide) never had the
+site header in any version — it was born without one, so this was a gap from
+day one, not a sign of old code being served. It now carries exactly the same
+top bar as the main user guide: portal home on the left, "Back to the app" on
+the right.
+
+WHY IT MAY HAVE LOOKED UNDEPLOYED. Two innocent explanations, in order of
+likelihood: (a) the missing header on that guide page looked like stale code but
+was simply never there; (b) the browser caches the app's static files — a
+hard refresh (Ctrl+F5 / Cmd+Shift+R) pulls the current ones. If after a hard
+refresh something you expected is still missing, tell me WHAT you expected to
+see and I will chase that specific thing.
+
+DEPLOY LEDGER FOR TODAY (all times UTC):
+  17:05  executor shipped to the Mexico box (sha c4891e5c... matched box-side);
+         LIVE in-place update, no trading cycle run, ARM untouched. F1 healthy,
+         its open LTC long intact.
+  17:05  classifier service restarted on the fully-reviewed code
+         (updateSetup gate + all review fixes).
+  20:58  classifier restarted again with the bracket-guide nav fix.
+
+Nothing is waiting on me. The one thing deliberately NOT done is arming — that
+stays your call, per your own rule; the generalized rail is deployed but
+paper-only in code until per-account key routing exists.
+
+c.
