@@ -957,22 +957,43 @@ class ExecutorTest(unittest.TestCase):
         self.assertFalse(self.x.halted(), "a schema-2 exit reject must NOT halt the box (F1)")
 
     def test_transient_no_price_keeps_the_intent_for_retry(self):
-        # R18: a transient ticker failure (no price this run) must NOT consume the
-        # intent (INTENT_SEEN + .done) — else one exchange hiccup permanently
-        # forfeits the F1 entry the model called. The intent stays and fills next
-        # run when the price returns.
-        self.write_intent(side="LONG", chunk="2026-08-07T00:00Z")
+        # R18 (schema-2 ONLY): a transient ticker failure (no price this run) must NOT
+        # consume a schema-2 intent (INTENT_SEEN + .done) — else one exchange hiccup
+        # permanently forfeits the generalized-rail entry the model called. The intent
+        # stays and fills next run when the price returns.
+        self.write_allow({"s-alpha": {"symbol": "LTCUSDT", "max_clip_usd": 25}})
+        self.write_intent2(setup_id="s-alpha", side="LONG", chunk="2026-08-07T00:00Z",
+                           clip=20.0, hold=48)
         MockBinance.price_fails = True
         self.x.do_run(self.bx())
         ev = self.events()
-        self.assertNotIn("INTENT_SEEN", ev, "a no-price run must NOT consume the intent")
+        self.assertNotIn("INTENT_SEEN", ev, "a no-price run must NOT consume the schema-2 intent")
         self.assertNotIn("ENTRY_FILL", ev)
         self.assertTrue(any(n.endswith(".json") for n in os.listdir(self.x.INTENTS)),
-                        "the intent is kept as .json for the next run")
+                        "the schema-2 intent is kept as .json for the next run")
         # price returns -> the kept intent fills
         MockBinance.price_fails = False
         self.x.do_run(self.bx())
         self.assertIn("ENTRY_FILL", self.events(), "the kept intent fills once price returns")
+
+    def test_transient_no_price_leaves_F1_byte_identical(self):
+        # CARDINAL: R18 is scoped to schema-2 ONLY. The live F1 (schema-1) path must
+        # be BYTE-IDENTICAL to the pre-R18 pilot: on a no-price run F1 still fetches
+        # the price AFTER INTENT_SEEN/.done, so the intent IS consumed (INTENT_SEEN
+        # logged, .done written, no .json left) and the period is skipped exactly as
+        # the running pilot has always behaved. If R18's guard ever leaks onto the F1
+        # path (dropping the `is2` gate), F1 would silently start retrying and this
+        # fails — the tripwire on the invariant the owner flagged.
+        self.write_intent(side="LONG", chunk="2026-08-07T00:00Z")
+        MockBinance.price_fails = True
+        self.x.do_run(self.bx())
+        ev = self.events()
+        self.assertIn("INTENT_SEEN", ev, "F1 consumes the intent on a no-price run (pre-R18 behavior)")
+        self.assertNotIn("ENTRY_FILL", ev)
+        self.assertFalse(any(n.endswith(".json") for n in os.listdir(self.x.INTENTS)),
+                         "the F1 intent is consumed (.done), NOT kept for retry")
+        self.assertTrue(any(n.endswith(".done") for n in os.listdir(self.x.INTENTS)),
+                        "the F1 intent was renamed .done exactly as the live pilot does")
 
     def test_paper_intent_books_even_when_disarmed(self):
         # R8: paper is pure measurement (no orders), so a disarmed box must STILL
