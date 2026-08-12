@@ -108,6 +108,46 @@ module.exports.liveMutationsAreCsrfGuarded = async function () {
   });
 };
 
+module.exports.greenlightAndShuttleOverTheWire = async function () {
+  // greenlight construction is unit-tested (test-live-greenlight); over the
+  // wire we pin: unknown run -> 404, CSRF on both POSTs, and a full shuttle
+  // from a pre-seeded greenlight record -> draft setup appears in the list.
+  const GLDIR = fs.mkdtempSync(path.join(os.tmpdir(), 'gc-glwire-'));
+  process.env.GC_GREENLIGHTS_DIR = GLDIR;
+  const gl = require('../lib/live/greenlight');
+  const rec = {
+    id: 'gl-wire-1', createdUtc: new Date().toISOString(), by: 'owner', why: 'wire test',
+    engineVersion: 'gc-0.0.0/setup-1/config-1', target: 'best', campaign: null,
+    sourceRun: { id: 'r1', kind: 'bracketlab', startedAt: null, finishedAt: null, dataManifest: null },
+    rowSummary: {}, configSnapshot: f1Config(), shuttledSetupIds: [],
+  };
+  fs.writeFileSync(path.join(GLDIR, 'gl-wire-1.json'), JSON.stringify(rec));
+  await withServer(async () => {
+    const list = (await req('GET', '/api/live/greenlights')).json();
+    assert.ok(list.greenlights.some((g) => g.id === 'gl-wire-1'));
+    // unknown run -> 404
+    const nf = await req('POST', '/api/live/greenlight', { runId: 'nope', target: 'best', why: 'x' }, ORIGIN);
+    assert.strictEqual(nf.status, 404, nf.body);
+    // CSRF on both mutating endpoints
+    for (const [p, body] of [
+      ['/api/live/greenlight', { runId: 'r', target: 'best', why: 'x' }],
+      ['/api/live/shuttle', { greenlightId: 'gl-wire-1', name: 'x', clipUsd: 10 }],
+    ]) {
+      const r = await req('POST', p, body, { Origin: 'https://evil.example.com' });
+      assert.strictEqual(r.status, 403, `${p} cross-site must be 403: ${r.body}`);
+    }
+    // the shuttle mints a draft
+    const sh = await req('POST', '/api/live/shuttle',
+      { greenlightId: 'gl-wire-1', name: 'wired setup', clipUsd: 15 }, ORIGIN);
+    assert.strictEqual(sh.status, 200, sh.body);
+    const setup = sh.json().setup;
+    assert.strictEqual(setup.state, 'draft');
+    assert.strictEqual(setup.clipUsd, 15);
+    const det = (await req('GET', `/api/live/setups/${setup.id}`)).json();
+    assert.strictEqual(det.provenanceRef, 'gl-wire-1');
+  });
+};
+
 module.exports.keyRefNeverLeavesTheServerAsAValue = async function () {
   reg.createSetup({ id: 'wire-c', name: 'key test', ownerId: 'owner',
     configSnapshot: f1Config(), clipUsd: 10, keyRef: 'sub-acct-key-1' });

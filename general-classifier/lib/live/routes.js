@@ -62,6 +62,37 @@ function installLiveRoutes(app, { csrfGuard }) {
     try { reg.deleteDraft(req.params.id); res.json({ ok: true }); }
     catch (e) { res.status(errStatus(e)).json({ error: e.message }); }
   });
+
+  // ---- greenlight + shuttle (plan phase 4) --------------------------------
+  const gl = require('./greenlight');
+
+  app.get('/api/live/greenlights', (req, res) => {
+    try { res.json({ greenlights: gl.listGreenlights() }); }
+    catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
+  // Greenlight the SELECTED row of a saved bracket-lab run. why is required —
+  // the decision record is the point.
+  app.post('/api/live/greenlight', csrfGuard, (req, res) => {
+    try {
+      const b = req.body || {};
+      const doc = require('../batch').getBatch(String(b.runId || ''));
+      if (!doc) return res.status(404).json({ error: `no saved run ${b.runId}` });
+      const rec = gl.greenlightFromRun(doc, String(b.target || 'declared'), { by: 'owner', why: b.why });
+      res.json({ ok: true, greenlight: rec });
+    } catch (e) { res.status(400).json({ error: e.message }); }
+  });
+
+  // The shuttle button: greenlight -> new DRAFT setup on the Live Trading tab.
+  app.post('/api/live/shuttle', csrfGuard, (req, res) => {
+    try {
+      const b = req.body || {};
+      const out = gl.shuttle(String(b.greenlightId || ''), {
+        name: b.name, clipUsd: Number(b.clipUsd), stopPct: b.stopPct ?? null, by: 'owner',
+      });
+      res.json({ ok: true, greenlightId: out.greenlight.id, setup: summarize(out.setup) });
+    } catch (e) { res.status(errStatus(e)).json({ error: e.message }); }
+  });
 }
 
 module.exports = { installLiveRoutes, summarize };
