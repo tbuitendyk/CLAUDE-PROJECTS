@@ -836,6 +836,86 @@ class ExecutorTest(unittest.TestCase):
         self.assertEqual(f.get("stop_pct"), 0.05, "recovered entry keeps its own stop, not stopless")
         self.assertAlmostEqual(f["exit_due_ts"], now + 48 * 3600, delta=120)
 
+    def test_schema2_real_position_does_not_crowd_out_f1_entry(self):
+        # R2: 5 schema-1 (F1) opens + 1 schema-2 REAL open = 6 total = MAX_CONCURRENT.
+        # An F1 entry must STILL fill: F1's cap counts only F1 positions (5 < 6).
+        # Without the fix len(open)=6 >= MAX_CONCURRENT skips the model-called F1 entry.
+        now = time.time()
+        for i in range(5):
+            self.x.jlog("ENTRY_FILL", chunk_start=f"2026-08-0{i+1}T00:00Z", side="LONG",
+                        qty=0.1, price=100.0, exit_due_ts=now + 3600)
+        self.x.jlog("ENTRY_FILL", chunk_start="2026-08-06T00:00Z", side="LONG", qty=0.2,
+                    price=100.0, exit_due_ts=now + 3600, setup_id="s-x", hold_hours=48, stop_pct=None)
+        MockBinance.base_bal = 0.7   # 5*0.1 + 0.2, so reconcile is clean
+        self.write_intent(side="LONG", chunk="2026-08-07T00:00Z")
+        self.x.do_run(self.bx())
+        fills = [e for e in self.x.journal_events()
+                 if e["event"] == "ENTRY_FILL" and e.get("chunk_start") == "2026-08-07T00:00Z"]
+        self.assertEqual(len(fills), 1, "a schema-2 real position must not fill F1's concurrency cap")
+
+    def test_schema2_rejects_do_not_trip_f1_reject_kill(self):
+        # R1: three schema-2 ENTRY rejects must NOT count toward F1's reject kill or
+        # halt the box. Without rail-scoping consecutive_rejects hits 3 and the box halts.
+        for i in range(3):
+            self.x.jlog("ORDER_REJECT", action="ENTRY", setup_id="s-x",
+                        chunk_start=f"2026-08-0{i+1}T00:00Z")
+        st = self.x.derive(self.x.journal_events())
+        self.assertEqual(st["consecutive_rejects"], 0, "F1's counter ignores schema-2 rejects")
+        self.assertEqual(st["rejects2"].get("s-x"), 3, "schema-2 rejects tracked per-setup")
+        self.write_intent(side="LONG", chunk="2026-08-07T00:00Z")
+        self.x.do_run(self.bx())
+        self.assertFalse(self.x.halted(), "schema-2 rejects must not halt the box")
+        fills = [e for e in self.x.journal_events()
+                 if e["event"] == "ENTRY_FILL" and e.get("chunk_start") == "2026-08-07T00:00Z"]
+        self.assertEqual(len(fills), 1, "F1 still trades through schema-2 rejects")
+
+    def test_schema2_ack_does_not_dilute_f1_reject_streak(self):
+        # R1: a schema-2 ORDER_ACK must not reset F1's reject streak (the ACK-dilution
+        # path that would silently weaken F1's own reject kill).
+        self.x.jlog("ORDER_REJECT", action="ENTRY")                 # schema-1
+        self.x.jlog("ORDER_REJECT", action="ENTRY")                 # schema-1
+        self.x.jlog("ORDER_ACK", action="ENTRY", setup_id="s-x")    # schema-2 success
+        st = self.x.derive(self.x.journal_events())
+        self.assertEqual(st["consecutive_rejects"], 2,
+                         "a schema-2 ACK must not reset F1's reject streak")
+
+    def test_schema2_price_drift_halts_only_its_setup_not_the_box(self):
+        # R1: a schema-2 pre-order price drift beyond the backstop halts ONLY that
+        # setup (per-setup halt), never the box — F1 keeps trading.
+        self.write_allow({"s-d": {"symbol": "LTCUSDT", "max_clip_usd": 25}})
+        self.write_intent2(setup_id="s-d", clip=20.0, price=70.0)   # market 100 -> 43% drift
+        self.x.do_run(self.bx())
+        ev = self.events()
+        self.assertIn("KILL_PRICE_DRIFT", ev)
+        self.assertIn("SETUP_HALT_SET", ev)
+        self.assertTrue(self.x.setup_halted("s-d"))
+        self.assertFalse(self.x.halted(), "a schema-2 drift must NOT halt the box (F1)")
+        self.assertEqual(MockBinance.orders, [], "no order placed on the drift kill")
+
+    def test_schema2_drawdown_halts_only_its_setup_not_the_box(self):
+        # R1: a schema-2 real position bleeding past the loss limit halts ONLY its
+        # setup; F1's box-wide loss kill must ignore schema-2 drawdown.
+        now = time.time()
+        self.x.jlog("ENTRY_FILL", chunk_start="c-big", side="LONG", qty=10.0, price=100.0,
+                    exit_due_ts=now + 3600, setup_id="s-loss", hold_hours=48, stop_pct=None)
+        MockBinance.price = "90.00"      # -$100 unrealized on the schema-2 leg
+        MockBinance.net_asset = "10.0"   # reconcile sees the 10 LTC long
+        self.x.do_run(self.bx())
+        self.assertTrue(self.x.setup_halted("s-loss"), "the bleeding schema-2 setup halts itself")
+        self.assertFalse(self.x.halted(), "F1's box loss kill must ignore schema-2 drawdown")
+
+    def test_schema2_exit_reject_halts_only_its_setup_not_the_box(self):
+        # R1: a schema-2 exit that will not fill halts ONLY its setup's new entries;
+        # F1 is untouched (its own exits keep retrying — exits are never gated).
+        now = time.time()
+        self.x.jlog("ENTRY_FILL", chunk_start="c-ex", side="LONG", qty=0.2, price=100.0,
+                    exit_due_ts=now - 60, setup_id="s-ex", hold_hours=48, stop_pct=None)
+        MockBinance.base_bal = 0.2       # exchange holds the long so the SELL is attempted
+        MockBinance.reject_orders = True
+        self.x.do_run(self.bx())
+        self.assertTrue(self.x.setup_halted("s-ex"), "a schema-2 exit reject halts its own setup")
+        self.assertFalse(self.x.halted(), "a schema-2 exit reject must NOT halt the box (F1)")
+
     def test_paper_positions_are_invisible_to_reconcile(self):
         # a paper long is open, the exchange book is FLAT — reconcile must not
         # expect any base holdings for it

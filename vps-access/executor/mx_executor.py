@@ -188,11 +188,27 @@ def derive(events):
     kill must never see them."""
     pos = {}            # key -> position dict (REAL money)
     paper = {}          # key -> position dict (paper twin, no orders)
-    consecutive_rejects = 0
-    realized = 0.0
+    # R1 rail isolation: the reject-kill and realized are SPLIT by rail so a
+    # schema-2 fault never trips F1's box-wide kills. consecutive_rejects and
+    # realized_s1 count SCHEMA-1 (F1) ONLY — identical to the old single counters
+    # whenever no schema-2 event exists. Schema-2 rejects/realized are tracked
+    # per-setup (rejects2 / realized2) and drive per-setup halts, never the box.
+    consecutive_rejects = 0   # SCHEMA-1 (F1) reject-kill counter
+    rejects2 = {}             # setup_id -> consecutive schema-2 rejects
+    realized = 0.0            # ALL real realized (screen/aggregate)
+    realized_s1 = 0.0         # SCHEMA-1 realized only (F1's loss kill)
+    realized2 = {}            # setup_id -> schema-2 realized
     paper_realized = 0.0
     dust_done = False
     shortdust_done = False
+
+    def _reset_rejects(sid):
+        nonlocal consecutive_rejects
+        if sid is None:
+            consecutive_rejects = 0
+        else:
+            rejects2[sid] = 0
+
     for e in events:
         ev = e.get("event")
         if ev == "ENTRY_FILL":
@@ -210,12 +226,17 @@ def derive(events):
                 "hold_hours": e.get("hold_hours"),
                 "stop_pct": e.get("stop_pct"),
             }
-            consecutive_rejects = 0
+            _reset_rejects(e.get("setup_id"))
         elif ev == "EXIT_FILL":
             p = pos.pop(pos_key(e), None)
+            sid = e.get("setup_id")
             if p:
                 realized += e.get("pnl", 0.0)
-            consecutive_rejects = 0
+                if sid is None:
+                    realized_s1 += e.get("pnl", 0.0)
+                else:
+                    realized2[sid] = realized2.get(sid, 0.0) + e.get("pnl", 0.0)
+            _reset_rejects(sid)
         elif ev == "PAPER_ENTRY_FILL":
             paper[pos_key(e)] = {
                 "chunk_start": e["chunk_start"], "side": e["side"],
@@ -235,15 +256,22 @@ def derive(events):
             # is not a trading failure and must not creep the box toward a halt
             # (the live 2026-08-11 sweep-reject accumulation).
             if e.get("action") in ("ENTRY", "EXIT"):
-                consecutive_rejects += 1
-        elif ev in ("ORDER_ACK", "ENTRY_FILL", "EXIT_FILL"):
-            consecutive_rejects = 0
+                sid = e.get("setup_id")
+                if sid is None:
+                    consecutive_rejects += 1
+                else:
+                    rejects2[sid] = rejects2.get(sid, 0) + 1
+        elif ev == "ORDER_ACK":
+            # a successful order clears its OWN rail's reject streak; a schema-2
+            # ACK must not clear F1's streak (the ACK-dilution defect, R1).
+            _reset_rejects(e.get("setup_id"))
         elif ev == "DUST_DONE":
             dust_done = True
         elif ev == "SHORTDUST_DONE":
             shortdust_done = True
     return {"open": pos, "paper_open": paper, "consecutive_rejects": consecutive_rejects,
-            "realized": realized, "paper_realized": paper_realized,
+            "rejects2": rejects2, "realized": realized, "realized_s1": realized_s1,
+            "realized2": realized2, "paper_realized": paper_realized,
             "dust_done": dust_done, "shortdust_done": shortdust_done}
 
 
@@ -325,6 +353,29 @@ def set_halt(source, reason):
                             "utc": time.strftime("%Y-%m-%dT%H:%M:%SZ",
                                                  time.gmtime())}))
     jlog("HALT_SET", source=source, reason=reason)
+
+
+# ---- per-SETUP halt (R1: rail isolation) -------------------------------------
+# The box-wide HALT above is F1's — a schema-1 fault stops the whole box, exactly
+# as before. A schema-2 (generalized setup) fault must NOT stop F1: it sets a
+# per-setup halt that blocks only THAT setup's new entries, never the box and
+# never any other setup. Like the box halt, it gates entries only — a halted
+# setup's OPEN positions still exit on schedule/stop (exits are never gated).
+def setup_halt_path(setup_id):
+    safe = re.sub(r"[^0-9A-Za-z_.-]", "_", str(setup_id))
+    return os.path.join(PILOT, "HALT-setup-" + safe)
+
+
+def setup_halted(setup_id):
+    return os.path.exists(setup_halt_path(setup_id))
+
+
+def set_setup_halt(setup_id, reason):
+    os.makedirs(PILOT, exist_ok=True)
+    with open(setup_halt_path(setup_id), "w") as f:
+        f.write(json.dumps({"setup_id": setup_id, "reason": reason,
+                            "utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}))
+    jlog("SETUP_HALT_SET", setup_id=setup_id, reason=reason)
 
 
 def set_arm(on, source):
@@ -995,18 +1046,33 @@ def do_run(bx):
     # positions, so several concurrent shorts could bleed unbounded on a rally
     # and never trip the limit (review finding 16). Add the unrealized P&L of
     # every open leg at the current price so the kill sees the true drawdown.
-    mtm = st["realized"]
+    #
+    # R1 rail isolation: F1's box-wide loss kill counts ONLY schema-1 (F1) money —
+    # a schema-2 setup's drawdown must never halt F1. Schema-2 real positions get
+    # their OWN per-setup mtm kill (per-setup halt), below. When no schema-2 event
+    # exists, realized_s1 == realized and the schema-1 legs ARE all legs, so this
+    # is byte-identical to the old box-wide kill.
+    mtm = st["realized_s1"]
+    s2_mtm = dict(st["realized2"])        # setup_id -> realized + open legs
     if px is not None:
         for p in st["open"].values():
             leg = (px - p["entry_price"]) * p["qty"]
             if p["side"] == "SHORT":
                 leg = -leg
-            mtm += leg
+            sid = p.get("setup_id")
+            if sid is None:
+                mtm += leg
+            else:
+                s2_mtm[sid] = s2_mtm.get(sid, 0.0) + leg
     if mtm < -LOSS_LIMIT_USD and not halted():
         set_halt("executor", f"mark-to-market loss {mtm:.2f} "
-                             f"(realized {st['realized']:.2f} + open legs) beyond -{LOSS_LIMIT_USD}")
-    jlog("PNL_MTM", realized=round(st["realized"], 4), mark_to_market=round(mtm, 4),
-         open_legs=len(st["open"]), price=px)
+                             f"(realized {st['realized_s1']:.2f} + open legs) beyond -{LOSS_LIMIT_USD}")
+    # per-setup loss kill: a bleeding schema-2 setup halts ONLY itself
+    for sid, s2 in s2_mtm.items():
+        if s2 < -LOSS_LIMIT_USD and not setup_halted(sid):
+            set_setup_halt(sid, f"mark-to-market loss {s2:.2f} beyond -{LOSS_LIMIT_USD}")
+    jlog("PNL_MTM", realized=round(st["realized_s1"], 4), mark_to_market=round(mtm, 4),
+         open_legs=sum(1 for p in st["open"].values() if p.get("setup_id") is None), price=px)
 
     # 3) due exits ALWAYS run, halted or not (PILOT-F1.md section 4)
     # Track how many shorts are open across the whole book so the FINAL short
@@ -1156,9 +1222,15 @@ def do_run(bx):
             # retrying next run) rather than waiting for the 3-reject kill. A
             # likely cause on tiny clips is MIN_NOTIONAL after an adverse move —
             # the position is worth under $5 and cannot be market-closed.
-            set_halt("executor", f"EXIT for {p['chunk_start']} ({p['side']}) did "
-                     "not fill — see ORDER_REJECT; if min-notional, the position "
-                     "is under $5 and needs manual handling")
+            # R1: a schema-2 exit reject halts only its OWN setup's new entries;
+            # F1 is untouched. Its own exits keep retrying (exits are never gated).
+            reason = (f"EXIT for {p['chunk_start']} ({p['side']}) did not fill — see "
+                      "ORDER_REJECT; if min-notional, the position is under $5 and "
+                      "needs manual handling")
+            if p.get("setup_id") is not None:
+                set_setup_halt(p["setup_id"], reason)
+            else:
+                set_halt("executor", reason)
 
     # 3b) PAPER exits — the paper twin follows the identical schedule/stop
     # rules, marks at the same market px, and journals PAPER_EXIT_FILL. No
@@ -1229,6 +1301,15 @@ def do_run(bx):
         # is set aside; nothing is ever "interpreted"
         problems = []
         is2 = it.get("schema") == 2
+        # R1: a per-setup-halted schema-2 setup skips its OWN entries only (never
+        # F1, never other setups) — the same posture the box halt gives F1. Set
+        # aside the intent (the window passes anyway); the SETUP_HALT_SET journal
+        # event and the halt file flag it for owner attention.
+        if is2 and isinstance(it.get("setup_id"), str) and setup_halted(it["setup_id"]):
+            jlog("ENTRY_SKIPPED", chunk_start=it.get("chunk_start"), setup_id=it["setup_id"],
+                 reason="setup halted")
+            os.rename(path, path + ".bad")
+            continue
         if it.get("schema") not in (1, 2): problems.append("schema")
         if it.get("symbol") != SYMBOL: problems.append("symbol")
         if it.get("side") not in ("LONG", "SHORT", "FLAT"): problems.append("side")
@@ -1295,6 +1376,14 @@ def do_run(bx):
             continue
         stx = derive(journal_events())
         if is2:
+            # R1 per-setup reject-kill: a schema-2 setup that has rejected
+            # REJECT_LIMIT times in a row halts ONLY itself, never the box/F1.
+            if stx["rejects2"].get(it["setup_id"], 0) >= REJECT_LIMIT:
+                set_setup_halt(it["setup_id"],
+                               f"{stx['rejects2'][it['setup_id']]} consecutive rejects")
+                jlog("ENTRY_SKIPPED", chunk_start=it["chunk_start"], setup_id=it["setup_id"],
+                     reason="setup reject-kill")
+                continue
             # per-SETUP concurrency: this setup's own open (or paper) positions
             # against its allowlisted cap; default = the schema-1 derivation
             # (hold / daily step).
@@ -1307,12 +1396,18 @@ def do_run(bx):
                 jlog("ENTRY_SKIPPED", chunk_start=it["chunk_start"], setup_id=it["setup_id"],
                      reason=f"setup concurrency cap {cap}")
                 continue
-        # the box-wide REAL-position cap guards real exposure regardless of
-        # schema; paper positions hold nothing and do not count against it.
-        if not (is2 and it["paper"]) and len(stx["open"]) >= MAX_CONCURRENT:
-            jlog("ENTRY_SKIPPED", chunk_start=it["chunk_start"],
-                 reason=f"concurrency cap {MAX_CONCURRENT}")
-            continue
+        # R2: F1's box-wide REAL-position cap (MAX_CONCURRENT = 137h/24h) counts
+        # ONLY schema-1 (F1) positions and applies ONLY to F1 entries — a schema-2
+        # real position must never crowd out an F1 entry the model called. Schema-2
+        # real setups are bounded by their own per-setup allowlist cap (above);
+        # paper positions hold nothing. When no schema-2 real position is open this
+        # is byte-identical to the old box-wide cap.
+        if not is2:
+            s1_open = sum(1 for p in stx["open"].values() if p.get("setup_id") is None)
+            if s1_open >= MAX_CONCURRENT:
+                jlog("ENTRY_SKIPPED", chunk_start=it["chunk_start"],
+                     reason=f"concurrency cap {MAX_CONCURRENT}")
+                continue
         price = bx.price()
         if price is None:
             jlog("ENTRY_SKIPPED", chunk_start=it["chunk_start"],
@@ -1342,7 +1437,14 @@ def do_run(bx):
         if dev > FILL_DEV_LIMIT:
             jlog("KILL_PRICE_DRIFT", chunk_start=it["chunk_start"],
                  decision=it["decision_price"], market=price,
-                 deviation=round(dev, 5))
+                 deviation=round(dev, 5),
+                 **({"setup_id": it["setup_id"]} if is2 else {}))
+            if is2:
+                # R1: a schema-2 drift halts only its OWN setup and moves on — F1
+                # and other setups keep trading (never the box break/halt).
+                set_setup_halt(it["setup_id"],
+                               f"market {dev:.2%} from decision price before order")
+                continue
             set_halt("executor", f"market {dev:.2%} from decision price "
                                  "before order; entries halted")
             break
@@ -1390,8 +1492,14 @@ def do_run(bx):
                  **({"setup_id": it["setup_id"], "hold_hours": it["hold_hours"],
                      "stop_pct": it.get("stop_pct"), "clip_usd": it["clip_usd"]} if is2 else {}))
             if fill_dev > FILL_DEV_LIMIT:
-                set_halt("executor", f"fill deviated {fill_dev:.2%} "
-                                     "from decision price")
+                if is2:
+                    # R1: a schema-2 catastrophic fill deviation halts only its
+                    # own setup, never F1.
+                    set_setup_halt(it["setup_id"], f"fill deviated {fill_dev:.2%} "
+                                   "from decision price")
+                else:
+                    set_halt("executor", f"fill deviated {fill_dev:.2%} "
+                                         "from decision price")
 
     # 5) balance snapshot for the screen
     code, acct = bx.isolated_account()
