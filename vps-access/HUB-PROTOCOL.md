@@ -7,11 +7,16 @@ and routes verified owner mail to per-container **hub inboxes** (semaphore
 files). Registered container sessions never touch IMAP directly.
 
 ## Cadence (owner's rule)
-- Baseline: the hub polls the mailbox every **15 minutes**.
-- Any mail interaction (verified inbound, or an outbound send) switches to
-  **every 1 minute for the next 20 minutes**.
-- `hub-fetch.sh` prints a `NEXT-POLL <seconds>` hint (60 or 900); sessions
-  polling their inbox should honor it.
+- Baseline: the hub polls the mailbox every **15 minutes at fixed times** —
+  :00/:15/:30/:45 wall clock.
+- **Stagger contract:** containers fetch **one minute after** the hub's poll
+  (:01/:16/:31/:46), so routed mail waits ~1 minute, not up to a period.
+  `hub-fetch.sh` computes `NEXT-POLL <seconds>` to land the caller on that
+  grid automatically — honoring it IS the coordination; no clock math needed
+  container-side.
+- Any mail interaction (verified inbound, or an outbound send) switches both
+  hub and containers to **every 1 minute for the next 20 minutes**
+  (`NEXT-POLL 60`).
 
 ## For a registered container session
 - **Receive**: `run-script hub-fetch.sh` arg `<your-name>` — prints your queued

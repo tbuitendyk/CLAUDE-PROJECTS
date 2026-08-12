@@ -29,8 +29,10 @@ Arrive in your normal inbox as email from claude@homeandofficemicro.com,
 tl;dr first line, signed "c." Nothing to do.
 
 ### Speed
-Quiet: picked up within ~15 min. After any interaction: every 1 min for the
-next 20 min (a live conversation flows at ~1-minute latency).
+Quiet: the hub reads the mailbox at :00/:15/:30/:45 and containers pick up
+their queue one minute later — so worst case ~16 min from send to container.
+After any interaction: everything moves to 1-min checks for 20 min (a live
+conversation flows at ~1-minute latency).
 
 ### Onboarding a container (new or existing)
 Tell the session:
@@ -72,8 +74,11 @@ Verify with script `hub-register.sh` and no arg (lists the registry).
 
 ### 2. Receive owner mail
 Run script `hub-fetch.sh` with arg `<NAME>`. Output:
-- First line `NEXT-POLL <seconds>` — wait that long before polling again
-  (60 = active conversation window, 900 = quiet). Honor it.
+- First line `NEXT-POLL <seconds>` — wait that long before polling again.
+  Honor it EXACTLY: in quiet mode the value is computed to land your next
+  fetch one minute after the hub's quarter-hour mailbox poll (the stagger
+  keeps end-to-end latency ~1 min instead of up to 15); 60 means an active
+  conversation window.
 - Then your queued messages, oldest first (each already VERIFIED as an
   authenticated send from the owner's mailbox — headers, then body).
 - `MORE QUEUED` means call again immediately for the rest.

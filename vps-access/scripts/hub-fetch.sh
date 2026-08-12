@@ -17,7 +17,13 @@ case "$last_int" in (*[!0-9]*|"") last_int=0;; esac
 if [ $((now - last_int)) -lt 1200 ]; then
   echo "NEXT-POLL 60  (inside the 20-min fast window)"
 else
-  echo "NEXT-POLL 900"
+  # Phase-lock (owner directive): the hub polls the mailbox at :00/:15/:30/:45;
+  # tell the caller to fetch again ONE MINUTE after the hub's next poll, so a
+  # routed message waits ~1 min, not up to a full period. Self-correcting: after
+  # one honored NEXT-POLL, a container lands on the :01/:16/:31/:46 grid.
+  min=$((10#$(date +%M))); sec=$((10#$(date +%S)))
+  rem=$(( (15 - min % 15) * 60 - sec + 60 ))
+  echo "NEXT-POLL $rem  (lands 1 min after the hub's next quarter-hour poll)"
 fi
 
 shopt -s nullglob

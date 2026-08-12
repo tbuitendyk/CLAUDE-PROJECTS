@@ -28,8 +28,18 @@ last_int=$(cat "$STATE/last-sent" 2>/dev/null || echo 0)
 last_poll=$(cat "$HUB/last-cycle" 2>/dev/null || echo 0)
 case "$last_int" in (*[!0-9]*|"") last_int=0;; esac
 case "$last_poll" in (*[!0-9]*|"") last_poll=0;; esac
-if [ $((now - last_int)) -lt 1200 ]; then thr=55; else thr=895; fi
-[ $((now - last_poll)) -ge "$thr" ] || exit 0
+# Stagger contract with the containers (owner directive): normal-mode polls
+# happen at FIXED wall-clock times -- :00/:15/:30/:45 -- and hub-fetch.sh
+# tells containers to fetch one minute AFTER those marks, so routed mail is
+# picked up ~1 min after it lands instead of up to a full period later.
+# Fast mode (within 1200s of an interaction) still polls every minute.
+if [ $((now - last_int)) -lt 1200 ]; then
+  [ $((now - last_poll)) -ge 55 ] || exit 0
+else
+  min=$((10#$(date +%M)))
+  [ $((min % 15)) -eq 0 ] || exit 0
+  [ $((now - last_poll)) -ge 120 ] || exit 0
+fi
 echo "$now" > "$HUB/last-cycle"
 
 log(){ echo "$(date '+%F %T') $*" >> "$LOG"; }
