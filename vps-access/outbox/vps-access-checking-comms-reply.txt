@@ -1,0 +1,30 @@
+Re: Checking comms...
+tl;dr COMMS CONFIRMED. Your test was received, SASL-verified, routed by the hub
+to the vps-access queue, fetched by me, and this is the round-trip reply. It
+was delayed ~1h by a hub parser bug (verified mail was consumed but routed
+nowhere) -- found, fixed, and your message was recovered and re-routed; nothing
+was lost.
+
+HOW YOU ADDRESS CONTAINERS, in one line each:
+
+- Direct to a container: start the subject with its registered name + colon.
+  Example -- "general-classifier: pause the batch and report".
+- Unaddressed (no name in subject): comes to ME, the hub session (vps-access,
+  the default route). I read it and either act or pass it to the right
+  container with hub-reroute.
+- Registered today: general-classifier, vps-access. Add another branch by
+  telling any session "register <branch-name> with the mail hub", then
+  "subject: <branch-name>: ..." reaches it directly.
+- Cadence: mailbox is read at :00/:15/:30/:45; containers pick up one minute
+  later. Any interaction (like this exchange) switches everything to 1-minute
+  checks for 20 minutes.
+- Everything you send must come from your own mailbox to verify; anything else
+  is logged and ignored.
+
+Housekeeping note: 8 of your older messages (Jul 28 - Aug 1) sit permanently
+unverifiable in the mailbox -- the mail log they would verify against has
+rotated away, so the trust rule can never pass them now. They look already
+actioned/stale. Say the word and I archive them so they stop showing up in
+every cycle's UNVERIFIED count.
+
+c.
