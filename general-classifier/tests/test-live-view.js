@@ -51,6 +51,24 @@ module.exports.paperAndRealLedgersNeverMix = function () {
   });
 };
 
+module.exports.paperAndRealUnrealizedAreSeparate = function () {
+  // R9: after a paper->live transition a setup can hold BOTH books open at once.
+  // The summary must keep real unrealized and paper unrealized SEPARATE (as
+  // realized already is) — never one mixed number of real + fictional money.
+  withJournal([
+    { event: 'ENTRY_FILL', setup_id: 'm', chunk_start: 'r1', side: 'LONG', qty: 0.2, price: 100, exit_due_ts: 2e9 },
+    { event: 'PAPER_ENTRY_FILL', setup_id: 'm', chunk_start: 'p1', side: 'LONG', qty: 0.4, price: 100, exit_due_ts: 3e9 },
+    { event: 'PNL_MTM', price: 110 },
+  ], (f) => {
+    const b = view.deriveSetup(view.readJournal(f).events, 'm');
+    // real open r1: (110-100)*0.2 = 2.0 ; paper open p1: (110-100)*0.4 = 4.0
+    assert.ok(Math.abs(b.unrealizedPnl - 2.0) < 1e-9, `real unrealized 2.0, got ${b.unrealizedPnl}`);
+    assert.ok(Math.abs(b.paperUnrealizedPnl - 4.0) < 1e-9, `paper unrealized 4.0, got ${b.paperUnrealizedPnl}`);
+    assert.strictEqual(b.openPositions.length, 2, 'both books listed');
+    assert.strictEqual(b.openPositions.filter((p) => p.paper).length, 1, 'one badged paper');
+  });
+};
+
 module.exports.eventsOfOtherSetupsAreIgnored = function () {
   withJournal([
     { event: 'ENTRY_FILL', setup_id: 'a', chunk_start: 'c1', side: 'LONG', qty: 0.2, price: 100, exit_due_ts: 2e9 },

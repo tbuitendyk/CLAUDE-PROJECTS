@@ -201,10 +201,13 @@ async function drawDetail(){
     if(st.error){ $('#bookPanel').innerHTML=`<div class="panel empty">${st.error}</div>`; return; }
     const isPaper = st.paper;
     const rp = isPaper ? st.paperRealizedPnl : st.realizedPnl;
+    // R9: show the setup's OWN book (real for live, paper for paper) — never a
+    // mixed real+paper number. paperUnrealizedPnl / unrealizedPnl are kept separate.
+    const up = isPaper ? st.paperUnrealizedPnl : st.unrealizedPnl;
     $('#bookPanel').innerHTML=`
       <div class="grid" style="margin-bottom:1rem">
         <div class="tile"><div class="k">${isPaper?'Paper realized':'Realized'} P&L</div><div class="v ${cls(rp)}">${money(rp)}</div></div>
-        <div class="tile"><div class="k">Unrealized P&L</div><div class="v ${cls(st.unrealizedPnl)}">${money(st.unrealizedPnl)}</div></div>
+        <div class="tile"><div class="k">${isPaper?'Paper unrealized':'Unrealized'} P&L</div><div class="v ${cls(up)}">${money(up)}</div></div>
         <div class="tile"><div class="k">Mark (last run)</div><div class="v">${st.markPrice==null?'—':'$'+st.markPrice.toFixed(2)}</div></div>
         <div class="tile"><div class="k">Open positions</div><div class="v">${st.openPositions.length}</div></div>
         <div class="tile"><div class="k">Fill dev avg</div><div class="v">${st.fidelity.fillDeviationAvg==null?'—':(st.fidelity.fillDeviationAvg*100).toFixed(3)+'%'}</div></div>

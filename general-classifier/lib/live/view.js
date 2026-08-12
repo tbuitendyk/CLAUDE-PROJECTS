@@ -96,8 +96,14 @@ function deriveSetup(events, setupId) {
   const paperArr = Object.values(paperOpen);
   const unreal = (p) => (markPrice != null && p.entry_price != null)
     ? ((markPrice - p.entry_price) * p.qty) * (p.side === 'SHORT' ? -1 : 1) : null;
-  const unrealizedPnl = markPrice != null
-    ? round([...openArr, ...paperArr].reduce((s, p) => s + (unreal(p) || 0), 0), 4) : null;
+  // R9: real and paper UNREALIZED are kept SEPARATE, exactly as realized already
+  // is — after a paper->live transition a setup can hold both books open at once,
+  // and summing them into one number mixes paper (fictional) with real money on
+  // the screen. Each open row still carries its own paper flag for the table.
+  const sumUnreal = (arr) => (markPrice != null
+    ? round(arr.reduce((s, p) => s + (unreal(p) || 0), 0), 4) : null);
+  const unrealizedPnl = sumUnreal(openArr);         // REAL positions only
+  const paperUnrealizedPnl = sumUnreal(paperArr);   // PAPER positions only
 
   return {
     setupId,
@@ -106,6 +112,7 @@ function deriveSetup(events, setupId) {
     realizedPnl: round(realized, 4),
     paperRealizedPnl: round(paperRealized, 4),
     unrealizedPnl,
+    paperUnrealizedPnl,
     openPositions: [...openArr, ...paperArr]
       .sort((a, b) => a.exit_due_ts - b.exit_due_ts)
       .map((p) => ({ ...p, markPrice: round(markPrice, 4), unrealized: round(unreal(p), 4) })),
