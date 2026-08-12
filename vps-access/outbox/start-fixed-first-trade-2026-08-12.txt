@@ -1,0 +1,59 @@
+START button fixed + first live trade filled — $10 LONG LTC @ 45.59
+
+tl;dr — The START button did nothing because of a server bug (an undefined
+`fs`), not the arm machinery. Fixed, deployed, and verified end to end. You then
+pressed START and the box armed and opened the first live position: $10 LONG
+LTCUSDT filled at 45.59, ~0.088% off the decision price. A regression test now
+guards the bug so it cannot come back. Nothing needed from you.
+
+The bug
+-------
+Pressing START opened the confirm box, but on OK nothing happened. Cause: the
+server's arm/disarm (and stop-sweep) endpoints referenced a variable `fs` that
+the server never defines — it holds the file module under the name `dataFs`. So
+every START press threw a 500 error server-side and wrote no arm request. The
+screen's button code does not check the response, so the error was invisible: the
+dialog just closed. It stayed hidden through every review because these endpoints
+had never actually been called until your first real START press — no test drove
+the running server over HTTP, and the deploy health check only does a read.
+
+Fix: point every bare `fs` at the real `dataFs`. Pushed, deployed, service
+restarted 01:04:39 UTC, and confirmed against the live server (the endpoint now
+returns 200 and writes the request the box reads).
+
+First live trade
+----------------
+You pressed START; the box armed at 01:10:15 and opened in the same tick:
+
+  pair            LTCUSDT (isolated margin)
+  side            LONG
+  fill price      45.59   (decision price 45.55 — the 01:00 open)
+  fill deviation  0.088%  (essentially current price, as you asked)
+  size            0.219 LTC ordered / 0.218781 held after fee  (~$9.98)
+  fee             ~$0.01
+  order id        7373938275
+  scheduled exit  2026-08-18 ~01:10 UTC (137h hold)
+
+KEY: "fill deviation" is how far the fill landed from the price the model decided
+on, as a percent — small means we entered at essentially the intended price.
+"held after fee" is the LTC actually in the account after the exchange took its
+cut in-kind; that is what the exit will sell.
+
+Three safeguards fired correctly on the way in: yesterday's leftover intent was
+auto-rejected as stale (it did NOT trade), a duplicate copy of today's intent was
+de-duplicated (so exactly ONE position opened, not two), and the fill-deviation
+was well inside limits so no halt. The de-dup is the same guarantee the
+prime-at-01:00 timers rely on, now proven in production.
+
+Guardrail added
+---------------
+An HTTP regression test now starts the real server and drives the arm and
+stop-sweep endpoints, asserting a 200 and a written request file. I watched it
+fail when I put the bug back (500 "fs is not defined"), then pass once reverted.
+Logged as QC-REGISTER item 114 — the canonical "first real use" defect: a path
+that passed review and a deploy check but had never been exercised for real.
+
+The engine is RUNNING with one open position. I am watching the mail heartbeat
+and will not touch the live book. The exit is scheduled and automatic.
+
+c.
