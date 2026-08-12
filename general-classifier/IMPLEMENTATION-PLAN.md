@@ -124,7 +124,8 @@ Rules the session works under during plan execution:
       trains/loads the frozen committee from configSnapshot, computes the due
       chunk from the setup's own geometry, fetches the live entry open (the
       QC-109 mechanism, generalized), returns an intent tagged with setupId.
-- [~] 2.3 **Golden parity gate (blocks all later phases):** F1 expressed as a
+- [x] 2.3 **Golden parity gate — PASSED 12/12 byte-for-byte on the VPS cache**
+      ~~(blocks all later phases)~~ CLEARED. Original text: (blocks all later phases):** F1 expressed as a
       TradingSetup must reproduce the existing pilotsignal decisions
       BYTE-IDENTICALLY over the full replayable history (sides, votes,
       hashes, prices), and match lib/bracket.js simulated calls for the same
@@ -191,7 +192,7 @@ All built and unit-tested WITHOUT deploying to the box (Phase-10 gate).
 
 ## PHASE 6 — Safety rails + fidelity per setup (M) [NEXT-RELEASE 16, 17]
 
-- [ ] 6.1 Mirror generalized: per-setup decision records recomputed against
+- [x] 6.1 Mirror generalized: per-setup decision records recomputed against
       fresh data; a break disarms THAT setup (box-wide only on systemic
       faults). QC-110 price_pending semantics carried over.
 - [ ] 6.2 Alerting generalized: per-setup halt/heartbeat/stale/incident
