@@ -956,6 +956,24 @@ class ExecutorTest(unittest.TestCase):
         self.assertTrue(self.x.setup_halted("s-ex"), "a schema-2 exit reject halts its own setup")
         self.assertFalse(self.x.halted(), "a schema-2 exit reject must NOT halt the box (F1)")
 
+    def test_paper_intent_books_even_when_disarmed(self):
+        # R8: paper is pure measurement (no orders), so a disarmed box must STILL
+        # book paper entries — else a real-money fault (disarm/halt/reject-kill)
+        # silently blanks the paper measurement the pilot depends on. The REAL rail
+        # stays blocked (F1 byte-identical): a real intent must not fill.
+        self.write_allow({"s-p": {"symbol": "LTCUSDT", "max_clip_usd": 25, "state": "paper"}})
+        self.write_intent2(setup_id="s-p", clip=20.0, hold=48, paper=True)
+        self.x.set_arm(False, "test")   # master switch OFF
+        self.x.do_run(self.bx())
+        ev = self.events()
+        self.assertIn("PAPER_ENTRY_FILL", ev, "a paper intent must book even when disarmed")
+        self.assertIn("ENTRIES_SKIPPED", ev, "the REAL rail is still reported skipped")
+        self.assertEqual(MockBinance.orders, [], "paper places no orders, disarmed or not")
+        # a REAL (schema-1) intent while disarmed is still left untouched — no fill
+        self.write_intent(side="LONG", chunk="2026-08-09T00:00Z")
+        self.x.do_run(self.bx())
+        self.assertNotIn("ENTRY_FILL", self.events(), "a real intent must NOT fill while disarmed")
+
     def test_paper_positions_are_invisible_to_reconcile(self):
         # a paper long is open, the exchange book is FLAT — reconcile must not
         # expect any base holdings for it

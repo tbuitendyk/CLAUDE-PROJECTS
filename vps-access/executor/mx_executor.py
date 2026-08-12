@@ -1260,7 +1260,10 @@ def do_run(bx):
              reason=("scheduled" if due else "fixed_stop"),
              pnl=round(gross - fees, 4))
 
-    # 4) fresh intents -> new entries (need the master switch ON and no halt)
+    # 4) fresh intents -> new entries. REAL entries need the master switch ON and
+    # no halt; PAPER entries are pure MEASUREMENT (no orders) and book in EVERY
+    # arm/halt state, exactly like the paper EXITS above — so a disarmed, halted or
+    # reject-killed box can never silently stop the paper books measuring (R8).
     st = derive(journal_events())  # refresh after exits
     # one status line per run so the live screen always shows current state,
     # even on a quiet day with no orders
@@ -1270,6 +1273,11 @@ def do_run(bx):
          paper_realized=round(st["paper_realized"], 4),
          arm_secret=bool(load_env().get("PILOT_ARM_SECRET", "")),
          fixed_stop_pct=stop_pct)
+    # real_blocked gates only the REAL rail; paper intents proceed below. The reason
+    # strings and the dead-man ARM_STALE emission are unchanged from the old
+    # early-returns, so a disarmed/halted F1 box behaves byte-identically (it has no
+    # paper intents, and its real intents are left untouched by the light gate).
+    real_blocked = False
     if not armed():
         if arm_present():
             jlog("ARM_STALE", reason="dead-man: ARM not refreshed within "
@@ -1277,13 +1285,13 @@ def do_run(bx):
             jlog("ENTRIES_SKIPPED", reason="master switch STALE (dead-man tripped)")
         else:
             jlog("ENTRIES_SKIPPED", reason="master switch OFF (owner has not pressed START)")
-        return 0
-    if halted():
+        real_blocked = True
+    elif halted():
         jlog("ENTRIES_SKIPPED", reason="halt flag set")
-        return 0
-    if st["consecutive_rejects"] >= REJECT_LIMIT:
+        real_blocked = True
+    elif st["consecutive_rejects"] >= REJECT_LIMIT:
         set_halt("executor", f"{st['consecutive_rejects']} consecutive rejects")
-        return 0
+        real_blocked = True
 
     os.makedirs(INTENTS, exist_ok=True)
     for name in sorted(os.listdir(INTENTS)):
@@ -1297,6 +1305,19 @@ def do_run(bx):
             jlog("INTENT_INVALID", file=name, error=str(e)[:100])
             os.rename(path, path + ".bad")
             continue
+        # R8: when the REAL rail is blocked (disarmed / halted / reject-killed), a
+        # REAL intent is LEFT UNTOUCHED for a later armed run — byte-identical to the
+        # old pre-loop early-return, which validated and consumed nothing. A PAPER
+        # intent proceeds (it places no order, so it measures in every state).
+        # Paper-ness is read from the allowlist here, BEFORE validation, so a blocked
+        # real intent gets no side effects (no .bad/.dup rename, no INTENT_* events).
+        if real_blocked:
+            _is2 = it.get("schema") == 2
+            _allow = setups_allow().get(it.get("setup_id")) if _is2 else None
+            _eff_paper = _is2 and (bool(it.get("paper"))
+                                   or (isinstance(_allow, dict) and _allow.get("state") != "live"))
+            if not _eff_paper:
+                continue
         # mechanical validation -- every failure is journaled and the file
         # is set aside; nothing is ever "interpreted"
         problems = []
@@ -1511,17 +1532,20 @@ def do_run(bx):
                     set_halt("executor", f"fill deviated {fill_dev:.2%} "
                                          "from decision price")
 
-    # 5) balance snapshot for the screen
-    code, acct = bx.isolated_account()
-    if code == 200 and not acct.get("dryrun"):
-        try:
-            a = acct["assets"][0]
-            jlog("BALANCE", base_net=a["baseAsset"]["netAsset"],
-                 base_free=a["baseAsset"]["free"],
-                 quote_free=a["quoteAsset"]["free"],
-                 quote_net=a["quoteAsset"]["netAsset"])
-        except (KeyError, IndexError):
-            pass
+    # 5) balance snapshot for the screen — only when the REAL rail was active, so a
+    # disarmed/halted run returns here exactly as the old early-returns did (paper
+    # entries above already booked; a blocked run journals no BALANCE).
+    if not real_blocked:
+        code, acct = bx.isolated_account()
+        if code == 200 and not acct.get("dryrun"):
+            try:
+                a = acct["assets"][0]
+                jlog("BALANCE", base_net=a["baseAsset"]["netAsset"],
+                     base_free=a["baseAsset"]["free"],
+                     quote_free=a["quoteAsset"]["free"],
+                     quote_net=a["quoteAsset"]["netAsset"])
+            except (KeyError, IndexError):
+                pass
     return 0
 
 
