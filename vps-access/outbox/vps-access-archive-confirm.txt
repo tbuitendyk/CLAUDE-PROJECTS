@@ -1,0 +1,7 @@
+Re: Checking comms... (archive confirmation)
+tl;dr DONE. All 8 stale messages (Jul 28 - Aug 1) moved from INBOX to the
+Archive folder -- nothing deleted, recoverable anytime. INBOX now has zero
+unread; every future cycle count reflects only live mail. Hub is clean and
+on the fast cadence with you right now.
+
+c.
