@@ -49,6 +49,29 @@ module.exports.rejectStreakIsCountedAndResetByAck = function () {
   assert.strictEqual(st.consecutiveRejects, 0, 'an ack resets the streak');
 };
 
+module.exports.schema2EventsNeverCorruptTheF1View = function () {
+  // R6: schema-2 (generalized setup) events share the one journal but carry a
+  // setup_id. The F1 screen must ignore them entirely — never fold their P&L into
+  // F1 realized, never overwrite an F1 row on the same chunk_start, never bump F1's
+  // reject streak. (The plan's 10.4 paper twin produces byte-identical chunk_starts,
+  // so the collision is the run's stated goal, not a corner case.)
+  const st = derive([
+    // F1 (schema-1) opens a LONG on chunk c1 and it stays open
+    { event: 'INTENT_SEEN', chunk_start: 'c1', side: 'LONG', decision_price: 100 },
+    { event: 'ENTRY_FILL', chunk_start: 'c1', side: 'LONG', qty: 0.1, price: 100, fee_quote: 0.01, exit_due_ts: 2e9 },
+    // schema-2 events on the SAME chunk_start — must be invisible to the F1 view
+    { event: 'INTENT_SEEN', chunk_start: 'c1', side: 'LONG', decision_price: 100, setup_id: 's-x', paper: true },
+    { event: 'ENTRY_FILL', chunk_start: 'c1', side: 'LONG', qty: 0.2, price: 100, exit_due_ts: 2e9, setup_id: 's-x' },
+    { event: 'EXIT_FILL', chunk_start: 'c1', side: 'LONG', qty: 0.2, price: 200, pnl: 99.0, setup_id: 's-x' },
+    { event: 'ORDER_REJECT', action: 'ENTRY', setup_id: 's-x' },
+    { event: 'ORDER_REJECT', action: 'ENTRY', setup_id: 's-x' },
+  ]);
+  assert.strictEqual(st.openPositions.length, 1, 'F1 position stays open; a schema-2 exit must not close it');
+  assert.strictEqual(st.realizedPnl, 0, 'schema-2 P&L must never enter F1 realized');
+  assert.strictEqual(st.closedRecent.length, 0, 'a schema-2 close must not appear in F1 closed');
+  assert.strictEqual(st.consecutiveRejects, 0, 'schema-2 rejects must not bump F1 reject streak');
+};
+
 module.exports.absentJournalIsAStateNotAnError = function () {
   const s = pv.status('/nonexistent/path/journal.jsonl');
   assert.strictEqual(s.present, false, 'a missing journal reports present:false, never throws');

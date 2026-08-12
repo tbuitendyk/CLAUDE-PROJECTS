@@ -148,6 +148,13 @@ function derive(events) {
   let markUtc = null;       // when that mark was taken
 
   for (const e of events) {
+    // R6: the F1 screen shows the F1 (schema-1) pilot ONLY. Schema-2 (generalized
+    // setup) trade events carry a setup_id and share this one journal; skip them so
+    // a paper/live setup can never overwrite an F1 row, fold its P&L into F1's
+    // realized, or perturb F1's reject/at-risk state. Box-level events (RUN_STATUS,
+    // PNL_MTM, BALANCE, ARM_*) carry no setup_id and are still processed. This is
+    // byte-identical to today whenever no schema-2 event exists.
+    if (e.setup_id != null) continue;
     switch (e.event) {
       case 'INTENT_SEEN':
         decisions[e.chunk_start] = {
