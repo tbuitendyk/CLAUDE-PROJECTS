@@ -163,6 +163,13 @@ All built and unit-tested WITHOUT deploying to the box (Phase-10 gate).
 
 - [ ] 5.1 `public/livetrading.html` born with sub-tabs (point 12): Setups
       (pager) | Setup detail | Journal & reporting | Data & health.
+      Paper setups appear IN THE SAME pager/views with identical display and
+      formatting — distinguished only by an unmissable PAPER badge (owner
+      amendment to point 15: no separate paper view; must always be clear it
+      is not real money).
+      Styling via shared theme tokens from day one (point 24): dark mode in
+      the pilot.html technical/compressed style (the baseline), light mode in
+      the Bracket Lab style — so the tab carries into UTS unchanged.
 - [ ] 5.2 Setup detail: config (read-only snapshot + provenance link), state
       controls (paper/live/stop — live-arm is owner-gated, see protocol 3a),
       clip size editor (point 20, exchange-minimum bounded), stop config,
