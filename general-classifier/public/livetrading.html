@@ -194,8 +194,37 @@ async function drawDetail(){
         <button id="saveCfg">Save</button>
       </div>
     </div>
-    <div class="panel muted" style="font-size:.8rem">Per-setup journal, positions, unrealized P&amp;L and execution-fidelity
-      reporting attach here as the live/paper book accrues (safety rails + fidelity, plan phase 6).</div>`;
+    <div id="bookPanel"></div>`;
+  // per-setup book + fidelity (plan phase 6), fetched from the synced journal
+  api('api/live/setups/'+s.id+'/status').then(st=>{
+    if(!$('#bookPanel')) return;
+    if(st.error){ $('#bookPanel').innerHTML=`<div class="panel empty">${st.error}</div>`; return; }
+    const isPaper = st.paper;
+    const rp = isPaper ? st.paperRealizedPnl : st.realizedPnl;
+    $('#bookPanel').innerHTML=`
+      <div class="grid" style="margin-bottom:1rem">
+        <div class="tile"><div class="k">${isPaper?'Paper realized':'Realized'} P&L</div><div class="v ${cls(rp)}">${money(rp)}</div></div>
+        <div class="tile"><div class="k">Unrealized P&L</div><div class="v ${cls(st.unrealizedPnl)}">${money(st.unrealizedPnl)}</div></div>
+        <div class="tile"><div class="k">Mark (last run)</div><div class="v">${st.markPrice==null?'—':'$'+st.markPrice.toFixed(2)}</div></div>
+        <div class="tile"><div class="k">Open positions</div><div class="v">${st.openPositions.length}</div></div>
+        <div class="tile"><div class="k">Fill dev avg</div><div class="v">${st.fidelity.fillDeviationAvg==null?'—':(st.fidelity.fillDeviationAvg*100).toFixed(3)+'%'}</div></div>
+        <div class="tile"><div class="k">Fill dev max</div><div class="v ${st.fidelity.fillDeviationMax>0.01?'warn':''}">${st.fidelity.fillDeviationMax==null?'—':(st.fidelity.fillDeviationMax*100).toFixed(3)+'%'}</div></div>
+      </div>
+      <div class="panel"><div class="k">Open positions ${isPaper?'<span class="badge b-paper">paper</span>':''}</div>
+        <table style="margin-top:.4rem"><thead><tr><th>chunk</th><th>side</th><th>qty</th><th>entry</th><th>mark</th><th>unreal $</th><th>exit due</th></tr></thead><tbody>
+        ${st.openPositions.length?st.openPositions.map(p=>`<tr>
+          <td>${(p.chunk_start||'').slice(0,16)}</td><td class="${p.side==='LONG'?'pos':'neg'}">${p.side}${p.paper?' <span class="badge b-paper">P</span>':''}</td>
+          <td>${p.qty}</td><td>${p.entry_price??'—'}</td><td>${p.markPrice==null?'—':'$'+p.markPrice.toFixed(2)}</td>
+          <td class="${cls(p.unrealized)}">${money(p.unrealized)}</td>
+          <td class="muted">${p.exit_due_ts?new Date(p.exit_due_ts*1000).toISOString().slice(0,16):'—'}</td></tr>`).join(''):'<tr><td colspan="7" class="empty">none open</td></tr>'}
+        </tbody></table></div>
+      <div class="panel"><div class="k">Recent closed</div>
+        <table style="margin-top:.4rem"><thead><tr><th>chunk</th><th>side</th><th>entry</th><th>exit</th><th>P&L</th></tr></thead><tbody>
+        ${st.closedRecent.length?st.closedRecent.map(c=>`<tr>
+          <td>${(c.chunk_start||'').slice(0,16)}</td><td class="${c.side==='LONG'?'pos':'neg'}">${c.side}${c.paper?' <span class="badge b-paper">P</span>':''}</td>
+          <td>${c.entry_price??'—'}</td><td>${c.exit_price??'—'}</td><td class="${cls(c.pnl)}">${money(c.pnl)}</td></tr>`).join(''):'<tr><td colspan="5" class="empty">none closed yet</td></tr>'}
+        </tbody></table></div>`;
+  });
 
   $('#view').querySelectorAll('button[data-to]').forEach(b=>b.onclick=async()=>{
     const to=b.dataset.to;

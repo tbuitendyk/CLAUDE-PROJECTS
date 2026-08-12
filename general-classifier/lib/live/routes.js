@@ -43,6 +43,15 @@ function installLiveRoutes(app, { csrfGuard }) {
     res.json({ ...s, keyRef: s.keyRef ? 'set' : null });
   });
 
+  // Per-setup live book + execution fidelity, derived from the synced box
+  // journal (plan phase 6). Read-only.
+  app.get('/api/live/setups/:id/status', (req, res) => {
+    const s = reg.getSetup(req.params.id);
+    if (!s) return res.status(404).json({ error: `no such setup ${req.params.id}` });
+    try { res.json(require('./view').setupStatus(s)); }
+    catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
   app.post('/api/live/setups/:id/state', csrfGuard, (req, res) => {
     try {
       const to = String((req.body || {}).to || '');
