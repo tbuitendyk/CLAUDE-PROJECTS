@@ -126,3 +126,26 @@ module.exports.listReturnsNewestFirst = function () {
   const ib = list.findIndex((x) => x.id === b.id);
   assert.ok(ib <= ia, 'newest first');
 };
+
+// DETERMINISTIC guard for the same-millisecond ordering defect (was: list sorted
+// only on millisecond createdUtc; two mints in one ms tied and fell through to
+// filesystem readdir order — undefined "newest first"). We seed two records with
+// EQUAL createdUtc whose filenames sort OLDER-first, but whose creation order
+// (seq) is NEWER = gl-zzz-newer. Without the seq tiebreak the tie leaves them in
+// readdir (filename) order = oldest first -> this FAILS. With it -> newest first.
+// Reintroducing the bug (dropping the seq compare) was watched turning this red.
+module.exports.sameMillisecondMintsSortByCreationOrderNotFilename = function () {
+  const dir = process.env.GC_GREENLIGHTS_DIR;
+  const T = '2030-01-01T00:00:00.000Z';            // equal ms for both -> forces the tie
+  // filename order (readdir is lexical here): 'gl-aaa-older' < 'gl-zzz-newer'
+  fs.writeFileSync(path.join(dir, 'gl-aaa-older.json'),
+    JSON.stringify({ id: 'gl-aaa-older', createdUtc: T, seq: 10, why: 'older' }));
+  fs.writeFileSync(path.join(dir, 'gl-zzz-newer.json'),
+    JSON.stringify({ id: 'gl-zzz-newer', createdUtc: T, seq: 11, why: 'newer' }));
+  const list = gl.listGreenlights();
+  const iOld = list.findIndex((x) => x.id === 'gl-aaa-older');
+  const iNew = list.findIndex((x) => x.id === 'gl-zzz-newer');
+  assert.ok(iNew >= 0 && iOld >= 0, 'both seeded records listed');
+  assert.ok(iNew < iOld,
+    `newer (seq 11) must precede older (seq 10) despite filename order; got new@${iNew} old@${iOld}`);
+};

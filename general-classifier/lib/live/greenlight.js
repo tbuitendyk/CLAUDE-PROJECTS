@@ -27,6 +27,15 @@ function atomicWrite(file, obj) {
   fs.renameSync(tmp, file);
 }
 
+// createdUtc is millisecond-resolution, so two greenlights minted inside the
+// same millisecond (tests, or two rapid programmatic mints) tie on it and the
+// list order would fall through to filesystem readdir order — i.e. undefined.
+// This per-process monotonic counter breaks that tie by true creation order so
+// "newest first" is deterministic. Cross-process the millisecond timestamp
+// dominates (real greenlights are minted seconds apart), and the counter only
+// disambiguates same-ms same-process mints, where it is exactly right.
+let __mintSeq = 0;
+
 // stage from what the row actually ran: committee width is a function of
 // (size, stage), so it inverts cleanly — and ambiguity refuses rather than
 // guesses (a guessed stage would train a different committee than the lab's).
@@ -104,6 +113,7 @@ function greenlightFromRun(doc, target, { by = 'owner', why } = {}) {
   const record = {
     id,
     createdUtc: new Date().toISOString(),
+    seq: __mintSeq++,                       // creation-order tiebreak for same-ms mints
     by,
     why: why.trim(),
     engineVersion: ENGINE_VERSION,          // point 18: the arithmetic this evidence is about
@@ -136,7 +146,11 @@ function listGreenlights() {
       .filter((f) => f.endsWith('.json'))
       .map((f) => { try { return JSON.parse(fs.readFileSync(path.join(glDir(), f), 'utf8')); } catch (_) { return null; } })
       .filter(Boolean)
-      .sort((a, b) => String(b.createdUtc).localeCompare(String(a.createdUtc)));
+      .sort((a, b) => {
+        const t = String(b.createdUtc).localeCompare(String(a.createdUtc));
+        if (t !== 0) return t;
+        return (b.seq || 0) - (a.seq || 0);   // same-ms tie -> true creation order
+      });
   } catch (_) { return []; }
 }
 
