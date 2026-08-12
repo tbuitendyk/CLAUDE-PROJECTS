@@ -3,31 +3,33 @@
 The **vps-access session is the gatekeeper**. One cron cycle on the VPS host is
 the ONLY consumer of `claude@homeandofficemicro.com`. It verifies every inbound
 message (SASL + queue-id binding — see `scripts/claude-mail-check.sh` header)
-and routes verified owner mail to per-container **hub inboxes** (semaphore
-files). Registered container sessions never touch IMAP directly.
+and routes verified owner mail to per-project-session **hub inboxes**
+(semaphore files). Registered project sessions — one per GitHub project
+branch, addressed by branch name; the cloud container underneath is
+irrelevant — never touch IMAP directly.
 
 ## Cadence (owner's rule)
 - Baseline: the hub polls the mailbox every **15 minutes at fixed times** —
   :00/:15/:30/:45 wall clock.
-- **Stagger contract:** containers fetch **one minute after** the hub's poll
+- **Stagger contract:** project sessions fetch **one minute after** the hub's poll
   (:01/:16/:31/:46), so routed mail waits ~1 minute, not up to a period.
   `hub-fetch.sh` computes `NEXT-POLL <seconds>` to land the caller on that
   grid automatically — honoring it IS the coordination; no clock math needed
   container-side.
 - Any mail interaction (verified inbound, or an outbound send) switches both
-  hub and containers to **every 1 minute for the next 20 minutes**
+  hub and project sessions to **every 1 minute for the next 20 minutes**
   (`NEXT-POLL 60`).
 
 ## Dispatch model (2026-08-12, owner directive)
 The hub session runs the ONLY required loop. Each tick it checks every queue
-(`hub-queues.sh`); mail for another container is fetched by the hub and handed
+(`hub-queues.sh`); mail for another project session is fetched by the hub and handed
 to an on-demand worker loaded with that branch's context, which does the work
-and replies via the outbox flow immediately. Container sessions do NOT need
+and replies via the outbox flow immediately. Registered project sessions do NOT need
 polling loops; if one is active it may still fetch its own queue (below), and
 whoever fetches first wins — the queue is consuming, so nothing is handled
 twice. The stale-queue owner alert remains as the net under everything.
 
-## For a registered container session
+## For a registered project session
 - **Receive**: `run-script hub-fetch.sh` arg `<your-name>` — prints your queued
   verified messages (oldest first, ~6KB per call; call again if it says MORE
   QUEUED) and archives them to `hub/delivered/<your-name>/` on the box.
@@ -41,7 +43,7 @@ twice. The stale-queue owner alert remains as the net under everything.
 
 ## Routing of verified inbound mail
 1. First registered name appearing (case-insensitive) in the **Subject** wins —
-   the owner can address a container explicitly, e.g.
+   the owner can address a project session explicitly, e.g.
    `Subject: general-classifier: pause the batch`.
 2. No match → the **default route = `vps-access`, the hub session itself**:
    the gatekeeper reads it and passes it on with
@@ -65,14 +67,14 @@ receiving its mail — via the hub — with no changes on its side.
 - Install/refresh after editing `hub-cycle-core.sh`: `run-script hub-setup.sh`.
 - Disable (fall back to direct polling): remove
   `/var/lib/claude-mail/hub/ENABLED`.
-- **Stale-queue alert:** if any container leaves routed mail unfetched for
-  30+ minutes, the cycle emails the owner (subject "Mail hub alert: container
-  not picking up its mail"), at most once per 2 h. Recovery tools:
+- **Stale-queue alert:** if any project session leaves routed mail unfetched
+  for 30+ minutes, the cycle emails the owner (subject "Mail hub alert:
+  project session not picking up its mail"), at most once per 2 h. Recovery tools:
   `hub-requeue.sh <name>` (restore fetched-but-unhandled mail to the queue),
   `hub-queue-peek.sh` (read-only queue timeline).
-- **Hub notices (gatekeeper -> container):** commit
+- **Hub notices (gatekeeper -> project session):** commit
   `hub-notices/<name>.txt`, then `hub-notice-post.sh <name>`; the text prints
-  clearly labeled at the top of that container's next `hub-fetch`. Notices are
+  clearly labeled at the top of that project session's next `hub-fetch`. Notices are
   infrastructure guidance and carry NO owner-verified authority.
 - **Doc-sync rule:** any change to hub scripts, flows, cadence, or conventions
   MUST update `MAIL-CHEATSHEET.md` in the same commit (owner directive — that

@@ -1,40 +1,46 @@
 # Mail Hub — Cheat Sheet
 
-Email relay between the owner and Claude container sessions, via the mailbox
+Email relay between the owner and **registered project sessions** — one Claude
+session per GitHub project branch, addressed by that branch name — via the mailbox
 `claude@homeandofficemicro.com`. The vps-access session is the hub/gatekeeper;
 a cron cycle on the VPS is the only mailbox consumer. Machine protocol detail:
 `HUB-PROTOCOL.md` (same branch).
 
-**Owner instructions: Part 1. Container sessions: Part 2 is everything you
+**Owner instructions: Part 1. Project sessions: Part 2 is everything you
 need — follow it top to bottom and you're onboarded.**
+
+Terminology: a *registered project session* is the Claude conversation working
+one project branch. The disposable cloud container it happens to run in is
+irrelevant to the hub — names identify sessions, not machines.
 
 ---
 
 ## Part 1 — For the owner (human)
 
-### Send a message to a container
+### Send a message to a project session
 1. Email from YOUR mailbox (theodore@homeandofficemicro.com — Outlook or
    webmail) to claude@homeandofficemicro.com.
-2. Start the subject with the container name + colon:
+2. Start the subject with the registered project-session name (its branch
+   name) + colon:
    `general-classifier: pause the batch and report`
    No name -> goes to the HUB itself (the vps-access session): the gatekeeper
-   reads it and passes it to the right container.
+   reads it and passes it to the right project session.
 3. Done. The hub verifies it came from your mailbox and queues it.
 
 NOTE: only mail from your own mailbox verifies. Gmail/outside senders are
 logged and ignored by design.
 
-### Replies from containers
+### Replies from project sessions
 Arrive in your normal inbox as email from claude@homeandofficemicro.com,
 tl;dr first line, signed "c." Nothing to do.
 
 ### Speed
-Quiet: the hub reads the mailbox at :00/:15/:30/:45 and containers pick up
-their queue one minute later — so worst case ~16 min from send to container.
+Quiet: the hub reads the mailbox at :00/:15/:30/:45 and project sessions pick
+up their queues one minute later — so worst case ~16 min end to end.
 After any interaction: everything moves to 1-min checks for 20 min (a live
 conversation flows at ~1-minute latency).
 
-### Onboarding a container (new or existing)
+### Onboarding a project session (new or existing)
 Tell the session:
 
 > Read vps-access/MAIL-CHEATSHEET.md on the vps-access branch of
@@ -46,13 +52,14 @@ That's the whole instruction — Part 2 below is self-contained.
 ### Health
 Any session: run-script hub-status.sh (registry, queues, cadence, credential
 audit, log tail). Hub log on the box: /var/lib/claude-mail/hub/log/hub.log.
-If a container stops picking up its mail for 30+ min, the hub EMAILS YOU an
-alert automatically (at most once per 2 h) -- the fix is to wake that
-container's session; its mail waits in the queue.
+If a project session stops picking up its mail for 30+ min, the hub EMAILS
+YOU an alert automatically (at most once per 2 h) -- the hub also dispatches
+unfetched mail to an on-demand worker, and the mail waits in the queue either
+way.
 
 ---
 
-## Part 2 — For a container session (self-onboarding, complete)
+## Part 2 — For a registered project session (self-onboarding, complete)
 
 You are a Claude session for one project branch of tbuitendyk/CLAUDE-PROJECTS.
 This section gives you owner-mail send/receive through the hub. Your hub name

@@ -73,7 +73,7 @@ change again.
   script, at the owner's request.
 - **Mail hub (2026-08-11).** The vps-access session is the gatekeeper: a cron
   cycle on the host is the only mailbox consumer — it verifies inbound and
-  routes it to per-container hub inboxes; registered sessions fetch with
+  routes it to per-project-session hub inboxes; registered project sessions fetch with
   `run-script hub-fetch.sh <name>` and send via the outbox flow as before.
   Cadence: 15-min polls, 1-min for 20 min after any interaction. Full
   protocol: `vps-access/HUB-PROTOCOL.md`. **Doc-sync rule (owner directive):

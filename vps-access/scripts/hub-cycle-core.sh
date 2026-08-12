@@ -137,9 +137,9 @@ for line in open("/etc/deploy-control/env"):
 m=EmailMessage()
 m["From"]="Claude Mail Hub <claude@homeandofficemicro.com>"
 m["To"]="theodore@homeandofficemicro.com"
-m["Subject"]="Mail hub alert: container not picking up its mail"
+m["Subject"]="Mail hub alert: project session not picking up its mail"
 m["Date"]=formatdate(localtime=True); m["Message-ID"]=make_msgid(domain="homeandofficemicro.com")
-m.set_content("tl;dr A container session has stopped fetching its hub queue -- "
+m.set_content("tl;dr A registered project session has stopped fetching its hub queue -- "
               "your mail to it is verified and waiting, but unanswered. Wake that "
               "session (open it / send it a prompt) and it will pick everything up.\n\n"
               + os.environ.get("STALE_BODY","") +
