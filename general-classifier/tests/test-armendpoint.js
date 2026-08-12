@@ -24,15 +24,16 @@ const ARM_REQ = path.join(ROOT, 'data', 'pilot', 'arm-request.json');
 // per-run port so a stray earlier server (or a parallel run) does not collide
 const PORT = 18000 + (process.pid % 1000);
 
-function req(method, p, body) {
+function req(method, p, body, extraHeaders) {
   return new Promise((resolve, reject) => {
-    const data = body != null ? JSON.stringify(body) : null;
+    // body: object -> JSON.stringify; string -> sent RAW (to test malformed JSON)
+    const data = body == null ? null : (typeof body === 'string' ? body : JSON.stringify(body));
+    const headers = { ...(data != null ? { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(data) } : {}), ...(extraHeaders || {}) };
     const r = http.request(
-      { host: '127.0.0.1', port: PORT, path: p, method,
-        headers: data ? { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(data) } : {} },
+      { host: '127.0.0.1', port: PORT, path: p, method, headers },
       (res) => { let b = ''; res.on('data', (c) => (b += c)); res.on('end', () => resolve({ status: res.statusCode, body: b })); });
     r.on('error', reject);
-    if (data) r.write(data);
+    if (data != null) r.write(data);
     r.end();
   });
 }
@@ -87,5 +88,46 @@ module.exports.stopSweepStatusEndpointDoesNotThrowOnBareFs = async function () {
     const r = await req('GET', '/api/pilot/stopsweep', {});
     // 200 (idle/status) is the healthy answer; the bug produced 500 fs-not-defined.
     assert(r.status === 200, `GET /api/pilot/stopsweep expected 200, got ${r.status} — body: ${r.body}`);
+  });
+};
+
+// CSRF guard (finding C): a POST carrying a CROSS-SITE Origin is refused (403) and
+// writes NOTHING, so a forged cross-site request cannot flip the live-money switch.
+module.exports.crossSiteOriginIsRefusedAndWritesNothing = async function () {
+  await withServer(async () => {
+    const r = await req('POST', '/api/pilot/disarm', {}, { Origin: 'https://evil.example.com' });
+    assert(r.status === 403, `cross-site disarm expected 403, got ${r.status} — body: ${r.body}`);
+    assert(!fs.existsSync(ARM_REQ), 'a refused CSRF request must NOT write an arm-request');
+  });
+};
+
+// The legit same-origin button still works: an allowed Origin passes and writes.
+module.exports.sameSiteOriginIsAcceptedAndWrites = async function () {
+  await withServer(async () => {
+    const r = await req('POST', '/api/pilot/disarm', {}, { Origin: 'https://www.buitendyk.ca' });
+    assert(r.status === 200, `same-site disarm expected 200, got ${r.status} — body: ${r.body}`);
+    assert(fs.existsSync(ARM_REQ), 'an allowed request writes the arm-request the box reads');
+  });
+};
+
+// Fail-OPEN on absence: a request with NO Origin/Referer (e.g. the live screen's
+// fetch as a proxy may present it, or a non-browser client) is NOT blocked — so the
+// guard can never break the running button even if a proxy strips those headers.
+module.exports.noOriginIsNotBlocked = async function () {
+  await withServer(async () => {
+    const r = await req('POST', '/api/pilot/disarm', {}); // no Origin header
+    assert(r.status === 200, `no-Origin disarm expected 200 (fail-open), got ${r.status} — body: ${r.body}`);
+  });
+};
+
+// JSON error handler (finding B): malformed JSON returns a JSON 400 with an {error}
+// field — NOT express's default HTML page with a stack trace.
+module.exports.malformedJsonReturnsJson400NotHtmlStack = async function () {
+  await withServer(async () => {
+    const r = await req('POST', '/api/pilot/stop-apply', '{ not valid json', { Origin: 'https://www.buitendyk.ca' });
+    assert(r.status === 400, `malformed JSON expected 400, got ${r.status} — body: ${r.body}`);
+    assert(!/<!DOCTYPE|<html/i.test(r.body), `error must be JSON, not an HTML page — got: ${r.body.slice(0, 60)}`);
+    let j = null; try { j = JSON.parse(r.body); } catch (_) { /* stays null */ }
+    assert(j && typeof j.error === 'string', `expected {error: "..."} JSON, got: ${r.body.slice(0, 80)}`);
   });
 };

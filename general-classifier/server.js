@@ -1162,11 +1162,39 @@ function writeArmRequest(on, by) {
   dataFs.writeFileSync(path.join(dir, 'arm-request.json'), JSON.stringify(rec));
   return { armed: on, by, utc, nonce, authenticated: !!secret };
 }
-app.post('/api/pilot/arm', (req, res) => {
+// CSRF guard for the live-money switch (finding C, 2026-08-12 HTTP-surface pass).
+// The arm/disarm handlers ignore the request body, so a cross-site <form> POST
+// riding the owner's cached Basic Auth could flip the switch. A browser CSRF
+// ALWAYS attaches an Origin (sent on every cross-origin POST, and NOT suppressible
+// by referrer-policy) — or at least a Referer — pointing at the attacker's site.
+// So we REJECT any request whose Origin/Referer host is present and NOT ours.
+//
+// Chosen deliberately over a custom-header/token scheme because it needs NO client
+// change: the live screen's existing fetch already carries a same-origin
+// Origin/Referer, so the running button cannot break, and it fails OPEN when those
+// headers are absent (e.g. a proxy strips them, or a non-browser curl that would
+// need the site credentials anyway and is not a CSRF vector). It only ever fails
+// CLOSED on a positively cross-site browser request. ALLOWED covers the documented
+// public host plus localhost for tests; PILOT_ALLOWED_HOSTS can extend it.
+function sameSiteOrNoBrowserOrigin(req) {
+  const ALLOWED = new Set(['www.buitendyk.ca', 'buitendyk.ca', '127.0.0.1', 'localhost',
+    ...String(process.env.PILOT_ALLOWED_HOSTS || '').split(',').map((s) => s.trim()).filter(Boolean)]);
+  const src = req.get('Origin') || req.get('Referer') || '';
+  if (!src) return true;                 // no browser origin at all -> not a CSRF vector
+  let host = null;
+  try { host = new URL(src).hostname; } catch (_) { host = null; }
+  if (!host) return true;                // unparseable -> do not block a legit request
+  return ALLOWED.has(host);
+}
+function csrfGuard(req, res, next) {
+  if (sameSiteOrNoBrowserOrigin(req)) return next();
+  return res.status(403).json({ error: 'cross-site request refused (CSRF guard on the live-money switch)' });
+}
+app.post('/api/pilot/arm', csrfGuard, (req, res) => {
   try { res.json({ ok: true, request: writeArmRequest(true, 'owner') }); }
   catch (err) { res.status(500).json({ error: err.message }); }
 });
-app.post('/api/pilot/disarm', (req, res) => {
+app.post('/api/pilot/disarm', csrfGuard, (req, res) => {
   try { res.json({ ok: true, request: writeArmRequest(false, 'owner') }); }
   catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -1442,6 +1470,20 @@ app.get('/api/jobs/:id', (req, res) => {
   const job = getJob(req.params.id);
   if (!job) return res.status(404).json({ error: 'unknown job (restarted server?) — run again' });
   res.json({ id: job.id, status: job.status, progress: job.progress, result: job.result, error: job.error });
+});
+
+// JSON error handler (finding B, 2026-08-12 HTTP-surface pass). Body-parser
+// SyntaxErrors (malformed JSON POST) and any error passed to next() would otherwise
+// render express's default HTML page WITH a stack trace. Return JSON instead, so the
+// client can surface it and no stack leaks. Must be LAST and take four args for
+// express to treat it as an error handler. Routes that already res.json() their own
+// errors return before reaching here; this is the safety net for the rest.
+app.use((err, req, res, next) => {
+  if (res.headersSent) return next(err);
+  const status = Number.isInteger(err && err.status) ? err.status
+    : (err && err.type === 'entity.parse.failed') ? 400 : 500;
+  const msg = err && err.message ? String(err.message).slice(0, 200) : 'server error';
+  res.status(status).json({ error: msg });
 });
 
 app.listen(PORT, '127.0.0.1', () => {
