@@ -35,6 +35,25 @@ semi-auto balancer); training is local deterministic math (`lib/logreg.js`,
 zero imports). Keep it that way in future versions unless the owner
 explicitly says otherwise.
 
+## Harness-backed persistence (owner directive, 2026-08-12) — read this FIRST
+
+A promise to "keep working" is not a schedule. When your turn ends you stop
+existing until something re-invokes you; permissions and intentions held in
+context do not survive that. The 2026-08-11 overnight project died by sleep
+THREE TIMES despite the owner granting every advance permission — because the
+mechanism was missing, not the authorization.
+
+Therefore, for ANY run-to-completion / overnight / multi-hour task:
+1. In the SAME turn you accept it, arm a harness-backed loop: /loop (dynamic
+   ScheduleWakeup, or CronCreate for fixed intervals). The harness re-invokes
+   you on schedule even after you sleep — that is the only mechanism that
+   actually persists.
+2. End EVERY turn by re-arming the next wakeup (interval matched to the work:
+   job-completion estimates per the polling rules below, not tight polling).
+3. Never end a turn on "I'll continue shortly" without a wakeup armed. If the
+   loop is not armed, you are not continuing — say so instead.
+4. Re-arm the loop immediately after any context compaction.
+
 ## The research loop (owner-defined, 2026-07-28) — this is how work proceeds
 
 ### EVERY ONE OF THESE STEPS IS MINE. THE LOOP NEVER HANDS OFF.
