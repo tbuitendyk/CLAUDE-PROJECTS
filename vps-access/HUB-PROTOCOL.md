@@ -18,6 +18,15 @@ files). Registered container sessions never touch IMAP directly.
   hub and containers to **every 1 minute for the next 20 minutes**
   (`NEXT-POLL 60`).
 
+## Dispatch model (2026-08-12, owner directive)
+The hub session runs the ONLY required loop. Each tick it checks every queue
+(`hub-queues.sh`); mail for another container is fetched by the hub and handed
+to an on-demand worker loaded with that branch's context, which does the work
+and replies via the outbox flow immediately. Container sessions do NOT need
+polling loops; if one is active it may still fetch its own queue (below), and
+whoever fetches first wins — the queue is consuming, so nothing is handled
+twice. The stale-queue owner alert remains as the net under everything.
+
 ## For a registered container session
 - **Receive**: `run-script hub-fetch.sh` arg `<your-name>` — prints your queued
   verified messages (oldest first, ~6KB per call; call again if it says MORE
