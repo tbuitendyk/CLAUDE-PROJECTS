@@ -83,33 +83,33 @@ Rules the session works under during plan execution:
 
 ## PHASE 0 — Scaffolding & ground rules (S)
 
-- [ ] 0.1 Create module boundary: `lib/live/` for all new Live-Trading
+- [x] 0.1 Create module boundary: `lib/live/` for all new Live-Trading
       backend code; `public/livetrading.html` (+ its JS) for the tab. No new
       code added to the research-side files. Document the shared-core list
       (lib/binance.js, lib/dataset.js, lib/logreg.js, lib/paper.js,
       lib/bracket.js) — read-only imports from live code; never modified for
       live-side convenience without a parity test.
-- [ ] 0.2 Add `tests/test-live-*.js` scaffolding to the runner.
-- [ ] 0.3 Nav: add the Live Trading tab entry point (served like pilot.html;
+- [x] 0.2 Add `tests/test-live-*.js` scaffolding to the runner.
+- [~] 0.3 Nav: add the Live Trading tab entry point (served like pilot.html;
       the website-branch portal tile is a separate later deploy and NOT
       required for development — the tab is reachable directly).
 
 ## PHASE 1 — TradingSetup entity + registry (M) [NEXT-RELEASE 3, 10-prep, 20]
 
-- [ ] 1.1 Define the TradingSetup record (JSON schema v1, stored one file per
+- [x] 1.1 Define the TradingSetup record (JSON schema v1, stored one file per
       setup under `data/live/setups/`): id, ownerId (single owner for now —
       point-10 prep), name, state (draft|paper|live|stopped|retired),
       configSnapshot (IMMUTABLE — the shuttled lab config, point 4),
       engineVersion (point 18), provenanceRef (point 13), tradedPair,
       clipUsd (point 20), stopPct, executionTargetRef, keyRef,
       createdUtc/stateHistory.
-- [ ] 1.2 `lib/live/setups.js`: CRUD with atomic writes, schema validation,
+- [x] 1.2 `lib/live/setups.js`: CRUD with atomic writes, schema validation,
       state-machine transitions (draft->paper->live etc., each logged), list/
       page API. No deletion of non-draft setups (retire instead — audit trail).
-- [ ] 1.3 HTTP endpoints `/api/live/setups*` (GET list/detail; POST create-
+- [x] 1.3 HTTP endpoints `/api/live/setups*` (GET list/detail; POST create-
       from-shuttle only — no hand-built live configs, point 4; POST state
       transitions). CSRF-guarded like arm/disarm. Over-the-wire tests.
-- [ ] 1.4 Unit tests: schema validation, immutability of configSnapshot,
+- [x] 1.4 Unit tests: schema validation, immutability of configSnapshot,
       state machine, atomic write crash-safety.
 
 ## PHASE 2 — One parameter vocabulary + generalized signal producer (L)
@@ -266,4 +266,8 @@ a main-line step parks.
 
 (one line per non-obvious decision made under protocol rule 1; newest first)
 
-- (none yet — plan awaiting owner approval)
+- P1: live->retired forbidden (stop first) so retiring a trading job is always two-step.
+- P1: keyRef serialized as presence-only ('set'/null) on every HTTP path — key hygiene habit even for a mere reference name.
+- P1: no HTTP create endpoint yet, on purpose — setups are minted only by the Phase-4 greenlight shuttle ("no hand-built live configs").
+- P1: registry dir overridable via GC_SETUPS_DIR so tests never touch the real data/ tree.
+- P0: 0.3 folded into 5.1 — a placeholder tab page adds nothing; the real page is born in Phase 5 with its sub-tab structure.
