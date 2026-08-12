@@ -220,13 +220,55 @@ module.exports.liveStatusStoppedFlatBlocksEntryAndSchedulesNextEntryAt0100Utc = 
   assert.ok(!ls.items.some((i) => /^Close the/.test(i.what)), 'no exit item when flat');
 };
 
-module.exports.liveStatusRunningSchedulesNextEntryToday = function () {
+module.exports.liveStatusEvaluatesAtWindowCloseNotAtEntry = function () {
+  // owner 2026-08-12 timing fix: the committee EVALUATES when the 96h feature
+  // window CLOSES, at 00:00 UTC — one clear hour BEFORE the 01:00 entry fires. The
+  // "Evaluate the next entry" item must count down to 00:00 (window close), NOT to
+  // the entry/execution time at 01:00.
   const st = pv.derive([{ event: 'ARM_SET', source: 'owner' }]);
-  const ls = pv.liveStatus(st, Date.UTC(2026, 7, 11, 0, 30, 0)); // 00:30 UTC -> today 01:00
+  const ls = pv.liveStatus(st, Date.UTC(2026, 7, 11, 12, 0, 0)); // 2026-08-11 12:00 UTC
   assert.strictEqual(ls.armed, true);
-  assert.strictEqual(ls.nextEntryUtc, '2026-08-11T01:00:00.000Z');
-  const entry = ls.items.find((i) => i.what.startsWith('Evaluate the next entry'));
-  assert.ok(entry && entry.whenUtc === '2026-08-11T01:00:00.000Z', 'running: entry scheduled at 01:00 UTC');
+  assert.strictEqual(ls.nextEntryUtc, '2026-08-12T01:00:00.000Z', 'entry (execution) is the next 01:00 UTC');
+  assert.strictEqual(ls.nextEvalUtc, '2026-08-12T00:00:00.000Z', 'evaluation is the next 00:00 UTC — 1h before the entry');
+  const evalItem = ls.items.find((i) => i.what.startsWith('Evaluate the next entry'));
+  assert.ok(evalItem && evalItem.whenUtc === '2026-08-12T00:00:00.000Z',
+    'evaluate item counts down to window close (00:00), NOT the entry time (01:00)');
+};
+
+module.exports.ltcPositionNetsLongMinusShort = function () {
+  const st = pv.derive([
+    { event: 'ENTRY_FILL', chunk_start: 'c1', side: 'LONG', qty: 0.22, price: 45, exit_due_ts: 2e9 },
+    { event: 'ENTRY_FILL', chunk_start: 'c2', side: 'SHORT', qty: 0.10, price: 46, exit_due_ts: 2e9 },
+  ]);
+  assert.ok(Math.abs(st.ltcPosition.longLtc - 0.22) < 1e-9, 'long total');
+  assert.ok(Math.abs(st.ltcPosition.shortLtc - 0.10) < 1e-9, 'short total');
+  assert.ok(Math.abs(st.ltcPosition.netLtc - 0.12) < 1e-9, 'net LTC = long - short');
+  assert.strictEqual(st.ltcPosition.longCount, 1);
+  assert.strictEqual(st.ltcPosition.shortCount, 1);
+};
+
+module.exports.markPriceAndUnrealizedComeFromPnlMtm = function () {
+  const st = pv.derive([
+    { event: 'ENTRY_FILL', chunk_start: 'c1', side: 'LONG', qty: 0.2, price: 45, exit_due_ts: 2e9 },
+    { event: 'ENTRY_FILL', chunk_start: 'c2', side: 'SHORT', qty: 0.1, price: 50, exit_due_ts: 2e9 },
+    { event: 'PNL_MTM', price: 46, mark_to_market: 1.2, open_legs: 2, utc: '2026-08-12T01:10:16Z' },
+  ]);
+  assert.strictEqual(st.markPrice, 46, 'mark price from the latest PNL_MTM');
+  assert.strictEqual(st.markUtc, '2026-08-12T01:10:16Z');
+  // LONG (46-45)*0.2 = +0.2 ; SHORT (46-50)*0.1 negated = +0.4 ; total +0.6
+  assert.ok(Math.abs(st.unrealizedPnl - 0.6) < 1e-9, 'net unrealized = long +0.2 + short +0.4');
+  const long = st.openPositions.find((p) => p.side === 'LONG');
+  const short = st.openPositions.find((p) => p.side === 'SHORT');
+  assert.ok(Math.abs(long.unrealized - 0.2) < 1e-9, 'long gains as price rises above entry');
+  assert.ok(Math.abs(short.unrealized - 0.4) < 1e-9, 'short gains as price falls below entry');
+  assert.strictEqual(long.markPrice, 46, 'each open row carries the mark price');
+};
+
+module.exports.noPnlMtmLeavesMarkAndUnrealizedNull = function () {
+  const st = pv.derive([{ event: 'ENTRY_FILL', chunk_start: 'c1', side: 'LONG', qty: 0.2, price: 45, exit_due_ts: 2e9 }]);
+  assert.strictEqual(st.markPrice, null, 'no PNL_MTM -> no mark price (screen shows "—")');
+  assert.strictEqual(st.unrealizedPnl, null);
+  assert.strictEqual(st.openPositions[0].unrealized, null);
 };
 
 module.exports.liveStatusCountsPositionsAndSchedulesNextExit = function () {

@@ -53,9 +53,17 @@ function dataFreshness(pairsWithTs, nowMs) {
 function liveStatus(st, nowMs) {
   const iso = (t) => new Date(t).toISOString();
   const d = new Date(nowMs);
-  // next daily entry evaluation: the next 01:00:00 UTC strictly after now
+  // next daily ENTRY (execution): the next 01:00:00 UTC strictly after now.
   let nextEntry = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), F1_ENTRY_HOUR_UTC, 0, 0, 0);
   if (nextEntry <= nowMs) nextEntry += 24 * 3600000;
+  // next EVALUATION: the committee decides the call when the 96h feature window
+  // CLOSES, at 00:00 UTC — one clear hour BEFORE the entry fires (entryOffsetH 97
+  // = window 96h + 1h). So the "evaluate" countdown targets window-close (00:00),
+  // not the entry time; the entry is a separate, later moment. Derived from the
+  // entry hour so the two stay locked together (owner 2026-08-12 timing fix).
+  const WINDOW_CLOSE_HOUR_UTC = F1_ENTRY_HOUR_UTC - 1; // 00:00 UTC
+  let nextEval = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), WINDOW_CLOSE_HOUR_UTC, 0, 0, 0);
+  if (nextEval <= nowMs) nextEval += 24 * 3600000;
 
   const opens = (st.openPositions || []).filter((p) => p && p.exit_due_ts);
   const openLong = opens.filter((p) => p.side === 'LONG').length;
@@ -73,8 +81,8 @@ function liveStatus(st, nowMs) {
     items.push({ what: 'Open a new position', whenUtc: null,
       why: 'HALT is set — new entries are blocked; open positions still exit on schedule.' });
   } else {
-    items.push({ what: 'Evaluate the next entry (LONG / SHORT / FLAT)', whenUtc: iso(nextEntry),
-      why: `the frozen F1 committee decides the next daily position; it opens a $10 clip only if the call is not FLAT.` });
+    items.push({ what: 'Evaluate the next entry (LONG / SHORT / FLAT)', whenUtc: iso(nextEval),
+      why: `the frozen F1 committee decides the next daily position when its 96h feature window closes at 0${WINDOW_CLOSE_HOUR_UTC}:00 UTC; the entry then opens a $10 clip one hour later at 0${F1_ENTRY_HOUR_UTC}:00 UTC only if the call is not FLAT.` });
   }
   // 2) the next scheduled EXIT (runs armed OR stopped)
   if (nextExitPos) {
@@ -90,6 +98,7 @@ function liveStatus(st, nowMs) {
     serverUtc: iso(nowMs),
     entryHourUtc: F1_ENTRY_HOUR_UTC,
     holdHours: F1_HOLD_HOURS,
+    nextEvalUtc: iso(nextEval),
     nextEntryUtc: iso(nextEntry),
     nextExitUtc: nextExitPos ? iso(nextExitPos.exit_due_ts * 1000) : null,
     openPositions: opens.length,
@@ -134,6 +143,9 @@ function derive(events) {
   const incidents = [];  // anything the screen should surface in red
   const decisions = {};  // chunk_start -> the committee's call, votes and fate
   let walletBalance = null; // latest isolated-wallet snapshot (USDT + LTC), per run
+  let markPrice = null;     // LTC price the executor last marked the book at (PNL_MTM)
+  let markToMarket = null;  // realized + unrealized open legs, from PNL_MTM
+  let markUtc = null;       // when that mark was taken
 
   for (const e of events) {
     switch (e.event) {
@@ -185,6 +197,16 @@ function derive(events) {
           usdtFree: n(e.quote_free), usdtNet: n(e.quote_net),
           ltcFree: n(e.base_free), ltcNet: n(e.base_net),
         };
+        break;
+      }
+      case 'PNL_MTM': {
+        // the executor marks the whole book to market every run and journals the
+        // LTC price it used + the mark-to-market total. The screen shows that price
+        // and the per-position unrealized P&L "as of last run" — no live tick, no
+        // network in the display path (independence rule §4).
+        const x = Number(e.price); if (Number.isFinite(x) && x > 0) markPrice = x;
+        const m = Number(e.mark_to_market); if (Number.isFinite(m)) markToMarket = m;
+        markUtc = e.utc || markUtc;
         break;
       }
       case 'RUN_STATUS':
@@ -244,12 +266,52 @@ function derive(events) {
       .filter(([k]) => !['event', 'ts', 'utc'].includes(k))),
   }));
 
+  // LTC position aggregates (owner 2026-08-12): the net LTC the subaccount is
+  // carrying across ALL open positions, as soon as an order opens. A LONG HOLDS
+  // its LTC (counts +qty); a SHORT sold borrowed LTC and OWES it (counts -qty), so
+  // netLtc = sum(long qty) - sum(short qty). longLtc / shortLtc are the two side
+  // totals. Position-derived (from the fills in this journal), which is distinct
+  // from the exchange wallet snapshot (walletBalance.ltcNet) — the two should
+  // track and can be eyeballed against each other on screen.
+  const openArr = Object.values(open);
+  const sumQty = (side) => openArr
+    .filter((p) => p.side === side)
+    .reduce((s, p) => s + (Number(p.qty) || 0), 0);
+  const longLtc = sumQty('LONG');
+  const shortLtc = sumQty('SHORT');
+  const ltcPosition = {
+    netLtc: round(longLtc - shortLtc, 8),
+    longLtc: round(longLtc, 8),
+    shortLtc: round(shortLtc, 8),
+    longCount: openArr.filter((p) => p.side === 'LONG').length,
+    shortCount: openArr.filter((p) => p.side === 'SHORT').length,
+  };
+
+  // per-position unrealized P&L (+/- $) at the last marked LTC price, and the book
+  // total. A LONG gains as price rises, a SHORT as it falls — the same sign the
+  // executor's mark-to-market kill uses. Null until a price has been marked.
+  const unrealizedFor = (p) => (markPrice != null && p.entry_price != null && p.qty != null)
+    ? ((markPrice - p.entry_price) * p.qty) * (p.side === 'SHORT' ? -1 : 1)
+    : null;
+  const unrealizedPnl = markPrice != null
+    ? round(openArr.reduce((s, p) => s + (unrealizedFor(p) || 0), 0), 4)
+    : null;
+
   return {
     armed,
     halted,
     armedBy,
     fixedStopPct,
-    openPositions: Object.values(open).sort((a, b) => a.exit_due_ts - b.exit_due_ts),
+    ltcPosition,     // {netLtc,longLtc,shortLtc,longCount,shortCount} from open fills
+    markPrice: round(markPrice, 4),      // LTC price the executor last marked (as of last run)
+    markToMarket: round(markToMarket, 4),
+    markUtc,
+    unrealizedPnl,   // total open-position unrealized P&L ($) at markPrice
+    openPositions: openArr.slice().sort((a, b) => a.exit_due_ts - b.exit_due_ts).map((p) => ({
+      ...p,
+      markPrice: round(markPrice, 4),
+      unrealized: unrealizedFor(p) != null ? round(unrealizedFor(p), 4) : null,
+    })),
     closedRecent: closed.slice(-20).reverse(),
     walletBalance,   // {usdtFree,usdtNet,ltcFree,ltcNet,utc} as of the last run
     realizedPnl: round(realized, 4),

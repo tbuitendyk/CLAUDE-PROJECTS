@@ -99,7 +99,7 @@
 
   <h2>Open positions</h2>
   <table id="open"><thead><tr>
-    <th>chunk (decision)</th><th>side</th><th>qty</th><th>entry</th><th>age (h)</th><th>exit due</th>
+    <th>chunk (decision)</th><th>side</th><th>qty</th><th>entry</th><th>mark (last run)</th><th>unrealized ($)</th><th>age (h)</th><th>exit due</th>
   </tr></thead><tbody></tbody></table>
 
   <h2>Recent closed</h2>
@@ -128,8 +128,23 @@ function tile(k, v, klass='') { return `<div class="tile"><div class="k">${k}</d
 function row(lbl, val) { return `<div><span class="lbl">${lbl}</span><span class="val">${val}</span></div>`; }
 
 async function post(path) {
-  try { await fetch(path, { method: 'POST', headers: {'Content-Type':'application/json'}, body: '{}' }); }
-  catch (e) { alert('request failed: ' + e); }
+  // A control action (START/STOP) MUST surface failure. The original swallowed
+  // any non-2xx — fetch only throws on a network error, not on an HTTP 500/400 —
+  // so a server-side error (e.g. the 2026-08-12 'fs is not defined' 500) closed
+  // the dialog and looked like nothing happened while the engine never changed.
+  // Now every non-OK response raises a modal that says the state did NOT change.
+  try {
+    const res = await fetch(path, { method: 'POST', headers: {'Content-Type':'application/json'}, body: '{}' });
+    if (!res.ok) {
+      let msg = `HTTP ${res.status}`;
+      try { const j = await res.json(); if (j && j.error) msg = j.error; } catch (_) { /* non-JSON error body */ }
+      alert('ACTION FAILED — the engine state did NOT change.\n\n' + msg + '\n\nTry again; if it repeats, the server needs attention.');
+      return;  // do NOT refresh into a misleading "looks unchanged, so fine" view
+    }
+  } catch (e) {
+    alert('ACTION FAILED — could not reach the server, so the engine state did NOT change.\n\n' + e);
+    return;
+  }
   refresh();
 }
 $('#btnStart').onclick = () => {
@@ -268,17 +283,30 @@ async function refresh() {
   const usdt = wb && wb.usdtFree != null ? '$' + wb.usdtFree.toFixed(2) : '—';
   const ltc = wb && wb.ltcFree != null ? wb.ltcFree.toFixed(6) + ' LTC' : '—';
   const wbStale = wbAgeMin != null && wbAgeMin > 30;
-  $('#balBox').innerHTML = wb
+  // Net LTC across all OPEN positions (owner 2026-08-12): long holds LTC (+), short
+  // owes borrowed LTC (−), so net = long − short. Position-derived from the fills,
+  // updates as soon as an order opens (independent of the ~10-min wallet snapshot).
+  const lp = d.ltcPosition || {};
+  const sgn = (v) => (v > 0 ? 'pos' : v < 0 ? 'neg' : 'muted');
+  const posLine = lp.netLtc != null
+    ? `<div style="margin-top:.35rem"><b>Net LTC (open positions):</b> `
+      + `<span class="${sgn(lp.netLtc)}">${lp.netLtc >= 0 ? '+' : ''}${lp.netLtc.toFixed(6)} LTC</span>`
+      + ` <span class="muted">· long ${lp.longLtc.toFixed(6)} (${lp.longCount}) · short ${lp.shortLtc.toFixed(6)} (${lp.shortCount})</span></div>`
+    : '';
+  $('#balBox').innerHTML = (wb
     ? `<b>Sub-account wallet</b> (as of last run, ${wbAge}): <span class="${wbStale?'warn':'pos'}">${usdt} USDT</span> · <span class="${wbStale?'warn':''}">${ltc}</span>`
       + (wb.usdtNet !== wb.usdtFree || wb.ltcNet !== wb.ltcFree
           ? ` <span class="muted">· net: $${(wb.usdtNet??0).toFixed(2)} USDT / ${(wb.ltcNet??0).toFixed(6)} LTC (free minus borrow)</span>` : '')
       + (wbStale ? ` <span class="warn">· stale (executor not reporting)</span>` : '')
-    : `<b>Sub-account wallet:</b> <span class="muted">no balance snapshot yet — the executor reports it each run</span>`;
+    : `<b>Sub-account wallet:</b> <span class="muted">no balance snapshot yet — the executor reports it each run</span>`)
+    + posLine;
 
   const feeCls = d.realizedFeePerLegAvg == null ? '' : (d.realizedFeePerLegAvg <= d.modelFeePerLeg ? 'pos' : 'warn');
   $('#tiles').innerHTML =
     tile('USDT (free)', wb && wb.usdtFree != null ? '$'+wb.usdtFree.toFixed(2) : '—', wbStale?'warn':'') +
     tile('LTC (free)', wb && wb.ltcFree != null ? wb.ltcFree.toFixed(6) : '—', wbStale?'warn':'') +
+    tile('LTC price (last run)', d.markPrice != null ? '$'+d.markPrice.toFixed(2) : '—') +
+    tile('Unrealized P&L', money(d.unrealizedPnl), cls(d.unrealizedPnl)) +
     tile('Realized P&L', money(d.realizedPnl), cls(d.realizedPnl)) +
     tile('Open positions', d.openPositions.length) +
     tile('Fee/leg: model', '$'+d.modelFeePerLeg.toFixed(3)) +
@@ -293,9 +321,12 @@ async function refresh() {
 
   $('#open tbody').innerHTML = d.openPositions.length ? d.openPositions.map(p =>
     `<tr><td>${(p.chunk_start||'').slice(0,16)}</td><td class="${p.side==='LONG'?'pos':'neg'}">${p.side}</td>
-     <td>${p.qty}</td><td>${p.entry_price??'—'}</td><td>${ageH(p.exit_due_ts)}</td>
+     <td>${p.qty}</td><td>${p.entry_price??'—'}</td>
+     <td>${p.markPrice!=null?'$'+p.markPrice.toFixed(2):'—'}</td>
+     <td class="${cls(p.unrealized)}">${money(p.unrealized)}</td>
+     <td>${ageH(p.exit_due_ts)}</td>
      <td>${p.exit_due_ts?new Date(p.exit_due_ts*1000).toISOString().slice(0,16):'—'}</td></tr>`).join('')
-    : '<tr><td colspan="6" class="muted">none open</td></tr>';
+    : '<tr><td colspan="8" class="muted">none open</td></tr>';
 
   $('#closed tbody').innerHTML = d.closedRecent.length ? d.closedRecent.map(c =>
     `<tr><td>${(c.chunk_start||'').slice(0,16)}</td><td class="${c.side==='LONG'?'pos':'neg'}">${c.side}</td>
