@@ -1,0 +1,55 @@
+Prime-at-01:00 execution deployed — fills land ~01:01, box still STOPPED
+
+tl;dr — Done and live on the boxes: the executor is now primed to fill the
+day's F1 entry right at the 01:00 UTC open (~01:01) instead of ~01:10. No
+change to the model, the executor logic, or the frozen F1 geometry — this is
+purely timing (two extra systemd timers). The box is STILL STOPPED; nothing
+trades until you press START. Nothing needed from you unless you want to arm.
+
+What changed
+------------
+You asked to prime execution for 01:00 rather than pull the trigger five
+minutes late. I added two wall-clock timers on top of the existing schedule:
+
+  * VPS at 01:00:15 UTC — produces the day's intent with the LIVE 01:00 open
+    (fetched through the Mexico tunnel, the same source that trained F1) and
+    ships it to the box.
+  * Box at 01:01:00 UTC — the executor fills it, ~1 minute after the open.
+
+Before, the first produce was the :05 tick and the first fill the :10 exec, so
+the entry landed ~10 minutes into the hour. Now it lands ~1 minute in — much
+closer to the trained open, which is the whole point of the fidelity pilot.
+
+The old :05 / :00-10 timers stay exactly as they were, as the backstop: if the
+01:00 timers ever miss (tunnel down, box asleep), the ordinary tick ships the
+intent a few minutes later. A miss is only ever a slightly LATER fill, never a
+wrong one — stale data can only withhold a trade, never fabricate one.
+
+Safety, in plain terms
+----------------------
+  * Box STOPPED. The timers are just alarm clocks; the master switch (ARM)
+    still gates every entry. Right now ARM is absent, so at 01:01 the executor
+    wakes, reconciles, and opens nothing. Deploy output confirmed: "master
+    switch (ARM) present? NO — engine STOPPED until owner presses START".
+  * No double trade. The 01:01 fire and the 01:10 fire both run the executor,
+    but it de-duplicates by the period key, so a period can only ever open
+    once, in any order.
+  * The two entry timers deliberately do NOT catch up after downtime — a
+    retro-fire at, say, 03:00 would fill hours past the trained open, which is
+    worthless. Only the boundary fire counts.
+
+If you want to take today's 01:00 entry: press START before ~01:30 UTC (the
+intent goes stale 30 min after it is produced). The plan on the status screen
+is the day's preview. If you'd rather wait for a fresh day, just leave it
+stopped and arm whenever you like — tomorrow's 01:00 will prime itself.
+
+Verification
+------------
+  * Full executor suite green (72 tests) and the classifier suite green.
+  * A new test pins the load-bearing safety rule (a stopped box must not
+    "use up" the day's intent); I watched it fail when I deliberately broke
+    that rule, then pass once reverted.
+  * Two QC-register entries added (the catch-up guard and the de-dup rule).
+  * Timers confirmed scheduled: VPS 01:00:15, box 01:01:00, both never-yet-run.
+
+c.
