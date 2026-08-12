@@ -1,0 +1,33 @@
+Nav: pilot screen was also missing the bar — fixed; server chain verified end to end
+
+tl;dr — Found the likely real culprit. Your first mail's URL got stripped by the
+mail pipeline, so I guessed which page you meant. I fixed the bracket-lab guide
+first — but the F1 PILOT screen was ALSO born without the site header, and I now
+think that is the page you were on. It has the bar as of 22:04 UTC. Every page
+the classifier serves now carries the same top bar (portal home on the left,
+"Back to the app" on the right). If it STILL does not show after a refresh,
+reply with the address typed out in plain text (e.g. "/classifier/pilot.html" —
+links get stripped), because the server side is now proven correct end to end.
+
+WHY I SAY PROVEN. After your hard-refresh mail I traced the whole delivery
+chain on the box rather than guessing again:
+  - the file on disk under /opt has the new header (updated 20:58 UTC);
+  - the node service itself serves that exact file with the header in it
+    (fetched it locally on the box and checked);
+  - the nginx block for /classifier/ is a plain pass-through with
+    "Cache-Control: no-store" on every response — nginx does not cache it and
+    explicitly tells browsers not to either.
+So for the bracket guide there is no server-side way to be shown the old page.
+That left "wrong page" as the best explanation, and the pilot screen was the
+one remaining page with no header.
+
+PAGES AND THEIR NAV, as of now:
+  index.html         main app        had the bar already
+  help.html          user guide      had the bar already
+  help-bracket.html  bracket guide   added 20:58 UTC
+  pilot.html         F1 live pilot   added 22:04 UTC  <- probably your page
+
+The pilot deploy was static-files-only — the engine and any running job were
+deliberately not restarted (engine healthy, CPU cap 90%).
+
+c.
