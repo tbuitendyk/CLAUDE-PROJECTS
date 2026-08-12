@@ -168,7 +168,7 @@ All built and unit-tested WITHOUT deploying to the box (Phase-10 gate).
 
 ## PHASE 5 — Live Trading tab UI (M) [NEXT-RELEASE 1, 12, 15, 20]
 
-- [ ] 5.1 `public/livetrading.html` born with sub-tabs (point 12): Setups
+- [x] 5.1 `public/livetrading.html` born with sub-tabs (point 12): Setups
       (pager) | Setup detail | Journal & reporting | Data & health.
       Paper setups appear IN THE SAME pager/views with identical display and
       formatting — distinguished only by an unmissable PAPER badge (owner
@@ -177,17 +177,17 @@ All built and unit-tested WITHOUT deploying to the box (Phase-10 gate).
       Styling via shared theme tokens from day one (point 24): dark mode in
       the pilot.html technical/compressed style (the baseline), light mode in
       the Bracket Lab style — so the tab carries into UTS unchanged.
-- [ ] 5.2 Setup detail: config (read-only snapshot + provenance link), state
+- [x] 5.2 Setup detail: config (read-only snapshot + provenance link), state
       controls (paper/live/stop — live-arm is owner-gated, see protocol 3a),
       clip size editor (point 20, exchange-minimum bounded), stop config,
       execution target, key status (present/absent only).
-- [ ] 5.3 Per-setup dashboard: the pilot.html views generalized — status,
+- [x] 5.3 Per-setup dashboard: the pilot.html views generalized — status,
       balances, open/closed positions, unrealized P&L at mark, incidents,
       preview, fidelity tiles — driven by setupId.
-- [ ] 5.4 Per-setup arm/disarm endpoints, CSRF-guarded, with the point-115
+- [~] 5.4 Per-setup arm/disarm endpoints, CSRF-guarded, with the point-115
       client error-surfacing pattern from day one.
-- [ ] 5.5 pilot.html STAYS as-is serving F1 until cutover.
-- [ ] 5.6 Over-the-wire endpoint tests + client JS syntax gate in the suite.
+- [x] 5.5 pilot.html STAYS as-is serving F1 until cutover.
+- [x] 5.6 Over-the-wire endpoint tests + client JS syntax gate in the suite.
 
 ## PHASE 6 — Safety rails + fidelity per setup (M) [NEXT-RELEASE 16, 17]
 
@@ -196,22 +196,22 @@ All built and unit-tested WITHOUT deploying to the box (Phase-10 gate).
       faults). QC-110 price_pending semantics carried over.
 - [ ] 6.2 Alerting generalized: per-setup halt/heartbeat/stale/incident
       pages, setup name in every subject line.
-- [ ] 6.3 Fidelity report per setup: fill deviation, realized fee/leg vs
+- [x] 6.3 Fidelity report per setup: fill deviation, realized fee/leg vs
       model, live-vs-lab expectation tracking — the pilot's metrics as a
       standard per-setup view (point 17).
 - [ ] 6.4 Watched-failing tests for every rail.
 
 ## PHASE 7 — Data catalog + repair (M) [NEXT-RELEASE 19]
 
-- [ ] 7.1 Catalog: manifest of required data derived from active setups
+- [x] 7.1 Catalog: manifest of required data derived from active setups
       (pairs x date ranges), stored server-side (`data/catalog.json`),
       checksums per file.
-- [ ] 7.2 Verify-and-repair operation: compare local store to catalog, flag
+- [x] 7.2 Verify-and-repair operation: compare local store to catalog, flag
       MISSING/CORRUPT, re-fetch from the exchange public channel. Runs on
       tick start, on schedule, and on any read miss.
-- [ ] 7.3 Data & health sub-tab surface: catalog status, missing flags,
+- [~] 7.3 Data & health sub-tab surface: catalog status, missing flags,
       repair button + last-repair log.
-- [ ] 7.4 Tests incl. deliberate deletion -> flag -> rebuild round-trip.
+- [x] 7.4 Tests incl. deliberate deletion -> flag -> rebuild round-trip.
 
 ## PHASE 8 — Configurable execution target + adapter seams (M)
 [NEXT-RELEASE 3, 7-prep, 9-compat]
@@ -266,6 +266,9 @@ a main-line step parks.
 
 (one line per non-obvious decision made under protocol rule 1; newest first)
 
+- P6: per-setup view derives real+paper as SEPARATE ledgers from the synced journal; fidelity (fill dev, fee/leg) per setup. Mirror(6.1)+alerting(6.2) remain.
+- P5: arm/disarm per-setup endpoints deferred with the box control-plane wiring (Phase 8/10) — state controls (paper/live/stop) are in; live-arm stays the box's ARM.
+- P7: catalog is single-node now (catalog+cache co-located); subscriber-worker remote-store form is the same required-vs-present interface (point 19 future).
 - P3: paper fills use the model's own fee rate (0.125%/leg) so paper == the lab's promise; fidelity then isolates execution.
 - P3: one box serves ONE symbol (allowlist symbol affinity enforced); multi-symbol = a second executor instance/box, which the execution-target model already supports.
 - P4: trainThrough = the selecting run's fire time (cache holds only closed candles, so fire time IS the data horizon) — the forwardbook freeze rule, always derivable.
