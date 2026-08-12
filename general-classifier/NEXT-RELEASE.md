@@ -303,10 +303,28 @@ The provenance record (point 13) includes the engine version. On engine
 upgrade, setups are either pinned to their validated version or flagged for
 re-validation.
 
-## 19. Subscriber workers fetch their own market data
+## 19. Subscriber workers fetch their own market data — with a controlled catalog and self-repair
 
 Each user's worker pulls candles directly from the exchange's public channel;
 we never redistribute market data (cleaner legally, no bottleneck on us).
+
+Owner amendment (2026-08-12): local data is fine, but it must be MANAGED:
+- A **catalog/library under the user's profile that WE control** — a
+  server-side manifest of what data the user's system is supposed to have
+  (pairs, ranges, files/checksums).
+- A **known path** to the user's local data on whatever machine runs the
+  engine — the worker registers where its data lives; never an unknowable
+  scatter.
+- **Missing-data detection and repair:** if the user deletes files locally,
+  the system flags the data as MISSING against the catalog and can REBUILD it
+  (re-download from the exchange's public channel) rather than failing on
+  file-not-found errors.
+
+[feasibility] Clean — the catalog is the source of truth, the local store is a
+rebuildable cache. The current cache layout (month bundles + day files per
+pair) already fits a manifest-with-checksums model; verify-against-catalog and
+re-fetch-what's-missing becomes a standard worker operation (run on start, on
+schedule, and on any read miss).
 
 ## 20. Live trade size configurable per trading setup
 
