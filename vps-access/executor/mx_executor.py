@@ -1118,7 +1118,11 @@ def do_run(bx):
         overdue_h = (now - p["exit_due_ts"]) / 3600
         if due and overdue_h > 0.5:
             jlog("EXIT_OVERDUE", chunk_start=p["chunk_start"],
-                 overdue_hours=round(overdue_h, 2))
+                 overdue_hours=round(overdue_h, 2),
+                 # R12: carry setup_id so the generalized rail's alerter (live-alert.sh)
+                 # can see/attribute a schema-2 incident, and the F1 alerter's R6 filter
+                 # skips it. Absent on schema-1 -> F1 alerter handles it, unchanged.
+                 **({"setup_id": p["setup_id"]} if p.get("setup_id") else {}))
         if p["side"] == "LONG":
             # Size from THIS position (p['qty']), never the wallet. Isolated
             # margin pools all longs in one balance, so selling free_base() would
@@ -1377,10 +1381,15 @@ def do_run(bx):
             # incident the alert timer emails on, instead of a silent INTENT_INVALID.
             jlog("INTENT_STALE", file=name, chunk_start=it.get("chunk_start"),
                  age_s=int(age), intent_ts=it.get("ts"),
-                 now_exchange=round(now_exch, 3), offset_ms=bx.offset_ms)
+                 now_exchange=round(now_exch, 3), offset_ms=bx.offset_ms,
+                 # R12: attribute a schema-2 stale/invalid intent to its setup so the
+                 # generalized rail's alerter sees it and the F1 alerter's R6 filter
+                 # skips it (schema-1 keeps no setup_id -> F1 alerter, unchanged).
+                 **({"setup_id": it.get("setup_id")} if is2 and it.get("setup_id") else {}))
         if problems or stale:
             jlog("INTENT_INVALID", file=name,
-                 problems=problems + ([f"stale({int(age)}s)"] if stale else []))
+                 problems=problems + ([f"stale({int(age)}s)"] if stale else []),
+                 **({"setup_id": it.get("setup_id")} if is2 and it.get("setup_id") else {}))
             os.rename(path, path + ".bad")
             continue
         events_now = journal_events()

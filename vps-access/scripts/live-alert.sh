@@ -30,6 +30,10 @@ ENVFILE = os.environ["ENVFILE"]
 DRYRUN = os.environ.get("DRYRUN", "0") == "1"
 
 COOLDOWN_S = 3600.0
+# R12: mirror.json is the generalized rail's drift/health file; if the writer
+# stalls it reads as "fresh" (last good content) and hides its own silence. Page
+# when the file exists but has not been refreshed in this long (writer ~hourly).
+MIRROR_STALE_S = 3 * 3600.0
 # schema-2 incident kinds worth a page, keyed per setup. FIXED_STOP is a page
 # (a protective stop fired — the owner should know), the rest are faults.
 INCIDENT_EVENTS = {"KILL_PRICE_DRIFT", "FIXED_STOP", "EXIT_OVERDUE",
@@ -44,25 +48,44 @@ def load(f, default):
         with open(f) as fh: return json.load(fh)
     except Exception: return default
 
-state = load(STATE, {})          # key "setup|kind" -> last paged epoch
-alerts = []                      # (key, subject_frag, body_lines)
+now = time.time()
+state = load(STATE, {})          # key "setup|kind" -> for journal incidents the last-paged
+                                 # INCIDENT ts (watermark, R13); for mirror/health the last-paged wall time
+# alerts: (key, subject_frag, body_lines, inc_ts). inc_ts is the incident's own ts
+# for journal incidents (page on a NEWER occurrence, R13) or None for mirror/health
+# (wall-clock cooldown).
+alerts = []
 
-# ---- (a) mirror breaks per setup ------------------------------------------
+# ---- (a) mirror breaks per setup + mirror-file HEALTH ----------------------
 mir = load(MIRROR, None)
+# R12: a STALLED mirror writer hides its own silence — the file reads as fresh. If
+# the file EXISTS but is stale, page; absent = no live/paper setup writes it yet.
+try:
+    mir_age = now - os.stat(MIRROR).st_mtime
+    if mir_age > MIRROR_STALE_S:
+        alerts.append(("_mirror|STALE", f"mirror stale {int(mir_age // 60)}m",
+                       [f"mirror.json not refreshed in {int(mir_age // 60)} min (writer runs ~hourly) — "
+                        "the generalized rail's drift detector may be stalled"], None))
+except FileNotFoundError:
+    pass
 if mir and isinstance(mir.get("results"), list):
     for r in mir["results"]:
         if r.get("breaks"):
             key = f'{r.get("setup_id")}|MIRROR_BREAK'
             det = "; ".join(d.get("reason", "?") for d in (r.get("details") or [])[:3])
             alerts.append((key, f'{r.get("setup_id")}: MIRROR BREAK x{r["breaks"]}',
-                           [f'setup {r.get("setup_id")}: {r["breaks"]} decision(s) no longer reproduce', det]))
+                           [f'setup {r.get("setup_id")}: {r["breaks"]} decision(s) no longer reproduce', det], None))
         if r.get("error"):
             key = f'{r.get("setup_id")}|MIRROR_ERROR'
             alerts.append((key, f'{r.get("setup_id")}: mirror error',
-                           [f'mirror recompute errored: {r["error"]}']))
+                           [f'mirror recompute errored: {r["error"]}'], None))
 
 # ---- (b) setup-tagged journal incidents ------------------------------------
-now = time.time()
+# R13: keep the LATEST incident per (setup, kind), and page it only when its ts is
+# NEWER than the watermark — so a single historical incident sitting in the 26h
+# window pages ONCE, not every cooldown for the whole day. A genuinely later
+# occurrence (newer ts) pages again.
+latest = {}   # key -> (ts, frag, body_lines)
 try:
     with open(JOURNAL) as fh:
         for line in fh:
@@ -77,43 +100,58 @@ try:
             if now - ts > 26 * 3600: continue       # only the last ~day matters
             if ev in INCIDENT_EVENTS:
                 key = f"{sid}|{ev}"
-                alerts.append((key, f"{sid}: {ev}",
-                               [json.dumps({k: v for k, v in e.items() if k not in ("event",)})[:300]]))
+                frag = f"{sid}: {ev}"
+                body_l = [json.dumps({k: v for k, v in e.items() if k not in ("event",)})[:300]]
             elif ev == "INTENT_INVALID":
                 probs = set(e.get("problems") or [])
-                if probs & ALLOW_PROBLEMS:
-                    key = f"{sid}|INTENT_REFUSED"
-                    alerts.append((key, f"{sid}: intent refused ({','.join(sorted(probs & ALLOW_PROBLEMS))})",
-                                   [json.dumps(e)[:300]]))
+                if not (probs & ALLOW_PROBLEMS): continue
+                key = f"{sid}|INTENT_REFUSED"
+                frag = f"{sid}: intent refused ({','.join(sorted(probs & ALLOW_PROBLEMS))})"
+                body_l = [json.dumps(e)[:300]]
+            else:
+                continue
+            if key not in latest or ts > latest[key][0]:
+                latest[key] = (ts, frag, body_l)
 except FileNotFoundError:
     pass
+for key, (ts, frag, body_l) in latest.items():
+    alerts.append((key, frag, body_l, ts))
 
-# ---- de-dup: page per key at most once per cooldown -------------------------
+# ---- de-dup: journal incidents page on TRANSITION (newer ts than the
+# watermark); mirror/health page at most once per wall-clock cooldown ---------
 due = []
 seen_keys = set()
-for key, frag, lines in alerts:
+for key, frag, lines, inc_ts in alerts:
     if key in seen_keys: continue
     seen_keys.add(key)
-    last = state.get(key, 0)
-    if now - last < COOLDOWN_S: continue
-    due.append((key, frag, lines))
+    if inc_ts is not None:
+        if inc_ts <= state.get(key, 0): continue    # not newer than last paged (R13)
+    else:
+        if now - state.get(key, 0) < COOLDOWN_S: continue
+    due.append((key, frag, lines, inc_ts))
 
 if not due:
     print("live-alert: nothing to page")
     raise SystemExit(0)
 
-subject = "LIVE-SETUP ALERT: " + "; ".join(f for _, f, _ in due[:4]) + ("" if len(due) <= 4 else f" (+{len(due)-4} more)")
+subject = "LIVE-SETUP ALERT: " + "; ".join(f for _, f, _, _ in due[:4]) + ("" if len(due) <= 4 else f" (+{len(due)-4} more)")
 body = ["Per-setup alert from the generalized rail (live-alert.sh).", ""]
-for _, frag, lines in due:
+for _, frag, lines, _ in due:
     body.append(f"* {frag}")
     body.extend(f"    {l}" for l in lines if l)
 body += ["", "Screen: https://www.buitendyk.ca/classifier/livetrading.html", "-- live-alert (machine signal)"]
 
+# record: a journal incident advances its watermark to the incident's ts (so only
+# a NEWER occurrence re-pages, R13); a mirror/health alert records the wall time.
+def _persist():
+    for k, _f, _l, inc_ts in due:
+        state[k] = inc_ts if inc_ts is not None else now
+    with open(STATE, "w") as fh: json.dump(state, fh)
+
 if DRYRUN:
     print("DRYRUN would send:", subject)
-    for _, f_, _l in due: print("  -", f_)
-    for k, _f, _l in due: state[k] = now
-    with open(STATE, "w") as fh: json.dump(state, fh)
+    for _, f_, _l, _t in due: print("  -", f_)
+    _persist()
     raise SystemExit(0)
 
 pw = None
@@ -151,6 +189,5 @@ for label, mode in (("587/STARTTLS", "starttls"), ("465/SMTPS", "ssl")):
 if not sent:
     print("ALL sends failed — state NOT persisted; will retry next run")
     raise SystemExit(1)
-for k, _f, _l in due: state[k] = now
-with open(STATE, "w") as fh: json.dump(state, fh)
+_persist()
 PY

@@ -47,4 +47,29 @@ out3=$(run)
 echo "$out3" | grep -q "nothing to page" || fail "empty world should page nothing"
 echo "PASS 3: empty world silent"
 
+# R13: an incident 2h old, already paged at its own ts (the watermark). It must
+# NOT re-page even though the 1h cooldown has long expired — the old timer-only
+# logic re-paged the same incident every cooldown for the whole 26h window.
+J2="$T/j-r13.jsonl"; S2="$T/s-r13.json"; M2="$T/m-r13.json"
+TOLD=$(python3 -c "print(int($NOW-7200))")   # 2h ago; cooldown is 1h
+printf '{"event":"FIXED_STOP","setup_id":"s-w","chunk_start":"c1","ts":%s}\n' "$TOLD" > "$J2"
+echo "{\"s-w|FIXED_STOP\": $TOLD}" > "$S2"    # already paged at that incident's ts
+r13=$(LIVE_ALERT_DRYRUN=1 LIVE_MIRROR_FILE="$M2" LIVE_ALERT_STATE="$S2" bash "$HERE/live-alert.sh" "$J2")
+echo "$r13" | grep -q "nothing to page" \
+  || fail "R13 a 2h-old already-paged incident must NOT re-page though the cooldown expired"
+# a genuinely NEWER occurrence (later ts) re-pages
+printf '{"event":"FIXED_STOP","setup_id":"s-w","chunk_start":"c2","ts":%s}\n' "$(python3 -c "print(int($NOW))")" >> "$J2"
+r13c=$(LIVE_ALERT_DRYRUN=1 LIVE_MIRROR_FILE="$M2" LIVE_ALERT_STATE="$S2" bash "$HERE/live-alert.sh" "$J2")
+echo "$r13c" | grep -q "s-w: FIXED_STOP" || fail "R13 a newer occurrence must re-page"
+echo "PASS 4: a stale already-paged incident does not re-page; a newer one does (R13)"
+
+# R12: a STALE mirror.json (writer stalled) pages, so its silence is visible
+J3="$T/j-r12.jsonl"; S3="$T/s-r12.json"; M3="$T/m-r12.json"
+: > "$J3"
+echo '{"results":[]}' > "$M3"
+python3 -c "import os,time; os.utime('$M3', (time.time()-4*3600, time.time()-4*3600))"
+r12=$(LIVE_ALERT_DRYRUN=1 LIVE_MIRROR_FILE="$M3" LIVE_ALERT_STATE="$S3" bash "$HERE/live-alert.sh" "$J3")
+echo "$r12" | grep -qi "mirror stale" || fail "R12 stale mirror.json should page"
+echo "PASS 5: stale mirror.json pages (R12)"
+
 echo "ALL live-alert fixture checks PASS"
