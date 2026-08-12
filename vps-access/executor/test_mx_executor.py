@@ -956,6 +956,24 @@ class ExecutorTest(unittest.TestCase):
         self.assertTrue(self.x.setup_halted("s-ex"), "a schema-2 exit reject halts its own setup")
         self.assertFalse(self.x.halted(), "a schema-2 exit reject must NOT halt the box (F1)")
 
+    def test_transient_no_price_keeps_the_intent_for_retry(self):
+        # R18: a transient ticker failure (no price this run) must NOT consume the
+        # intent (INTENT_SEEN + .done) — else one exchange hiccup permanently
+        # forfeits the F1 entry the model called. The intent stays and fills next
+        # run when the price returns.
+        self.write_intent(side="LONG", chunk="2026-08-07T00:00Z")
+        MockBinance.price_fails = True
+        self.x.do_run(self.bx())
+        ev = self.events()
+        self.assertNotIn("INTENT_SEEN", ev, "a no-price run must NOT consume the intent")
+        self.assertNotIn("ENTRY_FILL", ev)
+        self.assertTrue(any(n.endswith(".json") for n in os.listdir(self.x.INTENTS)),
+                        "the intent is kept as .json for the next run")
+        # price returns -> the kept intent fills
+        MockBinance.price_fails = False
+        self.x.do_run(self.bx())
+        self.assertIn("ENTRY_FILL", self.events(), "the kept intent fills once price returns")
+
     def test_paper_intent_books_even_when_disarmed(self):
         # R8: paper is pure measurement (no orders), so a disarmed box must STILL
         # book paper entries — else a real-money fault (disarm/halt/reject-kill)

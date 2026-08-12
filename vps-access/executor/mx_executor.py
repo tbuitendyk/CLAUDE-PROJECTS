@@ -1400,6 +1400,20 @@ def do_run(bx):
                  **({"setup_id": it["setup_id"]} if is2 else {}))
             os.rename(path, path + ".dup")
             continue
+        # R18: a TRANSIENT failure to read the price this run must NOT consume the
+        # intent and forfeit the period. Fetch the price BEFORE INTENT_SEEN/.done so
+        # a no-price run leaves the intent for the next run to retry. QC-113 is
+        # preserved: the arm gate and the dup check still precede this, and a run that
+        # DOES consume still logs INTENT_SEEN only after the arm gate, so the two
+        # entry fires stay idempotent. FLAT intents place no order and need no price.
+        pre_price = None
+        if it["side"] != "FLAT":
+            pre_price = bx.price()
+            if pre_price is None:
+                jlog("ENTRY_SKIPPED", chunk_start=it["chunk_start"],
+                     reason="no price this run (transient — intent kept for retry)",
+                     **({"setup_id": it["setup_id"]} if is2 else {}))
+                continue
         # R5: paper-vs-real is decided by the ALLOWLIST, not the intent — a paper
         # setup can NEVER place a real order whatever its own flag says (only a
         # setup the box was told is 'live' can). A live setup honors its intent
@@ -1448,7 +1462,10 @@ def do_run(bx):
                 jlog("ENTRY_SKIPPED", chunk_start=it["chunk_start"],
                      reason=f"concurrency cap {MAX_CONCURRENT}")
                 continue
-        price = bx.price()
+        # R18: reuse the price fetched before INTENT_SEEN (same run) so a value that
+        # was present at the transient guard is used for the order — never re-fetched
+        # into a None after the intent was already consumed. Non-FLAT reaches here.
+        price = pre_price
         if price is None:
             jlog("ENTRY_SKIPPED", chunk_start=it["chunk_start"],
                  reason="no price")
