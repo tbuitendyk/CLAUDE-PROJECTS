@@ -1,0 +1,3 @@
+.heartbeat-cron.pid
+.heartbeat-cron.out
+.heartbeat-cron.lock

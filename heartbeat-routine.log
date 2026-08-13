@@ -1,0 +1,5 @@
+tick 1: 2026-08-13T13:46:17Z [container:8184e4ff] (two hourly fires scheduled 12:19Z and 13:19Z delivered together after queuing; A last tick 9min ago; B daemon dead->restarted after 5th machine-identity change)
+tick 2: 2026-08-13T15:56:22Z [container:298674f4] (A last tick 139min ago; B daemon dead->restarted; fire(s) due 14:19Z/15:19Z delivered late at 15:55Z alongside a user message after 2h idle — queued, did not self-revive the idle session)
+tick 3: 2026-08-13T15:57:59Z [container:298674f4] (A last tick 1min ago; B daemon running; second queued fire flushed on turn-end — queue-drain-on-idle pattern confirmed)
+tick 4: 2026-08-13T16:48:41Z [container:a6a6862b] (A last tick 52min ago; B daemon dead->restarted, 4th death; FIRST autonomous cold-idle delivery — 16:19Z fire arrived 16:48Z, 29min late, no human involved)
+tick 5: 2026-08-13T17:34:38Z [container:f42198b1] (A last tick 98min ago -> revived this fire; B daemon dead->restarted, 6th death; fire due 17:19Z arrived 17:34Z, 15min late)
