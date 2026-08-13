@@ -52,6 +52,7 @@ LOG_FILE="${LOG_FILE:-heartbeat-cron.log}"
 PID_FILE=".heartbeat-cron.pid"
 OUT_FILE=".heartbeat-cron.out"
 LOCK_FILE=".heartbeat-cron.lock"
+BREADCRUMB=".heartbeat-cron.breadcrumb"   # written every 30s; survives engine swaps; last line = time of death ±30s
 
 log() { echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] $*"; }
 
@@ -96,7 +97,12 @@ run() {
   log "scheduler loop up: pid=$$ interval=${INTERVAL_SECONDS}s branch=$BRANCH"
   while :; do
     tick || true
-    sleep "$INTERVAL_SECONDS"
+    local slept=0
+    while [ "$slept" -lt "$INTERVAL_SECONDS" ]; do
+      echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) [container:$(cut -c1-8 /proc/sys/kernel/random/boot_id)] pid=$$" > "$BREADCRUMB"
+      sleep 30
+      slept=$((slept+30))
+    done
   done
 }
 
@@ -107,6 +113,8 @@ start() {
     echo "already running (pid $(cat "$PID_FILE"))"
     exit 1
   fi
+  # Death forensics: the previous life's final breadcrumb = its time of death ±30s.
+  [ -f "$BREADCRUMB" ] && echo "previous life last seen: $(cat "$BREADCRUMB")"
   setsid bash "$REPO_DIR/heartbeat-cron.sh" run >> "$OUT_FILE" 2>&1 < /dev/null &
   sleep 1
   if alive; then
