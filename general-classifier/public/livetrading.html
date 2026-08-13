@@ -3,36 +3,40 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Live Trading</title>
+<title>Trading</title>
 <style>
-  /* THEME TOKENS (NEXT-RELEASE point 24): dark = the F1 pilot's compact
-     technical style (the baseline); light = the Bracket Lab register. A single
+  /* THEME TOKENS (NEXT-RELEASE points 24/25): dark = the F1 pilot's compact
+     technical style (the baseline); light = the Bracket Lab register. One
      [data-theme] switch flips every surface. Carries into UTS unchanged. */
   :root, :root[data-theme="dark"] {
     --bg:#0e1116; --fg:#d6dce5; --muted:#6b7686; --dim:#8b96a5;
     --panel:#12161d; --tile:#171c24; --line:#232a35;
     --pos:#4ec9a5; --neg:#e06c75; --warn:#e5c07b; --accent:#9db4d0;
     --paper:#3b3320; --paperln:#e5c07b; --tabbg:#171c24; --tabon:#0e1116;
+    --haltbg:#3a1d1f; --runbg:#16281f; --stopbg:#20242c; --stalebg:#2f2a17;
   }
   :root[data-theme="light"] {
     --bg:#f6f7f9; --fg:#1a2028; --muted:#8a94a2; --dim:#5a6472;
     --panel:#ffffff; --tile:#ffffff; --line:#dde2e8;
     --pos:#0a7d55; --neg:#c02a33; --warn:#8a6d00; --accent:#2c5fa8;
     --paper:#fff6da; --paperln:#8a6d00; --tabbg:#eceef1; --tabon:#ffffff;
+    --haltbg:#fbe9ea; --runbg:#e8f6ef; --stopbg:#eef0f3; --stalebg:#faf3dc;
   }
   * { box-sizing:border-box; }
   body { font-family:-apple-system,system-ui,sans-serif; margin:0; padding:1.1rem;
          background:var(--bg); color:var(--fg); font-size:14px; }
   h1 { font-size:1.15rem; margin:0 0 .2rem; }
+  h2 { font-size:.82rem; text-transform:uppercase; letter-spacing:.05em; color:var(--dim); margin:1.1rem 0 .4rem; }
   .sub { color:var(--dim); font-size:.8rem; margin-bottom:.9rem; }
   a { color:var(--accent); }
   .row { display:flex; align-items:center; gap:.8rem; flex-wrap:wrap; }
   .spacer { flex:1; }
   .muted { color:var(--muted); } .pos{color:var(--pos);} .neg{color:var(--neg);} .warn{color:var(--warn);}
-  .tabs { display:flex; gap:.25rem; border-bottom:1px solid var(--line); margin:.4rem 0 1rem; flex-wrap:wrap; }
+  .tabs { display:flex; gap:.25rem; border-bottom:1px solid var(--line); margin:.4rem 0 .8rem; flex-wrap:wrap; }
   .tab { background:var(--tabbg); border:1px solid var(--line); border-bottom:none;
          border-radius:7px 7px 0 0; padding:.4rem .8rem; cursor:pointer; color:var(--dim); font-size:.82rem; }
   .tab.on { background:var(--tabon); color:var(--fg); font-weight:600; }
+  .tabs.branch .tab { font-size:.9rem; padding:.45rem 1.1rem; }
   .panel { background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:.8rem .9rem; margin-bottom:1rem; }
   table { width:100%; border-collapse:collapse; font-size:.82rem; }
   th,td { text-align:right; padding:.35rem .5rem; border-bottom:1px solid var(--line); font-variant-numeric:tabular-nums; }
@@ -47,48 +51,63 @@
            padding:.1rem .4rem; border-radius:4px; letter-spacing:.04em; vertical-align:middle; }
   .b-paper { background:var(--paper); color:var(--paperln); border:1px solid var(--paperln); }
   .b-live  { background:transparent; color:var(--pos); border:1px solid var(--pos); }
-  .b-draft { background:transparent; color:var(--muted); border:1px solid var(--line); }
   .b-stopped{background:transparent; color:var(--warn); border:1px solid var(--warn); }
-  .b-retired{background:transparent; color:var(--muted); border:1px solid var(--line); }
+  .b-idle  { background:transparent; color:var(--muted); border:1px solid var(--line); }
   button { font:inherit; border:1px solid var(--line); background:var(--tile); color:var(--fg);
            border-radius:6px; padding:.35rem .8rem; cursor:pointer; }
   button:hover { border-color:var(--accent); }
   button.pri { background:var(--accent); color:var(--bg); border-color:var(--accent); font-weight:600; }
+  button.danger { border-color:var(--neg); color:var(--neg); }
   button:disabled { opacity:.45; cursor:default; }
   .themebtn { font-size:.72rem; padding:.25rem .6rem; }
   .cfgrow { display:flex; justify-content:space-between; gap:1rem; border-bottom:1px solid var(--line); padding:.2rem 0; font-size:.82rem; }
   .cfgrow .lbl { color:var(--dim); }
   .empty { color:var(--muted); padding:1rem 0; }
   code { color:var(--accent); font-size:.82rem; }
+  .banner { padding:.55rem .8rem; border-radius:6px; margin-bottom:1rem; font-size:.85rem; border:1px solid var(--line); }
+  .banner.halted { background:var(--haltbg); border-color:var(--neg); }
+  .banner.running { background:var(--runbg); border-color:var(--pos); }
+  .banner.stopped { background:var(--stopbg); }
+  .banner.stale { background:var(--stalebg); border-color:var(--warn); }
+  .switch { display:flex; align-items:center; gap:1rem; background:var(--panel); border:1px solid var(--line);
+            border-radius:10px; padding:.8rem 1rem; margin-bottom:1rem; }
+  button.master { font-size:1rem; font-weight:700; padding:.6rem 1.4rem; border-radius:8px; border:none; cursor:pointer; }
+  button.start { background:#1f7a4d; color:#eafff2; }
+  button.stop  { background:#8a2b30; color:#ffecee; }
+  .vote-up { color:var(--pos); font-weight:700; } .vote-dn { color:var(--neg); font-weight:700; }
+  .vote-as { color:var(--muted); }
+  .logbox { max-height:340px; overflow-y:auto; border:1px solid var(--line); border-radius:8px; }
+  .logbox table { margin:0; }
+  .scrollbox { max-height:190px; overflow-y:auto; border:1px solid var(--line); border-radius:6px; }
 </style>
 </head>
 <body>
-  <!-- site nav (owner, 2026-08-12): portal home + classifier home, styled with
-       this page's own theme tokens since it deliberately does not use style.css -->
+  <!-- site nav (owner): portal home + classifier home, this page's own tokens -->
   <div class="row" style="border-bottom:1px solid var(--line); padding-bottom:.55rem; margin-bottom:.8rem; font-size:.85rem">
     <a href="https://www.buitendyk.ca/" style="text-decoration:none; font-weight:700; color:var(--fg)">buitendyk<span style="color:var(--accent)">.ca</span></a>
-    <span class="muted">/ general classifier / live trading</span>
+    <span class="muted">/ general classifier / trading</span>
     <div class="spacer"></div>
     <a href="index.html" style="text-decoration:none; border:1px solid var(--line); border-radius:6px; padding:.25rem .6rem; color:var(--fg); background:var(--tile)">Back to the app</a>
   </div>
   <div class="row">
-    <h1 style="margin:0">Live Trading</h1>
+    <h1 style="margin:0">Trading</h1>
     <span id="utcClock" class="muted" title="all system times are UTC" style="font-variant-numeric:tabular-nums">—</span>
     <div class="spacer"></div>
     <button class="themebtn" id="themebtn">◐ theme</button>
   </div>
-  <div class="sub">Deterministic execution of greenlighted Bracket Lab configurations — no AI in this path.
-    Paper and live setups share this surface; a <span class="badge b-paper">paper</span> badge marks any
-    setup that is <b>not real money</b>.</div>
+  <div class="sub">Every greenlighted configuration, on two design-identical sides: <b>Paper Books</b> (duplicate-engine
+    paper — <span class="badge b-paper">paper</span> means <b>not real money</b>) and <b>Live Trading</b> (real orders on
+    the exchange). A config can run on both sides at once. Deterministic code only — no AI in this path.</div>
 
-  <div class="tabs" id="tabs"></div>
+  <div class="tabs branch" id="branchTabs"></div>
+  <div class="tabs" id="subTabs"></div>
   <div id="view"></div>
 
 <script>
 const $ = (s,r=document)=>r.querySelector(s);
 const api = (p)=>fetch(p).then(r=>r.json());
 async function post(p, body){
-  // control action: a non-2xx MUST surface (the QC-115 lesson), never a silent no-op.
+  // control action: a non-2xx MUST surface (QC-115), never a silent no-op.
   try{
     const r = await fetch(p,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body||{})});
     if(!r.ok){ let m=`HTTP ${r.status}`; try{const j=await r.json(); if(j&&j.error)m=j.error;}catch(_){}
@@ -98,7 +117,8 @@ async function post(p, body){
 }
 const money=(v)=>v==null?'—':(v>=0?'+':'')+Number(v).toFixed(4);
 const cls=(v)=>v==null?'':v>0?'pos':v<0?'neg':'';
-const stateBadge=(s)=>`<span class="badge b-${s}">${s}</span>`;
+const esc=(t)=>String(t??'').replace(/&/g,'&amp;').replace(/</g,'&lt;');
+const paperBadge='<span class="badge b-paper" title="paper — not real money">paper</span>';
 
 // theme: remember choice; default dark (the technical baseline).
 const root=document.documentElement;
@@ -106,159 +126,383 @@ root.setAttribute('data-theme', localStorage.getItem('lt-theme')||'dark');
 $('#themebtn').onclick=()=>{ const n=root.getAttribute('data-theme')==='dark'?'light':'dark';
   root.setAttribute('data-theme',n); localStorage.setItem('lt-theme',n); };
 
-const TABS=[
-  ['setups','Setups'],
-  ['greenlights','Greenlights'],
-  ['detail','Setup detail'],
-];
-let current='setups', selectedId=null;
-function renderTabs(){
-  $('#tabs').innerHTML=TABS.map(([k,l])=>`<div class="tab ${k===current?'on':''}" data-k="${k}">${l}</div>`).join('');
-  $('#tabs').querySelectorAll('.tab').forEach(t=>t.onclick=()=>{ current=t.dataset.k; draw(); });
+// ---- navigation state -------------------------------------------------------
+// branch: which SIDE (design-identical); sub: which page of that side.
+const BRANCHES=[['paper','Paper Books'],['real','Live Trading']];
+const SUBS=[['dash','Dashboard'],['configs','Greenlights'],['setups','Setups'],['detail','Setup detail'],['live','LIVE']];
+let branch=localStorage.getItem('lt-branch')||'paper';
+let sub=localStorage.getItem('lt-sub')||'configs';
+let selectedConfig=null;   // config id ('F1' for the pilot pseudo-config)
+let selectedSetupId=null;  // the branch channel's setup id (or 'f1-pilot')
+
+function renderNav(){
+  $('#branchTabs').innerHTML=BRANCHES.map(([k,l])=>`<div class="tab ${k===branch?'on':''}" data-k="${k}"
+    title="${k==='paper'?'Duplicate-engine paper trading — identical decisions and display, no orders, no money':'Real orders on the exchange — real money when a channel is active and armed'}">${l}</div>`).join('');
+  $('#branchTabs').querySelectorAll('.tab').forEach(t=>t.onclick=()=>{ branch=t.dataset.k; localStorage.setItem('lt-branch',branch); draw(); });
+  $('#subTabs').innerHTML=SUBS.map(([k,l])=>`<div class="tab ${k===sub?'on':''}" data-k="${k}">${l}</div>`).join('');
+  $('#subTabs').querySelectorAll('.tab').forEach(t=>t.onclick=()=>{ sub=t.dataset.k; localStorage.setItem('lt-sub',sub); draw(); });
 }
 
-async function drawSetups(){
-  const d=await api('api/live/setups');
-  const rows=(d.setups||[]);
-  if(!rows.length){ $('#view').innerHTML=`<div class="panel empty">No live trading setups yet. Greenlight a Bracket Lab
-    configuration, then shuttle it here — that is the only way a setup is created.</div>`; return; }
+// ---- data: configs (greenlights + channels) with F1 as a first-class row ----
+async function fetchConfigs(){
+  const [c, pilot]=await Promise.all([api('api/live/configs').catch(()=>({configs:[]})), api('api/pilot').catch(()=>null)]);
+  const configs=(c.configs||[]);
+  // F1: the running pilot, integrated as a config row (owner: no ugly duckling).
+  // Its real channel state comes from the pilot's arm switch; it has no paper channel.
+  if(pilot && pilot.present!==false){
+    configs.unshift({ id:'F1', f1:true, pair:'LTCUSDT', target:'mx-1', campaign:'pilot',
+      why:'the F1 live execution pilot (pre-registered, PILOT-F1.md)',
+      status: pilot.halted ? 'active real (HALTED)' : (pilot.armed ? 'active real' : 'idle'),
+      channels:{ real:{ setupId:'f1-pilot', state: pilot.armed?'live':'stopped', open:(pilot.openPositions||[]).length }, paper:null },
+      createdUtc:'2026-08-11T00:00:00Z' });
+  }
+  return { configs, pilot };
+}
+const chanOf=(cfg)=>cfg&&cfg.channels?cfg.channels[branch==='paper'?'paper':'real']:null;
+
+// ---- Greenlights (the config list — the entity) ------------------------------
+async function drawConfigs(){
+  const { configs }=await fetchConfigs();
+  if(!configs.length){ $('#view').innerHTML=`<div class="panel empty">No greenlighted configs yet. Configs are minted on the
+    Constructing tab: sweep → verify → tune → <b>Greenlight</b>. They then appear here on both sides.</div>`; return; }
   $('#view').innerHTML=`<div class="panel"><table><thead><tr>
-    <th>setup</th><th>pair</th><th>state</th><th>clip</th><th>stop</th><th>engine</th><th>created</th></tr></thead><tbody>
+    <th>config</th><th>pair</th><th>campaign</th><th style="text-align:left">why</th><th>status</th><th></th><th></th></tr></thead><tbody>
+    ${configs.map(g=>{
+      const ch=chanOf(g);
+      const active=ch&&(ch.state==='paper'||ch.state==='live');
+      const actLabel=branch==='paper'?'Activate paper':'Activate real';
+      const realBlocked=branch==='real'&&!g.f1;
+      return `<tr class="clickable" data-id="${g.id}">
+      <td>${esc(g.id)}${g.f1?' <span class="badge b-live" title="the pre-registered live pilot">pilot</span>':''}</td>
+      <td>${esc(g.pair||'—')}</td><td class="muted">${esc(g.campaign||'—')}</td>
+      <td style="max-width:20rem;white-space:normal;text-align:left" class="muted">${esc(g.why)}</td>
+      <td style="white-space:nowrap" class="${/active/.test(g.status)?'pos':'muted'}">${esc(g.status)}</td>
+      <td>${g.f1?'':(active
+        ? `<button data-deact="${g.id}">Deactivate</button>`
+        : `<button data-act="${g.id}" class="pri" ${realBlocked?'disabled title="real orders for new configs await per-setup sub-account key routing (G8) — the engine books paper regardless; F1 is the live pilot"':''}>${actLabel}</button>`)}</td>
+      <td>${g.f1?'':`<button data-nuke="${g.id}" class="danger" title="back to not-greenlighted: removed from these lists; the saved sweeps it came from are untouched. Refused while any channel is active or winding down.">Nuke</button>`}</td>
+      </tr>`;}).join('')}
+  </tbody></table>
+  <div class="muted" style="font-size:.72rem;margin-top:.4rem">status vocabulary: idle · active paper · active real · active real, active paper · … deactivating (entries stopped, positions still closing out). Click a row to open its Setup detail on this side.</div></div>`;
+  $('#view').querySelectorAll('tr[data-id]').forEach(tr=>tr.onclick=(ev)=>{
+    if(ev.target.tagName==='BUTTON')return;
+    selectedConfig=tr.dataset.id; sub='detail'; localStorage.setItem('lt-sub',sub); draw(); });
+  $('#view').querySelectorAll('button[data-act]').forEach(b=>b.onclick=async(ev)=>{ ev.stopPropagation();
+    const ch=await confirmActivate(b.dataset.act); if(ch) draw(); });
+  $('#view').querySelectorAll('button[data-deact]').forEach(b=>b.onclick=async(ev)=>{ ev.stopPropagation();
+    if(!confirm(`Deactivate the ${branch} channel of ${b.dataset.deact}?\n\nEntries stop now; open positions keep exiting on schedule, then the record freezes.`))return;
+    const out=await post(`api/live/configs/${b.dataset.deact}/deactivate`,{channel:branch}); if(out) draw(); });
+  $('#view').querySelectorAll('button[data-nuke]').forEach(b=>b.onclick=async(ev)=>{ ev.stopPropagation();
+    if(!confirm(`Nuke ${b.dataset.nuke} back to not-greenlighted?\n\nIt leaves these lists; its saved sweeps are untouched.`))return;
+    const out=await post(`api/live/configs/${b.dataset.nuke}/nuke`,{}); if(out) draw(); });
+}
+async function confirmActivate(id){
+  const chName=branch==='paper'?'paper':'real';
+  const warn=chName==='real'?'\n\nREAL MONEY when armed on the box.':'';
+  if(!confirm(`Activate the ${chName} channel of ${id}?${warn}\n\nIf this channel ran before, the displayed run history restarts (journals are kept).`))return null;
+  return post(`api/live/configs/${id}/activate`,{channel:chName});
+}
+
+// ---- Setups (this branch's channel records) ----------------------------------
+async function drawSetups(){
+  const [{configs}, d]=await Promise.all([fetchConfigs(), api('api/live/setups')]);
+  const wanted=new Set(); const meta={};
+  for(const g of configs){ const ch=chanOf(g); if(ch){ wanted.add(ch.setupId); meta[ch.setupId]=g; } }
+  const rows=(d.setups||[]).filter(s=>wanted.has(s.id));
+  if(branch==='real'){ const f1=configs.find(g=>g.f1); if(f1) rows.unshift({ id:'f1-pilot', name:'F1 live pilot', state:f1.channels.real.state,
+    tradedPair:'LTCUSDT', clipUsd:10, stopPct:null, engineVersion:'', createdUtc:'2026-08-11' }); }
+  if(!rows.length){ $('#view').innerHTML=`<div class="panel empty">No ${branch==='paper'?'paper books':'live setups'} yet — activate a config on the Greenlights page.</div>`; return; }
+  $('#view').innerHTML=`<div class="panel"><table><thead><tr>
+    <th>setup</th><th>pair</th><th>state</th><th>clip</th><th>stop</th><th>created</th></tr></thead><tbody>
     ${rows.map(s=>`<tr class="clickable" data-id="${s.id}">
-      <td>${s.name} ${s.state==='paper'?stateBadge('paper'):''}</td>
-      <td>${s.tradedPair}</td><td>${stateBadge(s.state)}</td>
+      <td>${esc(s.name)} ${branch==='paper'?paperBadge:''}</td>
+      <td>${esc(s.tradedPair)}</td><td><span class="badge b-${s.state==='live'?'live':s.state==='paper'?'paper':s.state==='stopped'?'stopped':'idle'}">${s.state}</span></td>
       <td>$${Number(s.clipUsd).toFixed(0)}</td>
       <td>${s.stopPct==null?'—':(s.stopPct*100).toFixed(2)+'%'}</td>
-      <td class="muted" style="font-size:.7rem">${s.engineVersion||''}</td>
       <td class="muted" style="font-size:.72rem">${(s.createdUtc||'').slice(0,16)}</td></tr>`).join('')}
   </tbody></table></div>`;
-  $('#view').querySelectorAll('tr[data-id]').forEach(tr=>tr.onclick=()=>{ selectedId=tr.dataset.id; current='detail'; draw(); });
+  $('#view').querySelectorAll('tr[data-id]').forEach(tr=>tr.onclick=()=>{
+    selectedSetupId=tr.dataset.id;
+    const g=meta[tr.dataset.id]; selectedConfig=g?g.id:(tr.dataset.id==='f1-pilot'?'F1':selectedConfig);
+    sub='detail'; localStorage.setItem('lt-sub',sub); draw(); });
 }
 
-async function drawGreenlights(){
-  const d=await api('api/live/greenlights');
-  const gs=(d.greenlights||[]);
-  if(!gs.length){ $('#view').innerHTML=`<div class="panel empty">No greenlights yet. A greenlight is the recorded
-    decision that a lab configuration is fit to trade; the shuttle button then mints a draft setup from it.</div>`; return; }
-  $('#view').innerHTML=`<div class="panel"><table><thead><tr>
-    <th>greenlight</th><th>pair</th><th>target</th><th>campaign</th><th style="text-align:left">why</th><th>shuttled</th><th></th></tr></thead><tbody>
-    ${gs.map(g=>`<tr>
-      <td class="muted" style="font-size:.72rem">${(g.createdUtc||'').slice(0,16)}</td>
-      <td>${g.configSnapshot?.combo?.trade||'—'}</td><td>${g.target}</td>
-      <td>${g.campaign||'—'}</td>
-      <td style="max-width:22rem;white-space:normal;text-align:left">${(g.why||'').replace(/</g,'&lt;')}</td>
-      <td>${(g.shuttledSetupIds||[]).length}</td>
-      <td><button data-gl="${g.id}">Shuttle → setup</button></td></tr>`).join('')}
-  </tbody></table></div>`;
-  $('#view').querySelectorAll('button[data-gl]').forEach(b=>b.onclick=async()=>{
-    const name=prompt('Name for the new live setup:'); if(name==null)return;
-    const clip=prompt('Clip size (USD notional per trade):','10'); if(clip==null)return;
-    const out=await post('api/live/shuttle',{greenlightId:b.dataset.gl,name,clipUsd:Number(clip)});
-    if(out){ selectedId=out.setup.id; current='detail'; draw(); }
-  });
+// ---- Dashboard (selection-independent, all of this side) ---------------------
+async function drawDash(){
+  const {configs}=await fetchConfigs();
+  const parts=[];
+  for(const g of configs){
+    const ch=chanOf(g); if(!ch)continue;
+    let st=null;
+    try{ st=g.f1?await api('api/pilot'):await api('api/live/setups/'+ch.setupId+'/status'); }catch(_){ st=null; }
+    parts.push({g, ch, st});
+  }
+  if(!parts.length){ $('#view').innerHTML=`<div class="panel empty">Nothing on the ${branch==='paper'?'paper':'live'} side yet.</div>`; return; }
+  const isP=branch==='paper';
+  let totR=0, totU=0, totOpen=0;
+  const cards=parts.map(({g,ch,st})=>{
+    const rp=st?(g.f1?st.realizedPnl:(isP?st.paperRealizedPnl:st.realizedPnl)):null;
+    const up=st?(g.f1?st.unrealizedPnl:(isP?st.paperUnrealizedPnl:st.unrealizedPnl)):null;
+    const open=st?(st.openPositions||[]).length:ch.open||0;
+    totR+=rp||0; totU+=up||0; totOpen+=open;
+    return `<div class="tile" style="cursor:pointer" data-id="${g.id}" data-setup="${ch.setupId}">
+      <div class="k">${esc(g.id)} ${isP?paperBadge:''}</div>
+      <div class="v ${cls(rp)}">${money(rp)}</div>
+      <div class="muted" style="font-size:.72rem">unreal ${money(up)} · open ${open} · ${esc(g.status)}</div></div>`;
+  }).join('');
+  $('#view').innerHTML=`<div class="grid" style="margin-bottom:1rem">
+      <div class="tile"><div class="k">${isP?'Paper realized (all books)':'Realized (all live)'}</div><div class="v ${cls(totR)}">${money(totR)}</div></div>
+      <div class="tile"><div class="k">${isP?'Paper unrealized':'Unrealized'}</div><div class="v ${cls(totU)}">${money(totU)}</div></div>
+      <div class="tile"><div class="k">Open positions</div><div class="v">${totOpen}</div></div>
+    </div>
+    <h2>${isP?'All paper books':'All live setups'}</h2>
+    <div class="grid">${cards}</div>`;
+  $('#view').querySelectorAll('[data-id]').forEach(el=>el.onclick=()=>{
+    selectedConfig=el.dataset.id; selectedSetupId=el.dataset.setup; sub='live'; localStorage.setItem('lt-sub',sub); draw(); });
 }
 
+// ---- Setup detail (what the selected setup IS) --------------------------------
+function cfgRow(l,v){ return `<div class="cfgrow"><span class="lbl">${l}</span><span>${v}</span></div>`; }
 async function drawDetail(){
-  if(!selectedId){ $('#view').innerHTML=`<div class="panel empty">Select a setup from the Setups tab.</div>`; return; }
-  const s=await api('api/live/setups/'+selectedId);
-  if(s.error){ $('#view').innerHTML=`<div class="panel empty">${s.error}</div>`; return; }
+  const {configs}=await fetchConfigs();
+  const g=configs.find(x=>x.id===selectedConfig)||configs.find(x=>chanOf(x));
+  if(!g){ $('#view').innerHTML=`<div class="panel empty">Select a config from the Greenlights page.</div>`; return; }
+  selectedConfig=g.id;
+  const ch=chanOf(g);
+  if(g.f1&&branch==='paper'){ $('#view').innerHTML=`<div class="panel empty">F1 is the live pilot — it has no paper channel. Switch to Live Trading.</div>`; return; }
+  if(!ch){ $('#view').innerHTML=`<div class="panel"><div class="row"><b style="font-size:1rem">${esc(g.id)}</b>
+      <span class="badge b-idle">idle</span><div class="spacer"></div>
+      <button id="actBtn" class="pri" ${branch==='real'&&!g.f1?'disabled title="real orders for new configs await per-setup key routing (G8)"':''}>Activate ${branch}</button></div>
+      <div class="muted" style="margin-top:.4rem">This config has never run on the ${branch} side. Activate to start it.</div></div>`;
+    const b=$('#actBtn'); if(b&&!b.disabled)b.onclick=async()=>{ if(await confirmActivate(g.id)) draw(); };
+    return; }
+  // channel exists: registry record + frozen config + pilot anatomy for F1
+  if(g.f1){
+    const pilot=await api('api/pilot');
+    const a=pilot.anatomy||{}; const cfg=pilot.config||{};
+    $('#view').innerHTML=`
+      <div class="panel"><div class="row"><b style="font-size:1rem">F1 live pilot</b> <span class="badge b-live">pilot</span>
+        <span class="${pilot.armed?'pos':'warn'}">${pilot.armed?'RUNNING':'STOPPED'}</span>
+        <div class="spacer"></div><span class="muted" style="font-size:.74rem">start/stop lives on the LIVE page (master switch)</span></div>
+      <div class="muted" style="font-size:.74rem;margin-top:.3rem">Pre-registration: <code>PILOT-F1.md</code>. Pilot P&amp;L is void as edge evidence — this screen measures execution.</div></div>
+      <div class="panel"><div class="k">Tested configuration — how these trades are set up</div>
+        <div style="margin-top:.5rem">${Object.entries(cfg).map(([k,v])=>cfgRow(esc(k),esc(typeof v==='object'?JSON.stringify(v):v))).join('')}</div></div>
+      ${a.committee?`<div class="panel"><div class="k">The committee — who votes, and what each member sees</div>
+        <table style="margin-top:.4rem"><thead><tr><th>member</th><th style="text-align:left">model</th><th>view</th><th>features seen</th><th style="text-align:left">what that view means</th></tr></thead>
+        <tbody>${a.committee.map((m,i)=>`<tr><td>member ${i+1}</td><td style="text-align:left">${esc(m.model)}</td><td>${esc(m.view)}</td>
+          <td>${m.featuresSeen} of ${a.features.totalVector}</td><td style="text-align:left" class="muted">${esc(m.viewMeaning)}</td></tr>`).join('')}</tbody></table></div>`:''}
+      ${a.pipeline?`<div class="panel"><div class="k">How the decision is made — the full pipeline</div>
+        <div style="margin-top:.4rem;font-size:.82rem;line-height:1.5">${a.pipeline.map(s=>`<p style="margin:.35rem 0">${esc(s)}</p>`).join('')}</div></div>`:''}
+      ${a.features?`<div class="panel"><div class="k">How the comparison assets enter the equation</div>
+        <div style="margin-top:.4rem;font-size:.82rem;line-height:1.5">
+        <p><b>${esc(a.features.note)}</b></p>
+        <p>Each asset contributes ${a.features.perAsset} numbers: <code>${a.features.perAssetNames.join(', ')}</code></p>
+        <p>Each comparison pair adds ${a.features.crossPerPair} cross features: <code>${a.features.crossNames.join(', ')}</code></p>
+        <p>Voting: ${esc(a.voting.rule)}. Dormant band: ±${a.voting.dormantBandPct}% — ${esc(a.voting.labelRule)}.</p></div></div>`:''}`;
+    return;
+  }
+  const s=await api('api/live/setups/'+ch.setupId);
+  if(s.error){ $('#view').innerHTML=`<div class="panel empty">${esc(s.error)}</div>`; return; }
+  selectedSetupId=s.id;
   const c=s.configSnapshot||{}, cell=c.cell||{}, br=c.branch||{}, combo=c.combo||{};
-  const trans={draft:['paper','live'],paper:['live','stopped'],live:['stopped'],stopped:['paper','live','retired'],retired:[]}[s.state]||[];
+  const active=s.state==='paper'||s.state==='live';
   $('#view').innerHTML=`
     <div class="panel"><div class="row">
-      <b style="font-size:1rem">${s.name}</b> ${stateBadge(s.state)} ${s.state==='paper'?'<span class="badge b-paper">not real money</span>':''}
+      <b style="font-size:1rem">${esc(s.name)}</b> ${branch==='paper'?paperBadge:''}
+      <span class="badge b-${s.state==='live'?'live':s.state==='paper'?'paper':'stopped'}">${s.state}</span>
       <div class="spacer"></div>
-      ${trans.map(t=>`<button data-to="${t}" class="${t==='live'?'pri':''}">${t==='live'?'Go LIVE':t==='paper'?'Run PAPER':t==='stopped'?'STOP':'Retire'}</button>`).join('')}
+      ${active?`<button id="deactBtn">Deactivate</button>`:`<button id="actBtn" class="pri">Activate ${branch}</button>`}
     </div>
-    <div class="muted" style="font-size:.74rem;margin-top:.3rem">state controls change eligibility; opening real positions still
-      requires this setup's ARM switch on the box. ${s.state==='live'?'<b class="warn">LIVE — real money when armed.</b>':''}</div>
-    </div>
-
+    <div class="muted" style="font-size:.74rem;margin-top:.3rem">Deactivate stops new entries; open positions exit on schedule and the record freezes. ${branch==='real'?'<b class="warn">Real channel — real money when armed.</b>':''}</div></div>
     <div class="grid" style="margin-bottom:1rem">
-      <div class="tile"><div class="k">Pair</div><div class="v">${s.tradedPair}</div></div>
+      <div class="tile"><div class="k">Pair</div><div class="v">${esc(s.tradedPair)}</div></div>
       <div class="tile"><div class="k">Clip</div><div class="v">$${Number(s.clipUsd).toFixed(0)}</div></div>
       <div class="tile"><div class="k">Stop</div><div class="v">${s.stopPct==null?'none':(s.stopPct*100).toFixed(2)+'%'}</div></div>
       <div class="tile"><div class="k">Key</div><div class="v ${s.keyRef?'pos':'muted'}">${s.keyRef?'set':'none'}</div></div>
-      <div class="tile"><div class="k">Exec target</div><div class="v muted" style="font-size:.9rem">${s.executionTargetRef||'default'}</div></div>
+      <div class="tile"><div class="k">Exec target</div><div class="v muted" style="font-size:.9rem">${esc(s.executionTargetRef||'default')}</div></div>
     </div>
-
-    <div class="panel">
-      <div class="k">Frozen configuration (immutable — from greenlight ${s.provenanceRef||'—'})</div>
+    <div class="panel"><div class="k">Frozen configuration (immutable — from greenlight ${esc(s.provenanceRef||'—')})</div>
       <div style="margin-top:.5rem">
-        ${cfgRow('Traded / context', `${combo.trade} + ${combo.ctx1} + ${combo.ctx2}`)}
-        ${cfgRow('Geometry', `${br.geometry} · ${br.decision} · band ${br.band}%`)}
-        ${cfgRow('Committee', `${(c.members||[]).length} members (${c.stage})`)}
-        ${cfgRow('Quorum / entry / gate', `${cell.quorum}-of-${(c.members||[]).length} · ${cell.entry} · ${cell.gate}`)}
+        ${cfgRow('Traded / context', `${esc(combo.trade)} + ${esc(combo.ctx1)} + ${esc(combo.ctx2)}`)}
+        ${cfgRow('Geometry', `${esc(br.geometry)} · ${esc(br.decision)} · band ${br.band}%`)}
+        ${cfgRow('Committee', `${(c.members||[]).length} members (${esc(c.stage)})`)}
+        ${cfgRow('Quorum / entry / gate', `${cell.quorum}-of-${(c.members||[]).length} · ${esc(cell.entry)} · ${esc(cell.gate)}`)}
         ${cfgRow('Hold', `${cell.tHours}h`)}
         ${cfgRow('Trained through', new Date(c.trainThrough).toISOString().slice(0,10))}
-        ${cfgRow('Config version', `<code>${c.configVersion||''}</code>`)}
-        ${cfgRow('Engine version', `<code>${s.engineVersion||''}</code>`)}
-      </div>
-    </div>
+        ${cfgRow('Config version', `<code>${esc(c.configVersion||'')}</code>`)}
+        ${cfgRow('Engine version', `<code>${esc(s.engineVersion||'')}</code>`)}
+        ${cfgRow('Displayed run since', s.runEpochUtc?esc(s.runEpochUtc.slice(0,16)):'—')}
+      </div></div>
     <div class="panel"><div class="k">Config editor (operational only — snapshot never changes)</div>
       <div class="row" style="margin-top:.5rem">
         <label class="muted">Clip $ <input id="clipIn" type="number" min="1" step="1" value="${s.clipUsd}" style="width:6rem"></label>
         <label class="muted">Stop % <input id="stopIn" type="number" min="0" step="0.01" value="${s.stopPct==null?'':(s.stopPct*100)}" placeholder="none" style="width:6rem"></label>
         <button id="saveCfg">Save</button>
-      </div>
-    </div>
-    <div id="bookPanel"></div>`;
-  // per-setup book + fidelity (plan phase 6), fetched from the synced journal
-  api('api/live/setups/'+s.id+'/status').then(st=>{
-    if(!$('#bookPanel')) return;
-    if(st.error){ $('#bookPanel').innerHTML=`<div class="panel empty">${st.error}</div>`; return; }
-    const isPaper = st.paper;
-    const rp = isPaper ? st.paperRealizedPnl : st.realizedPnl;
-    // R9: show the setup's OWN book (real for live, paper for paper) — never a
-    // mixed real+paper number. paperUnrealizedPnl / unrealizedPnl are kept separate.
-    const up = isPaper ? st.paperUnrealizedPnl : st.unrealizedPnl;
-    $('#bookPanel').innerHTML=`
-      <div class="grid" style="margin-bottom:1rem">
-        <div class="tile"><div class="k">${isPaper?'Paper realized':'Realized'} P&L</div><div class="v ${cls(rp)}">${money(rp)}</div></div>
-        <div class="tile"><div class="k">${isPaper?'Paper unrealized':'Unrealized'} P&L</div><div class="v ${cls(up)}">${money(up)}</div></div>
-        <div class="tile"><div class="k">Mark (last run)</div><div class="v">${st.markPrice==null?'—':'$'+st.markPrice.toFixed(2)}</div></div>
-        <div class="tile"><div class="k">Open positions</div><div class="v">${st.openPositions.length}</div></div>
-        <div class="tile"><div class="k">Fill dev avg</div><div class="v">${st.fidelity.fillDeviationAvg==null?'—':(st.fidelity.fillDeviationAvg*100).toFixed(3)+'%'}</div></div>
-        <div class="tile"><div class="k">Fill dev max</div><div class="v ${st.fidelity.fillDeviationMax>0.01?'warn':''}">${st.fidelity.fillDeviationMax==null?'—':(st.fidelity.fillDeviationMax*100).toFixed(3)+'%'}</div></div>
-      </div>
-      <div class="panel"><div class="k">Open positions ${isPaper?'<span class="badge b-paper">paper</span>':''}</div>
-        <table style="margin-top:.4rem"><thead><tr><th>chunk</th><th>side</th><th>qty</th><th>entry</th><th>mark</th><th>unreal $</th><th>exit due</th></tr></thead><tbody>
-        ${st.openPositions.length?st.openPositions.map(p=>`<tr>
-          <td>${(p.chunk_start||'').slice(0,16)}</td><td class="${p.side==='LONG'?'pos':'neg'}">${p.side}${p.paper?' <span class="badge b-paper">P</span>':''}</td>
-          <td>${p.qty}</td><td>${p.entry_price??'—'}</td><td>${p.markPrice==null?'—':'$'+p.markPrice.toFixed(2)}</td>
-          <td class="${cls(p.unrealized)}">${money(p.unrealized)}</td>
-          <td class="muted">${p.exit_due_ts?new Date(p.exit_due_ts*1000).toISOString().slice(0,16):'—'}</td></tr>`).join(''):'<tr><td colspan="7" class="empty">none open</td></tr>'}
-        </tbody></table></div>
-      <div class="panel"><div class="k">Recent closed</div>
-        <table style="margin-top:.4rem"><thead><tr><th>chunk</th><th>side</th><th>entry</th><th>exit</th><th>P&L</th></tr></thead><tbody>
-        ${st.closedRecent.length?st.closedRecent.map(c=>`<tr>
-          <td>${(c.chunk_start||'').slice(0,16)}</td><td class="${c.side==='LONG'?'pos':'neg'}">${c.side}${c.paper?' <span class="badge b-paper">P</span>':''}</td>
-          <td>${c.entry_price??'—'}</td><td>${c.exit_price??'—'}</td><td class="${cls(c.pnl)}">${money(c.pnl)}</td></tr>`).join(''):'<tr><td colspan="5" class="empty">none closed yet</td></tr>'}
-        </tbody></table></div>`;
-  });
-
-  $('#view').querySelectorAll('button[data-to]').forEach(b=>b.onclick=async()=>{
-    const to=b.dataset.to;
-    if((to==='live') && !confirm(`Set "${s.name}" to LIVE?\n\nLive setups open REAL positions when armed on the box.`)) return;
-    const out=await post(`api/live/setups/${s.id}/state`,{to}); if(out) draw();
-  });
+      </div></div>`;
+  const act=$('#actBtn'); if(act)act.onclick=async()=>{ if(await confirmActivate(g.id)) draw(); };
+  const deact=$('#deactBtn'); if(deact)deact.onclick=async()=>{
+    if(!confirm(`Deactivate the ${branch} channel?`))return;
+    const out=await post(`api/live/configs/${g.id}/deactivate`,{channel:branch}); if(out) draw(); };
   $('#saveCfg').onclick=async()=>{
     const clipUsd=Number($('#clipIn').value);
     const raw=$('#stopIn').value.trim();
-    const stopPct = raw===''? null : Number(raw)/100;
-    const out=await post(`api/live/setups/${s.id}/config`,{clipUsd, stopPct}); if(out) draw();
+    const stopPct=raw===''?null:Number(raw)/100;
+    const out=await post(`api/live/setups/${s.id}/config`,{clipUsd,stopPct}); if(out) draw();
   };
 }
-function cfgRow(l,v){ return `<div class="cfgrow"><span class="lbl">${l}</span><span>${v}</span></div>`; }
 
-function draw(){ renderTabs();
-  if(current==='setups') drawSetups();
-  else if(current==='greenlights') drawGreenlights();
-  else drawDetail();
+// ---- LIVE (what the selected setup is DOING) ----------------------------------
+const vcls=(v)=>v===1?'vote-up':v===-1?'vote-dn':'vote-as';
+const vtxt=(v)=>v===1?'UP':v===-1?'DOWN':'aside';
+function untilStr(iso){ if(!iso)return''; const ms=Date.parse(iso)-Date.now(); if(ms<=0)return'now / due';
+  const h=Math.floor(ms/3.6e6),m=Math.floor(ms%3.6e6/6e4),s=Math.floor(ms%6e4/1e3);
+  return h>0?`in ${h}h ${m}m`:(m>0?`in ${m}m ${s}s`:`in ${s}s`); }
+async function drawLive(){
+  const {configs}=await fetchConfigs();
+  const g=configs.find(x=>x.id===selectedConfig)||configs.find(x=>chanOf(x));
+  if(!g){ $('#view').innerHTML=`<div class="panel empty">Select a config (Greenlights or Dashboard) to watch it run.</div>`; return; }
+  selectedConfig=g.id;
+  const ch=chanOf(g);
+  if(g.f1&&branch==='paper'){ $('#view').innerHTML=`<div class="panel empty">F1 has no paper channel — switch to Live Trading.</div>`; return; }
+  if(!ch){ $('#view').innerHTML=`<div class="panel empty">${esc(g.id)} has never run on the ${branch} side.</div>`; return; }
+  if(g.f1){ await drawPilotLive(); return; }
+  const st=await api('api/live/setups/'+ch.setupId+'/status');
+  if(st.error){ $('#view').innerHTML=`<div class="panel empty">${esc(st.error)}</div>`; return; }
+  const isP=branch==='paper';
+  const rp=isP?st.paperRealizedPnl:st.realizedPnl, up=isP?st.paperUnrealizedPnl:st.unrealizedPnl;
+  $('#view').innerHTML=`
+    <div class="banner ${st.state==='stopped'?'stopped':'running'}">
+      <b>${esc(g.id)}</b> ${isP?paperBadge:''} — ${esc(g.status)}${st.runEpochUtc?` <span class="muted">· displayed run since ${st.runEpochUtc.slice(0,16)} UTC</span>`:''}</div>
+    <div class="grid" style="margin-bottom:1rem">
+      <div class="tile"><div class="k">${isP?'Paper realized':'Realized'} P&amp;L</div><div class="v ${cls(rp)}">${money(rp)}</div></div>
+      <div class="tile"><div class="k">${isP?'Paper unrealized':'Unrealized'} P&amp;L</div><div class="v ${cls(up)}">${money(up)}</div></div>
+      <div class="tile"><div class="k">Mark (last run)</div><div class="v">${st.markPrice==null?'—':'$'+st.markPrice.toFixed(2)}</div></div>
+      <div class="tile"><div class="k">Open positions</div><div class="v">${st.openPositions.length}</div></div>
+      <div class="tile"><div class="k">Fill dev avg</div><div class="v">${st.fidelity.fillDeviationAvg==null?'—':(st.fidelity.fillDeviationAvg*100).toFixed(3)+'%'}</div></div>
+      <div class="tile"><div class="k">Fill dev max</div><div class="v ${st.fidelity.fillDeviationMax>0.01?'warn':''}">${st.fidelity.fillDeviationMax==null?'—':(st.fidelity.fillDeviationMax*100).toFixed(3)+'%'}</div></div>
+    </div>
+    <div class="panel"><div class="k">Open positions ${isP?paperBadge:''}</div>
+      <table style="margin-top:.4rem"><thead><tr><th>chunk</th><th>side</th><th>qty</th><th>entry</th><th>mark</th><th>unreal $</th><th>exit due</th></tr></thead><tbody>
+      ${st.openPositions.length?st.openPositions.map(p=>`<tr>
+        <td>${(p.chunk_start||'').slice(0,16)}</td><td class="${p.side==='LONG'?'pos':'neg'}">${p.side}${p.paper?' <span class="badge b-paper">P</span>':''}</td>
+        <td>${p.qty}</td><td>${p.entry_price??'—'}</td><td>${p.markPrice==null?'—':'$'+p.markPrice.toFixed(2)}</td>
+        <td class="${cls(p.unrealized)}">${money(p.unrealized)}</td>
+        <td class="muted">${p.exit_due_ts?new Date(p.exit_due_ts*1000).toISOString().slice(0,16):'—'}</td></tr>`).join(''):'<tr><td colspan="7" class="empty">none open</td></tr>'}
+      </tbody></table></div>
+    <div class="panel"><div class="k">Recent closed</div>
+      <table style="margin-top:.4rem"><thead><tr><th>chunk</th><th>side</th><th>entry</th><th>exit</th><th>P&amp;L</th></tr></thead><tbody>
+      ${st.closedRecent.length?st.closedRecent.map(c=>`<tr>
+        <td>${(c.chunk_start||'').slice(0,16)}</td><td class="${c.side==='LONG'?'pos':'neg'}">${c.side}${c.paper?' <span class="badge b-paper">P</span>':''}</td>
+        <td>${c.entry_price??'—'}</td><td>${c.exit_price??'—'}</td><td class="${cls(c.pnl)}">${money(c.pnl)}</td></tr>`).join(''):'<tr><td colspan="5" class="empty">none closed yet</td></tr>'}
+      </tbody></table></div>
+    <div class="panel"><div class="k">Incidents</div>
+      <table style="margin-top:.4rem"><thead><tr><th>utc</th><th>kind</th><th style="text-align:left">detail</th></tr></thead><tbody>
+      ${st.incidents.length?st.incidents.map(i=>`<tr><td>${(i.utc||'').slice(0,19)}</td><td class="warn">${esc(i.kind)}</td>
+        <td style="text-align:left" class="muted">${esc((i.detail||'').slice(0,120))}</td></tr>`).join(''):'<tr><td colspan="3" class="empty">none — clean</td></tr>'}
+      </tbody></table></div>`;
+}
+// F1's LIVE page: ALL the running info from the pilot page, token-styled.
+async function drawPilotLive(){
+  const d=await api('api/pilot');
+  if(!d||d.present===false){ $('#view').innerHTML=`<div class="panel empty">No pilot journal yet.</div>`; return; }
+  const s=d.liveStatus||{}; const hbAge=d.lastHeartbeatUtc?(Date.now()-Date.parse(d.lastHeartbeatUtc))/6e4:null;
+  const dead=hbAge==null||hbAge>25;
+  const mirrorBreaks=d.mirror&&d.mirror.breaks?d.mirror.breaks:0;
+  const strips=[];
+  if(mirrorBreaks>0)strips.push(`<div class="banner halted">⛔ MIRROR BREAK — ${mirrorBreaks} live decision(s) no longer reproduce. Box halted; investigate before re-arming.</div>`);
+  if(dead)strips.push(`<div class="banner halted">⛔ EXECUTOR SILENT — last heartbeat ${hbAge==null?'never':hbAge.toFixed(0)+' min ago'} (box runs ~10 min). Scheduled exits are NOT firing.</div>`);
+  if(d.halted)strips.push(`<div class="banner halted">⛔ HALT set — new entries stopped; scheduled exits still run.</div>`);
+  else if(!d.armed)strips.push(`<div class="banner stopped">■ engine STOPPED — press START to run. Open positions still exit on schedule.</div>`);
+  else if(!dead)strips.push(`<div class="banner running">● RUNNING — heartbeat ${hbAge==null?'—':hbAge.toFixed(0)+' min ago'}</div>`);
+  const wb=d.walletBalance||{};
+  const lp=d.ltcPosition||{};
+  const preview=(()=>{ const p=d.previewDecision; if(!p)return'';
+    if(!p.available)return`<div class="muted" style="margin-bottom:.5rem">Next decision: ${esc(p.note||'not yet computable')}</div>`;
+    const label=p.side==='LONG'?'▲ open a LONG':p.side==='SHORT'?'▼ open a SHORT':'■ STAND DOWN — no position';
+    const c=p.side==='LONG'?'pos':p.side==='SHORT'?'neg':'warn';
+    return`<div style="margin-bottom:.5rem;padding:.45rem;border:1px solid var(--line);border-radius:5px">
+      <b>Plan for the next entry (${(p.entry_utc||'').replace('T',' ').slice(0,16)} UTC):</b> <span class="${c}" style="font-weight:bold">${label}</span>
+      ${Array.isArray(p.per_member)?`<span class="muted">· votes [${p.per_member.join(',')}], quorum ${p.quorum}</span>`:''}</div>`; })();
+  const items=(s.items||[]).map(it=>`<tr><td style="text-align:left;vertical-align:top;padding:.5rem .5rem"><b>${esc(it.what)}</b>
+    <div class="muted" style="font-size:.74rem;margin-top:.2rem;max-width:52rem">${esc(it.why||'')}</div></td>
+    <td style="text-align:right;vertical-align:top;white-space:nowrap;padding:.5rem .5rem">${it.whenUtc?`<span class="pos">${untilStr(it.whenUtc)}</span><div class="muted" style="font-size:.72rem">${it.whenUtc.replace('T',' ').slice(0,16)} UTC</div>`:'<span class="muted">—</span>'}</td></tr>`).join('');
+  const hist=(d.decisions&&d.decisions.length)?`<div style="margin-top:.9rem">
+    <div class="k" style="margin-bottom:.3rem">Daily decision history <span style="text-transform:none;letter-spacing:0">— newest first · votes: full, prices, volume, cross</span></div>
+    <div class="scrollbox"><table style="margin:0"><thead><tr><th style="text-align:left">date</th><th style="text-align:left">member votes</th><th style="text-align:left">action</th><th style="text-align:left">fate</th></tr></thead><tbody>
+    ${d.decisions.map(dec=>{const votes=Array.isArray(dec.votes)?dec.votes.map(v=>`<span class="${vcls(v)}">${vtxt(v)}</span>`).join(' · '):'<span class="muted">not recorded</span>';
+      const lab=dec.side==='LONG'?['▲ Open LONG','pos']:dec.side==='SHORT'?['▼ Open SHORT','neg']:['■ STAND DOWN','vote-as'];
+      return`<tr><td style="text-align:left;white-space:nowrap">${(dec.chunk_start||'').slice(0,10)}</td>
+      <td style="text-align:left">${votes}</td><td style="text-align:left;white-space:nowrap" class="${lab[1]}"><b>${lab[0]}</b></td>
+      <td style="text-align:left" class="muted">${esc(dec.fate||'')}</td></tr>`;}).join('')}</tbody></table></div></div>`:'';
+  $('#view').innerHTML=`
+    ${strips.join('')}
+    <div class="switch"><div><div class="k">Master switch (yours)</div>
+      <div style="font-size:1.1rem;font-weight:700" class="${d.armed?'pos':'muted'}">${d.armPending?'<span class="warn">PENDING…</span>':(d.armed?'RUNNING':'STOPPED')}</div></div>
+      <div class="spacer"></div>
+      <button class="master start" id="btnStart" ${d.armed&&!d.armPending?'disabled':''}>START engine</button>
+      <button class="master stop" id="btnStop" ${!d.armed&&!d.armPending?'disabled':''}>STOP engine</button></div>
+    <div class="panel" style="font-size:.85rem"><b>Protective stop:</b> ${d.fixedStopPct!=null?`<span class="pos">${(d.fixedStopPct*100).toFixed(2)}%</span> applied to every order`:'<span class="warn">none set</span>'} ·
+      <b>Sub-account wallet:</b> ${wb.usdtFree!=null?`$${wb.usdtFree.toFixed(2)} USDT · ${wb.ltcFree!=null?wb.ltcFree.toFixed(6):'—'} LTC`:'<span class="muted">no snapshot yet</span>'}
+      ${lp.netLtc!=null?` · <b>Net LTC (open):</b> <span class="${lp.netLtc>0?'pos':lp.netLtc<0?'neg':'muted'}">${lp.netLtc>=0?'+':''}${lp.netLtc.toFixed(6)}</span>`:''}</div>
+    <h2>Current status — what happens next</h2>
+    <div class="panel">
+      <div style="display:flex;gap:1.6rem;flex-wrap:wrap;align-items:baseline;border-bottom:1px solid var(--line);padding-bottom:.5rem;margin-bottom:.7rem">
+        <span><span class="k" style="margin-right:.35rem">engine</span>${d.halted?'<span class="warn">⛔ HALTED</span>':d.armed?'<span class="pos">● RUNNING</span>':'<span class="warn">■ STOPPED</span>'}</span>
+        <span><span class="k" style="margin-right:.35rem">open positions</span><b>${s.openPositions??'—'}</b> <span class="muted">(${s.openLong??0} long / ${s.openShort??0} short)</span></span></div>
+      ${preview}
+      <table style="margin:0 0 .2rem">${items?`<tbody>${items}</tbody>`:''}</table>
+      ${hist}</div>
+    <div class="grid" style="margin-bottom:1rem">
+      <div class="tile"><div class="k">LTC price (last run)</div><div class="v">${d.markPrice!=null?'$'+d.markPrice.toFixed(2):'—'}</div></div>
+      <div class="tile"><div class="k">Unrealized P&amp;L</div><div class="v ${cls(d.unrealizedPnl)}">${money(d.unrealizedPnl)}</div></div>
+      <div class="tile"><div class="k">Realized P&amp;L</div><div class="v ${cls(d.realizedPnl)}">${money(d.realizedPnl)}</div></div>
+      <div class="tile"><div class="k">Fee/leg: model</div><div class="v">$${d.modelFeePerLeg.toFixed(3)}</div></div>
+      <div class="tile"><div class="k">Fee/leg: realized</div><div class="v">${d.realizedFeePerLegAvg==null?'—':'$'+d.realizedFeePerLegAvg.toFixed(4)}</div></div>
+      <div class="tile"><div class="k">Fill dev avg</div><div class="v">${d.fillDeviationAvg==null?'—':(d.fillDeviationAvg*100).toFixed(3)+'%'}</div></div>
+      <div class="tile"><div class="k">Consec. rejects</div><div class="v ${d.consecutiveRejects>=2?'warn':''}">${d.consecutiveRejects}</div></div>
+      <div class="tile"><div class="k">Mirror check</div><div class="v ${mirrorBreaks>0?'warn':'pos'}">${d.mirror==null?'—':(mirrorBreaks>0?mirrorBreaks+' BREAK':'clean')}</div></div>
+    </div>
+    <div class="panel"><div class="k">Open positions</div>
+      <table style="margin-top:.4rem"><thead><tr><th>chunk</th><th>side</th><th>qty</th><th>entry</th><th>mark</th><th>unreal $</th><th>exit due</th></tr></thead><tbody>
+      ${d.openPositions.length?d.openPositions.map(p=>`<tr><td>${(p.chunk_start||'').slice(0,16)}</td>
+        <td class="${p.side==='LONG'?'pos':'neg'}">${p.side}</td><td>${p.qty}</td><td>${p.entry_price??'—'}</td>
+        <td>${p.markPrice!=null?'$'+p.markPrice.toFixed(2):'—'}</td><td class="${cls(p.unrealized)}">${money(p.unrealized)}</td>
+        <td class="muted">${p.exit_due_ts?new Date(p.exit_due_ts*1000).toISOString().slice(0,16):'—'}</td></tr>`).join(''):'<tr><td colspan="7" class="empty">none open</td></tr>'}
+      </tbody></table></div>
+    <div class="panel"><div class="k">Recent closed</div>
+      <table style="margin-top:.4rem"><thead><tr><th>chunk</th><th>side</th><th>entry</th><th>exit</th><th>P&amp;L ($)</th></tr></thead><tbody>
+      ${d.closedRecent.length?d.closedRecent.map(c=>`<tr><td>${(c.chunk_start||'').slice(0,16)}</td>
+        <td class="${c.side==='LONG'?'pos':'neg'}">${c.side}</td><td>${c.entry_price??'—'}</td><td>${c.exit_price??'—'}</td>
+        <td class="${cls(c.pnl)}">${money(c.pnl)}</td></tr>`).join(''):'<tr><td colspan="5" class="empty">none closed yet</td></tr>'}
+      </tbody></table></div>
+    <div class="panel"><div class="k">Incidents (kills, halts, rejects, mirror-breaks)</div>
+      <table style="margin-top:.4rem"><thead><tr><th>utc</th><th>kind</th><th style="text-align:left">detail</th></tr></thead><tbody>
+      ${d.incidents.length?d.incidents.map(i=>`<tr><td>${(i.utc||'').slice(0,19)}</td><td class="warn">${esc(i.kind)}</td>
+        <td style="text-align:left" class="muted">${esc((i.detail||'').slice(0,120))}</td></tr>`).join(''):'<tr><td colspan="3" class="empty">none — clean</td></tr>'}
+      </tbody></table></div>
+    <div class="panel"><div class="k">Full event log — everything the executor did</div>
+      <div class="logbox" style="margin-top:.4rem"><table><thead><tr><th>utc</th><th>event</th><th style="text-align:left">detail</th></tr></thead><tbody>
+      ${(d.log||[]).map(e=>`<tr><td>${(e.utc||'').slice(0,19)}</td><td>${esc(e.event)}</td>
+        <td style="text-align:left" class="muted">${esc(JSON.stringify(e.detail).slice(1,-1).slice(0,140))}</td></tr>`).join('')||'<tr><td colspan="3" class="empty">no events yet</td></tr>'}
+      </tbody></table></div></div>
+    <div class="sub muted">synced ${esc(d.journalSyncedUtc||'—')} · identical data to the Live pilot page (kept for side-by-side until you retire it)</div>`;
+  const go=async(armed)=>{ const verb=armed?'START':'STOP';
+    if(!confirm(`${verb} the F1 engine?`))return;
+    const out=await post('api/pilot/arm',{armed}); if(out) draw(); };
+  const bs=$('#btnStart'); if(bs)bs.onclick=()=>go(true);
+  const bp=$('#btnStop'); if(bp)bp.onclick=()=>go(false);
+}
+
+function draw(){ renderNav();
+  if(sub==='dash') drawDash();
+  else if(sub==='configs') drawConfigs();
+  else if(sub==='setups') drawSetups();
+  else if(sub==='detail') drawDetail();
+  else drawLive();
 }
 function tickClock(){ $('#utcClock').textContent=new Date().toISOString().slice(0,19).replace('T',' ')+' UTC'; }
 tickClock(); setInterval(tickClock,1000);
-draw(); setInterval(()=>{ if(current!=='detail') draw(); }, 15000);
+draw(); setInterval(()=>{ if(sub==='dash'||sub==='live') draw(); }, 30000);
 </script>
 </body>
 </html>
