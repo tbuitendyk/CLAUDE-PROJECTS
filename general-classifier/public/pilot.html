@@ -78,11 +78,11 @@
     <button class="master stop" id="btnStop">STOP engine</button>
   </div>
 
-  <div class="cfg" id="stopBox" style="margin-top:.5rem"></div>
-  <div class="cfg" id="balBox" style="margin-top:.5rem"></div>
+  <div class="pipe" id="stopBox" style="margin-top:.5rem"></div>
+  <div class="pipe" id="balBox" style="margin-top:.5rem"></div>
 
   <h2>Current status — what happens next</h2>
-  <div id="statusPanel" class="cfg muted">loading…</div>
+  <div id="statusPanel" class="pipe">loading…</div>
 
   <h2>Tested configuration — how these trades are set up</h2>
   <div class="cfg" id="cfg"></div>
@@ -434,8 +434,10 @@ function historyBlock() {
       + `<td style="text-align:left;white-space:nowrap" class="${lcls}"><b>${label}</b></td>`
       + `<td style="text-align:left" class="muted">${dec.fate||''}</td></tr>`;
   }).join('');
-  return `<div style="grid-column:1/-1;margin-top:.55rem"><b>Daily decision history</b> <span class="muted">(newest first · votes are the four members: full, prices, volume, cross)</span>`
-    + `<div style="max-height:190px;overflow-y:auto;border:1px solid #2a3140;border-radius:5px;margin-top:.25rem">`
+  return `<div style="margin-top:.9rem">`
+    + `<div style="color:#8b96a5;font-size:.68rem;text-transform:uppercase;letter-spacing:.04em;margin-bottom:.3rem">`
+    + `Daily decision history <span style="text-transform:none;letter-spacing:0">— newest first · votes: full, prices, volume, cross</span></div>`
+    + `<div style="max-height:190px;overflow-y:auto;border:1px solid #232a35;border-radius:6px">`
     + `<table style="width:100%;margin:0"><thead><tr><th style="text-align:left">date</th><th style="text-align:left">member votes</th><th style="text-align:left">action</th><th style="text-align:left">fate</th></tr></thead>`
     + `<tbody>${rows}</tbody></table></div></div>`;
 }
@@ -444,16 +446,28 @@ function renderStatus() {
   const el = document.getElementById('statusPanel');
   if (!el) return;
   if (!s) { el.innerHTML = '<span class="muted">no status yet — the executor has not reported.</span>'; return; }
-  const posLine = `<b>Open positions:</b> ${s.openPositions} (${s.openLong} long / ${s.openShort} short) · `
-    + `<b>engine:</b> ${s.halted ? '<span class="warn">HALTED</span>' : (s.armed ? '<span class="pos">RUNNING</span>' : '<span class="warn">STOPPED</span>')}`;
+  // 1. header strip: engine state + open positions, one line, bordered off
+  const engine = s.halted ? '<span class="warn">⛔ HALTED</span>'
+    : s.armed ? '<span class="pos">● RUNNING</span>' : '<span class="warn">■ STOPPED</span>';
+  const klbl = 'color:#8b96a5;font-size:.68rem;text-transform:uppercase;letter-spacing:.04em;margin-right:.35rem';
+  const header = `<div style="display:flex;gap:1.6rem;flex-wrap:wrap;align-items:baseline;`
+    + `border-bottom:1px solid #232a35;padding-bottom:.5rem;margin-bottom:.7rem">`
+    + `<span><span style="${klbl}">engine</span>${engine}</span>`
+    + `<span><span style="${klbl}">open positions</span><b>${s.openPositions}</b> `
+    + `<span class="muted">(${s.openLong} long / ${s.openShort} short)</span></span></div>`;
+  // 2. what happens next: one row per event — the WHAT (with its why folded
+  //    underneath, muted) on the left, the WHEN right-aligned and never wrapped
   const rows = (s.items||[]).map(it => {
-    const when = it.whenUtc ? `<span class="pos">${untilStr(it.whenUtc)}</span> <span class="muted">(${it.whenUtc.replace('T',' ').slice(0,16)} UTC)</span>` : '<span class="muted">—</span>';
-    return `<tr><td style="text-align:left"><b>${it.what}</b></td><td style="white-space:nowrap">${when}</td></tr>`
-         + `<tr><td colspan="2" style="text-align:left" class="muted" title="why">↳ ${it.why||''}</td></tr>`;
+    const when = it.whenUtc
+      ? `<span class="pos">${untilStr(it.whenUtc)}</span><div class="muted" style="font-size:.72rem">${it.whenUtc.replace('T',' ').slice(0,16)} UTC</div>`
+      : '<span class="muted">—</span>';
+    return `<tr><td style="text-align:left;vertical-align:top;padding:.5rem .5rem"><b>${it.what}</b>`
+      + `<div class="muted" style="font-size:.74rem;margin-top:.2rem;max-width:52rem">${it.why||''}</div></td>`
+      + `<td style="text-align:right;vertical-align:top;white-space:nowrap;padding:.5rem .5rem">${when}</td></tr>`;
   }).join('');
-  el.innerHTML = previewLine()
-    + `<div style="margin-bottom:.4rem">${posLine}</div>`
-    + `<table style="width:100%"><tbody>${rows}</tbody></table>`
+  el.innerHTML = header
+    + previewLine()
+    + `<table style="width:100%;margin:0 0 .2rem">${rows ? `<tbody>${rows}</tbody>` : ''}</table>`
     + freshLine()
     + historyBlock();
 }

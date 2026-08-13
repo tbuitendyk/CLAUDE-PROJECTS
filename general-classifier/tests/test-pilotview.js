@@ -150,9 +150,9 @@ module.exports.standDownRecordsFillTheHistoryTheJournalCannot = function () {
   ] });
   assert.strictEqual(st.decisions.length, 3, 'stand-down days join the history');
   assert.strictEqual(st.decisions[0].chunk_start, '2026-08-10T00:00Z', 'newest first');
-  assert.strictEqual(st.decisions[0].fate, 'stand down (backfilled recompute)', 'backfills say so');
+  assert.strictEqual(st.decisions[0].fate, 'stand down', 'no provenance jargon on screen (owner 2026-08-13)');
   assert.deepStrictEqual(st.decisions[0].votes, [0, -1, 0, 0], 'stand-down votes surface');
-  assert.strictEqual(st.decisions[1].fate, 'stand down — nothing shipped');
+  assert.strictEqual(st.decisions[1].fate, 'stand down');
   assert.strictEqual(st.decisions[2].side, 'LONG', 'journal wins the collision');
   assert.strictEqual(st.decisions[2].fate, 'filled');
 };

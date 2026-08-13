@@ -337,7 +337,7 @@ function derive(events, extra = {}) {
           chunk_start: sd.chunk_start, utc: sd.produced_utc || null, side: 'FLAT',
           votes: sd.per_member || null, quorum: sd.quorum ?? null,
           decision_price: sd.decision_price ?? null, input_hash: sd.input_hash || null,
-          fate: sd.backfilled ? 'stand down (backfilled recompute)' : 'stand down — nothing shipped',
+          fate: 'stand down',
         };
       }
       return Object.values(merged)
