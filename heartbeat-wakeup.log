@@ -1,2 +1,3 @@
 tick 1: 2026-08-13T01:18:16Z
 tick 2: 2026-08-13T02:55:37Z (late; 02:19Z wakeup lost in worker recycle; restarted in-session)
+tick 3: 2026-08-13T04:11:59Z (late; 03:57Z wakeup lost in worker recycle by 03:07Z; kill #2; restarted in-session) [container:52f537e3]
