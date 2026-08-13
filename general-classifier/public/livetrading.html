@@ -141,7 +141,7 @@ async function drawGreenlights(){
   if(!gs.length){ $('#view').innerHTML=`<div class="panel empty">No greenlights yet. A greenlight is the recorded
     decision that a lab configuration is fit to trade; the shuttle button then mints a draft setup from it.</div>`; return; }
   $('#view').innerHTML=`<div class="panel"><table><thead><tr>
-    <th>greenlight</th><th>pair</th><th>target</th><th>campaign</th><th>why</th><th>shuttled</th><th></th></tr></thead><tbody>
+    <th>greenlight</th><th>pair</th><th>target</th><th>campaign</th><th style="text-align:left">why</th><th>shuttled</th><th></th></tr></thead><tbody>
     ${gs.map(g=>`<tr>
       <td class="muted" style="font-size:.72rem">${(g.createdUtc||'').slice(0,16)}</td>
       <td>${g.configSnapshot?.combo?.trade||'—'}</td><td>${g.target}</td>

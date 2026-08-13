@@ -92,7 +92,7 @@
 
   <h2>The committee — who votes, and what each member sees</h2>
   <table id="committee"><thead><tr>
-    <th>member</th><th>model</th><th>view</th><th>features seen</th><th>what that view means</th>
+    <th>member</th><th style="text-align:left">model</th><th>view</th><th>features seen</th><th style="text-align:left">what that view means</th>
   </tr></thead><tbody></tbody></table>
 
   <h2>How the comparison assets enter the equation</h2>
@@ -116,10 +116,10 @@
   </tr></thead><tbody></tbody></table>
 
   <h2>Incidents (kills, halts, rejects, mirror-breaks)</h2>
-  <table id="incidents"><thead><tr><th>utc</th><th>kind</th><th>detail</th></tr></thead><tbody></tbody></table>
+  <table id="incidents"><thead><tr><th>utc</th><th>kind</th><th style="text-align:left">detail</th></tr></thead><tbody></tbody></table>
 
   <h2>Full event log — everything the executor did</h2>
-  <div class="logbox"><table id="log"><thead><tr><th>utc</th><th>event</th><th>detail</th></tr></thead><tbody></tbody></table></div>
+  <div class="logbox"><table id="log"><thead><tr><th>utc</th><th>event</th><th style="text-align:left">detail</th></tr></thead><tbody></tbody></table></div>
 
   <div class="sub muted" id="foot"></div>
 
@@ -213,10 +213,10 @@ function renderDecisions(list) {
       ? dec.votes.map(v => `<span class="${vcls(v)}">${vtxt(v)}</span>`).join(' · ')
       : '<span class="muted">not recorded</span>';
     return `<tr><td>${(dec.chunk_start||'').slice(0,16)}</td>
-      <td style="text-align:left">${votes}</td>
+      <td>${votes}</td>
       <td class="${dec.side==='LONG'?'vote-up':dec.side==='SHORT'?'vote-dn':'vote-as'}">${dec.side}</td>
       <td>${dec.decision_price??'—'}</td>
-      <td style="text-align:left" class="muted">${dec.fate}</td></tr>`;
+      <td class="muted">${dec.fate}</td></tr>`;
   }).join('') : '<tr><td colspan="5" class="muted">no decisions journaled yet</td></tr>';
 }
 
