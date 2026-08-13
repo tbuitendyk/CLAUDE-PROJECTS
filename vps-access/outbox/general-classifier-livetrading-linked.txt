@@ -1,0 +1,39 @@
+Found it: the Live Trading page was deployed but ORPHANED — now linked; tab + nav live
+
+tl;dr — You were right and my earlier answers missed the point. The new Live
+Trading interface WAS on the server the whole time, but nothing linked to it:
+no tab in the app, no button anywhere — and the page itself had no header back
+to the app or portal. From the website it was invisible, which is exactly
+"not deployed" from where you sit. Fixed and live as of 01:57 UTC: the main app
+now has a "Live trading" tab (next to "Live pilot"), and the page carries the
+site header. One hard refresh of the main app page will show the new tab.
+
+WHAT WENT WRONG, PLAINLY. The overnight build created the new interface as its
+own page (livetrading.html) and every deploy shipped it faithfully — but the
+step that puts a button in the main app's tab bar was never done, and I did not
+catch it in any review because all the reviews checked the money path, not
+"can a human actually reach the screen." Your two mails were both symptoms of
+this one miss: the page you were on with no top buttons was this orphan page,
+and "where's the new code" was the orphan being unreachable. My earlier replies
+verified the wrong pages end-to-end (they were fine) and told you about caching
+(irrelevant). The failure was mine, in navigation wiring, not in your browser.
+
+WHAT IS LIVE NOW (rev 46c3b04, static-only deploy, engine not restarted):
+  - Main app tab bar: Research · Bracket lab · Paper books · Live pilot ·
+    NEW -> Live trading
+  - livetrading.html: site header (buitendyk.ca / back to the app), plus its
+    existing theme toggle. Shows every greenlighted setup, per-setup status,
+    decisions, fills, execution fidelity, and the data catalog.
+  - Also done earlier tonight: the bracket guide and the F1 pilot screen got
+    the same header.
+
+STATE OF THE RAIL, unchanged: the Live Trading rail is deployed and paper-only
+in code (S2_LIVE_ROUTING guard) until per-setup sub-account key routing exists;
+no real order can come from it. F1 pilot untouched and healthy. ARM stays your
+call.
+
+A QC entry is going into the register for this class of miss: a feature is not
+"shipped" until a human can navigate to it from the home page — that check is
+now part of any UI-facing release.
+
+c.
