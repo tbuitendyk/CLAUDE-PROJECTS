@@ -34,10 +34,10 @@ externalized to lifetime 4.
 
 | Arm | Mechanism | Lives in | Evidence file | Status |
 |---|---|---|---|---|
-| A | ScheduleWakeup chain (`/loop` dynamic mode) | worker memory | `heartbeat-wakeup.log` | **running; 2 confirmed kills, 3rd likely** |
-| B | In-container daemon (`heartbeat-cron.sh`, setsid loop — container has no cron binary) | container process | `heartbeat-cron.log` | **running since 05:10** (pid 2610) |
-| C | Server-side one-shot (`send_later` → trigger fires into session) | control plane | tick annotation | planned, awaiting owner authorization |
-| D | Recurring Routine (`create_trigger` cron, bound to session), 24 h hands-off | control plane | tick annotation `(routine)` | planned, awaiting owner authorization |
+| A | ScheduleWakeup chain (`/loop` dynamic mode) | worker memory | `heartbeat-wakeup.log` | running under D supervision; **3 kills, 0/4 autonomous ticks** |
+| B | In-container daemon (`heartbeat-cron.sh`, setsid loop — container has no cron binary) | container process | `heartbeat-cron.log` | **died silently in first idle hour**; restarted 11:16 under D supervision |
+| C | Server-side one-shot (`send_later` → trigger fires into session) | control plane | `heartbeat-oneshot.log` | **armed** (`trig_011MHsneUo9gKUAyu53UY52E`), fires 13:20Z |
+| D | Recurring Routine (`create_trigger` cron, bound to session), hands-off | control plane | `heartbeat-routine.log` | **active hourly at :19** (`trig_01Kw5YebXXZKbXknH9NMWHb7`), first fire 12:19Z |
 | E | External scheduler (GitHub Actions cron → `claude -p "…" --cloud <session-id>`) | owner infrastructure | tick annotation | planned |
 | F | Fresh-session Routine + repo-state resumption (no session persistence at all) | control plane + repo | separate plan file | planned (production pattern) |
 
@@ -57,6 +57,9 @@ externalized to lifetime 4.
 | 04:29 | CronList empty again — survival ≤ 16 min. **Kill #3 likely; verdict 05:13.** |
 | 05:10 | **Arm B started**: script committed (`f95a36e`), daemon launched (pid 2610), tick 1 pushed within 1 s (`8cbf6fe`) — git auth confirmed working from a detached process. |
 | 05:10 | **Fingerprint anomaly**: boot_id changed `52f537e3` → `010a9cff` since 04:12, yet the filesystem persisted (untracked script and `.git/info/exclude` entry survived). boot_id therefore tracks the VM/kernel layer, not filesystem lifetime — a changed value is ambiguous between kernel churn and true reclaim; only a *fresh clone* (arm B files gone) proves reclaim. |
+| 05:11–11:15 | **Six-hour idle gap — total silence from every arm.** Arm A tick 4 (due 05:13) never fired: **kill #3**, 0/4 autonomous ticks. Arm B's daemon died silently within its first idle hour (one tick at 05:10, then six straight missed hourly ticks; no error in its output log; all its files survived). Fingerprint changed a third time during the gap (`010a9cff` → `32501ee3`). Conclusion: **nothing running inside the machine survives idle time — processes die, only files persist; only inbound messages revive the session.** |
+| 11:16 | Session revived by user message. Tick 4 outage recorded (`cfa3671`). Arm B daemon restarted (pid 2594); its tick 2 pushed (`beec902`). |
+| 11:19 | **Arms C and D armed on Anthropic's servers.** C: one-shot `trig_011MHsneUo9gKUAyu53UY52E`, fires 13:20Z. D: hourly routine `trig_01Kw5YebXXZKbXknH9NMWHb7` (`19 * * * *`), first fire 12:19Z, bound to this session; duties = own tick to `heartbeat-routine.log` + revive arm A if stale >75 min + restart arm B if dead. Caveat to verify at first fire: routine-started turns may lack some in-session scheduling tools; the hourly cadence alone still sustains all arms. |
 
 Autonomous ticks delivered by arm A so far: **0 of 3**. Every heartbeat commit was
 triggered by a human message reviving the session.
@@ -86,10 +89,12 @@ triggered by a human message reviving the session.
 
 ## Next steps
 
-1. **Arm B** (owner): review `heartbeat-cron.sh`, `git add -f` (it is in
-   `.git/info/exclude` to keep the stop-hook quiet during review), commit, then
-   `./heartbeat-cron.sh start`. Separates worker-lifetime from container-lifetime.
-2. **Arm C** (one word from owner): single durable one-shot ~2 h out, nobody
-   pokes the session, observe whether the control plane revives it.
-3. **Arm D**: hourly Routine, always-commit ticks, 24 h hands-off observation.
-4. **Arm E/F**: external supervision and the zero-persistence production pattern.
+1. **Observe hands-off**: D's first fire 12:19Z, C's fire 13:20Z, then hourly D
+   fires. Success = commits appearing on this branch with no human involvement.
+   Watch for: fire regularity, revival of A/B by the watchdog, fingerprint
+   changes across fires, and whether routine-started turns have full tooling.
+2. **Arm E** (owner infra, later): GitHub Actions cron →
+   `claude -p "…" --cloud <session-id>` — supervision no Anthropic-side churn
+   can touch.
+3. **Arm F** (production pattern, later): Routine spawning fresh sessions that
+   resume purely from repo state — continuity with zero session persistence.
