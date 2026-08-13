@@ -1,1 +1,2 @@
 tick 1: 2026-08-13T13:46:17Z [container:8184e4ff] (two hourly fires scheduled 12:19Z and 13:19Z delivered together after queuing; A last tick 9min ago; B daemon dead->restarted after 5th machine-identity change)
+tick 2: 2026-08-13T15:56:22Z [container:298674f4] (A last tick 139min ago; B daemon dead->restarted; fire(s) due 14:19Z/15:19Z delivered late at 15:55Z alongside a user message after 2h idle — queued, did not self-revive the idle session)
