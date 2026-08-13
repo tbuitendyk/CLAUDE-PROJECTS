@@ -156,14 +156,16 @@ function listGreenlights() {
 
 // THE SHUTTLE (point 4): greenlight -> new draft setup, snapshot + provenance
 // riding along. The greenlight record keeps the reverse link.
-function shuttle(greenlightId, { name, clipUsd, stopPct = null, by = 'owner' } = {}) {
+function shuttle(greenlightId, { name, clipUsd, stopPct = null, by = 'owner', channel = null } = {}) {
   const gl = getGreenlight(greenlightId);
   if (!gl) { const e = new Error(`no such greenlight ${greenlightId}`); e.code = 'NOT_FOUND'; throw e; }
+  if (gl.revoked) { const e = new Error('this config was nuked back to not-greenlighted'); e.code = 'REVOKED'; throw e; }
   const setup = reg.createSetup({
     name: name || `${gl.configSnapshot.combo.trade} ${gl.target} (${gl.sourceRun.id})`,
     ownerId: by,
     configSnapshot: gl.configSnapshot,
     provenanceRef: gl.id,
+    channel,
     clipUsd,
     stopPct,
     by,
@@ -173,7 +175,42 @@ function shuttle(greenlightId, { name, clipUsd, stopPct = null, by = 'owner' } =
   return { greenlight: next, setup };
 }
 
+// NUKE (owner, 2026-08-14): return a config to not-greenlighted. It vanishes
+// from the Trading lists; the saved sweeps it came from are untouched. Refused
+// while any channel is still active or winding down — a config with running
+// money (or a paper book mid-flight) must be deactivated and closed out first.
+function revoke(greenlightId, { by = 'owner' } = {}) {
+  const gl = getGreenlight(greenlightId);
+  if (!gl) { const e = new Error(`no such greenlight ${greenlightId}`); e.code = 'NOT_FOUND'; throw e; }
+  const busy = reg.listSetups().filter((s) => s.provenanceRef === greenlightId
+    && (s.state === 'paper' || s.state === 'live' || s.state === 'stopped'));
+  const active = busy.filter((s) => s.state !== 'stopped');
+  if (active.length) {
+    const e = new Error(`deactivate first: ${active.map((s) => `${s.channel || s.id} is ${s.state}`).join(', ')}`);
+    e.code = 'CHANNEL_ACTIVE';
+    throw e;
+  }
+  // a STOPPED channel still winding down (open positions exiting on schedule)
+  // blocks the nuke too — tracking continues until everything is closed out.
+  // A missing/unreadable journal means nothing ever traded: flat.
+  for (const s of busy) {
+    let open = 0;
+    try { open = (require('./view').setupStatus(s).openPositions || []).length; } catch (_) { open = 0; }
+    if (open > 0) {
+      const e = new Error(`${s.channel || s.id} is still deactivating (${open} open position${open > 1 ? 's' : ''}) — wait for close-out`);
+      e.code = 'CHANNEL_ACTIVE';
+      throw e;
+    }
+  }
+  // stopped-and-flat channels retire with the nuke (their frozen records remain
+  // on disk and in the journal; they just leave the working lists)
+  for (const s of busy) reg.transition(s.id, 'retired', by, 'config nuked');
+  const next = { ...gl, revoked: { utc: new Date().toISOString(), by } };
+  atomicWrite(fileFor(gl.id), next);
+  return next;
+}
+
 module.exports = {
-  greenlightFromRun, getGreenlight, listGreenlights, shuttle,
+  greenlightFromRun, getGreenlight, listGreenlights, shuttle, revoke,
   configFromSelection, stageFromMembers, glDir,
 };

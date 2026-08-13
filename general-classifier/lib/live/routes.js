@@ -11,8 +11,9 @@ const reg = require('./setups');
 function errStatus(e) {
   switch (e.code) {
     case 'NOT_FOUND': return 404;
-    case 'BAD_TRANSITION': case 'IMMUTABLE': case 'BAD_SETUP': case 'BAD_CONFIG': case 'NOT_DRAFT': return 400;
-    case 'EXISTS': return 409;
+    case 'BAD_TRANSITION': case 'IMMUTABLE': case 'BAD_SETUP': case 'BAD_CONFIG': case 'NOT_DRAFT':
+    case 'NOT_LIVE_EXECUTABLE': case 'BAD_CHANNEL': case 'NOT_ACTIVE': return 400;
+    case 'EXISTS': case 'ALREADY_ACTIVE': case 'CHANNEL_ACTIVE': case 'DEACTIVATING': case 'REVOKED': return 409;
     default: return 500;
   }
 }
@@ -111,6 +112,60 @@ function installLiveRoutes(app, { csrfGuard }) {
       });
       res.json({ ok: true, greenlightId: out.greenlight.id, setup: summarize(out.setup) });
     } catch (e) { res.status(errStatus(e)).json({ error: e.message }); }
+  });
+
+  // ---- dual-channel configs (owner 2026-08-14; NEXT-RELEASE point 25) -----
+  // The Trading tab's entity: every non-nuked greenlight, with its paper/real
+  // channel states and the owner's status-line vocabulary.
+  const ch = require('./channels');
+  const view = require('./view');
+
+  app.get('/api/live/configs', (req, res) => {
+    try {
+      const configs = gl.listGreenlights().filter((g) => !g.revoked).map((g) => {
+        const chans = ch.channelSetups(g.id);
+        const parts = [];
+        const channels = {};
+        for (const c of ['real', 'paper']) {
+          const s = chans[c];
+          if (!s) { channels[c] = null; continue; }
+          let open = 0;
+          try { open = (view.setupStatus(s).openPositions || []).length; } catch (_) { open = 0; }
+          parts.push({ channel: c, state: s.state, open });
+          channels[c] = { setupId: s.id, state: s.state, open, runEpochUtc: s.runEpochUtc || null };
+        }
+        return {
+          id: g.id, createdUtc: g.createdUtc, campaign: g.campaign || null,
+          pair: g.configSnapshot?.combo?.trade || null, target: g.target,
+          why: g.why || '', engineVersion: g.engineVersion || null,
+          status: ch.statusLine(parts), channels,
+        };
+      });
+      res.json({ configs });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
+  app.post('/api/live/configs/:id/activate', csrfGuard, (req, res) => {
+    try {
+      const b = req.body || {};
+      const s = ch.activate(String(req.params.id), String(b.channel || ''), {
+        clipUsd: b.clipUsd != null ? Number(b.clipUsd) : undefined, name: b.name,
+      });
+      res.json({ ok: true, setup: summarize(s) });
+    } catch (e) { res.status(errStatus(e)).json({ error: e.message }); }
+  });
+
+  app.post('/api/live/configs/:id/deactivate', csrfGuard, (req, res) => {
+    try {
+      const s = ch.deactivate(String(req.params.id), String((req.body || {}).channel || ''));
+      res.json({ ok: true, setup: summarize(s) });
+    } catch (e) { res.status(errStatus(e)).json({ error: e.message }); }
+  });
+
+  // NUKE: back to not-greenlighted. Gone from these lists; saved sweeps untouched.
+  app.post('/api/live/configs/:id/nuke', csrfGuard, (req, res) => {
+    try { res.json({ ok: true, greenlight: gl.revoke(String(req.params.id)) }); }
+    catch (e) { res.status(errStatus(e)).json({ error: e.message }); }
   });
 }
 

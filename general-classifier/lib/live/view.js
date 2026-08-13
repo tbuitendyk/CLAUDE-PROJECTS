@@ -145,14 +145,29 @@ function deriveSetup(events, setupId) {
 
 // Full status payload for one setup: its registry record (config, state) +
 // its derived book, from the synced journal.
+//
+// runEpochUtc (owner 2026-08-14): a re-activated channel restarts its DISPLAYED
+// run from the activation instant — events before the epoch are excluded from
+// the derivation here, so the screen shows this run only. The journal itself is
+// append-only and keeps everything; open positions cannot be hidden by an epoch
+// because activation is gated on the channel being stopped-and-done first, and
+// any position opened after activation postdates the epoch by construction.
 function setupStatus(setup, file = journalFile()) {
   const { present, events } = readJournal(file);
-  const book = deriveSetup(events, setup.id);
+  const epoch = setup.runEpochUtc ? Date.parse(setup.runEpochUtc) : null;
+  const scoped = epoch
+    ? events.filter((e) => {
+      const t = e.utc ? Date.parse(e.utc) : (e.ts ? e.ts * 1000 : null);
+      return t == null || t >= epoch;
+    })
+    : events;
+  const book = deriveSetup(scoped, setup.id);
   return {
     id: setup.id, name: setup.name, state: setup.state,
     tradedPair: setup.tradedPair, clipUsd: setup.clipUsd, stopPct: setup.stopPct,
     paper: setup.state === 'paper',
     journalPresent: present,
+    runEpochUtc: setup.runEpochUtc || null,
     ...book,
   };
 }

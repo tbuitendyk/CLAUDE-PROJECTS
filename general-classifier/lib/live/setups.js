@@ -98,6 +98,9 @@ function createSetup(spec) {
     tradedPair: cfg.combo.trade,
     engineVersion: ENGINE_VERSION,
     provenanceRef: spec.provenanceRef ?? null,
+    // which config channel this record serves ('paper' | 'real' | null for
+    // pre-channel-era setups like f1-pilot). Identity, set once at shuttle.
+    channel: spec.channel ?? null,
     createdUtc: now,
     // operational — mutable
     clipUsd: spec.clipUsd,
@@ -248,7 +251,19 @@ function deleteDraft(id) {
   return true;
 }
 
+// Stamp the start of a DISPLAYED run (owner, 2026-08-14): re-activating a
+// channel restarts what the screen shows from this instant. Internal helper —
+// deliberately not part of updateSetup's MUTABLE surface, because it is not an
+// operational knob; it is set exactly at activation. Journals are untouched.
+function setRunEpoch(id, utc = new Date().toISOString()) {
+  const s = getSetup(id);
+  if (!s) { const e = new Error(`no such setup ${id}`); e.code = 'NOT_FOUND'; throw e; }
+  const next = { ...s, runEpochUtc: utc };
+  atomicWrite(fileFor(id), next);
+  return next;
+}
+
 module.exports = {
-  createSetup, getSetup, listSetups, updateSetup, transition, deleteDraft,
+  createSetup, getSetup, listSetups, updateSetup, transition, deleteDraft, setRunEpoch,
   STATES, TRANSITIONS, MIN_STOP_PCT, setupsDir,
 };

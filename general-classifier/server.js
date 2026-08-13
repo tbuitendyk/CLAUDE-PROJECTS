@@ -270,6 +270,15 @@ const RELEASE_VERSION = require('./package.json').version;
 const campaign = require('./lib/campaign');
 
 app.get('/api/campaign', (req, res) => res.json({ name: campaign.getCampaign() }));
+// Campaign-as-parent (point 25): computed tree + name catalog, drift-proof.
+app.get('/api/campaigns', (req, res) => {
+  try { res.json({ names: campaign.listCampaignNames() }); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.get('/api/campaign-tree', (req, res) => {
+  try { res.json(campaign.campaignTree(String(req.query.name || '') || null)); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
 
 app.post('/api/campaign', (req, res) => {
   try {
