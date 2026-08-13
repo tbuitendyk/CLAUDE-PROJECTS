@@ -1,13 +1,9 @@
 #!/usr/bin/env bash
-# classifier-nav-diag.sh -- read-only: does /api/pilot carry the data the
-# status-box history renders from (decisions[] with votes/side/fate)?
+# classifier-nav-diag.sh -- read-only: stop-tuner visibility check.
 set -uo pipefail
-curl -s --max-time 15 http://127.0.0.1:8093/api/pilot | python3 -c "
-import sys, json
-d = json.load(sys.stdin)
-dec = d.get('decisions') or []
-print('present:', d.get('present'), '| liveStatus:', bool(d.get('liveStatus')))
-print('decisions:', len(dec))
-for x in dec[-6:]:
-    print(' ', (x.get('chunk_start') or '')[:16], 'votes=', x.get('votes'), 'side=', x.get('side'), 'fate=', (x.get('fate') or '')[:40])
-"
+echo "-- /api/pilot/stop-candidates --"
+curl -s --max-time 10 http://127.0.0.1:8093/api/pilot/stop-candidates | head -c 400; echo
+echo "-- /api/pilot/stopsweep (state) --"
+curl -s --max-time 10 http://127.0.0.1:8093/api/pilot/stopsweep | head -c 300; echo
+echo "-- /api/pilot/fixed-stop (applied) --"
+curl -s --max-time 10 http://127.0.0.1:8093/api/pilot/fixed-stop | head -c 200; echo
