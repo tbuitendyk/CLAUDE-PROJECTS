@@ -1227,7 +1227,6 @@ require('./lib/live/routes').installLiveRoutes(app, { csrfGuard });
 // determined FIXED_STOP_PCT to the box, and the live screen shows it. Heavy
 // (loads full history + trains), so it runs in the background and the UI polls.
 // This writes a RISK PARAMETER, not an authorization to trade — it opens nothing.
-let stopSweepRunning = false;
 function stopSweepPath() {
   const dir = path.join(__dirname, 'data', 'pilot');
   dataFs.mkdirSync(dir, { recursive: true });
@@ -1269,7 +1268,34 @@ app.get('/api/pilot/stop-candidates', (req, res) => {
 // Conviction sizing (owner 2026-08-13): price a quorum-agreement clip ladder
 // over full history — same frozen replay as the stop sweep, pure $ overlay.
 // A scan SHOWS the answer; it changes no sizing anywhere. Background + polled.
-let convictionSweepRunning = false;
+// ONE heavy scan at a time (owner 2026-08-14): the stop tuner and the
+// conviction sweep replay full history and must never run concurrently — a
+// shared mutex gates both, and both UIs disable both launch buttons while
+// either runs. Scans are minutes-scale and run to completion; the batch
+// runner's Stop jobs (api/abort) covers batch jobs.
+let heavyScanRunning = false; // false | 'stop' | 'conviction'
+// Owner-driven candidates (point 25): a sweep can target a SELECTED ROW of a
+// saved run — the same anchor the greenlight uses — not just the hardcoded
+// registry. configFromSelection freezes the row into the shared vocabulary;
+// the training freeze is the selecting run's own fire time.
+function bookFromScanBody(b) {
+  if (b && b.runId) {
+    const doc = require('./lib/batch').getBatch(String(b.runId));
+    if (!doc) { const e = new Error(`no saved run ${b.runId}`); e.status = 404; throw e; }
+    const target = String(b.target || 'declared');
+    const { cfg } = require('./lib/live/greenlight').configFromSelection(doc, target);
+    return {
+      book: { id: `${doc.id}:${target}`, combo: cfg.combo, branch: cfg.branch,
+        members: cfg.members, cell: cfg.cell },
+      opts: { trainThrough: cfg.trainThrough, scoreFrom: cfg.trainThrough + 1 },
+    };
+  }
+  const { BOOKS } = require('./lib/forwardbook');
+  const bookId = String((b && b.bookId) || 'F1');
+  const book = BOOKS.find((x) => x.id === bookId);
+  if (!book) { const e = new Error(`no such setup ${bookId}`); e.status = 404; throw e; }
+  return { book, opts: {} };
+}
 function convictionSweepPath() {
   const dir = path.join(__dirname, 'data', 'pilot');
   dataFs.mkdirSync(dir, { recursive: true });
@@ -1284,71 +1310,64 @@ function writeConvictionSweep(obj) {
   dataFs.renameSync(`${f}.tmp`, f);
 }
 app.get('/api/pilot/convictionsweep', (req, res) => res.json(readConvictionSweep()));
+app.get('/api/pilot/heavyscan', (req, res) => res.json({ running: heavyScanRunning || false }));
 app.post('/api/pilot/convictionsweep', (req, res) => {
   try {
-    if (convictionSweepRunning) return res.json({ ok: true, status: 'running' });
-    const { BOOKS } = require('./lib/forwardbook');
+    if (heavyScanRunning) return res.status(409).json({ error: `a heavy scan is already running (${heavyScanRunning}) — one at a time` });
     const { computeConvictionSweep } = require('./lib/convictionsweep');
     const { hasExistingStop } = require('./lib/stopsweep');
-    const bookId = String((req.body && req.body.bookId) || 'F1');
-    const book = BOOKS.find((b) => b.id === bookId);
-    if (!book) return res.status(404).json({ error: `no such setup ${bookId}` });
+    const { book, opts } = bookFromScanBody(req.body || {});
     if (hasExistingStop(book.cell)) {
-      return res.status(400).json({ error: `setup ${bookId} is not a market-entry cell; conviction pricing does not apply` });
+      return res.status(400).json({ error: `${book.id} is not a market-entry cell; conviction pricing does not apply` });
     }
-    convictionSweepRunning = true;
-    writeConvictionSweep({ status: 'running', bookId, startedUtc: new Date().toISOString() });
+    heavyScanRunning = 'conviction';
+    writeConvictionSweep({ status: 'running', bookId: book.id, startedUtc: new Date().toISOString() });
     (async () => {
       try {
-        const r = await computeConvictionSweep(book, {});
-        writeConvictionSweep({ status: 'done', bookId,
+        const r = await computeConvictionSweep(book, opts);
+        writeConvictionSweep({ status: 'done', bookId: book.id,
           finishedUtc: new Date().toISOString(), ...r });
       } catch (e) {
-        writeConvictionSweep({ status: 'error', bookId,
+        writeConvictionSweep({ status: 'error', bookId: book.id,
           finishedUtc: new Date().toISOString(), error: String((e && e.message) || e).slice(0, 300) });
       } finally {
-        convictionSweepRunning = false;
+        heavyScanRunning = false;
       }
     })();
-    res.json({ ok: true, status: 'running', bookId });
+    res.json({ ok: true, status: 'running', bookId: book.id });
   } catch (err) {
-    convictionSweepRunning = false;
-    res.status(500).json({ error: err.message });
+    res.status(err.status || 500).json({ error: err.message });
   }
 });
 app.get('/api/pilot/stopsweep', (req, res) => res.json(readStopSweep()));
 app.post('/api/pilot/stopsweep', (req, res) => {
   try {
-    if (stopSweepRunning) return res.json({ ok: true, status: 'running' });
-    const { BOOKS } = require('./lib/forwardbook');
+    if (heavyScanRunning) return res.status(409).json({ error: `a heavy scan is already running (${heavyScanRunning}) — one at a time` });
     const { computeSetupStop, hasExistingStop } = require('./lib/stopsweep');
-    const bookId = String((req.body && req.body.bookId) || 'F1');
-    const book = BOOKS.find((b) => b.id === bookId);
-    if (!book) return res.status(404).json({ error: `no such setup ${bookId}` });
+    const { book, opts } = bookFromScanBody(req.body || {});
     if (hasExistingStop(book.cell)) {
-      return res.status(400).json({ error: `setup ${bookId} already has a protective stop; tuning does not apply` });
+      return res.status(400).json({ error: `${book.id} already has a protective stop; tuning does not apply` });
     }
-    stopSweepRunning = true;
-    writeStopSweep({ status: 'running', bookId, startedUtc: new Date().toISOString() });
+    heavyScanRunning = 'stop';
+    writeStopSweep({ status: 'running', bookId: book.id, startedUtc: new Date().toISOString() });
     // fire and forget; the UI polls GET /api/pilot/stopsweep
     (async () => {
       try {
-        const r = await computeSetupStop(book, {});
+        const r = await computeSetupStop(book, opts);
         // The scan only SHOWS options — it applies nothing. The owner chooses a
         // value (or none) via POST /api/pilot/stop-apply.
-        writeStopSweep({ status: 'done', bookId,
+        writeStopSweep({ status: 'done', bookId: book.id,
           finishedUtc: new Date().toISOString(), ...r });
       } catch (e) {
-        writeStopSweep({ status: 'error', bookId,
+        writeStopSweep({ status: 'error', bookId: book.id,
           finishedUtc: new Date().toISOString(), error: String((e && e.message) || e).slice(0, 300) });
       } finally {
-        stopSweepRunning = false;
+        heavyScanRunning = false;
       }
     })();
-    res.json({ ok: true, status: 'running', bookId });
+    res.json({ ok: true, status: 'running', bookId: book.id });
   } catch (err) {
-    stopSweepRunning = false;
-    res.status(500).json({ error: err.message });
+    res.status(err.status || 500).json({ error: err.message });
   }
 });
 // The owner's CHOICE of stop after seeing the scan: a positive fraction to apply,
