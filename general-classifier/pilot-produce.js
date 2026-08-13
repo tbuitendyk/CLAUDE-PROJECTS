@@ -83,6 +83,28 @@ const b = require('./lib/binance');
         out = { ok: true, actionable: false, note: 'decision record write failed; intent withheld this tick' };
       }
     }
+    // STAND-DOWN RECORD (owner 2026-08-13): a FLAT call ships no intent, so it
+    // used to leave no trace and the screen's daily history showed only trade
+    // days. Record it in the stand-down store (NOT the mirror's decision store —
+    // display history only, never a mirror twin). Failure is a warning, never a
+    // withhold: there is nothing to ship for a FLAT call.
+    if (out.actionable && out.intent && out.intent.side === 'FLAT') {
+      try {
+        mirror.writeStandDown({
+          chunk_start: out.intent.chunk_start,
+          side: 'FLAT',
+          per_member: out.intent.per_member,
+          quorum: out.intent.quorum,
+          band_pct: out.intent.band_pct,
+          decision_price: out.intent.decision_price ?? null,
+          input_hash: out.intent.input_hash || null,
+          config_version: out.intent.config_version,
+          produced_utc: out.intent.produced_utc,
+        });
+      } catch (e) {
+        process.stderr.write('pilot-produce: stand-down record write failed (display-only): ' + e.message + '\n');
+      }
+    }
     // DECISION PREVIEW (owner 2026-08-12): compute the PLAN for the upcoming entry
     // (LONG/SHORT/STAND-DOWN) as soon as its feature window closes, and write it for
     // the screen. Read-only, display-only — never ships an intent or records a

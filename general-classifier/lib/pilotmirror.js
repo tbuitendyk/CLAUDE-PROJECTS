@@ -114,6 +114,20 @@ function writeDecision(record, dir = DECISIONS_DIR) {
   return file;
 }
 
+// STAND-DOWN records (owner 2026-08-13): FLAT calls ship no intent, so they used
+// to leave no trace anywhere and the screen's daily history showed only trade
+// days. They are recorded HERE, in their own directory — deliberately NOT in
+// DECISIONS_DIR, because that store feeds the mirror whose breaks HALT the live
+// box; a stand-down is display history, never a tradable decision twin, and
+// must not be able to perturb the mirror. Keyed by chunk_start (idempotent).
+const STANDDOWN_DIR = path.join(__dirname, '..', 'data', 'pilot', 'standdowns');
+function writeStandDown(record, dir = STANDDOWN_DIR) {
+  return writeDecision(record, dir);
+}
+function loadStandDowns(dir = STANDDOWN_DIR) {
+  return loadDecisions(dir);
+}
+
 function writeMirror(result, file = MIRROR_FILE) {
   fs.mkdirSync(path.dirname(file), { recursive: true });
   const tmp = `${file}.tmp${process.pid}`;
@@ -127,5 +141,6 @@ function readMirror(file = MIRROR_FILE) {
 
 module.exports = {
   compareDecision, loadDecisions, writeDecision, writeMirror, readMirror,
+  writeStandDown, loadStandDowns, STANDDOWN_DIR,
   DECISIONS_DIR, MIRROR_FILE, PRICE_TOL,
 };

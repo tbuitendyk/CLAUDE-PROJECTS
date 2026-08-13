@@ -128,7 +128,7 @@ function readJournal(file = JOURNAL) {
   return { present: true, events, mtime };
 }
 
-function derive(events) {
+function derive(events, extra = {}) {
   const open = {};
   let realized = 0;
   let consecutiveRejects = 0;
@@ -325,9 +325,25 @@ function derive(events) {
     consecutiveRejects,
     dustDone,
     log,
-    decisions: Object.values(decisions)
-      .sort((a, b) => String(b.chunk_start).localeCompare(String(a.chunk_start)))
-      .slice(0, 30),
+    // Daily history: the box journal only ever carries decisions that SHIPPED an
+    // intent (FLAT ships nothing — pilot-produce.js), so stand-down days are
+    // merged in from the VPS-side stand-down records (owner 2026-08-13). Journal
+    // entries always win on a key collision — the journal is the record.
+    decisions: (() => {
+      const merged = { ...decisions };
+      for (const sd of (extra.standDowns || [])) {
+        if (!sd || !sd.chunk_start || merged[sd.chunk_start]) continue;
+        merged[sd.chunk_start] = {
+          chunk_start: sd.chunk_start, utc: sd.produced_utc || null, side: 'FLAT',
+          votes: sd.per_member || null, quorum: sd.quorum ?? null,
+          decision_price: sd.decision_price ?? null, input_hash: sd.input_hash || null,
+          fate: sd.backfilled ? 'stand down (backfilled recompute)' : 'stand down — nothing shipped',
+        };
+      }
+      return Object.values(merged)
+        .sort((a, b) => String(b.chunk_start).localeCompare(String(a.chunk_start)))
+        .slice(0, 30);
+    })(),
     // the execution-fidelity numbers the pilot is FOR
     modelFeePerLeg: MODEL_FEE_PER_LEG,
     realizedFeePerLegAvg: round(avg(legCosts), 6),
@@ -472,7 +488,11 @@ function status(file = JOURNAL) {
     return { present: false, note: 'no pilot journal yet — the executor has not run or has not synced',
       preregistration: 'general-classifier/PILOT-F1.md', config: cfg, anatomy: anat, armRequest: req };
   }
-  const st = derive(events);
+  // stand-down records live on the VPS (data/pilot/standdowns), written by the
+  // producer for FLAT calls and by the one-shot backfiller; tolerant load.
+  let standDowns = [];
+  try { standDowns = require('./pilotmirror').loadStandDowns(); } catch (_) { standDowns = []; }
+  const st = derive(events, { standDowns });
   // "pending" when the owner's request and the box's confirmed state disagree
   const armPending = req != null && req.armed !== st.armed;
   // mirror check verdict (findings 26/7): the VPS recompute writes mirror.json;

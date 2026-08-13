@@ -129,6 +129,34 @@ module.exports.decisionsCarryVotesAndTheirFate = function () {
   assert.strictEqual(st.decisions[1].fate, 'filled', 'a decision that traded says so');
 };
 
+module.exports.standDownRecordsFillTheHistoryTheJournalCannot = function () {
+  // Owner 2026-08-13: FLAT calls ship no intent, so the box journal — the only
+  // source the history read — carried nothing for stand-down days and the daily
+  // history showed only trade days. VPS-side stand-down records are merged in;
+  // the journal always wins on a key collision (it is the record).
+  const st = pv.derive([
+    { event: 'INTENT_SEEN', utc: 't1', chunk_start: '2026-08-08T00:00Z', side: 'LONG',
+      per_member: [0, 0, 1, 0], quorum: 1, decision_price: 45.59, input_hash: 'aa' },
+    { event: 'ENTRY_FILL', utc: 't2', chunk_start: '2026-08-08T00:00Z', side: 'LONG',
+      qty: 0.2, price: 45.6, exit_due_ts: 2e9 },
+  ], { standDowns: [
+    { chunk_start: '2026-08-09T00:00Z', side: 'FLAT', per_member: [0, 0, 0, 0], quorum: 1,
+      produced_utc: 'p1' },
+    { chunk_start: '2026-08-10T00:00Z', side: 'FLAT', per_member: [0, -1, 0, 0], quorum: 1,
+      produced_utc: 'p2', backfilled: true },
+    // collision: the journal already carries 08-08 as a filled LONG — the
+    // stand-down record must NOT overwrite it
+    { chunk_start: '2026-08-08T00:00Z', side: 'FLAT', per_member: [0, 0, 0, 0], quorum: 1 },
+  ] });
+  assert.strictEqual(st.decisions.length, 3, 'stand-down days join the history');
+  assert.strictEqual(st.decisions[0].chunk_start, '2026-08-10T00:00Z', 'newest first');
+  assert.strictEqual(st.decisions[0].fate, 'stand down (backfilled recompute)', 'backfills say so');
+  assert.deepStrictEqual(st.decisions[0].votes, [0, -1, 0, 0], 'stand-down votes surface');
+  assert.strictEqual(st.decisions[1].fate, 'stand down — nothing shipped');
+  assert.strictEqual(st.decisions[2].side, 'LONG', 'journal wins the collision');
+  assert.strictEqual(st.decisions[2].fate, 'filled');
+};
+
 module.exports.configReportsTheTestedF1SpecFromTheAuthoritativeSource = function () {
   const c = pv.config();
   assert.strictEqual(c.model.tradedPair, 'LTCUSDT', 'config shows the traded pair from forwardbook');
