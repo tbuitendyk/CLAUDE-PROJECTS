@@ -1,18 +1,12 @@
 #!/usr/bin/env bash
-# classifier-nav-diag.sh -- read-only: compact stop-sweep summary (server-side
-# field selection so big curves never truncate in transit).
+# classifier-nav-diag.sh -- read-only: UTS-migration live verification.
 set -uo pipefail
-curl -s --max-time 10 http://127.0.0.1:8093/api/pilot/stopsweep | python3 -c "
-import json, sys
-s = json.load(sys.stdin)
-print('status:', s.get('status'), '| book:', s.get('bookId'), '| clip:', s.get('clipUsd'))
-print('tightest no-winner-lost stop:', s.get('stopPct'))
-print('counts:', s.get('counts'))
-print('binding:', s.get('binding'))
-fh = s.get('fullHistory') or {}
-print('span:', str(fh.get('firstChunkUtc'))[:10], '->', str(fh.get('lastChunkUtc'))[:10], '| chunks:', fh.get('chunks'))
-for r in (s.get('curve') or []):
-    print('  sacrifice %2d: stop %.4f  cut %dW/%dL  winner\$ %-8.2f loss\$ %-8.2f NET\$ %.2f' % (
-        r.get('sacrificeTopWinners',0), r.get('stopPct') or 0, r.get('winnersForfeited',0),
-        r.get('losersCut',0), r.get('winnerProfitForfeitedUsd') or 0, r.get('loserPnlDeltaUsd') or 0, r.get('netPnlDeltaUsd') or 0))
-"
+c() { echo "-- $1 --"; curl -s -o /tmp/d -w '%{http_code}' --max-time 10 "http://127.0.0.1:8093$2"; echo " ($(grep -c "$3" /tmp/d 2>/dev/null || true) marker hits)"; }
+c "constructing page" /constructing.html "Constructing"
+c "constructing js"   /constructing.js   "heavy-scan"
+c "trading page"      /livetrading.html  "Paper Books"
+c "index tabs"        /index.html        "constructing.html"
+echo "-- /api/live/configs --"; curl -s --max-time 10 http://127.0.0.1:8093/api/live/configs | head -c 200; echo
+echo "-- /api/campaigns --"; curl -s --max-time 10 http://127.0.0.1:8093/api/campaigns | head -c 200; echo
+echo "-- /api/pilot/heavyscan --"; curl -s --max-time 10 http://127.0.0.1:8093/api/pilot/heavyscan; echo
+rm -f /tmp/d
