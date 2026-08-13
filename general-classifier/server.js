@@ -1257,6 +1257,56 @@ app.get('/api/pilot/stop-candidates', (req, res) => {
       .map((b) => ({ id: b.id, combo: b.combo, cell: b.cell })) });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
+// Conviction sizing (owner 2026-08-13): price a quorum-agreement clip ladder
+// over full history — same frozen replay as the stop sweep, pure $ overlay.
+// A scan SHOWS the answer; it changes no sizing anywhere. Background + polled.
+let convictionSweepRunning = false;
+function convictionSweepPath() {
+  const dir = path.join(__dirname, 'data', 'pilot');
+  dataFs.mkdirSync(dir, { recursive: true });
+  return path.join(dir, 'conviction-sweep.json');
+}
+function readConvictionSweep() {
+  try { return JSON.parse(dataFs.readFileSync(convictionSweepPath(), 'utf8')); } catch (_) { return { status: 'idle' }; }
+}
+function writeConvictionSweep(obj) {
+  const f = convictionSweepPath();
+  dataFs.writeFileSync(`${f}.tmp`, JSON.stringify(obj));
+  dataFs.renameSync(`${f}.tmp`, f);
+}
+app.get('/api/pilot/convictionsweep', (req, res) => res.json(readConvictionSweep()));
+app.post('/api/pilot/convictionsweep', (req, res) => {
+  try {
+    if (convictionSweepRunning) return res.json({ ok: true, status: 'running' });
+    const { BOOKS } = require('./lib/forwardbook');
+    const { computeConvictionSweep } = require('./lib/convictionsweep');
+    const { hasExistingStop } = require('./lib/stopsweep');
+    const bookId = String((req.body && req.body.bookId) || 'F1');
+    const book = BOOKS.find((b) => b.id === bookId);
+    if (!book) return res.status(404).json({ error: `no such setup ${bookId}` });
+    if (hasExistingStop(book.cell)) {
+      return res.status(400).json({ error: `setup ${bookId} is not a market-entry cell; conviction pricing does not apply` });
+    }
+    convictionSweepRunning = true;
+    writeConvictionSweep({ status: 'running', bookId, startedUtc: new Date().toISOString() });
+    (async () => {
+      try {
+        const r = await computeConvictionSweep(book, {});
+        writeConvictionSweep({ status: 'done', bookId,
+          finishedUtc: new Date().toISOString(), ...r });
+      } catch (e) {
+        writeConvictionSweep({ status: 'error', bookId,
+          finishedUtc: new Date().toISOString(), error: String((e && e.message) || e).slice(0, 300) });
+      } finally {
+        convictionSweepRunning = false;
+      }
+    })();
+    res.json({ ok: true, status: 'running', bookId });
+  } catch (err) {
+    convictionSweepRunning = false;
+    res.status(500).json({ error: err.message });
+  }
+});
 app.get('/api/pilot/stopsweep', (req, res) => res.json(readStopSweep()));
 app.post('/api/pilot/stopsweep', (req, res) => {
   try {

@@ -113,7 +113,7 @@
     document.querySelectorAll('.tabbar .tab').forEach((b) => b.classList.toggle('active', b.dataset.tab === tab));
     if (window.location.hash !== `#${tab}`) history.replaceState(null, '', `#${tab}`);
     paintRunBanner(); // the running-job strip hides on the tab that shows the job natively
-    if (tab === 'bracket') renderStopTuner();
+    if (tab === 'bracket') { renderStopTuner(); renderConvictionTuner(); }
   }
   // ---- cross-tab running-job notice ----------------------------------------
   // One job runs at a time, but each tab lists only its own kind, so a job
@@ -2234,6 +2234,87 @@
       if (!p || p <= 0) { alert('enter a stop percent, e.g. 25'); return; }
       applyStop(p / 100); // the field is in percent; the engine wants a fraction
     });
+  }
+
+  // Conviction sizing panel (owner 2026-08-13): would scaling the clip by the
+  // number of agreeing members (declared ladder 1x/2x/3x/4x = winning-side vote
+  // count) have improved the $ result? Full-history replay of the same frozen
+  // committee; the scan changes no sizing anywhere — it only answers the question.
+  async function renderConvictionTuner() {
+    const el = $('conviction-tuner');
+    if (!el) return;
+    const usd = (v) => (v == null ? '—' : `${v < 0 ? '-' : ''}$${Math.abs(v).toFixed(2)}`);
+    let cands = [];
+    let sweep = null;
+    try { cands = ((await (await fetch('api/pilot/stop-candidates')).json()).candidates) || []; } catch (_) { /* offline */ }
+    try { sweep = await (await fetch('api/pilot/convictionsweep')).json(); } catch (_) { /* none */ }
+    if (!cands.length) {
+      el.innerHTML = '<b>Conviction sizing.</b> No market-entry live setup to price — nothing to sweep here.';
+      return;
+    }
+    let html = `<b>Conviction sizing</b> — would betting MORE when more committee members agree have made more money? `
+      + `Replays the frozen committee over full history and prices a DECLARED clip ladder (multiplier = winning-side vote count: 1x/2x/3x/4x). `
+      + `The scan changes nothing anywhere.<div style="margin-top:.45rem">`;
+    for (const c of cands) {
+      const running = sweep && sweep.status === 'running' && sweep.bookId === c.id;
+      html += `<div style="margin:.3rem 0">${c.id} · <b>${c.combo.trade}</b> · quorum ${c.cell.quorum} · hold ${c.cell.tHours}h `
+        + `<button type="button" class="secondary convsweep-btn" data-book="${c.id}"${running ? ' disabled' : ''}>${running ? 'Sweeping…' : 'Run conviction sweep (full history)'}</button></div>`;
+    }
+    html += '</div>';
+    if (sweep && sweep.status === 'running') {
+      html += `<div class="muted" style="margin-top:.35rem">Replaying full history for ${sweep.bookId} — can take up to a minute; the result appears here.</div>`;
+    } else if (sweep && sweep.status === 'error') {
+      html += `<div style="margin-top:.35rem;color:#c33">Last sweep failed: ${sweep.error || ''}</div>`;
+    } else if (sweep && sweep.status === 'done') {
+      const fh = sweep.fullHistory || {};
+      const span = `${(fh.firstChunkUtc || '').slice(0, 10)}→${(fh.lastChunkUtc || '').slice(0, 10)}`;
+      // TABLE: $ results by agreement bucket. KEY — agree: members voting the
+      // winning side; mult: the declared clip multiplier for that bucket; trades:
+      // entries in the bucket (thin = below the minimum N, noise-flagged); wins:
+      // trades with positive net $; flat $: bucket P&L at the flat 1x clip
+      // (dollars); ladder $: the same trades at the multiplied clip (dollars).
+      const rows = (sweep.buckets || []).map((b) => `<tr>`
+        + `<td style="text-align:right;padding:.12rem .5rem">${b.agree} of ${(sweep.setup && sweep.setup.members) || 4}${b.thin ? ' ⚠' : ''}</td>`
+        + `<td style="text-align:right;padding:.12rem .5rem">${b.multiplier}x</td>`
+        + `<td style="text-align:right;padding:.12rem .5rem">${b.n}</td>`
+        + `<td style="text-align:right;padding:.12rem .5rem">${b.winners}</td>`
+        + `<td style="text-align:right;padding:.12rem .5rem">${usd(b.flatUsd)}</td>`
+        + `<td style="text-align:right;padding:.12rem .5rem;font-weight:bold">${usd(b.ladderUsd)}</td>`
+        + `</tr>`).join('');
+      const verdictColor = /^YES/.test(sweep.verdict) ? '#4c9' : /INCONCLUSIVE/.test(sweep.verdict) ? '#ca4' : '#c88';
+      html += `<div style="margin-top:.4rem;padding:.4rem .5rem;background:#10222f;border-radius:4px">`
+        + `<b>${sweep.bookId} over ${sweep.entries} priced entries (${span}), $${sweep.clipUsd} base clip, ladder [${(sweep.ladder || []).join(',')}]:</b> `
+        + `flat ${usd(sweep.flatUsd)} vs ladder <b>${usd(sweep.ladderUsd)}</b> — uplift <b style="color:${(sweep.upliftUsd || 0) >= 0 ? '#4c9' : '#c88'}">${usd(sweep.upliftUsd)}</b>.`
+        + `<table style="margin-top:.45rem;border-collapse:collapse;font-size:.82rem"><thead><tr>`
+        + ['agreement', 'mult', 'trades', 'wins', 'flat $', 'ladder $'].map((h) => `<th style="text-align:right;padding:.15rem .5rem;border-bottom:1px solid #345">${h}</th>`).join('')
+        + `</tr></thead><tbody>${rows}</tbody></table>`
+        + `<div class="note" style="margin-top:.4rem">`
+        + `<b>Chance check:</b> shuffling WHICH trades got which agreement (${sweep.shuffles} deals, seed ${sweep.seed}) hands an average uplift of ${usd(sweep.null && sweep.null.mean)}; `
+        + `1 in ${sweep.null && sweep.null.pNull > 0 ? Math.round(1 / sweep.null.pNull) : sweep.shuffles + '+'} random deals do as well as the real ladder (p=${sweep.null && sweep.null.pNull}). `
+        + `<b>Exposure honesty:</b> the ladder deploys ${usd(sweep.deployedLadderUsd)} total vs ${usd(sweep.deployedFlatUsd)} flat — `
+        + `per deployed dollar: ${sweep.ladderPerDollar} vs ${sweep.flatPerDollar}. `
+        + `Worst single trade at ladder size ${usd(sweep.worstTradeUsd)}; deepest drawdown ${usd(sweep.maxDrawdownUsd)}. `
+        + `<b>Wallet check:</b> peak concurrent notional ${usd(sweep.peakConcurrentUsd)} (flat: ${usd(sweep.peakConcurrentFlatUsd)}) — fund THAT before believing the ladder live.</div>`
+        + `<div style="margin-top:.4rem;padding:.3rem .5rem;border-left:3px solid ${verdictColor}"><b>Verdict:</b> ${sweep.verdict} `
+        + `<span class="note">(minimum ${sweep.minBucketN}/bucket and the 1-in-${Math.round(1 / (sweep.nullPThreshold || 0.1))} chance bar are ${sweep.thresholdsLabel} thresholds — prompts to look harder, never a retirement of the idea on one number. Any live use goes into the NEXT pre-registered setup, never the running pilot.)</span></div></div>`;
+    }
+    el.innerHTML = html;
+    el.querySelectorAll('.convsweep-btn').forEach((b) => b.addEventListener('click', async () => {
+      b.disabled = true; b.textContent = 'Sweeping…';
+      try {
+        await fetch('api/pilot/convictionsweep', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ bookId: b.dataset.book }),
+        });
+      } catch (_) { /* the poll reflects state */ }
+      const poll = async () => {
+        let s = null;
+        try { s = await (await fetch('api/pilot/convictionsweep')).json(); } catch (_) { /* retry */ }
+        await renderConvictionTuner();
+        if (s && s.status === 'running') setTimeout(poll, 3000);
+      };
+      setTimeout(poll, 1500);
+    }));
   }
 
   function renderBracket(doc) {
