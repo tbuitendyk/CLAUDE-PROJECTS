@@ -3,3 +3,4 @@ tick 2: 2026-08-13T15:56:22Z [container:298674f4] (A last tick 139min ago; B dae
 tick 3: 2026-08-13T15:57:59Z [container:298674f4] (A last tick 1min ago; B daemon running; second queued fire flushed on turn-end — queue-drain-on-idle pattern confirmed)
 tick 4: 2026-08-13T16:48:41Z [container:a6a6862b] (A last tick 52min ago; B daemon dead->restarted, 4th death; FIRST autonomous cold-idle delivery — 16:19Z fire arrived 16:48Z, 29min late, no human involved)
 tick 5: 2026-08-13T17:34:38Z [container:f42198b1] (A last tick 98min ago -> revived this fire; B daemon dead->restarted, 6th death; fire due 17:19Z arrived 17:34Z, 15min late)
+tick 6: 2026-08-13T18:30:10Z [container:5d7ba73c] (A last tick 55min ago; B daemon dead->restarted, death #8 FORENSICALLY TIMED: alive 18:28:55Z on 5c577940, dead by 18:29:48Z on 5d7ba73c — swap-kill within 53s window)
