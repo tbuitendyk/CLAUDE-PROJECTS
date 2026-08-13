@@ -1,0 +1,55 @@
+Conviction-sizing sweep is live on the Bracket lab (+ stop-tuner directions)
+
+tl;dr — Your quorum-multiplier idea is built and deployed (18:57 UTC). New
+"Conviction sizing" panel sits directly under the "Protective stop tuner" on
+the Bracket lab tab; one button replays F1's frozen committee over full
+history and answers whether betting more when more members agree (declared
+ladder: clip x winning-side vote count, 1x/2x/3x/4x) beats flat sizing — with
+a chance check, per-bucket trade counts, and a wallet-feasibility line so a
+good-looking number can't hide thin evidence or an unfundable bet. Nothing it
+does changes any live sizing anywhere; the running pilot is untouched. And per
+your question: the stop tuner was already built — it's the panel right above
+the new one; it shows only one line + a button until you run a scan, which is
+why it was easy to miss.
+
+FINDING THE STOP TUNER (exact steps): main app -> Bracket lab tab -> scroll
+just below the "Saved sweeps" dropdown row. Line: "F1 · LTCUSDT · hold 137h ·
+market entry, no stop" + button "Tune protective stop (full history)". Click;
+up to a minute; the result shows the tightest stop that loses no winner plus
+the sacrifice-curve table with apply buttons. Scanning applies nothing; only
+an apply button changes the live stop (none is currently applied).
+
+THE NEW TOOL, and what it prints:
+  - Headline: flat $ vs ladder $ over every priced historical entry, and the
+    uplift.
+  - TABLE: $ by agreement bucket. KEY — agreement: members voting the winning
+    side that day; mult: the declared clip multiplier; trades: entries in the
+    bucket (⚠ = fewer than 10, too thin to lean on); wins: trades with
+    positive net $; flat $ / ladder $: bucket profit-and-loss in dollars at
+    1x vs at the multiplied clip.
+  - Chance check: 1000 shuffles of WHICH trades got which agreement (returns
+    fixed, bucket sizes preserved, seeded). If random deals match the real
+    ladder too often, the verdict says so.
+  - Exposure honesty: return per deployed dollar (a 4x ladder deploys more
+    capital, so raw $ flatters it), worst single trade at ladder size, deepest
+    drawdown, and PEAK CONCURRENT notional — the wallet must fund that number
+    before any of it is real. For reference: 4x on $10 clips at 6 concurrent
+    positions is $240 against ~$190 in the sub-account today.
+  - Verdict is three-valued (YES on this history / not distinguishable from
+    chance / inconclusive on thin buckets); the thresholds are labelled
+    GUESSED — prompts to look harder, never a retirement of the idea on one
+    number.
+
+HARD LINE, unchanged: whatever the sweep says, it never touches the running
+F1 pilot — sizing is protocol, and the live record's no-touch rule stands. A
+winning ladder goes into the NEXT pre-registered setup (a schema-2 paper
+setup on the Live Trading rail is the natural rehearsal).
+
+Under the hood it reuses the exact same frozen-committee replay and the exact
+same per-trade pricing function as the stop tuner (one instrument, no
+divergent copy). 6 new unit tests; the three nastiest failure modes were each
+reintroduced and watched fail (counting opposition as agreement, ignoring the
+multiplier in the wallet check, a chance-check that never shuffles). Full
+suite green.
+
+c.
