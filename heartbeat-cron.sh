@@ -47,6 +47,7 @@ cd "$REPO_DIR"
 
 INTERVAL_SECONDS="${INTERVAL_SECONDS:-3600}"
 BRANCH="${BRANCH:-claude/sandbox-fd3rem}"
+SYNC_BRANCH="${SYNC_BRANCH:-sandbox}"   # owner-authorized mirror; empty disables
 LOG_FILE="${LOG_FILE:-heartbeat-cron.log}"
 PID_FILE=".heartbeat-cron.pid"
 OUT_FILE=".heartbeat-cron.out"
@@ -81,6 +82,7 @@ tick() {
     [ "$delay" -gt 0 ] && sleep "$delay"
     if git push -u origin "$BRANCH"; then
       log "tick $n: pushed ($ts)"
+      [ -n "$SYNC_BRANCH" ] && { git push origin "HEAD:$SYNC_BRANCH" || log "tick $n: $SYNC_BRANCH sync failed (non-fatal)"; }
       return 0
     fi
     log "tick $n: push failed (will retry)"
