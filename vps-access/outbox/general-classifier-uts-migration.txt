@@ -1,0 +1,42 @@
+UTS migration live: Constructing + Trading tabs, dual-channel configs, campaigns
+
+tl;dr — The migration you ordered is built and deployed (22:32 UTC). Two new
+surfaces: CONSTRUCTING (the Bracket lab's flow-ordered successor: Data, Sweep,
+Boards, Verify, History, Tune, Greenlight) and TRADING (renamed, rebuilt: two
+design-identical sides, Paper Books | Live Trading, each with Dashboard,
+Setups, Greenlights, Setup detail, LIVE). Configs are now the entity — no
+drafts; each greenlight has independent paper/real channels with your exact
+status vocabulary (idle / active paper / active real / … deactivating),
+Activate/Deactivate/Nuke, and re-activation restarts the DISPLAYED run while
+journals stay append-only forever. F1 renders first-class through the same
+components. The old Bracket lab, Live pilot and Paper books pages are all
+untouched, as ordered. F1's engine: untouched; no real order path changed.
+
+WHAT TO LOOK AT FIRST:
+  1. Main app -> Constructing tab. The flow is the narrowing discipline as
+     tabs: sweep wide, read boards, verify the instrument, tune one variable,
+     price the stop + conviction, then GREENLIGHT. The release strip's planted
+     badge is clickable (status in the header, workshop in Verify). Tool 1 is
+     now ALWAYS visible with a plain disabled state instead of vanishing.
+  2. Main app -> Trading tab. Pick a side; the Greenlights page lists every
+     config with its status line and the Activate / Deactivate / Nuke
+     controls. LIVE shows a selected setup running (for F1: the complete
+     pilot surface including your master switch); Dashboard shows everything
+     on that side at once.
+  3. Tune section: the stop tuner and conviction sweep can now target THE ROW
+     YOU SELECT on Boards — no more hardcoded registry; nothing ever needs a
+     code edit to go from board to tunable to greenlighted to running. One
+     heavy scan at a time (both launchers disable together — the wedged
+     Tuning… button class of bug is gone), and the conviction table carries
+     the win % column you asked for.
+
+HONEST FIRST-PASS NOTES: Data's Trim/Purge and Global Refresh stay on the
+legacy lab page this round; the menu-grid drill needs runs new enough to carry
+stored votes; Tool 1 reads a scramble run you name rather than firing rounds
+itself. All catalogued for the next pass — say what bites and it moves up.
+
+Multi-user-aware as agreed: every new record carries an ownerId; nothing
+branches on it yet. NEXT-RELEASE point 25 records all of today's directives,
+including the supersession of the old "no separate paper view" amendment.
+
+c.
