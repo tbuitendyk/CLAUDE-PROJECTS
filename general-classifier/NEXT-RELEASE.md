@@ -429,3 +429,41 @@ shared-token approach from day one, so it carries into UTS unchanged.
 | 22 help system | — | UTS |
 | 23 guided VPS setup | targets registry is the hook | UTS |
 | 24 theming | Phase 5 tokens (dark F1 / light lab) | shipped |
+
+---
+## 25. UTS migration begins IN-APP: Constructing + Trading tabs (owner, 2026-08-14)
+
+Owner directives, superseding earlier points where noted:
+
+- **New "Constructing" tab** (between Live pilot and Trading): the UTS-shape
+  replacement for the Bracket Lab. ALL Bracket Lab functionality duplicated
+  into flow-ordered sections: persistent release strip (planted-check badge,
+  clickable to the runner) · Data · Sweep · Boards (with per-row Plateau/Menu
+  drill) · Verify (planted runner + Tool 1 always-visible + Tool 2) · History
+  (History Tuning + Age-dial HT v2, redesigned for legibility) · Tune
+  (protective stop + conviction sizing + compare-two-runs) · Greenlight.
+  The old Bracket Lab page is frozen: no further work, retired when ready.
+- **"Live trading" tab renamed "Trading"**, reworked to two DESIGN-IDENTICAL
+  branches: **Paper Books | Live Trading**, each carrying Dashboard | Setups |
+  Greenlights | Setup detail | LIVE. **This supersedes the point-15
+  amendment** ("no separate paper view"): paper now has its own branch, with
+  identical formats and the paper marker discipline retained.
+- **No draft state.** All drafting happens in Constructing. The greenlighted
+  CONFIG is the entity; it appears in BOTH branches. Each config has two
+  independent channels — paper and real — each idle/active/deactivating;
+  both may run simultaneously. Activate starts a channel; Deactivate stops
+  entries and tracking continues until positions close, then the record
+  freezes; re-activation warns that the displayed run history restarts (the
+  underlying journals remain append-only, never destroyed). A greenlight can
+  be NUKED back to not-greenlighted (removed from Trading lists; saved sweeps
+  untouched).
+- **Campaign/provenance now, not just in UTS** (builds on points 13/14): the
+  campaign is a real parent record; every run fired from Constructing attaches
+  as a child with its board/row stamps; branch lineage recorded at derivation;
+  the greenlight snapshot carries the full chain.
+- **Multi-user-aware single-user build**: ownerId on all new records;
+  planted-check PASS keyed by (owner, engine version).
+- The old "Live pilot" page stays untouched for side-by-side comparison until
+  the owner approves the new design; the old "Paper books" tab stays untouched
+  (possible future resurrection as an alternate test tool between Constructing
+  and Trading if it shows something the new design cannot).
