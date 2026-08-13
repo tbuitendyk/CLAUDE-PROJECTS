@@ -1,0 +1,1 @@
+tick 1: 2026-08-13T13:46:17Z [container:8184e4ff] (two hourly fires scheduled 12:19Z and 13:19Z delivered together after queuing; A last tick 9min ago; B daemon dead->restarted after 5th machine-identity change)
