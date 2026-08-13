@@ -356,6 +356,7 @@ async function refresh() {
   LATEST_STATUS = d.liveStatus || null;
   LATEST_FRESH = d.dataFreshness || [];
   LATEST_PREVIEW = d.previewDecision || null;
+  LATEST_DECISIONS = d.decisions || [];
   renderStatus();
 }
 
@@ -364,6 +365,7 @@ async function refresh() {
 let LATEST_STATUS = null;
 let LATEST_FRESH = [];
 let LATEST_PREVIEW = null;
+let LATEST_DECISIONS = [];
 function previewLine() {
   const p = LATEST_PREVIEW;
   if (!p) return '';
@@ -414,6 +416,29 @@ function freshLine() {
   return `<div style="margin-top:.4rem"><b>Trigger data — complete through (UTC):</b> ${parts}`
     + (anyStale ? ' <span class="warn">· data is behind; refresh not caught up</span>' : ' <span class="muted">· current (newest closed hour)</span>') + '</div>';
 }
+function historyBlock() {
+  // Daily decision history, scrollable, newest first (owner, 2026-08-13): each
+  // date's member votes and the summary action, so the box tells you not only
+  // what happens next but what the committee has been calling day by day.
+  if (!LATEST_DECISIONS.length) return '';
+  const act = (side) => side === 'LONG' ? ['▲ Open LONG', 'pos']
+             : side === 'SHORT' ? ['▼ Open SHORT', 'neg']
+             : ['■ STAND DOWN', 'vote-as'];
+  const rows = LATEST_DECISIONS.slice().reverse().map(dec => {
+    const votes = Array.isArray(dec.votes)
+      ? dec.votes.map(v => `<span class="${vcls(v)}">${vtxt(v)}</span>`).join(' · ')
+      : '<span class="muted">not recorded</span>';
+    const [label, lcls] = act(dec.side);
+    return `<tr><td style="text-align:left;white-space:nowrap">${(dec.chunk_start||'').slice(0,10)}</td>`
+      + `<td style="text-align:left">${votes}</td>`
+      + `<td style="text-align:left;white-space:nowrap" class="${lcls}"><b>${label}</b></td>`
+      + `<td style="text-align:left" class="muted">${dec.fate||''}</td></tr>`;
+  }).join('');
+  return `<div style="grid-column:1/-1;margin-top:.55rem"><b>Daily decision history</b> <span class="muted">(newest first · votes are the four members: full, prices, volume, cross)</span>`
+    + `<div style="max-height:190px;overflow-y:auto;border:1px solid #2a3140;border-radius:5px;margin-top:.25rem">`
+    + `<table style="width:100%;margin:0"><thead><tr><th style="text-align:left">date</th><th style="text-align:left">member votes</th><th style="text-align:left">action</th><th style="text-align:left">fate</th></tr></thead>`
+    + `<tbody>${rows}</tbody></table></div></div>`;
+}
 function renderStatus() {
   const s = LATEST_STATUS;
   const el = document.getElementById('statusPanel');
@@ -429,7 +454,8 @@ function renderStatus() {
   el.innerHTML = previewLine()
     + `<div style="margin-bottom:.4rem">${posLine}</div>`
     + `<table style="width:100%"><tbody>${rows}</tbody></table>`
-    + freshLine();
+    + freshLine()
+    + historyBlock();
 }
 function tickClock() {
   const c = document.getElementById('utcClock');
