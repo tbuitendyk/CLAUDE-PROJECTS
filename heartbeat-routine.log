@@ -7,3 +7,4 @@ tick 6: 2026-08-13T18:30:10Z [container:5d7ba73c] (A last tick 55min ago; B daem
 tick 7: 2026-08-13T19:24:34Z [container:873cfc8b] (A last tick 109min ago -> revived this fire; B daemon dead->restarted, death #9 timed: alive 18:39:13Z on 5d7ba73c, worker lifespan ~9min)
 tick 8: 2026-08-13T20:28:49Z [container:f83b4faf] (A last tick 64min ago; B daemon running; late 20:19Z fire flushed on turn-end)
 tick 9: 2026-08-13T21:27:47Z [container:8f74fabf] (A last tick 123min ago -> revived this fire, kill #8 confirmed; B daemon dead->restarted, death #11: worker lived ~7min, last crumb 20:34:16Z on f83b4faf)
+tick 10: 2026-08-13T22:31:10Z [container:f7745bad] (A last tick 63min ago; B daemon running (worker #13 hired 22:30 after death #12, ~4min lifespan); late 22:19Z fire flushed on turn-end)
