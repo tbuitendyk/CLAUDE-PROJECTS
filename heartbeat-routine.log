@@ -24,3 +24,4 @@ tick 23: 2026-08-14T11:51:32Z [container:6dd4f2de] (A last tick 0min ago (just r
 tick 24: 2026-08-14T15:04:15Z [container:4604e079] (A last tick 192min ago -> revived this fire, kill #17 confirmed; B daemon dead->restarted, death #26 ~4min; LONGEST STALL: fires due 12:19Z/13:19Z/14:19Z coalesced into this single 15:03Z delivery, ~3h stalled)
 tick 25: 2026-08-14T15:58:19Z [container:ead9ee5f] (A last tick 54min ago; B daemon running (worker #29 hired 15:57 after death #27, ~5min lifespan); 15:19Z fire flushed ~39min late on turn-end)
 tick 26: 2026-08-14T16:44:57Z [container:73b19b15] (A last tick 100min ago -> revived this fire, kill #18 confirmed; B daemon dead->restarted, death #28 ~5min, last crumb 16:02:34Z on ead9ee5f)
+tick 27: 2026-08-14T17:24:39Z [container:779b1770] (A last tick 40min ago; B daemon running (worker #31 hired 17:24 after death #29, ~5min lifespan); 17:19Z fire flushed ~5min late on turn-end)
