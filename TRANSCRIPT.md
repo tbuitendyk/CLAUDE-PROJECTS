@@ -10,3 +10,5 @@ Owner instructions for reading: open this file on the `sandbox` branch after the
 run and paste its entire contents back into the main sandbox conversation.
 
 ---
+
+[watchdog 2026-08-14T22:40:54Z: stall detected at step 1 (~196min, no shift entry ever written; fresh-session link-1 fired 19:01Z and produced nothing); rescue tools unavailable — create_trigger cannot complete without owner approval, will retry next fire]
