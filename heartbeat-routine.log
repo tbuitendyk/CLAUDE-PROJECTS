@@ -17,3 +17,4 @@ tick 16: 2026-08-14T04:27:43Z [container:76efa337] (A last tick 64min ago; B dae
 tick 17: 2026-08-14T05:32:17Z [container:5524419f] (A last tick 129min ago -> revived this fire, kill #12 confirmed; B daemon dead->restarted, death #19 ~5min; FIRST BLACKOUT-PHASE FIRE: 05:19Z delivered 05:32Z, 13min late, zero clients anywhere)
 tick 18: 2026-08-14T06:59:50Z [container:13fb7fb8] (A last tick 0min ago (just revived); B daemon running (worker #22 hired 06:59 after death #20); this is the stalled 06:19Z fire flushing 40min late on turn-end — blackout deliveries stall without client presence)
 tick 19: 2026-08-14T07:51:56Z [container:46832ddd] (A last tick 52min ago; B daemon dead->restarted, death #21 ~4min; 07:19Z fire delivered ~33min late — blackout stall pattern holds)
+tick 20: 2026-08-14T08:36:50Z [container:4141c443] (A last tick 97min ago -> revived this fire, kill #14 confirmed; B daemon dead->restarted, death #22 ~5min, last crumb 07:56:28Z on 46832ddd)
