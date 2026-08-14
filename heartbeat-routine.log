@@ -19,3 +19,4 @@ tick 18: 2026-08-14T06:59:50Z [container:13fb7fb8] (A last tick 0min ago (just r
 tick 19: 2026-08-14T07:51:56Z [container:46832ddd] (A last tick 52min ago; B daemon dead->restarted, death #21 ~4min; 07:19Z fire delivered ~33min late — blackout stall pattern holds)
 tick 20: 2026-08-14T08:36:50Z [container:4141c443] (A last tick 97min ago -> revived this fire, kill #14 confirmed; B daemon dead->restarted, death #22 ~5min, last crumb 07:56:28Z on 46832ddd)
 tick 21: 2026-08-14T09:33:23Z [container:d1760171] (A last tick 56min ago; B daemon running (worker #25 hired 09:32 after death #23, ~4min lifespan); 09:19Z fire flushed ~14min late on turn-end)
+tick 22: 2026-08-14T10:29:11Z [container:df8fd0c0] (A last tick 112min ago -> revived this fire, kill #15 confirmed; B daemon dead->restarted, death #24 ~5min, last crumb 09:37:39Z on d1760171)
