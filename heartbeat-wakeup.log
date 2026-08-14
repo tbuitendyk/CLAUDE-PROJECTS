@@ -11,3 +11,4 @@ tick 10: 2026-08-13T23:28:56Z (chain dead; 22:28Z wakeup lost, kill #9; revived 
 tick 11: 2026-08-14T01:24:20Z (chain dead; 00:30Z wakeup lost, kill #10; revived by routine watchdog) [container:95c10fea]
 tick 12: 2026-08-14T03:23:07Z (chain dead; 02:25Z wakeup lost, kill #11; revived by routine watchdog) [container:12691c2b]
 tick 13: 2026-08-14T05:32:17Z (chain dead; 04:24Z wakeup lost, kill #12; revived by routine watchdog) [container:5524419f]
+tick 14: 2026-08-14T06:59:25Z (chain dead; 06:33Z wakeup lost, kill #13; revived on a mid-blackout session poke of unknown origin; 06:19Z alarm fire also 40+min stalled at this point) [container:13fb7fb8]
