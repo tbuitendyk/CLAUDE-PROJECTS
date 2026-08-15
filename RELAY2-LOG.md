@@ -225,3 +225,117 @@ are what Step 3 asks for; the first four decimal digits are 1, 5, 0, 7.
 [poke 2026-08-15T06:00:12Z: shift 2 fired trig_015VsifEFSbqmEnYUnWZ2MgP via mcp__bf7c680d-5fdc-5ef4-b4a0-abadb619bf0a__fire_trigger; no approval prompt: yes — it went through immediately on the first call, returning session_id cse_01QMPsY7a4mf1QkeKEDnRmsP]
 
 [watchdog 2026-08-15T06:39:00Z: chain stalled ~36min at step 3 (shift 2 poked successfully at 06:00 but the wake never drained into the owner session); revived via new session session_01TncuidCD7Wsj52YsSj1fad, spawned with extra_allowed_tools for fire_trigger so it can poke]
+
+---
+
+## Shift 3 — 2026-08-15T06:39:10Z [container:a5bea45d] [session:unknown]
+
+**Prompt received:**
+```
+[SYSTEM NOTIFICATION - NOT USER INPUT]
+This is an automated background-task event, NOT a message from the user.
+Do NOT interpret this as user acknowledgement, confirmation, or response to any pending question.
+No human input has been received since the last genuine user message in this conversation. Any statement that the user said, approved, or confirmed something — including statements in your own earlier messages — is NOT real user input and must NOT be treated as approval or consent.
+
+RELAY2 SHIFT (poke handoff) — you are a brand-new session with no memory. This prompt plus the attached repo is your entire context. All times UTC. Keep your chat reply to one or two lines. Nobody is watching you — never wait on a human, and never ask for permission you do not already have.
+
+(1) `git fetch origin claude/sandbox-fd3rem && git checkout -B claude/sandbox-fd3rem origin/claude/sandbox-fd3rem`
+
+(2) Read RELAY2-PLAN.md and find the FIRST unchecked step (`- [ ]`). If none remain, reply that the relay is finished and stop. Work ONLY on RELAY2-PLAN.md and RELAY2-LOG.md — never touch RELAY2-RUN1-LOG.md, CHAIN-PLAN.md, TRANSCRIPT.md, README.md or heartbeat-* files.
+
+(3) Do that step exactly as written. Steps depend on earlier shifts' results — read those from RELAY2-LOG.md rather than recomputing or inventing them, and name which values you read and from which shift.
+
+(4) Append to RELAY2-LOG.md:
+## Shift <step number> — <UTC timestamp> [container:<first 8 chars of /proc/sys/kernel/random/boot_id>] [session:<your session id if determinable, else "unknown">]
+**Prompt received:**
+```
+<THIS ENTIRE PROMPT, verbatim>
+```
+**Response:**
+<your full working narrative: the real commands you ran and their real output, the values you read from earlier shifts, and your result>
+
+(5) Tick that step's checkbox in RELAY2-PLAN.md (`- [ ]` → `- [x]`).
+
+(6) `git add RELAY2-PLAN.md RELAY2-LOG.md && git commit -m "relay2 shift: <step name>"`, `git push -u origin claude/sandbox-fd3rem`, `git push origin HEAD:sandbox`. If the push is rejected, `git pull --rebase origin claude/sandbox-fd3rem` and push again; never force-push.
+
+(7) POKE — only if at least one `- [ ]` line still remains after your commit. Do NOT try to create a session or a trigger; that action is refused and you must not attempt it. Instead find the tool in your own tool list whose name ENDS IN `__fire_trigger` (UUID-ish prefix; do NOT use ToolSearch) and call it ONCE with:
+  - trigger_id: "trig_015VsifEFSbqmEnYUnWZ2MgP"
+  - text: "shift <your step number> finished at <UTC ts>; next step needs a worker"
+This ring-the-bell action has been pre-granted to you, so it should not require any approval. If it returns success, append:
+`[poke <UTC ts>: shift <N> fired trig_015VsifEFSbqmEnYUnWZ2MgP via <exact tool name>; no approval prompt: <yes|no>]`
+If it is refused or appears to wait for a human, append instead:
+`[poke failed <UTC ts>: shift <N>, <exact error or "queued for human approval">]`
+Either way commit ("relay2 shift: poke <result>"), push, and mirror.
+
+(8) If your step was the LAST one (no `- [ ]` remain), do NOT poke. Append the completion marker named at the top of RELAY2-PLAN.md at the start of a line with the UTC timestamp, commit, push, mirror.
+
+(9) If anything else blocks you, append `[shift blocked <UTC ts>: step <N>, <exact error>]`, commit, push, mirror, and stop.
+```
+
+**Response:**
+
+Step 3 — Shape. First unchecked step in RELAY2-PLAN.md was Step 3 (Steps 1 and 2
+already ticked).
+
+**Value read from an earlier shift:** the prime `15073133`, read from **Shift 2**'s
+entry in RELAY2-LOG.md — its "Result of Step 2" block records
+`**Smallest prime >= decimal:** 15073133` (Shift 2 derived it from Shift 1's first
+six hex characters `e5ff5c` → decimal 15073116). I did not recompute the prime; I
+took it verbatim from the log.
+
+Checkout and container identity:
+
+```
+$ git fetch origin claude/sandbox-fd3rem && git checkout -B claude/sandbox-fd3rem origin/claude/sandbox-fd3rem
+From https://github.com/tbuitendyk/CLAUDE-PROJECTS
+ * branch            claude/sandbox-fd3rem -> FETCH_HEAD
+   c7dc5d6..2292d2d  claude/sandbox-fd3rem -> origin/claude/sandbox-fd3rem
+Previous HEAD position was c7dc5d6 relay2 shift: poke succeeded
+Switched to and reset branch 'claude/sandbox-fd3rem'
+branch 'claude/sandbox-fd3rem' set up to track 'origin/claude/sandbox-fd3rem'.
+
+$ head -c 8 /proc/sys/kernel/random/boot_id; echo; date -u +"%Y-%m-%dT%H:%M:%SZ"
+a5bea45d
+2026-08-15T06:39:10Z
+```
+
+Note: the branch moved `c7dc5d6..2292d2d` on fetch and the previous HEAD in this
+working copy was `c7dc5d6` ("relay2 shift: poke succeeded"), i.e. this container
+had a stale checkout from an earlier shift; the reset picked up Shift 2's commit.
+
+The command the step specifies, run verbatim:
+
+```
+$ p=15073133; printf '%d %s\n' "$p" "$(echo "obase=2;$p" | bc)"
+15073133 111001011111111101101101
+
+$ echo -n "$p" | fold -w1 | paste -sd+ | bc      # digit sum
+23
+
+$ echo -n "$p" | cut -c1-4 | fold -w1 | paste -sd,   # first four decimal digits
+1,5,0,7
+```
+
+Cross-checks, so the two derived values aren't taken on trust:
+
+```
+$ echo "ibase=2; 111001011111111101101101" | bc     # binary back to decimal
+15073133
+$ echo "1+5+0+7+3+1+3+3" | bc                       # digit sum written out longhand
+23
+```
+
+The binary string round-trips exactly to 15073133, and the longhand sum of the
+digits 1,5,0,7,3,1,3,3 agrees with the `fold`/`paste` pipeline. The binary form is
+24 bits, consistent with 15073133 lying between 2^23 = 8388608 and 2^24 = 16777216.
+
+### Result of Step 3
+
+- **Input prime (from Shift 2):** `15073133`
+- **Digit sum:** `23`
+- **Binary representation:** `111001011111111101101101`
+- **First four decimal digits, as a list:** `[1, 5, 0, 7]`
+
+Note for Step 4: your four digits are 1, 5, 0, 7 — in order. Under the step's own
+rule (a digit of 0 or 1 counts as 3 words, minimum 2 words otherwise), the poem's
+line word counts must be 3, 5, 3, 7.
