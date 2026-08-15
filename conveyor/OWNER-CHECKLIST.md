@@ -18,26 +18,46 @@ does nothing, check this first.
 > `git fetch origin vps-access && git show origin/vps-access:conveyor/PROTOCOL.md`
 > Then set up a conveyor for this plan: <describe the work, or point at a plan file>
 
-**3. Approve twelve alarms.** You will get twelve permission prompts in a row,
+**3. Say how long it may run**, if 24 hours isn't right. Every conveyor is armed
+with an expiry and shuts itself down when it passes, finished or not. *"Give this
+one three days"* is enough. If you say nothing you get 24 hours.
+
+**4. Approve twelve alarms.** You will get twelve permission prompts in a row,
 one per alarm. This is normal and it is the price of a five-minute heartbeat —
 the server refuses any single alarm that fires more often than hourly, so twelve
 hourly alarms offset five minutes apart is the only way. Tested twice, both
 rejected, on 2026-08-15.
 
-**4. Walk away.** From here it runs itself. Your session will show one short line
-every five minutes. Steps complete roughly every 2–5 minutes.
+**5. Walk away.** From here it runs itself, and turns itself off when the work is
+done or the deadline passes. Your session will show one short line every five
+minutes. Steps complete roughly every 2–5 minutes.
 
 ---
 
-## Stopping a run
+## Stopping a run — it stops itself
 
-Tell the session: **"tear down the conveyor."** You will approve twelve
-deletions. Then it is gone.
+**You do not have to remember to turn it off.** Every tick checks two shutdown
+conditions, and either one ends the run:
 
-**Alarms never stop on their own.** When a plan finishes, the ticks keep coming
-— they just say "queue complete, nothing dispatched" forever. That is by design
-(so you can add more work without re-arming) but it means teardown is a thing
-you have to actually ask for.
+- **The work is done.** After about 15 minutes of finding nothing left to do, it
+  deletes all twelve alarms. The short wait is deliberate: it is your window to
+  add another plan without re-arming and re-approving twelve times.
+- **The deadline passed.** Every conveyor is armed with an expiry — 24 hours by
+  default, longer if you say so. Past it, the next tick shuts everything down no
+  matter what state the work is in. This is the one that saves you when a project
+  wedges and would otherwise tick until you noticed.
+
+Tell the session at arming time if you want a different horizon: *"give this one
+three days"* or *"expire it tonight."*
+
+To stop early, say **"tear down the conveyor."**
+
+**One caveat, stated plainly:** deleting an alarm sometimes asks you to approve
+and sometimes doesn't — it has been seen both ways. If it asks while you're away,
+the deletions sit waiting and the alarms stay live until you answer. So
+self-shutdown makes forgetting far less likely; it does not make it impossible.
+If you come back to a session full of ticks, that is what happened — approve the
+prompts, or just say "tear down the conveyor."
 
 ---
 
@@ -73,9 +93,13 @@ Any of these: say what you are seeing and ask for `OPERATIONS.md` to be followed
 
 ## The costs, stated plainly
 
-- **Twelve approvals to start, twelve to stop.** Unavoidable.
-- **Twelve alarms firing hourly is 288 wake-ups a day.** Each is a fetch and a
-  grep — cheap, but not free, and they run until deleted.
+- **Twelve approvals to start.** Unavoidable — the server refuses any alarm that
+  fires more often than hourly.
+- **Shutdown is automatic**, but may ask you to approve the twelve deletions
+  depending on how the session is behaving that day.
+- **Twelve alarms firing hourly is 288 wake-ups a day** if one somehow ran a full
+  day. Each is a fetch and a grep — cheap, but not free. The expiry is what keeps
+  that number theoretical.
 - **Worst case five minutes of dead air per step**, typically two to three.
 
 ---

@@ -11,30 +11,49 @@ CONVEYOR TICK — one of twelve alarms, five minutes apart, driving the queue on
 (1) SYNC.
     cd /home/user/CLAUDE-PROJECTS && git fetch origin <BRANCH> && git checkout -B <BRANCH> origin/<BRANCH>
 
-(2) PICK. Read conveyor/QUEUE.md. Walk its plan files in listed order and take the FIRST one with at least one unchecked step, where an unchecked step is a line matching `^- \[ \]`.
-    If no listed plan has any unchecked step: reply "queue complete — nothing dispatched" and STOP. Change nothing, spawn nothing.
+(2) DEADLINE. Read the `expires:` timestamp in conveyor/ARMED.md.
+    If now is past it, this conveyor has outlived its licence regardless of what the queue says. Run the DISARM procedure at the bottom of this prompt with reason "deadline <expires>", then reply one line and STOP.
+    If `expires:` is missing or unreadable, treat that as expired and disarm — an alarm set with no end date is exactly the thing this check exists to catch.
 
-(3) LIVENESS. Take the last line of conveyor/STATE.md that matches `^20[0-9][0-9]-` — anchor on that pattern, never a loose substring, or the format example in the file header will match and you will believe in a worker that does not exist. If such a line exists, take its session id and call mcp__Claude_Code_Remote__get_session on it.
+(3) PICK. Read conveyor/QUEUE.md. Walk its plan files in listed order and take the FIRST one with at least one unchecked step, where an unchecked step is a line matching `^- \[ \]`.
+    If no listed plan has any unchecked step, the work is done:
+      - Read `idle-ticks:` in conveyor/ARMED.md. Add one. Write it back, commit "conveyor: idle tick <n>", push.
+      - If the new value is less than `linger-ticks:` (default 3), reply "queue complete — idle <n>/<linger>, holding in case more work arrives" and STOP. This window exists so the owner can add a plan without re-arming twelve alarms.
+      - If it has reached `linger-ticks:`, run the DISARM procedure with reason "queue complete", reply one line, and STOP.
+    If a plan DOES have unchecked steps and `idle-ticks:` is not already 0, reset it to 0, commit, push, and carry on — new work arrived during the linger window.
+
+(4) LIVENESS. Take the last line of conveyor/STATE.md that matches `^20[0-9][0-9]-` — anchor on that pattern, never a loose substring, or the format example in the file header will match and you will believe in a worker that does not exist. If such a line exists, take its session id and call mcp__Claude_Code_Remote__get_session on it.
     - status_bucket is SESSION_STATUS_BUCKET_WORKING and it was dispatched under 10 minutes ago -> a worker is in flight. Reply "worker <id> still working — nothing dispatched" and STOP. Never start a worker on top of a running one.
-    - WORKING but dispatched 10+ minutes ago -> treat as hung, continue to (4).
-    - anything else, or the call errors -> continue to (4).
+    - WORKING but dispatched 10+ minutes ago -> treat as hung, continue to (5).
+    - anything else, or the call errors -> continue to (5).
 
-(4) FRESHNESS. git log -1 --format='%ci' -- <the chosen plan file> conveyor/<the plan's log file>
+(5) FRESHNESS. git log -1 --format='%ci' -- <the chosen plan file> conveyor/<the plan's log file>
     If that commit is under 2 minutes old, a worker has just pushed and its status may not have flipped yet. Reply "fresh commit <ts> — nothing dispatched" and STOP.
 
-(5) DISPATCH. Call mcp__Claude_Code_Remote__create_session with EXACTLY these four arguments and NO others — no extra_allowed_tools, no permission_mode, no tags, no connectors:
+(6) DISPATCH. Call mcp__Claude_Code_Remote__create_session with EXACTLY these four arguments and NO others — no extra_allowed_tools, no permission_mode, no tags, no connectors:
       title:           "<PROJECT> worker — <the first unchecked step's name>"
       source_url:      "https://github.com/tbuitendyk/CLAUDE-PROJECTS"
       source_revision: "<BRANCH>"
       prompt:          the entire verbatim contents of the repo file conveyor/WORKER-PROMPT.txt
     Any further argument sharply raises the refusal rate — see conveyor/EVIDENCE.md on the vps-access branch. If refused, run `sleep 20` and repeat the IDENTICAL call, up to three attempts. Do not reword, retitle, or vary the call between attempts, and do not pursue the dispatch by another route.
 
-(6) RECORD. Append one line to conveyor/STATE.md, beginning with the 4-digit year:
+(7) RECORD. Append one line to conveyor/STATE.md, beginning with the 4-digit year:
       <UTC ts> | session <id> | plan <name> | step <N> | dispatched
     or, if all three attempts were refused:
       <UTC ts> | DISPATCH REFUSED after 3 attempts | plan <name> | step <N>
     Then: git add -A && git commit -m "conveyor: dispatch <plan> step <N>" && git push -u origin <BRANCH>
     If the push is rejected, run `git pull --rebase origin <BRANCH>` and push again. NEVER force-push — that would discard a worker's completed step.
 
-(7) Reply ONE line: what you found and what you dispatched. Create, fire, or delete no triggers.
+(8) Reply ONE line: what you found and what you dispatched.
+
+=== DISARM PROCEDURE ===
+Run this only when step (2) or step (3) sends you here. It shuts the conveyor off so nobody has to remember to.
+
+  a. Read every trigger id in the table in conveyor/ARMED.md.
+  b. Call mcp__Claude_Code_Remote__delete_trigger on each one, including the alarm that fired this very tick — the message has already been delivered, so deleting its source is safe.
+     If a delete is refused or prompts and cannot complete, keep going with the rest and record which ones survived. Do not abandon the whole teardown because one call failed.
+  c. Call mcp__Claude_Code_Remote__list_triggers and confirm no conveyor alarm for this project remains. Any that survived MUST be named explicitly in your reply — a half-disarmed conveyor that reports success is worse than one that never tried.
+  d. Optionally archive this project's worker sessions listed in conveyor/STATE.md.
+  e. Move the ARMED.md table rows into its History section with the teardown timestamp and the reason, set `idle-ticks:` back to 0, and clear `expires:`. Commit "conveyor: self-disarm (<reason>)", push.
+  f. Reply ONE line stating that the conveyor disarmed itself, the reason, and — if any alarm could not be deleted — exactly which ids are still live and need the owner.
 ===PROMPT===

@@ -97,8 +97,13 @@ Notes that matter:
   `create_new_session_on_fire`: `create_trigger` cannot attach a repo, so a fresh
   session wakes with nothing, calls `add_repo`, and hangs forever on an approval
   nobody sees. This was the cause of a whole day of silent failures.
-- Record all twelve ids in `conveyor/ARMED.md` and commit it. Without that list
-  the human cannot find them to shut them off.
+- Record all twelve ids in `conveyor/ARMED.md` and commit it. That file is not
+  bookkeeping — the dispatcher reads it every tick to decide when to shut itself
+  off, and it is the only written record of what is armed.
+- **Set `expires:` in `ARMED.md` before you walk away.** A missing deadline is
+  treated as expired, so a conveyor armed without one disarms on its next tick.
+  Default 24 hours out; longer for a genuinely long build. Ask the human if the
+  right horizon is not obvious.
 - Expect the human to approve twelve times. Tell them up front, in one line, so
   it does not feel like a malfunction.
 
@@ -185,16 +190,47 @@ was paid for.
 
 ---
 
-## 6. Tearing down
+## 6. Shutting down — the conveyor disarms itself
 
-When the queue is finished, or the human says stop:
+The dispatcher created the alarms and can delete them, so **teardown is not
+something the human has to remember.** Every tick checks two shutdown conditions
+before it does anything else.
 
-1. Delete all twelve alarms by the ids in `ARMED.md`. Twelve approvals, once.
-2. Archive the worker sessions so they do not clutter the sidebar.
-3. Clear `ARMED.md`.
+**Deadline.** `ARMED.md` carries an `expires:` timestamp. Past it, the next tick
+disarms regardless of what the queue says. This is the backstop for the failure
+that actually strands people: not a finished project, but a wedged one that would
+otherwise tick forever. A missing or unreadable `expires:` counts as expired — a
+conveyor armed with no end date shuts itself off rather than running loose.
 
-Alarms do not stop themselves. An idle conveyor keeps ticking forever, one line
-every five minutes, until somebody deletes it.
+**Queue complete plus linger.** When nothing in the queue has unfinished steps,
+the tick increments `idle-ticks:`. Once that reaches `linger-ticks:` (default 3,
+about 15 minutes), it disarms. The linger window exists so the human can drop
+another plan into the queue without re-arming twelve alarms and approving twelve
+prompts. Any tick that finds new work resets the counter to 0.
+
+The disarm procedure itself:
+
+1. Delete every trigger id in `ARMED.md`, **including the alarm that fired the
+   current tick** — its message has already been delivered, so deleting its
+   source is safe.
+2. If a delete fails or cannot complete, keep going with the rest. Then **name
+   the survivors explicitly in the reply.** A half-disarmed conveyor that reports
+   success is worse than one that never tried.
+3. Confirm with `list_triggers` that no alarm for this project remains.
+4. Optionally archive the worker sessions listed in `STATE.md`.
+5. Move the `ARMED.md` rows into its History section with the timestamp and
+   reason, reset `idle-ticks:`, clear `expires:`, commit, push.
+
+### The honest caveat
+
+`delete_trigger` has been seen to prompt for approval in some sessions and to go
+through silently in others. If the environment prompts and the human is away,
+the deletions wait for them and the alarms stay live until answered. Self-disarm
+therefore makes forgetting much less likely — it does not make it impossible.
+Say it that way to the human; do not promise a guaranteed shutdown.
+
+To stop early at any point, the human says "tear down the conveyor" and you run
+the same procedure immediately.
 
 ---
 

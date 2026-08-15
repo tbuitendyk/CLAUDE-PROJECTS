@@ -13,13 +13,19 @@ this says how to operate it.
 3. Get the owner session id.
 4. Tell the human, in one line, that twelve approvals are coming.
 5. Create twelve triggers, minutes `0 5 10 15 20 25 30 35 40 45 50 55`.
-6. Write all twelve ids into `ARMED.md`, commit, push.
+6. Write all twelve ids into `ARMED.md`, **set `expires:`** (24 h default, or
+   whatever horizon the human gave), leave `linger-ticks: 3` and `idle-ticks: 0`,
+   commit, push.
 7. Confirm with `list_triggers` that twelve exist and their `next_run_at` values
    are spread five minutes apart. If they are bunched, the cron strings were
    wrong — fix before walking away.
 
 **Do not tell the human it is running until step 7 passes.** A conveyor that was
 never armed looks identical to one that is idle.
+
+**Never arm without an `expires:`.** The dispatcher treats a missing deadline as
+expired and will disarm on the first tick — which is the safe failure, but it
+looks like a malfunction and wastes the human's twelve approvals.
 
 ---
 
@@ -44,11 +50,28 @@ To check progress without waiting for a tick:
 
 ## Stopping
 
+Normally you do not: the conveyor disarms itself when the queue is complete
+(after `linger-ticks`) or when `expires:` passes. Both paths run the same
+procedure, which is spelled out at the end of `DISPATCHER-PROMPT.txt`.
+
+To stop early, or to finish a disarm that only partly succeeded:
+
 1. Read the twelve ids from `ARMED.md`.
-2. `delete_trigger` on each. Twelve approvals.
-3. `list_triggers` to confirm none remain.
-4. Archive the worker sessions.
-5. Empty `ARMED.md`, commit, push.
+2. `delete_trigger` on each — including the one that fired the current tick, if a
+   tick is what brought you here. Its message is already delivered.
+3. If any delete fails, **continue with the rest** and name the survivors
+   explicitly. A half-disarmed conveyor reported as "done" is the worst outcome.
+4. `list_triggers` to confirm none remain.
+5. Archive the worker sessions.
+6. Move the `ARMED.md` rows into History with the reason, reset `idle-ticks:`,
+   clear `expires:`, commit, push.
+
+### If ticks keep arriving after a disarm
+
+The deletions were refused or are sitting on approvals the human has not
+answered. Check `list_triggers` for what is still live, tell the human exactly
+which ids remain, and retry the deletes. Do not report the conveyor as stopped
+until `list_triggers` is clean.
 
 ---
 

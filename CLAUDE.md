@@ -197,6 +197,13 @@ The three facts that explain the whole design, proven 2026-08-15:
   hourly alarms and twelve owner approvals. `*/5` and explicit minute lists were
   both tested and both rejected.
 
+**It shuts itself off.** Every tick checks an `expires:` deadline (24 h by
+default) and a queue-complete-plus-linger condition; either one makes the tick
+delete all twelve alarms. A conveyor armed with no deadline disarms on its next
+tick, by design. The owner has to remember to start one, never to stop one —
+though `delete_trigger` sometimes prompts, so an unattended shutdown can end up
+waiting on approvals.
+
 Proven end to end: five dependent steps, 53 minutes, zero human input, zero
 permission prompts. The same workload on the earlier half-hourly design took
 2.5 hours.

@@ -44,12 +44,14 @@ them together.
                     v
         your OWNER SESSION wakes up
                     |
-        +-----------+------------------------------+
-        |           |              |               |
-   plan done?  worker alive?  just committed?   otherwise
-     stop         stop           stop         start ONE worker
-                                                    |
-                                                    v
+        +--------+---------+---------+-------------+----------+
+        |        |         |         |             |          |
+    past its  queue     worker    just          otherwise
+    deadline? done?     alive?    committed?
+        |        |         |         |                |
+     DISARM   DISARM    stop      stop        start ONE worker
+     itself   after                                   |
+              linger                                  v
                                      fresh session, repo attached,
                                      does exactly ONE step,
                                      ticks its box, pushes, STOPS.
@@ -73,7 +75,26 @@ advances it.
 | `EVIDENCE.md` | Why every rule is the way it is, with measurements. Read before changing anything. |
 | `templates/` | Copy these into your project branch and fill them in. |
 
+## It turns itself off
+
+The owner has to remember to *start* a conveyor. They should never have to
+remember to stop one. Every tick checks two shutdown conditions before doing
+anything else:
+
+- **`expires:`** — a hard deadline set at arming time, 24 hours by default. Past
+  it, the next tick deletes all twelve alarms whatever state the work is in. This
+  covers the case that actually strands people: not a finished project, but a
+  wedged one that would tick forever. A conveyor armed with no deadline disarms
+  immediately, by design.
+- **queue complete + linger** — once there is nothing left to do, it waits about
+  15 minutes (in case more work is coming) and then disarms.
+
+Caveat worth knowing: deleting an alarm sometimes asks the owner to approve and
+sometimes doesn't. If it asks while they are away, the deletions wait and the
+alarms stay live. Self-disarm makes forgetting far less likely; it does not make
+it impossible.
+
 ## The one-line version
 
-Twelve alarms, one worker per step, git as the memory, and never let a worker
-start another worker.
+Twelve alarms, one worker per step, git as the memory, never let a worker start
+another worker, and it shuts itself off when the work is done or time runs out.
