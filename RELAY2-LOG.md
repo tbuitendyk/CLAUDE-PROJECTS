@@ -454,3 +454,5 @@ $ awk '{print NR": "NF" words | "$0}' poem.txt
 Note for Step 5: the values you must independently re-verify are Shift 1's hash
 first-six-hex `e5ff5c`, Shift 2's decimal `15073116` and prime `15073133`, and
 Shift 3's digit sum `23` and binary `111001011111111101101101`.
+
+[watchdog 2026-08-15T07:39:21Z: chain stalled ~25min at step 5 (shift 4 completed 07:13; poke wake again did not drain into the owner session); revived via new session session_01HafZpZbCMnzh5Dcjg9XiBc with fire_trigger pre-granted]
