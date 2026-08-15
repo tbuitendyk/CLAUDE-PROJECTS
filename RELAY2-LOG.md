@@ -339,3 +339,5 @@ digits 1,5,0,7,3,1,3,3 agrees with the `fold`/`paste` pipeline. The binary form 
 Note for Step 4: your four digits are 1, 5, 0, 7 — in order. Under the step's own
 rule (a digit of 0 or 1 counts as 3 words, minimum 2 words otherwise), the poem's
 line word counts must be 3, 5, 3, 7.
+
+[watchdog 2026-08-15T07:12:28Z: chain stalled ~32min at step 4 (shift 3 completed 06:40; its poke wake again did not drain into the owner session before this fire); revived via new session session_012V9qoH1BrS2ZWhRUNRBiui with fire_trigger pre-granted]
