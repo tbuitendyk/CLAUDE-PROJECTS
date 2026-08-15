@@ -315,3 +315,70 @@ would be 23, noted only for transparency; the recorded value uses the standard f
 - **Per instructions this shift used no mcp__ tools and created no sessions or triggers**;
   unlike Shifts 1–2 it carries the remaining steps itself rather than handing off.
 - **Errors:** none.
+
+---
+
+## Shift 4 — 2026-08-15T05:14:29Z [container:8f714274]
+
+**Response:**
+
+Same session and container as Shift 3 (`8f714274`) — this relay shift was told to carry
+every remaining step itself, one at a time, committing and pushing after each.
+
+Step 4 asks for a 3–5 sentence paragraph tying together three earlier results:
+the Step 1 haiku, the Step 2 prime product `1096375199328173`, and the Step 3
+number `52545193448` (= 2388417884 × 22).
+
+Paragraph (5 sentences):
+
+> The only thing left in the locker was a slip of paper reading "Baton leaves warm hand — a stranger's palm keeps the pace, one race, many runs," which the detective took less as poetry than as a confession that the package had changed carriers at least five times. Each carrier had signed the ledger with a four-digit code, and the five codes multiplied to 1096375199328173, a number the courier company used as a shipment seal precisely because no one could forge it without knowing every leg of the route. The seal on the recovered crate, however, read 52545193448 — far too small, and divisible by 22, one for every vowel the runner had breathed into that verse. Whoever repacked the crate had counted the poem instead of the primes, mistaking the message for the key. That single misreading was enough to tell the detective the thief had never actually run the race.
+
+Word count, with the real commands:
+
+```
+$ wc -w para.txt
+151 para.txt
+
+$ python3 -c "
+t=open('para.txt').read()
+print('python split words:', len(t.split()))
+import re
+print('sentences (terminal punctuation):', len(re.findall(r'[.!?](?:\s|\$)', t)))"
+python split words: 153
+sentences (terminal punctuation): 5
+```
+
+The two counts disagreed by 2, so I chased it down rather than pick one:
+
+```
+$ echo "locale: $LANG"
+locale:
+$ LC_ALL=C wc -w para.txt
+151 para.txt
+$ LC_ALL=C.UTF-8 wc -w para.txt
+153 para.txt
+$ python3 -c "
+t=open('para.txt').read().split()
+print(len(t))
+print([w for w in t if not any(c.isalnum() for c in w)])"
+153
+['—', '—']
+```
+
+Cause: the paragraph contains two free-standing em dashes (U+2014) surrounded by
+spaces. Under a UTF-8 locale `wc -w` counts each as a word (153); under the C locale
+it does not (151). Python's `split()` agrees with the UTF-8 reading. Since a lone
+dash is punctuation rather than a word, the recorded count is the alphanumeric-token
+count: **151 words** (153 whitespace-separated tokens minus the 2 bare dashes).
+
+Fact-checks on the numbers used in the story: 52545193448 / 22 = 2388417884 exactly
+(consistent with Step 3), and 1096375199328173 is the Step 2 product of the five
+four-digit primes 1009 × 1013 × 1019 × 1021 × 1031 — so "four-digit code" and
+"five times" in the paragraph are both literally true of the earlier results.
+
+**Step 4 results**
+- Paragraph: as quoted above, 5 sentences.
+- Word count: **151** (alphanumeric words; 153 whitespace-separated tokens including
+  two standalone em dashes).
+
+**Errors:** none.

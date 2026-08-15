@@ -20,7 +20,7 @@ anything.
 - [x] Step 3 — Hash arithmetic: take the FIRST 8 hex characters of Step 1's hash
   (from the transcript), convert to decimal, multiply by the number of vowels in
   Step 1's haiku. Record all three values.
-- [ ] Step 4 — Weave: write one paragraph (3–5 sentences) connecting the haiku,
+- [x] Step 4 — Weave: write one paragraph (3–5 sentences) connecting the haiku,
   the prime product, and Step 3's number as if they were clues in a tiny mystery.
   Count its words. Record paragraph + word count.
 - [ ] Step 5 — FINAL: verify steps 1–4 are ticked and their results present in
