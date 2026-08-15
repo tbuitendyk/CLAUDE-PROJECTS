@@ -56,6 +56,32 @@ dropped/policed, not of congestion — congestion queues before it drops.
   boundary and do NOT help. Verify with ping: ~5-45 ms = really in Mexico;
   60 ms+ = offshore, useless for this.
 
+## HARD EVIDENCE from the owner's own link (2026-08-15 12:53-13:23 MDT)
+30 min of continuous pings from the owner's PC to three targets, through three
+egress configurations. (Loss reconstructed from inter-sample timing: a timeout
+blocks ~5 s, a success returns instantly. Contrast is stark enough that no
+plausible threshold changes the result.)
+
+| window (MDT) | 8.8.8.8 | IONOS edge 74.208.1.75 | THE BOX 74.208.226.14 | egress |
+|---|---|---|---|---|
+| 12:53-12:58 | 0% | 15.2% | 8.7%  | direct Telmex |
+| 12:58-13:03 | 0% | 25.0% | 37.1% | direct Telmex |
+| 13:03-13:08 | 0% | 16.7% | **43.2%** | Proton VANCOUVER |
+| 13:08-13:13 | 0% | 15.6% | 13.3% | Proton Vancouver |
+| 13:13-13:18 | 0% | **0.0%** | **0.0%** | Proton MEXICO CITY |
+| 13:18-13:23 | 0% | **0.0%** | **0.0%** | Proton Mexico City |
+
+Totals: 8.8.8.8 = **0 lost / 271**. IONOS edge = 29/272 (10.7%).
+The box = 39/272 (14.3%).
+
+THE THREE CONCLUSIONS:
+1. 8.8.8.8 perfect throughout every configuration -> the owner's LAN, router and
+   Telmex's DOMESTIC network are not at fault.
+2. The Vancouver exit was the WORST bucket (43.2%) -> the fault is not the route
+   to IONOS specifically; it is Telmex's international egress generally.
+3. The Mexico City exit is a clean binary switch: 109 consecutive pings to both
+   IONOS targets with ZERO loss, from the minute it was enabled.
+
 ## Workaround (also a permanent improvement)
 AWS mx-central-1 → IONOS is 62.7 ms vs the owner's direct 113 ms. Using the AWS
 box as a jump host both bypasses the faulty segment and roughly halves latency:
