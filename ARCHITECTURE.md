@@ -229,3 +229,30 @@ the last 6 minutes), or dispatch exactly one worker.
   measured at 4 for 4 from the old watchdogs. Small sample.
 - Nothing here has yet driven a plan to completion unattended. That is exactly
   what the next hour tests.
+
+---
+
+## This has moved
+
+The sandbox experiments recorded above are finished. The working procedure they
+produced now lives on the **`vps-access`** control-plane branch as **CONVEYOR**,
+where any session on any branch can fetch it:
+
+    git fetch origin vps-access && git show origin/vps-access:conveyor/PROTOCOL.md
+
+Everything on this branch is the evidence trail. `conveyor/` is the thing you
+actually use. Changes to the procedure belong there, not here.
+
+Differences in the productionised version:
+
+- **5-minute cadence** (twelve offset hourly alarms) rather than 10-minute (six).
+  Both `*/5 * * * *` and an explicit minute list were tested against the server
+  and both were rejected with `cron interval too short`, so twelve alarms is the
+  only route to five minutes.
+- **Just-committed gate cut from 6 minutes to 2.** At the old setting it burned a
+  full extra tick on RELAY3's final step — over a third of total run time.
+- **A queue.** Any number of plans can be stacked up; each tick works the first
+  one with unfinished steps. New work needs no re-arming and no new approvals.
+
+Teardown of the sandbox run, 2026-08-15 ~23:05Z: all six alarms deleted, all
+worker sessions archived, nothing left scheduled.
