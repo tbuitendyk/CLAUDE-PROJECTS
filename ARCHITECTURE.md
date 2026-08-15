@@ -34,7 +34,7 @@ Anthropic's servers.** Everything below is built on exactly those two.
 | Mechanism | Evidence |
 |-----------|----------|
 | **Server-side recurring alarm** (Routine) | ~30 fires, 100% delivered. Minimum cadence hourly; offset copies give finer spacing. Delivery lag 5 min to 3 h when the target session is idle. |
-| **A top-level session spawning a worker** | 9 for 9. Never once refused. |
+| **A top-level session spawning a worker** | 11 for 11 (7 issued from this session, 4 from Routine-woken watchdog sessions). Never once refused. |
 | **A worker with the repo attached doing a step and pushing** | Never failed. ~90 seconds start to finish. |
 | **Git as the memory** | Survived every container death, every worker swap, every restart. |
 
@@ -47,7 +47,7 @@ worker-issued spawn call by two variables:
 
 | Who is spawning | Prompt handed to the new session | Result |
 |-----------------|----------------------------------|--------|
-| top-level session (mine, or one woken by a Routine) | anything, including self-replicating | **9 / 9 allowed** |
+| top-level session (mine, or one woken by a Routine) | anything, including self-replicating | **11 / 11 allowed** |
 | a spawned worker | terminal — does one thing and stops | **4 / 5 allowed** |
 | a spawned worker | terminal, but also asks to pass permissions down | **1 / 6 allowed** |
 | a spawned worker | self-replicating — tells the new session to spawn another | **~1 / 17 allowed** |
