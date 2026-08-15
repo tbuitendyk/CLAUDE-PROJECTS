@@ -595,3 +595,5 @@ smallest" error had Shift 2 made one; it did not.
 
 Note for Step 6: Steps 1–5 are now ticked with their results present above. Your only
 remaining work is the completion marker line plus a UTC timestamp, and spawning nobody.
+
+[watchdog 2026-08-15T08:11:16Z: chain stalled ~30min at step 6 (shift 5 completed 07:40); revived via new session session_01DGPY4ky6rxnpYaiW8zT9nF — final step, no poke expected]
