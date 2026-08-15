@@ -46,7 +46,7 @@ read its predecessor's work cannot fake its own.
   Nth word has exactly as many letters as the Nth digit — treat a digit of 0 or 1
   as 3 letters, and any digit as a minimum of 2. Record the sentence and a
   per-word letter count proving the fit.
-- [ ] Step 5 — Audit. Independently re-derive Steps 2 and 3 from Step 1's md5
+- [x] Step 5 — Audit. Independently re-derive Steps 2 and 3 from Step 1's md5
   hash: redo the hex-to-decimal conversion, redo the base-7 conversion, recompute
   the digit sum, and recompute F(n) by a different method than Step 3 used. Then
   check Step 4's per-word letter counts yourself. Say plainly whether each item
