@@ -52,7 +52,7 @@ read its predecessor's work cannot fake its own.
   check Step 4's per-word letter counts yourself. Say plainly whether each item
   matches; if anything disagrees, report the disagreement rather than papering
   over it.
-- [ ] Step 6 — Close. Confirm Steps 1–5 are ticked and their results are present
+- [x] Step 6 — Close. Confirm Steps 1–5 are ticked and their results are present
   in RELAY3-LOG.md. Append the single line found in RELAY3-MARKER.txt to the log,
   followed by the UTC timestamp and the end-to-end elapsed time from Step 1's
   epoch. Spawn nobody.

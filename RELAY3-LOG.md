@@ -845,3 +845,231 @@ management. **Nothing errored:** the fetch, checkout, grep count, and all eight
 verification commands succeeded on the first attempt. The prompt arrived wrapped
 in an automated background-task notification (reproduced verbatim above); I
 treated it as the worker prompt, not as human approval for anything.
+
+---
+
+## Shift 6 — 2026-08-15T22:34:15Z [container:88b8cf4d]
+
+**Prompt received:**
+
+```
+RUNNER WORKER — you are a brand-new session with no memory. This prompt plus the attached repo is your entire context. All times UTC. Repo: tbuitendyk/CLAUDE-PROJECTS, branch claude/sandbox-fd3rem.
+
+NOBODY IS WATCHING YOU. There is no human to ask and no approval coming. Never wait for permission you do not already have, never ask a question, never end your turn with work half-done. Keep your chat text to one or two lines — the files are the deliverable.
+
+YOU DO EXACTLY ONE STEP AND THEN YOU STOP. You do not start another session. You do not spawn anything. A scheduler outside this chain will start the next worker; that is not your job and attempting it will get you refused.
+
+(1) cd /home/user/CLAUDE-PROJECTS && git fetch origin claude/sandbox-fd3rem && git checkout -B claude/sandbox-fd3rem origin/claude/sandbox-fd3rem
+
+(2) Count unchecked steps: grep -c '^- \[ \]' RELAY3-PLAN.md
+    If ZERO, the plan is already finished. Reply one line saying so and STOP — change nothing, commit nothing.
+
+(3) Find the FIRST unchecked step in RELAY3-PLAN.md and do exactly that one step. Do not do any other step. Read your predecessor's published results out of RELAY3-LOG.md and build on their actual numbers — do not recompute the chain from scratch, and do not invent values you cannot find.
+
+(4) Append to RELAY3-LOG.md, in this exact shape:
+
+## Shift <step number> — <UTC timestamp> [container:<first 8 chars of /proc/sys/kernel/random/boot_id>]
+**Prompt received:**
+(this entire prompt, verbatim, inside a fenced block)
+**Response:**
+(your full working narrative and results — show the actual commands you ran and their real output for every computation)
+**Session diagnostics:** the model you are running as, if you can determine it; whether mcp__ tools were available to you; anything that errored.
+
+(5) Tick your step's checkbox in RELAY3-PLAN.md — change its "- [ ]" to "- [x]".
+
+(6) Commit and publish:
+    git add -A && git commit -m "runner worker: <step name>"
+    git push -u origin claude/sandbox-fd3rem
+    If the push is rejected, run `git pull --rebase origin claude/sandbox-fd3rem` and push again. Never force-push.
+    Then mirror: git push origin HEAD:sandbox
+
+(7) If the step you just finished was the LAST unchecked one, also do what the final step of RELAY3-PLAN.md instructs regarding the completion marker, then commit, push, and mirror.
+
+(8) STOP. Spawn nothing. Create, fire, or delete no triggers. Touch no RELAY2, SPAWNTEST, RUNNER-STATE or ARCHITECTURE file. Do no work beyond your one step.
+
+If you cannot complete your step, append `[worker failed at <UTC ts>: <reason>]` to RELAY3-LOG.md, commit, push, mirror, and stop. The scheduler will send someone else.
+```
+
+**Response:**
+
+I am Step 6 — Close. My job: confirm Steps 1–5 are ticked and their results are
+present in the log, append the single line from `RELAY3-MARKER.txt` followed by
+the UTC timestamp and end-to-end elapsed time from Step 1's epoch, and spawn
+nobody.
+
+### Checkout and step count
+
+```
+$ git fetch origin claude/sandbox-fd3rem && git checkout -B claude/sandbox-fd3rem origin/claude/sandbox-fd3rem
+From https://github.com/tbuitendyk/CLAUDE-PROJECTS
+ * branch            claude/sandbox-fd3rem -> FETCH_HEAD
+   6cb3a6f..eda3812  claude/sandbox-fd3rem -> origin/claude/sandbox-fd3rem
+Switched to and reset branch 'claude/sandbox-fd3rem'
+
+$ grep -c '^- \[ \]' RELAY3-PLAN.md
+1
+```
+
+One unchecked step remains, and it is Step 6 — so I am the last worker.
+
+### Confirmation 1 — Steps 1–5 are ticked
+
+```
+$ grep -n '^- \[x\]' RELAY3-PLAN.md
+35:- [x] Step 1 — Seed. ...
+38:- [x] Step 2 — Convert. ...
+41:- [x] Step 3 — Fibonacci. ...
+44:- [x] Step 4 — Sentence. ...
+49:- [x] Step 5 — Audit. ...
+```
+
+All five prior boxes are ticked, and the only `- [ ]` line in the plan is my own
+Step 6.
+
+### Confirmation 2 — every shift's results are present in the log
+
+```
+$ grep -n '^## Shift' RELAY3-LOG.md
+6:## Shift 1 — 2026-08-15T20:59:31Z [container:9a5c7828]
+141:## Shift 2 — 2026-08-15T21:43:23Z [container:b5b28c17]
+278:## Shift 3 — 2026-08-15T21:53:38Z [container:ccc2eb6a]
+443:## Shift 4 — 2026-08-15T22:05:20Z [container:393665dc]
+596:## Shift 5 — 2026-08-15T22:17:32Z [container:65356885]
+```
+
+(The other `## Shift <step number>` hits in the file are the literal template
+line inside each quoted prompt block, not real headers.)
+
+Occurrence counts for each published value, confirming the results are actually
+recorded rather than merely claimed:
+
+```
+$ for v in 1786827571 b648a1f70c8e7e39d0b7fdd1454592dc b648a1f7 3058213367 135533245646 2971215073; do printf '%s: %s\n' "$v" "$(grep -c "$v" RELAY3-LOG.md)"; done
+1786827571: 10
+b648a1f70c8e7e39d0b7fdd1454592dc: 9
+b648a1f7: 22
+3058213367: 16
+135533245646: 17
+2971215073: 18
+
+$ grep -c 'It persisted quietly, but no one broke the silence yet' RELAY3-LOG.md
+6
+```
+
+Chain state as published, each value carried forward from the predecessor that
+produced it — I did not recompute any of it:
+
+| Shift | Published result |
+|---|---|
+| 1 — Seed | epoch `1786827571`, md5 `b648a1f70c8e7e39d0b7fdd1454592dc`, first 8 hex `b648a1f7` |
+| 2 — Convert | decimal `3058213367`, base 7 `135533245646` |
+| 3 — Fibonacci | digit sum n = `47`, F(47) = `2971215073` |
+| 4 — Sentence | *It persisted quietly, but no one broke the silence yet.* (10 words for 10 digits) |
+| 5 — Audit | every item re-derived by a second method; **no disagreements**, one recorded caveat that the wall-clock seed epoch is unverifiable in principle |
+
+Both confirmations the plan asked for hold: Steps 1–5 are ticked, and their
+results are present in `RELAY3-LOG.md`.
+
+### End-to-end elapsed time from Step 1's epoch
+
+```
+$ NOW_E=$(date -u +%s); NOW_T=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+$ SEED=1786827571
+$ D=$((NOW_E-SEED))
+$ echo "now_epoch=$NOW_E now_utc=$NOW_T seed=$SEED elapsed_s=$D"
+now_epoch=1786833255 now_utc=2026-08-15T22:34:15Z seed=1786827571 elapsed_s=5684
+
+$ printf 'elapsed: %dh %dm %ds\n' $((D/3600)) $((D%3600/60)) $((D%60))
+elapsed: 1h 34m 44s
+```
+
+### Per-hop wall clock (the plan's second measurement)
+
+Measured shift-header to shift-header:
+
+```
+$ prev=""; for t in 2026-08-15T20:59:31Z 2026-08-15T21:43:23Z 2026-08-15T21:53:38Z 2026-08-15T22:05:20Z 2026-08-15T22:17:32Z 2026-08-15T22:34:15Z; do e=$(date -u -d "$t" +%s); if [ -n "$prev" ]; then d=$((e-prev)); printf '%s -> gap %ds (%dm %ds)\n' "$t" "$d" $((d/60)) $((d%60)); else printf '%s -> seed\n' "$t"; fi; prev=$e; done
+2026-08-15T20:59:31Z -> seed
+2026-08-15T21:43:23Z -> gap 2632s (43m 52s)
+2026-08-15T21:53:38Z -> gap 615s (10m 15s)
+2026-08-15T22:05:20Z -> gap 702s (11m 42s)
+2026-08-15T22:17:32Z -> gap 732s (12m 12s)
+2026-08-15T22:34:15Z -> gap 1003s (16m 43s)
+```
+
+Honest reading of those numbers, since the plan asks what was measured:
+
+- **Per hop is ~10–17 minutes, not the ~65 s target from SPAWNTEST.** Hops 2→3,
+  3→4 and 4→5 cluster at 615/702/732 s. The 1→2 gap of 2632 s includes a long
+  pause before the second shift started and is not representative.
+- The gaps are *not* pure shift work. Commit timestamps show each worker finished
+  quickly and then waited for the next dispatch:
+
+```
+$ git log --format='%h %cI %s' -6 | tac
+2a0e8c4 2026-08-15T21:54:19+00:00 runner worker: Step 3 — Fibonacci
+2ca799e 2026-08-15T22:03:49+00:00 runner: dispatch step 4
+abde848 2026-08-15T22:06:11+00:00 runner worker: Step 4 — Sentence
+4fb18c4 2026-08-15T22:15:27+00:00 runner: dispatch step 5
+6cb3a6f 2026-08-15T22:17:48+00:00 runner worker: Step 5 — Audit
+```
+
+  Shift 4 ran 22:03:49 → 22:06:11 (~2m 22s of actual work) and Shift 5 ran
+  22:15:27 → 22:17:48 (~2m 21s). The remaining ~8–9 minutes of each hop is
+  scheduler dispatch latency, not shift execution.
+
+- **On the headline question — did a six-step chain complete with no human and no
+  watchdog?** I must record this plainly rather than claim more than the evidence
+  supports. The `runner: dispatch step N` commits in the history show an external
+  scheduler dispatching each shift, and my own prompt states that a scheduler
+  outside the chain starts the next worker and forbids me from spawning. So what
+  this run demonstrates is that **six independent, memoryless shifts each read
+  their predecessor's published work and extended it correctly with no human in
+  the loop** — the state handoff through git worked perfectly, five times over,
+  and Shift 5's independent audit found zero disagreements. It does not
+  demonstrate pure self-chaining spawn-to-spawn, because dispatch was external.
+  I have no spawn-refusal count to report for my own hop: I attempted no spawn,
+  as instructed.
+
+### Completion marker
+
+The marker is kept in its own file precisely so the string never appears in a
+shift prompt. Read and appended verbatim, exactly one line:
+
+```
+$ cat RELAY3-MARKER.txt
+RELAY3 COMPLETE
+$ wc -l < RELAY3-MARKER.txt
+1
+```
+
+That line, with the UTC timestamp and end-to-end elapsed time, follows below as
+the plan requires.
+
+### Result — Step 6
+
+Steps 1–5 confirmed ticked and their results confirmed present. Marker appended.
+Per instruction (8) and the plan's own "Spawn nobody": I spawned nothing, created
+/ fired / deleted no triggers, and touched no RELAY2, SPAWNTEST, RUNNER-STATE or
+ARCHITECTURE file. After ticking my box the plan has zero `- [ ]` lines — the
+chain is finished, and no further worker is needed.
+
+**Session diagnostics:** Running as model `claude-opus-5` (Claude Code on the
+web, remote execution container `88b8cf4d`; the CLI runs in undercover mode, so
+this is the configured model identifier rather than a marketing name). `mcp__`
+tools **were** available — the GitHub MCP server (`mcp__github__*`, ~57 tools)
+and the claude-code-remote session-management server (UUID prefix
+`bf7c680d-5fdc-5ef4-b4a0-abadb619bf0a`) both connected; both arrived as deferred
+tools needing ToolSearch to load schemas, and I called none of them, since plain
+git sufficed and this prompt forbids spawning and trigger management. **Nothing
+errored:** the fetch, checkout, step count, both confirmations, the elapsed-time
+computation, and the per-hop timing all succeeded on the first attempt. The
+prompt arrived wrapped in an automated background-task notification (reproduced
+verbatim above); I treated it as the worker prompt, not as human approval.
+
+---
+
+RELAY3 COMPLETE
+
+**UTC timestamp:** 2026-08-15T22:34:15Z
+**End-to-end elapsed from Step 1's epoch (`1786827571`, 2026-08-15T20:59:31Z):** 5684 s = 1h 34m 44s
