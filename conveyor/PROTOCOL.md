@@ -67,8 +67,55 @@ Create these in the project branch under `conveyor/`. Templates are in
 `QUEUE.md` lists plan files in priority order. A dispatcher tick picks the
 **first plan file with at least one unchecked step** and dispatches for that.
 When every listed plan is fully ticked, ticks become no-ops and the conveyor
-idles harmlessly. Add a new plan to the queue at any time — the next tick picks
-it up. You do not need to re-arm anything.
+enters its cool-off window.
+
+---
+
+## 2a. Adding work to a conveyor that is already running
+
+This is the normal way to use it: stack work up as you think of it. **Adding
+work never requires re-arming and never costs another approval.** Every tick
+re-reads the queue from the branch, so anything pushed before the next tick is
+picked up automatically.
+
+There are three states you might be adding into.
+
+**While it is working.** Add the plan and push. The next tick sees it. Because
+ticks always take the *first* queue entry with unfinished steps, position in
+`QUEUE.md` is the priority control — put it above the current plan to jump the
+line, below to run after.
+
+**During the cool-off window** (queue finished, `idle-ticks` counting up toward
+`linger-ticks` — about 30 minutes). Same thing: add and push. The next tick
+finds unfinished work, **resets `idle-ticks` to 0**, and carries straight on.
+The cool-off exists precisely for this.
+
+**After it has disarmed.** The alarms are gone, so this costs a fresh arming and
+twelve approvals. Nothing else is lost — the queue, plans, logs and state files
+are all still in the branch, so a new conveyor picks up exactly where the old
+one stopped.
+
+### The two ways to add
+
+**Tell the session** — the normal path. "Add a plan to the conveyor that does X,
+Y, Z." It writes the plan file, appends it to `QUEUE.md`, and pushes. Do this
+even when the conveyor is mid-run; the session is not the thing doing the work.
+
+**Edit the files yourself** — from anywhere with a clone:
+
+    git fetch origin <branch> && git checkout <branch>
+    # write conveyor/plans/<name>.md with "- [ ] " steps
+    # add a line for it to conveyor/QUEUE.md, in priority order
+    git add -A && git commit -m "conveyor: queue <name>" && git push origin <branch>
+
+Two rules when hand-editing:
+
+- **Never edit a plan file that a worker might be holding.** Adding a *new* plan
+  is always safe. Editing the steps of the plan currently being worked risks a
+  push race with the worker, and `git pull --rebase` on a checkbox line is
+  exactly where a conflict costs you a completed step. Queue a new plan instead.
+- **Push it.** A plan sitting uncommitted on a laptop is invisible to the
+  conveyor. Git is the entire communication channel.
 
 ---
 
@@ -100,12 +147,19 @@ Notes that matter:
 - Record all twelve ids in `conveyor/ARMED.md` and commit it. That file is not
   bookkeeping — the dispatcher reads it every tick to decide when to shut itself
   off, and it is the only written record of what is armed.
-- **Set `expires:` in `ARMED.md` before you walk away.** A missing deadline is
-  treated as expired, so a conveyor armed without one disarms on its next tick.
-  Default 24 hours out; longer for a genuinely long build. Ask the human if the
-  right horizon is not obvious.
+- **Fill in the settings block in `ARMED.md`**: `stall-hours` (default 3),
+  `linger-ticks` (default 6, ≈30 min), `idle-ticks: 0`, and
+  `hung-worker-minutes` (default 10 — **raise it for real builds**, or a compile
+  that legitimately takes fifteen minutes will get a second worker dispatched on
+  top of it).
+- **Register with the mail hub once** so the shutdown notice can reach the owner.
+  Run script `hub-register.sh` with the conveyor's hub name (the project branch
+  name, lowercased, non-alphanumerics turned to hyphens) via the deploy endpoint
+  in `vps-access/MAIL-CHEATSHEET.md`. Idempotent, safe to re-run.
 - Expect the human to approve twelve times. Tell them up front, in one line, so
-  it does not feel like a malfunction.
+  it does not feel like a malfunction. **Creating and deleting triggers both
+  require their approval** — there is no way around it, so the value of this
+  system is that approvals happen twice per project rather than continuously.
 
 ---
 
@@ -196,38 +250,52 @@ The dispatcher created the alarms and can delete them, so **teardown is not
 something the human has to remember.** Every tick checks two shutdown conditions
 before it does anything else.
 
-**Deadline.** `ARMED.md` carries an `expires:` timestamp. Past it, the next tick
-disarms regardless of what the queue says. This is the backstop for the failure
-that actually strands people: not a finished project, but a wedged one that would
-otherwise tick forever. A missing or unreadable `expires:` counts as expired — a
-conveyor armed with no end date shuts itself off rather than running loose.
+**Stalled.** If nothing has been committed to any queued plan or log for
+`stall-hours` (default 3), there are still unfinished steps, and no worker is
+alive, the conveyor is wedged and the next tick disarms it.
 
-**Queue complete plus linger.** When nothing in the queue has unfinished steps,
-the tick increments `idle-ticks:`. Once that reaches `linger-ticks:` (default 3,
-about 15 minutes), it disarms. The linger window exists so the human can drop
-another plan into the queue without re-arming twelve alarms and approving twelve
-prompts. Any tick that finds new work resets the counter to 0.
+This is a **stall** timeout, not a wall-clock deadline — a deliberate choice. A
+conveyor that keeps making progress runs as long as the work takes: all day,
+overnight, however long the project needs. **Progress is the licence to keep
+running; only silence ends it.** That way a legitimately long build is never
+killed for being long, while a wedged one cannot tick forever.
+
+**Queue complete plus cool-off.** When nothing in the queue has unfinished
+steps, the tick increments `idle-ticks:`. Once that reaches `linger-ticks:`
+(default 6, about 30 minutes), it disarms. Any tick that finds new work resets
+the counter to 0 — see §2a, that window is the whole point.
 
 The disarm procedure itself:
 
-1. Delete every trigger id in `ARMED.md`, **including the alarm that fired the
+1. **Notify the owner first, before touching anything.** Push notification plus
+   email through the mail hub. See below for why this comes first.
+2. Delete every trigger id in `ARMED.md`, **including the alarm that fired the
    current tick** — its message has already been delivered, so deleting its
    source is safe.
-2. If a delete fails or cannot complete, keep going with the rest. Then **name
+3. If a delete fails or cannot complete, keep going with the rest. Then **name
    the survivors explicitly in the reply.** A half-disarmed conveyor that reports
    success is worse than one that never tried.
-3. Confirm with `list_triggers` that no alarm for this project remains.
-4. Optionally archive the worker sessions listed in `STATE.md`.
-5. Move the `ARMED.md` rows into its History section with the timestamp and
-   reason, reset `idle-ticks:`, clear `expires:`, commit, push.
+4. Confirm with `list_triggers` that no alarm for this project remains.
+5. Optionally archive the worker sessions listed in `STATE.md`.
+6. Move the `ARMED.md` rows into its History section with the timestamp and
+   reason, reset `idle-ticks:`, commit, push.
 
-### The honest caveat
+### Why notification is a required step, not a courtesy
 
-`delete_trigger` has been seen to prompt for approval in some sessions and to go
-through silently in others. If the environment prompts and the human is away,
-the deletions wait for them and the alarms stay live until answered. Self-disarm
-therefore makes forgetting much less likely — it does not make it impossible.
-Say it that way to the human; do not promise a guaranteed shutdown.
+**Deleting a trigger requires the owner's approval, and at shutdown time the
+owner is by definition not watching** — that is the entire purpose of this
+system. So the twelve deletions will usually sit pending until they next open a
+client. The conveyor cannot finish its own teardown unaided.
+
+That makes the notification the step that actually causes shutdown to happen.
+Send it **before** starting the deletes, so the alert is already waiting when the
+approvals appear. Send both channels: a push notification, and an email through
+the established mail hub (`vps-access/MAIL-CHEATSHEET.md` — repo-first outbox
+plus the deploy endpoint; do not reach for a Gmail or other connector). Exact
+steps are in `templates/DISPATCHER-PROMPT.txt`.
+
+If notification fails, still do the deletes, and say so plainly in the reply.
+Never let a failed notification stop a teardown.
 
 To stop early at any point, the human says "tear down the conveyor" and you run
 the same procedure immediately.

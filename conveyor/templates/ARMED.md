@@ -2,7 +2,7 @@
 
 Fill this in at arming time and commit it before walking away. The dispatcher
 reads this file every tick to decide when to shut itself off, and it is the only
-place the trigger ids are written down.
+written record of what is armed.
 
 - **Project:** <PROJECT>
 - **Branch:** <BRANCH>
@@ -10,30 +10,34 @@ place the trigger ids are written down.
 - **Armed at:** <UTC timestamp>
 - **Armed by:** <who / which session>
 
-## Shutdown policy
+## Settings
 
-The conveyor disarms itself. These three fields decide when.
-
-    expires: <UTC timestamp, e.g. 2026-08-17T00:00:00Z>
-    linger-ticks: 3
+    stall-hours: 3
+    linger-ticks: 6
     idle-ticks: 0
+    hung-worker-minutes: 10
 
-- **`expires:`** — a hard deadline. Past it, the next tick disarms no matter what
-  state the queue is in. This is the backstop for the bad case: a conveyor that
-  wedges and would otherwise tick forever. Set it at arming time; default 24
-  hours out, longer for a genuinely long build. **A missing or unreadable
-  `expires:` is treated as expired**, so a conveyor armed without a deadline
-  shuts itself off on the next tick rather than running loose.
-- **`linger-ticks:`** — how many consecutive "nothing left to do" ticks to wait
-  before disarming. Default 3, i.e. about 15 minutes of idle. The window exists
-  so the owner can add another plan to the queue without having to re-arm twelve
-  alarms and approve twelve prompts.
-- **`idle-ticks:`** — the running count. The dispatcher increments it when the
-  queue is complete and resets it to 0 the moment new work appears.
+**`stall-hours`** — the shutdown backstop. If nothing has been committed to any
+queued plan or log for this many hours, there are still unfinished steps, and no
+worker is alive, the conveyor is wedged and the next tick disarms it.
 
-To make a conveyor run until manually stopped, set `expires:` far out and
-`linger-ticks:` high — but understand that you are opting out of the thing that
-stops you forgetting.
+This is a **stall** timeout, not a wall-clock deadline. A conveyor that keeps
+making progress runs as long as the work takes — all day, overnight, however
+long. Progress is the licence to keep running. Only silence ends it.
+
+**`linger-ticks`** — how many consecutive "nothing left to do" ticks to wait
+before disarming once the queue is complete. Default 6, i.e. about 30 minutes.
+That window is the owner's chance to add more work without re-arming twelve
+alarms and approving twelve prompts. See "Adding work" in `PROTOCOL.md`.
+
+**`idle-ticks`** — the running count. The dispatcher increments it when the
+queue is complete and resets it to 0 the moment new work appears.
+
+**`hung-worker-minutes`** — how long a worker may sit in `WORKING` before it is
+presumed dead and a replacement is dispatched. Default 10, which suits steps of
+a couple of minutes. **Raise this for real builds** — a compile, a deploy, or a
+long test run can legitimately exceed ten minutes, and leaving it at the default
+will dispatch a second worker on top of a healthy one.
 
 ## Alarms
 
@@ -62,6 +66,10 @@ precise placement, use a non-zero minute instead.
 Self-disarm is the normal path. To stop early, tell the session "tear down the
 conveyor": delete every trigger id above, confirm with `list_triggers` that none
 remain, archive the worker sessions, and move the rows into History below.
+
+Deleting a trigger requires the owner's approval, so a teardown started while
+they are away will sit pending until they open a client. That is expected, and
+it is why the disarm procedure notifies before it starts deleting.
 
 ## History
 

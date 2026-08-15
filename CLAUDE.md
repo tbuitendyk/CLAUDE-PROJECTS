@@ -197,12 +197,19 @@ The three facts that explain the whole design, proven 2026-08-15:
   hourly alarms and twelve owner approvals. `*/5` and explicit minute lists were
   both tested and both rejected.
 
-**It shuts itself off.** Every tick checks an `expires:` deadline (24 h by
-default) and a queue-complete-plus-linger condition; either one makes the tick
-delete all twelve alarms. A conveyor armed with no deadline disarms on its next
-tick, by design. The owner has to remember to start one, never to stop one —
-though `delete_trigger` sometimes prompts, so an unattended shutdown can end up
-waiting on approvals.
+**Stack work on it for free.** Every tick re-reads the queue from the branch, so
+plans added mid-run (or during the 30-minute cool-off, which resets) are picked
+up with no re-arming and no approvals. Twelve approvals are paid once per
+project, not once per task.
+
+**It shuts itself off, and emails when it does.** Every tick checks two
+conditions: a 3-hour *stall* timer (no committed progress, work outstanding, no
+live worker) and queue-complete-plus-cool-off. A run that keeps making progress
+is never killed for taking long — only silence ends it. Because deleting an alarm
+needs the owner's approval and they are by definition away at that point, the
+disarm procedure notifies FIRST — PushNotification plus mail through the hub
+(`vps-access/MAIL-CHEATSHEET.md`) — then deletes, leaving twelve approvals
+waiting with an alert that explains them.
 
 Proven end to end: five dependent steps, 53 minutes, zero human input, zero
 permission prompts. The same workload on the earlier half-hourly design took

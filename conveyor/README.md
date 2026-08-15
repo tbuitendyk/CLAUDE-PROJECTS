@@ -75,26 +75,37 @@ advances it.
 | `EVIDENCE.md` | Why every rule is the way it is, with measurements. Read before changing anything. |
 | `templates/` | Copy these into your project branch and fill them in. |
 
+## Stacking work on it
+
+Once armed, adding work is free — no re-arming, no approvals. Every tick
+re-reads `QUEUE.md` from the branch, so anything pushed before the next tick gets
+picked up. Queue order is priority order. This works while it is running *and*
+during the 30-minute cool-off after the queue empties, which resets the moment
+new work appears. That is what makes the twelve approvals worth paying: you pay
+them once per project, not once per task. Full detail in `PROTOCOL.md` §2a.
+
 ## It turns itself off
 
 The owner has to remember to *start* a conveyor. They should never have to
-remember to stop one. Every tick checks two shutdown conditions before doing
-anything else:
+remember to stop one. Every tick checks two shutdown conditions first:
 
-- **`expires:`** — a hard deadline set at arming time, 24 hours by default. Past
-  it, the next tick deletes all twelve alarms whatever state the work is in. This
-  covers the case that actually strands people: not a finished project, but a
-  wedged one that would tick forever. A conveyor armed with no deadline disarms
-  immediately, by design.
-- **queue complete + linger** — once there is nothing left to do, it waits about
-  15 minutes (in case more work is coming) and then disarms.
+- **Stalled** — nothing committed to any queued plan or log for `stall-hours`
+  (default 3), work still outstanding, no worker alive. A *stall* timer, not a
+  deadline: a run that keeps making progress continues as long as the work takes,
+  all day or overnight. Progress is the licence to keep running; only silence
+  ends it.
+- **Queue complete + cool-off** — nothing left to do for `linger-ticks` (default
+  6, ≈30 minutes), so it disarms.
 
-Caveat worth knowing: deleting an alarm sometimes asks the owner to approve and
-sometimes doesn't. If it asks while they are away, the deletions wait and the
-alarms stay live. Self-disarm makes forgetting far less likely; it does not make
-it impossible.
+**Shutdown needs one thing from the owner, and that is why it emails them.**
+Deleting an alarm requires their approval, and at shutdown time they are by
+definition not watching. So the disarm procedure notifies **first** — push
+notification plus email through the established mail hub — and then starts
+deleting, leaving twelve approvals waiting alongside an alert explaining them.
+Unapproved alarms keep ticking harmlessly until the owner gets to it.
 
 ## The one-line version
 
 Twelve alarms, one worker per step, git as the memory, never let a worker start
-another worker, and it shuts itself off when the work is done or time runs out.
+another worker, stack on as much work as you like for free, and it emails you
+when it wants to shut down.

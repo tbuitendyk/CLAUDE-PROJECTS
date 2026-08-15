@@ -10,21 +10,24 @@ CONVEYOR TICK — one of twelve alarms, five minutes apart, driving the queue on
 
 (1) SYNC.
     cd /home/user/CLAUDE-PROJECTS && git fetch origin <BRANCH> && git checkout -B <BRANCH> origin/<BRANCH>
+    Read conveyor/ARMED.md for this conveyor's settings: stall-hours, linger-ticks, idle-ticks, hung-worker-minutes.
 
-(2) DEADLINE. Read the `expires:` timestamp in conveyor/ARMED.md.
-    If now is past it, this conveyor has outlived its licence regardless of what the queue says. Run the DISARM procedure at the bottom of this prompt with reason "deadline <expires>", then reply one line and STOP.
-    If `expires:` is missing or unreadable, treat that as expired and disarm — an alarm set with no end date is exactly the thing this check exists to catch.
+(2) STALL CHECK. Find the newest commit touching any queued plan or log:
+      git log -1 --format='%ci' -- conveyor/plans conveyor/logs
+    If that commit is older than `stall-hours` (default 3) AND there are still unchecked steps AND no worker is currently alive per the liveness test in (4), then nothing has moved for hours and nothing is going to. Run the DISARM procedure with reason "stalled — no progress since <ts>", reply one line, and STOP.
+    A conveyor that IS making progress must never be disarmed by this check, however long the whole project takes. Progress is the licence to keep running.
+    If `stall-hours` is missing or unreadable from ARMED.md, treat it as 3.
 
 (3) PICK. Read conveyor/QUEUE.md. Walk its plan files in listed order and take the FIRST one with at least one unchecked step, where an unchecked step is a line matching `^- \[ \]`.
     If no listed plan has any unchecked step, the work is done:
       - Read `idle-ticks:` in conveyor/ARMED.md. Add one. Write it back, commit "conveyor: idle tick <n>", push.
-      - If the new value is less than `linger-ticks:` (default 3), reply "queue complete — idle <n>/<linger>, holding in case more work arrives" and STOP. This window exists so the owner can add a plan without re-arming twelve alarms.
+      - If the new value is less than `linger-ticks:` (default 6, i.e. about 30 minutes), reply "queue complete — idle <n>/<linger>, holding in case more work arrives" and STOP. This window exists so the owner can add work without re-arming twelve alarms.
       - If it has reached `linger-ticks:`, run the DISARM procedure with reason "queue complete", reply one line, and STOP.
-    If a plan DOES have unchecked steps and `idle-ticks:` is not already 0, reset it to 0, commit, push, and carry on — new work arrived during the linger window.
+    If a plan DOES have unchecked steps and `idle-ticks:` is not already 0, reset it to 0, commit, push, and carry on — new work arrived during the cool-off window.
 
 (4) LIVENESS. Take the last line of conveyor/STATE.md that matches `^20[0-9][0-9]-` — anchor on that pattern, never a loose substring, or the format example in the file header will match and you will believe in a worker that does not exist. If such a line exists, take its session id and call mcp__Claude_Code_Remote__get_session on it.
-    - status_bucket is SESSION_STATUS_BUCKET_WORKING and it was dispatched under 10 minutes ago -> a worker is in flight. Reply "worker <id> still working — nothing dispatched" and STOP. Never start a worker on top of a running one.
-    - WORKING but dispatched 10+ minutes ago -> treat as hung, continue to (5).
+    - status_bucket is SESSION_STATUS_BUCKET_WORKING and it was dispatched less than `hung-worker-minutes` ago (default 10) -> a worker is in flight. Reply "worker <id> still working — nothing dispatched" and STOP. Never start a worker on top of a running one.
+    - WORKING but older than that -> treat as hung, continue to (5).
     - anything else, or the call errors -> continue to (5).
 
 (5) FRESHNESS. git log -1 --format='%ci' -- <the chosen plan file> conveyor/<the plan's log file>
@@ -47,13 +50,38 @@ CONVEYOR TICK — one of twelve alarms, five minutes apart, driving the queue on
 (8) Reply ONE line: what you found and what you dispatched.
 
 === DISARM PROCEDURE ===
-Run this only when step (2) or step (3) sends you here. It shuts the conveyor off so nobody has to remember to.
+Run this only when step (2) or step (3) sends you here. It shuts the conveyor off so the owner does not have to remember to.
 
-  a. Read every trigger id in the table in conveyor/ARMED.md.
-  b. Call mcp__Claude_Code_Remote__delete_trigger on each one, including the alarm that fired this very tick — the message has already been delivered, so deleting its source is safe.
-     If a delete is refused or prompts and cannot complete, keep going with the rest and record which ones survived. Do not abandon the whole teardown because one call failed.
-  c. Call mcp__Claude_Code_Remote__list_triggers and confirm no conveyor alarm for this project remains. Any that survived MUST be named explicitly in your reply — a half-disarmed conveyor that reports success is worse than one that never tried.
-  d. Optionally archive this project's worker sessions listed in conveyor/STATE.md.
-  e. Move the ARMED.md table rows into its History section with the teardown timestamp and the reason, set `idle-ticks:` back to 0, and clear `expires:`. Commit "conveyor: self-disarm (<reason>)", push.
-  f. Reply ONE line stating that the conveyor disarmed itself, the reason, and — if any alarm could not be deleted — exactly which ids are still live and need the owner.
+Deleting a trigger requires the owner's approval, and the owner is by definition not watching — that is the whole point of this system. So the deletions will very likely sit pending until they open a client. **Telling them is therefore not optional: it is the step that makes teardown actually happen.** Notify FIRST, before the deletes, so the alert is already waiting when the approvals appear.
+
+  a. NOTIFY — do this before anything else. Send BOTH.
+
+     PUSH: call PushNotification (built-in, always available), under 200 characters, one line, no markdown:
+       "CONVEYOR <PROJECT> shutting down: <reason>. 12 alarm deletions need your approval — open the session to confirm."
+
+     EMAIL via the mail hub (see vps-access/MAIL-CHEATSHEET.md — this is the established owner-comms path; do NOT reach for a Gmail or other connector):
+       i.   Outbox files live on the vps-access branch, not the project branch. Use a throwaway worktree so the project checkout is never disturbed:
+              git fetch origin vps-access
+              git worktree add /tmp/conveyor-mail origin/vps-access -b conveyor-mail-<UTC compact ts>
+       ii.  Write /tmp/conveyor-mail/vps-access/outbox/<NAME>-conveyor-shutdown-<UTC date>.txt where <NAME> is this conveyor's hub name (the project branch name, lowercased, non-alphanumerics turned to hyphens). Format is strict:
+              line 1: the subject, e.g. "<NAME>: conveyor shutting down — 12 approvals needed"
+              first non-blank line after it MUST start with "tl;dr"
+              then the body: the reason, how far the queue got, what is left unfinished, and the twelve trigger ids
+              sign it "c." on its own line — never "t.", that is the owner
+       iii. Commit and push that file to origin/vps-access, then remove the worktree.
+       iv.  Send it:
+              curl -s -X POST https://deploy.buitendyk.ca/run \
+                -H "Authorization: Bearer $DEPLOY_API_TOKEN" \
+                -H "Content-Type: application/json" \
+                -d '{"action":"run-script","script":"claude-mail-send.sh","arg":"<NAME>-conveyor-shutdown-<UTC date>"}'
+            Exit 2 or 3 means the file is malformed — fix the file, do not retry the same call. Exit 4 is a transport failure — retry the identical call.
+
+     If the mail cannot be sent for any reason, still send the push, still do the deletes, and say plainly in your final reply that the email failed and why. Never let a failed notification stop the teardown.
+  b. Read every trigger id in the table in conveyor/ARMED.md.
+  c. Call mcp__Claude_Code_Remote__delete_trigger on each one, including the alarm that fired this very tick — the message has already been delivered, so deleting its source is safe.
+     If a delete is refused, prompts, or otherwise cannot complete, keep going with the rest and record which ones survived. Do not abandon the whole teardown because one call failed.
+  d. Call mcp__Claude_Code_Remote__list_triggers and confirm no conveyor alarm for this project remains. Any that survived MUST be named explicitly in your reply — a half-disarmed conveyor that reports success is worse than one that never tried.
+  e. Optionally archive this project's worker sessions listed in conveyor/STATE.md.
+  f. Move the ARMED.md table rows into its History section with the teardown timestamp and the reason, set `idle-ticks:` back to 0, commit "conveyor: self-disarm (<reason>)", push.
+  g. Reply ONE line stating that the conveyor is disarming, the reason, whether the notification went out, and — if any alarm could not be deleted — exactly which ids are still live and waiting on the owner.
 ===PROMPT===

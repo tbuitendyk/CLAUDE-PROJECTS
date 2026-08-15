@@ -12,20 +12,25 @@ this says how to operate it.
    with unchecked steps, `STATE.md`, `WORKER-PROMPT.txt`.
 3. Get the owner session id.
 4. Tell the human, in one line, that twelve approvals are coming.
-5. Create twelve triggers, minutes `0 5 10 15 20 25 30 35 40 45 50 55`.
-6. Write all twelve ids into `ARMED.md`, **set `expires:`** (24 h default, or
-   whatever horizon the human gave), leave `linger-ticks: 3` and `idle-ticks: 0`,
-   commit, push.
-7. Confirm with `list_triggers` that twelve exist and their `next_run_at` values
+5. Register with the mail hub: run script `hub-register.sh` with the conveyor's
+   hub name via the deploy endpoint (`vps-access/MAIL-CHEATSHEET.md`). Without
+   this the shutdown email cannot be delivered. Idempotent.
+6. Create twelve triggers, minutes `0 5 10 15 20 25 30 35 40 45 50 55`.
+7. Write all twelve ids into `ARMED.md` and fill the settings block —
+   `stall-hours: 3`, `linger-ticks: 6`, `idle-ticks: 0`,
+   `hung-worker-minutes: 10` (raise if the human said steps are heavy). Commit,
+   push.
+8. Confirm with `list_triggers` that twelve exist and their `next_run_at` values
    are spread five minutes apart. If they are bunched, the cron strings were
    wrong — fix before walking away.
 
-**Do not tell the human it is running until step 7 passes.** A conveyor that was
+**Do not tell the human it is running until step 8 passes.** A conveyor that was
 never armed looks identical to one that is idle.
 
-**Never arm without an `expires:`.** The dispatcher treats a missing deadline as
-expired and will disarm on the first tick — which is the safe failure, but it
-looks like a malfunction and wastes the human's twelve approvals.
+**Ask about step length before accepting the default `hung-worker-minutes`.** At
+10 minutes, any step that legitimately runs longer gets a second worker
+dispatched on top of the first. For builds, deploys, or long test suites, set it
+above the realistic worst case.
 
 ---
 
@@ -51,8 +56,10 @@ To check progress without waiting for a tick:
 ## Stopping
 
 Normally you do not: the conveyor disarms itself when the queue is complete
-(after `linger-ticks`) or when `expires:` passes. Both paths run the same
-procedure, which is spelled out at the end of `DISPATCHER-PROMPT.txt`.
+(after `linger-ticks`) or when it has stalled for `stall-hours`. Both paths run
+the same procedure, spelled out at the end of `DISPATCHER-PROMPT.txt` — and both
+**notify the owner before deleting anything**, because the deletions need their
+approval and they are not watching. Never skip or reorder that step.
 
 To stop early, or to finish a disarm that only partly succeeded:
 
@@ -130,9 +137,18 @@ Defaults, and what moves them:
 | Knob | Default | Raise it if | Lower it if |
 |---|---|---|---|
 | alarm spacing | 5 min | ticks feel wasteful | you need tighter latency (needs more alarms) |
-| hung-worker cutoff | 10 min | your steps genuinely take longer | workers die silently and you want faster recovery |
+| `hung-worker-minutes` | 10 | steps genuinely take longer — **builds and deploys usually do** | workers die silently and you want faster recovery |
+| `stall-hours` | 3 | a single step can legitimately be silent for longer | you want a wedged run cleaned up sooner |
+| `linger-ticks` | 6 (≈30 min) | more work is likely to arrive | you want the alarms gone promptly |
 | just-committed gate | 2 min | you see duplicate dispatches | dead air is eating the run |
 | retry attempts | 3 | refusals are frequent | — |
+
+`stall-hours` and `hung-worker-minutes` measure different things and are often
+confused. `hung-worker-minutes` is about **one worker** — how long before that
+session is presumed dead and replaced. `stall-hours` is about **the whole
+conveyor** — how long the project as a whole can show no committed progress
+before the run is abandoned. A conveyor can replace many hung workers and stay
+alive; it dies only when nothing lands for hours.
 
 At the original 10-minute spacing the just-committed gate was 6 minutes and cost
 a full extra tick on the last step of a six-step plan — more than a third of the
