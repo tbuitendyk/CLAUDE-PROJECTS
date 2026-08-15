@@ -38,7 +38,7 @@ read its predecessor's work cannot fake its own.
 - [x] Step 2 — Convert. Read Step 1's first 8 hex characters from RELAY3-LOG.md.
   Convert to decimal with `printf '%d\n' 0x<hex>`, then convert that decimal to
   base 7 with `echo "obase=7; <decimal>" | bc`. Record hex, decimal, and base-7.
-- [ ] Step 3 — Fibonacci. Read Step 2's base-7 value from the log. Sum its digits
+- [x] Step 3 — Fibonacci. Read Step 2's base-7 value from the log. Sum its digits
   to get n. Compute the nth Fibonacci number with F(1)=1, F(2)=1. Show the
   sequence you generated up to F(n). Record n and F(n).
 - [ ] Step 4 — Sentence. Read Step 3's F(n) from the log. Take its decimal digits
