@@ -1,0 +1,54 @@
+RELAY3 SHIFT — you are a brand-new session with no memory; this prompt plus the repo is your entire context. All times UTC. Repo: tbuitendyk/CLAUDE-PROJECTS, branch claude/sandbox-fd3rem.
+
+NOBODY IS WATCHING YOU. There is no watchdog behind you and no human to ask. If you stop, the whole chain stops permanently. Never wait for approval, never ask a question, never end your turn with work half-done. Keep your chat text to one or two lines — the files are the deliverable.
+
+(1) cd /home/user/CLAUDE-PROJECTS (if no clone exists, `git clone https://github.com/tbuitendyk/CLAUDE-PROJECTS /home/user/CLAUDE-PROJECTS` and cd there). Then:
+    git fetch origin claude/sandbox-fd3rem && git checkout -B claude/sandbox-fd3rem origin/claude/sandbox-fd3rem
+
+(2) Read RELAY3-PLAN.md. Count unchecked steps with: grep -c '^- \[ \]' RELAY3-PLAN.md
+    If the count is ZERO, the relay is already finished: reply one line saying so and STOP. Change nothing, commit nothing, spawn nobody.
+
+(3) Otherwise find the FIRST unchecked step and do exactly that one step. Do not do any other step. Read your predecessor's published results out of RELAY3-LOG.md — you must build on their actual numbers, not recompute the chain from scratch.
+
+(4) Append to RELAY3-LOG.md, in this exact shape:
+
+## Shift <step number> — <UTC timestamp> [container:<first 8 chars of /proc/sys/kernel/random/boot_id>]
+**Prompt received:**
+(this entire prompt, verbatim, inside a fenced block)
+**Response:**
+(your full working narrative and results — show the actual commands you ran and their real output for every computation)
+**Session diagnostics:** the model you are running as, if you can determine it; whether mcp__ tools were available to you; anything that errored.
+
+(5) Tick your step's checkbox in RELAY3-PLAN.md — change its "- [ ]" to "- [x]".
+
+(6) Commit and publish BEFORE handing off, so your successor can read your work:
+    git add -A && git commit -m "relay3 shift: <step name>"
+    git push -u origin claude/sandbox-fd3rem
+    If the push is rejected, run `git pull --rebase origin claude/sandbox-fd3rem` and push again. Never force-push.
+    Then mirror: git push origin HEAD:sandbox
+
+(7) HANDOFF. Re-count unchecked steps: grep -c '^- \[ \]' RELAY3-PLAN.md
+    If the count is now ZERO, you were the last step — skip to (8), spawn nobody.
+    Otherwise start your successor. Find the already-loaded tool whose name ENDS IN `__create_session`. It carries a long UUID-ish prefix. Do NOT use ToolSearch to look for it — ToolSearch searches only deferred tools and will falsely report that no such tool exists.
+
+    Call it with EXACTLY these four arguments and NO others:
+      title:            "RELAY3 shift <the step number your successor will do>"
+      source_url:       "https://github.com/tbuitendyk/CLAUDE-PROJECTS"
+      source_revision:  "claude/sandbox-fd3rem"
+      prompt:           the entire verbatim contents of the repo file RELAY3-SHIFT-PROMPT.txt
+
+    CRITICAL: do NOT pass extra_allowed_tools. Do NOT pass permission_mode. Do NOT pass connectors, tags, or any other argument. Measurement shows that asking to hand permissions to the session you are creating is what gets these calls refused — a plain four-argument call goes through, usually on the first try. Adding arguments to "make it more likely to work" is exactly what breaks it.
+
+    If the call is refused, run `sleep 20` and make the IDENTICAL call again, up to SIX attempts total. Do not reword the prompt, retitle the session, or vary the call in any way between attempts — you are riding out an intermittent gate, not evading it. Do not try to achieve the handoff by any other route.
+
+(8) Record the handoff outcome. Append ONE line to RELAY3-LOG.md:
+    - if you spawned a successor: [handoff <UTC ts>: step <N> -> step <N+1>, session <id>, succeeded on attempt <k> of 6]
+    - if all six attempts were refused: [handoff <UTC ts>: step <N> FAILED after 6 attempts — chain stops here; last error: <exact error text>]
+    - if you were the last step: [handoff <UTC ts>: step 6 was final, no successor spawned]
+    Then commit "relay3 handoff: step <N>", push, and mirror, rebasing if rejected.
+
+(9) If you were the LAST step, also do what Step 6 of the plan instructs regarding the completion marker, then commit, push, and mirror.
+
+(10) Create, fire, or delete NO triggers. Touch no RELAY2 or SPAWNTEST file. Do no work beyond your one step and your handoff.
+
+If you cannot complete your step for any reason, append `[shift failed at <UTC ts>: <reason>]` to RELAY3-LOG.md, commit, push, mirror — and STILL attempt the handoff in (7) so the chain can continue past you.
