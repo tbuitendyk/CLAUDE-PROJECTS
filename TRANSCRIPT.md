@@ -221,3 +221,97 @@ verify each: [(1009, True), (1013, True), (1019, True), (1021, True), (1031, Tru
   `..._fire_trigger`, `..._send_later`, `..._get_session`, `..._list_sessions`.
   Per this prompt's step 5, hand-off uses `create_session` only — no triggers created.
 - **Errors:** none. Every command above succeeded on first attempt; no push was rejected.
+
+---
+
+## Shift 3 — 2026-08-15T05:12:37Z [container:8f714274]
+
+**Response:**
+
+Instructions summarized in one sentence: as a fresh relay session, work through
+every remaining unchecked step of CHAIN-PLAN.md in order, appending a transcript
+section, ticking the box, and committing/pushing/mirroring after each step, using
+only bash/file edits/git (no MCP tools, no triggers, no waiting on a human).
+
+Environment:
+
+```
+$ git fetch origin claude/sandbox-fd3rem && git checkout -B claude/sandbox-fd3rem origin/claude/sandbox-fd3rem
+From https://github.com/tbuitendyk/CLAUDE-PROJECTS
+ * branch            claude/sandbox-fd3rem -> FETCH_HEAD
+Switched to and reset branch 'claude/sandbox-fd3rem'
+branch 'claude/sandbox-fd3rem' set up to track 'origin/claude/sandbox-fd3rem'.
+Your branch is up to date with 'origin/claude/sandbox-fd3rem'.
+
+$ git log --oneline -3
+003e57d relay shift: Step 2 — Primes
+7217c4e relay shift: Step 1 — Haiku seed
+f42ea3d watchdog: stall at step 1, rescue tools unavailable
+
+$ head -c 8 /proc/sys/kernel/random/boot_id
+8f714274
+
+$ date -u +"%Y-%m-%dT%H:%M:%SZ"
+2026-08-15T05:12:37Z
+```
+
+Inputs recovered from TRANSCRIPT.md (Step 1): haiku and its SHA-256
+`8e5c5d5cd0fadb86224b310c7536f5c36d81f68baa709b7052674e431bfca25d`.
+I first rebuilt the exact haiku bytes and re-derived the hash to confirm I had the
+right text (em dash U+2014 on line 1, ASCII apostrophe in "stranger's", newline
+joins, no trailing newline):
+
+```
+$ printf '%s' "Baton leaves warm hand—
+a stranger's palm keeps the pace,
+one race, many runs." > haiku.txt
+$ sha256sum haiku.txt
+8e5c5d5cd0fadb86224b310c7536f5c36d81f68baa709b7052674e431bfca25d  haiku.txt
+```
+
+Hash matches Step 1 exactly, so the text is byte-identical to what was hashed.
+
+Hex→decimal conversion and vowel count:
+
+```
+$ echo "$((16#8e5c5d5c))"
+2388417884
+
+$ grep -o -i '[aeiou]' haiku.txt | wc -l
+22
+
+$ grep -o -i '[aeiou]' haiku.txt | tr -d '\n'
+aoeaeaaaaeaeeeaeoeaeau
+
+$ python3 -c "
+h=open('haiku.txt').read()
+d=int('8e5c5d5c',16)
+v=sum(1 for c in h.lower() if c in 'aeiou')
+print('decimal:',d); print('vowels:',v); print('product:',d*v)"
+decimal: 2388417884
+vowels: 22
+product: 52545193448
+```
+
+Two independent methods (grep -o and a Python character scan) both give 22 vowels.
+Vowels counted are a/e/i/o/u, case-insensitive; "y" is not counted (there is exactly
+1 "y", in "many" — `grep -o -i 'y' haiku.txt | wc -l` → 1 — so a y-inclusive count
+would be 23, noted only for transparency; the recorded value uses the standard five).
+
+**Step 3 results**
+- First 8 hex characters of Step 1's SHA-256: `8e5c5d5c`
+- As decimal: **2388417884**
+- Vowel count in Step 1's haiku: **22**
+- Product (2388417884 × 22): **52545193448**
+
+**Session diagnostics:**
+- **Checkout already present? YES.** `/home/user/CLAUDE-PROJECTS` was already a clone
+  on `claude/sandbox-fd3rem`; the prescribed fetch/checkout -B reported "Your branch is
+  up to date with 'origin/claude/sandbox-fd3rem'".
+- **Started by:** a background/automated relay-shift invocation, not a human message and
+  not a trigger fire. Container boot_id prefix `8f714274` — distinct from Shift 1
+  (`2ccc19f6`) and Shift 2 (`f8d86b08`), so this is a genuinely new container.
+- **Model:** `claude-opus-5`.
+- **Per instructions this shift used no mcp__ tools and created no sessions or triggers**;
+  unlike Shifts 1–2 it carries the remaining steps itself rather than handing off.
+- **Errors:** none.

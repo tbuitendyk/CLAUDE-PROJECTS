@@ -17,7 +17,7 @@ anything.
   SHA-256: `printf '%s' "<haiku text>" | sha256sum`. Record haiku + full hash in your transcript entry.
 - [x] Step 2 — Primes: find the five smallest prime numbers greater than 1000,
   verify primality with a quick script, compute their product. Record list + product.
-- [ ] Step 3 — Hash arithmetic: take the FIRST 8 hex characters of Step 1's hash
+- [x] Step 3 — Hash arithmetic: take the FIRST 8 hex characters of Step 1's hash
   (from the transcript), convert to decimal, multiply by the number of vowels in
   Step 1's haiku. Record all three values.
 - [ ] Step 4 — Weave: write one paragraph (3–5 sentences) connecting the haiku,
