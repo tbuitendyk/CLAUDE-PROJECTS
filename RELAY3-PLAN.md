@@ -35,7 +35,7 @@ read its predecessor's work cannot fake its own.
 - [x] Step 1 — Seed. Run `date -u +%s` for epoch seconds. Compute
   `printf '%s' "<epoch>" | md5sum`. Record the epoch, the full md5 hash, and the
   first 8 hex characters of that hash for Step 2.
-- [ ] Step 2 — Convert. Read Step 1's first 8 hex characters from RELAY3-LOG.md.
+- [x] Step 2 — Convert. Read Step 1's first 8 hex characters from RELAY3-LOG.md.
   Convert to decimal with `printf '%d\n' 0x<hex>`, then convert that decimal to
   base 7 with `echo "obase=7; <decimal>" | bc`. Record hex, decimal, and base-7.
 - [ ] Step 3 — Fibonacci. Read Step 2's base-7 value from the log. Sum its digits
