@@ -17,7 +17,7 @@ grep the log for a banner (the log contains prompt text and would false-positive
 - [x] Step 1 — Seed. Run `date -u +%s` for the epoch seconds. Compute
   `printf '%s' "<epoch>" | sha256sum`. Record the epoch, the full hash, and note
   the first 6 hex characters for Step 2.
-- [ ] Step 2 — Prime. Read Step 1's first 6 hex characters from RELAY2-LOG.md,
+- [x] Step 2 — Prime. Read Step 1's first 6 hex characters from RELAY2-LOG.md,
   convert to decimal (`printf '%d\n' 0x<hex>`), then find the smallest prime
   greater than or equal to that number. Show the primality check you ran.
   Record hex, decimal, and the prime.
