@@ -21,7 +21,7 @@ grep the log for a banner (the log contains prompt text and would false-positive
   convert to decimal (`printf '%d\n' 0x<hex>`), then find the smallest prime
   greater than or equal to that number. Show the primality check you ran.
   Record hex, decimal, and the prime.
-- [ ] Step 3 — Shape. Read Step 2's prime from the log. Compute its digit sum and
+- [x] Step 3 — Shape. Read Step 2's prime from the log. Compute its digit sum and
   its binary representation (`printf '%d %s\n' "$p" "$(echo "obase=2;$p" | bc)"`).
   Record both, plus the prime's first four decimal digits as a list.
 - [ ] Step 4 — Verse. Read Step 3's four digits from the log. Write an original

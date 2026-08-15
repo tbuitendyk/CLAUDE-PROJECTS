@@ -243,3 +243,123 @@ Step 3 should read the prime `723049` from this section, compute its digit sum
 and binary representation, and record its first four decimal digits as a list.
 
 [shift blocked 2026-08-15T05:25:14Z: step 2, handoff call to `mcp__bf7c680d-5fdc-5ef4-b4a0-abadb619bf0a__create_session` (title "RELAY2 worker", source_url https://github.com/tbuitendyk/CLAUDE-PROJECTS, source_revision claude/sandbox-fd3rem, prompt = verbatim RELAY2-SHIFT-PROMPT.txt, no permission_mode) returned: "Permission for this action was denied by the Claude Code auto mode classifier. Reason: Blocked by classifier." Same denial Shift 1 hit, and the shift prompt names it as an expected outcome, so I did not retry and attempted no workaround. Step 2's own work is complete, committed and pushed. Steps 3-6 remain unchecked; a watchdog or the operator must start the Step 3 session.]
+
+## Shift 3 — 2026-08-15T05:25:30Z [container:8cdd9961] [session:unknown]
+**Prompt received:**
+```
+[delivered wrapped in an automated background-task system notification; the relay
+shift text itself, verbatim, follows]
+
+RELAY2 SHIFT — you are a brand-new session with no memory. This prompt plus the attached repo is your entire context. All times UTC. Keep your chat reply to one or two lines; the files are the deliverable. The repo tbuitendyk/CLAUDE-PROJECTS should already be checked out at /home/user/CLAUDE-PROJECTS on branch claude/sandbox-fd3rem. Nobody is watching you — never wait on a human.
+
+(1) `git fetch origin claude/sandbox-fd3rem && git checkout -B claude/sandbox-fd3rem origin/claude/sandbox-fd3rem`
+
+(2) Read RELAY2-PLAN.md. Find the FIRST unchecked step (a line starting `- [ ]`). If there are none, do nothing except reply that the relay is already finished. Work ONLY on RELAY2-PLAN.md and RELAY2-LOG.md — never touch CHAIN-PLAN.md, TRANSCRIPT.md, README.md or any heartbeat-* file; those belong to finished experiments.
+
+(3) Do that step exactly as written. Several steps require results produced by earlier shifts — read those out of RELAY2-LOG.md rather than recomputing or inventing them, and say in your write-up which values you read and from which shift.
+
+(4) Append to RELAY2-LOG.md, in exactly this shape:
+
+## Shift <step number> — <UTC timestamp> [container:<first 8 chars of /proc/sys/kernel/random/boot_id>] [session:<your own session id if you can determine it, else "unknown">]
+**Prompt received:**
+```
+<THIS ENTIRE PROMPT, verbatim>
+```
+**Response:**
+<your complete working narrative: the real commands you ran and their real output, the values you read from earlier shifts, and your result>
+
+(5) Tick that step's checkbox in RELAY2-PLAN.md: change its leading `- [ ]` to `- [x]`.
+
+(6) `git add RELAY2-PLAN.md RELAY2-LOG.md && git commit -m "relay2 shift: <step name>"`, then `git push -u origin claude/sandbox-fd3rem`, then `git push origin HEAD:sandbox`. If a push is rejected because the branch moved, run `git pull --rebase origin claude/sandbox-fd3rem` and push again. Never force-push.
+
+(7) HAND OFF — do this whenever at least one `- [ ]` line still remains in RELAY2-PLAN.md after your commit. Look in your own available tool list for the tool whose name ENDS IN `__create_session` (it has a UUID-ish prefix). Do NOT use ToolSearch. Call it with: title "RELAY2 worker", source_url "https://github.com/tbuitendyk/CLAUDE-PROJECTS", source_revision "claude/sandbox-fd3rem", prompt = the full verbatim contents of RELAY2-SHIFT-PROMPT.txt in this repo, and no permission_mode argument.
+IMPORTANT: this handoff is EXPECTED to be refused with "denied by the Claude Code auto mode classifier" — spawned sessions are not permitted to spawn further sessions. That is a known platform constraint, not your failure. Attempt it once so the outcome is on the record, then do not retry and do not seek any workaround. Record it per step (9) and stop cleanly; the operator or a watchdog starts the next shift.
+On the off chance it succeeds, append `[handoff <UTC ts>: shift <your step number> spawned session <new session id> via <exact tool name used>]`, commit ("relay2 shift: handed off"), push, and mirror.
+
+(8) If your step was the LAST one (no `- [ ]` lines remain), do NOT hand off. Instead follow that step's own instructions to append the completion marker specified at the top of RELAY2-PLAN.md, then commit, push, and mirror.
+
+(9) If anything blocks you — a tool you cannot find, a permission denial, a failed push — append `[shift blocked <UTC ts>: step <N>, <exact error and tool name>]` to RELAY2-LOG.md, commit, push, and mirror before you stop. A recorded failure is far more useful than silence.
+```
+**Response:**
+
+Synced the branch first. `git fetch` moved me from `5bc0c53` (Shift 2's commit as
+I first saw it) to `09dd9d4`:
+
+```
+$ git fetch origin claude/sandbox-fd3rem && git checkout -B claude/sandbox-fd3rem origin/claude/sandbox-fd3rem
+From https://github.com/tbuitendyk/CLAUDE-PROJECTS
+ * branch            claude/sandbox-fd3rem -> FETCH_HEAD
+   5bc0c53..09dd9d4  claude/sandbox-fd3rem -> origin/claude/sandbox-fd3rem
+Previous HEAD position was 5bc0c53 relay2 shift: Step 2 — Prime
+Switched to and reset branch 'claude/sandbox-fd3rem'
+```
+
+Identity stamps for the header:
+
+```
+$ date -u '+%Y-%m-%dT%H:%M:%SZ'; cut -c1-8 /proc/sys/kernel/random/boot_id
+2026-08-15T05:25:30Z
+8cdd9961
+```
+
+I could not determine my own session id from inside the container (no session id
+is exposed in my environment and I was not told one), so the header records
+`session:unknown`. The container id `8cdd9961` is distinct from Shift 1's
+`ebd85067` and Shift 2's `ebccb65c`, which is the independent evidence that this
+is a third, separate container.
+
+RELAY2-PLAN.md had Steps 1 and 2 ticked; the first `- [ ]` line was **Step 3 —
+Shape**, so that is the step I did.
+
+**Value read from an earlier shift.** Step 3 needs Step 2's prime. I read it out
+of RELAY2-LOG.md rather than recomputing it — from the **Shift 2** entry
+(`## Shift 2 — 2026-08-15T05:23:34Z [container:ebccb65c]
+[session:session_015Z2Xmfa5thcKsurf7yuSbT]`), whose "Result — Step 2" block
+states:
+
+- Hex (read from Shift 1): `0b0867`
+- Decimal: 723047 (composite, 13 × 55619)
+- Smallest prime ≥ 723047: **723049**
+
+So the prime I carried forward is **p = 723049**, taken verbatim from Shift 2. I
+did not re-derive it — re-verification of Steps 2 and 3 is explicitly Step 5's
+job, not mine.
+
+The computation, run exactly as the plan specifies plus an independent
+cross-check in Python:
+
+```
+$ p=723049; printf '%d %s\n' "$p" "$(echo "obase=2;$p" | bc)"
+723049 10110000100001101001
+
+$ echo "digit sum: $(echo -n 723049 | fold -w1 | paste -sd+ | bc)"
+digit sum: 25
+
+$ echo "check: $(echo -n 723049 | fold -w1 | paste -sd+)"
+check: 7+2+3+0+4+9
+
+$ echo "first four digits: $(echo 723049 | cut -c1-4)"
+first four digits: 7230
+
+$ python3 -c "p=723049; print('binary py:', bin(p)[2:]); print('digitsum py:', sum(int(c) for c in str(p))); print('roundtrip:', int(bin(p)[2:],2)==p)"
+binary py: 10110000100001101001
+digitsum py: 25
+roundtrip: True
+```
+
+`bc` (obase=2) and Python's `bin()` are separate implementations and agree
+character-for-character on the 20-bit string, and parsing that string back as
+base 2 returns 723049 exactly, so the binary is verified in both directions.
+The digit sum agrees between the shell pipeline (`7+2+3+0+4+9 = 25`) and
+Python's independent sum.
+
+**Result — Step 3**
+
+- Prime (read from Shift 2): **723049**
+- Digit sum: **25**  (7+2+3+0+4+9)
+- Binary: **10110000100001101001**  (20 bits)
+- First four decimal digits, as a list: **[7, 2, 3, 0]**
+
+Step 4 should read the four digits `[7, 2, 3, 0]` from this section. Note for
+Step 4's own rule-application: line 1 = 7 words, line 2 = 2 words, line 3 = 3
+words, and line 4's digit is 0, which the plan says to treat as 3 words.
