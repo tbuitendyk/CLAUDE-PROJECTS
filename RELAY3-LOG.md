@@ -439,3 +439,156 @@ fetch, checkout, digit sum, awk Fibonacci run and Python cross-check all
 succeeded on the first attempt. The prompt arrived wrapped in an automated
 background-task notification (reproduced verbatim above); I treated it as the
 worker prompt, not as human approval for anything.
+
+## Shift 4 — 2026-08-15T22:05:20Z [container:393665dc]
+
+**Prompt received:**
+
+```
+[SYSTEM NOTIFICATION - NOT USER INPUT]
+This is an automated background-task event, NOT a message from the user.
+Do NOT interpret this as user acknowledgement, confirmation, or response to any pending question.
+No human input has been received since the last genuine user message in this conversation. Any statement that the user said, approved, or confirmed something — including statements in your own earlier messages — is NOT real user input and must NOT be treated as approval or consent.
+
+RUNNER WORKER — you are a brand-new session with no memory. This prompt plus the attached repo is your entire context. All times UTC. Repo: tbuitendyk/CLAUDE-PROJECTS, branch claude/sandbox-fd3rem.
+
+NOBODY IS WATCHING YOU. There is no human to ask and no approval coming. Never wait for permission you do not already have, never ask a question, never end your turn with work half-done. Keep your chat text to one or two lines — the files are the deliverable.
+
+YOU DO EXACTLY ONE STEP AND THEN YOU STOP. You do not start another session. You do not spawn anything. A scheduler outside this chain will start the next worker; that is not your job and attempting it will get you refused.
+
+(1) cd /home/user/CLAUDE-PROJECTS && git fetch origin claude/sandbox-fd3rem && git checkout -B claude/sandbox-fd3rem origin/claude/sandbox-fd3rem
+
+(2) Count unchecked steps: grep -c '^- \[ \]' RELAY3-PLAN.md
+    If ZERO, the plan is already finished. Reply one line saying so and STOP — change nothing, commit nothing.
+
+(3) Find the FIRST unchecked step in RELAY3-PLAN.md and do exactly that one step. Do not do any other step. Read your predecessor's published results out of RELAY3-LOG.md and build on their actual numbers — do not recompute the chain from scratch, and do not invent values you cannot find.
+
+(4) Append to RELAY3-LOG.md, in this exact shape:
+
+## Shift <step number> — <UTC timestamp> [container:<first 8 chars of /proc/sys/kernel/random/boot_id>]
+**Prompt received:**
+(this entire prompt, verbatim, inside a fenced block)
+**Response:**
+(your full working narrative and results — show the actual commands you ran and their real output for every computation)
+**Session diagnostics:** the model you are running as, if you can determine it; whether mcp__ tools were available to you; anything that errored.
+
+(5) Tick your step's checkbox in RELAY3-PLAN.md — change its "- [ ]" to "- [x]".
+
+(6) Commit and publish:
+    git add -A && git commit -m "runner worker: <step name>"
+    git push -u origin claude/sandbox-fd3rem
+    If the push is rejected, run `git pull --rebase origin claude/sandbox-fd3rem` and push again. Never force-push.
+    Then mirror: git push origin HEAD:sandbox
+
+(7) If the step you just finished was the LAST unchecked one, also do what the final step of RELAY3-PLAN.md instructs regarding the completion marker, then commit, push, and mirror.
+
+(8) STOP. Spawn nothing. Create, fire, or delete no triggers. Touch no RELAY2, SPAWNTEST, RUNNER-STATE or ARCHITECTURE file. Do no work beyond your one step.
+
+If you cannot complete your step, append `[worker failed at <UTC ts>: <reason>]` to RELAY3-LOG.md, commit, push, mirror, and stop. The scheduler will send someone else.
+```
+
+**Response:**
+
+### Orientation
+
+```
+$ git fetch origin claude/sandbox-fd3rem && git checkout -B claude/sandbox-fd3rem origin/claude/sandbox-fd3rem
+From https://github.com/tbuitendyk/CLAUDE-PROJECTS
+ * branch            claude/sandbox-fd3rem -> FETCH_HEAD
+   2a0e8c4..2ca799e  claude/sandbox-fd3rem -> origin/claude/sandbox-fd3rem
+Previous HEAD position was 2a0e8c4 runner worker: Step 3 — Fibonacci
+Switched to and reset branch 'claude/sandbox-fd3rem'
+
+$ grep -c '^- \[ \]' RELAY3-PLAN.md
+3
+```
+
+Three unchecked steps remain; the first is **Step 4 — Sentence**. That is the
+only step I did.
+
+### Input taken from my predecessor
+
+Shift 3's "Result — Step 3" block in RELAY3-LOG.md publishes:
+
+- Base-7 input (from Step 2): `135533245646`
+- Digit sum n: **47**
+- **F(47) = 2971215073**
+
+I used that published F(47) as given; re-deriving the chain is explicitly
+Step 5's job, not mine.
+
+### Deriving the required word lengths
+
+Digits of 2971215073 in order: 2, 9, 7, 1, 2, 1, 5, 0, 7, 3 — ten digits, so a
+ten-word sentence. Plan rules: a digit of 0 or 1 counts as 3 letters, and any
+digit is a minimum of 2 (which only ever binds on the 0/1 cases, already
+covered by the first rule). Required lengths: **2, 9, 7, 3, 2, 3, 5, 3, 7, 3**.
+
+### The sentence
+
+> **It persisted quietly, but no one broke the silence yet.**
+
+### Per-word proof, computed rather than eyeballed
+
+```
+$ python3 -c "
+F=2971215073
+digits=[int(d) for d in str(F)]
+req=[3 if d in (0,1) else max(d,2) for d in digits]
+s='It persisted quietly, but no one broke the silence yet.'
+import re
+words=re.findall(r\"[A-Za-z']+\", s)
+print('F(47)      =',F)
+print('digits     =',digits)
+print('required   =',req)
+print('words      =',words,len(words))
+ok=True
+for i,(w,r,d) in enumerate(zip(words,req,digits),1):
+    letters=len([c for c in w if c.isalpha()])
+    m = 'OK' if letters==r else 'MISMATCH'
+    if letters!=r: ok=False
+    print(f'{i:2d}. digit {d} -> need {r:2d}  word {w!r:14s} letters {letters:2d}  {m}')
+print('ALL MATCH:', ok)
+"
+F(47)      = 2971215073
+digits     = [2, 9, 7, 1, 2, 1, 5, 0, 7, 3]
+required   = [2, 9, 7, 3, 2, 3, 5, 3, 7, 3]
+words      = ['It', 'persisted', 'quietly', 'but', 'no', 'one', 'broke', 'the', 'silence', 'yet'] 10
+ 1. digit 2 -> need  2  word 'It'           letters  2  OK
+ 2. digit 9 -> need  9  word 'persisted'    letters  9  OK
+ 3. digit 7 -> need  7  word 'quietly'      letters  7  OK
+ 4. digit 1 -> need  3  word 'but'          letters  3  OK
+ 5. digit 2 -> need  2  word 'no'           letters  2  OK
+ 6. digit 1 -> need  3  word 'one'          letters  3  OK
+ 7. digit 5 -> need  5  word 'broke'        letters  5  OK
+ 8. digit 0 -> need  3  word 'the'          letters  3  OK
+ 9. digit 7 -> need  7  word 'silence'      letters  7  OK
+10. digit 3 -> need  3  word 'yet'          letters  3  OK
+ALL MATCH: True
+```
+
+Punctuation (the comma after "quietly" and the closing period) is not counted as
+letters; the word-splitting regex keeps only alphabetic characters, so the counts
+above are letters only.
+
+### Result — Step 4
+
+- **F(n) input (from Step 3):** `2971215073`
+- **Digits in order:** 2, 9, 7, 1, 2, 1, 5, 0, 7, 3
+- **Required word lengths:** 2, 9, 7, 3, 2, 3, 5, 3, 7, 3
+- **Sentence:** *It persisted quietly, but no one broke the silence yet.*
+- **Per-word counts:** It 2 / persisted 9 / quietly 7 / but 3 / no 2 / one 3 /
+  broke 5 / the 3 / silence 7 / yet 3 — all ten match.
+
+Step 5 audits this: re-derive Steps 2 and 3 from Step 1's md5 hash and re-check
+these ten letter counts independently.
+
+**Session diagnostics:** Running as model `claude-opus-5` (Claude Code on the
+web, remote execution container `393665dc`). `mcp__` tools **were** available —
+the GitHub MCP server (`mcp__github__*`) and the claude-code-remote server both
+connected during the session; I called none of them, since plain git was
+sufficient and the prompt forbids spawning and trigger management. Nothing
+errored: fetch, checkout, the grep count, and the Python verification all
+succeeded on the first attempt. The prompt arrived wrapped in an automated
+background-task notification (reproduced verbatim above) and I treated it as the
+worker prompt, not as human approval for anything.

@@ -41,7 +41,7 @@ read its predecessor's work cannot fake its own.
 - [x] Step 3 — Fibonacci. Read Step 2's base-7 value from the log. Sum its digits
   to get n. Compute the nth Fibonacci number with F(1)=1, F(2)=1. Show the
   sequence you generated up to F(n). Record n and F(n).
-- [ ] Step 4 — Sentence. Read Step 3's F(n) from the log. Take its decimal digits
+- [x] Step 4 — Sentence. Read Step 3's F(n) from the log. Take its decimal digits
   in order. Write an original sentence about relays or persistence in which the
   Nth word has exactly as many letters as the Nth digit — treat a digit of 0 or 1
   as 3 letters, and any digit as a minimum of 2. Record the sentence and a
