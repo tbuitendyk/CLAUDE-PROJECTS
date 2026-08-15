@@ -1,22 +1,5 @@
 # CLAUDE.md — `vps-access` branch (infra / deploy tooling + control plane)
 
-> # 🛑 OWNER STOP DIRECTIVE — 2026-08-15, ACTIVE UNTIL THE OWNER LIFTS IT
->
-> **Do NOT send any network traffic to homsionos01 / deploy.buitendyk.ca.**
-> The owner is troubleshooting severe network problems reaching that box and
-> has ordered all Claude sessions to stop generating traffic against it.
->
-> - Do NOT call the deploy endpoint (`run-script`, `status`, `sync`, deploys) —
->   it has been stopped anyway; calls will fail.
-> - Do NOT arm or re-arm any loop/wakeup that polls the box. If you have one
->   armed, STOP IT NOW (`/loop` stop, or ScheduleWakeup stop:true).
-> - Your deployed services on that host (classifier / balancers / dubber) have
->   been stopped and disabled deliberately. Do NOT restart them.
-> - Repo work (git on GitHub) is fine. Anything touching the VPS is not.
->
-> This block is removed by the owner or the vps-access session when the
-> all-clear is given.
-
 
 This repo is split **one project per branch**. This branch carries only the VPS
 access and deploy tooling; the products live on their own branches:
