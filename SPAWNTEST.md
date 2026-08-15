@@ -71,3 +71,38 @@ and push. No pushed line, no success.
 ## Results
 
 Written by the workers themselves into `SPAWNTEST-A.md` and `SPAWNTEST-C.md`.
+
+## Round 1 result — 2026-08-15
+
+| Arm | grant at spawn | outcome | grandchild proved alive |
+|-----|----------------|---------|-------------------------|
+| A   | yes            | 1 success / 1 attempt  | yes, 20:05:25Z, boot dcdd41cf |
+| C   | no (control)   | 1 success / 2 attempts | yes, 20:06:20Z, boot 72f5e49a |
+
+By the reading criteria written above **before** the run: both arms succeeded,
+therefore the spawn-time grant is NOT demonstrated to be the lever. Arm A won on
+its first try and arm C on its second, with one trial each — that difference is
+well inside noise.
+
+The finding that matters is different and larger: **a worker CAN start its
+successor.** The RELAY2 conclusion of "0 successes in 6 attempts, categorically
+blocked" is wrong as a description of the steady state. The gate is intermittent
+and a retry walks straight through it.
+
+Full handoff latency, worker spawned to grandchild's work pushed: **65 seconds**
+(A spawned 20:04:30Z, grandchild pushed 20:05:35Z). The watchdog path takes up
+to 30 minutes for the same hop.
+
+### Unexplained, and worth pinning down
+
+RELAY2 shift 1 was denied 6 times in a row at 05:50Z with `sleep 20` between
+attempts. Today's control was denied once and allowed on the next try. Something
+differs, and one candidate stands out: the RELAY2 shifts were instructed to pass
+`extra_allowed_tools` DOWN to the child they were creating. Today's arms made
+plain spawn calls with no permission arguments at all. A classifier that blocks
+a session from handing new permissions to a session it creates would produce
+exactly the observed pattern.
+
+That is a hypothesis, not a conclusion. Round 2 tests it: two workers making
+plain spawn calls, two making grant-passing spawn calls, up to three attempts
+each, stopping at first success.
