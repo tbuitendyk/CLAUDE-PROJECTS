@@ -82,6 +82,34 @@ THE THREE CONCLUSIONS:
 3. The Mexico City exit is a clean binary switch: 109 consecutive pings to both
    IONOS targets with ZERO loss, from the minute it was enabled.
 
+## REFINEMENT: it is Telmex's HANDOFF into Telia, not Telia's backbone
+Traceroute from the router once tunnelled via Proton CDMX (2026-08-15):
+
+    3   134.82.72.2                47 ms   Proton CDMX exit
+    7-8 qro01 (Cogent)             48 ms   Queretaro MX
+    9   mty01 (Cogent)             58 ms   Monterrey MX
+    10-11 mfe02 (Cogent)           59 ms   McAllen TX
+    12  telia.mfe02.atlas...       59 ms   <-- handoff to TELIA
+    13-14 dls / hou (Telia)        69-74 ms
+    16-18 ash / ewr (Telia)       104-110 ms
+    19-20 IONOS                   110 ms
+
+The traffic STILL crosses Telia's 62.115.x backbone -- the same network that
+appeared in the broken direct path -- and is now flawless. The only change is
+that it enters Telia via COGENT at McAllen instead of via Telmex's handoff.
+=> Telia's backbone was never at fault; Telmex's egress/handoff into it was.
+This pre-empts the "it's our upstream carrier, not us" deflection.
+
+Bonus: 110 ms to the IONOS edge via the tunnel vs ~120 ms direct -- the
+workaround costs nothing in latency and is loss-free.
+
+NOTE on traceroute tooling: Linux/BusyBox traceroute uses UDP probes and will
+show '* * *' at the destination because the VPS firewall (ufw, INPUT DROP)
+silently drops unsolicited UDP rather than returning port-unreachable. That is
+correct firewall behaviour, NOT an ICMP block -- ICMP echo/time-exceeded/
+dest-unreachable are all explicitly ACCEPTed (verified via icmp-status.sh).
+Use `traceroute -I` (ICMP mode) or Windows `tracert`, which complete normally.
+
 ## Workaround (also a permanent improvement)
 AWS mx-central-1 → IONOS is 62.7 ms vs the owner's direct 113 ms. Using the AWS
 box as a jump host both bypasses the faulty segment and roughly halves latency:
