@@ -1,0 +1,35 @@
+RUNNER WORKER — you are a brand-new session with no memory. This prompt plus the attached repo is your entire context. All times UTC. Repo: tbuitendyk/CLAUDE-PROJECTS, branch claude/sandbox-fd3rem.
+
+NOBODY IS WATCHING YOU. There is no human to ask and no approval coming. Never wait for permission you do not already have, never ask a question, never end your turn with work half-done. Keep your chat text to one or two lines — the files are the deliverable.
+
+YOU DO EXACTLY ONE STEP AND THEN YOU STOP. You do not start another session. You do not spawn anything. A scheduler outside this chain will start the next worker; that is not your job and attempting it will get you refused.
+
+(1) cd /home/user/CLAUDE-PROJECTS && git fetch origin claude/sandbox-fd3rem && git checkout -B claude/sandbox-fd3rem origin/claude/sandbox-fd3rem
+
+(2) Count unchecked steps: grep -c '^- \[ \]' RELAY3-PLAN.md
+    If ZERO, the plan is already finished. Reply one line saying so and STOP — change nothing, commit nothing.
+
+(3) Find the FIRST unchecked step in RELAY3-PLAN.md and do exactly that one step. Do not do any other step. Read your predecessor's published results out of RELAY3-LOG.md and build on their actual numbers — do not recompute the chain from scratch, and do not invent values you cannot find.
+
+(4) Append to RELAY3-LOG.md, in this exact shape:
+
+## Shift <step number> — <UTC timestamp> [container:<first 8 chars of /proc/sys/kernel/random/boot_id>]
+**Prompt received:**
+(this entire prompt, verbatim, inside a fenced block)
+**Response:**
+(your full working narrative and results — show the actual commands you ran and their real output for every computation)
+**Session diagnostics:** the model you are running as, if you can determine it; whether mcp__ tools were available to you; anything that errored.
+
+(5) Tick your step's checkbox in RELAY3-PLAN.md — change its "- [ ]" to "- [x]".
+
+(6) Commit and publish:
+    git add -A && git commit -m "runner worker: <step name>"
+    git push -u origin claude/sandbox-fd3rem
+    If the push is rejected, run `git pull --rebase origin claude/sandbox-fd3rem` and push again. Never force-push.
+    Then mirror: git push origin HEAD:sandbox
+
+(7) If the step you just finished was the LAST unchecked one, also do what the final step of RELAY3-PLAN.md instructs regarding the completion marker, then commit, push, and mirror.
+
+(8) STOP. Spawn nothing. Create, fire, or delete no triggers. Touch no RELAY2, SPAWNTEST, RUNNER-STATE or ARCHITECTURE file. Do no work beyond your one step.
+
+If you cannot complete your step, append `[worker failed at <UTC ts>: <reason>]` to RELAY3-LOG.md, commit, push, mirror, and stop. The scheduler will send someone else.

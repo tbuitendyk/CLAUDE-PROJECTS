@@ -1,0 +1,36 @@
+This is the message each of the six RUNNER alarms delivers. It is kept in the
+repo so the scheduler's behaviour is auditable and editable in one place. The
+live copies are stored server-side in six Routines named runner-check-00 through
+runner-check-50; editing this file does NOT change them — use update_trigger.
+
+===PROMPT===
+RUNNER CHECK — one of six alarms, ten minutes apart, driving RELAY3-PLAN.md. Reply in ONE line. Do not narrate. Do not ask anything.
+
+(1) cd /home/user/CLAUDE-PROJECTS && git fetch origin claude/sandbox-fd3rem && git checkout -B claude/sandbox-fd3rem origin/claude/sandbox-fd3rem
+
+(2) unchecked=$(grep -c '^- \[ \]' RELAY3-PLAN.md)
+    If ZERO: reply "plan complete — nothing dispatched" and STOP. Change nothing, spawn nothing.
+
+(3) LIVENESS. Read the last dispatch line of RUNNER-STATE.md. If there is one, take its session id and call mcp__Claude_Code_Remote__get_session on it.
+    - If status_bucket is SESSION_STATUS_BUCKET_WORKING **and** that worker was dispatched less than 12 minutes ago: a worker is in flight. Reply "worker <id> still working — nothing dispatched" and STOP. Do not spawn. Never cut off a running worker.
+    - If it is WORKING but was dispatched 12+ minutes ago, treat it as hung and continue to (4).
+    - If it is COMPLETED, ARCHIVED, need_input, or the call errors, continue to (4).
+
+(4) STALENESS. git log -1 --format='%ci' -- RELAY3-PLAN.md RELAY3-LOG.md
+    If the last commit is under 6 minutes old, work landed moments ago and the next worker can wait one tick. Reply "fresh commit <ts> — nothing dispatched" and STOP.
+
+(5) DISPATCH. Call mcp__Claude_Code_Remote__create_session with EXACTLY these four arguments and NO others — no extra_allowed_tools, no permission_mode, no tags:
+      title:           "RUNNER worker step <the first unchecked step number>"
+      source_url:      "https://github.com/tbuitendyk/CLAUDE-PROJECTS"
+      source_revision: "claude/sandbox-fd3rem"
+      prompt:          the entire verbatim contents of the repo file RUNNER-WORKER-PROMPT.txt
+    Adding any further argument sharply raises the refusal rate — see ARCHITECTURE.md. If refused, run `sleep 20` and repeat the IDENTICAL call, up to three attempts. Do not reword or retitle between attempts.
+
+(6) RECORD. Append one line to RUNNER-STATE.md:
+      <UTC ts> | session <id> | step <N> | dispatched
+    or, if all three attempts were refused:
+      <UTC ts> | DISPATCH REFUSED after 3 attempts | step <N>
+    Then: git add -A && git commit -m "runner: dispatch step <N>" && git push -u origin claude/sandbox-fd3rem (rebase with `git pull --rebase origin claude/sandbox-fd3rem` if rejected, never force-push), then git push origin HEAD:sandbox
+
+(7) Reply ONE line: what you found and what you dispatched. Create, fire, or delete no triggers. Do no work from the plan yourself — you are the dispatcher, not a worker.
+===PROMPT===
