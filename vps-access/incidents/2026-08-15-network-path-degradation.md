@@ -1,8 +1,9 @@
 # Incident: intermittent severe latency/loss reaching homsionos01 (2026-08-13 → 15)
 
 **Verdict: the VPS, IONOS, and the wider internet are healthy. The fault is in
-the path from the owner's home network through Telmex transit (Telia) to IONOS.
-Nothing on the server can fix it.**
+TELMEX'S INTERNATIONAL EGRESS generally — not one route. Nothing on the server
+can fix it. RESOLVED for the owner by tunnelling out via a real (non-Smart-
+Routing) Proton VPN server in Mexico City.**
 
 ## Symptom
 ~36 h of intermittent, minutes-scale episodes where VNC/GUI sessions to the VPS
@@ -38,6 +39,22 @@ dropped/policed, not of congestion — congestion queues before it drops.
     6-14  62.115.x / 80.239.x  61→180 ms   TELIA transit  <-- suspect segment
     15    74.208.1.75      174 ms    IONOS edge
     18    74.208.226.14    174 ms    destination
+
+## Later tests that BROADENED the diagnosis (same day)
+- **Proton VPN exit in VANCOUVER: still lossy.** A completely different
+  destination on a different network, still impaired. This RULES OUT "the
+  Telia->IONOS route is bad" as the sole cause: the fault is Telmex's
+  international egress in general. (Consistent with 8.8.8.8 being clean —
+  Google peers with Telmex *inside* Mexico, so it never crosses the boundary.)
+- **Proton VPN exit in MEXICO CITY (real server 134.82.72.81, NOT "Smart
+  Routing"): clean and FIXED IT.** Tunnel leg 44-47 ms, 0/20 loss, 3 ms spread;
+  the owner's VNC became fully usable again. Same principle as the AWS-Mexico
+  result: reach a well-connected PoP over a short domestic hop, then ride that
+  provider's international backbone instead of Telmex's.
+- **TRAP:** VPN "Mexico" servers are often *virtual* (Proton labels this "Smart
+  Routing") and physically sit in the USA — those cross the same broken
+  boundary and do NOT help. Verify with ping: ~5-45 ms = really in Mexico;
+  60 ms+ = offshore, useless for this.
 
 ## Workaround (also a permanent improvement)
 AWS mx-central-1 → IONOS is 62.7 ms vs the owner's direct 113 ms. Using the AWS
