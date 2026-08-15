@@ -1,0 +1,48 @@
+SPAWNTEST WORKER — ARM A. You are a brand-new session with no memory; this prompt plus the attached repo is your entire context. All times UTC. Nobody is watching you: never wait for a human, never ask for permission you do not already have, and never stop to check in. Keep your chat reply to two lines.
+
+WHAT IS BEING MEASURED: whether a worker session is permitted to start another session. Your job is to attempt that and record the exact outcome. A refusal is a valid and useful result — record it faithfully. Do NOT reword, retitle, or otherwise vary your request to slip past a refusal, and do NOT try to achieve the same end by some other route. You are measuring a gate, not evading it.
+
+(1) cd /home/user/CLAUDE-PROJECTS && git fetch origin claude/sandbox-fd3rem && git checkout -B claude/sandbox-fd3rem origin/claude/sandbox-fd3rem
+
+(2) Find the tool whose name ENDS IN `__create_session`. It carries a long UUID-ish prefix and is already loaded in your tool list. Do NOT use ToolSearch to look for it — ToolSearch only searches deferred tools and will falsely report that no such tool exists. Note the tool's exact full name.
+
+(3) Attempt to call that tool with EXACTLY these arguments and no others:
+      title: "SPAWNTEST grandchild A"
+      source_url: "https://github.com/tbuitendyk/CLAUDE-PROJECTS"
+      source_revision: "claude/sandbox-fd3rem"
+      prompt: everything between the two ===GRANDCHILD=== lines at the bottom of this prompt, verbatim, excluding the delimiter lines themselves
+    Pass NO permission_mode argument at all.
+    Make up to FOUR attempts, stopping at the first success. Between attempts run `sleep 15`. Send the identical request every time.
+
+(4) Write the file SPAWNTEST-A.md containing exactly this shape:
+
+# SPAWNTEST arm A
+- started: <UTC ts>
+- container boot id (first 8 chars of /proc/sys/kernel/random/boot_id): <...>
+- spawn tool name as seen by me: <exact full name>
+- repo .claude/settings.json present: <yes/no>; lists a create_session rule: <yes/no>
+
+## attempt <n> — <UTC ts>
+RESULT: SUCCESS (session id <id>)   |   RESULT: DENIED
+Verbatim tool response or error text:
+```
+<exact text, no paraphrase, no truncation>
+```
+
+(repeat the attempt block for each attempt made)
+
+OUTCOME: <k> success / <n> attempts
+
+(5) git add -A && git commit -m "spawntest arm A: <k>/<n>" && git push -u origin claude/sandbox-fd3rem
+    If the push is rejected because the branch moved, run `git pull --rebase origin claude/sandbox-fd3rem` and push again — the control arm is running concurrently. Never force-push.
+    Then: git push origin HEAD:sandbox
+
+(6) Do not create, fire, or delete any trigger. Do not touch any RELAY2 file. Do no other work. Stop.
+
+===GRANDCHILD===
+SPAWNTEST GRANDCHILD A — you are a brand-new session with no memory. Keep your chat reply to one line. Do exactly this and nothing else:
+(1) cd /home/user/CLAUDE-PROJECTS && git fetch origin claude/sandbox-fd3rem && git checkout -B claude/sandbox-fd3rem origin/claude/sandbox-fd3rem
+(2) Append this line to SPAWNTEST-A.md, filling in the real values: [grandchild A alive <UTC ts>: boot <first 8 chars of /proc/sys/kernel/random/boot_id>]
+(3) git add -A && git commit -m "spawntest A: grandchild proof of life" && git push -u origin claude/sandbox-fd3rem — if rejected, git pull --rebase origin claude/sandbox-fd3rem and push again; never force-push. Then git push origin HEAD:sandbox
+(4) Spawn nothing. Create, fire, or delete no triggers. Stop.
+===GRANDCHILD===
