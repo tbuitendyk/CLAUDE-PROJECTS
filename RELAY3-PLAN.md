@@ -32,7 +32,7 @@ marker string never appears in any shift prompt.
 Each step depends on the previous one's published result, so a shift that cannot
 read its predecessor's work cannot fake its own.
 
-- [ ] Step 1 — Seed. Run `date -u +%s` for epoch seconds. Compute
+- [x] Step 1 — Seed. Run `date -u +%s` for epoch seconds. Compute
   `printf '%s' "<epoch>" | md5sum`. Record the epoch, the full md5 hash, and the
   first 8 hex characters of that hash for Step 2.
 - [ ] Step 2 — Convert. Read Step 1's first 8 hex characters from RELAY3-LOG.md.
