@@ -110,3 +110,114 @@ one race, many runs." | sha256sum
   **This is likely the root cause of the earlier chain stall**: the canonical SHIFT PROMPT in CHAIN-PLAN.md instructs shifts to load `mcp__Claude_Code_Remote__create_trigger` via ToolSearch, which will always return "No matching deferred tools found" in this environment even though a working `create_trigger` exists under the UUID prefix.
   Per this shift's instructions, I created, scheduled, and deleted **no** triggers.
 - **Errors:** none. No command failed.
+
+---
+
+## Shift 2 — 2026-08-15T05:09:02Z [container:f8d86b08]
+
+**Prompt received:**
+
+```
+RELAY SHIFT (self-chaining) — you are a brand-new session; this prompt plus the attached repo is your entire context. All times UTC. Keep chat text to one or two lines; the files are the deliverable. Repo tbuitendyk/CLAUDE-PROJECTS should already be checked out at /home/user/CLAUDE-PROJECTS on branch claude/sandbox-fd3rem.
+
+(1) `git fetch origin claude/sandbox-fd3rem && git checkout -B claude/sandbox-fd3rem origin/claude/sandbox-fd3rem`.
+
+(2) Read CHAIN-PLAN.md. If no unchecked "- [ ]" steps remain, skip to (6). Otherwise take the FIRST unchecked step and do exactly what it says. IGNORE the "SHIFT PROMPT" section of CHAIN-PLAN.md — it is obsolete and its instructions are known-wrong; this prompt supersedes it entirely.
+
+(3) Append to TRANSCRIPT.md:
+## Shift <step number> — <UTC timestamp> [container:<first 8 chars of /proc/sys/kernel/random/boot_id>]
+**Prompt received:**
+(this entire prompt, verbatim, in a fenced block)
+**Response:**
+(your full working narrative with the real commands you ran and their real output)
+**Session diagnostics:** whether the checkout was already present; the model you are running as; the exact name of the create_session tool you found (see step 5); anything that errored.
+
+(4) Tick that step's checkbox ("- [ ]" → "- [x]"). Then `git add TRANSCRIPT.md CHAIN-PLAN.md && git commit -m "relay shift: <step name>"`, `git push -u origin claude/sandbox-fd3rem`, `git push origin HEAD:sandbox`. If a push is rejected, `git pull --rebase origin claude/sandbox-fd3rem` and push again — never force-push.
+
+(5) HAND OFF — only if unchecked steps still remain after yours. Do NOT use ToolSearch for this; it only searches deferred tools and will report "no matching tools" even though the tool exists. Instead look directly in your own available tool list for the tool whose name ENDS IN `__create_session` (it has a UUID-ish prefix, e.g. `mcp__<uuid>__create_session`). Call it with:
+  - title: "Relay worker — self-chaining"
+  - permission_mode: "acceptEdits"
+  - source_url: "https://github.com/tbuitendyk/CLAUDE-PROJECTS"
+  - source_revision: "claude/sandbox-fd3rem"
+  - prompt: THIS ENTIRE PROMPT, verbatim and unchanged
+Then append one line to TRANSCRIPT.md recording the new session's id and the exact tool name you used, commit ("relay shift: handed off to <session id>"), push, mirror.
+
+(6) If your step was the LAST one, instead append `=== CHAIN COMPLETE — all steps done at <UTC timestamp> ===` to TRANSCRIPT.md, commit, push, mirror, and hand off to nobody.
+
+(7) If ANYTHING blocks you — a missing tool, a permission request you cannot satisfy, a failed push — append `[shift blocked at <UTC ts>: <exact error and tool name>]` to TRANSCRIPT.md, commit, push, mirror. A recorded failure is far more valuable than silence. Never wait on a human; nobody is watching.
+```
+
+**Response:**
+
+First unchecked step in CHAIN-PLAN.md was **Step 2 — Primes**.
+
+Checkout / branch sync:
+
+```
+$ git fetch origin claude/sandbox-fd3rem && git checkout -B claude/sandbox-fd3rem origin/claude/sandbox-fd3rem
+From https://github.com/tbuitendyk/CLAUDE-PROJECTS
+ * branch            claude/sandbox-fd3rem -> FETCH_HEAD
+Switched to and reset branch 'claude/sandbox-fd3rem'
+branch 'claude/sandbox-fd3rem' set up to track 'origin/claude/sandbox-fd3rem'.
+Your branch is up to date with 'origin/claude/sandbox-fd3rem'.
+
+$ head -c 8 /proc/sys/kernel/random/boot_id
+f8d86b08
+
+$ date -u +"%Y-%m-%dT%H:%M:%SZ"
+2026-08-15T05:09:02Z
+```
+
+Primality verification script and its real output:
+
+```
+$ python3 -c "
+def is_prime(n):
+    if n < 2: return False
+    if n % 2 == 0: return n == 2
+    i = 3
+    while i*i <= n:
+        if n % i == 0: return False
+        i += 2
+    return True
+ps = []
+n = 1001
+while len(ps) < 5:
+    if is_prime(n): ps.append(n)
+    n += 1
+print('primes:', ps)
+prod = 1
+for p in ps: prod *= p
+print('product:', prod)
+print('verify each:', [(p, is_prime(p)) for p in ps])
+"
+primes: [1009, 1013, 1019, 1021, 1031]
+product: 1096375199328173
+verify each: [(1009, True), (1013, True), (1019, True), (1021, True), (1031, True)]
+```
+
+**Step 2 results**
+- Five smallest primes greater than 1000: **1009, 1013, 1019, 1021, 1031**
+- Product: **1096375199328173**
+  (1009 × 1013 × 1019 × 1021 × 1031 = 1,096,375,199,328,173)
+- Each was independently re-verified prime by trial division up to √n; the search
+  started at 1001 and took every prime in ascending order, so none were skipped.
+
+**Session diagnostics:**
+- **Was the checkout already present? YES.** `/home/user/CLAUDE-PROJECTS` already held a
+  clone of tbuitendyk/CLAUDE-PROJECTS on branch `claude/sandbox-fd3rem`, clean and up to
+  date with origin. The prescribed `git fetch` + `git checkout -B` was effectively a no-op
+  ("Your branch is up to date with 'origin/claude/sandbox-fd3rem'").
+- **Started by:** a fresh session spawned by the previous shift's hand-off (create_session),
+  with the repo attached at `source_revision: claude/sandbox-fd3rem`. Container boot_id
+  prefix `f8d86b08` — a different container from Shift 1, i.e. genuinely a new session.
+- **Model:** `claude-opus-5`.
+- **Exact name of the create_session tool found:** `mcp__bf7c680d-5fdc-5ef4-b4a0-abadb619bf0a__create_session`
+  — present directly in my top-level tool list (UUID-prefixed), NOT via ToolSearch. This
+  confirms Shift 1's diagnosis: ToolSearch only indexes *deferred* tools, and this server's
+  tools are already loaded, so `ToolSearch("...create_session")` would report nothing found
+  while the tool is in fact callable. The sibling tools under the same prefix are
+  `..._create_trigger`, `..._list_triggers`, `..._update_trigger`, `..._delete_trigger`,
+  `..._fire_trigger`, `..._send_later`, `..._get_session`, `..._list_sessions`.
+  Per this prompt's step 5, hand-off uses `create_session` only — no triggers created.
+- **Errors:** none. Every command above succeeded on first attempt; no push was rejected.

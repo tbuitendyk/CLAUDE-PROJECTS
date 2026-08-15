@@ -15,7 +15,7 @@ anything.
 
 - [x] Step 1 — Haiku seed: write an original haiku about relay races. Compute its
   SHA-256: `printf '%s' "<haiku text>" | sha256sum`. Record haiku + full hash in your transcript entry.
-- [ ] Step 2 — Primes: find the five smallest prime numbers greater than 1000,
+- [x] Step 2 — Primes: find the five smallest prime numbers greater than 1000,
   verify primality with a quick script, compute their product. Record list + product.
 - [ ] Step 3 — Hash arithmetic: take the FIRST 8 hex characters of Step 1's hash
   (from the transcript), convert to decimal, multiply by the number of vowels in
