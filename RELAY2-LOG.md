@@ -597,3 +597,119 @@ Note for Step 6: Steps 1–5 are now ticked with their results present above. Yo
 remaining work is the completion marker line plus a UTC timestamp, and spawning nobody.
 
 [watchdog 2026-08-15T08:11:16Z: chain stalled ~30min at step 6 (shift 5 completed 07:40); revived via new session session_01DGPY4ky6rxnpYaiW8zT9nF — final step, no poke expected]
+
+---
+
+## Shift 6 — 2026-08-15T08:11:52Z [container:32cf5ab7] [session:session_01DGPY4ky6rxnpYaiW8zT9nF]
+**Prompt received:**
+```
+RELAY2 SHIFT (poke handoff) — you are a brand-new session with no memory. This prompt plus the attached repo is your entire context. All times UTC. Keep your chat reply to one or two lines. Nobody is watching you — never wait on a human, and never ask for permission you do not already have.
+
+(1) `git fetch origin claude/sandbox-fd3rem && git checkout -B claude/sandbox-fd3rem origin/claude/sandbox-fd3rem`
+
+(2) Read RELAY2-PLAN.md and find the FIRST unchecked step (`- [ ]`). If none remain, reply that the relay is finished and stop. Work ONLY on RELAY2-PLAN.md and RELAY2-LOG.md — never touch RELAY2-RUN1-LOG.md, CHAIN-PLAN.md, TRANSCRIPT.md, README.md or heartbeat-* files.
+
+(3) Do that step exactly as written. Steps depend on earlier shifts' results — read those from RELAY2-LOG.md rather than recomputing or inventing them, and name which values you read and from which shift.
+
+(4) Append to RELAY2-LOG.md:
+## Shift <step number> — <UTC timestamp> [container:<first 8 chars of /proc/sys/kernel/random/boot_id>] [session:<your session id if determinable, else "unknown">]
+**Prompt received:**
+```
+<THIS ENTIRE PROMPT, verbatim>
+```
+**Response:**
+<your full working narrative: the real commands you ran and their real output, the values you read from earlier shifts, and your result>
+
+(5) Tick that step's checkbox in RELAY2-PLAN.md (`- [ ]` → `- [x]`).
+
+(6) `git add RELAY2-PLAN.md RELAY2-LOG.md && git commit -m "relay2 shift: <step name>"`, `git push -u origin claude/sandbox-fd3rem`, `git push origin HEAD:sandbox`. If the push is rejected, `git pull --rebase origin claude/sandbox-fd3rem` and push again; never force-push.
+
+(7) POKE — only if at least one `- [ ]` line still remains after your commit. Find the tool in your own tool list whose name ENDS IN `__fire_trigger` (UUID-ish prefix; do NOT use ToolSearch) and call it ONCE with trigger_id "trig_015VsifEFSbqmEnYUnWZ2MgP" and text "shift <N> finished at <UTC ts>; next step needs a worker". Record the outcome as `[poke <UTC ts>: ...]` or `[poke failed <UTC ts>: ...]`, commit, push, mirror. Do NOT attempt to create a session or trigger.
+
+(8) If your step was the LAST one (no `- [ ]` remain after you tick yours), do NOT poke. Append the completion marker named at the top of RELAY2-PLAN.md at the start of a line, followed by the UTC timestamp, then commit ("relay2: chain complete"), push, and mirror.
+
+(9) If anything else blocks you, append `[shift blocked <UTC ts>: step <N>, <exact error>]`, commit, push, mirror, and stop.
+```
+**Response:**
+
+Step 6 — Close. This is the last unchecked step, so per instruction (8) I poke nobody
+and write the completion marker.
+
+Checkout and identity:
+
+```
+$ git fetch origin claude/sandbox-fd3rem && git checkout -B claude/sandbox-fd3rem origin/claude/sandbox-fd3rem
+From https://github.com/tbuitendyk/CLAUDE-PROJECTS
+ * branch            claude/sandbox-fd3rem -> FETCH_HEAD
+   3870950..9e17bcd  claude/sandbox-fd3rem -> origin/claude/sandbox-fd3rem
+Previous HEAD position was 3870950 relay2 shift: Step 5 — Audit
+Switched to and reset branch 'claude/sandbox-fd3rem'
+
+$ date -u '+%Y-%m-%dT%H:%M:%SZ'; cut -c1-8 /proc/sys/kernel/random/boot_id
+2026-08-15T08:11:26Z
+32cf5ab7
+```
+
+The container ID `32cf5ab7` differs from every prior shift (74dd8600, 82f0a927,
+a5bea45d, 4d5ad32a, f02d369f) — this is a genuinely fresh session, as the relay
+design requires.
+
+### Check 1 — all of Steps 1–5 are ticked in RELAY2-PLAN.md
+
+```
+$ grep -n '^- \[' RELAY2-PLAN.md | cut -c1-60
+17:- [x] Step 1 — Seed. Run `date -u +%s` for the epoch se
+20:- [x] Step 2 — Prime. Read Step 1's first 6 hex charact
+24:- [x] Step 3 — Shape. Read Step 2's prime from the log.
+27:- [x] Step 4 — Verse. Read Step 3's four digits from th
+31:- [x] Step 5 — Audit. Independently re-verify Steps 2 a
+35:- [ ] Step 6 — Close. Confirm Steps 1–5 are ticked an
+```
+
+Steps 1–5 all `[x]`; Step 6 was the only `- [ ]` remaining when I started.
+
+### Check 2 — each step's results are actually present in RELAY2-LOG.md
+
+```
+$ grep -n "^## Shift" RELAY2-LOG.md
+17:## Shift 1 — 2026-08-15T05:42:33Z [container:74dd8600] [session:session_0142mYEKXfuyrJPDCfh9FL5E]
+122:## Shift 2 — 2026-08-15T05:56:59Z [container:82f0a927] [session:unknown]
+231:## Shift 3 — 2026-08-15T06:39:10Z [container:a5bea45d] [session:unknown]
+345:## Shift 4 — 2026-08-15T07:12:38Z [container:4d5ad32a] [session:session_012V9qoH1BrS2ZWhRUNRBiui]
+460:## Shift 5 — 2026-08-15T07:39:52Z [container:f02d369f] [session:session_01HafZpZbCMnzh5Dcjg9XiBc]
+(the other ## Shift matches are the template line inside each quoted prompt block)
+
+$ grep -n '^### Result of Step' RELAY2-LOG.md
+100:### Result of Step 1
+217:### Result of Step 2
+332:### Result of Step 3
+443:### Result of Step 4
+579:### Result of Step 5 — audit verdict
+```
+
+Five shift entries, five result blocks — one per completed step, each written by a
+different container. Values I read (not recomputed) and the shift I read them from:
+
+| Value | Read from |
+|---|---|
+| epoch `1786772515`, SHA-256 `e5ff5c91d24e6a4990e770a25dc72e7af5340e55b4d024e4813c1cce3ed2ddd0`, first six hex `e5ff5c` | Shift 1, "Result of Step 1" (log lines 100–105) |
+| decimal `15073116`, prime `15073133` | Shift 2, "Result of Step 2" (lines 217–221) |
+| digit sum `23`, binary `111001011111111101101101`, digits `[1, 5, 0, 7]` | Shift 3, "Result of Step 3" (lines 332–337) |
+| poem with line word counts `3, 5, 3, 7` matching the required `3, 5, 3, 7` | Shift 4, "Result of Step 4" (lines 443–452) |
+| audit verdict: all seven claims re-derived, "Nothing disagrees" | Shift 5, "Result of Step 5" (lines 579–594) |
+
+Each result also carries forward the handoff note its successor actually used, which
+is what makes the chain non-fakeable: Shift 2 could not have produced `15073116`
+without Shift 1's hex, and Shift 4's word counts `3, 5, 3, 7` are derived from Shift
+3's digits `1, 5, 0, 7`. Shift 5's independent re-derivation found no discrepancy.
+
+Per Step 6 I did not re-run any of the arithmetic myself — the audit was Step 5's job
+and its verdict stands as recorded.
+
+### Result of Step 6 — close
+
+Steps 1–5: ticked ✅, results present ✅, mutually consistent ✅. Chain complete after
+six shifts across six distinct containers. Spawning nobody; no poke fired, per
+instruction (8).
+
+RELAY2 COMPLETE 2026-08-15T08:11:52Z
