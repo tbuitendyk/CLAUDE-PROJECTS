@@ -117,3 +117,4 @@ source_revision claude/sandbox-fd3rem, prompt = verbatim RELAY2-SHIFT-PROMPT.txt
 no permission_mode), spaced by `sleep 20`. All six denied by the auto mode
 classifier with identical text. Nothing was reworded or retitled between
 attempts. Run 2 handoff tally so far: 0 successes / 6 attempts.
+[poke test 2026-08-15T05:36:20Z: tool mcp__bf7c680d-5fdc-5ef4-b4a0-abadb619bf0a__fire_trigger; fire_trigger on trig_015VsifEFSbqmEnYUnWZ2MgP returned: SUCCESS — {"trigger":{"id":"trig_015VsifEFSbqmEnYUnWZ2MgP","name":"relay-wake-poke","enabled":true,...,"persist_session":true,"persistent_session_id":"session_01XgtdraagzH1VbjJ1KUHk3w","created_via":"meta_mcp"},"session_id":"cse_011mn9Y5yCSYXU4QFPVqkfFi"}]
