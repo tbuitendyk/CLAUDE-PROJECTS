@@ -99,6 +99,17 @@ change again.
   any change to hub scripts, flows, cadence, or conventions MUST update
   `vps-access/MAIL-CHEATSHEET.md` in the same commit — that file is the single
   onboarding source the owner points sessions at, and it must never drift.**
+- **Owner's egress to the VPS goes through ProtonVPN (Mexico City exit), and
+  that is settled (2026-08-15).** Telmex's international egress is intermittently
+  lossy (see `vps-access/incidents/2026-08-15-network-path-degradation.md`); the
+  router tunnels out via a real, non-Smart-Routing Proton CDMX server, which
+  fixed it. Do NOT propose replacing this with WireGuard to the AWS Mexico box:
+  it was costed and DECLINED — Proton's egress is already paid for and
+  unmetered, while AWS charges ~$0.09-0.11/GB, for a ~25-35 ms gain the owner
+  does not need. Also do not propose "fixing" the VPS: the VPS was never at
+  fault, and its ICMP is fully enabled (verified, `scripts/icmp-status.sh`).
+  Linux/BusyBox `traceroute` showing `* * *` at the destination is UDP probes
+  meeting `ufw`'s INPUT DROP — correct behaviour, not a block.
 - `VBoxManage` run as root reports both guests as `poweroff` while their
   processes are plainly serving — the registry root sees is not the one the
   running VMs came from. Do not act on VM-level power state until that is
