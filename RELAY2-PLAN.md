@@ -32,6 +32,6 @@ grep the log for a banner (the log contains prompt text and would false-positive
   redo the hex→decimal conversion, re-test the prime's primality, recompute the
   digit sum and binary. Record whether each matches; if anything disagrees, say
   so plainly rather than papering over it.
-- [ ] Step 6 — Close. Confirm Steps 1–5 are ticked and their results present in
+- [x] Step 6 — Close. Confirm Steps 1–5 are ticked and their results present in
   RELAY2-LOG.md. Append the completion marker line exactly as given at the top of
   this file, followed by the UTC timestamp. Spawn nobody.
