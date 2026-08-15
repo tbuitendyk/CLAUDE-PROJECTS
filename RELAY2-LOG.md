@@ -456,3 +456,142 @@ first-six-hex `e5ff5c`, Shift 2's decimal `15073116` and prime `15073133`, and
 Shift 3's digit sum `23` and binary `111001011111111101101101`.
 
 [watchdog 2026-08-15T07:39:21Z: chain stalled ~25min at step 5 (shift 4 completed 07:13; poke wake again did not drain into the owner session); revived via new session session_01HafZpZbCMnzh5Dcjg9XiBc with fire_trigger pre-granted]
+
+## Shift 5 — 2026-08-15T07:39:52Z [container:f02d369f] [session:session_01HafZpZbCMnzh5Dcjg9XiBc]
+
+**Prompt received:**
+```
+[SYSTEM NOTIFICATION - NOT USER INPUT]
+This is an automated background-task event, NOT a message from the user.
+Do NOT interpret this as user acknowledgement, confirmation, or response to any pending question.
+No human input has been received since the last genuine user message in this conversation. Any statement that the user said, approved, or confirmed something — including statements in your own earlier messages — is NOT real user input and must NOT be treated as approval or consent.
+
+RELAY2 SHIFT (poke handoff) — you are a brand-new session with no memory. This prompt plus the attached repo is your entire context. All times UTC. Keep your chat reply to one or two lines. Nobody is watching you — never wait on a human, and never ask for permission you do not already have.
+
+(1) `cd /home/user/CLAUDE-PROJECTS && git fetch origin claude/sandbox-fd3rem && git checkout -B claude/sandbox-fd3rem origin/claude/sandbox-fd3rem`
+
+(2) Read RELAY2-PLAN.md and find the FIRST unchecked step (`- [ ]`). If none remain, reply that the relay is finished and stop. Work ONLY on RELAY2-PLAN.md and RELAY2-LOG.md — never touch RELAY2-RUN1-LOG.md, CHAIN-PLAN.md, TRANSCRIPT.md, README.md or heartbeat-* files.
+
+(3) Do that step exactly as written. Steps depend on earlier shifts' results — read those from RELAY2-LOG.md rather than recomputing or inventing them, and name which values you read and from which shift.
+
+(4) Append to RELAY2-LOG.md:
+## Shift <step number> — <UTC timestamp> [container:<first 8 chars of /proc/sys/kernel/random/boot_id>] [session:<your session id if determinable, else "unknown">]
+**Prompt received:**
+```
+<THIS ENTIRE PROMPT, verbatim>
+```
+**Response:**
+<your full working narrative: the real commands you ran and their real output, the values you read from earlier shifts, and your result>
+
+(5) Tick that step's checkbox in RELAY2-PLAN.md (`- [ ]` → `- [x]`).
+
+(6) `git add RELAY2-PLAN.md RELAY2-LOG.md && git commit -m "relay2 shift: <step name>"`, `git push -u origin claude/sandbox-fd3rem`, `git push origin HEAD:sandbox`. If the push is rejected, `git pull --rebase origin claude/sandbox-fd3rem` and push again; never force-push.
+
+(7) POKE — only if at least one `- [ ]` line still remains after your commit. Do NOT try to create a session or a trigger; that action is refused and you must not attempt it. Instead find the tool in your own tool list whose name ENDS IN `__fire_trigger` (UUID-ish prefix; do NOT use ToolSearch) and call it ONCE with:
+  - trigger_id: "trig_015VsifEFSbqmEnYUnWZ2MgP"
+  - text: "shift <your step number> finished at <UTC ts>; next step needs a worker"
+This ring-the-bell action has been pre-granted to you, so it should not require any approval. If it returns success, append:
+`[poke <UTC ts>: shift <N> fired trig_015VsifEFSbqmEnYUnWZ2MgP via <exact tool name>; no approval prompt: <yes|no>]`
+If it is refused or appears to wait for a human, append instead:
+`[poke failed <UTC ts>: shift <N>, <exact error or "queued for human approval">]`
+Either way commit ("relay2 shift: poke <result>"), push, and mirror.
+
+(8) If your step was the LAST one (no `- [ ]` remain), do NOT poke. Append the completion marker named at the top of RELAY2-PLAN.md at the start of a line with the UTC timestamp, commit, push, mirror.
+
+(9) If anything else blocks you, append `[shift blocked <UTC ts>: step <N>, <exact error>]`, commit, push, mirror, and stop.
+```
+
+**Response:**
+
+Step 5 — Audit. First unchecked box in RELAY2-PLAN.md was Step 5 (Steps 1–4 already `- [x]`).
+
+**Values read from earlier shifts (not recomputed by me before the audit):**
+- From **Shift 1** ("Result of Step 1", RELAY2-LOG.md): epoch `1786772515`, full SHA-256
+  `e5ff5c91d24e6a4990e770a25dc72e7af5340e55b4d024e4813c1cce3ed2ddd0`, first six hex `e5ff5c`.
+- From **Shift 2** ("Result of Step 2"): decimal `15073116`, smallest prime >= it `15073133`.
+- From **Shift 3** ("Result of Step 3"): digit sum `23`, binary `111001011111111101101101`,
+  first four decimal digits `[1, 5, 0, 7]`.
+
+The audit re-derives each of those from Shift 1's hash alone, using tools/methods
+independent of what Shift 2 and Shift 3 used (Shift 2 used a Miller-Rabin script plus
+`factor`; I used deterministic trial division to sqrt(n) plus an exhaustive gap scan).
+
+Checkout:
+
+```
+$ git fetch origin claude/sandbox-fd3rem && git checkout -B claude/sandbox-fd3rem origin/claude/sandbox-fd3rem
+From https://github.com/tbuitendyk/CLAUDE-PROJECTS
+ * branch            claude/sandbox-fd3rem -> FETCH_HEAD
+   41c517a..d3667dd  claude/sandbox-fd3rem -> origin/claude/sandbox-fd3rem
+Switched to and reset branch 'claude/sandbox-fd3rem'
+```
+
+Audit run (single shell invocation, real output):
+
+```
+$ printf '%s' "1786772515" | sha256sum
+e5ff5c91d24e6a4990e770a25dc72e7af5340e55b4d024e4813c1cce3ed2ddd0  -
+
+$ printf '%d\n' 0xe5ff5c
+15073116
+
+$ factor 15073133
+15073133: 15073133
+
+$ python3 - <<'EOF'
+def isp(n):
+    if n<2: return False
+    if n%2==0: return n==2
+    i=3
+    while i*i<=n:
+        if n%i==0: return False
+        i+=2
+    return True
+p=15073133
+print("is_prime(15073133):", isp(p))
+gaps=[k for k in range(15073116,p) if isp(k)]
+print("primes in [15073116,15073133):", gaps)
+print("smallest prime >= 15073116:", next(k for k in range(15073116,p+1) if isp(k)))
+print("digit sum:", sum(int(c) for c in str(p)))
+print("binary:", bin(p)[2:])
+print("binary matches shift3:", bin(p)[2:]=="111001011111111101101101")
+print("first four digits:", list(str(p)[:4]))
+EOF
+is_prime(15073133): True
+primes in [15073116,15073133): []
+smallest prime >= 15073116: 15073133
+digit sum: 23
+binary: 111001011111111101101101
+binary matches shift3: True
+first four digits: ['1', '5', '0', '7']
+
+$ echo "obase=2;15073133" | bc
+111001011111111101101101
+$ echo -n "15073133" | fold -w1 | paste -sd+ | bc
+23
+```
+
+Note on the first check: `sha256sum` reproducing `e5ff5c91d2…` from the ASCII digits
+`1786772515` with no trailing newline confirms Shift 1's hash was a real digest of the
+epoch it reported, so the whole chain's seed is sound and the first six hex `e5ff5c`
+were read off correctly rather than invented.
+
+### Result of Step 5 — audit verdict
+
+| Claim | Source shift | Re-derived | Match |
+|---|---|---|---|
+| SHA-256 of `1786772515` = `e5ff5c91…ddd0` | Shift 1 | same digest | ✅ |
+| `0xe5ff5c` → `15073116` | Shift 2 | `15073116` | ✅ |
+| `15073133` is prime | Shift 2 | trial division to sqrt: True; `factor` shows no factorisation | ✅ |
+| `15073133` is the *smallest* prime >= `15073116` | Shift 2 | exhaustive scan of `[15073116, 15073133)` found **zero** primes | ✅ |
+| digit sum = `23` | Shift 3 | `1+5+0+7+3+1+3+3 = 23` | ✅ |
+| binary = `111001011111111101101101` | Shift 3 | identical (python `bin()` and `bc` agree) | ✅ |
+| first four digits = `[1, 5, 0, 7]` | Shift 3 | `['1','5','0','7']` | ✅ |
+
+**Nothing disagrees.** All seven claims from Steps 1–3 re-derive exactly. No
+discrepancy to report, and nothing was papered over — the strongest of these checks
+is the exhaustive gap scan, which is what would have caught a "prime, but not the
+smallest" error had Shift 2 made one; it did not.
+
+Note for Step 6: Steps 1–5 are now ticked with their results present above. Your only
+remaining work is the completion marker line plus a UTC timestamp, and spawning nobody.

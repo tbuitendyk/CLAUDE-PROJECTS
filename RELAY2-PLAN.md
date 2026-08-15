@@ -28,7 +28,7 @@ grep the log for a banner (the log contains prompt text and would false-positive
   four-line poem about relays or continuity in which line N has exactly as many
   words as the Nth digit (treat a digit of 0 or 1 as 3 words, and any digit as a
   minimum of 2 words). Record the poem and a per-line word count proving the fit.
-- [ ] Step 5 — Audit. Independently re-verify Steps 2 and 3 from Step 1's hash:
+- [x] Step 5 — Audit. Independently re-verify Steps 2 and 3 from Step 1's hash:
   redo the hex→decimal conversion, re-test the prime's primality, recompute the
   digit sum and binary. Record whether each matches; if anything disagrees, say
   so plainly rather than papering over it.
