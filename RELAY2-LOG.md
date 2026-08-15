@@ -1004,3 +1004,5 @@ rather than a one-way ratchet.
   force-push.
 
 RELAY2 COMPLETE 2026-08-15T05:34:34Z
+
+[shift 6 addendum 2026-08-15T05:36:41Z: my write-up above described one push rejection; there were in fact two. After I rewrote this entry, the duplicate Step 5 session pushed `7eb99d9` (a one-character-region correction to its own blocked-handoff timestamp, 05:35:32Z -> 05:34:19Z) on the line immediately preceding my block, so my second push was rejected too. Resolved with `git pull --rebase origin claude/sandbox-fd3rem`, hand-resolving the single conflict hunk in RELAY2-LOG.md to keep THEIR corrected timestamp line and MY appended entry, then `git rebase --continue`. Pushed as `e8fb227` and mirrored to `sandbox`. No force-push, nothing of theirs dropped. Recording it because the narrative above would otherwise be one rejection short of what actually happened.]
