@@ -163,3 +163,40 @@ In cloud sessions, branch **creates and pushes work**, but branch **deletes and
 default-branch changes are blocked** (git-proxy 403 / no API) — those need the
 GitHub web UI. To change another project's branch, use local git:
 `git checkout <branch>` → edit → commit → `git push -u origin <branch>`.
+
+## CONVEYOR — running long projects unattended (any branch)
+
+`conveyor/` on this branch is the **named procedure** for making a multi-step
+project run to completion all day without the owner having to poke it. It is
+branch-agnostic control-plane tooling: it lives here, and sessions on any branch
+fetch it when told.
+
+Invocation from any session, on any branch:
+
+> Follow the CONVEYOR protocol. Fetch it with:
+> `git fetch origin vps-access && git show origin/vps-access:conveyor/PROTOCOL.md`
+
+| File | Read it when |
+|---|---|
+| `conveyor/README.md` | you want the mental model in one screen |
+| `conveyor/PROTOCOL.md` | you are setting up or running a conveyor — this is the spec |
+| `conveyor/OWNER-CHECKLIST.md` | the owner has forgotten what they must do |
+| `conveyor/OPERATIONS.md` | arming, watching, stopping, or something is broken |
+| `conveyor/EVIDENCE.md` | **before changing any rule** — the measurements behind them |
+| `conveyor/templates/` | copy into the project branch and fill in |
+
+The three facts that explain the whole design, proven 2026-08-15:
+
+- **In-session timers and in-container daemons do not survive.** 0 fires out of
+  21 for in-session timers; container daemons died with every VM swap. Only the
+  git repo and server-side alarms survive.
+- **A session that was itself spawned may not launch an open-ended chain of
+  further sessions** (~2 of 17 allowed). So a worker can never start the next
+  worker — a clock outside the chain must. Do not engineer around this.
+- **Alarms cap at hourly each**, so a 5-minute heartbeat means twelve offset
+  hourly alarms and twelve owner approvals. `*/5` and explicit minute lists were
+  both tested and both rejected.
+
+Proven end to end: five dependent steps, 53 minutes, zero human input, zero
+permission prompts. The same workload on the earlier half-hourly design took
+2.5 hours.
