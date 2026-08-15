@@ -318,7 +318,7 @@ would be 23, noted only for transparency; the recorded value uses the standard f
 
 ---
 
-## Shift 4 — 2026-08-15T05:14:29Z [container:8f714274]
+## Shift 4 — 2026-08-15T05:13:58Z [container:8f714274]
 
 **Response:**
 
@@ -382,3 +382,71 @@ four-digit primes 1009 × 1013 × 1019 × 1021 × 1031 — so "four-digit code" 
   two standalone em dashes).
 
 **Errors:** none.
+
+---
+
+## Shift 5 — 2026-08-15T05:14:27Z [container:8f714274]
+
+**Response:**
+
+Final step: verify that Steps 1–4 are ticked in CHAIN-PLAN.md and that their results are
+actually present in TRANSCRIPT.md, then append the completion banner and arm nothing.
+
+Verification, real commands and output:
+
+```
+$ grep -n "^- \[" CHAIN-PLAN.md | cut -c1-60
+16:- [x] Step 1 — Haiku seed: write an original haiku abou
+18:- [x] Step 2 — Primes: find the five smallest prime num
+20:- [x] Step 3 — Hash arithmetic: take the FIRST 8 hex ch
+23:- [x] Step 4 — Weave: write one paragraph (3–5 senten
+26:- [ ] Step 5 — FINAL: verify steps 1–4 are ticked and
+
+$ grep -c "^- \[ \]" CHAIN-PLAN.md
+1
+```
+
+Only Step 5 (this one) remained unchecked; Steps 1–4 are all ticked.
+
+Results presence check — each expected value grepped out of TRANSCRIPT.md:
+
+```
+8e5c5d5cd0fadb86224b310c7536f5c36d81f68baa709b7052674e431bfca25d       4 hit(s)   (Step 1 hash)
+Baton leaves warm hand                                                 5 hit(s)   (Step 1 haiku)
+1009, 1013, 1019, 1021, 1031                                           2 hit(s)   (Step 2 primes)
+1096375199328173                                                       5 hit(s)   (Step 2 product)
+2388417884                                                             6 hit(s)   (Step 3 decimal)
+52545193448                                                            5 hit(s)   (Step 3 product)
+151                                                                    5 hit(s)   (Step 4 word count)
+
+$ grep -n "^## Shift [0-9]" TRANSCRIPT.md
+18:## Shift 1 — 2026-08-15T05:06Z [container:2ccc19f6]
+116:## Shift 2 — 2026-08-15T05:09:02Z [container:f8d86b08]
+227:## Shift 3 — 2026-08-15T05:12:37Z [container:8f714274]
+321:## Shift 4 — 2026-08-15T05:13:58Z [container:8f714274]
+
+$ grep -c "^=== CHAIN COMPLETE" TRANSCRIPT.md
+0
+```
+
+Every step's results are present, all four prior shift sections exist, and no banner
+line had been written yet — so appending one now is correct and non-duplicating.
+
+**Chain summary (all results in one place)**
+- Step 1 — haiku: "Baton leaves warm hand— / a stranger's palm keeps the pace, / one race, many runs."
+  SHA-256 `8e5c5d5cd0fadb86224b310c7536f5c36d81f68baa709b7052674e431bfca25d`
+- Step 2 — primes 1009, 1013, 1019, 1021, 1031; product 1096375199328173
+- Step 3 — `8e5c5d5c` = 2388417884; 22 vowels; product 52545193448
+- Step 4 — 5-sentence mystery paragraph; 151 words
+- Step 5 — this verification; banner appended below. **Nothing armed** — no triggers,
+  no sessions, no wakeups created by this shift, as Step 5 requires.
+
+**Errors:** none across Shifts 3–5. No push was rejected; no rebase was needed.
+
+=== CHAIN COMPLETE — all steps done at 2026-08-15T05:14:27Z ===
+
+**Timestamp correction (Shift 5):** the Shift 4 heading was originally written by hand as
+`05:14:29Z`, which was an estimate and landed after this banner's real time. It has been
+corrected in place to `2026-08-15T05:13:58Z`, the actual committer timestamp of the Step 4
+commit `a76b4df` (`git log -1 --format='%H %cI' a76b4df` → `a76b4df... 2026-08-15T05:13:58+00:00`).
+All other headings carry timestamps measured with `date -u` at the time they were written.

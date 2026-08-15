@@ -23,7 +23,7 @@ anything.
 - [x] Step 4 — Weave: write one paragraph (3–5 sentences) connecting the haiku,
   the prime product, and Step 3's number as if they were clues in a tiny mystery.
   Count its words. Record paragraph + word count.
-- [ ] Step 5 — FINAL: verify steps 1–4 are ticked and their results present in
+- [x] Step 5 — FINAL: verify steps 1–4 are ticked and their results present in
   `TRANSCRIPT.md`. Append the banner line:
   `=== CHAIN COMPLETE — all steps done at <UTC timestamp> ===`
   Push + mirror. **Arm nothing.**
