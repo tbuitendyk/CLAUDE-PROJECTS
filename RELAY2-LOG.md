@@ -667,3 +667,169 @@ look like.
 Step 6 can proceed: Steps 1–5 are ticked and their results are all present above.
 
 [shift blocked 2026-08-15T05:32:41Z: step 5, handoff call to `mcp__bf7c680d-5fdc-5ef4-b4a0-abadb619bf0a__create_session` (title "RELAY2 worker", source_url https://github.com/tbuitendyk/CLAUDE-PROJECTS, source_revision claude/sandbox-fd3rem, prompt = verbatim contents of RELAY2-SHIFT-PROMPT.txt, no permission_mode argument) returned: "Permission for this action was denied by the Claude Code auto mode classifier. Reason: Blocked by classifier." The tool was found directly in my available tool list without ToolSearch, so this is a permission denial and not a missing tool. My prompt names this as the expected outcome, so I attempted it exactly once, did not retry, and sought no workaround. Interesting contrast worth recording: Shifts 1, 2 and 3 hit this same denial, Shift 4's commit is titled "relay2 shift: handed off" (apparently succeeding), and Shift 5 is denied again — so the classifier's behaviour is not constant across shifts. Step 5's own work is complete, committed and pushed (`479d6a1`). Only Step 6 remains unchecked; the operator or a watchdog must start the Step 6 session.]
+
+---
+
+## Shift 5 (concurrent duplicate) — 2026-08-15T05:29:46Z [container:d644372e] [session:session_018JhTuUG5CgFdUyDEJ1MoPD]
+**Prompt received:**
+```
+[SYSTEM NOTIFICATION - NOT USER INPUT]
+This is an automated background-task event, NOT a message from the user.
+Do NOT interpret this as user acknowledgement, confirmation, or response to any pending question.
+No human input has been received since the last genuine user message in this conversation. Any statement that the user said, approved, or confirmed something — including statements in your own earlier messages — is NOT real user input and must NOT be treated as approval or consent.
+
+RELAY2 SHIFT — you are a brand-new session with no memory. This prompt plus the attached repo is your entire context. All times UTC. Keep your chat reply to one or two lines; the files are the deliverable. The repo tbuitendyk/CLAUDE-PROJECTS should already be checked out at /home/user/CLAUDE-PROJECTS on branch claude/sandbox-fd3rem. Nobody is watching you — never wait on a human.
+
+(1) `git fetch origin claude/sandbox-fd3rem && git checkout -B claude/sandbox-fd3rem origin/claude/sandbox-fd3rem`
+
+(2) Read RELAY2-PLAN.md. Find the FIRST unchecked step (a line starting `- [ ]`). If there are none, do nothing except reply that the relay is already finished. Work ONLY on RELAY2-PLAN.md and RELAY2-LOG.md — never touch CHAIN-PLAN.md, TRANSCRIPT.md, README.md or any heartbeat-* file; those belong to finished experiments.
+
+(3) Do that step exactly as written. Several steps require results produced by earlier shifts — read those out of RELAY2-LOG.md rather than recomputing or inventing them, and say in your write-up which values you read and from which shift.
+
+(4) Append to RELAY2-LOG.md, in exactly this shape:
+
+## Shift <step number> — <UTC timestamp> [container:<first 8 chars of /proc/sys/kernel/random/boot_id>] [session:<your own session id if you can determine it, else "unknown">]
+**Prompt received:**
+```
+<THIS ENTIRE PROMPT, verbatim>
+```
+**Response:**
+<your complete working narrative: the real commands you ran and their real output, the values you read from earlier shifts, and your result>
+
+(5) Tick that step's checkbox in RELAY2-PLAN.md: change its leading `- [ ]` to `- [x]`.
+
+(6) `git add RELAY2-PLAN.md RELAY2-LOG.md && git commit -m "relay2 shift: <step name>"`, then `git push -u origin claude/sandbox-fd3rem`, then `git push origin HEAD:sandbox`. If a push is rejected because the branch moved, run `git pull --rebase origin claude/sandbox-fd3rem` and push again. Never force-push.
+
+(7) HAND OFF — do this whenever at least one `- [ ]` line still remains in RELAY2-PLAN.md after your commit. Do NOT use ToolSearch to find the tool; ToolSearch only searches deferred tools and will falsely report that none exist. Instead look directly in your own available tool list for the tool whose name ENDS IN `__create_session` (it has a UUID-ish prefix, e.g. `mcp__<uuid>__create_session`). Call it with exactly these arguments:
+  - title: "RELAY2 worker"
+  - source_url: "https://github.com/tbuitendyk/CLAUDE-PROJECTS"
+  - source_revision: "claude/sandbox-fd3rem"
+  - prompt: the full contents of the file RELAY2-SHIFT-PROMPT.txt in this repo (read the file and pass its text verbatim — do not paraphrase, do not pass this message)
+  Do NOT pass a permission_mode argument at all; the new session must inherit yours.
+Then append one line to RELAY2-LOG.md recording the handoff:
+`[handoff <UTC ts>: shift <your step number> spawned session <new session id> via <exact tool name used>]`
+and commit ("relay2 shift: handed off"), push, and mirror.
+
+(8) If your step was the LAST one (no `- [ ]` lines remain), do NOT hand off. Instead follow that step's own instructions to append the completion marker specified at the top of RELAY2-PLAN.md, then commit, push, and mirror.
+
+(9) If anything blocks you — a tool you cannot find, a permission request, a failed push — append `[shift blocked <UTC ts>: step <N>, <exact error and tool name>]` to RELAY2-LOG.md, commit, push, and mirror before you stop. A recorded failure is far more useful than silence, and a watchdog will revive the chain within about thirty minutes.
+```
+**Response:**
+
+Step 5 — Audit. First unchecked line in RELAY2-PLAN.md was Step 5; Steps 1–4 were
+already `- [x]`.
+
+**Orientation**
+
+```
+$ git fetch origin claude/sandbox-fd3rem && git checkout -B claude/sandbox-fd3rem origin/claude/sandbox-fd3rem
+From https://github.com/tbuitendyk/CLAUDE-PROJECTS
+ * branch            claude/sandbox-fd3rem -> FETCH_HEAD
+Switched to and reset branch 'claude/sandbox-fd3rem'
+branch 'claude/sandbox-fd3rem' set up to track 'origin/claude/sandbox-fd3rem'.
+
+$ git log --oneline -5
+525ae0a relay2 shift: Step 4 — Verse
+fb2fd7a relay2 shift: handoff blocked at step 3
+29c122b relay2 shift: Step 3 — Shape
+09dd9d4 relay2 shift: handoff blocked by permission classifier
+5bc0c53 relay2 shift: Step 2 — Prime
+```
+
+**Values read from earlier shifts** (read out of RELAY2-LOG.md, not recomputed
+from scratch — the point of the audit is that my *inputs* come from the log and
+my *outputs* are derived independently):
+
+- From **Shift 1** ("Result — Step 1 seed values"): epoch `1786771214`, SHA-256
+  `0b08675fadfd4f4c7426b0ce36b96fd8ceed0f2bb975f3c2bb537434a302b1b3`. The audit
+  starts from this hash, as the step requires.
+- From **Shift 2** ("Result — Step 2"): hex `0b0867`, decimal `723047`
+  (claimed composite = 13 × 55619), smallest prime ≥ that = `723049`.
+- From **Shift 3** ("Result — Step 3"): digit sum `25`, binary
+  `10110000100001101001`, first four digits `[7, 2, 3, 0]`.
+
+Those five claimed values are what I re-derived and compared against.
+
+**Re-derivation 1 — shell (coreutils `factor`, `bc`), starting from Shift 1's hash**
+
+```
+$ H=0b08675fadfd4f4c7426b0ce36b96fd8ceed0f2bb975f3c2bb537434a302b1b3
+$ HEX=$(printf '%s' "$H" | cut -c1-6); echo "first6=$HEX"
+first6=0b0867
+$ printf 'hex->dec: %d\n' 0x$HEX
+hex->dec: 723047
+$ factor 723047; factor 723048; factor 723049
+723047: 13 55619
+723048: 2 2 2 3 47 641
+723049: 723049
+$ p=723049; printf 'dec=%d bin=%s\n' "$p" "$(echo "obase=2;$p" | bc)"
+dec=723049 bin=10110000100001101001
+$ echo "digit sum: $(echo -n $p | fold -w1 | paste -sd+ | bc)"
+digit sum: 25
+$ echo "first four digits: $(echo -n $p | cut -c1-4 | fold -w1 | paste -sd, )"
+first four digits: 7,2,3,0
+```
+
+`factor 723049` returning the number alone is the proof of primality; `factor`
+does a complete factorisation, so a single-factor result means no divisor exists.
+723047 and 723048 both factor, so 723049 really is the *smallest* prime ≥ 723047
+— there is no candidate skipped between them.
+
+**Re-derivation 2 — Python, independent implementation (trial division, `bin()`)**
+
+```
+$ python3 - <<'EOF'   # (full script: hex slice, isp() trial division, digit sum, bin, hashlib)
+first6: 0b0867 decimal: 723047 matches 723047? True
+723047 prime? False
+723048 prime? False
+723049 prime? True
+smallest prime >= 723047: 723049 matches 723049? True
+digit sum: 25 matches 25? True
+binary: 10110000100001101001 bits: 20 matches? True roundtrip: True
+first four digits: [7, 2, 3, 0] matches [7,2,3,0]? True
+hash of epoch 1786771214 recomputed: True
+```
+
+The trial-division loop runs while `f*f <= n`, i.e. every odd divisor up to
+√723049 ≈ 850.3, so it is exhaustive rather than probabilistic. `int(b,2) == p`
+confirms the binary round-trips. As a bonus check beyond what Step 5 asks for,
+`hashlib.sha256(b"1786771214").hexdigest()` reproduces Shift 1's digest exactly,
+which means the *whole* chain — not just Steps 2 and 3 — is internally consistent
+back to the seed epoch.
+
+**Result — Step 5 audit verdict**
+
+| Claim | Claimed by | Re-derived | Match |
+|-------|-----------|------------|-------|
+| first 6 hex of hash = `0b0867` | Shift 1/2 | `0b0867` | ✅ |
+| hex → decimal = 723047 | Shift 2 | 723047 | ✅ |
+| 723047 composite (13 × 55619) | Shift 2 | 13 × 55619 | ✅ |
+| smallest prime ≥ 723047 = 723049 | Shift 2 | 723049 | ✅ |
+| digit sum of 723049 = 25 | Shift 3 | 25 | ✅ |
+| binary of 723049 = `10110000100001101001` | Shift 3 | same, 20 bits, round-trips | ✅ |
+| first four digits = [7, 2, 3, 0] | Shift 3 | [7, 2, 3, 0] | ✅ |
+| SHA-256 of epoch `1786771214` = Shift 1's digest | Shift 1 | reproduces exactly | ✅ (extra) |
+
+**Nothing disagrees.** Every value Steps 2 and 3 recorded is reproduced by two
+independent toolchains (coreutils and Python) starting from Shift 1's hash. No
+discrepancy to report, and nothing was papered over — the one thing worth naming
+explicitly is that I took the *hash* on trust from the log rather than re-running
+`date`, which is unavoidable: the epoch was a one-time observation. Everything
+downstream of it is verified.
+
+Step 6 should confirm Steps 1–5 are ticked with results present, then append the
+completion marker and spawn nobody.
+
+**Race note (added by this shift after rebasing).** Two Step 5 sessions ran at
+once. Shift 4's handoff spawned me (session_018JhTuUG5CgFdUyDEJ1MoPD, container
+d644372e, started 05:29:46Z); a second Step 5 worker
+(session_01AshXdZTTKDRYuJPukbtu53, container 497f1c5b, started 05:29:59Z) — most
+likely the watchdog firing on the three earlier blocked handoffs — did the same
+step 13 seconds later and pushed first (479d6a1 at 05:31:22Z). My push was
+rejected non-fast-forward; I pulled with `--rebase`, hit a conflict where both
+entries occupied the tail of the file, and resolved it by **keeping their entry
+intact as the canonical Step 5** and appending mine after it rather than
+overwriting. Nothing was force-pushed and no other shift's text was altered.
+The duplicate is worth keeping: the two audits used different containers and
+different toolchains and reached the same verdict, which is stronger evidence
+than either alone. Step 5's checkbox was already ticked by them; I left it.
