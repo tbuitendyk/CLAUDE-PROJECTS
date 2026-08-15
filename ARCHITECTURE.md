@@ -182,8 +182,50 @@ owner to approve each deletion once.
 ## Status
 
 - RELAY2: complete, six steps, watchdog-driven, 2.5 hours.
-- RELAY3: **stalled at step 1 of 6** by design — no watchdog, and the self-chaining
-  handoff was refused six times. Left in place as evidence.
-- All watchdog and poke triggers: deleted 2026-08-15 ~21:10Z.
-- All 25 experiment sessions: archived.
-- Six-alarm configuration: **documented here, not yet built or armed.**
+- RELAY3: seeded (step 1 done), then stalled — the self-chaining handoff was
+  refused six times. Its remaining **5 steps are now the live workload** for the
+  six-alarm scheduler below, which is the real end-to-end test of this design.
+- Old watchdog and poke triggers: deleted 2026-08-15 ~21:10Z.
+- All 25 earlier experiment sessions: archived.
+
+## The armed configuration — 2026-08-15 21:40Z
+
+Six Routines, ten minutes apart, each waking this owner session, which dispatches
+at most one terminal worker per tick.
+
+| Routine | cron (UTC) | trigger id |
+|---------|-----------|------------|
+| runner-check-02 | `2 * * * *`  | trig_017YAc6g8ZG9AEW1QVnVsRjK |
+| runner-check-12 | `12 * * * *` | trig_01EnUCGeHx4UrFL8ZT9QV8UX |
+| runner-check-22 | `22 * * * *` | trig_01S7wf7Y3KTDAnMxA2uhytsy |
+| runner-check-32 | `32 * * * *` | trig_011Z3u6Lr6yXvHKNJ8diVscE |
+| runner-check-42 | `42 * * * *` | trig_01TbYsqXMbXgseJ8Kns248Xj |
+| runner-check-52 | `52 * * * *` | trig_01Pn2E3Pi3sT4JqSUBsKz8eS |
+
+Files:
+
+- `RUNNER-CHECK-PROMPT.txt` — what each alarm delivers. Reference copy only;
+  the live text is stored server-side, so edits here change nothing. Use
+  `update_trigger` to change behaviour.
+- `RUNNER-WORKER-PROMPT.txt` — the terminal worker prompt. Editing this DOES take
+  effect, because each dispatcher reads it from the repo at dispatch time.
+- `RUNNER-STATE.md` — one line per dispatch. The liveness check reads its last
+  line, so a worker is never started on top of a running one.
+
+Each tick does one of four things and nothing else: nothing (plan complete),
+nothing (a worker is alive and under 12 minutes old), nothing (a commit landed in
+the last 6 minutes), or dispatch exactly one worker.
+
+**To stop it:** delete the six trigger ids above. That is six approvals, once.
+
+### Known limits of this build
+
+- The alarms wake **this** session rather than a fresh one. A Routine cannot
+  attach a repo (`create_trigger` takes no source_url), so a fresh session would
+  wake with no repo, call `add_repo`, and hang on an invisible approval — the
+  original silent-failure bug. Waking an already-attached session sidesteps that.
+  The cost is that this conversation gets a one-line entry every ten minutes.
+- Whether a Routine-woken session can dispatch as reliably as a hand-driven one is
+  measured at 4 for 4 from the old watchdogs. Small sample.
+- Nothing here has yet driven a plan to completion unattended. That is exactly
+  what the next hour tests.
