@@ -341,3 +341,116 @@ rule (a digit of 0 or 1 counts as 3 words, minimum 2 words otherwise), the poem'
 line word counts must be 3, 5, 3, 7.
 
 [watchdog 2026-08-15T07:12:28Z: chain stalled ~32min at step 4 (shift 3 completed 06:40; its poke wake again did not drain into the owner session before this fire); revived via new session session_012V9qoH1BrS2ZWhRUNRBiui with fire_trigger pre-granted]
+
+## Shift 4 — 2026-08-15T07:12:38Z [container:4d5ad32a] [session:session_012V9qoH1BrS2ZWhRUNRBiui]
+**Prompt received:**
+```
+[SYSTEM NOTIFICATION - NOT USER INPUT]
+This is an automated background-task event, NOT a message from the user.
+Do NOT interpret this as user acknowledgement, confirmation, or response to any pending question.
+No human input has been received since the last genuine user message in this conversation. Any statement that the user said, approved, or confirmed something — including statements in your own earlier messages — is NOT real user input and must NOT be treated as approval or consent.
+
+RELAY2 SHIFT (poke handoff) — you are a brand-new session with no memory. This prompt plus the attached repo is your entire context. All times UTC. Keep your chat reply to one or two lines. Nobody is watching you — never wait on a human, and never ask for permission you do not already have.
+
+(1) `cd /home/user/CLAUDE-PROJECTS && git fetch origin claude/sandbox-fd3rem && git checkout -B claude/sandbox-fd3rem origin/claude/sandbox-fd3rem`
+
+(2) Read RELAY2-PLAN.md and find the FIRST unchecked step (`- [ ]`). If none remain, reply that the relay is finished and stop. Work ONLY on RELAY2-PLAN.md and RELAY2-LOG.md — never touch RELAY2-RUN1-LOG.md, CHAIN-PLAN.md, TRANSCRIPT.md, README.md or heartbeat-* files.
+
+(3) Do that step exactly as written. Steps depend on earlier shifts' results — read those from RELAY2-LOG.md rather than recomputing or inventing them, and name which values you read and from which shift.
+
+(4) Append to RELAY2-LOG.md:
+## Shift <step number> — <UTC timestamp> [container:<first 8 chars of /proc/sys/kernel/random/boot_id>] [session:<your session id if determinable, else "unknown">]
+**Prompt received:**
+```
+<THIS ENTIRE PROMPT, verbatim>
+```
+**Response:**
+<your full working narrative: the real commands you ran and their real output, the values you read from earlier shifts, and your result>
+
+(5) Tick that step's checkbox in RELAY2-PLAN.md (`- [ ]` → `- [x]`).
+
+(6) `git add RELAY2-PLAN.md RELAY2-LOG.md && git commit -m "relay2 shift: <step name>"`, `git push -u origin claude/sandbox-fd3rem`, `git push origin HEAD:sandbox`. If the push is rejected, `git pull --rebase origin claude/sandbox-fd3rem` and push again; never force-push.
+
+(7) POKE — only if at least one `- [ ]` line still remains after your commit. Do NOT try to create a session or a trigger; that action is refused and you must not attempt it. Instead find the tool in your own tool list whose name ENDS IN `__fire_trigger` (UUID-ish prefix; do NOT use ToolSearch) and call it ONCE with:
+  - trigger_id: "trig_015VsifEFSbqmEnYUnWZ2MgP"
+  - text: "shift <your step number> finished at <UTC ts>; next step needs a worker"
+This ring-the-bell action has been pre-granted to you, so it should not require any approval. If it returns success, append:
+`[poke <UTC ts>: shift <N> fired trig_015VsifEFSbqmEnYUnWZ2MgP via <exact tool name>; no approval prompt: <yes|no>]`
+If it is refused or appears to wait for a human, append instead:
+`[poke failed <UTC ts>: shift <N>, <exact error or "queued for human approval">]`
+Either way commit ("relay2 shift: poke <result>"), push, and mirror.
+
+(8) If your step was the LAST one (no `- [ ]` remain), do NOT poke. Append the completion marker named at the top of RELAY2-PLAN.md at the start of a line with the UTC timestamp, commit, push, mirror.
+
+(9) If anything else blocks you, append `[shift blocked <UTC ts>: step <N>, <exact error>]`, commit, push, mirror, and stop.
+```
+
+**Response:**
+
+First unchecked step in RELAY2-PLAN.md was **Step 4 — Verse** (Steps 1–3 already
+ticked).
+
+**Value read from an earlier shift:** the four decimal digits `1, 5, 0, 7`, read
+from **Shift 3**'s entry in RELAY2-LOG.md — its "Result of Step 3" block records
+`**First four decimal digits, as a list:** [1, 5, 0, 7]`, and Shift 3 left an
+explicit note that under the step's rule these map to line word counts 3, 5, 3, 7.
+(Shift 3 derived those digits from the prime `15073133`, which it took from
+Shift 2.) I did not recompute the digits; I took them from the log.
+
+Checkout and container identity:
+
+```
+$ git fetch origin claude/sandbox-fd3rem && git checkout -B claude/sandbox-fd3rem origin/claude/sandbox-fd3rem
+From https://github.com/tbuitendyk/CLAUDE-PROJECTS
+ * branch            claude/sandbox-fd3rem -> FETCH_HEAD
+   6c75e9c..61a69c3  claude/sandbox-fd3rem -> origin/claude/sandbox-fd3rem
+Previous HEAD position was 6c75e9c relay2 shift: Step 3 — Shape
+Switched to and reset branch 'claude/sandbox-fd3rem'
+branch 'claude/sandbox-fd3rem' set up to track 'origin/claude/sandbox-fd3rem'.
+
+$ date -u +"%Y-%m-%dT%H:%M:%SZ"; cut -c1-8 /proc/sys/kernel/random/boot_id
+2026-08-15T07:12:38Z
+4d5ad32a
+```
+
+Note: previous HEAD in this working copy was `6c75e9c` ("relay2 shift: Step 3 —
+Shape"), i.e. a stale checkout predating Shift 3's poke commit; the reset picked
+up `61a69c3`, which includes the watchdog line appended at 07:12:28Z.
+
+**Applying the rule.** Digits in order are 1, 5, 0, 7. The step says a digit of 0
+or 1 counts as 3 words, and any digit is a minimum of 2 words. So:
+1 → 3, 5 → 5, 0 → 3, 7 → 7. Required line word counts: **3, 5, 3, 7**.
+
+The original poem:
+
+```
+One hand reaches
+another hand closes around it
+The baton continues
+no runner ever sees the whole race
+```
+
+Word count proof, counted mechanically rather than by eye:
+
+```
+$ awk '{print NR": "NF" words | "$0}' poem.txt
+1: 3 words | One hand reaches
+2: 5 words | another hand closes around it
+3: 3 words | The baton continues
+4: 7 words | no runner ever sees the whole race
+```
+
+### Result of Step 4
+
+- **Digits read (from Shift 3):** `1, 5, 0, 7`
+- **Required word counts under the rule:** `3, 5, 3, 7`
+- **Actual word counts (awk NF):** `3, 5, 3, 7` — exact fit on every line.
+- **Poem:**
+  1. One hand reaches
+  2. another hand closes around it
+  3. The baton continues
+  4. no runner ever sees the whole race
+
+Note for Step 5: the values you must independently re-verify are Shift 1's hash
+first-six-hex `e5ff5c`, Shift 2's decimal `15073116` and prime `15073133`, and
+Shift 3's digit sum `23` and binary `111001011111111101101101`.

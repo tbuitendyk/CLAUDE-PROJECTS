@@ -24,7 +24,7 @@ grep the log for a banner (the log contains prompt text and would false-positive
 - [x] Step 3 — Shape. Read Step 2's prime from the log. Compute its digit sum and
   its binary representation (`printf '%d %s\n' "$p" "$(echo "obase=2;$p" | bc)"`).
   Record both, plus the prime's first four decimal digits as a list.
-- [ ] Step 4 — Verse. Read Step 3's four digits from the log. Write an original
+- [x] Step 4 — Verse. Read Step 3's four digits from the log. Write an original
   four-line poem about relays or continuity in which line N has exactly as many
   words as the Nth digit (treat a digit of 0 or 1 as 3 words, and any digit as a
   minimum of 2 words). Record the poem and a per-line word count proving the fit.
