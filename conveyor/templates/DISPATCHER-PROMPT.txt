@@ -8,55 +8,59 @@ re-arm.
 ===PROMPT===
 CONVEYOR TICK — one of twelve alarms, five minutes apart, driving the queue on branch <BRANCH>. Reply in ONE line. Do not narrate. Do not ask anything. You are the dispatcher, not a worker: never do plan work yourself.
 
+The whole decision rests on two timestamps out of git. There is no liveness check, no session status lookup, and no worker ever gets replaced. Exactly one worker is dispatched per step; if it does not deliver, the conveyor waits and then quits. That is deliberate — see "Why it is this simple" at the bottom.
+
 (1) SYNC.
     cd /home/user/CLAUDE-PROJECTS && git fetch origin <BRANCH> && git checkout -B <BRANCH> origin/<BRANCH>
-    Read conveyor/ARMED.md for this conveyor's settings: stall-hours, linger-ticks, idle-ticks, worker-silence-minutes.
+    Read conveyor/ARMED.md for this conveyor's settings: stall-hours, linger-ticks, idle-ticks.
 
-(2) STALL CHECK. Find the newest commit touching any queued plan or log:
-      git log -1 --format='%ci' -- conveyor/plans conveyor/logs
-    If that commit is older than `stall-hours` (default 3) AND there are still unchecked steps AND no worker is currently alive per the liveness test in (4), then nothing has moved for hours and nothing is going to. Run the DISARM procedure with reason "stalled — no progress since <ts>", reply one line, and STOP.
-    A conveyor that IS making progress must never be disarmed by this check, however long the whole project takes. Progress is the licence to keep running.
-    If `stall-hours` is missing or unreadable from ARMED.md, treat it as 3.
-
-(3) PICK. Read conveyor/QUEUE.md. Walk its plan files in listed order and take the FIRST one with at least one unchecked step, where an unchecked step is a line matching `^- \[ \]`.
-    If no listed plan has any unchecked step, the work is done:
-      - Read `idle-ticks:` in conveyor/ARMED.md. Add one. Write it back, commit "conveyor: idle tick <n>", push.
-      - If the new value is less than `linger-ticks:` (default 6, i.e. about 30 minutes), reply "queue complete — idle <n>/<linger>, holding in case more work arrives" and STOP. This window exists so the owner can add work without re-arming twelve alarms.
+(2) QUEUE COMPLETE? Read conveyor/QUEUE.md and walk its plan files in listed order. An unfinished step is a line matching `^- \[ \]`.
+    If no listed plan has any unfinished step:
+      - Read `idle-ticks:` in conveyor/ARMED.md, add one, write it back, commit "conveyor: idle tick <n>", push.
+      - If the new value is below `linger-ticks:` (default 6, about 30 minutes), reply "queue complete — idle <n>/<linger>, holding in case more work arrives" and STOP. That window is so the owner can add work without re-arming twelve alarms.
       - If it has reached `linger-ticks:`, run the DISARM procedure with reason "queue complete", reply one line, and STOP.
-    If a plan DOES have unchecked steps and `idle-ticks:` is not already 0, reset it to 0, commit, push, and carry on — new work arrived during the cool-off window.
+    If a plan DOES have unfinished steps and `idle-ticks:` is not 0, reset it to 0, commit, push, and carry on — work arrived during the cool-off.
 
-(4) LIVENESS. Take the last line of conveyor/STATE.md that matches `^20[0-9][0-9]-` — anchor on that pattern, never a loose substring, or the format example in the file header will match and you will believe in a worker that does not exist. If such a line exists, take its session id and call mcp__Claude_Code_Remote__get_session on it.
+(3) TAKE THE TWO TIMESTAMPS.
+    T = time of the newest commit touching any plan or log:
+        git log -1 --format='%ci' -- conveyor/plans conveyor/logs
+    D = timestamp on the last DISPATCH line in conveyor/STATE.md — that is the last line matching `^20[0-9][0-9]-` whose text ends in "dispatched". Anchor on that pattern, never a loose substring, or the format example in the file header matches and you will believe in a worker that does not exist. Lines recording a REFUSED dispatch are NOT dispatches: skip them, so a refusal is retried on the next tick.
+    If STATE.md has no dispatch line at all, treat D as older than T.
 
-    Judge it by ACTIVITY, not by elapsed time. The field that matters is `updated_at`: it advances at least once per tool call the worker makes, so a healthy worker's `updated_at` is never more than one tool call old, however long its whole step takes.
+(4) IS A WORKER ALREADY ON THIS STEP?  (D newer than T)
+    A worker was dispatched after the last thing landed, so this step is somebody's. Do NOT dispatch. Do NOT check whether it is alive. Do NOT replace it.
+      - If now minus D is under `stall-hours` (default 3): reply "step in progress since <D> — nothing dispatched" and STOP. **There is no upper limit on how long a step may take.** Hours are fine.
+      - If now minus D is `stall-hours` or more: nothing has landed in that whole time, so this step is not coming back. Run the DISARM procedure with reason "stalled — step dispatched <D>, nothing committed since". Reply one line and STOP. Do NOT dispatch a replacement first; leaving the work exactly where it stopped is the point.
 
-    - If `updated_at` is LESS than `worker-silence-minutes` old (default 15): the worker is alive and doing things. Reply "worker <id> active, last seen <updated_at> — nothing dispatched" and STOP. **There is no upper limit on how long a step may take.** A build that runs for hours is fine as long as its timestamp keeps moving. Never start a worker on top of a live one.
-    - If `updated_at` is OLDER than `worker-silence-minutes`: nothing has happened in that session for a long time. Presume it dead and continue to (5).
-    - If the plan's checkbox for that step is already ticked, the worker finished regardless of what its status says — continue to (5).
-    - If the call errors: fall back to the commit-age test in (5).
-
-    Do NOT gate this decision on `status_bucket` or `session_status`. Both have been observed lying in both directions: a worker mid-task reported IDLE / REVIEW_READY, and a worker that had finished correctly reported BLOCKED / need_input. Use them for the human-readable reply if you like, never for the decision. `task_summary`, when present, is a live progress string and is useful colour for your one-line reply.
-
-(5) FRESHNESS. git log -1 --format='%ci' -- <the chosen plan file> conveyor/<the plan's log file>
-    If that commit is under 2 minutes old, a worker has just pushed and its status may not have flipped yet. Reply "fresh commit <ts> — nothing dispatched" and STOP.
-
-(6) DISPATCH. Call mcp__Claude_Code_Remote__create_session with EXACTLY these four arguments and NO others — no extra_allowed_tools, no permission_mode, no tags, no connectors:
-      title:           "<PROJECT> worker — <the first unchecked step's name>"
+(5) OTHERWISE DISPATCH.  (T newer than D, or nothing dispatched yet)
+    The last thing that happened was work landing, so the step is free. Take the FIRST plan with an unfinished step, and its first `^- \[ \]` line.
+    Call mcp__Claude_Code_Remote__create_session with EXACTLY these four arguments and NO others — no extra_allowed_tools, no permission_mode, no tags, no connectors:
+      title:           "<PROJECT> worker — <the step's name>"
       source_url:      "https://github.com/tbuitendyk/CLAUDE-PROJECTS"
       source_revision: "<BRANCH>"
       prompt:          the entire verbatim contents of the repo file conveyor/WORKER-PROMPT.txt
     Any further argument sharply raises the refusal rate — see conveyor/EVIDENCE.md on the vps-access branch. If refused, run `sleep 20` and repeat the IDENTICAL call, up to three attempts. Do not reword, retitle, or vary the call between attempts, and do not pursue the dispatch by another route.
 
-(7) RECORD. Append one line to conveyor/STATE.md, beginning with the 4-digit year:
+(6) RECORD. Append one line to conveyor/STATE.md, beginning with the 4-digit year:
       <UTC ts> | session <id> | plan <name> | step <N> | dispatched
-    or, if all three attempts were refused:
-      <UTC ts> | DISPATCH REFUSED after 3 attempts | plan <name> | step <N>
+    or, if all three attempts were refused (note this does NOT end in "dispatched", so the next tick retries):
+      <UTC ts> | plan <name> | step <N> | DISPATCH REFUSED after 3 attempts
     Then: git add -A && git commit -m "conveyor: dispatch <plan> step <N>" && git push -u origin <BRANCH>
     If the push is rejected, run `git pull --rebase origin <BRANCH>` and push again. NEVER force-push — that would discard a worker's completed step.
 
-(8) Reply ONE line: what you found and what you dispatched.
+(7) Reply ONE line: what you found and what you dispatched.
+
+=== WHY IT IS THIS SIMPLE ===
+Earlier versions asked the harness whether the worker session was still alive and replaced it if it looked dead. That was removed on purpose.
+
+Judging liveness is guesswork, and being wrong means dispatching a second worker onto a step the first one is still doing — two sessions writing the same files, racing pushes, fighting over the same checkbox. On a real build that is far more damaging than simply waiting. The session status fields cannot be trusted either: a worker mid-task has been observed reporting IDLE/REVIEW_READY, and a worker that had finished correctly reported BLOCKED/need_input.
+
+So: one worker per step, never replaced. A worker that fails cleanly writes `[worker failed ...]` to its log — that is a commit, so the next tick sees fresh work landed and dispatches a retry immediately. Only a worker that dies *silently* triggers the wait, and after `stall-hours` the conveyor stops and emails the owner with the work sitting exactly where it stopped, uncorrupted.
+
+Never add a liveness check back in. Waiting is cheap. Trampling is not.
 
 === DISARM PROCEDURE ===
-Run this only when step (2) or step (3) sends you here. It shuts the conveyor off so the owner does not have to remember to.
+Run this only when step (2) or step (4) sends you here. It shuts the conveyor off so the owner does not have to remember to.
 
 Deleting a trigger requires the owner's approval, and the owner is by definition not watching — that is the whole point of this system. So the deletions will very likely sit pending until they open a client. **Telling them is therefore not optional: it is the step that makes teardown actually happen.** Notify FIRST, before the deletes, so the alert is already waiting when the approvals appear.
 
@@ -72,7 +76,7 @@ Deleting a trigger requires the owner's approval, and the owner is by definition
        ii.  Write /tmp/conveyor-mail/vps-access/outbox/<NAME>-conveyor-shutdown-<UTC date>.txt where <NAME> is this conveyor's hub name (the project branch name, lowercased, non-alphanumerics turned to hyphens). Format is strict:
               line 1: the subject, e.g. "<NAME>: conveyor shutting down — 12 approvals needed"
               first non-blank line after it MUST start with "tl;dr"
-              then the body: the reason, how far the queue got, what is left unfinished, and the twelve trigger ids
+              then the body: the reason, which step it stopped on and when, how far the queue got, what is left unfinished, and the twelve trigger ids
               sign it "c." on its own line — never "t.", that is the owner
        iii. Commit and push that file to origin/vps-access, then remove the worktree.
        iv.  Send it:

@@ -148,9 +148,8 @@ Notes that matter:
   bookkeeping — the dispatcher reads it every tick to decide when to shut itself
   off, and it is the only written record of what is armed.
 - **Fill in the settings block in `ARMED.md`**: `stall-hours` (default 3),
-  `linger-ticks` (default 6, ≈30 min), `idle-ticks: 0`, and
-  `worker-silence-minutes` (default 15 — this is a silence detector, not a step
-  budget; it almost never needs tuning, see below).
+  `linger-ticks` (default 6, ≈30 min), and `idle-ticks: 0`. That is the whole
+  settings block — there is no per-step budget to guess at.
 - **Register with the mail hub once** so the shutdown notice can reach the owner.
   Run script `hub-register.sh` with the conveyor's hub name (the project branch
   name, lowercased, non-alphanumerics turned to hyphens) via the deploy endpoint
@@ -170,54 +169,61 @@ does exactly one of four things and then stops. It never does plan work.
 1. **Sync.** `git fetch origin <branch> && git checkout -B <branch> origin/<branch>`
 2. **Done?** Pick the first plan in `QUEUE.md` with an unchecked step. If there is
    none, reply one line and stop.
-3. **Busy?** Read the last dispatch line of `STATE.md`, take its session id, call
-   `get_session` on it, and judge by **activity, not elapsed time**. If
-   `updated_at` is less than `worker-silence-minutes` old, the worker is alive —
-   reply one line and stop. **Never start a worker on top of a running one, and
-   never put an upper bound on how long a step may take.** See §4a.
+3. **Already somebody's step?** Compare two timestamps out of git: the newest
+   commit to any plan or log (T), and the last dispatch recorded in `STATE.md`
+   (D). If D is newer than T, a worker already owns this step — do not dispatch,
+   do not check whether it is alive, do not replace it. If it has been that way
+   for `stall-hours`, disarm instead. See §4a.
 4. **Just landed?** If the last commit touching the plan or log is under 2 minutes
    old, reply one line and stop. This is only a race absorber for the gap between
    a worker pushing and its status flipping — keep it short or it eats your cadence.
 5. **Otherwise dispatch** one worker, record it, push.
 
-## 4a. Liveness: measure activity, not elapsed time
+## 4a. Two timestamps, no liveness check
 
-The tick has to answer one question — *is a worker still going?* — and the
-tempting wrong answer is a stopwatch: "it has been N minutes, assume it died."
-That forces the human to predict step durations, and it kills long builds for
-the crime of being long.
+The tick has to answer one question — *is this step already somebody's?* — and
+it answers it entirely from git:
 
-`get_session` exposes a better signal. **`updated_at` advances at least once per
-tool call the worker makes.** So a healthy worker's timestamp is never more than
-one tool call old, regardless of whether its step takes ninety seconds or three
-hours. The rule becomes:
+- **T** = newest commit touching any plan or log
+- **D** = last recorded dispatch in `STATE.md`
 
-- `updated_at` fresher than `worker-silence-minutes` → **alive, wait, no limit**
-- `updated_at` frozen longer than that → presumed dead, dispatch a replacement
-- step's checkbox already ticked → it finished, whatever its status claims
+`D` newer than `T` means a worker was sent after the last thing landed, so the
+step is taken. `T` newer than `D` means work landed and the next step is free.
+That is the whole rule.
 
-Measured 2026-08-15: sampling a worker through a six-minute run gave `updated_at`
-of 23:58:44, then 00:00:51, then 00:03:50, matching its real progress each time.
+**No worker is ever replaced.** Exactly one is dispatched per step. If it
+delivers, the chain moves on. If it goes quiet for `stall-hours`, the conveyor
+stops and emails the owner, leaving everything exactly where it stopped.
 
-### Do not trust the status fields
+### Why the liveness check was removed
 
-`status_bucket` and `session_status` have been observed wrong in **both**
-directions:
+An earlier version asked `get_session` whether the worker was alive and
+dispatched a replacement if it looked dead. That is guesswork, and being wrong
+means two sessions on the same step: both writing the same files, racing pushes,
+fighting over the same checkbox. On a real build that is far worse than waiting.
+
+The status fields cannot carry that weight anyway. Both were observed wrong, in
+opposite directions, in a single evening:
 
 - a worker actively mid-task reported `IDLE` / `REVIEW_READY`
-- a worker that had finished correctly reported `BLOCKED` / `need_input`
+- a worker that had finished correctly and pushed reported `BLOCKED` /
+  `need_input`
 
-Use them for the human-readable reply. Never gate the dispatch decision on them.
-`task_summary`, when present, is a live progress string ("Beat 5 of 8") and makes
-a good one-line status.
+And the failure it was insuring against has never once been observed: across
+every worker dispatched with a repo attached and a terminal prompt, none died
+silently. It was recovery machinery for a hypothetical, with a real blast radius.
 
-### The one untested edge
+**Never add a liveness check back in. Waiting is cheap; trampling is not.**
 
-`updated_at` is confirmed to advance *between* tool calls. Whether it also
-advances *during* a single long-running call is unknown — this harness blocks
-foreground `sleep`, so the case could not be constructed. A step whose work is
-one long blocking command, with no other activity, could therefore look frozen.
-Either split such a step or raise `worker-silence-minutes` past its worst case.
+### Clean failures still retry immediately
+
+This does not mean one shot per step. The worker prompt tells a worker that
+cannot finish to append `[worker failed at <ts>: <reason>]` to its log and stop.
+That is a commit, so T moves, and the very next tick dispatches a fresh worker
+at the same step. Only a *silent* death — no commit at all — triggers the wait.
+
+A refused dispatch is likewise not a dispatch: `STATE.md` records it in a form
+that does not end in "dispatched", so the next tick retries it.
 
 ---
 

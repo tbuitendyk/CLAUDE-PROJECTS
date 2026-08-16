@@ -17,9 +17,7 @@ this says how to operate it.
    this the shutdown email cannot be delivered. Idempotent.
 6. Create twelve triggers, minutes `0 5 10 15 20 25 30 35 40 45 50 55`.
 7. Write all twelve ids into `ARMED.md` and fill the settings block —
-   `stall-hours: 3`, `linger-ticks: 6`, `idle-ticks: 0`,
-   `worker-silence-minutes: 15`. The defaults are almost always right. Commit,
-   push.
+   `stall-hours: 3`, `linger-ticks: 6`, `idle-ticks: 0`. Commit, push.
 8. Confirm with `list_triggers` that twelve exist and their `next_run_at` values
    are spread five minutes apart. If they are bunched, the cron strings were
    wrong — fix before walking away.
@@ -27,10 +25,9 @@ this says how to operate it.
 **Do not tell the human it is running until step 8 passes.** A conveyor that was
 never armed looks identical to one that is idle.
 
-**You do not need to ask how long steps take.** Liveness is measured by worker
-activity, not elapsed time, so long steps are safe by default. The only thing
-worth asking about is whether any step is a *single* blocking command longer
-than fifteen minutes — see the note on `worker-silence-minutes` in `ARMED.md`.
+**You do not need to ask how long steps take.** Nothing caps step duration. A
+step is left alone until it delivers or until `stall-hours` passes with nothing
+committed at all.
 
 ---
 
@@ -87,11 +84,10 @@ until `list_triggers` is clean.
 ### Ticks arrive but nothing ever dispatches
 Check in this order:
 1. Is the queue actually finished? `grep -c '^- \[ \]'` on each plan.
-2. Is the liveness check wedged on a stale session id? Compare that session's
-   `updated_at` with now. If it is hours old, `worker-silence-minutes` should
-   have released it long ago — if it hasn't, the tick is judging by
-   `status_bucket` instead of `updated_at`, which is the classic bug here.
-   `status_bucket` has been seen reporting `WORKING` and `IDLE` both wrongly.
+2. Is a dispatch recorded as newer than the last plan/log commit? Then the tick
+   correctly believes a worker owns the step and is waiting it out. Check how old
+   that dispatch is — if it is past `stall-hours`, the tick should have disarmed;
+   if it hasn't, the tick logic is wrong.
 3. Is the staleness gate too wide? At five-minute spacing anything above about
    3 minutes starts eating ticks.
 4. Permission mode.
@@ -107,14 +103,18 @@ Read the refusal text. If it is `Blocked by classifier`:
 
 ### A worker hangs forever
 Almost always spawned without `source_url`/`source_revision`, so it called
-`add_repo` and is blocked on an approval nobody can see. Confirm with
-`get_session` — look for `status_detail` mentioning a permission wait. Archive it
-and fix the dispatch call.
+`add_repo` and is blocked on an approval nobody can see. To confirm while
+debugging you may call `get_session` by hand and look for `status_detail`
+mentioning a permission wait — that is a diagnostic, not something a tick should
+ever do. Archive it and fix the dispatch call.
 
 ### Two workers did the same step
-The liveness check failed. Verify the dispatcher reads the last `STATE.md` line
-by anchoring on `^20[0-9][0-9]-` and not a loose substring, and that it actually
-calls `get_session` rather than inferring from commit age.
+The dispatch record was missing when the second tick ran — this cannot happen if
+`STATE.md` is written correctly. Verify the tick (a) anchors on `^20[0-9][0-9]-`
+rather than a loose substring when finding the last dispatch line, (b) skips
+REFUSED lines when looking for the last *dispatch*, and (c) commits and pushes
+that line before ending its turn. An unrecorded or unpushed dispatch is invisible
+to every later tick.
 
 ### The plan reports complete but isn't
 Something grepped a log for a completion banner and matched prompt text echoed
@@ -139,20 +139,14 @@ Defaults, and what moves them:
 | Knob | Default | Raise it if | Lower it if |
 |---|---|---|---|
 | alarm spacing | 5 min | ticks feel wasteful | you need tighter latency (needs more alarms) |
-| `worker-silence-minutes` | 15 | a step is one long blocking command | you want dead workers replaced sooner |
-| `stall-hours` | 3 | a single step can legitimately be silent for longer | you want a wedged run cleaned up sooner |
+| `stall-hours` | 3 | a single step can legitimately deliver nothing for longer | you want a wedged run cleaned up sooner |
 | `linger-ticks` | 6 (≈30 min) | more work is likely to arrive | you want the alarms gone promptly |
 | just-committed gate | 2 min | you see duplicate dispatches | dead air is eating the run |
 | retry attempts | 3 | refusals are frequent | — |
 
-`stall-hours` and `worker-silence-minutes` measure different things and are
-easily confused. `worker-silence-minutes` is about **one worker** — how long its
-activity timestamp may be frozen before that session is presumed dead and
-replaced. `stall-hours` is about **the whole conveyor** — how long the project can
-show no committed progress before the run is abandoned. A conveyor can replace
-many dead workers and stay alive; it dies only when nothing lands for hours.
-
-Both are silence detectors, and neither is a budget. Nothing in this system caps
+`stall-hours` is the only timer that touches step execution, and it is a silence
+detector rather than a budget: it measures how long since anything was
+*committed*, not how long a step has been running. Nothing in this system caps
 how long work is allowed to take.
 
 At the original 10-minute spacing the just-committed gate was 6 minutes and cost

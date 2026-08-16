@@ -15,15 +15,19 @@ written record of what is armed.
     stall-hours: 3
     linger-ticks: 6
     idle-ticks: 0
-    worker-silence-minutes: 15
 
-**`stall-hours`** — the shutdown backstop. If nothing has been committed to any
-queued plan or log for this many hours, there are still unfinished steps, and no
-worker is alive, the conveyor is wedged and the next tick disarms it.
+**`stall-hours`** — how long a step may go without delivering before the whole
+conveyor gives up. Default 3.
 
-This is a **stall** timeout, not a wall-clock deadline. A conveyor that keeps
-making progress runs as long as the work takes — all day, overnight, however
-long. Progress is the licence to keep running. Only silence ends it.
+The clock starts when a worker is dispatched and is reset by any commit to a
+plan or log. So a step that keeps working — however long it takes — is never
+disturbed, and a step that has produced nothing for three hours ends the run.
+
+**Nothing caps how long work may take.** There is no per-step budget, no
+liveness check, and no worker is ever replaced. Exactly one worker is dispatched
+per step. If it delivers, the next step goes out. If it dies silently, the
+conveyor waits `stall-hours`, then stops and emails the owner with the work
+sitting exactly where it stopped.
 
 **`linger-ticks`** — how many consecutive "nothing left to do" ticks to wait
 before disarming once the queue is complete. Default 6, i.e. about 30 minutes.
@@ -32,27 +36,6 @@ alarms and approving twelve prompts. See "Adding work" in `PROTOCOL.md`.
 
 **`idle-ticks`** — the running count. The dispatcher increments it when the
 queue is complete and resets it to 0 the moment new work appears.
-
-**`worker-silence-minutes`** — how long a worker's activity timestamp
-(`updated_at`) may be **frozen** before it is presumed dead. Default 15.
-
-Read that carefully, because it is not a step budget. `updated_at` advances at
-least once per tool call the worker makes, so a healthy worker's timestamp is
-never more than one tool call old — **no matter how long its whole step takes.**
-A three-hour build that keeps doing things is never touched. Only a session that
-has genuinely gone quiet gets replaced. You do not have to guess step durations
-in advance, and this normally needs no tuning at all.
-
-Measured 2026-08-15: a worker's `updated_at` advanced at every sample while it
-worked (23:58:44 → 00:00:51 → 00:03:50), tracking real progress.
-
-The one case that needs it raised: a step that makes a **single** tool call
-lasting longer than this, with no other activity — one long `make`, say.
-`updated_at` is confirmed to advance *between* tool calls; whether it also
-advances *during* one long call is untested, because this harness blocks
-foreground `sleep` and the case could not be constructed. If a step has one very
-long blocking command, either raise this value past its worst case or split the
-step.
 
 ## Alarms
 

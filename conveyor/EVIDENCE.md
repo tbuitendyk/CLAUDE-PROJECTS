@@ -162,7 +162,14 @@ zero unchecked steps unattended.
 
 ---
 
-## Worker liveness: measured activity beats a stopwatch (2026-08-16)
+## Worker liveness — SUPERSEDED, kept for the reasoning (2026-08-16)
+
+**This section describes a mechanism that was built and then deliberately
+removed the same night. It is retained because the measurements in it are still
+true and still useful — particularly the proof that the session status fields
+lie. See "Liveness removed entirely" below for what the system actually does.**
+
+### Original section: measured activity beats a stopwatch
 
 The first design gave each worker a fixed minute budget — "if it has been N
 minutes, assume it died." That is the wrong primitive: it forces the owner to
@@ -218,3 +225,41 @@ behaviour but will look like an unexplained shutdown.
 
 If a run ends with a stall shutdown and the logs show workers failing rather than
 working, check rate-limit status before debugging anything else.
+
+
+---
+
+## Liveness removed entirely — one worker per step (2026-08-16)
+
+The activity-based liveness check above worked, and was still the wrong design.
+The owner's question was the right one: *why check at all?*
+
+If a worker is never replaced, the tick does not need to know whether one is
+alive. Removing the replacement path removed `get_session`, the status fields,
+the activity timestamp, the per-step budget, and the freshness gate in one
+stroke. What remains is two timestamps out of git:
+
+- **T** = newest commit to any plan or log
+- **D** = last recorded dispatch in `STATE.md`
+
+`D` newer than `T` → the step is taken; wait, however long it takes. Past
+`stall-hours`, disarm. `T` newer than `D` → dispatch the next step.
+
+### Why this is better, not merely simpler
+
+- **Duplicate workers become structurally impossible** rather than prevented by a
+  judgement call. Every liveness check is a chance to be wrong, and being wrong
+  means two sessions writing the same files, racing pushes, and fighting over the
+  same checkbox — on a real build, far more damaging than waiting.
+- **The status fields could not have carried the weight anyway.** Measured in one
+  evening: a worker mid-task reported `IDLE`/`REVIEW_READY`; a worker that had
+  finished correctly and pushed reported `BLOCKED`/`need_input`.
+- **The failure it insured against was never observed.** Across every worker
+  dispatched with a repo attached and a terminal prompt, not one died silently.
+  It was recovery machinery for a hypothetical, carrying a real blast radius.
+- **Clean failures still retry at once.** A worker that cannot finish logs
+  `[worker failed ...]` — that is a commit, so T moves and the next tick
+  dispatches a retry. Only *silent* death costs the `stall-hours` wait, and the
+  penalty for that is a clean stop with the work exactly where it stopped.
+
+**Never reintroduce a liveness check.** Waiting is cheap; trampling is not.

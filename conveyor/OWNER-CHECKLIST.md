@@ -54,10 +54,10 @@ Two conditions end a run, and either one shuts it down:
 
 - **Everything is done.** After 30 minutes of finding nothing left to do, it
   disarms.
-- **It got stuck.** If nothing has moved for 3 hours and work is still
-  outstanding, it disarms. This is a *stall* timer, not a deadline — a project
-  that keeps making progress runs as long as it needs to, all day or overnight.
-  Only silence ends it.
+- **It got stuck.** If a step has delivered nothing for 3 hours, it disarms and
+  leaves everything exactly where it stopped. A *stall* timer, not a deadline —
+  a project that keeps delivering runs as long as it needs to, all day or
+  overnight. Only silence ends it.
 
 **Here is the part that needs you.** Deleting an alarm requires your approval,
 same as creating one — and by then you're not watching, which is the whole
@@ -90,7 +90,7 @@ To stop early: **"tear down the conveyor."**
 | Ticks arrive, nothing ever dispatches, work is outstanding | permission mode is not Auto |
 | No ticks at all | alarms were never created, or bound to a different session |
 | A worker sits forever in the sidebar | started without a repo attached, stuck on an invisible approval |
-| Steps get done twice | worker liveness not being checked properly |
+| Steps get done twice | a dispatch was not recorded to `STATE.md` before the tick ended |
 | It says complete but isn't | something grepped a log for a completion banner and matched prompt text |
 | It shut down mid-project | 3-hour stall timer fired — something was wedged; check the last log entry |
 
@@ -122,14 +122,19 @@ session is active, ticks land on time.
 
 ---
 
-## You do not have to predict how long steps take
+## Nothing is ever restarted or trampled
 
-Worth knowing because it removes a question you'd otherwise have to answer at
-arming time. A worker is judged **alive or dead by whether it is still doing
-things**, not by a stopwatch. Its activity timestamp ticks with every action it
-takes, so a step that runs for three hours is left alone as long as it keeps
-moving. Nothing in this system caps how long work may take.
+One worker per step, full stop. It is never replaced, never raced, never
+second-guessed. That means:
 
-The single exception: a step whose entire work is **one** long blocking command
-with no other activity — a fifteen-minute `make` and nothing else. That can look
-frozen. If you have one of those, say so, or just split it into smaller steps.
+- **No step has a time limit.** A step that takes two hours is left alone.
+- **Nothing gets done twice.** A second worker is never sent onto a live step,
+  so there is no scenario where two sessions fight over the same files or the
+  same commit.
+- **A stuck step stops the run cleanly.** After 3 hours with nothing delivered,
+  the conveyor shuts down and emails you, with the work sitting exactly where it
+  stopped and nothing corrupted.
+
+A step that *fails* cleanly is different from one that dies: a worker that hits a
+problem writes it to the log, and the next tick retries that step straight away.
+Only silence costs you the three hours.

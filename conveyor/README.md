@@ -44,14 +44,14 @@ them together.
                     v
         your OWNER SESSION wakes up
                     |
-        +--------+---------+---------+-------------+----------+
-        |        |         |         |             |          |
-    past its  queue     worker    just          otherwise
-    deadline? done?     alive?    committed?
-        |        |         |         |                |
-     DISARM   DISARM    stop      stop        start ONE worker
-     itself   after                                   |
-              linger                                  v
+        +--------+-----------------+------------------+
+        |        |                 |                  |
+     queue    a worker was      same, but          otherwise
+     done?    sent after the    3+ hours ago
+        |     last commit?          |                 |
+     DISARM      wait —          DISARM          start ONE worker
+     after       do nothing      itself                |
+     linger                                            v
                                      fresh session, repo attached,
                                      does exactly ONE step,
                                      ticks its box, pushes, STOPS.
@@ -89,11 +89,10 @@ them once per project, not once per task. Full detail in `PROTOCOL.md` §2a.
 The owner has to remember to *start* a conveyor. They should never have to
 remember to stop one. Every tick checks two shutdown conditions first:
 
-- **Stalled** — nothing committed to any queued plan or log for `stall-hours`
-  (default 3), work still outstanding, no worker alive. A *stall* timer, not a
-  deadline: a run that keeps making progress continues as long as the work takes,
-  all day or overnight. Progress is the licence to keep running; only silence
-  ends it.
+- **Stalled** — a step was dispatched `stall-hours` ago (default 3) and has
+  committed nothing since. A *stall* timer, not a deadline: a run that keeps
+  delivering continues as long as the work takes, all day or overnight. Progress
+  is the licence to keep running; only silence ends it.
 - **Queue complete + cool-off** — nothing left to do for `linger-ticks` (default
   6, ≈30 minutes), so it disarms.
 
@@ -104,8 +103,19 @@ notification plus email through the established mail hub — and then starts
 deleting, leaving twelve approvals waiting alongside an alert explaining them.
 Unapproved alarms keep ticking harmlessly until the owner gets to it.
 
+## One worker per step, never replaced
+
+The tick decides from two git timestamps — newest commit, and last dispatch —
+and never asks whether a worker is alive. If a step is taken, it waits, however
+long that takes. If a step delivers nothing for three hours, the whole conveyor
+stops and emails, leaving the work untouched where it stopped.
+
+That means no step has a time limit, and no second worker is ever sent onto a
+live step to race it. A worker that *fails* cleanly logs the failure, which is a
+commit, so the next tick retries immediately — only silent death costs the wait.
+
 ## The one-line version
 
-Twelve alarms, one worker per step, git as the memory, never let a worker start
-another worker, stack on as much work as you like for free, and it emails you
-when it wants to shut down.
+Twelve alarms, one worker per step never replaced, git as the memory, never let a
+worker start another worker, stack on as much work as you like for free, and it
+emails you when it wants to shut down.
