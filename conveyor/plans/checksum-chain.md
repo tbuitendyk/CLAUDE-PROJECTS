@@ -15,7 +15,7 @@ prompt.
 
 ## Steps
 
-- [ ] Step 1 — Seed. Run `date -u +%s` for epoch seconds. Compute
+- [x] Step 1 — Seed. Run `date -u +%s` for epoch seconds. Compute
   `printf '%s' "<epoch>" | sha1sum`. Record the epoch, the full sha1 hash, and
   the first 6 hex characters of that hash for Step 2.
 - [ ] Step 2 — Expand. Read Step 1's first 6 hex characters from the log.
