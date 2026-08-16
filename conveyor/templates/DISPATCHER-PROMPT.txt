@@ -10,7 +10,7 @@ CONVEYOR TICK — one of twelve alarms, five minutes apart, driving the queue on
 
 (1) SYNC.
     cd /home/user/CLAUDE-PROJECTS && git fetch origin <BRANCH> && git checkout -B <BRANCH> origin/<BRANCH>
-    Read conveyor/ARMED.md for this conveyor's settings: stall-hours, linger-ticks, idle-ticks, hung-worker-minutes.
+    Read conveyor/ARMED.md for this conveyor's settings: stall-hours, linger-ticks, idle-ticks, worker-silence-minutes.
 
 (2) STALL CHECK. Find the newest commit touching any queued plan or log:
       git log -1 --format='%ci' -- conveyor/plans conveyor/logs
