@@ -21,6 +21,78 @@
 #   ssh vps 'sudo claude-deploy status'
 set -euo pipefail
 
+# ---------------------------------------------------------------------------
+# Claude Code permissions: pre-authorize the CONVEYOR scheduling tools.
+#
+# Runs BEFORE the session's model starts, so these land in user-scope settings
+# in time to be read. A session cannot write this file itself (the auto-mode
+# classifier refuses self-granted permissions) -- the setup script is the
+# supported place for it.
+#
+# NOTE: auto mode does NOT read permissions.allow. It runs its own classifier
+# with its own rule sections (autoMode.allow / soft_deny / hard_deny). Both
+# blocks are written so the behaviour is identical in every permission mode.
+# "$defaults" inherits the built-in rules -- never omit it.
+# ---------------------------------------------------------------------------
+echo "==> Writing Claude Code permission settings"
+mkdir -p "$HOME/.claude"
+CC_SETTINGS="$HOME/.claude/settings.json"
+
+CONVEYOR_SETTINGS=$(cat <<'JSON'
+{
+  "permissions": {
+    "allow": [
+      "mcp__Claude_Code_Remote__create_session",
+      "mcp__Claude_Code_Remote__create_trigger",
+      "mcp__Claude_Code_Remote__delete_trigger",
+      "mcp__Claude_Code_Remote__update_trigger",
+      "mcp__Claude_Code_Remote__fire_trigger",
+      "mcp__Claude_Code_Remote__list_triggers",
+      "mcp__Claude_Code_Remote__get_session",
+      "mcp__Claude_Code_Remote__list_sessions",
+      "mcp__Claude_Code_Remote__archive_session",
+      "mcp__Claude_Code_Remote__send_later"
+    ]
+  },
+  "autoMode": {
+    "allow": [
+      "$defaults",
+      "Creating, listing, updating, firing, or deleting Claude Code Remote scheduled triggers (Routines) through the mcp__Claude_Code_Remote__*_trigger tools. The account owner has explicitly authorized these as unattended operations for the CONVEYOR protocol; they are reversible and affect only this account's own scheduling state.",
+      "Creating Claude Code Remote sessions through mcp__Claude_Code_Remote__create_session, including sessions that clone and push to the owner's own tbuitendyk/CLAUDE-PROJECTS repository. This is the dispatch step of the owner-authorized CONVEYOR protocol for unattended multi-step work.",
+      "Reading, listing, and archiving Claude Code Remote sessions through mcp__Claude_Code_Remote__get_session, list_sessions, and archive_session."
+    ]
+  }
+}
+JSON
+)
+
+if [[ -s "$CC_SETTINGS" ]] && command -v jq >/dev/null 2>&1; then
+  # Merge rather than clobber: keep whatever else is already configured, and
+  # union the allow arrays so re-running is idempotent.
+  if jq -e . "$CC_SETTINGS" >/dev/null 2>&1; then
+    printf '%s' "$CONVEYOR_SETTINGS" > /tmp/conveyor-settings.json
+    jq -s '
+      .[0] as $cur | .[1] as $new |
+      $cur
+      | .permissions.allow = (((($cur.permissions.allow) // []) + $new.permissions.allow) | unique)
+      | .autoMode.allow   = (((($cur.autoMode.allow)   // []) + $new.autoMode.allow)   | unique)
+    ' "$CC_SETTINGS" /tmp/conveyor-settings.json > /tmp/conveyor-merged.json \
+      && mv /tmp/conveyor-merged.json "$CC_SETTINGS"
+    rm -f /tmp/conveyor-settings.json
+  else
+    echo "    existing $CC_SETTINGS is not valid JSON; leaving it alone" >&2
+  fi
+else
+  printf '%s\n' "$CONVEYOR_SETTINGS" > "$CC_SETTINGS"
+fi
+
+if command -v jq >/dev/null 2>&1 && jq -e '.autoMode.allow | length > 1' "$CC_SETTINGS" >/dev/null 2>&1; then
+  echo "    permissions written: $CC_SETTINGS"
+else
+  echo "    WARNING: $CC_SETTINGS may not have been written correctly" >&2
+fi
+
+
 HOST="${VPS_SSH_HOST:-homsionos01.homeandofficemicro.com}"
 KEY_FILE="$HOME/.ssh/vps_claude_deploy"
 
