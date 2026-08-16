@@ -53,6 +53,20 @@ MIN_NOTIONAL = 5.0         # exchange minimum, probed 2026-08-11
 HOLD_HOURS = 137           # F1 cell tHours
 MAX_CONCURRENT = 6         # 137h / 24h step, derived
 INTENT_MAX_AGE_S = 1800    # an intent older than 30 min is stale, never traded
+# ENTRY RETRY WINDOW (owner directive, 2026-08-16). An entry that failed used to
+# get whatever ticks fitted inside INTENT_MAX_AGE_S — three — and only for
+# failures BEFORE the intent was consumed. Anything that went wrong after
+# consumption (no price this run, a rejected order) forfeited the day in silence.
+# The owner's rule: a failed entry may try again up to 6 times, until one hour
+# past its moment, then the period is abandoned OUT LOUD.
+#
+# Retrying is safe because place() signs every attempt with the SAME deterministic
+# client_id for that (role, chunk): a resend of an order the venue already filled
+# is refused as a duplicate id, not filled twice. The one-fill invariant is also
+# enforced here — entry_terminal() treats a real fill, a paper fill, an INFLIGHT
+# (it MAY have filled; recovery resolves it) or a drift kill as final.
+ENTRY_RETRY_WINDOW_S = 3600  # attempts allowed for one hour after the entry moment
+ENTRY_MAX_ATTEMPTS = 6       # six 10-minute ticks, then ENTRY_GAVE_UP
 CLOCK_DRIFT_LIMIT_MS = 5000 # box OS clock this far from exchange time -> loud
 ARM_MAX_AGE_S = 1800       # dead-man: ARM must be re-stamped by the control plane
                            # within 30 min (sync runs ~every 5 min) or the box
@@ -299,6 +313,62 @@ def intent_seen2(events, setup_id, chunk_start):
     """Schema-2 dedup: one period per SETUP."""
     return any(e.get("event") == "INTENT_SEEN" and e.get("setup_id") == setup_id and
                e.get("chunk_start") == chunk_start for e in events)
+
+
+# ---- entry retry accounting (owner directive 2026-08-16) ---------------------
+# The journal is the box's only durable state, so both the "is this period
+# finished?" question and the attempt count are DERIVED from it. Nothing is held
+# in memory across runs and a crash mid-attempt loses no accounting.
+
+# Events that END a period. A period that reached any of these must NEVER be
+# attempted again:
+#   ENTRY_FILL / PAPER_ENTRY_FILL  the position exists
+#   ENTRY_INFLIGHT                 the order MAY have filled — recovery resolves it
+#                                  by client id; re-sending behind recovery is the
+#                                  one path that could double a real position
+#   KILL_PRICE_DRIFT               a deliberate refusal, not a transient failure
+#   ENTRY_GAVE_UP                  the retry budget or the window is spent
+_ENTRY_TERMINAL_EVENTS = ("ENTRY_FILL", "PAPER_ENTRY_FILL", "ENTRY_INFLIGHT",
+                          "KILL_PRICE_DRIFT", "ENTRY_GAVE_UP")
+
+
+def _same_rail(e, setup_id):
+    """Schema-1 events carry no setup_id; schema-2 events carry their own. Keeps
+    the two rails' accounting independent, exactly as intent_seen/intent_seen2 do."""
+    return e.get("setup_id") == setup_id if setup_id is not None else e.get("setup_id") is None
+
+
+def entry_terminal(events, chunk_start, setup_id=None):
+    """Is this period finished — filled, in flight, killed, or given up?"""
+    return any(e.get("event") in _ENTRY_TERMINAL_EVENTS and
+               e.get("chunk_start") == chunk_start and _same_rail(e, setup_id)
+               for e in events)
+
+
+def entry_attempts(events, chunk_start, setup_id=None):
+    """How many order attempts this period has already had."""
+    return sum(1 for e in events
+               if e.get("event") == "ENTRY_ATTEMPT" and
+               e.get("chunk_start") == chunk_start and _same_rail(e, setup_id))
+
+
+def _utc_str(epoch_s):
+    """Epoch seconds -> the journal's UTC stamp format."""
+    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(epoch_s))
+
+
+def entry_deadline(intent):
+    """Last moment an attempt may be made, in epoch seconds.
+
+    Anchored on the intent's own entry moment (`entry_ts`, stamped by the
+    producer) when present, so the window is literally 'one hour after the
+    01:00 entry'. Falls back to the mint stamp for an intent produced before
+    the producer carried entry_ts — never wider than the same hour from mint,
+    so a legacy intent cannot gain a longer life than the rule allows."""
+    base = intent.get("entry_ts")
+    if not isinstance(base, (int, float)):
+        base = intent.get("ts", 0)
+    return base + ENTRY_RETRY_WINDOW_S
 
 
 def setups_allow():
@@ -1309,6 +1379,14 @@ def do_run(bx):
         real_blocked = True
 
     os.makedirs(INTENTS, exist_ok=True)
+    # ONE attempt per period per run. The producer keeps re-emitting an intent for
+    # up to ENTRY_FRESH_H after the entry moment (new filename each time), and the
+    # box now KEEPS a failed intent for retry — so two files for the same period
+    # can sit in the inbox together. Without this, both would be attempted inside a
+    # single tick and the six attempts would be spent in one or two ticks instead of
+    # over the hour the owner asked for. (The venue would not double-fill either
+    # way: place() signs both with the same client_id.)
+    attempted_this_run = set()
     for name in sorted(os.listdir(INTENTS)):
         if not name.endswith(".json"):
             continue
@@ -1401,9 +1479,17 @@ def do_run(bx):
                     hcap = allow_entry.get("max_hold_hours")
                     if isinstance(hcap, (int, float)) and it["hold_hours"] > hcap:
                         problems.append("hold_cap")
-        # age against EXCHANGE-synced time, not the raw OS clock (finding 3)
+        # age against EXCHANGE-synced time, not the raw OS clock (finding 3).
+        # The bound is the ENTRY RETRY WINDOW (owner 2026-08-16): an entry stays
+        # attemptable for one hour past its moment so six 10-minute ticks can try
+        # it, where before it died after 30 minutes and three. A FLAT intent places
+        # no order, so it keeps the old 30-minute bound — widening it would only
+        # let a stale no-op sit around longer.
         age = now_exch - it.get("ts", 0)
-        stale = age > INTENT_MAX_AGE_S
+        if it.get("side") in ("LONG", "SHORT"):
+            stale = now_exch > entry_deadline(it)
+        else:
+            stale = age > INTENT_MAX_AGE_S
         if stale:
             # LOUD: a systemic clock drift would otherwise discard every intent to
             # .bad and stop all entries with nothing on the screen. Emit a distinct
@@ -1422,30 +1508,56 @@ def do_run(bx):
             os.rename(path, path + ".bad")
             continue
         events_now = journal_events()
-        dup = (intent_seen2(events_now, it["setup_id"], it["chunk_start"]) if is2
-               else intent_seen(events_now, it["chunk_start"]))
-        if dup:
+        sid = it["setup_id"] if is2 else None
+        # A period that FINISHED is a duplicate — filled, in flight, drift-killed or
+        # given up. A period that merely STARTED (INTENT_SEEN journaled, order not
+        # placed) is NOT: that is the retry the owner asked for. Before 2026-08-16
+        # the dedup keyed on INTENT_SEEN alone, so one failed attempt was final.
+        if entry_terminal(events_now, it["chunk_start"], sid):
             jlog("INTENT_DUPLICATE", chunk_start=it["chunk_start"], file=name,
                  **({"setup_id": it["setup_id"]} if is2 else {}))
             os.rename(path, path + ".dup")
             continue
-        # R18 (schema-2 ONLY): a TRANSIENT failure to read the price this run must
-        # NOT consume the intent and forfeit the period. Fetch the price BEFORE
-        # INTENT_SEEN/.done so a no-price run leaves the intent for the next run to
-        # retry. QC-113 is preserved: the arm gate and the dup check still precede
-        # this, and a run that DOES consume still logs INTENT_SEEN only after the arm
-        # gate, so the two entry fires stay idempotent. FLAT intents place no order
-        # and need no price. CARDINAL: this guard is gated on `is2` so the live F1
-        # (schema-1) path is BYTE-IDENTICAL to the pre-R18 pilot — F1 still fetches
-        # the price after INTENT_SEEN/.done (see `price =` below) and consumes the
-        # intent on a no-price run exactly as it always has.
+        # A FLAT period is finished the moment it is recorded — it places no order,
+        # so there is nothing to retry. Keeps the old one-shot behaviour for FLAT.
+        if it["side"] == "FLAT" and (intent_seen2(events_now, sid, it["chunk_start"]) if is2
+                                     else intent_seen(events_now, it["chunk_start"])):
+            jlog("INTENT_DUPLICATE", chunk_start=it["chunk_start"], file=name,
+                 **({"setup_id": it["setup_id"]} if is2 else {}))
+            os.rename(path, path + ".dup")
+            continue
+        # Retry budget. Counted from ENTRY_ATTEMPT events, so it survives a crash
+        # and cannot be reset by a re-shipped intent file.
+        period_key = (sid, it["chunk_start"])
+        if period_key in attempted_this_run:
+            # a sibling file for this period was already handled this tick; leave
+            # this one alone (untouched, so the next tick sees it if still needed)
+            continue
+        attempts = entry_attempts(events_now, it["chunk_start"], sid)
+        if it["side"] != "FLAT" and attempts >= ENTRY_MAX_ATTEMPTS:
+            # OUT LOUD: the period is abandoned. ENTRY_GAVE_UP is terminal, so a
+            # later re-shipped intent for the same period is refused as a duplicate.
+            jlog("ENTRY_GAVE_UP", chunk_start=it["chunk_start"], file=name,
+                 attempts=attempts, max_attempts=ENTRY_MAX_ATTEMPTS,
+                 reason="entry retry budget spent without a fill",
+                 **({"setup_id": it["setup_id"]} if is2 else {}))
+            os.rename(path, path + ".bad")
+            continue
+        # R18, now on BOTH rails (owner directive 2026-08-16). A transient failure
+        # to read the price must not consume the intent and forfeit the period, so
+        # the price is fetched BEFORE INTENT_SEEN and the intent file is left in
+        # place for the next tick. This used to be schema-2 only: QC-132 scoped it
+        # away from F1 to keep the live pilot byte-identical, and the cost of that
+        # was exactly the forfeit the owner has now ruled out. QC-113 is preserved —
+        # the arm gate and the finished-period check still precede this. FLAT places
+        # no order and needs no price.
         pre_price = None
-        if is2 and it["side"] != "FLAT":
+        if it["side"] != "FLAT":
             pre_price = bx.price()
             if pre_price is None:
                 jlog("ENTRY_SKIPPED", chunk_start=it["chunk_start"],
                      reason="no price this run (transient — intent kept for retry)",
-                     setup_id=it["setup_id"])
+                     **({"setup_id": it["setup_id"]} if is2 else {}))
                 continue
         # R5: paper-vs-real is decided by the ALLOWLIST, not the intent — a paper
         # setup can NEVER place a real order whatever its own flag says (only a
@@ -1464,15 +1576,31 @@ def do_run(bx):
                             "booked PAPER on the F1 box so no real order shares F1's wallet")
         else:
             eff_paper = False
-        jlog("INTENT_SEEN", chunk_start=it["chunk_start"], side=it["side"],
-             decision_price=it["decision_price"],
-             input_hash=it.get("input_hash", ""),
-             per_member=it.get("per_member"), quorum=it.get("quorum"),
-             file=name,
-             **({"setup_id": it["setup_id"], "paper": eff_paper} if is2 else {}))
-        os.rename(path, path + ".done")
+        # INTENT_SEEN is the DECISION record — one per period, on the first attempt
+        # only. A retry re-attempts the order, it does not re-decide, so a second
+        # INTENT_SEEN would double the row on the screen and reset its fate.
+        already_seen = (intent_seen2(events_now, sid, it["chunk_start"]) if is2
+                        else intent_seen(events_now, it["chunk_start"]))
+        if not already_seen:
+            jlog("INTENT_SEEN", chunk_start=it["chunk_start"], side=it["side"],
+                 decision_price=it["decision_price"],
+                 input_hash=it.get("input_hash", ""),
+                 per_member=it.get("per_member"), quorum=it.get("quorum"),
+                 file=name,
+                 **({"setup_id": it["setup_id"], "paper": eff_paper} if is2 else {}))
         if it["side"] == "FLAT":
+            # FLAT is finished the moment it is recorded: nothing to place, nothing
+            # to retry. Consume the file exactly as before.
+            os.rename(path, path + ".done")
             continue
+        # The intent file now stays put until the period reaches a terminal state.
+        # Every path below either ends the period (and renames) or leaves the file
+        # for the next tick to try again, up to ENTRY_MAX_ATTEMPTS.
+        def _finish(suffix=".done"):
+            try:
+                os.rename(path, path + suffix)
+            except OSError:
+                pass
         stx = derive(journal_events())
         if is2:
             # R1 per-setup reject-kill: a schema-2 setup that has rejected
@@ -1482,6 +1610,7 @@ def do_run(bx):
                                f"{stx['rejects2'][it['setup_id']]} consecutive rejects")
                 jlog("ENTRY_SKIPPED", chunk_start=it["chunk_start"], setup_id=it["setup_id"],
                      reason="setup reject-kill")
+                _finish(".bad")   # terminal: the setup is halted, not retryable
                 continue
             # per-SETUP concurrency: this setup's own open (or paper) positions
             # against its allowlisted cap; default = the schema-1 derivation
@@ -1494,6 +1623,7 @@ def do_run(bx):
             if mine >= cap:
                 jlog("ENTRY_SKIPPED", chunk_start=it["chunk_start"], setup_id=it["setup_id"],
                      reason=f"setup concurrency cap {cap}")
+                _finish(".bad")   # terminal: a hold outlives the retry window
                 continue
         # R2: F1's box-wide REAL-position cap (MAX_CONCURRENT = 137h/24h) counts
         # ONLY schema-1 (F1) positions and applies ONLY to F1 entries — a schema-2
@@ -1506,14 +1636,15 @@ def do_run(bx):
             if s1_open >= MAX_CONCURRENT:
                 jlog("ENTRY_SKIPPED", chunk_start=it["chunk_start"],
                      reason=f"concurrency cap {MAX_CONCURRENT}")
+                _finish(".bad")   # terminal: a 137h hold outlives the retry window
                 continue
-        # R18 (schema-2): reuse the price fetched before INTENT_SEEN (same run) so a
-        # value that was present at the transient guard is used for the order — never
-        # re-fetched into a None after the intent was already consumed. Schema-1 (F1)
-        # is untouched: it fetches HERE, after INTENT_SEEN/.done, exactly as the live
-        # pilot always has (byte-identical). Non-FLAT reaches here.
-        price = pre_price if is2 else bx.price()
+        # Reuse the price fetched before INTENT_SEEN (same run) so the value that
+        # was present at the transient guard is the one the order uses — never
+        # re-fetched into a None. Both rails, since 2026-08-16. Non-FLAT reaches here.
+        price = pre_price
         if price is None:
+            # Belt and braces: the guard above already `continue`d on a None price,
+            # so reaching here means a code path changed. Retryable, file kept.
             jlog("ENTRY_SKIPPED", chunk_start=it["chunk_start"],
                  reason="no price")
             continue
@@ -1537,12 +1668,14 @@ def do_run(bx):
                  clip_usd=it["clip_usd"], hold_hours=it["hold_hours"],
                  stop_pct=it.get("stop_pct"),
                  exit_due_ts=now + hold_s)
+            _finish()          # terminal: the paper position exists
             continue
         if dev > FILL_DEV_LIMIT:
             jlog("KILL_PRICE_DRIFT", chunk_start=it["chunk_start"],
                  decision=it["decision_price"], market=price,
                  deviation=round(dev, 5),
                  **({"setup_id": it["setup_id"]} if is2 else {}))
+            _finish(".bad")    # terminal: a refusal on purpose, never retried
             if is2:
                 # R1: a schema-2 drift halts only its OWN setup and moves on — F1
                 # and other setups keep trading (never the box break/halt).
@@ -1554,11 +1687,23 @@ def do_run(bx):
             break
         qty = clip_qty_usd(price, it["clip_usd"]) if is2 else clip_qty(price)
         if qty is None:
+            # Price-dependent, so a later tick inside the window may clear it. No
+            # order was attempted, so no attempt is burned; the file stays.
             jlog("ENTRY_SKIPPED", chunk_start=it["chunk_start"],
-                 reason="clip under exchange minimum")
+                 reason="clip under exchange minimum (transient — intent kept for retry)",
+                 **({"setup_id": it["setup_id"]} if is2 else {}))
             continue
         buy_side = "BUY" if it["side"] == "LONG" else "SELL"
         side_eff = "NO_SIDE_EFFECT" if it["side"] == "LONG" else "MARGIN_BUY"
+        # Journal the attempt BEFORE the order leaves the box, so a crash between
+        # send and journal still spends the attempt. Over-counting an attempt costs
+        # one retry; under-counting could loop an order at the venue all hour.
+        attempt_no = attempts + 1
+        attempted_this_run.add(period_key)
+        jlog("ENTRY_ATTEMPT", chunk_start=it["chunk_start"], side=it["side"],
+             attempt=attempt_no, max_attempts=ENTRY_MAX_ATTEMPTS,
+             deadline_utc=_utc_str(entry_deadline(it)),
+             **({"setup_id": it["setup_id"]} if is2 else {}))
         status, px, fee, fq, base_comm = place(bx, "ENTRY", buy_side, qty, side_eff,
                                                {"chunk_start": it["chunk_start"],
                                                 "pos_side": it["side"],
@@ -1576,6 +1721,10 @@ def do_run(bx):
             # the right exit_due_ts). Do NOT record a position or a reject here.
             jlog("ENTRY_INFLIGHT", chunk_start=it["chunk_start"], side=it["side"],
                  **({"setup_id": it["setup_id"]} if is2 else {}))
+            # TERMINAL, and this is the important one: the order may be live at the
+            # venue. Recovery resolves it by client id. Re-attempting behind recovery
+            # is the single path that could double a real position, so it never runs.
+            _finish()
         elif status == "filled":
             # store what the EXIT will act on, UNFLOORED so it matches the
             # exchange balance for reconcile across many concurrent positions
@@ -1595,6 +1744,7 @@ def do_run(bx):
                  exit_due_ts=now + hold_s,
                  **({"setup_id": it["setup_id"], "hold_hours": it["hold_hours"],
                      "stop_pct": it.get("stop_pct"), "clip_usd": it["clip_usd"]} if is2 else {}))
+            _finish()          # terminal: the position exists
             if fill_dev > FILL_DEV_LIMIT:
                 if is2:
                     # R1: a schema-2 catastrophic fill deviation halts only its

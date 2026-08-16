@@ -58,6 +58,10 @@ INCIDENT_COOLDOWN_MIN = 60.0  # re-page a recurring incident KIND at most this o
 INCIDENT_EVENTS = {"RECONCILE_MISMATCH", "RECONCILE_UNREADABLE", "KILL_PRICE_DRIFT",
                    "KILL_TRANSPORT", "EXIT_OVERDUE", "MIRROR_BREAK", "ORDER_REJECT",
                    "HALT_SET", "ARM_STALE", "INTENT_STALE", "CLOCK_DRIFT", "FIXED_STOP",
+                   # ENTRY_GAVE_UP (owner 2026-08-16): the entry retry budget was
+                   # spent without a fill, so the model called a trade the box never
+                   # took. A missed entry is exactly as reportable as a bad one.
+                   "ENTRY_GAVE_UP",
                    # ARM-REFUSAL events (GAP-4, 2026-08-11 e2e review): the box journals
                    # these when it REFUSES an arm request. A bad HMAC or a replayed nonce
                    # is a tampering/mis-config signal, and a no-secret/stale refusal means

@@ -237,7 +237,9 @@ class ExecutorTest(unittest.TestCase):
         self.assertEqual(order["sideEffectType"], "MARGIN_BUY")
 
     def test_stale_intent_never_trades(self):
-        self.write_intent(age=self.x.INTENT_MAX_AGE_S + 5)
+        # Past the ENTRY RETRY WINDOW (owner 2026-08-16: an entry may be attempted
+        # for one hour after its moment, not the old 30 minutes) the intent is dead.
+        self.write_intent(age=self.x.ENTRY_RETRY_WINDOW_S + 5)
         self.x.do_run(self.bx())
         ev = self.events()
         self.assertIn("INTENT_INVALID", ev)
@@ -248,7 +250,7 @@ class ExecutorTest(unittest.TestCase):
         # a FRESH intent (ts=now) must read as stale when exchange time is far
         # ahead of the box OS clock — proving the age check uses exchange-synced
         # time, not the raw OS clock (finding 3).
-        MockBinance.time_skew_ms = (self.x.INTENT_MAX_AGE_S + 120) * 1000
+        MockBinance.time_skew_ms = (self.x.ENTRY_RETRY_WINDOW_S + 120) * 1000
         self.write_intent(side="LONG", age=0)
         self.x.do_run(self.bx())
         ev = self.events()
@@ -997,24 +999,191 @@ class ExecutorTest(unittest.TestCase):
         self.x.do_run(self.bx())
         self.assertIn("PAPER_ENTRY_FILL", self.events(), "the kept intent fills once price returns")
 
-    def test_transient_no_price_leaves_F1_byte_identical(self):
-        # CARDINAL: R18 is scoped to schema-2 ONLY. The live F1 (schema-1) path must
-        # be BYTE-IDENTICAL to the pre-R18 pilot: on a no-price run F1 still fetches
-        # the price AFTER INTENT_SEEN/.done, so the intent IS consumed (INTENT_SEEN
-        # logged, .done written, no .json left) and the period is skipped exactly as
-        # the running pilot has always behaved. If R18's guard ever leaks onto the F1
-        # path (dropping the `is2` gate), F1 would silently start retrying and this
-        # fails — the tripwire on the invariant the owner flagged.
+    def test_transient_no_price_keeps_the_F1_intent_for_retry(self):
+        # REPLACES test_transient_no_price_leaves_F1_byte_identical (QC-132), which
+        # pinned F1 to consuming the intent on a no-price run. That forfeit is what
+        # the owner ruled out on 2026-08-16: a failed entry now retries. R18 applies
+        # to BOTH rails, so F1 fetches the price BEFORE INTENT_SEEN and a no-price
+        # run leaves the .json for the next tick. The one-fill invariant is carried
+        # by entry_terminal(), not by consuming the file early.
         self.write_intent(side="LONG", chunk="2026-08-07T00:00Z")
         MockBinance.price_fails = True
         self.x.do_run(self.bx())
         ev = self.events()
-        self.assertIn("INTENT_SEEN", ev, "F1 consumes the intent on a no-price run (pre-R18 behavior)")
+        self.assertNotIn("INTENT_SEEN", ev, "a no-price run must NOT consume the F1 intent")
+        self.assertNotIn("ENTRY_ATTEMPT", ev, "no order was attempted, so no attempt is burned")
         self.assertNotIn("ENTRY_FILL", ev)
+        self.assertTrue(any(n.endswith(".json") for n in os.listdir(self.x.INTENTS)),
+                        "the F1 intent is kept as .json for the next run")
+        # price returns -> the kept intent fills, on the same period
+        MockBinance.price_fails = False
+        self.x.do_run(self.bx())
+        ev = self.events()
+        self.assertIn("ENTRY_FILL", ev, "the kept F1 intent fills once price returns")
+        self.assertEqual(1, sum(1 for e in self.x.journal_events()
+                                if e.get("event") == "ENTRY_FILL"), "exactly one fill")
+
+    # ---- entry retry protocol (owner directive 2026-08-16) ------------------
+    # "a failed entry at 0100 may try again up to 6 times until 0200". Before
+    # this, an entry got three ticks at most and only for failures BEFORE the
+    # intent was consumed; anything after consumption forfeited the day silently.
+    # Watched failing 2026-08-16 against the pre-change executor: the seven
+    # behaviour checks (retries, budget, give-up, window, both bound tests, F1
+    # keep-for-retry) all fail or error there. The other four —
+    # a_filled_period_is_never_entered_twice, an_inflight_entry_is_never_
+    # re_attempted, a_flat_period_is_still_one_shot and an_entry_inside_the_old_
+    # thirty_minute_bound_still_trades — are REGRESSION GUARDS on invariants that
+    # held before and must still hold: they pass on both sides by design.
+
+    def test_rejected_entry_retries_on_the_next_tick_and_fills(self):
+        # THE ask: the venue refuses the order, the period is not forfeited, and
+        # the next tick takes the entry the model called.
+        self.write_intent(side="LONG", chunk="2026-08-07T00:00Z")
+        MockBinance.reject_orders = True
+        self.x.do_run(self.bx())
+        ev = self.events()
+        self.assertIn("ENTRY_ATTEMPT", ev)
+        self.assertNotIn("ENTRY_FILL", ev)
+        self.assertTrue(any(n.endswith(".json") for n in os.listdir(self.x.INTENTS)),
+                        "a rejected entry keeps its intent for the next tick")
+        MockBinance.reject_orders = False
+        self.x.do_run(self.bx())
+        self.assertIn("ENTRY_FILL", self.events(), "the retry takes the entry")
+        self.assertEqual(2, sum(1 for e in self.x.journal_events()
+                                if e.get("event") == "ENTRY_ATTEMPT"),
+                         "two attempts: the reject and the fill")
+
+    def test_the_decision_is_recorded_once_across_retries(self):
+        # INTENT_SEEN is the DECISION record and drives the screen's history row.
+        # A retry re-attempts the order; it does not re-decide.
+        self.write_intent(side="LONG", chunk="2026-08-07T00:00Z")
+        MockBinance.reject_orders = True
+        self.x.do_run(self.bx())
+        MockBinance.reject_orders = False
+        self.x.do_run(self.bx())
+        # guard against passing vacuously: the retry must actually have happened
+        self.assertIn("ENTRY_FILL", self.events(), "the retry took the entry")
+        self.assertEqual(1, sum(1 for e in self.x.journal_events()
+                                if e.get("event") == "INTENT_SEEN"),
+                         "one decision row, however many attempts it took")
+
+    def test_entry_gives_up_out_loud_when_the_budget_is_spent(self):
+        # Six attempts already on the record: the seventh tick must not order.
+        for i in range(self.x.ENTRY_MAX_ATTEMPTS):
+            self.x.jlog("ENTRY_ATTEMPT", chunk_start="2026-08-07T00:00Z",
+                        side="LONG", attempt=i + 1)
+        self.write_intent(side="LONG", chunk="2026-08-07T00:00Z")
+        before = len(MockBinance.orders)
+        self.x.do_run(self.bx())
+        ev = self.events()
+        self.assertIn("ENTRY_GAVE_UP", ev, "the abandoned period is journaled, not silent")
+        self.assertEqual(before, len(MockBinance.orders), "no order is sent after the budget")
+        self.assertFalse(any(n.endswith(".json") for n in os.listdir(self.x.INTENTS)))
+
+    def test_giving_up_is_terminal_for_a_reshipped_intent(self):
+        # ENTRY_GAVE_UP must end the period for good — a control plane that
+        # re-ships the same intent cannot restart the budget.
+        self.x.jlog("ENTRY_GAVE_UP", chunk_start="2026-08-07T00:00Z", attempts=6)
+        self.write_intent(side="LONG", chunk="2026-08-07T00:00Z")
+        self.x.do_run(self.bx())
+        ev = self.events()
+        self.assertIn("INTENT_DUPLICATE", ev)
+        self.assertNotIn("ENTRY_FILL", ev)
+
+    def test_the_window_closes_one_hour_after_the_entry_moment(self):
+        # Attempts left, but the hour is gone: no trade, and said out loud.
+        self.write_intent(side="LONG", chunk="2026-08-07T00:00Z",
+                          age=self.x.ENTRY_RETRY_WINDOW_S + 60)
+        self.x.do_run(self.bx())
+        ev = self.events()
+        self.assertIn("INTENT_STALE", ev)
+        self.assertNotIn("ENTRY_ATTEMPT", ev)
+        self.assertNotIn("ENTRY_FILL", ev)
+
+    def test_an_entry_inside_the_old_thirty_minute_bound_still_trades(self):
+        # The window WIDENED; nothing that used to trade may stop trading.
+        self.write_intent(side="LONG", chunk="2026-08-07T00:00Z",
+                          age=self.x.INTENT_MAX_AGE_S - 60)
+        self.x.do_run(self.bx())
+        self.assertIn("ENTRY_FILL", self.events())
+
+    def test_an_entry_past_the_old_bound_but_inside_the_hour_now_trades(self):
+        # The behaviour change itself: 40 minutes late used to be dead, now it trades.
+        self.write_intent(side="LONG", chunk="2026-08-07T00:00Z",
+                          age=self.x.INTENT_MAX_AGE_S + 600)
+        self.x.do_run(self.bx())
+        self.assertIn("ENTRY_FILL", self.events())
+
+    def test_a_filled_period_is_never_entered_twice(self):
+        # THE money invariant. A re-shipped intent for a period that already
+        # filled is refused, whatever the retry budget says.
+        self.write_intent(side="LONG", chunk="2026-08-07T00:00Z")
+        self.x.do_run(self.bx())
+        self.assertIn("ENTRY_FILL", self.events())
+        self.write_intent(side="LONG", chunk="2026-08-07T00:00Z")
+        self.x.do_run(self.bx())
+        self.assertIn("INTENT_DUPLICATE", self.events())
+        self.assertEqual(1, sum(1 for e in self.x.journal_events()
+                                if e.get("event") == "ENTRY_FILL"),
+                         "exactly one fill for the period, ever")
+
+    def test_an_inflight_entry_is_never_re_attempted(self):
+        # The one path that could double a REAL position: the order may be live at
+        # the venue and recovery resolves it by client id. Never retry behind it.
+        self.write_intent(side="LONG", chunk="2026-08-07T00:00Z")
+        MockBinance.order_5xx = True          # ambiguous -> ENTRY_INFLIGHT
+        self.x.do_run(self.bx())
+        self.assertIn("ENTRY_INFLIGHT", self.events())
+        MockBinance.order_5xx = False
+        self.write_intent(side="LONG", chunk="2026-08-07T00:00Z")
+        before = len(MockBinance.orders)
+        self.x.do_run(self.bx())
+        self.assertIn("INTENT_DUPLICATE", self.events())
+        self.assertEqual(before, len(MockBinance.orders),
+                         "no entry order is sent while one may be live at the venue")
+
+    def test_a_flat_period_is_still_one_shot(self):
+        # FLAT places no order, so there is nothing to retry: recorded once and done.
+        self.write_intent(side="FLAT", chunk="2026-08-07T00:00Z")
+        self.x.do_run(self.bx())
+        self.assertIn("INTENT_SEEN", self.events())
         self.assertFalse(any(n.endswith(".json") for n in os.listdir(self.x.INTENTS)),
-                         "the F1 intent is consumed (.done), NOT kept for retry")
-        self.assertTrue(any(n.endswith(".done") for n in os.listdir(self.x.INTENTS)),
-                        "the F1 intent was renamed .done exactly as the live pilot does")
+                         "a FLAT intent is consumed on the spot")
+        self.write_intent(side="FLAT", chunk="2026-08-07T00:00Z")
+        self.x.do_run(self.bx())
+        self.assertIn("INTENT_DUPLICATE", self.events())
+        self.assertEqual(1, sum(1 for e in self.x.journal_events()
+                                if e.get("event") == "INTENT_SEEN"))
+
+    def test_two_intent_files_for_one_period_spend_one_attempt_per_tick(self):
+        # The producer re-emits an intent for up to 3h after the entry moment (a
+        # fresh filename each time) while the box now KEEPS a failed intent for
+        # retry, so two files for one period can share the inbox. They must not
+        # burn two of the six attempts inside a single tick.
+        os.makedirs(self.x.INTENTS, exist_ok=True)
+        for tag in ("a", "b"):
+            it = {"schema": 1, "symbol": "LTCUSDT", "side": "LONG",
+                  "chunk_start": "2026-08-07T00:00Z", "decision_price": 100.0,
+                  "input_hash": "abc", "ts": time.time()}
+            with open(os.path.join(self.x.INTENTS, f"intent-{tag}.json"), "w") as f:
+                json.dump(it, f)
+        MockBinance.reject_orders = True
+        self.x.do_run(self.bx())
+        self.assertEqual(1, sum(1 for e in self.x.journal_events()
+                                if e.get("event") == "ENTRY_ATTEMPT"),
+                         "one attempt per period per tick, however many files arrived")
+
+    def test_entry_deadline_is_anchored_on_the_entry_moment(self):
+        # The producer stamps entry_ts, so the hour runs from 01:00 — not from
+        # whenever the intent happened to be minted. The 2026-08-11 leftover was
+        # written 4h after its entry moment; anchoring on the mint stamp would have
+        # given that intent a fresh hour of life.
+        moment = 1_000_000.0
+        self.assertEqual(moment + self.x.ENTRY_RETRY_WINDOW_S,
+                         self.x.entry_deadline({"entry_ts": moment, "ts": moment + 14400}))
+        # legacy intent with no entry_ts falls back to the mint stamp
+        self.assertEqual(moment + self.x.ENTRY_RETRY_WINDOW_S,
+                         self.x.entry_deadline({"ts": moment}))
 
     def test_schema2_live_is_refused_paper_only_on_the_f1_box(self):
         # BLOCKER 1 (independent review 2026-08-12): the F1 box holds ONE isolated
