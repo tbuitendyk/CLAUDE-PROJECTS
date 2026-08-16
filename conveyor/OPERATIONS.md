@@ -87,9 +87,11 @@ until `list_triggers` is clean.
 ### Ticks arrive but nothing ever dispatches
 Check in this order:
 1. Is the queue actually finished? `grep -c '^- \[ \]'` on each plan.
-2. Is the liveness check wedged on a stale session id? If `get_session` returns
-   `WORKING` for something dispatched hours ago, the 10-minute hung-worker rule
-   should have released it — if it hasn't, the tick logic is wrong.
+2. Is the liveness check wedged on a stale session id? Compare that session's
+   `updated_at` with now. If it is hours old, `worker-silence-minutes` should
+   have released it long ago — if it hasn't, the tick is judging by
+   `status_bucket` instead of `updated_at`, which is the classic bug here.
+   `status_bucket` has been seen reporting `WORKING` and `IDLE` both wrongly.
 3. Is the staleness gate too wide? At five-minute spacing anything above about
    3 minutes starts eating ticks.
 4. Permission mode.
