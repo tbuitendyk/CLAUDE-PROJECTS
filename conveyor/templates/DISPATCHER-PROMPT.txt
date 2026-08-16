@@ -26,9 +26,15 @@ CONVEYOR TICK — one of twelve alarms, five minutes apart, driving the queue on
     If a plan DOES have unchecked steps and `idle-ticks:` is not already 0, reset it to 0, commit, push, and carry on — new work arrived during the cool-off window.
 
 (4) LIVENESS. Take the last line of conveyor/STATE.md that matches `^20[0-9][0-9]-` — anchor on that pattern, never a loose substring, or the format example in the file header will match and you will believe in a worker that does not exist. If such a line exists, take its session id and call mcp__Claude_Code_Remote__get_session on it.
-    - status_bucket is SESSION_STATUS_BUCKET_WORKING and it was dispatched less than `hung-worker-minutes` ago (default 10) -> a worker is in flight. Reply "worker <id> still working — nothing dispatched" and STOP. Never start a worker on top of a running one.
-    - WORKING but older than that -> treat as hung, continue to (5).
-    - anything else, or the call errors -> continue to (5).
+
+    Judge it by ACTIVITY, not by elapsed time. The field that matters is `updated_at`: it advances at least once per tool call the worker makes, so a healthy worker's `updated_at` is never more than one tool call old, however long its whole step takes.
+
+    - If `updated_at` is LESS than `worker-silence-minutes` old (default 15): the worker is alive and doing things. Reply "worker <id> active, last seen <updated_at> — nothing dispatched" and STOP. **There is no upper limit on how long a step may take.** A build that runs for hours is fine as long as its timestamp keeps moving. Never start a worker on top of a live one.
+    - If `updated_at` is OLDER than `worker-silence-minutes`: nothing has happened in that session for a long time. Presume it dead and continue to (5).
+    - If the plan's checkbox for that step is already ticked, the worker finished regardless of what its status says — continue to (5).
+    - If the call errors: fall back to the commit-age test in (5).
+
+    Do NOT gate this decision on `status_bucket` or `session_status`. Both have been observed lying in both directions: a worker mid-task reported IDLE / REVIEW_READY, and a worker that had finished correctly reported BLOCKED / need_input. Use them for the human-readable reply if you like, never for the decision. `task_summary`, when present, is a live progress string and is useful colour for your one-line reply.
 
 (5) FRESHNESS. git log -1 --format='%ci' -- <the chosen plan file> conveyor/<the plan's log file>
     If that commit is under 2 minutes old, a worker has just pushed and its status may not have flipped yet. Reply "fresh commit <ts> — nothing dispatched" and STOP.

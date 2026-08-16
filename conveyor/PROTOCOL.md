@@ -149,9 +149,8 @@ Notes that matter:
   off, and it is the only written record of what is armed.
 - **Fill in the settings block in `ARMED.md`**: `stall-hours` (default 3),
   `linger-ticks` (default 6, ≈30 min), `idle-ticks: 0`, and
-  `hung-worker-minutes` (default 10 — **raise it for real builds**, or a compile
-  that legitimately takes fifteen minutes will get a second worker dispatched on
-  top of it).
+  `worker-silence-minutes` (default 15 — this is a silence detector, not a step
+  budget; it almost never needs tuning, see below).
 - **Register with the mail hub once** so the shutdown notice can reach the owner.
   Run script `hub-register.sh` with the conveyor's hub name (the project branch
   name, lowercased, non-alphanumerics turned to hyphens) via the deploy endpoint
@@ -172,13 +171,55 @@ does exactly one of four things and then stops. It never does plan work.
 2. **Done?** Pick the first plan in `QUEUE.md` with an unchecked step. If there is
    none, reply one line and stop.
 3. **Busy?** Read the last dispatch line of `STATE.md`, take its session id, call
-   `get_session` on it. If `status_bucket` is `SESSION_STATUS_BUCKET_WORKING` and
-   it was dispatched under 10 minutes ago, a worker is in flight — reply one line
-   and stop. **Never start a worker on top of a running one.**
+   `get_session` on it, and judge by **activity, not elapsed time**. If
+   `updated_at` is less than `worker-silence-minutes` old, the worker is alive —
+   reply one line and stop. **Never start a worker on top of a running one, and
+   never put an upper bound on how long a step may take.** See §4a.
 4. **Just landed?** If the last commit touching the plan or log is under 2 minutes
    old, reply one line and stop. This is only a race absorber for the gap between
    a worker pushing and its status flipping — keep it short or it eats your cadence.
 5. **Otherwise dispatch** one worker, record it, push.
+
+## 4a. Liveness: measure activity, not elapsed time
+
+The tick has to answer one question — *is a worker still going?* — and the
+tempting wrong answer is a stopwatch: "it has been N minutes, assume it died."
+That forces the human to predict step durations, and it kills long builds for
+the crime of being long.
+
+`get_session` exposes a better signal. **`updated_at` advances at least once per
+tool call the worker makes.** So a healthy worker's timestamp is never more than
+one tool call old, regardless of whether its step takes ninety seconds or three
+hours. The rule becomes:
+
+- `updated_at` fresher than `worker-silence-minutes` → **alive, wait, no limit**
+- `updated_at` frozen longer than that → presumed dead, dispatch a replacement
+- step's checkbox already ticked → it finished, whatever its status claims
+
+Measured 2026-08-15: sampling a worker through a six-minute run gave `updated_at`
+of 23:58:44, then 00:00:51, then 00:03:50, matching its real progress each time.
+
+### Do not trust the status fields
+
+`status_bucket` and `session_status` have been observed wrong in **both**
+directions:
+
+- a worker actively mid-task reported `IDLE` / `REVIEW_READY`
+- a worker that had finished correctly reported `BLOCKED` / `need_input`
+
+Use them for the human-readable reply. Never gate the dispatch decision on them.
+`task_summary`, when present, is a live progress string ("Beat 5 of 8") and makes
+a good one-line status.
+
+### The one untested edge
+
+`updated_at` is confirmed to advance *between* tool calls. Whether it also
+advances *during* a single long-running call is unknown — this harness blocks
+foreground `sleep`, so the case could not be constructed. A step whose work is
+one long blocking command, with no other activity, could therefore look frozen.
+Either split such a step or raise `worker-silence-minutes` past its worst case.
+
+---
 
 ### The dispatch call — exact form
 

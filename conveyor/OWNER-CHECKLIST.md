@@ -90,7 +90,7 @@ To stop early: **"tear down the conveyor."**
 | Ticks arrive, nothing ever dispatches, work is outstanding | permission mode is not Auto |
 | No ticks at all | alarms were never created, or bound to a different session |
 | A worker sits forever in the sidebar | started without a repo attached, stuck on an invisible approval |
-| Steps get done twice | worker liveness not being checked, or `hung-worker-minutes` set too low for the real step length |
+| Steps get done twice | worker liveness not being checked properly |
 | It says complete but isn't | something grepped a log for a completion banner and matched prompt text |
 | It shut down mid-project | 3-hour stall timer fired — something was wedged; check the last log entry |
 
@@ -122,9 +122,14 @@ session is active, ticks land on time.
 
 ---
 
-## One setting worth naming for real builds
+## You do not have to predict how long steps take
 
-`hung-worker-minutes` defaults to 10 — tuned for steps that take a couple of
-minutes. A compile, a deploy, or a long test suite can legitimately run longer,
-and at the default a second worker gets sent in on top of the first. If your
-steps are heavy, say so at arming time: *"steps may take 20 minutes."*
+Worth knowing because it removes a question you'd otherwise have to answer at
+arming time. A worker is judged **alive or dead by whether it is still doing
+things**, not by a stopwatch. Its activity timestamp ticks with every action it
+takes, so a step that runs for three hours is left alone as long as it keeps
+moving. Nothing in this system caps how long work may take.
+
+The single exception: a step whose entire work is **one** long blocking command
+with no other activity — a fifteen-minute `make` and nothing else. That can look
+frozen. If you have one of those, say so, or just split it into smaller steps.

@@ -18,7 +18,7 @@ this says how to operate it.
 6. Create twelve triggers, minutes `0 5 10 15 20 25 30 35 40 45 50 55`.
 7. Write all twelve ids into `ARMED.md` and fill the settings block —
    `stall-hours: 3`, `linger-ticks: 6`, `idle-ticks: 0`,
-   `hung-worker-minutes: 10` (raise if the human said steps are heavy). Commit,
+   `worker-silence-minutes: 15`. The defaults are almost always right. Commit,
    push.
 8. Confirm with `list_triggers` that twelve exist and their `next_run_at` values
    are spread five minutes apart. If they are bunched, the cron strings were
@@ -27,10 +27,10 @@ this says how to operate it.
 **Do not tell the human it is running until step 8 passes.** A conveyor that was
 never armed looks identical to one that is idle.
 
-**Ask about step length before accepting the default `hung-worker-minutes`.** At
-10 minutes, any step that legitimately runs longer gets a second worker
-dispatched on top of the first. For builds, deploys, or long test suites, set it
-above the realistic worst case.
+**You do not need to ask how long steps take.** Liveness is measured by worker
+activity, not elapsed time, so long steps are safe by default. The only thing
+worth asking about is whether any step is a *single* blocking command longer
+than fifteen minutes — see the note on `worker-silence-minutes` in `ARMED.md`.
 
 ---
 
@@ -137,18 +137,21 @@ Defaults, and what moves them:
 | Knob | Default | Raise it if | Lower it if |
 |---|---|---|---|
 | alarm spacing | 5 min | ticks feel wasteful | you need tighter latency (needs more alarms) |
-| `hung-worker-minutes` | 10 | steps genuinely take longer — **builds and deploys usually do** | workers die silently and you want faster recovery |
+| `worker-silence-minutes` | 15 | a step is one long blocking command | you want dead workers replaced sooner |
 | `stall-hours` | 3 | a single step can legitimately be silent for longer | you want a wedged run cleaned up sooner |
 | `linger-ticks` | 6 (≈30 min) | more work is likely to arrive | you want the alarms gone promptly |
 | just-committed gate | 2 min | you see duplicate dispatches | dead air is eating the run |
 | retry attempts | 3 | refusals are frequent | — |
 
-`stall-hours` and `hung-worker-minutes` measure different things and are often
-confused. `hung-worker-minutes` is about **one worker** — how long before that
-session is presumed dead and replaced. `stall-hours` is about **the whole
-conveyor** — how long the project as a whole can show no committed progress
-before the run is abandoned. A conveyor can replace many hung workers and stay
-alive; it dies only when nothing lands for hours.
+`stall-hours` and `worker-silence-minutes` measure different things and are
+easily confused. `worker-silence-minutes` is about **one worker** — how long its
+activity timestamp may be frozen before that session is presumed dead and
+replaced. `stall-hours` is about **the whole conveyor** — how long the project can
+show no committed progress before the run is abandoned. A conveyor can replace
+many dead workers and stay alive; it dies only when nothing lands for hours.
+
+Both are silence detectors, and neither is a budget. Nothing in this system caps
+how long work is allowed to take.
 
 At the original 10-minute spacing the just-committed gate was 6 minutes and cost
 a full extra tick on the last step of a six-step plan — more than a third of the

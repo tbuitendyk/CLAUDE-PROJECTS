@@ -15,7 +15,7 @@ written record of what is armed.
     stall-hours: 3
     linger-ticks: 6
     idle-ticks: 0
-    hung-worker-minutes: 10
+    worker-silence-minutes: 15
 
 **`stall-hours`** — the shutdown backstop. If nothing has been committed to any
 queued plan or log for this many hours, there are still unfinished steps, and no
@@ -33,11 +33,26 @@ alarms and approving twelve prompts. See "Adding work" in `PROTOCOL.md`.
 **`idle-ticks`** — the running count. The dispatcher increments it when the
 queue is complete and resets it to 0 the moment new work appears.
 
-**`hung-worker-minutes`** — how long a worker may sit in `WORKING` before it is
-presumed dead and a replacement is dispatched. Default 10, which suits steps of
-a couple of minutes. **Raise this for real builds** — a compile, a deploy, or a
-long test run can legitimately exceed ten minutes, and leaving it at the default
-will dispatch a second worker on top of a healthy one.
+**`worker-silence-minutes`** — how long a worker's activity timestamp
+(`updated_at`) may be **frozen** before it is presumed dead. Default 15.
+
+Read that carefully, because it is not a step budget. `updated_at` advances at
+least once per tool call the worker makes, so a healthy worker's timestamp is
+never more than one tool call old — **no matter how long its whole step takes.**
+A three-hour build that keeps doing things is never touched. Only a session that
+has genuinely gone quiet gets replaced. You do not have to guess step durations
+in advance, and this normally needs no tuning at all.
+
+Measured 2026-08-15: a worker's `updated_at` advanced at every sample while it
+worked (23:58:44 → 00:00:51 → 00:03:50), tracking real progress.
+
+The one case that needs it raised: a step that makes a **single** tool call
+lasting longer than this, with no other activity — one long `make`, say.
+`updated_at` is confirmed to advance *between* tool calls; whether it also
+advances *during* one long call is untested, because this harness blocks
+foreground `sleep` and the case could not be constructed. If a step has one very
+long blocking command, either raise this value past its worst case or split the
+step.
 
 ## Alarms
 

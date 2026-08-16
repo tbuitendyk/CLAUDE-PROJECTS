@@ -159,3 +159,62 @@ zero unchecked steps unattended.
 - Sample sizes behind the refusal table are small (5 plain vs 6 permission-passing
   calls on the day, pooled with 11 prior). The direction is consistent and the
   end-to-end run is clean, but the exact rates should not be quoted as precise.
+
+---
+
+## Worker liveness: measured activity beats a stopwatch (2026-08-16)
+
+The first design gave each worker a fixed minute budget — "if it has been N
+minutes, assume it died." That is the wrong primitive: it forces the owner to
+predict step durations, and it kills a long build for being long.
+
+**Test.** A worker was told to stay busy for ~6 minutes across eight separate
+tool calls and commit nothing until the end. Its session was sampled throughout:
+
+| sampled at | `updated_at` | live `task_summary` |
+|---|---|---|
+| 23:58:44 | 23:58:44 | "beat 2 running" |
+| 00:00:51 | 00:00:51 | "Beat 5 of 8" |
+| 00:03:50 | 00:03:50 | "Reading collected beat timestamps" |
+
+**`updated_at` advances while a worker works**, tracking real progress. So a
+healthy worker's timestamp is never more than one tool call old, whatever its
+total runtime. Liveness became a silence detector — `worker-silence-minutes`,
+default 15 — and **no upper bound on step length exists anywhere in the system.**
+
+### The status fields lie in both directions
+
+Do not gate dispatch on `status_bucket` or `session_status`:
+
+- 23:58:44 — worker actively on beat 2 reported `IDLE` / `REVIEW_READY`
+- earlier that evening — a worker that had finished correctly and pushed its step
+  reported `BLOCKED` / `need_input` ("Stopping here")
+
+Only `updated_at`, the plan's checkboxes, and the commit log are trustworthy.
+`task_summary` is a live human-readable progress string, good for status lines.
+
+### What this test did NOT prove
+
+The worker reported that foreground `sleep` is blocked by the harness, so its
+eight beats ran as eight separate background calls, each a fresh re-invocation.
+That means the measurement covers activity **between** tool calls. Whether
+`updated_at` also advances **during** a single long-running call was not
+constructible here and remains unknown. A step consisting of one long blocking
+command could therefore appear frozen — split it, or raise
+`worker-silence-minutes` past its worst case.
+
+---
+
+## Rate limits are a real constraint on all-day runs (noted 2026-08-16)
+
+During the liveness test a worker returned
+`"rateLimitType":"seven_day","status":"allowed_warning"`.
+
+Every step spawns a fresh worker with its own context, so a long queue consumes
+account-level quota steadily. A conveyor cannot detect or manage this — if the
+account hits a hard limit, workers will start failing and the conveyor will read
+that as a stall and disarm itself after `stall-hours`, which is the correct
+behaviour but will look like an unexplained shutdown.
+
+If a run ends with a stall shutdown and the logs show workers failing rather than
+working, check rate-limit status before debugging anything else.
