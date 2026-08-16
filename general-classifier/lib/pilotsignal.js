@@ -223,6 +223,13 @@ async function computeSignal(now, opts = {}) {
       train_through: TRAIN_THROUGH,
       band_pct: bandPct,
       ts: Math.floor(now / 1000),
+      // The ENTRY MOMENT this intent is for (chunk start + entryOffsetH), so the
+      // box's retry window runs from 01:00 — the hour the owner specified — and
+      // not from whenever the intent happened to be minted. An intent produced
+      // late (the 2026-08-11 leftover was written 4h after its moment) therefore
+      // gets no extra life: its window closed an hour after the entry, not an
+      // hour after the file appeared.
+      entry_ts: Math.floor(entryTs / 1000),
       produced_utc: new Date(now).toISOString(),
     },
   };

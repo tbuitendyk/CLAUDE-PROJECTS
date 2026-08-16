@@ -239,6 +239,10 @@ function derive(events, extra = {}) {
       case 'EXIT_OVERDUE':
       case 'FIXED_STOP':
       case 'MIRROR_BREAK':
+      // the entry retry protocol's loud endings (owner 2026-08-16): a period the
+      // box abandoned after spending its six attempts is a MISSED TRADE and must
+      // never be a silent line in the log.
+      case 'ENTRY_GAVE_UP':
       case 'INTENT_STALE':
       case 'CLOCK_DRIFT':
       case 'ARM_STALE':
