@@ -1,0 +1,19 @@
+sandbox: CONVEYOR notification path test
+
+tl;dr proving the conveyor's shutdown-notification path works before relying on
+it. No action needed from you.
+
+The CONVEYOR protocol (vps-access branch, conveyor/) shuts itself down when a
+queue finishes or a step stalls for three hours. Because deleting an alarm needs
+your approval and you are by definition away at that point, the shutdown sends
+you a push notification and an email so the twelve pending approvals do not sit
+there unexplained.
+
+That email path had never actually been executed — it was transcribed from
+MAIL-CHEATSHEET.md. This message is the test of it. If you are reading this, the
+path works and a real shutdown notice will reach you the same way.
+
+A real four-step conveyor run follows immediately, which will exercise arming,
+dispatch, cool-off, self-disarm and this notification together.
+
+c.
