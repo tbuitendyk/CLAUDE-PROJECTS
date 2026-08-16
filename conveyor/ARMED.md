@@ -25,20 +25,20 @@ single sitting. The production default is 6 (≈30 minutes).**
 
 ## Alarms
 
+Eight alarms for this proof run, covering 03:10–03:45Z — enough for four steps,
+the cool-off, and self-disarm. **Production uses twelve**, at every five-minute
+offset, for continuous coverage.
+
 | Alarm | cron (UTC) | trigger id |
 |---|---|---|
-| conveyor-checksum-00 | `0 * * * *`  | (pending) |
-| conveyor-checksum-05 | `5 * * * *`  | (pending) |
-| conveyor-checksum-10 | `10 * * * *` | (pending) |
-| conveyor-checksum-15 | `15 * * * *` | (pending) |
-| conveyor-checksum-20 | `20 * * * *` | (pending) |
-| conveyor-checksum-25 | `25 * * * *` | (pending) |
-| conveyor-checksum-30 | `30 * * * *` | (pending) |
-| conveyor-checksum-35 | `35 * * * *` | (pending) |
-| conveyor-checksum-40 | `40 * * * *` | (pending) |
-| conveyor-checksum-45 | `45 * * * *` | (pending) |
-| conveyor-checksum-50 | `50 * * * *` | (pending) |
-| conveyor-checksum-55 | `55 * * * *` | (pending) |
+| conveyor-checksum-10 | `10 * * * *` | trig_016yS98BjPufhpM5W5LmGDjy |
+| conveyor-checksum-15 | `15 * * * *` | trig_01DPzsTJKrKi7jDuTrb9fFkY |
+| conveyor-checksum-20 | `20 * * * *` | trig_01JTusw63T2sCd72dZVuLJLJ |
+| conveyor-checksum-25 | `25 * * * *` | trig_016wjHSd2LvzcnTRuo7zw4Ha |
+| conveyor-checksum-30 | `30 * * * *` | trig_01MeN7ynhLdSasCg3YwNgRQd |
+| conveyor-checksum-35 | `35 * * * *` | trig_01Sz1h5o1vqtsgbWgCceYd84 |
+| conveyor-checksum-40 | `40 * * * *` | trig_01XLf5vNdeyN2Ctp5Y4VSVTP |
+| conveyor-checksum-45 | `45 * * * *` | trig_01FzWahMJi5kVPKJrRLBC6fP |
 
 ## Manual teardown
 
