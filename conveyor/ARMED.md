@@ -50,3 +50,4 @@ remain, archive the worker sessions, and move the rows into History below.
 
 | Armed | Torn down | Reason | Project | Notes |
 |---|---|---|---|---|
+| 2026-08-16T03:07Z | 2026-08-16T06:2x Z | queue complete (checksum-chain finished 04:20:54Z); idle-tick self-disarm ran but never actually deleted the alarms | checksum-chain | Trigger IDs above are stale — the 8 listed here were not the ones actually live. Owner session found only 3 still enabled (`conveyor-checksum-10/15/20`, real ids `trig_01Fiu74wLVsUMykTubUk8Hcd` / `trig_019SvL3b7GxDMD9x19dpcKH5` / `trig_01JEwwUvhu3LtsjtrcStAfT5`) via `RemoteTrigger action=list`, and disabled them with `RemoteTrigger action=update body={"enabled":false}` — no approval prompt appeared. The other 5 were already gone by the time this was checked. |
