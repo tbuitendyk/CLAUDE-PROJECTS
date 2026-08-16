@@ -22,7 +22,7 @@ prompt.
   Convert to decimal with `printf '%d\n' 0x<hex>`, then compute
   `decimal * 7 + 13` with `bc`. Record the hex, the decimal, and the result.
   Also record the result's digit count.
-- [ ] Step 3 — Verify. Independently re-derive Step 2 from Step 1's sha1 hash:
+- [x] Step 3 — Verify. Independently re-derive Step 2 from Step 1's sha1 hash:
   redo the hex-to-decimal conversion and redo the arithmetic by a different
   method than Step 2 used (for example `python3 -c` rather than `bc`). State
   plainly whether each value matches. If anything disagrees, report the
