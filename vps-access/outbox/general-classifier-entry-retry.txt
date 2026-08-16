@@ -1,0 +1,101 @@
+Entry retry protocol live: a failed entry now gets 6 tries over the hour
+
+tl;dr — two changes are deployed. (1) The decision history was dating rows by
+the feature-window start, 4 days before the trade they drove, which made a
+complete record look abandoned; rows now carry the entry they acted on. (2) Per
+your directive, a failed entry retries up to 6 times until one hour past its
+moment, then gives up out loud instead of silently forfeiting the day. Both
+tested watched-failing; F1 healthy throughout; nothing pending from you.
+
+WHAT WAS WRONG WITH THE DECISION LIST
+
+Nothing had stopped. Four decisions since you armed on 08-12, one per day, all
+recorded. The date column printed chunk_start — the start of the 96h feature
+window — which sits 97 hours before the entry that window drives. So the newest
+row read "2026-08-11" on the 15th. The record was current; the label was four
+days behind.
+
+Rows are now dated by the entry the call acted on, with the window start kept
+underneath as provenance. A member's 0 vote reads "no call" instead of the
+internal "aside", outcomes read in plain words, and both tables carry a key.
+
+Table: what the four decisions actually were.
+Key — entry (UTC) = the moment the call acted; votes = the four committee
+members in order (full, prices, volume, cross); outcome = what the box did.
+
+  entry (UTC)         call          votes            outcome
+  2026-08-12 01:00    Open LONG     0, 0, UP, 0      filled — still open
+  2026-08-13 01:00    Stand down    0, 0, UP, DOWN   no trade taken
+  2026-08-14 01:00    Stand down    0, 0, 0, 0       no trade taken
+  2026-08-15 01:00    Stand down    0, 0, 0, 0       no trade taken
+
+Three stand-downs in a row is why the screen looks quiet. That is the committee
+declining, not the rail stalling.
+
+THE INCIDENTS YOU ASKED ABOUT
+
+You were right that my line on KILL_TRANSPORT made no sense. "No orders this
+run" is the executor's generic wording for any aborted run; at 13:00 no order
+was due, so nothing was missed. It was a one-tick abort and 13:10 was clean.
+
+The rest, briefly: the 08-11 halts were $0.06 of LTC dust the journal didn't
+know about (the reconciler fails closed on any unexplained balance) — you
+cleared it at 15:24, and it is now tolerated rather than halting. The two
+NOTIONAL rejects were attempts to sell that dust; the exchange refuses orders
+under about $5. The master switch was OFF for all of 08-11, so none of it
+blocked a trade. INTENT_STALE on 08-12 was a leftover intent from before you
+armed, refused at 19.8h old — the guard working.
+
+THE RETRY CHANGE
+
+Before: an entry got ONE real attempt. The intent was consumed before the price
+was fetched and the order sent, so anything failing after that point — no price
+that run, a rejected order — forfeited the trade the model called, with nothing
+on screen saying a trade had been missed. Failures before that point got three
+10-minute ticks, because the intent died at 30 minutes.
+
+Now: the intent is kept until the period is finished. Attempts are counted in
+the journal and capped at 6; the window is one hour, anchored on the entry
+moment itself (the producer now stamps it, so an intent minted late gets no
+extra life); one attempt per period per tick. If the hour runs out or the six
+are spent, the box writes ENTRY_GAVE_UP — an incident on the screen and a page
+from the alerter. A missed entry is now as loud as a bad one.
+
+The money invariant is unchanged and I hardened the test around it: at most one
+fill per period, ever. A period that filled, that has an order possibly live at
+the venue, or that was drift-killed is terminal and never re-attempted. Every
+attempt also reuses the same deterministic order id, so a resend of something
+the venue already filled is refused as a duplicate rather than filling twice.
+
+TWO THINGS YOU SHOULD KNOW, NOT BURIED
+
+1. A REJECT-driven retry tops out at 3, not 6. Three consecutive rejects halt
+   the box — that safety kill predates this and I did not touch it. So the six
+   attempts are fully available for transport and price failures, but a venue
+   refusing the order will trip the reject-kill first. That threshold is
+   labelled GUESSED in the register. Say the word and I will look at whether it
+   should be derived.
+
+2. I made a judgement call on what counts as retryable. Transient failures
+   retry: no price this run, a rejected order, a clip momentarily under the
+   exchange minimum. Deliberate refusals do not: the price-drift kill, a
+   concurrency cap, an allowlist failure. Overrule any of those and I will
+   change it.
+
+TESTING AND STATE
+
+109 executor tests pass. Seven of the new checks were watched failing against
+the pre-change executor; four more are regression guards that must pass on both
+sides (no double fill, no retry behind an in-flight order, FLAT one-shot,
+anything that used to trade still trades). The classifier suite is green.
+
+One test had to be inverted rather than added: it existed to catch the retry
+behaviour leaking onto the live F1 path, which was the right call at the time
+and is what your directive now asks for. QC-132 is marked superseded and points
+at the new entry, QC-141.
+
+F1 through all of it: armed, not halted, mirror clean, data current. The open
+LONG from 08-12 is untouched, exit due 08-17 18:10 UTC. Tonight's entry at
+01:00 previews FLAT, so no order rides on the change on its first night.
+
+c.
