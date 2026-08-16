@@ -11,7 +11,7 @@
 
     stall-hours: 3
     linger-ticks: 2
-    idle-ticks: 1
+    idle-ticks: 2
 
 **`stall-hours`** — how long a step may go without delivering before the whole
 conveyor gives up. Default 3. The clock starts when a worker is dispatched and is
