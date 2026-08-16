@@ -119,3 +119,39 @@ commit, so the next tick retries immediately — only silent death costs the wai
 Twelve alarms, one worker per step never replaced, git as the memory, never let a
 worker start another worker, stack on as much work as you like for free, and it
 emails you when it wants to shut down.
+
+---
+
+## Status: designed and documented, NOT yet proven as written
+
+Read this before trusting it with something that matters.
+
+The **mechanisms** underneath are measured and solid (see `EVIDENCE.md`):
+server-side alarms fire reliably, a top-level session can dispatch a worker, a
+repo-attached worker does its step and pushes, git survives everything, and a
+five-step dependent chain completed unattended in 53 minutes.
+
+But **that proven run used an earlier control design** — six alarms at ten
+minutes, a liveness check, a freshness gate. The scheduling logic documented here
+replaced all of that and **has never executed end to end.** Specifically, these
+have never once run:
+
+| Never executed | Where |
+|---|---|
+| the two-timestamp dispatch rule (T vs D) | `PROTOCOL.md` §4a |
+| twelve alarms at five-minute spacing | `PROTOCOL.md` §3 |
+| self-disarm deleting its own twelve alarms | `DISPATCHER-PROMPT.txt` |
+| the shutdown notification (push + mail hub) | `DISPATCHER-PROMPT.txt` |
+| the stall timer actually firing | `PROTOCOL.md` §6 |
+| a multi-plan queue | `QUEUE.md` |
+| adding work to a live conveyor | `PROTOCOL.md` §2a |
+
+The mail-hub send path in particular is transcribed from
+`vps-access/MAIL-CHEATSHEET.md`, not executed — nobody has confirmed a conveyor
+shutdown notice actually arrives.
+
+**What would make this production:** one small real conveyor, three or four
+steps, run to completion and then allowed to disarm itself. That single run
+exercises arming, the dispatch rule, the queue, cool-off, self-disarm, and the
+notification path together. Until then this is a careful design, not a proven
+process.

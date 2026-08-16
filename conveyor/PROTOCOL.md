@@ -297,9 +297,9 @@ The dispatcher created the alarms and can delete them, so **teardown is not
 something the human has to remember.** Every tick checks two shutdown conditions
 before it does anything else.
 
-**Stalled.** If nothing has been committed to any queued plan or log for
-`stall-hours` (default 3), there are still unfinished steps, and no worker is
-alive, the conveyor is wedged and the next tick disarms it.
+**Stalled.** If a step was dispatched `stall-hours` ago (default 3) and nothing
+has been committed to any plan or log since, that step is not coming back and the
+next tick disarms. No liveness is consulted — see §4a.
 
 This is a **stall** timeout, not a wall-clock deadline — a deliberate choice. A
 conveyor that keeps making progress runs as long as the work takes: all day,

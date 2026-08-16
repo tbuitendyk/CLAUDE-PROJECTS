@@ -38,7 +38,7 @@ scrollback and wants density.
 
 Good tick replies:
 
-    3 steps left; worker <id> still working (2 min) — nothing dispatched
+    3 steps left; step in progress since 14:02Z — nothing dispatched
     2 steps left; last commit 41 min old — dispatched step 4 as <id>
     queue complete — nothing dispatched
 
@@ -68,7 +68,7 @@ To stop early, or to finish a disarm that only partly succeeded:
 4. `list_triggers` to confirm none remain.
 5. Archive the worker sessions.
 6. Move the `ARMED.md` rows into History with the reason, reset `idle-ticks:`,
-   clear `expires:`, commit, push.
+   commit, push.
 
 ### If ticks keep arriving after a disarm
 
