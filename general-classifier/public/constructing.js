@@ -52,35 +52,83 @@ async function renderStrip() {
 }
 
 // ---- Data --------------------------------------------------------------------
+async function pollJob(jobId, note) {
+  for (;;) {
+    const j = await api(`api/jobs/${encodeURIComponent(jobId)}`);
+    if (j.status === 'done') return j.result;
+    if (j.status === 'error') throw new Error(j.error || 'job failed');
+    if (note) note(j.progress || j.message || j.status);
+    await new Promise((r) => setTimeout(r, 1500));
+  }
+}
 async function drawData() {
   const d = await api('api/data-state').catch(() => null);
-  const rows = (d && (d.pairs || d.rows || d.data)) || [];
+  const rows = (d && d.symbols) || [];
   $('#view').innerHTML = `<div class="panel">
     <h3 style="margin-top:0">Data on server</h3>
-    <p class="note">Every pair/month cached locally. Every sweep, null board and tune reads this cache, never the
-      exchange — a stale cache silently shrinks every window, so refresh before runs that need recent data.</p>
+    <p class="note">Every sweep, null board and tune reads this cache, never the exchange — a gap here silently
+      shrinks every window. Refresh re-fetches from the newest cached month (it may have been partial) through the
+      current month. Trim keeps only a range, deleting the rest. Purge deletes the whole asset. Every write refuses
+      while a job runs; purge and trim DELETE data — the only way back is downloading again.</p>
     <div class="scrollx" id="dataTbl">${rows.length ? `<table><thead><tr>
-      <th>pair</th><th>months</th><th>from</th><th>to</th></tr></thead><tbody>
-      ${rows.map((r) => `<tr><td>${esc(r.pair || r.symbol)}</td><td>${r.months ?? '—'}</td>
-        <td>${esc(r.from || '—')}</td><td>${esc(r.to || '—')}</td></tr>`).join('')}</tbody></table>`
-    : `<pre>${esc(JSON.stringify(d, null, 1) || 'no data state')}</pre>`}</div>
+      <th>pair</th><th>months</th><th>from</th><th>to</th><th style="text-align:left">manage</th></tr></thead><tbody>
+      ${rows.map((r) => (r.symbol === 'PLANTEDUSDT' ? `
+        <tr><td>${esc(r.symbol)} <span class="note">fabricated planted-check pair — mirrors real data's span, never downloaded</span></td>
+          <td>${r.months ?? '—'}</td><td>${esc(r.from || '—')}</td><td>${esc(r.to || '—')}</td>
+          <td style="text-align:left"><button type="button" class="ds-refresh" data-sym="${esc(r.symbol)}">regenerate to span</button>
+            <button type="button" class="ds-purge" data-sym="${esc(r.symbol)}">purge…</button></td></tr>` : `
+        <tr><td>${esc(r.symbol)}</td><td>${r.months ?? '—'}</td><td>${esc(r.from || '—')}</td><td>${esc(r.to || '—')}</td>
+          <td style="text-align:left"><button type="button" class="ds-refresh" data-sym="${esc(r.symbol)}">refresh to latest</button>
+            <button type="button" class="ds-trim" data-sym="${esc(r.symbol)}" data-from="${esc(r.from || '')}" data-to="${esc(r.to || '')}">trim…</button>
+            <button type="button" class="ds-purge" data-sym="${esc(r.symbol)}">purge…</button></td></tr>`)).join('')}</tbody></table>`
+    : `<p class="note">nothing cached yet — download below</p>`}</div>
     <h3>Download / refresh</h3>
-    <div class="row">
-      <label class="f">pairs (comma-sep)<input id="dlPairs" placeholder="LTCUSDT,XRPUSDT" style="width:16rem"></label>
-      <label class="f">start month<input id="dlStart" type="month"></label>
-      <label class="f">end month<input id="dlEnd" type="month"></label>
-      <button id="dlBtn" class="pri">Load data</button>
+    <div class="row" style="align-items:flex-end">
+      <label class="f">download new pair(s), comma-sep<input id="dlPairs" placeholder="LTCUSDT,XRPUSDT" style="width:16rem"></label>
+      <label class="f">from<input id="dlStart" type="month"></label>
+      <label class="f">to<input id="dlEnd" type="month"></label>
+      <button id="dlBtn" class="pri">Download</button>
+      <button id="dlRefreshAll" title="Every cached pair: fetch from its newest cached month through the current month">Global Refresh</button>
     </div>
-    <p class="note">Load fetches the named pairs over the month range into the cache (Binance public channel only).
-      Trim/Purge and Global Refresh remain on the legacy Bracket lab page this round.</p>
     <div id="dlOut" class="note"></div></div>`;
-  $('#dlBtn').onclick = async () => {
+  const dsStatus = (m) => { const e = $('#dlOut'); if (e) e.textContent = m; };
+  const dsCall = async (url, body, confirmMsg) => {
+    if (confirmMsg && !confirm(confirmMsg)) return;
+    try {
+      const out = await post(url, body);
+      if (out.jobId) {
+        dsStatus('working…');
+        const result = await pollJob(out.jobId, dsStatus);
+        dsStatus(result && typeof result === 'object'
+          ? 'done — ' + Object.entries(result).map(([sym, r]) => `${sym}: ${r.regenerated ? 'regenerated' : `${r.candles || 0} candles`}`).join(' · ')
+          : 'done');
+      } else {
+        dsStatus(out.purged != null ? `${out.purged} cached file(s) deleted` : 'done');
+      }
+      drawData();
+    } catch (e) { dsStatus(`failed: ${e.message}`); }
+  };
+  $('#view').querySelectorAll('.ds-refresh').forEach((b) => { b.onclick = () => dsCall('api/data/refresh', { symbol: b.dataset.sym }); });
+  $('#view').querySelectorAll('.ds-purge').forEach((b) => {
+    b.onclick = () => dsCall('api/data/purge', { symbol: b.dataset.sym },
+      `DELETE every cached month of ${b.dataset.sym}? The only way back is downloading again.`);
+  });
+  $('#view').querySelectorAll('.ds-trim').forEach((b) => {
+    b.onclick = () => {
+      const keepFrom = prompt(`${b.dataset.sym}: keep FROM month (YYYY-MM). Cached: ${b.dataset.from} to ${b.dataset.to}. Months BEFORE this are deleted.`, b.dataset.from);
+      if (!keepFrom) return;
+      const keepTo = prompt(`${b.dataset.sym}: keep TO month (YYYY-MM). Months AFTER this are deleted.`, b.dataset.to);
+      if (!keepTo) return;
+      dsCall('api/data/purge', { symbol: b.dataset.sym, keepFrom, keepTo }, `${b.dataset.sym}: DELETE everything outside ${keepFrom}..${keepTo}?`);
+    };
+  });
+  $('#dlBtn').onclick = () => {
     const pairs = $('#dlPairs').value.split(',').map((x) => x.trim().toUpperCase()).filter(Boolean);
     if (!pairs.length) { alert('name at least one pair'); return; }
-    $('#dlOut').textContent = 'loading…';
-    const out = await tryPost('api/load', { symbols: pairs, startMonth: $('#dlStart').value, endMonth: $('#dlEnd').value });
-    $('#dlOut').textContent = out ? 'load started/completed — re-open Data to see the table update' : '';
+    if (!$('#dlStart').value || !$('#dlEnd').value) { alert('pick both months'); return; }
+    dsCall('api/data/download', { symbols: pairs, startMonth: $('#dlStart').value, endMonth: $('#dlEnd').value });
   };
+  $('#dlRefreshAll').onclick = () => dsCall('api/data/refresh', {});
 }
 
 // ---- Sweep --------------------------------------------------------------------
@@ -181,7 +229,7 @@ async function drawSweep() {
     const run = ((bl && (bl.batches || bl)) || []).find((b) => b.status === 'running');
     const el = $('#swProg'); if (!el) return;
     if (!run) { el.innerHTML = '<span class="muted">No job running.</span>'; return; }
-    const doc = await api(`api/batch?id=${encodeURIComponent(run.id)}`).catch(() => null);
+    const doc = await api(`api/batch/${encodeURIComponent(run.id)}`).catch(() => null);
     const perf = (doc && doc.perf) || {};
     el.innerHTML = `<h3 style="margin-top:0">Running: ${esc(run.id)}</h3>
       <div class="grid">
@@ -199,7 +247,7 @@ async function drawSweep() {
 async function loadPicked() {
   if (!pickedRun) return null;
   if (pickedDoc && pickedDoc.id === pickedRun) return pickedDoc;
-  pickedDoc = await api(`api/batch?id=${encodeURIComponent(pickedRun)}`).catch(() => null);
+  pickedDoc = await api(`api/batch/${encodeURIComponent(pickedRun)}`).catch(() => null);
   return pickedDoc;
 }
 const selKey = 'cx-selrow';
@@ -214,7 +262,7 @@ async function drawBoards() {
   const doc = await loadPicked();
   const leaders = doc ? (doc.leaders || []).filter((l) => l.nullDealSeed == null) : [];
   const sel = getSelRow(doc);
-  $('#view').innerHTML = `<div class="panel"><div class="row">
+  $('#view').innerHTML = `<div class="panel"><div class="row" style="align-items:flex-end">
       <label class="f">saved runs<select id="bPick" style="min-width:22rem">
         <option value="">— pick a run —</option>
         ${list.map((b) => `<option value="${esc(b.id)}" ${b.id === pickedRun ? 'selected' : ''}>${esc(b.id)} (${esc(b.status)})</option>`).join('')}
@@ -266,15 +314,6 @@ async function drawBoards() {
       pickedDoc = null; if (out) drawBoards();
     };
   });
-  const pollJob = async (jobId, note) => {
-    for (;;) {
-      const j = await api(`api/jobs/${encodeURIComponent(jobId)}`);
-      if (j.status === 'done') return j.result;
-      if (j.status === 'error') throw new Error(j.error || 'job failed');
-      if (note) note(j.message || j.status);
-      await new Promise((r) => setTimeout(r, 1500));
-    }
-  };
   const censusFileFor = (l) => {
     const cr = (doc.edgeCensus || []).find((r) => r.nullDealSeed == null && !r.shiftFrac
       && r.trade === l.trade && (r.ctx1 || '') === (l.ctx1 || '') && (r.ctx2 || '') === (l.ctx2 || '')
@@ -410,7 +449,7 @@ async function drawHistory() {
     : '<span class="muted">none yet</span>';
   $('#htList').querySelectorAll('button[data-open]').forEach((b) => {
     b.onclick = async () => {
-      const d = await api(`api/batch?id=${encodeURIComponent(b.dataset.open)}`).catch(() => null);
+      const d = await api(`api/batch/${encodeURIComponent(b.dataset.open)}`).catch(() => null);
       $('#htRead').innerHTML = d ? `<h3>${esc(d.id)}</h3>
         <p class="note">reading rules (stamped BEFORE launch): ${esc(JSON.stringify(d.params && d.params.readingRules || '—'))}</p>
         <details open><summary>result record, verbatim</summary><pre>${esc(JSON.stringify(d.result || d.summary || d.perf || d, null, 1).slice(0, 20000))}</pre></details>` : 'unreadable';
@@ -559,7 +598,7 @@ async function drawGreenlight() {
       <td class="muted">${esc(g.campaign || '—')}</td><td style="text-align:left" class="muted">${esc((g.why || '').slice(0, 90))}</td>
       <td>${esc((g.createdUtc || '').slice(0, 16))}</td><td>${g.revoked ? '<span class="warn">nuked</span>' : '<span class="pos">greenlighted</span>'}</td></tr>`).join('') || '<tr><td colspan="6" class="empty">none yet</td></tr>'}
     </tbody></table>
-    <p class="note">activation, deactivation and nuking live on the <a href="livetrading.html">Trading tab</a>.</p></div>`;
+    <p class="note">activation, deactivation and nuking live on the <a href="trading.html">Trading tab</a>.</p></div>`;
   const go = $('#glGo');
   if (go) go.onclick = async () => {
     const why = $('#glWhy').value.trim();
