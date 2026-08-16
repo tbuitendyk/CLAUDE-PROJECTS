@@ -1,0 +1,46 @@
+Constructing/Trading tabs: Boards "Open" bug, Data tab, URL rename — fixed and deployed
+
+tl;dr — Fixed the six issues you flagged on the Constructing and Trading tabs
+(nothing else touched, as instructed). Deployed and live as of 07:21 UTC;
+service restarted clean (PID 29826, active).
+
+WHAT WAS WRONG AND WHAT CHANGED:
+  - Boards "Open" button did nothing: the page called GET api/batch?id=X but
+    the server only ever had GET /api/batch/:id (path param, not query
+    string) -- every open attempt 404'd, silently swallowed by a .catch. Same
+    wrong call was also breaking Sweep's progress poller and History's "read"
+    button; fixed all three call sites.
+  - Data sub-tab looked non-functional because it was: it read
+    d.pairs/d.rows/d.data from /api/data-state, which actually returns
+    {symbols:[...]}, so the table was ALWAYS empty regardless of what's
+    cached. Its download button also posted to /api/load (the single
+    trade/compare-pair endpoint) instead of /api/data/download (bulk
+    symbols), so downloads always failed validation. Rebuilt it to match the
+    Bracket lab's Data manager: correct field, per-pair refresh/trim/purge,
+    working multi-pair download, and Global Refresh.
+  - Boards "Open" button was vertically off from the dropdown beside it --
+    the row was missing align-items:flex-end (present elsewhere on the page,
+    missing here).
+  - "Open a run to see its board." sat on the left border -- a CSS ordering
+    bug: .empty's padding:1rem 0 was overriding .panel's horizontal padding
+    to zero on any element carrying both classes.
+  - "Back to the app" -> "Back" on both pages.
+  - The "general classifier" breadcrumb is now a link back to index.html,
+    matching how buitendyk.ca already links one level further up.
+  - Trading page URL: livetrading.html -> trading.html. Updated every live
+    reference (index nav, the Greenlight-tab link to Trading, the pilot
+    page's nav comment, and tests/test-decisiondate.js's screen list). Old
+    mentions in IMPLEMENTATION-PLAN.md/NEXT-RELEASE.md left alone -- those
+    are historical build logs, not live code.
+
+Pushed to origin/general-classifier (b20434d) and deployed via
+scripts/deploy-general-classifier.sh through the sanctioned vps-run.sh door.
+Sanity-checked https://www.buitendyk.ca/classifier/trading.html and
+.../constructing.html both return HTTP 401 (Basic Auth challenge, i.e. the
+routes exist and nginx is routing to them) rather than 404.
+
+Scope note per your instruction: only Constructing and Trading were touched
+-- nothing else on the app was changed, since this branch's work is headed
+for eventual factor-out into the UTS.
+
+c.
