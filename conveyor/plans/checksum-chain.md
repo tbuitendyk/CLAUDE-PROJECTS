@@ -27,7 +27,7 @@ prompt.
   method than Step 2 used (for example `python3 -c` rather than `bc`). State
   plainly whether each value matches. If anything disagrees, report the
   disagreement rather than papering over it.
-- [ ] Step 4 — Close. Confirm Steps 1–3 are ticked and their results are present
+- [x] Step 4 — Close. Confirm Steps 1–3 are ticked and their results are present
   in the log. Append the single line from
   `conveyor/plans/checksum-chain-marker.txt` to the log, followed by the UTC
   timestamp and the elapsed time from Step 1's epoch. Spawn nobody.

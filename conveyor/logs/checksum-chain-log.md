@@ -255,3 +255,45 @@ this step: `git fetch`/`checkout`/`commit`/`push` and `python3` all ran unprompt
 the only blocked call this session was a `curl` to the deploy endpoint carrying a
 bearer token ("Blocked by classifier"), which affected mail-hub registration only.
 Nothing else errored.
+
+## Step 4 — 2026-08-16T04:20:54Z [container:975ee77c]
+
+**Executed by:** the owner session (`session_01UvFkCbbt4VJcWGWPTD5atw`) under the
+corrected dispatch model — alarm wakes the session, the session does the step. Zero
+runtime approvals. Spawned nobody, created/fired/deleted no triggers.
+
+**Confirmation that Steps 1–3 are ticked** (`grep -n "^- \[" conveyor/plans/checksum-chain.md`):
+
+```
+18:- [x] Step 1 — Seed.
+21:- [x] Step 2 — Expand.
+25:- [x] Step 3 — Verify.
+```
+
+**Confirmation that their results are present in this log** (occurrence counts):
+
+| Value | From | Occurrences |
+|---|---|---|
+| `1786850035` | Step 1 epoch | 4 |
+| `36076f07c0369a1a6f0252bfe929f76b756732a9` | Step 1 sha1 | 7 |
+| `3540847` | Step 2 decimal | 7 |
+| `24785942` | Step 2 result | 6 |
+
+**Elapsed since Step 1's epoch:**
+
+```
+now epoch    = 1786854054
+step1 epoch  = 1786850035
+elapsed secs = 4019
+elapsed      = 1h 6m 59s
+```
+
+**Completion marker**, copied verbatim from `conveyor/plans/checksum-chain-marker.txt`:
+
+    CHECKSUM-CHAIN COMPLETE
+
+Marked at 2026-08-16T04:20:54Z — 4019 seconds (1h 6m 59s) after Step 1's epoch.
+
+**Session diagnostics:** model `claude-opus-5`; mcp__ tools present under plain
+`mcp__Claude_Code_Remote__*` / `mcp__github__*` prefixes. No tool call in this step
+raised a permission prompt or was blocked. Nothing errored.
