@@ -143,7 +143,7 @@ async function drawSweep() {
     <h3 style="margin-top:0">Campaign — the parent job (pt 13)</h3>
     <p class="note">Every run launched while a campaign is set attaches to it: sweeps, null rounds, tuning passes,
       scans. The campaign's whole chain travels with any greenlight minted from it.</p>
-    <div class="row">
+    <div class="row" style="align-items:flex-end">
       <label class="f">campaign name<input id="cxCamp" value="${esc(camp.name || '')}" list="campNames" style="width:18rem"></label>
       <datalist id="campNames">${(names.names || []).map((n) => `<option value="${esc(n)}">`).join('')}</datalist>
       <button id="campSet">Set</button>
@@ -433,7 +433,7 @@ async function drawHistory() {
       half-life (how many days back a sample's influence falls to half) is declared, then priced against the
       no-dial reference on ~20 paired folds — same folds, same frozen trading cell, so the ONLY difference is the
       dial. The table's verdict is the paired money difference, fold by fold.</p>
-    <div class="row">
+    <div class="row" style="align-items:flex-end">
       <label class="f">half-life<select id="ht2hl"><option>90d</option><option>180d</option><option>365d</option><option>730d</option></select></label>
       ${sel ? '<button id="ht2Run" class="pri">Launch paired age-dial run</button>' : '<span class="note">select a row on Boards first.</span>'}
       <span id="ht2Msg" class="note"></span>
@@ -513,7 +513,7 @@ async function drawTune() {
   </div>
   <div class="panel">
     <h3 style="margin-top:0">Compare two runs — NOT a null test</h3>
-    <div class="row">
+    <div class="row" style="align-items:flex-end">
       <label class="f">run A<input id="cmpA" style="width:20rem" value="${esc(pickedRun || '')}"></label>
       <label class="f">run B<input id="cmpB" style="width:20rem"></label>
       <button id="cmpGo">Compare</button></div>
@@ -582,11 +582,11 @@ async function drawGreenlight() {
       evidentiary chain. The config then appears on the Trading tab (both sides) for activation. Only greenlighted
       configs ever trade — no hand-built live configs, ever.</p>
     ${sel ? `<div class="row" style="align-items:flex-end">
-      <span class="note">selected: <b>${esc(sel.trade)}</b> ${esc(sel.geometry)} ${esc(sel.decision)} q${sel.quorum} ${sel.tHours}h
+      <span class="note" style="flex:1 1 auto;min-width:0">selected: <b>${esc(sel.trade)}</b> ${esc(sel.geometry)} ${esc(sel.decision)} q${sel.quorum} ${sel.tHours}h
         — test ${money(sel.pnl)}${sel.holdout ? ` · held-back ${money(sel.holdout.pnl)}` : ''}</span>
-      <label class="f">anchor<select id="glTarget"><option value="declared">declared cell</option><option value="best">best cell</option></select></label>
+      <label class="f" style="flex:none">anchor<select id="glTarget"><option value="declared">declared cell</option><option value="best">best cell</option></select></label>
     </div>
-    <div class="row" style="margin-top:.4rem">
+    <div class="row" style="margin-top:.4rem;align-items:flex-end">
       <label class="f" style="flex:1">why — the decision record (required)<input id="glWhy" style="width:100%"
         placeholder="e.g. money screen + Tool 2 null + held-back all cleared; stop scanned; conviction priced"></label>
       <button id="glGo" class="pri">GREENLIGHT this config</button></div>`
