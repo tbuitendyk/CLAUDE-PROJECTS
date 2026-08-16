@@ -1,2 +1,5 @@
 User-agent: *
 Allow: /
+Disallow: /gracias/
+
+Sitemap: https://uniontradingacademy.com/sitemap.xml

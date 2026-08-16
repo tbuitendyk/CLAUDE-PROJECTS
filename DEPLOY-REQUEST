@@ -16,3 +16,4 @@
 2026-08-07T14:40Z deploy branch tip (redirects: orderflow→main, www→apex, dev-ver→root; + scheme probe)
 2026-08-07T14:55Z deploy branch tip (force-https; remove scheme probe)
 2026-08-13T19:20Z deploy branch tip (normalized font filenames + css refs)
+2026-08-16T21:55Z deploy branch tip (SEO: brand in description, canonical, Open Graph, sitemap)
