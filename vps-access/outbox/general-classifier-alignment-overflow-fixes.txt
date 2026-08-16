@@ -1,0 +1,45 @@
+Constructing/Trading: 6 more alignment/overflow bugs fixed and deployed
+
+tl;dr — Fixed the 6 items you called out one at a time (Sweep, History, Tune,
+Greenlight x2, Trading cfgrow; the Paper Books item was a confirmed no-op).
+Deployed and live as of 22:12 UTC; service restarted clean (PID 54691, active).
+
+WHAT CHANGED:
+  - Sweep tab, Campaign section: "Set" / "View tree" buttons were centering
+    against the whole labeled campaign-name field instead of lining up with
+    the input -- missing align-items:flex-end on that row, same root cause
+    as the Boards "Open" button fix from the last round.
+  - History tab, Age dial panel: "Launch paired age-dial run" button, same
+    missing align-items:flex-end. (The similar "Launch History Tuning on
+    this row" button above it has the identical bug but was NOT reported,
+    so it was left alone -- only fixing what was flagged, per your scope
+    instruction.)
+  - Tune tab, "Compare two runs" panel: "Compare" button, same fix.
+  - Greenlight tab, "GREENLIGHT this config" button: same fix.
+  - Greenlight tab, "anchor" dropdown: this one already HAD
+    align-items:flex-end, so the standard fix didn't apply. Root cause was
+    different -- the long "selected: ..." note text had no flex sizing, so
+    it could wrap unpredictably against the dropdown. Gave the note
+    flex:1 1 auto;min-width:0 and the label flex:none so the dropdown's
+    position no longer depends on how the note text wraps.
+  - Trading page, Live Trading "Tested Configuration" panel: the "model"
+    field was overflowing the box. .cfgrow (the shared config-row renderer
+    -- used by BOTH Paper Books and Live Trading, same code, not two
+    diverged copies) had no wrap/shrink rule on its value cell; flex items
+    default to min-width:auto, so a long unbroken value pushed straight
+    past the panel edge. Added min-width:0 and overflow-wrap:anywhere.
+    Confirmed this also covers Paper Books automatically since it's the
+    identical code path -- there was nothing separate to "match up."
+
+Pushed to origin/general-classifier (24a02e6) and deployed via
+scripts/deploy-general-classifier.sh through vps-run.sh. Sanity-checked
+https://www.buitendyk.ca/classifier/constructing.js and .../trading.html
+both return HTTP 401 (Basic Auth challenge, i.e. routes exist and nginx is
+routing to the fresh deploy) rather than 404.
+
+Note on the anchor-row fix: I can't render this branch's UI in a browser
+from this environment (no local Node, no display) -- the CSS fix is my best
+diagnosis from reading the layout, not something I visually confirmed.
+Flag it back to me if it's still off after this deploy.
+
+c.
