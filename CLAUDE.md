@@ -34,22 +34,3 @@ arm a harness-backed loop (/loop with NO interval token -> ScheduleWakeup) in
 the same turn, and end every turn by re-arming the next wakeup until done.
 Note for cloud sessions: CronCreate jobs are in-process memory and do NOT
 survive worker recycling — use the wakeup chain.
-
-## Default output style: ELI5 (owner directive, 2026-08-16)
-
-Apply the rules in `.claude/skills/eli5/SKILL.md` to **every** response in
-this repo, not just when the user types "eli5" — it is the default voice for
-this branch, not an opt-in trigger.
-
-- One-line plain-English answer first.
-- Ground it in a concrete, correctly-mapped analogy (2-4 sentences).
-- Tie the analogy back to the real thing explicitly.
-- No unexplained jargon; short sentences; cut caveats/edge-cases unless asked.
-- Go deeper only if the user follows up asking for the "real" version.
-
-This governs prose explanations. It does not change code itself (no
-dumbing-down of code, comments, or commit messages) and does not override the
-terse tool-call/status-update conventions from the system prompt — those stay
-as-is. When ELI5 phrasing and a direct answer would conflict (e.g. "yes/no"
-questions, quick confirmations), still lead with the direct answer, then add
-the analogy if it adds value.
