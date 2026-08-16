@@ -353,7 +353,16 @@ async function drawDetail(){
 
 // ---- LIVE (what the selected setup is DOING) ----------------------------------
 const vcls=(v)=>v===1?'vote-up':v===-1?'vote-dn':'vote-as';
-const vtxt=(v)=>v===1?'UP':v===-1?'DOWN':'aside';
+// "aside" was internal shorthand for a member emitting 0 — say what it means.
+const vtxt=(v)=>v===1?'UP':v===-1?'DOWN':'no call';
+const vtip=(v)=>v===1?'this member voted UP (long)':v===-1?'this member voted DOWN (short)'
+  :'no call — this member saw no move big enough to name a direction';
+const fateTxt=(f)=>{const s=String(f||'');
+  if(!s)return'—';
+  if(s==='filled')return'filled — position opened';
+  if(s==='stand down'||s==='flat — no trade')return'no trade taken';
+  if(s==='seen')return'intent shipped — awaiting fill';
+  return s;};
 function untilStr(iso){ if(!iso)return''; const ms=Date.parse(iso)-Date.now(); if(ms<=0)return'now / due';
   const h=Math.floor(ms/3.6e6),m=Math.floor(ms%3.6e6/6e4),s=Math.floor(ms%6e4/1e3);
   return h>0?`in ${h}h ${m}m`:(m>0?`in ${m}m ${s}s`:`in ${s}s`); }
@@ -427,13 +436,21 @@ async function drawPilotLive(){
     <div class="muted" style="font-size:.74rem;margin-top:.2rem;max-width:52rem">${esc(it.why||'')}</div></td>
     <td style="text-align:right;vertical-align:top;white-space:nowrap;padding:.5rem .5rem">${it.whenUtc?`<span class="pos">${untilStr(it.whenUtc)}</span><div class="muted" style="font-size:.72rem">${it.whenUtc.replace('T',' ').slice(0,16)} UTC</div>`:'<span class="muted">—</span>'}</td></tr>`).join('');
   const hist=(d.decisions&&d.decisions.length)?`<div style="margin-top:.9rem">
-    <div class="k" style="margin-bottom:.3rem">Daily decision history <span style="text-transform:none;letter-spacing:0">— newest first · votes: full, prices, volume, cross</span></div>
-    <div class="scrollbox"><table style="margin:0"><thead><tr><th style="text-align:left">date</th><th style="text-align:left">member votes</th><th style="text-align:left">action</th><th style="text-align:left">fate</th></tr></thead><tbody>
-    ${d.decisions.map(dec=>{const votes=Array.isArray(dec.votes)?dec.votes.map(v=>`<span class="${vcls(v)}">${vtxt(v)}</span>`).join(' · '):'<span class="muted">not recorded</span>';
+    <div class="k" style="margin-bottom:.3rem">Daily decision history <span style="text-transform:none;letter-spacing:0">— one row per decision day, newest first</span></div>
+    <div class="muted" style="font-size:.68rem;margin-bottom:.3rem"><b>entry (UTC)</b> = the moment the call acted (96h window start + 97h) ·
+      <b>window</b> = the 96h feature window it was computed from ·
+      <b>member votes</b> = the four committee members in order — full, prices, volume, cross — UP = long, DOWN = short, no call = named no direction ·
+      <b>call</b> = what the quorum decided · <b>outcome</b> = what the executor did with it</div>
+    <div class="scrollbox"><table style="margin:0"><thead><tr><th style="text-align:left">entry (UTC)</th><th style="text-align:left">window</th><th style="text-align:left">member votes</th><th style="text-align:left">call</th><th style="text-align:left">outcome</th></tr></thead><tbody>
+    ${d.decisions.map(dec=>{const votes=Array.isArray(dec.votes)?dec.votes.map(v=>`<span class="${vcls(v)}" title="${vtip(v)}">${vtxt(v)}</span>`).join(' · '):'<span class="muted">not recorded</span>';
       const lab=dec.side==='LONG'?['▲ Open LONG','pos']:dec.side==='SHORT'?['▼ Open SHORT','neg']:['■ STAND DOWN','vote-as'];
-      return`<tr><td style="text-align:left;white-space:nowrap">${(dec.chunk_start||'').slice(0,10)}</td>
+      // dated by the entry the call ACTS on, not the window it was built from —
+      // 4 days apart, and dating by the window made a current record look dead.
+      const acts=dec.entry_utc?dec.entry_utc.replace('T',' ').slice(0,16):'—';
+      return`<tr><td style="text-align:left;white-space:nowrap">${esc(acts)}</td>
+      <td style="text-align:left;white-space:nowrap" class="muted">${esc((dec.chunk_start||'').slice(0,10))}</td>
       <td style="text-align:left">${votes}</td><td style="text-align:left;white-space:nowrap" class="${lab[1]}"><b>${lab[0]}</b></td>
-      <td style="text-align:left" class="muted">${esc(dec.fate||'')}</td></tr>`;}).join('')}</tbody></table></div></div>`:'';
+      <td style="text-align:left" class="muted">${esc(fateTxt(dec.fate))}</td></tr>`;}).join('')}</tbody></table></div></div>`:'';
   $('#view').innerHTML=`
     ${strips.join('')}
     <div class="switch"><div><div class="k">Master switch (yours)</div>

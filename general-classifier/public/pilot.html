@@ -206,7 +206,22 @@ function renderAnatomy(a) {
 }
 
 const vcls = (v) => v === 1 ? 'vote-up' : v === -1 ? 'vote-dn' : 'vote-as';
-const vtxt = (v) => v === 1 ? 'UP' : v === -1 ? 'DOWN' : 'aside';
+// "aside" was internal shorthand for a member emitting 0. Say what it means: the
+// member called no direction that day (owner, 2026-08-16).
+const vtxt = (v) => v === 1 ? 'UP' : v === -1 ? 'DOWN' : 'no call';
+const vtip = (v) => v === 1 ? 'this member voted UP (long)'
+  : v === -1 ? 'this member voted DOWN (short)'
+  : 'no call — this member saw no move big enough to name a direction';
+// Plain words for what became of a decision. The journal's fate strings are
+// internal; the screen says what happened to the money.
+const fateTxt = (f) => {
+  const s = String(f || '');
+  if (!s) return '—';
+  if (s === 'filled') return 'filled — position opened';
+  if (s === 'stand down' || s === 'flat — no trade') return 'no trade taken';
+  if (s === 'seen') return 'intent shipped — awaiting fill';
+  return s;
+};
 function renderDecisions(list) {
   $('#decisions tbody').innerHTML = (list && list.length) ? list.map(dec => {
     const votes = Array.isArray(dec.votes)
@@ -426,19 +441,31 @@ function historyBlock() {
              : ['■ STAND DOWN', 'vote-as'];
   const rows = LATEST_DECISIONS.slice().reverse().map(dec => {
     const votes = Array.isArray(dec.votes)
-      ? dec.votes.map(v => `<span class="${vcls(v)}">${vtxt(v)}</span>`).join(' · ')
+      ? dec.votes.map(v => `<span class="${vcls(v)}" title="${vtip(v)}">${vtxt(v)}</span>`).join(' · ')
       : '<span class="muted">not recorded</span>';
     const [label, lcls] = act(dec.side);
-    return `<tr><td style="text-align:left;white-space:nowrap">${(dec.chunk_start||'').slice(0,10)}</td>`
+    // Date the row by the entry the call ACTS on, not the window it was built
+    // from — the two are 4 days apart and dating by the window made a current
+    // record look abandoned. Window start stays underneath, as provenance.
+    const acts = dec.entry_utc ? dec.entry_utc.replace('T', ' ').slice(0, 16) : '—';
+    const win = (dec.chunk_start || '').slice(0, 10);
+    return `<tr><td style="text-align:left;white-space:nowrap">`
+      + `<span title="the entry this call acted on (UTC)">${acts}</span>`
+      + (win ? `<div class="muted" style="font-size:.66rem" title="start of the 96h feature window this call was computed from">from window ${win}</div>` : '')
+      + `</td>`
       + `<td style="text-align:left">${votes}</td>`
       + `<td style="text-align:left;white-space:nowrap" class="${lcls}"><b>${label}</b></td>`
-      + `<td style="text-align:left" class="muted">${dec.fate||''}</td></tr>`;
+      + `<td style="text-align:left" class="muted">${fateTxt(dec.fate)}</td></tr>`;
   }).join('');
   return `<div style="margin-top:.9rem">`
     + `<div style="color:#8b96a5;font-size:.68rem;text-transform:uppercase;letter-spacing:.04em;margin-bottom:.3rem">`
-    + `Daily decision history <span style="text-transform:none;letter-spacing:0">— newest first · votes: full, prices, volume, cross</span></div>`
+    + `Daily decision history <span style="text-transform:none;letter-spacing:0">— one row per decision day, newest first</span></div>`
+    + `<div class="muted" style="font-size:.68rem;margin-bottom:.3rem">`
+    + `<b>entry (UTC)</b> = the moment the call acted (96h window start + 97h) · `
+    + `<b>member votes</b> = the four committee members in order — full, prices, volume, cross — UP = long, DOWN = short, no call = named no direction · `
+    + `<b>call</b> = what the quorum decided · <b>outcome</b> = what the executor did with it</div>`
     + `<div style="max-height:190px;overflow-y:auto;border:1px solid #232a35;border-radius:6px">`
-    + `<table style="width:100%;margin:0"><thead><tr><th style="text-align:left">date</th><th style="text-align:left">member votes</th><th style="text-align:left">action</th><th style="text-align:left">fate</th></tr></thead>`
+    + `<table style="width:100%;margin:0"><thead><tr><th style="text-align:left">entry (UTC)</th><th style="text-align:left">member votes</th><th style="text-align:left">call</th><th style="text-align:left">outcome</th></tr></thead>`
     + `<tbody>${rows}</tbody></table></div></div>`;
 }
 function renderStatus() {

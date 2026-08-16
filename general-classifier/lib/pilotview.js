@@ -21,6 +21,13 @@ const MODEL_FEE_PER_LEG = 0.125; // the assumption the pilot measures against
 const F1_ENTRY_HOUR_UTC = 1;
 const F1_HOLD_HOURS = 137;
 const F1_PAIRS = ['LTCUSDT', 'XRPUSDT', 'BCHUSDT']; // F1 combo: trade + two context pairs
+// A decision is KEYED on the start of its 96h feature window but ACTS 97h later
+// (window 96h + 1h), so the two stamps are four days and an hour apart. Dating a
+// row by chunk_start makes a current record read four days dead — the owner asked
+// on 2026-08-16 why the live rail had "no decisions for the past 4 decision days"
+// when in fact every day since arming was recorded. Rows carry entry_utc and the
+// screen dates them by THAT; chunk_start stays as the window it was built from.
+const F1_ENTRY_OFFSET_H = 97; // fallback only — the live value comes from config()
 // Staleness is measured from the CLOSE of the newest candle, not its open-time
 // stamp. Candles are stamped by open time and only CLOSED candles are cached, so a
 // just-finalized candle is stamped a full hour earlier — measuring from the stamp
@@ -477,6 +484,17 @@ function anatomy() {
   };
 }
 
+// Pure: the UTC moment a chunk's decision ACTS — its scheduled entry, which is
+// window start + entryOffsetH. Returns null on an unusable stamp so a malformed
+// record renders as "—" rather than throwing or silently falling back to the
+// window start (falling back is the very confusion this exists to end).
+function decisionEntryUtc(chunkStartIso, entryOffsetH) {
+  const t = Date.parse(chunkStartIso);
+  if (!Number.isFinite(t)) return null;
+  const off = Number.isFinite(entryOffsetH) ? entryOffsetH : F1_ENTRY_OFFSET_H;
+  return new Date(t + off * 3600000).toISOString();
+}
+
 function status(file = JOURNAL) {
   let cfg = null;
   try { cfg = config(); } catch (e) { cfg = { error: e.message }; }
@@ -493,6 +511,15 @@ function status(file = JOURNAL) {
   let standDowns = [];
   try { standDowns = require('./pilotmirror').loadStandDowns(); } catch (_) { standDowns = []; }
   const st = derive(events, { standDowns });
+  // Date every decision row by the moment it ACTS, not by the feature window it
+  // was built from (see F1_ENTRY_OFFSET_H). derive() stays keyed on chunk_start —
+  // that is the journal's key and must not move — so the acting stamp is added
+  // here, where the frozen geometry is in hand.
+  const entryOffsetH = (cfg && cfg.model && Number.isFinite(cfg.model.entryOffsetH))
+    ? cfg.model.entryOffsetH : F1_ENTRY_OFFSET_H;
+  st.decisions = (st.decisions || []).map((d) => ({
+    ...d, entry_utc: decisionEntryUtc(d.chunk_start, entryOffsetH),
+  }));
   // "pending" when the owner's request and the box's confirmed state disagree
   const armPending = req != null && req.armed !== st.armed;
   // mirror check verdict (findings 26/7): the VPS recompute writes mirror.json;
@@ -544,4 +571,4 @@ function status(file = JOURNAL) {
   };
 }
 
-module.exports = { status, config, anatomy, derive, liveStatus, dataFreshness, readJournal, JOURNAL, MODEL_FEE_PER_LEG };
+module.exports = { status, config, anatomy, derive, liveStatus, dataFreshness, decisionEntryUtc, readJournal, JOURNAL, MODEL_FEE_PER_LEG };
