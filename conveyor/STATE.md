@@ -19,3 +19,4 @@ Line shape (this example deliberately does not begin with a year):
 
 ## Dispatch log
 2026-08-16T03:13:28Z | session session_01N767jqHD6EZctuEVexnRpc | plan checksum-chain | step 1 | dispatched
+2026-08-16T03:16:34Z | session session_01LTrJAdqCUv7i4UGqJvZzcy | plan checksum-chain | step 2 | dispatched
