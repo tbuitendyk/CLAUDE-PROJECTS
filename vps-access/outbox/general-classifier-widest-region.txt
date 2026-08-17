@@ -1,0 +1,94 @@
+Constructing: widest region is live — a second way to read the board
+
+tl;dr — the board can now be ordered by how many NEIGHBOURING settings all made
+money, not just by the single best score, and Greenlight has a third anchor,
+"widest region", which confirms the middle of that run. Best cell keeps its
+meaning everywhere; nothing was replaced. Deployed 19:12 UTC and verified. The
+other half you asked for — permute ticks on the replication row with their own
+null boards — is NOT built; it is the bigger half and I explain why below.
+
+WHAT LANDED
+
+Taking the top row of a board is how you find flukes: the best of about 1,260
+tries looks good even when nothing is there. Noise gives you an isolated spike —
+one good setting with bad ones either side. Something real gives a REGION.
+
+So every promoted row now carries the largest set of settings that all made money
+after fees AND all touch each other. Three rules decide what "touch" means, and
+they are the whole claim:
+
+- ONE step on ONE setting. A diagonal does not count. Letting a region hop two
+  settings at once is exactly how scattered luck would read as a plateau.
+- Steps are measured on the menu THIS run computed, not the library's full menu.
+  A run with its own grid gets judged on its own spacing.
+- entry and gate are categories, not an order. A market cell does not sit next to
+  a breakout cell, so a region never crosses them.
+
+Table: what the region reports per row.
+Key — region: how many neighbouring settings all cleared the bar; bar: what a
+setting had to do to count; centre: which setting the Greenlight would confirm.
+
+  field    meaning
+  region   the count — a lone winner scores 1
+  bar      made money after fees, and actually traded
+  centre   the DEEPEST setting in the region, walked in from its edge
+
+That last one matters more than it sounds. The centre is not the region's
+best-scoring cell. If it were, the shopped peak would be straight back in charge
+wearing a different hat. It is also not "the one with the most neighbours" —
+that cannot tell the middle of a line of five from its second cell, since both
+have two neighbours. It is depth from the edge, and a region that runs off the
+end of the swept menu is treated as edge there, because you do not know it keeps
+going.
+
+WHAT IT COST
+
+Nothing to speak of. The sweep already computed every cell and threw all but the
+winner away; this collects them and reads them once more. Cells are pooled across
+agreement levels before the region is cut, because agreement is one of the
+ordered settings — cutting per level would have missed every region that widens
+as the committee threshold moves.
+
+HOW TO USE IT
+
+On the Boards section there is now an "order by" box: the board's own ranking, or
+widest region. Same rows either way, only the order changes. The region column
+shows the count, and hovering it names the centre and how many settings cleared
+the bar out of how many were tried.
+
+On the Greenlight section the anchor box now offers a third choice next to
+declared cell and best cell. Pick "widest region" and the confirm runs on the
+centre of that run of settings. If a row has no region — nothing on it made
+money, or the run predates today — it refuses and says so rather than quietly
+falling back to the best cell.
+
+WHAT IS NOT BUILT, AND WHY
+
+Permute ticks on the replication row, each with its own null boards number.
+
+That one is not a UI job. Today a declared config is validated as ONE cell and
+scored once per asset. Making it a SET changes what "declared" means all the way
+down: the validator, the replication table, and the greenlight target all assume
+a single cell. And per-tick null boards need something that does not exist yet —
+the null machinery deals votes for a whole run, not for one setting at a time
+with the rest held as the real run had them.
+
+So it is a real build, not an afternoon, and I would rather it went in cleanly
+than fast. Nothing about today's work blocks it or has to be undone for it.
+
+Also unchanged, as agreed: the whole-run null boards number is still what limits
+what you can claim. The per-tick numbers, when they exist, are for telling you
+which tick is earning the result — not for multiplying together into a bigger
+sounding one. Three ticks each passing at 1-in-11 is not 1-in-1,331; they are
+computed on the same history and their odds do not multiply.
+
+STATE
+
+422 tests pass, 13 of them new. Every guard was watched failing first, including
+one that took two separate injections to break — the diagonal rule is enforced in
+two places and removing either alone changes nothing, so I removed both to prove
+the test actually catches it.
+
+F1 untouched throughout.
+
+c.
