@@ -1,0 +1,68 @@
+Constructing: orphan ticks fixed, own theme, no cap, ranked replication list
+
+tl;dr — your four calls are live (20:27 UTC, verified on the box, 442 tests pass):
+permute ticks now hide with the box they belong to, Constructing keeps its own
+theme, the 500 refusal is gone because software reports and you decide, and a
+permuted run now shows a ranked list of configs first with each line opening to
+its per-asset table. The gap list is NOT started — the sealed exam is next.
+
+THE ORPHAN TICKS
+
+You were right that there is no "arm" on your screen: the arm box is hidden
+whenever the trailing stop is "static", which is the default. My sentence
+described a control you could not see.
+
+Worse, the permute ticks I added yesterday sat outside the boxes they belong to
+and nothing hid them. A market entry showed three orphan ticks (gate, d, trail)
+and a static stop showed a fourth. Each tick now lives in its own wrapper and is
+shown or hidden with its box, so a tick on screen always belongs to a control on
+screen.
+
+THEME
+
+Constructing had been sharing the Trading page's stored theme so the pair always
+matched. It now keeps its own; Trading's is untouched. Pinned by a test that also
+checks Trading still has its own.
+
+NO CAP
+
+Removed. Your rule, verbatim: software reports the number, human makes the
+decision, always. The form says how many configs the ticks declare and roughly
+what that multiplies the replication work by, before you press Start sweep.
+Nothing refuses a count any more — a guessed ceiling was the software overruling
+you on a number it invented for itself.
+
+THE RANKED LIST
+
+One declared config: the table stands alone, exactly as it was. Nothing to choose
+between, so a list would be furniture.
+
+Many: a ranked list comes first, scrollable, one line per configuration, each
+opening to that configuration on every asset.
+
+Table: what each line of the ranked list shows.
+Key — held up on: assets whose once-only held-back look made money; 1-in-N: how
+unlikely that split is on coin flips; beat always-long: same count against forcing
+the position long every period; total held-back: summed money on the once-only
+look.
+
+  column            what it tells you
+  held up on k/n    the count that IS the replication claim
+  1-in-N            how unlikely that count is by chance alone
+  beat always-long  did the calls earn their keep, or was it just being long
+  total held-back   the money, last on purpose
+
+The ranking leads on how unlikely the across-asset split is, then the share of
+assets that held up, and money is the LAST tiebreak. That order matters: sorting
+by money would rebuild exactly the shopped board the whole replication idea
+exists to avoid. A configuration that held on 9 of 10 assets outranks one that
+made more dollars on 2 of 10.
+
+WHAT IS NEXT
+
+The gap list, in the order I sent it, starting with the sealed exam grade in the
+History section — the one-touch grade on the 13% that the 61/13/13/13 layout
+holds back. That is the end of the road the search keeps pointing at, and the tab
+still cannot reach it. Nothing shipped today blocks it.
+
+c.
