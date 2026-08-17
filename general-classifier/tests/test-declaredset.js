@@ -147,8 +147,14 @@ module.exports = {
   theBoardShowsTheReplicationTable() {
     const ui = fs.readFileSync(path.join(ROOT, 'public', 'constructing.js'), 'utf8');
     assert.ok(/doc\.replication/.test(ui), 'the Boards section must read the recorded replication rows');
-    assert.ok(/const rows = all\.filter\(\(r\) => r\.nullDealSeed == null\)/.test(ui),
+    assert.ok(/rows = all\.filter\(\(r\) => r\.nullDealSeed == null\)/.test(ui),
       'null copies score the declared cell too and must never enter the cross-asset count');
+    // A doc recorded BEFORE the tag existed carries nullDealSeed on no row, so
+    // filtering on it keeps everything and mixes null copies into the tally.
+    assert.ok(/const tagged = all\.some\(\(r\) => 'nullDealSeed' in r\)/.test(ui),
+      'untagged docs must be detected, not filtered as if they were tagged');
+    assert.ok(/INFERRED, not measured/.test(ui),
+      'and an inferred count must say on the page that it is inferred');
     assert.ok(/binom\(pos, hold\.length\)/.test(ui),
       'the tally must be the binomial across assets on the HELD-BACK window');
   },

@@ -182,6 +182,42 @@ module.exports = {
     }
   },
 
+  // CLASS-WIDE, not instance-wide. The window-layout defect was found by eye and
+  // I guarded that one dropdown; #ht2hl then shipped with 90d/180d/365d/730d
+  // against a server that accepts only 12mo/24mo/36mo, so EVERY age-dial launch
+  // threw. Same bug, second instance, because the guard named two ids instead of
+  // covering the rule. This one enumerates every select on the tab whose values
+  // are checked against a backend allow-list, and fails on an unlisted select so
+  // a NEW dropdown cannot quietly escape the check.
+  everySelectCheckedByTheBackendOffersOnlyValuesItAccepts() {
+    const { HALF_LIVES } = require('../lib/httwo');
+    const { GEOMETRIES } = require('../lib/dataset');
+    const CHECKED = [
+      { id: 'swLayout', allowed: backendLayouts(), why: 'lib/batch.js window-layout allow-list' },
+      { id: 'swGeom', allowed: Object.keys(GEOMETRIES), why: 'lib/dataset.js GEOMETRIES' },
+      { id: 'ht2hl', allowed: Object.keys(HALF_LIVES), why: 'lib/httwo.js HALF_LIVES' },
+    ];
+    for (const c of CHECKED) {
+      const offered = optionValues(SWEEP, c.id);
+      assert.ok(offered.length, `#${c.id} must still exist and carry explicit option values`);
+      const bad = offered.filter((v) => !c.allowed.includes(v));
+      assert.strictEqual(bad.length, 0,
+        `#${c.id} offers ${bad.join(', ')} — the backend accepts only ${c.allowed.join(', ')} (${c.why}); every launch would throw`);
+    }
+    // A select that carries explicit values and is NOT on the list above has
+    // never been checked against anything. Fail loudly rather than assume.
+    const known = new Set([...CHECKED.map((c) => c.id),
+      // checked by their own test in test-declaredset.js against the run's grid
+      'swDecEntry', 'swDecGate', 'swDecD', 'swDecT', 'swDecTrail', 'swDecArm', 'swDecQ6', 'swDecQ8',
+      // free-form or purely local to the page, with no backend allow-list
+      'swDec', 'bPick', 'bSort', 'glTarget', 'htWin', 'cmpA', 'cmpB', 'tuneTarget']);
+    const withValues = [...SWEEP.matchAll(/<select id="([\w-]+)"[^>]*>((?:(?!<\/select>)[\s\S])*?)<\/select>/g)]
+      .filter((m) => /<option value="/.test(m[2])).map((m) => m[1]);
+    const unlisted = withValues.filter((id) => !known.has(id));
+    assert.deepStrictEqual(unlisted, [],
+      `these selects carry explicit values and no test checks them against a backend allow-list: ${unlisted.join(', ')}`);
+  },
+
   // A number the form can type but the backend silently reduces is a lie told to
   // the operator: the run is weaker than the one they asked for, with no notice.
   clampedNumberInputsCarryTheirBackendBounds() {

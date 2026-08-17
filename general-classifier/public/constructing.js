@@ -411,6 +411,33 @@ async function drawBoards() {
       || (b.pnl || 0) - (a.pnl || 0));
   }
   const sel = getSelRow(doc);
+  // VS NULLS, from the CENSUS. constructing.js read l.vsNulls, a field nothing
+  // writes — the column had always shown "—" while looking like a measurement.
+  // The board that works builds it from doc.edgeCensus, where the dealt-vote
+  // copies record their held-back money (app.js:2419).
+  const vnKey = (r) => `${r.trade}|${r.ctx1 || ''}|${r.ctx2 || ''}|${r.geometry}|${r.decision}`;
+  const vnNulls = new Map();
+  const vnReal = new Map();
+  for (const r of ((doc && doc.edgeCensus) || [])) {
+    if (r.holdPnl == null) continue;
+    if (r.nullDealSeed != null) {
+      if (!vnNulls.has(vnKey(r))) vnNulls.set(vnKey(r), []);
+      vnNulls.get(vnKey(r)).push(r.holdPnl);
+    } else if (!r.shiftFrac) vnReal.set(vnKey(r), r.holdPnl);
+  }
+  const hasDealNulls = vnNulls.size > 0;
+  const vsNullsCell = (l) => {
+    if (!hasDealNulls) return '<td class="muted" title="this run recorded no dealt-vote null copies, so there is nothing to compare against">—</td>';
+    const real = vnReal.get(vnKey(l));
+    const nulls = vnNulls.get(vnKey(l)) || [];
+    if (real == null || !nulls.length) return '<td class="muted">—</td>';
+    const beats = nulls.filter((v) => real > v).length;
+    return `<td class="${beats === nulls.length ? 'pos' : ''}" title="how many of this row's dealt-vote null copies its HELD-BACK money beat. The register's only sanctioned yardstick (QC-7): the copies keep the committee's vote mix and destroy only the alignment with the market."><b>${beats}/${nulls.length}</b></td>`;
+  };
+  // Did this run hold anything back? If not, the board's money is the window the
+  // settings were CHOSEN on and nothing judged it — the heading must say so
+  // rather than promising a held-back judge that does not exist.
+  const hasHold = ((doc && doc.leaders) || []).some((l) => l.holdout && l.holdout.pnl != null);
   // REPLICATION — the declared config scored on every asset. The run has always
   // recorded this; the tab never showed it (the tick's own tooltip promised a
   // table that did not exist here). Null copies also score the declared cell,
@@ -418,8 +445,33 @@ async function drawBoards() {
   const repBlock = (() => {
     const all = (doc && doc.replication) || [];
     // Null copies score the declared cell too — that is their job — but they must
-    // never enter the cross-asset count (QC 72).
-    const rows = all.filter((r) => r.nullDealSeed == null);
+    // never enter the cross-asset count (QC 72). Docs recorded BEFORE the tag
+    // existed carry no nullDealSeed on any row, and filtering on it there keeps
+    // everything, silently mixing null copies into the tally. On those docs the
+    // board that works falls back to each asset's FIRST-recorded row, which is
+    // the real copy (real copies are queued ahead of every null copy), and says
+    // so on the page rather than presenting an inferred count as a measured one.
+    const tagged = all.some((r) => 'nullDealSeed' in r);
+    let rows;
+    let inferredNote = '';
+    if (tagged) {
+      rows = all.filter((r) => r.nullDealSeed == null);
+    } else {
+      const realFailed = new Set(((doc && doc.failures) || [])
+        .filter((f) => !/\|n\d+/.test(f.key || ''))
+        .map((f) => String(f.key || '').split('|')[0].split('+')[0]));
+      const seen = new Set();
+      rows = all.filter((r) => {
+        const k = `${r.trade}|${r.ctx1 || ''}|${r.ctx2 || ''}|${r.declaredLabel || ''}`;
+        if (seen.has(k) || realFailed.has(r.trade)) return false;
+        seen.add(k);
+        return true;
+      });
+      inferredNote = `<p class="note"><b>Counts below are INFERRED, not measured.</b> This run recorded ${all.length}
+        declared-cell rows without marking which copy scored them, so each asset's first-recorded row is taken as the
+        real one — real copies are queued ahead of every null copy. ${all.length - rows.length} row(s) were excluded.
+        ${realFailed.size ? `${realFailed.size} asset(s) whose real copy FAILED are dropped entirely rather than shown as a null copy.` : ''}</p>`;
+    }
     if (!rows.length) return '';
     const groups = new Map();
     for (const r of rows) {
@@ -477,6 +529,7 @@ async function drawBoards() {
           apiece, so the count across assets owes no shopping tax and needs no correction: read the tally, never any
           single row. held-back $ is the once-only look on data no search touched and is what the tally counts;
           test $ is the window the settings were chosen on and flatters itself by construction.</p>
+        ${inferredNote}
         <div><b>${esc(g.label)}</b></div>
         <div class="row" style="gap:1.4rem;margin:.3rem 0 .5rem">
           <span><span class="k">held-back positive</span> <b>${g.pos} / ${g.hold.length}</b>
@@ -505,6 +558,7 @@ async function drawBoards() {
         look made money. Open a line to see that configuration on every asset.
         These configurations were SEARCHED, not declared, so the honest end is the sealed slice: window layout
         61/13/13/13, graded once in the History section.</p>
+      ${inferredNote}
       <div style="max-height:26rem;overflow-y:auto;border:1px solid var(--line);border-radius:6px">${listHtml}</div></div>`;
   })();
   $('#view').innerHTML = `<div class="panel"><div class="row" style="align-items:flex-end">
@@ -517,7 +571,11 @@ async function drawBoards() {
     </div></div>
     <div id="bBody">${!doc ? '<div class="panel empty">Open a run to see its board.</div>' : `
       ${doc.params && doc.params.description ? `<div class="panel note">${esc(doc.params.description)}</div>` : ''}
-      <div class="panel"><h3 style="margin-top:0">Survivor board — the promoted rows (test window; held-back judges)</h3>
+      ${(doc.failures && doc.failures.length) ? `<div class="panel"><b class="warn">${doc.failures.length} unit(s) FAILED</b>
+        <p class="note">A failed unit is missing from every count on this page — the denominator is smaller than the run intended. First: <code>${esc(doc.failures[0].key || '')}</code> — ${esc(doc.failures[0].error || '')}</p>
+        <details><summary>all failures</summary><pre>${esc(doc.failures.map((f) => `${f.key}: ${f.error}`).join('\n'))}</pre></details></div>` : ''}
+      <div class="panel"><h3 style="margin-top:0">Survivor board — the promoted rows ${hasHold ? '(test window; held-back judges)' : '— NOTHING WAS HELD BACK'}</h3>
+      ${hasHold ? '' : '<p class="note"><b>This run held nothing back.</b> Every dollar below is from the window the settings were CHOSEN on, so it flatters itself by construction and cannot say whether anything works out of sample. The null tools are unavailable for this run.</p>'}
       <p class="note">KEY — setup: traded + context coins; shape: chunk geometry · decision · band; cell: agreement/entry/hold;
         trades: entries in the test window; test $: profit-and-loss in dollars on the window the settings were CHOSEN on
         (flattering by construction); held-back $: the once-only look that matters; vs nulls: how many of the row's dealt-vote
@@ -540,7 +598,7 @@ async function drawBoards() {
       <td>${l.trades ?? '—'}</td>
       <td class="${(l.pnl || 0) >= 0 ? 'pos' : 'neg'}">${money(l.pnl)}</td>
       <td class="${l.holdout ? ((l.holdout.pnl || 0) >= 0 ? 'pos' : 'neg') : 'muted'}">${l.holdout ? money(l.holdout.pnl) : '—'}</td>
-      <td>${l.vsNulls != null ? esc(String(l.vsNulls)) : '—'}</td>
+      ${vsNullsCell(l)}
       <td title="${l.region && l.region.centre ? esc(`middle of the region: q${l.region.centre.quorum} ${l.region.centre.entry === 'market' ? 'directional/market' : `${l.region.centre.gate}/breakout d${l.region.centre.dMult}x`} ${l.region.centre.tHours}h — ${l.region.cellsClearing} of ${l.region.cellsConsidered} settings cleared the bar (${l.region.bar})`) : 'not recorded — this run predates the region being measured'}">${l.region ? esc(String(l.region.size)) : '<span class="muted">—</span>'}</td>
       <td><button data-grid="${i}" title="every execution-menu permutation for this row, plateau view on top (test window only)">menu grid</button></td>
       </tr>
@@ -689,7 +747,7 @@ async function drawHistory() {
       no-dial reference on ~20 paired folds — same folds, same frozen trading cell, so the ONLY difference is the
       dial. The table's verdict is the paired money difference, fold by fold.</p>
     <div class="row" style="align-items:flex-end">
-      <label class="f">half-life<select id="ht2hl"><option>90d</option><option>180d</option><option>365d</option><option>730d</option></select></label>
+      <label class="f" title="how fast older evidence stops counting. The server accepts these three keys and no others (lib/httwo.js HALF_LIVES); the tab used to offer 90d/180d/365d/730d and EVERY launch threw.">half-life<select id="ht2hl"><option value="12mo" selected>12mo</option><option value="24mo">24mo</option><option value="36mo">36mo</option></select></label>
       ${sel ? '<button id="ht2Run" class="pri">Launch paired age-dial run</button>' : '<span class="note">select a row on Boards first.</span>'}
       <span id="ht2Msg" class="note"></span>
     </div>
