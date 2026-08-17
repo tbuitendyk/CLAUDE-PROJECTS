@@ -149,3 +149,39 @@ module.exports.sameMillisecondMintsSortByCreationOrderNotFilename = function () 
   assert.ok(iNew < iOld,
     `newer (seq 11) must precede older (seq 10) despite filename order; got new@${iNew} old@${iOld}`);
 };
+
+// THE REGION ANCHOR MUST ACTUALLY MINT. The Greenlight anchor has offered
+// "widest region" since 2026-08-17 and this module refused it — so the one
+// option whose whole purpose is to resist shopping was the one option that could
+// not produce a config, while the two that DID work are the two its own tooltip
+// warns flatter themselves. batch.js bracketConfirm had implemented the same
+// anchor on the same field all along; only the greenlight door was missing it
+// (audit 2026-08-17).
+//
+// Watched failing 2026-08-17: with the region branch removed, this throws
+// "greenlight target must be 'best' or 'declared'".
+module.exports.regionTargetUsesTheRegionCentreNotTheSearchWinner = function () {
+  const d = labDoc();
+  d.selection.tHours = 137;                 // the search winner
+  d.selection.region = {
+    size: 18,
+    // the middle of the widest run of neighbouring settings that all made money
+    centre: { quorum: 2, entry: 'market', gate: 'directional', dMult: null, tHours: 89, trailMult: null, armMult: null },
+    cellsConsidered: 60, cellsClearing: 41, bar: 'pnl > 0 after fees',
+  };
+  const rec = gl.greenlightFromRun(d, 'region', { why: 'the widest region resists shopping' });
+  assert.strictEqual(rec.configSnapshot.cell.tHours, 89, 'the region CENTRE must win, not the search peak');
+  assert.strictEqual(rec.configSnapshot.cell.quorum, 2);
+  assert.strictEqual(rec.target, 'region', 'the anchor is recorded on the greenlight');
+  assert.ok(rec.configSnapshot.configVersion.includes('/region@'));
+};
+
+// A row with no region must say so plainly rather than quietly fall back to the
+// search winner — a silent fallback would mint the shopped cell under the
+// anti-shopping label, which is worse than refusing.
+module.exports.aRowWithNoRegionRefusesRatherThanFallingBackToTheWinner = function () {
+  let err = null;
+  try { gl.greenlightFromRun(labDoc(), 'region', { why: 'x' }); } catch (e) { err = e; }
+  assert.ok(err && /widest region/.test(err.message),
+    `expected a refusal naming the missing region, got: ${err && err.message}`);
+};

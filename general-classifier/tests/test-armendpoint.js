@@ -142,3 +142,44 @@ module.exports.malformedJsonReturnsJson400NotHtmlStack = async function () {
     assert(j && typeof j.error === 'string', `expected {error: "..."} JSON, got: ${r.body.slice(0, 80)}`);
   });
 };
+
+// THE MASTER SWITCH MUST ACTUALLY STOP. The Trading tab's STOP button posted to
+// /api/pilot/arm with {armed:false} for as long as the page existed. That route
+// has never read the body — it hard-codes writeArmRequest(true) — so STOP was not
+// even a no-op: writeArmRequest mints a fresh nonce and utc every call, and the
+// box edge-triggers on that as a genuine START. The operator confirmed "STOP the
+// F1 engine?", saw no error, and the screen redrew as RUNNING because req.armed
+// matched st.armed and nothing looked pending. Real money kept trading while the
+// switch reported it was off (audit 2026-08-17).
+//
+// Two halves, and both are needed. The server refuses the contradiction so a
+// future caller cannot repeat it silently; the page is pinned to the right route
+// so the refusal is never reached in normal use.
+//
+// Watched failing 2026-08-17: restoring `post('api/pilot/arm',{armed})` fails
+// theStopButtonPostsToTheDisarmRoute, and removing the server guard fails
+// theArmRouteRefusesAContradictoryArmedFalse (it 200s and writes armed:true).
+module.exports.theArmRouteRefusesAContradictoryArmedFalse = async function () {
+  await withServer(async () => {
+    const r = await req('POST', '/api/pilot/arm', { armed: false });
+    assert(r.status === 400,
+      `POST /api/pilot/arm {armed:false} must be REFUSED (it means disarm and reached the wrong door), got ${r.status} — body: ${r.body}`);
+    assert(!fs.existsSync(ARM_REQ),
+      'a contradictory arm request still wrote arm-request.json — the box would read it as a START');
+    const j = JSON.parse(r.body);
+    assert(/disarm/.test(j.error || ''), `the refusal must name the right route, got: ${r.body}`);
+  });
+};
+
+module.exports.theStopButtonPostsToTheDisarmRoute = async function () {
+  const src = fs.readFileSync(path.join(ROOT, 'public', 'trading.html'), 'utf8')
+    .split('\n').filter((l) => !/^\s*\/\//.test(l)).join('\n');
+  assert(/api\/pilot\/disarm/.test(src),
+    'the Trading tab never calls api/pilot/disarm — its STOP button cannot stop anything');
+  const i = src.indexOf('const go=async(armed)');
+  assert(i >= 0, 'the Trading tab lost its master-switch handler');
+  const block = src.slice(i, i + 400);
+  assert(/armed\?'api\/pilot\/arm':'api\/pilot\/disarm'/.test(block.replace(/\s/g, '')
+    .replace(/armed\?"api\/pilot\/arm":"api\/pilot\/disarm"/, "armed?'api/pilot/arm':'api/pilot/disarm'")),
+    'the master switch does not choose its route from the button pressed — check it is not posting to one route with an {armed} field the server never reads');
+};

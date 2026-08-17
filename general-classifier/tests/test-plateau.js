@@ -133,7 +133,17 @@ module.exports = {
   // The Greenlight anchor must accept the region and refuse it honestly when the
   // run predates it — a row with no region must not silently fall back to the
   // best cell, which is the very thing the region exists to avoid.
-  greenlightAcceptsTheRegionTargetAndRefusesItWhenAbsent() {
+  // RENAMED 2026-08-17, and the rename is the point. This was called
+  // "greenlightAcceptsTheRegionTargetAndRefusesItWhenAbsent" while it greps
+  // lib/batch.js — the CONFIRM door. The GREENLIGHT door is a different function
+  // in a different file, and it refused the region target the whole time this
+  // test was green. Read together with theBoardOffersTheRegionAsASecondReading,
+  // the pair said "the option exists and the backend takes it" about a control
+  // that could not mint anything. A test named after a door it does not open is
+  // worse than no test: it is a false all-clear. The greenlight door is now
+  // covered FUNCTIONALLY (not by grep) in test-live-greenlight.js —
+  // regionTargetUsesTheRegionCentreNotTheSearchWinner.
+  confirmAcceptsTheRegionTargetAndRefusesItWhenAbsent() {
     const fs = require('fs');
     const path = require('path');
     const src = fs.readFileSync(path.join(__dirname, '..', 'lib', 'batch.js'), 'utf8');
@@ -144,6 +154,14 @@ module.exports = {
       'the refusal message must name all three targets');
     assert.ok(/\.\.\.row\.region\.centre/.test(src),
       'the region target must select the region CENTRE, not its best-scoring cell');
+    // EVERY door the anchor can reach, not just the one this file happened to
+    // read. The Greenlight select posts its value to the greenlight route, so
+    // that module must take the same three anchors the confirm path does.
+    const gsrc = fs.readFileSync(path.join(__dirname, '..', 'lib', 'live', 'greenlight.js'), 'utf8');
+    assert.ok(/target === 'region'/.test(gsrc),
+      'lib/live/greenlight.js must handle the region target — the Greenlight anchor posts to it');
+    assert.ok(/greenlight target must be 'best', 'declared' or 'region'/.test(gsrc),
+      'the greenlight refusal must name all three anchors the screen offers');
   },
 
   // The screen must offer the anchor and carry the width column, or the work is

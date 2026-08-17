@@ -56,8 +56,23 @@ function configFromSelection(doc, target) {
   if (target === 'declared') {
     if (!row.declaredCell) throw new Error('this row carries no declared cell — was the run started with a declared config?');
     sel = { ...row, ...row.declaredCell };
+  } else if (target === 'region') {
+    // WIDEST REGION. The Greenlight anchor has offered this since 2026-08-17 and
+    // this function refused it, so the one option whose whole purpose is to
+    // resist shopping was the one option that could not mint a greenlight — the
+    // two that DID work are the two its own tooltip warns flatter themselves.
+    // batch.js bracketConfirm has implemented the same anchor all along; this is
+    // the same rule, on the same field (audit 2026-08-17).
+    //
+    // The centre is chosen by DEPTH inside the region, never by score: taking
+    // the region's own peak would put the shopped cell straight back in charge.
+    if (!row.region || !row.region.centre) {
+      throw new Error('this row carries no widest region — either no setting on it made money, '
+        + 'or the run predates the region being recorded (2026-08-17)');
+    }
+    sel = { ...row, ...row.region.centre };
   } else if (target !== 'best') {
-    throw new Error("greenlight target must be 'best' or 'declared'");
+    throw new Error("greenlight target must be 'best', 'declared' or 'region'");
   }
 
   // The band must be the RESOLVED number the run traded at, never 'auto' — an

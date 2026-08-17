@@ -38,6 +38,24 @@ function bareHeadings(src) {
   return out;
 }
 
+// A headline tile is a number an operator reads first and acts on, and several
+// of them are percentages OF something unstated — which is exactly how a
+// fidelity figure gets read as a money figure. Trading had 22 of them and
+// Constructing 5, none described.
+function everyHeadlineTileSaysWhatItsNumberIs() {
+  for (const [rel, name] of FILES) {
+    const src = fs.readFileSync(path.join(ROOT, rel), 'utf8');
+    // a tile written out longhand with no title on the tile itself
+    const bare = [...src.matchAll(/<div class="tile"(?![^>]*title=)[^>]*>\s*<div class="k"[^>]*>([\s\S]*?)<\/div>/g)]
+      .map((m) => m[1].trim().slice(0, 50))
+      // A tile whose label IS the entity (a config id with its paper badge) is a
+      // heading, not a measurement — there is no unit to state.
+      .filter((l) => !/^\$\{esc\(g\.id\)\}/.test(l));
+    assert.deepStrictEqual(bare, [],
+      `${name}: these headline tiles carry no description — the number's units are left to the reader: ${bare.join(' | ')}`);
+  }
+}
+
 function everyColumnHeadingSaysWhatItHolds() {
   for (const [rel, name] of FILES) {
     const src = fs.readFileSync(path.join(ROOT, rel), 'utf8');
@@ -77,6 +95,7 @@ function moneyAndPercentColumnsNameTheirUnits() {
 
 module.exports = {
   everyColumnHeadingSaysWhatItHolds,
+  everyHeadlineTileSaysWhatItsNumberIs,
   bothPagesHaveTheirColumnKeyHelper,
   moneyAndPercentColumnsNameTheirUnits,
 };

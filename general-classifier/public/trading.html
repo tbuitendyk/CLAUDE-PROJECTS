@@ -164,6 +164,32 @@ const TH={
 // th(label, key) — a heading always carries its own description.
 const th=(label,key,style)=>`<th${style?` style="${style}"`:''}${TH[key]?` title="${esc(TH[key]).replace(/"/g,'&quot;')}"`:''}>${label}</th>`;
 
+// The headline number tiles get the same treatment. These are the numbers an
+// operator reads first and acts on, and several of them are percentages OF
+// something unstated — which is exactly how a fidelity figure gets read as a
+// money figure.
+const TILE={
+  pair:'the pair this book actually trades. Any context pairs feed the decision but are never bought or sold.',
+  clip:'position size per entry in US DOLLARS of notional. It does not compound — every entry is the same size.',
+  stop:'the protective stop as a PERCENT move against the position. "none" means the position rests on its scheduled exit alone.',
+  key:'whether this setup has its OWN sub-account credentials. Real money requires them, so that two books can never share a borrow pool.',
+  target:'which execution box serves this setup. A box only serves the symbols it declares.',
+  mark:'the most recent price this book saw, in USDT, from its last run. It is the price the unrealized figure is measured against — not a live tick.',
+  unreal:'money the OPEN positions would make or lose if closed at the mark: US dollars, fees included. It moves every run and is not banked.',
+  realized:'money actually BANKED on closed positions, in US dollars, after both legs\' fees and any borrow interest.',
+  realizedAll:'the same banked figure summed across every book on this side. Paper dollars and real dollars are never added together.',
+  unrealAll:'the same open-position figure summed across every book on this side.',
+  feeModel:'the fee per leg the SIMULATION assumed, in US dollars. Every lab money figure was computed with this number.',
+  feeReal:'the fee per leg actually PAID, averaged over real legs, in US dollars. If it exceeds the model figure, every lab result was optimistic.',
+  fillAvg:'average gap between the price the decision assumed and the price the order actually filled at, as a PERCENT of price. It measures execution, not edge.',
+  fillMax:'the worst single such gap, as a percent of price. One bad fill can matter more than a good average.',
+  openCount:'how many positions are open right now on this book.',
+  rejects:'how many order rejections in a row. A run of them is how a broken rail announces itself before anything else does.',
+  mirror:'whether the decisions this book acted on still recompute to the same calls from the same data. A BREAK means the record and the engine disagree.',
+  master:'the arm switch. STOPPED places no orders at all; RUNNING lets real orders reach the exchange when a live channel is active.',
+};
+const tile=(label,key,value,cls)=>`<div class="tile"${TILE[key]?` title="${esc(TILE[key]).replace(/"/g,'&quot;')}"`:''}><div class="k">${label}</div><div class="v${cls?' '+cls:''}">${value}</div></div>`;
+
 // theme: remember choice; default dark (the technical baseline).
 const root=document.documentElement;
 root.setAttribute('data-theme', localStorage.getItem('lt-theme')||'dark');
@@ -295,9 +321,9 @@ async function drawDash(){
       <div class="muted" style="font-size:.72rem">unreal ${money(up)} · open ${open} · ${esc(g.status)}</div></div>`;
   }).join('');
   $('#view').innerHTML=`<div class="grid" style="margin-bottom:1rem">
-      <div class="tile"><div class="k">${isP?'Paper realized (all books)':'Realized (all live)'}</div><div class="v ${cls(totR)}">${money(totR)}</div></div>
-      <div class="tile"><div class="k">${isP?'Paper unrealized':'Unrealized'}</div><div class="v ${cls(totU)}">${money(totU)}</div></div>
-      <div class="tile"><div class="k">Open positions</div><div class="v">${totOpen}</div></div>
+      ${tile(isP?'Paper realized (all books)':'Realized (all live)','realizedAll',money(totR),cls(totR))}
+      ${tile(isP?'Paper unrealized':'Unrealized','unrealAll',money(totU),cls(totU))}
+      ${tile('Open positions','openCount',totOpen)}
     </div>
     <h2>${isP?'All paper books':'All live setups'}</h2>
     <div class="grid">${cards}</div>`;
@@ -359,11 +385,11 @@ async function drawDetail(){
     </div>
     <div class="muted" style="font-size:.74rem;margin-top:.3rem">Deactivate stops new entries; open positions exit on schedule and the record freezes. ${branch==='real'?'<b class="warn">Real channel — real money when armed.</b>':''}</div></div>
     <div class="grid" style="margin-bottom:1rem">
-      <div class="tile"><div class="k">Pair</div><div class="v">${esc(s.tradedPair)}</div></div>
-      <div class="tile"><div class="k">Clip</div><div class="v">$${Number(s.clipUsd).toFixed(0)}</div></div>
-      <div class="tile"><div class="k">Stop</div><div class="v">${s.stopPct==null?'none':(s.stopPct*100).toFixed(2)+'%'}</div></div>
-      <div class="tile"><div class="k">Key</div><div class="v ${s.keyRef?'pos':'muted'}">${s.keyRef?'set':'none'}</div></div>
-      <div class="tile"><div class="k">Exec target</div><div class="v muted" style="font-size:.9rem">${esc(s.executionTargetRef||'default')}</div></div>
+      ${tile('Pair','pair',esc(s.tradedPair))}
+      ${tile('Clip','clip','$'+Number(s.clipUsd).toFixed(0))}
+      ${tile('Stop','stop',s.stopPct==null?'none':(s.stopPct*100).toFixed(2)+'%')}
+      ${tile('Key','key',s.keyRef?'set':'none',s.keyRef?'pos':'muted')}
+      ${tile('Exec target','target',esc(s.executionTargetRef||'default'),'muted')}
     </div>
     <div class="panel"><div class="k">Frozen configuration (immutable — from greenlight ${esc(s.provenanceRef||'—')})</div>
       <div style="margin-top:.5rem">
@@ -427,12 +453,12 @@ async function drawLive(){
     <div class="banner ${st.state==='stopped'?'stopped':'running'}">
       <b>${esc(g.id)}</b> ${isP?paperBadge:''} — ${esc(g.status)}${st.runEpochUtc?` <span class="muted">· displayed run since ${st.runEpochUtc.slice(0,16)} UTC</span>`:''}</div>
     <div class="grid" style="margin-bottom:1rem">
-      <div class="tile"><div class="k">${isP?'Paper realized':'Realized'} P&amp;L</div><div class="v ${cls(rp)}">${money(rp)}</div></div>
-      <div class="tile"><div class="k">${isP?'Paper unrealized':'Unrealized'} P&amp;L</div><div class="v ${cls(up)}">${money(up)}</div></div>
-      <div class="tile"><div class="k">Mark (last run)</div><div class="v">${st.markPrice==null?'—':'$'+st.markPrice.toFixed(2)}</div></div>
-      <div class="tile"><div class="k">Open positions</div><div class="v">${st.openPositions.length}</div></div>
-      <div class="tile"><div class="k">Fill dev avg</div><div class="v">${st.fidelity.fillDeviationAvg==null?'—':(st.fidelity.fillDeviationAvg*100).toFixed(3)+'%'}</div></div>
-      <div class="tile"><div class="k">Fill dev max</div><div class="v ${st.fidelity.fillDeviationMax>0.01?'warn':''}">${st.fidelity.fillDeviationMax==null?'—':(st.fidelity.fillDeviationMax*100).toFixed(3)+'%'}</div></div>
+      ${tile((isP?'Paper realized':'Realized')+' P&amp;L','realized',money(rp),cls(rp))}
+      ${tile((isP?'Paper unrealized':'Unrealized')+' P&amp;L','unreal',money(up),cls(up))}
+      ${tile('Mark (last run)','mark',st.markPrice==null?'—':'$'+st.markPrice.toFixed(2))}
+      ${tile('Open positions','openCount',st.openPositions.length)}
+      ${tile('Fill dev avg','fillAvg',st.fidelity.fillDeviationAvg==null?'—':(st.fidelity.fillDeviationAvg*100).toFixed(3)+'%')}
+      ${tile('Fill dev max','fillMax',st.fidelity.fillDeviationMax==null?'—':(st.fidelity.fillDeviationMax*100).toFixed(3)+'%',st.fidelity.fillDeviationMax>0.01?'warn':'')}
     </div>
     <div class="panel"><div class="k">Open positions ${isP?paperBadge:''}</div>
       <table style="margin-top:.4rem"><thead><tr>${th('chunk','chunk')}${th('side','side')}${th('qty','qty')}${th('entry','entryPx')}${th('mark','markPx')}${th('unreal $','unreal')}${th('exit due','exitDue')}</tr></thead><tbody>
@@ -514,14 +540,14 @@ async function drawPilotLive(){
       <table style="margin:0 0 .2rem">${items?`<tbody>${items}</tbody>`:''}</table>
       ${hist}</div>
     <div class="grid" style="margin-bottom:1rem">
-      <div class="tile"><div class="k">LTC price (last run)</div><div class="v">${d.markPrice!=null?'$'+d.markPrice.toFixed(2):'—'}</div></div>
-      <div class="tile"><div class="k">Unrealized P&amp;L</div><div class="v ${cls(d.unrealizedPnl)}">${money(d.unrealizedPnl)}</div></div>
-      <div class="tile"><div class="k">Realized P&amp;L</div><div class="v ${cls(d.realizedPnl)}">${money(d.realizedPnl)}</div></div>
-      <div class="tile"><div class="k">Fee/leg: model</div><div class="v">$${d.modelFeePerLeg.toFixed(3)}</div></div>
-      <div class="tile"><div class="k">Fee/leg: realized</div><div class="v">${d.realizedFeePerLegAvg==null?'—':'$'+d.realizedFeePerLegAvg.toFixed(4)}</div></div>
-      <div class="tile"><div class="k">Fill dev avg</div><div class="v">${d.fillDeviationAvg==null?'—':(d.fillDeviationAvg*100).toFixed(3)+'%'}</div></div>
-      <div class="tile"><div class="k">Consec. rejects</div><div class="v ${d.consecutiveRejects>=2?'warn':''}">${d.consecutiveRejects}</div></div>
-      <div class="tile"><div class="k">Mirror check</div><div class="v ${mirrorBreaks>0?'warn':'pos'}">${d.mirror==null?'—':(mirrorBreaks>0?mirrorBreaks+' BREAK':'clean')}</div></div>
+      ${tile('LTC price (last run)','mark',d.markPrice!=null?'$'+d.markPrice.toFixed(2):'—')}
+      ${tile('Unrealized P&amp;L','unreal',money(d.unrealizedPnl),cls(d.unrealizedPnl))}
+      ${tile('Realized P&amp;L','realized',money(d.realizedPnl),cls(d.realizedPnl))}
+      ${tile('Fee/leg: model','feeModel','$'+d.modelFeePerLeg.toFixed(3))}
+      ${tile('Fee/leg: realized','feeReal',d.realizedFeePerLegAvg==null?'—':'$'+d.realizedFeePerLegAvg.toFixed(4))}
+      ${tile('Fill dev avg','fillAvg',d.fillDeviationAvg==null?'—':(d.fillDeviationAvg*100).toFixed(3)+'%')}
+      ${tile('Consec. rejects','rejects',d.consecutiveRejects,d.consecutiveRejects>=2?'warn':'')}
+      ${tile('Mirror check','mirror',d.mirror==null?'—':(mirrorBreaks>0?mirrorBreaks+' BREAK':'clean'),mirrorBreaks>0?'warn':'pos')}
     </div>
     <div class="panel"><div class="k">Open positions</div>
       <table style="margin-top:.4rem"><thead><tr>${th('chunk','chunk')}${th('side','side')}${th('qty','qty')}${th('entry','entryPx')}${th('mark','markPx')}${th('unreal $','unreal')}${th('exit due','exitDue')}</tr></thead><tbody>
@@ -547,9 +573,18 @@ async function drawPilotLive(){
         <td style="text-align:left" class="muted">${esc(JSON.stringify(e.detail).slice(1,-1).slice(0,140))}</td></tr>`).join('')||'<tr><td colspan="3" class="empty">no events yet</td></tr>'}
       </tbody></table></div></div>
     <div class="sub muted">synced ${esc(d.journalSyncedUtc||'—')} · identical data to the Live pilot page (kept for side-by-side until you retire it)</div>`;
+  // TWO ROUTES, NOT ONE ROUTE PLUS A FIELD NOBODY READS. This posted to
+  // api/pilot/arm for BOTH buttons and encoded the intent in {armed} — which
+  // that route has never read: it hard-codes writeArmRequest(true). So STOP was
+  // not a no-op, it was a RE-ARM: a fresh nonce and utc that the box
+  // edge-triggers on as a genuine START. The operator confirmed "STOP the F1
+  // engine?", got no error, and the screen redrew as RUNNING because req.armed
+  // matched st.armed and nothing looked pending. Real money kept trading while
+  // the master switch reported it had been shut off. public/pilot.html:160/164
+  // has always called the two routes correctly (audit + runtime pass, 2026-08-17).
   const go=async(armed)=>{ const verb=armed?'START':'STOP';
     if(!confirm(`${verb} the F1 engine?`))return;
-    const out=await post('api/pilot/arm',{armed}); if(out) draw(); };
+    const out=await post(armed?'api/pilot/arm':'api/pilot/disarm'); if(out) draw(); };
   const bs=$('#btnStart'); if(bs)bs.onclick=()=>go(true);
   const bp=$('#btnStop'); if(bp)bp.onclick=()=>go(false);
 }

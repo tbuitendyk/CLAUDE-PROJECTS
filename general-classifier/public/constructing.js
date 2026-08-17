@@ -518,11 +518,11 @@ async function drawSweep() {
     const perf = (doc && doc.perf) || {};
     el.innerHTML = `<h3 style="margin-top:0">Running: ${esc(run.id)}</h3>
       <div class="grid">
-        <div class="tile"><div class="k">Phase</div><div class="v">${esc(perf.phase || '—')}</div></div>
-        <div class="tile"><div class="k">Units</div><div class="v">${perf.unitsDone ?? 0} / ${perf.unitsTotal ?? '—'}</div></div>
-        <div class="tile"><div class="k">Trainings</div><div class="v">${perf.runsDone ?? 0} / ${perf.runsTotal ?? '—'}</div></div>
-        <div class="tile"><div class="k">Rate</div><div class="v">${perf.ratePerMin ? perf.ratePerMin.toFixed(1) + '/min' : '—'}</div></div>
-        <div class="tile"><div class="k">ETA</div><div class="v">${perf.etaMs ? Math.round(perf.etaMs / 60000) + ' min' : '—'}</div></div>
+        <div class="tile" title="which stage the job is in: the cheap slim pass over every setting, then the promote stage that re-scores the survivors in full."><div class="k">Phase</div><div class="v">${esc(perf.phase || '—')}</div></div>
+        <div class="tile" title="one unit is one asset committee on one geometry. This counts units finished against units planned."><div class="k">Units</div><div class="v">${perf.unitsDone ?? 0} / ${perf.unitsTotal ?? '—'}</div></div>
+        <div class="tile" title="one training is one member model fitted on one window. It is the real measure of how much work the job is doing."><div class="k">Trainings</div><div class="v">${perf.runsDone ?? 0} / ${perf.runsTotal ?? '—'}</div></div>
+        <div class="tile" title="trainings completed per minute across all workers on this box. It moves with the CPU cap."><div class="k">Rate</div><div class="v">${perf.ratePerMin ? perf.ratePerMin.toFixed(1) + '/min' : '—'}</div></div>
+        <div class="tile" title="estimated minutes remaining, from the current rate. It is an extrapolation, not a promise."><div class="k">ETA</div><div class="v">${perf.etaMs ? Math.round(perf.etaMs / 60000) + ' min' : '—'}</div></div>
       </div>`;
     if (tab === 'sweep') setTimeout(pollProgress, 5000);
   }
@@ -1606,13 +1606,27 @@ async function drawTune() {
   if (cust) cust.onclick = () => {
     const v = Number($('#stopCustomPct').value);
     if (!Number.isFinite(v) || v <= 0 || v >= 100) { alert('a stop is a percent between 0 and 100'); return; }
+    // BOTH of these write the LIVE F1 engine's risk parameter, whatever the scan
+    // target above says — that picker chooses what is SCANNED, and there is no
+    // endpoint that applies a stop to a saved book. Applying went through with no
+    // confirmation at all, so a stray click changed a live-money setting silently
+    // (audit 2026-08-17). The scan target is named in the prompt so the gap
+    // between "what I was looking at" and "what I just changed" cannot pass
+    // unnoticed.
+    if (!confirm(`Apply a ${v.toFixed(2)}% protective stop to the LIVE F1 engine?\n\n`
+      + 'This writes F1\'s own risk parameter. The scan target above chooses what is SCANNED — '
+      + 'it does not change what this button applies to.')) return;
     // the box is in PERCENT, the engine wants a FRACTION
     applyStop(v / 100);
   };
   const clr = $('#stopClear');
   if (clr) clr.onclick = () => {
-    if (!confirm('Clear the protective stop?\n\nThe engine will run with NO fixed stop until one is applied again.')) return;
-    applyStop(0);
+    if (!confirm('Clear the LIVE F1 engine\'s protective stop?\n\nF1 will run with NO fixed stop until one is applied again — a position then rests on its scheduled exit alone.')) return;
+    // NULL, not 0. The endpoint's guard is `if (raw != null && raw !== '')` and
+    // then refuses `v <= 0`, so a 0 took the positive-value path and came back
+    // 400 every time: the stop could not be cleared from this tab at all. The
+    // frozen Bracket lab sends null and always has (audit 2026-08-17).
+    applyStop(null);
   };
   $('#stopRun').onclick = async () => {
     if (!confirm('Run the full-history stop scan? (minutes; one heavy scan at a time)')) return;

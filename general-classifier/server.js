@@ -1222,6 +1222,16 @@ function csrfGuard(req, res, next) {
   return res.status(403).json({ error: 'cross-site request refused (CSRF guard on the live-money switch)' });
 }
 app.post('/api/pilot/arm', csrfGuard, (req, res) => {
+  // A caller that sends {armed:false} to the ARM route means DISARM and has
+  // reached the wrong door. Answering it with an arm is how the Trading tab's
+  // STOP button silently re-armed the live engine for as long as it existed.
+  // Refuse loudly instead of guessing: on the real-money master switch, a
+  // contradictory request must fail where the operator can see it.
+  if (req.body && req.body.armed === false) {
+    return res.status(400).json({
+      error: 'this is the ARM route and it always arms — to stop the engine, POST /api/pilot/disarm',
+    });
+  }
   try { res.json({ ok: true, request: writeArmRequest(true, 'owner') }); }
   catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -1385,8 +1395,14 @@ app.post('/api/pilot/stopsweep', (req, res) => {
   }
 });
 // The owner's CHOICE of stop after seeing the scan: a positive fraction to apply,
-// or null/0 to clear (no stop). Only this drives the live engine — a scan never
+// or NULL to clear (no stop). Only this drives the live engine — a scan never
 // does. Writes a risk parameter; opens nothing.
+//
+// Null, not zero. This comment used to say "null/0" while the guard below refuses
+// anything <= 0, and the Constructing tab believed the comment: its "No stop
+// (clear)" button sent 0 and got a 400 every time, so the stop could not be
+// cleared from that tab at all. Zero stays REFUSED on purpose — an empty box
+// parses to 0, and a parse slip must not silently strip a live risk parameter.
 app.get('/api/pilot/fixed-stop', (req, res) => res.json(readFixedStop()));
 app.post('/api/pilot/stop-apply', (req, res) => {
   try {
