@@ -1,0 +1,66 @@
+Constructing: every identified Bracket lab gap is now built and deployed
+
+tl;dr — all 29 gaps are closed across four deploys tonight (21:48, 21:57, 22:03,
+22:10 UTC), verified against the asset the box actually serves. 460 tests pass,
+every new guard watched failing first. Two contracts I got wrong were caught by
+reading the source rather than by shipping them.
+
+WHAT WENT IN, BY SECTION
+
+History — the biggest hole. The section answered "read" with progress counters
+and a JSON dump. It now shows the dial-pair board ranked on combined test money,
+with hold columns SEALED on screen until the winner is declared, the reading
+rules stamped before launch, the shaping numbers with their GUESSED labels, the
+excluded dial pairs, and the stamped verdict. Three launchers that did not exist:
+the trail-replay null draw, the age-dial exams, and the SEALED EXAM — the one
+look the reserve slice will ever get, behind a confirm that says exactly that.
+The exam gate is wired: a real age-dial run now says, before it fires, whether
+the instrument has been shown to find a planted effect and stay quiet on a flat
+one.
+
+Boards — the plateau view the menu-grid button promised in its own tooltip and
+never rendered; where your cell sits in its own menu, with only the AVERAGE
+held-back number disclosed because per-cell figures would let the graded window
+be shopped; inspect per row, labelled a microscope and not a null test; notes,
+disabled while a run computes because the engine refuses writes then; copy
+settings into the form, with the description deliberately not copied; what the
+run actually is (the units equation and the data fingerprint, loud when the
+stamp failed); and asset predictability, best to worst.
+
+Verify — the null verdict was printed as truncated raw JSON. It now reads: pass
+or fail per block, the p floor labelled a floor and never a measure of strength,
+the settings-mismatch banner, the draws table, and the sanity line whose failure
+says NOISE IS PROFITING and invalidates everything above it. Tool 1 can now fire
+its own rounds rather than only reading someone else's.
+
+Tune — the scans could only aim at F1 or the selected row. They now read the
+saved books and let you pick any, which is what you asked for. A custom stop can
+be applied and the stop cleared. And the service-wide CPU cap is reachable from
+this tab at all.
+
+TWO THINGS I HAD WRONG, CAUGHT BEFORE SHIPPING
+
+The age-dial exams take a fabricated PAIR SYMBOL, not 'A'/'B' — I wrote the
+letters first and the engine would have refused every exam. And the sealed
+exam's verdict has a second, shorter shape carrying only a pass flag and a
+sentence; the Bracket lab prints "undefined/undefined" on it, and this does not.
+
+Four endpoints in the History panel take four different keys for what looks like
+the same thing. A test now pins each launcher to the key its own endpoint reads
+and fails if one is swapped for a sibling's.
+
+ONE DIAGNOSTIC LESSON
+
+My deployment check reported the CPU control missing when it was deployed and
+working: the check grepped the page's script and the button lives in the page's
+markup, a separate file. A verifier that only looks at half the thing reports
+absence it cannot see. Fixed — it now reads both.
+
+WHAT I HAVE NOT DONE
+
+The ranking change we discussed — leading on the measured null, then plateau
+width, with the across-asset share as context and no binomial p in the sort key.
+QC-142 records the rule; the code is not written. You have not told me to write
+it, and I am not treating the register entry as permission.
+
+c.
