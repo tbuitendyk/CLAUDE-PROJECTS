@@ -438,6 +438,40 @@ async function drawBoards() {
   // settings were CHOSEN on and nothing judged it — the heading must say so
   // rather than promising a held-back judge that does not exist.
   const hasHold = ((doc && doc.leaders) || []).some((l) => l.holdout && l.holdout.pnl != null);
+  const running = doc && doc.status === 'running';
+  // ASSET PREDICTABILITY — pure census arithmetic, and the one reading on this
+  // page that compares real against null across every asset at once.
+  const assetSummary = (() => {
+    if (!hasDealNulls) return '';
+    const byAsset = new Map();
+    for (const r of ((doc && doc.edgeCensus) || [])) {
+      if (r.holdPnl == null || r.shiftFrac) continue;
+      const asset = r.trade + (r.ctx1 ? '+' + r.ctx1 : '') + (r.ctx2 ? '+' + r.ctx2 : '');
+      if (!byAsset.has(asset)) byAsset.set(asset, { real: [], nulls: [] });
+      byAsset.get(asset)[r.nullDealSeed != null ? 'nulls' : 'real'].push(r.holdPnl);
+    }
+    const scored = [...byAsset.entries()]
+      .filter(([, g]) => g.real.length && g.nulls.length)
+      .map(([asset, g]) => {
+        let won = 0;
+        for (const rv of g.real) for (const nv of g.nulls) if (rv > nv) won++;
+        return { asset, pct: (100 * won) / (g.real.length * g.nulls.length), nReal: g.real.length, nNull: g.nulls.length };
+      })
+      .sort((a, b) => b.pct - a.pct);
+    if (!scored.length) return '';
+    return `<div class="panel"><h3 style="margin-top:0">Asset predictability — best to worst</h3>
+      <p class="note">KEY — for each asset: of all real-versus-null match-ups on HELD-BACK money, the share the real
+        setups won. 100% means every real setup beat every null copy; 0% means every null copy beat every real setup;
+        50% means the real setups are indistinguishable from dealt votes.
+        ${running ? '<b>Counts grow until the sweep finishes — do not judge yet.</b>' : ''}</p>
+      <div class="scrollx"><table><thead><tr><th>rank</th><th>asset</th>
+        <th title="share of real-versus-null match-ups won on held-back money">predictability</th>
+        <th title="real setups scored so far / null copies scored so far">real / null rows</th></tr></thead><tbody>
+      ${scored.map((x, i) => `<tr><td>${i + 1}</td><td><b>${esc(x.asset)}</b></td>
+        <td class="${x.pct >= 50 ? 'pos' : 'neg'}"><b>${x.pct.toFixed(1)}%</b></td>
+        <td>${x.nReal} / ${x.nNull}</td></tr>`).join('')}
+      </tbody></table></div></div>`;
+  })();
   // REPLICATION — the declared config scored on every asset. The run has always
   // recorded this; the tab never showed it (the tick's own tooltip promised a
   // table that did not exist here). Null copies also score the declared cell,
@@ -571,9 +605,35 @@ async function drawBoards() {
     </div></div>
     <div id="bBody">${!doc ? '<div class="panel empty">Open a run to see its board.</div>' : `
       ${doc.params && doc.params.description ? `<div class="panel note">${esc(doc.params.description)}</div>` : ''}
+      <div class="panel"><div class="row" style="align-items:flex-start">
+        <label class="f" style="flex:1">notes — why this run exists, what it showed, what it cost
+          <textarea id="bNotes" rows="3" style="width:100%;font:inherit" ${doc.status === 'running' ? 'disabled' : ''}>${esc(doc.notes || '')}</textarea></label>
+        <button id="bNotesSave" ${doc.status === 'running' ? 'disabled title="notes save after the run finishes — the engine refuses writes while it computes"' : ''}>save notes</button>
+        <button id="bCopySettings" title="fill the Sweep form with THIS run's stored settings — universe, sizes, data range, chunk shape, decision, band, permutes, layout, null boards, trailing, min trades, promote K and the declared config. Nothing launches; the form is just set so a re-run is the same run. The description is NOT copied — a re-run states its own purpose.">copy settings into the form</button>
+        <span id="bNotesMsg" class="note">${doc.notesEditedAt ? `last edited ${esc(String(doc.notesEditedAt).slice(0, 16))}` : ''}</span>
+      </div></div>
+      ${(() => {
+        // THE RUN'S IDENTITY. plan is the units equation written so it equals
+        // itself; dataManifest is the fingerprint of every candle file the run
+        // read — two runs are data-comparable exactly when these match.
+        const pl = doc.plan || null;
+        const dm = doc.dataManifest || null;
+        if (!pl && !dm) return '';
+        return `<div class="panel"><h3 style="margin-top:0">What this run actually is</h3>
+          ${pl ? `<p class="note"><b>Size:</b> ${pl.combos} combos × ${pl.branches} branch(es)${pl.nullBoards ? ` × ${pl.nullBoards + 1} boards (1 real + ${pl.nullBoards} null)` : ''}
+            = <b>${pl.units}</b> units · ${pl.slimRuns ?? '—'} slim runs · ${pl.promoteRuns ?? '—'} promote runs.
+            <span title="the multiplicity any null reading here must be read against: one lucky unit out of this many is not a finding">Every null claim on this page is against ${pl.units} units.</span></p>` : ''}
+          ${dm ? `<p class="note"><b>Data fingerprint:</b> <code>${esc(String(dm.digest || dm.error || '—')).slice(0, 24)}</code>
+            ${dm.coins != null ? `· ${dm.coins} coin(s), ${dm.files ?? '?'} file(s)` : ''}
+            ${dm.utc ? `· stamped ${esc(String(dm.utc).slice(0, 16))}` : ''}
+            <span title="taken at launch, over every candle file this run read. Two runs are data-comparable exactly when these match — a different fingerprint means the cache moved between the fire times.">(?)</span>
+            ${dm.error ? ' <b class="warn">STAMP FAILED — this run cannot be proved comparable to any other</b>' : ''}</p>` : ''}
+          </div>`;
+      })()}
       ${(doc.failures && doc.failures.length) ? `<div class="panel"><b class="warn">${doc.failures.length} unit(s) FAILED</b>
         <p class="note">A failed unit is missing from every count on this page — the denominator is smaller than the run intended. First: <code>${esc(doc.failures[0].key || '')}</code> — ${esc(doc.failures[0].error || '')}</p>
         <details><summary>all failures</summary><pre>${esc(doc.failures.map((f) => `${f.key}: ${f.error}`).join('\n'))}</pre></details></div>` : ''}
+      ${assetSummary}
       <div class="panel"><h3 style="margin-top:0">Survivor board — the promoted rows ${hasHold ? '(test window; held-back judges)' : '— NOTHING WAS HELD BACK'}</h3>
       ${hasHold ? '' : '<p class="note"><b>This run held nothing back.</b> Every dollar below is from the window the settings were CHOSEN on, so it flatters itself by construction and cannot say whether anything works out of sample. The null tools are unavailable for this run.</p>'}
       <p class="note">KEY — setup: traded + context coins; shape: chunk geometry · decision · band; cell: agreement/entry/hold;
@@ -600,7 +660,8 @@ async function drawBoards() {
       <td class="${l.holdout ? ((l.holdout.pnl || 0) >= 0 ? 'pos' : 'neg') : 'muted'}">${l.holdout ? money(l.holdout.pnl) : '—'}</td>
       ${vsNullsCell(l)}
       <td title="${l.region && l.region.centre ? esc(`middle of the region: q${l.region.centre.quorum} ${l.region.centre.entry === 'market' ? 'directional/market' : `${l.region.centre.gate}/breakout d${l.region.centre.dMult}x`} ${l.region.centre.tHours}h — ${l.region.cellsClearing} of ${l.region.cellsConsidered} settings cleared the bar (${l.region.bar})`) : 'not recorded — this run predates the region being measured'}">${l.region ? esc(String(l.region.size)) : '<span class="muted">—</span>'}</td>
-      <td><button data-grid="${i}" title="every execution-menu permutation for this row, plateau view on top (test window only)">menu grid</button></td>
+      <td><button data-grid="${i}" title="every execution-menu permutation for this row, plateau view on top (test window only)">menu grid</button>
+        <button data-inspect="${i}" title="open this setup: what each committee member saw, how they voted, and how alike they are. A MICROSCOPE, not a null test — it cannot tell you whether the setup works.">inspect</button></td>
       </tr>
       <tr><td colspan="9" style="text-align:left;padding:0 .45rem .3rem"><details><summary>everything recorded for this row, verbatim</summary>
         <pre>${esc(JSON.stringify(l, null, 1))}</pre></details></td></tr>`;
@@ -614,6 +675,52 @@ async function drawBoards() {
         <pre>${esc(JSON.stringify(doc.params || {}, null, 1))}</pre></details></div>`}
     </div>`;
   $('#bOpen').onclick = () => { pickedRun = $('#bPick').value || null; localStorage.setItem('cx-run', pickedRun || ''); pickedDoc = null; drawBoards(); };
+  const nsave = $('#bNotesSave');
+  if (nsave) nsave.onclick = async () => {
+    // re-render from the RESPONSE: the stored value comes back truncated, and
+    // the edited stamp is taken on the server, not here
+    const out = await tryPost(`api/bracketlab/${encodeURIComponent(doc.id)}/notes`, { text: $('#bNotes').value });
+    if (out) {
+      $('#bNotes').value = out.notes || '';
+      $('#bNotesMsg').textContent = `saved ${String(out.notesEditedAt || '').slice(0, 16)}`;
+      if (pickedDoc) { pickedDoc.notes = out.notes; pickedDoc.notesEditedAt = out.notesEditedAt; }
+    }
+  };
+  const csb = $('#bCopySettings');
+  if (csb) csb.onclick = () => {
+    const p = doc.params || {};
+    const setV = (id, v) => { const e = $(id); if (e != null && v != null) e.value = v; };
+    const setC = (id, v) => { const e = $(id); if (e) e.checked = !!v; };
+    tab = 'sweep'; localStorage.setItem('cx-tab', tab);
+    draw().then(() => {
+      setV('#swUni', (p.universe || []).join(','));
+      setC('#swSingles', p.sizes && p.sizes.singles); setC('#swDoubles', p.sizes && p.sizes.doubles);
+      setC('#swTriples', p.sizes && p.sizes.triples); setC('#swAll', p.allLoaded);
+      setV('#swStart', p.startMonth); setV('#swEnd', p.endMonth);
+      setV('#swGeom', p.set && p.set.geometry); setV('#swDec', p.set && p.set.decision);
+      setV('#swBand', p.set && (p.set.band === 'auto' ? 'auto' : p.set.band));
+      setC('#swWeekdays', p.set && p.set.weekdaysOnly);
+      setC('#swPermGeom', p.permute && p.permute.geometry); setC('#swPermDec', p.permute && p.permute.decision);
+      setC('#swPermBand', p.permute && p.permute.band); setC('#swPermWk', p.permute && p.permute.weekdays);
+      setV('#swLayout', p.windowLayout); setV('#swK', p.promoteK); setV('#swNulls', p.labelShiftReps);
+      setV('#swMinTr', p.minTrades); setC('#swTrail', p.trailing);
+      const d = p.declared;
+      setC('#swDecOn', !!d);
+      if (d) {
+        setV('#swDecEntry', d.entry); setV('#swDecGate', d.gate); setV('#swDecD', d.dMult);
+        setV('#swDecT', d.tHours); setV('#swDecTrail', d.trailMult == null ? '' : d.trailMult);
+        setV('#swDecArm', d.armMult == null ? 0 : d.armMult);
+        setV('#swDecQ6', d.quorumSingles); setV('#swDecQ8', d.quorumContexts);
+      }
+      const dp = p.declaredPermute || {};
+      for (const [k, id] of [['entry', '#swPermDecEntry'], ['gate', '#swPermDecGate'], ['dMult', '#swPermDecD'],
+        ['tHours', '#swPermDecT'], ['trail', '#swPermDecTrail'], ['arm', '#swPermDecArm'], ['agree', '#swPermDecAgree']]) setC(id, dp[k]);
+      // intent never copies — a re-run states its own purpose
+      setV('#swDesc', '');
+      const m = $('#swMsg');
+      if (m) m.textContent = `form filled from ${doc.id} — nothing launched. Say why this re-run exists, then Start sweep.`;
+    });
+  };
   if ($('#bSort')) {
     $('#bSort').onchange = () => { localStorage.setItem('cx-boardsort', $('#bSort').value); drawBoards(); };
   }
@@ -633,6 +740,40 @@ async function drawBoards() {
       && r.geometry === l.geometry && r.decision === l.decision);
     return cr && cr.modelFile ? cr.modelFile.split('/').pop() : null;
   };
+  // INSPECT — a microscope on one setup: what each member saw, how it voted, and
+  // how alike the members are. It is NOT a null test and cannot say whether the
+  // setup works; that caveat travels with the panel because the panel invites
+  // exactly that misreading.
+  $('#bBody').querySelectorAll('button[data-inspect]').forEach((b) => {
+    b.onclick = async () => {
+      const l = leaders[Number(b.dataset.inspect)];
+      const file = censusFileFor(l);
+      if (!file) { $('#gridOut').innerHTML = '<span class="warn">this row has no stored votes file (older run) — inspect needs the persisted committee votes</span>'; return; }
+      $('#gridOut').innerHTML = '<span class="muted">opening the setup…</span>';
+      const q = l.quorum ?? 1;
+      const d = await api(`api/bracketlab/${encodeURIComponent(doc.id)}/inspect?file=${encodeURIComponent(file)}&quorum=${encodeURIComponent(q)}`).catch(() => null);
+      if (!d || d.error) { $('#gridOut').innerHTML = `<span class="warn">${esc((d && d.error) || 'inspect failed')}</span>`; return; }
+      const mem = d.members || [];
+      const pw = d.pairwise || d.agreement || null;
+      $('#gridOut').innerHTML = `<h3 style="margin-top:0">Inside a setup — a MICROSCOPE, not a null test</h3>
+        <p class="note">${esc(d.meta ? `${d.meta.trade} · ${d.meta.geometry} · ${d.meta.decision}` : '')} at agreement ${esc(String(q))}.
+          This panel shows what the committee is made of. It cannot tell you whether the setup works — only a null
+          comparison can, and this is not one.</p>
+        ${mem.length ? `<div class="scrollx"><table><thead><tr><th>member</th><th>view</th><th>model</th>
+          <th title="share of periods this member called a direction rather than standing aside">participation</th>
+          <th title="exact 3-class match rate of this member's calls on the search window">accuracy</th>
+          <th title="accuracy minus the training-majority baseline — what the member adds over always guessing the commonest label">edge</th></tr></thead><tbody>
+          ${mem.map((m, i) => `<tr><td>${i + 1}</td><td>${esc(String((m.spec && m.spec.view) || m.view || '—'))}</td>
+            <td>${esc(String((m.spec && m.spec.model) || m.model || '—'))}</td>
+            <td>${m.participation != null ? (100 * m.participation).toFixed(1) + '%' : '—'}</td>
+            <td>${m.metrics && m.metrics.testAcc != null ? (100 * m.metrics.testAcc).toFixed(1) + '%' : '—'}</td>
+            <td>${m.metrics && m.metrics.edge != null ? (100 * m.metrics.edge).toFixed(1) + ' pts' : '—'}</td></tr>`).join('')}
+          </tbody></table></div>` : '<p class="note">no per-member detail in this dump</p>'}
+        ${pw ? `<details><summary class="note" style="cursor:pointer">how alike the members are (pairwise agreement) — near-duplicates make an agreement count read higher than the number of independent opinions behind it</summary>
+          <pre>${esc(JSON.stringify(pw, null, 1).slice(0, 8000))}</pre></details>` : ''}
+        <details><summary class="note" style="cursor:pointer">the inspect record, verbatim</summary><pre>${esc(JSON.stringify(d, null, 1).slice(0, 20000))}</pre></details>`;
+    };
+  });
   $('#bBody').querySelectorAll('button[data-grid]').forEach((b) => {
     b.onclick = async () => {
       const l = leaders[Number(b.dataset.grid)];
@@ -642,8 +783,21 @@ async function drawBoards() {
       try {
         const start = await post(`api/bracketlab/${encodeURIComponent(doc.id)}/menugrid`, { file });
         const d = await pollJob(start.jobId, (m) => { $('#gridOut').innerHTML = `<span class="muted">${esc(m)}</span>`; });
-        const cells = d.cells || [];
-        $('#gridOut').innerHTML = `<h3 style="margin-top:0">Menu grid — ${esc(l.trade)} ${esc(l.geometry)} (${cells.length.toLocaleString()} permutations, test window only)</h3>
+        const cells = (d.cells || []).slice().sort((a, b) => (b.pnl ?? -Infinity) - (a.pnl ?? -Infinity));
+        // WHERE THE ROW SITS in its own menu, and the held-back comparison. Only
+        // the AVERAGE held-back number is disclosed: per-cell held-back figures
+        // would turn the graded window into another shopping window.
+        const CF = ['quorum', 'gate', 'entry', 'dMult', 'tHours', 'trailMult', 'armMult'];
+        const isCand = (c) => CF.every((k) => (c[k] ?? null) === (l[k] ?? null));
+        const candIdx = cells.findIndex(isCand);
+        const rankLine = candIdx >= 0
+          ? `<p class="note"><b>Your cell sits at #${candIdx + 1} of ${cells.length.toLocaleString()}</b> in the table below (marked ▶).`
+            + (d.holdAvg != null && l.holdout && l.holdout.pnl != null
+              ? ` HELD-BACK comparison: your cell ${money(l.holdout.pnl)} against the average of the ${(d.holdCellCount || 0).toLocaleString()} setups that actually traded, ${money(d.holdAvg)} (${(100 * (d.holdPosShare || 0)).toFixed(0)}% of them positive; ${(d.holdAllCellCount || 0).toLocaleString()} cells in total — never-traded cells and duplicate always-gate copies are excluded so the average cannot be dragged toward zero by cells that did nothing). Every setup was scored once on the graded window but ONLY the average is disclosed: per-setup held-back numbers would let the graded window be shopped.`
+              : '')
+            + '</p>'
+          : '';
+        $('#gridOut').innerHTML = renderPlateau(cells, l) + rankLine + `<h3 style="margin-top:0">Menu grid — ${esc(l.trade)} ${esc(l.geometry)} (${cells.length.toLocaleString()} permutations, test window only)</h3>
           <div class="scrollx"><table><thead><tr><th>cell</th><th>trades</th><th>test $</th></tr></thead><tbody>
           ${cells.slice(0, 400).map((c) => `<tr><td>q${c.quorum} · ${c.entry === 'market' ? 'market' : `${esc(c.gate)} d${c.dMult}×`} · ${c.tHours}h${c.trailMult != null ? ` · trail ${c.trailMult}×` : ''}</td>
             <td>${c.trades ?? '—'}</td><td class="${(c.pnl || 0) >= 0 ? 'pos' : 'neg'}">${money(c.pnl)}</td></tr>`).join('')}
@@ -829,6 +983,51 @@ async function drawHistory() {
   }
 }
 
+
+
+// PLATEAU VIEW — one setting moved at a time, everything else pinned to the
+// chosen cell. The menu grid button promised this in its own tooltip and the
+// tab rendered none of it (owner sweep, 2026-08-17). It is the per-cell twin of
+// the widest-region column: neighbours earning similar money means the pick is
+// sturdy; the row alone earning while its neighbours collapse means one step
+// away falls apart.
+function renderPlateau(cells, cand) {
+  if (!cand || !cells.length) return '';
+  const FIELDS = ['quorum', 'gate', 'entry', 'dMult', 'tHours', 'trailMult', 'armMult'];
+  const eq = (a, b) => (a ?? null) === (b ?? null);
+  const isCand = (c) => FIELDS.every((k) => eq(c[k], cand[k]));
+  const group = (skip, title, fmt, extraSame) => {
+    const rows = cells.filter((c) => FIELDS.every((k) => k === skip || eq(c[k], cand[k])) && (!extraSame || extraSame(c)));
+    if (rows.length < 2) return '';
+    rows.sort((a, b) => ((a[skip] ?? -1) === (b[skip] ?? -1) ? ((a.armMult ?? -1) - (b.armMult ?? -1))
+      : (typeof a[skip] === 'string' ? String(a[skip]).localeCompare(String(b[skip])) : (a[skip] ?? -1) - (b[skip] ?? -1))));
+    return `<div style="display:inline-block;vertical-align:top;margin:0 .9rem .7rem 0">
+      <table><thead><tr><th>${esc(title)}</th><th>test $</th><th>W/T</th></tr></thead><tbody>
+      ${rows.map((c) => `<tr${isCand(c) ? ' class="selected"' : ''}><td>${isCand(c) ? '▶ ' : ''}${esc(fmt(c))}</td>
+        <td class="${(c.pnl || 0) >= 0 ? 'pos' : 'neg'}">${money(c.pnl)}</td><td>${c.wins ?? '—'}/${c.trades ?? '—'}</td></tr>`).join('')}
+      </tbody></table></div>`;
+  };
+  const blocks = [
+    group('quorum', 'agreement', (c) => `${c.quorum}/${c.members}`),
+    group('tHours', 'time limit', (c) => `${c.tHours}h`),
+  ];
+  if (cand.entry !== 'market') {
+    blocks.push(group('dMult', 'trigger distance', (c) => `${c.dMult}×`));
+    blocks.push(group('gate', 'gate', (c) => c.gate));
+    // trailing axis: static plus each distance, arm pinned to the candidate's so
+    // only ONE thing moves
+    blocks.push(group('trailMult', 'trailing stop', (c) => (c.trailMult == null ? 'static' : `${c.trailMult}×`),
+      (c) => (c.trailMult == null ? true : (c.armMult ?? 0) === (cand.armMult ?? 0))));
+  }
+  const body = blocks.filter(Boolean).join('');
+  if (!body) return '';
+  return `<h3 style="margin-top:0">Plateau view — one setting moved at a time, the rest held at your cell</h3>
+    <p class="note">KEY — each small table changes exactly ONE setting; ▶ marks your cell. Neighbours earning similar
+      money is a plateau and the pick is sturdy. Your row alone earning while its neighbours collapse is a needle —
+      one step away it falls apart, so distrust it. Money is TEST-WINDOW money, dollars per $100, the same as the grid
+      below. ${cand.entry === 'market' ? 'Market entry has no trigger distance, gate or trailing — only agreement and time limit can move.' : ''}</p>
+    <div>${body}</div>`;
+}
 
 // ---- History: reading a finished tuning run ---------------------------------
 // Ported from the Bracket lab's renderHtRun (app.js:3195). The Constructing tab
