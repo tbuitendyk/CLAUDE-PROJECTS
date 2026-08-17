@@ -6,7 +6,7 @@ set -uo pipefail
 JS=$(curl -sS -m 15 http://127.0.0.1:8093/constructing.js)
 echo "bytes: ${#JS}"
 echo "== must be PRESENT =="
-for p in 'vsNullsCell' 'value="12mo"' 'NOTHING WAS HELD BACK' 'unit(s) FAILED' 'INFERRED, not measured' 'cx-theme' 'id="swPermDecArmWrap"' 'declared configs, ranked' 'id="swPermDecAgree"' 'declaredPermute' 'id="swDecCount"' 'Replication — the declared config' 'value="region">widest region' 'id="bSort"' 'l.region.size' 'id="swDecOn"' 'id="swDecQ8"' 'quorumContexts' 'declared.entry\|body.declared' 'value="split70"' 'value="reserve61"' 'value="legacy80"' 'value="weekly-8d"' \
+for p in 'renderHtRun' 'renderPlateau' 'renderNullVerdict' 'data-ht-grade' 'data-inspect' 'id="bNotes"' 'id="t1fire"' 'id="tuneTarget"' 'id="cpubtn"' 'Asset predictability' 'vsNullsCell' 'value="12mo"' 'NOTHING WAS HELD BACK' 'unit(s) FAILED' 'INFERRED, not measured' 'cx-theme' 'id="swPermDecArmWrap"' 'declared configs, ranked' 'id="swPermDecAgree"' 'declaredPermute' 'id="swDecCount"' 'Replication — the declared config' 'value="region">widest region' 'id="bSort"' 'l.region.size' 'id="swDecOn"' 'id="swDecQ8"' 'quorumContexts' 'declared.entry\|body.declared' 'value="split70"' 'value="reserve61"' 'value="legacy80"' 'value="weekly-8d"' \
          'max="50"' 'max="24"' 'all 17 default pairs' "value || undefined"; do
   c=$(printf '%s' "$JS" | grep -c -- "$p")
   printf '  %-28s %s\n' "$p" "$([ "$c" -gt 0 ] && echo "OK ($c)" || echo 'MISSING')"
