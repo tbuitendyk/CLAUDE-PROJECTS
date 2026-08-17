@@ -1,0 +1,79 @@
+Constructing: five numbers that were not true — fixed. 24 gaps remain, listed.
+
+tl;dr — a full sweep of the Bracket lab against the Constructing tab found 29
+gaps, far more than my endpoint comparison saw. Five of them were not missing
+features but WRONG READINGS, so they went first and are deployed (21:48 UTC,
+verified, 445 tests pass). The other 24 are listed below in the order I will
+build them. Nothing here is guesswork: every one was read out of the source.
+
+WHY THE SWEEP FOUND SO MUCH MORE
+
+My earlier list compared which API endpoints each page calls. That is blind to
+any surface that renders data already sitting in the run's record — which is
+exactly how the replication table went missing for two days. This sweep compared
+the surfaces themselves.
+
+THE FIVE THAT WERE LYING
+
+1. "vs nulls" was DEAD. The column read a field nothing in the codebase writes,
+   so it had always shown a dash while looking like a measurement. It now shows
+   how many of the row's dealt-vote copies its held-back money beat — which per
+   QC-7 is the only yardstick the register admits at all.
+
+2. The age-dial half-life box offered 90d / 180d / 365d / 730d. The server
+   accepts 12mo / 24mo / 36mo and nothing else, so EVERY age-dial launch from
+   the tab threw.
+
+   This is the same defect you found by eye in the window layout box. Second
+   instance. It happened because the guard I wrote then named two dropdown ids
+   instead of covering the rule. That guard is now class-wide: it checks every
+   box whose values face a server allow-list, and it FAILS on a box nobody has
+   checked — so the next new dropdown cannot quietly escape it. Both halves
+   watched failing.
+
+3. A run that held nothing back was shown under a heading promising that
+   held-back money judged it. It now says plainly that nothing was held back,
+   that every dollar is from the window the settings were chosen on, and that
+   the null tools are unavailable for it.
+
+4. Failed units were invisible. Every run records its failures and no screen
+   showed them, so a run with a smaller denominator than intended read as a
+   complete result.
+
+5. The replication tally silently counted null copies on any run recorded before
+   the copy tag existed. Those runs now fall back to each asset's first-recorded
+   row and say ON THE PAGE that the count is inferred rather than measured.
+
+WHAT REMAINS — 24 items, in build order
+
+  Readings that exist in the record and are not shown
+    - the History section's finished-run reader shows PROGRESS COUNTERS instead
+      of the dial board, the reading rules, the verdict and the sealed-exam
+      button. This is the biggest single hole.
+    - Tool 2 can never report: it reads the nulls from the wrong place
+    - the null-verdict result is dumped as raw JSON instead of read
+    - the menu grid promises a plateau view in two places and renders none
+    - the asset-predictability summary
+    - the per-row null test result
+    - most replication columns (vs control, accuracy, edge, vs always-long,
+      vs buy-hold, the held-back sub-line, W/T, gross per trade, stops)
+    - the units equation, the data fingerprint, the refresh gap detail
+    - live progress: phase, units, rate, elapsed, ETA
+
+  Launchers that do not exist
+    - the sealed exam (one-touch grade on the 13% nothing has touched)
+    - the History Tuning null draw
+    - the age-dial exams, and the gate that must pass before a real run
+    - Tool 1 on a selected row
+    - inspect, per row
+    - run notes
+    - copy settings into the form
+    - stop tuner: custom percent, clear-the-stop, and a target other than F1
+    - the CPU cap
+
+One thing I want to flag rather than bury: three endpoints in the same History
+panel take three DIFFERENT id keys for what looks like the same thing. That is
+the shape defects come from, and I will be reading each contract rather than
+pattern-matching the neighbour.
+
+c.
