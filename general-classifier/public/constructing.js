@@ -20,6 +20,82 @@ const tryPost = async (p, body) => { try { return await post(p, body); } catch (
 // different setup with a different result — so every "selected:" line uses this.
 const comboOf = (r) => (!r ? '—' : r.trade + (r.ctx1 ? ` + ${r.ctx1}` : '') + (r.ctx2 ? ` + ${r.ctx2}` : ''));
 
+// COLUMN KEYS (owner's standing rule: every table gets a name and a KEY, and the
+// key defines every heading in plain words INCLUDING ITS UNITS — money and
+// accuracy points get confused, and which one it is decides whether something is
+// tradeable). Most headings on this tab carried nothing at all, which left the
+// decoding to the reader; that is the writer's job. Held in one place so a word
+// means the same thing on every table that uses it.
+const COL = {
+  // Data
+  pair: 'the Binance symbol, hourly candles. The fabricated planted-check pair is listed too and is marked as such.',
+  months: 'how many whole months of hourly candles are cached on this box for the pair.',
+  from: 'first cached month, YYYY-MM.',
+  to: 'last cached month, YYYY-MM. The current month is partial until it closes.',
+  manage: 'per-pair actions. Downloading is by month; purging removes the cached candles, not any run that used them.',
+  // saved-run lists
+  run: 'the run id. The timestamp in it is when the job was FIRED, in UTC.',
+  kind: 'which engine produced it — a sweep, a History Tuning pass, an age-dial pass. Different kinds read differently.',
+  status: 'done, running, or error. An error row keeps whatever it managed to record.',
+  started: 'when the job was fired, UTC.',
+  derives: 'the run this one was launched from, when it was — so a null run or a re-run can be traced back to its parent.',
+  // asset predictability
+  rank: 'position in this list only. It is an ordering, not a score.',
+  asset: 'the TRADED pair of the setup. On a multi-asset committee the others are context and are never bought or sold.',
+  // replication detail
+  band: 'the dormant band as a PERCENT move: anything smaller than this counts as no move, so it is neither up nor down.',
+  agree: 'how many committee members must agree before a position is taken, out of how many there are.',
+  trades: 'how many positions this setting actually took in the window. A handful of trades makes any money figure noise.',
+  // boards
+  setup: 'the traded pair plus its context pairs — the whole committee, because a different context set is a different setup.',
+  shape: 'the measurement geometry, the decision rule, and the dormant band. These are fixed for the run, not searched per row.',
+  cell: 'the SETTING this row scored: agreement, entry and gate, hold length, and any trailing stop. The thing being chosen.',
+  vsNulls: 'how many of this setup\'s own dealt-vote null copies its held-back money beats. N copies is at best a 1-in-(N+1) claim, and this is the only null the register admits as evidence.',
+  // members
+  member: 'one voter on the committee. Members differ only in WHICH features they are allowed to see.',
+  view: 'the slice of the feature vector this member sees.',
+  model: 'the trained classifier behind this member.',
+  // null verdict
+  nullDraw: 'one dealt-vote null world — the same committee and machinery with the calendar alignment destroyed.',
+  value: 'that null world\'s held-back money in US dollars. The real result has to beat these.',
+  // tool 2
+  heldBack: 'money on the once-only look at data no search touched, US dollars after fees. This is what the counts read.',
+  nullCopies: 'how many dealt-vote null copies this setup has. It sets the finest claim available: 1 in N+1.',
+  beaten: 'how many of those copies the held-back money beats.',
+  claim: 'the strongest honest statement these copies support — never finer than 1 in N+1.',
+  // history tuning
+  hash: 'row number in this board only.',
+  age: 'the half-life setting: how fast older weeks stop counting.',
+  retune: 'how often the model is retrained and how far back it looks when it is.',
+  testUsd: 'net paper dollars per $100 book on the window the settings were CHOSEN on — flattering by construction, never a money claim.',
+  effDays: 'the smallest effective training days any split saw. A starved split returns plausible numbers from almost no data.',
+  holdUsd: 'the three held-back windows (early / middle / late) in US dollars, shown only where a hold is graded once and never shopped.',
+  wt: 'winning trades over total trades in that cell.',
+  // stop tuner
+  giveUp: 'how many of the biggest winners you are willing to have clipped. Zero is the no-winner-lost stop.',
+  stopPct: 'the fixed protective stop as a PERCENT move against the position.',
+  winnersCut: 'how many winning positions this stop would have closed early.',
+  winnerGiven: 'US dollars of winning profit given up by those early closes. Always negative or zero.',
+  losersCut: 'how many losing positions this stop would have closed early.',
+  lossSide: 'US dollars saved (or lost) on the losing side by closing them early.',
+  netUsd: 'winner dollars given up plus loss-side dollars, versus running with no stop. Positive means the stop helps.',
+  // conviction
+  agreement: 'how many members agreed on the winning side for the trades in this bucket.',
+  mult: 'the clip multiplier the declared ladder applies at that agreement level.',
+  wins: 'winning trades in the bucket.',
+  winPct: 'winning trades as a percent of the bucket. A thin bucket is marked and should not be read as a rate.',
+  flatUsd: 'US dollars this bucket made at a FLAT clip — every trade the same size.',
+  ladderUsd: 'US dollars the same bucket made with the declared ladder applied. The difference is the whole question.',
+  // greenlight
+  glId: 'the greenlight id. It is the config\'s identity on the Trading tab.',
+  campaign: 'the named line of work the source sweep belonged to.',
+  why: 'the reason recorded at greenlight time. It is the decision record and is not editable afterwards.',
+  minted: 'when the config was greenlighted, UTC.',
+  state: 'whether this config is running on either side, and whether it has been revoked.',
+};
+// cth(label, key[, style]) — a heading always carries its own description.
+const cth = (label, key, style) => `<th${style ? ` style="${style}"` : ''}${COL[key] ? ` title="${esc(COL[key]).replace(/"/g, '&quot;')}"` : ''}>${label}</th>`;
+
 // theme — Constructing remembers its OWN setting (owner, 2026-08-17). It used to
 // share the Trading page's key; each tab now keeps its own.
 const root = document.documentElement;
@@ -141,7 +217,7 @@ async function drawData() {
       current month. Trim keeps only a range, deleting the rest. Purge deletes the whole asset. Every write refuses
       while a job runs; purge and trim DELETE data — the only way back is downloading again.</p>
     <div class="scrollx" id="dataTbl">${rows.length ? `<table><thead><tr>
-      <th>pair</th><th>months</th><th>from</th><th>to</th><th style="text-align:left">manage</th></tr></thead><tbody>
+      ${cth('pair','pair')}${cth('months','months')}${cth('from','from')}${cth('to','to')}${cth('manage','manage','text-align:left')}</tr></thead><tbody>
       ${rows.map((r) => (r.symbol === 'PLANTEDUSDT' ? `
         <tr><td>${esc(r.symbol)} <span class="note">fabricated planted-check pair — mirrors real data's span, never downloaded</span></td>
           <td>${r.months ?? '—'}</td><td>${esc(r.from || '—')}</td><td>${esc(r.to || '—')}</td>
@@ -291,7 +367,7 @@ async function drawSweep() {
     const name = $('#cxCamp').value.trim(); if (!name) { alert('name a campaign'); return; }
     const t = await api(`api/campaign-tree?name=${encodeURIComponent(name)}`).catch(() => null);
     $('#campOut').innerHTML = t ? `<h3>Campaign “${esc(t.name)}” — runs &amp; greenlights</h3>
-      <table><thead><tr><th>run</th><th>kind</th><th>status</th><th>started</th><th style="text-align:left">derives from</th></tr></thead><tbody>
+      <table><thead><tr>${cth('run','run')}${cth('kind','kind')}${cth('status','status')}${cth('started','started')}${cth('derives from','derives','text-align:left')}</tr></thead><tbody>
       ${(t.runs || []).map((r) => `<tr><td>${esc(r.id)}</td><td>${esc(r.kind)}</td><td>${esc(r.status)}</td>
         <td>${esc((r.startedAt || '').slice(0, 16))}</td><td style="text-align:left" class="muted">${esc(r.parentRunId || '—')}</td></tr>`).join('') || '<tr><td colspan="5" class="empty">no runs yet</td></tr>'}
       </tbody></table>
@@ -533,7 +609,7 @@ async function drawBoards() {
         setups won. 100% means every real setup beat every null copy; 0% means every null copy beat every real setup;
         50% means the real setups are indistinguishable from dealt votes.
         ${running ? '<b>Counts grow until the sweep finishes — do not judge yet.</b>' : ''}</p>
-      <div class="scrollx"><table><thead><tr><th>rank</th><th>asset</th>
+      <div class="scrollx"><table><thead><tr>${cth('rank','rank')}${cth('asset','asset')}
         <th title="share of real-versus-null match-ups won on held-back money">predictability</th>
         <th title="real setups scored so far / null copies scored so far">real / null rows</th></tr></thead><tbody>
       ${scored.map((x, i) => `<tr><td>${i + 1}</td><td><b>${esc(x.asset)}</b></td>
@@ -656,11 +732,11 @@ async function drawBoards() {
     const nullCell = (g) => (g.nullShare == null
       ? '<span class="muted" title="this run recorded no dealt-vote copies of this configuration">no null copies</span>'
       : `<b class="${g.nullShare === 1 ? 'pos' : ''}">${g.nullBeat}/${g.nullPairs}</b>`);
-    const detail = (rs) => `<div class="scrollx"><table><thead><tr><th>asset</th><th>band</th><th>agree</th>
+    const detail = (rs) => `<div class="scrollx"><table><thead><tr>${cth('asset','asset')}${cth('band','band')}${cth('agree','agree')}
         <th title="the window the settings were chosen on — flattering by construction">test $</th>
         <th title="the once-only look on data no search touched — this is what the counts read">held-back $</th>
         <th title="held-back money minus the same execution forced long every period">vs always-long</th>
-        <th>trades</th></tr></thead><tbody>
+        ${cth('trades','trades')}</tr></thead><tbody>
       ${rs.map((r) => `<tr><td>${esc(r.trade + (r.ctx1 ? ' + ' + r.ctx1 : '') + (r.ctx2 ? ' + ' + r.ctx2 : ''))}</td>
         <td>±${r.bandPct != null ? r.bandPct.toFixed(2) : '?'}%</td>
         <td>${r.quorum}/${r.members}</td>
@@ -767,8 +843,8 @@ async function drawBoards() {
         <option value="board" ${boardSort === 'board' ? 'selected' : ''}>best cell (the board's own ranking)</option>
         <option value="region" ${boardSort === 'region' ? 'selected' : ''}>widest region (neighbouring settings that all made money)</option>
       </select></label><span class="note">the rows are the same either way — only the order changes</span></div>
-      <div class="scrollx"><table><thead><tr><th>setup</th><th>shape</th><th>cell</th><th>trades</th>
-        <th>test $</th><th>held-back $</th><th>vs nulls</th>
+      <div class="scrollx"><table><thead><tr>${cth('setup','setup')}${cth('shape','shape')}${cth('cell','cell')}${cth('trades','trades')}
+        ${cth('test $','testUsd')}${cth('held-back $','heldBack')}${cth('vs nulls','vsNulls')}
         <th title="How many neighbouring settings around this row's best region ALL made money after fees. One step at a time on d, t and agreement; entry and gate are categories, so a region never crosses them. A lone winner scores 1 — noise gives spikes, structure gives regions.">region</th><th></th></tr></thead><tbody>
       ${leaders.length ? leaders.map((l, i) => {
     const isSel = sel && sel.trade === l.trade && sel.geometry === l.geometry && sel.decision === l.decision
@@ -881,7 +957,7 @@ async function drawBoards() {
         <p class="note">${esc(d.meta ? `${d.meta.trade} · ${d.meta.geometry} · ${d.meta.decision}` : '')} at agreement ${esc(String(q))}.
           This panel shows what the committee is made of. It cannot tell you whether the setup works — only a null
           comparison can, and this is not one.</p>
-        ${mem.length ? `<div class="scrollx"><table><thead><tr><th>member</th><th>view</th><th>model</th>
+        ${mem.length ? `<div class="scrollx"><table><thead><tr>${cth('member','member')}${cth('view','view')}${cth('model','model')}
           <th title="share of periods this member called a direction rather than standing aside">participation</th>
           <th title="exact 3-class match rate of this member's calls on the search window">accuracy</th>
           <th title="accuracy minus the training-majority baseline — what the member adds over always guessing the commonest label">edge</th></tr></thead><tbody>
@@ -920,7 +996,7 @@ async function drawBoards() {
             + '</p>'
           : '';
         $('#gridOut').innerHTML = renderPlateau(cells, l) + rankLine + `<h3 style="margin-top:0">Menu grid — ${esc(l.trade)} ${esc(l.geometry)} (${cells.length.toLocaleString()} permutations, test window only)</h3>
-          <div class="scrollx"><table><thead><tr><th>cell</th><th>trades</th><th>test $</th></tr></thead><tbody>
+          <div class="scrollx"><table><thead><tr>${cth('cell','cell')}${cth('trades','trades')}${cth('test $','testUsd')}</tr></thead><tbody>
           ${cells.slice(0, 400).map((c) => `<tr><td>q${c.quorum} · ${c.entry === 'market' ? 'market' : `${esc(c.gate)} d${c.dMult}×`} · ${c.tHours}h${c.trailMult != null ? ` · trail ${c.trailMult}×` : ''}</td>
             <td>${c.trades ?? '—'}</td><td class="${(c.pnl || 0) >= 0 ? 'pos' : 'neg'}">${money(c.pnl)}</td></tr>`).join('')}
           </tbody></table></div>${cells.length > 400 ? `<p class="note">showing 400 of ${cells.length}</p>` : ''}`;
@@ -994,7 +1070,7 @@ async function drawVerify() {
     const byKey = new Map();
     for (const n of nulls) { const k = key(n); if (!byKey.has(k)) byKey.set(k, []); byKey.get(k).push(n); }
     const reals = all.filter((l) => l.nullDealSeed == null && byKey.has(key(l)));
-    return `<table><thead><tr><th>setup</th><th>held-back $</th><th>null copies</th><th>beaten</th><th>claim</th></tr></thead><tbody>
+    return `<table><thead><tr>${cth('setup','setup')}${cth('held-back $','heldBack')}${cth('null copies','nullCopies')}${cth('beaten','beaten')}${cth('claim','claim')}</tr></thead><tbody>
       ${reals.map((l) => {
     const ns = byKey.get(key(l)); const mine = l.holdout ? l.holdout.pnl : null;
     const beaten = mine == null ? null : ns.filter((n) => (n.holdout ? n.holdout.pnl : -Infinity) < mine).length;
@@ -1098,7 +1174,7 @@ async function drawHistory() {
   <div class="panel"><h3 style="margin-top:0">Finished tuning runs</h3><div id="htList"><span class="muted">loading…</span></div></div>`;
   const list = await api('api/batches').catch(() => ({}));
   const runs = (list.batches || list || []).filter((b) => b.kind === 'historytuning' || b.kind === 'httwo').slice(0, 12);
-  $('#htList').innerHTML = runs.length ? `<table><thead><tr><th>run</th><th>kind</th><th>status</th><th>started</th><th></th></tr></thead><tbody>
+  $('#htList').innerHTML = runs.length ? `<table><thead><tr>${cth('run','run')}${cth('kind','kind')}${cth('status','status')}${cth('started','started')}<th></th></tr></thead><tbody>
     ${runs.map((r) => `<tr><td>${esc(r.id)}</td><td>${esc(r.kind)}</td><td>${esc(r.status)}</td><td>${esc((r.startedAt || '').slice(0, 16))}</td>
       <td><button data-open="${esc(r.id)}">read</button></td></tr>`).join('')}</tbody></table><div id="htRead"></div>`
     : '<span class="muted">none yet</span>';
@@ -1176,7 +1252,7 @@ async function drawHistory() {
 function renderNullVerdict(d) {
   if (!d) return '<span class="warn">no verdict</span>';
   const drawsTable = (t) => `<div class="scrollx" style="max-height:14rem;overflow-y:auto"><table>
-    <thead><tr><th>null draw</th><th>value</th></tr></thead><tbody>
+    <thead><tr>${cth('null draw','nullDraw')}${cth('value','value')}</tr></thead><tbody>
     ${t.draws.map((x) => `<tr><td>${typeof x.shift === 'number' ? x.shift.toFixed(3) : esc(String(x.shift))}${x.setup ? ' · ' + esc(String(x.setup).replace(/\|/g, ' ')) : ''}</td>
       <td class="${t.real > x.value ? 'pos' : 'neg'}">${money(x.value)}</td></tr>`).join('')}
     </tbody></table></div>`;
@@ -1219,7 +1295,7 @@ function renderPlateau(cells, cand) {
     rows.sort((a, b) => ((a[skip] ?? -1) === (b[skip] ?? -1) ? ((a.armMult ?? -1) - (b.armMult ?? -1))
       : (typeof a[skip] === 'string' ? String(a[skip]).localeCompare(String(b[skip])) : (a[skip] ?? -1) - (b[skip] ?? -1))));
     return `<div style="display:inline-block;vertical-align:top;margin:0 .9rem .7rem 0">
-      <table><thead><tr><th>${esc(title)}</th><th>test $</th><th>W/T</th></tr></thead><tbody>
+      <table><thead><tr>${cth(esc(title),'cell')}${cth('test $','testUsd')}${cth('W/T','wt')}</tr></thead><tbody>
       ${rows.map((c) => `<tr${isCand(c) ? ' class="selected"' : ''}><td>${isCand(c) ? '▶ ' : ''}${esc(fmt(c))}</td>
         <td class="${(c.pnl || 0) >= 0 ? 'pos' : 'neg'}">${money(c.pnl)}</td><td>${c.wins ?? '—'}/${c.trades ?? '—'}</td></tr>`).join('')}
       </tbody></table></div>`;
@@ -1343,7 +1419,7 @@ function renderHtRun(r, siblings = []) {
       construction) — a row marked partial has not finished all three splits, so its sum cannot be compared with complete
       rows; eff. days = the smallest effective training days any split saw; hold $ = the three hold windows
       early/middle/late, shown ONLY for the winner and the reference pass, because holds are graded once and never shopped.</p>
-    <div class="scrollx"><table><thead><tr><th>#</th><th>age</th><th>retune</th><th>test $</th><th>eff. days</th><th></th><th>hold $ (e/m/l)</th></tr></thead>
+    <div class="scrollx"><table><thead><tr>${cth('#','hash')}${cth('age','age')}${cth('retune','retune')}${cth('test $','testUsd')}${cth('eff. days','effDays')}<th></th>${cth('hold $ (e/m/l)','holdUsd')}</tr></thead>
       <tbody>${armRows || '<tr><td colspan="7" class="empty">rows appear as passes finish</td></tr>'}</tbody></table></div>
     ${verdictDiv}${nullBtn}${gradeBtn}</div>`;
 }
@@ -1495,7 +1571,7 @@ async function drawTune() {
     const cc = s.counts || {};
     return `<p><b>${esc(s.bookId)}</b>: tightest no-winner-lost stop <span class="pos">${pct(s.stopPct)}</span> —
       ${cc.winners || 0} winners / ${cc.losers || 0} losers over ${cc.priced || 0} entries.</p>
-      <div class="scrollx"><table><thead><tr><th>give up top winners</th><th>stop</th><th>winners cut</th><th>winner $ given up</th><th>losers cut</th><th>loss-side $</th><th>NET $</th><th></th></tr></thead><tbody>
+      <div class="scrollx"><table><thead><tr>${cth('give up top winners','giveUp')}${cth('stop','stopPct')}${cth('winners cut','winnersCut')}${cth('winner $ given up','winnerGiven')}${cth('losers cut','losersCut')}${cth('loss-side $','lossSide')}${cth('NET $','netUsd')}<th></th></tr></thead><tbody>
       ${(s.curve || []).map((c) => `<tr><td>${c.sacrificeTopWinners}</td><td>${pct(c.stopPct)}</td><td>${c.winnersForfeited}</td>
         <td class="neg">${usd(-Math.abs(c.winnerProfitForfeitedUsd || 0))}</td><td>${c.losersCut}</td>
         <td class="${(c.loserPnlDeltaUsd || 0) >= 0 ? 'pos' : 'neg'}">${usd(c.loserPnlDeltaUsd)}</td>
@@ -1509,7 +1585,7 @@ async function drawTune() {
     const n = c.null || {};
     return `<p><b>${esc(c.bookId)}</b> over ${c.entries} priced entries: flat ${usd(c.flatUsd)} vs ladder <b>${usd(c.ladderUsd)}</b>
       — uplift <b class="${(c.upliftUsd || 0) >= 0 ? 'pos' : 'neg'}">${usd(c.upliftUsd)}</b>.</p>
-      <div class="scrollx"><table><thead><tr><th>agreement</th><th>mult</th><th>trades</th><th>wins</th><th>win %</th><th>flat $</th><th>ladder $</th></tr></thead><tbody>
+      <div class="scrollx"><table><thead><tr>${cth('agreement','agreement')}${cth('mult','mult')}${cth('trades','trades')}${cth('wins','wins')}${cth('win %','winPct')}${cth('flat $','flatUsd')}${cth('ladder $','ladderUsd')}</tr></thead><tbody>
       ${(c.buckets || []).map((b) => `<tr><td>${b.agree} of ${(c.setup && c.setup.members) || 4}${b.thin ? ' ⚠' : ''}</td>
         <td>${b.multiplier}x</td><td>${b.n}</td><td>${b.winners}</td>
         <td>${b.n ? ((100 * b.winners) / b.n).toFixed(1) + '%' : '—'}</td>
@@ -1599,7 +1675,7 @@ async function drawGreenlight() {
     : '<span class="note">select a row on Boards first — a greenlight is minted from the selected row.</span>'}
   </div>
   <div class="panel"><h3 style="margin-top:0">Existing greenlights</h3>
-    <table><thead><tr><th>id</th><th>pair</th><th>campaign</th><th style="text-align:left">why</th><th>minted</th><th>state</th></tr></thead><tbody>
+    <table><thead><tr>${cth('id','glId')}${cth('pair','asset')}${cth('campaign','campaign')}${cth('why','why','text-align:left')}${cth('minted','minted')}${cth('state','state')}</tr></thead><tbody>
     ${(gls.greenlights || []).map((g) => `<tr><td>${esc(g.id)}</td><td>${esc(g.configSnapshot?.combo?.trade || '—')}</td>
       <td class="muted">${esc(g.campaign || '—')}</td><td style="text-align:left" class="muted">${esc((g.why || '').slice(0, 90))}</td>
       <td>${esc((g.createdUtc || '').slice(0, 16))}</td><td>${g.revoked ? '<span class="warn">nuked</span>' : '<span class="pos">greenlighted</span>'}</td></tr>`).join('') || '<tr><td colspan="6" class="empty">none yet</td></tr>'}

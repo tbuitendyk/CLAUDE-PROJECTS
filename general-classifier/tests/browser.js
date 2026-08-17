@@ -215,6 +215,24 @@ async function visit(browser, spec) {
     else if (shape.len === 0) add('#view rendered empty — the tab drew nothing');
 
     await scanText(page, add, 'on load');
+
+    // A button with no handler is a button that does nothing when pressed, and
+    // it looks identical to one that works. Both pages wire every control with
+    // `el.onclick = …`, so a rendered button whose onclick is still null was
+    // either never wired or wired to an id that is not on screen.
+    const dead = await page.evaluate(() => Array.from(document.querySelectorAll('#view button'))
+      .filter((b) => !b.onclick && !b.disabled && !b.closest('form'))
+      .map((b) => (b.textContent || '').trim().slice(0, 40)));
+    for (const d of dead) add(`the button "${d}" has no handler — pressing it does nothing`);
+
+    // Every column heading must say what it holds (owner's standing rule). This
+    // checks the RENDERED table, so a heading built at runtime cannot escape the
+    // source-level test in tests/test-columnkeys.js.
+    const bare = await page.evaluate(() => Array.from(document.querySelectorAll('#view th'))
+      .filter((t) => t.textContent.trim() && !t.title.trim())
+      .map((t) => t.textContent.trim().slice(0, 40)));
+    for (const b of [...new Set(bare)]) add(`the column "${b}" carries no description`);
+
     if (spec.click) await clickAround(page, add);
   } catch (e) {
     add(`page threw during the visit: ${e.message}`);

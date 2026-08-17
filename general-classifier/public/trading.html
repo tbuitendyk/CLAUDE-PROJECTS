@@ -121,6 +121,49 @@ const cls=(v)=>v==null?'':v>0?'pos':v<0?'neg':'';
 const esc=(t)=>String(t??'').replace(/&/g,'&amp;').replace(/</g,'&lt;');
 const paperBadge='<span class="badge b-paper" title="paper — not real money">paper</span>';
 
+// COLUMN KEYS. The owner's standing rule: every table gets a name and a key, and
+// the key defines every heading in plain words INCLUDING ITS UNITS — money and
+// percentages and counts get confused, and the difference decides what an
+// operator does next. This page had 67 headings and not one of them said what it
+// held. Written once here so the same word means the same thing on every table.
+const TH={
+  config:'the greenlighted configuration — the entity both sides trade. Minted on the Constructing tab and never edited here.',
+  pair:'the TRADED pair. On a three-asset committee the other two are context only — nothing is bought or sold in them.',
+  campaign:'the named line of work the sweep behind this config belonged to. Blank means it was not filed under one.',
+  why:'the reason recorded at greenlight time, in the words of whoever cleared it. It is the decision record and cannot be edited afterwards.',
+  status:'plain-words state of this config across BOTH sides — which channels are active, and whether any position is open.',
+  setup:'the channel this side runs the config through: one book per side, so a paper book and a live setup are separate rows.',
+  state:'draft (nothing runs), paper (books trades, places no orders, no money), live (real orders), stopped (no new entries, existing positions still exit), retired (finished).',
+  clip:'position size per entry in US DOLLARS of notional, not a share of anything. $100 means each entry opens about $100 of the pair.',
+  stop:'the protective stop as a PERCENT move against the position. "—" means no fixed stop: the position rests on its scheduled exit alone.',
+  created:'when this book was created, UTC. Not when it started trading — see state.',
+  member:'one voter on the committee. Members differ only in WHICH features they are allowed to see.',
+  model:'the trained classifier behind this member, by file. Frozen at greenlight; nothing retrains while a book runs.',
+  view:'the slice of the feature vector this member sees — the whole point of having more than one.',
+  featuresSeen:'how many of the run’s feature numbers reach this member, out of the full vector. A member seeing all of them is the unrestricted one.',
+  viewMeaning:'what that slice means in plain words — what this member is and is not allowed to notice.',
+  chunk:'the 96h feature window the call was computed from, by its start (UTC). The call ACTS 97h after this — see exit due.',
+  side:'LONG = bought the pair, SHORT = sold it borrowed. Colour follows the direction, not the profit.',
+  qty:'position size in UNITS OF THE PAIR (coins), not dollars. Multiply by entry to get the notional.',
+  entryPx:'the price this position was actually filled at, in quote currency (USDT).',
+  markPx:'the most recent price this book saw, in quote currency (USDT). It is the price the unrealized figure is measured against.',
+  unreal:'money this OPEN position would make or lose if closed at the mark, in US dollars, fees included. It moves every run and is not banked.',
+  exitDue:'when the scheduled exit falls due, UTC. The hold is fixed at greenlight; nothing here shortens it except a protective stop.',
+  exitPx:'the price this position was actually closed at, in quote currency (USDT).',
+  pnl:'REALIZED money on this closed position, in US dollars, after both legs’ fees and any borrow interest. This one is banked.',
+  utc:'when it happened, UTC. The log is newest first.',
+  kind:'the incident type as the executor recorded it — the machine’s own word, not a paraphrase.',
+  detail:'the executor’s own message for this line, untouched.',
+  event:'the journal event type as written by the executor. This is the raw record both screens are derived from.',
+  entryUtc:'the moment the call ACTED (window start + 97h). Dating a row by its window start put it four days early and made a live record look abandoned.',
+  window:'the 96h feature window the call was built from, by its start date. Provenance only — see entry (UTC) for when it traded.',
+  votes:'the committee members in order — full, prices, volume, cross. UP = long, DOWN = short, no call = that member named no direction.',
+  call:'what the quorum decided from those votes. STAND DOWN means the quorum was not reached, which is a decision, not a failure.',
+  outcome:'what the executor actually did with the call — filled, skipped, gave up, or killed on price drift.',
+};
+// th(label, key) — a heading always carries its own description.
+const th=(label,key,style)=>`<th${style?` style="${style}"`:''}${TH[key]?` title="${esc(TH[key]).replace(/"/g,'&quot;')}"`:''}>${label}</th>`;
+
 // theme: remember choice; default dark (the technical baseline).
 const root=document.documentElement;
 root.setAttribute('data-theme', localStorage.getItem('lt-theme')||'dark');
@@ -167,7 +210,7 @@ async function drawConfigs(){
   if(!configs.length){ $('#view').innerHTML=`<div class="panel empty">No greenlighted configs yet. Configs are minted on the
     Constructing tab: sweep → verify → tune → <b>Greenlight</b>. They then appear here on both sides.</div>`; return; }
   $('#view').innerHTML=`<div class="panel"><table><thead><tr>
-    <th>config</th><th>pair</th><th>campaign</th><th style="text-align:left">why</th><th>status</th><th></th><th></th></tr></thead><tbody>
+    ${th('config','config')}${th('pair','pair')}${th('campaign','campaign')}${th('why','why','text-align:left')}${th('status','status')}<th></th><th></th></tr></thead><tbody>
     ${configs.map(g=>{
       const ch=chanOf(g);
       const active=ch&&(ch.state==='paper'||ch.state==='live');
@@ -214,7 +257,7 @@ async function drawSetups(){
     tradedPair:'LTCUSDT', clipUsd:10, stopPct:null, engineVersion:'', createdUtc:'2026-08-11' }); }
   if(!rows.length){ $('#view').innerHTML=`<div class="panel empty">No ${branch==='paper'?'paper books':'live setups'} yet — activate a config on the Greenlights page.</div>`; return; }
   $('#view').innerHTML=`<div class="panel"><table><thead><tr>
-    <th>setup</th><th>pair</th><th>state</th><th>clip</th><th>stop</th><th>created</th></tr></thead><tbody>
+    ${th('setup','setup')}${th('pair','pair')}${th('state','state')}${th('clip','clip')}${th('stop','stop')}${th('created','created')}</tr></thead><tbody>
     ${rows.map(s=>`<tr class="clickable" data-id="${s.id}">
       <td>${esc(s.name)} ${branch==='paper'?paperBadge:''}</td>
       <td>${esc(s.tradedPair)}</td><td><span class="badge b-${s.state==='live'?'live':s.state==='paper'?'paper':s.state==='stopped'?'stopped':'idle'}">${s.state}</span></td>
@@ -289,7 +332,7 @@ async function drawDetail(){
       <div class="panel"><div class="k">Tested configuration — how these trades are set up</div>
         <div style="margin-top:.5rem">${Object.entries(cfg).map(([k,v])=>cfgRow(esc(k),esc(typeof v==='object'?JSON.stringify(v):v))).join('')}</div></div>
       ${a.committee?`<div class="panel"><div class="k">The committee — who votes, and what each member sees</div>
-        <table style="margin-top:.4rem"><thead><tr><th>member</th><th style="text-align:left">model</th><th>view</th><th>features seen</th><th style="text-align:left">what that view means</th></tr></thead>
+        <table style="margin-top:.4rem"><thead><tr>${th('member','member')}${th('model','model','text-align:left')}${th('view','view')}${th('features seen','featuresSeen')}${th('what that view means','viewMeaning','text-align:left')}</tr></thead>
         <tbody>${a.committee.map((m,i)=>`<tr><td>member ${i+1}</td><td style="text-align:left">${esc(m.model)}</td><td>${esc(m.view)}</td>
           <td>${m.featuresSeen} of ${a.features.totalVector}</td><td style="text-align:left" class="muted">${esc(m.viewMeaning)}</td></tr>`).join('')}</tbody></table></div>`:''}
       ${a.pipeline?`<div class="panel"><div class="k">How the decision is made — the full pipeline</div>
@@ -392,7 +435,7 @@ async function drawLive(){
       <div class="tile"><div class="k">Fill dev max</div><div class="v ${st.fidelity.fillDeviationMax>0.01?'warn':''}">${st.fidelity.fillDeviationMax==null?'—':(st.fidelity.fillDeviationMax*100).toFixed(3)+'%'}</div></div>
     </div>
     <div class="panel"><div class="k">Open positions ${isP?paperBadge:''}</div>
-      <table style="margin-top:.4rem"><thead><tr><th>chunk</th><th>side</th><th>qty</th><th>entry</th><th>mark</th><th>unreal $</th><th>exit due</th></tr></thead><tbody>
+      <table style="margin-top:.4rem"><thead><tr>${th('chunk','chunk')}${th('side','side')}${th('qty','qty')}${th('entry','entryPx')}${th('mark','markPx')}${th('unreal $','unreal')}${th('exit due','exitDue')}</tr></thead><tbody>
       ${st.openPositions.length?st.openPositions.map(p=>`<tr>
         <td>${(p.chunk_start||'').slice(0,16)}</td><td class="${p.side==='LONG'?'pos':'neg'}">${p.side}${p.paper?' <span class="badge b-paper">P</span>':''}</td>
         <td>${p.qty}</td><td>${p.entry_price??'—'}</td><td>${p.markPrice==null?'—':'$'+p.markPrice.toFixed(2)}</td>
@@ -400,13 +443,13 @@ async function drawLive(){
         <td class="muted">${p.exit_due_ts?new Date(p.exit_due_ts*1000).toISOString().slice(0,16):'—'}</td></tr>`).join(''):'<tr><td colspan="7" class="empty">none open</td></tr>'}
       </tbody></table></div>
     <div class="panel"><div class="k">Recent closed</div>
-      <table style="margin-top:.4rem"><thead><tr><th>chunk</th><th>side</th><th>entry</th><th>exit</th><th>P&amp;L</th></tr></thead><tbody>
+      <table style="margin-top:.4rem"><thead><tr>${th('chunk','chunk')}${th('side','side')}${th('entry','entryPx')}${th('exit','exitPx')}${th('P&amp;L ($)','pnl')}</tr></thead><tbody>
       ${st.closedRecent.length?st.closedRecent.map(c=>`<tr>
         <td>${(c.chunk_start||'').slice(0,16)}</td><td class="${c.side==='LONG'?'pos':'neg'}">${c.side}${c.paper?' <span class="badge b-paper">P</span>':''}</td>
         <td>${c.entry_price??'—'}</td><td>${c.exit_price??'—'}</td><td class="${cls(c.pnl)}">${money(c.pnl)}</td></tr>`).join(''):'<tr><td colspan="5" class="empty">none closed yet</td></tr>'}
       </tbody></table></div>
     <div class="panel"><div class="k">Incidents</div>
-      <table style="margin-top:.4rem"><thead><tr><th>utc</th><th>kind</th><th style="text-align:left">detail</th></tr></thead><tbody>
+      <table style="margin-top:.4rem"><thead><tr>${th('utc','utc')}${th('kind','kind')}${th('detail','detail','text-align:left')}</tr></thead><tbody>
       ${st.incidents.length?st.incidents.map(i=>`<tr><td>${(i.utc||'').slice(0,19)}</td><td class="warn">${esc(i.kind)}</td>
         <td style="text-align:left" class="muted">${esc((i.detail||'').slice(0,120))}</td></tr>`).join(''):'<tr><td colspan="3" class="empty">none — clean</td></tr>'}
       </tbody></table></div>`;
@@ -442,7 +485,7 @@ async function drawPilotLive(){
       <b>window</b> = the 96h feature window it was computed from ·
       <b>member votes</b> = the four committee members in order — full, prices, volume, cross — UP = long, DOWN = short, no call = named no direction ·
       <b>call</b> = what the quorum decided · <b>outcome</b> = what the executor did with it</div>
-    <div class="scrollbox"><table style="margin:0"><thead><tr><th style="text-align:left">entry (UTC)</th><th style="text-align:left">window</th><th style="text-align:left">member votes</th><th style="text-align:left">call</th><th style="text-align:left">outcome</th></tr></thead><tbody>
+    <div class="scrollbox"><table style="margin:0"><thead><tr>${th('entry (UTC)','entryUtc','text-align:left')}${th('window','window','text-align:left')}${th('member votes','votes','text-align:left')}${th('call','call','text-align:left')}${th('outcome','outcome','text-align:left')}</tr></thead><tbody>
     ${d.decisions.map(dec=>{const votes=Array.isArray(dec.votes)?dec.votes.map(v=>`<span class="${vcls(v)}" title="${vtip(v)}">${vtxt(v)}</span>`).join(' · '):'<span class="muted">not recorded</span>';
       const lab=dec.side==='LONG'?['▲ Open LONG','pos']:dec.side==='SHORT'?['▼ Open SHORT','neg']:['■ STAND DOWN','vote-as'];
       // dated by the entry the call ACTS on, not the window it was built from —
@@ -481,25 +524,25 @@ async function drawPilotLive(){
       <div class="tile"><div class="k">Mirror check</div><div class="v ${mirrorBreaks>0?'warn':'pos'}">${d.mirror==null?'—':(mirrorBreaks>0?mirrorBreaks+' BREAK':'clean')}</div></div>
     </div>
     <div class="panel"><div class="k">Open positions</div>
-      <table style="margin-top:.4rem"><thead><tr><th>chunk</th><th>side</th><th>qty</th><th>entry</th><th>mark</th><th>unreal $</th><th>exit due</th></tr></thead><tbody>
+      <table style="margin-top:.4rem"><thead><tr>${th('chunk','chunk')}${th('side','side')}${th('qty','qty')}${th('entry','entryPx')}${th('mark','markPx')}${th('unreal $','unreal')}${th('exit due','exitDue')}</tr></thead><tbody>
       ${d.openPositions.length?d.openPositions.map(p=>`<tr><td>${(p.chunk_start||'').slice(0,16)}</td>
         <td class="${p.side==='LONG'?'pos':'neg'}">${p.side}</td><td>${p.qty}</td><td>${p.entry_price??'—'}</td>
         <td>${p.markPrice!=null?'$'+p.markPrice.toFixed(2):'—'}</td><td class="${cls(p.unrealized)}">${money(p.unrealized)}</td>
         <td class="muted">${p.exit_due_ts?new Date(p.exit_due_ts*1000).toISOString().slice(0,16):'—'}</td></tr>`).join(''):'<tr><td colspan="7" class="empty">none open</td></tr>'}
       </tbody></table></div>
     <div class="panel"><div class="k">Recent closed</div>
-      <table style="margin-top:.4rem"><thead><tr><th>chunk</th><th>side</th><th>entry</th><th>exit</th><th>P&amp;L ($)</th></tr></thead><tbody>
+      <table style="margin-top:.4rem"><thead><tr>${th('chunk','chunk')}${th('side','side')}${th('entry','entryPx')}${th('exit','exitPx')}${th('P&amp;L ($)','pnl')}</tr></thead><tbody>
       ${d.closedRecent.length?d.closedRecent.map(c=>`<tr><td>${(c.chunk_start||'').slice(0,16)}</td>
         <td class="${c.side==='LONG'?'pos':'neg'}">${c.side}</td><td>${c.entry_price??'—'}</td><td>${c.exit_price??'—'}</td>
         <td class="${cls(c.pnl)}">${money(c.pnl)}</td></tr>`).join(''):'<tr><td colspan="5" class="empty">none closed yet</td></tr>'}
       </tbody></table></div>
     <div class="panel"><div class="k">Incidents (kills, halts, rejects, mirror-breaks)</div>
-      <table style="margin-top:.4rem"><thead><tr><th>utc</th><th>kind</th><th style="text-align:left">detail</th></tr></thead><tbody>
+      <table style="margin-top:.4rem"><thead><tr>${th('utc','utc')}${th('kind','kind')}${th('detail','detail','text-align:left')}</tr></thead><tbody>
       ${d.incidents.length?d.incidents.map(i=>`<tr><td>${(i.utc||'').slice(0,19)}</td><td class="warn">${esc(i.kind)}</td>
         <td style="text-align:left" class="muted">${esc((i.detail||'').slice(0,120))}</td></tr>`).join(''):'<tr><td colspan="3" class="empty">none — clean</td></tr>'}
       </tbody></table></div>
     <div class="panel"><div class="k">Full event log — everything the executor did</div>
-      <div class="logbox" style="margin-top:.4rem"><table><thead><tr><th>utc</th><th>event</th><th style="text-align:left">detail</th></tr></thead><tbody>
+      <div class="logbox" style="margin-top:.4rem"><table><thead><tr>${th('utc','utc')}${th('event','event')}${th('detail','detail','text-align:left')}</tr></thead><tbody>
       ${(d.log||[]).map(e=>`<tr><td>${(e.utc||'').slice(0,19)}</td><td>${esc(e.event)}</td>
         <td style="text-align:left" class="muted">${esc(JSON.stringify(e.detail).slice(1,-1).slice(0,140))}</td></tr>`).join('')||'<tr><td colspan="3" class="empty">no events yet</td></tr>'}
       </tbody></table></div></div>
