@@ -10,8 +10,8 @@
 //
 // Watched failing 2026-08-17: returning the raw cartesian product without
 // validateDeclared lets marketEntryNeverGainsRailsItCannotHave through; dropping
-// the label de-duplication makes theSetHasNoDuplicates fail; removing the cap
-// check makes runawayExpansionIsRefusedLoudly fail; and deleting the
+// the label de-duplication makes theSetHasNoDuplicates fail; reinstating a cap
+// check makes aLargeExpansionIsBuiltNotRefused fail; and deleting the
 // `declaredPermute` forward in server.js fails the repo's own
 // everyBracketParamSurvivesTheApi guard in test-bracket.js.
 const fs = require('fs');
@@ -110,16 +110,14 @@ module.exports = {
     assert.strictEqual(set[0].trailMult, null);
   },
 
-  // Every declared config is scored on every asset, so the count multiplies the
-  // run. Refuse loudly rather than starting something that runs for days.
-  runawayExpansionIsRefusedLoudly() {
-    let threw = null;
-    try {
-      expandDeclared(BASE, { dMult: true, tHours: true, gate: true, agree: true }, GRID);
-    } catch (e) { threw = e; }
-    assert.ok(threw, 'a runaway expansion must be refused');
-    assert.ok(/over the 500 cap/.test(threw.message), 'the refusal names the cap');
-    assert.ok(/\d+ configs/.test(threw.message), 'and says how many were asked for');
+  // NO CAP. The owner's rule: software reports the number, the human decides.
+  // A large expansion must be BUILT and returned, not refused on a number the
+  // software invented for itself.
+  aLargeExpansionIsBuiltNotRefused() {
+    const set = expandDeclared(BASE, { dMult: true, tHours: true, gate: true, agree: true }, GRID);
+    // 5 d x 7 t x 3 gates x (6 singles x 8 contexts) = 5040
+    assert.strictEqual(set.length, 5040, 'every combination is declared, none refused');
+    for (const c of set) assert.ok(c.label, 'and each one is a validated config');
   },
 
   // A run's own grid decides the menus, not the library's — a custom grid must
@@ -149,12 +147,55 @@ module.exports = {
   theBoardShowsTheReplicationTable() {
     const ui = fs.readFileSync(path.join(ROOT, 'public', 'constructing.js'), 'utf8');
     assert.ok(/doc\.replication/.test(ui), 'the Boards section must read the recorded replication rows');
-    assert.ok(/Replication — the declared config on every asset/.test(ui),
-      'and render them under a named heading');
     assert.ok(/const rows = all\.filter\(\(r\) => r\.nullDealSeed == null\)/.test(ui),
       'null copies score the declared cell too and must never enter the cross-asset count');
     assert.ok(/binom\(pos, hold\.length\)/.test(ui),
       'the tally must be the binomial across assets on the HELD-BACK window');
+  },
+
+  // ONE config gets the table on its own; MANY get a ranked, openable list FIRST
+  // (owner, 2026-08-17) — with dozens of configs a wall of tables is unreadable.
+  oneConfigGetsATableAndManyGetARankedList() {
+    const ui = fs.readFileSync(path.join(ROOT, 'public', 'constructing.js'), 'utf8');
+    assert.ok(/if \(scored\.length === 1\)/.test(ui), 'a single config keeps the plain table');
+    assert.ok(/Replication — the declared config on every asset/.test(ui), 'under its own heading');
+    assert.ok(/declared configs, ranked/.test(ui), 'many configs get a ranked list');
+    assert.ok(/<details/.test(ui) && /<summary/.test(ui), 'each line opens for its per-asset detail');
+    assert.ok(/overflow-y:auto/.test(ui), 'and the list scrolls');
+  },
+
+  // The ranking must be by the CLAIM — how unlikely the across-asset split is —
+  // not by money. A config that held on 9 of 10 assets outranks one that made
+  // more dollars on 2 of 10; sorting by dollars would rebuild the shopped board.
+  theRankingLeadsOnTheAcrossAssetSplitNotMoney() {
+    const ui = fs.readFileSync(path.join(ROOT, 'public', 'constructing.js'), 'utf8');
+    const sort = ui.slice(ui.indexOf('scored.sort('), ui.indexOf('scored.sort(') + 320);
+    assert.ok(/a\.p == null \? 1 : b\.p == null \? -1 : a\.p - b\.p/.test(sort),
+      'the first key must be the binomial p, ascending');
+    const pIdx = sort.indexOf('a.p - b.p');
+    const sumIdx = sort.indexOf('b.sum - a.sum');
+    assert.ok(pIdx >= 0 && sumIdx > pIdx, 'money must be the LAST tiebreak, never the first key');
+  },
+
+  // Each tab remembers its OWN theme (owner, 2026-08-17).
+  constructingRemembersItsOwnTheme() {
+    const ui = fs.readFileSync(path.join(ROOT, 'public', 'constructing.js'), 'utf8');
+    const trading = fs.readFileSync(path.join(ROOT, 'public', 'trading.html'), 'utf8');
+    assert.ok(/getItem\('cx-theme'\)/.test(ui) && /setItem\('cx-theme'/.test(ui),
+      'Constructing must read and write its own theme key');
+    assert.ok(!/lt-theme/.test(ui), 'and must no longer share the Trading page key');
+    assert.ok(/lt-theme/.test(trading), 'Trading keeps its own key, unchanged');
+  },
+
+  // A permute tick belongs to its box and must vanish with it — left alone they
+  // were ticks for controls that were not on screen (owner, 2026-08-17).
+  permuteTicksHideWithTheBoxTheyBelongTo() {
+    const ui = fs.readFileSync(path.join(ROOT, 'public', 'constructing.js'), 'utf8');
+    for (const id of ['swPermDecGateWrap', 'swPermDecDWrap', 'swPermDecTrailWrap', 'swPermDecArmWrap']) {
+      assert.ok(new RegExp(`id="${id}"`).test(ui), `the tick needs its own wrapper #${id}`);
+      assert.ok(new RegExp(`#${id}`).test(ui.slice(ui.indexOf('const syncDecEntry'))),
+        `#${id} must be shown/hidden alongside its box`);
+    }
   },
 
   // One row per (asset, declared config), tagged so the table can group them.

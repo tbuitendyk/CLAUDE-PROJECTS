@@ -1401,7 +1401,10 @@ function validateDeclared(raw, menus) {
 // A permuted declared config is NOT declared in the strict sense any more: you
 // searched for it. The honest end of that search is the sealed slice — window
 // layout 61/13/13/13 and the History section's one-touch exam.
-const DECLARED_SET_CAP = 500; // GUESSED: a stop on runaway expansion, not a claim
+// NO CAP, BY OWNER RULE (2026-08-17): "software reports the number, human makes
+// the decision, always". The form shows how many configs the ticks declare before
+// Start sweep is pressed; nothing here refuses a count. A guessed ceiling would be
+// the software overruling the owner on a number it invented.
 
 function expandDeclared(raw, permute, menus) {
   if (!raw) return [];
@@ -1471,11 +1474,7 @@ function expandDeclared(raw, permute, menus) {
       }
     }
   }
-  if (withAgree.length > DECLARED_SET_CAP) {
-    throw new Error(`permuting the replication boxes would declare ${withAgree.length} configs, `
-      + `over the ${DECLARED_SET_CAP} cap — untick a permute box or narrow a menu. `
-      + 'Every declared config is scored on every asset, so the count multiplies the run.');
-  }
+
   // One rule decides what is legal: every member is validated exactly as a single
   // declaration would be. De-duplicated on the label so an expansion that lands
   // on the same cell twice is scored once.
