@@ -1,0 +1,93 @@
+Constructing/Trading: a browser now loads every tab, and it found four faults
+
+tl;dr — everything that checked these two tabs read the SOURCE. Nothing had ever
+loaded them. I built a harness that starts the service, opens both pages in a
+real browser and walks 44 views — clicking rows, cycling every dropdown, pressing
+every button that is not a launcher. It found four faults on its first run, all
+four are fixed and deployed (23:18 UTC), 476 tests pass and all 44 views are now
+clean. One of the four had made the null verdict unreadable for every setup this
+project can actually trade.
+
+WHAT THE HARNESS DOES
+
+It runs the real server, opens Constructing and Trading in Chromium, and visits
+every tab three ways: with nothing open, with a saved run open, and clicked
+through — disclosures expanded, table rows clicked, every dropdown cycled through
+every option, every button pressed except the ones that launch jobs or destroy
+things. Then it does the light palette, because a colour defined only in the dark
+block renders as nothing and no dark run would ever show it.
+
+It fails a view on: an uncaught exception, a console error, a request that failed
+or came back 4xx, the words "undefined" / "NaN" / "[object Object]" / "Infinity"
+reaching the screen, or a tab that draws nothing at all.
+
+It also REFUSES to run if the box has no finished sweep on it. A harness that
+checks only empty-state screens and reports a clean bill is worse than no harness.
+
+THE FOUR FAULTS
+
+1. Copy settings into the form did nothing. Ever.
+   The section renderers are all asynchronous, and the function that switches
+   section returned nothing instead of returning them. So the button — which
+   switches to Sweep and then waits for the form to exist before filling it —
+   threw the moment it was pressed. The tab changed, so from your chair it looked
+   like it had worked. Not one field was ever filled.
+
+   This is the fault I would flag hardest. Reading either half of that code, both
+   halves look right. Only pressing the button shows it.
+
+2. The null verdict could not be read for a three-asset setup. On either page.
+   A setup's identity is the traded pair PLUS its two context pairs — the library
+   has keyed it that way since the August 4th review. Both pages sent all three.
+   The endpoint in the middle threw the two context pairs away and asked for the
+   SINGLES key, so the answer was always "setup not in this run's real rows".
+
+   Since a config can only go live as a three-asset combo, this means the check
+   that asks whether a result beats its own null has never been readable for any
+   setup we can actually trade. It is fixed, and I added a check that asks the
+   DEPLOYED service for a real three-asset verdict rather than grepping for the
+   fix — the cut wire was between two correct ends, and no grep over either end
+   can see that. It passes on the box against four of your own historical triples
+   runs.
+
+3. Run ids were typed, not picked.
+   Tool 1's scramble run and Compare's run A and run B were empty text boxes. Get
+   one wrong, or leave it blank, and the answer was an HTTP 400 for you to decode.
+   The service has listed exactly the eligible runs the whole time — with a count
+   of null draws on each — and this tab never asked it. They are dropdowns now,
+   and an empty or self-referential pick is refused on the page in plain words.
+
+   This is the same complaint you already made once, about the stop tuner: "I
+   thought I would be able to select from the saved sweeps."
+
+4. A three-asset committee read on screen as one asset.
+   Every "selected:" line printed the traded pair only. A three-asset setup and a
+   one-asset setup on the same pair are different setups with different money, so
+   the line named the wrong thing. All three lines now show the whole combo.
+
+WHAT IS PINNED SO THEY CANNOT COME BACK
+
+Each fault has a test that I watched fail with the fault put back — not a test
+written and assumed to work. Three new register entries (143, 144, 145) and two
+deployed checks: the page verifier now demands the three controls are dropdowns
+and that the section switcher returns its section; the new live check asks the
+box itself for a multi-asset verdict.
+
+Table: what the harness covers today.
+Key — views: one tab in one state; empty: no saved run open; open: a saved run
+selected; clicked: everything on the tab pressed or cycled.
+
+  page                    views   empty  open  clicked
+  Constructing            25      7      7     7 (+4 light/palette)
+  Trading                 19      10     —     10 (+1 light)
+
+Trading has no "open" column because its state comes from greenlights and setups
+rather than a saved run; the clicked pass covers it.
+
+WHAT I HAVE NOT DONE YET
+
+The harness presses buttons but does not yet assert what the resulting screen
+SAYS — it checks that nothing broke, not that the right number appeared. And the
+Trading tab has had far less scrutiny than Constructing overall. Both are next.
+
+c.
