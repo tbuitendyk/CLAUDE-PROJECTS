@@ -1,0 +1,96 @@
+Constructing/Sweep: Start sweep works again — plus 4 more defects in the same function
+
+tl;dr — Start sweep was unlaunchable: the window-layout dropdown sent its display
+strings ("70/15/15") where the backend accepts only tokens ("split70"), so every
+click threw. Fixed, along with weekly-8d being missing, blank month boxes causing
+a 400, two silently-clamped number inputs, a label that lied about the universe
+default, and a launch message that always showed a blank run id. Deployed and
+verified. One thing needs your word: whether to port the declared-config
+replication block. Nothing else on the app was touched.
+
+WHAT WAS BROKEN
+
+You were right about item 1, and it was worse than one dropdown. The Constructing
+Sweep form appears to have been built by copying Bracket Lab's LABELS into the
+value attributes instead of its VALUES. Every place that happened is a place the
+backend refuses or misreads what the form sends, and nothing in the test suite
+looked at that seam — 42 test files, none covering UI-to-backend value contracts.
+That is why it shipped broken and sat there.
+
+Table: the Sweep form's value contract, before and after.
+Key — control = the form element; sent before = what the page POSTed; backend
+wants = what server.js/lib/batch.js actually accept; result = what an operator saw.
+
+  control      sent before        backend wants         result before
+  #swLayout    "70/15/15" etc     split70/reserve61/    every Start sweep threw
+                                  legacy80              "unknown window layout"
+  #swGeom      4 of 5 shapes      5 shapes              weekly-8d unreachable
+  #swStart/End "" when blank      YYYY-MM or absent     400 if you untick
+                                                        "all loaded data"
+  #swK         any number         1..50 (clamped)       51+ silently became 50
+  #swNulls     any number         0..24 (clamped)       25+ silently became 24
+  launch reply out.id             { batchId }           run id always blank
+
+All six are fixed. The two clamps now sit on the inputs as min/max, so the box
+refuses a number it cannot honour instead of quietly running a weaker sweep than
+you asked for — that matters most for null boards, where 30 typed and 24 run
+turns a 1-in-31 claim into a 1-in-25 one with nothing on screen saying so.
+
+The universe label also said "blank = all cached". Blank actually means the 17
+hard-coded DEFAULT_PAIRS, which is not the same set as what is cached. The label
+now says what happens. I did not change the behaviour — say the word if you want
+blank to genuinely mean "everything cached" and I will do that separately.
+
+HOW IT WAS FOUND, AND THE GUARD
+
+I ran the three reported items through an independent verification pass and then
+audited the entire sweep POST body from three directions — field by field from
+the UI, backwards from every backend throw, and as a diff against Bracket Lab's
+working launcher. Seventeen agents, every claimed defect re-checked adversarially
+before I touched anything, and I read the load-bearing lines myself rather than
+trusting the report.
+
+The guard is tests/test-sweepcontract.js. It does not restate the valid values —
+restating would make the test agree with a copy of the contract instead of the
+contract. It reads the actual option values out of constructing.js and checks them
+against the allow-list extracted from lib/batch.js and the geometry keys from
+lib/dataset.js, and it asserts the two launchers speak the same vocabulary. All
+five faults were watched failing before the fixes went in.
+
+ONE DECISION FOR YOU: THE DECLARED-CONFIG BLOCK
+
+Item 3. Constructing has no replication UI at all — not hidden, absent — and the
+backend accepts it happily (validateDeclared returns null on a missing value, so
+it just never runs). There is a live consequence: the Greenlight section already
+offers "declared cell" as a target, and picking it on a run started from
+Constructing fails late with "this row carries no declared cell — was the run
+started with a declared config?". So today the tab can offer a target it can
+never produce.
+
+My recommendation is to port it, for that reason alone. It is roughly a dozen
+controls (master toggle, entry, gate, d multiplier, t hours, trail, arm, and the
+per-committee-size agreement quorums) and the backend contract is already there.
+I have the full control-by-control spec ready and have not written a line of it.
+
+Say go and it lands the same way this did — mirrored from Bracket Lab, tested,
+deployed. Say no and I will instead hide the "declared cell" greenlight option on
+Constructing-started runs so the tab stops offering something it cannot deliver.
+
+ALSO FOUND, NOT TOUCHED
+
+Two things inside your scope boundary that I left alone deliberately:
+
+1. The same out.id/batchId bug exists on the History sub-tab's two launchers
+   (lines 475 and 481). Same one-word fix. You said Sweep specifically, so I did
+   not reach over. Word from you and it is done.
+
+2. The "permute" tick next to chunk shape is ON by default, which means a default
+   sweep computes all five geometries including weekly-8d — about 25% more
+   compute than the dropdown implies. That is a design question, not a bug, so I
+   have not changed it. Worth a decision at some point.
+
+State: 409 tests pass. Deployed 03:28 UTC and verified against the asset the box
+actually serves — the public URL sits behind Basic Auth, so checking that would
+have told me nothing. F1 untouched throughout.
+
+c.
