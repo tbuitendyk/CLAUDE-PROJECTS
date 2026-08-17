@@ -410,8 +410,16 @@ async function unitTask(task) {
   let controlPnl = null;
   let bestStream = null;
   let declaredStream = null;
+  // WIDEST REGION (owner, 2026-08-17). The single best cell is the best of ~1,260
+  // tries and looks good on noise; a REGION of neighbouring settings that all
+  // work does not. Every cell is already computed here and thrown away after
+  // bestCell picks the winner, so collecting them costs a push per row and the
+  // region is a second reading of work already done. Quorum is one of the
+  // ordered axes, so the rows are pooled ACROSS streams before the region is cut.
+  const allCells = [];
   for (const s of streams) {
     const rows = bracketLib.execSweep(testChunks, s.calls, maps.trade, geo, bandPct, fee, sweepOpts);
+    for (const r of rows) allCells.push({ ...r, quorum: s.quorum });
     if (controlPnl === null) {
       const ctl = bracketLib.bestCell(rows.filter((r) => r.gate === 'always'), 0);
       controlPnl = ctl ? ctl.pnl : null;
@@ -431,6 +439,9 @@ async function unitTask(task) {
   }
   if (best) best.controlPnl = controlPnl;
   if (declared) declared.controlPnl = controlPnl;
+  // Cut the region from the pooled cells. minTrades matches the board's own
+  // qualifier so a cell that never traded cannot pad a region into looking wide.
+  const region = require('./plateau').widestRegion(allCells, { minTrades: p.minTrades || 1 });
 
   // CLASSIFICATION METRICS — the general classifier's headline numbers, on
   // the very call stream the winning cell traded. They describe the CALLS,
@@ -495,7 +506,7 @@ async function unitTask(task) {
     bestEdge.holdoutMetrics = classifierMetrics(trainLabels, holdLabels, hc);
   }
 
-  const out = { best, declared, bestEdge, bandPct, testPeriods: testChunks.length, members: memberCalls.length, layoutMeta: split.layoutMeta || null,
+  const out = { best, declared, bestEdge, region, bandPct, testPeriods: testChunks.length, members: memberCalls.length, layoutMeta: split.layoutMeta || null,
     // Window stamps (review finding 9): the run's ACTUAL boundaries, so a
     // later History Tuning launch reads the recorded truth instead of
     // recomputing it from a cache that has since grown.

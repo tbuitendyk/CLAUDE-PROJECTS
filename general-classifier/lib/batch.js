@@ -2528,6 +2528,9 @@ function startBracketLab(params) {
               bandPct: res.bandPct, testPeriods: res.testPeriods,
               windowStamps: res.windowStamps || null,
               ...res.best, declaredCell: res.declared || null,
+              // the widest run of neighbouring settings that all made money —
+              // a second ranking alongside the best cell, never replacing it
+              region: res.region || null,
               // Prediction quality at the EDGE-selected rung, kept apart from
               // the money-selected one above.
               bestEdge: res.bestEdge || null,
@@ -2784,8 +2787,18 @@ function startBracketConfirm(id, target = 'best') {
   if (target === 'declared') {
     if (!row.declaredCell) throw new Error('this row carries no declared cell — was the run started with a declared config?');
     sel = { ...row, ...row.declaredCell };
+  } else if (target === 'region') {
+    // WIDEST REGION (owner, 2026-08-17): confirm the MIDDLE of the widest run of
+    // neighbouring settings that all made money, not the single best-scoring
+    // cell. The centre is chosen by depth inside the region, never by score —
+    // taking the region's own peak would put the shopped cell back in charge.
+    if (!row.region || !row.region.centre) {
+      throw new Error('this row carries no widest region — either no setting on it made money, '
+        + 'or the run predates the region being recorded (2026-08-17)');
+    }
+    sel = { ...row, ...row.region.centre };
   } else if (target !== 'best') {
-    throw new Error("confirm target must be 'best' or 'declared'");
+    throw new Error("confirm target must be 'best', 'declared' or 'region'");
   }
   archivePrior(doc, 'confirm', doc.confirm); // QC 74: re-fire archives, never destroys
   doc.status = 'running';

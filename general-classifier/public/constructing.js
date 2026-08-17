@@ -346,6 +346,15 @@ async function drawBoards() {
   const list = (bl.batches || bl || []).filter((b) => b.kind === 'bracketlab' || b.kind === 'screen' || b.kind === 'walkforward' || b.kind === 'historytuning' || b.kind === 'httwo');
   const doc = await loadPicked();
   const leaders = doc ? (doc.leaders || []).filter((l) => l.nullDealSeed == null) : [];
+  // SECOND RANKING (owner, 2026-08-17). "best cell" keeps meaning exactly what it
+  // always has and the board's own order is untouched; this is an alternative
+  // reading laid over the same rows, chosen run by run. Ranking by region width
+  // sinks a lone spike — its neighbours are bad — and lifts a modest but wide one.
+  const boardSort = localStorage.getItem('cx-boardsort') || 'board';
+  if (boardSort === 'region') {
+    leaders.sort((a, b) => ((b.region && b.region.size) || 0) - ((a.region && a.region.size) || 0)
+      || (b.pnl || 0) - (a.pnl || 0));
+  }
   const sel = getSelRow(doc);
   $('#view').innerHTML = `<div class="panel"><div class="row" style="align-items:flex-end">
       <label class="f">saved runs<select id="bPick" style="min-width:22rem">
@@ -363,8 +372,13 @@ async function drawBoards() {
         (flattering by construction); held-back $: the once-only look that matters; vs nulls: how many of the row's dealt-vote
         null copies its held-back money beat. Click a row to SELECT it — the selection drives Verify's Tool 1, Tune's scans
         and the Greenlight.</p>
+      <div class="row" style="margin:.1rem 0 .5rem"><label class="f" style="flex:none">order by<select id="bSort">
+        <option value="board" ${boardSort === 'board' ? 'selected' : ''}>best cell (the board's own ranking)</option>
+        <option value="region" ${boardSort === 'region' ? 'selected' : ''}>widest region (neighbouring settings that all made money)</option>
+      </select></label><span class="note">the rows are the same either way — only the order changes</span></div>
       <div class="scrollx"><table><thead><tr><th>setup</th><th>shape</th><th>cell</th><th>trades</th>
-        <th>test $</th><th>held-back $</th><th>vs nulls</th><th></th></tr></thead><tbody>
+        <th>test $</th><th>held-back $</th><th>vs nulls</th>
+        <th title="How many neighbouring settings around this row's best region ALL made money after fees. One step at a time on d, t and agreement; entry and gate are categories, so a region never crosses them. A lone winner scores 1 — noise gives spikes, structure gives regions.">region</th><th></th></tr></thead><tbody>
       ${leaders.length ? leaders.map((l, i) => {
     const isSel = sel && sel.trade === l.trade && sel.geometry === l.geometry && sel.decision === l.decision
       && sel.quorum === l.quorum && sel.tHours === l.tHours && (sel.ctx1 || '') === (l.ctx1 || '');
@@ -376,11 +390,12 @@ async function drawBoards() {
       <td class="${(l.pnl || 0) >= 0 ? 'pos' : 'neg'}">${money(l.pnl)}</td>
       <td class="${l.holdout ? ((l.holdout.pnl || 0) >= 0 ? 'pos' : 'neg') : 'muted'}">${l.holdout ? money(l.holdout.pnl) : '—'}</td>
       <td>${l.vsNulls != null ? esc(String(l.vsNulls)) : '—'}</td>
+      <td title="${l.region && l.region.centre ? esc(`middle of the region: q${l.region.centre.quorum} ${l.region.centre.entry === 'market' ? 'directional/market' : `${l.region.centre.gate}/breakout d${l.region.centre.dMult}x`} ${l.region.centre.tHours}h — ${l.region.cellsClearing} of ${l.region.cellsConsidered} settings cleared the bar (${l.region.bar})`) : 'not recorded — this run predates the region being measured'}">${l.region ? esc(String(l.region.size)) : '<span class="muted">—</span>'}</td>
       <td><button data-grid="${i}" title="every execution-menu permutation for this row, plateau view on top (test window only)">menu grid</button></td>
       </tr>
-      <tr><td colspan="8" style="text-align:left;padding:0 .45rem .3rem"><details><summary>everything recorded for this row, verbatim</summary>
+      <tr><td colspan="9" style="text-align:left;padding:0 .45rem .3rem"><details><summary>everything recorded for this row, verbatim</summary>
         <pre>${esc(JSON.stringify(l, null, 1))}</pre></details></td></tr>`;
-  }).join('') : '<tr><td colspan="8" class="empty">no promoted rows (still running, or nothing survived)</td></tr>'}
+  }).join('') : '<tr><td colspan="9" class="empty">no promoted rows (still running, or nothing survived)</td></tr>'}
       </tbody></table></div>
       ${sel ? `<p class="note">selected: <b>${esc(sel.trade)}</b> ${esc(sel.geometry)} ${esc(sel.decision)} q${sel.quorum} ${sel.tHours}h — this selection feeds Verify · Tune · Greenlight</p>` : '<p class="note">no row selected yet</p>'}
       </div>
@@ -389,6 +404,9 @@ async function drawBoards() {
         <pre>${esc(JSON.stringify(doc.params || {}, null, 1))}</pre></details></div>`}
     </div>`;
   $('#bOpen').onclick = () => { pickedRun = $('#bPick').value || null; localStorage.setItem('cx-run', pickedRun || ''); pickedDoc = null; drawBoards(); };
+  if ($('#bSort')) {
+    $('#bSort').onchange = () => { localStorage.setItem('cx-boardsort', $('#bSort').value); drawBoards(); };
+  }
   if (!doc) return;
   $('#bBody').querySelectorAll('tr[data-i]').forEach((tr) => {
     tr.onclick = async (ev) => {
@@ -670,7 +688,7 @@ async function drawGreenlight() {
     ${sel ? `<div class="row" style="align-items:flex-end">
       <span class="note" style="flex:1 1 auto;min-width:0">selected: <b>${esc(sel.trade)}</b> ${esc(sel.geometry)} ${esc(sel.decision)} q${sel.quorum} ${sel.tHours}h
         — test ${money(sel.pnl)}${sel.holdout ? ` · held-back ${money(sel.holdout.pnl)}` : ''}</span>
-      <label class="f" style="flex:none">anchor<select id="glTarget"><option value="declared">declared cell</option><option value="best">best cell</option></select></label>
+      <label class="f" style="flex:none">anchor<select id="glTarget" title="WHICH cell gets greenlighted. 'declared cell' is the one fixed before the run — no shopping. 'best cell' is the highest scorer, which is the best of ~1,260 tries and flatters itself. 'widest region' is the MIDDLE of the widest run of neighbouring settings that all made money — chosen by depth inside the region, never by its score, so the shopped peak cannot sneak back in."><option value="declared">declared cell</option><option value="best">best cell</option><option value="region">widest region</option></select></label>
     </div>
     <div class="row" style="margin-top:.4rem;align-items:flex-end">
       <label class="f" style="flex:1">why — the decision record (required)<input id="glWhy" style="width:100%"
