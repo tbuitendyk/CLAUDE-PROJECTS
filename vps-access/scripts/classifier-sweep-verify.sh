@@ -3,7 +3,11 @@
 # Sweep form carries the backend's value vocabulary. Greps the asset the app
 # actually serves on 127.0.0.1:8093, not the Basic-Auth'd public URL.
 set -uo pipefail
-JS=$(curl -sS -m 15 http://127.0.0.1:8093/constructing.js)
+# STRIP LINE COMMENTS before grepping. A comment recording a fixed defect names
+# the old expression, so a must-be-GONE check matches its own documentation and
+# reports the bug as still present (seen 2026-08-17 on s.verdict). A verifier
+# that cries wolf gets ignored, which is worse than not having it.
+JS=$(curl -sS -m 15 http://127.0.0.1:8093/constructing.js | sed 's|^[[:space:]]*//.*$||')
 # the page markup is a SEPARATE file — a control in the HTML is invisible to a
 # grep over the JS, which is exactly how this check reported cpubtn missing when
 # it was deployed and working (2026-08-17)
