@@ -221,7 +221,9 @@ async function drawSweep() {
     };
     $('#swMsg').textContent = 'launching…';
     const out = await tryPost('api/bracketlab', body);
-    $('#swMsg').textContent = out ? `launched ${out.id || ''} — progress below` : '';
+    // the endpoint returns { batchId } (server.js) — reading out.id gave a blank
+    // run id on every launch, so the operator never saw which run they started
+    $('#swMsg').textContent = out ? `launched ${out.batchId || ''} — progress below` : '';
     pollProgress();
   };
   $('#swStop').onclick = async () => {
@@ -472,13 +474,13 @@ async function drawHistory() {
       declaredCell: { quorum: sel.quorum, gate: sel.gate, entry: sel.entry || 'breakout', dMult: sel.dMult,
         tHours: sel.tHours, trailMult: sel.trailMult ?? null, armMult: sel.armMult ?? null, bandPct: sel.bandPct },
     });
-    $('#htMsg').textContent = out ? `launched ${out.id || ''} — appears under finished runs when done` : '';
+    $('#htMsg').textContent = out ? `launched ${out.batchId || ''} — appears under finished runs when done` : '';
   };
   const ht2Run = $('#ht2Run');
   if (ht2Run) ht2Run.onclick = async () => {
     $('#ht2Msg').textContent = 'launching…';
     const out = await tryPost('api/httwo', { sourceBatchId: doc.id, halfLifeKey: $('#ht2hl').value });
-    $('#ht2Msg').textContent = out ? `launched ${out.id || ''}` : '';
+    $('#ht2Msg').textContent = out ? `launched ${out.batchId || ''}` : '';
   };
 }
 

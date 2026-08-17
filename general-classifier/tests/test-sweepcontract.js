@@ -100,6 +100,19 @@ module.exports = {
     }
   },
 
+  // The response contract is the same class as the request contract: the sweep
+  // POST returns { batchId }, and reading out.id gave a blank run id forever.
+  sweepReadsTheRunIdKeyTheEndpointReturns() {
+    const server = fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8');
+    const handler = server.slice(server.indexOf("app.post('/api/bracketlab'"));
+    const key = handler.match(/res\.json\(\{\s*(\w+):/);
+    assert.ok(key, 'the /api/bracketlab handler must still answer with a JSON object');
+    const launched = SWEEP.match(/launched \$\{out\.(\w+)/);
+    assert.ok(launched, 'the Sweep launch message must still report the run id');
+    assert.strictEqual(launched[1], key[1],
+      `Sweep reads out.${launched[1]} but /api/bracketlab returns { ${key[1]} } — the run id renders blank`);
+  },
+
   // A number the form can type but the backend silently reduces is a lie told to
   // the operator: the run is weaker than the one they asked for, with no notice.
   clampedNumberInputsCarryTheirBackendBounds() {
