@@ -67,17 +67,54 @@ function renderTabs() {
 }
 
 // ---- release strip (persistent; clickable badge -> Verify) ------------------
+// THE FIELD IS `state`. This read `s.verdict || s.status` — neither of which the
+// endpoint has ever returned — so it fell through to NOT CHECKED on every call,
+// including after a PASS, permanently. Same class as the dead vsNulls column:
+// reading a field nothing writes (owner, 2026-08-17).
+//
+// gateStatus returns { engineVersion, state, detail, running, lastGate }.
+// `running` is the in-flight gate's run id, and it is what tells the page that
+// something IS happening — the previous code ignored it and nothing polled, so
+// firing the check looked identical to not firing it.
+let gatePoll = null;
+
+function gateBadge(s) {
+  if (!s) return { text: '—', cls: 'b-warn', tip: 'gate status unavailable' };
+  if (s.running) {
+    return { text: 'RUNNING', cls: 'b-warn',
+      tip: `the planted check is running now (${s.running}) — a full sweep on the fabricated pair, minutes not seconds` };
+  }
+  const st = String(s.state || 'NOT CHECKED');
+  return {
+    text: st,
+    cls: /^pass$/i.test(st) ? 'b-pass' : /^fail$/i.test(st) ? 'b-fail' : 'b-warn',
+    tip: s.detail || 'the instrument\'s calibration certificate — click for the runner and the full verdict',
+  };
+}
+
 async function renderStrip() {
   let s = null;
   try { s = await api('api/planted-gate/status'); } catch (_) { s = null; }
   const el = $('#strip');
-  if (!s) { el.innerHTML = 'release <span class="muted">—</span>'; return; }
-  const st = s.verdict || s.status || 'NOT CHECKED';
-  const cls = /pass/i.test(st) ? 'b-pass' : /fail/i.test(st) ? 'b-fail' : 'b-warn';
-  el.innerHTML = `release ${esc(s.engineVersion || s.version || '')} · planted check:
-    <span class="badge ${cls}" id="stripBadge" title="the instrument's calibration certificate — click for the runner and full verdict (Verify section)">${esc(String(st).toUpperCase())}</span>`;
-  const b = $('#stripBadge');
-  if (b) b.onclick = () => { tab = 'verify'; localStorage.setItem('cx-tab', tab); draw(); };
+  if (!el) return s;
+  if (!s) { el.innerHTML = 'release <span class="muted">—</span>'; return null; }
+  const b = gateBadge(s);
+  el.innerHTML = `release ${esc(s.engineVersion || '')} · planted check:
+    <span class="badge ${b.cls}" id="stripBadge" title="${esc(b.tip)}">${esc(b.text.toUpperCase())}</span>`;
+  const btn = $('#stripBadge');
+  if (btn) btn.onclick = () => { tab = 'verify'; localStorage.setItem('cx-tab', tab); draw(); };
+  // While a gate is in flight, keep the badge honest without the owner having to
+  // reload. One timer only, cleared the moment it lands.
+  if (s.running && !gatePoll) {
+    gatePoll = setInterval(async () => {
+      const now = await renderStrip();
+      if (!now || !now.running) {
+        clearInterval(gatePoll); gatePoll = null;
+        if (tab === 'verify') drawVerify();
+      }
+    }, 5000);
+  }
+  return s;
 }
 
 // ---- Data --------------------------------------------------------------------
@@ -898,9 +935,14 @@ async function drawVerify() {
     <p class="note">Regenerates a fabricated pair carrying a KNOWN planted rule and fires it through the full sweep +
       null pipeline. PASS = the board found the plant, profited, beat always-long, and every null board destroyed it.
       A pass belongs to the engine version that earned it; a new release starts NOT CHECKED.</p>
-    <div class="row"><span>current: <b>${esc((gate && (gate.verdict || gate.status)) || 'NOT CHECKED')}</b>
+    <div class="row"><span>current: <b class="${gate && gate.running ? 'warn' : (gate && gate.state === 'PASS' ? 'pos' : gate && gate.state === 'FAIL' ? 'neg' : 'muted')}">${esc(gate && gate.running ? 'RUNNING' : ((gate && gate.state) || 'NOT CHECKED'))}</b>
       ${gate && gate.engineVersion ? `<span class="muted">(engine ${esc(gate.engineVersion)})</span>` : ''}</span>
-      <button id="pgRun" class="pri">Run the planted check</button><span id="pgMsg" class="note"></span></div>
+      <button id="pgRun" class="pri" ${gate && gate.running ? 'disabled title="a planted check is already running"' : ''}>Run the planted check</button>
+      <span id="pgMsg" class="note">${gate && gate.running ? `running now — ${esc(gate.running)}` : ''}</span></div>
+    ${gate && gate.detail ? `<p class="note">${esc(gate.detail)}</p>` : ''}
+    ${gate && gate.running ? '<p class="note">This regenerates the fabricated pair and fires a full sweep, so it takes minutes. The badge above and the release strip refresh themselves — you do not need to reload.</p>' : ''}
+    ${gate && gate.lastGate && gate.lastGate.sentences ? `<div class="note"><b>Last gate (${esc(gate.lastGate.id || '')}, engine ${esc(gate.lastGate.engineVersion || '')}, ${gate.lastGate.pass ? 'PASS' : 'FAIL'}):</b>
+      ${gate.lastGate.sentences.map((x) => `<div>${esc(x)}</div>`).join('')}</div>` : ''}
     ${gate ? `<details style="margin-top:.4rem"><summary>full gate record</summary><pre>${esc(JSON.stringify(gate, null, 1))}</pre></details>` : ''}
   </div>
   <div class="panel">
@@ -945,11 +987,19 @@ async function drawVerify() {
       <td class="muted">${beaten == null ? '—' : `at best 1 in ${ns.length + 1}`}</td></tr>`;
   }).join('')}</tbody></table>`;
   }
-  $('#pgRun').onclick = async () => {
-    if (!confirm('Run the planted check? Fires a full real sweep on the fabricated pair (minutes).')) return;
-    $('#pgMsg').textContent = 'running…';
+  const pg = $('#pgRun');
+  if (pg) pg.onclick = async () => {
+    if (!confirm('Run the planted check?\n\nRegenerates the fabricated pair and fires a full sweep through the null pipeline. Minutes, not seconds. It refuses while ANY other job or sweep is running.')) return;
+    pg.disabled = true;
+    $('#pgMsg').textContent = 'starting…';
     const out = await tryPost('api/planted-gate', {});
-    $('#pgMsg').textContent = out ? 'started — the strip badge and this section update when it lands' : '';
+    if (!out) { pg.disabled = false; $('#pgMsg').textContent = ''; return; }
+    // Say what is happening and KEEP saying it. Before this, the button fired,
+    // claimed the page would update when it landed, and nothing ever polled —
+    // so a running check was indistinguishable from one that never started.
+    $('#pgMsg').textContent = `running — ${out.batchId || ''}`;
+    renderStrip();
+    drawVerify();
   };
   const t1 = $('#t1run');
   const t1f = $('#t1fire');

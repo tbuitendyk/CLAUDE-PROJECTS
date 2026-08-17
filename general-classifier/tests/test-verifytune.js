@@ -49,6 +49,49 @@ module.exports = {
     assert.ok(/NO fixed stop/.test(UI), 'with the consequence stated before it happens');
   },
 
+  // THE PLANTED CHECK read `verdict || status` off a status object that has
+  // neither field, so it fell through to NOT CHECKED on every call — including
+  // after a PASS, permanently. And nothing polled, so firing it looked exactly
+  // like not firing it (owner, 2026-08-17). Same class as the dead vsNulls
+  // column: a field nothing writes.
+  //
+  // Watched failing: restoring `s.verdict || s.status` fails the field check;
+  // removing the interval fails the polling check.
+  thePlantedCheckReadsTheFieldTheEndpointActuallyReturns() {
+    const planted = fs.readFileSync(path.join(ROOT, 'lib', 'planted.js'), 'utf8');
+    // the endpoint's own contract, read from source
+    const ret = planted.slice(planted.indexOf('function gateStatus'));
+    for (const key of ['state', 'detail', 'running', 'lastGate']) {
+      assert.ok(new RegExp(`\\b${key}[:.]`).test(ret.slice(0, 3000)),
+        `gateStatus must still return ${key}`);
+    }
+    // strip line comments first: the comment recording this defect names the old
+    // expression, and a check that matches its own documentation is no check
+    const code = UI.split('\n').filter((l) => !/^\s*\/\//.test(l)).join('\n');
+    assert.ok(!/\bs\.verdict\b/.test(code) && !/\bgate\.verdict\b/.test(code),
+      'nothing may read .verdict off the gate status — gateStatus returns no such field, so it always fell through to NOT CHECKED');
+    assert.ok(!/\bs\.status\b/.test(code), 'nor .status');
+    assert.ok(/s\.state \|\| 'NOT CHECKED'/.test(code), 'it must read state');
+    assert.ok(/gate\.state/.test(code), 'and the Verify panel must read state too');
+  },
+
+  thePlantedCheckSaysWhenItIsRunningAndKeepsSaying() {
+    assert.ok(/if \(s\.running\)/.test(UI), 'a gate in flight must show as RUNNING, not as its old verdict');
+    // the poll must be REACHABLE, not merely present: checking that setInterval
+    // appears somewhere passes even with the branch that reaches it disabled
+    assert.ok(/if \(s\.running && !gatePoll\) \{[\s\S]{0,200}setInterval/.test(UI),
+      'the poll must be started when a gate is in flight, not merely defined');
+    assert.ok(/clearInterval\(gatePoll\)/.test(UI), 'stopping the moment it lands');
+    assert.ok(/you do not need to reload/.test(UI), 'and telling the operator that');
+    assert.ok(/gate\.running \? 'disabled title="a planted check is already running"'/.test(UI),
+      'the button must be disabled while a check is already running');
+  },
+
+  thePlantedCheckShowsTheReasonNotJustTheWord() {
+    assert.ok(/gate\.detail/.test(UI), 'the status sentence explains what the word means and must be shown');
+    assert.ok(/lastGate\.sentences/.test(UI), 'and the last gate\'s own verdict sentences');
+  },
+
   theCpuCapIsReachableFromThisTab() {
     assert.ok(/id="cpubtn"/.test(HTML), 'the topbar must carry the CPU cap');
     assert.ok(/api\/cpu/.test(UI), 'wired to the endpoint');
