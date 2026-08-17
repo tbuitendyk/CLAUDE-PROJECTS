@@ -1,0 +1,78 @@
+Constructing/Sweep: declared-config replication ported; run ids fixed
+
+tl;dr — replication mode now exists on the Constructing tab, so a run started
+there can produce the declared cell its own Greenlight screen defaults to asking
+for. Also fixed the History launcher's blank run id. One near-miss worth knowing:
+"make all three launchers read batchId" would have BROKEN the one that was
+already right, and only checking each endpoint caught it. Deployed 03:53 UTC and
+verified on the box.
+
+WHY THIS ONE MATTERED MORE THAN IT LOOKED
+
+Constructing's Greenlight anchor dropdown lists "declared cell" FIRST, so it is
+the default. Every run started from that tab could only fail on it — the tab was
+offering, by default, a target it had no way to produce. So this was not a
+missing nice-to-have; it was a default path that could not work.
+
+More to the point: Constructing had the finding half of the search doctrine and
+not the confirming half. It could produce a leaderboard, but not the thing that
+turns a leaderboard row into evidence.
+
+WHAT WAS PORTED
+
+The full Bracket Lab control set — toggle, entry, gate, d multiplier, t hours,
+trail, arm, and the two per-committee-size agreement counts — with its wiring
+intact rather than just its controls:
+
+- gate, d and trail hide under market entry, because validateDeclared REFUSES
+  them rather than ignoring them. A silently ignored parameter is how a declared
+  config stops meaning what its author thought it meant.
+- arm hides without a trail, for the same reason.
+- the two agreement boxes GREY OUT rather than hide when the run holds no
+  committee of that size, so the row keeps its shape.
+
+THE NEAR-MISS
+
+Three launchers on the page reported a blank run id, and the obvious read was
+"they all use the wrong key, fix them all to batchId". That would have been
+wrong. /api/bracketlab and historytuning answer { batchId }; /api/httwo answers
+{ started, id, ... }. The third one was already correct, and a blanket fix would
+have broken it.
+
+I only found that by reading each endpoint's return value instead of trusting the
+pattern. The test now reads each launcher's key from its own backend source, so
+the three stay pinned to what they actually return rather than to an assumption
+that they are uniform.
+
+Table: launcher run-id contract.
+Key — launcher = the UI message; answers = the object the backend returns;
+status = what changed.
+
+  launcher   backend             answers            status
+  Sweep      /api/bracketlab     { batchId }        fixed earlier today
+  History    /api/historytuning  { batchId }        fixed now
+  Age dial   /api/httwo          { started, id }    already right, LEFT ALONE
+
+TESTING
+
+409 tests pass. Five new checks, all watched failing first — including one that
+fails on exactly the mistake above: change the httwo launcher to batchId and the
+suite says "#ht2Msg reads out.batchId but ht2Launch returns { id }".
+
+The declared checks pin the form to the validator rather than to a copy of it:
+every menu value is checked against the real backend grid (bracket.js ENTRIES,
+GATES, D_MULTS, T_HOURS, TRAIL_MULTS, ARM_MULTS), the quorum boxes against their
+1..6 and 1..8 caps, and the assembled body against the three things the validator
+throws on — dMult under market entry, a non-directional gate under market entry,
+and armMult without trailMult.
+
+NEXT
+
+You asked for a round on what SHOULD be in the new tabs but isn't. That is queued
+and I have not started it. Your two notes on making the declared config itself
+searchable — per-group permutes with their own nulls, possibly hung off the
+promote stage — I have answered separately; there is a real design decision in
+there about what a per-stage null can and cannot claim, and I would rather have
+your call on it before writing anything.
+
+c.
