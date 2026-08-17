@@ -16,12 +16,14 @@ $(curl -sS -m 15 http://127.0.0.1:8093/constructing.html)"
 echo "bytes: ${#JS}"
 echo "== must be PRESENT =="
 for p in "s.state || 'NOT CHECKED'" 'gatePoll' 'nullShare' 'CONTEXT, NOT EVIDENCE' 'only sanctioned yardstick' 'renderHtRun' 'renderPlateau' 'renderNullVerdict' 'data-ht-grade' 'data-inspect' 'id="bNotes"' 'id="t1fire"' 'id="tuneTarget"' 'id="cpubtn"' 'Asset predictability' 'vsNullsCell' 'value="12mo"' 'NOTHING WAS HELD BACK' 'unit(s) FAILED' 'INFERRED, not measured' 'cx-theme' 'id="swPermDecArmWrap"' 'declared configs, ranked' 'id="swPermDecAgree"' 'declaredPermute' 'id="swDecCount"' 'Replication — the declared config' 'value="region">widest region' 'id="bSort"' 'l.region.size' 'id="swDecOn"' 'id="swDecQ8"' 'quorumContexts' 'declared.entry\|body.declared' 'value="split70"' 'value="reserve61"' 'value="legacy80"' 'value="weekly-8d"' \
-         'max="50"' 'max="24"' 'all 17 default pairs' "value || undefined"; do
+         'max="50"' 'max="24"' 'all 17 default pairs' "value || undefined" \
+         '<select id="t1null"' '<select id="cmpA"' '<select id="cmpB"' 'verdict-sources' 'scrambleDraws > 0' 'realRows > 0' 'comboOf' 'ctx1: sel.ctx1' 'return drawData()'; do
   c=$(printf '%s' "$JS" | grep -c -- "$p")
   printf '  %-28s %s\n' "$p" "$([ "$c" -gt 0 ] && echo "OK ($c)" || echo 'MISSING')"
 done
 echo "== must be GONE =="
-for p in 's.verdict || s.status' 'const binom =' 'lt-theme' 'over the 500 cap' 'value="70/15/15"' 'value="61/13/13/13"' 'value="legacy"><' 'blank = all cached'; do
+for p in 's.verdict || s.status' 'const binom =' 'lt-theme' 'over the 500 cap' 'value="70/15/15"' 'value="61/13/13/13"' 'value="legacy"><' 'blank = all cached' \
+         '<input id="t1null"' '<input id="cmpA"' '<input id="cmpB"' "if (tab === 'data') drawData()"; do
   c=$(printf '%s' "$JS" | grep -c -- "$p")
   printf '  %-28s %s\n' "$p" "$([ "$c" -eq 0 ] && echo 'OK (gone)' || echo "STILL PRESENT ($c)")"
 done
