@@ -15,6 +15,10 @@ async function post(p, body) {
   return j;
 }
 const tryPost = async (p, body) => { try { return await post(p, body); } catch (e) { alert('FAILED — nothing changed.\n\n' + e.message); return null; } };
+// A setup is the TRADED pair plus its context pairs. Printing only the traded
+// pair makes a three-asset committee read as a single asset, which is a
+// different setup with a different result — so every "selected:" line uses this.
+const comboOf = (r) => (!r ? '—' : r.trade + (r.ctx1 ? ` + ${r.ctx1}` : '') + (r.ctx2 ? ` + ${r.ctx2}` : ''));
 
 // theme — Constructing remembers its OWN setting (owner, 2026-08-17). It used to
 // share the Trading page's key; each tab now keeps its own.
@@ -785,7 +789,7 @@ async function drawBoards() {
         <pre>${esc(JSON.stringify(l, null, 1))}</pre></details></td></tr>`;
   }).join('') : '<tr><td colspan="9" class="empty">no promoted rows (still running, or nothing survived)</td></tr>'}
       </tbody></table></div>
-      ${sel ? `<p class="note">selected: <b>${esc(sel.trade)}</b> ${esc(sel.geometry)} ${esc(sel.decision)} q${sel.quorum} ${sel.tHours}h — this selection feeds Verify · Tune · Greenlight</p>` : '<p class="note">no row selected yet</p>'}
+      ${sel ? `<p class="note">selected: <b>${esc(comboOf(sel))}</b> ${esc(sel.geometry)} ${esc(sel.decision)} q${sel.quorum} ${sel.tHours}h — this selection feeds Verify · Tune · Greenlight</p>` : '<p class="note">no row selected yet</p>'}
       </div>
       ${repBlock}
       <div class="panel" id="gridOut"><span class="muted">Menu grid: press a row's button — every execution permutation for that row with the plateau view (one setting moved at a time) on top.</span></div>
@@ -930,6 +934,15 @@ async function drawVerify() {
   const doc = await loadPicked();
   const sel = getSelRow(doc);
   const gate = await api('api/planted-gate/status').catch(() => null);
+  // The scramble run was a box you TYPED a run id into. The service has always
+  // had an endpoint that lists exactly the runs this tool can read, with how
+  // many null draws each carries — the Bracket lab used it for a dropdown and
+  // this tab never called it. Typing meant every mistake came back as "unknown
+  // scramble run", and an empty box asked the server a question it could not
+  // answer (owner, on the same class: "I thought I would be able to select from
+  // the saved sweeps").
+  const vs = await api('api/bracketlab/verdict-sources').catch(() => ({ sources: [] }));
+  const nullSrc = (vs.sources || []).filter((s) => s.scrambleDraws > 0);
   $('#view').innerHTML = `<div class="panel">
     <h3 style="margin-top:0">Planted check — the instrument's calibration certificate</h3>
     <p class="note">Regenerates a fabricated pair carrying a KNOWN planted rule and fires it through the full sweep +
@@ -949,12 +962,16 @@ async function drawVerify() {
     <h3 style="margin-top:0">Tool 1 — this row against its null runs</h3>
     <p class="note">Compares the picked REAL run against a SCRAMBLE run (a sweep launched with scrambled labels): each
       scrambled world re-shops the whole menu in the same test window, and its best find must beat the selected row.
-      Launch scramble runs from Sweep; read the verdict here. ALWAYS VISIBLE — a gate failing judges the INSTRUMENT,
+      The draws come from a sweep launched with <b>null boards</b> above zero on the Sweep section — that is the box
+      that makes a run appear in the list below. Read the verdict here. ALWAYS VISIBLE — a gate failing judges the INSTRUMENT,
       never retires the candidate on one number.</p>
     ${sel ? `<div class="row" style="align-items:flex-end">
-      <span class="note">selected: <b>${esc(sel.trade)}</b> ${esc(sel.geometry)} q${sel.quorum} ${sel.tHours}h</span>
-      <label class="f">scramble run id<input id="t1null" style="width:22rem" placeholder="bracketlab-…-null"></label>
-      <button id="t1run" class="pri">Read Tool 1 verdict</button><span id="t1msg" class="note"></span></div>
+      <span class="note">selected: <b>${esc(comboOf(sel))}</b> ${esc(sel.geometry)} q${sel.quorum} ${sel.tHours}h</span>
+      <label class="f" title="only runs that actually carry null draws are listed — the count in brackets is how many, and it sets the finest claim available (N draws is at best 1 in N+1). Launch them with 'null boards' on Sweep.">scramble run<select id="t1null" style="min-width:22rem">
+        <option value="">${nullSrc.length ? '— pick a run with null draws —' : '— no run on this box carries null draws yet —'}</option>
+        ${nullSrc.map((s) => `<option value="${esc(s.id)}" ${s.id === doc.id ? 'selected' : ''}>${esc(s.id)} (${s.scrambleDraws} null draws)</option>`).join('')}
+      </select></label>
+      <button id="t1run" class="pri" ${nullSrc.length ? '' : 'disabled'}>Read Tool 1 verdict</button><span id="t1msg" class="note">${nullSrc.length ? '' : 'launch a sweep with null boards &gt; 0 first — this tool reads those draws.'}</span></div>
       <div class="row" style="margin-top:.45rem;align-items:flex-end">
         <label class="f" title="each round replays the whole board on dealt votes — same committee, same machinery, the calendar alignment destroyed. N rounds is at best a 1-in-(N+1) claim, and each costs a full sweep.">null rounds to fire<input id="t1rounds" type="number" value="19" min="1" max="1000" style="width:5rem"></label>
         <button id="t1fire">Fire null runs on this run</button>
@@ -1016,12 +1033,29 @@ async function drawVerify() {
     $('#t1fireMsg').textContent = out ? `${out.shifts} round(s) running — they land on this run's record` : '';
   };
   if (t1) t1.onclick = async () => {
+    const nullId = $('#t1null').value;
+    // Refuse here rather than let the server answer "unknown scramble run" to a
+    // question that was never asked — the box being empty is not an error the
+    // operator should have to decode from a 400.
+    if (!nullId) { $('#t1msg').textContent = 'pick a scramble run first'; return; }
     $('#t1msg').textContent = 'reading…';
     try {
+      // THE CONTEXT PAIRS ARE PART OF THE SETUP'S IDENTITY. This sent trade,
+      // geometry and decision only, so the key it asked for was the SINGLES
+      // key — and every doubles/triples run answered "setup … not in this
+      // run's real rows". Since the live vocabulary only accepts three-asset
+      // combos, that meant Tool 1 could not be read for any setup this project
+      // can actually trade (runtime harness, 2026-08-17).
+      //
+      // The layout goes with the ROW, not the run: verdict.js fills a
+      // single-arm doc in from its own rows, and only a mixed-arm ('both') run
+      // needs the arm named. Sending params.windowLayout regardless put a
+      // stamp on the key that the rows may not carry.
       const d = await post('api/bracketlab/null-verdict', {
-        realId: doc.id, nullId: $('#t1null').value.trim(),
-        trade: sel.trade, geometry: sel.geometry, decision: sel.decision,
-        windowLayout: (doc.params && doc.params.windowLayout) || undefined,
+        realId: doc.id, nullId,
+        trade: sel.trade, ctx1: sel.ctx1 || null, ctx2: sel.ctx2 || null,
+        geometry: sel.geometry, decision: sel.decision,
+        ...(sel.layoutArm ? { windowLayout: sel.layoutArm } : {}),
       });
       $('#t1out').innerHTML = renderNullVerdict(d);
       $('#t1msg').textContent = '';
@@ -1404,6 +1438,12 @@ async function drawTune() {
   // a breakout cell's opposite rail IS its stop, so tuning one is meaningless.
   const cand = await api('api/pilot/stop-candidates').catch(() => ({ candidates: [] }));
   const books = (cand && cand.candidates) || [];
+  // Same fix as Tool 1: run A and run B were boxes you typed a run id into, so
+  // an empty box or a typo came back as a 400 the operator had to decode. The
+  // list is the runs that actually carry comparable rows.
+  const cmpSrc = ((await api('api/bracketlab/verdict-sources').catch(() => ({ sources: [] }))).sources || [])
+    .filter((s) => s.realRows > 0);
+  const cmpOpt = (s) => `<option value="${esc(s.id)}">${esc(s.id)}${s.windowLayout && s.windowLayout !== 'legacy' ? ` [${esc(s.windowLayout)}]` : ''}</option>`;
   const savedTarget = localStorage.getItem('cx-scan-target') || '';
   const scanBody = savedTarget && savedTarget !== 'sel'
     ? { bookId: savedTarget }
@@ -1440,9 +1480,15 @@ async function drawTune() {
   <div class="panel">
     <h3 style="margin-top:0">Compare two runs — NOT a null test</h3>
     <div class="row" style="align-items:flex-end">
-      <label class="f">run A<input id="cmpA" style="width:20rem" value="${esc(pickedRun || '')}"></label>
-      <label class="f">run B<input id="cmpB" style="width:20rem"></label>
-      <button id="cmpGo">Compare</button></div>
+      <label class="f">run A<select id="cmpA" style="min-width:20rem">
+        ${cmpSrc.map((s) => cmpOpt(s).replace('>', s.id === pickedRun ? ' selected>' : '>')).join('')}
+      </select></label>
+      <label class="f" title="leave B empty only for a run whose window layout is 'both' — that run compares its own two arms. Any other pairing needs a second run.">run B<select id="cmpB" style="min-width:20rem">
+        <option value="">— empty: compare a 'both' run's own two sides —</option>
+        ${cmpSrc.map(cmpOpt).join('')}
+      </select></label>
+      <button id="cmpGo" ${cmpSrc.length ? '' : 'disabled'}>Compare</button>
+      <span class="note">${cmpSrc.length ? `${cmpSrc.length} comparable run(s)` : 'no run on this box carries comparable rows yet'}</span></div>
     <div id="cmpOut"></div>
   </div>`;
   function renderStopResult(s) {
@@ -1507,8 +1553,24 @@ async function drawTune() {
     };
   });
   $('#cmpGo').onclick = async () => {
+    const a = $('#cmpA').value;
+    if (!a) { $('#cmpOut').innerHTML = '<span class="warn">pick run A first</span>'; return; }
+    // Leaving B empty is only meaningful for a run that holds BOTH arms — that
+    // run compares its own two sides. For any other run the server refuses, and
+    // the page already knows which layout each run carries, so say it here in
+    // plain words instead of relaying a 400.
+    const aSrc = cmpSrc.find((s) => s.id === a);
+    if ($('#cmpB').value === a) {
+      $('#cmpOut').innerHTML = '<span class="warn">run A and run B are the same run — a comparison needs two.</span>';
+      return;
+    }
+    if (!$('#cmpB').value && aSrc && aSrc.windowLayout !== 'both') {
+      $('#cmpOut').innerHTML = `<span class="warn">${esc(a)} holds one window layout (${esc(aSrc.windowLayout)}),
+        so there is no second side of it to compare against — pick a run B.</span>`;
+      return;
+    }
     try {
-      const d = await post('api/bracketlab/compare', { a: $('#cmpA').value.trim(), b: $('#cmpB').value.trim() });
+      const d = await post('api/bracketlab/compare', { a, b: $('#cmpB').value || null });
       $('#cmpOut').innerHTML = `<pre>${esc(JSON.stringify(d, null, 1).slice(0, 20000))}</pre>`;
     } catch (e) { $('#cmpOut').innerHTML = `<span class="warn">${esc(e.message)}</span>`; }
   };
@@ -1526,7 +1588,7 @@ async function drawGreenlight() {
       evidentiary chain. The config then appears on the Trading tab (both sides) for activation. Only greenlighted
       configs ever trade — no hand-built live configs, ever.</p>
     ${sel ? `<div class="row" style="align-items:flex-end">
-      <span class="note" style="flex:1 1 auto;min-width:0">selected: <b>${esc(sel.trade)}</b> ${esc(sel.geometry)} ${esc(sel.decision)} q${sel.quorum} ${sel.tHours}h
+      <span class="note" style="flex:1 1 auto;min-width:0">selected: <b>${esc(comboOf(sel))}</b> ${esc(sel.geometry)} ${esc(sel.decision)} q${sel.quorum} ${sel.tHours}h
         — test ${money(sel.pnl)}${sel.holdout ? ` · held-back ${money(sel.holdout.pnl)}` : ''}</span>
       <label class="f" style="flex:none">anchor<select id="glTarget" title="WHICH cell gets greenlighted. 'declared cell' is the one fixed before the run — no shopping. 'best cell' is the highest scorer, which is the best of ~1,260 tries and flatters itself. 'widest region' is the MIDDLE of the widest run of neighbouring settings that all made money — chosen by depth inside the region, never by its score, so the shopped peak cannot sneak back in."><option value="declared">declared cell</option><option value="best">best cell</option><option value="region">widest region</option></select></label>
     </div>
@@ -1553,15 +1615,22 @@ async function drawGreenlight() {
   };
 }
 
+// draw() RETURNS the section's promise. It used to return undefined while every
+// section function was async, so `draw().then(...)` — which is how "copy settings
+// into the form" waits for the Sweep form to exist before filling it — threw
+// "Cannot read properties of undefined (reading 'then')" every single time. The
+// tab switched, the exception was swallowed by the console, and not one field
+// was filled: a button that looked like it worked and did nothing (found by the
+// runtime harness, 2026-08-17).
 function draw() {
   renderTabs(); renderStrip();
-  if (tab === 'data') drawData();
-  else if (tab === 'sweep') drawSweep();
-  else if (tab === 'boards') drawBoards();
-  else if (tab === 'verify') drawVerify();
-  else if (tab === 'history') drawHistory();
-  else if (tab === 'tune') drawTune();
-  else drawGreenlight();
+  if (tab === 'data') return drawData();
+  if (tab === 'sweep') return drawSweep();
+  if (tab === 'boards') return drawBoards();
+  if (tab === 'verify') return drawVerify();
+  if (tab === 'history') return drawHistory();
+  if (tab === 'tune') return drawTune();
+  return drawGreenlight();
 }
 function tickClock() { $('#utcClock').textContent = new Date().toISOString().slice(0, 19).replace('T', ' ') + ' UTC'; }
 tickClock(); setInterval(tickClock, 1000);

@@ -991,8 +991,20 @@ app.post('/api/bracketlab/null-verdict', (req, res) => {
   const nullDoc = batch.getBatch(String(b.nullId || ''));
   if (!realDoc) return res.status(400).json({ error: 'unknown real run' });
   if (!nullDoc) return res.status(400).json({ error: 'unknown scramble run' });
+  // THE CONTEXT PAIRS ARE PART OF THE SETUP'S IDENTITY, and this endpoint threw
+  // them away. lib/verdict.js builds its pairing key from trade|ctx1|ctx2|… and
+  // has done since the 2026-08-04 review ("without ctx, a singles+doubles run
+  // scored whichever DOT-family row was pushed first") — but the route never
+  // forwarded them, so every request arrived as the SINGLES key. Both pages sent
+  // a doubles/triples setup and both got "setup … not in this run's real rows".
+  // The live vocabulary only accepts three-asset combos, so the null verdict —
+  // the check that says whether a result beats its own null — could not be read
+  // for any setup this project can trade (runtime harness, 2026-08-17).
   const sel = b.trade ? {
-    trade: String(b.trade), geometry: String(b.geometry || ''), decision: String(b.decision || ''),
+    trade: String(b.trade),
+    ctx1: b.ctx1 ? String(b.ctx1) : null,
+    ctx2: b.ctx2 ? String(b.ctx2) : null,
+    geometry: String(b.geometry || ''), decision: String(b.decision || ''),
     ...(b.windowLayout ? { windowLayout: String(b.windowLayout) } : {}),
   } : null;
   try {

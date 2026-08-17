@@ -210,7 +210,12 @@ module.exports = {
       // checked by their own test in test-declaredset.js against the run's grid
       'swDecEntry', 'swDecGate', 'swDecD', 'swDecT', 'swDecTrail', 'swDecArm', 'swDecQ6', 'swDecQ8',
       // free-form or purely local to the page, with no backend allow-list
-      'swDec', 'bPick', 'bSort', 'glTarget', 'htWin', 'cmpA', 'cmpB', 'tuneTarget']);
+      'swDec', 'bSort', 'glTarget', 'htWin', 'tuneTarget',
+      // run-id pickers: every real option is a run id the SERVER listed, so the
+      // allow-list is the server's own reply and cannot be restated here. The
+      // only literal value in them is the empty placeholder. What these must
+      // never be is <input> boxes — test-uicontracts.js pins that.
+      'bPick', 't1null', 'cmpA', 'cmpB']);
     const withValues = [...SWEEP.matchAll(/<select id="([\w-]+)"[^>]*>((?:(?!<\/select>)[\s\S])*?)<\/select>/g)]
       .filter((m) => /<option value="/.test(m[2])).map((m) => m[1]);
     const unlisted = withValues.filter((id) => !known.has(id));
