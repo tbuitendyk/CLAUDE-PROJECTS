@@ -487,6 +487,8 @@ app.post('/api/bracketlab', (req, res) => {
       description: b.description,
       label: b.label,
       windowLayout: b.windowLayout,
+      // which replication boxes are permuted; absent = the single declared config
+      declaredPermute: b.declaredPermute,
       interlaceSeed: b.interlaceSeed,
       sharedBand: b.sharedBand,
     });

@@ -439,6 +439,24 @@ async function unitTask(task) {
   }
   if (best) best.controlPnl = controlPnl;
   if (declared) declared.controlPnl = controlPnl;
+  // THE DECLARED SET (owner, 2026-08-17). With the replication boxes permuted the
+  // run declares many configs instead of one, and each is scored on this asset.
+  // No extra compute: every cell is already in allCells, so each config is a
+  // lookup. `declared` above is untouched, so a run with no permute tick behaves
+  // exactly as it always has.
+  let declaredSet = null;
+  if (Array.isArray(p.declaredSet) && p.declaredSet.length) {
+    declaredSet = [];
+    for (const cfg of p.declaredSet) {
+      const q = declaredQuorumFor(cfg, memberCalls.length, combo.size);
+      const hit = allCells.find((r) => r.quorum === q && matchesDeclared(r, cfg));
+      declaredSet.push({
+        label: cfg.label,
+        config: cfg,
+        cell: hit ? { ...hit, quorum: q, members: memberCalls.length, controlPnl } : null,
+      });
+    }
+  }
   // Cut the region from the pooled cells. minTrades matches the board's own
   // qualifier so a cell that never traded cannot pad a region into looking wide.
   const region = require('./plateau').widestRegion(allCells, { minTrades: p.minTrades || 1 });
@@ -490,6 +508,17 @@ async function unitTask(task) {
   };
   if (best) best.holdout = scoreHold(best, best.quorum);
   if (declared) declared.holdout = scoreHold(declared, declared.quorum);
+  // Each config in the declared SET gets its own held-back score — the
+  // replication tiles read HOLDOUT, so a set member without one could not be
+  // counted and would silently shrink the denominator.
+  if (declaredSet) {
+    for (const d of declaredSet) {
+      if (d.cell) {
+        d.cell.holdout = scoreHold(d.cell, d.cell.quorum);
+        d.cell.holds = bracketLib.holdControls(testChunks, maps.trade, geo, d.cell.tHours, fee);
+      }
+    }
+  }
 
   // Per-rung classification quality, so prediction can be judged apart from
   // execution. Cheap: every stream is already computed.
@@ -506,7 +535,7 @@ async function unitTask(task) {
     bestEdge.holdoutMetrics = classifierMetrics(trainLabels, holdLabels, hc);
   }
 
-  const out = { best, declared, bestEdge, region, bandPct, testPeriods: testChunks.length, members: memberCalls.length, layoutMeta: split.layoutMeta || null,
+  const out = { best, declared, declaredSet, bestEdge, region, bandPct, testPeriods: testChunks.length, members: memberCalls.length, layoutMeta: split.layoutMeta || null,
     // Window stamps (review finding 9): the run's ACTUAL boundaries, so a
     // later History Tuning launch reads the recorded truth instead of
     // recomputing it from a cache that has since grown.

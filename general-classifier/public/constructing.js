@@ -183,20 +183,28 @@ async function drawSweep() {
         <input type="checkbox" id="swDecOn"> replication: also score one DECLARED config per asset</label>
       <label class="f" id="swDecEntryWrap" title="BREAKOUT opens the position when price reaches a rail at p(1±d). MARKET enters at the entry candle's open in the called direction with no rails, holds to t, and exits at the open: the general classifier's own trade, and exactly what the live paper books do. Market entry is directional by definition, so gate and d do not apply to it.">entry
         <select id="swDecEntry"><option value="breakout" selected>breakout</option><option value="market">market (classifier trade)</option></select></label>
+      <label class="c" title="score EVERY entry style as its own declared config"><input type="checkbox" id="swPermDecEntry"> permute</label>
       <label class="f" id="swDecGateWrap">gate
         <select id="swDecGate"><option value="directional" selected>directional</option><option value="active">active</option><option value="always">always</option></select></label>
+      <label class="c" title="score EVERY gate as its own declared config"><input type="checkbox" id="swPermDecGate"> permute</label>
       <label class="f" id="swDecDWrap">d
         <select id="swDecD"><option value="0.25">0.25×</option><option value="0.5">0.5×</option><option value="0.75">0.75×</option><option value="1">1×</option><option value="1.5" selected>1.5×</option></select></label>
+      <label class="c" title="score EVERY rail distance as its own declared config"><input type="checkbox" id="swPermDecD"> permute</label>
       <label class="f">t
         <select id="swDecT"><option value="17">17h</option><option value="41">41h</option><option value="65" selected>65h</option><option value="89">89h</option><option value="113">113h</option><option value="137">137h</option><option value="161">161h</option></select></label>
+      <label class="c" title="score EVERY hold length as its own declared config"><input type="checkbox" id="swPermDecT"> permute</label>
       <label class="f" id="swDecTrailWrap" title="Declared trailing stop, band-relative. 'static' is the opposite-rail stop this lab has always used. Requires the trailing plane tick, since declared cells are read out of the promoted menu.">trail
         <select id="swDecTrail"><option value="" selected>static</option><option value="0.5">0.5×</option><option value="1">1×</option><option value="1.5">1.5×</option><option value="2">2×</option></select></label>
+      <label class="c" title="score EVERY trailing stop, static included, as its own declared config"><input type="checkbox" id="swPermDecTrail"> permute</label>
       <label class="f" id="swDecArmWrap" title="How far price must move in your favour before the trail starts. 0 trails from the first bar; 1× is close to move-to-breakeven-then-trail.">arm
         <select id="swDecArm"><option value="0" selected>0×</option><option value="0.5">0.5×</option><option value="1">1×</option></select></label>
+      <label class="c" title="score EVERY arm distance as its own declared config"><input type="checkbox" id="swPermDecArm"> permute</label>
       <label class="f" id="swDecQ6Wrap" title="How many of a SINGLE coin's 6 members must agree. A single-coin committee is 3 data views (everything / prices only / volume only) × 2 model types.">agree
         <select id="swDecQ6"><option value="1">1/6</option><option value="2" selected>2/6</option><option value="3">3/6</option><option value="4">4/6</option><option value="5">5/6</option><option value="6">6/6</option></select></label>
       <label class="f" id="swDecQ8Wrap" title="How many of a CONTEXT combo's 8 members must agree. Adding one or two context coins adds a fourth data view — how this coin moves against them — so those committees hold 8 members.">with contexts
         <select id="swDecQ8"><option value="1">1/8</option><option value="2">2/8</option><option value="3" selected>3/8</option><option value="4">4/8</option><option value="5">5/8</option><option value="6">6/8</option><option value="7">7/8</option><option value="8">8/8</option></select></label>
+      <label class="c" title="score EVERY agreement level as its own declared config — this multiplies the set fastest"><input type="checkbox" id="swPermDecAgree"> permute</label>
+      <span class="note" id="swDecCount"></span>
     </div>
     <div class="row" style="margin-top:.5rem">
       <label class="f" style="flex:1">description — why this run exists (rides in the job heading forever)
@@ -253,6 +261,39 @@ async function drawSweep() {
   ['#swSingles', '#swDoubles', '#swTriples'].forEach((id) => { $(id).addEventListener('change', syncDecQuorum); });
   syncDecQuorum();
 
+  // HOW MANY CONFIGS THE TICKS DECLARE, before Start sweep. Every declared config
+  // is scored on every asset, so the count multiplies the run — and the strongest
+  // claim available shrinks as the search widens. A number you only discover from
+  // a refusal message is a number you found too late.
+  const MENUS = { entry: 2, gate: 3, dMult: 5, tHours: 7, trail: 5, arm: 3 };
+  const syncDecCount = () => {
+    const el = $('#swDecCount');
+    if (!el) return;
+    if (!$('#swDecOn').checked) { el.textContent = ''; return; }
+    const market = $('#swDecEntry').value === 'market';
+    let n = 1;
+    if ($('#swPermDecEntry').checked) n *= MENUS.entry;
+    if (!market) {
+      if ($('#swPermDecGate').checked) n *= MENUS.gate;
+      if ($('#swPermDecD').checked) n *= MENUS.dMult;
+      if ($('#swPermDecTrail').checked) n *= MENUS.trail;
+      if ($('#swPermDecArm').checked && $('#swDecTrail').value) n *= MENUS.arm;
+    }
+    if ($('#swPermDecT').checked) n *= MENUS.tHours;
+    if ($('#swPermDecAgree').checked) {
+      if ($('#swSingles').checked) n *= 6;
+      if ($('#swDoubles').checked || $('#swTriples').checked) n *= 8;
+    }
+    el.innerHTML = n === 1
+      ? 'one declared config — no shopping, the strongest reading available'
+      : `<b>${n}</b> declared configs, each scored on every asset${n > 500 ? ' — <span class="warn">over the 500 cap; Start sweep will refuse</span>' : ''}. `
+        + 'Permuting means you searched for it, so the honest end is the sealed slice (window layout 61/13/13/13, graded once in History).';
+  };
+  ['#swDecOn', '#swDecEntry', '#swDecTrail', '#swPermDecEntry', '#swPermDecGate', '#swPermDecD',
+    '#swPermDecT', '#swPermDecTrail', '#swPermDecArm', '#swPermDecAgree', '#swSingles', '#swDoubles', '#swTriples']
+    .forEach((id) => { if ($(id)) $(id).addEventListener('change', syncDecCount); });
+  syncDecCount();
+
   $('#swStart2').onclick = async () => {
     const uni = $('#swUni').value.trim();
     const bandRaw = $('#swBand').value.trim().toLowerCase();
@@ -284,6 +325,13 @@ async function drawSweep() {
       const qPart = {};
       if ($('#swSingles').checked) qPart.quorumSingles = Number($('#swDecQ6').value);
       if ($('#swDoubles').checked || $('#swTriples').checked) qPart.quorumContexts = Number($('#swDecQ8').value);
+      const dp = {
+        entry: $('#swPermDecEntry').checked, gate: $('#swPermDecGate').checked,
+        dMult: $('#swPermDecD').checked, tHours: $('#swPermDecT').checked,
+        trail: $('#swPermDecTrail').checked, arm: $('#swPermDecArm').checked,
+        agree: $('#swPermDecAgree').checked,
+      };
+      if (Object.values(dp).some(Boolean)) body.declaredPermute = dp;
       body.declared = entry === 'market'
         ? { entry, tHours: Number($('#swDecT').value), ...qPart }
         : {
@@ -356,6 +404,69 @@ async function drawBoards() {
       || (b.pnl || 0) - (a.pnl || 0));
   }
   const sel = getSelRow(doc);
+  // REPLICATION — the declared config scored on every asset. The run has always
+  // recorded this; the tab never showed it (the tick's own tooltip promised a
+  // table that did not exist here). Null copies also score the declared cell,
+  // which is their job, but they must never enter the cross-asset count.
+  const repBlock = (() => {
+    const all = (doc && doc.replication) || [];
+    const rows = all.filter((r) => r.nullDealSeed == null);
+    if (!rows.length) return '';
+    // group by declared config: one group when the config was single, many when
+    // the replication boxes were permuted
+    const groups = new Map();
+    for (const r of rows) {
+      const k = r.declaredLabel || 'declared config';
+      if (!groups.has(k)) groups.set(k, []);
+      groups.get(k).push(r);
+    }
+    // binomial tail: the chance of getting at least k of n right on coin flips.
+    // This is the whole point of replication — one look per asset, so the count
+    // across assets owes no shopping tax and needs no correction.
+    const binom = (k, n) => {
+      if (!n) return null;
+      const c = (nn, ii) => { let v = 1; for (let j = 0; j < ii; j++) v = (v * (nn - j)) / (j + 1); return v; };
+      let acc = 0;
+      for (let i = k; i <= n; i++) acc += c(n, i) * (0.5 ** n);
+      return acc;
+    };
+    const groupHtml = [...groups.entries()].map(([label, rs]) => {
+      const hold = rs.filter((r) => r.holdout && r.holdout.pnl != null);
+      const pos = hold.filter((r) => r.holdout.pnl > 0).length;
+      const vsL = hold.filter((r) => r.holdout.vsAlwaysLong != null);
+      const vsLPos = vsL.filter((r) => r.holdout.vsAlwaysLong > 0).length;
+      const p1 = binom(pos, hold.length);
+      const p2 = binom(vsLPos, vsL.length);
+      return `<div style="margin-bottom:.9rem">
+        <div><b>${esc(label)}</b> <span class="note">— ${rs.length} asset(s)</span></div>
+        <div class="row" style="gap:1.4rem;margin:.3rem 0 .4rem">
+          <span><span class="k">held-back positive</span> <b>${pos} / ${hold.length}</b>
+            <span class="note">${p1 == null ? '' : `1-in-${p1 > 0 ? Math.round(1 / p1) : '∞'} by coin flip (p = ${p1.toFixed(4)})`}</span></span>
+          <span><span class="k">beat always-long (held-back)</span> <b>${vsLPos} / ${vsL.length}</b>
+            <span class="note">${p2 == null ? '' : `p = ${p2.toFixed(4)}`}</span></span>
+        </div>
+        <div class="scrollx"><table><thead><tr><th>asset</th><th>band</th><th>agree</th>
+          <th title="the window the settings were chosen on — flattering by construction">test $</th>
+          <th title="the once-only look on data no search touched — this is what the counts above read">held-back $</th>
+          <th title="held-back money minus the same execution forced long every period">vs always-long</th>
+          <th>trades</th></tr></thead><tbody>
+        ${rs.map((r) => `<tr><td>${esc(r.trade + (r.ctx1 ? ' + ' + r.ctx1 : '') + (r.ctx2 ? ' + ' + r.ctx2 : ''))}</td>
+          <td>±${r.bandPct != null ? r.bandPct.toFixed(2) : '?'}%</td>
+          <td>${r.quorum}/${r.members}</td>
+          <td class="${(r.pnl || 0) >= 0 ? 'pos' : 'neg'}">${money(r.pnl)}</td>
+          <td class="${r.holdout ? ((r.holdout.pnl || 0) >= 0 ? 'pos' : 'neg') : 'muted'}">${r.holdout ? money(r.holdout.pnl) : '—'}</td>
+          <td class="${r.holdout && r.holdout.vsAlwaysLong != null ? (r.holdout.vsAlwaysLong >= 0 ? 'pos' : 'neg') : 'muted'}">${r.holdout && r.holdout.vsAlwaysLong != null ? money(r.holdout.vsAlwaysLong) : '—'}</td>
+          <td>${r.trades ?? '—'}</td></tr>`).join('')}
+        </tbody></table></div></div>`;
+    }).join('');
+    return `<div class="panel"><h3 style="margin-top:0">Replication — the declared config on every asset</h3>
+      <p class="note">KEY — one FIXED configuration, named before the run, scored once on each asset. That is a single
+        look apiece, so the count across assets owes no shopping tax and needs no correction: read the tally, never any
+        single row. held-back $ is the once-only look on data no search touched, and it is what the tallies above count;
+        test $ is the window the settings were chosen on and flatters itself by construction.
+        ${groups.size > 1 ? `<b>${groups.size} declared configs</b> were permuted here — each is its own tally below, and permuting means you searched, so the honest end is the sealed slice graded once in History.` : ''}</p>
+      ${groupHtml}</div>`;
+  })();
   $('#view').innerHTML = `<div class="panel"><div class="row" style="align-items:flex-end">
       <label class="f">saved runs<select id="bPick" style="min-width:22rem">
         <option value="">— pick a run —</option>
@@ -399,6 +510,7 @@ async function drawBoards() {
       </tbody></table></div>
       ${sel ? `<p class="note">selected: <b>${esc(sel.trade)}</b> ${esc(sel.geometry)} ${esc(sel.decision)} q${sel.quorum} ${sel.tHours}h — this selection feeds Verify · Tune · Greenlight</p>` : '<p class="note">no row selected yet</p>'}
       </div>
+      ${repBlock}
       <div class="panel" id="gridOut"><span class="muted">Menu grid: press a row's button — every execution permutation for that row with the plateau view (one setting moved at a time) on top.</span></div>
       <div class="panel"><details><summary>the COMPLETE stored settings record for this run, verbatim (nothing invisible)</summary>
         <pre>${esc(JSON.stringify(doc.params || {}, null, 1))}</pre></details></div>`}

@@ -514,7 +514,10 @@ module.exports = {
     const workSrc = fs.readFileSync(path.join(root, 'lib', 'bracketwork.js'), 'utf8');
     const consumed = new Set([...workSrc.matchAll(/\bp\.([A-Za-z_$][\w$]*)/g)].map((m) => m[1]));
     // Derived inside the orchestrator rather than supplied by the caller.
-    const INTERNAL = new Set(['labelShiftFrac', 'declared', 'set', 'sizes', 'permute', 'universe']);
+    // declaredSet joins 'declared' for the same reason: both are BUILT here from
+    // the caller's declared + declaredPermute and validated before the workers
+    // see them. The caller-settable half (declaredPermute) is checked above.
+    const INTERNAL = new Set(['labelShiftFrac', 'declared', 'declaredSet', 'set', 'sizes', 'permute', 'universe']);
     // "Sourced from params" = `params.<key>` appears anywhere in batch.js.
     // A per-line regex was too narrow: real definitions span lines and contain
     // commas (`Math.max(1, Number(params.minTrades) || 10)`), so it reported

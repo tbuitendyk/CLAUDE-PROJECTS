@@ -1386,6 +1386,110 @@ function validateDeclared(raw, menus) {
     : `q${q} ${out.gate} d${out.dMult}x t${out.tHours}h${trailBit}`;
   return out;
 }
+// PERMUTING THE DECLARED CONFIG (owner, 2026-08-17). The single declared config
+// is unchanged and stays the default: declare one cell, score it on every asset,
+// no shopping. This adds the option to declare a SET instead — permute any of the
+// replication boxes and every combination is scored on every asset, so the
+// replication table can be read for a wide region rather than a single point.
+//
+// The set is built from the RUN's own grid (the same menus validateDeclared
+// checks against), and every member goes through validateDeclared itself. That is
+// deliberate: one rule decides what a legal declared config is, so a permuted set
+// can never contain something the single path would have refused — a market cell
+// with a gate, an arm with no trail.
+//
+// A permuted declared config is NOT declared in the strict sense any more: you
+// searched for it. The honest end of that search is the sealed slice — window
+// layout 61/13/13/13 and the History section's one-touch exam.
+const DECLARED_SET_CAP = 500; // GUESSED: a stop on runaway expansion, not a claim
+
+function expandDeclared(raw, permute, menus) {
+  if (!raw) return [];
+  const on = permute || {};
+  const any = ['entry', 'gate', 'dMult', 'tHours', 'trail', 'arm', 'agree'].some((k) => on[k]);
+  // NO permute ticked: byte-identical to the single path, one config, same object.
+  if (!any) return [validateDeclared(raw, menus)];
+
+  const m = {
+    entries: (menus && menus.entries) || bracketLib.ENTRIES,
+    gates: (menus && menus.gates) || bracketLib.GATES,
+    dMults: (menus && menus.dMults) || bracketLib.D_MULTS,
+    tHours: (menus && menus.tHours) || bracketLib.T_HOURS,
+    trailMults: (menus && menus.trailMults) || bracketLib.TRAIL_MULTS,
+    armMults: (menus && menus.armMults) || bracketLib.ARM_MULTS,
+  };
+  const pick = (flag, list, fixed) => (flag ? list.slice() : [fixed]);
+  const out = [];
+  const entries = on.entry ? m.entries.slice() : [raw.entry === undefined ? 'breakout' : String(raw.entry)];
+  for (const entry of entries) {
+    // MARKET has no rails: no gate, no distance, no trail, no arm. Expanding
+    // those for a market cell would build configs validateDeclared refuses, so
+    // the market branch carries only the horizon and the agreement counts.
+    const tList = pick(on.tHours, m.tHours, Number(raw.tHours));
+    if (entry === 'market') {
+      for (const tHours of tList) out.push({ entry, tHours });
+      continue;
+    }
+    const gList = pick(on.gate, m.gates, String(raw.gate || ''));
+    const dList = pick(on.dMult, m.dMults, Number(raw.dMult));
+    // trail null (the static, opposite-rail stop) is a real choice and stays in
+    // the list when trail is permuted — otherwise permuting would silently drop
+    // the setting the single path defaults to.
+    const trList = on.trail ? [null, ...m.trailMults] : [raw.trailMult === undefined ? null : raw.trailMult];
+    for (const gate of gList) {
+      for (const dMult of dList) {
+        for (const tHours of tList) {
+          for (const trailMult of trList) {
+            if (trailMult == null) { out.push({ entry, gate, dMult, tHours }); continue; }
+            const aList = on.arm ? m.armMults.slice() : [raw.armMult === undefined ? 0 : Number(raw.armMult)];
+            for (const armMult of aList) out.push({ entry, gate, dMult, tHours, trailMult, armMult });
+          }
+        }
+      }
+    }
+  }
+  // AGREEMENT is a count per committee size, so it multiplies whatever is above.
+  // Only the sizes the declaration already names are permuted — a run with no
+  // context combos never declared quorumContexts and must not gain one here.
+  const withAgree = [];
+  const qsList = on.agree && raw.quorumSingles !== undefined
+    ? [1, 2, 3, 4, 5, 6] : [raw.quorumSingles];
+  const qcList = on.agree && raw.quorumContexts !== undefined
+    ? [1, 2, 3, 4, 5, 6, 7, 8] : [raw.quorumContexts];
+  for (const base of out) {
+    for (const qs of qsList) {
+      for (const qc of qcList) {
+        const cfg = { ...base };
+        if (qs !== undefined) cfg.quorumSingles = qs;
+        if (qc !== undefined) cfg.quorumContexts = qc;
+        // a declaration that named neither keeps whatever single form it used
+        if (qs === undefined && qc === undefined) {
+          if (raw.quorumRatio !== undefined) cfg.quorumRatio = raw.quorumRatio;
+          else cfg.quorum = raw.quorum;
+        }
+        withAgree.push(cfg);
+      }
+    }
+  }
+  if (withAgree.length > DECLARED_SET_CAP) {
+    throw new Error(`permuting the replication boxes would declare ${withAgree.length} configs, `
+      + `over the ${DECLARED_SET_CAP} cap — untick a permute box or narrow a menu. `
+      + 'Every declared config is scored on every asset, so the count multiplies the run.');
+  }
+  // One rule decides what is legal: every member is validated exactly as a single
+  // declaration would be. De-duplicated on the label so an expansion that lands
+  // on the same cell twice is scored once.
+  const seen = new Set();
+  const validated = [];
+  for (const cfg of withAgree) {
+    const v = validateDeclared(cfg, menus);
+    if (seen.has(v.label)) continue;
+    seen.add(v.label);
+    validated.push(v);
+  }
+  return validated;
+}
+
 // A unit's ROTATION STANCE rides on key PRESENCE, exactly like the unitTask
 // fallback it feeds (QC 38): a unit that never mentions shiftFrac defers to
 // the run-wide labelShiftFrac; an explicit null means THIS unit must not
@@ -2198,6 +2302,11 @@ function startBracketLab(params) {
       weekdaysOnly: !!params.set?.weekdaysOnly,
     },
     declared: validateDeclared(params.declared, grid),
+    // The declared SET. With no permute tick this is exactly [declared], so the
+    // single path is unchanged; with ticks it is every combination, each one
+    // validated by the same rule a single declaration passes through.
+    declaredSet: params.declared ? expandDeclared(params.declared, params.declaredPermute, grid) : null,
+    declaredPermute: params.declaredPermute || null,
     // Capped at detailK: the leaderboard only ever holds that many slim rows,
     // so a larger promoteK was a plan number that could not be honoured.
     // Replication mode ignores this entirely and promotes every unit (below).
@@ -2702,8 +2811,15 @@ function startBracketLab(params) {
             });
           }
           if (res.declared) {
-            const d = res.declared;
+            // One row per (asset, declared config). With no permute tick there is
+            // exactly one config and this is the single row it always was; the
+            // label rides along so the table can group when there are many.
+            const repRows = (res.declaredSet && res.declaredSet.length)
+              ? res.declaredSet.filter((x) => x.cell).map((x) => ({ d: x.cell, label: x.label }))
+              : [{ d: res.declared, label: (p.declared && p.declared.label) || null }];
+            for (const { d, label: declaredLabel } of repRows) {
             doc.replication.push({
+              declaredLabel,
               // WHICH COPY scored this row. Without the tag, real and
               // null-copy declared scores were indistinguishable and the
               // cross-coin count mixed them 1:9 (owner's run exposed it,
@@ -2726,7 +2842,8 @@ function startBracketLab(params) {
               vsAlwaysLong: d.holds ? d.pnl - d.holds.alwaysLong : null,
               vsBuyHold: d.holds && d.holds.buyHold != null ? d.pnl - d.holds.buyHold : null,
             });
-            const repKey = (r) => `${r.trade}|${r.ctx1 || ''}|${r.ctx2 || ''}|${r.geometry}`;
+            }
+            const repKey = (r) => `${r.trade}|${r.ctx1 || ''}|${r.ctx2 || ''}|${r.geometry}|${r.declaredLabel || ''}`;
             doc.replication.sort((x, y) => (y.pnl - x.pnl) || (repKey(x) < repKey(y) ? -1 : repKey(x) > repKey(y) ? 1 : 0));
           }
         } else if (settled.ok && settled.value && !settled.value.best) {
@@ -3174,6 +3291,7 @@ function ht2Launch(p, T2, claim) {
 }
 
 module.exports = {
+  expandDeclared,
   shiftStance,
   startWalkforward,
   wfParams,
