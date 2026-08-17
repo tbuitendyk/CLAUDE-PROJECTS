@@ -751,6 +751,11 @@ async function drawHistory() {
       ${sel ? '<button id="ht2Run" class="pri">Launch paired age-dial run</button>' : '<span class="note">select a row on Boards first.</span>'}
       <span id="ht2Msg" class="note"></span>
     </div>
+    <div class="row" style="margin-top:.4rem;align-items:flex-end">
+      <button id="ht2ExamA" title="the late-rule fabricated pair: the instrument MUST find it. A miss means the age dial cannot see an effect that is provably there.">Run exam A (late-rule pair — must find)</button>
+      <button id="ht2ExamB" title="the flat fabricated pair: the instrument MUST NOT find anything. A hit means it invents effects.">Run exam B (flat pair — must NOT find)</button>
+      <span id="ht2Exams" class="note">exam status loading…</span>
+    </div>
     <div id="ht2Out"></div>
   </div>
   <div class="panel"><h3 style="margin-top:0">Finished tuning runs</h3><div id="htList"><span class="muted">loading…</span></div></div>`;
@@ -763,9 +768,9 @@ async function drawHistory() {
   $('#htList').querySelectorAll('button[data-open]').forEach((b) => {
     b.onclick = async () => {
       const d = await api(`api/batch/${encodeURIComponent(b.dataset.open)}`).catch(() => null);
-      $('#htRead').innerHTML = d ? `<h3>${esc(d.id)}</h3>
-        <p class="note">reading rules (stamped BEFORE launch): ${esc(JSON.stringify(d.params && d.params.readingRules || '—'))}</p>
-        <details open><summary>result record, verbatim</summary><pre>${esc(JSON.stringify(d.result || d.summary || d.perf || d, null, 1).slice(0, 20000))}</pre></details>` : 'unreadable';
+      if (!d) { $('#htRead').innerHTML = 'unreadable'; return; }
+      $('#htRead').innerHTML = d.kind === 'httwo' ? renderHtTwoRun(d) : renderHtRun(d, runs);
+      wireHtRun(d, runs);
     };
   });
   const htRun = $('#htRun');
@@ -782,13 +787,218 @@ async function drawHistory() {
     });
     $('#htMsg').textContent = out ? `launched ${out.batchId || ''} — appears under finished runs when done` : '';
   };
+  // THE EXAM GATE. The age dial is an instrument, and an instrument that has not
+  // been shown to find a planted effect AND to stay quiet on a flat one is not
+  // yet evidence of anything. examStatus.ready is exactly "A passed and B did
+  // not"; until then the real launcher says so rather than pretending.
+  const exams = await api('api/httwo/exams').catch(() => null);
+  const exEl = $('#ht2Exams');
+  if (exEl) {
+    exEl.innerHTML = !exams ? '<span class="muted">exam status unavailable</span>'
+      : `<b class="${exams.ready ? 'pos' : 'warn'}">${exams.ready ? 'exams PASSED' : 'exams NOT passed'}</b>
+         <span class="muted">engine ${esc(String(exams.engineVersion || '?'))}</span> — ${esc(String(exams.detail || ''))}`;
+  }
   const ht2Run = $('#ht2Run');
-  if (ht2Run) ht2Run.onclick = async () => {
-    $('#ht2Msg').textContent = 'launching…';
-    const out = await tryPost('api/httwo', { sourceBatchId: doc.id, halfLifeKey: $('#ht2hl').value });
-    // /api/httwo answers { started, id, folds, windowDays } — NOT batchId
-    $('#ht2Msg').textContent = out ? `launched ${out.id || ''}` : '';
-  };
+  if (ht2Run) {
+    if (exams && !exams.ready) {
+      ht2Run.title = 'the exam pair has not passed on this engine version — a real age-dial run is not evidence until it has';
+    }
+    ht2Run.onclick = async () => {
+      if (exams && !exams.ready
+        && !confirm('The age-dial exams have NOT passed on this engine version.\n\nA real run launched now is not evidence of anything. Launch anyway?')) return;
+      $('#ht2Msg').textContent = 'launching…';
+      const out = await tryPost('api/httwo', { sourceBatchId: doc.id, halfLifeKey: $('#ht2hl').value });
+      // /api/httwo answers { started, id, folds, windowDays } — NOT batchId
+      $('#ht2Msg').textContent = out ? `launched ${out.id || ''}` : '';
+    };
+  }
+  // examPair takes the FABRICATED PAIR SYMBOL, not 'A'/'B' — exam A is the
+  // late-rule pair (the instrument must FIND it) and exam B the flat pair (it
+  // must NOT). Sending 'A' would be refused as "examPair must be one of the
+  // reserved fabricated pairs". Nothing else is sent: the half-life is not a
+  // parameter of an exam, and the engine defaults it.
+  for (const [btn, label, pair] of [['#ht2ExamA', 'A', 'PLANTEDLATEUSDT'], ['#ht2ExamB', 'B', 'PLANTEDUSDT']]) {
+    const el = $(btn);
+    if (!el) continue;
+    el.onclick = async () => {
+      el.disabled = true;
+      const out = await tryPost('api/httwo', { examPair: pair });
+      el.disabled = false;
+      if (out) { $('#ht2Msg').textContent = `exam ${label} launched ${out.id || ''}`; drawHistory(); }
+    };
+  }
+}
+
+
+// ---- History: reading a finished tuning run ---------------------------------
+// Ported from the Bracket lab's renderHtRun (app.js:3195). The Constructing tab
+// used to answer "read" with the progress counters and a JSON dump — the dial
+// board, the reading rules stamped before launch, the verdict and the sealed
+// exam were all unreachable from this tab (owner sweep, 2026-08-17).
+const HT_AGE_LABELS = { none: 'none (flat)', '6mo': '6mo half-life', '12mo': '12mo half-life',
+  '24mo': '24mo half-life', '36mo': '36mo half-life' };
+
+function renderHtRun(r, siblings = []) {
+  const p = r.params || {};
+  const head = `<h3 style="margin-top:0">${esc(r.id)} — ${esc(r.status)}`
+    + `${r.status === 'running' && r.progress ? ' — ' + esc(r.progress) : ''}`
+    + `${p.arm === 'null' ? ' <span class="badge">null draw</span>' : ''}`
+    + `${p.mode === 'reserve-grade' ? ' <span class="badge">reserve grade</span>' : ''}</h3>`;
+
+  // THE SEALED EXAM's own doc. Its verdict has TWO shapes and the second one
+  // carries only { passed, sentence } — printing the rich fields on it renders
+  // "undefined/undefined" (the Bracket lab does exactly that; this does not).
+  if (p.mode === 'reserve-grade') {
+    const v = r.verdict;
+    if (!v) return `<div class="panel">${head}<p class="note">verdict appears when the grade completes</p></div>`;
+    if (v.resolutionFloor == null) {
+      return `<div class="panel">${head}<p class="note"><b>${esc(v.sentence || 'grade unusable')}</b></p></div>`;
+    }
+    return `<div class="panel">${head}
+      <p class="note"><b>${esc(v.sentence)}</b></p>
+      <p class="note">winner reserve <b>${money(v.winnerHoldPnl)}</b> · reference <b>${money(v.referenceHoldPnl)}</b> ·
+        null draws at or above the winner: <b>${v.nullsAtOrAbove}/${v.nullDraws}</b> ·
+        resolution floor ${esc(String(v.resolutionFloor))}
+        <span title="the best claim this many draws can support — a floor, never a measure of strength">(?)</span></p>
+      <p class="note">Every dollar here is HOLD money: the grade's test window is empty by construction, so a test
+        figure would be structurally zero and meaningless.</p></div>`;
+  }
+
+  const rows = r.htRows || [];
+  const excluded = new Set(r.excludedArms || []);
+  const byArm = new Map();
+  for (const row of rows) {
+    if (row.refused || row.skipped) continue;
+    const k = `${row.ageKey}|${row.retuneKey}`;
+    const cur = byArm.get(k) || { test: 0, holds: {}, effMin: Infinity, splits: 0 };
+    cur.test += row.testPnl || 0;
+    cur.holds[row.split] = row.holdPnl;
+    cur.effMin = Math.min(cur.effMin, row.effectiveDays ?? Infinity);
+    cur.splits++;
+    byArm.set(k, cur);
+  }
+  const ranked = [...byArm.entries()].filter(([k]) => !excluded.has(k)).sort((a, b) => b[1].test - a[1].test);
+  const refKey = 'none|never';
+  const winner = r.status === 'done' && ranked.length ? ranked[0][0] : null;
+  const armRows = ranked.slice(0, 12).map(([k, v], i) => {
+    const [age, ret] = k.split('|');
+    // HOLDS ARE GRADED ONCE, NEVER SHOPPED: they stay sealed on screen until the
+    // winner is declared, or the reader would be picking on them.
+    const showHold = r.status === 'done' && (k === winner || k === refKey);
+    const holdCells = showHold
+      ? ['early', 'middle', 'late'].map((sp) => money(v.holds[sp] ?? 0)).join(' / ')
+      : '<span class="muted">sealed until the winner is declared</span>';
+    return `<tr><td>${i + 1}</td><td>${esc(HT_AGE_LABELS[age] || age)}</td><td>${esc(ret)}</td>
+      <td>${money(v.test)}${v.splits < 3 ? ` <span class="muted">(${v.splits}/3 splits — partial, not comparable yet)</span>` : ''}</td>
+      <td>${v.effMin === Infinity ? '—' : v.effMin.toFixed(0)}</td>
+      <td>${k === refKey ? '<b>REFERENCE</b>' : ''}${k === winner ? ' <b class="pos">WINNER</b>' : ''}</td>
+      <td>${holdCells}</td></tr>`;
+  }).join('');
+
+  const shaping = `<p class="note">Shaping numbers: training floor ${esc(String(p.trainingFloorDays ?? 180))} effective days (GUESSED) ·
+    retune trade floor ${esc(String(p.minTradesPerLookbackWeek ?? '?'))} trades/lookback-week (GUESSED) ·
+    window ${esc(String(p.windowDays ?? '?'))} days per test/hold · minimum training run-up 425 days (GUESSED) ·
+    reserve61 splits are 60.9/13.05/13.05/13 exactly. Trailing is held fixed at the declared cell's setting through
+    every retune.</p>`;
+  const rules = p.readingRules ? `<details><summary class="note" style="cursor:pointer">The reading rules stamped into this run BEFORE it was launched (click)</summary>
+    ${Object.entries(p.readingRules).map(([k, v]) => `<p class="note"><b>${esc(k)}</b> [${esc(v && v.label)}]: ${esc(v && v.text)}</p>`).join('')}</details>` : '';
+  const excludedNote = excluded.size
+    ? `<p class="note">Dial pairs excluded (failed a training floor on some split, so dropped from ALL splits): ${[...excluded].map(esc).join(', ')}</p>` : '';
+
+  const myDraws = (siblings || []).filter((d) => (d.params || {}).replayOf === r.id && (d.params || {}).arm === 'null');
+  const usedSeeds = myDraws.map((d) => Number(d.params.nullShiftSeed) || 0);
+  const nextSeed = usedSeeds.reduce((a, b) => Math.max(a, b), 100) + 1;
+  const readable = r.status === 'done' && p.arm !== 'null' && !p.mode;
+  const verdictDiv = readable ? `<div id="htVerdict" class="note"><em>computing the stamped verdict…</em></div>` : '';
+  const nullBtn = readable
+    ? `<p class="note"><button data-ht-null="${esc(r.id)}" data-seed="${nextSeed}">Fire trail-replay null draw ${myDraws.length + 1} of 19 (seed ${nextSeed})</button>
+       — each draw replays the full grid on dealt votes, inheriting only the calendar. 19 is the declared count
+       (floor 1 in 20); the server refuses a repeated seed.</p>` : '';
+  const gradeBtn = readable && p.reserveFromTs
+    ? `<p class="note"><button data-ht-grade="${esc(r.id)}" class="pri">Run the reserve grade — one touch, final</button>
+       — the winner's walk, the reference pass's walk and 19 null draws over the SEALED reserve, fired together,
+       once, ever. This is the only look that slice will ever get.</p>`
+    : (readable ? '<p class="note">No reserve exists for this setup (its board run predates the reserve layout) — the binding grade is the forward paper book.</p>' : '');
+
+  return `<div class="panel">${head}${shaping}${rules}${excludedNote}
+    <p class="note"><b>TABLE: the dial-pair board</b>${r.status === 'running' ? ' — FILLING LIVE as passes finish' : ''}.
+      NAME: combined TEST money per dial pair (the picking read). KEY: age = the half-life setting; retune = cadence and
+      lookback; test $ = net paper dollars per $100 book summed across the three test windows (picked on, flattering by
+      construction) — a row marked partial has not finished all three splits, so its sum cannot be compared with complete
+      rows; eff. days = the smallest effective training days any split saw; hold $ = the three hold windows
+      early/middle/late, shown ONLY for the winner and the reference pass, because holds are graded once and never shopped.</p>
+    <div class="scrollx"><table><thead><tr><th>#</th><th>age</th><th>retune</th><th>test $</th><th>eff. days</th><th></th><th>hold $ (e/m/l)</th></tr></thead>
+      <tbody>${armRows || '<tr><td colspan="7" class="empty">rows appear as passes finish</td></tr>'}</tbody></table></div>
+    ${verdictDiv}${nullBtn}${gradeBtn}</div>`;
+}
+
+// HT v2 (the age dial). Its verdict comes in three progressively richer shapes;
+// the two short ones carry only `sentences`, so the rich fields are guarded.
+function renderHtTwoRun(r) {
+  const p = r.params || {};
+  return `<div class="panel"><h3 style="margin-top:0">${esc(r.id)} — ${esc(r.status)}${r.status === 'running' && r.progress ? ' — ' + esc(r.progress) : ''}</h3>
+    <p class="note">Age dial: half-life <b>${esc(String(p.halfLifeKey || '—'))}</b> against a flat reference, paired on the
+      same folds. The reading is the paired difference across folds, never any single fold.</p>
+    <div id="ht2Verdict" class="note"><em>computing the verdict…</em></div></div>`;
+}
+
+function renderHtTwoVerdict(v) {
+  if (!v) return '<span class="muted">no verdict</span>';
+  const lines = (v.sentences || []).map((x) => `<p class="note">${esc(x)}</p>`).join('');
+  const rich = v.p != null || v.sum != null;
+  return `<p><b class="${v.pass ? 'pos' : 'warn'}">${v.pass ? 'PASS' : 'NO EFFECT SHOWN'}</b>
+      <span class="note">engine ${esc(String(v.engineVersion || '?'))}</span></p>${lines}
+    ${rich ? `<p class="note">paired sum ${money(v.sum)} · sign-flip p ${v.p == null ? '—' : v.p.toFixed(4)} ·
+      folds positive ${v.positiveFolds ?? '—'}/${v.folds ?? '—'}${v.carriedByOneFold ? ' · <b class="warn">carried by one fold</b>' : ''}</p>` : ''}`;
+}
+
+async function wireHtRun(d, runs) {
+  const p = d.params || {};
+  if (d.kind === 'httwo') {
+    const el = $('#ht2Verdict');
+    if (el) {
+      const v = await api(`api/httwo/${encodeURIComponent(d.id)}/verdict`).catch(() => null);
+      el.innerHTML = renderHtTwoVerdict(v);
+    }
+    return;
+  }
+  // the stamped verdict prints on the REAL run only — the server refuses it for
+  // a null draw or a grade, and the grade's verdict is already on its own doc
+  if (d.status === 'done' && p.arm !== 'null' && !p.mode) {
+    const el = $('#htVerdict');
+    if (el) {
+      const v = await api(`api/historytuning/${encodeURIComponent(d.id)}/verdict`).catch(() => null);
+      el.innerHTML = !v || v.error ? `<span class="muted">${esc((v && v.error) || 'no verdict')}</span>`
+        : `<p><b class="${v.passed ? 'pos' : 'warn'}">${v.passed ? 'PASS' : 'NO'}</b> ${esc(v.sentence || '')}</p>
+           <p class="note">winner <b>${esc(String(v.winner || '—'))}</b> · winner hold ${money(v.winnerHold)} ·
+             reference hold ${money(v.referenceHold)}${v.nullDraws != null ? ` · null draws at or above: ${v.nullsAtOrAbove}/${v.nullDraws}` : ''}
+             ${v.resolutionFloor ? ` · resolution floor ${esc(String(v.resolutionFloor))}` : ''}</p>`;
+    }
+  }
+  const nb = document.querySelector('button[data-ht-null]');
+  if (nb) {
+    nb.onclick = async () => {
+      nb.disabled = true;
+      // this endpoint takes replayOf + nullShiftSeed — NOT sourceBatchId, and
+      // NOT sourceHtRunId. Three endpoints in this panel, three different keys.
+      const out = await tryPost('api/historytuning/null', {
+        replayOf: nb.dataset.htNull, nullShiftSeed: Number(nb.dataset.seed),
+      });
+      nb.disabled = false;
+      if (out) { alert(`null draw launched: ${out.batchId || ''} (${out.units || '?'} passes)`); drawHistory(); }
+    };
+  }
+  const gb = document.querySelector('button[data-ht-grade]');
+  if (gb) {
+    gb.onclick = async () => {
+      if (!confirm('Run the reserve grade?\n\nThis is the ONE look the sealed slice will ever get. It cannot be repeated for this run.')) return;
+      gb.disabled = true;
+      // takes sourceHtRunId — a HISTORY TUNING run id, not a board id
+      const out = await tryPost('api/historytuning/reserve-grade', { sourceHtRunId: gb.dataset.htGrade });
+      gb.disabled = false;
+      if (out) { alert(`reserve grade launched: ${out.batchId || ''}`); drawHistory(); }
+    };
+  }
 }
 
 // ---- Tune (stop tuner · conviction sizing · compare) ----------------------------
