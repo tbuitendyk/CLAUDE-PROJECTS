@@ -178,6 +178,26 @@ async function drawSweep() {
       <label class="f">min trades<input id="swMinTr" type="number" value="10" style="width:4.5rem"></label>
       <label class="c"><input type="checkbox" id="swTrail"> trailing plane</label>
     </div>
+    <div class="row" style="margin-top:.5rem;align-items:flex-end;border-top:1px solid var(--line);padding-top:.55rem">
+      <label class="c" title="REPLICATION MODE. Instead of judging each asset by its best-shopped cell, score ONE fixed configuration on every asset — declared before the run, so each asset costs a single look instead of the ~1,260 a menu sweep spends. That turns 'best of thousands on one asset' into a clean binomial across assets: no shopping tax, no branch correction. The menu still runs (the board is unchanged); this adds a separate replication table reporting the declared cell per asset. Agreement travels as an exact count per committee size — the 'agree' boxes (5/6 means 5 of a single coin's 6 members).">
+        <input type="checkbox" id="swDecOn"> replication: also score one DECLARED config per asset</label>
+      <label class="f" id="swDecEntryWrap" title="BREAKOUT opens the position when price reaches a rail at p(1±d). MARKET enters at the entry candle's open in the called direction with no rails, holds to t, and exits at the open: the general classifier's own trade, and exactly what the live paper books do. Market entry is directional by definition, so gate and d do not apply to it.">entry
+        <select id="swDecEntry"><option value="breakout" selected>breakout</option><option value="market">market (classifier trade)</option></select></label>
+      <label class="f" id="swDecGateWrap">gate
+        <select id="swDecGate"><option value="directional" selected>directional</option><option value="active">active</option><option value="always">always</option></select></label>
+      <label class="f" id="swDecDWrap">d
+        <select id="swDecD"><option value="0.25">0.25×</option><option value="0.5">0.5×</option><option value="0.75">0.75×</option><option value="1">1×</option><option value="1.5" selected>1.5×</option></select></label>
+      <label class="f">t
+        <select id="swDecT"><option value="17">17h</option><option value="41">41h</option><option value="65" selected>65h</option><option value="89">89h</option><option value="113">113h</option><option value="137">137h</option><option value="161">161h</option></select></label>
+      <label class="f" id="swDecTrailWrap" title="Declared trailing stop, band-relative. 'static' is the opposite-rail stop this lab has always used. Requires the trailing plane tick, since declared cells are read out of the promoted menu.">trail
+        <select id="swDecTrail"><option value="" selected>static</option><option value="0.5">0.5×</option><option value="1">1×</option><option value="1.5">1.5×</option><option value="2">2×</option></select></label>
+      <label class="f" id="swDecArmWrap" title="How far price must move in your favour before the trail starts. 0 trails from the first bar; 1× is close to move-to-breakeven-then-trail.">arm
+        <select id="swDecArm"><option value="0" selected>0×</option><option value="0.5">0.5×</option><option value="1">1×</option></select></label>
+      <label class="f" id="swDecQ6Wrap" title="How many of a SINGLE coin's 6 members must agree. A single-coin committee is 3 data views (everything / prices only / volume only) × 2 model types.">agree
+        <select id="swDecQ6"><option value="1">1/6</option><option value="2" selected>2/6</option><option value="3">3/6</option><option value="4">4/6</option><option value="5">5/6</option><option value="6">6/6</option></select></label>
+      <label class="f" id="swDecQ8Wrap" title="How many of a CONTEXT combo's 8 members must agree. Adding one or two context coins adds a fourth data view — how this coin moves against them — so those committees hold 8 members.">with contexts
+        <select id="swDecQ8"><option value="1">1/8</option><option value="2">2/8</option><option value="3" selected>3/8</option><option value="4">4/8</option><option value="5">5/8</option><option value="6">6/8</option><option value="7">7/8</option><option value="8">8/8</option></select></label>
+    </div>
     <div class="row" style="margin-top:.5rem">
       <label class="f" style="flex:1">description — why this run exists (rides in the job heading forever)
         <input id="swDesc" style="width:100%"></label>
@@ -199,6 +219,40 @@ async function drawSweep() {
       </tbody></table>
       ${(t.greenlights || []).length ? `<p class="note">greenlights: ${t.greenlights.map((g) => `${esc(g.id)}${g.revoked ? ' (nuked)' : ''}`).join(' · ')}</p>` : ''}` : '<p class="note">tree unavailable</p>';
   };
+  // Market entry has no gate and no rail distance, and the server REJECTS both
+  // rather than ignoring them — a silently ignored parameter is how a declared
+  // config stops meaning what its author thought it meant. So hide the controls
+  // whose values would be refused instead of leaving them on screen.
+  const syncDecEntry = () => {
+    const market = $('#swDecEntry').value === 'market';
+    $('#swDecGateWrap').style.display = market ? 'none' : '';
+    $('#swDecDWrap').style.display = market ? 'none' : '';
+    $('#swDecTrailWrap').style.display = market ? 'none' : '';
+    // arm means nothing without a trail
+    $('#swDecArmWrap').style.display = market || !$('#swDecTrail').value ? 'none' : '';
+  };
+  $('#swDecEntry').onchange = syncDecEntry;
+  $('#swDecTrail').onchange = syncDecEntry;
+  syncDecEntry();
+
+  // Each agreement box exists only when the run will contain committees of that
+  // size: 6 members for a single coin, 8 with context coins. GREY OUT, NEVER
+  // HIDE (owner, 2026-07-31) — both boxes keep their place so the row keeps its
+  // shape and the "agree" label keeps its context.
+  const syncDecQuorum = () => {
+    const off = (wrap, sel, disabled, why) => {
+      $(sel).disabled = disabled;
+      $(wrap).classList.toggle('ctl-off', disabled);
+      $(wrap).title = disabled ? why : '';
+    };
+    off('#swDecQ6Wrap', '#swDecQ6', !$('#swSingles').checked,
+      'this run has no single-coin committees — tick "singles" to set their agreement level');
+    off('#swDecQ8Wrap', '#swDecQ8', !($('#swDoubles').checked || $('#swTriples').checked),
+      'this run has no context committees — tick "doubles" or "triples" to set their agreement level');
+  };
+  ['#swSingles', '#swDoubles', '#swTriples'].forEach((id) => { $(id).addEventListener('change', syncDecQuorum); });
+  syncDecQuorum();
+
   $('#swStart2').onclick = async () => {
     const uni = $('#swUni').value.trim();
     const bandRaw = $('#swBand').value.trim().toLowerCase();
@@ -219,6 +273,30 @@ async function drawSweep() {
       trailing: $('#swTrail').checked, windowLayout: $('#swLayout').value,
       labelShiftReps: Number($('#swNulls').value) || 0, description: $('#swDesc').value.trim(),
     };
+    // REPLICATION: one config declared BEFORE the run and scored on every asset,
+    // so the claim is "it held on N of M assets" rather than "the best of ~1,260
+    // cells looked good on one". Assembled to match what validateDeclared accepts
+    // exactly — it throws on a parameter that cannot apply, rather than ignoring it.
+    if ($('#swDecOn').checked) {
+      const entry = $('#swDecEntry').value;
+      const trailRaw = $('#swDecTrail').value;
+      // a count per committee size, sent only for the sizes this run contains
+      const qPart = {};
+      if ($('#swSingles').checked) qPart.quorumSingles = Number($('#swDecQ6').value);
+      if ($('#swDoubles').checked || $('#swTriples').checked) qPart.quorumContexts = Number($('#swDecQ8').value);
+      body.declared = entry === 'market'
+        ? { entry, tHours: Number($('#swDecT').value), ...qPart }
+        : {
+          entry,
+          gate: $('#swDecGate').value,
+          dMult: Number($('#swDecD').value),
+          tHours: Number($('#swDecT').value),
+          ...qPart,
+          // armMult is refused unless a trail is declared, so send neither
+          // rather than a meaningless pair
+          ...(trailRaw ? { trailMult: Number(trailRaw), armMult: Number($('#swDecArm').value) } : {}),
+        };
+    }
     $('#swMsg').textContent = 'launching…';
     const out = await tryPost('api/bracketlab', body);
     // the endpoint returns { batchId } (server.js) — reading out.id gave a blank
@@ -480,7 +558,8 @@ async function drawHistory() {
   if (ht2Run) ht2Run.onclick = async () => {
     $('#ht2Msg').textContent = 'launching…';
     const out = await tryPost('api/httwo', { sourceBatchId: doc.id, halfLifeKey: $('#ht2hl').value });
-    $('#ht2Msg').textContent = out ? `launched ${out.batchId || ''}` : '';
+    // /api/httwo answers { started, id, folds, windowDays } — NOT batchId
+    $('#ht2Msg').textContent = out ? `launched ${out.id || ''}` : '';
   };
 }
 

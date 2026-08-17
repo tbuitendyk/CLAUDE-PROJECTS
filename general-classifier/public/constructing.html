@@ -61,6 +61,9 @@
     border:1px solid var(--line); border-radius:5px; padding:.28rem .45rem; }
   label.f { display:flex; flex-direction:column; gap:.15rem; font-size:.74rem; color:var(--dim); }
   label.c { display:flex; align-items:center; gap:.35rem; font-size:.8rem; color:var(--fg); }
+  /* a control this run will not use: greyed, never hidden, so the row keeps its
+     shape and neighbouring labels keep their context (owner, 2026-07-31) */
+  .ctl-off { opacity:.5; }
   .empty { color:var(--muted); padding:1rem .9rem; }
   code { color:var(--accent); font-size:.82rem; }
   pre { white-space:pre-wrap; font-size:.72rem; background:var(--tile); border:1px solid var(--line);

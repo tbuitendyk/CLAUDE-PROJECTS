@@ -100,17 +100,86 @@ module.exports = {
     }
   },
 
-  // The response contract is the same class as the request contract: the sweep
-  // POST returns { batchId }, and reading out.id gave a blank run id forever.
-  sweepReadsTheRunIdKeyTheEndpointReturns() {
+  // The response contract is the same class as the request contract, and it is
+  // NOT uniform across the three launchers: /api/bracketlab and historytuning
+  // answer { batchId }, while httwo answers { started, id, … }. Reading the
+  // wrong one renders a blank run id forever, and "fix them all to batchId"
+  // would break the one that was right. Each key is read from the backend
+  // source, so the check tracks the contract instead of a memory of it.
+  everyLauncherReadsTheRunIdKeyItsBackendReturns() {
     const server = fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8');
-    const handler = server.slice(server.indexOf("app.post('/api/bracketlab'"));
-    const key = handler.match(/res\.json\(\{\s*(\w+):/);
-    assert.ok(key, 'the /api/bracketlab handler must still answer with a JSON object');
-    const launched = SWEEP.match(/launched \$\{out\.(\w+)/);
-    assert.ok(launched, 'the Sweep launch message must still report the run id');
-    assert.strictEqual(launched[1], key[1],
-      `Sweep reads out.${launched[1]} but /api/bracketlab returns { ${key[1]} } — the run id renders blank`);
+    // (UI message id, where the authoritative return literal lives, its anchor)
+    const LAUNCHERS = [
+      { msg: 'swMsg',  src: server, anchor: "app.post('/api/bracketlab'", re: /res\.json\(\{\s*(\w+):\s*id\b/ },
+      { msg: 'htMsg',  src: BATCH,  anchor: 'function htLaunch',  re: /return \{\s*(\w+):\s*doc\.id\b/ },
+      { msg: 'ht2Msg', src: BATCH,  anchor: 'function ht2Launch', re: /return \{[^}]*?\b(\w+):\s*doc\.id\b/ },
+    ];
+    for (const l of LAUNCHERS) {
+      const at = l.src.indexOf(l.anchor);
+      assert.ok(at >= 0, `${l.anchor} must still exist to read the run-id contract from`);
+      const backend = l.src.slice(at).match(l.re);
+      assert.ok(backend, `${l.anchor} must still return the run id in an object literal`);
+      const ui = SWEEP.match(new RegExp(`#${l.msg}'\\)\\.textContent = out \\? \`launched \\$\\{out\\.(\\w+)`));
+      assert.ok(ui, `#${l.msg} must still report the run id on launch`);
+      assert.strictEqual(ui[1], backend[1],
+        `#${l.msg} reads out.${ui[1]} but ${l.anchor} returns { ${backend[1]} } — the run id renders blank`);
+    }
+  },
+
+  // The declared block must send only what validateDeclared accepts. It THROWS
+  // on a parameter that cannot apply (dMult or a non-directional gate under
+  // market entry, armMult without trailMult) rather than ignoring it, so a form
+  // that sends them turns replication mode into a launch failure.
+  declaredBlockSendsOnlyWhatTheValidatorAccepts() {
+    assert.ok(/id="swDecOn"/.test(SWEEP), 'the Sweep form must carry the declared-config toggle');
+    // market entry: no gate, no dMult
+    assert.ok(/entry === 'market'\s*\?\s*\{ entry, tHours: Number\(\$\('#swDecT'\)\.value\), \.\.\.qPart \}/.test(SWEEP),
+      'a market declaration must send only entry, tHours and the quorum counts');
+    // armMult only ever travels with trailMult
+    assert.ok(/trailRaw \? \{ trailMult: Number\(trailRaw\), armMult: Number\(\$\('#swDecArm'\)\.value\) \} : \{\}/.test(SWEEP),
+      'armMult must be sent only alongside trailMult — the validator refuses it alone');
+    // quorum counts only for the committee sizes the run will contain
+    assert.ok(/if \(\$\('#swSingles'\)\.checked\) qPart\.quorumSingles/.test(SWEEP),
+      'quorumSingles must be sent only when singles are ticked');
+    assert.ok(/if \(\$\('#swDoubles'\)\.checked \|\| \$\('#swTriples'\)\.checked\) qPart\.quorumContexts/.test(SWEEP),
+      'quorumContexts must be sent only when doubles or triples are ticked');
+  },
+
+  // Every declared menu value must exist in the run's grid, or validateDeclared
+  // throws "must be one of … (this run's grid)" at launch.
+  declaredMenusMatchTheBackendGrid() {
+    const bracketLib = require('../lib/bracket');
+    const cases = [
+      ['swDecEntry', bracketLib.ENTRIES.map(String)],
+      ['swDecGate', bracketLib.GATES.map(String)],
+      ['swDecD', bracketLib.D_MULTS.map(String)],
+      ['swDecT', bracketLib.T_HOURS.map(String)],
+      ['swDecArm', bracketLib.ARM_MULTS.map(String)],
+    ];
+    for (const [id, allowed] of cases) {
+      const offered = optionValues(SWEEP, id);
+      assert.ok(offered.length, `the declared block must carry #${id}`);
+      const bad = offered.filter((v) => !allowed.includes(v));
+      assert.strictEqual(bad.length, 0,
+        `#${id} offers ${bad.join(', ')} — not in the backend grid (${allowed.join(', ')})`);
+    }
+    // trail additionally allows "" for the static (opposite-rail) stop
+    const trail = optionValues(SWEEP, 'swDecTrail');
+    const allowedTrail = ['', ...bracketLib.TRAIL_MULTS.map(String)];
+    const badTrail = trail.filter((v) => !allowedTrail.includes(v));
+    assert.strictEqual(badTrail.length, 0,
+      `#swDecTrail offers ${badTrail.join(', ')} — not in the backend grid`);
+  },
+
+  // The two agreement counts are capped per committee size (6 and 8).
+  declaredQuorumBoxesRespectTheirCommitteeSizes() {
+    for (const [id, cap] of [['swDecQ6', 6], ['swDecQ8', 8]]) {
+      const vals = optionValues(SWEEP, id).map(Number);
+      assert.ok(vals.length, `the declared block must carry #${id}`);
+      const bad = vals.filter((n) => !Number.isInteger(n) || n < 1 || n > cap);
+      assert.strictEqual(bad.length, 0,
+        `#${id} offers ${bad.join(', ')} — validateDeclared accepts 1..${cap}`);
+    }
   },
 
   // A number the form can type but the backend silently reduces is a lie told to
