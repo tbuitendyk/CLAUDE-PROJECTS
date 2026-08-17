@@ -1,0 +1,110 @@
+Constructing: replication boxes can be permuted, and the replication table exists
+
+tl;dr — the single declared config is untouched and still the default. Ticking
+any permute box on the replication row now declares a SET, scored on every asset,
+with the count shown before Start sweep and a hard refusal at 500. And the
+replication table its own tooltip has been promising is finally on the tab.
+Deployed 19:56 UTC, verified on the box, 434 tests pass. Below: the verified list
+of what ELSE is still missing from that tab, which I have NOT built yet.
+
+THE SINGLE CONFIG IS UNCHANGED
+
+Worth saying first because it is the thing that must not break. With no permute
+tick the expansion returns exactly the one config, and every row the run records
+is the row it always recorded. That is pinned by a test, not by intention.
+
+WHAT PERMUTING DOES
+
+A permute tick sits beside each replication box — entry, gate, d, t, trail, arm,
+agree. Tick any and every combination becomes its own declared config, each one
+scored on every asset.
+
+Every member is put through the SAME validator a single declaration passes
+through. That is deliberate: one rule decides what a legal declared config is, so
+a permuted set can never contain something the single path would have refused — a
+gate on a market cell, an arm with no trailing stop. Ticking arm while the stop
+is static declares one config, not three copies of the same one.
+
+The form now tells you the count BEFORE you press Start sweep, because a number
+you only discover from a refusal message is a number you found too late. Over 500
+configs it refuses and says how many were asked for.
+
+Cost: no extra sweeping. Every cell was already computed and pooled for the
+region work, so each declared config is a lookup. Each one does get its own
+held-back score — the replication tally reads the held-back window, and a member
+without one would shrink the denominator silently.
+
+One thing to keep in view: permuting means you searched, so the result is not
+declared in the strict sense any more. The honest end of that search is the
+sealed slice — window layout 61/13/13/13, graded once in History. The form says
+so where you tick.
+
+THE REPLICATION TABLE
+
+The tick's tooltip has been promising "a separate replication table reporting the
+declared cell per asset" while the Constructing tab showed nothing at all. The
+run has been recording those rows the whole time; no screen displayed them.
+
+Boards now shows them, grouped per declared config when there is more than one.
+Each group carries the tally that is the entire point of replication — one look
+per asset, so the count across assets owes no shopping tax and needs no
+correction.
+
+Table: what a replication group reports.
+Key — held-back positive: how many assets made money on the once-only look;
+1-in-N: how unlikely that split is on coin flips; beat always-long: same count
+against forcing the position long every period.
+
+  reading                      what it answers
+  held-back positive k/n       did the declared cell hold up across assets
+  1-in-N by coin flip          could that split happen by chance alone
+  beat always-long k/n         did the calls earn their keep vs just being long
+
+Null copies also score the declared cell — that is their job — and they are
+excluded from every count here.
+
+FOUND AUTOMATICALLY, WORTH NOTING
+
+The repo's own guard caught me: I read declaredPermute in the engine and forgot
+to forward it through the endpoint. That is the same defect class as the window
+layout one you found by eye last week — the form offers it, the caller sends it,
+the server drops it. This time a test said so before it shipped.
+
+WHAT IS STILL MISSING FROM THE TAB — verified, not yet built
+
+I compared every call the old Bracket lab page makes against every call the
+Constructing tab makes. These are real gaps in Constructing's remit:
+
+  History section
+    - the SEALED EXAM grade (reserve-grade). The 61/13/13/13 layout seals the
+      final 13% and this is the one-touch grade on it. This is the most important
+      one on the list — it is the end of the road I keep pointing the search at,
+      and the tab cannot reach it.
+    - History Tuning verdict, and its null
+    - Age-dial exams list, and its verdict
+
+  Verify section
+    - the per-run null tool
+    - verdict sources
+
+  Boards section
+    - INSPECT: per-unit member inspection (which member voted what)
+    - run notes
+
+  Tune section
+    - stop candidates — the saved-sweep picker for the protective stop tuner.
+      This is the one you raised before: "I thought I would be able to select
+      from the saved sweeps".
+
+  Elsewhere
+    - CPU / worker load
+    - rotations (I have not yet confirmed what this one is for)
+
+I stopped here rather than pushing nine more features through in one sitting.
+Each of those is a real surface with its own reading rules, and I would rather
+they arrived correct than fast. Nothing shipped today blocks any of them.
+
+Say which order you want them in, or say "straight down the list" and I will
+start with the sealed exam.
+
+c.
