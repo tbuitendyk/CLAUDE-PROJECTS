@@ -208,7 +208,7 @@ async function drawSweep() {
       <label class="c"><input type="checkbox" id="swTrail"> trailing plane</label>
     </div>
     <div class="row" style="margin-top:.5rem;align-items:flex-end;border-top:1px solid var(--line);padding-top:.55rem">
-      <label class="c" title="REPLICATION MODE. Instead of judging each asset by its best-shopped cell, score ONE fixed configuration on every asset — declared before the run, so each asset costs a single look instead of the ~1,260 a menu sweep spends. That turns 'best of thousands on one asset' into a clean binomial across assets: no shopping tax, no branch correction. The menu still runs (the board is unchanged); this adds a separate replication table reporting the declared cell per asset. Agreement travels as an exact count per committee size — the 'agree' boxes (5/6 means 5 of a single coin's 6 members).">
+      <label class="c" title="REPLICATION MODE. Instead of judging each asset by its best-shopped cell, score ONE fixed configuration on every asset — declared before the run, so each asset costs a single look instead of the ~1,260 a menu sweep spends. That turns 'best of thousands on one asset' into a cross-asset reading with no shopping tax and no branch correction owed — read against the configuration's own dealt-vote copies, never as a binomial (QC-7: assets move together, so they are not independent looks). The menu still runs (the board is unchanged); this adds a separate replication table reporting the declared cell per asset. Agreement travels as an exact count per committee size — the 'agree' boxes (5/6 means 5 of a single coin's 6 members).">
         <input type="checkbox" id="swDecOn"> replication: also score one DECLARED config per asset</label>
       <label class="f" id="swDecEntryWrap" title="BREAKOUT opens the position when price reaches a rail at p(1±d). MARKET enters at the entry candle's open in the called direction with no rails, holds to t, and exits at the open: the general classifier's own trade, and exactly what the live paper books do. Market entry is directional by definition, so gate and d do not apply to it.">entry
         <select id="swDecEntry"><option value="breakout" selected>breakout</option><option value="market">market (classifier trade)</option></select></label>
@@ -544,30 +544,77 @@ async function drawBoards() {
     // The chance of getting at least k of n right on coin flips. This IS the
     // reading replication produces: one look per asset, so the count across
     // assets owes no shopping tax and needs no correction.
-    const binom = (k, n) => {
-      if (!n) return null;
-      const c = (nn, ii) => { let v = 1; for (let j = 0; j < ii; j++) v = (v * (nn - j)) / (j + 1); return v; };
-      let acc = 0;
-      for (let i = k; i <= n; i++) acc += c(n, i) * (0.5 ** n);
-      return acc;
-    };
     // Score each declared config on the HELD-BACK window — the once-only look —
     // never on the window the settings were chosen on.
+    // WHAT EACH DECLARED CONFIG IS WORTH — ordered by what the register admits as
+    // evidence, in that order (QC-7, QC-142).
+    //
+    // 1. THE MEASURED NULL. For each asset, the config's held-back money against
+    //    ITS OWN dealt-vote copies. QC-7: "never quote a binomial p as evidence;
+    //    units are correlated, the measured null is the only yardstick."
+    // 2. PLATEAU WIDTH on the traded asset. Guards against a knife-edge fit.
+    // 3. The across-asset share, as CONTEXT ONLY. Crypto assets move together, so
+    //    these are nowhere near independent looks and no p-value is quoted.
+    // 4. Money, last. Leading on money rebuilds the shopped board.
+    //
+    // The region lives on the leader rows, keyed by asset+geometry.
+    const regionByAsset = new Map();
+    for (const l of ((doc && doc.leaders) || [])) {
+      if (l.nullDealSeed != null || !l.region) continue;
+      const k = `${l.trade}|${l.ctx1 || ''}|${l.ctx2 || ''}|${l.geometry}`;
+      const prev = regionByAsset.get(k);
+      if (!prev || (l.region.size || 0) > prev) regionByAsset.set(k, l.region.size || 0);
+    }
+    const assetKey = (r) => `${r.trade}|${r.ctx1 || ''}|${r.ctx2 || ''}|${r.geometry}`;
     const scored = [...groups.entries()].map(([label, rs]) => {
-      const hold = rs.filter((r) => r.holdout && r.holdout.pnl != null);
+      const reals = rs.filter((r) => r.nullDealSeed == null);
+      const hold = reals.filter((r) => r.holdout && r.holdout.pnl != null);
       const pos = hold.filter((r) => r.holdout.pnl > 0).length;
       const vsL = hold.filter((r) => r.holdout.vsAlwaysLong != null);
       const vsLPos = vsL.filter((r) => r.holdout.vsAlwaysLong > 0).length;
       const sum = hold.reduce((a, r) => a + (r.holdout.pnl || 0), 0);
-      return { label, rs, hold, pos, vsL, vsLPos, sum, p: binom(pos, hold.length) };
+      // the measured null, asset by asset: how many of this config's own dealt-vote
+      // copies its real held-back money beat
+      const nullsByAsset = new Map();
+      for (const r of rs) {
+        if (r.nullDealSeed == null || !r.holdout || r.holdout.pnl == null) continue;
+        const k = assetKey(r);
+        if (!nullsByAsset.has(k)) nullsByAsset.set(k, []);
+        nullsByAsset.get(k).push(r.holdout.pnl);
+      }
+      let beat = 0;
+      let pairs = 0;
+      for (const r of hold) {
+        const ns = nullsByAsset.get(assetKey(r)) || [];
+        for (const nv of ns) { pairs++; if (r.holdout.pnl > nv) beat++; }
+      }
+      const regions = reals.map((r) => regionByAsset.get(assetKey(r))).filter((v) => v != null);
+      const region = regions.length ? Math.round(regions.reduce((a, b) => a + b, 0) / regions.length) : null;
+      return {
+        label, rs, hold, pos, vsL, vsLPos, sum, region,
+        nullBeat: beat, nullPairs: pairs, nullShare: pairs ? beat / pairs : null,
+      };
     });
-    // ORDERED BY VALUE: how unlikely the across-asset split is first (that is the
-    // claim), then the share of assets that held up, then money. A config that
-    // held on 9 of 10 assets outranks one that made more dollars on 2 of 10.
-    scored.sort((a, b) => (a.p == null ? 1 : b.p == null ? -1 : a.p - b.p)
+    // THE SORT KEY CONTAINS ONLY ADMITTED STATISTICS. An ordering is a claim about
+    // which row is better, so a banned statistic here would make the very claim
+    // the ban exists to prevent — silently, because nobody reads a sort order as
+    // an assertion (QC-142). No binomial p appears below.
+    scored.sort((a, b) => (b.nullShare == null ? -1 : a.nullShare == null ? 1 : b.nullShare - a.nullShare)
+      || (b.region ?? -1) - (a.region ?? -1)
       || (b.pos / (b.hold.length || 1)) - (a.pos / (a.hold.length || 1))
       || b.sum - a.sum);
-    const odds = (p) => (p == null ? '' : `1-in-${p > 0 ? Math.round(1 / p) : '∞'} by coin flip (p = ${p.toFixed(4)})`);
+    // TOOLTIPS carry the reading rules. A number shown without its rule is a
+    // number that will be misread, and these four are misread in opposite
+    // directions if you swap them.
+    const TIP = {
+      null: "this configuration's held-back money against its OWN dealt-vote copies, asset by asset. The register's only sanctioned yardstick (QC-7): the copies keep the committee's vote mix and destroy only the alignment with the market.",
+      region: 'how many neighbouring settings around this one also made money on the traded asset, averaged over its assets. One step at a time on d, t and agreement. Guards against a knife-edge fit; says nothing about whether it generalises.',
+      assets: 'how many assets held up. CONTEXT, NOT EVIDENCE: crypto assets move together, so these are nowhere near independent looks. No p-value is quoted from them (QC-7).',
+      money: 'summed money on the once-only held-back look. Ranked LAST on purpose — leading on money rebuilds the shopped board.',
+    };
+    const nullCell = (g) => (g.nullShare == null
+      ? '<span class="muted" title="this run recorded no dealt-vote copies of this configuration">no null copies</span>'
+      : `<b class="${g.nullShare === 1 ? 'pos' : ''}">${g.nullBeat}/${g.nullPairs}</b>`);
     const detail = (rs) => `<div class="scrollx"><table><thead><tr><th>asset</th><th>band</th><th>agree</th>
         <th title="the window the settings were chosen on — flattering by construction">test $</th>
         <th title="the once-only look on data no search touched — this is what the counts read">held-back $</th>
@@ -587,15 +634,19 @@ async function drawBoards() {
     if (scored.length === 1) {
       const g = scored[0];
       return `<div class="panel"><h3 style="margin-top:0">Replication — the declared config on every asset</h3>
-        <p class="note">KEY — one FIXED configuration, named before the run, scored once on each asset. A single look
-          apiece, so the count across assets owes no shopping tax and needs no correction: read the tally, never any
-          single row. held-back $ is the once-only look on data no search touched and is what the tally counts;
-          test $ is the window the settings were chosen on and flatters itself by construction.</p>
+        <p class="note">KEY — one FIXED configuration, named before the run, scored once on each asset.
+          <b>beat its own null copies</b> is the reading that counts: the same configuration on dealt votes, which is the
+          only yardstick the register admits. <b>plateau width</b> says whether the setting is sturdy or a knife edge.
+          <b>assets held up</b> is CONTEXT ONLY — crypto assets move together, so it is not a count of independent
+          looks and no p-value is quoted from it. Money is last on purpose. held-back $ is the once-only look on data
+          no search touched; test $ is the window the settings were chosen on and flatters itself by construction.</p>
         ${inferredNote}
         <div><b>${esc(g.label)}</b></div>
         <div class="row" style="gap:1.4rem;margin:.3rem 0 .5rem">
-          <span><span class="k">held-back positive</span> <b>${g.pos} / ${g.hold.length}</b>
-            <span class="note">${odds(g.p)}</span></span>
+          <span><span class="k" title="${esc(TIP.null)}">beat its own null copies</span> ${nullCell(g)}</span>
+          <span><span class="k" title="${esc(TIP.region)}">plateau width</span> <b>${g.region == null ? '—' : g.region}</b></span>
+          <span><span class="k" title="${esc(TIP.assets)}">assets held up (context)</span> <b>${g.pos} / ${g.hold.length}</b></span>
+          <span><span class="k" title="${esc(TIP.money)}">total held-back</span> <b class="${g.sum >= 0 ? 'pos' : 'neg'}">${money(g.sum)}</b></span>
           <span><span class="k">beat always-long</span> <b>${g.vsLPos} / ${g.vsL.length}</b></span>
         </div>
         ${detail(g.rs)}</div>`;
@@ -606,18 +657,20 @@ async function drawBoards() {
     const listHtml = scored.map((g, i) => `<details style="border-bottom:1px solid var(--line)">
         <summary style="padding:.4rem .25rem;cursor:pointer">
           <span class="k" style="margin-right:.5rem">#${i + 1}</span><b>${esc(g.label)}</b>
-          <span style="margin-left:.6rem">held up on <b>${g.pos}/${g.hold.length}</b> assets</span>
-          <span class="note" style="margin-left:.5rem">${odds(g.p)}</span>
+          <span style="margin-left:.6rem" title="${esc(TIP.null)}">beat its own nulls ${nullCell(g)}</span>
+          <span style="margin-left:.5rem" title="${esc(TIP.region)}">plateau <b>${g.region == null ? '—' : g.region}</b></span>
+          <span class="note" style="margin-left:.5rem" title="${esc(TIP.assets)}">· assets ${g.pos}/${g.hold.length} (context)</span>
           <span class="note" style="margin-left:.5rem">· beat always-long ${g.vsLPos}/${g.vsL.length}</span>
-          <span class="${g.sum >= 0 ? 'pos' : 'neg'}" style="margin-left:.5rem">${money(g.sum)} total held-back</span>
+          <span class="${g.sum >= 0 ? 'pos' : 'neg'}" style="margin-left:.5rem" title="${esc(TIP.money)}">${money(g.sum)}</span>
         </summary>
         <div style="padding:.3rem .25rem .8rem">${detail(g.rs)}</div>
       </details>`).join('');
     return `<div class="panel"><h3 style="margin-top:0">Replication — ${scored.length} declared configs, ranked</h3>
-      <p class="note">KEY — each line is ONE declared configuration scored on every asset. Ranked by how unlikely its
-        across-asset split is on coin flips, then by the share of assets that held up, then by money — because the claim
-        replication makes is the COUNT across assets, never any single row. held up on: assets whose once-only held-back
-        look made money. Open a line to see that configuration on every asset.
+      <p class="note">KEY — each line is ONE declared configuration scored on every asset. Ranked by <b>how much of its
+        own measured null it beat</b> first, then by <b>plateau width</b>, then by the across-asset share, then by money.
+        That order is the register's: an ordering is a claim about which row is better, so only statistics the register
+        admits as evidence may sit in it (QC-7, QC-142). The across-asset share is shown as CONTEXT — assets move
+        together, so it is not a count of independent looks. Open a line to see that configuration on every asset.
         These configurations were SEARCHED, not declared, so the honest end is the sealed slice: window layout
         61/13/13/13, graded once in the History section.</p>
       ${inferredNote}

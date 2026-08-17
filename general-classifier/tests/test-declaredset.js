@@ -149,14 +149,12 @@ module.exports = {
     assert.ok(/doc\.replication/.test(ui), 'the Boards section must read the recorded replication rows');
     assert.ok(/rows = all\.filter\(\(r\) => r\.nullDealSeed == null\)/.test(ui),
       'null copies score the declared cell too and must never enter the cross-asset count');
-    // A doc recorded BEFORE the tag existed carries nullDealSeed on no row, so
-    // filtering on it keeps everything and mixes null copies into the tally.
     assert.ok(/const tagged = all\.some\(\(r\) => 'nullDealSeed' in r\)/.test(ui),
       'untagged docs must be detected, not filtered as if they were tagged');
     assert.ok(/INFERRED, not measured/.test(ui),
       'and an inferred count must say on the page that it is inferred');
-    assert.ok(/binom\(pos, hold\.length\)/.test(ui),
-      'the tally must be the binomial across assets on the HELD-BACK window');
+    // the reading that counts is the config against ITS OWN dealt-vote copies
+    assert.ok(/nullShare/.test(ui), 'the measured null must be computed per configuration');
   },
 
   // ONE config gets the table on its own; MANY get a ranked, openable list FIRST
@@ -170,17 +168,58 @@ module.exports = {
     assert.ok(/overflow-y:auto/.test(ui), 'and the list scrolls');
   },
 
-  // The ranking must be by the CLAIM — how unlikely the across-asset split is —
-  // not by money. A config that held on 9 of 10 assets outranks one that made
-  // more dollars on 2 of 10; sorting by dollars would rebuild the shopped board.
-  theRankingLeadsOnTheAcrossAssetSplitNotMoney() {
+  // QC-142 ENFORCEMENT. An ordering IS a claim about which row is better, so a
+  // statistic the register bans as evidence may not appear in a sort key —
+  // silently making the very claim the ban exists to prevent. QC-7 bans the
+  // binomial p across assets: units are correlated and the measured null is the
+  // only yardstick. This reads the comparator's own inputs.
+  //
+  // Watched failing 2026-08-17: restoring `a.p - b.p` as the first key fails
+  // here, which is exactly the defect that shipped before the owner caught it.
+  noSortKeyIsBuiltFromAStatisticTheRegisterBans() {
     const ui = fs.readFileSync(path.join(ROOT, 'public', 'constructing.js'), 'utf8');
-    const sort = ui.slice(ui.indexOf('scored.sort('), ui.indexOf('scored.sort(') + 320);
-    assert.ok(/a\.p == null \? 1 : b\.p == null \? -1 : a\.p - b\.p/.test(sort),
-      'the first key must be the binomial p, ascending');
-    const pIdx = sort.indexOf('a.p - b.p');
-    const sumIdx = sort.indexOf('b.sum - a.sum');
-    assert.ok(pIdx >= 0 && sumIdx > pIdx, 'money must be the LAST tiebreak, never the first key');
+    const at = ui.indexOf('scored.sort(');
+    assert.ok(at > 0, 'the replication ranking must still exist');
+    const cmp = ui.slice(at, ui.indexOf(';', at));
+    const BANNED = [
+      { re: /\bbinom\b/, why: 'a binomial p across correlated assets (QC-7)' },
+      { re: /\.p\b/, why: 'a p-value (QC-7 bans quoting one as evidence)' },
+      { re: /pFloor/, why: 'a p floor is a floor, not a measure of strength' },
+    ];
+    for (const b of BANNED) {
+      assert.ok(!b.re.test(cmp), `the sort key is built from ${b.why} — an ordering is a claim`);
+    }
+    // and it must lead on what the register DOES admit
+    const nullIdx = cmp.indexOf('nullShare');
+    const regionIdx = cmp.indexOf('region');
+    const sumIdx = cmp.indexOf('b.sum - a.sum');
+    assert.ok(nullIdx > 0, 'the measured null must be in the sort key');
+    assert.ok(regionIdx > nullIdx, 'plateau width comes after the measured null');
+    assert.ok(sumIdx > regionIdx, 'money is the LAST tiebreak, never earlier');
+  },
+
+  // A banned statistic must not be computed for display either, once nothing
+  // legitimately needs it — dead code that produces one is an invitation.
+  theBannedStatisticIsNotComputedAtAll() {
+    const ui = fs.readFileSync(path.join(ROOT, 'public', 'constructing.js'), 'utf8');
+    assert.ok(!/const binom = /.test(ui), 'the binomial helper must be gone, not merely unused');
+    // NOT banned, and must not be "cleaned up" by a later reader: the
+    // 1-in-(N+1) RESOLUTION FLOOR of N measured null draws. That is the
+    // register's own sanctioned framing — the strongest claim a given number of
+    // draws can support, stated as a floor. What QC-7 bans is a binomial p
+    // computed ACROSS CORRELATED ASSETS, which is a different quantity entirely.
+    assert.ok(/1-in-\(N\+1\) claim/.test(ui),
+      'the resolution floor of a measured null is admitted and must stay');
+  },
+
+  // The columns carry their reading rules, or a number is shown that will be
+  // misread — these four are misread in opposite directions if swapped.
+  everyRankedColumnCarriesItsReadingRule() {
+    const ui = fs.readFileSync(path.join(ROOT, 'public', 'constructing.js'), 'utf8');
+    assert.ok(/only sanctioned yardstick \(QC-7\)/.test(ui), 'the measured null must name its rule');
+    assert.ok(/knife-edge fit/.test(ui), 'plateau width must say what it guards against');
+    assert.ok(/CONTEXT, NOT EVIDENCE/.test(ui), 'the across-asset share must be labelled context');
+    assert.ok(/Ranked LAST on purpose/.test(ui), 'and money must say why it is last');
   },
 
   // Each tab remembers its OWN theme (owner, 2026-08-17).
