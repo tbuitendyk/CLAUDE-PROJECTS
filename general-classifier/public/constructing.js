@@ -25,6 +25,34 @@ $('#themebtn').onclick = () => {
   root.setAttribute('data-theme', n); localStorage.setItem('cx-theme', n);
 };
 
+// CPU CAP — service-wide, shared by every job on the box. It lived only in the
+// old app's topbar, so from this tab there was no way to see or change what the
+// machine was allowed to spend (owner sweep, 2026-08-17).
+const CPU_STEPS = [100, 90, 75, 50, 25, 10, 0];
+let cpuPct = null;
+let cpuThreads = 1;
+function showCpu() {
+  const b = $('#cpubtn');
+  if (!b) return;
+  b.textContent = cpuPct == null ? 'CPU —' : cpuThreads > 1 ? `CPU ${cpuPct}% x${cpuThreads}` : `CPU ${cpuPct}%`;
+}
+async function loadCpu() {
+  try {
+    const body = await api('api/cpu');
+    cpuPct = body.pct; cpuThreads = body.threads || 1;
+  } catch (_) { cpuPct = null; }
+  showCpu();
+}
+if ($('#cpubtn')) {
+  $('#cpubtn').onclick = async () => {
+    const idx = CPU_STEPS.indexOf(cpuPct);
+    const next = CPU_STEPS[(idx + 1) % CPU_STEPS.length];
+    const out = await tryPost('api/cpu', { pct: next });
+    if (out) { cpuPct = out.pct; cpuThreads = out.threads || 1; showCpu(); }
+  };
+  loadCpu();
+}
+
 // ---- navigation ------------------------------------------------------------
 const TABS = [['data', 'Data'], ['sweep', 'Sweep'], ['boards', 'Boards'], ['verify', 'Verify'],
   ['history', 'History'], ['tune', 'Tune'], ['greenlight', 'Greenlight']];
@@ -831,7 +859,12 @@ async function drawVerify() {
     ${sel ? `<div class="row" style="align-items:flex-end">
       <span class="note">selected: <b>${esc(sel.trade)}</b> ${esc(sel.geometry)} q${sel.quorum} ${sel.tHours}h</span>
       <label class="f">scramble run id<input id="t1null" style="width:22rem" placeholder="bracketlab-…-null"></label>
-      <button id="t1run" class="pri">Read Tool 1 verdict</button><span id="t1msg" class="note"></span></div><div id="t1out"></div>`
+      <button id="t1run" class="pri">Read Tool 1 verdict</button><span id="t1msg" class="note"></span></div>
+      <div class="row" style="margin-top:.45rem;align-items:flex-end">
+        <label class="f" title="each round replays the whole board on dealt votes — same committee, same machinery, the calendar alignment destroyed. N rounds is at best a 1-in-(N+1) claim, and each costs a full sweep.">null rounds to fire<input id="t1rounds" type="number" value="19" min="1" max="1000" style="width:5rem"></label>
+        <button id="t1fire">Fire null runs on this run</button>
+        <span id="t1fireMsg" class="note">— fires the rounds this tool then reads. They land on this run's own record.</span>
+      </div><div id="t1out"></div>`
     : '<button disabled title="select a row on Boards first">Read Tool 1 verdict</button> <span class="note">— select a row on the Boards section first; this tool is per-row.</span>'}
   </div>
   <div class="panel">
@@ -866,6 +899,19 @@ async function drawVerify() {
     $('#pgMsg').textContent = out ? 'started — the strip badge and this section update when it lands' : '';
   };
   const t1 = $('#t1run');
+  const t1f = $('#t1fire');
+  if (t1f) t1f.onclick = async () => {
+    const rounds = Number($('#t1rounds').value) || 0;
+    // the engine clamps a missing/zero/negative count to ONE — a finished-looking
+    // null test with n=1, which is no test at all. Refuse it here instead.
+    if (rounds < 1) { $('#t1fireMsg').textContent = 'a null test needs at least one round'; return; }
+    if (!confirm(`Fire ${rounds} null round(s) on ${doc.id}?\n\nEach round replays the whole board on dealt votes and costs a full sweep. ${rounds} rounds is at best a 1-in-${rounds + 1} claim.`)) return;
+    t1f.disabled = true;
+    $('#t1fireMsg').textContent = 'launching…';
+    const out = await tryPost(`api/bracketlab/${encodeURIComponent(doc.id)}/null`, { shifts: rounds });
+    t1f.disabled = false;
+    $('#t1fireMsg').textContent = out ? `${out.shifts} round(s) running — they land on this run's record` : '';
+  };
   if (t1) t1.onclick = async () => {
     $('#t1msg').textContent = 'reading…';
     try {
@@ -874,7 +920,7 @@ async function drawVerify() {
         trade: sel.trade, geometry: sel.geometry, decision: sel.decision,
         windowLayout: (doc.params && doc.params.windowLayout) || undefined,
       });
-      $('#t1out').innerHTML = `<pre>${esc(JSON.stringify(d, null, 1).slice(0, 12000))}</pre>`;
+      $('#t1out').innerHTML = renderNullVerdict(d);
       $('#t1msg').textContent = '';
     } catch (e) { $('#t1msg').textContent = e.message; }
   };
@@ -984,6 +1030,40 @@ async function drawHistory() {
 }
 
 
+
+
+// THE NULL VERDICT, read rather than dumped. Constructing printed the raw JSON,
+// truncated — every reading rule that makes the numbers mean anything lives in
+// the Bracket lab's renderVerdict and was unreachable here (owner sweep,
+// 2026-08-17). Ported from app.js:2108.
+function renderNullVerdict(d) {
+  if (!d) return '<span class="warn">no verdict</span>';
+  const drawsTable = (t) => `<div class="scrollx" style="max-height:14rem;overflow-y:auto"><table>
+    <thead><tr><th>null draw</th><th>value</th></tr></thead><tbody>
+    ${t.draws.map((x) => `<tr><td>${typeof x.shift === 'number' ? x.shift.toFixed(3) : esc(String(x.shift))}${x.setup ? ' · ' + esc(String(x.setup).replace(/\|/g, ' ')) : ''}</td>
+      <td class="${t.real > x.value ? 'pos' : 'neg'}">${money(x.value)}</td></tr>`).join('')}
+    </tbody></table></div>`;
+  const block = (title, t, what) => (t ? `
+    <h3 style="margin-top:.6rem">${esc(title)} — <b class="${t.passes ? 'pos' : 'neg'}">${t.passes ? 'PASS' : 'FAIL'}</b> (beats ${t.beats}/${t.n})</h3>
+    <p class="note">${esc(what)}
+      KEY — <i>real</i>: held-back dollars on genuine data. <i>null draws</i>: the same quantity in worlds with nothing
+      to predict. Beating all ${t.n} is the strongest claim ${t.n} draws allow (p floor ${t.pFloor ? t.pFloor.toFixed(3) : '—'})
+      — a floor, never a measure of strength.</p>
+    <p><b>real ${money(t.real)}</b>${(t.realBestSetup || t.setup) ? ` (${esc(String(t.setup || t.realBestSetup).replace(/\|/g, ' '))})` : ''}
+      vs null draws: best ${money(Math.max(...t.draws.map((x) => x.value)))}, worst ${money(Math.min(...t.draws.map((x) => x.value)))}</p>
+    ${drawsTable(t)}` : '');
+  return `<p class="note">real: ${esc(String(d.realJob || ''))} · null boards: ${esc(String(d.nullJob || ''))}
+      (${d.drawCount} draws, ${esc(String(d.construction || ''))})</p>
+    ${d.paramMismatch ? `<p class="note"><b class="warn">SETTINGS MISMATCH:</b> the two jobs differ on
+      ${d.paramMismatch.fields.map(esc).join(', ')} — ${esc(String(d.paramMismatch.note || ''))}</p>` : ''}
+    ${block('Per-setup test', d.perSetup, 'Is this setup better than ITS OWN noise? Same setup, same machinery, dealt votes.')}
+    ${block('Selection-aware test', d.selection, 'Is topping the board better than topping a NOISE board? Each null draw contributes its own best-of-board — this prices in that the winner was picked after looking.')}
+    ${d.sanity ? `<p class="note">sanity: ${d.sanity.scrambleRows} null-draw setups, ${(100 * d.sanity.negativeShare).toFixed(1)}% losing money —
+      ${d.sanity.ok ? '<b class="pos">PASS — noise mostly loses, as fees demand.</b>'
+        : '<b class="neg">FAIL — NOISE IS PROFITING: the simulation is broken; do not read the tests above.</b>'}</p>` : ''}
+    <p class="note"><b>What a pass buys:</b> this window only. It stops obvious chance results being frozen; the
+      forward paper test after freezing is the real judge.</p>`;
+}
 
 // PLATEAU VIEW — one setting moved at a time, everything else pinned to the
 // chosen cell. The menu grid button promised this in its own tooltip and the
@@ -1214,7 +1294,17 @@ async function drawTune() {
   const pct = (v) => (v == null ? '—' : (v * 100).toFixed(2) + '%');
   const usd = (v) => money(v);
   const target = sel ? `the selected row (<b>${esc(sel.trade)}</b> ${esc(sel.geometry)} q${sel.quorum} ${sel.tHours}h of ${esc(doc.id)})` : 'F1 (the registry pilot)';
-  const scanBody = sel ? { runId: doc.id, target: 'best' } : { bookId: 'F1' };
+  // WHAT THE SCANS ARE AIMED AT. The tab could only ever target F1 or the
+  // selected board row; the Bracket lab reads the saved forward books and lets
+  // any of them be picked ("I thought I would be able to select from the saved
+  // sweeps" — owner). Books already carrying a protective stop are not listed:
+  // a breakout cell's opposite rail IS its stop, so tuning one is meaningless.
+  const cand = await api('api/pilot/stop-candidates').catch(() => ({ candidates: [] }));
+  const books = (cand && cand.candidates) || [];
+  const savedTarget = localStorage.getItem('cx-scan-target') || '';
+  const scanBody = savedTarget && savedTarget !== 'sel'
+    ? { bookId: savedTarget }
+    : (sel ? { runId: doc.id, target: 'best' } : { bookId: 'F1' });
   $('#view').innerHTML = `
   ${busy ? `<div class="panel warn">A heavy scan is running (${esc(String(busy))}) — one at a time; both launchers are disabled until it lands (scans run minutes and cannot be aborted mid-flight).</div>` : ''}
   <div class="panel">
@@ -1222,6 +1312,16 @@ async function drawTune() {
     <p class="note">Replays the frozen committee over ALL history and finds the tightest fixed stop that would not have
       clipped a single winner, plus the sacrifice curve (give up top winners → tighter stop → NET $). Scanning applies
       nothing. Target: ${target}.</p>
+    <div class="row" style="margin-bottom:.4rem"><label class="f" title="what the scans below are aimed at. Books already carrying a protective stop are not listed — a breakout cell's opposite rail IS its stop, so tuning one is meaningless.">scan target<select id="tuneTarget">
+      <option value="sel" ${savedTarget === 'sel' || !savedTarget ? 'selected' : ''}>${sel ? 'the row selected on Boards' : 'F1 (no board row selected)'}</option>
+      ${books.map((b) => `<option value="${esc(b.id)}" ${savedTarget === b.id ? 'selected' : ''}>${esc(b.id)} — ${esc(b.combo && b.combo.trade || '')} ${b.cell && b.cell.tHours ? b.cell.tHours + 'h' : ''}</option>`).join('')}
+    </select></label>
+    <span class="note">${books.length} saved book(s) without a protective stop</span></div>
+    <div class="row" style="margin-bottom:.4rem">
+      <label class="f" title="apply a stop you chose yourself rather than one off the curve. The box is in percent; the engine stores a fraction.">or apply a custom stop<input id="stopCustomPct" type="number" step="0.5" min="0.1" max="99" placeholder="e.g. 25" style="width:5.5rem"> %</label>
+      <button id="stopCustomApply">apply custom</button>
+      <button id="stopClear" title="run with NO fixed stop. The position then rests on its scheduled exit alone.">No stop (clear)</button>
+    </div>
     <div class="row"><button id="stopRun" class="pri" ${busy ? 'disabled' : ''}>Tune protective stop (full history)</button>
       <span class="note">currently applied to F1: ${applied.stopPct != null ? `<span class="pos">${pct(applied.stopPct)}</span>` : 'none'}</span></div>
     <div id="stopOut">${stop.status === 'done' ? renderStopResult(stop) : stop.status === 'running' ? '<p class="note">running…</p>' : stop.status === 'error' ? `<p class="warn">last scan failed: ${esc(stop.error || '')}</p>` : ''}</div>
@@ -1271,6 +1371,24 @@ async function drawTune() {
       drawdown ${usd(c.maxDrawdownUsd)}; peak concurrent ${usd(c.peakConcurrentUsd)} (flat ${usd(c.peakConcurrentFlatUsd)}).
       <b>Verdict:</b> ${esc(c.verdict || '')}</p>`;
   }
+  const tt = $('#tuneTarget');
+  if (tt) tt.onchange = () => { localStorage.setItem('cx-scan-target', tt.value); drawTune(); };
+  const applyStop = async (stopPct) => {
+    const out = await tryPost('api/pilot/stop-apply', { stopPct });
+    if (out) drawTune();
+  };
+  const cust = $('#stopCustomApply');
+  if (cust) cust.onclick = () => {
+    const v = Number($('#stopCustomPct').value);
+    if (!Number.isFinite(v) || v <= 0 || v >= 100) { alert('a stop is a percent between 0 and 100'); return; }
+    // the box is in PERCENT, the engine wants a FRACTION
+    applyStop(v / 100);
+  };
+  const clr = $('#stopClear');
+  if (clr) clr.onclick = () => {
+    if (!confirm('Clear the protective stop?\n\nThe engine will run with NO fixed stop until one is applied again.')) return;
+    applyStop(0);
+  };
   $('#stopRun').onclick = async () => {
     if (!confirm('Run the full-history stop scan? (minutes; one heavy scan at a time)')) return;
     const out = await tryPost('api/pilot/stopsweep', scanBody); if (out) setTimeout(drawTune, 1500);
