@@ -153,7 +153,7 @@ async function drawSweep() {
   <div class="panel">
     <h3 style="margin-top:0">Board sweep — wide to FIND (never a result)</h3>
     <div class="row" style="align-items:flex-end">
-      <label class="f">universe (blank = all cached)<input id="swUni" placeholder="LTCUSDT,XRPUSDT,BCHUSDT" style="width:20rem"></label>
+      <label class="f">universe (blank = all 17 default pairs)<input id="swUni" placeholder="LTCUSDT,XRPUSDT,BCHUSDT" style="width:20rem"></label>
       <label class="c"><input type="checkbox" id="swSingles" checked> singles</label>
       <label class="c"><input type="checkbox" id="swDoubles" checked> doubles</label>
       <label class="c"><input type="checkbox" id="swTriples"> triples</label>
@@ -162,7 +162,7 @@ async function drawSweep() {
       <label class="f">end<input id="swEnd" type="month"></label>
     </div>
     <div class="row" style="margin-top:.5rem;align-items:flex-end">
-      <label class="f">chunk shape<select id="swGeom"><option>daily-4d</option><option>daily-3d</option><option>daily-2d</option><option>daily-1d</option></select></label>
+      <label class="f">chunk shape<select id="swGeom"><option value="weekly-8d">Weekly 8-day</option><option value="daily-1d">Daily 1-day</option><option value="daily-2d">Daily 2-day</option><option value="daily-3d">Daily 3-day</option><option value="daily-4d" selected>Daily 4-day</option></select></label>
       <label class="c"><input type="checkbox" id="swPermGeom" checked> permute</label>
       <label class="f">decision<select id="swDec"><option>argmax</option><option>directional</option></select></label>
       <label class="c"><input type="checkbox" id="swPermDec" checked> permute</label>
@@ -172,9 +172,9 @@ async function drawSweep() {
       <label class="c"><input type="checkbox" id="swPermWk"> permute</label>
     </div>
     <div class="row" style="margin-top:.5rem;align-items:flex-end">
-      <label class="f">window layout<select id="swLayout"><option value="70/15/15">70/15/15</option><option value="61/13/13/13">61/13/13/13 (sealed exam)</option><option value="legacy">legacy 80/20 (never evidence)</option></select></label>
-      <label class="f">promote top K<input id="swK" type="number" value="25" style="width:4.5rem"></label>
-      <label class="f">null boards<input id="swNulls" type="number" value="0" style="width:4.5rem" title="companion boards with votes dealt onto random days; N boards = at best a 1-in-(N+1) claim; each costs a full sweep"></label>
+      <label class="f">window layout<select id="swLayout"><option value="split70" selected>70/15/15</option><option value="reserve61">61/13/13/13 (sealed exam)</option><option value="legacy80">legacy 80/20 (never evidence)</option></select></label>
+      <label class="f">promote top K<input id="swK" type="number" value="25" min="1" max="50" style="width:4.5rem" title="the backend caps this at 50 (detailK); a larger number is silently reduced, so the box refuses it here instead"></label>
+      <label class="f">null boards<input id="swNulls" type="number" value="0" min="0" max="24" style="width:4.5rem" title="companion boards with votes dealt onto random days; N boards = at best a 1-in-(N+1) claim; each costs a full sweep. The backend caps this at 24, so the box refuses more here rather than quietly running fewer"></label>
       <label class="f">min trades<input id="swMinTr" type="number" value="10" style="width:4.5rem"></label>
       <label class="c"><input type="checkbox" id="swTrail"> trailing plane</label>
     </div>
@@ -205,7 +205,12 @@ async function drawSweep() {
     const body = {
       universe: uni ? uni.split(',').map((x) => x.trim().toUpperCase()).filter(Boolean) : undefined,
       sizes: { singles: $('#swSingles').checked, doubles: $('#swDoubles').checked, triples: $('#swTriples').checked },
-      startMonth: $('#swStart').value, endMonth: $('#swEnd').value, allLoaded: $('#swAll').checked,
+      // OMIT a blank month rather than sending "": the server rejects an empty
+      // string with HTTP 400 "startMonth must be YYYY-MM", while an absent key
+      // falls through to startBracketLab's own defaults. The month boxes ship
+      // blank, so untick "all loaded data" and the old code could not launch.
+      startMonth: $('#swStart').value || undefined, endMonth: $('#swEnd').value || undefined,
+      allLoaded: $('#swAll').checked,
       permute: { geometry: $('#swPermGeom').checked, decision: $('#swPermDec').checked,
         band: $('#swPermBand').checked, weekdays: $('#swPermWk').checked },
       set: { geometry: $('#swGeom').value, decision: $('#swDec').value,
