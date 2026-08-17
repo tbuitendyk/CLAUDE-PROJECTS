@@ -1,0 +1,60 @@
+Constructing: the replication ranking now leads on the measured null — QC-142 enforced
+
+tl;dr — the last item is built. The ranked list no longer sorts on a binomial p
+across assets; it leads on how much of its OWN dealt-vote null each configuration
+beat, then plateau width, then the across-asset share as context, then money.
+QC-142 moves from MANUAL to AUTOMATED with a check that reads the comparator's
+own inputs. Deployed 22:20 UTC, verified, 462 tests pass. "All" now means all.
+
+WHAT WAS WRONG
+
+QC-7 has said since long before tonight: never quote a binomial p as evidence,
+units are correlated, the measured null is the only yardstick. I made that
+p-value the PRIMARY sort key and wrote it into the key text as the reading.
+
+An ordering is a claim about which row is better. Putting a banned statistic in
+a sort key therefore makes exactly the claim the ban exists to prevent — and it
+does it silently, because nobody reads a sort order as an assertion. That is why
+it slipped past me and past the suite: no check looked at what a sort key was
+made of.
+
+THE NEW ORDER
+
+  1. the measured null — this configuration's held-back money against its OWN
+     dealt-vote copies, asset by asset. The only yardstick the register admits.
+  2. plateau width on the traded asset, joined from the board's region column.
+     Guards against a knife-edge fit.
+  3. the across-asset share, labelled CONTEXT NOT EVIDENCE. Crypto assets move
+     together, so these are nowhere near independent looks and no p-value is
+     quoted from them.
+  4. money, last, because leading on money rebuilds the shopped board.
+
+Every column carries its reading rule as a tooltip. Those four are misread in
+opposite directions if you swap them, which is the whole reason the rules travel
+with the numbers.
+
+The binomial helper is DELETED rather than left unused — dead code that produces
+a banned statistic is an invitation to quote it — and the replication tick's own
+tooltip no longer promises "a clean binomial across assets".
+
+ONE DISTINCTION I MADE EXPLICIT IN THE TEST
+
+The 1-in-(N+1) RESOLUTION FLOOR of N measured null draws is NOT banned and is
+protected by the same test, with the reason written beside it. It is the
+register's own sanctioned framing — the strongest claim a given number of draws
+can support, stated as a floor — and it is a different quantity from a binomial
+across correlated assets. Without that note a later reader would "tidy" it away
+while cleaning up the ban.
+
+QC-142 IS NOW AUTOMATED
+
+The check reads the ranking's comparator, refuses a binomial, a p-value or a p
+floor inside it, and asserts the admitted statistics appear in the required
+order. Watched failing: restoring the p-value as the first key fails it — which
+is precisely the defect you caught by asking why other assets should say
+anything about this one.
+
+That was the right question. The answer was that they should not, and the
+ranking now says so on its face.
+
+c.
