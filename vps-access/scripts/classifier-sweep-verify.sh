@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+# classifier-sweep-verify.sh -- READ-ONLY: confirm the DEPLOYED Constructing
+# Sweep form carries the backend's value vocabulary. Greps the asset the app
+# actually serves on 127.0.0.1:8093, not the Basic-Auth'd public URL.
+set -uo pipefail
+JS=$(curl -sS -m 15 http://127.0.0.1:8093/constructing.js)
+echo "bytes: ${#JS}"
+echo "== must be PRESENT =="
+for p in 'value="split70"' 'value="reserve61"' 'value="legacy80"' 'value="weekly-8d"' \
+         'max="50"' 'max="24"' 'all 17 default pairs' "value || undefined"; do
+  c=$(printf '%s' "$JS" | grep -c -- "$p")
+  printf '  %-28s %s\n' "$p" "$([ "$c" -gt 0 ] && echo "OK ($c)" || echo 'MISSING')"
+done
+echo "== must be GONE =="
+for p in 'value="70/15/15"' 'value="61/13/13/13"' 'value="legacy"><' 'blank = all cached'; do
+  c=$(printf '%s' "$JS" | grep -c -- "$p")
+  printf '  %-28s %s\n' "$p" "$([ "$c" -eq 0 ] && echo 'OK (gone)' || echo "STILL PRESENT ($c)")"
+done
+echo "(read-only)"
