@@ -28,19 +28,34 @@
 //
 // The POPULATED and CLICKED passes need a finished bracket-lab run on the box,
 // or they would check nothing but empty states and report a clean bill. If
-// data/batches has none, this refuses to run rather than pass vacuously. Make
-// one (a couple of minutes, cached candles only, three pairs so the result
-// clears the live vocabulary's three-asset rule):
+// data/batches has none, this refuses to run rather than pass vacuously.
+//
+// THE RUN MUST BE LIVE-EXECUTABLE, not merely finished (corrected 2026-08-18).
+// The Trading VALUES and CONTROLS passes mint a throwaway config from it, and
+// activation refuses anything the live executor cannot actually trade. The
+// recipe here used to declare gate:active + entry:breakout on BTC/ETH/ZEC —
+// every one of which is lab-only or unserved:
+//   * the executor does MARKET entry only; breakout is lab-only
+//   * the executor does the DIRECTIONAL gate only; active is lab-only
+//   * dMult belongs to breakout rails; market entry refuses it outright
+//   * execution target mx-1 serves LTCUSDT, so a BTC/ETH/ZEC trade pair is
+//     refused on the symbol as well
+// So following these instructions produced a run that could not mint, both
+// passes SKIPPED, and — before skips became failures — the harness still
+// printed a clean bill. The recipe below is live-executable end to end:
 //
 //   PORT=8199 node server.js &
 //   curl -X POST localhost:8199/api/bracketlab -H 'Content-Type: application/json' -d '{
-//     "universe":["BTCUSDT","ETHUSDT","ZECUSDT"], "sizes":{"triples":true},
+//     "universe":["LTCUSDT","BTCUSDT","ETHUSDT"], "sizes":{"triples":true},
 //     "startMonth":"2024-01","endMonth":"2026-06",
-//     "dMults":[0.5,1.0], "tHours":[41,89],
-//     "gates":["active","directional"], "entries":["breakout","market"],
-//     "declared":{"dMult":1.0,"tHours":89,"gate":"active","entry":"breakout","quorum":1},
+//     "dMults":[1.0], "tHours":[41,89],
+//     "gates":["directional"], "entries":["market"],
+//     "declared":{"tHours":89,"gate":"directional","entry":"market","quorum":1},
 //     "minTrades":1, "holdout":true, "edgeScreen":true, "labelShiftReps":2,
-//     "windowLayout":"reserve61", "label":"uitriple" }'
+//     "windowLayout":"reserve61", "label":"uilive" }'
+//
+// (LTCUSDT leads the universe so the trade pair is one mx-1 serves; declared
+// carries no dMult because market entry has no rails to scale.)
 
 const { spawn } = require('child_process');
 const path = require('path');
