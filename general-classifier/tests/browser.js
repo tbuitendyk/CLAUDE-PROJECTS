@@ -650,74 +650,131 @@ async function main() {
   // pass consumed the state it depended on, and a check that quietly stops
   // checking is the worst kind. VALUES reads an existing paper channel in
   // whatever state it is in; CONTROLS mints its own, exercises it, and nukes it.
+  // FIXTURES THE HARNESS MINTS FOR ITSELF (rewritten 2026-08-18).
+  //
+  // These three passes are the ONLY coverage the Trading tab's money numbers and
+  // its channel controls have. On 2026-08-18 all three SKIPPED on a clean box and
+  // the harness still printed "all 45 tab views clean" — Trading value-fidelity
+  // coverage was zero and the summary line said the opposite. Two causes:
+  //
+  //   1. The candidate list was built from runs that ALREADY had a greenlight,
+  //      which is circular: with no greenlights on the box, nothing was tried —
+  //      including the finished fixture run sitting right there with a promoted
+  //      row. Candidates now come from FINISHED RUNS, fixture run first.
+  //   2. VALUES required a paper channel to pre-exist. It now mints its own.
+  //
+  // Each pass gets its OWN throwaway, because the controls pass deactivates what
+  // it touches and must not consume what another pass depends on (QC-152).
+  const restore = [];
+  const minted = [];
+
+  // Candidate runs: the fixture run first (it is the one we know has data), then
+  // every other finished run, then any run a greenlight points at. Asking the
+  // server whether a row can be greenlighted is one call; INFERRING it is what
+  // made the earlier version skip silently.
+  async function candidateRuns() {
+    const ids = [runId];
+    try {
+      const b = await getJson('/api/batches');
+      const list = Array.isArray(b) ? b : (b.batches || []);
+      for (const it of list) { const id = it.id || it; if (id && !ids.includes(id)) ids.push(id); }
+    } catch (_) { /* fall through to greenlight-derived runs */ }
+    try {
+      const gls = await getJson('/api/live/greenlights');
+      for (const g of gls.greenlights || []) {
+        const id = g.sourceRun && g.sourceRun.id;
+        if (id && !ids.includes(id)) ids.push(id);
+      }
+    } catch (_) { /* the list above is enough */ }
+    return ids;
+  }
+
+  // Mint ONE throwaway config. Returns its id, or null when no run on this box
+  // can produce one. `activatePaper` also opens its paper book so the money
+  // screen has something real to read.
+  //
+  // It tries EVERY promoted row on every candidate run, not just the first. The
+  // live-executability gate refuses a cell for several independent reasons (a
+  // lab-only entry or gate, a pair no execution target serves), so the first row
+  // failing says nothing about the second. The server's refusal is KEPT and
+  // reported when nothing works — a mint that fails silently is what let the
+  // Trading passes disappear, and "could not mint" without the reason is barely
+  // better than the silence it replaced.
+  let lastRefusal = null;
+  async function mintThrowaway(why, activatePaper) {
+    for (const rid of await candidateRuns()) {
+      const doc = await getJson(`/api/batch/${encodeURIComponent(rid)}`).catch(() => null);
+      if (!doc || !doc.leaders) continue;
+      const rows = doc.leaders.filter((l) => l.stage === 'promoted' && l.nullDealSeed == null);
+      for (const row of rows) {
+        // Clicking board rows CHANGES a run's stored selection, so pin the row we
+        // want and put the original back afterwards. A harness that leaves the box
+        // in a different state behaves differently on its second run.
+        const wasSelected = doc.selection && doc.selection.key;
+        const sel = await postJson(`/api/bracketlab/${encodeURIComponent(rid)}/select`,
+          { key: row.key, stage: 'promoted' }).catch(() => null);
+        if (!sel || sel.code !== 200) continue;
+        if (wasSelected && wasSelected !== row.key
+            && !restore.some((r) => r.runId === rid)) restore.push({ runId: rid, key: wasSelected });
+        // Try 'best' then 'declared': every promoted row has a best cell, while a
+        // declared cell exists only when the run declared one — but the declared
+        // cell is sometimes the executable one when the best cell is lab-only.
+        for (const target of ['best', 'declared']) {
+          const mint = await postJson('/api/live/greenlight', { runId: rid, target, why })
+            .catch(() => null);
+          if (!mint || mint.code !== 200 || !mint.body.greenlight) continue;
+          const id = mint.body.greenlight.id;
+          if (!activatePaper) { minted.push({ id, channel: null }); return id; }
+          const act = await postJson(`/api/live/configs/${id}/activate`, { channel: 'paper', clipUsd: 10 })
+            .catch(() => null);
+          if (act && act.code === 200) { minted.push({ id, channel: 'paper' }); return id; }
+          if (act && act.body && act.body.error) lastRefusal = `${row.key} (${target}): ${act.body.error}`;
+          await postJson(`/api/live/configs/${id}/nuke`, {}).catch(() => {});  // not executable; next cell
+        }
+      }
+    }
+    return null;
+  }
+
+  // VALUES reads a paper book. Prefer one that already exists (a real book with
+  // real trades is a stronger read than a fresh empty one); mint one only when
+  // the box has none, so this pass can never silently vanish again.
   let paperSetup = null;
-  let controlsConfig = null;
+  let valuesConfig = null;
   try {
     const cfgs = await getJson('/api/live/configs');
     const withPaper = (cfgs.configs || []).filter((x) => x.channels && x.channels.paper);
     if (withPaper.length) paperSetup = withPaper[0].channels.paper.setupId;
   } catch (_) { /* reported below */ }
-
-  // Mint the throwaway by TRYING, not by inferring. Whether a run is
-  // live-executable is the server's judgement — asking it is one call, and
-  // guessing was wrong (the first version inferred it and skipped the pass
-  // silently, which is the failure mode this whole harness exists to stop).
-  //
-  // The CLICKED pass clicks board rows, which CHANGES the run's stored selection
-  // — so the mint must pin the row it wants first and put the original back
-  // after. A harness that leaves the box in a different state than it found it
-  // is one that behaves differently on its second run, which is how the earlier
-  // version came to skip two passes without saying why.
-  const restore = [];
-  try {
-    const gls = await getJson('/api/live/greenlights');
-    const runs = [...new Set((gls.greenlights || [])
-      .filter((g) => !g.revoked && g.sourceRun && g.sourceRun.id)
-      .map((g) => g.sourceRun.id))];
-    for (const runId of runs) {
-      const doc = await getJson(`/api/batch/${encodeURIComponent(runId)}`).catch(() => null);
-      if (!doc) continue;
-      const row = (doc.leaders || []).find((l) => l.stage === 'promoted' && l.nullDealSeed == null);
-      if (!row) continue;
-      const wasSelected = doc.selection && doc.selection.key;
-      const sel = await postJson(`/api/bracketlab/${encodeURIComponent(runId)}/select`,
-        { key: row.key, stage: 'promoted' }).catch(() => null);
-      if (!sel || sel.code !== 200) continue;
-      if (wasSelected && wasSelected !== row.key) restore.push({ runId, key: wasSelected });
-      // 'best' rather than 'declared': every promoted row can be greenlighted on
-      // its best cell, while a declared cell exists only when the run declared
-      // one. This config exists to be operated and thrown away, not to be read.
-      const mint = await postJson('/api/live/greenlight', {
-        runId, target: 'best', why: 'throwaway config for the runtime control checks',
-      }).catch(() => null);
-      if (!mint || mint.code !== 200 || !mint.body.greenlight) continue;
-      const id = mint.body.greenlight.id;
-      const act = await postJson(`/api/live/configs/${id}/activate`, { channel: 'paper', clipUsd: 10 }).catch(() => null);
-      if (act && act.code === 200) { controlsConfig = id; break; }
-      await postJson(`/api/live/configs/${id}/nuke`, {}).catch(() => {});   // not live-executable; try the next run
+  if (!paperSetup) {
+    valuesConfig = await mintThrowaway('throwaway paper book for the runtime value checks', true);
+    if (valuesConfig) {
+      const cfgs = await getJson('/api/live/configs').catch(() => ({ configs: [] }));
+      const row = (cfgs.configs || []).find((c) => c.id === valuesConfig);
+      paperSetup = row && row.channels && row.channels.paper && row.channels.paper.setupId;
     }
-  } catch (_) { /* reported below */ }
+  }
+
+  const controlsConfig = await mintThrowaway('throwaway config for the runtime control checks', true);
+  // The REAL path gets its own, un-activated: the controls pass deactivates what
+  // it touches and these two must not be able to interfere.
+  const realConfig = await mintThrowaway('throwaway config for the real-channel path check', false);
+
   for (const r of restore) {
     await postJson(`/api/bracketlab/${encodeURIComponent(r.runId)}/select`, { key: r.key, stage: 'promoted' }).catch(() => {});
   }
 
-  // A second throwaway for the REAL path. Separate from the paper one: that pass
-  // deactivates what it touches, and these two must not be able to interfere.
-  let realConfig = null;
-  if (controlsConfig) {
-    const src = (await getJson('/api/live/greenlights').catch(() => ({ greenlights: [] })))
-      .greenlights.find((g) => g.id === controlsConfig);
-    if (src && src.sourceRun && src.sourceRun.id) {
-      const mint = await postJson('/api/live/greenlight', {
-        runId: src.sourceRun.id, target: 'best', why: 'throwaway config for the real-channel path check',
-      }).catch(() => null);
-      if (mint && mint.code === 200 && mint.body.greenlight) realConfig = mint.body.greenlight.id;
-    }
-  }
-
-  if (!paperSetup) console.error('NOTE: no paper channel on this box — the Trading VALUES pass is SKIPPED.');
-  if (!controlsConfig) console.error('NOTE: no run on this box mints a live-executable config — the Trading CONTROLS pass is SKIPPED.');
-  if (!realConfig) console.error('NOTE: no throwaway config for the real-channel path — that pass is SKIPPED.');
+  // A SKIPPED PASS IS A FAILURE (QC-152's named gap, closed 2026-08-18).
+  // Previously each of these printed a note and the run still exited 0 with
+  // "all N tab views clean" — a harness that quietly stops checking is worse
+  // than no harness, and this is the exact failure it exists to prevent.
+  // UI_ALLOW_SKIPS=1 waives it deliberately, out loud, for a box that genuinely
+  // cannot mint (no finished run at all).
+  const skipped = [];
+  const why = lastRefusal ? `\n     the server's last refusal: ${lastRefusal}` : '';
+  if (!paperSetup) skipped.push(`Trading VALUES — no paper book, and none could be minted${why}`);
+  if (!controlsConfig) skipped.push(`Trading CONTROLS — no run on this box mints a live-executable config${why}`);
+  if (!realConfig) skipped.push('Trading REAL-GATE — no throwaway config for the real-channel path');
 
   visits.push({
     label: 'VALUES     Constructing / boards',
@@ -774,6 +831,12 @@ async function main() {
   visits.push({ label: 'LIGHT      Trading / paper / configs', url: `${BASE}/trading.html`, storage: { 'lt-branch': 'paper', 'lt-sub': 'configs', 'lt-theme': 'light' } });
 
   let bad = 0;
+  for (const sk of skipped) {
+    if (process.env.UI_ALLOW_SKIPS === '1') { console.error(`WAIVED SKIP  ${sk}`); continue; }
+    bad++;
+    console.error(`FAIL SKIPPED    ${sk}`);
+    console.error('     A pass that does not run is not a pass. Set UI_ALLOW_SKIPS=1 to waive deliberately.');
+  }
   for (const v of visits) {
     const r = await visitWithBrowser(pw, v);
     if (r.faults.length) {
@@ -789,6 +852,19 @@ async function main() {
   // control with no coverage. Nuke must REFUSE while a channel is still active
   // (dropping a config out from under a running book would strand it), and must
   // work once it is deactivated.
+  // The VALUES book, when this harness minted it. Leaving it behind would make
+  // the NEXT run take the "a paper channel already exists" branch and read a
+  // book this harness created — state leaking between runs is how the earlier
+  // version came to behave differently on its second invocation.
+  if (valuesConfig) {
+    await postJson(`/api/live/configs/${valuesConfig}/deactivate`, { channel: 'paper' }).catch(() => {});
+    const gone = await postJson(`/api/live/configs/${valuesConfig}/nuke`, {}).catch(() => null);
+    if (!gone || gone.code !== 200) {
+      bad++;
+      console.error('FAIL CLEANUP    Trading / values paper book');
+      console.error(`     could not remove the minted paper book: ${gone ? JSON.stringify(gone.body) : 'no reply'}`);
+    }
+  }
   if (realConfig) {
     await postJson(`/api/live/configs/${realConfig}/deactivate`, { channel: 'real' }).catch(() => {});
     const gone = await postJson(`/api/live/configs/${realConfig}/nuke`, {}).catch(() => null);

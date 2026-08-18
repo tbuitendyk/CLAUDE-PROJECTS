@@ -7,7 +7,8 @@
   "scripts": {
     "start": "node server.js",
     "test": "node tests/run.js",
-    "test:ui": "node tests/browser.js"
+    "test:ui": "node tests/browser.js",
+    "test:ui:fixture": "node tests/make-ui-fixture.js"
   },
   "engines": {
     "node": ">=18"
