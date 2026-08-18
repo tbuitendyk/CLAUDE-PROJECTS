@@ -1065,10 +1065,19 @@ async function main() {
 
   // Light theme is a whole second palette; a token defined only in the dark
   // block renders as nothing at all, and nobody would see it in a dark run.
-  for (const t of ['sweep', 'boards']) {
+  //
+  // It used to cover three views out of seventeen, chosen by nothing in
+  // particular. A palette hole lives in whichever panel happens to use the
+  // missing token, so sampling a third of the surface is sampling — every view
+  // is now rendered in light as well as dark (2026-08-18).
+  for (const t of CONSTRUCTING_TABS) {
     visits.push({ label: `LIGHT      Constructing / ${t}`, url: `${BASE}/constructing.html`, storage: { 'cx-tab': t, 'cx-run': runId, 'cx-theme': 'light' } });
   }
-  visits.push({ label: 'LIGHT      Trading / paper / configs', url: `${BASE}/trading.html`, storage: { 'lt-branch': 'paper', 'lt-sub': 'configs', 'lt-theme': 'light' } });
+  for (const b of TRADING_BRANCHES) {
+    for (const s of TRADING_SUBS) {
+      visits.push({ label: `LIGHT      Trading / ${b} / ${s}`, url: `${BASE}/trading.html`, storage: { 'lt-branch': b, 'lt-sub': s, 'lt-theme': 'light' } });
+    }
+  }
 
   let bad = 0;
   for (const sk of skipped) {

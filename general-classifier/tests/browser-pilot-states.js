@@ -66,6 +66,32 @@ function journalHalted() {
              reason: 'reconcile mismatch: borrow 0.221886 below journal shorts 0.224000' }) + '\n';
 }
 
+
+// A box EARLY IN ITS LIFE: the journal exists but carries almost nothing. This
+// is a real live shape — a freshly provisioned box, or one whose journal was
+// rotated — and it is the shape that finds unguarded property access, because
+// every optional field is absent at once. The two states above are both
+// "populated"; neither exercises a sparse record.
+function journalSparse() {
+  return line({ event: 'RUN_STATUS', armed: false, halted: false, open: 0, live: true }) + '\n';
+}
+
+
+// THE JOURNAL ARRIVES OVER A WIRE. It is scp'd from the box by a timer, so a
+// truncated transfer or a partial write is not hypothetical — a half-written
+// last line is the ordinary result of catching a sync mid-flight. This project
+// has already been bitten twice by partial reads (the deploy verifier that
+// reported shipped code MISSING, QC-155). A page that throws on a torn journal
+// would black out the live screen at exactly the moment the operator went
+// looking for why the sync was late.
+function journalTorn() {
+  return journalWorking() + '{"ts":1787000000,"utc":"2026-08-18T05:00:00Z","event":"ENTRY_F';
+}
+
+// And the empty file: present, readable, zero bytes. Distinct from "absent",
+// which the code already handles ("the pilot has not reported yet").
+function journalEmpty() { return ''; }
+
 async function getJson(p) {
   const r = await fetch(BASE + p);
   if (!r.ok) throw new Error(`${p} -> HTTP ${r.status}`);
@@ -89,6 +115,12 @@ async function main() {
     for (const state of [
       { name: 'WORKING  armed, 1 open SHORT, incidents, a closed trade', journal: journalWorking(), halted: false },
       { name: 'HALTED   the banner and its Clear-the-halt button', journal: journalHalted(), halted: true },
+      { name: 'SPARSE   a box early in its life — every optional field absent', journal: journalSparse(),
+        halted: false, sparse: true },
+      { name: 'TORN     a journal caught mid-sync, last line half-written', journal: journalTorn(),
+        halted: false, torn: true },
+      { name: 'EMPTY    the journal file exists and is zero bytes', journal: journalEmpty(),
+        halted: false, sparse: true },
     ]) {
       fs.writeFileSync(JOURNAL, state.journal);
       const srv = spawn(process.execPath, ['server.js'],
@@ -106,10 +138,17 @@ async function main() {
           faults.push(`the fixture did not take: /api/pilot reports halted=${pilot.halted}, expected ${state.halted}`);
         }
         if (state.halted && !pilot.haltReason) faults.push('halted, but no haltReason was published — the banner cannot name the cause');
-        if (!state.halted && (pilot.openPositions || []).length !== 1) {
+        if (state.torn && (pilot.openPositions || []).length !== 1) {
+          faults.push('a torn last line lost the COMPLETE records before it: '
+            + `${(pilot.openPositions || []).length} open positions, expected 1. A half-written line `
+            + 'must cost only itself.');
+        }
+        if (!state.halted && !state.sparse && !state.torn && (pilot.openPositions || []).length !== 1) {
           faults.push(`expected 1 open position in the working fixture, got ${(pilot.openPositions || []).length}`);
         }
-        if ((pilot.incidents || []).length < 5) faults.push(`expected a spread of incidents, got ${(pilot.incidents || []).length}`);
+        if (!state.sparse && !state.torn && (pilot.incidents || []).length < 5) {
+          faults.push(`expected a spread of incidents, got ${(pilot.incidents || []).length}`);
+        }
 
         const page = await browser.newPage();
         page.on('console', (m) => { if (m.type() === 'error') faults.push(`console error: ${m.text()}`); });
