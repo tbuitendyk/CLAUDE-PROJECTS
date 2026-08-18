@@ -1,0 +1,75 @@
+Both coverage limits closed — including the halt button no browser had ever drawn
+
+tl;dr I said last message that two gaps remained and named them honestly. Naming
+them is not fixing them, so both are now closed. The one that matters: the
+"Clear the halt" button I shipped this morning had never been RENDERED by any
+test, because no test box is ever halted. It is now, and the button is checked
+every run. 505 unit tests, 51 browser views, 2 pilot states — all green, all
+deployed. Live pilot untouched: armed, one short open, reconcile clean.
+
+THE FIRST GAP — the money check that could not tell right from wrong
+
+I reported that the Dashboard's cross-book check was non-discriminating: with
+only one book on the test box, a total that wrongly mixes both books is the
+same number as the correct one, so the check passed with the fault present.
+
+Closed properly. The Dashboard's money calculation is now a named function
+rather than buried in the drawing code, and a test RUNS it against a setup
+holding a real book and a paper book at once — the one arrangement where right
+and wrong give different answers. No real account can be in that state until
+per-setup keys land, which is exactly why a test builds it. Drop the filter now
+and four checks fail saying "counting positions from both books". The browser
+check had passed on that same fault.
+
+THE SECOND GAP — the browser had never seen your box's data
+
+Rather than copy your live money down into a scratch container to look at, I
+asked the deployed service to describe its SHAPES only — which fields exist, of
+what type, how many rows — with every number replaced by its type. No figure of
+yours was copied anywhere.
+
+That comparison named the gap precisely. Your box has: an armed pilot, one open
+short, thirty incidents, a closed trade. The test box had none of those. And
+one state NEITHER box had ever produced: HALTED, with a reason.
+
+That is the one worth your attention. The halt banner is where the "Clear the
+halt" button lives, and the banner only appears while the box is halted — so no
+browser had ever drawn that button. The path behind it was tested end to end on
+the live box this morning, but the SCREEN it sits on was not. A control that
+exists for an emergency, reachable only during that emergency, is the last one
+you want to discover a fault in at the moment you need it.
+
+Both states are now built as synthetic journals and driven through the real
+page every run. The halted one checks that the banner appears, names the
+recorded cause, offers the button, and that the button actually has a handler —
+plus the reverse, that it is NOT offered when the box is healthy.
+
+TWO MISTAKES OF MINE, CAUGHT BEFORE THEY REACHED YOU
+
+Both were in the new checks, not the app, and both were false alarms on the
+real-money screen — the worst kind, because they teach you to ignore warnings.
+
+  * The outage check read the page's text and matched the banner's own SOURCE
+    CODE, because this page's script sits inside the page. It fired on every
+    healthy run.
+  * Re-aimed at the banner's style class, it then matched the HALT banner,
+    which shares that class — so it reported a broken screen in exactly the
+    state it was written to verify.
+
+Both found only because I re-ran each check against known-good state instead of
+trusting that red-then-green meant it worked. The two banners genuinely did look
+identical to a selector, so both pages now mark the outage banner explicitly.
+
+WHERE THE TWO TABS STAND
+
+  505 unit tests. 51 browser views: every tab empty, populated and clicked
+  through, plus board numbers, setup numbers, Dashboard totals, real/paper
+  separation, channel controls, the real-money refusal, launch, stop, delete.
+  2 pilot states: working, and halted. 66 markers on the deployed page.
+
+  I am not claiming there is nothing left to find — I have found something on
+  every pass today, including in my own checks. What I can say is that every
+  gap I named last message is closed rather than filed, and that each new check
+  was watched failing against the specific fault it names before I counted it.
+
+c.
