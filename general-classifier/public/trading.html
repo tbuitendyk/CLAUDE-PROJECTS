@@ -326,6 +326,34 @@ async function drawSetups(){
 }
 
 // ---- Dashboard (selection-independent, all of this side) ---------------------
+// THE DASHBOARD'S MONEY, LIFTED OUT OF THE RENDER (2026-08-18, QC-162).
+//
+// It was inline, which made it reachable only through a browser — and the
+// browser check for it could not discriminate the fault that matters, because
+// this box holds one book and a wrongly-mixed total is then the SAME NUMBER as
+// the right one. Lifted out, a test can execute it against synthetic data
+// holding BOTH books at once, where mixing produces a visibly different answer.
+// Same reason rankDeclaredConfigs was lifted (QC-148): a statistic that decides
+// what the operator reads must be tested by RUNNING it, never by reading it.
+//
+// The filtering is the whole point. A setup that has legally gone paper -> live
+// holds both books, and st.openPositions is ONE merged array with a per-row
+// paper flag (R9/QC-127). Every total here must count only the side whose money
+// it is showing, or a real-money heading gets paper positions under it.
+//   F1 is the exception and is always real: it predates channels and has no
+//   paper book at all, so its rows are the ones WITHOUT the paper flag.
+function dashTotals(parts, isPaper){
+  let totR=0, totU=0, totOpen=0;
+  const rows=parts.map(({g,ch,st})=>{
+    const rp=st?(g.f1?st.realizedPnl:(isPaper?st.paperRealizedPnl:st.realizedPnl)):null;
+    const up=st?(g.f1?st.unrealizedPnl:(isPaper?st.paperUnrealizedPnl:st.unrealizedPnl)):null;
+    const open=st?(st.openPositions||[]).filter(p=>g.f1?!p.paper:(isPaper?p.paper:!p.paper)).length:((ch&&ch.open)||0);
+    totR+=rp||0; totU+=up||0; totOpen+=open;
+    return {g,ch,rp,up,open};
+  });
+  return {rows, totR, totU, totOpen};
+}
+
 async function drawDash(){
   const {configs}=await fetchConfigs();
   const parts=[];
@@ -337,18 +365,13 @@ async function drawDash(){
   }
   if(!parts.length){ $('#view').innerHTML=`<div class="panel empty">Nothing on the ${branch==='paper'?'paper':'live'} side yet.</div>`; return; }
   const isP=branch==='paper';
-  let totR=0, totU=0, totOpen=0;
-  const cards=parts.map(({g,ch,st})=>{
-    const rp=st?(g.f1?st.realizedPnl:(isP?st.paperRealizedPnl:st.realizedPnl)):null;
-    const up=st?(g.f1?st.unrealizedPnl:(isP?st.paperUnrealizedPnl:st.unrealizedPnl)):null;
-    // same merge, same fix: count only the side this card is showing money for
-    const open=st?(st.openPositions||[]).filter(p=>g.f1?!p.paper:(isP?p.paper:!p.paper)).length:ch.open||0;
-    totR+=rp||0; totU+=up||0; totOpen+=open;
-    return `<div class="tile" style="cursor:pointer" data-id="${g.id}" data-setup="${ch.setupId}">
+  const { rows, totR, totU, totOpen } = dashTotals(parts, isP);
+  const cards=rows.map(({g,ch,rp,up,open})=>
+    `<div class="tile" style="cursor:pointer" data-id="${g.id}" data-setup="${ch.setupId}">
       <div class="k">${esc(g.id)} ${isP?paperBadge:''}</div>
       <div class="v ${cls(rp)}">${money(rp)}</div>
-      <div class="muted" style="font-size:.72rem">unreal ${money(up)} · open ${open} · ${esc(g.status)}</div></div>`;
-  }).join('');
+      <div class="muted" style="font-size:.72rem">unreal ${money(up)} · open ${open} · ${esc(g.status)}</div></div>`
+  ).join('');
   $('#view').innerHTML=`<div class="grid" style="margin-bottom:1rem">
       ${tile(isP?'Paper realized (all books)':'Realized (all live)','realizedAll',money(totR),cls(totR))}
       ${tile(isP?'Paper unrealized':'Unrealized','unrealAll',money(totU),cls(totU))}
@@ -700,6 +723,10 @@ function draw(){ renderNav();
       const seen=[...new Set(fetchFailures)];
       const el=document.createElement('div');
       el.className='banner halted';
+      // Distinct from the HALT banner, which shares this class. Two different
+      // banners that look identical to a selector are two banners nobody can
+      // tell apart in a test or a debugger (found 2026-08-18).
+      el.dataset.role='incomplete';
       el.innerHTML=`<b>THIS SCREEN IS INCOMPLETE.</b> ${seen.length} read(s) failed, so any panel below that looks
         empty may be missing data rather than reporting none. Do NOT read an empty panel here as "nothing is running".
         <div class="muted" style="font-size:.74rem;margin-top:.3rem">${seen.map(x=>`<div>${esc(x)}</div>`).join('')}</div>`;

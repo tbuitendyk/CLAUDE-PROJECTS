@@ -8,7 +8,8 @@
     "start": "node server.js",
     "test": "node tests/run.js",
     "test:ui": "node tests/browser.js",
-    "test:ui:fixture": "node tests/make-ui-fixture.js"
+    "test:ui:fixture": "node tests/make-ui-fixture.js",
+    "test:ui:pilot": "node tests/browser-pilot-states.js"
   },
   "engines": {
     "node": ">=18"

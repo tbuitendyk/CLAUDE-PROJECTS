@@ -1922,6 +1922,9 @@ function draw() {
     const seen = [...new Set(fetchFailures)];
     const el = document.createElement('div');
     el.className = 'panel';
+    // Same marker its Trading-tab twin carries, so the outage banner can be
+    // identified by what it IS rather than by matching its wording (2026-08-18).
+    el.dataset.role = 'incomplete';
     el.style.borderColor = 'var(--neg)';
     el.innerHTML = `<b class="neg">THIS SCREEN IS INCOMPLETE.</b> ${seen.length} read(s) failed, so any panel
       below that looks empty may be missing data rather than reporting none. Reload once the service is back;

@@ -145,8 +145,18 @@ module.exports.everyConsumerOfTheMergedListFiltersItToOneBook = function () {
     'the setup detail page no longer filters the merged position list to this side\'s book');
   assert.ok(!/st\.openPositions\.length/.test(LT),
     'something reads the MERGED length again — it must read the filtered list');
-  assert.ok(flat.includes('filter(p=>g.f1?!p.paper:(isP?p.paper:!p.paper))'),
+  // The Dashboard's filter moved into dashTotals when that was lifted out of the
+  // render (QC-162), so it reads isPaper rather than isP. The SOURCE check below
+  // only guards against the money being inlined back into drawDash, where no test
+  // can execute it; the real guard is now tests/test-dashtotals.js, which RUNS
+  // this function against a setup holding both books at once and asserts neither
+  // side ever reports the other's money. That is strictly stronger than a grep —
+  // the grep was green the whole time the browser check could not discriminate.
+  assert.ok(flat.includes('filter(p=>g.f1?!p.paper:(isPaper?p.paper:!p.paper))'),
     'the Dashboard card counts both books again');
+  assert.ok(/function dashTotals\(/.test(LT),
+    'dashTotals was inlined back into the render, which puts the Dashboard money beyond '
+    + 'the reach of test-dashtotals.js — the only test that can tell the two books apart');
   assert.ok(/c === 'paper' \? !!p\.paper : !p\.paper/.test(RT),
     'the channel summary counts both books again — a paper channel would report the real channel\'s open positions');
 };

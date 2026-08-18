@@ -408,7 +408,8 @@ async function verifyDashboardTotals(page, add, isPaper) {
   if (Math.abs(bothR - wantR) < 1e-9 && bothOpen === wantOpen) {
     console.error('NOTE (coverage limit)  Dashboard cross-book assertions are NON-DISCRIMINATING on '
       + 'this box: only one book exists, so a both-books total equals the right one. '
-      + 'Book separation here is covered by the ISOLATION pass, not by this one.');
+      + 'Book separation is covered by the ISOLATION pass below and, discriminatingly, by '
+      + 'tests/test-dashtotals.js, which runs dashTotals against a setup holding BOTH books.');
   }
 }
 
