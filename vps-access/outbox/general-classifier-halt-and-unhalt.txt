@@ -1,0 +1,90 @@
+tl;dr The overnight halt is fixed at its cause, you now have a working "Clear
+the halt" button on the Trading tab (tested against a real halt on the live
+box, not just in theory), the FEE/LEG: MODEL figure now matches your $10 clips
+instead of over-reporting 10x, and the decision history shows 12 days at once.
+Live pilot is armed, unhalted, one short open, reconcile clean.
+
+WHAT HALTED, AND WHY IT WAS NOT A FAULT IN YOUR ACCOUNT
+
+At 03:20 the box stopped itself with:
+
+  reconcile mismatch: borrow 0.221886 below journal shorts 0.224000
+
+The reconcile check compares what the exchange says you BORROWED against what
+the journal says you SOLD SHORT. Those match only when the borrow financed the
+whole sale. Your account was holding 0.00211675 LTC of leftover dust — a
+residue too small to sell, because Binance refuses orders under $5. When the
+entry sold 0.224, it spent that dust first and borrowed only the rest:
+
+  0.224 − 0.00211675 = 0.22188325   ...which is the 0.221886 it complained about.
+
+So the money was correct to the eighth decimal. What was wrong was the check.
+The LONG side of that same comparison has tolerated exactly this dust since an
+earlier review; the SHORT side never got the same tolerance and was still
+comparing against a flat 0.001. The halt was arithmetically unavoidable and it
+fired in the safe direction — it stopped NEW entries and left your open short
+and its scheduled exit completely alone.
+
+Fixed: the short side now gets the same dust-sized tolerance as the long side,
+derived from the same quantity rather than a second invented constant. Verified
+on the live box, not just in tests: 03:40 said RECONCILE_MISMATCH and 03:50 said
+RECONCILE_OK on identical numbers.
+
+CLEARING A HALT FROM THE SCREEN
+
+You asked for a way to get out of a halt without needing me. There is now a
+"Clear the halt" button in the halt banner on the Trading tab. It states the
+recorded reason before it does anything, and it does NOT start trading — the
+master switch still governs entries, and if the cause is unfixed the next check
+halts again, which is the check working.
+
+I tested it the only way that means anything: set a real halt on the live box
+and cleared it through the actual button. It cleared in about two seconds. I
+also confirmed that pressing it twice cannot clear a SECOND, later halt — a
+spent request is refused.
+
+Two things I got wrong in the first version, found by checking my own work:
+
+  1. The button could not have worked at all. The helper script that carries
+     the request to the box was never added to the installer, so the request
+     was written and nothing ever picked it up. Worse, it failed SILENTLY: you
+     would have pressed it, seen nothing happen, and had nothing to go on. It
+     now installs, and the carry prints a loud diagnostic if that file is ever
+     missing again.
+  2. The request carried a signature that nothing checked — a path that LOOKS
+     authenticated and is not. Clearing a halt removes a safety brake, so it
+     now gets the same treatment as the START switch: signed, time-limited,
+     and impossible to replay. The STOP switch stays deliberately unsigned,
+     because an unsigned STOP must always still stop.
+
+FEE/LEG: MODEL — you were right
+
+The modelled fee was the $100-clip figure while the pilot trades $10 clips. A
+per-leg fee in dollars means nothing without the clip it is charged on, so the
+screen was over-stating modelled cost by 10x next to live numbers. It is now
+derived as a RATE from the one shared constant and re-applied to the live clip
+size, so the two cannot drift apart. The clip it assumes is named on screen.
+
+ALSO IN THIS DEPLOY
+
+  * Daily decision history: taller, 12 days visible at once (you asked for 10).
+  * A screen that cannot reach its data now says "THIS SCREEN IS INCOMPLETE"
+    and names what failed. Before this, an outage rendered as the EMPTY state —
+    "none — clean", zero open positions — which is a reassuring claim about a
+    real-money engine that an outage was manufacturing silently.
+  * The campaign dropdown: if you still see one entry, it is a cached copy of
+    the old script. A hard refresh (Ctrl-Shift-R) fixes it — I confirmed all
+    three campaigns render on the deployed page.
+
+TESTING
+
+502 classifier tests and 121 executor tests pass. The unhalt chain has a new
+test that was watched failing with its signature check removed (an unsigned
+request and a shell-injection payload both got through), then restored to
+green. Six new QC register entries, 153-158.
+
+Nothing here touched the live trades. The open short, its exit schedule and the
+master switch were untouched throughout; the only halt set was my labelled test
+halt, cleared within seconds.
+
+c.
