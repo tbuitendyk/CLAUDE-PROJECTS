@@ -292,3 +292,36 @@ function theFeeTooltipQuotesTheConstantItIsExplaining() {
 
 module.exports.theFeeTooltipQuotesTheConstantItIsExplaining
   = theFeeTooltipQuotesTheConstantItIsExplaining;
+
+// The custom-stop box must not offer a value the engine's floor refuses.
+//
+// The server has enforced MIN_STOP_PCT = 0.005 since the 2026-08-11 review and
+// returns a clear 400, so nothing ever silently succeeded — but the input
+// advertised min="0.1" (percent), so the spinner walked the operator down to a
+// value that could only ever be rejected, and the refusal arrived only after a
+// round trip. QC-145's rule: where the page can answer, the page answers.
+//
+// This ties the three statements of the floor together — the input's min, the
+// page's own refusal, and the server constant — so they cannot drift apart. The
+// input and the refusal are in PERCENT; the server constant is a FRACTION.
+function theCustomStopBoxOffersNothingTheEngineFloorRefuses() {
+  const fs2 = require('fs');
+  const path2 = require('path');
+  const SRV = fs2.readFileSync(path2.join(ROOT, 'server.js'), 'utf8');
+  const m = SRV.match(/const MIN_STOP_PCT = ([\d.]+)/);
+  assert(m, 'the server no longer declares MIN_STOP_PCT — the floor has no single source');
+  const floorPct = Number(m[1]) * 100;
+
+  const inp = CX.match(/id="stopCustomPct"[^>]*min="([\d.]+)"/);
+  assert(inp, 'the custom-stop input lost its min — the box would offer any value at all');
+  assert(Number(inp[1]) === floorPct,
+    `the custom-stop box offers down to ${inp[1]}% while the engine floor is ${floorPct}% — `
+    + 'it advertises a value the backend can only refuse');
+
+  assert(new RegExp(`v < ${floorPct}`).test(CX),
+    `the page does not refuse below ${floorPct}% itself, so the operator learns the floor only `
+    + 'from a failed round trip');
+}
+
+module.exports.theCustomStopBoxOffersNothingTheEngineFloorRefuses
+  = theCustomStopBoxOffersNothingTheEngineFloorRefuses;

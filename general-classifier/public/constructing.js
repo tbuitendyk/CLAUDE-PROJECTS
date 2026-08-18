@@ -1728,7 +1728,7 @@ async function drawTune() {
     </select></label>
     <span class="note">${books.length} saved book(s) without a protective stop</span></div>
     <div class="row" style="margin-bottom:.4rem">
-      <label class="f" title="apply a stop you chose yourself rather than one off the curve. The box is in percent; the engine stores a fraction.">or apply a custom stop<input id="stopCustomPct" type="number" step="0.5" min="0.1" max="99" placeholder="e.g. 25" style="width:5.5rem"> %</label>
+      <label class="f" title="apply a stop you chose yourself rather than one off the curve. The box is in percent; the engine stores a fraction. The floor is 0.5% — twice the 0.25% round-trip fee, below which a triggered stop is a guaranteed net loss.">or apply a custom stop<input id="stopCustomPct" type="number" step="0.5" min="0.5" max="99" placeholder="e.g. 25" style="width:5.5rem"> %</label>
       <button id="stopCustomApply">apply custom</button>
       <button id="stopClear" title="run with NO fixed stop. The position then rests on its scheduled exit alone.">No stop (clear)</button>
     </div>
@@ -1797,6 +1797,19 @@ async function drawTune() {
   if (cust) cust.onclick = () => {
     const v = Number($('#stopCustomPct').value);
     if (!Number.isFinite(v) || v <= 0 || v >= 100) { alert('a stop is a percent between 0 and 100'); return; }
+    // The 0.5% FLOOR, stated here as well as on the server (2026-08-18). The
+    // endpoint has always refused below it with a clear 400, so nothing silently
+    // succeeded — but the box advertised min="0.1", offering a value the backend
+    // rejects, and the refusal only arrived after a round trip. Same rule as the
+    // run-id pickers (QC-145): where the answer is knowable on the page, refuse
+    // on the page, in the same words the server uses. Kept in step with
+    // server.js MIN_STOP_PCT by tests/test-uicontracts.js.
+    if (v < 0.5) {
+      alert(`A ${v}% stop is below the 0.5% floor.\n\nThat is twice the 0.25% round-trip fee — tighter than `
+        + 'that and a triggered stop is a guaranteed net loss, stopping out on hourly noise rather than on a '
+        + 'real adverse move. Choose 0.5% or wider, or use "No stop (clear)".');
+      return;
+    }
     // BOTH of these write the LIVE F1 engine's risk parameter, whatever the scan
     // target above says — that picker chooses what is SCANNED, and there is no
     // endpoint that applies a stop to a saved book. Applying went through with no
