@@ -19,8 +19,21 @@ curl -sS -m 15 "$B/trading.html" | grep -o 'trading[^"]*\.js?[^"]*' || echo "  (
 echo "== caching headers on the script =="
 curl -sS -m 15 -D - -o /dev/null "$B/constructing.js" | grep -iE '^(etag|last-modified|cache-control|content-length)' || true
 echo "== markers present in the file being served NOW =="
-JS=$(curl -sS -m 20 "$B/constructing.js")
-for m in 'cxCampPick' 'rankDeclaredConfigs' 'renderRotationRounds' 'const COL = {'; do
-  printf '  %-24s %s\n' "$m" "$(printf '%s' "$JS" | grep -qF -- "$m" && echo present || echo ABSENT)"
-done
+# Fetch to a FILE and check the byte count against the declared length before
+# grepping. A partial body greps as "ABSENT" and reads exactly like a stale
+# deploy — which is how this check first reported three fixes missing from a file
+# that was byte-identical to the one just shipped. A verifier that cries wolf
+# gets ignored, which is worse than not having one.
+TMP=$(mktemp)
+trap 'rm -f "$TMP"' EXIT
+DECLARED=$(curl -sS -m 20 -D - -o "$TMP" "$B/constructing.js" | tr -d '\r' | awk -F': ' 'tolower($1)=="content-length"{print $2}')
+GOT=$(wc -c < "$TMP")
+echo "  bytes: declared ${DECLARED:-?} / received $GOT"
+if [ -n "$DECLARED" ] && [ "$DECLARED" != "$GOT" ]; then
+  echo "  SHORT READ — the checks below would be meaningless; not run."
+else
+  for m in 'cxCampPick' 'rankDeclaredConfigs' 'renderRotationRounds' 'const COL = {'; do
+    if grep -qF -- "$m" "$TMP"; then printf '  %-24s present\n' "$m"; else printf '  %-24s ABSENT\n' "$m"; fi
+  done
+fi
 echo "(read-only)"
