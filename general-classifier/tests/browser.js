@@ -176,6 +176,77 @@ async function clickAround(page, add) {
   await scanText(page, add, 'after pressing the buttons');
 }
 
+// ---- value fidelity ---------------------------------------------------------
+// Everything above asks whether the page BROKE. This asks whether it LIED: does
+// the number on screen equal the number in the record? That is the class that
+// matters most here — a broken page is obvious, a wrong number gets built on.
+//
+// Money is read back out of the rendered cells and compared numerically against
+// the saved run, so a formatting change cannot make this pass or fail by itself,
+// and a sign flip or a swapped column cannot pass at all.
+const parseMoney = (t) => {
+  const s = String(t).replace(/[$,\s]/g, '');
+  if (!s || s === '—') return null;
+  return Number(s);
+};
+
+async function verifyBoardNumbers(page, add, runId) {
+  const doc = await getJson(`/api/batch/${encodeURIComponent(runId)}`);
+  // The board renders every real row it holds, slim and promoted alike — the two
+  // stages score the same combo on different work, so a check that assumed one
+  // stage would flag the other as a mismatch. What must hold is that EVERY row
+  // on screen corresponds exactly to some recorded row: same combo, same trades,
+  // same money, same region. A swapped column, a sign flip, a stale render or a
+  // number from a different run all break that; a legitimate second stage does
+  // not.
+  const expected = (doc.leaders || []).filter((l) => l.nullDealSeed == null);
+  if (!expected.length) { add('the fixture run has no real leader rows — this check verified nothing'); return; }
+
+  const rows = await page.evaluate(() => Array.from(document.querySelectorAll('#view tr.clickable'))
+    .map((tr) => Array.from(tr.querySelectorAll('td')).map((td) => td.textContent.trim())));
+  if (!rows.length) { add('the board rendered no rows for a run that has them'); return; }
+
+  const comboOf = (l) => [l.trade, l.ctx1, l.ctx2].filter(Boolean).join(' + ');
+  const near = (a, b) => a != null && b != null && Math.abs(a - b) < 0.005;
+  let checked = 0;
+
+  for (const cells of rows) {
+    const combo = cells[0].replace(/\s+/g, ' ').trim();
+    const candidates = expected.filter((l) => comboOf(l) === combo);
+    if (!candidates.length) {
+      add(`board row "${combo}" is on screen but no recorded row carries that combo`);
+      continue;
+    }
+    checked++;
+    const trades = cells[3] === '—' ? null : Number(cells[3]);
+    const shownPnl = parseMoney(cells[4]);
+    const shownHold = parseMoney(cells[5]);
+    const shownRegion = cells[7] === '—' ? null : Number(cells[7]);
+
+    const match = candidates.find((l) => (l.trades == null || l.trades === trades)
+      && (l.pnl == null || near(shownPnl, l.pnl))
+      && ((l.holdout ? l.holdout.pnl : null) == null ? true : near(shownHold, l.holdout.pnl))
+      && ((l.region ? l.region.size : null) == null ? shownRegion == null : shownRegion === l.region.size));
+    if (!match) {
+      const c = candidates[0];
+      add(`board row "${combo}" matches no recorded row — screen: trades ${trades}, test ${cells[4]}, `
+        + `held-back ${cells[5]}, region ${cells[7]}; nearest record: trades ${c.trades}, `
+        + `test ${c.pnl != null ? c.pnl.toFixed(2) : '—'}, held-back ${c.holdout ? c.holdout.pnl.toFixed(2) : '—'}, `
+        + `region ${c.region ? c.region.size : '—'}`);
+      continue;
+    }
+    // A held-back figure must never be the search figure wearing its label. They
+    // are computed on different windows, and confusing them is the single
+    // easiest way to publish a number that is not tradeable.
+    const recHold = match.holdout ? match.holdout.pnl : null;
+    if (recHold != null && match.pnl != null && recHold !== match.pnl
+        && shownHold != null && Math.abs(shownHold - match.pnl) < 1e-9) {
+      add(`board row "${combo}": the held-back column is showing the SEARCH figure`);
+    }
+  }
+  if (!checked) add('no board row could be matched to the record — the check verified nothing');
+}
+
 async function visit(browser, spec) {
   const ctx = await browser.newContext({ viewport: { width: 1500, height: 1100 } });
   const faults = [];
@@ -233,6 +304,7 @@ async function visit(browser, spec) {
       .map((t) => t.textContent.trim().slice(0, 40)));
     for (const b of [...new Set(bare)]) add(`the column "${b}" carries no description`);
 
+    if (spec.verify) await spec.verify(page, add);
     if (spec.click) await clickAround(page, add);
   } catch (e) {
     add(`page threw during the visit: ${e.message}`);
@@ -295,6 +367,12 @@ async function main() {
   for (const t of CONSTRUCTING_TABS) {
     visits.push({ label: `POPULATED  Constructing / ${t}`, url: `${BASE}/constructing.html`, storage: { 'cx-tab': t, 'cx-run': runId } });
   }
+  visits.push({
+    label: 'VALUES     Constructing / boards',
+    url: `${BASE}/constructing.html`,
+    storage: { 'cx-tab': 'boards', 'cx-run': runId },
+    verify: (page, add) => verifyBoardNumbers(page, add, runId),
+  });
   for (const t of CONSTRUCTING_TABS) {
     visits.push({ label: `CLICKED    Constructing / ${t}`, url: `${BASE}/constructing.html`, storage: { 'cx-tab': t, 'cx-run': runId }, click: true });
   }
