@@ -1,0 +1,64 @@
+Dashboard money now verified — and the first version of that check was useless
+
+tl;dr Added a check that the Trading Dashboard's summed money matches the
+records. Then I injected the exact fault it was meant to catch and it PASSED —
+on a box with only one book, a wrongly-mixed total is the same number as the
+right one. So there are now two checks: one for the arithmetic, one that
+actually discriminates. 51 browser views clean, 505 unit tests pass, live pilot
+untouched and healthy.
+
+WHY THE DASHBOARD
+
+Until now the numbers were verified on 2 of about 12 populated views. The most
+valuable one missing was the Dashboard, because it SUMS realized, unrealized
+and open across every book on the side you are looking at. A mixing mistake
+hides best in a sum: one wrong book folded into a total is just a plausible
+number, whereas the same mistake on a single setup's page shows a figure you
+might recognise as belonging to something else.
+
+THE PART WORTH TELLING YOU
+
+I wrote the check, then injected the fault — the same real/paper mixing that
+was found and fixed yesterday — and the check passed. This box has only a paper
+book, so mixing both books gives exactly the correct total. The check could not
+tell the two cases apart. If I had written it, seen green and moved on, I would
+have recorded coverage that did not exist.
+
+So it is now two things:
+
+  * the totals check verifies the arithmetic against the records, and PRINTS a
+    plain notice saying it cannot discriminate the mixing case on this data —
+    so its green is never mistaken for proof of book separation.
+  * a second check does the discrimination that works here: with a paper book
+    open and no real channel, the real-money side must not show it. Break the
+    filter and paper money appears under a live-money heading, which is the
+    dangerous version of this mistake.
+
+I also had two false alarms of my own, both caught only because I re-ran the
+check after putting the fault BACK — a red run followed by a green run proves a
+check moves, not that it moves for the right reason. First it demanded the live
+side be empty and failed on the F1 pilot, which legitimately belongs there.
+Then it looked for F1 in the wrong place: the page builds that row from the
+pilot status, not from the config list, so my check was reading a different
+source than the screen and disagreeing with correct behaviour. A false alarm on
+the real-money screen is the worst kind — it teaches you to ignore the warning.
+
+WHERE THE TWO TABS STAND
+
+  505 unit tests pass. 51 browser views clean: every tab empty, populated and
+  clicked through, plus the Constructing board numbers, the Trading setup
+  numbers, the Dashboard totals, the real/paper separation, the channel
+  controls, the real-money refusal, the launch and stop buttons, and the delete
+  path. 66 markers verified on the deployed page.
+
+  Named limits, so they are not mistaken for coverage: the browser test runs
+  against this build box's data, not the live box's — it proves the software
+  behaves, it does not re-check your live numbers, which the pilot's own
+  reconcile does every ten minutes. And the cross-book mixing case cannot be
+  made discriminating on the totals until a box can hold a real and a paper
+  book at once, which waits on per-setup key routing.
+
+Live pilot: armed, running, one short open, reconcile clean, untouched by any
+of this.
+
+c.
