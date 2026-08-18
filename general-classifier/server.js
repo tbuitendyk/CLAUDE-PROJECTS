@@ -24,6 +24,21 @@ const PORT = Number(process.env.PORT || 8093);
 
 const app = express();
 app.use(express.json({ limit: '256kb' }));
+// CACHE MARKER = THE RELEASE. constructing.html asked for constructing.js?v=1 —
+// a marker fixed at 1 forever. Browsers cache by full URL, so the moment anyone
+// lengthens max-age (it is 0 today, which is the only reason this has not bitten)
+// a returning browser would keep serving a copy from days ago and every shipped
+// fix would read as not-applied. Stamping the release into the URL makes the
+// address change with the file, so there is nothing to get stale
+// (found 2026-08-18 while proving a deployed fix really was deployed).
+app.get(['/constructing.html', '/trading.html', '/index.html', '/pilot.html'], (req, res, next) => {
+  const file = path.join(__dirname, 'public', path.basename(req.path));
+  require('fs').readFile(file, 'utf8', (err, html) => {
+    if (err) return next();
+    const v = require('./package.json').version;
+    res.type('html').send(html.replace(/(\.js)\?v=[\w.-]+/g, `$1?v=${v}`));
+  });
+});
 app.use(express.static(path.join(__dirname, 'public')));
 
 const SYMBOL_RE = /^[A-Z0-9]{5,20}$/;

@@ -329,20 +329,14 @@ async function verifyChannelControls(page, add, configId, dialogs) {
   const before = await stateOf();
   if (before !== 'paper') { add(`the fixture config is not on paper before the test (state ${before})`); return; }
 
-  const press = async (label) => {
-    const btns = await page.$$('#view button');
-    for (const b of btns) {
-      const t = (await b.textContent() || '').trim();
-      if (new RegExp(label, 'i').test(t)) { await b.click({ timeout: 5000 }); await page.waitForTimeout(1500); return true; }
-    }
-    return false;
-  };
+  const press = (label) => pressInRow(page, configId, label);
 
   // 1. CANCELLING must change nothing. A confirmation that does not actually
   //    protect is worse than none, because it teaches the operator to trust it.
   dialogs.accept = false;
   const seenBefore = dialogs.seen;
-  if (!await press('^Deactivate$')) { add('no Deactivate button on the Greenlights row for an active paper channel'); return; }
+  const d1 = await press('^Deactivate$');
+  if (d1 !== true) { add(`Deactivate is not clickable on this config's row (${d1})`); return; }
   if (dialogs.seen === seenBefore) add('Deactivate asked for no confirmation — it changes what trades');
   if (await stateOf() !== 'paper') add('CANCELLING the Deactivate confirmation still deactivated the channel');
 
@@ -351,7 +345,8 @@ async function verifyChannelControls(page, add, configId, dialogs) {
   //    out the whole status vocabulary, and matching against that would report a
   //    fault on a correct screen.
   dialogs.accept = true;
-  if (!await press('^Deactivate$')) { add('the Deactivate button vanished between attempts'); return; }
+  const d2 = await press('^Deactivate$');
+  if (d2 !== true) { add(`the Deactivate button is not clickable on the second attempt (${d2})`); return; }
   const stopped = await stateOf();
   if (stopped === 'paper') add('Deactivate changed nothing — the channel is still on paper');
   const rowStatus = async () => page.evaluate((id) => {
@@ -374,7 +369,8 @@ async function verifyChannelControls(page, add, configId, dialogs) {
   const paperOpen = (st.openPositions || []).filter((p) => p.paper).length;
   let refusal = null;
   page.once('dialog', (d) => { refusal = d.message(); d.accept().catch(() => {}); });
-  if (!await press('^Activate paper$')) { add('no Activate button after deactivating — the channel cannot be restarted'); return; }
+  const a1 = await press('^Activate paper$');
+  if (a1 !== true) { add(`Activate is not clickable after deactivating (${a1}) — the channel cannot be restarted`); return; }
   await page.waitForTimeout(1200);
   const back = await stateOf();
   if (realOpen + paperOpen === 0) {
@@ -396,6 +392,131 @@ async function verifyChannelControls(page, add, configId, dialogs) {
     }
   }
   dialogs.accept = false;
+}
+
+// Click a button INSIDE the row belonging to one config. Searching the whole
+// page finds the first button with that label, which on a list of several
+// configs is very likely the wrong row's — that is how two throwaway fixtures
+// ended up operating each other (2026-08-18).
+async function pressInRow(page, configId, label) {
+  const rows = await page.$$('#view tbody tr');
+  for (const tr of rows) {
+    const txt = (await tr.textContent()) || '';
+    if (!txt.includes(configId)) continue;
+    for (const b of await tr.$$('button')) {
+      const t = ((await b.textContent()) || '').trim();
+      if (!new RegExp(label, 'i').test(t)) continue;
+      if (await b.isDisabled()) return 'disabled';
+      await b.click({ timeout: 5000 });
+      await page.waitForTimeout(1500);
+      return true;
+    }
+    return false;
+  }
+  return 'no-row';
+}
+
+// THE REAL-MONEY CHANNEL. This is the path with the most at stake, and the
+// answer turned out to be that it is deliberately CLOSED: real orders for a
+// non-F1 config wait on per-setup sub-account key routing (open gap G8), and the
+// executor enforces it independently by forcing every schema-2 intent to paper
+// (QC-135). So the thing to verify is the BLOCK, not a way around it.
+//
+// Three independent layers, and this checks that none of them has quietly
+// relaxed:
+//   the screen   — the button is disabled and says why
+//   the service  — a hand-crafted call is still refused without the setup's own
+//                  sub-account key (QC-125), so the screen is not the only guard
+//   the executor — S2_LIVE_ROUTING forces paper (covered in the executor's own
+//                  tests; named here so the chain is written down in one place)
+async function verifyRealChannelIsBlocked(page, add, configId) {
+  const row = await page.evaluate((id) => {
+    const tr = Array.from(document.querySelectorAll('#view tbody tr')).find((r) => (r.textContent || '').includes(id));
+    if (!tr) return null;
+    const btn = Array.from(tr.querySelectorAll('button')).find((b) => /activate real/i.test(b.textContent || ''));
+    return btn ? { disabled: btn.disabled, title: btn.title || '' } : { missing: true };
+  }, configId);
+
+  if (!row) { add('the throwaway config is not listed on the Live Trading side'); return; }
+  if (row.missing) { add('no "Activate real" button on this row — the control must be present and disabled, not absent'); return; }
+  if (!row.disabled) {
+    add('"Activate real" is ENABLED for a non-F1 config — real orders for these wait on per-setup key routing (G8)');
+  }
+  if (!/sub-account key routing|G8/i.test(row.title)) {
+    add(`the disabled "Activate real" does not say why it is disabled — got: ${row.title.slice(0, 160)}`);
+  }
+  if (!/paper/i.test(row.title)) {
+    add('the disabled button does not say the engine still books paper — a blocked control with no explanation reads as broken');
+  }
+
+  // The service must refuse independently. If the screen were the only guard, a
+  // stale tab or a direct call would be enough to reach a live real channel.
+  const out = await postJson(`/api/live/configs/${configId}/activate`, { channel: 'real' }).catch(() => null);
+  if (!out) { add('the service did not answer a real-channel activation at all'); return; }
+  if (out.code === 200) {
+    add('the SERVICE accepted a real-channel activation that the screen blocks — the screen is the only guard');
+    await postJson(`/api/live/configs/${configId}/deactivate`, { channel: 'real' }).catch(() => {});
+    return;
+  }
+  const msg = JSON.stringify(out.body || '');
+  if (!/keyRef|sub-account/i.test(msg)) {
+    add(`the service refused without naming the missing sub-account key — the operator cannot act on it. Got: ${msg.slice(0, 200)}`);
+  }
+}
+
+// THE REAL-MONEY CHANNEL. Going live for a NEW config is BLOCKED ON PURPOSE and
+// this pass confirms the block rather than defeating it. The executor signs every
+// order with the box's single key, so a real order from a generalized setup would
+// land on F1's own wallet and borrow pool — register entries 125 and 135. Until
+// per-setup key routing exists (open gap G8), schema-2 is paper-only and the
+// button is disabled with that reason written on it.
+//
+// What must hold: the screen refuses, it SAYS WHY where a person can read it,
+// and the server refuses independently. A block that lives only in the front end
+// is not a block, it is a suggestion.
+async function verifyRealChannelIsBlocked(page, add, configId) {
+  const rowButton = async (label) => {
+    const rows = await page.$$('#view tbody tr');
+    for (const tr of rows) {
+      const txt = (await tr.textContent()) || '';
+      if (!txt.includes(configId)) continue;
+      for (const b of await tr.$$('button')) {
+        const t = ((await b.textContent()) || '').trim();
+        if (new RegExp(label, 'i').test(t)) {
+          return { disabled: await b.isDisabled(), title: await b.getAttribute('title') };
+        }
+      }
+      return null;
+    }
+    return undefined;
+  };
+
+  const btn = await rowButton('^Activate real$');
+  if (btn === undefined) { add(`config ${configId} has no row on the Live Trading side`); return; }
+  if (btn === null) { add('the Live Trading row offers no "Activate real" control at all — the state is unreadable'); return; }
+  if (!btn.disabled) {
+    add('"Activate real" is ENABLED for a generalized config — a real order would sign with the box\'s single key '
+      + 'and land on F1\'s own wallet and borrow pool (register 125/135); it is paper-only until per-setup key routing exists');
+  }
+  if (!btn.title || !/key routing|sub-account|paper/i.test(btn.title)) {
+    add(`the disabled "Activate real" button does not say why — an operator sees a dead control and no reason. Title: ${JSON.stringify(btn.title)}`);
+  }
+
+  const out = await postJson(`/api/live/configs/${configId}/activate`, { channel: 'real' }).catch(() => null);
+  if (!out) { add('the activate endpoint could not be reached to confirm the server-side refusal'); return; }
+  if (out.code === 200) {
+    add('the SERVER accepted a real activation the screen blocks — the block is front-end only');
+    await postJson(`/api/live/configs/${configId}/deactivate`, { channel: 'real' }).catch(() => {});
+    return;
+  }
+  const msg = JSON.stringify(out.body || '');
+  if (!/keyRef|sub-account/i.test(msg)) {
+    add(`the server refused without naming the missing sub-account key: ${msg.slice(0, 200)}`);
+  }
+  const c = (await getJson('/api/live/configs')).configs.find((x) => x.id === configId);
+  if (c && c.channels && c.channels.real && c.channels.real.state === 'live') {
+    add('a setup is LIVE after a refused activation');
+  }
 }
 
 async function visit(browser, spec) {
@@ -580,8 +701,23 @@ async function main() {
     await postJson(`/api/bracketlab/${encodeURIComponent(r.runId)}/select`, { key: r.key, stage: 'promoted' }).catch(() => {});
   }
 
+  // A second throwaway for the REAL path. Separate from the paper one: that pass
+  // deactivates what it touches, and these two must not be able to interfere.
+  let realConfig = null;
+  if (controlsConfig) {
+    const src = (await getJson('/api/live/greenlights').catch(() => ({ greenlights: [] })))
+      .greenlights.find((g) => g.id === controlsConfig);
+    if (src && src.sourceRun && src.sourceRun.id) {
+      const mint = await postJson('/api/live/greenlight', {
+        runId: src.sourceRun.id, target: 'best', why: 'throwaway config for the real-channel path check',
+      }).catch(() => null);
+      if (mint && mint.code === 200 && mint.body.greenlight) realConfig = mint.body.greenlight.id;
+    }
+  }
+
   if (!paperSetup) console.error('NOTE: no paper channel on this box — the Trading VALUES pass is SKIPPED.');
   if (!controlsConfig) console.error('NOTE: no run on this box mints a live-executable config — the Trading CONTROLS pass is SKIPPED.');
+  if (!realConfig) console.error('NOTE: no throwaway config for the real-channel path — that pass is SKIPPED.');
 
   visits.push({
     label: 'VALUES     Constructing / boards',
@@ -621,6 +757,15 @@ async function main() {
     });
   }
 
+  if (realConfig) {
+    visits.push({
+      label: 'REAL-GATE  Trading / real / configs',
+      url: `${BASE}/trading.html`,
+      storage: { 'lt-branch': 'real', 'lt-sub': 'configs' },
+      verify: (page, add) => verifyRealChannelIsBlocked(page, add, realConfig),
+    });
+  }
+
   // Light theme is a whole second palette; a token defined only in the dark
   // block renders as nothing at all, and nobody would see it in a dark run.
   for (const t of ['sweep', 'boards']) {
@@ -644,6 +789,15 @@ async function main() {
   // control with no coverage. Nuke must REFUSE while a channel is still active
   // (dropping a config out from under a running book would strand it), and must
   // work once it is deactivated.
+  if (realConfig) {
+    await postJson(`/api/live/configs/${realConfig}/deactivate`, { channel: 'real' }).catch(() => {});
+    const gone = await postJson(`/api/live/configs/${realConfig}/nuke`, {}).catch(() => null);
+    if (!gone || gone.code !== 200) {
+      bad++;
+      console.error('FAIL CLEANUP    Trading / real throwaway');
+      console.error(`     could not remove the real-path config: ${gone ? JSON.stringify(gone.body) : 'no reply'}`);
+    }
+  }
   if (controlsConfig) {
     const problems = [];
     const early = await postJson(`/api/live/configs/${controlsConfig}/nuke`, {}).catch(() => null);

@@ -74,6 +74,22 @@ function installLiveRoutes(app, { csrfGuard }) {
   });
 
   // ---- data catalog + repair (plan phase 7) -------------------------------
+  // The execution targets, so the Setup detail can OFFER them instead of asking
+  // for a typed id. The Trading tab told the operator a live setup needs its own
+  // sub-account key and which box must serve the pair, and then gave no control
+  // for either — a screen that states a requirement it provides no way to meet
+  // (found 2026-08-18 while covering the real-channel path).
+  app.get('/api/live/targets', (req, res) => {
+    try {
+      const t = require('./targets').listTargets();
+      res.json({
+        targets: Object.values(t).map((x) => ({
+          id: x.id, kind: x.kind, note: x.note || '', symbols: x.symbols || null,
+        })),
+      });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
   app.get('/api/live/catalog', (req, res) => {
     try { res.json(require('./catalog').buildCatalog()); }
     catch (e) { res.status(500).json({ error: e.message }); }

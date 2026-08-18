@@ -342,6 +342,9 @@ async function drawDash(){
 function cfgRow(l,v){ return `<div class="cfgrow"><span class="lbl">${l}</span><span>${v}</span></div>`; }
 async function drawDetail(){
   const {configs}=await fetchConfigs();
+  // The boxes this service knows about, so the execution target is PICKED rather
+  // than typed — same rule as every other identifier the service can enumerate.
+  const tg=await api('api/live/targets').catch(()=>({targets:[]}));
   const g=configs.find(x=>x.id===selectedConfig)||configs.find(x=>chanOf(x));
   if(!g){ $('#view').innerHTML=`<div class="panel empty">Select a config from the Greenlights page.</div>`; return; }
   selectedConfig=g.id;
@@ -412,10 +415,30 @@ async function drawDetail(){
       </div></div>
     <div class="panel"><div class="k">Config editor (operational only — snapshot never changes)</div>
       <div class="row" style="margin-top:.5rem">
-        <label class="muted">Clip $ <input id="clipIn" type="number" min="1" step="1" value="${s.clipUsd}" style="width:6rem"></label>
-        <label class="muted">Stop % <input id="stopIn" type="number" min="0" step="0.01" value="${s.stopPct==null?'':(s.stopPct*100)}" placeholder="none" style="width:6rem"></label>
+        <label class="muted" title="position size per entry in US DOLLARS of notional. It does not compound.">Clip $ <input id="clipIn" type="number" min="1" step="1" value="${s.clipUsd}" style="width:6rem"></label>
+        <label class="muted" title="the protective stop as a PERCENT move against the position. Blank means none: the position rests on its scheduled exit alone.">Stop % <input id="stopIn" type="number" min="0" step="0.01" value="${s.stopPct==null?'':(s.stopPct*100)}" placeholder="none" style="width:6rem"></label>
         <button id="saveCfg">Save</button>
-      </div></div>`;
+      </div>
+      <!-- THE TWO FIELDS THE SCREEN DEMANDED AND DID NOT OFFER. Going live is
+           refused without a sub-account key, and refused if the box does not
+           serve the pair — and neither had a control anywhere on this tab, so
+           the only way to satisfy either was a hand-written API call. Both were
+           already editable through the same door, and updateSetup re-runs the
+           full live gate on every change (QC-137), so offering them here weakens
+           nothing: a blanked key or a box that does not serve the pair is still
+           refused on a trading setup (found 2026-08-18). -->
+      <div class="row" style="margin-top:.5rem">
+        <label class="muted" title="this setup's OWN sub-account credentials, by reference — never a secret typed here. Real money requires it so that no two books share a balance and borrow pool. Blank it and a live setup is refused.">Sub-account key
+          <input id="keyIn" value="${esc(s.keyRef||'')}" placeholder="none set" style="width:14rem"></label>
+        <label class="muted" title="which execution box serves this setup. A box only serves the symbols it declares, and a setup on a pair its box does not serve is refused before it can trade.">Execution target
+          <select id="targetIn" style="min-width:12rem">
+            <option value="">— default (mx-1) —</option>
+            ${(tg.targets||[]).map(t=>`<option value="${esc(t.id)}" ${s.executionTargetRef===t.id?'selected':''}>${esc(t.id)}${t.symbols?` — ${esc(t.symbols.join(', '))}`:''}</option>`).join('')}
+          </select></label>
+        <button id="saveRouting">Save routing</button>
+      </div>
+      <p class="muted" style="font-size:.74rem;margin:.4rem 0 0">A change here is re-checked against the same gate that
+        guards going live: the box must serve <b>${esc(s.tradedPair)}</b>, and a live setup must keep its own key.</p></div>`;
   const act=$('#actBtn'); if(act)act.onclick=async()=>{ if(await confirmActivate(g.id)) draw(); };
   const deact=$('#deactBtn'); if(deact)deact.onclick=async()=>{
     if(!confirm(`Deactivate the ${branch} channel?`))return;
@@ -425,6 +448,11 @@ async function drawDetail(){
     const raw=$('#stopIn').value.trim();
     const stopPct=raw===''?null:Number(raw)/100;
     const out=await post(`api/live/setups/${s.id}/config`,{clipUsd,stopPct}); if(out) draw();
+  };
+  $('#saveRouting').onclick=async()=>{
+    const keyRef=$('#keyIn').value.trim();
+    const executionTargetRef=$('#targetIn').value||null;
+    const out=await post(`api/live/setups/${s.id}/config`,{keyRef:keyRef||null,executionTargetRef}); if(out) draw();
   };
 }
 
