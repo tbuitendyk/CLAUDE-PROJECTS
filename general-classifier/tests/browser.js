@@ -129,6 +129,45 @@ async function scanText(page, add, where) {
     const hit = cells.find((c) => re.test(c));
     if (hit) add(`${why} — ${where}, in: "${hit.slice(0, 140)}"`);
   }
+  await everyPanelSaysSomething(page, add, where);
+}
+
+// EVERY PANEL EITHER SHOWS ROWS OR SAYS IT HAS NONE (added 2026-08-18).
+//
+// Value-fidelity is checked against the record on the boards tab and on the
+// Trading money screens. The other Constructing tabs render from the run
+// document and had no such check, and writing four bespoke record-matchers is
+// how a test suite becomes more expensive than the thing it tests. This is the
+// contract they all share instead, and it is the one that matters generically:
+// a panel that renders NEITHER rows NOR an explicit empty state is a panel that
+// silently dropped its content. The operator cannot tell that from "you have
+// nothing", which is precisely the confusion the outage banner exists to stop —
+// this closes the same hole one level down, at the individual panel.
+//
+// Integers only, no formatting, so there is nothing here to give a false alarm.
+async function everyPanelSaysSomething(page, add, where) {
+  const blanks = await page.evaluate(() => {
+    const out = [];
+    for (const t of document.querySelectorAll('#view table')) {
+      const body = t.querySelector('tbody');
+      if (!body) continue;
+      const rows = body.querySelectorAll('tr').length;
+      if (rows > 0) continue;
+      // no rows: the panel must say so somewhere it can be read
+      const panel = t.closest('.panel') || t.parentElement;
+      const said = /none|no |nothing|empty|not yet|—/i.test((panel && panel.textContent) || '');
+      if (!said) {
+        const head = Array.from(t.querySelectorAll('thead th'))
+          .map((h) => h.textContent.trim()).filter(Boolean).slice(0, 4).join('/');
+        out.push(head || '(unlabelled table)');
+      }
+    }
+    return out;
+  });
+  for (const b of blanks) {
+    add(`a table rendered zero rows and no empty state — ${where}, columns: ${b}. `
+      + 'Silently blank and "you have nothing" look identical to the operator.');
+  }
 }
 
 // The CLICKED pass. Everything here re-queries the DOM after each action because

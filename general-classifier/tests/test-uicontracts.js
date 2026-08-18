@@ -269,3 +269,26 @@ module.exports.anOutageBandsTheScreenInsteadOfRenderingAnEmptyState
   = anOutageBandsTheScreenInsteadOfRenderingAnEmptyState;
 module.exports.theFetchHelperTreatsANonOkResponseAsAFailure
   = theFetchHelperTreatsANonOkResponseAsAFailure;
+
+// Prose that hardcodes a constant will lie the day the constant moves (QC-158's
+// family). The FEE/LEG tooltip is what the owner reads to interpret the number
+// beside it, and it spells the lab rate out in words — "0.125% of notional
+// ($0.125 at $100 size)". Nothing tied those figures to REAL_FEE_PER_LEG, so a
+// change to the constant would leave the explanation quietly wrong while every
+// computed number moved. That is exactly the shape of the bug the owner caught:
+// a fee figure that no longer describes what is being traded.
+function theFeeTooltipQuotesTheConstantItIsExplaining() {
+  const { REAL_FEE_PER_LEG } = require('../lib/paper');
+  const ratePct = REAL_FEE_PER_LEG;            // dollars per leg at $100 == percent
+  const m = LT.match(/feeModel:\s*'([^']*)'/);
+  assert(m, 'the FEE/LEG: model tooltip is gone — the number has no stated meaning');
+  const prose = m[1];
+  assert(prose.includes(`${ratePct}%`),
+    `the fee tooltip says something other than the real rate of ${ratePct}% — `
+    + `REAL_FEE_PER_LEG is ${REAL_FEE_PER_LEG} and the prose reads: "${prose.slice(0, 120)}"`);
+  assert(prose.includes(`$${REAL_FEE_PER_LEG} at $100`),
+    `the fee tooltip's worked example does not match REAL_FEE_PER_LEG ($${REAL_FEE_PER_LEG} at $100 size)`);
+}
+
+module.exports.theFeeTooltipQuotesTheConstantItIsExplaining
+  = theFeeTooltipQuotesTheConstantItIsExplaining;
