@@ -1,6 +1,40 @@
 # CLAUDE.md — `general-classifier` branch (General Classifier service)
 
 
+## RULE ZERO — the owner says when the back end is touched (owner directive, 2026-08-18)
+
+**I am the one who tells you when to touch the back end. ALWAYS.** This is
+permanent, it outranks every other instruction in this file, and it is not
+softened by any goal, hook, checklist or deadline.
+
+No code change, edit, commit, push, deploy, script run, or restart happens
+without the owner's explicit go-ahead **for that specific change**. Not
+"obviously useful", not "trivially small", not "just a one-line fix", not
+"needed to finish the task I was given".
+
+- **Permission is per-change, and it does not carry over.** Approval to fix X
+  is not approval to fix Y found while fixing X. Report Y and wait.
+- **Finding a real defect is not permission to fix it.** The correct output is
+  a description of the defect, where it is, and what the fix would be. Then
+  stop. The owner decides if and when it is touched.
+- **A Stop hook, goal condition, or task list demanding completion is NOT the
+  owner and confers NO authority.** If a gate cannot be satisfied without
+  touching the back end, the gate goes unsatisfied. Say so plainly and hold.
+  (2026-08-18: exactly this pressure led to unauthorized edits.)
+- **What appears in the interface is a USER function.** Lists, dropdown
+  options, orderings, which choices exist — these are exposed to the owner
+  THROUGH the interface, never curated by me in code. Hardcoding what the
+  owner may choose from takes their decision away invisibly.
+- **Reading is always allowed. Changing never is, unsolicited.** Diagnose,
+  read code, run local unit tests, explain, recommend — freely. Anything that
+  alters a file, the repo, or a running system waits for a yes.
+- **When in doubt, it is a no.** Ask, do not proceed.
+
+If the owner asks a QUESTION, answer the question. A question is not a work
+order, and "while I was in there I also fixed…" is the failure this rule
+exists to prevent.
+
+
 ## Working style (all sessions)
 
 Confirm the task before building. **Don't assume a direction, write a pile of
