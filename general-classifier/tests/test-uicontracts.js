@@ -230,3 +230,42 @@ function theDecisionHistoryShowsTenDaysAtOnce() {
 }
 
 module.exports.theDecisionHistoryShowsTenDaysAtOnce = theDecisionHistoryShowsTenDaysAtOnce;
+
+// An outage must not render as an empty state (QC-154, owner-facing consequence).
+//
+// Both tabs used to fetch through a helper that swallowed failures and returned
+// a fallback, so a dead endpoint, a 500 or a dropped connection produced the
+// EMPTY state: "No greenlighted configs yet", "none — clean", zero open
+// positions. Each of those is a specific, reassuring claim about a real-money
+// engine, and an outage manufactured it silently. Absence of data and absence
+// of an ANSWER must never look the same on the screen.
+//
+// These read both pages because the fault was symmetric across them, and both
+// halves are required: recording a failure that nothing displays is not a
+// warning, and a banner nothing feeds can never appear.
+function anOutageBandsTheScreenInsteadOfRenderingAnEmptyState() {
+  for (const [name, src] of [['constructing.js', CX], ['trading.html', LT]]) {
+    assert(/THIS SCREEN IS INCOMPLETE/.test(src),
+      `${name} has no outage banner — a failed read renders as "you have nothing"`);
+    assert(/apiOr\s*\(/.test(src),
+      `${name} does not use the failure-recording fetch helper, so nothing can raise the banner`);
+    assert(/fetchFailures/.test(src),
+      `${name} does not record which endpoints failed, so the banner cannot name them`);
+  }
+}
+
+// The recording helper is only worth anything if the plain one REFUSES a bad
+// response. If api() resolves a 500 body as data, apiOr never sees a failure
+// and the banner never fires — the exact silent path this replaced.
+function theFetchHelperTreatsANonOkResponseAsAFailure() {
+  for (const [name, src] of [['constructing.js', CX], ['trading.html', LT]]) {
+    assert(/(res|r)\.ok/.test(src) && /throw/.test(src),
+      `${name}'s fetch helper does not throw on a non-2xx response, so an error body `
+      + 'would be rendered as if it were data');
+  }
+}
+
+module.exports.anOutageBandsTheScreenInsteadOfRenderingAnEmptyState
+  = anOutageBandsTheScreenInsteadOfRenderingAnEmptyState;
+module.exports.theFetchHelperTreatsANonOkResponseAsAFailure
+  = theFetchHelperTreatsANonOkResponseAsAFailure;
