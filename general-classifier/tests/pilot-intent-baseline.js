@@ -35,14 +35,34 @@ const signal = require('../lib/pilotsignal');
 const OUT_DIR = path.join(__dirname, 'baseline');
 const OUT_FILE = path.join(OUT_DIR, 'f1-intents.json');
 
-// How far back to sample. F1 trains through 2026-06-30 and scores from
-// 2026-07-01, so the interesting periods are the forward ones — but the
-// committee call is defined over the whole cached range and a definition swap
-// must not move ANY of them, so the window is deliberately wider than the
-// live record.
-const FROM_MS = Date.UTC(2025, 0, 1);
-const TO_MS = Date.UTC(2026, 7, 1);
-const STEP_MS = 24 * 3600 * 1000;      // F1's geometry is daily-4d
+// WHICH PERIODS, AND WHY NOT ALL OF THEM.
+//
+// One period costs ~4.8s: the live path retrains the frozen committee on every
+// call, which is nothing once an hour and ruinous across two years (578 periods
+// = ~46 min, and the first attempt at this died on its own timeout). Retraining
+// per call is the LIVE behaviour, so the harness must not dodge it by caching —
+// it samples fewer periods instead.
+//
+// Sampling is sound here because a changed definition does not move one period,
+// it moves essentially all of them: a different combo, band, quorum, horizon or
+// committee changes what is trained and what is called. Detecting that needs
+// coverage, not exhaustiveness.
+//
+// FORWARD window daily — F1 trains through 2026-06-30 and scores from
+// 2026-07-01, so these are the periods that carry the live record and they are
+// checked one by one. Earlier history monthly, for breadth across regimes the
+// forward window has not seen.
+const FORWARD_FROM_MS = Date.UTC(2026, 6, 1);
+const TO_MS = Date.UTC(2026, 7, 18);
+const HISTORY_FROM_MS = Date.UTC(2025, 0, 1);
+const DAY_MS = 24 * 3600 * 1000;
+
+function samplePeriods() {
+  const out = [];
+  for (let ts = HISTORY_FROM_MS; ts < FORWARD_FROM_MS; ts += 30 * DAY_MS) out.push(ts);
+  for (let ts = FORWARD_FROM_MS; ts <= TO_MS; ts += DAY_MS) out.push(ts);
+  return out;
+}
 
 // Fields that are genuinely time-of-run rather than decision content. A golden
 // record that includes them would fail on the clock rather than on behaviour,
@@ -69,7 +89,19 @@ function stable(v) {
 async function collect() {
   const rows = [];
   let errors = 0;
-  for (let ts = FROM_MS; ts <= TO_MS; ts += STEP_MS) {
+  const periods = samplePeriods();
+  // Progress to stderr, so a long run is never a black box. The first attempt
+  // printed nothing for twenty minutes and then died, which told me nothing
+  // about how far it had got.
+  const t0 = Date.now();
+  let n = 0;
+  for (const ts of periods) {
+    n++;
+    if (n % 10 === 0 || n === 1) {
+      const per = (Date.now() - t0) / n / 1000;
+      process.stderr.write(`  ${n}/${periods.length} periods (${per.toFixed(1)}s each, `
+        + `~${Math.round(per * (periods.length - n))}s left)\n`);
+    }
     let rec;
     try {
       rec = await signal.computeSignalForChunk(ts, {});
