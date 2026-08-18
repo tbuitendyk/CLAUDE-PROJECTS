@@ -325,3 +325,62 @@ function theCustomStopBoxOffersNothingTheEngineFloorRefuses() {
 
 module.exports.theCustomStopBoxOffersNothingTheEngineFloorRefuses
   = theCustomStopBoxOffersNothingTheEngineFloorRefuses;
+
+// "View tree" must read the campaign the user JUST picked (owner, 2026-08-18).
+//
+// The dropdown's onchange POSTed, awaited, then re-rendered — and only the
+// re-render put the new name into #cxCamp, which is the box View tree reads.
+// A click inside that window fetched the PREVIOUS campaign's tree: a wrong
+// answer wearing the clothes of a right one, because the tree renders fine and
+// nothing says it is the wrong campaign's. The pick is now reflected into the
+// box synchronously, before the await, and the buttons are disabled while the
+// switch is in flight so the panel cannot be acted on mid-change.
+function theCampaignPickReachesViewTreeBeforeTheRoundTripFinishes() {
+  const h = CX.match(/campPick\.onchange\s*=\s*async[\s\S]{0,1400}?\n  \};/);
+  assert(h, 'the campaign picker lost its change handler');
+  const body = h[0];
+  const assignAt = body.indexOf("$('#cxCamp').value = campPick.value");
+  const awaitAt = body.indexOf('await tryPost');
+  assert(assignAt !== -1,
+    'the pick is not copied into #cxCamp, so View tree still reads the old campaign');
+  assert(awaitAt !== -1 && assignAt < awaitAt,
+    'the pick is copied into #cxCamp only AFTER the await — that is the race, not a fix');
+  assert(/tree\.disabled = true/.test(body),
+    'View tree is not disabled while the campaign switch is in flight');
+}
+
+// F1 must be reachable on the scan target whatever Boards has selected.
+//
+// The list used to open with a single context-dependent entry that meant F1
+// only when no row was selected, and nothing in the tab clears a run's stored
+// selection — so with a row selected there was NO path to the live pilot, and
+// tuning its protective stop could not be done from the screen at all.
+function theLivePilotIsAlwaysOnTheScanTargetList() {
+  assert(/<option value="F1"/.test(CX),
+    'there is no explicit F1 option — the live pilot is only reachable by accident');
+  assert(!/F1 \(no board row selected\)/.test(CX),
+    'the context-dependent "F1 (no board row selected)" label is back: that entry means F1 '
+    + 'only when nothing is selected, which is exactly what made F1 unreachable');
+  // the selected-row option may only exist when a row IS selected
+  const opt = CX.match(/\$\{sel \? `<option value="sel"/);
+  assert(opt, 'the selected-row option is not gated on a row actually being selected');
+}
+
+// The launcher and the sentence describing it must resolve the SAME target.
+function theScanTargetProseMatchesWhatTheLauncherWillUse() {
+  assert(/const tgt = /.test(CX), 'the resolved scan target is gone');
+  assert(/const scanBody = tgt === 'F1'/.test(CX),
+    'the launcher no longer derives its body from the resolved target');
+  assert(/const target = tgt === 'sel'/.test(CX),
+    'the prose no longer derives from the resolved target, so it can describe a different '
+    + 'target from the one the scan will actually use');
+  assert(/savedTarget === 'sel' && !sel/.test(CX),
+    'a stored "sel" preference with nothing selected no longer falls back to F1');
+}
+
+module.exports.theCampaignPickReachesViewTreeBeforeTheRoundTripFinishes
+  = theCampaignPickReachesViewTreeBeforeTheRoundTripFinishes;
+module.exports.theLivePilotIsAlwaysOnTheScanTargetList
+  = theLivePilotIsAlwaysOnTheScanTargetList;
+module.exports.theScanTargetProseMatchesWhatTheLauncherWillUse
+  = theScanTargetProseMatchesWhatTheLauncherWillUse;

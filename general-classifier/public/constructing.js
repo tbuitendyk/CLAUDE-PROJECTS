@@ -503,8 +503,23 @@ async function drawSweep() {
   const campPick = $('#cxCampPick');
   if (campPick) campPick.onchange = async () => {
     if (!campPick.value) return;
+    // WHAT THE USER JUST PICKED WINS, IMMEDIATELY (owner, 2026-08-18).
+    // "View tree" reads #cxCamp, and that box only caught up after the POST
+    // returned and drawSweep() re-rendered. Click View tree inside that window
+    // and it fetched the tree of the PREVIOUS campaign — a wrong answer that
+    // looks like a right one, because the tree renders fine, it is just the
+    // wrong campaign's. Reflecting the pick into the box synchronously, BEFORE
+    // the await, closes the window: the control the button reads is correct
+    // from the instant of the click.
+    $('#cxCamp').value = campPick.value;
+    // ...and belt-and-braces: no campaign action at all while the switch is in
+    // flight, so the panel can never be acted on while "Currently set" still
+    // disagrees with the dropdown. drawSweep() re-renders and re-enables.
+    const tree = $('#campTree'); const set = $('#campSet');
+    if (tree) tree.disabled = true; if (set) set.disabled = true;
     const out = await tryPost('api/campaign', { name: campPick.value });
     if (out) drawSweep();
+    else { if (tree) tree.disabled = false; if (set) set.disabled = false; }
   };
   $('#campTree').onclick = async () => {
     const name = $('#cxCamp').value.trim(); if (!name) { alert('name a campaign'); return; }
@@ -1697,7 +1712,7 @@ async function drawTune() {
   const busy = scan.running;
   const pct = (v) => (v == null ? '—' : (v * 100).toFixed(2) + '%');
   const usd = (v) => money(v);
-  const target = sel ? `the selected row (<b>${esc(sel.trade)}</b> ${esc(sel.geometry)} q${sel.quorum} ${sel.tHours}h of ${esc(doc.id)})` : 'F1 (the registry pilot)';
+  // (target prose is resolved below, from the SAME value the launcher uses)
   // WHAT THE SCANS ARE AIMED AT. The tab could only ever target F1 or the
   // selected board row; the Bracket lab reads the saved forward books and lets
   // any of them be picked ("I thought I would be able to select from the saved
@@ -1711,10 +1726,34 @@ async function drawTune() {
   const cmpSrc = ((await apiOr('api/bracketlab/verdict-sources', ({ sources: [] }))).sources || [])
     .filter((s) => s.realRows > 0);
   const cmpOpt = (s) => `<option value="${esc(s.id)}">${esc(s.id)}${s.windowLayout && s.windowLayout !== 'legacy' ? ` [${esc(s.windowLayout)}]` : ''}</option>`;
+  // F1 IS ALWAYS REACHABLE (owner, 2026-08-18 — the defect that blocked the
+  // protective-stop decision entirely).
+  //
+  // The target list used to open with ONE context-dependent entry that read
+  // "F1 (no board row selected)" when nothing was selected on Boards and "the
+  // row selected on Boards" when something was. There was no F1 entry of its
+  // own, and nothing anywhere in the tab clears a run's stored selection — so
+  // the moment the picked run had a selected row, the ONLY way to aim a scan
+  // at the live pilot was to switch to some other run that happened to have no
+  // selection. That is not a control, it is an accident, and it made tuning
+  // F1's protective stop unreachable from the screen for the normal case.
+  //
+  // Now: an explicit F1 option that is always present and always means F1, and
+  // a selected-row option that appears only when a row is actually selected.
   const savedTarget = localStorage.getItem('cx-scan-target') || '';
-  const scanBody = savedTarget && savedTarget !== 'sel'
-    ? { bookId: savedTarget }
-    : (sel ? { runId: doc.id, target: 'best' } : { bookId: 'F1' });
+  // An old saved 'sel' with nothing selected now resolves to F1, not to a
+  // dangling option — the stored preference must never leave the tab pointing
+  // at a target that no longer exists.
+  const tgt = (savedTarget === 'sel' && !sel) ? 'F1' : (savedTarget || 'F1');
+  const scanBody = tgt === 'F1' ? { bookId: 'F1' }
+    : tgt === 'sel' ? { runId: doc.id, target: 'best' }
+      : { bookId: tgt };
+  // The prose and the dropdown are computed from the SAME resolved value, so
+  // the sentence above the control can no longer describe a different target
+  // from the one the launcher will actually use.
+  const target = tgt === 'sel'
+    ? `the row selected on Boards (<b>${esc(sel.trade)}</b> ${esc(sel.geometry)} q${sel.quorum} ${sel.tHours}h of ${esc(doc.id)})`
+    : tgt === 'F1' ? 'F1 — the live pilot' : `the saved book <b>${esc(tgt)}</b>`;
   $('#view').innerHTML = `
   ${busy ? `<div class="panel warn">A heavy scan is running (${esc(String(busy))}) — one at a time; both launchers are disabled until it lands (scans run minutes and cannot be aborted mid-flight).</div>` : ''}
   <div class="panel">
@@ -1723,8 +1762,9 @@ async function drawTune() {
       clipped a single winner, plus the sacrifice curve (give up top winners → tighter stop → NET $). Scanning applies
       nothing. Target: ${target}.</p>
     <div class="row" style="margin-bottom:.4rem"><label class="f" title="what the scans below are aimed at. Books already carrying a protective stop are not listed — a breakout cell's opposite rail IS its stop, so tuning one is meaningless.">scan target<select id="tuneTarget">
-      <option value="sel" ${savedTarget === 'sel' || !savedTarget ? 'selected' : ''}>${sel ? 'the row selected on Boards' : 'F1 (no board row selected)'}</option>
-      ${books.map((b) => `<option value="${esc(b.id)}" ${savedTarget === b.id ? 'selected' : ''}>${esc(b.id)} — ${esc(b.combo && b.combo.trade || '')} ${b.cell && b.cell.tHours ? b.cell.tHours + 'h' : ''}</option>`).join('')}
+      <option value="F1" ${tgt === 'F1' ? 'selected' : ''}>F1 — the live pilot</option>
+      ${sel ? `<option value="sel" ${tgt === 'sel' ? 'selected' : ''}>the row selected on Boards — ${esc(sel.trade)} ${esc(sel.geometry)} q${sel.quorum} ${sel.tHours}h</option>` : ''}
+      ${books.map((b) => `<option value="${esc(b.id)}" ${tgt === b.id ? 'selected' : ''}>${esc(b.id)} — ${esc(b.combo && b.combo.trade || '')} ${b.cell && b.cell.tHours ? b.cell.tHours + 'h' : ''}</option>`).join('')}
     </select></label>
     <span class="note">${books.length} saved book(s) without a protective stop</span></div>
     <div class="row" style="margin-bottom:.4rem">
