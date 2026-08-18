@@ -1,0 +1,110 @@
+The STOP button on Trading was arming the engine, not stopping it. Fixed.
+
+tl;dr — read the first section before anything else. An exhaustive audit of the
+Constructing and Trading tabs turned up 22 confirmed faults; all 22 are fixed,
+tested and deployed (00:59 UTC), 495 tests pass and all 44 tab views load clean
+in a real browser. One of the 22 is a real-money safety fault and you should know
+exactly what it was.
+
+1. THE MASTER SWITCH DID NOT STOP ANYTHING
+
+On Trading → Live Trading → F1 → LIVE, pressing STOP engine sent a request to the
+ARM endpoint with a field saying "armed: false". That endpoint has never read
+that field. It always arms.
+
+So STOP was not a no-op. It was a re-arm: a fresh request with a new timestamp,
+which the box treats as a genuine START. You would have confirmed "STOP the F1
+engine?", seen no error, and watched the screen redraw as RUNNING — and the
+screen would have been telling the truth, because the engine was still running.
+
+The old Live pilot page has always called the two endpoints correctly, so the two
+pages disagreed and nothing noticed. No test ever pressed STOP.
+
+Fixed on both sides. The page now picks its endpoint from the button. And the ARM
+endpoint now REFUSES a request that says "armed: false", with a message naming
+the disarm endpoint — so if anything ever makes this mistake again it fails
+loudly instead of arming you. Both halves have been watched failing with the
+fault put back.
+
+What this did NOT do: it never armed anything by itself, and it could only have
+mattered at a moment when you pressed STOP while the engine was running. I cannot
+tell from here whether that ever happened; the journal would show it as an ARM
+event at a time you meant to stop.
+
+2. HOW THESE WERE FOUND
+
+Everything that checked these two tabs read the SOURCE. Nothing had ever loaded
+them. Two things now do.
+
+A browser harness starts the service, opens both pages in Chromium and walks 44
+views: every tab with nothing open, every tab with a saved run open, every tab
+clicked through — disclosures expanded, rows clicked, every dropdown cycled
+through every option, every button pressed except launchers and destructive ones
+— plus the light palette. It fails on an uncaught exception, a console error, a
+failed or 4xx request, a dead button (one whose handler is missing), an
+undescribed column, and on undefined / NaN / [object Object] reaching the screen.
+
+Alongside it, an audit ran 30 agents over both tabs from six independent angles
+and then tried to REFUTE every finding rather than confirm it. 58 raw, 22
+survived refutation. Those 22 are what follows.
+
+3. THE OTHER TWENTY-ONE
+
+Controls that could not work at all:
+  - Greenlight anchor "widest region" was refused by the server. The one anchor
+    whose purpose is to resist shopping was the one that could not mint a config;
+    the two that worked are the two its own tooltip warns flatter themselves.
+  - "No stop (clear)" sent a value the endpoint refuses. The protective stop
+    could not be cleared from that tab at all.
+  - "Copy settings into the form" threw on every click and filled nothing. The
+    tab switched, so it looked like it had worked.
+  - The null verdict could not be read for ANY three-asset setup, on either page
+    — the endpoint dropped the context pairs. Since a config can only go live as
+    a three-asset combo, the check that asks whether a result beats its own null
+    has never been readable for anything we can trade.
+  - "Fire null runs" fired a different instrument from the one it sat inside, and
+    its output was displayed nowhere. Each round costs a full sweep.
+
+Numbers that were wrong or absent:
+  - The replication ranking was ordered by nothing. Its headline statistic was
+    structurally impossible to compute, and with it always empty the sort
+    collapsed — three configurations with plateau widths 9/5/1 came out 5, 1, 9.
+    I shipped that yesterday. The tests I wrote for it read the comparator's
+    source and passed.
+  - History Tuning could never say PASS. Data fingerprint always blank. The
+    Inspect member table's three columns always blank. The run-size equation off
+    by a factor of twenty. The age-dial verdict printing "[object Object]".
+  - Real and paper positions shown merged under one side's money.
+  - The Setups table reported F1 as having no protective stop, whatever stop was
+    applied.
+
+Rough edges:
+  - Trim's prompt pre-filled a date the server refuses.
+  - The Data section offered TRIM on a fabricated exam pair, which would corrupt
+    the exam silently.
+  - Sweep started a new poller on every visit and never stopped the old ones.
+  - Two tooltips were erased on load.
+  - Run ids were typed into free-text boxes; they are dropdowns now. That is the
+    same complaint you made about the stop tuner: "I thought I would be able to
+    select from the saved sweeps."
+
+4. AND THE COLUMN DESCRIPTIONS
+
+You asked for column descriptions as tooltips. Trading had 67 column headings and
+not one of them said what it held; Constructing had 9 of 97. 164 are described
+now, with units stated — and in particular whether a number is money or accuracy
+points, since that is the pair that gets confused. Every headline tile too. A
+test fails the build on a bare heading, so this cannot decay again.
+
+5. WHAT I AM NOT CLAIMING
+
+The harness checks that nothing BREAKS. It does not yet check that the right
+number appears — that a value on screen equals what the engine computed. That is
+the next thing worth building, and it is the class that would catch a wrong
+number rather than a missing one.
+
+Four register entries added (146-149). The one worth reading is 148: a statistic
+that decides an ORDER must be tested by executing the ordering, never by reading
+its source. Reading the source is how the broken ranking shipped.
+
+c.
