@@ -145,6 +145,11 @@ async function scanText(page, add, where) {
 // this closes the same hole one level down, at the individual panel.
 //
 // Integers only, no formatting, so there is nothing here to give a false alarm.
+//
+// Watched failing 2026-08-18: deleting the "none open" fallback row from the
+// Trading Open-positions table made 2 of 65 views fail, naming the table by its
+// own column headings (chunk/side/qty/entry) — the fault reported where it is,
+// not merely that something was wrong somewhere.
 async function everyPanelSaysSomething(page, add, where) {
   const blanks = await page.evaluate(() => {
     const out = [];
