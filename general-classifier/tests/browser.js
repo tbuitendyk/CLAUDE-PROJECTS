@@ -320,6 +320,74 @@ async function verifyTradingNumbers(page, add, setupId, isPaper) {
 // confirm it says so again. These buttons change what trades, so an unexercised
 // one is the last place a silent no-op can hide — which is exactly what the
 // master switch turned out to be.
+// THE LAUNCH BUTTON AND THE STOP BUTTON (added 2026-08-18).
+//
+// Everything else in this harness deliberately does NOT press launchers: firing
+// a real sweep on every run is not something a check may do. The consequence is
+// that the two controls at the very top of the Constructing workflow — the one
+// that STARTS a run and the one that STOPS it — had no runtime coverage at all,
+// on either side. A launcher that builds a body the server refuses looks exactly
+// like a working button until an operator presses it: the tab does not change,
+// so there is nothing to see. That is QC-143's class, on the control with the
+// longest feedback delay.
+//
+// Made safe by aborting immediately: the run is started with the page's OWN
+// default form state (never a copy of it — a copy agrees with itself, QC-148),
+// proved to have been accepted by reading back a real batch id, and then stopped
+// through the page's own Stop button. The abort is ALSO asserted, because "Stop"
+// silently failing is how a box ends up with a sweep nobody meant to leave
+// running. Cleanup re-aborts unconditionally, so a fault mid-pass cannot leave
+// a job behind.
+async function verifyLaunchAndStop(page, add, dialogs) {
+  const before = await getJson('/api/batches').catch(() => null);
+  const idsBefore = new Set((Array.isArray(before) ? before : (before && before.batches) || []).map((b) => b.id || b));
+
+  const btn = await page.$('#swStart2');
+  if (!btn) { add('the sweep tab has no launch button (#swStart2)'); return; }
+  const wired = await page.evaluate(() => { const b = document.querySelector('#swStart2'); return !!(b && b.onclick); });
+  if (!wired) { add('the launch button has no handler — pressing it does nothing'); return; }
+
+  dialogs.accept = true;
+  try {
+    await btn.click({ timeout: 5000 });
+    // the launcher posts and then writes "launched <id>" into its own status line
+    let msg = '';
+    for (let i = 0; i < 40; i++) {
+      await page.waitForTimeout(500);
+      msg = await page.evaluate(() => (document.querySelector('#swMsg') || {}).textContent || '');
+      if (/launched\s+\S/.test(msg) || /FAILED/i.test(msg)) break;
+    }
+    if (!/launched\s+(\S+)/.test(msg)) {
+      add(`the launch button did not start a run — the status line says "${msg.trim() || '(nothing)'}". `
+        + 'A body the server refuses looks identical to a working button from the screen.');
+      return;
+    }
+    const startedId = msg.match(/launched\s+(\S+)/)[1];
+    // and the server must actually have it, not merely have echoed something
+    const after = await getJson('/api/batches').catch(() => null);
+    const idsAfter = (Array.isArray(after) ? after : (after && after.batches) || []).map((b) => b.id || b);
+    if (!idsAfter.includes(startedId)) {
+      add(`the page reported "launched ${startedId}" but the server does not list that run`);
+    }
+    if (idsAfter.length <= idsBefore.size) add('a launch was reported but no new run appeared on the server');
+
+    // STOP: the page's own button, confirmation and all.
+    const stop = await page.$('#swStop');
+    if (!stop) { add('there is no Stop button for a running job (#swStop)'); return; }
+    const seen = dialogs.seen;
+    await stop.click({ timeout: 5000 });
+    await page.waitForTimeout(1500);
+    if (dialogs.seen === seen) add('Stop asked for no confirmation before killing a running job');
+    const smsg = await page.evaluate(() => (document.querySelector('#swMsg') || {}).textContent || '');
+    if (!/abort/i.test(smsg)) {
+      add(`Stop did not acknowledge the abort — the status line says "${smsg.trim() || '(nothing)'}"`);
+    }
+  } finally {
+    // belt and braces: never leave a sweep running because a check threw
+    await postJson('/api/abort', {}).catch(() => {});
+  }
+}
+
 async function verifyChannelControls(page, add, configId, dialogs) {
   const stateOf = async () => {
     const cfgs = await getJson('/api/live/configs');
@@ -822,6 +890,15 @@ async function main() {
       verify: (page, add) => verifyRealChannelIsBlocked(page, add, realConfig),
     });
   }
+
+  // Pressed LAST of the Constructing passes: it starts a real (immediately
+  // aborted) run, so nothing that reads run state should follow it.
+  visits.push({
+    label: 'LAUNCH     Constructing / sweep',
+    url: `${BASE}/constructing.html`,
+    storage: { 'cx-tab': 'sweep', 'cx-run': runId },
+    verify: (page, add, dialogs) => verifyLaunchAndStop(page, add, dialogs),
+  });
 
   // Light theme is a whole second palette; a token defined only in the dark
   // block renders as nothing at all, and nobody would see it in a dark run.
