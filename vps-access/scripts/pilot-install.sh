@@ -96,6 +96,13 @@ install -m 755 "$REPO/scripts/pilot-produce-and-push.sh" /usr/local/sbin/pilot-p
 # breaks. (2026-08-11 re-review: these new helpers were added without this install.)
 install -m 755 "$REPO/scripts/pilot-arm-fields.sh" /usr/local/sbin/pilot-arm-fields.sh
 install -m 755 "$REPO/scripts/pilot-stop-state.sh" /usr/local/sbin/pilot-stop-state.sh
+# ...and the unhalt helper. Without it the Trading tab's "Clear the halt" button
+# writes a request nothing ever carries, so a halt stays a dead end from the
+# screen. (2026-08-18: added in the same shape as the two above — which were
+# themselves added WITHOUT their install line, per the note above. Repeating a
+# documented mistake one line below its own warning is why the carry block now
+# prints a loud diagnostic when this file is absent, instead of failing silent.)
+install -m 755 "$REPO/scripts/pilot-unhalt-fields.sh" /usr/local/sbin/pilot-unhalt-fields.sh
 # the journal-sync + arm-reconcile (installed copy)
 install -m 755 "$REPO/scripts/pilot-sync-journal.sh" /usr/local/sbin/pilot-sync-journal.sh
 # push alerting — email the owner on halt/dead-heartbeat/stale-sync/new-incident

@@ -472,17 +472,31 @@ class ExecutorTest(unittest.TestCase):
         self.assertTrue(self.x.halted(),
                         'a non-final short close that under-repaid must HALT, not pass silently')
 
-    def test_unhalt_clears_the_halt(self):
-        self.x.set_halt("test", "stuck")
-        self.assertTrue(self.x.halted())
+    def _unhalt_cli(self, *args):
         import sys as _s
         argv = _s.argv
-        _s.argv = ["mx", "unhalt", "--source=owner", "--reason=resolved"]
+        _s.argv = ["mx", "unhalt", *args]
         try:
             self.x.main()
         finally:
             _s.argv = argv
-        self.assertFalse(self.x.halted(), 'unhalt must clear the halt flag')
+
+    def test_unhalt_cli_refuses_unsigned_and_clears_with_force(self):
+        """The CLI wiring, both directions (contract changed 2026-08-18).
+
+        This used to assert that a bare `unhalt` clears the flag. It no longer
+        does, and that is the point: clearing a halt removes a brake, so the
+        control-plane path is signed. The unsigned CLI call is now the REFUSED
+        case, and --force is the documented hand lever for someone already at a
+        shell on the box. Both are asserted here so the main() wiring stays
+        covered — the signature logic itself is tested directly further down."""
+        self.x.set_halt("test", "stuck")
+        self.assertTrue(self.x.halted())
+        self._unhalt_cli("--source=owner", "--reason=resolved")
+        self.assertTrue(self.x.halted(), 'an UNSIGNED unhalt must leave the halt standing')
+        self.assertIn("UNHALT_NO_SECRET", self.events())
+        self._unhalt_cli("--source=operator", "--force", "--reason=hand-clear")
+        self.assertFalse(self.x.halted(), '--force is the hand lever and must clear')
         self.assertIn("HALT_CLEAR", self.events())
 
     def test_short_exit_pnl_sign(self):
@@ -1448,6 +1462,107 @@ class ExecutorTest(unittest.TestCase):
         self.x.honor_arm_request(True, "owner", nonce="nc2", utc=u2,
                                  hmac_sig=self._sig(s, "nc2", u2), now_s=time.time())
         self.assertTrue(self.x.armed(), "a fresh request under true (exchange) time arms")
+
+    # -- unhalt authentication (2026-08-18) -----------------------------------
+    # Clearing a halt REMOVES a brake, so it is authenticated exactly like ARM.
+    # DISARM is the opposite direction and stays deliberately unsigned; the
+    # tests below pin that asymmetry so nobody "makes them consistent" later.
+    def _usig(self, secret, nonce, utc):
+        import hmac as _h
+        import hashlib as _hh
+        return _h.new(secret.encode(), f"unhalt|{nonce}|{utc}".encode(), _hh.sha256).hexdigest()
+
+    def test_unhalt_signed_fresh_request_clears_the_halt(self):
+        s = self._set_secret()
+        self.x.set_halt("test", "reconcile mismatch")
+        self.assertTrue(self.x.halted())
+        u = self._utc(0)
+        ok = self.x.honor_unhalt_request("owner", "u1", u, self._usig(s, "u1", u), "owner cleared")
+        self.assertTrue(ok)
+        self.assertFalse(self.x.halted(), "a validly-signed fresh request clears the halt")
+        self.assertIn("HALT_CLEAR", self.events())
+
+    def test_unhalt_refuses_a_bad_signature(self):
+        self._set_secret()
+        self.x.set_halt("test", "reconcile mismatch")
+        ok = self.x.honor_unhalt_request("owner", "u1", self._utc(0), "0" * 64, "forged")
+        self.assertFalse(ok)
+        self.assertTrue(self.x.halted(), "a forged signature must leave the halt standing")
+        self.assertIn("UNHALT_HMAC_INVALID", self.events())
+
+    def test_unhalt_refuses_when_no_secret_is_configured(self):
+        # Fail-safe direction: with no secret the brake STAYS on. (--force is the
+        # documented hand lever for that case; see the force test below.)
+        self.x.set_halt("test", "reconcile mismatch")
+        ok = self.x.honor_unhalt_request("owner", "u1", self._utc(0), "0" * 64, "no secret")
+        self.assertFalse(ok)
+        self.assertTrue(self.x.halted())
+        self.assertIn("UNHALT_NO_SECRET", self.events())
+
+    def test_unhalt_refuses_a_stale_request(self):
+        # A request left on disk must not clear a halt that fired days later.
+        s = self._set_secret()
+        self.x.set_halt("test", "reconcile mismatch")
+        u = self._utc(3600)
+        ok = self.x.honor_unhalt_request("owner", "uold", u, self._usig(s, "uold", u), "stale")
+        self.assertFalse(ok)
+        self.assertTrue(self.x.halted())
+        self.assertIn("UNHALT_STALE_REQUEST", self.events())
+
+    def test_unhalt_refuses_a_replayed_request(self):
+        # The SAME signed request must not clear a SECOND, later halt.
+        s = self._set_secret()
+        self.x.set_halt("test", "first halt")
+        u = self._utc(0)
+        sig = self._usig(s, "u1", u)
+        self.assertTrue(self.x.honor_unhalt_request("owner", "u1", u, sig, "first clear"))
+        self.x.set_halt("test", "second halt — cause returned")
+        ok = self.x.honor_unhalt_request("owner", "u1", u, sig, "replay")
+        self.assertFalse(ok)
+        self.assertTrue(self.x.halted(), "a captured request must not re-clear a later halt")
+        self.assertIn("UNHALT_REPLAY_REJECTED", self.events())
+
+    def test_unhalt_force_is_the_hand_lever_and_is_journaled_unauthenticated(self):
+        # No secret, no signature — --force still clears, because whoever runs it
+        # already has a shell and could delete the flag by hand. The journal must
+        # record it as unauthenticated so the record distinguishes the two paths.
+        self.x.set_halt("test", "reconcile mismatch")
+        ok = self.x.honor_unhalt_request("operator", None, None, None, "hand clear", force=True)
+        self.assertTrue(ok)
+        self.assertFalse(self.x.halted())
+        rec = [e for e in self.x.journal_events() if e.get("event") == "HALT_CLEAR"][-1]
+        self.assertIs(rec.get("authenticated"), False)
+
+    def test_unhalt_never_arms(self):
+        # The whole safety argument for this lever is that it cannot start
+        # trading. Pin it: a successful unhalt leaves the master switch alone.
+        s = self._set_secret()
+        self.x.set_arm(False, "test")
+        self.x.set_halt("test", "reconcile mismatch")
+        u = self._utc(0)
+        self.assertTrue(self.x.honor_unhalt_request("owner", "u1", u, self._usig(s, "u1", u), "clear"))
+        self.assertFalse(self.x.armed(), "clearing a halt must never arm the engine")
+
+    def test_unhalt_on_an_unhalted_box_is_a_no_op(self):
+        s = self._set_secret()
+        u = self._utc(0)
+        self.assertFalse(self.x.halted())
+        ok = self.x.honor_unhalt_request("owner", "u1", u, self._usig(s, "u1", u), "nothing to do")
+        self.assertFalse(ok)
+        self.assertNotIn("HALT_CLEAR", self.events())
+
+    def test_unhalt_does_not_disturb_the_arm_baseline(self):
+        # Separate baseline files on purpose: an unhalt must not ratchet arm's
+        # replay watermark, or clearing a halt could brick a later legitimate START.
+        s = self._set_secret()
+        ua = self._utc(0)
+        self.x.honor_arm_request(True, "owner", nonce="a1", utc=ua, hmac_sig=self._sig(s, "a1", ua))
+        before = self.x._read_baseline()
+        self.x.set_halt("test", "reconcile mismatch")
+        uu = self._utc(0)
+        self.x.honor_unhalt_request("owner", "u1", uu, self._usig(s, "u1", uu), "clear")
+        self.assertEqual(before, self.x._read_baseline(),
+                         "unhalt must leave the arm baseline byte-identical")
 
     def test_hmac_required_when_secret_configured(self):
         s = self._set_secret()

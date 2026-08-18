@@ -154,6 +154,11 @@ ARM = os.path.join(PILOT, "ARM")
 # nonce the box has seen, so arming is edge-triggered on a NEW nonce and a stale
 # request replayed after a disk wipe cannot silently re-arm.
 ARM_BASELINE = os.path.join(PILOT, "arm-baseline.json")
+# unhalt-authentication state (2026-08-18). Clearing a halt REMOVES a safety
+# brake, so unlike DISARM it is authenticated exactly like ARM: signed, fresh
+# and non-replayable. Its own baseline file, deliberately NOT the arm baseline —
+# an unhalt must never be able to perturb arm's watermark.
+UNHALT_BASELINE = os.path.join(PILOT, "unhalt-baseline.json")
 ARM_REQUEST_FRESH_S = 900  # a genuine START's request utc must be within this;
                            # an older request is a stale replay and is refused
 ARM_CLOCK_SKEW_S = 120     # tolerance for a request utc slightly AHEAD of the box
@@ -592,6 +597,82 @@ def honor_arm_request(armed, source, nonce=None, utc=None, hmac_sig=None, now_s=
         jlog("ARM_STALE_REQUEST", source=source, nonce=nonce, age_s=int(_utc_age_s(utc, now_s)),
              note="arm request outside the freshness window (stale or future) — refusing "
                   "to arm without a fresh START (finding 15 / re-review A1)")
+
+
+def _read_unhalt_baseline():
+    try:
+        with open(UNHALT_BASELINE) as f:
+            return json.load(f)
+    except Exception:
+        return None
+
+
+def _write_unhalt_baseline(nonce, utc):
+    os.makedirs(PILOT, exist_ok=True)
+    tmp = UNHALT_BASELINE + ".tmp"
+    with open(tmp, "w") as f:
+        json.dump({"nonce": nonce, "watermark_utc": utc,
+                   "utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}, f)
+    os.replace(tmp, UNHALT_BASELINE)
+
+
+def honor_unhalt_request(source, nonce, utc, hmac_sig, reason, force=False, now_s=None):
+    """Clear the HALT flag, authenticated. Returns True iff the halt was cleared.
+
+    DIRECTION MATTERS. `disarm` is a kill switch and is deliberately
+    unauthenticated — an unsigned STOP must still stop. `unhalt` is its
+    opposite: it REMOVES a brake, so it gets ARM's full treatment — a
+    configured secret, a valid HMAC over {unhalt,nonce,utc}, a two-sided
+    freshness window, and a monotonic replay guard. The failure mode is
+    fail-safe in the direction that matters: anything off, the halt STAYS.
+
+    `force` is the operator escape hatch for someone already at a shell on this
+    box (pilot-unhalt.sh). It adds no attack surface — that person can
+    `rm ~/pilot/HALT` directly — but it is journaled as unauthenticated so the
+    record distinguishes a control-plane clear from a hand clear. Without it a
+    box whose secret was never provisioned would be un-clearable except by hand,
+    which is the kind of lockout that gets worked around with worse habits."""
+    if not halted():
+        print("not halted; nothing to clear")
+        return False
+
+    if not force:
+        secret = load_env().get("PILOT_ARM_SECRET", "")
+        if not secret:
+            jlog("UNHALT_NO_SECRET", source=source,
+                 note="refusing to clear the halt: no PILOT_ARM_SECRET on the box. "
+                      "Use --force from a shell on the box if this is a hand clear.")
+            print("REFUSED (no arm secret configured; halt stands)")
+            return False
+        expect = hmac.new(secret.encode(), f"unhalt|{nonce}|{utc}".encode(),
+                          hashlib.sha256).hexdigest()
+        if not hmac_sig or not hmac.compare_digest(expect, hmac_sig):
+            jlog("UNHALT_HMAC_INVALID", source=source, nonce=nonce)
+            print("REFUSED (bad or missing signature; halt stands)")
+            return False
+        base = _read_unhalt_baseline() or {}
+        wm = base.get("watermark_utc")
+        if base.get("nonce") == nonce or (wm and not _utc_newer(utc, wm)):
+            jlog("UNHALT_REPLAY_REJECTED", source=source, nonce=nonce, utc=utc, watermark=wm)
+            print("REFUSED (replayed request; halt stands)")
+            return False
+        age = _utc_age_s(utc, now_s)
+        if not (-ARM_CLOCK_SKEW_S <= age <= ARM_REQUEST_FRESH_S):
+            jlog("UNHALT_STALE_REQUEST", source=source, nonce=nonce, age_s=int(age),
+                 note="unhalt request outside the freshness window (stale or future) — "
+                      "a request left on disk must not clear a halt that fired later")
+            print("REFUSED (stale or future-dated request; halt stands)")
+            return False
+        _write_unhalt_baseline(nonce, utc)
+
+    try:
+        os.remove(HALT)
+    except FileNotFoundError:
+        pass
+    jlog("HALT_CLEAR", source=source, reason=reason or "manual clear",
+         authenticated=(not force), nonce=(None if force else nonce))
+    print("UNHALTED (halt flag cleared)")
+    return True
 
 
 # ---- Binance client (stdlib only) -------------------------------------------
@@ -1938,16 +2019,12 @@ def main():
     if mode == "unhalt":
         # clear the HALT flag after the cause has been examined/resolved. A halt
         # never self-clears (gates judge the instrument), so this is the explicit
-        # recovery lever — e.g. after fixing the reconcile dust deadlock.
-        if halted():
-            try:
-                os.remove(HALT)
-            except FileNotFoundError:
-                pass
-            jlog("HALT_CLEAR", source=source_arg(), reason=reason_arg() or "manual clear")
-            print("UNHALTED (halt flag cleared)")
-        else:
-            print("not halted; nothing to clear")
+        # recovery lever — e.g. after fixing the reconcile dust deadlock. The
+        # owner reaches it from the Trading tab; the control plane carries the
+        # SIGNED request here. See honor_unhalt_request for why this direction
+        # is authenticated where disarm deliberately is not.
+        honor_unhalt_request(source_arg(), arg_val("--nonce"), arg_val("--utc"),
+                             arg_val("--hmac"), reason_arg(), force=("--force" in sys.argv))
         return 0
     if mode == "status":
         return do_status()

@@ -89,11 +89,29 @@ $SSH "$BOX_USER@$BOX_HOST" \
 # switch, and an unfixed cause re-halts on the next reconcile tick.
 UNREQ="$APPDIR/data/pilot/unhalt-request.json"
 UNSEEN="$APPDIR/data/pilot/unhalt-carried.json"
-read -r un_go un_nonce < <(bash "$HERE/pilot-unhalt-fields.sh" "$UNREQ" "$UNSEEN") || { un_go=0; un_nonce='-'; }
+# A MISSING helper must be LOUD, not silent. The read below fails closed either
+# way, but "the owner pressed the button and nothing whatsoever happened" is the
+# worst possible presentation of a fail-safe: it looks like the button is broken
+# and gives no thread to pull. pilot-install.sh installs this helper beside us;
+# if it is absent, say so where it will be read (2026-08-18 — the same omission
+# the arm-fields/stop-state helpers hit on 2026-08-11).
+if [ ! -f "$HERE/pilot-unhalt-fields.sh" ]; then
+  echo "!! pilot-unhalt-fields.sh MISSING from $HERE — the Trading tab's"
+  echo "   'Clear the halt' button cannot reach the box. Re-run pilot-install.sh."
+  un_go=0; un_nonce='-'; un_utc='-'; un_sig='-'
+else
+  read -r un_go un_nonce un_utc un_sig \
+    < <(bash "$HERE/pilot-unhalt-fields.sh" "$UNREQ" "$UNSEEN") \
+    || { un_go=0; un_nonce='-'; un_utc='-'; un_sig='-'; }
+fi
 if [ "$un_go" = "1" ]; then
   echo "== owner requested UNHALT (nonce $un_nonce) — carrying to the box =="
+  # The SIGNED triple goes to the box, which verifies the HMAC over
+  # {unhalt,nonce,utc} against PILOT_ARM_SECRET and re-applies freshness and
+  # replay itself. Clearing a halt removes a brake, so it is authenticated like
+  # ARM — unlike DISARM, which is a kill switch and must work unsigned.
   if $SSH "$BOX_USER@$BOX_HOST" \
-       "python3 ~/mx_executor.py unhalt --source=owner --reason='cleared by the owner from the Trading tab'" \
+       "python3 ~/mx_executor.py unhalt --source=owner --nonce='$un_nonce' --utc='$un_utc' --hmac='$un_sig' --reason='cleared by the owner from the Trading tab'" \
        2>&1 | sed 's/^/  /'; then
     printf '{"nonce":"%s","carriedAt":"%s"}' "$un_nonce" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$UNSEEN"
   else

@@ -15,6 +15,13 @@
 # than one that states none. The box's own timer runs the next tick within
 # minutes; if the halt's CAUSE is unfixed, that tick re-halts, which is the check
 # working and the signal you want.
+#
+# THIS IS THE HAND LEVER, NOT THE OWNER'S. The owner clears a halt from the
+# Trading tab; that path is SIGNED (HMAC over {unhalt,nonce,utc}) because
+# clearing a halt removes a brake. This script runs --force, which skips that
+# check and is journaled as unauthenticated. That is not a hole: anyone who can
+# run this already has a shell on the box and could delete the flag by hand. It
+# exists so a box whose secret was never provisioned is still recoverable.
 set -uo pipefail
 BOX=admin@ec2-78-13-103-81.mx-central-1.compute.amazonaws.com
 KEY=/root/.ssh/aws-mex-deb13-new.pem
@@ -25,7 +32,7 @@ echo "== before =="
 echo "  HALT: $([ -f ~/pilot/HALT ] && cat ~/pilot/HALT || echo 'not halted')"
 echo "  ARM (master switch, untouched by this script): $([ -f ~/pilot/ARM ] && echo RUNNING || echo STOPPED)"
 echo "== unhalt =="
-python3 ~/mx_executor.py unhalt --source=owner --reason=short-side-dust-tolerance-deployed
+python3 ~/mx_executor.py unhalt --source=operator --force --reason=hand-clear-via-pilot-unhalt.sh
 echo "== after =="
 echo "  HALT: $([ -f ~/pilot/HALT ] && echo 'STILL PRESENT' || echo cleared)"
 echo "  ARM: $([ -f ~/pilot/ARM ] && echo RUNNING || echo STOPPED)"
