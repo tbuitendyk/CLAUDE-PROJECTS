@@ -174,3 +174,30 @@ function theTrimPromptPreFillsAMonthNotADay() {
 module.exports.everyPollingSectionCancelsItsPreviousChain = everyPollingSectionCancelsItsPreviousChain;
 module.exports.enablingAControlDoesNotEraseItsDescription = enablingAControlDoesNotEraseItsDescription;
 module.exports.theTrimPromptPreFillsAMonthNotADay = theTrimPromptPreFillsAMonthNotADay;
+
+// A DATALIST FILTERS ITS SUGGESTIONS BY WHAT IS ALREADY IN THE BOX. The campaign
+// control was an <input list="campNames"> pre-filled with the CURRENT campaign,
+// so opening it showed exactly the one entry that matched and every other
+// campaign on the box was unreachable without clearing the field first. The
+// service was offering three at the time (owner, 2026-08-18: "why does the
+// campaign name drop down only contain one entry?").
+//
+// Watched failing 2026-08-18: restoring list="campNames" on #cxCamp fails this.
+function theCampaignPickerShowsEveryCampaignNotJustTheCurrentOne() {
+  assert(!/<datalist id="campNames"/.test(CX),
+    'the campaign names are back in a datalist — it filters on the box\'s value, so a pre-filled box hides every other name');
+  assert(!/id="cxCamp"[^>]*list=/.test(CX),
+    '#cxCamp is bound to a suggestion list again — the same filtering hides the other campaigns');
+  assert(/<select id="cxCampPick"/.test(CX),
+    'there must be a real picker listing every campaign the service reports');
+  const i = CX.indexOf('<select id="cxCampPick"');
+  const block = CX.slice(i, CX.indexOf('</select>', i));
+  assert(/names\.names \|\| \[\]/.test(block),
+    'the picker must be fed from the service\'s own campaign list');
+  assert(/cxCampPick'\)/.test(CX) && /campPick\.onchange/.test(CX),
+    'picking a campaign must actually switch to it');
+  // and naming a NEW campaign must still be possible
+  assert(/<input id="cxCamp"/.test(CX), 'the box for naming a new campaign is gone');
+}
+
+module.exports.theCampaignPickerShowsEveryCampaignNotJustTheCurrentOne = theCampaignPickerShowsEveryCampaignNotJustTheCurrentOne;

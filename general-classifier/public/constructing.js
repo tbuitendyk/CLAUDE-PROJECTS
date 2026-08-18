@@ -396,12 +396,22 @@ async function drawSweep() {
     <h3 style="margin-top:0">Campaign — the parent job (pt 13)</h3>
     <p class="note">Every run launched while a campaign is set attaches to it: sweeps, null rounds, tuning passes,
       scans. The campaign's whole chain travels with any greenlight minted from it.</p>
+    <!-- A <datalist> FILTERS ITS SUGGESTIONS BY WHAT IS ALREADY IN THE BOX, and
+         the box is pre-filled with the current campaign — so opening it showed
+         exactly the one entry that matched, and every other campaign on the box
+         was unreachable without clearing the field first. The list was never
+         short: the service was offering three (owner, 2026-08-18). Two plain
+         controls now: pick an existing campaign, or type a new name. -->
     <div class="row" style="align-items:flex-end">
-      <label class="f">campaign name<input id="cxCamp" value="${esc(camp.name || '')}" list="campNames" style="width:18rem"></label>
-      <datalist id="campNames">${(names.names || []).map((n) => `<option value="${esc(n)}">`).join('')}</datalist>
+      <label class="f" title="every campaign this box has ever stamped on a run or a greenlight, newest activity first. Picking one switches to it immediately.">existing campaigns<select id="cxCampPick" style="min-width:18rem">
+        <option value="">— ${(names.names || []).length} on this box —</option>
+        ${(names.names || []).map((n) => `<option value="${esc(n)}" ${n === camp.name ? 'selected' : ''}>${esc(n)}</option>`).join('')}
+      </select></label>
+      <label class="f" title="name a NEW campaign. Runs launched from now on attach to whatever is set here.">or a new name<input id="cxCamp" value="${esc(camp.name || '')}" style="width:18rem"></label>
       <button id="campSet">Set</button>
       <button id="campTree">View tree</button>
     </div>
+    <p class="note">Currently set: <b>${esc(camp.name || 'none')}</b>${(names.names || []).length ? ` · ${(names.names || []).length} campaign(s) on this box` : ''}</p>
     <div id="campOut"></div></div>
   <div class="panel">
     <h3 style="margin-top:0">Board sweep — wide to FIND (never a result)</h3>
@@ -470,6 +480,12 @@ async function drawSweep() {
     </div></div>
   <div class="panel" id="swProg">${running ? '' : '<span class="muted">No job running.</span>'}</div>`;
   $('#campSet').onclick = async () => { const out = await tryPost('api/campaign', { name: $('#cxCamp').value }); if (out) drawSweep(); };
+  const campPick = $('#cxCampPick');
+  if (campPick) campPick.onchange = async () => {
+    if (!campPick.value) return;
+    const out = await tryPost('api/campaign', { name: campPick.value });
+    if (out) drawSweep();
+  };
   $('#campTree').onclick = async () => {
     const name = $('#cxCamp').value.trim(); if (!name) { alert('name a campaign'); return; }
     const t = await api(`api/campaign-tree?name=${encodeURIComponent(name)}`).catch(() => null);

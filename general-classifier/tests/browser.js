@@ -89,6 +89,22 @@ function getJson(pathname) {
   });
 }
 
+function postJson(pathname, body) {
+  return new Promise((resolve, reject) => {
+    const data = JSON.stringify(body || {});
+    const req = http.request({
+      host: '127.0.0.1', port: PORT, path: pathname, method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(data) },
+    }, (res) => {
+      let s = '';
+      res.on('data', (d) => { s += d; });
+      res.on('end', () => { try { resolve({ code: res.statusCode, body: JSON.parse(s) }); } catch (e) { reject(e); } });
+    });
+    req.on('error', reject);
+    req.write(data); req.end();
+  });
+}
+
 function waitForServer(timeoutMs) {
   const deadline = Date.now() + timeoutMs;
   return new Promise((resolve, reject) => {
@@ -247,6 +263,141 @@ async function verifyBoardNumbers(page, add, runId) {
   if (!checked) add('no board row could be matched to the record — the check verified nothing');
 }
 
+// The Trading side's money screen, against the endpoint that feeds it. This is
+// where real and paper money sit next to each other, so it is where a mix-up
+// costs the most — a fictional figure read as a real one.
+async function verifyTradingNumbers(page, add, setupId, isPaper) {
+  const st = await getJson(`/api/live/setups/${encodeURIComponent(setupId)}/status`);
+  const tiles = await page.evaluate(() => {
+    const out = {};
+    for (const t of document.querySelectorAll('#view .tile')) {
+      const k = t.querySelector('.k');
+      const v = t.querySelector('.v');
+      if (k && v) out[k.textContent.trim()] = v.textContent.trim();
+    }
+    return out;
+  });
+  const find = (re) => {
+    const k = Object.keys(tiles).find((x) => re.test(x));
+    return k ? tiles[k] : null;
+  };
+  const expectMoney = (label, shownText, want) => {
+    if (want == null) return;
+    const got = parseMoney(shownText);
+    if (got == null || Math.abs(got - want) > 0.005) {
+      add(`${label} reads ${shownText}, the record says ${want.toFixed(4)}`);
+    }
+  };
+  // The whole point: the side being shown must be the side being counted.
+  expectMoney('realized tile', find(/realized/i), isPaper ? st.paperRealizedPnl : st.realizedPnl);
+  expectMoney('unrealized tile', find(/unrealized/i), isPaper ? st.paperUnrealizedPnl : st.unrealizedPnl);
+
+  const wrongSide = isPaper ? st.realizedPnl : st.paperRealizedPnl;
+  const shownReal = parseMoney(find(/realized/i));
+  const wantReal = isPaper ? st.paperRealizedPnl : st.realizedPnl;
+  if (wrongSide != null && wantReal != null && wrongSide !== wantReal
+      && shownReal != null && Math.abs(shownReal - wrongSide) < 1e-9) {
+    add(`the ${isPaper ? 'paper' : 'live'} side is showing the OTHER book's realized money`);
+  }
+
+  const openWant = (st.openPositions || []).filter((p) => (isPaper ? !!p.paper : !p.paper)).length;
+  const openShown = find(/open positions/i);
+  if (openShown != null && Number(openShown) !== openWant) {
+    add(`open-positions tile reads ${openShown}, this side holds ${openWant}`
+      + ` (the record's merged list has ${(st.openPositions || []).length})`);
+  }
+  const rowCount = await page.evaluate(() => {
+    const panels = Array.from(document.querySelectorAll('#view .panel'));
+    const p = panels.find((x) => /open positions/i.test((x.querySelector('.k') || {}).textContent || ''));
+    return p ? p.querySelectorAll('tbody tr:not(:has(td.empty))').length : -1;
+  });
+  if (rowCount >= 0 && rowCount !== openWant) {
+    add(`the open-positions table lists ${rowCount} row(s), this side holds ${openWant}`);
+  }
+}
+
+// The control path: activate a channel, confirm the screen says so, deactivate,
+// confirm it says so again. These buttons change what trades, so an unexercised
+// one is the last place a silent no-op can hide — which is exactly what the
+// master switch turned out to be.
+async function verifyChannelControls(page, add, configId, dialogs) {
+  const stateOf = async () => {
+    const cfgs = await getJson('/api/live/configs');
+    const c = (cfgs.configs || []).find((x) => x.id === configId);
+    return c && c.channels && c.channels.paper ? c.channels.paper.state : null;
+  };
+  const before = await stateOf();
+  if (before !== 'paper') { add(`the fixture config is not on paper before the test (state ${before})`); return; }
+
+  const press = async (label) => {
+    const btns = await page.$$('#view button');
+    for (const b of btns) {
+      const t = (await b.textContent() || '').trim();
+      if (new RegExp(label, 'i').test(t)) { await b.click({ timeout: 5000 }); await page.waitForTimeout(1500); return true; }
+    }
+    return false;
+  };
+
+  // 1. CANCELLING must change nothing. A confirmation that does not actually
+  //    protect is worse than none, because it teaches the operator to trust it.
+  dialogs.accept = false;
+  const seenBefore = dialogs.seen;
+  if (!await press('^Deactivate$')) { add('no Deactivate button on the Greenlights row for an active paper channel'); return; }
+  if (dialogs.seen === seenBefore) add('Deactivate asked for no confirmation — it changes what trades');
+  if (await stateOf() !== 'paper') add('CANCELLING the Deactivate confirmation still deactivated the channel');
+
+  // 2. CONFIRMING must change the state, and the ROW must say so. Read the row's
+  //    own status cell, not the page text — the page carries a legend spelling
+  //    out the whole status vocabulary, and matching against that would report a
+  //    fault on a correct screen.
+  dialogs.accept = true;
+  if (!await press('^Deactivate$')) { add('the Deactivate button vanished between attempts'); return; }
+  const stopped = await stateOf();
+  if (stopped === 'paper') add('Deactivate changed nothing — the channel is still on paper');
+  const rowStatus = async () => page.evaluate((id) => {
+    const tr = Array.from(document.querySelectorAll('#view tbody tr'))
+      .find((r) => (r.textContent || '').includes(id));
+    return tr ? (tr.children[4] || {}).textContent.trim() : null;
+  }, configId);
+  const after = await rowStatus();
+  if (after === 'active paper') add(`the row still reads "active paper" after deactivating (state is ${stopped})`);
+  if (after == null) add('the config row vanished from the list after deactivating');
+
+  // 3. Re-activation. With positions still open this is CORRECTLY refused —
+  //    re-activating resets the setup's displayed run and would hide them while
+  //    the engine keeps managing them. Either outcome is right; what must hold is
+  //    that a refusal's count RECONCILES with what the screen shows, which is
+  //    exactly what did not hold before (it said 2 while the page showed 1).
+  const st = await getJson(`/api/live/setups/${encodeURIComponent((await getJson('/api/live/configs')).configs
+    .find((c) => c.id === configId).channels.paper.setupId)}/status`);
+  const realOpen = (st.openPositions || []).filter((p) => !p.paper).length;
+  const paperOpen = (st.openPositions || []).filter((p) => p.paper).length;
+  let refusal = null;
+  page.once('dialog', (d) => { refusal = d.message(); d.accept().catch(() => {}); });
+  if (!await press('^Activate paper$')) { add('no Activate button after deactivating — the channel cannot be restarted'); return; }
+  await page.waitForTimeout(1200);
+  const back = await stateOf();
+  if (realOpen + paperOpen === 0) {
+    if (back !== 'paper') add(`Activate did not put a flat channel back on paper (state ${back})`);
+  } else {
+    if (back === 'paper') add('a channel with open positions was re-activated — its displayed run would hide them');
+    const msg = refusal || '';
+    if (!msg) add('re-activation was refused with no message the operator can read');
+    else {
+      if (realOpen && !new RegExp(`${realOpen} real`).test(msg)) {
+        add(`the refusal does not name the ${realOpen} real position(s) the screen shows — got: ${msg.slice(0, 160)}`);
+      }
+      if (paperOpen && !new RegExp(`${paperOpen} paper`).test(msg)) {
+        add(`the refusal does not name the ${paperOpen} paper position(s) the screen shows — got: ${msg.slice(0, 160)}`);
+      }
+      if (/\((\d+) open\)/.test(msg)) {
+        add(`the refusal reports one merged count, which cannot be reconciled with a screen showing one side: ${msg.slice(0, 160)}`);
+      }
+    }
+  }
+  dialogs.accept = false;
+}
+
 async function visit(browser, spec) {
   const ctx = await browser.newContext({ viewport: { width: 1500, height: 1100 } });
   const faults = [];
@@ -259,7 +410,11 @@ async function visit(browser, spec) {
 
   const page = await ctx.newPage();
   // A confirm()/alert() with nobody to answer it hangs the page, so answer them.
-  page.on('dialog', (d) => d.dismiss().catch(() => {}));
+  // Cancel by default — a pass that clicks its way through the whole tab must
+  // not be able to say yes to something. The CONTROLS pass flips this
+  // deliberately, and checks BOTH answers.
+  const dialogs = { accept: false, seen: 0 };
+  page.on('dialog', (d) => { dialogs.seen++; (dialogs.accept ? d.accept() : d.dismiss()).catch(() => {}); });
   page.on('pageerror', (e) => add(`uncaught exception: ${e.message}`));
   page.on('console', (m) => { if (m.type() === 'error') add(`console error: ${m.text().slice(0, 300)}`); });
   page.on('requestfailed', (r) => {
@@ -304,7 +459,7 @@ async function visit(browser, spec) {
       .map((t) => t.textContent.trim().slice(0, 40)));
     for (const b of [...new Set(bare)]) add(`the column "${b}" carries no description`);
 
-    if (spec.verify) await spec.verify(page, add);
+    if (spec.verify) await spec.verify(page, add, dialogs);
     if (spec.click) await clickAround(page, add);
   } catch (e) {
     add(`page threw during the visit: ${e.message}`);
@@ -367,6 +522,67 @@ async function main() {
   for (const t of CONSTRUCTING_TABS) {
     visits.push({ label: `POPULATED  Constructing / ${t}`, url: `${BASE}/constructing.html`, storage: { 'cx-tab': t, 'cx-run': runId } });
   }
+  // A paper book to read, and a SEPARATE throwaway config to operate.
+  //
+  // The controls pass deactivates what it touches, so pointing both at the same
+  // config made the second run of this harness silently SKIP both passes — the
+  // pass consumed the state it depended on, and a check that quietly stops
+  // checking is the worst kind. VALUES reads an existing paper channel in
+  // whatever state it is in; CONTROLS mints its own, exercises it, and nukes it.
+  let paperSetup = null;
+  let controlsConfig = null;
+  try {
+    const cfgs = await getJson('/api/live/configs');
+    const withPaper = (cfgs.configs || []).filter((x) => x.channels && x.channels.paper);
+    if (withPaper.length) paperSetup = withPaper[0].channels.paper.setupId;
+  } catch (_) { /* reported below */ }
+
+  // Mint the throwaway by TRYING, not by inferring. Whether a run is
+  // live-executable is the server's judgement — asking it is one call, and
+  // guessing was wrong (the first version inferred it and skipped the pass
+  // silently, which is the failure mode this whole harness exists to stop).
+  //
+  // The CLICKED pass clicks board rows, which CHANGES the run's stored selection
+  // — so the mint must pin the row it wants first and put the original back
+  // after. A harness that leaves the box in a different state than it found it
+  // is one that behaves differently on its second run, which is how the earlier
+  // version came to skip two passes without saying why.
+  const restore = [];
+  try {
+    const gls = await getJson('/api/live/greenlights');
+    const runs = [...new Set((gls.greenlights || [])
+      .filter((g) => !g.revoked && g.sourceRun && g.sourceRun.id)
+      .map((g) => g.sourceRun.id))];
+    for (const runId of runs) {
+      const doc = await getJson(`/api/batch/${encodeURIComponent(runId)}`).catch(() => null);
+      if (!doc) continue;
+      const row = (doc.leaders || []).find((l) => l.stage === 'promoted' && l.nullDealSeed == null);
+      if (!row) continue;
+      const wasSelected = doc.selection && doc.selection.key;
+      const sel = await postJson(`/api/bracketlab/${encodeURIComponent(runId)}/select`,
+        { key: row.key, stage: 'promoted' }).catch(() => null);
+      if (!sel || sel.code !== 200) continue;
+      if (wasSelected && wasSelected !== row.key) restore.push({ runId, key: wasSelected });
+      // 'best' rather than 'declared': every promoted row can be greenlighted on
+      // its best cell, while a declared cell exists only when the run declared
+      // one. This config exists to be operated and thrown away, not to be read.
+      const mint = await postJson('/api/live/greenlight', {
+        runId, target: 'best', why: 'throwaway config for the runtime control checks',
+      }).catch(() => null);
+      if (!mint || mint.code !== 200 || !mint.body.greenlight) continue;
+      const id = mint.body.greenlight.id;
+      const act = await postJson(`/api/live/configs/${id}/activate`, { channel: 'paper', clipUsd: 10 }).catch(() => null);
+      if (act && act.code === 200) { controlsConfig = id; break; }
+      await postJson(`/api/live/configs/${id}/nuke`, {}).catch(() => {});   // not live-executable; try the next run
+    }
+  } catch (_) { /* reported below */ }
+  for (const r of restore) {
+    await postJson(`/api/bracketlab/${encodeURIComponent(r.runId)}/select`, { key: r.key, stage: 'promoted' }).catch(() => {});
+  }
+
+  if (!paperSetup) console.error('NOTE: no paper channel on this box — the Trading VALUES pass is SKIPPED.');
+  if (!controlsConfig) console.error('NOTE: no run on this box mints a live-executable config — the Trading CONTROLS pass is SKIPPED.');
+
   visits.push({
     label: 'VALUES     Constructing / boards',
     url: `${BASE}/constructing.html`,
@@ -381,6 +597,30 @@ async function main() {
       visits.push({ label: `CLICKED    Trading / ${b} / ${s}`, url: `${BASE}/trading.html`, storage: { 'lt-branch': b, 'lt-sub': s }, click: true });
     }
   }
+  if (paperSetup) {
+    visits.push({
+      label: 'VALUES     Trading / paper / detail',
+      url: `${BASE}/trading.html`,
+      storage: { 'lt-branch': 'paper', 'lt-sub': 'setups' },
+      verify: async (page, add) => {
+        // reach the detail page the way a person does: click the setup's row
+        const rows = await page.$$('#view tr[data-id]');
+        if (!rows.length) { add('the Setups list shows no rows for an active paper channel'); return; }
+        await rows[0].click({ timeout: 5000 });
+        await page.waitForTimeout(1500);
+        await verifyTradingNumbers(page, add, paperSetup, true);
+      },
+    });
+  }
+  if (controlsConfig) {
+    visits.push({
+      label: 'CONTROLS   Trading / paper / configs',
+      url: `${BASE}/trading.html`,
+      storage: { 'lt-branch': 'paper', 'lt-sub': 'configs' },
+      verify: (page, add, dialogs) => verifyChannelControls(page, add, controlsConfig, dialogs),
+    });
+  }
+
   // Light theme is a whole second palette; a token defined only in the dark
   // block renders as nothing at all, and nobody would see it in a dark run.
   for (const t of ['sweep', 'boards']) {
@@ -397,6 +637,35 @@ async function main() {
       for (const f of r.faults) console.error(`     ${f}`);
     } else {
       console.log(`ok   ${r.label}`);
+    }
+  }
+
+  // Clean up the throwaway config, and exercise Nuke while doing it — the last
+  // control with no coverage. Nuke must REFUSE while a channel is still active
+  // (dropping a config out from under a running book would strand it), and must
+  // work once it is deactivated.
+  if (controlsConfig) {
+    const problems = [];
+    const early = await postJson(`/api/live/configs/${controlsConfig}/nuke`, {}).catch(() => null);
+    if (early && early.code === 200) problems.push('Nuke removed a config whose paper channel was still active');
+    else if (!early || !/deactivate/i.test(JSON.stringify(early.body || ''))) {
+      problems.push(`Nuke refused an active config without saying to deactivate first: ${early ? JSON.stringify(early.body) : 'no reply'}`);
+    }
+    await postJson(`/api/live/configs/${controlsConfig}/deactivate`, { channel: 'paper' }).catch(() => null);
+    const out = await postJson(`/api/live/configs/${controlsConfig}/nuke`, {}).catch(() => null);
+    if (!out || out.code !== 200) {
+      problems.push(`Nuke refused a deactivated config: ${out ? JSON.stringify(out.body) : 'no reply'}`);
+    } else {
+      const still = (await getJson('/api/live/configs').catch(() => ({ configs: [] })))
+        .configs.some((c) => c.id === controlsConfig);
+      if (still) problems.push('Nuke reported success but the config is still listed');
+    }
+    if (problems.length) {
+      bad++;
+      console.error('FAIL CLEANUP    Trading / nuke');
+      for (const p2 of problems) console.error(`     ${p2}`);
+    } else {
+      console.log('ok   CLEANUP    Trading / nuke refuses an active config and removes a deactivated one');
     }
   }
 

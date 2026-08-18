@@ -89,10 +89,27 @@ function deriveSetup(events, setupId) {
           entry_price: p ? p.entry_price : null, exit_price: e.price, exit_utc: e.utc, paper: true });
         break;
       }
+      // THE SAME LIST THE EXECUTOR ACTUALLY WRITES. This surfaced four event
+      // kinds while the executor journals a dozen with a setup_id on them, so a
+      // rejected order, an order whose outcome is UNKNOWN, an overdue exit, a
+      // stale or invalid intent, and a period the executor GAVE UP on all
+      // showed nothing — the panel said "none — clean" while the record said
+      // otherwise. lib/pilotview.js surfaces all of these for F1; only its
+      // generalized twin was missing them, and an asymmetry between the two is
+      // an oversight rather than a decision (the QC-122 shape, found 2026-08-18).
       case 'FIXED_STOP':
       case 'KILL_PRICE_DRIFT':
       case 'ENTRY_SKIPPED':
       case 'INTENT_DUPLICATE':
+      case 'ORDER_REJECT':
+      case 'ORDER_UNKNOWN':
+      case 'EXIT_OVERDUE':
+      case 'ENTRY_GAVE_UP':
+      case 'INTENT_STALE':
+      case 'INTENT_INVALID':
+      case 'MIRROR_BREAK':
+      case 'RECONCILE_MISMATCH':
+      case 'KILL_TRANSPORT':
         incidents.push({ utc: e.utc, kind: e.event,
           detail: JSON.stringify(Object.fromEntries(Object.entries(e)
             .filter(([k]) => !['event', 'ts', 'utc', 'setup_id'].includes(k)))) });

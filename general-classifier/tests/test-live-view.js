@@ -169,3 +169,51 @@ module.exports.aSetupHoldingBothBooksReportsOnePositionPerSide = function () {
     assert.strictEqual(paper[0].side, 'SHORT');
   });
 };
+
+// THE INCIDENTS PANEL MUST SEE WHAT THE EXECUTOR REPORTS. It surfaced four
+// event kinds while the executor journals a dozen carrying a setup_id, so a
+// rejected order, an UNKNOWN order outcome, an overdue exit, a stale or invalid
+// intent, and a period the executor GAVE UP on all rendered nothing — the panel
+// said "none — clean" while the record said otherwise. lib/pilotview.js has
+// surfaced all of these for F1 all along; only its generalized twin was missing
+// them, and an asymmetry between the two is an oversight, not a decision (the
+// QC-122 shape, found 2026-08-18 while building a fixture for the runtime pass).
+//
+// The list is checked against lib/pilotview.js's OWN switch rather than a copy,
+// so the two rails cannot drift apart again silently.
+//
+// Watched failing 2026-08-18: dropping ORDER_REJECT from view.js fails both
+// checks below.
+module.exports.theSetupScreenSurfacesEveryIncidentTheF1ScreenDoes = function () {
+  const fs2 = require('fs');
+  const path2 = require('path');
+  const ROOT2 = path2.join(__dirname, '..');
+  const kinds = (rel) => new Set([...fs2.readFileSync(path2.join(ROOT2, rel), 'utf8')
+    .matchAll(/case '([A-Z_]+)':/g)].map((m) => m[1]));
+  const f1 = kinds('lib/pilotview.js');
+  const gen = kinds('lib/live/view.js');
+  // the failures a PER-SETUP screen must show; box-wide ones (ARM_*, HALT_*,
+  // CLOCK_DRIFT, BALANCE) belong to the box, not to a setup
+  const perSetup = ['ORDER_REJECT', 'EXIT_OVERDUE', 'ENTRY_GAVE_UP', 'INTENT_STALE',
+    'KILL_PRICE_DRIFT', 'FIXED_STOP', 'MIRROR_BREAK'];
+  for (const k of perSetup) {
+    assert.ok(f1.has(k), `pilotview no longer handles ${k} — re-aim this test rather than deleting it`);
+    assert.ok(gen.has(k),
+      `the generalized setup screen ignores ${k}, which the executor journals with a setup_id — the Incidents panel would read "none — clean" through a real failure`);
+  }
+};
+
+module.exports.aRejectedOrderAppearsInTheSetupsIncidents = function () {
+  withJournal([
+    { utc: '2026-08-18T01:00:00Z', event: 'ENTRY_FILL', setup_id: 'r', chunk_start: 'c1', side: 'LONG', qty: 0.2, price: 100, exit_due_ts: 2e9 },
+    { utc: '2026-08-18T01:05:00Z', event: 'ORDER_REJECT', setup_id: 'r', http: 400, body: 'insufficient margin' },
+    { utc: '2026-08-18T01:06:00Z', event: 'ENTRY_GAVE_UP', setup_id: 'r', chunk_start: 'c2' },
+  ], (f) => {
+    const b = view.deriveSetup(view.readJournal(f).events, 'r');
+    const kinds = b.incidents.map((i) => i.kind);
+    assert.ok(kinds.includes('ORDER_REJECT'), `a rejected order must be on the screen, got ${JSON.stringify(kinds)}`);
+    assert.ok(kinds.includes('ENTRY_GAVE_UP'), 'a period the executor gave up on must be on the screen');
+    assert.ok(b.incidents.every((i) => i.detail && i.detail.length),
+      'each incident must carry the executor\'s own detail, not just its name');
+  });
+};

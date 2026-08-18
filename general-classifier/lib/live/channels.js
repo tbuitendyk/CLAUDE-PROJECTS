@@ -74,10 +74,27 @@ function activate(greenlightId, channel, { by = OWNER_ID, clipUsd, name } = {}) 
   // display while the engine keeps managing them — invisible exposure, the one
   // thing a trading screen must never allow.
   if (s && s.state === 'stopped') {
+    // BOTH BOOKS COUNT, and the message must SAY so. A setup that has gone
+    // paper -> live can hold real and paper positions at once, and re-activating
+    // resets this setup's displayed run — which would hide either kind while the
+    // engine keeps managing it. So the gate is right to count both. What was
+    // wrong was the number: it reported a single total while the setup screen
+    // shows one side, so the operator was refused with "2 open" while looking at
+    // a page showing 1, and the two numbers could not be reconciled
+    // (found 2026-08-18 by the runtime control pass).
     let open = 0;
-    try { open = (require('./view').setupStatus(s).openPositions || []).length; } catch (_) { open = 0; }
-    if (open > 0) {
-      const e = new Error(`${channel} channel is still deactivating (${open} open) — re-activate after close-out`);
+    let paperOpen = 0;
+    try {
+      const rows = require('./view').setupStatus(s).openPositions || [];
+      open = rows.filter((p) => !p.paper).length;
+      paperOpen = rows.filter((p) => p.paper).length;
+    } catch (_) { open = 0; paperOpen = 0; }
+    if (open + paperOpen > 0) {
+      const parts = [];
+      if (open) parts.push(`${open} real`);
+      if (paperOpen) parts.push(`${paperOpen} paper`);
+      const e = new Error(`${channel} channel is still deactivating (${parts.join(' + ')} still open on this setup) `
+        + '— re-activating would reset its displayed run and hide them while the engine keeps managing them. Re-activate after close-out');
       e.code = 'DEACTIVATING'; throw e;
     }
   }

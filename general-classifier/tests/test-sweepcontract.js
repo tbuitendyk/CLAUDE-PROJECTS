@@ -215,7 +215,10 @@ module.exports = {
       // allow-list is the server's own reply and cannot be restated here. The
       // only literal value in them is the empty placeholder. What these must
       // never be is <input> boxes — test-uicontracts.js pins that.
-      'bPick', 't1null', 'cmpA', 'cmpB']);
+      'bPick', 't1null', 'cmpA', 'cmpB',
+      // same shape: the campaign picker's options are the names the service
+      // itself reports, and a NEW name is typed in the box beside it
+      'cxCampPick']);
     const withValues = [...SWEEP.matchAll(/<select id="([\w-]+)"[^>]*>((?:(?!<\/select>)[\s\S])*?)<\/select>/g)]
       .filter((m) => /<option value="/.test(m[2])).map((m) => m[1]);
     const unlisted = withValues.filter((id) => !known.has(id));
