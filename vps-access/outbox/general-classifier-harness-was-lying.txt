@@ -1,0 +1,82 @@
+The Trading tab had zero test coverage and the test suite said "all clean"
+
+tl;dr I went looking for what was still wrong with the two tabs and the worst
+thing I found was my own instrument. The runtime test printed "all 45 tab views
+clean" while the three passes that check the Trading tab's money numbers and its
+buttons had all quietly stopped running. They run now — 49 views clean, twice in
+a row, identical. Nothing was wrong with the tabs themselves; the problem was
+that nothing had been checking them.
+
+WHAT WAS ACTUALLY WRONG
+
+The runtime test opens both tabs in a real browser and walks every view. Three
+of its passes are the only coverage the Trading tab has for the numbers that
+involve money and for the buttons that change what trades:
+
+  VALUES     every tile on the setup page must match what the server reports
+  CONTROLS   cancelling a confirmation must change nothing; confirming must work
+  REAL-GATE  the real-money channel must be refused, and must say why
+
+All three were SKIPPED, and the run still finished with "all 45 tab views clean"
+and a success code. So the summary line said full coverage while the coverage
+was zero.
+
+Two causes, both mine:
+
+  1. The test needed a config it could safely operate, and it looked for one
+     among configs that already existed — on a box with none, it looked at an
+     empty list and gave up. The finished run sitting right there, which could
+     have produced one, was never considered.
+  2. It printed a note when it skipped. A note above a green summary is not a
+     warning; the summary is what gets read.
+
+The second one is the part worth dwelling on. I had ALREADY written this down as
+a known weakness five entries earlier in the QC register — "nothing yet FAILS
+when a pass skips; a reader has to look" — and then nobody looked. That is what
+an unenforced item is worth in practice, and it is why the register only counts
+a check that has been watched failing.
+
+WHAT I CHANGED
+
+  * A skipped pass is now a failure, not a note. It also prints the server's own
+    reason, so you can tell an environment limit from a real regression without
+    digging.
+  * The test now builds what it needs instead of hoping to find it, and each
+    pass gets its own throwaway so none can consume another's.
+  * Where a machine genuinely has no suitable data, one command builds it:
+    it downloads LTCUSDT hourly candles from the same public Binance bulk portal
+    the app already uses, runs a small sweep, and then PROVES the result works by
+    opening a paper book off it and removing it again. Saying "ready" without
+    that check is exactly how the original problem stayed invisible.
+
+TWO MORE GAPS I CLOSED WHILE I WAS IN THERE
+
+  * The launch button and the Stop button had never been pressed by any test.
+    A launcher that builds a request the server rejects looks identical to a
+    working button — the tab does not change, so there is nothing to see, and
+    you would only find out by pressing it. Both are now pressed on every run,
+    with the run aborted immediately so it costs nothing. I confirmed it catches
+    a real breakage by removing a required field and watching it report the
+    rejection.
+
+  * Every address the two tabs call is now checked to exist. There are 41 of
+    them and all 41 resolve. This is the class where a button points at
+    something that was renamed — invisible to the browser test, because it never
+    presses the dangerous buttons, and invisible to a reviewer, because both
+    halves read correctly and only their meeting is wrong.
+
+WHERE THAT LEAVES THE TWO TABS
+
+  505 unit tests pass. 49 browser views clean, including — for the first time —
+  the Trading money numbers, the channel controls, the real-money refusal, the
+  launch and stop buttons, and the delete path. Two consecutive runs byte for
+  byte identical. 66 markers verified on the deployed page.
+
+  Honest remaining limit: the browser test runs against this build box's data,
+  not the live box's. It proves the software behaves; it does not re-check your
+  live numbers, which the pilot's own reconcile does every ten minutes.
+
+The live pilot was not touched by any of this: still armed, unhalted, one short
+open, reconcile clean.
+
+c.
