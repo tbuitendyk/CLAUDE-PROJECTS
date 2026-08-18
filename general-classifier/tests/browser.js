@@ -266,6 +266,152 @@ async function verifyBoardNumbers(page, add, runId) {
 // The Trading side's money screen, against the endpoint that feeds it. This is
 // where real and paper money sit next to each other, so it is where a mix-up
 // costs the most — a fictional figure read as a real one.
+// BRANCH ISOLATION: the real-money side must not show a paper book (2026-08-18).
+//
+// This exists because the obvious check does NOT work on a one-book box. The
+// Dashboard-totals check above compares the summed money against the per-setup
+// records, and on data where the only book is a paper one, a total that wrongly
+// includes both books is NUMERICALLY IDENTICAL to the correct one. I injected
+// exactly the QC-149 fault (dropping the per-card book filter) and the totals
+// check passed — a check whose fixture cannot distinguish the two cases is not
+// a check, and counting it as coverage is how QC-159 happened.
+//
+// This one discriminates with the data actually present: with a paper book
+// active and NO real channel, the real branch must show its empty state. If the
+// branch filter regresses, the paper book's money renders under a real-money
+// heading — which is the QC-149 danger in its most dangerous form, because a
+// number under "live" is read as real money.
+async function verifyRealBranchShowsNoPaperBook(page, add, paperSetupId) {
+  const cfgs = await getJson('/api/live/configs').catch(() => null);
+  if (!cfgs || !cfgs.configs) { add('the branch-isolation check could not read /api/live/configs'); return; }
+  const realChannels = cfgs.configs.filter((g) => (g.channels || {}).real).length;
+  const paperChannels = cfgs.configs.filter((g) => (g.channels || {}).paper).length;
+  // The F1 pilot is a legitimate live-side row that carries NO channels.real —
+  // it is the original hard-wired rail, not a greenlit channel. An earlier
+  // version of this check asserted the live side was EMPTY and failed on F1,
+  // which would have been a false alarm on the real-money screen: the worst kind,
+  // because it trains the reader to dismiss this pass.
+  // Read F1 from the SAME source the page does. It is not in /api/live/configs at
+  // all — fetchConfigs() synthesises the row from /api/pilot and gives it a real
+  // channel. Deriving it from the configs list said "no F1" while the screen was
+  // showing one, and this check then failed on correct behaviour.
+  const pilot = await getJson('/api/pilot').catch(() => null);
+  const f1Present = !!(pilot && pilot.present !== false);
+  // Only meaningful in the asymmetric case: paper books exist, real ones do not.
+  if (!paperChannels || realChannels) return;
+
+  const seen = await page.evaluate(() => ({
+    text: (document.querySelector('#view') || {}).textContent || '',
+    ids: [...document.querySelectorAll('#view [data-setup]')].map((e) => e.getAttribute('data-setup')),
+    cards: document.querySelectorAll('#view .tile').length,
+  }));
+  if (paperSetupId && seen.ids.includes(paperSetupId)) {
+    add(`the REAL-money Dashboard is showing the paper book ${paperSetupId} — `
+      + 'its money would read as real money');
+  }
+  // The empty-state wording is only owed when there is genuinely nothing to show.
+  // With F1 present the live side correctly lists it, so demanding "nothing on
+  // the live side" would be asserting a falsehood.
+  if (!f1Present && !/nothing on the live side/i.test(seen.text)) {
+    add('the real branch holds no channel and no F1 pilot, but the Dashboard did not say so: '
+      + `"${seen.text.trim().slice(0, 120)}"`);
+  }
+}
+
+// THE DASHBOARD'S SUMMED MONEY (added 2026-08-18).
+//
+// verifyTradingNumbers checks ONE setup's tiles against ONE record. The
+// Dashboard does something different and riskier: it SUMS realized, unrealized
+// and open across every book on the branch you are looking at. A filtering slip
+// is least visible in a sum — one wrong book folded into a total looks like a
+// plausible number, where the same slip on a single setup's page would show a
+// figure you could recognise as belonging to something else. QC-149 was exactly
+// that class (real and paper counted together) and the Dashboard cards were one
+// of the four sites that had it.
+//
+// The expected totals are recomputed from the SERVER's per-setup records, not
+// from the page — so this is an independent second opinion on the page's own
+// arithmetic and filtering, not a copy agreeing with itself (QC-148). The
+// wrong-side assertion below is the load-bearing half: it fails when the total
+// happens to equal what you would get by summing BOTH books.
+async function verifyDashboardTotals(page, add, isPaper) {
+  const cfgs = await getJson('/api/live/configs').catch(() => null);
+  if (!cfgs || !cfgs.configs) { add('the Dashboard check could not read /api/live/configs'); return; }
+
+  let wantR = 0, wantU = 0, wantOpen = 0;   // this branch only
+  let bothR = 0, bothOpen = 0;              // both books, to catch an unfiltered sum
+  let counted = 0;
+  for (const g of cfgs.configs) {
+    const ch = (g.channels || {})[isPaper ? 'paper' : 'real'];
+    if (!ch || !ch.setupId) continue;
+    const st = g.f1
+      ? await getJson('/api/pilot').catch(() => null)
+      : await getJson(`/api/live/setups/${encodeURIComponent(ch.setupId)}/status`).catch(() => null);
+    if (!st) continue;
+    counted++;
+    const rp = g.f1 ? st.realizedPnl : (isPaper ? st.paperRealizedPnl : st.realizedPnl);
+    const up = g.f1 ? st.unrealizedPnl : (isPaper ? st.paperUnrealizedPnl : st.unrealizedPnl);
+    const all = st.openPositions || [];
+    wantR += rp || 0;
+    wantU += up || 0;
+    wantOpen += all.filter((pp) => (g.f1 ? !pp.paper : (isPaper ? pp.paper : !pp.paper))).length;
+    bothR += (st.realizedPnl || 0) + (st.paperRealizedPnl || 0);
+    bothOpen += all.length;
+  }
+  if (!counted) return;   // nothing on this branch; the EMPTY pass covers that view
+
+  // Scope to the SUMMARY grid. The per-config cards below it are also .tile and
+  // also carry money, so an unscoped match would read a card and call it a total.
+  const tiles = await page.evaluate(() => {
+    const grid = document.querySelector('#view .grid');
+    if (!grid) return null;
+    const out = {};
+    for (const t of grid.querySelectorAll('.tile')) {
+      const k = t.querySelector('.k'); const v = t.querySelector('.v');
+      if (k && v) out[k.textContent.trim()] = v.textContent.trim();
+    }
+    return out;
+  });
+  if (!tiles) { add('the Dashboard rendered no summary grid'); return; }
+  const find = (re) => { const k = Object.keys(tiles).find((x) => re.test(x)); return k ? tiles[k] : null; };
+
+  const check = (label, shown, want) => {
+    const got = parseMoney(shown);
+    if (got == null || Math.abs(got - want) > 0.005) {
+      add(`Dashboard ${label} reads ${shown}, the per-setup records sum to ${want.toFixed(4)}`);
+      return false;
+    }
+    return true;
+  };
+  check('realized total', find(/realized/i), wantR);
+  check('unrealized total', find(/unrealized/i), wantU);
+
+  const openShown = find(/open positions/i);
+  if (openShown != null && Number(openShown) !== wantOpen) {
+    add(`Dashboard open-positions reads ${openShown}, this branch holds ${wantOpen}`
+      + ` (both books together would be ${bothOpen})`);
+  }
+  // The specific way this goes wrong: the total is right for the WRONG population.
+  const shownR = parseMoney(find(/realized/i));
+  if (shownR != null && Math.abs(bothR - wantR) > 1e-9 && Math.abs(shownR - bothR) < 0.005) {
+    add(`the ${isPaper ? 'paper' : 'live'} Dashboard total is the sum of BOTH books `
+      + `(${bothR.toFixed(4)}), not this branch's ${wantR.toFixed(4)}`);
+  }
+  if (openShown != null && bothOpen !== wantOpen && Number(openShown) === bothOpen) {
+    add(`the ${isPaper ? 'paper' : 'live'} Dashboard is counting positions from both books`);
+  }
+  // SAY SO when the data cannot tell the two cases apart. With only one book on
+  // the box, a wrongly-unfiltered total equals the correct one, so the two
+  // wrong-side assertions above are vacuous — they pass without discriminating.
+  // The ISOLATION pass is what covers that case here; this line stops anyone
+  // reading a green "VALUES Trading / paper / dash" as proof of book separation.
+  if (Math.abs(bothR - wantR) < 1e-9 && bothOpen === wantOpen) {
+    console.error('NOTE (coverage limit)  Dashboard cross-book assertions are NON-DISCRIMINATING on '
+      + 'this box: only one book exists, so a both-books total equals the right one. '
+      + 'Book separation here is covered by the ISOLATION pass, not by this one.');
+  }
+}
+
 async function verifyTradingNumbers(page, add, setupId, isPaper) {
   const st = await getJson(`/api/live/setups/${encodeURIComponent(setupId)}/status`);
   const tiles = await page.evaluate(() => {
@@ -871,6 +1017,22 @@ async function main() {
         await page.waitForTimeout(1500);
         await verifyTradingNumbers(page, add, paperSetup, true);
       },
+    });
+  }
+  if (paperSetup) {
+    visits.push({
+      label: 'VALUES     Trading / paper / dash',
+      url: `${BASE}/trading.html`,
+      storage: { 'lt-branch': 'paper', 'lt-sub': 'dash' },
+      verify: (page, add) => verifyDashboardTotals(page, add, true),
+    });
+  }
+  if (paperSetup) {
+    visits.push({
+      label: 'ISOLATION  Trading / real / dash',
+      url: `${BASE}/trading.html`,
+      storage: { 'lt-branch': 'real', 'lt-sub': 'dash' },
+      verify: (page, add) => verifyRealBranchShowsNoPaperBook(page, add, paperSetup),
     });
   }
   if (controlsConfig) {
