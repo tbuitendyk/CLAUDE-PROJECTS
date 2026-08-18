@@ -1269,6 +1269,42 @@ app.post('/api/pilot/arm', csrfGuard, (req, res) => {
   try { res.json({ ok: true, request: writeArmRequest(true, 'owner') }); }
   catch (err) { res.status(500).json({ error: err.message }); }
 });
+// CLEAR THE HALT, from the screen. A halt never self-clears — a gate that fires
+// says the instrument is unreliable, and auto-clearing would be the instrument
+// marking its own homework. So recovery is deliberate; until now it was also
+// only possible with shell access to the box, which is not a mechanism the
+// owner has (owner, 2026-08-18: "if it cannot by itself then a mechanism must
+// be provided for the user to do that").
+//
+// This writes a REQUEST, exactly as the arm switch does; the control plane
+// carries it on its next sync and the box clears its own flag. It does NOT arm:
+// entries still require the master switch, so the worst this can do is let an
+// already-armed box resume entries once its halt cause is fixed. If the cause
+// is NOT fixed the next reconcile tick re-halts, which is the check working.
+function writeUnhaltRequest(by) {
+  const crypto = require('crypto');
+  const dir = path.join(__dirname, 'data', 'pilot');
+  dataFs.mkdirSync(dir, { recursive: true });
+  const nonce = crypto.randomBytes(9).toString('hex');
+  const utc = new Date().toISOString();
+  const rec = { by, utc, nonce };
+  const secret = process.env.PILOT_ARM_SECRET || '';
+  if (secret) {
+    rec.hmac = crypto.createHmac('sha256', secret).update(`unhalt|${nonce}|${utc}`).digest('hex');
+  }
+  dataFs.writeFileSync(path.join(dir, 'unhalt-request.json'), JSON.stringify(rec));
+  return { by, utc, nonce, authenticated: !!secret };
+}
+app.get('/api/pilot/unhalt-request', (req, res) => {
+  try {
+    const f = path.join(__dirname, 'data', 'pilot', 'unhalt-request.json');
+    res.json({ request: JSON.parse(dataFs.readFileSync(f, 'utf8')) });
+  } catch (_) { res.json({ request: null }); }
+});
+app.post('/api/pilot/unhalt', csrfGuard, (req, res) => {
+  try { res.json({ ok: true, request: writeUnhaltRequest('owner') }); }
+  catch (err) { res.status(500).json({ error: err.message }); }
+});
 app.post('/api/pilot/disarm', csrfGuard, (req, res) => {
   try { res.json({ ok: true, request: writeArmRequest(false, 'owner') }); }
   catch (err) { res.status(500).json({ error: err.message }); }

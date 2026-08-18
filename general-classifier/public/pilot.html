@@ -184,7 +184,7 @@ function renderConfig(c) {
     row('Clip size', '$' + x.clipUsd + ' notional') +
     row('Max concurrent', x.maxConcurrent) +
     row('Margin mode', x.marginMode) +
-    row('Fee model', '$' + x.modelFeePerLeg + '/leg') +
+    row('Fee model', '$' + x.modelFeePerLeg + '/leg on a $' + (x.clipUsd || 10) + ' clip (0.125% of notional)') +
     row('Kill: rejects', x.killRules.consecutiveRejects) +
     row('Kill: fill dev', x.killRules.fillDeviationPct + '%') +
     row('Kill: cum. loss', '$' + x.killRules.cumulativeLossUsd);
@@ -332,7 +332,7 @@ async function refresh() {
     tile('Unrealized P&L', money(d.unrealizedPnl), cls(d.unrealizedPnl)) +
     tile('Realized P&L', money(d.realizedPnl), cls(d.realizedPnl)) +
     tile('Open positions', d.openPositions.length) +
-    tile('Fee/leg: model', '$'+d.modelFeePerLeg.toFixed(3)) +
+    tile('Fee/leg: model', '$'+d.modelFeePerLeg.toFixed(4)+(d.modelFeeRate?' ('+(100*d.modelFeeRate).toFixed(3)+'%)':'')) +
     tile('Fee/leg: realized avg', d.realizedFeePerLegAvg==null?'—':'$'+d.realizedFeePerLegAvg.toFixed(4), feeCls) +
     tile('Fill dev avg', d.fillDeviationAvg==null?'—':(d.fillDeviationAvg*100).toFixed(3)+'%') +
     tile('Fill dev max', d.fillDeviationMax==null?'—':(d.fillDeviationMax*100).toFixed(3)+'%', d.fillDeviationMax!=null&&d.fillDeviationMax>0.01?'warn':'') +

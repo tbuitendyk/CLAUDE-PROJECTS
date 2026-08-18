@@ -183,3 +183,60 @@ module.exports.theStopButtonPostsToTheDisarmRoute = async function () {
     .replace(/armed\?"api\/pilot\/arm":"api\/pilot\/disarm"/, "armed?'api/pilot/arm':'api/pilot/disarm'")),
     'the master switch does not choose its route from the button pressed — check it is not posting to one route with an {armed} field the server never reads');
 };
+
+// CLEARING A HALT MUST BE POSSIBLE FROM THE SCREEN. A halt never self-clears —
+// that is deliberate, and right — but until 2026-08-18 clearing one also
+// required shell access to the box, so from the owner's Trading tab a halt was a
+// dead end (owner: "if it cannot by itself then a mechanism must be provided for
+// the user to do that").
+//
+// The endpoint writes a REQUEST, exactly as the arm switch does. It must NOT
+// arm: the master switch still governs entries, so the worst a cleared halt does
+// is let an already-armed box resume once its cause is fixed.
+//
+// Watched failing 2026-08-18: removing the route makes the POST 404; dropping the
+// nonce makes theUnhaltRequestIsSingleUse fail (two presses would be
+// indistinguishable, and the carry could not consume-once).
+module.exports.unhaltWritesARequestAndNeverArms = async function () {
+  await withServer(async () => {
+    const before = fs.existsSync(ARM_REQ);
+    const r = await req('POST', '/api/pilot/unhalt', {});
+    assert(r.status === 200, `POST /api/pilot/unhalt expected 200, got ${r.status} — body: ${r.body}`);
+    const j = JSON.parse(r.body);
+    assert(j.ok === true && j.request, `expected {ok:true, request}, got ${r.body}`);
+    assert(typeof j.request.nonce === 'string' && /^[0-9a-f]{18}$/.test(j.request.nonce),
+      `the nonce must be the 18-hex shape the carry gate accepts, got ${JSON.stringify(j.request.nonce)}`);
+    assert(/^\d{4}-\d{2}-\d{2}T[\d:.]+Z$/.test(j.request.utc), 'the request must carry an ISO utc for the freshness check');
+    // THE POINT: it must not have touched the master switch.
+    assert.strictEqual(fs.existsSync(ARM_REQ), before,
+      'clearing a halt wrote an ARM request — clearing a halt must never arm the box');
+    const f = path.join(ROOT, 'data', 'pilot', 'unhalt-request.json');
+    assert(fs.existsSync(f), 'no unhalt-request.json was written, so the control plane has nothing to carry');
+    try { fs.unlinkSync(f); } catch (_) { /* data/ is gitignored */ }
+  });
+};
+
+module.exports.theUnhaltRequestIsSingleUse = async function () {
+  await withServer(async () => {
+    const a = JSON.parse((await req('POST', '/api/pilot/unhalt', {})).body).request;
+    const b = JSON.parse((await req('POST', '/api/pilot/unhalt', {})).body).request;
+    assert(a.nonce !== b.nonce,
+      'two presses minted the same nonce — the carry consumes by nonce, so a repeat would be indistinguishable '
+      + 'from the first and a halt could be cleared twice off one press');
+    try { fs.unlinkSync(path.join(ROOT, 'data', 'pilot', 'unhalt-request.json')); } catch (_) { /* ignore */ }
+  });
+};
+
+module.exports.theTradingTabOffersTheControlOnlyWhenHalted = function () {
+  const src = fs.readFileSync(path.join(ROOT, 'public', 'trading.html'), 'utf8')
+    .replace(/<!--[\s\S]*?-->/g, '').split('\n').filter((l) => !/^\s*\/\//.test(l)).join('\n');
+  const i = src.indexOf('if(d.halted)strips.push(');
+  assert(i >= 0, 'the LIVE page no longer shows a halt banner');
+  const block = src.slice(i, i + 900);
+  assert(/id="btnUnhalt"/.test(block), 'the halt banner offers no way out — a halt is a dead end from this screen');
+  assert(/api\/pilot\/unhalt/.test(src), 'nothing calls the unhalt endpoint');
+  // and it must say what it does NOT do, before it is pressed
+  assert(/does not start trading/i.test(src),
+    'the control must say it does not start trading — otherwise it reads like a resume button');
+  assert(/haltReason/.test(src), 'the confirmation must name WHY the box halted; clearing blind is the mistake the rule exists to prevent');
+};

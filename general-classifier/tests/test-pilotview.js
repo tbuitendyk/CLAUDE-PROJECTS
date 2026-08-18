@@ -30,7 +30,19 @@ module.exports.realizedFeePerLegAveragesFillCosts = function () {
     { event: 'EXIT_FILL', chunk_start: 'c3', side: 'LONG', qty: 0.1, price: 100, pnl: -0.04, fee_quote: 0.04 },
   ]);
   assert.strictEqual(st.realizedFeePerLegAvg, 0.03, 'fee/leg is the mean of the two legs (0.02, 0.04)');
-  assert.strictEqual(st.modelFeePerLeg, 0.125, 'the model assumption the pilot measures against is fixed');
+  // THE MODEL FEE IS SCALED TO THE CLIP. lib/paper.js quotes the lab assumption
+  // as $0.125 per leg AT $100 SIZE — 0.125% of notional. The pilot trades a $10
+  // clip, so the like-for-like figure is $0.0125. Publishing the $100 number
+  // beside the fee actually paid on $10 made live execution look ten times
+  // cheaper than modelled; the RATE is the invariant and must be published with
+  // it (owner, 2026-08-18).
+  assert.strictEqual(st.modelFeePerLeg, 0.0125,
+    'the model fee must be the lab rate scaled to the clip this pilot actually trades');
+  assert.strictEqual(st.modelFeeRate, 0.00125, 'and the rate itself must be published, since that is what compares');
+  assert.strictEqual(st.clipUsd, 10, 'with the clip it was scaled by, so the two numbers can be checked');
+  const { REAL_FEE_PER_LEG } = require('../lib/paper');
+  assert.strictEqual(st.modelFeeRate, REAL_FEE_PER_LEG / 100,
+    'the rate must be DERIVED from the lab constant, not a second copy of it that can drift');
 };
 
 module.exports.incidentsSurfaceKillsAndHalts = function () {

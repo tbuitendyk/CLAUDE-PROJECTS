@@ -11,7 +11,16 @@ const fs = require('fs');
 const path = require('path');
 
 const JOURNAL = path.join(__dirname, '..', 'data', 'pilot', 'journal.jsonl');
-const MODEL_FEE_PER_LEG = 0.125; // the assumption the pilot measures against
+// THE MODEL FEE IS A RATE, NOT A DOLLAR AMOUNT. lib/paper.js quotes the lab's
+// assumption as "$0.125 per leg AT $100 SIZE" — 0.125% of notional. The pilot
+// trades a $10 clip, so publishing the $100 figure next to the fee actually paid
+// on $10 compared two different things and made live execution look about ten
+// times cheaper than modelled. It is not: 0.125% modelled against ~0.100%
+// realized (owner, 2026-08-18: "the modelling is against $100 clips").
+const PILOT_CLIP_USD = 10;               // F1's declared clip (PILOT-F1.md)
+const { REAL_FEE_PER_LEG: MODEL_FEE_AT_100 } = require('./paper');  // ONE constant, not a copy that can drift
+const MODEL_FEE_RATE = MODEL_FEE_AT_100 / 100;         // 0.00125 = 0.125% per leg
+const MODEL_FEE_PER_LEG = MODEL_FEE_RATE * PILOT_CLIP_USD;  // the like-for-like figure
 
 // F1 frozen geometry (daily-4d), for the "what happens next" status. A daily chunk
 // starts at 00:00 UTC (dataset.js dailyStarts = ceil(ts/DAY)*DAY) and its entry
@@ -78,6 +87,7 @@ function liveStatus(st, nowMs) {
   const nextExitPos = opens.slice().sort((a, b) => a.exit_due_ts - b.exit_due_ts)[0] || null;
   const armed = !!st.armed;
   const halted = !!st.halted;
+  const haltReason = st.haltReason || null;
 
   const items = [];
   // 1) the next ENTRY (gated by arm/halt)
@@ -113,6 +123,7 @@ function liveStatus(st, nowMs) {
     openShort,
     armed,
     halted,
+    haltReason,
     items,
   };
 }
@@ -142,6 +153,10 @@ function derive(events, extra = {}) {
   let dustDone = false;
   let armed = false;      // owner's master switch, as the box last reported it
   let halted = false;
+  // The REASON, not just the fact. The screen offers a "clear the halt" control
+  // now, and clearing one without seeing why it fired is exactly the mistake the
+  // no-self-clear rule exists to prevent — so the reason travels with the flag.
+  let haltReason = null;
   let armedBy = null;
   let fixedStopPct = null; // the hard per-order stop the box is applying (RUN_STATUS)
   const closed = [];
@@ -231,7 +246,7 @@ function derive(events, extra = {}) {
       case 'ARM_CLEAR': armed = false; armedBy = e.source || null; break;
       // reflect a halt the instant it is journaled, not a cycle later at the next
       // RUN_STATUS — a mid-run KILL/HALT otherwise lags the banner (re-review).
-      case 'HALT_CLEAR': halted = false; break;
+      case 'HALT_CLEAR': halted = false; haltReason = null; break;
       case 'KILL_PRICE_DRIFT':
       case 'RECONCILE_MISMATCH':
       case 'RECONCILE_UNREADABLE':
@@ -255,7 +270,7 @@ function derive(events, extra = {}) {
       case 'ARM_NO_SECRET':
       case 'ARM_HMAC_INVALID':
       case 'HALT_SET':
-        if (e.event === 'HALT_SET') halted = true;  // reflect the halt at once
+        if (e.event === 'HALT_SET') { halted = true; haltReason = e.reason || null; }  // reflect the halt at once
         incidents.push({ utc: e.utc, kind: e.event, detail: JSON.stringify(
           Object.fromEntries(Object.entries(e)
             .filter(([k]) => !['event', 'ts', 'utc'].includes(k)))) });
@@ -318,6 +333,7 @@ function derive(events, extra = {}) {
   return {
     armed,
     halted,
+    haltReason,
     armedBy,
     fixedStopPct,
     ltcPosition,     // {netLtc,longLtc,shortLtc,longCount,shortCount} from open fills
@@ -357,6 +373,8 @@ function derive(events, extra = {}) {
     })(),
     // the execution-fidelity numbers the pilot is FOR
     modelFeePerLeg: MODEL_FEE_PER_LEG,
+    modelFeeRate: MODEL_FEE_RATE,
+    clipUsd: PILOT_CLIP_USD,
     realizedFeePerLegAvg: round(avg(legCosts), 6),
     fillDeviationAvg: round(avg(fillDeviations), 6),
     fillDeviationMax: fillDeviations.length ? round(Math.max(...fillDeviations), 6) : null,
@@ -404,7 +422,7 @@ function config() {
       trainedThrough: new Date(fb.TRAIN_THROUGH).toISOString().slice(0, 10),
     },
     execution: {
-      clipUsd: 10,
+      clipUsd: PILOT_CLIP_USD,
       maxConcurrent: 6,
       marginMode: 'isolated (long = buy, short = borrow-and-sell)',
       modelFeePerLeg: MODEL_FEE_PER_LEG,
@@ -575,4 +593,4 @@ function status(file = JOURNAL) {
   };
 }
 
-module.exports = { status, config, anatomy, derive, liveStatus, dataFreshness, decisionEntryUtc, readJournal, JOURNAL, MODEL_FEE_PER_LEG };
+module.exports = { status, config, anatomy, derive, liveStatus, dataFreshness, decisionEntryUtc, readJournal, JOURNAL, MODEL_FEE_PER_LEG, MODEL_FEE_RATE, PILOT_CLIP_USD };

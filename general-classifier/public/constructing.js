@@ -4,7 +4,27 @@
 /* eslint-disable no-alert */
 (() => {
 const $ = (s, r = document) => r.querySelector(s);
-const api = (p) => fetch(p).then((r) => r.json());
+// A 500 IS A FAILURE, not a reply. This returned r.json() whatever the status,
+// so an error body like {error:"..."} sailed through as data: the caller's
+// `.catch(() => fallback)` never fired, the fallback's own `|| []` produced an
+// empty list, and an OUTAGE rendered as "nothing here yet". On the Trading tab
+// that read "No greenlighted configs yet" while the service was down — telling
+// the operator their configs were gone (found by fault injection, 2026-08-18).
+const api = async (p) => {
+  const r = await fetch(p);
+  if (!r.ok) {
+    let m = `HTTP ${r.status}`;
+    try { const j = await r.json(); if (j && j.error) m = j.error; } catch (_) { /* no body */ }
+    throw new Error(`${p}: ${m}`);
+  }
+  return r.json();
+};
+// Every panel that survives a failed read records WHICH read failed, so the
+// screen can say "this is incomplete" instead of "there is nothing".
+let fetchFailures = [];
+const apiOr = async (p, fallback) => {
+  try { return await api(p); } catch (e) { fetchFailures.push(e.message); return fallback; }
+};
 const esc = (t) => String(t ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;');
 const money = (v) => (v == null || !Number.isFinite(Number(v)) ? '—'
   : `${v < 0 ? '-' : ''}$${Math.abs(Number(v)).toFixed(2)}`);
@@ -297,7 +317,7 @@ async function pollJob(jobId, note) {
   }
 }
 async function drawData() {
-  const d = await api('api/data-state').catch(() => null);
+  const d = await apiOr('api/data-state', null);
   const rows = (d && d.symbols) || [];
   $('#view').innerHTML = `<div class="panel">
     <h3 style="margin-top:0">Data on server</h3>
@@ -387,9 +407,9 @@ let tunePoll = null;
 async function drawSweep() {
   clearTimeout(sweepPoll); sweepPoll = null;
   const [camp, names, batches] = await Promise.all([
-    api('api/campaign').catch(() => ({ name: '' })),
-    api('api/campaigns').catch(() => ({ names: [] })),
-    api('api/batches').catch(() => ({ batches: [] })),
+    apiOr('api/campaign', ({ name: '' })),
+    apiOr('api/campaigns', ({ names: [] })),
+    apiOr('api/batches', ({ batches: [] })),
   ]);
   const running = (batches.batches || batches || []).find((b) => b.status === 'running');
   $('#view').innerHTML = `<div class="panel">
@@ -488,7 +508,7 @@ async function drawSweep() {
   };
   $('#campTree').onclick = async () => {
     const name = $('#cxCamp').value.trim(); if (!name) { alert('name a campaign'); return; }
-    const t = await api(`api/campaign-tree?name=${encodeURIComponent(name)}`).catch(() => null);
+    const t = await apiOr(`api/campaign-tree?name=${encodeURIComponent(name)}`, null);
     $('#campOut').innerHTML = t ? `<h3>Campaign “${esc(t.name)}” — runs &amp; greenlights</h3>
       <table><thead><tr>${cth('run','run')}${cth('kind','kind')}${cth('status','status')}${cth('started','started')}${cth('derives from','derives','text-align:left')}</tr></thead><tbody>
       ${(t.runs || []).map((r) => `<tr><td>${esc(r.id)}</td><td>${esc(r.kind)}</td><td>${esc(r.status)}</td>
@@ -645,11 +665,11 @@ async function drawSweep() {
   // forever. CLAUDE.md names this failure mode by name: never check a running
   // job more often than it could plausibly need (audit 2026-08-17).
   async function pollProgress() {
-    const bl = await api('api/batches').catch(() => null);
+    const bl = await apiOr('api/batches', null);
     const run = ((bl && (bl.batches || bl)) || []).find((b) => b.status === 'running');
     const el = $('#swProg'); if (!el) return;
     if (!run) { el.innerHTML = '<span class="muted">No job running.</span>'; return; }
-    const doc = await api(`api/batch/${encodeURIComponent(run.id)}`).catch(() => null);
+    const doc = await apiOr(`api/batch/${encodeURIComponent(run.id)}`, null);
     const perf = (doc && doc.perf) || {};
     el.innerHTML = `<h3 style="margin-top:0">Running: ${esc(run.id)}</h3>
       <div class="grid">
@@ -667,7 +687,7 @@ async function drawSweep() {
 async function loadPicked() {
   if (!pickedRun) return null;
   if (pickedDoc && pickedDoc.id === pickedRun) return pickedDoc;
-  pickedDoc = await api(`api/batch/${encodeURIComponent(pickedRun)}`).catch(() => null);
+  pickedDoc = await apiOr(`api/batch/${encodeURIComponent(pickedRun)}`, null);
   return pickedDoc;
 }
 const selKey = 'cx-selrow';
@@ -677,7 +697,7 @@ function getSelRow(doc) {
   return doc && doc.selection ? doc.selection : null;
 }
 async function drawBoards() {
-  const bl = await api('api/batches').catch(() => ({ }));
+  const bl = await apiOr('api/batches', ({ }));
   const list = (bl.batches || bl || []).filter((b) => b.kind === 'bracketlab' || b.kind === 'screen' || b.kind === 'walkforward' || b.kind === 'historytuning' || b.kind === 'httwo');
   const doc = await loadPicked();
   const leaders = doc ? (doc.leaders || []).filter((l) => l.nullDealSeed == null) : [];
@@ -1032,7 +1052,7 @@ async function drawBoards() {
       if (!file) { $('#gridOut').innerHTML = '<span class="warn">this row has no stored votes file (older run) — inspect needs the persisted committee votes</span>'; return; }
       $('#gridOut').innerHTML = '<span class="muted">opening the setup…</span>';
       const q = l.quorum ?? 1;
-      const d = await api(`api/bracketlab/${encodeURIComponent(doc.id)}/inspect?file=${encodeURIComponent(file)}&quorum=${encodeURIComponent(q)}`).catch(() => null);
+      const d = await apiOr(`api/bracketlab/${encodeURIComponent(doc.id)}/inspect?file=${encodeURIComponent(file)}&quorum=${encodeURIComponent(q)}`, null);
       if (!d || d.error) { $('#gridOut').innerHTML = `<span class="warn">${esc((d && d.error) || 'inspect failed')}</span>`; return; }
       const mem = d.members || [];
       const pw = d.pairwise || d.agreement || null;
@@ -1111,7 +1131,7 @@ async function drawBoards() {
 async function drawVerify() {
   const doc = await loadPicked();
   const sel = getSelRow(doc);
-  const gate = await api('api/planted-gate/status').catch(() => null);
+  const gate = await apiOr('api/planted-gate/status', null);
   // The scramble run was a box you TYPED a run id into. The service has always
   // had an endpoint that lists exactly the runs this tool can read, with how
   // many null draws each carries — the Bracket lab used it for a dropdown and
@@ -1119,7 +1139,7 @@ async function drawVerify() {
   // scramble run", and an empty box asked the server a question it could not
   // answer (owner, on the same class: "I thought I would be able to select from
   // the saved sweeps").
-  const vs = await api('api/bracketlab/verdict-sources').catch(() => ({ sources: [] }));
+  const vs = await apiOr('api/bracketlab/verdict-sources', ({ sources: [] }));
   const nullSrc = (vs.sources || []).filter((s) => s.scrambleDraws > 0);
   $('#view').innerHTML = `<div class="panel">
     <h3 style="margin-top:0">Planted check — the instrument's calibration certificate</h3>
@@ -1289,7 +1309,7 @@ async function drawHistory() {
     <div id="ht2Out"></div>
   </div>
   <div class="panel"><h3 style="margin-top:0">Finished tuning runs</h3><div id="htList"><span class="muted">loading…</span></div></div>`;
-  const list = await api('api/batches').catch(() => ({}));
+  const list = await apiOr('api/batches', ({}));
   const runs = (list.batches || list || []).filter((b) => b.kind === 'historytuning' || b.kind === 'httwo').slice(0, 12);
   $('#htList').innerHTML = runs.length ? `<table><thead><tr>${cth('run','run')}${cth('kind','kind')}${cth('status','status')}${cth('started','started')}<th></th></tr></thead><tbody>
     ${runs.map((r) => `<tr><td>${esc(r.id)}</td><td>${esc(r.kind)}</td><td>${esc(r.status)}</td><td>${esc((r.startedAt || '').slice(0, 16))}</td>
@@ -1297,7 +1317,7 @@ async function drawHistory() {
     : '<span class="muted">none yet</span>';
   $('#htList').querySelectorAll('button[data-open]').forEach((b) => {
     b.onclick = async () => {
-      const d = await api(`api/batch/${encodeURIComponent(b.dataset.open)}`).catch(() => null);
+      const d = await apiOr(`api/batch/${encodeURIComponent(b.dataset.open)}`, null);
       if (!d) { $('#htRead').innerHTML = 'unreadable'; return; }
       $('#htRead').innerHTML = d.kind === 'httwo' ? renderHtTwoRun(d) : renderHtRun(d, runs);
       wireHtRun(d, runs);
@@ -1321,7 +1341,7 @@ async function drawHistory() {
   // been shown to find a planted effect AND to stay quiet on a flat one is not
   // yet evidence of anything. examStatus.ready is exactly "A passed and B did
   // not"; until then the real launcher says so rather than pretending.
-  const exams = await api('api/httwo/exams').catch(() => null);
+  const exams = await apiOr('api/httwo/exams', null);
   const exEl = $('#ht2Exams');
   if (exEl) {
     exEl.innerHTML = !exams ? '<span class="muted">exam status unavailable</span>'
@@ -1605,7 +1625,7 @@ async function wireHtRun(d, runs) {
   if (d.kind === 'httwo') {
     const el = $('#ht2Verdict');
     if (el) {
-      const v = await api(`api/httwo/${encodeURIComponent(d.id)}/verdict`).catch(() => null);
+      const v = await apiOr(`api/httwo/${encodeURIComponent(d.id)}/verdict`, null);
       el.innerHTML = renderHtTwoVerdict(v);
     }
     return;
@@ -1615,7 +1635,7 @@ async function wireHtRun(d, runs) {
   if (d.status === 'done' && p.arm !== 'null' && !p.mode) {
     const el = $('#htVerdict');
     if (el) {
-      const v = await api(`api/historytuning/${encodeURIComponent(d.id)}/verdict`).catch(() => null);
+      const v = await apiOr(`api/historytuning/${encodeURIComponent(d.id)}/verdict`, null);
       // THE ENDPOINT'S OWN VOCABULARY. This read v.passed, v.nullDraws and
       // v.resolutionFloor — three names the endpoint has never returned. The
       // badge therefore said NO after a genuine PASS, permanently, and the two
@@ -1669,10 +1689,10 @@ async function drawTune() {
   const doc = await loadPicked();
   const sel = getSelRow(doc);
   const [scan, stop, conv, applied] = await Promise.all([
-    api('api/pilot/heavyscan').catch(() => ({ running: false })),
-    api('api/pilot/stopsweep').catch(() => ({ status: 'idle' })),
-    api('api/pilot/convictionsweep').catch(() => ({ status: 'idle' })),
-    api('api/pilot/fixed-stop').catch(() => ({ stopPct: null })),
+    apiOr('api/pilot/heavyscan', ({ running: false })),
+    apiOr('api/pilot/stopsweep', ({ status: 'idle' })),
+    apiOr('api/pilot/convictionsweep', ({ status: 'idle' })),
+    apiOr('api/pilot/fixed-stop', ({ stopPct: null })),
   ]);
   const busy = scan.running;
   const pct = (v) => (v == null ? '—' : (v * 100).toFixed(2) + '%');
@@ -1683,12 +1703,12 @@ async function drawTune() {
   // any of them be picked ("I thought I would be able to select from the saved
   // sweeps" — owner). Books already carrying a protective stop are not listed:
   // a breakout cell's opposite rail IS its stop, so tuning one is meaningless.
-  const cand = await api('api/pilot/stop-candidates').catch(() => ({ candidates: [] }));
+  const cand = await apiOr('api/pilot/stop-candidates', ({ candidates: [] }));
   const books = (cand && cand.candidates) || [];
   // Same fix as Tool 1: run A and run B were boxes you typed a run id into, so
   // an empty box or a typo came back as a 400 the operator had to decode. The
   // list is the runs that actually carry comparable rows.
-  const cmpSrc = ((await api('api/bracketlab/verdict-sources').catch(() => ({ sources: [] }))).sources || [])
+  const cmpSrc = ((await apiOr('api/bracketlab/verdict-sources', ({ sources: [] }))).sources || [])
     .filter((s) => s.realRows > 0);
   const cmpOpt = (s) => `<option value="${esc(s.id)}">${esc(s.id)}${s.windowLayout && s.windowLayout !== 'legacy' ? ` [${esc(s.windowLayout)}]` : ''}</option>`;
   const savedTarget = localStorage.getItem('cx-scan-target') || '';
@@ -1847,7 +1867,7 @@ async function drawTune() {
 async function drawGreenlight() {
   const doc = await loadPicked();
   const sel = getSelRow(doc);
-  const gls = await api('api/live/greenlights').catch(() => ({ greenlights: [] }));
+  const gls = await apiOr('api/live/greenlights', ({ greenlights: [] }));
   $('#view').innerHTML = `<div class="panel">
     <h3 style="margin-top:0">Greenlight — the decision that a config is fit to trade</h3>
     <p class="note">Records WHO/WHEN/WHY with the exact frozen config, engine version, and the campaign's whole
@@ -1890,13 +1910,43 @@ async function drawGreenlight() {
 // runtime harness, 2026-08-17).
 function draw() {
   renderTabs(); renderStrip();
-  if (tab === 'data') return drawData();
-  if (tab === 'sweep') return drawSweep();
-  if (tab === 'boards') return drawBoards();
-  if (tab === 'verify') return drawVerify();
-  if (tab === 'history') return drawHistory();
-  if (tab === 'tune') return drawTune();
-  return drawGreenlight();
+  // Reset the failure log for THIS render, then band the section afterwards if
+  // any read failed. Without this a panel that lost its data renders its
+  // empty state, which reads as "there is nothing" rather than "I could not
+  // ask" — the two look identical and mean opposite things.
+  fetchFailures = [];
+  const band = () => {
+    if (!fetchFailures.length) return;
+    const v = $('#view');
+    if (!v) return;
+    const seen = [...new Set(fetchFailures)];
+    const el = document.createElement('div');
+    el.className = 'panel';
+    el.style.borderColor = 'var(--neg)';
+    el.innerHTML = `<b class="neg">THIS SCREEN IS INCOMPLETE.</b> ${seen.length} read(s) failed, so any panel
+      below that looks empty may be missing data rather than reporting none. Reload once the service is back;
+      do not read an empty panel here as a result.<div class="note" style="margin-top:.3rem">${
+  seen.map((x) => `<div>${esc(x)}</div>`).join('')}</div>`;
+    v.prepend(el);
+  };
+  const section = tab === 'data' ? drawData()
+    : tab === 'sweep' ? drawSweep()
+      : tab === 'boards' ? drawBoards()
+        : tab === 'verify' ? drawVerify()
+          : tab === 'history' ? drawHistory()
+            : tab === 'tune' ? drawTune()
+              : drawGreenlight();
+  // A section that THROWS must say so. Without the rejection arm the promise
+  // rejects, the banner never runs, and #view keeps whatever was there — on a
+  // first load that is nothing at all, so a hard failure renders as a blank
+  // page with no explanation, which is the worst of the three outcomes.
+  return Promise.resolve(section).then((r) => { band(); return r; }, (err) => {
+    fetchFailures.push(`the ${tab} section stopped rendering: ${err && err.message ? err.message : err}`);
+    const v = $('#view');
+    if (v && !v.innerHTML.trim()) v.innerHTML = '<div class="panel empty">This section could not be drawn.</div>';
+    band();
+    return null;
+  });
 }
 function tickClock() { $('#utcClock').textContent = new Date().toISOString().slice(0, 19).replace('T', ' ') + ' UTC'; }
 tickClock(); setInterval(tickClock, 1000);

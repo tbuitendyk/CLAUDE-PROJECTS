@@ -39,11 +39,18 @@ function drawBody() {
 // returning silently hands back undefined.
 function everySectionIsReachableFromDrawAsAPromise() {
   const body = drawBody();
-  const calls = [...body.matchAll(/\b(draw[A-Z]\w*)\(\)/g)].map((m) => m[0]);
+  const calls = [...new Set([...body.matchAll(/\b(draw[A-Z]\w*)\(\)/g)].map((m) => m[0]))];
   assert(calls.length >= 7, `draw() dispatches to only ${calls.length} sections — expected all 7`);
+  // The dispatch may be a chain of returns or one expression assigned and then
+  // returned; what must hold is that the RESULT reaches the caller, so
+  // draw().then(...) has a promise to attach to.
+  assert(/return Promise\.resolve\(section\)|return draw[A-Z]/.test(body),
+    'draw() does not return the section it rendered — draw().then(...) would throw');
+  const assigned = /const section = /.test(body);
   for (const c of calls) {
-    const re = new RegExp(`return\\s+${c.replace('(', '\\(').replace(')', '\\)')}`);
-    assert(re.test(body), `draw() calls ${c} without returning it — draw().then(...) would throw`);
+    const returned = new RegExp(`return\\s+${c.replace('(', '\\(').replace(')', '\\)')}`).test(body);
+    assert(assigned || returned,
+      `draw() calls ${c} without returning it — draw().then(...) would throw`);
   }
 }
 
@@ -201,3 +208,25 @@ function theCampaignPickerShowsEveryCampaignNotJustTheCurrentOne() {
 }
 
 module.exports.theCampaignPickerShowsEveryCampaignNotJustTheCurrentOne = theCampaignPickerShowsEveryCampaignNotJustTheCurrentOne;
+
+// THE DECISION HISTORY MUST SHOW A RUN OF DAYS, NOT A PEEPHOLE. At 190px the
+// panel fitted about six rows, so reading a week meant scrolling — and seeing
+// the calls TOGETHER is the entire point of that panel (owner, 2026-08-18: "make
+// the daily decision history scrollable window taller so we see at least 10 days
+// at once").
+//
+// Measured in the browser, not guessed: at this font and padding a row renders
+// 27px and the header 25px, so ten days plus the header needs 295px = 18.4rem.
+// The floor below leaves headroom for a slightly larger row without silently
+// dropping back under ten. Verified at 22rem: 12 rows fully visible.
+function theDecisionHistoryShowsTenDaysAtOnce() {
+  const m = LT.match(/\.scrollbox\s*\{[^}]*max-height:\s*([\d.]+)(rem|px)/);
+  assert(m, 'the decision history scrollbox lost its max-height');
+  const px = m[2] === 'rem' ? parseFloat(m[1]) * 16 : parseFloat(m[1]);
+  const needed = 10 * 27 + 25;   // ten rows + the header, measured
+  assert(px >= needed,
+    `the decision history is ${Math.round(px)}px — ten days plus the header needs ${needed}px, `
+    + 'so it would show fewer than the ten the panel exists to show');
+}
+
+module.exports.theDecisionHistoryShowsTenDaysAtOnce = theDecisionHistoryShowsTenDaysAtOnce;

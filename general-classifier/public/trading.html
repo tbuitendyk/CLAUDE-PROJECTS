@@ -79,7 +79,13 @@
   .vote-as { color:var(--muted); }
   .logbox { max-height:340px; overflow-y:auto; border:1px solid var(--line); border-radius:8px; }
   .logbox table { margin:0; }
-  .scrollbox { max-height:190px; overflow-y:auto; border:1px solid var(--line); border-radius:6px; }
+  /* Tall enough for TEN decision days at once plus the header (owner,
+     2026-08-18). 190px showed about six, so a week's worth needed scrolling to
+     read — and the whole point of that panel is seeing the run of calls
+     together. Measured, not guessed: a row is ~28px at this font and padding,
+     so 11 rows is ~310px; 22rem leaves headroom without the panel dominating
+     the page on a laptop. */
+  .scrollbox { max-height:22rem; overflow-y:auto; border:1px solid var(--line); border-radius:6px; }
 </style>
 </head>
 <body>
@@ -106,7 +112,23 @@
 
 <script>
 const $ = (s,r=document)=>r.querySelector(s);
-const api = (p)=>fetch(p).then(r=>r.json());
+// A 500 IS A FAILURE, not a reply. This returned r.json() whatever the status,
+// so an error body sailed through as data: the caller's `.catch(()=>fallback)`
+// never fired, the fallback's `||[]` produced an empty list, and an OUTAGE
+// rendered as "No greenlighted configs yet" — telling the operator their configs
+// were gone (found by fault injection, 2026-08-18).
+let fetchFailures=[];
+const api = async (p)=>{
+  const r = await fetch(p);
+  if(!r.ok){ let m=`HTTP ${r.status}`; try{const j=await r.json(); if(j&&j.error)m=j.error;}catch(_){}
+    throw new Error(`${p}: ${m}`); }
+  return r.json();
+};
+// Every panel that survives a failed read records WHICH read failed, so the
+// screen can say "this is incomplete" instead of "there is nothing".
+const apiOr = async (p, fallback)=>{
+  try{ return await api(p); }catch(e){ fetchFailures.push(e.message); return fallback; }
+};
 async function post(p, body){
   // control action: a non-2xx MUST surface (QC-115), never a silent no-op.
   try{
@@ -179,8 +201,8 @@ const TILE={
   realized:'money actually BANKED on closed positions, in US dollars, after both legs\' fees and any borrow interest.',
   realizedAll:'the same banked figure summed across every book on this side. Paper dollars and real dollars are never added together.',
   unrealAll:'the same open-position figure summed across every book on this side.',
-  feeModel:'the fee per leg the SIMULATION assumed, in US dollars. Every lab money figure was computed with this number.',
-  feeReal:'the fee per leg actually PAID, averaged over real legs, in US dollars. If it exceeds the model figure, every lab result was optimistic.',
+  feeModel:'the fee per leg the simulation assumed, SCALED TO THE CLIP THIS BOOK ACTUALLY TRADES. The lab quotes it as 0.125% of notional ($0.125 at $100 size); publishing that $100 figure beside a $10 clip made live execution look ten times cheaper than modelled. The percentage beside it is the invariant — compare THAT.',
+  feeReal:'the fee per leg actually PAID, averaged over real legs, in US dollars, with the same figure as a percent of the clip. If the PERCENTAGE exceeds the model percentage, every lab money figure was optimistic.',
   fillAvg:'average gap between the price the decision assumed and the price the order actually filled at, as a PERCENT of price. It measures execution, not edge.',
   fillMax:'the worst single such gap, as a percent of price. One bad fill can matter more than a good average.',
   openCount:'how many positions are open right now on this book.',
@@ -215,7 +237,7 @@ function renderNav(){
 
 // ---- data: configs (greenlights + channels) with F1 as a first-class row ----
 async function fetchConfigs(){
-  const [c, pilot]=await Promise.all([api('api/live/configs').catch(()=>({configs:[]})), api('api/pilot').catch(()=>null)]);
+  const [c, pilot]=await Promise.all([apiOr('api/live/configs', ({configs:[]})), apiOr('api/pilot', null)]);
   const configs=(c.configs||[]);
   // F1: the running pilot, integrated as a config row (owner: no ugly duckling).
   // Its real channel state comes from the pilot's arm switch; it has no paper channel.
@@ -310,7 +332,7 @@ async function drawDash(){
   for(const g of configs){
     const ch=chanOf(g); if(!ch)continue;
     let st=null;
-    try{ st=g.f1?await api('api/pilot'):await api('api/live/setups/'+ch.setupId+'/status'); }catch(_){ st=null; }
+    try{ st=g.f1?await api('api/pilot'):await api('api/live/setups/'+ch.setupId+'/status'); }catch(e){ st=null; fetchFailures.push(e.message); }
     parts.push({g, ch, st});
   }
   if(!parts.length){ $('#view').innerHTML=`<div class="panel empty">Nothing on the ${branch==='paper'?'paper':'live'} side yet.</div>`; return; }
@@ -344,7 +366,7 @@ async function drawDetail(){
   const {configs}=await fetchConfigs();
   // The boxes this service knows about, so the execution target is PICKED rather
   // than typed — same rule as every other identifier the service can enumerate.
-  const tg=await api('api/live/targets').catch(()=>({targets:[]}));
+  const tg=await apiOr('api/live/targets', ({targets:[]}));
   const g=configs.find(x=>x.id===selectedConfig)||configs.find(x=>chanOf(x));
   if(!g){ $('#view').innerHTML=`<div class="panel empty">Select a config from the Greenlights page.</div>`; return; }
   selectedConfig=g.id;
@@ -532,7 +554,16 @@ async function drawPilotLive(){
   const strips=[];
   if(mirrorBreaks>0)strips.push(`<div class="banner halted">⛔ MIRROR BREAK — ${mirrorBreaks} live decision(s) no longer reproduce. Box halted; investigate before re-arming.</div>`);
   if(dead)strips.push(`<div class="banner halted">⛔ EXECUTOR SILENT — last heartbeat ${hbAge==null?'never':hbAge.toFixed(0)+' min ago'} (box runs ~10 min). Scheduled exits are NOT firing.</div>`);
-  if(d.halted)strips.push(`<div class="banner halted">⛔ HALT set — new entries stopped; scheduled exits still run.</div>`);
+  // THE HALT NEEDS A WAY OUT THAT IS NOT A SHELL. A halt never self-clears, by
+  // design — but until 2026-08-18 clearing one required logging into the box,
+  // so from this screen a halt was a dead end. The button writes a request the
+  // control plane carries on its next sync; it does NOT arm, and if the cause is
+  // unfixed the next reconcile tick re-halts.
+  if(d.halted)strips.push(`<div class="banner halted">⛔ HALT set — new entries stopped; scheduled exits still run.
+    <div style="margin-top:.45rem">
+      <button id="btnUnhalt" class="danger">Clear the halt</button>
+      <span id="unhaltMsg" class="muted" style="font-size:.78rem;margin-left:.5rem">Only after the cause is understood — this does not start trading, and an unfixed cause re-halts on the next check.</span>
+    </div></div>`);
   else if(!d.armed)strips.push(`<div class="banner stopped">■ engine STOPPED — press START to run. Open positions still exit on schedule.</div>`);
   else if(!dead)strips.push(`<div class="banner running">● RUNNING — heartbeat ${hbAge==null?'—':hbAge.toFixed(0)+' min ago'}</div>`);
   const wb=d.walletBalance||{};
@@ -585,8 +616,8 @@ async function drawPilotLive(){
       ${tile('LTC price (last run)','mark',d.markPrice!=null?'$'+d.markPrice.toFixed(2):'—')}
       ${tile('Unrealized P&amp;L','unreal',money(d.unrealizedPnl),cls(d.unrealizedPnl))}
       ${tile('Realized P&amp;L','realized',money(d.realizedPnl),cls(d.realizedPnl))}
-      ${tile('Fee/leg: model','feeModel','$'+d.modelFeePerLeg.toFixed(3))}
-      ${tile('Fee/leg: realized','feeReal',d.realizedFeePerLegAvg==null?'—':'$'+d.realizedFeePerLegAvg.toFixed(4))}
+      ${tile('Fee/leg: model','feeModel','$'+d.modelFeePerLeg.toFixed(4)+(d.modelFeeRate?` <span class="muted" style="font-size:.7rem">(${(100*d.modelFeeRate).toFixed(3)}%)</span>`:''))}
+      ${tile('Fee/leg: realized','feeReal',d.realizedFeePerLegAvg==null?'—':'$'+d.realizedFeePerLegAvg.toFixed(4)+(d.clipUsd?` <span class="muted" style="font-size:.7rem">(${(100*d.realizedFeePerLegAvg/d.clipUsd).toFixed(3)}%)</span>`:''))}
       ${tile('Fill dev avg','fillAvg',d.fillDeviationAvg==null?'—':(d.fillDeviationAvg*100).toFixed(3)+'%')}
       ${tile('Consec. rejects','rejects',d.consecutiveRejects,d.consecutiveRejects>=2?'warn':'')}
       ${tile('Mirror check','mirror',d.mirror==null?'—':(mirrorBreaks>0?mirrorBreaks+' BREAK':'clean'),mirrorBreaks>0?'warn':'pos')}
@@ -627,16 +658,55 @@ async function drawPilotLive(){
   const go=async(armed)=>{ const verb=armed?'START':'STOP';
     if(!confirm(`${verb} the F1 engine?`))return;
     const out=await post(armed?'api/pilot/arm':'api/pilot/disarm'); if(out) draw(); };
+  const bu=$('#btnUnhalt');
+  if(bu)bu.onclick=async()=>{
+    if(!confirm('Clear the F1 halt?\n\nOnly do this once you understand WHY it halted. This does not start trading — '
+      + 'the master switch still governs entries — and if the cause is unfixed the next reconcile check halts again.\n\n'
+      + `Reason recorded on the box: ${d.haltReason||'(not recorded)'}`))return;
+    bu.disabled=true;
+    const out=await post('api/pilot/unhalt');
+    $('#unhaltMsg').textContent = out
+      ? 'requested — the control plane carries it on its next sync (a few minutes), then the box clears its own flag'
+      : '';
+    bu.disabled=false;
+  };
   const bs=$('#btnStart'); if(bs)bs.onclick=()=>go(true);
   const bp=$('#btnStop'); if(bp)bp.onclick=()=>go(false);
 }
 
 function draw(){ renderNav();
-  if(sub==='dash') drawDash();
-  else if(sub==='configs') drawConfigs();
-  else if(sub==='setups') drawSetups();
-  else if(sub==='detail') drawDetail();
-  else drawLive();
+  // Reset the failure log for THIS render, then band the screen afterwards if
+  // any read failed. Without it a panel that lost its data renders its empty
+  // state — "No greenlighted configs yet" — which reads as "you have nothing"
+  // rather than "I could not ask". The two look identical and mean opposite
+  // things, and on this tab the wrong one is alarming.
+  fetchFailures=[];
+  const section = sub==='dash' ? drawDash()
+    : sub==='configs' ? drawConfigs()
+    : sub==='setups' ? drawSetups()
+    : sub==='detail' ? drawDetail()
+    : drawLive();
+  const fail = (err)=>{
+    // A section that THROWS must say so. Without this the promise rejects, the
+    // banner never runs, and #view keeps whatever was there — on a first load
+    // that is nothing, so a hard failure renders as a blank page.
+    fetchFailures.push(`the ${sub} page stopped rendering: ${err&&err.message?err.message:err}`);
+    const v=$('#view');
+    if(v && !v.innerHTML.trim()) v.innerHTML='<div class="panel empty">This page could not be drawn.</div>';
+  };
+  return Promise.resolve(section).then(r=>r, e=>{ fail(e); return null; }).then(r=>{
+    if(fetchFailures.length){
+      const v=$('#view'); if(!v) return r;
+      const seen=[...new Set(fetchFailures)];
+      const el=document.createElement('div');
+      el.className='banner halted';
+      el.innerHTML=`<b>THIS SCREEN IS INCOMPLETE.</b> ${seen.length} read(s) failed, so any panel below that looks
+        empty may be missing data rather than reporting none. Do NOT read an empty panel here as "nothing is running".
+        <div class="muted" style="font-size:.74rem;margin-top:.3rem">${seen.map(x=>`<div>${esc(x)}</div>`).join('')}</div>`;
+      v.prepend(el);
+    }
+    return r;
+  });
 }
 function tickClock(){ $('#utcClock').textContent=new Date().toISOString().slice(0,19).replace('T',' ')+' UTC'; }
 tickClock(); setInterval(tickClock,1000);
