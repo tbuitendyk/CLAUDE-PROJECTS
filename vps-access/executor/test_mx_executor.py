@@ -380,6 +380,45 @@ class ExecutorTest(unittest.TestCase):
         self.assertIn("RECONCILE_OK", self.events())
         self.assertFalse(self.x.halted(), 'accrued short interest is not drift')
 
+    def test_short_financed_by_dust_does_not_halt(self):
+        # THE LIVE HALT (2026-08-18). A MARGIN_BUY sell borrows only what the
+        # account cannot already cover, so pre-existing sub-$5 dust finances part
+        # of the sale and BORROW comes in BELOW the sold quantity. On the box:
+        # 0.00211675 LTC of un-sellable dust, sold 0.224, borrowed 0.221886 — a
+        # 2.1-step shortfall that halted entries for six hours over $0.09 in the
+        # SAFE direction (we owe less than nominal; the economic short is
+        # unchanged). The long side has tolerated exactly this dust since
+        # re-review B2; the short side kept the bare one-step tolerance.
+        self.x.jlog("ENTRY_FILL", chunk_start="s1", side="SHORT", qty=0.224,
+                    price=100.0, exit_due_ts=time.time() + 9999)
+        MockBinance.borrowed = 0.221886   # the dust financed the difference
+        self.x.do_run(self.bx())
+        self.assertIn("RECONCILE_OK", self.events())
+        self.assertFalse(self.x.halted(),
+                         'a borrow shortfall explainable by sub-min dust must not halt')
+
+    def test_short_shortfall_beyond_dust_still_halts(self):
+        # The tolerance is BOUNDED by what dust could explain. A shortfall larger
+        # than the sub-$5 bound is a real discrepancy and must still halt — the
+        # fix must not become a blanket amnesty on the short side.
+        self.x.jlog("ENTRY_FILL", chunk_start="s1", side="SHORT", qty=0.224,
+                    price=100.0, exit_due_ts=time.time() + 9999)
+        MockBinance.borrowed = 0.10       # 0.124 short of nominal, dust bound is 0.06
+        self.x.do_run(self.bx())
+        self.assertIn("RECONCILE_MISMATCH", self.events())
+        self.assertTrue(self.x.halted())
+
+    def test_short_shortfall_defers_when_price_unavailable(self):
+        # Same rule the long side already follows: a tolerance that cannot be
+        # sized must DEFER, never fall back to the tight one and false-halt.
+        self.x.jlog("ENTRY_FILL", chunk_start="s1", side="SHORT", qty=0.224,
+                    price=100.0, exit_due_ts=time.time() + 9999)
+        MockBinance.borrowed = 0.221886
+        MockBinance.price_fails = True
+        self.x.do_run(self.bx())
+        self.assertIn("RECONCILE_DEFER", self.events())
+        self.assertFalse(self.x.halted(), 'no price must defer the shortfall check, not halt')
+
     def test_vanished_short_still_halts(self):
         # journal thinks a short is open but the exchange has NO borrow — the
         # short vanished; a deficit (not interest) must still halt.

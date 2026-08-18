@@ -1107,8 +1107,33 @@ def do_run(bx):
                 long_tol = max(RECONCILE_TOL, MIN_NOTIONAL / px * 1.2)
                 if long_drift > long_tol:
                     problems.append(f"long base {free_base:.6f} vs journal {long_qty:.6f}")
-            if short_excess < -RECONCILE_TOL:
-                problems.append(f"borrow {borrowed:.6f} below journal shorts {short_nominal:.6f}")
+            # SHORT-SIDE DUST, the mirror of the long-side rule twelve lines up.
+            #
+            # A MARGIN_BUY sell borrows only what the account cannot already
+            # cover: if free base is sitting there, the exchange spends that
+            # first and borrows the remainder. So BORROW < SOLD by exactly the
+            # base that was present at entry — and the sweep guarantees whatever
+            # is present is sub-MIN_NOTIONAL dust it could not sell. That is the
+            # SAFE direction: we owe less than nominal, and the economic short
+            # is unchanged at the sold quantity.
+            #
+            # The long side has tolerated exactly this dust since re-review B2.
+            # The short side kept the bare one-step tolerance and nobody noticed
+            # the asymmetry until it fired: on 2026-08-18 the box held
+            # 0.00211675 LTC of un-sellable dust, sold 0.224, borrowed 0.221886,
+            # and halted on a 2.1-step shortfall — stopping entries for six
+            # hours over $0.09 of dust in the safe direction.
+            #
+            # Same bound, same reasoning, same DEFER when no price is available
+            # to size it: a tolerance that cannot be sized must not fall back to
+            # the tight one and false-halt.
+            if not px:
+                if short_excess < -RECONCILE_TOL:
+                    jlog("RECONCILE_DEFER", borrowed=borrowed, short_nominal=round(short_nominal, 6),
+                         reason="no price to size the short-side dust tolerance; shortfall check deferred")
+            elif short_excess < -max(RECONCILE_TOL, MIN_NOTIONAL / px * 1.2):
+                problems.append(f"borrow {borrowed:.6f} below journal shorts {short_nominal:.6f} "
+                                f"by more than sub-${MIN_NOTIONAL:g} dust could explain")
             elif short_excess > interest_cap:
                 problems.append(f"borrow {borrowed:.6f} exceeds shorts {short_nominal:.6f} beyond interest")
             if problems:
