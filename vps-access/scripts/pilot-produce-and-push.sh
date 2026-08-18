@@ -80,6 +80,27 @@ $SSH "$BOX_USER@$BOX_HOST" \
   "python3 ~/mx_executor.py $mode --source=owner --nonce='$nonce' --utc='$utc' --hmac='$hmac'" \
   2>&1 | sed 's/^/  /' || echo "  (box unreachable; if armed, dead-man self-disarms — fail-safe)"
 
+# ---- carry an UNHALT request (owner, 2026-08-18) --------------------------
+# A halt never self-clears, and clearing one used to need shell access to the
+# box — so from the owner's screen a halt was a dead end. The Trading tab writes
+# data/pilot/unhalt-request.json; pilot-unhalt-fields.sh decides whether to carry
+# it (consume-once + fresh + shape-gated, see that script), and only then does
+# the box clear its own flag. This never arms: entries still require the master
+# switch, and an unfixed cause re-halts on the next reconcile tick.
+UNREQ="$APPDIR/data/pilot/unhalt-request.json"
+UNSEEN="$APPDIR/data/pilot/unhalt-carried.json"
+read -r un_go un_nonce < <(bash "$HERE/pilot-unhalt-fields.sh" "$UNREQ" "$UNSEEN") || { un_go=0; un_nonce='-'; }
+if [ "$un_go" = "1" ]; then
+  echo "== owner requested UNHALT (nonce $un_nonce) — carrying to the box =="
+  if $SSH "$BOX_USER@$BOX_HOST" \
+       "python3 ~/mx_executor.py unhalt --source=owner --reason='cleared by the owner from the Trading tab'" \
+       2>&1 | sed 's/^/  /'; then
+    printf '{"nonce":"%s","carriedAt":"%s"}' "$un_nonce" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$UNSEEN"
+  else
+    echo "  (box unreachable; the request is NOT marked carried and retries next sync)"
+  fi
+fi
+
 # Carry the owner's CHOSEN protective stop to the box (owner 2026-08-11). Running
 # the scan applies NOTHING; the owner chooses a value (or none) which the classifier
 # writes to data/pilot/fixed-stop.json. This carries that choice into the box's
