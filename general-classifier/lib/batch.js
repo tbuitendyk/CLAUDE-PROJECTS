@@ -2973,6 +2973,19 @@ function bracketSelect(id, patch) {
   const doc = getBatch(id);
   if (!doc || doc.kind !== 'bracketlab') throw new Error('unknown bracket-lab run');
   if (doc.status === 'running') throw new Error('sweep is still running');
+  // CLEARING A SELECTION (owner, 2026-08-18). A row could be selected and never
+  // unselected: nothing anywhere in the tab took a selection off a run. That is
+  // not a cosmetic gap — a stored selection changes what other screens offer and
+  // aim at, so a state the owner cannot leave is a state that quietly steers
+  // later decisions. Clearing archives the null test the same way selecting a
+  // different row does, because that test belonged to the selection being left.
+  if (patch && patch.clear) {
+    archivePrior(doc, 'nullTest', doc.nullTest);
+    doc.selection = null;
+    doc.nullTest = null;
+    saveBatch(doc);
+    return doc;
+  }
   const row = doc.leaders.find((l) => l.key === patch.key && l.stage === (patch.stage || 'promoted'));
   if (row) {
     archivePrior(doc, 'nullTest', doc.nullTest);
