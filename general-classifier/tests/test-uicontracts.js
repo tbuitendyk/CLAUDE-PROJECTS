@@ -100,3 +100,77 @@ module.exports = {
   theTabActuallyCallsTheEndpointThatFeedsThePickers,
   anEmptyPickerRefusesInPlainWordsInsteadOfAsking,
 };
+
+// ---- Trading tab ------------------------------------------------------------
+const LT = fs.readFileSync(path.join(ROOT, 'public', 'trading.html'), 'utf8')
+  .replace(/<!--[\s\S]*?-->/g, '').split('\n').filter((l) => !/^\s*\/\//.test(l)).join('\n');
+
+// A RISK PARAMETER IS NEVER A LITERAL ON A SCREEN. The Setups table synthesises
+// the F1 pilot's row client-side and had stopPct pinned to null, so it reported
+// "no protective stop" whatever stop was actually applied — while the LIVE page
+// two clicks away rendered the real one from the same fetch. fetchConfigs
+// already returns the pilot; drawSetups was throwing it away (audit 2026-08-17).
+//
+// Watched failing 2026-08-17: restoring `stopPct:null` on that row fails this.
+function theF1RowReportsTheStopThatIsActuallyApplied() {
+  const i = LT.indexOf("id:'f1-pilot'");
+  assert(i >= 0, 'the Setups table no longer synthesises the F1 pilot row');
+  const row = LT.slice(i, i + 400);
+  assert(/pilot\s*&&\s*pilot\.fixedStopPct/.test(row),
+    'the F1 row hardcodes its protective stop instead of reading the applied value — a risk parameter must never be a literal on a screen');
+  assert(!/stopPct\s*:\s*null\s*,/.test(row),
+    'stopPct is pinned to null again on the F1 row');
+  assert(/const \[\{configs, pilot\}/.test(LT),
+    'drawSetups no longer destructures the pilot, so it cannot know the applied stop');
+}
+
+module.exports.theF1RowReportsTheStopThatIsActuallyApplied = theF1RowReportsTheStopThatIsActuallyApplied;
+
+// A SECTION STARTS ONE POLL CHAIN, NOT ONE PER VISIT. drawSweep armed a poller
+// on every visit and each re-armed itself against the freshly rendered element,
+// so it never hit its bail-out: five visits meant five chains hitting the box
+// every five seconds, forever. CLAUDE.md names this failure mode explicitly —
+// never check a running job more often than it could plausibly need
+// (audit 2026-08-17).
+//
+// Watched failing 2026-08-17: dropping the clearTimeout at the top of drawSweep,
+// or re-arming with a bare setTimeout, fails this.
+function everyPollingSectionCancelsItsPreviousChain() {
+  for (const [fn, handle] of [['drawSweep', 'sweepPoll'], ['drawTune', 'tunePoll']]) {
+    const i = CX.indexOf(`async function ${fn}(`);
+    assert(i >= 0, `${fn} is gone`);
+    const head = CX.slice(i, i + 200);
+    assert(new RegExp(`clearTimeout\\(${handle}\\)`).test(head),
+      `${fn} does not cancel its previous poll chain on redraw — visits would stack pollers`);
+  }
+  // and nothing re-arms without going through the handle
+  const bare = [...CX.matchAll(/(\w+\s*=\s*)?setTimeout\((pollProgress|drawTune)\s*,/g)]
+    .filter((m) => !/^(sweepPoll|tunePoll)\s*=\s*$/.test(m[1] || ''));
+  assert.deepStrictEqual(bare.map((m) => m[0]), [],
+    'a poll re-arms with a bare setTimeout — assigning the handle is what makes it cancellable');
+}
+
+// A control's authored description must survive being enabled.
+function enablingAControlDoesNotEraseItsDescription() {
+  const i = CX.indexOf('const off = (wrap, sel, disabled, why)');
+  assert(i >= 0, 'the agree-quorum enable/disable helper is gone');
+  const body = CX.slice(i, i + 500);
+  assert(/dataset\.baseTitle/.test(body),
+    'the helper does not remember the authored tooltip — enabling a control blanks its description');
+  assert(!/title = disabled \? why : ''/.test(body),
+    'the tooltip is blanked on enable again; it must be restored, not erased');
+}
+
+// The trim prompt must pre-fill a value the endpoint accepts.
+function theTrimPromptPreFillsAMonthNotADay() {
+  const i = CX.indexOf('class="ds-trim"');
+  assert(i >= 0, 'the trim button is gone from the Data section');
+  const tag = CX.slice(i, CX.indexOf('>', i));
+  assert(/r\.toMonth/.test(tag),
+    'trim pre-fills the day-precision "to" — the endpoint accepts YYYY-MM only, so it refused on every pair with fresh day files');
+  assert(/slice\(0, 7\)/.test(tag), 'the fallback must still be trimmed to a month');
+}
+
+module.exports.everyPollingSectionCancelsItsPreviousChain = everyPollingSectionCancelsItsPreviousChain;
+module.exports.enablingAControlDoesNotEraseItsDescription = enablingAControlDoesNotEraseItsDescription;
+module.exports.theTrimPromptPreFillsAMonthNotADay = theTrimPromptPreFillsAMonthNotADay;

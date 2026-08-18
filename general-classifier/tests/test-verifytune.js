@@ -26,12 +26,28 @@ module.exports = {
     assert.ok(/this window only/.test(UI), 'and what a pass actually buys must be stated');
   },
 
-  toolOneCanFireItsOwnNullRounds() {
-    assert.ok(/id="t1fire"/.test(UI), 'Tool 1 must be able to fire the rounds it reads');
+  // RENAMED 2026-08-17. This was toolOneCanFireItsOwnNullRounds, and the name
+  // carried the same mistake the screen did: the button fires the ROTATION null
+  // (doc.nullTest), which creates none of the dealt-vote rows Tool 1 pairs
+  // against. Tool 1's draws come from a sweep launched with null boards above
+  // zero. The button now sits in its own panel, says which instrument it is, and
+  // its output is RENDERED — before this the rounds cost a full sweep each and
+  // nothing on the tab ever displayed the result (audit 2026-08-17).
+  rotationRoundsAreTheirOwnInstrumentAndTheirOutputIsShown() {
+    assert.ok(/id="t1fire"/.test(UI), 'the rotation rounds must still be fireable');
     assert.ok(/\/null`, \{ shifts: rounds \}/.test(UI), 'the endpoint reads exactly one field, shifts');
     // the engine clamps a missing/zero count to ONE — a finished-looking test of nothing
     assert.ok(/rounds < 1/.test(UI), 'a zero or missing count must be refused here, not silently clamped to one');
     assert.ok(/1-in-\$\{rounds \+ 1\}/.test(UI), 'and the confirm must say what claim the count can support');
+    // the two halves that were missing
+    assert.ok(/function renderRotationRounds\(/.test(UI),
+      'doc.nullTest is rendered nowhere — the rounds would cost a full sweep each and show nothing');
+    assert.ok(/nt\.exceedSearch/.test(UI) && /nt\.medianBestPnl/.test(UI),
+      'the rotation table must read the fields lib/batch.js actually writes onto doc.nullTest');
+    assert.ok(/RETIRED as evidence|retires this construction/.test(UI),
+      'the panel must say the register retires this construction as evidence');
+    assert.ok(/does NOT feed Tool 1|not the draws Tool 1|none of the dealt-vote rows Tool 1/i.test(UI),
+      'the panel must say these rounds are not what Tool 1 reads — that confusion is the defect');
   },
 
   theScansCanTargetAnySavedBookNotJustF1() {

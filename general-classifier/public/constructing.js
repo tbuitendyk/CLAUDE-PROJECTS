@@ -307,14 +307,26 @@ async function drawData() {
       while a job runs; purge and trim DELETE data — the only way back is downloading again.</p>
     <div class="scrollx" id="dataTbl">${rows.length ? `<table><thead><tr>
       ${cth('pair','pair')}${cth('months','months')}${cth('from','from')}${cth('to','to')}${cth('manage','manage','text-align:left')}</tr></thead><tbody>
-      ${rows.map((r) => (r.symbol === 'PLANTEDUSDT' ? `
-        <tr><td>${esc(r.symbol)} <span class="note">fabricated planted-check pair — mirrors real data's span, never downloaded</span></td>
+      <!-- THE FLAG, NOT ONE HARDCODED NAME. This tested r.symbol ===
+           'PLANTEDUSDT', so the second fabricated pair — the late-rule exam —
+           was offered refresh and TRIM like an ordinary Binance pair. Trimming
+           it silently corrupts the exam it exists to be, and nothing on screen
+           would say so. The planted flag now comes from lib/planted.js's list via
+           /api/data-state, so a third fabricated pair cannot be missed
+           (audit 2026-08-17). -->
+      ${rows.map((r) => (r.planted ? `
+        <tr><td>${esc(r.symbol)} <span class="note">fabricated pair — mirrors the real data's span, never downloaded; trimming it would corrupt the exam it exists to be</span></td>
           <td>${r.months ?? '—'}</td><td>${esc(r.from || '—')}</td><td>${esc(r.to || '—')}</td>
           <td style="text-align:left"><button type="button" class="ds-refresh" data-sym="${esc(r.symbol)}">regenerate to span</button>
             <button type="button" class="ds-purge" data-sym="${esc(r.symbol)}">purge…</button></td></tr>` : `
         <tr><td>${esc(r.symbol)}</td><td>${r.months ?? '—'}</td><td>${esc(r.from || '—')}</td><td>${esc(r.to || '—')}</td>
           <td style="text-align:left"><button type="button" class="ds-refresh" data-sym="${esc(r.symbol)}">refresh to latest</button>
-            <button type="button" class="ds-trim" data-sym="${esc(r.symbol)}" data-from="${esc(r.from || '')}" data-to="${esc(r.to || '')}">trim…</button>
+            <!-- toMonth, not to. cacheState reports the "to" field at DAY
+                 precision whenever day files exist (the normal state after any
+                 refresh), and the trim endpoint accepts YYYY-MM only — so the
+                 prompt pre-filled a value the server then refused, on every pair
+                 with fresh days (audit 2026-08-17). -->
+            <button type="button" class="ds-trim" data-sym="${esc(r.symbol)}" data-from="${esc(String(r.from || '').slice(0, 7))}" data-to="${esc(r.toMonth || String(r.to || '').slice(0, 7))}">trim…</button>
             <button type="button" class="ds-purge" data-sym="${esc(r.symbol)}">purge…</button></td></tr>`)).join('')}</tbody></table>`
     : `<p class="note">nothing cached yet — download below</p>`}</div>
     <h3>Download / refresh</h3>
@@ -367,7 +379,13 @@ async function drawData() {
 }
 
 // ---- Sweep --------------------------------------------------------------------
+// Section poll timers, held at module scope so a redraw CANCELS the previous
+// chain instead of adding one beside it.
+let sweepPoll = null;
+let tunePoll = null;
+
 async function drawSweep() {
+  clearTimeout(sweepPoll); sweepPoll = null;
   const [camp, names, batches] = await Promise.all([
     api('api/campaign').catch(() => ({ name: '' })),
     api('api/campaigns').catch(() => ({ names: [] })),
@@ -489,10 +507,17 @@ async function drawSweep() {
   // HIDE (owner, 2026-07-31) — both boxes keep their place so the row keeps its
   // shape and the "agree" label keeps its context.
   const syncDecQuorum = () => {
+    // RESTORE the authored tooltip, do not blank it. This assigned '' whenever
+    // the control was enabled, and it runs on load with both boxes ticked — so
+    // the two "agree" descriptions were erased before the operator could ever
+    // read them, and only ever came back as the REFUSAL message when the
+    // control was greyed out (audit 2026-08-17).
     const off = (wrap, sel, disabled, why) => {
+      const w = $(wrap);
+      if (w.dataset.baseTitle === undefined) w.dataset.baseTitle = w.title || '';
       $(sel).disabled = disabled;
-      $(wrap).classList.toggle('ctl-off', disabled);
-      $(wrap).title = disabled ? why : '';
+      w.classList.toggle('ctl-off', disabled);
+      w.title = disabled ? why : w.dataset.baseTitle;
     };
     off('#swDecQ6Wrap', '#swDecQ6', !$('#swSingles').checked,
       'this run has no single-coin committees — tick "singles" to set their agreement level');
@@ -598,6 +623,11 @@ async function drawSweep() {
     const out = await tryPost('api/abort', {}); if (out) $('#swMsg').textContent = 'abort requested';
   };
   if (running) pollProgress();
+  // ONE CHAIN. Every visit to this section used to start another poller, and
+  // each re-armed itself against the freshly rendered element, so it never hit
+  // the bail-out — five visits meant five chains hitting the box every 5s
+  // forever. CLAUDE.md names this failure mode by name: never check a running
+  // job more often than it could plausibly need (audit 2026-08-17).
   async function pollProgress() {
     const bl = await api('api/batches').catch(() => null);
     const run = ((bl && (bl.batches || bl)) || []).find((b) => b.status === 'running');
@@ -613,7 +643,7 @@ async function drawSweep() {
         <div class="tile" title="trainings completed per minute across all workers on this box. It moves with the CPU cap."><div class="k">Rate</div><div class="v">${perf.ratePerMin ? perf.ratePerMin.toFixed(1) + '/min' : '—'}</div></div>
         <div class="tile" title="estimated minutes remaining, from the current rate. It is an extrapolation, not a promise."><div class="k">ETA</div><div class="v">${perf.etaMs ? Math.round(perf.etaMs / 60000) + ' min' : '—'}</div></div>
       </div>`;
-    if (tab === 'sweep') setTimeout(pollProgress, 5000);
+    if (tab === 'sweep') { clearTimeout(sweepPoll); sweepPoll = setTimeout(pollProgress, 5000); }
   }
 }
 
@@ -1104,12 +1134,24 @@ async function drawVerify() {
         ${nullSrc.map((s) => `<option value="${esc(s.id)}" ${s.id === doc.id ? 'selected' : ''}>${esc(s.id)} (${s.scrambleDraws} null draws)</option>`).join('')}
       </select></label>
       <button id="t1run" class="pri" ${nullSrc.length ? '' : 'disabled'}>Read Tool 1 verdict</button><span id="t1msg" class="note">${nullSrc.length ? '' : 'launch a sweep with null boards &gt; 0 first — this tool reads those draws.'}</span></div>
-      <div class="row" style="margin-top:.45rem;align-items:flex-end">
-        <label class="f" title="each round replays the whole board on dealt votes — same committee, same machinery, the calendar alignment destroyed. N rounds is at best a 1-in-(N+1) claim, and each costs a full sweep.">null rounds to fire<input id="t1rounds" type="number" value="19" min="1" max="1000" style="width:5rem"></label>
-        <button id="t1fire">Fire null runs on this run</button>
-        <span id="t1fireMsg" class="note">— fires the rounds this tool then reads. They land on this run's own record.</span>
-      </div><div id="t1out"></div>`
+      <div id="t1out"></div>`
     : '<button disabled title="select a row on Boards first">Read Tool 1 verdict</button> <span class="note">— select a row on the Boards section first; this tool is per-row.</span>'}
+  </div>
+  <div class="panel">
+    <h3 style="margin-top:0">Rotation rounds — a SEPARATE instrument, retired as evidence</h3>
+    <p class="note">This button used to sit inside Tool 1 saying its rounds were what that tool reads. They are not.
+      It fires the ROTATION null: each round rotates outcomes against features and replays the whole downstream search
+      on the selected row. Its output lands on this run's own record and is shown below — nowhere else — and it creates
+      none of the dealt-vote rows Tool 1 pairs against. Those come from launching a sweep with
+      <b>null boards</b> above zero on the Sweep section.
+      <b>The register marks this construction RETIRED as evidence</b> (historical reading only), so a number from it is
+      never a claim. It stays operable because a run that already carries one must remain readable.</p>
+    ${sel ? `<div class="row" style="align-items:flex-end">
+      <label class="f" title="each round rotates outcomes against features and replays the whole downstream search. N rounds is at best a 1-in-(N+1) claim, and each costs a full sweep.">rotation rounds to fire<input id="t1rounds" type="number" value="19" min="1" max="1000" style="width:5rem"></label>
+      <button id="t1fire">Fire rotation rounds on this run</button>
+      <span id="t1fireMsg" class="note">— minutes to hours. They land on this run's own record.</span>
+    </div>` : '<span class="note">select a row on the Boards section first — rotation rounds are per-row.</span>'}
+    ${renderRotationRounds(doc)}
   </div>
   <div class="panel">
     <h3 style="margin-top:0">Tool 2 — the board against its dealt-vote null boards</h3>
@@ -1157,12 +1199,15 @@ async function drawVerify() {
     // the engine clamps a missing/zero/negative count to ONE — a finished-looking
     // null test with n=1, which is no test at all. Refuse it here instead.
     if (rounds < 1) { $('#t1fireMsg').textContent = 'a null test needs at least one round'; return; }
-    if (!confirm(`Fire ${rounds} null round(s) on ${doc.id}?\n\nEach round replays the whole board on dealt votes and costs a full sweep. ${rounds} rounds is at best a 1-in-${rounds + 1} claim.`)) return;
+    if (!confirm(`Fire ${rounds} ROTATION round(s) on ${doc.id}?\n\nEach round rotates outcomes against features and replays the whole downstream search — a full sweep each. `
+      + `${rounds} rounds is at best a 1-in-${rounds + 1} claim — and the register retires this construction AS EVIDENCE, `
+      + `so the result is a historical reading rather than a claim at all. `
+      + `It does NOT feed Tool 1: those draws come from launching a sweep with null boards above zero.`)) return;
     t1f.disabled = true;
     $('#t1fireMsg').textContent = 'launching…';
     const out = await tryPost(`api/bracketlab/${encodeURIComponent(doc.id)}/null`, { shifts: rounds });
     t1f.disabled = false;
-    $('#t1fireMsg').textContent = out ? `${out.shifts} round(s) running — they land on this run's record` : '';
+    $('#t1fireMsg').textContent = out ? `${out.shifts} rotation round(s) running — the table below fills in as they land` : '';
   };
   if (t1) t1.onclick = async () => {
     const nullId = $('#t1null').value;
@@ -1305,6 +1350,39 @@ async function drawHistory() {
 // truncated — every reading rule that makes the numbers mean anything lives in
 // the Bracket lab's renderVerdict and was unreachable here (owner sweep,
 // 2026-08-17). Ported from app.js:2108.
+// The rotation null's own output. lib/batch.js has written doc.nullTest since
+// the instrument existed and this tab rendered it NOWHERE — so the button spent
+// a full sweep per round and the operator had no way to see the result at all
+// (audit 2026-08-17). The frozen Bracket lab has always shown it.
+//
+// Labelled for what it is on every reading: the register marks this construction
+// RETIRED as evidence, so the numbers are historical reading, never a claim.
+function renderRotationRounds(doc) {
+  const nt = doc && doc.nullTest;
+  if (!nt) return '<p class="note">no rotation rounds on this run.</p>';
+  const pct = (v) => (v == null ? '—' : `${(100 * v).toFixed(1)}%`);
+  const head = nt.status === 'running'
+    ? `RUNNING — ${nt.shifts ?? 0} of ${nt.requestedShifts ?? '?'} rounds banked`
+    : `${String(nt.status || '?')} — ${nt.shifts ?? 0} round(s)`;
+  return `<h4 style="margin:.7rem 0 .3rem">Rotation rounds on this run: ${esc(head)}</h4>
+    <p class="note">TABLE: the rotation null. NAME: how often a rotated world matched or beat the real result.
+      KEY — exceed: the share of rounds whose result reached the real one, so LOWER is better and it is a share, not
+      money; null median $: the middle result across rounds, in US dollars on the same window as the real figure.
+      Real result: ${money(nt.real ? nt.real.pnl : null)} over ${nt.real && nt.real.trades != null ? nt.real.trades : '—'} trades.</p>
+    <div class="scrollx"><table><thead><tr>
+      <th title="which reading: the whole downstream search replayed per rotation, or only the selected cell's own configuration">reading</th>
+      <th title="share of rotation rounds that matched or beat the real result. A SHARE, not money — and lower is better.">exceed</th>
+      <th title="the middle result across the rotation rounds, in US dollars on the same window as the real figure">null median $</th></tr></thead><tbody>
+      <tr><td>best-of-menu, search replayed</td><td><b>${pct(nt.exceedSearch)}</b> of ${nt.shifts ?? 0}</td>
+        <td>${nt.medianBestPnl != null ? money(nt.medianBestPnl) : '—'}</td></tr>
+      <tr><td>same configuration only</td><td>${pct(nt.exceedSame)}</td>
+        <td>${nt.medianSamePnl != null ? money(nt.medianSamePnl) : '—'}</td></tr>
+    </tbody></table></div>
+    <p class="note">The row itself was chosen from ${doc.plan ? doc.plan.units : '?'} searched units. That multiplicity is
+      NOT replayed here, so this cannot be read as the shopping-corrected number — and the register retires this
+      construction as evidence in any case.</p>`;
+}
+
 function renderNullVerdict(d) {
   if (!d) return '<span class="warn">no verdict</span>';
   const drawsTable = (t) => `<div class="scrollx" style="max-height:14rem;overflow-y:auto"><table>
@@ -1493,11 +1571,17 @@ function renderHtTwoRun(r) {
 function renderHtTwoVerdict(v) {
   if (!v) return '<span class="muted">no verdict</span>';
   const lines = (v.sentences || []).map((x) => `<p class="note">${esc(x)}</p>`).join('');
+  // v.folds is an OBJECT — { planned, completed, dropped, silentBothArms, used }
+  // — so interpolating it printed "[object Object]" where the denominator
+  // belongs. The count the line wants is folds.used, and the other three are
+  // computed precisely so they are disclosed rather than hidden, so they are
+  // now shown too (audit 2026-08-17).
   const rich = v.p != null || v.sum != null;
   return `<p><b class="${v.pass ? 'pos' : 'warn'}">${v.pass ? 'PASS' : 'NO EFFECT SHOWN'}</b>
       <span class="note">engine ${esc(String(v.engineVersion || '?'))}</span></p>${lines}
     ${rich ? `<p class="note">paired sum ${money(v.sum)} · sign-flip p ${v.p == null ? '—' : v.p.toFixed(4)} ·
-      folds positive ${v.positiveFolds ?? '—'}/${v.folds ?? '—'}${v.carriedByOneFold ? ' · <b class="warn">carried by one fold</b>' : ''}</p>` : ''}`;
+      folds positive ${v.positiveFolds ?? '—'}/${v.folds && v.folds.used != null ? v.folds.used : '—'}${v.carriedByOneFold ? ' · <b class="warn">carried by one fold</b>' : ''}
+      ${v.folds ? `<span title="planned: how many folds the run asked for. dropped: folds that could not be scored. both arms silent: folds where neither arm took a position, so the pair carries no information. used: what the numbers above are computed from — the only one of the four that is a denominator.">· folds: ${v.folds.planned ?? '—'} planned, ${v.folds.completed ?? '—'} completed, ${v.folds.dropped ?? 0} dropped, ${v.folds.silentBothArms ?? 0} silent on both arms</span>` : ''}</p>` : ''}`;
 }
 
 async function wireHtRun(d, runs) {
@@ -1565,6 +1649,7 @@ async function wireHtRun(d, runs) {
 
 // ---- Tune (stop tuner · conviction sizing · compare) ----------------------------
 async function drawTune() {
+  clearTimeout(tunePoll); tunePoll = null;
   const doc = await loadPicked();
   const sel = getSelRow(doc);
   const [scan, stop, conv, applied] = await Promise.all([
@@ -1700,11 +1785,11 @@ async function drawTune() {
   };
   $('#stopRun').onclick = async () => {
     if (!confirm('Run the full-history stop scan? (minutes; one heavy scan at a time)')) return;
-    const out = await tryPost('api/pilot/stopsweep', scanBody); if (out) setTimeout(drawTune, 1500);
+    const out = await tryPost('api/pilot/stopsweep', scanBody); if (out) { clearTimeout(tunePoll); tunePoll = setTimeout(drawTune, 1500); }
   };
   $('#convRun').onclick = async () => {
     if (!confirm('Run the full-history conviction sweep? (minutes; one heavy scan at a time)')) return;
-    const out = await tryPost('api/pilot/convictionsweep', scanBody); if (out) setTimeout(drawTune, 1500);
+    const out = await tryPost('api/pilot/convictionsweep', scanBody); if (out) { clearTimeout(tunePoll); tunePoll = setTimeout(drawTune, 1500); }
   };
   $('#view').querySelectorAll('button[data-stop]').forEach((b) => {
     b.onclick = async () => {
@@ -1712,6 +1797,11 @@ async function drawTune() {
       const out = await tryPost('api/pilot/stop-apply', { stopPct: Number(b.dataset.stop) }); if (out) drawTune();
     };
   });
+  // A running scan used to say "running…" and then never change: the result
+  // only appeared if the operator happened to reload. It refreshes itself now,
+  // ONE cancellable chain, at 30s — these scans take minutes, and checking a
+  // job faster than it could plausibly finish is waste, not diligence.
+  if (busy && tab === 'tune') { clearTimeout(tunePoll); tunePoll = setTimeout(drawTune, 30000); }
   $('#cmpGo').onclick = async () => {
     const a = $('#cmpA').value;
     if (!a) { $('#cmpOut').innerHTML = '<span class="warn">pick run A first</span>'; return; }

@@ -129,8 +129,15 @@ function installLiveRoutes(app, { csrfGuard }) {
         for (const c of ['real', 'paper']) {
           const s = chans[c];
           if (!s) { channels[c] = null; continue; }
+          // The status's openPositions is a MERGED array with a per-row paper
+          // flag; counting it whole gave the paper channel the real channel's
+          // open positions and vice versa, on a setup that legally holds both
+          // (audit 2026-08-17). Count this channel's own book.
           let open = 0;
-          try { open = (view.setupStatus(s).openPositions || []).length; } catch (_) { open = 0; }
+          try {
+            open = (view.setupStatus(s).openPositions || [])
+              .filter((p) => (c === 'paper' ? !!p.paper : !p.paper)).length;
+          } catch (_) { open = 0; }
           parts.push({ channel: c, state: s.state, open });
           channels[c] = { setupId: s.id, state: s.state, open, runEpochUtc: s.runEpochUtc || null };
         }

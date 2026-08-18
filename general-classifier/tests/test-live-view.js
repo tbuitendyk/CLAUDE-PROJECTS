@@ -120,3 +120,52 @@ module.exports.absentJournalIsAStateNotAnError = function () {
   assert.strictEqual(st.openPositions.length, 0);
   assert.strictEqual(st.realizedPnl, 0);
 };
+
+// THE MERGED LIST HAS TO BE UNMERGED BEFORE IT IS SHOWN. deriveSetup keeps real
+// and paper money separate — that is R9, above — and then returns ONE
+// openPositions array carrying a per-row paper flag. Every consumer that shows a
+// count or a table alongside a branch-selected P&L has to filter it, and none of
+// them did: the Trading tab's detail page, its Dashboard cards, and the channel
+// summary in lib/live/routes.js all counted both books. On a setup that has
+// legally gone paper -> live, the count and the money above it disagreed, with
+// fictional positions listed under a real-money heading (audit 2026-08-17).
+//
+// Watched failing 2026-08-17: dropping any one of the three filters makes its
+// own assertion below report 2 where the side has 1.
+module.exports.everyConsumerOfTheMergedListFiltersItToOneBook = function () {
+  const fs2 = require('fs');
+  const path2 = require('path');
+  const ROOT2 = path2.join(__dirname, '..');
+  const strip = (s) => s.replace(/<!--[\s\S]*?-->/g, '').split('\n').filter((l) => !/^\s*\/\//.test(l)).join('\n');
+  const LT = strip(fs2.readFileSync(path2.join(ROOT2, 'public', 'trading.html'), 'utf8'));
+  const RT = strip(fs2.readFileSync(path2.join(ROOT2, 'lib', 'live', 'routes.js'), 'utf8'));
+
+  const flat = LT.replace(/\s/g, '');
+  assert.ok(flat.includes('openHere=(st.openPositions||[]).filter(p=>isP?p.paper:!p.paper)'),
+    'the setup detail page no longer filters the merged position list to this side\'s book');
+  assert.ok(!/st\.openPositions\.length/.test(LT),
+    'something reads the MERGED length again — it must read the filtered list');
+  assert.ok(flat.includes('filter(p=>g.f1?!p.paper:(isP?p.paper:!p.paper))'),
+    'the Dashboard card counts both books again');
+  assert.ok(/c === 'paper' \? !!p\.paper : !p\.paper/.test(RT),
+    'the channel summary counts both books again — a paper channel would report the real channel\'s open positions');
+};
+
+// And the behaviour the filters exist for, on a real derived book.
+module.exports.aSetupHoldingBothBooksReportsOnePositionPerSide = function () {
+  withJournal([
+    { event: 'ENTRY_FILL', setup_id: 'both', chunk_start: 'r1', side: 'LONG', qty: 0.2, price: 100, exit_due_ts: 2e9 },
+    { event: 'PAPER_ENTRY_FILL', setup_id: 'both', chunk_start: 'p1', side: 'SHORT', qty: 0.4, price: 100, exit_due_ts: 3e9 },
+    { event: 'PNL_MTM', price: 110 },
+  ], (f) => {
+    const b = view.deriveSetup(view.readJournal(f).events, 'both');
+    const real = b.openPositions.filter((p) => !p.paper);
+    const paper = b.openPositions.filter((p) => p.paper);
+    assert.strictEqual(real.length, 1, 'the real side holds exactly one position');
+    assert.strictEqual(paper.length, 1, 'the paper side holds exactly one position');
+    assert.strictEqual(b.openPositions.length, 2,
+      'the merged list still carries both — the filtering is the consumer\'s job, and this is why');
+    assert.strictEqual(real[0].side, 'LONG');
+    assert.strictEqual(paper[0].side, 'SHORT');
+  });
+};

@@ -91,7 +91,14 @@ app.get('/api/selftest/workers', async (req, res) => {
 
 // ---- data state + load-only phase -------------------------------------------
 
-app.get('/api/data-state', (req, res) => res.json({ symbols: cacheState() }));
+// `planted` marks the FABRICATED pairs. The Data section used to test one
+// hardcoded symbol name, so the second fabricated pair (the late-rule exam) was
+// offered download/refresh/trim like a real Binance pair — and trimming it
+// silently corrupts the exam it exists to be (audit 2026-08-17). The flag comes
+// from lib/planted.js's own list so a third fabricated pair cannot be missed.
+app.get('/api/data-state', (req, res) => res.json({
+  symbols: cacheState().map((r) => ({ ...r, planted: planted.isPlanted(r.symbol) })),
+}));
 
 
 // ---- data management (owner order, 2026-08-03): the "available data on
@@ -182,16 +189,19 @@ app.post('/api/data/refresh', (req, res) => {
   // after EVERY refresh that leaves real data on disk — single-pair
   // refreshes included — so the pair can never trail the data it mirrors.
   // On a Global Refresh it regenerates LAST, after every real pair fetched.
-  const hasRealData = state.some((s2) => s2.symbol !== planted.PLANTED_SYMBOL);
+  // EVERY fabricated pair, not just the first one. This filtered PLANTED_SYMBOL
+  // alone, so a refresh of the late-rule exam pair fell through to the Binance
+  // fetch path for a symbol that does not exist on Binance.
+  const hasRealData = state.some((s2) => !planted.isPlanted(s2.symbol));
   const targets = (one ? state.filter((s2) => s2.symbol === one) : state)
-    .filter((s2) => s2.symbol !== planted.PLANTED_SYMBOL);
-  if (one === planted.PLANTED_SYMBOL && !hasRealData) {
-    return res.status(400).json({ error: `${planted.PLANTED_SYMBOL} mirrors the real data's date span and nothing real is cached — download real pairs first` });
+    .filter((s2) => !planted.isPlanted(s2.symbol));
+  if (planted.isPlanted(one) && !hasRealData) {
+    return res.status(400).json({ error: `${one} mirrors the real data's date span and nothing real is cached — download real pairs first` });
   }
-  if (one === planted.PLANTED_SYMBOL && !planted.plantedExists()) {
-    return res.status(400).json({ error: `${planted.PLANTED_SYMBOL} has never been generated — the planted-check button (top of the Bracket lab) creates it` });
+  if (planted.isPlanted(one) && !planted.plantedExists()) {
+    return res.status(400).json({ error: `${one} has never been generated — the planted-check button creates it` });
   }
-  if (!targets.length && one !== planted.PLANTED_SYMBOL) {
+  if (!targets.length && !planted.isPlanted(one)) {
     return res.status(400).json({ error: one ? `${one} has no cached data — use download` : (hasRealData ? 'nothing to refresh' : 'nothing cached yet') });
   }
   const { monthList: ml, loadSymbol } = require('./lib/pipeline');
@@ -247,12 +257,21 @@ app.post('/api/data/purge', (req, res) => {
   // A purge/trim of REAL data changes the span the fabricated pair mirrors —
   // regenerate it in the same breath (fast, deterministic, no network).
   let plantedRegen = null;
-  if (sym !== planted.PLANTED_SYMBOL && planted.plantedExists()) {
+  if (!planted.isPlanted(sym) && planted.plantedExists()) {
     const span = planted.plantedSpan();
     plantedRegen = span ? { regenerated: true, ...planted.generatePlanted(span) } : { removed: true };
+    // THE LATE-RULE EXAM PAIR TOO. Only the first fabricated pair was
+    // regenerated after a purge, so the late pair kept mirroring a span the
+    // real data no longer has — exam A then grades against a stale world with
+    // nothing on screen to say so (audit 2026-08-17).
+    if (span && planted.plantedExists(planted.PLANTED_LATE_SYMBOL)) {
+      plantedRegen.late = { regenerated: true, ...planted.generatePlantedLate(span) };
+    }
     if (!span) {
       for (const f of dataFs.readdirSync(DATA_CACHE_DIR)) {
-        if (f.startsWith(`${planted.PLANTED_SYMBOL}-1h-`)) { try { dataFs.unlinkSync(dataPath.join(DATA_CACHE_DIR, f)); } catch { /* recount */ } }
+        if (planted.PLANTED_SYMBOLS.some((ps) => f.startsWith(`${ps}-1h-`))) {
+          try { dataFs.unlinkSync(dataPath.join(DATA_CACHE_DIR, f)); } catch { /* recount */ }
+        }
       }
     }
   }

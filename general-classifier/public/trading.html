@@ -275,12 +275,18 @@ async function confirmActivate(id){
 
 // ---- Setups (this branch's channel records) ----------------------------------
 async function drawSetups(){
-  const [{configs}, d]=await Promise.all([fetchConfigs(), api('api/live/setups')]);
+  // fetchConfigs already returns the pilot; this destructured {configs} alone and
+  // threw it away, then synthesised the F1 row with stopPct HARDCODED to null.
+  // So the Setups table said F1 had no protective stop whatever stop was
+  // actually applied — a risk parameter reported as absent while the LIVE page
+  // two clicks away rendered the real one (audit 2026-08-17).
+  const [{configs, pilot}, d]=await Promise.all([fetchConfigs(), api('api/live/setups')]);
   const wanted=new Set(); const meta={};
   for(const g of configs){ const ch=chanOf(g); if(ch){ wanted.add(ch.setupId); meta[ch.setupId]=g; } }
   const rows=(d.setups||[]).filter(s=>wanted.has(s.id));
   if(branch==='real'){ const f1=configs.find(g=>g.f1); if(f1) rows.unshift({ id:'f1-pilot', name:'F1 live pilot', state:f1.channels.real.state,
-    tradedPair:'LTCUSDT', clipUsd:10, stopPct:null, engineVersion:'', createdUtc:'2026-08-11' }); }
+    tradedPair:'LTCUSDT', clipUsd:10, stopPct:(pilot && pilot.fixedStopPct != null) ? pilot.fixedStopPct : null,
+    engineVersion:'', createdUtc:'2026-08-11' }); }
   if(!rows.length){ $('#view').innerHTML=`<div class="panel empty">No ${branch==='paper'?'paper books':'live setups'} yet — activate a config on the Greenlights page.</div>`; return; }
   $('#view').innerHTML=`<div class="panel"><table><thead><tr>
     ${th('setup','setup')}${th('pair','pair')}${th('state','state')}${th('clip','clip')}${th('stop','stop')}${th('created','created')}</tr></thead><tbody>
@@ -313,7 +319,8 @@ async function drawDash(){
   const cards=parts.map(({g,ch,st})=>{
     const rp=st?(g.f1?st.realizedPnl:(isP?st.paperRealizedPnl:st.realizedPnl)):null;
     const up=st?(g.f1?st.unrealizedPnl:(isP?st.paperUnrealizedPnl:st.unrealizedPnl)):null;
-    const open=st?(st.openPositions||[]).length:ch.open||0;
+    // same merge, same fix: count only the side this card is showing money for
+    const open=st?(st.openPositions||[]).filter(p=>g.f1?!p.paper:(isP?p.paper:!p.paper)).length:ch.open||0;
     totR+=rp||0; totU+=up||0; totOpen+=open;
     return `<div class="tile" style="cursor:pointer" data-id="${g.id}" data-setup="${ch.setupId}">
       <div class="k">${esc(g.id)} ${isP?paperBadge:''}</div>
@@ -449,6 +456,13 @@ async function drawLive(){
   if(st.error){ $('#view').innerHTML=`<div class="panel empty">${esc(st.error)}</div>`; return; }
   const isP=branch==='paper';
   const rp=isP?st.paperRealizedPnl:st.realizedPnl, up=isP?st.paperUnrealizedPnl:st.unrealizedPnl;
+  // ONE SIDE'S BOOK, NOT BOTH. view.js returns openPositions as a MERGED array
+  // carrying a per-row paper flag — it keeps realized and unrealized separate
+  // per book precisely so real and fictional money never add up on screen, and
+  // then this page listed both books' positions under a branch-selected P&L. A
+  // setup that has legally gone paper -> live holds both at once, so the count
+  // and the table disagreed with the money above them (audit 2026-08-17).
+  const openHere=(st.openPositions||[]).filter(p=>isP?p.paper:!p.paper);
   $('#view').innerHTML=`
     <div class="banner ${st.state==='stopped'?'stopped':'running'}">
       <b>${esc(g.id)}</b> ${isP?paperBadge:''} — ${esc(g.status)}${st.runEpochUtc?` <span class="muted">· displayed run since ${st.runEpochUtc.slice(0,16)} UTC</span>`:''}</div>
@@ -456,13 +470,13 @@ async function drawLive(){
       ${tile((isP?'Paper realized':'Realized')+' P&amp;L','realized',money(rp),cls(rp))}
       ${tile((isP?'Paper unrealized':'Unrealized')+' P&amp;L','unreal',money(up),cls(up))}
       ${tile('Mark (last run)','mark',st.markPrice==null?'—':'$'+st.markPrice.toFixed(2))}
-      ${tile('Open positions','openCount',st.openPositions.length)}
+      ${tile('Open positions','openCount',openHere.length)}
       ${tile('Fill dev avg','fillAvg',st.fidelity.fillDeviationAvg==null?'—':(st.fidelity.fillDeviationAvg*100).toFixed(3)+'%')}
       ${tile('Fill dev max','fillMax',st.fidelity.fillDeviationMax==null?'—':(st.fidelity.fillDeviationMax*100).toFixed(3)+'%',st.fidelity.fillDeviationMax>0.01?'warn':'')}
     </div>
     <div class="panel"><div class="k">Open positions ${isP?paperBadge:''}</div>
       <table style="margin-top:.4rem"><thead><tr>${th('chunk','chunk')}${th('side','side')}${th('qty','qty')}${th('entry','entryPx')}${th('mark','markPx')}${th('unreal $','unreal')}${th('exit due','exitDue')}</tr></thead><tbody>
-      ${st.openPositions.length?st.openPositions.map(p=>`<tr>
+      ${openHere.length?openHere.map(p=>`<tr>
         <td>${(p.chunk_start||'').slice(0,16)}</td><td class="${p.side==='LONG'?'pos':'neg'}">${p.side}${p.paper?' <span class="badge b-paper">P</span>':''}</td>
         <td>${p.qty}</td><td>${p.entry_price??'—'}</td><td>${p.markPrice==null?'—':'$'+p.markPrice.toFixed(2)}</td>
         <td class="${cls(p.unrealized)}">${money(p.unrealized)}</td>
