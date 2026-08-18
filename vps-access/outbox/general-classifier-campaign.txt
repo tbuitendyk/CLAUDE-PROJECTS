@@ -1,0 +1,79 @@
+The campaign list: nothing was missing, the control was wrong. Fixed and deployed.
+
+tl;dr — you have THREE campaigns on the box and the service was offering all
+three. The control only ever showed you one, and it was never going to show you
+more. Fixed, along with the two coverage gaps I flagged as open in my last mail.
+Deployed 02:14 UTC, 498 tests pass, 47 tab views clean on three consecutive runs.
+
+WHY IT SHOWED ONE
+
+The campaign box was a text field with a suggestion list attached, and the field
+is pre-filled with your current campaign. A suggestion list FILTERS itself by
+what is already in the field. So it offered the one name that matched what was
+already typed, and the other two were unreachable unless you cleared the box
+first.
+
+Nothing was broken and nothing was missing. The control was simply the wrong
+kind of control for the job.
+
+What is on the box, for the record:
+
+  campaign                              runs carrying it
+  test1...solo asset broad sweep        22
+  test3...triple asset broad sweep      13   (currently set)
+  test2...dual asset broad sweep         1
+  (no campaign)                         93
+
+Table: campaigns on this box. KEY — runs carrying it: how many saved runs were
+launched while that campaign was set. The 93 with none are runs fired before a
+campaign was in force; they are not lost, they are simply unfiled.
+
+WHAT IT IS NOW
+
+Two plain controls side by side: a dropdown listing every campaign the box has
+ever stamped, newest activity first, and the text box for naming a NEW one.
+Picking from the dropdown switches to it immediately. The line beneath says which
+is set and how many exist.
+
+This is the same fault as the run-id boxes I fixed yesterday — where the service
+can list the choices, the screen should show them, not make you type or guess.
+
+THE TWO GAPS I SAID WERE OPEN
+
+Both closed, and closing them found two more real faults.
+
+The Trading channel controls now have runtime coverage: Activate, Deactivate and
+Nuke are actually pressed in a browser. The pass checks that CANCELLING the
+Deactivate confirmation changes nothing — a confirmation that does not protect is
+worse than none — that confirming changes the state and the row says so, and that
+Nuke refuses a config whose channel is still active.
+
+The Trading money screen is now checked against its own endpoint: realized,
+unrealized, the open-position count and the table must all match the side being
+shown, and showing the other book's money is called out by name.
+
+WHAT THAT FOUND
+
+1. The setup screen's Incidents panel was blind to most of what the executor
+   reports. It showed four kinds; the executor journals a dozen with a setup id
+   on them. So a rejected order, an order whose outcome is UNKNOWN, an overdue
+   exit, a stale intent, and a period the executor GAVE UP on all showed nothing
+   — the panel read "none — clean" through a real failure. The F1 screen has
+   shown all of these all along; only its generalized twin was missing them.
+
+2. Re-activating a channel with positions still open is correctly refused, but
+   the refusal counted both books into one number — it said "2 open" while the
+   screen in front of you showed 1. Two numbers that cannot be reconciled. It
+   names the split now.
+
+AND ONE I COMMITTED MYSELF, WORTH SAYING
+
+The first version of the controls pass deactivated the same channel the money
+pass needed. It passed once and then silently SKIPPED both checks on every run
+after. A check that quietly stops checking is exactly what this harness exists to
+prevent, and I built that failure into the harness itself. It now mints its own
+throwaway config, puts back anything it changes, and I verified repeatability by
+running it three times and requiring identical output rather than reasoning that
+it should be. Register entry 152.
+
+c.
