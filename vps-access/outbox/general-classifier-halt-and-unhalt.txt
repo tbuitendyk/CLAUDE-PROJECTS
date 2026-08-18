@@ -1,8 +1,11 @@
-tl;dr The overnight halt is fixed at its cause, you now have a working "Clear
-the halt" button on the Trading tab (tested against a real halt on the live
-box, not just in theory), the FEE/LEG: MODEL figure now matches your $10 clips
-instead of over-reporting 10x, and the decision history shows 12 days at once.
-Live pilot is armed, unhalted, one short open, reconcile clean.
+Overnight halt fixed at its cause; halt-clear button live; fee model corrected
+
+tl;dr The 03:20 halt was a check bug, not a money bug — your account was right
+to the eighth decimal. Fixed at the cause. You now have a working "Clear the
+halt" button on the Trading tab, tested against a real halt on the live box.
+FEE/LEG: MODEL now matches your $10 clips instead of over-reporting 10x, and
+the decision history shows 12 days at once. Live pilot: armed, unhalted, one
+short open, reconcile clean.
 
 WHAT HALTED, AND WHY IT WAS NOT A FAULT IN YOUR ACCOUNT
 
