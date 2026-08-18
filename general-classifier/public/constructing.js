@@ -841,14 +841,26 @@ async function drawBoards() {
         // read — two runs are data-comparable exactly when these match.
         const pl = doc.plan || null;
         const dm = doc.dataManifest || null;
+        const nullBoards = Number((doc.params || {}).labelShiftReps) || 0;
         if (!pl && !dm) return '';
         return `<div class="panel"><h3 style="margin-top:0">What this run actually is</h3>
-          ${pl ? `<p class="note"><b>Size:</b> ${pl.combos} combos × ${pl.branches} branch(es)${pl.nullBoards ? ` × ${pl.nullBoards + 1} boards (1 real + ${pl.nullBoards} null)` : ''}
+          <!-- THE NULL-BOARD FACTOR. This gated on pl.nullBoards, a field
+               nothing writes, so the clause never printed — and with the
+               default 19 null boards the equation shown was off by a factor of
+               20 against the unit count printed beside it. The count that IS
+               recorded is params.labelShiftReps (audit 2026-08-17). -->
+          ${pl ? `<p class="note"><b>Size:</b> ${pl.combos} combos × ${pl.branches} branch(es)${nullBoards ? ` × ${nullBoards + 1} boards (1 real + ${nullBoards} null)` : ''}
             = <b>${pl.units}</b> units · ${pl.slimRuns ?? '—'} slim runs · ${pl.promoteRuns ?? '—'} promote runs.
             <span title="the multiplicity any null reading here must be read against: one lucky unit out of this many is not a finding">Every null claim on this page is against ${pl.units} units.</span></p>` : ''}
-          ${dm ? `<p class="note"><b>Data fingerprint:</b> <code>${esc(String(dm.digest || dm.error || '—')).slice(0, 24)}</code>
-            ${dm.coins != null ? `· ${dm.coins} coin(s), ${dm.files ?? '?'} file(s)` : ''}
-            ${dm.utc ? `· stamped ${esc(String(dm.utc).slice(0, 16))}` : ''}
+          <!-- dm.overallDigest / dm.symbols / dm.at are what lib/manifest.js
+               actually writes. This read dm.digest, dm.coins, dm.files and
+               dm.utc — four names nothing has ever written — so the fingerprint
+               that decides whether two runs are comparable at all rendered as
+               "—" with no coin or file count and no stamp time, on every run
+               that had one (audit 2026-08-17). -->
+          ${dm ? `<p class="note"><b>Data fingerprint:</b> <code>${esc(String(dm.overallDigest || dm.error || '—')).slice(0, 24)}</code>
+            ${dm.symbols ? `· ${Object.keys(dm.symbols).length} coin(s), ${Object.values(dm.symbols).reduce((a, x) => a + (x.files || 0), 0)} file(s)` : ''}
+            ${dm.at ? `· stamped ${esc(String(dm.at).slice(0, 16))}` : ''}
             <span title="taken at launch, over every candle file this run read. Two runs are data-comparable exactly when these match — a different fingerprint means the cache moved between the fire times.">(?)</span>
             ${dm.error ? ' <b class="warn">STAMP FAILED — this run cannot be proved comparable to any other</b>' : ''}</p>` : ''}
           </div>`;
@@ -983,15 +995,34 @@ async function drawBoards() {
           This panel shows what the committee is made of. It cannot tell you whether the setup works — only a null
           comparison can, and this is not one.</p>
         ${mem.length ? `<div class="scrollx"><table><thead><tr>${cth('member','member')}${cth('view','view')}${cth('model','model')}
-          <th title="share of periods this member called a direction rather than standing aside">participation</th>
-          <th title="exact 3-class match rate of this member's calls on the search window">accuracy</th>
-          <th title="accuracy minus the training-majority baseline — what the member adds over always guessing the commonest label">edge</th></tr></thead><tbody>
-          ${mem.map((m, i) => `<tr><td>${i + 1}</td><td>${esc(String((m.spec && m.spec.view) || m.view || '—'))}</td>
-            <td>${esc(String((m.spec && m.spec.model) || m.model || '—'))}</td>
-            <td>${m.participation != null ? (100 * m.participation).toFixed(1) + '%' : '—'}</td>
-            <td>${m.metrics && m.metrics.testAcc != null ? (100 * m.metrics.testAcc).toFixed(1) + '%' : '—'}</td>
-            <td>${m.metrics && m.metrics.edge != null ? (100 * m.metrics.edge).toFixed(1) + ' pts' : '—'}</td></tr>`).join('')}
-          </tbody></table></div>` : '<p class="note">no per-member detail in this dump</p>'}
+          <th title="share of periods this member called a direction rather than standing aside. Read on the HELD-BACK window when the run has one, otherwise the search window.">participation</th>
+          <th title="exact 3-class match rate of this member's calls. Held-back window when the run has one, otherwise the search window. ACCURACY POINTS, not money.">accuracy</th>
+          <th title="accuracy minus the training-majority baseline — what the member adds over always guessing the commonest label. ACCURACY POINTS, not money.">edge</th>
+          <th title="share of this member's committed calls that the committee also traded — a member echoed by the others adds agreement without adding an independent opinion.">echoed by the vote</th></tr></thead><tbody>
+          ${mem.map((m, i) => {
+    // THE DUMP'S OWN NAMES. This read m.participation and m.metrics — neither of
+    // which lib/inspect.js has ever written — so all three columns showed "—"
+    // for every member of every run while looking like a measurement. The real
+    // names are activeHold/activeSearch and the search/hold metric objects
+    // (audit 2026-08-17). Held-back is preferred where it exists: it is the
+    // once-only look, and the search window flatters by construction.
+    const act = m.activeHold ?? m.activeSearch;
+    const met = m.hold || m.search;
+    const pctOf = (v) => (v == null ? '—' : `${(100 * v).toFixed(1)}%`);
+    // m.spec is set on every member lib/inspect.js builds, so the old
+    // `|| m.view` / `|| m.model` fallbacks were unreachable reads of names
+    // nothing writes — the same class as the three columns above, just
+    // harmless because a working read sat in front of them.
+    return `<tr><td>${i + 1}</td><td>${esc(String((m.spec && m.spec.view) || '—'))}</td>
+            <td>${esc(String((m.spec && m.spec.model) || '—'))}</td>
+            <td>${pctOf(act)}</td>
+            <td>${met && met.testAcc != null ? (100 * met.testAcc).toFixed(1) + '%' : '—'}</td>
+            <td>${met && met.edge != null ? (100 * met.edge).toFixed(1) + ' pts' : '—'}</td>
+            <td>${pctOf(m.withTradeHold)}</td></tr>`;
+  }).join('')}
+          </tbody></table></div>
+          <p class="note">Columns read the HELD-BACK window where the run has one, the search window otherwise.
+            Accuracy and edge are ACCURACY POINTS, never money.</p>` : '<p class="note">no per-member detail in this dump</p>'}
         ${pw ? `<details><summary class="note" style="cursor:pointer">how alike the members are (pairwise agreement) — near-duplicates make an agreement count read higher than the number of independent opinions behind it</summary>
           <pre>${esc(JSON.stringify(pw, null, 1).slice(0, 8000))}</pre></details>` : ''}
         <details><summary class="note" style="cursor:pointer">the inspect record, verbatim</summary><pre>${esc(JSON.stringify(d, null, 1).slice(0, 20000))}</pre></details>`;
@@ -1485,11 +1516,25 @@ async function wireHtRun(d, runs) {
     const el = $('#htVerdict');
     if (el) {
       const v = await api(`api/historytuning/${encodeURIComponent(d.id)}/verdict`).catch(() => null);
+      // THE ENDPOINT'S OWN VOCABULARY. This read v.passed, v.nullDraws and
+      // v.resolutionFloor — three names the endpoint has never returned. The
+      // badge therefore said NO after a genuine PASS, permanently, and the two
+      // gated clauses never printed at all. Same class as the dead vsNulls
+      // column and the planted check's s.verdict (audit 2026-08-17).
+      //
+      // There are TWO rules and the verdict needs both: the hold rule (did
+      // tuning strengthen this survivor) and the null rule (did the winner
+      // exceed its draws). The sentence already says so; the badge now agrees
+      // with it. PENDING is its own state — with no draws yet there is no claim
+      // to make, and calling that "NO" would retire a candidate on a
+      // measurement that has not happened.
+      const pending = !v || v.drawCount === 0;
+      const passed = v && v.holdPassed && v.nullPassed;
       el.innerHTML = !v || v.error ? `<span class="muted">${esc((v && v.error) || 'no verdict')}</span>`
-        : `<p><b class="${v.passed ? 'pos' : 'warn'}">${v.passed ? 'PASS' : 'NO'}</b> ${esc(v.sentence || '')}</p>
+        : `<p><b class="${passed ? 'pos' : pending ? 'muted' : 'warn'}">${passed ? 'PASS' : pending ? 'PENDING' : 'NO'}</b> ${esc(v.sentence || '')}</p>
            <p class="note">winner <b>${esc(String(v.winner || '—'))}</b> · winner hold ${money(v.winnerHold)} ·
-             reference hold ${money(v.referenceHold)}${v.nullDraws != null ? ` · null draws at or above: ${v.nullsAtOrAbove}/${v.nullDraws}` : ''}
-             ${v.resolutionFloor ? ` · resolution floor ${esc(String(v.resolutionFloor))}` : ''}</p>`;
+             reference hold ${money(v.referenceHold)} · hold windows won ${v.holdWindowsWon ?? '—'} of 3
+             ${v.drawCount ? ` · null draws at or above: ${v.nullsAtOrAbove}/${v.drawCount} · resolution floor 1 in ${v.drawCount + 1}` : ' · no null draws yet'}</p>`;
     }
   }
   const nb = document.querySelector('button[data-ht-null]');
