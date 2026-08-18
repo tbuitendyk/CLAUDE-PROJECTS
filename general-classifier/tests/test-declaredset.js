@@ -180,7 +180,10 @@ module.exports = {
     const ui = fs.readFileSync(path.join(ROOT, 'public', 'constructing.js'), 'utf8');
     const at = ui.indexOf('scored.sort(');
     assert.ok(at > 0, 'the replication ranking must still exist');
-    const cmp = ui.slice(at, ui.indexOf(';', at));
+    // the comparator plus the byNull helper it delegates its first key to — a
+    // banned statistic could otherwise hide one level down
+    const cmp = ui.slice(ui.indexOf('const byNull', ui.indexOf('function rankDeclaredConfigs')),
+      ui.indexOf(';', at));
     const BANNED = [
       { re: /\bbinom\b/, why: 'a binomial p across correlated assets (QC-7)' },
       { re: /\.p\b/, why: 'a p-value (QC-7 bans quoting one as evidence)' },
@@ -255,4 +258,127 @@ module.exports = {
     assert.ok(/d\.cell\.holdout = scoreHold/.test(work),
       'every set member needs its own held-back score or the tally denominator shrinks silently');
   },
+};
+
+// ---- the ranking itself, EXECUTED --------------------------------------------
+//
+// Everything above reads the ranking's SOURCE. That is how the ranking shipped
+// ordering nothing: it grouped from a list its null copies had already been
+// filtered out of, so the headline statistic was structurally null on every run,
+// and the comparator's first key returned -1 whenever both sides were null — so
+// the `||` chain never reached plateau width or money, and the order was
+// arbitrary rather than merely wrong. The source-reading tests all passed. They
+// saw the right words in the right order (audit 2026-08-17).
+//
+// These run the SHIPPED function, lifted out of public/constructing.js by name.
+// Not a copy of it — a copy would agree with itself.
+//
+// Watched failing 2026-08-17: grouping from the real-only rows again makes
+// theMeasuredNullIsActuallyMeasured report null, and restoring the -1 first key
+// makes theOrderFallsThroughToPlateauWidthWhenNoNullExists return C,B,A.
+function loadRanker() {
+  const src = fs.readFileSync(path.join(ROOT, 'public', 'constructing.js'), 'utf8');
+  const start = src.indexOf('function rankDeclaredConfigs(');
+  assert.ok(start > 0, 'rankDeclaredConfigs is gone — the ranking is inline again and untestable');
+  // Walk the PARAMETER list first — it destructures, so its own braces would
+  // otherwise be mistaken for the body — then brace-match the body, so the test
+  // always runs the real thing rather than a copy that would agree with itself.
+  let i = src.indexOf('(', start);
+  let paren = 0;
+  for (; i < src.length; i++) {
+    if (src[i] === '(') paren++;
+    else if (src[i] === ')') { paren--; if (paren === 0) break; }
+  }
+  let depth = 0;
+  i = src.indexOf('{', i);
+  const from = i;
+  for (; i < src.length; i++) {
+    if (src[i] === '{') depth++;
+    else if (src[i] === '}') { depth--; if (depth === 0) break; }
+  }
+  const body = src.slice(from + 1, i);
+  assert.ok(/const groups = new Map\(\)/.test(body) && /scored\.sort\(/.test(body),
+    'the lifted body is not the ranker — the extraction is reading the wrong span');
+  // eslint-disable-next-line no-new-func
+  return new Function('arg', `const { all, realRows, tagged, leaders } = arg;${body}`);
+}
+
+const repRow = (over) => ({
+  trade: 'LTCUSDT', ctx1: null, ctx2: null, geometry: 'daily-3d',
+  declaredLabel: 'q1 directional t89h', nullDealSeed: null,
+  pnl: 10, trades: 30, holdout: { pnl: 5, trades: 10, vsAlwaysLong: 1 }, ...over,
+});
+
+// The caller's real-copy filter, restated the way drawBoards resolves it.
+const argOf = (rows, leaders = [], tagged = true) => ({
+  all: rows, realRows: rows.filter((r) => r.nullDealSeed == null), tagged, leaders,
+});
+
+module.exports.theMeasuredNullIsActuallyMeasured = function () {
+  const rank = loadRanker();
+  const rows = [
+    repRow({ holdout: { pnl: 9, vsAlwaysLong: 1 } }),                       // the real look
+    repRow({ nullDealSeed: 1, holdout: { pnl: 2, vsAlwaysLong: 0 } }),      // its copies
+    repRow({ nullDealSeed: 2, holdout: { pnl: 4, vsAlwaysLong: 0 } }),
+    repRow({ nullDealSeed: 3, holdout: { pnl: 12, vsAlwaysLong: 0 } }),
+  ];
+  const [g] = rank(argOf(rows));
+  assert.strictEqual(g.nullPairs, 3, 'all three dealt-vote copies must be paired against the real look');
+  assert.strictEqual(g.nullBeat, 2, 'the real 9 beats 2 and 4, not 12');
+  assert.ok(Math.abs(g.nullShare - 2 / 3) < 1e-9, `nullShare must be measured, got ${g.nullShare}`);
+  assert.strictEqual(g.reals.length, 1, 'the per-asset table shows the real look only, never a null copy');
+  assert.strictEqual(g.hold.length, 1, 'the cross-asset count reads real rows only');
+  assert.strictEqual(g.pos, 1);
+};
+
+module.exports.nullCopiesNeverEnterTheCrossAssetCount = function () {
+  const rank = loadRanker();
+  const rows = [
+    repRow({ trade: 'LTCUSDT', holdout: { pnl: 5, vsAlwaysLong: 1 } }),
+    repRow({ trade: 'XRPUSDT', holdout: { pnl: -2, vsAlwaysLong: -1 } }),
+    // three losing null copies must not make the tally look like 1 of 5
+    repRow({ trade: 'LTCUSDT', nullDealSeed: 1, holdout: { pnl: -9, vsAlwaysLong: -1 } }),
+    repRow({ trade: 'XRPUSDT', nullDealSeed: 1, holdout: { pnl: -9, vsAlwaysLong: -1 } }),
+    repRow({ trade: 'XRPUSDT', nullDealSeed: 2, holdout: { pnl: -9, vsAlwaysLong: -1 } }),
+  ];
+  const [g] = rank(argOf(rows));
+  assert.strictEqual(g.hold.length, 2, 'two assets, not five rows');
+  assert.strictEqual(g.pos, 1, 'one of the two assets held up');
+  assert.strictEqual(g.sum, 3, 'money sums the real looks only (5 + -2)');
+  assert.strictEqual(g.nullPairs, 3, 'but the nulls still count as the measured null');
+};
+
+module.exports.theOrderFallsThroughToPlateauWidthWhenNoNullExists = function () {
+  const rank = loadRanker();
+  const mk = (label, region, pnl) => [
+    repRow({ declaredLabel: label, trade: `${label}USDT`, holdout: { pnl, vsAlwaysLong: 1 } }),
+  ];
+  const rows = [...mk('A', 9, 1), ...mk('B', 1, 3), ...mk('C', 5, 2)];
+  const leaders = [
+    { trade: 'AUSDT', ctx1: null, ctx2: null, geometry: 'daily-3d', region: { size: 9 } },
+    { trade: 'BUSDT', ctx1: null, ctx2: null, geometry: 'daily-3d', region: { size: 1 } },
+    { trade: 'CUSDT', ctx1: null, ctx2: null, geometry: 'daily-3d', region: { size: 5 } },
+  ];
+  const order = rank(argOf(rows, leaders)).map((g) => g.label);
+  assert.deepStrictEqual(order, ['A', 'C', 'B'],
+    'with no measured null anywhere the order must fall through to plateau width (9, 5, 1), not collapse');
+};
+
+module.exports.theMeasuredNullOutranksPlateauWidthAndMoney = function () {
+  const rank = loadRanker();
+  const rows = [
+    // WIDE plateau, big money, but its own copies beat it
+    repRow({ declaredLabel: 'wide', trade: 'WUSDT', holdout: { pnl: 50, vsAlwaysLong: 1 } }),
+    repRow({ declaredLabel: 'wide', trade: 'WUSDT', nullDealSeed: 1, holdout: { pnl: 99, vsAlwaysLong: 0 } }),
+    // narrow plateau, small money, but it beat its own copy
+    repRow({ declaredLabel: 'narrow', trade: 'NUSDT', holdout: { pnl: 2, vsAlwaysLong: 1 } }),
+    repRow({ declaredLabel: 'narrow', trade: 'NUSDT', nullDealSeed: 1, holdout: { pnl: 1, vsAlwaysLong: 0 } }),
+  ];
+  const leaders = [
+    { trade: 'WUSDT', ctx1: null, ctx2: null, geometry: 'daily-3d', region: { size: 30 } },
+    { trade: 'NUSDT', ctx1: null, ctx2: null, geometry: 'daily-3d', region: { size: 2 } },
+  ];
+  const order = rank(argOf(rows, leaders)).map((g) => g.label);
+  assert.deepStrictEqual(order, ['narrow', 'wide'],
+    'the measured null leads: beating your own copies outranks a wide plateau and more money');
 };

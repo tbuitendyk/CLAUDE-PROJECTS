@@ -96,6 +96,95 @@ const COL = {
 // cth(label, key[, style]) — a heading always carries its own description.
 const cth = (label, key, style) => `<th${style ? ` style="${style}"` : ''}${COL[key] ? ` title="${esc(COL[key]).replace(/"/g, '&quot;')}"` : ''}>${label}</th>`;
 
+// ---- the replication ranking ------------------------------------------------
+// SCORE AND ORDER THE DECLARED CONFIGURATIONS. Lifted out of the render function
+// on 2026-08-17 so it can be TESTED rather than only read: the previous version
+// grouped from a list its null copies had already been filtered out of, so the
+// headline statistic was structurally empty on every run and the comparator
+// (whose first key returned -1 whenever both sides were null) ordered nothing at
+// all. A grep-based test cannot see either fault — it saw the right words in the
+// right order and passed. tests/test-declaredset.js now evaluates THIS function.
+//
+// Deliberately closure-free: everything it needs arrives as an argument.
+//
+// Order, and the reason for it (QC-7, QC-142 — an ordering IS a claim, so only
+// statistics the register admits as evidence may sit in the key):
+//   1. the MEASURED NULL — this configuration's held-back money against its OWN
+//      dealt-vote copies, asset by asset. The register's only yardstick.
+//   2. PLATEAU WIDTH on the traded asset — guards against a knife-edge fit.
+//   3. the across-asset share — CONTEXT ONLY; crypto assets move together, so
+//      these are nowhere near independent looks and no p-value is quoted.
+//   4. money, LAST. Leading on money rebuilds the shopped board.
+// GROUPING IS PART OF THE RANKING, so it lives here too. Splitting them is how
+// the fault survived: the caller grouped from a real-only list and the ranker
+// then looked for null copies inside groups that could not contain one. A test
+// that builds the groups itself cannot see that, so the function now owns both
+// halves and the test drives the whole path.
+//   all      — every replication row the run recorded, null copies included
+//   realRows — the real-copy subset the caller already resolved
+//   tagged   — whether this doc marks which copy scored each row
+function rankDeclaredConfigs({ all, realRows, tagged, leaders }) {
+  const groups = new Map();
+  // On an UNTAGGED doc a null copy cannot be told from a real one, so the
+  // deduped real rows are the only honest source and the measured null stays
+  // absent by FACT rather than by accident — the inferred-counts note says so.
+  for (const r of (tagged ? all : realRows)) {
+    const k = r.declaredLabel || 'declared config';
+    if (!groups.has(k)) groups.set(k, []);
+    groups.get(k).push(r);
+  }
+  const assetKey = (r) => `${r.trade}|${r.ctx1 || ''}|${r.ctx2 || ''}|${r.geometry}`;
+  // the region lives on the leader rows, keyed by asset+geometry
+  const regionByAsset = new Map();
+  for (const l of (leaders || [])) {
+    if (l.nullDealSeed != null || !l.region) continue;
+    const k = assetKey(l);
+    const prev = regionByAsset.get(k);
+    if (prev == null || (l.region.size || 0) > prev) regionByAsset.set(k, l.region.size || 0);
+  }
+  const scored = [...groups.entries()].map(([label, rs]) => {
+    const reals = rs.filter((r) => r.nullDealSeed == null);
+    const hold = reals.filter((r) => r.holdout && r.holdout.pnl != null);
+    const pos = hold.filter((r) => r.holdout.pnl > 0).length;
+    const vsL = hold.filter((r) => r.holdout.vsAlwaysLong != null);
+    const vsLPos = vsL.filter((r) => r.holdout.vsAlwaysLong > 0).length;
+    const sum = hold.reduce((a, r) => a + (r.holdout.pnl || 0), 0);
+    // the measured null, asset by asset: how many of this configuration's own
+    // dealt-vote copies its real held-back money beat
+    const nullsByAsset = new Map();
+    for (const r of rs) {
+      if (r.nullDealSeed == null || !r.holdout || r.holdout.pnl == null) continue;
+      const k = assetKey(r);
+      if (!nullsByAsset.has(k)) nullsByAsset.set(k, []);
+      nullsByAsset.get(k).push(r.holdout.pnl);
+    }
+    let beat = 0;
+    let pairs = 0;
+    for (const r of hold) {
+      for (const nv of (nullsByAsset.get(assetKey(r)) || [])) { pairs++; if (r.holdout.pnl > nv) beat++; }
+    }
+    const regions = reals.map((r) => regionByAsset.get(assetKey(r))).filter((v) => v != null);
+    const region = regions.length ? Math.round(regions.reduce((a, b) => a + b, 0) / regions.length) : null;
+    return {
+      // `reals` is what the per-asset table shows — a null copy is machinery,
+      // not a result, and listing one as an asset row would be a lie.
+      label, rs, reals, hold, pos, vsL, vsLPos, sum, region,
+      nullBeat: beat, nullPairs: pairs, nullShare: pairs ? beat / pairs : null,
+    };
+  });
+  // The first key must return 0 when NEITHER side has a measured null, or the
+  // `||` chain never reaches plateau width and money. It returned -1
+  // unconditionally in that case — a comparator not even consistent with itself,
+  // so the order was arbitrary rather than merely wrong.
+  const byNull = (a, b) => (a.nullShare == null && b.nullShare == null ? 0
+    : b.nullShare == null ? -1 : a.nullShare == null ? 1 : b.nullShare - a.nullShare);
+  scored.sort((a, b) => byNull(a, b)
+    || (b.region ?? -1) - (a.region ?? -1)
+    || (b.pos / (b.hold.length || 1)) - (a.pos / (a.hold.length || 1))
+    || b.sum - a.sum);
+  return scored;
+}
+
 // theme — Constructing remembers its OWN setting (owner, 2026-08-17). It used to
 // share the Trading page's key; each tab now keeps its own.
 const root = document.documentElement;
@@ -652,74 +741,10 @@ async function drawBoards() {
         ${realFailed.size ? `${realFailed.size} asset(s) whose real copy FAILED are dropped entirely rather than shown as a null copy.` : ''}</p>`;
     }
     if (!rows.length) return '';
-    const groups = new Map();
-    for (const r of rows) {
-      const k = r.declaredLabel || 'declared config';
-      if (!groups.has(k)) groups.set(k, []);
-      groups.get(k).push(r);
-    }
-    // The chance of getting at least k of n right on coin flips. This IS the
-    // reading replication produces: one look per asset, so the count across
-    // assets owes no shopping tax and needs no correction.
-    // Score each declared config on the HELD-BACK window — the once-only look —
-    // never on the window the settings were chosen on.
-    // WHAT EACH DECLARED CONFIG IS WORTH — ordered by what the register admits as
-    // evidence, in that order (QC-7, QC-142).
-    //
-    // 1. THE MEASURED NULL. For each asset, the config's held-back money against
-    //    ITS OWN dealt-vote copies. QC-7: "never quote a binomial p as evidence;
-    //    units are correlated, the measured null is the only yardstick."
-    // 2. PLATEAU WIDTH on the traded asset. Guards against a knife-edge fit.
-    // 3. The across-asset share, as CONTEXT ONLY. Crypto assets move together, so
-    //    these are nowhere near independent looks and no p-value is quoted.
-    // 4. Money, last. Leading on money rebuilds the shopped board.
-    //
-    // The region lives on the leader rows, keyed by asset+geometry.
-    const regionByAsset = new Map();
-    for (const l of ((doc && doc.leaders) || [])) {
-      if (l.nullDealSeed != null || !l.region) continue;
-      const k = `${l.trade}|${l.ctx1 || ''}|${l.ctx2 || ''}|${l.geometry}`;
-      const prev = regionByAsset.get(k);
-      if (!prev || (l.region.size || 0) > prev) regionByAsset.set(k, l.region.size || 0);
-    }
-    const assetKey = (r) => `${r.trade}|${r.ctx1 || ''}|${r.ctx2 || ''}|${r.geometry}`;
-    const scored = [...groups.entries()].map(([label, rs]) => {
-      const reals = rs.filter((r) => r.nullDealSeed == null);
-      const hold = reals.filter((r) => r.holdout && r.holdout.pnl != null);
-      const pos = hold.filter((r) => r.holdout.pnl > 0).length;
-      const vsL = hold.filter((r) => r.holdout.vsAlwaysLong != null);
-      const vsLPos = vsL.filter((r) => r.holdout.vsAlwaysLong > 0).length;
-      const sum = hold.reduce((a, r) => a + (r.holdout.pnl || 0), 0);
-      // the measured null, asset by asset: how many of this config's own dealt-vote
-      // copies its real held-back money beat
-      const nullsByAsset = new Map();
-      for (const r of rs) {
-        if (r.nullDealSeed == null || !r.holdout || r.holdout.pnl == null) continue;
-        const k = assetKey(r);
-        if (!nullsByAsset.has(k)) nullsByAsset.set(k, []);
-        nullsByAsset.get(k).push(r.holdout.pnl);
-      }
-      let beat = 0;
-      let pairs = 0;
-      for (const r of hold) {
-        const ns = nullsByAsset.get(assetKey(r)) || [];
-        for (const nv of ns) { pairs++; if (r.holdout.pnl > nv) beat++; }
-      }
-      const regions = reals.map((r) => regionByAsset.get(assetKey(r))).filter((v) => v != null);
-      const region = regions.length ? Math.round(regions.reduce((a, b) => a + b, 0) / regions.length) : null;
-      return {
-        label, rs, hold, pos, vsL, vsLPos, sum, region,
-        nullBeat: beat, nullPairs: pairs, nullShare: pairs ? beat / pairs : null,
-      };
-    });
-    // THE SORT KEY CONTAINS ONLY ADMITTED STATISTICS. An ordering is a claim about
-    // which row is better, so a banned statistic here would make the very claim
-    // the ban exists to prevent — silently, because nobody reads a sort order as
-    // an assertion (QC-142). No binomial p appears below.
-    scored.sort((a, b) => (b.nullShare == null ? -1 : a.nullShare == null ? 1 : b.nullShare - a.nullShare)
-      || (b.region ?? -1) - (a.region ?? -1)
-      || (b.pos / (b.hold.length || 1)) - (a.pos / (a.hold.length || 1))
-      || b.sum - a.sum);
+    // Every configuration is scored on the HELD-BACK window — the once-only look
+    // — never on the window the settings were chosen on. The ordering rule and
+    // its justification live on rankDeclaredConfigs itself.
+    const scored = rankDeclaredConfigs({ all, realRows: rows, tagged, leaders: (doc && doc.leaders) || [] });
     // TOOLTIPS carry the reading rules. A number shown without its rule is a
     // number that will be misread, and these four are misread in opposite
     // directions if you swap them.
@@ -766,7 +791,7 @@ async function drawBoards() {
           <span><span class="k" title="${esc(TIP.money)}">total held-back</span> <b class="${g.sum >= 0 ? 'pos' : 'neg'}">${money(g.sum)}</b></span>
           <span><span class="k">beat always-long</span> <b>${g.vsLPos} / ${g.vsL.length}</b></span>
         </div>
-        ${detail(g.rs)}</div>`;
+        ${detail(g.reals)}</div>`;
     }
 
     // MANY declared configs: the ranked list comes FIRST (owner, 2026-08-17).
@@ -780,7 +805,7 @@ async function drawBoards() {
           <span class="note" style="margin-left:.5rem">· beat always-long ${g.vsLPos}/${g.vsL.length}</span>
           <span class="${g.sum >= 0 ? 'pos' : 'neg'}" style="margin-left:.5rem" title="${esc(TIP.money)}">${money(g.sum)}</span>
         </summary>
-        <div style="padding:.3rem .25rem .8rem">${detail(g.rs)}</div>
+        <div style="padding:.3rem .25rem .8rem">${detail(g.reals)}</div>
       </details>`).join('');
     return `<div class="panel"><h3 style="margin-top:0">Replication — ${scored.length} declared configs, ranked</h3>
       <p class="note">KEY — each line is ONE declared configuration scored on every asset. Ranked by <b>how much of its
