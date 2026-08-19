@@ -1,0 +1,72 @@
+Margin level is now on screen and gated at your floor of 3.0; positions read by entry date
+
+tl;dr four changes shipped to the box and the classifier today. The one that
+matters: margin level — the account's distance to a forced liquidation — was
+never recorded by anything and nothing stopped trading as it fell. It is now
+journaled, on screen, and halting entries at the floor you set. The box
+confirms it working: margin_level 11.06 against floor 3.0. No trade, position
+or P&L was touched by any of this.
+
+WHAT WENT OUT
+
+1. MARGIN LEVEL, END TO END. Margin level is your collateral divided by your
+   debt, so it FALLS toward danger and Binance liquidates somewhere around
+   1.1-1.3. This engine borrows LTC to short, which makes that number the one
+   that says how much adverse move the account survives — and it was in every
+   account response the executor already fetched, dropped on the floor. Four
+   fields off that object were journaled and this one was not, so no screen
+   could show it and no gate could use it.
+
+   The executor now records it, both screens show it, and a floor YOU set halts
+   new entries when the level reaches it. There is no default floor anywhere in
+   the code: a threshold that stops trading is yours to choose, and one nobody
+   chose must never start braking. Clearing it removes the setting from the box
+   rather than zeroing it, so a stale floor cannot linger either.
+
+   Proof from the box at 05:00:07Z — MARGIN_OK {margin_level 11.06, floor 3.0}.
+   KEY: margin_level is a ratio, not money; bigger is safer; 11.06 against a
+   floor of 3.0 is a wide margin.
+
+2. POSITIONS READ BY ENTRY DATE. The tables led with the feature window's start,
+   which is 97 hours before anything happens — so the position you bought on the
+   18th was listed as the 14th. All four tables now lead with the fill time, with
+   the window kept underneath as small supporting text. A row with no recorded
+   fill time says so rather than showing the window in its place.
+
+3. START AND STOP. Both buttons unlocked whenever a request was in flight, which
+   is what you saw and correctly called nonsense. Both are now held until the box
+   confirms, and a line tells you the request is written and travelling. Before
+   this, a press that worked and a press that did nothing looked identical for
+   about five minutes.
+
+4. THE MARGIN FLOOR CONTROL. Two defects of mine, both fixed after you found
+   them: the floor did not appear in the status line at all (the renderer gave up
+   whenever the margin level was unknown, which it was, and so never got as far
+   as your setting), and the button did not line up because I styled it against a
+   CSS class that does not exist. It now uses the same pattern as every other
+   control on the page.
+
+STANDING RULES ADDED
+
+Four are now permanent, at the top of my instructions:
+  TWO   — Live Trading and Paper Books move together, always. They are separate
+          duplicated code paths, so a fix in one and not the other leaves two
+          screens describing one system and disagreeing.
+  THREE — nothing starts until you say GO NOW!
+  FOUR  — a control is not finished until it lines up. You should not have to
+          say that per button.
+
+TESTS
+
+15 assertions in tests/test-marginandentry.js, and every one was watched FAILING
+with its fault put back before being kept — a check nobody has seen fail is not
+a check. One of them is general rather than specific: it fails on any CSS class
+used in the markup that no rule defines, which is the shape of defect 4 rather
+than that one instance.
+
+STILL OPEN
+
+Two from your list, not started: showing the running rule ID on screen, and
+making the LIVE view page across multiple configs instead of assuming one.
+
+c.
