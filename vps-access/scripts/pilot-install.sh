@@ -241,8 +241,18 @@ install -m 755 /dev/stdin /usr/local/sbin/live-tick.sh <<LIVETICK
 #!/usr/bin/env bash
 set -uo pipefail
 export PILOT_SOCKS=$SOCKS
-/usr/local/sbin/live-produce-and-push.sh || true
+# REFRESH ITS OWN DATA. This tick used to be scheduled "after the F1 tick's
+# refresh" and relied on it — so retiring that tick would have left every profile
+# computing its committee from a cache nothing was topping up. A stale cache does
+# not fail loudly; it produces a confident call from old candles. The refresh now
+# belongs to whoever needs it, and it follows the profiles that are actually
+# trading rather than a hardcoded triple.
+cd $APP && node pilot-refresh.js || true
+# mirror BEFORE produce, same order and same reason as the other rail: a tick
+# that reveals the instrument has drifted must ship nothing, not ship first and
+# discover second.
 cd $APP && node live-mirror.js || true
+/usr/local/sbin/live-produce-and-push.sh || true
 LIVETICK
 install -m 755 "$REPO/scripts/live-produce-and-push.sh" /usr/local/sbin/live-produce-and-push.sh
 install -m 755 "$REPO/scripts/live-alert.sh" /usr/local/sbin/live-alert.sh
@@ -257,7 +267,7 @@ ExecStart=/usr/local/sbin/live-tick.sh
 UNIT
 cat > /etc/systemd/system/live-tick.timer <<UNIT
 [Unit]
-Description=Generalized-rail tick hourly at :08 UTC (after the F1 tick's refresh)
+Description=Generalized-rail tick hourly at :08 UTC (refreshes its own data)
 [Timer]
 OnCalendar=*-*-* *:08:00 UTC
 Persistent=true
