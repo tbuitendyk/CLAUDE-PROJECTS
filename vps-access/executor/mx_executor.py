@@ -1740,18 +1740,13 @@ def do_run(bx):
             os.rename(path, path + ".bad")
             continue
         if it.get("schema") not in (1, 2): problems.append("schema")
-        # A schema-2 intent is checked against the symbol the ALLOWLIST names for
-        # that setup, not against a module constant. Comparing every profile to one
-        # hardcoded pair is the same single-book assumption the client used to
-        # carry: it rejected any profile trading anything else, invisibly, as a
-        # malformed intent. The allowlist is still the authority — a control plane
-        # cannot point a profile at a pair this box was never told to serve — but
-        # the authority is now per profile. Schema-1 keeps the constant.
-        if is2:
-            _allow_sym = (setups_allow().get(it.get("setup_id")) or {}).get("symbol")
-            if not _allow_sym or it.get("symbol") != _allow_sym:
-                problems.append("symbol")
-        elif it.get("symbol") != SYMBOL:
+        # Schema-1 is the only thing checked against the module's single pair.
+        # A schema-2 profile's symbol is checked against the ALLOWLIST entry for
+        # that profile, which the block below already does ("symbol affinity") —
+        # comparing every profile to one hardcoded pair would reject any profile
+        # trading anything else, invisibly, as a malformed intent, and would also
+        # mask the fail-closed "allowlist" diagnosis when there is no entry at all.
+        if not is2 and it.get("symbol") != SYMBOL:
             problems.append("symbol")
         if it.get("side") not in ("LONG", "SHORT", "FLAT"): problems.append("side")
         if not isinstance(it.get("chunk_start"), str): problems.append("chunk_start")

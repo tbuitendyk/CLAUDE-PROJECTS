@@ -740,11 +740,21 @@ class ExecutorTest(unittest.TestCase):
         with open(os.path.join(self.x.INTENTS, f"intent2-{setup_id}-{chunk[:10]}.json"), "w") as f:
             json.dump(it, f)
 
+    def provision_key(self, key_ref):
+        """Give this box a profile's own sub-account credentials, as the operator
+        would. Real routing is a fact about provisioning now, not a flag."""
+        pref = self.x._key_env_prefix(key_ref)
+        with open(os.path.join(self.home, ".executor-env"), "a") as f:
+            f.write(f"{pref}BINANCE_KEY=k\n{pref}BINANCE_SECRET=s\n")
+        self.x._CLIENT_CACHE.clear()
+
     def test_schema2_allowlisted_live_intent_fills_with_its_own_params(self):
-        # post-G8 mechanics: assume a box that ROUTES a distinct sub-account key
-        # per setup, so a real schema-2 order is safe (see S2_LIVE_ROUTING guard).
-        self.x.S2_LIVE_ROUTING = True
-        self.write_allow({"s-alpha": {"symbol": "LTCUSDT", "max_clip_usd": 25}})
+        # A real schema-2 order needs the profile's OWN sub-account on this box.
+        # That used to be simulated by flipping a module constant; it is now the
+        # real condition, so the test provisions credentials the way the box will
+        # actually have them.
+        self.provision_key("kr-alpha")
+        self.write_allow({"s-alpha": {"symbol": "LTCUSDT", "max_clip_usd": 25, "key_ref": "kr-alpha"}})
         self.write_intent2(clip=20.0, hold=48)
         t0 = time.time()
         self.x.do_run(self.bx())
@@ -783,7 +793,7 @@ class ExecutorTest(unittest.TestCase):
         self.assertTrue(any("allowlist_symbol" in (e.get("problems") or []) for e in bad))
 
     def test_schema2_paper_intent_places_no_order_and_books_paper_roundtrip(self):
-        self.write_allow({"s-paper": {"symbol": "LTCUSDT", "max_clip_usd": 25}})
+        self.write_allow({"s-paper": {"symbol": "LTCUSDT", "max_clip_usd": 25, "key_ref": "kr-alpha"}})
         self.write_intent2(setup_id="s-paper", clip=20.0, hold=0.0004, paper=True)  # ~1.4s hold
         self.x.do_run(self.bx())
         ev = self.events()
@@ -807,11 +817,13 @@ class ExecutorTest(unittest.TestCase):
         self.assertAlmostEqual(st["paper_realized"], 2.0 - 0.0525, places=4)
 
     def test_schema2_dedup_is_per_setup_and_never_blocks_schema1(self):
-        # post-G8 mechanics: assume a box that ROUTES a distinct sub-account key
-        # per setup, so a real schema-2 order is safe (see S2_LIVE_ROUTING guard).
-        self.x.S2_LIVE_ROUTING = True
-        self.write_allow({"s-a": {"symbol": "LTCUSDT", "max_clip_usd": 25},
-                          "s-b": {"symbol": "LTCUSDT", "max_clip_usd": 25}})
+        # A real schema-2 order needs the profile's OWN sub-account on this box.
+        # That used to be simulated by flipping a module constant; it is now the
+        # real condition, so the test provisions credentials the way the box will
+        # actually have them.
+        self.provision_key("kr-alpha")
+        self.write_allow({"s-a": {"symbol": "LTCUSDT", "max_clip_usd": 25, "key_ref": "kr-alpha"},
+                          "s-b": {"symbol": "LTCUSDT", "max_clip_usd": 25, "key_ref": "kr-alpha"}})
         chunk = "2026-08-07T00:00Z"
         self.write_intent2(setup_id="s-a", chunk=chunk)
         self.x.do_run(self.bx())
@@ -833,10 +845,12 @@ class ExecutorTest(unittest.TestCase):
         self.assertTrue(any(f.get("setup_id") is None for f in fills))
 
     def test_schema2_position_uses_its_own_stop_not_the_global(self):
-        # post-G8 mechanics: assume a box that ROUTES a distinct sub-account key
-        # per setup, so a real schema-2 order is safe (see S2_LIVE_ROUTING guard).
-        self.x.S2_LIVE_ROUTING = True
-        self.write_allow({"s-stop": {"symbol": "LTCUSDT", "max_clip_usd": 25}})
+        # A real schema-2 order needs the profile's OWN sub-account on this box.
+        # That used to be simulated by flipping a module constant; it is now the
+        # real condition, so the test provisions credentials the way the box will
+        # actually have them.
+        self.provision_key("kr-alpha")
+        self.write_allow({"s-stop": {"symbol": "LTCUSDT", "max_clip_usd": 25, "key_ref": "kr-alpha"}})
         self.write_intent2(setup_id="s-stop", clip=20.0, hold=999, stop=0.05)
         self.x.do_run(self.bx())
         self.assertIn("ENTRY_FILL", self.events())
@@ -871,14 +885,16 @@ class ExecutorTest(unittest.TestCase):
                          "schema-1 (F1) client ids must never change")
 
     def test_schema2_entry_order_sent_carries_riders_for_recovery(self):
-        # post-G8 mechanics: assume a box that ROUTES a distinct sub-account key
-        # per setup, so a real schema-2 order is safe (see S2_LIVE_ROUTING guard).
-        self.x.S2_LIVE_ROUTING = True
+        # A real schema-2 order needs the profile's OWN sub-account on this box.
+        # That used to be simulated by flipping a module constant; it is now the
+        # real condition, so the test provisions credentials the way the box will
+        # actually have them.
+        self.provision_key("kr-alpha")
         # R4 (QC 118): the ENTRY ORDER_SENT meta must carry hold_hours/stop_pct/
         # clip_usd. Without them a crash-recovered schema-2 entry falls back to
         # F1's HOLD_HOURS=137 and stop_pct=None (stopless), against the setup's own
         # declared hold+stop. This pins the WRITER (the entry site).
-        self.write_allow({"s-r": {"symbol": "LTCUSDT", "max_clip_usd": 25}})
+        self.write_allow({"s-r": {"symbol": "LTCUSDT", "max_clip_usd": 25, "key_ref": "kr-alpha"}})
         self.write_intent2(setup_id="s-r", clip=20.0, hold=48, stop=0.05)
         self.x.do_run(self.bx())
         sent = [e for e in self.x.journal_events()
@@ -923,12 +939,59 @@ class ExecutorTest(unittest.TestCase):
         self.assertNotIn("ENTRY_FILL", ev, "a paper-state setup must NEVER place a real order")
         self.assertEqual(MockBinance.orders, [], "no real order for a paper-state setup")
 
+    def test_a_profile_without_its_own_subaccount_books_paper_and_says_why(self):
+        """The refusal that matters. A live profile the box holds no credentials
+        for must NOT reach for the shared wallet — it books paper and names the
+        missing keyRef, which is something the owner can act on. The old refusal
+        pointed at a module constant nobody could change from the interface."""
+        self.write_allow({"s-l": {"symbol": "LTCUSDT", "max_clip_usd": 25,
+                                  "state": "live", "key_ref": "kr-missing"}})
+        self.write_intent2(setup_id="s-l", clip=20.0, hold=48, paper=False)
+        self.x.do_run(self.bx())
+        ev = self.events()
+        self.assertIn("PAPER_ENTRY_FILL", ev, "an unroutable profile must still MEASURE")
+        self.assertNotIn("ENTRY_FILL", ev, "it must not place a real order")
+        self.assertEqual(MockBinance.orders, [], "no real order without its own sub-account")
+        un = [e for e in self.x.journal_events() if e["event"] == "S2_LIVE_UNSUPPORTED"]
+        self.assertTrue(un, "the refusal was silent")
+        self.assertIn("kr-missing", un[0]["reason"],
+                      "the refusal does not name the credentials that are missing")
+
+    def test_a_position_remembers_the_wallet_it_was_opened_in(self):
+        """An exit must go back to the sub-account the entry came from. The
+        position records it at entry so a later lookup — an edited or retired
+        profile — can never route an exit through another account's wallet."""
+        self.provision_key("kr-alpha")
+        self.write_allow({"s-l": {"symbol": "LTCUSDT", "max_clip_usd": 25,
+                                  "state": "live", "key_ref": "kr-alpha"}})
+        self.write_intent2(setup_id="s-l", clip=20.0, hold=48, paper=False)
+        self.x.do_run(self.bx())
+        fills = [e for e in self.x.journal_events() if e["event"] == "ENTRY_FILL"]
+        self.assertEqual(len(fills), 1, "the real entry did not happen")
+        self.assertEqual(fills[0].get("key_ref"), "kr-alpha",
+                         "the position does not record whose wallet it lives in")
+        self.assertEqual(fills[0].get("symbol"), "LTCUSDT",
+                         "the position does not record its isolated pair")
+
+    def test_a_profile_halt_can_be_lifted(self):
+        """set_setup_halt existed from the start with no counterpart, so a halted
+        profile was finished — the box-level halt has always had a recovery lever
+        and a per-profile one had none."""
+        self.x.set_setup_halt("s-l", "test halt")
+        self.assertTrue(self.x.setup_halted("s-l"))
+        self.assertTrue(self.x.clear_setup_halt("s-l", "owner", "cause understood"))
+        self.assertFalse(self.x.setup_halted("s-l"), "the profile halt could not be cleared")
+        ev = [e["event"] for e in self.x.journal_events()]
+        self.assertIn("SETUP_HALT_CLEAR", ev, "clearing a profile halt is not journaled")
+
     def test_schema2_live_setup_places_real_order(self):
-        # post-G8 mechanics: assume a box that ROUTES a distinct sub-account key
-        # per setup, so a real schema-2 order is safe (see S2_LIVE_ROUTING guard).
-        self.x.S2_LIVE_ROUTING = True
+        # A real schema-2 order needs the profile's OWN sub-account on this box.
+        # That used to be simulated by flipping a module constant; it is now the
+        # real condition, so the test provisions credentials the way the box will
+        # actually have them.
+        self.provision_key("kr-alpha")
         # R5 counterpart: a live-state setup with paper:false DOES place a real order.
-        self.write_allow({"s-l": {"symbol": "LTCUSDT", "max_clip_usd": 25, "state": "live"}})
+        self.write_allow({"s-l": {"symbol": "LTCUSDT", "max_clip_usd": 25, "state": "live", "key_ref": "kr-alpha"}})
         self.write_intent2(setup_id="s-l", clip=20.0, hold=48, paper=False)
         self.x.do_run(self.bx())
         ev = self.events()
@@ -990,12 +1053,14 @@ class ExecutorTest(unittest.TestCase):
                          "a schema-2 ACK must not reset F1's reject streak")
 
     def test_schema2_price_drift_halts_only_its_setup_not_the_box(self):
-        # post-G8 mechanics: assume a box that ROUTES a distinct sub-account key
-        # per setup, so a real schema-2 order is safe (see S2_LIVE_ROUTING guard).
-        self.x.S2_LIVE_ROUTING = True
+        # A real schema-2 order needs the profile's OWN sub-account on this box.
+        # That used to be simulated by flipping a module constant; it is now the
+        # real condition, so the test provisions credentials the way the box will
+        # actually have them.
+        self.provision_key("kr-alpha")
         # R1: a schema-2 pre-order price drift beyond the backstop halts ONLY that
         # setup (per-setup halt), never the box — F1 keeps trading.
-        self.write_allow({"s-d": {"symbol": "LTCUSDT", "max_clip_usd": 25}})
+        self.write_allow({"s-d": {"symbol": "LTCUSDT", "max_clip_usd": 25, "key_ref": "kr-alpha"}})
         self.write_intent2(setup_id="s-d", clip=20.0, price=70.0)   # market 100 -> 43% drift
         self.x.do_run(self.bx())
         ev = self.events()
