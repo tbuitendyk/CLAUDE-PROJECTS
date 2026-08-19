@@ -13,7 +13,7 @@
 // only DETECTS.
 const fs = require('fs');
 const path = require('path');
-const { compareDecision } = require('../pilotmirror');
+const { compareDecision } = require('../decisioncompare');
 const signal = require('./signal');
 
 function decisionsDir() {

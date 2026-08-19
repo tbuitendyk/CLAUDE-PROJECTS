@@ -31,7 +31,7 @@ app.use(express.json({ limit: '256kb' }));
 // fix would read as not-applied. Stamping the release into the URL makes the
 // address change with the file, so there is nothing to get stale
 // (found 2026-08-18 while proving a deployed fix really was deployed).
-app.get(['/constructing.html', '/trading.html', '/index.html', '/pilot.html'], (req, res, next) => {
+app.get(['/constructing.html', '/trading.html', '/index.html'], (req, res, next) => {
   const file = path.join(__dirname, 'public', path.basename(req.path));
   require('fs').readFile(file, 'utf8', (err, html) => {
     if (err) return next();
