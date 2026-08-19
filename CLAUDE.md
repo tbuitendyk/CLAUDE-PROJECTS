@@ -35,6 +35,48 @@ order, and "while I was in there I also fixed…" is the failure this rule
 exists to prevent.
 
 
+
+## RULE ONE — never name anything the owner cannot see (owner directive, 2026-08-19)
+
+**NEVER refer to a screen, tab, button, field, menu, panel or navigation path
+unless that exact wording has been READ OUT OF THE CODE THAT RENDERS IT, in
+this session, immediately before writing it.** Not remembered. Not inferred
+from a variable name, a route, a file name or a code comment. Read.
+
+This has happened twice in one day. I described "the pilot page" — there is no
+pilot page. I described "Trading -> Real -> Setups" — that path does not exist.
+Both were invented out of variable names and internal ids and stated as fact to
+someone reading them as instructions.
+
+Why this is not a small thing: the owner operates the system. A fabricated
+label sends them hunting for a control that was never there, and it makes every
+other statement suspect — if the name is invented, why would the behaviour
+described be real? It also wastes the one resource they cannot get back, which
+is their time at the screen.
+
+The rule, every single time:
+
+- **Quote the rendered string, character for character.** If the page says
+  "the live rule", write "the live rule" — not "the Live Rule", not "the live
+  rule panel", not a tidied-up version.
+- **Verify before writing, not after.** grep the template that renders it. A
+  label in a comment, a route path, an element id, a localStorage key or a
+  test fixture is NOT the label on screen.
+- **Never assemble a navigation path by reasoning.** "It must be under X"
+  is exactly the failure. Trace the code that puts it on screen, or do not
+  state a path at all.
+- **If it has not been verified, say so plainly and describe by function**:
+  "the control that clears the halt (I have not re-checked its exact label)".
+  Vagueness is honest; invention is not.
+- **Legacy files are not the owner's screens.** This repo still contains
+  pilot.html and livetrading.html. The owner uses Constructing and Trading.
+  A file existing in the repo proves nothing about what is on their screen.
+- **Applies to every channel** — chat, email, commit messages, code comments,
+  and anything written for the owner to act on.
+
+When unsure whether a name is real: do not write it.
+
+
 ## Working style (all sessions)
 
 Confirm the task before building. **Don't assume a direction, write a pile of
