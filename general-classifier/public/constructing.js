@@ -47,13 +47,6 @@ const comboOf = (r) => (!r ? '—' : r.trade + (r.ctx1 ? ` + ${r.ctx1}` : '') + 
 // decoding to the reader; that is the writer's job. Held in one place so a word
 // means the same thing on every table that uses it.
 const COL = {
-  // Rules — the owner's registry
-  ruleId: 'the short stable name you refer to this rule by. Other screens reference it, so it never changes and is never reused, even after a rule is deleted.',
-  ruleLabel: 'your own description of the rule. Renaming it changes nothing about what the rule trades — only what you see in the list.',
-  ruleConfig: 'what the rule actually trades, in the engine\'s own vocabulary: the traded pair and its two context pairs, the geometry and decision rule, the band, then the cell — quorum, entry style, gate, and holding hours.',
-  ruleProv: 'where this rule came from: the run whose board produced it, the campaign it belonged to, and the engine version it was found with. This is what lets a result be traced back and reproduced.',
-  ruleAdded: 'when you added this rule to the registry (UTC). Not when the rule was discovered — that is the source run above.',
-  ruleActions: 'rename and reorder change only how the list reads. RETIRE stops a rule being offered while keeping it visible as a record of what once ran. DELETE removes the rule and that record together.',
   // Data
   pair: 'the Binance symbol, hourly candles. The fabricated planted-check pair is listed too and is marked as such.',
   months: 'how many whole months of hourly candles are cached on this box for the pair.',
@@ -251,7 +244,7 @@ if ($('#cpubtn')) {
 
 // ---- navigation ------------------------------------------------------------
 const TABS = [['data', 'Data'], ['sweep', 'Sweep'], ['boards', 'Boards'], ['verify', 'Verify'],
-  ['history', 'History'], ['tune', 'Tune'], ['greenlight', 'Greenlight'], ['rules', 'Rules']];
+  ['history', 'History'], ['tune', 'Tune'], ['greenlight', 'Greenlight']];
 let tab = localStorage.getItem('cx-tab') || 'sweep';
 // the working selection: a saved run + its selected row ride across sections
 let pickedRun = localStorage.getItem('cx-run') || null;
@@ -1939,158 +1932,6 @@ async function drawTune() {
 }
 
 // ---- Greenlight -----------------------------------------------------------------
-// THE OWNER'S RULES (owner directive, 2026-08-18).
-//
-// Every trading rule this system knows about lives here, and every one of them
-// got here because the owner put it here. The list is EMPTY until that happens
-// — no seeding, no defaults, no "sensible starting entries". A pre-filled list
-// is me deciding again, which is the whole thing being fixed.
-//
-// The screen shows where each rule CAME FROM, not just what it is: a rule whose
-// origin cannot be traced cannot be reproduced or audited, and this system
-// exists to make results reproducible.
-async function drawRules() {
-  const reg = await apiOr('api/rules', ({ rules: [], active: 0, total: 0 }));
-  const list = (reg.rules || []);
-  const active = list.filter((r) => !r.retiredUtc);
-  const retired = list.filter((r) => r.retiredUtc);
-
-  const cfgSummary = (c) => {
-    if (!c || !c.combo) return '<span class="muted">—</span>';
-    const cell = c.cell || {}; const br = c.branch || {};
-    return `${esc(c.combo.trade)} <span class="muted">vs ${esc(c.combo.ctx1)}/${esc(c.combo.ctx2)}</span>`
-      + ` · ${esc(br.geometry || '')} ${esc(br.decision || '')} band ${br.band}`
-      + ` · q${cell.quorum} ${esc(cell.entry || '')}/${esc(cell.gate || '')} ${cell.tHours}h`;
-  };
-  const provOf = (r) => {
-    const p = r.provenance || {};
-    return `<span class="muted">from</span> ${esc(p.sourceRunId || '—')}`
-      + (p.campaign ? ` <span class="muted">·</span> ${esc(p.campaign)}` : '')
-      + ` <span class="muted">·</span> ${esc(p.engineVersion || '—')}`;
-  };
-
-  const row = (r) => `<tr${r.retiredUtc ? ' class="muted"' : ''}>
-    <td><b>${esc(r.id)}</b></td>
-    <td style="text-align:left">${esc(r.label)}</td>
-    <td style="text-align:left">${cfgSummary(r.config)}</td>
-    <td style="text-align:left;font-size:.78rem">${provOf(r)}</td>
-    <td style="font-size:.78rem">${esc((r.createdUtc || '').slice(0, 16))}</td>
-    <td>${r.retiredUtc
-    ? `<span class="muted">retired ${esc((r.retiredUtc || '').slice(0, 10))}</span>`
-    : `<button data-rn="${esc(r.id)}">rename</button>
-         <button data-rup="${esc(r.id)}" title="move earlier in the list">↑</button>
-         <button data-rdn="${esc(r.id)}" title="move later in the list">↓</button>
-         <button data-rret="${esc(r.id)}">retire</button>`}
-      <button class="danger" data-rdel="${esc(r.id)}" title="remove entirely — the record of it goes too">delete</button></td>
-  </tr>`;
-
-  $('#view').innerHTML = `
-  <div class="panel">
-    <h3 style="margin-top:0">Rules — every trading rule this system knows about</h3>
-    <p class="note">Nothing appears here unless you put it here. There are no defaults and no seeded
-      entries: an empty list means the box genuinely holds no rules, not that something failed to load.
-      Each row states the run it came from, so any result it produces can be traced back and reproduced.</p>
-    ${list.length ? `<table><thead><tr>
-        ${cth('id', 'ruleId')}${cth('label', 'ruleLabel', 'text-align:left')}${cth('what it trades', 'ruleConfig', 'text-align:left')}
-        ${cth('where it came from', 'ruleProv', 'text-align:left')}${cth('added', 'ruleAdded')}${cth('', 'ruleActions')}
-      </tr></thead><tbody>${active.map(row).join('')}${retired.map(row).join('')}</tbody></table>
-      <p class="note">${active.length} active${retired.length ? ` · ${retired.length} retired (kept so the record of what once ran is not erased)` : ''}</p>`
-    : `<p class="empty">No rules yet — this box holds none. Add one from a greenlighted result on the
-         Greenlight tab, or with the form below.</p>`}
-  </div>
-
-  <div class="panel">
-    <h3 style="margin-top:0">Add a rule</h3>
-    <p class="note">A rule needs an id you will refer to it by, a label you will recognise, the run that
-      produced it, and the mechanics themselves. The mechanics are checked against the same validator the
-      live rail uses — if it would not be accepted live, it is not accepted here either.</p>
-    <div class="row" style="align-items:flex-end;margin-bottom:.4rem">
-      <label class="f" title="short, stable, and referred to elsewhere — letters/digits, then letters/digits/_/-">id<input id="ruId" style="width:9rem" placeholder="e.g. ltc-a"></label>
-      <label class="f" title="what YOU want to see in the list; renaming later never changes the id">label<input id="ruLabel" style="width:22rem" placeholder="a name you will recognise in the list"></label>
-    </div>
-    <div class="row" style="align-items:flex-end;margin-bottom:.4rem">
-      <label class="f" title="the run whose board this rule came off. Required: a rule that cannot say where it came from cannot be reproduced.">source run<input id="ruRun" style="width:26rem" placeholder="bracketlab-20260805-193433-real"></label>
-      <label class="f" title="optional campaign this rule belongs to">campaign<input id="ruCamp" style="width:14rem"></label>
-    </div>
-    <div class="row" style="align-items:flex-end;margin-bottom:.4rem">
-      <label class="f" title="the rule mechanics as the engine's own vocabulary: combo, branch, stage, members, cell, trainThrough, configVersion. Paste it from a greenlight or a board row.">mechanics (JSON)<textarea id="ruCfg" rows="7" style="width:44rem;font-family:monospace;font-size:.72rem" placeholder='{"combo":{"trade":"LTCUSDT","ctx1":"XRPUSDT","ctx2":"BCHUSDT","size":3}, ...}'></textarea></label>
-    </div>
-    <div class="row"><button id="ruAdd" class="pri">Add this rule</button>
-      <span id="ruMsg" class="note"></span></div>
-  </div>`;
-
-  const post = async (url, body, method) => {
-    try {
-      const r = await fetch(url, {
-        method: method || 'POST', headers: { 'Content-Type': 'application/json' },
-        body: body === undefined ? '{}' : JSON.stringify(body),
-      });
-      const j = await r.json().catch(() => ({}));
-      if (!r.ok) { alert(`FAILED — nothing changed.\n\n${j.error || r.status}`); return null; }
-      return j;
-    } catch (e) { alert(`FAILED — nothing changed.\n\n${e.message}`); return null; }
-  };
-
-  $('#ruAdd').onclick = async () => {
-    const id = $('#ruId').value.trim();
-    const label = $('#ruLabel').value.trim();
-    const run = $('#ruRun').value.trim();
-    if (!id || !label || !run) { alert('id, label and source run are all required.'); return; }
-    let config;
-    try { config = JSON.parse($('#ruCfg').value); } catch (e) {
-      alert(`The mechanics are not valid JSON:\n\n${e.message}`); return;
-    }
-    const out = await post('api/rules', {
-      id, label, config,
-      provenance: {
-        sourceRunId: run,
-        campaign: $('#ruCamp').value.trim() || null,
-        engineVersion: (config && config.configVersion) || null,
-      },
-    });
-    if (out) drawRules();
-  };
-
-  $('#view').querySelectorAll('button[data-rn]').forEach((b) => {
-    b.onclick = async () => {
-      const cur = (list.find((r) => r.id === b.dataset.rn) || {}).label || '';
-      const label = prompt('New label for this rule (the id does not change):', cur);
-      if (label == null || !label.trim()) return;
-      if (await post(`api/rules/${encodeURIComponent(b.dataset.rn)}`, { label: label.trim() }, 'PATCH')) drawRules();
-    };
-  });
-  const move = async (id, delta) => {
-    const ordered = active.slice().sort((a, b2) => (a.order || 0) - (b2.order || 0));
-    const i = ordered.findIndex((r) => r.id === id);
-    const j = i + delta;
-    if (i < 0 || j < 0 || j >= ordered.length) return;
-    // Swap the two orders, then redraw. Two writes rather than one because the
-    // endpoint changes one rule at a time — an ordering endpoint that took the
-    // whole list could reorder rules the screen never showed.
-    await post(`api/rules/${encodeURIComponent(ordered[i].id)}`, { order: j }, 'PATCH');
-    await post(`api/rules/${encodeURIComponent(ordered[j].id)}`, { order: i }, 'PATCH');
-    drawRules();
-  };
-  $('#view').querySelectorAll('button[data-rup]').forEach((b) => { b.onclick = () => move(b.dataset.rup, -1); });
-  $('#view').querySelectorAll('button[data-rdn]').forEach((b) => { b.onclick = () => move(b.dataset.rdn, 1); });
-
-  $('#view').querySelectorAll('button[data-rret]').forEach((b) => {
-    b.onclick = async () => {
-      const reason = prompt(`Retire "${b.dataset.rret}"?\n\nIt stops being offered as a target but stays in the `
-        + 'list as a record of what once ran. Reason (optional):', '');
-      if (reason == null) return;
-      if (await post(`api/rules/${encodeURIComponent(b.dataset.rret)}/retire`, { reason })) drawRules();
-    };
-  });
-  $('#view').querySelectorAll('button[data-rdel]').forEach((b) => {
-    b.onclick = async () => {
-      if (!confirm(`DELETE "${b.dataset.rdel}" entirely?\n\nThis removes the rule AND the record that it ever `
-        + 'existed. "Retire" keeps the history; delete does not. This cannot be undone.')) return;
-      if (await post(`api/rules/${encodeURIComponent(b.dataset.rdel)}`, undefined, 'DELETE')) drawRules();
-    };
-  });
-}
-
 async function drawGreenlight() {
   const doc = await loadPicked();
   const sel = getSelRow(doc);
@@ -2165,8 +2006,7 @@ function draw() {
         : tab === 'verify' ? drawVerify()
           : tab === 'history' ? drawHistory()
             : tab === 'tune' ? drawTune()
-              : tab === 'rules' ? drawRules()
-                : drawGreenlight();
+              : drawGreenlight();
   // A section that THROWS must say so. Without the rejection arm the promise
   // rejects, the banner never runs, and #view keeps whatever was there — on a
   // first load that is nothing at all, so a hard failure renders as a blank
