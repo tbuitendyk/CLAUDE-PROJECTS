@@ -52,6 +52,72 @@ else
   echo "  no local allowlist at $ALLOW — NOT shipping intents this tick (fail-closed)"
 fi
 
+# ---- carry the owner's per-profile UNHALT requests --------------------------
+# The screen writes a SIGNED request per profile; this carries it and the box
+# verifies the signature before lifting anything. Consumed on success so one
+# press clears once — a request left on disk must not re-clear a halt that fires
+# again later. Runs BEFORE the break check below, so a profile the owner just
+# cleared is not immediately re-halted by a stale mirror file from last tick.
+UNHALT_DIR="$APPDIR/data/live/unhalt"
+if [ -d "$UNHALT_DIR" ]; then
+  for uf in "$UNHALT_DIR"/*.json; do
+    [ -e "$uf" ] || continue
+    read -r U_SID U_NONCE U_UTC U_HMAC < <(python3 -c '
+import json, sys
+try:
+    d = json.load(open(sys.argv[1]))
+except Exception:
+    sys.exit(0)
+print(d.get("setup_id",""), d.get("nonce",""), d.get("utc",""), d.get("hmac",""))
+' "$uf" 2>/dev/null)
+    [ -n "${U_SID:-}" ] || { echo "  unreadable unhalt request $(basename "$uf") — left in place"; continue; }
+    case "$U_SID" in *[!A-Za-z0-9._-]*) echo "  refusing odd setup id in $(basename "$uf")"; continue;; esac
+    echo "  carrying unhalt request for $U_SID"
+    if $SSH "$BOX_USER@$BOX_HOST" \
+        "python3 ~/mx_executor.py unhalt --source=owner --setup='$U_SID' --nonce='$U_NONCE' --utc='$U_UTC' --hmac='$U_HMAC' --reason=owner-cleared-from-the-screen" \
+        2>&1 | sed 's/^/    /'; then
+      rm -f "$uf"
+    else
+      echo "    (box unreachable; retried next tick)"
+    fi
+  done
+fi
+
+# ---- THE REPRODUCE-CHECK IS A BRAKE, NOT A NEWSLETTER -----------------------
+# A mirror break means a decision this profile ACTED ON no longer recomputes to
+# the same call from the same data: the record and the engine disagree, so the
+# next call cannot be trusted either. On the built-in pilot that force-disarms
+# the box. For a profile it only ever sent an email — the profile carried on
+# trading on a record that no longer reproduced. Same detector, no brake.
+#
+# Now a broken profile is HALTED on the box, which stops its NEW ENTRIES only;
+# its open positions keep their scheduled exits, exactly like every other halt
+# here. It does not self-clear — the owner clears it once the cause is
+# understood — because a gate that clears itself is the instrument marking its
+# own homework.
+MIRROR="$APPDIR/data/live/mirror.json"
+if [ -f "$MIRROR" ]; then
+  BROKEN=$(python3 -c '
+import json, sys
+try:
+    d = json.load(open(sys.argv[1]))
+except Exception:
+    sys.exit(0)
+for r in (d.get("results") or []):
+    if r.get("breaks"):
+        sid = r.get("setup_id")
+        if isinstance(sid, str) and sid:
+            print(sid)
+' "$MIRROR" 2>/dev/null)
+  for sid in $BROKEN; do
+    case "$sid" in *[!A-Za-z0-9._-]*) echo "  refusing odd setup id: $sid"; continue;; esac
+    echo "  MIRROR BREAK on $sid — halting that profile's new entries"
+    $SSH "$BOX_USER@$BOX_HOST" \
+      "python3 ~/mx_executor.py halt --source=mirror --setup='$sid' --reason='decisions no longer reproduce'" \
+      2>&1 | sed 's/^/    /' || echo "    (box unreachable; retried next tick)"
+  done
+fi
+
 echo "== ship intents =="
 OUTBOX="$APPDIR/data/live/outbox"
 shopt -s nullglob

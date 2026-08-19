@@ -2236,6 +2236,14 @@ def main():
     if mode == "halt":
         # emergency stop, settable from the control plane (e.g. the VPS mirror
         # check on a MIRROR_BREAK). Blocks NEW entries; scheduled exits still run.
+        # --setup halts ONE profile; without it, the whole box. A profile halt
+        # stops that profile's new entries and nothing else — other profiles keep
+        # trading and every open position keeps its scheduled exit.
+        _sid = arg_val("--setup")
+        if _sid:
+            set_setup_halt(_sid, reason_arg() or "manual halt")
+            print(f"HALTED setup {_sid} (its new entries stopped; exits still run)")
+            return 0
         set_halt(source_arg(), reason_arg() or "manual halt")
         print("HALTED (new entries stopped; scheduled exits still run)")
         return 0
