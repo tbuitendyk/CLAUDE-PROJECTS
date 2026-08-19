@@ -1,9 +1,15 @@
 #!/usr/bin/env bash
-# pilot-stopsweep-verify.sh -- READ-ONLY: run the F1 protective-stop tune in the
+# pilot-stopsweep-verify.sh -- READ-ONLY: run the protective-stop tune in the
 # deployed classifier over full history and PRINT the result. Persists nothing and
 # touches neither stop-sweep.json nor the live engine — it only proves the heavy
 # integration path (buildCombo -> frozen committee -> tuner) works on real data
 # before the owner drives it from the bracket-lab control.
+#
+# STILL PINNED TO THE LEGACY BOOK DEFINITION (open gap, 2026-08-19). It reads the
+# hardcoded BOOKS array in lib/forwardbook.js, and lib/stopsweep.js also takes its
+# training cutoff from that same file rather than from a profile. Until stopsweep
+# accepts a profile, this cannot be pointed at one — so the number it prints
+# describes the legacy book's geometry, not necessarily what a profile trades.
 set -uo pipefail
 APP=/opt/general-classifier
 cd "$APP" || { echo "no $APP"; exit 1; }

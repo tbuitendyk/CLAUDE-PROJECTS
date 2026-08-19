@@ -5,7 +5,9 @@
 # controlled rather than living in someone's memory.
 #
 # Owner requirements (2026-08-11):
-#   * continuous + current data for LTCUSDT/XRPUSDT/BCHUSDT
+#   * continuous + current data for whatever pairs the live profiles trade
+#     (pilot-refresh.js derives that list from the registry; it is NOT a
+#     hardcoded set of symbols any more)
 #   * timing on ACTUAL wall-clock (systemd OnCalendar), not elapsed-time timers
 #   * a host bounce must come up clean and keep running with NO manual
 #     STOP/START — so every unit is `enable`d with Persistent=true, the tunnel
@@ -16,10 +18,14 @@
 #   VPS host (systemd, root):
 #     pilot-tunnel.service  persistent SOCKS5 tunnel to the Mexico box
 #                           (Restart=always) so the VPS can fetch live klines
-#     pilot-tick.timer      hourly at :05 UTC -> refresh F1 data (via tunnel),
-#                           compute the signal, push the intent to the box
-#     pilot-sync.timer      every 5 min -> carry the owner's START/STOP to the
-#                           box and pull the journal back for the live screen
+#     live-tick.timer       hourly at :08 UTC -> refresh the data each live
+#                           profile needs (via tunnel), recompute its recent
+#                           decisions, produce and push its intents
+#     live-alert.timer      every 15 min -> per-profile incident pages
+#     pilot-sync.timer      every 5 min -> carry the owner's START/STOP, the
+#                           protective stop and the margin floor to the box, and
+#                           pull the journal back for the screen. BOX-LEVEL only:
+#                           it carries machine state, never a profile's rule.
 #   Mexico box (cron, admin):
 #     */10 * * * *          mx_executor.py run -> reconcile, close due trades,
 #                           open new ones when ARMED. LIVE=1 set here; ARM is
@@ -38,54 +44,6 @@ SSH="ssh -i $KEY -o BatchMode=yes -o ConnectTimeout=20 -o StrictHostKeyChecking=
 [ -d "$APP" ] || { echo "classifier not deployed at $APP"; exit 1; }
 
 echo "== installing orchestrator scripts to /usr/local/sbin =="
-
-install -m 755 /dev/stdin /usr/local/sbin/pilot-tick.sh <<TICK
-#!/usr/bin/env bash
-# hourly: keep F1 data current, compute the signal, push the intent to the box.
-set -uo pipefail
-export PILOT_SOCKS=$SOCKS
-# wait for the tunnel to answer (systemd starts it, but order isn't guaranteed)
-for i in \$(seq 1 20); do
-  timeout 8 curl -s -m 6 --socks5-hostname $SOCKS https://api.binance.com/api/v3/ping >/dev/null 2>&1 && break
-  sleep 3
-done
-cd $APP && PILOT_SOCKS=$SOCKS node pilot-refresh.js
-# mirror check FIRST (re-review tick-order): recompute recent live decisions
-# against the fresh data and halt the box on any divergence, BEFORE producing a
-# new intent. A tick that reveals the instrument has drifted then ships NOTHING —
-# pilot-produce-and-push reads the break in mirror.json and forces a DISARM
-# instead of shipping a fresh intent. Running produce first could ship an intent
-# on data the very next step proves unreliable.
-/usr/local/sbin/pilot-mirror.sh || true
-/usr/local/sbin/pilot-produce-and-push.sh
-TICK
-
-# entry-aligned tick (owner 2026-08-12: prime at 01:00, don't fire 5 min late).
-# Fires right after F1's frozen 01:00 UTC entry so the intent carries the LIVE
-# 01:00 open and the box fills ~01:01 instead of ~01:10. It runs the SAME
-# produce-and-push as the :05 tick (master-switch reconcile + mirror-break dead-man
-# + stop carry + produce + push) but SKIPS the data refresh and mirror recompute:
-# the feature window closed at 00:00 and the :05 tick already refreshed that data
-# and ran the mirror on it, and the entry OPEN is fetched LIVE by pilot-produce.js
-# (not from cache). The next :05 tick re-runs refresh+mirror as the backstop.
-# Worst case this step no-ops (e.g. tunnel down, or a prior :05 refresh failed so
-# the feature window is incomplete -> produce ships nothing) and the ordinary :05
-# tick ships the intent ~4 min later. Stale cache can only WITHHOLD an intent, never
-# fabricate one (an incomplete window is simply not actionable), so the fallback is
-# always a later fill, never a wrong trade — and the executor's 30-min staleness
-# window covers the gap.
-install -m 755 /dev/stdin /usr/local/sbin/pilot-tick-entry.sh <<TICKENTRY
-#!/usr/bin/env bash
-set -uo pipefail
-export PILOT_SOCKS=$SOCKS
-# wait briefly for the persistent tunnel (Restart=always keeps it up; breaks on
-# first success, ~instant when healthy) so the live-open fetch can reach Binance.
-for i in \$(seq 1 20); do
-  timeout 8 curl -s -m 6 --socks5-hostname $SOCKS https://api.binance.com/api/v3/ping >/dev/null 2>&1 && break
-  sleep 3
-done
-cd $APP && /usr/local/sbin/pilot-produce-and-push.sh
-TICKENTRY
 
 # the intent producer + pusher (installed copy of the branch script)
 install -m 755 "$REPO/scripts/pilot-produce-and-push.sh" /usr/local/sbin/pilot-produce-and-push.sh
@@ -108,8 +66,6 @@ install -m 755 "$REPO/scripts/pilot-sync-journal.sh" /usr/local/sbin/pilot-sync-
 # push alerting — email the owner on halt/dead-heartbeat/stale-sync/new-incident
 # (review finding 27: observability was pull-only; the owner sleeps while it runs)
 install -m 755 "$REPO/scripts/pilot-alert.sh" /usr/local/sbin/pilot-alert.sh
-# mirror check — recompute recent live decisions vs fresh data, halt on drift
-install -m 755 "$REPO/scripts/pilot-mirror.sh" /usr/local/sbin/pilot-mirror.sh
 
 install -m 755 /dev/stdin /usr/local/sbin/pilot-sync.sh <<SYNC
 #!/usr/bin/env bash
@@ -134,50 +90,7 @@ RestartSec=10
 WantedBy=multi-user.target
 UNIT
 
-echo "== systemd units: tick (hourly) and sync (5 min), wall-clock =="
-cat > /etc/systemd/system/pilot-tick.service <<UNIT
-[Unit]
-Description=Pilot tick — refresh F1 data, compute signal, push intent
-After=pilot-tunnel.service network-online.target
-[Service]
-Type=oneshot
-ExecStart=/usr/local/sbin/pilot-tick.sh
-UNIT
-cat > /etc/systemd/system/pilot-tick.timer <<UNIT
-[Unit]
-Description=Pilot tick hourly at :05 UTC
-[Timer]
-OnCalendar=*-*-* *:05:00 UTC
-Persistent=true
-[Install]
-WantedBy=timers.target
-UNIT
-
-# entry-aligned produce (owner 2026-08-12): ship the intent right after F1's frozen
-# 01:00 UTC entry so the box can fill ~01:01 with the live 01:00 open, instead of
-# waiting for the :05 tick (~01:06 produce, ~01:10 fill). Hardcoded to the frozen
-# entry hour; the ordinary :05 tick stays as the backstop.
-cat > /etc/systemd/system/pilot-tick-entry.service <<UNIT
-[Unit]
-Description=Pilot entry tick — produce+push the 01:00 intent with the live open
-After=pilot-tunnel.service network-online.target
-[Service]
-Type=oneshot
-ExecStart=/usr/local/sbin/pilot-tick-entry.sh
-UNIT
-cat > /etc/systemd/system/pilot-tick-entry.timer <<UNIT
-[Unit]
-Description=Pilot entry tick at 01:00:15 UTC (F1 frozen entry hour)
-[Timer]
-OnCalendar=*-*-* 01:00:15 UTC
-# Persistent=false ON PURPOSE: this timer only tightens fill latency AT the 01:00
-# boundary. A retro-fire after downtime (e.g. boot at 03:00) would produce ~2h past
-# the trained open with no benefit; the Persistent :05 tick is the recovery path.
-Persistent=false
-[Install]
-WantedBy=timers.target
-UNIT
-
+echo "== systemd unit: sync (5 min), wall-clock =="
 cat > /etc/systemd/system/pilot-sync.service <<UNIT
 [Unit]
 Description=Pilot sync — carry START/STOP to the box, pull the journal
@@ -230,23 +143,22 @@ else
   echo "  VPS NTP: NOT synced yet — 'chronyc tracking' / 'timedatectl' to inspect"
 fi
 
-# ---- GENERALIZED RAIL (IMPLEMENTATION-PLAN 10.3+): its own timers, fully ----
-# separate from the F1 pilot's. live-tick at :08 (after the :05 F1 tick has
-# refreshed the shared candle cache) runs the multi-setup produce+push and the
-# per-setup mirror; live-alert pages per-setup incidents every 15 min offset
-# from pilot-alert. While no setup is in paper/live state these are no-ops
-# that ship nothing (drafts never produce; empty allowlist keeps the box
-# fail-closed for schema-2).
+# ---- THE TRADING RAIL: every profile runs on these two timers --------------
+# live-tick at :08 refreshes the candles the profiles need, recomputes their
+# recent decisions, and produces + pushes their intents; live-alert pages
+# per-profile incidents every 15 min, offset from the box-level alerter. While
+# no profile is in paper or live state both are no-ops that ship nothing —
+# drafts never produce, and an empty allowlist keeps the box fail-closed.
 install -m 755 /dev/stdin /usr/local/sbin/live-tick.sh <<LIVETICK
 #!/usr/bin/env bash
 set -uo pipefail
 export PILOT_SOCKS=$SOCKS
-# REFRESH ITS OWN DATA. This tick used to be scheduled "after the F1 tick's
-# refresh" and relied on it — so retiring that tick would have left every profile
+# REFRESH ITS OWN DATA. This tick used to be scheduled after another tick's
+# refresh and relied on it — so retiring that tick would have left every profile
 # computing its committee from a cache nothing was topping up. A stale cache does
 # not fail loudly; it produces a confident call from old candles. The refresh now
 # belongs to whoever needs it, and it follows the profiles that are actually
-# trading rather than a hardcoded triple.
+# trading rather than a hardcoded set of symbols.
 cd $APP && node pilot-refresh.js || true
 # mirror BEFORE produce, same order and same reason as the other rail: a tick
 # that reveals the instrument has drifted must ship nothing, not ship first and
@@ -295,14 +207,23 @@ UNIT
 echo "== enable + start (enable = survives reboot) =="
 systemctl daemon-reload
 systemctl enable --now pilot-tunnel.service
-# THE HARDCODED CONFIG'S PRODUCERS ARE NOT ENABLED HERE ANY MORE (2026-08-19).
-# The book moved to the owner's profile, which produces on live-tick.timer. These
-# two used to be enabled unconditionally, so running this installer resurrected
-# the retired producer and put TWO producers on the same book — the box would
-# have opened two positions where the owner asked for one. A timer you disabled
-# that an installer re-enables is not disabled, it is on a delay.
-systemctl disable --now pilot-tick.timer 2>/dev/null || true
-systemctl disable --now pilot-tick-entry.timer 2>/dev/null || true
+# THE HARDCODED CONFIG'S PRODUCERS ARE GONE (2026-08-19). The book moved to the
+# owner's profile, which produces on live-tick.timer. These two used to be
+# enabled unconditionally here, so running this installer resurrected the retired
+# producer and put TWO producers on the same book — the box would have opened two
+# positions where the owner asked for one. A timer you disabled that an installer
+# re-enables is not disabled, it is on a delay; so this installer no longer
+# defines them at all, and REMOVES them from any host that still carries them.
+# Left as an explicit purge rather than a silent omission: a unit file already on
+# disk keeps firing whether or not the installer still knows about it.
+for u in pilot-tick.timer pilot-tick.service pilot-tick-entry.timer pilot-tick-entry.service; do
+  if [ -f "/etc/systemd/system/$u" ] || systemctl list-unit-files "$u" >/dev/null 2>&1; then
+    systemctl disable --now "$u" 2>/dev/null || true
+    rm -f "/etc/systemd/system/$u"
+  fi
+done
+rm -f /usr/local/sbin/pilot-tick.sh /usr/local/sbin/pilot-tick-entry.sh /usr/local/sbin/pilot-mirror.sh
+systemctl daemon-reload
 # pilot-sync stays: it carries START/STOP, the protective stop and the margin
 # floor to the box and refreshes the ARM keepalive. Box-level, not the config's.
 systemctl enable --now pilot-sync.timer
@@ -358,10 +279,17 @@ sudo tee /etc/systemd/system/pilot-exec-entry.timer >/dev/null <<UNIT
 Description=Pilot executor entry at 01:01:00 UTC (right after the 01:00 intent lands)
 [Timer]
 OnCalendar=*-*-* 01:01:00 UTC
-# Persistent=false ON PURPOSE (matches pilot-tick-entry.timer): fills only AT the
-# 01:01 boundary, never a retro-fire after downtime — the Persistent :00/10 exec
-# timer is the recovery path. The executor's chunk_start dedup makes this extra
-# entry fire idempotent against the regular timer regardless.
+# Persistent=false ON PURPOSE: fills only AT the 01:01 boundary, never a
+# retro-fire after downtime — the Persistent :00/10 exec timer is the recovery
+# path. A retro-fire hours past the trained open would fill at a price the rule
+# never saw, and because the retro intent is stamped at boot it reads FRESH, so
+# the staleness gate would not stop it. The executor's chunk_start dedup makes
+# this extra fire idempotent against the regular timer regardless.
+#
+# The 01:01 hour is a LATENCY hint, not a rule: it exists only so a fill lands
+# a minute after the intent rather than up to ten. Nothing here decides WHEN a
+# profile enters — that comes from the profile's own entry offset. A profile
+# whose entry falls elsewhere still fills on the :00/10 timer, just later.
 Persistent=false
 [Install]
 WantedBy=timers.target
@@ -389,5 +317,5 @@ BOX
 echo
 echo "== status =="
 systemctl --no-pager status pilot-tunnel.service | sed -n '1,4p'
-systemctl list-timers --all 2>/dev/null | grep -i pilot | sed 's/^/  /' || true
+systemctl list-timers --all 2>/dev/null | grep -Ei 'pilot|live-' | sed 's/^/  /' || true
 echo "install complete."

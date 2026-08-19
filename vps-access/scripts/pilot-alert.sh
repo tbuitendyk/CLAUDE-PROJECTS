@@ -111,11 +111,12 @@ last_hb_ts = None
 incident_latest = {}   # kind -> latest ts seen (de-dup by KIND, not per-occurrence)
 for e in events:
     ev = e.get("event")
-    # R6: this is the F1 (schema-1) alerter. Schema-2 (generalized-setup) events
+    # R6: this is the BOX-LEVEL alerter. Per-profile events (they carry a
     # carry a setup_id and share the one journal; skip them so a paper/live setup's
-    # fills never inflate F1's open-position count (spurious at_risk) and a schema-2
-    # exit on a shared chunk_start never pops an F1 position's key (silencing a real
-    # F1 at_risk page). Box-level events (RUN_STATUS, heartbeats) carry no setup_id.
+    # fills never inflate the box-level open-position count (a spurious at_risk)
+    # and a profile's exit on a shared chunk_start never pops a box-level
+    # position's key (which would silence a real at_risk page). Box-level events
+    # (RUN_STATUS, heartbeats) carry no setup_id, which is what separates them.
     # The generalized rail has its OWN alerter (live-alert.sh). Byte-identical to
     # today when no schema-2 event exists.
     if e.get("setup_id") is not None:

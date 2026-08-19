@@ -1,12 +1,15 @@
 #!/usr/bin/env bash
-# live-produce-and-push.sh -- generalized-rail tick step (IMPLEMENTATION-PLAN
-# 2.4/3.4): run the multi-setup producer, then ship its intents AND the derived
-# per-box allowlist to the Mexico box. The RUNNING F1 pilot's
-# pilot-produce-and-push.sh is untouched; this is the parallel rail and it
-# ships NOTHING while no setup is in paper/live state.
+# live-produce-and-push.sh -- THE tick step that trades. Runs the producer over
+# every profile in paper or live state, then ships their intents AND the derived
+# allowlist to the Mexico box, carries the owner's per-profile halt clears, and
+# halts any profile whose decisions have stopped reproducing.
 #
-# NOT wired to any timer yet — the Phase-10 review gates the box-side deploy;
-# until then this script exists for the parallel paper run and manual ticks.
+# Ships NOTHING while no profile is in paper/live state: drafts never produce,
+# and the box stays fail-closed on an empty allowlist.
+#
+# Its sibling pilot-produce-and-push.sh no longer produces anything — despite the
+# name it carries only BOX-LEVEL state (START/STOP, protective stop, margin
+# floor), which outlives any one profile.
 set -uo pipefail
 
 APPDIR="${APPDIR:-/opt/general-classifier}"

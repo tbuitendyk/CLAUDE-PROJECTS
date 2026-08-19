@@ -86,8 +86,19 @@ for f in journal.jsonl preview.json mirror.json arm-request.json stop-sweep.json
     printf '  %-20s MISSING\n' "$f"
   fi
 done
-echo "  decisions dir:  $(ls -1 $APPDIR/data/pilot/decisions 2>/dev/null | wc -l) files, newest: $(ls -1t $APPDIR/data/pilot/decisions 2>/dev/null | head -1)"
-echo "  standdowns dir: $(ls -1 $APPDIR/data/pilot/standdowns 2>/dev/null | wc -l) files, newest: $(ls -1t $APPDIR/data/pilot/standdowns 2>/dev/null | head -1)"
+# Decisions are per PROFILE now: one append-only JSONL each under data/live,
+# not a shared directory of one file per day. Counting files in the old
+# directory reported 0 for a perfectly healthy system.
+echo "  decisions: $(ls -1 $APPDIR/data/live/decisions/*.jsonl 2>/dev/null | wc -l) profile file(s), newest: $(ls -1t $APPDIR/data/live/decisions/*.jsonl 2>/dev/null | head -1 | xargs -r basename)"
+# NO-TRADE DAYS ARE NOT RECORDED (open gap, 2026-08-19). live-produce.js writes a
+# decision record only when the call is actionable and not FLAT, so a day the
+# committee declined to trade leaves nothing behind and is indistinguishable
+# from a day the tick never ran. The retired rail had a backfiller for exactly
+# this; the replacement has no equivalent yet.
+for f in $APPDIR/data/live/decisions/*.jsonl; do
+  [ -e "$f" ] || continue
+  echo "    $(basename "$f" .jsonl): $(wc -l < "$f") recorded call(s) — trade days only, see note above"
+done
 echo "  journal tail:"
 tail -6 "$APPDIR/data/pilot/journal.jsonl" 2>/dev/null | cut -c1-220 | sed 's/^/    /'
 

@@ -10,8 +10,10 @@ J="$APPDIR/data/pilot/journal.jsonl"
 [ -n "$PREFIX" ] || { echo "usage: classifier-journal-window.sh <utc-prefix>"; exit 1; }
 
 echo "== decision records =="
-ls -1 "$APPDIR/data/pilot/decisions" 2>/dev/null | sed 's/^/  decision  /'
-ls -1 "$APPDIR/data/pilot/standdowns" 2>/dev/null | sed 's/^/  standdown /'
+# One append-only JSONL per profile. Only actionable non-FLAT calls are written,
+# so an absent day means EITHER the committee declined OR the tick did not run —
+# the two are not distinguishable from this store (open gap, 2026-08-19).
+ls -1 "$APPDIR/data/live/decisions" 2>/dev/null | sed 's/^/  decisions  /'
 
 echo
 echo "== journal events for $PREFIX (routine ticks dropped) =="

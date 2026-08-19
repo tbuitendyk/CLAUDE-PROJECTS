@@ -1,14 +1,15 @@
 #!/usr/bin/env bash
-# pilot-produce-and-push.sh -- VPS timer step: compute the current F1 intent
-# and ship it to the Mexico box. Deterministic, no AI (PILOT-F1.md section 4).
+# pilot-produce-and-push.sh -- VPS timer step: carry the owner's BOX-LEVEL
+# settings to the Mexico box. Deterministic, no AI.
 #
-# Flow: run pilot-produce.js inside the deployed classifier -> if it yields an
-# actionable intent, write it to a temp file and scp it into the box's
-# ~/pilot/intents/ where the executor will validate and act on it.
+# Despite the name (kept so the installed timer keeps working), this no longer
+# produces or pushes anything: it carries the owner's START/STOP to the box and
+# re-stamps the dead-man keepalive, carries the protective stop, and carries the
+# margin floor. All three belong to the MACHINE and outlive any one config.
 #
-# Idempotent by construction: the intent's chunk_start keys the executor's
-# dedup, so re-running within the same period ships the same intent and the
-# executor ignores the duplicate. Ships NOTHING when nothing is actionable.
+# Idempotent by construction: every carry below rewrites the box only on a real
+# change, so running it every five minutes costs nothing and a missed run simply
+# catches up on the next one.
 set -uo pipefail
 
 APPDIR="${APPDIR:-/opt/general-classifier}"    # deployed classifier root
@@ -22,8 +23,6 @@ STAMP=$(date -u +%Y%m%dT%H%M%SZ)
 
 ARM_ONLY=0
 [ "${1:-}" = "--arm-only" ] && ARM_ONLY=1
-
-[ "$ARM_ONLY" = 1 ] || [ -f "$APPDIR/pilot-produce.js" ] || { echo "no pilot-produce.js in $APPDIR"; exit 1; }
 
 # ---- reconcile the owner's MASTER SWITCH to the box ----------------------
 # The screen's START/STOP button writes data/pilot/arm-request.json on the VPS.
@@ -47,32 +46,25 @@ want=0; nonce='-'; utc='-'; hmac='-'
 read -r want nonce utc hmac < <(bash "$HERE/pilot-arm-fields.sh" "$REQ") \
   || { want=0; nonce='-'; utc='-'; hmac='-'; }
 
-# MIRROR-BREAK DEAD-MAN (re-review liveness): if the drift detector has found a
-# confirmed break (mirror.json breaks>=1), the live book has diverged from its
-# paper twin and the instrument is unreliable. STOP re-stamping ARM — carry an
-# unconditional disarm (utc='-' so the box watermark is NOT advanced), which
-# drops the box's master switch at once and, because the keepalive ceases, keeps
-# it down via the dead-man. Re-arming then requires a deliberate fresh START from
-# the owner (the standing arm-request goes stale within the freshness window) —
-# a drift break must never auto-re-arm. A mirror ERROR (ok:false, breaks:0) is a
-# separate, already-paged alert and does NOT force disarm, to avoid churning the
-# switch on a transient detector hiccup.
-MIRROR="$APPDIR/data/pilot/mirror.json"
-if [ "$want" = "1" ] && [ -f "$MIRROR" ]; then
-  brk=$(python3 - "$MIRROR" <<'PY'
-import json, sys
-try:
-    d = json.load(open(sys.argv[1]))
-    print("1" if int(d.get("breaks", 0)) >= 1 else "0")
-except Exception:
-    print("0")
-PY
-)
-  if [ "$brk" = "1" ]; then
-    echo "== MIRROR BREAK detected — forcing DISARM (dead-man); re-arm needs a fresh owner START =="
-    want=0; nonce='-'; utc='-'; hmac='-'
-  fi
-fi
+# WHERE THE DRIFT BRAKE WENT (2026-08-19). This step used to read the retired
+# single-config rail's mirror.json and, on a confirmed break, force the MACHINE
+# to disarm. That file has no writer any more, so the block had quietly become a
+# no-op that still read like a live safety interlock — the worst state for a
+# brake to be in, because the next person to check finds the code and believes
+# it. It is deleted rather than repointed, on purpose:
+#
+#   * The brake now lives per PROFILE. live-produce-and-push.sh halts the exact
+#     profile whose decisions stopped reproducing (mx_executor.py halt --setup),
+#     which blocks its NEW entries while its open positions keep their scheduled
+#     exits. Profiles that still reproduce keep trading.
+#   * Disarming the whole machine on one profile's drift would now be collateral
+#     damage, and it would also overrule the owner's own switch from a script.
+#   * A halt does not self-clear; the owner lifts it once the cause is understood.
+#
+# So the master switch below carries the owner's START/STOP and nothing else
+# overrides it. If a machine-wide kill is ever wanted again it needs a stated
+# rule about which profile's break justifies stopping the others — that rule
+# does not exist yet, and inventing one here is how the last one got hardcoded.
 
 mode=$([ "$want" = "1" ] && echo arm || echo disarm)
 echo "== master switch: reconcile -> $mode =="
@@ -223,37 +215,13 @@ RMARGIN
 
 # In --arm-only mode (the frequent sync) we stop here: no data refresh, no
 # signal produced. The hourly tick does the produce+push.
-[ "$ARM_ONLY" = 1 ] && exit 0
-
-echo "== produce F1 intent =="
-OUT=$(cd "$APPDIR" && node pilot-produce.js 2>&1)
-rc=$?
-if [ $rc -ne 0 ]; then echo "producer failed:"; echo "$OUT" | sed 's/^/  /'; exit 1; fi
-
-# actionable? (pure text checks; jq is not assumed present on the VPS)
-if printf '%s' "$OUT" | grep -q '"actionable":false'; then
-  echo "nothing actionable this run (no chunk whose entry has arrived)"; exit 0
-fi
-if ! printf '%s' "$OUT" | grep -q '"intent"'; then
-  echo "no intent in producer output:"; echo "$OUT" | sed 's/^/  /'; exit 1
-fi
-
-# extract just the intent object (producer wraps it as {ok,actionable,intent:{...}})
-INTENT=$(printf '%s' "$OUT" | python3 -c "import sys,json; print(json.dumps(json.load(sys.stdin)['intent']))")
-side=$(printf '%s' "$INTENT" | python3 -c "import sys,json; print(json.load(sys.stdin)['side'])")
-chunk=$(printf '%s' "$INTENT" | python3 -c "import sys,json; print(json.load(sys.stdin)['chunk_start'])")
-echo "  intent: side=$side chunk=$chunk"
-
-if [ "$side" = "FLAT" ]; then
-  echo "committee is FLAT this period — no position to open, nothing shipped"; exit 0
-fi
-
-TMP=$(mktemp)
-printf '%s\n' "$INTENT" > "$TMP"
-echo "== ship to box intents/ =="
-$SSH "$BOX_USER@$BOX_HOST" 'mkdir -p ~/pilot/intents' || { echo "ssh mkdir failed"; rm -f "$TMP"; exit 1; }
-scp -i "$KEY" -o BatchMode=yes -o StrictHostKeyChecking=accept-new \
-    "$TMP" "$BOX_USER@$BOX_HOST:~/pilot/intents/intent-$STAMP.json"
-rc=$?
-rm -f "$TMP"
-[ $rc -eq 0 ] && echo "shipped intent-$STAMP.json" || { echo "scp failed"; exit 1; }
+# THE PRODUCER HALF IS GONE (2026-08-19). Everything below this point used to
+# compute the hardcoded config's intent and ship it. That config is retired and
+# its producer deleted; profiles produce through live-produce-and-push.sh. What
+# remains above is BOX-LEVEL and outlives any config: the owner's START/STOP
+# carried to the box with its dead-man keepalive, the protective stop, and the
+# margin floor. Killing this script would disarm the box within minutes.
+#
+# --arm-only is now the only mode; the flag is still accepted so the installed
+# timer keeps working unchanged.
+exit 0

@@ -70,26 +70,27 @@ if echo "$OUT" | grep -q 'would send'; then bad "GAP-3a paged despite active coo
 elif [ "$WM" = "$((NOW-100))" ]; then pass "GAP-3a cooldown-suppressed incident left the watermark un-advanced ($WM)"
 else bad "GAP-3a watermark advanced to $WM under cooldown (should stay $((NOW-100))) — a later occurrence would be swallowed"; fi
 
-# ---- R6: the F1 alerter ignores schema-2 (setup_id) events ----------------
-# A schema-2 ORDER_REJECT (ENTRY) carries a setup_id and belongs to the
-# generalized rail's OWN alerter — it must NOT page as an F1 incident.
+# ---- R6: the box-level alerter ignores per-profile (setup_id) events ----------------
+# A per-profile ORDER_REJECT (ENTRY) carries a setup_id and belongs to the
+# trading rail's OWN alerter — it must NOT page as a box-level incident.
 J="$TMP/jr6.jsonl"; S="$TMP/sr6.json"
 printf '{"event":"ORDER_REJECT","action":"ENTRY","setup_id":"s-x","ts":%s}\n' "$NOW" > "$J"
 OUT="$(run "$J" "$S")"
 echo "$OUT" | grep -q 'ORDER_REJECT' \
-  && { bad "R6 schema-2 incident wrongly paged on the F1 alerter"; echo "    out: $OUT"; } \
-  || pass "R6 schema-2 (setup_id) incident is ignored by the F1 alerter"
+  && { bad "R6 per-profile incident wrongly paged on the box-level alerter"; echo "    out: $OUT"; } \
+  || pass "R6 per-profile (setup_id) incident is ignored by the box-level alerter"
 
-# A schema-2 fill on a stopped, F1-flat box must NOT inflate F1's open-position
-# count into a spurious at_risk (which would fire dead_heartbeat).
+# A per-profile fill on a stopped box that holds no box-level position must NOT
+# inflate the box-level open-position count into a spurious at_risk (which
+# would fire dead_heartbeat).
 J="$TMP/jr6b.jsonl"; S="$TMP/sr6b.json"
 { printf '{"event":"ARM_CLEAR","ts":%s}\n' "$NOW"
   printf '{"event":"ENTRY_FILL","chunk_start":"c1","setup_id":"s-x","side":"LONG","qty":0.2,"price":100,"ts":%s}\n' "$NOW"; } > "$J"
 touch -d "40 minutes ago" "$J"
 OUT="$(run "$J" "$S")"
 echo "$OUT" | grep -q 'dead_heartbeat' \
-  && { bad "R6 schema-2 fill created a spurious F1 at_risk (dead_heartbeat)"; echo "    out: $OUT"; } \
-  || pass "R6 schema-2 fill does not inflate F1 open-position count / at_risk"
+  && { bad "R6 per-profile fill created a spurious box-level at_risk (dead_heartbeat)"; echo "    out: $OUT"; } \
+  || pass "R6 per-profile fill does not inflate the box-level open-position count / at_risk"
 
 echo "----"
 [ "$fail" = 0 ] && { echo "ALL PASS"; exit 0; } || { echo "FAILURES"; exit 1; }

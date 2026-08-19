@@ -13,7 +13,7 @@
 #
 # WHY THIS IS SAFE ON THE LIVE BOX:
 #   * a halt blocks only NEW entries; scheduled exits were never gated on it.
-#   * F1 opens entries at the frozen 01:00 UTC hour only, so a halt held for a
+#   * a profile opens entries only at its own stated entry hour, so a halt held for a
 #     minute mid-afternoon has nothing to block.
 #   * the script ALWAYS force-clears at the end if the button path did not, and
 #     says so loudly. It cannot leave the box halted and quiet.

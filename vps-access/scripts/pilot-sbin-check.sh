@@ -9,9 +9,13 @@ SBIN=/usr/local/sbin
 fail=0
 
 echo "== installed orchestrator scripts =="
+# Box-level carries plus the trading rail. pilot-mirror.sh and pilot-tick.sh went
+# with the retired single-config rail; live-tick.sh, live-produce-and-push.sh and
+# live-alert.sh are what actually run the profiles and were never checked here —
+# so the installer could skip installing them and this smoke stayed green.
 for f in pilot-produce-and-push.sh pilot-arm-fields.sh pilot-stop-state.sh \
-         pilot-alert.sh pilot-mirror.sh pilot-sync-journal.sh \
-         pilot-tick.sh pilot-sync.sh; do
+         pilot-unhalt-fields.sh pilot-alert.sh pilot-sync-journal.sh \
+         pilot-sync.sh live-tick.sh live-produce-and-push.sh live-alert.sh; do
   if [ -x "$SBIN/$f" ]; then echo "  ok  $f"; else echo "  MISSING/!x  $f"; fail=1; fi
 done
 

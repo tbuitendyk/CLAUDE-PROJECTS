@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # live-alert.sh -- PUSH alerting for GENERALIZED setups (IMPLEMENTATION-PLAN
 # 6.2; NEXT-RELEASE 16). The per-setup sibling of pilot-alert.sh, which stays
-# UNTOUCHED serving the running F1 pilot (two rails, no shared state).
+# Its sibling pilot-alert.sh pages BOX-LEVEL incidents only (dead heartbeat,
+# stale sync, halt); this one pages per-profile. They deliberately share no
+# state, and each ignores the other's events — see the R6 note in pilot-alert.sh.
 #
 # Reads: (a) data/live/mirror.json — per-setup mirror breaks (drift detector);
 #        (b) the synced journal — setup_id-tagged incident events (schema-2).
