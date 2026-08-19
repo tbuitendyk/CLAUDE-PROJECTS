@@ -178,7 +178,29 @@ function theLiveViewCanReachEveryRunningConfig() {
     'the picker is rendered but changing it does nothing');
 }
 
+// A CHOSEN "no stop" IS NOT A FORGOTTEN ONE (owner, 2026-08-19: "leave it with
+// no stop", after a full-history scan showed every level net negative). The
+// engine is identical either way; the record must not be, or a decision taken
+// against seven years of evidence reads as an oversight nobody got to.
+function aChosenNoStopReadsDifferentlyFromAnUnsetOne() {
+  const cell = HTML.match(/const stopCell=[\s\S]*?\n\};/)[0];
+  assert.ok(/choice&&choice\.chosen/.test(cell),
+    'the screen cannot tell a recorded choice of none from never having chosen');
+  assert.ok(/no choice has been recorded/.test(cell),
+    'an unset stop no longer says that no choice was recorded, so a gap reads as a decision');
+  assert.ok(/none — your choice/.test(cell),
+    'a recorded choice of none is not shown as a choice');
+  const server = fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8');
+  assert.ok(/fixedStopChoice: readFixedStop\(\)/.test(server),
+    'the screen is never sent the recorded choice, so it cannot show one');
+  assert.ok(/return \{ stopPct: null, chosen: false, why: null \};/.test(server),
+    'a missing choice file no longer reports chosen:false, so never-chosen looks chosen');
+  assert.ok(/typeof req\.body\.why === 'string'/.test(server),
+    'the apply endpoint discards the reasoning, so only the number survives');
+}
+
 module.exports = {
+  aChosenNoStopReadsDifferentlyFromAnUnsetOne,
   theLiveViewCanReachEveryRunningConfig,
   repointingATradingSetupIsStillRefused,
   renamingTheConfigRenamesItsDeployments,

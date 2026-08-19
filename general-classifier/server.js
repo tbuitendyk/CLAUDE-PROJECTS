@@ -1195,6 +1195,10 @@ app.get('/api/pilot', (req, res) => {
     res.json({
       ...require('./lib/boxview').status(),
       marginFloorRequested: readMarginFloor().floor ?? null,
+      // The owner's recorded CHOICE about the stop, which is a different fact
+      // from what the box is enforcing: "no stop, decided" and "no stop, never
+      // considered" leave the engine identical and the record must not.
+      fixedStopChoice: readFixedStop(),
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -1347,8 +1351,17 @@ function writeStopSweep(obj) {
 // holds the chosen value the VPS sync carries; stopPct null = no stop (the sync
 // then removes FIXED_STOP_PCT from the box).
 function fixedStopPath() { return path.join(__dirname, 'data', 'pilot', 'fixed-stop.json'); }
+// A CHOSEN "none" AND A NEVER-CHOSEN "none" ARE DIFFERENT FACTS (owner,
+// 2026-08-19, after the full-history scan came back saying every stop level
+// loses money). The engine behaves identically either way — no stop is no stop
+// — but the RECORD must tell them apart, or a deliberate decision taken against
+// seven years of evidence is indistinguishable from nobody ever getting round
+// to it. `chosen` is false only when no file exists at all.
 function readFixedStop() {
-  try { return JSON.parse(dataFs.readFileSync(fixedStopPath(), 'utf8')); } catch (_) { return { stopPct: null }; }
+  try {
+    const r = JSON.parse(dataFs.readFileSync(fixedStopPath(), 'utf8'));
+    return { chosen: true, why: null, ...r };
+  } catch (_) { return { stopPct: null, chosen: false, why: null }; }
 }
 function writeFixedStop(obj) {
   dataFs.mkdirSync(path.join(__dirname, 'data', 'pilot'), { recursive: true });
@@ -1649,7 +1662,11 @@ app.post('/api/pilot/stop-apply', (req, res) => {
         return res.status(400).json({ error: `stopPct ${v} is below the ${MIN_STOP_PCT} floor (0.5%); a tighter stop triggers on noise, not on real moves. Choose a wider stop or clear it.` });
       }
     }
-    writeFixedStop({ stopPct: v, by: 'owner', utc: new Date().toISOString() });
+    // WHY, not just what. A stop of none is a risk decision; recording the
+    // reasoning beside it is what makes it a decision rather than a gap.
+    const why = req.body && typeof req.body.why === 'string' ? req.body.why.trim().slice(0, 300) : '';
+    writeFixedStop({ stopPct: v, by: 'owner', utc: new Date().toISOString(),
+      ...(why ? { why } : {}) });
     res.json({ ok: true, fixedStop: readFixedStop() });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
