@@ -72,13 +72,20 @@ module.exports = {
 // And a grid on shifted windows must REFUSE, never render fiction.
 module.exports.menuGridMatchesTheSweepAndRefusesShiftedWindows = async function () {
   const { unitTask, menuGridTask } = require('../lib/bracketwork');
-  planted.generatePlanted({ fromMonth: '2024-01', toDate: '2025-06-30' });
+  planted.generatePlanted({ fromMonth: '2024-01', toDate: '2025-09-30' });
   const combo = { trade: planted.PLANTED_SYMBOL, ctx1: null, ctx2: null, size: 1 };
   const branch = { geometry: 'daily-1d', decision: 'argmax', band: 'auto', weekdaysOnly: false };
+  // EXPLICIT ranges, not allLoaded: the run is swept over months ending 2025-06
+  // and the grid is later asked over months ending 2025-09 — which IS "the cache
+  // grew under a stored run". It also has to be explicit because getMap keys the
+  // in-process map cache on `symbol|all` when allLoaded is set, so a cache that
+  // grew on disk is invisible to a running process and the case would be vacuous.
   const params = {
-    allLoaded: true, windowLayout: 'split70', holdout: true, minTrades: 5, feePerLeg: 0.125,
+    allLoaded: false, startMonth: '2024-01', endMonth: '2025-06',
+    windowLayout: 'split70', holdout: true, minTrades: 5, feePerLeg: 0.125,
     dMults: [1], tHours: [41], gates: ['directional'], entries: ['breakout', 'market'], trailing: false,
   };
+  const grownParams = { ...params, endMonth: '2025-09' };
   try {
     const res = await unitTask({ combo, branch, stage: 'promoted', params });
     assert.ok(res.memberDump && res.best, 'promoted unit must dump members and pick a best cell');
@@ -92,11 +99,30 @@ module.exports.menuGridMatchesTheSweepAndRefusesShiftedWindows = async function 
     assert.ok(grid.holdAvg == null || Number.isFinite(grid.holdAvg), 'hold average is a number when a hold window exists');
     assert.ok(twin, 'the sweep-chosen cell must exist in the grid');
     assert.ok(Math.abs(twin.pnl - res.best.pnl) < 1e-9, `grid money must equal sweep money (${twin.pnl} vs ${res.best.pnl})`);
+    // A window that is genuinely GONE must still refuse — the data was revised
+    // under the run, so its stored votes no longer describe those windows.
     const tampered = JSON.parse(JSON.stringify(res.memberDump));
     tampered.startTs.search[0] += 3600000;
     let err = null;
     try { await menuGridTask({ combo, branch, params, dump: tampered }); } catch (e) { err = e; }
-    assert.ok(err && /data cut|fiction/.test(err.message), 'shifted windows must refuse');
+    assert.ok(err && /no longer in the data|revised/i.test(err.message),
+      `a window missing from the data must refuse; got: ${err && err.message}`);
+
+    // ...but a cache that has merely GROWN must still open (owner, 2026-08-19).
+    // This is the case that was wrongly refused: every window the run used is
+    // still present, with this week's candles added after them. Extending the
+    // planted series reproduces exactly that, and the grid must come back with
+    // the SAME money as before, because it is scoring the same votes over the
+    // same windows.
+    const grown = await menuGridTask({ combo, branch, params: grownParams, dump: res.memberDump });
+    assert.strictEqual(grown.cells.length, grid.cells.length,
+      'a grown cache changed the grid shape — the run\'s own windows were not rebuilt');
+    const grownTwin = grown.cells.find((c) => c.quorum === twin.quorum
+      && c.entry === twin.entry && c.tHours === twin.tHours && c.dMult === twin.dMult);
+    assert.ok(grownTwin, 'the sweep-chosen cell vanished once the cache grew');
+    assert.ok(Math.abs(grownTwin.pnl - twin.pnl) < 1e-9,
+      `a grown cache changed the money (${grownTwin.pnl} vs ${twin.pnl}) — the grid is not `
+      + 'scoring the windows the votes were cast on');
   } finally {
     for (const f of fs.readdirSync(CACHE)) {
       if (f.startsWith(`${planted.PLANTED_SYMBOL}-1h-`)) fs.rmSync(path.join(CACHE, f), { force: true });

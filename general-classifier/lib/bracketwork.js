@@ -678,15 +678,48 @@ async function menuGridTask({ combo, branch, params, dump }) {
     workChunks = workChunks.slice(0, workChunks.length - nReserve);
   }
   const split = splitAndLabel(workChunks, branch, p.holdout);
-  const { testChunks, bandPct } = split;
+  let { testChunks } = split;
+  const { bandPct } = split;
+  // REBUILD THE RUN'S OWN WINDOWS, DON'T REFUSE (owner, 2026-08-19).
+  //
+  // This used to demand that a fresh cut of the cache produce the SAME array of
+  // test chunks the run recorded, and refuse otherwise. But the cache only ever
+  // GROWS: adding this week's candles shifts and lengthens the array while every
+  // window the run actually used still sits inside it, unchanged. So the refusal
+  // fired on the ordinary passage of time, and the owner was told to re-run a
+  // sweep to recover a grid whose inputs were all still present.
+  //
+  // The real requirement was never "identical arrays" — it is that the stored
+  // votes are applied to THE WINDOWS THEY WERE CAST ON. So look those windows up
+  // by their recorded timestamps and use exactly those. The grid needs nothing
+  // else: it scores recorded votes over recorded windows at the recorded band.
+  //
+  // The instrument check that MATTERS is kept and is now sharper: if any window
+  // the run recorded is missing from today's data, the data has been revised
+  // under the run rather than merely extended, and that IS fiction — refused,
+  // naming how many and which.
   const st = dump.startTs && dump.startTs.search;
-  if (!st || st.length !== testChunks.length || st[0] !== testChunks[0].startTs
-      || st[st.length - 1] !== testChunks[testChunks.length - 1].startTs) {
-    throw new Error('the stored votes do not line up with today\'s data cut (the cache changed since this run) — re-run the sweep; a grid on shifted windows would be fiction');
+  if (!st || !st.length) {
+    throw new Error('this row\'s stored record carries no test-window timestamps — grids need a promoted row from an engine 1.29+ run');
   }
+  const byStart = new Map(workChunks.map((c) => [c.startTs, c]));
+  const missing = st.filter((ts) => !byStart.has(ts));
+  if (missing.length) {
+    throw new Error(`${missing.length} of ${st.length} recorded test windows are no longer in the data `
+      + `(first missing ${new Date(missing[0]).toISOString().slice(0, 10)}) — the cache was REVISED under this run, `
+      + 'not merely extended, so its stored votes no longer describe these windows. Re-run the sweep.');
+  }
+  testChunks = st.map((ts) => byStart.get(ts));
+  // THE RECORDED BAND IS THE ONE THE VOTES WERE CAST UNDER, so it is the one the
+  // grid scores at. This used to also refuse when the recorded band differed
+  // from one derived on a FRESH cut — the same mistake as the window check: an
+  // 'auto' band is derived from the data, so extending the cache moves it and
+  // the comparison fails on the passage of time rather than on anything wrong.
+  // Comparing against a band from a different data cut is not a check, it is a
+  // false alarm. What must hold is that the recorded band is a usable number.
   const gridBand = dump.bandPct ?? bandPct;
-  if (dump.bandPct != null && Math.abs(dump.bandPct - bandPct) > 1e-9) {
-    throw new Error('the recorded band no longer matches a fresh cut of the same data — re-run the sweep');
+  if (!Number.isFinite(gridBand) || gridBand <= 0) {
+    throw new Error('this row carries no usable recorded band, and a fresh cut gives none either — re-run the sweep');
   }
   const calls = dump.votes.search;
   const fee = p.feePerLeg ?? REAL_FEE_PER_LEG;
@@ -707,15 +740,21 @@ async function menuGridTask({ combo, branch, params, dump }) {
   let holdAvg = null;
   let holdPosShare = null;
   let holdCellCount = 0;
-  const { holdChunks } = split;
+  let { holdChunks } = split;
   const holdCalls = dump.votes.hold;
   // Same alignment rule as the test window above: stored hold votes applied
   // to shifted hold windows would be fiction with the right units.
+  // Same correction as the test window above: rebuild the recorded hold windows
+  // rather than refuse because the cache grew.
   const hst = dump.startTs && dump.startTs.hold;
-  if (holdChunks.length && Array.isArray(hst)
-      && (hst.length !== holdChunks.length || hst[0] !== holdChunks[0].startTs
-          || hst[hst.length - 1] !== holdChunks[holdChunks.length - 1].startTs)) {
-    throw new Error('the stored HOLD votes do not line up with today\'s data cut — re-run the sweep; a hold average on shifted windows would be fiction');
+  if (holdChunks.length && Array.isArray(hst) && hst.length) {
+    const holdByStart = new Map(workChunks.map((c) => [c.startTs, c]));
+    const holdMissing = hst.filter((ts) => !holdByStart.has(ts));
+    if (holdMissing.length) {
+      throw new Error(`${holdMissing.length} of ${hst.length} recorded hold windows are no longer in the data `
+        + '— the cache was revised under this run, not merely extended. Re-run the sweep.');
+    }
+    holdChunks = hst.map((ts) => holdByStart.get(ts));
   }
   if (holdChunks.length && Array.isArray(holdCalls) && holdCalls.length === calls.length) {
     // COMPOSITION MATTERS (review 2026-08-04 MODERATE): cells that never
