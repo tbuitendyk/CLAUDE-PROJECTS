@@ -2108,10 +2108,16 @@ def do_run(bx):
                 # the four below, and was never recorded — so the screen could
                 # not show it and the owner had to ask a session to read it over
                 # ssh (owner, 2026-08-19). Recorded so it is a number they see.
+                # Journal WHICH assets these are. The screen was hardcoding
+                # "LTC"/"USDT" against numbers that describe whatever pair the
+                # wallet actually holds — fine while one pair traded, a lie the
+                # moment a second profile runs on another pair.
                 jlog("BALANCE", base_net=a["baseAsset"]["netAsset"],
                      base_free=a["baseAsset"]["free"],
+                     base_asset=a["baseAsset"].get("asset"),
                      quote_free=a["quoteAsset"]["free"],
                      quote_net=a["quoteAsset"]["netAsset"],
+                     quote_asset=a["quoteAsset"].get("asset"),
                      margin_level=a.get("marginLevel"))
             except (KeyError, IndexError):
                 pass
