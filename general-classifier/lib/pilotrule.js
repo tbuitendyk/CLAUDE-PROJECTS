@@ -29,7 +29,9 @@ const POINTER = path.join(__dirname, '..', 'data', 'pilot', 'rule.json');
 function readPointer() {
   try {
     const d = JSON.parse(fs.readFileSync(POINTER, 'utf8'));
-    return d && typeof d.setupId === 'string' && d.setupId ? d : null;
+    if (!d) return null;
+    if (typeof d.greenlightId === 'string' && d.greenlightId) return d;
+    return typeof d.setupId === 'string' && d.setupId ? d : null;
   } catch (_) { return null; }
 }
 
@@ -41,6 +43,35 @@ function readPointer() {
 //   source 'code'  no pointer yet — the hardcoded F1, flagged so it is visible
 function resolveRule() {
   const ptr = readPointer();
+  // A GREENLIGHT is a complete answer on its own: it carries the frozen config
+  // and the provenance chain back to the run that produced it. Pointing at one
+  // needs no channel activation, so designating the pilot's rule cannot
+  // accidentally mint a second deployment for a rule the pilot rail already
+  // trades. The freeze is named in the pointer because it is a property of THIS
+  // deployment (lib/live/trainpolicy.js) and the greenlight rightly carries none.
+  if (ptr && ptr.greenlightId) {
+    const gl = require('./live/greenlight').getGreenlight(ptr.greenlightId);
+    if (!gl) {
+      throw new Error(`pilot rule points at greenlight ${ptr.greenlightId}, which does not exist`);
+    }
+    if (gl.revoked) {
+      throw new Error(`pilot rule points at greenlight ${ptr.greenlightId}, which was nuked back to `
+        + 'not-greenlighted — re-greenlight it or designate another');
+    }
+    const { validatePolicy } = require('./live/trainpolicy');
+    const pe = validatePolicy(ptr.trainPolicy);
+    if (pe.length) throw new Error(`pilot rule pointer: ${pe.join('; ')}`);
+    const freezeMs = ptr.trainPolicy.mode === 'rolling' ? Date.now() : ptr.trainPolicy.throughMs;
+    return {
+      cfg: gl.configSnapshot,
+      freezeMs,
+      source: 'data',
+      setupId: gl.id,
+      sourceRunId: (gl.sourceRun || {}).id || null,
+      campaign: gl.campaign || null,
+      legacy: false,
+    };
+  }
   if (ptr) {
     const reg = require('./live/setups');
     const setup = reg.getSetup(ptr.setupId);
