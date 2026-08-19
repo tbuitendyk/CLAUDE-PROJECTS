@@ -3,6 +3,7 @@
 // prove the module mirrors the F1 forward book's frozen spec rather than
 // inventing a parallel one.
 const { assert } = require('./helpers');
+const fs = require('fs');
 const ps = require('../lib/pilotsignal');
 const fb = require('../lib/forwardbook');
 
@@ -91,8 +92,19 @@ module.exports.pilotTradesExactlyTheF1ForwardBookInstrument = function () {
   // both halves: the resolved rule is F1, AND it announces that it came from
   // code rather than data, so the remaining gap cannot go quiet.
   const f1 = fb.BOOKS.find((b) => b.id === 'F1');
+  // AMBIENT STATE MUST NOT DECIDE THIS. resolveRule reads data/pilot/rule.json,
+  // so a pointer left on the box — or staged locally while measuring — would
+  // silently turn this into a different test. Move it aside for the duration.
+  const ptrFile = require('path').join(__dirname, '..', 'data', 'pilot', 'rule.json');
+  const hadPtr = fs.existsSync(ptrFile) ? fs.readFileSync(ptrFile) : null;
+  if (hadPtr) fs.unlinkSync(ptrFile);
+  try {
   const rule = ps.currentRule();
-  assert.strictEqual(rule.id, 'F1', 'pilot must reference the F1 book');
+  // The NAME is deliberately not asserted. "F1" was invented by a session with
+  // no meaning to the owner ("that name was just something that you came up
+  // with no context for me", 2026-08-19) and is on its way out. What must hold
+  // is the INSTRUMENT and where the rule came from — checked below — not a
+  // label. Asserting the label would pin the very thing being removed.
   assert.strictEqual(rule.combo.trade, f1.combo.trade, 'traded pair must match F1');
   assert.strictEqual(rule.combo.trade, 'LTCUSDT', 'and F1 trades LTCUSDT only');
   assert.strictEqual(rule.cell.quorum, f1.cell.quorum, 'quorum must match F1');
@@ -101,6 +113,9 @@ module.exports.pilotTradesExactlyTheF1ForwardBookInstrument = function () {
   assert.strictEqual(rule.__source, 'code',
     'with no deployment designated the rule must come from code AND say so — a '
     + 'silent fallback is how the hardcoded rule survives forever');
+  } finally {
+    if (hadPtr) fs.writeFileSync(ptrFile, hadPtr);
+  }
 };
 
 module.exports.chooseEntryOpenPrefersCacheThenLiveThenNull = function () {
