@@ -1,0 +1,75 @@
+Per-profile sub-accounts are live on the box; I need two answers to migrate the running book
+
+tl;dr the infrastructure that makes any config a full trading profile — its own
+sub-account, its own start/stop and halt recovery, its own name — is built,
+tested and deployed. The live engine came through both deploys healthy: armed,
+not halted, mirror clean, both shorts running. I have deliberately stopped
+before the migration itself, because it needs two decisions that are yours: what
+the profile is called, and confirmation to point it at the wallet that already
+holds the two shorts.
+
+WHY ANY OF THIS WAS NEEDED
+
+The exchange client carried the traded pair and the API credentials as module
+globals. That is the same thing as saying the box can only ever run one book.
+Every profile would have shared a single isolated-margin wallet, and a shared
+wallet pools both the balance AND the borrow — so multi-day short interest lands
+on whichever leg closes last, and each book's realized P&L contaminates the
+others. That is arithmetic, not a policy I chose, and it is the real reason real
+orders were refused for every config except the built-in one. The screen said so
+in a tooltip citing an internal blocker you could do nothing about.
+
+WHAT IS NOW ON THE BOX
+
+  - Each exchange client carries its OWN pair and OWN sub-account. Two profiles
+    on one box get two clients and never touch each other's wallet.
+  - "Can this place a real order?" is now a question with an answer — does this
+    box hold that profile's credentials — instead of a constant that was false
+    for everyone. When it cannot, it books paper and NAMES the missing key, which
+    is something you can act on.
+  - A position records the wallet it was opened in, at entry. A lookup can change
+    under an open position (edited, retired, dropped from the allowlist) and an
+    exit sent to the wrong sub-account would try to sell an asset that account
+    does not hold. The position remembers; the exit obeys the position.
+  - A profile's halt can be LIFTED. set_setup_halt existed from day one with no
+    counterpart, so a halted profile was simply finished. The clear reuses the
+    box-level authentication and the signature covers the profile id, so a clear
+    minted for one cannot lift another's.
+  - Retire is refused while a profile still holds an open real position, and the
+    error names them.
+
+ON YOUR SCREENS
+
+Trading | Greenlights now leads with YOUR name for a config instead of the
+generated id, and carries a Rename button for the name and the why. Campaign is
+not editable there and will not be — it is the reference the whole line of
+sweeping is collected under, shared by every config that came out of it, so
+editing it from one row would either move that row to another campaign or rename
+it for all of them. Activate real is now greyed out only when a config lacks its
+own sub-account, and the hover text says that rather than citing a blocker.
+
+TESTS
+
+124 executor tests and 8 new profile tests, all passing. Every new assertion was
+watched FAILING with its fault put back before it was kept. One of the injected
+faults was also caught by a test that already existed, which is the signal I most
+wanted to see.
+
+WHAT I NEED FROM YOU
+
+1. THE NAME. I did not name the profile. You have said twice now that a
+   machine-picked label is worthless, the shuttle requires a name, and inventing
+   one would recreate exactly the problem you are having me remove. The Rename
+   button is live if you would rather type it directly.
+
+2. THE WALLET. Carrying the two open shorts across means the profile's
+   sub-account must BE the account that already holds them — pointing its key
+   reference at the box's existing credentials. That is correct once the built-in
+   config no longer exists, since nothing is shared any more. But it puts real
+   money under a new code path, so I want you to say it rather than have me
+   assume it.
+
+Phases 4 through 6 — migrate, verify, then strip every trace of the old one-off —
+are ready to run the moment you answer.
+
+c.
