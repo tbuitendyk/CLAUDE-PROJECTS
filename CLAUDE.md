@@ -141,6 +141,35 @@ argument that persuaded me as the authorisation.
   permission is per-change; RULE THREE says even a permitted change does not
   begin until the words are said.
 
+
+## RULE FOUR — a control is not finished until it lines up (owner directive, 2026-08-19)
+
+**Layout is part of building a control, not a correction the owner requests
+afterwards.** Every button, field and label I add is aligned, sized and placed
+against the section it belongs to BEFORE it ships. The owner should never have
+to say "make it line up" — on this button or any other.
+
+The owner's words: "instead of me telling you on Every Single Button to make it
+line up with the relevant section, JUST ALWAYS DO THAT."
+
+What that means concretely:
+
+- **Match the pattern already on the page.** This page aligns controls with
+  `.row` (`display:flex; align-items:center`) and a `<label class="muted">`
+  wrapping its input. Use that. Do not invent a second convention beside it —
+  two conventions on one screen is the drift RULE TWO exists to stop.
+- **Never style against a class that does not exist.** The "Set the floor"
+  button sat wrong because I wrote `class="f"` and there is no `.f` rule in the
+  stylesheet — one usage, zero definitions. grep the class before relying on it.
+- **Do not override the container's alignment without a reason you can state.**
+  `align-items:flex-end` on a row of centred controls is how a button ends up on
+  a baseline its label does not share.
+- **Look at the whole group, not the one element.** A button belongs to its
+  label and field: they are one control, and they line up together or the
+  control is broken.
+- **When a defect like this is found, sweep for it.** Fix every instance of the
+  pattern in the file, not only the one the owner happened to see.
+
 ## Working style (all sessions)
 
 Confirm the task before building. **Don't assume a direction, write a pile of

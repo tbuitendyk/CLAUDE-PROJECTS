@@ -6,6 +6,8 @@
 // Deliberately ABSENT: a create endpoint. Setups are minted ONLY by the
 // greenlight shuttle (NEXT-RELEASE point 4 — "no hand-built live configs"),
 // which arrives with plan phase 4 and enforces greenlight state at creation.
+const fs = require('fs');
+const path = require('path');
 const reg = require('./setups');
 
 function errStatus(e) {
@@ -49,8 +51,18 @@ function installLiveRoutes(app, { csrfGuard }) {
   app.get('/api/live/setups/:id/status', (req, res) => {
     const s = reg.getSetup(req.params.id);
     if (!s) return res.status(404).json({ error: `no such setup ${req.params.id}` });
-    try { res.json(require('./view').setupStatus(s)); }
-    catch (e) { res.status(500).json({ error: e.message }); }
+    try {
+      // The margin floor is a BOX-level fact — one isolated wallet backs every
+      // real setup — so the setup screens report the same requested-vs-enforced
+      // pair the LIVE screen does. Without it, saving a floor would look like
+      // nothing happened here while LIVE showed it pending (RULE TWO).
+      let requested = null;
+      try {
+        requested = JSON.parse(fs.readFileSync(
+          path.join(__dirname, '..', '..', 'data', 'pilot', 'margin-floor.json'), 'utf8')).floor ?? null;
+      } catch (_) { /* no floor saved yet — a state, not an error */ }
+      res.json({ ...require('./view').setupStatus(s), marginFloorRequested: requested });
+    } catch (e) { res.status(500).json({ error: e.message }); }
   });
 
   app.post('/api/live/setups/:id/state', csrfGuard, (req, res) => {

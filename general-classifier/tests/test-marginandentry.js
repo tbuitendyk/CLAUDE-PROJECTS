@@ -135,6 +135,63 @@ function pressingTheSwitchSaysSomethingHappened() {
     'START/STOP still give no feedback, so a press that worked looks like one that failed');
 }
 
+// ---- the floor must be VISIBLE the moment it is set -------------------------
+
+function theFloorIsReportedEvenWhenTheLevelIsUnknown() {
+  // The first version returned early on a null level and never mentioned the
+  // floor, so the owner set one and the status line said only "not recorded
+  // yet" — their setting appeared to vanish.
+  const src = HTML.match(/const marginCell=[\s\S]*?\n};/)[0];
+  assert.ok(!/if\(lvl==null\)\s*return/.test(src),
+    'marginCell still returns early on an unknown level, hiding the floor with it');
+  assert.ok(/not recorded yet/.test(src) && /no floor set/.test(src),
+    'marginCell must be able to report an unknown level AND the floor state together');
+}
+
+function aSavedFloorShowsAsPendingUntilTheBoxConfirms() {
+  const src = HTML.match(/const marginCell=[\s\S]*?\n};/)[0];
+  assert.ok(/saved, waiting on the box/.test(src),
+    'a floor the box has not yet picked up reads as "no floor set", which is the opposite of the truth');
+  assert.ok(/marginFloorRequested/.test(HTML),
+    'the screen never receives the floor the owner requested, so it cannot show it pending');
+  const server = fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8');
+  assert.ok(/marginFloorRequested: readMarginFloor\(\)/.test(server),
+    '/api/pilot does not expose the requested floor');
+  const routes = fs.readFileSync(path.join(ROOT, 'lib', 'live', 'routes.js'), 'utf8');
+  assert.ok(/marginFloorRequested/.test(routes),
+    'the setup status route omits the requested floor, so the two screens disagree (RULE TWO)');
+}
+
+// ---- RULE FOUR: controls line up, and never style against a phantom class ----
+
+function noControlStylesAgainstAClassThatDoesNotExist() {
+  // The "Set the floor" button sat wrong because it used class="f" and there is
+  // no .f rule in the stylesheet. Catch that shape generally rather than the one
+  // instance: every class used in the markup must be defined or be a known
+  // framework/state class set from script.
+  const KNOWN = new Set(['row', 'spacer', 'muted', 'pos', 'neg', 'warn', 'tabs', 'tab', 'on',
+    'panel', 'tile', 'k', 'v', 'grid', 'badge', 'b-paper', 'b-live', 'b-stopped', 'b-idle',
+    'pri', 'danger', 'themebtn', 'sub', 'empty', 'clickable', 'banner', 'halted', 'stopped',
+    'running', 'switch', 'master', 'start', 'stop', 'f1', 'branch']);
+  const used = new Set();
+  for (const m of HTML.matchAll(/class="([^"$]+)"/g)) {
+    for (const c of m[1].split(/\s+/)) if (c) used.add(c);
+  }
+  const undefinedClasses = [...used].filter((c) => !KNOWN.has(c) && !new RegExp(`\\.${c}\\b[^;]*\\{`).test(HTML));
+  assert.deepStrictEqual(undefinedClasses, [],
+    `these classes are styled against but never defined: ${undefinedClasses.join(', ')}`);
+}
+
+function theFloorControlAlignsLikeEveryOtherControl() {
+  const block = HTML.match(/<button id="mfSet">[\s\S]{0,400}/)[0];
+  assert.ok(!/align-items:flex-end/.test(HTML.slice(HTML.indexOf('Margin floor'), HTML.indexOf('<button id="mfSet">'))),
+    'the floor control overrides the row alignment, putting the button off its label baseline');
+  const label = HTML.match(/<label[^>]*>margin floor[\s\S]{0,300}?<\/label>/);
+  assert.ok(label && /class="muted"/.test(label[0]),
+    'the floor control does not use the same label pattern as the other controls on this page');
+  assert.ok(block.length > 0, 'the Set the floor button is missing');
+}
+
 function theOwnerSetsTheFloorAndNoDefaultIsInvented() {
   assert.ok(/api\/pilot\/margin-floor/.test(HTML),
     'there is no control for the owner to set the floor');
@@ -155,4 +212,8 @@ module.exports = {
   bothSwitchButtonsAreHeldWhileARequestIsInFlight,
   pressingTheSwitchSaysSomethingHappened,
   theOwnerSetsTheFloorAndNoDefaultIsInvented,
+  theFloorIsReportedEvenWhenTheLevelIsUnknown,
+  aSavedFloorShowsAsPendingUntilTheBoxConfirms,
+  noControlStylesAgainstAClassThatDoesNotExist,
+  theFloorControlAlignsLikeEveryOtherControl,
 };

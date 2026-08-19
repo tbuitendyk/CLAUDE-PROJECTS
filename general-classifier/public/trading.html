@@ -206,13 +206,26 @@ const th=(label,key,style)=>`<th${style?` style="${style}"`:''}${TH[key]?` title
 // so BIGGER IS SAFER and a number heading toward 1 is the emergency. Shown on
 // both the pilot and setup paths (RULE TWO); a paper book has no borrowed
 // collateral, so there it reports that rather than a fake number.
-const marginCell=(lvl,floor)=>{
-  if(lvl==null) return '<span class="muted">not recorded yet</span>';
-  const f=Number(floor)||0;
-  const c=f>0?(lvl<=f?'neg':(lvl<=f*1.25?'warn':'pos')):(lvl<=1.5?'neg':lvl<=2.5?'warn':'pos');
-  return `<span class="${c}">${lvl.toFixed(2)}</span>`
-    +(f>0?` <span class="muted" style="font-size:.72rem">(halts at ${f})</span>`
-         :' <span class="warn" style="font-size:.72rem">(no floor set)</span>');
+// The floor is reported ALONGSIDE the level and never gated on it. The first
+// version returned early when the level was unknown and so never mentioned the
+// floor at all — the owner set one, the line said "not recorded yet", and their
+// setting appeared to vanish (2026-08-19). Two independent facts, two independent
+// readouts: what the level is, and what will stop trading.
+//
+// `enforced` is what the BOX reports it is applying; `requested` is what the owner
+// last saved. They differ for the few minutes the sync takes, and saying so is the
+// difference between "your setting is on its way" and "nothing happened".
+const marginCell=(lvl,enforced,requested)=>{
+  const e=Number(enforced)||0, r=(requested==null||requested==='')?null:Number(requested);
+  const pending=r!=null?(e!==r):(e>0?false:false);
+  const level=lvl==null
+    ? '<span class="muted">not recorded yet</span>'
+    : `<span class="${e>0?(lvl<=e?'neg':(lvl<=e*1.25?'warn':'pos')):(lvl<=1.5?'neg':lvl<=2.5?'warn':'pos')}">${lvl.toFixed(2)}</span>`;
+  let floorTxt;
+  if(r!=null&&pending) floorTxt=`<span class="warn">halts at ${r} — saved, waiting on the box</span>`;
+  else if(e>0) floorTxt=`<span class="muted">halts at ${e}</span>`;
+  else floorTxt='<span class="warn">no floor set</span>';
+  return `${level} <span style="font-size:.72rem">(${floorTxt})</span>`;
 };
 const entryCell=(p)=>{
   const w=(p.chunk_start||'').slice(0,10);
@@ -586,7 +599,7 @@ async function drawLive(){
       <b>${esc(g.id)}</b> ${isP?paperBadge:''} — ${esc(g.status)}${st.runEpochUtc?` <span class="muted">· displayed run since ${st.runEpochUtc.slice(0,16)} UTC</span>`:''}</div>
     <div class="panel" style="font-size:.85rem"><b>Margin level:</b> ${isP
       ? '<span class="muted">not applicable — a paper book borrows nothing, so it has no liquidation distance</span>'
-      : marginCell((st.walletBalance||{}).marginLevel, st.marginFloor)}</div>
+      : marginCell((st.walletBalance||{}).marginLevel, st.marginFloor, st.marginFloorRequested)}</div>
     <div class="grid" style="margin-bottom:1rem">
       ${tile((isP?'Paper realized':'Realized')+' P&amp;L','realized',money(rp),cls(rp))}
       ${tile((isP?'Paper unrealized':'Unrealized')+' P&amp;L','unreal',money(up),cls(up))}
@@ -676,7 +689,7 @@ async function drawPilotLive(){
       the box collects it on its next sync (up to ~5 minutes) and this screen turns ${d.armed?'STOPPED':'RUNNING'} when it has.
       Nothing more to press — both buttons are held until it lands.</div>`:''}
     <div class="panel" style="font-size:.85rem"><b>Protective stop:</b> ${d.fixedStopPct!=null?`<span class="pos">${(d.fixedStopPct*100).toFixed(2)}%</span> applied to every order`:'<span class="warn">none set</span>'} ·
-      <b>Margin level:</b> ${marginCell(wb.marginLevel,d.marginFloor)} ·
+      <b>Margin level:</b> ${marginCell(wb.marginLevel,d.marginFloor,d.marginFloorRequested)} ·
       <b>Sub-account wallet:</b> ${wb.usdtFree!=null?`$${wb.usdtFree.toFixed(2)} USDT · ${wb.ltcFree!=null?wb.ltcFree.toFixed(6):'—'} LTC`:'<span class="muted">no snapshot yet</span>'}
       ${lp.netLtc!=null?` · <b>Net LTC (open):</b> <span class="${lp.netLtc>0?'pos':lp.netLtc<0?'neg':'muted'}">${lp.netLtc>=0?'+':''}${lp.netLtc.toFixed(6)}</span>`:''}</div>
     <div class="panel"><div class="k">Margin floor — the level at which entries stop</div>
@@ -684,9 +697,10 @@ async function drawPilotLive(){
         This engine borrows to short, and until you set a number here nothing stops it as that falls.
         Binance liquidates around 1.1–1.3, so a floor has to sit meaningfully above that to be a brake rather than an epitaph.
         Setting it halts NEW ENTRIES only — scheduled exits keep running, and clearing the halt is still your button.</div>
-      <div class="row" style="align-items:flex-end;margin-top:.5rem">
-        <label class="f">margin floor <input id="mfIn" type="number" min="0" step="0.1"
-          value="${d.marginFloor?d.marginFloor:''}" placeholder="none" style="width:7rem"></label>
+      <div class="row" style="margin-top:.5rem">
+        <label class="muted" title="the margin level at which new entries stop. Blank means no floor: nothing halts as the account approaches liquidation.">margin floor
+          <input id="mfIn" type="number" min="0" step="0.1"
+            value="${d.marginFloorRequested??''}" placeholder="none" style="width:7rem"></label>
         <button id="mfSet">Set the floor</button>
         <span id="mfMsg" class="muted" style="font-size:.76rem"></span>
       </div></div>

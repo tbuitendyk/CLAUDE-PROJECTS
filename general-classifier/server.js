@@ -1187,7 +1187,15 @@ app.get('/api/forwardbooks', async (req, res) => {
 // renders what the deterministic executor already did (independence rule §4).
 app.get('/api/pilot', (req, res) => {
   try {
-    res.json(require('./lib/pilotview').status());
+    // marginFloor (from the view) is what the BOX reports it is ENFORCING;
+    // marginFloorRequested is what the owner last SAVED here. They differ for
+    // the few minutes it takes the sync to carry the value across, and the
+    // screen must be able to say so — otherwise setting a floor looks like
+    // nothing happened, which is exactly what the owner hit (2026-08-19).
+    res.json({
+      ...require('./lib/pilotview').status(),
+      marginFloorRequested: readMarginFloor().floor ?? null,
+    });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
