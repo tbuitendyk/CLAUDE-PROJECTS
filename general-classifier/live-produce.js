@@ -91,7 +91,33 @@ function recordDecision(setupId, dec) {
     for (const setup of active) {
       try {
         let out = await signal.computeSignal(setup, now, { liveOpenFetcher });
-        if (out.actionable && out.intent && out.intent.side !== 'FLAT') {
+        // A DAY THE COMMITTEE DECLINED IS STILL A DECISION (owner, 2026-08-19).
+        //
+        // Only non-FLAT calls used to be written down, so a day the members
+        // voted no left nothing behind and was indistinguishable from a day
+        // this tick never ran. The record also changed shape halfway through
+        // its own history: the retired rail DID record declined days, and those
+        // came across on migration (9-13 August sit on the profile as FLAT), so
+        // the log went from complete to trade-days-only at an invisible seam.
+        //
+        // A FLAT call is fully reproducible — it carries the same votes, quorum,
+        // band, input hash and entry price as a traded one, and the hash covers
+        // `side`, so a decline that later recomputes as a trade is a real break
+        // the reproduce-check will catch. Recording it strictly increases what
+        // is verified.
+        //
+        // GATED ON THE PRICE, not on the side. compareDecision treats a recorded
+        // null price against a recomputed real one as a divergence, so writing a
+        // priceless record now would manufacture a break the moment the entry
+        // candle caches. The entry hour stays actionable for the whole hold
+        // window, so a decline whose candle has not cached yet is simply written
+        // on a later tick this same period — and loadDecisions keeps the last
+        // record per period, so re-recording is harmless.
+        //
+        // Applies identically to paper and live setups: this loop does not
+        // branch on state, and `paper` is only a flag on the shipped intent.
+        const recordable = out.actionable && out.intent && out.intent.decision_price != null;
+        if (recordable) {
           // FAIL CLOSED: no decision record, no shipped intent (pilot rule).
           try {
             recordDecision(setup.id, {
@@ -121,8 +147,17 @@ function recordDecision(setupId, dec) {
           .catch((e) => ({ available: false, note: 'preview compute failed: ' + (e && e.message) }));
         atomicWrite(path.join(PREVIEWS, `${setup.id}.json`),
           JSON.stringify({ ...preview, written_utc: new Date(now).toISOString() }));
+        // Say out loud when a decision was NOT written down, and why. A
+        // silently unrecorded period is exactly the hole this change closes;
+        // replacing it with a quieter hole would be no improvement.
+        const unrecorded = out.actionable && out.intent && !recordable
+          ? `decision NOT recorded yet: entry price for ${out.intent.chunk_start} is not available `
+            + '(the entry candle has not cached) — it is written on a later tick this period'
+          : null;
+        if (unrecorded) process.stderr.write(`live-produce(${setup.id}): ${unrecorded}\n`);
         results.push({ setup: setup.id, state: setup.state, actionable: !!out.actionable,
-          side: out.intent ? out.intent.side : null, note: out.note || null });
+          side: out.intent ? out.intent.side : null, recorded: !!recordable,
+          note: out.note || unrecorded || null });
       } catch (e) {
         results.push({ setup: setup.id, state: setup.state, error: e.message });
         process.stderr.write(`live-produce(${setup.id}): FAILED: ${e.message}\n`);
