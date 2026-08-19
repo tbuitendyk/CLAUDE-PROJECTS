@@ -1,0 +1,77 @@
+The halt is cleared, and I found why your button was doing nothing
+
+tl;dr Your setup is unhalted right now. The button was genuinely broken, not
+being ignored — the machine only accepts a clear request for 15 minutes, and the
+thing that delivered it ran once an hour, so almost every press you made arrived
+too late and was thrown away without telling you. Fixed, tested, and running.
+
+WHY IT DID NOTHING
+
+Three faults stacked, and each one hid the next.
+
+First, the timing was impossible. When you press the button, a request is
+written and something has to carry it to the trading machine. The machine only
+accepts a request that is less than 15 minutes old. The thing carrying it ran
+once an hour. So unless you happened to press in the last few minutes before the
+hour turned, your request arrived 20, 40, 55 minutes old and the machine
+correctly refused it as too old.
+
+This is written in the machine's own log. At 08:08 it recorded a refusal with
+the age attached: 2567 seconds. That is 43 minutes, against a 15 minute limit.
+It happened again at 16:08 with the request you made at 15:22 — 45 minutes.
+
+The equivalent button for the whole machine has always worked, because its
+request is carried every 5 minutes. Yours was put in the wrong place and
+inherited an hourly schedule that cannot meet the 15-minute rule.
+
+Second, a refusal was recorded as a success. Whatever the machine decided, the
+carrying step reported "done" and deleted your request. So each press was thrown
+away by its own failure.
+
+Third, nothing told you. There was no message anywhere saying a clear had been
+refused, so the only thing left to do was press it again — which is what you
+did, and it could never have worked.
+
+WHAT I CHANGED
+
+Your button's request now rides the same 5-minute carry as the machine-wide one.
+That is the actual fix; the rest is making the failure impossible to hide again.
+
+The machine now reports a refusal as a refusal instead of as success, so a
+rejected request is no longer deleted as though it had been delivered. Your
+screen now shows two things it never showed: that a clear is written and waiting
+to be collected, and — if the machine turns one down — that it was refused and
+the reason it gave. Pressing again replaces an old refusal so you are never
+looking at two conflicting messages.
+
+The screen also used to say your request would be carried "on its next sync (a
+few minutes)". That sentence was written for the machine-wide button and copied
+onto yours, where it described something that could not happen. Both now say the
+same thing, and it is now true of both.
+
+One more, found while fixing this: the manual fallback I use when a button
+fails could only clear a machine-wide halt. It could not reach a setup's halt at
+all — so when your button was failing, the backup could not reach it either.
+Same lock-out, different door. It takes a setup name now.
+
+THE HALT ITSELF
+
+Cleared by hand, at 16:12 UTC. The record marks it as a hand clear by me rather
+than a press by you, because that is what it was and the log should not blur
+the two.
+
+Your two trades are untouched and still close on schedule. The master switch was
+not touched. If the reason for the halt were still live, the next check would
+halt it again — that is the check working, and it has not.
+
+HOW I CHECKED IT
+
+I wrote a read-only trace that walks the whole chain and prints what every link
+actually holds; that is what turned "the button does nothing" into the 2567
+seconds above, rather than me guessing. It now also asserts the carry has not
+drifted back to the hourly schedule, and says so loudly if it ever does.
+
+Seven new tests. I broke the fix on purpose and watched each one fail before
+trusting it.
+
+c.
