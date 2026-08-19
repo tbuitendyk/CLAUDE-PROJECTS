@@ -10,54 +10,14 @@ written up, moved on). Complexity: S(mall) / M(edium) / L(arge).
 
 ---
 
-## THE AUTONOMY PROTOCOL (owner directive 2026-08-12 — BINDING)
+## THE AUTONOMY PROTOCOL — SUPERSEDED (2026-08-19)
 
-**STATUS: ARMED (owner, 2026-08-12): "You have the go ahead to implement
-FULLY TO THE END WITHOUT ANY ADDITIONAL OWNER RESPONSE BLOCKING."**
-The two Phase-10 gates are PRE-AUTHORIZED in the same message:
-- 10.3 executor deploy to the box: GO given (schema-1 F1 untouched through it).
-- 10.5 cutover: DECIDED — do NOT retire the old F1 rails; keep both; never
-  both writing orders for the same setup.
-
-**Once this plan is approved, every step in it is PRE-APPROVED. Approval
-happened when the owner approved the plan. There is nothing left to ask.**
-
-The owner's words: when working at night on the approved plan, work
-continually WITHOUT intervention and WITHOUT asking permission to continue.
-Sitting idle waiting for approval is the failure mode — the same one the
-research loop spec already names ("waiting IS the failure", CLAUDE.md).
-
-Rules the session works under during plan execution:
-
-1. **No permission-seeking on plan steps.** Design micro-decisions inside a
-   step (naming, file layout, schema field order, test structure) are the
-   session's to make and to DOCUMENT (commit message + decision log below).
-   AskUserQuestion is FORBIDDEN during overnight execution except for the
-   escalation triggers in rule 3.
-2. **Blocked ≠ stopped.** If a step cannot proceed, mark it [P] PARKED with a
-   written reason in the decision log, and take the NEXT unblocked step. The
-   night ends only when every remaining step is parked-on-owner — and that
-   state is reported in the morning email, not silently.
-3. **Escalation triggers — the ONLY reasons to stop and ask:**
-   a. LIVE MONEY beyond what is already approved: arming any NEW setup with
-      real funds, or changing the trading behavior of the RUNNING F1 pilot.
-      (Building/testing such code is pre-approved; switching it on is not.)
-   b. Destructive/irreversible: deleting live data, force-pushes over history,
-      credential rotation, anything that cannot be undone.
-   c. Outward-facing actions beyond the established channels (email to owner,
-      deploys to our own hosts are established).
-   d. A discovered CONFLICT with a written owner directive — park that step
-      per rule 2; do not burn the night on it.
-4. **Deploy authority at night:** classifier deploys that do NOT touch the
-   running F1 money path are pre-approved (routine all release). Anything
-   touching mx_executor.py or the box waits for the Phase-10 adversarial
-   review gate — but is BUILT and TESTED without waiting.
-5. **The standard change email** (claude-mail-send.sh) remains mandatory per
-   change reaching the environment — it is an FYI, never a wait-for-reply
-   gate.
-6. **Decision log:** every non-obvious choice made under rule 1 gets one line
-   in the "Decision log" section at the bottom of this file, committed with
-   the work. The owner reviews decisions in the morning, not at 3am.
+Replaced by `CLAUDE.md`, RULE SIX — the long loop. The standing parts of this
+protocol (work an approved body of steps through without asking, park what is
+blocked, the escalation triggers, the decision log) now live there and apply
+only while the owner has switched the loop on with `LOOP NOW!`. The
+project-specific authorizations that were recorded here belonged to the F1
+pilot and are closed.
 
 ---
 

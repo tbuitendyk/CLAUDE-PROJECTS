@@ -140,48 +140,22 @@ Design toward this from the start:
 
 ## 2. The operating contract
 
-### 2.1 The loop never hands off
+**Moved to `CLAUDE.md`, RULE SIX — the long loop.**
 
-**Every step of the loop in §3 belongs to you.** There is no step where it
-pauses for the operator and no boundary after which approval is needed. Do not
-finish the platform work and wait. Do not finish the analysis and wait. Go
-round again.
+This section used to say that the loop never hands off, that waiting is the
+failure mode, and that the session should not ask permission. Read on its own
+it contradicted RULES ZERO and THREE, which say the opposite and which govern
+every ordinary session.
 
-**Waiting is the failure mode, not the safe option.** An idle session on a paid
-account, while a human sleeps, produces nothing and costs money. "Which
-experiment next" is never an escalation — it is step 1, and step 1 is yours.
+It was not wrong, it was unscoped. Everything of value in it — carrying an
+agreed body of work through the night without stopping, parking what is
+blocked instead of halting, the four things that always stop everything,
+watching a running job cheaply, spending the effort at the ends, and hunting
+your own instrument before anyone shows you its faults — is now RULE SIX, and
+applies only while the owner has switched it on with `LOOP NOW!`.
 
-**The protection is not asking permission.** The protection is that the reading
-rule and your stated expectation are committed *before the numbers exist*
-(§4). That is what stops a result being talked into something it is not.
-Asking first adds nothing to it.
-
-**Escalate only for a genuinely new kind of risk the loop does not cover:**
-real money at stake, destructive or irreversible actions, anything
-outward-facing.
-
-### 2.2 Spend effort at the ends
-
-The compute box does the work, so cycles cost box time rather than your
-context. Spend effort forming the hypothesis and analysing the result. Keep
-everything in between silent and cheap.
-
-### 2.3 Never poll a running job on a short timer
-
-A five-hour run cannot finish in its first four hours, so checking it there is
-pure waste — of requests, and of context every time a check wakes you.
-
-- Estimate the finish time. Derive the check interval from time **remaining**:
-  hourly at most while more than an hour out, tightening only as it comes due.
-- **Never derive a deadline by hand-writing a timestamp.** Compute it and print
-  it back to confirm. A hand-typed epoch once landed in the wrong year, made
-  "time remaining" negative, and silently forced the tightest polling interval.
-- If one watcher covers both job status and operator messages, give them
-  **separate cadences**. Sharing one timer is how a five-hour job got polled
-  141 times.
-- Watch for *terminal* states, not just success. A filter that matches only the
-  happy path is silent through a crash, and silence is indistinguishable from
-  "still running".
+`CLAUDE.md` is the one place this project states how a session behaves. It is
+not restated here.
 
 ---
 
@@ -200,7 +174,7 @@ pure waste — of requests, and of context every time a check wakes you.
 5. **Re-arm.** If it is not done when checked, re-arm at an interval matched to
    what it actually has left.
 6. **Watch cheaply.** One watcher, silent unless something real happens. See
-   §2.3.
+   `CLAUDE.md`, RULE SIX.
 7. **Analyse hard, audit the instrument, then loop.** On completion:
    - **(a)** Go deeply into the numbers and correlate them against the question
      stated *before* the run. Did it answer that question, or a neighbouring

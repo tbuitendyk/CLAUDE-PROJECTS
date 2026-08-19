@@ -31,6 +31,10 @@ If the owner asks a QUESTION, answer the question. A question is not a work
 order, and "while I was in there I also fixed…" is the failure this rule
 exists to prevent.
 
+**The one exception is RULE SIX — the long loop — and it exists only while
+the owner has switched it on, by name, for a named body of work. Off is the
+default and off is where it returns.**
+
 
 
 ## RULE ONE — never name anything the owner cannot see
@@ -140,6 +144,10 @@ argument that persuaded me as the authorisation.
 - **This composes with RULE ZERO, it does not replace it.** RULE ZERO says
   permission is per-task; RULE THREE says even permitted changes and tasks do
   not begin until the words are said.
+- **The one exception is RULE SIX — the long loop.** `LOOP NOW!` hands a
+  session a named body of work to carry unattended; `GO NOW!` never does
+  and never grows into it. Read RULE SIX before assuming anything about
+  either phrase.
 
 
 ## RULE FOUR — a control is not finished until it lines up (owner directive, 2026-08-19)
@@ -188,6 +196,88 @@ What that means concretely:
 
 - **No user-facing functionality that the user cannot completely control and originate using the interface**
 - **No operational data (with the exception of data specific to programmation) that the user cannot access**
+
+
+## RULE SIX — the long loop (owner-granted exception to RULES ZERO and THREE)
+
+**Off is the default.** This rule does nothing until the owner switches it on,
+by name, for a named body of work — and it switches back off when that work
+ends. Nothing below applies to ordinary sessions.
+
+RULES ZERO and THREE make every change wait for the owner. That is right for
+ordinary work and it stays right. But it makes one thing impossible: leaving a
+session to carry an agreed plan through the night while the owner sleeps. An
+idle session on a paid account produces nothing and costs money, and "which
+step next" is not worth waking someone for when the steps are already written
+down and approved.
+
+- **How it is granted: the owner writes `LOOP NOW!`** and says what the loop
+  covers. Nothing else grants it — not "carry on", not "work through it", not
+  an approved plan by itself, and NOT `GO NOW!`. The two phrases are
+  deliberately different so one can never be read into the other.
+- **What it covers: the named work and nothing else.** Steps written down and
+  approved before the loop started are approved for its duration. Work
+  discovered along the way is NOT in the loop — it is written down and left
+  for the owner, exactly as RULE ZERO requires.
+- **Inside the loop, do not stop to ask.** Small choices inside an approved
+  step — naming, file layout, test structure, ordering — are the session's to
+  make and to record. Asking about those is the failure, not the caution.
+- **Blocked is not stopped.** A step that cannot proceed is PARKED with a
+  written reason, and the next unblocked step is taken. The loop ends when the
+  work is done or everything left is parked — and that state is reported,
+  never left silent.
+
+**Four things still stop everything, and the loop never softens them:**
+
+- **Real money.** Arming anything with real funds, or changing the behaviour of
+  anything already trading. Building and testing that code is inside the loop;
+  switching it on never is.
+- **Anything that cannot be undone.** Deleting live data, rewriting pushed
+  history, changing credentials.
+- **Anything reaching outside the established channels.**
+- **A conflict with something the owner has written down.** Park it. Do not
+  spend the night arguing with a directive.
+
+**What makes this safe is not permission — it is committing in advance.** The
+thing that stops a result being talked into something it is not is that the
+success rule and the expected outcome were written down BEFORE the numbers
+existed. Asking first adds nothing to that. A loop that skips it has no
+protection at all, whether it asks or not.
+
+**The record is the deliverable.** Every non-obvious choice gets one line in
+the decision record, committed with the work. Every change that reaches the
+environment is reported. The owner reviews decisions in the morning, not at
+3am.
+
+**Watch running work cheaply, not anxiously.**
+
+- A five-hour job cannot finish in its first four hours. Set the check interval
+  from time REMAINING — hourly at most while more than an hour out, tightening
+  only as it comes due.
+- **Never hand-type a deadline.** Compute it and print it back to confirm. A
+  hand-typed timestamp once landed in the wrong year, made "time remaining"
+  negative, and silently forced the tightest possible checking.
+- One watcher, silent unless something real happens. If one watcher covers both
+  a job and messages, give them SEPARATE timings — sharing one timer is how a
+  five-hour job got checked 141 times.
+- **Watch for ENDED states, not just success.** A check that only matches the
+  happy path stays silent through a crash, and silence reads exactly like
+  "still running".
+
+**Spend the effort at the ends.** The machine does the work. Spend the thinking
+on forming the question and on tearing into the answer; keep everything in
+between silent and cheap.
+
+**Hunt your own instrument.** On every completed step, go looking for what the
+measurement gets wrong before anyone shows you — what it counts that it should
+not, what it leaves out, whether the two things being compared are really
+comparable, whether any part of the number could be got with no skill at all.
+The next step stays provisional until what you found is fixed. A fault the
+owner finds is a fault that already shaped a decision.
+
+**The loop ends** when the work is done, when everything left is parked, or
+when the owner says stop. It does not carry into the next body of work; the
+next long loop needs its own `LOOP NOW!`.
 
 
 ## Working style (all sessions)
