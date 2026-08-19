@@ -230,8 +230,11 @@ module.exports.theUnhaltRequestIsSingleUse = async function () {
 module.exports.theTradingTabOffersTheControlOnlyWhenHalted = function () {
   const src = fs.readFileSync(path.join(ROOT, 'public', 'trading.html'), 'utf8')
     .replace(/<!--[\s\S]*?-->/g, '').split('\n').filter((l) => !/^\s*\/\//.test(l)).join('\n');
-  const i = src.indexOf('if(d.halted)strips.push(');
-  assert(i >= 0, 'the LIVE page no longer shows a halt banner');
+  // The box-level halt banner moved out of the one hardcoded config's screen and
+  // into boxControls(), which every real config's screen renders — the halt
+  // belongs to the MACHINE, so retiring a config must not take its release with it.
+  const i = src.indexOf('if(b.halted)strips.push(');
+  assert(i >= 0, 'the box halt banner is gone from the Trading tab');
   const block = src.slice(i, i + 900);
   assert(/id="btnUnhalt"/.test(block), 'the halt banner offers no way out — a halt is a dead end from this screen');
   assert(/api\/pilot\/unhalt/.test(src), 'nothing calls the unhalt endpoint');

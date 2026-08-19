@@ -34,7 +34,7 @@ const avg = (a) => (a.length ? a.reduce((x, y) => x + y, 0) / a.length : null);
 // Replay one setup's events (real + paper) into its book. Real and paper are
 // SEPARATE ledgers — a paper book holds no exchange assets and its P&L must
 // never mix with real money.
-function deriveSetup(events, setupId) {
+function deriveSetup(events, setupId, extraDecisions = []) {
   const open = {}; const paperOpen = {};
   let realized = 0; let paperRealized = 0;
   // R16: execution fidelity measures ONE population — REAL, non-recovered fills vs
@@ -53,6 +53,12 @@ function deriveSetup(events, setupId) {
   // offer the way out — the halt was settable from the first day and had neither.
   let halted = false;
   let haltReason = null;
+  // THE DECISION HISTORY — one row per decision day. The profile view returned
+  // none at all, so a profile's screen could show its positions and its money
+  // but never WHAT IT DECIDED or why, which is the record the whole engine
+  // exists to produce. Keyed by chunk_start so a re-ship within a period is one
+  // row, not two.
+  const decisions = {};
 
   const key = (e) => e.chunk_start;
   for (const e of events) {
@@ -78,6 +84,7 @@ function deriveSetup(events, setupId) {
     }
     switch (e.event) {
       case 'ENTRY_FILL':
+        if (decisions[e.chunk_start]) decisions[e.chunk_start].fate = 'filled';
         open[key(e)] = { chunk_start: e.chunk_start, side: e.side, qty: e.qty,
           entry_price: e.price, entry_utc: e.utc, exit_due_ts: e.exit_due_ts,
           decision_price: e.decision_price, fill_deviation: e.fill_deviation, paper: false };
@@ -121,6 +128,15 @@ function deriveSetup(events, setupId) {
       // otherwise. lib/pilotview.js surfaces all of these for F1; only its
       // generalized twin was missing them, and an asymmetry between the two is
       // an oversight rather than a decision (the QC-122 shape, found 2026-08-18).
+      case 'INTENT_SEEN':
+        decisions[e.chunk_start] = {
+          chunk_start: e.chunk_start, utc: e.utc, side: e.side,
+          votes: e.per_member || null, quorum: e.quorum ?? null,
+          decision_price: e.decision_price ?? null,
+          input_hash: e.input_hash || null,
+          fate: e.side === 'FLAT' ? 'flat — no trade' : 'seen',
+        };
+        break;
       case 'SETUP_HALT_SET':
         halted = true; haltReason = e.reason || null;
         incidents.push({ utc: e.utc, kind: e.event, detail: e.reason || '' });
@@ -171,6 +187,25 @@ function deriveSetup(events, setupId) {
     marginFloor,
     halted,
     haltReason,
+    // Newest first, and merged with the profile's own decision LOG so days the
+    // committee stood down appear too: a FLAT call ships no intent, so the
+    // journal alone would show only the days that traded and the screen would
+    // read as though nothing was decided in between.
+    decisions: (() => {
+      const merged = { ...decisions };
+      for (const d of (extraDecisions || [])) {
+        if (!d || !d.chunk_start || merged[d.chunk_start]) continue;
+        merged[d.chunk_start] = {
+          chunk_start: d.chunk_start, utc: d.produced_utc || null, side: d.side,
+          votes: d.per_member || null, quorum: d.quorum ?? null,
+          decision_price: d.decision_price ?? null, input_hash: d.input_hash || null,
+          fate: d.side === 'FLAT' ? 'stand down' : 'recorded',
+        };
+      }
+      return Object.values(merged)
+        .sort((a, b) => String(b.chunk_start).localeCompare(String(a.chunk_start)))
+        .slice(0, 30);
+    })(),
     realizedPnl: round(realized, 4),
     paperRealizedPnl: round(paperRealized, 4),
     unrealizedPnl,
@@ -214,7 +249,30 @@ function setupStatus(setup, file = journalFile()) {
       return t == null || t >= epoch;
     })
     : events;
-  const book = deriveSetup(scoped, setup.id);
+  // The profile's own decision LOG supplies the days that stood down — a FLAT
+  // call ships no intent, so the journal records nothing for it and the history
+  // would silently skip every day the committee decided not to trade.
+  let logged = [];
+  try { logged = require('./mirror').loadDecisions(setup.id); } catch (_) { logged = []; }
+  const book = deriveSetup(scoped, setup.id, logged);
+  // WHEN EACH DECISION ACTS. A decision is keyed on the START of its feature
+  // window but acts entryOffsetH later — four days and an hour apart on this
+  // geometry. Dating a row by the window makes a current record read as days
+  // dead, which is exactly how the owner was told there were "no decisions for
+  // the past 4 decision days" when every day had one. The offset comes from the
+  // profile's OWN geometry, never a constant.
+  let offH = 0;
+  try {
+    const { GEOMETRIES } = require('../dataset');
+    const g = GEOMETRIES[((setup.configSnapshot || {}).branch || {}).geometry];
+    offH = (g && g.entryOffsetH) || 0;
+  } catch (_) { offH = 0; }
+  book.decisions = (book.decisions || []).map((d) => ({
+    ...d,
+    entry_utc: d.chunk_start && offH
+      ? new Date(Date.parse(d.chunk_start) + offH * 3600000).toISOString()
+      : null,
+  }));
   return {
     id: setup.id, name: setup.name, state: setup.state,
     tradedPair: setup.tradedPair, clipUsd: setup.clipUsd, stopPct: setup.stopPct,

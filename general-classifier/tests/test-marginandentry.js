@@ -104,9 +104,11 @@ function paperClosedRowsCarryTheEntryTimeToo() {
 function noPositionTableIsStillHeadedByTheWindow() {
   assert.ok(!/th\('chunk','chunk'\)/.test(HTML),
     'a table still leads with the feature window, which is not the day anything happened');
+  // Two tables now, not four: the duplicate screen for the one hardcoded config
+  // is gone, so open positions and recent closed are each rendered exactly once.
   const cells = HTML.match(/entryCell\(/g) || [];
-  assert.ok(cells.length >= 4,
-    `all four position tables must use the shared entry cell; found ${cells.length}`);
+  assert.ok(cells.length >= 2,
+    `both position tables must use the shared entry cell; found ${cells.length}`);
 }
 
 function theEntryCellNeverInventsAFillTime() {
@@ -120,11 +122,11 @@ function bothSwitchButtonsAreHeldWhileARequestIsInFlight() {
   // The old predicates were `armed && !armPending` and `!armed && !armPending`,
   // which unlock BOTH buttons whenever a request is pending — the owner watched
   // exactly that and said it "doesn't make any sense".
-  assert.ok(/id="btnStart" \$\{d\.armed\|\|d\.armPending\?'disabled':''\}/.test(HTML),
+  assert.ok(/id="btnStart" \$\{b\.armed\|\|b\.armPending\?'disabled':''\}/.test(HTML),
     'START is not held while a request is in flight');
-  assert.ok(/id="btnStop" \$\{!d\.armed\|\|d\.armPending\?'disabled':''\}/.test(HTML),
+  assert.ok(/id="btnStop" \$\{!b\.armed\|\|b\.armPending\?'disabled':''\}/.test(HTML),
     'STOP is not held while a request is in flight');
-  assert.ok(!/\$\{d\.armed&&!d\.armPending\?'disabled':''\}/.test(HTML),
+  assert.ok(!/armed&&!\w+\.armPending\?'disabled':''/.test(HTML),
     'the old both-buttons-live predicate is still present');
 }
 

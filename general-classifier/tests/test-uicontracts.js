@@ -119,19 +119,19 @@ const LT = fs.readFileSync(path.join(ROOT, 'public', 'trading.html'), 'utf8')
 // already returns the pilot; drawSetups was throwing it away (audit 2026-08-17).
 //
 // Watched failing 2026-08-17: restoring `stopPct:null` on that row fails this.
-function theF1RowReportsTheStopThatIsActuallyApplied() {
-  const i = LT.indexOf("id:'f1-pilot'");
-  assert(i >= 0, 'the Setups table no longer synthesises the F1 pilot row');
-  const row = LT.slice(i, i + 400);
-  assert(/pilot\s*&&\s*pilot\.fixedStopPct/.test(row),
-    'the F1 row hardcodes its protective stop instead of reading the applied value — a risk parameter must never be a literal on a screen');
-  assert(!/stopPct\s*:\s*null\s*,/.test(row),
-    'stopPct is pinned to null again on the F1 row');
-  assert(/const \[\{configs, pilot\}/.test(LT),
-    'drawSetups no longer destructures the pilot, so it cannot know the applied stop');
+// The Setups table used to SYNTHESISE a row client-side for a config that was
+// not a setup record at all, and the row hardcoded its protective stop to null —
+// a risk parameter reported as absent while the screen two clicks away showed
+// the real one. Both the row and the hazard are gone: every row on this table is
+// now a real record, so there is nothing left to synthesise a stop for.
+function theSetupsTableInventsNoRows() {
+  assert(!/id:'f1-pilot'/.test(LT),
+    'the Setups table still synthesises a row for a config that is not a setup record');
+  assert(!/rows\.unshift\(/.test(LT),
+    'something is still being pushed onto the Setups table that did not come from the registry');
 }
 
-module.exports.theF1RowReportsTheStopThatIsActuallyApplied = theF1RowReportsTheStopThatIsActuallyApplied;
+module.exports.theSetupsTableInventsNoRows = theSetupsTableInventsNoRows;
 
 // A SECTION STARTS ONE POLL CHAIN, NOT ONE PER VISIT. drawSweep armed a poller
 // on every visit and each re-armed itself against the freshly rendered element,

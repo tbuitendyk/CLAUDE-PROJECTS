@@ -152,8 +152,10 @@ module.exports.everyConsumerOfTheMergedListFiltersItToOneBook = function () {
   // this function against a setup holding both books at once and asserts neither
   // side ever reports the other's money. That is strictly stronger than a grep —
   // the grep was green the whole time the browser check could not discriminate.
-  assert.ok(flat.includes('filter(p=>g.f1?!p.paper:(isPaper?p.paper:!p.paper))'),
+  assert.ok(flat.includes('filter(p=>isPaper?p.paper:!p.paper)'),
     'the Dashboard card counts both books again');
+  assert.ok(!/g\.f1/.test(LT),
+    'a config is being special-cased on the Trading tab again — every config is the same kind now');
   assert.ok(/function dashTotals\(/.test(LT),
     'dashTotals was inlined back into the render, which puts the Dashboard money beyond '
     + 'the reach of test-dashtotals.js — the only test that can tell the two books apart');

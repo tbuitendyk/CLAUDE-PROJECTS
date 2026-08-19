@@ -284,20 +284,18 @@ function renderNav(){
   $('#subTabs').querySelectorAll('.tab').forEach(t=>t.onclick=()=>{ sub=t.dataset.k; localStorage.setItem('lt-sub',sub); draw(); });
 }
 
-// ---- data: configs (greenlights + channels) with F1 as a first-class row ----
+// ---- data: the configs, plus the BOX they run on ---------------------------
+// There used to be a row invented here client-side for a config that was not a
+// greenlight at all — it appeared in the table beside real ones, could not be
+// activated, renamed or retired, and its book lived on separate rails. That is
+// the whole thing the owner had removed. Configs now come from one place.
+//
+// `box` is the machine, not a config: armed/halted, the wallet, the margin
+// level, the protective stop. One box serves every config on it, so those facts
+// are fetched once here and shown wherever they are relevant.
 async function fetchConfigs(){
-  const [c, pilot]=await Promise.all([apiOr('api/live/configs', ({configs:[]})), apiOr('api/pilot', null)]);
-  const configs=(c.configs||[]);
-  // F1: the running pilot, integrated as a config row (owner: no ugly duckling).
-  // Its real channel state comes from the pilot's arm switch; it has no paper channel.
-  if(pilot && pilot.present!==false){
-    configs.unshift({ id:'F1', f1:true, pair:'LTCUSDT', target:'mx-1', campaign:'pilot',
-      why:'the F1 live execution pilot (pre-registered, PILOT-F1.md)',
-      status: pilot.halted ? 'active real (HALTED)' : (pilot.armed ? 'active real' : 'idle'),
-      channels:{ real:{ setupId:'f1-pilot', state: pilot.armed?'live':'stopped', open:(pilot.openPositions||[]).length }, paper:null },
-      createdUtc:'2026-08-11T00:00:00Z' });
-  }
-  return { configs, pilot };
+  const [c, box]=await Promise.all([apiOr('api/live/configs', ({configs:[]})), apiOr('api/pilot', null)]);
+  return { configs: (c.configs||[]), box };
 }
 const chanOf=(cfg)=>cfg&&cfg.channels?cfg.channels[branch==='paper'?'paper':'real']:null;
 
@@ -318,17 +316,17 @@ async function drawConfigs(){
       // requirement and offered no way to meet it.
       const ch2=(g.channels&&g.channels[branch==='paper'?'paper':'real'])||null;
       const needsKey=branch==='real'&&!(ch2&&ch2.keyRefSet);
-      const realBlocked=branch==='real'&&!g.f1&&needsKey;
+      const realBlocked=needsKey;
       return `<tr class="clickable" data-id="${g.id}">
-      <td><b>${esc(g.name||g.id)}</b>${g.f1?' <span class="badge b-live" title="the pre-registered live pilot">pilot</span>':''}
-        ${g.f1?'':`<button data-ren="${g.id}" class="themebtn" title="rename this config and restate its reasoning. Labels only — nothing here changes what it trades.">Rename</button>`}</td>
+      <td><b>${esc(g.name||g.id)}</b>
+        <button data-ren="${g.id}" class="themebtn" title="rename this config and restate its reasoning. Labels only — nothing here changes what it trades.">Rename</button></td>
       <td>${esc(g.pair||'—')}</td><td class="muted">${esc(g.campaign||'—')}</td>
       <td style="max-width:20rem;white-space:normal;text-align:left" class="muted">${esc(g.why)}</td>
       <td style="white-space:nowrap" class="${/active/.test(g.status)?'pos':'muted'}">${esc(g.status)}</td>
-      <td>${g.f1?'':(active
+      <td>${(active
         ? `<button data-deact="${g.id}">Deactivate</button>`
         : `<button data-act="${g.id}" class="pri" ${realBlocked?'disabled title="this config has no sub-account of its own yet. Real orders are placed only from a config\'s OWN sub-account, never a shared one — set its sub-account key on Setup detail first."':''}>${actLabel}</button>`)}</td>
-      <td>${g.f1?'':`<button data-nuke="${g.id}" class="danger" title="back to not-greenlighted: removed from these lists; the saved sweeps it came from are untouched. Refused while any channel is active or winding down.">Nuke</button>`}</td>
+      <td>${`<button data-nuke="${g.id}" class="danger" title="back to not-greenlighted: removed from these lists; the saved sweeps it came from are untouched. Refused while any channel is active or winding down.">Nuke</button>`}</td>
       </tr>`;}).join('')}
   </tbody></table>
   <div class="muted" style="font-size:.72rem;margin-top:.4rem">status vocabulary: idle · active paper · active real · active real, active paper · … deactivating (entries stopped, positions still closing out). Click a row to open its Setup detail on this side.</div></div>`;
@@ -360,18 +358,10 @@ async function confirmActivate(id){
 
 // ---- Setups (this branch's channel records) ----------------------------------
 async function drawSetups(){
-  // fetchConfigs already returns the pilot; this destructured {configs} alone and
-  // threw it away, then synthesised the F1 row with stopPct HARDCODED to null.
-  // So the Setups table said F1 had no protective stop whatever stop was
-  // actually applied — a risk parameter reported as absent while the LIVE page
-  // two clicks away rendered the real one (audit 2026-08-17).
-  const [{configs, pilot}, d]=await Promise.all([fetchConfigs(), api('api/live/setups')]);
+  const [{configs}, d]=await Promise.all([fetchConfigs(), api('api/live/setups')]);
   const wanted=new Set(); const meta={};
   for(const g of configs){ const ch=chanOf(g); if(ch){ wanted.add(ch.setupId); meta[ch.setupId]=g; } }
   const rows=(d.setups||[]).filter(s=>wanted.has(s.id));
-  if(branch==='real'){ const f1=configs.find(g=>g.f1); if(f1) rows.unshift({ id:'f1-pilot', name:'the live rule', state:f1.channels.real.state,
-    tradedPair:'LTCUSDT', clipUsd:10, stopPct:(pilot && pilot.fixedStopPct != null) ? pilot.fixedStopPct : null,
-    engineVersion:'', createdUtc:'2026-08-11' }); }
   if(!rows.length){ $('#view').innerHTML=`<div class="panel empty">No ${branch==='paper'?'paper books':'live setups'} yet — activate a config on the Greenlights page.</div>`; return; }
   $('#view').innerHTML=`<div class="panel"><table><thead><tr>
     ${th('setup','setup')}${th('pair','pair')}${th('state','state')}${th('clip','clip')}${th('stop','stop')}${th('created','created')}</tr></thead><tbody>
@@ -384,7 +374,7 @@ async function drawSetups(){
   </tbody></table></div>`;
   $('#view').querySelectorAll('tr[data-id]').forEach(tr=>tr.onclick=()=>{
     selectedSetupId=tr.dataset.id;
-    const g=meta[tr.dataset.id]; selectedConfig=g?g.id:(tr.dataset.id==='f1-pilot'?'F1':selectedConfig);
+    const g=meta[tr.dataset.id]; selectedConfig=g?g.id:selectedConfig;
     sub='detail'; localStorage.setItem('lt-sub',sub); draw(); });
 }
 
@@ -408,9 +398,9 @@ async function drawSetups(){
 function dashTotals(parts, isPaper){
   let totR=0, totU=0, totOpen=0;
   const rows=parts.map(({g,ch,st})=>{
-    const rp=st?(g.f1?st.realizedPnl:(isPaper?st.paperRealizedPnl:st.realizedPnl)):null;
-    const up=st?(g.f1?st.unrealizedPnl:(isPaper?st.paperUnrealizedPnl:st.unrealizedPnl)):null;
-    const open=st?(st.openPositions||[]).filter(p=>g.f1?!p.paper:(isPaper?p.paper:!p.paper)).length:((ch&&ch.open)||0);
+    const rp=st?(isPaper?st.paperRealizedPnl:st.realizedPnl):null;
+    const up=st?(isPaper?st.paperUnrealizedPnl:st.unrealizedPnl):null;
+    const open=st?(st.openPositions||[]).filter(p=>isPaper?p.paper:!p.paper).length:((ch&&ch.open)||0);
     totR+=rp||0; totU+=up||0; totOpen+=open;
     return {g,ch,rp,up,open};
   });
@@ -423,7 +413,7 @@ async function drawDash(){
   for(const g of configs){
     const ch=chanOf(g); if(!ch)continue;
     let st=null;
-    try{ st=g.f1?await api('api/pilot'):await api('api/live/setups/'+ch.setupId+'/status'); }catch(e){ st=null; fetchFailures.push(e.message); }
+    try{ st=await api('api/live/setups/'+ch.setupId+'/status'); }catch(e){ st=null; fetchFailures.push(e.message); }
     parts.push({g, ch, st});
   }
   if(!parts.length){ $('#view').innerHTML=`<div class="panel empty">Nothing on the ${branch==='paper'?'paper':'live'} side yet.</div>`; return; }
@@ -457,38 +447,13 @@ async function drawDetail(){
   if(!g){ $('#view').innerHTML=`<div class="panel empty">Select a config from the Greenlights page.</div>`; return; }
   selectedConfig=g.id;
   const ch=chanOf(g);
-  if(g.f1&&branch==='paper'){ $('#view').innerHTML=`<div class="panel empty">this is the live rule — it has no paper channel. Switch to Live Trading.</div>`; return; }
   if(!ch){ $('#view').innerHTML=`<div class="panel"><div class="row"><b style="font-size:1rem">${esc(g.id)}</b>
       <span class="badge b-idle">idle</span><div class="spacer"></div>
-      <button id="actBtn" class="pri" ${branch==='real'&&!g.f1?'disabled title="real orders for new configs await per-setup key routing (G8)"':''}>Activate ${branch}</button></div>
+      <button id="actBtn" class="pri">Activate ${branch}</button></div>
       <div class="muted" style="margin-top:.4rem">This config has never run on the ${branch} side. Activate to start it.</div></div>`;
     const b=$('#actBtn'); if(b&&!b.disabled)b.onclick=async()=>{ if(await confirmActivate(g.id)) draw(); };
     return; }
-  // channel exists: registry record + frozen config + pilot anatomy for F1
-  if(g.f1){
-    const pilot=await api('api/pilot');
-    const a=pilot.anatomy||{}; const cfg=pilot.config||{};
-    $('#view').innerHTML=`
-      <div class="panel"><div class="row"><b style="font-size:1rem">the live rule</b> <span class="badge b-live">pilot</span>
-        <span class="${pilot.armed?'pos':'warn'}">${pilot.armed?'RUNNING':'STOPPED'}</span>
-        <div class="spacer"></div><span class="muted" style="font-size:.74rem">start/stop lives on the LIVE page (master switch)</span></div>
-      <div class="muted" style="font-size:.74rem;margin-top:.3rem">Pre-registration: <code>PILOT-F1.md</code>. Pilot P&amp;L is void as edge evidence — this screen measures execution.</div></div>
-      <div class="panel"><div class="k">Tested configuration — how these trades are set up</div>
-        <div style="margin-top:.5rem">${Object.entries(cfg).map(([k,v])=>cfgRow(esc(k),esc(typeof v==='object'?JSON.stringify(v):v))).join('')}</div></div>
-      ${a.committee?`<div class="panel"><div class="k">The committee — who votes, and what each member sees</div>
-        <table style="margin-top:.4rem"><thead><tr>${th('member','member')}${th('model','model','text-align:left')}${th('view','view')}${th('features seen','featuresSeen')}${th('what that view means','viewMeaning','text-align:left')}</tr></thead>
-        <tbody>${a.committee.map((m,i)=>`<tr><td>member ${i+1}</td><td style="text-align:left">${esc(m.model)}</td><td>${esc(m.view)}</td>
-          <td>${m.featuresSeen} of ${a.features.totalVector}</td><td style="text-align:left" class="muted">${esc(m.viewMeaning)}</td></tr>`).join('')}</tbody></table></div>`:''}
-      ${a.pipeline?`<div class="panel"><div class="k">How the decision is made — the full pipeline</div>
-        <div style="margin-top:.4rem;font-size:.82rem;line-height:1.5">${a.pipeline.map(s=>`<p style="margin:.35rem 0">${esc(s)}</p>`).join('')}</div></div>`:''}
-      ${a.features?`<div class="panel"><div class="k">How the comparison assets enter the equation</div>
-        <div style="margin-top:.4rem;font-size:.82rem;line-height:1.5">
-        <p><b>${esc(a.features.note)}</b></p>
-        <p>Each asset contributes ${a.features.perAsset} numbers: <code>${a.features.perAssetNames.join(', ')}</code></p>
-        <p>Each comparison pair adds ${a.features.crossPerPair} cross features: <code>${a.features.crossNames.join(', ')}</code></p>
-        <p>Voting: ${esc(a.voting.rule)}. Dormant band: ±${a.voting.dormantBandPct}% — ${esc(a.voting.labelRule)}.</p></div></div>`:''}`;
-    return;
-  }
+  // channel exists: registry record + frozen config
   const s=await api('api/live/setups/'+ch.setupId);
   if(s.error){ $('#view').innerHTML=`<div class="panel empty">${esc(s.error)}</div>`; return; }
   selectedSetupId=s.id;
@@ -588,15 +553,85 @@ const fateTxt=(f)=>{const s=String(f||'');
 function untilStr(iso){ if(!iso)return''; const ms=Date.parse(iso)-Date.now(); if(ms<=0)return'now / due';
   const h=Math.floor(ms/3.6e6),m=Math.floor(ms%3.6e6/6e4),s=Math.floor(ms%6e4/1e3);
   return h>0?`in ${h}h ${m}m`:(m>0?`in ${m}m ${s}s`:`in ${s}s`); }
+// ---- THE BOX, not a config -------------------------------------------------
+// The master switch, the halt and the margin floor belong to the MACHINE every
+// config runs on, not to any one of them. They used to live on a screen that
+// only one hardcoded config could reach, so retiring that config would have
+// taken the owner's start/stop with it. Rendered here once and shown on the
+// real side of whichever config is being watched.
+function boxControls(b){
+  if(!b || b.present===false) return '';
+  const hbAge=b.lastHeartbeatUtc?(Date.now()-Date.parse(b.lastHeartbeatUtc))/6e4:null;
+  const dead=hbAge==null||hbAge>25;
+  const wb=b.walletBalance||{};
+  const strips=[];
+  if(dead)strips.push(`<div class="banner halted">⛔ EXECUTOR SILENT — last heartbeat ${hbAge==null?'never':hbAge.toFixed(0)+' min ago'} (the box runs every ~10 min). Scheduled exits are NOT firing.</div>`);
+  if(b.halted)strips.push(`<div class="banner halted">⛔ HALT set on the box — new entries stopped for every config; scheduled exits still run.
+    <div class="muted" style="font-size:.78rem;margin:.25rem 0">Reason recorded on the box: ${esc(b.haltReason||'(not recorded)')}</div>
+    <button id="btnUnhalt" class="danger">Clear the halt</button>
+    <span id="unhaltMsg" class="muted" style="font-size:.78rem;margin-left:.5rem">Only after the cause is understood — this does not start trading, and an unfixed cause re-halts on the next check.</span></div>`);
+  else if(!b.armed)strips.push(`<div class="banner stopped">■ engine STOPPED — press START to run. Open positions still exit on schedule.</div>`);
+  return `${strips.join('')}
+    <div class="switch"><div><div class="k">Master switch (yours)</div>
+      <div style="font-size:1.1rem;font-weight:700" class="${b.armed?'pos':'muted'}">${b.armPending?'<span class="warn">PENDING…</span>':(b.armed?'RUNNING':'STOPPED')}</div></div>
+      <div class="spacer"></div>
+      <button class="master start" id="btnStart" ${b.armed||b.armPending?'disabled':''}>START engine</button>
+      <button class="master stop" id="btnStop" ${!b.armed||b.armPending?'disabled':''}>STOP engine</button></div>
+    ${b.armPending?`<div class="panel" style="font-size:.8rem"><b>Waiting on the box.</b> Your request is written and signed;
+      the box collects it on its next sync (up to ~5 minutes) and this turns ${b.armed?'STOPPED':'RUNNING'} when it has.
+      Nothing more to press — both buttons are held until it lands.</div>`:''}
+    <div class="panel" style="font-size:.85rem"><b>Protective stop:</b> ${b.fixedStopPct!=null?`<span class="pos">${(b.fixedStopPct*100).toFixed(2)}%</span> applied to every order`:'<span class="warn">none set</span>'} ·
+      <b>Margin level:</b> ${marginCell(wb.marginLevel,b.marginFloor,b.marginFloorRequested)} ·
+      <b>Sub-account wallet:</b> ${wb.usdtFree!=null?`$${wb.usdtFree.toFixed(2)} USDT · ${wb.ltcFree!=null?wb.ltcFree.toFixed(6):'—'} LTC`:'<span class="muted">no snapshot yet</span>'}</div>
+    <div class="panel"><div class="k">Margin floor — the level at which entries stop</div>
+      <div class="muted" style="font-size:.78rem;margin-top:.3rem">Margin level is collateral divided by debt, so it FALLS toward danger.
+        This engine borrows to short, and until you set a number here nothing stops it as that falls.
+        Binance liquidates around 1.1–1.3, so a floor has to sit meaningfully above that to be a brake rather than an epitaph.
+        Setting it halts NEW ENTRIES only — scheduled exits keep running, and clearing the halt is still your button.</div>
+      <div class="row" style="margin-top:.5rem">
+        <label class="muted" title="the margin level at which new entries stop. Blank means no floor.">margin floor
+          <input id="mfIn" type="number" min="0" step="0.1" value="${b.marginFloorRequested??''}" placeholder="none" style="width:7rem"></label>
+        <button id="mfSet">Set the floor</button>
+        <span id="mfMsg" class="muted" style="font-size:.76rem"></span>
+      </div></div>`;
+}
+function wireBoxControls(b){
+  const go=async(armed)=>{ const verb=armed?'START':'STOP';
+    if(!confirm(`${verb} the live engine?`))return;
+    const out=await post(armed?'api/pilot/arm':'api/pilot/disarm'); if(out) draw(); };
+  const bs=$('#btnStart'); if(bs)bs.onclick=()=>go(true);
+  const bp=$('#btnStop'); if(bp)bp.onclick=()=>go(false);
+  const bu=$('#btnUnhalt');
+  if(bu)bu.onclick=async()=>{
+    if(!confirm('Clear the halt?\n\nOnly do this once you understand WHY it halted. This does not start trading — '
+      + 'the master switch still governs entries — and if the cause is unfixed the next reconcile check halts again.\n\n'
+      + `Reason recorded on the box: ${(b&&b.haltReason)||'(not recorded)'}`))return;
+    bu.disabled=true;
+    const out=await post('api/pilot/unhalt');
+    $('#unhaltMsg').textContent = out ? 'requested — the control plane carries it on its next sync (a few minutes), then the box clears its own flag' : '';
+    bu.disabled=false;
+  };
+  const mf=$('#mfSet');
+  if(mf)mf.onclick=async()=>{
+    const raw=$('#mfIn').value.trim();
+    const floor=raw===''?null:Number(raw);
+    if(!confirm(floor==null
+      ? 'Clear the margin floor?\n\nNothing will stop entries as the account approaches liquidation.'
+      : `Halt new entries when margin level falls to ${floor} or below?\n\nScheduled exits keep running.`))return;
+    mf.disabled=true;
+    const out=await post('api/pilot/margin-floor',{floor});
+    $('#mfMsg').textContent=out?'saved — the box picks this up on its next sync':'';
+    mf.disabled=false;
+    if(out)draw();
+  };
+}
 async function drawLive(){
-  const {configs}=await fetchConfigs();
+  const {configs, box}=await fetchConfigs();
   const g=configs.find(x=>x.id===selectedConfig)||configs.find(x=>chanOf(x));
   if(!g){ $('#view').innerHTML=`<div class="panel empty">Select a config (Greenlights or Dashboard) to watch it run.</div>`; return; }
   selectedConfig=g.id;
   const ch=chanOf(g);
-  if(g.f1&&branch==='paper'){ $('#view').innerHTML=`<div class="panel empty">F1 has no paper channel — switch to Live Trading.</div>`; return; }
   if(!ch){ $('#view').innerHTML=`<div class="panel empty">${esc(g.id)} has never run on the ${branch} side.</div>`; return; }
-  if(g.f1){ await drawPilotLive(); return; }
   const st=await api('api/live/setups/'+ch.setupId+'/status');
   if(st.error){ $('#view').innerHTML=`<div class="panel empty">${esc(st.error)}</div>`; return; }
   const isP=branch==='paper';
@@ -611,6 +646,7 @@ async function drawLive(){
   $('#view').innerHTML=`
     <div class="banner ${st.state==='stopped'?'stopped':'running'}">
       <b>${esc(g.id)}</b> ${isP?paperBadge:''} — ${esc(g.status)}${st.runEpochUtc?` <span class="muted">· displayed run since ${st.runEpochUtc.slice(0,16)} UTC</span>`:''}</div>
+    ${isP?'':boxControls(box)}
     ${st.halted?`<div class="banner halted">⛔ HALT set for this config — new entries stopped; scheduled exits still run.
       <div class="muted" style="font-size:.78rem;margin:.25rem 0">Reason recorded on the box: ${esc(st.haltReason||'(not recorded)')}</div>
       <button id="btnSetupUnhalt" class="danger">Clear the halt</button>
@@ -647,6 +683,20 @@ async function drawLive(){
         <td>${entryCell(c)}</td><td class="${c.side==='LONG'?'pos':'neg'}">${c.side}${c.paper?' <span class="badge b-paper">P</span>':''}</td>
         <td>${c.entry_price??'—'}</td><td>${c.exit_price??'—'}</td><td class="${cls(c.pnl)}">${money(c.pnl)}</td></tr>`).join(''):'<tr><td colspan="5" class="empty">none closed yet</td></tr>'}
       </tbody></table></div>
+    <div class="panel"><div class="k">Daily decision history <span style="text-transform:none;letter-spacing:0">— one row per decision day, newest first</span></div>
+      <div class="muted" style="font-size:.68rem;margin:.3rem 0"><b>entry (UTC)</b> = the moment the call acts (window start + the geometry's entry offset) ·
+        <b>window</b> = the feature window it was computed from ·
+        <b>member votes</b> = the committee in order — UP = long, DOWN = short, no call = named no direction ·
+        <b>call</b> = what the quorum decided · <b>outcome</b> = what the executor did with it</div>
+      <table><thead><tr>${th('entry (UTC)','entryUtc','text-align:left')}${th('window','chunk','text-align:left')}${th('member votes','votes','text-align:left')}${th('call','side','text-align:left')}${th('outcome','fate','text-align:left')}</tr></thead><tbody>
+      ${(st.decisions||[]).length?st.decisions.map(dec=>{
+        const vtxt=(dec.votes||[]).map(v=>v>0?'UP':v<0?'DOWN':'no call').join(' · ')||'—';
+        const lab=dec.side==='LONG'?['LONG','pos']:dec.side==='SHORT'?['SHORT','neg']:['no trade','muted'];
+        return `<tr><td style="text-align:left;white-space:nowrap">${esc((dec.entry_utc||'').replace('T',' ').slice(0,16))||'—'}</td>
+        <td style="text-align:left;white-space:nowrap" class="muted">${esc((dec.chunk_start||'').slice(0,10))}</td>
+        <td style="text-align:left">${esc(vtxt)}</td><td style="text-align:left;white-space:nowrap" class="${lab[1]}"><b>${lab[0]}</b></td>
+        <td style="text-align:left" class="muted">${esc(dec.fate||'')}</td></tr>`;}).join(''):'<tr><td colspan="5" class="empty">no decisions recorded yet</td></tr>'}
+      </tbody></table></div>
     <div class="panel"><div class="k">Incidents</div>
       <table style="margin-top:.4rem"><thead><tr>${th('utc','utc')}${th('kind','kind')}${th('detail','detail','text-align:left')}</tr></thead><tbody>
       ${st.incidents.length?st.incidents.map(i=>`<tr><td>${(i.utc||'').slice(0,19)}</td><td class="warn">${esc(i.kind)}</td>
@@ -656,6 +706,7 @@ async function drawLive(){
   // day one and nothing could lift it, so a halted config was finished. Clearing
   // does not start trading — the config's own state still governs entries — and
   // an unfixed cause re-halts on the next check.
+  if(!isP) wireBoxControls(box);
   const su=$('#btnSetupUnhalt');
   if(su)su.onclick=async()=>{
     if(!confirm(`Clear the halt on ${ch.setupId}?\n\nOnly once you understand WHY it halted. `
@@ -669,168 +720,6 @@ async function drawLive(){
     su.disabled=false;
   };
 }
-// F1's LIVE page: ALL the running info from the pilot page, token-styled.
-async function drawPilotLive(){
-  const d=await api('api/pilot');
-  if(!d||d.present===false){ $('#view').innerHTML=`<div class="panel empty">No pilot journal yet.</div>`; return; }
-  const s=d.liveStatus||{}; const hbAge=d.lastHeartbeatUtc?(Date.now()-Date.parse(d.lastHeartbeatUtc))/6e4:null;
-  const dead=hbAge==null||hbAge>25;
-  const mirrorBreaks=d.mirror&&d.mirror.breaks?d.mirror.breaks:0;
-  const strips=[];
-  if(mirrorBreaks>0)strips.push(`<div class="banner halted">⛔ MIRROR BREAK — ${mirrorBreaks} live decision(s) no longer reproduce. Box halted; investigate before re-arming.</div>`);
-  if(dead)strips.push(`<div class="banner halted">⛔ EXECUTOR SILENT — last heartbeat ${hbAge==null?'never':hbAge.toFixed(0)+' min ago'} (box runs ~10 min). Scheduled exits are NOT firing.</div>`);
-  // THE HALT NEEDS A WAY OUT THAT IS NOT A SHELL. A halt never self-clears, by
-  // design — but until 2026-08-18 clearing one required logging into the box,
-  // so from this screen a halt was a dead end. The button writes a request the
-  // control plane carries on its next sync; it does NOT arm, and if the cause is
-  // unfixed the next reconcile tick re-halts.
-  if(d.halted)strips.push(`<div class="banner halted">⛔ HALT set — new entries stopped; scheduled exits still run.
-    <div style="margin-top:.45rem">
-      <button id="btnUnhalt" class="danger">Clear the halt</button>
-      <span id="unhaltMsg" class="muted" style="font-size:.78rem;margin-left:.5rem">Only after the cause is understood — this does not start trading, and an unfixed cause re-halts on the next check.</span>
-    </div></div>`);
-  else if(!d.armed)strips.push(`<div class="banner stopped">■ engine STOPPED — press START to run. Open positions still exit on schedule.</div>`);
-  else if(!dead)strips.push(`<div class="banner running">● RUNNING — heartbeat ${hbAge==null?'—':hbAge.toFixed(0)+' min ago'}</div>`);
-  const wb=d.walletBalance||{};
-  const lp=d.ltcPosition||{};
-  const preview=(()=>{ const p=d.previewDecision; if(!p)return'';
-    if(!p.available)return`<div class="muted" style="margin-bottom:.5rem">Next decision: ${esc(p.note||'not yet computable')}</div>`;
-    const label=p.side==='LONG'?'▲ open a LONG':p.side==='SHORT'?'▼ open a SHORT':'■ STAND DOWN — no position';
-    const c=p.side==='LONG'?'pos':p.side==='SHORT'?'neg':'warn';
-    return`<div style="margin-bottom:.5rem;padding:.45rem;border:1px solid var(--line);border-radius:5px">
-      <b>Plan for the next entry (${(p.entry_utc||'').replace('T',' ').slice(0,16)} UTC):</b> <span class="${c}" style="font-weight:bold">${label}</span>
-      ${Array.isArray(p.per_member)?`<span class="muted">· votes [${p.per_member.join(',')}], quorum ${p.quorum}</span>`:''}</div>`; })();
-  const items=(s.items||[]).map(it=>`<tr><td style="text-align:left;vertical-align:top;padding:.5rem .5rem"><b>${esc(it.what)}</b>
-    <div class="muted" style="font-size:.74rem;margin-top:.2rem;max-width:52rem">${esc(it.why||'')}</div></td>
-    <td style="text-align:right;vertical-align:top;white-space:nowrap;padding:.5rem .5rem">${it.whenUtc?`<span class="pos">${untilStr(it.whenUtc)}</span><div class="muted" style="font-size:.72rem">${it.whenUtc.replace('T',' ').slice(0,16)} UTC</div>`:'<span class="muted">—</span>'}</td></tr>`).join('');
-  const hist=(d.decisions&&d.decisions.length)?`<div style="margin-top:.9rem">
-    <div class="k" style="margin-bottom:.3rem">Daily decision history <span style="text-transform:none;letter-spacing:0">— one row per decision day, newest first</span></div>
-    <div class="muted" style="font-size:.68rem;margin-bottom:.3rem"><b>entry (UTC)</b> = the moment the call acted (96h window start + 97h) ·
-      <b>window</b> = the 96h feature window it was computed from ·
-      <b>member votes</b> = the four committee members in order — full, prices, volume, cross — UP = long, DOWN = short, no call = named no direction ·
-      <b>call</b> = what the quorum decided · <b>outcome</b> = what the executor did with it</div>
-    <div class="scrollbox"><table style="margin:0"><thead><tr>${th('entry (UTC)','entryUtc','text-align:left')}${th('window','window','text-align:left')}${th('member votes','votes','text-align:left')}${th('call','call','text-align:left')}${th('outcome','outcome','text-align:left')}</tr></thead><tbody>
-    ${d.decisions.map(dec=>{const votes=Array.isArray(dec.votes)?dec.votes.map(v=>`<span class="${vcls(v)}" title="${vtip(v)}">${vtxt(v)}</span>`).join(' · '):'<span class="muted">not recorded</span>';
-      const lab=dec.side==='LONG'?['▲ Open LONG','pos']:dec.side==='SHORT'?['▼ Open SHORT','neg']:['■ STAND DOWN','vote-as'];
-      // dated by the entry the call ACTS on, not the window it was built from —
-      // 4 days apart, and dating by the window made a current record look dead.
-      const acts=dec.entry_utc?dec.entry_utc.replace('T',' ').slice(0,16):'—';
-      return`<tr><td style="text-align:left;white-space:nowrap">${esc(acts)}</td>
-      <td style="text-align:left;white-space:nowrap" class="muted">${esc((dec.chunk_start||'').slice(0,10))}</td>
-      <td style="text-align:left">${votes}</td><td style="text-align:left;white-space:nowrap" class="${lab[1]}"><b>${lab[0]}</b></td>
-      <td style="text-align:left" class="muted">${esc(fateTxt(dec.fate))}</td></tr>`;}).join('')}</tbody></table></div></div>`:'';
-  $('#view').innerHTML=`
-    ${strips.join('')}
-    <div class="switch"><div><div class="k">Master switch (yours)</div>
-      <div style="font-size:1.1rem;font-weight:700" class="${d.armed?'pos':'muted'}">${d.armPending?'<span class="warn">PENDING…</span>':(d.armed?'RUNNING':'STOPPED')}</div></div>
-      <div class="spacer"></div>
-      <button class="master start" id="btnStart" ${d.armed||d.armPending?'disabled':''}>START engine</button>
-      <button class="master stop" id="btnStop" ${!d.armed||d.armPending?'disabled':''}>STOP engine</button></div>
-    ${d.armPending?`<div class="panel" style="font-size:.8rem"><b>Waiting on the box.</b> Your request is written and signed;
-      the box collects it on its next sync (up to ~5 minutes) and this screen turns ${d.armed?'STOPPED':'RUNNING'} when it has.
-      Nothing more to press — both buttons are held until it lands.</div>`:''}
-    <div class="panel" style="font-size:.85rem"><b>Protective stop:</b> ${d.fixedStopPct!=null?`<span class="pos">${(d.fixedStopPct*100).toFixed(2)}%</span> applied to every order`:'<span class="warn">none set</span>'} ·
-      <b>Margin level:</b> ${marginCell(wb.marginLevel,d.marginFloor,d.marginFloorRequested)} ·
-      <b>Sub-account wallet:</b> ${wb.usdtFree!=null?`$${wb.usdtFree.toFixed(2)} USDT · ${wb.ltcFree!=null?wb.ltcFree.toFixed(6):'—'} LTC`:'<span class="muted">no snapshot yet</span>'}
-      ${lp.netLtc!=null?` · <b>Net LTC (open):</b> <span class="${lp.netLtc>0?'pos':lp.netLtc<0?'neg':'muted'}">${lp.netLtc>=0?'+':''}${lp.netLtc.toFixed(6)}</span>`:''}</div>
-    <div class="panel"><div class="k">Margin floor — the level at which entries stop</div>
-      <div class="muted" style="font-size:.78rem;margin-top:.3rem">Margin level is collateral divided by debt, so it FALLS toward danger.
-        This engine borrows to short, and until you set a number here nothing stops it as that falls.
-        Binance liquidates around 1.1–1.3, so a floor has to sit meaningfully above that to be a brake rather than an epitaph.
-        Setting it halts NEW ENTRIES only — scheduled exits keep running, and clearing the halt is still your button.</div>
-      <div class="row" style="margin-top:.5rem">
-        <label class="muted" title="the margin level at which new entries stop. Blank means no floor: nothing halts as the account approaches liquidation.">margin floor
-          <input id="mfIn" type="number" min="0" step="0.1"
-            value="${d.marginFloorRequested??''}" placeholder="none" style="width:7rem"></label>
-        <button id="mfSet">Set the floor</button>
-        <span id="mfMsg" class="muted" style="font-size:.76rem"></span>
-      </div></div>
-    <h2>Current status — what happens next</h2>
-    <div class="panel">
-      <div style="display:flex;gap:1.6rem;flex-wrap:wrap;align-items:baseline;border-bottom:1px solid var(--line);padding-bottom:.5rem;margin-bottom:.7rem">
-        <span><span class="k" style="margin-right:.35rem">engine</span>${d.halted?'<span class="warn">⛔ HALTED</span>':d.armed?'<span class="pos">● RUNNING</span>':'<span class="warn">■ STOPPED</span>'}</span>
-        <span><span class="k" style="margin-right:.35rem">open positions</span><b>${s.openPositions??'—'}</b> <span class="muted">(${s.openLong??0} long / ${s.openShort??0} short)</span></span></div>
-      ${preview}
-      <table style="margin:0 0 .2rem">${items?`<tbody>${items}</tbody>`:''}</table>
-      ${hist}</div>
-    <div class="grid" style="margin-bottom:1rem">
-      ${tile('LTC price (last run)','mark',d.markPrice!=null?'$'+d.markPrice.toFixed(2):'—')}
-      ${tile('Unrealized P&amp;L','unreal',money(d.unrealizedPnl),cls(d.unrealizedPnl))}
-      ${tile('Realized P&amp;L','realized',money(d.realizedPnl),cls(d.realizedPnl))}
-      ${tile('Fee/leg: model','feeModel','$'+d.modelFeePerLeg.toFixed(4)+(d.modelFeeRate?` <span class="muted" style="font-size:.7rem">(${(100*d.modelFeeRate).toFixed(3)}%)</span>`:''))}
-      ${tile('Fee/leg: realized','feeReal',d.realizedFeePerLegAvg==null?'—':'$'+d.realizedFeePerLegAvg.toFixed(4)+(d.clipUsd?` <span class="muted" style="font-size:.7rem">(${(100*d.realizedFeePerLegAvg/d.clipUsd).toFixed(3)}%)</span>`:''))}
-      ${tile('Fill dev avg','fillAvg',d.fillDeviationAvg==null?'—':(d.fillDeviationAvg*100).toFixed(3)+'%')}
-      ${tile('Consec. rejects','rejects',d.consecutiveRejects,d.consecutiveRejects>=2?'warn':'')}
-      ${tile('Mirror check','mirror',d.mirror==null?'—':(mirrorBreaks>0?mirrorBreaks+' BREAK':'clean'),mirrorBreaks>0?'warn':'pos')}
-    </div>
-    <div class="panel"><div class="k">Open positions</div>
-      <table style="margin-top:.4rem"><thead><tr>${th('entry','entryUtc')}${th('side','side')}${th('qty','qty')}${th('entry $','entryPx')}${th('mark','markPx')}${th('unreal $','unreal')}${th('exit due','exitDue')}</tr></thead><tbody>
-      ${d.openPositions.length?d.openPositions.map(p=>`<tr><td>${entryCell(p)}</td>
-        <td class="${p.side==='LONG'?'pos':'neg'}">${p.side}</td><td>${p.qty}</td><td>${p.entry_price??'—'}</td>
-        <td>${p.markPrice!=null?'$'+p.markPrice.toFixed(2):'—'}</td><td class="${cls(p.unrealized)}">${money(p.unrealized)}</td>
-        <td class="muted">${p.exit_due_ts?new Date(p.exit_due_ts*1000).toISOString().slice(0,16):'—'}</td></tr>`).join(''):'<tr><td colspan="7" class="empty">none open</td></tr>'}
-      </tbody></table></div>
-    <div class="panel"><div class="k">Recent closed</div>
-      <table style="margin-top:.4rem"><thead><tr>${th('entry','entryUtc')}${th('side','side')}${th('entry $','entryPx')}${th('exit $','exitPx')}${th('P&amp;L ($)','pnl')}</tr></thead><tbody>
-      ${d.closedRecent.length?d.closedRecent.map(c=>`<tr><td>${entryCell(c)}</td>
-        <td class="${c.side==='LONG'?'pos':'neg'}">${c.side}</td><td>${c.entry_price??'—'}</td><td>${c.exit_price??'—'}</td>
-        <td class="${cls(c.pnl)}">${money(c.pnl)}</td></tr>`).join(''):'<tr><td colspan="5" class="empty">none closed yet</td></tr>'}
-      </tbody></table></div>
-    <div class="panel"><div class="k">Incidents (kills, halts, rejects, mirror-breaks)</div>
-      <table style="margin-top:.4rem"><thead><tr>${th('utc','utc')}${th('kind','kind')}${th('detail','detail','text-align:left')}</tr></thead><tbody>
-      ${d.incidents.length?d.incidents.map(i=>`<tr><td>${(i.utc||'').slice(0,19)}</td><td class="warn">${esc(i.kind)}</td>
-        <td style="text-align:left" class="muted">${esc((i.detail||'').slice(0,120))}</td></tr>`).join(''):'<tr><td colspan="3" class="empty">none — clean</td></tr>'}
-      </tbody></table></div>
-    <div class="panel"><div class="k">Full event log — everything the executor did</div>
-      <div class="logbox" style="margin-top:.4rem"><table><thead><tr>${th('utc','utc')}${th('event','event')}${th('detail','detail','text-align:left')}</tr></thead><tbody>
-      ${(d.log||[]).map(e=>`<tr><td>${(e.utc||'').slice(0,19)}</td><td>${esc(e.event)}</td>
-        <td style="text-align:left" class="muted">${esc(JSON.stringify(e.detail).slice(1,-1).slice(0,140))}</td></tr>`).join('')||'<tr><td colspan="3" class="empty">no events yet</td></tr>'}
-      </tbody></table></div></div>
-    <div class="sub muted">synced ${esc(d.journalSyncedUtc||'—')} · identical data to the Live pilot page (kept for side-by-side until you retire it)</div>`;
-  // TWO ROUTES, NOT ONE ROUTE PLUS A FIELD NOBODY READS. This posted to
-  // api/pilot/arm for BOTH buttons and encoded the intent in {armed} — which
-  // that route has never read: it hard-codes writeArmRequest(true). So STOP was
-  // not a no-op, it was a RE-ARM: a fresh nonce and utc that the box
-  // edge-triggers on as a genuine START. The operator confirmed "STOP the F1
-  // engine?", got no error, and the screen redrew as RUNNING because req.armed
-  // matched st.armed and nothing looked pending. Real money kept trading while
-  // the master switch reported it had been shut off. public/pilot.html:160/164
-  // has always called the two routes correctly (audit + runtime pass, 2026-08-17).
-  const go=async(armed)=>{ const verb=armed?'START':'STOP';
-    if(!confirm(`${verb} the live engine?`))return;
-    const out=await post(armed?'api/pilot/arm':'api/pilot/disarm'); if(out) draw(); };
-  const bu=$('#btnUnhalt');
-  if(bu)bu.onclick=async()=>{
-    if(!confirm('Clear the halt?\n\nOnly do this once you understand WHY it halted. This does not start trading — '
-      + 'the master switch still governs entries — and if the cause is unfixed the next reconcile check halts again.\n\n'
-      + `Reason recorded on the box: ${d.haltReason||'(not recorded)'}`))return;
-    bu.disabled=true;
-    const out=await post('api/pilot/unhalt');
-    $('#unhaltMsg').textContent = out
-      ? 'requested — the control plane carries it on its next sync (a few minutes), then the box clears its own flag'
-      : '';
-    bu.disabled=false;
-  };
-  const bs=$('#btnStart'); if(bs)bs.onclick=()=>go(true);
-  const bp=$('#btnStop'); if(bp)bp.onclick=()=>go(false);
-  const mf=$('#mfSet');
-  if(mf)mf.onclick=async()=>{
-    const raw=$('#mfIn').value.trim();
-    const floor=raw===''?null:Number(raw);
-    if(!confirm(floor==null
-      ? 'Clear the margin floor?\n\nNothing will stop entries as the account approaches liquidation.'
-      : `Halt new entries when margin level falls to ${floor} or below?\n\n`
-        +'Scheduled exits keep running. Clearing the halt afterwards is your button.'))return;
-    mf.disabled=true;
-    const out=await post('api/pilot/margin-floor',{floor});
-    $('#mfMsg').textContent=out
-      ? 'saved — the box picks this up on its next sync, then the level above shows it'
-      : '';
-    mf.disabled=false;
-    if(out)draw();
-  };
-}
-
 function draw(){ renderNav();
   // Reset the failure log for THIS render, then band the screen afterwards if
   // any read failed. Without it a panel that lost its data renders its empty

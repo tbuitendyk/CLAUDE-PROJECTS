@@ -103,27 +103,33 @@ module.exports.neitherSideEverReportsTheSumOfBothBooks = function () {
 // F1 predates channels: it is always real and has no paper book, so its rows are
 // the ones WITHOUT the paper flag. Getting this backwards would show the pilot's
 // real money as zero (or worse, someone else's paper money) on the live screen.
-module.exports.theF1PilotIsAlwaysCountedAsRealNeverAsPaper = function () {
+// EVERY CONFIG IS COUNTED THE SAME WAY. There used to be one that always
+// reported its REAL money whatever side you were looking at, because it had no
+// paper book and was not a setup that could be on two sides. That exception is
+// gone with it: a config now reports the book of the side you are on, and a
+// config with no book on that side contributes nothing to that side's total —
+// never the other side's money.
+module.exports.eachSideReportsItsOwnBookAndNeverTheOthers = function () {
   const dashTotals = loadDashTotals();
-  const f1 = {
-    g: { id: 'F1', f1: true },
-    ch: { setupId: 'f1-pilot' },
+  const cfg = {
+    g: { id: 'cfg-1' },
+    ch: { setupId: 's1' },
     st: {
       realizedPnl: -0.2573, unrealizedPnl: -0.21,
       paperRealizedPnl: 999, paperUnrealizedPnl: 999,
       openPositions: [{ paper: false }, { paper: true }],
     },
   };
-  const live = dashTotals([f1], false);
+  const live = dashTotals([cfg], false);
   assert(Math.abs(live.totR - (-0.2573)) < 1e-9,
-    `F1 realized read ${live.totR}; the pilot's own realized is -0.2573 (999 means it took the paper field)`);
+    `the live side read ${live.totR}; it must read the real book (999 means it took the paper field)`);
   assert(live.totOpen === 1,
-    `F1 open read ${live.totOpen}; exactly one of its rows is real (2 means it counted a paper row)`);
-  // and on the paper branch F1 still reports its REAL figures, because it has no
-  // paper book — it is not a setup that can be on two sides.
-  const paper = dashTotals([f1], true);
-  assert(Math.abs(paper.totR - (-0.2573)) < 1e-9,
-    'F1 must report its real money regardless of branch — it has no paper book to report instead');
+    `the live side counted ${live.totOpen} open; exactly one row is real (2 means it counted a paper row)`);
+  const paper = dashTotals([cfg], true);
+  assert(Math.abs(paper.totR - 999) < 1e-9,
+    `the paper side read ${paper.totR}; it must read the PAPER book, not the real one`);
+  assert(paper.totOpen === 1,
+    `the paper side counted ${paper.totOpen} open; exactly one row is paper`);
 };
 
 // A setup whose status could not be read must contribute its channel's own count,
