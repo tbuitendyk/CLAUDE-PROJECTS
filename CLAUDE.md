@@ -77,6 +77,42 @@ The rule, every single time:
 When unsure whether a name is real: do not write it.
 
 
+
+## RULE TWO — Live Trading and Paper Books move together (owner directive, 2026-08-19)
+
+**Every fix committed to the Live Trading subtab and its subtabs MUST ALSO be
+committed, equally, to Paper Books. And vice versa.** Never one without the
+other.
+
+This is not a style preference. The two are rendered by SEPARATE, DUPLICATED
+code paths in `public/trading.html` — `drawLive()` serves the setup branches
+and `drawPilotLive()` serves LIVE — and they carry the same tables written out
+twice ("Open positions", "Recent closed", the same column headings, the same
+cells). Fixing one and not the other does not leave a cosmetic gap: it leaves
+two screens that describe the same system and disagree, and the owner has no
+way to tell which one is lying.
+
+Paper is the control arm. A paper book whose screen reports differently from
+the live book is worthless as a comparison, because any difference the owner
+sees might be the trading or might be my edit. That destroys the one thing
+paper is for.
+
+The rule, every time:
+
+- **A change to one is not finished until it is in the other.** Not "noted for
+  later", not a follow-up task. The same commit.
+- **This covers wording, columns, ordering, units, labels, calculations and
+  behaviour** — anything the owner reads or presses. A heading renamed on one
+  screen and not the other is a defect.
+- **When the two genuinely must differ, say so out loud and why** (real money
+  has controls paper does not — the master switch, the halt). A deliberate
+  difference is fine; a drifted one never is.
+- **Check before claiming done.** grep both render paths for the thing changed
+  and confirm both were touched, in the same session, before reporting.
+
+The branches are labelled "Paper Books" and "Live Trading" (read from
+`BRANCHES` in `public/trading.html`).
+
 ## Working style (all sessions)
 
 Confirm the task before building. **Don't assume a direction, write a pile of
