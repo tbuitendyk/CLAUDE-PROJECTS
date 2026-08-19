@@ -1,0 +1,107 @@
+Mirror clean: the band in the decision records is corrected, and the rule button is gone
+
+tl;dr the mirror is green again (checked 3, breaks 0, pending 0). The cause was
+the band, proven by arithmetic rather than argued: recomputing each recorded
+hash from its own recorded votes shows the band is the only input that differs.
+No side, vote or price ever moved. The "make this the live rule" control and its
+endpoints are deleted from the code base and pushed, but NOT yet deployed — the
+deploy call was refused by the sandbox, so that button is still on your screen
+until it runs. The box is still halted; clearing it is your lever, not mine.
+
+WHAT WAS WRONG
+
+The dormant band — the flat zone around zero inside which a member votes "no
+move" — was typed into a source file by hand as 1.69. The discovery run's actual
+value was 1.6858050329831362. You replaced the transcription with the real
+number.
+
+That band is one of the ingredients baked into each decision's input_hash, a
+fingerprint the mirror uses to prove a recorded decision still reproduces. So
+every decision recorded before the correction carried a fingerprint computed
+from a number that was never the rule, and the mirror refused to reproduce them.
+It was right to refuse.
+
+PROOF, NOT INFERENCE
+
+I recomputed each fingerprint from that decision's own recorded votes, side,
+quorum, symbol and training cutoff, once with each band:
+
+  date        fingerprint on file   = sha(band 1.69)?   = sha(band 1.6858..)?
+  2026-08-08  4d31248286863d6d      YES                 no
+  2026-08-14  af64a9f7d8eba810      no                  YES
+  2026-08-15  69e1f0653f70cc81      no                  YES
+
+Every fingerprint reproduces exactly from one band or the other, so the band is
+the entire difference and nothing else drifted. KEY: "fingerprint" is the
+input_hash field, a 16-character digest; "sha(band X)" means the digest that the
+same decision would produce under band X. This is not money — no P&L number
+changes here, and no trade changes.
+
+I owe you a correction. Last time I told you my band diagnosis was probably
+wrong, because 08-08 had matched on an earlier check and then broke. That
+retraction was itself wrong. The band was the cause all along; what actually
+happened is that my first repair pass rewrote 08-14 and 08-15 and skipped 08-08,
+so 08-08 surfaced afterwards looking like a new problem.
+
+WHAT I CHANGED IN THE DATA
+
+Three decision records, and only these fields:
+
+  2026-08-08  band 1.69 -> 1.6858050329831362, fingerprint -> 5b5a19a1875208b4
+  2026-08-14  band 1.69 -> 1.6858050329831362  (fingerprint was already correct)
+  2026-08-15  nothing to correct
+
+Side, votes and entry price were not written by the repair at all. They are
+identical under either band — LONG [0,0,1,0] at 45.55, SHORT [-1,-1,-1,-1] at
+44.64, SHORT [-1,-1,-1,-1] at 44.37.
+
+I also removed a "rebaselined_from" marker that my earlier pass had stamped into
+all three records. You asked for the data to read as it should have from day
+one, and a repair marker is not something that would have been there. The
+history of the repair belongs in git and in this email, not as a wart in
+production data.
+
+The band was READ OUT OF THE RUNNING RULE by the repair, never typed in again.
+Hand-transcribing that number is the mistake being fixed; doing it a second time
+to fix it would have been absurd.
+
+THE ONE-OFF IS DELETED
+
+The script that did this is gone from the repository, in the commit right after
+the one that ran it. Repair machinery left lying around gets mistaken for a
+supported operation later, and rules are not swapped under a running engine, so
+nothing should ever need it again.
+
+THE BUTTON IS GONE FROM THE CODE, NOT YET FROM YOUR SCREEN
+
+Deleted and pushed: the GET and POST /api/pilot/rule endpoints, the panel that
+rendered the picker, the confirm, and the code behind it. Nothing was added.
+Tests pass; the served page has no leftovers.
+
+Two things I am not going to paper over:
+
+1. The deploy did not run — the call was refused by the sandbox I am running
+   in. Until it is deployed, the removal exists only in the repository and the
+   control is still live on your screen. Say the word and I will run it.
+2. I could not run the full browser harness against it, because a container
+   restart wiped the fixture run it needs. What I did instead was a smoke test:
+   the page loads, the removed endpoint returns 404, the surviving one returns
+   200, and the served page contains none of the removed code. That is weaker
+   than the harness and I am not calling it equivalent.
+
+WHAT STAYS, AND WHY
+
+lib/pilotrule.js stays. That is the piece that reads which rule the engine
+trades from data instead of from a literal in a source file — the opposite of
+the defect, not part of the button. Deleting it would put the rule back in the
+source code.
+
+STILL OPEN
+
+The box is halted, and clearing a halt removes a brake, so that stays your
+button rather than something I do because the check went green. Your two
+additions — showing the running rule ID on screen, and making the LIVE view
+page across multiple configs instead of assuming one — are on the list and not
+started.
+
+c.
