@@ -1193,6 +1193,69 @@ app.get('/api/pilot', (req, res) => {
   }
 });
 
+// ---- WHICH RULE THE PILOT TRADES (Stage C, owner 2026-08-18/19) ------------
+// Read: what the engine is running now and where that came from. Write: the
+// owner designating a greenlight as the live rule.
+//
+// This is the door that ends "the rule lives in a source file". Until it is
+// used the pilot still resolves the hardcoded book, reported as source:'code'
+// so the gap is visible rather than silent. Nothing here places an order or
+// touches the box; the next tick simply computes from the designated rule.
+app.get('/api/pilot/rule', (req, res) => {
+  try {
+    const r = require('./lib/pilotrule').resolveRule();
+    const gls = require('./lib/live/greenlight').listGreenlights()
+      .filter((g) => !g.revoked)
+      .map((g) => ({
+        id: g.id,
+        why: g.why,
+        createdUtc: g.createdUtc,
+        campaign: g.campaign,
+        sourceRunId: (g.sourceRun || {}).id || null,
+        trade: ((g.configSnapshot || {}).combo || {}).trade || null,
+        summary: (() => {
+          const c = g.configSnapshot || {}; const br = c.branch || {}; const cell = c.cell || {};
+          return `${((c.combo || {}).trade) || '?'} ${br.geometry || ''} ${br.decision || ''} `
+            + `band ${br.band} · q${cell.quorum} ${cell.entry}/${cell.gate} ${cell.tHours}h`;
+        })(),
+      }));
+    res.json({
+      current: {
+        source: r.source, legacy: r.legacy, greenlightId: r.setupId || null,
+        sourceRunId: r.sourceRunId || null, campaign: r.campaign || null,
+        trade: (r.cfg.combo || {}).trade || null,
+        band: (r.cfg.branch || {}).band,
+        freezeUtc: new Date(r.freezeMs).toISOString(),
+      },
+      greenlights: gls,
+    });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/pilot/rule', csrfGuard, (req, res) => {
+  try {
+    const body = req.body || {};
+    const id = String(body.greenlightId || '').trim();
+    if (!/^gl-[a-z0-9-]+$/.test(id)) return res.status(400).json({ error: 'greenlightId: expected a gl-… id' });
+    const gl = require('./lib/live/greenlight').getGreenlight(id);
+    if (!gl) return res.status(404).json({ error: `no greenlight ${id}` });
+    if (gl.revoked) return res.status(400).json({ error: `greenlight ${id} was nuked — re-greenlight it first` });
+
+    // The freeze is THIS deployment's choice and must be named, never guessed
+    // (lib/live/trainpolicy.js). Default to the freeze the pilot is already
+    // running on, so designating a rule does not silently also retrain it.
+    const tp = body.trainPolicy || { mode: 'frozen', throughMs: require('./lib/forwardbook').TRAIN_THROUGH };
+    const pe = require('./lib/live/trainpolicy').validatePolicy(tp);
+    if (pe.length) return res.status(400).json({ error: pe.join('; ') });
+
+    const dir = path.join(__dirname, 'data', 'pilot');
+    dataFs.mkdirSync(dir, { recursive: true });
+    dataFs.writeFileSync(path.join(dir, 'rule.json'),
+      JSON.stringify({ greenlightId: id, trainPolicy: tp, by: 'owner', utc: new Date().toISOString() }, null, 1));
+    res.json({ ok: true, rule: require('./lib/pilotrule').resolveRule() });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 // The owner's MASTER SWITCH. These endpoints only record the owner's intent in
 // a request file; they place no orders and do not touch the box. The VPS timer
 // (pilot-produce-and-push.sh) reconciles the box's ARM flag to this request on
