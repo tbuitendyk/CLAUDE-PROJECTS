@@ -78,6 +78,8 @@ function liveStatus(st, nowMs) {
   // not the entry time; the entry is a separate, later moment. Derived from the
   // entry hour so the two stay locked together (owner 2026-08-12 timing fix).
   const WINDOW_CLOSE_HOUR_UTC = F1_ENTRY_HOUR_UTC - 1; // 00:00 UTC
+  // the VPS hourly tick fires at :05 (pilot-tick.timer OnCalendar *:05:00 UTC)
+  const TICK_MINUTE_UTC = 5;
   let nextEval = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), WINDOW_CLOSE_HOUR_UTC, 0, 0, 0);
   if (nextEval <= nowMs) nextEval += 24 * 3600000;
 
@@ -90,6 +92,16 @@ function liveStatus(st, nowMs) {
   const haltReason = st.haltReason || null;
 
   const items = [];
+  // 0) THE HOURLY RECOMPUTE, FIRST AND WITH A CLOCK (owner, 2026-08-19).
+  // It was last in the list and had no time on it, which read as an aside. It is
+  // the thing that happens soonest and most often, so it belongs at the top of
+  // "what happens next" with its own countdown like everything else here.
+  // The VPS tick runs hourly at :05 UTC (pilot-tick.timer), so the next one is
+  // the next :05 — not "in an hour" from whenever the page was opened.
+  let nextTick = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), d.getUTCHours(), TICK_MINUTE_UTC, 0, 0);
+  if (nextTick <= nowMs) nextTick += 3600000;
+  items.push({ what: 'Recompute the live signal against fresh candles', whenUtc: iso(nextTick),
+    why: `runs hourly at :${String(TICK_MINUTE_UTC).padStart(2, '0')} UTC; it can only OPEN a position at the daily entry window below (it re-checks and ships nothing otherwise).` });
   // 1) the next ENTRY (gated by arm/halt)
   if (!armed) {
     items.push({ what: 'Open a new position', whenUtc: null,
@@ -101,15 +113,25 @@ function liveStatus(st, nowMs) {
     items.push({ what: 'Evaluate the next entry (LONG / SHORT / FLAT)', whenUtc: iso(nextEval),
       why: `the frozen F1 committee decides the next daily position when its 96h feature window closes at 0${WINDOW_CLOSE_HOUR_UTC}:00 UTC; the entry then opens a $10 clip one hour later at 0${F1_ENTRY_HOUR_UTC}:00 UTC only if the call is not FLAT.` });
   }
-  // 2) the next scheduled EXIT (runs armed OR stopped)
-  if (nextExitPos) {
-    items.push({ what: `Close the ${nextExitPos.side} position opened ${String(nextExitPos.chunk_start).slice(0, 16)}`,
-      whenUtc: iso(nextExitPos.exit_due_ts * 1000),
+  // 2) EVERY scheduled EXIT, soonest first (runs armed OR stopped).
+  // This listed only the FIRST one (owner, 2026-08-19: "should have ALSO the
+  // other short position just opened beneath it"). With more than one position
+  // open, the panel silently omitted the rest — a screen that answers "what
+  // happens next" must not hide half of what happens next.
+  //
+  // And it said "opened <chunk_start>", which is the FEATURE WINDOW's chunk, not
+  // when the trade opened. The owner's 2026-08-18 01:00 entry read as
+  // 2026-08-14 00:00. entry_ts is the actual fill instant and is what the line
+  // now shows; chunk_start stays available on the record for anyone tracing the
+  // decision back to its window.
+  for (const pos of opens.slice().sort((a, b) => a.exit_due_ts - b.exit_due_ts)) {
+    const openedMs = Number.isFinite(pos.entry_ts) ? pos.entry_ts * 1000 : null;
+    const opened = openedMs ? iso(openedMs).slice(0, 16).replace('T', ' ')
+      : `${String(pos.chunk_start).slice(0, 16)} (window start — no fill time recorded)`;
+    items.push({ what: `Close the ${pos.side} position opened ${opened}`,
+      whenUtc: iso(pos.exit_due_ts * 1000),
       why: `its ${F1_HOLD_HOURS}h hold elapses; scheduled exits run whether the engine is armed or stopped.` });
   }
-  // 3) background recompute cadence
-  items.push({ what: 'Recompute the live signal against fresh candles', whenUtc: null,
-    why: 'runs every hour; it can only OPEN a position at the daily entry window above (it re-checks and ships nothing otherwise).' });
 
   return {
     serverUtc: iso(nowMs),

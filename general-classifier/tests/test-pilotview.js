@@ -367,3 +367,59 @@ module.exports.dataFreshnessMeasuresFromCandleCloseNotOpenStamp = function () {
   assert.strictEqual(df[3].stale, true, 'missing -> stale');
   assert.strictEqual(df[3].throughUtc, null, 'missing -> null through-time');
 };
+
+// "What happens next" must show what actually happens next (owner, 2026-08-19).
+//
+// Three faults, all in the same panel, all of the same kind — the screen
+// answering a question with less than the truth:
+//   * it said "opened <chunk_start>", the FEATURE WINDOW's start, not the fill.
+//     A position filled 2026-08-18 01:00 read as 2026-08-14 00:00.
+//   * it listed only the SOONEST exit, so a second open position was invisible
+//     on the one panel whose job is to enumerate what is coming.
+//   * the hourly recompute sat last with no clock, reading as an aside, when it
+//     is the thing that happens soonest and most often.
+module.exports.whatHappensNextShowsEveryOpenPositionAndTheRealFillTime = function () {
+  const pv = require('../lib/pilotview');
+  const now = Date.UTC(2026, 7, 19, 14, 30, 0);
+  const st = {
+    armed: true,
+    halted: false,
+    openPositions: [
+      { side: 'SHORT', chunk_start: '2026-08-14T00:00:00.000Z',
+        entry_ts: Date.UTC(2026, 7, 18, 1, 0, 0) / 1000,
+        exit_due_ts: Date.UTC(2026, 7, 23, 18, 10, 0) / 1000 },
+      { side: 'SHORT', chunk_start: '2026-08-18T00:00:00.000Z',
+        entry_ts: Date.UTC(2026, 7, 19, 1, 0, 0) / 1000,
+        exit_due_ts: Date.UTC(2026, 7, 24, 18, 10, 0) / 1000 },
+    ],
+  };
+  const items = pv.liveStatus(st, now).items || [];
+
+  const closes = items.filter((i) => /^Close the /.test(i.what));
+  assert(closes.length === 2,
+    `both open positions must be listed; got ${closes.length} of 2`);
+  assert(/opened 2026-08-18 01:00/.test(closes[0].what),
+    `the fill time must be shown, not the feature window: "${closes[0].what}"`);
+  assert(!/2026-08-14/.test(closes[0].what),
+    'the chunk_start is being shown as the open time again');
+  assert(closes[0].whenUtc < closes[1].whenUtc, 'exits must be soonest-first');
+
+  const recompute = items.findIndex((i) => /^Recompute the live signal/.test(i.what));
+  assert(recompute === 0, `the hourly recompute must lead the list; it is at ${recompute}`);
+  assert(items[recompute].whenUtc, 'the recompute must carry a clock like every other item');
+  assert(/15:05/.test(items[recompute].whenUtc),
+    `the recompute clock must be the next :05 tick, got ${items[recompute].whenUtc}`);
+};
+
+// A position with no recorded fill time must SAY the value is a window start,
+// not quietly present it as the open time — that is the original bug's shape.
+module.exports.aPositionWithNoFillTimeSaysSoRatherThanPretending = function () {
+  const pv = require('../lib/pilotview');
+  const now = Date.UTC(2026, 7, 19, 14, 30, 0);
+  const st = { armed: true, halted: false,
+    openPositions: [{ side: 'LONG', chunk_start: '2026-08-14T00:00:00.000Z',
+      exit_due_ts: Date.UTC(2026, 7, 23, 18, 10, 0) / 1000 }] };
+  const close = (pv.liveStatus(st, now).items || []).find((i) => /^Close the /.test(i.what));
+  assert(close && /window start/.test(close.what),
+    `a missing fill time must be labelled, not shown as the open: "${close && close.what}"`);
+};
