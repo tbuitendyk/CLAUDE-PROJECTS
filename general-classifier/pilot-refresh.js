@@ -21,29 +21,40 @@ const { loadSymbolAll } = require('./lib/pipeline');
 const HOUR = b.HOUR_MS;
 const CACHE = path.join(__dirname, 'data', 'cache');
 
-// WHICH PAIRS TO KEEP CURRENT — derived from the profiles that are actually
-// trading, not a hardcoded triple. The list used to be three symbols because one
-// hardcoded config traded them; a profile on any other pair would have run its
-// committee on a cache nothing was topping up, and produced a call from stale
-// candles rather than failing loudly. Every pair a live or paper profile needs
-// (its traded pair and both context pairs) is refreshed.
+// WHICH PAIRS TO KEEP CURRENT — from lib/live/pairs.js, which is now the ONE
+// definition of that question (owner, 2026-08-19). It used to be answered here
+// and again in three checking scripts; one of those copies looked in the wrong
+// field, matched nothing, and quietly reported a single pair as the whole set.
 //
-// Falls back to the original triple only if the registry cannot be read at all,
-// so a broken registry degrades to "keep refreshing what we were" rather than to
-// "refresh nothing".
+// Falls back to the pairs of the LAST successful refresh if the registry cannot
+// be read at all, so a broken registry degrades to "keep refreshing what we
+// were" rather than to "refresh nothing" — a cache that silently stops being
+// topped up does not fail loudly, it produces a confident call from old candles.
+const { pairsInUse } = require('./lib/live/pairs');
+const LAST_SYMS = path.join(__dirname, 'data', 'live', 'last-refreshed-pairs.json');
+
 function symbolsToRefresh() {
   try {
-    const reg = require('./lib/live/setups');
-    const want = new Set();
-    for (const s of reg.listSetups()) {
-      if (!['paper', 'live', 'stopped'].includes(s.state)) continue;
-      const combo = (s.configSnapshot || {}).combo || {};
-      for (const k of ['trade', 'ctx1', 'ctx2']) if (combo[k]) want.add(combo[k]);
-      if (s.tradedPair) want.add(s.tradedPair);
+    const want = pairsInUse();
+    if (want.length) {
+      try {
+        fs.mkdirSync(path.dirname(LAST_SYMS), { recursive: true });
+        fs.writeFileSync(LAST_SYMS, JSON.stringify(want));
+      } catch (_) { /* remembering is best-effort; refreshing is not */ }
+      return want;
     }
-    if (want.size) return [...want].sort();
-  } catch (_) { /* fall through */ }
-  return ['LTCUSDT', 'XRPUSDT', 'BCHUSDT'];
+    // An EMPTY answer is legitimate: nothing is trading, so nothing needs
+    // refreshing. Say so rather than falling back, or retiring every setup
+    // would silently keep downloading forever.
+    console.log('no setup is in paper/live/stopped — nothing needs refreshing');
+    return [];
+  } catch (err) {
+    let remembered = [];
+    try { remembered = JSON.parse(fs.readFileSync(LAST_SYMS, 'utf8')); } catch (_) { /* none yet */ }
+    console.error(`registry unreadable (${err.message}); falling back to the last refreshed set: `
+      + (remembered.length ? remembered.join(' ') : '(none recorded — refreshing nothing)'));
+    return Array.isArray(remembered) ? remembered : [];
+  }
 }
 const SYMS = symbolsToRefresh();
 

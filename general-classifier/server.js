@@ -1395,6 +1395,21 @@ app.post('/api/pilot/margin-floor', csrfGuard, (req, res) => {
     res.json({ ok: true, marginFloor: readMarginFloor() });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
+// Which pairs the trading setups need, from lib/live/pairs.js — the ONE
+// definition. The VPS checking scripts read this instead of each re-deriving it
+// (owner, 2026-08-19): four copies of one rule had already disagreed once, and
+// the disagreement showed up as a green line for a pair nobody was watching.
+app.get('/api/live/pairs', (req, res) => {
+  try {
+    const { pairsInUse, ACTIVE_STATES } = require('./lib/live/pairs');
+    res.json({ pairs: pairsInUse(), states: ACTIVE_STATES });
+  } catch (err) {
+    // An unreadable registry is NOT an empty pair list. Saying "no pairs" would
+    // read to every caller as "nothing needs watching", which is the opposite
+    // of what an unreadable registry means.
+    res.status(500).json({ error: err.message });
+  }
+});
 // What can have a protective stop tuned: anything WITHOUT one already (a market
 // entry with no trailing stop — a breakout cell's opposite rail already IS its
 // stop, so tuning one is meaningless).
