@@ -203,7 +203,7 @@ function updateSetup(id, patch, by = 'owner') {
   // A setup that is already trading — paper, live, OR stopped — must re-clear the
   // live gate after the patch. 'stopped' is included deliberately: stopping halts
   // NEW entries but existing real positions still EXIT, and those exits are routed
-  // by executionTargetRef (see live-mirror.js / pilotview.js — scheduled exits run
+  // by executionTargetRef (scheduled exits run
   // whether armed or stopped). Re-pointing a stopped setup at a box that does not
   // serve its symbol would silently misroute the real exit of a live position — the
   // exact silent-rejection hazard the transition gate exists to stop, now with live

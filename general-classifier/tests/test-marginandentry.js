@@ -22,28 +22,28 @@ const fs = require('fs');
 const path = require('path');
 
 const ROOT = path.join(__dirname, '..');
-const pilotview = require(path.join(ROOT, 'lib', 'pilotview'));
+const boxview = require(path.join(ROOT, 'lib', 'boxview'));
 const liveview = require(path.join(ROOT, 'lib', 'live', 'view'));
 const HTML = fs.readFileSync(path.join(ROOT, 'public', 'trading.html'), 'utf8');
 
 // ---- margin level reaches both views ----------------------------------------
 
-function thePilotViewCarriesMarginLevelAndFloor() {
-  const d = pilotview.derive([
+function theBoxViewCarriesMarginLevelAndFloor() {
+  const d = boxview.derive([
     { event: 'RUN_STATUS', utc: '2026-08-19T04:00:00Z', armed: true, halted: false, margin_floor: 2.5 },
     { event: 'BALANCE', utc: '2026-08-19T04:00:01Z', base_net: -0.4, base_free: 0,
       quote_free: 219.5, quote_net: 219.5, margin_level: 11.03 },
   ]);
   assert.strictEqual(d.walletBalance.marginLevel, 11.03,
-    'the pilot view drops margin_level — the screen cannot show what it is not given');
+    'the box view drops margin_level — the screen cannot show what it is not given');
   assert.strictEqual(d.marginFloor, 2.5,
-    'the pilot view drops the floor the box reports it is enforcing');
+    'the box view drops the floor the box reports it is enforcing');
 }
 
 function aJournalWithoutMarginLevelStillReadsCleanly() {
   // Every BALANCE line written before 2026-08-19 lacks the field. It must come
   // back null, never NaN and never 0 — 0 would render as a liquidation.
-  const d = pilotview.derive([
+  const d = boxview.derive([
     { event: 'BALANCE', utc: '2026-08-18T04:00:00Z', base_net: -0.4, base_free: 0,
       quote_free: 219.5, quote_net: 219.5 },
   ]);
@@ -64,18 +64,6 @@ function theSetupViewCarriesTheSameMarginFacts() {
 }
 
 // ---- entry times reach the closed rows on BOTH paths -------------------------
-
-function pilotClosedRowsCarryTheEntryTime() {
-  const d = pilotview.derive([
-    { event: 'ENTRY_FILL', utc: '2026-08-18T01:10:03Z', chunk_start: '2026-08-14T00:00:00.000Z',
-      side: 'SHORT', qty: 0.224, price: 44.57, exit_due_ts: 1787508602 },
-    { event: 'EXIT_FILL', utc: '2026-08-19T18:00:00Z', chunk_start: '2026-08-14T00:00:00.000Z',
-      side: 'SHORT', price: 44.10, pnl: 0.1 },
-  ]);
-  const row = d.closedRecent[0];
-  assert.strictEqual(row.entry_utc, '2026-08-18T01:10:03Z',
-    'a closed row has no entry time, so the screen can only name it by its window');
-}
 
 function setupClosedRowsCarryTheEntryTimeToo() {
   const st = liveview.deriveSetup([
@@ -203,10 +191,9 @@ function theOwnerSetsTheFloorAndNoDefaultIsInvented() {
 }
 
 module.exports = {
-  thePilotViewCarriesMarginLevelAndFloor,
+  theBoxViewCarriesMarginLevelAndFloor,
   aJournalWithoutMarginLevelStillReadsCleanly,
   theSetupViewCarriesTheSameMarginFacts,
-  pilotClosedRowsCarryTheEntryTime,
   setupClosedRowsCarryTheEntryTimeToo,
   paperClosedRowsCarryTheEntryTimeToo,
   noPositionTableIsStillHeadedByTheWindow,

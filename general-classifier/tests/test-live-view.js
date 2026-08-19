@@ -196,22 +196,26 @@ module.exports.aSetupHoldingBothBooksReportsOnePositionPerSide = function () {
 //
 // Watched failing 2026-08-18: dropping ORDER_REJECT from view.js fails both
 // checks below.
-module.exports.theSetupScreenSurfacesEveryIncidentTheF1ScreenDoes = function () {
+module.exports.theSetupScreenSurfacesEveryFailureAnOperatorWouldActdOn = function () {
   const fs2 = require('fs');
   const path2 = require('path');
   const ROOT2 = path2.join(__dirname, '..');
-  const kinds = (rel) => new Set([...fs2.readFileSync(path2.join(ROOT2, rel), 'utf8')
+  const kinds = new Set([...fs2.readFileSync(path2.join(ROOT2, 'lib/live/view.js'), 'utf8')
     .matchAll(/case '([A-Z_]+)':/g)].map((m) => m[1]));
-  const f1 = kinds('lib/pilotview.js');
-  const gen = kinds('lib/live/view.js');
-  // the failures a PER-SETUP screen must show; box-wide ones (ARM_*, HALT_*,
-  // CLOCK_DRIFT, BALANCE) belong to the box, not to a setup
+  // The failures a PER-PROFILE screen must show. Box-wide ones (ARM_*, HALT_*,
+  // CLOCK_DRIFT, BALANCE) belong to the machine and live in lib/boxview.js.
+  //
+  // This used to compare against the hardcoded config's view module and assert
+  // parity with it. That module is gone, so the list is stated outright — which
+  // is stronger anyway: parity with another file only ever proved the two agreed,
+  // never that either was right. Add a kind here when the executor starts
+  // journaling one an operator would act on.
   const perSetup = ['ORDER_REJECT', 'EXIT_OVERDUE', 'ENTRY_GAVE_UP', 'INTENT_STALE',
-    'KILL_PRICE_DRIFT', 'FIXED_STOP', 'MIRROR_BREAK'];
+    'KILL_PRICE_DRIFT', 'FIXED_STOP', 'MIRROR_BREAK', 'ORDER_UNKNOWN',
+    'INTENT_INVALID', 'INTENT_DUPLICATE', 'ENTRY_SKIPPED', 'SETUP_HALT_SET'];
   for (const k of perSetup) {
-    assert.ok(f1.has(k), `pilotview no longer handles ${k} — re-aim this test rather than deleting it`);
-    assert.ok(gen.has(k),
-      `the generalized setup screen ignores ${k}, which the executor journals with a setup_id — the Incidents panel would read "none — clean" through a real failure`);
+    assert.ok(kinds.has(k),
+      `the profile screen does not surface ${k} — it would say "none — clean" while the record said otherwise`);
   }
 };
 

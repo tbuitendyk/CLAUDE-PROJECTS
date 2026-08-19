@@ -1193,7 +1193,7 @@ app.get('/api/pilot', (req, res) => {
     // screen must be able to say so — otherwise setting a floor looks like
     // nothing happened, which is exactly what the owner hit (2026-08-19).
     res.json({
-      ...require('./lib/pilotview').status(),
+      ...require('./lib/boxview').status(),
       marginFloorRequested: readMarginFloor().floor ?? null,
     });
   } catch (err) {

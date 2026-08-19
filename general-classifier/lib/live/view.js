@@ -1,13 +1,14 @@
 // Per-setup live view + execution-fidelity derivation (IMPLEMENTATION-PLAN
 // phase 6; NEXT-RELEASE points 16, 17). The generalized twin of
-// lib/pilotview.js: replays the box journal into PER-SETUP state so the Live
+// Replays the box journal into PER-SETUP state so the Live
 // Trading tab renders each setup's own book — real or paper — from the record
 // the executor wrote. Read-only: renders what the deterministic box did
-// (independence rule). lib/pilotview.js is UNTOUCHED (F1 keeps its own view).
+// (independence rule). Box-level facts — armed, halted, wallet — belong to
+// lib/boxview.js; this module is only ever about one profile's book.
 const fs = require('fs');
 const path = require('path');
 
-// The synced box journal (same file pilotview reads); overridable for tests.
+// The synced box journal; overridable for tests.
 function journalFile() {
   return process.env.GC_LIVE_JOURNAL
     || path.join(__dirname, '..', '..', 'data', 'pilot', 'journal.jsonl');
@@ -130,7 +131,7 @@ function deriveSetup(events, setupId, extraDecisions = []) {
       // rejected order, an order whose outcome is UNKNOWN, an overdue exit, a
       // stale or invalid intent, and a period the executor GAVE UP on all
       // showed nothing — the panel said "none — clean" while the record said
-      // otherwise. lib/pilotview.js surfaces all of these for F1; only its
+      // otherwise. All of these are surfaced here; the generalized twin
       // generalized twin was missing them, and an asymmetry between the two is
       // an oversight rather than a decision (the QC-122 shape, found 2026-08-18).
       case 'INTENT_SEEN':
@@ -312,6 +313,17 @@ function nextActivity(st, setup, nowMs, tickMinuteUtc = 8) {
   };
 }
 
+// The UTC moment a decision ACTS: its feature window start plus the geometry's
+// entry offset. Null on an unusable stamp OR an unstated offset — the old
+// version fell back to one config's 97h, so a caller that could not supply an
+// offset silently got that config's timing stamped onto someone else's rows.
+// A missing offset is now a missing answer, which renders as "—".
+function decisionEntryUtc(chunkStartIso, entryOffsetH) {
+  const t = Date.parse(chunkStartIso);
+  if (!Number.isFinite(t) || !Number.isFinite(entryOffsetH)) return null;
+  return new Date(t + entryOffsetH * 3600000).toISOString();
+}
+
 function setupStatus(setup, file = journalFile()) {
   const { present, events } = readJournal(file);
   const epoch = setup.runEpochUtc ? Date.parse(setup.runEpochUtc) : null;
@@ -340,10 +352,7 @@ function setupStatus(setup, file = journalFile()) {
     offH = (g && g.entryOffsetH) || 0;
   } catch (_) { offH = 0; }
   book.decisions = (book.decisions || []).map((d) => ({
-    ...d,
-    entry_utc: d.chunk_start && offH
-      ? new Date(Date.parse(d.chunk_start) + offH * 3600000).toISOString()
-      : null,
+    ...d, entry_utc: decisionEntryUtc(d.chunk_start, offH),
   }));
   const out = {
     id: setup.id, name: setup.name, state: setup.state,
@@ -357,4 +366,4 @@ function setupStatus(setup, file = journalFile()) {
   return out;
 }
 
-module.exports = { deriveSetup, setupStatus, readJournal, journalFile, nextActivity };
+module.exports = { deriveSetup, setupStatus, readJournal, journalFile, nextActivity, decisionEntryUtc };
