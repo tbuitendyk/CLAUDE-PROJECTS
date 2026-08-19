@@ -22,19 +22,46 @@
 # check and is journaled as unauthenticated. That is not a hole: anyone who can
 # run this already has a shell on the box and could delete the flag by hand. It
 # exists so a box whose secret was never provisioned is still recoverable.
+#
+# IT REACHES A PROFILE'S HALT TOO (2026-08-19). It used to clear ONLY the
+# box-level flag, so once halts became per-profile there was no hand lever for
+# the one kind of halt that actually fires — the same shape of lock-out this
+# whole project is about. Pass a setup id to clear that profile's halt; pass
+# nothing for the box-level one.
+#
+#   pilot-unhalt.sh                      clears the BOX-level halt
+#   pilot-unhalt.sh setup-abc-123        clears THAT PROFILE's halt
 set -uo pipefail
 BOX=admin@ec2-78-13-103-81.mx-central-1.compute.amazonaws.com
 KEY=/root/.ssh/aws-mex-deb13-new.pem
 SSH="ssh -i $KEY -o BatchMode=yes -o ConnectTimeout=15 -o StrictHostKeyChecking=accept-new"
 [ -f "$KEY" ] || { echo "no key at $KEY"; exit 1; }
-$SSH "$BOX" 'bash -s' <<'R'
+SID="${1:-}"
+case "$SID" in
+  "") ;;
+  *[!A-Za-z0-9._-]*) echo "refusing odd setup id: $SID"; exit 1;;
+esac
+SID="$SID" $SSH "$BOX" "SID='$SID' bash -s" <<'R'
+if [ -n "${SID:-}" ]; then
+  FLAG=~/pilot/HALT-setup-$SID
+  WHAT="profile $SID"
+  ARGS="--setup=$SID"
+else
+  FLAG=~/pilot/HALT
+  WHAT="the box"
+  ARGS=""
+fi
 echo "== before =="
-echo "  HALT: $([ -f ~/pilot/HALT ] && cat ~/pilot/HALT || echo 'not halted')"
+echo "  halt on $WHAT: $([ -f "$FLAG" ] && cat "$FLAG" || echo 'not halted')"
 echo "  ARM (master switch, untouched by this script): $([ -f ~/pilot/ARM ] && echo RUNNING || echo STOPPED)"
 echo "== unhalt =="
-python3 ~/mx_executor.py unhalt --source=operator --force --reason=hand-clear-via-pilot-unhalt.sh
+# --force is journaled as UNAUTHENTICATED on purpose: the record must show this
+# was a hand clear from a shell, not the owner's signed press from the screen.
+python3 ~/mx_executor.py unhalt --source=operator --force $ARGS --reason=hand-clear-via-pilot-unhalt.sh
+rc=$?
+echo "  (exit $rc — 0 cleared or nothing was halted, 2 refused)"
 echo "== after =="
-echo "  HALT: $([ -f ~/pilot/HALT ] && echo 'STILL PRESENT' || echo cleared)"
+echo "  halt on $WHAT: $([ -f "$FLAG" ] && echo 'STILL PRESENT' || echo cleared)"
 echo "  ARM: $([ -f ~/pilot/ARM ] && echo RUNNING || echo STOPPED)"
 echo "== the next scheduled tick decides whether it stays clear =="
 systemctl list-timers pilot-exec.timer --no-pager 2>/dev/null | head -3 || true
