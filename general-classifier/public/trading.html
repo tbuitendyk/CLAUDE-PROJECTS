@@ -271,7 +271,7 @@ async function drawConfigs(){
       <td style="white-space:nowrap" class="${/active/.test(g.status)?'pos':'muted'}">${esc(g.status)}</td>
       <td>${g.f1?'':(active
         ? `<button data-deact="${g.id}">Deactivate</button>`
-        : `<button data-act="${g.id}" class="pri" ${realBlocked?'disabled title="real orders for new configs await per-setup sub-account key routing (G8) — the engine books paper regardless; F1 is the live pilot"':''}>${actLabel}</button>`)}</td>
+        : `<button data-act="${g.id}" class="pri" ${realBlocked?'disabled title="real orders for new configs await per-setup sub-account key routing (G8) — the engine books paper regardless; this is the live rule"':''}>${actLabel}</button>`)}</td>
       <td>${g.f1?'':`<button data-nuke="${g.id}" class="danger" title="back to not-greenlighted: removed from these lists; the saved sweeps it came from are untouched. Refused while any channel is active or winding down.">Nuke</button>`}</td>
       </tr>`;}).join('')}
   </tbody></table>
@@ -306,7 +306,7 @@ async function drawSetups(){
   const wanted=new Set(); const meta={};
   for(const g of configs){ const ch=chanOf(g); if(ch){ wanted.add(ch.setupId); meta[ch.setupId]=g; } }
   const rows=(d.setups||[]).filter(s=>wanted.has(s.id));
-  if(branch==='real'){ const f1=configs.find(g=>g.f1); if(f1) rows.unshift({ id:'f1-pilot', name:'F1 live pilot', state:f1.channels.real.state,
+  if(branch==='real'){ const f1=configs.find(g=>g.f1); if(f1) rows.unshift({ id:'f1-pilot', name:'the live rule', state:f1.channels.real.state,
     tradedPair:'LTCUSDT', clipUsd:10, stopPct:(pilot && pilot.fixedStopPct != null) ? pilot.fixedStopPct : null,
     engineVersion:'', createdUtc:'2026-08-11' }); }
   if(!rows.length){ $('#view').innerHTML=`<div class="panel empty">No ${branch==='paper'?'paper books':'live setups'} yet — activate a config on the Greenlights page.</div>`; return; }
@@ -394,7 +394,7 @@ async function drawDetail(){
   if(!g){ $('#view').innerHTML=`<div class="panel empty">Select a config from the Greenlights page.</div>`; return; }
   selectedConfig=g.id;
   const ch=chanOf(g);
-  if(g.f1&&branch==='paper'){ $('#view').innerHTML=`<div class="panel empty">F1 is the live pilot — it has no paper channel. Switch to Live Trading.</div>`; return; }
+  if(g.f1&&branch==='paper'){ $('#view').innerHTML=`<div class="panel empty">this is the live rule — it has no paper channel. Switch to Live Trading.</div>`; return; }
   if(!ch){ $('#view').innerHTML=`<div class="panel"><div class="row"><b style="font-size:1rem">${esc(g.id)}</b>
       <span class="badge b-idle">idle</span><div class="spacer"></div>
       <button id="actBtn" class="pri" ${branch==='real'&&!g.f1?'disabled title="real orders for new configs await per-setup key routing (G8)"':''}>Activate ${branch}</button></div>
@@ -406,7 +406,7 @@ async function drawDetail(){
     const pilot=await api('api/pilot');
     const a=pilot.anatomy||{}; const cfg=pilot.config||{};
     $('#view').innerHTML=`
-      <div class="panel"><div class="row"><b style="font-size:1rem">F1 live pilot</b> <span class="badge b-live">pilot</span>
+      <div class="panel"><div class="row"><b style="font-size:1rem">the live rule</b> <span class="badge b-live">pilot</span>
         <span class="${pilot.armed?'pos':'warn'}">${pilot.armed?'RUNNING':'STOPPED'}</span>
         <div class="spacer"></div><span class="muted" style="font-size:.74rem">start/stop lives on the LIVE page (master switch)</span></div>
       <div class="muted" style="font-size:.74rem;margin-top:.3rem">Pre-registration: <code>PILOT-F1.md</code>. Pilot P&amp;L is void as edge evidence — this screen measures execution.</div></div>
@@ -688,11 +688,11 @@ async function drawPilotLive(){
   // the master switch reported it had been shut off. public/pilot.html:160/164
   // has always called the two routes correctly (audit + runtime pass, 2026-08-17).
   const go=async(armed)=>{ const verb=armed?'START':'STOP';
-    if(!confirm(`${verb} the F1 engine?`))return;
+    if(!confirm(`${verb} the live engine?`))return;
     const out=await post(armed?'api/pilot/arm':'api/pilot/disarm'); if(out) draw(); };
   const bu=$('#btnUnhalt');
   if(bu)bu.onclick=async()=>{
-    if(!confirm('Clear the F1 halt?\n\nOnly do this once you understand WHY it halted. This does not start trading — '
+    if(!confirm('Clear the halt?\n\nOnly do this once you understand WHY it halted. This does not start trading — '
       + 'the master switch still governs entries — and if the cause is unfixed the next reconcile check halts again.\n\n'
       + `Reason recorded on the box: ${d.haltReason||'(not recorded)'}`))return;
     bu.disabled=true;

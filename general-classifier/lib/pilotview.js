@@ -105,13 +105,13 @@ function liveStatus(st, nowMs) {
   // 1) the next ENTRY (gated by arm/halt)
   if (!armed) {
     items.push({ what: 'Open a new position', whenUtc: null,
-      why: `engine is STOPPED — nothing opens until you press START. When running, the F1 committee evaluates a new entry daily at 0${F1_ENTRY_HOUR_UTC}:00 UTC.` });
+      why: `engine is STOPPED — nothing opens until you press START. When running, the committee evaluates a new entry daily at 0${F1_ENTRY_HOUR_UTC}:00 UTC.` });
   } else if (halted) {
     items.push({ what: 'Open a new position', whenUtc: null,
       why: 'HALT is set — new entries are blocked; open positions still exit on schedule.' });
   } else {
     items.push({ what: 'Evaluate the next entry (LONG / SHORT / FLAT)', whenUtc: iso(nextEval),
-      why: `the frozen F1 committee decides the next daily position when its 96h feature window closes at 0${WINDOW_CLOSE_HOUR_UTC}:00 UTC; the entry then opens a $10 clip one hour later at 0${F1_ENTRY_HOUR_UTC}:00 UTC only if the call is not FLAT.` });
+      why: `the frozen committee decides the next daily position when its 96h feature window closes at 0${WINDOW_CLOSE_HOUR_UTC}:00 UTC; the entry then opens a $10 clip one hour later at 0${F1_ENTRY_HOUR_UTC}:00 UTC only if the call is not FLAT.` });
   }
   // 2) EVERY scheduled EXIT, soonest first (runs armed OR stopped).
   // This listed only the FIRST one (owner, 2026-08-19: "should have ALSO the

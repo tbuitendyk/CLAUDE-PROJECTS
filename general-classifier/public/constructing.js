@@ -1768,7 +1768,7 @@ async function drawTune() {
   // from the one the launcher will actually use.
   const target = tgt === 'sel'
     ? `the row selected on Boards (<b>${esc(sel.trade)}</b> ${esc(sel.geometry)} q${sel.quorum} ${sel.tHours}h of ${esc(doc.id)})`
-    : tgt === 'F1' ? 'F1 — the live pilot' : `the saved book <b>${esc(tgt)}</b>`;
+    : tgt === 'F1' ? 'the live rule' : `the saved book <b>${esc(tgt)}</b>`;
   $('#view').innerHTML = `
   ${busy ? `<div class="panel warn">A heavy scan is running (${esc(String(busy))}) — one at a time; both launchers are disabled until it lands (scans run minutes and cannot be aborted mid-flight).</div>` : ''}
   <div class="panel">
@@ -1777,7 +1777,7 @@ async function drawTune() {
       clipped a single winner, plus the sacrifice curve (give up top winners → tighter stop → NET $). Scanning applies
       nothing. Target: ${target}.</p>
     <div class="row" style="margin-bottom:.4rem"><label class="f" title="what the scans below are aimed at. Books already carrying a protective stop are not listed — a breakout cell's opposite rail IS its stop, so tuning one is meaningless.">scan target<select id="tuneTarget">
-      <option value="F1" ${tgt === 'F1' ? 'selected' : ''}>F1 — the live pilot</option>
+      <option value="F1" ${tgt === 'F1' ? 'selected' : ''}>the live rule</option>
       ${sel ? `<option value="sel" ${tgt === 'sel' ? 'selected' : ''}>the row selected on Boards — ${esc(sel.trade)} ${esc(sel.geometry)} q${sel.quorum} ${sel.tHours}h</option>` : ''}
       ${books.map((b) => `<option value="${esc(b.id)}" ${tgt === b.id ? 'selected' : ''}>${esc(b.id)} — ${esc(b.combo && b.combo.trade || '')} ${b.cell && b.cell.tHours ? b.cell.tHours + 'h' : ''}</option>`).join('')}
     </select></label>
@@ -1788,7 +1788,7 @@ async function drawTune() {
       <button id="stopClear" title="run with NO fixed stop. The position then rests on its scheduled exit alone.">No stop (clear)</button>
     </div>
     <div class="row"><button id="stopRun" class="pri" ${busy ? 'disabled' : ''}>Tune protective stop (full history)</button>
-      <span class="note">currently applied to F1: ${applied.stopPct != null ? `<span class="pos">${pct(applied.stopPct)}</span>` : 'none'}</span></div>
+      <span class="note">currently applied to the live rule: ${applied.stopPct != null ? `<span class="pos">${pct(applied.stopPct)}</span>` : 'none'}</span></div>
     <div id="stopOut">${stop.status === 'done' ? renderStopResult(stop) : stop.status === 'running' ? '<p class="note">running…</p>' : stop.status === 'error' ? `<p class="warn">last scan failed: ${esc(stop.error || '')}</p>` : ''}</div>
   </div>
   <div class="panel">
@@ -1822,10 +1822,10 @@ async function drawTune() {
         <td class="neg">${usd(-Math.abs(c.winnerProfitForfeitedUsd || 0))}</td><td>${c.losersCut}</td>
         <td class="${(c.loserPnlDeltaUsd || 0) >= 0 ? 'pos' : 'neg'}">${usd(c.loserPnlDeltaUsd)}</td>
         <td class="${(c.netPnlDeltaUsd || 0) >= 0 ? 'pos' : 'neg'}"><b>${usd(c.netPnlDeltaUsd)}</b></td>
-        <td>${s.bookId === 'F1' ? `<button data-stop="${c.stopPct}">apply to F1</button>` : ''}</td></tr>`).join('')}
+        <td>${s.bookId === 'F1' ? `<button data-stop="${c.stopPct}">apply to the live rule</button>` : ''}</td></tr>`).join('')}
       </tbody></table></div>
       <p class="note">NET = winner $ given up + loss-side $ vs no stop; positive means the stop helps. Apply buttons exist
-        only for F1 (the running engine); for a lab row the number informs the greenlight instead.</p>`;
+        only for the running engine; for a lab row the number informs the greenlight instead.</p>`;
   }
   function renderConvResult(c) {
     const n = c.null || {};
@@ -1865,14 +1865,14 @@ async function drawTune() {
         + 'real adverse move. Choose 0.5% or wider, or use "No stop (clear)".');
       return;
     }
-    // BOTH of these write the LIVE F1 engine's risk parameter, whatever the scan
+    // BOTH of these write the LIVE engine's risk parameter, whatever the scan
     // target above says — that picker chooses what is SCANNED, and there is no
     // endpoint that applies a stop to a saved book. Applying went through with no
     // confirmation at all, so a stray click changed a live-money setting silently
     // (audit 2026-08-17). The scan target is named in the prompt so the gap
     // between "what I was looking at" and "what I just changed" cannot pass
     // unnoticed.
-    if (!confirm(`Apply a ${v.toFixed(2)}% protective stop to the LIVE F1 engine?\n\n`
+    if (!confirm(`Apply a ${v.toFixed(2)}% protective stop to the LIVE engine?\n\n`
       + 'This writes F1\'s own risk parameter. The scan target above chooses what is SCANNED — '
       + 'it does not change what this button applies to.')) return;
     // the box is in PERCENT, the engine wants a FRACTION
@@ -1880,7 +1880,7 @@ async function drawTune() {
   };
   const clr = $('#stopClear');
   if (clr) clr.onclick = () => {
-    if (!confirm('Clear the LIVE F1 engine\'s protective stop?\n\nF1 will run with NO fixed stop until one is applied again — a position then rests on its scheduled exit alone.')) return;
+    if (!confirm('Clear the LIVE engine\'s protective stop?\n\nthe live rule will run with NO fixed stop until one is applied again — a position then rests on its scheduled exit alone.')) return;
     // NULL, not 0. The endpoint's guard is `if (raw != null && raw !== '')` and
     // then refuses `v <= 0`, so a 0 took the positive-value path and came back
     // 400 every time: the stop could not be cleared from this tab at all. The
@@ -1897,7 +1897,7 @@ async function drawTune() {
   };
   $('#view').querySelectorAll('button[data-stop]').forEach((b) => {
     b.onclick = async () => {
-      if (!confirm(`Apply a ${(Number(b.dataset.stop) * 100).toFixed(2)}% protective stop to the LIVE F1 engine?`)) return;
+      if (!confirm(`Apply a ${(Number(b.dataset.stop) * 100).toFixed(2)}% protective stop to the LIVE engine?`)) return;
       const out = await tryPost('api/pilot/stop-apply', { stopPct: Number(b.dataset.stop) }); if (out) drawTune();
     };
   });
