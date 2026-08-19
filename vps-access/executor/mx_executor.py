@@ -94,7 +94,11 @@ LOSS_LIMIT_USD = 50.0      # kill: cumulative pilot loss (GUESSED)
 # measures) and the unsupported-live request is logged loudly. Flip to True ONLY
 # in the same change that lands per-setup key routing AND a box-wide real-exposure
 # ceiling across both rails (review N1/N2).
-S2_LIVE_ROUTING = False
+# Real routing is no longer a constant. It used to be False for every profile but
+# the built-in one, because they would all have shared a single wallet — see
+# can_route_real(), which now answers the question per profile by asking whether
+# this box holds that profile's own credentials.
+S2_LIVE_ROUTING_REMOVED = True  # kept as a tombstone so a stale reference fails loudly
 FIXED_STOP_PCT_DEFAULT = 0.0  # hard per-order stop as a fraction of entry price.
                            # 0 = NO stop until the full-history sweep provides one.
                            # Owner (2026-08-11): every live order must carry a fixed
@@ -264,6 +268,14 @@ def derive(events):
                 "setup_id": e.get("setup_id"),
                 "hold_hours": e.get("hold_hours"),
                 "stop_pct": e.get("stop_pct"),
+                # WHOSE WALLET THIS POSITION LIVES IN, recorded at entry so the exit
+                # never has to look it up. A lookup can change underneath an open
+                # position — a profile is edited, retired, or dropped from the
+                # allowlist — and an exit routed to the wrong sub-account would try
+                # to sell an asset that account does not hold, or repay a loan it
+                # never took. The position remembers; the exit obeys the position.
+                "key_ref": e.get("key_ref"),
+                "symbol": e.get("symbol"),
             }
             _reset_rejects(e.get("setup_id"))
         elif ev == "EXIT_FILL":
@@ -625,8 +637,33 @@ def _write_unhalt_baseline(nonce, utc):
     os.replace(tmp, UNHALT_BASELINE)
 
 
-def honor_unhalt_request(source, nonce, utc, hmac_sig, reason, force=False, now_s=None):
-    """Clear the HALT flag, authenticated. Returns True iff the halt was cleared.
+def clear_setup_halt(setup_id, source, reason):
+    """Clear ONE profile's halt. Its counterpart set_setup_halt() existed from the
+    start; this did not, so a per-profile halt could be set and never lifted and the
+    profile was finished — the box-level halt has had a recovery lever since the
+    beginning and a per-profile one had none. Callers authenticate first."""
+    pth = setup_halt_path(setup_id)
+    if not os.path.exists(pth):
+        print(f"setup {setup_id} is not halted; nothing to clear")
+        return False
+    try:
+        os.remove(pth)
+    except FileNotFoundError:
+        pass
+    jlog("SETUP_HALT_CLEAR", setup_id=setup_id, source=source,
+         reason=reason or "manual clear")
+    print(f"UNHALTED setup {setup_id}")
+    return True
+
+
+def honor_unhalt_request(source, nonce, utc, hmac_sig, reason, force=False, now_s=None,
+                         setup_id=None):
+    """Clear a HALT flag, authenticated. Returns True iff the halt was cleared.
+
+    With setup_id, clears THAT PROFILE'S halt; without, the box-level one. The
+    signature covers the setup, so a signed clear for one profile cannot be
+    replayed to lift another's halt — the profiles are separate books and their
+    brakes are separately owned.
 
     DIRECTION MATTERS. `disarm` is a kill switch and is deliberately
     unauthenticated — an unsigned STOP must still stop. `unhalt` is its
@@ -641,8 +678,11 @@ def honor_unhalt_request(source, nonce, utc, hmac_sig, reason, force=False, now_
     record distinguishes a control-plane clear from a hand clear. Without it a
     box whose secret was never provisioned would be un-clearable except by hand,
     which is the kind of lockout that gets worked around with worse habits."""
-    if not halted():
+    if setup_id is None and not halted():
         print("not halted; nothing to clear")
+        return False
+    if setup_id is not None and not setup_halted(setup_id):
+        print(f"setup {setup_id} is not halted; nothing to clear")
         return False
 
     if not force:
@@ -653,7 +693,10 @@ def honor_unhalt_request(source, nonce, utc, hmac_sig, reason, force=False, now_
                       "Use --force from a shell on the box if this is a hand clear.")
             print("REFUSED (no arm secret configured; halt stands)")
             return False
-        expect = hmac.new(secret.encode(), f"unhalt|{nonce}|{utc}".encode(),
+        # the setup rides INSIDE the signed payload: a signature minted to clear
+        # profile A's halt must not clear profile B's.
+        _msg = f"unhalt|{nonce}|{utc}" if setup_id is None else f"unhalt|{setup_id}|{nonce}|{utc}"
+        expect = hmac.new(secret.encode(), _msg.encode(),
                           hashlib.sha256).hexdigest()
         if not hmac_sig or not hmac.compare_digest(expect, hmac_sig):
             jlog("UNHALT_HMAC_INVALID", source=source, nonce=nonce)
@@ -674,6 +717,8 @@ def honor_unhalt_request(source, nonce, utc, hmac_sig, reason, force=False, now_
             return False
         _write_unhalt_baseline(nonce, utc)
 
+    if setup_id is not None:
+        return clear_setup_halt(setup_id, source, reason)
     try:
         os.remove(HALT)
     except FileNotFoundError:
@@ -686,11 +731,28 @@ def honor_unhalt_request(source, nonce, utc, hmac_sig, reason, force=False, now_
 
 # ---- Binance client (stdlib only) -------------------------------------------
 class Binance:
-    def __init__(self, env):
-        self.key = env.get("BINANCE_KEY", "")
-        self.secret = env.get("BINANCE_SECRET", "")
+    """One exchange client = one sub-account + one isolated pair.
+
+    The symbol and the credentials used to be module globals, which is the same
+    thing as saying the box can only ever run ONE book: every profile would share
+    one wallet, and a shared isolated-margin wallet pools balance AND borrow, so
+    multi-day short interest lands on whichever leg closes last and each book's
+    realized P&L contaminates the others. That is not a policy choice, it is
+    arithmetic, and it is why real orders for any profile but the hardcoded one
+    were refused outright.
+
+    Now each client carries its own. `symbol`/`base_asset` say which isolated pair
+    it trades; `key`/`secret` say whose money. Two profiles on the same box get two
+    clients and never touch each other's wallet.
+    """
+
+    def __init__(self, env, symbol=None, base_asset=None, key=None, secret=None):
+        self.key = key if key is not None else env.get("BINANCE_KEY", "")
+        self.secret = secret if secret is not None else env.get("BINANCE_SECRET", "")
         self.base = env.get("BASE", "https://api.binance.com")
         self.live = env.get("LIVE", "0") == "1"
+        self.symbol = symbol or SYMBOL
+        self.base_asset = base_asset or BASE_ASSET
         self.offset_ms = 0
 
     def _http(self, method, path, params, signed):
@@ -733,7 +795,7 @@ class Binance:
 
     def price(self):
         code, body = self._http("GET", "/api/v3/ticker/price",
-                                {"symbol": SYMBOL}, signed=False)
+                                {"symbol": self.symbol}, signed=False)
         return float(body["price"]) if code == 200 else None
 
     def margin_order(self, side, qty, side_effect, client_id=None):
@@ -746,7 +808,7 @@ class Binance:
         double-trade is resolve_dangling(): it queries the venue by client id and
         books/voids the prior send BEFORE any new order, so a crash-orphaned fill
         is reconciled rather than blindly re-sent (review findings 1-2)."""
-        params = {"symbol": SYMBOL, "isIsolated": "TRUE", "side": side,
+        params = {"symbol": self.symbol, "isIsolated": "TRUE", "side": side,
                   "type": "MARKET", "quantity": f"{qty:.3f}",
                   "sideEffectType": side_effect,
                   "newOrderRespType": "FULL"}
@@ -766,12 +828,12 @@ class Binance:
         """Look up an isolated-margin order by its deterministic client id, so a
         dangling ORDER_SENT/ORDER_UNKNOWN can be resolved against the venue."""
         return self._http("GET", "/sapi/v1/margin/order",
-                          {"symbol": SYMBOL, "isIsolated": "TRUE",
+                          {"symbol": self.symbol, "isIsolated": "TRUE",
                            "origClientOrderId": client_id}, signed=True)
 
     def isolated_account(self):
         return self._http("GET", "/sapi/v1/margin/isolated/account",
-                          {"symbols": SYMBOL}, signed=True)
+                          {"symbols": self.symbol}, signed=True)
 
     def free_base(self):
         """Free (sellable) base-asset balance in the isolated wallet, or None if
@@ -825,6 +887,69 @@ def fixed_stop_pct():
     except (TypeError, ValueError):
         return 0.0
     return v if v > 0 else 0.0
+
+
+def _key_env_prefix(key_ref):
+    """Env-var prefix for a profile's own sub-account credentials. 'acme-1' ->
+    'KEY_ACME_1_'. Sanitised rather than interpolated raw: a keyRef arrives from
+    the control plane and must never be able to reach a variable it does not own."""
+    safe = "".join(c if c.isalnum() else "_" for c in str(key_ref or "")).upper()
+    return "KEY_" + safe + "_"
+
+
+def credentials_for(key_ref):
+    """(key, secret) for a profile's OWN sub-account, or (None, None) if this box
+    was never given them. Absent credentials are a normal state — a profile can be
+    greenlighted and paper-traded here long before anyone provisions its keys — so
+    this reports rather than raises, and the caller books paper."""
+    if not key_ref:
+        return (None, None)
+    env = load_env()
+    p = _key_env_prefix(key_ref)
+    k, s = env.get(p + "BINANCE_KEY", ""), env.get(p + "BINANCE_SECRET", "")
+    return (k, s) if (k and s) else (None, None)
+
+
+_CLIENT_CACHE = {}
+
+
+def client_for(key_ref, symbol, base_asset=None):
+    """The exchange client for one profile: its own sub-account, its own isolated
+    pair. Returns None when the box holds no credentials for that keyRef, which is
+    the signal to book paper instead of placing a real order.
+
+    Cached per (keyRef, symbol) so a run reuses one clock offset per sub-account
+    rather than re-syncing per order."""
+    k, s = credentials_for(key_ref)
+    if not k:
+        return None
+    ck = (str(key_ref), str(symbol))
+    if ck not in _CLIENT_CACHE:
+        c = Binance(load_env(), symbol=symbol,
+                    base_asset=base_asset or (symbol or "").replace("USDT", ""),
+                    key=k, secret=s)
+        c.sync_clock()
+        _CLIENT_CACHE[ck] = c
+    return _CLIENT_CACHE[ck]
+
+
+def can_route_real(setup_id, allow_entry):
+    """Whether a REAL order for this profile can be placed on this box.
+
+    This replaces a hardcoded False. Real routing used to be refused for every
+    profile but the built-in one, because they would all have shared a single
+    wallet — true when there was one credential set, and no longer true now that a
+    profile carries its own. The question is now answerable rather than assumed:
+    does this box hold this profile's OWN credentials? If yes it can trade its own
+    money in its own wallet; if no, it books paper and says which keyRef is missing.
+    """
+    key_ref = (allow_entry or {}).get("key_ref")
+    if not key_ref:
+        return (False, f"setup {setup_id} has no keyRef in this box's allowlist")
+    k, _ = credentials_for(key_ref)
+    if not k:
+        return (False, f"this box holds no credentials for keyRef '{key_ref}'")
+    return (True, None)
 
 
 def margin_floor():
@@ -1356,6 +1481,21 @@ def do_run(bx):
                  # can see/attribute a schema-2 incident, and the F1 alerter's R6 filter
                  # skips it. Absent on schema-1 -> F1 alerter handles it, unchanged.
                  **({"setup_id": p["setup_id"]} if p.get("setup_id") else {}))
+        # THE WALLET THIS POSITION LIVES IN. Read off the position, which recorded
+        # it at entry. A schema-1 position has no key_ref and uses the shared client
+        # exactly as before — byte-identical behaviour for anything already open.
+        # A schema-2 position whose credentials have since disappeared from the box
+        # is NOT exited through somebody else's wallet: that would sell an asset the
+        # account does not hold. It is journaled and left for the owner instead.
+        pbx = bx
+        if p.get("key_ref"):
+            pbx = client_for(p["key_ref"], p.get("symbol") or SYMBOL)
+            if pbx is None:
+                jlog("EXIT_SKIPPED", chunk_start=p["chunk_start"],
+                     setup_id=p.get("setup_id"),
+                     reason=f"no credentials on this box for keyRef '{p['key_ref']}' — "
+                            "refusing to exit this position through another account's wallet")
+                continue
         if p["side"] == "LONG":
             # Size from THIS position (p['qty']), never the wallet. Isolated
             # margin pools all longs in one balance, so selling free_base() would
@@ -1363,20 +1503,20 @@ def do_run(bx):
             # fee-shrunk balance still can't oversell. (Fatal bug caught by the
             # 2026-08-11 money-math review — the dust never exposed it because it
             # only ever had one position open.)
-            fb = bx.free_base()
+            fb = pbx.free_base()
             sell_qty = floor_step(min(p["qty"], fb) if fb is not None else p["qty"])
             if not sell_qty:
                 jlog("EXIT_SKIPPED", chunk_start=p["chunk_start"],
                      reason="no free base to sell")
                 continue
-            status, fill_px, fee, fq, _ = place(bx, "EXIT", "SELL", sell_qty, "AUTO_REPAY",
+            status, fill_px, fee, fq, _ = place(pbx, "EXIT", "SELL", sell_qty, "AUTO_REPAY",
                                                 {"chunk_start": p["chunk_start"],
                                                  **({"setup_id": p["setup_id"]} if p.get("setup_id") else {})},
                                                 cid=client_id("exit", p["chunk_start"], p.get("setup_id")))
             qty_traded = sell_qty
         else:  # SHORT: buy back the borrow plus a small buffer for the LTC fee.
             is_last_short = (shorts_remaining <= 1)
-            debt = bx.borrowed_base()
+            debt = pbx.borrowed_base()
             if debt is not None:
                 if debt < QTY_STEP:
                     # no loan outstanding — the short is already flat on the
@@ -1399,7 +1539,7 @@ def do_run(bx):
                                   ceil_step(debt * (1 + SHORT_CLOSE_FEE_BUFFER)))
             else:
                 buy_qty = ceil_step(p["qty"] * (1 + SHORT_CLOSE_FEE_BUFFER))
-            status, fill_px, fee, fq, _ = place(bx, "EXIT", "BUY", buy_qty, "AUTO_REPAY",
+            status, fill_px, fee, fq, _ = place(pbx, "EXIT", "BUY", buy_qty, "AUTO_REPAY",
                                                 {"chunk_start": p["chunk_start"], "leg_qty": p["qty"],
                                                  **({"setup_id": p["setup_id"]} if p.get("setup_id") else {})},
                                                 cid=client_id("exit", p["chunk_start"], p.get("setup_id")))
@@ -1431,7 +1571,7 @@ def do_run(bx):
                 # repay that silently fails, or an outsized fee eating the received
                 # qty, leaves debt still accruing — that must HALT, not pass quietly.
                 # (The final leg is additionally required to clear the pool to ~0.)
-                resid = bx.borrowed_base()
+                resid = pbx.borrowed_base()
                 if debt is not None and resid is not None:
                     repaid = debt - resid
                     if repaid < p["qty"] * (1 - RESIDUAL_REPAY_TOL_FRAC):
@@ -1577,10 +1717,12 @@ def do_run(bx):
             _allow = setups_allow().get(it.get("setup_id")) if _is2 else None
             _eff_paper = _is2 and (bool(it.get("paper"))
                                    or (isinstance(_allow, dict) and _allow.get("state") != "live"))
-            # BLOCKER 1: with schema-2 paper-only on the F1 box, a would-be-real
-            # schema-2 intent is effectively paper here, so it still MEASURES while
-            # the real rail is blocked (R8) rather than being skipped as if real.
-            if _is2 and not S2_LIVE_ROUTING:
+            # A would-be-real schema-2 intent this box cannot route for real is
+            # treated as paper here, so it still MEASURES rather than being skipped
+            # as if real (R8). The difference from before: "cannot route" is now a
+            # fact about whether this box holds the profile's credentials, not a
+            # constant that was false for everyone.
+            if _is2 and not can_route_real(it.get("setup_id"), _allow)[0]:
                 _eff_paper = True
             if not _eff_paper:
                 continue
@@ -1598,7 +1740,19 @@ def do_run(bx):
             os.rename(path, path + ".bad")
             continue
         if it.get("schema") not in (1, 2): problems.append("schema")
-        if it.get("symbol") != SYMBOL: problems.append("symbol")
+        # A schema-2 intent is checked against the symbol the ALLOWLIST names for
+        # that setup, not against a module constant. Comparing every profile to one
+        # hardcoded pair is the same single-book assumption the client used to
+        # carry: it rejected any profile trading anything else, invisibly, as a
+        # malformed intent. The allowlist is still the authority — a control plane
+        # cannot point a profile at a pair this box was never told to serve — but
+        # the authority is now per profile. Schema-1 keeps the constant.
+        if is2:
+            _allow_sym = (setups_allow().get(it.get("setup_id")) or {}).get("symbol")
+            if not _allow_sym or it.get("symbol") != _allow_sym:
+                problems.append("symbol")
+        elif it.get("symbol") != SYMBOL:
+            problems.append("symbol")
         if it.get("side") not in ("LONG", "SHORT", "FLAT"): problems.append("side")
         if not isinstance(it.get("chunk_start"), str): problems.append("chunk_start")
         if not isinstance(it.get("decision_price"), (int, float)): problems.append("decision_price")
@@ -1719,16 +1873,20 @@ def do_run(bx):
         # setup the box was told is 'live' can). A live setup honors its intent
         # (normally paper:false). eff_paper is what everything downstream uses.
         # BLOCKER 1 (isolation guard): a would-be-REAL schema-2 order is refused on
-        # the F1 box (S2_LIVE_ROUTING False) — it can only share F1's one wallet, so
+        # a box holding no credentials for the profile — it could only share another
         # it is booked as PAPER here and the unsupported-live request logged loudly.
         if is2:
             wants_real = (not bool(it.get("paper"))) and allow_entry.get("state") == "live"
-            eff_paper = (not wants_real) or (not S2_LIVE_ROUTING)
-            if wants_real and not S2_LIVE_ROUTING:
+            routable, why_not = can_route_real(it["setup_id"], allow_entry)
+            eff_paper = (not wants_real) or (not routable)
+            if wants_real and not routable:
+                # Still refused, but for a reason that can be FIXED by provisioning
+                # the profile's credentials, and that names what is missing instead
+                # of pointing at a constant nobody could change from the interface.
                 jlog("S2_LIVE_UNSUPPORTED", chunk_start=it["chunk_start"],
                      setup_id=it["setup_id"],
-                     reason="schema-2 live needs per-setup sub-account routing (G8); "
-                            "booked PAPER on the F1 box so no real order shares F1's wallet")
+                     reason=f"booked PAPER: {why_not}. A profile places real orders "
+                            "only from its OWN sub-account, never a shared wallet.")
         else:
             eff_paper = False
         # INTENT_SEEN is the DECISION record — one per period, on the first attempt
@@ -1859,7 +2017,16 @@ def do_run(bx):
              attempt=attempt_no, max_attempts=ENTRY_MAX_ATTEMPTS,
              deadline_utc=_utc_str(entry_deadline(it)),
              **({"setup_id": it["setup_id"]} if is2 else {}))
-        status, px, fee, fq, base_comm = place(bx, "ENTRY", buy_side, qty, side_eff,
+        # WHOSE MONEY. A real schema-2 entry is placed from the PROFILE'S OWN
+        # sub-account client, never the shared one — that is the whole point of
+        # per-profile routing, and reaching for `bx` here would silently put a
+        # second book into the first book's wallet. eff_paper is already False only
+        # when can_route_real() confirmed those credentials exist, so this cannot
+        # be None on the real path; the fallback keeps paper and schema-1 unchanged.
+        entry_bx = bx
+        if is2 and not eff_paper:
+            entry_bx = client_for(allow_entry.get("key_ref"), it["symbol"]) or bx
+        status, px, fee, fq, base_comm = place(entry_bx, "ENTRY", buy_side, qty, side_eff,
                                                {"chunk_start": it["chunk_start"],
                                                 "pos_side": it["side"],
                                                 # R4: schema-2 riders ride in the ORDER_SENT meta so a
@@ -1898,7 +2065,11 @@ def do_run(bx):
                  fill_deviation=round(fill_dev, 5),
                  exit_due_ts=now + hold_s,
                  **({"setup_id": it["setup_id"], "hold_hours": it["hold_hours"],
-                     "stop_pct": it.get("stop_pct"), "clip_usd": it["clip_usd"]} if is2 else {}))
+                     "stop_pct": it.get("stop_pct"), "clip_usd": it["clip_usd"],
+                     # the wallet this position was opened in; the exit reads it
+                     # back off the position rather than re-deriving it
+                     "key_ref": (allow_entry or {}).get("key_ref"),
+                     "symbol": it["symbol"]} if is2 else {}))
             _finish()          # terminal: the position exists
             if fill_dev > FILL_DEV_LIMIT:
                 if is2:
@@ -2081,7 +2252,8 @@ def main():
         # SIGNED request here. See honor_unhalt_request for why this direction
         # is authenticated where disarm deliberately is not.
         honor_unhalt_request(source_arg(), arg_val("--nonce"), arg_val("--utc"),
-                             arg_val("--hmac"), reason_arg(), force=("--force" in sys.argv))
+                             arg_val("--hmac"), reason_arg(), force=("--force" in sys.argv),
+                             setup_id=arg_val("--setup"))
         return 0
     if mode == "status":
         return do_status()
