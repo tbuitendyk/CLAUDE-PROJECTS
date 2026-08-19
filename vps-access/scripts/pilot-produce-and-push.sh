@@ -111,6 +111,58 @@ if [ "$un_go" = "1" ]; then
   fi
 fi
 
+# ---- carry the owner's PER-PROFILE unhalt requests (owner, 2026-08-19) ----
+# Moved here from the hourly tick. The box accepts an unhalt request for 900
+# seconds; the hourly carrier delivered them 20-55 minutes old and the box
+# refused every one as stale, so "Clear the halt" did nothing and said nothing.
+# This script runs every 5 minutes, which is what the freshness rule needs.
+#
+# A REFUSAL IS NOT A DELIVERY. The old carry deleted the request whenever the
+# ssh call exited 0 — and the executor exited 0 even when it refused, so each
+# press was consumed by its own failure and left no trace. Now the executor
+# exits 2 on refusal and the request is moved to <id>.refused.json carrying the
+# reason, which the screen reads back to the owner. An unreachable box leaves
+# the request in place to retry.
+UNHALT_DIR="$APPDIR/data/live/unhalt"
+if [ -d "$UNHALT_DIR" ]; then
+  for uf in "$UNHALT_DIR"/*.json; do
+    [ -e "$uf" ] || continue
+    case "$uf" in *.refused.json) continue;; esac
+    read -r U_SID U_NONCE U_UTC U_HMAC < <(python3 -c '
+import json, sys
+try:
+    d = json.load(open(sys.argv[1]))
+except Exception:
+    sys.exit(0)
+print(d.get("setup_id",""), d.get("nonce",""), d.get("utc",""), d.get("hmac",""))
+' "$uf" 2>/dev/null)
+    [ -n "${U_SID:-}" ] || { echo "  unreadable unhalt request $(basename "$uf") — left in place"; continue; }
+    case "$U_SID" in *[!A-Za-z0-9._-]*) echo "  refusing odd setup id in $(basename "$uf")"; continue;; esac
+    echo "== carrying unhalt request for $U_SID =="
+    OUT=$($SSH "$BOX_USER@$BOX_HOST" \
+      "python3 ~/mx_executor.py unhalt --source=owner --setup='$U_SID' --nonce='$U_NONCE' --utc='$U_UTC' --hmac='$U_HMAC' --reason=owner-cleared-from-the-screen" 2>&1)
+    rc=$?
+    echo "$OUT" | sed 's/^/    /'
+    if [ $rc -eq 0 ]; then
+      rm -f "$uf" "$UNHALT_DIR/$U_SID.refused.json"
+    elif [ $rc -eq 2 ]; then
+      # The box considered it and said no. Retrying cannot help a stale or
+      # badly-signed request, so consume it — but record WHY, where the screen
+      # can find it, instead of dropping it silently as the old carry did.
+      python3 -c '
+import json, sys, datetime
+sid, reason, dest = sys.argv[1], sys.argv[2], sys.argv[3]
+json.dump({"setup_id": sid, "refused_utc": datetime.datetime.now(datetime.timezone.utc)
+           .strftime("%Y-%m-%dT%H:%M:%SZ"), "reason": reason.strip()[:400]}, open(dest, "w"))
+' "$U_SID" "$OUT" "$UNHALT_DIR/$U_SID.refused.json" 2>/dev/null || true
+      rm -f "$uf"
+      echo "    the box REFUSED this clear — recorded for the screen; pressing again mints a fresh request"
+    else
+      echo "    (box unreachable; the request stays and retries next sync)"
+    fi
+  done
+fi
+
 # Carry the owner's CHOSEN protective stop to the box (owner 2026-08-11). Running
 # the scan applies NOTHING; the owner chooses a value (or none) which the classifier
 # writes to data/pilot/fixed-stop.json. This carries that choice into the box's

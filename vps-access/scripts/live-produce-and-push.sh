@@ -55,36 +55,27 @@ else
   echo "  no local allowlist at $ALLOW — NOT shipping intents this tick (fail-closed)"
 fi
 
-# ---- carry the owner's per-profile UNHALT requests --------------------------
-# The screen writes a SIGNED request per profile; this carries it and the box
-# verifies the signature before lifting anything. Consumed on success so one
-# press clears once — a request left on disk must not re-clear a halt that fires
-# again later. Runs BEFORE the break check below, so a profile the owner just
-# cleared is not immediately re-halted by a stale mirror file from last tick.
-UNHALT_DIR="$APPDIR/data/live/unhalt"
-if [ -d "$UNHALT_DIR" ]; then
-  for uf in "$UNHALT_DIR"/*.json; do
-    [ -e "$uf" ] || continue
-    read -r U_SID U_NONCE U_UTC U_HMAC < <(python3 -c '
-import json, sys
-try:
-    d = json.load(open(sys.argv[1]))
-except Exception:
-    sys.exit(0)
-print(d.get("setup_id",""), d.get("nonce",""), d.get("utc",""), d.get("hmac",""))
-' "$uf" 2>/dev/null)
-    [ -n "${U_SID:-}" ] || { echo "  unreadable unhalt request $(basename "$uf") — left in place"; continue; }
-    case "$U_SID" in *[!A-Za-z0-9._-]*) echo "  refusing odd setup id in $(basename "$uf")"; continue;; esac
-    echo "  carrying unhalt request for $U_SID"
-    if $SSH "$BOX_USER@$BOX_HOST" \
-        "python3 ~/mx_executor.py unhalt --source=owner --setup='$U_SID' --nonce='$U_NONCE' --utc='$U_UTC' --hmac='$U_HMAC' --reason=owner-cleared-from-the-screen" \
-        2>&1 | sed 's/^/    /'; then
-      rm -f "$uf"
-    else
-      echo "    (box unreachable; retried next tick)"
-    fi
-  done
-fi
+# THE PER-PROFILE UNHALT CARRY IS NOT HERE ANY MORE (owner, 2026-08-19:
+# "I've been pressing the button to clear the halt state").
+#
+# It used to live in this script, which runs ONCE AN HOUR on live-tick.timer.
+# The box accepts an unhalt request for 900 seconds. So a request could only
+# ever be honoured if the owner happened to press within the ~7 minutes before
+# the tick; press at any other time and it arrived 20, 40, 55 minutes old and
+# was refused as stale. Proven in the box journal: UNHALT_STALE_REQUEST at
+# 08:08:08 with age_s 2567 — 43 minutes — against a 900-second window.
+#
+# The box-level clear never had this problem because it is carried by
+# pilot-produce-and-push.sh on pilot-sync.timer every 5 minutes, comfortably
+# inside the window. The per-profile clear was simply put in the wrong script
+# and inherited a cadence that cannot satisfy the rule it has to satisfy.
+# It now rides the same 5-minute carry as its box-level twin.
+#
+# The ordering note that used to live here — carry clears BEFORE the break
+# check below, so a just-cleared profile is not immediately re-halted — still
+# holds and is now stronger: a clear lands within 5 minutes, so by the time this
+# hourly tick recomputes the reproduce-check, the clear is already in place. If
+# the check still finds a break it re-halts, which is the check working.
 
 # ---- THE REPRODUCE-CHECK IS A BRAKE, NOT A NEWSLETTER -----------------------
 # A mirror break means a decision this profile ACTED ON no longer recomputes to

@@ -2271,10 +2271,27 @@ def main():
         # owner reaches it from the Trading tab; the control plane carries the
         # SIGNED request here. See honor_unhalt_request for why this direction
         # is authenticated where disarm deliberately is not.
-        honor_unhalt_request(source_arg(), arg_val("--nonce"), arg_val("--utc"),
-                             arg_val("--hmac"), reason_arg(), force=("--force" in sys.argv),
-                             setup_id=arg_val("--setup"))
-        return 0
+        # A REFUSAL MUST NOT LOOK LIKE A DELIVERY (owner, 2026-08-19: "I've been
+        # pressing the button to clear the halt state"). This returned 0 whatever
+        # happened, so the control plane's carry — which deleted the request on a
+        # zero exit — consumed each press by its own failure and left the owner
+        # with no halt cleared and nothing on screen saying why.
+        #
+        #   0  the halt was cleared, or there was none to clear (nothing to do)
+        #   2  the box considered the request and REFUSED it (stale, unsigned,
+        #      replayed, or no secret configured). Retrying cannot help any of
+        #      those, so the carrier consumes the request but records the reason
+        #      where the screen can show it.
+        #
+        # An unreachable box never reaches this line at all: ssh fails and the
+        # carrier retains the request, which is the one case retrying does help.
+        _was_halted = (setup_halted(arg_val("--setup")) if arg_val("--setup") else halted())
+        _cleared = honor_unhalt_request(source_arg(), arg_val("--nonce"), arg_val("--utc"),
+                                        arg_val("--hmac"), reason_arg(), force=("--force" in sys.argv),
+                                        setup_id=arg_val("--setup"))
+        if _cleared or not _was_halted:
+            return 0
+        return 2
     if mode == "status":
         return do_status()
     print(f"unknown mode {mode}; use run|dust|shortdust|arm|disarm|halt|unhalt|status")

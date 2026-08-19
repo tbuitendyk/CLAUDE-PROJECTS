@@ -481,6 +481,71 @@ class ExecutorTest(unittest.TestCase):
         finally:
             _s.argv = argv
 
+    def test_a_refused_unhalt_exits_nonzero_so_it_is_not_read_as_delivered(self):
+        """A REFUSAL MUST NOT LOOK LIKE A DELIVERY (owner, 2026-08-19).
+
+        main() returned 0 whatever happened here. The control plane's carry
+        deleted the request file on a zero exit, so every press of "Clear the
+        halt" was consumed by its own failure: the halt stayed, the request was
+        gone, and nothing on the owner's screen said why. They pressed it
+        repeatedly over a day and nothing ever happened.
+
+        Contract now: 0 = cleared, or nothing was halted; 2 = the box considered
+        it and said no. An unreachable box never reaches main() at all, so the
+        carrier can tell "refused" (consume, record the reason) from "could not
+        deliver" (retain and retry) — and retrying is only useful for the
+        second, since a stale or badly-signed request cannot become valid."""
+        import sys as _s
+
+        def rc(*args):
+            argv = _s.argv
+            _s.argv = ["mx", "unhalt", *args]
+            try:
+                return self.x.main()
+            finally:
+                _s.argv = argv
+
+        # refused: halted, no secret configured -> must be 2, and the halt stands
+        self.x.set_halt("test", "stuck")
+        self.assertEqual(rc("--source=owner", "--reason=x"), 2,
+                         'a refused unhalt exited 0, so the carrier reads its own failure as success')
+        self.assertTrue(self.x.halted(), 'the halt must stand when the clear was refused')
+
+        # cleared by the hand lever -> 0
+        self.assertEqual(rc("--source=operator", "--force", "--reason=hand"), 0,
+                         'a successful clear must exit 0')
+        self.assertFalse(self.x.halted())
+
+        # nothing halted -> 0 (nothing to do is not a failure; a carrier that
+        # retried this forever would never drain the request)
+        self.assertEqual(rc("--source=owner", "--reason=x"), 0,
+                         'clearing a halt that is not set is not a failure')
+
+    def test_a_refused_per_setup_unhalt_also_exits_nonzero(self):
+        """The per-PROFILE path is the one the owner actually presses, and it is
+        the one that was silently dropping requests. RULE TWO in spirit: the two
+        halts are separate brakes and must report identically."""
+        import sys as _s
+
+        def rc(*args):
+            argv = _s.argv
+            _s.argv = ["mx", "unhalt", *args]
+            try:
+                return self.x.main()
+            finally:
+                _s.argv = argv
+
+        sid = "setup-abc-123"
+        self.x.set_setup_halt(sid, "decisions no longer reproduce")
+        self.assertTrue(self.x.setup_halted(sid))
+        self.assertEqual(rc("--source=owner", f"--setup={sid}", "--reason=x"), 2,
+                         'a refused per-profile clear exited 0 — this is the exact press the owner lost')
+        self.assertTrue(self.x.setup_halted(sid), 'the profile halt must stand when the clear was refused')
+        self.assertEqual(rc("--source=operator", f"--setup={sid}", "--force", "--reason=hand"), 0)
+        self.assertFalse(self.x.setup_halted(sid))
+        self.assertEqual(rc("--source=owner", f"--setup={sid}", "--reason=x"), 0,
+                         'clearing a profile halt that is not set is not a failure')
+
     def test_unhalt_cli_refuses_unsigned_and_clears_with_force(self):
         """The CLI wiring, both directions (contract changed 2026-08-18).
 
