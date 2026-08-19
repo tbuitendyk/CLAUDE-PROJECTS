@@ -701,11 +701,22 @@ function wireBoxControls(b){
 }
 async function drawLive(){
   const {configs, box}=await fetchConfigs();
-  const g=configs.find(x=>x.id===selectedConfig)||configs.find(x=>chanOf(x));
-  if(!g){ $('#view').innerHTML=`<div class="panel empty">Select a config (Greenlights or Dashboard) to watch it run.</div>`; return; }
+  // PAGE ACROSS EVERY RUNNING CONFIG (#39). This showed one config — whichever
+  // was selected elsewhere, or the first that happened to have a channel — with
+  // nothing on the page saying others existed or how to reach them. With one
+  // config that is invisible; with two it silently hides a book holding money.
+  const running=configs.filter(x=>chanOf(x));
+  const g=configs.find(x=>x.id===selectedConfig&&chanOf(x))||running[0];
+  if(!g){ $('#view').innerHTML=`<div class="panel empty">Nothing is running on the ${branch} side yet. Activate a config from Greenlights to watch it here.</div>`; return; }
   selectedConfig=g.id;
   const ch=chanOf(g);
-  if(!ch){ $('#view').innerHTML=`<div class="panel empty">${esc(g.id)} has never run on the ${branch} side.</div>`; return; }
+  // The picker is drawn whenever more than one config runs on this side, and
+  // names them the way the owner named them.
+  const picker=running.length>1
+    ? `<div class="row" style="margin-bottom:.5rem"><label class="muted" title="every config running on this side">watching
+        <select id="liveWhich">${running.map(x=>`<option value="${esc(x.id)}" ${x.id===g.id?'selected':''}>${esc(x.name||x.id)}${x.status?` — ${esc(x.status)}`:''}</option>`).join('')}</select></label>
+        <span class="muted" style="font-size:.78rem;margin-left:.5rem">${running.length} running on this side</span></div>`
+    : '';
   const st=await api('api/live/setups/'+ch.setupId+'/status');
   if(st.error){ $('#view').innerHTML=`<div class="panel empty">${esc(st.error)}</div>`; return; }
   const isP=branch==='paper';
@@ -718,6 +729,7 @@ async function drawLive(){
   // and the table disagreed with the money above them (audit 2026-08-17).
   const openHere=(st.openPositions||[]).filter(p=>isP?p.paper:!p.paper);
   $('#view').innerHTML=`
+    ${picker}
     <div class="banner ${st.state==='stopped'?'stopped':'running'}">
       <b>${esc(g.name||g.id)}</b> ${isP?paperBadge:''} — ${esc(g.status)}${g.name?` <span class="muted">· ${esc(g.id)}</span>`:''}${st.runEpochUtc?` <span class="muted">· displayed run since ${st.runEpochUtc.slice(0,16)} UTC</span>`:''}</div>
     ${isP?'':boxControls(box)}
@@ -801,6 +813,8 @@ async function drawLive(){
   // does not start trading — the config's own state still governs entries — and
   // an unfixed cause re-halts on the next check.
   if(!isP) wireBoxControls(box);
+  const lw=$('#liveWhich');
+  if(lw)lw.onchange=()=>{ selectedConfig=lw.value; drawLive(); };
   const su=$('#btnSetupUnhalt');
   if(su)su.onclick=async()=>{
     if(!confirm(`Clear the halt on ${ch.setupId}?\n\nOnly once you understand WHY it halted. `

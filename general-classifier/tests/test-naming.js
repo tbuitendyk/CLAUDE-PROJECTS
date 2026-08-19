@@ -162,7 +162,24 @@ function repointingATradingSetupIsStillRefused() {
   });
 }
 
+// LIVE PAGES ACROSS EVERY RUNNING CONFIG (#39). It rendered one — whichever was
+// selected elsewhere, or the first that happened to have a channel — with nothing
+// saying others existed. Invisible with one config; with two it silently hides a
+// book holding money.
+function theLiveViewCanReachEveryRunningConfig() {
+  assert.ok(/const running=configs\.filter\(x=>chanOf\(x\)\)/.test(HTML),
+    'the LIVE view does not enumerate the configs running on this side');
+  assert.ok(/id="liveWhich"/.test(HTML), 'there is no control to switch between running configs');
+  assert.ok(/running\.length>1/.test(HTML),
+    'the picker is drawn unconditionally or never — it belongs when there is more than one');
+  assert.ok(/esc\(x\.name\|\|x\.id\)/.test(HTML),
+    'the picker lists generated ids rather than the names the owner gave');
+  assert.ok(/lw\.onchange=\(\)=>\{ selectedConfig=lw\.value; drawLive\(\); \}/.test(HTML),
+    'the picker is rendered but changing it does nothing');
+}
+
 module.exports = {
+  theLiveViewCanReachEveryRunningConfig,
   repointingATradingSetupIsStillRefused,
   renamingTheConfigRenamesItsDeployments,
   whyAndCampaignDoNotPropagate,
