@@ -79,7 +79,24 @@ function installLiveRoutes(app, { csrfGuard }) {
         requested = JSON.parse(fs.readFileSync(
           path.join(__dirname, '..', '..', 'data', 'pilot', 'margin-floor.json'), 'utf8')).floor ?? null;
       } catch (_) { /* no floor saved yet — a state, not an error */ }
-      res.json({ ...require('./view').setupStatus(s), marginFloorRequested: requested });
+      // WHAT HAPPENED TO THE LAST "Clear the halt" PRESS (owner, 2026-08-19:
+      // "I've been pressing the button to clear the halt state"). The press
+      // wrote a request and then vanished into the control plane: if the box
+      // refused it, nothing anywhere said so, and the owner pressed again. Both
+      // states are reported now — still waiting to be carried, or considered and
+      // refused, with the box's own reason.
+      const unhaltDir = path.join(__dirname, '..', '..', 'data', 'live', 'unhalt');
+      let unhaltPending = false;
+      let unhaltRefused = null;
+      try {
+        const req = JSON.parse(fs.readFileSync(path.join(unhaltDir, `${s.id}.json`), 'utf8'));
+        unhaltPending = !!req.utc;
+      } catch (_) { /* none waiting — a state, not an error */ }
+      try {
+        unhaltRefused = JSON.parse(fs.readFileSync(path.join(unhaltDir, `${s.id}.refused.json`), 'utf8'));
+      } catch (_) { /* none refused */ }
+      res.json({ ...require('./view').setupStatus(s), marginFloorRequested: requested,
+        unhaltPending, unhaltRefused });
     } catch (e) { res.status(500).json({ error: e.message }); }
   });
 
@@ -114,6 +131,10 @@ function installLiveRoutes(app, { csrfGuard }) {
       const f = path.join(dir, `${s.id}.json`);
       fs.writeFileSync(`${f}.tmp`, JSON.stringify(rec));
       fs.renameSync(`${f}.tmp`, f);
+      // A NEW press supersedes an old refusal. Leaving the marker would show
+      // the owner a refusal next to their fresh request and give them no way to
+      // tell which one the screen is talking about.
+      try { fs.unlinkSync(path.join(dir, `${s.id}.refused.json`)); } catch (_) { /* none */ }
       res.json({ ok: true, request: { setup_id: s.id, utc, nonce, authenticated: !!secret } });
     } catch (e) { res.status(500).json({ error: e.message }); }
   });

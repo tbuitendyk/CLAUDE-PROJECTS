@@ -631,7 +631,13 @@ function wireBoxControls(b){
       + `Reason recorded on the box: ${(b&&b.haltReason)||'(not recorded)'}`))return;
     bu.disabled=true;
     const out=await post('api/pilot/unhalt');
-    $('#unhaltMsg').textContent = out ? 'requested — the control plane carries it on its next sync (a few minutes), then the box clears its own flag' : '';
+    // Same wording as the per-profile control below. Both clears ride the same
+    // 5-minute carry, so both say the same concrete number rather than one
+    // saying "a few minutes" and the other something else — two controls that
+    // do the same thing must not describe it differently (RULE TWO).
+    $('#unhaltMsg').textContent = out
+      ? 'requested — the box collects it within about 5 minutes and clears its own flag'
+      : 'the request could not be written — nothing was sent';
     bu.disabled=false;
   };
   const mf=$('#mfSet');
@@ -674,6 +680,8 @@ async function drawLive(){
       <div class="muted" style="font-size:.78rem;margin:.25rem 0">Reason recorded on the box: ${esc(st.haltReason||'(not recorded)')}</div>
       <button id="btnSetupUnhalt" class="danger">Clear the halt</button>
       <span id="setupUnhaltMsg" class="muted" style="font-size:.78rem;margin-left:.5rem">Only after the cause is understood — this does not start trading, and an unfixed cause re-halts on the next check.</span>
+      ${st.unhaltRefused ? `<div class="warn" style="font-size:.8rem;margin-top:.4rem">Your last press was REFUSED by the box at ${esc(String(st.unhaltRefused.refused_utc||''))} — ${esc(String(st.unhaltRefused.reason||'no reason recorded'))}. Press again to send a fresh request.</div>` : ''}
+      ${st.unhaltPending && !st.unhaltRefused ? `<div class="muted" style="font-size:.8rem;margin-top:.4rem">A clear is written and waiting for the box to collect it (within about 5 minutes). This banner disappears when the halt lifts.</div>` : ''}
       </div>`:''}
     ${(st.mirror&&st.mirror.breaks)?`<div class="banner halted">⛔ MIRROR BREAK — ${st.mirror.breaks} decision(s) this config acted on no longer reproduce.
       Its new entries are stopped; investigate before clearing.</div>`:''}
@@ -755,9 +763,13 @@ async function drawLive(){
       + `Reason recorded on the box: ${st.haltReason||'(not recorded)'}`))return;
     su.disabled=true;
     const out=await post(`api/live/setups/${ch.setupId}/unhalt`,{});
+    // The old wording promised "a few minutes" while the carry actually ran
+    // once an hour, and the box only accepts a request for 15 minutes — so the
+    // sentence was describing something that could not happen. The carry is on
+    // the 5-minute sync now and the wording matches it.
     $('#setupUnhaltMsg').textContent = out
-      ? 'requested — the control plane carries it on its next sync (a few minutes), then the box clears the flag'
-      : '';
+      ? 'requested — the box collects it within about 5 minutes and clears the flag. If it refuses, this screen says so.'
+      : 'the request could not be written — nothing was sent';
     su.disabled=false;
   };
 }
