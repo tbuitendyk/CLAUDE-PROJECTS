@@ -183,10 +183,16 @@ function installLiveRoutes(app, { csrfGuard }) {
               .filter((p) => (c === 'paper' ? !!p.paper : !p.paper)).length;
           } catch (_) { open = 0; }
           parts.push({ channel: c, state: s.state, open });
-          channels[c] = { setupId: s.id, state: s.state, open, runEpochUtc: s.runEpochUtc || null };
+          channels[c] = { setupId: s.id, state: s.state, open, runEpochUtc: s.runEpochUtc || null,
+            // Whether this channel could go REAL: presence only, never the value.
+            // The screen used to grey out 'Activate real' for every config except
+            // the built-in one, which told the owner nothing about what to DO. It
+            // now reflects the gate the registry actually enforces — a real
+            // channel needs the profile's own sub-account.
+            keyRefSet: !!(s.keyRef && String(s.keyRef).trim()) };
         }
         return {
-          id: g.id, createdUtc: g.createdUtc, campaign: g.campaign || null,
+          id: g.id, name: g.name || null, createdUtc: g.createdUtc, campaign: g.campaign || null,
           pair: g.configSnapshot?.combo?.trade || null, target: g.target,
           why: g.why || '', engineVersion: g.engineVersion || null,
           status: ch.statusLine(parts), channels,

@@ -312,15 +312,22 @@ async function drawConfigs(){
       const ch=chanOf(g);
       const active=ch&&(ch.state==='paper'||ch.state==='live');
       const actLabel=branch==='paper'?'Activate paper':'Activate real';
-      const realBlocked=branch==='real'&&!g.f1;
+      // REAL ACTIVATION is gated on what the registry actually requires — the
+      // profile's OWN sub-account — not on which config it is. Every row but the
+      // built-in one used to be greyed out unconditionally, which stated a
+      // requirement and offered no way to meet it.
+      const ch2=(g.channels&&g.channels[branch==='paper'?'paper':'real'])||null;
+      const needsKey=branch==='real'&&!(ch2&&ch2.keyRefSet);
+      const realBlocked=branch==='real'&&!g.f1&&needsKey;
       return `<tr class="clickable" data-id="${g.id}">
-      <td>${esc(g.id)}${g.f1?' <span class="badge b-live" title="the pre-registered live pilot">pilot</span>':''}</td>
+      <td><b>${esc(g.name||g.id)}</b>${g.f1?' <span class="badge b-live" title="the pre-registered live pilot">pilot</span>':''}
+        ${g.f1?'':`<button data-ren="${g.id}" class="themebtn" title="rename this config and restate its reasoning. Labels only — nothing here changes what it trades.">Rename</button>`}</td>
       <td>${esc(g.pair||'—')}</td><td class="muted">${esc(g.campaign||'—')}</td>
       <td style="max-width:20rem;white-space:normal;text-align:left" class="muted">${esc(g.why)}</td>
       <td style="white-space:nowrap" class="${/active/.test(g.status)?'pos':'muted'}">${esc(g.status)}</td>
       <td>${g.f1?'':(active
         ? `<button data-deact="${g.id}">Deactivate</button>`
-        : `<button data-act="${g.id}" class="pri" ${realBlocked?'disabled title="real orders for new configs await per-setup sub-account key routing (G8) — the engine books paper regardless; this is the live rule"':''}>${actLabel}</button>`)}</td>
+        : `<button data-act="${g.id}" class="pri" ${realBlocked?'disabled title="this config has no sub-account of its own yet. Real orders are placed only from a config\'s OWN sub-account, never a shared one — set its sub-account key on Setup detail first."':''}>${actLabel}</button>`)}</td>
       <td>${g.f1?'':`<button data-nuke="${g.id}" class="danger" title="back to not-greenlighted: removed from these lists; the saved sweeps it came from are untouched. Refused while any channel is active or winding down.">Nuke</button>`}</td>
       </tr>`;}).join('')}
   </tbody></table>
@@ -333,6 +340,13 @@ async function drawConfigs(){
   $('#view').querySelectorAll('button[data-deact]').forEach(b=>b.onclick=async(ev)=>{ ev.stopPropagation();
     if(!confirm(`Deactivate the ${branch} channel of ${b.dataset.deact}?\n\nEntries stop now; open positions keep exiting on schedule, then the record freezes.`))return;
     const out=await post(`api/live/configs/${b.dataset.deact}/deactivate`,{channel:branch}); if(out) draw(); });
+  $('#view').querySelectorAll('button[data-ren]').forEach(b=>b.onclick=async(ev)=>{ ev.stopPropagation();
+    const id=b.dataset.ren, cur=configs.find(x=>x.id===id)||{};
+    const name=prompt('Name for this config — what you want to see on screen:', cur.name||'');
+    if(name===null) return;
+    const why=prompt('Why this config was cleared (the reasoning on record):', cur.why||'');
+    if(why===null) return;
+    const out=await post(`api/live/greenlight/${id}/relabel`,{name,why}); if(out) draw(); });
   $('#view').querySelectorAll('button[data-nuke]').forEach(b=>b.onclick=async(ev)=>{ ev.stopPropagation();
     if(!confirm(`Nuke ${b.dataset.nuke} back to not-greenlighted?\n\nIt leaves these lists; its saved sweeps are untouched.`))return;
     const out=await post(`api/live/configs/${b.dataset.nuke}/nuke`,{}); if(out) draw(); });
