@@ -181,6 +181,9 @@ function derive(events, extra = {}) {
   let haltReason = null;
   let armedBy = null;
   let fixedStopPct = null; // the hard per-order stop the box is applying (RUN_STATUS)
+  let marginFloor = null;  // the margin-level floor the box is ENFORCING (RUN_STATUS).
+                           // Read from the box rather than from the owner's request
+                           // file so the screen reports the brake actually in force.
   const closed = [];
   const legCosts = [];   // realized cost per leg, from fills that carry it
   const fillDeviations = [];
@@ -228,8 +231,13 @@ function derive(events, extra = {}) {
         delete open[e.chunk_start];
         realized += e.pnl || 0;
         if (typeof e.fee_quote === 'number') legCosts.push(e.fee_quote);
+        // entry_utc rides along so the screen can name a closed trade by WHEN IT
+        // WAS ENTERED rather than by its feature window (owner, 2026-08-19:
+        // "that's not how humans think"). Null for a position whose fill predates
+        // this record — the row then has no entry time to show, which is honest.
         closed.push({ chunk_start: e.chunk_start, side: e.side, pnl: e.pnl,
           exit_price: e.price, exit_utc: e.utc,
+          entry_utc: p ? p.entry_utc : null,
           entry_price: p ? p.entry_price : null });
         consecutiveRejects = 0;
         break;
@@ -247,6 +255,14 @@ function derive(events, extra = {}) {
           utc: e.utc || null,
           usdtFree: n(e.quote_free), usdtNet: n(e.quote_net),
           ltcFree: n(e.base_free), ltcNet: n(e.base_net),
+          // MARGIN LEVEL: collateral / debt on the isolated wallet — the distance
+          // to a forced liquidation, and on a borrow-to-short engine the single
+          // number that says how much adverse move the account survives. It has
+          // always been in the same API response the executor already fetches and
+          // was simply never journaled, so the screen could not show it and the
+          // owner had to ask for it (owner, 2026-08-19). null on older journal
+          // lines written before the executor started recording it.
+          marginLevel: n(e.margin_level),
         };
         break;
       }
@@ -263,6 +279,9 @@ function derive(events, extra = {}) {
       case 'RUN_STATUS':
         armed = !!e.armed; halted = !!e.halted;
         if (e.fixed_stop_pct != null) fixedStopPct = e.fixed_stop_pct;
+        // 0 means the owner has set no floor, which is a real state and not a
+        // missing reading — carried through as 0 rather than collapsed to null.
+        if (e.margin_floor != null) marginFloor = e.margin_floor;
         break;
       case 'ARM_SET': armed = true; armedBy = e.source || null; break;
       case 'ARM_CLEAR': armed = false; armedBy = e.source || null; break;
@@ -358,6 +377,7 @@ function derive(events, extra = {}) {
     haltReason,
     armedBy,
     fixedStopPct,
+    marginFloor,
     ltcPosition,     // {netLtc,longLtc,shortLtc,longCount,shortCount} from open fills
     markPrice: round(markPrice, 4),      // LTC price the executor last marked (as of last run)
     markToMarket: round(markToMarket, 4),

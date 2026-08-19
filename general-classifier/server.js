@@ -1348,6 +1348,45 @@ function writeFixedStop(obj) {
   dataFs.writeFileSync(`${f}.tmp`, JSON.stringify(obj));
   dataFs.renameSync(`${f}.tmp`, f);
 }
+
+// THE MARGIN FLOOR (owner, 2026-08-19). Margin level is collateral / debt on the
+// isolated wallet — how far the account is from a forced liquidation. This engine
+// borrows to short and nothing read that number, so there was no brake on it at
+// all. Same shape and same carry path as the stop above, deliberately: the owner
+// chooses the number through the interface and the sync puts it on the box.
+// null = no floor, which is the state until they set one. A threshold that stops
+// trading is not mine to pick, so there is NO default value anywhere.
+function marginFloorPath() { return path.join(__dirname, 'data', 'pilot', 'margin-floor.json'); }
+function readMarginFloor() {
+  try { return JSON.parse(dataFs.readFileSync(marginFloorPath(), 'utf8')); } catch (_) { return { floor: null }; }
+}
+function writeMarginFloor(obj) {
+  dataFs.mkdirSync(path.join(__dirname, 'data', 'pilot'), { recursive: true });
+  const f = marginFloorPath();
+  dataFs.writeFileSync(`${f}.tmp`, JSON.stringify(obj));
+  dataFs.renameSync(`${f}.tmp`, f);
+}
+app.get('/api/pilot/margin-floor', (req, res) => res.json(readMarginFloor()));
+app.post('/api/pilot/margin-floor', csrfGuard, (req, res) => {
+  try {
+    const raw = req.body ? req.body.floor : null;
+    let v = null;
+    if (raw !== null && raw !== undefined && String(raw).trim() !== '') {
+      v = Number(raw);
+      if (!Number.isFinite(v) || v <= 0) {
+        return res.status(400).json({ error: 'floor must be a positive margin level (e.g. 2 for 2.0), or blank to clear' });
+      }
+      // Binance liquidates around 1.0-1.3; a floor at or below that would only
+      // fire after the exchange had already acted, which is not a brake.
+      if (v <= 1.3) {
+        return res.status(400).json({ error: `a floor of ${v} sits in the exchange's own liquidation range — it would fire too late to protect anything. Choose a higher level.` });
+      }
+      if (v > 1000) return res.status(400).json({ error: `a floor of ${v} would halt on almost any borrowing at all` });
+    }
+    writeMarginFloor({ floor: v, by: 'owner', utc: new Date().toISOString() });
+    res.json({ ok: true, marginFloor: readMarginFloor() });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
 // eligible setups for stop tuning: the live/prospective books WITHOUT an existing
 // protective stop (a market entry with no trailing stop). The bracket-lab control
 // is offered only for these — a breakout cell already stops at its opposite rail.

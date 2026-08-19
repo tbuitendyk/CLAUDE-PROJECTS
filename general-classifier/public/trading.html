@@ -164,7 +164,13 @@ const TH={
   view:'the slice of the feature vector this member sees — the whole point of having more than one.',
   featuresSeen:'how many of the run’s feature numbers reach this member, out of the full vector. A member seeing all of them is the unrestricted one.',
   viewMeaning:'what that slice means in plain words — what this member is and is not allowed to notice.',
-  chunk:'the 96h feature window the call was computed from, by its start (UTC). The call ACTS 97h after this — see exit due.',
+  // The tables used to lead with the feature window's start date, which is not
+  // the day anything happened — the trade opens 97h later — and reading a
+  // position as "the 14th" when it was bought on the 18th is how a screen misleads
+  // an operator (owner, 2026-08-19: "that's not how humans think"). They lead with
+  // the ENTRY time now. The window is still named, but as supporting detail.
+  entryUtc:'when this position was actually OPENED, UTC — the moment the order filled. This is the date to think in.',
+  chunk:'the 96h feature window the call was computed from, by its start (UTC). Supporting detail: the trade itself opens 97h after this.',
   side:'LONG = bought the pair, SHORT = sold it borrowed. Colour follows the direction, not the profit.',
   qty:'position size in UNITS OF THE PAIR (coins), not dollars. Multiply by entry to get the notional.',
   entryPx:'the price this position was actually filled at, in quote currency (USDT).',
@@ -185,6 +191,36 @@ const TH={
 };
 // th(label, key) — a heading always carries its own description.
 const th=(label,key,style)=>`<th${style?` style="${style}"`:''}${TH[key]?` title="${esc(TH[key]).replace(/"/g,'&quot;')}"`:''}>${label}</th>`;
+
+// ONE cell renderer for every position table on this page, on BOTH the setup
+// path and the pilot path, so Paper Books and Live Trading cannot drift apart
+// (RULE TWO). Leads with WHEN THE TRADE OPENED, because that is the date a human
+// means by "the position from the 18th" — the feature window it was computed
+// from starts 97h earlier and reading that as the trade date is simply wrong.
+// The window is kept underneath as supporting detail rather than thrown away.
+// A row with no recorded fill time says so instead of silently showing the
+// window in its place: positions filled before entry_utc was recorded have no
+// entry time, and inventing one would be the same class of error.
+// MARGIN LEVEL = collateral / debt on the isolated wallet. It is the distance to
+// a forced liquidation: the exchange closes the account somewhere around 1.1-1.3,
+// so BIGGER IS SAFER and a number heading toward 1 is the emergency. Shown on
+// both the pilot and setup paths (RULE TWO); a paper book has no borrowed
+// collateral, so there it reports that rather than a fake number.
+const marginCell=(lvl,floor)=>{
+  if(lvl==null) return '<span class="muted">not recorded yet</span>';
+  const f=Number(floor)||0;
+  const c=f>0?(lvl<=f?'neg':(lvl<=f*1.25?'warn':'pos')):(lvl<=1.5?'neg':lvl<=2.5?'warn':'pos');
+  return `<span class="${c}">${lvl.toFixed(2)}</span>`
+    +(f>0?` <span class="muted" style="font-size:.72rem">(halts at ${f})</span>`
+         :' <span class="warn" style="font-size:.72rem">(no floor set)</span>');
+};
+const entryCell=(p)=>{
+  const w=(p.chunk_start||'').slice(0,10);
+  const e=(p.entry_utc||'').replace('T',' ').slice(0,16);
+  return e
+    ? `${e}<div class="muted" style="font-size:.68rem">window ${esc(w)}</div>`
+    : `<span class="muted">no fill time recorded</span><div class="muted" style="font-size:.68rem">window ${esc(w)}</div>`;
+};
 
 // The headline number tiles get the same treatment. These are the numbers an
 // operator reads first and acts on, and several of them are percentages OF
@@ -548,6 +584,9 @@ async function drawLive(){
   $('#view').innerHTML=`
     <div class="banner ${st.state==='stopped'?'stopped':'running'}">
       <b>${esc(g.id)}</b> ${isP?paperBadge:''} — ${esc(g.status)}${st.runEpochUtc?` <span class="muted">· displayed run since ${st.runEpochUtc.slice(0,16)} UTC</span>`:''}</div>
+    <div class="panel" style="font-size:.85rem"><b>Margin level:</b> ${isP
+      ? '<span class="muted">not applicable — a paper book borrows nothing, so it has no liquidation distance</span>'
+      : marginCell((st.walletBalance||{}).marginLevel, st.marginFloor)}</div>
     <div class="grid" style="margin-bottom:1rem">
       ${tile((isP?'Paper realized':'Realized')+' P&amp;L','realized',money(rp),cls(rp))}
       ${tile((isP?'Paper unrealized':'Unrealized')+' P&amp;L','unreal',money(up),cls(up))}
@@ -557,17 +596,17 @@ async function drawLive(){
       ${tile('Fill dev max','fillMax',st.fidelity.fillDeviationMax==null?'—':(st.fidelity.fillDeviationMax*100).toFixed(3)+'%',st.fidelity.fillDeviationMax>0.01?'warn':'')}
     </div>
     <div class="panel"><div class="k">Open positions ${isP?paperBadge:''}</div>
-      <table style="margin-top:.4rem"><thead><tr>${th('chunk','chunk')}${th('side','side')}${th('qty','qty')}${th('entry','entryPx')}${th('mark','markPx')}${th('unreal $','unreal')}${th('exit due','exitDue')}</tr></thead><tbody>
+      <table style="margin-top:.4rem"><thead><tr>${th('entry','entryUtc')}${th('side','side')}${th('qty','qty')}${th('entry $','entryPx')}${th('mark','markPx')}${th('unreal $','unreal')}${th('exit due','exitDue')}</tr></thead><tbody>
       ${openHere.length?openHere.map(p=>`<tr>
-        <td>${(p.chunk_start||'').slice(0,16)}</td><td class="${p.side==='LONG'?'pos':'neg'}">${p.side}${p.paper?' <span class="badge b-paper">P</span>':''}</td>
+        <td>${entryCell(p)}</td><td class="${p.side==='LONG'?'pos':'neg'}">${p.side}${p.paper?' <span class="badge b-paper">P</span>':''}</td>
         <td>${p.qty}</td><td>${p.entry_price??'—'}</td><td>${p.markPrice==null?'—':'$'+p.markPrice.toFixed(2)}</td>
         <td class="${cls(p.unrealized)}">${money(p.unrealized)}</td>
         <td class="muted">${p.exit_due_ts?new Date(p.exit_due_ts*1000).toISOString().slice(0,16):'—'}</td></tr>`).join(''):'<tr><td colspan="7" class="empty">none open</td></tr>'}
       </tbody></table></div>
     <div class="panel"><div class="k">Recent closed</div>
-      <table style="margin-top:.4rem"><thead><tr>${th('chunk','chunk')}${th('side','side')}${th('entry','entryPx')}${th('exit','exitPx')}${th('P&amp;L ($)','pnl')}</tr></thead><tbody>
+      <table style="margin-top:.4rem"><thead><tr>${th('entry','entryUtc')}${th('side','side')}${th('entry $','entryPx')}${th('exit $','exitPx')}${th('P&amp;L ($)','pnl')}</tr></thead><tbody>
       ${st.closedRecent.length?st.closedRecent.map(c=>`<tr>
-        <td>${(c.chunk_start||'').slice(0,16)}</td><td class="${c.side==='LONG'?'pos':'neg'}">${c.side}${c.paper?' <span class="badge b-paper">P</span>':''}</td>
+        <td>${entryCell(c)}</td><td class="${c.side==='LONG'?'pos':'neg'}">${c.side}${c.paper?' <span class="badge b-paper">P</span>':''}</td>
         <td>${c.entry_price??'—'}</td><td>${c.exit_price??'—'}</td><td class="${cls(c.pnl)}">${money(c.pnl)}</td></tr>`).join(''):'<tr><td colspan="5" class="empty">none closed yet</td></tr>'}
       </tbody></table></div>
     <div class="panel"><div class="k">Incidents</div>
@@ -631,11 +670,26 @@ async function drawPilotLive(){
     <div class="switch"><div><div class="k">Master switch (yours)</div>
       <div style="font-size:1.1rem;font-weight:700" class="${d.armed?'pos':'muted'}">${d.armPending?'<span class="warn">PENDING…</span>':(d.armed?'RUNNING':'STOPPED')}</div></div>
       <div class="spacer"></div>
-      <button class="master start" id="btnStart" ${d.armed&&!d.armPending?'disabled':''}>START engine</button>
-      <button class="master stop" id="btnStop" ${!d.armed&&!d.armPending?'disabled':''}>STOP engine</button></div>
+      <button class="master start" id="btnStart" ${d.armed||d.armPending?'disabled':''}>START engine</button>
+      <button class="master stop" id="btnStop" ${!d.armed||d.armPending?'disabled':''}>STOP engine</button></div>
+    ${d.armPending?`<div class="panel" style="font-size:.8rem"><b>Waiting on the box.</b> Your request is written and signed;
+      the box collects it on its next sync (up to ~5 minutes) and this screen turns ${d.armed?'STOPPED':'RUNNING'} when it has.
+      Nothing more to press — both buttons are held until it lands.</div>`:''}
     <div class="panel" style="font-size:.85rem"><b>Protective stop:</b> ${d.fixedStopPct!=null?`<span class="pos">${(d.fixedStopPct*100).toFixed(2)}%</span> applied to every order`:'<span class="warn">none set</span>'} ·
+      <b>Margin level:</b> ${marginCell(wb.marginLevel,d.marginFloor)} ·
       <b>Sub-account wallet:</b> ${wb.usdtFree!=null?`$${wb.usdtFree.toFixed(2)} USDT · ${wb.ltcFree!=null?wb.ltcFree.toFixed(6):'—'} LTC`:'<span class="muted">no snapshot yet</span>'}
       ${lp.netLtc!=null?` · <b>Net LTC (open):</b> <span class="${lp.netLtc>0?'pos':lp.netLtc<0?'neg':'muted'}">${lp.netLtc>=0?'+':''}${lp.netLtc.toFixed(6)}</span>`:''}</div>
+    <div class="panel"><div class="k">Margin floor — the level at which entries stop</div>
+      <div class="muted" style="font-size:.78rem;margin-top:.3rem">Margin level is collateral divided by debt, so it FALLS toward danger.
+        This engine borrows to short, and until you set a number here nothing stops it as that falls.
+        Binance liquidates around 1.1–1.3, so a floor has to sit meaningfully above that to be a brake rather than an epitaph.
+        Setting it halts NEW ENTRIES only — scheduled exits keep running, and clearing the halt is still your button.</div>
+      <div class="row" style="align-items:flex-end;margin-top:.5rem">
+        <label class="f">margin floor <input id="mfIn" type="number" min="0" step="0.1"
+          value="${d.marginFloor?d.marginFloor:''}" placeholder="none" style="width:7rem"></label>
+        <button id="mfSet">Set the floor</button>
+        <span id="mfMsg" class="muted" style="font-size:.76rem"></span>
+      </div></div>
     <h2>Current status — what happens next</h2>
     <div class="panel">
       <div style="display:flex;gap:1.6rem;flex-wrap:wrap;align-items:baseline;border-bottom:1px solid var(--line);padding-bottom:.5rem;margin-bottom:.7rem">
@@ -655,15 +709,15 @@ async function drawPilotLive(){
       ${tile('Mirror check','mirror',d.mirror==null?'—':(mirrorBreaks>0?mirrorBreaks+' BREAK':'clean'),mirrorBreaks>0?'warn':'pos')}
     </div>
     <div class="panel"><div class="k">Open positions</div>
-      <table style="margin-top:.4rem"><thead><tr>${th('chunk','chunk')}${th('side','side')}${th('qty','qty')}${th('entry','entryPx')}${th('mark','markPx')}${th('unreal $','unreal')}${th('exit due','exitDue')}</tr></thead><tbody>
-      ${d.openPositions.length?d.openPositions.map(p=>`<tr><td>${(p.chunk_start||'').slice(0,16)}</td>
+      <table style="margin-top:.4rem"><thead><tr>${th('entry','entryUtc')}${th('side','side')}${th('qty','qty')}${th('entry $','entryPx')}${th('mark','markPx')}${th('unreal $','unreal')}${th('exit due','exitDue')}</tr></thead><tbody>
+      ${d.openPositions.length?d.openPositions.map(p=>`<tr><td>${entryCell(p)}</td>
         <td class="${p.side==='LONG'?'pos':'neg'}">${p.side}</td><td>${p.qty}</td><td>${p.entry_price??'—'}</td>
         <td>${p.markPrice!=null?'$'+p.markPrice.toFixed(2):'—'}</td><td class="${cls(p.unrealized)}">${money(p.unrealized)}</td>
         <td class="muted">${p.exit_due_ts?new Date(p.exit_due_ts*1000).toISOString().slice(0,16):'—'}</td></tr>`).join(''):'<tr><td colspan="7" class="empty">none open</td></tr>'}
       </tbody></table></div>
     <div class="panel"><div class="k">Recent closed</div>
-      <table style="margin-top:.4rem"><thead><tr>${th('chunk','chunk')}${th('side','side')}${th('entry','entryPx')}${th('exit','exitPx')}${th('P&amp;L ($)','pnl')}</tr></thead><tbody>
-      ${d.closedRecent.length?d.closedRecent.map(c=>`<tr><td>${(c.chunk_start||'').slice(0,16)}</td>
+      <table style="margin-top:.4rem"><thead><tr>${th('entry','entryUtc')}${th('side','side')}${th('entry $','entryPx')}${th('exit $','exitPx')}${th('P&amp;L ($)','pnl')}</tr></thead><tbody>
+      ${d.closedRecent.length?d.closedRecent.map(c=>`<tr><td>${entryCell(c)}</td>
         <td class="${c.side==='LONG'?'pos':'neg'}">${c.side}</td><td>${c.entry_price??'—'}</td><td>${c.exit_price??'—'}</td>
         <td class="${cls(c.pnl)}">${money(c.pnl)}</td></tr>`).join(''):'<tr><td colspan="5" class="empty">none closed yet</td></tr>'}
       </tbody></table></div>
@@ -704,6 +758,22 @@ async function drawPilotLive(){
   };
   const bs=$('#btnStart'); if(bs)bs.onclick=()=>go(true);
   const bp=$('#btnStop'); if(bp)bp.onclick=()=>go(false);
+  const mf=$('#mfSet');
+  if(mf)mf.onclick=async()=>{
+    const raw=$('#mfIn').value.trim();
+    const floor=raw===''?null:Number(raw);
+    if(!confirm(floor==null
+      ? 'Clear the margin floor?\n\nNothing will stop entries as the account approaches liquidation.'
+      : `Halt new entries when margin level falls to ${floor} or below?\n\n`
+        +'Scheduled exits keep running. Clearing the halt afterwards is your button.'))return;
+    mf.disabled=true;
+    const out=await post('api/pilot/margin-floor',{floor});
+    $('#mfMsg').textContent=out
+      ? 'saved — the box picks this up on its next sync, then the level above shows it'
+      : '';
+    mf.disabled=false;
+    if(out)draw();
+  };
 }
 
 function draw(){ renderNav();

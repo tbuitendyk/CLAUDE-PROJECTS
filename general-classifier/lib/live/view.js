@@ -46,6 +46,8 @@ function deriveSetup(events, setupId) {
   let recoveredFills = 0;
   const incidents = [];
   let markPrice = null; let markUtc = null;
+  let walletBalance = null;  // {marginLevel, utc} — box-level, see the loop below
+  let marginFloor = null;    // the floor the BOX is enforcing, from RUN_STATUS
 
   const key = (e) => e.chunk_start;
   for (const e of events) {
@@ -54,6 +56,18 @@ function deriveSetup(events, setupId) {
       // setup can show unrealized P&L at the box's last mark.
       if (e.event === 'PNL_MTM' && Number.isFinite(Number(e.price)) && Number(e.price) > 0) {
         markPrice = Number(e.price); markUtc = e.utc || markUtc;
+      }
+      // Margin level and the floor enforcing it are BOX-level facts, like the
+      // mark above: one isolated wallet backs every real setup on this box. They
+      // are captured here so the setup screens can show the same liquidation
+      // distance the pilot screen shows — the two must not disagree (RULE TWO).
+      if (e.event === 'BALANCE' && e.margin_level != null) {
+        const m = Number(e.margin_level);
+        if (Number.isFinite(m)) walletBalance = { marginLevel: m, utc: e.utc || null };
+      }
+      if (e.event === 'RUN_STATUS' && e.margin_floor != null) {
+        const f = Number(e.margin_floor);
+        if (Number.isFinite(f)) marginFloor = f;
       }
       continue;
     }
@@ -72,8 +86,12 @@ function deriveSetup(events, setupId) {
         const p = open[key(e)]; delete open[key(e)];
         realized += e.pnl || 0;
         if (typeof e.fee_quote === 'number') legCosts.push(e.fee_quote);
+        // entry_utc rides along so a closed row can be named by its ENTRY time
+        // rather than its feature window (owner, 2026-08-19). Same field as the
+        // pilot view's closed rows — the two screens must not drift (RULE TWO).
         closed.push({ chunk_start: e.chunk_start, side: e.side, pnl: e.pnl,
-          entry_price: p ? p.entry_price : null, exit_price: e.price, exit_utc: e.utc, paper: false });
+          entry_price: p ? p.entry_price : null, entry_utc: p ? p.entry_utc : null,
+          exit_price: e.price, exit_utc: e.utc, paper: false });
         break;
       }
       case 'PAPER_ENTRY_FILL':
@@ -86,7 +104,8 @@ function deriveSetup(events, setupId) {
         const p = paperOpen[key(e)]; delete paperOpen[key(e)];
         paperRealized += e.pnl || 0;
         closed.push({ chunk_start: e.chunk_start, side: e.side, pnl: e.pnl,
-          entry_price: p ? p.entry_price : null, exit_price: e.price, exit_utc: e.utc, paper: true });
+          entry_price: p ? p.entry_price : null, entry_utc: p ? p.entry_utc : null,
+          exit_price: e.price, exit_utc: e.utc, paper: true });
         break;
       }
       // THE SAME LIST THE EXECUTOR ACTUALLY WRITES. This surfaced four event
@@ -135,6 +154,8 @@ function deriveSetup(events, setupId) {
     setupId,
     markPrice: round(markPrice, 4),
     markUtc,
+    walletBalance,
+    marginFloor,
     realizedPnl: round(realized, 4),
     paperRealizedPnl: round(paperRealized, 4),
     unrealizedPnl,
