@@ -51,3 +51,45 @@ module.exports.zeroOffsetEntersAtChunkStart = function () {
   const entries = entriesFromCalls([{ startTs: 500 * HOUR_MS }], [-1], {});
   assert.deepStrictEqual(entries[0], { entryTs: 500 * HOUR_MS, side: 'SHORT' });
 };
+
+// A SCAN MUST STATE ITS OWN TRAINING CUTOFF (owner, 2026-08-19).
+//
+// Both heavy scans used to default to TRAIN_THROUGH/SCORE_FROM imported from
+// lib/forwardbook.js — the frozen dates of a pre-registered research record with
+// three books in it. Correct for that record, meaningless for anything else. So
+// tuning a protective stop for the owner's own setup silently trained the
+// committee through a stranger's cutoff and returned a confident number with the
+// right units and a plausible magnitude. Every serious defect in this project has
+// been that shape: not maths that throws, instrumentation that lies.
+//
+// The guard has no default to fall back to. This test exists because disabling
+// the guard was watched leaving the whole suite green.
+module.exports.aScanWithNoStatedCutoffIsRefusedNotDefaulted = function () {
+  const fs = require('fs');
+  const path = require('path');
+  for (const f of ['stopsweep.js', 'convictionsweep.js']) {
+    const raw = fs.readFileSync(path.join(__dirname, '..', 'lib', f), 'utf8');
+    // Strip line comments before checking: the explanation of WHY these
+    // constants are gone necessarily names them, and a test that cannot tell
+    // prose from code fails on its own documentation.
+    const src = raw.replace(/\/\/[^\n]*/g, '');
+    assert.ok(!/require\('\.\/forwardbook'\)/.test(src),
+      `lib/${f} imports the pre-registered record again — its frozen dates are not a default for anyone else`);
+    assert.ok(!/TRAIN_THROUGH|SCORE_FROM/.test(src),
+      `lib/${f} still references another record's frozen constants`);
+    assert.ok(/function requireFreeze\(/.test(src), `lib/${f} lost the cutoff guard`);
+    assert.ok(/if \(!Number\.isFinite\(t\)\)/.test(src),
+      `lib/${f}'s cutoff guard no longer tests the cutoff, so an unstated one passes through`);
+  }
+  // and the guard actually throws, naming what is missing
+  const { computeSetupStop } = require('../lib/stopsweep');
+  const book = { id: 'unit-test', combo: { trade: 'X', ctx1: 'Y', ctx2: 'Z', size: 3 },
+    branch: { band: 1 }, members: [], cell: { entry: 'market', trailMult: null, quorum: 1, tHours: 24 } };
+  return computeSetupStop(book, {}).then(
+    () => { throw new Error('a scan with no stated cutoff was allowed to run'); },
+    (e) => {
+      assert.ok(/training cutoff/i.test(e.message),
+        `the refusal must name the missing cutoff; got: ${e.message}`);
+    },
+  );
+};

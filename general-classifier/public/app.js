@@ -2153,10 +2153,27 @@
       ? `<span class="pos">${pct(applied.stopPct)}</span> applied`
       : `<span class="muted">none applied (no stop)</span>`;
     let html = `<b>Protective stop tuner</b> — scan a live setup's full history for the fixed stop that loses no winner, SEE the both-sides effect, then choose a value or none. Running a scan applies nothing. Currently: ${appliedTxt}.<div style="margin-top:.45rem">`;
+    // Rows carry their KIND and their own training cutoff. Before this, the list
+    // was the built-in research books only — the owner's own profiles were not
+    // offered at all, so the setup holding real money could not be tuned from
+    // any screen. A row that cannot be scanned says why instead of vanishing.
+    const dstr = (ms) => (ms == null ? 'no training cutoff' : new Date(ms).toISOString().slice(0, 10));
     for (const c of cands) {
       const running = sweep && sweep.status === 'running' && sweep.bookId === c.id;
-      html += `<div style="margin:.3rem 0">${c.id} · <b>${c.combo.trade}</b> · hold ${c.cell.tHours}h · market entry, no stop `
-        + `<button type="button" class="secondary stoptune-btn" data-book="${c.id}"${running ? ' disabled' : ''}>${running ? 'Tuning…' : 'Tune protective stop (full history)'}</button></div>`;
+      const isProfile = c.kind === 'profile';
+      const label = isProfile
+        ? `<b>${c.name}</b> <span class="muted">(your setup${c.state ? ', ' + c.state : ''})</span>`
+        : `${c.name || c.id} <span class="muted">(pre-registered book)</span>`;
+      if (c.blocked) {
+        html += `<div style="margin:.3rem 0">${label} — <span class="muted">cannot scan: ${c.blocked}</span></div>`;
+        continue;
+      }
+      const trains = c.trainMode === 'rolling'
+        ? 'trains through the latest closed outcome'
+        : `trained through ${dstr(c.trainThrough)}`;
+      html += `<div style="margin:.3rem 0">${label} · <b>${c.combo.trade}</b> · hold ${c.cell.tHours}h · market entry, no stop`
+        + ` <span class="muted">· ${trains}</span> `
+        + `<button type="button" class="secondary stoptune-btn" data-kind="${c.kind}" data-book="${c.id}"${running ? ' disabled' : ''}>${running ? 'Tuning…' : 'Tune protective stop (full history)'}</button></div>`;
     }
     html += '</div>';
     if (sweep && sweep.status === 'running') {
@@ -2201,7 +2218,11 @@
       try {
         await fetch('api/pilot/stopsweep', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ bookId: b.dataset.book }),
+          // A profile is addressed as setupId so the server takes ITS training
+          // cutoff; a research book as bookId so it uses its own frozen dates.
+          // Posting everything as bookId is what made a profile unreachable.
+          body: JSON.stringify(b.dataset.kind === 'profile'
+            ? { setupId: b.dataset.book } : { bookId: b.dataset.book }),
         });
       } catch (_) { /* the poll will reflect state */ }
       const poll = async () => {
@@ -2304,7 +2325,11 @@
       try {
         await fetch('api/pilot/convictionsweep', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ bookId: b.dataset.book }),
+          // A profile is addressed as setupId so the server takes ITS training
+          // cutoff; a research book as bookId so it uses its own frozen dates.
+          // Posting everything as bookId is what made a profile unreachable.
+          body: JSON.stringify(b.dataset.kind === 'profile'
+            ? { setupId: b.dataset.book } : { bookId: b.dataset.book }),
         });
       } catch (_) { /* the poll reflects state */ }
       const poll = async () => {

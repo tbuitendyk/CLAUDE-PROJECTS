@@ -1395,15 +1395,67 @@ app.post('/api/pilot/margin-floor', csrfGuard, (req, res) => {
     res.json({ ok: true, marginFloor: readMarginFloor() });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
-// eligible setups for stop tuning: the live/prospective books WITHOUT an existing
-// protective stop (a market entry with no trailing stop). The bracket-lab control
-// is offered only for these — a breakout cell already stops at its opposite rail.
+// What can have a protective stop tuned: anything WITHOUT one already (a market
+// entry with no trailing stop — a breakout cell's opposite rail already IS its
+// stop, so tuning one is meaningless).
+//
+// THE OWNER'S OWN PROFILES WERE NOT IN THIS LIST (fixed 2026-08-19). It returned
+// the three pre-registered research books and nothing else, so the setup they
+// actually have money in could not be selected for tuning from any screen. That
+// is the complaint in one endpoint: the software knew about its built-in books
+// and not about the thing its owner built.
+//
+// Profiles come first because they are the live question; the research books
+// stay listed because tuning one is still a legitimate thing to ask for. Each
+// row says which kind it is and carries its own training cutoff, so no scan can
+// silently borrow another record's dates.
 app.get('/api/pilot/stop-candidates', (req, res) => {
   try {
-    const { BOOKS } = require('./lib/forwardbook');
     const { hasExistingStop } = require('./lib/stopsweep');
-    res.json({ candidates: BOOKS.filter((b) => !hasExistingStop(b.cell))
-      .map((b) => ({ id: b.id, combo: b.combo, cell: b.cell })) });
+    const candidates = [];
+
+    // the owner's profiles, newest first
+    try {
+      const reg = require('./lib/live/setups');
+      const { resolveFreeze } = require('./lib/live/trainpolicy');
+      for (const s of reg.listSetups()) {
+        if (s.state === 'retired') continue;
+        const cfg = s.configSnapshot || {};
+        if (!cfg.cell || !cfg.combo) continue;
+        if (hasExistingStop(cfg.cell)) continue;
+        // A profile with no usable training policy is LISTED and marked, never
+        // hidden: silently dropping it is how the owner ends up staring at a
+        // list that does not contain their setup with nothing explaining why.
+        let freeze = null; let blocked = null;
+        try { freeze = resolveFreeze(s); } catch (e) { blocked = e.message; }
+        candidates.push({
+          kind: 'profile',
+          id: s.id,
+          name: s.name || s.id,
+          state: s.state,
+          combo: cfg.combo,
+          cell: cfg.cell,
+          trainThrough: freeze ? freeze.throughMs : null,
+          trainMode: freeze ? freeze.mode : null,
+          blocked,
+        });
+      }
+    } catch (e) {
+      // The registry being unreadable must not blank the whole list.
+      candidates.push({ kind: 'error', id: '(profiles unreadable)', name: '(profiles unreadable)', blocked: e.message });
+    }
+
+    // the pre-registered research books, which carry their own frozen dates
+    try {
+      const { BOOKS, TRAIN_THROUGH } = require('./lib/forwardbook');
+      for (const b of BOOKS) {
+        if (hasExistingStop(b.cell)) continue;
+        candidates.push({ kind: 'book', id: b.id, name: `${b.id} — ${b.note}`,
+          combo: b.combo, cell: b.cell, trainThrough: TRAIN_THROUGH, trainMode: 'frozen', blocked: null });
+      }
+    } catch (_) { /* the record is not required for the owner's own profiles to be tunable */ }
+
+    res.json({ candidates });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 // Conviction sizing (owner 2026-08-13): price a quorum-agreement clip ladder
@@ -1440,11 +1492,41 @@ function bookFromScanBody(b) {
         return { trainThrough: assumed, scoreFrom: assumed + 1 }; })(),
     };
   }
-  const { BOOKS } = require('./lib/forwardbook');
-  const bookId = String((b && b.bookId) || 'F1');
+  // A PROFILE, resolved from the registry with ITS OWN training cutoff. This
+  // path did not exist: the only non-run target was a built-in book, defaulting
+  // to a hardcoded id, so the owner could not aim a scan at their own setup.
+  if (b && b.setupId) {
+    const reg = require('./lib/live/setups');
+    const { resolveFreeze } = require('./lib/live/trainpolicy');
+    const s = reg.getSetup(String(b.setupId));
+    if (!s) { const e = new Error(`no such profile ${b.setupId}`); e.status = 404; throw e; }
+    const cfg = s.configSnapshot || {};
+    if (!cfg.combo || !cfg.cell) {
+      const e = new Error(`profile ${s.id} carries no config to scan`); e.status = 400; throw e;
+    }
+    // The freeze comes from the PROFILE's deployment policy — frozen at the
+    // instant it names, or rolling, in which case "now" is the honest cutoff.
+    const freeze = resolveFreeze(s);
+    return {
+      book: { id: s.id, combo: cfg.combo, branch: cfg.branch, members: cfg.members, cell: cfg.cell },
+      opts: { trainThrough: freeze.throughMs, scoreFrom: freeze.throughMs + 1 },
+    };
+  }
+
+  // A PRE-REGISTERED RESEARCH BOOK, which supplies its own frozen dates. No
+  // default id any more: scanning "whatever was hardcoded" when the caller named
+  // nothing is how a screen ends up reporting one setup's numbers under another
+  // setup's heading.
+  const { BOOKS, TRAIN_THROUGH, SCORE_FROM } = require('./lib/forwardbook');
+  const bookId = String((b && b.bookId) || '');
+  if (!bookId) {
+    const e = new Error('name what to scan: setupId for one of your profiles, '
+      + 'bookId for a pre-registered book, or runId for a row of a saved run');
+    e.status = 400; throw e;
+  }
   const book = BOOKS.find((x) => x.id === bookId);
   if (!book) { const e = new Error(`no such setup ${bookId}`); e.status = 404; throw e; }
-  return { book, opts: {} };
+  return { book, opts: { trainThrough: TRAIN_THROUGH, scoreFrom: SCORE_FROM } };
 }
 function convictionSweepPath() {
   const dir = path.join(__dirname, 'data', 'pilot');

@@ -355,32 +355,50 @@ function theCampaignPickReachesViewTreeBeforeTheRoundTripFinishes() {
 // only when no row was selected, and nothing in the tab clears a run's stored
 // selection — so with a row selected there was NO path to the live pilot, and
 // tuning its protective stop could not be done from the screen at all.
-function theLivePilotIsAlwaysOnTheScanTargetList() {
-  assert(/<option value="F1"/.test(CX),
-    'there is no explicit F1 option — the live pilot is only reachable by accident');
-  assert(!/F1 \(no board row selected\)/.test(CX),
-    'the context-dependent "F1 (no board row selected)" label is back: that entry means F1 '
-    + 'only when nothing is selected, which is exactly what made F1 unreachable');
+// THE OWNER'S OWN SETUPS ARE ON THE SCAN TARGET LIST.
+//
+// This test used to require a literal <option value="F1">, because a
+// context-dependent entry had once made the live config unreachable from the
+// screen. The lesson survives; the subject changed. There is no built-in
+// config any more, and requiring one would now pin the exact defect the owner
+// named: "hardcoded logic and one-off processing that locks me out of my own
+// software". What must hold is the general form — whatever is actually running
+// is reachable, by its own identity, and named the way the owner named it.
+function theOwnersSetupsAreAlwaysOnTheScanTargetList() {
+  assert(!/<option value="F1"/.test(CX),
+    'a hardcoded F1 option is back on the scan target list — the list must come from the registry');
+  assert(/const profiles = books\.filter\(\(b\) => b\.kind === 'profile'\)/.test(CX),
+    "the picker no longer separates the owner's setups from the pre-registered books");
+  assert(/profiles\.map\(\(b\) => `<option/.test(CX),
+    "the owner's setups are not rendered as options, so their own setups cannot be aimed at");
+  assert(/esc\(b\.name \|\| b\.id\)/.test(CX),
+    'an option shows a generated id rather than the name the owner gave it');
   // the selected-row option may only exist when a row IS selected
-  const opt = CX.match(/\$\{sel \? `<option value="sel"/);
-  assert(opt, 'the selected-row option is not gated on a row actually being selected');
+  assert(/\$\{sel \? `<option value="sel"/.test(CX),
+    'the selected-row option is not gated on a row actually being selected');
 }
 
-// The launcher and the sentence describing it must resolve the SAME target.
+// The launcher and the sentence describing it must resolve the SAME target,
+// and a setup must be addressed as a setup so the server uses ITS training
+// cutoff rather than a pre-registered record's frozen dates.
 function theScanTargetProseMatchesWhatTheLauncherWillUse() {
   assert(/const tgt = /.test(CX), 'the resolved scan target is gone');
-  assert(/const scanBody = tgt === 'F1'/.test(CX),
-    'the launcher no longer derives its body from the resolved target');
+  assert(/const chosen = books\.find\(/.test(CX),
+    'the launcher no longer resolves the picked target against the list it rendered');
+  assert(/chosen\.kind === 'profile' \? \{ setupId: chosen\.id \} : \{ bookId: chosen\.id \}/.test(CX),
+    "a setup is not addressed as setupId, so the scan would run against another record's frozen dates");
   assert(/const target = tgt === 'sel'/.test(CX),
     'the prose no longer derives from the resolved target, so it can describe a different '
     + 'target from the one the scan will actually use');
-  assert(/savedTarget === 'sel' && !sel/.test(CX),
-    'a stored "sel" preference with nothing selected no longer falls back to F1');
+  assert(/known\.has\(savedTarget\) \? savedTarget : firstReal/.test(CX),
+    'a stored preference pointing at something that no longer exists does not fall back to a real target');
+  assert(/if \(!scanBody\) return noTarget\(\)/.test(CX),
+    'with nothing selectable the launcher still posts an empty body and shows the server error');
 }
 
 module.exports.theCampaignPickReachesViewTreeBeforeTheRoundTripFinishes
   = theCampaignPickReachesViewTreeBeforeTheRoundTripFinishes;
-module.exports.theLivePilotIsAlwaysOnTheScanTargetList
-  = theLivePilotIsAlwaysOnTheScanTargetList;
+module.exports.theOwnersSetupsAreAlwaysOnTheScanTargetList
+  = theOwnersSetupsAreAlwaysOnTheScanTargetList;
 module.exports.theScanTargetProseMatchesWhatTheLauncherWillUse
   = theScanTargetProseMatchesWhatTheLauncherWillUse;

@@ -1741,34 +1741,42 @@ async function drawTune() {
   const cmpSrc = ((await apiOr('api/bracketlab/verdict-sources', ({ sources: [] }))).sources || [])
     .filter((s) => s.realRows > 0);
   const cmpOpt = (s) => `<option value="${esc(s.id)}">${esc(s.id)}${s.windowLayout && s.windowLayout !== 'legacy' ? ` [${esc(s.windowLayout)}]` : ''}</option>`;
-  // F1 IS ALWAYS REACHABLE (owner, 2026-08-18 — the defect that blocked the
-  // protective-stop decision entirely).
+  // YOUR OWN SETUPS ARE THE TARGETS (owner, 2026-08-19: "just fix it all").
   //
-  // The target list used to open with ONE context-dependent entry that read
-  // "F1 (no board row selected)" when nothing was selected on Boards and "the
-  // row selected on Boards" when something was. There was no F1 entry of its
-  // own, and nothing anywhere in the tab clears a run's stored selection — so
-  // the moment the picked run had a selected row, the ONLY way to aim a scan
-  // at the live pilot was to switch to some other run that happened to have no
-  // selection. That is not a control, it is an accident, and it made tuning
-  // F1's protective stop unreachable from the screen for the normal case.
+  // This picker used to open with a fixed entry pointing at ONE hardcoded
+  // config, and the endpoint behind it only ever knew about the built-in
+  // research books. So the setups the owner created — including the one holding
+  // real money — could not be aimed at from this screen at all, and the option
+  // sitting at the top of the list claimed to be the live one while pointing at
+  // something that no longer runs. A control that names a thing it cannot reach
+  // is worse than an absent control.
   //
-  // Now: an explicit F1 option that is always present and always means F1, and
-  // a selected-row option that appears only when a row is actually selected.
+  // Now the list is built from what the server reports: the owner's setups
+  // first, each addressed by its own id and scanned against its OWN training
+  // cutoff, then the pre-registered books, then the selected board row.
+  const profiles = books.filter((b) => b.kind === 'profile');
+  const savedBooks = books.filter((b) => b.kind !== 'profile');
+  const optId = (b) => `${b.kind === 'profile' ? 'p' : 'b'}:${b.id}`;
+  const known = new Set(books.map(optId));
   const savedTarget = localStorage.getItem('cx-scan-target') || '';
-  // An old saved 'sel' with nothing selected now resolves to F1, not to a
-  // dangling option — the stored preference must never leave the tab pointing
-  // at a target that no longer exists.
-  const tgt = (savedTarget === 'sel' && !sel) ? 'F1' : (savedTarget || 'F1');
-  const scanBody = tgt === 'F1' ? { bookId: 'F1' }
-    : tgt === 'sel' ? { runId: doc.id, target: 'best' }
-      : { bookId: tgt };
+  // A stored preference pointing at something that no longer exists resolves to
+  // the first real target rather than leaving a dangling option selected.
+  const firstReal = (profiles[0] && optId(profiles[0])) || (savedBooks[0] && optId(savedBooks[0])) || '';
+  const tgt = (savedTarget === 'sel' && !sel) ? firstReal
+    : (savedTarget === 'sel' ? 'sel' : (known.has(savedTarget) ? savedTarget : firstReal));
+  const chosen = books.find((b) => optId(b) === tgt) || null;
+  const scanBody = tgt === 'sel' ? { runId: doc.id, target: 'best' }
+    : chosen ? (chosen.kind === 'profile' ? { setupId: chosen.id } : { bookId: chosen.id })
+      : null;
   // The prose and the dropdown are computed from the SAME resolved value, so
   // the sentence above the control can no longer describe a different target
   // from the one the launcher will actually use.
   const target = tgt === 'sel'
     ? `the row selected on Boards (<b>${esc(sel.trade)}</b> ${esc(sel.geometry)} q${sel.quorum} ${sel.tHours}h of ${esc(doc.id)})`
-    : tgt === 'F1' ? 'the live rule' : `the saved book <b>${esc(tgt)}</b>`;
+    : chosen ? (chosen.kind === 'profile'
+      ? `your setup <b>${esc(chosen.name || chosen.id)}</b>`
+      : `the saved book <b>${esc(chosen.id)}</b>`)
+      : '<b>nothing selectable</b> — no setup or book is without a protective stop';
   $('#view').innerHTML = `
   ${busy ? `<div class="panel warn">A heavy scan is running (${esc(String(busy))}) — one at a time; both launchers are disabled until it lands (scans run minutes and cannot be aborted mid-flight).</div>` : ''}
   <div class="panel">
@@ -1776,19 +1784,19 @@ async function drawTune() {
     <p class="note">Replays the frozen committee over ALL history and finds the tightest fixed stop that would not have
       clipped a single winner, plus the sacrifice curve (give up top winners → tighter stop → NET $). Scanning applies
       nothing. Target: ${target}.</p>
-    <div class="row" style="margin-bottom:.4rem"><label class="f" title="what the scans below are aimed at. Books already carrying a protective stop are not listed — a breakout cell's opposite rail IS its stop, so tuning one is meaningless.">scan target<select id="tuneTarget">
-      <option value="F1" ${tgt === 'F1' ? 'selected' : ''}>the live rule</option>
+    <div class="row" style="margin-bottom:.4rem"><label class="f" title="what the scans below are aimed at. Anything already carrying a protective stop is not listed — a breakout cell's opposite rail IS its stop, so tuning one is meaningless. Each target is scanned against its OWN training cutoff.">scan target<select id="tuneTarget">
+      ${profiles.map((b) => `<option value="${esc(optId(b))}" ${tgt === optId(b) ? 'selected' : ''}${b.blocked ? ' disabled' : ''}>${esc(b.name || b.id)} — ${esc((b.combo && b.combo.trade) || '')} ${b.cell && b.cell.tHours ? b.cell.tHours + 'h' : ''}${b.state ? ` (${esc(b.state)})` : ''}${b.blocked ? ' — cannot scan' : ''}</option>`).join('')}
       ${sel ? `<option value="sel" ${tgt === 'sel' ? 'selected' : ''}>the row selected on Boards — ${esc(sel.trade)} ${esc(sel.geometry)} q${sel.quorum} ${sel.tHours}h</option>` : ''}
-      ${books.map((b) => `<option value="${esc(b.id)}" ${tgt === b.id ? 'selected' : ''}>${esc(b.id)} — ${esc(b.combo && b.combo.trade || '')} ${b.cell && b.cell.tHours ? b.cell.tHours + 'h' : ''}</option>`).join('')}
+      ${savedBooks.map((b) => `<option value="${esc(optId(b))}" ${tgt === optId(b) ? 'selected' : ''}>${esc(b.name || b.id)} — ${esc((b.combo && b.combo.trade) || '')} ${b.cell && b.cell.tHours ? b.cell.tHours + 'h' : ''}</option>`).join('')}
     </select></label>
-    <span class="note">${books.length} saved book(s) without a protective stop</span></div>
+    <span class="note">${profiles.length} of your setup(s) and ${savedBooks.length} saved book(s) without a protective stop</span></div>
     <div class="row" style="margin-bottom:.4rem">
       <label class="f" title="apply a stop you chose yourself rather than one off the curve. The box is in percent; the engine stores a fraction. The floor is 0.5% — twice the 0.25% round-trip fee, below which a triggered stop is a guaranteed net loss.">or apply a custom stop<input id="stopCustomPct" type="number" step="0.5" min="0.5" max="99" placeholder="e.g. 25" style="width:5.5rem"> %</label>
       <button id="stopCustomApply">apply custom</button>
       <button id="stopClear" title="run with NO fixed stop. The position then rests on its scheduled exit alone.">No stop (clear)</button>
     </div>
     <div class="row"><button id="stopRun" class="pri" ${busy ? 'disabled' : ''}>Tune protective stop (full history)</button>
-      <span class="note">currently applied to the live rule: ${applied.stopPct != null ? `<span class="pos">${pct(applied.stopPct)}</span>` : 'none'}</span></div>
+      <span class="note">currently applied on the trading machine: ${applied.stopPct != null ? `<span class="pos">${pct(applied.stopPct)}</span>` : 'none'}</span></div>
     <div id="stopOut">${stop.status === 'done' ? renderStopResult(stop) : stop.status === 'running' ? '<p class="note">running…</p>' : stop.status === 'error' ? `<p class="warn">last scan failed: ${esc(stop.error || '')}</p>` : ''}</div>
   </div>
   <div class="panel">
@@ -1887,11 +1895,19 @@ async function drawTune() {
     // frozen Bracket lab sends null and always has (audit 2026-08-17).
     applyStop(null);
   };
+  // scanBody is null when the picker has nothing selectable (every setup and
+  // book already carries a protective stop, or the list failed to load). Say so
+  // instead of posting an empty request and surfacing the server's 400 — the
+  // operator did not type anything wrong, there is simply nothing to aim at.
+  const noTarget = () => { alert('No scan target: nothing in the list is without a protective stop, '
+    + 'so there is nothing to tune. A breakout cell already stops at its opposite rail.'); };
   $('#stopRun').onclick = async () => {
+    if (!scanBody) return noTarget();
     if (!confirm('Run the full-history stop scan? (minutes; one heavy scan at a time)')) return;
     const out = await tryPost('api/pilot/stopsweep', scanBody); if (out) { clearTimeout(tunePoll); tunePoll = setTimeout(drawTune, 1500); }
   };
   $('#convRun').onclick = async () => {
+    if (!scanBody) return noTarget();
     if (!confirm('Run the full-history conviction sweep? (minutes; one heavy scan at a time)')) return;
     const out = await tryPost('api/pilot/convictionsweep', scanBody); if (out) { clearTimeout(tunePoll); tunePoll = setTimeout(drawTune, 1500); }
   };
