@@ -48,6 +48,11 @@ function deriveSetup(events, setupId) {
   let markPrice = null; let markUtc = null;
   let walletBalance = null;  // {marginLevel, utc} — box-level, see the loop below
   let marginFloor = null;    // the floor the BOX is enforcing, from RUN_STATUS
+  // THIS PROFILE'S OWN HALT. Its new entries are stopped; its open positions keep
+  // their scheduled exits. Tracked here so the profile's screen can show it and
+  // offer the way out — the halt was settable from the first day and had neither.
+  let halted = false;
+  let haltReason = null;
 
   const key = (e) => e.chunk_start;
   for (const e of events) {
@@ -116,6 +121,14 @@ function deriveSetup(events, setupId) {
       // otherwise. lib/pilotview.js surfaces all of these for F1; only its
       // generalized twin was missing them, and an asymmetry between the two is
       // an oversight rather than a decision (the QC-122 shape, found 2026-08-18).
+      case 'SETUP_HALT_SET':
+        halted = true; haltReason = e.reason || null;
+        incidents.push({ utc: e.utc, kind: e.event, detail: e.reason || '' });
+        break;
+      case 'SETUP_HALT_CLEAR':
+        halted = false; haltReason = null;
+        incidents.push({ utc: e.utc, kind: e.event, detail: e.reason || '' });
+        break;
       case 'FIXED_STOP':
       case 'KILL_PRICE_DRIFT':
       case 'ENTRY_SKIPPED':
@@ -156,6 +169,8 @@ function deriveSetup(events, setupId) {
     markUtc,
     walletBalance,
     marginFloor,
+    halted,
+    haltReason,
     realizedPnl: round(realized, 4),
     paperRealizedPnl: round(paperRealized, 4),
     unrealizedPnl,

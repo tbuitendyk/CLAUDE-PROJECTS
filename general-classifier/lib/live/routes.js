@@ -73,6 +73,33 @@ function installLiveRoutes(app, { csrfGuard }) {
     } catch (e) { res.status(errStatus(e)).json({ error: e.message }); }
   });
 
+  // CLEAR THIS PROFILE'S HALT. Same shape as the box-level one: the classifier
+  // only WRITES A SIGNED REQUEST — it places no orders and never touches the box.
+  // The control plane carries it on its next sync and the box verifies the
+  // signature before lifting anything. The setup id rides inside the signed
+  // payload, so a request minted for one profile cannot lift another's halt.
+  app.post('/api/live/setups/:id/unhalt', csrfGuard, (req, res) => {
+    const s = reg.getSetup(req.params.id);
+    if (!s) return res.status(404).json({ error: `no such setup ${req.params.id}` });
+    try {
+      const crypto = require('crypto');
+      const dir = path.join(__dirname, '..', '..', 'data', 'live', 'unhalt');
+      fs.mkdirSync(dir, { recursive: true });
+      const nonce = crypto.randomBytes(9).toString('hex');
+      const utc = new Date().toISOString();
+      const rec = { setup_id: s.id, by: 'owner', utc, nonce };
+      const secret = process.env.PILOT_ARM_SECRET || '';
+      if (secret) {
+        rec.hmac = crypto.createHmac('sha256', secret)
+          .update(`unhalt|${s.id}|${nonce}|${utc}`).digest('hex');
+      }
+      const f = path.join(dir, `${s.id}.json`);
+      fs.writeFileSync(`${f}.tmp`, JSON.stringify(rec));
+      fs.renameSync(`${f}.tmp`, f);
+      res.json({ ok: true, request: { setup_id: s.id, utc, nonce, authenticated: !!secret } });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
   app.post('/api/live/setups/:id/config', csrfGuard, (req, res) => {
     try {
       const s = reg.updateSetup(req.params.id, req.body || {}, 'owner');

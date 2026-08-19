@@ -146,7 +146,41 @@ function retireIsAllowedOnceNothingIsOpen() {
   });
 }
 
+// ---- 4. the reproduce-check is a brake, and the brake has a release ---------
+
+function aProfileTracksItsOwnHalt() {
+  const liveview = require(path.join(ROOT, 'lib', 'live', 'view'));
+  const halted = liveview.deriveSetup([
+    { event: 'SETUP_HALT_SET', setup_id: 's1', utc: '2026-08-19T06:00:00Z', reason: 'decisions no longer reproduce' },
+  ], 's1');
+  assert.strictEqual(halted.halted, true, 'a profile does not know it is halted, so its screen cannot say so');
+  assert.match(halted.haltReason, /reproduce/, 'the halt reason is lost');
+  const cleared = liveview.deriveSetup([
+    { event: 'SETUP_HALT_SET', setup_id: 's1', utc: '2026-08-19T06:00:00Z', reason: 'x' },
+    { event: 'SETUP_HALT_CLEAR', setup_id: 's1', utc: '2026-08-19T06:30:00Z', reason: 'cause understood' },
+  ], 's1');
+  assert.strictEqual(cleared.halted, false, 'clearing a profile halt does not show on its screen');
+}
+
+function theOwnerCanLiftAProfileHalt() {
+  const routes = fs.readFileSync(path.join(ROOT, 'lib', 'live', 'routes.js'), 'utf8');
+  assert.ok(/setups\/:id\/unhalt/.test(routes), 'there is no way to clear a profile halt');
+  assert.ok(/unhalt\|\$\{s\.id\}\|\$\{nonce\}/.test(routes),
+    'the signature does not cover the setup id, so a clear for one profile could lift another\'s');
+  const html = fs.readFileSync(path.join(ROOT, 'public', 'trading.html'), 'utf8');
+  assert.ok(/btnSetupUnhalt/.test(html), 'the profile screen offers no way out of its halt');
+}
+
+function theProfileScreenShowsItsReproduceCheck() {
+  const html = fs.readFileSync(path.join(ROOT, 'public', 'trading.html'), 'utf8');
+  assert.ok(/<b>Reproduce-check:<\/b>/.test(html),
+    'a profile screen never shows whether its decisions still reproduce');
+}
+
 module.exports = {
+  aProfileTracksItsOwnHalt,
+  theOwnerCanLiftAProfileHalt,
+  theProfileScreenShowsItsReproduceCheck,
   aConfigCannotBeCreatedWithoutAName,
   nameAndWhyAreRelabelableAndTheHistoryIsKept,
   campaignIsNotRelabelable,

@@ -611,7 +611,18 @@ async function drawLive(){
   $('#view').innerHTML=`
     <div class="banner ${st.state==='stopped'?'stopped':'running'}">
       <b>${esc(g.id)}</b> ${isP?paperBadge:''} — ${esc(g.status)}${st.runEpochUtc?` <span class="muted">· displayed run since ${st.runEpochUtc.slice(0,16)} UTC</span>`:''}</div>
-    <div class="panel" style="font-size:.85rem"><b>Margin level:</b> ${isP
+    ${st.halted?`<div class="banner halted">⛔ HALT set for this config — new entries stopped; scheduled exits still run.
+      <div class="muted" style="font-size:.78rem;margin:.25rem 0">Reason recorded on the box: ${esc(st.haltReason||'(not recorded)')}</div>
+      <button id="btnSetupUnhalt" class="danger">Clear the halt</button>
+      <span id="setupUnhaltMsg" class="muted" style="font-size:.78rem;margin-left:.5rem">Only after the cause is understood — this does not start trading, and an unfixed cause re-halts on the next check.</span>
+      </div>`:''}
+    ${(st.mirror&&st.mirror.breaks)?`<div class="banner halted">⛔ MIRROR BREAK — ${st.mirror.breaks} decision(s) this config acted on no longer reproduce.
+      Its new entries are stopped; investigate before clearing.</div>`:''}
+    <div class="panel" style="font-size:.85rem"><b>Reproduce-check:</b> ${st.mirror==null
+        ? '<span class="muted">not run yet</span>'
+        : (st.mirror.breaks?`<span class="neg">${st.mirror.breaks} BREAK</span>`
+                           :`<span class="pos">clean</span> <span class="muted">(${st.mirror.checked||0} checked)</span>`)} ·
+      <b>Margin level:</b> ${isP
       ? '<span class="muted">not applicable — a paper book borrows nothing, so it has no liquidation distance</span>'
       : marginCell((st.walletBalance||{}).marginLevel, st.marginFloor, st.marginFloorRequested)}</div>
     <div class="grid" style="margin-bottom:1rem">
@@ -641,6 +652,22 @@ async function drawLive(){
       ${st.incidents.length?st.incidents.map(i=>`<tr><td>${(i.utc||'').slice(0,19)}</td><td class="warn">${esc(i.kind)}</td>
         <td style="text-align:left" class="muted">${esc((i.detail||'').slice(0,120))}</td></tr>`).join(''):'<tr><td colspan="3" class="empty">none — clean</td></tr>'}
       </tbody></table></div>`;
+  // The way out of THIS config's halt. Its counterpart could set the halt from
+  // day one and nothing could lift it, so a halted config was finished. Clearing
+  // does not start trading — the config's own state still governs entries — and
+  // an unfixed cause re-halts on the next check.
+  const su=$('#btnSetupUnhalt');
+  if(su)su.onclick=async()=>{
+    if(!confirm(`Clear the halt on ${ch.setupId}?\n\nOnly once you understand WHY it halted. `
+      + 'This does not start trading, and if the cause is unfixed the next check halts it again.\n\n'
+      + `Reason recorded on the box: ${st.haltReason||'(not recorded)'}`))return;
+    su.disabled=true;
+    const out=await post(`api/live/setups/${ch.setupId}/unhalt`,{});
+    $('#setupUnhaltMsg').textContent = out
+      ? 'requested — the control plane carries it on its next sync (a few minutes), then the box clears the flag'
+      : '';
+    su.disabled=false;
+  };
 }
 // F1's LIVE page: ALL the running info from the pilot page, token-styled.
 async function drawPilotLive(){
