@@ -25,7 +25,14 @@ const {
   BOOKS, TRAIN_THROUGH, splitFrozen, assertFrozenMembersMatchEngine,
 } = require('./forwardbook');
 
-const F1 = BOOKS.find((b) => b.id === 'F1');
+// THE PILOT'S RULE NOW COMES FROM DATA (Stage C, owner 2026-08-18/19).
+// This was `BOOKS.find(b => b.id === 'F1')` — the rule the live engine trades,
+// read out of a source file at module load. Resolved per call instead, so the
+// owner can change what the pilot trades without anyone editing code. Until the
+// owner designates a deployment the resolver still returns the hardcoded F1,
+// flagged source:'code', so the armed engine is undisturbed and the gap is
+// visible rather than silent. See lib/pilotrule.js.
+const { resolveRule } = require('./pilotrule');
 
 // Bump on ANY change to the F1 live mechanics (members, band, quorum, geometry,
 // decision rule, feature layout). It rides in the input_hash so a code/config
@@ -41,10 +48,10 @@ const SIDE_MAP = { 1: 'LONG', '-1': 'SHORT', 0: 'FLAT' };
 // live producer (computeSignal) and the archival recompute (computeSignalForChunk)
 // so the mirror check compares like with like — the very same code path that
 // decided the live trade is the one re-run against fresh data.
-async function committeeCall(target, trainChunks, maps, geo, views, bandPct) {
-  const members = await trainMembers(F1.members, views, trainChunks, [target], F1.branch, maps, geo);
+async function committeeCall(target, trainChunks, maps, geo, views, bandPct, rule) {
+  const members = await trainMembers(rule.cfg.members, views, trainChunks, [target], rule.cfg.branch, maps, geo);
   const perMember = members.map((m) => m.calls[0]);
-  const call = quorumCall(members.map((m) => m.calls), 0, F1.cell.quorum);
+  const call = quorumCall(members.map((m) => m.calls), 0, rule.cfg.cell.quorum);
   const entryTs = target.startTs + (geo.entryOffsetH || 0) * HOUR_MS;
   const bar = maps.trade.get(entryTs);
   const priceAt = bar ? bar.open : null;
@@ -58,9 +65,9 @@ async function committeeCall(target, trainChunks, maps, geo, views, bandPct) {
   // trip this config-drift hash.
   const inputHash = crypto.createHash('sha256')
     .update(JSON.stringify({
-      chunk: target.startTs, perMember, quorum: F1.cell.quorum, band: bandPct,
-      side, symbol: F1.combo.trade,
-      train_through: TRAIN_THROUGH, config_version: CONFIG_VERSION,
+      chunk: target.startTs, perMember, quorum: rule.cfg.cell.quorum, band: bandPct,
+      side, symbol: rule.cfg.combo.trade,
+      train_through: rule.freezeMs, config_version: CONFIG_VERSION,
     }))
     .digest('hex').slice(0, 16);
   return { call, perMember, side, priceAt, inputHash, entryTs };
@@ -121,15 +128,16 @@ function chooseEntryOpen(cachedOpen, liveOpen) {
 // members on the chunks handed to it as the "forward" set, so we pass just the
 // target: this yields that chunk's per-member calls under the frozen weights.
 async function computeSignal(now, opts = {}) {
+  const rule = resolveRule();
   assertFrozenMembersMatchEngine();
   const fee = 0; // fees are the executor's real-world business; the signal is fee-agnostic
   // includeUnlabeled: the live decision is on the CURRENT chunk, whose outcome
   // window has not completed — without this the newest available chunk is ~6
   // days old (waiting for its label) and we would enter as it should be closing.
   const params = { allLoaded: true, feePerLeg: fee, includeUnlabeled: true };
-  const { geo, maps, chunks } = await buildCombo(F1.combo, F1.branch, params);
+  const { geo, maps, chunks } = await buildCombo(rule.cfg.combo, rule.cfg.branch, params);
 
-  const bandPct = Math.abs(F1.branch.band);
+  const bandPct = Math.abs(rule.cfg.branch.band);
   // Label only chunks whose outcome is known; the current (target) chunk has
   // diffPct == null and is used for prediction, where its label is never read.
   for (const c of chunks) c.label = c.diffPct == null ? null : scoreDiff(c.diffPct / 100, bandPct / 100);
@@ -138,7 +146,7 @@ async function computeSignal(now, opts = {}) {
   const { trainChunks } = splitFrozen(chunks, TRAIN_THROUGH, opts.scoreFrom, outcomeMs);
   if (!trainChunks.length) throw new Error('pilotsignal: no training chunks at/before freeze');
 
-  const target = actionableChunk(chunks, geo, F1.cell.tHours, now);
+  const target = actionableChunk(chunks, geo, rule.cfg.cell.tHours, now);
   if (!target) {
     return { ok: true, actionable: false,
       note: 'no chunk whose entry hour has arrived and whose hold is still open' };
@@ -172,13 +180,13 @@ async function computeSignal(now, opts = {}) {
     }
   }
 
-  const views = bracketLib.comboViews(F1.combo.size, geo.featureHours / 24).views;
+  const views = bracketLib.comboViews(rule.cfg.combo.size, geo.featureHours / 24).views;
   // decision price: the trade pair's OPEN at the entry hour, read from the same
   // map the market simulator reads (bracket.js simMarket: `const p = ref.open`
   // at entryTs = startTs + entryOffsetH). Matching field and timestamp exactly
   // is what makes the executor's fill-vs-decision deviation meaningful.
   const { call, perMember, side, priceAt, inputHash } =
-    await committeeCall(target, trainChunks, maps, geo, views, bandPct);
+    await committeeCall(target, trainChunks, maps, geo, views, bandPct, rule);
   // ENTRY PRICE = the entry candle's OPEN, exactly as the trained model and the
   // forward book use it (bracket.js simMarket: ref.open at entryTs). Prefer the
   // closed-cache value; but the tick that first sees the entry hour runs ~5 min
@@ -196,7 +204,7 @@ async function computeSignal(now, opts = {}) {
   if (call !== 0 && entryOpen == null && typeof opts.liveOpenFetcher === 'function') {
     let live = null;
     try {
-      live = await opts.liveOpenFetcher(F1.combo.trade, entryTs);
+      live = await opts.liveOpenFetcher(rule.cfg.combo.trade, entryTs);
     } catch (e) {
       process.stderr.write('pilotsignal: live entry-open fetch failed: ' + (e && e.message) + '\n');
     }
@@ -212,13 +220,13 @@ async function computeSignal(now, opts = {}) {
     actionable: true,
     intent: {
       schema: 1,
-      symbol: F1.combo.trade,
+      symbol: rule.cfg.combo.trade,
       side,
       chunk_start: new Date(target.startTs).toISOString(),
       decision_price: entryOpen,
       input_hash: inputHash,
       per_member: perMember,
-      quorum: F1.cell.quorum,
+      quorum: rule.cfg.cell.quorum,
       config_version: CONFIG_VERSION,
       train_through: TRAIN_THROUGH,
       band_pct: bandPct,
@@ -242,10 +250,11 @@ async function computeSignal(now, opts = {}) {
 // monthly bundle published different candles (finding 7), or the engine changed,
 // the recomputed side / votes / hash diverge and the pilot is halted.
 async function computeSignalForChunk(chunkStartMs, opts = {}) {
+  const rule = resolveRule();
   assertFrozenMembersMatchEngine();
   const params = { allLoaded: true, feePerLeg: 0, includeUnlabeled: true };
-  const { geo, maps, chunks } = await buildCombo(F1.combo, F1.branch, params);
-  const bandPct = Math.abs(F1.branch.band);
+  const { geo, maps, chunks } = await buildCombo(rule.cfg.combo, rule.cfg.branch, params);
+  const bandPct = Math.abs(rule.cfg.branch.band);
   for (const c of chunks) c.label = c.diffPct == null ? null : scoreDiff(c.diffPct / 100, bandPct / 100);
   const outcomeMs = (geo.exitOffsetH || 0) * 3600000;
   const { trainChunks } = splitFrozen(chunks, TRAIN_THROUGH, opts.scoreFrom, outcomeMs);
@@ -265,9 +274,9 @@ async function computeSignalForChunk(chunkStartMs, opts = {}) {
         note: `current data missing ${name} feature candle ${new Date(lastFeatureTs).toISOString()} — cannot recompute yet` };
     }
   }
-  const views = bracketLib.comboViews(F1.combo.size, geo.featureHours / 24).views;
+  const views = bracketLib.comboViews(rule.cfg.combo.size, geo.featureHours / 24).views;
   const { side, perMember, priceAt, inputHash } =
-    await committeeCall(target, trainChunks, maps, geo, views, bandPct);
+    await committeeCall(target, trainChunks, maps, geo, views, bandPct, rule);
   return {
     found: true,
     // The live producer now records the decision at the entry candle's OPEN, ~1h
@@ -282,7 +291,7 @@ async function computeSignalForChunk(chunkStartMs, opts = {}) {
     per_member: perMember,
     decision_price: priceAt,
     input_hash: inputHash,
-    quorum: F1.cell.quorum,
+    quorum: rule.cfg.cell.quorum,
     band_pct: bandPct,
     config_version: CONFIG_VERSION,
   };
@@ -296,10 +305,11 @@ async function computeSignalForChunk(chunkStartMs, opts = {}) {
 // Read-only: records NO mirror decision and ships NO intent. Returns { available,
 // side, per_member, entry_utc, ... } or { available:false, note } outside the window.
 async function computePreview(now, opts = {}) {
+  const rule = resolveRule();
   assertFrozenMembersMatchEngine();
   const params = { allLoaded: true, feePerLeg: 0, includeUnlabeled: true };
-  const { geo, maps, chunks } = await buildCombo(F1.combo, F1.branch, params);
-  const bandPct = Math.abs(F1.branch.band);
+  const { geo, maps, chunks } = await buildCombo(rule.cfg.combo, rule.cfg.branch, params);
+  const bandPct = Math.abs(rule.cfg.branch.band);
   for (const c of chunks) c.label = c.diffPct == null ? null : scoreDiff(c.diffPct / 100, bandPct / 100);
   const outcomeMs = (geo.exitOffsetH || 0) * 3600000;
   const { trainChunks } = splitFrozen(chunks, TRAIN_THROUGH, opts.scoreFrom, outcomeMs);
@@ -321,13 +331,13 @@ async function computePreview(now, opts = {}) {
         entry_utc: new Date(entryAt).toISOString() };
     }
   }
-  const views = bracketLib.comboViews(F1.combo.size, geo.featureHours / 24).views;
-  const { side, perMember } = await committeeCall(target, trainChunks, maps, geo, views, bandPct);
+  const views = bracketLib.comboViews(rule.cfg.combo.size, geo.featureHours / 24).views;
+  const { side, perMember } = await committeeCall(target, trainChunks, maps, geo, views, bandPct, rule);
   return {
     available: true,
     side,                        // 'LONG' | 'SHORT' | 'FLAT' — the PLAN for entry_utc
     per_member: perMember,
-    quorum: F1.cell.quorum,
+    quorum: rule.cfg.cell.quorum,
     band_pct: bandPct,
     chunk_start: new Date(target.startTs).toISOString(),
     entry_utc: new Date(entryAt).toISOString(),
@@ -336,4 +346,12 @@ async function computePreview(now, opts = {}) {
   };
 }
 
-module.exports = { computeSignal, computeSignalForChunk, computePreview, actionableChunk, previewableChunk, chooseEntryOpen, F1, CONFIG_VERSION };
+// `F1` was exported as a module-level constant read out of forwardbook. It is
+// now a resolved view of whatever rule the pilot is actually configured to
+// trade — same shape, so existing readers are unaffected, but it answers "what
+// is the pilot trading NOW" rather than "what does this source file say".
+function currentRule() {
+  const r = resolveRule();
+  return { id: r.setupId || 'F1', ...r.cfg, __source: r.source };
+}
+module.exports = { computeSignal, computeSignalForChunk, computePreview, actionableChunk, previewableChunk, chooseEntryOpen, currentRule, resolveRule, CONFIG_VERSION };

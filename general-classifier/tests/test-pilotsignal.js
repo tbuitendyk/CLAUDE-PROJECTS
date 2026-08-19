@@ -85,13 +85,22 @@ module.exports.includeUnlabeledKeepsTheCurrentOutcomelessChunk = function () {
 // two ever point at different coins or cells, the live fills stop being twins
 // of the paper record. This makes that drift tamper-evident.
 module.exports.pilotTradesExactlyTheF1ForwardBookInstrument = function () {
+  // Stage C (2026-08-19): the pilot's rule is RESOLVED, not read from a source
+  // file at module load. With no deployment designated it still resolves to the
+  // hardcoded F1 — so the armed engine is undisturbed — and this test now pins
+  // both halves: the resolved rule is F1, AND it announces that it came from
+  // code rather than data, so the remaining gap cannot go quiet.
   const f1 = fb.BOOKS.find((b) => b.id === 'F1');
-  assert.strictEqual(ps.F1.id, 'F1', 'pilot must reference the F1 book');
-  assert.strictEqual(ps.F1.combo.trade, f1.combo.trade, 'traded pair must match F1');
-  assert.strictEqual(ps.F1.combo.trade, 'LTCUSDT', 'and F1 trades LTCUSDT only');
-  assert.strictEqual(ps.F1.cell.quorum, f1.cell.quorum, 'quorum must match F1');
-  assert.strictEqual(ps.F1.cell.entry, 'market', 'F1 is the market-entry cell');
-  assert.strictEqual(ps.F1.cell.tHours, 137, 'hold must match F1');
+  const rule = ps.currentRule();
+  assert.strictEqual(rule.id, 'F1', 'pilot must reference the F1 book');
+  assert.strictEqual(rule.combo.trade, f1.combo.trade, 'traded pair must match F1');
+  assert.strictEqual(rule.combo.trade, 'LTCUSDT', 'and F1 trades LTCUSDT only');
+  assert.strictEqual(rule.cell.quorum, f1.cell.quorum, 'quorum must match F1');
+  assert.strictEqual(rule.cell.entry, 'market', 'F1 is the market-entry cell');
+  assert.strictEqual(rule.cell.tHours, 137, 'hold must match F1');
+  assert.strictEqual(rule.__source, 'code',
+    'with no deployment designated the rule must come from code AND say so — a '
+    + 'silent fallback is how the hardcoded rule survives forever');
 };
 
 module.exports.chooseEntryOpenPrefersCacheThenLiveThenNull = function () {

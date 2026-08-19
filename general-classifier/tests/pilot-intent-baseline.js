@@ -119,10 +119,14 @@ async function collect() {
 function describeDefinition() {
   // The definition itself is part of the baseline. If a later change claims to
   // load the SAME rule from data, this is what it has to match.
-  const F1 = signal.F1;
+  // Reads whatever rule the pilot is CONFIGURED to trade, not what a source
+  // file says — that is the whole point of Stage C. For the code-sourced
+  // fallback this is byte-identical to what it was, so the captured baseline
+  // still compares; when the pointer is set, a change here is a real change.
+  const r = signal.currentRule();
   return stable({
-    id: F1.id, combo: F1.combo, branch: F1.branch, stage: F1.stage,
-    members: F1.members, cell: F1.cell, configVersion: signal.CONFIG_VERSION,
+    id: r.id, combo: r.combo, branch: r.branch, stage: r.stage,
+    members: r.members, cell: r.cell, configVersion: signal.CONFIG_VERSION,
   });
 }
 
