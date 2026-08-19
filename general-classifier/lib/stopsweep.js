@@ -17,7 +17,8 @@
 const { buildCombo, trainMembers, quorumCall } = require('./bracketwork');
 const bracketLib = require('./bracket');
 const { scoreDiff } = require('./dataset');
-const { splitFrozen, TRAIN_THROUGH, SCORE_FROM } = require('./forwardbook');
+const { splitFrozen } = require('./freeze');
+const { TRAIN_THROUGH, SCORE_FROM } = require('./forwardbook');
 const { REAL_FEE_PER_LEG, NOTIONAL } = require('./paper');
 const { tuneFixedStop } = require('./stoptuner');
 const { HOUR_MS } = require('./binance');

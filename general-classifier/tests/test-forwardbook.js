@@ -123,7 +123,9 @@ module.exports.theSplitDoesNotSilentlyReturnNothing = function () {
   const chunks = [];
   for (let t = Date.UTC(2026, 0, 1); t < Date.UTC(2026, 3, 1); t += 4 * DAY) chunks.push({ startTs: t });
   // All chunks are well before the scoring date: training full, forward empty.
-  const r = fb.splitFrozen(chunks);
+  // the cutoffs are stated by the caller now — a shared primitive must not
+  // default to one config's dates
+  const r = fb.splitFrozen(chunks, fb.TRAIN_THROUGH, fb.SCORE_FROM);
   assert.strictEqual(r.trainChunks.length, chunks.length, 'chunks entirely before the cutoff all train');
   assert.strictEqual(r.fwdChunks.length, 0, 'and none of them are scored');
   // The real defect was the opposite: a split that matched NOTHING on either

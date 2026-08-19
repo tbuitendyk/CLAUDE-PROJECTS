@@ -100,36 +100,11 @@ function assertFrozenMembersMatchEngine() {
     }
   }
 }
+// splitFrozen now lives in lib/freeze.js — it is pure chunk arithmetic and
+// never belonged in a file that also holds one config's definition. Re-exported
+// here only until the last caller of this module is gone.
+const { splitFrozen } = require('./freeze');
 
-// The frozen split, as a pure function so it can be tested without market data
-// — the first version keyed on a chunk field (endTs) that does not exist, which
-// silently matched nothing and was caught only by the guard below. Chunks carry
-// startTs only, so a period's span is inferred from the spacing between them.
-//
-// A training period must END at or before the cutoff, not merely start before
-// it: a period that straddles the cutoff has its outcome in forward territory,
-// which is exactly the leak this freeze exists to prevent.
-// outcomeMs is how long after a period STARTS its trade is finished — for
-// daily-4d that is exitOffsetH = 138h, nearly six days, while periods step
-// every 24h. Using the STEP as if it were the SPAN (the first version did)
-// leaves training periods whose outcome lands inside the scoring window, which
-// is the leak the freeze exists to prevent. It was ~5 periods of 2397 here:
-// small, but small is not the same as declared.
-function splitFrozen(chunks, trainThrough = TRAIN_THROUGH, scoreFrom = SCORE_FROM, outcomeMs = 0) {
-  if (chunks.length < 2) return { trainChunks: chunks.slice(), fwdChunks: [], periodMs: null, outcomeMs };
-  const gaps = [];
-  for (let i = 1; i < chunks.length; i++) gaps.push(chunks[i].startTs - chunks[i - 1].startTs);
-  gaps.sort((a, b) => a - b);
-  const periodMs = gaps[Math.floor(gaps.length / 2)]; // median spacing: robust to listing gaps
-  const span = Math.max(periodMs, outcomeMs);
-  return {
-    periodMs,
-    outcomeMs,
-    span,
-    trainChunks: chunks.filter((c) => c.startTs + span <= trainThrough),
-    fwdChunks: chunks.filter((c) => c.startTs >= scoreFrom),
-  };
-}
 
 // A control figure may arrive as a number or as {pnl}. Missing is null, never
 // undefined: undefined vanishes from JSON and turns a reporting gap into a

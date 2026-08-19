@@ -23,7 +23,7 @@ const crypto = require('crypto');
 const { buildCombo, trainMembers, quorumCall, specsFor } = require('../bracketwork');
 const bracketLib = require('../bracket');
 const { scoreDiff } = require('../dataset');
-const { splitFrozen } = require('../forwardbook');
+const { splitFrozen } = require('../freeze');
 const { validateConfig } = require('./configschema');
 const { resolveFreeze } = require('./trainpolicy');
 
