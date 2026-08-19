@@ -9,8 +9,41 @@ APPDIR=/opt/general-classifier
 echo "== now =="
 date -u +'%Y-%m-%dT%H:%M:%SZ'
 
+# EVERY LIVE PROFILE, from its own status endpoint. This script used to read
+# only the box endpoint, which reports the MACHINE (armed, halted, wallet) and
+# knows nothing about what any profile decided. After the book moved to a
+# profile it printed "decisions n=0" while the profile's screen held the whole
+# history — the diagnostic looked broken because it was pointed at the wrong
+# thing.
 echo
-echo "== /api/pilot summary =="
+echo "== live profiles =="
+curl -sS -m 20 http://127.0.0.1:8093/api/live/setups | python3 -c "
+import sys, json, urllib.request
+d = json.load(sys.stdin)
+rows = [s for s in d.get('setups', []) if s.get('state') in ('paper', 'live', 'stopped')]
+if not rows:
+    print('  none')
+for s in rows:
+    print(f\"  {s['id']}  {s['state']}  {s['name']}\")
+    try:
+        with urllib.request.urlopen(
+                'http://127.0.0.1:8093/api/live/setups/' + s['id'] + '/status', timeout=20) as r:
+            st = json.load(r)
+    except Exception as e:
+        print(f'    status unreadable: {e}'); continue
+    op = st.get('openPositions') or []
+    print(f\"    decisions {len(st.get('decisions') or [])}  open {len(op)}  \"
+          f\"closed {len(st.get('closedRecent') or [])}  halted {st.get('halted')}\")
+    for p in op:
+        print(f\"    OPEN {p.get('side')} qty {p.get('qty')} entry {p.get('entry_utc')} \"
+              f\"wallet {p.get('key_ref') or '(shared)'}\")
+    for dec in (st.get('decisions') or [])[:4]:
+        print(f\"    DEC  {str(dec.get('entry_utc'))[:16]}  {dec.get('side')}  \"
+              f\"votes {dec.get('votes')}  {dec.get('fate')}\")
+"
+
+echo
+echo "== the box (machine-level: armed, halted, wallet) =="
 curl -sS -m 20 http://127.0.0.1:8093/api/pilot | python3 -c "
 import sys, json
 d = json.load(sys.stdin)
