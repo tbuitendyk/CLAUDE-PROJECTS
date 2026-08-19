@@ -1,0 +1,82 @@
+Plain version: the safety check on your two trades is checking nothing
+
+tl;dr Fair hit on the jargon — "old rail" and "drift brake" are my words for
+things you have never seen, and I used them without saying what they mean. Here
+is the same message in plain English. One thing in it still needs your decision.
+
+THE ONE THAT MATTERS
+
+Your live setup has a safety check built into it. What it does: it takes a
+decision the engine already made on an earlier day, re-does that decision from
+scratch using the same data, and compares. If the answer comes out different,
+something has changed that should not have, the recorded history can no longer
+be trusted, and the setup is stopped from opening anything new. Its existing
+trades still close on schedule.
+
+Right now that check reports: nothing wrong, zero problems found, zero decisions
+examined.
+
+The last number is the problem. Every decision record your setup owns was
+written by the previous version of the engine and is stamped with that version.
+The check deliberately sets those aside rather than treating them all as
+failures — that was the right thing to do, because otherwise all eight looked
+broken and your setup got stopped this morning for no real reason. But once they
+are set aside there is nothing left in the pile, so the check looks at an empty
+pile, finds no problems in it, and says everything is fine.
+
+So your two open trades currently have no such protection, and nothing will tell
+you that. The trades themselves are fine and will close on their normal
+schedule — this is about the watchdog, not the money.
+
+There is already an alarm built for precisely this situation: shout if the check
+examined nothing while a trade is open. It is attached to the wrong file. It
+watches a file that the old setup used to write and nothing writes any more. The
+alarm watching the file that is actually being written does shout about
+mismatches, about errors, and if the file stops being updated — but not about a
+check that looked at nothing.
+
+It fixes itself the first time your setup makes a decision under its own
+version, which is the next entry. I would rather tell you than let it quietly
+resolve and never mention it happened.
+
+Your call:
+  1. Move the alarm onto the right file, so this is audible from now on instead
+     of something I happened to spot.
+  2. Leave it — it clears itself at the next entry.
+
+WHAT I ACTUALLY CHANGED THIS MORNING, WITHOUT THE JARGON
+
+The hardcoded setup used to have its own private set of scheduled jobs and
+helper scripts, separate from the ones your setups use. That whole private set
+is now deleted, and the installer wipes any leftovers off the machine rather
+than just forgetting about them — a scheduled job left on disk keeps running
+whether or not the installer still knows it exists.
+
+Several of the checking tools I use to inspect the system had the names LTCUSDT,
+XRPUSDT and BCHUSDT typed directly into them. They now ask your setups which
+coins they need. One of those tools had been calling a piece of code I deleted
+earlier, so it had simply been failing every time it ran.
+
+I also got one of these wrong and caught it an hour later: my first version
+looked for the coin names in the wrong place in your setup's record, found none,
+and quietly fell back to reporting just one coin. It printed a healthy green
+line for LTCUSDT while the other two went unwatched — the same fault as the
+typed-in list I was replacing, just harder to notice. Fixed, and checked against
+the real machine before I told you it worked.
+
+TWO SMALLER THINGS, ALSO NOT TOUCHED
+
+  * Days when the four voting models decline to trade are no longer written down
+    anywhere. The old setup recorded them, and those days did come across (the
+    9th to the 13th of August show on your setup as no-call). From here on a
+    quiet day leaves no trace, so it looks exactly like a day the job failed to
+    run. The record changes shape halfway through its own history.
+  * The question "which coins does this setup need" is now answered separately
+    in four different files. It has already gone wrong once. It wants one place.
+
+STILL WAITING ON YOU
+
+Your setup is still stopped from this morning. It needs your press of
+"Clear the halt" before 01:00 UTC tonight or tomorrow's entry will not happen.
+
+c.
