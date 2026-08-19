@@ -56,8 +56,13 @@ function derive(events) {
       case 'BALANCE':
         walletBalance = {
           utc: e.utc || null,
-          usdtFree: n(e.quote_free), usdtNet: n(e.quote_net),
-          ltcFree: n(e.base_free), ltcNet: n(e.base_net),
+          // NAMED BY ROLE, NOT BY TICKER. These were usdtFree/ltcFree, which
+          // baked one pair's assets into a view that serves whatever the wallet
+          // holds — and the screen then printed "LTC" against them regardless.
+          // The asset names now come from the snapshot itself.
+          quoteFree: n(e.quote_free), quoteNet: n(e.quote_net),
+          baseFree: n(e.base_free), baseNet: n(e.base_net),
+          quoteAsset: e.quote_asset || null, baseAsset: e.base_asset || null,
           // collateral / debt: the distance to a forced liquidation
           marginLevel: n(e.margin_level),
         };

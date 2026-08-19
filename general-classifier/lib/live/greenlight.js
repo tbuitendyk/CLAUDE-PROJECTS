@@ -185,6 +185,40 @@ function relabel(id, { name, why, by = 'owner' } = {}) {
       ...(name !== undefined ? { name: g.name ?? null } : {}),
       ...(why !== undefined ? { why: g.why } : {}) }];
   atomicWrite(fileFor(id), next);
+
+  // THE NAME REACHES EVERY DEPLOYMENT OF THIS CONFIG (owner, 2026-08-19: "is
+  // there a reason the name i give to a config under greenlights is still not
+  // propagating to setups and setup detail and live?").
+  //
+  // A setup takes a COPY of the name when it is shuttled from the greenlight,
+  // and nothing updated that copy. So a rename landed on the one screen where
+  // the name matters least and left the screens showing what is actually
+  // trading on the old one — three screens, three names for one thing. Renaming
+  // is not renaming if the thing holding the money keeps the old label.
+  //
+  // Only the NAME propagates. `why` is the reasoning that cleared the config
+  // and belongs to the greenlight; a deployment does not carry it. `campaign`
+  // is a foreign key and is not relabelable at all.
+  if (name !== undefined) {
+    const renamed = [];
+    try {
+      const reg = require('./setups');
+      for (const st of reg.listSetups()) {
+        if (st.provenanceRef !== id) continue;
+        if (st.name === next.name) continue;
+        // updateSetup validates and journals; name is in its MUTABLE set.
+        reg.updateSetup(st.id, { name: next.name }, by);
+        renamed.push(st.id);
+      }
+    } catch (e) {
+      // A propagation failure must be VISIBLE, not swallowed into a rename that
+      // reports success while two screens still show the old name.
+      const err = new Error(`the config was renamed but its deployment(s) were not: ${e.message}`);
+      err.status = 500;
+      throw err;
+    }
+    next.renamedSetups = renamed;
+  }
   return next;
 }
 

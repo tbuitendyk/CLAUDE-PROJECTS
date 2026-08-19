@@ -219,6 +219,51 @@ const th=(label,key,style)=>`<th${style?` style="${style}"`:''}${TH[key]?` title
 // `enforced` is what the BOX reports it is applying; `requested` is what the owner
 // last saved. They differ for the few minutes the sync takes, and saying so is the
 // difference between "your setting is on its way" and "nothing happened".
+// THE WALLET LINE SHOWS THE POSITION, NOT THE SPENDABLE BALANCE (owner,
+// 2026-08-19: "0.000000 LTC on the live page. we're not net 0 on ltc").
+//
+// It rendered the FREE balance. On a borrow-to-short engine the free balance of
+// the shorted asset is zero by construction — the borrowed coin was sold — so
+// the screen read "0.000000 LTC" while the wallet was short nearly half a coin.
+// Zero is the single most misleading number that line could have printed: it
+// says flat, which is the opposite of the truth.
+//
+// NET is the position. Free is shown too, and only when it differs, because the
+// difference between them IS the borrowing and hiding it was the whole bug.
+// The asset names come from the exchange snapshot rather than being typed in —
+// a screen that serves any pair must not have one pair's tickers baked into it.
+const qty=(v)=>(v==null?'—':(v<0?'−':'')+Math.abs(v).toFixed(6));
+const walletCell=(wb)=>{
+  if(!wb||wb.quoteNet==null&&wb.quoteFree==null&&wb.baseNet==null&&wb.baseFree==null)
+    return '<span class="muted">no snapshot yet</span>';
+  const qa=wb.quoteAsset||'quote', ba=wb.baseAsset||'base';
+  const qn=wb.quoteNet!=null?wb.quoteNet:wb.quoteFree;
+  const out=[];
+  out.push(`${qn!=null?'$'+qn.toFixed(2):'—'} ${esc(qa)}`);
+  const bn=wb.baseNet, bf=wb.baseFree;
+  let b=`<span class="${bn!=null&&bn<0?'neg':''}">${qty(bn)} ${esc(ba)}</span>`;
+  if(bn!=null&&bn<0)b+=` <span class="muted">(short — borrowed)</span>`;
+  if(bf!=null&&bn!=null&&Math.abs(bf-bn)>1e-9)b+=` <span class="muted">· ${qty(bf)} free</span>`;
+  out.push(b);
+  return out.join(' · ');
+};
+// A ZERO STOP IS NO STOP (owner, 2026-08-19, reading it off the screen).
+//
+// This printed a 0.00% stop in GREEN with the words "applied to every order".
+// The warning branch fired only when the value was null, so zero — which is
+// exactly as protective as having none — took the healthy path and read as
+// protected. Green plus "applied to every order" is the strongest reassurance
+// this line can give, and it was giving it for no protection at all.
+//
+// Below the round-trip fee a triggered stop is a guaranteed net loss, so a
+// value that small is not a tighter stop, it is a broken one. Both cases now
+// say so in the colour that means "look at this".
+const stopCell=(v)=>{
+  if(v==null)return '<span class="warn">none set — orders run with no protective stop</span>';
+  if(v<=0)return '<span class="warn">0.00% — that is NO stop; orders run unprotected</span>';
+  if(v<0.005)return `<span class="warn">${(v*100).toFixed(2)}% — below the 0.25% round-trip fee, so a trigger is a guaranteed loss</span>`;
+  return `<span class="pos">${(v*100).toFixed(2)}%</span> applied to every order`;
+};
 const marginCell=(lvl,enforced,requested)=>{
   const e=Number(enforced)||0, r=(requested==null||requested==='')?null:Number(requested);
   const pending=r!=null?(e!==r):(e>0?false:false);
@@ -603,9 +648,9 @@ function boxControls(b){
     ${b.armPending?`<div class="panel" style="font-size:.8rem"><b>Waiting on the box.</b> Your request is written and signed;
       the box collects it on its next sync (up to ~5 minutes) and this turns ${b.armed?'STOPPED':'RUNNING'} when it has.
       Nothing more to press — both buttons are held until it lands.</div>`:''}
-    <div class="panel" style="font-size:.85rem"><b>Protective stop:</b> ${b.fixedStopPct!=null?`<span class="pos">${(b.fixedStopPct*100).toFixed(2)}%</span> applied to every order`:'<span class="warn">none set</span>'} ·
+    <div class="panel" style="font-size:.85rem"><b>Protective stop:</b> ${stopCell(b.fixedStopPct)} ·
       <b>Margin level:</b> ${marginCell(wb.marginLevel,b.marginFloor,b.marginFloorRequested)} ·
-      <b>Sub-account wallet:</b> ${wb.usdtFree!=null?`$${wb.usdtFree.toFixed(2)} USDT · ${wb.ltcFree!=null?wb.ltcFree.toFixed(6):'—'} LTC`:'<span class="muted">no snapshot yet</span>'}</div>
+      <b>Sub-account wallet:</b> ${walletCell(wb)}</div>
     <div class="panel"><div class="k">Margin floor — the level at which entries stop</div>
       <div class="muted" style="font-size:.78rem;margin-top:.3rem">Margin level is collateral divided by debt, so it FALLS toward danger.
         This engine borrows to short, and until you set a number here nothing stops it as that falls.
@@ -674,7 +719,7 @@ async function drawLive(){
   const openHere=(st.openPositions||[]).filter(p=>isP?p.paper:!p.paper);
   $('#view').innerHTML=`
     <div class="banner ${st.state==='stopped'?'stopped':'running'}">
-      <b>${esc(g.id)}</b> ${isP?paperBadge:''} — ${esc(g.status)}${st.runEpochUtc?` <span class="muted">· displayed run since ${st.runEpochUtc.slice(0,16)} UTC</span>`:''}</div>
+      <b>${esc(g.name||g.id)}</b> ${isP?paperBadge:''} — ${esc(g.status)}${g.name?` <span class="muted">· ${esc(g.id)}</span>`:''}${st.runEpochUtc?` <span class="muted">· displayed run since ${st.runEpochUtc.slice(0,16)} UTC</span>`:''}</div>
     ${isP?'':boxControls(box)}
     ${st.halted?`<div class="banner halted">⛔ HALT set for this config — new entries stopped; scheduled exits still run.
       <div class="muted" style="font-size:.78rem;margin:.25rem 0">Reason recorded on the box: ${esc(st.haltReason||'(not recorded)')}</div>

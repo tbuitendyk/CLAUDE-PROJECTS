@@ -9,7 +9,7 @@
 //
 // STATE is eligibility, not execution: state 'live' means the setup MAY trade;
 // actually opening positions still requires the setup's ARM switch (the
-// owner's button), exactly like the F1 pilot's LIVE=1 vs ARM split. Paper
+// owner's button), exactly like the box's LIVE=1 vs ARM split. Paper
 // setups run the identical path with simulated fills (point 15, bypassable —
 // draft can go straight to live).
 //
@@ -181,7 +181,7 @@ function liveGateErrors(s, to) {
   }
   if (to === 'live' && !(typeof s.keyRef === 'string' && s.keyRef.trim())) {
     errs.push('a LIVE setup needs its own sub-account keyRef so its balance and '
-      + 'borrow pool never mingle with F1 or another setup (set keyRef first)');
+      + 'borrow pool never mingle with another setup (set keyRef first)');
   }
   return errs;
 }
@@ -210,7 +210,23 @@ function updateSetup(id, patch, by = 'owner') {
   // money at risk. Passing `s.state` as `to` means a stopped setup is checked for
   // target/geometry but not spuriously required to carry keyRef (that fires only on
   // to==='live'). draft (never traded) and retired (no open positions) are excluded.
-  if (s.state === 'paper' || s.state === 'live' || s.state === 'stopped') {
+  //
+  // ONLY WHEN THE PATCH CAN CHANGE THE GATE'S ANSWER (owner, 2026-08-19). The
+  // gate judges routing and isolation: executionTargetRef and keyRef, plus the
+  // configSnapshot geometry, which is immutable and cannot be patched at all.
+  // A patch that touches none of those cannot change its verdict — so re-running
+  // it there does nothing except let an unrelated, pre-existing problem block an
+  // unrelated edit.
+  //
+  // That is not hypothetical. Renaming a config propagates the new name to its
+  // deployments, and the rename was REFUSED with "the live executor only does
+  // MARKET entry ... a LIVE setup needs its own sub-account keyRef" — none of
+  // which has anything to do with what the thing is called. A setup with any
+  // execution complaint could never be renamed, which is the shape of defect the
+  // owner has been describing all along: a control that exists and cannot be used.
+  const GATE_FIELDS = new Set(['executionTargetRef', 'keyRef']);
+  const touchesRouting = offered.some((k) => GATE_FIELDS.has(k));
+  if (touchesRouting && (s.state === 'paper' || s.state === 'live' || s.state === 'stopped')) {
     const gerr = liveGateErrors(next, s.state);
     if (gerr.length) {
       const e = new Error(`update would break ${s.state} execution: ${gerr.join('; ')}`);
@@ -238,9 +254,9 @@ function transition(id, to, by = 'owner', note) {
   // mis-traded as market/hold-to-t — and a symbol the target box does not serve
   // (the box would reject every intent invisibly). Surfaced as a 400 in the UI.
   // R7: going LIVE (placing REAL orders) requires the setup's OWN sub-account
-  // (keyRef). F1 and any other setup sharing one isolated-margin sub-account mingle
+  // (keyRef). Any two setups sharing one isolated-margin sub-account mingle
   // their balance AND borrow pool, so multi-day short interest pools onto whichever
-  // leg closes last and cross-contaminates per-setup/F1 realized — physically
+  // leg closes last and cross-contaminates the other setup's realized — physically
   // unavoidable on a shared account. A distinct keyRef keeps each setup's money
   // isolated. (PAPER places no orders, so it needs none.) The executor must ROUTE
   // this keyRef before a live setup is truly isolated — tracked as open gap G8;
