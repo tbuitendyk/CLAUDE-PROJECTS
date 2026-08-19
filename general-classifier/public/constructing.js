@@ -1722,7 +1722,7 @@ async function drawTune() {
     apiOr('api/pilot/heavyscan', ({ running: false })),
     apiOr('api/pilot/stopsweep', ({ status: 'idle' })),
     apiOr('api/pilot/convictionsweep', ({ status: 'idle' })),
-    apiOr('api/pilot/fixed-stop', ({ stopPct: null })),
+    apiOr('api/pilot/fixed-stop', ({ stopPct: null, chosen: false, why: null })),
   ]);
   const busy = scan.running;
   const pct = (v) => (v == null ? '—' : (v * 100).toFixed(2) + '%');
@@ -1795,6 +1795,17 @@ async function drawTune() {
       <button id="stopCustomApply">apply custom</button>
       <button id="stopClear" title="run with NO fixed stop. The position then rests on its scheduled exit alone.">No stop (clear)</button>
     </div>
+    <!-- YOUR REASON, WRITTEN BY YOU. The record carries a reason beside the
+         number so a chosen "none" is not mistaken for one nobody set. For one
+         release that field could only be filled by running a script, which put
+         a control that belongs to the operator somewhere they could not reach.
+         It is a box on this page now, sent with every apply and every clear,
+         and editable on its own afterwards. -->
+    <div class="row" style="margin-bottom:.4rem">
+      <label class="f" title="why you chose this. Saved with the number and shown on the Trading screen beside it. Yours to write and to change at any time.">your reason for this choice<input id="stopWhy" type="text" maxlength="300" placeholder="why this stop, or why none" value="${esc(applied.why || '')}" style="width:32rem"></label>
+      <button id="stopWhySave" title="save the reason on its own, leaving the stop exactly as it is">save the reason</button>
+    </div>
+    ${applied.chosen ? `<div class="note" style="margin-bottom:.4rem">on record: ${applied.stopPct != null ? pct(applied.stopPct) : 'no stop'}${applied.why ? ` — ${esc(applied.why)}` : ' — no reason recorded'}${applied.utc ? ` (${esc(String(applied.utc).slice(0, 10))}${applied.by ? ', ' + esc(applied.by) : ''})` : ''}</div>` : '<div class="note warn" style="margin-bottom:.4rem">no choice about the stop has been recorded yet</div>'}
     <div class="row"><button id="stopRun" class="pri" ${busy ? 'disabled' : ''}>Tune protective stop (full history)</button>
       <span class="note">currently applied on the trading machine: ${applied.stopPct != null ? `<span class="pos">${pct(applied.stopPct)}</span>` : 'none'}</span></div>
     <div id="stopOut">${stop.status === 'done' ? renderStopResult(stop) : stop.status === 'running' ? '<p class="note">running…</p>' : stop.status === 'error' ? `<p class="warn">last scan failed: ${esc(stop.error || '')}</p>` : ''}</div>
@@ -1852,8 +1863,19 @@ async function drawTune() {
   }
   const tt = $('#tuneTarget');
   if (tt) tt.onchange = () => { localStorage.setItem('cx-scan-target', tt.value); drawTune(); };
+  // EVERY path that writes the stop carries the reason from the box on the page.
+  // Nothing here may post without it — that is what made the field reachable
+  // only from a script.
+  const stopWhy = () => { const el = $('#stopWhy'); return el ? el.value.trim() : ''; };
   const applyStop = async (stopPct) => {
-    const out = await tryPost('api/pilot/stop-apply', { stopPct });
+    const out = await tryPost('api/pilot/stop-apply', { stopPct, why: stopWhy() });
+    if (out) drawTune();
+  };
+  const wsv = $('#stopWhySave');
+  if (wsv) wsv.onclick = async () => {
+    // Re-sends the stop UNCHANGED with the new wording, so editing the reason
+    // can never move the number by accident.
+    const out = await tryPost('api/pilot/stop-apply', { stopPct: applied.stopPct ?? null, why: stopWhy() });
     if (out) drawTune();
   };
   const cust = $('#stopCustomApply');
@@ -1914,7 +1936,7 @@ async function drawTune() {
   $('#view').querySelectorAll('button[data-stop]').forEach((b) => {
     b.onclick = async () => {
       if (!confirm(`Apply a ${(Number(b.dataset.stop) * 100).toFixed(2)}% protective stop to the LIVE engine?`)) return;
-      const out = await tryPost('api/pilot/stop-apply', { stopPct: Number(b.dataset.stop) }); if (out) drawTune();
+      const out = await tryPost('api/pilot/stop-apply', { stopPct: Number(b.dataset.stop), why: stopWhy() }); if (out) drawTune();
     };
   });
   // A running scan used to say "running…" and then never change: the result

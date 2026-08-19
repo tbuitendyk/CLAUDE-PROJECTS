@@ -2141,7 +2141,7 @@
     const pct = (v) => (v == null ? '—' : (v * 100).toFixed(2) + '%');
     let cands = [];
     let sweep = null;
-    let applied = { stopPct: null };
+    let applied = { stopPct: null, chosen: false, why: null };
     try { cands = ((await (await fetch('api/pilot/stop-candidates')).json()).candidates) || []; } catch (_) { /* offline */ }
     try { sweep = await (await fetch('api/pilot/stopsweep')).json(); } catch (_) { /* none */ }
     try { applied = await (await fetch('api/pilot/fixed-stop')).json(); } catch (_) { /* none */ }
@@ -2205,7 +2205,13 @@
           + `<div class="muted" style="font-size:.72rem;margin-top:.2rem">$ figures are per the $${sweep.clipUsd || 10} clip across all ${cc.priced || 0} historical entries (comparison, not the live book). NET = winner $ given up + loss-side $ vs no stop; positive means the stop helps.</div>`
           + `<div style="margin-top:.4rem">Or apply a custom stop: <input type="number" step="0.5" min="0.1" max="99" id="stop-custom-pct" placeholder="e.g. 25" style="width:5rem"> % `
           + `<button type="button" class="secondary stop-apply-custom-btn">apply custom</button> `
-          + `<button type="button" class="secondary stop-clear-btn">No stop (clear)</button></div>`;
+          + `<button type="button" class="secondary stop-clear-btn">No stop (clear)</button></div>`
+          // The reason travels with the number here too — the same field, the
+          // same endpoint, so neither screen can write a choice the other
+          // cannot explain.
+          + `<div style="margin-top:.4rem">Your reason: <input type="text" maxlength="300" id="stop-why" placeholder="why this stop, or why none" value="${(applied.why || '').replace(/"/g, '&quot;')}" style="width:26rem"> `
+          + `<button type="button" class="secondary stop-why-save-btn">save the reason</button></div>`
+          + `<div class="muted" style="font-size:.72rem;margin-top:.2rem">${applied.chosen ? `on record: ${applied.stopPct != null ? pct(applied.stopPct) : 'no stop'}${applied.why ? ' — ' + applied.why : ' — no reason recorded'}` : 'no choice about the stop has been recorded yet'}</div>`;
       }
       html += `<div style="margin-top:.4rem;padding:.4rem .5rem;background:#0d2b17;border-radius:4px">`
         + `<b>Scan result for ${sweep.bookId} — tightest stop that loses no winner: <span style="color:#4c9">${pct(sweep.stopPct)}</span></b>, ${cc.winners || 0} winners / ${cc.losers || 0} losers over ${cc.priced || 0} entries (${span}). `
@@ -2236,9 +2242,10 @@
     // apply a chosen stop (a curve value, a custom value, or clear = no stop)
     const applyStop = async (stopPct) => {
       try {
+        const whyEl = el.querySelector('#stop-why');
         const r = await fetch('api/pilot/stop-apply', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ stopPct }),
+          body: JSON.stringify({ stopPct, why: whyEl ? whyEl.value.trim() : '' }),
         });
         if (!r.ok) { const e = await r.json().catch(() => ({})); alert('apply failed: ' + (e.error || r.status)); }
       } catch (e) { alert('apply failed: ' + e); }
@@ -2246,6 +2253,8 @@
     };
     el.querySelectorAll('.stop-apply-btn').forEach((b) => b.addEventListener('click',
       () => applyStop(Number(b.dataset.stop))));
+    const whySave = el.querySelector('.stop-why-save-btn');
+    if (whySave) whySave.addEventListener('click', () => applyStop(applied.stopPct ?? null));
     const clearBtn = el.querySelector('.stop-clear-btn');
     if (clearBtn) clearBtn.addEventListener('click', () => applyStop(null));
     const customBtn = el.querySelector('.stop-apply-custom-btn');
