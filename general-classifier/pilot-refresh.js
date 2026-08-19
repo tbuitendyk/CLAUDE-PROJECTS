@@ -19,8 +19,33 @@ const b = require('./lib/binance');
 const { loadSymbolAll } = require('./lib/pipeline');
 
 const HOUR = b.HOUR_MS;
-const SYMS = ['LTCUSDT', 'XRPUSDT', 'BCHUSDT'];
 const CACHE = path.join(__dirname, 'data', 'cache');
+
+// WHICH PAIRS TO KEEP CURRENT — derived from the profiles that are actually
+// trading, not a hardcoded triple. The list used to be three symbols because one
+// hardcoded config traded them; a profile on any other pair would have run its
+// committee on a cache nothing was topping up, and produced a call from stale
+// candles rather than failing loudly. Every pair a live or paper profile needs
+// (its traded pair and both context pairs) is refreshed.
+//
+// Falls back to the original triple only if the registry cannot be read at all,
+// so a broken registry degrades to "keep refreshing what we were" rather than to
+// "refresh nothing".
+function symbolsToRefresh() {
+  try {
+    const reg = require('./lib/live/setups');
+    const want = new Set();
+    for (const s of reg.listSetups()) {
+      if (!['paper', 'live', 'stopped'].includes(s.state)) continue;
+      const combo = (s.configSnapshot || {}).combo || {};
+      for (const k of ['trade', 'ctx1', 'ctx2']) if (combo[k]) want.add(combo[k]);
+      if (s.tradedPair) want.add(s.tradedPair);
+    }
+    if (want.size) return [...want].sort();
+  } catch (_) { /* fall through */ }
+  return ['LTCUSDT', 'XRPUSDT', 'BCHUSDT'];
+}
+const SYMS = symbolsToRefresh();
 
 function writeDayFiles(sym, rows) {
   const byDay = {};
