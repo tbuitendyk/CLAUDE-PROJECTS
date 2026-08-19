@@ -1,0 +1,96 @@
+The stop scan came back: every stop level loses money. Your call.
+
+tl;dr Your rename now reaches every screen, the wallet shows your actual short
+instead of "0.000000 LTC", a 0% stop no longer shows in green as protection, and
+the retired screen I claimed to have deleted is finally gone. Then I ran the
+protective-stop scan on your live setup for the first time — and it says a stop
+would have COST you money at every level tested. I have applied nothing. The
+number is yours to choose and I think the honest answer is "none", for reasons
+worth reading.
+
+THE STOP SCAN
+
+Ran on your setup over its whole history: 2437 windows, 1804 trades, November
+2019 to August 2026. 1014 winners, 790 losers.
+
+TABLE — What a protective stop would have done, over full history
+Each row is one stop level. "Winners cut" = trades that would have been stopped
+out even though they ended up profitable. "Losers cut" = trades stopped before
+their scheduled exit. "Net effect" = money gained by cutting losses MINUS money
+given up by cutting winners short, on your $10 clip. Positive means the stop
+helps. Every row is negative.
+
+  stop level    winners cut   losers cut   net effect
+  12%                    35          297      -$50.22
+  15%                    17          205      -$39.36
+  20%                     6          120      -$32.54
+  25%                     1           69      -$20.33
+  30%                     1           40      -$19.07
+  32.163%                 0           30      -$14.22
+  40%                     0           12       -$7.20
+
+32.163% is the tightest stop that would not have clipped a single winner. Even
+that one costs $14.22. The pattern is consistent: the deeper the stop, the less
+it costs, and the least harmful stop is the one so far away it barely fires.
+
+WHAT THAT MEANS
+
+On this setup, positions that dip deeply tend to come back. A stop turns those
+recoveries into locked-in losses, and it does that more often than it saves you
+from a genuinely bad trade. That is why the engine currently runs with no stop.
+The scan agrees with that, over seven years of data.
+
+WHERE I THINK THAT ARGUMENT IS WEAK, before you rely on it
+
+This measures the AVERAGE effect on profit. It does not measure the tail. A stop
+is not really a profit tool — it is there for the one trade that goes badly
+wrong, and this engine borrows to short, where an adverse move has no natural
+ceiling. Seven years without such a trade is not proof that one cannot happen.
+
+The thing already doing that job is the margin floor you set to 3. That is the
+brake for the catastrophic case, and it is a better-shaped one: it responds to
+how much trouble the whole account is in, rather than to one position's dip.
+
+One more caveat I want on the record. The scan trains the committee through
+June 2026 and then replays it back to 2019, so the early years are judged with
+knowledge they did not have at the time. That is deliberate for a stop tune —
+you want the deepest a winner ever dipped across all data — but it means the
+"winners" are somewhat flattered. Flattered winners make a stop look WORSE than
+it is, so the real cost is probably smaller than the table says. It does not
+flip the sign; every level is negative by a wide margin.
+
+WHAT I RECOMMEND
+
+Leave it with no stop, and keep the margin floor as the brake. If you would
+rather have a stop for peace of mind, 40% is the least costly and would have
+fired 12 times in seven years.
+
+Either way, nothing is applied until you choose. Scanning applies nothing.
+
+THE FOUR SCREEN FIXES
+
+Your rename reaches Setups, Setup detail and LIVE now. It had only been written
+to the greenlight; the setups keep their own copy of the name and nothing
+updated it, and LIVE was displaying the generated id by construction so no
+rename could ever have changed it.
+
+Renaming was ALSO being refused by a check that has nothing to do with names —
+it re-ran the full trading-eligibility check on any edit, so a setup with any
+execution complaint could never be renamed. That check now runs only when you
+change something it actually judges.
+
+The wallet line showed the FREE balance. When you are short, the free balance of
+that coin is zero — the borrowed coin was sold — so it read "0.000000 LTC" while
+you were short nearly half a coin. It shows your net position now, labelled as a
+short. The coin names come from the exchange rather than being typed in.
+
+A 0.00% stop was printed in green as "applied to every order". Zero protection
+was showing as the healthy case.
+
+And public/pilot.html — the retired screen — was still there and still served. I
+told you it was deleted. It was not. It is now, with a test so it cannot come
+back quietly.
+
+The LIVE tab also pages between configs now, for when there is more than one.
+
+c.
