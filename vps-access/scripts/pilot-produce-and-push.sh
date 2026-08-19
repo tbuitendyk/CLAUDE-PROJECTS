@@ -182,6 +182,45 @@ fi
 RSTOP
 fi
 
+# ---- carry the owner's MARGIN FLOOR to the box -------------------------------
+# Margin level is collateral/debt on the isolated wallet: the distance to a forced
+# liquidation. Nothing in this system read it until 2026-08-19, so a borrow-to-short
+# engine had no brake on it at all. The owner sets the floor on the Trading screen,
+# which writes data/pilot/margin-floor.json; this carries it into MARGIN_FLOOR in
+# the box env, exactly as the stop above is carried. Absent / null / <= 0 means NO
+# floor, and the variable is REMOVED rather than zeroed — a threshold nobody chose
+# must never start braking, and a stale one must never linger.
+MFJSON="$APPDIR/data/pilot/margin-floor.json"
+MFVAL=$(node -e '
+try {
+  const d = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"));
+  const v = Number(d.floor);
+  process.stdout.write(Number.isFinite(v) && v > 0 ? String(v) : "");
+} catch (_) { process.stdout.write(""); }
+' "$MFJSON" 2>/dev/null)
+[ -n "$MFVAL" ] && echo "== carry margin floor -> box: $MFVAL ==" \
+                || echo "== carry margin floor -> box: <none: no floor> =="
+$SSH "$BOX_USER@$BOX_HOST" "DESIRED='$MFVAL' bash -s" 2>&1 <<'RMARGIN' | sed 's/^/  /' || echo "  (box unreachable; margin-floor carry retried next sync)"
+ENV=~/.executor-env
+cur=$(grep -E '^MARGIN_FLOOR=' "$ENV" 2>/dev/null | tail -1 | cut -d= -f2)
+if [ -z "$DESIRED" ]; then
+  if [ -n "$cur" ]; then
+    tmp=$(mktemp); grep -vE '^MARGIN_FLOOR=' "$ENV" 2>/dev/null > "$tmp" || true
+    chmod 600 "$tmp"; mv "$tmp" "$ENV"
+    echo "margin floor CLEARED (was $cur) — box now runs with NO floor"
+  else
+    echo "no margin floor set (as intended)"
+  fi
+elif [ "$cur" = "$DESIRED" ]; then
+  echo "margin floor already set to $DESIRED"
+else
+  tmp=$(mktemp); grep -vE '^MARGIN_FLOOR=' "$ENV" 2>/dev/null > "$tmp" || true
+  echo "MARGIN_FLOOR=$DESIRED" >> "$tmp"
+  chmod 600 "$tmp"; mv "$tmp" "$ENV"
+  echo "margin floor updated: ${cur:-<unset>} -> $DESIRED"
+fi
+RMARGIN
+
 # In --arm-only mode (the frequent sync) we stop here: no data refresh, no
 # signal produced. The hourly tick does the produce+push.
 [ "$ARM_ONLY" = 1 ] && exit 0

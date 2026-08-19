@@ -103,6 +103,15 @@ FIXED_STOP_PCT_DEFAULT = 0.0  # hard per-order stop as a fraction of entry price
                            # (set at deploy from the sweep) so it is tunable without
                            # a code change; this constant is only the fail-safe
                            # fallback when the env is silent.
+MARGIN_FLOOR_DEFAULT = 0.0 # halt entries when the isolated wallet's margin level
+                           # (collateral / debt) falls to or below this. 0 = NO
+                           # floor, which is the state until the OWNER sets one.
+                           # This engine borrows to short, so margin level is its
+                           # distance to a forced liquidation, and until 2026-08-19
+                           # nothing in the system read it, journaled it or gated
+                           # on it. The number is the owner's to choose and arrives
+                           # via MARGIN_FLOOR in the env, exactly like the stop —
+                           # a threshold that stops trading is not mine to invent.
 RECONCILE_TOL = QTY_STEP   # 1 lot step of drift tolerated while positions are open
 # when FLAT, un-sellable sub-min-notional base (short-close buffer dust the
 # exchange won't let us sell) is tolerated up to MIN_NOTIONAL/price*1.2, computed
@@ -818,6 +827,20 @@ def fixed_stop_pct():
     return v if v > 0 else 0.0
 
 
+def margin_floor():
+    """The owner's margin-level floor as a POSITIVE number, or 0.0 for no floor.
+    Read live from MARGIN_FLOOR in the env, the same carry path as the stop, so the
+    owner sets it through the interface rather than anyone editing code. Malformed
+    or absent means NO floor (0) — a threshold nobody chose must never start
+    braking on its own."""
+    raw = load_env().get("MARGIN_FLOOR", "")
+    try:
+        v = float(raw) if raw not in (None, "") else MARGIN_FLOOR_DEFAULT
+    except (TypeError, ValueError):
+        return 0.0
+    return v if v > 0 else 0.0
+
+
 # ---- order helpers -----------------------------------------------------------
 import math
 
@@ -1147,6 +1170,29 @@ def do_run(bx):
             borrowed = float(b.get("borrowed", 0) or 0) + float(b.get("interest", 0) or 0)
         except (KeyError, IndexError, ValueError):
             pass
+        # MARGIN FLOOR (owner, 2026-08-19). Checked here because this is where the
+        # account is already in hand. Inert until the owner sets a floor: with none
+        # set nothing is read, journaled as a breach, or halted, so an engine that
+        # has never been given a number behaves exactly as before. When a floor IS
+        # set and the level cannot be read, we halt rather than trade blind — the
+        # same posture as RECONCILE_UNREADABLE below, since a brake that cannot see
+        # its own input is not a brake.
+        floor = margin_floor()
+        if floor > 0:
+            try:
+                lvl = float(acct["assets"][0].get("marginLevel"))
+            except (KeyError, IndexError, TypeError, ValueError):
+                lvl = None
+            if lvl is None:
+                jlog("MARGIN_LEVEL_UNREADABLE", floor=floor)
+                set_halt("executor", f"margin level unreadable with a {floor:g} floor set")
+            elif lvl <= floor:
+                jlog("MARGIN_FLOOR_BREACH", margin_level=lvl, floor=floor)
+                set_halt("executor", f"margin level {lvl:.4f} at or below the "
+                                     f"{floor:g} floor the owner set")
+            else:
+                jlog("MARGIN_OK", margin_level=lvl, floor=floor)
+
         long_qty = sum(p["qty"] for p in st["open"].values() if p["side"] == "LONG")
         short_nominal = sum(p["qty"] for p in st["open"].values() if p["side"] == "SHORT")
         flat = not st["open"]
@@ -1463,7 +1509,10 @@ def do_run(bx):
          open_paper=len(st["paper_open"]),
          paper_realized=round(st["paper_realized"], 4),
          arm_secret=bool(load_env().get("PILOT_ARM_SECRET", "")),
-         fixed_stop_pct=stop_pct)
+         fixed_stop_pct=stop_pct,
+         # what the BOX is actually enforcing, not what was requested — the screen
+         # reports the brake in force, exactly as it does for the stop above.
+         margin_floor=margin_floor())
     # real_blocked gates only the REAL rail; paper intents proceed below. The reason
     # strings and the dead-man ARM_STALE emission are unchanged from the old
     # early-returns, so a disarmed/halted F1 box behaves byte-identically (it has no
@@ -1869,10 +1918,18 @@ def do_run(bx):
         if code == 200 and not acct.get("dryrun"):
             try:
                 a = acct["assets"][0]
+                # margin_level is collateral/debt on this isolated wallet: the
+                # distance to a forced liquidation, and on a borrow-to-short
+                # engine the number that says how much adverse move the account
+                # survives. It has ALWAYS been in this response, one field from
+                # the four below, and was never recorded — so the screen could
+                # not show it and the owner had to ask a session to read it over
+                # ssh (owner, 2026-08-19). Recorded so it is a number they see.
                 jlog("BALANCE", base_net=a["baseAsset"]["netAsset"],
                      base_free=a["baseAsset"]["free"],
                      quote_free=a["quoteAsset"]["free"],
-                     quote_net=a["quoteAsset"]["netAsset"])
+                     quote_net=a["quoteAsset"]["netAsset"],
+                     margin_level=a.get("marginLevel"))
             except (KeyError, IndexError):
                 pass
     return 0
