@@ -44,6 +44,11 @@ function allowlistFrom(setups) {
       // setup the registry says is 'live' can ever place a real order.
       state: s.state,                              // 'paper' | 'live'
       max_hold_hours: s.configSnapshot.cell.tHours,
+      // WHOSE SUB-ACCOUNT this profile trades from. The box uses it to pick the
+      // credentials for a real order, and refuses to place one at all if it holds
+      // none for this reference — a profile's money never moves through a wallet
+      // that is not its own. Absent on a paper profile, which places no orders.
+      key_ref: s.keyRef || null,
     };
   }
   return allow;

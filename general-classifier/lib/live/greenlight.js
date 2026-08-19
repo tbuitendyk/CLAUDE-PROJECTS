@@ -120,9 +120,12 @@ function configFromSelection(doc, target) {
 // Record a greenlight. `doc` is the saved lab doc (injected by the route via
 // batch.getBatch; injectable directly in tests). why is REQUIRED — a
 // greenlight without a reason is not a decision, it is a click.
-function greenlightFromRun(doc, target, { by = 'owner', why } = {}) {
+function greenlightFromRun(doc, target, { by = 'owner', why, name } = {}) {
   if (!doc || doc.kind !== 'bracketlab') throw new Error('greenlights come from saved bracket-lab runs');
   if (typeof why !== 'string' || !why.trim()) throw new Error('a greenlight needs a WHY — record the reasoning that cleared it');
+  // A NAME IS REQUIRED. The generated id is a key, not a label, and a config
+  // carrying only 'gl-mszdonx9-e5a595' on screen tells the owner nothing about
+  // what it is — they said as much. Nothing is created unnamed.
   const { cfg, sel } = configFromSelection(doc, target);
   fs.mkdirSync(glDir(), { recursive: true });
   const id = `gl-${Date.now().toString(36)}-${crypto.randomBytes(3).toString('hex')}`;
@@ -131,6 +134,7 @@ function greenlightFromRun(doc, target, { by = 'owner', why } = {}) {
     createdUtc: new Date().toISOString(),
     seq: __mintSeq++,                       // creation-order tiebreak for same-ms mints
     by,
+    name: validName(name),
     why: why.trim(),
     engineVersion: ENGINE_VERSION,          // point 18: the arithmetic this evidence is about
     target,
@@ -149,6 +153,39 @@ function greenlightFromRun(doc, target, { by = 'owner', why } = {}) {
   };
   atomicWrite(fileFor(id), record);
   return record;
+}
+
+// The owner's LABELS, editable for the life of the config. Deliberately narrow:
+// `name` and `why` describe the config and changing them changes nothing about
+// what it trades. `campaign` is NOT here and never will be — it is a reference to
+// the line of work the sweeps are collected under, shared by every config that
+// came out of it, so editing it from one config's screen would either move that
+// config to a different campaign or rename the campaign for everything under it.
+// Neither is a rename. Everything else on a greenlight is evidence and is frozen.
+function validName(name) {
+  const n = String(name == null ? '' : name).trim();
+  if (!n) throw new Error('a config needs a NAME — something you will recognise on screen');
+  if (n.length > 60) throw new Error('name: 60 characters or fewer');
+  return n;
+}
+
+function relabel(id, { name, why, by = 'owner' } = {}) {
+  const g = getGreenlight(id);
+  if (!g) throw new Error(`no greenlight ${id}`);
+  const next = { ...g };
+  if (name !== undefined) next.name = validName(name);
+  if (why !== undefined) {
+    const w = String(why == null ? '' : why).trim();
+    if (!w) throw new Error('why cannot be blanked — it is the reasoning that cleared this config');
+    next.why = w;
+  }
+  if (name === undefined && why === undefined) return g;
+  next.relabelHistory = [...(g.relabelHistory || []),
+    { utc: new Date().toISOString(), by,
+      ...(name !== undefined ? { name: g.name ?? null } : {}),
+      ...(why !== undefined ? { why: g.why } : {}) }];
+  atomicWrite(fileFor(id), next);
+  return next;
 }
 
 function getGreenlight(id) {
@@ -228,6 +265,7 @@ function revoke(greenlightId, { by = 'owner' } = {}) {
 }
 
 module.exports = {
+  relabel, validName,
   greenlightFromRun, getGreenlight, listGreenlights, shuttle, revoke,
   configFromSelection, stageFromMembers, glDir,
 };

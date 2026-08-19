@@ -126,8 +126,24 @@ function installLiveRoutes(app, { csrfGuard }) {
       const b = req.body || {};
       const doc = require('../batch').getBatch(String(b.runId || ''));
       if (!doc) return res.status(404).json({ error: `no saved run ${b.runId}` });
-      const rec = gl.greenlightFromRun(doc, String(b.target || 'declared'), { by: 'owner', why: b.why });
+      // name is required: a config the owner cannot recognise on screen is not
+      // usable, and the generated id is a key rather than a label.
+      const rec = gl.greenlightFromRun(doc, String(b.target || 'declared'),
+        { by: 'owner', why: b.why, name: b.name });
       res.json({ ok: true, greenlight: rec });
+    } catch (e) { res.status(400).json({ error: e.message }); }
+  });
+
+  // Rename a config and restate its reasoning. Labels only — nothing here can
+  // change what the config trades, and campaign is not offered at all (it is a
+  // reference to the line of work, shared by every config that came out of it).
+  app.post('/api/live/greenlight/:id/relabel', csrfGuard, (req, res) => {
+    try {
+      const b = req.body || {};
+      const patch = {};
+      if (b.name !== undefined) patch.name = b.name;
+      if (b.why !== undefined) patch.why = b.why;
+      res.json({ ok: true, greenlight: gl.relabel(req.params.id, { ...patch, by: 'owner' }) });
     } catch (e) { res.status(400).json({ error: e.message }); }
   });
 

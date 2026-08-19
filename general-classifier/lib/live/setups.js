@@ -155,6 +155,21 @@ const MUTABLE = new Set(['name', 'clipUsd', 'stopPct', 'executionTargetRef', 'ke
 // routing/isolation fields the transition door guards — so an already-trading setup
 // must re-clear the same gate, or it is a second unguarded door into the exact
 // states transition() refuses.
+// Open positions for a profile, straight from the box journal — the same source
+// the screens read, so the gate and the screen can never disagree about whether
+// something is still holding money. Deliberately tolerant: an unreadable journal
+// yields [] rather than throwing, because a profile with nothing open must stay
+// retirable even if the box is briefly unreachable. Real positions only; a paper
+// book holds no money and never blocks a retirement.
+function openPositionsFor(setupId) {
+  try {
+    const { setupStatus, deriveSetup, readJournal, journalFile } = require('./view');
+    const { events } = readJournal(journalFile());
+    const st = deriveSetup(events, setupId);
+    return (st.openPositions || []).filter((p) => !p.paper);
+  } catch (_) { return []; }
+}
+
 function liveGateErrors(s, to) {
   const errs = [];
   const le = liveExecutable(s.configSnapshot);
@@ -236,6 +251,23 @@ function transition(id, to, by = 'owner', note) {
     if (errs.length) {
       const e = new Error(`cannot go ${to}: ${errs.join('; ')}`);
       e.code = 'NOT_LIVE_EXECUTABLE';
+      throw e;
+    }
+  }
+  // RETIRE IS THE END OF A PROFILE'S LIFE and it is terminal — nothing transitions
+  // out of retired. Allowing it while the profile still holds an open position
+  // would strand real money: the profile leaves the allowlist, its intents stop
+  // being produced, and the position sits on the exchange owned by something the
+  // system no longer considers to exist. Stop it, let its positions run out to
+  // their scheduled exits, then retire it (owner, 2026-08-19).
+  if (to === 'retired') {
+    const open = openPositionsFor(id);
+    if (open.length) {
+      const e = new Error(`cannot retire ${id}: it still holds ${open.length} open `
+        + `position(s) (${open.map((p) => p.chunk_start).join(', ')}). Stop it and let them `
+        + 'reach their scheduled exits first — retiring now would leave real money '
+        + 'on the exchange owned by a profile the system has forgotten.');
+      e.code = 'HAS_OPEN_POSITIONS';
       throw e;
     }
   }

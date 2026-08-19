@@ -37,7 +37,7 @@ function labDoc(id) {
 let seq = 0;
 function mkGreenlight() {
   return gl.greenlightFromRun(labDoc(`bracketlab-2026080${(seq % 9) + 1}-10101${seq++}-t`), 'declared',
-    { why: 'channel-model test config' });
+    { name: 'test config', why: 'channel-model test config' ,});
 }
 
 module.exports.statusLineSpeaksTheOwnersVocabulary = function () {
