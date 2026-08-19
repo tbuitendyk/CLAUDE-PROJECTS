@@ -5,21 +5,36 @@
 # integration path (buildCombo -> frozen committee -> tuner) works on real data
 # before the owner drives it from the bracket-lab control.
 #
-# STILL PINNED TO THE LEGACY BOOK DEFINITION (open gap, 2026-08-19). It reads the
-# hardcoded BOOKS array in lib/forwardbook.js, and lib/stopsweep.js also takes its
-# training cutoff from that same file rather than from a profile. Until stopsweep
-# accepts a profile, this cannot be pointed at one — so the number it prints
-# describes the legacy book's geometry, not necessarily what a profile trades.
+# IT SCANS A PROFILE NOW (2026-08-19). It used to read the hardcoded BOOKS array,
+# so the number it printed described a pre-registered research book rather than
+# anything the owner runs. It takes a setup id and scans THAT profile against
+# THAT profile's own training cutoff; with no argument it scans the live one.
+#
+# Persists nothing and touches neither the stop in force nor the engine. The
+# owner chooses a value from the Constructing screen; this only shows the answer.
 set -uo pipefail
 APP=/opt/general-classifier
 cd "$APP" || { echo "no $APP"; exit 1; }
-node -e '
-const { BOOKS } = require("./lib/forwardbook");
+SID="${1:-}"
+SID="$SID" node -e '
 const { computeSetupStop } = require("./lib/stopsweep");
-const F1 = BOOKS.find((b) => b.id === "F1");
+const reg = require("./lib/live/setups");
+const { resolveFreeze } = require("./lib/live/trainpolicy");
 (async () => {
+  const want = process.env.SID
+    || (reg.listSetups().find((s) => s.state === "live")
+        || reg.listSetups().find((s) => ["paper", "stopped"].includes(s.state)) || {}).id;
+  if (!want) { console.log("no profile to scan"); return; }
+  const s = reg.getSetup(want);
+  if (!s) { console.log("no such profile " + want); return; }
+  const cfg = s.configSnapshot || {};
+  const freeze = resolveFreeze(s);
+  console.log("scanning " + s.id + " (" + (s.name || "unnamed") + "), "
+    + s.state + ", trained through " + new Date(freeze.throughMs).toISOString().slice(0, 10)
+    + " [" + freeze.mode + "]");
+  const book = { id: s.id, combo: cfg.combo, branch: cfg.branch, members: cfg.members, cell: cfg.cell };
   const t0 = Date.now();
-  const r = await computeSetupStop(F1, {});
+  const r = await computeSetupStop(book, { trainThrough: freeze.throughMs, scoreFrom: freeze.throughMs + 1 });
   const pct = (v) => (v == null ? "n/a" : (v * 100).toFixed(3) + "%");
   // winner MAEs, deepest first: shows whether ONE outlier is forcing the stop, and
   // how much tighter the stop would be if the k deepest winners were sacrificed.
