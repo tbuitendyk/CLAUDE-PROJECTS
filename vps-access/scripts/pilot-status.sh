@@ -18,24 +18,32 @@ echo "== next scheduled =="
 systemctl list-timers pilot-sync.timer \
   pilot-alert.timer live-tick.timer live-alert.timer --all 2>/dev/null \
   | grep -E 'pilot|live' | sed 's/^/  /'
-echo "== data freshness, newest cached day-file, for the pairs the profiles trade =="
-# Named symbols used to be hardcoded here, so a profile on a fourth pair left its
-# data unmonitored while this screen still said everything was fresh.
-PAIRS=$(cd /opt/general-classifier && node -e '
-try {
-  const st = require("./lib/live/setups");
-  const want = new Set();
-  for (const s of st.listSetups()) {
-    if (!["paper", "live", "stopped"].includes(s.state)) continue;
-    const combo = (s.configSnapshot || {}).combo || {};
-    for (const k of ["trade", "ctx1", "ctx2"]) if (combo[k]) want.add(combo[k]);
-    if (s.tradedPair) want.add(s.tradedPair);
-  }
-  console.log([...want].join(" "));
-} catch (e) { console.log(""); }
-' 2>/dev/null)
-if [ -z "${PAIRS// }" ]; then
-  echo "  (no profile is in paper/live/stopped — nothing needs refreshing)"
+echo "== data freshness, newest cached day-file, for the pairs in use =="
+# WHICH PAIRS MATTER — asked of the service, which answers from lib/live/pairs.js.
+# This used to be re-derived here in JS, in two sibling scripts, and again in the
+# refresher: four copies of one rule, which had already drifted (one looked in
+# configSnapshot.members[], which carries no symbol, so it silently reported a
+# single pair as the whole set). An unreadable registry is reported as unknown,
+# never as an empty list — "no pairs" reads as "nothing needs watching".
+pairs_in_use() {
+  local body
+  body=$(curl -sS -m 8 http://127.0.0.1:8093/api/live/pairs 2>/dev/null) || { echo "__ERR__"; return; }
+  python3 -c '
+import json, sys
+try:
+    d = json.loads(sys.stdin.read())
+except Exception:
+    print("__ERR__"); raise SystemExit
+if d.get("error"):
+    print("__ERR__"); raise SystemExit
+print(" ".join(d.get("pairs") or []))
+' <<<"$body"
+}
+PAIRS=$(pairs_in_use)
+if [ "$PAIRS" = "__ERR__" ]; then
+  echo "  cannot read which pairs are in use (classifier service down?) — freshness UNKNOWN, not clean"
+elif [ -z "${PAIRS// }" ]; then
+  echo "  (no setup is in paper/live/stopped — nothing needs refreshing)"
 else
   for s in $PAIRS; do
     echo "  $s: $(basename $(ls -1 /opt/general-classifier/data/cache/${s}-1h-*.json 2>/dev/null | sort | tail -1) 2>/dev/null || echo none)"

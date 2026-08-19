@@ -10,35 +10,50 @@
 # while this check still printed three reassuring green lines.
 set -uo pipefail
 cd /opt/general-classifier || { echo "no /opt/general-classifier"; exit 1; }
-node -e '
-const b = require("./lib/binance");
-const st = require("./lib/live/setups");
-const now = Date.now();
 
-// Which pairs matter: for every profile that is running or could resume, the
-// pair it trades AND the two context pairs its committee reads. They live in
-// configSnapshot.combo as {trade, ctx1, ctx2} — the same fields lib/live/signal.js
-// reads. An earlier version of this check looked at configSnapshot.members[],
-// which carry no symbol, so it reported one pair fresh while the two the
-// committee also depends on went unwatched.
-const want = new Set();
-for (const s of st.listSetups()) {
-  if (!["paper", "live", "stopped"].includes(s.state)) continue;
-  const combo = (s.configSnapshot || {}).combo || {};
-  for (const k of ["trade", "ctx1", "ctx2"]) if (combo[k]) want.add(combo[k]);
-  if (s.tradedPair) want.add(s.tradedPair);
+# WHICH PAIRS MATTER — asked of the service, which answers from lib/live/pairs.js.
+# This used to be re-derived here in JS, in two sibling scripts, and again in the
+# refresher: four copies of one rule, which had already drifted (one looked in
+# configSnapshot.members[], which carries no symbol, so it silently reported a
+# single pair as the whole set). An unreadable registry is reported as unknown,
+# never as an empty list — "no pairs" reads as "nothing needs watching".
+pairs_in_use() {
+  local body
+  body=$(curl -sS -m 8 http://127.0.0.1:8093/api/live/pairs 2>/dev/null) || { echo "__ERR__"; return; }
+  python3 -c '
+import json, sys
+try:
+    d = json.loads(sys.stdin.read())
+except Exception:
+    print("__ERR__"); raise SystemExit
+if d.get("error"):
+    print("__ERR__"); raise SystemExit
+print(" ".join(d.get("pairs") or []))
+' <<<"$body"
 }
+
+PAIRS=$(pairs_in_use)
+if [ "$PAIRS" = "__ERR__" ]; then
+  echo "cannot read which pairs are in use (is the classifier service up?) — NOT reporting a clean bill"
+  exit 1
+fi
+if [ -z "${PAIRS// }" ]; then
+  echo "no setup is in paper/live/stopped — no pair needs refreshing"
+  exit 0
+fi
+
+PAIRS="$PAIRS" node -e '
+const b = require("./lib/binance");
+const now = Date.now();
+const want = (process.env.PAIRS || "").split(/\s+/).filter(Boolean);
+
 console.log("now:", new Date(now).toISOString());
-if (!want.size) {
-  console.log("(no profile is in paper/live/stopped — no pair needs refreshing)");
-  process.exit(0);
-}
 // STALE is GUESSED at 3h, declared here rather than hidden: an hourly feed that
 // has not closed a candle in three hours is behind, but the number is a prompt
 // to look, not a verdict.
 const STALE_H = 3;
 let worst = 0;
-for (const sym of [...want].sort()) {
+for (const sym of want) {
   const ts = b.newestCandleTs(sym);
   if (!ts) { console.log(sym.padEnd(9), "no cached candle at all"); worst = 999; continue; }
   const throughUtc = new Date(ts + b.HOUR_MS).toISOString();

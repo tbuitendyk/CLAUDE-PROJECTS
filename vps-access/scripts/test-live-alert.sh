@@ -72,4 +72,56 @@ r12=$(LIVE_ALERT_DRYRUN=1 LIVE_MIRROR_FILE="$M3" LIVE_ALERT_STATE="$S3" bash "$H
 echo "$r12" | grep -qi "mirror stale" || fail "R12 stale mirror.json should page"
 echo "PASS 5: stale mirror.json pages (R12)"
 
+# A CHECK THAT EXAMINED NOTHING IS NOT A CLEAN BILL (owner, 2026-08-19).
+#
+# The live setup sat at checked:0 with two real shorts open: every record it
+# owned had been written by the previous engine version and was correctly set
+# aside as foreign, leaving an empty pile. breaks:0 / ok:true reads as healthy
+# but meant only that an empty set contained no problems. The guard existed on
+# the box-level alerter, attached to a mirror file with no writer.
+J4="$T/j-nothing.jsonl"; S4="$T/s-nothing.json"; M4="$T/m-nothing.json"
+
+# HOLDING a real position, verified nothing -> must page
+cat > "$J4" <<EOF
+{"event":"ENTRY_FILL","setup_id":"s-n","chunk_start":"c1","side":"SHORT","ts":$(python3 -c "print(int($NOW-6*86400))")}
+EOF
+echo '{"results":[{"setup_id":"s-n","ok":true,"checked":0,"breaks":0,"pending":0,"foreign":8,"foreignVersions":["old-engine-v1"]}]}' > "$M4"
+r=$(LIVE_ALERT_DRYRUN=1 LIVE_MIRROR_FILE="$M4" LIVE_ALERT_STATE="$S4" bash "$HERE/live-alert.sh" "$J4")
+echo "$r" | grep -q "examined NOTHING" \
+  || { echo "$r"; fail "checked:0 while holding a real position must page"; }
+echo "$r" | grep -q "old-engine-v1" \
+  || { echo "$r"; fail "the page must name WHY nothing was examined"; }
+echo "PASS 6: a drift check that verified nothing pages while a real position is open"
+
+# The entry is 6 DAYS old — older than the 26h incident window. A position
+# accounting that reused that window would report this setup as flat.
+grep -q "26 \* 3600" "$HERE/live-alert.sh" \
+  && echo "PASS 6b: (the 26h window still exists for incidents; the check above proves it is not used for positions)"
+
+# CLOSED again -> flat -> must NOT page (nothing is at stake)
+S4b="$T/s-nothing-b.json"
+printf '{"event":"EXIT_FILL","setup_id":"s-n","chunk_start":"c1","ts":%s}\n' "$(python3 -c "print(int($NOW-3600))")" >> "$J4"
+r=$(LIVE_ALERT_DRYRUN=1 LIVE_MIRROR_FILE="$M4" LIVE_ALERT_STATE="$S4b" bash "$HERE/live-alert.sh" "$J4")
+echo "$r" | grep -q "examined NOTHING" \
+  && { echo "$r"; fail "a FLAT setup verifying nothing must NOT page — nothing is at risk"; }
+echo "PASS 7: a flat setup that verified nothing does not page"
+
+# A PAPER position counts too: paper is the control arm, and an unverified
+# paper book is worthless as a comparison (RULE TWO — both books, equally).
+J5="$T/j-paper.jsonl"; S5="$T/s-paper.json"
+printf '{"event":"PAPER_ENTRY_FILL","setup_id":"s-p","chunk_start":"c1","ts":%s}\n' "$(python3 -c "print(int($NOW-2*86400))")" > "$J5"
+echo '{"results":[{"setup_id":"s-p","ok":true,"checked":0,"breaks":0,"pending":0}]}' > "$M4"
+r=$(LIVE_ALERT_DRYRUN=1 LIVE_MIRROR_FILE="$M4" LIVE_ALERT_STATE="$S5" bash "$HERE/live-alert.sh" "$J5")
+echo "$r" | grep -q "paper position" \
+  || { echo "$r"; fail "a paper book verifying nothing must page too (RULE TWO)"; }
+echo "PASS 8: an unverified paper book pages, and is labelled as paper"
+
+# checked>0 -> the detector is doing its job -> no page
+S6="$T/s-ok.json"
+echo '{"results":[{"setup_id":"s-n","ok":true,"checked":8,"breaks":0,"pending":0}]}' > "$M4"
+r=$(LIVE_ALERT_DRYRUN=1 LIVE_MIRROR_FILE="$M4" LIVE_ALERT_STATE="$S6" bash "$HERE/live-alert.sh" "$J4")
+echo "$r" | grep -q "examined NOTHING" \
+  && { echo "$r"; fail "a check that examined 8 decisions must not page as examining nothing"; }
+echo "PASS 9: a working drift check is silent"
+
 echo "ALL live-alert fixture checks PASS"

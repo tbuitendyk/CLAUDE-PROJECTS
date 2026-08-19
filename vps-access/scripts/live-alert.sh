@@ -58,6 +58,41 @@ state = load(STATE, {})          # key "setup|kind" -> for journal incidents the
 # (wall-clock cooldown).
 alerts = []
 
+# ---- open positions per setup, over the WHOLE journal ----------------------
+# NOT the 26h incident window below: a hold can run for days (the live geometry
+# holds 137h), so a window that short would report a setup as flat while it is
+# holding real money. Keyed (setup, period) exactly as the executor keys them.
+# Paper is counted too and labelled: paper is the control arm, and a paper book
+# whose decisions stop reproducing is worthless as a comparison, which is the
+# whole reason it exists.
+open_by_setup = {}      # setup_id -> {"real": n, "paper": n}
+try:
+    with open(JOURNAL) as fh:
+        for line in fh:
+            line = line.strip()
+            if not line: continue
+            try: e = json.loads(line)
+            except Exception: continue
+            sid = e.get("setup_id")
+            if not sid: continue
+            ev = e.get("event", "")
+            if ev in ("ENTRY_FILL", "EXIT_FILL"):
+                book = "real"
+            elif ev in ("PAPER_ENTRY_FILL", "PAPER_EXIT_FILL"):
+                book = "paper"
+            else:
+                continue
+            slot = open_by_setup.setdefault(sid, {"real": set(), "paper": set()})
+            per = e.get("chunk_start")
+            if per is None: continue
+            if ev.endswith("ENTRY_FILL"):
+                slot[book].add(per)
+            else:
+                slot[book].discard(per)
+except FileNotFoundError:
+    pass
+open_counts = {sid: {k: len(v) for k, v in books.items()} for sid, books in open_by_setup.items()}
+
 # ---- (a) mirror breaks per setup + mirror-file HEALTH ----------------------
 mir = load(MIRROR, None)
 # R12: a STALLED mirror writer hides its own silence — the file reads as fresh. If
@@ -81,6 +116,43 @@ if mir and isinstance(mir.get("results"), list):
             key = f'{r.get("setup_id")}|MIRROR_ERROR'
             alerts.append((key, f'{r.get("setup_id")}: mirror error',
                            [f'mirror recompute errored: {r["error"]}'], None))
+        # A CHECK THAT EXAMINED NOTHING IS NOT A CLEAN BILL (owner, 2026-08-19).
+        #
+        # breaks:0 can mean "every decision still reproduces" or it can mean
+        # "there was nothing to look at" — and the two are indistinguishable in
+        # the verdict, which reports ok:true either way. On 2026-08-19 the live
+        # setup sat at checked:0 with two real shorts open: every record it owned
+        # had been written by the previous engine version and was correctly set
+        # aside as foreign, leaving an empty pile. The detector examined nothing,
+        # found nothing wrong, and said so in the language of success.
+        #
+        # The guard for exactly this already existed on the BOX-LEVEL alerter,
+        # attached to a mirror file that was retired along with the single-config
+        # rail and now has no writer. It was watching a dead file while the live
+        # one went unguarded.
+        #
+        # Only pages while a position is OPEN. A flat setup verifying nothing is
+        # ordinary — there is genuinely nothing at stake and nothing to check.
+        sid = r.get("setup_id")
+        oc = open_counts.get(sid, {})
+        n_real, n_paper = oc.get("real", 0), oc.get("paper", 0)
+        if not r.get("error") and int(r.get("checked", 0) or 0) == 0 and (n_real or n_paper):
+            held = []
+            if n_real: held.append(f"{n_real} REAL position(s)")
+            if n_paper: held.append(f"{n_paper} paper position(s)")
+            foreign = int(r.get("foreign", 0) or 0)
+            why = (f" All {foreign} record(s) it owns were written by another engine version "
+                   f"({', '.join(r.get('foreignVersions') or []) or 'unknown'}) and are counted apart, "
+                   "so nothing was left to examine.") if foreign else ""
+            key = f'{sid}|MIRROR_CHECKED_NOTHING'
+            alerts.append((key, f'{sid}: drift check examined NOTHING while holding {" and ".join(held)}',
+                           [f'setup {sid} is holding {" and ".join(held)}, and its reproduce-check '
+                            f'verified 0 decisions this run (pending {r.get("pending", 0)}).' + why,
+                            'It reports breaks:0, which reads as healthy but means only that an empty '
+                            'set contained no problems. Until it examines a decision, this position is '
+                            'riding with no drift protection.',
+                            'It normally clears itself once the setup writes a decision under its own '
+                            'engine version — the next entry.'], None))
 
 # ---- (b) setup-tagged journal incidents ------------------------------------
 # R13: keep the LATEST incident per (setup, kind), and page it only when its ts is
@@ -151,8 +223,15 @@ def _persist():
     with open(STATE, "w") as fh: json.dump(state, fh)
 
 if DRYRUN:
+    # Print the BODY too, not just the subject line. A dry run that shows only
+    # subjects means no fixture can ever check what the owner actually reads —
+    # the body could go empty, or lose the reason a page was raised, and every
+    # test would still pass. That is the same shape as a check that examines
+    # nothing and reports success.
     print("DRYRUN would send:", subject)
-    for _, f_, _l, _t in due: print("  -", f_)
+    for _, f_, _l, _t in due:
+        print("  -", f_)
+        for ln in (_l or []): print("      ", ln)
     _persist()
     raise SystemExit(0)
 

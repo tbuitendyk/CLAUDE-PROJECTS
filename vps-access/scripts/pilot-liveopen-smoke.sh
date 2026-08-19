@@ -12,11 +12,20 @@ PILOT_SOCKS=127.0.0.1:1080 PAIR="$PAIR" node -e '
 const b = require("./lib/binance");
 const st = require("./lib/live/setups");
 (async () => {
-  // The pair used to be a literal in this file, so the smoke could pass on a
-  // symbol nothing trades while the pair that matters was unreachable.
+  // DELIBERATELY NOT lib/live/pairs.js. That helper answers "which pairs need
+  // fresh candles", which includes the two context pairs a committee reads. This
+  // smoke asks a different question: which pair does an ENTRY take its price
+  // from. That is the traded pair only — a context pair is never bought or sold
+  // — so folding the two together would have this check fetching prices for
+  // pairs no order will ever touch and calling a failure on one of them a
+  // failure of the entry path.
+  //
+  // combo.trade is the authority (it is what lib/live/signal.js prices off);
+  // tradedPair is the fallback for a setup whose snapshot is incomplete.
   let pairs = process.env.PAIR ? [process.env.PAIR] : [...new Set(
     st.listSetups().filter((s) => ["paper", "live"].includes(s.state))
-      .map((s) => s.tradedPair).filter(Boolean))];
+      .map((s) => ((s.configSnapshot || {}).combo || {}).trade || s.tradedPair)
+      .filter(Boolean))];
   if (!pairs.length) {
     console.log("no profile is in paper/live and no pair was given — nothing to smoke");
     console.log("pass a pair explicitly, e.g. pilot-liveopen-smoke.sh LTCUSDT");
