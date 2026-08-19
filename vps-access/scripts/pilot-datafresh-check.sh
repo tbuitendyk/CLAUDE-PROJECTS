@@ -15,13 +15,18 @@ const b = require("./lib/binance");
 const st = require("./lib/live/setups");
 const now = Date.now();
 
-// Which pairs matter: the traded pair of every profile that is running or
-// could resume, plus every committee member pair it reads to form a call.
+// Which pairs matter: for every profile that is running or could resume, the
+// pair it trades AND the two context pairs its committee reads. They live in
+// configSnapshot.combo as {trade, ctx1, ctx2} — the same fields lib/live/signal.js
+// reads. An earlier version of this check looked at configSnapshot.members[],
+// which carry no symbol, so it reported one pair fresh while the two the
+// committee also depends on went unwatched.
 const want = new Set();
 for (const s of st.listSetups()) {
   if (!["paper", "live", "stopped"].includes(s.state)) continue;
+  const combo = (s.configSnapshot || {}).combo || {};
+  for (const k of ["trade", "ctx1", "ctx2"]) if (combo[k]) want.add(combo[k]);
   if (s.tradedPair) want.add(s.tradedPair);
-  for (const m of ((s.configSnapshot || {}).members) || []) if (m.symbol) want.add(m.symbol);
 }
 console.log("now:", new Date(now).toISOString());
 if (!want.size) {

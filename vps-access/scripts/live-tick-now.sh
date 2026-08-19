@@ -15,13 +15,13 @@ timeout 300 /usr/local/sbin/live-tick.sh 2>&1 | tail -40
 echo "== data coverage after refresh (pairs the live profiles actually trade) =="
 PAIRS=$(cd "$APP" && node -e '
 try {
-  const s = require("./lib/live/setups");
+  const st = require("./lib/live/setups");
   const want = new Set();
-  for (const x of s.listSetups()) {
-    if (["paper", "live", "stopped"].includes(x.state)) {
-      if (x.tradedPair) want.add(x.tradedPair);
-      for (const m of (x.configSnapshot && x.configSnapshot.members) || []) if (m.symbol) want.add(m.symbol);
-    }
+  for (const s of st.listSetups()) {
+    if (!["paper", "live", "stopped"].includes(s.state)) continue;
+    const combo = (s.configSnapshot || {}).combo || {};
+    for (const k of ["trade", "ctx1", "ctx2"]) if (combo[k]) want.add(combo[k]);
+    if (s.tradedPair) want.add(s.tradedPair);
   }
   console.log([...want].join(" "));
 } catch (e) { console.log(""); }

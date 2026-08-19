@@ -25,10 +25,11 @@ PAIRS=$(cd /opt/general-classifier && node -e '
 try {
   const st = require("./lib/live/setups");
   const want = new Set();
-  for (const x of st.listSetups()) {
-    if (!["paper", "live", "stopped"].includes(x.state)) continue;
-    if (x.tradedPair) want.add(x.tradedPair);
-    for (const m of (x.configSnapshot && x.configSnapshot.members) || []) if (m.symbol) want.add(m.symbol);
+  for (const s of st.listSetups()) {
+    if (!["paper", "live", "stopped"].includes(s.state)) continue;
+    const combo = (s.configSnapshot || {}).combo || {};
+    for (const k of ["trade", "ctx1", "ctx2"]) if (combo[k]) want.add(combo[k]);
+    if (s.tradedPair) want.add(s.tradedPair);
   }
   console.log([...want].join(" "));
 } catch (e) { console.log(""); }
