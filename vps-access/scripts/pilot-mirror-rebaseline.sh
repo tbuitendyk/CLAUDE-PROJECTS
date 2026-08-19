@@ -1,26 +1,31 @@
 #!/usr/bin/env bash
-# pilot-mirror-rebaseline.sh -- ONE-OFF (owner, 2026-08-19).
+# pilot-mirror-rebaseline.sh -- ONE-OFF, DELETE AFTER USE (owner, 2026-08-19).
 #
-# WHY THIS EXISTS, AND WHY IT IS NOT A FEATURE. The owner changed the live rule's
-# band from a hand-transcribed 1.69 to the value the discovery run actually
-# produced (1.6858050329831362). The mirror recomputes recorded decisions and
-# compares them to what the engine computes NOW, so decisions taken under the old
-# band stopped reproducing, the mirror broke, and the box halted. Nothing was
-# wrong with the trades — the sides are unchanged — but the machinery genuinely
-# moved, and the mirror is right to notice.
+# The live rule's dormant band was written into a source file by hand as 1.69,
+# a rounded transcription of the value the discovery run actually produced
+# (1.6858050329831362). The owner replaced it with the real value: "that's what
+# the band should have looked like from the very start."
 #
-# Rules will not be swapped under a running engine again, so the mirror is NOT
-# being taught to handle rule changes (owner: "we're not going to be nor needing
-# code that allows rule flips while running. DON'T CODE IT THAT WAY"). This is a
-# one-time correction of records left inconsistent by a one-time change.
+# The band rides inside each decision's input_hash. So decisions recorded before
+# the correction carry a hash computed from a number that was never the rule —
+# and the mirror, which recomputes decisions against the running rule, correctly
+# refuses to reproduce them. Nothing about the trading is affected: the sides,
+# the votes and the entry prices are identical under either band. Only the
+# recorded band, and the hash derived from it, are wrong.
 #
-# WHAT IT DOES: for each decision the mirror reports as a break, it rewrites the
-# recorded votes/hash/band to what the engine computes now, and keeps the
-# original values in `rebaselined_from` so nothing is erased. It touches only
-# decisions already flagged as breaks, never a matching one.
+# THIS SCRIPT FIXES DATA, NOT BEHAVIOUR. It leaves each decision reading exactly
+# as it would have read had the correct band been in place from day one. It adds
+# no field, keeps no repair marker, and removes the `rebaselined_from` marker an
+# earlier version of this script left behind — production data carries the
+# record, not the history of its repair. That history lives in git and in the
+# change email.
+#
+# The band is READ FROM THE RUNNING RULE, never typed in here. Typing the number
+# by hand is the exact mistake being corrected; doing it again to fix it would
+# be absurd.
 #
 # WHAT IT DOES NOT DO: it does not clear the halt, arm anything, place an order,
-# or alter a position. It edits the display/verification record only.
+# alter a position, or change any side, vote or price.
 set -uo pipefail
 APPDIR=/opt/general-classifier
 MIRROR="$APPDIR/data/pilot/mirror.json"
@@ -28,52 +33,57 @@ DEC="$APPDIR/data/pilot/decisions"
 
 [ -f "$MIRROR" ] || { echo "no mirror.json — run the mirror first"; exit 1; }
 
-python3 - "$MIRROR" "$DEC" <<'PYEOF'
-import json, os, sys, glob, datetime
-mirror_path, dec_dir = sys.argv[1], sys.argv[2]
-m = json.load(open(mirror_path))
-results = m.get("results") or []
-breaks = [r for r in results if r.get("break")]
-print("mirror says: checked " + str(m.get("checked")) + ", breaks " + str(m.get("breaks")))
-if not breaks:
-    print("nothing to re-baseline — no breaks."); raise SystemExit
+# The truth, straight out of the engine's own rule resolution.
+BAND=$(cd "$APPDIR" && node -e 'process.stdout.write(String(require("./lib/pilotrule").resolveRule().cfg.branch.band))') || {
+  echo "could not read the live rule's band — aborting rather than guessing"; exit 1; }
+echo "live rule band = $BAND"
 
-now = datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
-for r in breaks:
-    cs = r.get("chunk_start")
-    rec = r.get("recorded") or {}
-    new = r.get("recomputed") or {}
-    if not new:
-        print("  " + str(cs) + ": no recomputed values — SKIPPED"); continue
-    # find the decision file for this chunk
-    hits = [f for f in glob.glob(os.path.join(dec_dir, "*.json"))
-            if json.load(open(f)).get("chunk_start") == cs]
-    if len(hits) != 1:
-        print("  " + str(cs) + ": expected 1 decision file, found " + str(len(hits)) + " — SKIPPED"); continue
-    path = hits[0]
+python3 - "$MIRROR" "$DEC" "$BAND" <<'PYEOF'
+import json, os, sys, glob
+mirror_path, dec_dir, band = sys.argv[1], sys.argv[2], float(sys.argv[3])
+m = json.load(open(mirror_path))
+
+# The mirror's recomputed hash, per chunk, for the ones it says do not reproduce.
+fresh = {r.get("chunk_start"): (r.get("recomputed") or {}).get("input_hash")
+         for r in (m.get("results") or []) if r.get("break") and r.get("hash_diff")}
+print("mirror: checked " + str(m.get("checked")) + ", breaks " + str(m.get("breaks")))
+
+changed = 0
+for path in sorted(glob.glob(os.path.join(dec_dir, "*.json"))):
     d = json.load(open(path))
+    cs = d.get("chunk_start")
+    before_band, before_hash = d.get("band_pct"), d.get("input_hash")
+    new_hash = fresh.get(cs)
+
+    edits = []
+    if before_band != band:
+        d["band_pct"] = band
+        edits.append("band_pct " + str(before_band) + " -> " + str(band))
+    if new_hash and new_hash != before_hash:
+        d["input_hash"] = new_hash
+        edits.append("input_hash " + str(before_hash) + " -> " + str(new_hash))
+    if "rebaselined_from" in d:
+        del d["rebaselined_from"]
+        edits.append("dropped the rebaselined_from repair marker")
+
     print("")
-    print("  " + os.path.basename(path))
-    print("    side       " + str(d.get("side")) + "  ->  " + str(new.get("side")) + ("   (UNCHANGED)" if d.get("side") == new.get("side") else "   *** SIDE CHANGES ***"))
-    print("    per_member " + str(d.get("per_member")) + "  ->  " + str(new.get("per_member")))
-    print("    input_hash " + str(d.get("input_hash")) + "  ->  " + str(new.get("input_hash")))
-    # keep the original, so the change is auditable rather than erased
-    d["rebaselined_from"] = {
-        "utc": now,
-        "why": "one-off: the live rule's band moved from the transcribed 1.69 to the "
-               "discovery run's own 1.6858050329831362, so decisions taken under the "
-               "old band could not reproduce",
-        "side": d.get("side"), "per_member": d.get("per_member"),
-        "input_hash": d.get("input_hash"), "band_pct": d.get("band_pct"),
-    }
-    d["side"] = new.get("side", d.get("side"))
-    d["per_member"] = new.get("per_member", d.get("per_member"))
-    d["input_hash"] = new.get("input_hash", d.get("input_hash"))
+    print("  " + os.path.basename(path) + "   side " + str(d.get("side"))
+          + "  votes " + str(d.get("per_member")) + "  price " + str(d.get("decision_price")))
+    if not edits:
+        print("    already correct — untouched")
+        continue
+    for e in edits:
+        print("    " + e)
+    # side, per_member and decision_price are never written here: the band change
+    # does not move them, and this script has no business touching a trade record.
     tmp = path + ".tmp"
-    with open(tmp, "w") as fh: json.dump(d, fh)
+    with open(tmp, "w") as fh:
+        json.dump(d, fh)
     os.replace(tmp, path)
-    print("    written (original kept in rebaselined_from)")
+    changed += 1
+    print("    written")
+
 print("")
-print("re-baselined " + str(len(breaks)) + " decision(s). Re-run the mirror to confirm.")
+print("corrected " + str(changed) + " decision file(s). Re-run the mirror to confirm.")
 PYEOF
 echo "(the halt is NOT cleared by this script)"
