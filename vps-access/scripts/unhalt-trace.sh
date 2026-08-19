@@ -14,10 +14,24 @@ ls -la "$APP/data/live/unhalt/" 2>/dev/null | sed 's/^/  /' || echo "  (no unhal
 
 echo
 echo "== 2. WHO carries them, and how often =="
-echo "  the per-profile carry lives in live-produce-and-push.sh, run by:"
-systemctl list-timers live-tick.timer --all 2>/dev/null | grep -i live-tick | sed 's/^/    /' || echo "    (live-tick.timer not listed)"
-echo "  the BOX-LEVEL carry lives in pilot-produce-and-push.sh, run by:"
+# BOTH carries live in pilot-produce-and-push.sh now, on the 5-minute sync. The
+# per-profile one used to sit in the hourly live-produce-and-push.sh, which is
+# why every press arrived past the 900-second window below and was refused.
+echo "  both carries live in pilot-produce-and-push.sh, run by:"
 systemctl list-timers pilot-sync.timer --all 2>/dev/null | grep -i pilot-sync | sed 's/^/    /' || echo "    (pilot-sync.timer not listed)"
+echo "  (the hourly live-tick.timer no longer carries clears — it only produces and re-checks):"
+systemctl list-timers live-tick.timer --all 2>/dev/null | grep -i live-tick | sed 's/^/    /' || echo "    (live-tick.timer not listed)"
+echo "  sanity: the per-profile carry must NOT be back in the hourly script —"
+if grep -q "UNHALT_DIR" /usr/local/sbin/live-produce-and-push.sh 2>/dev/null; then
+  echo "    ** IT IS. The hourly tick carries clears again; they will be refused as stale. **"
+else
+  echo "    ok, it is not."
+fi
+if grep -q "UNHALT_DIR" /usr/local/sbin/pilot-produce-and-push.sh 2>/dev/null; then
+  echo "  sanity: the 5-minute carry is present. ok."
+else
+  echo "  ** the 5-minute carry is MISSING — no script carries a per-profile clear at all. **"
+fi
 
 echo
 echo "== 3. how long the box will accept a request for =="
