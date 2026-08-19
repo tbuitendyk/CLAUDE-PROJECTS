@@ -1381,7 +1381,16 @@ function bookFromScanBody(b) {
     return {
       book: { id: `${doc.id}:${target}`, combo: cfg.combo, branch: cfg.branch,
         members: cfg.members, cell: cfg.cell },
-      opts: { trainThrough: cfg.trainThrough, scoreFrom: cfg.trainThrough + 1 },
+      // THIS PATH IS A SCAN, NOT A DEPLOYMENT. It replays a lab row over history
+      // ad hoc, so there is no deployment whose training policy could apply. It
+      // used to read cfg.trainThrough, which the greenlight set from the run's
+      // fire time; that field is gone from the rule shape, so the same instant is
+      // taken directly and named for what it is — the scan's assumed freeze.
+      // Behaviour is unchanged, deliberately: Stage A moves where the freeze
+      // lives, it does not change any number.
+      opts: (() => { const assumed = Date.parse(doc.startedAt || doc.finishedAt || '');
+        if (!Number.isFinite(assumed)) { const e = new Error('run carries no startedAt — cannot place the scan freeze'); e.status = 400; throw e; }
+        return { trainThrough: assumed, scoreFrom: assumed + 1 }; })(),
     };
   }
   const { BOOKS } = require('./lib/forwardbook');

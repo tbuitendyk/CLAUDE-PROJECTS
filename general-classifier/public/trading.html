@@ -453,7 +453,16 @@ async function drawDetail(){
         ${cfgRow('Committee', `${(c.members||[]).length} members (${esc(c.stage)})`)}
         ${cfgRow('Quorum / entry / gate', `${cell.quorum}-of-${(c.members||[]).length} · ${esc(cell.entry)} · ${esc(cell.gate)}`)}
         ${cfgRow('Hold', `${cell.tHours}h`)}
-        ${cfgRow('Trained through', new Date(c.trainThrough).toISOString().slice(0,10))}
+        ${(() => {
+          // The freeze belongs to the DEPLOYMENT now, not the rule. A setup
+          // still carrying it inside its old configSnapshot is LEGACY and says
+          // so, rather than presenting an inherited field as a current choice.
+          const p = c.trainPolicy;
+          if (p && p.mode === 'rolling') return cfgRow('Members train', 'rolling — retrained through the latest closed outcome');
+          if (p && p.mode === 'frozen') return cfgRow('Members train', `frozen at ${new Date(p.throughMs).toISOString().slice(0,10)}`);
+          if (c.trainThrough) return cfgRow('Members train', `frozen at ${new Date(c.trainThrough).toISOString().slice(0,10)} (legacy — inherited from the old rule shape)`);
+          return cfgRow('Members train', 'not set — this deployment has no training policy');
+        })()}
         ${cfgRow('Config version', `<code>${esc(c.configVersion||'')}</code>`)}
         ${cfgRow('Engine version', `<code>${esc(s.engineVersion||'')}</code>`)}
         ${cfgRow('Displayed run since', s.runEpochUtc?esc(s.runEpochUtc.slice(0,16)):'—')}

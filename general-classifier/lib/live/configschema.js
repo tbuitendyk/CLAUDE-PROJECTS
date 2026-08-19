@@ -15,8 +15,7 @@
 //   stage    'slim' | 'promoted'                which member roster specsFor builds
 //   members  [{ model, view }, ...]             frozen roster (cross-checked vs stage)
 //   cell     { quorum, entry, gate, dMult, tHours, trailMult, armMult }
-//   trainThrough  ms epoch — the training freeze; members are trained ONCE
-//                 through this date and never retrained live.
+//   (trainThrough was here and is NOT a rule property — see trainpolicy.js)
 //   configVersion string — bumped on ANY change to the mechanics; rides in the
 //                 intent input_hash so drift is provable (pilotsignal pattern).
 
@@ -81,9 +80,14 @@ function validateConfig(cfg) {
     fail(errors, 'cell.dMult: required for breakout entry');
   }
 
-  if (!Number.isInteger(cfg.trainThrough) || cfg.trainThrough <= 0) {
-    fail(errors, 'trainThrough: must be a ms-epoch training freeze');
-  }
+  // trainThrough is NOT part of a rule (owner, 2026-08-19). A rule says what
+  // to trade; WHEN its members train is a property of the deployment that puts
+  // it to work — lib/live/trainpolicy.js. The field arrived here by inheritance
+  // from forwardbook, where freeze-at-a-date is intrinsic because those books
+  // exist to be out-of-sample evidence. Copying the vocabulary wholesale meant
+  // greenlight had to populate it, and it did so by guessing from the run's
+  // fire time: a date that is neither the rule's business nor deliberately
+  // chosen. Legacy configs may still carry the field; it is ignored, not read.
   if (typeof cfg.configVersion !== 'string' || !cfg.configVersion.trim()) {
     fail(errors, 'configVersion: must be a non-empty string');
   }

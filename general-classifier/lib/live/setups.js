@@ -104,6 +104,10 @@ function createSetup(spec) {
     createdUtc: now,
     // operational — mutable
     clipUsd: spec.clipUsd,
+    // WHEN this deployment's members train (owner, 2026-08-19). Not part of
+    // the rule — the same rule can be deployed frozen for evidence or rolling
+    // for trading. See lib/live/trainpolicy.js.
+    trainPolicy: spec.trainPolicy || null,
     stopPct: spec.stopPct ?? null,
     executionTargetRef: spec.executionTargetRef ?? null,
     keyRef: spec.keyRef ?? null,
@@ -141,7 +145,7 @@ function listSetups() {
 // Update MUTABLE fields only. Any attempt to change an identity/evidence field
 // is an error, not a merge — silence here would be how a live setup's meaning
 // drifts (the point-4 immutability promise).
-const MUTABLE = new Set(['name', 'clipUsd', 'stopPct', 'executionTargetRef', 'keyRef']);
+const MUTABLE = new Set(['name', 'clipUsd', 'stopPct', 'executionTargetRef', 'keyRef', 'trainPolicy']);
 
 // The live-executability gate, shared by the transition door AND updateSetup. It
 // answers "may this setup honestly TRADE in state `to`?": the geometry must be one

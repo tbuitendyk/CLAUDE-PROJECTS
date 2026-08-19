@@ -53,7 +53,6 @@ module.exports.configValidationCatchesEveryBrokenField = function () {
     [(c) => { c.cell.quorum = 9; }, 'cell.quorum'],   // exceeds committee of 4
     [(c) => { c.cell.entry = 'limit'; }, 'cell.entry'],
     [(c) => { c.cell.tHours = 0; }, 'cell.tHours'],
-    [(c) => { delete c.trainThrough; }, 'trainThrough'],
     [(c) => { c.configVersion = ''; }, 'configVersion'],
   ];
   for (const [mutate, field] of cases) {

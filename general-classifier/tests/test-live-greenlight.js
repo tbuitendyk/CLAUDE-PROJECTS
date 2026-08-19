@@ -49,8 +49,12 @@ module.exports.greenlightFreezesTheSelectedRowIntoTheSharedVocabulary = function
   assert.strictEqual(cfg.stage, 'slim', 'stage derived from committee width (4 @ size 3)');
   assert.strictEqual(cfg.members.length, 4);
   assert.strictEqual(cfg.cell.tHours, 137);
-  assert.strictEqual(cfg.trainThrough, Date.parse('2026-08-01T10:10:10.000Z'),
-    'freeze = the selecting run\'s fire time (the last instant it could see)');
+  // WAS: trainThrough had to equal the run's fire time. That premise is gone
+  // (owner, 2026-08-19) — a rule carries no training window, and inferring one
+  // from when somebody clicked was never defensible. The greenlight must now
+  // mint NO freeze at all; when members train is the deployment's choice.
+  assert.strictEqual(cfg.trainThrough, undefined,
+    'the greenlight is still inventing a training freeze from the run');
   assert.ok(cfg.configVersion.startsWith('bracketlab-20260801-101010-test/best@'));
   assert.strictEqual(rec.campaign, 'ltc-drill-aug', 'provenance carries the parent job');
   assert.deepStrictEqual(rec.sourceRun.dataManifest.symbols.LTCUSDT, 'd1', 'QC-77 manifest rides along');
@@ -65,7 +69,9 @@ module.exports.greenlightRefusalsAreLoudAndSpecific = function () {
     [() => { const d = labDoc(); delete d.selection.declaredCell; return gl.greenlightFromRun(d, 'declared', { why: 'x' }); }, /declared cell/],
     [() => { const d = labDoc(); d.selection.bandPct = undefined; return gl.greenlightFromRun(d, 'best', { why: 'x' }); }, /bandPct/],
     [() => { const d = labDoc(); d.selection.members = 5; return gl.greenlightFromRun(d, 'best', { why: 'x' }); }, /stage/],
-    [() => { const d = labDoc(); delete d.startedAt; delete d.finishedAt; return gl.greenlightFromRun(d, 'best', { why: 'x' }); }, /startedAt|freeze/],
+    // WAS: a run with no startedAt was refused, because the greenlight needed a
+    // date to place its training freeze. It needs no date now — a rule carries
+    // no training window — so this is no longer a refusal and the case is gone.
     [() => gl.greenlightFromRun(labDoc(), 'wildcard', { why: 'x' }), /best.*declared|declared.*best/],
   ];
   for (const [fn, re] of cases) {

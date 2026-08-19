@@ -25,6 +25,7 @@ const bracketLib = require('../bracket');
 const { scoreDiff } = require('../dataset');
 const { splitFrozen } = require('../forwardbook');
 const { validateConfig } = require('./configschema');
+const { resolveFreeze } = require('./trainpolicy');
 
 const HOUR_MS = 3600000;
 const SIDE_MAP = { 1: 'LONG', '-1': 'SHORT', 0: 'FLAT' };
@@ -57,7 +58,7 @@ function cfgOf(setup) {
 // quorum/band/symbol/freeze/version in place of F1's. The hash covers the
 // decision machinery (not the price — the mirror's price check has its own
 // tolerance), so machinery drift is provable per setup.
-async function committeeCallFor(cfg, target, trainChunks, maps, geo, views, bandPct) {
+async function committeeCallFor(cfg, target, trainChunks, maps, geo, views, bandPct, freezeMs) {
   const members = await trainMembers(cfg.members, views, trainChunks, [target], cfg.branch, maps, geo);
   const perMember = members.map((m) => m.calls[0]);
   const call = quorumCall(members.map((m) => m.calls), 0, cfg.cell.quorum);
@@ -69,23 +70,28 @@ async function committeeCallFor(cfg, target, trainChunks, maps, geo, views, band
     .update(JSON.stringify({
       chunk: target.startTs, perMember, quorum: cfg.cell.quorum, band: bandPct,
       side, symbol: cfg.combo.trade,
-      train_through: cfg.trainThrough, config_version: cfg.configVersion,
+      train_through: freezeMs, config_version: cfg.configVersion,
     }))
     .digest('hex').slice(0, 16);
   return { call, perMember, side, priceAt, inputHash, entryTs };
 }
 
 // Shared preamble: build the combo, freeze-split, return the working pieces.
-async function prepare(cfg) {
+async function prepare(setup) {
+  // The freeze comes from the DEPLOYMENT, not the rule. A rule says what to
+  // trade; when its members train is a property of putting it to work. See
+  // lib/live/trainpolicy.js for why these were ever one field.
+  const cfg = cfgOf(setup);
+  const freeze = resolveFreeze(setup);
   const params = { allLoaded: true, feePerLeg: 0, includeUnlabeled: true };
   const { geo, maps, chunks } = await buildCombo(cfg.combo, cfg.branch, params);
   const bandPct = Math.abs(cfg.branch.band);
   for (const c of chunks) c.label = c.diffPct == null ? null : scoreDiff(c.diffPct / 100, bandPct / 100);
   const outcomeMs = (geo.exitOffsetH || 0) * 3600000;
-  const { trainChunks } = splitFrozen(chunks, cfg.trainThrough, undefined, outcomeMs);
+  const { trainChunks } = splitFrozen(chunks, freeze.throughMs, undefined, outcomeMs);
   if (!trainChunks.length) throw new Error('live signal: no training chunks at/before the freeze');
   const views = bracketLib.comboViews(cfg.combo.size, geo.featureHours / 24).views;
-  return { geo, maps, chunks, bandPct, trainChunks, views };
+  return { cfg, freeze, geo, maps, chunks, bandPct, trainChunks, views };
 }
 
 // Window selectors — same math as pilotsignal (kept as pure functions there;
@@ -138,8 +144,7 @@ function missingFeatureCandle(target, geo, maps) {
 // plus setup_id and the setup's execution params — the executor cross-checks
 // them against its own per-box allowlist (defense in depth; plan 3.1).
 async function computeSignal(setup, now, opts = {}) {
-  const cfg = cfgOf(setup);
-  const { geo, maps, chunks, bandPct, trainChunks, views } = await prepare(cfg);
+  const { cfg, freeze, geo, maps, chunks, bandPct, trainChunks, views } = await prepare(setup);
 
   const target = actionableChunk(chunks, geo, cfg.cell.tHours, now);
   if (!target) {
@@ -160,7 +165,7 @@ async function computeSignal(setup, now, opts = {}) {
   }
 
   const { call, perMember, side, priceAt, inputHash } =
-    await committeeCallFor(cfg, target, trainChunks, maps, geo, views, bandPct);
+    await committeeCallFor(cfg, target, trainChunks, maps, geo, views, bandPct, freeze.throughMs);
 
   let entryOpen = chooseEntryOpen(priceAt, null);
   if (call !== 0 && entryOpen == null && typeof opts.liveOpenFetcher === 'function') {
@@ -191,7 +196,7 @@ async function computeSignal(setup, now, opts = {}) {
       per_member: perMember,
       quorum: cfg.cell.quorum,
       config_version: cfg.configVersion,
-      train_through: cfg.trainThrough,
+      train_through: freeze.throughMs,
       band_pct: bandPct,
       // execution params from the setup (plan 3.1) — the box validates these
       // against its own allowlist entry for setup_id before acting.
@@ -208,8 +213,7 @@ async function computeSignal(setup, now, opts = {}) {
 // Archival recompute for the per-setup mirror (QC 110 semantics preserved:
 // price_pending defers ONLY the price check while the entry candle is uncached).
 async function computeSignalForChunk(setup, chunkStartMs) {
-  const cfg = cfgOf(setup);
-  const { geo, maps, chunks, bandPct, trainChunks, views } = await prepare(cfg);
+  const { cfg, freeze, geo, maps, chunks, bandPct, trainChunks, views } = await prepare(setup);
   const target = chunks.find((c) => c.startTs === chunkStartMs);
   if (!target) {
     return { found: false, chunk_start: new Date(chunkStartMs).toISOString(),
@@ -221,7 +225,7 @@ async function computeSignalForChunk(setup, chunkStartMs) {
       note: `current data missing ${miss.name} feature candle ${new Date(miss.lastFeatureTs).toISOString()} — cannot recompute yet` };
   }
   const { side, perMember, priceAt, inputHash } =
-    await committeeCallFor(cfg, target, trainChunks, maps, geo, views, bandPct);
+    await committeeCallFor(cfg, target, trainChunks, maps, geo, views, bandPct, freeze.throughMs);
   return {
     found: true,
     price_pending: priceAt == null,
@@ -238,8 +242,7 @@ async function computeSignalForChunk(setup, chunkStartMs) {
 
 // Decision preview per setup (same semantics as the F1 preview).
 async function computePreview(setup, now) {
-  const cfg = cfgOf(setup);
-  const { geo, maps, chunks, bandPct, trainChunks, views } = await prepare(cfg);
+  const { cfg, freeze, geo, maps, chunks, bandPct, trainChunks, views } = await prepare(setup);
   const target = previewableChunk(chunks, geo, now);
   if (!target) {
     return { available: false,
@@ -252,7 +255,7 @@ async function computePreview(setup, now) {
       note: `feature window closed but ${miss.name}'s last candle is not cached yet — preview available shortly`,
       entry_utc: new Date(entryAt).toISOString() };
   }
-  const { side, perMember } = await committeeCallFor(cfg, target, trainChunks, maps, geo, views, bandPct);
+  const { side, perMember } = await committeeCallFor(cfg, target, trainChunks, maps, geo, views, bandPct, freeze.throughMs);
   return {
     available: true,
     setup_id: setup.id,

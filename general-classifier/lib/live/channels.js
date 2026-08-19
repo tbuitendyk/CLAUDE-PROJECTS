@@ -59,7 +59,13 @@ function statusLine(parts) {
 // shuttle — the only door), or restarts a stopped one. Every transition gate
 // applies unchanged; a refused gate (e.g. real without keyRef) surfaces as the
 // transition's own error.
-function activate(greenlightId, channel, { by = OWNER_ID, clipUsd, name } = {}) {
+function activate(greenlightId, channel, { by = OWNER_ID, clipUsd, name, trainPolicy } = {}) {
+  // A deployment must say when its members train. Legacy setups fall back to
+  // the freeze inside their old configSnapshot, out loud — see trainpolicy.js.
+  if (trainPolicy) {
+    const pe = require('./trainpolicy').validatePolicy(trainPolicy);
+    if (pe.length) { const e = new Error(pe.join('; ')); e.code = 'BAD_TRAIN_POLICY'; throw e; }
+  }
   if (!CHANNELS.includes(channel)) { const e = new Error(`unknown channel '${channel}'`); e.code = 'BAD_CHANNEL'; throw e; }
   const g = gl.getGreenlight(greenlightId);
   if (!g) { const e = new Error(`no such greenlight ${greenlightId}`); e.code = 'NOT_FOUND'; throw e; }
@@ -104,7 +110,7 @@ function activate(greenlightId, channel, { by = OWNER_ID, clipUsd, name } = {}) 
       // clip is operational (point 20), not part of the frozen snapshot; the
       // $10 default matches the pilot's clip and is editable on Setup detail.
       clipUsd: Number.isFinite(clipUsd) && clipUsd > 0 ? clipUsd : 10,
-      by, channel,
+      by, channel, trainPolicy,
     });
     s = made.setup;
   }

@@ -89,11 +89,13 @@ function configFromSelection(doc, target) {
   if (!Number.isInteger(members)) throw new Error('selected row carries no committee size (members)');
   const stage = stageFromMembers(size, members);
 
-  // trainThrough = the last instant the SELECTING run could see (forwardbook
-  // rule): the run read the cache as of its own fire time, and the cache only
-  // ever holds closed candles, so the fire time IS the data horizon.
-  const fired = Date.parse(doc.startedAt || doc.finishedAt || '');
-  if (!Number.isFinite(fired)) throw new Error('run carries no startedAt — cannot place the training freeze');
+  // NO TRAINING FREEZE IS INVENTED HERE (owner, 2026-08-19). This used to set
+  // trainThrough from the run's FIRE TIME, on the premise that the fire time is
+  // the data horizon. It is not: this very run fired 2026-08-05 while loading
+  // months 2019-01..2026-06, so the guess was five weeks past anything the run
+  // could see. And the deeper point is that a rule should carry no training
+  // window at all — greenlighting decides that a config is fit to trade, not
+  // when its members train. That choice belongs to the deployment.
 
   const cfg = {
     combo: { trade: sel.trade, ctx1: sel.ctx1 ?? null, ctx2: sel.ctx2 ?? null, size },
@@ -108,7 +110,6 @@ function configFromSelection(doc, target) {
       dMult: sel.dMult ?? null, tHours: sel.tHours,
       trailMult: sel.trailMult ?? null, armMult: sel.armMult ?? null,
     },
-    trainThrough: fired,
     configVersion: `${doc.id}/${target}@${new Date().toISOString().slice(0, 10)}`,
   };
   const v = validateConfig(cfg);
@@ -171,7 +172,7 @@ function listGreenlights() {
 
 // THE SHUTTLE (point 4): greenlight -> new draft setup, snapshot + provenance
 // riding along. The greenlight record keeps the reverse link.
-function shuttle(greenlightId, { name, clipUsd, stopPct = null, by = 'owner', channel = null } = {}) {
+function shuttle(greenlightId, { name, clipUsd, stopPct = null, by = 'owner', channel = null, trainPolicy = null } = {}) {
   const gl = getGreenlight(greenlightId);
   if (!gl) { const e = new Error(`no such greenlight ${greenlightId}`); e.code = 'NOT_FOUND'; throw e; }
   if (gl.revoked) { const e = new Error('this config was nuked back to not-greenlighted'); e.code = 'REVOKED'; throw e; }
@@ -182,6 +183,7 @@ function shuttle(greenlightId, { name, clipUsd, stopPct = null, by = 'owner', ch
     provenanceRef: gl.id,
     channel,
     clipUsd,
+    trainPolicy,
     stopPct,
     by,
   });
