@@ -1438,7 +1438,23 @@ def do_run(bx):
     # interest-blind and pools its unrepaid interest onto whoever closes last
     # (finding 18). A short that is NOT due this run keeps this count above 1,
     # so a due close never repays a still-open sibling's borrow.
-    shorts_remaining = sum(1 for q in st["open"].values() if q["side"] == "SHORT")
+    #
+    # COUNTED PER WALLET, NOT PER BOX. Debt is a property of one isolated wallet,
+    # so "the last short" means the last one IN THAT WALLET. Counting across the
+    # box was correct while there was exactly one wallet and becomes wrong the
+    # moment a second profile exists: profile A's short would see profile B's
+    # short still open, decide it is not the last, repay only its nominal, and
+    # leave its interest unrepaid in A's wallet — where B, closing last in its
+    # OWN wallet, can never clear it. A's borrow then exceeds its nominal and the
+    # reconcile halts the box for a discrepancy nothing created on purpose.
+    # Found reviewing the routing change that makes two wallets possible at all.
+    def _wallet_of(q):
+        return q.get("key_ref") or "__shared__"
+    shorts_by_wallet = {}
+    for q in st["open"].values():
+        if q["side"] == "SHORT":
+            w = _wallet_of(q)
+            shorts_by_wallet[w] = shorts_by_wallet.get(w, 0) + 1
     stop_pct = fixed_stop_pct()
     for p in sorted(st["open"].values(), key=lambda x: x["exit_due_ts"]):
         # A position exits for one of two reasons: its scheduled hold elapsed, OR
@@ -1515,7 +1531,7 @@ def do_run(bx):
                                                 cid=client_id("exit", p["chunk_start"], p.get("setup_id")))
             qty_traded = sell_qty
         else:  # SHORT: buy back the borrow plus a small buffer for the LTC fee.
-            is_last_short = (shorts_remaining <= 1)
+            is_last_short = (shorts_by_wallet.get(_wallet_of(p), 0) <= 1)
             debt = pbx.borrowed_base()
             if debt is not None:
                 if debt < QTY_STEP:
@@ -1565,7 +1581,8 @@ def do_run(bx):
             entry_fee = p.get("entry_fee", 0.0)
             interest_cost = 0.0
             if p["side"] == "SHORT":
-                shorts_remaining -= 1
+                _w = _wallet_of(p)
+                shorts_by_wallet[_w] = max(0, shorts_by_wallet.get(_w, 0) - 1)
                 # Residual assertion on EVERY short close (re-review): the
                 # AUTO_REPAY must actually REDUCE the borrow by ~this leg's size. A
                 # repay that silently fails, or an outsized fee eating the received

@@ -973,6 +973,35 @@ class ExecutorTest(unittest.TestCase):
         self.assertEqual(fills[0].get("symbol"), "LTCUSDT",
                          "the position does not record its isolated pair")
 
+    def test_last_short_is_counted_per_wallet_not_per_box(self):
+        """Debt belongs to ONE isolated wallet, so "the last short" means the last
+        one in THAT wallet. Counting across the box was right while there was one
+        wallet and becomes wrong the moment a second profile exists: profile A's
+        short sees B's still open, decides it is not last, repays only its
+        nominal, and strands its interest in A's wallet where B — closing last in
+        its own wallet — can never clear it. A's borrow then exceeds its nominal
+        and the reconcile halts the box for a discrepancy nobody created."""
+        src = open(os.path.join(os.path.dirname(__file__), "mx_executor.py")).read()
+        self.assertNotIn("shorts_remaining", src,
+                         "the box-wide short counter is still there")
+        self.assertIn("shorts_by_wallet", src, "shorts are not counted per wallet")
+        # and prove the arithmetic: one short in each of two wallets means BOTH
+        # are the last short of their own wallet
+        def wallet_of(q):
+            return q.get("key_ref") or "__shared__"
+        opens = {
+            "a|c1": {"side": "SHORT", "key_ref": "kr-a"},
+            "b|c1": {"side": "SHORT", "key_ref": "kr-b"},
+        }
+        by = {}
+        for q in opens.values():
+            if q["side"] == "SHORT":
+                by[wallet_of(q)] = by.get(wallet_of(q), 0) + 1
+        self.assertEqual(by, {"kr-a": 1, "kr-b": 1})
+        for q in opens.values():
+            self.assertTrue(by.get(wallet_of(q), 0) <= 1,
+                            "a lone short in its own wallet is not treated as the last one")
+
     def test_a_profile_halt_can_be_lifted(self):
         """set_setup_halt existed from the start with no counterpart, so a halted
         profile was finished — the box-level halt has always had a recovery lever
