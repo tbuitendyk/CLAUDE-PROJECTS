@@ -47,7 +47,25 @@ async function checkSetup(setup, opts = {}) {
     && setup.configSnapshot.cell.tHours ? setup.configSnapshot.cell.tHours : 24) / 24);
   const n = opts.recent || Math.max(10, holdChunks + 10);
   const recompute = opts.recompute || ((chunkMs) => signal.computeSignalForChunk(setup, chunkMs));
-  const records = loadDecisions(setup.id, opts.dir).slice(-n);
+  const all = loadDecisions(setup.id, opts.dir).slice(-n);
+
+  // A DECISION FROM A DIFFERENT ENGINE CANNOT BE RE-VERIFIED BY THIS ONE, and
+  // reporting that as a BREAK is wrong. A break means the record and the engine
+  // disagree about the SAME computation — that is drift, and it halts trading.
+  // A record whose config_version is not this profile's was produced by other
+  // arithmetic: its fingerprint pins that version, so recomputing it here always
+  // differs, every time, for a reason that is not drift and that no amount of
+  // investigation will resolve.
+  //
+  // This is not hypothetical tidiness. Carrying a book onto a profile brought
+  // decisions stamped 'f1-v1-2026-08-11' into a profile computing under its own
+  // version; all eight were reported as breaks and the profile was halted for
+  // drift that did not exist. Counted and named separately now, so the operator
+  // can see the history is there and see that it is not being vouched for.
+  const mine = String((setup.configSnapshot || {}).configVersion || '');
+  const foreign = mine ? all.filter((r) => r.config_version && r.config_version !== mine) : [];
+  const records = mine ? all.filter((r) => !r.config_version || r.config_version === mine) : all;
+
   const results = [];
   for (const rec of records) {
     let re = null;
@@ -63,6 +81,9 @@ async function checkSetup(setup, opts = {}) {
     checked: results.length,
     breaks: breaks.length,
     pending: pending.length,
+    // carried in from another engine: shown, never vouched for, never a break
+    foreign: foreign.length,
+    foreignVersions: [...new Set(foreign.map((r) => r.config_version))],
     utc: opts.utc || new Date(opts.nowMs || 0).toISOString(),
     details: breaks.map((b) => ({ chunk_start: b.chunk_start, reason: b.reason })),
   };

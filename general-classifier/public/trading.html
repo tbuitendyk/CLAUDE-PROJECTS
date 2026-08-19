@@ -170,6 +170,10 @@ const TH={
   // an operator (owner, 2026-08-19: "that's not how humans think"). They lead with
   // the ENTRY time now. The window is still named, but as supporting detail.
   entryUtc:'when this position was actually OPENED, UTC — the moment the order filled. This is the date to think in.',
+  what:'what the engine will do next, soonest first. Scheduled exits appear whether the profile is running or stopped.',
+  whenUtc:'when it happens, absolute UTC. The countdown beside it is computed live from this, so a page left open does not drift.',
+  countdown:'time remaining until that moment, counting down every second.',
+  whyNext:'why it happens then — the rule or the schedule that fixes the timing.',
   chunk:'the 96h feature window the call was computed from, by its start (UTC). Supporting detail: the trade itself opens 97h after this.',
   side:'LONG = bought the pair, SHORT = sold it borrowed. Colour follows the direction, not the profit.',
   qty:'position size in UNITS OF THE PAIR (coins), not dollars. Multiply by entry to get the notional.',
@@ -454,7 +458,10 @@ async function drawDetail(){
     const b=$('#actBtn'); if(b&&!b.disabled)b.onclick=async()=>{ if(await confirmActivate(g.id)) draw(); };
     return; }
   // channel exists: registry record + frozen config
-  const s=await api('api/live/setups/'+ch.setupId);
+  const [s, an]=await Promise.all([
+    api('api/live/setups/'+ch.setupId),
+    apiOr('api/live/setups/'+ch.setupId+'/anatomy', null),
+  ]);
   if(s.error){ $('#view').innerHTML=`<div class="panel empty">${esc(s.error)}</div>`; return; }
   selectedSetupId=s.id;
   const c=s.configSnapshot||{}, cell=c.cell||{}, br=c.branch||{}, combo=c.combo||{};
@@ -520,7 +527,23 @@ async function drawDetail(){
         <button id="saveRouting">Save routing</button>
       </div>
       <p class="muted" style="font-size:.74rem;margin:.4rem 0 0">A change here is re-checked against the same gate that
-        guards going live: the box must serve <b>${esc(s.tradedPair)}</b>, and a live setup must keep its own key.</p></div>`;
+        guards going live: the box must serve <b>${esc(s.tradedPair)}</b>, and a live setup must keep its own key.</p></div>
+    ${(an&&an.anatomy)?`
+    <div class="panel"><div class="k">Tested configuration — how these trades are set up</div>
+      <div style="margin-top:.5rem">${Object.entries(an.config||{}).map(([k,v])=>cfgRow(esc(k),
+        esc(Array.isArray(v)?v.join(', '):(v===null?'—':v)))).join('')}</div></div>
+    <div class="panel"><div class="k">The committee — who votes, and what each member sees</div>
+      <table style="margin-top:.4rem"><thead><tr>${th('member','member')}${th('model','model','text-align:left')}${th('view','view')}${th('features seen','featuresSeen')}${th('what that view means','viewMeaning','text-align:left')}</tr></thead>
+      <tbody>${an.anatomy.committee.map((m,i)=>`<tr><td>member ${i+1}</td><td style="text-align:left">${esc(m.model)}</td><td>${esc(m.view)}</td>
+        <td>${m.featuresSeen} of ${an.anatomy.features.totalVector}</td><td style="text-align:left" class="muted">${esc(m.viewMeaning)}</td></tr>`).join('')}</tbody></table></div>
+    <div class="panel"><div class="k">How the decision is made — the full pipeline</div>
+      <div style="margin-top:.4rem;font-size:.82rem;line-height:1.5">${an.anatomy.pipeline.map(x=>`<p style="margin:.35rem 0">${esc(x)}</p>`).join('')}</div></div>
+    <div class="panel"><div class="k">How the comparison assets enter the equation</div>
+      <div style="margin-top:.4rem;font-size:.82rem;line-height:1.5">
+      <p><b>${esc(an.anatomy.features.note)}</b></p>
+      <p>Each asset contributes ${an.anatomy.features.perAsset} numbers: <code>${esc(an.anatomy.features.perAssetNames.join(', '))}</code></p>
+      <p>Each comparison pair adds ${an.anatomy.features.crossPerPair} cross features: <code>${esc(an.anatomy.features.crossNames.join(', '))}</code></p>
+      <p>Voting: ${esc(an.anatomy.voting.rule)}. Dormant band: ±${an.anatomy.voting.dormantBandPct}% — ${esc(an.anatomy.voting.labelRule)}.</p></div></div>`:''}`;
   const act=$('#actBtn'); if(act)act.onclick=async()=>{ if(await confirmActivate(g.id)) draw(); };
   const deact=$('#deactBtn'); if(deact)deact.onclick=async()=>{
     if(!confirm(`Deactivate the ${branch} channel?`))return;
@@ -683,6 +706,16 @@ async function drawLive(){
         <td>${entryCell(c)}</td><td class="${c.side==='LONG'?'pos':'neg'}">${c.side}${c.paper?' <span class="badge b-paper">P</span>':''}</td>
         <td>${c.entry_price??'—'}</td><td>${c.exit_price??'—'}</td><td class="${cls(c.pnl)}">${money(c.pnl)}</td></tr>`).join(''):'<tr><td colspan="5" class="empty">none closed yet</td></tr>'}
       </tbody></table></div>
+    <h2 style="font-size:1rem;margin:.2rem 0 .5rem">Current status — what happens next</h2>
+    <div class="panel">
+      <table><thead><tr>${th('what','what','text-align:left')}${th('when (UTC)','whenUtc','text-align:left')}${th('in','countdown','text-align:left')}${th('why','whyNext','text-align:left')}</tr></thead><tbody>
+      ${((st.liveStatus||{}).items||[]).map(it=>`<tr>
+        <td style="text-align:left;vertical-align:top"><b>${esc(it.what)}</b></td>
+        <td style="text-align:left;vertical-align:top;white-space:nowrap">${it.whenUtc?esc(it.whenUtc.replace('T',' ').slice(0,16)):'—'}</td>
+        <td style="text-align:left;vertical-align:top;white-space:nowrap" ${it.whenUtc?`data-when="${esc(it.whenUtc)}"`:''}>${it.whenUtc?'…':'—'}</td>
+        <td style="text-align:left;vertical-align:top" class="muted">${esc(it.why)}</td></tr>`).join('')
+        ||'<tr><td colspan="4" class="empty">nothing scheduled</td></tr>'}
+      </tbody></table></div>
     <div class="panel"><div class="k">Daily decision history <span style="text-transform:none;letter-spacing:0">— one row per decision day, newest first</span></div>
       <div class="muted" style="font-size:.68rem;margin:.3rem 0"><b>entry (UTC)</b> = the moment the call acts (window start + the geometry's entry offset) ·
         <b>window</b> = the feature window it was computed from ·
@@ -690,11 +723,19 @@ async function drawLive(){
         <b>call</b> = what the quorum decided · <b>outcome</b> = what the executor did with it</div>
       <table><thead><tr>${th('entry (UTC)','entryUtc','text-align:left')}${th('window','chunk','text-align:left')}${th('member votes','votes','text-align:left')}${th('call','side','text-align:left')}${th('outcome','fate','text-align:left')}</tr></thead><tbody>
       ${(st.decisions||[]).length?st.decisions.map(dec=>{
-        const vtxt=(dec.votes||[]).map(v=>v>0?'UP':v<0?'DOWN':'no call').join(' · ')||'—';
+        // Each member's vote carries the page's direction colours: UP green,
+        // DOWN red, no call muted. Read as a row of words they were all the same
+        // weight, so a split committee and a unanimous one looked alike at a
+        // glance — the one thing this column exists to show.
+        const vtxt=(dec.votes||[]).length
+          ? dec.votes.map(v=>v>0?'<span class="pos">UP</span>'
+                              :v<0?'<span class="neg">DOWN</span>'
+                                  :'<span class="muted">no call</span>').join(' · ')
+          : '—';
         const lab=dec.side==='LONG'?['LONG','pos']:dec.side==='SHORT'?['SHORT','neg']:['no trade','muted'];
         return `<tr><td style="text-align:left;white-space:nowrap">${esc((dec.entry_utc||'').replace('T',' ').slice(0,16))||'—'}</td>
         <td style="text-align:left;white-space:nowrap" class="muted">${esc((dec.chunk_start||'').slice(0,10))}</td>
-        <td style="text-align:left">${esc(vtxt)}</td><td style="text-align:left;white-space:nowrap" class="${lab[1]}"><b>${lab[0]}</b></td>
+        <td style="text-align:left">${vtxt}</td><td style="text-align:left;white-space:nowrap" class="${lab[1]}"><b>${lab[0]}</b></td>
         <td style="text-align:left" class="muted">${esc(dec.fate||'')}</td></tr>`;}).join(''):'<tr><td colspan="5" class="empty">no decisions recorded yet</td></tr>'}
       </tbody></table></div>
     <div class="panel"><div class="k">Incidents</div>
@@ -759,7 +800,25 @@ function draw(){ renderNav();
   });
 }
 function tickClock(){ $('#utcClock').textContent=new Date().toISOString().slice(0,19).replace('T',' ')+' UTC'; }
-tickClock(); setInterval(tickClock,1000);
+// Every scheduled item counts down in place. The panel carries ABSOLUTE UTC
+// stamps and the countdown is computed here, so a page left open overnight does
+// not drift and a stale render cannot show a stale "in 4h".
+function tickCountdowns(){
+  const now=Date.now();
+  document.querySelectorAll('[data-when]').forEach(el=>{
+    const t=Date.parse(el.getAttribute('data-when'));
+    if(!Number.isFinite(t)){ el.textContent='—'; return; }
+    let ms=t-now;
+    if(ms<=0){ el.textContent='due now'; el.className='warn'; return; }
+    const d=Math.floor(ms/864e5); ms-=d*864e5;
+    const h=Math.floor(ms/36e5);  ms-=h*36e5;
+    const m=Math.floor(ms/6e4);   const sec=Math.floor((ms-m*6e4)/1000);
+    el.textContent = d?`${d}d ${h}h ${m}m`
+                   : h?`${h}h ${m}m ${String(sec).padStart(2,'0')}s`
+                      :`${m}m ${String(sec).padStart(2,'0')}s`;
+  });
+}
+tickClock(); tickCountdowns(); setInterval(()=>{ tickClock(); tickCountdowns(); },1000);
 draw(); setInterval(()=>{ if(sub==='dash'||sub==='live') draw(); }, 30000);
 </script>
 </body>

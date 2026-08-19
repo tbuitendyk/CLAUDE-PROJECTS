@@ -38,6 +38,24 @@ function installLiveRoutes(app, { csrfGuard }) {
     catch (e) { res.status(500).json({ error: e.message }); }
   });
 
+  // How this profile decides, described from its OWN config. Only one config in
+  // the system could ever explain itself on screen, because the describer looked
+  // its book up by a hardcoded id. Every profile answers now.
+  app.get('/api/live/setups/:id/anatomy', (req, res) => {
+    const s = reg.getSetup(req.params.id);
+    if (!s) return res.status(404).json({ error: `no such setup ${req.params.id}` });
+    try {
+      const a = require('./anatomy');
+      let freezeMs = null;
+      try { freezeMs = require('./trainpolicy').resolveFreeze(s).throughMs; } catch (_) { freezeMs = null; }
+      const opts = { clipUsd: s.clipUsd, stopPct: s.stopPct, freezeMs };
+      res.json({
+        config: a.describeConfig(s.configSnapshot, opts),
+        anatomy: a.describeAnatomy(s.configSnapshot, opts),
+      });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
   app.get('/api/live/setups/:id', (req, res) => {
     const s = reg.getSetup(req.params.id);
     if (!s) return res.status(404).json({ error: `no such setup ${req.params.id}` });

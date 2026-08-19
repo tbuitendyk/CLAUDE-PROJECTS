@@ -87,7 +87,12 @@ function deriveSetup(events, setupId, extraDecisions = []) {
         if (decisions[e.chunk_start]) decisions[e.chunk_start].fate = 'filled';
         open[key(e)] = { chunk_start: e.chunk_start, side: e.side, qty: e.qty,
           entry_price: e.price, entry_utc: e.utc, exit_due_ts: e.exit_due_ts,
-          decision_price: e.decision_price, fill_deviation: e.fill_deviation, paper: false };
+          decision_price: e.decision_price, fill_deviation: e.fill_deviation, paper: false,
+          // WHICH WALLET this position exits through. The box records it at
+          // entry and routes the exit by it; the view dropped it, so a
+          // diagnostic reading these rows reported every position as being on
+          // the shared account — including ones the box knows are not.
+          key_ref: e.key_ref || null, symbol: e.symbol || null };
         // recovered fills carry a FABRICATED 0.0 deviation (the decision price was
         // lost in the crash) — count them, but keep them OUT of the real average.
         if (e.recovered) recoveredFills += 1;
@@ -240,6 +245,73 @@ function deriveSetup(events, setupId, extraDecisions = []) {
 // append-only and keeps everything; open positions cannot be hidden by an epoch
 // because activation is gated on the channel being stopped-and-done first, and
 // any position opened after activation postdates the epoch by construction.
+// ---- "what happens next", per profile --------------------------------------
+// The countdown panel used to exist only on the hardcoded config's screen and
+// went with it. It is the thing an operator actually reads — what the engine
+// will do, why, and when — so it is rebuilt here driven by the PROFILE'S OWN
+// geometry rather than the constants the old screen carried. A profile on a
+// different geometry gets its own hours, not somebody else's.
+//
+// Pure over (state, setup, nowMs) so it is unit-testable and the page can
+// live-count the returned absolute UTC stamps.
+function nextActivity(st, setup, nowMs, tickMinuteUtc = 8) {
+  const iso = (t) => new Date(t).toISOString();
+  const cfg = setup.configSnapshot || {};
+  let geo = {};
+  try { geo = (require('../dataset').GEOMETRIES || {})[(cfg.branch || {}).geometry] || {}; }
+  catch (_) { geo = {}; }
+  const entryOffH = geo.entryOffsetH || 0;
+  const holdH = (cfg.cell && cfg.cell.tHours) || 0;
+  // A daily geometry acts at (window close + 1h); the acting HOUR is the offset
+  // past midnight once whole days are removed. Derived, never assumed.
+  const entryHourUtc = entryOffH % 24;
+  const closeHourUtc = (entryHourUtc + 23) % 24;   // one clear hour before entry
+
+  const d = new Date(nowMs);
+  const at = (h) => Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), h, 0, 0, 0);
+  let nextEntry = at(entryHourUtc); if (nextEntry <= nowMs) nextEntry += 864e5;
+  let nextEval = at(closeHourUtc);  if (nextEval <= nowMs) nextEval += 864e5;
+  let nextTick = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(),
+    d.getUTCHours(), tickMinuteUtc, 0, 0);
+  if (nextTick <= nowMs) nextTick += 36e5;
+
+  const opens = (st.openPositions || []).filter((p) => p && p.exit_due_ts && !p.paper);
+  const items = [];
+
+  // The recompute is first because it is what happens soonest and most often.
+  items.push({ what: 'Recompute this profile against fresh candles', whenUtc: iso(nextTick),
+    why: `runs hourly at :${String(tickMinuteUtc).padStart(2, '0')} UTC; it can only OPEN a position at the entry window below.` });
+
+  if (st.state === 'stopped' || st.state === 'retired') {
+    items.push({ what: 'Open a new position', whenUtc: null,
+      why: `this profile is ${st.state} — nothing opens. Open positions still exit on schedule.` });
+  } else if (st.halted) {
+    items.push({ what: 'Open a new position', whenUtc: null,
+      why: 'this profile is HALTED — new entries are blocked; open positions still exit on schedule.' });
+  } else {
+    items.push({ what: 'Evaluate the next entry (LONG / SHORT / FLAT)', whenUtc: iso(nextEval),
+      why: `the committee decides when its ${geo.featureHours || '?'}h feature window closes at ${String(closeHourUtc).padStart(2, '0')}:00 UTC; `
+        + `the entry then opens a $${st.clipUsd} clip at ${String(entryHourUtc).padStart(2, '0')}:00 UTC only if the call is not FLAT.` });
+  }
+
+  // EVERY scheduled exit, soonest first — not just the next one. A panel that
+  // answers "what happens next" must not hide half of what happens next.
+  for (const p of opens.slice().sort((a, b) => a.exit_due_ts - b.exit_due_ts)) {
+    const opened = p.entry_utc ? String(p.entry_utc).slice(0, 16).replace('T', ' ')
+      : `${String(p.chunk_start).slice(0, 16)} (window start — no fill time recorded)`;
+    items.push({ what: `Close the ${p.side} position opened ${opened}`,
+      whenUtc: iso(p.exit_due_ts * 1000),
+      why: `its ${holdH}h hold elapses; scheduled exits run whether the profile is running or stopped.` });
+  }
+
+  return {
+    serverUtc: iso(nowMs), entryHourUtc, holdHours: holdH,
+    nextEvalUtc: iso(nextEval), nextEntryUtc: iso(nextEntry),
+    nextExitUtc: opens.length ? iso(Math.min(...opens.map((p) => p.exit_due_ts)) * 1000) : null,
+    openPositions: opens.length, items,
+  };
+}
+
 function setupStatus(setup, file = journalFile()) {
   const { present, events } = readJournal(file);
   const epoch = setup.runEpochUtc ? Date.parse(setup.runEpochUtc) : null;
@@ -273,7 +345,7 @@ function setupStatus(setup, file = journalFile()) {
       ? new Date(Date.parse(d.chunk_start) + offH * 3600000).toISOString()
       : null,
   }));
-  return {
+  const out = {
     id: setup.id, name: setup.name, state: setup.state,
     tradedPair: setup.tradedPair, clipUsd: setup.clipUsd, stopPct: setup.stopPct,
     paper: setup.state === 'paper',
@@ -281,6 +353,8 @@ function setupStatus(setup, file = journalFile()) {
     runEpochUtc: setup.runEpochUtc || null,
     ...book,
   };
+  out.liveStatus = nextActivity(out, setup, Date.now());
+  return out;
 }
 
-module.exports = { deriveSetup, setupStatus, readJournal, journalFile };
+module.exports = { deriveSetup, setupStatus, readJournal, journalFile, nextActivity };
