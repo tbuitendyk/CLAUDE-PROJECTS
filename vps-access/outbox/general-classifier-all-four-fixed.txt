@@ -1,0 +1,92 @@
+All four fixed and running — and you will get one real alarm shortly
+
+tl;dr All four are done, tested and on the machine. The safety check that was
+examining nothing now sets off an alarm — and because the condition is real
+right now, you will receive that alarm within the hour. It is not a false one
+and nothing is wrong with your trades; it is the new alarm correctly reporting
+the situation I described this morning.
+
+THE ALARM YOU ARE ABOUT TO GET
+
+Subject will read: "drift check examined NOTHING while holding 2 REAL
+position(s)". I ran it against the live machine before switching it on, so I
+know exactly what it will say. It is right. Your two trades are fine and close
+on schedule; what it is telling you is that the check meant to catch the engine
+changing its mind has nothing to look at yet, because every decision on your
+setup was written by the previous engine version. It goes quiet on its own once
+your setup makes one decision of its own.
+
+I would rather it shout once, truthfully, than stay silent and leave you finding
+out from me.
+
+WHAT I FIXED
+
+1. THE SAFETY CHECK THAT CHECKED NOTHING. It now sets off an alarm if it
+   examined zero decisions while you are holding a position, and says why. It
+   counts your open positions across the whole record rather than the last day —
+   a trade is held for about six days, so a one-day window would have reported
+   you as holding nothing. Paper trades count too and are named as paper: paper
+   is the comparison arm, and an unchecked paper book is useless as a
+   comparison, which is the only reason it exists. If you are holding nothing it
+   stays quiet, because nothing is at stake.
+
+2. QUIET DAYS ARE WRITTEN DOWN AGAIN. A day the members vote no now goes into
+   the record like any other day. It carries the same votes, the same price and
+   the same fingerprint as a trading day, so it gets re-checked like one too —
+   this makes the check stronger, not just tidier. It is written once the entry
+   price is known; if the price has not arrived yet the day is written on a
+   later pass, and the system says out loud that it has not written it, rather
+   than quietly skipping.
+
+3. YOUR OWN SETUPS CAN NOW BE TUNED. This is the one that most deserved your
+   complaint. The screen that scans for a protective stop level only ever
+   offered three built-in research configurations. Your own setups — including
+   the one holding real money — were not on the list at all, and the entry
+   sitting at the top of it claimed to be the live one while pointing at
+   something that no longer runs. Your setups are now on that list, first, under
+   the names you give them, each scanned against its own training window.
+
+   Underneath that, the scan used to quietly borrow its training cut-off date
+   from those built-in configurations. So tuning a stop for your setup trained
+   the models through a date belonging to something else entirely and handed
+   back a confident-looking number. It now refuses to run unless it knows whose
+   dates it is using, and it refuses immediately rather than after several
+   minutes of loading.
+
+   I did NOT delete those three built-in configurations. They are a record of an
+   experiment whose dates were committed in advance, on purpose, so that a
+   result could never be argued into something it is not. Deleting them would
+   destroy evidence rather than free anything. What I removed is everything that
+   silently treated their dates as everyone else's default. Tell me if you want
+   them gone anyway and I will.
+
+4. ONE ANSWER TO "WHICH COINS DOES THIS NEED". It was written out in four
+   separate files and had already gone wrong once. One place now, and everything
+   else asks it. If it ever cannot answer, the checks say UNKNOWN rather than
+   printing an empty list, because "no coins" reads as "nothing to watch".
+
+Also removed: the two leftover scheduled jobs from the old hardcoded setup are
+now deleted from the machine rather than merely switched off.
+
+HOW I CHECKED IT
+
+Every fix has a test, and I broke each fix on purpose and watched its test fail
+before trusting it — nine faults in total. A test nobody has seen fail is not a
+test. The alarm in item 1 I also ran against the real machine rather than only
+against made-up data, because a check that is right on invented data and blind
+on the real thing is the exact failure this project keeps hitting: it turned out
+the alarm needed the real records to be labelled a certain way, and I confirmed
+all four of them are.
+
+STILL WAITING ON YOU
+
+Your setup is still stopped from this morning. It needs your press of
+"Clear the halt" before 01:00 UTC tonight, or tomorrow's entry will not happen.
+
+One thing I left alone and want to flag rather than bury: if the check program
+dies partway through a run, the previous result stays on disk and reads as
+current. A separate alarm catches that, but only after three hours, and it will
+not catch a program that fails only occasionally. Say the word and I will close
+it properly.
+
+c.
