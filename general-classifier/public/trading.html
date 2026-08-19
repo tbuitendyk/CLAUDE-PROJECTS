@@ -405,57 +405,11 @@ async function drawDetail(){
   if(g.f1){
     const pilot=await api('api/pilot');
     const a=pilot.anatomy||{}; const cfg=pilot.config||{};
-    // WHICH RULE THIS ENGINE TRADES (Stage C, owner 2026-08-18/19).
-    // The rule used to be a literal in a source file, so changing what the
-    // engine trades required editing code — a dependency on the developer wired
-    // into a production system. This panel is the door out of that: it names
-    // where the running rule came from, and lets the owner point the engine at
-    // a greenlighted config instead.
-    const renderRulePanel = async () => {
-      const el = $('#ruleBody'); if (!el) return;
-      const d = await apiOr('api/pilot/rule', null);
-      if (!d) { el.innerHTML = '<span class="warn">could not read which rule is running</span>'; return; }
-      const c = d.current || {};
-      const fromCode = c.source === 'code';
-      const opts = (d.greenlights || []).map((g) =>
-        `<option value="${esc(g.id)}">${esc(g.summary)} — ${esc((g.campaign||'no campaign'))} (${esc(g.id)})</option>`).join('');
-      el.innerHTML = `
-        <div>${fromCode
-          ? '<span class="warn">This engine is running a rule written into the source code.</span> '
-            + 'Nothing is wrong with the trading, but the rule cannot be changed from this screen while that is true '
-            + '— which is the thing being fixed. Designate a greenlighted config below and it becomes the rule.'
-          : `Running a greenlighted rule — <code>${esc(c.greenlightId)}</code>`}</div>
-        <div style="margin-top:.35rem">
-          trades <b>${esc(c.trade || '?')}</b> · band ${esc(String(c.band))} ·
-          members trained through ${esc(String(c.freezeUtc).slice(0,10))}
-          ${c.sourceRunId ? ` · from run <code>${esc(c.sourceRunId)}</code>` : ''}
-          ${c.campaign ? ` · campaign ${esc(c.campaign)}` : ''}
-        </div>
-        <div class="row" style="align-items:flex-end;margin-top:.5rem">
-          <label class="f" style="flex:1 1 auto;min-width:0">use this greenlighted config
-            <select id="rulePick" style="width:100%">${opts || '<option value="">— no greenlighted configs on this box —</option>'}</select></label>
-          <button id="ruleSet" ${opts ? '' : 'disabled'}>Make this the live rule</button>
-        </div>
-        <div class="muted" style="font-size:.72rem;margin-top:.3rem">Changing the rule does not open or close anything.
-          The next hourly recompute simply uses the new rule; open positions keep their own exit schedule.</div>`;
-      const btn = $('#ruleSet');
-      if (btn) btn.onclick = async () => {
-        const id = $('#rulePick').value; if (!id) return;
-        const pick = (d.greenlights || []).find((g) => g.id === id) || {};
-        if (!confirm(`Make this the rule the live engine trades?\n\n${pick.summary || id}\n\n`
-          + 'It takes effect at the next hourly recompute. Nothing opens or closes now, and open '
-          + 'positions keep their existing exit schedule.')) return;
-        const out = await post('api/pilot/rule', { greenlightId: id });
-        if (out) renderRulePanel();
-      };
-    };
     $('#view').innerHTML=`
       <div class="panel"><div class="row"><b style="font-size:1rem">the live rule</b> <span class="badge b-live">pilot</span>
         <span class="${pilot.armed?'pos':'warn'}">${pilot.armed?'RUNNING':'STOPPED'}</span>
         <div class="spacer"></div><span class="muted" style="font-size:.74rem">start/stop lives on the LIVE page (master switch)</span></div>
       <div class="muted" style="font-size:.74rem;margin-top:.3rem">Pre-registration: <code>PILOT-F1.md</code>. Pilot P&amp;L is void as edge evidence — this screen measures execution.</div></div>
-      <div class="panel" id="rulePanel"><div class="k">Which rule this engine trades</div>
-        <div id="ruleBody" class="muted" style="font-size:.78rem;margin-top:.4rem">reading…</div></div>
       <div class="panel"><div class="k">Tested configuration — how these trades are set up</div>
         <div style="margin-top:.5rem">${Object.entries(cfg).map(([k,v])=>cfgRow(esc(k),esc(typeof v==='object'?JSON.stringify(v):v))).join('')}</div></div>
       ${a.committee?`<div class="panel"><div class="k">The committee — who votes, and what each member sees</div>
@@ -470,7 +424,6 @@ async function drawDetail(){
         <p>Each asset contributes ${a.features.perAsset} numbers: <code>${a.features.perAssetNames.join(', ')}</code></p>
         <p>Each comparison pair adds ${a.features.crossPerPair} cross features: <code>${a.features.crossNames.join(', ')}</code></p>
         <p>Voting: ${esc(a.voting.rule)}. Dormant band: ±${a.voting.dormantBandPct}% — ${esc(a.voting.labelRule)}.</p></div></div>`:''}`;
-    renderRulePanel();   // fills #ruleBody after the page is in the DOM
     return;
   }
   const s=await api('api/live/setups/'+ch.setupId);
