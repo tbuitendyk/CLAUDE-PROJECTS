@@ -1,0 +1,92 @@
+Old rail retired — and your drift brake is currently checking zero decisions
+
+tl;dr The leftover machinery from the hardcoded config is gone and the tooling
+now follows your profiles instead of three baked-in symbols. But while verifying
+that on the box I found something that matters more than the cleanup: the
+reproduce-check on your live profile says "clean" when what it actually did was
+examine nothing. Two live shorts are riding with no drift protection, and
+nothing will page you about it. I have not touched it — it needs your call.
+
+WHAT I CHANGED (deployed, because the deploy door pulls the branch on every run)
+
+Removed, with the systemd units that ran them:
+  * the two old tick timers and their scripts. The installer no longer defines
+    them and now actively deletes them from the host — a unit file left on disk
+    keeps firing whether or not the installer still knows about it.
+  * five scripts that ran code which no longer exists.
+  * the machine-wide drift kill-switch in the sync step. It read a file nothing
+    writes any more, so it had quietly become a no-op that still read like a
+    live safety interlock. The brake is per profile now: a break halts that
+    profile's new entries and leaves your master switch alone.
+
+Repointed at your profiles:
+  * the data-freshness check had been calling a module I deleted, so it only
+    ever threw. Rewritten; it now reports all three pairs your committee reads,
+    all fresh as of 08:14 UTC.
+  * the status screen, the manual tick runner and the freshness check asked
+    about three hardcoded symbols. They now ask which pairs your profiles
+    actually need.
+  * a new reader for the reproduce-check verdict, replacing one that pointed at
+    a file with no writer — it printed "(none)" and that read as a clean bill.
+  * the installed-scripts smoke checked the retired scripts and never checked
+    the three that actually run your trades, so the installer could skip
+    installing the trading rail and the smoke would still say ALL PASS.
+
+I also got one thing wrong and caught it within the hour: my first version read
+the pair list off the wrong field, found nothing, and fell back to reporting one
+pair. It printed a green line for LTCUSDT while the two context pairs went
+unwatched — the same defect as the hardcoded list I was removing, just quieter.
+Fixed and verified against the box before telling you it worked.
+
+THE THING I WANT YOU TO DECIDE ON
+
+Your profile's reproduce-check — the thing that recomputes a past decision and
+checks the engine still makes the same call — reports this right now:
+
+    ok: true | breaks: 0 | checked: 0
+
+"checked: 0" is the whole story. Every decision record on the profile came
+across from the old engine and is stamped with that engine's version. The check
+counts those separately rather than calling them all breaks (that was the right
+fix — otherwise all 8 read as failures and the profile got halted). But the
+profile has not yet written a record under its own version, so after that
+filtering there is nothing left to examine. It checks zero, finds zero problems,
+and reports clean.
+
+There is already a guard for exactly this: an alert that fires when the check
+verified nothing WHILE a position is open. It is on the box-level alerter — the
+one reading the retired file that nothing writes. The alerter watching the live
+file pages on breaks, on errors, and if the file goes stale, but not on a check
+that examined nothing.
+
+So: two open shorts, no drift protection, and silence. The trades themselves are
+fine and their exits are scheduled as normal — this is the instrument, not the
+positions. It resolves on its own the first time the profile produces a decision
+under its own version, which is the next entry. I would rather you knew than
+have it quietly fix itself and never be told it happened.
+
+Three ways to go, your pick:
+  1. Add the checked:0 guard to the live alerter. Small, and it makes the gap
+     audible from now on rather than something I happened to notice.
+  2. Leave it — it clears itself at the next entry.
+  3. Something else you have in mind.
+
+TWO SMALLER GAPS, ALSO NOT TOUCHED
+
+  * No-trade days stop being recorded. The old rail logged days the committee
+    declined, and those came across (09 through 13 August are on the profile as
+    no-call). Going forward only actionable calls are written, so a declined day
+    now leaves nothing and looks identical to a day the tick never ran. The
+    record changes shape partway through its own history, which is worse than
+    either behaviour done consistently.
+  * "Which pairs does this profile need" is now answered in four separate
+    files. That will drift. It wants one shared helper.
+
+STILL OUTSTANDING FROM BEFORE
+
+The profile is still halted from 07:08 this morning. It needs your press of
+"Clear the halt" before 01:00 UTC tomorrow or the next entry will not fire.
+
+All tests pass — the classifier suite and the four shell test scripts.
+
+c.
