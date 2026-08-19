@@ -295,8 +295,16 @@ UNIT
 echo "== enable + start (enable = survives reboot) =="
 systemctl daemon-reload
 systemctl enable --now pilot-tunnel.service
-systemctl enable --now pilot-tick.timer
-systemctl enable --now pilot-tick-entry.timer
+# THE HARDCODED CONFIG'S PRODUCERS ARE NOT ENABLED HERE ANY MORE (2026-08-19).
+# The book moved to the owner's profile, which produces on live-tick.timer. These
+# two used to be enabled unconditionally, so running this installer resurrected
+# the retired producer and put TWO producers on the same book — the box would
+# have opened two positions where the owner asked for one. A timer you disabled
+# that an installer re-enables is not disabled, it is on a delay.
+systemctl disable --now pilot-tick.timer 2>/dev/null || true
+systemctl disable --now pilot-tick-entry.timer 2>/dev/null || true
+# pilot-sync stays: it carries START/STOP, the protective stop and the margin
+# floor to the box and refreshes the ARM keepalive. Box-level, not the config's.
 systemctl enable --now pilot-sync.timer
 systemctl enable --now pilot-alert.timer
 systemctl enable --now live-tick.timer
