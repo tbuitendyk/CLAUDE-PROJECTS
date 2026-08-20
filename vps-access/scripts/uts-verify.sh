@@ -30,7 +30,10 @@ for p in construct trade; do
 done
 curl -s http://127.0.0.1:8094/construct.html | grep -q '<title>Construct</title>' && ok "Construct titled Construct" || no "Construct title wrong"
 curl -s http://127.0.0.1:8094/trade.html    | grep -q '<title>Trade</title>'     && ok "Trade titled Trade" || no "Trade title wrong"
-curl -s http://127.0.0.1:8094/construct.js  | head -c 200 | grep -q . && ok "construct.js served" || no "construct.js not served"
+CJ_CODE="$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8094/construct.js)"
+CJ_SIZE="$(curl -s http://127.0.0.1:8094/construct.js | wc -c)"
+[ "$CJ_CODE" = "200" ] && [ "$CJ_SIZE" -gt 100000 ] && ok "construct.js served (${CJ_CODE}, ${CJ_SIZE} bytes)" || no "construct.js: status ${CJ_CODE}, ${CJ_SIZE} bytes"
+echo "  note: on disk -> $(ls -l /opt/ultimate-trading-system/public/ 2>/dev/null | tr -s ' ' | cut -d' ' -f5,9 | tr '\n' ' ')"
 
 echo "== the departed screens are gone =="
 for u in index.html app.js help.html api/tracker api/books api/dogebook api/rotations; do
