@@ -436,6 +436,20 @@ The test suite is in the same position: a large share of it tests the
 departing screens. Those tests leave with them, and the runner's list
 shrinks to match.
 
+**Owner ruling (2026-08-19) — the front door is the Setup tab.**
+
+> the front door is the Setup tab
+
+That closes the open question above. The address the site serves is the Setup
+page (point 17), and the strip of tab names moves there.
+
+One consequence, read out of the two surviving pages on 2026-08-19: neither
+carries a tab strip of its own. **Constructing** and **Trading** each return
+to the rest of the system through a breadcrumb and a control labelled
+**Back**, and both point at the page being removed. So the strip is not
+merely moved — it has to appear on all three pages, or Construct and Trade
+become dead ends the moment the old page goes.
+
 ---
 
 ## 15. Fresh system, no inherited data — candle files kept
@@ -560,3 +574,12 @@ the tab names is rendered by one of the three pages point 14 removes, and it
 is what the site serves at its address. The front-door decision in point 14
 is therefore taken first; the strip is then built once, carrying all three
 names. Building it before that decision means building it twice.
+
+**Owner ruling (2026-08-19): the front door is the Setup tab.** Point 14's
+open question is closed, so this point is no longer waiting on it. Setup is
+what the site's address serves, and it carries the strip — which by the
+reading recorded under point 14 must also appear on Construct and Trade,
+since neither has one today and both navigate back to a page that is going.
+
+Until point 3 fills it, the first screen the owner sees is a working strip
+above an empty page. That is the intended state, not an oversight.
