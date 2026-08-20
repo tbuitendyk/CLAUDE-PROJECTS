@@ -40,17 +40,17 @@ Nothing writes to `/opt/general-classifier`, its service, or its data.
 - [x] 2. **Point 14 — the cull.** The 18 departing-only endpoints removed from
       `server.js`, then every module, page and test reachable only from them.
       Traced and proved, never judged by name. Test suite green at the end.
-- [ ] 3. **Point 15 — the data.** The new install starts with an empty data
+- [x] 3. **Point 15 — the data.** The new install starts with an empty data
       directory by construction. Only the candle cache is carried across.
       Schema elements belonging to the retired screens go with their code.
 - [x] 4. **Adversarial review.** Independent passes over the whole diff:
       correctness, dead references, the HTTP surface, and deployment safety —
       each finding fixed and re-checked.
-- [~] 5. **Deploy.** New `deploy/install.sh` targeting
+- [x] 5. **Deploy.** New `deploy/install.sh` targeting
       `/opt/ultimate-trading-system`, service `ultimate-trading-system`, env
       `/etc/ultimate-trading-system/env`, port 8094. New `deploy-uts.sh` on
       `vps-access`. Branch merged to `ultimate-trading-system` and installed.
-- [~] 6. **The tile.** nginx location and portal card on the `website` branch,
+- [x] 6. **The tile.** nginx location and portal card on the `website` branch,
       shipped with `deploy-website`, verified end to end.
 
 ## Decisions taken inside the loop
@@ -172,3 +172,38 @@ know:
   only coverage of the model both surviving sections fit, of the per-sample
   weighting the age dial runs on, of the decision rule behind the sweep's
   decision control, and of a path-traversal guard on a live request path.
+
+## Delivered, and verified on the box (2026-08-19)
+
+`uts-verify.sh` on `vps-access` is read-only and runs all of this against the
+real server. Every line passed.
+
+- The previous generation is untouched: `general-classifier` active, 8093
+  answering, its directory intact.
+- `ultimate-trading-system` active on 8094.
+- The address opens the **Setup** tab, blank, with **Construct** and **Trade**
+  beside it and Setup marked as the current one.
+- Both other pages carry the strip; Construct's client code serves at 153 KB.
+- The departed pages and endpoints are 404; nine surviving endpoints answer.
+- 2,712 candle files carried across. Every other data directory is empty: this
+  system starts from zero use.
+- The portal carries the new tile beside the old one, and all five proxied
+  locations still answer through nginx.
+
+## A note on the instruments used tonight
+
+Three measurements written during this loop returned confident wrong answers,
+and each was caught only by checking it rather than believing it:
+
+- The first reachability script over `lib/batch.js` said every symbol was in
+  use, because it counted a name appearing in a comment as a call. It would
+  have justified changing nothing.
+- The second, with comments and strings stripped, still over-connected and said
+  the same thing for a subtler reason.
+- The verification script reported Construct's client code missing from the
+  deployed server. It was not missing: the check piped curl into `head -c 200`,
+  which closes the pipe and fails curl before it can answer.
+
+Two of the three failed in the direction that would have ended the work early,
+and one raised a false alarm about a live deployment. Worth recording, because
+the parked item below rests on exactly this class of measurement being wrong.
