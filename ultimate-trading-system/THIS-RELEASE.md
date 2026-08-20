@@ -509,3 +509,54 @@ interface carries beside each tool. That has never been true of either
 surviving screen: neither **Constructing** nor **Trading** links to help at
 all. The rewrite is worth doing on its own merits, but it feeds point 12
 rather than closing it.
+
+---
+
+## 17. A Setup tab in front, and shorter names for the other two
+
+*Owner, 2026-08-19.*
+
+Owner (2026-08-19):
+
+> New tab in front of Constructing called Setup. Constructing tab becomes
+> Construct. Trading tab becomes Trade.
+
+Owner clarifications, same day:
+
+> Setup is point 3, but this point just makes a new blank page.
+
+> YOU WILL RENAME ALL THE UNDERLYING FILES BOOKMARKS ARE IRRELEVANT.
+
+> do the front door decision first
+
+So the tab order becomes **Setup · Construct · Trade**. The Setup tab is the
+container that point 3 later fills; this point delivers the tab and an empty
+page, nothing more.
+
+`[feasibility]` Every place these words render was read on 2026-08-19 before
+this note was written.
+
+**What the rename touches on screen.** The two tab controls and the hover text
+on each. The browser-tab title and the page heading on each of the two pages.
+And two lines of help text inside the Trading page that tell the owner where a
+greenlight is minted and where a configuration is activated.
+
+**What must NOT change, and is the trap in this point.** **Live Trading** is
+the name of one of the two branches INSIDE that tab, not the name of the tab.
+A rename applied to the word "Trading" would swallow it, and **Paper Books**
+sits beside it. Both branch labels stay exactly as they are. The tab is being
+renamed; the branches are not.
+
+**The underlying files, renamed as instructed.** `constructing.html` and
+`constructing.js` become `construct.html` and `construct.js`; `trading.html`
+becomes `trade.html`; a new `setup.html` is created. Nine references follow
+them: the two links in the tab strip, the script tag on the Construct page,
+one cross-link from Construct to Trade, and five test files that read those
+pages by path — two of which read the shipped source directly to check that
+what the screen shows matches what the code does.
+
+**Sequenced behind point 14, by owner instruction.** The strip that carries
+the tab names is rendered by one of the three pages point 14 removes, and it
+is what the site serves at its address. The front-door decision in point 14
+is therefore taken first; the strip is then built once, carrying all three
+names. Building it before that decision means building it twice.
