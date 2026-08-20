@@ -466,3 +466,46 @@ filtered delete.
 Keeping the candles is what makes the fresh start quick. Re-downloading every
 month of hourly data for every pair from the exchange's public download portal
 is automatic but slow, and nothing can run until enough of it is back.
+
+---
+
+## 16. Rewrite the workflow document against the Constructing sections
+
+*Owner, 2026-08-19.*
+
+Owner (2026-08-19):
+
+> Rewrite `WORKFLOW.md` against the Constructing sections.
+
+`[feasibility]` Each of the document's seven steps was traced to the section
+that actually renders it, verified 2026-08-19:
+
+| Workflow step | Section |
+|---|---|
+| Load data | **Data** |
+| The board sweep | **Sweep** |
+| Null boards, and the two reads | **Verify** |
+| Replication | **Boards** |
+| History Tuning | **History** |
+| The paper book | **Greenlight**, then the **Trading** tab |
+
+Two things the rewrite surfaces, and neither is a matter of wording.
+
+**The order disagrees with the screen.** The document places replication at
+step 6, after the null boards and the two reads. On screen it is read under
+**Boards**, which comes before **Verify**. The guided flow and the written
+method therefore put the same step in two different places in the chain, and
+one of them is telling the user the wrong sequence. Which one is right is a
+question about the method, not about the document, and it has to be answered
+before the rewrite can be finished.
+
+**One section has no step at all.** **Tune** — the protective stop, conviction
+sizing, and the comparison of two runs — does not appear in the workflow. It
+was built after the document was written. It needs its own why / how / when
+entry, and a place in the chain has to be decided for it.
+
+One further note. The document states in its opening that it is the copy the
+interface carries beside each tool. That has never been true of either
+surviving screen: neither **Constructing** nor **Trading** links to help at
+all. The rewrite is worth doing on its own merits, but it feeds point 12
+rather than closing it.
