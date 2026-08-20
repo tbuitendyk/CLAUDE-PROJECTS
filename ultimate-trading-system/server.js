@@ -16,7 +16,12 @@ const guard = require('./lib/guard');
 // traffic is Binance bulk-data downloads in lib/binance.js, and training is
 // pure local arithmetic in lib/logreg.js.
 
-const PORT = Number(process.env.PORT || 8093);
+// 8094, and NEVER 8093. 8093 is the previous generation's port, and it is
+// still serving the owner's live trading and paper books on this box. If the
+// env file ever lost its PORT line this fallback is what would be used, and a
+// fallback of 8093 would have this service race the running one for its port
+// at boot — with no ordering between the units, this one can win.
+const PORT = Number(process.env.PORT || 8094);
 
 const app = express();
 app.use(express.json({ limit: '256kb' }));
@@ -37,6 +42,11 @@ app.get(['/', '/setup.html', '/construct.html', '/trade.html'], (req, res, next)
   require('fs').readFile(file, 'utf8', (err, html) => {
     if (err) return next();
     const v = require('./package.json').version;
+    // The ?v= marker only rewrites EXTERNAL script URLs, and two of these three
+    // pages carry all their JavaScript inline — so for them the marker protects
+    // nothing and a cached copy would survive a deploy. Say no-cache outright
+    // rather than relying on a mechanism that does not reach them.
+    res.set('Cache-Control', 'no-cache');
     res.type('html').send(html.replace(/(\.js)\?v=[\w.-]+/g, `$1?v=${v}`));
   });
 });
@@ -330,51 +340,6 @@ app.post('/api/planted-gate', (req, res) => {
 });
 
 // ---- pair-screen batches ----------------------------------------------------
-
-app.post('/api/batch', (req, res) => {
-  const b = req.body || {};
-  const dormantPct = b.dormantPct === 'auto' ? 'auto' : b.dormantPct === undefined ? 5 : Number(b.dormantPct);
-  if (dormantPct !== 'auto' && (!Number.isFinite(dormantPct) || dormantPct <= 0 || dormantPct >= 50)) {
-    return res.status(400).json({ error: 'dormant range must be "auto" or a percentage between 0 and 50' });
-  }
-  for (const m of ['startMonth', 'endMonth']) {
-    if (!b.allLoaded && b[m] !== undefined && !/^\d{4}-\d{2}$/.test(String(b[m]))) {
-      return res.status(400).json({ error: `${m} must be YYYY-MM` });
-    }
-  }
-  if (b.pairs !== undefined && (!Array.isArray(b.pairs) || b.pairs.some((p) => !SYMBOL_RE.test(String(p))))) {
-    return res.status(400).json({ error: 'pairs must be an array of symbols like ETHUSDT' });
-  }
-  if (b.models !== undefined && (!Array.isArray(b.models) || b.models.some((m) => m !== 'logreg' && m !== 'boost'))) {
-    return res.status(400).json({ error: 'models must be an array of "logreg"/"boost"' });
-  }
-  const batchGeometry = String(b.geometry || 'weekly-8d');
-  if (!GEOMETRY_KEYS.includes(batchGeometry)) {
-    return res.status(400).json({ error: `geometry must be one of ${GEOMETRY_KEYS.join('/')}` });
-  }
-  const batchDecision = String(b.decision || 'argmax');
-  if (batchDecision !== 'argmax' && batchDecision !== 'directional') {
-    return res.status(400).json({ error: 'decision must be "argmax" or "directional"' });
-  }
-  try {
-    const id = batch.startBatch({
-      dormantPct,
-      startMonth: b.startMonth,
-      endMonth: b.endMonth,
-      featureSet: b.featureSet === 'raw' ? 'raw' : 'compressed',
-      compareSymbol: b.compareSymbol ? String(b.compareSymbol).toUpperCase() : undefined,
-      pairs: b.pairs,
-      models: b.models,
-      geometry: batchGeometry,
-      decision: batchDecision,
-      weekdaysOnly: !!b.weekdaysOnly,
-      allLoaded: !!b.allLoaded,
-    });
-    res.json({ batchId: id });
-  } catch (err) {
-    res.status(409).json({ error: err.message });
-  }
-});
 
 // Bracket lab: the execution-permutation sweep (combos × option branches ×
 // the OCO bracket menu), slim-then-promote, no nulls in the sweep.

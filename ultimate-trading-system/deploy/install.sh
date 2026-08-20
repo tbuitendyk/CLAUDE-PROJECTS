@@ -39,17 +39,32 @@ ENV_FILE="/etc/ultimate-trading-system/env"
 # Read-only source for the one-time candle seed. Never written to.
 LEGACY_CACHE="/opt/general-classifier/data/cache"
 
-# A guard, not a formality: every path this script writes is derived from the
-# constants above, and every one of them must differ from the previous
-# generation's. If a later edit ever makes them collide, stop before touching
-# anything rather than discover it by taking the running system down.
-for forbidden in /opt/general-classifier /etc/general-classifier; do
-  case "${INSTALL_DIR}:${ENV_FILE}" in
-    *"${forbidden}"*) echo "REFUSING: install paths collide with the running previous generation (${forbidden})" >&2; exit 1;;
-  esac
+# A guard, not a formality: every path this script writes must differ from the
+# running previous generation's. Resolved with readlink, not compared as a
+# string, because a symlinked /opt/ultimate-trading-system would pass a string
+# test and still write straight into the live installation. A check that costs
+# nothing and fails loudly beats discovering the collision by taking the
+# owner's trading down.
+LEGACY_DIRS=(/opt/general-classifier /etc/general-classifier)
+for d in "${INSTALL_DIR}" "$(dirname "${ENV_FILE}")"; do
+  if [[ -L "${d}" ]]; then
+    echo "REFUSING: ${d} is a symlink; resolve it by hand before installing" >&2; exit 1
+  fi
+  resolved="$(readlink -f "${d}" 2>/dev/null || echo "${d}")"
+  for legacy in "${LEGACY_DIRS[@]}"; do
+    legacy_resolved="$(readlink -f "${legacy}" 2>/dev/null || echo "${legacy}")"
+    if [[ "${resolved}" == "${legacy_resolved}" || "${resolved}" == "${legacy_resolved}/"* ]]; then
+      echo "REFUSING: ${d} resolves inside the running previous generation (${legacy})" >&2; exit 1
+    fi
+  done
 done
 if [[ "${SERVICE_NAME}" == "general-classifier" ]]; then
   echo "REFUSING: service name collides with the running previous generation" >&2; exit 1
+fi
+# And do not adopt a unit that is not ours.
+UNIT_PATH="/etc/systemd/system/${SERVICE_NAME}.service"
+if [[ -e "${UNIT_PATH}" ]] && ! grep -q "^WorkingDirectory=${INSTALL_DIR}$" "${UNIT_PATH}"; then
+  echo "REFUSING: ${UNIT_PATH} exists and does not point at ${INSTALL_DIR}" >&2; exit 1
 fi
 
 echo "==> Installing system packages"
@@ -61,12 +76,16 @@ apt-get install -y --no-install-recommends rsync ca-certificates curl \
 
 NODE_MAJOR="$(node -v 2>/dev/null | sed -n 's/^v\([0-9]*\).*/\1/p' || true)"
 if [[ -z "${NODE_MAJOR}" || "${NODE_MAJOR}" -lt 18 ]]; then
-  # Deliberately NOT upgrading node when a good-enough one is present: the
-  # previous generation runs on the same interpreter, and replacing it under a
-  # live service is exactly the kind of collateral this install must not cause.
-  echo "==> Installing Node.js 20 from NodeSource (system node: ${NODE_MAJOR:-none})"
-  curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
-  apt-get install -y nodejs
+  # DELIBERATELY REFUSING rather than installing Node. The previous generation
+  # runs on this same /usr/bin/node and its hourly trading tick shells out to
+  # `node` by name, so a swapped interpreter is picked up within the hour with
+  # no restart and no warning. The NodeSource installer also rewrites shared apt
+  # state as root, which is already known to rot on this box and would break
+  # every later apt run including the website deploy. Provisioning Node is its
+  # own authorised task, not a side effect of shipping this app.
+  echo "REFUSING: node ${NODE_MAJOR:-none} is below 18, and this installer will not replace the interpreter" >&2
+  echo "          the running trading system uses. Install Node as a separate, authorised step." >&2
+  exit 1
 fi
 echo "    using node $(node -v) / npm $(npm -v)"
 
@@ -87,10 +106,23 @@ mkdir -p "${INSTALL_DIR}/data"
 # greenlights, setups, journals and book state are deliberately not copied:
 # this system starts from zero use.
 if [[ ! -d "${INSTALL_DIR}/data/cache" && -d "${LEGACY_CACHE}" ]]; then
-  echo "==> Seeding the candle cache from ${LEGACY_CACHE} (one time; nothing else is copied)"
-  mkdir -p "${INSTALL_DIR}/data/cache"
-  rsync -a "${LEGACY_CACHE}/" "${INSTALL_DIR}/data/cache/"
-  echo "    seeded $(find "${INSTALL_DIR}/data/cache" -type f | wc -l) cached file(s)"
+  # Space first. This duplicates the cache onto the SAME filesystem, and the box
+  # was at 83% when this was written. Filling the disk would stop the live
+  # trading rail from journalling, which is a far worse outcome than not seeding.
+  NEED_KB="$(du -sk "${LEGACY_CACHE}" | cut -f1)"
+  FREE_KB="$(df -Pk "${INSTALL_DIR}" | awk 'NR==2 {print $4}')"
+  MARGIN_KB=$(( NEED_KB + 2 * 1024 * 1024 ))   # the copy plus 2 GB of headroom
+  if (( FREE_KB < MARGIN_KB )); then
+    echo "REFUSING to seed: need $(( NEED_KB / 1024 )) MB plus 2 GB headroom, only $(( FREE_KB / 1024 )) MB free" >&2
+    echo "          The install continues without a seeded cache; the system will download what it needs." >&2
+  else
+    echo "==> Seeding the candle cache from ${LEGACY_CACHE} ($(( NEED_KB / 1024 )) MB; one time; nothing else is copied)"
+    mkdir -p "${INSTALL_DIR}/data/cache"
+    # Idle I/O and lowest CPU priority: the live rail writes into that same
+    # directory hourly, and this copy must never be what makes it late.
+    ionice -c3 nice -n19 rsync -a "${LEGACY_CACHE}/" "${INSTALL_DIR}/data/cache/"
+    echo "    seeded $(find "${INSTALL_DIR}/data/cache" -type f | wc -l) cached file(s)"
+  fi
 else
   echo "==> Candle cache already present (or no previous cache to read) — leaving it alone"
 fi

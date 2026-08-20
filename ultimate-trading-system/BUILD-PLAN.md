@@ -43,7 +43,7 @@ Nothing writes to `/opt/general-classifier`, its service, or its data.
 - [ ] 3. **Point 15 — the data.** The new install starts with an empty data
       directory by construction. Only the candle cache is carried across.
       Schema elements belonging to the retired screens go with their code.
-- [ ] 4. **Adversarial review.** Independent passes over the whole diff:
+- [x] 4. **Adversarial review.** Independent passes over the whole diff:
       correctness, dead references, the HTTP surface, and deployment safety —
       each finding fixed and re-checked.
 - [~] 5. **Deploy.** New `deploy/install.sh` targeting
@@ -97,3 +97,78 @@ work.
   surviving path, and a wrong cut here takes Construct down. Parked for a pass
   with a real parser rather than a hand-rolled one, and for the owner's eyes.
   Nothing user-facing reaches this code: every route that could has been removed.
+
+## Adversarial review — what it found (2026-08-19)
+
+Five independent passes, every finding then handed to a second agent told to
+refute it. 53 raised, 45 survived. What follows is what came of them.
+
+### Fixed, because they were mine
+
+- **The port fallback still said 8093.** env.example, the unit and the README
+  were all moved to 8094 but `server.js` still fell back to the port the
+  running system is on. An env file that lost its PORT line would have had this
+  service race the live one for its port at boot, with no ordering between the
+  units to stop it. Fallback is now 8094, and the unit sets PORT as well so the
+  env file is not the only source.
+- **The installer could have replaced the interpreter the live system runs on.**
+  It inherited a branch that installs Node from a third-party repository. The
+  old trading rail shells out to `node` by name every hour, so a swapped
+  interpreter is picked up within the hour with no restart. It now refuses and
+  says why.
+- **The collision guard compared strings.** A symlinked install directory would
+  have passed it and written into the live installation. It now resolves paths,
+  refuses symlinks, and refuses to adopt a unit file that points somewhere else.
+- **The candle seed had no disk check.** It duplicates the cache onto a
+  filesystem that was at 83%. It now measures the copy, requires 2 GB of
+  headroom, and runs at idle I/O priority so it cannot make the live rail's
+  hourly write late.
+- **Nothing bounded the new service.** Neither unit had a single limit, so a
+  sweep here could starve the trading rail and a memory spike could invite the
+  kernel to kill the wrong process. The new unit now carries CPU, memory and
+  I/O limits, and parks instead of respawning for ever when it fails. No limit
+  was added to the old unit: that is a change to the running system.
+- **A route survived with no caller.** `POST /api/batch` launched the departed
+  pair screen; its only caller was a deleted page. Removed.
+- **Two of the three pages carry all their JavaScript inline**, so the release
+  cache-marker protected nothing for them. The page route now says no-cache
+  outright rather than relying on a mechanism that cannot reach them.
+- **Shipping the portal tile would have run apt.** The website installer
+  installs nginx before anything else, and a pending upgrade restarts it —
+  dropping every proxied site, including the live one, for the duration. A
+  purpose-built shipper on `vps-access` now does the same job with no package
+  work, reloading rather than restarting, gated on a config test, with the old
+  vhost backed up first.
+
+### NOT fixed — real money. For the owner, not for me.
+
+Both are pre-existing and neither was caused by this work. RULE SIX stops the
+loop at anything that changes the behaviour of something already trading.
+
+- **`POST /api/pilot/arm` arms on an empty body.** The handler only refuses when
+  the body explicitly says `armed === false`, so `{}` falls through to writing
+  an arm request. Its CSRF guard also fails open when a request carries no
+  Origin and no Referer header — which is the normal shape of a request from a
+  script rather than a browser. The two together mean the live arm control can
+  be pressed by a request that never intended to press it. The reviewer also
+  observed that running the documented test command against a live server would
+  do exactly that.
+- **`POST /api/pilot/stop-apply` carries no CSRF guard** while its declared twin
+  `POST /api/pilot/margin-floor` does, and an empty body makes it record "no
+  protective stop, chosen by owner" rather than refusing.
+
+### Carried into the parked batch.js work
+
+The reviewers proved the park was right, and left three things a later pass must
+know:
+
+- `median` is defined inside the departed consensus block but is called by the
+  surviving null test. Because it is a hoisted declaration, cutting it produces
+  no load error — the failure is a runtime one, mid-run, in a null test the
+  owner is watching fill in. A green suite after such a cut would prove nothing.
+- `permNullAggregate` looks departed and is not: a live test file exercises it.
+- `tests/test-boost.js`, `tests/test-consensus.js` and `tests/test-batchdoc.js`
+  must NOT be deleted with the departed screens. Between them they carry the
+  only coverage of the model both surviving sections fit, of the per-sample
+  weighting the age dial runs on, of the decision rule behind the sweep's
+  decision control, and of a path-traversal guard on a live request path.

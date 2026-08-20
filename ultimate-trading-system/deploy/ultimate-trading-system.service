@@ -2,6 +2,12 @@
 Description=Ultimate Trading System (Construct + Trade, deterministic; no AI in any path)
 After=network-online.target
 Wants=network-online.target
+# A broken start must PARK, not respawn for ever. systemd's defaults
+# (5 starts in 10s) are never reached at RestartSec=5, so without these a
+# failing service would write to the shared journal indefinitely on a box that
+# also holds the owner's live books.
+StartLimitIntervalSec=300
+StartLimitBurst=5
 
 [Service]
 Type=simple
@@ -9,9 +15,24 @@ User=uts
 Group=uts
 WorkingDirectory=/opt/ultimate-trading-system
 EnvironmentFile=/etc/ultimate-trading-system/env
+# Belt and braces on the port: the env file is not the only source, so an env
+# file that lost its PORT line cannot land this service on 8093, which the
+# previous generation is still serving live trading and paper books on.
+Environment=PORT=8094
 ExecStart=/usr/bin/node server.js
 Restart=on-failure
 RestartSec=5
+
+# This box already runs the previous generation, two VirtualBox guests and the
+# other services, and neither unit carried any limit. A sweep here could starve
+# the live trading rail, and a memory spike could invite the kernel to kill the
+# wrong process. These bound THIS service only; putting a weight on the old unit
+# would be a change to the running system and needs its own go-ahead.
+CPUWeight=50
+CPUQuota=300%
+MemoryHigh=2G
+MemoryMax=3G
+IOWeight=50
 
 NoNewPrivileges=true
 PrivateTmp=true
