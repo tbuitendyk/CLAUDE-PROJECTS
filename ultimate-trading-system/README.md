@@ -1,73 +1,82 @@
-# General Classifier
+# Ultimate Trading System
 
-A self-hosted web tool that hunts for predictive structure in Binance hourly
-data. It builds weekly 8-day chunks from two trading pairs, scores each chunk
-by what the trade pair did *after* the chunk ended, trains a classifier on the
-older 80% of weeks, and honestly reports how well it predicted the most recent
-20% it never saw.
+A self-hosted web tool that hunts for predictive structure in hourly Binance
+data, measures honestly whether what it found is real, and runs the survivors
+forward — first on paper, then with real money.
 
-Public face: `https://www.buitendyk.ca/classifier/` (nginx location on the
-`website` branch, behind the site's Basic Auth) proxying to this Node service
-on `127.0.0.1:8093`.
+**No AI anywhere in what it does.** Training, scoring, simulation and execution
+are deterministic local arithmetic. The only network traffic is public market
+data from Binance's keyless bulk-download portal. `npm ls` shows one
+dependency (express).
 
-## How a run works
+## What it does
 
-1. **Inputs** — dormant range (e.g. ±2%), trade pair (e.g. `ZECUSDT`), compare
-   pair (e.g. `BTCUSDT`), start/end month.
-2. **Load Data** — downloads the monthly 1h-kline zips for both pairs from
-   Binance's public bulk-data portal (`data.binance.vision`; keyless, no
-   account), caching each parsed month in `data/cache/` forever. Columns are
-   pruned to time / open / high / low / close / quote_volume.
-3. **Chunking** — every Monday 00:00 UTC starts an 8-day chunk: 192 hourly
-   rows × 11 columns (shared hour + 5 fields per pair). Consecutive chunks
-   overlap by one day. Isolated gaps ≤ 3h are forward-filled flat; chunks over
-   bigger holes are dropped and counted.
-4. **Scoring** (trade asset only, from AFTER the chunk):
-   `c1` = mean of the 24 o/h/l/c values in the following Tuesday 00:00–05:59;
-   `c2` = same for that week's Thursday 12:00–17:59;
-   score `0` if `|c2−c1|/c1` < dormant band, else `+1` if `c1<c2`, else `−1`.
-5. **Training** — two selectable feature sets (both z-scored with
-   training-set statistics before training):
-   - **Compressed (default, v2)** — 44 engineered numbers per chunk: per
-     asset, the 8 daily returns, total return, hourly volatility and its
-     late-vs-early shift, trend slope and acceleration, max drawdown/run-up,
-     range, last-24h/6h momentum, and daily-volume concentration; plus 4
-     cross-asset features (relative return, relative last-24h, relative
-     volatility, return correlation). Few enough that the model cannot
-     memorize ~300 weeks, so training accuracy becomes meaningful.
-   - **Raw hourly (v1)** — all 1,920 numbers (prices normalized per chunk to
-     its first open, volume to its chunk mean). Kept for A/B comparison;
-     expect memorization at feasible data sizes.
-   A pure-JS multinomial logistic regression trains on the first 80% of
-   weeks; L2 strength is chosen from a ladder validated on the chronological
-   tail of the training set; iteration count auto-stops on convergence
-   (convex loss — cycles are not a quality knob).
-6. **Report** — out-of-sample accuracy vs. the random (33.3%) and
-   majority-class baselines, the regularization ladder, confusion matrix,
-   per-class precision/recall/F1, and every held-out week with the model's
-   probabilities. With the compressed set the report also lists the top
-   features by |weight| (named, on standardized scale) so you can see what
-   the model leaned on.
+**Finding a candidate.** History is cut into overlapping fixed-length chunks
+of hourly data from two or more pairs. Each chunk is scored by what the traded
+asset did *after* the chunk ended. A pure-JavaScript classifier trains on the
+older part of history and is graded on the recent part it never saw. A wide
+sweep tries many combinations of asset, chunk shape and decision style against
+the whole execution menu, and produces a board of promising rows — a
+direction, never a result.
 
-**No AI anywhere in the loop.** The only network traffic is the Binance
-downloads; training and scoring are deterministic local arithmetic
-(`lib/logreg.js` has zero imports). `npm ls` shows a single dependency
-(express).
+**Establishing it is not luck.** The same sweep is re-run with informationless
+votes, so the system can measure how good "nothing" looks before judging
+anything against it. A surviving row is then read twice: once against its own
+random-data runs, which prices the shopping done inside that row, and once
+against the whole board's, which prices having picked the best of many. A row
+must pass both.
+
+Underneath that sits a calibration check: a known pattern is planted in a
+fabricated market and pushed through the real pipeline, which must find it
+while random versions destroy it. The instrument is checked before its
+readings count for anything.
+
+**Running it forward.** A configuration that survives can be greenlighted and
+shuttled into a trading setup, carrying an immutable snapshot of its
+configuration, the chain of evidence behind it, and the engine version it was
+validated on. Each configuration has two independent channels, paper and real,
+which may run at the same time.
+
+## The screens
+
+- **Constructing** — the guided narrowing flow, in the order the work is
+  actually done: **Data**, **Sweep**, **Boards**, **Verify**, **History**,
+  **Tune**, **Greenlight**.
+- **Trading** — every greenlighted configuration on two design-identical
+  sides, **Paper Books** and **Live Trading**, each carrying **Dashboard**,
+  **Greenlights**, **Setups**, **Setup detail** and **LIVE**.
+- **Research**, **Bracket lab**, **Paper books** — the earlier generation.
+  Retiring in the current release; see `THIS-RELEASE.md`.
 
 ## Layout
 
 ```
-server.js            Express app: static UI + /api/run + /api/jobs/:id
-lib/binance.js       monthly zip download, single-entry unzip, CSV prune, disk cache
-lib/dataset.js       Mon→Mon chunking, gap fill, Tue/Thu scoring, feature building
-lib/features.js      v2 compressed feature set (44 engineered numbers, pure JS)
-lib/logreg.js        softmax regression, z-scoring, lambda ladder (pure JS)
-lib/pipeline.js      orchestration + report assembly
-lib/tracker.js       live paper tracker (frozen models, $100 books, TRACKER.md protocol)
-lib/jobs.js          in-memory async job runner (UI polls)
-public/              the web page (prefix-relative URLs, light/dark aware)
+server.js            Express app: the API and the static pages
+live-produce.js      the multi-setup producer — one intent per due setup
+live-mirror.js       re-checks every setup's decisions against fresh data
+pilot-refresh.js     keeps a pair set's candle cache continuous and current
+
+lib/binance.js       monthly zip download, unzip, CSV prune, disk cache
+lib/dataset.js       chunking, gap fill, scoring, feature building
+lib/features.js      the engineered feature set (pure JS)
+lib/logreg.js        softmax regression, z-scoring, lambda ladder (zero imports)
+lib/bracket.js       the execution simulator
+lib/bracketwork.js   the sweep's unit of work, identical on main or worker
+lib/planted.js       the planted-pattern calibration check
+lib/paper.js         paper-trade arithmetic and the declared friction rates
+lib/campaign.js      the campaign name every run carries, grouping one cycle
+lib/batch.js         saved run records
+lib/historytuning.js history tuning; lib/httwo.js is the age-dial version
+lib/walkforward.js   walk-forward evaluation
+lib/tracker.js       frozen paper book; lib/dogebook.js is the second one
+
+lib/live/            the trading side: setups, greenlights, signal, channels,
+                     catalog, execution targets, mirror, views, routes
+
+public/              the pages (prefix-relative URLs, light and dark aware)
+tests/               node tests/run.js
+tools/               calibration checks and one-off registration scripts
 deploy/              install.sh, systemd unit, env.example (PORT=8093)
-tests/               node tests/run.js — zip/CSV, chunk geometry, labels, training
 ```
 
 ## Running locally
@@ -80,7 +89,6 @@ npm start           # http://127.0.0.1:8093
 
 ## Deploying
 
-Ships like the balancers: `deploy-general-classifier.sh` on the `vps-access`
-branch clones/syncs this branch on the VPS and runs `deploy/install.sh`
-(idempotent). The `/classifier/` nginx location + portal tile ship separately
-via `deploy-website`.
+The deploy script on the `vps-access` branch clones or syncs this branch on
+the server and runs `deploy/install.sh`, which is idempotent. The nginx
+location and portal tile ship separately from the `website` branch.

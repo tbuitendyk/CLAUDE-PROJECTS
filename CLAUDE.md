@@ -280,6 +280,32 @@ when the owner says stop. It does not carry into the next body of work; the
 next long loop needs its own `LOOP NOW!`.
 
 
+## RULE SEVEN — no AI anywhere in what ships
+(a product guarantee, not a preference)
+
+**Nothing the system does at runtime may involve an AI or a language model.**
+Not in the signal, not in the decision, not in execution, not in anything the
+owner reads on screen. Every number the system shows is reproducible from
+deterministic code and market data alone.
+
+This lives here because it constrains what I may BUILD, not merely what the
+documents claim. It was stated in three separate files at once, which is how a
+guarantee quietly becomes three different guarantees.
+
+- **The whole product surface, not only the maths.** The original constraint
+  covered the classification path. It covers everything now: no AI call in any
+  request path, no AI-written text or numbers on any screen, no AI service
+  reachable from the environment the system runs in.
+- **AI is a development-time tool only.** It writes the code and reviews the
+  code. It is never in the shipped execution or reporting path.
+- **Enforcement is structural, not aspirational.** The guarantee holds because
+  there is nothing to call — no credentials to any AI service, no dependency,
+  no endpoint. A guarantee that depends on remembering to honour it is not a
+  guarantee.
+- **What it buys:** every result is auditable and can be re-derived from the
+  same inputs. There is no "the model said so" anywhere in the product.
+
+
 ## Working style (all sessions)
 
 Confirm the task before building. **Don't assume a direction, write a pile of

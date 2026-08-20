@@ -230,7 +230,10 @@ a main-line step parks.
 - P6: per-setup view derives real+paper as SEPARATE ledgers from the synced journal; fidelity (fill dev, fee/leg) per setup. Mirror(6.1)+alerting(6.2) remain.
 - P5: arm/disarm per-setup endpoints deferred with the box control-plane wiring (Phase 8/10) — state controls (paper/live/stop) are in; live-arm stays the box's ARM.
 - P7: catalog is single-node now (catalog+cache co-located); subscriber-worker remote-store form is the same required-vs-present interface (point 19 future).
-- P3: paper fills use the model's own fee rate (0.125%/leg) so paper == the lab's promise; fidelity then isolates execution.
+- P3: paper fills use the model's own fee rate so paper == the lab's promise; fidelity then isolates execution.
+  (Corrected 2026-08-19: this line said "0.125%/leg". The rate is $0.125 PER LEG IN DOLLARS on a $100 trade
+  (lib/paper.js REAL_FEE_PER_LEG), which equals 0.125% only at that size. Per-setup trade sizes make the
+  percentage reading wrong at every other size.)
 - P3: one box serves ONE symbol (allowlist symbol affinity enforced); multi-symbol = a second executor instance/box, which the execution-target model already supports.
 - P4: trainThrough = the selecting run's fire time (cache holds only closed candles, so fire time IS the data horizon) — the forwardbook freeze rule, always derivable.
 - P4: 4.1 campaign tree BROWSER deferred to the UI phase; the greenlight record already carries campaign + manifest + run linkage (the provenance chain itself).
