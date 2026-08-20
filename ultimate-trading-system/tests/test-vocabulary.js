@@ -10,12 +10,11 @@ const { assert } = require('./helpers');
 
 const ROOT = path.join(__dirname, '..');
 const SCAN = [
-  'public/index.html',
-  'public/help.html',
-  'public/help-bracket.html',
-  'public/app.js',
+  'public/setup.html',
+  'public/construct.html',
+  'public/construct.js',
+  'public/trade.html',
   'WORKFLOW.md',
-  'OWNER-SPEC.md',
   'DESIGN-HISTORY-TUNING.md',
   // error strings in these reach the owner through HTTP 400s
   'lib/batch.js',

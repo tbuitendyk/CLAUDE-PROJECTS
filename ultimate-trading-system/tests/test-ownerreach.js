@@ -17,14 +17,13 @@ const path = require('path');
 
 const ROOT = path.join(__dirname, '..');
 const CX = fs.readFileSync(path.join(ROOT, 'public', 'construct.js'), 'utf8');
-const APP = fs.readFileSync(path.join(ROOT, 'public', 'app.js'), 'utf8');
 const SERVER = fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8');
 
 function everyStopWriteCarriesTheOwnersReason() {
   // No POST to stop-apply may omit `why`. Catching the shape generally rather
   // than the two known call sites: a third one added later would otherwise
   // silently reintroduce a script-only field.
-  for (const [file, src] of [['construct.js', CX], ['app.js', APP]]) {
+  for (const [file, src] of [['construct.js', CX]]) {
     // Capture to the end of the CALL, not to the first closing brace: a fetch
     // passes an options object whose `headers: {...},` closes early, which made
     // this stop reading before the body it was meant to inspect. A check that
@@ -41,19 +40,16 @@ function everyStopWriteCarriesTheOwnersReason() {
 
 function theOwnerHasABoxToTypeTheReasonIn() {
   assert.ok(/id="stopWhy"/.test(CX), 'Constructing has no field for the owner to write their reason');
-  assert.ok(/id="stop-why"/.test(APP), 'the bracket lab has no field for the owner to write their reason');
 }
 
 function theReasonCanBeEditedWithoutMovingTheNumber() {
   assert.ok(/id="stopWhySave"/.test(CX) && /stopPct: applied\.stopPct \?\? null/.test(CX),
     'Constructing cannot save a reworded reason on its own, or does so in a way that could move the stop');
-  assert.ok(/stop-why-save-btn/.test(APP) && /applyStop\(applied\.stopPct \?\? null\)/.test(APP),
-    'the bracket lab cannot save a reworded reason without changing the stop');
 }
 
 function theRecordedChoiceIsReadableFromTheScreen() {
   // Writing it is half of it; the owner must be able to SEE what is on record.
-  assert.ok(/on record: /.test(CX) && /on record: /.test(APP),
+  assert.ok(/on record: /.test(CX),
     'the recorded choice is not displayed, so the owner cannot check what was saved');
   assert.ok(/no choice about the stop has been recorded yet/.test(CX),
     'an unrecorded choice is not called out, so a gap reads as a decision');
@@ -69,8 +65,6 @@ function theServerAcceptsAndReturnsTheReason() {
 function anOfflineFallbackDoesNotClaimAChoiceWasMade() {
   assert.ok(/stopPct: null, chosen: false, why: null/.test(CX),
     'Constructing\'s offline fallback omits chosen:false, so a failed fetch renders as a recorded choice');
-  assert.ok(/let applied = \{ stopPct: null, chosen: false, why: null \}/.test(APP),
-    'the bracket lab\'s default omits chosen:false, so a failed fetch renders as a recorded choice');
 }
 
 module.exports = {

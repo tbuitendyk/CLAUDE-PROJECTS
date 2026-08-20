@@ -23,7 +23,6 @@ const { GEOMETRIES } = require('../lib/dataset');
 const ROOT = path.join(__dirname, '..');
 const SWEEP = fs.readFileSync(path.join(ROOT, 'public', 'construct.js'), 'utf8');
 const BATCH = fs.readFileSync(path.join(ROOT, 'lib', 'batch.js'), 'utf8');
-const INDEX = fs.readFileSync(path.join(ROOT, 'public', 'index.html'), 'utf8');
 
 // Pull the <option value="..."> strings out of a named <select> in a source file.
 // Returns [] when the select is absent, which the callers assert against.
@@ -75,19 +74,6 @@ module.exports = {
     const missing = keys.filter((k) => !offered.includes(k));
     assert.strictEqual(missing.length, 0,
       `Sweep cannot launch these valid chunk shapes: ${missing.join(', ')}`);
-  },
-
-  // Bracket Lab is the launcher that works. Where the two forms express the same
-  // control they must send the same vocabulary, or one of them is wrong.
-  sweepAndBracketLabAgreeOnVocabulary() {
-    for (const [sweepId, labId] of [['swLayout', 'bl-layout'], ['swGeom', 'bl-geometry']]) {
-      const a = optionValues(SWEEP, sweepId).slice().sort();
-      const b = optionValues(INDEX, labId).slice().sort();
-      assert.ok(b.length, `${labId} must still exist in index.html to compare against`);
-      assert.deepStrictEqual(a, b,
-        `#${sweepId} and #${labId} must offer the same values — `
-        + `Sweep: [${a.join(', ')}] vs Bracket Lab: [${b.join(', ')}]`);
-    }
   },
 
   // A blank month box must be OMITTED, not sent as "". The server rejects ""

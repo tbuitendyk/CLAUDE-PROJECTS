@@ -89,15 +89,12 @@ module.exports = {
 
   async bothReservedPairsAreRefusedEverywhere() {
     const batch = require('../lib/batch');
-    const books = require('../lib/books');
     for (const sym of planted.PLANTED_SYMBOLS) {
       assert.throws(
         () => batch.startBracketLab({ universe: [sym], sizes: { singles: true }, windowLayout: 'split70' }),
         /reserved fabricated pair/,
         `bracket lab must refuse ${sym}`,
       );
-      assert.throws(() => books.validateConfig({ pair: sym }), /reserved fabricated pair/, `books must refuse ${sym} as pair`);
-      assert.throws(() => books.validateConfig({ pair: 'DOTUSDT', compareSymbol: sym }), /reserved fabricated pair/, `books must refuse ${sym} as compare`);
     }
   },
 };

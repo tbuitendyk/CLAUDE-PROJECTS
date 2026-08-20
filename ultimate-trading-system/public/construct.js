@@ -932,7 +932,7 @@ async function drawBoards() {
                recorded is params.labelShiftReps (audit 2026-08-17). -->
           ${pl ? `<p class="note"><b>Size:</b> ${pl.combos} combos × ${pl.branches} branch(es)${nullBoards ? ` × ${nullBoards + 1} boards (1 real + ${nullBoards} null)` : ''}
             = <b>${pl.units}</b> units · ${pl.slimRuns ?? '—'} slim runs · ${pl.promoteRuns ?? '—'} promote runs.
-            <span title="the multiplicity any null reading here must be read against: one lucky unit out of this many is not a finding">Every null claim on this page is against ${pl.units} units.</span></p>` : ''}
+            <span title="the multiplicity any null reading here must be read against: one good-looking unit out of this many is not a finding">Every null claim on this page is against ${pl.units} units.</span></p>` : ''}
           <!-- dm.overallDigest / dm.symbols / dm.at are what lib/manifest.js
                actually writes. This read dm.digest, dm.coins, dm.files and
                dm.utc — four names nothing has ever written — so the fingerprint

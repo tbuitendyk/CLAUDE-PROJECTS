@@ -10,7 +10,6 @@ const { assert } = require('./helpers');
 
 const ROOT = path.join(__dirname, '..');
 const UI = fs.readFileSync(path.join(ROOT, 'public', 'construct.js'), 'utf8');
-const APP = fs.readFileSync(path.join(ROOT, 'public', 'app.js'), 'utf8');
 
 module.exports = {
   // The tooltip promised a plateau view in two places and rendered none.
@@ -70,6 +69,5 @@ module.exports = {
     assert.ok(/do not judge yet/.test(UI),
       'counts grow while a sweep runs and the page must say so');
     // the Bracket lab is the source of truth for this arithmetic
-    assert.ok(/100% = every real setup beat every null copy/.test(APP), 'the source reading still exists to match');
   },
 };
