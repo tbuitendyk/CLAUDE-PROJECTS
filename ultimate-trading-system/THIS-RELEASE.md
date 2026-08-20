@@ -309,6 +309,44 @@ is both common and completely invisible. Without a screen the owner cannot
 tell "the system found nothing" from "the system had nothing to look at" —
 and those two lead to opposite conclusions about a candidate.
 
+**Owner ruling (2026-08-19) — expose the catalogue in the Data section.**
+
+> expose the catalogue in the Data section
+
+The open question above is closed. The section is the one headed **Data on
+server** and **Download / refresh**, under **Data** in **Constructing**.
+
+`[feasibility]` on the ruling. Both endpoints already exist — one reads the
+required-versus-present comparison, one runs the repair — and the repair
+re-fetches through the same downloading the buttons on that section already
+do. So this is a screen, not new machinery.
+
+Not a second table. The whole value is a row for something that SHOULD be
+there and is not, and today an absent pair simply has no row — which looks
+identical to a complete list. The existing table gains a status column and
+gains rows for what is missing.
+
+Two things read out of the catalogue code on 2026-08-19, and the second one
+has to be settled before the screen is designed.
+
+**It counts only pairs belonging to configurations that are actively
+running.** With point 15's fresh start there are none, so the screen
+correctly reports nothing required, and goes on saying that until something
+is activated.
+
+**It defines what a pair should cover as "from the earliest month already
+held, through the current month."** That catches a month going missing out of
+the middle of what was there. It cannot catch data never downloaded in the
+first place, because a pair with nothing cached has no earliest month to
+start from.
+
+That second fact is a mismatch with where the ruling puts it. **Data** is the
+section the owner opens before a sweep, so the question it looks like it
+answers is "do I have what this run needs?" — and the catalogue as built
+answers "has anything I had gone missing?" Both are worth having. They are
+different questions, and a screen showing one while appearing to show the
+other is how a run gets read as a dead candidate when it was a short shelf.
+
 ---
 
 ## 11. Subscription pricing
