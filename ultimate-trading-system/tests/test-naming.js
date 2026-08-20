@@ -16,7 +16,7 @@ const os = require('os');
 const path = require('path');
 
 const ROOT = path.join(__dirname, '..');
-const HTML = fs.readFileSync(path.join(ROOT, 'public', 'trading.html'), 'utf8');
+const HTML = fs.readFileSync(path.join(ROOT, 'public', 'trade.html'), 'utf8');
 
 function withTempDirs(fn) {
   const base = fs.mkdtempSync(path.join(os.tmpdir(), 'gc-naming-'));
@@ -134,8 +134,8 @@ function theRetiredPilotScreenIsGone() {
   assert.ok(!fs.existsSync(path.join(ROOT, 'public', 'pilot.html')),
     'public/pilot.html is back. It is the retired single-config screen; it is served next to the '
     + 'real one and shows stale numbers from fields nothing writes any more');
-  assert.ok(!fs.existsSync(path.join(ROOT, 'public', 'livetrading.html')),
-    'public/livetrading.html is back');
+  assert.ok(!fs.existsSync(path.join(ROOT, 'public', 'livetrade.html')),
+    'public/livetrade.html is back');
 }
 
 // NARROWING THE GATE MUST NOT DISARM IT. The live-executability gate stops a

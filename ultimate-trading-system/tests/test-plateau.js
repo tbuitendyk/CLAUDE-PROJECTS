@@ -169,7 +169,7 @@ module.exports = {
   theBoardOffersTheRegionAsASecondReading() {
     const fs = require('fs');
     const path = require('path');
-    const ui = fs.readFileSync(path.join(__dirname, '..', 'public', 'constructing.js'), 'utf8');
+    const ui = fs.readFileSync(path.join(__dirname, '..', 'public', 'construct.js'), 'utf8');
     assert.ok(/<option value="region">widest region<\/option>/.test(ui),
       'the Greenlight anchor must offer "widest region"');
     assert.ok(/id="bSort"/.test(ui), 'the board must offer the second ranking');

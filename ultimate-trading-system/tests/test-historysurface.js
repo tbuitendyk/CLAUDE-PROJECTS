@@ -16,7 +16,7 @@ const path = require('path');
 const { assert } = require('./helpers');
 
 const ROOT = path.join(__dirname, '..');
-const UI = fs.readFileSync(path.join(ROOT, 'public', 'constructing.js'), 'utf8');
+const UI = fs.readFileSync(path.join(ROOT, 'public', 'construct.js'), 'utf8');
 const SERVER = fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8');
 const BATCH = fs.readFileSync(path.join(ROOT, 'lib', 'batch.js'), 'utf8');
 

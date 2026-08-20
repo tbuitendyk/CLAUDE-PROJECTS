@@ -9,7 +9,7 @@ const path = require('path');
 const { assert } = require('./helpers');
 
 const ROOT = path.join(__dirname, '..');
-const UI = fs.readFileSync(path.join(ROOT, 'public', 'constructing.js'), 'utf8');
+const UI = fs.readFileSync(path.join(ROOT, 'public', 'construct.js'), 'utf8');
 const APP = fs.readFileSync(path.join(ROOT, 'public', 'app.js'), 'utf8');
 
 module.exports = {

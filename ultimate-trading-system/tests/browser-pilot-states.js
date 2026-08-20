@@ -161,7 +161,7 @@ async function main() {
           localStorage.setItem('lt-branch', 'real');
           localStorage.setItem('lt-sub', 'live');
         });
-        await page.goto(`${BASE}/trading.html`, { waitUntil: 'networkidle', timeout: 30000 });
+        await page.goto(`${BASE}/trade.html`, { waitUntil: 'networkidle', timeout: 30000 });
         await page.waitForTimeout(2000);
 
         const seen = await page.evaluate(() => ({

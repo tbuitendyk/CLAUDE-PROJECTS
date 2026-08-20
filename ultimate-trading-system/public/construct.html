@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Constructing</title>
+<title>Construct</title>
 <style>
   /* THEME TOKENS (NEXT-RELEASE points 24/25): shared with the Trading page —
      dark = the F1 technical baseline, light = the lab register. */
@@ -71,30 +71,46 @@
   details > summary { cursor:pointer; color:var(--dim); font-size:.76rem; }
   .scrollx { overflow-x:auto; }
   .note { color:var(--muted); font-size:.74rem; }
+  /* TOP-LEVEL NAVIGATION (THIS-RELEASE point 17). The three tabs of the system,
+     carried on every page. Lives inside the existing site band, which is
+     already display:flex + align-items:center, so it lines up by construction
+     rather than by nudging (CLAUDE.md RULE FOUR). Deliberately NOT the .tab
+     class: that one names the sections inside a page, and two identical rows
+     of tabs would say the wrong thing about the hierarchy. */
+  .toptabs { display:flex; gap:.3rem; margin-left:.5rem; }
+  .toptab { text-decoration:none; color:var(--dim); background:var(--tabbg);
+            border:1px solid var(--line); border-radius:6px; padding:.25rem .75rem;
+            font-size:.82rem; line-height:1.35; }
+  .toptab:hover { border-color:var(--accent); }
+  .toptab.on { background:var(--tabon); color:var(--fg); font-weight:600; border-color:var(--accent); }
 </style>
 </head>
 <body>
   <div class="row" style="border-bottom:1px solid var(--line); padding-bottom:.55rem; margin-bottom:.8rem; font-size:.85rem">
     <a href="https://www.buitendyk.ca/" style="text-decoration:none; font-weight:700; color:var(--fg)">buitendyk<span style="color:var(--accent)">.ca</span></a>
-    <span class="muted">/ <a href="index.html" style="text-decoration:none; color:inherit">general classifier</a> / constructing</span>
+    <span class="muted">/ ultimate trading system</span>
+    <nav class="toptabs">
+    <a class="toptab" href="setup.html">Setup</a>
+    <a class="toptab on" href="construct.html">Construct</a>
+    <a class="toptab" href="trade.html">Trade</a>
+    </nav>
     <div class="spacer"></div>
-    <a href="index.html" style="text-decoration:none; border:1px solid var(--line); border-radius:6px; padding:.25rem .6rem; color:var(--fg); background:var(--tile)">Back</a>
   </div>
   <div class="row">
-    <h1 style="margin:0">Constructing</h1>
+    <h1 style="margin:0">Construct</h1>
     <span id="strip" class="muted" style="font-size:.8rem">release —</span>
     <span id="utcClock" class="muted" style="font-variant-numeric:tabular-nums">—</span>
     <div class="spacer"></div>
     <button class="themebtn" id="cpubtn" title="service-wide worker cap. Every sweep, null board and tune on this box shares it — lowering it makes runs slower and leaves the machine responsive; raising it does the opposite. Click to cycle.">CPU —</button>
     <button class="themebtn" id="themebtn">◐ theme</button>
   </div>
-  <div class="sub">The guided narrowing flow (NEXT-RELEASE pt 14): <b>Data → Sweep → Boards → Verify → History → Tune →
+  <div class="sub">The guided narrowing flow: <b>Data → Sweep → Boards → Verify → History → Tune →
     Greenlight</b>. Wide to find, one variable at a time to confirm; money claims only from the end of the chain.
     Everything here is deterministic code — no AI in any result.</div>
 
   <div class="tabs" id="tabs"></div>
   <div id="view"></div>
 
-<script src="constructing.js?v=1"></script>
+<script src="construct.js?v=1"></script>
 </body>
 </html>

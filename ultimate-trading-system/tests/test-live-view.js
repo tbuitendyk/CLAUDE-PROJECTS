@@ -137,7 +137,7 @@ module.exports.everyConsumerOfTheMergedListFiltersItToOneBook = function () {
   const path2 = require('path');
   const ROOT2 = path2.join(__dirname, '..');
   const strip = (s) => s.replace(/<!--[\s\S]*?-->/g, '').split('\n').filter((l) => !/^\s*\/\//.test(l)).join('\n');
-  const LT = strip(fs2.readFileSync(path2.join(ROOT2, 'public', 'trading.html'), 'utf8'));
+  const LT = strip(fs2.readFileSync(path2.join(ROOT2, 'public', 'trade.html'), 'utf8'));
   const RT = strip(fs2.readFileSync(path2.join(ROOT2, 'lib', 'live', 'routes.js'), 'utf8'));
 
   const flat = LT.replace(/\s/g, '');

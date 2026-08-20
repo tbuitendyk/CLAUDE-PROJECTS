@@ -24,15 +24,20 @@ const PORT = Number(process.env.PORT || 8093);
 
 const app = express();
 app.use(express.json({ limit: '256kb' }));
-// CACHE MARKER = THE RELEASE. constructing.html asked for constructing.js?v=1 —
+// CACHE MARKER = THE RELEASE. construct.html asked for construct.js?v=1 —
 // a marker fixed at 1 forever. Browsers cache by full URL, so the moment anyone
 // lengthens max-age (it is 0 today, which is the only reason this has not bitten)
 // a returning browser would keep serving a copy from days ago and every shipped
 // fix would read as not-applied. Stamping the release into the URL makes the
 // address change with the file, so there is nothing to get stale
 // (found 2026-08-18 while proving a deployed fix really was deployed).
-app.get(['/constructing.html', '/trading.html', '/index.html'], (req, res, next) => {
-  const file = path.join(__dirname, 'public', path.basename(req.path));
+// THE FRONT DOOR IS THE SETUP TAB (owner ruling, 2026-08-19; THIS-RELEASE 14/17).
+// Serving '/' explicitly, ABOVE express.static, because static's own index
+// handling would otherwise pick index.html — the page this release removes —
+// and the address would go dark the moment it does.
+app.get(['/', '/setup.html', '/construct.html', '/trade.html'], (req, res, next) => {
+  const name = req.path === '/' ? 'setup.html' : path.basename(req.path);
+  const file = path.join(__dirname, 'public', name);
   require('fs').readFile(file, 'utf8', (err, html) => {
     if (err) return next();
     const v = require('./package.json').version;

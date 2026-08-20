@@ -19,8 +19,8 @@ const { assert } = require('./helpers');
 
 const ROOT = path.join(__dirname, '..');
 const FILES = [
-  ['public/constructing.js', 'Constructing'],
-  ['public/trading.html', 'Trading'],
+  ['public/construct.js', 'Constructing'],
+  ['public/trade.html', 'Trading'],
 ];
 
 // A heading is described if it carries a title, or if it is produced by the
@@ -68,8 +68,8 @@ function everyColumnHeadingSaysWhatItHolds() {
 // The helper is what makes the rule cheap to keep. If it disappears, the next
 // table will be written with bare headings again.
 function bothPagesHaveTheirColumnKeyHelper() {
-  const cx = fs.readFileSync(path.join(ROOT, 'public/constructing.js'), 'utf8');
-  const lt = fs.readFileSync(path.join(ROOT, 'public/trading.html'), 'utf8');
+  const cx = fs.readFileSync(path.join(ROOT, 'public/construct.js'), 'utf8');
+  const lt = fs.readFileSync(path.join(ROOT, 'public/trade.html'), 'utf8');
   assert(/const COL = \{/.test(cx) && /const cth = /.test(cx),
     'Constructing lost its shared column-key dictionary or its cth() helper');
   assert(/const TH=\{/.test(lt) && /const th=/.test(lt),
@@ -81,7 +81,7 @@ function bothPagesHaveTheirColumnKeyHelper() {
 // every entry naming dollars must say dollars, and every entry naming a
 // percentage must say what it is a percentage OF.
 function moneyAndPercentColumnsNameTheirUnits() {
-  const cx = fs.readFileSync(path.join(ROOT, 'public/constructing.js'), 'utf8');
+  const cx = fs.readFileSync(path.join(ROOT, 'public/construct.js'), 'utf8');
   const block = cx.slice(cx.indexOf('const COL = {'), cx.indexOf('\n};', cx.indexOf('const COL = {')));
   const entries = [...block.matchAll(/^\s{2}(\w+):\s*'((?:[^'\\]|\\.)*)'/gm)].map((m) => [m[1], m[2]]);
   assert(entries.length >= 40, `the column key has only ${entries.length} entries — it should cover the tab`);

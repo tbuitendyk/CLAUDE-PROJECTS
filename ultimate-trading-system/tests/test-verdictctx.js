@@ -74,7 +74,7 @@ function theRouteForwardsTheContextPairs() {
 // And the caller must send them. A route that forwards a field nobody sends is
 // the same dead pipe from the other end.
 function theConstructingTabSendsTheContextPairs() {
-  const CX = fs.readFileSync(path.join(ROOT, 'public', 'constructing.js'), 'utf8')
+  const CX = fs.readFileSync(path.join(ROOT, 'public', 'construct.js'), 'utf8')
     .split('\n').filter((l) => !/^\s*\/\//.test(l)).join('\n');
   const i = CX.indexOf("post('api/bracketlab/null-verdict'");
   assert(i >= 0, 'the Constructing tab no longer reads the null verdict');

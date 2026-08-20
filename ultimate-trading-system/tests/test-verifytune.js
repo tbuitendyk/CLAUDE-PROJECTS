@@ -11,8 +11,8 @@ const path = require('path');
 const { assert } = require('./helpers');
 
 const ROOT = path.join(__dirname, '..');
-const UI = fs.readFileSync(path.join(ROOT, 'public', 'constructing.js'), 'utf8');
-const HTML = fs.readFileSync(path.join(ROOT, 'public', 'constructing.html'), 'utf8');
+const UI = fs.readFileSync(path.join(ROOT, 'public', 'construct.js'), 'utf8');
+const HTML = fs.readFileSync(path.join(ROOT, 'public', 'construct.html'), 'utf8');
 
 module.exports = {
   theNullVerdictIsReadNotDumped() {

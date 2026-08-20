@@ -107,7 +107,7 @@ const COL = {
   flatUsd: 'US dollars this bucket made at a FLAT clip — every trade the same size.',
   ladderUsd: 'US dollars the same bucket made with the declared ladder applied. The difference is the whole question.',
   // greenlight
-  glId: 'the greenlight id. It is the config\'s identity on the Trading tab.',
+  glId: 'the greenlight id. It is the config\'s identity on the Trade tab.',
   campaign: 'the named line of work the source sweep belonged to.',
   why: 'the reason recorded at greenlight time. It is the decision record and is not editable afterwards.',
   minted: 'when the config was greenlighted, UTC.',
@@ -726,7 +726,7 @@ async function drawBoards() {
       || (b.pnl || 0) - (a.pnl || 0));
   }
   const sel = getSelRow(doc);
-  // VS NULLS, from the CENSUS. constructing.js read l.vsNulls, a field nothing
+  // VS NULLS, from the CENSUS. construct.js read l.vsNulls, a field nothing
   // writes — the column had always shown "—" while looking like a measurement.
   // The board that works builds it from doc.edgeCensus, where the dealt-vote
   // copies record their held-back money (app.js:2419).
@@ -1802,7 +1802,7 @@ async function drawTune() {
          It is a box on this page now, sent with every apply and every clear,
          and editable on its own afterwards. -->
     <div class="row" style="margin-bottom:.4rem">
-      <label class="f" title="why you chose this. Saved with the number and shown on the Trading screen beside it. Yours to write and to change at any time.">your reason for this choice<input id="stopWhy" type="text" maxlength="300" placeholder="why this stop, or why none" value="${esc(applied.why || '')}" style="width:32rem"></label>
+      <label class="f" title="why you chose this. Saved with the number and shown on the Trade screen beside it. Yours to write and to change at any time.">your reason for this choice<input id="stopWhy" type="text" maxlength="300" placeholder="why this stop, or why none" value="${esc(applied.why || '')}" style="width:32rem"></label>
       <button id="stopWhySave" title="save the reason on its own, leaving the stop exactly as it is">save the reason</button>
     </div>
     ${applied.chosen ? `<div class="note" style="margin-bottom:.4rem">on record: ${applied.stopPct != null ? pct(applied.stopPct) : 'no stop'}${applied.why ? ` — ${esc(applied.why)}` : ' — no reason recorded'}${applied.utc ? ` (${esc(String(applied.utc).slice(0, 10))}${applied.by ? ', ' + esc(applied.by) : ''})` : ''}</div>` : '<div class="note warn" style="margin-bottom:.4rem">no choice about the stop has been recorded yet</div>'}
@@ -1977,7 +1977,7 @@ async function drawGreenlight() {
   $('#view').innerHTML = `<div class="panel">
     <h3 style="margin-top:0">Greenlight — the decision that a config is fit to trade</h3>
     <p class="note">Records WHO/WHEN/WHY with the exact frozen config, engine version, and the campaign's whole
-      evidentiary chain. The config then appears on the Trading tab (both sides) for activation. Only greenlighted
+      evidentiary chain. The config then appears on the Trade tab (both sides) for activation. Only greenlighted
       configs ever trade — no hand-built live configs, ever.</p>
     ${sel ? `<div class="row" style="align-items:flex-end">
       <span class="note" style="flex:1 1 auto;min-width:0">selected: <b>${esc(comboOf(sel))}</b> ${esc(sel.geometry)} ${esc(sel.decision)} q${sel.quorum} ${sel.tHours}h
@@ -1996,14 +1996,14 @@ async function drawGreenlight() {
       <td class="muted">${esc(g.campaign || '—')}</td><td style="text-align:left" class="muted">${esc((g.why || '').slice(0, 90))}</td>
       <td>${esc((g.createdUtc || '').slice(0, 16))}</td><td>${g.revoked ? '<span class="warn">nuked</span>' : '<span class="pos">greenlighted</span>'}</td></tr>`).join('') || '<tr><td colspan="6" class="empty">none yet</td></tr>'}
     </tbody></table>
-    <p class="note">activation, deactivation and nuking live on the <a href="trading.html">Trading tab</a>.</p></div>`;
+    <p class="note">activation, deactivation and nuking live on the <a href="trade.html">Trade tab</a>.</p></div>`;
   const go = $('#glGo');
   if (go) go.onclick = async () => {
     const why = $('#glWhy').value.trim();
     if (!why) { alert('why is required — the decision record is the point.'); return; }
     if (!confirm(`Greenlight ${sel.trade} ${sel.geometry} (${$('#glTarget').value} cell)?`)) return;
     const out = await tryPost('api/live/greenlight', { runId: doc.id, target: $('#glTarget').value, why });
-    if (out) { alert(`Greenlighted: ${out.greenlight.id}\n\nIt is now on the Trading tab, both sides.`); drawGreenlight(); }
+    if (out) { alert(`Greenlighted: ${out.greenlight.id}\n\nIt is now on the Trade tab, both sides.`); drawGreenlight(); }
   };
 }
 

@@ -38,7 +38,7 @@ const PROBE = 'harness-probe-id';
 // Anything not listed is probed BOTH ways and passes if EITHER verb resolves —
 // so a wrong guess here can never manufacture a failure.
 function extractEndpoints() {
-  const files = ['public/constructing.js', 'public/trading.html'];
+  const files = ['public/construct.js', 'public/trade.html'];
   const found = new Map();
   for (const f of files) {
     const src = fs.readFileSync(path.join(ROOT, f), 'utf8')

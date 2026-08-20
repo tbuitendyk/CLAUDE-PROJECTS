@@ -24,7 +24,7 @@ const path = require('path');
 const ROOT = path.join(__dirname, '..');
 const boxview = require(path.join(ROOT, 'lib', 'boxview'));
 const liveview = require(path.join(ROOT, 'lib', 'live', 'view'));
-const HTML = fs.readFileSync(path.join(ROOT, 'public', 'trading.html'), 'utf8');
+const HTML = fs.readFileSync(path.join(ROOT, 'public', 'trade.html'), 'utf8');
 
 // ---- margin level reaches both views ----------------------------------------
 

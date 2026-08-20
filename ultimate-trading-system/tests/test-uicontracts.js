@@ -25,12 +25,12 @@ const { assert } = require('./helpers');
 const ROOT = path.join(__dirname, '..');
 // Strip line comments before matching. A previous test in this repo passed by
 // matching the very sentence that DESCRIBED the bug it was meant to forbid.
-const CX = fs.readFileSync(path.join(ROOT, 'public', 'constructing.js'), 'utf8')
+const CX = fs.readFileSync(path.join(ROOT, 'public', 'construct.js'), 'utf8')
   .split('\n').filter((l) => !/^\s*\/\//.test(l)).join('\n');
 
 function drawBody() {
   const i = CX.indexOf('\nfunction draw() {');
-  assert(i >= 0, 'constructing.js no longer defines draw()');
+  assert(i >= 0, 'construct.js no longer defines draw()');
   return CX.slice(i, CX.indexOf('\n}', i));
 }
 
@@ -80,7 +80,7 @@ function runIdsArePickedFromTheServersListNeverTyped() {
 
 function theTabActuallyCallsTheEndpointThatFeedsThePickers() {
   assert(/api\/bracketlab\/verdict-sources/.test(CX),
-    'constructing.js never calls verdict-sources — the pickers would be listing nothing');
+    'construct.js never calls verdict-sources — the pickers would be listing nothing');
   // scramble draws for Tool 1, real rows for Compare: the two filters are the
   // whole point of the endpoint, and a picker built without one offers runs the
   // tool cannot read.
@@ -109,7 +109,7 @@ module.exports = {
 };
 
 // ---- Trading tab ------------------------------------------------------------
-const LT = fs.readFileSync(path.join(ROOT, 'public', 'trading.html'), 'utf8')
+const LT = fs.readFileSync(path.join(ROOT, 'public', 'trade.html'), 'utf8')
   .replace(/<!--[\s\S]*?-->/g, '').split('\n').filter((l) => !/^\s*\/\//.test(l)).join('\n');
 
 // A RISK PARAMETER IS NEVER A LITERAL ON A SCREEN. The Setups table synthesises
@@ -244,7 +244,7 @@ module.exports.theDecisionHistoryShowsTenDaysAtOnce = theDecisionHistoryShowsTen
 // halves are required: recording a failure that nothing displays is not a
 // warning, and a banner nothing feeds can never appear.
 function anOutageBandsTheScreenInsteadOfRenderingAnEmptyState() {
-  for (const [name, src] of [['constructing.js', CX], ['trading.html', LT]]) {
+  for (const [name, src] of [['construct.js', CX], ['trade.html', LT]]) {
     assert(/THIS SCREEN IS INCOMPLETE/.test(src),
       `${name} has no outage banner — a failed read renders as "you have nothing"`);
     assert(/apiOr\s*\(/.test(src),
@@ -258,7 +258,7 @@ function anOutageBandsTheScreenInsteadOfRenderingAnEmptyState() {
 // response. If api() resolves a 500 body as data, apiOr never sees a failure
 // and the banner never fires — the exact silent path this replaced.
 function theFetchHelperTreatsANonOkResponseAsAFailure() {
-  for (const [name, src] of [['constructing.js', CX], ['trading.html', LT]]) {
+  for (const [name, src] of [['construct.js', CX], ['trade.html', LT]]) {
     assert(/(res|r)\.ok/.test(src) && /throw/.test(src),
       `${name}'s fetch helper does not throw on a non-2xx response, so an error body `
       + 'would be rendered as if it were data');

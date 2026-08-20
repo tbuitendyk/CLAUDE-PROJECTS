@@ -80,7 +80,7 @@ function goingLiveRequiresTheProfilesOwnSubAccount() {
 }
 
 function theScreenGatesRealOnCredentialsNotOnBeingThePilot() {
-  const html = fs.readFileSync(path.join(ROOT, 'public', 'trading.html'), 'utf8');
+  const html = fs.readFileSync(path.join(ROOT, 'public', 'trade.html'), 'utf8');
   assert.ok(/keyRefSet/.test(html),
     'the screen cannot see whether a config has its own sub-account, so it cannot gate honestly');
   assert.ok(!/await per-setup sub-account key routing \(G8\)/.test(html),
@@ -167,12 +167,12 @@ function theOwnerCanLiftAProfileHalt() {
   assert.ok(/setups\/:id\/unhalt/.test(routes), 'there is no way to clear a profile halt');
   assert.ok(/unhalt\|\$\{s\.id\}\|\$\{nonce\}/.test(routes),
     'the signature does not cover the setup id, so a clear for one profile could lift another\'s');
-  const html = fs.readFileSync(path.join(ROOT, 'public', 'trading.html'), 'utf8');
+  const html = fs.readFileSync(path.join(ROOT, 'public', 'trade.html'), 'utf8');
   assert.ok(/btnSetupUnhalt/.test(html), 'the profile screen offers no way out of its halt');
 }
 
 function theProfileScreenShowsItsReproduceCheck() {
-  const html = fs.readFileSync(path.join(ROOT, 'public', 'trading.html'), 'utf8');
+  const html = fs.readFileSync(path.join(ROOT, 'public', 'trade.html'), 'utf8');
   assert.ok(/<b>Reproduce-check:<\/b>/.test(html),
     'a profile screen never shows whether its decisions still reproduce');
 }

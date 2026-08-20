@@ -20,7 +20,7 @@ const ROOT = path.join(__dirname, '..');
 // One screen renders the daily decision history now — the duplicate for the
 // hardcoded config is gone. A NEW screen must be added here; an unlisted one
 // can silently reintroduce the window-start label.
-const SCREENS = ['public/trading.html'];
+const SCREENS = ['public/trade.html'];
 
 module.exports = {
   // The acting moment is window start + entryOffsetH, in UTC, to the hour.

@@ -14,7 +14,7 @@
 // a unit test is for. The fixture is not a claim about any real account; it is
 // the one arrangement in which right and wrong give different answers.
 //
-// It runs the SHIPPED function, lifted out of public/trading.html by name and
+// It runs the SHIPPED function, lifted out of public/trade.html by name and
 // brace-matched, the same way test-declaredset.js lifts rankDeclaredConfigs. A
 // copy would agree with itself (QC-148).
 const { assert } = require('./helpers');
@@ -24,7 +24,7 @@ const path = require('path');
 const ROOT = path.join(__dirname, '..');
 
 function loadDashTotals() {
-  const src = fs.readFileSync(path.join(ROOT, 'public', 'trading.html'), 'utf8');
+  const src = fs.readFileSync(path.join(ROOT, 'public', 'trade.html'), 'utf8');
   const start = src.indexOf('function dashTotals(');
   assert(start > 0,
     'dashTotals is gone — the Dashboard money is inline again, which puts it back '

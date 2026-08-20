@@ -907,15 +907,15 @@ async function main() {
 
   const visits = [];
   for (const t of CONSTRUCTING_TABS) {
-    visits.push({ label: `EMPTY      Constructing / ${t}`, url: `${BASE}/constructing.html`, storage: { 'cx-tab': t } });
+    visits.push({ label: `EMPTY      Constructing / ${t}`, url: `${BASE}/construct.html`, storage: { 'cx-tab': t } });
   }
   for (const b of TRADING_BRANCHES) {
     for (const s of TRADING_SUBS) {
-      visits.push({ label: `EMPTY      Trading / ${b} / ${s}`, url: `${BASE}/trading.html`, storage: { 'lt-branch': b, 'lt-sub': s } });
+      visits.push({ label: `EMPTY      Trading / ${b} / ${s}`, url: `${BASE}/trade.html`, storage: { 'lt-branch': b, 'lt-sub': s } });
     }
   }
   for (const t of CONSTRUCTING_TABS) {
-    visits.push({ label: `POPULATED  Constructing / ${t}`, url: `${BASE}/constructing.html`, storage: { 'cx-tab': t, 'cx-run': runId } });
+    visits.push({ label: `POPULATED  Constructing / ${t}`, url: `${BASE}/construct.html`, storage: { 'cx-tab': t, 'cx-run': runId } });
   }
   // A paper book to read, and a SEPARATE throwaway config to operate.
   //
@@ -1052,22 +1052,22 @@ async function main() {
 
   visits.push({
     label: 'VALUES     Constructing / boards',
-    url: `${BASE}/constructing.html`,
+    url: `${BASE}/construct.html`,
     storage: { 'cx-tab': 'boards', 'cx-run': runId },
     verify: (page, add) => verifyBoardNumbers(page, add, runId),
   });
   for (const t of CONSTRUCTING_TABS) {
-    visits.push({ label: `CLICKED    Constructing / ${t}`, url: `${BASE}/constructing.html`, storage: { 'cx-tab': t, 'cx-run': runId }, click: true });
+    visits.push({ label: `CLICKED    Constructing / ${t}`, url: `${BASE}/construct.html`, storage: { 'cx-tab': t, 'cx-run': runId }, click: true });
   }
   for (const b of TRADING_BRANCHES) {
     for (const s of TRADING_SUBS) {
-      visits.push({ label: `CLICKED    Trading / ${b} / ${s}`, url: `${BASE}/trading.html`, storage: { 'lt-branch': b, 'lt-sub': s }, click: true });
+      visits.push({ label: `CLICKED    Trading / ${b} / ${s}`, url: `${BASE}/trade.html`, storage: { 'lt-branch': b, 'lt-sub': s }, click: true });
     }
   }
   if (paperSetup) {
     visits.push({
       label: 'VALUES     Trading / paper / detail',
-      url: `${BASE}/trading.html`,
+      url: `${BASE}/trade.html`,
       storage: { 'lt-branch': 'paper', 'lt-sub': 'setups' },
       verify: async (page, add) => {
         // reach the detail page the way a person does: click the setup's row
@@ -1082,7 +1082,7 @@ async function main() {
   if (paperSetup) {
     visits.push({
       label: 'VALUES     Trading / paper / dash',
-      url: `${BASE}/trading.html`,
+      url: `${BASE}/trade.html`,
       storage: { 'lt-branch': 'paper', 'lt-sub': 'dash' },
       verify: (page, add) => verifyDashboardTotals(page, add, true),
     });
@@ -1090,7 +1090,7 @@ async function main() {
   if (paperSetup) {
     visits.push({
       label: 'ISOLATION  Trading / real / dash',
-      url: `${BASE}/trading.html`,
+      url: `${BASE}/trade.html`,
       storage: { 'lt-branch': 'real', 'lt-sub': 'dash' },
       verify: (page, add) => verifyRealBranchShowsNoPaperBook(page, add, paperSetup),
     });
@@ -1098,7 +1098,7 @@ async function main() {
   if (controlsConfig) {
     visits.push({
       label: 'CONTROLS   Trading / paper / configs',
-      url: `${BASE}/trading.html`,
+      url: `${BASE}/trade.html`,
       storage: { 'lt-branch': 'paper', 'lt-sub': 'configs' },
       verify: (page, add, dialogs) => verifyChannelControls(page, add, controlsConfig, dialogs),
     });
@@ -1107,7 +1107,7 @@ async function main() {
   if (realConfig) {
     visits.push({
       label: 'REAL-GATE  Trading / real / configs',
-      url: `${BASE}/trading.html`,
+      url: `${BASE}/trade.html`,
       storage: { 'lt-branch': 'real', 'lt-sub': 'configs' },
       verify: (page, add) => verifyRealChannelIsBlocked(page, add, realConfig),
     });
@@ -1117,7 +1117,7 @@ async function main() {
   // aborted) run, so nothing that reads run state should follow it.
   visits.push({
     label: 'LAUNCH     Constructing / sweep',
-    url: `${BASE}/constructing.html`,
+    url: `${BASE}/construct.html`,
     storage: { 'cx-tab': 'sweep', 'cx-run': runId },
     verify: (page, add, dialogs) => verifyLaunchAndStop(page, add, dialogs),
   });
@@ -1130,11 +1130,11 @@ async function main() {
   // missing token, so sampling a third of the surface is sampling — every view
   // is now rendered in light as well as dark (2026-08-18).
   for (const t of CONSTRUCTING_TABS) {
-    visits.push({ label: `LIGHT      Constructing / ${t}`, url: `${BASE}/constructing.html`, storage: { 'cx-tab': t, 'cx-run': runId, 'cx-theme': 'light' } });
+    visits.push({ label: `LIGHT      Constructing / ${t}`, url: `${BASE}/construct.html`, storage: { 'cx-tab': t, 'cx-run': runId, 'cx-theme': 'light' } });
   }
   for (const b of TRADING_BRANCHES) {
     for (const s of TRADING_SUBS) {
-      visits.push({ label: `LIGHT      Trading / ${b} / ${s}`, url: `${BASE}/trading.html`, storage: { 'lt-branch': b, 'lt-sub': s, 'lt-theme': 'light' } });
+      visits.push({ label: `LIGHT      Trading / ${b} / ${s}`, url: `${BASE}/trade.html`, storage: { 'lt-branch': b, 'lt-sub': s, 'lt-theme': 'light' } });
     }
   }
 

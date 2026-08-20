@@ -6,7 +6,7 @@
 // ("split70") — every Start sweep click failed, and no test noticed (owner,
 // 2026-08-16).
 //
-// These tests read the ACTUAL option values out of public/constructing.js and
+// These tests read the ACTUAL option values out of public/construct.js and
 // check them against the ACTUAL backend allow-lists, both extracted from source
 // rather than restated here. Restating the lists would make the test agree with
 // a copy of the contract instead of the contract.
@@ -21,7 +21,7 @@ const { assert } = require('./helpers');
 const { GEOMETRIES } = require('../lib/dataset');
 
 const ROOT = path.join(__dirname, '..');
-const SWEEP = fs.readFileSync(path.join(ROOT, 'public', 'constructing.js'), 'utf8');
+const SWEEP = fs.readFileSync(path.join(ROOT, 'public', 'construct.js'), 'utf8');
 const BATCH = fs.readFileSync(path.join(ROOT, 'lib', 'batch.js'), 'utf8');
 const INDEX = fs.readFileSync(path.join(ROOT, 'public', 'index.html'), 'utf8');
 

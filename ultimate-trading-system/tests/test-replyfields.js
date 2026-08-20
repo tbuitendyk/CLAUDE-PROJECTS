@@ -34,7 +34,7 @@ const read = (rel) => fs.readFileSync(path.join(ROOT, rel), 'utf8')
   .replace(/<!--[\s\S]*?-->/g, '')
   .split('\n').filter((l) => !/^\s*\/\//.test(l)).join('\n');
 
-const CX = read('public/constructing.js');
+const CX = read('public/construct.js');
 
 // Pull `<v>.<name>` reads out of a slice of page source.
 function fieldsRead(src, varName) {

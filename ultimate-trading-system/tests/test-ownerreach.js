@@ -16,7 +16,7 @@ const fs = require('fs');
 const path = require('path');
 
 const ROOT = path.join(__dirname, '..');
-const CX = fs.readFileSync(path.join(ROOT, 'public', 'constructing.js'), 'utf8');
+const CX = fs.readFileSync(path.join(ROOT, 'public', 'construct.js'), 'utf8');
 const APP = fs.readFileSync(path.join(ROOT, 'public', 'app.js'), 'utf8');
 const SERVER = fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8');
 
@@ -24,7 +24,7 @@ function everyStopWriteCarriesTheOwnersReason() {
   // No POST to stop-apply may omit `why`. Catching the shape generally rather
   // than the two known call sites: a third one added later would otherwise
   // silently reintroduce a script-only field.
-  for (const [file, src] of [['constructing.js', CX], ['app.js', APP]]) {
+  for (const [file, src] of [['construct.js', CX], ['app.js', APP]]) {
     // Capture to the end of the CALL, not to the first closing brace: a fetch
     // passes an options object whose `headers: {...},` closes early, which made
     // this stop reading before the body it was meant to inspect. A check that

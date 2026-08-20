@@ -23,7 +23,7 @@ const fs = require('fs');
 const path = require('path');
 
 const ROOT = path.join(__dirname, '..');
-const HTML = fs.readFileSync(path.join(ROOT, 'public', 'trading.html'), 'utf8');
+const HTML = fs.readFileSync(path.join(ROOT, 'public', 'trade.html'), 'utf8');
 const ROUTES = fs.readFileSync(path.join(ROOT, 'lib', 'live', 'routes.js'), 'utf8');
 
 function theSignedPayloadCoversTheSetup() {

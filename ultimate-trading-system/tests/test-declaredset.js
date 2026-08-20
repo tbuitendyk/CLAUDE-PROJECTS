@@ -129,7 +129,7 @@ module.exports = {
 
   // The screen must offer the ticks and send them, or the feature is unreachable.
   theSweepFormOffersAndSendsThePermuteTicks() {
-    const ui = fs.readFileSync(path.join(ROOT, 'public', 'constructing.js'), 'utf8');
+    const ui = fs.readFileSync(path.join(ROOT, 'public', 'construct.js'), 'utf8');
     for (const id of ['swPermDecEntry', 'swPermDecGate', 'swPermDecD', 'swPermDecT',
       'swPermDecTrail', 'swPermDecArm', 'swPermDecAgree']) {
       assert.ok(new RegExp(`id="${id}"`).test(ui), `the replication row must offer #${id}`);
@@ -145,7 +145,7 @@ module.exports = {
   // It was absent for two days: the tick worked, the run recorded the rows, and
   // the tab showed nothing (owner, 2026-08-17).
   theBoardShowsTheReplicationTable() {
-    const ui = fs.readFileSync(path.join(ROOT, 'public', 'constructing.js'), 'utf8');
+    const ui = fs.readFileSync(path.join(ROOT, 'public', 'construct.js'), 'utf8');
     assert.ok(/doc\.replication/.test(ui), 'the Boards section must read the recorded replication rows');
     assert.ok(/rows = all\.filter\(\(r\) => r\.nullDealSeed == null\)/.test(ui),
       'null copies score the declared cell too and must never enter the cross-asset count');
@@ -160,7 +160,7 @@ module.exports = {
   // ONE config gets the table on its own; MANY get a ranked, openable list FIRST
   // (owner, 2026-08-17) — with dozens of configs a wall of tables is unreadable.
   oneConfigGetsATableAndManyGetARankedList() {
-    const ui = fs.readFileSync(path.join(ROOT, 'public', 'constructing.js'), 'utf8');
+    const ui = fs.readFileSync(path.join(ROOT, 'public', 'construct.js'), 'utf8');
     assert.ok(/if \(scored\.length === 1\)/.test(ui), 'a single config keeps the plain table');
     assert.ok(/Replication — the declared config on every asset/.test(ui), 'under its own heading');
     assert.ok(/declared configs, ranked/.test(ui), 'many configs get a ranked list');
@@ -177,7 +177,7 @@ module.exports = {
   // Watched failing 2026-08-17: restoring `a.p - b.p` as the first key fails
   // here, which is exactly the defect that shipped before the owner caught it.
   noSortKeyIsBuiltFromAStatisticTheRegisterBans() {
-    const ui = fs.readFileSync(path.join(ROOT, 'public', 'constructing.js'), 'utf8');
+    const ui = fs.readFileSync(path.join(ROOT, 'public', 'construct.js'), 'utf8');
     const at = ui.indexOf('scored.sort(');
     assert.ok(at > 0, 'the replication ranking must still exist');
     // the comparator plus the byNull helper it delegates its first key to — a
@@ -204,7 +204,7 @@ module.exports = {
   // A banned statistic must not be computed for display either, once nothing
   // legitimately needs it — dead code that produces one is an invitation.
   theBannedStatisticIsNotComputedAtAll() {
-    const ui = fs.readFileSync(path.join(ROOT, 'public', 'constructing.js'), 'utf8');
+    const ui = fs.readFileSync(path.join(ROOT, 'public', 'construct.js'), 'utf8');
     assert.ok(!/const binom = /.test(ui), 'the binomial helper must be gone, not merely unused');
     // NOT banned, and must not be "cleaned up" by a later reader: the
     // 1-in-(N+1) RESOLUTION FLOOR of N measured null draws. That is the
@@ -218,7 +218,7 @@ module.exports = {
   // The columns carry their reading rules, or a number is shown that will be
   // misread — these four are misread in opposite directions if swapped.
   everyRankedColumnCarriesItsReadingRule() {
-    const ui = fs.readFileSync(path.join(ROOT, 'public', 'constructing.js'), 'utf8');
+    const ui = fs.readFileSync(path.join(ROOT, 'public', 'construct.js'), 'utf8');
     assert.ok(/only sanctioned yardstick \(QC-7\)/.test(ui), 'the measured null must name its rule');
     assert.ok(/knife-edge fit/.test(ui), 'plateau width must say what it guards against');
     assert.ok(/CONTEXT, NOT EVIDENCE/.test(ui), 'the across-asset share must be labelled context');
@@ -227,8 +227,8 @@ module.exports = {
 
   // Each tab remembers its OWN theme (owner, 2026-08-17).
   constructingRemembersItsOwnTheme() {
-    const ui = fs.readFileSync(path.join(ROOT, 'public', 'constructing.js'), 'utf8');
-    const trading = fs.readFileSync(path.join(ROOT, 'public', 'trading.html'), 'utf8');
+    const ui = fs.readFileSync(path.join(ROOT, 'public', 'construct.js'), 'utf8');
+    const trading = fs.readFileSync(path.join(ROOT, 'public', 'trade.html'), 'utf8');
     assert.ok(/getItem\('cx-theme'\)/.test(ui) && /setItem\('cx-theme'/.test(ui),
       'Constructing must read and write its own theme key');
     assert.ok(!/lt-theme/.test(ui), 'and must no longer share the Trading page key');
@@ -238,7 +238,7 @@ module.exports = {
   // A permute tick belongs to its box and must vanish with it — left alone they
   // were ticks for controls that were not on screen (owner, 2026-08-17).
   permuteTicksHideWithTheBoxTheyBelongTo() {
-    const ui = fs.readFileSync(path.join(ROOT, 'public', 'constructing.js'), 'utf8');
+    const ui = fs.readFileSync(path.join(ROOT, 'public', 'construct.js'), 'utf8');
     for (const id of ['swPermDecGateWrap', 'swPermDecDWrap', 'swPermDecTrailWrap', 'swPermDecArmWrap']) {
       assert.ok(new RegExp(`id="${id}"`).test(ui), `the tick needs its own wrapper #${id}`);
       assert.ok(new RegExp(`#${id}`).test(ui.slice(ui.indexOf('const syncDecEntry'))),
@@ -270,14 +270,14 @@ module.exports = {
 // arbitrary rather than merely wrong. The source-reading tests all passed. They
 // saw the right words in the right order (audit 2026-08-17).
 //
-// These run the SHIPPED function, lifted out of public/constructing.js by name.
+// These run the SHIPPED function, lifted out of public/construct.js by name.
 // Not a copy of it — a copy would agree with itself.
 //
 // Watched failing 2026-08-17: grouping from the real-only rows again makes
 // theMeasuredNullIsActuallyMeasured report null, and restoring the -1 first key
 // makes theOrderFallsThroughToPlateauWidthWhenNoNullExists return C,B,A.
 function loadRanker() {
-  const src = fs.readFileSync(path.join(ROOT, 'public', 'constructing.js'), 'utf8');
+  const src = fs.readFileSync(path.join(ROOT, 'public', 'construct.js'), 'utf8');
   const start = src.indexOf('function rankDeclaredConfigs(');
   assert.ok(start > 0, 'rankDeclaredConfigs is gone — the ranking is inline again and untestable');
   // Walk the PARAMETER list first — it destructures, so its own braces would

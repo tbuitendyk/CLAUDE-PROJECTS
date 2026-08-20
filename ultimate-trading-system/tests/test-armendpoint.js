@@ -172,7 +172,7 @@ module.exports.theArmRouteRefusesAContradictoryArmedFalse = async function () {
 };
 
 module.exports.theStopButtonPostsToTheDisarmRoute = async function () {
-  const src = fs.readFileSync(path.join(ROOT, 'public', 'trading.html'), 'utf8')
+  const src = fs.readFileSync(path.join(ROOT, 'public', 'trade.html'), 'utf8')
     .split('\n').filter((l) => !/^\s*\/\//.test(l)).join('\n');
   assert(/api\/pilot\/disarm/.test(src),
     'the Trading tab never calls api/pilot/disarm — its STOP button cannot stop anything');
@@ -228,7 +228,7 @@ module.exports.theUnhaltRequestIsSingleUse = async function () {
 };
 
 module.exports.theTradingTabOffersTheControlOnlyWhenHalted = function () {
-  const src = fs.readFileSync(path.join(ROOT, 'public', 'trading.html'), 'utf8')
+  const src = fs.readFileSync(path.join(ROOT, 'public', 'trade.html'), 'utf8')
     .replace(/<!--[\s\S]*?-->/g, '').split('\n').filter((l) => !/^\s*\/\//.test(l)).join('\n');
   // The box-level halt banner moved out of the one hardcoded config's screen and
   // into boxControls(), which every real config's screen renders — the halt

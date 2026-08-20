@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Trading</title>
+<title>Trade</title>
 <style>
   /* THEME TOKENS (NEXT-RELEASE points 24/25): dark = the F1 pilot's compact
      technical style (the baseline); light = the Bracket Lab register. One
@@ -86,18 +86,34 @@
      so 11 rows is ~310px; 22rem leaves headroom without the panel dominating
      the page on a laptop. */
   .scrollbox { max-height:22rem; overflow-y:auto; border:1px solid var(--line); border-radius:6px; }
+  /* TOP-LEVEL NAVIGATION (THIS-RELEASE point 17). The three tabs of the system,
+     carried on every page. Lives inside the existing site band, which is
+     already display:flex + align-items:center, so it lines up by construction
+     rather than by nudging (CLAUDE.md RULE FOUR). Deliberately NOT the .tab
+     class: that one names the sections inside a page, and two identical rows
+     of tabs would say the wrong thing about the hierarchy. */
+  .toptabs { display:flex; gap:.3rem; margin-left:.5rem; }
+  .toptab { text-decoration:none; color:var(--dim); background:var(--tabbg);
+            border:1px solid var(--line); border-radius:6px; padding:.25rem .75rem;
+            font-size:.82rem; line-height:1.35; }
+  .toptab:hover { border-color:var(--accent); }
+  .toptab.on { background:var(--tabon); color:var(--fg); font-weight:600; border-color:var(--accent); }
 </style>
 </head>
 <body>
   <!-- site nav (owner): portal home + classifier home, this page's own tokens -->
   <div class="row" style="border-bottom:1px solid var(--line); padding-bottom:.55rem; margin-bottom:.8rem; font-size:.85rem">
     <a href="https://www.buitendyk.ca/" style="text-decoration:none; font-weight:700; color:var(--fg)">buitendyk<span style="color:var(--accent)">.ca</span></a>
-    <span class="muted">/ <a href="index.html" style="text-decoration:none; color:inherit">general classifier</a> / trading</span>
+    <span class="muted">/ ultimate trading system</span>
+    <nav class="toptabs">
+    <a class="toptab" href="setup.html">Setup</a>
+    <a class="toptab" href="construct.html">Construct</a>
+    <a class="toptab on" href="trade.html">Trade</a>
+    </nav>
     <div class="spacer"></div>
-    <a href="index.html" style="text-decoration:none; border:1px solid var(--line); border-radius:6px; padding:.25rem .6rem; color:var(--fg); background:var(--tile)">Back</a>
   </div>
   <div class="row">
-    <h1 style="margin:0">Trading</h1>
+    <h1 style="margin:0">Trade</h1>
     <span id="utcClock" class="muted" title="all system times are UTC" style="font-variant-numeric:tabular-nums">—</span>
     <div class="spacer"></div>
     <button class="themebtn" id="themebtn">◐ theme</button>
@@ -149,7 +165,7 @@ const paperBadge='<span class="badge b-paper" title="paper — not real money">p
 // operator does next. This page had 67 headings and not one of them said what it
 // held. Written once here so the same word means the same thing on every table.
 const TH={
-  config:'the greenlighted configuration — the entity both sides trade. Minted on the Constructing tab and never edited here.',
+  config:'the greenlighted configuration — the entity both sides trade. Minted on the Construct tab and never edited here.',
   pair:'the TRADED pair. On a three-asset committee the other two are context only — nothing is bought or sold in them.',
   campaign:'the named line of work the sweep behind this config belonged to. Blank means it was not filed under one.',
   why:'the reason recorded at greenlight time, in the words of whoever cleared it. It is the decision record and cannot be edited afterwards.',
@@ -357,7 +373,7 @@ const chanOf=(cfg)=>cfg&&cfg.channels?cfg.channels[branch==='paper'?'paper':'rea
 async function drawConfigs(){
   const { configs }=await fetchConfigs();
   if(!configs.length){ $('#view').innerHTML=`<div class="panel empty">No greenlighted configs yet. Configs are minted on the
-    Constructing tab: sweep → verify → tune → <b>Greenlight</b>. They then appear here on both sides.</div>`; return; }
+    Construct tab: sweep → verify → tune → <b>Greenlight</b>. They then appear here on both sides.</div>`; return; }
   $('#view').innerHTML=`<div class="panel"><table><thead><tr>
     ${th('config','config')}${th('pair','pair')}${th('campaign','campaign')}${th('why','why','text-align:left')}${th('status','status')}<th></th><th></th></tr></thead><tbody>
     ${configs.map(g=>{
