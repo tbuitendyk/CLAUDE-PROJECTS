@@ -1,0 +1,59 @@
+You can only ever set up LTCUSDT, and the reason for that is out of date
+
+tl;dr I found one more thing blocking you, and it is the same kind as the rest.
+The software refuses to let you create a live setup on any coin except LTCUSDT.
+The reason it gives is a limitation I removed two days ago, so the refusal is
+now based on something that is no longer true. I have not changed it, because
+the real limit is on your exchange account rather than in the code and I would
+rather you decide which way to fix it.
+
+WHAT HAPPENS TODAY
+
+If you try to run a setup on any coin other than LTCUSDT, it is refused before
+it starts. The check that refuses it carries this note, written when it was
+true: the trading program only handles LTCUSDT, so anything else would be
+rejected by the machine — better to refuse it here than let it fail there.
+
+That was correct at the time. It is not correct now. When I rebuilt the trading
+program so each setup could have its own sub-account, I also gave it its own
+coin. It handles whatever coin it is handed. The old single-coin setting still
+exists but only as a fallback that nothing uses.
+
+So the gate is enforcing a rule against a limit that no longer exists.
+
+WHY I DID NOT JUST OPEN IT UP
+
+Because the real limit moved rather than disappeared. Trading a second coin
+needs that coin enabled and funded for borrowing on the sub-account at Binance.
+That is a fact about your account, not about this code. If I simply widened the
+list, you would be able to start a setup that the exchange then refused — I
+would have traded a clear "no" now for a confusing failure later, which is
+worse.
+
+YOUR CALL, TWO WAYS
+
+1. Make the list yours. It becomes a field you edit per trading machine: you
+   say which coins that machine serves. Small change, in your hands today, and
+   it matches how everything else now works.
+
+2. Ask the exchange instead. The machine reports which coins are actually
+   enabled for borrowing on its sub-accounts, and the list is built from that.
+   No typed-in list anywhere, and it cannot go stale the way this one did.
+
+Option 2 is the better build and removes the last typed-in coin list from the
+live path. Option 1 is quicker and unblocks you now. They are not exclusive —
+1 then 2 is reasonable.
+
+WHERE EVERYTHING ELSE STANDS
+
+Your live setup is running normally. The safety check that was examining nothing
+picked up its first decision at 02:08 yesterday and is now checking properly, so
+your positions are no longer unverified — that resolved on its own exactly as I
+said it would. Your rename went through to every screen. The engine still runs
+with no protective stop, recorded as your decision.
+
+Nothing else is waiting on me. Two things are waiting on you whenever you want
+them: writing your own wording into the stop reason box on the Tune tab, and
+this coin-list decision.
+
+c.
