@@ -1323,5 +1323,5 @@ app.use((err, req, res, next) => {
 });
 
 app.listen(PORT, '127.0.0.1', () => {
-  console.log(`general-classifier listening on 127.0.0.1:${PORT}`);
+  console.log(`ultimate-trading-system listening on 127.0.0.1:${PORT}`);
 });

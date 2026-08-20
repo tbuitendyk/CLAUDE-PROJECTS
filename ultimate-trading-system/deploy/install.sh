@@ -1,21 +1,29 @@
 #!/usr/bin/env bash
-# Installs the General Classifier service on a Debian/Ubuntu VPS.
+# Installs the Ultimate Trading System on a Debian/Ubuntu VPS.
 #
-# Usage (run from inside this sub-project directory, as root):
-#   cd claude-projects/general-classifier
+# Usage (as root, from inside this sub-project directory):
+#   cd claude-projects/ultimate-trading-system
 #   sudo bash deploy/install.sh
 #
-# What it does (idempotent -- safe to re-run for upgrades):
-#   1. Ensures Node.js >= 18 (NodeSource 20 LTS when the system node is too old).
-#   2. Creates an unprivileged 'classifier' system user and /opt/general-classifier.
-#   3. Syncs the project there (preserving data/, the Binance month cache) and
-#      installs production npm dependencies (express only -- no native builds).
-#   4. Seeds /etc/general-classifier/env from deploy/env.example (only if absent).
-#   5. Installs, enables and (re)starts the systemd unit on 127.0.0.1:8093.
+# THE PREVIOUS GENERATION KEEPS RUNNING. A separate installation of the older
+# app lives at /opt/general-classifier, as unit `general-classifier`, on port
+# 8093, and it holds the owner's live trading and paper books. NOTHING in this
+# script writes to that directory, that unit, that env file or that port. The
+# only thing it ever does with the old installation is READ its candle cache,
+# once, to seed this one (see "candle cache" below).
 #
-# The public face is the nginx location /classifier/ on the website branch
-# (www.buitendyk.ca), which proxies to 8093 behind the site's Basic Auth.
-# This script does not touch nginx -- ship that via deploy-website.
+# What it does (idempotent -- safe to re-run for upgrades):
+#   1. Ensures Node.js >= 18.
+#   2. Creates an unprivileged 'uts' system user and /opt/ultimate-trading-system.
+#   3. Syncs the project there, preserving data/, and installs npm deps.
+#   4. Seeds the candle cache from the previous installation the FIRST time only
+#      (THIS-RELEASE point 15: the downloaded candle files are kept, everything
+#      else starts empty).
+#   5. Seeds /etc/ultimate-trading-system/env from deploy/env.example if absent.
+#   6. Installs, enables and (re)starts the unit on 127.0.0.1:8094.
+#
+# The public face is the nginx location /uts/ on the website branch, which ships
+# separately via deploy-website. This script does not touch nginx.
 set -euo pipefail
 
 if [[ $EUID -ne 0 ]]; then
@@ -24,22 +32,39 @@ if [[ $EUID -ne 0 ]]; then
 fi
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-INSTALL_DIR="/opt/general-classifier"
-SERVICE_USER="classifier"
-ENV_FILE="/etc/general-classifier/env"
+INSTALL_DIR="/opt/ultimate-trading-system"
+SERVICE_USER="uts"
+SERVICE_NAME="ultimate-trading-system"
+ENV_FILE="/etc/ultimate-trading-system/env"
+# Read-only source for the one-time candle seed. Never written to.
+LEGACY_CACHE="/opt/general-classifier/data/cache"
+
+# A guard, not a formality: every path this script writes is derived from the
+# constants above, and every one of them must differ from the previous
+# generation's. If a later edit ever makes them collide, stop before touching
+# anything rather than discover it by taking the running system down.
+for forbidden in /opt/general-classifier /etc/general-classifier; do
+  case "${INSTALL_DIR}:${ENV_FILE}" in
+    *"${forbidden}"*) echo "REFUSING: install paths collide with the running previous generation (${forbidden})" >&2; exit 1;;
+  esac
+done
+if [[ "${SERVICE_NAME}" == "general-classifier" ]]; then
+  echo "REFUSING: service name collides with the running previous generation" >&2; exit 1
+fi
 
 echo "==> Installing system packages"
-# apt update must not kill a code deploy: third-party repos rot (the old
-# NodeSource node_20.x list now 403s) while the packages this needs are
-# long since installed. Try the update, then verify the tools exist.
+# apt update must not kill a code deploy: third-party repos rot while the
+# packages this needs are long since installed. Try, then verify the tools exist.
 apt-get update -qq || echo "    apt-get update failed (stale third-party repo?) — continuing with installed packages"
 apt-get install -y --no-install-recommends rsync ca-certificates curl \
   || { command -v rsync >/dev/null && command -v curl >/dev/null && echo "    apt install failed but rsync/curl present — continuing"; }
 
 NODE_MAJOR="$(node -v 2>/dev/null | sed -n 's/^v\([0-9]*\).*/\1/p' || true)"
 if [[ -z "${NODE_MAJOR}" || "${NODE_MAJOR}" -lt 18 ]]; then
+  # Deliberately NOT upgrading node when a good-enough one is present: the
+  # previous generation runs on the same interpreter, and replacing it under a
+  # live service is exactly the kind of collateral this install must not cause.
   echo "==> Installing Node.js 20 from NodeSource (system node: ${NODE_MAJOR:-none})"
-  apt-get remove -y nodejs npm >/dev/null 2>&1 || true
   curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
   apt-get install -y nodejs
 fi
@@ -54,6 +79,22 @@ rsync -a --delete \
   --exclude '.git' --exclude 'node_modules' --exclude 'data' --exclude '.env' \
   "${REPO_DIR}/" "${INSTALL_DIR}/"
 mkdir -p "${INSTALL_DIR}/data"
+
+# ---- candle cache: carried once, and nothing else (THIS-RELEASE point 15) ----
+# The point says the downloaded candle files are kept and every other trace of
+# the previous project goes. So this copies ONLY data/cache, only when this
+# installation has none, and reads the source read-only. Run records,
+# greenlights, setups, journals and book state are deliberately not copied:
+# this system starts from zero use.
+if [[ ! -d "${INSTALL_DIR}/data/cache" && -d "${LEGACY_CACHE}" ]]; then
+  echo "==> Seeding the candle cache from ${LEGACY_CACHE} (one time; nothing else is copied)"
+  mkdir -p "${INSTALL_DIR}/data/cache"
+  rsync -a "${LEGACY_CACHE}/" "${INSTALL_DIR}/data/cache/"
+  echo "    seeded $(find "${INSTALL_DIR}/data/cache" -type f | wc -l) cached file(s)"
+else
+  echo "==> Candle cache already present (or no previous cache to read) — leaving it alone"
+fi
+
 chown -R "${SERVICE_USER}:${SERVICE_USER}" "${INSTALL_DIR}"
 
 echo "==> Installing npm dependencies"
@@ -70,23 +111,35 @@ chown "root:${SERVICE_USER}" "${ENV_FILE}"
 chmod 640 "${ENV_FILE}"
 
 echo "==> Installing and starting the systemd unit"
-cp "${REPO_DIR}/deploy/general-classifier.service" /etc/systemd/system/general-classifier.service
+cp "${REPO_DIR}/deploy/${SERVICE_NAME}.service" "/etc/systemd/system/${SERVICE_NAME}.service"
 systemctl daemon-reload
-systemctl enable general-classifier
-systemctl restart general-classifier
-sleep 1
-systemctl --no-pager --lines 5 status general-classifier || true
+systemctl enable "${SERVICE_NAME}"
+systemctl restart "${SERVICE_NAME}"
+sleep 2
+systemctl --no-pager --lines 5 status "${SERVICE_NAME}" || true
+
+echo "==> Health check"
+PORT_IN_USE="$(sed -n 's/^PORT=//p' "${ENV_FILE}" | head -1)"
+curl -sf "http://127.0.0.1:${PORT_IN_USE:-8094}/api/healthz" >/dev/null \
+  && echo "    healthz OK on 127.0.0.1:${PORT_IN_USE:-8094}" \
+  || { echo "    healthz FAILED on 127.0.0.1:${PORT_IN_USE:-8094}" >&2; exit 1; }
+
+echo "==> Confirming the previous generation is still up"
+systemctl is-active --quiet general-classifier \
+  && echo "    general-classifier: still active (untouched)" \
+  || echo "    general-classifier: NOT active — it was not touched by this script, but check it"
 
 cat <<EOF
 
 ==============================================================================
 Install complete.
 
-  1. The public URL https://www.buitendyk.ca/classifier/ needs the nginx
-     location from the website branch (ships via deploy-website). Until
-     then the app is only reachable locally on 127.0.0.1:8093.
+  Service : ${SERVICE_NAME} on 127.0.0.1:${PORT_IN_USE:-8094}
+  Files   : ${INSTALL_DIR}
+  Env     : ${ENV_FILE}
 
-  2. Sanity check:
-       curl -s http://127.0.0.1:8093/api/healthz
+  The public URL https://www.buitendyk.ca/uts/ needs the nginx location from
+  the website branch (ships via deploy-website). Until then the app is only
+  reachable locally.
 ==============================================================================
 EOF

@@ -1,14 +1,14 @@
 [Unit]
-Description=General Classifier (Binance weekly-chunk classifier + web UI)
+Description=Ultimate Trading System (Construct + Trade, deterministic; no AI in any path)
 After=network-online.target
 Wants=network-online.target
 
 [Service]
 Type=simple
-User=classifier
-Group=classifier
-WorkingDirectory=/opt/general-classifier
-EnvironmentFile=/etc/general-classifier/env
+User=uts
+Group=uts
+WorkingDirectory=/opt/ultimate-trading-system
+EnvironmentFile=/etc/ultimate-trading-system/env
 ExecStart=/usr/bin/node server.js
 Restart=on-failure
 RestartSec=5
@@ -17,7 +17,7 @@ NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=true
-ReadWritePaths=/opt/general-classifier/data
+ReadWritePaths=/opt/ultimate-trading-system/data
 
 [Install]
 WantedBy=multi-user.target
