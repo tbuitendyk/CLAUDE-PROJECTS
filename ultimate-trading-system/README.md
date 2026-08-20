@@ -39,14 +39,19 @@ which may run at the same time.
 
 ## The screens
 
-- **Constructing** — the guided narrowing flow, in the order the work is
+- **Setup** &mdash; the front door. Account and system settings; deliberately
+  empty for now.
+- **Construct** &mdash; the guided narrowing flow, in the order the work is
   actually done: **Data**, **Sweep**, **Boards**, **Verify**, **History**,
   **Tune**, **Greenlight**.
-- **Trading** — every greenlighted configuration on two design-identical
+- **Trade** &mdash; every greenlighted configuration on two design-identical
   sides, **Paper Books** and **Live Trading**, each carrying **Dashboard**,
   **Greenlights**, **Setups**, **Setup detail** and **LIVE**.
-- **Research**, **Bracket lab**, **Paper books** — the earlier generation.
-  Retiring in the current release; see `THIS-RELEASE.md`.
+
+An earlier generation carried three more screens &mdash; a single-run
+classifier, the sweep workbench they were built from, and standalone paper
+books. They were removed in this release along with everything only they used;
+what they shared with Construct stayed.
 
 ## Layout
 
@@ -65,18 +70,18 @@ lib/bracketwork.js   the sweep's unit of work, identical on main or worker
 lib/planted.js       the planted-pattern calibration check
 lib/paper.js         paper-trade arithmetic and the declared friction rates
 lib/campaign.js      the campaign name every run carries, grouping one cycle
-lib/batch.js         saved run records
+lib/batch.js         saved run records and the run launchers
 lib/historytuning.js history tuning; lib/httwo.js is the age-dial version
 lib/walkforward.js   walk-forward evaluation
-lib/tracker.js       frozen paper book; lib/dogebook.js is the second one
 
 lib/live/            the trading side: setups, greenlights, signal, channels,
                      catalog, execution targets, mirror, views, routes
 
-public/              the pages (prefix-relative URLs, light and dark aware)
+public/              setup.html, construct.html/.js, trade.html, style.css
+                     (prefix-relative URLs, light and dark aware)
 tests/               node tests/run.js
 tools/               calibration checks and one-off registration scripts
-deploy/              install.sh, systemd unit, env.example (PORT=8093)
+deploy/              install.sh, systemd unit, env.example (PORT=8094)
 ```
 
 ## Running locally
@@ -84,11 +89,21 @@ deploy/              install.sh, systemd unit, env.example (PORT=8093)
 ```
 npm ci
 npm test
-npm start           # http://127.0.0.1:8093
+npm start           # http://127.0.0.1:8094
 ```
 
 ## Deploying
 
-The deploy script on the `vps-access` branch clones or syncs this branch on
-the server and runs `deploy/install.sh`, which is idempotent. The nginx
-location and portal tile ship separately from the `website` branch.
+`deploy-uts.sh` on the `vps-access` branch clones or syncs this branch on the
+server and runs `deploy/install.sh`, which is idempotent. It installs to
+`/opt/ultimate-trading-system` as the unit `ultimate-trading-system` on
+127.0.0.1:8094, under its own service user.
+
+The previous generation of this app is still running on the same server, from
+its own directory as its own unit on 8093, and holds live trading and paper
+books. Nothing in the install touches it; the installer refuses to run if the
+paths or unit name ever collide, and asserts the old unit is still active
+before reporting success.
+
+The `/uts/` nginx location and the portal tile ship separately from the
+`website` branch.

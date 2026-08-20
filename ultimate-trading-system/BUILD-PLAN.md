@@ -32,12 +32,12 @@ Nothing writes to `/opt/general-classifier`, its service, or its data.
 
 ## Steps
 
-- [ ] 1. **Point 17 — the new front door.** `setup.html` created blank; the
+- [x] 1. **Point 17 — the new front door.** `setup.html` created blank; the
       tab strip built there carrying **Setup · Construct · Trade**; the same
       strip added to the other two pages, which have none today; page files
       renamed; labels changed. Done first so a front door exists before the
       old one is removed.
-- [ ] 2. **Point 14 — the cull.** The 18 departing-only endpoints removed from
+- [x] 2. **Point 14 — the cull.** The 18 departing-only endpoints removed from
       `server.js`, then every module, page and test reachable only from them.
       Traced and proved, never judged by name. Test suite green at the end.
 - [ ] 3. **Point 15 — the data.** The new install starts with an empty data
@@ -46,11 +46,11 @@ Nothing writes to `/opt/general-classifier`, its service, or its data.
 - [ ] 4. **Adversarial review.** Independent passes over the whole diff:
       correctness, dead references, the HTTP surface, and deployment safety —
       each finding fixed and re-checked.
-- [ ] 5. **Deploy.** New `deploy/install.sh` targeting
+- [~] 5. **Deploy.** New `deploy/install.sh` targeting
       `/opt/ultimate-trading-system`, service `ultimate-trading-system`, env
       `/etc/ultimate-trading-system/env`, port 8094. New `deploy-uts.sh` on
       `vps-access`. Branch merged to `ultimate-trading-system` and installed.
-- [ ] 6. **The tile.** nginx location and portal card on the `website` branch,
+- [~] 6. **The tile.** nginx location and portal card on the `website` branch,
       shipped with `deploy-website`, verified end to end.
 
 ## Decisions taken inside the loop
@@ -62,3 +62,38 @@ Nothing writes to `/opt/general-classifier`, its service, or its data.
 - Separation for point 14 is by ROUTE, not by file import. The import graph
   from server.js reaches almost everything and would have justified keeping all
   of it.
+
+## Found along the way — NOT fixed, left for the owner
+
+Per RULE SIX these are written down rather than acted on. None is in the named
+work.
+
+- **The two screens remember the theme separately.** Construct stores the
+  choice under one key and Trade under another, so switching to light on one
+  and moving to the other flips it back. The new Setup page deliberately shares
+  Construct's key rather than inventing a third. Before the tab strip existed
+  this was easy to miss; now the strip invites exactly the journey that shows
+  it.
+- **`/api/live/pairs` answers, but no screen asks it.** It is the one
+  definition of which pairs the system needs, and by RULE FIVE it should be
+  visible somewhere. Kept because it is UTS-pertinent and three operational
+  scripts use it.
+- **`lib/batch.js` still carries the departed screens' run kinds** — consensus,
+  metalens, permscreen, and the walk-forward run wrapper. Their routes are gone
+  so nothing reaches them over HTTP, but the code and its `kind` values remain
+  in the shared module. See the parked item below.
+- **The retired-vocabulary guard had one live hit** on the Construct screen once
+  it was pointed at the surviving pages. Reworded with the meaning unchanged;
+  reported because it is a screen string outside the named work.
+
+## Parked, with the reason
+
+- **Carving the departed run kinds out of `lib/batch.js`.** The file is ~3,300
+  lines and is the launcher for the surviving sweep, History and tuning work.
+  Two successive attempts to measure which symbols are exclusively the departed
+  screens' produced answers that were wrong in the convenient direction — the
+  first said "keep everything", the second over-connected almost as badly. The
+  five dead starters have no callers, but their helpers are interleaved with the
+  surviving path, and a wrong cut here takes Construct down. Parked for a pass
+  with a real parser rather than a hand-rolled one, and for the owner's eyes.
+  Nothing user-facing reaches this code: every route that could has been removed.
