@@ -1,79 +1,7 @@
 {
-  "writtenUtc": "2026-08-21T21:34:58.666Z",
+  "writtenUtc": "2026-08-21T22:06:34.808Z",
   "note": "Findings that are real, have been read, and are not being fixed today. Each needs a reason in plain language. The suite fails on anything NOT in this list.",
   "known": [
-    {
-      "fingerprint": "http/csrf|post /api/pilot/disarm|a request carrying the literal text \"null\", which is what a sandboxed iframe or a data: pa",
-      "where": "POST /api/pilot/disarm",
-      "what": "a request carrying the literal text \"null\", which is what a sandboxed iframe or a data: page sends was let through (200) where an ordinary hostile website is correctly refused with 403. This is a control that moves real money, and the difference between the two is only what the forging page happens to put in one header.",
-      "why": "Found 2026-08-21 by an independent attacking session, reproduced here by hand. REAL and it concerns real money. NOT fixed: tightening the cross-site guard changes what the live controls accept, and DEFECTS.md section 1 already records a deliberate decision about that guard which this finding shows was reasoned on a wrong premise. That decision is yours to revisit. Written up in DEFECTS.md section 6."
-    },
-    {
-      "fingerprint": "http/csrf|post /api/pilot/disarm|a request carrying an origin that is not an address at all was let through (#) where an or",
-      "where": "POST /api/pilot/disarm",
-      "what": "a request carrying an Origin that is not an address at all was let through (200) where an ordinary hostile website is correctly refused with 403. This is a control that moves real money, and the difference between the two is only what the forging page happens to put in one header.",
-      "why": "Found 2026-08-21 by an independent attacking session, reproduced here by hand. REAL and it concerns real money. NOT fixed: tightening the cross-site guard changes what the live controls accept, and DEFECTS.md section 1 already records a deliberate decision about that guard which this finding shows was reasoned on a wrong premise. That decision is yours to revisit. Written up in DEFECTS.md section 6."
-    },
-    {
-      "fingerprint": "http/csrf|post /api/pilot/disarm|a request carrying a file:// page was let through (#) where an ordinary hostile website is",
-      "where": "POST /api/pilot/disarm",
-      "what": "a request carrying a file:// page was let through (200) where an ordinary hostile website is correctly refused with 403. This is a control that moves real money, and the difference between the two is only what the forging page happens to put in one header.",
-      "why": "Found 2026-08-21 by an independent attacking session, reproduced here by hand. REAL and it concerns real money. NOT fixed: tightening the cross-site guard changes what the live controls accept, and DEFECTS.md section 1 already records a deliberate decision about that guard which this finding shows was reasoned on a wrong premise. That decision is yours to revisit. Written up in DEFECTS.md section 6."
-    },
-    {
-      "fingerprint": "http/csrf|post /api/pilot/unhalt|a request carrying the literal text \"null\", which is what a sandboxed iframe or a data: pa",
-      "where": "POST /api/pilot/unhalt",
-      "what": "a request carrying the literal text \"null\", which is what a sandboxed iframe or a data: page sends was let through (200) where an ordinary hostile website is correctly refused with 403. This is a control that moves real money, and the difference between the two is only what the forging page happens to put in one header.",
-      "why": "Found 2026-08-21 by an independent attacking session, reproduced here by hand. REAL and it concerns real money. NOT fixed: tightening the cross-site guard changes what the live controls accept, and DEFECTS.md section 1 already records a deliberate decision about that guard which this finding shows was reasoned on a wrong premise. That decision is yours to revisit. Written up in DEFECTS.md section 6."
-    },
-    {
-      "fingerprint": "http/csrf|post /api/pilot/unhalt|a request carrying an origin that is not an address at all was let through (#) where an or",
-      "where": "POST /api/pilot/unhalt",
-      "what": "a request carrying an Origin that is not an address at all was let through (200) where an ordinary hostile website is correctly refused with 403. This is a control that moves real money, and the difference between the two is only what the forging page happens to put in one header.",
-      "why": "Found 2026-08-21 by an independent attacking session, reproduced here by hand. REAL and it concerns real money. NOT fixed: tightening the cross-site guard changes what the live controls accept, and DEFECTS.md section 1 already records a deliberate decision about that guard which this finding shows was reasoned on a wrong premise. That decision is yours to revisit. Written up in DEFECTS.md section 6."
-    },
-    {
-      "fingerprint": "http/csrf|post /api/pilot/unhalt|a request carrying a file:// page was let through (#) where an ordinary hostile website is",
-      "where": "POST /api/pilot/unhalt",
-      "what": "a request carrying a file:// page was let through (200) where an ordinary hostile website is correctly refused with 403. This is a control that moves real money, and the difference between the two is only what the forging page happens to put in one header.",
-      "why": "Found 2026-08-21 by an independent attacking session, reproduced here by hand. REAL and it concerns real money. NOT fixed: tightening the cross-site guard changes what the live controls accept, and DEFECTS.md section 1 already records a deliberate decision about that guard which this finding shows was reasoned on a wrong premise. That decision is yours to revisit. Written up in DEFECTS.md section 6."
-    },
-    {
-      "fingerprint": "http/csrf|post /api/pilot/margin-floor|a request carrying the literal text \"null\", which is what a sandboxed iframe or a data: pa",
-      "where": "POST /api/pilot/margin-floor",
-      "what": "a request carrying the literal text \"null\", which is what a sandboxed iframe or a data: page sends was let through (200) where an ordinary hostile website is correctly refused with 403. This is a control that moves real money, and the difference between the two is only what the forging page happens to put in one header.",
-      "why": "Found 2026-08-21 by an independent attacking session, reproduced here by hand. REAL and it concerns real money. NOT fixed: tightening the cross-site guard changes what the live controls accept, and DEFECTS.md section 1 already records a deliberate decision about that guard which this finding shows was reasoned on a wrong premise. That decision is yours to revisit. Written up in DEFECTS.md section 6."
-    },
-    {
-      "fingerprint": "http/csrf|post /api/pilot/margin-floor|a request carrying an origin that is not an address at all was let through (#) where an or",
-      "where": "POST /api/pilot/margin-floor",
-      "what": "a request carrying an Origin that is not an address at all was let through (200) where an ordinary hostile website is correctly refused with 403. This is a control that moves real money, and the difference between the two is only what the forging page happens to put in one header.",
-      "why": "Found 2026-08-21 by an independent attacking session, reproduced here by hand. REAL and it concerns real money. NOT fixed: tightening the cross-site guard changes what the live controls accept, and DEFECTS.md section 1 already records a deliberate decision about that guard which this finding shows was reasoned on a wrong premise. That decision is yours to revisit. Written up in DEFECTS.md section 6."
-    },
-    {
-      "fingerprint": "http/csrf|post /api/pilot/margin-floor|a request carrying a file:// page was let through (#) where an ordinary hostile website is",
-      "where": "POST /api/pilot/margin-floor",
-      "what": "a request carrying a file:// page was let through (200) where an ordinary hostile website is correctly refused with 403. This is a control that moves real money, and the difference between the two is only what the forging page happens to put in one header.",
-      "why": "Found 2026-08-21 by an independent attacking session, reproduced here by hand. REAL and it concerns real money. NOT fixed: tightening the cross-site guard changes what the live controls accept, and DEFECTS.md section 1 already records a deliberate decision about that guard which this finding shows was reasoned on a wrong premise. That decision is yours to revisit. Written up in DEFECTS.md section 6."
-    },
-    {
-      "fingerprint": "http/csrf|post /api/pilot/stop-apply|a request carrying the literal text \"null\", which is what a sandboxed iframe or a data: pa",
-      "where": "POST /api/pilot/stop-apply",
-      "what": "a request carrying the literal text \"null\", which is what a sandboxed iframe or a data: page sends was let through (400) where an ordinary hostile website is correctly refused with 403. This is a control that moves real money, and the difference between the two is only what the forging page happens to put in one header.",
-      "why": "Found 2026-08-21 by an independent attacking session, reproduced here by hand. REAL and it concerns real money. NOT fixed: tightening the cross-site guard changes what the live controls accept, and DEFECTS.md section 1 already records a deliberate decision about that guard which this finding shows was reasoned on a wrong premise. That decision is yours to revisit. Written up in DEFECTS.md section 6."
-    },
-    {
-      "fingerprint": "http/csrf|post /api/pilot/stop-apply|a request carrying an origin that is not an address at all was let through (#) where an or",
-      "where": "POST /api/pilot/stop-apply",
-      "what": "a request carrying an Origin that is not an address at all was let through (400) where an ordinary hostile website is correctly refused with 403. This is a control that moves real money, and the difference between the two is only what the forging page happens to put in one header.",
-      "why": "Found 2026-08-21 by an independent attacking session, reproduced here by hand. REAL and it concerns real money. NOT fixed: tightening the cross-site guard changes what the live controls accept, and DEFECTS.md section 1 already records a deliberate decision about that guard which this finding shows was reasoned on a wrong premise. That decision is yours to revisit. Written up in DEFECTS.md section 6."
-    },
-    {
-      "fingerprint": "http/csrf|post /api/pilot/stop-apply|a request carrying a file:// page was let through (#) where an ordinary hostile website is",
-      "where": "POST /api/pilot/stop-apply",
-      "what": "a request carrying a file:// page was let through (400) where an ordinary hostile website is correctly refused with 403. This is a control that moves real money, and the difference between the two is only what the forging page happens to put in one header.",
-      "why": "Found 2026-08-21 by an independent attacking session, reproduced here by hand. REAL and it concerns real money. NOT fixed: tightening the cross-site guard changes what the live controls accept, and DEFECTS.md section 1 already records a deliberate decision about that guard which this finding shows was reasoned on a wrong premise. That decision is yours to revisit. Written up in DEFECTS.md section 6."
-    },
     {
       "fingerprint": "schema/accepts|the configuration check|a configuration with a traded symbol that is a number was accepted as valid — that value w",
       "where": "the configuration check",
@@ -103,12 +31,6 @@
       "where": "the name check",
       "what": "a name containing a newline was accepted unchanged; whether that is safe depends entirely on every screen that later prints it",
       "why": "Found 2026-08-21. Checked and currently harmless: both pages put owner-typed names through the escaping helper before drawing them, so markup in a name is shown as text rather than run. Kept on the list because it is only safe as long as that stays true, and this line is what will notice if it stops."
-    },
-    {
-      "fingerprint": "schema/silentdrop|reading the trading journal|a journal file with one line cut in half by a crash is read as if the whole line was never",
-      "where": "reading the trading journal",
-      "what": "a journal file with one line cut in half by a crash is read as if the whole line was never there. Nothing anywhere says a record was lost. Every total built on top of it — money made, money lost, number of trades — is then confidently wrong, and looks exactly like a correct answer.",
-      "why": "Found 2026-08-21. Real and serious, not fixed today: making the journal reader report torn lines changes what every screen that reads a book displays, which is a change to the interface and needs the owner's go-ahead. Written up in DEFECTS.md."
     },
     {
       "fingerprint": "schema/emptylooksfine|reading the trading journal|a journal file containing nothing readable at all is reported as present with no events — ",
@@ -231,42 +153,6 @@
       "why": "Found 2026-08-21. The most serious family on the list: the market data is the foundation everything else is computed from, and a short, gapped, duplicated or dirty month is currently read without a word. Not fixed today because adding a data-quality check changes what the Data section reports and what a sweep will refuse to run on — both interface decisions. Written up in DEFECTS.md."
     },
     {
-      "fingerprint": "ui/screenlie|the trade page — the \"money\" formatter|given not-a-number, the owner would read \"nan\" on screen. that is the code failing to work",
-      "where": "the Trade page — the \"money\" formatter",
-      "what": "given not-a-number, the owner would read \"NaN\" on screen. That is the code failing to work something out, printed where a figure belongs.",
-      "why": "Found 2026-08-21. Real, not fixed today: what the screen shows in place of a figure it cannot work out is the owner's decision. Written up in DEFECTS.md."
-    },
-    {
-      "fingerprint": "ui/screenlie|the trade page — the \"money\" formatter|given infinity, the owner would read \"+infinity\" on screen. that is the code failing to wo",
-      "where": "the Trade page — the \"money\" formatter",
-      "what": "given infinity, the owner would read \"+Infinity\" on screen. That is the code failing to work something out, printed where a figure belongs.",
-      "why": "Found 2026-08-21. Real, not fixed today: what the screen shows in place of a figure it cannot work out is the owner's decision. Written up in DEFECTS.md."
-    },
-    {
-      "fingerprint": "ui/screenlie|the trade page — the \"money\" formatter|given minus infinity, the owner would read \"-infinity\" on screen. that is the code failing",
-      "where": "the Trade page — the \"money\" formatter",
-      "what": "given minus infinity, the owner would read \"-Infinity\" on screen. That is the code failing to work something out, printed where a figure belongs.",
-      "why": "Found 2026-08-21. Real, not fixed today: what the screen shows in place of a figure it cannot work out is the owner's decision. Written up in DEFECTS.md."
-    },
-    {
-      "fingerprint": "ui/screenlie|the trade page — the \"money\" formatter|given a word, the owner would read \"nan\" on screen. that is the code failing to work somet",
-      "where": "the Trade page — the \"money\" formatter",
-      "what": "given a word, the owner would read \"NaN\" on screen. That is the code failing to work something out, printed where a figure belongs.",
-      "why": "Found 2026-08-21. Real, not fixed today: what the screen shows in place of a figure it cannot work out is the owner's decision. Written up in DEFECTS.md."
-    },
-    {
-      "fingerprint": "ui/screenlie|the trade page — the \"money\" formatter|given an object, the owner would read \"nan\" on screen. that is the code failing to work so",
-      "where": "the Trade page — the \"money\" formatter",
-      "what": "given an object, the owner would read \"NaN\" on screen. That is the code failing to work something out, printed where a figure belongs.",
-      "why": "Found 2026-08-21. Real, not fixed today: what the screen shows in place of a figure it cannot work out is the owner's decision. Written up in DEFECTS.md."
-    },
-    {
-      "fingerprint": "ui/screenlie|the trade page — the \"money\" formatter|given a list, the owner would read \"nan\" on screen. that is the code failing to work somet",
-      "where": "the Trade page — the \"money\" formatter",
-      "what": "given a list, the owner would read \"NaN\" on screen. That is the code failing to work something out, printed where a figure belongs.",
-      "why": "Found 2026-08-21. Real, not fixed today: what the screen shows in place of a figure it cannot work out is the owner's decision. Written up in DEFECTS.md."
-    },
-    {
       "fingerprint": "ui/screenlie|the trade page — the \"esc\" formatter|given an object, the owner would read \"[object object]\" on screen. that is the code failin",
       "where": "the Trade page — the \"esc\" formatter",
       "what": "given an object, the owner would read \"[object Object]\" on screen. That is the code failing to work something out, printed where a figure belongs.",
@@ -279,10 +165,10 @@
       "why": "Found 2026-08-21. Real, not fixed today: what the screen shows in place of a figure it cannot work out is the owner's decision. Written up in DEFECTS.md."
     },
     {
-      "fingerprint": "ui/disagree|the \"money\" formatter, on both pages|the two pages format the same value differently in # of # cases: given not-a-number, the t",
+      "fingerprint": "ui/disagree|the \"money\" formatter, on both pages|the two pages format the same value differently in # of # cases: given a number written as",
       "where": "the \"money\" formatter, on both pages",
-      "what": "the two pages format the same value differently in 9 of 11 cases: given not-a-number, the Trade page shows \"NaN\" and the Construct page shows \"—\"; given infinity, the Trade page shows \"+Infinity\" and the Construct page shows \"—\"; given minus infinity, the Trade page shows \"-Infinity\" and the Construct page shows \"—\". Two screens describing the same system that disagree leave no way to tell which one is right.",
-      "why": "Found 2026-08-21. Real, not fixed today. The two pages must be made to agree, but which one is right is the owner's call. Written up in DEFECTS.md."
+      "what": "the two pages format the same value differently in 1 of 11 cases: given a number written as text, the Trade page shows \"+12.5000\" and the Construct page shows \"$12.50\". Two screens describing the same system that disagree leave no way to tell which one is right.",
+      "why": "2026-08-21, during the fixing loop. The BROKEN-value halves of this disagreement are fixed — neither page will now print NaN, Infinity, a boolean or an empty list where money belongs; both show a dash. What remains is purely presentational and DELIBERATE: the Trade page shows signed profit and loss to four places, which is what it has always shown and what the owner reads on the trading screen, and the Construct page shows dollars to two. Changing how the trading screen prints money is the owner decision this rule exists to protect, so the finding stays on the list rather than being quietly closed or the check quietly weakened."
     },
     {
       "fingerprint": "inv/dashfabricated|the dashboard totals (live trading)|a book whose money is text produced a headline total of rows.#.rp = the text \"#\", totr = t",

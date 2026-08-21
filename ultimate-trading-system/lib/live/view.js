@@ -13,16 +13,29 @@ function journalFile() {
     || path.join(__dirname, '..', '..', 'data', 'pilot', 'journal.jsonl');
 }
 
+// A TORN LINE IS COUNTED, NOT SWALLOWED (found 2026-08-21).
+//
+// A crash while writing leaves a line cut in half. This used to skip it in
+// silence, so every total built afterwards — money made, money lost, how many
+// trades — was confidently wrong and looked exactly like a correct answer. And
+// a journal with nothing readable in it at all reported PRESENT with no events,
+// which on screen is indistinguishable from a book that has never traded.
+//
+// `dropped` is how many lines could not be read. Any screen showing a figure
+// from this journal must say so when it is above zero: the difference between
+// "there is nothing here" and "some of it could not be read" is the difference
+// between a fact and a guess.
 function readJournal(file) {
   try {
     const raw = fs.readFileSync(file, 'utf8');
     const events = [];
+    let dropped = 0;
     for (const line of raw.split('\n')) {
       if (!line.trim()) continue;
-      try { events.push(JSON.parse(line)); } catch (_) { /* skip a torn line */ }
+      try { events.push(JSON.parse(line)); } catch (_) { dropped += 1; }
     }
-    return { present: true, events };
-  } catch (_) { return { present: false, events: [] }; }
+    return { present: true, events, dropped, unterminated: raw.length > 0 && !raw.endsWith('\n') };
+  } catch (_) { return { present: false, events: [], dropped: 0, unterminated: false }; }
 }
 
 function round(v, n = 4) {
@@ -324,7 +337,7 @@ function decisionEntryUtc(chunkStartIso, entryOffsetH) {
 }
 
 function setupStatus(setup, file = journalFile()) {
-  const { present, events } = readJournal(file);
+  const { present, events, dropped, unterminated } = readJournal(file);
   const epoch = setup.runEpochUtc ? Date.parse(setup.runEpochUtc) : null;
   const scoped = epoch
     ? events.filter((e) => {
@@ -358,6 +371,12 @@ function setupStatus(setup, file = journalFile()) {
     tradedPair: setup.tradedPair, clipUsd: setup.clipUsd, stopPct: setup.stopPct,
     paper: setup.state === 'paper',
     journalPresent: present,
+    // HOW MUCH OF THE RECORD COULD NOT BE READ. Every money figure below is
+    // computed from what survived, so this must ride out with them: a total
+    // built on a journal that lost lines is not the same kind of thing as a
+    // total built on a whole one, and the screen has to be able to say so.
+    journalDropped: dropped,
+    journalUnterminated: unterminated,
     runEpochUtc: setup.runEpochUtc || null,
     ...book,
   };

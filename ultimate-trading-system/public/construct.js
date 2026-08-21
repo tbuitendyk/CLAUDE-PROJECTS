@@ -26,8 +26,22 @@ const apiOr = async (p, fallback) => {
   try { return await api(p); } catch (e) { fetchFailures.push(e.message); return fallback; }
 };
 const esc = (t) => String(t ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;');
-const money = (v) => (v == null || !Number.isFinite(Number(v)) ? '—'
-  : `${v < 0 ? '-' : ''}$${Math.abs(Number(v)).toFixed(2)}`);
+// WHAT COUNTS AS A FIGURE, and why the test is written out in full inside the
+// function rather than shared. Only a number, or text that reads as one. A
+// boolean is not money (Number(true) is 1) and neither is an empty list
+// (Number([]) is 0, which would have printed a confident $0.00). Anything else
+// reads the same as no value: a dash.
+//
+// Kept self-contained on purpose: the adversarial suite lifts this function out
+// of the page by name and runs it, and a helper defined outside it is not there
+// when it does. That would not have failed loudly — it would have reported
+// eleven imaginary faults and quietly stopped checking the real one.
+const money = (v) => {
+  const ok = (typeof v === 'number' && Number.isFinite(v))
+    || (typeof v === 'string' && v.trim() !== '' && Number.isFinite(Number(v)));
+  return ok ? `${Number(v) < 0 ? '-' : ''}$${Math.abs(Number(v)).toFixed(2)}` : '—';
+};
+
 async function post(p, body) {
   const r = await fetch(p, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}) });
   const j = await r.json().catch(() => ({}));

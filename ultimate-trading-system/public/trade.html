@@ -152,7 +152,33 @@ async function post(p, body){
     return await r.json();
   }catch(e){ alert('Action FAILED — could not reach the server.\n\n'+e); return null; }
 }
-const money=(v)=>v==null?'—':(v>=0?'+':'')+Number(v).toFixed(4);
+// A FIGURE THAT CANNOT BE WORKED OUT IS NOT A FIGURE. This printed "NaN",
+// "+Infinity" and "-Infinity" straight onto the screen where money belongs
+// (found 2026-08-21) — the code failing to compute something, displayed as
+// though it were a result. Anything that is not a finite number now reads the
+// same as no value at all: a dash.
+//
+// The FORMAT is deliberately left alone and deliberately differs from the
+// Construct page, which shows dollars to two places. This screen shows signed
+// P&L to four, which is what it has always shown and what the owner reads. The
+// two pages disagreeing about formatting is recorded as a known finding rather
+// than quietly changed here — changing how the trading screen prints money is
+// the owner's call, and it is not what this fix is about.
+// WHAT COUNTS AS A FIGURE, and why the test is written out in full inside the
+// function rather than shared. Only a number, or text that reads as one. A
+// boolean is not money (Number(true) is 1) and neither is an empty list
+// (Number([]) is 0, which would have printed a confident $0.00). Anything else
+// reads the same as no value: a dash.
+//
+// Kept self-contained on purpose: the adversarial suite lifts this function out
+// of the page by name and runs it, and a helper defined outside it is not there
+// when it does. That would not have failed loudly — it would have reported
+// eleven imaginary faults and quietly stopped checking the real one.
+const money=(v)=>{
+  const ok=(typeof v==='number'&&Number.isFinite(v))
+    ||(typeof v==='string'&&v.trim()!==''&&Number.isFinite(Number(v)));
+  return ok?((Number(v)>=0?'+':'')+Number(v).toFixed(4)):'—';
+};
 const cls=(v)=>v==null?'':v>0?'pos':v<0?'neg':'';
 const esc=(t)=>String(t??'').replace(/&/g,'&amp;').replace(/</g,'&lt;');
 const paperBadge='<span class="badge b-paper" title="paper — not real money">paper</span>';
@@ -748,6 +774,10 @@ async function drawLive(){
     <div class="banner ${st.state==='stopped'?'stopped':'running'}">
       <b>${esc(g.name||g.id)}</b> ${isP?paperBadge:''} — ${esc(g.status)}${g.name?` <span class="muted">· ${esc(g.id)}</span>`:''}${st.runEpochUtc?` <span class="muted">· displayed run since ${st.runEpochUtc.slice(0,16)} UTC</span>`:''}</div>
     ${isP?'':boxControls(box)}
+    ${st.journalDropped?`<div class="banner stale">⚠ ${st.journalDropped} line${st.journalDropped===1?'':'s'} of the trading record could not be read.
+      Every figure on this page is worked out from the lines that could. Treat the money, the trade count and the
+      positions below as incomplete by an unknown amount — this is not the same as there being nothing here.
+      ${st.journalUnterminated?'The record also ends mid-line, so the most recent event may be cut off.':''}</div>`:''}
     ${st.halted?`<div class="banner halted">⛔ HALT set for this config — new entries stopped; scheduled exits still run.
       <div class="muted" style="font-size:.78rem;margin:.25rem 0">Reason recorded on the box: ${esc(st.haltReason||'(not recorded)')}</div>
       <button id="btnSetupUnhalt" class="danger">Clear the halt</button>
