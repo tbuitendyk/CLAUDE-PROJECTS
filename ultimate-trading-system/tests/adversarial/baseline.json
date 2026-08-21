@@ -1,5 +1,5 @@
 {
-  "writtenUtc": "2026-08-21T17:48:54.984Z",
+  "writtenUtc": "2026-08-21T17:51:47.947Z",
   "note": "Findings that are real, have been read, and are not being fixed today. Each needs a reason in plain language. The suite fails on anything NOT in this list.",
   "known": [
     {
@@ -91,6 +91,18 @@
       "where": "building a book from stored events",
       "what": "an entry with a quantity of infinity produced a book the screen would happily show, containing openPositions[0].qty = Infinity. That is a money figure the system computed from a record it should have refused.",
       "why": "Found 2026-08-21. Real, not fixed today. Requires the same decision as the blanks above, plus a rule about whether a bad stored record should be refused outright or shown as broken. Written up in DEFECTS.md."
+    },
+    {
+      "fingerprint": "schema/versionunread|the shape-version stamped into every stored record|every stored record is written with a setup shape-version, and nothing anywhere reads it b",
+      "where": "the shape-version stamped into every stored record",
+      "what": "every stored record is written with a setup shape-version, and nothing anywhere reads it back. The whole point of that stamp is that a later version of the code can notice a record it does not fully understand; as it stands, a record written by an older or newer version is treated as if it were current, silently.",
+      "why": "Found 2026-08-21. Real, not fixed today: deciding what the system should DO when it meets a record from another version — refuse it, show it as needing attention, or upgrade it — is a decision about what you see on screen. Written up in DEFECTS.md section 5i."
+    },
+    {
+      "fingerprint": "schema/versionunread|the shape-version stamped into every stored record|every stored record is written with a configuration shape-version, and nothing anywhere re",
+      "where": "the shape-version stamped into every stored record",
+      "what": "every stored record is written with a configuration shape-version, and nothing anywhere reads it back. The whole point of that stamp is that a later version of the code can notice a record it does not fully understand; as it stands, a record written by an older or newer version is treated as if it were current, silently.",
+      "why": "Found 2026-08-21. Real, not fixed today: deciding what the system should DO when it meets a record from another version — refuse it, show it as needing attention, or upgrade it — is a decision about what you see on screen. Written up in DEFECTS.md section 5i."
     },
     {
       "fingerprint": "candles/silent|reading the market data|a month that stops a third of the way through was loaded without a word, giving # candles ",

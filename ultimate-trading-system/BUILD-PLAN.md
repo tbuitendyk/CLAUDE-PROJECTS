@@ -318,6 +318,27 @@ a sweep that found nothing can be told apart from a sweep that never happened,
 and **a separate report line for attacks that could not run** — never counted as
 a pass.
 
+### Three more surfaces added after the first five
+
+- **The data that is really there** (`attack-storeddata.js`). The first five
+  attacks spoil records on purpose. None of them opened the data the system
+  actually holds. This one does, read-only: every stored file parsed, every
+  candle month measured against the hours that month really has, holes and
+  duplicated hours and impossible candles counted, stored setups re-checked
+  against the system's own configuration check, journals scanned for torn
+  lines, and files on disk that nothing in the code mentions reported as data
+  no screen can reach (RULE FIVE). It takes `--data=` so the same code can
+  check the box.
+- **The controls** (`attack-controls.js`). Every address a page calls, matched
+  against the addresses the server answers — including the 25 the pages build
+  by joining pieces together, which the ordinary endpoint check skips. Plus
+  dropdowns whose choices are typed into the page rather than coming from the
+  system.
+- **The measuring stick** (`attack-scoring.js`). Not the code — the score.
+  Could this number be got with no skill at all? Can it see an effect that is
+  definitely there? What does it do when the two things being compared are not
+  comparable?
+
 ### What the first run says
 
 - **Front door: clean.** 1,571 hostile requests across 71 addresses. No crash,
@@ -333,6 +354,47 @@ a pass.
   numbers stuck together as text in the Dashboard headline — 12.
 - **The two pages format money differently in 9 of 11 cases** — 1.
 - **Names and symbols accepted too loosely** — 5.
+- **The data actually on disk is clean.** Every stored file parses; all 13
+  candle months hold their full complement of hours with no holes, no
+  duplicated hours and no impossible prices. Proved rather than assumed: the
+  checker was run against a deliberately spoiled copy first — short month,
+  three-day hole, negative price, impossible candle, unparseable file, torn
+  journal — and caught every one.
+- **No control calls an address the server does not answer**, across all 76
+  addresses the four pages ask for.
+- **Thirteen dropdowns offer a list written into the page** — 13, and two of
+  them duplicate a list the system already publishes, so the screen can fall
+  behind the system without anybody noticing.
+- **The measuring stick's important properties hold.** No skill scores zero; a
+  coin flip over sixty runs averages zero and is positive in exactly 30 of 60;
+  a perfect caller scores a clear edge. What it handles badly is anything that
+  is not a fair comparison — 6 findings, including a quiet period scoring as a
+  perfect discovery.
+- **A version stamp nothing reads back** — 2. Every record records the shape it
+  was made under, and no code compares it to anything.
+
+### Two more instruments caught lying, after the first five
+
+- The controls attack listed the helper function names it knew about and missed
+  `api(...)`, which is how most of these pages ask for things — fifteen
+  addresses came back where there are seventy-six. It caught itself only
+  because it checks its catch against what it expects to find.
+- The did-the-seeding-help check counted "nothing here" replies. That number is
+  dominated by the deliberately invalid addresses the sweep sends on purpose,
+  so it never moved and the check reported a failure that was its own mistake.
+
+### Blocked and parked
+
+**Running the read-only data check against the box.** `deploy-uts.sh` was
+refused by this session's permission gate, so the new test files are not on the
+box and the box's 2,712 candle files have not been inspected. Nothing is broken
+by this — the box is running the code it was running before — but the data check
+has only been run against the working copy's 13 candle files. The step is one
+command once the deploy is allowed:
+
+```
+node tests/adversarial/run.js --only=attack-storeddata --data=/opt/ultimate-trading-system/data
+```
 
 ### Left for the owner
 

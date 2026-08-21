@@ -155,7 +155,7 @@ Harmless — the check regenerates them.
 
 ---
 
-## 5. What the adversarial suite found (2026-08-21) — 56 items, none fixed
+## 5. What the adversarial suite found (2026-08-21) — 58 items, none fixed
 
 A standing test now attacks the system on purpose: `npm run test:adversarial`.
 It asks the opposite question to the ordinary tests — not *does this work*, but
@@ -303,6 +303,22 @@ measuring stick.
   commonest outcome in the *training* data, and a quiet test period may hold
   none of it. The honest figure already sits right beside it in the same result
   (0.000), so the arithmetic knows; it is the headline number that misleads.
+
+### 5i. A version stamp nothing reads back — 2 items
+
+Every stored setup is written with a note of which record-shape it was made
+under, and the same for its configuration. The point of that note is that a
+later version of the code can notice a record it does not fully understand.
+
+**Nothing anywhere reads it back.** A record written by an older or a newer
+version of the system is treated as though it were current, silently. Today
+there is only one version so nothing is wrong yet; the moment the shape changes,
+old records start being read as though they meant what new ones mean.
+
+What a fix looks like: decide what should happen when the system meets a record
+from another version — refuse it, show it on screen as needing attention, or
+bring it up to date — and then do that. Which of those it should be is a
+decision about what you see, so it is yours.
 
 ### 5f. Three places the suite deliberately does not reach
 

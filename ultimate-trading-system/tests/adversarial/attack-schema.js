@@ -246,6 +246,37 @@ function run(ctx) {
     try { fs.rmSync(dir, { recursive: true, force: true }); } catch (_) { /* leave it */ }
   }
 
+  // ---- 2e. the version stamp nothing reads back ----------------------------
+
+  // Every setup record is written with the shape-version it was made under.
+  // The point of that stamp is that a later version of the code can notice a
+  // record it does not fully understand. It only works if something reads it.
+  const versionSrc = fs.readFileSync(path.join(ROOT, 'lib', 'live', 'version.js'), 'utf8');
+  const stamps = ['SETUP_SCHEMA_VERSION', 'CONFIG_SCHEMA_VERSION'];
+  const codeFiles = [];
+  (function collect(dir) {
+    for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+      if (['node_modules', '.git', 'data', 'archive', 'tests'].includes(e.name)) continue;
+      const q = path.join(dir, e.name);
+      if (e.isDirectory()) collect(q);
+      else if (/\.(js|html)$/.test(e.name)) codeFiles.push(q);
+    }
+  })(ROOT);
+  const allCode = codeFiles.filter((f) => !f.endsWith(path.join('live', 'version.js')))
+    .map((f) => fs.readFileSync(f, 'utf8')).join('\n');
+
+  for (const stamp of stamps) {
+    if (!versionSrc.includes(stamp)) continue;
+    // A COMPARISON, not merely a mention. Writing the stamp into a new record
+    // is not the same as checking an old one against it.
+    const compared = new RegExp(`(${stamp}\\s*(===|!==|<|>|<=|>=)|(===|!==|<|>|<=|>=)\\s*${stamp}|schema\\s*(===|!==|<|>)|\\.schema\\s*(===|!==|<|>))`).test(allCode);
+    if (!compared) {
+      found.push(finding('schema/versionunread', 'the shape-version stamped into every stored record',
+        `every stored record is written with a ${stamp === 'SETUP_SCHEMA_VERSION' ? 'setup' : 'configuration'} shape-version, and nothing anywhere reads it back. The whole point of that stamp is that a later version of the code can notice a record it does not fully understand; as it stands, a record written by an older or newer version is treated as if it were current, silently.`,
+        { severe: true }));
+    }
+  }
+
   return found;
 }
 
