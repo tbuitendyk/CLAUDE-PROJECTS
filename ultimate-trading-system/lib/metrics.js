@@ -48,6 +48,28 @@ function perClassRecall(actual, predicted) {
 
 function classifierMetrics(trainLabels, testLabels, calls) {
   if (!testLabels.length) return null;
+  // TWO THINGS THAT ARE NOT COMPARABLE MUST NOT BE SCORED (2026-08-21).
+  //
+  // This read `calls[i]` for every test label and counted a miss whenever they
+  // differed. So a run that only half finished scored as a run that did badly —
+  // 0.125 accuracy rather than a refusal — and those two mean entirely
+  // different things. More answers than questions had the extras dropped in
+  // silence, so a caller misaligned with the test data scored a perfect 1.000.
+  // Answers that arrived as text scored zero and read as a rule that does not
+  // work, because the text "1" never equals the number 1.
+  //
+  // A score is a comparison. If the two sides do not line up there is nothing
+  // to compare, and saying so is the only honest answer.
+  if (!Array.isArray(calls) || calls.length !== testLabels.length) {
+    throw new TypeError(`classifierMetrics: ${Array.isArray(calls) ? calls.length : 'no'} answers for `
+      + `${testLabels.length} questions. A run that did not finish is not a run that did badly.`);
+  }
+  const known = new Set(CLASSES);
+  const strange = calls.find((c) => !known.has(c));
+  if (strange !== undefined) {
+    throw new TypeError(`classifierMetrics: an answer of ${JSON.stringify(strange)} is not one of ${CLASSES.join(', ')}. `
+      + 'Text that looks like a number never equals the number, so it used to be counted as an ordinary wrong answer.');
+  }
   const trainCounts = classCounts(trainLabels);
   const testCounts = classCounts(testLabels);
 
@@ -66,6 +88,15 @@ function classifierMetrics(trainLabels, testLabels, calls) {
   const majorityClass = CLASSES.reduce((a, b) => (trainCounts[b] > trainCounts[a] ? b : a));
   const majorityBaseline = testCounts[majorityClass] / testLabels.length;
   const bestConstant = Math.max(...Object.values(testCounts)) / testLabels.length;
+  // A PERIOD IN WHICH EVERY OUTCOME WAS THE SAME HAS NOTHING TO DISCOVER, and
+  // this scored one as a perfect find: the yardstick is the commonest outcome
+  // in the TRAINING data, and a quiet test period may hold none of it, so the
+  // edge came out at 1.000 (found 2026-08-21). The honest figure was already
+  // sitting beside it — hindsightEdge, which compares against the best a
+  // constant answer could have done on the test period itself — so the
+  // arithmetic knew. Only the headline misled. It is now flagged rather than
+  // silently believed.
+  const outcomesPresent = CLASSES.filter((c) => testCounts[c] > 0).length;
 
   const recalls = perClassRecall(testLabels, calls).filter((r) => r != null);
   const balancedAcc = recalls.length ? recalls.reduce((s, v) => s + v, 0) / recalls.length : null;
@@ -83,6 +114,11 @@ function classifierMetrics(trainLabels, testLabels, calls) {
     directionalHits: dirHits,
     directionalHitRate: dirCalls > 0 ? dirHits / dirCalls : null,
     testPeriods: testLabels.length,
+    outcomesPresent,
+    // True when the headline edge cannot be trusted on its own: one outcome
+    // filled the whole test period, so beating "the commonest training outcome"
+    // measures the period, not the rule. Read hindsightEdge instead.
+    degenerateTestPeriod: outcomesPresent < 2,
   };
 }
 

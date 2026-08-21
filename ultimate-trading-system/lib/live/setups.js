@@ -160,6 +160,18 @@ function setupProblems(rec, filename) {
     return ['this file does not hold a setup record at all'];
   }
   const problems = validateOperational(rec).slice();
+  // THE SHAPE-VERSION IS READ BACK (2026-08-21). Every record is written with
+  // the record-shape it was made under, and the whole point of that stamp is
+  // that a later version of the code can notice a record it does not fully
+  // understand. Nothing anywhere read it, so a record from another version was
+  // consumed as if it were current — silently. Nothing is wrong today, with one
+  // version in existence; the moment the shape changes, old records start being
+  // read as though they meant what new ones mean.
+  if (rec.schema !== SETUP_SCHEMA_VERSION) {
+    problems.push(rec.schema == null
+      ? `this record carries no record-shape version; this system writes shape ${SETUP_SCHEMA_VERSION}, so it was made by something else`
+      : `this record was written in shape ${JSON.stringify(rec.schema)} and this system reads shape ${SETUP_SCHEMA_VERSION} — what its fields mean may have changed`);
+  }
   if (filename !== undefined && `${rec.id}.json` !== filename) {
     problems.push(`the record calls itself "${rec.id}" but it is stored as ${filename} — every control addresses it by the filename, so nothing can act on it`);
   }

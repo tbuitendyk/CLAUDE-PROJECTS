@@ -20,6 +20,7 @@
 //                 intent input_hash so drift is provable (pilotsignal pattern).
 
 const { GEOMETRIES } = require('../dataset');
+const { CONFIG_SCHEMA_VERSION } = require('./version');
 
 const SYMBOL_RE = /^[A-Z0-9]{5,12}$/;
 const MODELS = new Set(['logreg', 'boost']);
@@ -39,7 +40,12 @@ function validateConfig(cfg) {
 
   const combo = cfg.combo || {};
   for (const k of ['trade', 'ctx1', 'ctx2']) {
-    if (!SYMBOL_RE.test(String(combo[k] || ''))) fail(errors, `combo.${k}: not a valid symbol`);
+    // The String() here accepted a NUMBER as a symbol — 12345 matches the
+    // pattern once converted — and the record then stored a number where every
+    // other part of the system expects text (found 2026-08-21).
+    if (typeof combo[k] !== 'string' || !SYMBOL_RE.test(combo[k])) {
+      fail(errors, `combo.${k}: not a valid symbol (must be text matching ${SYMBOL_RE})`);
+    }
   }
   if (combo.size !== 3) fail(errors, 'combo.size: only size-3 combos are in the vocabulary');
 
@@ -52,6 +58,14 @@ function validateConfig(cfg) {
   if (typeof br.weekdaysOnly !== 'boolean') fail(errors, 'branch.weekdaysOnly: must be boolean');
 
   if (!STAGES.has(cfg.stage)) fail(errors, `stage: must be one of ${[...STAGES]}`);
+
+  // The configuration's own shape-version, read back rather than only written.
+  // A snapshot from another version means the same field names may no longer
+  // mean the same things, and that must be said rather than assumed away.
+  if (cfg.schema != null && cfg.schema !== CONFIG_SCHEMA_VERSION) {
+    fail(errors, `schema: this configuration was written in shape ${JSON.stringify(cfg.schema)} `
+      + `and this system reads shape ${CONFIG_SCHEMA_VERSION} — what its fields mean may have changed`);
+  }
 
   if (!Array.isArray(cfg.members) || cfg.members.length === 0) {
     fail(errors, 'members: must be a non-empty array of {model, view}');

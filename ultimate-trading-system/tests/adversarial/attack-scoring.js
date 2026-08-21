@@ -130,9 +130,11 @@ function run(ctx) {
   // A test set holding only one outcome. There is nothing to be right about.
   const flat = new Array(400).fill(1);
   const m2 = classifierMetrics(train, flat, flat.slice());
-  if (m2 && m2.testAcc === 1 && !(m2.edge > 0)) {
+  if (m2 && m2.degenerateTestPeriod) {
+    ctx.note(`a test period holding only one outcome is flagged as such (edge ${m2.edge.toFixed(3)}, honest figure ${Number(m2.hindsightEdge).toFixed(3)})`);
+  } else if (m2 && m2.testAcc === 1 && !(m2.edge > 0)) {
     ctx.note('a test set holding only one outcome scores a perfect accuracy but no edge, which is the honest answer');
-  } else if (m2 && m2.edge > 0) {
+  } else if (m2 && m2.edge > 0 && !m2.degenerateTestPeriod) {
     // The code does carry an honest companion figure. Say so — a finding that
     // leaves out the guard that already exists overstates the danger and sends
     // whoever reads it looking for a fix that is half already written.

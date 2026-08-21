@@ -163,7 +163,15 @@ function greenlightFromRun(doc, target, { by = 'owner', why, name } = {}) {
 // config to a different campaign or rename the campaign for everything under it.
 // Neither is a rename. Everything else on a greenlight is evidence and is frozen.
 function validName(name) {
-  const n = String(name == null ? '' : name).trim();
+  // A NAME IS TEXT THE OWNER TYPED. This coerced whatever it was given, so an
+  // object became the name "[object Object]" and a number became "7" — neither
+  // of which anyone typed, and both of which then appeared on screen as though
+  // they had (found 2026-08-21).
+  if (typeof name !== 'string') {
+    throw new Error(`a config's name must be text — got ${JSON.stringify(name)}. `
+      + 'It used to be converted, so a name nobody typed could end up on screen.');
+  }
+  const n = name.trim();
   if (!n) throw new Error('a config needs a NAME — something you will recognise on screen');
   if (n.length > 60) throw new Error('name: 60 characters or fewer');
   return n;

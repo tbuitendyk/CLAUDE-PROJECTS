@@ -56,6 +56,10 @@ function deriveSetup(events, setupId, extraDecisions = []) {
   // pooling either into the real average flatters or muddies the number the pilot
   // exists to produce. Keep them in separate buckets.
   const closed = []; const fills = []; const paperFills = []; const legCosts = [];
+  // Stored figures that could not be read as numbers. Never silently skipped:
+  // every money total below is computed without them, so the screen has to be
+  // able to say how many were left out.
+  const unreadable = [];
   let recoveredFills = 0;
   const incidents = [];
   let markPrice = null; let markUtc = null;
@@ -114,26 +118,46 @@ function deriveSetup(events, setupId, extraDecisions = []) {
         break;
       case 'EXIT_FILL': {
         const p = open[key(e)]; delete open[key(e)];
-        realized += e.pnl || 0;
+        // A STORED FIGURE THAT IS NOT A NUMBER IS NOT ADDED TO THE TOTAL
+        // (2026-08-21). `realized += e.pnl || 0` turned the whole running total
+        // into TEXT the moment one event carried a profit written as a string —
+        // two $10 books came out as "1010" — and an Infinity made the total
+        // infinite. Both then reached the screen as money. What cannot be read
+        // is counted separately and said out loud, because a total that quietly
+        // skipped an entry is worse than one that admits it.
+        if (Number.isFinite(e.pnl)) realized += e.pnl;
+        else if (e.pnl != null) unreadable.push({ chunk_start: e.chunk_start, field: 'pnl', value: String(e.pnl) });
         if (typeof e.fee_quote === 'number') legCosts.push(e.fee_quote);
         // entry_utc rides along so a closed row can be named by its ENTRY time
         // rather than its feature window (owner, 2026-08-19). Same field as the
         // pilot view's closed rows — the two screens must not drift (RULE TWO).
-        closed.push({ chunk_start: e.chunk_start, side: e.side, pnl: e.pnl,
+        closed.push({ chunk_start: e.chunk_start, side: e.side,
+          pnl: Number.isFinite(e.pnl) ? e.pnl : null,
+          pnlUnreadable: e.pnl != null && !Number.isFinite(e.pnl) ? String(e.pnl) : null,
           entry_price: p ? p.entry_price : null, entry_utc: p ? p.entry_utc : null,
           exit_price: e.price, exit_utc: e.utc, paper: false });
         break;
       }
       case 'PAPER_ENTRY_FILL':
-        paperOpen[key(e)] = { chunk_start: e.chunk_start, side: e.side, qty: e.qty,
-          entry_price: e.price, entry_utc: e.utc, exit_due_ts: e.exit_due_ts,
+        paperOpen[key(e)] = { chunk_start: e.chunk_start, side: e.side,
+          // A quantity or price that is not a real number reaches the screen as
+          // "no value" rather than as the word Infinity in a money column.
+          qty: Number.isFinite(e.qty) ? e.qty : null,
+          qtyUnreadable: e.qty != null && !Number.isFinite(e.qty) ? String(e.qty) : null,
+          entry_price: Number.isFinite(e.price) ? e.price : null, entry_utc: e.utc, exit_due_ts: e.exit_due_ts,
           decision_price: e.decision_price, fill_deviation: e.fill_deviation, paper: true };
         if (typeof e.fill_deviation === 'number') paperFills.push(e.fill_deviation);
         break;
       case 'PAPER_EXIT_FILL': {
         const p = paperOpen[key(e)]; delete paperOpen[key(e)];
-        paperRealized += e.pnl || 0;
-        closed.push({ chunk_start: e.chunk_start, side: e.side, pnl: e.pnl,
+        // Identical to the real side above, deliberately (RULE TWO): the paper
+        // book is the control arm, and a total computed differently on the two
+        // sides makes the comparison worthless.
+        if (Number.isFinite(e.pnl)) paperRealized += e.pnl;
+        else if (e.pnl != null) unreadable.push({ chunk_start: e.chunk_start, field: 'pnl', value: String(e.pnl), paper: true });
+        closed.push({ chunk_start: e.chunk_start, side: e.side,
+          pnl: Number.isFinite(e.pnl) ? e.pnl : null,
+          pnlUnreadable: e.pnl != null && !Number.isFinite(e.pnl) ? String(e.pnl) : null,
           entry_price: p ? p.entry_price : null, entry_utc: p ? p.entry_utc : null,
           exit_price: e.price, exit_utc: e.utc, paper: true });
         break;
@@ -224,6 +248,10 @@ function deriveSetup(events, setupId, extraDecisions = []) {
         .sort((a, b) => String(b.chunk_start).localeCompare(String(a.chunk_start)))
         .slice(0, 30);
     })(),
+    // How many stored figures could not be read as numbers. Every money total
+    // here was computed without them.
+    unreadableFigures: unreadable.length,
+    unreadableDetail: unreadable.slice(0, 20),
     realizedPnl: round(realized, 4),
     paperRealizedPnl: round(paperRealized, 4),
     unrealizedPnl,

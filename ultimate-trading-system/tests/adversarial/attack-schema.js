@@ -162,7 +162,7 @@ function run(ctx) {
     const torn = path.join(dir, 'torn.jsonl');
     fs.writeFileSync(torn, `${good}\n{"t":"2026-01-03T00:00:00Z","kind":"fi\n${good2}\n`);
     const r = readJournal(torn);
-    if (r.present && r.events.length === 2 && !('dropped' in r) && !('torn' in r)) {
+    if (r.present && r.events.length === 2 && !r.dropped) {
       found.push(finding('schema/silentdrop', 'reading the trading journal',
         'a journal file with one line cut in half by a crash is read as if the whole line was never there. Nothing anywhere says a record was lost. Every total built on top of it — money made, money lost, number of trades — is then confidently wrong, and looks exactly like a correct answer.',
         { severe: true }));
@@ -172,7 +172,7 @@ function run(ctx) {
     const junk = path.join(dir, 'junk.jsonl');
     fs.writeFileSync(junk, 'not json at all\nnor this\n{{{\n');
     const rj = readJournal(junk);
-    if (rj.present && rj.events.length === 0) {
+    if (rj.present && rj.events.length === 0 && !rj.dropped) {
       found.push(finding('schema/emptylooksfine', 'reading the trading journal',
         'a journal file containing nothing readable at all is reported as PRESENT with no events — which on screen is indistinguishable from a book that has genuinely never traded.',
         { severe: true }));

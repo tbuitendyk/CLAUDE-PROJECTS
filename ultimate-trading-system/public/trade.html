@@ -778,6 +778,9 @@ async function drawLive(){
       Every figure on this page is worked out from the lines that could. Treat the money, the trade count and the
       positions below as incomplete by an unknown amount — this is not the same as there being nothing here.
       ${st.journalUnterminated?'The record also ends mid-line, so the most recent event may be cut off.':''}</div>`:''}
+    ${st.unreadableFigures?`<div class="banner stale">⚠ ${st.unreadableFigures} stored figure${st.unreadableFigures===1?'':'s'} could not be read as a number
+      and ${st.unreadableFigures===1?'was':'were'} left out of the totals below. The money shown is the money that could be worked out,
+      not all of it.</div>`:''}
     ${st.halted?`<div class="banner halted">⛔ HALT set for this config — new entries stopped; scheduled exits still run.
       <div class="muted" style="font-size:.78rem;margin:.25rem 0">Reason recorded on the box: ${esc(st.haltReason||'(not recorded)')}</div>
       <button id="btnSetupUnhalt" class="danger">Clear the halt</button>
