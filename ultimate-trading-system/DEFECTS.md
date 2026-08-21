@@ -7,6 +7,38 @@ reading any code.
 Everything here was proved, not guessed — each item was checked against the
 running system before it went on the list.
 
+---
+
+## MOST OF THIS FILE IS NOW HISTORY (2026-08-21)
+
+You asked for the defects found this round to be fixed, and they were. Of the
+**81 findings** the standing suite held, **78 are fixed** and 3 are decisions
+rather than defects. **All 7 blockers** the independent attack rated are fixed.
+
+Sections 5 and 6 below are kept as the record of what was found and what it
+meant, because the reasoning is worth having. Each one now carries its state.
+The live list — what is still standing and why — is always:
+
+```
+npm run test:adversarial
+```
+
+**What is still standing, all three by choice:**
+
+- **A name may contain markup or a line break.** Left accepted on purpose: you
+  may type any character you like into a name, and refusing them takes a choice
+  away for no benefit. It is safe because both screens turn a name into plain
+  text before drawing it, and the suite checks that on every run. It stays on
+  the list because the safety depends entirely on that continuing to hold.
+- **The two screens format money differently** — signed to four places on the
+  trading screen, dollars to two on Construct. The broken halves are fixed:
+  neither will print a nonsense value as money any more. What is left is
+  presentation you read every day, and changing it is your call.
+
+**And three things about the box's own data, which are observations rather than
+faults in the code** — the code now reports all of them, which is what was
+missing (see section 5j).
+
 Last reviewed 2026-08-21, after a full audit of the tree, the first runs of
 the adversarial suite (section 5) and a separate independent attack (section 6).
 
@@ -155,7 +187,7 @@ Harmless — the check regenerates them.
 
 ---
 
-## 5. What the adversarial suite found (2026-08-21) — 58 items on the working copy, 3 more on the box, none fixed
+## 5. What the adversarial suite found — 58 items, ALL BUT THREE NOW FIXED
 
 A standing test now attacks the system on purpose: `npm run test:adversarial`.
 It asks the opposite question to the ordinary tests — not *does this work*, but
@@ -374,7 +406,7 @@ Said out loud so the coverage claim stays honest:
 
 ---
 
-## 6. A second, independent attack — 67 more, none fixed
+## 6. A second, independent attack — 67 more, all 7 blockers now fixed
 
 Everything in section 5 came from the standing suite I wrote. A separate
 attacking session went at the same system without my harness, 73 attackers over
@@ -383,7 +415,10 @@ as blockers. It reached places my suite did not, because it attacked the
 arithmetic and the engine internals with knowledge of what the numbers are
 supposed to mean, rather than only feeding them rubbish from outside.
 
-**None of this is fixed.** Finding a fault is not permission to change it.
+**FIXED 2026-08-21** (owner direction): all seven blockers, plus the
+cross-site guard, the threshold-tuner's fee, the money arithmetic, and the
+record checking. What remains of the 67 is the medium and low findings; each is
+still described in full in the record named at the end of this section.
 
 **What I checked myself before writing this down.** I did not take these on
 trust. I reproduced the two most serious in this session, by hand:
@@ -418,7 +453,7 @@ trust. I reproduced the two most serious in this session, by hand:
 Eleven of these are now pinned in my standing suite as permanent tests, so they
 cannot come back unnoticed once they are dealt with. The rest are recorded here.
 
-### The seven rated blockers
+### The seven rated blockers — ALL FIXED
 
 1. **Nothing checks a stored setup when it is read back.** 16 of 18 deliberately
    broken setup files read back as valid, and the list the box trades from is
