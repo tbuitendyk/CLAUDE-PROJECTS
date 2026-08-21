@@ -35,6 +35,25 @@ CJ_SIZE="$(curl -s http://127.0.0.1:8094/construct.js | wc -c)"
 [ "$CJ_CODE" = "200" ] && [ "$CJ_SIZE" -gt 100000 ] && ok "construct.js served (${CJ_CODE}, ${CJ_SIZE} bytes)" || no "construct.js: status ${CJ_CODE}, ${CJ_SIZE} bytes"
 echo "  note: on disk -> $(ls -l /opt/ultimate-trading-system/public/ 2>/dev/null | tr -s ' ' | cut -d' ' -f5,9 | tr '\n' ' ')"
 
+echo "== the choice lists the Construct page draws from =="
+# Every dropdown on the Construct page is now drawn from this one answer
+# (RULE FIVE, 2026-08-21). If it does not reply, every one of them draws
+# "(choices unavailable)" and the page is unusable — so it is checked here
+# rather than discovered at the screen.
+VOC="$(curl -s -o /tmp/uts-voc.json -w '%{http_code}' http://127.0.0.1:8094/api/vocabulary)"
+if [ "$VOC" = "200" ]; then
+  N="$(python3 -c 'import json;d=json.load(open("/tmp/uts-voc.json"));print(len(d))' 2>/dev/null || echo 0)"
+  [ "$N" -ge 13 ] && echo "  PASS  api/vocabulary serves $N choice lists" \
+    || { echo "  FAIL  api/vocabulary serves only $N choice lists"; FAIL=1; }
+  # The one that was actually missing from the screen before this existed.
+  python3 -c 'import json,sys;d=json.load(open("/tmp/uts-voc.json"));sys.exit(0 if any(o["value"]=="161" for o in d.get("tHours",[])) else 1)' \
+    && echo "  PASS  the 161-hour hold the engine implements is offered" \
+    || { echo "  FAIL  the 161-hour hold is missing from the list again"; FAIL=1; }
+else
+  echo "  FAIL  api/vocabulary -> $VOC (every dropdown on Construct would be empty)"; FAIL=1
+fi
+rm -f /tmp/uts-voc.json
+
 echo "== the departed screens are gone =="
 for u in index.html app.js help.html api/tracker api/books api/dogebook api/rotations; do
   c="$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:8094/$u")"
