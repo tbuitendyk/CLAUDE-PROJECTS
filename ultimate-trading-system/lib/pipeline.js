@@ -21,8 +21,9 @@ const TAU_GRID = [0, 0.34, 0.4, 0.45, 0.5, 0.55, 0.6];
 // The meta-lens interlaced split's PURGE, applied to a chronological training
 // window: 49-day (7-week) blocks, dropping the last ceil(exitOffset/step)
 // chunks of every block so overlapping chunks never straddle a block edge.
-// Mirrors lib/metalens.js interlacedSplit (kept separate — metalens requires
-// pipeline, so pipeline cannot import it back).
+// Interlaced split, kept local: this module must not reach for a stateful
+// one. (It used to say it mirrored lib/metalens.js; that file went with the
+// screens it served.)
 function interlacedPurge(trainChunks, geo, blockDays = 49) {
   if (!trainChunks.length) return trainChunks;
   const purge = Math.ceil(geo.exitOffsetH / (geo.stepHours || 24));
@@ -251,7 +252,7 @@ async function runAnalysis(params, onProgress = () => {}) {
     for (let i = 0; i < n; i++) Object.assign(chunks[i], src[(i + labelShift) % n]);
   }
 
-  // Feature view projection (consensus screen): restrict the compressed
+  // Feature view projection: restrict the compressed
   // vector to one methodological slice.
   const allNames = featureNamesFor(nDays);
   let featureNames = allNames;

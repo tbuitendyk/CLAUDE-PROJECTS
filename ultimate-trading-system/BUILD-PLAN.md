@@ -86,17 +86,30 @@ work.
   it was pointed at the surviving pages. Reworded with the meaning unchanged;
   reported because it is a screen string outside the named work.
 
-## Parked, with the reason
+## Was parked, now done (owner direction, 2026-08-19)
 
-- **Carving the departed run kinds out of `lib/batch.js`.** The file is ~3,300
-  lines and is the launcher for the surviving sweep, History and tuning work.
-  Two successive attempts to measure which symbols are exclusively the departed
-  screens' produced answers that were wrong in the convenient direction — the
-  first said "keep everything", the second over-connected almost as badly. The
-  five dead starters have no callers, but their helpers are interleaved with the
-  surviving path, and a wrong cut here takes Construct down. Parked for a pass
-  with a real parser rather than a hand-rolled one, and for the owner's eyes.
-  Nothing user-facing reaches this code: every route that could has been removed.
+The carve-out of `lib/batch.js` was parked on the grounds that the departed
+run kinds were interleaved with the surviving sweep. The owner's answer was the
+obvious one and the right one: you do not keep a retired screen's module alive
+to host one shared helper — you move the helper and delete the rest.
+
+Measured properly, the entanglement was one function. Of 23 symbols in the
+block, 22 were used only by the block or named in the export list; `median`
+alone had callers on both sides. It now lives in `lib/stats.js`, a plain
+numeric-helpers module with no imports, and the block is gone: 905 lines out of
+`batch.js`, plus `lib/metalens.js`, which nothing else used.
+
+Three test files went with the screens. Before deleting them, two tests that
+had been filed there but cover SURVIVING code were carried out:
+`directionalCall` — the rule deciding which way a trade goes — into a new
+`tests/test-paper.js` beside the module it is actually about, and the two
+unique feature-view assertions into `tests/test-features.js`. `test-boost.js`
+and `test-batchdoc.js` were left untouched, as the review required.
+
+The lesson worth keeping: parking it was over-caution dressed as prudence. The
+measurement that made it look entangled was my own, and it was wrong — twice.
+The right response to an instrument you distrust is a better instrument, not a
+smaller ambition.
 
 ## Adversarial review — what it found (2026-08-19)
 

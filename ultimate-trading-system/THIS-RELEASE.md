@@ -60,10 +60,18 @@ Owner (2026-08-12):
 > ALTERNATE exchange/trading platforms, making the subscription available to
 > Americans and Canadians (Binance is unavailable/restricted there).
 
-`[feasibility]` Verified 2026-08-19: one small module stands where an
-exchange adapter would go, and Binance is the only implementation. Nothing
-else in the live code reaches an exchange directly, so the seam is real and
-a second venue is an addition rather than surgery.
+`[feasibility]` Verified 2026-08-19, and CORRECTED the same day after a closer
+read: `lib/live/exchange.js` exists and is a complete Binance adapter, but
+**nothing routes through it.** The live code still calls the Binance module
+directly. So the seam is written, not wired: a second venue today would mean
+changing every call site, which is what the seam was meant to prevent.
+
+The first sentence of this note previously said the seam was real. It is not
+yet, and the correction matters because that claim is what would make a
+second venue look cheap when it is not. Wiring the live rail through the
+adapter is small, contained work — and it is a change to how the trading side
+fetches data, so it waits for the owner rather than riding along with a
+clean-up.
 
 The work a second venue actually needs is not the data side — hourly candle
 geometry is the same everywhere — but the trading side: each venue has its

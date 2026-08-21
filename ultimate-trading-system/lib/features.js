@@ -173,7 +173,7 @@ function featureNamesFor(nDays) {
 }
 const FEATURE_NAMES = featureNamesFor(8);
 
-// Feature VIEWS for the consensus screen: methodologically distinct slices
+// Feature VIEWS: methodologically distinct slices
 // of the 44. A pair that shows edge across views can't be riding a single
 // family's artifact. 'full' = everything; 'prices' = no volume features;
 // 'volume' = only volume features; 'cross' = only the cross-asset features.

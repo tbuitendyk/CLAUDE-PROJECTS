@@ -107,6 +107,17 @@ module.exports = {
       assert.strictEqual(cross, 4, `${n}-day cross view`);
       assert.strictEqual(prices + volume, total, `${n}-day prices/volume partition`);
     }
+    // Carried here when the consensus screen's test file went with the screen
+    // (THIS-RELEASE point 14). These two were the only assertions in it that
+    // covered surviving code: every committee the sweep and History Tuning fit
+    // slices its features through viewIndices, so an unknown view must refuse
+    // rather than quietly return nothing, and the cross view must hold the
+    // four relative measures by name and not merely by count.
+    assert.throws(() => viewIndices('nope'), /unknown feature view/);
+    assert.deepStrictEqual(
+      viewIndices('cross').map((i) => FEATURE_NAMES[i]),
+      ['rel_total_ret', 'rel_ret_last24h', 'rel_vol_log', 'ret_correlation'],
+    );
   },
   async helpersBehave() {
     assert.ok(Math.abs(linSlope([0, 1, 2, 3]) - 1) < 1e-12);
