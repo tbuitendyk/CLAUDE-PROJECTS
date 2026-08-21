@@ -782,8 +782,10 @@ function writeArmRequest(on, by) {
 // change: the live screen's existing fetch already carries a same-origin
 // Origin/Referer, so the running button cannot break, and it fails OPEN when those
 // headers are absent (e.g. a proxy strips them, or a non-browser curl that would
-// need the site credentials anyway and is not a CSRF vector). It only ever fails
-// CLOSED on a positively cross-site browser request. ALLOWED covers the documented
+// need the site credentials anyway and is not a CSRF vector). It fails CLOSED on
+// every positively cross-site browser request, INCLUDING one whose Origin is the
+// literal "null" that a sandboxed frame or a data:/file: page sends — that is a
+// browser naming a cross-site context, not an absent header (fixed 2026-08-21). ALLOWED covers the documented
 // public host plus localhost for tests; PILOT_ALLOWED_HOSTS can extend it.
 function sameSiteOrNoBrowserOrigin(req) {
   const ALLOWED = new Set(['www.buitendyk.ca', 'buitendyk.ca', '127.0.0.1', 'localhost',
@@ -792,7 +794,23 @@ function sameSiteOrNoBrowserOrigin(req) {
   if (!src) return true;                 // no browser origin at all -> not a CSRF vector
   let host = null;
   try { host = new URL(src).hostname; } catch (_) { host = null; }
-  if (!host) return true;                // unparseable -> do not block a legit request
+  // AN ORIGIN THAT IS PRESENT BUT NOT AN ADDRESS IS A CROSS-SITE ORIGIN, AND
+  // THIS USED TO LET IT THROUGH (found 2026-08-21, and it is the one that
+  // mattered). The reasoning above says a browser always names its host, so an
+  // unparseable value must be something other than a browser and safe to allow.
+  // That is wrong. A page inside a sandboxed frame, and a page loaded from a
+  // data: or file: address, are sent by the browser with the literal text
+  // "null" — the browser saying "I am from somewhere that cannot be named",
+  // which is the exact circumstance this guard exists for. Proved: a request
+  // claiming https://evil.example was refused 403 while the identical request
+  // claiming "null" was allowed and disarmed the engine.
+  //
+  // The distinction that matters is PRESENT-AND-UNNAMEABLE versus ABSENT. An
+  // absent header still fails open, deliberately, and for the reason already
+  // recorded: a proxy that strips it would otherwise break the owner's real
+  // button. A header that is present and does not name a host we accept is
+  // refused, whatever it says.
+  if (!host) return false;
   if (ALLOWED.has(host.toLowerCase())) return true;
   // ALSO accept when the Origin/Referer host equals the request's OWN Host header —
   // a self-consistent same-origin request, whatever host the site is served under.

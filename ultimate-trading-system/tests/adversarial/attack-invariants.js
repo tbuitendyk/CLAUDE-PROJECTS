@@ -55,8 +55,18 @@ function run(ctx) {
           { severe: true }));
       }
     }
+    // A URL written in a COMMENT is prose, not an address the code reaches.
+    // Stripping `//` to end of line would eat the real ones (every URL contains
+    // `//`), so the test is whether the LINE is a comment — which is how these
+    // files are written and is safe against that trap.
+    const commentLines = new Set();
+    src.split('\n').forEach((line, i) => {
+      if (/^\s*(\/\/|\*|\/\*)/.test(line)) commentLines.add(i);
+    });
+    const lineOf = (idx) => src.slice(0, idx).split('\n').length - 1;
     for (const m of src.matchAll(/https?:\/\/[a-zA-Z0-9.:_-]+/g)) {
       const url = m[0];
+      if (commentLines.has(lineOf(m.index))) continue;
       if (url.includes('buitendyk.ca') || url.includes('127.0.0.1') || url.includes('localhost')) continue;
       if (url.includes('w3.org') || url.includes('schema.org')) continue; // markup namespaces, not requests
       if (ALLOWED_HOSTS.some((re) => re.test(url))) continue;

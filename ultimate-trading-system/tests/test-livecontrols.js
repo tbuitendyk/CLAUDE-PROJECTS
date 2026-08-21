@@ -24,6 +24,22 @@ const handler = (route) => {
 };
 
 module.exports = {
+  // A browser does not always name its host. From a sandboxed frame, or a page
+  // opened from a data: or file: address, it sends the literal text "null" —
+  // and that is a cross-site request, not an absent header. The guard used to
+  // read "cannot be named" as "not a browser" and let it through, which was
+  // proved against a running server: evil.example refused 403, "null" allowed
+  // 200 and the engine disarmed.
+  async anUnnameableOriginIsCrossSiteNotAbsent() {
+    const i = SERVER.indexOf('function sameSiteOrNoBrowserOrigin');
+    assert.ok(i >= 0, 'the cross-site guard is gone');
+    const fn = SERVER.slice(i, SERVER.indexOf('function csrfGuard'));
+    assert.ok(/if \(!host\) return false;/.test(fn),
+      'an Origin that is present but names no host is allowed again — a sandboxed frame or a data: page can forge the live-money controls');
+    assert.ok(/if \(!src\) return true;/.test(fn),
+      'the ABSENT-header case must still fail open: a proxy that strips it would otherwise break the owner\'s real button');
+  },
+
   // Silence is not consent. The default on this route must be to refuse.
   async armingRequiresAnExplicitYes() {
     const h = handler('/api/pilot/arm');
