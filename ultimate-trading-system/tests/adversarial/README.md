@@ -31,7 +31,7 @@ So the scoring here is deliberately upside down:
 
 ## What it attacks
 
-Six surfaces, each in its own file:
+Seven surfaces, each in its own file:
 
 1. **`attack-http.js` — the front door.** Every address the system answers on,
    hit with nothing, the wrong shape, the wrong type, a name four thousand
@@ -86,6 +86,14 @@ Six surfaces, each in its own file:
    ```
    node tests/adversarial/run.js --only=attack-storeddata --data=/opt/ultimate-trading-system/data
    ```
+
+7. **`attack-controls.js` — the controls.** Every address a page calls is
+   matched against the addresses the server really answers, **including the ones
+   the pages build by joining pieces together** — which is exactly the set the
+   ordinary endpoint check skips, and so the set most likely to have gone stale.
+   It also looks for dropdowns whose choices are written into the page rather
+   than coming from the system (RULE FIVE), and says so more sharply when the
+   system already publishes that list and the page is keeping a second copy.
 
 ## Safety
 

@@ -155,7 +155,7 @@ Harmless — the check regenerates them.
 
 ---
 
-## 5. What the adversarial suite found (2026-08-21) — 37 items, none fixed
+## 5. What the adversarial suite found (2026-08-21) — 50 items, none fixed
 
 A standing test now attacks the system on purpose: `npm run test:adversarial`.
 It asks the opposite question to the ordinary tests — not *does this work*, but
@@ -169,8 +169,10 @@ and finding a fault is not permission to change it. The full list with the
 reason each is on hold is in `tests/adversarial/baseline.json`; the suite passes
 while only these come back and fails the moment something new appears.
 
-**The good news first, because it is real.** 1,571 hostile requests were fired
-at all 71 addresses the system answers on — empty requests, wrong types, names
+**The good news first, because it is real.** 3,142 hostile requests were fired
+at all 71 addresses the system answers on, twice over — once against an empty
+system and once against one holding real candles, a real setup and a real
+journal — empty requests, wrong types, names
 four thousand characters long, paths trying to climb out of the folder, broken
 JSON, bodies bigger than the stated limit. Not one produced a crash, a leaked
 file path, or a made-up number. Oversized bodies were refused. Nothing could
@@ -179,7 +181,12 @@ nothing in the shipped code can reach an artificial intelligence of any kind,
 nothing reaches any outside address except the public market-data service,
 nothing rolls dice in a path that decides anything, training the same model on
 the same data twice gives the identical answer to the last digit, and paper
-money is never folded into the real total.
+money is never folded into the real total. **The data actually on disk is
+clean** — every stored file parses, all 13 candle months hold the full number of
+hours with no holes, no duplicated hours, no impossible prices. And **no control
+on any screen calls an address the server does not answer**, including the 25
+addresses the pages build by joining pieces together, which the ordinary
+endpoint check skips.
 
 ### 5a. The market data is read without any check at all — 9 items
 
@@ -243,16 +250,43 @@ as a number is accepted as a valid symbol. Names containing markup or line
 breaks are stored unchanged — currently harmless, because both pages make text
 safe before drawing it, but only for as long as that stays true.
 
-### 5f. Two places the suite deliberately does not reach
+### 5g. Thirteen dropdowns offer a list written into the page — 13 items
+
+Every one of these lets you pick only from what somebody typed into the code.
+Nothing on screen says so, and there is no way to add to any of them from the
+interface:
+
+`swGeom` (chunk shape) · `swDec` · `swLayout` · `swDecEntry` · `swDecGate` ·
+`swDecD` · `swDecT` · `swDecTrail` · `swDecArm` · `swDecQ6` · `swDecQ8` ·
+`ht2hl` · `glTarget`
+
+Two of them are worse than the rest, because **the system already holds the
+list and the page keeps its own copy**: the chunk-shape dropdown duplicates the
+geometries the system implements, and the entry-style dropdown duplicates the
+entry styles the system accepts. Add one to the system and the screen will never
+show it.
+
+This is RULE FIVE — what appears in the interface is yours to decide, and a list
+baked into the code takes that decision away without saying so. Not changed,
+because deciding what those lists should contain and where they should come from
+is exactly the decision the rule reserves for you.
+
+### 5f. Three places the suite deliberately does not reach
 
 Said out loud so the coverage claim stays honest:
 
 - The two addresses that download market data from the internet are **not**
   attacked. Firing junk at them would either pull real files down or hang on the
   network, and neither tells us anything.
-- The front-door sweep runs against an **empty** system, so addresses that need
-  data answer "nothing here" and their deeper workings are not reached that way.
-  That ground is covered by the other four attacks, which call the code directly.
+- The front-door sweep runs twice — once against an empty system, once against
+  one holding real candles, a real setup and a real journal. Even then only **4
+  of 23** plain addresses had more to say on the second pass, so most addresses
+  are still being asked about records that do not exist. That ground is covered
+  by the other attacks, which call the code directly rather than through an
+  address.
+- Nothing here opens a browser. The screens are checked by running their real
+  formatting helpers and by reading the code that draws them — not by looking at
+  a rendered page.
 
 ---
 

@@ -1,6 +1,6 @@
 {
-  "writtenUtc": "2026-08-21T17:28:31.391Z",
-  "note": "Findings that are real, have been read, and are NOT being fixed today. Each carries the reason. The suite passes while only these come back and fails the moment anything new appears. Nothing here is a pass — it is a list of known faults with the owner's decision still outstanding on each. The same list is written up in plain language in DEFECTS.md.",
+  "writtenUtc": "2026-08-21T17:45:04.399Z",
+  "note": "Findings that are real, have been read, and are not being fixed today. Each needs a reason in plain language. The suite fails on anything NOT in this list.",
   "known": [
     {
       "fingerprint": "schema/accepts|the configuration check|a configuration with a traded symbol that is a number was accepted as valid — that value w",
@@ -223,6 +223,84 @@
       "where": "the Dashboard totals (Paper Books)",
       "what": "a book whose money is not-a-number produced a headline total of rows.0.rp = NaN — that goes at the top of the screen as the money figure.",
       "why": "Found 2026-08-21. Real, not fixed today: same decision as the screen figures above, applied to the headline total at the top of the Dashboard. Written up in DEFECTS.md."
+    },
+    {
+      "fingerprint": "controls/rulefive|the construct page|the dropdown \"swgeom\" offers a list written into the page — weekly #-day, daily #-day, dai",
+      "where": "the Construct page",
+      "what": "the dropdown \"swGeom\" offers a list written into the page — Weekly 8-day, Daily 1-day, Daily 2-day, Daily 3-day, Daily 4-day. The owner can only pick what somebody typed into the code, and nothing on screen says so (RULE FIVE). The system already holds this list — it is the geometries the system implements — so the page is keeping a second copy that can drift from it.",
+      "why": "Found 2026-08-21 by the adversarial suite. Real, and squarely a RULE FIVE matter: a list of what you may choose from, written into the page. NOT changed, because what appears in the interface is your decision and hardcoding it in a hurry is the same mistake in the other direction. Written up in DEFECTS.md section 5g."
+    },
+    {
+      "fingerprint": "controls/rulefive|the construct page|the dropdown \"swdec\" offers a list written into the page — argmax, directional. the owner ",
+      "where": "the Construct page",
+      "what": "the dropdown \"swDec\" offers a list written into the page — argmax, directional. The owner can only pick what somebody typed into the code, and nothing on screen says so (RULE FIVE).",
+      "why": "Found 2026-08-21 by the adversarial suite. Real, and squarely a RULE FIVE matter: a list of what you may choose from, written into the page. NOT changed, because what appears in the interface is your decision and hardcoding it in a hurry is the same mistake in the other direction. Written up in DEFECTS.md section 5g."
+    },
+    {
+      "fingerprint": "controls/rulefive|the construct page|the dropdown \"swlayout\" offers a list written into the page — #/#/#, #/#/#/# (sealed exam)",
+      "where": "the Construct page",
+      "what": "the dropdown \"swLayout\" offers a list written into the page — 70/15/15, 61/13/13/13 (sealed exam), legacy 80/20 (never evidence). The owner can only pick what somebody typed into the code, and nothing on screen says so (RULE FIVE).",
+      "why": "Found 2026-08-21 by the adversarial suite. Real, and squarely a RULE FIVE matter: a list of what you may choose from, written into the page. NOT changed, because what appears in the interface is your decision and hardcoding it in a hurry is the same mistake in the other direction. Written up in DEFECTS.md section 5g."
+    },
+    {
+      "fingerprint": "controls/rulefive|the construct page|the dropdown \"swdecentry\" offers a list written into the page — breakout, market (classifi",
+      "where": "the Construct page",
+      "what": "the dropdown \"swDecEntry\" offers a list written into the page — breakout, market (classifier trade). The owner can only pick what somebody typed into the code, and nothing on screen says so (RULE FIVE). The system already holds this list — it is the entry styles the system accepts — so the page is keeping a second copy that can drift from it.",
+      "why": "Found 2026-08-21 by the adversarial suite. Real, and squarely a RULE FIVE matter: a list of what you may choose from, written into the page. NOT changed, because what appears in the interface is your decision and hardcoding it in a hurry is the same mistake in the other direction. Written up in DEFECTS.md section 5g."
+    },
+    {
+      "fingerprint": "controls/rulefive|the construct page|the dropdown \"swdecgate\" offers a list written into the page — directional, active, always",
+      "where": "the Construct page",
+      "what": "the dropdown \"swDecGate\" offers a list written into the page — directional, active, always. The owner can only pick what somebody typed into the code, and nothing on screen says so (RULE FIVE).",
+      "why": "Found 2026-08-21 by the adversarial suite. Real, and squarely a RULE FIVE matter: a list of what you may choose from, written into the page. NOT changed, because what appears in the interface is your decision and hardcoding it in a hurry is the same mistake in the other direction. Written up in DEFECTS.md section 5g."
+    },
+    {
+      "fingerprint": "controls/rulefive|the construct page|the dropdown \"swdecd\" offers a list written into the page — #.#×, #.#×, #.#×, #×, #.#×. th",
+      "where": "the Construct page",
+      "what": "the dropdown \"swDecD\" offers a list written into the page — 0.25×, 0.5×, 0.75×, 1×, 1.5×. The owner can only pick what somebody typed into the code, and nothing on screen says so (RULE FIVE).",
+      "why": "Found 2026-08-21 by the adversarial suite. Real, and squarely a RULE FIVE matter: a list of what you may choose from, written into the page. NOT changed, because what appears in the interface is your decision and hardcoding it in a hurry is the same mistake in the other direction. Written up in DEFECTS.md section 5g."
+    },
+    {
+      "fingerprint": "controls/rulefive|the construct page|the dropdown \"swdect\" offers a list written into the page — #h, #h, #h, #h, #h, #h. the ow",
+      "where": "the Construct page",
+      "what": "the dropdown \"swDecT\" offers a list written into the page — 17h, 41h, 65h, 89h, 113h, 137h. The owner can only pick what somebody typed into the code, and nothing on screen says so (RULE FIVE).",
+      "why": "Found 2026-08-21 by the adversarial suite. Real, and squarely a RULE FIVE matter: a list of what you may choose from, written into the page. NOT changed, because what appears in the interface is your decision and hardcoding it in a hurry is the same mistake in the other direction. Written up in DEFECTS.md section 5g."
+    },
+    {
+      "fingerprint": "controls/rulefive|the construct page|the dropdown \"swdectrail\" offers a list written into the page — static, #.#×, #×, #.#×, #×",
+      "where": "the Construct page",
+      "what": "the dropdown \"swDecTrail\" offers a list written into the page — static, 0.5×, 1×, 1.5×, 2×. The owner can only pick what somebody typed into the code, and nothing on screen says so (RULE FIVE).",
+      "why": "Found 2026-08-21 by the adversarial suite. Real, and squarely a RULE FIVE matter: a list of what you may choose from, written into the page. NOT changed, because what appears in the interface is your decision and hardcoding it in a hurry is the same mistake in the other direction. Written up in DEFECTS.md section 5g."
+    },
+    {
+      "fingerprint": "controls/rulefive|the construct page|the dropdown \"swdecarm\" offers a list written into the page — #×, #.#×, #×. the owner can ",
+      "where": "the Construct page",
+      "what": "the dropdown \"swDecArm\" offers a list written into the page — 0×, 0.5×, 1×. The owner can only pick what somebody typed into the code, and nothing on screen says so (RULE FIVE).",
+      "why": "Found 2026-08-21 by the adversarial suite. Real, and squarely a RULE FIVE matter: a list of what you may choose from, written into the page. NOT changed, because what appears in the interface is your decision and hardcoding it in a hurry is the same mistake in the other direction. Written up in DEFECTS.md section 5g."
+    },
+    {
+      "fingerprint": "controls/rulefive|the construct page|the dropdown \"swdecq#\" offers a list written into the page — #/#, #/#, #/#, #/#, #/#, #/#.",
+      "where": "the Construct page",
+      "what": "the dropdown \"swDecQ6\" offers a list written into the page — 1/6, 2/6, 3/6, 4/6, 5/6, 6/6. The owner can only pick what somebody typed into the code, and nothing on screen says so (RULE FIVE).",
+      "why": "Found 2026-08-21 by the adversarial suite. Real, and squarely a RULE FIVE matter: a list of what you may choose from, written into the page. NOT changed, because what appears in the interface is your decision and hardcoding it in a hurry is the same mistake in the other direction. Written up in DEFECTS.md section 5g."
+    },
+    {
+      "fingerprint": "controls/rulefive|the construct page|the dropdown \"swdecq#\" offers a list written into the page — #/#, #/#, #/#, #/#, #/#, #/#.",
+      "where": "the Construct page",
+      "what": "the dropdown \"swDecQ8\" offers a list written into the page — 1/8, 2/8, 3/8, 4/8, 5/8, 6/8. The owner can only pick what somebody typed into the code, and nothing on screen says so (RULE FIVE).",
+      "why": "Found 2026-08-21 by the adversarial suite. Real, and squarely a RULE FIVE matter: a list of what you may choose from, written into the page. NOT changed, because what appears in the interface is your decision and hardcoding it in a hurry is the same mistake in the other direction. Written up in DEFECTS.md section 5g."
+    },
+    {
+      "fingerprint": "controls/rulefive|the construct page|the dropdown \"ht#hl\" offers a list written into the page — #mo, #mo, #mo. the owner can on",
+      "where": "the Construct page",
+      "what": "the dropdown \"ht2hl\" offers a list written into the page — 12mo, 24mo, 36mo. The owner can only pick what somebody typed into the code, and nothing on screen says so (RULE FIVE).",
+      "why": "Found 2026-08-21 by the adversarial suite. Real, and squarely a RULE FIVE matter: a list of what you may choose from, written into the page. NOT changed, because what appears in the interface is your decision and hardcoding it in a hurry is the same mistake in the other direction. Written up in DEFECTS.md section 5g."
+    },
+    {
+      "fingerprint": "controls/rulefive|the construct page|the dropdown \"gltarget\" offers a list written into the page — declared cell, best cell, wi",
+      "where": "the Construct page",
+      "what": "the dropdown \"glTarget\" offers a list written into the page — declared cell, best cell, widest region. The owner can only pick what somebody typed into the code, and nothing on screen says so (RULE FIVE).",
+      "why": "Found 2026-08-21 by the adversarial suite. Real, and squarely a RULE FIVE matter: a list of what you may choose from, written into the page. NOT changed, because what appears in the interface is your decision and hardcoding it in a hurry is the same mistake in the other direction. Written up in DEFECTS.md section 5g."
     }
   ]
 }
