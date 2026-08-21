@@ -47,6 +47,32 @@ const money = (v) => {
   return ok ? `${Number(v) < 0 ? '-' : ''}$${Math.abs(Number(v)).toFixed(2)}` : '—';
 };
 
+// THE CHOICE LISTS COME FROM THE SYSTEM, NOT FROM THIS PAGE (RULE FIVE).
+//
+// Thirteen dropdowns here each carried their own list of options, typed into
+// this file. The owner could only pick what somebody had written here, nothing
+// on screen said so, and the lists had already drifted from the engine: it
+// implements a 161-hour hold and the list stopped at 137, so an option the
+// system provides could not be reached. Committee agreement of 7/8 and 8/8 were
+// missing the same way.
+//
+// Now every one of them is drawn from /api/vocabulary, which reads the code
+// that implements each choice. Adding a value to the engine puts it on screen
+// with nothing here to keep in step.
+let VOCAB = null;
+function vocabOptions(name, selected) {
+  const list = VOCAB && VOCAB[name];
+  if (!list) {
+    // Never silently draw an empty control. A dropdown with nothing in it and
+    // no explanation is worse than an error.
+    return '<option value="">(choices unavailable)</option>';
+  }
+  return list.map((o) => `<option value="${esc(o.value)}"${String(o.value) === String(selected) ? ' selected' : ''}>${esc(o.label)}</option>`).join('');
+}
+async function loadVocabulary() {
+  try { VOCAB = await api('api/vocabulary'); } catch (err) { VOCAB = null; }
+}
+
 async function post(p, body) {
   const r = await fetch(p, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}) });
   const j = await r.json().catch(() => ({}));
@@ -464,9 +490,9 @@ async function drawSweep() {
       <label class="f">end<input id="swEnd" type="month"></label>
     </div>
     <div class="row" style="margin-top:.5rem;align-items:flex-end">
-      <label class="f">chunk shape<select id="swGeom"><option value="weekly-8d">Weekly 8-day</option><option value="daily-1d">Daily 1-day</option><option value="daily-2d">Daily 2-day</option><option value="daily-3d">Daily 3-day</option><option value="daily-4d" selected>Daily 4-day</option></select></label>
+      <label class="f">chunk shape<select id="swGeom">${vocabOptions('geometry', 'daily-4d')}</select></label>
       <label class="c"><input type="checkbox" id="swPermGeom" checked> permute</label>
-      <label class="f">decision<select id="swDec"><option>argmax</option><option>directional</option></select></label>
+      <label class="f">decision<select id="swDec">${vocabOptions('decision', 'argmax')}</select></label>
       <label class="c"><input type="checkbox" id="swPermDec" checked> permute</label>
       <label class="f">band % (or auto)<input id="swBand" value="auto" style="width:5rem"></label>
       <label class="c"><input type="checkbox" id="swPermBand" checked> permute</label>
@@ -474,7 +500,7 @@ async function drawSweep() {
       <label class="c"><input type="checkbox" id="swPermWk"> permute</label>
     </div>
     <div class="row" style="margin-top:.5rem;align-items:flex-end">
-      <label class="f">window layout<select id="swLayout"><option value="split70" selected>70/15/15</option><option value="reserve61">61/13/13/13 (sealed exam)</option><option value="legacy80">legacy 80/20 (never evidence)</option></select></label>
+      <label class="f">window layout<select id="swLayout">${vocabOptions('windowLayout', 'split70')}</select></label>
       <label class="f">promote top K<input id="swK" type="number" value="25" min="1" max="50" style="width:4.5rem" title="the backend caps this at 50 (detailK); a larger number is silently reduced, so the box refuses it here instead"></label>
       <label class="f">null boards<input id="swNulls" type="number" value="0" min="0" max="24" style="width:4.5rem" title="companion boards with votes dealt onto random days; N boards = at best a 1-in-(N+1) claim; each costs a full sweep. The backend caps this at 24, so the box refuses more here rather than quietly running fewer"></label>
       <label class="f">min trades<input id="swMinTr" type="number" value="10" style="width:4.5rem"></label>
@@ -484,27 +510,27 @@ async function drawSweep() {
       <label class="c" title="REPLICATION MODE. Instead of judging each asset by its best-shopped cell, score ONE fixed configuration on every asset — declared before the run, so each asset costs a single look instead of the ~1,260 a menu sweep spends. That turns 'best of thousands on one asset' into a cross-asset reading with no shopping tax and no branch correction owed — read against the configuration's own dealt-vote copies, never as a binomial (QC-7: assets move together, so they are not independent looks). The menu still runs (the board is unchanged); this adds a separate replication table reporting the declared cell per asset. Agreement travels as an exact count per committee size — the 'agree' boxes (5/6 means 5 of a single coin's 6 members).">
         <input type="checkbox" id="swDecOn"> replication: also score one DECLARED config per asset</label>
       <label class="f" id="swDecEntryWrap" title="BREAKOUT opens the position when price reaches a rail at p(1±d). MARKET enters at the entry candle's open in the called direction with no rails, holds to t, and exits at the open: the general classifier's own trade, and exactly what the live paper books do. Market entry is directional by definition, so gate and d do not apply to it.">entry
-        <select id="swDecEntry"><option value="breakout" selected>breakout</option><option value="market">market (classifier trade)</option></select></label>
+        <select id="swDecEntry">${vocabOptions('entry', 'breakout')}</select></label>
       <label class="c" title="score EVERY entry style as its own declared config"><input type="checkbox" id="swPermDecEntry"> permute</label>
       <label class="f" id="swDecGateWrap">gate
-        <select id="swDecGate"><option value="directional" selected>directional</option><option value="active">active</option><option value="always">always</option></select></label>
+        <select id="swDecGate">${vocabOptions('gate', 'directional')}</select></label>
       <label class="c" id="swPermDecGateWrap" title="score EVERY gate as its own declared config"><input type="checkbox" id="swPermDecGate"> permute</label>
       <label class="f" id="swDecDWrap">d
-        <select id="swDecD"><option value="0.25">0.25×</option><option value="0.5">0.5×</option><option value="0.75">0.75×</option><option value="1">1×</option><option value="1.5" selected>1.5×</option></select></label>
+        <select id="swDecD">${vocabOptions('dMult', '1.5')}</select></label>
       <label class="c" id="swPermDecDWrap" title="score EVERY rail distance as its own declared config"><input type="checkbox" id="swPermDecD"> permute</label>
       <label class="f">t
-        <select id="swDecT"><option value="17">17h</option><option value="41">41h</option><option value="65" selected>65h</option><option value="89">89h</option><option value="113">113h</option><option value="137">137h</option><option value="161">161h</option></select></label>
+        <select id="swDecT">${vocabOptions('tHours', '65')}</select></label>
       <label class="c" title="score EVERY hold length as its own declared config"><input type="checkbox" id="swPermDecT"> permute</label>
       <label class="f" id="swDecTrailWrap" title="Declared trailing stop, band-relative. 'static' is the opposite-rail stop this lab has always used. Requires the trailing plane tick, since declared cells are read out of the promoted menu.">trail
-        <select id="swDecTrail"><option value="" selected>static</option><option value="0.5">0.5×</option><option value="1">1×</option><option value="1.5">1.5×</option><option value="2">2×</option></select></label>
+        <select id="swDecTrail">${vocabOptions('trailMult', '')}</select></label>
       <label class="c" id="swPermDecTrailWrap" title="score EVERY trailing stop, static included, as its own declared config"><input type="checkbox" id="swPermDecTrail"> permute</label>
       <label class="f" id="swDecArmWrap" title="How far price must move in your favour before the trail starts. 0 trails from the first bar; 1× is close to move-to-breakeven-then-trail.">arm
-        <select id="swDecArm"><option value="0" selected>0×</option><option value="0.5">0.5×</option><option value="1">1×</option></select></label>
+        <select id="swDecArm">${vocabOptions('armMult', '0')}</select></label>
       <label class="c" id="swPermDecArmWrap" title="score EVERY arm distance as its own declared config"><input type="checkbox" id="swPermDecArm"> permute</label>
       <label class="f" id="swDecQ6Wrap" title="How many of a SINGLE coin's 6 members must agree. A single-coin committee is 3 data views (everything / prices only / volume only) × 2 model types.">agree
-        <select id="swDecQ6"><option value="1">1/6</option><option value="2" selected>2/6</option><option value="3">3/6</option><option value="4">4/6</option><option value="5">5/6</option><option value="6">6/6</option></select></label>
+        <select id="swDecQ6">${vocabOptions('quorumOf6', '2')}</select></label>
       <label class="f" id="swDecQ8Wrap" title="How many of a CONTEXT combo's 8 members must agree. Adding one or two context coins adds a fourth data view — how this coin moves against them — so those committees hold 8 members.">with contexts
-        <select id="swDecQ8"><option value="1">1/8</option><option value="2">2/8</option><option value="3" selected>3/8</option><option value="4">4/8</option><option value="5">5/8</option><option value="6">6/8</option><option value="7">7/8</option><option value="8">8/8</option></select></label>
+        <select id="swDecQ8">${vocabOptions('quorumOf8', '3')}</select></label>
       <label class="c" title="score EVERY agreement level as its own declared config — this multiplies the set fastest"><input type="checkbox" id="swPermDecAgree"> permute</label>
       <span class="note" id="swDecCount"></span>
     </div>
@@ -1346,7 +1372,7 @@ async function drawHistory() {
       no-dial reference on ~20 paired folds — same folds, same frozen trading cell, so the ONLY difference is the
       dial. The table's verdict is the paired money difference, fold by fold.</p>
     <div class="row" style="align-items:flex-end">
-      <label class="f" title="how fast older evidence stops counting. The server accepts these three keys and no others (lib/httwo.js HALF_LIVES); the tab used to offer 90d/180d/365d/730d and EVERY launch threw.">half-life<select id="ht2hl"><option value="12mo" selected>12mo</option><option value="24mo">24mo</option><option value="36mo">36mo</option></select></label>
+      <label class="f" title="how fast older evidence stops counting. The server accepts these three keys and no others (lib/httwo.js HALF_LIVES); the tab used to offer 90d/180d/365d/730d and EVERY launch threw.">half-life<select id="ht2hl">${vocabOptions('halfLife', '12mo')}</select></label>
       ${sel ? '<button id="ht2Run" class="pri">Launch paired age-dial run</button>' : '<span class="note">select a row on Boards first.</span>'}
       <span id="ht2Msg" class="note"></span>
     </div>
@@ -2001,7 +2027,7 @@ async function drawGreenlight() {
     ${sel ? `<div class="row" style="align-items:flex-end">
       <span class="note" style="flex:1 1 auto;min-width:0">selected: <b>${esc(comboOf(sel))}</b> ${esc(sel.geometry)} ${esc(sel.decision)} q${sel.quorum} ${sel.tHours}h
         — test ${money(sel.pnl)}${sel.holdout ? ` · held-back ${money(sel.holdout.pnl)}` : ''}</span>
-      <label class="f" style="flex:none">anchor<select id="glTarget" title="WHICH cell gets greenlighted. 'declared cell' is the one fixed before the run — no shopping. 'best cell' is the highest scorer, which is the best of ~1,260 tries and flatters itself. 'widest region' is the MIDDLE of the widest run of neighbouring settings that all made money — chosen by depth inside the region, never by its score, so the shopped peak cannot sneak back in."><option value="declared">declared cell</option><option value="best">best cell</option><option value="region">widest region</option></select></label>
+      <label class="f" style="flex:none">anchor<select id="glTarget" title="WHICH cell gets greenlighted. 'declared cell' is the one fixed before the run — no shopping. 'best cell' is the highest scorer, which is the best of ~1,260 tries and flatters itself. 'widest region' is the MIDDLE of the widest run of neighbouring settings that all made money — chosen by depth inside the region, never by its score, so the shopped peak cannot sneak back in.">${vocabOptions('greenlightAnchor', 'declared')}</select></label>
     </div>
     <div class="row" style="margin-top:.4rem;align-items:flex-end">
       <label class="f" style="flex:1">why — the decision record (required)<input id="glWhy" style="width:100%"
@@ -2078,5 +2104,6 @@ function draw() {
 }
 function tickClock() { $('#utcClock').textContent = new Date().toISOString().slice(0, 19).replace('T', ' ') + ' UTC'; }
 tickClock(); setInterval(tickClock, 1000);
-draw();
+// The choice lists must be in hand before anything that uses them is drawn.
+loadVocabulary().then(draw);
 })();

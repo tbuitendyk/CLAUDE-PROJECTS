@@ -137,8 +137,18 @@ module.exports = {
     const fs = require('fs');
     const path = require('path');
     const ui = fs.readFileSync(path.join(__dirname, '..', 'public', 'construct.js'), 'utf8');
-    assert.ok(/<option value="region">widest region<\/option>/.test(ui),
-      'the Greenlight anchor must offer "widest region"');
+    // The page no longer carries its own option lists — every dropdown is drawn
+    // from lib/vocabulary.js (2026-08-21, RULE FIVE). So the question "does the
+    // anchor offer the widest region" is now put to the list itself, and the
+    // page is checked for asking for that list. Both halves matter: a list with
+    // the entry that no control asks for is as useless as a control asking for
+    // a list without it.
+    const { vocabulary } = require('../lib/vocabulary');
+    const anchors = vocabulary().greenlightAnchor;
+    assert.ok(anchors.some((o) => o.value === 'region' && /widest region/.test(o.label)),
+      'the Greenlight anchor must offer "widest region" with the value "region"');
+    assert.ok(/id="glTarget"[\s\S]{0,900}?vocabOptions\('greenlightAnchor'/.test(ui),
+      'the Greenlight anchor control no longer asks for the anchor list');
     assert.ok(/id="bSort"/.test(ui), 'the board must offer the second ranking');
     assert.ok(/l\.region\.size/.test(ui), 'the board must show each row\'s region width');
   },

@@ -6,10 +6,19 @@
 // ("split70") — every Start sweep click failed, and no test noticed (owner,
 // 2026-08-16).
 //
-// These tests read the ACTUAL option values out of public/construct.js and
-// check them against the ACTUAL backend allow-lists, both extracted from source
-// rather than restated here. Restating the lists would make the test agree with
-// a copy of the contract instead of the contract.
+// These tests read the ACTUAL option values and check them against the ACTUAL
+// backend allow-lists, both taken from source rather than restated here.
+// Restating the lists would make the test agree with a copy of the contract
+// instead of the contract.
+//
+// CHANGED 2026-08-21. The page no longer carries its own option lists; every
+// dropdown is drawn from lib/vocabulary.js, which reads the code that
+// implements each choice. So `optionValues` now asks the vocabulary rather than
+// scraping the page — the same question, put to the thing that now answers it.
+// The page copies are what these tests were guarding against, and there are
+// none left to guard: the drift they were watching for cannot happen when there
+// is one list rather than two. They still earn their place by checking that the
+// one list agrees with the validators.
 //
 // Watched failing 2026-08-16: restoring any one of the three old #swLayout
 // values fails sweepLayoutOptionsAreAllAcceptedByTheBackend; dropping the
@@ -24,13 +33,25 @@ const ROOT = path.join(__dirname, '..');
 const SWEEP = fs.readFileSync(path.join(ROOT, 'public', 'construct.js'), 'utf8');
 const BATCH = fs.readFileSync(path.join(ROOT, 'lib', 'batch.js'), 'utf8');
 
-// Pull the <option value="..."> strings out of a named <select> in a source file.
-// Returns [] when the select is absent, which the callers assert against.
+// The values a named dropdown will offer. The page names which list it wants
+// (`vocabOptions('tHours', ...)`), and the list itself comes from the system —
+// so this follows the page's own pointer to the real source rather than reading
+// a copy. Returns [] when the select is absent, which the callers assert against.
+const { vocabulary } = require('../lib/vocabulary');
+const VOCAB = vocabulary();
+
 function optionValues(src, selectId) {
   const open = src.indexOf(`<select id="${selectId}"`);
   if (open < 0) return [];
   const close = src.indexOf('</select>', open);
   const block = src.slice(open, close);
+  const asks = /vocabOptions\(\s*'([^']+)'/.exec(block);
+  if (asks) {
+    const list = VOCAB[asks[1]];
+    assert.ok(list, `${selectId} asks for a choice list called "${asks[1]}" and the system publishes no such list`);
+    return list.map((o) => o.value);
+  }
+  // A dropdown still carrying its own options is itself worth failing on now.
   return [...block.matchAll(/<option value="([^"]*)"/g)].map((m) => m[1]);
 }
 

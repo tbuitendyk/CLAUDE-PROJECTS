@@ -54,6 +54,20 @@ app.use(express.static(path.join(__dirname, 'public')));
 const SYMBOL_RE = /^[A-Z0-9]{5,20}$/;
 const GEOMETRY_KEYS = Object.keys(GEOMETRIES); // weekly-8d, daily-1d..daily-4d
 
+// EVERY CHOICE LIST THE INTERFACE OFFERS, so the page does not keep its own
+// copy of any of them (RULE FIVE). Read out of the code that implements each
+// one, so a value added to the engine appears on screen with nothing to keep in
+// step — and so a value the engine has cannot be missing from the screen, which
+// it was: the engine implements a 161-hour hold and the page's list stopped at
+// 137.
+app.get('/api/vocabulary', (req, res) => {
+  try {
+    res.json(require('./lib/vocabulary').vocabulary());
+  } catch (err) {
+    res.status(500).json({ error: `the choice lists could not be read: ${err.message}` });
+  }
+});
+
 app.get('/api/healthz', (req, res) => res.json({ ok: true, cpuPct: throttle.currentCpuPct() }));
 
 // ---- CPU throttle (semi-auto balancer pattern) ------------------------------
