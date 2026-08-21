@@ -677,7 +677,11 @@ function boxControls(b){
 function wireBoxControls(b){
   const go=async(armed)=>{ const verb=armed?'START':'STOP';
     if(!confirm(`${verb} the live engine?`))return;
-    const out=await post(armed?'api/pilot/arm':'api/pilot/disarm'); if(out) draw(); };
+    // The arm route now requires an explicit yes — an empty request is refused,
+    // so this button has to say what it wants. Disarm is unchanged: stopping is
+    // the safe direction and must never be made harder than starting.
+    const out=armed ? await post('api/pilot/arm',{armed:true}) : await post('api/pilot/disarm');
+    if(out) draw(); };
   const bs=$('#btnStart'); if(bs)bs.onclick=()=>go(true);
   const bp=$('#btnStop'); if(bp)bp.onclick=()=>go(false);
   const bu=$('#btnUnhalt');

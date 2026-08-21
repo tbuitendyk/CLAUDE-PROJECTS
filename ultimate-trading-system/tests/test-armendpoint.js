@@ -178,10 +178,25 @@ module.exports.theStopButtonPostsToTheDisarmRoute = async function () {
     'the Trading tab never calls api/pilot/disarm — its STOP button cannot stop anything');
   const i = src.indexOf('const go=async(armed)');
   assert(i >= 0, 'the Trading tab lost its master-switch handler');
-  const block = src.slice(i, i + 400);
-  assert(/armed\?'api\/pilot\/arm':'api\/pilot\/disarm'/.test(block.replace(/\s/g, '')
-    .replace(/armed\?"api\/pilot\/arm":"api\/pilot\/disarm"/, "armed?'api/pilot/arm':'api/pilot/disarm'")),
-    'the master switch does not choose its route from the button pressed — check it is not posting to one route with an {armed} field the server never reads');
+  const block = src.slice(i, i + 700);
+  // THE FAULT THIS GUARDS AGAINST: posting to ONE route and expressing the
+  // direction only as a field, which the server then ignores — that is how the
+  // STOP button silently re-armed the engine. So the check is that BOTH routes
+  // appear and that which one is used depends on the button pressed.
+  //
+  // It used to pin the exact ternary that did that. The arm route now requires
+  // an explicit {armed:true}, so the call was rewritten and the shape changed
+  // while the intent did not. Checking the intent, not the spelling.
+  assert(/api\/pilot\/arm/.test(block) && /api\/pilot\/disarm/.test(block),
+    'the master switch no longer names both routes — one button cannot be doing both jobs');
+  assert(/\barmed\b/.test(block),
+    'the master switch does not branch on which button was pressed');
+  const armCall = /post\(\s*'api\/pilot\/arm'\s*,\s*\{\s*armed\s*:\s*true\s*\}\s*\)/.test(block);
+  assert(armCall,
+    'the arm call must send an explicit {armed:true} — the server refuses anything else, so the START button would be dead');
+  const disarmCall = /post\(\s*'api\/pilot\/disarm'\s*\)/.test(block);
+  assert(disarmCall,
+    'the disarm call changed shape — stopping must stay at least as easy as starting');
 };
 
 // CLEARING A HALT MUST BE POSSIBLE FROM THE SCREEN. A halt never self-clears —

@@ -11,29 +11,41 @@ Last reviewed 2026-08-21, after a full audit of the tree.
 
 ---
 
-## 1. Two controls that handle real money can be pressed by accident
+## 1. Two live-money controls — FIXED 2026-08-21
 
-**These are the most serious things on this page.** Both were found earlier and
-neither has been touched, because changing how a live trading control behaves is
-not something to do without you.
+Both are repaired and deployed. Kept here, struck through, until you have seen
+them working; then they come off.
 
-**The arm control accepts an empty instruction.** The code that arms trading
-only refuses when it is explicitly told "no". Send it nothing at all and it arms.
+~~**The master switch armed on an empty request.**~~ It now refuses anything
+that does not explicitly say yes. The **START engine** button sends that yes,
+and was changed in the same breath so the real control still works. **STOP** was
+not touched — stopping must never be harder than starting.
 
-On top of that, its protection against being triggered from another website only
-works when a request says where it came from. A request from a script does not
-say, and the protection lets it through. Together: the live arm can be pressed by
-something that never meant to press it.
+~~**The stop control had no cross-site guard**~~ — it now has the same one its
+twin has always had.
 
-There is a second edge to this. The reviewer noticed that running the project's
-own test command against a live server would send exactly that request.
+~~**An empty request was recorded as "you chose no stop".**~~ Clearing the stop
+must now be said out loud. **No stop (clear)** already says it, so both real
+buttons work unchanged; only silence is refused.
 
-**A second control has no protection at all.** The one that applies a protective
-stop has none of the safeguard its twin has, and an empty instruction makes it
-record "no protective stop, chosen by the owner" rather than refusing.
+Checked against a running server, not just by reading: an empty request, no
+request body at all, and a request saying `false` are all refused; the real
+press succeeds; clearing with an explicit null succeeds; a cross-site attempt is
+refused.
 
-**What it needs:** a decision from you, then a small change to both. Neither is
-hard. Both change what a live money control does, which is why they are here.
+**ONE THING I DID NOT CHANGE, deliberately.** The cross-site guard still lets
+through a request that does not say where it came from. That is on purpose and
+was tested for on purpose — a proxy that strips those headers would otherwise
+break your real button. A browser always says where it came from, so a genuine
+attack from another website is still blocked. What that gap allows is a script
+on the server reaching the control, and what stops that now is that the control
+demands an explicit instruction. If you want the gap closed as well, that is a
+separate decision with a real cost: it can break the button.
+
+**STILL OPEN ON THE OLD SYSTEM.** The system that is actually trading runs from
+a different branch and did not receive this fix. It still arms on an empty
+request. Applying it there means changing a running trading system, which needs
+its own go-ahead.
 
 ---
 
