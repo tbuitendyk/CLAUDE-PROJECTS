@@ -26,7 +26,16 @@ function summarize(s) {
   return {
     id: s.id, name: s.name, state: s.state, tradedPair: s.tradedPair,
     clipUsd: s.clipUsd, stopPct: s.stopPct, engineVersion: s.engineVersion,
-    keyRef: s.keyRef ? 'set' : null,           // presence only — never the value
+    // PRESENCE ONLY, AND UNDER A NAME THAT SAYS SO (2026-08-21). This used to
+    // put the literal word 'set' in a field CALLED keyRef — a field that does
+    // not contain what its name says. Anything populating an edit box from a
+    // summary then rendered value="set", and pressing Save wrote the word "set"
+    // over the setup's real sub-account reference. The setup stayed
+    // live-eligible, pointing at a sub-account that does not exist, and every
+    // screen went on reading "Key: set" exactly as before.
+    //
+    // A boolean under a different name cannot be mistaken for the value.
+    hasKeyRef: Boolean(s.keyRef),
     executionTargetRef: s.executionTargetRef,
     createdUtc: s.createdUtc,
   };
@@ -61,7 +70,12 @@ function installLiveRoutes(app, { csrfGuard }) {
     if (!s) return res.status(404).json({ error: `no such setup ${req.params.id}` });
     // full record, but keyRef reduced to presence — the value is a reference
     // name, still not for casual display (key hygiene habit).
-    res.json({ ...s, keyRef: s.keyRef ? 'set' : null });
+    // The reference itself NEVER leaves the server, deliberately. So it is not
+    // sent under its own name either: a field called keyRef holding the word
+    // 'set' is what let an edit box be filled with the marker and then saved
+    // over the real reference (found 2026-08-21). Presence, under a name that
+    // says presence.
+    res.json({ ...s, keyRef: undefined, hasKeyRef: Boolean(s.keyRef) });
   });
 
   // Per-setup live book + execution fidelity, derived from the synced box

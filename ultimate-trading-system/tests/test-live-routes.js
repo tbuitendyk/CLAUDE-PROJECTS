@@ -181,11 +181,17 @@ module.exports.keyRefNeverLeavesTheServerAsAValue = async function () {
   reg.createSetup({ id: 'wire-c', name: 'key test', ownerId: 'owner',
     configSnapshot: f1Config(), clipUsd: 10, keyRef: 'sub-acct-key-1' });
   await withServer(async () => {
+    // Presence is now reported under a name that SAYS presence. A field called
+    // keyRef holding the word 'set' is what let an edit box be filled with the
+    // marker and saved over the real reference (2026-08-21).
     const det = (await req('GET', '/api/live/setups/wire-c')).json();
-    assert.strictEqual(det.keyRef, 'set', 'detail shows presence only');
+    assert.strictEqual(det.hasKeyRef, true, 'detail shows presence only');
+    assert.strictEqual(det.keyRef, undefined, 'the detail must not carry a field named keyRef at all');
     const list = (await req('GET', '/api/live/setups')).json();
     const row = list.setups.find((x) => x.id === 'wire-c');
-    assert.strictEqual(row.keyRef, 'set', 'list shows presence only');
+    assert.strictEqual(row.hasKeyRef, true, 'list shows presence only');
+    assert.strictEqual(row.keyRef, undefined, 'the list must not carry a field named keyRef at all');
     assert.ok(!JSON.stringify(det).includes('sub-acct-key-1'), 'ref value never serialized');
+    assert.ok(!JSON.stringify(list).includes('sub-acct-key-1'), 'ref value never serialized in the list either');
   });
 };

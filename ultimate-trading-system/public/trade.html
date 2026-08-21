@@ -587,7 +587,7 @@ async function drawDetail(){
       ${tile('Pair','pair',esc(s.tradedPair))}
       ${tile('Clip','clip','$'+Number(s.clipUsd).toFixed(0))}
       ${tile('Stop','stop',s.stopPct==null?'none':(s.stopPct*100).toFixed(2)+'%')}
-      ${tile('Key','key',s.keyRef?'set':'none',s.keyRef?'pos':'muted')}
+      ${tile('Key','key',s.hasKeyRef?'set':'none',s.hasKeyRef?'pos':'muted')}
       ${tile('Exec target','target',esc(s.executionTargetRef||'default'),'muted')}
     </div>
     <div class="panel"><div class="k">Frozen configuration (immutable — from greenlight ${esc(s.provenanceRef||'—')})</div>
@@ -631,7 +631,17 @@ async function drawDetail(){
            refused on a trading setup (found 2026-08-18). -->
       <div class="row" style="margin-top:.5rem">
         <label class="muted" title="this setup's OWN sub-account credentials, by reference — never a secret typed here. Real money requires it so that no two books share a balance and borrow pool. Blank it and a live setup is refused.">Sub-account key
-          <input id="keyIn" value="${esc(s.keyRef||'')}" placeholder="none set" style="width:14rem"></label>
+          <!-- THIS BOX STARTS EMPTY AND EMPTY MEANS "LEAVE IT ALONE".
+               The reference never leaves the server, by design, so this box
+               cannot be pre-filled with it. It used to be filled with the
+               presence marker instead — the word "set" — and pressing Save
+               wrote that word over the setup's real sub-account reference,
+               which then pointed at a sub-account that does not exist while
+               every screen still read "Key: set" (found 2026-08-21).
+               Silence is not an instruction here, exactly as it is not on the
+               protective stop. Clearing the key is its own deliberate act. -->
+          <input id="keyIn" value="" placeholder="${s.hasKeyRef?'a key is set — type to replace it':'none set'}" style="width:14rem"></label>
+        <label class="muted"><input type="checkbox" id="keyClear"> clear the key</label>
         <label class="muted" title="which execution box serves this setup. A box only serves the symbols it declares, and a setup on a pair its box does not serve is refused before it can trade.">Execution target
           <select id="targetIn" style="min-width:12rem">
             <option value="">— default (mx-1) —</option>
@@ -668,9 +678,14 @@ async function drawDetail(){
     const out=await post(`api/live/setups/${s.id}/config`,{clipUsd,stopPct}); if(out) draw();
   };
   $('#saveRouting').onclick=async()=>{
-    const keyRef=$('#keyIn').value.trim();
+    // Empty means UNCHANGED. Only the explicit tick clears it.
+    const typedKey=$('#keyIn').value.trim();
+    const clearKey=$('#keyClear') && $('#keyClear').checked;
+    const keyRef=clearKey?null:(typedKey||undefined);
     const executionTargetRef=$('#targetIn').value||null;
-    const out=await post(`api/live/setups/${s.id}/config`,{keyRef:keyRef||null,executionTargetRef}); if(out) draw();
+    const body={executionTargetRef};
+    if(keyRef!==undefined) body.keyRef=keyRef;   // say nothing, change nothing
+    const out=await post(`api/live/setups/${s.id}/config`,body); if(out) draw();
   };
 }
 
