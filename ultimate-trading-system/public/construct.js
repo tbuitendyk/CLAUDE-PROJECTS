@@ -25,7 +25,12 @@ let fetchFailures = [];
 const apiOr = async (p, fallback) => {
   try { return await api(p); } catch (e) { fetchFailures.push(e.message); return fallback; }
 };
-const esc = (t) => String(t ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;');
+// AN OBJECT IS NOT TEXT. Converting one produced "[object Object]" on screen,
+// which reads as content rather than as a fault (found 2026-08-21).
+const esc = (t) => {
+  if (t != null && typeof t === 'object') return '(unreadable)';
+  return String(t ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;');
+};
 // WHAT COUNTS AS A FIGURE, and why the test is written out in full inside the
 // function rather than shared. Only a number, or text that reads as one. A
 // boolean is not money (Number(true) is 1) and neither is an empty list

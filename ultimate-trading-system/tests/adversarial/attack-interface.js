@@ -192,10 +192,19 @@ function run(ctx) {
   }
 
   // The count is pinned so a NEW divergence point cannot be added unnoticed.
-  // The number of divergence points as READ AND ACCEPTED on 2026-08-21. This is
-  // not a target — it is a tripwire. A new one appearing is not necessarily
-  // wrong, but it is necessarily something the owner should have decided.
-  const PINNED = 25;
+  // The number of divergence points as READ AND ACCEPTED. This is not a target
+  // — it is a tripwire. A new one appearing is not necessarily wrong, but it is
+  // necessarily something that has to be looked at.
+  //
+  // Moved from 25 to 27 on 2026-08-21, and the two new ones were read before
+  // the number was changed. Both are in dashTotals, reading the raw stored
+  // figure so an unreadable one can be counted: `isPaper ? st.paperRealizedPnl
+  // : st.realizedPnl` and the same for unrealized. Each side reads its own
+  // field, both feed one shared counter, and neither changes behaviour — a
+  // deliberate difference of the kind RULE TWO allows when it is said out loud.
+  // Bumping this number without reading what moved it would make the tripwire
+  // worthless.
+  const PINNED = 27;
   if (points.length > PINNED) {
     found.push(finding('ui/ruletwo-new', 'the Trade page',
       `there are now ${points.length} places that ask whether this is the paper side or the live side, up from the ${PINNED} that were reviewed and accepted. Every one of them is a way the two screens can come to disagree, so the new one(s) need looking at: lines ${points.map((p) => p.line).join(', ')}.`));
