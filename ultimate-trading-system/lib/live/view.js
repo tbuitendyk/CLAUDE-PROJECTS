@@ -102,8 +102,16 @@ function deriveSetup(events, setupId, extraDecisions = []) {
     switch (e.event) {
       case 'ENTRY_FILL':
         if (decisions[e.chunk_start]) decisions[e.chunk_start].fate = 'filled';
-        open[key(e)] = { chunk_start: e.chunk_start, side: e.side, qty: e.qty,
-          entry_price: e.price, entry_utc: e.utc, exit_due_ts: e.exit_due_ts,
+        open[key(e)] = { chunk_start: e.chunk_start, side: e.side,
+          // A quantity or price that is not a real number reaches the screen as
+          // "no value" rather than as the word Infinity in a money column. The
+          // paper side below got this first and this one was missed — and my
+          // check said it was fine, because JSON.stringify turns Infinity into
+          // null and I was reading the printed JSON.
+          qty: Number.isFinite(e.qty) ? e.qty : null,
+          qtyUnreadable: e.qty != null && !Number.isFinite(e.qty) ? String(e.qty) : null,
+          entry_price: Number.isFinite(e.price) ? e.price : null,
+          entry_utc: e.utc, exit_due_ts: e.exit_due_ts,
           decision_price: e.decision_price, fill_deviation: e.fill_deviation, paper: false,
           // WHICH WALLET this position exits through. The box records it at
           // entry and routes the exit by it; the view dropped it, so a

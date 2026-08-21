@@ -218,6 +218,10 @@ function run(ctx) {
       const bad = [];
       (function walk(v, at) {
         if (typeof v === 'number') { if (!Number.isFinite(v)) bad.push(`${at} = ${String(v)}`); return; }
+        // A field whose NAME says the value could not be read is not a figure
+        // pretending to be one — it is the record of a refusal, and reading it
+        // as a screen lie is how a fix reports itself as the fault it fixed.
+        if (/Unreadable$/.test(at)) return;
         if (typeof v === 'string' && /^[-+]?[0-9]/.test(v) && /pnl|realized|price|qty|usd|fee|cost/i.test(at)) {
           bad.push(`${at} = the TEXT "${v}" where a number belongs`);
           return;

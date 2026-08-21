@@ -24,13 +24,13 @@
       "fingerprint": "schema/rawtext|the name check|a name containing a script tag was accepted unchanged; whether that is safe depends entire",
       "where": "the name check",
       "what": "a name containing a script tag was accepted unchanged; whether that is safe depends entirely on every screen that later prints it",
-      "why": "Found 2026-08-21. Checked and currently harmless: both pages put owner-typed names through the escaping helper before drawing them, so markup in a name is shown as text rather than run. Kept on the list because it is only safe as long as that stays true, and this line is what will notice if it stops."
+      "why": "Reviewed again 2026-08-21 during the fixing loop and DELIBERATELY LEFT AS IT IS. A name may contain any characters the owner wants to type, including \"<\" and a line break, and refusing them would take away a choice for no benefit. It is safe because both pages put a name through the escaping helper before drawing it, so markup in a name is shown as the text the owner typed rather than run as markup — and that escaping is itself checked by this suite on every run, including the case of an object reaching it. The finding stays on the list because the safety depends entirely on that escaping continuing to hold, and this line is what will notice if it stops."
     },
     {
       "fingerprint": "schema/rawtext|the name check|a name containing a newline was accepted unchanged; whether that is safe depends entirely ",
       "where": "the name check",
       "what": "a name containing a newline was accepted unchanged; whether that is safe depends entirely on every screen that later prints it",
-      "why": "Found 2026-08-21. Checked and currently harmless: both pages put owner-typed names through the escaping helper before drawing them, so markup in a name is shown as text rather than run. Kept on the list because it is only safe as long as that stays true, and this line is what will notice if it stops."
+      "why": "Reviewed again 2026-08-21 during the fixing loop and DELIBERATELY LEFT AS IT IS. A name may contain any characters the owner wants to type, including \"<\" and a line break, and refusing them would take away a choice for no benefit. It is safe because both pages put a name through the escaping helper before drawing it, so markup in a name is shown as the text the owner typed rather than run as markup — and that escaping is itself checked by this suite on every run, including the case of an object reaching it. The finding stays on the list because the safety depends entirely on that escaping continuing to hold, and this line is what will notice if it stops."
     },
     {
       "fingerprint": "schema/emptylooksfine|reading the trading journal|a journal file containing nothing readable at all is reported as present with no events — ",
