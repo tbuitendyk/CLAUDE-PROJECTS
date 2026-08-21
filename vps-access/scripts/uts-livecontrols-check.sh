@@ -27,6 +27,27 @@ echo "== the protective stop refuses silence, and refuses another site =="
 ck 400 "$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "$J" -d '{}' $B/api/pilot/stop-apply)"          "an empty request"
 ck 403 "$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "$J" -H 'Origin: https://evil.example.com' -d '{"stopPct":0.02}' $B/api/pilot/stop-apply)" "a request from another site"
 
+echo "== an Origin that names nothing is cross-site, not absent =="
+# A page inside a sandboxed frame, and a page loaded from a data: or file:
+# address, are sent by the browser with the literal text "null". That is the
+# browser saying "I am from somewhere that cannot be named" — a cross-site
+# request, and the guard used to read it as no browser at all and let it
+# through. Proved before the fix: evil.example refused 403 while "null" was
+# allowed and disarmed the engine. Checked here on the running service, not
+# only in a sandbox.
+for R in /api/pilot/disarm /api/pilot/unhalt /api/pilot/margin-floor /api/pilot/stop-apply; do
+  ck 403 "$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "$J" -H 'Origin: null' -d '{}' $B$R)" "$R from a sandboxed frame (Origin: null)"
+  ck 403 "$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "$J" -H 'Origin: file://' -d '{}' $B$R)" "$R from a file:// page"
+  ck 403 "$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "$J" -H 'Origin: not a url' -d '{}' $B$R)" "$R with an Origin that is not an address"
+done
+# And the safe direction must stay open: a request with NO Origin at all is
+# still allowed, deliberately, because a proxy that strips the header would
+# otherwise break the owner's real button. Disarm is the one to test with —
+# it is the safe direction and it changes nothing that is not already so.
+NOORIGIN="$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "$J" -d '{}' $B/api/pilot/disarm)"
+[ "$NOORIGIN" = "200" ] && echo "  PASS  a request with no Origin at all is still accepted (the owner's button cannot break)" \
+  || { echo "  FAIL  a request with no Origin now returns $NOORIGIN — the real control may be broken"; FAIL=1; }
+
 echo "== nothing was armed by any of the above =="
 ARMED="$(curl -s $B/api/pilot | python3 -c 'import sys,json; d=json.load(sys.stdin); print((d.get("box") or {}).get("armed"))' 2>/dev/null || echo unknown)"
 echo "  armed state reads: ${ARMED}"
