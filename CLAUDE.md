@@ -320,6 +320,27 @@ guarantee quietly becomes three different guarantees.
 
 ## Working style (all sessions)
 
+### Answer short by default — `/plain` is the standing style, not a request
+
+**Hard ceiling: about 200 words, unless the owner asks for depth.** Summary
+first when there is more than one thing. Plain language, no jargon, no
+head­ings and bullets stacked on a reply that needed three sentences.
+
+The owner has had to invoke `/plain` repeatedly and then say "you keep writing
+novels, stop it" (2026-08-21). Asking every time is the failure this rule
+exists to end — a style the owner has to re-request is not a style.
+
+- **A long answer is a refusal to decide what matters.** Deciding is the job.
+  If everything seems worth saying, that means the sifting has not been done.
+- **The work is the deliverable; the write-up is not.** A commit message is the
+  place for full reasoning, and it is already being written. The reply says
+  what changed, what it means for the owner, and what still needs them.
+- **What must never be cut**: something that turned out wrong, something the
+  owner needs to decide, and anything not done that they may think is done.
+  Brevity is not a licence to leave out bad news.
+- **Depth on request.** "Explain", "why", "walk me through" opens it up. Nothing
+  else does.
+
 Confirm the task before building. **Don't assume a direction, write a pile of
 code, and burn tokens producing the wrong thing.** When anything is ambiguous or
 a detail is unstated, ask quick clarifying questions and get clear alignment
