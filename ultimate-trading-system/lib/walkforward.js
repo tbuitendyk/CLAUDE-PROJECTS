@@ -99,7 +99,7 @@ function foldSlices(chunks, f, reach) {
 //
 // Deterministic in (seed, unit, fold, member, slice): reruns are
 // byte-identical, and different seeds give independent luck draws.
-const { mulberry32 } = require('./interlace');
+const { mulberry32 } = require('./rng');
 
 function nullRng(seed, unitKey, foldIdx, memberIdx, slice) {
   let h = (Number(seed) >>> 0) || 1;

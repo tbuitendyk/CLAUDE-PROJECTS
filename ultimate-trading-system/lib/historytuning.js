@@ -124,15 +124,6 @@ function reachMsFor(geo, tHours) {
   return (geo.entryOffsetH + tHours + 3) * 3600 * 1000;
 }
 
-function activeGeneration(milestones, t, testStartTs) {
-  // The generation in force at walk time t: trained at the latest milestone
-  // <= t; before the first milestone past testStart, the generation trained
-  // at testStart itself (the walk's opening training).
-  let g = testStartTs;
-  for (const m of milestones) if (m <= t && m > g) g = m;
-  return g;
-}
-
 async function runPass({
   chunks, geo, maps, branch, comboSize, dial, split, declaredCell, menuOpts,
   feePerLeg, minTradesPerLookbackWeek, nullShiftSeed = null, onProgress = () => {},

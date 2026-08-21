@@ -29,7 +29,6 @@ const CROSS = 4;
 function comboViews(size, nDays) {
   const P = PER_ASSET(nDays);
   const two = (view) => viewIndices(view, nDays); // over [P][P][4]
-  const tripleMap = (idx) => idx.map((i) => (i < 2 * P + CROSS ? i : null)).filter((i) => i !== null);
   if (size === 1) {
     const only = (view) => two(view).filter((i) => i < P);
     return { featureCount: P, views: { full: only('full'), prices: only('prices'), volume: only('volume'), cross: null } };

@@ -4,7 +4,7 @@
 // background timers (auto-refresh and the book ticks) are gated at their
 // timers in server.js. lib/guard.js's header states the exact scope.
 const { assert } = require('./helpers');
-const { monthList, loadRefusal, runRefusal } = require('../lib/guard');
+const { monthList, loadRefusal } = require('../lib/guard');
 
 const CACHED = { DOTUSDT: ['2024-01', '2024-02', '2024-03'], BTCUSDT: ['2024-01', '2024-02', '2024-03'] };
 const cached = (sym) => CACHED[sym] || [];
@@ -15,23 +15,6 @@ module.exports = {
     const msg = loadRefusal('walkforward-x');
     assert.ok(msg && msg.includes('walkforward-x'), 'the refusal names the running job');
     assert.strictEqual(loadRefusal(null), null, 'no job, no refusal');
-  },
-  async aRunThatWouldDownloadIsRefusedButCachedRunsPass() {
-    // fully cached range: read-only, allowed even mid-job
-    assert.strictEqual(runRefusal('walkforward-x', REQ, cached), null);
-    // a month is missing: the run would write the cache — refused, naming
-    // the job and the months
-    const msg = runRefusal('walkforward-x', { ...REQ, endMonth: '2024-05' }, cached);
-    assert.ok(msg && msg.includes('walkforward-x') && msg.includes('2024-04'), `refusal names job and month: ${msg}`);
-    // "all loaded data" fetches nothing, allowed regardless of ranges
-    assert.strictEqual(runRefusal('walkforward-x', { ...REQ, allLoaded: true, endMonth: '2024-09' }, cached), null);
-    // no job running: everything passes
-    assert.strictEqual(runRefusal(null, { ...REQ, endMonth: '2024-05' }, cached), null);
-    // a hole in the COMPARE pair's cache alone must refuse too — a guard
-    // that only checks the trade pair passes every other case here
-    const lopsided = (sym) => (sym === 'BTCUSDT' ? ['2024-01', '2024-02'] : CACHED[sym] || []);
-    const msg2 = runRefusal('walkforward-x', REQ, lopsided);
-    assert.ok(msg2 && msg2.includes('BTCUSDT 2024-03'), `compare-side hole refuses: ${msg2}`);
   },
   async theMonthWalkCrossesYearsAndRefusesGarbage() {
     assert.deepStrictEqual(monthList('2023-11', '2024-02'), ['2023-11', '2023-12', '2024-01', '2024-02']);

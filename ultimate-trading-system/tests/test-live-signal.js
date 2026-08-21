@@ -8,7 +8,7 @@ const { assert } = require('./helpers');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const { mulberry32 } = require('../lib/interlace');
+const { mulberry32 } = require('../lib/rng');
 const { buildCombo } = require('../lib/bracketwork');
 
 process.env.GC_SETUPS_DIR = process.env.GC_SETUPS_DIR

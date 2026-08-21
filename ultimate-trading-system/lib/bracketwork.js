@@ -535,7 +535,7 @@ async function unitTask(task) {
     bestEdge.holdoutMetrics = classifierMetrics(trainLabels, holdLabels, hc);
   }
 
-  const out = { best, declared, declaredSet, bestEdge, region, bandPct, testPeriods: testChunks.length, members: memberCalls.length, layoutMeta: split.layoutMeta || null,
+  const out = { best, declared, declaredSet, bestEdge, region, bandPct, testPeriods: testChunks.length, members: memberCalls.length,
     // Window stamps (review finding 9): the run's ACTUAL boundaries, so a
     // later History Tuning launch reads the recorded truth instead of
     // recomputing it from a cache that has since grown.
@@ -557,7 +557,6 @@ async function unitTask(task) {
     out.memberDump = {
       shiftFrac: shiftFrac ?? null,
       bandPct,
-      layout: split.layoutMeta || null,
       specs: members.map((m) => ({ ...m.spec, picked: m.picked })),
       models: isReal ? members.map((m) => m.model) : null,
       votes: {

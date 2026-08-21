@@ -607,12 +607,11 @@ function promotionSet(p, doc, units) {
       // boards ran un-dealt at the promote stage, bit-identical to the real
       // arm, their census rows tagged real, and the five gate arms shared
       // one key so their model dumps overwrote each other.
-      key: unitKey(c, b) + (u.layoutArm ? `|${u.layoutArm}` : '')
+      key: unitKey(c, b)
         + (u.shiftFrac != null ? `|s${u.shiftFrac.toFixed(3)}` : '')
         + (u.nullDealSeed != null ? `|n${u.nullDealSeed}` : ''),
       trade: c.trade, ctx1: c.ctx1, ctx2: c.ctx2, size: c.size,
       geometry: b.geometry, decision: b.decision, bandMode: b.band, weekdaysOnly: b.weekdaysOnly,
-      layoutArm: u.layoutArm ?? null,
       ...(Object.prototype.hasOwnProperty.call(u, 'shiftFrac') ? { shiftFrac: u.shiftFrac ?? null } : {}),
       ...(u.nullDealSeed != null ? { nullDealSeed: u.nullDealSeed } : {}),
     }); });
@@ -1419,14 +1418,14 @@ function startBracketLab(params) {
     doc.perf.phase = 'slim';
     saveBatch(doc);
 
-    const slimPayloads = units.map((u) => ({ combo: u.c, branch: u.b, stage: 'slim', params: p, layoutArm: u.layoutArm ?? null, nullDealSeed: u.nullDealSeed ?? null, ...shiftStance(u) }));
+    const slimPayloads = units.map((u) => ({ combo: u.c, branch: u.b, stage: 'slim', params: p, nullDealSeed: u.nullDealSeed ?? null, ...shiftStance(u) }));
     await pool.map('unit', slimPayloads, (settled, i) => {
       // Cancel keeps every COMPLETED result (QC 74): workers are being
       // terminated, but a unit that already finished is computed record and
       // is pushed like any other — only termination errors are skipped.
-      const { c, b, layoutArm } = units[i];
+      const { c, b } = units[i];
       const u = units[i];
-      const key = unitKey(c, b) + (layoutArm ? `|${layoutArm}` : '')
+      const key = unitKey(c, b)
         + (u.shiftFrac != null ? `|s${u.shiftFrac.toFixed(3)}` : '')
         + (u.nullDealSeed != null ? `|n${u.nullDealSeed}` : '');
       if (settled.ok && settled.value && settled.value.best) {
@@ -1448,7 +1447,6 @@ function startBracketLab(params) {
           geometry: b.geometry, decision: b.decision, bandMode: b.band,
           bandPct: res.bandPct, weekdaysOnly: b.weekdaysOnly,
           testPeriods: res.testPeriods,
-          layoutArm: layoutArm ?? null,
           ...(Object.prototype.hasOwnProperty.call(u, 'shiftFrac') ? { shiftFrac: u.shiftFrac ?? null } : {}),
           ...(u.nullDealSeed != null ? { nullDealSeed: u.nullDealSeed } : {}),
           ...res.best,
@@ -1483,7 +1481,7 @@ function startBracketLab(params) {
       const promPayloads = promote.map((l) => ({
         combo: { trade: l.trade, ctx1: l.ctx1, ctx2: l.ctx2, size: l.size },
         branch: { geometry: l.geometry, decision: l.decision, band: l.bandMode, weekdaysOnly: l.weekdaysOnly },
-        stage: 'promoted', params: p, layoutArm: l.layoutArm ?? null,
+        stage: 'promoted', params: p,
         nullDealSeed: l.nullDealSeed ?? null,
         ...shiftStance(l),
       }));
@@ -1564,20 +1562,12 @@ function startBracketLab(params) {
               shiftFrac: l.shiftFrac ?? null,
               nullDealSeed: l.nullDealSeed ?? null,
               shiftScope: p.labelShiftScope || 'series',
-              // WINDOW LAYOUT this row was measured under, with the seed and
-              // the layout's own bookkeeping — a comparison row that cannot
-              // say which geometry produced it is not comparable to anything.
-              // layoutMeta only ever came from the retired quota layouts, so
-              // this fallback stamped 'legacy' on split70/reserve61 rows —
-              // the stored parameters are the truth (review 2026-08-03).
-              windowLayout: res.layoutMeta ? res.layoutMeta.layout : (p.windowLayout || 'legacy'),
-              interlaceSeed: res.layoutMeta ? res.layoutMeta.seed : null,
-              layoutGroups: res.layoutMeta ? res.layoutMeta.groups : null,
-              layoutEvalDays: res.layoutMeta ? res.layoutMeta.evalDays : null,
-              layoutPurged: res.layoutMeta ? res.layoutMeta.purgedTrainChunks : null,
-              // 'common-train' or the degrade note — a sharedBand run whose
-              // common set was too small must say so where the numbers live.
-              layoutBandFrom: res.layoutMeta ? (res.layoutMeta.bandFrom ?? null) : null,
+              // WINDOW LAYOUT this row was measured under — a comparison row
+              // that cannot say which geometry produced it is not comparable to
+              // anything. The stored parameters are the truth: the alternative
+              // source was the retired quota layouts, which stopped producing
+              // anything long before their code was removed.
+              windowLayout: p.windowLayout || 'legacy',
               holdPeriods: res.best && res.best.holdout ? res.best.holdout.periods : null,
               searchPeriods: res.testPeriods ?? null,
               // THE YARDSTICK, recorded alongside the score. edge = accuracy -
@@ -1665,7 +1655,7 @@ function startBracketLab(params) {
               geometry: l.geometry, decision: l.decision, bandPct: res.bandPct ?? null,
               bandMode: l.bandMode ?? null, weekdaysOnly: l.weekdaysOnly ?? null,
               shiftFrac: l.shiftFrac ?? null, nullDealSeed: l.nullDealSeed ?? null,
-              windowLayout: res.layoutMeta ? res.layoutMeta.layout : (p.windowLayout || 'legacy'),
+              windowLayout: p.windowLayout || 'legacy',
               windowStamps: res.windowStamps || null,
               noCell: `no execution cell reached ${p.minTrades} test trades — recorded so the denominator stays honest (QC 74)`,
               holdPnl: null, searchPnl: null,
@@ -1687,10 +1677,10 @@ function startBracketLab(params) {
               // 2026-08-04 — QC 72).
               nullDealSeed: l.nullDealSeed ?? null,
               trade: l.trade, ctx1: l.ctx1, ctx2: l.ctx2, geometry: l.geometry, bandPct: res.bandPct,
-              // layoutMeta only ever came from the retired quota layouts, so
-              // this fallback stamped 'legacy' on split70/reserve61 rows —
-              // the stored parameters are the truth (review 2026-08-03).
-              windowLayout: res.layoutMeta ? res.layoutMeta.layout : (p.windowLayout || 'legacy'),
+              // The stored parameters are the truth. The alternative source
+              // was the retired quota layouts, whose fallback stamped 'legacy'
+              // on split70 and reserve61 rows (review 2026-08-03).
+              windowLayout: p.windowLayout || 'legacy',
               entry: d.entry || 'breakout',
               quorum: d.quorum, members: d.members, pnl: d.pnl, trades: d.trades, wins: d.wins,
               grossPerTrade: d.grossPerTrade, stops: d.stops, ambiguous: d.ambiguous,

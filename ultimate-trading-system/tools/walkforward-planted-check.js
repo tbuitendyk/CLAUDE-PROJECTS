@@ -27,7 +27,7 @@
 const fs = require('fs');
 const path = require('path');
 const { wfUnitTask } = require('../lib/walkforward');
-const { mulberry32 } = require('../lib/interlace');
+const { mulberry32 } = require('../lib/rng');
 
 const CACHE = path.join(__dirname, '..', 'data', 'cache');
 const HOUR = 3_600_000;

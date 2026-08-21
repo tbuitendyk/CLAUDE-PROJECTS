@@ -20,7 +20,7 @@
 
 const bracketLib = require('./bracket');
 const H = require('./history');
-const { mulberry32 } = require('./interlace');
+const { mulberry32 } = require('./rng');
 
 const DAY_MS = H.DAY_MS;
 

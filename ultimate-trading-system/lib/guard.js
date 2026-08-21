@@ -5,18 +5,13 @@
 //
 // While a batch runs, the guarded write paths refuse:
 //   - Load Data and book-draft creation, outright (they exist to fetch);
-//   - a single classifier run or a rotation-ceiling quote, ONLY if it
-//     would have to fetch. "All loaded data" mode and fully-cached ranges
-//     read the cache without touching the network (lib/pipeline.js
-//     loadSymbolAll) — those stay allowed.
 //
-// HONEST SCOPE — what is guarded elsewhere or not at all:
-//   - the 6-hourly new-month auto-refresh and the tracker/doge/books
-//     30-minute ticks are gated at their own timers in server.js
-//     (tickUnlessBatch; the tick pause was owner-ordered 2026-07-31,
-//     placed at the timers so the frozen book modules stay untouched);
-//   - tracker/dogebook one-time inits (long since run on the box) are
-//     not guarded.
+// HONEST SCOPE — what this does NOT cover:
+//   - the 6-hourly new-month auto-refresh is gated at its own timer in
+//     server.js, not here;
+//   - nothing else writes to the cache today. The run-level half of this guard
+//     was removed with the single-run screen it protected: there is no longer
+//     an endpoint that starts a run which might fetch.
 // Pure decision functions, exported for the tests; server.js wires them.
 
 // 'YYYY-MM' walk, inclusive. Malformed input yields [] — the endpoint has
@@ -45,19 +40,4 @@ function loadRefusal(runningId, action = 'Load Data') {
   return `refused while ${runningId} is running: ${action} writes the candle cache that job's workers are reading. Wait for it to finish.`;
 }
 
-function runRefusal(runningId, { allLoaded, tradeSymbol, compareSymbol, startMonth, endMonth }, cachedMonthsFn) {
-  if (!runningId) return null;
-  if (allLoaded) return null; // reads only what is already on disk; fetches nothing
-  const missing = [];
-  for (const sym of [tradeSymbol, compareSymbol]) {
-    const have = new Set(cachedMonthsFn(sym));
-    for (const mm of monthList(startMonth, endMonth)) {
-      if (!have.has(mm)) missing.push(`${sym} ${mm}`);
-    }
-  }
-  if (!missing.length) return null; // fully cached: a read-only run is no hazard
-  const shown = missing.slice(0, 3).join(', ') + (missing.length > 3 ? ', …' : '');
-  return `refused while ${runningId} is running: this run would download ${missing.length} uncached month(s) (${shown}) into the candle cache that job's workers are reading. Tick "all loaded data", or wait for it to finish.`;
-}
-
-module.exports = { monthList, loadRefusal, runRefusal };
+module.exports = { monthList, loadRefusal };

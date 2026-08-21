@@ -20,7 +20,7 @@
 // (QC 56, PASS 2026-07-31).
 const fs = require('fs');
 const path = require('path');
-const { mulberry32 } = require('./interlace');
+const { mulberry32 } = require('./rng');
 const { cacheState, cachedMonths, HOUR_MS } = require('./binance');
 
 const CACHE_DIR = path.join(__dirname, '..', 'data', 'cache');
