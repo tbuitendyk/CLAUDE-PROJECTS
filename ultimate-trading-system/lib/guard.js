@@ -4,7 +4,7 @@
 // earlier ones — one job, two datasets, and nothing in the output says so.
 //
 // While a batch runs, the guarded write paths refuse:
-//   - Load Data and book-draft creation, outright (they exist to fetch);
+//   - Download and Global Refresh, outright (they exist to fetch);
 //
 // HONEST SCOPE — what this does NOT cover:
 //   - the 6-hourly new-month auto-refresh is gated at its own timer in
@@ -35,7 +35,7 @@ function monthList(startMonth, endMonth) {
   return out;
 }
 
-function loadRefusal(runningId, action = 'Load Data') {
+function loadRefusal(runningId, action = 'Download') {
   if (!runningId) return null;
   return `refused while ${runningId} is running: ${action} writes the candle cache that job's workers are reading. Wait for it to finish.`;
 }

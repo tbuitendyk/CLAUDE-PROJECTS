@@ -1,6 +1,8 @@
 // Multinomial (softmax) logistic regression, written directly against
 // Float64Arrays. Pure deterministic arithmetic — nothing here touches the
-// network, an API, or any AI service; require() list is empty on purpose.
+// network, an API, or any AI service. The single import below is a
+// cooperative yield so a long fit does not starve the box; nothing it does
+// touches the arithmetic.
 //
 // Design notes for this problem shape (~1,900 features, ~30–150 examples):
 //   * Features are z-scored with statistics from the TRAINING set only.

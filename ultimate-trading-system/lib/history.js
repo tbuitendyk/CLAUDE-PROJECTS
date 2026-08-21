@@ -1,6 +1,6 @@
 // History Tuning arithmetic: the age discount, effective training days,
 // and the SYSTEM-WIDE training floor (design ledger DESIGN-HISTORY-TUNING.md,
-// owner rulings 2026-08-02/03). Pure functions, zero imports — same
+// owner rulings 2026-08-02/03). Pure functions, no imports at all — same
 // discipline as lib/logreg.js.
 //
 // Vocabulary (GLOSSARY.md): half-life = the age at which a training example

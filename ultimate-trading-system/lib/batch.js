@@ -3,10 +3,20 @@ const path = require('path');
 const { pnlAt, REAL_FEE_PER_LEG, voteOf, superOf } = require('./paper');
 const { stampManifest } = require('./manifest');
 
-// Pair screen: run the full pipeline for every (trade pair x model) combo
-// against one compare pair, sequentially, persisting after every run so a
-// crash loses at most the run in flight. Results live in data/batches/
-// (survives deploys — install.sh rsync excludes data/).
+// THE RUN LAUNCHERS, and the record every run leaves behind.
+//
+// Everything the Construct screen starts comes through here: the board sweep
+// and its promoted stage, the null runs that price it, History Tuning and its
+// paired-fold exam, and the reserve grade. Each writes its progress to disk as
+// it goes, so a crash loses at most the unit in flight, and each leaves a
+// stored document the screen reads back.
+//
+// Results live in data/batches/, which survives deploys — the installer's sync
+// excludes data/.
+//
+// This header used to describe a single-pair screen. That screen was retired
+// (THIS-RELEASE point 14) and its launcher went with it, along with most of
+// lib/pipeline.js, which nothing else reached.
 
 const BATCH_DIR = path.join(__dirname, '..', 'data', 'batches');
 // Stamped into every bracket job's stored settings: identical parameters do
@@ -261,6 +271,7 @@ function refusePlantedPairs(symbols, what) {
 // ledger's rules apply to whatever crawls out.
 
 const { median } = require('./stats');
+const { slimViewsFor } = require('./bracketwork');
 const bracketLib = require('./bracket');
 const { createPool } = require('./pool');
 
@@ -307,7 +318,6 @@ function expandBracketPlan(p) {
   return { branches, combos };
 }
 
-const slimViewsFor = (size) => (size === 1 ? ['full', 'prices', 'volume'] : ['full', 'prices', 'volume', 'cross']);
 
 // REPLICATION MODE. A declared config is a hypothesis fixed BEFORE the run:
 // the same execution cell scored on every asset, so each asset costs one

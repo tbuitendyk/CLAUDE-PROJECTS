@@ -1,29 +1,22 @@
-const { TUE_OFFSET_H, THU_OFFSET_H } = require('./dataset');
-
-// Paper-trade mechanics — the single source of truth shared by the live
-// tracker and the consensus screens' per-spec one-shot books, so a dollar
-// means the same thing everywhere: $100 notional per order, market orders
-// at the TIME midpoint of each label window (entry Tue 03:00 open, exit
-// Thu 15:00 open), $0.50 friction per leg ($1.00 per round trip).
+// Paper-trade arithmetic — the single source of truth for what a dollar means,
+// so the simulator, the sweep and anything that scores a trade cannot drift
+// apart. $100 per order, priced open to open.
+//
+// It used to carry a second set of numbers as well: a $0.50-per-leg stress rate
+// and fixed Tuesday/Thursday entry and exit hours, which belonged to the frozen
+// paper books. Those books were retired with the screen that ran them, and
+// their four values went with them — nothing else ever used them.
 
 const NOTIONAL = 100;
-const FEE_PER_LEG = 0.5;
-const ENTRY_OFFSET_H = TUE_OFFSET_H + 3; // Tue 03:00, midpoint of 00:00-05:59
-const EXIT_OFFSET_H = THU_OFFSET_H + 3; // Thu 15:00, midpoint of 12:00-17:59
 
-function pnlFor(direction, entry, exit) {
-  if (direction === 0) return 0;
-  const gross = direction === 1 ? NOTIONAL * (exit / entry - 1) : NOTIONAL * (1 - exit / entry);
-  return gross - 2 * FEE_PER_LEG;
-}
-
-// Research friction, set 2026-07-26 (VERDICTS.md): Binance spot taker is
-// 0.10% per side and DOT/DOGE-class books quote ~1-2bp spreads at $100
-// size, so $0.125 per leg ($0.25 per round trip) covers reality with a
-// spread allowance. FEE_PER_LEG above stays $0.50 forever: it is the
-// DECLARED stress rate of the frozen live books (tracker, doge book,
-// engine book #1) and their records never reprice mid-flight. pnlFor is
-// their function and does not change; research paths use pnlAt.
+// What a trade is assumed to cost, set 2026-07-26. Binance spot taker is 0.10%
+// per side and these books quote roughly one to two hundredths of a percent of
+// spread at this size, so twelve and a half cents a leg — twenty-five cents the
+// round trip — covers reality with an allowance on top.
+//
+// THIS IS DOLLARS, NOT A PERCENTAGE. It equals 0.125% only because the clip
+// above is $100. Trade size is configurable per setup, so at any other size the
+// percentage reading is wrong. Callers that need a rate divide by NOTIONAL.
 const REAL_FEE_PER_LEG = 0.125;
 
 function pnlAt(direction, entry, exit, feePerLeg = REAL_FEE_PER_LEG) {
@@ -32,11 +25,9 @@ function pnlAt(direction, entry, exit, feePerLeg = REAL_FEE_PER_LEG) {
   return gross - 2 * feePerLeg;
 }
 
-// Majority vote over an array of -1/0/+1 calls — the tracker's exact rule
-// (tracker.js voteOf, which takes the same counts over an object): the most
-// common call wins outright; ANY tie for the top stands aside. Shared here
-// so the consensus screen's simulated vote book can never drift from what
-// the live tracker actually does.
+// Majority vote over an array of -1/0/+1 calls:
+// the most common call wins outright, and ANY tie for the top stands aside.
+// One definition, so no two places can disagree about what a committee said.
 function voteOf(labels) {
   const counts = { '-1': 0, 0: 0, 1: 0 };
   for (const p of labels) counts[p]++;
@@ -76,4 +67,4 @@ function directionalCall(probs, tau) {
   return Math.max(up, down) >= tau ? label : 0;
 }
 
-module.exports = { NOTIONAL, FEE_PER_LEG, REAL_FEE_PER_LEG, ENTRY_OFFSET_H, EXIT_OFFSET_H, pnlFor, pnlAt, voteOf, superOf, directionalCall };
+module.exports = { NOTIONAL, REAL_FEE_PER_LEG, pnlAt, voteOf, superOf, directionalCall };

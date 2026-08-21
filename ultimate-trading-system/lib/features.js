@@ -3,7 +3,7 @@
 // Rationale: at ~1,900 features vs ~300 training weeks a linear model can
 // memorize ANY labeling (train accuracy 100% regardless of signal); at ~40
 // features it cannot, so whatever it learns has to generalize. Pure
-// deterministic arithmetic, zero imports, same as lib/logreg.js.
+// deterministic arithmetic and genuinely no imports at all.
 
 const DAY = 24;
 

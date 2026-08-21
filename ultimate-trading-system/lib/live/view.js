@@ -1,8 +1,7 @@
 // Per-setup live view + execution-fidelity derivation (IMPLEMENTATION-PLAN
-// phase 6; NEXT-RELEASE points 16, 17). The generalized twin of
-// Replays the box journal into PER-SETUP state so the Live
-// Trading tab renders each setup's own book — real or paper — from the record
-// the executor wrote. Read-only: renders what the deterministic box did
+// phase 6; NEXT-RELEASE points 16, 17). Replays the box journal into
+// PER-SETUP state so the Trade tab renders each setup's own book — real or
+// paper — from the record the executor wrote. Read-only: renders what the deterministic box did
 // (independence rule). Box-level facts — armed, halted, wallet — belong to
 // lib/boxview.js; this module is only ever about one profile's book.
 const fs = require('fs');

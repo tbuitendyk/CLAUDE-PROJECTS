@@ -5,7 +5,8 @@
 // it takes a recorded decision and a fresh recompute and says match, PENDING
 // (the recompute could not run yet) or BREAK (they genuinely disagree).
 //
-// It lived in the mirror module belonging to one hardcoded config, so the
+// It lived in the mirror module belonging to one hardcoded config (since
+// removed), so the
 // generalized rail had to import its integrity check from the very thing being
 // retired. Nothing about the logic changed in moving it.
 

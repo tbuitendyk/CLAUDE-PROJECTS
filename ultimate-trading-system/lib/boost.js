@@ -1,7 +1,9 @@
 // Gradient-boosted small trees (depth 2, 4 leaves) with softmax loss — the
 // nonlinear counterpart to lib/logreg.js. Depth-2 trees capture feature
 // interactions ("high volatility AND rising correlation") that a linear
-// model structurally cannot. Pure deterministic arithmetic, zero imports.
+// model structurally cannot. Pure deterministic arithmetic — no network, no
+// API, no AI service. The one import below is a cooperative yield so a long
+// fit does not starve the box; it computes nothing.
 //
 // Round count is a REAL quality knob for boosting (unlike the convex
 // logistic loss), so it is tuned automatically: train on the chronological

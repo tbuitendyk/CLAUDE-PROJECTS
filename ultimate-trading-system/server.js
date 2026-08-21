@@ -137,9 +137,6 @@ app.post('/api/data/download', (req, res) => {
     const hit = symbols.find((x) => planted.PLANTED_SYMBOLS.includes(x));
     if (hit) return res.status(400).json({ error: `${hit} is a reserved fabricated pair — it is generated, never downloaded` });
   }
-  if (false) {
-    return res.status(400).json({ error: 'unreachable' });
-  }
   if (!/^\d{4}-\d{2}$/.test(String(b.startMonth)) || !/^\d{4}-\d{2}$/.test(String(b.endMonth))) {
     return res.status(400).json({ error: 'months must be YYYY-MM' });
   }

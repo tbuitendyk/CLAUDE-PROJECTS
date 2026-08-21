@@ -75,8 +75,6 @@
   button.master { font-size:1rem; font-weight:700; padding:.6rem 1.4rem; border-radius:8px; border:none; cursor:pointer; }
   button.start { background:#1f7a4d; color:#eafff2; }
   button.stop  { background:#8a2b30; color:#ffecee; }
-  .vote-up { color:var(--pos); font-weight:700; } .vote-dn { color:var(--neg); font-weight:700; }
-  .vote-as { color:var(--muted); }
   .logbox { max-height:340px; overflow-y:auto; border:1px solid var(--line); border-radius:8px; }
   .logbox table { margin:0; }
   /* Tall enough for TEN decision days at once plus the header (owner,
@@ -628,20 +626,8 @@ async function drawDetail(){
 }
 
 // ---- LIVE (what the selected setup is DOING) ----------------------------------
-const vcls=(v)=>v===1?'vote-up':v===-1?'vote-dn':'vote-as';
 // "aside" was internal shorthand for a member emitting 0 — say what it means.
 const vtxt=(v)=>v===1?'UP':v===-1?'DOWN':'no call';
-const vtip=(v)=>v===1?'this member voted UP (long)':v===-1?'this member voted DOWN (short)'
-  :'no call — this member saw no move big enough to name a direction';
-const fateTxt=(f)=>{const s=String(f||'');
-  if(!s)return'—';
-  if(s==='filled')return'filled — position opened';
-  if(s==='stand down'||s==='flat — no trade')return'no trade taken';
-  if(s==='seen')return'intent shipped — awaiting fill';
-  return s;};
-function untilStr(iso){ if(!iso)return''; const ms=Date.parse(iso)-Date.now(); if(ms<=0)return'now / due';
-  const h=Math.floor(ms/3.6e6),m=Math.floor(ms%3.6e6/6e4),s=Math.floor(ms%6e4/1e3);
-  return h>0?`in ${h}h ${m}m`:(m>0?`in ${m}m ${s}s`:`in ${s}s`); }
 // ---- THE BOX, not a config -------------------------------------------------
 // The master switch, the halt and the margin floor belong to the MACHINE every
 // config runs on, not to any one of them. They used to live on a screen that

@@ -17,7 +17,7 @@ const { HOUR_MS } = require('./binance');
 // a market cell and a live book can never drift apart. (paper is required
 // again further down for directionalCall; require caches, and pulling this
 // one up keeps it above its first use rather than relying on load order.)
-const { pnlAt } = require('./paper');
+const { pnlAt, NOTIONAL } = require('./paper');
 const { buildChunks, GEOMETRIES } = require('./dataset');
 const { viewIndices } = require('./features');
 
@@ -169,7 +169,6 @@ function simMarket(periods, calls, tradeMap, geo, { tHours, feePerLeg, stepMs = 
 // on purpose — a minute run that also changed the fill logic would not be a
 // confirmation of anything.
 function simBracket(periods, calls, tradeMap, geo, { dPct, tHours, gate, feePerLeg, trailPct = null, armPct = 0, stepMs = HOUR_MS }) {
-  const NOTIONAL = 100;
   const trip = 2 * feePerLeg;
   let pnl = 0;
   let trades = 0;
