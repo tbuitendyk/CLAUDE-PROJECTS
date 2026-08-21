@@ -7,7 +7,8 @@ reading any code.
 Everything here was proved, not guessed — each item was checked against the
 running system before it went on the list.
 
-Last reviewed 2026-08-21, after a full audit of the tree.
+Last reviewed 2026-08-21, after a full audit of the tree and the first run
+of the adversarial suite (section 5).
 
 ---
 
@@ -151,6 +152,107 @@ removed. It now proves one thing and claims three.
 the new system includes the two made-up pairs the calibration check uses. They
 are generated, not downloaded, so strictly they should not have travelled.
 Harmless — the check regenerates them.
+
+---
+
+## 5. What the adversarial suite found (2026-08-21) — 37 items, none fixed
+
+A standing test now attacks the system on purpose: `npm run test:adversarial`.
+It asks the opposite question to the ordinary tests — not *does this work*, but
+**given something broken, what does the system show you?** A refusal is a pass.
+A crash is a pass. What fails is an ordinary-looking answer worked out from
+something that should have been refused, because that is the only kind of fault
+that reaches a trading decision without anyone noticing.
+
+None of this is repaired. Every one of them needs a decision from you first,
+and finding a fault is not permission to change it. The full list with the
+reason each is on hold is in `tests/adversarial/baseline.json`; the suite passes
+while only these come back and fails the moment something new appears.
+
+**The good news first, because it is real.** 1,571 hostile requests were fired
+at all 71 addresses the system answers on — empty requests, wrong types, names
+four thousand characters long, paths trying to climb out of the folder, broken
+JSON, bodies bigger than the stated limit. Not one produced a crash, a leaked
+file path, or a made-up number. Oversized bodies were refused. Nothing could
+poison the running program. **Zero findings on the front door.** Separately:
+nothing in the shipped code can reach an artificial intelligence of any kind,
+nothing reaches any outside address except the public market-data service,
+nothing rolls dice in a path that decides anything, training the same model on
+the same data twice gives the identical answer to the last digit, and paper
+money is never folded into the real total.
+
+### 5a. The market data is read without any check at all — 9 items
+
+**This is the most serious group, and it is the foundation everything else
+stands on.** A month of candles that is short, has a hole in it, has every
+candle twice, is in the wrong order, is empty, has prices that are not numbers,
+has prices of zero, or has negative prices is loaded **without a word**. A rule
+tested against that month gets scored on data that is not what it appears to be,
+and the score comes back looking perfectly normal.
+
+Worked example: a month that stops a third of the way through loaded as 240
+hourly candles where 744 were expected. Nothing said so.
+
+What a fix looks like: the Data section reports what it actually has, month by
+month — how many candles, how many missing, how many unusable — and a sweep
+refuses to run on a month that fails. Both of those change what you see and
+what the system will let you do, which is why they are your call.
+
+### 5b. A crash mid-write silently shrinks your books — 2 items
+
+A trading journal with one line cut in half — exactly what a crash while writing
+leaves behind — is read as though that line was never there. Nothing anywhere
+says a record was lost. Money made, money lost, and the number of trades are all
+then confidently wrong, and look exactly like correct answers.
+
+A journal file containing nothing readable at all is reported as **present with
+no events** — which on screen is indistinguishable from a book that has genuinely
+never traded.
+
+### 5c. Money figures the screen cannot work out — 12 items
+
+When a stored record carries something that is not a number where money belongs,
+three different things happen and none of them is right:
+
+- The book reports the money made or lost as **blank**. On screen a blank reads
+  as "nothing traded", not as "this figure could not be worked out".
+- Some figures come through as **NaN** or **Infinity** and are printed on screen
+  exactly like that.
+- The Dashboard headline total is worse: a profit stored as the text `"5"`
+  instead of the number 5 produces a top-line total of **"05"** — two figures
+  stuck together as text rather than added up.
+
+What a fix looks like: one decision from you about what a screen shows when a
+figure cannot be worked out — a dash, a word, a marked-broken row — and then the
+same answer everywhere.
+
+### 5d. The two screens format money differently — 1 item
+
+Given the same unusable value, the Construct page shows `—` and the Trade page
+shows `NaN`. **In 9 of the 11 cases tested, the two pages disagree.** Two screens
+describing the same system that disagree leave no way to tell which one is
+right. Construct's version looks like the correct one, but which to keep is
+yours to say.
+
+### 5e. Names and configurations accepted too loosely — 5 items
+
+A name that is an object is quietly turned into the text `[object Object]` and
+accepted; a name that is a number becomes the text of that number. You never
+typed either, and both appear on screen as though you did. A traded symbol given
+as a number is accepted as a valid symbol. Names containing markup or line
+breaks are stored unchanged — currently harmless, because both pages make text
+safe before drawing it, but only for as long as that stays true.
+
+### 5f. Two places the suite deliberately does not reach
+
+Said out loud so the coverage claim stays honest:
+
+- The two addresses that download market data from the internet are **not**
+  attacked. Firing junk at them would either pull real files down or hang on the
+  network, and neither tells us anything.
+- The front-door sweep runs against an **empty** system, so addresses that need
+  data answer "nothing here" and their deeper workings are not reached that way.
+  That ground is covered by the other four attacks, which call the code directly.
 
 ---
 

@@ -254,3 +254,88 @@ constant with it that a live function reads. No test covered that function, so
 the suite stayed green. It is fixed, and it is covered now. That is the third
 time in two days a measurement I wrote returned a confident wrong answer, and
 the reason `DEFECTS.md` records what was checked rather than what was assumed.
+
+---
+
+## Third loop, 2026-08-21 — "set up an adversarial test of all of the code, the UI, the data schema and data associated with UTS"
+
+The word was **set up**. The deliverable is a standing, re-runnable harness, not
+a one-off review. It ships as `tests/adversarial/`, run with
+`npm run test:adversarial`.
+
+### The design decision that shaped everything else
+
+Scoring is upside down on purpose. A refusal is a pass; a crash is a pass; what
+fails is an ordinary-looking answer computed from something that should have
+been refused. That is not a stylistic choice — it follows from how this system
+hurts you. A crash is loud and safe. A believable number gets acted on.
+
+### Decisions taken inside the loop
+
+- **Five attack files, one per surface** (front door, stored records, market
+  data, screens, promises) rather than one large file. Each can be run alone
+  with `--only=`, and a broken one does not take the others down.
+- **The address list is read out of the code on every run**, not typed into the
+  test. An address added tomorrow is attacked tomorrow with nobody remembering.
+- **Sandboxes, not environment variables.** Most of the code fixes its data
+  folder in source and cannot be pointed elsewhere. Rather than change thirty
+  modules to make them testable — which is a large change nobody asked for —
+  each attack that needs a data folder gets a throwaway copy of the whole tree
+  with an empty `data/` beside it. Port 8731; the real ports are refused
+  outright in `harness.js`.
+- **A baseline file with a written reason per finding.** Without it a standing
+  test that finds 37 real things is a test everybody learns to ignore. With it,
+  the suite is green today and goes red the moment something NEW appears.
+  Accepting a finding without reading it leaves `NOT YET REVIEWED` in the file
+  and the run counts them out loud.
+- **Nothing found was fixed.** RULE ZERO: finding a defect is not permission to
+  touch it. All 37 are written up in `DEFECTS.md` section 5.
+
+### Hunting my own instrument — four attacks that were lying
+
+Every one of these first reported "nothing found", which reads as a clean bill
+of health:
+
+- The hostile-record attack used field names I made up (`kind`, `t`, `pnl` on a
+  record shaped nothing like the real one). Every hostile record was ignored
+  rather than tested. Field names now read out of `lib/live/view.js`.
+- The same attack then checked a field called `realized`. The field is
+  `realizedPnl`. Every case came back "blank money" — 18 findings, all false.
+- The candle attack counted "did the reader complain" as *any* extra field in
+  the reply. The reader always returns an extra field, so all thirteen spoiled
+  months were recorded as "flagged — acceptable". Nine real findings were
+  sitting underneath that.
+- The screen attack judged a text-escaping helper by the rules for a money
+  formatter, and reported eight non-findings that buried the one that mattered.
+- The reproducibility check called `logreg.train`. The function is
+  `trainSoftmax` and takes three arguments. It crashed, and the crash was
+  reported as a finding rather than as a test that did not run.
+
+What went in as a result: **control cases that run first and stop the attack if
+they fail** (an honest month must load as 744 candles; one ordinary trade opened
+and closed must report a profit of 10), a **request tally** printed every run so
+a sweep that found nothing can be told apart from a sweep that never happened,
+and **a separate report line for attacks that could not run** — never counted as
+a pass.
+
+### What the first run says
+
+- **Front door: clean.** 1,571 hostile requests across 71 addresses. No crash,
+  no leaked path, no fabricated number, no prototype poisoning, oversize bodies
+  refused with 413.
+- **The promises hold.** No AI reachable from shipped code, no outbound address
+  but the market-data service, no dice rolled in any decision path, same inputs
+  twice giving the identical answer, paper money never folded into real.
+- **The market data is read with no checks whatsoever** — 9 findings, and the
+  most serious group, because everything else is computed from it.
+- **A crash mid-write silently shrinks a book** and nothing says so — 2.
+- **Money the screen cannot work out** comes out blank, as `NaN`, or as two
+  numbers stuck together as text in the Dashboard headline — 12.
+- **The two pages format money differently in 9 of 11 cases** — 1.
+- **Names and symbols accepted too loosely** — 5.
+
+### Left for the owner
+
+All 37, in `DEFECTS.md` section 5. Three of them need one decision that settles
+most of the rest: **what should a screen show when a figure cannot be worked
+out?** Answer that once and 5c, 5d and much of 5b follow from it.
