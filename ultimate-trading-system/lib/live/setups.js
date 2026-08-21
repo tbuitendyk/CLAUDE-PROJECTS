@@ -46,7 +46,20 @@ const MIN_STOP_PCT = 0.005;
 const ID_RE = /^[a-z0-9][a-z0-9-]{2,40}$/;
 
 function ensureDir() { fs.mkdirSync(setupsDir(), { recursive: true }); }
-function fileFor(id) { return path.join(setupsDir(), `${id}.json`); }
+// EVERY path is built here, and the id is checked HERE rather than at each
+// caller. A setup record carries its own id, and that id was reaching this
+// function after only the id in the web address had been checked — so a record
+// containing `../../something` could name a file outside the folder, and the
+// write and the delete both answered "ok". Guarding the one place that builds
+// the path means no caller can forget (found 2026-08-21).
+function fileFor(id) {
+  if (!ID_RE.test(String(id == null ? '' : id))) {
+    const err = new Error(`refusing to build a file path from the id ${JSON.stringify(id)}`);
+    err.code = 'BAD_ID';
+    throw err;
+  }
+  return path.join(setupsDir(), `${id}.json`);
+}
 
 function atomicWrite(file, obj) {
   const tmp = `${file}.tmp${process.pid}`;
@@ -133,14 +146,87 @@ function getSetup(id) {
   try { return JSON.parse(fs.readFileSync(fileFor(id), 'utf8')); } catch (_) { return null; }
 }
 
-function listSetups() {
-  ensureDir();
-  return fs.readdirSync(setupsDir())
-    .filter((f) => f.endsWith('.json'))
-    .map((f) => { try { return JSON.parse(fs.readFileSync(path.join(setupsDir(), f), 'utf8')); } catch (_) { return null; } })
-    .filter(Boolean)
-    .sort((a, b) => String(a.createdUtc).localeCompare(String(b.createdUtc)));
+// WHAT IS WRONG WITH THIS RECORD, read back from disk. Everything written by
+// createSetup passes; everything else names its problems.
+//
+// Why this exists (found 2026-08-21): there was NO checking on the way back in.
+// A file could carry a state nobody recognises, an id that disagrees with its
+// own filename, a dollar size that is text, a configuration that no longer
+// validates — and it read back as an ordinary setup, went onto the screen, and
+// went into the list the box trades from. Sixteen of eighteen deliberately
+// broken files came back looking valid.
+function setupProblems(rec, filename) {
+  if (!rec || typeof rec !== 'object' || Array.isArray(rec)) {
+    return ['this file does not hold a setup record at all'];
+  }
+  const problems = validateOperational(rec).slice();
+  if (filename !== undefined && `${rec.id}.json` !== filename) {
+    problems.push(`the record calls itself "${rec.id}" but it is stored as ${filename} — every control addresses it by the filename, so nothing can act on it`);
+  }
+  const cv = validateConfig(rec.configSnapshot);
+  if (!cv.ok) problems.push(`its configuration no longer passes the system's own check: ${cv.errors.join('; ')}`);
+  return problems;
 }
+
+// Read every stored setup, each carrying whatever is wrong with it.
+//
+// NOTHING IS DROPPED. The first attempt at this filtered the broken ones out of
+// the list, and that is the same fault in the other direction: a setup whose
+// configuration stops validating would silently disappear from every screen,
+// which is exactly the vanishing this was written to stop. A rename could no
+// longer reach it either — caught by an existing test, which is the only reason
+// I noticed.
+//
+// So a record that cannot be trusted is KEPT and NAMED. `__problems` rides with
+// it, empty when there is nothing wrong. The screens can show it and say why;
+// the trading path takes `tradableSetups()` and never sees it.
+function readSetups() {
+  ensureDir();
+  const files = fs.readdirSync(setupsDir()).filter((f) => f.endsWith('.json'));
+  const setups = [];
+  const unreadable = [];
+  const byId = new Map();
+
+  for (const f of files) {
+    let rec = null;
+    try { rec = JSON.parse(fs.readFileSync(path.join(setupsDir(), f), 'utf8')); } catch (err) {
+      // Nothing can be recovered from this one — there is no record to carry a
+      // problem on — so it is reported separately rather than lost.
+      unreadable.push({ file: f, problems: [`this file cannot be read back at all (${err.message})`] });
+      continue;
+    }
+    if (!rec || typeof rec !== 'object' || Array.isArray(rec)) {
+      unreadable.push({ file: f, problems: ['this file does not hold a setup record at all'] });
+      continue;
+    }
+    const withFile = { ...rec, __file: f, __problems: setupProblems(rec, f) };
+    const seen = byId.get(rec.id);
+    if (seen) seen.push(withFile); else byId.set(rec.id, [withFile]);
+    setups.push(withFile);
+  }
+
+  // TWO FILES CLAIMING ONE ID. The screen reads whichever the lookup finds and
+  // the trading list reads whichever came last, so stopping that setup stops
+  // only one of them. There is no way to tell which is meant, and picking one
+  // is how the two came to disagree — so all of them say so and none may trade.
+  for (const [id, group] of byId) {
+    if (group.length < 2) continue;
+    const names = group.map((g) => g.__file).join(', ');
+    for (const g of group) {
+      g.__problems.push(`${group.length} files all claim to be the setup "${id}" (${names}). There is no way to tell which one is meant, so none of them may trade.`);
+    }
+  }
+
+  setups.sort((a, b) => String(a.createdUtc).localeCompare(String(b.createdUtc)));
+  return { setups, unreadable, unusable: setups.filter((x) => x.__problems.length).concat(unreadable) };
+}
+
+// Everything on disk that could be parsed, broken ones included and marked.
+function listSetups() { return readSetups().setups; }
+
+// The ones nothing is wrong with. THIS is what may reach real money — the box's
+// trading list, the pairs in use, anything that acts rather than displays.
+function tradableSetups() { return readSetups().setups.filter((x) => !x.__problems.length); }
 
 // Update MUTABLE fields only. Any attempt to change an identity/evidence field
 // is an error, not a merge — silence here would be how a live setup's meaning
@@ -263,6 +349,19 @@ function transition(id, to, by = 'owner', note) {
   // this gate records and enforces the requirement at the door. Shared with
   // updateSetup via liveGateErrors so both doors into a trading state agree.
   if (to === 'paper' || to === 'live') {
+    // THE ONE DOOR INTO A TRADING STATE, so this is where a record that cannot
+    // be trusted is stopped. Before this, nothing checked a stored setup on the
+    // way back in: a state nobody recognises, an id that disagrees with its own
+    // filename, a dollar size stored as text, a configuration that no longer
+    // validates — all read back as ordinary setups and went into the list the
+    // box trades from (found 2026-08-21). Whatever else is wrong with a record,
+    // it does not get to place orders.
+    const wrong = setupProblems(s, `${s.id}.json`);
+    if (wrong.length) {
+      const e = new Error(`cannot go ${to}: this stored record is not sound — ${wrong.join('; ')}`);
+      e.code = 'UNSOUND_RECORD';
+      throw e;
+    }
     const errs = liveGateErrors(s, to);
     if (errs.length) {
       const e = new Error(`cannot go ${to}: ${errs.join('; ')}`);
@@ -316,6 +415,7 @@ function setRunEpoch(id, utc = new Date().toISOString()) {
 }
 
 module.exports = {
-  createSetup, getSetup, listSetups, updateSetup, transition, deleteDraft, setRunEpoch,
+  createSetup, getSetup, listSetups, readSetups, tradableSetups, setupProblems,
+  updateSetup, transition, deleteDraft, setRunEpoch,
   STATES, TRANSITIONS, MIN_STOP_PCT, setupsDir,
 };
