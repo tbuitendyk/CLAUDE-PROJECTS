@@ -400,9 +400,23 @@ async function drawData() {
       <label class="f">from<input id="dlStart" type="month"></label>
       <label class="f">to<input id="dlEnd" type="month"></label>
       <button id="dlBtn" class="pri">Download</button>
-      <button id="dlRefreshAll" title="Every cached pair: fetch from its newest cached month through the current month">Global Refresh</button>
-    </div>
-    <div id="dlOut" class="note"></div></div>`;
+      <!-- THE STATUS SITS BESIDE THE BUTTON, NOT AT THE FOOT OF THE PAGE (owner,
+           2026-08-21). While a Global Refresh runs, "working…" used to appear
+           below everything, away from the control that was doing the work.
+           This inner group is what makes it line up: the row it sits in is
+           deliberately bottom-aligned, because the controls to its left are a
+           label stacked above an input and their BOTTOM edges are what should
+           agree. Putting the status straight into that row would sit it on the
+           same bottom edge rather than level with the button. The group aligns
+           to the bottom like its neighbours, and centres the button and the
+           status against each other inside itself. -->
+      <div style="display:flex;align-items:center;gap:.8rem;flex:1 1 18rem;min-width:0">
+        <button id="dlRefreshAll" title="Every cached pair: fetch from its newest cached month through the current month">Global Refresh</button>
+        <!-- Wraps to a second line inside the group rather than pushing the
+             group onto one of its own, which would put it back underneath. -->
+        <div id="dlOut" class="note" style="min-width:0"></div>
+      </div>
+    </div></div>`;
   const dsStatus = (m) => { const e = $('#dlOut'); if (e) e.textContent = m; };
   const dsCall = async (url, body, confirmMsg) => {
     if (confirmMsg && !confirm(confirmMsg)) return;
