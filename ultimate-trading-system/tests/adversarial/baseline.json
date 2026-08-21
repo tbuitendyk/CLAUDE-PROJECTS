@@ -1,0 +1,228 @@
+{
+  "writtenUtc": "2026-08-21T17:28:31.391Z",
+  "note": "Findings that are real, have been read, and are NOT being fixed today. Each carries the reason. The suite passes while only these come back and fails the moment anything new appears. Nothing here is a pass — it is a list of known faults with the owner's decision still outstanding on each. The same list is written up in plain language in DEFECTS.md.",
+  "known": [
+    {
+      "fingerprint": "schema/accepts|the configuration check|a configuration with a traded symbol that is a number was accepted as valid — that value w",
+      "where": "the configuration check",
+      "what": "a configuration with a traded symbol that is a number was ACCEPTED as valid — that value would go on to drive real trading arithmetic",
+      "why": "Found 2026-08-21 by the adversarial suite. Real, not fixed today: tightening what counts as a valid traded symbol changes what the system will accept from the owner, and RULE ZERO says that is the owner's call, not mine. Written up in DEFECTS.md."
+    },
+    {
+      "fingerprint": "schema/coerced|the name check|a name that is an object was quietly turned into the text \"[object object]\" and accepted —",
+      "where": "the name check",
+      "what": "a name that is an object was quietly turned into the text \"[object Object]\" and accepted — the owner never typed that and will see it on screen as though they did",
+      "why": "Found 2026-08-21. Real, not fixed today. The fix is one line, but it changes what the naming control accepts, which is a decision about the interface. Written up in DEFECTS.md."
+    },
+    {
+      "fingerprint": "schema/coerced|the name check|a name that is a number was quietly turned into the text \"#\" and accepted — the owner neve",
+      "where": "the name check",
+      "what": "a name that is a number was quietly turned into the text \"7\" and accepted — the owner never typed that and will see it on screen as though they did",
+      "why": "Found 2026-08-21. Real, not fixed today. The fix is one line, but it changes what the naming control accepts, which is a decision about the interface. Written up in DEFECTS.md."
+    },
+    {
+      "fingerprint": "schema/rawtext|the name check|a name containing a script tag was accepted unchanged; whether that is safe depends entire",
+      "where": "the name check",
+      "what": "a name containing a script tag was accepted unchanged; whether that is safe depends entirely on every screen that later prints it",
+      "why": "Found 2026-08-21. Checked and currently harmless: both pages put owner-typed names through the escaping helper before drawing them, so markup in a name is shown as text rather than run. Kept on the list because it is only safe as long as that stays true, and this line is what will notice if it stops."
+    },
+    {
+      "fingerprint": "schema/rawtext|the name check|a name containing a newline was accepted unchanged; whether that is safe depends entirely ",
+      "where": "the name check",
+      "what": "a name containing a newline was accepted unchanged; whether that is safe depends entirely on every screen that later prints it",
+      "why": "Found 2026-08-21. Checked and currently harmless: both pages put owner-typed names through the escaping helper before drawing them, so markup in a name is shown as text rather than run. Kept on the list because it is only safe as long as that stays true, and this line is what will notice if it stops."
+    },
+    {
+      "fingerprint": "schema/silentdrop|reading the trading journal|a journal file with one line cut in half by a crash is read as if the whole line was never",
+      "where": "reading the trading journal",
+      "what": "a journal file with one line cut in half by a crash is read as if the whole line was never there. Nothing anywhere says a record was lost. Every total built on top of it — money made, money lost, number of trades — is then confidently wrong, and looks exactly like a correct answer.",
+      "why": "Found 2026-08-21. Real and serious, not fixed today: making the journal reader report torn lines changes what every screen that reads a book displays, which is a change to the interface and needs the owner's go-ahead. Written up in DEFECTS.md."
+    },
+    {
+      "fingerprint": "schema/emptylooksfine|reading the trading journal|a journal file containing nothing readable at all is reported as present with no events — ",
+      "where": "reading the trading journal",
+      "what": "a journal file containing nothing readable at all is reported as PRESENT with no events — which on screen is indistinguishable from a book that has genuinely never traded.",
+      "why": "Found 2026-08-21. Same family as the torn-line problem above and needs the same decision. Written up in DEFECTS.md."
+    },
+    {
+      "fingerprint": "schema/blankmoney|building a book from stored events|a closed trade whose profit is the word ten closed a trade and then reported the money mad",
+      "where": "building a book from stored events",
+      "what": "a closed trade whose profit is the word ten closed a trade and then reported the money made or lost as BLANK. On screen a blank reads as \"nothing traded\", not as \"this figure could not be worked out\".",
+      "why": "Found 2026-08-21. Real, not fixed today: deciding what a screen should show when a money figure cannot be worked out is an interface decision. A blank is the wrong answer, but what replaces it is the owner's. Written up in DEFECTS.md."
+    },
+    {
+      "fingerprint": "schema/fabricated|building a book from stored events|a closed trade whose profit is the word ten produced a book the screen would happily show,",
+      "where": "building a book from stored events",
+      "what": "a closed trade whose profit is the word ten produced a book the screen would happily show, containing closedRecent[0].pnl = the TEXT \"10\" where a number belongs. That is a money figure the system computed from a record it should have refused.",
+      "why": "Found 2026-08-21. Real, not fixed today. Requires the same decision as the blanks above, plus a rule about whether a bad stored record should be refused outright or shown as broken. Written up in DEFECTS.md."
+    },
+    {
+      "fingerprint": "schema/blankmoney|building a book from stored events|a closed trade whose profit is a sentence closed a trade and then reported the money made ",
+      "where": "building a book from stored events",
+      "what": "a closed trade whose profit is a sentence closed a trade and then reported the money made or lost as BLANK. On screen a blank reads as \"nothing traded\", not as \"this figure could not be worked out\".",
+      "why": "Found 2026-08-21. Real, not fixed today: deciding what a screen should show when a money figure cannot be worked out is an interface decision. A blank is the wrong answer, but what replaces it is the owner's. Written up in DEFECTS.md."
+    },
+    {
+      "fingerprint": "schema/blankmoney|building a book from stored events|a closed trade whose profit is infinity closed a trade and then reported the money made or",
+      "where": "building a book from stored events",
+      "what": "a closed trade whose profit is infinity closed a trade and then reported the money made or lost as BLANK. On screen a blank reads as \"nothing traded\", not as \"this figure could not be worked out\".",
+      "why": "Found 2026-08-21. Real, not fixed today: deciding what a screen should show when a money figure cannot be worked out is an interface decision. A blank is the wrong answer, but what replaces it is the owner's. Written up in DEFECTS.md."
+    },
+    {
+      "fingerprint": "schema/fabricated|building a book from stored events|a closed trade whose profit is infinity produced a book the screen would happily show, con",
+      "where": "building a book from stored events",
+      "what": "a closed trade whose profit is infinity produced a book the screen would happily show, containing closedRecent[0].pnl = Infinity. That is a money figure the system computed from a record it should have refused.",
+      "why": "Found 2026-08-21. Real, not fixed today. Requires the same decision as the blanks above, plus a rule about whether a bad stored record should be refused outright or shown as broken. Written up in DEFECTS.md."
+    },
+    {
+      "fingerprint": "schema/fabricated|building a book from stored events|a closed trade whose profit is not-a-number produced a book the screen would happily show,",
+      "where": "building a book from stored events",
+      "what": "a closed trade whose profit is not-a-number produced a book the screen would happily show, containing closedRecent[0].pnl = NaN. That is a money figure the system computed from a record it should have refused.",
+      "why": "Found 2026-08-21. Real, not fixed today. Requires the same decision as the blanks above, plus a rule about whether a bad stored record should be refused outright or shown as broken. Written up in DEFECTS.md."
+    },
+    {
+      "fingerprint": "schema/blankmoney|building a book from stored events|a closed trade whose profit is an object closed a trade and then reported the money made o",
+      "where": "building a book from stored events",
+      "what": "a closed trade whose profit is an object closed a trade and then reported the money made or lost as BLANK. On screen a blank reads as \"nothing traded\", not as \"this figure could not be worked out\".",
+      "why": "Found 2026-08-21. Real, not fixed today: deciding what a screen should show when a money figure cannot be worked out is an interface decision. A blank is the wrong answer, but what replaces it is the owner's. Written up in DEFECTS.md."
+    },
+    {
+      "fingerprint": "schema/fabricated|building a book from stored events|an entry with a quantity of infinity produced a book the screen would happily show, contai",
+      "where": "building a book from stored events",
+      "what": "an entry with a quantity of infinity produced a book the screen would happily show, containing openPositions[0].qty = Infinity. That is a money figure the system computed from a record it should have refused.",
+      "why": "Found 2026-08-21. Real, not fixed today. Requires the same decision as the blanks above, plus a rule about whether a bad stored record should be refused outright or shown as broken. Written up in DEFECTS.md."
+    },
+    {
+      "fingerprint": "candles/silent|reading the market data|a month that stops a third of the way through was loaded without a word, giving # candles ",
+      "where": "reading the market data",
+      "what": "a month that stops a third of the way through was loaded WITHOUT A WORD, giving 240 candles instead of 744. Every rule tested against that month is then scored on data that is not what it appears to be, and the score comes back looking perfectly normal.",
+      "why": "Found 2026-08-21. The most serious family on the list: the market data is the foundation everything else is computed from, and a short, gapped, duplicated or dirty month is currently read without a word. Not fixed today because adding a data-quality check changes what the Data section reports and what a sweep will refuse to run on — both interface decisions. Written up in DEFECTS.md."
+    },
+    {
+      "fingerprint": "candles/silent|reading the market data|a month with a three-day hole in the middle was loaded without a word, giving # candles in",
+      "where": "reading the market data",
+      "what": "a month with a three-day hole in the middle was loaded WITHOUT A WORD, giving 672 candles instead of 744. Every rule tested against that month is then scored on data that is not what it appears to be, and the score comes back looking perfectly normal.",
+      "why": "Found 2026-08-21. The most serious family on the list: the market data is the foundation everything else is computed from, and a short, gapped, duplicated or dirty month is currently read without a word. Not fixed today because adding a data-quality check changes what the Data section reports and what a sweep will refuse to run on — both interface decisions. Written up in DEFECTS.md."
+    },
+    {
+      "fingerprint": "candles/silent|reading the market data|a month where every candle appears twice was loaded without a word, giving # candles inste",
+      "where": "reading the market data",
+      "what": "a month where every candle appears twice was loaded WITHOUT A WORD, giving 1488 candles instead of 744, candles out of time order, the same hour appearing more than once. Every rule tested against that month is then scored on data that is not what it appears to be, and the score comes back looking perfectly normal.",
+      "why": "Found 2026-08-21. The most serious family on the list: the market data is the foundation everything else is computed from, and a short, gapped, duplicated or dirty month is currently read without a word. Not fixed today because adding a data-quality check changes what the Data section reports and what a sweep will refuse to run on — both interface decisions. Written up in DEFECTS.md."
+    },
+    {
+      "fingerprint": "candles/silent|reading the market data|a month whose candles are in the wrong order was loaded without a word, giving candles out",
+      "where": "reading the market data",
+      "what": "a month whose candles are in the wrong order was loaded WITHOUT A WORD, giving candles out of time order. Every rule tested against that month is then scored on data that is not what it appears to be, and the score comes back looking perfectly normal.",
+      "why": "Found 2026-08-21. The most serious family on the list: the market data is the foundation everything else is computed from, and a short, gapped, duplicated or dirty month is currently read without a word. Not fixed today because adding a data-quality check changes what the Data section reports and what a sweep will refuse to run on — both interface decisions. Written up in DEFECTS.md."
+    },
+    {
+      "fingerprint": "candles/silent|reading the market data|a month file containing an empty list was loaded without a word, giving # candles instead ",
+      "where": "reading the market data",
+      "what": "a month file containing an empty list was loaded WITHOUT A WORD, giving 0 candles instead of 744. Every rule tested against that month is then scored on data that is not what it appears to be, and the score comes back looking perfectly normal.",
+      "why": "Found 2026-08-21. The most serious family on the list: the market data is the foundation everything else is computed from, and a short, gapped, duplicated or dirty month is currently read without a word. Not fixed today because adding a data-quality check changes what the Data section reports and what a sweep will refuse to run on — both interface decisions. Written up in DEFECTS.md."
+    },
+    {
+      "fingerprint": "candles/silent|reading the market data|a month where a quarter of the candles are null was loaded without a word, giving # prices",
+      "where": "reading the market data",
+      "what": "a month where a quarter of the candles are null was loaded WITHOUT A WORD, giving 186 prices that are not numbers, candles out of time order, the same hour appearing more than once. Every rule tested against that month is then scored on data that is not what it appears to be, and the score comes back looking perfectly normal.",
+      "why": "Found 2026-08-21. The most serious family on the list: the market data is the foundation everything else is computed from, and a short, gapped, duplicated or dirty month is currently read without a word. Not fixed today because adding a data-quality check changes what the Data section reports and what a sweep will refuse to run on — both interface decisions. Written up in DEFECTS.md."
+    },
+    {
+      "fingerprint": "candles/silent|reading the market data|a month with prices that are not numbers was loaded without a word, giving # prices that a",
+      "where": "reading the market data",
+      "what": "a month with prices that are not numbers was loaded WITHOUT A WORD, giving 15 prices that are not numbers. Every rule tested against that month is then scored on data that is not what it appears to be, and the score comes back looking perfectly normal.",
+      "why": "Found 2026-08-21. The most serious family on the list: the market data is the foundation everything else is computed from, and a short, gapped, duplicated or dirty month is currently read without a word. Not fixed today because adding a data-quality check changes what the Data section reports and what a sweep will refuse to run on — both interface decisions. Written up in DEFECTS.md."
+    },
+    {
+      "fingerprint": "candles/silent|reading the market data|a month where some candles are priced at zero was loaded without a word, giving # prices a",
+      "where": "reading the market data",
+      "what": "a month where some candles are priced at zero was loaded WITHOUT A WORD, giving 15 prices at or below zero. Every rule tested against that month is then scored on data that is not what it appears to be, and the score comes back looking perfectly normal.",
+      "why": "Found 2026-08-21. The most serious family on the list: the market data is the foundation everything else is computed from, and a short, gapped, duplicated or dirty month is currently read without a word. Not fixed today because adding a data-quality check changes what the Data section reports and what a sweep will refuse to run on — both interface decisions. Written up in DEFECTS.md."
+    },
+    {
+      "fingerprint": "candles/silent|reading the market data|a month with negative prices was loaded without a word, giving # prices at or below zero. ",
+      "where": "reading the market data",
+      "what": "a month with negative prices was loaded WITHOUT A WORD, giving 15 prices at or below zero. Every rule tested against that month is then scored on data that is not what it appears to be, and the score comes back looking perfectly normal.",
+      "why": "Found 2026-08-21. The most serious family on the list: the market data is the foundation everything else is computed from, and a short, gapped, duplicated or dirty month is currently read without a word. Not fixed today because adding a data-quality check changes what the Data section reports and what a sweep will refuse to run on — both interface decisions. Written up in DEFECTS.md."
+    },
+    {
+      "fingerprint": "ui/screenlie|the trade page — the \"money\" formatter|given not-a-number, the owner would read \"nan\" on screen. that is the code failing to work",
+      "where": "the Trade page — the \"money\" formatter",
+      "what": "given not-a-number, the owner would read \"NaN\" on screen. That is the code failing to work something out, printed where a figure belongs.",
+      "why": "Found 2026-08-21. Real, not fixed today: what the screen shows in place of a figure it cannot work out is the owner's decision. Written up in DEFECTS.md."
+    },
+    {
+      "fingerprint": "ui/screenlie|the trade page — the \"money\" formatter|given infinity, the owner would read \"+infinity\" on screen. that is the code failing to wo",
+      "where": "the Trade page — the \"money\" formatter",
+      "what": "given infinity, the owner would read \"+Infinity\" on screen. That is the code failing to work something out, printed where a figure belongs.",
+      "why": "Found 2026-08-21. Real, not fixed today: what the screen shows in place of a figure it cannot work out is the owner's decision. Written up in DEFECTS.md."
+    },
+    {
+      "fingerprint": "ui/screenlie|the trade page — the \"money\" formatter|given minus infinity, the owner would read \"-infinity\" on screen. that is the code failing",
+      "where": "the Trade page — the \"money\" formatter",
+      "what": "given minus infinity, the owner would read \"-Infinity\" on screen. That is the code failing to work something out, printed where a figure belongs.",
+      "why": "Found 2026-08-21. Real, not fixed today: what the screen shows in place of a figure it cannot work out is the owner's decision. Written up in DEFECTS.md."
+    },
+    {
+      "fingerprint": "ui/screenlie|the trade page — the \"money\" formatter|given a word, the owner would read \"nan\" on screen. that is the code failing to work somet",
+      "where": "the Trade page — the \"money\" formatter",
+      "what": "given a word, the owner would read \"NaN\" on screen. That is the code failing to work something out, printed where a figure belongs.",
+      "why": "Found 2026-08-21. Real, not fixed today: what the screen shows in place of a figure it cannot work out is the owner's decision. Written up in DEFECTS.md."
+    },
+    {
+      "fingerprint": "ui/screenlie|the trade page — the \"money\" formatter|given an object, the owner would read \"nan\" on screen. that is the code failing to work so",
+      "where": "the Trade page — the \"money\" formatter",
+      "what": "given an object, the owner would read \"NaN\" on screen. That is the code failing to work something out, printed where a figure belongs.",
+      "why": "Found 2026-08-21. Real, not fixed today: what the screen shows in place of a figure it cannot work out is the owner's decision. Written up in DEFECTS.md."
+    },
+    {
+      "fingerprint": "ui/screenlie|the trade page — the \"money\" formatter|given a list, the owner would read \"nan\" on screen. that is the code failing to work somet",
+      "where": "the Trade page — the \"money\" formatter",
+      "what": "given a list, the owner would read \"NaN\" on screen. That is the code failing to work something out, printed where a figure belongs.",
+      "why": "Found 2026-08-21. Real, not fixed today: what the screen shows in place of a figure it cannot work out is the owner's decision. Written up in DEFECTS.md."
+    },
+    {
+      "fingerprint": "ui/screenlie|the trade page — the \"esc\" formatter|given an object, the owner would read \"[object object]\" on screen. that is the code failin",
+      "where": "the Trade page — the \"esc\" formatter",
+      "what": "given an object, the owner would read \"[object Object]\" on screen. That is the code failing to work something out, printed where a figure belongs.",
+      "why": "Found 2026-08-21. Real, not fixed today: what the screen shows in place of a figure it cannot work out is the owner's decision. Written up in DEFECTS.md."
+    },
+    {
+      "fingerprint": "ui/screenlie|the construct page — the \"esc\" formatter|given an object, the owner would read \"[object object]\" on screen. that is the code failin",
+      "where": "the Construct page — the \"esc\" formatter",
+      "what": "given an object, the owner would read \"[object Object]\" on screen. That is the code failing to work something out, printed where a figure belongs.",
+      "why": "Found 2026-08-21. Real, not fixed today: what the screen shows in place of a figure it cannot work out is the owner's decision. Written up in DEFECTS.md."
+    },
+    {
+      "fingerprint": "ui/disagree|the \"money\" formatter, on both pages|the two pages format the same value differently in # of # cases: given not-a-number, the t",
+      "where": "the \"money\" formatter, on both pages",
+      "what": "the two pages format the same value differently in 9 of 11 cases: given not-a-number, the Trade page shows \"NaN\" and the Construct page shows \"—\"; given infinity, the Trade page shows \"+Infinity\" and the Construct page shows \"—\"; given minus infinity, the Trade page shows \"-Infinity\" and the Construct page shows \"—\". Two screens describing the same system that disagree leave no way to tell which one is right.",
+      "why": "Found 2026-08-21. Real, not fixed today. The two pages must be made to agree, but which one is right is the owner's call. Written up in DEFECTS.md."
+    },
+    {
+      "fingerprint": "inv/dashfabricated|the dashboard totals (live trading)|a book whose money is text produced a headline total of rows.#.rp = the text \"#\", totr = t",
+      "where": "the Dashboard totals (Live Trading)",
+      "what": "a book whose money is text produced a headline total of rows.0.rp = the TEXT \"5\", totR = the TEXT \"05\" — that goes at the top of the screen as the money figure.",
+      "why": "Found 2026-08-21. Real, not fixed today: same decision as the screen figures above, applied to the headline total at the top of the Dashboard. Written up in DEFECTS.md."
+    },
+    {
+      "fingerprint": "inv/dashfabricated|the dashboard totals (paper books)|a book whose money is text produced a headline total of rows.#.rp = the text \"#\", totr = t",
+      "where": "the Dashboard totals (Paper Books)",
+      "what": "a book whose money is text produced a headline total of rows.0.rp = the TEXT \"5\", totR = the TEXT \"05\" — that goes at the top of the screen as the money figure.",
+      "why": "Found 2026-08-21. Real, not fixed today: same decision as the screen figures above, applied to the headline total at the top of the Dashboard. Written up in DEFECTS.md."
+    },
+    {
+      "fingerprint": "inv/dashfabricated|the dashboard totals (live trading)|a book whose money is not-a-number produced a headline total of rows.#.rp = nan — that goe",
+      "where": "the Dashboard totals (Live Trading)",
+      "what": "a book whose money is not-a-number produced a headline total of rows.0.rp = NaN — that goes at the top of the screen as the money figure.",
+      "why": "Found 2026-08-21. Real, not fixed today: same decision as the screen figures above, applied to the headline total at the top of the Dashboard. Written up in DEFECTS.md."
+    },
+    {
+      "fingerprint": "inv/dashfabricated|the dashboard totals (paper books)|a book whose money is not-a-number produced a headline total of rows.#.rp = nan — that goe",
+      "where": "the Dashboard totals (Paper Books)",
+      "what": "a book whose money is not-a-number produced a headline total of rows.0.rp = NaN — that goes at the top of the screen as the money figure.",
+      "why": "Found 2026-08-21. Real, not fixed today: same decision as the screen figures above, applied to the headline total at the top of the Dashboard. Written up in DEFECTS.md."
+    }
+  ]
+}
