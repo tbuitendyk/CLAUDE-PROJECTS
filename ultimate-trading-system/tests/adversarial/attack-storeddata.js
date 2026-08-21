@@ -85,19 +85,56 @@ function run(ctx) {
   const faults = { short: [], gap: [], dupe: [], order: [], badPrice: [], nonPositive: [], lowAboveHigh: [], notArray: [] };
   let checked = 0;
 
+  // A pair's FIRST cached month is short because the pair had not started
+  // trading yet, and its LAST is short because the month is not over. Those are
+  // not faults. Counting them alongside the real ones turned 286 genuine gaps
+  // into an alarming 306 and buried the distinction that matters — so the edges
+  // are worked out first and excluded.
+  const monthsBySymbol = {};
+  const intervalsSeen = {};
+  for (const f of candles) {
+    const mm = /^([A-Z0-9]+)-([0-9]+[mhd])-(\d{4})-(\d{2})\.json$/.exec(path.basename(f));
+    if (!mm) continue;
+    intervalsSeen[mm[2]] = (intervalsSeen[mm[2]] || 0) + 1;
+    if (mm[2] !== '1h') continue;
+    (monthsBySymbol[mm[1]] = monthsBySymbol[mm[1]] || []).push(`${mm[3]}-${mm[4]}`);
+  }
+  const edges = new Set();
+  for (const [sym, list] of Object.entries(monthsBySymbol)) {
+    list.sort();
+    edges.add(`${sym} ${list[0]}`);
+    edges.add(`${sym} ${list[list.length - 1]}`);
+  }
+
+  // Candle data cached at an interval nothing in the code ever asks for is data
+  // on disk that no screen can show (RULE FIVE). Worked out from what the code
+  // requests, not from whether the filename happens to appear in it.
+  const codeText = fs.readFileSync(path.join(ROOT, 'lib', 'binance.js'), 'utf8')
+    + fs.readFileSync(path.join(ROOT, 'lib', 'pipeline.js'), 'utf8');
+  for (const [iv, count] of Object.entries(intervalsSeen)) {
+    const asked = new RegExp(`interval\\s*[=:]\\s*['"\`]${iv}['"\`]|['"\`]${iv}['"\`]\\s*\\)|monthlyKlines\\([^)]*['"\`]${iv}['"\`]`).test(codeText);
+    if (!asked && iv !== '1h') {
+      found.push(finding('data/unusedinterval', `the stored market data in ${path.relative(ROOT, cacheDir) || cacheDir}`,
+        `${count} candle file(s) hold ${iv} data, and nothing in the code ever asks for ${iv} data — the download only ever requests 1h. These were fetched by something that is no longer here. They are on disk, they take up space, and no screen can show you they exist (RULE FIVE).`));
+    }
+  }
+
   for (const f of candles) {
     const name = path.basename(f);
-    const m = /^([A-Z0-9]+)-1h-(\d{4})-(\d{2})(?:-(\d{2}))?\.json$/.exec(name);
-    if (!m) continue;
+    const m = /^([A-Z0-9]+)-([0-9]+[mhd])-(\d{4})-(\d{2})(?:-(\d{2}))?\.json$/.exec(name);
+    if (!m || m[2] !== '1h') continue;
     const rows = parsed.get(f);
-    const tag = `${m[1]} ${m[2]}-${m[3]}${m[4] ? `-${m[4]}` : ''}`;
+    const tag = `${m[1]} ${m[3]}-${m[4]}${m[5] ? `-${m[5]}` : ''}`;
     if (!Array.isArray(rows)) { faults.notArray.push(tag); continue; }
     checked += 1;
-    const isDay = Boolean(m[4]);
-    const isCurrent = `${m[2]}-${m[3]}` === thisMonth;
+    const isDay = Boolean(m[5]);
+    const isCurrent = `${m[3]}-${m[4]}` === thisMonth;
+    const isEdge = edges.has(`${m[1]} ${m[3]}-${m[4]}`);
 
-    const expect = isDay ? 24 : hoursInMonth(Number(m[2]), Number(m[3]));
-    if (!isCurrent && rows.length < expect) faults.short.push(`${tag} has ${rows.length} of ${expect}`);
+    const expect = isDay ? 24 : hoursInMonth(Number(m[3]), Number(m[4]));
+    if (!isCurrent && !isEdge && rows.length < expect) {
+      faults.short.push(`${tag} is missing ${expect - rows.length} of ${expect} hours`);
+    }
 
     const ts = rows.map((r) => r && r.ts);
     if (new Set(ts).size !== ts.length) faults.dupe.push(tag);
@@ -124,7 +161,7 @@ function run(ctx) {
   ctx.note(`${checked} candle file(s) checked against what a full month should hold`);
 
   const CANDLE_MEANING = {
-    short: 'hold fewer candles than the month has hours. A sweep over one of these is scored on less data than it appears to be, and says nothing about it',
+    short: 'are missing hours from the middle of a pair history — not a first or last month, which are short for ordinary reasons. A sweep over one of these is scored on less data than it appears to be, and says nothing about it',
     gap: 'have a break in the middle where hours are missing. Anything measured across the break is measured across a hole',
     dupe: 'contain the same hour more than once, so those hours are counted twice',
     order: 'have their candles out of time order, which breaks anything that walks forward through time',

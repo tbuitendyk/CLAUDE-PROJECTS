@@ -7,3 +7,14 @@ venv/
 .env
 node_modules/
 .DS_Store
+
+# Downloaded/parsed market data and a running service's own records. Rebuildable
+# and potentially large, and never the repository's business.
+#
+# THIS LIVES AT THE ROOT ON PURPOSE. ultimate-trading-system/.gitignore already
+# ignores its own data/, but that file does not exist on branches that do not
+# carry the sub-project — so `git add -A` on one of those branches swept 16
+# ignored files into a commit, and switching back deleted them from the working
+# copy. A rule at the root is on every branch, so it holds whichever one is
+# checked out (2026-08-21).
+data/
