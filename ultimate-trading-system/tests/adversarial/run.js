@@ -33,6 +33,7 @@ const ATTACKS = [
   { mod: './attack-invariants', needs: null },
   { mod: './attack-storeddata', needs: null },
   { mod: './attack-controls', needs: null },
+  { mod: './attack-scoring', needs: null },
 ];
 
 // A finding's identity. Counts inside the wording change as the code changes

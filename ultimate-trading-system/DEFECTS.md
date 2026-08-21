@@ -155,7 +155,7 @@ Harmless — the check regenerates them.
 
 ---
 
-## 5. What the adversarial suite found (2026-08-21) — 50 items, none fixed
+## 5. What the adversarial suite found (2026-08-21) — 56 items, none fixed
 
 A standing test now attacks the system on purpose: `npm run test:adversarial`.
 It asks the opposite question to the ordinary tests — not *does this work*, but
@@ -270,6 +270,39 @@ This is RULE FIVE — what appears in the interface is yours to decide, and a li
 baked into the code takes that decision away without saying so. Not changed,
 because deciding what those lists should contain and where they should come from
 is exactly the decision the rule reserves for you.
+
+### 5h. The measuring stick itself — 6 items
+
+The score is the arithmetic that decides whether a rule is any good, so a fault
+here does not look like a fault. It looks like a rule that works.
+
+**The important part passed, and it matters.** Always answering the commonest
+outcome — which takes no skill at all — scores an edge of exactly zero. Flipping
+a coin, over sixty separate runs, averages an edge of zero and comes out
+positive in exactly 30 of 60. A caller that is right every time scores a clear
+positive edge, so the measurement can see a real effect rather than being blind
+to everything. Those three together are most of what one wants from a
+measuring stick.
+
+**What it does badly is anything that is not a fair comparison:**
+
+- **Fewer answers than questions.** A run that only half finished is scored as a
+  run that did badly — accuracy 0.125 rather than a refusal. Those two mean
+  completely different things and the score cannot tell them apart.
+- **No answers at all** is scored as getting everything wrong.
+- **More answers than questions.** The extra ones are dropped without a word, so
+  a caller misaligned with the test data scores as though it were aligned — in
+  the test above, a perfect 1.000.
+- **Answers that are not one of the three outcomes**, or that arrived as text
+  rather than as numbers, are counted as ordinary wrong answers. A rule whose
+  answers came through in the wrong form scores zero and reads as a rule that
+  does not work.
+- **A quiet period scores as a perfect discovery.** If every outcome in the test
+  period is the same, the edge comes out at 1.000 — a perfect find, in a period
+  where there was nothing to find. It happens because the yardstick is the
+  commonest outcome in the *training* data, and a quiet test period may hold
+  none of it. The honest figure already sits right beside it in the same result
+  (0.000), so the arithmetic knows; it is the headline number that misleads.
 
 ### 5f. Three places the suite deliberately does not reach
 

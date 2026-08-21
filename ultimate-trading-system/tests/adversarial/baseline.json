@@ -1,5 +1,5 @@
 {
-  "writtenUtc": "2026-08-21T17:45:04.399Z",
+  "writtenUtc": "2026-08-21T17:48:54.984Z",
   "note": "Findings that are real, have been read, and are not being fixed today. Each needs a reason in plain language. The suite fails on anything NOT in this list.",
   "known": [
     {
@@ -301,6 +301,42 @@
       "where": "the Construct page",
       "what": "the dropdown \"glTarget\" offers a list written into the page — declared cell, best cell, widest region. The owner can only pick what somebody typed into the code, and nothing on screen says so (RULE FIVE).",
       "why": "Found 2026-08-21 by the adversarial suite. Real, and squarely a RULE FIVE matter: a list of what you may choose from, written into the page. NOT changed, because what appears in the interface is your decision and hardcoding it in a hurry is the same mistake in the other direction. Written up in DEFECTS.md section 5g."
+    },
+    {
+      "fingerprint": "score/notcomparable|the scoring arithmetic|given fewer answers than there are questions, the score came back as an ordinary result (a",
+      "where": "the scoring arithmetic",
+      "what": "given fewer answers than there are questions, the score came back as an ordinary result (accuracy 0.125, edge -0.245) rather than being refused. the missing answers are counted as wrong rather than as missing, so a run that only half finished is scored as a run that did badly. Those two mean completely different things.",
+      "why": "Found 2026-08-21. Real, not fixed today: making the score refuse a mismatched or unrecognised set of answers changes what a sweep does when something upstream goes wrong — it would stop rather than report a poor result. That is the right change and it is your call, because it changes what the screens show. Written up in DEFECTS.md section 5h."
+    },
+    {
+      "fingerprint": "score/notcomparable|the scoring arithmetic|given no answers at all, the score came back as an ordinary result (accuracy #.#, edge -#.",
+      "where": "the scoring arithmetic",
+      "what": "given no answers at all, the score came back as an ordinary result (accuracy 0.000, edge -0.370) rather than being refused. a run that produced nothing is scored as a run that got everything wrong.",
+      "why": "Found 2026-08-21. Real, not fixed today: making the score refuse a mismatched or unrecognised set of answers changes what a sweep does when something upstream goes wrong — it would stop rather than report a poor result. That is the right change and it is your call, because it changes what the screens show. Written up in DEFECTS.md section 5h."
+    },
+    {
+      "fingerprint": "score/notcomparable|the scoring arithmetic|given more answers than questions, the score came back as an ordinary result (accuracy #.#",
+      "where": "the scoring arithmetic",
+      "what": "given more answers than questions, the score came back as an ordinary result (accuracy 1.000, edge 0.630) rather than being refused. the extra answers are ignored without a word, so a caller misaligned with the test data scores as though it were aligned.",
+      "why": "Found 2026-08-21. Real, not fixed today: making the score refuse a mismatched or unrecognised set of answers changes what a sweep does when something upstream goes wrong — it would stop rather than report a poor result. That is the right change and it is your call, because it changes what the screens show. Written up in DEFECTS.md section 5h."
+    },
+    {
+      "fingerprint": "score/notcomparable|the scoring arithmetic|given answers that are not one of the three outcomes, the score came back as an ordinary r",
+      "where": "the scoring arithmetic",
+      "what": "given answers that are not one of the three outcomes, the score came back as an ordinary result (accuracy 0.000, edge -0.370) rather than being refused. a value the system does not recognise is treated as an ordinary wrong answer instead of being refused.",
+      "why": "Found 2026-08-21. Real, not fixed today: making the score refuse a mismatched or unrecognised set of answers changes what a sweep does when something upstream goes wrong — it would stop rather than report a poor result. That is the right change and it is your call, because it changes what the screens show. Written up in DEFECTS.md section 5h."
+    },
+    {
+      "fingerprint": "score/notcomparable|the scoring arithmetic|given answers that are text, the score came back as an ordinary result (accuracy #.#, edge",
+      "where": "the scoring arithmetic",
+      "what": "given answers that are text, the score came back as an ordinary result (accuracy 0.000, edge -0.370) rather than being refused. the text \"1\" and the number 1 are never equal, so a caller whose answers arrived as text scores zero and looks like a rule that does not work.",
+      "why": "Found 2026-08-21. Real, not fixed today: making the score refuse a mismatched or unrecognised set of answers changes what a sweep does when something upstream goes wrong — it would stop rather than report a poor result. That is the right change and it is your call, because it changes what the screens show. Written up in DEFECTS.md section 5h."
+    },
+    {
+      "fingerprint": "score/degenerate|the scoring arithmetic|a test period in which every outcome is the same scores an edge of #.# — a perfect discove",
+      "where": "the scoring arithmetic",
+      "what": "a test period in which every outcome is the same scores an edge of 1.000 — a perfect discovery, in a period where there was nothing to discover. It happens because the yardstick is the commonest outcome in the TRAINING data, and in a quiet period the test data may hold none of it. The honest figure sitting right beside it is 0.000, so the arithmetic already knows; it is the headline number that misleads.",
+      "why": "Found 2026-08-21. Real, not fixed today. The honest figure already sits beside the misleading one in the same result, so the fix may be a screen change rather than an arithmetic change — which makes it doubly your decision. Written up in DEFECTS.md section 5h."
     }
   ]
 }

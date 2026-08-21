@@ -31,7 +31,7 @@ So the scoring here is deliberately upside down:
 
 ## What it attacks
 
-Seven surfaces, each in its own file:
+Eight surfaces, each in its own file:
 
 1. **`attack-http.js` — the front door.** Every address the system answers on,
    hit with nothing, the wrong shape, the wrong type, a name four thousand
@@ -94,6 +94,14 @@ Seven surfaces, each in its own file:
    It also looks for dropdowns whose choices are written into the page rather
    than coming from the system (RULE FIVE), and says so more sharply when the
    system already publishes that list and the page is keeping a second copy.
+
+8. **`attack-scoring.js` — the measuring stick.** Everything above attacks the
+   code; this attacks the **score**. Could this number be got with no skill at
+   all — by always answering the commonest outcome, or by flipping a coin sixty
+   times over? Can it see an effect that is definitely there, or is it blind?
+   Does it report a headline rate off a handful of cases? And what does it do
+   when the two things being compared are not comparable — fewer answers than
+   questions, answers in the wrong form, a period in which nothing happened?
 
 ## Safety
 
