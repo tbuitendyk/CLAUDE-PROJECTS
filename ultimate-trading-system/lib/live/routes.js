@@ -95,8 +95,21 @@ function installLiveRoutes(app, { csrfGuard }) {
       try {
         unhaltRefused = JSON.parse(fs.readFileSync(path.join(unhaltDir, `${s.id}.refused.json`), 'utf8'));
       } catch (_) { /* none refused */ }
+      // THE REPRODUCE-CHECK. live-mirror.js re-runs every setup's recorded
+      // decisions against fresh data and writes the result here. Nothing read
+      // it, so the screen's reproduce-check line said "not run yet" forever and
+      // the MIRROR BREAK banner could never appear — a check that runs, finds a
+      // break, and cannot tell anyone is worse than no check, because silence
+      // reads as "clean" (found by audit, 2026-08-21).
+      let mirror = null;
+      try {
+        const agg = JSON.parse(fs.readFileSync(
+          path.join(__dirname, '..', '..', 'data', 'live', 'mirror.json'), 'utf8'));
+        mirror = (agg.results || []).find((r) => r.setup_id === s.id) || null;
+      } catch (_) { /* never run, or unreadable — the screen says "not run yet" */ }
+
       res.json({ ...require('./view').setupStatus(s), marginFloorRequested: requested,
-        unhaltPending, unhaltRefused });
+        unhaltPending, unhaltRefused, mirror });
     } catch (e) { res.status(500).json({ error: e.message }); }
   });
 
