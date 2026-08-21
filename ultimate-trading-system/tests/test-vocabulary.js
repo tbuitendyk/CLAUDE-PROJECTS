@@ -31,7 +31,11 @@ module.exports = {
     const hits = [];
     for (const rel of SCAN) {
       const file = path.join(ROOT, rel);
-      if (!fs.existsSync(file)) continue;
+      // A VANISHED TARGET IS A FAILURE, not a skip. This used to `continue`, so
+      // deleting a scanned file quietly shrank what the guard protected and the
+      // suite stayed green — which is exactly how this check came to be
+      // watching four files that no longer existed (audit, 2026-08-21).
+      assert.ok(fs.existsSync(file), `${rel} is on the scan list but is not in the tree`);
       fs.readFileSync(file, 'utf8').split('\n').forEach((line, i) => {
         if (BANNED.test(line)) hits.push(`${rel}:${i + 1}: ${line.trim().slice(0, 90)}`);
       });

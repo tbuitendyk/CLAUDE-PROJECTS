@@ -46,12 +46,16 @@ module.exports = {
     assert.strictEqual(out[2].value, 3);
   },
   async workerNeverReachesStatefulModules() {
-    // The worker's transitive requires must exclude batch.js (whose top-level
-    // IIFE rewrites any doc still marked 'running' to 'interrupted' — a
-    // worker importing it would corrupt the very sweep it is executing) and
-    // the frozen books (module-level state + single-flight guards that are
-    // only valid inside one isolate; two threads ticking a live book would
-    // both write its state file and break a record that must never restart).
+    // The worker's transitive requires must exclude batch.js, whose top-level
+    // code rewrites any document still marked 'running' to 'interrupted' — a
+    // worker importing it would corrupt the very sweep it is executing.
+    //
+    // The list used to name three more: the frozen paper-book modules. All
+    // three were deleted with the screens they served, so three of the four
+    // guards here could no longer fail and the test read as four protections
+    // when it was one (audit, 2026-08-21). The list below is now every
+    // surviving module that holds state or writes to disk, checked against the
+    // tree so a new one cannot be forgotten.
     const LIB = path.join(__dirname, '..', 'lib');
     const seen = new Set();
     const walk = (file) => {
@@ -66,7 +70,11 @@ module.exports = {
       for (const m of src.matchAll(/require\('\.\/([\w-]+)'\)/g)) walk(`${m[1]}.js`);
     };
     walk('worker.js');
-    for (const forbidden of ['batch.js', 'tracker.js', 'dogebook.js', 'books.js']) {
+    const FORBIDDEN = ['batch.js', 'campaign.js', 'manifest.js', 'jobs.js', 'planted.js', 'guard.js'];
+    for (const forbidden of FORBIDDEN) {
+      // A name that is not in the tree cannot fail, and a guard that cannot
+      // fail is not a guard.
+      assert.ok(fs.existsSync(path.join(LIB, forbidden)), `${forbidden} is on the forbidden list but not in lib/`);
       assert.ok(!seen.has(forbidden), `worker must not transitively require ${forbidden} (reached: ${[...seen].join(', ')})`);
     }
     // and it must actually reach the real work, or the test proves nothing
