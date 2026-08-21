@@ -155,7 +155,7 @@ Harmless — the check regenerates them.
 
 ---
 
-## 5. What the adversarial suite found (2026-08-21) — 58 items, none fixed
+## 5. What the adversarial suite found (2026-08-21) — 58 items on the working copy, 3 more on the box, none fixed
 
 A standing test now attacks the system on purpose: `npm run test:adversarial`.
 It asks the opposite question to the ordinary tests — not *does this work*, but
@@ -319,6 +319,41 @@ What a fix looks like: decide what should happen when the system meets a record
 from another version — refuse it, show it on screen as needing attention, or
 bring it up to date — and then do that. Which of those it should be is a
 decision about what you see, so it is yours.
+
+### 5j. What the box's own data looks like — 3 items, checked on the machine
+
+The checks above run against a working copy holding 13 candle files. The box
+holds **2,712**, and those are the ones every number the system reports is
+actually computed from. The read-only check has now been run against them
+directly. It writes nothing, and proves that rather than claiming it: every file
+under `data/` is fingerprinted by path, size and modification time before and
+after, and the two came back identical.
+
+**The data is in better shape than the raw numbers first suggested.** 20
+symbols, 2,697 hourly months. Every file parses. No duplicated hours, no
+candles out of order, no prices that are not numbers, none at or below zero,
+none with a low above its high, no torn journals.
+
+What there is:
+
+- **286 months are missing hours from the middle of a pair's history.** Small
+  amounts — mostly 1 to 11 hours out of a 720- or 744-hour month, worst case 32.
+  These look like ordinary exchange outages, present in the data as published
+  rather than damage done here. **Nothing anywhere says so.** A sweep over one of
+  those months is scored as though the month were complete.
+- **292 months have a break in the middle** — the same files, seen from the
+  other side: they are short *because* of the break.
+- **15 files hold one-minute candles that nothing can read.** The download code
+  takes an interval and no caller ever passes anything but the hourly default,
+  so these were fetched by something that is no longer here. They sit on disk
+  and no screen can show you they exist (RULE FIVE).
+
+**A number I first got wrong, and how.** The check originally reported 304 short
+months, which reads as an alarm. Twenty of those were each a pair's *first*
+cached month — short because the pair had not started trading yet, which is not
+a fault at all. The check now works out the first and last month per symbol and
+leaves them out, and reports how many hours are missing rather than only that
+some are. 286 is the real number.
 
 ### 5f. Three places the suite deliberately does not reach
 

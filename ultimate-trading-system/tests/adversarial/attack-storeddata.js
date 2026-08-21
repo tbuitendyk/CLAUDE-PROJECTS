@@ -232,7 +232,11 @@ function run(ctx) {
   })(ROOT);
   const allCode = shipped.join('\n');
   const orphans = [...new Set(files.map((f) => path.basename(f)))]
-    .filter((b) => !/^[A-Z0-9]+-1h-\d{4}-\d{2}(-\d{2})?\.json$/.test(b))
+    // Candle files are named by the code, not written into it, so their names
+    // will never appear literally. They have their own check above, which asks
+    // whether the code requests that interval at all — a far better question
+    // than whether the filename happens to be typed somewhere.
+    .filter((b) => !/^[A-Z0-9]+-[0-9]+[mhd]-\d{4}-\d{2}(-\d{2})?\.json$/.test(b))
     .filter((b) => !allCode.includes(b) && !allCode.includes(b.replace(/\.jsonl?$/, '')));
   if (orphans.length) {
     found.push(finding('data/orphan', dataDir,

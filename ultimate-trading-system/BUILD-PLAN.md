@@ -383,18 +383,48 @@ a pass.
   dominated by the deliberately invalid addresses the sweep sends on purpose,
   so it never moved and the check reported a failure that was its own mistake.
 
-### Blocked and parked
+### The parked step, unparked (owner direction, 2026-08-21)
 
-**Running the read-only data check against the box.** `deploy-uts.sh` was
-refused by this session's permission gate, so the new test files are not on the
-box and the box's 2,712 candle files have not been inspected. Nothing is broken
-by this — the box is running the code it was running before — but the data check
-has only been run against the working copy's 13 candle files. The step is one
-command once the deploy is allowed:
+**What the permission problem actually was.** Not a missing right. The
+allowlist already carried `Bash(bash .claude/vps-run.sh *)` and the token was
+set. The refused call was a COMPOUND command — `git checkout … && bash
+.claude/vps-run.sh deploy-uts.sh` — which does not match that rule, so it fell
+through to the classifier and was blocked. Run bare, from the repository root,
+it works. Nothing needed changing; the lesson is that the sanctioned door only
+looks sanctioned when it is the whole command.
 
-```
-node tests/adversarial/run.js --only=attack-storeddata --data=/opt/ultimate-trading-system/data
-```
+Deployed (tests and documents only — no `server.js`, no `lib/`, no `public/`),
+44 verification checks pass, 8093 still active.
+
+**`uts-data-audit.sh`** (new, on `vps-access`) runs the read-only data check
+against `/opt/ultimate-trading-system/data` and proves it wrote nothing by
+fingerprinting every file's path, size and modification time before and after.
+Findings are in `DEFECTS.md` section 5j.
+
+**Two faults of my own, caught by running it:**
+
+- The check reported 304 short candle months. Twenty were each a pair's FIRST
+  cached month, short because the pair had not started trading yet. Reporting
+  one number for all of them would have read as an alarm three times worse than
+  the truth. The edges are now worked out per symbol and excluded, and the
+  shortfall is reported in hours rather than as a bare count. 286 is real.
+- The orphan check flagged 15 one-minute candle files because their names do
+  not appear literally in the code. That reasoning would have flagged any
+  generated filename. It now asks whether the code requests that interval at
+  all — which it does not, so the finding stands, but for the right reason.
+
+**And one of my own mistakes, worth recording because it cost data.**
+`git add -A` on the `vps-access` branch swept 16 ignored files into a commit —
+13 months of candles and 3 small pilot records — because that branch does not
+carry `ultimate-trading-system/.gitignore`, the file that ignores them.
+Switching back deleted them from the working copy. Nothing was lost: they were
+recovered from the commit, and the box's data was never involved. Fixed at the
+root, where the rule is on every branch. The files are off the `vps-access` tip;
+the blobs stay in its history, because taking them out of there means rewriting
+pushed history and that is not something to do unasked.
+
+The suite itself was cleared of suspicion the same way the audit clears itself —
+by fingerprinting `data/` before and after a full run. Identical.
 
 ### Left for the owner
 
