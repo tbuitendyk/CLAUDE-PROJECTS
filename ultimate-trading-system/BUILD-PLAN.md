@@ -78,10 +78,10 @@ work.
   definition of which pairs the system needs, and by RULE FIVE it should be
   visible somewhere. Kept because it is UTS-pertinent and three operational
   scripts use it.
-- **`lib/batch.js` still carries the departed screens' run kinds** — consensus,
-  metalens, permscreen, and the walk-forward run wrapper. Their routes are gone
-  so nothing reaches them over HTTP, but the code and its `kind` values remain
-  in the shared module. See the parked item below.
+- ~~**`lib/batch.js` still carries the departed screens' run kinds.**~~ FIXED
+  2026-08-19 on the owner's direction — see "Was parked, now done" below. The
+  consensus, meta-lens and permutation-screen block is gone, and so are the
+  walk-forward and single-pair launchers.
 - **The retired-vocabulary guard had one live hit** on the Construct screen once
   it was pointed at the surviving pages. Reworded with the meaning unchanged;
   reported because it is a screen string outside the named work.
@@ -175,13 +175,16 @@ loop at anything that changes the behaviour of something already trading.
 The reviewers proved the park was right, and left three things a later pass must
 know:
 
-- `median` is defined inside the departed consensus block but is called by the
-  surviving null test. Because it is a hoisted declaration, cutting it produces
-  no load error — the failure is a runtime one, mid-run, in a null test the
-  owner is watching fill in. A green suite after such a cut would prove nothing.
-- `permNullAggregate` looks departed and is not: a live test file exercises it.
-- `tests/test-boost.js`, `tests/test-consensus.js` and `tests/test-batchdoc.js`
-  must NOT be deleted with the departed screens. Between them they carry the
+- `median` was the one genuinely shared symbol. It now lives in `lib/stats.js`
+  and the block is gone. The warning it carried was right and is worth keeping:
+  cutting a hoisted function produces no load error, so the failure would have
+  been a runtime one, mid-run, in a null test the owner was watching fill in —
+  and a green suite would have proved nothing.
+- `permNullAggregate` went with the permutation screen and its test file. It no
+  longer exists anywhere.
+- `tests/test-boost.js` and `tests/test-batchdoc.js` must NOT be deleted with
+  the departed screens. `tests/test-consensus.js` WAS deleted — but only after
+  the two tests inside it that covered surviving code were carried out first. Between them they carry the
   only coverage of the model both surviving sections fit, of the per-sample
   weighting the age dial runs on, of the decision rule behind the sweep's
   decision control, and of a path-traversal guard on a live request path.

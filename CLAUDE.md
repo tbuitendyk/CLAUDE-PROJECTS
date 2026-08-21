@@ -88,13 +88,24 @@ When unsure whether a name is real: do not write it.
 committed, equally, to Paper Books. And vice versa.** Never one without the
 other.
 
-This is not a style preference. The two are rendered by SEPARATE, DUPLICATED
-code paths in `public/trading.html` — `drawLive()` serves the setup branches
-and `drawPilotLive()` serves LIVE — and they carry the same tables written out
-twice ("Open positions", "Recent closed", the same column headings, the same
-cells). Fixing one and not the other does not leave a cosmetic gap: it leaves
-two screens that describe the same system and disagree, and the owner has no
-way to tell which one is lying.
+This is not a style preference. Two screens that describe the same system and
+disagree leave the owner no way to tell which one is lying.
+
+**How they are drawn, corrected 2026-08-21.** This rule used to say the two
+were rendered by separate, duplicated code paths in `public/trading.html`, one
+function per side. That is no longer how it works, and a rule that describes a
+mechanism that is gone sends a session looking for something it cannot find.
+
+The file is now `public/trade.html`. The two branches come from `BRANCHES` in
+that file, and they are drawn by ONE path, parameterised by which branch is
+selected. The duplication this rule was written to police has largely been
+designed out — which is the better fix, and it is why the rule is easier to
+keep now than when it was written.
+
+What remains, and what to check: every place the code asks which branch it is
+on. Search `public/trade.html` for `branch === 'paper'` and for `isPaper`.
+Each one is a point where the two sides can still diverge, and each one has to
+be a difference that is *deliberate*.
 
 Paper is the control arm. A paper book whose screen reports differently from
 the live book is worthless as a comparison, because any difference the owner
@@ -111,11 +122,12 @@ The rule, every time:
 - **When the two genuinely must differ, say so out loud and why** (real money
   has controls paper does not — the master switch, the halt). A deliberate
   difference is fine; a drifted one never is.
-- **Check before claiming done.** grep both render paths for the thing changed
-  and confirm both were touched, in the same session, before reporting.
+- **Check before claiming done.** Look at every branch test the change passes
+  through and confirm the two sides come out the same, in the same session,
+  before reporting.
 
 The branches are labelled "Paper Books" and "Live Trading" (read from
-`BRANCHES` in `public/trading.html`).
+`BRANCHES` in `public/trade.html`).
 
 
 ## RULE THREE — nothing starts until the owner says GO NOW!

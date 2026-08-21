@@ -70,6 +70,7 @@ lib/bracketwork.js   the sweep's unit of work, identical on main or worker
 lib/planted.js       the planted-pattern calibration check
 lib/paper.js         paper-trade arithmetic and the declared friction rates
 lib/campaign.js      the campaign name every run carries, grouping one cycle
+lib/stats.js         shared arithmetic; lib/rng.js is seeded randomness
 lib/batch.js         saved run records and the run launchers
 lib/historytuning.js history tuning; lib/httwo.js is the age-dial version
 lib/walkforward.js   walk-forward evaluation
@@ -77,8 +78,8 @@ lib/walkforward.js   walk-forward evaluation
 lib/live/            the trading side: setups, greenlights, signal, channels,
                      catalog, execution targets, mirror, views, routes
 
-public/              setup.html, construct.html/.js, trade.html, style.css
-                     (prefix-relative URLs, light and dark aware)
+public/              setup.html, construct.html/.js, trade.html
+                     (each page carries its own styling; light and dark aware)
 tests/               node tests/run.js
 tools/               calibration checks and one-off registration scripts
 deploy/              install.sh, systemd unit, env.example (PORT=8094)

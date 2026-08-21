@@ -12,6 +12,12 @@ visibly separate from the owner's words. Status statements in them were
 verified by reading the code on the date shown, not carried over from an
 earlier plan.
 
+**A note on two names.** Point 17 renamed the screens: what the owner's earlier
+words call **Constructing** and **Trading** are now labelled **Construct** and
+**Trade**. Quoted owner text is left exactly as it was said; everything written
+by the session uses the current labels. **Paper Books** and **Live Trading** are
+the two branches inside Trade and did not change.
+
 Points 1-13 were carried over by owner instruction (2026-08-19) from the
 release notes now in `ARCHIVE/NEXT-RELEASE.md`, which is closed. Their
 original numbering is cited for traceability. Points 14 onward are new.
@@ -45,8 +51,8 @@ itself but a package the user's own machine can open. Capture and custody are
 one design, and point 6 sets the rule the capture screen has to obey.
 
 Note on naming: the owner's words above say "the Live Trading tab". That tab
-is now reached by the control labelled **Trading**, and "Live Trading" is the
-name of one of the two branches inside it.
+is now reached by the control labelled **Trade** (renamed under point 17), and
+"Live Trading" is the name of one of the two branches inside it.
 
 ---
 
@@ -93,7 +99,10 @@ Owner (2026-08-12):
 > settings, possibly API keys, email addresses, etc. — whatever is relevant
 > to using the software.
 
-`[feasibility]` Verified 2026-08-19: no such page exists.
+`[feasibility]` Verified 2026-08-19: no such page existed.
+
+UPDATE 2026-08-21: a **Setup** page now exists and is the front door — point 17
+built the tab and left it deliberately empty. This point is what fills it.
 
 Worth settling early: the split between this page and point 1. Account-level
 things belong here — who the user is, where alerts are sent, defaults. Things
@@ -235,7 +244,7 @@ Owner (2026-08-12):
 >   through the steps.
 
 `[feasibility]` Verified 2026-08-19: the guided sequence is built — the
-sections of **Constructing** run in flow order: **Data**, **Sweep**,
+sections of **Construct** run in flow order: **Data**, **Sweep**,
 **Boards**, **Verify**, **History**, **Tune**, **Greenlight**. What is
 missing is any picture of the branching: several candidates growing from one
 starting point, and where each one split off.
@@ -303,7 +312,7 @@ owner's ruling.
 `[feasibility]` Verified 2026-08-19: the catalogue is built and working
 underneath. It knows what data the system needs, checks what is actually
 present, and can re-download what is missing. It is reachable by two
-endpoints. Neither **Constructing** nor **Trading** mentions it anywhere —
+endpoints. Neither **Construct** nor **Trade** mentions it anywhere —
 the word does not appear on either screen.
 
 So the state today is: a working feature the owner cannot see, operate or
@@ -322,7 +331,7 @@ and those two lead to opposite conclusions about a candidate.
 > expose the catalogue in the Data section
 
 The open question above is closed. The section is the one headed **Data on
-server** and **Download / refresh**, under **Data** in **Constructing**.
+server** and **Download / refresh**, under **Data** in **Construct**.
 
 `[feasibility]` on the ruling. Both endpoints already exist — one reads the
 required-versus-present comparison, one runs the repair — and the repair
@@ -407,9 +416,10 @@ Owner (2026-08-12):
 > A very thorough help system throughout — screenshots and examples
 > everywhere, tooltips on everything.
 
-`[feasibility]` Verified 2026-08-19: two help pages exist, and both serve
-screens this release is retiring. Neither **Constructing** nor **Trading**
-links to help at all.
+`[feasibility]` Verified 2026-08-19: two help pages existed, both serving
+screens this release retired. UPDATE 2026-08-21: both were deleted with those
+screens, so there is now no help anywhere in the system, and neither
+**Construct** nor **Trade** links to any.
 
 The material to build it from is largely already written, in the method and
 workflow documents — the "why this exists, how to use it, when" text for each
@@ -447,7 +457,7 @@ reason the current trading machine sits where it does.
 
 ---
 
-## 14. This is the UTS — everything that is not Constructing or Trading is out
+## 14. This is the UTS — everything that is not Construct or Trade is out
 
 *Owner, 2026-08-19.*
 
@@ -459,21 +469,21 @@ Owner (2026-08-19):
 > those, drop them all in archive. They are no longer part of our project.
 
 `[feasibility]` The three controls that go are labelled **Research**,
-**Bracket lab** and **Paper books**. The two that stay are **Constructing**
-and **Trading**.
+**Bracket lab** and **Paper books**. The two that stay are **Construct**
+and **Trade**.
 
 This is a tracing job, not a file move, for two reasons.
 
-**Some of the back end is shared.** Constructing runs its sweeps, its
+**Some of the back end is shared.** Construct runs its sweeps, its
 training, its data loading and its calibration check through modules the
-Bracket lab also used. Archiving those takes Constructing down with them.
+Bracket lab also used. Archiving those takes Construct down with them.
 The rule has to be: anything reached only by a departing screen goes,
-anything reached by Constructing or Trading stays — traced module by module
+anything reached by Construct or Trade stays — traced module by module
 and proved before a single file moves, not judged by name.
 
 **The strip carrying the tab names lives on one of the departing pages.**
 The page that Research and Bracket lab sit on is also the page that renders
-the row of controls leading to Constructing and Trading, and it is what the
+the row of controls leading to Construct and Trade, and it is what the
 site serves at its address. Removing it leaves nothing at the front door. So
 this point needs a decision about what the system opens to. Not a blocker,
 but the plan has to answer it.
@@ -490,7 +500,7 @@ That closes the open question above. The address the site serves is the Setup
 page (point 17), and the strip of tab names moves there.
 
 One consequence, read out of the two surviving pages on 2026-08-19: neither
-carries a tab strip of its own. **Constructing** and **Trading** each return
+carries a tab strip of its own. **Construct** and **Trade** each return
 to the rest of the system through a breadcrumb and a control labelled
 **Back**, and both point at the page being removed. So the strip is not
 merely moved — it has to appear on all three pages, or Construct and Trade
@@ -529,7 +539,7 @@ is automatic but slow, and nothing can run until enough of it is back.
 
 ---
 
-## 16. Rewrite the workflow document against the Constructing sections
+## 16. Rewrite the workflow document against the Construct sections
 
 *Owner, 2026-08-19.*
 
@@ -547,7 +557,7 @@ that actually renders it, verified 2026-08-19:
 | Null boards, and the two reads | **Verify** |
 | Replication | **Boards** |
 | History Tuning | **History** |
-| The paper book | **Greenlight**, then the **Trading** tab |
+| The paper book | **Greenlight**, then the **Trade** tab |
 
 Two things the rewrite surfaces, and neither is a matter of wording.
 
@@ -566,7 +576,7 @@ entry, and a place in the chain has to be decided for it.
 
 One further note. The document states in its opening that it is the copy the
 interface carries beside each tool. That has never been true of either
-surviving screen: neither **Constructing** nor **Trading** links to help at
+surviving screen: neither **Construct** nor **Trade** links to help at
 all. The rewrite is worth doing on its own merits, but it feeds point 12
 rather than closing it.
 

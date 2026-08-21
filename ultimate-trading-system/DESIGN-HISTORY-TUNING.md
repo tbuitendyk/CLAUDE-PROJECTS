@@ -1,5 +1,21 @@
 # History Tuning — the design ledger (living document)
 
+> **READ THIS FIRST — a historical record, not current instruction (2026-08-21).**
+>
+> This is how History Tuning was thought through, ruled on and built. The
+> reasoning is still the reasoning behind the feature, which is why the document
+> is kept.
+>
+> But everything it says about SCREENS is out of date. It describes the Bracket
+> lab, its Help page, a Research tab and a data-management section — all of
+> which were retired. History Tuning now lives in the **History** section of the
+> **Construct** tab, and the calibration check it describes as a button at the
+> top of the Bracket lab is in the **Verify** section.
+>
+> Where this document and the running system disagree about what is on screen,
+> the system is right. Where they disagree about WHY something was decided, this
+> document is the record.
+
 Owner + session, started 2026-08-02. This is the mechanism being worked
 out BEFORE anything is built (OWNER-SPEC.md rule 2). Nothing here is a
 build order yet. Serves spec point 3.

@@ -1,5 +1,14 @@
 # Prompt: running a quantitative signal search with Claude Code
 
+> **A note before you read it (2026-08-21).** The method here is current. The
+> ENVIRONMENT it describes is not: it assumes a "Bracket Lab" screen, which was
+> retired. That work now happens in the **Construct** tab, whose sections are
+> Data, Sweep, Boards, Verify, History, Tune and Greenlight. `WORKFLOW.md` walks
+> through them and is the up-to-date companion to this document.
+>
+> Read this for HOW TO THINK about a signal search. Read `WORKFLOW.md` for which
+> control to press.
+
 **Version 1.0.0** — 2026-07-30. Distilled from the General Classifier /
 Bracket Lab work cycle. Every rule here was learned by getting it wrong first;
 where a rule looks disproportionately emphatic, the cost that produced it is

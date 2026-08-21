@@ -1,136 +1,189 @@
-# The Bracket lab, start to finish — the recommended workflow
+# Construct, start to finish — the recommended workflow
 
-Owner-ordered document (2026-08-03): the way the lab is meant to be
-used, in plain language, one step at a time. Every tool states why it
-exists, how to use it, and when. This is also the copy the interface
-carries after the coming build — each section below becomes the
-description shown next to its tool on the page.
+Rewritten 2026-08-21 against the sections that actually render (THIS-RELEASE
+point 16). The previous version walked through the Bracket lab, a screen that no
+longer exists.
 
-## The one-line map
+Every tool below says why it exists, how to use it, and when. It also says what
+each one is NOT for, because most of the ways to fool yourself here involve
+reading a tool as evidence of something it never measured.
 
-Load data → board sweep → null boards → two reads → (optional)
-History Tuning → replication → paper book. Money claims only ever
-come from the END of the chain, never the middle.
+**Money claims only ever come from the END of the chain, never the middle.**
 
-## Step 1 — Data on server (first section of the Bracket lab)
+The sections of **Construct** run in the order the work is done:
 
-WHY: everything downstream reads from the local cache; a gap in the
-cache silently shrinks every window.
-HOW: the data manager sits at the top of the Bracket lab (owner order,
-2026-08-03): per-asset refresh-to-latest, Global Refresh, download new
-pairs over a month range, trim a range, purge an asset. Purge and trim
-DELETE data. Every write refuses while a job runs.
-WHEN: once per new month, or before any run that needs months or pairs
-you have not loaded yet.
+**Data · Sweep · Boards · Verify · History · Tune · Greenlight**
 
-## Step 2 — The board sweep
+---
 
-WHY: the wide pass. It tries every setup (coin × chunk shape ×
-decision style) against the whole execution menu and builds the
-survivor board. Its output is a DIRECTION — promising rows — never a
-result. Nothing from this step is evidence by itself.
-HOW: pick the universe, the window layout (80/20, or 70/15/15, or
-70/15/15-with-reserve = 61/13/13/13 if History Tuning may follow),
-and press start. The launcher prints every setting that shapes the
-result, the training floor check, and the reserve length if one
-exists.
-WHEN: at the start of any new hunt, or after data or engine changes
-that invalidate old boards.
+## Data — what the system has to work with
 
-## Step 3 — Null boards
+**WHY.** Every sweep, null run and tune reads the local candle cache, never the
+exchange. A gap in the cache silently shrinks every window, and nothing
+downstream will tell you.
 
-WHY: a board built on informationless votes still produces
-good-looking rows (shopping alone does that). The null boards measure
-HOW good "nothing" looks, so the real board can be judged against it.
-HOW: fire the declared number of null-board runs (same sweep, votes
-replaced by each member's real vote mix dealt onto random days). The
-launcher states the number of null boards and the finest claim that
-number allows, before anything runs.
-WHEN: after every board sweep you intend to select from — no
-selection without them. The pipeline itself must have passed its
-planted check first (see Tools below).
+**HOW.** The table headed **Data on server** lists each pair with its months and
+range, and per row: **refresh to latest**, **trim…**, **purge…**. Below it,
+**Download / refresh** takes a comma-separated list of new pairs over a month
+range, with **Download** and **Global Refresh**.
 
-## Step 4 — The two reads
+**Trim and purge DELETE data.** The only way back is downloading again. Every
+write refuses while a job is running.
 
-WHY: chance flatters a board in two separate ways — inside one row
-(the menu shopping) and across the board (picking the best of 170).
-One read each; a row must pass both to be called a survivor worth
-anything.
-HOW: on the finished board, run "This row against its null runs"
-(fine-grained, hundreds of draws, prices in-row shopping) and "The
-board against the null boards" (prices the selection). Both print
-their reading rule and their resolution before they run.
-WHEN: before ANY row is quoted, promoted, tuned, or booked.
+**WHEN.** Once per new month, and before any run needing months or pairs you
+have not loaded.
 
-## Step 5 — History Tuning (OPTIONAL second pass)
+---
 
-WHY: a surviving setup was measured with fixed assumptions about how
-much history matters. This step tunes the two time dials (age
-half-life for member training; retune cadence for the trade
-variables) to strengthen a proven setup — per coin, per setup.
-HOW: select one survivor row (70/15/15 structure, vote-using gate —
-the control activates only then), press History Tuning. The grid,
-the reference pass, live progress, and the decision trail are
-automatic. The winner's grade: the sealed reserve if the original
-run carried one, else clean older history with the paper book as
-the binding word.
-WHEN: only on rows that passed Step 4, and only when you decide the
-setup deserves the deeper investment. Never mandatory.
+## Sweep — the wide pass
 
-## Step 6 — Replication
+**WHY.** This tries the whole universe against the whole execution menu and
+builds the board. Its output is a DIRECTION — promising rows — never a result.
+Nothing from this step is evidence by itself.
 
-WHY: one measurement never crowns a candidate (register rule). A
-tuned or untuned winner must repeat its behavior somewhere it was
-not selected: other periods, other coins, declared in advance.
-HOW: replication mode — the declared configuration scored everywhere
-with zero shopping freedom. One button, no menu.
-WHEN: after Step 4 (or 5), before any real-money conversation.
+**HOW.** Set the campaign name first, under **Campaign — the parent job**: every
+run fired while it is set hangs off that job, which is what makes the evidence
+chain traceable later. Then **Board sweep — wide to FIND (never a result)**:
+pick the universe and the window layout, press **Start sweep**. **Stop jobs**
+halts what is running. The launcher prints every setting that shapes the result.
 
-## Step 7 — The paper book
+**WHEN.** At the start of a hunt, and after any data or engine change that
+invalidates the last board.
 
-WHY: the only test with no lookback of any kind — pre-registered
-rules trading forward on data nobody has seen. The end of the chain;
-the only place "it works" can be earned.
-HOW: declare the book (rules, quorum, horizon, floors) from the
-verified configuration; the tracker runs it untouched.
-WHEN: the final step, always.
+**NOT for.** Reading a winner off. The board is ranked; ranking is a claim, and
+this step has not earned one yet.
 
-## The tools around the chain (and when they are NOT for)
+---
 
-- **Planted check** — WHY: an instrument must be calibrated before
-  its readings count. Two halves, stated honestly: (1) AUTOMATED — the
-  test suite plants a known pattern in a synthetic market and verifies
-  the real call stream harvests it through the real simulator while
-  ten dealt-vote streams do not (runs on every build); (2) THE GATE
-  BUTTON (owner order, 2026-08-03) — the strip at the very top of the
-  Bracket lab shows the current release number and the gate status
-  (PASS / FAIL / NOT CHECKED, versions quoted). One button regenerates
-  the fabricated pair — always spanning the real data's oldest-to-
-  newest dates; the data machinery keeps it there — and fires it
-  through the full sweep + null-board pipeline, the real front door.
-  The reading rules are stamped at launch: the board finds the plant,
-  profits, beats always-long, and every null board destroys it. PASS
-  holds for that engine version only — a new release starts NOT
-  CHECKED, and the null tools carry a warning until the gate passes.
-  WHEN: once per release, before any real decision leans on the null
-  tools. NOT for judging real setups — the fabricated pair never
-  enters a real run (the launcher refuses it).
-- **Compare two runs** — WHY: A/B questions need paired reading with
-  the differences named. Lists every setting difference between two
-  stored runs; money differences are stamped attributable only when
-  exactly ONE setting differs (the one-variable rule as a tool).
-  WHEN: any "did this change help?" question. NOT a null test.
-- **Inside a setup (inspect)** — WHY: a microscope for one row's
-  committee: each member's model, votes, solo score. WHEN: diagnosing
-  WHY a row behaves as it does. NOT evidence of anything; nothing it
-  shows is out-of-sample.
-- **Training floor** — WHY: starved members return plausible numbers.
-  Every launch, of anything, refuses loudly below the floor and
-  prints its effective training days.
+## Boards — reading what came back
+
+**WHY.** The board holds the rows and, per row, the drills that explain them.
+
+**HOW.** **Asset predictability — best to worst** ranks the assets. Per row:
+**menu grid**, **inspect**, **copy settings into the form**, **save notes**.
+**What this run actually is** states the run's own settings back to you.
+
+**Two things on this page are easy to misread:**
+
+**Replication — the declared config on every asset.** One fixed configuration,
+named before the run, scored once on every asset. This is the repeat-elsewhere
+check, and the reading that counts is whether it beat its own null copies.
+*It appears here, before Verify, because the sweep computes it — but it does not
+become confirmation of anything until the row it belongs to has passed Verify.*
+The document this replaced listed it as a later step; on screen it arrives
+earlier. Both orderings are defensible and the screen's is the one to follow —
+just do not read it as a verdict before the null work is done.
+
+**Inside a setup — a MICROSCOPE, not a null test.** Each member's model, votes
+and solo score. For diagnosing WHY a row behaves as it does. Nothing it shows is
+out-of-sample and nothing it shows is evidence.
+
+---
+
+## Verify — how good does nothing look?
+
+**WHY.** A board built on informationless votes still produces good-looking
+rows; shopping alone does that. Until you have measured how good "nothing"
+looks, a good-looking row means nothing.
+
+**HOW.** Three things, in this order:
+
+**Planted check — the instrument's calibration certificate.** A known pattern is
+planted in a fabricated market and pushed through the real pipeline, which must
+find it while the null versions destroy it. Press **Run the planted check**. The
+reading rules are stamped before it runs. A pass holds for that engine version
+only — a new release starts unchecked, and the null tools carry a warning until
+it passes. **NOT for judging real setups**: the fabricated pair never enters a
+real run, and the launcher refuses it.
+
+**Tool 1 — this row against its null runs.** Prices the shopping done inside one
+row. Press **Read Tool 1 verdict**.
+
+**Tool 2 — the board against its dealt-vote null boards.** Prices having picked
+the best of many.
+
+Chance flatters a board in those two separate ways, so a row must pass both.
+
+**Rotation rounds** also appear here, labelled **a SEPARATE instrument, retired
+as evidence**. Read that label: it is kept for continuity and does not count.
+
+**WHEN.** Before ANY row is quoted, promoted, tuned or greenlighted.
+
+---
+
+## History — does the age of the data matter?
+
+**WHY.** A surviving setup was measured with fixed assumptions about how much
+history counts. This tunes two time dials — how fast old training data loses
+weight, and how often the trade variables are re-picked — per coin, per setup.
+Optional, and only worth it on a row that already survived Verify.
+
+**HOW.** **Launch History Tuning on this row**, or **Launch paired age-dial
+run** for the newer paired-fold form. **Finished tuning runs** lists results;
+**Plateau view — one setting moved at a time, the rest held at your cell** shows
+whether a winner sits on a plateau or a knife edge. **Run exam A (late-rule pair
+— must find)** and **Run exam B (flat pair — must NOT find)** are the calibration
+pair for this instrument: A must find the plant, B must find nothing. Both must
+behave before a tuning result means anything.
+
+**Run the reserve grade — one touch, final** grades the winner on history sealed
+before the run. One touch means one: it is a single verification event and
+cannot be repeated for a better answer.
+
+**WHEN.** Only on rows that passed Verify, and only when the setup earns the
+deeper investment. Never mandatory.
+
+---
+
+## Tune — the protective stop and the bet size
+
+**WHY.** This section had no entry in the previous document because it was built
+after it was written. It decides two things that change what a configuration
+does with real money.
+
+**HOW.** **Protective stop tuner — full-history, loses no winner** sweeps stop
+distances over the whole history. **Tune protective stop (full history)** runs
+it; **apply custom** sets your own; **No stop (clear)** records a deliberate
+choice of no stop rather than leaving a gap; **save the reason** stores why, in
+your words, beside the number.
+
+**Conviction sizing — bet more when more members agree?** asks whether agreement
+predicts size. **Run conviction sweep (full history)**.
+
+**Compare two runs — NOT a null test.** Lists every setting difference between
+two stored runs. A money difference is attributable only when exactly ONE
+setting differs. It answers "did this change help?" and nothing else.
+
+**WHEN.** After Verify, before Greenlight.
+
+**A caution this section needs.** Tuning a stop is one more selection on the
+same history — another chance to shop. Treat a tuned stop as a claim that still
+owes its null work, not as a free improvement.
+
+---
+
+## Greenlight — the decision that a config is fit to trade
+
+**WHY.** The end of the chain. A greenlight is a decision, recorded with who
+made it, when, why, the evidence chain behind it and the engine version it was
+validated on.
+
+**HOW.** **GREENLIGHT this config**. **Existing greenlights** lists what has
+been greenlighted already.
+
+**WHEN.** After Verify, and after History and Tune if they were used.
+
+**What happens next.** The greenlighted configuration appears on the **Trade**
+tab, on both sides — **Paper Books** and **Live Trading** — where it can be
+activated. Paper is the control arm: a paper book that reports differently from
+the live book is worthless as a comparison.
+
+---
 
 ## The two standing rules over all of it
 
-1. Wide finds, narrow confirms: sweeps output directions; only
-   declared, one-variable, null-checked measurements output results.
-2. Every threshold is labeled DERIVED or GUESSED; every reading rule
-   is committed before the numbers exist.
+1. **Wide finds, narrow confirms.** Sweeps output directions. Only declared,
+   one-variable, null-checked measurements output results.
+2. **Every threshold is labelled derived or guessed, and every reading rule is
+   committed before the numbers exist.** A rule written after seeing the number
+   is not a rule.
