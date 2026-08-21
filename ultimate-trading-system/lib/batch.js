@@ -1,6 +1,5 @@
 const fs = require('fs');
 const path = require('path');
-const { runAnalysis, extractMetrics } = require('./pipeline');
 const { pnlAt, REAL_FEE_PER_LEG, voteOf, superOf } = require('./paper');
 const { stampManifest } = require('./manifest');
 
@@ -39,7 +38,6 @@ function markInterrupted(doc) {
   }
   doc.status = 'interrupted';
   if (doc.nullTest && doc.nullTest.status === 'running') doc.nullTest.status = 'interrupted';
-  if (doc.confirm && doc.confirm.status === 'running') doc.confirm.status = 'interrupted';
   doc.finishedAt = doc.finishedAt || new Date().toISOString();
   doc.progress = '';
   return doc;
@@ -251,91 +249,6 @@ function refusePlantedPairs(symbols, what) {
   }
 }
 
-function startBatch(params) {
-  { const stop = launchRefusal(); if (stop) throw new Error(stop); }
-  const {
-    dormantPct = 5,
-    startMonth = '2018-01',
-    endMonth = '2026-06',
-    featureSet = 'compressed',
-    compareSymbol = 'BTCUSDT',
-    pairs = DEFAULT_PAIRS,
-    models = ['logreg', 'boost'],
-    geometry = 'weekly-8d',
-    decision = 'argmax',
-    weekdaysOnly = false,
-    allLoaded = false,
-  } = params || {};
-  refusePlantedPairs([...pairs, compareSymbol], 'a pair screen');
-
-  const stamp = new Date().toISOString().replace(/[-:]/g, '').slice(0, 15).replace('T', '-');
-  const doc = {
-    id: `screen-${stamp}`,
-    status: 'running',
-    startedAt: new Date().toISOString(),
-    finishedAt: null,
-    progress: '',
-    params: { dormantPct, startMonth, endMonth, featureSet, compareSymbol, models, geometry, decision, weekdaysOnly, allLoaded, feePerLeg: REAL_FEE_PER_LEG },
-    runs: [],
-    summary: null,
-  };
-  for (const trade of pairs) {
-    if (trade === compareSymbol) continue;
-    for (const model of models) {
-      doc.runs.push({ trade, compare: compareSymbol, model, status: 'pending', error: null, metrics: null });
-    }
-  }
-  activeBatch = doc;
-  saveBatch(doc);
-
-  (async () => {
-    for (const run of doc.runs) {
-      if (doc.cancelRequested) break;
-      run.status = 'running';
-      doc.progress = `${run.trade} / ${run.model}`;
-      try {
-        const report = await runAnalysis(
-          {
-            dormantPct,
-            tradeSymbol: run.trade,
-            compareSymbol: run.compare,
-            startMonth,
-            endMonth,
-            featureSet,
-            model: run.model,
-            geometry,
-            decision,
-            weekdaysOnly,
-            allLoaded,
-          },
-          (p) => {
-            doc.progress = `${run.trade} / ${run.model}: ${p}`;
-          }
-        );
-        run.metrics = extractMetrics(report);
-        run.status = 'done';
-      } catch (err) {
-        run.status = 'error';
-        run.error = err.message || String(err);
-      }
-      doc.summary = summarize(doc.runs);
-      saveBatch(doc);
-    }
-    for (const r of doc.runs) if (r.status === 'running') r.status = 'error';
-    doc.status = doc.cancelRequested ? 'cancelled' : 'done';
-    doc.finishedAt = new Date().toISOString();
-    doc.progress = '';
-    saveBatch(doc);
-  })().catch((err) => {
-    doc.status = 'error';
-    doc.error = err.message || String(err);
-    doc.finishedAt = new Date().toISOString();
-    saveBatch(doc);
-  });
-
-  return doc.id;
-}
-
 // ---- bracket lab (owner's execution-permutation system) ----------------------
 //
 // Slim-then-promote sweep over asset COMBOS (singles/doubles/triples from a
@@ -350,7 +263,6 @@ function startBatch(params) {
 const { median } = require('./stats');
 const bracketLib = require('./bracket');
 const { createPool } = require('./pool');
-const { confirmCell } = require('./confirm');
 
 // The pool serving whichever heavy job is in flight, so the kill switch can
 // terminate its workers immediately (see cancelActive).
@@ -714,68 +626,6 @@ function promotionSet(p, doc, units) {
 // (data/wf/<jobId>/<key>.json — the calibration ledgers read it); the doc
 // carries per-unit aggregates only, so the polled record stays light.
 const { wfUnitTask } = require('./walkforward');
-
-// Normalizes and validates a walk-forward request. Pure and exported for the
-// tests. Numbers are rejected LOUDLY: the old version fell back to defaults
-// on a malformed feePerLeg or minTradesSlice, which is exactly how a
-// mis-typed launcher runs five hours at the wrong fee (QC 58).
-function wfParams(params) {
-  const blank = (v) => v === undefined || v === null || v === '';
-  const minTradesSlice = blank(params.minTradesSlice) ? 5 : Number(params.minTradesSlice);
-  if (!Number.isFinite(minTradesSlice) || minTradesSlice < 1 || minTradesSlice > 50) {
-    throw new Error(`minTradesSlice must be a number from 1 to 50 — got ${JSON.stringify(params.minTradesSlice)}`);
-  }
-  const feePerLeg = blank(params.feePerLeg) ? REAL_FEE_PER_LEG : Number(params.feePerLeg);
-  if (!Number.isFinite(feePerLeg) || feePerLeg < 0 || feePerLeg > 2) {
-    throw new Error(`feePerLeg must be dollars from 0 to 2 — got ${JSON.stringify(params.feePerLeg)}`);
-  }
-  // The null arm's seed (audit 9a). Blank = the real arm. Malformed is a
-  // loud refusal like every other number here: a null run silently landing
-  // on the real arm would be the worst possible version of QC 60.
-  const nullShiftSeed = blank(params.nullShiftSeed) ? null : Number(params.nullShiftSeed);
-  if (nullShiftSeed !== null && (!Number.isInteger(nullShiftSeed) || nullShiftSeed < 1 || nullShiftSeed > 1e9)) {
-    throw new Error(`nullShiftSeed must be a whole number from 1 to 1e9 — got ${JSON.stringify(params.nullShiftSeed)}`);
-  }
-  if (!blank(params.set?.geometry) && !GEOS[params.set.geometry]) {
-    throw new Error(`unknown geometry ${JSON.stringify(params.set.geometry)} — one of: ${Object.keys(GEOS).join(', ')}`);
-  }
-  if (!blank(params.set?.decision) && !['argmax', 'directional'].includes(params.set.decision)) {
-    throw new Error(`unknown decision ${JSON.stringify(params.set.decision)} — argmax or directional`);
-  }
-  const p = {
-    universe: params.universe && params.universe.length ? params.universe : DEFAULT_PAIRS,
-    permute: { geometry: params.permute?.geometry !== false, decision: params.permute?.decision !== false },
-    set: {
-      geometry: params.set?.geometry || 'daily-3d',
-      decision: params.set?.decision || 'argmax',
-    },
-    // walk-forward always uses the whole cached history: folds ARE the range
-    allLoaded: true,
-    band: 'auto',
-    minTradesSlice,
-    feePerLeg,
-    nullShiftSeed: nullShiftSeed || undefined,
-    arm: nullShiftSeed ? 'null' : 'real',
-    dMults: numMenu(params.dMults, bracketLib.D_MULTS, (v) => v > 0 && v <= 10),
-    tHours: numMenu(params.tHours, bracketLib.T_HOURS, (v) => Number.isInteger(v) && v > 0 && v <= 500),
-    gates: pickMenu(params.gates, bracketLib.GATES),
-    entries: pickMenu(params.entries, bracketLib.ENTRIES),
-    description: typeof params.description === 'string' ? params.description.slice(0, 600) : '',
-    label: typeof params.label === 'string' ? params.label.slice(0, 40) : '',
-    engineVersion: ENGINE_VERSION,
-  };
-  // weekly-8d steps a whole week per chunk, so an 8-week slice holds at most
-  // 8 chunks and the execution-reach purge always eats the tail — no fold
-  // can ever clear the 8-chunk floor. Excluded honestly here rather than
-  // reported per-fold as a data gap that isn't one.
-  const geoms = (p.permute.geometry ? Object.keys(GEOS) : [p.set.geometry]).filter((g) => g !== 'weekly-8d');
-  if (!geoms.length) {
-    throw new Error('weekly-8d cannot form a walk-forward fold (week-long chunks never fill an 8-week slice once the execution purge trims it) — pick a daily shape');
-  }
-  const decs = p.permute.decision ? ['argmax', 'directional'] : [p.set.decision];
-  return { p, geoms, decs };
-}
-
 
 // ---- HISTORY TUNING (design ledger, all rulings closed 2026-08-03) ---------
 // One selected survivor; 35 dial passes x 3 splits; reference pass first;
@@ -1205,98 +1055,6 @@ function htGradeLaunch(p, winnerDial, referenceDial, split) {
           : `FAILED: ${!beatsRef ? 'the winner did not beat the reference pass on the reserve' : `${nullsAbove} of ${nulls.length} null draws matched or beat the winner`} — tuning did not strengthen this survivor. A failed reserve is a dead end, never a hint.`,
       };
     }
-    doc.status = doc.cancelRequested ? 'cancelled' : 'done';
-    doc.finishedAt = new Date().toISOString();
-    doc.perf.elapsedMs = Date.now() - t0;
-    saveBatch(doc);
-    activeBatch = null;
-    activePool = null;
-    pool.abort();
-  })().catch((err) => {
-    doc.status = 'error';
-    doc.failures.push({ key: 'run', error: err.message });
-    saveBatch(doc);
-    activeBatch = null;
-    activePool = null;
-    pool.abort();
-  });
-  return doc.id;
-}
-
-function startWalkforward(params) {
-  { const stop = launchRefusal(); if (stop) throw new Error(stop); }
-  const { p, geoms, decs } = wfParams(params);
-  refusePlantedPairs(p.universe, 'a walk-forward run');
-  const units = [];
-  for (const trade of p.universe) {
-    for (const geometry of geoms) {
-      for (const decision of decs) {
-        units.push({
-          c: { trade, ctx1: null, ctx2: null, size: 1 },
-          b: { geometry, decision, band: 'auto', weekdaysOnly: false },
-        });
-      }
-    }
-  }
-  // Seconds resolution: two launches inside one minute must not share an id.
-  const stamp = new Date().toISOString().replace(/[-:]/g, '').slice(0, 15).replace('T', '-');
-  const slug = (p.label || 'walkforward').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 32);
-  const doc = {
-    id: `walkforward-${stamp}-${slug}`,
-    kind: 'walkforward',
-    description: p.description || '',
-    status: 'running',
-    startedAt: new Date().toISOString(),
-    finishedAt: null,
-    progress: '',
-    params: p,
-    perf: { unitsDone: 0, unitsTotal: units.length, elapsedMs: 0, etaMs: null, workers: null },
-    wfRows: [], // one aggregate row per unit; fold detail lives on disk
-    failures: [],
-  };
-  activeBatch = doc;
-  saveBatch(doc);
-  const pool = createPool();
-  activePool = pool;
-  doc.perf.workers = pool.parallel ? pool.workers.length : 1;
-  saveBatch(doc);
-  const t0 = Date.now();
-  (async () => {
-    const payloads = units.map((u) => ({ combo: u.c, branch: u.b, params: p }));
-    await pool.map('wfUnit', payloads, (settled, i) => {
-      const { c, b } = units[i];
-      const key = `${c.trade}|${b.geometry}|${b.decision}`;
-      // A unit that finished before the owner hit cancel is real work and is
-      // kept; only the abort-errors of in-flight units are dropped as noise.
-      if (settled.ok && settled.value) {
-        const res = settled.value;
-        let detailFile = null;
-        try {
-          const dir = path.join(BATCH_DIR, '..', 'wf', doc.id);
-          fs.mkdirSync(dir, { recursive: true });
-          const fname = `${key.replace(/[^A-Za-z0-9._-]+/g, '_')}.json`;
-          atomicWrite(path.join(dir, fname), JSON.stringify({
-            job: doc.id, trade: c.trade, geometry: b.geometry, decision: b.decision,
-            // arm + seed IN the detail file: a null run's fold numbers must
-            // never be readable as real ones by a consumer that only has
-            // the file (review 2026-08-01 — the calibration ledgers will
-            // read these without the doc)
-            params: { minTradesSlice: p.minTradesSlice, feePerLeg: p.feePerLeg, arm: p.arm || 'real', nullShiftSeed: p.nullShiftSeed || null }, folds: res.folds,
-          }));
-          detailFile = fname;
-        } catch (err) {
-          recordFailure(doc, key, `fold dump: ${err.message}`);
-        }
-        doc.wfRows.push({ trade: c.trade, geometry: b.geometry, decision: b.decision, detailFile, ...res.agg });
-      } else if (!settled.ok && !doc.cancelRequested) {
-        recordFailure(doc, key, settled.error);
-      }
-      doc.perf.unitsDone++;
-      doc.perf.elapsedMs = Date.now() - t0;
-      doc.perf.etaMs = doc.perf.unitsDone ? Math.round((doc.perf.elapsedMs / doc.perf.unitsDone) * (units.length - doc.perf.unitsDone)) : null;
-      doc.progress = `walk-forward ${doc.perf.unitsDone}/${units.length}: ${c.trade} ${b.geometry}/${b.decision}`;
-      saveBatch(doc);
-    });
     doc.status = doc.cancelRequested ? 'cancelled' : 'done';
     doc.finishedAt = new Date().toISOString();
     doc.perf.elapsedMs = Date.now() - t0;
@@ -1985,93 +1743,6 @@ function startBracketLab(params) {
   return doc.id;
 }
 
-// MINUTE CONFIRMATION for the selected row. Runs on the MAIN THREAD, one
-// asset, on purpose: a minute window is ~700k candles, which is fine held once
-// and released and decidedly not fine held by four workers beside their hourly
-// maps. The existing batchRunning() mutex keeps it from overlapping a sweep.
-function startBracketConfirm(id, target = 'best') {
-  { const stop = launchRefusal(); if (stop) throw new Error(stop); }
-  const doc = getBatch(id);
-  if (!doc || doc.kind !== 'bracketlab') throw new Error('unknown bracket-lab run');
-  const row = doc.selection;
-  if (!row) throw new Error('select a promoted leader row first');
-
-  // TWO things are worth confirming, and they are different cells.
-  //   'best'     — the row that won the search on this combo.
-  //   'declared' — the cell fixed before the run, recorded alongside it.
-  // The declared one is usually the one that matters: it is the hypothesis
-  // under test, and a search winner is rarely the config anybody intends to
-  // trade. Only cells the run actually produced can be named — confirming an
-  // arbitrary cell would defeat the point of confirming what was chosen.
-  let sel = row;
-  if (target === 'declared') {
-    if (!row.declaredCell) throw new Error('this row carries no declared cell — was the run started with a declared config?');
-    sel = { ...row, ...row.declaredCell };
-  } else if (target === 'region') {
-    // WIDEST REGION (owner, 2026-08-17): confirm the MIDDLE of the widest run of
-    // neighbouring settings that all made money, not the single best-scoring
-    // cell. The centre is chosen by depth inside the region, never by score —
-    // taking the region's own peak would put the shopped cell back in charge.
-    if (!row.region || !row.region.centre) {
-      throw new Error('this row carries no widest region — either no setting on it made money, '
-        + 'or the run predates the region being recorded (2026-08-17)');
-    }
-    sel = { ...row, ...row.region.centre };
-  } else if (target !== 'best') {
-    throw new Error("confirm target must be 'best', 'declared' or 'region'");
-  }
-  archivePrior(doc, 'confirm', doc.confirm); // QC 74: re-fire archives, never destroys
-  doc.status = 'running';
-  doc.cancelRequested = false;
-  doc.perf.phase = 'confirm';
-  doc.confirm = { status: 'running', startedAt: new Date().toISOString(), cell: sel, target };
-  // Confirm reads the cache at ITS fire time — own stamp (QC 77).
-  doc.confirm.dataManifest = stampManifest(`${doc.id}-confirm-${Date.now().toString(36)}`, [sel.trade, sel.ctx1, sel.ctx2].filter(Boolean));
-  activeBatch = doc;
-  saveBatch(doc);
-
-  (async () => {
-    const out = await confirmCell({
-      combo: { trade: sel.trade, ctx1: sel.ctx1, ctx2: sel.ctx2, size: sel.size },
-      branch: { geometry: sel.geometry, decision: sel.decision, band: sel.bandMode, weekdaysOnly: sel.weekdaysOnly },
-      cell: sel,
-      quorum: sel.quorum,
-      params: doc.params,
-      layoutArm: sel.layoutArm ?? null,
-      onProgress: (msg) => {
-        doc.progress = `confirm: ${msg}`;
-        saveBatch(doc);
-      },
-    });
-    // The self-check: the hourly re-score must reproduce what the board says,
-    // or the minute number is being compared with a different trade.
-    const recorded = sel.pnl;
-    const drift = Math.abs(out.hourly.pnl - recorded);
-    doc.confirm = {
-      ...doc.confirm,
-      status: 'done',
-      finishedAt: new Date().toISOString(),
-      ...out,
-      recordedPnl: recorded,
-      selfCheck: drift < 0.005
-        ? 'PASS — hourly re-score reproduces the board row'
-        : `FAIL — hourly re-score is ${out.hourly.pnl.toFixed(2)} against a recorded ${recorded.toFixed(2)}; the minute figure below is NOT comparable`,
-      selfCheckOk: drift < 0.005,
-    };
-    doc.status = 'done';
-    doc.perf.phase = 'done';
-    doc.progress = '';
-    saveBatch(doc);
-  })().catch((err) => {
-    doc.confirm = { ...(doc.confirm || {}), status: 'error', error: err.message || String(err) };
-    doc.status = 'error';
-    doc.error = err.message || String(err);
-    doc.progress = '';
-    saveBatch(doc);
-  });
-  return { started: true, symbol: sel.trade };
-}
-
 // Stage-2 selection: pin one leader row (by its key + stage) for the null.
 function bracketSelect(id, patch) {
   const doc = getBatch(id);
@@ -2409,11 +2080,8 @@ function ht2Launch(p, T2, claim) {
 module.exports = {
   expandDeclared,
   shiftStance,
-  startWalkforward,
-  wfParams,
   listRow,
   markInterrupted,
-  startBatch,
   startBracketLab,
   startHistoryTuning,
   startHtTwo,
@@ -2422,7 +2090,6 @@ module.exports = {
   leaderCmp,
   bracketSelect,
   startBracketNull,
-  startBracketConfirm,
   expandBracketPlan,
   promotionSet,
   setBatchNotes,

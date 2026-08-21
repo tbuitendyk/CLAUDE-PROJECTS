@@ -1,7 +1,6 @@
 const path = require('path');
 const express = require('express');
 const { startJob, getJob } = require('./lib/jobs');
-const { runAnalysis, loadData, countRotations } = require('./lib/pipeline');
 const { GEOMETRIES } = require('./lib/dataset');
 const { cacheState, cachedMonths, monthlyKlines } = require('./lib/binance');
 const throttle = require('./lib/throttle');
@@ -398,14 +397,6 @@ app.post('/api/bracketlab/:id/select', (req, res) => {
   try {
     const doc = batch.bracketSelect(req.params.id, req.body || {});
     res.json({ ok: true, selection: doc.selection });
-  } catch (err) {
-    res.status(400).json({ error: err.message });
-  }
-});
-
-app.post('/api/bracketlab/:id/confirm', (req, res) => {
-  try {
-    res.json(batch.startBracketConfirm(req.params.id, (req.body || {}).target || 'best'));
   } catch (err) {
     res.status(400).json({ error: err.message });
   }
