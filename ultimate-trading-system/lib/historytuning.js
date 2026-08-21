@@ -181,6 +181,7 @@ async function runPass({
         trainChunks: trainSet,
         testChunks: ownIdx.map((i) => walkChunks[i]),
         decision: branch.decision,
+        feePerLeg,
         tradeMap: maps.trade,
         geo,
         ageWeights: age.halfLifeDays ? weights : null,

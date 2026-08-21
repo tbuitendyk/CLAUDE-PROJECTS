@@ -152,7 +152,7 @@ async function scoreBook(book, opts = {}) {
   }
 
   const views = bracketLib.comboViews(book.combo.size, geo.featureHours / 24).views;
-  const members = await trainMembers(book.members, views, trainChunks, fwdChunks, book.branch, maps, geo);
+  const members = await trainMembers(book.members, views, trainChunks, fwdChunks, book.branch, maps, geo, fee);
   const memberCalls = members.map((m) => m.calls);
   const calls = fwdChunks.map((_, i) => quorumCall(memberCalls, i, book.cell.quorum));
 

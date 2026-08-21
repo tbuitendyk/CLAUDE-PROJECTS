@@ -235,7 +235,11 @@ function splitAndLabel(chunks, branch, holdout) {
 // can run them. lib/interlace.js survives for the research tab and the
 // retired walk-forward module only.)
 
-async function trainMembers(specs, views, trainChunks, testChunks, branch, maps, geo) {
+// feePerLeg is threaded all the way down to the threshold tuner. It is not
+// optional: a directional member's threshold is priced with it, and letting it
+// default is exactly how the tuner came to disagree with the caller that would
+// trade the result (found 2026-08-21).
+async function trainMembers(specs, views, trainChunks, testChunks, branch, maps, geo, feePerLeg) {
   const out = [];
   for (const spec of specs) {
     const { calls, model, picked } = await bracketLib.trainMember({
@@ -244,6 +248,7 @@ async function trainMembers(specs, views, trainChunks, testChunks, branch, maps,
       trainChunks,
       testChunks,
       decision: branch.decision,
+      feePerLeg,
       tradeMap: maps.trade,
       geo,
     });
@@ -333,7 +338,7 @@ async function unitTask(task) {
   // concatenated, then the calls are split. Training twice would be waste, and
   // worse, an invitation for the two to be fitted differently.
   const predictChunks = holdChunks.length ? [...testChunks, ...holdChunks] : testChunks;
-  const members = await trainMembers(specsFor(combo.size, stage), views, trainChunks, predictChunks, branch, maps, geo);
+  const members = await trainMembers(specsFor(combo.size, stage), views, trainChunks, predictChunks, branch, maps, geo, p.feePerLeg ?? REAL_FEE_PER_LEG);
   // Null-board arm (register 66 deal construction): the member's real vote
   // mix, dealt onto random days — independently per member, per draw, per
   // unit, and PER SLICE.
@@ -625,11 +630,15 @@ async function nullRotationTask({ combo, branch, params, shiftIndex, nShifts, se
   // L12. This line consumed them as call arrays for weeks — every quorum
   // vote read undefined and the whole null was a committee-free world
   // (audit 2026-07-30, CRITICAL). quorumCall now also throws on that shape.
-  const members = await trainMembers(specsFor(combo.size, 'promoted'), views, trainChunks, testChunks, branch, maps, geo);
+  // The fee is worked out BEFORE the members are trained, because the
+  // threshold each directional member trades on is priced with it. It used to
+  // be computed three lines further down and the members were trained without
+  // it at all.
+  const fee = p.feePerLeg ?? REAL_FEE_PER_LEG;
+  const members = await trainMembers(specsFor(combo.size, 'promoted'), views, trainChunks, testChunks, branch, maps, geo, fee);
   const { nullRng, dealVotes } = require('./walkforward');
   const memberCalls = members.map((m, mI) => dealVotes(m.calls,
     nullRng(shiftIndex + 1, `${combo.trade}|${branch.geometry}|${branch.decision}`, 0, mI, 'replay')));
-  const fee = p.feePerLeg ?? REAL_FEE_PER_LEG;
   let bestOfMenu = null;
   let sameCell = null;
   for (let k = 1; k <= memberCalls.length; k++) {

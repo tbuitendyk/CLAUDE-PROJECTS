@@ -480,7 +480,18 @@ const { directionalCall } = require('./paper');
 // and the final refits. Tau tuning stays unweighted on purpose: it optimizes
 // money on the most recent validation window, which is already the most
 // recent data by position (stated per the design ledger).
-async function trainMember({ model, viewIdx, trainChunks, testChunks, decision, tradeMap, geo, ageWeights = null }) {
+async function trainMember({ model, viewIdx, trainChunks, testChunks, decision, tradeMap, geo, ageWeights = null, feePerLeg }) {
+  // The threshold this member trades on is tuned at the SAME cost the caller
+  // prices its own simulation at. It used to be tuned at the paper fee no
+  // matter what the caller charged (found 2026-08-21).
+  //
+  // Required, with NO fallback. My first attempt defaulted to the paper fee
+  // here — which is the same silent disagreement moved up one level, and would
+  // have read as a fix.
+  if (decision === 'directional' && !Number.isFinite(feePerLeg)) {
+    throw new TypeError('trainMember: a directional member needs feePerLeg — the threshold it trades on is priced with it, '
+      + 'and defaulting is how the tuner came to disagree with the caller.');
+  }
   const Xtr = trainChunks.map((c) => viewIdx.map((i) => c.x[i]));
   const ytr = trainChunks.map((c) => c.label);
   const Xte = testChunks.map((c) => viewIdx.map((i) => c.x[i]));
@@ -518,7 +529,7 @@ async function trainMember({ model, viewIdx, trainChunks, testChunks, decision, 
       const probe = await trainSoftmax(Ztr.slice(0, nSub), ytr.slice(0, nSub), chosenLambda, { weights: wFor(ytr.slice(0, nSub), 0) });
       const valProbs = [];
       for (let i = nSub; i < Ztr.length; i++) valProbs.push(predictLogreg(probe, Ztr[i]).probs);
-      ({ tau } = tuneTau(trainChunks.slice(nSub), valProbs, tradeMap, geo));
+      ({ tau } = tuneTau(trainChunks.slice(nSub), valProbs, tradeMap, geo, feePerLeg));
     }
     picked = `lambda=${chosenLambda}${tau != null ? `, tau=${tau}` : ''}`;
     callOf = (i) => {
@@ -530,7 +541,7 @@ async function trainMember({ model, viewIdx, trainChunks, testChunks, decision, 
     if (decision === 'directional') {
       const valProbs = [];
       for (let i = nSub; i < Xtr.length; i++) valProbs.push(predictBoost(probe, Xtr[i]).probs);
-      ({ tau } = tuneTau(trainChunks.slice(nSub), valProbs, tradeMap, geo));
+      ({ tau } = tuneTau(trainChunks.slice(nSub), valProbs, tradeMap, geo, feePerLeg));
     }
     const m = await trainBoost(Xtr, ytr, { rounds: probe.bestRound, weights: wFor(ytr, 0) });
     saved = { kind: 'boost', rounds: m.bestRound, priors: m.priors, trees: m.trees };

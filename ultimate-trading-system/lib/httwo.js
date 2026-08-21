@@ -138,6 +138,7 @@ async function htTwoFoldTask(payload) {
         trainChunks: trainSet,
         testChunks: foldChunks,
         decision: branch.decision,
+        feePerLeg: p.feePerLeg,
         tradeMap: maps.trade,
         geo,
         ageWeights: halfLifeDays ? weights : null,

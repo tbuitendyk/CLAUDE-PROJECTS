@@ -28,7 +28,29 @@ const TAU_GRID = [0, 0.34, 0.4, 0.45, 0.5, 0.55, 0.6];
 // grid (never a continuous scan). tau=0 is "always in, direction only".
 // Chosen on the chronological validation tail by paper P&L; ties go to the
 // higher tau (fewer, more confident trades).
-function tuneTau(valChunks, valProbs, tradeMap, geo) {
+// THE FEE IS NOW REQUIRED, AND THAT IS THE WHOLE FIX (2026-08-21).
+//
+// This priced its ladder of candidate thresholds by calling pnlAt with no fee
+// argument, so the paper default of $0.125 a leg took over — always, silently,
+// and with no way for a caller to say otherwise. The live signal path declares
+// a fee of 0. So the threshold that decides whether a directional trade happens
+// at all was chosen against one trading cost and then traded against another.
+//
+// Proved by hand: on periods whose edge sits near the fee, the two assumptions
+// pick different thresholds (0.55 against 0.50) and trade a different number of
+// periods (38 against 45). On a strong edge they agree — so this bites exactly
+// where the edge is thin, which is where it matters.
+//
+// WHICH fee is correct is not decided here. That is a question about how the
+// system is meant to trade and it belongs to the owner. What is fixed is that
+// the tuner can no longer disagree with the caller BY ACCIDENT: every caller
+// passes the same fee it prices its own simulation at, and forgetting throws
+// rather than quietly reverting to a number nobody chose.
+function tuneTau(valChunks, valProbs, tradeMap, geo, feePerLeg) {
+  if (!Number.isFinite(feePerLeg) || feePerLeg < 0) {
+    throw new TypeError(`tuneTau: feePerLeg is required and must be a real cost per leg — got ${JSON.stringify(feePerLeg)}. `
+      + 'It used to default to the paper fee while the live path charged something else.');
+  }
   const ladder = TAU_GRID.map((tau) => {
     let pnl = 0;
     let trades = 0;
@@ -38,7 +60,7 @@ function tuneTau(valChunks, valProbs, tradeMap, geo) {
       const entryC = tradeMap.get(c.startTs + geo.entryOffsetH * HOUR_MS);
       const exitC = tradeMap.get(c.startTs + geo.exitOffsetH * HOUR_MS);
       if (!entryC || !exitC) return;
-      pnl += pnlAt(call, entryC.open, exitC.open);
+      pnl += pnlAt(call, entryC.open, exitC.open, feePerLeg);
       trades++;
     });
     return { tau, pnl, trades };

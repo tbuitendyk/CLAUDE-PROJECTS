@@ -223,7 +223,7 @@ async function computeConvictionSweep(book, opts = {}) {
   if (!trainChunks.length) throw new Error(`setup ${book.id}: no training chunks at/before the freeze date`);
   const scoreChunks = [...trainChunks, ...fwdChunks].sort((a, b) => a.startTs - b.startTs);
   const views = bracketLib.comboViews(book.combo.size, geo.featureHours / 24).views;
-  const members = await trainMembers(book.members, views, trainChunks, scoreChunks, book.branch, maps, geo);
+  const members = await trainMembers(book.members, views, trainChunks, scoreChunks, book.branch, maps, geo, feeUsd);
   const memberCalls = members.map((m) => m.calls);
   const calls = scoreChunks.map((_, i) => quorumCall(memberCalls, i, book.cell.quorum));
 

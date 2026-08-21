@@ -166,7 +166,7 @@ async function wfUnitTask({ combo, branch, params }) {
     for (const spec of specs) {
       members.push(await bracketLib.trainMember({
         model: spec.model, viewIdx: views[spec.view], trainChunks,
-        testChunks: predict, decision: branch.decision, tradeMap: maps.trade, geo,
+        testChunks: predict, decision: branch.decision, feePerLeg: fee, tradeMap: maps.trade, geo,
       }));
     }
     const testCalls = members.map((m) => m.calls.slice(0, testChunks.length));
