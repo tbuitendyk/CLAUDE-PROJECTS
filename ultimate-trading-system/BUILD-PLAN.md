@@ -431,3 +431,69 @@ by fingerprinting `data/` before and after a full run. Identical.
 All 37, in `DEFECTS.md` section 5. Three of them need one decision that settles
 most of the rest: **what should a screen show when a figure cannot be worked
 out?** Answer that once and 5c, 5d and much of 5b follow from it.
+
+
+---
+
+## The independent attack, folded in (2026-08-21)
+
+A separate attacking session ran alongside this work with no access to the
+harness: 73 agents, four hours, 6.3M tokens. 68 attacks landed and 67
+reproduced under challenge — 7 blockers, 21 high.
+
+**It beat my harness, and it is worth being precise about why.** My attacks
+feed the system rubbish from outside and watch what comes back. That finds a
+great deal, and it found nothing at all on the front door. The independent
+session attacked the arithmetic from the inside, knowing what the numbers are
+*supposed to mean* — that a threshold tuned at one trading cost and traded at
+another is wrong even though both numbers are finite and plausible; that a
+three-hour hole filled forward becomes an entry price that never traded. No
+amount of hostile input finds those, because the outputs look perfectly
+ordinary. Attacking the meaning is a different discipline from attacking the
+input, and the harness only had the second one.
+
+**What I did with it, and what I did not.**
+
+Verified two by hand rather than relaying them:
+
+- The cross-site guard on the live-money controls. Read the code
+  (`new URL('null')` throws, `host` becomes null, `if (!host) return true`),
+  then ran it: `Origin: https://evil.example` is refused 403, `Origin: null` is
+  allowed 200 and disarms. So are `file://` and an unparseable Origin. This
+  also corrects a decision already recorded in DEFECTS.md section 1, which
+  reasoned that "a browser always says where it came from" — a sandboxed frame
+  says "null", and the guard reads that as not saying.
+- The threshold tuner's fee. `tuneTau` calls `pnlAt` with no fee argument, so
+  the paper default of $0.125 a leg applies; `lib/live/signal.js` declares 0.
+  My first fixture showed no difference — a strong edge swamps the fee — and my
+  second, built with moves near the fee, showed the two picking 0.55 against
+  0.50 and trading 38 periods against 45. Real, and it bites exactly where the
+  edge is thin.
+
+Pinned eleven as permanent tests: the Origin sweep in `attack-http.js` and all
+of the new `attack-engine.js` (trade direction, an entry price of zero, the
+committee, the median, the fee mismatch, a decision made from a forecast that
+does not exist).
+
+Fixed none of them. RULE ZERO.
+
+**Two instrument faults of my own, caught by the controls:**
+
+- The engine attack's control demanded a long from 100 to 110 book exactly 10.
+  Binary arithmetic gives 10.000000000000009, so the control failed and stopped
+  the attack — which is the control working, and the control being wrong.
+- The Origin sweep first went inside the body that runs twice, and reported all
+  twelve findings in duplicate.
+
+And one fixture that was simply blind: my first attempt at the fee test fed
+`directionalCall` an array of probabilities where it reads a keyed object, so
+every call came back zero and the ladder was empty at every threshold. Read out
+of `lib/paper.js` the second time.
+
+**The evidence is in the repository, not in a scratch directory.**
+`tests/adversarial/independent-attack-2026-08-21.json` — 67 entries with the
+attack, what was observed, what was expected and how to reproduce it. Several
+carry a `correction` where the attacker re-checked its own claim and narrowed
+it; those are part of the record. The scratch path the session originally wrote
+to is reclaimed when the container is, and DEFECTS.md must not point at
+something that will not be there.

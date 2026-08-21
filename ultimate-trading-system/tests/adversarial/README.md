@@ -31,7 +31,7 @@ So the scoring here is deliberately upside down:
 
 ## What it attacks
 
-Eight surfaces, each in its own file:
+Nine surfaces, each in its own file:
 
 1. **`attack-http.js` — the front door.** Every address the system answers on,
    hit with nothing, the wrong shape, the wrong type, a name four thousand
@@ -103,6 +103,13 @@ Eight surfaces, each in its own file:
    when the two things being compared are not comparable — fewer answers than
    questions, answers in the wrong form, a period in which nothing happened?
 
+9. **`attack-engine.js` — the money arithmetic.** The last few functions
+   between a stored record and a figure on screen: which way a trade is facing,
+   what a committee decided, the middle of a list, and whether the cost the
+   threshold-tuner assumes matches the cost the live path declares. Every case
+   here came from an independent attacking session and was reproduced by hand
+   before being pinned.
+
 ## Safety
 
 Nothing here touches the owner's data or the running services.
@@ -119,6 +126,23 @@ Nothing here touches the owner's data or the running services.
   the sweep deliberately asks for records that do not exist. Their deeper
   workings are covered by attacks 2, 3, 5 and 6 instead, which call the code
   directly rather than through an address.
+
+## Where the findings came from
+
+Two sources, and the difference matters.
+
+Most of `baseline.json` was found by the attacks in this directory. A separate
+attacking session — 73 agents, no access to this harness — went at the same
+system independently and reproduced 67 findings under challenge, including 7 it
+rated as blockers. It reached places these attacks did not, because it attacked
+the arithmetic with knowledge of what the numbers are supposed to mean rather
+than only feeding them rubbish from outside.
+
+Its full record is kept beside this one at
+`independent-attack-2026-08-21.json`. The two most serious of its findings were
+reproduced by hand and are now pinned here as permanent tests — the Origin
+sweep in `attack-http.js`, and the whole of `attack-engine.js`. The rest are
+written up for the owner in `DEFECTS.md` section 6.
 
 ## Known findings
 

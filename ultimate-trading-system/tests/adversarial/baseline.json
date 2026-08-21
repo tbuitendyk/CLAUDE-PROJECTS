@@ -1,7 +1,79 @@
 {
-  "writtenUtc": "2026-08-21T17:51:47.947Z",
+  "writtenUtc": "2026-08-21T21:34:58.666Z",
   "note": "Findings that are real, have been read, and are not being fixed today. Each needs a reason in plain language. The suite fails on anything NOT in this list.",
   "known": [
+    {
+      "fingerprint": "http/csrf|post /api/pilot/disarm|a request carrying the literal text \"null\", which is what a sandboxed iframe or a data: pa",
+      "where": "POST /api/pilot/disarm",
+      "what": "a request carrying the literal text \"null\", which is what a sandboxed iframe or a data: page sends was let through (200) where an ordinary hostile website is correctly refused with 403. This is a control that moves real money, and the difference between the two is only what the forging page happens to put in one header.",
+      "why": "Found 2026-08-21 by an independent attacking session, reproduced here by hand. REAL and it concerns real money. NOT fixed: tightening the cross-site guard changes what the live controls accept, and DEFECTS.md section 1 already records a deliberate decision about that guard which this finding shows was reasoned on a wrong premise. That decision is yours to revisit. Written up in DEFECTS.md section 6."
+    },
+    {
+      "fingerprint": "http/csrf|post /api/pilot/disarm|a request carrying an origin that is not an address at all was let through (#) where an or",
+      "where": "POST /api/pilot/disarm",
+      "what": "a request carrying an Origin that is not an address at all was let through (200) where an ordinary hostile website is correctly refused with 403. This is a control that moves real money, and the difference between the two is only what the forging page happens to put in one header.",
+      "why": "Found 2026-08-21 by an independent attacking session, reproduced here by hand. REAL and it concerns real money. NOT fixed: tightening the cross-site guard changes what the live controls accept, and DEFECTS.md section 1 already records a deliberate decision about that guard which this finding shows was reasoned on a wrong premise. That decision is yours to revisit. Written up in DEFECTS.md section 6."
+    },
+    {
+      "fingerprint": "http/csrf|post /api/pilot/disarm|a request carrying a file:// page was let through (#) where an ordinary hostile website is",
+      "where": "POST /api/pilot/disarm",
+      "what": "a request carrying a file:// page was let through (200) where an ordinary hostile website is correctly refused with 403. This is a control that moves real money, and the difference between the two is only what the forging page happens to put in one header.",
+      "why": "Found 2026-08-21 by an independent attacking session, reproduced here by hand. REAL and it concerns real money. NOT fixed: tightening the cross-site guard changes what the live controls accept, and DEFECTS.md section 1 already records a deliberate decision about that guard which this finding shows was reasoned on a wrong premise. That decision is yours to revisit. Written up in DEFECTS.md section 6."
+    },
+    {
+      "fingerprint": "http/csrf|post /api/pilot/unhalt|a request carrying the literal text \"null\", which is what a sandboxed iframe or a data: pa",
+      "where": "POST /api/pilot/unhalt",
+      "what": "a request carrying the literal text \"null\", which is what a sandboxed iframe or a data: page sends was let through (200) where an ordinary hostile website is correctly refused with 403. This is a control that moves real money, and the difference between the two is only what the forging page happens to put in one header.",
+      "why": "Found 2026-08-21 by an independent attacking session, reproduced here by hand. REAL and it concerns real money. NOT fixed: tightening the cross-site guard changes what the live controls accept, and DEFECTS.md section 1 already records a deliberate decision about that guard which this finding shows was reasoned on a wrong premise. That decision is yours to revisit. Written up in DEFECTS.md section 6."
+    },
+    {
+      "fingerprint": "http/csrf|post /api/pilot/unhalt|a request carrying an origin that is not an address at all was let through (#) where an or",
+      "where": "POST /api/pilot/unhalt",
+      "what": "a request carrying an Origin that is not an address at all was let through (200) where an ordinary hostile website is correctly refused with 403. This is a control that moves real money, and the difference between the two is only what the forging page happens to put in one header.",
+      "why": "Found 2026-08-21 by an independent attacking session, reproduced here by hand. REAL and it concerns real money. NOT fixed: tightening the cross-site guard changes what the live controls accept, and DEFECTS.md section 1 already records a deliberate decision about that guard which this finding shows was reasoned on a wrong premise. That decision is yours to revisit. Written up in DEFECTS.md section 6."
+    },
+    {
+      "fingerprint": "http/csrf|post /api/pilot/unhalt|a request carrying a file:// page was let through (#) where an ordinary hostile website is",
+      "where": "POST /api/pilot/unhalt",
+      "what": "a request carrying a file:// page was let through (200) where an ordinary hostile website is correctly refused with 403. This is a control that moves real money, and the difference between the two is only what the forging page happens to put in one header.",
+      "why": "Found 2026-08-21 by an independent attacking session, reproduced here by hand. REAL and it concerns real money. NOT fixed: tightening the cross-site guard changes what the live controls accept, and DEFECTS.md section 1 already records a deliberate decision about that guard which this finding shows was reasoned on a wrong premise. That decision is yours to revisit. Written up in DEFECTS.md section 6."
+    },
+    {
+      "fingerprint": "http/csrf|post /api/pilot/margin-floor|a request carrying the literal text \"null\", which is what a sandboxed iframe or a data: pa",
+      "where": "POST /api/pilot/margin-floor",
+      "what": "a request carrying the literal text \"null\", which is what a sandboxed iframe or a data: page sends was let through (200) where an ordinary hostile website is correctly refused with 403. This is a control that moves real money, and the difference between the two is only what the forging page happens to put in one header.",
+      "why": "Found 2026-08-21 by an independent attacking session, reproduced here by hand. REAL and it concerns real money. NOT fixed: tightening the cross-site guard changes what the live controls accept, and DEFECTS.md section 1 already records a deliberate decision about that guard which this finding shows was reasoned on a wrong premise. That decision is yours to revisit. Written up in DEFECTS.md section 6."
+    },
+    {
+      "fingerprint": "http/csrf|post /api/pilot/margin-floor|a request carrying an origin that is not an address at all was let through (#) where an or",
+      "where": "POST /api/pilot/margin-floor",
+      "what": "a request carrying an Origin that is not an address at all was let through (200) where an ordinary hostile website is correctly refused with 403. This is a control that moves real money, and the difference between the two is only what the forging page happens to put in one header.",
+      "why": "Found 2026-08-21 by an independent attacking session, reproduced here by hand. REAL and it concerns real money. NOT fixed: tightening the cross-site guard changes what the live controls accept, and DEFECTS.md section 1 already records a deliberate decision about that guard which this finding shows was reasoned on a wrong premise. That decision is yours to revisit. Written up in DEFECTS.md section 6."
+    },
+    {
+      "fingerprint": "http/csrf|post /api/pilot/margin-floor|a request carrying a file:// page was let through (#) where an ordinary hostile website is",
+      "where": "POST /api/pilot/margin-floor",
+      "what": "a request carrying a file:// page was let through (200) where an ordinary hostile website is correctly refused with 403. This is a control that moves real money, and the difference between the two is only what the forging page happens to put in one header.",
+      "why": "Found 2026-08-21 by an independent attacking session, reproduced here by hand. REAL and it concerns real money. NOT fixed: tightening the cross-site guard changes what the live controls accept, and DEFECTS.md section 1 already records a deliberate decision about that guard which this finding shows was reasoned on a wrong premise. That decision is yours to revisit. Written up in DEFECTS.md section 6."
+    },
+    {
+      "fingerprint": "http/csrf|post /api/pilot/stop-apply|a request carrying the literal text \"null\", which is what a sandboxed iframe or a data: pa",
+      "where": "POST /api/pilot/stop-apply",
+      "what": "a request carrying the literal text \"null\", which is what a sandboxed iframe or a data: page sends was let through (400) where an ordinary hostile website is correctly refused with 403. This is a control that moves real money, and the difference between the two is only what the forging page happens to put in one header.",
+      "why": "Found 2026-08-21 by an independent attacking session, reproduced here by hand. REAL and it concerns real money. NOT fixed: tightening the cross-site guard changes what the live controls accept, and DEFECTS.md section 1 already records a deliberate decision about that guard which this finding shows was reasoned on a wrong premise. That decision is yours to revisit. Written up in DEFECTS.md section 6."
+    },
+    {
+      "fingerprint": "http/csrf|post /api/pilot/stop-apply|a request carrying an origin that is not an address at all was let through (#) where an or",
+      "where": "POST /api/pilot/stop-apply",
+      "what": "a request carrying an Origin that is not an address at all was let through (400) where an ordinary hostile website is correctly refused with 403. This is a control that moves real money, and the difference between the two is only what the forging page happens to put in one header.",
+      "why": "Found 2026-08-21 by an independent attacking session, reproduced here by hand. REAL and it concerns real money. NOT fixed: tightening the cross-site guard changes what the live controls accept, and DEFECTS.md section 1 already records a deliberate decision about that guard which this finding shows was reasoned on a wrong premise. That decision is yours to revisit. Written up in DEFECTS.md section 6."
+    },
+    {
+      "fingerprint": "http/csrf|post /api/pilot/stop-apply|a request carrying a file:// page was let through (#) where an ordinary hostile website is",
+      "where": "POST /api/pilot/stop-apply",
+      "what": "a request carrying a file:// page was let through (400) where an ordinary hostile website is correctly refused with 403. This is a control that moves real money, and the difference between the two is only what the forging page happens to put in one header.",
+      "why": "Found 2026-08-21 by an independent attacking session, reproduced here by hand. REAL and it concerns real money. NOT fixed: tightening the cross-site guard changes what the live controls accept, and DEFECTS.md section 1 already records a deliberate decision about that guard which this finding shows was reasoned on a wrong premise. That decision is yours to revisit. Written up in DEFECTS.md section 6."
+    },
     {
       "fingerprint": "schema/accepts|the configuration check|a configuration with a traded symbol that is a number was accepted as valid — that value w",
       "where": "the configuration check",
@@ -349,6 +421,72 @@
       "where": "the scoring arithmetic",
       "what": "a test period in which every outcome is the same scores an edge of 1.000 — a perfect discovery, in a period where there was nothing to discover. It happens because the yardstick is the commonest outcome in the TRAINING data, and in a quiet period the test data may hold none of it. The honest figure sitting right beside it is 0.000, so the arithmetic already knows; it is the headline number that misleads.",
       "why": "Found 2026-08-21. Real, not fixed today. The honest figure already sits beside the misleading one in the same result, so the fix may be a screen change rather than an arithmetic change — which makes it doubly your decision. Written up in DEFECTS.md section 5h."
+    },
+    {
+      "fingerprint": "engine/direction|the function that prices a trade|a long booked as the number # makes #.#, and the same trade booked as the text \"#\" makes -",
+      "where": "the function that prices a trade",
+      "what": "a LONG booked as the number 1 makes 10.000000000000009, and the same trade booked as the text \"1\" makes -10.000000000000009. A number that has been through a stored file comes back as text, and the same winning trade is then recorded as an equal and opposite loss. Nothing refuses it.",
+      "why": "Found 2026-08-21, reproduced by hand. Real, not fixed: deciding whether a malformed direction should be refused, or treated as no trade, changes what the books report. Written up in DEFECTS.md section 6."
+    },
+    {
+      "fingerprint": "engine/direction|the function that prices a trade|a direction given as the text \"-#\" is priced as a real trade worth -#.# rather than being ",
+      "where": "the function that prices a trade",
+      "what": "a direction given as the text \"-1\" is priced as a real trade worth -10.000000000000009 rather than being refused. Only the number 1 counts as a long; everything else that is not exactly 0 is treated as a short.",
+      "why": "Found 2026-08-21, reproduced by hand. Real, not fixed: deciding whether a malformed direction should be refused, or treated as no trade, changes what the books report. Written up in DEFECTS.md section 6."
+    },
+    {
+      "fingerprint": "engine/direction|the function that prices a trade|a direction given as true is priced as a real trade worth -#.# rather than being refused. ",
+      "where": "the function that prices a trade",
+      "what": "a direction given as true is priced as a real trade worth -10.000000000000009 rather than being refused. Only the number 1 counts as a long; everything else that is not exactly 0 is treated as a short.",
+      "why": "Found 2026-08-21, reproduced by hand. Real, not fixed: deciding whether a malformed direction should be refused, or treated as no trade, changes what the books report. Written up in DEFECTS.md section 6."
+    },
+    {
+      "fingerprint": "engine/direction|the function that prices a trade|a direction given as null is priced as a real trade worth -#.# rather than being refused. ",
+      "where": "the function that prices a trade",
+      "what": "a direction given as null is priced as a real trade worth -10.000000000000009 rather than being refused. Only the number 1 counts as a long; everything else that is not exactly 0 is treated as a short.",
+      "why": "Found 2026-08-21, reproduced by hand. Real, not fixed: deciding whether a malformed direction should be refused, or treated as no trade, changes what the books report. Written up in DEFECTS.md section 6."
+    },
+    {
+      "fingerprint": "engine/direction|the function that prices a trade|a direction given as not-a-number is priced as a real trade worth -#.# rather than being r",
+      "where": "the function that prices a trade",
+      "what": "a direction given as not-a-number is priced as a real trade worth -10.000000000000009 rather than being refused. Only the number 1 counts as a long; everything else that is not exactly 0 is treated as a short.",
+      "why": "Found 2026-08-21, reproduced by hand. Real, not fixed: deciding whether a malformed direction should be refused, or treated as no trade, changes what the books report. Written up in DEFECTS.md section 6."
+    },
+    {
+      "fingerprint": "engine/direction|the function that prices a trade|a direction given as the word \"long\" is priced as a real trade worth -#.# rather than bein",
+      "where": "the function that prices a trade",
+      "what": "a direction given as the word \"long\" is priced as a real trade worth -10.000000000000009 rather than being refused. Only the number 1 counts as a long; everything else that is not exactly 0 is treated as a short.",
+      "why": "Found 2026-08-21, reproduced by hand. Real, not fixed: deciding whether a malformed direction should be refused, or treated as no trade, changes what the books report. Written up in DEFECTS.md section 6."
+    },
+    {
+      "fingerprint": "engine/infinite|the function that prices a trade|a trade entered at a price of zero books infinity — an infinite profit, which will then ou",
+      "where": "the function that prices a trade",
+      "what": "a trade entered at a price of zero books Infinity — an infinite profit, which will then outrank every genuine result it is compared against.",
+      "why": "Found 2026-08-21, reproduced by hand. Real, not fixed: same decision as above, applied to an impossible price. Written up in DEFECTS.md section 6."
+    },
+    {
+      "fingerprint": "engine/committee|the supermajority gate|an empty committee at a quorum of zero returns # — a definite trading direction from nobod",
+      "where": "the supermajority gate",
+      "what": "an EMPTY committee at a quorum of zero returns 1 — a definite trading direction from nobody at all.",
+      "why": "Found 2026-08-21, reproduced by hand. Real, not fixed. Written up in DEFECTS.md section 6."
+    },
+    {
+      "fingerprint": "engine/median|the middle value of a list|the same five numbers, one of them broken, give a middle value of nan in one order and # i",
+      "where": "the middle value of a list",
+      "what": "the same five numbers, one of them broken, give a middle value of NaN in one order and 2 in another. The answer depends on the order the values happened to arrive in, and neither answer says anything is wrong.",
+      "why": "Found 2026-08-21, reproduced by hand. Real, not fixed. Written up in DEFECTS.md section 6."
+    },
+    {
+      "fingerprint": "engine/feemismatch|the threshold that gates every directional trade|the threshold is chosen by pricing candidate thresholds at $#.# a leg — it never passes a ",
+      "where": "the threshold that gates every directional trade",
+      "what": "the threshold is chosen by pricing candidate thresholds at $0.125 a leg — it never passes a fee, so the paper default takes over — while the live signal path declares a fee of 0. The two are tuning and trading against different cost assumptions, and there is no way to tell the tuner otherwise. Confirmed by hand on data whose edge sits near the fee: the two pick different thresholds and trade a different number of periods.",
+      "why": "Found 2026-08-21, reproduced by hand on data whose edge sits near the fee. Real, not fixed: which of the two fee assumptions is the correct one is a decision about how the system is meant to trade, not a coding choice. Written up in DEFECTS.md section 6."
+    },
+    {
+      "fingerprint": "engine/decisionfromnothing|the rule that turns a forecast into a trade|given a dead tie written as text (\"#.#\" against \"#.#\"), the rule returned a definite long ",
+      "where": "the rule that turns a forecast into a trade",
+      "what": "given a dead tie written as text (\"0.5\" against \"0.50\"), the rule returned a definite LONG rather than standing aside. A trade would be placed on a forecast that does not exist.",
+      "why": "Found 2026-08-21, reproduced by hand. Real, not fixed: the rule decides the DIRECTION with a comparison that treats text as text, and the CONFIDENCE with one that converts to numbers, so a dead tie written as \"0.5\" against \"0.50\" is read as equal by one half and different by the other — and stands aside in one reading while placing a trade in the other. Whether such a forecast should be refused outright is a decision about the engine. Written up in DEFECTS.md section 6."
     }
   ]
 }

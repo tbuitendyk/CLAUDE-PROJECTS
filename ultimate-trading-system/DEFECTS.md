@@ -7,8 +7,8 @@ reading any code.
 Everything here was proved, not guessed — each item was checked against the
 running system before it went on the list.
 
-Last reviewed 2026-08-21, after a full audit of the tree and the first run
-of the adversarial suite (section 5).
+Last reviewed 2026-08-21, after a full audit of the tree, the first runs of
+the adversarial suite (section 5) and a separate independent attack (section 6).
 
 ---
 
@@ -355,7 +355,7 @@ a fault at all. The check now works out the first and last month per symbol and
 leaves them out, and reports how many hours are missing rather than only that
 some are. 286 is the real number.
 
-### 5f. Three places the suite deliberately does not reach
+### 5k. Three places the suite deliberately does not reach
 
 Said out loud so the coverage claim stays honest:
 
@@ -371,6 +371,168 @@ Said out loud so the coverage claim stays honest:
 - Nothing here opens a browser. The screens are checked by running their real
   formatting helpers and by reading the code that draws them — not by looking at
   a rendered page.
+
+---
+
+## 6. A second, independent attack — 67 more, none fixed
+
+Everything in section 5 came from the standing suite I wrote. A separate
+attacking session went at the same system without my harness, 73 attackers over
+four hours, and reproduced 67 findings under challenge — including 7 it rated
+as blockers. It reached places my suite did not, because it attacked the
+arithmetic and the engine internals with knowledge of what the numbers are
+supposed to mean, rather than only feeding them rubbish from outside.
+
+**None of this is fixed.** Finding a fault is not permission to change it.
+
+**What I checked myself before writing this down.** I did not take these on
+trust. I reproduced the two most serious in this session, by hand:
+
+- **The cross-site guard on the live-money controls lets a forged request
+  through** when it carries the word "null" where the sending page's address
+  should be. I read the code, then ran it: a request claiming to come from
+  `https://evil.example` is correctly refused with a 403, and the identical
+  request claiming to come from "null" is **allowed**, and disarms the engine.
+  So are "file://" and an address that is not an address. A page inside a
+  sandboxed frame, or one opened from a `data:` or `file:` address, sends
+  exactly that — so this is a positively cross-site request that the guard was
+  built to stop and does not.
+
+  **This corrects something already written in section 1 of this file.** That
+  note says the remaining gap is a request that does not say where it came
+  from, and reasons that "a browser always says where it came from". A browser
+  in a sandboxed frame *does* say — it says "null" — and the guard treats
+  saying "null" as not saying at all. The decision recorded there was made on a
+  premise that turns out to be wrong, which is why it is worth revisiting.
+
+- **The threshold that decides whether a directional trade happens at all is
+  tuned against the wrong trading cost.** The tuner prices its candidate
+  thresholds at 12.5 cents a leg — it never passes a cost, so the paper default
+  takes over — while the live signal path declares a cost of zero. There is no
+  way to tell the tuner otherwise; it takes no such argument. I built a set of
+  periods whose edge sits near that cost and ran it: the two assumptions pick
+  **different thresholds** (0.55 against 0.50) and trade a **different number of
+  periods** (38 against 45). On data with a strong edge they agree, so this
+  bites exactly where the edge is thin — which is where it matters.
+
+Eleven of these are now pinned in my standing suite as permanent tests, so they
+cannot come back unnoticed once they are dealt with. The rest are recorded here.
+
+### The seven rated blockers
+
+1. **Nothing checks a stored setup when it is read back.** 16 of 18 deliberately
+   broken setup files read back as valid, and the list the box trades from is
+   built straight out of them.
+2. **A setup whose state is a word the system does not know disappears from the
+   Trading tab while its real-money channel stays live** — and its Deactivate
+   control refuses, saying the channel is not active.
+3. **Two files claiming the same setup.** The screen reads one, the box's
+   trading list reads the other, and stopping that setup stops only one of them.
+4. **A hole of one to three hours in the candles is invented, and the invented
+   price becomes a trade's entry price.** A test that fabricated a three-hour
+   outage turned a $0.25 loss into a $5.75 profit at a price that never traded.
+   Both runs report the same 181 chunks and report nothing missing.
+5. **A month file holding an empty list counts as a cached month forever.** It
+   contributes no candles, is never reported missing by either loading path, and
+   can never be repaired — and the downloader itself writes that file if the
+   published format ever changes.
+6. **"Save routing" overwrites the setup's real sub-account key with the literal
+   word "set"** — the placeholder text from the box on screen. Every screen then
+   reads "Key: set" in green and the setup stays eligible to trade, pointing at
+   a sub-account that does not exist.
+7. **The threshold that gates every directional trade is tuned at the wrong
+   cost** (verified above).
+
+### All 67, by where they were found
+
+#### The front door — 9
+
+- **high** — CSRF guard on the live-money controls fails OPEN for Origin: null (sandboxed-iframe / data: URL forgery)
+- **high** — purge accepts impossible / reversed keep-ranges and silently wipes the entire cache
+- **medium** — margin-floor (live liquidation guard) accepts arrays and hex strings as the risk number
+- **medium** — clipUsd (per-trade dollar notional) has no upper bound and accepts arrays
+- **medium** — stop-apply accepts an array as the live protective-stop fraction
+- **medium** — inspect quorum is unbounded above the committee size and answers impossible questions with '0 trades'
+- **medium** — keyRef set to whitespace reports 'set' on every screen but the live gate treats it as missing
+- **low** — greenlight and relabel accept non-string names, storing '[object Object]' / 'x,y' / 'true' and propagating them to money-holding setups
+- **low** — campaign name accepts numbers and booleans (coerced to string)
+
+#### The shape of stored records — 15
+
+- **blocker** — The setups registry has no reader-side validation at all — 16 of 18 hostile files read back as valid setups, and the box allowlist is built straight from them
+- **blocker** — A state value outside STATES hides a LIVE real-money channel from the Trading tab and makes its Deactivate control refuse
+- **blocker** — Two files claiming one id: the screen reads one record and the box's allowlist reads the other, and stopping the id stops only one of them
+- **high** — The record's OWN id field is used to build filesystem paths after only the URL parameter was validated — arbitrary .json write and unlink, answered HTTP 200 ok:true
+- **high** — branch.geometry accepts any Object.prototype key — the setup is created, armed to LIVE, and its screen describes a strategy of "undefinedh" windows and "NaN numbers"
+- **high** — A record whose id disagrees with its filename is listed and allowlisted for real trading, but every control on it answers 404
+- **high** — POST /api/live/setups/:id/config writes any trainPolicy value without validation — the deployment's training freeze can be set to something the reader then refuses or silently ignores, on a LIVE setup
+- **high** — A live setup whose file becomes unparseable vanishes from every list with no error anywhere — and pairs.js documents the opposite behaviour
+- **medium** — getBatch rebuilds the summary on read, swallows the TypeError, and returns null — a saved run that lists in the picker but reads as "does not exist"
+- **medium** — The execution-target registry is unvalidated and fails OPEN: any non-array `symbols` makes the box serve every symbol, and a numeric entry passes the gate
+- **medium** — The `schema` field is written on every setup and never read anywhere — a record from a future schema version is consumed as if it were current
+- **medium** — clipUsd on a LIVE setup has no bounds beyond finite-and-positive — 5e-324 and 1e308 are both accepted and become the box's max_clip_usd
+- **medium** — Greenlight readers accept scalars, empty objects, a missing WHY, a missing snapshot and an unknown anchor — and the shuttle mints a live-trading draft from a greenlight whose target is 'whatever-i-like'
+- **low** — validatePolicy puts no upper bound on a frozen trainPolicy's throughMs — a deployment can be labelled "frozen" while training through the year 5138
+- **low** — getCampaign returns campaign names that setCampaign refuses, and a non-string campaign name reaches the campaign selector list
+
+#### The market data — 12
+
+- **blocker** — A 1-3 hour hole is invented into candles and becomes a trade's entry price — the fabricated money is indistinguishable from real money
+- **blocker** — A month bundle holding `[]` is counted as a cached month, contributes zero candles, is never reported missing by either load path, and can never be repaired — and the downloader itself produces that file on any CSV format change
+- **high** — Every non-finite feature is silently replaced by exactly 0 — a broken price makes volatility, trend and correlation read as a perfectly calm, perfectly uncorrelated market
+- **high** — A corrupt month bundle costs a whole month in "all loaded data" mode with no report of any kind, while every coverage number still counts it
+- **high** — A month file holding another month's candles reports 720 candles that do not exist — the count the owner reads is higher than the number of distinct hours loaded
+- **high** — Timestamps not on the hour load in full and are counted in full, but are invisible to the chunker — 4368 candles produce 149 chunks instead of 181
+- **high** — Duplicate timestamps: which of two conflicting prices becomes the truth is decided by the order they happen to sit in the file
+- **medium** — Month numbers 00 and 13 are accepted from disk and served by /api/data-state as the data range — the typed input is validated, the on-disk input is not
+- **medium** — A stray out-of-range month file makes the chunker consider 1,827 starts and drop 1,645 of them — and the count is discarded, so the run reports the same 181 chunks either way
+- **medium** — Inside a day-file month, a torn or empty day file is skipped by design — 24 hours vanish with no missing report and unchanged coverage
+- **medium** — String prices are silently coerced through the label path but corrupt the range feature to 0, and are stored as strings in the chunk record
+- **low** — A price of 1e308 passes straight through as a finite feature value of 9.7e+305
+
+#### The screens — 15
+
+- **blocker** — "Save routing" overwrites the setup's real sub-account key reference with the literal string "set"
+- **high** — One journal pnl written as a string nulls the whole book's realized P&L; the screen reads "—" above a table of banked trades
+- **high** — An unparseable heartbeat timestamp silently suppresses the "EXECUTOR SILENT" banner — a dead box renders as a healthy one
+- **high** — Dashboard "Realized (all live)" prints the sum of the books it could read and calls it the sum of every book
+- **high** — stopCell renders "NaN%" and "Infinity%" in green with "applied to every order" — the exact reassurance its own comment says it stopped giving
+- **medium** — Paper Books never shows "EXECUTOR SILENT" or the box HALT banner — an undeclared difference between the two sides
+- **medium** — dashTotals turns its accumulators into strings on the first string input: two $10 books total +1010.0000
+- **medium** — An open position missing side and qty renders the literal word "undefined" in both columns, and the unknown direction is coloured red (SHORT)
+- **medium** — A whitespace-only sub-account key reads as "Key: set" in green on Setup detail while Greenlights says the config has no sub-account
+- **medium** — A failed 30-second auto-redraw leaves the previous render's money on screen, and the banner that appears only warns about panels that look empty
+- **medium** — The Setups table and the Setup detail tile render a zero or below-fee protective stop as a plain percentage, contradicting stopCell on the same page
+- **low** — Two columns on the Daily decision history carry the wrong description or none at all — TH.outcome and TH.call are defined and wired to nothing
+- **low** — Duplicate entryUtc key in TH: the Open positions "entry" heading silently shows the decision-history description, with a hardcoded 97h
+- **low** — The fee-per-leg comparison has a tooltip and a passing test but no tile — the number the server computes never reaches the screen
+- **low** — Dashboard cards label each book by its generated id, not the name the owner gave it
+
+#### The engine arithmetic — 16
+
+- **blocker** — tuneTau prices its ladder at a hard-wired $0.125/leg while the live path declares feePerLeg: 0 — the two disagree and the tau that gates every directional trade is wrong
+- **high** — predictBoost returns a normal-looking probability triple summing to 1 from an all-NaN or completely EMPTY feature vector
+- **high** — logreg predict and predictMember return a definite SHORT from a NaN feature or from a feature vector shorter than the model, and silently ignore extra features on a longer one
+- **high** — A zero entry price yields pnl: Infinity counted as a real trade, and bestCell then selects that cell over the genuine winner
+- **high** — A chunk whose label-window price is zero is LABELLED from a division by zero instead of being dropped
+- **high** — scoreDiff labels an exactly flat move as DOWN at a zero band, and a NaN band behaves identically to a zero band with no error
+- **medium** — features.js silently rewrites every non-finite feature to exactly 0, so one bad candle reports zero volatility and zero trend beside a 100% drawdown
+- **medium** — median is order-dependent and returns a plausible number when the list contains a NaN, contradicting its own header
+- **medium** — balancedBandPct is order-dependent with a NaN present and can itself return NaN, which then makes every chunk directional
+- **medium** — bestCell ignores the minimum-trade floor when it is undefined or NaN, and will return a cell whose net is NaN
+- **medium** — trainMember emits boost calls from 2 training chunks, with the declared 75/25 split silently turned into 1/1 by negative-index slicing
+- **medium** — pearson returns 1.0000000000000002 for a series against a scaled copy of itself, and the four cross features bypass the finiteness guard the per-asset features get
+- **low** — pnlAt prices any direction that is not exactly the number 1 as a SHORT, so a string '1' from a JSON round trip books a 100% gain as a 100% loss
+- **low** — voteOf silently discards any label that is not -1/0/1, letting a minority carry the committee; superOf at quorum 0 returns LONG from an empty committee
+- **low** — An all-NaN accuracy ladder makes tuneAndTrain silently return the weakest lambda, and an empty validation set makes trainBoost return a one-tree stump
+- **low** — Cached candle JSON is re-read with no revalidation, so parseKlineCsv's non-positive-price guard protects only the download path
+
+The full detail for every one — the attack, what was observed, what was
+expected instead, and how to reproduce it — is kept with the suite at
+`tests/adversarial/independent-attack-2026-08-21.json`. Several entries there
+carry a `correction` field where the attacker re-checked its own claim and
+narrowed it; those corrections are part of the record and worth reading before
+acting on the entry above them.
 
 ---
 

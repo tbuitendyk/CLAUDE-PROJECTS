@@ -177,6 +177,51 @@ async function sweep(server, label, found, ctx) {
   return tally;
 }
 
+
+// The Origin sweep. Runs ONCE, against one server — it is about a header, not
+// about what the system is holding. (It first went inside the sweep, which runs
+// twice, and every finding was reported in duplicate.)
+async function originSweep(server, found) {
+  // ---- where the request SAYS it came from --------------------------------
+  //
+  // The live-money controls are guarded against a request forged by another
+  // website. The guard reads the Origin header. A browser does not always send
+  // a hostname there: a page inside a sandboxed iframe, or one loaded from a
+  // data: or file: address, sends the literal text "null" — and that is a
+  // positively cross-site request, not the absence of one.
+  //
+  // Found by an independent attacker, reproduced here, and pinned so it cannot
+  // come back quietly once it is dealt with.
+  const GUARDED = ['/api/pilot/disarm', '/api/pilot/unhalt', '/api/pilot/margin-floor', '/api/pilot/stop-apply'];
+  const ORIGINS = [
+    { label: 'a plainly hostile website', v: 'https://evil.example', mustRefuse: true },
+    { label: 'the literal text "null", which is what a sandboxed iframe or a data: page sends', v: 'null', mustRefuse: true },
+    { label: 'an Origin that is not an address at all', v: 'not a url at all', mustRefuse: true },
+    { label: 'a file:// page', v: 'file://', mustRefuse: true },
+    { label: 'the real page itself', v: `http://127.0.0.1:${server.port}`, mustRefuse: false },
+  ];
+  for (const route of GUARDED) {
+    for (const o of ORIGINS) {
+      let res;
+      try {
+        res = await request(server.port, 'POST', route, {}, { headers: { Origin: o.v }, timeout: 10000 });
+      } catch (_) { continue; }
+      const refused = res.status === 403;
+      if (o.mustRefuse && !refused) {
+        found.push(finding('http/csrf', `POST ${route}`,
+          `a request carrying ${o.label} was let through (${res.status}) where an ordinary hostile website is correctly refused with 403. This is a control that moves real money, and the difference between the two is only what the forging page happens to put in one header.`,
+          { severe: true }));
+      }
+      if (!o.mustRefuse && refused) {
+        found.push(finding('http/csrf-toostrict', `POST ${route}`,
+          'the real page\'s own request was refused by the cross-site guard — the control is broken for the owner.',
+          { severe: true }));
+      }
+    }
+  }
+
+}
+
 async function run(ctx) {
   const found = [];
   const routes = discoverRoutes();
@@ -189,6 +234,7 @@ async function run(ctx) {
   // own code.
   const emptyTally = await sweep(ctx.servers.empty, 'an empty system', found, ctx);
   const seededTally = await sweep(ctx.servers.seeded, 'a system holding data', found, ctx);
+  await originSweep(ctx.servers.empty, found);
 
   // Prove the seeding did something. If the same number of addresses still say
   // "nothing here", the second pass added no coverage and saying otherwise
