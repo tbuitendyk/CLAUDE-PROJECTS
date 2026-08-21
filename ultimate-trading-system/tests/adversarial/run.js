@@ -30,6 +30,7 @@ const ATTACKS = [
   { mod: './attack-candles', needs: 'sandbox' },
   { mod: './attack-interface', needs: null },
   { mod: './attack-invariants', needs: null },
+  { mod: './attack-storeddata', needs: null },
 ];
 
 // A finding's identity. Counts inside the wording change as the code changes
@@ -45,6 +46,10 @@ function loadBaseline() {
 async function main() {
   const accept = process.argv.includes('--accept');
   const only = (process.argv.find((a) => a.startsWith('--only=')) || '').slice(7);
+  // Which stored data to inspect. Defaults to this copy's own data folder; point
+  // it at the box's folder to check what is really running. Read only either way.
+  const dataArg = (process.argv.find((a) => a.startsWith('--data=')) || '').slice(7);
+  const dataDir = dataArg || undefined;
 
   const all = [];
   const notes = [];
@@ -54,7 +59,7 @@ async function main() {
     for (const spec of ATTACKS) {
       const attack = require(spec.mod);
       if (only && !spec.mod.includes(only)) continue;
-      const ctx = { note: (m) => notes.push(`  ${m}`) };
+      const ctx = { note: (m) => notes.push(`  ${m}`), dataDir };
 
       if (spec.needs === 'server') {
         serverSandbox = makeSandbox('srv');
@@ -99,8 +104,16 @@ async function main() {
   const known = []; const fresh = [];
   for (const f of real) (knownBy.has(fingerprint(f)) ? known : fresh).push(f);
 
-  const gone = (base.known || []).filter((k) => !real.some((f) => fingerprint(f) === k.fingerprint));
+  // With --only, the attacks that did not run cannot possibly report their
+  // findings, and calling those "no longer found" would read as thirty-odd
+  // things having been fixed. Only a full run can say that.
+  const gone = only ? [] : (base.known || []).filter((k) => !real.some((f) => fingerprint(f) === k.fingerprint));
+  if (only) process.stdout.write(`\n(only ${only} ran — nothing can be said about the rest, and the known list is not being compared)\n`);
 
+  if (accept && only) {
+    process.stdout.write('\nrefusing to rewrite the known list from a partial run — that would silently drop every finding the attacks that did not run would have made. Run without --only.\n');
+    return 2;
+  }
   if (accept) {
     const next = {
       writtenUtc: new Date().toISOString(),

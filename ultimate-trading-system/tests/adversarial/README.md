@@ -31,7 +31,7 @@ So the scoring here is deliberately upside down:
 
 ## What it attacks
 
-Five surfaces, each in its own file:
+Six surfaces, each in its own file:
 
 1. **`attack-http.js` — the front door.** Every address the system answers on,
    hit with nothing, the wrong shape, the wrong type, a name four thousand
@@ -62,6 +62,22 @@ Five surfaces, each in its own file:
    public market-data service, nothing rolling dice in a path that decides a
    trade, the same inputs giving the same answer twice over, and paper money
    never folded into real money.
+
+6. **`attack-storeddata.js` — the data that is really there.** Everything above
+   spoils records on purpose. This one does the opposite: it opens the data
+   that **actually exists** and asks whether any of it is already in one of
+   those states — files that will not parse, candle months short against the
+   hours the month has, holes, duplicated hours, prices that are not numbers or
+   are at or below zero, candles whose low is above their high, stored setups
+   that no longer pass the system's own configuration check, journals with torn
+   lines, and files on disk that nothing in the code ever mentions (RULE FIVE).
+
+   It is **read only** — it opens files and never writes, moves or deletes one.
+   Point it at any data folder, including the one on the box:
+
+   ```
+   node tests/adversarial/run.js --only=attack-storeddata --data=/opt/ultimate-trading-system/data
+   ```
 
 ## Safety
 
@@ -109,7 +125,7 @@ npm run test:adversarial -- --only=attack-candles
 
 ## When a test here breaks
 
-**A test that could not run is reported separately and is never a pass.** Four
+**A test that could not run is reported separately and is never a pass.** Five
 of the attacks in this directory reported "nothing found" on their first
 version because the test itself was wrong — a field name invented rather than
 read, a control case that was never checked, a complaint-detector that counted
