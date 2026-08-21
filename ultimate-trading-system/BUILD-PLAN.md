@@ -223,3 +223,34 @@ and each was caught only by checking it rather than believing it:
 Two of the three failed in the direction that would have ended the work early,
 and one raised a false alarm about a live deployment. Worth recording, because
 the parked item below rests on exactly this class of measurement being wrong.
+
+## Second loop, 2026-08-21 — the 82-finding audit
+
+The owner granted a loop to fix all of it and document whatever could not be
+fixed. What was fixed is in the commits; what was not is in `DEFECTS.md`, in
+plain language, which is where it belongs rather than buried in this file.
+
+Fixed in this loop:
+
+- Three orphan files, four unreachable launchers, and 470 lines of a module
+  that nothing reached after the screen it served was retired.
+- The retired window-layout plumbing: two flags written only by copying from a
+  source that never set them, so every branch keyed on either was inert.
+- A 180-line file kept alive to host one nine-line function, which moved to
+  `lib/rng.js`.
+- Module headers that described systems no longer present, including one that
+  opened mid-sentence where a deleted module's name had been.
+- Four constants that outlived the paper books they belonged to.
+- The clip size, which the simulator re-declared locally in the same file whose
+  comment says it must never drift from the shared one.
+- Two guards that could no longer fail, which is the same as no guard.
+- Coverage for three modules that had none, one of them created in this session.
+- `WORKFLOW.md`, rewritten against the sections that actually render.
+- RULE TWO, which named a file that does not exist.
+- The reproduce-check, which ran every cycle and could not tell anyone.
+
+One thing broke during the work and was caught: cutting dead code took a
+constant with it that a live function reads. No test covered that function, so
+the suite stayed green. It is fixed, and it is covered now. That is the third
+time in two days a measurement I wrote returned a confident wrong answer, and
+the reason `DEFECTS.md` records what was checked rather than what was assumed.

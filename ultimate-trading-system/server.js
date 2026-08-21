@@ -927,7 +927,6 @@ function writeMarginFloor(obj) {
   dataFs.writeFileSync(`${f}.tmp`, JSON.stringify(obj));
   dataFs.renameSync(`${f}.tmp`, f);
 }
-app.get('/api/pilot/margin-floor', (req, res) => res.json(readMarginFloor()));
 app.post('/api/pilot/margin-floor', csrfGuard, (req, res) => {
   try {
     const raw = req.body ? req.body.floor : null;

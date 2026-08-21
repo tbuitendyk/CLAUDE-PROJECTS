@@ -1,0 +1,149 @@
+# Known faults — found, not fixed
+
+Things found in the system that were **not** repaired, and why. Written in plain
+language on purpose: this is a list you should be able to act on without
+reading any code.
+
+Everything here was proved, not guessed — each item was checked against the
+running system before it went on the list.
+
+Last reviewed 2026-08-21, after a full audit of the tree.
+
+---
+
+## 1. Two controls that handle real money can be pressed by accident
+
+**These are the most serious things on this page.** Both were found earlier and
+neither has been touched, because changing how a live trading control behaves is
+not something to do without you.
+
+**The arm control accepts an empty instruction.** The code that arms trading
+only refuses when it is explicitly told "no". Send it nothing at all and it arms.
+
+On top of that, its protection against being triggered from another website only
+works when a request says where it came from. A request from a script does not
+say, and the protection lets it through. Together: the live arm can be pressed by
+something that never meant to press it.
+
+There is a second edge to this. The reviewer noticed that running the project's
+own test command against a live server would send exactly that request.
+
+**A second control has no protection at all.** The one that applies a protective
+stop has none of the safeguard its twin has, and an empty instruction makes it
+record "no protective stop, chosen by the owner" rather than refusing.
+
+**What it needs:** a decision from you, then a small change to both. Neither is
+hard. Both change what a live money control does, which is why they are here.
+
+---
+
+## 2. Things the system does that no screen lets you see or control
+
+Your standing rule is that everything the system can do must be reachable from
+the interface. These are the places it is not. None of them is broken — each one
+works, and you simply cannot get at it.
+
+**How the members are trained.** Each configuration can either freeze its
+training at a fixed date or keep retraining as new results land. The code calls
+this the deployment decision. There is no control for it anywhere, and nothing
+sets it. *(The panel that displays it was reading the wrong place and could
+never show a value; that part is fixed.)*
+
+**How many positions a configuration may hold at once.** Worked out by a formula
+in code. The execution machine enforces it. Nothing shows it and nothing sets it.
+
+**The next decision, before it happens.** Every producer run works out the
+committee's forthcoming call and how each member voted, and writes it down.
+Nothing serves it and no screen shows it.
+
+**Whether you have the data a setup needs.** The system keeps a statement of
+every candle month the active setups depend on, checks what is actually present,
+and can re-download what is missing. Both halves answer, and no screen asks. So
+a setup can be missing data with nothing anywhere saying so. *You already ruled
+this one should be exposed, in the Data section — it is point 10 of your list.*
+
+**Clearing a halt at the machine level.** Pressing it writes a request. Nothing
+reads that request back, so you cannot tell whether it was picked up. This is the
+same fault that was already fixed once for the per-setup halt.
+
+**Changing a setup's state, including retiring it.** The whole state machine —
+and the reason you write when you move a setup between states — is reachable
+over the wire and by no screen.
+
+**Deleting a draft setup.** No page in the app ever issues a delete of any kind,
+so a setup created and never run can only be removed by hand.
+
+**What the sweep searches.** The grid of execution settings a search explores can
+be set over the wire, and the launch page never sends it. So what gets searched
+is decided by constants in the code rather than by you.
+
+**How many processor threads a heavy sweep uses.** Read from a settings file that
+no control writes. Only the pace of each worker is adjustable from the screen.
+
+**The fingerprint that decides whether two runs are comparable.** Recorded for
+every run, named on screen as the thing that decides it — and no route can serve
+the detail, so you cannot open it.
+
+**The greenlight-to-setup door exists twice** — once over the wire with no
+control, once inside the program. Only the second one is used.
+
+---
+
+## 3. Decisions waiting on you
+
+**The exchange adapter.** There is a complete, working piece of code whose job is
+to sit between this system and an exchange, so that adding a second exchange
+later is an addition rather than a rewrite. Nothing routes through it — the live
+code still talks to Binance directly. So the separation it promises does not
+exist yet. Either wire it in (small, contained, but it changes how the trading
+side fetches data) or delete it and stop claiming the separation is there.
+
+**The forward-book scorer.** About a hundred lines that score a pre-registered
+forward book. Nothing calls it and no screen shows its results. The books it
+scores no longer exist on this system. Delete it, or decide it is a capability
+worth reconnecting.
+
+**One endpoint kept on trust.** A route that answers "which pairs does this
+system need" has no caller in this repository, but its own comment says checking
+scripts elsewhere read it. That could not be verified from here. It was kept.
+
+**Minute-by-minute confirmation is gone.** The code that re-checked a result
+against minute data was deleted: no screen reached it, and it called a function
+that no longer exists, so it would have failed after doing the expensive part.
+Worth knowing because it was the only thing that bounded a particular
+uncertainty — when a price bar touches both your target and your stop, nothing
+in hourly data says which came first. If that matters later, it needs building
+properly rather than restoring.
+
+---
+
+## 4. Smaller things
+
+**The two screens remember light and dark separately.** Construct and Trade store
+the choice under different names, so switching on one and moving to the other
+flips it back. Setup deliberately shares Construct's.
+
+**One module has no tests.** The code that renders the anatomy block on the Trade
+screen — what the committee is and how it is put together — has no coverage at
+all.
+
+**The endpoint check misses some addresses.** The test that claims to probe every
+address the Trade screen calls silently skips any the page builds by joining
+pieces together, so three are never checked.
+
+**A test no longer matches its name.** One called "both reserved pairs are
+refused everywhere" lost two of its three checks when the code they tested was
+removed. It now proves one thing and claims three.
+
+**Two fabricated pairs came across with the candles.** The data carried over to
+the new system includes the two made-up pairs the calibration check uses. They
+are generated, not downloaded, so strictly they should not have travelled.
+Harmless — the check regenerates them.
+
+---
+
+## How this file is meant to work
+
+Anything found and not fixed goes here, in plain language, with enough detail to
+act on. Fixed items come off it. If something here turns out to be wrong, say so
+and it comes off too — a list nobody trusts is worse than no list.
