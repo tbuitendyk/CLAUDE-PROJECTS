@@ -40,6 +40,14 @@ Six surfaces, each in its own file:
    is **read out of the code on every run**, not typed into the test, so an
    address added tomorrow is attacked tomorrow.
 
+   The sweep runs **twice** — once against a system holding nothing, once
+   against one holding real candles, a real setup and a real journal, all
+   written through the system's own code (`seed.js`). Every run prints how many
+   plain addresses had more to say on the second pass; at the time of writing
+   that is **4 of 23**, so the seeded pass reaches somewhat further than the
+   empty one and not dramatically so. The number is printed rather than claimed
+   because a second pass that reaches nothing new is not extra coverage.
+
 2. **`attack-schema.js` — the shape of what is stored.** Configurations with
    impossible numbers in them, training windows frozen at an instant that does
    not exist, names that are objects, and journal files with a line cut in half
@@ -91,10 +99,10 @@ Nothing here touches the owner's data or the running services.
 - Two addresses reach the public internet to fetch market data. They are left
   out on purpose, and the run says so out loud every time rather than quietly
   counting them as covered.
-- The candle attack runs against an **empty** system, so addresses that need
-  data answer "nothing here" and their deeper workings are not reached that
-  way. That ground is covered by attacks 2, 3 and 5 instead, which call the
-  code directly.
+- Many addresses still answer "nothing here" even on the seeded pass, because
+  the sweep deliberately asks for records that do not exist. Their deeper
+  workings are covered by attacks 2, 3, 5 and 6 instead, which call the code
+  directly rather than through an address.
 
 ## Known findings
 

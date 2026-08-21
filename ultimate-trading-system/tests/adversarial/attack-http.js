@@ -76,36 +76,34 @@ function hostileBodies() {
 
 function withId(p, v) { return p.replace(/:[A-Za-z]+/g, v); }
 
-async function run(ctx) {
-  const found = [];
+// The sweep, run once against a given server. `label` says which system it
+// was — an empty one or a seeded one — so a finding names the state it needs.
+async function sweep(server, label, found, ctx) {
   // Count what was actually sent and what came back. A sweep that finds
   // nothing and a sweep that never happened look identical in a report, so the
   // suite prints the tally every run and refuses to call it coverage without
   // one.
-  const tally = { sent: 0, byStatus: {} };
+  const tally = { sent: 0, byStatus: {}, bodySize: {} };
   const routes = discoverRoutes();
-  ctx.note(`${routes.length} addresses read out of the code; ${NOT_ATTACKED.size} left out on purpose (they reach the internet): ${[...NOT_ATTACKED].join(', ')}`);
 
   const judge = (res, where, sent) => {
     tally.sent += 1;
     tally.byStatus[res && res.status] = (tally.byStatus[res && res.status] || 0) + 1;
     if (!server.alive()) {
-      found.push(finding('http/died', where, `sending ${sent} killed the service outright — the whole system goes down, not just this request`));
+      found.push(finding('http/died', where, `on ${label}, sending ${sent} killed the service outright — the whole system goes down, not just this request`));
       return;
     }
     const fab = looksFabricated(res);
-    if (fab) found.push(finding('http/fabricated', where, `sending ${sent} was ACCEPTED and answered: ${fab}`));
+    if (fab) found.push(finding('http/fabricated', where, `on ${label}, sending ${sent} was ACCEPTED and answered: ${fab}`));
     const leak = leaksInternals(res);
-    if (leak) found.push(finding('http/leak', where, `sending ${sent} made the answer show the machine's insides: ${leak}`));
+    if (leak) found.push(finding('http/leak', where, `on ${label}, sending ${sent} made the answer show the machine's insides: ${leak}`));
     if (res.status >= 500) {
-      found.push(finding('http/500', where, `sending ${sent} produced an unhandled failure (${res.status}) instead of a plain refusal — the screen will show a blank or a raw error`, { soft: true }));
+      found.push(finding('http/500', where, `on ${label}, sending ${sent} produced an unhandled failure (${res.status}) instead of a plain refusal — the screen will show a blank or a raw error`, { soft: true }));
     }
     if (/root:x:0:0|\/bin\/(ba)?sh\b/.test(res.text || '')) {
-      found.push(finding('http/traversal', where, `sending ${sent} returned the contents of a file from outside the system's own folder`, { severe: true }));
+      found.push(finding('http/traversal', where, `on ${label}, sending ${sent} returned the contents of a file from outside the system's own folder`, { severe: true }));
     }
   };
-
-  const { server } = ctx;
 
   for (const r of routes) {
     if (NOT_ATTACKED.has(r.path)) continue;
@@ -125,6 +123,9 @@ async function run(ctx) {
           continue;
         }
         judge(res, where, t.label ? `an address containing ${t.label}` : 'an ordinary request');
+        // How much this address had to say. Used only to prove the seeded pass
+        // is reaching code the empty pass could not.
+        if (!hasParam) tally.bodySize[where] = (res.text || '').length;
       } else {
         for (const b of hostileBodies()) {
           let res;
@@ -155,9 +156,9 @@ async function run(ctx) {
     found.push(finding('http/dead', 'the whole service', `the service is no longer running after the sweep; it exited with ${JSON.stringify(server.exited())}`, { severe: true }));
   }
 
-  ctx.note(`${tally.sent} hostile requests sent; answers: ${Object.entries(tally.byStatus).sort().map(([k, v]) => `${k}×${v}`).join(' ')}`);
+  ctx.note(`${label}: ${tally.sent} hostile requests sent; answers: ${Object.entries(tally.byStatus).sort().map(([k, v]) => `${k}×${v}`).join(' ')}`);
   if (tally.sent < 100) {
-    found.push(finding('http/instrument', 'this test itself', `only ${tally.sent} requests were sent across ${routes.length} addresses — the sweep is not reaching what it claims to reach`, { instrument: true }));
+    found.push(finding('http/instrument', 'this test itself', `only ${tally.sent} requests were sent across ${routes.length} addresses on ${label} — the sweep is not reaching what it claims to reach`, { instrument: true }));
   }
   if (!Object.keys(tally.byStatus).some((k) => Number(k) >= 400 && Number(k) < 500)) {
     found.push(finding('http/instrument', 'this test itself', 'not one hostile request was refused with a 4xx. Either every address accepts anything, or the requests are not arriving — and this test cannot tell which, so it is reporting itself as broken rather than as a pass.', { instrument: true }));
@@ -171,6 +172,39 @@ async function run(ctx) {
         found.push(finding('http/trace', 'the whole service', 'the service answers TRACE, which echoes a request back and is a known way to read headers that were not meant to be readable'));
       }
     } catch (_) { /* refusing is right */ }
+  }
+
+  return tally;
+}
+
+async function run(ctx) {
+  const found = [];
+  const routes = discoverRoutes();
+  ctx.note(`${routes.length} addresses read out of the code; ${NOT_ATTACKED.size} left out on purpose (they reach the internet): ${[...NOT_ATTACKED].join(', ')}`);
+
+  // TWICE. An empty system answers "nothing here" to a third of everything
+  // asked of it, and an address that never reaches its own working has not
+  // really been attacked. The second pass runs against a system holding real
+  // candles, a real setup and a real journal, all written through the system's
+  // own code.
+  const emptyTally = await sweep(ctx.servers.empty, 'an empty system', found, ctx);
+  const seededTally = await sweep(ctx.servers.seeded, 'a system holding data', found, ctx);
+
+  // Prove the seeding did something. If the same number of addresses still say
+  // "nothing here", the second pass added no coverage and saying otherwise
+  // would be a false claim.
+  // The first version of this counted "nothing here" replies. That number is
+  // dominated by the deliberately invalid addresses the sweep sends on purpose,
+  // so it did not move and the check reported a failure that was really its own
+  // mistake. What actually shows the seeded pass reaching further is how much
+  // MORE each plain address has to say once the system holds something.
+  const richer = Object.keys(seededTally.bodySize)
+    .filter((k) => (seededTally.bodySize[k] || 0) > (emptyTally.bodySize[k] || 0));
+  ctx.note(`${richer.length} of ${Object.keys(seededTally.bodySize).length} plain addresses answered with more once the system held data`);
+  if (!richer.length) {
+    found.push(finding('http/instrument', 'this test itself',
+      'seeding the system with real candles, a real setup and a real journal made no address answer with any more than it did when the system was empty. The second pass is not reaching code the first did not, so the extra coverage it claims is not real.',
+      { instrument: true }));
   }
 
   return found;

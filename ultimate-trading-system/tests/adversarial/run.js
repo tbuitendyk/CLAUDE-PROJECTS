@@ -21,11 +21,12 @@
 const fs = require('fs');
 const path = require('path');
 const { makeSandbox, dropSandbox, startServer, BASE_PORT } = require('./harness');
+const { seed } = require('./seed');
 
 const BASELINE = path.join(__dirname, 'baseline.json');
 
 const ATTACKS = [
-  { mod: './attack-http', needs: 'server' },
+  { mod: './attack-http', needs: 'servers' },
   { mod: './attack-schema', needs: null },
   { mod: './attack-candles', needs: 'sandbox' },
   { mod: './attack-interface', needs: null },
@@ -53,7 +54,7 @@ async function main() {
 
   const all = [];
   const notes = [];
-  let serverSandbox = null; let server = null; let candleSandbox = null;
+  let sandboxes = []; let servers = [];
 
   try {
     for (const spec of ATTACKS) {
@@ -61,14 +62,20 @@ async function main() {
       if (only && !spec.mod.includes(only)) continue;
       const ctx = { note: (m) => notes.push(`  ${m}`), dataDir };
 
-      if (spec.needs === 'server') {
-        serverSandbox = makeSandbox('srv');
-        server = await startServer(serverSandbox, BASE_PORT);
-        ctx.server = server;
-        ctx.sandbox = serverSandbox;
+      if (spec.needs === 'servers') {
+        // Two systems: one holding nothing, one holding real data written
+        // through the system's own code. Separate copies and separate ports so
+        // neither can see the other.
+        const emptyBox = makeSandbox('empty');
+        const seededBox = makeSandbox('seeded');
+        seed(seededBox);
+        sandboxes = [emptyBox, seededBox];
+        servers = [await startServer(emptyBox, BASE_PORT), await startServer(seededBox, BASE_PORT + 1)];
+        ctx.servers = { empty: servers[0], seeded: servers[1] };
       } else if (spec.needs === 'sandbox') {
-        candleSandbox = makeSandbox('cand');
-        ctx.sandbox = candleSandbox;
+        const box = makeSandbox('cand');
+        sandboxes = [box];
+        ctx.sandbox = box;
       }
 
       process.stdout.write(`\n== ${attack.name}\n`);
@@ -83,14 +90,14 @@ async function main() {
       process.stdout.write(`  ${out.length} finding(s)\n`);
       out.forEach((f) => all.push({ ...f, attack: attack.name }));
 
-      if (server) { await server.stop(); server = null; }
-      if (serverSandbox) { dropSandbox(serverSandbox); serverSandbox = null; }
-      if (candleSandbox) { dropSandbox(candleSandbox); candleSandbox = null; }
+      for (const s2 of servers) await s2.stop();
+      servers = [];
+      sandboxes.forEach(dropSandbox);
+      sandboxes = [];
     }
   } finally {
-    if (server) await server.stop();
-    dropSandbox(serverSandbox);
-    dropSandbox(candleSandbox);
+    for (const s2 of servers) await s2.stop();
+    sandboxes.forEach(dropSandbox);
   }
 
   // A broken instrument is reported first and on its own. A test that could not
