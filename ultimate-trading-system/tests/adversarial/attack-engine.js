@@ -38,14 +38,20 @@ function run(ctx) {
   // is what a number becomes after a trip through a stored file — is priced as
   // the opposite direction rather than refused.
   const asNumber = pnlAt(1, 100, 110, 0);
-  const asText = pnlAt('1', 100, 110, 0);
-  if (asText !== asNumber) {
+  // Refusing is the pass. The attack itself used to call this bare, so once the
+  // fix landed the attack crashed and reported ITSELF as broken rather than
+  // reporting the fix — which the suite caught, because an attack that could
+  // not run is never counted as a clean result.
+  let asText = null;
+  try { asText = pnlAt('1', 100, 110, 0); } catch (_) { asText = 'REFUSED'; }
+  if (asText !== 'REFUSED' && asText !== asNumber) {
     found.push(finding('engine/direction', 'the function that prices a trade',
       `a LONG booked as the number 1 makes ${asNumber}, and the same trade booked as the text "1" makes ${asText}. A number that has been through a stored file comes back as text, and the same winning trade is then recorded as an equal and opposite loss. Nothing refuses it.`,
       { severe: true }));
   }
   for (const [label, dir] of [['the text "-1"', '-1'], ['true', true], ['null', null], ['not-a-number', NaN], ['the word "long"', 'long']]) {
-    const v = pnlAt(dir, 100, 110, 0);
+    let v = null;
+    try { v = pnlAt(dir, 100, 110, 0); } catch (_) { continue; } // refusing is right
     if (Number.isFinite(v) && v !== 0) {
       found.push(finding('engine/direction', 'the function that prices a trade',
         `a direction given as ${label} is priced as a real trade worth ${v} rather than being refused. Only the number 1 counts as a long; everything else that is not exactly 0 is treated as a short.`));
@@ -53,8 +59,9 @@ function run(ctx) {
   }
 
   // A trade entered at a price of zero.
-  const zeroEntry = pnlAt(1, 0, 110, 0);
-  if (!Number.isFinite(zeroEntry)) {
+  let zeroEntry = 'REFUSED';
+  try { zeroEntry = pnlAt(1, 0, 110, 0); } catch (_) { /* refusing is right */ }
+  if (zeroEntry !== 'REFUSED' && !Number.isFinite(zeroEntry)) {
     found.push(finding('engine/infinite', 'the function that prices a trade',
       `a trade entered at a price of zero books ${String(zeroEntry)} — an infinite profit, which will then outrank every genuine result it is compared against.`,
       { severe: true }));
@@ -64,9 +71,10 @@ function run(ctx) {
 
   // voteOf counts into a fixed set of three buckets. A label outside that set
   // increments nothing, so it is not a vote against — it is not a vote at all.
-  const stray = voteOf([1, 1, -1, -1, 7]);
+  let stray = 'REFUSED';
+  try { stray = voteOf([1, 1, -1, -1, 7]); } catch (_) { /* refusing is right */ }
   const without = voteOf([1, 1, -1, -1]);
-  if (stray !== without) {
+  if (stray !== 'REFUSED' && stray !== without) {
     found.push(finding('engine/committee', 'the committee vote',
       `adding one unrecognised opinion to a tied committee changes the answer from ${without} to ${stray}. An opinion the code does not recognise should not be able to break a tie.`));
   }
@@ -81,7 +89,8 @@ function run(ctx) {
   }
 
   // superOf with a quorum of zero: nobody has to agree.
-  const emptyAtZero = superOf([], 0);
+  let emptyAtZero = 0;
+  try { emptyAtZero = superOf([], 0); } catch (_) { emptyAtZero = 0; } // refusing is right
   if (emptyAtZero !== 0) {
     found.push(finding('engine/committee', 'the supermajority gate',
       `an EMPTY committee at a quorum of zero returns ${emptyAtZero} — a definite trading direction from nobody at all.`,
@@ -92,9 +101,12 @@ function run(ctx) {
 
   // stats.js says an empty list returns null so that "not available" can be
   // told from a number. A list with a broken number in it makes no such promise.
-  const withNan = median([1, 2, NaN, 4, 5]);
-  const reordered = median([NaN, 1, 2, 4, 5]);
-  if (withNan !== reordered) {
+  let withNan = 'REFUSED'; let reordered = 'REFUSED';
+  try { withNan = median([1, 2, NaN, 4, 5]); } catch (_) { /* refusing is right */ }
+  try { reordered = median([NaN, 1, 2, 4, 5]); } catch (_) { /* refusing is right */ }
+  if (withNan === 'REFUSED' && reordered === 'REFUSED') {
+    // both refused — the honest answer
+  } else if (withNan !== reordered) {
     found.push(finding('engine/median', 'the middle value of a list',
       `the same five numbers, one of them broken, give a middle value of ${String(withNan)} in one order and ${String(reordered)} in another. The answer depends on the order the values happened to arrive in, and neither answer says anything is wrong.`));
   } else if (Number.isFinite(withNan)) {

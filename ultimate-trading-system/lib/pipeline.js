@@ -60,6 +60,9 @@ function tuneTau(valChunks, valProbs, tradeMap, geo, feePerLeg) {
       const entryC = tradeMap.get(c.startTs + geo.entryOffsetH * HOUR_MS);
       const exitC = tradeMap.get(c.startTs + geo.exitOffsetH * HOUR_MS);
       if (!entryC || !exitC) return;
+      // Same rule as the labeller: an invented candle is not a price anything
+      // traded at, so it cannot price a candidate threshold either.
+      if (entryC.filled || exitC.filled) return;
       pnl += pnlAt(call, entryC.open, exitC.open, feePerLeg);
       trades++;
     });
@@ -70,6 +73,118 @@ function tuneTau(valChunks, valProbs, tradeMap, geo, feePerLeg) {
     if (row.pnl > best.pnl || (row.pnl === best.pnl && row.tau > best.tau)) best = row;
   }
   return { tau: best.tau, tauLadder: ladder };
+}
+
+// WHAT CONDITION IS THIS SERIES IN (added 2026-08-21).
+//
+// Every number the system reports is worked out from these candles, and a
+// month that is short, holed, duplicated, out of order or carrying impossible
+// prices used to be loaded WITHOUT A WORD. A rule tested against it is scored
+// on data that is not what it appears to be, and the score comes back looking
+// perfectly ordinary — which is the only failure shape that reaches a trading
+// decision unnoticed.
+//
+// This does not refuse anything. Refusing is a decision about what the owner
+// may run, and that is theirs. It makes the condition SAYABLE, so a screen can
+// say it.
+// `monthCounts` maps 'YYYY-MM' to how many candles that month contributed. It
+// is needed because a month TRUNCATED AT THE END has no internal gap — first to
+// last is unbroken — so nothing in the rows themselves can reveal it. Only
+// knowing which month it was supposed to be can.
+// One month's contribution: how many candles, and the first and last hour they
+// cover. The two timestamps are what make "short at which end" answerable.
+function tally(rows) {
+  if (!rows || !rows.length) return { count: 0, first: null, last: null };
+  let first = Infinity; let last = -Infinity;
+  for (const r of rows) { if (r && Number.isFinite(r.ts)) { if (r.ts < first) first = r.ts; if (r.ts > last) last = r.ts; } }
+  return { count: rows.length, first: Number.isFinite(first) ? first : null, last: Number.isFinite(last) ? last : null };
+}
+
+function describeSeries(rows, monthCounts = null) {
+  const out = {
+    candles: rows.length,
+    distinctHours: 0,
+    duplicateHours: 0,
+    outOfOrder: 0,
+    gaps: 0,
+    missingHours: 0,
+    badPrices: 0,
+    nonPositivePrices: 0,
+    lowAboveHigh: 0,
+    invented: 0,
+    shortMonths: [],
+  };
+  if (monthCounts) {
+    // WHICH END IS IT SHORT AT. That question answers it, where counting alone
+    // cannot. A month missing hours at the START is a pair that had not started
+    // trading yet — ordinary, for the first month held. A month missing hours
+    // at the END is truncated, and that is a fault unless the month is not over.
+    //
+    // The first version of this simply skipped the first and last month, which
+    // is crude and, on a single-month cache, skips the only month there is —
+    // so a month cut off a third of the way through reported nothing at all.
+    const keys = Object.keys(monthCounts).sort();
+    const now = new Date();
+    const thisMonth = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}`;
+    keys.forEach((mm, i) => {
+      const c = monthCounts[mm];
+      if (!c || !c.count) return;
+      const [y, m] = mm.split('-').map(Number);
+      const from = Date.UTC(y, m - 1, 1);
+      const to = Date.UTC(m === 12 ? y + 1 : y, m === 12 ? 0 : m, 1);
+      const expect = (to - from) / HOUR_MS;
+      if (c.count >= expect) return;
+      const startsLate = c.first > from;
+      const endsEarly = c.last < to - HOUR_MS;
+      const firstHeld = i === 0;
+      // ONLY THE CURRENT MONTH IS EXCUSED FOR ENDING EARLY. "It is the newest
+      // month held" is not a reason — the data source publishes past months
+      // complete, so a past month that stops early is truncated whether or not
+      // anything newer sits beside it. Excusing the newest held month meant a
+      // cache holding ONE month could never report that month as short at all,
+      // which is precisely the case the attack tests.
+      const excusedStart = startsLate && firstHeld;
+      const excusedEnd = endsEarly && mm === thisMonth;
+      // Short at an end that has a reason, and short nowhere else: not a fault.
+      const unexplained = (startsLate && !excusedStart) || (endsEarly && !excusedEnd)
+        || (!startsLate && !endsEarly); // short in the middle, i.e. holes
+      if (!unexplained) return;
+      out.shortMonths.push({
+        month: mm, have: c.count, expect,
+        where: startsLate && endsEarly ? 'both ends' : (startsLate ? 'the start' : (endsEarly ? 'the end' : 'the middle')),
+      });
+    });
+  }
+  if (!rows.length) return out;
+  const seen = new Set();
+  let prev = null;
+  for (const r of rows) {
+    if (!r) { out.badPrices += 1; continue; }
+    if (seen.has(r.ts)) out.duplicateHours += 1; else seen.add(r.ts);
+    if (prev !== null) {
+      if (r.ts <= prev) out.outOfOrder += 1;
+      else {
+        const missing = Math.round((r.ts - prev) / HOUR_MS) - 1;
+        if (missing > 0) { out.gaps += 1; out.missingHours += missing; }
+      }
+    }
+    prev = r.ts;
+    if (r.filled) out.invented += 1;
+    const vals = [r.open, r.high, r.low, r.close];
+    if (vals.some((v) => !Number.isFinite(Number(v)))) out.badPrices += 1;
+    else {
+      if (vals.some((v) => Number(v) <= 0)) out.nonPositivePrices += 1;
+      if (Number(r.low) > Number(r.high)) out.lowAboveHigh += 1;
+    }
+  }
+  out.distinctHours = seen.size;
+  return out;
+}
+
+// True when there is anything worth telling the owner about.
+function seriesIsClean(q) {
+  return !(q.duplicateHours || q.outOfOrder || q.gaps || q.badPrices
+    || q.nonPositivePrices || q.lowAboveHigh || (q.shortMonths && q.shortMonths.length));
 }
 
 function monthList(startMonth, endMonth) {
@@ -103,6 +218,7 @@ async function loadSymbol(symbol, months, onProgress) {
   const epoch = currentAbortEpoch();
   const rows = [];
   const missing = [];
+  const monthCounts = {};
   for (const { year, month } of months) {
     throwIfAbortedSince(epoch);
     const mm = `${year}-${String(month).padStart(2, '0')}`;
@@ -116,9 +232,13 @@ async function loadSymbol(symbol, months, onProgress) {
       missing.push(mm);
       const dayRows = monthFromDayFiles(symbol, year, month);
       if (dayRows) for (const r of dayRows) rows.push(r);
-    } else for (const r of monthRows) rows.push(r); // no spread-push: keeps arg counts off the call stack
+      monthCounts[mm] = tally(dayRows);
+    } else {
+      for (const r of monthRows) rows.push(r); // no spread-push: keeps arg counts off the call stack
+      monthCounts[mm] = tally(monthRows);
+    }
   }
-  return { rows, missing };
+  return { rows, missing, quality: describeSeries(rows, monthCounts) };
 }
 
 // "All loaded data" mode: read exactly the months already cached on disk
@@ -133,6 +253,7 @@ async function loadSymbolAll(symbol, onProgress) {
   const rows = [];
   const monthly = new Set(cachedMonths(symbol));
   const list = [...new Set([...monthly, ...cachedDayMonths(symbol)])].sort();
+  const monthCounts = {};
   for (const mm of list) {
     throwIfAbortedSince(epoch);
     onProgress(`reading cached ${symbol} ${mm}`);
@@ -141,8 +262,9 @@ async function loadSymbolAll(symbol, onProgress) {
       ? await monthlyKlines(symbol, year, month)
       : monthFromDayFiles(symbol, year, month);
     if (monthRows) for (const r of monthRows) rows.push(r);
+    monthCounts[mm] = tally(monthRows);
   }
-  return { rows, missing: [], cachedMonthCount: list.length };
+  return { rows, missing: [], cachedMonthCount: list.length, quality: describeSeries(rows, monthCounts) };
 }
 
 // Map a fractional null-shift request (0..1) onto a pair's own cycle of n
@@ -155,4 +277,4 @@ function deriveShift(n, frac) {
   return Math.min(n - 1, Math.max(1, 8 + Math.round(frac * usable)));
 }
 
-module.exports = { monthList, deriveShift, loadSymbol, loadSymbolAll, MIN_CHUNKS, tuneTau };
+module.exports = { monthList, deriveShift, loadSymbol, loadSymbolAll, MIN_CHUNKS, tuneTau, describeSeries, seriesIsClean };

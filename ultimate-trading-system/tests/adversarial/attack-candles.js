@@ -58,6 +58,15 @@ const path = require('path');
     out.rows = Array.isArray(r.rows) ? r.rows.length : null;
     out.missing = r.missing || [];
     out.warned = Object.keys(r).filter((k) => !['rows', 'missing'].includes(k));
+    // WHAT THE LOADER SAYS ABOUT THE CONDITION OF WHAT IT READ. Comparing only
+    // the SHAPE of the reply could not tell "reports a summary that flags the
+    // problem" from "reports nothing" — both look the same once the summary
+    // field exists. This reads the content.
+    out.quality = r.quality || null;
+    try {
+      const { seriesIsClean } = require('./lib/pipeline');
+      out.saysClean = r.quality ? seriesIsClean(r.quality) : null;
+    } catch (_) { out.saysClean = null; }
     const closes = (r.rows || []).map((x) => x && Number(x.close));
     out.badCloses = closes.filter((c) => !Number.isFinite(c)).length;
     out.negCloses = closes.filter((c) => Number.isFinite(c) && c <= 0).length;
@@ -126,8 +135,14 @@ async function run(ctx) {
     // A complaint is anything the reader says that it does NOT also say about
     // an honest month.
     const shape = JSON.stringify({ missing: r.missing || [], warned: (r.warned || []).slice().sort() });
-    if (shape !== quietShape) {
-      ctx.note(`${s.label}: accepted but flagged (${shape}) — acceptable`);
+    // A complaint is: a different reply from the honest case, OR a condition
+    // report that says this series is NOT clean. Either way the owner can be
+    // told. Silence is the failure.
+    if (shape !== quietShape || r.saysClean === false) {
+      const how = r.saysClean === false
+        ? `flagged in the condition report (${JSON.stringify(r.quality)})`
+        : `flagged (${shape})`;
+      ctx.note(`${s.label}: accepted but ${how} — acceptable`);
       continue;
     }
     // Accepted in silence. Now: is the result actually different from the truth?

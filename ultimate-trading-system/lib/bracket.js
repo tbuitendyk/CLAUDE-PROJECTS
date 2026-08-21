@@ -122,7 +122,9 @@ function simMarket(periods, calls, tradeMap, geo, { tHours, feePerLeg, stepMs = 
     const dir = calls ? calls[i] : 0;
     if (dir === 0) return; // stood aside — the books' rule, not a skipped bar
     const entryTs = per.startTs + geo.entryOffsetH * HOUR_MS;
-    const ref = tradeMap.get(entryTs);
+    // An invented candle is not a price anything could have been bought at.
+    const refRaw = tradeMap.get(entryTs);
+    const ref = (refRaw && refRaw.filled) ? undefined : refRaw;
     if (!ref) {
       unpriced++;
       return;
@@ -188,7 +190,9 @@ function simBracket(periods, calls, tradeMap, geo, { dPct, tHours, gate, feePerL
     else sides = call === 1 ? [1] : call === -1 ? [-1] : [];
     if (!sides.length) return;
     const entryTs = per.startTs + geo.entryOffsetH * HOUR_MS;
-    const ref = tradeMap.get(entryTs);
+    // An invented candle is not a price anything could have been bought at.
+    const refRaw = tradeMap.get(entryTs);
+    const ref = (refRaw && refRaw.filled) ? undefined : refRaw;
     if (!ref) {
       unpriced++;
       return;

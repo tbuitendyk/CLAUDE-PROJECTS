@@ -185,7 +185,10 @@ function buildChunks(tradeMap, compareMap, dormantPct, featureSet = 'compressed'
   if (minTs === Infinity) return { chunks: [], dropped: { gap: 0, noLabel: 0 }, considered: 0 };
 
   const chunks = [];
-  const dropped = { gap: 0, noLabel: 0 };
+  // `invented` is counted apart from `noLabel` on purpose. "There was no price"
+  // and "the price we have was made up to bridge a hole" are different facts,
+  // and only one of them used to be visible.
+  const dropped = { gap: 0, noLabel: 0, invented: 0 };
   let starts = geo.anchor === 'monday' ? mondayStarts(minTs, maxTs) : dailyStarts(minTs, maxTs);
   if (weekdaysOnly && WEEKDAY_STARTS[geometry]) {
     const allowed = new Set(WEEKDAY_STARTS[geometry]);
@@ -214,7 +217,17 @@ function buildChunks(tradeMap, compareMap, dormantPct, featureSet = 'compressed'
     } else {
       const entryC = tradeMap.get(start + geo.entryOffsetH * HOUR_MS);
       const exitC = tradeMap.get(start + geo.exitOffsetH * HOUR_MS);
-      if (entryC && exitC) {
+      // A CANDLE THAT WAS INVENTED CANNOT BE A PRICE A TRADE HAPPENS AT
+      // (found 2026-08-21). forwardFill bridges a hole of up to three hours by
+      // repeating the last close, which is defensible for working out features
+      // — you need an unbroken series — and is not defensible here. There was
+      // no price. A trade booked at one is fabricated money, and it looked
+      // exactly like real money: a three-hour outage turned a 25-cent loss into
+      // a $5.75 profit at a price that never traded, and both runs reported the
+      // same chunk count with nothing missing.
+      if ((entryC && entryC.filled) || (exitC && exitC.filled)) {
+        dropped.invented++;
+      } else if (entryC && exitC) {
         c1 = entryC.open;
         c2 = exitC.open;
       }

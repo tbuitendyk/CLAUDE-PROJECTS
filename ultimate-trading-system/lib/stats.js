@@ -13,8 +13,19 @@
 // Middle value of a list. Even counts average the two middle values. An empty
 // list has no middle, so it returns null rather than NaN — a caller writing
 // this into a report needs "not available" to be distinguishable from a number.
+// A BROKEN NUMBER IN THE LIST IS NOT A NUMBER TO SORT AROUND (2026-08-21).
+// A list containing not-a-number sorted differently depending on the order the
+// values arrived in, so the same five values gave a middle of NaN one way and 2
+// the other — and neither answer said anything was wrong. The header above
+// promises that "not available" is distinguishable from a number, and that
+// promise only holds if a list that cannot be summarised says so.
 function median(values) {
-  const v = [...values].sort((a, b) => a - b);
+  const list = [...values];
+  if (list.some((x) => !Number.isFinite(x))) {
+    throw new TypeError('median: the list contains a value that is not a finite number. '
+      + 'Sorting around it gave a different answer depending on the order the values arrived in.');
+  }
+  const v = list.sort((a, b) => a - b);
   if (!v.length) return null;
   const mid = Math.floor(v.length / 2);
   return v.length % 2 ? v[mid] : (v[mid - 1] + v[mid]) / 2;

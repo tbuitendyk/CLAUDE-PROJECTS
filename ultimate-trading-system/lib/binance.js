@@ -125,7 +125,18 @@ async function monthlyKlines(symbol, year, month, interval = '1h') {
   const file = cachePath(symbol, year, month, interval);
   try {
     const cached = JSON.parse(fs.readFileSync(file, 'utf8'));
-    if (Array.isArray(cached)) return cached;
+    // A MONTH FILE HOLDING NOTHING IS A MONTH WE DO NOT HAVE (found
+    // 2026-08-21). An empty list used to be handed back as a satisfied month:
+    // it contributed no candles, was never reported missing by either loading
+    // path, and so the backfill never ran for it — the month counted as cached
+    // forever and could not be repaired. Worse, the download writes exactly
+    // that file if the published format ever changes, so the system could
+    // quietly convert itself to holding nothing.
+    //
+    // Falling through to the fetch is what "we do not have this" already means
+    // everywhere else, so the repair paths work again without being taught
+    // anything new.
+    if (Array.isArray(cached) && cached.length) return cached;
   } catch {
     /* no cache yet */
   }
@@ -136,6 +147,17 @@ async function monthlyKlines(symbol, year, month, interval = '1h') {
   if (!res.ok) throw new Error(`binance data ${res.status} for ${symbol} ${interval} ${year}-${mm}`);
   const buf = Buffer.from(await res.arrayBuffer());
   const rows = parseKlineCsv(unzipSingleEntry(buf).toString('utf8'), interval === '1m' ? 60_000 : HOUR_MS);
+  // A BUNDLE THAT PARSED TO NOTHING IS A PARSING FAILURE, NOT AN EMPTY MONTH.
+  // The published file existed and was downloaded, so the month has candles in
+  // it; getting none back means the format changed under us — the parser skips
+  // any line with fewer than eight fields. Writing that empty result to the
+  // cache is how the system could quietly convert itself to holding nothing,
+  // one month at a time, while every screen kept reporting the month as held
+  // (found 2026-08-21). Stop loudly instead.
+  if (!rows.length) {
+    throw new Error(`${symbol} ${year}-${mm}: the published file downloaded but no candles could be read out of it. `
+      + 'The format has probably changed. Nothing has been written to the cache.');
+  }
   try {
     fs.mkdirSync(CACHE_DIR, { recursive: true });
     // ATOMIC: worker threads read these files concurrently with the main
