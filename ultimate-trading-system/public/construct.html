@@ -88,32 +88,47 @@
             font-size:.82rem; line-height:1.35; }
   .toptab:hover { border-color:var(--accent); }
   .toptab.on { background:var(--tabon); color:var(--fg); font-weight:600; border-color:var(--accent); }
+  /* THE TOP OF THE PAGE STAYS PUT (owner, 2026-08-21). The tabs used to scroll
+     away with everything else, so getting back to another one meant scrolling
+     to the top first — on the Help tab, which is long, that is a long way.
+     Everything above the content is frozen: the site line, the page title, the
+     line saying what the page is for, and the tabs themselves.
+
+     The negative margin and matching padding are not decoration. The page has
+     padding around it, and a sticky block would otherwise let the scrolling
+     content show through that padding at the sides and above. This makes the
+     frozen block span the full width and carry the page background with it. */
+  .pagetop { position:sticky; top:0; z-index:20; background:var(--bg);
+    margin:-1.1rem -1.1rem 0; padding:1.1rem 1.1rem 0; }
 </style>
 </head>
 <body>
-  <div class="row" style="border-bottom:1px solid var(--line); padding-bottom:.55rem; margin-bottom:.8rem; font-size:.85rem">
-    <a href="https://www.buitendyk.ca/" style="text-decoration:none; font-weight:700; color:var(--fg)">buitendyk<span style="color:var(--accent)">.ca</span></a>
-    <span class="muted">/ ultimate trading system</span>
-    <nav class="toptabs">
-    <a class="toptab" href="setup.html">Setup</a>
-    <a class="toptab on" href="construct.html">Construct</a>
-    <a class="toptab" href="trade.html">Trade</a>
-    </nav>
-    <div class="spacer"></div>
-  </div>
-  <div class="row">
-    <h1 style="margin:0">Construct</h1>
-    <span id="strip" class="muted" style="font-size:.8rem">release —</span>
-    <span id="utcClock" class="muted" style="font-variant-numeric:tabular-nums">—</span>
-    <div class="spacer"></div>
-    <button class="themebtn" id="cpubtn" title="service-wide worker cap. Every sweep, null board and tune on this box shares it — lowering it makes runs slower and leaves the machine responsive; raising it does the opposite. Click to cycle.">CPU —</button>
-    <button class="themebtn" id="themebtn">◐ theme</button>
-  </div>
-  <div class="sub">The guided narrowing flow: <b>Data → Sweep → Boards → Verify → History → Tune →
-    Greenlight</b>. Wide to find, one variable at a time to confirm; money claims only from the end of the chain.
-    Everything here is deterministic code — no AI in any result.</div>
+  <div class="pagetop">
+    <div class="row" style="border-bottom:1px solid var(--line); padding-bottom:.55rem; margin-bottom:.8rem; font-size:.85rem">
+      <a href="https://www.buitendyk.ca/" style="text-decoration:none; font-weight:700; color:var(--fg)">buitendyk<span style="color:var(--accent)">.ca</span></a>
+      <span class="muted">/ ultimate trading system</span>
+      <nav class="toptabs">
+      <a class="toptab" href="setup.html">Setup</a>
+      <a class="toptab on" href="construct.html">Construct</a>
+      <a class="toptab" href="trade.html">Trade</a>
+      </nav>
+      <div class="spacer"></div>
+    </div>
+    <div class="row">
+      <h1 style="margin:0">Construct</h1>
+      <span id="strip" class="muted" style="font-size:.8rem">release —</span>
+      <span id="utcClock" class="muted" style="font-variant-numeric:tabular-nums">—</span>
+      <div class="spacer"></div>
+      <button class="themebtn" id="cpubtn" title="service-wide worker cap. Every sweep, null board and tune on this box shares it — lowering it makes runs slower and leaves the machine responsive; raising it does the opposite. Click to cycle.">CPU —</button>
+      <button class="themebtn" id="themebtn">◐ theme</button>
+    </div>
+    <div class="sub">The guided narrowing flow: <b>Data → Sweep → Boards → Verify → History → Tune →
+      Greenlight</b>. Wide to find, one variable at a time to confirm; money claims only from the end of the chain.
+      Everything here is deterministic code — no AI in any result.</div>
 
-  <div class="tabs" id="tabs"></div>
+    <div class="tabs" id="tabs"></div>
+  </div>
+
   <div id="view"></div>
 
 <script src="help-content.js?v=1"></script>
