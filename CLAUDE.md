@@ -142,6 +142,18 @@ is the same fault pointing the other way.
 **To check a word**: find the tab in `ultimate-trading-system/SCREEN-WORDS.md`
 and look. That is the whole procedure.
 
+**AND IT IS GENERATED FROM WHAT THE BOX SERVES, NOT FROM THE REPO** (owner
+order, 2026-08-22). Between a commit and its deploy those are different screens.
+I renamed a control, held the deploy back so the owner's running sweep would
+survive, and then named the new label to them as though it were on their screen
+— the rule's own tool authorising a word they could not see. `SERVED.json`
+records the commit the box last deployed and the hash of every file the screens
+are drawn from; the generator reads the source back out of that commit, checks
+it against those hashes, and REFUSES rather than guess. **A label just changed
+does not appear on the list until it is deployed, and that is correct.** Capture
+the record with `vps-access/scripts/uts-served-fingerprint.sh` after every
+deploy, then `node tests/sweep-words.js --write`.
+
 **AND THE LIST ITSELF IS CHECKED BOTH WAYS** (2026-08-22). It used to be checked
 only from the list towards the page — everything the generator found had to be
 in the file. That catches a stale file and cannot catch a generator that never

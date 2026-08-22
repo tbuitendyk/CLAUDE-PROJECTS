@@ -17,27 +17,39 @@ const path = require('path');
 const ROOT = path.join(__dirname, '..');
 const SRC = fs.readFileSync(path.join(ROOT, 'public', 'construct.js'), 'utf8');
 
+// WHICH SOURCE. On the box this file sits beside the very construct.js the
+// service is serving, so reading its own copy is exactly right and is what the
+// Help tab needs. In the repository it is not: between a commit and its deploy
+// the working tree describes a screen nobody can see yet, and the word list —
+// which is the ONLY vocabulary permitted about a screen — was generated from
+// it. So the reading functions take an optional source, and the word list
+// generator passes the source the box is actually serving (owner order,
+// 2026-08-22). The default is unchanged, so nothing else moves.
+function srcOf(src) { return typeof src === 'string' && src ? src : SRC; }
+
 // WHICH SCREENS EXIST, read from the code rather than listed here, so one added
 // tomorrow is covered without anybody remembering.
-function tabs() {
-  const m = /const TABS = \[([\s\S]*?)\];/.exec(SRC);
+function tabs(src) {
+  const S = srcOf(src);
+  const m = /const TABS = \[([\s\S]*?)\];/.exec(S);
   if (!m) throw new Error('TABS is gone - the screens cannot be read');
   return [...m[1].matchAll(/\['([^']+)',\s*'([^']+)'\]/g)]
     .map(([, key, label]) => ({ key, label, fn: `draw${key[0].toUpperCase()}${key.slice(1)}` }));
 }
 
 // One screen's renderer, brace-matched, so nothing from another leaks in.
-function drawBody(fnName) {
-  const start = SRC.indexOf(`async function ${fnName}()`);
+function drawBody(fnName, src) {
+  const S = srcOf(src);
+  const start = S.indexOf(`async function ${fnName}()`);
   if (start < 0) throw new Error(`${fnName}() is gone - that screen cannot be read`);
-  let i = SRC.indexOf('{', start);
+  let i = S.indexOf('{', start);
   const from = i;
   let depth = 0;
-  for (; i < SRC.length; i++) {
-    if (SRC[i] === '{') depth++;
-    else if (SRC[i] === '}') { depth--; if (depth === 0) break; }
+  for (; i < S.length; i++) {
+    if (S[i] === '{') depth++;
+    else if (S[i] === '}') { depth--; if (depth === 0) break; }
   }
-  return SRC.slice(from, i + 1);
+  return S.slice(from, i + 1);
 }
 
 // The words immediately before a control, which is what the owner reads as its
@@ -80,11 +92,11 @@ function controlsIn(body) {
   return out;
 }
 
-function byTab() {
+function byTab(src) {
   const map = {};
-  for (const t of tabs()) {
+  for (const t of tabs(src)) {
     let body = '';
-    try { body = drawBody(t.fn); } catch (_) { body = ''; }
+    try { body = drawBody(t.fn, src); } catch (_) { body = ''; }
     const seen = new Set();
     map[t.key] = { label: t.label, controls: controlsIn(body).filter((c) => {
       if (seen.has(c.id)) return false;

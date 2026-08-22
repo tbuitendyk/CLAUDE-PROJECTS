@@ -16,10 +16,78 @@
 const fs = require('fs');
 const path = require('path');
 
+const crypto = require('crypto');
+const { execFileSync } = require('child_process');
+
 const ROOT = path.join(__dirname, '..');
-const SRC = fs.readFileSync(path.join(ROOT, 'public', 'construct.js'), 'utf8');
 // One reader for which screens exist and what each one draws (lib/screencontrols.js).
-const { tabs, drawBody } = require('../lib/screencontrols');
+const screens = require('../lib/screencontrols');
+
+// THE LIST DESCRIBES THE SCREEN THE OWNER IS LOOKING AT, which is the one the
+// box is SERVING — not the one in the working tree (owner order, 2026-08-22).
+//
+// Between a commit and its deploy those are different screens. That is not a
+// corner case: a control was renamed, the commit was held back so a running
+// sweep would survive, and the list then authorised a name that was nowhere on
+// the owner's screen — which is the rule's own tool failing in the exact
+// direction the rule exists to prevent.
+//
+// SERVED.json records which commit the box last deployed and the hash of each
+// file the screens are drawn from, captured by
+// vps-access/scripts/uts-served-fingerprint.sh. The sources are read back out of
+// that commit and checked against those hashes, so this cannot quietly describe
+// something else. A mismatch is a REFUSAL: a word list that might be wrong is
+// worse than no word list, because the rule says the list is the authority.
+const SERVED_FILE = path.join(ROOT, 'SERVED.json');
+
+function fromCommit(commit, rel) {
+  return execFileSync('git', ['show', `${commit}:ultimate-trading-system/${rel}`],
+    { cwd: path.join(ROOT, '..'), maxBuffer: 1 << 28 });
+}
+
+function servedSource() {
+  if (process.argv.includes('--repo')) {
+    return { from: 'the working tree (--repo)', src: fs.readFileSync(path.join(ROOT, 'public', 'construct.js'), 'utf8') };
+  }
+  let served;
+  try { served = JSON.parse(fs.readFileSync(SERVED_FILE, 'utf8')); } catch (err) {
+    throw new Error('SERVED.json is missing or unreadable, so there is no record of what the box is showing. '
+      + 'Capture it with vps-access/scripts/uts-served-fingerprint.sh, or pass --repo to describe the working '
+      + `tree instead and know that is what you are doing. (${err.message})`);
+  }
+  const want = served.files && served.files['public/construct.js'];
+  if (!served.commit || !want) throw new Error('SERVED.json names no commit or no construct.js — nothing to read from');
+
+  let buf;
+  try { buf = fromCommit(served.commit, 'public/construct.js'); } catch (err) {
+    throw new Error(`the box is serving ${served.commit.slice(0, 12)} and this repository cannot read it `
+      + `(${err.message.split('\n')[0]}). Fetch it, or pass --repo and know the list will describe the working tree.`);
+  }
+  const got = crypto.createHash('sha256').update(buf).digest('hex');
+  if (got !== want.sha256 || buf.length !== want.bytes) {
+    throw new Error(`public/construct.js at ${served.commit.slice(0, 12)} does not match what the box reported serving `
+      + `(${got.slice(0, 12)}/${buf.length} against ${want.sha256.slice(0, 12)}/${want.bytes}). `
+      + 'Re-capture with uts-served-fingerprint.sh — a list generated from the wrong file is worse than none.');
+  }
+
+  // The dropdown CHOICES come from the running code rather than from the page,
+  // so they have to be the same running code. If they are not, the list would
+  // offer choices the screen does not, which is the same fault one level down.
+  const vocabRel = 'lib/vocabulary.js';
+  const here = fs.readFileSync(path.join(ROOT, vocabRel), 'utf8');
+  const there = fromCommit(served.commit, vocabRel).toString('utf8');
+  if (here !== there) {
+    throw new Error(`${vocabRel} has changed since the box deployed ${served.commit.slice(0, 12)}, so the choices this `
+      + 'list would offer are not the ones on the screen. Deploy, re-capture, and regenerate.');
+  }
+
+  return { from: `${served.commit.slice(0, 12)} — what the box is serving`, src: buf.toString('utf8'), served };
+}
+
+const SERVED = servedSource();
+const SRC = SERVED.src;
+const tabs = () => screens.tabs(SRC);
+const drawBody = (fn) => screens.drawBody(fn, SRC);
 
 // EVERY TAB, not just one (owner order, 2026-08-21). Each has its own renderer
 // and its own words, and a list for one screen leaves every other screen a place
@@ -279,6 +347,25 @@ if (require.main === module) {
       'and out of the choice lists the page fills its dropdowns from. Tooltips',
       'are deliberately excluded: hover text is not a name, and using it as one',
       'is the same fault wearing a disguise.',
+      '',
+      '## Which screen this describes',
+      '',
+      `Generated from **${SERVED.from}**, not from the working tree.`,
+      '',
+      'That distinction is the whole point. Between a commit and its deploy the',
+      'two describe different screens, and on 2026-08-22 exactly that happened: a',
+      'control was renamed, the deploy was held back so a running sweep would',
+      'survive, and this list then authorised a name that was nowhere on the',
+      "owner's screen. A word list generated from code nobody is looking at is",
+      'the rule failing in the direction the rule exists to prevent.',
+      '',
+      'So the source is read back out of the commit the box last deployed and',
+      'checked against the hashes it reported. A mismatch refuses rather than',
+      'guesses. `SERVED.json` holds that record; re-capture it with',
+      '`vps-access/scripts/uts-served-fingerprint.sh` after every deploy.',
+      '',
+      '**A label you have just changed will not appear here until it is',
+      'deployed, and that is correct** - until then the owner cannot see it.',
       '',
       '## The tabs',
       '',

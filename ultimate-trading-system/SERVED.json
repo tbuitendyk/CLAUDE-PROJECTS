@@ -1,0 +1,13 @@
+{
+  "note": "WHAT THE BOX IS SERVING. The closed word list is generated from this commit, not from the working tree, because between a commit and its deploy those describe different screens and the list is the only vocabulary permitted about a screen. Captured by vps-access/scripts/uts-served-fingerprint.sh; regenerate the list with `node tests/sweep-words.js --write`, which verifies these hashes before it reads anything.",
+  "commit": "b9c796e01ffbe61072b4253c3e36cd345137566c",
+  "subject": "Resume: carry on a sweep from where it stopped, and refuse when that would be dishonest",
+  "capturedAt": "2026-08-22T07:30:00Z",
+  "files": {
+    "public/construct.js": { "sha256": "621cdeea1d27cdb1ff6e6740730ce06dd7ce3f2890cf9460c4cf7ffcb9547867", "bytes": 185515 },
+    "public/help-content.js": { "sha256": "941badebd1f16851f940c1c527917a2d5e6bc3aa139940ce1e3fafa8347b1dc5", "bytes": 29435 },
+    "public/setup.html": { "sha256": "10ab868f18968248fff1aaffbe9c916b5030421effa45343fe71f8864d2dc107", "bytes": 9048 },
+    "public/trade.html": { "sha256": "4908fdbe267db9e4f2519741c6313e057cf50d03ab9a26e359e66e864619f8d4", "bytes": 76117 }
+  },
+  "htmlNotVerified": "public/construct.html is served with its cache markers rewritten to the content hash of each script, so its served bytes never equal its stored bytes. Nothing is generated from it."
+}

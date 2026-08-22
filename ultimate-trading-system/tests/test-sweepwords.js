@@ -73,6 +73,72 @@ module.exports = {
       + missing.join('\n  '));
   },
 
+  // THE LIST DESCRIBES THE SCREEN THE OWNER IS LOOKING AT (owner order,
+  // 2026-08-22), which is the one the box is SERVING and not the one in the
+  // working tree.
+  //
+  // What went wrong: a control was renamed, the commit was held back from
+  // deploy so a running sweep would survive, and this list then authorised a
+  // name that was nowhere on the owner's screen. The rule's own tool failing in
+  // the exact direction the rule exists to prevent — and it failed silently,
+  // because nothing anywhere knew which screen the list was describing.
+  //
+  // Watched failing 2026-08-22: changing a hash in SERVED.json makes the
+  // generator refuse, which fails theServedRecordMatchesTheCommitItNames;
+  // regenerating with --repo puts the working tree's commit in the header and
+  // fails theListSaysWhichScreenItDescribes.
+  async theServedRecordMatchesTheCommitItNames() {
+    const crypto = require('crypto');
+    const { execFileSync } = require('child_process');
+    const served = JSON.parse(fs.readFileSync(path.join(ROOT, 'SERVED.json'), 'utf8'));
+    assert.ok(/^[0-9a-f]{40}$/.test(served.commit || ''),
+      'SERVED.json must name the full commit the box deployed, or there is no way to read what it shows');
+    assert.ok(served.files && Object.keys(served.files).length,
+      'and the hash of every file the screens are drawn from, or the record proves nothing');
+
+    for (const [rel, want] of Object.entries(served.files)) {
+      let buf;
+      try {
+        buf = execFileSync('git', ['show', `${served.commit}:ultimate-trading-system/${rel}`],
+          { cwd: path.join(ROOT, '..'), maxBuffer: 1 << 28 });
+      } catch (err) {
+        assert.ok(false, `the box is serving ${served.commit.slice(0, 12)} and this repository cannot read ${rel} from it`);
+      }
+      const got = crypto.createHash('sha256').update(buf).digest('hex');
+      assert.strictEqual(got, want.sha256,
+        `${rel} at ${served.commit.slice(0, 12)} is not what the box reported serving — `
+        + 're-capture with vps-access/scripts/uts-served-fingerprint.sh');
+      assert.strictEqual(buf.length, want.bytes, `${rel} is a different length from the served copy`);
+    }
+
+    // and it must be a commit this branch actually contains, not one from
+    // somewhere else that happens to be readable
+    // `--is-ancestor` says so by EXITING zero, not by printing anything: with
+    // its output ignored the call returns null on success, so the answer is
+    // whether it threw.
+    let isAncestor = true;
+    try {
+      execFileSync('git', ['merge-base', '--is-ancestor', served.commit, 'HEAD'],
+        { cwd: path.join(ROOT, '..'), stdio: ['ignore', 'ignore', 'ignore'] });
+    } catch (_) { isAncestor = false; }
+    assert.ok(isAncestor,
+      `${served.commit.slice(0, 12)} is not an ancestor of this branch — the box is serving something this `
+      + 'branch does not contain, so nothing here can say what is on the screen');
+  },
+
+  // The file says which screen it is describing, so nobody has to guess.
+  async theListSaysWhichScreenItDescribes() {
+    const md = fs.readFileSync(path.join(ROOT, 'SCREEN-WORDS.md'), 'utf8');
+    const served = JSON.parse(fs.readFileSync(path.join(ROOT, 'SERVED.json'), 'utf8'));
+    assert.ok(md.includes(served.commit.slice(0, 12)),
+      `SCREEN-WORDS.md does not say it was generated from ${served.commit.slice(0, 12)}, the commit the box is serving. `
+      + 'Rebuild it: node tests/sweep-words.js --write');
+    assert.ok(/what the box is serving/.test(md),
+      'and it must say plainly that it describes the served screen rather than the working tree');
+    assert.ok(/will not appear here until it is/.test(md),
+      'including the consequence: a label just changed is not on the list until it is deployed');
+  },
+
   // A tab with no list at all is the gap this was built to close.
   async everyTabHasALisT() {
     const md = fs.readFileSync(path.join(ROOT, 'SCREEN-WORDS.md'), 'utf8');

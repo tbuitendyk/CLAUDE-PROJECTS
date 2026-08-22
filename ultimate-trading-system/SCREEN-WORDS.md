@@ -16,6 +16,25 @@ and out of the choice lists the page fills its dropdowns from. Tooltips
 are deliberately excluded: hover text is not a name, and using it as one
 is the same fault wearing a disguise.
 
+## Which screen this describes
+
+Generated from **b9c796e01ffb — what the box is serving**, not from the working tree.
+
+That distinction is the whole point. Between a commit and its deploy the
+two describe different screens, and on 2026-08-22 exactly that happened: a
+control was renamed, the deploy was held back so a running sweep would
+survive, and this list then authorised a name that was nowhere on the
+owner's screen. A word list generated from code nobody is looking at is
+the rule failing in the direction the rule exists to prevent.
+
+So the source is read back out of the commit the box last deployed and
+checked against the hashes it reported. A mismatch refuses rather than
+guesses. `SERVED.json` holds that record; re-capture it with
+`vps-access/scripts/uts-served-fingerprint.sh` after every deploy.
+
+**A label you have just changed will not appear here until it is
+deployed, and that is correct** - until then the owner cannot see it.
+
 ## The tabs
 
 - **Data**
@@ -70,14 +89,13 @@ again. and asset. back be been below board cache cached comma-sep corrupt curren
 
 # Sweep
 
-## What the controls are called (58)
+## What the controls are called (56)
 
 - `” — runs & greenlights`
 - `” will permanently remove:`
 - `1-in-`
 - `agree`
 - `all loaded data`
-- `also try moving stops`
 - `arm`
 - `band % (or auto)`
 - `Beating all`
@@ -100,7 +118,6 @@ again. and asset. back be been below board cache cached comma-sep corrupt curren
 - `greenlight(s),`
 - `greenlights:`
 - `is at best a`
-- `MB`
 - `min trades`
 - `no runs yet`
 - `null boards`
@@ -122,6 +139,7 @@ again. and asset. back be been below board cache cached comma-sep corrupt curren
 - `t`
 - `The last job did not finish:`
 - `trail`
+- `trailing plane`
 - `Trainings`
 - `triples`
 - `Units`
@@ -129,7 +147,6 @@ again. and asset. back be been below board cache cached comma-sep corrupt curren
 - `window layout`
 - `with contexts`
 - `x`
-- `x the replication work,`
 
 ## What the dropdowns offer (43)
 
@@ -193,21 +210,21 @@ again. and asset. back be been below board cache cached comma-sep corrupt curren
 - ” deleted.
 - and the saved models and tuning files belonging to them.
 - declared configs, each scored on every asset — roughly
-- per unit).
+- x the replication work.
 - the work — the whole run once for real, then once per board.
 - Open it on the Boards section to see what it managed to record
 
-## Every word, flat (201)
+## Every word, flat (199)
 
 ```
-1-day 1-in- 113h 137h 161h 17h 2-day 3-day 4-day 41h 65h 8-day 89h active agree all also always and any are argmax arm asset at attaches auto band be Beating been belonging best blank Board board. boards Boards box branch breakout but Campaign campaign campaigns cannot chain chunk claim config configs contexts Currently Daily data decision DECLARED declared default Delete deleted. Deleting deployed. description did directional doubles each end entry ETA Every every evidence exam existing exists files FIND finish first for forever from gate greenlight greenlights has heading holds in is it it. job jobs last launched layout legacy loaded locked managed market MB min minted models moving name never new No no not nothing null on once Open or pairs parent passes per permanently permute Phase promote Rate real record remove Removed replication result Retire rides roughly rounds run Running running. runs saved scans. score scored sealed section see set Set setup setups. shape singles start Start static still Stop stops sweep sweeps tab the The them them. then there this This to top Trade trades trail Trainings travels tree triples try tuning undone. unit Units universe View Weekly what while whole why wide will window with work yet
+1-day 1-in- 113h 137h 161h 17h 2-day 3-day 4-day 41h 65h 8-day 89h active agree all also always and any are argmax arm asset at attaches auto band be Beating been belonging best blank Board board. boards Boards box branch breakout but Campaign campaign campaigns cannot chain chunk claim config configs contexts Currently Daily data decision DECLARED declared default Delete deleted. Deleting deployed. description did directional doubles each end entry ETA Every every evidence exam existing exists files FIND finish first for forever from gate greenlight greenlights has heading holds in is it it. job jobs last launched layout legacy loaded locked managed market min minted models name never new No no not nothing null on once Open or pairs parent passes per permanently permute Phase plane promote Rate real record remove Removed replication result Retire rides roughly rounds run Running running. runs saved scans. score scored sealed section see set Set setup setups. shape singles start Start static still Stop sweep sweeps tab the The them them. then there this This to top Trade trades trail trailing Trainings travels tree triples tuning undone. Units universe View Weekly what while whole why wide will window with work work. yet
 ```
 
 ---
 
 # Boards
 
-## What the controls are called (77)
+## What the controls are called (76)
 
 - `— pick a run —`
 - `— watch it on the Sweep section`
@@ -266,7 +283,6 @@ again. and asset. back be been below board cache cached comma-sep corrupt curren
 - `save notes`
 - `saved runs`
 - `selected:`
-- `showing`
 - `showing 400 of`
 - `Size:`
 - `slim runs ·`
@@ -291,7 +307,7 @@ again. and asset. back be been below board cache cached comma-sep corrupt curren
 
 _none_
 
-## Sentences the page prints (60)
+## Sentences the page prints (59)
 
 - Asset predictability — best to worst
 - KEY — for each asset: of all real-versus-null match-ups on HELD-BACK money, the share the real
@@ -302,7 +318,6 @@ _none_
 - declared-cell rows without marking which copy scored them, so each asset's first-recorded row is taken as the
 - real one — real copies are queued ahead of every null copy.
 - row(s) were excluded.
-- rows for this configuration — the rest are recorded and can be read from the run's stored rows.
 - Replication — the declared config on every asset
 - KEY — one FIXED configuration, named before the run, scored once on each asset.
 - is the reading that counts: the same configuration on dealt votes, which is the
@@ -354,10 +369,10 @@ _none_
 - how alike the members are (pairwise agreement) — near-duplicates make an agreement count read higher than the number of independent opinions behind it
 - in the table below (marked ▶).
 
-## Every word, flat (391)
+## Every word, flat (389)
 
 ```
-about accuracy Accuracy ACCURACY across-asset actually admits admits. again against agreement agreement/entry/hold ahead alike all already always-long an and another any anything are as Asset asset asset. assets at back. band be beat beat. been before behind below best better board board. branch button by campaign can cannot cell changes checked chosen CHOSEN chunk claim clear Click coins Columns combos committee comparable comparison COMPLETE config configs configuration configurations construction construction. CONTEXT context copies copy copy. cost count Counts counts crypto data Data dealt dealt-vote decision declared declared-cell Delete deleted deleted. Deleting denominator detail did do dollar dollars drives dump each echoed edge edge. either end entries es every Every everything evidence excluded. execution exists FAILED failed failures feeds files fingerprint finish finishes first First first-recorded FIXED flattering flatters for form from full geometry get go got graded Greenlight Greenlight. grid grow has held HELD-BACK held-back higher History honest how If in independent indistinguishable INFERRED Inside inspect intended. into invisible is it It it. its itself judge kept KEY knife last layout line look looks looks. made make many marked marking match-ups matched matters may means measured measured. members menu Menu MICROSCOPE missing moment money Money money. move moved much named near-duplicates neighbouring never no not notes nothing null nulls number of of. older on once once-only one ONE one. ones only ONLY Open opinions or order ordering other otherwise. out own p-value page pairwise panel participation per-member permanently permutation permutations pick picked Picking plateau plus POINTS predictability press price profit-and-loss promote promoted proved purpose. QC-142 QC-7 queued quoted ranked Ranked ranking read reading real real-versus-null record recorded region register remove Replication rest Resume row rows rows. run run. running runs runs. same sample. save saved say says scans score scored sealed search SEARCHED section section. see SELECT selected selection setting settings setup setups shape share showed showing shown shows sit sits Size slice slim smaller so so. STAMP started. starts. statistics still stored sturdy survived Survivor sweep Sweep table taken tell test than that That the The them then These they This this time to together Tool tools top. total touched traded trades Tune unavailable undone. unit units units. until up verbatim Verify view vote votes votes. vs watch way were what What where whether which why widest width will window with without won. works worst yardstick yet yet. you Your
+about accuracy Accuracy ACCURACY across-asset actually admits admits. again against agreement agreement/entry/hold ahead alike all already always-long an and another any anything are as Asset asset asset. assets at back. band be beat beat. been before behind below best better board board. branch button by campaign can cannot cell changes checked chosen CHOSEN chunk claim clear Click coins Columns combos committee comparable comparison COMPLETE config configs configuration configurations construction construction. CONTEXT context copies copy copy. cost count Counts counts crypto data Data dealt dealt-vote decision declared declared-cell Delete deleted deleted. Deleting denominator detail did do dollar dollars drives dump each echoed edge edge. either end entries es every Every everything evidence excluded. execution exists FAILED failed failures feeds files fingerprint finish finishes first First first-recorded FIXED flattering flatters for form from full geometry get go got graded Greenlight Greenlight. grid grow has held HELD-BACK held-back higher History honest how If in independent indistinguishable INFERRED Inside inspect intended. into invisible is it It it. its itself judge kept KEY knife last layout line look looks looks. made make many marked marking match-ups matched matters may means measured measured. members menu Menu MICROSCOPE missing moment money Money money. move moved much named near-duplicates neighbouring never no not notes nothing null nulls number of of. older on once once-only one ONE one. ones only ONLY Open opinions or order ordering other otherwise. out own p-value page pairwise panel participation per-member permanently permutation permutations pick picked Picking plateau plus POINTS predictability press price profit-and-loss promote promoted proved purpose. QC-142 QC-7 queued quoted ranked Ranked ranking read reading real real-versus-null record recorded region register remove Replication Resume row rows run run. running runs runs. same sample. save saved say says scans score scored sealed search SEARCHED section section. see SELECT selected selection setting settings setup setups shape share showed showing shown shows sit sits Size slice slim smaller so so. STAMP started. starts. statistics still stored sturdy survived Survivor sweep Sweep table taken tell test than that That the The them then These they This this time to together Tool tools top. total touched traded trades Tune unavailable undone. unit units units. until up verbatim Verify view vote votes votes. vs watch way were what What where whether which why widest width will window with without won. works worst yardstick yet yet. you Your
 ```
 
 ---
