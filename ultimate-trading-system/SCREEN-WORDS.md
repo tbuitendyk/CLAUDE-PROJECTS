@@ -18,7 +18,7 @@ is the same fault wearing a disguise.
 
 ## Which screen this describes
 
-Generated from **875f2438cf39 — what the box is serving**, not from the working tree.
+Generated from **1871232b2315 — what the box is serving**, not from the working tree.
 
 That distinction is the whole point. Between a commit and its deploy the
 two describe different screens, and on 2026-08-22 exactly that happened: a
@@ -89,10 +89,13 @@ again. and asset. back be been below board cache cached comma-sep corrupt curren
 
 # Sweep
 
-## What the controls are called (75)
+## What the controls are called (80)
 
+- `— so out of`
+- `, expect about`
 - `” — runs & greenlights`
 - `” will permanently remove:`
+- `1 time in`
 - `1-in-`
 - `agree`
 - `all loaded data`
@@ -124,12 +127,14 @@ again. and asset. back be been below board cache cached comma-sep corrupt curren
 - `greenlights:`
 - `is at best a`
 - `MB`
-- `MB free of`
+- `MB ceiling ·`
+- `MB free on the box`
 - `memory`
 - `min trades`
 - `no runs yet`
 - `null boards`
 - `of`
+- `of a`
 - `on this box —`
 - `or a new name`
 - `permute`
@@ -161,11 +166,11 @@ again. and asset. back be been below board cache cached comma-sep corrupt curren
 - `View tree`
 - `What this run will cost`
 - `window layout`
+- `With`
 - `with contexts`
 - `workers`
 - `working it out…`
 - `x`
-- `x the replication work,`
 
 ## What the dropdowns offer (43)
 
@@ -213,7 +218,7 @@ again. and asset. back be been below board cache cached comma-sep corrupt curren
 - `static`
 - `Weekly 8-day`
 
-## Sentences the page prints (22)
+## Sentences the page prints (28)
 
 - Every run launched while a campaign is set attaches to it: sweeps, null rounds, tuning passes,
 - scans. The campaign's whole chain travels with any greenlight minted from it.
@@ -223,7 +228,8 @@ again. and asset. back be been below board cache cached comma-sep corrupt curren
 - how many rows carry from the slim pass into the promote pass — the only thing that travels between the two boxes.
 - above zero sends every row through instead, and so does replication below.
 - — the slim pass ignores everything in this box, however it is set
-- replication: also score every DECLARED config on every asset
+- replication: score ONE setting you name, on every asset
+- replication: search many settings, each scored on every asset
 - description — why this run exists (rides in the job heading forever)
 - — worked out from the settings above, against what the box has now
 - No job running.
@@ -233,15 +239,20 @@ again. and asset. back be been below board cache cached comma-sep corrupt curren
 - This cannot be undone.
 - ” deleted.
 - and the saved models and tuning files belonging to them.
-- declared configs, each scored on every asset — roughly
+- rows on disk at about 150 bytes each (
 - per unit).
+- settings searched, each scored on every asset.
+- null boards, one setting beating every one of its own copies happens by luck about
 - the work — the whole run once for real, then once per board.
+- The memory figure is what the RUN adds — the unit list, the work queue, and one copy of the settings per worker.
+- The decoded prices the workers hold are larger and are not in it: those grow with how many ASSETS are in the run,
+- not with how many settings.
 - Open it on the Boards section to see what it managed to record
 
-## Every word, flat (250)
+## Every word, flat (279)
 
 ```
-1-day 1-in- 113h 137h 161h 17h 2-day 3-day 4-day 41h 65h 8-day 89h above active against agree alike all also always and any are argmax arm asset at attaches auto band be Beating been belonging below. best between blank Board board. boards Boards Both box boxes. branch breakout but Campaign campaign campaigns cannot carry chain chunk claim config configs contexts cost cpus Currently Daily data decision DECLARED declared default Delete deleted. Deleting deployed. description did directional disk does doubles each end entry ETA Every every everything evidence exam existing exists files FIND finish first for forever free from gate greenlight greenlights has heading holds how however ignores in instead into is it it. job jobs last launched layout legacy loaded locked managed many market MB memory min minted models moving name never new No no not nothing now null of on once only Open or out pairs parent pass passes per permanently permute Phase promote Promote Rate real record refused remove Removed replication result Retire rides roughly rounds row rows run Running running. runs saved scans. score scored sealed second section see sends set Set settings setup setups. shape shapes singles slim so start Start static still Stop stops sweep sweeps tab that the The them them. then there thing this This through time to top Trade trades trail trainings Trainings travels tree triples try tuning two undone. unit units Units universe View Weekly What what while whole why wide will window with work worked workers working would yet zero
+1-day 1-in- 113h 137h 161h 17h 2-day 3-day 4-day 41h 65h 8-day 89h about above active adds against agree alike all also always and any are argmax arm asset asset. ASSETS at attaches auto band be beating Beating been belonging below. best between blank Board board. boards Boards Both box boxes. branch breakout but by bytes Campaign campaign campaigns cannot carry ceiling chain chunk claim contexts copies copy cost cpus Currently Daily data decision decoded default Delete deleted. Deleting deployed. description did directional disk does doubles each end entry ETA Every every everything evidence exam existing exists expect figure files FIND finish first for forever free from gate greenlight greenlights grow happens has heading hold holds how however ignores in instead into is it it. its job jobs larger last launched layout legacy list loaded locked luck managed many market MB memory min minted models moving name never new No no not nothing now null of on once ONE one only Open or out own pairs parent pass passes per permanently permute Phase prices promote Promote queue Rate real record refused remove Removed replication result Retire rides rounds row rows run RUN Running running. runs saved scans. score scored sealed search searched second section see sends set Set setting settings settings. setup setups. shape shapes singles slim so start Start static still Stop stops sweep sweeps tab that the The them them. then there thing this This those through time to top Trade trades trail trainings Trainings travels tree triples try tuning two undone. unit units Units universe View Weekly What what while whole why wide will window with With work worked worker. workers working would yet you zero
 ```
 
 ---
