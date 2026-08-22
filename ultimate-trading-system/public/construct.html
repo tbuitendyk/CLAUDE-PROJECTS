@@ -109,8 +109,31 @@
      padding around it, and a sticky block would otherwise let the scrolling
      content show through that padding at the sides and above. This makes the
      frozen block span the full width and carry the page background with it. */
+  /* A THIN FROZEN STRIP UNDER THE TABS (owner order, 2026-08-22). The frozen
+     block stopped dead at the bottom edge of the tabs and scrolling content
+     came up and touched it. Measured in a browser before changing anything:
+     the frozen block ended at 166.08px and so did the tab strip — the same
+     number, because .tabs carries a 14.4px bottom margin and this rule had no
+     bottom padding, so that margin COLLAPSED straight out of the frozen area.
+
+     Padding cannot collapse, so the strip is padding. .3rem is 4.8px and a tab
+     on this page measures 28.78px, so the strip is 16.7% of a tab — the middle
+     of the 15-20% the owner asked for. Re-measured after the change: strip
+     4.80px, and the distance from the tabs down to the content is still
+     14.39px, so the page at rest looks exactly as it did before and gains a
+     strip in page colour once it scrolls.
+
+     THE FIRST ATTEMPT WAS WRONG, and that is why the two rules below exist.
+     Shrinking the GLOBAL .tabs margin stopped it collapsing, so all 14.4px of
+     it joined the frozen block: the strip measured 14.39px — 50% of a tab,
+     three times what was asked for. Instead the tab strip gives up its bottom
+     margin only INSIDE the frozen block, and the content below takes the same
+     amount back. 0.9rem - 0.3rem = 0.6rem, and tests/test-frozentop.js fails
+     if those three numbers ever stop adding up. */
   .pagetop { position:sticky; top:0; z-index:20; background:var(--bg);
-    margin:-1.1rem -1.1rem 0; padding:1.1rem 1.1rem 0; }
+    margin:-1.1rem -1.1rem 0; padding:1.1rem 1.1rem .3rem; }
+  .pagetop .tabs { margin-bottom:0; }
+  .pagetop + #view { margin-top:.6rem; }
 </style>
 </head>
 <body>

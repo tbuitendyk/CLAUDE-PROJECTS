@@ -80,6 +80,73 @@ module.exports = {
     }
   },
 
+  // A THIN FROZEN STRIP UNDER THE TABS (owner order, 2026-08-22): so that
+  // scrolling content does not come up and touch the bottom edge of the tabs.
+  //
+  // This test exists because the first attempt got it three times too big and
+  // nothing caught it. The strip is padding on the frozen block, which cannot
+  // collapse; the tab strip gives up its own bottom margin INSIDE the frozen
+  // block so the strip is the padding and nothing else; and the content below
+  // takes that margin back so the page at rest is unchanged. Those three
+  // numbers have to add up, and this is the check that they do.
+  //
+  // Measured in Chromium at 16px/rem: .3rem = 4.80px against a 28.78px tab on
+  // Construct (16.7%) and a 31.38px tab on Trade (15.3%) — both inside the
+  // 15-20% the owner asked for. Setup is not in this list: its frozen block
+  // holds the site line only, it has no tab strip of its own, and a strip
+  // there would push its page down for nothing.
+  async theTabsHaveAFrozenStripUnderThem() {
+    const rem = (v) => Math.round(parseFloat(v) * 16 * 100) / 100;
+    for (const p of ['construct.html', 'trade.html']) {
+      const css = read(p);
+
+      const pad = /\.pagetop \{[^}]*padding:\s*([^;}]+)/.exec(css);
+      assert.ok(pad, `${p}: the frozen block has no padding at all`);
+      const parts = pad[1].trim().split(/\s+/);
+      assert.equal(parts.length, 3,
+        `${p}: the frozen block's padding needs three values so the bottom one can differ `
+        + 'from the top one — the strip is that third value');
+      const strip = rem(parts[2]);
+      assert.ok(strip >= 4 && strip <= 6,
+        `${p}: the frozen strip is ${strip}px — the owner asked for 15-20% of a tab, `
+        + 'which is 4.3-5.8px against the ~29px tabs these pages draw');
+
+      // Without this the tab strip's own bottom margin stops collapsing and
+      // joins the frozen block, which is exactly how the first attempt came
+      // out at 50% of a tab.
+      const give = /\.pagetop \.tabs \{[^}]*margin-bottom:\s*0/.test(css);
+      assert.ok(give,
+        `${p}: the tabs keep their bottom margin inside the frozen block, so the strip is `
+        + 'the padding PLUS that margin — several times the size the owner asked for');
+
+      const tabs = /\n\s*\.tabs \{[^}]*margin:\s*([^;}]+)/.exec(css);
+      assert.ok(tabs, `${p}: no .tabs rule to read the original spacing from`);
+      const tabsBottom = rem(tabs[1].trim().split(/\s+/)[2]);
+
+      const back = /\.pagetop \+ #view \{[^}]*margin-top:\s*([^;}]+)/.exec(css);
+      assert.ok(back,
+        `${p}: the content below the frozen block does not take back the margin the tabs gave `
+        + 'up, so everything on the page sits higher than it did');
+      const given = rem(back[1]);
+
+      assert.equal(Math.round((given + strip) * 100) / 100, tabsBottom,
+        `${p}: strip ${strip}px + content margin ${given}px must equal the ${tabsBottom}px the `
+        + 'tabs used to carry, or the page at rest no longer looks the way it did');
+    }
+  },
+
+  // Setup has no tab strip inside its frozen block, so it gets no strip. If
+  // one is ever added there, this is the test to change on purpose.
+  async setupIsDeliberatelyLeftWithoutAStrip() {
+    const css = read('setup.html');
+    const pad = /\.pagetop \{[^}]*padding:\s*([^;}]+)/.exec(css);
+    assert.ok(pad, 'setup.html: the frozen block has no padding at all');
+    const bottom = pad[1].trim().split(/\s+/)[2];
+    assert.equal(parseFloat(bottom) || 0, 0,
+      `setup.html grew a ${bottom} frozen strip, but its frozen block holds the site line only `
+      + '— the strip would push the whole page down and sit under nothing the owner asked about');
+  },
+
   // The content must NOT be inside it, or nothing scrolls at all.
   async theContentIsNotFrozenWithIt() {
     for (const p of ['construct.html', 'trade.html']) {
