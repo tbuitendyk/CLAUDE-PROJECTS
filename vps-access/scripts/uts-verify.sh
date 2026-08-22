@@ -54,6 +54,24 @@ else
 fi
 rm -f /tmp/uts-voc.json
 
+echo "== the Help tab =="
+# Added 2026-08-21. The Help tab needs three things served, and it is the one
+# page whose whole job is to explain the others — a silent failure there leaves
+# the owner exactly where they were before it existed.
+H="$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8094/help-content.js)"
+[ "$H" = "200" ] && ok "help-content.js served" || { echo "  FAIL  help-content.js -> $H"; FAIL=1; }
+C="$(curl -s -o /tmp/uts-ctl.json -w '%{http_code}' http://127.0.0.1:8094/api/screen-controls)"
+if [ "$C" = "200" ]; then
+  N="$(python3 -c 'import json;d=json.load(open("/tmp/uts-ctl.json"));print(sum(len(t["controls"]) for t in d.values()))' 2>/dev/null || echo 0)"
+  [ "$N" -ge 70 ] && ok "api/screen-controls lists $N controls" \
+    || { echo "  FAIL  api/screen-controls lists only $N controls"; FAIL=1; }
+else
+  echo "  FAIL  api/screen-controls -> $C (the Help tab cannot tell what to describe)"; FAIL=1
+fi
+rm -f /tmp/uts-ctl.json
+curl -s http://127.0.0.1:8094/construct.js | grep -q "'help', 'Help'" \
+  && ok "Help is a tab on the Construct page" || { echo "  FAIL  no Help tab"; FAIL=1; }
+
 echo "== the departed screens are gone =="
 for u in index.html app.js help.html api/tracker api/books api/dogebook api/rotations; do
   c="$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:8094/$u")"
