@@ -51,7 +51,8 @@ REASON = (
     'service also ran with the default heap ceiling of about 1 GB while it was '
     'allowed 3 GB; it now runs with 1792 MB. Nothing this run had already '
     'finished is lost, but it did not complete and cannot be resumed: start it '
-    'again from the Sweep section.'
+    'again — or, now that picking one up is built, carry it on with Resume run '
+    'on the Boards section, which scores only what this run never got to.'
 )
 
 before = (doc.get('error'), doc.get('interruptedWhere'), doc.get('interruptedAt'))
