@@ -106,34 +106,61 @@ worker to refuse a task it has not been initialised for.
 
 ## 4. Compress the stored rows
 
-**The problem.** Rows are stored as JSON arrays under a shared header — 148
-bytes each against 611 as objects, which was the big win. What is left is still
-text, and the same asset names and labels repeat every row.
+> **BUILT 2026-08-22, NOT DEPLOYED — a run is going and a deploy would stop it.**
+> Loses nothing: same rows, same fields. Measured after building it, on rows
+> that vary the way real ones do: a replication row **324 bytes to 82**, a
+> census row 244 to 75, a scored row 111 to 27. The wide shape that started all
+> this drops from **7.3 GB to 1.9 GB** on the cost line.
+>
+> Every file already written stays exactly as it is, including the run going
+> right now: the reader picks its format from which file exists, and a resumed
+> run appends to the plain file it already has rather than starting a second one
+> beside it.
 
-**The change, cheapest first.**
-- A dictionary in the file header for the repeating strings (`declaredLabel`,
-  `trade`, `geometry`), each row storing a small number instead. Rough estimate:
-  148 bytes down to about 60. Not measured.
-- Or gzip each file as it is written. Roughly 4-6x on text like this, at the
-  cost of not being able to read a row without decompressing from the start of
-  the block — so it wants block framing, which is more work.
+**The problem.** Rows are stored as JSON arrays under a shared header — the big
+win over one object per line, whose field names were most of the file. What is
+left is still text, and the same words repeat on every row: the asset name, the
+chunk shape, and the setting's own name, which is 38 characters on its own.
 
-**Gives up:** a stored row stops being readable with `less`. Worth it at the
-top end, not worth it at the bottom.
+**CORRECTED 2026-08-22.** This section first said a stored row was 148 bytes.
+It is not, and the figure was written by eye rather than measured. Measured
+through the store itself, on rows that vary the way real ones do — several
+assets, several chunk shapes, every number different:
+
+| | per row | on a 413,114,688-row shape |
+|---|---|---|
+| as stored today | 334 B | 129 GB |
+| each repeated word listed once, a number in the row | 259 B | 100 GB |
+| **the file squashed** | **74 B** | **28 GB** |
+| both together | 68 B | 26 GB |
+
+The first estimate in this section — "148 down to about 60" — was wrong twice
+over: wrong about where it started, and wrong about which of the two changes
+does the work. Listing the words once barely helps. Squashing the file is 4.5x
+on its own, and doing both adds almost nothing over squashing alone.
+
+**The change.** Squash the file, in independently-readable blocks so a page of
+rows can still be fetched without unpacking everything before it.
+
+**Gives up:** a stored row stops being readable in a plain text viewer, and
+reading one row from the middle means unpacking from the nearest block start.
+Same rows, same fields, fewer bytes — no record is lost.
 
 ---
 
 ## 5. Build the per-unit payloads as they are needed
 
-**The problem.** `slimPayloads` is built with `.map` over every unit before the
-first one runs: 123,624 objects held for the whole pass, and the same again for
-the promote stage.
+**The problem.** The whole list of jobs is built before the first one runs — one
+object per unit, held until the pass ends, and again for the second pass.
 
-**The change.** Hand the pool a function that produces the next payload rather
-than an array of all of them.
+**The change.** Hand the pool a function that produces the next job rather than
+an array of all of them.
 
-**What it saves.** Tens of megabytes on a big run, and it removes one more thing
-that grows with the size of the job. Small next to items 1 and 3, but cheap.
+**CORRECTED 2026-08-22, and it shrank.** Before item 3 each job carried the
+whole settings block, so the list was the same 65 GB item 3 removed. Measured
+since: a job object is **71 bytes**, so a 50,184-unit run holds about **7 MB**.
+Tidy and cheap, and it removes one more thing that grows with the run — but it
+is no longer where anything meaningful is.
 
 ---
 
@@ -177,8 +204,8 @@ hold at once.
 | 1 | copies stored as counts | **parked** — loses recorded detail, needs a ruling on QC 74 |
 | 2 | drop configs the run cannot match | not built — loses nothing, cheap |
 | 3 | settings sent once per worker | **done and deployed**, `ad20010` |
-| 4 | compress the stored rows | not built — loses nothing; the lossless half of item 1 |
-| 5 | build payloads as needed | not built — loses nothing, cheap |
+| 4 | compress the stored rows | **built, awaiting a deploy** — 4x smaller, loses nothing |
+| 5 | build payloads as needed | not built — and now worth about 7 MB, so barely worth doing |
 | 6 | stop at a cost the owner sets | not built — loses nothing |
 | 7 | share the candle cache | not built — the biggest job here |
 
@@ -187,4 +214,6 @@ row and lets the owner delete the copies' file per run, from the Boards
 section, once the reading has been taken. That costs the disk once rather than
 for ever and deletes nothing without being asked.
 
-**The next two I would take**, both losing nothing and both small: 4, then 5.
+**Next, if anything:** item 2 (drop settings the run cannot match) and item 6
+(let a run stop itself at a cost you set). Both lose nothing. Item 5 has shrunk
+to about 7 MB since item 3 landed and is no longer worth its own change.

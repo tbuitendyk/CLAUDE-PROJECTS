@@ -208,6 +208,110 @@ module.exports = {
     });
   },
 
+  // SQUASHED, AND EVERY EXISTING RECORD LEFT ALONE (owner order, 2026-08-22).
+  //
+  // A run recorded before this — including one going at the time — has plain
+  // files. They stay plain: the reader picks its format from which file exists,
+  // and a writer over a plain file goes on appending plain lines. Rewriting a
+  // running job's record to save space would be trading the thing for the
+  // measurement of it.
+  //
+  // Watched failing 2026-08-22: making storeFile always return the squashed
+  // name fails anExistingPlainCollectionStaysPlainAndReadable — a resumed run
+  // would start a second, empty file beside the one holding its results.
+  anExistingPlainCollectionStaysPlainAndReadable() {
+    withScratch(({ rowstore }) => {
+      const id = 'bracketlab-old-1';
+      fs.mkdirSync(rowstore.storeDir(id), { recursive: true });
+      let text = `${JSON.stringify({ v: 1, cols: ['key', 'pnl'] })}\n`;
+      for (let i = 0; i < 500; i++) text += `${JSON.stringify([`k${i}`, i * 2])}\n`;
+      fs.writeFileSync(rowstore.plainFile(id, 'slim'), text);
+
+      assert.strictEqual(rowstore.formatOf(id, 'slim'), 'plain', 'an existing plain collection is read as it was written');
+      assert.strictEqual(rowstore.count(id, 'slim'), 500);
+      assert.strictEqual(rowstore.page(id, 'slim', 498, 5).rows.length, 2, 'and pages the same way');
+
+      // a resumed run must APPEND to it, not start a squashed one beside it
+      const w = rowstore.writer(id, 'slim');
+      assert.strictEqual(w.count, 500, 'the writer adopts the count it finds');
+      w.push({ key: 'k500', pnl: 1000 });
+      w.close();
+      assert.strictEqual(rowstore.formatOf(id, 'slim'), 'plain', 'and it is still the same file');
+      assert.ok(!fs.existsSync(rowstore.gzFile(id, 'slim')), 'with no second file beside it');
+      const all = rowstore.readAll(id, 'slim');
+      assert.strictEqual(all.length, 501, 'every row of both sittings');
+      assert.strictEqual(all[500].key, 'k500');
+    });
+  },
+
+  // A new collection is squashed, and everything about reading it is unchanged.
+  //
+  // BIG ENOUGH TO SPAN SEVERAL BLOCKS, on purpose. A first version of this used
+  // 12,000 rows, which fitted in one block — so it passed just as happily with
+  // the per-block header removed, and the thing that makes a page readable from
+  // the middle was not being tested at all. A test that cannot fail is not a
+  // test.
+  aNewCollectionIsSquashedAndReadsIdentically() {
+    withScratch(({ rowstore }) => {
+      const id = 'bracketlab-gz-1';
+      const N = 60000;
+      const row = (i) => ({
+        label: `q4/6 always d${[0.25, 0.5, 1][i % 3]}x t${[17, 41, 65][i % 3]}h`,
+        trade: ['ETHUSDT', 'BNBUSDT', 'XRPUSDT'][i % 3],
+        pnl: i * 1.37, trades: 10 + (i % 200), nullDealSeed: i % 21 ? i % 21 : null,
+        ...(i % 997 === 0 ? { noCell: 'no cell reached 10 trades' } : {}),
+      });
+      const w = rowstore.writer(id, 'replication');
+      for (let i = 0; i < N; i++) w.push(row(i));
+      w.close();
+
+      assert.strictEqual(rowstore.formatOf(id, 'replication'), 'squashed');
+      assert.strictEqual(rowstore.count(id, 'replication'), N, 'the count is the count');
+
+      let seen = 0;
+      let sum = 0;
+      let extra = 0;
+      rowstore.each(id, 'replication', (o) => { seen++; sum += o.pnl; if (o.noCell) extra++; });
+      assert.strictEqual(seen, N, 'every row comes back');
+      assert.ok(Math.abs(sum - ((N - 1) * N) / 2 * 1.37) < 1, 'with its numbers intact');
+      assert.strictEqual(extra, Math.ceil(N / 997), 'and the rows carrying an extra column keep it');
+
+      // MORE THAN ONE BLOCK, or the rest of this proves nothing
+      const meta = JSON.parse(fs.readFileSync(`${rowstore.storeFile(id, 'replication')}.meta.json`, 'utf8'));
+      assert.ok(Array.isArray(meta.blocks) && meta.blocks.length > 1,
+        `this collection is ${meta.blocks ? meta.blocks.length : 0} block(s) — too small to test reading from the middle`);
+
+      // a page from the far end starts inside a later block, so that block has
+      // to carry its own column header or the rows come back unreadable
+      const last = rowstore.page(id, 'replication', N - 3, 10);
+      assert.strictEqual(last.rows.length, 3, 'a page past the end is short, not wrong');
+      assert.ok(last.rows[0].trade, 'a row read from a later block must have its columns');
+      assert.ok(Math.abs(last.rows[0].pnl - (N - 3) * 1.37) < 1e-6, 'and starts at the row asked for');
+      assert.strictEqual(last.total, N);
+
+      // and one from the middle, which is where a lost header shows up worst
+      const mid = rowstore.page(id, 'replication', Math.floor(N / 2), 5);
+      assert.strictEqual(mid.rows.length, 5);
+      assert.ok(mid.rows[0].trade && mid.rows[0].label, 'a row from the middle must have its columns too');
+      assert.ok(Math.abs(mid.rows[0].pnl - Math.floor(N / 2) * 1.37) < 1e-6, 'and be the row asked for');
+    });
+  },
+
+  // A lost index costs speed, never the rows.
+  aSquashedCollectionSurvivesLosingItsIndex() {
+    withScratch(({ rowstore }) => {
+      const id = 'bracketlab-gz-2';
+      const w = rowstore.writer(id, 'census');
+      for (let i = 0; i < 8000; i++) w.push({ key: `k${i}`, pnl: i, trade: ['A', 'B'][i % 2] });
+      w.close();
+      fs.rmSync(`${rowstore.storeFile(id, 'census')}.meta.json`);
+      let seen = 0;
+      rowstore.each(id, 'census', () => { seen++; });
+      assert.strictEqual(seen, 8000, 'with the index gone the file itself still answers — the rows are the record');
+      assert.strictEqual(rowstore.count(id, 'census'), 8000, 'and the count is rebuilt from it');
+    });
+  },
+
   // The written form must stay far smaller than the objects were, or moving to
   // disk buys a limit that is only a little further away.
   theWrittenFormIsCompactComparedToTheObjects() {

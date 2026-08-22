@@ -42,18 +42,59 @@
 // about fifty times more. The Sweep section says what a run will cost before
 // it is launched, because a limit you find out about in hour forty is not a
 // limit, it is a loss.
+//
+// SQUASHED, IN BLOCKS (owner order, 2026-08-22). The rows are text and the same
+// words repeat on every one: the asset, the chunk shape, and the setting's own
+// name, which is 38 characters by itself. Measured on rows that vary the way
+// real ones do — 334 bytes each stored plainly, 74 squashed. On the shape that
+// started all this, 129 GB against 28.
+//
+// In BLOCKS rather than as one stream, because a page of rows has to be
+// readable without unpacking everything in front of it. Each block is a
+// complete little file of its own and begins with the column header that was
+// current when it was written, so it can be unpacked and read on its own; the
+// sidecar remembers where each one starts and which row it starts at.
+//
+// NOTHING ALREADY WRITTEN IS TOUCHED. A run recorded before this — including
+// one going right now — has plain files, and they stay plain: the reader picks
+// its format from which file exists, and a writer over a plain file goes on
+// appending plain lines. Rewriting a running job's record to save space would
+// be trading the thing for the measurement of it.
 const fs = require('fs');
 const path = require('path');
+const zlib = require('zlib');
 
 const DATA = path.join(__dirname, '..', 'data');
+
+// About a megabyte of rows per block: big enough that squashing works (it needs
+// repetition in view to find any), small enough that fetching one page unpacks
+// one block rather than a run's whole history.
+const BLOCK_BYTES = 1 << 20;
+// Level 1, not the default 6. Measured on real-shaped rows the difference is a
+// few percent of size and several times the processor time, and this runs on a
+// box whose processors are the thing the run is short of.
+const GZIP_LEVEL = 1;
 
 // One folder per run, beside the run's own file.
 function storeDir(runId) {
   return path.join(DATA, 'batches', `${String(runId).replace(/[^A-Za-z0-9._-]+/g, '_')}.rows`);
 }
-function storeFile(runId, name) {
+function plainFile(runId, name) {
   return path.join(storeDir(runId), `${String(name).replace(/[^A-Za-z0-9._-]+/g, '_')}.jsonl`);
 }
+function gzFile(runId, name) {
+  return `${plainFile(runId, name)}.gz`;
+}
+// WHICH FILE THIS COLLECTION LIVES IN. A plain one that already exists wins:
+// a run's record is never rewritten into another format underneath it.
+function storeFile(runId, name) {
+  const plain = plainFile(runId, name);
+  try { if (fs.statSync(plain).size > 0) return plain; } catch (_) { /* no plain file */ }
+  const gz = gzFile(runId, name);
+  try { if (fs.statSync(gz).size > 0) return gz; } catch (_) { /* nor a squashed one */ }
+  return gz;   // a new collection is squashed
+}
+const isGz = (f) => f.endsWith('.gz');
 
 function metaFile(runId, name) {
   return `${storeFile(runId, name)}.meta.json`;
@@ -92,29 +133,53 @@ function writer(runId, name) {
   const open = () => { if (fd === null) fd = fs.openSync(file, 'a'); return fd; };
   const header = () => { buf.push(JSON.stringify({ v: 1, cols })); };
 
+  const squashed = isGz(file);
+  let pending = 0;                      // uncompressed bytes waiting in buf
+  let blocks = (prev && prev.blocks) ? prev.blocks.slice() : [];
+  let offset = (() => { try { return fs.statSync(file).size; } catch (_) { return 0; } })();
+  let blockFirstRow = count;
+  let needHeader = squashed;            // every block starts with its own header
+
   const api = {
     get count() { return count; },
     get columns() { return cols ? cols.slice() : null; },
     push(obj) {
       const keys = Object.keys(obj);
-      if (!cols) { cols = keys.slice(); header(); }
+      if (!cols) { cols = keys.slice(); header(); needHeader = false; }
       else {
         const added = keys.filter((k) => !cols.includes(k));
-        if (added.length) { cols = cols.concat(added); header(); }
+        if (added.length) { cols = cols.concat(added); header(); needHeader = false; }
+        else if (needHeader) { header(); needHeader = false; }
       }
-      buf.push(JSON.stringify(cols.map((c) => (obj[c] === undefined ? null : obj[c]))));
+      const line = JSON.stringify(cols.map((c) => (obj[c] === undefined ? null : obj[c])));
+      buf.push(line);
+      pending += line.length + 1;
       count += 1;
       // Batched because a sweep pushes thousands of rows per unit, and one
-      // write syscall per row is the same mistake in a different place.
-      if (buf.length >= 512) api.flush();
+      // write syscall per row is the same mistake in a different place. A
+      // squashed file also wants a block's worth in hand before it squashes,
+      // since compression works by finding repetition and cannot find any in
+      // one line at a time.
+      if (squashed ? pending >= BLOCK_BYTES : buf.length >= 512) api.flush();
       return count;
     },
     flush() {
       if (buf.length) {
-        fs.writeSync(open(), `${buf.join('\n')}\n`);
+        const text = `${buf.join('\n')}\n`;
+        if (squashed) {
+          const packed = zlib.gzipSync(Buffer.from(text, 'utf8'), { level: GZIP_LEVEL });
+          fs.writeSync(open(), packed);
+          blocks.push({ at: offset, bytes: packed.length, firstRow: blockFirstRow, rows: count - blockFirstRow });
+          offset += packed.length;
+          blockFirstRow = count;
+          needHeader = true;            // the next block must stand on its own
+        } else {
+          fs.writeSync(open(), text);
+        }
         buf = [];
+        pending = 0;
       }
-      writeMeta(runId, name, { rows: count, cols: cols || [] });
+      writeMeta(runId, name, { rows: count, cols: cols || [], squashed, blocks: squashed ? blocks : undefined });
     },
     close() { api.flush(); if (fd !== null) { fs.closeSync(fd); fd = null; } },
   };
@@ -126,6 +191,7 @@ function writer(runId, name) {
 // readable at all: nothing but the current line is ever in memory.
 function each(runId, name, fn) {
   const file = storeFile(runId, name);
+  if (isGz(file)) return eachSquashed(runId, name, file, fn);
   let fd;
   try { fd = fs.openSync(file, 'r'); } catch (_) { return 0; }
   const CHUNK = 1 << 20;
@@ -163,6 +229,57 @@ function each(runId, name, fn) {
   return seen;
 }
 
+// A SQUASHED FILE, block by block. One block is unpacked at a time and dropped
+// before the next, so a ten-million-row collection is read in about a megabyte
+// of memory — which is the whole reason for blocks rather than one stream.
+//
+// `startBlock` lets a page skip straight to the block holding the row it wants
+// instead of unpacking everything in front of it.
+function eachSquashed(runId, name, file, fn, startBlock = 0) {
+  const meta = readMeta(runId, name);
+  const blocks = (meta && Array.isArray(meta.blocks)) ? meta.blocks : null;
+  let fd;
+  try { fd = fs.openSync(file, 'r'); } catch (_) { return 0; }
+  let seen = blocks && startBlock > 0 ? blocks[startBlock].firstRow : 0;
+  let cols = null;
+  const readBlock = (buf) => {
+    let text;
+    try { text = zlib.gunzipSync(buf).toString('utf8'); } catch (_) { return true; }
+    for (const line of text.split('\n')) {
+      if (!line) continue;
+      if (line[0] === '{') {
+        try { cols = JSON.parse(line).cols; } catch (_) { /* a torn header ends this block */ }
+        continue;
+      }
+      if (!cols) continue;
+      let arr;
+      try { arr = JSON.parse(line); } catch (_) { continue; }
+      const o = {};
+      for (let i = 0; i < cols.length; i++) o[cols[i]] = arr[i];
+      seen++;
+      if (fn(o, seen - 1) === false) return false;
+    }
+    return true;
+  };
+  try {
+    if (blocks && blocks.length) {
+      for (let i = startBlock; i < blocks.length; i++) {
+        const b = blocks[i];
+        const buf = Buffer.alloc(b.bytes);
+        fs.readSync(fd, buf, 0, b.bytes, b.at);
+        if (!readBlock(buf)) return seen;
+      }
+      return seen;
+    }
+    // NO INDEX. Squashed blocks written one after another are still one valid
+    // stream, so the whole thing unpacks in one go — slower and hungrier, but
+    // it means a lost sidecar costs speed rather than the rows.
+    const whole = fs.readFileSync(file);
+    readBlock(whole);
+    return seen;
+  } finally { try { fs.closeSync(fd); } catch (_) { /* already shut */ } }
+}
+
 // The sidecar is an index, not the record. When it is missing or behind, the
 // file itself answers — slowly, once — and the sidecar is written back.
 function rebuildMeta(runId, name) {
@@ -193,11 +310,27 @@ function page(runId, name, from, n) {
   const out = [];
   const start = Math.max(0, Number(from) || 0);
   const want = Math.max(1, Math.min(5000, Number(n) || 100));
-  each(runId, name, (o, i) => {
+  const take = (o, i) => {
     if (i < start) return true;
     out.push(o);
     return out.length < want;
-  });
+  };
+  const file = storeFile(runId, name);
+  if (isGz(file)) {
+    // START AT THE BLOCK THAT HOLDS IT. Without this, asking for the last page
+    // of a ten-million-row collection would unpack all ten million to get there.
+    const meta = readMeta(runId, name);
+    const blocks = (meta && Array.isArray(meta.blocks)) ? meta.blocks : null;
+    let first = 0;
+    if (blocks) {
+      for (let i = 0; i < blocks.length; i++) {
+        if (blocks[i].firstRow <= start) first = i; else break;
+      }
+    }
+    eachSquashed(runId, name, file, take, first);
+  } else {
+    each(runId, name, take);
+  }
   return { from: start, rows: out, total: count(runId, name) };
 }
 
@@ -212,8 +345,15 @@ function bytes(runId) {
   return total;
 }
 
+// What a collection is stored AS, so the screens and the tests can say rather
+// than assume.
+function formatOf(runId, name) {
+  if (!exists(runId, name)) return null;
+  return isGz(storeFile(runId, name)) ? 'squashed' : 'plain';
+}
+
 function remove(runId) {
   try { fs.rmSync(storeDir(runId), { recursive: true, force: true }); } catch (_) { /* nothing there */ }
 }
 
-module.exports = { storeDir, storeFile, writer, each, readAll, page, count, exists, bytes, remove, rebuildMeta };
+module.exports = { storeDir, storeFile, plainFile, gzFile, formatOf, writer, each, readAll, page, count, exists, bytes, remove, rebuildMeta };

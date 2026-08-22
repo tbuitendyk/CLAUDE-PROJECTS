@@ -32,7 +32,14 @@ const RATE_FILE = path.join(DATA, 'run-rates.json');
 // of these numbers was written by eye and understated the replication row by
 // more than two to one. An estimate that flatters the disk is worse than none:
 // it is the same silence that let a run die at hour forty, wearing a number.
-const BYTES_PER_ROW = { slim: 111, census: 244, replication: 324 };
+//
+// UPDATED 2026-08-22 when the rows started being squashed: 324 bytes a
+// replication row became 82. And the rows the measurement is taken on have to
+// VARY the way real ones do — several assets, several chunk shapes, every
+// number different. A first attempt measured near-identical rows and reported
+// 4 bytes each, which says nothing about a real run and everything about how
+// well repetition squashes.
+const BYTES_PER_ROW = { slim: 27, census: 75, replication: 82 };
 
 // MEASURED BYTES PER UNIT HELD ON THE MAIN THREAD, the same way. The unit list
 // and the payload list are both built for the whole pass, so they are what grows

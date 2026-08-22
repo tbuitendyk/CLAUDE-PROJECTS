@@ -103,8 +103,13 @@ module.exports = {
       assert.strictEqual(out.plan.declaredConfigs, 8232, 'every declared permute ticked is 8,232 configurations');
       assert.strictEqual(out.rows.replication, out.plan.promoteUnits * 8232,
         'one row per promoted unit per configuration — that product is the whole problem');
-      assert.ok(out.bytes > out.rows.replication * 100,
-        'and the disk figure must be built from the rows, not from a round number');
+      // built from the rows and their measured stored size, not from a round
+      // number — the multiplier is whatever the store currently costs
+      assert.strictEqual(out.bytes,
+        out.rows.slim * estimate.BYTES_PER_ROW.slim
+        + out.rows.census * estimate.BYTES_PER_ROW.census
+        + out.rows.replication * estimate.BYTES_PER_ROW.replication,
+        'the disk figure must be the rows times what a stored row measures, and nothing else');
       assert.ok(out.warnings.some((w) => /rows for the declared configs/.test(w)),
         `a run this size must say so in words: ${JSON.stringify(out.warnings)}`);
     });
@@ -157,30 +162,48 @@ module.exports = {
   theRowSizesAreWhatTheStoreActuallyWrites() {
     withScratch(({ estimate }) => {
       const rowstore = require('../lib/rowstore');
+      // THE ROWS HAVE TO VARY THE WAY REAL ONES DO. A first attempt wrote
+      // near-identical rows and measured 4 bytes each once they were squashed,
+      // which measures how well repetition compresses and says nothing about a
+      // run. Several assets, several chunk shapes, every number different.
+      const assets = ['ETHUSDT', 'BNBUSDT', 'XRPUSDT', 'ADAUSDT', 'SOLUSDT', 'LTCUSDT', 'LINKUSDT', 'DOTUSDT'];
+      const shapes = ['daily-1d', 'daily-2d', 'daily-3d', 'daily-4d', 'weekly-8d'];
+      const labels = [];
+      for (const g of ['always', 'active', 'directional']) {
+        for (const d of [0.25, 0.5, 0.75, 1, 1.5]) {
+          for (const t of [17, 41, 65, 89, 113, 137, 161]) labels.push(`q4/6 ${g} d${d}x t${t}h trail1x/arm0.5x`);
+        }
+      }
+      let rnd = 1;
+      const R = () => { rnd = (rnd * 1103515245 + 12345) & 0x7fffffff; return rnd / 0x7fffffff; };
       const samples = {
         replication: (i) => ({
-          declaredLabel: 'q4/6 always d1x t41h trail1x/arm0.5x', nullDealSeed: i % 41 ? i % 41 : null,
-          trade: 'ETHUSDT', ctx1: null, ctx2: null, geometry: 'daily-3d', bandPct: 1.1432,
-          windowLayout: 'reserve61', entry: 'breakout', quorum: 4, members: 6,
-          pnl: 1234.56, trades: 88, wins: 47, grossPerTrade: 14.02, stops: 12, ambiguous: 1,
-          controlPnl: 900.1, vsControl: 334.46,
-          metrics: { testAcc: 0.5512, edge: 0.0312, majorityBaseline: 0.52 },
-          holds: { alwaysLong: 800.2, buyHold: 750.9 },
-          trailMult: 1, armMult: 0.5, trailAmbiguous: 0,
-          holdout: { pnl: 210.34, trades: 19, ambiguous: 0, vsAlwaysLong: 12.3 },
-          vsAlwaysLong: 434.36, vsBuyHold: 483.66,
+          declaredLabel: labels[i % labels.length], nullDealSeed: i % 21 ? i % 21 : null,
+          trade: assets[i % assets.length], ctx1: null, ctx2: null, geometry: shapes[i % shapes.length],
+          bandPct: +(0.8 + R() * 1.2).toFixed(4), windowLayout: 'reserve61', entry: 'breakout',
+          quorum: 1 + (i % 6), members: 6, pnl: +(R() * 4000 - 2000).toFixed(2), trades: 10 + (i % 200),
+          wins: 5 + (i % 90), grossPerTrade: +(R() * 40 - 10).toFixed(3), stops: i % 30, ambiguous: i % 4,
+          controlPnl: +(R() * 1500).toFixed(2), vsControl: +(R() * 900 - 300).toFixed(2),
+          metrics: { testAcc: +(0.45 + R() * 0.2).toFixed(4), edge: +(R() * 0.1 - 0.03).toFixed(4) },
+          holds: { alwaysLong: +(R() * 1200).toFixed(2), buyHold: +(R() * 1100).toFixed(2) },
+          trailMult: [0.5, 1, 1.5, 2][i % 4], armMult: [0, 0.5, 1][i % 3], trailAmbiguous: i % 7,
+          holdout: { pnl: +(R() * 600 - 200).toFixed(2), trades: 5 + (i % 40), vsAlwaysLong: +(R() * 90 - 30).toFixed(2) },
+          vsAlwaysLong: +(R() * 900 - 300).toFixed(2), vsBuyHold: +(R() * 950 - 350).toFixed(2),
         }),
         slim: (i) => ({
-          key: `ETHUSDT|||daily-3d|argmax|auto|24-7|n${i}`, trade: 'ETHUSDT', ctx1: null, ctx2: null,
-          geometry: 'daily-3d', decision: 'argmax', bandPct: 1.14, nullDealSeed: i, pnl: 123.4, trades: 88, holdPnl: 12.3,
+          key: `${assets[i % assets.length]}|||${shapes[i % shapes.length]}|argmax|auto|24-7|n${i % 21}`,
+          trade: assets[i % assets.length], ctx1: null, ctx2: null, geometry: shapes[i % shapes.length],
+          decision: i % 2 ? 'argmax' : 'directional', bandPct: +(0.8 + R() * 1.2).toFixed(4),
+          nullDealSeed: i % 21 ? i % 21 : null, pnl: +(R() * 3000 - 1500).toFixed(2),
+          trades: 10 + (i % 200), holdPnl: +(R() * 500 - 200).toFixed(2),
         }),
       };
       for (const [name, mk] of Object.entries(samples)) {
         const id = `bracketlab-size-${name}`;
         const w = rowstore.writer(id, name);
-        for (let i = 0; i < 4000; i++) w.push(mk(i));
+        for (let i = 0; i < 20000; i++) w.push(mk(i));
         w.close();
-        const measured = rowstore.bytes(id) / 4000;
+        const measured = rowstore.bytes(id) / 20000;
         const claimed = estimate.BYTES_PER_ROW[name];
         assert.ok(Math.abs(measured - claimed) / measured < 0.2,
           `a stored ${name} row measures ${Math.round(measured)} bytes and the estimate prices it at ${claimed} — `
