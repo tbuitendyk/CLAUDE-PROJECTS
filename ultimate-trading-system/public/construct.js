@@ -188,67 +188,11 @@ const cth = (label, key, style) => `<th${style ? ` style="${style}"` : ''}${COL[
 //   all      — every replication row the run recorded, null copies included
 //   realRows — the real-copy subset the caller already resolved
 //   tagged   — whether this doc marks which copy scored each row
-function rankDeclaredConfigs({ all, realRows, tagged, leaders }) {
-  const groups = new Map();
-  // On an UNTAGGED doc a null copy cannot be told from a real one, so the
-  // deduped real rows are the only honest source and the measured null stays
-  // absent by FACT rather than by accident — the inferred-counts note says so.
-  for (const r of (tagged ? all : realRows)) {
-    const k = r.declaredLabel || 'declared config';
-    if (!groups.has(k)) groups.set(k, []);
-    groups.get(k).push(r);
-  }
-  const assetKey = (r) => `${r.trade}|${r.ctx1 || ''}|${r.ctx2 || ''}|${r.geometry}`;
-  // the region lives on the leader rows, keyed by asset+geometry
-  const regionByAsset = new Map();
-  for (const l of (leaders || [])) {
-    if (l.nullDealSeed != null || !l.region) continue;
-    const k = assetKey(l);
-    const prev = regionByAsset.get(k);
-    if (prev == null || (l.region.size || 0) > prev) regionByAsset.set(k, l.region.size || 0);
-  }
-  const scored = [...groups.entries()].map(([label, rs]) => {
-    const reals = rs.filter((r) => r.nullDealSeed == null);
-    const hold = reals.filter((r) => r.holdout && r.holdout.pnl != null);
-    const pos = hold.filter((r) => r.holdout.pnl > 0).length;
-    const vsL = hold.filter((r) => r.holdout.vsAlwaysLong != null);
-    const vsLPos = vsL.filter((r) => r.holdout.vsAlwaysLong > 0).length;
-    const sum = hold.reduce((a, r) => a + (r.holdout.pnl || 0), 0);
-    // the measured null, asset by asset: how many of this configuration's own
-    // dealt-vote copies its real held-back money beat
-    const nullsByAsset = new Map();
-    for (const r of rs) {
-      if (r.nullDealSeed == null || !r.holdout || r.holdout.pnl == null) continue;
-      const k = assetKey(r);
-      if (!nullsByAsset.has(k)) nullsByAsset.set(k, []);
-      nullsByAsset.get(k).push(r.holdout.pnl);
-    }
-    let beat = 0;
-    let pairs = 0;
-    for (const r of hold) {
-      for (const nv of (nullsByAsset.get(assetKey(r)) || [])) { pairs++; if (r.holdout.pnl > nv) beat++; }
-    }
-    const regions = reals.map((r) => regionByAsset.get(assetKey(r))).filter((v) => v != null);
-    const region = regions.length ? Math.round(regions.reduce((a, b) => a + b, 0) / regions.length) : null;
-    return {
-      // `reals` is what the per-asset table shows — a null copy is machinery,
-      // not a result, and listing one as an asset row would be a lie.
-      label, rs, reals, hold, pos, vsL, vsLPos, sum, region,
-      nullBeat: beat, nullPairs: pairs, nullShare: pairs ? beat / pairs : null,
-    };
-  });
-  // The first key must return 0 when NEITHER side has a measured null, or the
-  // `||` chain never reaches plateau width and money. It returned -1
-  // unconditionally in that case — a comparator not even consistent with itself,
-  // so the order was arbitrary rather than merely wrong.
-  const byNull = (a, b) => (a.nullShare == null && b.nullShare == null ? 0
-    : b.nullShare == null ? -1 : a.nullShare == null ? 1 : b.nullShare - a.nullShare);
-  scored.sort((a, b) => byNull(a, b)
-    || (b.region ?? -1) - (a.region ?? -1)
-    || (b.pos / (b.hold.length || 1)) - (a.pos / (a.hold.length || 1))
-    || b.sum - a.sum);
-  return scored;
-}
+// The declared-configuration ranking used to live here and now lives in
+// lib/replication.js, where it can stream rows off disk instead of needing all
+// of them in the browser. The reading rules moved with it — the ordering leads
+// on the measured null and money is last on purpose — and the test that guards
+// the sort key moved to test-declaredset.js's reading of that file.
 
 // theme — Constructing remembers its OWN setting (owner, 2026-08-17). It used to
 // share the Trading page's key; each tab now keeps its own.
@@ -660,7 +604,7 @@ async function drawSweep() {
       <label class="f">promote top K<input id="swK" type="number" value="25" min="1" max="50" style="width:4.5rem" title="the backend caps this at 50 (detailK); a larger number is silently reduced, so the box refuses it here instead"></label>
       <label class="f">null boards<input id="swNulls" type="number" value="0" min="0" style="width:4.5rem" title="companion boards with votes dealt onto random days. Beating all N of them is at best a 1-in-(N+1) claim, so 19 is the first number whose best claim reaches 1-in-20. There is NO ceiling: type any number you like and the cost is printed beside the box before you launch."></label>
       <label class="f">min trades<input id="swMinTr" type="number" value="10" style="width:4.5rem"></label>
-      <label class="c"><input type="checkbox" id="swTrail"> trailing plane</label>
+      <label class="c" title="Makes the SEARCH try stops that follow the price up behind you, as well as the one that sits still. Four following distances by three starting points, on the second pass only — roughly thirteen times the work. This is about what the run LOOKS AT; the trail box on the replication line below is about the one configuration you name."><input type="checkbox" id="swTrail"> also try moving stops</label>
       <span class="note" id="swNullCost"></span>
     </div>
     <div class="row" style="margin-top:.5rem;align-items:flex-end;border-top:1px solid var(--line);padding-top:.55rem">
@@ -687,7 +631,7 @@ async function drawSweep() {
         <label class="c" title="score EVERY hold length as its own declared config"><input type="checkbox" id="swPermDecT"> permute</label>
       </div>
       <div id="swGrpTrail" style="display:flex;align-items:flex-end;gap:.45rem">
-        <label class="f" id="swDecTrailWrap" title="Declared trailing stop, band-relative. 'static' is the opposite-rail stop this lab has always used. Requires the trailing plane tick, since declared cells are read out of the promoted menu.">trail
+        <label class="f" id="swDecTrailWrap" title="WHICH STOP YOUR declared configuration uses. 'static' means the stop sits at the price level on the far side of your entry and never moves; the others follow the price up behind you, at the distance shown, measured against the band. This is one setting on ONE configuration — 'also try moving stops' above is the separate question of whether the SEARCH tries moving stops at all, and this needs that ticked, because a declared cell can only be found among cells the run computed.">trail
         <select id="swDecTrail">${vocabOptions('trailMult', '')}</select></label>
         <label class="c" id="swPermDecTrailWrap" title="score EVERY trailing stop, static included, as its own declared config"><input type="checkbox" id="swPermDecTrail"> permute</label>
       </div>
@@ -940,9 +884,17 @@ async function drawSweep() {
       if ($('#swSingles').checked) n *= 6;
       if ($('#swDoubles').checked || $('#swTriples').checked) n *= 8;
     }
+    // WHAT IT COSTS ON DISK, not just in time (owner, 2026-08-22). The rows are
+    // no longer held in memory, so the limit is the disk — and a limit anybody
+    // meets in hour forty is not a limit, it is a loss. Each unit the run
+    // scores in full records one row per config, and a stored row is about 150
+    // bytes; the run's own plan line says how many units, so this says the part
+    // the operator cannot work out for themselves.
     el.innerHTML = n === 1
       ? 'one declared config — no shopping, the strongest reading available'
-      : `<b>${n}</b> declared configs, each scored on every asset — roughly ${n}x the replication work. `
+      : `<b>${n}</b> declared configs, each scored on every asset — roughly ${n}x the replication work, `
+        + `and every unit scored in full records up to ${n} rows on disk at about 150 bytes each `
+        + `(<b>${(n * 150 / 1048576).toFixed(1)} MB</b> per unit). `
         + 'Permuting means you searched for it, so the honest end is the sealed slice (window layout 61/13/13/13, graded once in History).';
   };
   ['#swDecOn', '#swDecEntry', '#swDecTrail', '#swPermDecEntry', '#swPermDecGate', '#swPermDecD',
@@ -1158,6 +1110,9 @@ async function drawBoards() {
   // settings were CHOSEN on and nothing judged it — the heading must say so
   // rather than promising a held-back judge that does not exist.
   const hasHold = ((doc && doc.leaders) || []).some((l) => l.holdout && l.holdout.pnl != null);
+  // The replication table's numbers come back already totalled (see the note on
+  // repBlock below). Fetched here so the render stays synchronous.
+  const rep = doc ? await apiOr(`api/batch/${encodeURIComponent(doc.id)}/replication`, null) : null;
   const running = doc && doc.status === 'running';
   // ASSET PREDICTABILITY — pure census arithmetic, and the one reading on this
   // page that compares real against null across every asset at once.
@@ -1197,40 +1152,19 @@ async function drawBoards() {
   // table that did not exist here). Null copies also score the declared cell,
   // which is their job, but they must never enter the cross-asset count.
   const repBlock = (() => {
-    const all = (doc && doc.replication) || [];
-    // Null copies score the declared cell too — that is their job — but they must
-    // never enter the cross-asset count (QC 72). Docs recorded BEFORE the tag
-    // existed carry no nullDealSeed on any row, and filtering on it there keeps
-    // everything, silently mixing null copies into the tally. On those docs the
-    // board that works falls back to each asset's FIRST-recorded row, which is
-    // the real copy (real copies are queued ahead of every null copy), and says
-    // so on the page rather than presenting an inferred count as a measured one.
-    const tagged = all.some((r) => 'nullDealSeed' in r);
-    let rows;
-    let inferredNote = '';
-    if (tagged) {
-      rows = all.filter((r) => r.nullDealSeed == null);
-    } else {
-      const realFailed = new Set(((doc && doc.failures) || [])
-        .filter((f) => !/\|n\d+/.test(f.key || ''))
-        .map((f) => String(f.key || '').split('|')[0].split('+')[0]));
-      const seen = new Set();
-      rows = all.filter((r) => {
-        const k = `${r.trade}|${r.ctx1 || ''}|${r.ctx2 || ''}|${r.declaredLabel || ''}`;
-        if (seen.has(k) || realFailed.has(r.trade)) return false;
-        seen.add(k);
-        return true;
-      });
-      inferredNote = `<p class="note"><b>Counts below are INFERRED, not measured.</b> This run recorded ${all.length}
-        declared-cell rows without marking which copy scored them, so each asset's first-recorded row is taken as the
-        real one — real copies are queued ahead of every null copy. ${all.length - rows.length} row(s) were excluded.
-        ${realFailed.size ? `${realFailed.size} asset(s) whose real copy FAILED are dropped entirely rather than shown as a null copy.` : ''}</p>`;
-    }
-    if (!rows.length) return '';
-    // Every configuration is scored on the HELD-BACK window — the once-only look
-    // — never on the window the settings were chosen on. The ordering rule and
-    // its justification live on rankDeclaredConfigs itself.
-    const scored = rankDeclaredConfigs({ all, realRows: rows, tagged, leaders: (doc && doc.leaders) || [] });
+    // THE ROWS ARE ON DISK AND THERE CAN BE HUNDREDS OF MILLIONS OF THEM
+    // (owner order, 2026-08-22). This used to group and total every recorded
+    // row here, in the browser, which was right at seventeen rows a run and
+    // impossible the moment the declared boxes could be permuted. The counting
+    // now happens on the other side by streaming, and what arrives is one line
+    // per declared configuration — see lib/replication.js, which carries the
+    // reading rules that used to live in rankDeclaredConfigs.
+    if (!rep || !rep.scored || !rep.scored.length) return '';
+    const scored = rep.scored;
+    const tagged = rep.tagged;
+    const inferredNote = tagged ? '' : `<p class="note"><b>Counts below are INFERRED, not measured.</b> This run recorded ${rep.total}
+      declared-cell rows without marking which copy scored them, so each asset's first-recorded row is taken as the
+      real one — real copies are queued ahead of every null copy. ${rep.dropped} row(s) were excluded.</p>`;
     // TOOLTIPS carry the reading rules. A number shown without its rule is a
     // number that will be misread, and these four are misread in opposite
     // directions if you swap them.
@@ -1240,6 +1174,13 @@ async function drawBoards() {
       assets: 'how many assets held up. CONTEXT, NOT EVIDENCE: crypto assets move together, so these are nowhere near independent looks. No p-value is quoted from them (QC-7).',
       money: 'summed money on the once-only held-back look. Ranked LAST on purpose — leading on money rebuilds the shopped board.',
     };
+    // THE PER-ASSET TABLE IS CAPPED and says so. A configuration scored on a
+    // wide run has one real row per asset PER BRANCH, which is thousands — a
+    // table nobody scrolls. Showing the first of them silently would be a table
+    // that looks complete and is not.
+    const moreNote = (g) => (g.realsTotal > g.realsShown
+      ? `<p class="note">showing ${g.realsShown} of ${g.realsTotal} rows for this configuration — the rest are recorded and can be read from the run's stored rows.</p>`
+      : '');
     const nullCell = (g) => (g.nullShare == null
       ? '<span class="muted" title="this run recorded no dealt-vote copies of this configuration">no null copies</span>'
       : `<b class="${g.nullShare === 1 ? 'pos' : ''}">${g.nullBeat}/${g.nullPairs}</b>`);
@@ -1273,11 +1214,11 @@ async function drawBoards() {
         <div class="row" style="gap:1.4rem;margin:.3rem 0 .5rem">
           <span><span class="k" title="${esc(TIP.null)}">beat its own null copies</span> ${nullCell(g)}</span>
           <span><span class="k" title="${esc(TIP.region)}">plateau width</span> <b>${g.region == null ? '—' : g.region}</b></span>
-          <span><span class="k" title="${esc(TIP.assets)}">assets held up (context)</span> <b>${g.pos} / ${g.hold.length}</b></span>
+          <span><span class="k" title="${esc(TIP.assets)}">assets held up (context)</span> <b>${g.pos} / ${g.holdCount}</b></span>
           <span><span class="k" title="${esc(TIP.money)}">total held-back</span> <b class="${g.sum >= 0 ? 'pos' : 'neg'}">${money(g.sum)}</b></span>
-          <span><span class="k">beat always-long</span> <b>${g.vsLPos} / ${g.vsL.length}</b></span>
+          <span><span class="k">beat always-long</span> <b>${g.vsLPos} / ${g.vsLCount}</b></span>
         </div>
-        ${detail(g.reals)}</div>`;
+        ${detail(g.reals)}${moreNote(g)}</div>`;
     }
 
     // MANY declared configs: the ranked list comes FIRST (owner, 2026-08-17).
@@ -1287,11 +1228,11 @@ async function drawBoards() {
           <span class="k" style="margin-right:.5rem">#${i + 1}</span><b>${esc(g.label)}</b>
           <span style="margin-left:.6rem" title="${esc(TIP.null)}">beat its own nulls ${nullCell(g)}</span>
           <span style="margin-left:.5rem" title="${esc(TIP.region)}">plateau <b>${g.region == null ? '—' : g.region}</b></span>
-          <span class="note" style="margin-left:.5rem" title="${esc(TIP.assets)}">· assets ${g.pos}/${g.hold.length} (context)</span>
-          <span class="note" style="margin-left:.5rem">· beat always-long ${g.vsLPos}/${g.vsL.length}</span>
+          <span class="note" style="margin-left:.5rem" title="${esc(TIP.assets)}">· assets ${g.pos}/${g.holdCount} (context)</span>
+          <span class="note" style="margin-left:.5rem">· beat always-long ${g.vsLPos}/${g.vsLCount}</span>
           <span class="${g.sum >= 0 ? 'pos' : 'neg'}" style="margin-left:.5rem" title="${esc(TIP.money)}">${money(g.sum)}</span>
         </summary>
-        <div style="padding:.3rem .25rem .8rem">${detail(g.reals)}</div>
+        <div style="padding:.3rem .25rem .8rem">${detail(g.reals)}${moreNote(g)}</div>
       </details>`).join('');
     return `<div class="panel"><h3 style="margin-top:0">Replication — ${scored.length} declared configs, ranked</h3>
       <p class="note">KEY — each line is ONE declared configuration scored on every asset. Ranked by <b>how much of its

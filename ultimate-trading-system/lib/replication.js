@@ -1,0 +1,174 @@
+// THE REPLICATION TABLE, BUILT BY STREAMING (owner order, 2026-08-22).
+//
+// The Construct page used to do this arithmetic in the browser, over every row
+// the run recorded. That was right when a run recorded a few hundred: one
+// declared configuration on seventeen assets is seventeen rows. It stopped
+// being right the moment the declared boxes could be permuted — 8,232
+// configurations on 50,184 units is 413 million rows, which is not a table
+// anybody renders and not a payload anybody ships.
+//
+// What the table actually shows is one line per CONFIGURATION: how many of its
+// assets held up, how much money on the once-only look, how many of its own
+// dealt-vote copies it beat, and how wide a region of neighbouring settings sat
+// around it. All of those are running totals. So they are accumulated as the
+// rows stream past, one line at a time, and what comes back is bounded by the
+// number of configurations rather than by the number of rows.
+//
+// THE READING RULES ARE UNCHANGED and they are the point of the file:
+//
+//   * null copies score the declared cell too — that is their job — and they
+//     must never enter the cross-asset count (QC 72). They contribute only to
+//     the measured null: how many of a configuration's own copies its real
+//     held-back money beat.
+//   * every figure is the HELD-BACK window, never the window the settings were
+//     chosen on.
+//   * the ordering leads on the measured null, then plateau width, then the
+//     share of assets, then money. Money is LAST on purpose: leading on it
+//     rebuilds the shopped board. No p-value appears in the sort key at all
+//     (QC-7 — assets move together, so they are not independent looks).
+const rowstore = require('./rowstore');
+
+const assetKey = (r) => `${r.trade}|${r.ctx1 || ''}|${r.ctx2 || ''}|${r.geometry}`;
+
+// Plateau width lives on the leader rows, keyed by asset and chunk shape.
+function regionsByAsset(leaders) {
+  const m = new Map();
+  for (const l of (leaders || [])) {
+    if (l.nullDealSeed != null || !l.region) continue;
+    const k = assetKey(l);
+    const prev = m.get(k);
+    if (prev == null || (l.region.size || 0) > prev) m.set(k, l.region.size || 0);
+  }
+  return m;
+}
+
+// One pass over the rows. `rowsOf` yields every recorded row exactly once; it is
+// the store for a run that has one and the doc's own array for a run recorded
+// before the rows moved to disk.
+function rowsOf(doc, fn) {
+  if (rowstore.exists(doc.id, 'replication')) return rowstore.each(doc.id, 'replication', fn);
+  let n = 0;
+  for (const r of (doc.replication || [])) { n++; if (fn(r, n - 1) === false) return n; }
+  return n;
+}
+
+// PER CONFIGURATION, and nothing per row. `detailCap` bounds how many real rows
+// are carried back for the per-asset table a reader can open; the rest stay on
+// disk and are fetched by `detail()` when something actually opens one.
+function rank(doc, { detailCap = 60 } = {}) {
+  const regions = regionsByAsset(doc.leaders || []);
+  const groups = new Map();
+  let total = 0;
+
+  // TWO PASSES, because the rule depends on something only the rows can say.
+  // A run recorded before the copy tag existed carries no nullDealSeed on ANY
+  // row, and filtering on it there keeps everything — silently mixing dealt-vote
+  // copies into the cross-asset count. On those runs each asset's FIRST recorded
+  // row is taken as the real one (real copies are queued ahead of every copy)
+  // and the measured null stays absent by fact rather than by accident. The
+  // screen says so rather than presenting an inferred count as a measured one.
+  let tagged = false;
+  rowsOf(doc, (r) => { if ('nullDealSeed' in r) { tagged = true; return false; } return true; });
+  const seenUntagged = new Set();
+  let dropped = 0;
+
+  rowsOf(doc, (r) => {
+    total++;
+    const label = r.declaredLabel || 'declared config';
+    if (!tagged) {
+      const dk = `${assetKey(r)}|${label}`;
+      if (seenUntagged.has(dk)) { dropped++; return true; }
+      seenUntagged.add(dk);
+    }
+    let g = groups.get(label);
+    if (!g) {
+      g = {
+        label,
+        holdCount: 0, pos: 0, vsLCount: 0, vsLPos: 0, sum: 0,
+        assets: new Set(), regionSum: 0, regionN: 0,
+        nullBeat: 0, nullPairs: 0,
+        realHold: new Map(),      // asset -> held-back money, for the pairing
+        pendingNulls: new Map(),  // asset -> null money seen before its real row
+        reals: [], realsTotal: 0,
+      };
+      groups.set(label, g);
+    }
+    const k = assetKey(r);
+    const hold = r.holdout && r.holdout.pnl != null ? r.holdout.pnl : null;
+
+    if (!tagged || r.nullDealSeed == null) {
+      g.realsTotal++;
+      if (g.reals.length < detailCap) g.reals.push(r);
+      g.assets.add(k);
+      const reg = regions.get(k);
+      if (reg != null) { g.regionSum += reg; g.regionN++; }
+      if (hold != null) {
+        g.holdCount++;
+        g.sum += hold;
+        if (hold > 0) g.pos++;
+        const vsL = r.holdout.vsAlwaysLong;
+        if (vsL != null) { g.vsLCount++; if (vsL > 0) g.vsLPos++; }
+        // pair against every copy of this asset already seen, and remember the
+        // real figure so copies arriving later can be paired too
+        let mine = g.realHold.get(k);
+        if (!mine) { mine = []; g.realHold.set(k, mine); }
+        mine.push(hold);
+        for (const nv of (g.pendingNulls.get(k) || [])) { g.nullPairs++; if (hold > nv) g.nullBeat++; }
+      }
+    } else if (hold != null) {
+      // `hold` here is the COPY's held-back money; `mine` is the real one.
+      for (const mine of (g.realHold.get(k) || [])) { g.nullPairs++; if (mine > hold) g.nullBeat++; }
+      let pend = g.pendingNulls.get(k);
+      if (!pend) { pend = []; g.pendingNulls.set(k, pend); }
+      pend.push(hold);
+    }
+  });
+
+  const scored = [...groups.values()].map((g) => ({
+    label: g.label,
+    assets: g.assets.size,
+    holdCount: g.holdCount,
+    pos: g.pos,
+    vsLCount: g.vsLCount,
+    vsLPos: g.vsLPos,
+    sum: g.sum,
+    region: g.regionN ? Math.round(g.regionSum / g.regionN) : null,
+    nullBeat: g.nullBeat,
+    nullPairs: g.nullPairs,
+    nullShare: g.nullPairs ? g.nullBeat / g.nullPairs : null,
+    reals: g.reals,
+    realsTotal: g.realsTotal,
+    realsShown: g.reals.length,
+  }));
+
+  // The first key must return 0 when NEITHER side has a measured null, or the
+  // `||` chain never reaches plateau width and money. Returning -1 there made a
+  // comparator not even consistent with itself, so the order was arbitrary
+  // rather than merely wrong.
+  const byNull = (a, b) => (a.nullShare == null && b.nullShare == null ? 0
+    : b.nullShare == null ? -1 : a.nullShare == null ? 1 : b.nullShare - a.nullShare);
+  scored.sort((a, b) => byNull(a, b)
+    || (b.region ?? -1) - (a.region ?? -1)
+    || (b.pos / (b.holdCount || 1)) - (a.pos / (a.holdCount || 1))
+    || b.sum - a.sum);
+
+  return { total, tagged, dropped, configs: scored.length, scored };
+}
+
+// Every real row of ONE configuration, for the per-asset table a reader opens.
+// Streamed and capped: a configuration with ten thousand real rows is still a
+// table nobody scrolls, and the count says how many were left on disk.
+function detail(doc, label, { limit = 500 } = {}) {
+  const out = [];
+  let matched = 0;
+  rowsOf(doc, (r) => {
+    if ((r.declaredLabel || 'declared config') !== label) return true;
+    if (r.nullDealSeed != null) return true;   // a copy is machinery, never an asset row
+    matched++;
+    if (out.length < limit) out.push(r);
+    return true;
+  });
+  return { label, rows: out, matched, shown: out.length };
+}
+
+module.exports = { rank, detail, assetKey };

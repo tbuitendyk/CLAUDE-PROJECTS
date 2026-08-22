@@ -102,7 +102,7 @@ module.exports = {
     const how = help().sweep.how.map(([h, b]) => `${h}\n${b}`).join('\n');
     for (const [thing, why] of [
       ['promote top K', 'it never says how many rows get the fuller scoring'],
-      ['trailing plane', 'it never says which pass the following stops apply to'],
+      ['also try moving stops', 'it never says which pass the following stops apply to'],
       ['null boards', 'it never says what the scrambled companions do'],
       ['agree', 'it never connects the fuller scoring to the agreement fractions'],
     ]) {

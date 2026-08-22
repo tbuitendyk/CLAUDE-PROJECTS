@@ -366,6 +366,40 @@ app.post('/api/campaign/delete', csrfGuard, (req, res) => {
   }
 });
 
+// THE REPLICATION TABLE, aggregated on this side. The rows live on disk and
+// there can be hundreds of millions of them; what the screen shows is one line
+// per declared configuration, so the counting happens here by streaming and the
+// browser is sent the lines rather than the rows.
+app.get('/api/batch/:id/replication', (req, res) => {
+  const doc = batch.getBatch(String(req.params.id || ''));
+  if (!doc) return res.status(404).json({ error: 'unknown run' });
+  try { res.json(require('./lib/replication').rank(doc)); }
+  catch (err) { res.status(400).json({ error: err.message }); }
+});
+
+// One configuration's real rows, for the per-asset table a reader opens. Fetched
+// when it is opened rather than shipped with everything else: on a wide run
+// that payload would be the whole problem again.
+app.get('/api/batch/:id/replication-detail', (req, res) => {
+  const doc = batch.getBatch(String(req.params.id || ''));
+  if (!doc) return res.status(404).json({ error: 'unknown run' });
+  try { res.json(require('./lib/replication').detail(doc, String(req.query.label || ''))); }
+  catch (err) { res.status(400).json({ error: err.message }); }
+});
+
+// Any of a run's stored row collections, a page at a time. The rows ARE the
+// record (QC 74) and this is how they are read back without holding them.
+app.get('/api/batch/:id/rows', (req, res) => {
+  const name = String(req.query.name || '');
+  if (!['slim', 'census', 'replication'].includes(name)) {
+    return res.status(400).json({ error: 'name must be slim, census or replication' });
+  }
+  const doc = batch.getBatch(String(req.params.id || ''));
+  if (!doc) return res.status(404).json({ error: 'unknown run' });
+  try { res.json(require('./lib/rowstore').page(doc.id, name, req.query.from, req.query.n)); }
+  catch (err) { res.status(400).json({ error: err.message }); }
+});
+
 // WHETHER A STOPPED RUN CAN BE PICKED UP WHERE IT LEFT OFF, and what is left.
 app.get('/api/resume-contents', (req, res) => {
   try { res.json(batch.resumeContents(String(req.query.id || ''))); }

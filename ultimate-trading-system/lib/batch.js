@@ -33,6 +33,69 @@ const DEFAULT_PAIRS = [
 ];
 
 let activeBatch = null; // one at a time; the UI polls this
+// THE ROWS OF THE RUNNING JOB, held open on disk rather than in the document
+// (owner order, 2026-08-22). One writer per collection, created when the run
+// starts and closed when it ends. They are NOT on the doc: the doc is turned
+// into text on every save, and these are the three things that made that
+// impossible.
+let activeRows = null;
+function openRowStores(runId) {
+  closeRowStores();
+  activeRows = {
+    id: runId,
+    slim: rowstore.writer(runId, 'slim'),
+    census: rowstore.writer(runId, 'census'),
+    replication: rowstore.writer(runId, 'replication'),
+  };
+  return activeRows;
+}
+function closeRowStores() {
+  if (!activeRows) return;
+  for (const k of ['slim', 'census', 'replication']) {
+    try { activeRows[k].close(); } catch (_) { /* already shut */ }
+  }
+  activeRows = null;
+}
+// Which units a run has already recorded, without holding the rows. The whole
+// point of a resume is that it costs less than starting over, and reading ten
+// million rows into memory to work out what to skip would have made picking a
+// run up as expensive as the thing it avoids.
+function keysAlreadyDone(doc, name) {
+  const out = new Set();
+  if (rowstore.exists(doc.id, name)) {
+    rowstore.each(doc.id, name, (r) => { if (r.key) out.add(r.key); });
+    return out;
+  }
+  // A run recorded before the rows moved to disk keeps them in the document.
+  const inDoc = name === 'slim' ? doc.slimResults : doc.edgeCensus;
+  for (const r of (inDoc || [])) if (r && r.key) out.add(r.key);
+  return out;
+}
+
+// Promoted rows recorded before the census carried a key. They cannot be
+// matched to a unit, so those units are scored again rather than skipped — and
+// the screen says how many, rather than letting the work happen invisibly.
+function countUnnamed(doc) {
+  if (rowstore.exists(doc.id, 'census')) {
+    let n = 0;
+    rowstore.each(doc.id, 'census', (r) => { if (!r.key) n++; });
+    return n;
+  }
+  return (doc.edgeCensus || []).filter((r) => !r.key).length;
+}
+
+// How many of each, for the doc. Cheap: it is the writers' own counters while a
+// run is going, and a forty-byte sidecar afterwards.
+function rowCountsFor(doc) {
+  if (activeRows && activeRows.id === doc.id) {
+    return { slim: activeRows.slim.count, census: activeRows.census.count, replication: activeRows.replication.count };
+  }
+  return {
+    slim: rowstore.count(doc.id, 'slim'),
+    census: rowstore.count(doc.id, 'census'),
+    replication: rowstore.count(doc.id, 'replication'),
+  };
+}
 
 // Startup sweep: a batch doc still marked 'running' on disk means the
 // service died or was restarted mid-screen (deploys included). Mark it
@@ -154,6 +217,14 @@ let lastSaveAt = 0;
 
 function saveProgress(doc) {
   if (Date.now() - lastSaveAt < PROGRESS_SAVE_MS) return false;
+  // The rows and the document that counts them must agree. Flushing here means
+  // a hard stop loses the same couple of seconds from both, rather than leaving
+  // a document claiming rows that never reached the file.
+  if (activeRows && activeRows.id === doc.id) {
+    for (const k of ['slim', 'census', 'replication']) {
+      try { activeRows[k].flush(); } catch (_) { /* the next flush will carry them */ }
+    }
+  }
   saveBatch(doc);
   return true;
 }
@@ -275,8 +346,9 @@ function runContents(id) {
     setups,
     counts: {
       leaderRows: (doc.leaders || []).length,
-      slimRows: (doc.slimResults || []).length,
-      replicationRows: (doc.replication || []).length,
+      slimRows: (doc.rowCounts && doc.rowCounts.slim) || rowstore.count(doc.id, 'slim') || (doc.slimResults || []).length,
+      replicationRows: (doc.rowCounts && doc.rowCounts.replication) || rowstore.count(doc.id, 'replication') || (doc.replication || []).length,
+      rowBytes: rowstore.bytes(doc.id),
       greenlights: greenlights.length,
       setups: setups.length,
       modelFiles: dirCount('models'),
@@ -304,9 +376,45 @@ function deleteBatch(id) {
   const removed = { modelFiles: found.counts.modelFiles, tuningFiles: found.counts.tuningFiles };
   rmDir(path.join(dataDir, 'models', found.id));
   rmDir(path.join(dataDir, 'ht', found.id));
+  rowstore.remove(found.id);
   try { fs.rmSync(batchFile(found.id), { force: true }); } catch (_) { /* already gone */ }
   removed.run = 1;
   return { id: found.id, removed };
+}
+
+// THE COMPATIBILITY LAYER, and the reason this change did not have to touch
+// every reader in the codebase.
+//
+// Four modules and the Construct page say `doc.edgeCensus` and expect an array.
+// They still can. The rows live on disk now, so these properties are getters
+// that read them on demand — and they are NON-ENUMERABLE, which is the part
+// that matters: JSON.stringify walks enumerable properties, so saveBatch does
+// not see them, and the run document stays the same size whether the run
+// produced fifty rows or fifty million.
+//
+// Materialising is still materialising. A caller that reads doc.replication on
+// a run with ten million rows will hold ten million objects, which is why
+// nothing on the serving path does that any more — the aggregate is built by
+// streaming instead. These getters exist so that ANALYSIS code, which runs once
+// on a finished run and has already decided it can afford the rows, does not
+// have to change at all.
+const ROW_PROPS = { slimResults: 'slim', edgeCensus: 'census', replication: 'replication' };
+function hydrate(doc) {
+  if (!doc || doc.__hydrated) return doc;
+  Object.defineProperty(doc, '__hydrated', { value: true, enumerable: false });
+  for (const [prop, name] of Object.entries(ROW_PROPS)) {
+    // A document written before the rows moved carries its own array. Leave it:
+    // it is the only copy there is.
+    if (Array.isArray(doc[prop]) && doc[prop].length) continue;
+    if (!rowstore.exists(doc.id, name)) continue;
+    let cached = null;
+    Object.defineProperty(doc, prop, {
+      enumerable: false,
+      configurable: true,
+      get() { if (!cached) cached = rowstore.readAll(doc.id, name); return cached; },
+    });
+  }
+  return doc;
 }
 
 function getBatch(id) {
@@ -317,7 +425,7 @@ function getBatch(id) {
   // arbitrary .json read. Guards every caller, not just that one route.
   const s = String(id);
   if (!/^[A-Za-z0-9][A-Za-z0-9_.-]*$/.test(s) || s.includes('..')) return null;
-  if (activeBatch && activeBatch.id === s) return activeBatch;
+  if (activeBatch && activeBatch.id === s) return hydrate(activeBatch);
   try {
     const doc = JSON.parse(fs.readFileSync(batchFile(id), 'utf8'));
     // The runs are the record; the summary is derived. Rebuild it on read so
@@ -326,7 +434,7 @@ function getBatch(id) {
     if (doc.summary && Array.isArray(doc.runs)) {
       doc.summary = summarize(doc.runs);
     }
-    return doc;
+    return hydrate(doc);
   } catch {
     return null;
   }
@@ -412,6 +520,7 @@ function refusePlantedPairs(symbols, what) {
 const { median } = require('./stats');
 const { slimViewsFor } = require('./bracketwork');
 const bracketLib = require('./bracket');
+const rowstore = require('./rowstore');
 const { createPool } = require('./pool');
 
 // The pool serving whichever heavy job is in flight, so the kill switch can
@@ -1346,8 +1455,8 @@ function resumeContents(id) {
     why.push('this run never recorded which price files it read, so there is no way to '
       + 'know whether the rest of it would be scored against the same history');
   }
-  const doneSlim = new Set((doc.slimResults || []).map((r) => r.key).filter(Boolean));
-  const donePromote = new Set((doc.edgeCensus || []).map((r) => r.key).filter(Boolean));
+  const doneSlim = keysAlreadyDone(doc, 'slim');
+  const donePromote = keysAlreadyDone(doc, 'census');
   const planned = (doc.plan || {}).units || null;
   return {
     id: doc.id,
@@ -1362,7 +1471,10 @@ function resumeContents(id) {
     promotedScored: donePromote.size,
     // Rows the promote stage recorded before this field existed cannot be
     // matched, so say so rather than quietly scoring them twice.
-    promotedUnnamed: (doc.edgeCensus || []).filter((r) => !r.key).length,
+    // Counted by streaming: on a run with millions of promoted rows, pulling
+    // them all in just to count the ones missing a name would cost more than
+    // the resume saves.
+    promotedUnnamed: countUnnamed(doc),
     failures: (doc.failures || []).length,
     resumes: (doc.resumes || []).length,
     resumable: why.length === 0,
@@ -1645,9 +1757,13 @@ function startBracketLab(params, opts) {
     plan: { branches: branches.length, combos: combos.length, units: units.length, slimRuns, promoteRuns: null },
     perf: { phase: 'slim', unitsDone: 0, unitsTotal: units.length, runsDone: 0, runsTotal: slimRuns, ratePerMin: null, secPerTraining: null, elapsedMs: 0, etaMs: null },
     leaders: [],
-    replication: [], // declared-cell result per asset (replication mode)
-    // Edge-screen census: one row per unit, never money-filtered.
-    edgeCensus: [],
+    // THE THREE BIG COLLECTIONS LIVE ON DISK (see lib/rowstore.js). What the
+    // doc keeps is how many there are; the rows themselves are appended a line
+    // at a time and read back by streaming. getBatch hangs non-enumerable
+    // getters for `replication`, `edgeCensus` and `slimResults` off the doc, so
+    // every existing reader still says doc.edgeCensus and gets an array — and
+    // JSON.stringify, which is what made this fatal, does not see them at all.
+    rowCounts: { slim: 0, census: 0, replication: 0 },
     failures: [],
     selection: null,
     nullTest: null,
@@ -1668,10 +1784,11 @@ function startBracketLab(params, opts) {
     doc.params = p;
     doc.plan = fresh.plan;
     doc.leaders = doc.leaders || [];
-    doc.replication = doc.replication || [];
-    doc.edgeCensus = doc.edgeCensus || [];
     doc.failures = doc.failures || [];
-    doc.slimResults = doc.slimResults || [];
+    // The rows themselves are on disk and are reopened below; a document
+    // written before they moved there still carries its own arrays, and the
+    // getters in getBatch keep those readable.
+    doc.rowCounts = doc.rowCounts || { slim: 0, census: 0, replication: 0 };
     // The counters are recomputed from what is actually RECORDED, never
     // carried over: the stale ones counted failures as done, and a failure is
     // exactly what gets another go.
@@ -1682,6 +1799,12 @@ function startBracketLab(params, opts) {
     };
   }
   activeBatch = doc;
+  // The row files, held open for the life of the run. A resumed run reopens
+  // the same files and appends: the writers adopt the existing columns and
+  // count, so picking a run up carries on one record rather than starting a
+  // second, shorter one beside it.
+  const rows = openRowStores(doc.id);
+  doc.rowCounts = rowCountsFor(doc);
   saveBatch(doc);
 
   // Symbol maps are built inside the workers (bracketwork.js owns that LRU).
@@ -1749,7 +1872,11 @@ function startBracketLab(params, opts) {
     // FAILED produced none and gets another go, which is the one retry worth
     // having. With no resume this set is empty and the two arrays below are
     // the whole unit list, so the ordinary path is unchanged.
-    const doneSlim = resume ? new Set((doc.slimResults || []).map((r) => r.key).filter(Boolean)) : new Set();
+    // STREAMED, not materialised. Ten million keys as a Set is fine; ten
+    // million row OBJECTS to get at them is the thing this whole change exists
+    // to stop. An older run whose rows are still inside the document falls back
+    // to reading them from there, because they are all it has.
+    const doneSlim = resume ? keysAlreadyDone(doc, 'slim') : new Set();
     const keyOf = (u) => unitFullKey(u.c, u.b, u);
     const slimPending = doneSlim.size ? units.filter((u) => !doneSlim.has(keyOf(u))) : units;
     if (resume) {
@@ -1784,8 +1911,7 @@ function startBracketLab(params, opts) {
         // UNCAPPED slim record (QC 74): the leader list caps at 50 for
         // display, and slim rows beyond it used to vanish. Compact on
         // purpose — the full result lives in the promoted stage.
-        doc.slimResults = doc.slimResults || [];
-        doc.slimResults.push({
+        rows.slim.push({
           key, trade: c.trade, ctx1: c.ctx1, ctx2: c.ctx2,
           geometry: b.geometry, decision: b.decision, bandPct: res.bandPct,
           nullDealSeed: u.nullDealSeed ?? null,
@@ -1803,8 +1929,7 @@ function startBracketLab(params, opts) {
           ...res.best,
         });
       } else if (settled.ok && settled.value && !settled.value.best) {
-        doc.slimResults = doc.slimResults || [];
-        doc.slimResults.push({
+        rows.slim.push({
           key, trade: c.trade, ctx1: c.ctx1, ctx2: c.ctx2,
           geometry: b.geometry, decision: b.decision,
           nullDealSeed: u.nullDealSeed ?? null,
@@ -1819,6 +1944,7 @@ function startBracketLab(params, opts) {
       doc.perf.runsDone += slimViewsFor(c.size).length;
       doc.progress = `slim ${doc.perf.unitsDone}/${units.length}: ${c.trade}${c.ctx1 ? '+' + c.ctx1 : ''}${c.ctx2 ? '+' + c.ctx2 : ''}`;
       bracketPerfTick(doc);
+      doc.rowCounts = rowCountsFor(doc);
       saveProgress(doc);
     });
 
@@ -1836,7 +1962,7 @@ function startBracketLab(params, opts) {
       // Rows written before the census carried a key cannot be matched. Those
       // units are scored again rather than skipped: doing the work twice
       // wastes time, and skipping the wrong one loses a result.
-      const donePromote = resume ? new Set((doc.edgeCensus || []).map((r) => r.key).filter(Boolean)) : new Set();
+      const donePromote = resume ? keysAlreadyDone(doc, 'census') : new Set();
       const promPending = donePromote.size ? promote.filter((l) => !donePromote.has(l.key)) : promote;
       if (resume && promPending.length !== promote.length) {
         const last = doc.resumes[doc.resumes.length - 1];
@@ -1911,7 +2037,7 @@ function startBracketLab(params, opts) {
             // leader list is display only, this is the record. Previously
             // only edge-screen runs wrote census rows, so a discovery run's
             // promoted results beyond the display cap simply vanished.
-            doc.edgeCensus.push({
+            rows.census.push({
               trade: l.trade, ctx1: l.ctx1, ctx2: l.ctx2,
               geometry: l.geometry, decision: l.decision, bandPct: res.bandPct,
               // WINDOW STAMPS on the UNCAPPED record (QC 73, 2026-08-04):
@@ -2022,7 +2148,7 @@ function startBracketLab(params, opts) {
           } else {
             // No qualifying cell at all: still a record (QC 74).
             
-            doc.edgeCensus.push({
+            rows.census.push({
               trade: l.trade, ctx1: l.ctx1, ctx2: l.ctx2,
               geometry: l.geometry, decision: l.decision, bandPct: res.bandPct ?? null,
               bandMode: l.bandMode ?? null, weekdaysOnly: l.weekdaysOnly ?? null,
@@ -2041,7 +2167,7 @@ function startBracketLab(params, opts) {
               ? res.declaredSet.filter((x) => x.cell).map((x) => ({ d: x.cell, label: x.label }))
               : [{ d: res.declared, label: (p.declared && p.declared.label) || null }];
             for (const { d, label: declaredLabel } of repRows) {
-            doc.replication.push({
+            rows.replication.push({
               declaredLabel,
               // WHICH COPY scored this row. Without the tag, real and
               // null-copy declared scores were indistinguishable and the
@@ -2066,12 +2192,13 @@ function startBracketLab(params, opts) {
               vsBuyHold: d.holds && d.holds.buyHold != null ? d.pnl - d.holds.buyHold : null,
             });
             }
-            const repKey = (r) => `${r.trade}|${r.ctx1 || ''}|${r.ctx2 || ''}|${r.geometry}|${r.declaredLabel || ''}`;
-            doc.replication.sort((x, y) => (y.pnl - x.pnl) || (repKey(x) < repKey(y) ? -1 : repKey(x) > repKey(y) ? 1 : 0));
+            // NO SORT HERE ANY MORE. This re-sorted the whole collection after
+            // every unit — at the owner's scale, sorting ten million rows fifty
+            // thousand times. Ordering is a question the reader asks once, and
+            // the reader now asks it of the aggregate, not of every row.
           }
         } else if (settled.ok && settled.value && !settled.value.best) {
-        doc.slimResults = doc.slimResults || [];
-        doc.slimResults.push({
+        rows.slim.push({
           key, trade: c.trade, ctx1: c.ctx1, ctx2: c.ctx2,
           geometry: b.geometry, decision: b.decision,
           nullDealSeed: u.nullDealSeed ?? null,
@@ -2089,6 +2216,12 @@ function startBracketLab(params, opts) {
     }
     pool.abort();
     if (activePool === pool) activePool = null;
+    // THE LAST ROWS REACH DISK BEFORE THE RUN IS CALLED DONE. Writes are
+    // batched, so up to a few hundred rows are still in hand at this point;
+    // closing flushes them and stamps the sidecar with the final count.
+    closeRowStores();
+    doc.rowCounts = rowCountsFor(doc);
+    doc.rowBytes = rowstore.bytes(doc.id);
     doc.status = doc.cancelRequested ? 'cancelled' : 'done';
     doc.perf.phase = 'done';
     doc.finishedAt = new Date().toISOString();
@@ -2097,6 +2230,10 @@ function startBracketLab(params, opts) {
   })().catch((err) => {
     try { pool.abort(); } catch { /* gone */ }
     if (activePool === pool) activePool = null;
+    // A run that failed keeps everything it managed to record (QC 74), so the
+    // rows are flushed on this path too — not only on the happy one.
+    closeRowStores();
+    doc.rowCounts = rowCountsFor(doc);
     doc.status = 'error';
     doc.error = err.message || String(err);
     doc.finishedAt = new Date().toISOString();
@@ -2257,6 +2394,7 @@ function startBracketNull(id, shifts) {
       doc.perf.runsDone += slimViewsFor(c.size).length * 2;
       doc.progress = `null ${doneCount}/${nShifts} (${doc.nullTest.shifts} distinct banked)`;
       bracketPerfTick(doc);
+      doc.rowCounts = rowCountsFor(doc);
       saveProgress(doc);
     });
     pool.abort();

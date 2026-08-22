@@ -144,17 +144,25 @@ module.exports = {
   // The replication table the tick's own tooltip promises must exist on the tab.
   // It was absent for two days: the tick worked, the run recorded the rows, and
   // the tab showed nothing (owner, 2026-08-17).
+  // CHANGED 2026-08-22: the rows moved to disk and the counting moved with
+  // them, so the page asks for the totals instead of computing them over every
+  // recorded row. The reading rules did not move — they are checked against
+  // lib/replication.js, which is where they now live.
   theBoardShowsTheReplicationTable() {
     const ui = fs.readFileSync(path.join(ROOT, 'public', 'construct.js'), 'utf8');
-    assert.ok(/doc\.replication/.test(ui), 'the Boards section must read the recorded replication rows');
-    assert.ok(/rows = all\.filter\(\(r\) => r\.nullDealSeed == null\)/.test(ui),
+    const lib = fs.readFileSync(path.join(ROOT, 'lib', 'replication.js'), 'utf8');
+    assert.ok(/api\/batch\/\$\{encodeURIComponent\(doc\.id\)\}\/replication/.test(ui),
+      'the Boards section must ask for the replication totals');
+    assert.ok(/if \(!tagged \|\| r\.nullDealSeed == null\)/.test(lib),
       'null copies score the declared cell too and must never enter the cross-asset count');
-    assert.ok(/const tagged = all\.some\(\(r\) => 'nullDealSeed' in r\)/.test(ui),
-      'untagged docs must be detected, not filtered as if they were tagged');
+    assert.ok(/if \('nullDealSeed' in r\) \{ tagged = true/.test(lib),
+      'untagged runs must be detected, not filtered as if they were tagged');
     assert.ok(/INFERRED, not measured/.test(ui),
       'and an inferred count must say on the page that it is inferred');
-    // the reading that counts is the config against ITS OWN dealt-vote copies
-    assert.ok(/nullShare/.test(ui), 'the measured null must be computed per configuration');
+    assert.ok(/nullShare/.test(lib), 'the measured null must be computed per configuration');
+    // and the browser must never be shipped the rows themselves again
+    assert.ok(!/const all = \(doc && doc\.replication\) \|\| \[\]/.test(ui),
+      'the page must not read every recorded row — that is what could not be shipped');
   },
 
   // ONE config gets the table on its own; MANY get a ranked, openable list FIRST
@@ -177,13 +185,12 @@ module.exports = {
   // Watched failing 2026-08-17: restoring `a.p - b.p` as the first key fails
   // here, which is exactly the defect that shipped before the owner caught it.
   noSortKeyIsBuiltFromAStatisticTheRegisterBans() {
-    const ui = fs.readFileSync(path.join(ROOT, 'public', 'construct.js'), 'utf8');
+    const ui = fs.readFileSync(path.join(ROOT, 'lib', 'replication.js'), 'utf8');
     const at = ui.indexOf('scored.sort(');
     assert.ok(at > 0, 'the replication ranking must still exist');
     // the comparator plus the byNull helper it delegates its first key to — a
     // banned statistic could otherwise hide one level down
-    const cmp = ui.slice(ui.indexOf('const byNull', ui.indexOf('function rankDeclaredConfigs')),
-      ui.indexOf(';', at));
+    const cmp = ui.slice(ui.indexOf('const byNull'), ui.indexOf(';', at));
     const BANNED = [
       { re: /\bbinom\b/, why: 'a binomial p across correlated assets (QC-7)' },
       { re: /\.p\b/, why: 'a p-value (QC-7 bans quoting one as evidence)' },
@@ -204,7 +211,8 @@ module.exports = {
   // A banned statistic must not be computed for display either, once nothing
   // legitimately needs it — dead code that produces one is an invitation.
   theBannedStatisticIsNotComputedAtAll() {
-    const ui = fs.readFileSync(path.join(ROOT, 'public', 'construct.js'), 'utf8');
+    const ui = fs.readFileSync(path.join(ROOT, 'public', 'construct.js'), 'utf8')
+      + fs.readFileSync(path.join(ROOT, 'lib', 'replication.js'), 'utf8');
     assert.ok(!/const binom = /.test(ui), 'the binomial helper must be gone, not merely unused');
     // NOT banned, and must not be "cleaned up" by a later reader: the
     // 1-in-(N+1) RESOLUTION FLOOR of N measured null draws. That is the
@@ -290,31 +298,17 @@ module.exports = {
 // Watched failing 2026-08-17: grouping from the real-only rows again makes
 // theMeasuredNullIsActuallyMeasured report null, and restoring the -1 first key
 // makes theOrderFallsThroughToPlateauWidthWhenNoNullExists return C,B,A.
+// MOVED 2026-08-22. The ranking lived inside public/construct.js and these
+// tests lifted it out by name, because a copy of it in the test would only ever
+// have agreed with itself. It now lives in lib/replication.js so it can stream
+// rows off disk instead of needing all of them in a browser, which means these
+// can simply require the real thing — a strict improvement, and the reading
+// rules travelled with it unchanged.
 function loadRanker() {
-  const src = fs.readFileSync(path.join(ROOT, 'public', 'construct.js'), 'utf8');
-  const start = src.indexOf('function rankDeclaredConfigs(');
-  assert.ok(start > 0, 'rankDeclaredConfigs is gone — the ranking is inline again and untestable');
-  // Walk the PARAMETER list first — it destructures, so its own braces would
-  // otherwise be mistaken for the body — then brace-match the body, so the test
-  // always runs the real thing rather than a copy that would agree with itself.
-  let i = src.indexOf('(', start);
-  let paren = 0;
-  for (; i < src.length; i++) {
-    if (src[i] === '(') paren++;
-    else if (src[i] === ')') { paren--; if (paren === 0) break; }
-  }
-  let depth = 0;
-  i = src.indexOf('{', i);
-  const from = i;
-  for (; i < src.length; i++) {
-    if (src[i] === '{') depth++;
-    else if (src[i] === '}') { depth--; if (depth === 0) break; }
-  }
-  const body = src.slice(from + 1, i);
-  assert.ok(/const groups = new Map\(\)/.test(body) && /scored\.sort\(/.test(body),
-    'the lifted body is not the ranker — the extraction is reading the wrong span');
-  // eslint-disable-next-line no-new-func
-  return new Function('arg', `const { all, realRows, tagged, leaders } = arg;${body}`);
+  const { rank } = require('../lib/replication');
+  // The old signature took the rows already split; the new one takes a run and
+  // reads its rows. Nothing else about the arithmetic changed.
+  return (arg) => rank({ id: '__test-no-store', leaders: arg.leaders || [], replication: arg.all }).scored;
 }
 
 const repRow = (over) => ({
@@ -341,7 +335,7 @@ module.exports.theMeasuredNullIsActuallyMeasured = function () {
   assert.strictEqual(g.nullBeat, 2, 'the real 9 beats 2 and 4, not 12');
   assert.ok(Math.abs(g.nullShare - 2 / 3) < 1e-9, `nullShare must be measured, got ${g.nullShare}`);
   assert.strictEqual(g.reals.length, 1, 'the per-asset table shows the real look only, never a null copy');
-  assert.strictEqual(g.hold.length, 1, 'the cross-asset count reads real rows only');
+  assert.strictEqual(g.holdCount, 1, 'the cross-asset count reads real rows only');
   assert.strictEqual(g.pos, 1);
 };
 
@@ -356,7 +350,7 @@ module.exports.nullCopiesNeverEnterTheCrossAssetCount = function () {
     repRow({ trade: 'XRPUSDT', nullDealSeed: 2, holdout: { pnl: -9, vsAlwaysLong: -1 } }),
   ];
   const [g] = rank(argOf(rows));
-  assert.strictEqual(g.hold.length, 2, 'two assets, not five rows');
+  assert.strictEqual(g.holdCount, 2, 'two assets, not five rows');
   assert.strictEqual(g.pos, 1, 'one of the two assets held up');
   assert.strictEqual(g.sum, 3, 'money sums the real looks only (5 + -2)');
   assert.strictEqual(g.nullPairs, 3, 'but the nulls still count as the measured null');

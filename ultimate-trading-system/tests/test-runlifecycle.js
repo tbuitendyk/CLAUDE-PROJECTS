@@ -125,9 +125,11 @@ module.exports = {
     const ticks = BATCH_SRC.split('bracketPerfTick(doc);').slice(1);
     assert.ok(ticks.length >= 3, 'the sweep, promote and null-replay ticks must all still exist');
     ticks.forEach((after, i) => {
-      const next = after.slice(0, 60);
+      const next = after.slice(0, 160);
       assert.ok(/saveProgress\(doc\)/.test(next),
         `per-unit tick ${i + 1} still calls saveBatch — a 2 MB document written once per unit is what filled the heap`);
+      assert.ok(!/\bsaveBatch\(doc\)/.test(next),
+        `per-unit tick ${i + 1} writes the whole document unconditionally`);
     });
     assert.ok(/const PROGRESS_SAVE_MS = \d+;/.test(BATCH_SRC), 'the throttle interval must be named and findable');
     // one clock: a full save counts as the last write
@@ -276,7 +278,7 @@ module.exports = {
   // The promoted record has to be able to say which unit it is, or a run that
   // stopped during the second pass would score all of it again.
   theCensusRowCarriesItsOwnKey() {
-    const at = BATCH_SRC.indexOf('doc.edgeCensus.push({');
+    const at = BATCH_SRC.indexOf('rows.census.push({');
     assert.ok(at > 0, 'the promote stage must still write a census row');
     const row = BATCH_SRC.slice(at, at + 2500);
     assert.ok(/key: l\.key,/.test(row),
@@ -340,9 +342,17 @@ module.exports = {
     assert.ok(/doc = resume;/.test(BATCH_SRC), 'a resumed run must be the SAME document, not a copy with pieces carried across');
     const at = BATCH_SRC.indexOf('doc = resume;');
     const blk = BATCH_SRC.slice(at, at + 1400);
-    for (const kept of ['doc.leaders', 'doc.replication', 'doc.edgeCensus', 'doc.failures', 'doc.slimResults']) {
+    for (const kept of ['doc.leaders', 'doc.failures']) {
       assert.ok(blk.includes(kept), `${kept} must survive a resume — it is computed record`);
     }
+    // The three big collections moved to disk on 2026-08-22, so surviving a
+    // resume means the writers REOPEN the same files rather than the document
+    // carrying arrays across. A second file beside the first would be a second,
+    // shorter truth about the same run.
+    assert.ok(/const rows = openRowStores\(doc\.id\);/.test(BATCH_SRC),
+      'the run must open its row files by run id, so a resumed run appends to the ones it already wrote');
+    assert.ok(/const prev = exists\(runId, name\)/.test(fs.readFileSync(path.join(ROOT, 'lib', 'rowstore.js'), 'utf8')),
+      'a writer over an existing file must adopt its columns and its count, not start again at zero');
     assert.ok(/doc\.resumes\.push\(\{/.test(BATCH_SRC),
       'a board built over two sittings must say so, or it reads as one uninterrupted run');
     assert.ok(/skippedUnits/.test(BATCH_SRC) && /dataDigest/.test(BATCH_SRC),

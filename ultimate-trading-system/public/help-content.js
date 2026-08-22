@@ -65,7 +65,7 @@ window.HELP = {
         'The best rows from the first pass are then scored again, properly. How many is exactly what '
         + 'promote top K says — 25 unless you change it, and it cannot go above 50.\n\n'
         + 'This time each asset gets its full set of forecasts, which is what the agree and with '
-        + 'contexts fractions are counting out of. And if trailing plane is ticked, every setting is '
+        + 'contexts fractions are counting out of. And if also try moving stops is ticked, every setting is '
         + 'also tried with stops that follow the price up behind you, at four distances and three '
         + 'starting points — roughly thirteen times the work, but only on these rows, not on all of them.'],
       ['What you end up with',
@@ -163,8 +163,8 @@ window.HELP = {
       },
       swMinTr: { what: 'Ignore any result that came from fewer trades than this. A handful of trades is luck, not evidence.' },
       swTrail: {
-        what: 'Also try stops that follow the price up behind you, instead of only the one that sits still.',
-        more: 'Each setting is then tried with four following distances and three starting points, so roughly thirteen times as much work — but only on the rows that got scored a second time.',
+        what: 'Makes the search try stops that follow the price up behind you, as well as the one that sits still.',
+        more: 'Each setting is then tried with four following distances and three starting points, so roughly thirteen times as much work — and only on the rows that got scored a second time, never on the first cheap pass. This is about what the RUN looks at. The trail box on the replication line below is a different question: which stop the one configuration YOU name uses. They were called almost the same thing until 2026-08-22, which is why this one is now spelled out.',
       },
       swDecOn: {
         what: 'As well as the search, score settings YOU fix here — before the run — on every asset. Leave every permute unticked and that is one set of settings; tick any of them and it becomes every combination of the boxes you ticked, each one scored on every asset.',
@@ -187,7 +187,7 @@ window.HELP = {
       swDecT: { what: 'How many hours a position is held before it is closed, if nothing else has closed it first.' },
       swPermDecT: { what: 'Score every holding time as its own fixed set of settings.' },
       swDecTrail: {
-        what: 'What kind of stop protects the position. static means the stop sits still, at the price level on the far side of where you opened. The others follow the price up behind you as it goes your way, at the distance shown.',
+        what: 'Which stop the one configuration you are naming here uses. static means the stop sits still, at the price level on the far side of where you opened. The others follow the price up behind you as it goes your way, at the distance shown. This is not the same control as also try moving stops above: that one decides whether the SEARCH tries moving stops at all, and this one has to have it ticked, because a named setting can only be found among the settings the run actually worked out.',
         more: 'static is NOT "no stop", and it is worth knowing how far away it sits: twice d. Two levels are placed either side of the starting price, each d away, and you open at whichever one the price reaches — so the other one, your stop, is d below the start plus the d you climbed to get in. Starting price 100 with d of 3%: levels at 103 and 97, you open long at 103, your stop is 97, which is 6 below your entry. To test with NO stop at all, set entry to market instead — that places no levels, so nothing can stop you out and the only way out is time.',
       },
       swPermDecTrail: { what: 'Score every kind of stop, static included, as its own fixed set of settings.' },
@@ -244,7 +244,7 @@ window.HELP = {
       },
       bCopySettings: {
         what: 'Fills the Sweep tab with the exact settings this run used, so you can do it again or change one thing.',
-        more: 'Everything comes across: the assets, the sizes, the date range, the chunk shape, the decision, the band, the permutes, the window layout, the null boards and the trailing plane.',
+        more: 'Everything comes across: the assets, the sizes, the date range, the chunk shape, the decision, the band, the permutes, the window layout, the null boards and also try moving stops.',
       },
       bSort: { what: 'What to order the rows by.' },
       bClearSel: {

@@ -734,7 +734,7 @@ module.exports = {
     const fs = require('fs');
     const path = require('path');
     const src = fs.readFileSync(path.join(__dirname, '..', 'lib', 'batch.js'), 'utf8');
-    const start = src.indexOf('doc.edgeCensus.push({');
+    const start = src.indexOf('rows.census.push({');
     assert.ok(start > 0, 'could not find the census push');
     const block = src.slice(start, src.indexOf('});', start));
     // Money is recorded...
