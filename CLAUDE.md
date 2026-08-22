@@ -80,6 +80,48 @@ The rule, every single time:
 
 When unsure whether a name is real: do not write it.
 
+### RULE ONE-A — the Sweep tab has a CLOSED word list (owner order, 2026-08-21)
+
+**`SWEEP-WORDS.md` in the ultimate-trading-system folder is the ONLY vocabulary
+permitted when talking about anything on the Sweep tab.** Not a guide. A closed
+list. If a word is not on it, it may not be used to name anything on that screen.
+
+The owner's words: "LOOK AT EVERY SINGLE WORD YOU USE ON EVERY SINGLE CONTROL OF
+THE SWEEP PAGE AND ADD THOSE EXACT WORDS TO A LIST OF THE *ONLY* WORDS YOU ARE
+ALLOWED TO USE WHEN TALKING ABOUT *ANYTHING* ON THAT PAGE."
+
+This exists because RULE ONE was broken three times in one sitting, after twice
+the day before. `branch`, then `logreg`, then `slim` and `promoted` — every one
+an internal name out of a file I had just read, none of them on any screen, each
+stated to the owner as if it were something they could go and look at. The rule
+said to check. Checking is a judgement I kept failing, so it is now a lookup.
+
+- **The list is GENERATED, never typed**: `node tests/sweep-words.js --write`
+  reads `drawSweep()` in `public/construct.js` and the choice lists the page
+  fills its dropdowns from. `tests/test-sweepwords.js` fails if it drifts in
+  either direction — a label the screen shows and the list lacks, or a label the
+  list offers and the screen does not show.
+- **Tooltips are not names.** Hover text is excluded on purpose. A word that
+  appears only in a tooltip is not something the owner can point at.
+- **When there is no screen word for something, SAY SO.** "There is no name for
+  this on the screen — in the code it is called X, and here is what it does."
+  That is honest and it is allowed. Substituting the internal name silently is
+  what is forbidden.
+- **This is the pattern for every other tab**, and the others have no list yet.
+  Until one does, RULE ONE's original instruction stands for them: read the
+  string out of the rendering code immediately before writing it.
+
+**Words already proved forbidden**, with what they really are:
+
+| I wrote | What it actually is |
+|---|---|
+| `branch` | no screen name — one combination of `chunk shape`, `decision`, `band % (or auto)` and `24/5` |
+| `logreg`, `boost` | no screen name — the two model types a committee is built from |
+| `slim`, `promoted` | no screen name — the first pass over everything, and the re-run of the best of it, sized by `promote top K` |
+| `combo` | no screen name — one asset, or an asset with its context assets |
+| `cell` | appears in tooltips only, so not a name |
+
+
 
 
 ## RULE TWO — Live Trading and Paper Books move together
