@@ -113,13 +113,22 @@ said to check. Checking is a judgement I kept failing, so it is now a lookup.
 
 **Words already proved forbidden**, with what they really are:
 
+**AN EXPLANATION MAY NOT LEAN ON ANOTHER OFF-SCREEN WORD.** This table was
+written once with "the two model types a committee is built from" — and `model
+types`, `data views`, `members` and `committee` are every one of them hover text
+too. Defining a forbidden word with three more forbidden words is worse than the
+original fault, because it reads as an explanation. Every word in the right-hand
+column below is either on the screen or plain English, and that is the test each
+new row has to pass.
+
 | I wrote | What it actually is |
 |---|---|
-| `branch` | no screen name — one combination of `chunk shape`, `decision`, `band % (or auto)` and `24/5` |
-| `logreg`, `boost` | no screen name — the two model types a committee is built from |
-| `slim`, `promoted` | no screen name — the first pass over everything, and the re-run of the best of it, sized by `promote top K` |
-| `combo` | no screen name — one asset, or an asset with its context assets |
-| `cell` | appears in tooltips only, so not a name |
+| `branch` | no screen name. One combination of `chunk shape`, `decision`, `band % (or auto)` and `24/5`. |
+| `logreg`, `boost` | no screen name. Two different ways of working out a forecast from the same prices. Several forecasts are made for each asset and they vote; `agree` sets how many of the 6 must say the same thing, `with contexts` the same out of 8. **What makes up the 6 or the 8 has no name on the screen at all** — only the fractions are shown. |
+| `slim`, `promoted` | no screen name. Everything is scored once, cheaply; then the best of it — as many as `promote top K` — is scored again in full, and only that second pass uses `trailing plane`. |
+| `combo` | no screen name. One asset on its own, or one asset alongside the other assets it is read against — `singles`, `doubles` and `triples` choose which of those are included. |
+| `cell` | hover text only, so not a name. One particular setting of `entry`, `gate`, `d`, `t`, `trail` and `arm` together. |
+| `committee`, `members`, `model types`, `data views` | hover text only. See `logreg` above: the screen shows `agree`, `with contexts` and the fractions, and nothing else. |
 
 ### RULE ONE-B — words that must carry their meaning EVERY SINGLE TIME (owner, 2026-08-21)
 
@@ -143,6 +152,11 @@ a new one.
 **How to add to this table**: any time a word is used that is not in that tab's
 word list and is not plain English, it goes here with its meaning, before the
 reply is sent.
+
+**And the meaning is checked the same way.** An explanation written out of more
+hover text is not an explanation — it just moves the problem one word along, and
+it does it while sounding helpful. Every word used to explain must itself be
+either on the screen or ordinary English.
 
 
 
