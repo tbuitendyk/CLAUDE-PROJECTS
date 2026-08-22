@@ -30,13 +30,19 @@ fi
 
 echo
 echo "== what it is actually serving =="
+# TO A FILE, NEVER TO A SHELL VARIABLE. Command substitution strips trailing
+# newlines, so hashing "$(curl ...)" hashed the served bytes MINUS the final
+# newline: every hash was one byte short of the file it was supposed to
+# identify, and the repository side could never have matched it. An instrument
+# that cannot agree with the thing it measures is worse than none.
+TMP="$(mktemp)"
+trap 'rm -f "$TMP"' EXIT
 for f in construct.js help-content.js construct.html setup.html trade.html; do
-  BODY="$(curl -s --max-time 20 "http://127.0.0.1:$PORT/$f")"
-  if [ -z "$BODY" ]; then
+  if ! curl -s --max-time 20 -o "$TMP" "http://127.0.0.1:$PORT/$f" || [ ! -s "$TMP" ]; then
     echo "served $f MISSING"
     continue
   fi
-  printf 'served %s %s %s\n' "$f" "$(printf '%s' "$BODY" | sha256sum | cut -d' ' -f1)" "$(printf '%s' "$BODY" | wc -c)"
+  printf 'served %s %s %s\n' "$f" "$(sha256sum "$TMP" | cut -d' ' -f1)" "$(stat -c%s "$TMP")"
 done
 
 echo
