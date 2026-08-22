@@ -254,6 +254,45 @@ module.exports = {
       'and painted before the box blocks the browser');
   },
 
+  // EVERY PROMOTED UNIT LEAVES A RECORD, AND EXACTLY ONE (owner, 2026-08-22).
+  //
+  // A branch sat in the promote callback for a unit that trained and reached no
+  // cell. It could never run: its condition was a subset of the one above it,
+  // which had already taken every case it could apply to. Had it run it would
+  // have thrown — it named variables belonging to the first pass — and written
+  // into the first pass's collection.
+  //
+  // I reported it to the owner as a gap: "those units are recorded nowhere".
+  // That was wrong. They ARE recorded, a few lines up, by the else that writes
+  // a census row saying no cell reached the trade floor. What was there was a
+  // duplicate of that, written wrong, somewhere it could not reach — and while
+  // it sat there it went on looking like a gap.
+  //
+  // Watched failing 2026-08-22: putting the branch back fails this on both
+  // counts — the promote callback writing into the first pass's collection, and
+  // a condition that can never be true.
+  everyPromotedUnitLeavesExactlyOneCensusRow() {
+    const at = BATCH_SRC.indexOf('const promPayloads = promPending.map');
+    assert.ok(at > 0, 'the promote stage must still exist');
+    const cb = BATCH_SRC.slice(at, BATCH_SRC.indexOf('pool.abort();', at));
+
+    // the two ways a promoted unit can come back, and both write a census row
+    assert.ok(/if \(res\.best \|\| res\.bestEdge\) \{/.test(cb),
+      'a promoted unit with a result must be recorded');
+    const elseAt = cb.indexOf('No qualifying cell at all');
+    assert.ok(elseAt > 0, 'and one WITHOUT a result must be recorded too — the denominator has to stay honest');
+    assert.ok(/no execution cell reached/.test(cb.slice(elseAt, elseAt + 900)),
+      'saying so in words, not left as a blank to be read as zero');
+
+    // the promote stage must never write into the first pass's collection
+    assert.ok(!/rows\.slim\.push/.test(cb),
+      'the promote callback writes into the first pass\'s rows — that record would name a unit by the wrong pass');
+
+    // and no branch whose condition another has already taken
+    assert.ok(!/else if \(settled\.ok && settled\.value && !settled\.value\.best\)/.test(cb),
+      'a branch sits here whose condition the one above it has already taken, so it can never run');
+  },
+
   // -------------------------------------------------------------- resuming
   // ONE NAME FOR A UNIT. The resume decides what is left by comparing the key
   // a finished unit recorded against the key the rebuilt unit computes. Three

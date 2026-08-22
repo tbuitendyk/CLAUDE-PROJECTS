@@ -2215,15 +2215,20 @@ function startBracketLab(params, opts) {
             // thousand times. Ordering is a question the reader asks once, and
             // the reader now asks it of the aggregate, not of every row.
           }
-        } else if (settled.ok && settled.value && !settled.value.best) {
-        rows.slim.push({
-          key, trade: c.trade, ctx1: c.ctx1, ctx2: c.ctx2,
-          geometry: b.geometry, decision: b.decision,
-          nullDealSeed: u.nullDealSeed ?? null,
-          pnl: null, trades: null, holdPnl: null,
-          noCell: `trained, but no cell reached ${p.minTrades} test trades (QC 74: recorded, not dropped)`,
-        });
-      } else if (!settled.ok && !doc.cancelRequested) {
+        } else if (!settled.ok && !doc.cancelRequested) {
+          // REMOVED 2026-08-22: a branch sat here for a promoted unit that
+          // trained and reached no cell. It could never run — its condition was
+          // a subset of the one above it, which had already taken every case it
+          // could apply to — and if it ever had run it would have thrown, since
+          // it named variables belonging to the first pass, and written into the
+          // first pass's collection.
+          //
+          // The case it was meant to cover is covered, a few lines up: when a
+          // promoted unit comes back with neither a money cell nor an edge one,
+          // a census row is written saying no cell reached the trade floor, so
+          // the denominator stays honest (QC 74). Nothing was being lost. What
+          // was here was a duplicate of that, written wrong, in a place it could
+          // not reach — and leaving it would have gone on looking like a gap.
           recordFailure(doc, l.key + '|promote', settled.error);
         }
         doc.perf.runsDone += slimViewsFor(l.size).length * 2;
