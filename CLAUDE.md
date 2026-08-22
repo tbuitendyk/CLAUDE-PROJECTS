@@ -80,10 +80,11 @@ The rule, every single time:
 
 When unsure whether a name is real: do not write it.
 
-### RULE ONE-A — the Sweep tab has a CLOSED word list (owner order, 2026-08-21)
+### RULE ONE-A — every Construct screen has a CLOSED word list (owner order, 2026-08-21)
 
-**`SWEEP-WORDS.md` in the ultimate-trading-system folder is the ONLY vocabulary
-permitted when talking about anything on the Sweep tab.** Not a guide. A closed
+**`SCREEN-WORDS.md` in the ultimate-trading-system folder is the ONLY vocabulary
+permitted when talking about anything on any Construct screen.** It carries one
+list per tab: Data, Sweep, Boards, Verify, History, Tune, Greenlight. Not a guide. A closed
 list. If a word is not on it, it may not be used to name anything on that screen.
 
 The owner's words: "LOOK AT EVERY SINGLE WORD YOU USE ON EVERY SINGLE CONTROL OF
@@ -107,9 +108,9 @@ said to check. Checking is a judgement I kept failing, so it is now a lookup.
   this on the screen — in the code it is called X, and here is what it does."
   That is honest and it is allowed. Substituting the internal name silently is
   what is forbidden.
-- **This is the pattern for every other tab**, and the others have no list yet.
-  Until one does, RULE ONE's original instruction stands for them: read the
-  string out of the rendering code immediately before writing it.
+- **Every tab has a list**, generated from its own renderer, and the tab list
+  itself is read from the code — so a tab added tomorrow gets one without
+  anybody remembering to ask.
 
 **Words already proved forbidden**, with what they really are:
 
@@ -121,14 +122,25 @@ original fault, because it reads as an explanation. Every word in the right-hand
 column below is either on the screen or plain English, and that is the test each
 new row has to pass.
 
-| I wrote | What it actually is |
-|---|---|
-| `branch` | no screen name. One combination of `chunk shape`, `decision`, `band % (or auto)` and `24/5`. |
-| `logreg`, `boost` | no screen name. Two different ways of working out a forecast from the same prices. Several forecasts are made for each asset and they vote; `agree` sets how many of the 6 must say the same thing, `with contexts` the same out of 8. **What makes up the 6 or the 8 has no name on the screen at all** — only the fractions are shown. |
-| `slim`, `promoted` | no screen name. Everything is scored once, cheaply; then the best of it — as many as `promote top K` — is scored again in full, and only that second pass uses `trailing plane`. |
-| `combo` | no screen name. One asset on its own, or one asset alongside the other assets it is read against — `singles`, `doubles` and `triples` choose which of those are included. |
-| `cell` | hover text only, so not a name. One particular setting of `entry`, `gate`, `d`, `t`, `trail` and `arm` together. |
-| `committee`, `members`, `model types`, `data views` | hover text only. See `logreg` above: the screen shows `agree`, `with contexts` and the fractions, and nothing else. |
+**A WORD CAN BE LEGAL ON ONE SCREEN AND FORBIDDEN ON ANOTHER**, which is why
+the lists are per tab. Checked mechanically, and the check corrected two entries
+that were written here from memory: `promoted` really is on **Verify**, and
+`committee` really is on **Boards** and **Tune**. Neither is on Sweep. Saying
+"that word is jargon" when the owner can see it on the screen in front of them
+is the same fault pointing the other way.
+
+| I wrote | Where it is legal | What it actually is |
+|---|---|---|
+| `branch` | **Sweep** | Now on the screen, in front of the four boxes it names: `chunk shape`, `decision`, `band % (or auto)`, `24/5`. It is there because I needed a word and there wasn't one — the owner's call to make, and worth asking before adding another. |
+| `logreg`, `boost` | **nowhere** | Two different ways of working out a forecast from the same prices. Several forecasts are made per asset and they vote; `agree` sets how many of the 6 must say the same thing, `with contexts` the same out of 8. What makes up the 6 or the 8 has no name on the Sweep tab at all. |
+| `slim` | **nowhere** | Everything is scored once, cheaply, before the best of it is scored again in full. |
+| `promoted` | **Verify** | The second, fuller scoring of the best rows — as many as `promote top K`. Legal on Verify, and on Sweep say what it does instead. |
+| `combo` | **nowhere** | One asset on its own, or one asset alongside the others it is read against — `singles`, `doubles`, `triples` choose which. |
+| `cell` | **History**, **Greenlight** | One particular setting of `entry`, `gate`, `d`, `t`, `trail` and `arm` together. |
+| `committee`, `member` | **Boards**, **Tune** (`member` on Boards) | The group of forecasts that vote on one asset. Not on Sweep — there, only `agree`, `with contexts` and the fractions exist. |
+
+**To check a word**: find the tab in `ultimate-trading-system/SCREEN-WORDS.md`
+and look. That is the whole procedure.
 
 ### RULE ONE-B — words that must carry their meaning EVERY SINGLE TIME (owner, 2026-08-21)
 

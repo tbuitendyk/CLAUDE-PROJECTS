@@ -507,21 +507,33 @@ async function drawSweep() {
       <label class="f">end<input id="swEnd" type="month"></label>
     </div>
     <div class="row" style="margin-top:.5rem;align-items:flex-end">
-      <div id="swGrpGeom" style="display:flex;align-items:flex-end;gap:.45rem">
-        <label class="f">chunk shape<select id="swGeom">${vocabOptions('geometry', 'daily-4d')}</select></label>
-        <label class="c"><input type="checkbox" id="swPermGeom" checked> permute</label>
-      </div>
-      <div id="swGrpDec" style="display:flex;align-items:flex-end;gap:.45rem">
-        <label class="f">decision<select id="swDec">${vocabOptions('decision', 'argmax')}</select></label>
-        <label class="c"><input type="checkbox" id="swPermDec" checked> permute</label>
-      </div>
-      <div id="swGrpBand" style="display:flex;align-items:flex-end;gap:.45rem">
-        <label class="f">band % (or auto)<input id="swBand" value="auto" style="width:5rem"></label>
-        <label class="c"><input type="checkbox" id="swPermBand" checked> permute</label>
-      </div>
-      <div id="swGrpWk" style="display:flex;align-items:flex-end;gap:.45rem">
-        <label class="c"><input type="checkbox" id="swWeekdays"> 24/5</label>
-        <label class="c"><input type="checkbox" id="swPermWk"> permute</label>
+      <!-- THE WORD "branch" IS ON THE SCREEN NOW (owner order, 2026-08-21).
+           These four together are one thing, and that thing had no name the
+           owner could see — so every time it was described it was described
+           with a word out of the code. The answer to needing a word that is
+           not there is to put it there, not to borrow one. Laid out the same
+           way a field label is: the name above what it names, same size and
+           same colour. -->
+      <div style="display:flex;flex-direction:column;gap:.15rem">
+        <span style="font-size:.74rem;color:var(--dim)">branch</span>
+        <div style="display:flex;align-items:flex-end;gap:.8rem;flex-wrap:wrap">
+        <div id="swGrpGeom" style="display:flex;align-items:flex-end;gap:.45rem">
+          <label class="f">chunk shape<select id="swGeom">${vocabOptions('geometry', 'daily-4d')}</select></label>
+          <label class="c"><input type="checkbox" id="swPermGeom" checked> permute</label>
+        </div>
+        <div id="swGrpDec" style="display:flex;align-items:flex-end;gap:.45rem">
+          <label class="f">decision<select id="swDec">${vocabOptions('decision', 'argmax')}</select></label>
+          <label class="c"><input type="checkbox" id="swPermDec" checked> permute</label>
+        </div>
+        <div id="swGrpBand" style="display:flex;align-items:flex-end;gap:.45rem">
+          <label class="f">band % (or auto)<input id="swBand" value="auto" style="width:5rem"></label>
+          <label class="c"><input type="checkbox" id="swPermBand" checked> permute</label>
+        </div>
+        <div id="swGrpWk" style="display:flex;align-items:flex-end;gap:.45rem">
+          <label class="c"><input type="checkbox" id="swWeekdays"> 24/5</label>
+          <label class="c"><input type="checkbox" id="swPermWk"> permute</label>
+        </div>
+        </div>
       </div>
     </div>
     <div class="row" style="margin-top:.5rem;align-items:flex-end">

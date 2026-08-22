@@ -19,10 +19,23 @@ const path = require('path');
 const ROOT = path.join(__dirname, '..');
 const SRC = fs.readFileSync(path.join(ROOT, 'public', 'construct.js'), 'utf8');
 
+// EVERY TAB, not just one (owner order, 2026-08-21). Each has its own renderer
+// and its own words, and a list for one screen leaves every other screen a place
+// where a name can still be invented.
+//
+// Read out of TABS in public/construct.js rather than typed, so a tab added
+// tomorrow gets a list without anybody remembering.
+function tabs() {
+  const m = /const TABS = \[([\s\S]*?)\];/.exec(SRC);
+  if (!m) throw new Error('TABS is gone - the tab names cannot be read');
+  return [...m[1].matchAll(/\['([^']+)',\s*'([^']+)'\]/g)]
+    .map(([, key, label]) => ({ key, label, fn: `draw${key[0].toUpperCase()}${key.slice(1)}` }));
+}
+
 // The renderer, brace-matched, so nothing from another tab leaks in.
-function drawSweepBody() {
-  const start = SRC.indexOf('async function drawSweep()');
-  if (start < 0) throw new Error('drawSweep() is gone - this list cannot be built');
+function drawBody(fnName) {
+  const start = SRC.indexOf(`async function ${fnName}()`);
+  if (start < 0) throw new Error(`${fnName}() is gone - this list cannot be built`);
   let i = SRC.indexOf('{', start);
   const from = i;
   let depth = 0;
@@ -32,6 +45,8 @@ function drawSweepBody() {
   }
   return SRC.slice(from, i + 1);
 }
+
+const drawSweepBody = () => drawBody('drawSweep');
 
 // ONLY THE HTML TEMPLATES, not the whole function. drawSweep() also holds the
 // button handlers, and treating those as text put `const el = $('#swDecCount');`
@@ -115,8 +130,8 @@ function optionWords(body) {
   return out;
 }
 
-function collect() {
-  const body = drawSweepBody();
+function collect(fnName = 'drawSweep') {
+  const body = drawBody(fnName);
   const said = phrases(htmlTemplates(body).map(readableText).join('\n'));
   const opts = optionWords(body);
 
@@ -142,15 +157,19 @@ function collect() {
   };
 }
 
-module.exports = { collect, drawSweepBody };
+module.exports = { collect, drawSweepBody, drawBody, tabs };
 
 if (require.main === module) {
-  const got = collect();
+  const all = tabs().map((t) => {
+    let got = null;
+    try { got = collect(t.fn); } catch (err) { got = { error: err.message }; }
+    return { ...t, got };
+  });
+
   if (!process.argv.includes('--write')) {
-    console.log(JSON.stringify(got, null, 1));
+    console.log(JSON.stringify(all, null, 1));
   } else {
-    const md = [
-      '# The words on the Sweep tab',
+    const out = ['# The words on every screen of the Construct page',
       '',
       'GENERATED - do not edit by hand. Rebuild with:',
       '',
@@ -159,43 +178,40 @@ if (require.main === module) {
       '```',
       '',
       'Owner order, 2026-08-21: **these are the only words that may be used to',
-      'talk about anything on this screen.** Not a style preference - a fabricated',
-      'label sends the owner hunting for a control that was never there, and it',
-      'makes every other statement suspect.',
+      'talk about anything on these screens.** Not a style preference - a',
+      'fabricated label sends the owner hunting for a control that was never',
+      'there, and it makes every other statement suspect.',
       '',
-      'Taken out of `drawSweep()` in `public/construct.js` - the function that',
-      'draws the tab - and out of the choice lists the page fills its dropdowns',
-      'from. Tooltips are deliberately excluded: hover text is not a name.',
+      'Taken out of the function that draws each tab in `public/construct.js`,',
+      'and out of the choice lists the page fills its dropdowns from. Tooltips',
+      'are deliberately excluded: hover text is not a name, and using it as one',
+      'is the same fault wearing a disguise.',
       '',
-      '## The tab',
+      '## The tabs',
       '',
-      'It is called **Sweep**. Read from `TABS` in `public/construct.js`.',
+      ...tabs().map((t) => `- **${t.label}**`),
       '',
-      '## What the controls are called (' + got.controls.length + ')',
-      '',
-      'Anything the owner reads beside a box, a tick or a button.',
-      '',
-      ...got.controls.map((c) => '- `' + c + '`'),
-      '',
-      '## What the dropdowns offer (' + got.options.length + ')',
-      '',
-      ...got.options.map((o) => '- `' + o + '`'),
-      '',
-      '## Sentences the page prints (' + got.prose.length + ')',
-      '',
-      ...got.prose.map((p) => '- ' + p),
-      '',
-      '## Every word, flat (' + got.words.length + ')',
-      '',
-      'For checking one word quickly.',
-      '',
-      '```',
-      got.words.join(' '),
-      '```',
-      '',
-    ].join('\n');
-    fs.writeFileSync(path.join(ROOT, 'SWEEP-WORDS.md'), md + '\n');
-    console.log('SWEEP-WORDS.md written: ' + got.controls.length + ' control labels, '
-      + got.options.length + ' options, ' + got.prose.length + ' sentences, ' + got.words.length + ' words');
+      'Read from `TABS` in `public/construct.js`.',
+      ''];
+
+    for (const t of all) {
+      out.push(`---`, '', `# ${t.label}`, '');
+      if (t.got.error) { out.push(`_could not be read: ${t.got.error}_`, ''); continue; }
+      const g = t.got;
+      out.push(`## What the controls are called (${g.controls.length})`, '');
+      out.push(...(g.controls.length ? g.controls.map((c) => '- `' + c + '`') : ['_none_']));
+      out.push('', `## What the dropdowns offer (${g.options.length})`, '');
+      out.push(...(g.options.length ? g.options.map((o) => '- `' + o + '`') : ['_none_']));
+      out.push('', `## Sentences the page prints (${g.prose.length})`, '');
+      out.push(...(g.prose.length ? g.prose.map((x) => '- ' + x) : ['_none_']));
+      out.push('', `## Every word, flat (${g.words.length})`, '', '```', g.words.join(' '), '```', '');
+    }
+    fs.writeFileSync(path.join(ROOT, 'SCREEN-WORDS.md'), out.join('\n') + '\n');
+    try { fs.unlinkSync(path.join(ROOT, 'SWEEP-WORDS.md')); } catch (_) { /* already gone */ }
+    const tot = all.filter((t) => !t.got.error);
+    console.log(`SCREEN-WORDS.md written: ${tot.length} tab(s), `
+      + `${tot.reduce((n, t) => n + t.got.controls.length, 0)} control labels, `
+      + `${tot.reduce((n, t) => n + t.got.options.length, 0)} options`);
+    for (const t of all) if (t.got.error) console.log(`  ! ${t.label}: ${t.got.error}`);
   }
 }
