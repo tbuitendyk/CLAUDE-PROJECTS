@@ -1217,14 +1217,17 @@ function startBracketLab(params) {
     // How many DISTINCT rotations to run in one job. One rotation is a single
     // draw of the null; a null you cannot put an error bar on is barely
     // better than an assumed one.
-    // Cap raised 12 -> 24. The number of draws sets a FLOOR on the strongest
-    // claim available: if the real result beats all N draws, the rank-based
-    // p is 1/(N+1). Twelve draws floor that at 0.077, so a perfect outcome
-    // still could not reach the conventional 0.05 — the cap, not the data,
-    // would be deciding the answer. Nineteen draws puts the floor at exactly
-    // 0.05. 24 leaves headroom without inviting all-night runs by accident
-    // (each draw is 170 units, roughly 15 minutes on 4 workers).
-    labelShiftReps: Math.min(24, Math.max(0, Math.floor(Number(params.labelShiftReps) || 0))),
+    // NO CAP (owner, 2026-08-22). The number of draws sets a FLOOR on the
+    // strongest claim available: if the real result beats all N draws, the
+    // rank-based p is 1/(N+1). Twelve floored that at 0.077 and could not
+    // reach the conventional 0.05 at all, so it was raised to 24 — but 24 was
+    // still a number this software picked for the owner, and a ceiling on how
+    // strong a claim they are allowed to attempt is not the software's to set.
+    // The owner's rule: report the cost, and the human decides. The Sweep
+    // section now prints what the number costs before Start sweep is pressed
+    // — N boards is N+1 passes of the whole run, and any N > 0 also makes
+    // promote top K stop applying — which is the honest version of a cap.
+    labelShiftReps: Math.max(0, Math.floor(Number(params.labelShiftReps) || 0)),
     // 'window' rotates inside train/search/holdout separately, which holds
     // every window's class balance — and therefore the majority baseline that
     // `edge` is scored against — identical across draws and identical to the

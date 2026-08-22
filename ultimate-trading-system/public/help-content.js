@@ -159,7 +159,7 @@ window.HELP = {
       },
       swNulls: {
         what: 'How many companion runs to do on deliberately scrambled decisions, as a comparison. If the real run does no better than the scrambled ones, there was nothing there.',
-        more: 'This is the single most expensive setting on the page. Each one costs a whole extra search, AND turning it on changes how the run works: every row is scored in full rather than only the best ones, so promote top K stops applying. With N companions the strongest claim you can make is one-in-(N+1) — 19 of them gets you one-in-20. Capped at 24.',
+        more: 'This is the single most expensive setting on the page. Each one costs a whole extra search, AND turning it on changes how the run works: every row is scored in full rather than only the best ones, so promote top K stops applying. With N companions the strongest claim you can make is one-in-(N+1) — 19 of them gets you one-in-20, and past that you are buying decimal places rather than evidence. There is no ceiling: type any number and the cost of it is printed beside the box before you launch.',
       },
       swMinTr: { what: 'Ignore any result that came from fewer trades than this. A handful of trades is luck, not evidence.' },
       swTrail: {

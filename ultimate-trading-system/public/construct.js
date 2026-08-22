@@ -585,9 +585,10 @@ async function drawSweep() {
     <div class="row" style="margin-top:.5rem;align-items:flex-end">
       <label class="f">window layout<select id="swLayout">${vocabOptions('windowLayout', 'split70')}</select></label>
       <label class="f">promote top K<input id="swK" type="number" value="25" min="1" max="50" style="width:4.5rem" title="the backend caps this at 50 (detailK); a larger number is silently reduced, so the box refuses it here instead"></label>
-      <label class="f">null boards<input id="swNulls" type="number" value="0" min="0" max="24" style="width:4.5rem" title="companion boards with votes dealt onto random days; N boards = at best a 1-in-(N+1) claim; each costs a full sweep. The backend caps this at 24, so the box refuses more here rather than quietly running fewer"></label>
+      <label class="f">null boards<input id="swNulls" type="number" value="0" min="0" style="width:4.5rem" title="companion boards with votes dealt onto random days. Beating all N of them is at best a 1-in-(N+1) claim, so 19 is the first number whose best claim reaches 1-in-20. There is NO ceiling: type any number you like and the cost is printed beside the box before you launch."></label>
       <label class="f">min trades<input id="swMinTr" type="number" value="10" style="width:4.5rem"></label>
       <label class="c"><input type="checkbox" id="swTrail"> trailing plane</label>
+      <span class="note" id="swNullCost"></span>
     </div>
     <div class="row" style="margin-top:.5rem;align-items:flex-end;border-top:1px solid var(--line);padding-top:.55rem">
       <label class="c" title="REPLICATION MODE. Instead of judging each asset by the best cell the search shopped for, score settings YOU fix here, before the run, on every asset. With every permute unticked that is ONE config: nothing was chosen after seeing results, so there is no shopping tax and no branch correction owed, and it is the strongest reading the system offers. Tick any permute and these boxes declare a BLOCK of configs instead — every combination, each one scored on every asset. The counter beside them says how many, it multiplies the whole run, and having searched, the honest end is the sealed block of the 61/13/13/13 window layout. Either way the menu still runs and the board is unchanged; this adds a separate replication table reporting each declared cell per asset, read against that configuration's own dealt-vote copies and never as a binomial (QC-7: assets move together, so they are not independent looks). Agreement travels as an exact count per committee size — the 'agree' boxes (5/6 means 5 of a single coin's 6 members).">
@@ -875,6 +876,24 @@ async function drawSweep() {
     '#swPermDecT', '#swPermDecTrail', '#swPermDecArm', '#swPermDecAgree', '#swSingles', '#swDoubles', '#swTriples']
     .forEach((id) => { if ($(id)) $(id).addEventListener('change', syncDecCount); });
   syncDecCount();
+
+  // WHAT THE NUMBER COSTS, BEFORE Start sweep (owner, 2026-08-22). This box
+  // used to refuse anything above 24 — a ceiling this software picked for the
+  // owner, on how strong a claim they were allowed to attempt. The cap is gone
+  // and the cost is stated instead, which is the standing rule: the software
+  // reports the cost, the human decides.
+  const syncNullCost = () => {
+    const el = $('#swNullCost');
+    if (!el) return;
+    const n = Math.max(0, Math.floor(Number($('#swNulls').value) || 0));
+    if (!n) { el.textContent = 'no null boards — nothing to measure this run against'; return; }
+    el.innerHTML = `<b>${n + 1}x</b> the work — the whole run once for real, then once per board. `
+      + 'promote top K stops applying, so every row is scored in full rather than only the best ones. '
+      + `Beating all ${n} is at best a <b>1-in-${n + 1}</b> claim`
+      + (n < 19 ? ` — ${19 - n} more would reach 1-in-20.` : '.');
+  };
+  ['input', 'change'].forEach((ev) => $('#swNulls').addEventListener(ev, syncNullCost));
+  syncNullCost();
 
   $('#swStart2').onclick = async () => {
     const uni = $('#swUni').value.trim();

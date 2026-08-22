@@ -257,19 +257,73 @@ module.exports = {
 
   // A number the form can type but the backend silently reduces is a lie told to
   // the operator: the run is weaker than the one they asked for, with no notice.
+  // So a box may only carry a max where the BACKEND really caps, and it must be
+  // the same number.
+  //
+  // promote top K is a real structural limit — the list only ever holds detailK
+  // rows, so a larger number could not be honoured by anything. null boards was
+  // not: 24 was a ceiling this software picked on how strong a claim the owner
+  // may attempt, and it was removed on 2026-08-22 (see
+  // drawCountHasNoCeilingTheSoftwarePicked in test-bracket.js). The two are
+  // checked from opposite sides for exactly that reason.
   clampedNumberInputsCarryTheirBackendBounds() {
-    const bounds = [
-      { id: 'swK', max: 50, why: 'promoteK is capped at detailK 50 in lib/batch.js' },
-      { id: 'swNulls', max: 24, why: 'labelShiftReps is capped at 24 in lib/batch.js' },
-    ];
-    for (const b of bounds) {
-      const m = SWEEP.match(new RegExp(`<input id="${b.id}"[^>]*>`));
-      assert.ok(m, `the Sweep form must still carry #${b.id}`);
-      const tag = m[0];
-      const max = tag.match(/max="(\d+)"/);
+    const tagOf = (id) => {
+      const m = SWEEP.match(new RegExp(`<input id="${id}"[^>]*>`));
+      assert.ok(m, `the Sweep form must still carry #${id}`);
+      return m[0];
+    };
+    const capped = [{ id: 'swK', max: 50, why: 'promoteK is capped at detailK 50 in lib/batch.js' }];
+    for (const b of capped) {
+      const max = tagOf(b.id).match(/max="(\d+)"/);
       assert.ok(max, `#${b.id} must carry a max attribute — ${b.why}`);
       assert.strictEqual(Number(max[1]), b.max,
         `#${b.id} max must match the backend cap (${b.max}) — ${b.why}`);
     }
+    // and the other way round: a box the backend does NOT cap must not invent
+    // one, or the form refuses a run the system would have accepted
+    const uncapped = [{ id: 'swNulls', param: 'labelShiftReps' }];
+    for (const b of uncapped) {
+      assert.ok(!/max="/.test(tagOf(b.id)),
+        `#${b.id} carries a max that ${b.param} does not — the form refuses what the backend accepts`);
+      assert.ok(!new RegExp(`${b.param}:\\s*Math\\.min`).test(BATCH),
+        `${b.param} is capped in lib/batch.js again — the box would then silently understate the run`);
+    }
+  },
+
+  // THE COST REPORT IS WHAT REPLACED THE CAP, so it has to be right. A ceiling
+  // that is wrong refuses a run; a cost that is wrong lets the owner start one
+  // they would not have chosen, which is worse. Run out of the shipped function
+  // rather than restated here — a formula copied into a test only proves the copy.
+  //
+  // Watched failing 2026-08-22: changing the multiplier to n fails
+  // theNullBoardCostIsStatedCorrectly.
+  theNullBoardCostIsStatedCorrectly() {
+    const from = SWEEP.indexOf('  const syncNullCost = () => {');
+    assert.ok(from > 0, 'the null boards cost report must still exist');
+    const body = SWEEP.slice(SWEEP.indexOf('const el =', from), SWEEP.indexOf('\n  };', from));
+    const say = (typed) => {
+      let out = '';
+      const $ = (sel) => (sel === '#swNullCost'
+        ? { set textContent(v) { out = v; }, set innerHTML(v) { out = v; } }
+        : { value: typed });
+      // eslint-disable-next-line no-new-func
+      new Function('$', body)($);
+      return out.replace(/<\/?b>/g, '');
+    };
+    assert.ok(/nothing to measure/.test(say('0')), 'no boards must say the run has nothing to compare against');
+    assert.ok(/nothing to measure/.test(say('')), 'an empty box is no boards, not a broken report');
+    for (const n of [1, 2, 19, 24, 200, 1000]) {
+      const said = say(String(n));
+      assert.ok(said.includes(`${n + 1}x the work`),
+        `${n} boards is ${n + 1} passes of the run, and the report says: ${said}`);
+      assert.ok(said.includes(`1-in-${n + 1}`),
+        `beating all ${n} is a 1-in-${n + 1} claim, and the report says: ${said}`);
+      assert.ok(/promote top K stops applying/.test(said),
+        'the report must say that any number above zero makes promote top K stop applying');
+    }
+    // the one number worth knowing, offered only while it is still ahead
+    assert.ok(/9 more would reach 1-in-20/.test(say('10')), '10 boards is 9 short of 1-in-20');
+    assert.ok(!/more would reach/.test(say('19')), '19 already reaches it — do not ask for more');
+    assert.ok(!/more would reach/.test(say('40')), 'past it, the prompt is noise');
   },
 };

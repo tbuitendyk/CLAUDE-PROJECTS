@@ -821,20 +821,35 @@ module.exports = {
     assert.ok(/description: p\.description/.test(src),
       'the run document must carry the description');
   },
-  async drawCountCanReachTheConventionalThreshold() {
-    // The draw count sets a FLOOR on the strongest claim available: beating
-    // all N draws gives a rank-based p of 1/(N+1). A cap of 12 floors that at
-    // 0.077, so the CAP rather than the data would decide whether anything
-    // can ever be called significant. 19 draws is the first count whose floor
-    // reaches 0.05, so the cap must admit at least that.
+  async drawCountHasNoCeilingTheSoftwarePicked() {
+    // The draw count sets a FLOOR on the strongest claim available: beating all
+    // N draws gives a rank-based p of 1/(N+1). This used to be capped, first at
+    // 12 (which floored the best achievable p at 0.077 — the CAP, not the data,
+    // deciding whether anything could ever be called significant) and then at
+    // 24. The owner removed it entirely on 2026-08-22: a ceiling on how strong
+    // a claim they may attempt is not the software's to set, and the standing
+    // rule is that the software reports the cost and the human decides.
+    //
+    // So this now guards the ABSENCE of a cap, and the presence of the cost
+    // report that replaced it. Reinstating any Math.min on labelShiftReps, or
+    // a max attribute on the box, fails here.
     const fs = require('fs');
     const path = require('path');
     const src = fs.readFileSync(path.join(__dirname, '..', 'lib', 'batch.js'), 'utf8');
-    const m = src.match(/labelShiftReps:\s*Math\.min\((\d+),/);
-    assert.ok(m, 'could not find the labelShiftReps cap');
-    const cap = Number(m[1]);
-    assert.ok(cap >= 19,
-      `draw cap ${cap} floors the best achievable p at ${(1 / (cap + 1)).toFixed(3)}, above 0.05`);
+    const line = src.match(/labelShiftReps:.*$/m);
+    assert.ok(line, 'the labelShiftReps parameter must still be read');
+    assert.ok(!/Math\.min/.test(line[0]),
+      `labelShiftReps is capped again — "${line[0].trim()}" — which puts a ceiling on the strongest claim the owner may attempt`);
+    assert.ok(/Math\.max\(0,/.test(line[0]) && /Math\.floor/.test(line[0]),
+      'it must still be forced to a whole number of boards, zero or more');
+    // and the cost has to be stated where the number is typed
+    const ui = fs.readFileSync(path.join(__dirname, '..', 'public', 'construct.js'), 'utf8');
+    assert.ok(/id="swNullCost"/.test(ui),
+      'with no cap, the Sweep section must print what the number costs before Start sweep');
+    const box = ui.match(/<input id="swNulls"[^>]*>/);
+    assert.ok(box, 'the null boards box must still exist');
+    assert.ok(!/max="/.test(box[0]),
+      `#swNulls still carries a max — ${box[0]} — so the box refuses what the backend now accepts`);
   },
   async everyCommitteeSeatIsADistinctOpinion() {
     // The removed "regime" dimension (2026-07-30, QC 49) filled half the
