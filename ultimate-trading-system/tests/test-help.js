@@ -117,5 +117,12 @@ module.exports = {
     const names = [...m[1].matchAll(/\['([^']+)'/g)].map((x) => x[1]);
     assert.strictEqual(names[names.length - 1], 'help', `Help is not the last tab: ${names.join(', ')}`);
     assert.ok(/: drawHelp\(\)/.test(ui), 'nothing draws the Help tab');
+    // FAR RIGHT means the right-hand EDGE, not merely last in the row. Last put
+    // it beside Greenlight, looking like the step after it.
+    assert.ok(/k === 'help' \? ' tab-far' : ''/.test(ui),
+      'the Help tab is no longer pushed to the far right — being last only puts it beside Greenlight');
+    const css = fs.readFileSync(path.join(ROOT, 'public', 'construct.html'), 'utf8');
+    assert.ok(/\.tab\.tab-far \{[^}]*margin-left:\s*auto/.test(css),
+      'the rule that pushes Help to the right-hand edge is gone, so the class does nothing');
   },
 };

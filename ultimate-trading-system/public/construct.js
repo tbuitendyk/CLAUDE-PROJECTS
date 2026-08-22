@@ -296,7 +296,13 @@ let pickedRun = localStorage.getItem('cx-run') || null;
 let pickedDoc = null; // cached doc for pickedRun
 
 function renderTabs() {
-  $('#tabs').innerHTML = TABS.map(([k, l]) => `<div class="tab ${k === tab ? 'on' : ''}" data-k="${k}">${l}</div>`).join('');
+  // HELP SITS AT THE FAR RIGHT EDGE, not merely last in the row (owner,
+  // 2026-08-21). Being last in the list only puts it beside Greenlight; the
+  // owner asked for the far right, which in a flex row means pushing it away
+  // from the working tabs with the space between them. It is not one of the
+  // steps, so it should not look like the step after Greenlight.
+  $('#tabs').innerHTML = TABS.map(([k, l]) => `<div class="tab ${k === tab ? 'on' : ''}${
+    k === 'help' ? ' tab-far' : ''}" data-k="${k}">${l}</div>`).join('');
   $('#tabs').querySelectorAll('.tab').forEach((t) => { t.onclick = () => { tab = t.dataset.k; localStorage.setItem('cx-tab', tab); draw(); }; });
 }
 

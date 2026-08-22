@@ -34,6 +34,11 @@
   .tab { background:var(--tabbg); border:1px solid var(--line); border-bottom:none;
          border-radius:7px 7px 0 0; padding:.4rem .8rem; cursor:pointer; color:var(--dim); font-size:.82rem; }
   .tab.on { background:var(--tabon); color:var(--fg); font-weight:600; }
+  /* Pushed to the far right edge of the strip, away from the working tabs:
+     Help is not the step after Greenlight, it is beside all of them. On a
+     narrow window the strip wraps and this simply has no space to take, which
+     is the right behaviour — it stays last either way. */
+  .tab.tab-far { margin-left:auto; }
   .panel { background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:.8rem .9rem; margin-bottom:1rem; }
   table { width:100%; border-collapse:collapse; font-size:.8rem; }
   th,td { text-align:right; padding:.32rem .45rem; border-bottom:1px solid var(--line); font-variant-numeric:tabular-nums; }
