@@ -390,12 +390,47 @@ let sub=localStorage.getItem('lt-sub')||'configs';
 let selectedConfig=null;   // config id ('F1' for the pilot pseudo-config)
 let selectedSetupId=null;  // the branch channel's setup id (or 'f1-pilot')
 
+// WHERE YOU WERE ON EACH TAB (owner, 2026-08-21).
+//
+// Every tab shared one scroll position, which is the browser's, so coming back
+// to a tab put you at the top of it. On a long tab that means finding your
+// place again every single time.
+//
+// Keyed by BOTH strips, so Paper Books and Live Trading each keep their own
+// place on each sub-tab. That is also what RULE TWO wants: the two sides behave
+// identically because the same one key shape covers both, rather than each
+// being handled separately.
+const scrollKeyFor=(b,sb)=>`lt-scroll-${b}-${sb}`;
+function rememberScroll(b,sb){
+  try{ localStorage.setItem(scrollKeyFor(b,sb), String(Math.round(window.scrollY))); }catch(_){ /* private window */ }
+}
+function restoreScroll(b,sb){
+  let y=0;
+  try{ y=Number(localStorage.getItem(scrollKeyFor(b,sb)))||0; }catch(_){ y=0; }
+  // Two frames, not one. The content has only just been put on the page and the
+  // browser has not laid it out yet — scrolling before it has means scrolling a
+  // page that is still short, which quietly lands at the bottom of nothing.
+  requestAnimationFrame(()=>requestAnimationFrame(()=>window.scrollTo(0,y)));
+}
+// Keep it current while reading, so a reload lands in the right place too.
+// Throttled to once a frame: a scroll event fires far more often than that.
+let scrollPending=false;
+window.addEventListener('scroll',()=>{
+  if(scrollPending) return;
+  scrollPending=true;
+  requestAnimationFrame(()=>{ scrollPending=false; rememberScroll(branch,sub); });
+},{passive:true});
+
 function renderNav(){
   $('#branchTabs').innerHTML=BRANCHES.map(([k,l])=>`<div class="tab ${k===branch?'on':''}" data-k="${k}"
     title="${k==='paper'?'Duplicate-engine paper trading — identical decisions and display, no orders, no money':'Real orders on the exchange — real money when a channel is active and armed'}">${l}</div>`).join('');
-  $('#branchTabs').querySelectorAll('.tab').forEach(t=>t.onclick=()=>{ branch=t.dataset.k; localStorage.setItem('lt-branch',branch); draw(); });
+  $('#branchTabs').querySelectorAll('.tab').forEach(t=>t.onclick=()=>{
+    rememberScroll(branch,sub); branch=t.dataset.k; localStorage.setItem('lt-branch',branch);
+    Promise.resolve(draw()).then(()=>restoreScroll(branch,sub)); });
   $('#subTabs').innerHTML=SUBS.map(([k,l])=>`<div class="tab ${k===sub?'on':''}" data-k="${k}">${l}</div>`).join('');
-  $('#subTabs').querySelectorAll('.tab').forEach(t=>t.onclick=()=>{ sub=t.dataset.k; localStorage.setItem('lt-sub',sub); draw(); });
+  $('#subTabs').querySelectorAll('.tab').forEach(t=>t.onclick=()=>{
+    rememberScroll(branch,sub); sub=t.dataset.k; localStorage.setItem('lt-sub',sub);
+    Promise.resolve(draw()).then(()=>restoreScroll(branch,sub)); });
 }
 
 // ---- data: the configs, plus the BOX they run on ---------------------------
@@ -987,7 +1022,12 @@ function tickCountdowns(){
   });
 }
 tickClock(); tickCountdowns(); setInterval(()=>{ tickClock(); tickCountdowns(); },1000);
-draw(); setInterval(()=>{ if(sub==='dash'||sub==='live') draw(); }, 30000);
+// On first load, land where this side and tab were left rather than at the top.
+Promise.resolve(draw()).then(()=>restoreScroll(branch,sub));
+// The 30-second redraw must NOT move the page. It is a refresh of what is
+// already on screen, not a navigation, and yanking the view back would make the
+// screen unreadable while it is being read.
+setInterval(()=>{ if(sub==='dash'||sub==='live') draw(); }, 30000);
 </script>
 </body>
 </html>

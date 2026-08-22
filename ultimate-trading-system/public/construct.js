@@ -295,6 +295,39 @@ let tab = localStorage.getItem('cx-tab') || 'sweep';
 let pickedRun = localStorage.getItem('cx-run') || null;
 let pickedDoc = null; // cached doc for pickedRun
 
+// WHERE YOU WERE ON EACH TAB (owner, 2026-08-21).
+//
+// Every tab shared one scroll position, which is the browser's, so coming back
+// to a tab put you at the top of it. On a long tab that means finding your
+// place again every single time.
+//
+// Kept per tab and written to the browser's own storage, so it survives a
+// reload too — the position is a property of the tab, not of this visit.
+const scrollKeyFor = (t) => `cx-scroll-${t}`;
+
+function rememberScroll(t) {
+  try { localStorage.setItem(scrollKeyFor(t), String(Math.round(window.scrollY))); } catch (_) { /* private window */ }
+}
+
+function restoreScroll(t) {
+  let y = 0;
+  try { y = Number(localStorage.getItem(scrollKeyFor(t))) || 0; } catch (_) { y = 0; }
+  // Two frames, not one. The content has only just been put on the page and the
+  // browser has not laid it out yet — scrolling before it has means scrolling a
+  // page that is still short, which quietly lands at the bottom of nothing.
+  requestAnimationFrame(() => requestAnimationFrame(() => window.scrollTo(0, y)));
+}
+
+// Keep it current while reading, so a reload lands in the right place too.
+// Throttled to once a frame: a scroll event fires far more often than that and
+// there is nothing to gain from writing every one of them.
+let scrollPending = false;
+window.addEventListener('scroll', () => {
+  if (scrollPending) return;
+  scrollPending = true;
+  requestAnimationFrame(() => { scrollPending = false; rememberScroll(tab); });
+}, { passive: true });
+
 function renderTabs() {
   // HELP SITS AT THE FAR RIGHT EDGE, not merely last in the row (owner,
   // 2026-08-21). Being last in the list only puts it beside Greenlight; the
@@ -303,7 +336,14 @@ function renderTabs() {
   // steps, so it should not look like the step after Greenlight.
   $('#tabs').innerHTML = TABS.map(([k, l]) => `<div class="tab ${k === tab ? 'on' : ''}${
     k === 'help' ? ' tab-far' : ''}" data-k="${k}">${l}</div>`).join('');
-  $('#tabs').querySelectorAll('.tab').forEach((t) => { t.onclick = () => { tab = t.dataset.k; localStorage.setItem('cx-tab', tab); draw(); }; });
+  $('#tabs').querySelectorAll('.tab').forEach((t) => {
+    t.onclick = () => {
+      rememberScroll(tab);                    // where we were on the one we are leaving
+      tab = t.dataset.k;
+      localStorage.setItem('cx-tab', tab);
+      draw().then(() => restoreScroll(tab));  // and back to where we were on this one
+    };
+  });
 }
 
 // ---- release strip (persistent; clickable badge -> Verify) ------------------
@@ -2313,5 +2353,6 @@ function draw() {
 function tickClock() { $('#utcClock').textContent = new Date().toISOString().slice(0, 19).replace('T', ' ') + ' UTC'; }
 tickClock(); setInterval(tickClock, 1000);
 // The choice lists must be in hand before anything that uses them is drawn.
-loadVocabulary().then(draw);
+// On first load, land where this tab was left rather than at the top.
+loadVocabulary().then(draw).then(() => restoreScroll(tab));
 })();
