@@ -1494,11 +1494,20 @@ function resumeBracketLab(id) {
   return startBracketLab(doc.params, { resume: doc });
 }
 
-function startBracketLab(params, opts) {
-  const resume = (opts && opts.resume) || null;
-  { const stop = launchRefusal(); if (stop) throw new Error(stop); }
-  // The execution grid resolves FIRST so the declared cell can be validated
-  // against the grid this run will actually compute (see validateDeclared).
+// THE PLAN, WITHOUT STARTING ANYTHING (owner order, 2026-08-22).
+//
+// The owner asked for an honest estimate of what a run will cost BEFORE it is
+// launched — memory, disk and time — and the only trustworthy way to count
+// what a run will do is to build the same plan the run builds. A second copy
+// of this arithmetic living in an estimator would be a second answer to the
+// question, and the one that drifted would be the one nobody checked.
+//
+// So the launcher and the estimate share this. It resolves the grid, validates
+// the declared cell against it, expands the declared set, builds the unit list
+// including the null copies, and counts. It touches no disk, claims no job slot
+// and starts nothing.
+function planFor(params, resumeDoc) {
+  const resume = resumeDoc || null;
   const grid = {
     dMults: numMenu(params.dMults, bracketLib.D_MULTS, (v) => v > 0 && v <= 10),
     tHours: numMenu(params.tHours, bracketLib.T_HOURS, (v) => Number.isInteger(v) && v > 0 && v <= 500),
@@ -1735,6 +1744,15 @@ function startBracketLab(params, opts) {
     }
   }
   const slimRuns = units.reduce((s, u) => s + slimViewsFor(u.c.size).length, 0);
+  return { p, grid, units, slimRuns, branches, combos, declaredSet };
+}
+
+function startBracketLab(params, opts) {
+  const resume = (opts && opts.resume) || null;
+  { const stop = launchRefusal(); if (stop) throw new Error(stop); }
+  // The execution grid resolves FIRST so the declared cell can be validated
+  // against the grid this run will actually compute (see validateDeclared).
+  const { p, units, slimRuns, branches, combos } = planFor(params, resume);
   const stamp = new Date().toISOString().replace(/[-:]/g, '').slice(0, 15).replace('T', '-');
   // HUMAN-MEANINGFUL JOB IDS (owner, 2026-07-29). A wall of timestamps means
   // the only way to tell -2303 from -0041 is to look each one up, which is
@@ -2222,6 +2240,10 @@ function startBracketLab(params, opts) {
     closeRowStores();
     doc.rowCounts = rowCountsFor(doc);
     doc.rowBytes = rowstore.bytes(doc.id);
+    // HOW FAST THIS BOX ACTUALLY WENT. The pre-launch estimate is only worth
+    // reading because finished runs leave this behind; without it there is no
+    // honest time figure and the screen says so rather than inventing one.
+    try { require('./estimate').recordRate(doc); } catch (_) { /* the estimate degrades, the run does not */ }
     doc.status = doc.cancelRequested ? 'cancelled' : 'done';
     doc.perf.phase = 'done';
     doc.finishedAt = new Date().toISOString();
@@ -2599,6 +2621,7 @@ module.exports = {
   declaredQuorumFor,
   unitFullKey,
   getBatch,
+  planFor,
   runContents,
   deleteBatch,
   resumeContents,

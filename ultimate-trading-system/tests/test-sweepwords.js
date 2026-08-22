@@ -182,7 +182,11 @@ module.exports = {
   // authority; this records where each of these stands.
   async theInternalNamesThatBurnedUsAreOnlyWhereTheScreenPutsThem() {
     const NOWHERE = ['logreg', 'boost', 'combo'];
-    const ONLY_ON = { slim: ['Boards'] };
+    // 'slim' and 'promote' became SWEEP words on 2026-08-22, when the owner
+    // asked for the two passes to be drawn as two boxes and named. That is the
+    // honest resolution of the whole tangle about those words: they are on the
+    // screen now, so they can be used about that screen.
+    const ONLY_ON = { slim: ['Boards', 'Sweep'] };
     const where = {};
     for (const t of tabs()) {
       for (const w of collect(t.fn).words) {

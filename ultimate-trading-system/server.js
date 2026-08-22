@@ -495,6 +495,57 @@ app.post('/api/planted-gate', (req, res) => {
 
 // Bracket lab: the execution-permutation sweep (combos × option branches ×
 // the OCO bracket menu), slim-then-promote, no nulls in the sweep.
+// ONE MAPPING FROM THE REQUEST TO THE RUN'S PARAMETERS, because two callers
+// need it: the launch below and the pre-launch estimate. A parameter the
+// estimate did not carry would be a parameter the estimate silently priced at
+// zero — and an estimate that describes a different run from the one about to
+// start is worse than none (owner order, 2026-08-22).
+function sweepParams(b) {
+  return {
+    declared: b.declared,
+    universe: b.universe ? b.universe.map((p) => String(p).toUpperCase()) : undefined,
+    sizes: b.sizes,
+    startMonth: b.startMonth,
+    endMonth: b.endMonth,
+    allLoaded: !!b.allLoaded,
+    permute: b.permute,
+    set: b.set,
+    promoteK: b.promoteK,
+    minTrades: b.minTrades,
+    trailing: b.trailing,
+    holdout: b.holdout,
+    edgeScreen: b.edgeScreen,
+    labelShiftFrac: b.labelShiftFrac,
+    labelShiftReps: b.labelShiftReps,
+    labelShiftScope: b.labelShiftScope,
+    feePerLeg: b.feePerLeg,
+    dMults: b.dMults,
+    tHours: b.tHours,
+    gates: b.gates,
+    entries: b.entries,
+    description: b.description,
+    label: b.label,
+    windowLayout: b.windowLayout,
+    // which replication boxes are permuted; absent = the single declared config
+    declaredPermute: b.declaredPermute,
+    interlaceSeed: b.interlaceSeed,
+    sharedBand: b.sharedBand,
+  };
+}
+
+// WHAT A RUN WILL COST, before anybody presses anything. Starts nothing, claims
+// no job slot, writes nothing.
+app.post('/api/sweep-estimate', (req, res) => {
+  try {
+    const { configuredSize } = require('./lib/pool');
+    res.json(require('./lib/estimate').estimate(sweepParams(req.body || {}),
+      { poolSize: typeof configuredSize === 'function' ? configuredSize() : undefined }));
+  } catch (err) {
+    // A refusal IS an estimate: it is what the launch would say, said earlier.
+    res.status(200).json({ refusal: err.message });
+  }
+});
+
 app.post('/api/bracketlab', (req, res) => {
   const b = req.body || {};
   for (const m of ['startMonth', 'endMonth']) {
@@ -510,36 +561,7 @@ app.post('/api/bracketlab', (req, res) => {
     if (!Number.isFinite(v) || v <= 0 || v >= 50) return res.status(400).json({ error: 'band must be "auto" or between 0 and 50' });
   }
   try {
-    const id = batch.startBracketLab({
-      declared: b.declared,
-      universe: b.universe ? b.universe.map((p) => String(p).toUpperCase()) : undefined,
-      sizes: b.sizes,
-      startMonth: b.startMonth,
-      endMonth: b.endMonth,
-      allLoaded: !!b.allLoaded,
-      permute: b.permute,
-      set: b.set,
-      promoteK: b.promoteK,
-      minTrades: b.minTrades,
-      trailing: b.trailing,
-      holdout: b.holdout,
-      edgeScreen: b.edgeScreen,
-      labelShiftFrac: b.labelShiftFrac,
-      labelShiftReps: b.labelShiftReps,
-      labelShiftScope: b.labelShiftScope,
-      feePerLeg: b.feePerLeg,
-      dMults: b.dMults,
-      tHours: b.tHours,
-      gates: b.gates,
-      entries: b.entries,
-      description: b.description,
-      label: b.label,
-      windowLayout: b.windowLayout,
-      // which replication boxes are permuted; absent = the single declared config
-      declaredPermute: b.declaredPermute,
-      interlaceSeed: b.interlaceSeed,
-      sharedBand: b.sharedBand,
-    });
+    const id = batch.startBracketLab(sweepParams(b));
     res.json({ batchId: id });
   } catch (err) {
     res.status(409).json({ error: err.message });

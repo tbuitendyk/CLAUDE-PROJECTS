@@ -1,16 +1,16 @@
 {
   "note": "WHAT THE BOX IS SERVING. The closed word list is generated from this commit, not from the working tree, because between a commit and its deploy those describe different screens and the list is the only vocabulary permitted about a screen. Captured by vps-access/scripts/uts-served-fingerprint.sh; regenerate the list with `node tests/sweep-words.js --write`, which verifies these hashes before it reads anything.",
-  "commit": "30d9040321368da152290aea957627132ed9cd74",
-  "subject": "The word list is generated from what the box serves, not from the repo",
-  "capturedAt": "2026-08-22T19:48:47Z",
+  "commit": "f668c8a1f20176073c93e80acf8a22a1a4cb2864",
+  "subject": "Draw the two passes as two boxes, with the one control that joins them between",
+  "capturedAt": "2026-08-22T19:59:34Z",
   "files": {
     "public/construct.js": {
-      "sha256": "38d6863897c1b70be942d9cd9e915105c44a0363804400c1c1e42c2fe8b349df",
-      "bytes": 183650
+      "sha256": "38654efbe7358bb071c3f1fa63dbb92f3bfe784dcf6203944865b98e999e63ae",
+      "bytes": 185044
     },
     "public/help-content.js": {
-      "sha256": "bcc290898e0e47cf52939b3189a78263ff9579f63aa57b9468c13e4296c0f89c",
-      "bytes": 30004
+      "sha256": "d81b55f7bf2cb57dbfe325b6a8bd432e6996c0833c3e8724e3d433af12b49e6f",
+      "bytes": 30632
     },
     "public/setup.html": {
       "sha256": "10ab868f18968248fff1aaffbe9c916b5030421effa45343fe71f8864d2dc107",

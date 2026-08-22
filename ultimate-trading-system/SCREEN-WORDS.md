@@ -18,7 +18,7 @@ is the same fault wearing a disguise.
 
 ## Which screen this describes
 
-Generated from **30d904032136 — what the box is serving**, not from the working tree.
+Generated from **f668c8a1f201 — what the box is serving**, not from the working tree.
 
 That distinction is the whole point. Between a commit and its deploy the
 two describe different screens, and on 2026-08-22 exactly that happened: a
@@ -89,7 +89,7 @@ again. and asset. back be been below board cache cached comma-sep corrupt curren
 
 # Sweep
 
-## What the controls are called (58)
+## What the controls are called (60)
 
 - `” — runs & greenlights`
 - `” will permanently remove:`
@@ -100,6 +100,7 @@ again. and asset. back be been below board cache cached comma-sep corrupt curren
 - `arm`
 - `band % (or auto)`
 - `Beating all`
+- `Both passes`
 - `branch`
 - `Campaign — the parent chain name`
 - `Campaign “`
@@ -127,6 +128,7 @@ again. and asset. back be been below board cache cached comma-sep corrupt curren
 - `or a new name`
 - `permute`
 - `Phase`
+- `Promote pass only`
 - `promote top K`
 - `Rate`
 - `Removed`
@@ -196,12 +198,16 @@ again. and asset. back be been below board cache cached comma-sep corrupt curren
 - `static`
 - `Weekly 8-day`
 
-## Sentences the page prints (17)
+## Sentences the page prints (21)
 
 - Every run launched while a campaign is set attaches to it: sweeps, null rounds, tuning passes,
 - scans. The campaign's whole chain travels with any greenlight minted from it.
 - Board sweep — wide to FIND (never a result)
+- — everything in this box shapes the slim pass and the promote pass alike
 - universe (blank = all 17 default pairs)
+- how many rows carry from the slim pass into the promote pass — the only thing that travels between the two boxes.
+- above zero sends every row through instead, and so does replication below.
+- — the slim pass ignores everything in this box, however it is set
 - replication: also score every DECLARED config on every asset
 - description — why this run exists (rides in the job heading forever)
 - No job running.
@@ -216,10 +222,10 @@ again. and asset. back be been below board cache cached comma-sep corrupt curren
 - the work — the whole run once for real, then once per board.
 - Open it on the Boards section to see what it managed to record
 
-## Every word, flat (201)
+## Every word, flat (230)
 
 ```
-1-day 1-in- 113h 137h 161h 17h 2-day 3-day 4-day 41h 65h 8-day 89h active agree all also always and any are argmax arm asset at attaches auto band be Beating been belonging best blank Board board. boards Boards box branch breakout but Campaign campaign campaigns cannot chain chunk claim config configs contexts Currently Daily data decision DECLARED declared default Delete deleted. Deleting deployed. description did directional doubles each end entry ETA Every every evidence exam existing exists files FIND finish first for forever from gate greenlight greenlights has heading holds in is it it. job jobs last launched layout legacy loaded locked managed market MB min minted models moving name never new No no not nothing null on once Open or pairs parent passes per permanently permute Phase promote Rate real record remove Removed replication result Retire rides roughly rounds run Running running. runs saved scans. score scored sealed section see set Set setup setups. shape singles start Start static still Stop stops sweep sweeps tab the The them them. then there this This to top Trade trades trail Trainings travels tree triples try tuning undone. unit Units universe View Weekly what while whole why wide will window with work yet
+1-day 1-in- 113h 137h 161h 17h 2-day 3-day 4-day 41h 65h 8-day 89h above active agree alike all also always and any are argmax arm asset at attaches auto band be Beating been belonging below. best between blank Board board. boards Boards Both box boxes. branch breakout but Campaign campaign campaigns cannot carry chain chunk claim config configs contexts Currently Daily data decision DECLARED declared default Delete deleted. Deleting deployed. description did directional does doubles each end entry ETA Every every everything evidence exam existing exists files FIND finish first for forever from gate greenlight greenlights has heading holds how however ignores in instead into is it it. job jobs last launched layout legacy loaded locked managed many market MB min minted models moving name never new No no not nothing null on once only Open or pairs parent pass passes per permanently permute Phase promote Promote Rate real record remove Removed replication result Retire rides roughly rounds row rows run Running running. runs saved scans. score scored sealed section see sends set Set setup setups. shape shapes singles slim so start Start static still Stop stops sweep sweeps tab that the The them them. then there thing this This through to top Trade trades trail Trainings travels tree triples try tuning two undone. unit Units universe View Weekly what while whole why wide will window with work yet zero
 ```
 
 ---

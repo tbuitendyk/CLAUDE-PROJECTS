@@ -483,7 +483,10 @@ module.exports = {
     const batchSrc = fs.readFileSync(path.join(root, 'lib', 'batch.js'), 'utf8');
     const serverSrc = fs.readFileSync(path.join(root, 'server.js'), 'utf8');
 
-    const fn = batchSrc.slice(batchSrc.indexOf('function startBracketLab'));
+    // CHANGED 2026-08-22: the plan-building moved into planFor so the launcher
+    // and the pre-launch estimate count the same way. The parameter reads moved
+    // with it, so this reads planFor's body — which is where they now are.
+    const fn = batchSrc.slice(batchSrc.indexOf('function planFor(params'));
     const body = fn.slice(0, fn.indexOf('const { branches, combos }'));
     const read = new Set([...body.matchAll(/params\.([A-Za-z_$][\w$]*)/g)].map((m) => m[1]));
     read.delete('set');       // read as params.set?.x — forwarded as `set`
@@ -498,8 +501,13 @@ module.exports = {
     read.delete('plantedRules');
     assert.ok(read.size >= 8, `expected to find the param reads, found ${[...read]}`);
 
-    const call = serverSrc.slice(serverSrc.indexOf('batch.startBracketLab({'));
-    const forwarded = call.slice(0, call.indexOf('});'));
+    // CHANGED 2026-08-22: the request-to-parameters mapping moved into
+    // sweepParams(), because the pre-launch estimate has to price exactly the
+    // run the launch would start. That is where the forwarding now lives, and
+    // it covers both callers at once — which makes this check stronger, not
+    // weaker: a parameter missing here is missing from the estimate too.
+    const call = serverSrc.slice(serverSrc.indexOf('function sweepParams(b) {'));
+    const forwarded = call.slice(0, call.indexOf('\n}'));
     const missing = [...read].filter((k) => !new RegExp(`\\b${k}\\s*:`).test(forwarded));
     assert.deepStrictEqual(missing, [], `startBracketLab reads these but the API never forwards them: ${missing.join(', ')}`);
 

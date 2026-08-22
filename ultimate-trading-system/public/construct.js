@@ -80,6 +80,10 @@ async function post(p, body) {
   return j;
 }
 const tryPost = async (p, body) => { try { return await post(p, body); } catch (e) { alert('FAILED — nothing changed.\n\n' + e.message); return null; } };
+// A POST that ASKS rather than acts: it changes nothing, so a failure is a
+// blank answer, never a dialog. The cost line asks on every keystroke and a
+// popup there would be unusable.
+const askPost = async (p, body, fallback = null) => { try { return await post(p, body); } catch (_) { return fallback; } };
 // A setup is the TRADED pair plus its context pairs. Printing only the traded
 // pair makes a three-asset committee read as a single asset, which is a
 // different setup with a different result — so every "selected:" line uses this.
@@ -679,6 +683,14 @@ async function drawSweep() {
       <label class="f" style="flex:1">description — why this run exists (rides in the job heading forever)
         <input id="swDesc" style="width:100%"></label>
     </div>
+    <!-- WHAT IT WILL COST, BEFORE THE BUTTON (owner order, 2026-08-22). Every
+         hard stop this system has hit was a cost nobody could see until it
+         arrived. The counting is done by the same code that builds the run, so
+         it cannot describe a different run from the one about to start. -->
+    <div class="passbox" id="swCostBox" style="margin-top:.6rem">
+      <div class="passname"><b>What this run will cost</b> — worked out from the settings above, against what the box has now</div>
+      <div id="swCost" class="note">working it out…</div>
+    </div>
     <div class="row" style="margin-top:.6rem">
       <button id="swStart2" class="pri">Start sweep</button>
       <button id="swStop" class="danger" title="aborts the running batch job. Heavy SCANS (stop/conviction) are minutes-scale and run to completion — the Tune section shows which is running.">Stop jobs</button>
@@ -968,7 +980,61 @@ async function drawSweep() {
     }
   }
 
-  $('#swStart2').onclick = async () => {
+  // ---- the cost of the run in front of you ----
+  //
+  // The body is built by the same function the launch uses, so the estimate is
+  // priced on exactly what would be sent. Re-asked when anything changes, and
+  // debounced, because it walks the whole plan on the other side.
+  let costTimer = null;
+  const drawCost = async () => {
+    const el = $('#swCost');
+    if (!el) return;
+    const out = await askPost('api/sweep-estimate', sweepBody());
+    if (!out) { el.textContent = 'could not work out what this run would cost'; return; }
+    if (out.refusal) {
+      el.innerHTML = `<b style="color:var(--neg)">This run would be refused:</b> ${esc(out.refusal)}`;
+      return;
+    }
+    const p = out.plan;
+    const t = out.time;
+    const b = out.box;
+    const dur = t.seconds == null ? null
+      : t.seconds < 3600 ? `${Math.max(1, Math.round(t.seconds / 60))} min`
+        : t.seconds < 86400 ? `${(t.seconds / 3600).toFixed(1)} hours`
+          : `${(t.seconds / 86400).toFixed(1)} days`;
+    const size = (n) => (n >= 1073741824 ? `${(n / 1073741824).toFixed(1)} GB`
+      : n >= 1048576 ? `${Math.round(n / 1048576)} MB` : `${Math.max(1, Math.round(n / 1024))} kB`);
+    el.innerHTML = `<div class="row" style="gap:1.4rem;flex-wrap:wrap">
+        <span><span class="k">units</span> <b>${p.units.toLocaleString()}</b>
+          <span class="muted">${p.combos} x ${p.branches}${p.nullBoards ? ` x ${p.nullBoards + 1}` : ''}</span></span>
+        <span><span class="k">trainings</span> <b>${(p.slimRuns + p.promoteRuns).toLocaleString()}</b>
+          <span class="muted">${p.slimRuns.toLocaleString()} + ${p.promoteRuns.toLocaleString()}</span></span>
+        <span><span class="k">time</span> <b>${dur || '—'}</b>
+          <span class="muted">${t.secPerTraining == null ? 'nothing measured yet'
+    : `from ${t.samples} finished run(s), ${t.secPerTraining.toFixed(2)}s each`}</span></span>
+        <span><span class="k">disk</span> <b>${size(out.bytes)}</b>
+          <span class="muted">of ${b.diskFreeBytes == null ? '?' : size(b.diskFreeBytes)} free</span></span>
+        <span><span class="k">memory</span> <b>${b.heapCeilingMb == null ? '?' : `${b.heapCeilingMb} MB ceiling`}</b>
+          <span class="muted">${b.memFreeMb.toLocaleString()} MB free of ${b.memTotalMb.toLocaleString()}</span></span>
+        <span><span class="k">workers</span> <b>${b.cpus}</b> <span class="muted">cpus on the box</span></span>
+      </div>
+      <div class="muted" style="margin-top:.35rem">
+        second pass: <b>${p.promoteUnits.toLocaleString()}</b> unit(s)${p.everyUnitPromoted
+    ? ` — every one of them, because ${esc(p.whyEveryUnit || '')}, so promote top K does nothing`
+    : ' — the top of the board, as promote top K says'}${p.declaredConfigs
+    ? ` · ${p.declaredConfigs.toLocaleString()} declared config(s), ${out.rows.replication.toLocaleString()} rows` : ''}${p.trailingMultiplier > 1
+    ? ' · moving stops multiply the settings each promoted unit scores by about 13' : ''}
+      </div>
+      ${out.warnings.length ? `<ul style="margin:.4rem 0 0 1.1rem;color:var(--warn)">${out.warnings.map((w) => `<li>${esc(w)}</li>`).join('')}</ul>` : ''}`;
+  };
+  const askCost = () => { clearTimeout(costTimer); costTimer = setTimeout(drawCost, 300); };
+  for (const e of sweepControls()) { e.addEventListener('change', askCost); e.addEventListener('input', askCost); }
+  askCost();
+
+  // THE REQUEST THIS FORM WOULD SEND, built once and used twice: by the launch
+  // below, and by the cost line above it. Two copies would be two different
+  // runs — the one you were shown the price of, and the one that started.
+  function sweepBody() {
     const uni = $('#swUni').value.trim();
     const bandRaw = $('#swBand').value.trim().toLowerCase();
     const body = {
@@ -1027,6 +1093,11 @@ async function drawSweep() {
         } : {}),
       };
     }
+    return body;
+  }
+
+  $('#swStart2').onclick = async () => {
+    const body = sweepBody();
     $('#swMsg').textContent = 'launching…';
     const out = await tryPost('api/bracketlab', body);
     // the endpoint returns { batchId } (server.js) — reading out.id gave a blank
