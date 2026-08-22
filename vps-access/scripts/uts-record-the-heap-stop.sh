@@ -79,3 +79,10 @@ print('description UNTOUCHED:', repr(check.get('description'))[:110], '...')
 print('results UNTOUCHED: slimResults=%d leaders=%d' % (len(check.get('slimResults') or []), len(check.get('leaders') or [])))
 PY
 chown uts:uts "$F" 2>/dev/null || true
+
+# WHO OWNS THE FILE AFTERWARDS. This script runs as root and the service runs
+# as uts, so a rename would otherwise leave the run's own record owned by root
+# — readable, deletable (the directory is the service's), but no longer
+# writable by the thing that owns it. Saving notes onto this run would then
+# fail with a permission error that looks like a bug in the notes box.
+ls -l "$F" | sed 's/^/  /'
