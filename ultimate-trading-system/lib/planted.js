@@ -309,12 +309,126 @@ function gateVerdict(doc) {
   return out;
 }
 
+// ---- the verdict outlives the run -----------------------------------------
+
+// DELETING THE RUN MUST NOT DELETE THE VERDICT (owner, 2026-08-22): "if i
+// delete a planted check saved run on Boards then the planted check status
+// goes away. the status should be persisted even if i choose to delete the
+// run from the list."
+//
+// It went away because the status was DERIVED, every time, by re-reading the
+// gate run's own file out of data/batches. That file is the same file the
+// delete button removes, so the newest PASS and the rows it was read from were
+// one and the same thing. Tidying the picker silently retracted the
+// calibration, and the strip went back to NOT CHECKED with nothing anywhere
+// saying a check had ever passed.
+//
+// So the verdict is now WRITTEN DOWN when the gate run stops, into its own
+// small file that nothing on the Boards section can reach. The rows stay
+// deletable — they are large and they are the thing the owner is clearing —
+// and the reading taken from them stays for ever, which is the QC 74 shape:
+// a computed record is never destroyed.
+//
+// The record is a few hundred bytes: the id, the engine version it judged,
+// the pass/fail, and the sentences that say why. It is deliberately NOT the
+// rows, so keeping every gate run ever costs nothing worth measuring.
+const GATE_RECORDS = path.join(__dirname, '..', 'data', 'gate-records');
+
+// Tests hand in their own directories; the service uses neither argument.
+function gateRecordsDir(batchesDir, recordsDir) {
+  if (recordsDir) return recordsDir;
+  if (batchesDir) return path.join(batchesDir, 'gate-records');
+  return GATE_RECORDS;
+}
+
+function readGateRecords(dir) {
+  let files = [];
+  try { files = fs.readdirSync(dir).filter((f) => f.endsWith('.json')); } catch { return []; }
+  const out = [];
+  for (const f of files) {
+    try {
+      const r = JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8'));
+      if (r && r.id) out.push(r);
+    } catch {
+      // A torn record is not a silent nothing: it is reported the same way a
+      // torn run file is, so an older PASS cannot shadow it.
+      out.push({ id: f.replace(/\.json$/, ''), unreadable: true });
+    }
+  }
+  return out;
+}
+
+// Write the verdict of a gate run that has stopped. Called on every save of a
+// gate run, so it does the cheap comparison first: re-reading the board to
+// build the verdict costs real work, and a finished run gets saved again every
+// time its notes are edited.
+function recordGate(doc, recordsDir) {
+  if (!doc || doc.kind !== 'bracketlab') return null;
+  if (!(doc.params && doc.params.plantedGate)) return null;
+  if (!doc.status || doc.status === 'running') return null;
+
+  const dir = gateRecordsDir(null, recordsDir);
+  const file = path.join(dir, `${doc.id}.json`);
+  let prev = null;
+  try { prev = JSON.parse(fs.readFileSync(file, 'utf8')); } catch { prev = null; }
+  if (prev && prev.status === doc.status && prev.finishedAt === (doc.finishedAt || null)) return prev;
+
+  const verdict = gateVerdict(doc);
+  const rec = {
+    id: doc.id,
+    engineVersion: verdict.engineVersion,
+    status: doc.status,
+    startedAt: doc.startedAt || null,
+    finishedAt: doc.finishedAt || null,
+    pass: verdict.pass,
+    checks: verdict.checks,
+    sentences: verdict.sentences,
+    recordedAt: new Date().toISOString(),
+    // Set by markGateRunDeleted, and never unset: the run's rows are gone, so
+    // this reading can never be taken again.
+    runDeleted: !!(prev && prev.runDeleted),
+    deletedAt: (prev && prev.deletedAt) || null,
+  };
+  fs.mkdirSync(dir, { recursive: true });
+  const tmp = `${file}.tmp${process.pid}`;
+  fs.writeFileSync(tmp, JSON.stringify(rec, null, 1));
+  fs.renameSync(tmp, file);
+  return rec;
+}
+
+// Called just before a run's file is removed. Two jobs: make sure a record
+// exists at all (gate runs that finished before this was written have none),
+// and mark that the rows behind it are gone, so the strip can say so rather
+// than naming a run the owner can no longer open.
+function markGateRunDeleted(doc, recordsDir) {
+  const rec = recordGate(doc, recordsDir);
+  if (!rec) return null;
+  if (rec.runDeleted) return rec;
+  const dir = gateRecordsDir(null, recordsDir);
+  const file = path.join(dir, `${doc.id}.json`);
+  rec.runDeleted = true;
+  rec.deletedAt = new Date().toISOString();
+  const tmp = `${file}.tmp${process.pid}`;
+  fs.writeFileSync(tmp, JSON.stringify(rec, null, 1));
+  fs.renameSync(tmp, file);
+  return rec;
+}
+
+// Is there a kept verdict for this run? The Boards section asks before it
+// offers to delete, so the owner is told what survives as well as what goes.
+function gateRecordFor(id, recordsDir) {
+  const dir = gateRecordsDir(null, recordsDir);
+  try {
+    return JSON.parse(fs.readFileSync(path.join(dir, `${id}.json`), 'utf8'));
+  } catch { return null; }
+}
+
 // The status the interface strip shows: latest gate run vs the RUNNING
 // engine version. PASS carries only while the versions match — a new release
 // starts NOT CHECKED (owner: "you'll need to update the code behind that
 // button every time you make a new release" — this is how the record keeps
 // us honest about it).
-function gateStatus(currentVersion, batchesDir) {
+function gateStatus(currentVersion, batchesDir, recordsDir) {
   const dir = batchesDir || path.join(__dirname, '..', 'data', 'batches');
   let files = [];
   try {
@@ -331,12 +445,42 @@ function gateStatus(currentVersion, batchesDir) {
       // filename carries the timestamp, so if it is newer than every
       // readable record, an older PASS would otherwise shadow whatever
       // this one said (review 2026-08-03).
-      unreadable.push(f);
+      unreadable.push(f.replace(/\.json$/, ''));
     }
   }
   docs.sort((a, b) => (a.startedAt < b.startedAt ? 1 : -1));
   const running = docs.find((d) => d.status === 'running') || null;
-  const latestDone = docs.find((d) => d.status === 'done') || null;
+
+  // EVERY READING, whether or not the run behind it still exists.
+  //
+  // A run that is still on disk is read AGAIN, from its rows, so a change to
+  // the reading rules reaches it. A run the owner has deleted has no rows any
+  // more, so the reading kept when it finished is the reading, and it says so.
+  const live = new Map(docs.map((d) => [d.id, d]));
+  const readings = [];
+  for (const d of docs) {
+    if (d.status !== 'done') continue;
+    const v = gateVerdict(d);
+    readings.push({
+      id: d.id, startedAt: d.startedAt || d.id, finishedAt: d.finishedAt || null,
+      engineVersion: v.engineVersion, pass: v.pass, sentences: v.sentences, runDeleted: false,
+    });
+  }
+  const kept = readGateRecords(gateRecordsDir(batchesDir, recordsDir));
+  const kepts = new Set();
+  for (const r of kept) {
+    if (r.unreadable) { if (!live.has(r.id)) unreadable.push(r.id); continue; }
+    kepts.add(r.id);
+    if (live.has(r.id) || r.status !== 'done') continue;
+    readings.push({
+      id: r.id, startedAt: r.startedAt || r.id, finishedAt: r.finishedAt || null,
+      engineVersion: r.engineVersion, pass: !!r.pass, sentences: r.sentences || [],
+      runDeleted: !!r.runDeleted,
+    });
+  }
+  readings.sort((a, b) => (a.startedAt < b.startedAt ? 1 : -1));
+  const latest = readings[0] || null;
+
   const out = {
     engineVersion: currentVersion,
     state: 'NOT CHECKED',
@@ -344,29 +488,33 @@ function gateStatus(currentVersion, batchesDir) {
     running: running ? running.id : null,
     lastGate: null,
   };
-  const newestUnreadable = unreadable.sort().pop() || null;
-  if (newestUnreadable && (!latestDone || newestUnreadable > `${latestDone.id}.json`)) {
+  // A torn RUN file whose verdict was kept is not a hole any more — the
+  // reading survives it, which is the whole point of keeping it.
+  const shadow = unreadable.filter((id) => !kepts.has(id));
+  const newestUnreadable = shadow.sort().pop() || null;
+  if (newestUnreadable && (!latest || newestUnreadable > latest.id)) {
     out.state = 'NOT CHECKED';
     out.detail = `the newest gate record (${newestUnreadable}) is unreadable — no verdict stands until a fresh gate runs`;
-    out.unreadable = unreadable;
+    out.unreadable = shadow;
     return out;
   }
-  if (latestDone) {
-    const verdict = gateVerdict(latestDone);
+  if (latest) {
+    const gone = latest.runDeleted ? ' — its run has been deleted, this verdict is the kept record' : '';
     out.lastGate = {
-      id: latestDone.id,
-      engineVersion: verdict.engineVersion,
-      finishedAt: latestDone.finishedAt,
-      pass: verdict.pass,
-      sentences: verdict.sentences,
+      id: latest.id,
+      engineVersion: latest.engineVersion,
+      finishedAt: latest.finishedAt,
+      pass: latest.pass,
+      sentences: latest.sentences,
+      runDeleted: latest.runDeleted,
     };
-    if (verdict.engineVersion === currentVersion) {
-      out.state = verdict.pass ? 'PASS' : 'FAIL';
-      out.detail = verdict.pass
-        ? `planted check PASS on this engine (${currentVersion}, gate ${latestDone.id})`
-        : `planted check FAIL on this engine (${currentVersion}, gate ${latestDone.id}) — null-tool readings do not count`;
+    if (latest.engineVersion === currentVersion) {
+      out.state = latest.pass ? 'PASS' : 'FAIL';
+      out.detail = latest.pass
+        ? `planted check PASS on this engine (${currentVersion}, gate ${latest.id})${gone}`
+        : `planted check FAIL on this engine (${currentVersion}, gate ${latest.id}) — null-tool readings do not count${gone}`;
     } else {
-      out.detail = `engine ${currentVersion} not checked — last gate ran on engine ${verdict.engineVersion} (${verdict.pass ? 'PASS' : 'FAIL'})`;
+      out.detail = `engine ${currentVersion} not checked — last gate ran on engine ${latest.engineVersion} (${latest.pass ? 'PASS' : 'FAIL'})${gone}`;
     }
   }
   return out;
@@ -377,4 +525,5 @@ module.exports = {
   PLANTED_SEED, PLANTED_LATE_SEED, PLANTED_LATE_RULE_ON_FRAC,
   GATE_RULES, plantedSpan, generatePlanted, generatePlantedLate, plantedExists,
   gateParams, gateVerdict, gateStatus,
+  recordGate, markGateRunDeleted, gateRecordFor, gateRecordsDir,
 };

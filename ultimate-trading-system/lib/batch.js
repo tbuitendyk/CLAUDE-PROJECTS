@@ -240,6 +240,35 @@ function saveBatch(doc) {
   fs.writeFileSync(tmp, JSON.stringify(doc, null, 1));
   fs.renameSync(tmp, file);
   lastSaveAt = Date.now();
+  keepGateVerdict(doc);
+}
+
+// THE PLANTED CHECK'S VERDICT IS NOT THE RUN (owner, 2026-08-22): "if i delete
+// a planted check saved run on Boards then the planted check status goes away.
+// the status should be persisted even if i choose to delete the run from the
+// list."
+//
+// The status used to be worked out fresh, every time it was asked for, by
+// re-reading the gate run's file out of data/batches — the same file the
+// delete button removes. So clearing a finished calibration out of the picker
+// also retracted the calibration.
+//
+// Now the reading is written to its own small file as soon as the run stops.
+// Nothing on the Boards section can reach it, and it is the id, the engine
+// version it judged, the pass or fail and the sentences saying why — a few
+// hundred bytes, not the rows.
+//
+// It sits in saveBatch rather than at the end of the run because a run can
+// also stop by being interrupted or erroring, and each of those paths saves.
+// planted.recordGate does nothing for runs that are not the planted check, and
+// nothing again for a run whose record already matches, so the ordinary save
+// after every unit costs one string comparison.
+function keepGateVerdict(doc) {
+  if (!doc || !(doc.params && doc.params.plantedGate)) return;
+  try { require('./planted').recordGate(doc); } catch (_) {
+    // A verdict that cannot be written must never take the run down with it:
+    // the run's own file is already safely on disk by this point.
+  }
 }
 
 // One picker row from a doc on disk. Pure and exported for the tests:
@@ -354,6 +383,10 @@ function runContents(id) {
       modelFiles: dirCount('models'),
       tuningFiles: dirCount('ht'),
     },
+    // The owner is told what survives as well as what goes. Deleting the
+    // planted check's rows does not retract its verdict any more, and a
+    // deletion box that only lists losses would not say so.
+    plantedGate: !!(doc.params || {}).plantedGate,
     locked: !!isRunning || greenlights.length > 0,
     lockedWhy: isRunning
       ? 'this run is going right now — stop it first with Stop jobs, then delete it'
@@ -371,6 +404,16 @@ function deleteBatch(id) {
     err.locked = found;
     throw err;
   }
+  // FIRST, WHILE THE ROWS ARE STILL THERE. A gate run that finished before
+  // verdicts were kept has no record yet, and building one means reading its
+  // board — so this is the last moment it can be done. The record is then
+  // marked, so the strip says the run itself is gone rather than naming one
+  // the owner can no longer open. Doing this after rowstore.remove would have
+  // produced an unreadable verdict and kept THAT, which is the fault this is
+  // written to avoid, not a smaller version of it.
+  if (found.plantedGate) {
+    try { require('./planted').markGateRunDeleted(getBatch(found.id)); } catch (_) { /* nothing to keep */ }
+  }
   const dataDir = path.join(__dirname, '..', 'data');
   const rmDir = (d) => { try { fs.rmSync(d, { recursive: true, force: true }); } catch (_) { /* nothing there */ } };
   const removed = { modelFiles: found.counts.modelFiles, tuningFiles: found.counts.tuningFiles };
@@ -379,6 +422,7 @@ function deleteBatch(id) {
   rowstore.remove(found.id);
   try { fs.rmSync(batchFile(found.id), { force: true }); } catch (_) { /* already gone */ }
   removed.run = 1;
+  removed.plantedCheckVerdictKept = !!found.plantedGate;
   return { id: found.id, removed };
 }
 

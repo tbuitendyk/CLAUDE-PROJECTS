@@ -6,9 +6,11 @@ const os = require('os');
 const { assert } = require('./helpers');
 const planted = require('../lib/planted');
 const batch = require('../lib/batch');
+const rowstore = require('../lib/rowstore');
 
 const CACHE = path.join(__dirname, '..', 'data', 'cache');
 const BATCH_DIR = path.join(__dirname, '..', 'data', 'batches');
+const RECORD_DIR = path.join(__dirname, '..', 'data', 'gate-records');
 
 function censusRow(extra) {
   return {
@@ -169,6 +171,165 @@ module.exports = {
       for (const f of files) fs.rmSync(path.join(CACHE, f), { force: true });
     }
   },
+  // THE PRIMARY PATH: the verdict is written when the gate run STOPS, not when
+  // somebody deletes it. Every save of a stopped gate run keeps it — which is
+  // why a run that ends by being interrupted or by erroring is recorded too,
+  // and why the delete only has to cover gate runs that finished before any of
+  // this existed. Driven through setBatchNotes because that is a real exported
+  // caller of the save.
+  async savingAStoppedGateRunKeepsItsVerdict() {
+    const doc = gateDoc('bracketlab-20990303-0001-planted-gate', '9.9.2', [1, 2, 3, 4]);
+    const file = path.join(BATCH_DIR, `${doc.id}.json`);
+    const rec = path.join(RECORD_DIR, `${doc.id}.json`);
+    try {
+      fs.mkdirSync(BATCH_DIR, { recursive: true });
+      fs.writeFileSync(file, JSON.stringify(doc));
+      assert.ok(!fs.existsSync(rec), 'nothing kept yet — the file was put there behind the save');
+      batch.setBatchNotes(doc.id, 'a note');
+      assert.ok(fs.existsSync(rec), 'saving a stopped gate run must keep its verdict');
+      assert.strictEqual(JSON.parse(fs.readFileSync(rec, 'utf8')).pass, true);
+      assert.strictEqual(JSON.parse(fs.readFileSync(rec, 'utf8')).runDeleted, false,
+        'the run is still on the box, so nothing says it is gone');
+    } finally {
+      fs.rmSync(file, { force: true });
+      fs.rmSync(rec, { force: true });
+    }
+  },
+
+  // THE VERDICT OUTLIVES THE RUN (owner, 2026-08-22): "if i delete a planted
+  // check saved run on Boards then the planted check status goes away. the
+  // status should be persisted even if i choose to delete the run from the
+  // list."
+  //
+  // Driven through the REAL delete, not through recordGate — the defect was
+  // that the status came from the same file the delete button removes, so a
+  // test that never presses delete cannot see it.
+  async deletingAGateRunKeepsItsVerdict() {
+    const doc = gateDoc('bracketlab-20990301-0001-planted-gate', '9.9.7', [1, 2, 3, 4]);
+    const file = path.join(BATCH_DIR, `${doc.id}.json`);
+    const rec = path.join(RECORD_DIR, `${doc.id}.json`);
+    try {
+      fs.mkdirSync(BATCH_DIR, { recursive: true });
+      fs.writeFileSync(file, JSON.stringify(doc));
+      const out = batch.deleteBatch(doc.id);
+      assert.strictEqual(out.removed.plantedCheckVerdictKept, true,
+        'the delete must report that the verdict was kept — the owner is told what survives');
+      assert.ok(!fs.existsSync(file), 'the run itself really is gone');
+      assert.ok(fs.existsSync(rec), 'the verdict went away with the run');
+      const kept = JSON.parse(fs.readFileSync(rec, 'utf8'));
+      assert.strictEqual(kept.pass, true, 'a PASS must still read as a PASS after the run is deleted');
+      assert.strictEqual(kept.engineVersion, '9.9.7', 'the kept verdict names the engine it judged');
+      assert.strictEqual(kept.runDeleted, true, 'and it says the rows behind it are gone');
+      assert.ok(kept.sentences.some((x) => /PLANTED CHECK PASS/.test(x)), 'the reasons are kept, not just the flag');
+    } finally {
+      fs.rmSync(file, { force: true });
+      fs.rmSync(rec, { force: true });
+    }
+  },
+
+  // THE ROWS ARE READ BEFORE THEY ARE DESTROYED. Building the verdict means
+  // reading the run's board, so a delete that removed the rows first would
+  // keep "UNREADABLE" — the fault this change exists to fix, in a smaller
+  // shape. This run's rows live only in the row store, which is where a real
+  // run's rows live.
+  async theVerdictIsTakenWhileTheRowsAreStillThere() {
+    const doc = gateDoc('bracketlab-20990302-0001-planted-gate', '9.9.6', [1, 2, 3, 4]);
+    const rows = doc.edgeCensus;
+    delete doc.edgeCensus;                       // nothing inline: the store is the only copy
+    const file = path.join(BATCH_DIR, `${doc.id}.json`);
+    const rec = path.join(RECORD_DIR, `${doc.id}.json`);
+    try {
+      fs.mkdirSync(BATCH_DIR, { recursive: true });
+      fs.writeFileSync(file, JSON.stringify(doc));
+      const w = rowstore.writer(doc.id, 'census');
+      for (const r of rows) w.push(r);
+      w.close();
+      assert.ok(rowstore.exists(doc.id, 'census'), 'the rows are in the store to begin with');
+
+      batch.deleteBatch(doc.id);
+      const kept = JSON.parse(fs.readFileSync(rec, 'utf8'));
+      assert.strictEqual(kept.pass, true,
+        `the verdict was taken after the rows went: ${kept.sentences.join(' | ')}`);
+      assert.ok(!kept.sentences.some((x) => /UNREADABLE/.test(x)),
+        'an unreadable verdict must never be the thing that gets kept');
+    } finally {
+      fs.rmSync(file, { force: true });
+      fs.rmSync(rec, { force: true });
+      rowstore.remove(doc.id);
+    }
+  },
+
+  // What the badge at the top of the page reads once the run is gone.
+  async theStatusIsReadFromTheKeptVerdictWhenTheRunIsGone() {
+    const runs = fs.mkdtempSync(path.join(os.tmpdir(), 'planted-gate-'));
+    const recs = fs.mkdtempSync(path.join(os.tmpdir(), 'planted-recs-'));
+    try {
+      fs.writeFileSync(path.join(recs, 'bracketlab-20990101-0007-planted-gate.json'), JSON.stringify({
+        id: 'bracketlab-20990101-0007-planted-gate', engineVersion: '9.9.5', status: 'done',
+        startedAt: '2099-01-01T00:00:00.000Z', finishedAt: '2099-01-01T00:10:00.000Z',
+        pass: true, checks: [], sentences: ['PLANTED CHECK PASS on engine 9.9.5'], runDeleted: true,
+      }));
+      const s = planted.gateStatus('9.9.5', runs, recs);
+      assert.strictEqual(s.state, 'PASS', 'no run on disk, and the check still stands');
+      assert.strictEqual(s.lastGate.runDeleted, true, 'the page can say the run is not openable');
+      assert.ok(/deleted/.test(s.detail), `the detail must say so plainly: ${s.detail}`);
+      assert.strictEqual(planted.gateStatus('9.9.6', runs, recs).state, 'NOT CHECKED',
+        'a kept verdict still belongs to its own engine version only');
+    } finally {
+      fs.rmSync(runs, { recursive: true, force: true });
+      fs.rmSync(recs, { recursive: true, force: true });
+    }
+  },
+
+  // A RUN THAT IS STILL HERE IS READ AGAIN. The kept record is a fallback for
+  // rows that no longer exist, never a cache that shadows rows that do — a
+  // change to the reading rules has to reach every run it still can.
+  async aRunStillOnDiskIsReadFromItsRowsNotFromTheRecord() {
+    const runs = fs.mkdtempSync(path.join(os.tmpdir(), 'planted-gate-'));
+    const recs = fs.mkdtempSync(path.join(os.tmpdir(), 'planted-recs-'));
+    const id = 'bracketlab-20990101-0008-planted-gate';
+    try {
+      // On disk: a null board at $30, over the quarter-line, so it FAILS.
+      fs.writeFileSync(path.join(runs, `${id}.json`), JSON.stringify(gateDoc(id, '9.9.4', [10, 30, -3, 20])));
+      // Kept: a stale PASS for the same run.
+      fs.writeFileSync(path.join(recs, `${id}.json`), JSON.stringify({
+        id, engineVersion: '9.9.4', status: 'done', startedAt: '2099-01-01T00:00:00.000Z',
+        finishedAt: '2099-01-01T00:10:00.000Z', pass: true, checks: [], sentences: ['stale PASS'], runDeleted: false,
+      }));
+      const s = planted.gateStatus('9.9.4', runs, recs);
+      assert.strictEqual(s.state, 'FAIL', 'the rows on disk win over the record taken from them');
+      assert.ok(!s.lastGate.sentences.some((x) => /stale PASS/.test(x)), 'and the stale sentences are not shown');
+    } finally {
+      fs.rmSync(runs, { recursive: true, force: true });
+      fs.rmSync(recs, { recursive: true, force: true });
+    }
+  },
+
+  // Nothing else gets a record, and nothing gets one before it has stopped.
+  async onlyTheGateIsRecordedAndOnlyOnceItHasStopped() {
+    const recs = fs.mkdtempSync(path.join(os.tmpdir(), 'planted-recs-'));
+    try {
+      const ordinary = gateDoc('bracketlab-20990101-0009-ordinary', '9.9.3', [1, 2, 3, 4]);
+      ordinary.params.plantedGate = false;
+      assert.strictEqual(planted.recordGate(ordinary, recs), null, 'an ordinary sweep is not a calibration');
+
+      const going = gateDoc('bracketlab-20990101-0010-planted-gate', '9.9.3', [1, 2, 3, 4]);
+      going.status = 'running';
+      assert.strictEqual(planted.recordGate(going, recs), null, 'a running gate has no verdict yet');
+
+      const done = gateDoc('bracketlab-20990101-0011-planted-gate', '9.9.3', [1, 2, 3, 4]);
+      const first = planted.recordGate(done, recs);
+      assert.strictEqual(first.pass, true);
+      assert.strictEqual(first.runDeleted, false, 'the run is still there at this point');
+      // Saving again must not re-read the board: same status, same finish time.
+      const again = planted.recordGate(done, recs);
+      assert.strictEqual(again.recordedAt, first.recordedAt, 'an unchanged run is not re-read on every save');
+      assert.strictEqual(fs.readdirSync(recs).length, 1, 'one run, one record');
+    } finally {
+      fs.rmSync(recs, { recursive: true, force: true });
+    }
+  },
+
   async anUnreadableNewestGateRecordBlocksOlderVerdicts() {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'planted-gate-'));
     try {

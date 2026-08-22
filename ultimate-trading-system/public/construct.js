@@ -1549,6 +1549,10 @@ async function drawBoards() {
     box.innerHTML = `<div class="panel" style="border-color:var(--warn);margin-top:.5rem"><b style="color:var(--warn)">Deleting “${esc(found.id)}” will permanently remove:</b>
       <ul style="margin:.3rem 0 0 1.1rem"><li>the run itself${found.campaign ? ` (campaign ${esc(found.campaign)})` : ''}</li>
       ${lines.map(([what, n]) => `<li><b>${n}</b> ${esc(what)}</li>`).join('')}</ul>
+      ${found.plantedGate ? `<div class="note" style="margin-top:.4rem"><b>The planted check verdict is KEPT.</b>
+        Deleting this run removes its rows, not its result — the pass or fail it recorded, the engine version it
+        judged and the sentences saying why stay on the box for good, and the badge at the top of the page goes on
+        showing them.</div>` : ''}
       <div class="muted" style="margin-top:.4rem">This cannot be undone.</div></div>`;
 
     // Painted BEFORE the box appears: prompt() blocks the browser, so without
@@ -1733,7 +1737,10 @@ async function drawVerify() {
     ${gate && gate.detail ? `<p class="note">${esc(gate.detail)}</p>` : ''}
     ${gate && gate.running ? '<p class="note">This regenerates the fabricated pair and fires a full sweep, so it takes minutes. The badge above and the release strip refresh themselves — you do not need to reload.</p>' : ''}
     ${gate && gate.lastGate && gate.lastGate.sentences ? `<div class="note"><b>Last gate (${esc(gate.lastGate.id || '')}, engine ${esc(gate.lastGate.engineVersion || '')}, ${gate.lastGate.pass ? 'PASS' : 'FAIL'}):</b>
-      ${gate.lastGate.sentences.map((x) => `<div>${esc(x)}</div>`).join('')}</div>` : ''}
+      ${gate.lastGate.sentences.map((x) => `<div>${esc(x)}</div>`).join('')}
+      ${gate.lastGate.runDeleted ? `<div style="margin-top:.3rem"><b>That run has been deleted</b> — its rows are gone, so
+        it is not on the Boards section any more. The verdict above is the record kept when it finished, and it stands
+        until a fresh planted check replaces it.</div>` : ''}</div>` : ''}
     ${gate ? `<details style="margin-top:.4rem"><summary>full gate record</summary><pre>${esc(JSON.stringify(gate, null, 1))}</pre></details>` : ''}
   </div>
   <div class="panel">
