@@ -15,6 +15,13 @@ Ordered by what I would do first.
 
 ## 1. Stop storing what nothing reads — the copies' per-row detail
 
+> **PARKED 2026-08-22 — it fails the owner's own condition.** The instruction
+> was *"if we don't lose functionality with your two first resource proposals
+> then GO NOW!"*. This one loses functionality: a count is not the rows, and
+> QC 74 says computed records are never deleted. So it was not built, and the
+> decision stays with the owner. **Item 4 is the lossless way to get part of the
+> same benefit** — the same rows, fewer bytes — and needs no ruling.
+
 **The problem, measured.** One row is written per promoted unit per declared
 config. With 40 null boards, 40 of every 41 of those rows belong to a scrambled
 copy. The owner's run would have written 413 million rows; 403 million of them
@@ -68,6 +75,14 @@ count that will actually be scored.
 ---
 
 ## 3. Send the big constant parts to each worker ONCE, not once per unit
+
+> **IMPLEMENTED AND DEPLOYED 2026-08-22, commit `ad20010`.** It loses nothing —
+> the same settings reach the same tasks by a different route. Measured on the
+> owner's own run shape: one payload went from **1,305,292 bytes to 212**, and
+> the copying across the thread boundary from about **65 GB to about 10 MB**.
+> A worker asked for settings it was never given refuses the task, on both the
+> worker and the inline path, so the saving can never turn into a unit scored
+> with the wrong settings.
 
 **The problem, measured.** Each unit's payload carries `params`, and `params`
 carries `declaredSet` — 1.4 MB of it on the owner's run. That whole object is
@@ -155,9 +170,21 @@ hold at once.
 
 ---
 
-## What I would do first
+## Where this stands
 
-1 and 3, in that order. Item 1 is where the size actually is, and item 3 is
-where the time goes on a wide run. Both are contained changes with tests.
+| | | |
+|---|---|---|
+| 1 | copies stored as counts | **parked** — loses recorded detail, needs a ruling on QC 74 |
+| 2 | drop configs the run cannot match | not built — loses nothing, cheap |
+| 3 | settings sent once per worker | **done and deployed**, `ad20010` |
+| 4 | compress the stored rows | not built — loses nothing; the lossless half of item 1 |
+| 5 | build payloads as needed | not built — loses nothing, cheap |
+| 6 | stop at a cost the owner sets | not built — loses nothing |
+| 7 | share the candle cache | not built — the biggest job here |
 
-Item 1 needs the owner's ruling on QC 74 before anything is written.
+**If item 1 is wanted anyway**, the middle option in that section keeps every
+row and lets the owner delete the copies' file per run, from the Boards
+section, once the reading has been taken. That costs the disk once rather than
+for ever and deletes nothing without being asked.
+
+**The next two I would take**, both losing nothing and both small: 4, then 5.
