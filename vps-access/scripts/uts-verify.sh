@@ -66,12 +66,36 @@ for u in api/cpu api/data-state api/batches api/campaigns api/live/setups api/li
   [ "$c" = "200" ] && ok "$u -> 200" || no "$u -> $c (expected 200)"
 done
 
-echo "== this system starts from zero use, with the candles kept =="
+echo "== nothing came across from the previous project =="
+# CHANGED 2026-08-21. This used to assert that data/live, data/campaigns and
+# data/batches were EMPTY, to prove the migration inherited nothing. That was
+# true at the migration and only then. The moment the owner used the system it
+# went red — and it did, on the first calibration check — and it would have
+# stayed red forever after. A deploy check that is permanently red is one
+# nobody reads, and a real failure hides inside it.
+#
+# The guarantee worth keeping is not "empty". It is "nothing from the DEPARTED
+# parts of the old project is here". That stays true however much the owner
+# uses the system, and goes red only for something genuinely wrong.
 CACHE="$(find /opt/ultimate-trading-system/data/cache -type f 2>/dev/null | wc -l)"
 [ "$CACHE" -gt 0 ] && ok "candle cache carried across: ${CACHE} files" || no "no candle cache"
-for d in live campaigns batches; do
+
+# The stores that belonged to the screens this release removed. Any of these
+# appearing means something inherited, or something re-created them.
+for d in books dogebook tracker rotations wf; do
+  if [ -e "/opt/ultimate-trading-system/data/$d" ]; then
+    no "data/$d exists — that belongs to a part of the old project this release removed"
+  else
+    ok "no data/$d (the departed screens left nothing behind)"
+  fi
+done
+
+# What the system has built for itself since. Reported, never asserted: these
+# grow with ordinary use and there is no number here that is right or wrong.
+echo "  what this system holds now:"
+for d in batches models ht live manifests pilot; do
   n="$(find "/opt/ultimate-trading-system/data/$d" -type f 2>/dev/null | wc -l)"
-  [ "$n" = "0" ] && ok "data/$d is empty (nothing inherited)" || no "data/$d holds $n file(s)"
+  printf "    %-12s %s file(s)\n" "$d" "$n"
 done
 echo "  note: data/ holds -> $(ls /opt/ultimate-trading-system/data 2>/dev/null | tr '\n' ' ')"
 
