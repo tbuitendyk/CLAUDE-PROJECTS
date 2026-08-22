@@ -69,8 +69,19 @@ else
   echo "  FAIL  api/screen-controls -> $C (the Help tab cannot tell what to describe)"; FAIL=1
 fi
 rm -f /tmp/uts-ctl.json
-curl -s http://127.0.0.1:8094/construct.js | grep -q "'help', 'Help'" \
+# Matched on the tab's own function name rather than a quoted pair: the quoting
+# inside this heredoc did not survive, so this reported "no Help tab" while the
+# tab was right there. A check that cries wolf about a working feature is worse
+# than no check — it was the only FAIL on the board and it was its own fault.
+curl -s http://127.0.0.1:8094/construct.js | grep -q "drawHelp" \
   && ok "Help is a tab on the Construct page" || { echo "  FAIL  no Help tab"; FAIL=1; }
+# And the marker that decides whether a browser sees any of this must be built
+# from the file, not from a version number nobody bumps. Without it a deploy
+# never reaches a browser that already has the page — which is what hid the
+# Help tab from the owner on the day it shipped.
+curl -s http://127.0.0.1:8094/construct.html | grep -qE 'construct[.]js[?]v=[0-9a-f]{12}' \
+  && ok "scripts are stamped with their own contents (a deploy reaches the browser)" \
+  || { echo "  FAIL  construct.js is not content-stamped — a returning browser keeps the old copy"; FAIL=1; }
 
 echo "== the departed screens are gone =="
 for u in index.html app.js help.html api/tracker api/books api/dogebook api/rotations; do
