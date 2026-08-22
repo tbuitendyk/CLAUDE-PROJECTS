@@ -26,12 +26,18 @@ const path = require('path');
 const DATA = path.join(__dirname, '..', 'data');
 const RATE_FILE = path.join(DATA, 'run-rates.json');
 
-// MEASURED BYTES PER STORED ROW. Not a guess: rows are written as JSON arrays
-// under a shared header, and a full replication row measured 148 bytes that way
-// against 611 as an object. Kept as three separate numbers because the three
-// collections are different shapes, and rounded up, because an estimate that
-// flatters the disk is worse than none.
-const BYTES_PER_ROW = { slim: 90, census: 240, replication: 160 };
+// MEASURED BYTES PER STORED ROW. Measured by writing representative rows
+// through the store itself, not reasoned about — tests/test-estimate.js does the
+// same measurement and fails if these drift from it, because the first version
+// of these numbers was written by eye and understated the replication row by
+// more than two to one. An estimate that flatters the disk is worse than none:
+// it is the same silence that let a run die at hour forty, wearing a number.
+const BYTES_PER_ROW = { slim: 111, census: 244, replication: 324 };
+
+// MEASURED BYTES PER UNIT HELD ON THE MAIN THREAD, the same way. The unit list
+// and the payload list are both built for the whole pass, so they are what grows
+// with the size of a run now that the settings no longer travel per unit.
+const MEM_PER_UNIT = { unit: 60, payload: 71 };
 
 // HOW FAST THIS BOX GOES, from what it actually did. Every finished run appends
 // its own measured seconds-per-training; the median of the last few is the
@@ -143,9 +149,21 @@ function estimate(params, { poolSize } = {}) {
     + rows.census * BYTES_PER_ROW.census
     + rows.replication * BYTES_PER_ROW.replication;
 
+  // WHAT THE RUN ADDS TO MEMORY, as opposed to what the box has. Only the part
+  // that GROWS with the run is counted: the unit list, the payload list, and one
+  // copy of the settings per worker plus the one on this thread. The decoded
+  // prices the workers hold are much larger and are deliberately not folded in —
+  // they grow with the number of ASSETS, not with the number of settings, so
+  // adding them would hide the thing this figure exists to show.
+  const settingsBytes = (() => {
+    try { return JSON.stringify({ params: p }).length; } catch (_) { return 0; }
+  })();
+  const workers = Math.max(1, Number(poolSize) || 1);
+  const memBytes = units.length * (MEM_PER_UNIT.unit + MEM_PER_UNIT.payload)
+    + settingsBytes * (workers + 1);
+
   const rate = medianRate();
   const totalRuns = slimRuns + promoteRuns;
-  const workers = Math.max(1, Number(poolSize) || 1);
   // secPerTraining as recorded is already wall-clock per training ACROSS the
   // pool that ran it, so it is not divided again by the workers here — dividing
   // twice is how an estimate ends up four times too fast.
@@ -164,6 +182,9 @@ function estimate(params, { poolSize } = {}) {
   }
   if (seconds != null && seconds > 86400) {
     warnings.push(`about ${Math.round(seconds / 3600)} hours of work — a deploy restarts the service and stops a run, so nothing can be deployed while it goes`);
+  }
+  if (box.heapCeilingMb != null && memBytes > box.heapCeilingMb * 1048576 * 0.5) {
+    warnings.push(`the unit list alone wants about ${gb(memBytes)} of the ${box.heapCeilingMb} MB heap this service runs under`);
   }
   if (rate.secPerTraining == null) {
     warnings.push('no finished run has been measured on this box yet, so there is no time estimate — the first run that finishes provides one');
@@ -187,6 +208,7 @@ function estimate(params, { poolSize } = {}) {
     },
     rows,
     bytes,
+    memory: { bytes: memBytes, settingsBytes, workers },
     time: { seconds, secPerTraining: rate.secPerTraining, samples: rate.samples },
     box,
     warnings,

@@ -637,7 +637,17 @@ async function drawSweep() {
     </div>
     <div class="row" style="margin-top:.5rem;align-items:flex-end;border-top:1px solid var(--line);padding-top:.55rem">
       <label class="c" title="REPLICATION MODE. Instead of judging each asset by the best cell the search shopped for, score settings YOU fix here, before the run, on every asset. With every permute unticked that is ONE config: nothing was chosen after seeing results, so there is no shopping tax and no branch correction owed, and it is the strongest reading the system offers. Tick any permute and these boxes declare a BLOCK of configs instead — every combination, each one scored on every asset. The counter beside them says how many, it multiplies the whole run, and having searched, the honest end is the sealed block of the 61/13/13/13 window layout. Either way the menu still runs and the board is unchanged; this adds a separate replication table reporting each declared cell per asset, read against that configuration's own dealt-vote copies and never as a binomial (QC-7: assets move together, so they are not independent looks). Agreement travels as an exact count per committee size — the 'agree' boxes (5/6 means 5 of a single coin's 6 members).">
-        <input type="checkbox" id="swDecOn"> replication: also score every DECLARED config on every asset</label>
+        <input type="checkbox" id="swDecOn">
+        <!-- BOTH WORDINGS ARE IN THE PAGE, and one is hidden (owner order,
+             2026-08-22). The tick means two different things depending on the
+             permute boxes beside it, and calling both "DECLARED" was a claim
+             that is only true of one of them: with nothing permuted you named a
+             setting before the run, and with anything permuted the machine
+             tried thousands and you read off the best afterwards. The owner:
+             "I'M NOT DECLARING ANYTHING...I'M PERMUTING THE OPTIONS."
+             Rendered rather than written in by script so both sentences are on
+             the screen's own word list. -->
+        <span id="swDecLabelOne">replication: score ONE setting you name, on every asset</span><span id="swDecLabelMany" style="display:none">replication: search many settings, each scored on every asset</span></label>
       <div id="swGrpEntry" style="display:flex;align-items:flex-end;gap:.45rem">
         <label class="f" id="swDecEntryWrap" title="BREAKOUT opens the position when price reaches a rail at p(1±d). MARKET enters at the entry candle's open in the called direction with no rails, holds to t, and exits at the open: the general classifier's own trade, and exactly what the live paper books do. Market entry is directional by definition, so gate and d do not apply to it.">entry
         <select id="swDecEntry">${vocabOptions('entry', 'breakout')}</select></label>
@@ -928,16 +938,42 @@ async function drawSweep() {
     // scores in full records one row per config, and a stored row is about 150
     // bytes; the run's own plan line says how many units, so this says the part
     // the operator cannot work out for themselves.
+    // WHICH OF THE TWO THINGS THIS TICK IS DOING, said on the tick itself.
+    const one = $('#swDecLabelOne');
+    const many = $('#swDecLabelMany');
+    if (one && many) { one.style.display = n === 1 ? '' : 'none'; many.style.display = n === 1 ? 'none' : ''; }
+
+    // HOW MANY WOULD LOOK GOOD BY LUCK ALONE. A setting beating all of its own
+    // scrambled copies happens by chance about once in (null boards + 1) — that
+    // is the rank argument: under the null the real result is equally likely to
+    // be any of them. Across N searched settings the expected count of lucky
+    // ones is N/(boards+1), whatever the settings have in common, because an
+    // expected count adds up that way even when the things counted do not.
+    //
+    // Stated as the WORST case on purpose. If a setting's assets were separate
+    // looks the number would be far smaller, but the register's own position is
+    // that they are not — crypto assets move together (QC-7) — so we do not get
+    // to assume the flattering version.
+    const boards = Math.max(0, Math.floor(Number($('#swNulls').value) || 0));
+    const luck = boards > 0 ? Math.round(n / (boards + 1)) : null;
+    const cost = `Roughly ${n}x the replication work, and every unit scored in full records up to ${n} `
+      + `rows on disk at about 150 bytes each (<b>${(n * 150 / 1048576).toFixed(1)} MB</b> per unit).`;
     el.innerHTML = n === 1
-      ? 'one declared config — no shopping, the strongest reading available'
-      : `<b>${n}</b> declared configs, each scored on every asset — roughly ${n}x the replication work, `
-        + `and every unit scored in full records up to ${n} rows on disk at about 150 bytes each `
-        + `(<b>${(n * 150 / 1048576).toFixed(1)} MB</b> per unit). `
-        + 'Permuting means you searched for it, so the honest end is the sealed slice (window layout 61/13/13/13, graded once in History).';
+      ? 'one setting, named before the run — nothing was chosen after seeing results, and that is the strongest reading the system offers'
+      : `<b>${n.toLocaleString()}</b> settings searched, each scored on every asset. `
+        + (boards > 0
+          ? `With <b>${boards}</b> null boards, one setting beating every one of its own copies happens by luck about `
+            + `1 time in ${boards + 1} — so out of ${n.toLocaleString()}, expect about <b class="warn">${luck.toLocaleString()}</b> `
+            + 'to beat all their copies by chance alone. Beating the copies says little here; picking the best line of this table is shopping. '
+          : 'No null boards, so there is nothing to compare any of them against. ')
+        + `${cost} Having searched, the honest end is the sealed slice (window layout 61/13/13/13, graded once in History).`;
   };
   ['#swDecOn', '#swDecEntry', '#swDecTrail', '#swPermDecEntry', '#swPermDecGate', '#swPermDecD',
-    '#swPermDecT', '#swPermDecTrail', '#swPermDecArm', '#swPermDecAgree', '#swSingles', '#swDoubles', '#swTriples']
+    '#swPermDecT', '#swPermDecTrail', '#swPermDecArm', '#swPermDecAgree', '#swSingles', '#swDoubles', '#swTriples',
+    // the luck figure is worked out from null boards, so it has to follow that box as well
+    '#swNulls']
     .forEach((id) => { if ($(id)) $(id).addEventListener('change', syncDecCount); });
+  if ($('#swNulls')) $('#swNulls').addEventListener('input', syncDecCount);
   syncDecCount();
 
   // WHAT THE NUMBER COSTS, BEFORE Start sweep (owner, 2026-08-22). This box
@@ -1014,9 +1050,14 @@ async function drawSweep() {
     : `from ${t.samples} finished run(s), ${t.secPerTraining.toFixed(2)}s each`}</span></span>
         <span><span class="k">disk</span> <b>${size(out.bytes)}</b>
           <span class="muted">of ${b.diskFreeBytes == null ? '?' : size(b.diskFreeBytes)} free</span></span>
-        <span><span class="k">memory</span> <b>${b.heapCeilingMb == null ? '?' : `${b.heapCeilingMb} MB ceiling`}</b>
-          <span class="muted">${b.memFreeMb.toLocaleString()} MB free of ${b.memTotalMb.toLocaleString()}</span></span>
+        <span><span class="k">memory</span> <b>${out.memory ? size(out.memory.bytes) : '—'}</b>
+          <span class="muted">of a ${b.heapCeilingMb == null ? '?' : b.heapCeilingMb} MB ceiling · ${b.memFreeMb.toLocaleString()} MB free on the box</span></span>
         <span><span class="k">workers</span> <b>${b.cpus}</b> <span class="muted">cpus on the box</span></span>
+      </div>
+      <div class="muted" style="margin-top:.35rem">
+        The memory figure is what the RUN adds — the unit list, the work queue, and one copy of the settings per worker.
+        The decoded prices the workers hold are larger and are not in it: those grow with how many ASSETS are in the run,
+        not with how many settings.
       </div>
       <div class="muted" style="margin-top:.35rem">
         second pass: <b>${p.promoteUnits.toLocaleString()}</b> unit(s)${p.everyUnitPromoted

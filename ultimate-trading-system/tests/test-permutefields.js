@@ -60,6 +60,9 @@ function screen(state) {
   return (sel) => {
     const id = sel.replace('#', '');
     if (id === 'swDecCount') return { textContent: '', innerHTML: '' };
+    // The two wordings of the replication tick: the count function shows one
+    // and hides the other, so they are elements with a style, not controls.
+    if (id === 'swDecLabelOne' || id === 'swDecLabelMany') return { style: {} };
     if (!Object.prototype.hasOwnProperty.call(state, id)) {
       throw new Error(`the page reads #${id} and the test does not model it`);
     }
@@ -108,6 +111,9 @@ function visibleGroups(state) {
 
 const BASE_STATE = {
   swDecOn: true,
+  // read by the count, to work out how many settings would beat their own
+  // copies by luck alone
+  swNulls: '0',
   swDecEntry: 'breakout', swDecGate: 'always', swDecD: '1', swDecT: '41',
   swDecTrail: '', swDecArm: '0', swDecQ6: '4', swDecQ8: '3',
   swSingles: true, swDoubles: false, swTriples: false,

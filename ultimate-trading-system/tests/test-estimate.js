@@ -144,6 +144,66 @@ module.exports = {
     });
   },
 
+  // THE ROW SIZES ARE MEASURED, NOT REASONED ABOUT (owner asked whether the
+  // figures still held, 2026-08-22). The first version of these was written by
+  // eye and understated a stored replication row by more than two to one, so an
+  // estimate of 61.6 GB was really about 125 GB. A disk figure that flatters is
+  // the same silence that let a run die at hour forty, wearing a number.
+  //
+  // So the constants are checked against the store itself, writing the rows the
+  // sweep really writes.
+  //
+  // Watched failing 2026-08-22: putting replication back to 160 fails this.
+  theRowSizesAreWhatTheStoreActuallyWrites() {
+    withScratch(({ estimate }) => {
+      const rowstore = require('../lib/rowstore');
+      const samples = {
+        replication: (i) => ({
+          declaredLabel: 'q4/6 always d1x t41h trail1x/arm0.5x', nullDealSeed: i % 41 ? i % 41 : null,
+          trade: 'ETHUSDT', ctx1: null, ctx2: null, geometry: 'daily-3d', bandPct: 1.1432,
+          windowLayout: 'reserve61', entry: 'breakout', quorum: 4, members: 6,
+          pnl: 1234.56, trades: 88, wins: 47, grossPerTrade: 14.02, stops: 12, ambiguous: 1,
+          controlPnl: 900.1, vsControl: 334.46,
+          metrics: { testAcc: 0.5512, edge: 0.0312, majorityBaseline: 0.52 },
+          holds: { alwaysLong: 800.2, buyHold: 750.9 },
+          trailMult: 1, armMult: 0.5, trailAmbiguous: 0,
+          holdout: { pnl: 210.34, trades: 19, ambiguous: 0, vsAlwaysLong: 12.3 },
+          vsAlwaysLong: 434.36, vsBuyHold: 483.66,
+        }),
+        slim: (i) => ({
+          key: `ETHUSDT|||daily-3d|argmax|auto|24-7|n${i}`, trade: 'ETHUSDT', ctx1: null, ctx2: null,
+          geometry: 'daily-3d', decision: 'argmax', bandPct: 1.14, nullDealSeed: i, pnl: 123.4, trades: 88, holdPnl: 12.3,
+        }),
+      };
+      for (const [name, mk] of Object.entries(samples)) {
+        const id = `bracketlab-size-${name}`;
+        const w = rowstore.writer(id, name);
+        for (let i = 0; i < 4000; i++) w.push(mk(i));
+        w.close();
+        const measured = rowstore.bytes(id) / 4000;
+        const claimed = estimate.BYTES_PER_ROW[name];
+        assert.ok(Math.abs(measured - claimed) / measured < 0.2,
+          `a stored ${name} row measures ${Math.round(measured)} bytes and the estimate prices it at ${claimed} — `
+          + 'a disk figure that flatters is worse than none');
+      }
+    });
+  },
+
+  // Memory that grows with the RUN, kept apart from memory the box happens to
+  // have. Only the part that scales is counted, and the part that does not is
+  // deliberately left out rather than folded in where it would hide it.
+  theMemoryFigureIsWhatTheRunAddsNotWhatTheBoxHolds() {
+    withScratch(({ estimate }) => {
+      const small = estimate.estimate({ ...BASE, labelShiftReps: 0 }, { poolSize: 4 });
+      const big = estimate.estimate({ ...BASE, labelShiftReps: 40 }, { poolSize: 4 });
+      assert.ok(big.memory.bytes > small.memory.bytes * 20,
+        'a run with forty null copies holds far more unit records than one without');
+      assert.ok(big.memory.bytes < big.box.memTotalMb * 1048576,
+        'and the figure must be the run\'s own share, not the whole machine');
+      assert.strictEqual(big.memory.workers, 4, 'the settings are held once per worker, so the count matters');
+    });
+  },
+
   // What the box HAS, beside what the run WANTS — the comparison is the point.
   itReportsWhatTheBoxHasNotJustWhatTheRunWants() {
     withScratch(({ estimate }) => {
