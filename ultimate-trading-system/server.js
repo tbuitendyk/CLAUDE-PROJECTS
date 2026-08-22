@@ -306,6 +306,35 @@ app.get('/api/campaign-tree', (req, res) => {
   catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// WHAT A CAMPAIGN OWNS, before anything is deleted. Read-only, so the screen
+// can say exactly what would go and the owner answers knowing it.
+app.get('/api/campaign-contents', (req, res) => {
+  try { res.json(campaign.campaignContents(String(req.query.name || ''))); }
+  catch (err) { res.status(400).json({ error: err.message }); }
+});
+
+// DELETE A CAMPAIGN AND EVERYTHING UNDER IT.
+//
+// Guarded like the live-money controls, and for the same reason: it cannot be
+// undone. It also demands the name back — `{name, confirm}` must match — so a
+// request that arrives without a deliberate answer deletes nothing. Silence is
+// not an instruction on this route any more than it is on the protective stop.
+app.post('/api/campaign/delete', csrfGuard, (req, res) => {
+  const body = req.body || {};
+  if (!body.name || body.confirm !== body.name) {
+    return res.status(400).json({
+      error: 'deleting a campaign needs the name given twice — {"name": X, "confirm": X}. '
+        + 'A request that does not say the name back is refused, because this cannot be undone.',
+    });
+  }
+  try {
+    res.json(campaign.deleteCampaign(body.name));
+  } catch (err) {
+    res.status(err.code === 'CAMPAIGN_LOCKED' ? 409 : 400)
+      .json({ error: err.message, locked: err.code === 'CAMPAIGN_LOCKED', blocking: err.blocking || [] });
+  }
+});
+
 app.post('/api/campaign', (req, res) => {
   try {
     res.json({ name: campaign.setCampaign((req.body || {}).name) });

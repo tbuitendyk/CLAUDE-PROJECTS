@@ -237,12 +237,26 @@ module.exports = {
 
   // A permute tick belongs to its box and must vanish with it — left alone they
   // were ticks for controls that were not on screen (owner, 2026-08-17).
+  // A tick must never outlive the box it belongs to. CHANGED 2026-08-21: the
+  // box and its tick are now ONE GROUP rather than two items hidden in step,
+  // which satisfies this more strongly — there is no longer a way to hide one
+  // and leave the other, because there is only one thing to hide. The question
+  // is the same; it is now put to the group.
   permuteTicksHideWithTheBoxTheyBelongTo() {
     const ui = fs.readFileSync(path.join(ROOT, 'public', 'construct.js'), 'utf8');
-    for (const id of ['swPermDecGateWrap', 'swPermDecDWrap', 'swPermDecTrailWrap', 'swPermDecArmWrap']) {
-      assert.ok(new RegExp(`id="${id}"`).test(ui), `the tick needs its own wrapper #${id}`);
-      assert.ok(new RegExp(`#${id}`).test(ui.slice(ui.indexOf('const syncDecEntry'))),
-        `#${id} must be shown/hidden alongside its box`);
+    const sync = ui.slice(ui.indexOf('const syncDecEntry'));
+    for (const [grp, box, tick] of [
+      ['swGrpGate', 'swDecGate', 'swPermDecGate'],
+      ['swGrpD', 'swDecD', 'swPermDecD'],
+      ['swGrpTrail', 'swDecTrail', 'swPermDecTrail'],
+      ['swGrpArm', 'swDecArm', 'swPermDecArm'],
+    ]) {
+      const at = ui.indexOf(`id="${grp}"`);
+      assert.ok(at > 0, `the box and its tick need a group #${grp}`);
+      const block = ui.slice(at, ui.indexOf('</div>', at));
+      assert.ok(block.includes(`id="${box}"`) && block.includes(`id="${tick}"`),
+        `#${grp} must hold both ${box} and its tick ${tick}`);
+      assert.ok(new RegExp(`#${grp}`).test(sync), `#${grp} must be shown and hidden as one`);
     }
   },
 

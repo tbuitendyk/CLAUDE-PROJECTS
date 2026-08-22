@@ -489,6 +489,9 @@ async function drawSweep() {
       <label class="f" title="name a NEW campaign. Runs launched from now on attach to whatever is set here.">or a new name<input id="cxCamp" value="${esc(camp.name || '')}" style="width:18rem"></label>
       <button id="campSet">Set</button>
       <button id="campTree">View tree</button>
+      <!-- Same row, same shape as its neighbours: the row is bottom-aligned
+           because the controls to the left are a label above a box. -->
+      <button id="campDelete" class="danger">Delete campaign…</button>
     </div>
     <p class="note">Currently set: <b>${esc(camp.name || 'none')}</b>${(names.names || []).length ? ` · ${(names.names || []).length} campaign(s) on this box` : ''}</p>
     <div id="campOut"></div></div>
@@ -504,14 +507,22 @@ async function drawSweep() {
       <label class="f">end<input id="swEnd" type="month"></label>
     </div>
     <div class="row" style="margin-top:.5rem;align-items:flex-end">
-      <label class="f">chunk shape<select id="swGeom">${vocabOptions('geometry', 'daily-4d')}</select></label>
-      <label class="c"><input type="checkbox" id="swPermGeom" checked> permute</label>
-      <label class="f">decision<select id="swDec">${vocabOptions('decision', 'argmax')}</select></label>
-      <label class="c"><input type="checkbox" id="swPermDec" checked> permute</label>
-      <label class="f">band % (or auto)<input id="swBand" value="auto" style="width:5rem"></label>
-      <label class="c"><input type="checkbox" id="swPermBand" checked> permute</label>
-      <label class="c"><input type="checkbox" id="swWeekdays"> 24/5</label>
-      <label class="c"><input type="checkbox" id="swPermWk"> permute</label>
+      <div id="swGrpGeom" style="display:flex;align-items:flex-end;gap:.45rem">
+        <label class="f">chunk shape<select id="swGeom">${vocabOptions('geometry', 'daily-4d')}</select></label>
+        <label class="c"><input type="checkbox" id="swPermGeom" checked> permute</label>
+      </div>
+      <div id="swGrpDec" style="display:flex;align-items:flex-end;gap:.45rem">
+        <label class="f">decision<select id="swDec">${vocabOptions('decision', 'argmax')}</select></label>
+        <label class="c"><input type="checkbox" id="swPermDec" checked> permute</label>
+      </div>
+      <div id="swGrpBand" style="display:flex;align-items:flex-end;gap:.45rem">
+        <label class="f">band % (or auto)<input id="swBand" value="auto" style="width:5rem"></label>
+        <label class="c"><input type="checkbox" id="swPermBand" checked> permute</label>
+      </div>
+      <div id="swGrpWk" style="display:flex;align-items:flex-end;gap:.45rem">
+        <label class="c"><input type="checkbox" id="swWeekdays"> 24/5</label>
+        <label class="c"><input type="checkbox" id="swPermWk"> permute</label>
+      </div>
     </div>
     <div class="row" style="margin-top:.5rem;align-items:flex-end">
       <label class="f">window layout<select id="swLayout">${vocabOptions('windowLayout', 'split70')}</select></label>
@@ -523,29 +534,43 @@ async function drawSweep() {
     <div class="row" style="margin-top:.5rem;align-items:flex-end;border-top:1px solid var(--line);padding-top:.55rem">
       <label class="c" title="REPLICATION MODE. Instead of judging each asset by its best-shopped cell, score ONE fixed configuration on every asset — declared before the run, so each asset costs a single look instead of the ~1,260 a menu sweep spends. That turns 'best of thousands on one asset' into a cross-asset reading with no shopping tax and no branch correction owed — read against the configuration's own dealt-vote copies, never as a binomial (QC-7: assets move together, so they are not independent looks). The menu still runs (the board is unchanged); this adds a separate replication table reporting the declared cell per asset. Agreement travels as an exact count per committee size — the 'agree' boxes (5/6 means 5 of a single coin's 6 members).">
         <input type="checkbox" id="swDecOn"> replication: also score one DECLARED config per asset</label>
-      <label class="f" id="swDecEntryWrap" title="BREAKOUT opens the position when price reaches a rail at p(1±d). MARKET enters at the entry candle's open in the called direction with no rails, holds to t, and exits at the open: the general classifier's own trade, and exactly what the live paper books do. Market entry is directional by definition, so gate and d do not apply to it.">entry
+      <div id="swGrpEntry" style="display:flex;align-items:flex-end;gap:.45rem">
+        <label class="f" id="swDecEntryWrap" title="BREAKOUT opens the position when price reaches a rail at p(1±d). MARKET enters at the entry candle's open in the called direction with no rails, holds to t, and exits at the open: the general classifier's own trade, and exactly what the live paper books do. Market entry is directional by definition, so gate and d do not apply to it.">entry
         <select id="swDecEntry">${vocabOptions('entry', 'breakout')}</select></label>
-      <label class="c" title="score EVERY entry style as its own declared config"><input type="checkbox" id="swPermDecEntry"> permute</label>
-      <label class="f" id="swDecGateWrap">gate
+        <label class="c" title="score EVERY entry style as its own declared config"><input type="checkbox" id="swPermDecEntry"> permute</label>
+      </div>
+      <div id="swGrpGate" style="display:flex;align-items:flex-end;gap:.45rem">
+        <label class="f" id="swDecGateWrap">gate
         <select id="swDecGate">${vocabOptions('gate', 'directional')}</select></label>
-      <label class="c" id="swPermDecGateWrap" title="score EVERY gate as its own declared config"><input type="checkbox" id="swPermDecGate"> permute</label>
-      <label class="f" id="swDecDWrap">d
+        <label class="c" id="swPermDecGateWrap" title="score EVERY gate as its own declared config"><input type="checkbox" id="swPermDecGate"> permute</label>
+      </div>
+      <div id="swGrpD" style="display:flex;align-items:flex-end;gap:.45rem">
+        <label class="f" id="swDecDWrap">d
         <select id="swDecD">${vocabOptions('dMult', '1.5')}</select></label>
-      <label class="c" id="swPermDecDWrap" title="score EVERY rail distance as its own declared config"><input type="checkbox" id="swPermDecD"> permute</label>
-      <label class="f">t
+        <label class="c" id="swPermDecDWrap" title="score EVERY rail distance as its own declared config"><input type="checkbox" id="swPermDecD"> permute</label>
+      </div>
+      <div id="swGrpT" style="display:flex;align-items:flex-end;gap:.45rem">
+        <label class="f">t
         <select id="swDecT">${vocabOptions('tHours', '65')}</select></label>
-      <label class="c" title="score EVERY hold length as its own declared config"><input type="checkbox" id="swPermDecT"> permute</label>
-      <label class="f" id="swDecTrailWrap" title="Declared trailing stop, band-relative. 'static' is the opposite-rail stop this lab has always used. Requires the trailing plane tick, since declared cells are read out of the promoted menu.">trail
+        <label class="c" title="score EVERY hold length as its own declared config"><input type="checkbox" id="swPermDecT"> permute</label>
+      </div>
+      <div id="swGrpTrail" style="display:flex;align-items:flex-end;gap:.45rem">
+        <label class="f" id="swDecTrailWrap" title="Declared trailing stop, band-relative. 'static' is the opposite-rail stop this lab has always used. Requires the trailing plane tick, since declared cells are read out of the promoted menu.">trail
         <select id="swDecTrail">${vocabOptions('trailMult', '')}</select></label>
-      <label class="c" id="swPermDecTrailWrap" title="score EVERY trailing stop, static included, as its own declared config"><input type="checkbox" id="swPermDecTrail"> permute</label>
-      <label class="f" id="swDecArmWrap" title="How far price must move in your favour before the trail starts. 0 trails from the first bar; 1× is close to move-to-breakeven-then-trail.">arm
+        <label class="c" id="swPermDecTrailWrap" title="score EVERY trailing stop, static included, as its own declared config"><input type="checkbox" id="swPermDecTrail"> permute</label>
+      </div>
+      <div id="swGrpArm" style="display:flex;align-items:flex-end;gap:.45rem">
+        <label class="f" id="swDecArmWrap" title="How far price must move in your favour before the trail starts. 0 trails from the first bar; 1× is close to move-to-breakeven-then-trail.">arm
         <select id="swDecArm">${vocabOptions('armMult', '0')}</select></label>
-      <label class="c" id="swPermDecArmWrap" title="score EVERY arm distance as its own declared config"><input type="checkbox" id="swPermDecArm"> permute</label>
-      <label class="f" id="swDecQ6Wrap" title="How many of a SINGLE coin's 6 members must agree. A single-coin committee is 3 data views (everything / prices only / volume only) × 2 model types.">agree
+        <label class="c" id="swPermDecArmWrap" title="score EVERY arm distance as its own declared config"><input type="checkbox" id="swPermDecArm"> permute</label>
+      </div>
+      <div id="swGrpAgree" style="display:flex;align-items:flex-end;gap:.45rem">
+        <label class="f" id="swDecQ6Wrap" title="How many of a SINGLE coin's 6 members must agree. A single-coin committee is 3 data views (everything / prices only / volume only) × 2 model types.">agree
         <select id="swDecQ6">${vocabOptions('quorumOf6', '2')}</select></label>
-      <label class="f" id="swDecQ8Wrap" title="How many of a CONTEXT combo's 8 members must agree. Adding one or two context coins adds a fourth data view — how this coin moves against them — so those committees hold 8 members.">with contexts
+        <label class="f" id="swDecQ8Wrap" title="How many of a CONTEXT combo's 8 members must agree. Adding one or two context coins adds a fourth data view — how this coin moves against them — so those committees hold 8 members.">with contexts
         <select id="swDecQ8">${vocabOptions('quorumOf8', '3')}</select></label>
-      <label class="c" title="score EVERY agreement level as its own declared config — this multiplies the set fastest"><input type="checkbox" id="swPermDecAgree"> permute</label>
+        <label class="c" title="score EVERY agreement level as its own declared config — this multiplies the set fastest"><input type="checkbox" id="swPermDecAgree"> permute</label>
+      </div>
       <span class="note" id="swDecCount"></span>
     </div>
     <div class="row" style="margin-top:.5rem">
@@ -590,6 +615,62 @@ async function drawSweep() {
       </tbody></table>
       ${(t.greenlights || []).length ? `<p class="note">greenlights: ${t.greenlights.map((g) => `${esc(g.id)}${g.revoked ? ' (nuked)' : ''}`).join(' · ')}</p>` : ''}` : '<p class="note">tree unavailable</p>';
   };
+  // DELETING A CAMPAIGN TAKES EVERYTHING UNDER IT, so the owner is told exactly
+  // what that is BEFORE answering — a count after the fact is no use to anyone.
+  // Two steps on purpose: ask the server what is there, show it, then act.
+  $('#campDelete').onclick = async () => {
+    const name = $('#cxCamp').value.trim();
+    if (!name) { alert('name a campaign, or pick one'); return; }
+    const box = $('#campOut');
+    const found = await apiOr(`api/campaign-contents?name=${encodeURIComponent(name)}`, null);
+    if (!found) { box.innerHTML = '<p class="note">could not read what that campaign holds — nothing deleted</p>'; return; }
+
+    // The one thing that stops it.
+    if (found.locked) {
+      // .panel, not .banner: .banner is a Trade-page class and does not exist
+      // here. Styling against a class the page does not define is how a control
+      // ends up looking like plain text (RULE FOUR).
+      box.innerHTML = `<div class="panel" style="border-color:var(--neg)"><b style="color:var(--neg)">“${esc(found.name)}” is locked — nothing has been deleted.</b>
+        <div style="margin-top:.3rem">${found.blocking.length} setup(s) on the Trade tab are still deployed. Retire them there first:</div>
+        <ul style="margin:.3rem 0 0 1.1rem">${found.blocking.map((b) =>
+    `<li>${esc(b.name || b.id)} — <b>${esc(b.state)}</b>${b.channel ? ` (${esc(b.channel)})` : ''}</li>`).join('')}</ul></div>`;
+      return;
+    }
+
+    const c = found.counts;
+    const lines = [
+      ['saved runs', c.runs],
+      ['greenlights', c.greenlights],
+      ['setups (none deployed)', c.setups],
+      ['saved model files', c.modelFiles],
+      ['tuning files', c.tuningFiles],
+    ].filter(([, n]) => n > 0);
+
+    box.innerHTML = `<div class="panel" style="border-color:var(--warn)"><b style="color:var(--warn)">Deleting “${esc(found.name)}” will permanently remove:</b>
+      ${lines.length ? `<ul style="margin:.3rem 0 0 1.1rem">${lines.map(([what, n]) =>
+    `<li><b>${n}</b> ${esc(what)}</li>`).join('')}</ul>`
+    : '<div style="margin-top:.3rem">nothing but the name — this campaign holds no runs, greenlights or setups.</div>'}
+      <div class="muted" style="margin-top:.4rem">This cannot be undone.</div></div>`;
+
+    // The name typed back, not an OK button. A campaign holding a season of
+    // work and one holding nothing must not be one keystroke apart.
+    const typed = prompt(`Type the campaign name exactly to delete it and everything listed above:\n\n${found.name}`);
+    if (typed === null) { box.innerHTML += '<p class="note">cancelled — nothing deleted</p>'; return; }
+    if (typed.trim() !== found.name) {
+      box.innerHTML += '<p class="note">that did not match the name — nothing deleted</p>';
+      return;
+    }
+
+    const out = await tryPost('api/campaign/delete', { name: found.name, confirm: found.name });
+    if (!out) return;                       // tryPost already reported why
+    const r = out.removed || {};
+    box.innerHTML = `<div class="panel"><b>“${esc(out.name)}” deleted.</b>
+      Removed ${r.runs || 0} run(s), ${r.greenlights || 0} greenlight(s), ${r.setups || 0} setup(s),
+      and the saved models and tuning files belonging to them.
+      ${out.wasCurrent ? 'It was the campaign in use, so nothing is set now.' : ''}</div>`;
+    drawSweep();
+  };
+
   // Market entry has no gate and no rail distance, and the server REJECTS both
   // rather than ignoring them — a silently ignored parameter is how a declared
   // config stops meaning what its author thought it meant. So hide the controls
@@ -599,14 +680,14 @@ async function drawSweep() {
     // A permute tick belongs to its box and must vanish WITH it. Left on their
     // own they were ticks for controls that were not on screen — a market entry
     // showed three orphans and a static stop a fourth (owner, 2026-08-17).
-    const show = (id, on) => { const e = $(id); if (e) e.style.display = on ? '' : 'none'; };
-    for (const [box, tick] of [['#swDecGateWrap', '#swPermDecGateWrap'],
-      ['#swDecDWrap', '#swPermDecDWrap'], ['#swDecTrailWrap', '#swPermDecTrailWrap']]) {
-      show(box, !market); show(tick, !market);
-    }
+    // Each dropdown and its permute are ONE control in one group now, so
+    // hiding is one call instead of two and the tick can no longer outlive the
+    // box it belongs to. The group keeps the row's flex flow, so a hidden pair
+    // closes up rather than leaving a gap.
+    const show = (id, on) => { const e = $(id); if (e) e.style.display = on ? 'flex' : 'none'; };
+    for (const grp of ['#swGrpGate', '#swGrpD', '#swGrpTrail']) show(grp, !market);
     // arm means nothing without a trail
-    const armOn = !market && !!$('#swDecTrail').value;
-    show('#swDecArmWrap', armOn); show('#swPermDecArmWrap', armOn);
+    show('#swGrpArm', !market && !!$('#swDecTrail').value);
   };
   $('#swDecEntry').onchange = syncDecEntry;
   $('#swDecTrail').onchange = syncDecEntry;
