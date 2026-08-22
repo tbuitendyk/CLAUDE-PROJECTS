@@ -133,7 +133,7 @@ is the same fault pointing the other way.
 |---|---|---|
 | `branch` | **Sweep** | Now on the screen, in front of the four boxes it names: `chunk shape`, `decision`, `band % (or auto)`, `24/5`. It is there because I needed a word and there wasn't one — the owner's call to make, and worth asking before adding another. |
 | `logreg`, `boost` | **nowhere** | Two different ways of working out a forecast from the same prices. Several forecasts are made per asset and they vote; `agree` sets how many of the 6 must say the same thing, `with contexts` the same out of 8. What makes up the 6 or the 8 has no name on the Sweep tab at all. |
-| `slim` | **nowhere** | Everything is scored once, cheaply, before the best of it is scored again in full. |
+| `slim` | **Boards** | Everything is scored once, cheaply, before the best of it is scored again in full. Corrected 2026-08-22: it is in the run's plan line on Boards — "N units · N slim runs · N promote runs" — and always was. The generator could not see it, so this table said "nowhere" and I told the owner it was a word they could not see. Not on Sweep; there, say what it does. |
 | `promoted` | **Verify** | The second, fuller scoring of the best rows — as many as `promote top K`. Legal on Verify, and on Sweep say what it does instead. |
 | `combo` | **nowhere** | One asset on its own, or one asset alongside the others it is read against — `singles`, `doubles`, `triples` choose which. |
 | `cell` | **History**, **Greenlight** | One particular setting of `entry`, `gate`, `d`, `t`, `trail` and `arm` together. |
@@ -141,6 +141,17 @@ is the same fault pointing the other way.
 
 **To check a word**: find the tab in `ultimate-trading-system/SCREEN-WORDS.md`
 and look. That is the whole procedure.
+
+**AND THE LIST ITSELF IS CHECKED BOTH WAYS** (2026-08-22). It used to be checked
+only from the list towards the page — everything the generator found had to be
+in the file. That catches a stale file and cannot catch a generator that never
+saw the words at all, which is what had happened: 87 of the 221 labels plainly
+visible between tags were on no list, because the generator threw away
+everything inside `${...}` and every conditional section of every screen is
+written inside one. `theWordListSeesEveryVisibleLabel` now walks the other way,
+from the page to the list, and it does not use the generator's own idea of what
+the page is — which is what lets it catch the generator being wrong. A list with
+holes is worse than no list, because this rule says the list is the authority.
 
 ### RULE ONE-B — words that must carry their meaning EVERY SINGLE TIME (owner, 2026-08-21)
 

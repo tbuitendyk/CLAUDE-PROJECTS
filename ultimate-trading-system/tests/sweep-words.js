@@ -30,27 +30,100 @@ const { tabs, drawBody } = require('../lib/screencontrols');
 
 const drawSweepBody = () => drawBody('drawSweep');
 
+// FINDING THE END OF THINGS, PROPERLY (owner, 2026-08-22).
+//
+// Both walkers below used to count braces and nothing else. A brace inside a
+// quoted string — `'{'`, or a class name, or a sentence with one in it — put
+// the count out, and everything from there to the next stray closing brace
+// disappeared. What disappeared was PAGE TEXT: 87 of the 221 labels plainly
+// visible between tags were absent from the lists this file generates, the
+// Boards "order by" choices among them. A closed word list with holes in it is
+// worse than no list, because the rule that leans on it says the list is the
+// authority.
+//
+// So quotes are now skipped whole, and a template literal nested inside an
+// interpolation is followed through its own interpolations. Anything still
+// lost is caught by theWordListSeesEveryVisibleLabel in test-sweepwords.js.
+
+// COMMENTS ARE CODE TOO, and they are full of apostrophes. Skipping quotes but
+// not comments made it worse, not better: a `//` line saying "the board's own
+// ranking" opened a string at that apostrophe which then ran on past the next
+// backtick, and the whole Boards template vanished from the list. Returns the
+// position after the comment, or the same position when there is none.
+function skipComment(src, i) {
+  if (src[i] === '/' && src[i + 1] === '/') {
+    let j = i + 2;
+    while (j < src.length && src[j] !== '\n') j++;
+    return j;
+  }
+  if (src[i] === '/' && src[i + 1] === '*') {
+    const end = src.indexOf('*/', i + 2);
+    return end < 0 ? src.length : end + 2;
+  }
+  return i;
+}
+
+// From just past an opening quote to just past its closing one.
+function endOfQuote(src, i, q) {
+  while (i < src.length) {
+    if (src[i] === '\\') { i += 2; continue; }
+    if (src[i] === q) return i + 1;
+    i++;
+  }
+  return i;
+}
+
+// From just inside a `${` to just past its matching `}`.
+function endOfInterpolation(src, i) {
+  let depth = 1;
+  while (i < src.length && depth) {
+    const ch = src[i];
+    if (ch === '\\') { i += 2; continue; }
+    { const j = skipComment(src, i); if (j !== i) { i = j; continue; } }
+    if (ch === "'" || ch === '"') { i = endOfQuote(src, i + 1, ch); continue; }
+    if (ch === '`') { i = endOfTemplate(src, i + 1); continue; }
+    if (ch === '{') { depth++; i++; continue; }
+    if (ch === '}') { depth--; i++; continue; }
+    i++;
+  }
+  return i;
+}
+
+// From just past an opening backtick to just past its closing one. A nested
+// template can hold its own interpolations, which can hold another template.
+function endOfTemplate(src, i) {
+  while (i < src.length) {
+    if (src[i] === '\\') { i += 2; continue; }
+    if (src[i] === '$' && src[i + 1] === '{') { i = endOfInterpolation(src, i + 2); continue; }
+    if (src[i] === '`') return i + 1;
+    i++;
+  }
+  return i;
+}
+
 // ONLY THE HTML TEMPLATES, not the whole function. drawSweep() also holds the
 // button handlers, and treating those as text put `const el = $('#swDecCount');`
 // on the list of things a control is called. Backtick strings that contain a
 // tag are the page; everything else in there is machinery.
+//
+// Quoted strings in the machinery are skipped, so a backtick inside one cannot
+// be mistaken for the start of a template.
 function htmlTemplates(body) {
   const out = [];
   let i = 0;
   while (i < body.length) {
-    if (body[i] === '`') {
-      let j = i + 1;
-      let depth = 0;
-      for (; j < body.length; j++) {
-        if (body[j] === '\\') { j++; continue; }
-        if (body[j] === '$' && body[j + 1] === '{') { depth++; j++; continue; }
-        if (body[j] === '}' && depth) { depth--; continue; }
-        if (body[j] === '`' && !depth) break;
-      }
-      const lit = body.slice(i + 1, j);
+    const ch = body[i];
+    if (ch === '\\') { i += 2; continue; }
+    { const j = skipComment(body, i); if (j !== i) { i = j; continue; } }
+    if (ch === "'" || ch === '"') { i = endOfQuote(body, i + 1, ch); continue; }
+    if (ch === '`') {
+      const end = endOfTemplate(body, i + 1) - 1;   // index of the closing backtick
+      const lit = body.slice(i + 1, end);
       if (/<\/?[a-z][a-z0-9]*[\s>]/i.test(lit)) out.push(lit);
-      i = j + 1;
-    } else i++;
+      i = end + 1;
+      continue;
+    }
+    i++;
   }
   return out;
 }
@@ -59,20 +132,58 @@ function htmlTemplates(body) {
 // like `found.blocking.map` and `lines.length` in the word list — code offered
 // as vocabulary the owner could supposedly see, in the very file that exists to
 // stop exactly that.
+// AN INTERPOLATION IS NOT ALL MACHINERY (owner, 2026-08-22). This used to throw
+// away everything inside `${...}` on the grounds that it is code. Most of it is.
+// But every conditional section of every screen in this codebase is written as
+//
+//     ${doc ? `<div class="panel">…the page…</div>` : ''}
+//
+// so the page itself lives inside those braces, and dropping them dropped the
+// page. On the Boards tab the WHOLE body is one such interpolation: 87 of the
+// 221 plainly visible labels across the seven screens were missing from these
+// lists, and the rule that says the list is the only allowed vocabulary was
+// leaning on them.
+//
+// So the code goes and the page stays: a template literal or a quoted string
+// holding a tag is page text, at any depth, and is kept.
 function stripInterpolations(src) {
   let out = '';
   let i = 0;
   while (i < src.length) {
     if (src[i] === '$' && src[i + 1] === '{') {
-      let depth = 1;
-      let j = i + 2;
-      for (; j < src.length && depth; j++) {
-        if (src[j] === '{') depth++;
-        else if (src[j] === '}') depth--;
-      }
-      out += '  ';
-      i = j;
+      const end = endOfInterpolation(src, i + 2);
+      out += `  ${pageTextInside(src.slice(i + 2, Math.max(i + 2, end - 1)))}\n`;
+      i = end;
     } else { out += src[i]; i++; }
+  }
+  return out;
+}
+
+// The page hiding in one interpolation's code. Strings and templates that carry
+// a tag are kept and walked again — a nested template can hold interpolations of
+// its own, which can hold more page.
+function pageTextInside(code) {
+  let out = '';
+  let i = 0;
+  while (i < code.length) {
+    const ch = code[i];
+    if (ch === '\\') { i += 2; continue; }
+    { const j = skipComment(code, i); if (j !== i) { i = j; continue; } }
+    if (ch === "'" || ch === '"') {
+      const e = endOfQuote(code, i + 1, ch);
+      const lit = code.slice(i + 1, Math.max(i + 1, e - 1));
+      if (/<\/?[a-z][a-z0-9]*[\s>]/i.test(lit)) out += `\n${lit}`;
+      i = e;
+      continue;
+    }
+    if (ch === '`') {
+      const e = endOfTemplate(code, i + 1);
+      const lit = code.slice(i + 1, Math.max(i + 1, e - 1));
+      if (/<\/?[a-z][a-z0-9]*[\s>]/i.test(lit)) out += `\n${stripInterpolations(lit)}`;
+      i = e;
+      continue;
+    }
+    i++;
   }
   return out;
 }
@@ -139,7 +250,7 @@ function collect(fnName = 'drawSweep') {
   };
 }
 
-module.exports = { collect, drawSweepBody, drawBody, tabs };
+module.exports = { collect, drawSweepBody, drawBody, tabs, htmlTemplates, readableText, stripInterpolations };
 
 if (require.main === module) {
   const all = tabs().map((t) => {

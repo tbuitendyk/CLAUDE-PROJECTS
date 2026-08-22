@@ -33,7 +33,7 @@ Read from `TABS` in `public/construct.js`.
 
 # Data
 
-## What the controls are called (7)
+## What the controls are called (11)
 
 - `Data on server`
 - `Download`
@@ -41,67 +41,84 @@ Read from `TABS` in `public/construct.js`.
 - `download new pair(s), comma-sep`
 - `from`
 - `Global Refresh`
+- `purge…`
+- `refresh to latest`
+- `regenerate to span`
 - `to`
+- `trim…`
 
 ## What the dropdowns offer (0)
 
 _none_
 
-## Sentences the page prints (4)
+## Sentences the page prints (6)
 
 - Every sweep, null board and tune reads this cache, never the exchange — a gap here silently
 - shrinks every window. Refresh re-fetches from the newest cached month (it may have been partial) through the
 - current month. Trim keeps only a range, deleting the rest. Purge deletes the whole asset. Every write refuses
 - while a job runs; purge and trim DELETE data — the only way back is downloading again.
+- fabricated pair — mirrors the real data's span, never downloaded; trimming it would corrupt the exam it exists to be
+- nothing cached yet — download below
 
-## Every word, flat (67)
+## Every word, flat (83)
 
 ```
-again. and asset. back been board cache cached comma-sep current Data data DELETE deletes deleting Download download downloading Every every exchange from gap Global have here is it job keeps may month month. never new newest null on only pair partial Purge purge range re-fetches reads Refresh refresh refuses rest. runs server shrinks silently sweep the this through to Trim trim tune way while whole window. write
+again. and asset. back be been below board cache cached comma-sep corrupt current Data data DELETE deletes deleting download Download downloaded downloading Every every exam exchange exists fabricated from gap Global have here is it job keeps latest may mirrors month month. never new newest nothing null on only pair partial Purge purge range re-fetches reads real Refresh refresh refuses regenerate rest. runs server shrinks silently span sweep the this through to Trim trim trimming tune way while whole window. would write yet
 ```
 
 ---
 
 # Sweep
 
-## What the controls are called (45)
+## What the controls are called (56)
 
-- `— on this box —`
+- `” — runs & greenlights`
+- `” will permanently remove:`
 - `1-in-`
 - `agree`
 - `all loaded data`
 - `arm`
 - `band % (or auto)`
-- `Beating all is at best a`
+- `Beating all`
 - `branch`
 - `Campaign — the parent chain name`
-- `Campaign “ ” — runs & greenlights`
+- `Campaign “`
 - `chunk shape`
 - `claim`
 - `Currently set:`
 - `d`
 - `decision`
 - `Delete campaign…`
+- `Deleting “`
 - `doubles`
 - `end`
 - `entry`
 - `ETA`
 - `existing campaigns`
 - `gate`
+- `greenlight(s),`
+- `greenlights:`
+- `is at best a`
 - `min trades`
+- `no runs yet`
 - `null boards`
+- `on this box —`
 - `or a new name`
 - `permute`
 - `Phase`
 - `promote top K`
 - `Rate`
+- `Removed`
+- `run(s),`
 - `Running:`
 - `Set`
+- `setup(s),`
 - `singles`
 - `start`
 - `Start sweep`
 - `Stop jobs`
 - `t`
+- `The last job did not finish:`
 - `trail`
 - `trailing plane`
 - `Trainings`
@@ -166,97 +183,122 @@ again. and asset. back been board cache cached comma-sep current Data data DELET
 - universe (blank = all 17 default pairs)
 - replication: also score every DECLARED config on every asset
 - description — why this run exists (rides in the job heading forever)
-- “ ” is locked — nothing has been deleted.
+- No job running.
+- ” is locked — nothing has been deleted.
 - setup(s) on the Trade tab are still deployed. Retire them there first:
-- Deleting “ ” will permanently remove:
+- nothing but the name — this campaign holds no runs, greenlights or setups.
 - This cannot be undone.
-- “ ” deleted.
-- Removed run(s), greenlight(s), setup(s),
+- ” deleted.
 - and the saved models and tuning files belonging to them.
-- declared configs, each scored on every asset — roughly x the replication work.
+- declared configs, each scored on every asset — roughly
+- x the replication work.
 - the work — the whole run once for real, then once per board.
-- The last job did not finish: — .
-- Open it on the Boards section to see what it managed to record .
+- Open it on the Boards section to see what it managed to record
 
-## Every word, flat (192)
+## Every word, flat (199)
 
 ```
-1-day 1-in- 113h 137h 161h 17h 2-day 3-day 4-day 41h 65h 8-day 89h active agree all also always and any are argmax arm asset at attaches auto band be Beating been belonging best blank Board board. boards Boards box branch breakout Campaign campaign campaigns cannot chain chunk claim config configs contexts Currently Daily data decision DECLARED declared default Delete deleted. Deleting deployed. description did directional doubles each end entry ETA Every every evidence exam existing exists files FIND finish first for forever from gate greenlight greenlights has heading in is it it. job jobs last launched layout legacy loaded locked managed market min minted models name never new not nothing null on once Open or pairs parent passes per permanently permute Phase plane promote Rate real record remove Removed replication result Retire rides roughly rounds run Running runs saved scans. score scored sealed section see set Set setup shape singles start Start static still Stop sweep sweeps tab the The them them. then there this This to top Trade trades trail trailing Trainings travels tree triples tuning undone. Units universe View Weekly what while whole why wide will window with work work.
+1-day 1-in- 113h 137h 161h 17h 2-day 3-day 4-day 41h 65h 8-day 89h active agree all also always and any are argmax arm asset at attaches auto band be Beating been belonging best blank Board board. boards Boards box branch breakout but Campaign campaign campaigns cannot chain chunk claim config configs contexts Currently Daily data decision DECLARED declared default Delete deleted. Deleting deployed. description did directional doubles each end entry ETA Every every evidence exam existing exists files FIND finish first for forever from gate greenlight greenlights has heading holds in is it it. job jobs last launched layout legacy loaded locked managed market min minted models name never new No no not nothing null on once Open or pairs parent passes per permanently permute Phase plane promote Rate real record remove Removed replication result Retire rides roughly rounds run Running running. runs saved scans. score scored sealed section see set Set setup setups. shape singles start Start static still Stop sweep sweeps tab the The them them. then there this This to top Trade trades trail trailing Trainings travels tree triples tuning undone. Units universe View Weekly what while whole why wide will window with work work. yet
 ```
 
 ---
 
 # Boards
 
-## What the controls are called (53)
+## What the controls are called (76)
 
 - `— pick a run —`
-- `, l);`
-- `, null);`
+- `— watch it on the Sweep section`
 - `, plus`
-- `· assets / (context)`
-- `· beat always-long /`
-- `'; return; }`
+- `· assets`
+- `· beat always-long`
+- `” will permanently remove:`
+- `” will score what it never got to:`
+- `(context)`
 - `accuracy`
+- `all failures`
+- `already scored, kept as they are`
 - `assets held up`
 - `assets held up (context)`
+- `at agreement`
 - `beat always-long`
 - `beat its own null copies`
 - `beat its own nulls`
-- `cancelled — nothing deleted`
-- `cancelled — nothing started`
-- `const bdel = $('#bDelete');`
-- `const box = $('#bDelOut');`
-- `const bres = $('#bResume');`
-- `const censusFileFor = (l) => {`
-- `const d = await apiOr(`
-- `const file = censusFileFor(l);`
-- `const found = await apiOr(`
-- `const id = pickedRun;`
-- `const nsave = $('#bNotesSave');`
-- `const out = await tryPost(`
-- `const start = await post(`
+- `branch(es)`
+- `campaign:`
+- `clear selection`
+- `combos ×`
+- `copy settings into the form`
+- `Data fingerprint:`
+- `declared configs, ranked`
 - `Delete run…`
-- `drawBoards();`
+- `Deleting “`
 - `echoed by the vote`
 - `edge`
 - `first, then by`
+- `h`
 - `held-back $`
 - `how much of its`
+- `inspect`
+- `menu grid`
+- `Menu grid —`
+- `menu grid failed:`
+- `no per-member detail in this dump`
+- `no row selected yet`
+- `of`
 - `Open`
-- `open a run first`
-- `opening the setup…`
+- `order by`
 - `own measured null it beat`
 - `participation`
+- `permutations, test window only)`
+- `picked up`
+- `Picking up “`
 - `plateau`
 - `plateau width`
 - `predictability`
-- `q · · h`
+- `q`
 - `real / null rows`
+- `region`
+- `Replication —`
 - `Resume run`
-- `return;`
+- `save notes`
 - `saved runs`
+- `selected:`
 - `showing 400 of`
+- `Size:`
+- `slim runs ·`
+- `still to score`
+- `Survivor board — the promoted rows`
 - `test $`
 - `that failed and get another go`
+- `the inspect record, verbatim`
+- `the run itself`
+- `This run did not finish —`
+- `this run has been picked up`
 - `This run recorded`
+- `time(s) already`
 - `total held-back`
-- `try {`
+- `unit(s) FAILED`
+- `units ·`
 - `vs always-long`
+- `What this run actually is`
+- `Your cell sits at #`
 
 ## What the dropdowns offer (0)
 
 _none_
 
-## Sentences the page prints (82)
+## Sentences the page prints (59)
 
 - Asset predictability — best to worst
 - KEY — for each asset: of all real-versus-null match-ups on HELD-BACK money, the share the real
 - setups won. 100% means every real setup beat every null copy; 0% means every null copy beat every real setup;
 - 50% means the real setups are indistinguishable from dealt votes.
+- Counts grow until the sweep finishes — do not judge yet.
 - Counts below are INFERRED, not measured.
 - declared-cell rows without marking which copy scored them, so each asset's first-recorded row is taken as the
-- real one — real copies are queued ahead of every null copy. row(s) were excluded.
+- real one — real copies are queued ahead of every null copy.
+- row(s) were excluded.
 - Replication — the declared config on every asset
 - KEY — one FIXED configuration, named before the run, scored once on each asset.
 - is the reading that counts: the same configuration on dealt votes, which is the
@@ -265,7 +307,6 @@ _none_
 - is CONTEXT ONLY — crypto assets move together, so it is not a count of independent
 - looks and no p-value is quoted from it. Money is last on purpose. held-back $ is the once-only look on data
 - no search touched; test $ is the window the settings were chosen on and flatters itself by construction.
-- Replication — declared configs, ranked
 - KEY — each line is ONE declared configuration scored on every asset. Ranked by
 - , then by the across-asset share, then by money.
 - That order is the register's: an ordering is a claim about which row is better, so only statistics the register
@@ -273,92 +314,81 @@ _none_
 - together, so it is not a count of independent looks. Open a line to see that configuration on every asset.
 - These configurations were SEARCHED, not declared, so the honest end is the sealed slice: window layout
 - 61/13/13/13, graded once in the History section.
-- $('#bOpen').onclick = () => { pickedRun = $('#bPick').value || null; localStorage.setItem('cx-run', pickedRun || ''); pickedDoc = null; drawBoards(); };
-- // DELETING A RUN takes the model and tuning files that hang off it, so the
-- // owner is shown exactly what that is BEFORE answering — the same two-step
-- // the campaign delete uses, and for the same reason: a count given after the
-- // fact is no use to anybody.
-- // PICKING UP A RUN THAT STOPPED. Same shape as the delete: ask what is left,
-- // show it, then act — so the owner sees how much of the job is still to do
-- // before starting hours of work on the box.
-- if (bres) bres.onclick = async () => {
-- if (!id) { box.innerHTML = '
-- if (!found) { box.innerHTML = '
-- could not read what is left of that run — nothing started
-- if (!found.resumable) {
-- box.innerHTML =
+- Open a run to see its board.
+- notes — why this run exists, what it showed, what it cost
+- promote runs.
+- Every null claim on this page is against
+- units.
+- STAMP FAILED — this run cannot be proved comparable to any other
+- A failed unit is missing from every count on this page — the denominator is smaller than the run intended. First:
+- This run held nothing back.
+- Every dollar below is from the window the settings were CHOSEN on, so it flatters itself by construction and cannot say whether anything works out of sample. The null tools are unavailable for this run.
+- KEY — setup: traded + context coins; shape: chunk geometry · decision · band; cell: agreement/entry/hold;
+- trades: entries in the test window; test $: profit-and-loss in dollars on the window the settings were CHOSEN on
+- (flattering by construction); held-back $: the once-only look that matters; vs nulls: how many of the row's dealt-vote
+- null copies its held-back money beat. Click a row to SELECT it — the selection drives Verify's Tool 1, Tune's scans
+- and the Greenlight.
+- best cell (the board's own ranking)
+- widest region (neighbouring settings that all made money)
+- the rows are the same either way — only the order changes
+- everything recorded for this row, verbatim
+- no promoted rows (still running, or nothing survived)
+- h — this selection feeds Verify · Tune · Greenlight
+- Menu grid: press a row's button — every execution permutation for that row with the plateau view (one setting moved at a time) on top.
+- the COMPLETE stored settings record for this run, verbatim (nothing invisible)
+- ” cannot be picked up — nothing has been started.
 - already scored in full, kept as they are
 - older rows cannot be matched and will be scored again
-- this run has been picked up time(s) already
-- + 'This takes the one job slot until it finishes.\n\n'
-- + 'Hit Cancel to review what is left prior to starting.')) {
-- box.innerHTML += '
-- const out = await tryPost('api/run/resume', { id: found.id });
-- if (!out) return;
-- box.innerHTML +=
-- if (bdel) bdel.onclick = async () => {
-- could not read what that run holds — nothing deleted
-- if (found.locked) {
-- + 'Hit Cancel to review what the run holds prior to deleting.');
-- if (typed === null) { box.innerHTML += '
-- if (typed.trim() !== found.id) { box.innerHTML += '
-- that did not match the id — nothing deleted
-- const out = await tryPost('api/run/delete', { id: found.id, confirm: found.id });
-- pickedRun = null; pickedDoc = null; localStorage.setItem('cx-run', '');
-- if (nsave) nsave.onclick = async () => {
-- // re-render from the RESPONSE: the stored value comes back truncated, and
-- // the edited stamp is taken on the server, not here
-- pickedDoc = null; if (out) drawBoards();
-- const cr = (doc.edgeCensus || []).find((r) => r.nullDealSeed == null && !r.shiftFrac
-- && r.trade === l.trade && (r.ctx1 || '') === (l.ctx1 || '') && (r.ctx2 || '') === (l.ctx2 || '')
-- && r.geometry === l.geometry && r.decision === l.decision);
-- return cr && cr.modelFile ? cr.modelFile.split('/').pop() : null;
-- // INSPECT — a microscope on one setup: what each member saw, how it voted, and
-- // how alike the members are. It is NOT a null test and cannot say whether the
-- // setup works; that caveat travels with the panel because the panel invites
-- // exactly that misreading.
-- $('#bBody').querySelectorAll('button[data-inspect]').forEach((b) => {
-- b.onclick = async () => {
-- const l = leaders[Number(b.dataset.inspect)];
-- if (!file) { $('#gridOut').innerHTML = '
-- this row has no stored votes file (older run) — inspect needs the persisted committee votes
-- $('#gridOut').innerHTML = '
-- const q = l.quorum ?? 1;
+- The price files are checked again the moment it starts. If they are not the ones this run read, nothing is scored and it says so.
+- ” cannot be deleted — nothing has been deleted.
+- This cannot be undone.
+- Inside a setup — a MICROSCOPE, not a null test
+- This panel shows what the committee is made of. It cannot tell you whether the setup works — only a null
+- comparison can, and this is not one.
 - Columns read the HELD-BACK window where the run has one, the search window otherwise.
 - Accuracy and edge are ACCURACY POINTS, never money.
 - how alike the members are (pairwise agreement) — near-duplicates make an agreement count read higher than the number of independent opinions behind it
-- $('#bBody').querySelectorAll('button[data-grid]').forEach((b) => {
-- const l = leaders[Number(b.dataset.grid)];
-- this row has no stored votes file (older run) — the grid needs the persisted committee votes
-- re-scoring the full menu from the stored votes…
-- $('#gridOut').innerHTML = renderPlateau(cells, l) + rankLine +
+- in the table below (marked ▶).
 
-## Every word, flat (395)
+## Every word, flat (389)
 
 ```
-.find .forEach .innerHTML .onclick .pop .querySelectorAll .value about accuracy Accuracy ACCURACY across-asset act admits admits. after again agreement ahead alike all already always-long an and another answering anybody. api/run/delete api/run/resume apiOr are are. as ask Asset asset asset. assets async await b.dataset.grid b.dataset.inspect b.onclick back bBody bdel bdel.onclick bDelete bDelOut be beat because been before BEFORE behind below best better bNotesSave bOpen box box. box.innerHTML bPick bres bres.onclick bResume button by campaign Cancel cancelled cannot caveat cells censusFileFor chosen claim Columns comes committee config configs configuration configurations confirm const construction. CONTEXT context copies copy copy. could count Counts counts cr cr.modelFile cr.modelFile.split crypto cx-run data data-grid data-inspect dealt declared declared-cell Delete delete deleted DELETING deleting. did do doc.edgeCensus drawBoards each echoed edge edge. edited end every evidence exactly excluded. fact failed file files finishes. first first-recorded FIXED flatters for found found.id found.locked found.resumable from full get given go graded grid gridOut hang has held HELD-BACK held-back here higher History Hit holds honest hours how id if in independent indistinguishable INFERRED INSPECT inspect invites is it It it. its itself job kept KEY knife l.ctx1 l.ctx2 l.decision l.geometry l.quorum l.trade last layout leaders left line localStorage.setItem look looks looks. make marking match match-ups matched may means measured measured. member members menu microscope misreading. model money Money money. move much named near-duplicates needs never no not NOT nothing nsave nsave.onclick null nulls Number number of off older on once once-only one ONE only ONLY Open open opening opinions or order ordering otherwise. out own owner p-value pairwise panel participation persisted pick picked pickedDoc pickedRun PICKING plateau plus POINTS post predictability prior purpose. QC-142 QC-7 queued quoted r.ctx1 r.ctx2 r.decision r.geometry r.nullDealSeed r.shiftFrac r.trade ranked Ranked rankLine re-render re-scoring read reading real real-versus-null reason recorded register renderPlateau Replication RESPONSE Resume return review row rows run RUN runs same Same saved saw say says scored sealed search SEARCHED section. see sees server setting settings setup setups shape share show showing shown sit slice slot so stamp start started starting starting. statistics still STOPPED. stored sturdy taken takes test than that That THAT the The them then These they This this time to together total touched travels truncated try tryPost tuning two-step typed typed.trim until up UP use uses value vote voted votes votes. vs were what where whether which width will window with without won. work works worst yardstick
+about accuracy Accuracy ACCURACY across-asset actually admits admits. again against agreement agreement/entry/hold ahead alike all already always-long an and another any anything are as Asset asset asset. assets at back. band be beat beat. been before behind below best better board board. branch button by campaign can cannot cell changes checked chosen CHOSEN chunk claim clear Click coins Columns combos committee comparable comparison COMPLETE config configs configuration configurations construction construction. CONTEXT context copies copy copy. cost count Counts counts crypto data Data dealt dealt-vote decision declared declared-cell Delete deleted deleted. Deleting denominator detail did do dollar dollars drives dump each echoed edge edge. either end entries es every Every everything evidence excluded. execution exists FAILED failed failures feeds files fingerprint finish finishes first First first-recorded FIXED flattering flatters for form from full geometry get go got graded Greenlight Greenlight. grid grow has held HELD-BACK held-back higher History honest how If in independent indistinguishable INFERRED Inside inspect intended. into invisible is it It it. its itself judge kept KEY knife last layout line look looks looks. made make many marked marking match-ups matched matters may means measured measured. members menu Menu MICROSCOPE missing moment money Money money. move moved much named near-duplicates neighbouring never no not notes nothing null nulls number of of. older on once once-only one ONE one. ones only ONLY Open opinions or order ordering other otherwise. out own p-value page pairwise panel participation per-member permanently permutation permutations pick picked Picking plateau plus POINTS predictability press price profit-and-loss promote promoted proved purpose. QC-142 QC-7 queued quoted ranked Ranked ranking read reading real real-versus-null record recorded region register remove Replication Resume row rows run run. running runs runs. same sample. save saved say says scans score scored sealed search SEARCHED section section. see SELECT selected selection setting settings setup setups shape share showed showing shown shows sit sits Size slice slim smaller so so. STAMP started. starts. statistics still stored sturdy survived Survivor sweep Sweep table taken tell test than that That the The them then These they This this time to together Tool tools top. total touched traded trades Tune unavailable undone. unit units units. until up verbatim Verify view vote votes votes. vs watch way were what What where whether which why widest width will window with without won. works worst yardstick yet yet. you Your
 ```
 
 ---
 
 # Verify
 
-## What the controls are called (3)
+## What the controls are called (15)
 
+- `, engine`
+- `(engine`
 - `current:`
+- `Fire rotation rounds on this run`
+- `full gate record`
+- `h`
+- `Last gate (`
 - `null boards`
+- `null draws)`
+- `q`
+- `Read Tool 1 verdict`
+- `rotation rounds to fire`
 - `Run the planted check`
+- `scramble run`
+- `selected:`
 
 ## What the dropdowns offer (0)
 
 _none_
 
-## Sentences the page prints (24)
+## Sentences the page prints (29)
 
 - Planted check — the instrument's calibration certificate
 - Regenerates a fabricated pair carrying a KNOWN planted rule and fires it through the full sweep +
 - null pipeline. PASS = the board found the plant, profited, beat always-long, and every null board destroyed it.
 - A pass belongs to the engine version that earned it; a new release starts NOT CHECKED.
+- This regenerates the fabricated pair and fires a full sweep, so it takes minutes. The badge above and the release strip refresh themselves — you do not need to reload.
 - Tool 1 — this row against its null runs
 - Compares the picked REAL run against a SCRAMBLE run (a sweep launched with scrambled labels): each
 - scrambled world re-shops the whole menu in the same test window, and its best find must beat the selected row.
@@ -366,6 +396,7 @@ _none_
 - above zero on the Sweep section — that is the box
 - that makes a run appear in the list below. Read the verdict here. ALWAYS VISIBLE — a gate failing judges the INSTRUMENT,
 - never retires the candidate on one number.
+- — select a row on the Boards section first; this tool is per-row.
 - Rotation rounds — a SEPARATE instrument, retired as evidence
 - This button used to sit inside Tool 1 saying its rounds were what that tool reads. They are not.
 - It fires the ROTATION null: each round rotates outcomes against features and replays the whole downstream search
@@ -375,28 +406,37 @@ _none_
 - The register marks this construction RETIRED as evidence
 - (historical reading only), so a number from it is
 - never a claim. It stays operable because a run that already carries one must remain readable.
+- — minutes to hours. They land on this run's own record.
+- select a row on the Boards section first — rotation rounds are per-row.
 - Tool 2 — the board against its dealt-vote null boards
 - For each promoted row: how many of its null copies (same setup, votes dealt onto random days) its
 - HELD-BACK money beats. With N null boards the finest honest claim is 1 in N+1. Computed from the run's own stored
 - null rows — needs a sweep launched with null boards &gt; 0.
+- open a run on Boards first.
 
-## Every word, flat (190)
+## Every word, flat (217)
 
 ```
-above against against. already ALWAYS always-long and appear are as beat beats. because belongs below below. best board boards box button calibration candidate carries carrying certificate check CHECKED. claim claim. come Compares Computed construction copies creates current days dealt dealt-vote destroyed downstream draws each earned else engine every evidence fabricated failing features find finest fires For found from full gate gt HELD-BACK here. historical honest how in inside instrument INSTRUMENT is it It it. its Its judges KNOWN labels lands launched launching list makes many marks menu money must needs never new none NOT not. nowhere null number number. of on one only onto operable outcomes output own pair pairs PASS pass picked pipeline. plant Planted planted profited promoted random re-shops Read readable. reading reads. REAL record Regenerates register release remain replays retired RETIRED retires rotates Rotation ROTATION round rounds row row. rows rule Run run runs same saying SCRAMBLE scrambled search section section. selected SEPARATE setup shown sit so starts stays stored sweep Sweep test that the The They this This Those through to Tool tool used verdict version VISIBLE votes were what whole window with With world zero
+above against against. already ALWAYS always-long and appear are as badge beat beats. because belongs below below. best board boards Boards box button calibration candidate carries carrying certificate check CHECKED. claim claim. come Compares Computed construction copies creates current days dealt dealt-vote destroyed do downstream draws each earned else engine every evidence fabricated failing features find finest fire Fire fires first first. For found from full gate gt HELD-BACK here. historical honest hours. how in inside instrument INSTRUMENT is it It it. its Its judges KNOWN labels land lands Last launched launching list makes many marks menu minutes minutes. money must need needs never new none NOT not not. nowhere null number number. of on one only onto open operable outcomes output own pair pairs PASS pass per-row. picked pipeline. plant Planted planted profited promoted random re-shops Read readable. reading reads. REAL record record. refresh Regenerates regenerates register release reload. remain replays retired RETIRED retires rotates Rotation ROTATION rotation round rounds row row. rows rule Run run runs same saying SCRAMBLE scramble scrambled search section section. select selected SEPARATE setup shown sit so starts stays stored strip sweep Sweep takes test that the The themselves They This this Those through to Tool tool used verdict version VISIBLE votes were what whole window with With world you zero
 ```
 
 ---
 
 # History
 
-## What the controls are called (5)
+## What the controls are called (11)
 
 - `engine`
 - `exam status loading…`
 - `Finished tuning runs`
+- `h`
 - `half-life`
+- `Launch History Tuning on this row`
+- `Launch paired age-dial run`
 - `loading…`
+- `q`
+- `read`
+- `selected row:`
 
 ## What the dropdowns offer (3)
 
@@ -404,50 +444,76 @@ above against against. already ALWAYS always-long and appear are as beat beats. 
 - `24mo`
 - `36mo`
 
-## Sentences the page prints (10)
+## Sentences the page prints (12)
 
 - History Tuning — change ONE variable (training-history length) and price the effect
 - One variable per run, declared before it fires (the confirm discipline): the same frozen trading
 - cell, trained on windows of different depth, priced on the same folds. The reading rule is stamped at launch.
+- select a row on Boards first — History Tuning drills the selected candidate.
 - Age dial (HT v2) — one declared half-life vs the reference, paired folds
 - PLAIN WORDS: instead of cutting history off, the age dial DOWN-WEIGHTS old days smoothly. One
 - half-life (how many days back a sample's influence falls to half) is declared, then priced against the
 - no-dial reference on ~20 paired folds — same folds, same frozen trading cell, so the ONLY difference is the
 - dial. The table's verdict is the paired money difference, fold by fold.
+- select a row on Boards first.
 - Run exam A (late-rule pair — must find)
 - Run exam B (flat pair — must NOT find)
 
-## Every word, flat (98)
+## Every word, flat (110)
 
 ```
-12mo 24mo 36mo against Age age and at back before by cell change confirm cutting days declared depth dial dial. difference different discipline DOWN-WEIGHTS effect engine exam falls find Finished fires flat fold fold. folds folds. frozen half half-life History history how HT influence instead is it late-rule launch. length loading many money must no-dial NOT of off old on ONE One one ONLY pair paired per PLAIN price priced reading reference rule run Run runs same sample smoothly. so stamped status table the The then to trading trained training-history Tuning tuning v2 variable verdict vs windows WORDS
+12mo 24mo 36mo against Age age age-dial and at back before Boards by candidate. cell change confirm cutting days declared depth dial dial. difference different discipline DOWN-WEIGHTS drills effect engine exam falls find Finished fires first first. flat fold fold. folds folds. frozen half half-life History history how HT influence instead is it late-rule Launch launch. length loading many money must no-dial NOT of off old on ONE One one ONLY pair paired per PLAIN price priced read reading reference row rule run Run runs same sample select selected smoothly. so stamped status table the The then this to trading trained training-history Tuning tuning v2 variable verdict vs windows WORDS
 ```
 
 ---
 
 # Tune
 
-## What the controls are called (21)
+## What the controls are called (45)
 
 - `— uplift`
+- `, p=`
+- `; peak concurrent`
+- `; worst trade`
 - `: tightest no-winner-lost stop`
+- `(flat`
+- `A heavy scan is running (`
 - `apply custom`
+- `apply to the live rule`
 - `Chance check:`
 - `Compare`
 - `Compare two runs — NOT a null test`
+- `drawdown`
 - `Exposure:`
-- `holds one window layout ( ),`
+- `h`
+- `h of`
+- `holds one window layout (`
+- `last scan failed:`
+- `last sweep failed:`
+- `losers over`
 - `No stop (clear)`
+- `of`
+- `of your setup(s) and`
+- `on record:`
 - `or apply a custom stop`
-- `per-$ → ; worst trade ;`
-- `q h of )`
+- `over`
+- `per-$`
+- `priced entries: flat`
+- `q`
 - `run A`
 - `run B`
+- `running…`
 - `save the reason`
 - `scan target`
+- `shuffled deals, mean uplift`
+- `Target:`
+- `the row selected on Boards —`
 - `the row selected on Boards (`
 - `the saved book`
 - `Verdict:`
+- `vs ladder`
+- `winners /`
+- `x`
 - `your reason for this choice`
 - `your setup`
 
@@ -455,42 +521,49 @@ above against against. already ALWAYS always-long and appear are as beat beats. 
 
 _none_
 
-## Sentences the page prints (20)
+## Sentences the page prints (18)
 
+- ) — one at a time; both launchers are disabled until it lands (scans run minutes and cannot be aborted mid-flight).
 - Protective stop tuner — full-history, loses no winner
 - Replays the frozen committee over ALL history and finds the tightest fixed stop that would not have
 - clipped a single winner, plus the sacrifice curve (give up top winners → tighter stop → NET $). Scanning applies
-- nothing. Target: .
-- of your setup(s) and saved book(s) without a protective stop
+- nothing. Target:
+- saved book(s) without a protective stop
+- no choice about the stop has been recorded yet
 - Tune protective stop (full history)
 - currently applied on the trading machine:
 - Conviction sizing — bet more when more members agree?
 - Prices the DECLARED clip ladder (multiplier = winning-side vote count) as a pure $ overlay on the
 - same full-history replay, against a shuffled-assignment chance check and exposure-honest metrics.
-- Target: .
 - Run conviction sweep (full history)
 - — empty: compare a 'both' run's own two sides —
-- winners / losers over entries.
+- entries.
 - NET = winner $ given up + loss-side $ vs no stop; positive means the stop helps. Apply buttons exist
 - only for the running engine; for a lab row the number informs the greenlight instead.
-- over priced entries: flat vs ladder
-- shuffled deals, mean uplift , p= .
-- drawdown ; peak concurrent (flat ).
 - so there is no second side of it to compare against — pick a run B.
 
-## Every word, flat (156)
+## Every word, flat (180)
 
 ```
-against agree ALL and applied applies apply Apply as B. bet Boards book both buttons chance Chance check choice clear clip clipped committee Compare compare concurrent Conviction conviction count currently curve custom deals DECLARED drawdown empty engine entries entries. exist Exposure exposure-honest finds fixed flat for frozen full full-history give given greenlight have helps. history holds informs instead. is it lab ladder layout losers loses loss-side machine mean means members metrics. more multiplier NET no No no-winner-lost not NOT nothing. null number of on one only or over overlay own peak per- pick plus positive priced Prices Protective protective pure reason replay Replays row Run run running runs sacrifice same save saved scan Scanning second selected setup shuffled shuffled-assignment side sides single sizing so stop sweep Target target test that the there this tighter tightest to top trade trading Tune tuner two up uplift Verdict vote vs when window winner winners winning-side without worst would your
+aborted about against agree ALL and applied applies apply Apply are as at B. be been bet Boards book both buttons cannot chance Chance check choice clear clip clipped committee Compare compare concurrent Conviction conviction count currently curve custom deals DECLARED disabled drawdown empty engine entries entries. exist Exposure exposure-honest failed finds fixed flat for frozen full full-history give given greenlight has have heavy helps. history holds informs instead. is it lab ladder lands last launchers layout live losers loses loss-side machine mean means members metrics. mid-flight minutes more multiplier NET no No no-winner-lost not NOT nothing. null number of on one only or over overlay own peak per- pick plus positive priced Prices Protective protective pure reason record recorded replay Replays row rule run Run running runs sacrifice same save saved scan Scanning scans second selected setup shuffled shuffled-assignment side sides single sizing so stop sweep Target target test that the there this tighter tightest time to top trade trading Tune tuner two until up uplift Verdict vote vs when window winner winners winning-side without worst would yet your
 ```
 
 ---
 
 # Greenlight
 
-## What the controls are called (2)
+## What the controls are called (11)
 
+- `— test`
+- `anchor`
 - `Existing greenlights`
+- `GREENLIGHT this config`
+- `greenlighted`
+- `h`
+- `none yet`
+- `nuked`
+- `q`
+- `selected:`
 - `Trade tab`
 
 ## What the dropdowns offer (3)
@@ -499,34 +572,38 @@ against agree ALL and applied applies apply Apply as B. bet Boards book both but
 - `declared cell`
 - `widest region`
 
-## Sentences the page prints (5)
+## Sentences the page prints (7)
 
 - Greenlight — the decision that a config is fit to trade
 - Records WHO/WHEN/WHY with the exact frozen config, engine version, and the campaign's whole
 - evidentiary chain. The config then appears on the Trade tab (both sides) for activation. Only greenlighted
 - configs ever trade — no hand-built live configs, ever.
+- why — the decision record (required)
+- select a row on Boards first — a greenlight is minted from the selected row.
 - activation, deactivation and nuking live on the
 
-## Every word, flat (49)
+## Every word, flat (68)
 
 ```
-activation activation. and appears best both campaign cell chain. config configs deactivation decision declared engine ever ever. evidentiary exact Existing fit for frozen Greenlight greenlighted greenlights hand-built is live no nuking on Only Records region sides tab that the The then to trade Trade version WHO/WHEN/WHY whole widest with
+activation activation. anchor and appears best Boards both campaign cell chain. config configs deactivation decision declared engine ever ever. evidentiary exact Existing first fit for from frozen Greenlight GREENLIGHT greenlight greenlighted greenlights hand-built is live minted no none nuked nuking on Only record Records region required row row. select selected sides tab test that the The then this to trade Trade version WHO/WHEN/WHY whole why widest with yet
 ```
 
 ---
 
 # Help
 
-## What the controls are called (1)
+## What the controls are called (2)
 
+- `Every control on this screen`
 - `None of it can be pressed or`
 
 ## What the dropdowns offer (0)
 
 _none_
 
-## Sentences the page prints (7)
+## Sentences the page prints (8)
 
+- Not described yet. That is a fault in this page, not in the control.
 - Help — what every control on every screen does
 - One entry for every box, tick, dropdown and button on the seven screens.
 - The list of controls is read from the screens themselves, so nothing can be left out of it
@@ -535,9 +612,9 @@ _none_
 - changed — it is a picture of the control, put beside its description so you can see which
 - one is being talked about. The real ones are on their own tabs.
 
-## Every word, flat (70)
+## Every word, flat (80)
 
 ```
-about. and are be being below beside box button can changed control controls copy. dead description does dropdown entry every Everything for from Help in is it its left list missing. no None nothing of on One one ones or out own picture place pressed put quietly rather read real says screen screens screens. see seven shown so tabs. talked than the The their themselves tick what which with you
+about. and are be being below beside box button can changed control control. controls copy. dead described description does dropdown entry Every every Everything fault for from Help in is it its left list missing. no None Not not nothing of on One one ones or out own page picture place pressed put quietly rather read real says screen screens screens. see seven shown so tabs. talked than That the The their themselves this tick what which with yet. you
 ```
 
