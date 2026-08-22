@@ -40,13 +40,35 @@ app.get(['/', '/setup.html', '/construct.html', '/trade.html'], (req, res, next)
   const file = path.join(__dirname, 'public', name);
   require('fs').readFile(file, 'utf8', (err, html) => {
     if (err) return next();
-    const v = require('./package.json').version;
+    // THE MARKER IS THE FILE'S OWN CONTENTS, not a version number anybody has
+    // to remember to bump (fixed 2026-08-21, and it had already bitten).
+    //
+    // It used to stamp the version out of package.json. That version had not
+    // changed in weeks, so every deploy served the scripts at the SAME address
+    // — and a browser caches by address. A whole day of shipped work sat on the
+    // box while the owner's browser served them the copy from before it, and
+    // asked where their new tab was. The comment right here warned that this
+    // would happen.
+    //
+    // A short hash of the file changes exactly when the file changes: never
+    // when it has not, always when it has. Nothing to remember.
+    const stamp = (jsName) => {
+      try {
+        const body = require('fs').readFileSync(path.join(__dirname, 'public', jsName));
+        return require('crypto').createHash('sha1').update(body).digest('hex').slice(0, 12);
+      } catch (_) {
+        // Unreadable: fall back to something that always misses the cache
+        // rather than something that always hits it. A stale page is the
+        // failure being fixed; an extra fetch is not a failure at all.
+        return `x${Date.now().toString(36)}`;
+      }
+    };
     // The ?v= marker only rewrites EXTERNAL script URLs, and two of these three
     // pages carry all their JavaScript inline — so for them the marker protects
     // nothing and a cached copy would survive a deploy. Say no-cache outright
     // rather than relying on a mechanism that does not reach them.
     res.set('Cache-Control', 'no-cache');
-    res.type('html').send(html.replace(/(\.js)\?v=[\w.-]+/g, `$1?v=${v}`));
+    res.type('html').send(html.replace(/([\w.-]+\.js)\?v=[\w.-]+/g, (m0, jsName) => `${jsName}?v=${stamp(jsName)}`));
   });
 });
 app.use(express.static(path.join(__dirname, 'public')));
