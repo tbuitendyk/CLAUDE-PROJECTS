@@ -58,12 +58,34 @@ function htmlTemplates(body) {
   return out;
 }
 
+// Interpolations NEST, and a regex cannot follow that. A regex left fragments
+// like `found.blocking.map` and `lines.length` in the word list — code offered
+// as vocabulary the owner could supposedly see, in the very file that exists to
+// stop exactly that.
+function stripInterpolations(src) {
+  let out = '';
+  let i = 0;
+  while (i < src.length) {
+    if (src[i] === '$' && src[i + 1] === '{') {
+      let depth = 1;
+      let j = i + 2;
+      for (; j < src.length && depth; j++) {
+        if (src[j] === '{') depth++;
+        else if (src[j] === '}') depth--;
+      }
+      out += '  ';
+      i = j;
+    } else { out += src[i]; i++; }
+  }
+  return out;
+}
+
 // Strip the things a person never reads: comments, tooltips, ids, classes,
 // styles, and the code inside interpolations.
 function readableText(src) {
   let s = src;
   s = s.replace(/<!--[\s\S]*?-->/g, ' ');
-  s = s.replace(/\$\{[^{}]*(\{[^{}]*\}[^{}]*)*\}/g, '  ');
+  s = stripInterpolations(s);
   s = s.replace(/\b(title|style|class|id|placeholder|value|type|min|max|colspan|data-[\w-]+)="[^"]*"/g, ' ');
   s = s.replace(/<[^>]*>/g, '\n');
   return s;

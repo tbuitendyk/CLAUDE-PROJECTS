@@ -121,6 +121,29 @@ said to check. Checking is a judgement I kept failing, so it is now a lookup.
 | `combo` | no screen name — one asset, or an asset with its context assets |
 | `cell` | appears in tooltips only, so not a name |
 
+### RULE ONE-B — words that must carry their meaning EVERY SINGLE TIME (owner, 2026-08-21)
+
+Some words are not inventions and are not on screen either: they live in hover
+text, or in the trade itself. They are not banned. **They may never be used bare.
+The plain meaning goes with them every single time they appear — not once at the
+top, not the first time, EVERY time.**
+
+The owner's words: "'opposite rail' IS JARGON — NEVER USE IT AGAIN WITHOUT AN
+EXPLANATION *EVERY SINGLE TIME*".
+
+Why every time and not once: an explanation given earlier in a conversation is
+an explanation the owner has to go back and find. The cost of repeating it is a
+clause. The cost of omitting it is the owner re-reading an old answer to decode
+a new one.
+
+| Term | What it means, and what to write instead |
+|---|---|
+| opposite rail | With `entry` set to `breakout`, two price levels are set either side of the current price, `d` away on each side. The position opens when price reaches one of them. The **opposite rail** is the level on the far side — where the position is closed if price goes the wrong way. On screen this stop is the `trail` choice called `static`: a stop that sits at a fixed price and never moves. Write it as "`static` — the stop sits at the price level on the far side of your entry and does not move". |
+
+**How to add to this table**: any time a word is used that is not in that tab's
+word list and is not plain English, it goes here with its meaning, before the
+reply is sent.
+
 
 
 
