@@ -20,6 +20,10 @@
 window.HELP = {
   data: {
     title: 'Data',
+    how: [
+      ['Where every number in the system comes from',
+        'This is the only part that reaches the internet. It fetches hourly prices — the opening, highest, lowest and closing price of each hour — from the public price service, and keeps them on the machine.\\n\\nEverything else in the system works from those stored files and nothing else. A month that is missing hours, or was never fetched, silently makes every result computed from it smaller than it looks, which is why the table above shows what is held rather than assuming.'],
+    ],
     intro: 'The price history everything else is worked out from. Nothing here decides '
       + 'anything about trading — it only fetches and keeps the hourly prices, and shows what is held.',
     controls: {
@@ -45,6 +49,50 @@ window.HELP = {
     intro: 'Where a search is set up and started. It tries a great many settings against the '
       + 'price history and records how each one would have done. Nothing here places an order or '
       + 'commits to anything: a sweep produces a list to look at, and every result is a candidate, not a finding.',
+    how: [
+      ['What happens when you press Start sweep',
+        'It builds a list of everything to try, then works through it twice.\n\n'
+        + 'The list is every asset you asked for — on its own if singles is ticked, alongside one other '
+        + 'if doubles is, alongside two if triples is — set against every combination of the four boxes '
+        + 'under branch: chunk shape, decision, band % (or auto) and 24/5. Tick permute beside any of '
+        + 'those and every value of it is tried instead of just the one showing, which multiplies the list.'],
+      ['The first pass: everything, cheaply',
+        'Every single item on that list is scored. Cheaply, in two specific ways: fewer separate '
+        + 'forecasts are made for each asset, and only the stop that sits still is tried — the trailing '
+        + 'plane tick is ignored on this pass however it is set.\n\n'
+        + 'The point of this pass is to rank, not to measure. It puts the list in order.'],
+      ['The second pass: the best of it, in full',
+        'The best rows from the first pass are then scored again, properly. How many is exactly what '
+        + 'promote top K says — 25 unless you change it, and it cannot go above 50.\n\n'
+        + 'This time each asset gets its full set of forecasts, which is what the agree and with '
+        + 'contexts fractions are counting out of. And if trailing plane is ticked, every setting is '
+        + 'also tried with stops that follow the price up behind you, at four distances and three '
+        + 'starting points — roughly thirteen times the work, but only on these rows, not on all of them.'],
+      ['What you end up with',
+        'A board, on the Boards tab. One row per thing tried, with what it would have made, how many '
+        + 'trades that took, and how it did against simply holding the asset. The rows scored twice are '
+        + 'marked as such.\n\n'
+        + 'Read it as a list of candidates. The best row on a board of thousands is the best of '
+        + 'thousands of tries, and that flatters itself — which is what the Verify, History and Tune '
+        + 'tabs exist to deal with.'],
+      ['What null boards change, which is more than it looks',
+        'Setting null boards above 0 does two things, and the second is not obvious.\n\n'
+        + 'It adds that many companion runs on deliberately scrambled decisions, so you can see whether '
+        + 'the real one did any better than nonsense. With 19 of them the strongest claim available is '
+        + 'one-in-20.\n\n'
+        + 'AND it changes how the run works: every row gets the full second-pass treatment instead of '
+        + 'only the best ones, because a scrambled companion has to be scored exactly as deeply as the '
+        + 'real thing or the comparison is worthless. So promote top K stops applying, and the run is '
+        + 'not (N+1) times the size — it is very much more than that.'],
+      ['What replication adds, if you tick it',
+        'The search picks its winner after seeing the results, which is what makes the best row '
+        + 'flatter itself. Replication is the opposite: you fix ONE set of settings before the run, '
+        + 'and every asset is scored on that one thing.\n\n'
+        + 'Nothing was chosen after the fact, so there is no shopping to correct for. It is the '
+        + 'strongest reading the system offers. Tick permute on any of those boxes and you are '
+        + 'searching again — the counter beside them says how many sets you have just declared, and '
+        + 'the honest end of a search is the sealed block you get with the 61/13/13/13 window layout.'],
+    ],
     controls: {
       cxCampPick: {
         what: 'Pick a campaign that already exists. Choosing one switches to it straight away.',
@@ -128,7 +176,8 @@ window.HELP = {
       swDecT: { what: 'How many hours a position is held before it is closed, if nothing else has closed it first.' },
       swPermDecT: { what: 'Score every holding time as its own fixed set of settings.' },
       swDecTrail: {
-        what: 'What kind of stop protects the position. static means the stop sits at a fixed price on the far side of where you opened, and never moves. The others follow the price up behind you as it goes your way, at the distance shown.',
+        what: 'What kind of stop protects the position. static means the stop sits still, at the price level on the far side of where you opened. The others follow the price up behind you as it goes your way, at the distance shown.',
+        more: 'static is NOT "no stop", and it is worth knowing how far away it sits: twice d. Two levels are placed either side of the starting price, each d away, and you open at whichever one the price reaches — so the other one, your stop, is d below the start plus the d you climbed to get in. Starting price 100 with d of 3%: levels at 103 and 97, you open long at 103, your stop is 97, which is 6 below your entry. To test with NO stop at all, set entry to market instead — that places no levels, so nothing can stop you out and the only way out is time.',
       },
       swPermDecTrail: { what: 'Score every kind of stop, static included, as its own fixed set of settings.' },
       swDecArm: {
@@ -159,6 +208,10 @@ window.HELP = {
 
   boards: {
     title: 'Boards',
+    how: [
+      ['What a row is, and why the best one lies to you',
+        'One row is one thing that was tried: an asset, a chunk shape, a decision, a band, and — for the rows scored twice — one particular combination of entry, gate, d, t, trail and arm.\\n\\nThe board is sorted, so the top row is the best of everything tried. That is exactly the problem. Try two thousand things against the same history and the best of them looks good whether or not anything real is there, because you picked it after seeing the answers. The number on the top row is not wrong; what is wrong is reading it as what you would have made.\\n\\nWhat the board is FOR is narrowing: it says which handful are worth the slower checks on the tabs after it. Picking a row here is what those tabs then work on.'],
+    ],
     intro: 'What a finished search found, one row per setting tried. This is a list to read, not '
       + 'a set of answers: the best row on a board of thousands is the best of thousands of tries, and '
       + 'that flatters itself. Picking a row here is what the Verify, Tune and Greenlight tabs then work on.',
@@ -184,6 +237,10 @@ window.HELP = {
 
   verify: {
     title: 'Verify',
+    how: [
+      ['Checking the instrument, not the result',
+        'Everything on the other tabs assumes the machinery works. These checks are what establish that, and they run against made-up price histories rather than real ones — because with a made-up one you know the right answer in advance.\\n\\nOne has a pattern deliberately hidden in it and the system must find it. One has nothing in it and the system must stay quiet. A miss on the first means it is blind; a hit on the second means it invents things. Either way every other number the system has produced is worthless until it passes, so this is the first thing to look at when something seems too good.'],
+    ],
     intro: 'Checks on the machinery itself, not on any particular result. These answer the question '
       + '"can this system find something that is definitely there, and does it stay quiet when there is nothing?" '
       + 'If those checks fail, no result from the system means anything until they pass.',
@@ -201,6 +258,10 @@ window.HELP = {
 
   history: {
     title: 'History',
+    how: [
+      ['Is it still true, or was it true in 2018',
+        'A setting that worked for two years and then stopped will still look good averaged across the whole history, because the good years carry the bad ones. That is the single easiest way to be fooled by a long backtest.\\n\\nThis re-scores the same setting while counting recent evidence more heavily than old evidence, at the rate half-life sets, and shows it beside the same run with everything weighted equally. If the two disagree, the effect is not where you think it is.\\n\\nThe two exam buttons check this test itself against made-up histories, for the same reason the Verify tab exists.'],
+    ],
     intro: 'Whether an effect is still there now, or was only there years ago. A setting that '
       + 'worked in 2018 and stopped working in 2022 will still look good averaged over the whole '
       + 'history — this is what separates the two.',
@@ -223,6 +284,10 @@ window.HELP = {
 
   tune: {
     title: 'Tune',
+    how: [
+      ['One variable at a time, on the whole history',
+        'The Sweep tab is wide and shallow: many settings, each scored once. This is the opposite — one setting, taken apart carefully.\\n\\nThe two scans work across every value of one thing, over all the history, and report the whole shape rather than a winner: which protective stops would have cost nothing, and how much requiring more agreement is worth. Both take minutes and cannot be stopped part-way.\\n\\nThe comparison at the bottom is not a check on whether anything is real. It only tells you what differs between two runs and what each produced.'],
+    ],
     intro: 'Adjusting one chosen setting rather than searching for new ones. Everything here works '
       + 'on the row picked on the Boards tab, over the whole history.',
     controls: {
@@ -253,6 +318,10 @@ window.HELP = {
 
   greenlight: {
     title: 'Greenlight',
+    how: [
+      ['Writing down a decision, not starting one',
+        'Nothing here trades. It records that you decided to take one setting forward: who, when, why, and the exact settings frozen at that moment, together with the whole chain of runs that led to it.\\n\\nThe reason it exists: months later, when something is running on the Trade tab, the question is always "what was this based on, and did we check it?" — and the honest answer has to have been written at the time, not reconstructed afterwards. That is why the reason is required rather than optional.\\n\\nWhich row gets recorded matters as much as the decision. declared cell was fixed before the run and nothing was chosen after seeing results. best cell was chosen after, and is the weakest of the three for exactly that reason.'],
+    ],
     intro: 'Recording a decision to take one setting forward, with who decided, when, why, and the '
       + 'exact settings frozen at that moment. Nothing here starts trading. It writes down the decision '
       + 'so that later, when a setup is running on the Trade tab, there is a record of what it was based on.',

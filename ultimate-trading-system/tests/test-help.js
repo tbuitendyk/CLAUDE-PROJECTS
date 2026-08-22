@@ -79,6 +79,40 @@ module.exports = {
     }
   },
 
+  // A LIST OF CONTROLS IS NOT AN EXPLANATION. It says what each button does and
+  // never says what the screen is doing — the owner asked what a sweep actually
+  // performs and the page had no answer anywhere.
+  async everyScreenExplainsWhatItActuallyDoes() {
+    const H = help();
+    for (const [key, t] of Object.entries(byTab())) {
+      if (key === 'help') continue;
+      const how = (H[key] || {}).how;
+      assert.ok(Array.isArray(how) && how.length,
+        `the ${t.label} screen lists its controls but never explains what the screen does`);
+      for (const [heading, body] of how) {
+        assert.ok(heading && heading.length > 8, `${t.label}: an overview section has no heading`);
+        assert.ok(body && body.length > 150,
+          `${t.label}: the overview section "${heading}" is too short to explain anything`);
+      }
+    }
+  },
+
+  // The one the owner asked for by name: the two passes, and what changes them.
+  async theSweepOverviewExplainsBothPassesAndWhatNullBoardsDoToThem() {
+    const how = help().sweep.how.map(([h, b]) => `${h}\n${b}`).join('\n');
+    for (const [thing, why] of [
+      ['promote top K', 'it never says how many rows get the fuller scoring'],
+      ['trailing plane', 'it never says which pass the following stops apply to'],
+      ['null boards', 'it never says what the scrambled companions do'],
+      ['agree', 'it never connects the fuller scoring to the agreement fractions'],
+    ]) {
+      assert.ok(how.includes(thing), `the Sweep overview does not mention ${thing} — ${why}`);
+    }
+    assert.ok(/stops applying/.test(how),
+      'the Sweep overview does not say that null boards make promote top K stop applying — '
+      + 'which is the part that makes a run far bigger than it looks');
+  },
+
   // The one that stops it becoming more of the same.
   async noDescriptionUsesAWordThatIsOnNoScreen() {
     const H = help();

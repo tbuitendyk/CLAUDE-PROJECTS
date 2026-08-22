@@ -2244,9 +2244,20 @@ async function drawHelp() {
     : '<span class="warn">Not described yet. That is a fault in this page, not in the control.</span>'}</td>
       </tr>`;
     }).join('');
+    // THE OVERVIEW COMES FIRST. A list of controls says what each button does
+    // and never says what the screen is DOING — the owner asked what a sweep
+    // actually performs and the page had no answer anywhere (owner, 2026-08-21).
+    // Paragraphs are split on blank lines so a long explanation reads as prose
+    // rather than as one wall.
+    const how = (help.how || []).map(([heading, body]) => `<div style="margin:.7rem 0">
+      <div style="font-weight:600;font-size:.86rem;margin-bottom:.25rem">${esc(heading)}</div>
+      ${String(body).split('\n\n').map((para) =>
+    `<p class="note" style="font-size:.82rem;margin:.3rem 0">${esc(para)}</p>`).join('')}</div>`).join('');
     return `<div class="panel">
       <h3 style="margin-top:0">${esc(t.label)}</h3>
       ${help.intro ? `<p class="note" style="font-size:.82rem">${esc(help.intro)}</p>` : ''}
+      ${how}
+      ${how ? '<div style="font-weight:600;font-size:.86rem;margin:.9rem 0 .2rem">Every control on this screen</div>' : ''}
       <table style="width:100%;border-collapse:collapse">${rows}</table></div>`;
   }).join('');
 
