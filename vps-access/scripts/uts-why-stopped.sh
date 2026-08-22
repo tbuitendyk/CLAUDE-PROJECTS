@@ -48,3 +48,17 @@ if [ -n "${START:-}" ]; then
     --until "$(date -d "$START + 1 minute" '+%Y-%m-%d %H:%M:%S' 2>/dev/null)" \
     --no-pager 2>/dev/null | tail -60 | sed 's/^/  /'
 fi
+
+# THE IMPORTANT LINES GO LAST. Only the last ~8 KB reaches the session, and the
+# first run of this script lost every limit it printed to a wall of stack trace.
+echo
+echo "=============================== THE FACTS ==============================="
+free -m | sed 's/^/  /'
+echo "  cpus: $(nproc)"
+systemctl show "$U" -p MemoryMax -p MemoryHigh -p MemoryPeak -p NRestarts --no-pager | sed 's/^/  /'
+echo -n "  node heap ceiling this service runs with: "
+grep -o '\-\-max-old-space-size=[0-9]*' /etc/systemd/system/"$U".service 2>/dev/null \
+  || grep -o 'NODE_OPTIONS=.*' /etc/systemd/system/"$U".service /etc/"$U"/env 2>/dev/null \
+  || echo "(not set — node's own default, about 1 GB on 64-bit)"
+echo -n "  last fatal reason: "
+journalctl -u "$U" --since "-6h" --no-pager 2>/dev/null | grep -iE "FATAL ERROR|out of memory|oom-kill" | tail -1 | sed 's/.*node\[[0-9]*\]: //' || echo "(none in the last 6 hours)"
