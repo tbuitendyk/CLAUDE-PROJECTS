@@ -67,6 +67,21 @@ module.exports = {
       'the old half-by-half hiding is back');
   },
 
+  // A tick offering to try every agreement level when there is no agreement
+  // level to set (owner, 2026-08-21). This one is shared by two dropdowns, so
+  // the groups did not cover it: it is only dead when BOTH are.
+  async theSharedAgreeTickIsDeadWhenBothItsBoxesAre() {
+    assert.ok(/const noSingles = !\$\('#swSingles'\)\.checked;/.test(PAGE)
+      && /const noContexts = !\(\$\('#swDoubles'\)\.checked \|\| \$\('#swTriples'\)\.checked\);/.test(PAGE),
+    'the two conditions that ghost the agreement boxes are gone');
+    assert.ok(/const dead = noSingles && noContexts;/.test(PAGE),
+      'the shared "permute" tick is not tied to BOTH agreement boxes being off');
+    assert.ok(/\$\('#swPermDecAgree'\)\.disabled = dead;/.test(PAGE),
+      'the shared "permute" tick can still be ticked when neither agreement box can be set');
+    assert.ok(/permWrap\.classList\.toggle\('ctl-off', dead\)/.test(PAGE),
+      'the shared "permute" tick is not greyed out with its boxes');
+  },
+
   // A hidden group must close up rather than leave a hole in the row.
   async aHiddenGroupClosesUpRatherThanLeavingAGap() {
     assert.ok(/e\.style\.display = on \? 'flex' : 'none'/.test(PAGE),

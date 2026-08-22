@@ -289,7 +289,7 @@ if ($('#cpubtn')) {
 
 // ---- navigation ------------------------------------------------------------
 const TABS = [['data', 'Data'], ['sweep', 'Sweep'], ['boards', 'Boards'], ['verify', 'Verify'],
-  ['history', 'History'], ['tune', 'Tune'], ['greenlight', 'Greenlight']];
+  ['history', 'History'], ['tune', 'Tune'], ['greenlight', 'Greenlight'], ['help', 'Help']];
 let tab = localStorage.getItem('cx-tab') || 'sweep';
 // the working selection: a saved run + its selected row ride across sections
 let pickedRun = localStorage.getItem('cx-run') || null;
@@ -722,10 +722,28 @@ async function drawSweep() {
       w.classList.toggle('ctl-off', disabled);
       w.title = disabled ? why : w.dataset.baseTitle;
     };
-    off('#swDecQ6Wrap', '#swDecQ6', !$('#swSingles').checked,
+    const noSingles = !$('#swSingles').checked;
+    const noContexts = !($('#swDoubles').checked || $('#swTriples').checked);
+    off('#swDecQ6Wrap', '#swDecQ6', noSingles,
       'this run has no single-coin committees — tick "singles" to set their agreement level');
-    off('#swDecQ8Wrap', '#swDecQ8', !($('#swDoubles').checked || $('#swTriples').checked),
+    off('#swDecQ8Wrap', '#swDecQ8', noContexts,
       'this run has no context committees — tick "doubles" or "triples" to set their agreement level');
+    // THE TICK GOES WITH THE BOXES IT BELONGS TO (owner, 2026-08-21). Both
+    // dropdowns can be greyed out with the "permute" beside them still live and
+    // tickable — offering to try every agreement level when there is no
+    // agreement level to set. It is the same fault as a tick outliving its box,
+    // which the groups fixed for the others; this one is shared by two boxes,
+    // so it is only dead when BOTH of them are.
+    const permWrap = $('#swPermDecAgree').closest('label');
+    if (permWrap) {
+      if (permWrap.dataset.baseTitle === undefined) permWrap.dataset.baseTitle = permWrap.title || '';
+      const dead = noSingles && noContexts;
+      $('#swPermDecAgree').disabled = dead;
+      permWrap.classList.toggle('ctl-off', dead);
+      permWrap.title = dead
+        ? 'there is no agreement level to permute — tick "singles", "doubles" or "triples" first'
+        : permWrap.dataset.baseTitle;
+    }
   };
   ['#swSingles', '#swDoubles', '#swTriples'].forEach((id) => { $(id).addEventListener('change', syncDecQuorum); });
   syncDecQuorum();
@@ -2121,6 +2139,82 @@ async function drawTune() {
   if (stop.status === 'running' || conv.status === 'running') setTimeout(() => { if (tab === 'tune') drawTune(); }, 4000);
 }
 
+
+// ---- Help: every control on every screen, in plain language -----------------
+//
+// Owner order, 2026-08-21. There were no help pages at all and fourteen
+// controls on the Sweep tab had not even hover text, so the only way to find
+// out what anything did was to ask — and be answered in words that are not on
+// the screen.
+//
+// The pictures of the controls are DEAD COPIES. Every one is disabled and
+// carries no id, so nothing here can be pressed, changed, or mistaken for the
+// real control. That matters more than it sounds: a help page that looks
+// operable is a help page somebody will try to operate.
+function helpReplica(c) {
+  const dead = 'disabled style="opacity:.85;pointer-events:none"';
+  const choices = (name, n) => {
+    const list = (HELPVOCAB && HELPVOCAB[name]) || [];
+    return list.slice(0, n).map((o) => `<option>${esc(o.label)}</option>`).join('')
+      + (list.length > n ? `<option>… ${list.length - n} more</option>` : '');
+  };
+  if (c.type === 'checkbox') {
+    return `<label class="c"><input type="checkbox" ${dead}> ${esc(c.label)}</label>`;
+  }
+  if (c.kind === 'button') {
+    return `<button ${dead}>${esc(c.label)}</button>`;
+  }
+  if (c.type === 'select') {
+    return `<label class="f">${esc(c.label)}<select ${dead}>${
+      c.choices ? choices(c.choices, 4) : '<option>…</option>'}</select></label>`;
+  }
+  const width = c.type === 'number' ? '4.5rem' : (c.label.length > 24 ? '16rem' : '9rem');
+  return `<label class="f">${esc(c.label)}<input ${dead} type="${esc(c.type === 'month' ? 'month' : 'text')}"`
+    + ` style="width:${width}" value=""></label>`;
+}
+
+let HELPVOCAB = null;
+let HELPMAP = null;
+
+async function drawHelp() {
+  if (!HELPVOCAB) HELPVOCAB = await apiOr('api/vocabulary', {});
+  if (!HELPMAP) HELPMAP = await apiOr('api/screen-controls', null);
+  const H = window.HELP || {};
+  if (!HELPMAP) {
+    $('#view').innerHTML = '<div class="panel empty">The list of controls could not be read, '
+      + 'so this page cannot be sure it is describing everything. Nothing is shown rather than '
+      + 'showing a part of it and looking complete.</div>';
+    return;
+  }
+
+  const sections = Object.entries(HELPMAP).map(([key, t]) => {
+    const help = H[key] || { controls: {} };
+    const rows = t.controls.map((c) => {
+      const e = (help.controls || {})[c.id];
+      return `<tr>
+        <td style="width:22rem;vertical-align:top;padding:.45rem .6rem .45rem 0">${helpReplica(c)}</td>
+        <td style="vertical-align:top;padding:.45rem 0">${e
+    ? `${esc(e.what)}${e.more ? `<div class="muted" style="margin-top:.25rem">${esc(e.more)}</div>` : ''}`
+    : '<span class="warn">Not described yet. That is a fault in this page, not in the control.</span>'}</td>
+      </tr>`;
+    }).join('');
+    return `<div class="panel">
+      <h3 style="margin-top:0">${esc(t.label)}</h3>
+      ${help.intro ? `<p class="note" style="font-size:.82rem">${esc(help.intro)}</p>` : ''}
+      <table style="width:100%;border-collapse:collapse">${rows}</table></div>`;
+  }).join('');
+
+  $('#view').innerHTML = `<div class="panel">
+      <h3 style="margin-top:0">Help — what every control on every screen does</h3>
+      <p class="note">One entry for every box, tick, dropdown and button on the seven screens.
+        The list of controls is read from the screens themselves, so nothing can be left out of it
+        quietly: a control with no description says so, in place, rather than being missing.</p>
+      <p class="note"><b>Everything shown below is a dead copy.</b> None of it can be pressed or
+        changed — it is a picture of the control, put beside its description so you can see which
+        one is being talked about. The real ones are on their own tabs.</p>
+    </div>${sections}`;
+}
+
 // ---- Greenlight -----------------------------------------------------------------
 async function drawGreenlight() {
   const doc = await loadPicked();
@@ -2196,7 +2290,8 @@ function draw() {
         : tab === 'verify' ? drawVerify()
           : tab === 'history' ? drawHistory()
             : tab === 'tune' ? drawTune()
-              : drawGreenlight();
+              : tab === 'greenlight' ? drawGreenlight()
+                : drawHelp();
   // A section that THROWS must say so. Without the rejection arm the promise
   // rejects, the banner never runs, and #view keeps whatever was there — on a
   // first load that is nothing at all, so a hard failure renders as a blank

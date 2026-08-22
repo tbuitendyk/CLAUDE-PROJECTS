@@ -18,6 +18,8 @@ const path = require('path');
 
 const ROOT = path.join(__dirname, '..');
 const SRC = fs.readFileSync(path.join(ROOT, 'public', 'construct.js'), 'utf8');
+// One reader for which screens exist and what each one draws (lib/screencontrols.js).
+const { tabs, drawBody } = require('../lib/screencontrols');
 
 // EVERY TAB, not just one (owner order, 2026-08-21). Each has its own renderer
 // and its own words, and a list for one screen leaves every other screen a place
@@ -25,26 +27,6 @@ const SRC = fs.readFileSync(path.join(ROOT, 'public', 'construct.js'), 'utf8');
 //
 // Read out of TABS in public/construct.js rather than typed, so a tab added
 // tomorrow gets a list without anybody remembering.
-function tabs() {
-  const m = /const TABS = \[([\s\S]*?)\];/.exec(SRC);
-  if (!m) throw new Error('TABS is gone - the tab names cannot be read');
-  return [...m[1].matchAll(/\['([^']+)',\s*'([^']+)'\]/g)]
-    .map(([, key, label]) => ({ key, label, fn: `draw${key[0].toUpperCase()}${key.slice(1)}` }));
-}
-
-// The renderer, brace-matched, so nothing from another tab leaks in.
-function drawBody(fnName) {
-  const start = SRC.indexOf(`async function ${fnName}()`);
-  if (start < 0) throw new Error(`${fnName}() is gone - this list cannot be built`);
-  let i = SRC.indexOf('{', start);
-  const from = i;
-  let depth = 0;
-  for (; i < SRC.length; i++) {
-    if (SRC[i] === '{') depth++;
-    else if (SRC[i] === '}') { depth--; if (depth === 0) break; }
-  }
-  return SRC.slice(from, i + 1);
-}
 
 const drawSweepBody = () => drawBody('drawSweep');
 

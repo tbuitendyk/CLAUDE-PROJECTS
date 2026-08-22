@@ -25,6 +25,7 @@ is the same fault wearing a disguise.
 - **History**
 - **Tune**
 - **Greenlight**
+- **Help**
 
 Read from `TABS` in `public/construct.js`.
 
@@ -451,5 +452,33 @@ against agree ALL and applied applies apply Apply as B. bet Boards book both but
 
 ```
 activation activation. and appears best both campaign cell chain. config configs deactivation decision declared engine ever ever. evidentiary exact Existing fit for frozen Greenlight greenlighted greenlights hand-built is live no nuking on Only Records region sides tab that the The then to trade Trade version WHO/WHEN/WHY whole widest with
+```
+
+---
+
+# Help
+
+## What the controls are called (1)
+
+- `None of it can be pressed or`
+
+## What the dropdowns offer (0)
+
+_none_
+
+## Sentences the page prints (7)
+
+- Help — what every control on every screen does
+- One entry for every box, tick, dropdown and button on the seven screens.
+- The list of controls is read from the screens themselves, so nothing can be left out of it
+- quietly: a control with no description says so, in place, rather than being missing.
+- Everything shown below is a dead copy.
+- changed — it is a picture of the control, put beside its description so you can see which
+- one is being talked about. The real ones are on their own tabs.
+
+## Every word, flat (70)
+
+```
+about. and are be being below beside box button can changed control controls copy. dead description does dropdown entry every Everything for from Help in is it its left list missing. no None nothing of on One one ones or out own picture place pressed put quietly rather read real says screen screens screens. see seven shown so tabs. talked than the The their themselves tick what which with you
 ```
 

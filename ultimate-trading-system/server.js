@@ -54,6 +54,15 @@ app.use(express.static(path.join(__dirname, 'public')));
 const SYMBOL_RE = /^[A-Z0-9]{5,20}$/;
 const GEOMETRY_KEYS = Object.keys(GEOMETRIES); // weekly-8d, daily-1d..daily-4d
 
+// EVERY CONTROL ON EVERY SCREEN, so the Help tab can describe all of them and
+// show which ones it has not described. Read out of the code that draws each
+// screen — the SAME reader the tests use, so the page and the test that checks
+// the page cannot disagree about what exists.
+app.get('/api/screen-controls', (req, res) => {
+  try { res.json(require('./lib/screencontrols').byTab()); }
+  catch (err) { res.status(500).json({ error: `the controls could not be read: ${err.message}` }); }
+});
+
 // EVERY CHOICE LIST THE INTERFACE OFFERS, so the page does not keep its own
 // copy of any of them (RULE FIVE). Read out of the code that implements each
 // one, so a value added to the engine appears on screen with nothing to keep in
