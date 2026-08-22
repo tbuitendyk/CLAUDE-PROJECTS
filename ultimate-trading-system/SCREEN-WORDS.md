@@ -72,7 +72,7 @@ again. and asset. back been board cache cached comma-sep current Data data DELET
 - `arm`
 - `band % (or auto)`
 - `branch`
-- `Campaign — the parent job (pt 13)`
+- `Campaign — the parent chain name`
 - `Campaign “ ” — runs & greenlights`
 - `chunk shape`
 - `Currently set:`
@@ -160,7 +160,7 @@ again. and asset. back been board cache cached comma-sep current Data data DELET
 - scans. The campaign's whole chain travels with any greenlight minted from it.
 - Board sweep — wide to FIND (never a result)
 - universe (blank = all 17 default pairs)
-- replication: also score one DECLARED config per asset
+- replication: also score every DECLARED config on every asset
 - description — why this run exists (rides in the job heading forever)
 - “ ” is locked — nothing has been deleted.
 - setup(s) on the Trade tab are still deployed. Retire them there first:
@@ -171,10 +171,10 @@ again. and asset. back been board cache cached comma-sep current Data data DELET
 - and the saved models and tuning files belonging to them.
 - declared configs, each scored on every asset — roughly x the replication work.
 
-## Every word, flat (172)
+## Every word, flat (169)
 
 ```
-1-day 113h 137h 161h 17h 2-day 3-day 4-day 41h 65h 8-day 89h active agree all also always and any are argmax arm asset attaches auto band be been belonging blank Board boards box branch breakout Campaign campaign campaigns cannot chain chunk config configs contexts Currently Daily data decision DECLARED declared default Delete deleted. Deleting deployed. description directional doubles each end entry ETA Every every evidence exam existing exists files FIND first forever from gate greenlight greenlights has heading in is it it. job jobs launched layout legacy loaded locked market min minted models name never new nothing null on one or pairs parent passes per permanently permute Phase plane promote pt Rate remove Removed replication result Retire rides roughly rounds run Running runs saved scans. score scored sealed set Set setup shape singles start Start static still Stop sweep sweeps tab the The them them. there this This to top Trade trades trail trailing Trainings travels tree triples tuning undone. Units universe View Weekly while whole why wide will window with work.
+1-day 113h 137h 161h 17h 2-day 3-day 4-day 41h 65h 8-day 89h active agree all also always and any are argmax arm asset attaches auto band be been belonging blank Board boards box branch breakout Campaign campaign campaigns cannot chain chunk config configs contexts Currently Daily data decision DECLARED declared default Delete deleted. Deleting deployed. description directional doubles each end entry ETA Every every evidence exam existing exists files FIND first forever from gate greenlight greenlights has heading in is it it. job jobs launched layout legacy loaded locked market min minted models name never new nothing null on or pairs parent passes permanently permute Phase plane promote Rate remove Removed replication result Retire rides roughly rounds run Running runs saved scans. score scored sealed set Set setup shape singles start Start static still Stop sweep sweeps tab the The them them. there this This to top Trade trades trail trailing Trainings travels tree triples tuning undone. Units universe View Weekly while whole why wide will window with work.
 ```
 
 ---

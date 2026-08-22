@@ -24,6 +24,9 @@
 // values fails sweepLayoutOptionsAreAllAcceptedByTheBackend; dropping the
 // weekly-8d option fails sweepOffersEveryBackendGeometry; sending a bare
 // $('#swStart').value again fails blankMonthsAreOmittedNotSentEmpty.
+//
+// Watched failing 2026-08-22: reverting the declared block to
+// `entry === 'market' ? … : …` fails declaredBlockSendsOnlyWhatTheValidatorAccepts.
 const fs = require('fs');
 const path = require('path');
 const { assert } = require('./helpers');
@@ -133,18 +136,37 @@ module.exports = {
     }
   },
 
-  // The declared block must send only what validateDeclared accepts. It THROWS
-  // on a parameter that cannot apply (dMult or a non-directional gate under
-  // market entry, armMult without trailMult) rather than ignoring it, so a form
-  // that sends them turns replication mode into a launch failure.
+  // The declared block must send exactly what the run can use — no more, and no
+  // LESS. Both halves have bitten:
+  //
+  //   * Too much: the validator THROWS on a parameter that cannot apply (a rail
+  //     distance under a plain market entry) rather than ignoring it, so a form
+  //     that oversends turns replication mode into a launch failure.
+  //   * Too little: the boxes were hidden, and so unsent, whenever the entry box
+  //     read market or the trail box read static — even with permute ticked
+  //     beside them, which puts breakout and following stops in the run. The
+  //     first came back as a refusal naming a control that was not on screen;
+  //     the second quietly scored every following stop at an arm of 0x, a value
+  //     the operator never saw (owner, 2026-08-22).
+  //
+  // So the condition, not the entry box, decides.
   declaredBlockSendsOnlyWhatTheValidatorAccepts() {
     assert.ok(/id="swDecOn"/.test(SWEEP), 'the Sweep form must carry the declared-config toggle');
-    // market entry: no gate, no dMult
-    assert.ok(/entry === 'market'\s*\?\s*\{ entry, tHours: Number\(\$\('#swDecT'\)\.value\), \.\.\.qPart \}/.test(SWEEP),
-      'a market declaration must send only entry, tHours and the quorum counts');
-    // armMult only ever travels with trailMult
-    assert.ok(/trailRaw \? \{ trailMult: Number\(trailRaw\), armMult: Number\(\$\('#swDecArm'\)\.value\) \} : \{\}/.test(SWEEP),
-      'armMult must be sent only alongside trailMult — the validator refuses it alone');
+    // THE RAILS RIDE WITH BREAKOUT, and breakout is in the run when the box
+    // says so OR when its permute is ticked (owner, 2026-08-22). Reading the
+    // box alone sent no gate and no distance for a permuted entry, and the
+    // launch came back refused. A plain market run still sends neither.
+    assert.ok(/const rails = entry !== 'market' \|\| dp\.entry;/.test(SWEEP),
+      'the rails must be sent whenever breakout is in the run, not only when the box reads breakout');
+    // an arm rides with a MOVING stop, which a permuted trail also puts in the run
+    assert.ok(/const movingStop = trailRaw \|\| dp\.trail;/.test(SWEEP),
+      'an arm must be sent whenever a following stop is in the run');
+    assert.ok(/\.\.\.\(trailRaw \? \{ trailMult: Number\(trailRaw\) \} : \{\}\)/.test(SWEEP),
+      'a trailMult may be sent only when the box actually names one');
+    assert.ok(/\.\.\.\(movingStop \? \{ armMult: Number\(\$\('#swDecArm'\)\.value\) \} : \{\}\)/.test(SWEEP),
+      'the arm must come from the box on screen, never from a value chosen in code');
+    // what those conditions actually PRODUCE is checked against the server's own
+    // expansion in tests/test-permutefields.js — this is the source-level guard.
     // quorum counts only for the committee sizes the run will contain
     assert.ok(/if \(\$\('#swSingles'\)\.checked\) qPart\.quorumSingles/.test(SWEEP),
       'quorumSingles must be sent only when singles are ticked');

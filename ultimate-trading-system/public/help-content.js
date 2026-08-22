@@ -86,12 +86,20 @@ window.HELP = {
         + 'not (N+1) times the size — it is very much more than that.'],
       ['What replication adds, if you tick it',
         'The search picks its winner after seeing the results, which is what makes the best row '
-        + 'flatter itself. Replication is the opposite: you fix ONE set of settings before the run, '
-        + 'and every asset is scored on that one thing.\n\n'
-        + 'Nothing was chosen after the fact, so there is no shopping to correct for. It is the '
-        + 'strongest reading the system offers. Tick permute on any of those boxes and you are '
-        + 'searching again — the counter beside them says how many sets you have just declared, and '
-        + 'the honest end of a search is the sealed block you get with the 61/13/13/13 window layout.'],
+        + 'flatter itself. Replication is the opposite: YOU fix the settings before the run, and '
+        + 'every asset is scored on what you fixed.\n\n'
+        + 'With every permute left unticked that is one set of settings, and it is the strongest '
+        + 'reading the system offers — nothing was chosen after the fact, so there is nothing to '
+        + 'correct for.\n\n'
+        + 'Tick permute on any of those boxes and it becomes every combination of them, each one '
+        + 'scored on every asset. That is searching again, and it costs twice: the counter beside '
+        + 'the boxes says how many sets you have declared and the run grows by that much, and the '
+        + 'reading loses the very thing that made it strong. Having searched, the honest end is the '
+        + 'sealed block you get with the 61/13/13/13 window layout.\n\n'
+        + 'The boxes follow the run, not each other. Tick permute beside entry while entry reads '
+        + 'market and gate, d, trail and arm all appear, because breakout is now in the run and '
+        + 'needs them. Tick permute beside trail while it reads static and arm appears, because '
+        + 'following stops are now in the run and every one of them needs a starting point.'],
     ],
     controls: {
       cxCampPick: {
@@ -100,7 +108,10 @@ window.HELP = {
       },
       cxCamp: { what: 'Type a name here to start a new campaign, then press Set.' },
       campSet: { what: 'Makes the name in the box the campaign in use. From then on, every run started carries it.' },
-      campTree: { what: 'Shows every run and every greenlight that belongs to the campaign named in the box, and which run each one came from.' },
+      campTree: {
+        what: 'Shows every run and every greenlight that belongs to the campaign named in the box, and which run each one came from. Press it again to put them away.',
+        more: 'It shows and hides the same panel Delete campaign… writes its summary into. A delete summary is never wiped by pressing this — the second press only puts away a list this button put up.',
+      },
       campDelete: {
         what: 'Removes a campaign and everything underneath it — its runs, the saved files those runs produced, its greenlights, and any setups made from those greenlights.',
         more: 'It tells you exactly how many of each will go before it asks, and you have to type the name back. It refuses outright if any setup made from that campaign is still running on the Trade tab, and names which ones.',
@@ -156,8 +167,8 @@ window.HELP = {
         more: 'Each setting is then tried with four following distances and three starting points, so roughly thirteen times as much work — but only on the rows that got scored a second time.',
       },
       swDecOn: {
-        what: 'As well as the search, score ONE fixed set of settings on every asset — chosen here, before the run.',
-        more: 'This is the strongest kind of reading available, because nothing was picked after seeing the results. The search still runs as normal; this adds a separate table beside it.',
+        what: 'As well as the search, score settings YOU fix here — before the run — on every asset. Leave every permute unticked and that is one set of settings; tick any of them and it becomes every combination of the boxes you ticked, each one scored on every asset.',
+        more: 'With nothing permuted this is the strongest kind of reading available, because nothing was picked after seeing the results. Permuting is searching again, so that strength goes: the counter beside the boxes says how many sets you have declared, it multiplies the whole run, and the honest end of a search is the sealed block you get with the 61/13/13/13 window layout. Either way the search still runs as normal and this adds a separate table beside it.',
       },
       swDecEntry: {
         what: 'How the position is opened. market buys or sells at the opening price of the hour, in whichever direction was called. breakout waits until the price reaches a level set d away from where it started, and opens there.',
@@ -165,12 +176,12 @@ window.HELP = {
       swPermDecEntry: { what: 'Score every way of opening as its own fixed set of settings.' },
       swDecGate: {
         what: 'When a position is allowed to be opened at all. directional only when a direction was called; active whenever anything is happening; always every single period.',
-        more: 'Hidden when entry is market, because market opens in the called direction and has nothing to gate.',
+        more: 'market opens in the called direction and has nothing to gate, so this box is hidden while entry is market — unless permute beside entry is ticked, because then breakout is in the run too and needs a gate.',
       },
       swPermDecGate: { what: 'Score every gate as its own fixed set of settings.' },
       swDecD: {
         what: 'How far from the starting price the opening level sits, as a multiple of the band. Bigger means waiting for a larger move before opening.',
-        more: 'Only applies to breakout, so it is hidden when entry is market.',
+        more: 'Only applies to breakout, so it is hidden while entry is market — unless permute beside entry is ticked, because then breakout is in the run too.',
       },
       swPermDecD: { what: 'Score every distance as its own fixed set of settings.' },
       swDecT: { what: 'How many hours a position is held before it is closed, if nothing else has closed it first.' },
@@ -182,7 +193,7 @@ window.HELP = {
       swPermDecTrail: { what: 'Score every kind of stop, static included, as its own fixed set of settings.' },
       swDecArm: {
         what: 'How far the price has to move in your favour before a following stop starts following. 0× follows from the very beginning.',
-        more: 'Only appears when trail is set to something other than static, because a stop that does not move has nothing to start.',
+        more: 'A stop that does not move has nothing to start, so this box appears only when there is a following stop in the run: trail set to something other than static, or permute beside trail ticked, which puts the following stops in whatever the box itself says.',
       },
       swPermDecArm: { what: 'Score every starting point as its own fixed set of settings.' },
       swDecQ6: {

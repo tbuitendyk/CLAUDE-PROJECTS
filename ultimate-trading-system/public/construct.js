@@ -518,7 +518,7 @@ async function drawSweep() {
   ]);
   const running = (batches.batches || batches || []).find((b) => b.status === 'running');
   $('#view').innerHTML = `<div class="panel">
-    <h3 style="margin-top:0">Campaign — the parent job (pt 13)</h3>
+    <h3 style="margin-top:0">Campaign — the parent chain name</h3>
     <p class="note">Every run launched while a campaign is set attaches to it: sweeps, null rounds, tuning passes,
       scans. The campaign's whole chain travels with any greenlight minted from it.</p>
     <!-- A <datalist> FILTERS ITS SUGGESTIONS BY WHAT IS ALREADY IN THE BOX, and
@@ -534,7 +534,7 @@ async function drawSweep() {
       </select></label>
       <label class="f" title="name a NEW campaign. Runs launched from now on attach to whatever is set here.">or a new name<input id="cxCamp" value="${esc(camp.name || '')}" style="width:18rem"></label>
       <button id="campSet">Set</button>
-      <button id="campTree">View tree</button>
+      <button id="campTree" title="shows the runs and greenlights belonging to the campaign named in the box. Press it again to put them away.">View tree</button>
       <!-- Same row, same shape as its neighbours: the row is bottom-aligned
            because the controls to the left are a label above a box. -->
       <button id="campDelete" class="danger">Delete campaign…</button>
@@ -590,8 +590,8 @@ async function drawSweep() {
       <label class="c"><input type="checkbox" id="swTrail"> trailing plane</label>
     </div>
     <div class="row" style="margin-top:.5rem;align-items:flex-end;border-top:1px solid var(--line);padding-top:.55rem">
-      <label class="c" title="REPLICATION MODE. Instead of judging each asset by its best-shopped cell, score ONE fixed configuration on every asset — declared before the run, so each asset costs a single look instead of the ~1,260 a menu sweep spends. That turns 'best of thousands on one asset' into a cross-asset reading with no shopping tax and no branch correction owed — read against the configuration's own dealt-vote copies, never as a binomial (QC-7: assets move together, so they are not independent looks). The menu still runs (the board is unchanged); this adds a separate replication table reporting the declared cell per asset. Agreement travels as an exact count per committee size — the 'agree' boxes (5/6 means 5 of a single coin's 6 members).">
-        <input type="checkbox" id="swDecOn"> replication: also score one DECLARED config per asset</label>
+      <label class="c" title="REPLICATION MODE. Instead of judging each asset by the best cell the search shopped for, score settings YOU fix here, before the run, on every asset. With every permute unticked that is ONE config: nothing was chosen after seeing results, so there is no shopping tax and no branch correction owed, and it is the strongest reading the system offers. Tick any permute and these boxes declare a BLOCK of configs instead — every combination, each one scored on every asset. The counter beside them says how many, it multiplies the whole run, and having searched, the honest end is the sealed block of the 61/13/13/13 window layout. Either way the menu still runs and the board is unchanged; this adds a separate replication table reporting each declared cell per asset, read against that configuration's own dealt-vote copies and never as a binomial (QC-7: assets move together, so they are not independent looks). Agreement travels as an exact count per committee size — the 'agree' boxes (5/6 means 5 of a single coin's 6 members).">
+        <input type="checkbox" id="swDecOn"> replication: also score every DECLARED config on every asset</label>
       <div id="swGrpEntry" style="display:flex;align-items:flex-end;gap:.45rem">
         <label class="f" id="swDecEntryWrap" title="BREAKOUT opens the position when price reaches a rail at p(1±d). MARKET enters at the entry candle's open in the called direction with no rails, holds to t, and exits at the open: the general classifier's own trade, and exactly what the live paper books do. Market entry is directional by definition, so gate and d do not apply to it.">entry
         <select id="swDecEntry">${vocabOptions('entry', 'breakout')}</select></label>
@@ -663,10 +663,23 @@ async function drawSweep() {
     if (out) drawSweep();
     else { if (tree) tree.disabled = false; if (set) set.disabled = false; }
   };
+  // A TOGGLE (owner, 2026-08-22): the same button that shows a campaign's runs
+  // and greenlights puts them away again.
+  //
+  // What it closes is only ever a tree THIS button opened, for the campaign
+  // named in the box right now. The panel below is shared with "Delete
+  // campaign…", so a blind "if something is showing, clear it" would let a
+  // second press silently wipe a delete warning — and the whole point of that
+  // warning is that it is read before anything is answered. Recording which
+  // campaign's tree is open, and clearing that record wherever the panel is
+  // written by anything else, keeps the two uses of one panel apart.
   $('#campTree').onclick = async () => {
     const name = $('#cxCamp').value.trim(); if (!name) { alert('name a campaign'); return; }
+    const box = $('#campOut');
+    if (box.dataset.tree === name) { box.innerHTML = ''; delete box.dataset.tree; return; }
     const t = await apiOr(`api/campaign-tree?name=${encodeURIComponent(name)}`, null);
-    $('#campOut').innerHTML = t ? `<h3>Campaign “${esc(t.name)}” — runs &amp; greenlights</h3>
+    box.dataset.tree = name;
+    box.innerHTML = t ? `<h3>Campaign “${esc(t.name)}” — runs &amp; greenlights</h3>
       <table><thead><tr>${cth('run','run')}${cth('kind','kind')}${cth('status','status')}${cth('started','started')}${cth('derives from','derives','text-align:left')}</tr></thead><tbody>
       ${(t.runs || []).map((r) => `<tr><td>${esc(r.id)}</td><td>${esc(r.kind)}</td><td>${esc(r.status)}</td>
         <td>${esc((r.startedAt || '').slice(0, 16))}</td><td style="text-align:left" class="muted">${esc(r.parentRunId || '—')}</td></tr>`).join('') || '<tr><td colspan="5" class="empty">no runs yet</td></tr>'}
@@ -680,6 +693,9 @@ async function drawSweep() {
     const name = $('#cxCamp').value.trim();
     if (!name) { alert('name a campaign, or pick one'); return; }
     const box = $('#campOut');
+    // this panel is no longer showing a tree, so "View tree" must not treat a
+    // press as "put the tree away" and wipe what is written below
+    delete box.dataset.tree;
     const found = await apiOr(`api/campaign-contents?name=${encodeURIComponent(name)}`, null);
     if (!found) { box.innerHTML = '<p class="note">could not read what that campaign holds — nothing deleted</p>'; return; }
 
@@ -710,9 +726,21 @@ async function drawSweep() {
     : '<div style="margin-top:.3rem">nothing but the name — this campaign holds no runs, greenlights or setups.</div>'}
       <div class="muted" style="margin-top:.4rem">This cannot be undone.</div></div>`;
 
+    // THE LIST HAS TO BE ON SCREEN BEFORE THE BOX APPEARS (owner, 2026-08-22).
+    // prompt() blocks the browser dead, so setting innerHTML on the line above
+    // is not enough: the change was in the page but had never been PAINTED, and
+    // the summary of what was about to be destroyed only became visible once
+    // the answer had already been given and acted on — which is no use to
+    // anyone. Two frames, then a turn of the event loop: the first frame is
+    // scheduled before the paint, the second runs after it, and the timeout
+    // makes sure the paint has actually landed rather than merely been queued.
+    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(r, 0))));
+
     // The name typed back, not an OK button. A campaign holding a season of
     // work and one holding nothing must not be one keystroke apart.
-    const typed = prompt(`Type the campaign name exactly to delete it and everything listed above:\n\n${found.name}`);
+    const typed = prompt('Type the campaign name exactly to delete it and everything listed on the page behind this box:'
+      + `\n\n${found.name}\n\n`
+      + 'Hit Cancel to review the campaign contents prior to deleting.');
     if (typed === null) { box.innerHTML += '<p class="note">cancelled — nothing deleted</p>'; return; }
     if (typed.trim() !== found.name) {
       box.innerHTML += '<p class="note">that did not match the name — nothing deleted</p>';
@@ -733,8 +761,15 @@ async function drawSweep() {
   // rather than ignoring them — a silently ignored parameter is how a declared
   // config stops meaning what its author thought it meant. So hide the controls
   // whose values would be refused instead of leaving them on screen.
+  //
+  // WHAT THE RUN WILL SCORE decides that, NOT the dropdown on its own (owner,
+  // 2026-08-22). Ticking permute beside entry puts breakout in the run while
+  // the box still reads market, and every breakout cell needs a gate, a rail
+  // distance and a stop. Reading the box alone hid all four, so the page sent
+  // none of them and Start sweep came back refused naming "gate" — a control
+  // that was not on screen to set.
   const syncDecEntry = () => {
-    const market = $('#swDecEntry').value === 'market';
+    const market = $('#swDecEntry').value === 'market' && !$('#swPermDecEntry').checked;
     // A permute tick belongs to its box and must vanish WITH it. Left on their
     // own they were ticks for controls that were not on screen — a market entry
     // showed three orphans and a static stop a fourth (owner, 2026-08-17).
@@ -744,11 +779,17 @@ async function drawSweep() {
     // closes up rather than leaving a gap.
     const show = (id, on) => { const e = $(id); if (e) e.style.display = on ? 'flex' : 'none'; };
     for (const grp of ['#swGrpGate', '#swGrpD', '#swGrpTrail']) show(grp, !market);
-    // arm means nothing without a trail
-    show('#swGrpArm', !market && !!$('#swDecTrail').value);
+    // arm means nothing without a MOVING stop — and permuting trail puts moving
+    // stops in the run even while the box itself reads static. Hidden, the page
+    // sent no arm at all and every trailing cell was scored at the code's own
+    // 0x: a setting the operator never saw and never chose (RULE FIVE).
+    show('#swGrpArm', !market && (!!$('#swDecTrail').value || $('#swPermDecTrail').checked));
   };
   $('#swDecEntry').onchange = syncDecEntry;
   $('#swDecTrail').onchange = syncDecEntry;
+  // the two ticks that change WHICH BOXES THE RUN NEEDS, so the row keeps up
+  $('#swPermDecEntry').addEventListener('change', syncDecEntry);
+  $('#swPermDecTrail').addEventListener('change', syncDecEntry);
   syncDecEntry();
 
   // Each agreement box exists only when the run will contain committees of that
@@ -798,20 +839,28 @@ async function drawSweep() {
   // is scored on every asset, so the count multiplies the run — and the strongest
   // claim available shrinks as the search widens. A number you only discover from
   // a refusal message is a number you found too late.
-  const MENUS = { entry: 2, gate: 3, dMult: 5, tHours: 7, trail: 5, arm: 3 };
+  // trailMoving counts the MOVING stops only; the static stop is added on its
+  // own below, because arm multiplies the moving ones and never the static one.
+  const MENUS = { entry: 2, gate: 3, dMult: 5, tHours: 7, trailMoving: 4, arm: 3 };
   const syncDecCount = () => {
     const el = $('#swDecCount');
     if (!el) return;
     if (!$('#swDecOn').checked) { el.textContent = ''; return; }
+    const permEntry = $('#swPermDecEntry').checked;
     const market = $('#swDecEntry').value === 'market';
-    let n = 1;
-    if ($('#swPermDecEntry').checked) n *= MENUS.entry;
-    if (!market) {
-      if ($('#swPermDecGate').checked) n *= MENUS.gate;
-      if ($('#swPermDecD').checked) n *= MENUS.dMult;
-      if ($('#swPermDecTrail').checked) n *= MENUS.trail;
-      if ($('#swPermDecArm').checked && $('#swDecTrail').value) n *= MENUS.arm;
-    }
+    // COUNTED PER ENTRY STYLE AND ADDED, not multiplied straight through. A
+    // market cell has no gate, no rail distance and no stop, so those menus
+    // never multiply it — the flat product both overstated a permuted entry
+    // (multiplying the market half by rails it cannot have) and understated it
+    // (skipping the rail menus altogether whenever the box read market).
+    let rails = 1;
+    if ($('#swPermDecGate').checked) rails *= MENUS.gate;
+    if ($('#swPermDecD').checked) rails *= MENUS.dMult;
+    const armN = $('#swPermDecArm').checked ? MENUS.arm : 1;
+    if ($('#swPermDecTrail').checked) rails *= 1 + MENUS.trailMoving * armN;
+    else if ($('#swDecTrail').value) rails *= armN;
+    // permuting entry scores BOTH: the one market cell, plus every rail cell
+    let n = permEntry ? 1 + rails : (market ? 1 : rails);
     if ($('#swPermDecT').checked) n *= MENUS.tHours;
     if ($('#swPermDecAgree').checked) {
       if ($('#swSingles').checked) n *= 6;
@@ -865,18 +914,26 @@ async function drawSweep() {
         agree: $('#swPermDecAgree').checked,
       };
       if (Object.values(dp).some(Boolean)) body.declaredPermute = dp;
-      body.declared = entry === 'market'
-        ? { entry, tHours: Number($('#swDecT').value), ...qPart }
-        : {
-          entry,
+      // WHAT IS ON SCREEN IS WHAT IS SENT — the same rule syncDecEntry decides
+      // visibility by, so a box the operator can see and set always reaches the
+      // run. Rails ride along whenever breakout is in the run (the box reads
+      // breakout, or its permute is ticked); the server applies them to the
+      // breakout members and drops them for the market one. An arm rides along
+      // whenever a moving stop is in the run, including one that only exists
+      // because trail is permuted.
+      const rails = entry !== 'market' || dp.entry;
+      const movingStop = trailRaw || dp.trail;
+      body.declared = {
+        entry,
+        tHours: Number($('#swDecT').value),
+        ...qPart,
+        ...(rails ? {
           gate: $('#swDecGate').value,
           dMult: Number($('#swDecD').value),
-          tHours: Number($('#swDecT').value),
-          ...qPart,
-          // armMult is refused unless a trail is declared, so send neither
-          // rather than a meaningless pair
-          ...(trailRaw ? { trailMult: Number(trailRaw), armMult: Number($('#swDecArm').value) } : {}),
-        };
+          ...(trailRaw ? { trailMult: Number(trailRaw) } : {}),
+          ...(movingStop ? { armMult: Number($('#swDecArm').value) } : {}),
+        } : {}),
+      };
     }
     $('#swMsg').textContent = 'launching…';
     const out = await tryPost('api/bracketlab', body);

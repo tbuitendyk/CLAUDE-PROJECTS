@@ -447,6 +447,15 @@ function expandDeclared(raw, permute, menus) {
     trailMults: (menus && menus.trailMults) || bracketLib.TRAIL_MULTS,
     armMults: (menus && menus.armMults) || bracketLib.ARM_MULTS,
   };
+  // ARM RIDES A MOVING STOP, and permuting trail puts moving stops in the run
+  // off a base that declares none — so an armMult with no trailMult is legal
+  // HERE and only here. Without this the screen had nowhere to send the arm
+  // setting for a permuted trail, so every trailing member was scored at the
+  // code's own 0x: a value the operator never saw and never chose (owner,
+  // 2026-08-22). An arm no member could use is still refused, never ignored.
+  if (raw.armMult !== undefined && (raw.trailMult === undefined || raw.trailMult === null) && !on.trail) {
+    throw new Error('declared.armMult is meaningless without declared.trailMult — omit it');
+  }
   const pick = (flag, list, fixed) => (flag ? list.slice() : [fixed]);
   const out = [];
   const entries = on.entry ? m.entries.slice() : [raw.entry === undefined ? 'breakout' : String(raw.entry)];
@@ -1158,6 +1167,7 @@ function startBracketLab(params) {
     trailMults: bracketLib.TRAIL_MULTS,
     armMults: bracketLib.ARM_MULTS,
   };
+  const declaredSet = params.declared ? expandDeclared(params.declared, params.declaredPermute, grid) : null;
   const p = {
     universe: params.universe && params.universe.length ? params.universe : DEFAULT_PAIRS,
     sizes: { singles: !!params.sizes?.singles, doubles: !!params.sizes?.doubles, triples: !!params.sizes?.triples },
@@ -1171,11 +1181,19 @@ function startBracketLab(params) {
       band: params.set?.band === 'auto' || params.set?.band === undefined ? 'auto' : Number(params.set.band),
       weekdaysOnly: !!params.set?.weekdaysOnly,
     },
-    declared: validateDeclared(params.declared, grid),
     // The declared SET. With no permute tick this is exactly [declared], so the
     // single path is unchanged; with ticks it is every combination, each one
     // validated by the same rule a single declaration passes through.
-    declaredSet: params.declared ? expandDeclared(params.declared, params.declaredPermute, grid) : null,
+    declaredSet,
+    // ...and the declared cell IS the first member of that set. With nothing
+    // ticked expandDeclared returns exactly [validateDeclared(raw, grid)], so
+    // this is byte-identical to validating the base on its own. With ticks on,
+    // the base legitimately carries settings that belong to SOME members and
+    // not others — rails for the breakout members of a permuted entry, an arm
+    // for the moving-stop members of a permuted trail — and validating it as
+    // though it were one cell refused launches that were perfectly well formed
+    // (owner, 2026-08-22). Every member is still validated, inside expandDeclared.
+    declared: declaredSet && declaredSet.length ? declaredSet[0] : null,
     declaredPermute: params.declaredPermute || null,
     // Capped at detailK: the leaderboard only ever holds that many slim rows,
     // so a larger promoteK was a plan number that could not be honoured.
@@ -1276,7 +1294,15 @@ function startBracketLab(params) {
   if (!p.sizes.singles && !p.sizes.doubles && !p.sizes.triples) throw new Error('tick at least one combo size');
   // A declared trail cell only exists when the run computes trail cells:
   // without this, the run finishes and the replication table is empty.
-  if (p.declared && p.declared.trailMult != null && !p.trailing) {
+  //
+  // ANY MEMBER, not just the first. Permuting trail builds moving-stop members
+  // off a base that declares none, so a check that read only the base waved
+  // those through to a run that could never find them — hours spent for empty
+  // rows. Reading the whole set also keeps this firing now that the declared
+  // cell is the set's first member rather than the separately-validated base.
+  const declaredTrailCells = (p.declaredSet || (p.declared ? [p.declared] : []))
+    .filter((c) => c && c.trailMult != null);
+  if (declaredTrailCells.length && !p.trailing) {
     throw new Error('declared.trailMult needs trailing stops ticked on — a run without trail cells can never find the declared cell');
   }
   // PLANTED CHECK plumbing (owner order, 2026-08-03). The fabricated pair is

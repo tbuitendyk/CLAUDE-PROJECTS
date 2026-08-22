@@ -171,4 +171,69 @@ module.exports = {
       assert.ok(!campaign.listCampaignNames().includes('Doomed'), 'the deleted name is still offered');
     });
   },
+
+  // "View tree" SHOWS AND HIDES (owner, 2026-08-22). One press puts the runs
+  // and greenlights up, the next puts them away.
+  //
+  // The trap this guards: that panel is shared with the delete summary, and the
+  // delete summary is the one thing on the tab that must be READ before it is
+  // answered. A toggle written as "if anything is showing, clear it" would let
+  // a press of View tree wipe the warning listing what is about to be destroyed
+  // — so the button records WHICH campaign's tree it opened, and every other
+  // writer of that panel clears the record.
+  //
+  // Watched failing 2026-08-22: dropping the dataset.tree record makes the
+  // button stop hiding; dropping the `delete box.dataset.tree` from the delete
+  // handler fails theDeleteSummaryIsNotTreatedAsAnOpenTree.
+  async viewTreeShowsAndHidesTheSameCampaign() {
+    const ui = fs.readFileSync(path.join(__dirname, '..', 'public', 'construct.js'), 'utf8');
+    const at = ui.indexOf("$('#campTree').onclick");
+    assert.ok(at > 0, 'the View tree button must still have a handler');
+    const fn = ui.slice(at, ui.indexOf("$('#campDelete').onclick", at));
+    assert.ok(/if \(box\.dataset\.tree === name\) \{ box\.innerHTML = ''; delete box\.dataset\.tree; return; \}/.test(fn),
+      'a second press on the same campaign must put the tree away and forget it');
+    assert.ok(/box\.dataset\.tree = name;/.test(fn),
+      'showing a tree must record whose it is, or the button cannot know what to hide');
+    // and it must not fetch before deciding — hiding should cost no request
+    assert.ok(fn.indexOf('box.dataset.tree === name') < fn.indexOf('apiOr'),
+      'the hide case must be decided before the request, not after it');
+  },
+
+  // THE SUMMARY IS READ BEFORE IT IS ANSWERED, NOT AFTER (owner, 2026-08-22).
+  //
+  // prompt() blocks the browser, so writing innerHTML on the line before it is
+  // not the same as SHOWING it: the list of what is about to be destroyed sat
+  // in the page unpainted until the answer had been given and acted on. The
+  // page must be allowed to paint first, and the box itself must say that
+  // Cancel is how you get to read it.
+  //
+  // Watched failing 2026-08-22: removing the awaited frames makes the summary
+  // invisible again and fails theDeletionSummaryIsPaintedBeforeTheBoxAppears.
+  async theDeletionSummaryIsPaintedBeforeTheBoxAppears() {
+    const ui = fs.readFileSync(path.join(__dirname, '..', 'public', 'construct.js'), 'utf8');
+    const at = ui.indexOf("$('#campDelete').onclick");
+    const fn = ui.slice(at, at + 6000);
+    const written = fn.indexOf('will permanently remove');
+    const painted = fn.indexOf('requestAnimationFrame');
+    // the CALL, not the word — the comment above it says "prompt()" too
+    const asked = fn.indexOf('const typed = prompt(');
+    assert.ok(written > 0 && painted > 0 && asked > 0,
+      'the delete flow must write the summary, wait for it to paint, then ask');
+    assert.ok(written < painted && painted < asked,
+      'the summary must be written AND painted before prompt() blocks the browser — otherwise it is only visible after the answer');
+    assert.ok(/Hit Cancel to review the campaign contents prior to deleting/.test(fn),
+      'the box must say that Cancel is how the contents get read');
+  },
+
+  async theDeleteSummaryIsNotTreatedAsAnOpenTree() {
+    const ui = fs.readFileSync(path.join(__dirname, '..', 'public', 'construct.js'), 'utf8');
+    const at = ui.indexOf("$('#campDelete').onclick");
+    assert.ok(at > 0, 'the Delete campaign… button must still have a handler');
+    const fn = ui.slice(at, at + 4000);
+    const clears = fn.indexOf('delete box.dataset.tree;');
+    const writes = fn.indexOf('box.innerHTML');
+    assert.ok(clears > 0, 'the delete summary must clear the open-tree record before it writes the panel');
+    assert.ok(clears < writes,
+      'the delete summary writes the panel before clearing the open-tree record — one press of View tree would then wipe the warning');
+  },
 };
