@@ -46,8 +46,22 @@ function getCampaign() {
 // other record of a declared name to disagree with — that is exactly why it has
 // to be stored.
 function declaredNames() {
-  const v = readFile().declared;
-  return Array.isArray(v) ? v.filter((x) => typeof x === 'string' && x) : [];
+  const f = readFile();
+  const v = Array.isArray(f.declared) ? f.declared.filter((x) => typeof x === 'string' && x) : [];
+  // THE NAME THAT IS SET RIGHT NOW COUNTS, whether or not it was ever added to
+  // the list. Two ways that happens, and the second is the one that bit:
+  //
+  //   * a campaign set before this list existed at all — the stored file has a
+  //     name and no list, so a fix that only wrote the list on the next Set
+  //     left the campaign already in use invisible. Which it did: the owner had
+  //     set one, and the screen still counted zero.
+  //   * a file edited by hand, or restored from a backup written by older code.
+  //
+  // Deriving it from the name in use costs nothing and needs no migration step
+  // that somebody has to remember to run.
+  const cur = typeof f.name === 'string' && f.name ? f.name : null;
+  if (cur && !v.includes(cur)) v.push(cur);
+  return v;
 }
 
 function setCampaign(raw) {

@@ -71,6 +71,19 @@ module.exports = {
     });
   },
 
+  // THE ONE THAT WAS ACTUALLY BROKEN ON THE BOX. A campaign set before the
+  // declared list existed leaves a stored file with a name and no list — and
+  // the first fix only wrote the list on the NEXT Set, so the campaign already
+  // in use stayed invisible and the screen still counted zero.
+  async aCampaignSetBeforeThisListExistedIsStillOffered() {
+    withScratch(({ campaign, realData }) => {
+      fs.writeFileSync(path.join(realData, 'campaign.json'),
+        JSON.stringify({ name: 'Initial UTS Run', setAt: '2026-08-21T23:51:24.864Z' }));
+      assert.deepStrictEqual(campaign.listCampaignNames(), ['Initial UTS Run'],
+        'a campaign that was set before the list existed is not offered — the screen counts zero while one is in use');
+    });
+  },
+
   // A name with real activity must still sort above one that has none.
   async aNameWithRunsSortsAboveAFreshOne() {
     withScratch(({ campaign, realData }) => {
