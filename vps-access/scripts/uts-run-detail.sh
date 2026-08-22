@@ -6,14 +6,23 @@
 # come back; the only way to tell whether it reached the run or was lost on the
 # way is to read what the run actually holds.
 set -uo pipefail
+# vps-run.sh forwards no arguments, so with none given this reads the NEWEST
+# run — which is the one anybody asking this question is asking about.
 ID="${1:-}"
 case "$ID" in
-  ''|*[!A-Za-z0-9._-]*) echo "usage: uts-run-detail.sh <run-id>   (letters, digits, dot, dash, underscore)"; exit 2;;
+  *[!A-Za-z0-9._-]*) echo "bad run id"; exit 2;;
 esac
-python3 - "/opt/ultimate-trading-system/data/batches/$ID.json" <<'PY'
+python3 - "/opt/ultimate-trading-system/data/batches" "$ID" <<'PY'
 import json,sys,os
-p=sys.argv[1]
-if not os.path.exists(p): print('no such run:', os.path.basename(p)); raise SystemExit(1)
+b,wanted=sys.argv[1],sys.argv[2]
+if wanted:
+    p=os.path.join(b,wanted+'.json')
+    if not os.path.exists(p): print('no such run:', wanted); raise SystemExit(1)
+else:
+    files=[os.path.join(b,f) for f in os.listdir(b) if f.endswith('.json')]
+    if not files: print('no runs at all'); raise SystemExit(1)
+    p=max(files, key=lambda f: (json.load(open(f)).get('startedAt') or ''))
+    print('(newest run — no id was given)')
 d=json.load(open(p))
 print('id         :', d.get('id'))
 print('status     :', d.get('status'))
