@@ -50,9 +50,9 @@ REASON = (
     'whole 2 MB run record was being rewritten after every single unit. The '
     'service also ran with the default heap ceiling of about 1 GB while it was '
     'allowed 3 GB; it now runs with 1792 MB. Nothing this run had already '
-    'finished is lost, but it did not complete and cannot be resumed: start it '
-    'again — or, now that picking one up is built, carry it on with Resume run '
-    'on the Boards section, which scores only what this run never got to.'
+    'finished is lost. It did not complete: carry it on with Resume run on the '
+    'Boards section, which scores only the units it never got to and keeps '
+    'everything already scored, or start a fresh run from the Sweep section.'
 )
 
 before = (doc.get('error'), doc.get('interruptedWhere'), doc.get('interruptedAt'))
