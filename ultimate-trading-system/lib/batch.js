@@ -1916,7 +1916,13 @@ function startBracketLab(params, opts) {
     }
     saveBatch(doc);
 
-    const slimPayloads = slimPending.map((u) => ({ combo: u.c, branch: u.b, stage: 'slim', params: p, nullDealSeed: u.nullDealSeed ?? null, ...shiftStance(u) }));
+    // THE PARAMETERS GO TO EACH WORKER ONCE, not once per unit. On a run with
+    // the replication boxes permuted they hold 1.4 MB of declared configs, and
+    // postMessage copies its payload — so carrying them per unit was about
+    // 70 GB of copying on the main thread that did no work (owner order,
+    // 2026-08-22). The per-unit payload now names them instead.
+    pool.setShared('sweepParams', { params: p });
+    const slimPayloads = slimPending.map((u) => ({ combo: u.c, branch: u.b, stage: 'slim', sharedKey: 'sweepParams', nullDealSeed: u.nullDealSeed ?? null, ...shiftStance(u) }));
     await pool.forEach('unit', slimPayloads, (settled, i) => {
       // Cancel keeps every COMPLETED result (QC 74): workers are being
       // terminated, but a unit that already finished is computed record and
@@ -1991,7 +1997,7 @@ function startBracketLab(params, opts) {
       const promPayloads = promPending.map((l) => ({
         combo: { trade: l.trade, ctx1: l.ctx1, ctx2: l.ctx2, size: l.size },
         branch: { geometry: l.geometry, decision: l.decision, band: l.bandMode, weekdaysOnly: l.weekdaysOnly },
-        stage: 'promoted', params: p,
+        stage: 'promoted', sharedKey: 'sweepParams',
         nullDealSeed: l.nullDealSeed ?? null,
         ...shiftStance(l),
       }));

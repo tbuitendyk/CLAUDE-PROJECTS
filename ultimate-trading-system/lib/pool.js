@@ -154,11 +154,46 @@ class Pool {
     }
   }
 
+  // WHAT EVERY TASK IN A JOB SHARES, SENT ONCE PER WORKER (owner order,
+  // 2026-08-22).
+  //
+  // Every unit's payload carried the whole parameter object, and on a run with
+  // the replication boxes permuted that object holds the declared set — 1.4 MB
+  // of it on the owner's wide sweep. postMessage structured-clones its payload,
+  // so that was 1.4 MB copied across the thread boundary once per unit: about
+  // 70 GB of copying, on the main thread, doing no work at all. It is also why
+  // the main thread's memory climbed through a sweep.
+  //
+  // So the constant part is sent once to each worker and the per-unit payload
+  // names it. Two properties make that safe:
+  //
+  //   * a worker is told BEFORE its first task that needs it, and told again
+  //     if it is replaced — _drain checks the version it last sent to each
+  //     worker rather than assuming an ordering;
+  //   * a worker asked for a shared object it has not been given REFUSES the
+  //     task. Scoring with the wrong settings, silently, is the one outcome
+  //     worse than a failed unit.
+  setShared(key, value) {
+    this.shared = { key, value };
+    this.sharedVersion = (this.sharedVersion || 0) + 1;
+    // Inline fallback keeps its own copy: same contract, no message to send.
+    return this.sharedVersion;
+  }
+
+  _tellShared(w) {
+    if (!this.shared) return;
+    if (w.__sharedVersion === this.sharedVersion) return;
+    w.postMessage({ shared: { key: this.shared.key, value: this.shared.value } });
+    w.__sharedVersion = this.sharedVersion;
+  }
+
   _drain() {
     while (this.queue.length && this.idle.length && !this.stopped) {
       const task = this.queue.shift();
       const w = this.idle.shift();
       this.pending.set(task.id, { ...task, worker: w });
+      // Ordered before the task on the same channel, so it cannot arrive late.
+      this._tellShared(w);
       w.postMessage({ id: task.id, kind: task.kind, payload: task.payload });
     }
     this._refresh();
@@ -166,6 +201,17 @@ class Pool {
 
   run(kind, payload) {
     if (this.stopped) return Promise.reject(new Error('pool stopped'));
+    if (!this.parallel) {
+      // The inline path resolves the shared part here, so a task written for
+      // the pool behaves identically with no workers at all.
+      if (payload && payload.sharedKey) {
+        if (!this.shared || this.shared.key !== payload.sharedKey) {
+          return Promise.reject(new Error(`task asks for shared "${payload.sharedKey}" and nothing was set — `
+            + 'refusing rather than scoring with the wrong settings'));
+        }
+        payload = { ...this.shared.value, ...payload };
+      }
+    }
     if (!this.parallel) {
       // Inline fallback — identical code path, just on this thread.
       //

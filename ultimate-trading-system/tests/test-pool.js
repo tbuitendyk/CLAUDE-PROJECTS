@@ -129,6 +129,60 @@ module.exports = {
     await assert.rejects(() => p.run('no-such-kind', {}), /unknown task kind/);
     p.abort();
   },
+  // WHAT EVERY TASK SHARES IS SENT ONCE, NOT ONCE PER UNIT (owner order,
+  // 2026-08-22).
+  //
+  // Every unit's payload carried the whole parameter object. On the owner's
+  // wide sweep that object holds 1.4 MB of declared configs, and postMessage
+  // copies its payload — so one payload measured 1,305,292 bytes and the run
+  // would have copied it 50,184 times: about 65 GB across the thread boundary,
+  // on the main thread, doing no work. The same payload naming the shared part
+  // instead measures 212 bytes.
+  //
+  // Watched failing 2026-08-22: putting `params: p` back on the sweep payloads
+  // fails theSweepPayloadCarriesOnlyWhatVaries; dropping the refusal in
+  // worker.js or the inline path fails aTaskRefusesRatherThanScoreWithoutIt.
+  async theSweepPayloadCarriesOnlyWhatVaries() {
+    const batch = fs.readFileSync(path.join(__dirname, '..', 'lib', 'batch.js'), 'utf8');
+    const at = batch.indexOf('const slimPayloads = slimPending.map');
+    assert.ok(at > 0, 'the first pass must still build its payloads');
+    const slim = batch.slice(at, batch.indexOf(';', at));
+    assert.ok(/sharedKey: 'sweepParams'/.test(slim), 'the first pass must name the shared parameters');
+    assert.ok(!/params: p/.test(slim), 'and must not carry them per unit — that is the copying this removed');
+    const pat = batch.indexOf('const promPayloads = promPending.map');
+    const prom = batch.slice(pat, batch.indexOf('}));', pat));
+    assert.ok(/sharedKey: 'sweepParams'/.test(prom), 'the second pass must do the same');
+    assert.ok(!/params: p/.test(prom), 'and must not carry them per unit either');
+    assert.ok(/pool\.setShared\('sweepParams'/.test(batch), 'and the run must set them once');
+  },
+
+  // The one outcome worse than a failed unit is a unit scored with the wrong
+  // settings, silently. Both paths refuse instead.
+  async aTaskRefusesRatherThanScoreWithoutIt() {
+    const { Pool } = require('../lib/pool');
+    const pool = new Pool(1);   // inline lane
+    try {
+      let refused = null;
+      try { await pool.run('ping', { sharedKey: 'never-set' }); } catch (e) { refused = e.message; }
+      assert.ok(refused && /refusing rather than scoring with the wrong settings/.test(refused),
+        `the inline path must refuse a task whose shared part it was never given, got: ${refused}`);
+
+      pool.setShared('sweepParams', { params: { minTrades: 7 } });
+      const got = await pool.run('ping', { sharedKey: 'sweepParams' });
+      assert.ok(got && got.pid > 0, 'and run it once the shared part is there');
+    } finally { pool.abort(); }
+
+    // the worker side says the same thing, and re-tells a worker that was
+    // replaced rather than assuming an ordering
+    const wsrc = fs.readFileSync(path.join(__dirname, '..', 'lib', 'worker.js'), 'utf8');
+    assert.ok(/was never given shared/.test(wsrc), 'the worker must refuse a task it was never told the shared part for');
+    const psrc = fs.readFileSync(path.join(__dirname, '..', 'lib', 'pool.js'), 'utf8');
+    assert.ok(/w\.__sharedVersion === this\.sharedVersion/.test(psrc),
+      'the pool must track what each worker was last told, so a replaced worker is told again');
+    assert.ok(psrc.indexOf('this._tellShared(w);') < psrc.indexOf("w.postMessage({ id: task.id"),
+      'and tell it BEFORE the task, on the same channel, so it cannot arrive late');
+  },
+
   async inlineAndWorkerAgreeOnTaskKinds() {
     // The inline table in pool.js and TASKS in worker.js are two lists that
     // must not drift: a kind present in only one runs in parallel but not in

@@ -52,11 +52,27 @@ const TASKS = {
   ping: async () => ({ priority: os.getPriority(), pid: process.pid, ...threadNice() }),
 };
 
+// WHAT EVERY TASK IN THIS JOB SHARES, sent once rather than with every unit
+// (see Pool.setShared). Held here and merged into a payload that names it, so
+// the task functions are unchanged and still receive one plain object.
+const shared = new Map();
+
 parentPort.on('message', async (msg) => {
-  const { id, kind, payload } = msg;
+  if (msg && msg.shared) { shared.set(msg.shared.key, msg.shared.value); return; }
+  const { id, kind } = msg;
+  let { payload } = msg;
   try {
     const fn = TASKS[kind];
     if (!fn) throw new Error(`unknown task kind "${kind}"`);
+    if (payload && payload.sharedKey) {
+      // REFUSE rather than score with whatever happens to be here. A unit that
+      // fails is recorded and retried; a unit scored with the wrong settings is
+      // a number nobody can tell apart from a right one.
+      if (!shared.has(payload.sharedKey)) {
+        throw new Error(`this worker was never given shared "${payload.sharedKey}" — refusing the task`);
+      }
+      payload = { ...shared.get(payload.sharedKey), ...payload };
+    }
     const result = await fn(payload);
     parentPort.postMessage({ id, ok: true, result });
   } catch (err) {
