@@ -229,6 +229,10 @@ window.HELP = {
     controls: {
       bPick: { what: 'Which finished run to look at. The newest is at the top.' },
       bOpen: { what: 'Loads the chosen run and draws its rows below.' },
+      bDelete: {
+        what: 'Permanently removes the run that is open, together with the model and tuning files that belong only to it. You are shown exactly what will go, and then have to type the run id back, before anything is deleted.',
+        more: 'It refuses two things. The run that is going right now — stop it first, so a job cannot be writing a file that is being taken away underneath it. And any run a greenlight names as the evidence it came from, because something on the Trade tab may be standing on that evidence. Neither refusal deletes anything; both say which it is.',
+      },
       bNotes: { what: 'Your own notes on this run — what you were trying, what it showed, what it cost.' },
       bNotesSave: {
         what: 'Saves the notes onto the run.',

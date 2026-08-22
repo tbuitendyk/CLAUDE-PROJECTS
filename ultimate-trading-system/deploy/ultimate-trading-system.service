@@ -19,7 +19,14 @@ EnvironmentFile=/etc/ultimate-trading-system/env
 # file that lost its PORT line cannot land this service on 8093, which the
 # previous generation is still serving live trading and paper books on.
 Environment=PORT=8094
-ExecStart=/usr/bin/node server.js
+# THE HEAP CEILING IS SET HERE, not left to node (owner, 2026-08-22). Node's
+# own default old-space limit is about 1 GB on 64-bit, and this service is
+# allowed 2 G soft / 3 G hard below — so the first wide sweep died of a full
+# JavaScript heap at 1024 MB with two thirds of its allowance untouched, and
+# systemd restarted it under a limit it had never come close to. 1792 MB of
+# heap plus node's own non-heap footprint sits just under MemoryHigh, which
+# leaves MemoryMax as the real backstop it was written to be.
+ExecStart=/usr/bin/node --max-old-space-size=1792 server.js
 Restart=on-failure
 RestartSec=5
 

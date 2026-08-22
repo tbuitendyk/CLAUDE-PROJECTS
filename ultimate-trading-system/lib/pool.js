@@ -188,22 +188,29 @@ class Pool {
   // Run tasks with bounded concurrency, preserving INPUT order in the output
   // array. Order-preserving results are what let the orchestrator stay
   // deterministic without caring which worker finished first.
-  async map(kind, payloads, onSettled) {
-    const out = new Array(payloads.length);
+  //
+  // `collect` is what separates map from forEach below. Everything else —
+  // lanes, ordering, abort behaviour, the onSettled contract, the fact that a
+  // throwing onSettled can never kill the run — is shared, so the two can
+  // never drift apart in the ways that matter.
+  async _lanes(kind, payloads, onSettled, collect) {
+    const out = collect ? new Array(payloads.length) : null;
     let next = 0;
     const lanes = Math.max(1, Math.min(this.parallel ? this.workers.length : 1, payloads.length));
     const runLane = async () => {
       while (!this.stopped) {
         const i = next++;
         if (i >= payloads.length) return;
+        let settled;
         try {
-          out[i] = { ok: true, value: await this.run(kind, payloads[i]) };
+          settled = { ok: true, value: await this.run(kind, payloads[i]) };
         } catch (err) {
-          out[i] = { ok: false, error: err && err.message ? err.message : String(err) };
+          settled = { ok: false, error: err && err.message ? err.message : String(err) };
         }
+        if (out) out[i] = settled;
         if (onSettled) {
           try {
-            await onSettled(out[i], i, payloads[i]);
+            await onSettled(settled, i, payloads[i]);
           } catch {
             /* reporting must never kill the run */
           }
@@ -212,6 +219,26 @@ class Pool {
     };
     await Promise.all(Array.from({ length: lanes }, runLane));
     return out;
+  }
+
+  async map(kind, payloads, onSettled) {
+    return this._lanes(kind, payloads, onSettled, true);
+  }
+
+  // THE SAME THING WITHOUT THE ARRAY. map holds every worker result until the
+  // whole run is over, because that is what a caller who wants the array is
+  // asking for. A STREAMING caller — one that reads each result in onSettled
+  // and never looks at the return value — pays for that array anyway, and pays
+  // for it in the one resource a long job cannot spare.
+  //
+  // On 2026-08-22 the owner's first wide sweep died five minutes in with a full
+  // JavaScript heap, 316 units into 123,624. Every long-job caller in this
+  // codebase streams, and every one of them was holding a result per unit that
+  // nothing would ever read. Use forEach unless you actually want the array;
+  // it returns undefined, so a caller who wanted one finds out immediately
+  // rather than reading silent nulls.
+  async forEach(kind, payloads, onSettled) {
+    await this._lanes(kind, payloads, onSettled, false);
   }
 
   abort() {

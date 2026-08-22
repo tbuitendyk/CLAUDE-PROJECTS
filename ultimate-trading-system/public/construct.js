@@ -509,6 +509,79 @@ async function drawData() {
 let sweepPoll = null;
 let tunePoll = null;
 
+// THE FORM KEEPS WHAT IS IN IT (owner, 2026-08-22).
+//
+// drawSweep rebuilds this whole section from scratch, so every control went
+// back to its default on any redraw — switching tab, changing the theme,
+// anything. The owner set up a wide sweep, launched it, pressed the theme
+// button, and came back to an empty form with a job running that the screen
+// could no longer describe.
+//
+// Two different things are wanted, and they do not conflict:
+//   * while a job is RUNNING, the form shows THAT JOB's settings, because the
+//     question anyone has in front of a running job is what it is doing;
+//   * with nothing running, the form shows whatever the owner last had in it.
+//
+// The control list is asked of the page rather than kept here. A list would
+// need somebody to remember it when a control is added; a query cannot go
+// stale.
+const SWEEP_FORM_KEY = 'cx-sweepform';
+const sweepControls = () => Array.from(document.querySelectorAll('#view [id^="sw"]'))
+  .filter((e) => e.tagName === 'INPUT' || e.tagName === 'SELECT' || e.tagName === 'TEXTAREA');
+
+function rememberSweepForm() {
+  const o = {};
+  for (const e of sweepControls()) o[e.id] = e.type === 'checkbox' ? e.checked : e.value;
+  try { localStorage.setItem(SWEEP_FORM_KEY, JSON.stringify(o)); } catch (_) { /* private window */ }
+}
+
+function restoreSweepForm() {
+  let o = null;
+  try { o = JSON.parse(localStorage.getItem(SWEEP_FORM_KEY) || 'null'); } catch (_) { o = null; }
+  if (!o || typeof o !== 'object') return false;
+  for (const e of sweepControls()) {
+    if (!Object.prototype.hasOwnProperty.call(o, e.id)) continue;
+    if (e.type === 'checkbox') e.checked = !!o[e.id];
+    else e.value = o[e.id] == null ? '' : String(o[e.id]);
+  }
+  return true;
+}
+
+// A run's stored settings, written back into the boxes. ONE mapping, used by
+// "copy settings into the form" on the Boards section and by the running-job
+// display here — two copies of it would be two answers to the same question.
+function fillSweepForm(p, description) {
+  const q = (id) => document.querySelector(id);
+  const setV = (id, v) => { const e = q(id); if (e != null && v != null) e.value = v; };
+  const setC = (id, v) => { const e = q(id); if (e) e.checked = !!v; };
+  setV('#swUni', (p.universe || []).join(','));
+  setC('#swSingles', p.sizes && p.sizes.singles); setC('#swDoubles', p.sizes && p.sizes.doubles);
+  setC('#swTriples', p.sizes && p.sizes.triples); setC('#swAll', p.allLoaded);
+  setV('#swStart', p.startMonth); setV('#swEnd', p.endMonth);
+  setV('#swGeom', p.set && p.set.geometry); setV('#swDec', p.set && p.set.decision);
+  setV('#swBand', p.set && (p.set.band === 'auto' ? 'auto' : p.set.band));
+  setC('#swWeekdays', p.set && p.set.weekdaysOnly);
+  setC('#swPermGeom', p.permute && p.permute.geometry); setC('#swPermDec', p.permute && p.permute.decision);
+  setC('#swPermBand', p.permute && p.permute.band); setC('#swPermWk', p.permute && p.permute.weekdays);
+  setV('#swLayout', p.windowLayout); setV('#swK', p.promoteK); setV('#swNulls', p.labelShiftReps);
+  setV('#swMinTr', p.minTrades); setC('#swTrail', p.trailing);
+  const d = p.declared;
+  setC('#swDecOn', !!d);
+  if (d) {
+    setV('#swDecEntry', d.entry); setV('#swDecGate', d.gate); setV('#swDecD', d.dMult);
+    setV('#swDecT', d.tHours); setV('#swDecTrail', d.trailMult == null ? '' : d.trailMult);
+    setV('#swDecArm', d.armMult == null ? 0 : d.armMult);
+    setV('#swDecQ6', d.quorumSingles); setV('#swDecQ8', d.quorumContexts);
+  }
+  const dp = p.declaredPermute || {};
+  for (const [k, id] of [['entry', '#swPermDecEntry'], ['gate', '#swPermDecGate'], ['dMult', '#swPermDecD'],
+    ['tHours', '#swPermDecT'], ['trail', '#swPermDecTrail'], ['arm', '#swPermDecArm'], ['agree', '#swPermDecAgree']]) setC(id, dp[k]);
+  // description travels only when the caller asks for it: a RE-RUN states its
+  // own purpose, but a running job's own description is exactly what somebody
+  // looking at a running job wants to read.
+  setV('#swDesc', description == null ? '' : description);
+}
+
 async function drawSweep() {
   clearTimeout(sweepPoll); sweepPoll = null;
   const [camp, names, batches] = await Promise.all([
@@ -895,6 +968,28 @@ async function drawSweep() {
   ['input', 'change'].forEach((ev) => $('#swNulls').addEventListener(ev, syncNullCost));
   syncNullCost();
 
+  // ---- what is in the boxes survives a redraw (see the top of this section) ----
+  const runDoc = running ? await apiOr(`api/batch/${encodeURIComponent(running.id)}`, null) : null;
+  if (runDoc) fillSweepForm(runDoc.params || {}, runDoc.description || (runDoc.params || {}).description || '');
+  else restoreSweepForm();
+  // the dependent controls follow whatever is now in the boxes, not the
+  // defaults they were rendered with
+  syncDecEntry(); syncDecQuorum(); syncDecCount(); syncNullCost();
+  if (runDoc) {
+    const m0 = $('#swMsg');
+    if (m0) {
+      m0.textContent = `these are the settings of the job running now (${runDoc.id}). `
+        + 'The form goes back to your own the moment it finishes.';
+    }
+  } else {
+    // Only remember the owner's OWN form. Writing while the running job's
+    // settings are on display would overwrite the draft they left here.
+    for (const e of sweepControls()) {
+      e.addEventListener('change', rememberSweepForm);
+      e.addEventListener('input', rememberSweepForm);
+    }
+  }
+
   $('#swStart2').onclick = async () => {
     const uni = $('#swUni').value.trim();
     const bandRaw = $('#swBand').value.trim().toLowerCase();
@@ -965,7 +1060,10 @@ async function drawSweep() {
     if (!confirm('Stop the running batch job?')) return;
     const out = await tryPost('api/abort', {}); if (out) $('#swMsg').textContent = 'abort requested';
   };
-  if (running) pollProgress();
+  // ALWAYS, not only while something is going: with nothing running this panel
+  // is where a job that ended badly gets reported, and it can only report it
+  // if it is asked.
+  pollProgress();
   // ONE CHAIN. Every visit to this section used to start another poller, and
   // each re-armed itself against the freshly rendered element, so it never hit
   // the bail-out — five visits meant five chains hitting the box every 5s
@@ -973,9 +1071,24 @@ async function drawSweep() {
   // job more often than it could plausibly need (audit 2026-08-17).
   async function pollProgress() {
     const bl = await apiOr('api/batches', null);
-    const run = ((bl && (bl.batches || bl)) || []).find((b) => b.status === 'running');
+    const rows = (bl && (bl.batches || bl)) || [];
+    const run = rows.find((b) => b.status === 'running');
     const el = $('#swProg'); if (!el) return;
-    if (!run) { el.innerHTML = '<span class="muted">No job running.</span>'; return; }
+    if (!run) {
+      // A JOB THAT ENDED BADLY SAYS SO HERE (owner, 2026-08-22). The owner's
+      // first wide sweep stopped after five minutes and this panel said "No
+      // job running." — the same words it says when nothing was ever started.
+      // The one screen that could have told them apart was the one they had no
+      // reason to go and look at.
+      const last = rows.slice().sort((a, b) => String(b.startedAt || '').localeCompare(String(a.startedAt || '')))[0];
+      const bad = last && (last.status === 'interrupted' || last.status === 'error');
+      el.innerHTML = bad
+        ? `<div class="panel" style="border-color:var(--warn);margin:0"><b style="color:var(--warn)">The last job did not finish: ${esc(last.id)} — ${esc(last.status)}.</b>
+           <div style="margin-top:.3rem">${esc(last.error || 'no reason was recorded')}</div>
+           <div class="muted" style="margin-top:.4rem">Open it on the Boards section to see what it managed to record.</div></div>`
+        : '<span class="muted">No job running.</span>';
+      return;
+    }
     const doc = await apiOr(`api/batch/${encodeURIComponent(run.id)}`, null);
     const perf = (doc && doc.perf) || {};
     el.innerHTML = `<h3 style="margin-top:0">Running: ${esc(run.id)}</h3>
@@ -1197,10 +1310,15 @@ async function drawBoards() {
         ${list.map((b) => `<option value="${esc(b.id)}" ${b.id === pickedRun ? 'selected' : ''}>${esc(b.id)} (${esc(b.status)})</option>`).join('')}
       </select></label>
       <button id="bOpen">Open</button>
+      <button id="bDelete" class="danger" ${doc ? '' : 'disabled'} title="permanently removes the open run and the model and tuning files that belong to it. It refuses the run that is going right now — stop it first — and any run a greenlight names as its evidence. You are shown exactly what will go before anything is deleted.">Delete run…</button>
       ${doc ? `<span class="note">campaign: ${esc((doc.params && doc.params.campaign) || '—')} · ${esc(doc.status)} · ${(doc.params && doc.params.windowLayout) || ''}</span>` : ''}
-    </div></div>
+    </div>
+    <div id="bDelOut"></div></div>
     <div id="bBody">${!doc ? '<div class="panel empty">Open a run to see its board.</div>' : `
-      ${doc.params && doc.params.description ? `<div class="panel note">${esc(doc.params.description)}</div>` : ''}
+      ${doc.status === 'interrupted' || doc.status === 'error' ? `<div class="panel" style="border-color:var(--warn)">
+        <b style="color:var(--warn)">This run did not finish — ${esc(doc.status)}.</b>
+        <div style="margin-top:.3rem">${esc(doc.error || 'no reason was recorded')}</div></div>` : ''}
+      ${doc.description || (doc.params && doc.params.description) ? `<div class="panel note">${esc(doc.description || doc.params.description)}</div>` : ''}
       <div class="panel"><div class="row" style="align-items:flex-start">
         <label class="f" style="flex:1">notes — why this run exists, what it showed, what it cost
           <textarea id="bNotes" rows="3" style="width:100%;font:inherit" ${doc.status === 'running' ? 'disabled' : ''}>${esc(doc.notes || '')}</textarea></label>
@@ -1284,6 +1402,53 @@ async function drawBoards() {
         <pre>${esc(JSON.stringify(doc.params || {}, null, 1))}</pre></details></div>`}
     </div>`;
   $('#bOpen').onclick = () => { pickedRun = $('#bPick').value || null; localStorage.setItem('cx-run', pickedRun || ''); pickedDoc = null; drawBoards(); };
+  // DELETING A RUN takes the model and tuning files that hang off it, so the
+  // owner is shown exactly what that is BEFORE answering — the same two-step
+  // the campaign delete uses, and for the same reason: a count given after the
+  // fact is no use to anybody.
+  const bdel = $('#bDelete');
+  if (bdel) bdel.onclick = async () => {
+    const id = pickedRun;
+    const box = $('#bDelOut');
+    if (!id) { box.innerHTML = '<p class="note">open a run first</p>'; return; }
+    const found = await apiOr(`api/run-contents?id=${encodeURIComponent(id)}`, null);
+    if (!found) { box.innerHTML = '<p class="note">could not read what that run holds — nothing deleted</p>'; return; }
+
+    if (found.locked) {
+      box.innerHTML = `<div class="panel" style="border-color:var(--neg);margin-top:.5rem"><b style="color:var(--neg)">“${esc(found.id)}” cannot be deleted — nothing has been deleted.</b>
+        <div style="margin-top:.3rem">${esc(found.lockedWhy || '')}</div>
+        ${found.greenlights.length ? `<ul style="margin:.3rem 0 0 1.1rem">${found.greenlights.map((g) =>
+    `<li>${esc(g.id)}${g.revoked ? ' (nuked)' : ''}</li>`).join('')}</ul>` : ''}</div>`;
+      return;
+    }
+
+    const c = found.counts;
+    const lines = [
+      ['rows on the board', c.leaderRows],
+      ['scored rows', c.slimRows],
+      ['replication rows', c.replicationRows],
+      ['saved model files', c.modelFiles],
+      ['tuning files', c.tuningFiles],
+    ].filter(([, n]) => n > 0);
+    box.innerHTML = `<div class="panel" style="border-color:var(--warn);margin-top:.5rem"><b style="color:var(--warn)">Deleting “${esc(found.id)}” will permanently remove:</b>
+      <ul style="margin:.3rem 0 0 1.1rem"><li>the run itself${found.campaign ? ` (campaign ${esc(found.campaign)})` : ''}</li>
+      ${lines.map(([what, n]) => `<li><b>${n}</b> ${esc(what)}</li>`).join('')}</ul>
+      <div class="muted" style="margin-top:.4rem">This cannot be undone.</div></div>`;
+
+    // Painted BEFORE the box appears: prompt() blocks the browser, so without
+    // this the list of what is about to go is only visible after the answer.
+    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(r, 0))));
+
+    const typed = prompt('Type the run id exactly to delete it and everything listed on the page behind this box:'
+      + `\n\n${found.id}\n\n`
+      + 'Hit Cancel to review what the run holds prior to deleting.');
+    if (typed === null) { box.innerHTML += '<p class="note">cancelled — nothing deleted</p>'; return; }
+    if (typed.trim() !== found.id) { box.innerHTML += '<p class="note">that did not match the id — nothing deleted</p>'; return; }
+    const out = await tryPost('api/run/delete', { id: found.id, confirm: found.id });
+    if (!out) return;
+    pickedRun = null; pickedDoc = null; localStorage.setItem('cx-run', '');
+    drawBoards();
+  };
   const nsave = $('#bNotesSave');
   if (nsave) nsave.onclick = async () => {
     // re-render from the RESPONSE: the stored value comes back truncated, and
@@ -1297,35 +1462,12 @@ async function drawBoards() {
   };
   const csb = $('#bCopySettings');
   if (csb) csb.onclick = () => {
-    const p = doc.params || {};
-    const setV = (id, v) => { const e = $(id); if (e != null && v != null) e.value = v; };
-    const setC = (id, v) => { const e = $(id); if (e) e.checked = !!v; };
     tab = 'sweep'; localStorage.setItem('cx-tab', tab);
     draw().then(() => {
-      setV('#swUni', (p.universe || []).join(','));
-      setC('#swSingles', p.sizes && p.sizes.singles); setC('#swDoubles', p.sizes && p.sizes.doubles);
-      setC('#swTriples', p.sizes && p.sizes.triples); setC('#swAll', p.allLoaded);
-      setV('#swStart', p.startMonth); setV('#swEnd', p.endMonth);
-      setV('#swGeom', p.set && p.set.geometry); setV('#swDec', p.set && p.set.decision);
-      setV('#swBand', p.set && (p.set.band === 'auto' ? 'auto' : p.set.band));
-      setC('#swWeekdays', p.set && p.set.weekdaysOnly);
-      setC('#swPermGeom', p.permute && p.permute.geometry); setC('#swPermDec', p.permute && p.permute.decision);
-      setC('#swPermBand', p.permute && p.permute.band); setC('#swPermWk', p.permute && p.permute.weekdays);
-      setV('#swLayout', p.windowLayout); setV('#swK', p.promoteK); setV('#swNulls', p.labelShiftReps);
-      setV('#swMinTr', p.minTrades); setC('#swTrail', p.trailing);
-      const d = p.declared;
-      setC('#swDecOn', !!d);
-      if (d) {
-        setV('#swDecEntry', d.entry); setV('#swDecGate', d.gate); setV('#swDecD', d.dMult);
-        setV('#swDecT', d.tHours); setV('#swDecTrail', d.trailMult == null ? '' : d.trailMult);
-        setV('#swDecArm', d.armMult == null ? 0 : d.armMult);
-        setV('#swDecQ6', d.quorumSingles); setV('#swDecQ8', d.quorumContexts);
-      }
-      const dp = p.declaredPermute || {};
-      for (const [k, id] of [['entry', '#swPermDecEntry'], ['gate', '#swPermDecGate'], ['dMult', '#swPermDecD'],
-        ['tHours', '#swPermDecT'], ['trail', '#swPermDecTrail'], ['arm', '#swPermDecArm'], ['agree', '#swPermDecAgree']]) setC(id, dp[k]);
-      // intent never copies — a re-run states its own purpose
-      setV('#swDesc', '');
+      // '' for the description: intent never copies — a re-run states its own
+      // purpose. Everything else comes from the one shared mapping.
+      fillSweepForm(doc.params || {}, '');
+      rememberSweepForm();
       const m = $('#swMsg');
       if (m) m.textContent = `form filled from ${doc.id} — nothing launched. Say why this re-run exists, then Start sweep.`;
     });

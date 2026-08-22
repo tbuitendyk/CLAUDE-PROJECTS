@@ -366,6 +366,32 @@ app.post('/api/campaign/delete', csrfGuard, (req, res) => {
   }
 });
 
+// WHAT DELETING ONE RUN WOULD TAKE, and whether anything is standing on it.
+app.get('/api/run-contents', (req, res) => {
+  try { res.json(batch.runContents(String(req.query.id || ''))); }
+  catch (err) { res.status(400).json({ error: err.message }); }
+});
+
+// DELETE ONE RUN. Guarded exactly like the campaign delete above and for the
+// same reason — it cannot be undone — so the id comes twice. It refuses the
+// running one by name (the owner's rule: they restart that themselves) and any
+// run a greenlight names as its evidence.
+app.post('/api/run/delete', csrfGuard, (req, res) => {
+  const body = req.body || {};
+  if (!body.id || body.confirm !== body.id) {
+    return res.status(400).json({
+      error: 'deleting a run needs the id given twice — {"id": X, "confirm": X}. '
+        + 'A request that does not say the id back is refused, because this cannot be undone.',
+    });
+  }
+  try {
+    res.json(batch.deleteBatch(body.id));
+  } catch (err) {
+    res.status(err.code === 'RUN_LOCKED' ? 409 : 400)
+      .json({ error: err.message, locked: err.code === 'RUN_LOCKED', why: (err.locked || {}).lockedWhy || null });
+  }
+});
+
 app.post('/api/campaign', (req, res) => {
   try {
     res.json({ name: campaign.setCampaign((req.body || {}).name) });

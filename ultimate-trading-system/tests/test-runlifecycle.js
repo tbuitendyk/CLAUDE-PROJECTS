@@ -1,0 +1,272 @@
+// A RUN THAT STOPS MUST SAY SO, AND A RUN THAT IS FINISHED WITH MUST BE
+// REMOVABLE (owner, 2026-08-22).
+//
+// What happened: the owner started their first wide sweep — 123,624 units, 100
+// null boards — pressed the theme button, and came back to an empty form. A few
+// minutes later the job was gone. The Sweep section said "No job running.",
+// which is the same thing it says when nothing was ever started.
+//
+// The service had died of a full JavaScript heap, five minutes in, 316 units
+// through. Two things put it there and both are fixed here:
+//
+//   * pool.map keeps every worker result until the run ends. Every long-job
+//     caller in this codebase streams its results through onSettled and never
+//     looks at the array — so all six were holding one result per unit that
+//     nothing would ever read. pool.forEach is the same thing without the array.
+//
+//   * saveBatch rewrites the WHOLE run document, pretty-printed, and the
+//     per-unit callbacks called it once per unit. This run's document was 2 MB
+//     (its declared set alone is 1.4 MB), so finishing would have meant
+//     building a 2 MB string 123,624 times. Progress saves are throttled now;
+//     anything that ENDS something still writes at once.
+//
+// And two things about being told:
+//
+//   * an interrupted run records WHERE it got to and WHY it stopped, on the
+//     record, because by the time anyone looks the thing that stopped it is
+//     gone from the screen;
+//   * the Sweep section reports a job that ended badly instead of saying the
+//     same words it says for no job at all.
+//
+// Watched failing 2026-08-22: reverting any one of the four fails its own test
+// below; putting `saveBatch` back in the per-unit callbacks fails
+// perUnitTicksDoNotRewriteTheWholeDocumentEveryTime.
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
+const { assert } = require('./helpers');
+
+const ROOT = path.join(__dirname, '..');
+const BATCH_SRC = fs.readFileSync(path.join(ROOT, 'lib', 'batch.js'), 'utf8');
+const POOL_SRC = fs.readFileSync(path.join(ROOT, 'lib', 'pool.js'), 'utf8');
+const UI = fs.readFileSync(path.join(ROOT, 'public', 'construct.js'), 'utf8');
+const SERVER = fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8');
+
+// Same throwaway data folder the campaign delete tests use: the batch store
+// lives at a fixed path under data/, so the module is re-required against a
+// scratch copy.
+function withScratch(fn) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'uts-run-'));
+  const realData = path.join(ROOT, 'data');
+  const stash = `${realData}.stash-${process.pid}`;
+  const hadData = fs.existsSync(realData);
+  if (hadData) fs.renameSync(realData, stash);
+  fs.mkdirSync(path.join(realData, 'batches'), { recursive: true });
+  fs.mkdirSync(path.join(realData, 'models'), { recursive: true });
+  fs.mkdirSync(path.join(realData, 'ht'), { recursive: true });
+  const gdir = path.join(dir, 'gl'); const sdir = path.join(dir, 'su');
+  fs.mkdirSync(gdir); fs.mkdirSync(sdir);
+  const prevG = process.env.GC_GREENLIGHTS_DIR; const prevS = process.env.GC_SETUPS_DIR;
+  process.env.GC_GREENLIGHTS_DIR = gdir; process.env.GC_SETUPS_DIR = sdir;
+  const mods = ['lib/campaign', 'lib/batch', 'lib/live/greenlight', 'lib/live/setups'];
+  mods.forEach((m) => { delete require.cache[require.resolve(path.join(ROOT, m))]; });
+  try {
+    return fn({ gdir, sdir, realData, batch: require(path.join(ROOT, 'lib/batch')) });
+  } finally {
+    if (prevG === undefined) delete process.env.GC_GREENLIGHTS_DIR; else process.env.GC_GREENLIGHTS_DIR = prevG;
+    if (prevS === undefined) delete process.env.GC_SETUPS_DIR; else process.env.GC_SETUPS_DIR = prevS;
+    fs.rmSync(realData, { recursive: true, force: true });
+    if (hadData) fs.renameSync(stash, realData);
+    fs.rmSync(dir, { recursive: true, force: true });
+    mods.forEach((m) => { delete require.cache[require.resolve(path.join(ROOT, m))]; });
+  }
+}
+
+const writeRun = (realData, id, over) => fs.writeFileSync(path.join(realData, 'batches', `${id}.json`),
+  JSON.stringify({
+    id, kind: 'bracketlab', status: 'done', startedAt: '2026-01-01T00:00:00Z',
+    params: { campaign: 'c' }, runs: [], leaders: [], ...(over || {}),
+  }));
+const writeGl = (gdir, id, runId) => fs.writeFileSync(path.join(gdir, `${id}.json`),
+  JSON.stringify({ id, campaign: 'c', createdUtc: '2026-01-02T00:00:00Z', name: 'g', why: 'w',
+    sourceRun: { id: runId }, configSnapshot: {} }));
+
+module.exports = {
+  // ---------------------------------------------------------- the heap itself
+  // THE defect. A streaming caller must not be handed an array it never reads.
+  async forEachKeepsNothingAndMapStillCollects() {
+    const { Pool } = require('../lib/pool');
+    const pool = new Pool(1);            // inline lane: no worker threads in tests
+    try {
+      const payloads = [1, 2, 3, 4, 5].map((n) => n);
+      const seen = [];
+      const nothing = await pool.forEach('ping', payloads, (settled, i) => { seen.push(i); });
+      assert.strictEqual(nothing, undefined,
+        'forEach must return nothing — a caller who wanted the array has to find out at once, not read silent nulls');
+      assert.deepStrictEqual(seen, [0, 1, 2, 3, 4], 'every payload still reaches onSettled, in order');
+
+      const collected = await pool.map('ping', payloads);
+      assert.strictEqual(collected.length, 5, 'map still hands back one slot per payload');
+      for (const c of collected) assert.strictEqual(c.ok, true, 'and each slot carries its result');
+    } finally { pool.abort(); }
+  },
+
+  // Every long job in the codebase streams. If one goes back to map it is
+  // holding a result per unit again, and the next wide sweep dies the same way.
+  everyLongJobStreamsInsteadOfCollecting() {
+    const strays = [];
+    const re = /await pool\.map\('(\w+)'/g;
+    let m = re.exec(BATCH_SRC);
+    while (m) { strays.push(m[1]); m = re.exec(BATCH_SRC); }
+    assert.deepStrictEqual(strays, [],
+      `these long jobs collect a result per unit they never read: ${strays.join(', ')} — use pool.forEach`);
+    for (const kind of ['unit', 'htPass', 'nullRotation', 'htTwoFold']) {
+      assert.ok(new RegExp(`pool\\.forEach\\('${kind}'`).test(BATCH_SRC),
+        `the ${kind} job must stream its results, not collect them`);
+    }
+    // and the two must not drift apart: one lane implementation, two doors
+    assert.ok(/async _lanes\(kind, payloads, onSettled, collect\)/.test(POOL_SRC),
+      'map and forEach must share one lane implementation, or they will diverge on ordering or abort');
+  },
+
+  // The other half of the heap: a 2 MB document rewritten per unit.
+  perUnitTicksDoNotRewriteTheWholeDocumentEveryTime() {
+    // every bracketPerfTick site is a per-unit tick and must use the throttle
+    const ticks = BATCH_SRC.split('bracketPerfTick(doc);').slice(1);
+    assert.ok(ticks.length >= 3, 'the sweep, promote and null-replay ticks must all still exist');
+    ticks.forEach((after, i) => {
+      const next = after.slice(0, 60);
+      assert.ok(/saveProgress\(doc\)/.test(next),
+        `per-unit tick ${i + 1} still calls saveBatch — a 2 MB document written once per unit is what filled the heap`);
+    });
+    assert.ok(/const PROGRESS_SAVE_MS = \d+;/.test(BATCH_SRC), 'the throttle interval must be named and findable');
+    // one clock: a full save counts as the last write
+    assert.ok(/lastSaveAt = Date\.now\(\);/.test(BATCH_SRC.slice(BATCH_SRC.indexOf('function saveBatch'))),
+      'saveBatch must wind the same clock saveProgress reads, or there are two notions of "last written"');
+    // and a failure is never throttled away
+    const rf = BATCH_SRC.slice(BATCH_SRC.indexOf('function recordFailure'), BATCH_SRC.indexOf('function recordFailure') + 700);
+    assert.ok(/lastSaveAt = 0;/.test(rf),
+      'a failure must reach disk at the next tick — a failure nobody can read is a failure nobody knows happened');
+  },
+
+  // The ceiling the box runs under has to be the one this service is allowed,
+  // not the one node picks for itself.
+  theServiceRunsWithAHeapCeilingThatMatchesItsAllowance() {
+    const unit = fs.readFileSync(path.join(ROOT, 'deploy', 'ultimate-trading-system.service'), 'utf8');
+    const m = unit.match(/--max-old-space-size=(\d+)/);
+    assert.ok(m, 'the unit must set a heap ceiling — node\'s own default is about 1 GB and this service is allowed more');
+    const heapMb = Number(m[1]);
+    const high = unit.match(/MemoryHigh=(\d+)G/);
+    assert.ok(high, 'the unit must still declare MemoryHigh');
+    const highMb = Number(high[1]) * 1024;
+    assert.ok(heapMb < highMb,
+      `the heap ceiling (${heapMb} MB) must sit below MemoryHigh (${highMb} MB) — node's non-heap footprint needs room too`);
+    assert.ok(heapMb > 1024,
+      `a ceiling of ${heapMb} MB is no better than node's own default — the sweep died at 1024 MB`);
+  },
+
+  // ------------------------------------------------------------- being told
+  // A run that stopped must leave behind what it was doing when it stopped.
+  anInterruptedRunRecordsWhereItGotToAndWhy() {
+    const { markInterrupted } = require('../lib/batch');
+    const doc = markInterrupted({
+      id: 'r1', status: 'running', progress: 'slim 316/123624',
+      perf: { phase: 'slim', unitsDone: 316, unitsTotal: 123624 },
+    });
+    assert.strictEqual(doc.status, 'interrupted');
+    assert.ok(doc.error, 'an interrupted run with no reason recorded is indistinguishable from one that never started');
+    assert.ok(/316\/123624/.test(doc.error), 'the reason must say how far it got');
+    assert.strictEqual(doc.interruptedWhere, 'slim 316/123624', 'and record it as its own field, not only inside a sentence');
+    assert.ok(/start it again/i.test(doc.error), 'and say what the owner can do about it');
+    assert.ok(doc.finishedAt, 'and when it ended');
+  },
+
+  // The reason has to travel to the picker, or the only screen that could show
+  // it is the one nobody has a reason to open.
+  theRunListCarriesHowARunEnded() {
+    const { listRow } = require('../lib/batch');
+    const row = listRow({ id: 'r1', status: 'interrupted', startedAt: 'x', error: 'it stopped', interruptedWhere: 'slim 1/2' });
+    assert.strictEqual(row.error, 'it stopped');
+    assert.strictEqual(row.interruptedWhere, 'slim 1/2');
+    // and the screen must actually read it
+    assert.ok(/The last job did not finish/.test(UI),
+      'the Sweep section must report a job that ended badly, not say the same words it says for no job at all');
+    assert.ok(/This run did not finish/.test(UI),
+      'and the run itself must say so when it is opened');
+  },
+
+  // -------------------------------------------------------------- deleting
+  async aRunCanBeDeletedWithItsModelAndTuningFiles() {
+    withScratch(({ realData, batch }) => {
+      writeRun(realData, 'run-a');
+      fs.mkdirSync(path.join(realData, 'models', 'run-a'), { recursive: true });
+      fs.writeFileSync(path.join(realData, 'models', 'run-a', 'm1.json'), '{}');
+      fs.mkdirSync(path.join(realData, 'ht', 'run-a'), { recursive: true });
+      fs.writeFileSync(path.join(realData, 'ht', 'run-a', 't1.json'), '{}');
+
+      const found = batch.runContents('run-a');
+      assert.strictEqual(found.locked, false, 'a finished run nothing stands on is deletable');
+      assert.strictEqual(found.counts.modelFiles, 1);
+      assert.strictEqual(found.counts.tuningFiles, 1);
+
+      batch.deleteBatch('run-a');
+      assert.ok(!fs.existsSync(path.join(realData, 'batches', 'run-a.json')), 'the run file is still there');
+      assert.ok(!fs.existsSync(path.join(realData, 'models', 'run-a')), 'its saved models are still there');
+      assert.ok(!fs.existsSync(path.join(realData, 'ht', 'run-a')), 'its tuning files are still there');
+    });
+  },
+
+  // THE ONE THE OWNER ASKED FOR BY NAME: they want to restart that sweep
+  // themselves, and a file being deleted under a job that is writing it is how
+  // a run half-exists.
+  async theRunningRunIsRefused() {
+    withScratch(({ realData, batch }) => {
+      writeRun(realData, 'run-live', { status: 'running' });
+      const found = batch.runContents('run-live');
+      assert.strictEqual(found.locked, true, 'the running run must be locked');
+      assert.ok(/going right now/.test(found.lockedWhy), 'and say why in words the owner can act on');
+      assert.throws(() => batch.deleteBatch('run-live'), /cannot be deleted/);
+      assert.ok(fs.existsSync(path.join(realData, 'batches', 'run-live.json')), 'the running run was deleted anyway');
+    });
+  },
+
+  // A greenlight names the run its evidence came from. Deleting the run would
+  // leave something that may be trading pointing at evidence that is gone.
+  async aRunAGreenlightStandsOnIsRefused() {
+    withScratch(({ realData, gdir, batch }) => {
+      writeRun(realData, 'run-ev');
+      writeGl(gdir, 'gl-1', 'run-ev');
+      const found = batch.runContents('run-ev');
+      assert.strictEqual(found.locked, true, 'a run a greenlight names must be locked');
+      assert.strictEqual(found.greenlights.length, 1, 'and the greenlight must be named, not just counted');
+      assert.throws(() => batch.deleteBatch('run-ev'), /cannot be deleted/);
+      assert.ok(fs.existsSync(path.join(realData, 'batches', 'run-ev.json')), 'a run with evidence on it was deleted anyway');
+    });
+  },
+
+  // The route is guarded like the other thing on this system that cannot be
+  // undone: the id comes back twice or nothing happens.
+  theDeleteRouteDemandsTheIdTwiceAndIsGuarded() {
+    const at = SERVER.indexOf("app.post('/api/run/delete'");
+    assert.ok(at > 0, 'the run-delete route must exist');
+    const route = SERVER.slice(at, at + 1200);
+    assert.ok(/csrfGuard/.test(route), 'it must be guarded like the other unrepeatable actions');
+    assert.ok(/body\.confirm !== body\.id/.test(route), 'the id must be given twice or nothing is deleted');
+    assert.ok(/RUN_LOCKED/.test(route), 'a refusal must come back as a refusal, not a generic failure');
+    // and the screen must offer it, with the same read-before-you-answer order
+    assert.ok(/id="bDelete"/.test(UI), 'the Boards section must offer the delete');
+    const h = UI.slice(UI.indexOf("$('#bDelete')"), UI.indexOf("$('#bDelete')") + 3000);
+    assert.ok(h.indexOf('will permanently remove') < h.indexOf('requestAnimationFrame'),
+      'the list of what goes must be written before the page is given a chance to paint');
+    assert.ok(h.indexOf('requestAnimationFrame') < h.indexOf('const typed = prompt('),
+      'and painted before the box blocks the browser');
+  },
+
+  // ------------------------------------------------------- the form remembers
+  theSweepFormSurvivesARedrawAndShowsTheRunningJob() {
+    assert.ok(/const SWEEP_FORM_KEY = /.test(UI), 'the form must keep what is in it across a redraw');
+    assert.ok(/document\.querySelectorAll\('#view \[id\^="sw"\]'\)/.test(UI),
+      'the control list must be asked of the page — a list written here needs remembering when a control is added');
+    assert.ok(/if \(runDoc\) fillSweepForm\(runDoc\.params \|\| \{\}, /.test(UI),
+      'with a job running, the form must show THAT job\'s settings');
+    assert.ok(/else restoreSweepForm\(\);/.test(UI),
+      'with nothing running, it must show whatever the owner last had in it');
+    // and it must not overwrite the owner's draft with the running job's values
+    const at = UI.indexOf('else restoreSweepForm();');
+    const after = UI.slice(at, at + 1200);
+    assert.ok(/if \(runDoc\) \{/.test(after) && /\} else \{/.test(after),
+      'remembering must be wired only when the form is the owner\'s own');
+    assert.ok(after.indexOf('addEventListener(\'change\', rememberSweepForm)') > after.indexOf('} else {'),
+      'the form is only remembered while it is the owner\'s, never while it mirrors a running job');
+  },
+};

@@ -49,6 +49,22 @@ function markInterrupted(doc) {
   doc.status = 'interrupted';
   if (doc.nullTest && doc.nullTest.status === 'running') doc.nullTest.status = 'interrupted';
   doc.finishedAt = doc.finishedAt || new Date().toISOString();
+  // SAY WHERE IT GOT TO, AND SAY IT ON THE RECORD (owner, 2026-08-22). This
+  // used to blank doc.progress and set the status, and that was the whole
+  // report: the owner's five-hour sweep stopped after five minutes and the
+  // only thing anywhere that said so was one word in a dropdown. A run that
+  // ends has to leave behind what it was doing when it ended, because by the
+  // time anyone looks, the thing that ended it is gone from the screen.
+  const perf = doc.perf || {};
+  const where = perf.unitsTotal
+    ? `${perf.phase || 'running'} ${perf.unitsDone ?? 0}/${perf.unitsTotal}`
+    : (doc.progress || 'in progress');
+  doc.interruptedAt = doc.interruptedAt || doc.finishedAt;
+  doc.interruptedWhere = doc.interruptedWhere || where;
+  doc.error = doc.error
+    || `the service stopped while this run was going — it was at ${where}. `
+    + 'Nothing it had already finished is lost, but the run did not complete and cannot be resumed: '
+    + 'start it again from the Sweep section.';
   doc.progress = '';
   return doc;
 }
@@ -91,6 +107,10 @@ function atomicWrite(file, data) {
 function recordFailure(doc, key, error) {
   if (doc.failures.length < 200) doc.failures.push({ key, error });
   else doc.failuresDropped = (doc.failuresDropped || 0) + 1;
+  // A failure is not progress. Progress can be a couple of seconds stale and
+  // nothing is lost; a failure that never reached disk is a failure nobody
+  // will ever know happened, so the next tick writes whatever the clock says.
+  lastSaveAt = 0;
 }
 
 // QC 74 (owner law, 2026-08-04): computed records are NEVER deleted. When a
@@ -108,6 +128,36 @@ function batchFile(id) {
   return path.join(BATCH_DIR, `${id}.json`);
 }
 
+// PROGRESS SAVES ARE THROTTLED. RECORD SAVES ARE NOT.
+//
+// saveBatch rewrites the WHOLE run document, pretty-printed, and the per-unit
+// callbacks called it once per unit. That is right when a run is a few hundred
+// units and its document is a few kilobytes. The owner's wide sweep on
+// 2026-08-22 was 123,624 units and its document was 2 MB — its declared set
+// alone is 1.4 MB of JSON — so finishing it would have meant allocating a 2 MB
+// string a hundred and twenty-three thousand times, and building those strings
+// faster than the collector could reclaim them is half of why the service died
+// with a full heap five minutes in.
+//
+// What is traded away: on a hard stop, up to PROGRESS_SAVE_MS of finished units
+// are missing from the file. That is a real loss and it is the right one — the
+// run is marked interrupted either way, and the alternative was a run that
+// could not finish at all. Everything that ENDS something still writes
+// immediately: phase changes, completion, cancellation, failure.
+//
+// ONE CLOCK, and saveBatch itself winds it. Every full save — a phase change,
+// a completion, a failure — counts as the last write, so there is no second
+// notion of "when did this doc last reach disk" to fall out of step with the
+// first, and no start-of-job wiring for a caller to forget.
+const PROGRESS_SAVE_MS = 2000;
+let lastSaveAt = 0;
+
+function saveProgress(doc) {
+  if (Date.now() - lastSaveAt < PROGRESS_SAVE_MS) return false;
+  saveBatch(doc);
+  return true;
+}
+
 function saveBatch(doc) {
   // ATOMIC (QC 75, 2026-08-04): this file IS the run's record and gets
   // rewritten after every unit — a crash mid-write used to leave truncated
@@ -118,6 +168,7 @@ function saveBatch(doc) {
   const tmp = `${file}.tmp${process.pid}-${++saveSeq}`;
   fs.writeFileSync(tmp, JSON.stringify(doc, null, 1));
   fs.renameSync(tmp, file);
+  lastSaveAt = Date.now();
 }
 
 // One picker row from a doc on disk. Pure and exported for the tests:
@@ -147,6 +198,12 @@ function listRow(d) {
     finishedAt: d.finishedAt || null,
     runsDone: runs ? runs.filter((r) => r.status !== 'pending').length : (d.perf?.unitsDone ?? 0),
     runsTotal: runs ? runs.length : (d.perf?.unitsTotal ?? 0),
+    // HOW IT ENDED TRAVELS WITH THE ROW (owner, 2026-08-22). Without this the
+    // picker could say a run was interrupted and nothing anywhere could say
+    // why — and the only screen that would have shown a reason is the one the
+    // owner has to already know to go and open.
+    error: d.error || null,
+    interruptedWhere: d.interruptedWhere || null,
     params: d.params,
   };
 }
@@ -168,6 +225,88 @@ function listBatches() {
     })
     .filter(Boolean)
     .sort((a, b) => (a.startedAt < b.startedAt ? 1 : -1));
+}
+
+// DELETING A RUN (owner order, 2026-08-22). The Boards section had no way to
+// remove one, so the picker grew for ever and a wide sweep that died in its
+// first minutes sat at the top of it looking like a result.
+//
+// Two things it will not do, and both matter:
+//   * the RUNNING one. The owner asked for this by name — they want to restart
+//     that sweep themselves, and deleting the file out from under a job that
+//     is writing it is how a run half-exists.
+//   * a run something is standing on. A greenlight names the run its evidence
+//     came from, and a setup on the Trade tab names the greenlight. Deleting
+//     the run would leave a thing that is trading pointing at evidence that no
+//     longer exists — the same fault the campaign lock was written to stop, so
+//     it is the same rule here.
+function runContents(id) {
+  const doc = getBatch(id);
+  if (!doc) throw new Error(`no run called "${id}"`);
+
+  const greenlights = [];
+  try {
+    for (const g of require('./live/greenlight').listGreenlights()) {
+      if (((g.sourceRun || {}).id || null) !== doc.id) continue;
+      greenlights.push({ id: g.id, revoked: !!g.revoked });
+    }
+  } catch (_) { /* live modules absent in some test contexts */ }
+
+  const glIds = new Set(greenlights.map((g) => g.id));
+  const setups = [];
+  try {
+    for (const st of require('./live/setups').listSetups()) {
+      if (!glIds.has(st.provenanceRef)) continue;
+      setups.push({ id: st.id, name: st.name, state: st.state, channel: st.channel || null });
+    }
+  } catch (_) { /* live modules absent in some test contexts */ }
+
+  const dirCount = (sub) => {
+    try { return fs.readdirSync(path.join(__dirname, '..', 'data', sub, doc.id)).length; } catch (_) { return 0; }
+  };
+  const isRunning = doc.status === 'running' || (activeBatch && activeBatch.id === doc.id);
+  return {
+    id: doc.id,
+    status: doc.status,
+    campaign: (doc.params || {}).campaign || null,
+    description: doc.description || (doc.params || {}).description || '',
+    running: !!isRunning,
+    greenlights,
+    setups,
+    counts: {
+      leaderRows: (doc.leaders || []).length,
+      slimRows: (doc.slimResults || []).length,
+      replicationRows: (doc.replication || []).length,
+      greenlights: greenlights.length,
+      setups: setups.length,
+      modelFiles: dirCount('models'),
+      tuningFiles: dirCount('ht'),
+    },
+    locked: !!isRunning || greenlights.length > 0,
+    lockedWhy: isRunning
+      ? 'this run is going right now — stop it first with Stop jobs, then delete it'
+      : (greenlights.length
+        ? `${greenlights.length} greenlight(s) name this run as their evidence`
+        : null),
+  };
+}
+
+function deleteBatch(id) {
+  const found = runContents(id);
+  if (found.locked) {
+    const err = new Error(`"${found.id}" cannot be deleted: ${found.lockedWhy}. Nothing has been deleted.`);
+    err.code = 'RUN_LOCKED';
+    err.locked = found;
+    throw err;
+  }
+  const dataDir = path.join(__dirname, '..', 'data');
+  const rmDir = (d) => { try { fs.rmSync(d, { recursive: true, force: true }); } catch (_) { /* nothing there */ } };
+  const removed = { modelFiles: found.counts.modelFiles, tuningFiles: found.counts.tuningFiles };
+  rmDir(path.join(dataDir, 'models', found.id));
+  rmDir(path.join(dataDir, 'ht', found.id));
+  try { fs.rmSync(batchFile(found.id), { force: true }); } catch (_) { /* already gone */ }
+  removed.run = 1;
+  return { id: found.id, removed };
 }
 
 function getBatch(id) {
@@ -861,7 +1000,7 @@ function htLaunch(p, HT, claim) {
     const t0 = Date.now();
     (async () => {
       const payloads = units.map((u) => ({ combo: p.combo, branch: p.branch, dial: u.dial, split: u.split, params: p }));
-      await pool.map('htPass', payloads, (settled, i) => {
+      await pool.forEach('htPass', payloads, (settled, i) => {
         const u = units[i];
         const key = `${u.dial.age.key}|${u.dial.retune.key}|${u.split.name}`;
         if (settled.ok && settled.value) {
@@ -1029,7 +1168,7 @@ function htGradeLaunch(p, winnerDial, referenceDial, split) {
       combo: p.combo, branch: p.branch, dial: u.dial, split: u.split,
       params: { ...p, nullShiftSeed: u.seed },
     }));
-    await pool.map('htPass', payloads, (settled, i) => {
+    await pool.forEach('htPass', payloads, (settled, i) => {
       const u = units[i];
       if (settled.ok && settled.value) {
         const res = settled.value;
@@ -1458,7 +1597,7 @@ function startBracketLab(params) {
     saveBatch(doc);
 
     const slimPayloads = units.map((u) => ({ combo: u.c, branch: u.b, stage: 'slim', params: p, nullDealSeed: u.nullDealSeed ?? null, ...shiftStance(u) }));
-    await pool.map('unit', slimPayloads, (settled, i) => {
+    await pool.forEach('unit', slimPayloads, (settled, i) => {
       // Cancel keeps every COMPLETED result (QC 74): workers are being
       // terminated, but a unit that already finished is computed record and
       // is pushed like any other — only termination errors are skipped.
@@ -1507,7 +1646,7 @@ function startBracketLab(params) {
       doc.perf.runsDone += slimViewsFor(c.size).length;
       doc.progress = `slim ${doc.perf.unitsDone}/${units.length}: ${c.trade}${c.ctx1 ? '+' + c.ctx1 : ''}${c.ctx2 ? '+' + c.ctx2 : ''}`;
       bracketPerfTick(doc);
-      saveBatch(doc);
+      saveProgress(doc);
     });
 
     // ---- promotion: top-K slim survivors on the full member grid ----
@@ -1524,7 +1663,7 @@ function startBracketLab(params) {
         nullDealSeed: l.nullDealSeed ?? null,
         ...shiftStance(l),
       }));
-      await pool.map('unit', promPayloads, (settled, i) => {
+      await pool.forEach('unit', promPayloads, (settled, i) => {
         // Same rule as the slim stage: cancel never drops a finished result.
         const l = promote[i];
         if (settled.ok && settled.value) {
@@ -1751,7 +1890,7 @@ function startBracketLab(params) {
         doc.perf.runsDone += slimViewsFor(l.size).length * 2;
         doc.progress = `promote ${i + 1}/${promote.length}: ${l.trade}${l.ctx1 ? '+' + l.ctx1 : ''}`;
         bracketPerfTick(doc);
-        saveBatch(doc);
+        saveProgress(doc);
       });
     }
     pool.abort();
@@ -1903,7 +2042,7 @@ function startBracketNull(id, shifts) {
       payloads.push({ combo: c, branch: b, params: p, shiftIndex: s2, nShifts, selection: sel });
     }
     let doneCount = 0;
-    await pool.map('nullRotation', payloads, (settled, i) => {
+    await pool.forEach('nullRotation', payloads, (settled, i) => {
       // Same rule as the sweep stages: cancel never drops a finished
       // rotation — each one banked is a null draw paid for (QC 74).
       doneCount++;
@@ -1924,7 +2063,7 @@ function startBracketNull(id, shifts) {
       doc.perf.runsDone += slimViewsFor(c.size).length * 2;
       doc.progress = `null ${doneCount}/${nShifts} (${doc.nullTest.shifts} distinct banked)`;
       bracketPerfTick(doc);
-      saveBatch(doc);
+      saveProgress(doc);
     });
     pool.abort();
     if (activePool === pool) activePool = null;
@@ -2072,7 +2211,7 @@ function ht2Launch(p, T2, claim) {
 
     (async () => {
       const payloads = geom.folds.map((fold) => ({ combo: p.combo, branch: p.branch, fold, params: p }));
-      await pool.map('htTwoFold', payloads, (settled, i) => {
+      await pool.forEach('htTwoFold', payloads, (settled, i) => {
         // Cancel keeps every COMPLETED fold (QC 74); termination errors are noise.
         if (settled.ok && settled.value) {
           doc.foldRows.push(settled.value);
@@ -2127,6 +2266,8 @@ module.exports = {
   recordFailure,
   declaredQuorumFor,
   getBatch,
+  runContents,
+  deleteBatch,
   listBatches,
   batchRunning,
   cancelActive,

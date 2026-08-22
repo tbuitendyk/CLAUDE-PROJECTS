@@ -46,12 +46,29 @@ module.exports = {
       're-render from the RESPONSE: the stored value comes back truncated');
   },
 
+  // CHANGED 2026-08-22: there is now ONE mapping from a run's stored settings
+  // to the boxes on the Sweep section — fillSweepForm — because two callers
+  // need it. This button copies a run into the form for a re-run, and the
+  // Sweep section itself shows the settings of a job while it is running.
+  // Two copies of that mapping would be two answers to one question, and the
+  // one that drifts would be the one nobody is looking at.
+  //
+  // The intent rule is unchanged and still the point: a RE-RUN states its own
+  // purpose, so this caller passes an empty description. The running-job
+  // display passes the run's own, which is exactly what somebody looking at a
+  // running job wants to read.
   copySettingsFillsTheFormButNeverTheIntent() {
     assert.ok(/id="bCopySettings"/.test(UI), 'the run header must offer copy-settings');
-    assert.ok(/setV\('#swDesc', ''\)/.test(UI),
-      'intent never copies — a re-run states its own purpose');
-    assert.ok(/declaredPermute/.test(UI.slice(UI.indexOf('bCopySettings'))),
+    assert.ok(/function fillSweepForm\(p, description\)/.test(UI),
+      'the run-to-form mapping must live in one named place both callers use');
+    assert.ok(/fillSweepForm\(doc\.params \|\| \{\}, ''\)/.test(UI),
+      'intent never copies — a re-run states its own purpose, so this caller passes no description');
+    const map = UI.slice(UI.indexOf('function fillSweepForm'), UI.indexOf('async function drawSweep'));
+    assert.ok(/declaredPermute/.test(map),
       'the declared permute ticks must copy too, or a re-run is not the same run');
+    for (const id of ['#swUni', '#swGeom', '#swLayout', '#swNulls', '#swTrail', '#swDecOn', '#swDecEntry']) {
+      assert.ok(map.includes(id), `${id} is not carried by the run-to-form mapping — a re-run would not be the same run`);
+    }
   },
 
   theRunSaysWhatItIs() {
