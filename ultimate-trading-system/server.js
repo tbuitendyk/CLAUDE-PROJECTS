@@ -366,6 +366,28 @@ app.post('/api/campaign/delete', csrfGuard, (req, res) => {
   }
 });
 
+// WHETHER A STOPPED RUN CAN BE PICKED UP WHERE IT LEFT OFF, and what is left.
+app.get('/api/resume-contents', (req, res) => {
+  try { res.json(batch.resumeContents(String(req.query.id || ''))); }
+  catch (err) { res.status(400).json({ error: err.message }); }
+});
+
+// PICK UP A STOPPED RUN. Guarded, because it starts hours of work on the box
+// and takes the one job slot. It refuses anything it cannot pick up honestly —
+// a different engine, different price files, a run that finished or is going —
+// and says which.
+app.post('/api/run/resume', csrfGuard, (req, res) => {
+  const id = String((req.body || {}).id || '');
+  if (!id) return res.status(400).json({ error: 'name the run to pick up — {"id": X}' });
+  try {
+    // the SAME shape a fresh launch answers with, so the page reads one contract
+    res.json({ batchId: batch.resumeBracketLab(id) });
+  } catch (err) {
+    res.status(err.code === 'NOT_RESUMABLE' ? 409 : 400)
+      .json({ error: err.message, why: (err.contents || {}).why || [] });
+  }
+});
+
 // WHAT DELETING ONE RUN WOULD TAKE, and whether anything is standing on it.
 app.get('/api/run-contents', (req, res) => {
   try { res.json(batch.runContents(String(req.query.id || ''))); }

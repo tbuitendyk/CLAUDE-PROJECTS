@@ -252,6 +252,142 @@ module.exports = {
       'and painted before the box blocks the browser');
   },
 
+  // -------------------------------------------------------------- resuming
+  // ONE NAME FOR A UNIT. The resume decides what is left by comparing the key
+  // a finished unit recorded against the key the rebuilt unit computes. Three
+  // places used to spell that out separately; if any two disagree the resume
+  // either does work twice or skips work it never did, and nothing on the
+  // screen would say which.
+  aUnitHasExactlyOneName() {
+    const { unitFullKey } = require('../lib/batch');
+    const c = { trade: 'AAAUSDT', ctx1: null, ctx2: null, size: 1 };
+    const b = { geometry: 'daily-3d', decision: 'argmax', band: 'auto', weekdaysOnly: false };
+    assert.strictEqual(unitFullKey(c, b, {}), 'AAAUSDT|||daily-3d|argmax|auto|24-7');
+    assert.strictEqual(unitFullKey(c, b, { nullDealSeed: 7 }), 'AAAUSDT|||daily-3d|argmax|auto|24-7|n7');
+    assert.strictEqual(unitFullKey(c, b, { shiftFrac: 0.5 }), 'AAAUSDT|||daily-3d|argmax|auto|24-7|s0.500');
+    assert.strictEqual(unitFullKey(c, b, { shiftFrac: null, nullDealSeed: null }), unitFullKey(c, b, {}),
+      'an explicit null is the same unit as no mention at all');
+    // and there must be no second copy of the expression left anywhere
+    const copies = (BATCH_SRC.match(/\|s\$\{[a-z]*\.?shiftFrac\.toFixed\(3\)\}/g) || []).length;
+    assert.strictEqual(copies, 1,
+      `the unit-name expression is written ${copies} times — the resume compares those names, so they must be one expression`);
+  },
+
+  // The promoted record has to be able to say which unit it is, or a run that
+  // stopped during the second pass would score all of it again.
+  theCensusRowCarriesItsOwnKey() {
+    const at = BATCH_SRC.indexOf('doc.edgeCensus.push({');
+    assert.ok(at > 0, 'the promote stage must still write a census row');
+    const row = BATCH_SRC.slice(at, at + 2500);
+    assert.ok(/key: l\.key,/.test(row),
+      'a census row that cannot name its unit is a row only its neighbours can place — and the resume cannot use it');
+  },
+
+  // WHAT IT REFUSES is the whole point. Half a board scored against one
+  // history and half against another is not one board, and nothing on the
+  // finished screen would say so.
+  async resumeRefusesEverythingItCannotPickUpHonestly() {
+    withScratch(({ realData, batch }) => {
+      const ENGINE = require('../lib/batch');
+      const good = { status: 'interrupted', params: { campaign: 'c' }, dataManifest: { overallDigest: 'abc123def456' }, plan: { units: 10 }, slimResults: [{ key: 'k1' }] };
+      writeRun(realData, 'ok-run', good);
+      const okRun = batch.resumeContents('ok-run');
+      // the fixture has to name the engine this box is on, or it is refused for
+      // that instead and the test proves nothing
+      assert.ok(okRun.engineNow, 'the engine version must be reported');
+      writeRun(realData, 'ok-run', { ...good, params: { campaign: 'c', engineVersion: okRun.engineNow } });
+      const ok = batch.resumeContents('ok-run');
+      assert.strictEqual(ok.resumable, true, `a stopped sweep must be resumable: ${ok.why.join('; ')}`);
+      assert.strictEqual(ok.unitsScored, 1);
+      assert.strictEqual(ok.unitsLeft, 9);
+
+      const cases = [
+        ['done-run', { ...good, status: 'done' }, /finished/],
+        ['live-run', { ...good, status: 'running' }, /going right now/],
+        ['err-run', { ...good, status: 'error' }, /only one that was interrupted or cancelled/],
+        ['old-run', { ...good, params: { engineVersion: '0.0.1' } }, /engine 0\.0\.1/],
+        ['nofp-run', { ...good, params: { engineVersion: okRun.engineNow }, dataManifest: null }, /never recorded which price files/],
+        ['wf-run', { ...good, kind: 'walkforward' }, /only a sweep/],
+      ];
+      for (const [id, over, expect] of cases) {
+        writeRun(realData, id, over);
+        const r = batch.resumeContents(id);
+        assert.strictEqual(r.resumable, false, `${id} must not be resumable`);
+        assert.ok(r.why.some((w) => expect.test(w)), `${id} refused for the wrong reason: ${r.why.join('; ')}`);
+        assert.throws(() => batch.resumeBracketLab(id), /cannot be picked up/, `${id} must refuse to start`);
+      }
+      assert.ok(ENGINE, 'engine module loaded');
+    });
+  },
+
+  // The price files are checked at the moment of resuming, not when the button
+  // is drawn: a fingerprint taken earlier could be stale by the time anybody
+  // presses anything.
+  theHistoryIsCheckedWhenItStartsNotWhenItIsOffered() {
+    const at = BATCH_SRC.indexOf('const stamped = stampManifest(doc.id, symbols);');
+    assert.ok(at > 0, 'the manifest must still be stamped after the pre-warm');
+    const after = BATCH_SRC.slice(at, at + 1800);
+    assert.ok(/if \(resume\) \{/.test(after), 'a resumed run must compare the fingerprint at that moment');
+    assert.ok(/was !== now/.test(after), 'and refuse when it differs');
+    assert.ok(/would make half this board answer a different question/.test(after),
+      'and say why, in terms of what it costs the reader');
+    assert.ok(after.indexOf('was !== now') < after.indexOf('doc.dataManifest = stamped;'),
+      'the comparison must happen BEFORE the old fingerprint is overwritten, or there is nothing to compare against');
+  },
+
+  // Everything already scored is kept, and the run says it was picked up.
+  aResumedRunKeepsItsBoardAndSaysItWasResumed() {
+    assert.ok(/doc = resume;/.test(BATCH_SRC), 'a resumed run must be the SAME document, not a copy with pieces carried across');
+    const at = BATCH_SRC.indexOf('doc = resume;');
+    const blk = BATCH_SRC.slice(at, at + 1400);
+    for (const kept of ['doc.leaders', 'doc.replication', 'doc.edgeCensus', 'doc.failures', 'doc.slimResults']) {
+      assert.ok(blk.includes(kept), `${kept} must survive a resume — it is computed record`);
+    }
+    assert.ok(/doc\.resumes\.push\(\{/.test(BATCH_SRC),
+      'a board built over two sittings must say so, or it reads as one uninterrupted run');
+    assert.ok(/skippedUnits/.test(BATCH_SRC) && /dataDigest/.test(BATCH_SRC),
+      'the resume record must say how much was skipped and against which history');
+    // the counters are recomputed, never carried: the stale ones counted
+    // failures as done, and a failure is exactly what gets another go
+    assert.ok(/doc\.perf\.unitsDone = skipped;/.test(BATCH_SRC),
+      'progress must be recomputed from what is recorded, not carried over from the crash');
+  },
+
+  // Both passes are filtered, and by the pending list — indexing the callback
+  // into the UNFILTERED array is how a resume writes one unit's result under
+  // another unit's name.
+  bothPassesSkipWhatIsAlreadyDone() {
+    assert.ok(/const slimPending = doneSlim\.size \? units\.filter/.test(BATCH_SRC), 'the first pass must skip finished units');
+    assert.ok(/const promPending = donePromote\.size \? promote\.filter/.test(BATCH_SRC), 'the second pass must too');
+    assert.ok(/const \{ c, b \} = slimPending\[i\];/.test(BATCH_SRC),
+      'the first pass callback must index the PENDING list, or results land under the wrong unit');
+    assert.ok(/const l = promPending\[i\];/.test(BATCH_SRC),
+      'and so must the second');
+    // with nothing to skip, the pending list IS the whole list — the ordinary
+    // launch must be untouched by any of this
+    assert.ok(/: units;/.test(BATCH_SRC) && /: promote;/.test(BATCH_SRC),
+      'with no resume both passes must be the identical arrays the ordinary launch always used');
+  },
+
+  theResumeRouteIsGuardedAndTheScreenOffersIt() {
+    const at = SERVER.indexOf("app.post('/api/run/resume'");
+    assert.ok(at > 0, 'the resume route must exist');
+    const route = SERVER.slice(at, at + 900);
+    assert.ok(/csrfGuard/.test(route), 'it starts hours of work on the box, so it is guarded');
+    assert.ok(/NOT_RESUMABLE/.test(route), 'a refusal must come back as a refusal');
+    assert.ok(/batchId: batch\.resumeBracketLab/.test(route),
+      'it must answer in the same shape a fresh launch does, so the page reads one contract');
+    assert.ok(/id="bResume"/.test(UI), 'the Boards section must offer it');
+    assert.ok(/doc\.status === 'interrupted' \|\| doc\.status === 'cancelled'\) \? '' : 'disabled'/.test(UI),
+      'and offer it only on a run that stopped — a control that is live when it cannot work teaches people to ignore refusals');
+    const h = UI.slice(UI.indexOf("$('#bResume')"), UI.indexOf("$('#bResume')") + 2600);
+    assert.ok(/api\/resume-contents/.test(h), 'it must say what is left before it starts anything');
+    assert.ok(h.indexOf('still to score') < h.indexOf('requestAnimationFrame'),
+      'and that has to be written before the page is given a chance to paint');
+    assert.ok(h.indexOf('requestAnimationFrame') < h.indexOf('confirm('),
+      'and painted before the box blocks the browser');
+  },
+
   // ------------------------------------------------------- the form remembers
   theSweepFormSurvivesARedrawAndShowsTheRunningJob() {
     assert.ok(/const SWEEP_FORM_KEY = /.test(UI), 'the form must keep what is in it across a redraw');

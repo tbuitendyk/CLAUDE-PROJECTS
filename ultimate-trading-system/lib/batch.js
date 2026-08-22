@@ -673,6 +673,16 @@ const shiftStance = (o) => (Object.prototype.hasOwnProperty.call(o, 'shiftFrac')
 
 const unitKey = (c, b) => `${c.trade}|${c.ctx1 || ''}|${c.ctx2 || ''}|${b.geometry}|${b.decision}|${b.band}|${b.weekdaysOnly ? '24-5' : '24-7'}`;
 
+// A UNIT'S FULL NAME, INCLUDING WHICH COPY OF IT THIS IS. Written once because
+// three places compute it and a resume compares them: the slim record, the
+// promotion list, and the filter that decides what a picked-up run still has
+// to do. Three copies of one expression is three chances for a resume to
+// silently re-score work it had already finished, or worse, to skip work it
+// had not (owner, 2026-08-22).
+const unitFullKey = (c, b, u) => unitKey(c, b)
+  + (u && u.shiftFrac != null ? `|s${u.shiftFrac.toFixed(3)}` : '')
+  + (u && u.nullDealSeed != null ? `|n${u.nullDealSeed}` : '');
+
 function bracketPerfTick(doc) {
   const perf = doc.perf;
   const elapsed = Date.now() - new Date(doc.startedAt).getTime();
@@ -765,9 +775,7 @@ function promotionSet(p, doc, units) {
       // boards ran un-dealt at the promote stage, bit-identical to the real
       // arm, their census rows tagged real, and the five gate arms shared
       // one key so their model dumps overwrote each other.
-      key: unitKey(c, b)
-        + (u.shiftFrac != null ? `|s${u.shiftFrac.toFixed(3)}` : '')
-        + (u.nullDealSeed != null ? `|n${u.nullDealSeed}` : ''),
+      key: unitFullKey(c, b, u),
       trade: c.trade, ctx1: c.ctx1, ctx2: c.ctx2, size: c.size,
       geometry: b.geometry, decision: b.decision, bandMode: b.band, weekdaysOnly: b.weekdaysOnly,
       ...(Object.prototype.hasOwnProperty.call(u, 'shiftFrac') ? { shiftFrac: u.shiftFrac ?? null } : {}),
@@ -1294,7 +1302,88 @@ function setBatchNotes(id, text) {
   return { id: doc.id, notes: doc.notes, notesEditedAt: doc.notesEditedAt };
 }
 
-function startBracketLab(params) {
+// RESUMING A SWEEP (owner order, 2026-08-22).
+//
+// A sweep of any size is a stream of PURE tasks keyed by unit identity, so
+// picking one up where it stopped is possible in principle and always has
+// been. What makes it worth doing is the length of the runs the owner is now
+// launching: a job measured in days that has to start over because the box
+// hiccuped in hour forty is not a job anybody will run twice.
+//
+// What makes it DANGEROUS is the same thing that makes it possible. Half a
+// board scored under one set of price files and half under another, or half
+// under one version of the arithmetic, is not one board — it is two, added
+// together and presented as one. Nothing on the screen would say so. So the
+// resume refuses more than it accepts, and every refusal names itself:
+//
+//   * the engine must be the same version the run started under;
+//   * the price files must fingerprint identically to the ones it read;
+//   * it must be a sweep, and it must be one that stopped rather than one
+//     that finished, was cancelled, or is going now.
+//
+// A unit that FAILED is not "already done" and gets another go — a failure is
+// the one thing worth retrying, and the run kept its record of it either way.
+function resumeContents(id) {
+  const doc = getBatch(String(id || ''));
+  if (!doc) throw new Error(`no run called "${id}"`);
+  const why = [];
+  if (doc.kind !== 'bracketlab') why.push(`this is a ${doc.kind} run, and only a sweep can be resumed`);
+  if (doc.status === 'running') why.push('this run is going right now');
+  else if (doc.status === 'done') why.push('this run finished — there is nothing left of it to do');
+  else if (doc.status !== 'interrupted' && doc.status !== 'cancelled') {
+    why.push(`this run ended as "${doc.status}", and only one that was interrupted or cancelled can be picked up`);
+  }
+  const stored = (doc.params || {}).engineVersion || null;
+  if (doc.kind === 'bracketlab' && stored && stored !== ENGINE_VERSION) {
+    why.push(`it ran on engine ${stored} and this box is on ${ENGINE_VERSION} — `
+      + 'half a board scored by one version of the arithmetic and half by another is not one board');
+  }
+  // The price files are checked at the moment of resuming, not here: a
+  // fingerprint taken now could be stale by the time anybody presses anything.
+  // This only reports whether there is one to check against.
+  const haveManifest = !!(doc.dataManifest && doc.dataManifest.overallDigest);
+  if (doc.kind === 'bracketlab' && !haveManifest && why.length === 0) {
+    why.push('this run never recorded which price files it read, so there is no way to '
+      + 'know whether the rest of it would be scored against the same history');
+  }
+  const doneSlim = new Set((doc.slimResults || []).map((r) => r.key).filter(Boolean));
+  const donePromote = new Set((doc.edgeCensus || []).map((r) => r.key).filter(Boolean));
+  const planned = (doc.plan || {}).units || null;
+  return {
+    id: doc.id,
+    status: doc.status,
+    phase: (doc.perf || {}).phase || null,
+    engineVersion: stored,
+    engineNow: ENGINE_VERSION,
+    dataFingerprint: haveManifest ? doc.dataManifest.overallDigest.slice(0, 12) : null,
+    unitsPlanned: planned,
+    unitsScored: doneSlim.size,
+    unitsLeft: planned == null ? null : Math.max(0, planned - doneSlim.size),
+    promotedScored: donePromote.size,
+    // Rows the promote stage recorded before this field existed cannot be
+    // matched, so say so rather than quietly scoring them twice.
+    promotedUnnamed: (doc.edgeCensus || []).filter((r) => !r.key).length,
+    failures: (doc.failures || []).length,
+    resumes: (doc.resumes || []).length,
+    resumable: why.length === 0,
+    why,
+  };
+}
+
+function resumeBracketLab(id) {
+  const found = resumeContents(id);
+  if (!found.resumable) {
+    const err = new Error(`"${found.id}" cannot be picked up: ${found.why.join('; ')}.`);
+    err.code = 'NOT_RESUMABLE';
+    err.contents = found;
+    throw err;
+  }
+  const doc = getBatch(found.id);
+  return startBracketLab(doc.params, { resume: doc });
+}
+
+function startBracketLab(params, opts) {
+  const resume = (opts && opts.resume) || null;
   { const stop = launchRefusal(); if (stop) throw new Error(stop); }
   // The execution grid resolves FIRST so the declared cell can be validated
   // against the grid this run will actually compute (see validateDeclared).
@@ -1433,6 +1522,15 @@ function startBracketLab(params) {
     // 2026-08-04) so the saved-runs list groups a cycle's runs at a glance.
     campaign: require('./campaign').getCampaign() || null,
   };
+  // A RESUMED RUN IS THE SAME RUN. Two fields are recomputed by the launch
+  // path from the world as it is NOW, and both would be wrong here: the
+  // campaign in use may have been switched since, and the description is the
+  // reason this run exists and does not change because it was picked up.
+  if (resume) {
+    const was = resume.params || {};
+    p.campaign = was.campaign ?? null;
+    p.description = was.description || '';
+  }
   if (!p.sizes.singles && !p.sizes.doubles && !p.sizes.triples) throw new Error('tick at least one combo size');
   // A declared trail cell only exists when the run computes trail cells:
   // without this, the run finishes and the replication table is empty.
@@ -1532,7 +1630,7 @@ function startBracketLab(params) {
   // The slug is APPENDED so every existing consumer still works: scripts
   // filter on the `bracketlab-` prefix and match ids exactly, and the
   // timestamp keeps its position and sort order.
-  const doc = {
+  const fresh = {
     id: `bracketlab-${stamp}${idSlug(p)}`,
     kind: 'bracketlab',
     // A sentence, written when the job is fired, saying what this run is FOR.
@@ -1555,6 +1653,34 @@ function startBracketLab(params) {
     nullTest: null,
     runs: [], // kept empty by design: at permutation scale, counters + leaders ARE the record
   };
+  let doc = fresh;
+  // PICKING ONE UP KEEPS EVERYTHING IT ALREADY HAD. Same id, same start time,
+  // same board so far, same failures, same description — only the fields that
+  // describe "is it going and how far has it got" are reset. Building a fresh
+  // doc and copying pieces across would be the same code written twice, and
+  // the piece somebody forgot to copy would be the one that mattered.
+  if (resume) {
+    doc = resume;
+    doc.status = 'running';
+    doc.finishedAt = null;
+    doc.error = null;
+    doc.progress = '';
+    doc.params = p;
+    doc.plan = fresh.plan;
+    doc.leaders = doc.leaders || [];
+    doc.replication = doc.replication || [];
+    doc.edgeCensus = doc.edgeCensus || [];
+    doc.failures = doc.failures || [];
+    doc.slimResults = doc.slimResults || [];
+    // The counters are recomputed from what is actually RECORDED, never
+    // carried over: the stale ones counted failures as done, and a failure is
+    // exactly what gets another go.
+    doc.perf = {
+      ...(doc.perf || {}), phase: 'slim',
+      unitsTotal: units.length, runsTotal: slimRuns,
+      ratePerMin: null, secPerTraining: null, elapsedMs: 0, etaMs: null,
+    };
+  }
   activeBatch = doc;
   saveBatch(doc);
 
@@ -1592,20 +1718,67 @@ function startBracketLab(params) {
     // AFTER the prewarm settles the cache and while the cache-write guards
     // hold it frozen for the run's duration. Two runs are data-comparable
     // if and only if their overall digests match.
-    doc.dataManifest = stampManifest(doc.id, symbols);
+    const stamped = stampManifest(doc.id, symbols);
+    // THE PRICE FILES MUST BE THE ONES IT READ. Checked here and nowhere
+    // earlier: the fingerprint is taken after the pre-warm settles the cache,
+    // which is the only moment it means anything. A top-up between the two
+    // halves of a run would leave the second half reading a longer history
+    // than the first, and no number on the finished board would say so.
+    if (resume) {
+      const was = (resume.dataManifest || {}).overallDigest || null;
+      const now = (stamped || {}).overallDigest || null;
+      if (!was || !now || was !== now) {
+        doc.status = 'interrupted';
+        doc.finishedAt = new Date().toISOString();
+        doc.error = 'Not picked up: the price files are not the ones this run read. '
+          + `It read ${was ? was.slice(0, 12) : '(nothing recorded)'} and the box now holds `
+          + `${now ? now.slice(0, 12) : '(unreadable)'}. Scoring the rest against a different history `
+          + 'would make half this board answer a different question from the other half. '
+          + 'Start it again from the Sweep section instead.';
+        doc.progress = '';
+        saveBatch(doc);
+        if (activeBatch && activeBatch.id === doc.id) { activeBatch = null; activePool = null; }
+        pool.abort();
+        return;
+      }
+    }
+    doc.dataManifest = stamped;
     doc.perf.phase = 'slim';
+
+    // WHAT IS ALREADY DONE. A unit that produced a record is done; a unit that
+    // FAILED produced none and gets another go, which is the one retry worth
+    // having. With no resume this set is empty and the two arrays below are
+    // the whole unit list, so the ordinary path is unchanged.
+    const doneSlim = resume ? new Set((doc.slimResults || []).map((r) => r.key).filter(Boolean)) : new Set();
+    const keyOf = (u) => unitFullKey(u.c, u.b, u);
+    const slimPending = doneSlim.size ? units.filter((u) => !doneSlim.has(keyOf(u))) : units;
+    if (resume) {
+      const skipped = units.length - slimPending.length;
+      doc.perf.unitsDone = skipped;
+      doc.perf.runsDone = units.reduce((n, u) => n + (doneSlim.has(keyOf(u)) ? slimViewsFor(u.c.size).length : 0), 0);
+      // ON THE RECORD. A board built over two sittings must say so, or it
+      // reads as one uninterrupted run and nobody can tell which it was.
+      doc.resumes = doc.resumes || [];
+      doc.resumes.push({
+        at: new Date().toISOString(),
+        skippedUnits: skipped,
+        remainingUnits: slimPending.length,
+        engineVersion: ENGINE_VERSION,
+        dataDigest: (stamped || {}).overallDigest || null,
+        retryingFailures: (doc.failures || []).length,
+      });
+      doc.progress = `picked up where it stopped: ${skipped} unit(s) already scored, ${slimPending.length} to go`;
+    }
     saveBatch(doc);
 
-    const slimPayloads = units.map((u) => ({ combo: u.c, branch: u.b, stage: 'slim', params: p, nullDealSeed: u.nullDealSeed ?? null, ...shiftStance(u) }));
+    const slimPayloads = slimPending.map((u) => ({ combo: u.c, branch: u.b, stage: 'slim', params: p, nullDealSeed: u.nullDealSeed ?? null, ...shiftStance(u) }));
     await pool.forEach('unit', slimPayloads, (settled, i) => {
       // Cancel keeps every COMPLETED result (QC 74): workers are being
       // terminated, but a unit that already finished is computed record and
       // is pushed like any other — only termination errors are skipped.
-      const { c, b } = units[i];
-      const u = units[i];
-      const key = unitKey(c, b)
-        + (u.shiftFrac != null ? `|s${u.shiftFrac.toFixed(3)}` : '')
-        + (u.nullDealSeed != null ? `|n${u.nullDealSeed}` : '');
+      const { c, b } = slimPending[i];
+      const u = slimPending[i];
+      const key = unitFullKey(c, b, u);
       if (settled.ok && settled.value && settled.value.best) {
         const res = settled.value;
         // UNCAPPED slim record (QC 74): the leader list caps at 50 for
@@ -1655,8 +1828,23 @@ function startBracketLab(params) {
       doc.plan.promoteRuns = promote.reduce((s2, l) => s2 + slimViewsFor(l.size).length * 2, 0);
       doc.perf.runsTotal += doc.plan.promoteRuns;
       doc.perf.phase = 'promote';
+      // The second pass is picked up the same way as the first, off the census
+      // — one row per promoted unit, and now carrying its own key. A run that
+      // stopped during promotion had its slim pass filtered to nothing above
+      // and arrives here with only the promoted units left to do.
+      //
+      // Rows written before the census carried a key cannot be matched. Those
+      // units are scored again rather than skipped: doing the work twice
+      // wastes time, and skipping the wrong one loses a result.
+      const donePromote = resume ? new Set((doc.edgeCensus || []).map((r) => r.key).filter(Boolean)) : new Set();
+      const promPending = donePromote.size ? promote.filter((l) => !donePromote.has(l.key)) : promote;
+      if (resume && promPending.length !== promote.length) {
+        const last = doc.resumes[doc.resumes.length - 1];
+        if (last) { last.skippedPromoted = promote.length - promPending.length; }
+        doc.progress = `picked up: ${promote.length - promPending.length} already scored in full, ${promPending.length} to go`;
+      }
       saveBatch(doc);
-      const promPayloads = promote.map((l) => ({
+      const promPayloads = promPending.map((l) => ({
         combo: { trade: l.trade, ctx1: l.ctx1, ctx2: l.ctx2, size: l.size },
         branch: { geometry: l.geometry, decision: l.decision, band: l.bandMode, weekdaysOnly: l.weekdaysOnly },
         stage: 'promoted', params: p,
@@ -1665,7 +1853,7 @@ function startBracketLab(params) {
       }));
       await pool.forEach('unit', promPayloads, (settled, i) => {
         // Same rule as the slim stage: cancel never drops a finished result.
-        const l = promote[i];
+        const l = promPending[i];
         if (settled.ok && settled.value) {
           const res = settled.value;
           if (res.best) {
@@ -1739,6 +1927,12 @@ function startBracketLab(params) {
               bandMode: l.bandMode ?? null, weekdaysOnly: l.weekdaysOnly ?? null,
               shiftFrac: l.shiftFrac ?? null,
               nullDealSeed: l.nullDealSeed ?? null,
+              // THE ROW'S OWN NAME (owner, 2026-08-22). Every other record of
+              // a unit carries its key and this one did not, so a resumed run
+              // had no way to tell which promoted units were already done and
+              // would have scored them all again. A record that cannot say
+              // which unit it is, is a record only its neighbours can place.
+              key: l.key,
               shiftScope: p.labelShiftScope || 'series',
               // WINDOW LAYOUT this row was measured under — a comparison row
               // that cannot say which geometry produced it is not comparable to
@@ -2265,9 +2459,12 @@ module.exports = {
   archivePrior,
   recordFailure,
   declaredQuorumFor,
+  unitFullKey,
   getBatch,
   runContents,
   deleteBatch,
+  resumeContents,
+  resumeBracketLab,
   listBatches,
   batchRunning,
   cancelActive,

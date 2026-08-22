@@ -176,23 +176,24 @@ again. and asset. back been board cache cached comma-sep current Data data DELET
 - declared configs, each scored on every asset — roughly x the replication work.
 - the work — the whole run once for real, then once per board.
 - The last job did not finish: — .
-- Open it on the Boards section to see what it managed to record.
+- Open it on the Boards section to see what it managed to record .
 
 ## Every word, flat (192)
 
 ```
-1-day 1-in- 113h 137h 161h 17h 2-day 3-day 4-day 41h 65h 8-day 89h active agree all also always and any are argmax arm asset at attaches auto band be Beating been belonging best blank Board board. boards Boards box branch breakout Campaign campaign campaigns cannot chain chunk claim config configs contexts Currently Daily data decision DECLARED declared default Delete deleted. Deleting deployed. description did directional doubles each end entry ETA Every every evidence exam existing exists files FIND finish first for forever from gate greenlight greenlights has heading in is it it. job jobs last launched layout legacy loaded locked managed market min minted models name never new not nothing null on once Open or pairs parent passes per permanently permute Phase plane promote Rate real record. remove Removed replication result Retire rides roughly rounds run Running runs saved scans. score scored sealed section see set Set setup shape singles start Start static still Stop sweep sweeps tab the The them them. then there this This to top Trade trades trail trailing Trainings travels tree triples tuning undone. Units universe View Weekly what while whole why wide will window with work work.
+1-day 1-in- 113h 137h 161h 17h 2-day 3-day 4-day 41h 65h 8-day 89h active agree all also always and any are argmax arm asset at attaches auto band be Beating been belonging best blank Board board. boards Boards box branch breakout Campaign campaign campaigns cannot chain chunk claim config configs contexts Currently Daily data decision DECLARED declared default Delete deleted. Deleting deployed. description did directional doubles each end entry ETA Every every evidence exam existing exists files FIND finish first for forever from gate greenlight greenlights has heading in is it it. job jobs last launched layout legacy loaded locked managed market min minted models name never new not nothing null on once Open or pairs parent passes per permanently permute Phase plane promote Rate real record remove Removed replication result Retire rides roughly rounds run Running runs saved scans. score scored sealed section see set Set setup shape singles start Start static still Stop sweep sweeps tab the The them them. then there this This to top Trade trades trail trailing Trainings travels tree triples tuning undone. Units universe View Weekly what while whole why wide will window with work work.
 ```
 
 ---
 
 # Boards
 
-## What the controls are called (47)
+## What the controls are called (53)
 
 - `— pick a run —`
 - `, l);`
 - `, null);`
+- `, plus`
 - `· assets / (context)`
 - `· beat always-long /`
 - `'; return; }`
@@ -203,8 +204,10 @@ again. and asset. back been board cache cached comma-sep current Data data DELET
 - `beat its own null copies`
 - `beat its own nulls`
 - `cancelled — nothing deleted`
+- `cancelled — nothing started`
 - `const bdel = $('#bDelete');`
 - `const box = $('#bDelOut');`
+- `const bres = $('#bResume');`
 - `const censusFileFor = (l) => {`
 - `const d = await apiOr(`
 - `const file = censusFileFor(l);`
@@ -230,9 +233,12 @@ again. and asset. back been board cache cached comma-sep current Data data DELET
 - `predictability`
 - `q · · h`
 - `real / null rows`
+- `Resume run`
+- `return;`
 - `saved runs`
 - `showing 400 of`
 - `test $`
+- `that failed and get another go`
 - `This run recorded`
 - `total held-back`
 - `try {`
@@ -242,7 +248,7 @@ again. and asset. back been board cache cached comma-sep current Data data DELET
 
 _none_
 
-## Sentences the page prints (68)
+## Sentences the page prints (82)
 
 - Asset predictability — best to worst
 - KEY — for each asset: of all real-versus-null match-ups on HELD-BACK money, the share the real
@@ -272,18 +278,32 @@ _none_
 - // owner is shown exactly what that is BEFORE answering — the same two-step
 - // the campaign delete uses, and for the same reason: a count given after the
 - // fact is no use to anybody.
-- if (bdel) bdel.onclick = async () => {
+- // PICKING UP A RUN THAT STOPPED. Same shape as the delete: ask what is left,
+- // show it, then act — so the owner sees how much of the job is still to do
+- // before starting hours of work on the box.
+- if (bres) bres.onclick = async () => {
 - if (!id) { box.innerHTML = '
 - if (!found) { box.innerHTML = '
+- could not read what is left of that run — nothing started
+- if (!found.resumable) {
+- box.innerHTML =
+- already scored in full, kept as they are
+- older rows cannot be matched and will be scored again
+- this run has been picked up time(s) already
+- + 'This takes the one job slot until it finishes.\n\n'
+- + 'Hit Cancel to review what is left prior to starting.')) {
+- box.innerHTML += '
+- const out = await tryPost('api/run/resume', { id: found.id });
+- if (!out) return;
+- box.innerHTML +=
+- if (bdel) bdel.onclick = async () => {
 - could not read what that run holds — nothing deleted
 - if (found.locked) {
-- box.innerHTML =
 - + 'Hit Cancel to review what the run holds prior to deleting.');
 - if (typed === null) { box.innerHTML += '
 - if (typed.trim() !== found.id) { box.innerHTML += '
 - that did not match the id — nothing deleted
 - const out = await tryPost('api/run/delete', { id: found.id, confirm: found.id });
-- if (!out) return;
 - pickedRun = null; pickedDoc = null; localStorage.setItem('cx-run', '');
 - if (nsave) nsave.onclick = async () => {
 - // re-render from the RESPONSE: the stored value comes back truncated, and
@@ -313,10 +333,10 @@ _none_
 - re-scoring the full menu from the stored votes…
 - $('#gridOut').innerHTML = renderPlateau(cells, l) + rankLine +
 
-## Every word, flat (351)
+## Every word, flat (395)
 
 ```
-.find .forEach .innerHTML .onclick .pop .querySelectorAll .value about accuracy Accuracy ACCURACY across-asset admits admits. after agreement ahead alike all always-long an and answering anybody. api/run/delete apiOr are are. as Asset asset asset. assets async await b.dataset.grid b.dataset.inspect b.onclick back bBody bdel bdel.onclick bDelete bDelOut beat because before BEFORE behind below best better bNotesSave bOpen box box.innerHTML bPick button by campaign Cancel cancelled cannot caveat cells censusFileFor chosen claim Columns comes committee config configs configuration configurations confirm const construction. CONTEXT context copies copy copy. could count Counts counts cr cr.modelFile cr.modelFile.split crypto cx-run data data-grid data-inspect dealt declared declared-cell Delete delete deleted DELETING deleting. did doc.edgeCensus drawBoards each echoed edge edge. edited end every evidence exactly excluded. fact file files first first-recorded FIXED flatters for found found.id found.locked from full given graded grid gridOut hang has held HELD-BACK held-back here higher History Hit holds honest how id if in independent indistinguishable INFERRED INSPECT inspect invites is it It it. its itself KEY knife l.ctx1 l.ctx2 l.decision l.geometry l.quorum l.trade last layout leaders line localStorage.setItem look looks looks. make marking match match-ups may means measured measured. member members menu microscope misreading. model money Money money. move much named near-duplicates needs never no not NOT nothing nsave nsave.onclick null nulls Number number of off older on once once-only one ONE only ONLY Open open opening opinions or order ordering otherwise. out own owner p-value pairwise panel participation persisted pick pickedDoc pickedRun plateau POINTS post predictability prior purpose. QC-142 QC-7 queued quoted r.ctx1 r.ctx2 r.decision r.geometry r.nullDealSeed r.shiftFrac r.trade ranked Ranked rankLine re-render re-scoring read reading real real-versus-null reason recorded register renderPlateau Replication RESPONSE return review row rows run RUN runs same saved saw say says scored sealed search SEARCHED section. see server setting settings setup setups share showing shown sit slice so stamp start statistics stored sturdy taken takes test than that That the The them then These This this to together total touched travels truncated try tryPost tuning two-step typed typed.trim up use uses value vote voted votes votes. vs were what where whether which width window with without won. works worst yardstick
+.find .forEach .innerHTML .onclick .pop .querySelectorAll .value about accuracy Accuracy ACCURACY across-asset act admits admits. after again agreement ahead alike all already always-long an and another answering anybody. api/run/delete api/run/resume apiOr are are. as ask Asset asset asset. assets async await b.dataset.grid b.dataset.inspect b.onclick back bBody bdel bdel.onclick bDelete bDelOut be beat because been before BEFORE behind below best better bNotesSave bOpen box box. box.innerHTML bPick bres bres.onclick bResume button by campaign Cancel cancelled cannot caveat cells censusFileFor chosen claim Columns comes committee config configs configuration configurations confirm const construction. CONTEXT context copies copy copy. could count Counts counts cr cr.modelFile cr.modelFile.split crypto cx-run data data-grid data-inspect dealt declared declared-cell Delete delete deleted DELETING deleting. did do doc.edgeCensus drawBoards each echoed edge edge. edited end every evidence exactly excluded. fact failed file files finishes. first first-recorded FIXED flatters for found found.id found.locked found.resumable from full get given go graded grid gridOut hang has held HELD-BACK held-back here higher History Hit holds honest hours how id if in independent indistinguishable INFERRED INSPECT inspect invites is it It it. its itself job kept KEY knife l.ctx1 l.ctx2 l.decision l.geometry l.quorum l.trade last layout leaders left line localStorage.setItem look looks looks. make marking match match-ups matched may means measured measured. member members menu microscope misreading. model money Money money. move much named near-duplicates needs never no not NOT nothing nsave nsave.onclick null nulls Number number of off older on once once-only one ONE only ONLY Open open opening opinions or order ordering otherwise. out own owner p-value pairwise panel participation persisted pick picked pickedDoc pickedRun PICKING plateau plus POINTS post predictability prior purpose. QC-142 QC-7 queued quoted r.ctx1 r.ctx2 r.decision r.geometry r.nullDealSeed r.shiftFrac r.trade ranked Ranked rankLine re-render re-scoring read reading real real-versus-null reason recorded register renderPlateau Replication RESPONSE Resume return review row rows run RUN runs same Same saved saw say says scored sealed search SEARCHED section. see sees server setting settings setup setups shape share show showing shown sit slice slot so stamp start started starting starting. statistics still STOPPED. stored sturdy taken takes test than that That THAT the The them then These they This this time to together total touched travels truncated try tryPost tuning two-step typed typed.trim until up UP use uses value vote voted votes votes. vs were what where whether which width will window with without won. work works worst yardstick
 ```
 
 ---

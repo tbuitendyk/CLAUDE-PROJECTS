@@ -1085,7 +1085,7 @@ async function drawSweep() {
       el.innerHTML = bad
         ? `<div class="panel" style="border-color:var(--warn);margin:0"><b style="color:var(--warn)">The last job did not finish: ${esc(last.id)} — ${esc(last.status)}.</b>
            <div style="margin-top:.3rem">${esc(last.error || 'no reason was recorded')}</div>
-           <div class="muted" style="margin-top:.4rem">Open it on the Boards section to see what it managed to record.</div></div>`
+           <div class="muted" style="margin-top:.4rem">Open it on the Boards section to see what it managed to record${last.status === 'interrupted' ? ', and to carry it on from where it stopped' : ''}.</div></div>`
         : '<span class="muted">No job running.</span>';
       return;
     }
@@ -1310,6 +1310,7 @@ async function drawBoards() {
         ${list.map((b) => `<option value="${esc(b.id)}" ${b.id === pickedRun ? 'selected' : ''}>${esc(b.id)} (${esc(b.status)})</option>`).join('')}
       </select></label>
       <button id="bOpen">Open</button>
+      <button id="bResume" ${doc && (doc.status === 'interrupted' || doc.status === 'cancelled') ? '' : 'disabled'} title="carries on a run that stopped, from where it stopped. It scores only the units that have no result yet, then finishes as normal. It refuses if the price files or the engine are not the ones the run started under — half a board scored against a different history is not one board.">Resume run</button>
       <button id="bDelete" class="danger" ${doc ? '' : 'disabled'} title="permanently removes the open run and the model and tuning files that belong to it. It refuses the run that is going right now — stop it first — and any run a greenlight names as its evidence. You are shown exactly what will go before anything is deleted.">Delete run…</button>
       ${doc ? `<span class="note">campaign: ${esc((doc.params && doc.params.campaign) || '—')} · ${esc(doc.status)} · ${(doc.params && doc.params.windowLayout) || ''}</span>` : ''}
     </div>
@@ -1406,6 +1407,42 @@ async function drawBoards() {
   // owner is shown exactly what that is BEFORE answering — the same two-step
   // the campaign delete uses, and for the same reason: a count given after the
   // fact is no use to anybody.
+  // PICKING UP A RUN THAT STOPPED. Same shape as the delete: ask what is left,
+  // show it, then act — so the owner sees how much of the job is still to do
+  // before starting hours of work on the box.
+  const bres = $('#bResume');
+  if (bres) bres.onclick = async () => {
+    const id = pickedRun;
+    const box = $('#bDelOut');
+    if (!id) { box.innerHTML = '<p class="note">open a run first</p>'; return; }
+    const found = await apiOr(`api/resume-contents?id=${encodeURIComponent(id)}`, null);
+    if (!found) { box.innerHTML = '<p class="note">could not read what is left of that run — nothing started</p>'; return; }
+    if (!found.resumable) {
+      box.innerHTML = `<div class="panel" style="border-color:var(--neg);margin-top:.5rem"><b style="color:var(--neg)">“${esc(found.id)}” cannot be picked up — nothing has been started.</b>
+        <ul style="margin:.3rem 0 0 1.1rem">${found.why.map((w) => `<li>${esc(w)}</li>`).join('')}</ul></div>`;
+      return;
+    }
+    box.innerHTML = `<div class="panel" style="border-color:var(--warn);margin-top:.5rem"><b style="color:var(--warn)">Picking up “${esc(found.id)}” will score what it never got to:</b>
+      <ul style="margin:.3rem 0 0 1.1rem">
+        <li><b>${found.unitsScored}</b> already scored, kept as they are</li>
+        <li><b>${found.unitsLeft == null ? '—' : found.unitsLeft}</b> still to score${found.failures ? `, plus <b>${found.failures}</b> that failed and get another go` : ''}</li>
+        ${found.promotedScored ? `<li><b>${found.promotedScored}</b> already scored in full, kept as they are</li>` : ''}
+        ${found.promotedUnnamed ? `<li class="muted"><b>${found.promotedUnnamed}</b> older rows cannot be matched and will be scored again</li>` : ''}
+        ${found.resumes ? `<li class="muted">this run has been picked up ${found.resumes} time(s) already</li>` : ''}
+      </ul>
+      <div class="muted" style="margin-top:.4rem">The price files are checked again the moment it starts. If they are not the ones this run read, nothing is scored and it says so.</div></div>`;
+    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(r, 0))));
+    if (!confirm(`Carry on "${found.id}" from where it stopped?\n\n`
+      + `${found.unitsLeft == null ? 'The remaining' : found.unitsLeft} unit(s) still to score. `
+      + 'This takes the one job slot until it finishes.\n\n'
+      + 'Hit Cancel to review what is left prior to starting.')) {
+      box.innerHTML += '<p class="note">cancelled — nothing started</p>';
+      return;
+    }
+    const out = await tryPost('api/run/resume', { id: found.id });
+    if (!out) return;
+    box.innerHTML += `<p class="note">picked up ${esc(out.batchId || found.id)} — watch it on the Sweep section</p>`;
+  };
   const bdel = $('#bDelete');
   if (bdel) bdel.onclick = async () => {
     const id = pickedRun;
