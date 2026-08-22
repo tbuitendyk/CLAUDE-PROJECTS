@@ -560,6 +560,15 @@ async function drawSweep() {
     <div id="campOut"></div></div>
   <div class="panel">
     <h3 style="margin-top:0">Board sweep — wide to FIND (never a result)</h3>
+    <!-- THE TWO PASSES ARE TWO BOXES (owner order, 2026-08-22). Every control
+         here belongs to one of exactly two kinds, and the rows used to cut
+         straight across that line: window layout beside promote top K beside
+         a control the first pass ignores. Nothing on the screen said which was
+         which, so the only way to know was to be told — in words off the
+         screen, which is the fault this whole rule set exists to stop. The
+         boxes ARE the explanation. -->
+    <div class="passbox">
+      <div class="passname"><b>Both passes</b> — everything in this box shapes the slim pass and the promote pass alike</div>
     <div class="row" style="align-items:flex-end">
       <label class="f">universe (blank = all 17 default pairs)<input id="swUni" placeholder="LTCUSDT,XRPUSDT,BCHUSDT" style="width:20rem"></label>
       <label class="c"><input type="checkbox" id="swSingles" checked> singles</label>
@@ -601,11 +610,26 @@ async function drawSweep() {
     </div>
     <div class="row" style="margin-top:.5rem;align-items:flex-end">
       <label class="f">window layout<select id="swLayout">${vocabOptions('windowLayout', 'split70')}</select></label>
-      <label class="f">promote top K<input id="swK" type="number" value="25" min="1" max="50" style="width:4.5rem" title="the backend caps this at 50 (detailK); a larger number is silently reduced, so the box refuses it here instead"></label>
       <label class="f">null boards<input id="swNulls" type="number" value="0" min="0" style="width:4.5rem" title="companion boards with votes dealt onto random days. Beating all N of them is at best a 1-in-(N+1) claim, so 19 is the first number whose best claim reaches 1-in-20. There is NO ceiling: type any number you like and the cost is printed beside the box before you launch."></label>
       <label class="f">min trades<input id="swMinTr" type="number" value="10" style="width:4.5rem"></label>
-      <label class="c" title="Makes the SEARCH try stops that follow the price up behind you, as well as the one that sits still. Four following distances by three starting points, on the second pass only — roughly thirteen times the work. This is about what the run LOOKS AT; the trail box on the replication line below is about the one configuration you name."><input type="checkbox" id="swTrail"> also try moving stops</label>
       <span class="note" id="swNullCost"></span>
+    </div>
+    </div>
+
+    <!-- THE HINGE. One control decides what travels from the first pass to the
+         second, so it sits between the two boxes rather than inside either. -->
+    <div class="hinge">
+      <div class="row" style="align-items:flex-end">
+        <label class="f">promote top K<input id="swK" type="number" value="25" min="1" max="50" style="width:4.5rem" title="the backend caps this at 50 (detailK); a larger number is silently reduced, so the box refuses it here instead"></label>
+        <span class="note">how many rows carry from the slim pass into the promote pass — the only thing that travels between the two boxes.
+          <b>null boards</b> above zero sends every row through instead, and so does replication below.</span>
+      </div>
+    </div>
+
+    <div class="passbox">
+      <div class="passname"><b>Promote pass only</b> — the slim pass ignores everything in this box, however it is set</div>
+    <div class="row" style="align-items:flex-end">
+      <label class="c" title="Makes the SEARCH try stops that follow the price up behind you, as well as the one that sits still. Four following distances by three starting points, on the promote pass only — roughly thirteen times the work. This is about what the run LOOKS AT; the trail box below is about the one configuration you name."><input type="checkbox" id="swTrail"> also try moving stops</label>
     </div>
     <div class="row" style="margin-top:.5rem;align-items:flex-end;border-top:1px solid var(--line);padding-top:.55rem">
       <label class="c" title="REPLICATION MODE. Instead of judging each asset by the best cell the search shopped for, score settings YOU fix here, before the run, on every asset. With every permute unticked that is ONE config: nothing was chosen after seeing results, so there is no shopping tax and no branch correction owed, and it is the strongest reading the system offers. Tick any permute and these boxes declare a BLOCK of configs instead — every combination, each one scored on every asset. The counter beside them says how many, it multiplies the whole run, and having searched, the honest end is the sealed block of the 61/13/13/13 window layout. Either way the menu still runs and the board is unchanged; this adds a separate replication table reporting each declared cell per asset, read against that configuration's own dealt-vote copies and never as a binomial (QC-7: assets move together, so they are not independent looks). Agreement travels as an exact count per committee size — the 'agree' boxes (5/6 means 5 of a single coin's 6 members).">
@@ -649,6 +673,8 @@ async function drawSweep() {
       </div>
       <span class="note" id="swDecCount"></span>
     </div>
+    </div>
+
     <div class="row" style="margin-top:.5rem">
       <label class="f" style="flex:1">description — why this run exists (rides in the job heading forever)
         <input id="swDesc" style="width:100%"></label>

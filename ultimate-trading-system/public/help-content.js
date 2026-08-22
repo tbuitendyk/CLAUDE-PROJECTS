@@ -48,7 +48,11 @@ window.HELP = {
     title: 'Sweep',
     intro: 'Where a search is set up and started. It tries a great many settings against the '
       + 'price history and records how each one would have done. Nothing here places an order or '
-      + 'commits to anything: a sweep produces a list to look at, and every result is a candidate, not a finding.',
+      + 'commits to anything: a sweep produces a list to look at, and every result is a candidate, not a finding.\n\n'
+      + 'The controls are drawn as two boxes because they fall into exactly two kinds. Everything in the '
+      + 'first box shapes both passes. Everything in the second box the first pass ignores completely, '
+      + 'however it is set. Between them sits promote top K, which is the only thing that travels from '
+      + 'one pass to the other.',
     how: [
       ['What happens when you press Start sweep',
         'It builds a list of everything to try, then works through it twice.\n\n'
@@ -154,8 +158,8 @@ window.HELP = {
         more: 'Use the sealed one when you intend to search hard, because the honest end of a search is a block of data the search never touched.',
       },
       swK: {
-        what: 'How many of the best rows get scored a second time, in full.',
-        more: 'Everything is scored once cheaply first. Only this many are then scored again with the fuller treatment. Capped at 50, because the list only ever holds that many.',
+        what: 'How many of the best rows get scored a second time, in full. It sits between the two boxes because it is the only thing that travels from one pass to the other.',
+        more: 'Everything is scored once cheaply first. Only this many are then scored again with the fuller treatment. Capped at 50, because the list only ever holds that many. Two things switch it off entirely: null boards above zero, and the replication tick — either of those sends EVERY row through the second pass, and this box then does nothing.',
       },
       swNulls: {
         what: 'How many companion runs to do on deliberately scrambled decisions, as a comparison. If the real run does no better than the scrambled ones, there was nothing there.',
@@ -164,7 +168,7 @@ window.HELP = {
       swMinTr: { what: 'Ignore any result that came from fewer trades than this. A handful of trades is luck, not evidence.' },
       swTrail: {
         what: 'Makes the search try stops that follow the price up behind you, as well as the one that sits still.',
-        more: 'Each setting is then tried with four following distances and three starting points, so roughly thirteen times as much work — and only on the rows that got scored a second time, never on the first cheap pass. This is about what the RUN looks at. The trail box on the replication line below is a different question: which stop the one configuration YOU name uses. They were called almost the same thing until 2026-08-22, which is why this one is now spelled out.',
+        more: 'Each setting is then tried with four following distances and three starting points, so roughly thirteen times as much work — and only on the rows that got scored a second time, never on the first cheap pass. This is about what the RUN looks at. The trail box further down this same box is a different question: which stop the one configuration YOU name uses. They were called almost the same thing until 2026-08-22, which is why this one is now spelled out.',
       },
       swDecOn: {
         what: 'As well as the search, score settings YOU fix here — before the run — on every asset. Leave every permute unticked and that is one set of settings; tick any of them and it becomes every combination of the boxes you ticked, each one scored on every asset.',

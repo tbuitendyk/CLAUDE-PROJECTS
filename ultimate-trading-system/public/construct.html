@@ -40,6 +40,17 @@
      is the right behaviour — it stays last either way. */
   .tab.tab-far { margin-left:auto; }
   .panel { background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:.8rem .9rem; margin-bottom:1rem; }
+  /* THE TWO PASSES, DRAWN AS TWO AREAS (owner order, 2026-08-22). The Sweep
+     controls fall into exactly two kinds — those that shape both passes and
+     those the first pass ignores entirely — and they were laid out in rows
+     that cut across that line, so the screen gave no picture of what the run
+     actually does. Each pass gets its own box with its own heading, and the
+     one control that decides what travels between them sits between them. */
+  .passbox { background:var(--tile); border:1px solid var(--line); border-radius:6px; padding:.55rem .7rem .7rem; margin-top:.7rem; }
+  .passname { font-size:.7rem; text-transform:uppercase; letter-spacing:.04em; color:var(--dim); margin-bottom:.5rem; }
+  .passname b { color:var(--fg); font-weight:600; }
+  .hinge { background:var(--tile); border:1px solid var(--line); border-left:3px solid var(--accent);
+           border-radius:0 6px 6px 0; padding:.5rem .7rem; margin:.55rem 0 0 1.4rem; }
   table { width:100%; border-collapse:collapse; font-size:.8rem; }
   th,td { text-align:right; padding:.32rem .45rem; border-bottom:1px solid var(--line); font-variant-numeric:tabular-nums; }
   th:first-child,td:first-child { text-align:left; }
