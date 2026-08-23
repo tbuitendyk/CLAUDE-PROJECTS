@@ -166,6 +166,10 @@ window.HELP = {
         more: 'This is the single most expensive setting on the page. Each one costs a whole extra search, AND turning it on changes how the run works: every row is scored in full rather than only the best ones, so promote top K stops applying. With N companions the strongest claim you can make is one-in-(N+1) — 19 of them gets you one-in-20, and past that you are buying decimal places rather than evidence. There is no ceiling: type any number and the cost of it is printed beside the box before you launch.',
       },
       swMinTr: { what: 'Ignore any result that came from fewer trades than this. A handful of trades is luck, not evidence.' },
+      swFee: {
+        what: 'What a trade is assumed to cost, as a percent of the money in the position. It is charged each way — once going in and once coming out — so 0.125 here costs 0.25 percent over the whole trade.',
+        more: 'This is not a detail. Most of what a search finds is eaten by what it costs to trade, and the point where a setting stops making money sits only a little above the cost you assume here — so the same run priced two ways can give two different answers about the same setting. Set it to what the place you would actually trade this on charges; different places charge different amounts, which is why the box is here and not fixed in the program. It follows the config: send one to the Trade page and it starts out priced at whatever it was found under here, and can be changed there.',
+      },
       swTrail: {
         what: 'Makes the search try stops that follow the price up behind you, as well as the one that sits still.',
         more: 'Each setting is then tried with four following distances and three starting points, so roughly thirteen times as much work — and only on the rows that got scored a second time, never on the first cheap pass. This is about what the RUN looks at. The trail box further down this same box is a different question: which stop the one configuration YOU name uses. They were called almost the same thing until 2026-08-22, which is why this one is now spelled out.',

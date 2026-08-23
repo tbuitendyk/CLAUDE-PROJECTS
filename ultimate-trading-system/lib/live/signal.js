@@ -21,6 +21,7 @@
 
 const crypto = require('crypto');
 const { buildCombo, trainMembers, quorumCall, specsFor } = require('../bracketwork');
+const { setupFee } = require('./setups');
 const bracketLib = require('../bracket');
 const { scoreDiff } = require('../dataset');
 const { splitFrozen } = require('../freeze');
@@ -58,8 +59,15 @@ function cfgOf(setup) {
 // quorum/band/symbol/freeze/version in place of F1's. The hash covers the
 // decision machinery (not the price — the mirror's price check has its own
 // tolerance), so machinery drift is provable per setup.
-async function committeeCallFor(cfg, target, trainChunks, maps, geo, views, bandPct, freezeMs) {
-  const members = await trainMembers(cfg.members, views, trainChunks, [target], cfg.branch, maps, geo);
+async function committeeCallFor(cfg, target, trainChunks, maps, geo, views, bandPct, freezeMs, feePerLeg) {
+  // THE PROFILE'S OWN TRADING FEE REACHES THE DECISION (owner order,
+  // 2026-08-23). This called trainMembers with no fee argument at all, so a
+  // directional committee — whose threshold is CHOSEN by pricing candidate
+  // thresholds against the cost of trading — was being trained with the fee
+  // undefined. lib/bracket.js refuses that outright, so a directional profile
+  // could not produce a live call; an argmax one trained on a cost of nothing.
+  // Either way the live path was not using the number the lab used.
+  const members = await trainMembers(cfg.members, views, trainChunks, [target], cfg.branch, maps, geo, feePerLeg);
   const perMember = members.map((m) => m.calls[0]);
   const call = quorumCall(members.map((m) => m.calls), 0, cfg.cell.quorum);
   const entryTs = target.startTs + (geo.entryOffsetH || 0) * HOUR_MS;
@@ -83,7 +91,14 @@ async function prepare(setup) {
   // lib/live/trainpolicy.js for why these were ever one field.
   const cfg = cfgOf(setup);
   const freeze = resolveFreeze(setup);
-  const params = { allLoaded: true, feePerLeg: 0, includeUnlabeled: true };
+  // WHAT THIS PROFILE PAYS TO TRADE, not zero (owner order, 2026-08-23). It was
+  // hard-coded to 0 here: the live path priced its own decisions as if trading
+  // were free while the lab that produced the rule priced them at 0.125% a leg,
+  // and 86% of the gross edge in this system goes to fees. The rate is the
+  // profile's own, because two profiles on the same rule at two venues do not
+  // pay the same.
+  const fee = setupFee(setup);
+  const params = { allLoaded: true, feePerLeg: fee, includeUnlabeled: true };
   const { geo, maps, chunks } = await buildCombo(cfg.combo, cfg.branch, params);
   const bandPct = Math.abs(cfg.branch.band);
   for (const c of chunks) c.label = c.diffPct == null ? null : scoreDiff(c.diffPct / 100, bandPct / 100);
@@ -91,7 +106,7 @@ async function prepare(setup) {
   const { trainChunks } = splitFrozen(chunks, freeze.throughMs, undefined, outcomeMs);
   if (!trainChunks.length) throw new Error('live signal: no training chunks at/before the freeze');
   const views = bracketLib.comboViews(cfg.combo.size, geo.featureHours / 24).views;
-  return { cfg, freeze, geo, maps, chunks, bandPct, trainChunks, views };
+  return { cfg, freeze, geo, maps, chunks, bandPct, trainChunks, views, fee };
 }
 
 // Window selectors — same math as pilotsignal (kept as pure functions there;
@@ -144,7 +159,7 @@ function missingFeatureCandle(target, geo, maps) {
 // plus setup_id and the setup's execution params — the executor cross-checks
 // them against its own per-box allowlist (defense in depth; plan 3.1).
 async function computeSignal(setup, now, opts = {}) {
-  const { cfg, freeze, geo, maps, chunks, bandPct, trainChunks, views } = await prepare(setup);
+  const { cfg, freeze, geo, maps, chunks, bandPct, trainChunks, views, fee } = await prepare(setup);
 
   const target = actionableChunk(chunks, geo, cfg.cell.tHours, now);
   if (!target) {
@@ -165,7 +180,7 @@ async function computeSignal(setup, now, opts = {}) {
   }
 
   const { call, perMember, side, priceAt, inputHash } =
-    await committeeCallFor(cfg, target, trainChunks, maps, geo, views, bandPct, freeze.throughMs);
+    await committeeCallFor(cfg, target, trainChunks, maps, geo, views, bandPct, freeze.throughMs, fee);
 
   let entryOpen = chooseEntryOpen(priceAt, null);
   if (call !== 0 && entryOpen == null && typeof opts.liveOpenFetcher === 'function') {
@@ -213,7 +228,7 @@ async function computeSignal(setup, now, opts = {}) {
 // Archival recompute for the per-setup mirror (QC 110 semantics preserved:
 // price_pending defers ONLY the price check while the entry candle is uncached).
 async function computeSignalForChunk(setup, chunkStartMs) {
-  const { cfg, freeze, geo, maps, chunks, bandPct, trainChunks, views } = await prepare(setup);
+  const { cfg, freeze, geo, maps, chunks, bandPct, trainChunks, views, fee } = await prepare(setup);
   const target = chunks.find((c) => c.startTs === chunkStartMs);
   if (!target) {
     return { found: false, chunk_start: new Date(chunkStartMs).toISOString(),
@@ -225,7 +240,7 @@ async function computeSignalForChunk(setup, chunkStartMs) {
       note: `current data missing ${miss.name} feature candle ${new Date(miss.lastFeatureTs).toISOString()} — cannot recompute yet` };
   }
   const { side, perMember, priceAt, inputHash } =
-    await committeeCallFor(cfg, target, trainChunks, maps, geo, views, bandPct, freeze.throughMs);
+    await committeeCallFor(cfg, target, trainChunks, maps, geo, views, bandPct, freeze.throughMs, fee);
   return {
     found: true,
     price_pending: priceAt == null,
@@ -242,7 +257,7 @@ async function computeSignalForChunk(setup, chunkStartMs) {
 
 // Decision preview per setup (same semantics as the F1 preview).
 async function computePreview(setup, now) {
-  const { cfg, freeze, geo, maps, chunks, bandPct, trainChunks, views } = await prepare(setup);
+  const { cfg, freeze, geo, maps, chunks, bandPct, trainChunks, views, fee } = await prepare(setup);
   const target = previewableChunk(chunks, geo, now);
   if (!target) {
     return { available: false,
@@ -255,7 +270,7 @@ async function computePreview(setup, now) {
       note: `feature window closed but ${miss.name}'s last candle is not cached yet — preview available shortly`,
       entry_utc: new Date(entryAt).toISOString() };
   }
-  const { side, perMember } = await committeeCallFor(cfg, target, trainChunks, maps, geo, views, bandPct, freeze.throughMs);
+  const { side, perMember } = await committeeCallFor(cfg, target, trainChunks, maps, geo, views, bandPct, freeze.throughMs, fee);
   return {
     available: true,
     setup_id: setup.id,

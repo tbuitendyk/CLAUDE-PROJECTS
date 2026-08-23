@@ -405,6 +405,13 @@ function setupStatus(setup, file = journalFile()) {
   const out = {
     id: setup.id, name: setup.name, state: setup.state,
     tradedPair: setup.tradedPair, clipUsd: setup.clipUsd, stopPct: setup.stopPct,
+    // WHAT THIS PROFILE PRICES AT, beside what it actually paid. The realized
+    // figure arrives from the box in DOLLARS a leg (the venue quotes it on the
+    // fill), and the modelled one is a fraction of the position, so the screen
+    // needs both to put them in the same units — which is the comparison the
+    // whole live-versus-lab question turns on.
+    feePerLeg: require('./setups').setupFee(setup),
+    feeInherited: require('./setups').feeIsInherited(setup),
     paper: setup.state === 'paper',
     journalPresent: present,
     // HOW MUCH OF THE RECORD COULD NOT BE READ. Every money figure below is

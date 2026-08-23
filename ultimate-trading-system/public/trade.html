@@ -386,8 +386,8 @@ const TILE={
   realized:'money actually BANKED on closed positions, in US dollars, after both legs\' fees and any borrow interest.',
   realizedAll:'the same banked figure summed across every book on this side. Paper dollars and real dollars are never added together.',
   unrealAll:'the same open-position figure summed across every book on this side.',
-  feeModel:'the fee per leg the simulation assumed, as a PERCENTAGE of what is traded: 0.125% a leg, 0.25% the round trip. It is a rate, not a number of dollars, so it costs the same share of a $10 clip as of a $100 one and needs no scaling to be compared with what was really paid. It used to be quoted as a dollar figure fixed to a $100 clip, and printing that beside a $10 clip made live execution look ten times cheaper than modelled.',
-  feeReal:'the fee per leg actually PAID, averaged over real legs, in US dollars, with the same figure as a percent of the clip. If the PERCENTAGE exceeds the model percentage, every lab money figure was optimistic.',
+  feeModel:'what THIS profile is priced at: a percent of the money in the position, charged EACH WAY — once going in and once coming out — so 0.125% here costs 0.25% over the whole trade. It is set on the profile and not on the rule, because two profiles running the same rule at two venues do not pay the same. It starts at whatever the sweep that found the rule was priced at, and it is edited in the config editor below. Shown dimmed when nothing has been set on this profile and it is running on the lab rate it inherited. Read it against the fee actually paid, beside it.',
+  feeReal:'the fee the venue actually charged, averaged over real legs and shown as a percent of this profile\'s clip so it can be read against the modelled percent beside it. The box quotes it in dollars on each fill; putting a dollar figure beside a rate is how live execution once looked ten times cheaper than modelled, so both are percents here. If this exceeds the modelled percent, every lab money figure for this profile was optimistic. A paper book pays no venue fee and says so rather than showing a zero.',
   fillAvg:'average gap between the price the decision assumed and the price the order actually filled at, as a PERCENT of price. It measures execution, not edge.',
   fillMax:'the worst single such gap, as a percent of price. One bad fill can matter more than a good average.',
   openCount:'how many positions are open right now on this book.',
@@ -535,12 +535,13 @@ async function drawSetups(){
   const rows=(d.setups||[]).filter(s=>wanted.has(s.id));
   if(!rows.length){ $('#view').innerHTML=`<div class="panel empty">No ${branch==='paper'?'paper books':'live setups'} yet — activate a config on the Greenlights page.</div>`; return; }
   $('#view').innerHTML=`<div class="panel"><table><thead><tr>
-    ${th('setup','setup')}${th('pair','pair')}${th('state','state')}${th('clip','clip')}${th('stop','stop')}${th('created','created')}</tr></thead><tbody>
+    ${th('setup','setup')}${th('pair','pair')}${th('state','state')}${th('clip','clip')}${th('stop','stop')}${th('fee','fee')}${th('created','created')}</tr></thead><tbody>
     ${rows.map(s=>`<tr class="clickable" data-id="${s.id}">
       <td>${esc(s.name)} ${branch==='paper'?paperBadge:''}</td>
       <td>${esc(s.tradedPair)}</td><td><span class="badge b-${s.state==='live'?'live':s.state==='paper'?'paper':s.state==='stopped'?'stopped':'idle'}">${s.state}</span></td>
       <td>$${Number(s.clipUsd).toFixed(0)}</td>
       <td>${s.stopPct==null?'—':(s.stopPct*100).toFixed(2)+'%'}</td>
+      <td class="${s.feeInherited?'muted':''}">${(s.feePerLeg*100).toFixed(3)}%</td>
       <td class="muted" style="font-size:.72rem">${(s.createdUtc||'').slice(0,16)}</td></tr>`).join('')}
   </tbody></table></div>`;
   $('#view').querySelectorAll('tr[data-id]').forEach(tr=>tr.onclick=()=>{
@@ -659,6 +660,7 @@ async function drawDetail(){
       ${tile('Pair','pair',esc(s.tradedPair))}
       ${tile('Clip','clip','$'+Number(s.clipUsd).toFixed(0))}
       ${tile('Stop','stop',s.stopPct==null?'none':(s.stopPct*100).toFixed(2)+'%')}
+      ${tile('Fee','feeModel',(s.feePerLeg*100).toFixed(3)+'%',s.feeInherited?'muted':'')}
       ${tile('Key','key',s.hasKeyRef?'set':'none',s.hasKeyRef?'pos':'muted')}
       ${tile('Exec target','target',esc(s.executionTargetRef||'default'),'muted')}
     </div>
@@ -691,6 +693,7 @@ async function drawDetail(){
       <div class="row" style="margin-top:.5rem">
         <label class="muted" title="position size per entry in US DOLLARS of notional. It does not compound.">Clip $ <input id="clipIn" type="number" min="1" step="1" value="${s.clipUsd}" style="width:6rem"></label>
         <label class="muted" title="the protective stop as a PERCENT move against the position. Blank means none: the position rests on its scheduled exit alone.">Stop % <input id="stopIn" type="number" min="0" step="0.01" value="${s.stopPct==null?'':(s.stopPct*100)}" placeholder="none" style="width:6rem"></label>
+        <label class="muted" title="what this profile pays to trade, as a percent of the money in the position. It is charged EACH WAY — once going in and once coming out — so 0.125 here costs 0.25% over the whole trade. Set it to what the venue this profile runs on actually charges; venues differ, which is why it belongs to the profile and not to the rule.">Fee % each way <input id="feeIn" type="number" min="0" max="5" step="0.005" value="${(s.feePerLeg*100)}" style="width:6rem"></label>
         <button id="saveCfg">Save</button>
       </div>
       <!-- THE TWO FIELDS THE SCREEN DEMANDED AND DID NOT OFFER. Going live is
@@ -747,7 +750,14 @@ async function drawDetail(){
     const clipUsd=Number($('#clipIn').value);
     const raw=$('#stopIn').value.trim();
     const stopPct=raw===''?null:Number(raw)/100;
-    const out=await post(`api/live/setups/${s.id}/config`,{clipUsd,stopPct}); if(out) draw();
+    // The box is in percent and the engine stores a fraction, the same way the
+    // stop box already works. Blank is not a fee of nothing — it leaves the
+    // profile on whatever it had, which is what an empty box means everywhere
+    // else on this row.
+    const feeRaw=$('#feeIn').value.trim();
+    const body={clipUsd,stopPct};
+    if(feeRaw!=='') body.feePerLeg=Number(feeRaw)/100;
+    const out=await post(`api/live/setups/${s.id}/config`,body); if(out) draw();
   };
   $('#saveRouting').onclick=async()=>{
     // Empty means UNCHANGED. Only the explicit tick clears it.
@@ -910,6 +920,25 @@ async function drawLive(){
       ${tile('Open positions','openCount',openHere.length)}
       ${tile('Fill dev avg','fillAvg',st.fidelity.fillDeviationAvg==null?'—':(st.fidelity.fillDeviationAvg*100).toFixed(3)+'%')}
       ${tile('Fill dev max','fillMax',st.fidelity.fillDeviationMax==null?'—':(st.fidelity.fillDeviationMax*100).toFixed(3)+'%',st.fidelity.fillDeviationMax>0.01?'warn':'')}
+      ${(() => {
+        // FEE MODELLED AGAINST FEE PAID (owner order, 2026-08-23: "the live
+        // trading is gonna get it from the server, but it does need to be per
+        // configuration"). The box stamps what the venue charged on each fill,
+        // in DOLLARS; this profile prices in percent. Both are shown as percent
+        // so they can actually be compared — a dollar figure beside a rate is
+        // how live execution came to look ten times cheaper than modelled.
+        //
+        // A paper book pays no venue fee, so there is nothing to compare and it
+        // says so rather than showing a zero that looks like a measurement.
+        const model=(st.feePerLeg||0)*100;
+        const usd=st.fidelity.realizedFeePerLegAvg;
+        const clip=Number(st.clipUsd)||0;
+        const paidPct=(!isP && usd!=null && clip>0) ? (usd/clip)*100 : null;
+        const over=paidPct!=null && model>0 && paidPct>model*1.05;
+        return tile('Fee','feeModel',model.toFixed(3)+'%',st.feeInherited?'muted':'')
+          + tile('Fee paid','feeReal', isP ? 'paper — no venue fee'
+            : paidPct==null ? '—' : paidPct.toFixed(3)+'%', over?'warn':(paidPct==null?'muted':''));
+      })()}
     </div>
     <div class="panel"><div class="k">Open positions ${isP?paperBadge:''}</div>
       <table style="margin-top:.4rem"><thead><tr>${th('entry','entryUtc')}${th('side','side')}${th('qty','qty')}${th('entry $','entryPx')}${th('mark','markPx')}${th('unreal $','unreal')}${th('exit due','exitDue')}</tr></thead><tbody>

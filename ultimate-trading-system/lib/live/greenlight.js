@@ -15,6 +15,7 @@ const path = require('path');
 const crypto = require('crypto');
 const { specsFor } = require('../bracketwork');
 const { validateConfig } = require('./configschema');
+const { feeFracOf } = require('../paper');
 const { ENGINE_VERSION } = require('./version');
 const reg = require('./setups');
 
@@ -143,6 +144,12 @@ function greenlightFromRun(doc, target, { by = 'owner', why, name } = {}) {
       id: doc.id, kind: doc.kind,
       startedAt: doc.startedAt || null, finishedAt: doc.finishedAt || null,
       dataManifest: doc.dataManifest || null,   // QC 77: exactly which candles the evidence read
+      // WHAT THE EVIDENCE WAS PRICED AT (owner order, 2026-08-23). A board's
+      // money means nothing without the cost it was found under — 86% of the
+      // gross edge goes to fees — so the rate travels with the evidence, and a
+      // profile shuttled from here starts at it. A fraction of the position per
+      // leg; feeFracOf converts a run recorded before fees became a rate.
+      feePerLeg: feeFracOf(doc.params),
     },
     rowSummary: {
       pnl: sel.pnl ?? null, trades: sel.trades ?? null,
@@ -251,7 +258,7 @@ function listGreenlights() {
 
 // THE SHUTTLE (point 4): greenlight -> new draft setup, snapshot + provenance
 // riding along. The greenlight record keeps the reverse link.
-function shuttle(greenlightId, { name, clipUsd, stopPct = null, by = 'owner', channel = null, trainPolicy = null } = {}) {
+function shuttle(greenlightId, { name, clipUsd, stopPct = null, feePerLeg, by = 'owner', channel = null, trainPolicy = null } = {}) {
   const gl = getGreenlight(greenlightId);
   if (!gl) { const e = new Error(`no such greenlight ${greenlightId}`); e.code = 'NOT_FOUND'; throw e; }
   if (gl.revoked) { const e = new Error('this config was nuked back to not-greenlighted'); e.code = 'REVOKED'; throw e; }
@@ -264,6 +271,11 @@ function shuttle(greenlightId, { name, clipUsd, stopPct = null, by = 'owner', ch
     clipUsd,
     trainPolicy,
     stopPct,
+    // The fee the board was found under, unless the owner names another. A
+    // profile that trades at a different cost than its evidence was scored at
+    // is not trading the thing that was greenlighted, so this defaults rather
+    // than being left for somebody to remember.
+    feePerLeg: Number.isFinite(feePerLeg) ? feePerLeg : ((gl.sourceRun || {}).feePerLeg ?? null),
     by,
   });
   const next = { ...gl, shuttledSetupIds: [...(gl.shuttledSetupIds || []), setup.id] };

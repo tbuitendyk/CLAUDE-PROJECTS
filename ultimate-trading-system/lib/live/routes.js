@@ -26,6 +26,12 @@ function summarize(s) {
   return {
     id: s.id, name: s.name, state: s.state, tradedPair: s.tradedPair,
     clipUsd: s.clipUsd, stopPct: s.stopPct, engineVersion: s.engineVersion,
+    // WHAT THIS PROFILE PAYS TO TRADE (owner order, 2026-08-23). The rate it
+    // actually prices with, plus whether that is a choice somebody made or the
+    // lab rate it inherited — a screen that cannot tell those apart presents a
+    // default as a decision.
+    feePerLeg: reg.setupFee(s),
+    feeInherited: reg.feeIsInherited(s),
     // PRESENCE ONLY, AND UNDER A NAME THAT SAYS SO (2026-08-21). This used to
     // put the literal word 'set' in a field CALLED keyRef — a field that does
     // not contain what its name says. Anything populating an edit box from a
@@ -245,7 +251,8 @@ function installLiveRoutes(app, { csrfGuard }) {
     try {
       const b = req.body || {};
       const out = gl.shuttle(String(b.greenlightId || ''), {
-        name: b.name, clipUsd: Number(b.clipUsd), stopPct: b.stopPct ?? null, by: 'owner',
+        name: b.name, clipUsd: Number(b.clipUsd), stopPct: b.stopPct ?? null,
+        feePerLeg: b.feePerLeg == null ? undefined : Number(b.feePerLeg), by: 'owner',
       });
       res.json({ ok: true, greenlightId: out.greenlight.id, setup: summarize(out.setup) });
     } catch (e) { res.status(errStatus(e)).json({ error: e.message }); }

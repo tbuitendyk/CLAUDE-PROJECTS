@@ -271,30 +271,57 @@ module.exports.theFetchHelperTreatsANonOkResponseAsAFailure
   = theFetchHelperTreatsANonOkResponseAsAFailure;
 
 // Prose that hardcodes a constant will lie the day the constant moves (QC-158's
-// family). The FEE/LEG tooltip is what the fee number is read against, and it
-// spells the lab rate out in words. Nothing tied those figures to the constant,
-// so a change to it would leave the explanation quietly wrong while every
-// computed number moved.
+// family). This test used to pin the FEE tooltip's wording AGAINST the lab
+// constant, because the tooltip spelled the rate out in words and nothing tied
+// the two together.
 //
-// Rewritten 2026-08-23 with the fee itself: it is a fraction of the position
-// now, not a number of dollars, and the tooltip's old worked example ("$0.125
-// at $100 size") was the exact thing being removed — a cost quoted at one trade
-// size that is wrong at every other. So this test now pins BOTH directions: the
-// rate must be stated, and a per-leg dollar amount must not be.
+// Rewritten 2026-08-23, twice, as the fee itself changed underneath it. First
+// the fee stopped being dollars and became a percentage of what is traded, so
+// the tooltip's worked example ("$0.125 at $100 size") was the very thing being
+// removed — a cost quoted at one trade size that is wrong at every other. Then
+// the rate stopped being one number at all: it is set per trading profile now,
+// because a profile on Binance and a profile on another venue do not pay the
+// same. So there is no constant left for the prose to quote, and quoting one
+// would be the lie this test exists to catch.
+//
+// What it pins instead: the tooltip must describe the number it sits beside
+// without naming a rate, must say the fee is charged twice (the thing a reader
+// gets wrong if nobody says it), and must not quote a per-leg dollar amount.
 function theFeeTooltipQuotesTheConstantItIsExplaining() {
-  const { FEE_PER_LEG, FEE_ROUND_TRIP } = require('../lib/paper');
-  const m = LT.match(/feeModel:\s*'([^']*)'/);
-  assert(m, 'the FEE/LEG: model tooltip is gone — the number has no stated meaning');
-  const prose = m[1];
-  assert(prose.includes(`${100 * FEE_PER_LEG}%`),
-    `the fee tooltip says something other than the real rate of ${100 * FEE_PER_LEG}% — `
-    + `FEE_PER_LEG is ${FEE_PER_LEG} and the prose reads: "${prose.slice(0, 160)}"`);
-  assert(prose.includes(`${100 * FEE_ROUND_TRIP}%`),
-    `the fee tooltip does not state the round trip of ${100 * FEE_ROUND_TRIP}%, which is what a trade actually pays`);
-  const dollars = prose.match(/\$[\d.]+\s*(a|per)\s*leg/i);
-  assert(!dollars,
-    `the fee tooltip quotes a per-leg DOLLAR amount ("${dollars && dollars[0]}") — fees are a percentage of `
-    + 'what is traded, and a dollar figure is only the right cost at one trade size');
+  const { FEE_PER_LEG } = require('../lib/paper');
+  const grab = (key) => {
+    const m = LT.match(new RegExp(`${key}:\\s*'((?:[^'\\\\]|\\\\.)*)'`));
+    assert(m, `the ${key} tooltip is gone — the number it sits beside has no stated meaning`);
+    return m[1];
+  };
+
+  const model = grab('feeModel');
+  assert(/each way/i.test(model),
+    'the modelled-fee tooltip does not say the fee is charged each way, which is the one thing a reader '
+    + `gets wrong by half: "${model.slice(0, 160)}"`);
+  assert(/profile/i.test(model),
+    'the modelled-fee tooltip does not say the rate belongs to the profile — it is set per profile now, '
+    + 'and a reader who thinks it is a system-wide constant will not go looking for the box that sets it');
+
+  // A rate quoted as fact is a rate that will be wrong for some profile. The
+  // worked example is allowed (it explains the doubling); a bare claim that
+  // this system charges N% is not.
+  const lab = `${100 * FEE_PER_LEG}%`;
+  assert(!new RegExp(`(is|of|at)\\s+${lab.replace('.', '\\.')}`).test(model),
+    `the modelled-fee tooltip states ${lab} as this profile's rate, and the rate is per profile now`);
+
+  for (const key of ['feeModel', 'feeReal']) {
+    const prose = grab(key);
+    const dollars = prose.match(/\$[\d.]+\s*(a|per)\s*leg/i);
+    assert(!dollars,
+      `the ${key} tooltip quotes a per-leg DOLLAR amount ("${dollars && dollars[0]}") — fees are a percentage `
+      + 'of what is traded, and a dollar figure is only the right cost at one trade size');
+  }
+
+  const real = grab('feeReal');
+  assert(/percent/i.test(real),
+    'the paid-fee tooltip must say its figure is shown as a percent — the box quotes dollars, and a dollar '
+    + 'figure printed beside a rate is how live execution once looked ten times cheaper than modelled');
 }
 
 module.exports.theFeeTooltipQuotesTheConstantItIsExplaining

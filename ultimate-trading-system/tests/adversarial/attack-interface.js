@@ -204,7 +204,17 @@ function run(ctx) {
   // deliberate difference of the kind RULE TWO allows when it is said out loud.
   // Bumping this number without reading what moved it would make the tripwire
   // worthless.
-  const PINNED = 27;
+  //
+  // Moved from 27 to 28 on 2026-08-23, and the one that moved it was read
+  // first. It is in the fee tiles: `isP ? 'paper — no venue fee' : ...`. A
+  // paper book pays no venue fee, so there is no figure to show and it says so
+  // rather than printing a zero that would read as a measurement. The MODELLED
+  // fee beside it is drawn identically on both sides — deliberately, because
+  // that is the number the two books must be compared on, and a paper book
+  // priced differently from the live one beside it is worthless as a control.
+  // tests/test-profilefee.js pins exactly that split, so a second branch test
+  // creeping into that block fails a test rather than only moving this count.
+  const PINNED = 28;
   if (points.length > PINNED) {
     found.push(finding('ui/ruletwo-new', 'the Trade page',
       `there are now ${points.length} places that ask whether this is the paper side or the live side, up from the ${PINNED} that were reviewed and accepted. Every one of them is a way the two screens can come to disagree, so the new one(s) need looking at: lines ${points.map((p) => p.line).join(', ')}.`));

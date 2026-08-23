@@ -513,6 +513,14 @@ function fillSweepForm(p, description) {
   setC('#swPermBand', p.permute && p.permute.band); setC('#swPermWk', p.permute && p.permute.weekdays);
   setV('#swLayout', p.windowLayout); setV('#swK', p.promoteK); setV('#swNulls', p.labelShiftReps);
   setV('#swMinTr', p.minTrades); setC('#swTrail', p.trailing);
+  // Stored as a fraction, shown as a percent. A run recorded before fees became
+  // a rate stored dollars on the $100 book; 0.125 dollars there is 0.125% here,
+  // which is the same cost and the same number, so the old form reads correctly
+  // either way and the new one is unambiguous.
+  if (p.feePerLeg != null) {
+    const frac = p.feeUnits === 'fraction' ? Number(p.feePerLeg) : Number(p.feePerLeg) / 100;
+    if (Number.isFinite(frac)) setV('#swFee', String(100 * frac));
+  }
   const d = p.declared;
   setC('#swDecOn', !!d);
   if (d) {
@@ -616,6 +624,7 @@ async function drawSweep() {
       <label class="f">window layout<select id="swLayout">${vocabOptions('windowLayout', 'split70')}</select></label>
       <label class="f">null boards<input id="swNulls" type="number" value="0" min="0" style="width:4.5rem" title="companion boards with votes dealt onto random days. Beating all N of them is at best a 1-in-(N+1) claim, so 19 is the first number whose best claim reaches 1-in-20. There is NO ceiling: type any number you like and the cost is printed beside the box before you launch."></label>
       <label class="f">min trades<input id="swMinTr" type="number" value="10" style="width:4.5rem"></label>
+      <label class="f" title="what a trade is assumed to cost, as a percent of the money in the position. It is charged EACH WAY — once going in and once coming out — so 0.125 here costs 0.25% over the whole trade. It is not decoration: 86% of the gross edge this system finds is eaten by fees and break-even sits about 16% above the assumed cost, so the answer moves with this box. Set it to what the venue you would trade this on charges; a config sent to Trade starts at whatever it was found under here.">fee % each way<input id="swFee" type="number" value="0.125" min="0" max="5" step="0.005" style="width:5.5rem"></label>
       <span class="note" id="swNullCost"></span>
     </div>
     </div>
@@ -1094,6 +1103,11 @@ async function drawSweep() {
       promoteK: Number($('#swK').value) || 25, minTrades: Number($('#swMinTr').value) || 10,
       trailing: $('#swTrail').checked, windowLayout: $('#swLayout').value,
       labelShiftReps: Number($('#swNulls').value) || 0, description: $('#swDesc').value.trim(),
+      // The box is in percent and the engine stores a fraction of the position,
+      // the same convention as every other percent box on these pages. A blank
+      // box is not a fee of nothing — it is omitted, and the launcher falls
+      // back to the lab rate rather than quietly pricing the run as free.
+      feePerLeg: $('#swFee').value.trim() === '' ? undefined : Number($('#swFee').value) / 100,
     };
     // REPLICATION: one config declared BEFORE the run and scored on every asset,
     // so the claim is "it held on N of M assets" rather than "the best of ~1,260
@@ -2635,12 +2649,17 @@ async function drawGreenlight() {
     : '<span class="note">select a row on Boards first — a greenlight is minted from the selected row.</span>'}
   </div>
   <div class="panel"><h3 style="margin-top:0">Existing greenlights</h3>
-    <table><thead><tr>${cth('id','glId')}${cth('pair','asset')}${cth('campaign','campaign')}${cth('why','why','text-align:left')}${cth('minted','minted')}${cth('state','state')}</tr></thead><tbody>
+    <table><thead><tr>${cth('id','glId')}${cth('pair','asset')}${cth('campaign','campaign')}${cth('why','why','text-align:left')}${cth('fee','fee')}${cth('minted','minted')}${cth('state','state')}</tr></thead><tbody>
     ${(gls.greenlights || []).map((g) => `<tr><td>${esc(g.id)}</td><td>${esc(g.configSnapshot?.combo?.trade || '—')}</td>
       <td class="muted">${esc(g.campaign || '—')}</td><td style="text-align:left" class="muted">${esc((g.why || '').slice(0, 90))}</td>
-      <td>${esc((g.createdUtc || '').slice(0, 16))}</td><td>${g.revoked ? '<span class="warn">nuked</span>' : '<span class="pos">greenlighted</span>'}</td></tr>`).join('') || '<tr><td colspan="6" class="empty">none yet</td></tr>'}
+      <td class="${g.sourceRun && g.sourceRun.feePerLeg != null ? '' : 'muted'}">${g.sourceRun && g.sourceRun.feePerLeg != null
+    ? `${(100 * g.sourceRun.feePerLeg).toFixed(3)}%` : '—'}</td>
+      <td>${esc((g.createdUtc || '').slice(0, 16))}</td><td>${g.revoked ? '<span class="warn">nuked</span>' : '<span class="pos">greenlighted</span>'}</td></tr>`).join('') || '<tr><td colspan="7" class="empty">none yet</td></tr>'}
     </tbody></table>
-    <p class="note">activation, deactivation and nuking live on the <a href="trade.html">Trade tab</a>.</p></div>`;
+    <p class="note"><b>fee</b> is what the run behind each one was priced at, per trade and each way. It is not a
+      setting here — it is what the evidence was found under, and a config sent to the Trade tab starts out priced
+      at it and can be changed there. A dash means the run predates the fee being recorded.
+      Activation, deactivation and nuking live on the <a href="trade.html">Trade tab</a>.</p></div>`;
   const go = $('#glGo');
   if (go) go.onclick = async () => {
     const why = $('#glWhy').value.trim();

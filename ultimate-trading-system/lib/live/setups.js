@@ -4,8 +4,8 @@
 // A setup is a LIVE TRADING JOB minted from a greenlighted lab config: the
 // configSnapshot is IMMUTABLE from creation (point 4 — later lab edits can
 // never mutate a live setup; a new idea is a new shuttle, not an edit).
-// Operational fields (name, clipUsd, stopPct, executionTargetRef, keyRef) are
-// mutable; identity/evidence fields are not.
+// Operational fields (name, clipUsd, stopPct, feePerLeg, executionTargetRef,
+// keyRef) are mutable; identity/evidence fields are not.
 //
 // STATE is eligibility, not execution: state 'live' means the setup MAY trade;
 // actually opening positions still requires the setup's ARM switch (the
@@ -19,6 +19,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const { validateConfig, liveExecutable } = require('./configschema');
+const { FEE_PER_LEG, MAX_FEE_PER_LEG, feeRate } = require('../paper');
 const { resolveForSetup, targetServes } = require('./targets');
 const { ENGINE_VERSION, SETUP_SCHEMA_VERSION } = require('./version');
 
@@ -44,6 +45,27 @@ const TRANSITIONS = {
 const MIN_STOP_PCT = 0.005;
 
 const ID_RE = /^[a-z0-9][a-z0-9-]{2,40}$/;
+
+// THE TRADING FEE BELONGS TO THIS PROFILE (owner order, 2026-08-23): "we're
+// going to need to have a trading fee percentage that can be set per trading
+// profile. And, of course, the trading profiles might be on Binance, might be
+// on other servers."
+//
+// It is operational, not evidence: it says what THIS deployment pays to trade,
+// which is a property of where it runs, not of the rule it runs. Two profiles
+// on the same rule at two venues cost different amounts and must be allowed to
+// say so. A fraction of the position, per leg, exactly as everywhere else in
+// the engine (lib/paper.js, 2026-08-23).
+//
+// A profile created before this existed has no fee on its record. It is read as
+// the lab rate — the number every one of them was actually priced at — and the
+// screen says it is inherited rather than presenting it as a choice somebody
+// made.
+function setupFee(s) {
+  const v = s && s.feePerLeg;
+  return Number.isFinite(v) ? v : FEE_PER_LEG;
+}
+const feeIsInherited = (s) => !Number.isFinite(s && s.feePerLeg);
 
 function ensureDir() { fs.mkdirSync(setupsDir(), { recursive: true }); }
 // EVERY path is built here, and the id is checked HERE rather than at each
@@ -76,6 +98,17 @@ function validateOperational(s) {
   if (typeof s.name !== 'string' || !s.name.trim() || s.name.length > 80) errors.push('name: 1-80 chars');
   if (!STATES.includes(s.state)) errors.push(`state: must be one of ${STATES}`);
   if (!Number.isFinite(s.clipUsd) || s.clipUsd <= 0) errors.push('clipUsd: must be a positive dollar notional');
+  if (s.feePerLeg != null) {
+    // Refused rather than clamped, and refused in the operator's own units: the
+    // box on screen is a PERCENT, so the message has to be about percents or it
+    // names a number nobody typed.
+    if (!Number.isFinite(s.feePerLeg) || s.feePerLeg < 0) {
+      errors.push('feePerLeg: the trading fee is a percent of what is traded, charged each way');
+    } else if (s.feePerLeg >= MAX_FEE_PER_LEG) {
+      errors.push(`feePerLeg: ${(100 * s.feePerLeg).toFixed(3)}% each way is above the ${100 * MAX_FEE_PER_LEG}% ceiling `
+        + '— no venue charges that, and a number that large is nearly always a fee typed as dollars');
+    }
+  }
   if (s.stopPct != null) {
     if (!Number.isFinite(s.stopPct) || s.stopPct >= 1) errors.push('stopPct: fraction of entry < 1, or null for no stop');
     else if (s.stopPct < MIN_STOP_PCT) errors.push(`stopPct: below the ${MIN_STOP_PCT} floor (0.5%) — triggers on noise`);
@@ -122,6 +155,11 @@ function createSetup(spec) {
     // for trading. See lib/live/trainpolicy.js.
     trainPolicy: spec.trainPolicy || null,
     stopPct: spec.stopPct ?? null,
+    // WHAT IT COSTS THIS PROFILE TO TRADE, per leg, as a fraction of the
+    // position. Defaulted from whatever minted it — a profile shuttled from a
+    // greenlight starts at the fee its board was actually found under, so the
+    // live arithmetic and the evidence agree until the owner says otherwise.
+    feePerLeg: Number.isFinite(spec.feePerLeg) ? spec.feePerLeg : null,
     executionTargetRef: spec.executionTargetRef ?? null,
     keyRef: spec.keyRef ?? null,
     stateHistory: [{ from: null, to: 'draft', utc: now, by: spec.by || 'owner' }],
@@ -243,7 +281,7 @@ function tradableSetups() { return readSetups().setups.filter((x) => !x.__proble
 // Update MUTABLE fields only. Any attempt to change an identity/evidence field
 // is an error, not a merge — silence here would be how a live setup's meaning
 // drifts (the point-4 immutability promise).
-const MUTABLE = new Set(['name', 'clipUsd', 'stopPct', 'executionTargetRef', 'keyRef', 'trainPolicy']);
+const MUTABLE = new Set(['name', 'clipUsd', 'stopPct', 'feePerLeg', 'executionTargetRef', 'keyRef', 'trainPolicy']);
 
 // The live-executability gate, shared by the transition door AND updateSetup. It
 // answers "may this setup honestly TRADE in state `to`?": the geometry must be one
@@ -428,6 +466,7 @@ function setRunEpoch(id, utc = new Date().toISOString()) {
 
 module.exports = {
   createSetup, getSetup, listSetups, readSetups, tradableSetups, setupProblems,
+  setupFee, feeIsInherited,
   updateSetup, transition, deleteDraft, setRunEpoch,
   STATES, TRANSITIONS, MIN_STOP_PCT, setupsDir,
 };
