@@ -29,7 +29,7 @@
 const bracketLib = require('./bracket');
 const { buildCombo, specsFor, quorumCall } = require('./bracketwork');
 const { balancedBandPct, scoreDiff, GEOMETRIES } = require('./dataset');
-const { REAL_FEE_PER_LEG } = require('./paper');
+const { feeFracOf } = require('./paper');
 const { classifierMetrics } = require('./metrics');
 const { MIN_CHUNKS } = require('./pipeline');
 
@@ -131,7 +131,7 @@ async function wfUnitTask({ combo, branch, params }) {
     throw new Error(`nullShiftSeed is present but not a whole number >= 1 (${JSON.stringify(p.nullShiftSeed)}) — which arm is this?`);
   }
   const { geo, maps, chunks } = await buildCombo(combo, branch, p);
-  const fee = p.feePerLeg ?? REAL_FEE_PER_LEG;
+  const fee = feeFracOf(p);
   const reach = reachMs(geo, p.tHours);
   const minTrades = p.minTradesSlice ?? 5; // floor per 8-week slice [GUESSED]
   const grid = foldGrid(chunks[0].startTs, chunks[chunks.length - 1].startTs);

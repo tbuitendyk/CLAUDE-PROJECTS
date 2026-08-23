@@ -1,6 +1,6 @@
 const fs = require('fs');
 const path = require('path');
-const { pnlAt, REAL_FEE_PER_LEG, voteOf, superOf } = require('./paper');
+const { pnlAt, FEE_PER_LEG, feeRate, feeFracOf, voteOf, superOf } = require('./paper');
 const { stampManifest } = require('./manifest');
 
 // THE RUN LAUNCHERS, and the record every run leaves behind.
@@ -1002,7 +1002,11 @@ function htParams(params) {
     dMults: src.params.dMults, tHours: src.params.tHours,
     gates: (src.params.gates || []).filter((g) => g !== 'always'),
     entries: src.params.entries,
-    feePerLeg: src.params.feePerLeg ?? params.feePerLeg,
+    // The source run's own fee, normalised to a fraction — a run recorded
+    // before 2026-08-23 stored dollars, and tuning it under a different cost
+    // than it was found under is not tuning the same thing.
+    feePerLeg: src.params.feePerLeg != null ? feeFracOf(src.params) : feeFracOf(params),
+    feeUnits: 'fraction',
     minTradesPerLookbackWeek: (() => {
       const v = Number(params.minTradesPerLookbackWeek ?? 0.75); // GUESSED, printed
       if (!Number.isFinite(v) || v <= 0) throw new Error(`minTradesPerLookbackWeek must be a positive number (got ${params.minTradesPerLookbackWeek})`);
@@ -1054,7 +1058,7 @@ function startHistoryTuning(params) {
     if ((real.htRows || []).some((r) => !r.refused && !r.skipped && !r.trailFile)) {
       throw new Error(`${real.id} has passes with missing trail files — no trail, no null, no claim. Investigate the trail-dump failures before drawing.`);
     }
-    p = { ...real.params, nullShiftSeed: seed, arm: 'null', replayOf: real.id,
+    p = { ...replayParams(real.params), nullShiftSeed: seed, arm: 'null', replayOf: real.id,
       label: params.label || `htnull-s${seed}`, description: params.description || `null draw seed ${seed} of ${real.id} — no verdict alone; selects nothing` };
   } else {
     p = htParams(params);
@@ -1280,7 +1284,7 @@ function startReserveGrade(params) {
     holdEndTs: real.params.reserveToTs,
   };
   const p = {
-    ...real.params,
+    ...replayParams(real.params),
     readingRules: {
       ...real.params.readingRules,
       nullRule: {
@@ -1526,6 +1530,25 @@ function resumeContents(id) {
   };
 }
 
+// REPLAYING A STORED RUN'S PARAMETERS (owner order, 2026-08-23).
+//
+// Three paths hand a finished run's own parameters back to a launcher: picking
+// up an interrupted sweep, firing a null draw against a History Tuning run, and
+// grading its reserve. Every one of them must price at the cost the original
+// paid — a null draw priced differently from the run it is the null OF is not a
+// null of anything.
+//
+// A run recorded before 2026-08-23 stored its fee in DOLLARS on the $100 clip
+// and carries no units marker. Handing those params straight back would have
+// been the worst kind of failure this change could produce: the launcher's
+// safety rail would have CLAMPED $0.125 down to the 5%-a-leg ceiling, so a
+// picked-up sweep would finish priced at forty times the fee its first half
+// paid, and nothing on any screen would have said so. Normalise before the
+// mapping, never after.
+function replayParams(params) {
+  return { ...params, feePerLeg: feeFracOf(params), feeUnits: 'fraction' };
+}
+
 function resumeBracketLab(id) {
   const found = resumeContents(id);
   if (!found.resumable) {
@@ -1535,7 +1558,7 @@ function resumeBracketLab(id) {
     throw err;
   }
   const doc = getBatch(found.id);
-  return startBracketLab(doc.params, { resume: doc });
+  return startBracketLab(replayParams(doc.params), { resume: doc });
 }
 
 // THE PLAN, WITHOUT STARTING ANYTHING (owner order, 2026-08-22).
@@ -1633,17 +1656,38 @@ function planFor(params, resumeDoc) {
     description: typeof params.description === 'string' ? params.description.slice(0, 600) : '',
     label: typeof params.label === 'string' ? params.label.slice(0, 40) : '',
     detailK: 50,
-    // FEE, SETTABLE. This was hard-coded to REAL_FEE_PER_LEG and therefore
-    // unreachable from any launcher — the same class of fault as `trailing`
-    // and `holdout` being dropped by the API, and it matters more. Cycle 9's
-    // entire result rests on fees: 86% of the gross edge is consumed by them
-    // and break-even sits only 16% above the assumed cost. The one dimension
-    // the answer depends on could not be varied.
+    // FEE, SETTABLE. This was hard-coded and therefore unreachable from any
+    // launcher — the same class of fault as `trailing` and `holdout` being
+    // dropped by the API, and it matters more. Cycle 9's entire result rests
+    // on fees: 86% of the gross edge is consumed by them and break-even sits
+    // only 16% above the assumed cost. The one dimension the answer depends on
+    // could not be varied.
+    //
+    // A PERCENTAGE OF WHAT IS TRADED, NOT A NUMBER OF DOLLARS (owner order,
+    // 2026-08-23). 0.00125 is the 0.125% a leg this system trades at. The old
+    // ceiling was 2 — two DOLLARS a leg, which as a rate would be 200% — so the
+    // rail moves with the units: nothing at or above 5% a leg is a fee anybody
+    // meant, and refusing there is what stops a dollar figure from ever being
+    // charged as a rate again.
     //
     // Bounds are a safety rail, not a preference: a zero fee would flatter
     // every result and a silly-large one would make everything look dead.
-    feePerLeg: Math.min(2, Math.max(0, Number(params.feePerLeg) >= 0
-      ? Number(params.feePerLeg) : REAL_FEE_PER_LEG)),
+    feePerLeg: (() => {
+      const v = Number(params.feePerLeg);
+      // REFUSED, NOT CLAMPED. This used to clamp, and a clamp is how a launch
+      // that meant $0.125 would have quietly become 5% a leg — a number with
+      // the right shape and forty times the right size. Absent or unreadable
+      // still falls back to the lab rate; a real number that is not a real fee
+      // is told so by name.
+      return Number.isFinite(v) && v >= 0 ? feeRate(v, 'sweep launch: feePerLeg') : FEE_PER_LEG;
+    })(),
+    // WHICH UNITS THE NUMBER BESIDE THIS IS IN. Runs recorded before
+    // 2026-08-23 carry dollars on the $100 paper clip and no marker at all, so
+    // the absence of this field is what identifies them. Nothing reads
+    // params.feePerLeg straight any more — every reader goes through
+    // feeFracOf, which converts an unmarked run rather than rereading $0.125
+    // as 12.5% a leg and destroying what its numbers meant.
+    feeUnits: 'fraction',
     // The execution grid is SETTABLE (owner audit 2026-07-30). These were
     // constants, unreachable from any launcher — the fault class that hid the
     // fee. Defaults are the identical constants; a run that does not ask for
@@ -2080,7 +2124,9 @@ function startBracketLab(params, opts) {
                 trade: l.trade, ctx1: l.ctx1, ctx2: l.ctx2,
                 geometry: l.geometry, decision: l.decision,
                 weekdaysOnly: l.weekdaysOnly ?? null,
-                params: { holdout: p.holdout, feePerLeg: p.feePerLeg, labelShiftScope: p.labelShiftScope },
+                // The fee is written into the dump as a FRACTION and says so,
+                // so a dump can never be re-read under the wrong units.
+                params: { holdout: p.holdout, feePerLeg: feeFracOf(p), feeUnits: 'fraction', labelShiftScope: p.labelShiftScope },
                 best: res.best ? {
                   entry: res.best.entry || 'breakout', gate: res.best.gate ?? null,
                   dMult: res.best.dMult ?? null, tHours: res.best.tHours ?? null,
@@ -2535,7 +2581,7 @@ function startHtTwo(params) {
       // entry, 17h hold. bandPct is calibrated on the pre-fold era at launch.
       declaredCell: { quorum: 3, gate: 'directional', entry: 'market', dMult: null, tHours: 17, trailMult: null, armMult: null, bandPct: null },
       allLoaded: true, startMonth: null, endMonth: null,
-      feePerLeg: REAL_FEE_PER_LEG,
+      feePerLeg: FEE_PER_LEG, feeUnits: 'fraction',
       label: params.label || (pair === planted.PLANTED_LATE_SYMBOL ? 'ht2-exam-a-late' : 'ht2-exam-b-flat'),
       description: `HT v2 entrance exam on ${pair} — known answer: age-weighting must ${pair === planted.PLANTED_LATE_SYMBOL ? 'WIN (the rule lives only in the final third)' : 'FIND NOTHING (the rule is uniform over all history)'}`,
     };
@@ -2558,7 +2604,10 @@ function startHtTwo(params) {
       declaredCell: { quorum: sel.quorum, gate: sel.gate, entry: sel.entry, dMult: sel.dMult ?? null, tHours: sel.tHours, trailMult: sel.trailMult ?? null, armMult: sel.armMult ?? null, bandPct: sel.bandPct },
       windowStamps: sel.windowStamps,
       allLoaded: src.params.allLoaded, startMonth: src.params.startMonth, endMonth: src.params.endMonth,
-      feePerLeg: src.params.feePerLeg,
+      // The source run's fee, normalised to a fraction — a run recorded before
+      // 2026-08-23 stored dollars on the $100 clip, and the paired arms have to
+      // be priced at the cost the board was found under.
+      feePerLeg: feeFracOf(src.params), feeUnits: 'fraction',
       label: params.label || `ht2-${halfLifeKey}-${sel.trade.toLowerCase()}`,
       description: params.description || `HT v2 paired: ${halfLifeKey} half-life vs reference on ${sel.trade} ${sel.geometry} ${sel.decision} q${sel.quorum}. Hypothesis origin: the v1 design read (curtain opened 2026-08-04) — contaminated for selection, cited as origin only.`,
     };
@@ -2679,6 +2728,7 @@ module.exports = {
   planFor,
   runContents,
   deleteBatch,
+  replayParams,
   resumeContents,
   resumeBracketLab,
   listBatches,

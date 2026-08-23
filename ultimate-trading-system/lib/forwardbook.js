@@ -25,7 +25,7 @@
 // terms of.
 const bracketLib = require('./bracket');
 const { scoreDiff } = require('./dataset');
-const { REAL_FEE_PER_LEG } = require('./paper');
+const { feeFracOf } = require('./paper');
 const { buildCombo, trainMembers, quorumCall, specsFor } = require('./bracketwork');
 
 // Members are trained ONCE on data ending here — the last date any of the
@@ -118,8 +118,8 @@ function numOf(v) {
 
 // One book, scored end to end. Deterministic given the cached data.
 async function scoreBook(book, opts = {}) {
-  const fee = opts.feePerLeg ?? REAL_FEE_PER_LEG;
-  const params = { allLoaded: true, feePerLeg: fee };
+  const fee = feeFracOf(opts);
+  const params = { allLoaded: true, feePerLeg: fee, feeUnits: 'fraction' };
   const { geo, maps, chunks } = await buildCombo(book.combo, book.branch, params);
 
   // The frozen band, never re-derived: re-deriving it on new data would move

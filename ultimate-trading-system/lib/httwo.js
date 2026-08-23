@@ -19,6 +19,7 @@
 // in the ordinary launcher.
 
 const bracketLib = require('./bracket');
+const { feeFracOf } = require('./paper');
 const H = require('./history');
 const { mulberry32 } = require('./rng');
 
@@ -138,7 +139,7 @@ async function htTwoFoldTask(payload) {
         trainChunks: trainSet,
         testChunks: foldChunks,
         decision: branch.decision,
-        feePerLeg: p.feePerLeg,
+        feePerLeg: feeFracOf(p),
         tradeMap: maps.trade,
         geo,
         ageWeights: halfLifeDays ? weights : null,
@@ -146,7 +147,7 @@ async function htTwoFoldTask(payload) {
       memberCalls.push(calls);
     }
     const stream = foldChunks.map((_, i) => quorumCall(memberCalls, i, cell.quorum || 1));
-    const r = bracketLib.simCell(cell, foldChunks, stream, maps.trade, geo, bandPct, p.feePerLeg);
+    const r = bracketLib.simCell(cell, foldChunks, stream, maps.trade, geo, bandPct, feeFracOf(p));
     arms[armKey] = { pnl: r.pnl, trades: r.trades, effectiveDays };
   }
 

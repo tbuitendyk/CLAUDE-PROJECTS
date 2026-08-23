@@ -25,6 +25,8 @@
 // both so history stays readable, but it TAGS every verdict with the
 // construction it was measured against — a rotation verdict is a historical
 // reading, never current evidence.
+const { feeFracOf } = require('./paper');
+
 function drawTag(r) {
   if (r.nullDealSeed != null) return `deal-s${r.nullDealSeed}`;
   if (r.shiftFrac) return `rot-${r.shiftFrac}`;
@@ -89,10 +91,17 @@ function nullVerdict(realDoc, nullDoc, sel) {
   // moneys measured under different fees or window layouts are not the same
   // quantity and the comparison quietly stops meaning what it looks like.
   {
-    const WATCH = ['windowLayout', 'feePerLeg', 'startMonth', 'endMonth', 'minTrades', 'labelShiftScope', 'allLoaded'];
+    const WATCH = ['windowLayout', 'startMonth', 'endMonth', 'minTrades', 'labelShiftScope', 'allLoaded'];
     const rp = realDoc.params || {};
     const np = nullDoc.params || {};
     const fields = WATCH.filter((k) => JSON.stringify(rp[k] ?? null) !== JSON.stringify(np[k] ?? null));
+    // THE FEE IS COMPARED AS A RATE, not as whatever number the run happened to
+    // store (owner order, 2026-08-23). Runs recorded before that date hold
+    // dollars on the $100 paper clip and runs since hold a fraction, so 0.125
+    // and 0.00125 are the SAME cost written two ways. Comparing the stored
+    // numbers would report a mismatch between two runs that were priced
+    // identically — and a warning nobody can act on is worse than no warning.
+    if (feeFracOf(rp) !== feeFracOf(np)) fields.push('feePerLeg');
     // Data manifest (QC 77): identical settings mean nothing if the two jobs
     // read different candle files — the digests answer that in one glance.
     if (realDoc.id !== nullDoc.id) {

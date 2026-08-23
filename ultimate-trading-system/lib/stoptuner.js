@@ -31,7 +31,10 @@ const { HOUR_MS } = require('./binance');
 //   side      'LONG' | 'SHORT'
 //   map       Map(ms -> {open,high,low,close}) forward-filled hourly candles
 //   holdHours how long the position is held before its scheduled exit
-//   feePerLeg round-trip fee is 2*feePerLeg, as a FRACTION of notional (e.g. .001)
+//   feePerLeg a FRACTION of the position, per leg; the round trip is 2*feePerLeg.
+//             This file has always used fractions, and since 2026-08-23 so does
+//             the rest of the engine — lib/paper.js FEE_PER_LEG is the one
+//             definition, and the hand conversions callers used to do are gone.
 // Returns { priced, mae, grossPct, netPct, entry, exit, worst } or {priced:false}.
 function entryOutcome(entryTs, side, map, holdHours, feePerLeg = 0) {
   const e0 = map.get(entryTs);

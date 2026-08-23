@@ -5,6 +5,7 @@
 // half of the calibration gate; the on-box planted run before first real
 // use is the other half (manifest item 4).
 const { assert } = require('./helpers');
+const { FEE_PER_LEG } = require('../lib/paper');
 const bracketLib = require('../lib/bracket');
 const { nullRng, dealVotes } = require('../lib/walkforward');
 
@@ -45,7 +46,7 @@ module.exports = {
     const rng = nullRng(7, 'planted', 0, 0, 'gen');
     const calls = Array.from({ length: n }, () => (rng() < 0.25 ? 1 : 0));
     const { periods, tradeMap } = syntheticWorld(n, calls);
-    const real = bracketLib.simCell(CELL, periods, calls, tradeMap, GEO, 1.0, 0.125);
+    const real = bracketLib.simCell(CELL, periods, calls, tradeMap, GEO, 1.0, FEE_PER_LEG);
     assert.ok(real.trades >= 15, `the plant trades (${real.trades})`);
     assert.ok(real.pnl > 0, `the real stream harvests the plant (+$${real.pnl.toFixed(2)})`);
 
@@ -55,7 +56,7 @@ module.exports = {
       const d = dealVotes(calls, nullRng(seed, 'planted', 0, 0, 'deal'));
       // mix preserved exactly
       assert.strictEqual(d.filter((c) => c === 1).length, calls.filter((c) => c === 1).length);
-      dealt.push(bracketLib.simCell(CELL, periods, d, tradeMap, GEO, 1.0, 0.125).pnl);
+      dealt.push(bracketLib.simCell(CELL, periods, d, tradeMap, GEO, 1.0, FEE_PER_LEG).pnl);
     }
     const sorted = dealt.slice().sort((a, b) => a - b);
     const beat = dealt.filter((p) => p >= real.pnl).length;

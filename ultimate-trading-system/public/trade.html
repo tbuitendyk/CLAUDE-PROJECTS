@@ -386,7 +386,7 @@ const TILE={
   realized:'money actually BANKED on closed positions, in US dollars, after both legs\' fees and any borrow interest.',
   realizedAll:'the same banked figure summed across every book on this side. Paper dollars and real dollars are never added together.',
   unrealAll:'the same open-position figure summed across every book on this side.',
-  feeModel:'the fee per leg the simulation assumed, SCALED TO THE CLIP THIS BOOK ACTUALLY TRADES. The lab quotes it as 0.125% of notional ($0.125 at $100 size); publishing that $100 figure beside a $10 clip made live execution look ten times cheaper than modelled. The percentage beside it is the invariant — compare THAT.',
+  feeModel:'the fee per leg the simulation assumed, as a PERCENTAGE of what is traded: 0.125% a leg, 0.25% the round trip. It is a rate, not a number of dollars, so it costs the same share of a $10 clip as of a $100 one and needs no scaling to be compared with what was really paid. It used to be quoted as a dollar figure fixed to a $100 clip, and printing that beside a $10 clip made live execution look ten times cheaper than modelled.',
   feeReal:'the fee per leg actually PAID, averaged over real legs, in US dollars, with the same figure as a percent of the clip. If the PERCENTAGE exceeds the model percentage, every lab money figure was optimistic.',
   fillAvg:'average gap between the price the decision assumed and the price the order actually filled at, as a PERCENT of price. It measures execution, not edge.',
   fillMax:'the worst single such gap, as a percent of price. One bad fill can matter more than a good average.',

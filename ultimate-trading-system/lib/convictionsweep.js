@@ -31,7 +31,7 @@ const { buildCombo, trainMembers, quorumCall } = require('./bracketwork');
 const bracketLib = require('./bracket');
 const { scoreDiff } = require('./dataset');
 const { splitFrozen } = require('./freeze');
-const { REAL_FEE_PER_LEG, NOTIONAL } = require('./paper');
+const { FEE_PER_LEG, feeRate } = require('./paper');
 const { entryOutcome } = require('./stoptuner');
 const { hasExistingStop } = require('./stopsweep');
 const { HOUR_MS } = require('./binance');
@@ -210,9 +210,12 @@ async function computeConvictionSweep(book, opts = {}) {
   if (hasExistingStop(book.cell)) {
     throw new Error(`setup ${book.id} is not a market-entry/no-trail cell — conviction pricing does not apply`);
   }
-  const feeUsd = opts.feePerLegUsd ?? REAL_FEE_PER_LEG;
-  const feeFrac = opts.feePerLeg ?? (feeUsd / NOTIONAL);
-  const params = { allLoaded: true, feePerLeg: feeUsd };
+  // ONE FEE, ONE MEANING (owner order, 2026-08-23). This used to hold two — a
+  // dollar figure for the simulator and a fraction for the outcome pricing —
+  // with a hand conversion between them that the stop sweep's scar comment
+  // records the cost of getting wrong. Both halves now take the same fraction.
+  const fee = feeRate(opts.feePerLeg ?? FEE_PER_LEG, 'tune fee');
+  const params = { allLoaded: true, feePerLeg: fee, feeUnits: 'fraction' };
   const { geo, maps, chunks } = await buildCombo(book.combo, book.branch, params);
   const bandPct = Math.abs(book.branch.band);
   for (const c of chunks) c.label = scoreDiff(c.diffPct / 100, bandPct / 100);
@@ -223,7 +226,7 @@ async function computeConvictionSweep(book, opts = {}) {
   if (!trainChunks.length) throw new Error(`setup ${book.id}: no training chunks at/before the freeze date`);
   const scoreChunks = [...trainChunks, ...fwdChunks].sort((a, b) => a.startTs - b.startTs);
   const views = bracketLib.comboViews(book.combo.size, geo.featureHours / 24).views;
-  const members = await trainMembers(book.members, views, trainChunks, scoreChunks, book.branch, maps, geo, feeUsd);
+  const members = await trainMembers(book.members, views, trainChunks, scoreChunks, book.branch, maps, geo, fee);
   const memberCalls = members.map((m) => m.calls);
   const calls = scoreChunks.map((_, i) => quorumCall(memberCalls, i, book.cell.quorum));
 
@@ -231,7 +234,7 @@ async function computeConvictionSweep(book, opts = {}) {
   const priced = [];
   let unpriced = 0;
   for (const e of entries) {
-    const o = entryOutcome(e.entryTs, e.side, maps.trade, book.cell.tHours, feeFrac);
+    const o = entryOutcome(e.entryTs, e.side, maps.trade, book.cell.tHours, fee);
     if (o.priced) priced.push({ ...e, netPct: o.netPct });
     else unpriced++;
   }

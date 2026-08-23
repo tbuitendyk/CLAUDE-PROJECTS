@@ -5,22 +5,44 @@ const { assert } = require('./helpers');
 const { HOUR_MS } = require('../lib/binance');
 const { entriesFromCalls, hasExistingStop } = require('../lib/stopsweep');
 const { entryOutcome } = require('../lib/stoptuner');
-const { REAL_FEE_PER_LEG, NOTIONAL } = require('../lib/paper');
+const { FEE_PER_LEG, FEE_ROUND_TRIP, feeRate, feeFracOf } = require('../lib/paper');
 
 module.exports.feeMustBeFractionalNotDollars = function () {
-  // REGRESSION (2026-08-11): REAL_FEE_PER_LEG is $0.125 on the $100 notional, i.e.
-  // 0.00125 as a FRACTION. The stop tuner works in fractional returns; feeding the
-  // dollar 0.125 straight in made a 25% round-trip hurdle and mislabelled 97% of
-  // trades as losers. Pin the conversion and the direction of the bug.
-  const frac = REAL_FEE_PER_LEG / NOTIONAL;
-  assert.ok(Math.abs(frac - 0.00125) < 1e-9, `fractional fee is 0.00125, got ${frac}`);
+  // REGRESSION (2026-08-11), CLOSED AT THE ROOT (owner order, 2026-08-23).
+  //
+  // The fee used to be $0.125 A LEG — dollars — while this stop tuner has always
+  // worked in fractional returns. Feeding the dollar figure straight in made a
+  // 25% round-trip hurdle instead of 0.25% and mislabelled 97% of trades as
+  // losers. Every caller carried a hand conversion to stop that happening, and a
+  // hand conversion is something somebody eventually forgets.
+  //
+  // There is one meaning now: a fraction of the position, everywhere. So this
+  // test no longer pins a conversion — it pins that the conversion is not
+  // needed, and that the dollar figure can never be charged again by accident.
+  assert.ok(Math.abs(FEE_PER_LEG - 0.00125) < 1e-12, `the lab fee is 0.00125 of the position, got ${FEE_PER_LEG}`);
+  assert.ok(Math.abs(FEE_ROUND_TRIP - 0.0025) < 1e-12, 'the round trip is both legs');
+
   const map = new Map();
   map.set(0, { open: 100, high: 100, low: 100, close: 100 });
   map.set(3 * HOUR_MS, { open: 100.5, high: 100.5, low: 100.5, close: 100.5 }); // +0.5%
-  // with the CORRECT fractional fee, a +0.5% move clears the ~0.25% hurdle -> winner
-  assert.ok(entryOutcome(0, 'LONG', map, 3, frac).netPct > 0, 'a +0.5% move is a winner at the real fee');
-  // with the DOLLAR value used as a fraction (the bug), the same trade is a loser
-  assert.ok(entryOutcome(0, 'LONG', map, 3, REAL_FEE_PER_LEG).netPct < 0, 'the dollar-as-fraction bug flips it to a loser');
+  // A +0.5% move clears the 0.25% round trip and is a winner. No conversion.
+  assert.ok(entryOutcome(0, 'LONG', map, 3, FEE_PER_LEG).netPct > 0,
+    'a +0.5% move is a winner at the real fee, with the fee passed through unconverted');
+
+  // THE OLD DOLLAR VALUE IS REFUSED, not charged. This is what makes the bug
+  // impossible rather than merely fixed: at 0.125 the same trade used to come
+  // back a loser and nothing said why.
+  let err = null;
+  try { feeRate(0.125, 'test'); } catch (e) { err = e; }
+  assert.ok(err, 'a fee of 0.125 was accepted — that is dollars, and it is a 12.5% rate');
+  assert.ok(/FRACTIONS here, not dollars/.test(err.message), `wrong refusal: ${err.message}`);
+
+  // And a run recorded before the change still prices at the cost it was found
+  // under, rather than at a hundred times it.
+  assert.ok(Math.abs(feeFracOf({ feePerLeg: 0.125 }) - FEE_PER_LEG) < 1e-12,
+    'a run recorded in dollars must read back as the same real cost');
+  assert.ok(Math.abs(feeFracOf({ feePerLeg: 0.00125, feeUnits: 'fraction' }) - FEE_PER_LEG) < 1e-12,
+    'a run recorded as a fraction is taken as it stands');
 };
 
 module.exports.onlyMarketNoTrailSetupsAreStoplessAndTunable = function () {

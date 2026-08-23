@@ -5,6 +5,7 @@
 // a test, and a fully green suite said everything was fine. A function the
 // sweep's directional decision depends on had no coverage at all.
 const { assert } = require('./helpers');
+const { FEE_PER_LEG } = require('../lib/paper');
 const { tuneTau, monthList, deriveShift, MIN_CHUNKS } = require('../lib/pipeline');
 
 // The fee is passed explicitly in every call below. It used to default to the
@@ -33,7 +34,7 @@ module.exports = {
     const chunks = [{ startTs: 1e6 }];
     const probs = [{ '-1': 0.1, 0: 0.3, 1: 0.6 }];
     const free = tuneTau(chunks, probs, map, geo, 0);
-    const costly = tuneTau(chunks, probs, map, geo, 0.125);
+    const costly = tuneTau(chunks, probs, map, geo, FEE_PER_LEG);
     const at = (r, tau) => r.tauLadder.find((x) => x.tau === tau).pnl;
     assert.ok(at(free, 0) > at(costly, 0),
       'the same ladder is worth the same at two different fees — the fee is not reaching the arithmetic');

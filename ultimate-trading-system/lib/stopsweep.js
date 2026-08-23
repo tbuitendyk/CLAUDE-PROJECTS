@@ -18,7 +18,7 @@ const { buildCombo, trainMembers, quorumCall } = require('./bracketwork');
 const bracketLib = require('./bracket');
 const { scoreDiff } = require('./dataset');
 const { splitFrozen } = require('./freeze');
-const { REAL_FEE_PER_LEG, NOTIONAL } = require('./paper');
+const { FEE_PER_LEG, feeRate } = require('./paper');
 const { tuneFixedStop } = require('./stoptuner');
 const { HOUR_MS } = require('./binance');
 
@@ -83,14 +83,16 @@ async function computeSetupStop(book, opts = {}) {
     throw new Error(`setup ${book.id} already has a protective stop `
       + `(entry=${book.cell.entry}, trailMult=${book.cell.trailMult}) — stop tuning does not apply`);
   }
-  // REAL_FEE_PER_LEG is DOLLARS on the $NOTIONAL paper clip ($0.125 on $100 =
-  // 0.125%). The stop tuner works in FRACTIONAL returns, so the fee must be a
-  // fraction too: $0.125/$100 = 0.00125. (Passing the dollar 0.125 straight in
-  // made a 25% round-trip hurdle instead of 0.25% and misclassified almost every
-  // trade as a loser — caught 2026-08-11 by the owner asking why F1 'won' 2.7%.)
-  const feeUsd = opts.feePerLegUsd ?? REAL_FEE_PER_LEG;
-  const feeFrac = opts.feePerLeg ?? (feeUsd / NOTIONAL);
-  const params = { allLoaded: true, feePerLeg: feeUsd };
+  // ONE FEE, ONE MEANING (owner order, 2026-08-23). This used to carry two: a
+  // dollar figure for the simulator and a fraction for the stop tuner, with a
+  // hand conversion between them. The conversion existed because getting it
+  // wrong once already cost a reading — passing the dollar 0.125 straight into
+  // the tuner made a 25% round-trip hurdle instead of 0.25% and misclassified
+  // almost every trade as a loser, caught 2026-08-11 by the owner asking why F1
+  // 'won' 2.7%. Now both halves take the same fraction and there is nothing to
+  // convert and nothing to get wrong.
+  const fee = feeRate(opts.feePerLeg ?? FEE_PER_LEG, 'tune fee');
+  const params = { allLoaded: true, feePerLeg: fee, feeUnits: 'fraction' };
   const { geo, maps, chunks } = await buildCombo(book.combo, book.branch, params);
 
   // frozen band + labels, exactly as scoreBook (never re-derived on new data)
@@ -112,14 +114,14 @@ async function computeSetupStop(book, opts = {}) {
   if (!trainChunks.length) throw new Error(`setup ${book.id}: no training chunks at/before the freeze date`);
   const scoreChunks = [...trainChunks, ...fwdChunks].sort((a, b) => a.startTs - b.startTs);
   const views = bracketLib.comboViews(book.combo.size, geo.featureHours / 24).views;
-  const members = await trainMembers(book.members, views, trainChunks, scoreChunks, book.branch, maps, geo, feeUsd);
+  const members = await trainMembers(book.members, views, trainChunks, scoreChunks, book.branch, maps, geo, fee);
   const memberCalls = members.map((m) => m.calls);
   const calls = scoreChunks.map((_, i) => quorumCall(memberCalls, i, book.cell.quorum));
 
   const entries = entriesFromCalls(scoreChunks, calls, geo);
   const tune = tuneFixedStop(entries, maps.trade, {
     holdHours: book.cell.tHours,
-    feePerLeg: feeFrac,
+    feePerLeg: fee,
     marginFrac: opts.marginFrac || 0,
   });
   return {

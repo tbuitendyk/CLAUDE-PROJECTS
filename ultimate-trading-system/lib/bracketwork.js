@@ -18,7 +18,7 @@
 const { toHourlyMap, forwardFill, scoreDiff, balancedBandPct, GEOMETRIES } = require('./dataset');
 const { loadSymbol, loadSymbolAll, monthList, deriveShift, MIN_CHUNKS } = require('./pipeline');
 const bracketLib = require('./bracket');
-const { REAL_FEE_PER_LEG } = require('./paper');
+const { feeFracOf } = require('./paper');
 const { classifierMetrics } = require('./metrics');
 
 // One place that decides whether an execution cell IS the declared/selected
@@ -338,7 +338,7 @@ async function unitTask(task) {
   // concatenated, then the calls are split. Training twice would be waste, and
   // worse, an invitation for the two to be fitted differently.
   const predictChunks = holdChunks.length ? [...testChunks, ...holdChunks] : testChunks;
-  const members = await trainMembers(specsFor(combo.size, stage), views, trainChunks, predictChunks, branch, maps, geo, p.feePerLeg ?? REAL_FEE_PER_LEG);
+  const members = await trainMembers(specsFor(combo.size, stage), views, trainChunks, predictChunks, branch, maps, geo, feeFracOf(p));
   // Null-board arm (register 66 deal construction): the member's real vote
   // mix, dealt onto random days — independently per member, per draw, per
   // unit, and PER SLICE.
@@ -390,7 +390,7 @@ async function unitTask(task) {
     memberCalls = dealTogether(memberCalls, 'test');
     if (holdCalls) holdCalls = dealTogether(holdCalls, 'hold');
   }
-  const fee = p.feePerLeg ?? REAL_FEE_PER_LEG;
+  const fee = feeFracOf(p);
   // Trailing is a PROMOTE-stage dimension only (see TRAIL_MULTS): 12x the menu
   // in the cheap slim pass would turn a 272-combo sweep into a night's work,
   // and slim ranks combos rather than refining execution.
@@ -634,7 +634,7 @@ async function nullRotationTask({ combo, branch, params, shiftIndex, nShifts, se
   // threshold each directional member trades on is priced with it. It used to
   // be computed three lines further down and the members were trained without
   // it at all.
-  const fee = p.feePerLeg ?? REAL_FEE_PER_LEG;
+  const fee = feeFracOf(p);
   const members = await trainMembers(specsFor(combo.size, 'promoted'), views, trainChunks, testChunks, branch, maps, geo, fee);
   const { nullRng, dealVotes } = require('./walkforward');
   const memberCalls = members.map((m, mI) => dealVotes(m.calls,
@@ -730,7 +730,7 @@ async function menuGridTask({ combo, branch, params, dump }) {
     throw new Error('this row carries no usable recorded band, and a fresh cut gives none either — re-run the sweep');
   }
   const calls = dump.votes.search;
-  const fee = p.feePerLeg ?? REAL_FEE_PER_LEG;
+  const fee = feeFracOf(p);
   const cells = [];
   for (let k = 1; k <= calls.length; k++) {
     const stream = testChunks.map((_, i) => quorumCall(calls, i, k));

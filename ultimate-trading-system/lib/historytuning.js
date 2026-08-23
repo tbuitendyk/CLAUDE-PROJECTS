@@ -8,6 +8,7 @@
 // decision trail, training floor, effective training days.
 
 const bracketLib = require('./bracket');
+const { feeFracOf } = require('./paper');
 const H = require('./history');
 
 const DAY_MS = H.DAY_MS;
@@ -373,7 +374,7 @@ async function htPassTask(payload) {
     split,
     declaredCell: p.declaredCell,
     menuOpts: { dMults: p.dMults, tHours: p.tHours, gates: p.gates, entries: p.entries },
-    feePerLeg: p.feePerLeg,
+    feePerLeg: feeFracOf(p),
     minTradesPerLookbackWeek: p.minTradesPerLookbackWeek,
     nullShiftSeed: p.nullShiftSeed || null,
   });

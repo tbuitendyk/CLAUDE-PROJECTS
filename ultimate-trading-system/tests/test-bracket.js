@@ -17,7 +17,10 @@ function mapFrom(t0, bars) {
   return m;
 }
 const period = (t0) => [{ startTs: t0 }];
-const FEE = 0.125;
+// THE LAB FEE, AS A RATE (owner order, 2026-08-23). This said 0.125 — dollars
+// a leg. It is 0.00125 of the position now, which on the $100 paper clip is the
+// same 25 cents the round trip, so every expected figure below is unchanged.
+const { FEE_PER_LEG: FEE, NOTIONAL } = require('../lib/paper');
 
 module.exports = {
   async bracketFillsAndTimeExit() {
@@ -305,8 +308,11 @@ module.exports = {
     // buy-and-hold spans first entry to last exit: open 100 -> open 141
     assert.ok(Math.abs(h.buyHold - pnlAt(1, 100, 141, FEE)) < 1e-12);
     assert.ok(Math.abs(h.shortHold - pnlAt(-1, 100, 141, FEE)) < 1e-12);
-    // and the two sides are NOT negatives of each other — both pay the fee
-    assert.ok(Math.abs((h.buyHold + h.shortHold) - -4 * FEE) < 1e-12);
+    // and the two sides are NOT negatives of each other — both pay the fee.
+    // FEE is a fraction of the position, so the four legs cost 4*FEE*NOTIONAL:
+    // the same 50 cents on the $100 clip that -4*$0.125 used to be, and now a
+    // figure that follows the trade size instead of being fixed to one.
+    assert.ok(Math.abs((h.buyHold + h.shortHold) - -4 * FEE * NOTIONAL) < 1e-12);
 
     // one round trip over the whole window beats paying it twice per period
     assert.ok(h.buyHold > h.alwaysLong);

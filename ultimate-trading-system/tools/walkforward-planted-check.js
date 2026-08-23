@@ -109,7 +109,8 @@ async function runUnit(symbol, extra = {}) {
   return wfUnitTask({
     combo: { trade: symbol, ctx1: null, ctx2: null, size: 1 },
     branch: { geometry: 'daily-1d', decision: 'argmax', band: 'auto', weekdaysOnly: false },
-    params: { allLoaded: true, minTradesSlice: 5, feePerLeg: 0.125, ...extra },
+    // 0.125% a leg — a rate, not dollars (owner order, 2026-08-23)
+    params: { allLoaded: true, minTradesSlice: 5, feePerLeg: 0.00125, feeUnits: 'fraction', ...extra },
   });
 }
 

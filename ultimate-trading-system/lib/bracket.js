@@ -17,7 +17,7 @@ const { HOUR_MS } = require('./binance');
 // a market cell and a live book can never drift apart. (paper is required
 // again further down for directionalCall; require caches, and pulling this
 // one up keeps it above its first use rather than relying on load order.)
-const { pnlAt, NOTIONAL } = require('./paper');
+const { pnlAt, NOTIONAL, feeRate } = require('./paper');
 const { buildChunks, GEOMETRIES } = require('./dataset');
 const { viewIndices } = require('./features');
 
@@ -110,10 +110,13 @@ const GATES = ['always', 'active', 'directional'];
 const ENTRIES = ['breakout', 'market'];
 
 // The classifier's trade, priced with the books' own helper so a market cell
-// and a paper book cannot drift apart: same NOTIONAL, same round-trip fee,
+// and a paper book cannot drift apart: same NOTIONAL, same round-trip fee RATE,
 // same open-to-open arithmetic.
 function simMarket(periods, calls, tradeMap, geo, { tHours, feePerLeg, stepMs = HOUR_MS }) {
-  const trip = 2 * feePerLeg;
+  // feePerLeg is a FRACTION of the position (owner order, 2026-08-23) — see
+  // lib/paper.js. The round trip is worked out as a percentage and turned into
+  // this book's dollars once, here, instead of a dollar amount being assumed.
+  const trip = NOTIONAL * 2 * feeRate(feePerLeg, 'simMarket');
   let pnl = 0;
   let trades = 0;
   let wins = 0;
@@ -171,7 +174,8 @@ function simMarket(periods, calls, tradeMap, geo, { tHours, feePerLeg, stepMs = 
 // on purpose — a minute run that also changed the fill logic would not be a
 // confirmation of anything.
 function simBracket(periods, calls, tradeMap, geo, { dPct, tHours, gate, feePerLeg, trailPct = null, armPct = 0, stepMs = HOUR_MS }) {
-  const trip = 2 * feePerLeg;
+  // A FRACTION of the position, priced onto this book once. See simMarket above.
+  const trip = NOTIONAL * 2 * feeRate(feePerLeg, 'simBracket');
   let pnl = 0;
   let trades = 0;
   let wins = 0;
@@ -350,7 +354,8 @@ function holdControls(periods, tradeMap, geo, tHours, feePerLeg) {
     for (let h = 0; h <= 3 && !outBar; h++) outBar = tradeMap.get(lastTs + (tHours + h) * HOUR_MS);
     if (inBar && outBar) {
       // Both sides priced through the same helper. shortHold is NOT -buyHold:
-      // the fee is paid on both, so the two sum to -4 x feePerLeg, not zero.
+      // the fee is paid on both, so the two sum to -4 x feePerLeg x NOTIONAL,
+      // not zero (feePerLeg is a fraction of the position — lib/paper.js).
       buyHold = pnlAt(1, inBar.open, outBar.open, feePerLeg);
       shortHold = pnlAt(-1, inBar.open, outBar.open, feePerLeg);
     }
