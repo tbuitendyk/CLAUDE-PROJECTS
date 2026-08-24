@@ -45,4 +45,12 @@ for (const id of runs) {
   }
 }
 '
+echo "-- what the rest of the run will need room for --"
+for d in /opt/ultimate-trading-system/data/models/*/; do
+  [ -d "$d" ] || continue
+  N=$(find "$d" -maxdepth 1 -type f | wc -l)
+  SZ=$(du -sh "$d" 2>/dev/null | cut -f1)
+  echo "  $(basename "$d"): $N model dump(s), $SZ"
+done
+du -sh /opt/ultimate-trading-system/data 2>/dev/null | sed 's/^/  all data: /'
 df -h / | tail -1 | sed 's/^/disk  /'
