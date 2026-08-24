@@ -55,6 +55,12 @@
     <span class="video-pending hidden" id="video-pending">Video en preparación — muy pronto</span>
   </div>
 
+  <!-- The video closes with "Haz clic en el botón azul para agendar tu sesión
+       privada", so this button must sit right below it and always work. -->
+  <div style="text-align:center;margin:-16px 0 36px">
+    <a class="btn btn-primary" id="cta-agendar" data-calendly-cta href="#calendly-slot">Agendar mi sesión privada</a>
+  </div>
+
   <div id="calendly-slot" class="calendly-slot">
     <!-- Con UTA_CONFIG.CALENDLY_URL configurado, aquí se monta el calendario. -->
   </div>

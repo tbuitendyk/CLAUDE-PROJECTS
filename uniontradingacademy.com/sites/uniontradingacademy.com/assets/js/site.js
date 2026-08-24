@@ -76,6 +76,24 @@
     }
   }
 
+  // --- Botón azul bajo el video ("Haz clic en el botón azul…"). Con Calendly
+  //     configurado abre la reserva; si no, cae a WhatsApp para que nunca
+  //     quede muerto, porque el video pide expresamente hacer clic aquí. ---
+  document.querySelectorAll("[data-calendly-cta]").forEach(function (el) {
+    if (C.CALENDLY_URL) {
+      el.href = C.CALENDLY_URL;
+      el.target = "_blank";
+      el.rel = "noopener";
+    } else if (href) {
+      el.href = href;
+      el.target = "_blank";
+      el.rel = "noopener";
+      el.textContent = "Agendar mi sesión por WhatsApp";
+    } else {
+      el.classList.add("hidden");
+    }
+  });
+
   // --- Pagos (Mercado Pago): elementos [data-pago] solo con link real. ---
   document.querySelectorAll("[data-pago]").forEach(function (el) {
     if (C.MERCADOPAGO_LINK) {

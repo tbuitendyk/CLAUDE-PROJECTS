@@ -115,9 +115,13 @@ p { max-width: 68ch; }
 .video-frame {
   position: relative; border-radius: var(--radius); overflow: hidden;
   border: 1px solid var(--navy-700); box-shadow: var(--shadow-card);
-  background: var(--navy-900); aspect-ratio: 16 / 10.5;
+  background: var(--navy-900); aspect-ratio: 16 / 9;
 }
-.video-frame video, .video-frame img.poster { width: 100%; height: 100%; object-fit: cover; }
+/* The poster may be cropped to fill — it is decorative. The VIDEO never is:
+   its closing frame carries the "Haz clic en el botón azul" call to action,
+   and `cover` clipped the left/right edges of that text. */
+.video-frame img.poster { width: 100%; height: 100%; object-fit: cover; }
+.video-frame video { width: 100%; height: 100%; object-fit: contain; background: var(--navy-950); }
 .video-chip {
   position: absolute; top: 14px; left: 14px; z-index: 2;
   background: rgba(6, 11, 24, .72); border: 1px solid var(--line); color: var(--silver);
