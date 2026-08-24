@@ -1,0 +1,82 @@
+The halt: the short sold your own coins instead of borrowing. Fixed and deployed.
+
+tl;dr Your account is fine — the book and the exchange agree to within 14 cents.
+The safety check that stopped the box is the thing that was wrong. Cause found,
+fixed, tested and deployed. But the box is STILL HALTED, because the fix stops
+this happening again and does not undo what already happened. Two things at the
+bottom still need your word before I touch them.
+
+WHAT WENT WRONG, IN PLAIN TERMS
+
+To sell short you have to borrow the coin first, sell it, and buy it back later.
+The exchange has a convenience setting: "borrow whatever I'm short of." It sounds
+like "borrow the whole amount." It does not mean that. It means "spend what's
+already in the account first, and only borrow the rest."
+
+Your account was holding LTC — four ordinary buy positions, still open. So when
+the engine went to open a short at 01:20 this morning, the exchange looked in the
+account, found plenty of coin sitting there, and just sold THAT. It borrowed
+nothing at all.
+
+Nothing was lost. The right amount was sold at the right price. But the engine's
+records now disagreed with the exchange in two places at once: the account looked
+short of coin against what the buy positions claim, and the loan looked too small
+against what the short positions claim. Same missing 0.192 LTC, counted twice.
+The safety check saw two faults and stopped the box.
+
+WHY I SAY THE MONEY IS FINE
+
+Add the two sides together instead of checking them separately:
+
+  BOOK vs EXCHANGE, NETTED
+  Key: "book" = what the engine believes it holds, after subtracting shorts from
+  longs. "exchange" = coin actually in the account minus coin owed. Both in LTC.
+
+    book      0.377205
+    exchange  0.379897
+    apart by  0.002692  LTC, about 14 cents
+
+That gap is the long-known scrap of coin too small to sell. Everything else lines
+up. The check is examining the two halves separately when only the total is
+meaningful, because the exchange keeps one pile of coin that both halves draw on.
+
+THE SECOND, WORSE PROBLEM
+
+The short that borrowed nothing can never be closed. Closing a short means buying
+back what you owe — and the engine works out how much to buy by asking the
+exchange what's owed. Nothing is owed on that leg. So on 29 August it will try to
+close it, find no debt, and skip it. Every day after that too. Left alone this
+does not recover on its own.
+
+WHAT I CHANGED AND DEPLOYED
+
+A short now takes out its own loan for the full amount BEFORE it sells, so the
+debt always matches the position. If the loan is refused, no sell is sent at all.
+If the loan goes through and the sell is rejected, the loan is handed straight
+back, and if that fails the box halts rather than sit on a debt for a position it
+does not have.
+
+I also had to fix the test rig. The fake exchange used in testing was crediting
+the full amount as borrowed every time — which is what the real exchange does
+only when the account is empty. That was true in every test and false the moment
+you hold anything. So 126 passing tests could not see this. It now behaves like
+the real exchange. All four new checks were watched failing against the old code
+first, and the main one reproduces exactly what happened to you.
+
+130 tests pass. Deployed to the box, which is the safest possible moment: no new
+positions can open while the halt is on, so the new code cannot do anything yet.
+
+WHAT IS STILL BROKEN, AND NEEDS YOUR WORD
+
+1. The box is still halted and pressing "Clear the halt" will not hold. The check
+   re-runs every ten minutes and re-halts, because the mismatch is still there.
+   I have NOT changed the check. Netting the two sides is the right fix and it is
+   a change to a safety brake on live money, so I am not touching it unprompted.
+
+2. Two positions are already stranded: the 0.192 short that has no loan behind it,
+   and one buy position whose coin was the coin that got sold. These need
+   unwinding by hand. I have not touched them.
+
+Next entry the engine would skip is about 01:10 UTC tomorrow.
+
+c.
