@@ -34,7 +34,12 @@ function repDoc(configs, assets) {
     for (let a = 0; a < assets; a++) {
       for (const seed of [null, 1]) {
         rows.push({
-          declaredLabel: `breakout directional d0.75x t89h trail1.5x arm0.5x q${c % 6 + 1}/6`,
+          // EVERY CONFIGURATION GETS ITS OWN NAME. The first version of this
+          // fixture used `q${c % 6 + 1}/6`, which gave 250 configurations six
+          // distinct labels — so `rank` saw six groups and the per-configuration
+          // size check was measuring a fortieth of what it claimed to. A fixture
+          // that collides is a test that passes on the wrong thing.
+          declaredLabel: `breakout directional d0.75x t${89 + c}h trail1.5x arm0.5x q${c % 6 + 1}/6`,
           nullDealSeed: seed, trade: `SYM${a}USDT`, ctx1: null, ctx2: null,
           geometry: 'daily-4d', bandPct: 1.37, windowLayout: 'reserve61', entry: 'breakout',
           quorum: 3, members: 6, pnl: 12.34, trades: 87, wins: 44, grossPerTrade: 0.41,
@@ -125,21 +130,24 @@ module.exports = {
 
   // ---- the 99 MB one, as a property ---------------------------------------
   async theRankedListDoesNotGrowWithTheRowsBehindIt() {
-    // 40 configurations, then the same 40 over 8x and 40x as many rows. The
-    // reply is allowed to creep — `assets: 5` becomes `assets: 200` and a
-    // total gains digits — but it must not TRACK the rows. Byte-for-byte
-    // equality was the first version of this check and it failed on exactly
-    // that creep, which is a real difference worth keeping straight: digits
-    // grow like the logarithm of the data, embedded rows grow like the data.
-    const at = (assets) => Buffer.byteLength(JSON.stringify(replication.rank(repDoc(40, assets))));
-    const few = at(5);
-    const more = at(40);      // 8x the rows
-    const most = at(200);     // 40x the rows
-    assert.ok(more < few * 1.1,
-      `8x the rows took the reply from ${few} to ${more} bytes — it is still growing with the rows behind it, `
-      + 'which is exactly how it reached 99 MB');
-    assert.ok(most < few * 1.2,
-      `40x the rows took the reply from ${few} to ${most} bytes; only the digits of the counts may grow`);
+    // SELF-CALIBRATING, so no threshold has to be guessed. The old shape is
+    // still reachable by asking for it, so the test compares the two directly:
+    // give both 8x the rows and the old one must balloon while the new one
+    // must not. A number picked by hand would only ever be right for today's
+    // row size.
+    const size = (assets, cap) => Buffer.byteLength(JSON.stringify(replication.rank(repDoc(40, assets), { detailCap: cap })));
+    const oldGrowth = size(40, 60) / size(5, 60);      // the shape that reached 99 MB
+    const newGrowth = size(40, 0) / size(5, 0);        // what ships now
+    assert.ok(oldGrowth > 4,
+      `the old shape only grew ${oldGrowth.toFixed(1)}x on 8x the rows — this test is no longer comparing `
+      + 'against the fault it exists to prevent');
+    assert.ok(newGrowth < 1.25,
+      `8x the rows grew the reply ${newGrowth.toFixed(2)}x; it is tracking the rows again`);
+    assert.ok(newGrowth < oldGrowth / 4,
+      `the reply grows ${newGrowth.toFixed(2)}x where the old shape grew ${oldGrowth.toFixed(1)}x — not enough of `
+      + 'a difference to say the rows have stopped riding along');
+    // What creep remains is digits, not rows: a count of 5 becomes 40, and a
+    // sum of 21 becomes 168.00000000000006 once forty floats have been added.
 
     // It DOES grow with the number of configurations, because that is what the
     // list is a list of. That is the bound, and it must be a sane one.
@@ -209,6 +217,110 @@ module.exports = {
       'the picker row ships the untrimmed parameters again');
     assert.ok(/params: batch\.screenParams\(doc\.params\)/.test(SERVER),
       'one run\'s document ships the untrimmed parameters — the same 500 KB by another route');
+  },
+
+  // ---- every table that can grow is pageable ------------------------------
+  //
+  // "make it sane and pageable" (owner, 2026-08-23). Four tables grow with the
+  // run and each had a different answer: the ranked list shipped everything and
+  // reached 99 MB, one configuration's rows capped at 500 with no way to ask
+  // for the 501st, the menu grid capped at 400, the board had no limit at all.
+  // One bar now, on all four.
+  async everyTableThatCanGrowHasAPagingBar() {
+    for (const [name, why] of [
+      ["pageBar('repList'", 'the ranked list of configurations'],
+      ["pageBar('board'", 'the survivor board'],
+      ["pageBar('grid'", 'the menu grid'],
+      ['pageBar(key, d.page', "one configuration's per-asset rows"],
+    ]) {
+      assert.ok(CX.includes(name), `${why} has no paging bar — it is the table that grows and cannot be walked`);
+    }
+    // The bar is drawn many times on one screen, so its controls cannot carry
+    // ids. They are addressed the way the per-row buttons beside them already
+    // are, and one delegated listener serves all of them.
+    assert.ok(/data-pager="\$\{esc\(name\)\}"/.test(CX), 'the bar\'s buttons are not addressable');
+    assert.ok(/function wirePagers\(/.test(CX), 'nothing listens for a page being asked for');
+    assert.ok(/if \(!root \|\| root\.dataset\.pagersWired\) return;/.test(CX),
+      'the listener is attached on every redraw, so one click fires it once per redraw since the page '
+      + 'loaded — and a paging click would jump several pages at once. Checking merely that the flag is '
+      + 'MENTIONED passed with the guard deleted, because the line that sets it was still there.');
+  },
+
+  // THE ONE THAT WOULD HAVE BEEN SILENT. Every handler on the board looks its
+  // row up by index in the WHOLE list — leaders[data-i]. Paging the table
+  // without making that index absolute would open, inspect and select the
+  // WRONG ROW on every page but the first, and nothing would look broken.
+  async apagedBoardStillPointsAtTheRightRow() {
+    const board = CX.slice(CX.indexOf('const shownLeaders'), CX.indexOf('clear selection'));
+    assert.ok(/const abs = boardPage\.offset \+ i;/.test(board),
+      'the board renders a per-page index; every row handler reads it as an index into the whole board');
+    for (const attr of ['data-i', 'data-grid', 'data-inspect']) {
+      assert.ok(new RegExp(`${attr}="\\$\\{abs\\}"`).test(board),
+        `${attr} still carries the per-page index — on page 2 it addresses the wrong row`);
+      assert.ok(!new RegExp(`${attr}="\\$\\{i\\}"`).test(board), `${attr} was left on the per-page index`);
+    }
+  },
+
+  async theMenuGridIsNoLongerCutOffAtFourHundred() {
+    assert.ok(!/cells\.slice\(0, 400\)/.test(CX), 'the menu grid still shows only its first 400 settings');
+    assert.ok(/const gridShown = cells\.slice\(gridPage\.offset/.test(CX), 'the menu grid is not paged');
+    assert.ok(/drawGridTable\(\)/.test(CX),
+      'paging the grid re-asks the server for arithmetic it already did');
+  },
+
+  // The rows behind one configuration are reachable to the last one.
+  async aConfigurationsRowsCanBeWalkedToTheEnd() {
+    const doc = repDoc(2, 250);
+    const label = replication.rank(doc).scored[0].label;
+    const seen = new Set();
+    let offset = 0;
+    let guard = 0;
+    for (;;) {
+      const d = replication.detail(doc, label, { offset, limit: 40 });
+      assert.strictEqual(d.page.total, 250, 'a page must say how many there are in total, on every page');
+      d.rows.forEach((r) => seen.add(r.trade));
+      if (!d.page.more) break;
+      offset += d.rows.length;
+      assert.ok(++guard < 50, 'paging never reached the end — it is looping');
+    }
+    assert.strictEqual(seen.size, 250,
+      `walked the pages and saw ${seen.size} of 250 rows — some are unreachable from the screen`);
+  },
+
+  async theRankedListCanBeWalkedToTheEnd() {
+    const doc = repDoc(250, 3);
+    const seen = new Set();
+    let offset = 0;
+    for (;;) {
+      const r = replication.rank(doc, { offset, limit: 40 });
+      assert.strictEqual(r.page.total, r.configs, 'the page total and the real count disagree');
+      r.scored.forEach((g) => seen.add(g.label));
+      if (!r.page.more) break;
+      offset += r.scored.length;
+    }
+    assert.strictEqual(seen.size, 250, 'the ranked list cannot be walked to its end');
+
+    // AND THE PAGE ASKED FOR IS THE PAGE RETURNED. Walking alone did not prove
+    // this: 250 configurations fit inside one page, so the walk finished in a
+    // single request and passed with the paging bypassed altogether.
+    const mid = replication.rank(doc, { offset: 100, limit: 25 });
+    assert.strictEqual(mid.scored.length, 25, 'the requested page size was ignored');
+    assert.strictEqual(mid.page.offset, 100, 'the requested offset was ignored');
+    const whole = replication.rank(doc, { offset: 0, limit: 1000 });
+    assert.strictEqual(mid.scored[0].label, whole.scored[100].label,
+      'page 5 does not start where page 5 should — the offset is not being applied to the sorted order');
+  },
+
+  // A page that does not say what it is a page OF is a short list that reads as
+  // a complete one. That is the whole point, so it is checked on the bar itself.
+  async apageAlwaysStatesTheTrueTotalOnScreen() {
+    const bar = CX.slice(CX.indexOf('function pageBar('), CX.indexOf('const PAGERS'));
+    assert.ok(/of <b>\$\{total\.toLocaleString\(\)\}<\/b>/.test(bar),
+      'the bar does not print the true total, so a page reads as the whole list');
+    assert.ok(/showing <b>/.test(bar), 'the bar does not say which rows are being shown');
+    assert.ok(/data-size="1"/.test(bar), 'there is no way to change how many rows a page holds');
+    assert.ok(/offset: 0, limit: Number\(sel\.value\)/.test(CX),
+      'changing the page size leaves the reader stranded deep in a list they just made shorter');
   },
 
   async theGuardIsInstalledBeforeAnyRoute() {

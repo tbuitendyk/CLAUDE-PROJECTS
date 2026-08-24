@@ -380,7 +380,7 @@ app.post('/api/campaign/delete', csrfGuard, (req, res) => {
 app.get('/api/batch/:id/replication', (req, res) => {
   const doc = batch.getBatch(String(req.params.id || ''));
   if (!doc) return res.status(404).json({ error: 'unknown run' });
-  try { res.json(require('./lib/replication').rank(doc)); }
+  try { res.json(require('./lib/replication').rank(doc, req.query)); }
   catch (err) { res.status(400).json({ error: err.message }); }
 });
 
@@ -390,7 +390,7 @@ app.get('/api/batch/:id/replication', (req, res) => {
 app.get('/api/batch/:id/replication-detail', (req, res) => {
   const doc = batch.getBatch(String(req.params.id || ''));
   if (!doc) return res.status(404).json({ error: 'unknown run' });
-  try { res.json(require('./lib/replication').detail(doc, String(req.query.label || ''))); }
+  try { res.json(require('./lib/replication').detail(doc, String(req.query.label || ''), req.query)); }
   catch (err) { res.status(400).json({ error: err.message }); }
 });
 

@@ -192,6 +192,78 @@ const detail = (rs) => `<div class="scrollx"><table><thead><tr>${cth('asset','as
   </tbody></table></div>`;
 
 
+// ---- ONE PAGING BAR, USED BY EVERY TABLE THAT CAN GROW ----------------------
+// (owner order, 2026-08-23: "make it sane and pageable".)
+//
+// Four tables on this page grow with the run: the ranked list of declared
+// configurations, one configuration's per-asset rows, the survivor board, and
+// the menu grid. Each had its own answer — one shipped everything and reached
+// 99 MB, one capped at 500 with no way to ask for the 501st, one capped at 400
+// and said so, one had no limit at all. Four answers to one question is four
+// things to get wrong, so there is one now.
+//
+// The bar ALWAYS states the true total. A page that does not say what it is a
+// page of is a short list that reads as a complete one, which is the fault all
+// of this exists to remove.
+//
+// The controls carry no ids on purpose: the bar is drawn many times on one
+// screen (once per opened configuration) and ids have to be unique. They are
+// addressed the same way the per-row buttons beside them already are, by data
+// attribute, through one delegated handler.
+const PAGE_SIZES = [25, 50, 100, 200, 500];
+
+function pageBar(name, p, extra = '') {
+  if (!p) return '';
+  const total = p.total || 0;
+  const from = total ? p.offset + 1 : 0;
+  const to = p.offset + (p.shown || 0);
+  const at = (o) => `data-pager="${esc(name)}" data-go="${o}"`;
+  const dis = (cond) => (cond ? 'disabled' : '');
+  const prev = Math.max(0, p.offset - p.limit);
+  const last = Math.max(0, Math.floor(Math.max(0, total - 1) / p.limit) * p.limit);
+  return `<div class="row" style="gap:.4rem;margin:.35rem 0;align-items:center;flex-wrap:wrap">
+    <button ${at(0)} ${dis(p.offset === 0)} title="back to the first page">first</button>
+    <button ${at(prev)} ${dis(p.offset === 0)} title="the previous page">prev</button>
+    <span class="note">showing <b>${from.toLocaleString()}–${to.toLocaleString()}</b> of <b>${total.toLocaleString()}</b>${extra}</span>
+    <button ${at(p.offset + p.limit)} ${dis(!p.more)} title="the next page">next</button>
+    <button ${at(last)} ${dis(!p.more)} title="jump to the last page">last</button>
+    <label class="muted" style="font-size:.74rem" title="how many rows this table shows at a time. Nothing is hidden by a smaller number — the count beside it always says how many there are in total.">rows per page
+      <select data-pager="${esc(name)}" data-size="1">
+        ${PAGE_SIZES.map((n) => `<option value="${n}" ${n === p.limit ? 'selected' : ''}>${n}</option>`).join('')}
+      </select></label>
+  </div>`;
+}
+
+// Every pageable table registers how to redraw itself at a given page. One
+// delegated listener then serves all of them, however many are on screen.
+// Where each table currently is. Kept out here so a redraw — switching sort,
+// saving notes — puts you back on the page you were reading, not at the top.
+const pageAt = {
+  repList: { offset: 0, limit: 100 },
+  board: { offset: 0, limit: 50 },
+  grid: { offset: 0, limit: 200 },
+  repDetail: {},                       // one entry per configuration label
+};
+const PAGERS = {};
+function wirePagers(root) {
+  if (!root || root.dataset.pagersWired) return;
+  root.dataset.pagersWired = '1';
+  root.addEventListener('click', (ev) => {
+    const b = ev.target.closest('button[data-pager][data-go]');
+    if (!b || b.disabled) return;
+    const go = PAGERS[b.dataset.pager];
+    if (go) go({ offset: Math.max(0, Number(b.dataset.go) || 0) });
+  });
+  root.addEventListener('change', (ev) => {
+    const sel = ev.target.closest('select[data-pager][data-size]');
+    if (!sel) return;
+    const go = PAGERS[sel.dataset.pager];
+    // A new page size starts from the top: staying at row 2,300 of a list you
+    // just asked to show 25 at a time is not what anybody means by it.
+    if (go) go({ offset: 0, limit: Number(sel.value) || 100 });
+  });
+}
+
 // ---- the replication ranking ------------------------------------------------
 // SCORE AND ORDER THE DECLARED CONFIGURATIONS. Lifted out of the render function
 // on 2026-08-17 so it can be TESTED rather than only read: the previous version
@@ -1287,6 +1359,17 @@ async function drawBoards() {
   const list = (bl.batches || bl || []).filter((b) => b.kind === 'bracketlab' || b.kind === 'screen' || b.kind === 'walkforward' || b.kind === 'historytuning' || b.kind === 'httwo');
   const doc = await loadPicked();
   const leaders = doc ? (doc.leaders || []).filter((l) => l.nullDealSeed == null) : [];
+  // THE BOARD IS PAGED TOO (owner order, 2026-08-23). It was the whole list in
+  // one table — fine at fifty rows, which is what the board held until `board
+  // rows` became a box the owner sets with no ceiling.
+  const boardPage = {
+    offset: Math.min(pageAt.board.offset, Math.max(0, leaders.length - 1)),
+    limit: pageAt.board.limit,
+    total: leaders.length,
+  };
+  const shownLeaders = leaders.slice(boardPage.offset, boardPage.offset + boardPage.limit);
+  boardPage.shown = shownLeaders.length;
+  boardPage.more = boardPage.offset + shownLeaders.length < leaders.length;
   // SECOND RANKING (owner, 2026-08-17). "best cell" keeps meaning exactly what it
   // always has and the board's own order is untouched; this is an alternative
   // reading laid over the same rows, chosen run by run. Ranking by region width
@@ -1326,7 +1409,8 @@ async function drawBoards() {
   const hasHold = ((doc && doc.leaders) || []).some((l) => l.holdout && l.holdout.pnl != null);
   // The replication table's numbers come back already totalled (see the note on
   // repBlock below). Fetched here so the render stays synchronous.
-  const rep = doc ? await apiOr(`api/batch/${encodeURIComponent(doc.id)}/replication`, null) : null;
+  const rep = doc ? await apiOr(`api/batch/${encodeURIComponent(doc.id)}/replication`
+    + `?offset=${pageAt.repList.offset}&limit=${pageAt.repList.limit}`, null) : null;
   const running = doc && doc.status === 'running';
   // ASSET PREDICTABILITY — pure census arithmetic, and the one reading on this
   // page that compares real against null across every asset at once.
@@ -1440,7 +1524,9 @@ async function drawBoards() {
         These configurations were SEARCHED, not declared, so the honest end is the sealed slice: window layout
         61/13/13/13, graded once in the History section.</p>
       ${inferredNote}
-      <div style="max-height:26rem;overflow-y:auto;border:1px solid var(--line);border-radius:6px">${listHtml}</div></div>`;
+      ${pageBar('repList', rep.page, ' configurations')}
+      <div style="max-height:26rem;overflow-y:auto;border:1px solid var(--line);border-radius:6px">${listHtml}</div>
+      ${pageBar('repList', rep.page, ' configurations')}</div>`;
   })();
   $('#view').innerHTML = `<div class="panel"><div class="row" style="align-items:flex-end">
       <label class="f">saved runs<select id="bPick" style="min-width:22rem">
@@ -1513,10 +1599,13 @@ async function drawBoards() {
       <div class="scrollx"><table><thead><tr>${cth('setup','setup')}${cth('shape','shape')}${cth('cell','cell')}${cth('trades','trades')}
         ${cth('test $','testUsd')}${cth('held-back $','heldBack')}${cth('vs nulls','vsNulls')}
         <th title="How many neighbouring settings around this row's best region ALL made money after fees. One step at a time on d, t and agreement; entry and gate are categories, so a region never crosses them. A lone winner scores 1 — noise gives spikes, structure gives regions.">region</th><th></th></tr></thead><tbody>
-      ${leaders.length ? leaders.map((l, i) => {
+      ${shownLeaders.length ? shownLeaders.map((l, i) => {
     const isSel = sel && sel.trade === l.trade && sel.geometry === l.geometry && sel.decision === l.decision
       && sel.quorum === l.quorum && sel.tHours === l.tHours && (sel.ctx1 || '') === (l.ctx1 || '');
-    return `<tr class="clickable ${isSel ? 'selected' : ''}" data-i="${i}">
+    const abs = boardPage.offset + i;                 // the index in the WHOLE board:
+    // every handler below reads leaders[data-i], so a per-page index would
+    // open, inspect and select the wrong row on every page but the first.
+    return `<tr class="clickable ${isSel ? 'selected' : ''}" data-i="${abs}">
       <td>${esc(l.trade)}${l.ctx1 ? ` <span class="muted">+ ${esc(l.ctx1)}${l.ctx2 ? ' + ' + esc(l.ctx2) : ''}</span>` : ''}</td>
       <td>${esc(l.geometry)} · ${esc(l.decision)} · ±${l.bandPct ?? l.band ?? '—'}%</td>
       <td>q${l.quorum} · ${l.entry === 'market' ? 'directional/market' : `${esc(l.gate)}/breakout d${l.dMult}×`} · ${l.tHours}h${l.trailMult != null ? ` · trail ${l.trailMult}×` : ''}</td>
@@ -1525,13 +1614,14 @@ async function drawBoards() {
       <td class="${l.holdout ? ((l.holdout.pnl || 0) >= 0 ? 'pos' : 'neg') : 'muted'}">${l.holdout ? money(l.holdout.pnl) : '—'}</td>
       ${vsNullsCell(l)}
       <td title="${l.region && l.region.centre ? esc(`middle of the region: q${l.region.centre.quorum} ${l.region.centre.entry === 'market' ? 'directional/market' : `${l.region.centre.gate}/breakout d${l.region.centre.dMult}x`} ${l.region.centre.tHours}h — ${l.region.cellsClearing} of ${l.region.cellsConsidered} settings cleared the bar (${l.region.bar})`) : 'not recorded — this run predates the region being measured'}">${l.region ? esc(String(l.region.size)) : '<span class="muted">—</span>'}</td>
-      <td><button data-grid="${i}" title="every execution-menu permutation for this row, plateau view on top (test window only)">menu grid</button>
-        <button data-inspect="${i}" title="open this setup: what each committee member saw, how they voted, and how alike they are. A MICROSCOPE, not a null test — it cannot tell you whether the setup works.">inspect</button></td>
+      <td><button data-grid="${abs}" title="every execution-menu permutation for this row, plateau view on top (test window only)">menu grid</button>
+        <button data-inspect="${abs}" title="open this setup: what each committee member saw, how they voted, and how alike they are. A MICROSCOPE, not a null test — it cannot tell you whether the setup works.">inspect</button></td>
       </tr>
       <tr><td colspan="9" style="text-align:left;padding:0 .45rem .3rem"><details><summary>everything recorded for this row, verbatim</summary>
         <pre>${esc(JSON.stringify(l, null, 1))}</pre></details></td></tr>`;
   }).join('') : '<tr><td colspan="9" class="empty">no promoted rows (still running, or nothing survived)</td></tr>'}
       </tbody></table></div>
+      ${pageBar('board', boardPage, ' rows on the board')}
       ${sel ? `<p class="note">selected: <b>${esc(comboOf(sel))}</b> ${esc(sel.geometry)} ${esc(sel.decision)} q${sel.quorum} ${sel.tHours}h — this selection feeds Verify · Tune · Greenlight
         <button id="bClearSel" style="margin-left:.5rem" title="take the selection off this run. Nothing here could remove one until now, so a row chosen once kept steering Verify, Tune and Greenlight indefinitely.">clear selection</button></p>` : '<p class="note">no row selected yet</p>'}
       </div>
@@ -1675,13 +1765,27 @@ async function drawBoards() {
   // re-shows what is already there rather than asking again — and the reply
   // says how many rows the configuration really has, so a capped table can
   // never read as a complete one.
+  // The two tables the SERVER pages redraw the whole section; the two paged in
+  // the browser redraw only themselves. Registered here, where the section's
+  // own redraw function is in scope.
+  PAGERS.repList = ({ offset, limit }) => {
+    pageAt.repList = { offset: offset ?? pageAt.repList.offset, limit: limit ?? pageAt.repList.limit };
+    drawBoards();
+  };
+  PAGERS.board = ({ offset, limit }) => {
+    pageAt.board = { offset: offset ?? pageAt.board.offset, limit: limit ?? pageAt.board.limit };
+    drawBoards();
+  };
+  wirePagers($('#view'));
+
   $('#bBody').querySelectorAll('.repdetail').forEach((box) => {
     const load = async () => {
       if (box.dataset.loaded) return;
       box.dataset.loaded = '1';
       box.innerHTML = '<span class="muted">reading this configuration\'s rows…</span>';
+      const at = pageAt.repDetail[box.dataset.label] || { offset: 0, limit: 200 };
       const d = await apiOr(`api/batch/${encodeURIComponent(doc.id)}/replication-detail`
-        + `?label=${encodeURIComponent(box.dataset.label || '')}`, null);
+        + `?label=${encodeURIComponent(box.dataset.label || '')}&offset=${at.offset}&limit=${at.limit}`, null);
       if (!d) {
         // A failed read must not leave a table that looks empty. Empty and
         // could-not-ask are different answers and the screen says which.
@@ -1689,7 +1793,16 @@ async function drawBoards() {
         box.innerHTML = '<span class="warn">could not read this configuration\'s rows — nothing is missing from the run, the screen could not ask</span>';
         return;
       }
-      box.innerHTML = detail(d.rows || []) + moreNote(d);
+      // Its own pager, named after the configuration, so several open lines
+      // page independently rather than moving each other.
+      const key = `repDetail:${box.dataset.label}`;
+      PAGERS[key] = ({ offset, limit }) => {
+        const at = pageAt.repDetail[box.dataset.label] || { offset: 0, limit: 200 };
+        pageAt.repDetail[box.dataset.label] = { offset: offset ?? at.offset, limit: limit ?? at.limit };
+        box.dataset.loaded = '';
+        load();
+      };
+      box.innerHTML = detail(d.rows || []) + moreNote(d) + pageBar(key, d.page, ' rows');
     };
     const holder = box.closest('details');
     if (!holder) { load(); return; }              // the single-configuration panel: no line to open
@@ -1787,11 +1900,29 @@ async function drawBoards() {
               : '')
             + '</p>'
           : '';
+        const drawGridTable = () => {
+        const gridPage = {
+          offset: Math.min(pageAt.grid.offset, Math.max(0, cells.length - 1)),
+          limit: pageAt.grid.limit, total: cells.length,
+        };
+        const gridShown = cells.slice(gridPage.offset, gridPage.offset + gridPage.limit);
+        gridPage.shown = gridShown.length;
+        gridPage.more = gridPage.offset + gridShown.length < cells.length;
         $('#gridOut').innerHTML = renderPlateau(cells, l) + rankLine + `<h3 style="margin-top:0">Menu grid — ${esc(l.trade)} ${esc(l.geometry)} (${cells.length.toLocaleString()} permutations, test window only)</h3>
           <div class="scrollx"><table><thead><tr>${cth('cell','cell')}${cth('trades','trades')}${cth('test $','testUsd')}</tr></thead><tbody>
-          ${cells.slice(0, 400).map((c) => `<tr><td>q${c.quorum} · ${c.entry === 'market' ? 'market' : `${esc(c.gate)} d${c.dMult}×`} · ${c.tHours}h${c.trailMult != null ? ` · trail ${c.trailMult}×` : ''}</td>
+          ${gridShown.map((c) => `<tr><td>q${c.quorum} · ${c.entry === 'market' ? 'market' : `${esc(c.gate)} d${c.dMult}×`} · ${c.tHours}h${c.trailMult != null ? ` · trail ${c.trailMult}×` : ''}</td>
             <td>${c.trades ?? '—'}</td><td class="${(c.pnl || 0) >= 0 ? 'pos' : 'neg'}">${money(c.pnl)}</td></tr>`).join('')}
-          </tbody></table></div>${cells.length > 400 ? `<p class="note">showing 400 of ${cells.length}</p>` : ''}`;
+          </tbody></table></div>${pageBar('grid', gridPage, ' settings')}`;
+        // The grid arrives whole and is paged here rather than re-asked for:
+        // it is one run of arithmetic the server already did, and asking again
+        // would recompute it. Re-rendered from the cells already in hand.
+        PAGERS.grid = ({ offset, limit }) => {
+          pageAt.grid = { offset: offset ?? pageAt.grid.offset, limit: limit ?? pageAt.grid.limit };
+          drawGridTable();
+        };
+        };
+        pageAt.grid.offset = 0;      // a freshly opened grid starts at its top
+        drawGridTable();
       } catch (e) { $('#gridOut').innerHTML = `<span class="warn">menu grid failed: ${esc(e.message)}</span>`; }
     };
   });

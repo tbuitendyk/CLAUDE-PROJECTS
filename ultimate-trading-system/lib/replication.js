@@ -27,6 +27,7 @@
 //     rebuilds the shopped board. No p-value appears in the sort key at all
 //     (QC-7 — assets move together, so they are not independent looks).
 const rowstore = require('./rowstore');
+const payload = require('./payload');
 
 const assetKey = (r) => `${r.trade}|${r.ctx1 || ''}|${r.ctx2 || ''}|${r.geometry}`;
 
@@ -66,7 +67,7 @@ function rowsOf(doc, fn) {
 // line. So the ranked list is now what its own name says — one summary per
 // configuration — and the reply is bounded by the number of configurations
 // rather than by the number of rows behind them.
-function rank(doc, { detailCap = 0 } = {}) {
+function rank(doc, { detailCap = 0, ...query } = {}) {
   const regions = regionsByAsset(doc.leaders || []);
   const groups = new Map();
   let total = 0;
@@ -163,23 +164,47 @@ function rank(doc, { detailCap = 0 } = {}) {
     || (b.pos / (b.holdCount || 1)) - (a.pos / (a.holdCount || 1))
     || b.sum - a.sum);
 
-  return { total, tagged, dropped, configs: scored.length, scored };
+  // PAGED OVER CONFIGURATIONS (owner order, 2026-08-23: "make it sane and
+  // pageable"). Sorted whole first — the ordering is a claim about which row is
+  // better and it has to be made over everything, not over a page — then a
+  // slice of that order is returned. `configs` is the true count either way, so
+  // a page can never read as the whole list.
+  const win = payload.page(scored, query);
+  return {
+    total, tagged, dropped, configs: scored.length,
+    scored: win.rows,
+    page: { offset: win.offset, limit: win.limit, total: win.total, shown: win.shown, more: win.more },
+  };
 }
 
 // Every real row of ONE configuration, for the per-asset table a reader opens.
-// Streamed and capped: a configuration with ten thousand real rows is still a
-// table nobody scrolls, and the count says how many were left on disk.
-function detail(doc, label, { limit = 500 } = {}) {
+//
+// PAGED, NOT CAPPED (owner order, 2026-08-23). It used to hand back the first
+// 500 and say how many it had left behind — honest, but there was no way to
+// ask for the 501st, so four fifths of a configuration's rows were simply
+// unreachable from the screen. It walks to `offset` and returns `limit` from
+// there, streaming throughout: nothing but the page being built is ever held.
+function detail(doc, label, { offset = 0, limit = 200 } = {}) {
+  const from = Math.max(0, Math.floor(Number(offset) || 0));
+  const take = Math.min(1000, Math.max(1, Math.floor(Number(limit) || 200)));
   const out = [];
   let matched = 0;
   rowsOf(doc, (r) => {
     if ((r.declaredLabel || 'declared config') !== label) return true;
     if (r.nullDealSeed != null) return true;   // a copy is machinery, never an asset row
     matched++;
-    if (out.length < limit) out.push(r);
+    // matched keeps counting past the page so `total` is the real total — a
+    // reader has to be able to see how far they have to go.
+    if (matched > from && out.length < take) out.push(r);
     return true;
   });
-  return { label, rows: out, matched, shown: out.length };
+  return {
+    label,
+    rows: out,
+    matched,
+    shown: out.length,
+    page: { offset: from, limit: take, total: matched, shown: out.length, more: from + out.length < matched },
+  };
 }
 
 module.exports = { rank, detail, assetKey };
