@@ -9,6 +9,7 @@
 const fs = require('fs');
 const path = require('path');
 const reg = require('./setups');
+const venue = require('./venue');
 
 function errStatus(e) {
   switch (e.code) {
@@ -166,6 +167,17 @@ function installLiveRoutes(app, { csrfGuard }) {
         })),
       });
     } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
+  // THE TRADING SURFACE, VISIBLE (owner, 2026-08-24: point 5).
+  // The venue's trading API is declared as enumerable data in lib/live/venue.js
+  // so it can be READ rather than taken on trust. This serves it: what a venue
+  // must be able to do, which adapters are registered, and honestly which
+  // capabilities each is missing. Read-only, no secrets — capability NAMES and
+  // documentation only, never credentials.
+  app.get('/api/live/venue', (req, res) => {
+    try { res.json(venue.inventory()); }
+    catch (e) { res.status(errStatus(e)).json({ error: e.message }); }
   });
 
   app.get('/api/live/catalog', (req, res) => {
