@@ -18,7 +18,7 @@ is the same fault wearing a disguise.
 
 ## Which screen this describes
 
-Generated from **dc393d955a08 — what the box is serving**, not from the working tree.
+Generated from **7cce6e195350 — what the box is serving**, not from the working tree.
 
 That distinction is the whole point. Between a commit and its deploy the
 two describe different screens, and on 2026-08-22 exactly that happened: a
@@ -266,7 +266,7 @@ again. and asset. back be been below board cache cached comma-sep corrupt curren
 
 # Boards
 
-## What the controls are called (74)
+## What the controls are called (73)
 
 - `— pick a run —`
 - `— watch it on the Sweep section`
@@ -325,7 +325,6 @@ again. and asset. back be been below board cache cached comma-sep corrupt curren
 - `save notes`
 - `saved runs`
 - `selected:`
-- `showing 400 of`
 - `Size:`
 - `slim runs ·`
 - `still to score`
