@@ -23,12 +23,14 @@ set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 JS="$HERE/uts-rows-squash.js"
 LOG=/var/log/uts-rows-squash.log
-PIDF=/var/run/uts-rows-squash.pid
 
 [ -f "$JS" ] || { echo "missing $JS"; exit 1; }
 
-if [ -f "$PIDF" ] && kill -0 "$(cat "$PIDF")" 2>/dev/null; then
-  echo "already running as pid $(cat "$PIDF") -- use uts-rows-squash-status.sh"
+# FOUND BY NAME. `setsid nohup ... &` forks, so $! is setsid's pid and it exits
+# at once; a pid file written from it names a number the kernel will hand to
+# something else, and then "is it still going" is answered about a stranger.
+if pgrep -f 'uts-rows-squash\.js' >/dev/null 2>&1; then
+  echo "already running as pid $(pgrep -f 'uts-rows-squash\.js' | head -1) -- use uts-rows-squash-status.sh"
   exit 0
 fi
 
@@ -42,8 +44,9 @@ fi
 
 : > "$LOG"
 setsid nohup node "$JS" >>"$LOG" 2>&1 < /dev/null &
-echo $! > "$PIDF"
 sleep 5
-echo "started as pid $(cat "$PIDF"); log: $LOG"
+PID=$(pgrep -f 'uts-rows-squash\.js' | head -1)
+[ -n "${PID:-}" ] || { echo "it did not start; log:"; cat "$LOG"; exit 1; }
+echo "started as pid $PID; log: $LOG"
 echo "---- first lines ----"
 head -20 "$LOG" || true

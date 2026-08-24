@@ -4,11 +4,16 @@
 # file in the run's store, and the tail of the log. Changes nothing.
 set -uo pipefail
 LOG=/var/log/uts-rows-squash.log
-PIDF=/var/run/uts-rows-squash.pid
 D=/opt/ultimate-trading-system/data/batches
 
-if [ -f "$PIDF" ] && kill -0 "$(cat "$PIDF")" 2>/dev/null; then
-  PID=$(cat "$PIDF")
+# FOUND BY NAME, NOT BY A RECORDED NUMBER. `setsid nohup node ... &` forks, so
+# the shell's $! is setsid's pid and it exits at once -- a pid file written from
+# it names a process that is already gone and whose number the kernel will hand
+# to something else. Checked once against a recycled pid that was very much
+# alive and doing something entirely different, which read as "still going" and
+# would have read as "finished" the moment that stranger exited.
+PID=$(pgrep -f 'uts-rows-squash\.js' | head -1)
+if [ -n "${PID:-}" ]; then
   echo "STILL GOING (pid $PID)"
   # HOW FAR THROUGH, EXACTLY. The kernel knows where each open file is being
   # read from, so this is the real position rather than a guess from the size of
@@ -23,14 +28,14 @@ if [ -f "$PIDF" ] && kill -0 "$(cat "$PIDF")" 2>/dev/null; then
       ;;
     esac
   done
-  # and how long it has been at it, so a rate can be worked out
-  ST=$(stat -c%Y /var/log/uts-rows-squash.log 2>/dev/null)
-  BEGIN=$(awk '/started at|started /{print}' /var/log/uts-rows-squash.log 2>/dev/null | head -1)
-  echo "  started: ${BEGIN:-?}"
-  ps -o etime=,pcpu= -p "$PID" 2>/dev/null | sed 's/^/  running for:/'
-  : "$ST"
+  ps -o etime=,pcpu=,rss= -p "$PID" 2>/dev/null \
+    | awk '{printf "  running for %s, %s%% of a processor, %.0f MB of memory\n", $1, $2, $3/1024}'
+elif grep -q '^finished ' /var/log/uts-rows-squash.log 2>/dev/null; then
+  echo "NOT RUNNING -- and the log says it finished"
+elif grep -qE '^(FAILED|STOPPING SHORT|REFUSING)' /var/log/uts-rows-squash.log 2>/dev/null; then
+  echo "NOT RUNNING -- and the log says it did NOT finish"
 else
-  echo "NOT RUNNING"
+  echo "NOT RUNNING -- and the log says neither, so it was killed"
 fi
 df -h / | tail -1 | sed 's/^/disk  /'
 RUN="$(ls -1 "$D" 2>/dev/null | grep -E '\.rows$' | head -1)"
