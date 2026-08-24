@@ -155,6 +155,72 @@ Paste everything between the lines into a UTS session.
 
 ---
 
+## Deploying this change to the running system
+
+### Why it cannot disturb open positions
+
+The classifier is a web service on the VPS (`127.0.0.1:8093`). Open positions
+are managed by `mx_executor.py` on the **Mexico box**, fired by
+`pilot-exec.timer` there. The two machines are independent: restarting the web
+service cannot touch a position, cancel an order, or stop a scheduled exit.
+
+`deploy/install.sh` rsyncs with `--delete` but **excludes `data/`**, so the
+journal, the decision records and all live state survive untouched. It then runs
+`npm ci --omit=dev` and restarts the systemd unit — roughly a one-to-two second
+gap in the web service.
+
+This change adds **no new npm dependency**: `tradeplan.js` and `venue.js` import
+nothing at all, and `routes.js` only requires a sibling file.
+
+### The one thing worth timing around
+
+Four timers on the VPS talk to this service:
+
+| timer | schedule | if it misses a run |
+|---|---|---|
+| `pilot-sync` | every 5 min | harmless — it is an idempotent carry, retries next run |
+| `pilot-alert` | :00 :15 :30 :45 | one alert cycle skipped |
+| `live-alert` | :07 :22 :37 :52 | one alert cycle skipped |
+| **`live-tick`** | **hourly at :08** | **produces decisions and pushes intents — do not overlap this** |
+
+**Deploy window: :40–:55 past the hour.** That is clear of `live-tick` by a wide
+margin and lands between the alert timers. A `pilot-sync` overlap is unavoidable
+at any time and does not matter.
+
+Also check before deploying: if the box is `armed: true, halted: false` it is
+live and will take entries, so confirm no entry decision is due within the hour
+(`classifier-live-diag.sh`, read-only).
+
+### Steps
+
+1. Read-only pre-flight: `classifier-live-diag.sh` — note armed/halted, open
+   legs, and the next `live-tick`.
+2. Boot the service locally and confirm `/api/healthz`, the new
+   `/api/live/venue`, and an existing route such as `/api/live/setups` all
+   answer. (Done for this change: all three good, no stderr.)
+3. Run the deploy: `{"action":"run-script","script":"deploy-general-classifier.sh"}`.
+   It syncs a dedicated checkout to `origin/general-classifier` and runs
+   `deploy/install.sh`.
+4. Verify: `curl -s http://127.0.0.1:8093/api/healthz` and
+   `curl -s http://127.0.0.1:8093/api/live/venue`.
+5. Re-run `classifier-live-diag.sh` and confirm open legs and
+   `journalSyncedUtc` are unchanged/advancing.
+
+### Rollback
+
+`git revert <commit>` on `general-classifier`, push, re-run the deploy. The
+deploy is idempotent and driven entirely by `origin/general-classifier`, so
+reverting the branch and redeploying restores the previous service exactly. Do
+not force-push the branch backwards — a revert keeps the history honest.
+
+### For UTS
+
+UTS is not deployed by `deploy-general-classifier.sh`; it has its own install
+path under `/opt/ultimate-trading-system`. The same three rules carry over:
+exclude `data/` from the sync, add no new dependency, and deploy outside that
+tree's decision-producing tick. Confirm the equivalent timers on that side
+before choosing a window — do not assume they are the same minutes.
+
 ## How an entry gets added
 
 Any change to either tree gets logged here in the same commit, with a prompt
