@@ -247,7 +247,13 @@ module.exports = {
       'bPick', 't1null', 'cmpA', 'cmpB',
       // same shape: the campaign picker's options are the names the service
       // itself reports, and a NEW name is typed in the box beside it
-      'cxCampPick']);
+      'cxCampPick',
+      // same shape again, and the allow-list is enforced rather than restated:
+      // every option is the name of a service the machine itself reported, and
+      // the control refuses any name that is not in that same list at the
+      // moment it is asked (test-servicecontrol.js pins that, and pins that a
+      // refused name never reaches systemctl).
+      'svcPick']);
     const withValues = [...SWEEP.matchAll(/<select id="([\w-]+)"[^>]*>((?:(?!<\/select>)[\s\S])*?)<\/select>/g)]
       .filter((m) => /<option value="/.test(m[2])).map((m) => m[1]);
     const unlisted = withValues.filter((id) => !known.has(id));

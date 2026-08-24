@@ -367,4 +367,44 @@ window.HELP = {
       glGo: { what: 'Writes the record. Does not start any trading.' },
     },
   },
+  service: {
+    title: 'Service',
+    how: [
+      ['Running is not the same as answering',
+        'Everything else in this system is drawn by one program on this machine, and that program does one thing at a time. When something asks it for a very large piece of work, everything else waits behind that work — so every page stops arriving at once, and what you see is a blank page or a time-out.\\n\\nThe machine itself still reports that program as running the whole time, because it is: it is alive, and its address is open. The machine accepts the knock at the door on its behalf whether or not anyone is ever going to open it. So "running" is the wrong question, and it is the only question the machine answers on its own.\\n\\nThe last column here asks each one a real question and times the reply. Running, address open, nothing came back is a real state, it is the one that took the pages down, and this is the only place it is written down.'],
+      ['Why this tab is not drawn by the same program as the rest',
+        'A control that stops working at the same moment as the thing it controls is not a control. If this tab were served by the program that just stopped answering, the button to restart it would have been queued behind the very work that needed stopping.\\n\\nSo it is answered by a second, much smaller program whose only job is this one. It keeps answering when the other one cannot, which is exactly when you need it. That second program also serves these same pages at their own address, so if a page will not load at all you can still reach this tab and press the button.\\n\\nIt is also the only way this can work at all. The main program is deliberately run under an account that is not allowed to start or stop anything, including itself — a safety measure worth keeping. Asking it to do this would not be unwise, it would be impossible.'],
+      ['What it will not do, and why that is written on the screen',
+        'Four of them cannot be stopped from here. Each one is a way back into the machine: the control itself, the part that serves this address, the remote login, and the path a repair comes down. Stopping any of those would leave nothing able to start anything again, and no button on any screen could undo it.\\n\\nThey are listed, with the reason, rather than quietly left out. A missing choice you cannot see is a decision taken away from you; a refusal you can read is one you can argue with. Starting them is allowed — it is only stopping them that cannot be taken back.\\n\\nEverything else on the machine is yours to press, including the parts that hold real money. Those are not hidden and not blocked. Each row carries the description its own author wrote for it, so the ones that trade say so in their own words rather than in a label added here.'],
+    ],
+    intro: 'What is running on this machine, whether each part is actually answering, and starting, '
+      + 'stopping and restarting any of it. This is the only tab that keeps working when the rest of '
+      + 'the pages stop arriving, because a different program answers it.',
+    controls: {
+      svcPick: {
+        what: 'Which one the three buttons beside it act on. Every service on the machine is listed, with what it is doing now.',
+        more: 'The list is read from the machine every time this tab is drawn, so it is what is really there rather than a list written down somewhere.',
+      },
+      svcRestart: {
+        what: 'Stops the chosen one and starts it again. This is the one for a service that is running but not answering.',
+        more: 'Anything it was part-way through is lost. A sweep that was going is marked as stopped, and can be picked up again with Resume run on Boards.',
+      },
+      svcStop: {
+        what: 'Stops the chosen one and leaves it stopped. Its pages stop arriving until it is started again.',
+        more: 'The four listed at the bottom refuse this, and say why. Everything else will do it.',
+      },
+      svcStart: {
+        what: 'Starts the chosen one if it is not running. It does nothing to one that already is.',
+        more: 'This is allowed on every one of them, including the four that refuse to be stopped.',
+      },
+      svcFilter: {
+        what: 'Narrows the table below to the ones whose name or description contains what you type.',
+        more: 'It only changes what you are shown. Nothing is ever left out unless you type something here.',
+      },
+      svcRefresh: {
+        what: 'Asks the machine again and redraws everything with the new answer.',
+        more: 'Nothing on this tab changes on its own. Every reading is from the moment it was asked for, and the line under the table says when that was.',
+      },
+    },
+  },
 };

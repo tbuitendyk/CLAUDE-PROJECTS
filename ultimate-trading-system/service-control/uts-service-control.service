@@ -1,0 +1,46 @@
+[Unit]
+Description=UTS Service Control (says what is running and starts, stops and restarts it)
+After=network-online.target
+Wants=network-online.target
+# It must come back on its own from anything short of the machine going away,
+# because it is the way back for everything else. A failure that parks this is a
+# failure that leaves the owner with no control at all, so unlike the trading
+# service there is no start limit here: keep trying.
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+# ROOT, AND THAT IS THE WHOLE POINT. systemctl is the job. The trading service
+# deliberately runs as an unprivileged user with NoNewPrivileges and
+# ProtectSystem=strict, which is why it cannot do this and this exists.
+# What keeps it safe is not a smaller privilege, it is a smaller surface: no
+# dependencies, one file, two routes, and it only ever listens on 127.0.0.1
+# behind the site's own password.
+User=root
+Group=root
+WorkingDirectory=/opt/uts-service-control
+Environment=PORT=8095
+Environment=UTS_PUBLIC=/opt/ultimate-trading-system/public
+Environment=SELF_UNIT=uts-service-control.service
+ExecStart=/usr/bin/node server.js
+Restart=always
+RestartSec=2
+
+# Tiny on purpose. If this ever needs more than this it has stopped being what
+# it is for. The ceiling is a tripwire as much as a limit.
+MemoryHigh=96M
+MemoryMax=192M
+CPUWeight=20
+IOWeight=20
+
+# It reads the whole of /proc and runs systemctl, so it cannot be boxed in the
+# way the trading service is. What it can be denied, it is.
+PrivateTmp=true
+ProtectHome=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+
+[Install]
+WantedBy=multi-user.target

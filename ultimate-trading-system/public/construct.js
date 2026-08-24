@@ -161,6 +161,12 @@ const COL = {
   why: 'the reason recorded at greenlight time. It is the decision record and is not editable afterwards.',
   minted: 'when the config was greenlighted, UTC.',
   state: 'whether this config is running on either side, and whether it has been revoked.',
+  // Service
+  svcName: 'what the machine calls this part of itself, and underneath it the description its own author wrote for it — so a part that trades real money says so in its own words.',
+  svcState: 'what the machine says it is doing: active if it is running, failed if it stopped badly, inactive if it is not running at all.',
+  svcUp: 'how long it has been running without a break, in seconds, minutes, hours or days.',
+  svcMemory: 'how much memory it is holding right now.',
+  svcAnswers: 'whether it actually replied when asked, and how long the reply took in thousandths of a second. This is not the same as running: a part can be alive with its address open and never reply, because the machine takes the knock at the door on its behalf. Running but not answering is the state that takes the pages down.',
 };
 // cth(label, key[, style]) — a heading always carries its own description.
 const cth = (label, key, style) => `<th${style ? ` style="${style}"` : ''}${COL[key] ? ` title="${esc(COL[key]).replace(/"/g, '&quot;')}"` : ''}>${label}</th>`;
@@ -336,7 +342,7 @@ if ($('#cpubtn')) {
 
 // ---- navigation ------------------------------------------------------------
 const TABS = [['data', 'Data'], ['sweep', 'Sweep'], ['boards', 'Boards'], ['verify', 'Verify'],
-  ['history', 'History'], ['tune', 'Tune'], ['greenlight', 'Greenlight'], ['help', 'Help']];
+  ['history', 'History'], ['tune', 'Tune'], ['greenlight', 'Greenlight'], ['service', 'Service'], ['help', 'Help']];
 let tab = localStorage.getItem('cx-tab') || 'sweep';
 // the working selection: a saved run + its selected row ride across sections
 let pickedRun = localStorage.getItem('cx-run') || null;
@@ -2826,6 +2832,177 @@ function helpReplica(c) {
 let HELPVOCAB = null;
 let HELPMAP = null;
 
+// ---- Service ------------------------------------------------------------------
+//
+// EVERYTHING ON THIS TAB COMES FROM A DIFFERENT PROCESS, and that is the whole
+// reason it exists (owner order, 2026-08-24: "obviously it must be controlable
+// and accessible").
+//
+// The rest of this page is drawn from the trading service on 8094. When one
+// request holds that service's single thread — which is what took the screens
+// down — every other request on it queues behind, so a control served from
+// there would have been just as unreachable as the page it was meant to rescue.
+// This tab asks `svc/` instead, which nginx routes to a separate service whose
+// only job is this. It answers when the other one cannot.
+//
+// It also reports something systemd will not: whether a service ANSWERS. During
+// the outage `systemctl is-active` said "active" the whole time, because the
+// process was alive and its port was open — the machine accepts a connection
+// whether or not anything is ever going to read it. So each service holding a
+// port is asked a real question and timed.
+let svcSeen = null;          // the last reading, so a redraw does not go quiet
+let svcFilterText = '';
+let svcBusy = false;
+
+const svcAge = (s) => {
+  if (s == null) return '—';
+  if (s < 90) return `${s}s`;
+  if (s < 5400) return `${Math.round(s / 60)}m`;
+  if (s < 172800) return `${(s / 3600).toFixed(1)}h`;
+  return `${(s / 86400).toFixed(1)}d`;
+};
+const svcMem = (b) => (b == null ? '—' : b >= (1 << 30) ? `${(b / (1 << 30)).toFixed(2)} GB` : `${Math.round(b / (1 << 20))} MB`);
+
+// One row's answer, in words rather than a code. The case that matters is the
+// middle one: running, port open, nothing came back.
+function svcAnswer(u) {
+  if (!u.ports.length) return '<span class="muted">no address</span>';
+  return u.answers.map((a) => {
+    if (a.answered) return `<span class="pos">answered in ${a.ms} ms</span> <span class="muted">(${a.port})</span>`;
+    return `<span class="neg">no answer</span> <span class="muted">(${esc(a.port)} — ${esc(a.why)})</span>`;
+  }).join('<br>') || '<span class="muted">not asked</span>';
+}
+
+async function drawService() {
+  const fresh = await apiOr('svc/api/services', null);
+  if (fresh) svcSeen = fresh;
+  const d = svcSeen;
+  if (!d) {
+    $('#view').innerHTML = `<div class="panel"><h3 style="margin-top:0">Service</h3>
+      <p class="note neg">The service control did not answer, so nothing about this machine can be
+        shown. That control is a separate process from the one drawing this page, so this means it
+        is itself down — not that the trading service is.</p>
+      <p class="note">Nothing has been changed. Reload to try again.</p></div>`;
+    return;
+  }
+  const q = svcFilterText.trim().toLowerCase();
+  const shown = d.units.filter((u) => !q
+    || u.unit.toLowerCase().includes(q) || (u.description || '').toLowerCase().includes(q));
+  // The ones holding an address first, then the ones that are up, then the rest:
+  // what the owner came here for is at the top without anything being hidden.
+  shown.sort((a, b) => (b.ports.length ? 1 : 0) - (a.ports.length ? 1 : 0)
+    || (b.active === 'active' ? 1 : 0) - (a.active === 'active' ? 1 : 0)
+    || a.unit.localeCompare(b.unit));
+  const wedged = d.units.filter((u) => u.active === 'active' && u.answers.some((a) => !a.answered && a.why && a.why.includes('sent nothing back')));
+
+  const rows = shown.map((u) => {
+    const state = u.active === 'active' ? `<span class="pos">${esc(u.active)}</span>`
+      : u.active === 'failed' ? `<span class="neg">${esc(u.active)}</span>`
+        : `<span class="muted">${esc(u.active)}</span>`;
+    return `<tr>
+      <td style="padding:.3rem .5rem .3rem 0"><b>${esc(u.unit.replace(/\.service$/, ''))}</b>
+        <div class="muted" style="font-size:.76rem">${esc(u.description)}</div>
+        ${u.cannotStop ? `<div class="warn" style="font-size:.76rem">cannot be stopped from here — ${esc(u.cannotStop)}</div>` : ''}</td>
+      <td style="padding:.3rem .5rem">${state} <span class="muted">${esc(u.sub)}</span></td>
+      <td style="padding:.3rem .5rem">${esc(svcAge(u.upSeconds))}</td>
+      <td style="padding:.3rem .5rem">${esc(svcMem(u.memoryBytes))}</td>
+      <td style="padding:.3rem .5rem">${svcAnswer(u)}</td></tr>`;
+  }).join('') || '<tr><td colspan="5" class="empty">nothing on this machine matches that</td></tr>';
+
+  const pickable = d.units.slice().sort((a, b) => a.unit.localeCompare(b.unit));
+  $('#view').innerHTML = `<div class="panel">
+      <h3 style="margin-top:0">Service — what is running on this machine, and starting and stopping it</h3>
+      <p class="note">Everything here is read from the machine, and it is served by a different
+        process from the one that draws the rest of these pages. That is deliberate: when the
+        trading service stops answering, this tab still does.</p>
+      <p class="note"><b>Running is not the same as answering.</b> A service can be alive with its
+        address open and still never reply, because the machine accepts the connection on its
+        behalf. The last column asks each one a real question and times the reply, which is the
+        one reading that tells those two apart.</p>
+      ${wedged.length ? `<p class="note neg"><b>${wedged.length} service(s) are running but did not
+        answer.</b> That is the state a restart is for.</p>` : ''}
+    </div>
+    <div class="panel">
+      <div class="row">
+        <label class="muted">act on<select id="svcPick" style="margin-left:.4rem">${pickable
+    .map((u) => `<option value="${esc(u.unit)}">${esc(u.unit.replace(/\.service$/, ''))} — ${esc(u.active)}</option>`).join('')}</select></label>
+        <button id="svcRestart" class="danger" title="stops the chosen service and starts it again. Anything it was part-way through is lost; a sweep that was going is marked as stopped and can be picked up again with Resume run on Boards.">Restart it</button>
+        <button id="svcStop" class="danger" title="stops the chosen service and leaves it stopped. Its pages stop answering until it is started again.">Stop it</button>
+        <button id="svcStart" title="starts the chosen service if it is not running. It does nothing to one that already is.">Start it</button>
+        <span class="spacer"></span>
+        <label class="muted">narrow the list<input id="svcFilter" style="margin-left:.4rem" placeholder="any part of a name" value="${esc(svcFilterText)}"></label>
+        <button id="svcRefresh" title="asks the machine again. Nothing on this tab updates on its own — every reading here is from the moment it was asked for.">Read it again</button>
+      </div>
+      <div id="svcOut"></div>
+    </div>
+    <div class="panel">
+      <div class="scrollx"><table style="width:100%;border-collapse:collapse">
+        <thead><tr style="text-align:left;border-bottom:1px solid var(--line)">
+          <th style="padding:.3rem .5rem .3rem 0" title="${esc(COL.svcName)}">service</th>
+          <th style="padding:.3rem .5rem" title="${esc(COL.svcState)}">state</th>
+          <th style="padding:.3rem .5rem" title="${esc(COL.svcUp)}">up for</th>
+          <th style="padding:.3rem .5rem" title="${esc(COL.svcMemory)}">memory</th>
+          <th style="padding:.3rem .5rem" title="${esc(COL.svcAnswers)}">does it answer</th></tr></thead>
+        <tbody>${rows}</tbody></table></div>
+      <p class="note">${shown.length} of ${d.units.length} shown${q ? `, narrowed by "${esc(svcFilterText)}"` : ''}.
+        Read at ${esc(d.at)}${fresh ? '' : ' — and this reading is the last one that arrived, not a new one'}.</p>
+    </div>
+    <div class="panel">
+      <p class="note"><b>Four cannot be stopped from here, and they are listed rather than hidden.</b>
+        Each one is a way back: stopping it would leave no way to start anything again from this
+        screen. Starting them is allowed; stopping and restarting is not.</p>
+      <ul class="note" style="margin:.3rem 0 0 1.1rem">${d.refusals
+    .map((r) => `<li><b>${esc(r.unit.replace(/\.service$/, ''))}</b> — ${esc(r.why)}</li>`).join('')}</ul>
+      <p class="note">This tab is answered by <b>${esc(d.servedBy.unit.replace(/\.service$/, ''))}</b>,
+        up for ${esc(svcAge(d.servedBy.upSeconds))}.</p>
+    </div>`;
+
+  const pick = () => ($('#svcPick') || {}).value || '';
+  const filt = $('#svcFilter');
+  if (filt) {
+    filt.oninput = () => { svcFilterText = filt.value; };
+    filt.onchange = () => { svcFilterText = filt.value; drawService(); };
+  }
+  const refresh = $('#svcRefresh');
+  if (refresh) refresh.onclick = () => drawService();
+  const doAct = async (action, unit) => {
+    if (svcBusy) return;
+    const box = $('#svcOut');
+    if (!unit) { box.innerHTML = '<p class="note">choose a service first</p>'; return; }
+    const short = unit.replace(/\.service$/, '');
+    const row = (svcSeen.units || []).find((u) => u.unit === unit) || {};
+    if (row.cannotStop && action !== 'start') {
+      box.innerHTML = `<p class="note neg">"${esc(short)}" cannot be ${esc(action)}ed from here — ${esc(row.cannotStop)}. Nothing has been done.</p>`;
+      return;
+    }
+    // Named twice before anything happens, and the cost said out loud first —
+    // the same two-step the deletes on this page use, and for the same reason.
+    if (!confirm(`${action === 'start' ? 'Start' : action === 'stop' ? 'Stop' : 'Restart'} "${short}"?\n\n`
+      + `${row.description || ''}\n\n`
+      + `${action === 'start' ? 'It will be started if it is not already running.'
+        : 'Anything it is part-way through is lost. A sweep that was going is marked as stopped, and can be picked up again with Resume run on Boards.'}\n\n`
+      + 'Hit Cancel and nothing is done.')) {
+      box.innerHTML = '<p class="note">cancelled — nothing was done</p>';
+      return;
+    }
+    svcBusy = true;
+    box.innerHTML = `<p class="note">${esc(action)}ing ${esc(short)}…</p>`;
+    const out = await tryPost('svc/api/service', { unit, action, confirm: unit });
+    svcBusy = false;
+    if (!out) { box.innerHTML = '<p class="note neg">it did not go through — nothing has been changed</p>'; return; }
+    box.innerHTML = `<p class="note pos">${esc(short)}: ${esc(out.before)} → ${esc(out.after)}</p>`;
+    // Give it a moment to come up before saying what it is now, so the reading
+    // underneath is not one taken mid-restart and read as a failure.
+    setTimeout(() => { if (tab === 'service') drawService(); }, 2500);
+  };
+  const bStart = $('#svcStart');
+  if (bStart) bStart.onclick = () => doAct('start', pick());
+  const bStop = $('#svcStop');
+  if (bStop) bStop.onclick = () => doAct('stop', pick());
+  const bRestart = $('#svcRestart');
+  if (bRestart) bRestart.onclick = () => doAct('restart', pick());
+}
+
 async function drawHelp() {
   if (!HELPVOCAB) HELPVOCAB = await apiOr('api/vocabulary', {});
   if (!HELPMAP) HELPMAP = await apiOr('api/screen-controls', null);
@@ -2957,7 +3134,8 @@ function draw() {
           : tab === 'history' ? drawHistory()
             : tab === 'tune' ? drawTune()
               : tab === 'greenlight' ? drawGreenlight()
-                : drawHelp();
+                : tab === 'service' ? drawService()
+                  : drawHelp();
   // A section that THROWS must say so. Without the rejection arm the promise
   // rejects, the banner never runs, and #view keeps whatever was there — on a
   // first load that is nothing at all, so a hard failure renders as a blank
