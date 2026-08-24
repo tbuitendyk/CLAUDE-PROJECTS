@@ -15,10 +15,12 @@ echo "node: $(node -v)"
 # these are fixed numbers and not a range to be nodded at: if the converter's
 # idea of where the damage starts ever moves, one of them fails.
 FAILED=0
-for PAIR in 400:4 8000:7 60000:22; do
-  CHOP=${PAIR%%:*}; WANT=${PAIR##*:}
-  echo "== a tear of $CHOP bytes, which should cost $WANT row(s) =="
-  if CHOP=$CHOP WANT_REDO=$WANT UTS_ROOT=$ROOT node "$HERE/uts-rows-squash-test.js" "$WORK/w$CHOP" "$HERE/uts-rows-squash.js" > "$WORK/out$CHOP" 2>&1; then
+# tear : rows past the floor : whole units : half-written units
+for PAIR in 400:4:571:1 8000:7:569:0 60000:22:553:1; do
+  IFS=: read -r CHOP WANT UNITS PART <<<"$PAIR"
+  echo "== a tear of $CHOP bytes: floor $WANT, $UNITS whole unit(s), $PART half-written =="
+  if CHOP=$CHOP WANT_REDO=$WANT WANT_UNITS=$UNITS WANT_PARTIAL=$PART UTS_ROOT=$ROOT \
+     node "$HERE/uts-rows-squash-test.js" "$WORK/w$CHOP" "$HERE/uts-rows-squash.js" > "$WORK/out$CHOP" 2>&1; then
     grep -E "^  ok |ALL CHECKS PASSED|declared configuration label|reading A|reading B|only A|only B|both can|NEITHER" "$WORK/out$CHOP" | sed 's/^ *|* */  /'
   else
     FAILED=1

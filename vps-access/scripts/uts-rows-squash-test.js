@@ -192,16 +192,26 @@ assert.strictEqual(rep2.censusKeysPastTheFloor.length, WANT,
   `expected ${WANT} census rows past the floor, got ${rep2.censusKeysPastTheFloor.length}`);
 assert.strictEqual(rep2.censusRowIndexOfLastMatch, rep2.censusRows - WANT,
   `the floor should be ${WANT} rows from the end, was #${rep2.censusRowIndexOfLastMatch} of ${rep2.censusRows}`);
-// THE LABEL COUNT is the exact one. The fixture writes seven labels per unit
-// for every unit, no-cell rows included, so reading A is the true one.
+// THE LABEL COUNT is the exact instrument, and it is what must track the tear.
+// The fixture writes seven labels per unit, for every unit, so how many whole
+// units replication holds is a fact about the tear and not a range.
 assert.strictEqual(rep2.declaredLabels, 7, `expected 7 declared labels, got ${rep2.declaredLabels}`);
-assert.strictEqual(rep2.declaredLabelCountHigh - rep2.declaredLabelCountLow, 1,
-  'the cut is inside a unit, so the labels must differ by exactly one');
-assert.strictEqual(rep2.replicationPartialUnits, 1, 'one unit half-written');
-assert.strictEqual(rep2.gapIfEveryCensusRowOwnsReplicationRows, WANT - 1,
-  `reading A should be ${WANT - 1} (the ${WANT}th is the half-written one), was ${rep2.gapIfEveryCensusRowOwnsReplicationRows}`);
-assert.ok(rep2.gapIfNoCellRowsOwnNone < 0,
-  `reading B must come out negative on this fixture, was ${rep2.gapIfNoCellRowsOwnNone}`);
+assert.strictEqual(rep2.replicationWholeUnits, Number(process.env.WANT_UNITS || 571),
+  `whole units from the labels: got ${rep2.replicationWholeUnits}`);
+assert.strictEqual(rep2.replicationPartialUnits, Number(process.env.WANT_PARTIAL || 1),
+  `half-written units: got ${rep2.replicationPartialUnits}`);
+// A spread of more than one cannot come from a clean cut, and the two must
+// agree with each other -- the partial count IS the spread.
+assert.ok(rep2.declaredLabelCountHigh - rep2.declaredLabelCountLow <= 1,
+  `the labels differ by ${rep2.declaredLabelCountHigh - rep2.declaredLabelCountLow}, which a clean cut cannot produce`);
+assert.strictEqual(rep2.declaredLabelCountHigh - rep2.declaredLabelCountLow, rep2.replicationPartialUnits,
+  'the spread between label counts and the half-written count are the same fact');
+// The two readings must be the same arithmetic on the same numbers, differing
+// only by the no-cell rows -- otherwise one of them is not what it says it is.
+assert.strictEqual(rep2.gapIfEveryCensusRowOwnsReplicationRows,
+  rep2.censusRows - (rep2.replicationWholeUnits + rep2.replicationPartialUnits), 'reading A is not its own arithmetic');
+assert.strictEqual(rep2.gapIfNoCellRowsOwnNone,
+  rep2.gapIfEveryCensusRowOwnsReplicationRows - rep2.censusNoCellRows, 'reading B is not reading A less the no-cell rows');
 assert.strictEqual(rep2.censusKeysInOrder.length, rep2.censusRows, 'every census key must be listed in order');
 // and it must not blame the middle: one glued line in slim, one torn tail each.
 assert.strictEqual(rep2.collections.slim.tornLinesDropped, 1, 'slim: one glued line');
