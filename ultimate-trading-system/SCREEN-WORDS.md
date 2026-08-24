@@ -18,7 +18,7 @@ is the same fault wearing a disguise.
 
 ## Which screen this describes
 
-Generated from **7cce6e195350 — what the box is serving**, not from the working tree.
+Generated from **33b183b99d73 — what the box is serving**, not from the working tree.
 
 That distinction is the whole point. Between a commit and its deploy the
 two describe different screens, and on 2026-08-22 exactly that happened: a
@@ -44,6 +44,7 @@ deployed, and that is correct** - until then the owner cannot see it.
 - **History**
 - **Tune**
 - **Greenlight**
+- **Service**
 - **Help**
 
 Read from `TABS` in `public/construct.js`.
@@ -774,6 +775,69 @@ aborted about against agree ALL and applied applies apply Apply are as at B. be 
 
 ```
 Activation activation. anchor and appears at be behind being best Boards both campaign can cell chain. changed config configs dash deactivation decision declared each engine ever ever. evidence evidentiary exact Existing fee first fit for found from frozen Greenlight GREENLIGHT greenlight greenlighted greenlights hand-built here is It it live means minted no none not nuked nuking on one Only out per predates priced record recorded. Records region required row row. run select selected sent setting sides starts tab test that the The then there. this to trade Trade under version was way. what WHO/WHEN/WHY whole why widest with yet
+```
+
+---
+
+# Service
+
+## What the controls are called (25)
+
+- `" cannot be`
+- `A service can be alive with its`
+- `act on`
+- `answered in`
+- `cannot be stopped from here —`
+- `does it answer`
+- `ed from here —`
+- `ing`
+- `memory`
+- `ms`
+- `narrow the list`
+- `no answer`
+- `of`
+- `Read at`
+- `Read it again`
+- `Restart it`
+- `service`
+- `Service`
+- `service(s) are running but did not`
+- `shown`
+- `Start it`
+- `state`
+- `Stop it`
+- `This tab is answered by`
+- `up for`
+
+## What the dropdowns offer (0)
+
+_none_
+
+## Sentences the page prints (18)
+
+- The service control did not answer, so nothing about this machine can be
+- shown. That control is a separate process from the one drawing this page, so this means it
+- is itself down — not that the trading service is.
+- Nothing has been changed. Reload to try again.
+- Service — what is running on this machine, and starting and stopping it
+- Everything here is read from the machine, and it is served by a different
+- process from the one that draws the rest of these pages. That is deliberate: when the
+- trading service stops answering, this tab still does.
+- Running is not the same as answering.
+- address open and still never reply, because the machine accepts the connection on its
+- behalf. The last column asks each one a real question and times the reply, which is the
+- one reading that tells those two apart.
+- answer.
+- That is the state a restart is for.
+- Four cannot be stopped from here, and they are listed rather than hidden.
+- Each one is a way back: stopping it would leave no way to start anything again from this
+- screen. Starting them is allowed; stopping and restarting is not.
+- . Nothing has been done.
+
+## Every word, flat (140)
+
+```
+about accepts act address again again. alive allowed and answer answer. answered answering answering. anything apart. are as asks at back be because been behalf. but by can cannot changed. column connection control deliberate did different does does. done. down drawing draws each Each ed Everything for for. Four from has here hidden. in ing is is. it its itself last leave list listed machine means memory ms narrow never no not not. nothing Nothing of on one open page pages. process question rather read Read reading real Reload reply rest restart Restart restarting running Running same screen. separate served Service service shown shown. so Start start starting Starting state still Stop stopped stopping stops tab tells than That that The the them these they this This those times to trading try two up way what when which with would
 ```
 
 ---
