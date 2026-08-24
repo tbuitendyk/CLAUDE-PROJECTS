@@ -639,3 +639,135 @@ since neither has one today and both navigate back to a page that is going.
 
 Until point 3 fills it, the first screen the owner sees is a working strip
 above an empty page. That is the intended state, not an oversight.
+
+---
+
+## 18. Seven more places the code says no to the owner
+
+*Owner, 2026-08-23.*
+
+Owner:
+
+> your going to fix this: "The code refuses a second reserve grade on the same
+> run."
+>
+> this is my system. it doesn't refuse what i want.
+>
+> understand?
+
+and then:
+
+> fix 8 and 9. GO NOW! without deploy of course. the other 7 put in as a new
+> point in our THIS-RELEASE markdown document
+
+**Where this came from.** The reserve grade threw on any second grade of the
+same run. The owner ruled that out: how many times their own sealed slice gets
+read is their call. That fix is done (commit "The sealed slice can be read
+again — it counts instead of refusing") — the code counts the looks and says
+which one it is in six places instead of preventing the second one.
+
+The session then swept the rest of the code for the same shape and found nine
+more. Two are done. **The seven below are recorded, not built. Nothing has
+been changed on any of them.**
+
+**The two already done, for the record**, since they were numbered in the same
+sweep and are cited by number in the conversation:
+
+- **(8)** `promote top K` was silently reduced to 50. Now it goes through as
+  typed.
+- **(9)** the board was fixed at 50 rows and set nowhere. It is a box called
+  `board rows` now, with no ceiling and its cost printed beside it.
+
+Both are in the commit "The board keeps what the owner says it keeps".
+
+---
+
+### The seven, in the order they were swept
+
+Each names what refuses, where, and what the refusal costs the owner. None has
+a decision attached yet.
+
+**18.1 — An eight-week minimum on the sealed slice.**
+`lib/batch.js`, in the sweep launcher. A run using the `61/13/13/13 (sealed
+exam)` layout over a date range whose sealed slice would come to fewer than
+eight weeks is refused outright: *"refused: the sealed reserve would be ~N
+weeks — below the 8-week minimum (GUESSED). Load more history."* The message
+says the eight is a guess. A guessed number that cannot be overridden is a wall
+built out of somebody's opinion. Note it only applies when a month range is
+given — a run with `all loaded data` ticked skips the check entirely, so the
+rule is already inconsistent about when it applies.
+
+**18.2 — A protective stop tighter than 0.5% is refused, in two places.**
+`lib/live/setups.js` (validating a trading profile) and `server.js` (the
+stop-apply request). Both quote the same 0.5% floor and the same reason: a
+tighter stop fires on noise rather than on real moves. The floor is derived
+from the round-trip trading fee — twice 0.25% — so with the fee now settable
+per profile (2026-08-23) the floor no longer follows the thing it was derived
+from. Two questions here, not one: whether the owner may go below it at all,
+and whether it should move with the profile's own fee.
+
+**18.3 — A setup that already has a stop cannot have one tuned.**
+`lib/stopsweep.js`. Refuses with *"already has a protective stop … stop tuning
+does not apply"*. The reasoning is that a breakout cell already stops at the
+far rail and a trailing cell already has a moving stop, so there is nothing to
+tune. That is an argument for saying so, not for blocking the scan.
+
+**18.4 — `Tune` refuses a row that uses the `always` gate.**
+`lib/batch.js`, twice — once in the History Tuning launcher, once in the paired
+launcher. *"activation refused: this row uses the always gate — it enters
+regardless of votes, so both tuning dials would act on nothing (owner ruling,
+2026-08-02)."* **This one is the owner's own earlier ruling**, cited in the
+code. It is listed for completeness rather than as an oversight; keeping it may
+well be the answer.
+
+**18.5 — `Tune` refuses the `weekly-8d` chunk shape.**
+`lib/batch.js`, same two launchers. The training-days arithmetic was built for
+day-stepping chunks, and weekly chunks step seven days, so the floor would be
+judged in units seven times too small. The number really would be wrong. But
+the honest answer to a number that would be wrong is to mark it wrong and show
+it, not to bar the door — the same principle the reserve-grade fix applied.
+
+**18.6 — `Tune` refuses a source run that is not 70/15/15-shaped.**
+`lib/batch.js`. Marked in the code as an **ACTIVATION RULE (owner)**: only
+`split70` or `61/13/13/13 (sealed exam)` runs may be tuned, because anything
+older has no hold window. Another one that is the owner's own rule; recorded so
+it is visible rather than because it looks wrong.
+
+**18.7 — The age dial will not run until the instrument exams pass.**
+`lib/batch.js`, in the paired launcher: *"refused (R4): …"*. A quality gate on
+the owner — the instrument must have passed its own known-answer exams before
+this tool will run at all. It is the same shape as the planted check gating
+null readings, and the same question applies: should it stop the owner, or
+should it stamp the result as taken on an unchecked instrument?
+
+---
+
+### `[feasibility]` What the pattern is, and what a fix looks like
+
+Every one of the seven has the same three-part shape, and the reserve-grade fix
+is the worked example of how to take it apart:
+
+1. **The reason is usually real.** In 18.5 the number genuinely would be seven
+   times out. In 18.2 a 0.1% stop genuinely does fire on noise. None of these
+   were invented.
+2. **The reason is about what the ANSWER MEANS, not about who decides.** That
+   distinction is the whole of it. A number that means less is still the
+   owner's to compute.
+3. **So the fix is the same each time:** stop refusing, start recording. The
+   run carries what was overridden, the reading rule stamped before anything
+   computes says so, the finished verdict says so in its own sentence, and the
+   screen says so both before the button and after the run. Nothing is
+   prevented; nothing can later be read back as though the condition had been
+   met.
+
+Two of the seven — 18.4 and 18.6 — are the owner's own earlier rulings quoted
+in the code. Those are not defects and are listed only so the owner can see
+every wall in one place and decide which ones stay.
+
+18.2 carries a second, separate defect regardless of what is decided about the
+floor: it is written as the literal `0.005` in two files while its own comment
+derives it from the round-trip fee, and the fee stopped being one system-wide
+number on 2026-08-23. Whatever is decided about overriding it, the floor should
+follow the profile's fee or stop claiming to be derived from it.
+
+No code has been written for any of the seven.

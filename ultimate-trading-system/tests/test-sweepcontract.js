@@ -272,22 +272,56 @@ module.exports = {
       assert.ok(m, `the Sweep form must still carry #${id}`);
       return m[0];
     };
-    const capped = [{ id: 'swK', max: 50, why: 'promoteK is capped at detailK 50 in lib/batch.js' }];
-    for (const b of capped) {
-      const max = tagOf(b.id).match(/max="(\d+)"/);
-      assert.ok(max, `#${b.id} must carry a max attribute — ${b.why}`);
-      assert.strictEqual(Number(max[1]), b.max,
-        `#${b.id} max must match the backend cap (${b.max}) — ${b.why}`);
-    }
-    // and the other way round: a box the backend does NOT cap must not invent
-    // one, or the form refuses a run the system would have accepted
-    const uncapped = [{ id: 'swNulls', param: 'labelShiftReps' }];
+    // NOTHING ON THIS FORM IS CAPPED ANY MORE (owner order, 2026-08-23).
+    //
+    // promote top K used to carry max="50" because lib/batch.js reduced it to
+    // 50 — SILENTLY. Type 200 and the run planned 50 with nothing on any screen
+    // saying so, which is worse than a refusal because the owner goes on
+    // believing they set it. The board size that caused the cap is a box now
+    // too, and the pair is refused BY NAME when it cannot be honoured rather
+    // than one of the two being changed.
+    //
+    // A box the backend does not cap must not invent one either, or the form
+    // refuses a run the system would have accepted.
+    const uncapped = [
+      { id: 'swNulls', param: 'labelShiftReps' },
+      { id: 'swK', param: 'promoteK' },
+      { id: 'swBoardRows', param: 'detailK' },
+    ];
     for (const b of uncapped) {
       assert.ok(!/max="/.test(tagOf(b.id)),
         `#${b.id} carries a max that ${b.param} does not — the form refuses what the backend accepts`);
-      assert.ok(!new RegExp(`${b.param}:\\s*Math\\.min`).test(BATCH),
-        `${b.param} is capped in lib/batch.js again — the box would then silently understate the run`);
     }
+
+    // DRIVEN, NOT GREPPED. The first version of this checked the source for
+    // `promoteK: Math.min` and `detailK: <number>`, which are the shapes the
+    // OLD code used. Restoring either clamp in the shape the new code uses
+    // passed it — a test pinned to yesterday's spelling of the fault. So it
+    // runs the real mapping and reads the answer.
+    const batch = require('../lib/batch');
+    const base = { universe: ['LTCUSDT'], sizes: { singles: true }, allLoaded: true, windowLayout: 'split70' };
+    const plan = (o) => batch.planFor({ ...base, ...o }).p;
+
+    assert.strictEqual(plan({ promoteK: 200, detailK: 200 }).promoteK, 200,
+      'promote top K came back as something other than what was asked for — a number quietly replaced by a '
+      + 'different number is worse than a refusal, because the owner goes on believing they set it');
+    assert.strictEqual(plan({ detailK: 500 }).detailK, 500,
+      'the board size is not the owner\'s — it decides how many rows they ever see');
+    assert.strictEqual(plan({}).detailK, 50, 'the default board is still 50, so nothing moves for a run that says nothing');
+
+    // The pair that cannot both be true is refused, naming both boxes.
+    let err = null;
+    try { plan({ promoteK: 200, detailK: 50 }); } catch (e) { err = e; }
+    assert.ok(err, 'promoting more rows than the board keeps was accepted — those rows do not exist to promote');
+    assert.ok(/promote top K is 200/.test(err.message) && /keeps 50 rows/.test(err.message),
+      `the refusal must name BOTH numbers so it is obvious which to move; got: ${err.message}`);
+    assert.ok(/board rows/.test(err.message) && /promote top K/.test(err.message),
+      'the refusal must name the two boxes on the screen, not the fields in the code');
+    assert.ok(/Nothing has been changed for you/.test(err.message),
+      'the refusal does not say that nothing was altered on the owner\'s behalf');
+    // The screen says it while it is being typed, not only after Start sweep.
+    assert.ok(/promote top K is \$\{k\} but the board keeps \$\{rows\}/.test(SWEEP),
+      'the conflict is only reported by the server, so the owner finds out by pressing the button');
   },
 
   // THE COST REPORT IS WHAT REPLACED THE CAP, so it has to be right. A ceiling

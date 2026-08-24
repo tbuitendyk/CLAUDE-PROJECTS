@@ -511,6 +511,10 @@ function sweepParams(b) {
     permute: b.permute,
     set: b.set,
     promoteK: b.promoteK,
+    // How many rows the board keeps. Fixed at 50 and reachable from nowhere
+    // until 2026-08-23; it also bounds promoteK, so a launch that could not
+    // send it could not raise that either.
+    detailK: b.detailK,
     minTrades: b.minTrades,
     trailing: b.trailing,
     holdout: b.holdout,

@@ -1641,6 +1641,18 @@ function planFor(params, resumeDoc) {
     armMults: bracketLib.ARM_MULTS,
   };
   const declaredSet = params.declared ? expandDeclared(params.declared, params.declaredPermute, grid) : null;
+  // NO CEILING ON EITHER, and the relationship stated rather than applied.
+  // This is the same standing rule the null-board cap was removed under: the
+  // software reports the cost, the human decides. What is refused is not a
+  // number the owner chose — it is a PAIR that cannot both be true, and the
+  // refusal names both boxes so it is obvious which one to move.
+  const detailK = Math.max(1, Math.floor(Number(params.detailK) || 50));
+  const promoteK = Math.max(1, Math.floor(Number(params.promoteK) || 25));
+  if (promoteK > detailK) {
+    throw new Error(`promote top K is ${promoteK} but the board only keeps ${detailK} rows, so ${promoteK - detailK} `
+      + 'of them would not exist to promote. Raise "board rows" to at least '
+      + `${promoteK}, or lower "promote top K" to ${detailK}. Nothing has been changed for you.`);
+  }
   const p = {
     universe: params.universe && params.universe.length ? params.universe : DEFAULT_PAIRS,
     sizes: { singles: !!params.sizes?.singles, doubles: !!params.sizes?.doubles, triples: !!params.sizes?.triples },
@@ -1668,10 +1680,20 @@ function planFor(params, resumeDoc) {
     // (owner, 2026-08-22). Every member is still validated, inside expandDeclared.
     declared: declaredSet && declaredSet.length ? declaredSet[0] : null,
     declaredPermute: params.declaredPermute || null,
-    // Capped at detailK: the leaderboard only ever holds that many slim rows,
-    // so a larger promoteK was a plan number that could not be honoured.
-    // Replication mode ignores this entirely and promotes every unit (below).
-    promoteK: Math.min(50, Math.max(1, Number(params.promoteK) || 25)),
+    // HOW MANY ROWS THE BOARD KEEPS, AND HOW MANY CARRY FORWARD — both the
+    // owner's, neither a constant (owner order, 2026-08-23).
+    //
+    // detailK was hard-coded to 50 and reachable from nowhere, and promoteK was
+    // SILENTLY reduced to it: type 200 and the run planned 50 with nothing on
+    // any screen saying so. A number quietly replaced by a different number is
+    // worse than a refusal, because the owner goes on believing they set it.
+    //
+    // They are genuinely linked — promotion picks from the board, so a board
+    // that keeps 50 rows cannot hand 200 to the second pass. So the link is
+    // stated instead of enforced silently: both are boxes, and asking to
+    // promote more rows than the board keeps is refused BY NAME, with both
+    // numbers in the message, rather than one of them being changed.
+    promoteK,
     minTrades: Math.max(1, Number(params.minTrades) || 10),
     // Per-period call export. Off by default: it is O(periods) per unit, and
     // a 272-combo sweep would bloat the doc for data nobody asked for. On, it
@@ -1712,7 +1734,7 @@ function planFor(params, resumeDoc) {
     // are stored with the run so intent and identity travel with the numbers.
     description: typeof params.description === 'string' ? params.description.slice(0, 600) : '',
     label: typeof params.label === 'string' ? params.label.slice(0, 40) : '',
-    detailK: 50,
+    detailK,
     // FEE, SETTABLE. This was hard-coded and therefore unreachable from any
     // launcher — the same class of fault as `trailing` and `holdout` being
     // dropped by the API, and it matters more. Cycle 9's entire result rests

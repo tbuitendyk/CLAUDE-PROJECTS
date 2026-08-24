@@ -512,6 +512,7 @@ function fillSweepForm(p, description) {
   setC('#swPermGeom', p.permute && p.permute.geometry); setC('#swPermDec', p.permute && p.permute.decision);
   setC('#swPermBand', p.permute && p.permute.band); setC('#swPermWk', p.permute && p.permute.weekdays);
   setV('#swLayout', p.windowLayout); setV('#swK', p.promoteK); setV('#swNulls', p.labelShiftReps);
+  setV('#swBoardRows', p.detailK);
   setV('#swMinTr', p.minTrades); setC('#swTrail', p.trailing);
   // Stored as a fraction, shown as a percent. A run recorded before fees became
   // a rate stored dollars on the $100 book; 0.125 dollars there is 0.125% here,
@@ -633,7 +634,11 @@ async function drawSweep() {
          second, so it sits between the two boxes rather than inside either. -->
     <div class="hinge">
       <div class="row" style="align-items:flex-end">
-        <label class="f">promote top K<input id="swK" type="number" value="25" min="1" max="50" style="width:4.5rem" title="the backend caps this at 50 (detailK); a larger number is silently reduced, so the box refuses it here instead"></label>
+        <label class="f">board rows<input id="swBoardRows" type="number" value="50" min="1" style="width:4.5rem" title="how many rows the survivor board keeps. This was fixed at 50 and set nowhere, so it was neither yours to choose nor visible. There is NO ceiling — type any number and the cost of it is printed beside the box before you launch. It also sets the most that can carry into the second pass, because promotion picks from the board."></label>
+        <label class="f">promote top K<input id="swK" type="number" value="25" min="1" style="width:4.5rem" title="how many of the best rows carry into the second, fuller scoring. It used to be reduced to 50 without saying so; now it goes through as typed, and a number larger than board rows is refused by name instead of being quietly changed."></label>
+        <span class="note" id="swBoardCost"></span>
+      </div>
+      <div class="row" style="margin-top:.3rem">
         <span class="note">how many rows carry from the slim pass into the promote pass — the only thing that travels between the two boxes.
           <b>null boards</b> above zero sends every row through instead, and so does replication below.</span>
       </div>
@@ -1003,13 +1008,42 @@ async function drawSweep() {
   ['input', 'change'].forEach((ev) => $('#swNulls').addEventListener(ev, syncNullCost));
   syncNullCost();
 
+  // BOARD ROWS AND PROMOTE TOP K (owner order, 2026-08-23). The board was fixed
+  // at 50 and promote top K was quietly reduced to it. Both are boxes now, and
+  // the pair is checked HERE so the conflict is visible while it is being typed
+  // rather than thrown back after Start sweep is pressed.
+  const syncBoardCost = () => {
+    const el = $('#swBoardCost');
+    if (!el) return;
+    const rows = Math.max(1, Math.floor(Number($('#swBoardRows').value) || 0));
+    const k = Math.max(1, Math.floor(Number($('#swK').value) || 0));
+    if (k > rows) {
+      el.innerHTML = `<b class="neg">promote top K is ${k} but the board keeps ${rows}</b> — `
+        + `${k - rows} of those rows would not exist to promote. Raise board rows to ${k}, or lower promote top K to ${rows}. `
+        + 'Nothing will be changed for you: the launch refuses this pair.';
+      return;
+    }
+    // The board is re-sorted on every row that lands on it, so its cost is in
+    // the sorting, not in the storage. Stated rather than capped.
+    el.innerHTML = `the board keeps <b>${rows}</b> rows and <b>${k}</b> of them carry into the second pass. `
+      + (rows > 200
+        ? `A board this size is re-ordered on every row that lands on it, so ${rows} rows costs roughly `
+          + `${(rows / 50).toFixed(0)}x the sorting of the usual 50 — noticeable on a wide run, and yours to spend.`
+        : 'The usual board is 50.');
+  };
+  ['input', 'change'].forEach((ev) => {
+    if ($('#swBoardRows')) $('#swBoardRows').addEventListener(ev, syncBoardCost);
+    if ($('#swK')) $('#swK').addEventListener(ev, syncBoardCost);
+  });
+  syncBoardCost();
+
   // ---- what is in the boxes survives a redraw (see the top of this section) ----
   const runDoc = running ? await apiOr(`api/batch/${encodeURIComponent(running.id)}`, null) : null;
   if (runDoc) fillSweepForm(runDoc.params || {}, runDoc.description || (runDoc.params || {}).description || '');
   else restoreSweepForm();
   // the dependent controls follow whatever is now in the boxes, not the
   // defaults they were rendered with
-  syncDecEntry(); syncDecQuorum(); syncDecCount(); syncNullCost();
+  syncDecEntry(); syncDecQuorum(); syncDecCount(); syncNullCost(); syncBoardCost();
   if (runDoc) {
     const m0 = $('#swMsg');
     if (m0) {
@@ -1100,7 +1134,8 @@ async function drawSweep() {
         band: $('#swPermBand').checked, weekdays: $('#swPermWk').checked },
       set: { geometry: $('#swGeom').value, decision: $('#swDec').value,
         band: bandRaw === 'auto' || bandRaw === '' ? 'auto' : Number(bandRaw), weekdaysOnly: $('#swWeekdays').checked },
-      promoteK: Number($('#swK').value) || 25, minTrades: Number($('#swMinTr').value) || 10,
+      promoteK: Number($('#swK').value) || 25, detailK: Number($('#swBoardRows').value) || 50,
+      minTrades: Number($('#swMinTr').value) || 10,
       trailing: $('#swTrail').checked, windowLayout: $('#swLayout').value,
       labelShiftReps: Number($('#swNulls').value) || 0, description: $('#swDesc').value.trim(),
       // The box is in percent and the engine stores a fraction of the position,

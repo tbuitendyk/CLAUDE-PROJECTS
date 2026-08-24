@@ -157,9 +157,13 @@ window.HELP = {
         what: 'How the price history is divided up between finding something and testing it. 70/15/15 keeps one block back to check against. 61/13/13/13 keeps a second block back, sealed, to be looked at once at the very end.',
         more: 'Use the sealed one when you intend to search hard, because the honest end of a search is a block of data the search never touched.',
       },
+      swBoardRows: {
+        what: 'How many rows the board of results keeps. It was stuck at 50 and there was no box for it anywhere, so you could not see it or change it.',
+        more: 'Everything scored gets ranked, and only this many are kept. There is no limit — type any number and the cost of it is printed beside the box before you start. The cost is in the sorting: the list is re-ordered every time a new row lands on it, so a very large one is slower on a wide run. It also decides the most that can go into the second pass, because the second pass picks from this list.',
+      },
       swK: {
         what: 'How many of the best rows get scored a second time, in full. It sits between the two boxes because it is the only thing that travels from one pass to the other.',
-        more: 'Everything is scored once cheaply first. Only this many are then scored again with the fuller treatment. Capped at 50, because the list only ever holds that many. Two things switch it off entirely: null boards above zero, and the replication tick — either of those sends EVERY row through the second pass, and this box then does nothing.',
+        more: 'Everything is scored once cheaply first. Only this many are then scored again with the fuller treatment. It used to be reduced to 50 without telling you; now it goes through as you typed it, and if you ask for more than the board keeps you are told so and asked to change one of the two boxes — neither is changed for you. Two things switch it off entirely: null boards above zero, and the replication tick — either of those sends EVERY row through the second pass, and this box then does nothing.',
       },
       swNulls: {
         what: 'How many companion runs to do on deliberately scrambled decisions, as a comparison. If the real run does no better than the scrambled ones, there was nothing there.',
