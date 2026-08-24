@@ -15,23 +15,26 @@ D=/opt/ultimate-trading-system/data/batches
 PID=$(pgrep -f 'uts-rows-squash\.js' | head -1)
 if [ -n "${PID:-}" ]; then
   echo "STILL GOING (pid $PID)"
-  # HOW FAR THROUGH, EXACTLY. The kernel knows where each open file is being
-  # read from, so this is the real position rather than a guess from the size of
-  # what has come out the other end.
+  # HOW FAR THROUGH. Asked of the file being WRITTEN, not the one being read:
+  # the converter reads with an explicit offset, which is pread, and pread does
+  # not move the file's own position -- so the kernel reports 0 for the source
+  # for the whole run, and the first version of this printed that as progress.
+  # The output file is appended sequentially, so its position is real.
   for FD in /proc/$PID/fd/*; do
     TGT=$(readlink "$FD" 2>/dev/null) || continue
-    case "$TGT" in *.jsonl)
+    case "$TGT" in *.jsonl.gz)
       POS=$(awk '/^pos:/{print $2}' "/proc/$PID/fdinfo/$(basename "$FD")" 2>/dev/null)
-      SZ=$(stat -c%s "$TGT" 2>/dev/null)
-      [ -n "$POS" ] && [ -n "$SZ" ] && [ "$SZ" -gt 0 ] &&         awk -v p="$POS" -v s="$SZ" -v f="$(basename "$TGT")"           'BEGIN{printf "  reading %s: %.2f of %.2f GB, %.1f%%
-", f, p/1073741824, s/1073741824, 100*p/s}'
+      [ -n "${POS:-}" ] && awk -v p="$POS" -v f="$(basename "$TGT")" \
+        'BEGIN{printf "  writing %s: %.2f GB so far\n", f, p/1073741824}'
       ;;
     esac
   done
-  # ELAPSED FROM THE LOG'S OWN STAMP, not from ps. `ps -o etime=` was reporting
-  # minutes for a job that had been going for half an hour, which is a wrong
-  # number in the instrument being used to decide whether to wait -- so it is
-  # taken from the line the converter itself wrote when it started.
+  # ...and how many rows, which is the figure that says how near the end it is.
+  awk '/^  [.][.][.]/{last=$0} END{if(last) print " " last}' "$LOG" 2>/dev/null
+  # ELAPSED FROM THE LOG'S OWN STAMP. Not because ps was wrong -- it was right,
+  # and it was called wrong by a session comparing it against its own sense of
+  # how much time had passed, which is not a clock. Kept because the converter's
+  # stamp can be checked against the log and needs no such comparison.
   ps -o pcpu=,rss= -p "$PID" 2>/dev/null \
     | awk '{printf "  %s%% of a processor, %.0f MB of memory\n", $1, $2/1024}'
   awk '/^ *started 20/{print $2; exit}' "$LOG" 2>/dev/null | while read -r T; do
