@@ -62,3 +62,17 @@ From mailbox (defaults to `theodor@homeandofficemicro.com`).
   touch `deploy-control`). Stop is temporary: units stay enabled, a reboot
   brings them back. While stopped: no polls/alerts/syncs/monitor checks;
   running searches die, ⏸-paused ones survive via checkpoint.
+
+`uts-rows-squash-start.sh` / `uts-rows-squash-status.sh` / `uts-rows-squash.js`
+— ONE-OFF, and it CHANGES the interrupted sweep's stored rows (owner
+authorisation, 2026-08-24). Rewrites the run's three row files from plain text
+into the squashed block form `lib/rowstore.js` writes today, so the run can be
+picked up from the interface and finish compressed instead of adding another
+fifty gigabytes of text. Every row is carried across as the exact bytes it was
+written as — nothing is recomputed and no number is re-serialised. The plain
+originals are removed only after the squashed copy has been read back through
+the block index and found to hold the same rows with the same last row. It also
+reports how far the two promote collections drifted apart at the crash, and
+changes nothing about that. Runs detached (tens of minutes); watch it with the
+status script. `uts-rows-squash-test.js` proves it against the real
+`lib/rowstore.js` on damaged fixtures and must pass before it is run.
