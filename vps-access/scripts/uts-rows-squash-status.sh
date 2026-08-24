@@ -28,8 +28,17 @@ if [ -n "${PID:-}" ]; then
       ;;
     esac
   done
-  ps -o etime=,pcpu=,rss= -p "$PID" 2>/dev/null \
-    | awk '{printf "  running for %s, %s%% of a processor, %.0f MB of memory\n", $1, $2, $3/1024}'
+  # ELAPSED FROM THE LOG'S OWN STAMP, not from ps. `ps -o etime=` was reporting
+  # minutes for a job that had been going for half an hour, which is a wrong
+  # number in the instrument being used to decide whether to wait -- so it is
+  # taken from the line the converter itself wrote when it started.
+  ps -o pcpu=,rss= -p "$PID" 2>/dev/null \
+    | awk '{printf "  %s%% of a processor, %.0f MB of memory\n", $1, $2/1024}'
+  awk '/^ *started 20/{print $2; exit}' "$LOG" 2>/dev/null | while read -r T; do
+    B=$(date -u -d "$T" +%s 2>/dev/null) || continue
+    N=$(date -u +%s)
+    awk -v e=$((N - B)) 'BEGIN{printf "  going for %dh %02dm %02ds (since %s)\n", e/3600, (e%3600)/60, e%60, "'"$T"'"}'
+  done
 elif grep -q '^finished ' /var/log/uts-rows-squash.log 2>/dev/null; then
   echo "NOT RUNNING -- and the log says it finished"
 elif grep -qE '^(FAILED|STOPPING SHORT|REFUSING)' /var/log/uts-rows-squash.log 2>/dev/null; then
