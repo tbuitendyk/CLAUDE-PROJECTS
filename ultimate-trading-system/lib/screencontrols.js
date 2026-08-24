@@ -38,10 +38,8 @@ function tabs(src) {
 }
 
 // One screen's renderer, brace-matched, so nothing from another leaks in.
-function drawBody(fnName, src) {
-  const S = srcOf(src);
-  const start = S.indexOf(`async function ${fnName}()`);
-  if (start < 0) throw new Error(`${fnName}() is gone - that screen cannot be read`);
+// The braced body of a named function, from its opening { to its matching }.
+function bodyOf(S, start) {
   let i = S.indexOf('{', start);
   const from = i;
   let depth = 0;
@@ -50,6 +48,53 @@ function drawBody(fnName, src) {
     else if (S[i] === '}') { depth--; if (depth === 0) break; }
   }
   return S.slice(from, i + 1);
+}
+
+// A SCREEN IS ITS RENDERER PLUS WHAT ITS RENDERER DRAWS WITH (2026-08-23).
+//
+// This read one function and stopped there. It was right while every screen
+// built its own markup inline — and it went wrong the moment a control was
+// shared. The paging bar is drawn on four tables by one helper, so its words
+// (first, prev, next, last, rows per page) were on the owner's screen and on no
+// list, which under RULE ONE-A means they could not be said to the owner at
+// all. A list with holes is worse than no list, because the rule makes the list
+// the authority.
+//
+// So a renderer's helpers are followed. Deliberately narrow, because
+// over-collecting is the opposite failure — it would authorise words from a
+// screen the owner is not looking at:
+//   * only functions defined at the TOP LEVEL of the same file
+//   * only where the body actually calls them by name
+//   * only if the helper's own body contains markup, so pure arithmetic
+//     helpers add nothing
+//   * each one once, and only one level deep
+function helperBodies(S, body) {
+  const out = [];
+  const defined = new Map();
+  for (const m of S.matchAll(/^(?:async )?function ([A-Za-z_$][\w$]*)\s*\(/gm)) {
+    defined.set(m[1], m.index);
+  }
+  for (const m of S.matchAll(/^const ([A-Za-z_$][\w$]*)\s*=\s*\([^)]*\)\s*=>/gm)) {
+    if (!defined.has(m[1])) defined.set(m[1], m.index);
+  }
+  const seen = new Set();
+  for (const m of body.matchAll(/\b([A-Za-z_$][\w$]*)\s*\(/g)) {
+    const name = m[1];
+    if (seen.has(name) || !defined.has(name)) continue;
+    seen.add(name);
+    const b = bodyOf(S, defined.get(name));
+    // Markup, not arithmetic: a helper that draws nothing has no words on it.
+    if (/<[a-z]/i.test(b)) out.push(b);
+  }
+  return out;
+}
+
+function drawBody(fnName, src) {
+  const S = srcOf(src);
+  const start = S.indexOf(`async function ${fnName}()`);
+  if (start < 0) throw new Error(`${fnName}() is gone - that screen cannot be read`);
+  const body = bodyOf(S, start);
+  return [body, ...helperBodies(S, body)].join('\n');
 }
 
 // The words immediately before a control, which is what the owner reads as its

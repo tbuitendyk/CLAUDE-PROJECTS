@@ -207,4 +207,59 @@ module.exports = {
         + 'If the screen changed, change this and the table in CLAUDE.md together.');
     }
   },
+
+  // A SCREEN IS ITS RENDERER PLUS WHAT ITS RENDERER DRAWS WITH (2026-08-23).
+  //
+  // The reader read one function and stopped. That was right while every screen
+  // built its markup inline, and it went wrong the moment a control was shared:
+  // the paging bar is drawn on four tables by one helper, so its words were on
+  // the owner's screen and on no list — which under RULE ONE-A means they could
+  // not be said to the owner at all.
+  //
+  // Following helpers turned up 71 labels beyond the bar's own five, so the
+  // hole had been there a while. The opposite failure is worse and is checked
+  // too: a reader that over-collects would authorise words from a screen the
+  // owner is not looking at.
+  async theReaderFollowsWhatARendererDrawsWith() {
+    const boards = drawBody('drawBoards');
+    for (const w of ['rows per page', '>first<', '>prev<', '>next<', '>last<']) {
+      assert.ok(boards.includes(w),
+        `the Boards reader cannot see "${w}" — it is on the screen and would be on no list`);
+    }
+    // A helper that draws nothing must add nothing: pulling in arithmetic
+    // helpers would fill the list with words that are on no screen at all.
+    const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'public', 'construct.js'), 'utf8');
+    assert.ok(/if \(\/<\[a-z\]\/i\.test\(b\)\) out\.push\(b\)/.test(
+      require('fs').readFileSync(require('path').join(__dirname, '..', 'lib', 'screencontrols.js'), 'utf8')),
+    'the reader follows helpers that draw nothing, so the list gains words no screen shows');
+    assert.ok(src.length > 0);
+  },
+
+  // AND IT MUST NOT BLEED BETWEEN SCREENS. Each of these is shown on exactly
+  // one tab; if following helpers started dragging one screen's words onto
+  // another, the list would authorise a word the owner cannot see there —
+  // which is the original fault wearing the fix.
+  async oneScreensWordsDoNotLeakOntoAnother() {
+    // The CONTROL LABELS and the prose, not the word list: `words` is split
+    // into single tokens, so a phrase like "promote top K" is never in it and
+    // the first version of this check failed on its own probe.
+    const byTabWords = {};
+    for (const t of tabs()) {
+      const c = collect(t.fn);
+      byTabWords[t.key] = [...c.controls, ...c.options, ...c.prose].join('\n').toLowerCase();
+    }
+    const onlyOn = { sweep: ['promote top k', 'board rows'], verify: ['run the planted check'],
+      boards: ['menu grid'], greenlight: ['greenlight this config'] };
+    for (const [home, words] of Object.entries(onlyOn)) {
+      for (const w of words) {
+        assert.ok((byTabWords[home] || '').includes(w), `"${w}" is missing from its own screen (${home})`);
+        for (const [other, blob] of Object.entries(byTabWords)) {
+          if (other === home) continue;
+          assert.ok(!blob.includes(w),
+            `"${w}" is on ${home} only, but the reader put it on ${other} as well — the list would say the `
+            + 'owner can see a control there that is not there');
+        }
+      }
+    }
+  },
 };

@@ -266,7 +266,7 @@ again. and asset. back be been below board cache cached comma-sep corrupt curren
 
 # Boards
 
-## What the controls are called (73)
+## What the controls are called (80)
 
 - `— pick a run —`
 - `— watch it on the Sweep section`
@@ -296,14 +296,17 @@ again. and asset. back be been below board cache cached comma-sep corrupt curren
 - `Deleting “`
 - `echoed by the vote`
 - `edge`
+- `first`
 - `first, then by`
 - `h`
 - `how much of its`
 - `inspect`
+- `last`
 - `loading this configuration's rows…`
 - `menu grid`
 - `Menu grid —`
 - `menu grid failed:`
+- `next`
 - `no per-member detail in this dump`
 - `no row selected yet`
 - `of`
@@ -317,14 +320,18 @@ again. and asset. back be been below board cache cached comma-sep corrupt curren
 - `plateau`
 - `plateau width`
 - `predictability`
+- `prev`
 - `q`
+- `read(s) failed, so any panel`
 - `real / null rows`
 - `region`
 - `Replication —`
 - `Resume run`
+- `rows per page`
 - `save notes`
 - `saved runs`
 - `selected:`
+- `showing`
 - `Size:`
 - `slim runs ·`
 - `still to score`
@@ -346,7 +353,7 @@ again. and asset. back be been below board cache cached comma-sep corrupt curren
 
 _none_
 
-## Sentences the page prints (64)
+## Sentences the page prints (72)
 
 - Asset predictability — best to worst
 - KEY — for each asset: of all real-versus-null match-ups on HELD-BACK money, the share the real
@@ -412,42 +419,79 @@ _none_
 - Accuracy and edge are ACCURACY POINTS, never money.
 - how alike the members are (pairwise agreement) — near-duplicates make an agreement count read higher than the number of independent opinions behind it
 - in the table below (marked ▶).
+- THIS SCREEN IS INCOMPLETE.
+- below that looks empty may be missing data rather than reporting none. Reload once the service is back;
+- do not read an empty panel here as a result.
+- Plateau view — one setting moved at a time, the rest held at your cell
+- KEY — each small table changes exactly ONE setting; ▶ marks your cell. Neighbours earning similar
+- money is a plateau and the pick is sturdy. Your row alone earning while its neighbours collapse is a needle —
+- one step away it falls apart, so distrust it. Money is TEST-WINDOW money, dollars per $100, the same as the grid
+- below.
 
-## Every word, flat (412)
+## Every word, flat (451)
 
 ```
-about accuracy Accuracy ACCURACY across-asset actually admits admits. again against agreement agreement/entry/hold ahead alike all already always-long an and another any anything are as Asset asset asset. assets at back. badge band be beat beat. been before behind below best better board board. box branch button by campaign can cannot cell changes check checked chosen CHOSEN chunk claim clear Click coins Columns combos committee comparable comparison COMPLETE config configs configuration configurations construction construction. CONTEXT context copies copy copy. cost count Counts counts crypto data Data dealt dealt-vote decision declared declared-cell Delete deleted deleted. Deleting denominator detail did do dollar dollars drives dump each echoed edge edge. either end engine entries es every Every everything evidence excluded. execution exists fail FAILED failed failures feeds files fingerprint finish finishes first First first-recorded FIXED flattering flatters for form from full geometry get go goes good got graded Greenlight Greenlight. grid grow has held HELD-BACK held-back higher History honest how If in independent indistinguishable INFERRED Inside inspect intended. into invisible is it It it. its itself judge judged kept KEPT. KEY knife last layout line load loading look looks looks. made make many marked marking match-ups matched matters may means measured measured. members menu Menu MICROSCOPE missing moment money Money money. move moved much named near-duplicates neighbouring never no not notes nothing null nulls number of of. older on once once-only one ONE one. ones only ONLY open Open opinions or order ordering other otherwise. out own p-value page pairwise panel participation pass per-member permanently permutation permutations pick picked Picking planted plateau plus POINTS predictability press price profit-and-loss promote promoted proved purpose. QC-142 QC-7 queued quoted ranked Ranked ranking read reading real real-versus-null record recorded region register remove removes Replication result Resume row rows run run. running runs runs. same sample. save saved say saying says scans score scored sealed search SEARCHED section section. see SELECT selected selection sentences setting settings setup setups shape share showed showing shown shows sit sits Size slice slim smaller so so. STAMP started. starts. statistics stay still stored sturdy survived Survivor sweep Sweep table taken tell test than that That the The them them. then These they This this time to together Tool tools top top. total touched traded trades Tune unavailable undone. unit units units. until up verbatim verdict Verify version view vote votes votes. vs watch way were what What where whether which why widest width will window with without won. works worst yardstick yet yet. you Your
+about accuracy Accuracy ACCURACY across-asset actually admits admits. again against agreement agreement/entry/hold ahead alike all alone already always-long an and another any anything apart are as Asset asset asset. assets at away back back. badge band be beat beat. been before behind below below. best better board board. box branch button by campaign can cannot cell cell. changes check checked chosen CHOSEN chunk claim clear Click coins collapse Columns combos committee comparable comparison COMPLETE config configs configuration configurations construction construction. CONTEXT context copies copy copy. cost count Counts counts crypto data Data dealt dealt-vote decision declared declared-cell Delete deleted deleted. Deleting denominator detail did distrust do dollar dollars drives dump each earning echoed edge edge. either empty end engine entries es every Every everything evidence exactly excluded. execution exists fail FAILED failed failures falls feeds files fingerprint finish finishes first First first-recorded FIXED flattering flatters for form from full geometry get go goes good got graded Greenlight Greenlight. grid grow has held HELD-BACK held-back here higher History honest how If in INCOMPLETE. independent indistinguishable INFERRED Inside inspect intended. into invisible is IS it It it. its itself judge judged kept KEPT. KEY knife last layout line load loading look looks looks. made make many marked marking marks match-ups matched matters may means measured measured. members menu Menu MICROSCOPE missing moment money Money money. move moved much named near-duplicates needle neighbouring Neighbours neighbours never next no none. not notes nothing null nulls number of of. older on once once-only one ONE one. ones only ONLY open Open opinions or order ordering other otherwise. out own p-value page pairwise panel participation pass per per-member permanently permutation permutations pick picked Picking planted plateau Plateau plus POINTS predictability press prev price profit-and-loss promote promoted proved purpose. QC-142 QC-7 queued quoted ranked Ranked ranking rather read reading real real-versus-null record recorded region register Reload remove removes Replication reporting rest result result. Resume row rows run run. running runs runs. same sample. save saved say saying says scans score scored SCREEN sealed search SEARCHED section section. see SELECT selected selection sentences service setting settings setup setups shape share showed showing shown shows similar sit sits Size slice slim small smaller so so. STAMP started. starts. statistics stay step still stored sturdy sturdy. survived Survivor sweep Sweep table taken tell test TEST-WINDOW than that That the The them them. then These they This this THIS time to together Tool tools top top. total touched traded trades Tune unavailable undone. unit units units. until up verbatim verdict Verify version view vote votes votes. vs watch way were what What where whether which while why widest width will window with without won. works worst yardstick yet yet. you Your your
 ```
 
 ---
 
 # Verify
 
-## What the controls are called (17)
+## What the controls are called (46)
 
 - `— its rows are gone, so`
 - `, engine`
+- `, worst`
+- `· null boards:`
+- `· planted check:`
+- `(beats`
 - `(engine`
+- `% losing money —`
+- `best-of-menu, search replayed`
 - `current:`
+- `draws allow (p floor`
+- `draws,`
+- `exceed`
 - `Fire rotation rounds on this run`
 - `full gate record`
 - `h`
+- `is the strongest claim`
+- `KEY —`
 - `Last gate (`
 - `null boards`
+- `null draws`
 - `null draws)`
+- `null median $`
+- `null-draw setups,`
+- `of`
+- `over`
 - `q`
 - `Read Tool 1 verdict`
+- `reading`
+- `real`
+- `Real result:`
+- `real:`
+- `release`
+- `Rotation rounds on this run:`
 - `rotation rounds to fire`
 - `Run the planted check`
+- `same configuration only`
+- `sanity:`
 - `scramble run`
 - `selected:`
+- `SETTINGS MISMATCH:`
 - `That run has been deleted`
+- `The row itself was chosen from`
+- `the two jobs differ on`
+- `vs null draws: best`
+- `What a pass buys:`
 
 ## What the dropdowns offer (0)
 
 _none_
 
-## Sentences the page prints (31)
+## Sentences the page prints (46)
 
 - Planted check — the instrument's calibration certificate
 - Regenerates a fabricated pair carrying a KNOWN planted rule and fires it through the full sweep +
@@ -480,30 +524,78 @@ _none_
 - HELD-BACK money beats. With N null boards the finest honest claim is 1 in N+1. Computed from the run's own stored
 - null rows — needs a sweep launched with null boards &gt; 0.
 - open a run on Boards first.
+- TABLE: the rotation null. NAME: how often a rotated world matched or beat the real result.
+- KEY — exceed: the share of rounds whose result reached the real one, so LOWER is better and it is a share, not
+- money; null median $: the middle result across rounds, in US dollars on the same window as the real figure.
+- trades.
+- searched units. That multiplicity is
+- NOT replayed here, so this cannot be read as the shopping-corrected number — and the register retires this
+- construction as evidence in any case.
+- : held-back dollars on genuine data.
+- : the same quantity in worlds with nothing
+- to predict. Beating all
+- — a floor, never a measure of strength.
+- PASS — noise mostly loses, as fees demand.
+- FAIL — NOISE IS PROFITING: the simulation is broken; do not read the tests above.
+- this window only. It stops obvious chance results being frozen; the
+- forward paper test after freezing is the real judge.
 
-## Every word, flat (231)
+## Every word, flat (325)
 
 ```
-above against against. already ALWAYS always-long and any appear are as badge beat beats. because been belongs below below. best board Boards boards box button calibration candidate carries carrying certificate check CHECKED. claim claim. come Compares Computed construction copies creates current days dealt dealt-vote deleted destroyed do downstream draws each earned else engine every evidence fabricated failing features find finest finished fire Fire fires first first. For found fresh from full gate gone gt has HELD-BACK here. historical honest hours. how in inside instrument INSTRUMENT is it It it. its Its judges kept KNOWN labels land lands Last launched launching list makes many marks menu minutes minutes. money more. must need needs never new none NOT not not. nowhere null number number. of on one only onto open operable outcomes output own pair pairs PASS pass per-row. picked pipeline. plant Planted planted profited promoted random re-shops Read readable. reading reads. REAL record record. refresh Regenerates regenerates register release reload. remain replaces replays retired RETIRED retires rotates Rotation ROTATION rotation round rounds row row. rows rule Run run runs same saying SCRAMBLE scramble scrambled search section section. select selected SEPARATE setup shown sit so stands starts stays stored strip sweep Sweep takes test that That the The themselves They This this Those through to Tool tool until used verdict version VISIBLE votes were what when whole window with With world you zero
+above above. across after against against. all allow already ALWAYS always-long and any appear are as badge be beat Beating beats beats. because been being belongs below below. best best-of-menu better board Boards boards box broken button buys calibration candidate cannot carries carrying case. certificate chance check CHECKED. chosen claim claim. come Compares Computed configuration construction copies creates current data. days dealt dealt-vote deleted demand. destroyed differ do dollars downstream draws each earned else engine every evidence exceed fabricated FAIL failing features fees figure. find finest finished fire Fire fires first first. floor For forward found freezing fresh from frozen full gate genuine gone gt has HELD-BACK held-back here here. historical honest hours. how in inside instrument INSTRUMENT is IS it It it. its Its itself jobs judge. judges kept KEY KNOWN labels land lands Last launched launching list loses losing LOWER makes many marks matched measure median menu middle minutes minutes. MISMATCH money more. mostly multiplicity must NAME need needs never new noise NOISE none NOT not not. nothing nowhere null null-draw null. number number. obvious of often on one only only. onto open operable or outcomes output over own pair pairs paper PASS pass per-row. picked pipeline. plant Planted planted predict. profited PROFITING promoted quantity random re-shops reached Read read readable. reading reads. REAL real Real record record. refresh Regenerates regenerates register release reload. remain replaces replayed replays result result. results retired RETIRED retires rotated rotates Rotation ROTATION rotation round rounds row row. rows rule Run run runs same sanity saying SCRAMBLE scramble scrambled search searched section section. select selected SEPARATE SETTINGS setup setups share shopping-corrected shown simulation sit so stands starts stays stops stored strength. strip strongest sweep Sweep TABLE takes test tests that That the The themselves They This this Those through to Tool tool trades. two units. until US used verdict version VISIBLE votes vs was were what What when whole whose window with With world worlds worst you zero
 ```
 
 ---
 
 # History
 
-## What the controls are called (11)
+## What the controls are called (44)
 
+- `· hold windows won`
+- `· reference`
+- `· winner hold`
+- `Age dial: half-life`
+- `computing the stamped verdict…`
+- `computing the verdict…`
+- `effective days (GUESSED) ·`
 - `engine`
 - `exam status loading…`
+- `FAILED`
 - `Finished tuning runs`
+- `Fire trail-replay null draw`
 - `h`
 - `half-life`
 - `Launch History Tuning on this row`
 - `Launch paired age-dial run`
 - `loading…`
+- `look`
+- `null draw`
+- `null draws at or above the winner:`
+- `of 19 (seed`
+- `of 3`
+- `PASSED`
 - `q`
 - `read`
+- `REFERENCE`
+- `reference hold`
+- `reserve grade`
+- `resolution floor`
+- `retune trade floor`
+- `rows appear as passes finish`
+- `Run the reserve grade`
 - `selected row:`
+- `Shaping numbers: training floor`
+- `TABLE: the dial-pair board`
+- `The slice had already been read`
+- `This slice has been read`
+- `This was look`
+- `time(s) when this grade ran:`
+- `trades/lookback-week (GUESSED) ·`
+- `window`
+- `winner`
+- `WINNER`
+- `winner reserve`
 
 ## What the dropdowns offer (3)
 
@@ -511,7 +603,7 @@ above against against. already ALWAYS always-long and any appear are as badge be
 - `24mo`
 - `36mo`
 
-## Sentences the page prints (12)
+## Sentences the page prints (37)
 
 - History Tuning — change ONE variable (training-history length) and price the effect
 - One variable per run, declared before it fires (the confirm discipline): the same frozen trading
@@ -525,11 +617,36 @@ above against against. already ALWAYS always-long and any appear are as badge be
 - select a row on Boards first.
 - Run exam A (late-rule pair — must find)
 - Run exam B (flat pair — must NOT find)
+- against a flat reference, paired on the
+- same folds. The reading is the paired difference across folds, never any single fold.
+- verdict appears when the grade completes
+- Every dollar here is HOLD money: the grade's test window is empty by construction, so a test
+- figure would be structurally zero and meaningless.
+- Only the first look was at data nothing had seen, so the floor above is the best
+- case rather than the strength of this reading.
+- /3 splits — partial, not comparable yet)
+- days per test/hold · minimum training run-up 425 days (GUESSED) ·
+- reserve61 splits are 60.9/13.05/13.05/13 exactly. Trailing is held fixed at the declared cell's setting through
+- every retune.
+- The reading rules stamped into this run BEFORE it was launched (click)
+- Dial pairs excluded (failed a training floor on some split, so dropped from ALL splits):
+- — each draw replays the full grid on dealt votes, inheriting only the calendar. 19 is the declared count
+- (floor 1 in 20); the server refuses a repeated seed.
+- time(s) already.
+- The first look was at data nothing had seen. Every look after it is not, so its
+- resolution floor is the best case rather than the strength. Reading it again is your call; the run records
+- which look it was and says so on its own verdict.
+- — the winner's walk, the reference pass's walk and 19 null draws over the SEALED reserve, fired together.
+- NAME: combined TEST money per dial pair (the picking read). KEY: age = the half-life setting; retune = cadence and
+- lookback; test $ = net paper dollars per $100 book summed across the three test windows (picked on, flattering by
+- construction) — a row marked partial has not finished all three splits, so its sum cannot be compared with complete
+- rows; eff. days = the smallest effective training days any split saw; hold $ = the three hold windows
+- early/middle/late, shown ONLY for the winner and the reference pass, because holds are graded once and never shopped.
 
-## Every word, flat (110)
+## Every word, flat (288)
 
 ```
-12mo 24mo 36mo against Age age age-dial and at back before Boards by candidate. cell change confirm cutting days declared depth dial dial. difference different discipline DOWN-WEIGHTS drills effect engine exam falls find Finished fires first first. flat fold fold. folds folds. frozen half half-life History history how HT influence instead is it late-rule Launch launch. length loading many money must no-dial NOT of off old on ONE One one ONLY pair paired per PLAIN price priced read reading reference row rule run Run runs same sample select selected smoothly. so stamped status table the The then this to trading trained training-history Tuning tuning v2 variable verdict vs windows WORDS
+12mo 24mo 36mo above across after again against Age age age-dial ALL all already already. and any appear appears are as at back be because been before BEFORE best board Boards book by cadence calendar. call candidate. cannot case cell change click combined comparable compared complete completes computing confirm construction count cutting data days dealt declared depth dial Dial dial-pair dial. difference different discipline dollar dollars DOWN-WEIGHTS draw draws drills dropped each early/middle/late eff. effect effective empty engine Every every exactly. exam excluded failed FAILED falls figure find finish Finished finished Fire fired fires first first. fixed flat flattering floor fold fold. folds folds. for from frozen full grade graded grid GUESSED had half half-life has held here History history HOLD hold holds how HT in influence inheriting instead into is it its KEY late-rule Launch launch. launched length loading look lookback many marked meaningless. minimum money must NAME net never no-dial NOT not nothing null numbers of off old on once ONE One one ONLY Only only or over own pair paired pairs paper partial pass PASSED passes per picked picking PLAIN price priced ran rather read reading Reading reading. records reference REFERENCE refuses repeated replays reserve reserve61 resolution retune retune. row rows rule rules run Run run-up runs same sample saw says SEALED seed seed. seen seen. select selected server setting Shaping shopped. shown single slice smallest smoothly. so some split splits stamped status strength strength. structurally sum summed table TABLE test TEST test/hold than the The then this This three through time to together. trade trades/lookback-week trading trail-replay Trailing trained training training-history Tuning tuning v2 variable verdict verdict. votes vs walk was when which window windows winner WINNER with won WORDS would yet your zero
 ```
 
 ---
@@ -663,9 +780,11 @@ Activation activation. anchor and appears at be behind being best Boards both ca
 
 # Help
 
-## What the controls are called (2)
+## What the controls are called (4)
 
+- `<input`
 - `Every control on this screen`
+- `more`
 - `None of it can be pressed or`
 
 ## What the dropdowns offer (0)
@@ -683,9 +802,9 @@ _none_
 - changed — it is a picture of the control, put beside its description so you can see which
 - one is being talked about. The real ones are on their own tabs.
 
-## Every word, flat (80)
+## Every word, flat (82)
 
 ```
-about. and are be being below beside box button can changed control control. controls copy. dead described description does dropdown entry Every every Everything fault for from Help in is it its left list missing. no None Not not nothing of on One one ones or out own page picture place pressed put quietly rather read real says screen screens screens. see seven shown so tabs. talked than That the The their themselves this tick what which with yet. you
+about. and are be being below beside box button can changed control control. controls copy. dead described description does dropdown entry Every every Everything fault for from Help in input is it its left list missing. more no None Not not nothing of on One one ones or out own page picture place pressed put quietly rather read real says screen screens screens. see seven shown so tabs. talked than That the The their themselves this tick what which with yet. you
 ```
 
