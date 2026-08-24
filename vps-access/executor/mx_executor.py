@@ -824,6 +824,43 @@ class Binance:
                                     "commission": "0", "commissionAsset": "USDT"}]}
         return self._http("POST", "/sapi/v1/margin/order", params, signed=True)
 
+    def borrow_base(self, qty):
+        """Borrow `qty` of the base asset into THIS isolated wallet.
+
+        A SHORT'S SELL MUST BE FUNDED BY A LOAN, never by base the wallet already
+        holds (owner, 2026-08-24). Binance's MARGIN_BUY auto-borrow covers only
+        the SHORTFALL: it spends free balance first and borrows the remainder. So
+        with a long leg's inventory sitting in the same isolated wallet, a
+        "short" borrows NOTHING and quietly sells the long's base instead.
+
+        That is exactly what happened on 2026-08-24: a 0.192 short opened against
+        0.794205 of long inventory, borrowed 0.000, and left the reconcile short
+        by that one quantity on BOTH sides at once (free base below the journal's
+        longs, debt below the journal's shorts) — a false halt on a book whose
+        NET was correct to within 14 cents. Worse, the leg could never be closed:
+        the short close sizes itself from outstanding debt, and there was none.
+
+        Borrowing explicitly makes the debt equal the nominal, which is what
+        every downstream check already assumes.
+        """
+        params = {"asset": self.base_asset, "isIsolated": "TRUE",
+                  "symbol": self.symbol, "amount": f"{qty:.3f}"}
+        if not self.live:
+            jlog("DRYRUN_BORROW", **params)
+            return 200, {"tranId": 0, "dryrun": True}
+        return self._http("POST", "/sapi/v1/margin/loan", params, signed=True)
+
+    def repay_base(self, qty):
+        """Repay `qty` of base-asset debt in THIS isolated wallet. Used to undo a
+        borrow whose sell then failed: a loan with no short behind it is real
+        money accruing interest for a position that does not exist."""
+        params = {"asset": self.base_asset, "isIsolated": "TRUE",
+                  "symbol": self.symbol, "amount": f"{qty:.3f}"}
+        if not self.live:
+            jlog("DRYRUN_REPAY", **params)
+            return 200, {"tranId": 0, "dryrun": True}
+        return self._http("POST", "/sapi/v1/margin/repay", params, signed=True)
+
     def query_order(self, client_id):
         """Look up an isolated-margin order by its deterministic client id, so a
         dangling ORDER_SENT/ORDER_UNKNOWN can be resolved against the venue."""
@@ -2019,7 +2056,11 @@ def do_run(bx):
                  **({"setup_id": it["setup_id"]} if is2 else {}))
             continue
         buy_side = "BUY" if it["side"] == "LONG" else "SELL"
-        side_eff = "NO_SIDE_EFFECT" if it["side"] == "LONG" else "MARGIN_BUY"
+        # NO_SIDE_EFFECT for BOTH directions now. A short used to ride on
+        # MARGIN_BUY (auto-borrow), which borrows only the shortfall and so sold
+        # a concurrent long's inventory whenever any was present. The short now
+        # takes out its OWN loan first (below) and this order just sells it.
+        side_eff = "NO_SIDE_EFFECT"
         # Journal the attempt BEFORE the order leaves the box, so a crash between
         # send and journal still spends the attempt. Over-counting an attempt costs
         # one retry; under-counting could loop an order at the venue all hour.
@@ -2038,6 +2079,24 @@ def do_run(bx):
         entry_bx = bx
         if is2 and not eff_paper:
             entry_bx = client_for(allow_entry.get("key_ref"), it["symbol"]) or bx
+        # A SHORT BORROWS ITS OWN QUANTITY, EXPLICITLY, BEFORE IT SELLS.
+        # See Binance.borrow_base for why auto-borrow is not enough. Placed after
+        # ENTRY_ATTEMPT is journaled, so a failed borrow SPENDS an attempt rather
+        # than looping: over-counting an attempt costs one retry, under-counting
+        # could hammer the venue for the whole window (same rule as the order).
+        # Paper never reaches here — it books and continues well above.
+        borrowed_for_entry = 0.0
+        if it["side"] == "SHORT":
+            bcode, bbody = entry_bx.borrow_base(qty)
+            if bcode != 200:
+                jlog("ENTRY_BORROW_FAILED", chunk_start=it["chunk_start"], qty=qty,
+                     http=bcode, body=json.dumps(bbody)[:200],
+                     reason="could not borrow the base to sell; no order was sent",
+                     **({"setup_id": it["setup_id"]} if is2 else {}))
+                continue
+            borrowed_for_entry = qty
+            jlog("ENTRY_BORROWED", chunk_start=it["chunk_start"], qty=qty,
+                 **({"setup_id": it["setup_id"]} if is2 else {}))
         status, px, fee, fq, base_comm = place(entry_bx, "ENTRY", buy_side, qty, side_eff,
                                                {"chunk_start": it["chunk_start"],
                                                 "pos_side": it["side"],
@@ -2049,6 +2108,21 @@ def do_run(bx):
                                                     "stop_pct": it.get("stop_pct"), "clip_usd": it["clip_usd"]} if is2 else {})},
                                                cid=client_id("entry", it["chunk_start"],
                                                              it["setup_id"] if is2 else None))
+        # THE BORROW MUST NOT OUTLIVE A FAILED SELL. Loan through, sell rejected
+        # => debt with no short behind it. Repay at once. On "unknown" we do NOT
+        # repay: the sell may have filled, and repaying a live short's loan would
+        # leave the position naked. If the repay itself fails we halt — a brake
+        # that cannot undo its own half-done action must stop the box.
+        if borrowed_for_entry and status == "rejected":
+            rcode, rbody = entry_bx.repay_base(borrowed_for_entry)
+            jlog("ENTRY_BORROW_UNWOUND", chunk_start=it["chunk_start"],
+                 qty=borrowed_for_entry, http=rcode, ok=(rcode == 200),
+                 body=json.dumps(rbody)[:200],
+                 **({"setup_id": it["setup_id"]} if is2 else {}))
+            if rcode != 200:
+                set_halt("executor",
+                         f"borrowed {borrowed_for_entry:g} base for a short whose sell was "
+                         "rejected, and the repay failed - debt with no position")
         if status == "unknown":
             # transport error: the entry MAY have filled. Leave it for recovery
             # (which resolves by client id and, if filled, books ENTRY_FILL with

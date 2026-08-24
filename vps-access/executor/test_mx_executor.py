@@ -36,6 +36,8 @@ class MockBinance(BaseHTTPRequestHandler):
     commission = "0.01"
     commission_asset = "USDT"
     orders = []               # captured order params
+    loans = []                # captured borrow/repay params
+    loan_fails = False        # when True the borrow POST returns 400
     placed = {}               # newClientOrderId -> venue order record (recovery lookup)
     time_skew_ms = 0          # exchange serverTime minus box OS clock (clock tests)
 
@@ -82,6 +84,23 @@ class MockBinance(BaseHTTPRequestHandler):
         length = int(self.headers.get("Content-Length", 0))
         raw = self.rfile.read(length).decode()
         params = dict(p.split("=", 1) for p in raw.split("&") if "=" in p)
+        # BORROW / REPAY. Kept out of `orders` so order-indexing tests are
+        # unaffected: a loan is not an order.
+        if self.path.startswith("/sapi/v1/margin/loan"):
+            MockBinance.loans.append(params)
+            if MockBinance.loan_fails:
+                return self._send({"code": -3045, "msg": "borrow failed"}, 400)
+            amt = float(params.get("amount", "0"))
+            MockBinance.borrowed += amt
+            MockBinance.base_bal += amt      # the loan lands in free balance
+            return self._send({"tranId": len(MockBinance.loans)})
+        if self.path.startswith("/sapi/v1/margin/repay"):
+            MockBinance.loans.append(params)
+            amt = float(params.get("amount", "0"))
+            repaid = min(amt, MockBinance.borrowed)
+            MockBinance.borrowed -= repaid
+            MockBinance.base_bal -= repaid
+            return self._send({"tranId": len(MockBinance.loans)})
         MockBinance.orders.append(params)
         if self.path.startswith("/sapi/v1/margin/order"):
             if MockBinance.reject_orders:
@@ -103,8 +122,18 @@ class MockBinance(BaseHTTPRequestHandler):
                 else:
                     MockBinance.base_bal += received
             else:  # SELL
-                if eff == "MARGIN_BUY":              # open short: borrow then sell
-                    MockBinance.borrowed += qty
+                if eff == "MARGIN_BUY":
+                    # THE REAL VENUE BORROWS ONLY THE SHORTFALL. It spends free
+                    # base first and borrows what the wallet cannot cover. This
+                    # mock used to credit the FULL quantity as new debt, which is
+                    # what Binance does only when free base is zero — true of
+                    # every test here, and false in production the moment a long
+                    # leg is open. So the mock was more generous than the venue
+                    # and the 2026-08-24 halt was invisible to the whole suite.
+                    # A fake venue that cannot express the failure cannot catch it.
+                    from_free = min(MockBinance.base_bal, qty)
+                    MockBinance.borrowed += qty - from_free
+                    MockBinance.base_bal -= from_free
                 else:
                     MockBinance.base_bal -= qty
             # record the FILLED order so the recovery path can look it up by its
@@ -170,6 +199,8 @@ class ExecutorTest(unittest.TestCase):
         MockBinance.net_asset = None
         MockBinance.base_bal = 0.0
         MockBinance.borrowed = 0.0
+        MockBinance.loans = []
+        MockBinance.loan_fails = False
         MockBinance.commission = "0.01"
         MockBinance.commission_asset = "USDT"
         MockBinance.orders = []
@@ -229,12 +260,77 @@ class ExecutorTest(unittest.TestCase):
         self.assertEqual(order["isIsolated"], "TRUE")
         self.assertIn("signature", order)  # signed path exercised
 
-    def test_short_entry_uses_auto_borrow(self):
+    def test_short_entry_borrows_its_own_quantity_then_sells(self):
+        # The short takes out its OWN loan and the sell carries NO_SIDE_EFFECT.
+        # It used to ride on MARGIN_BUY auto-borrow, which covers only the
+        # shortfall -- see the concurrent-long test below for why that broke.
         self.write_intent(side="SHORT")
         self.x.do_run(self.bx())
         order = MockBinance.orders[-1]
         self.assertEqual(order["side"], "SELL")
-        self.assertEqual(order["sideEffectType"], "MARGIN_BUY")
+        self.assertEqual(order["sideEffectType"], "NO_SIDE_EFFECT")
+        self.assertTrue(MockBinance.loans, "the short must borrow explicitly")
+        loan = MockBinance.loans[-1]
+        self.assertEqual(loan["asset"], "LTC")
+        self.assertEqual(loan["isIsolated"], "TRUE")
+        self.assertEqual(float(loan["amount"]), float(order["quantity"]))
+        self.assertIn("ENTRY_BORROWED", self.events())
+
+    def test_short_opened_beside_a_long_borrows_instead_of_eating_its_base(self):
+        """THE 2026-08-24 HALT, as a test.
+
+        A short opened while a long leg's inventory sits in the same isolated
+        wallet used to borrow NOTHING: Binance's auto-borrow spends free base
+        first, so the "short" quietly sold the long's base. Free base then fell
+        below the journal's longs and debt sat below the journal's shorts -- the
+        SAME quantity missing from both sides at once -- and the reconcile
+        false-halted a book whose net was right to within 14 cents. The leg was
+        also unclosable: the short close sizes itself from outstanding debt, and
+        there was none.
+
+        So: with long inventory present, the debt must rise by the FULL short
+        quantity and the long's base must be left alone.
+        """
+        # A REAL open long, so the 0.80 free base is legitimate inventory and the
+        # sweep leaves it alone (seed it without one and the sweep flattens it,
+        # which is the sweep behaving correctly).
+        self.x.jlog("ENTRY_FILL", chunk_start="L1", side="LONG", qty=0.80,
+                    price=100.0, exit_due_ts=time.time() + 86400)
+        MockBinance.base_bal = 0.80        # the long's inventory, on the exchange
+        MockBinance.borrowed = 0.0
+        base_before = MockBinance.base_bal
+        self.write_intent(side="SHORT")
+        self.x.do_run(self.bx())
+        order = MockBinance.orders[-1]
+        self.assertEqual(order["side"], "SELL")
+        sold = float(order["quantity"])
+        self.assertAlmostEqual(MockBinance.borrowed, sold, places=6,
+                               msg="the short must borrow its whole quantity, not "
+                                   "sell the long's base")
+        self.assertAlmostEqual(MockBinance.base_bal, base_before, places=6,
+                               msg="the long's inventory must be untouched")
+
+    def test_failed_borrow_sends_no_order(self):
+        # If the loan is refused there is no base to sell: the box must not send
+        # a sell that would fall back onto the long's inventory.
+        MockBinance.loan_fails = True
+        before = len(MockBinance.orders)
+        self.write_intent(side="SHORT")
+        self.x.do_run(self.bx())
+        self.assertIn("ENTRY_BORROW_FAILED", self.events())
+        self.assertNotIn("ENTRY_FILL", self.events())
+        self.assertEqual(len(MockBinance.orders), before,
+                         "no order may be sent when the borrow failed")
+
+    def test_rejected_sell_repays_the_borrow_it_took(self):
+        # Loan through, sell rejected => debt with no short behind it. It must be
+        # handed straight back, not left accruing interest.
+        MockBinance.reject_orders = True
+        self.write_intent(side="SHORT")
+        self.x.do_run(self.bx())
+        self.assertIn("ENTRY_BORROW_UNWOUND", self.events())
+        self.assertAlmostEqual(MockBinance.borrowed, 0.0, places=6,
+                               msg="a borrow behind a rejected sell must be repaid")
 
     def test_stale_intent_never_trades(self):
         # Past the ENTRY RETRY WINDOW (owner 2026-08-16: an entry may be attempted
