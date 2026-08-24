@@ -2106,7 +2106,8 @@ function renderHtRun(r, siblings = []) {
   const head = `<h3 style="margin-top:0">${esc(r.id)} — ${esc(r.status)}`
     + `${r.status === 'running' && r.progress ? ' — ' + esc(r.progress) : ''}`
     + `${p.arm === 'null' ? ' <span class="badge">null draw</span>' : ''}`
-    + `${p.mode === 'reserve-grade' ? ' <span class="badge">reserve grade</span>' : ''}</h3>`;
+    + `${p.mode === 'reserve-grade' ? ` <span class="badge">reserve grade${
+  (p.reserveLook || 1) > 1 ? ` · look ${p.reserveLook}` : ''}</span>` : ''}</h3>`;
 
   // THE SEALED EXAM's own doc. Its verdict has TWO shapes and the second one
   // carries only { passed, sentence } — printing the rich fields on it renders
@@ -2124,7 +2125,12 @@ function renderHtRun(r, siblings = []) {
         resolution floor ${esc(String(v.resolutionFloor))}
         <span title="the best claim this many draws can support — a floor, never a measure of strength">(?)</span></p>
       <p class="note">Every dollar here is HOLD money: the grade's test window is empty by construction, so a test
-        figure would be structurally zero and meaningless.</p></div>`;
+        figure would be structurally zero and meaningless.</p>
+      ${(p.priorReserveLooks || []).length ? `<p class="note"><b>This was look ${p.reserveLook}.</b>
+        The slice had already been read ${p.priorReserveLooks.length} time(s) when this grade ran:
+        ${p.priorReserveLooks.map((g) => `<div>${esc(g.id)} — ${g.passed === null ? esc(g.status || '—') : (g.passed ? 'PASSED' : 'FAILED')}</div>`).join('')}
+        <div style="margin-top:.3rem">Only the first look was at data nothing had seen, so the floor above is the best
+        case rather than the strength of this reading.</div></p>` : ''}</div>`;
   }
 
   const rows = r.htRows || [];
@@ -2177,10 +2183,28 @@ function renderHtRun(r, siblings = []) {
     ? `<p class="note"><button data-ht-null="${esc(r.id)}" data-seed="${nextSeed}">Fire trail-replay null draw ${myDraws.length + 1} of 19 (seed ${nextSeed})</button>
        — each draw replays the full grid on dealt votes, inheriting only the calendar. 19 is the declared count
        (floor 1 in 20); the server refuses a repeated seed.</p>` : '';
+  // EVERY LOOK THIS SETUP'S SEALED SLICE HAS HAD (owner order, 2026-08-23).
+  // The button used to say "one touch, final" and the server used to refuse a
+  // second press. It does not refuse any more — how many times the slice is
+  // read is the owner's call — so the screen's job is to say which look this
+  // would be and what the earlier ones said, before it is pressed.
+  const myLooks = (siblings || [])
+    .filter((d) => (d.params || {}).mode === 'reserve-grade' && (d.params || {}).replayOf === r.id)
+    .sort((a, b) => String(a.startedAt || '').localeCompare(String(b.startedAt || '')));
+  const nextLook = myLooks.length + 1;
+  const looksSoFar = myLooks.length
+    ? `<p class="note"><b>This slice has been read ${myLooks.length} time(s) already.</b>
+       ${myLooks.map((d, i) => `<div>look ${(d.params || {}).reserveLook || i + 1} — ${esc(d.id)} — ${
+  d.verdict ? (d.verdict.passed ? '<b class="pos">PASSED</b>' : '<b class="neg">FAILED</b>') : esc(d.status)}</div>`).join('')}
+       <div style="margin-top:.3rem">The first look was at data nothing had seen. Every look after it is not, so its
+       resolution floor is the best case rather than the strength. Reading it again is your call; the run records
+       which look it was and says so on its own verdict.</div></p>`
+    : '';
   const gradeBtn = readable && p.reserveFromTs
-    ? `<p class="note"><button data-ht-grade="${esc(r.id)}" class="pri">Run the reserve grade — one touch, final</button>
-       — the winner's walk, the reference pass's walk and 19 null draws over the SEALED reserve, fired together,
-       once, ever. This is the only look that slice will ever get.</p>`
+    ? `${looksSoFar}<p class="note"><button data-ht-grade="${esc(r.id)}" data-look="${nextLook}" class="pri">Run the reserve grade${
+  nextLook > 1 ? ` — look ${nextLook}` : ''}</button>
+       — the winner's walk, the reference pass's walk and 19 null draws over the SEALED reserve, fired together.${
+  nextLook === 1 ? ' This is the first look at that slice.' : ''}</p>`
     : (readable ? '<p class="note">No reserve exists for this setup (its board run predates the reserve layout) — the binding grade is the forward paper book.</p>' : '');
 
   return `<div class="panel">${head}${shaping}${rules}${excludedNote}
@@ -2274,7 +2298,15 @@ async function wireHtRun(d, runs) {
   const gb = document.querySelector('button[data-ht-grade]');
   if (gb) {
     gb.onclick = async () => {
-      if (!confirm('Run the reserve grade?\n\nThis is the ONE look the sealed slice will ever get. It cannot be repeated for this run.')) return;
+      const look = Number(gb.dataset.look) || 1;
+      const msg = look === 1
+        ? 'Run the reserve grade?\n\nThis is the FIRST look at the sealed slice — data nothing in this system has seen.'
+          + ' After it, that is no longer true.'
+        : `Run the reserve grade — look ${look}?\n\nThis slice has already been read ${look - 1} time(s).`
+          + ' The result will be recorded as look ' + look + ' and its verdict will say so.'
+          + '\n\nWhat changes: the first look was at unseen data. This one is not, so the 1-in-20 floor it prints is'
+          + ' the best case and the real strength is weaker by an amount nothing here can measure.';
+      if (!confirm(msg)) return;
       gb.disabled = true;
       // takes sourceHtRunId — a HISTORY TUNING run id, not a board id
       const out = await tryPost('api/historytuning/reserve-grade', { sourceHtRunId: gb.dataset.htGrade });

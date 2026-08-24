@@ -1233,6 +1233,33 @@ function htLaunch(p, HT, claim) {
 // ever graded before; nothing is ever re-picked from reserve results.
 const NULL_DRAWS_RESERVE = 19; // GUESSED (owner-approved); floor 1/20 printed
 
+// EVERY LOOK THIS RUN'S SEALED SLICE HAS HAD, oldest first, with what each one
+// said. The launcher counts with it and the History section reads it, so the
+// number of looks and their answers come from one place rather than two.
+//
+// The verdict is not on the picker row, so each prior grade is opened. There
+// are never many — and a list nobody can see is how "one, ever" became a rule
+// the owner could not weigh.
+function reserveGradesFor(sourceId) {
+  const out = [];
+  for (const b of listBatches()) {
+    const bp = b.params || {};
+    if (b.kind !== 'historytuning' || bp.mode !== 'reserve-grade' || bp.replayOf !== sourceId) continue;
+    const full = getBatch(b.id);
+    const v = (full && full.verdict) || null;
+    out.push({
+      id: b.id,
+      look: bp.reserveLook || null,
+      status: b.status,
+      startedAt: b.startedAt || null,
+      passed: v ? !!v.passed : null,
+      sentence: v ? (v.sentence || null) : null,
+    });
+  }
+  out.sort((a, b) => String(a.startedAt || '').localeCompare(String(b.startedAt || '')));
+  return out;
+}
+
 function startReserveGrade(params) {
   { const stop = launchRefusal(); if (stop) throw new Error(stop); }
   const HT = require('./historytuning');
@@ -1244,14 +1271,24 @@ function startReserveGrade(params) {
     throw new Error('no reserve exists for this setup: its board run was not a reserve61 layout — '
       + 'the binding grade is the forward paper book (WORKFLOW.md step 7)');
   }
-  // ONE VERIFICATION EVENT: any prior grade of this run, finished or not,
-  // makes another refuse.
-  for (const b of listBatches()) {
-    if (b.kind === 'historytuning' && b.params && b.params.mode === 'reserve-grade'
-        && b.params.replayOf === real.id) {
-      throw new Error(`the reserve was already touched for ${real.id} (${b.id}) — one verification event, ever`);
-    }
-  }
+  // HOW MANY TIMES THE SEALED SLICE IS READ IS THE OWNER'S CALL (owner order,
+  // 2026-08-23): "this is my system. it doesn't refuse what i want."
+  //
+  // This used to throw on any second grade of the same run. The reasoning
+  // behind it has not changed and is not in dispute: the first grade reads a
+  // slice nothing has looked at, and every grade after it reads a slice that
+  // HAS now been looked at, so look 2 does not mean what look 1 meant. But
+  // that is a fact about what the number says, not a decision the code gets to
+  // take. Refusing removed the choice from the owner invisibly, which is the
+  // exact fault RULE ZERO and RULE FIVE exist to stop.
+  //
+  // So it counts instead of refusing. Every grade is stamped with which look it
+  // is, every earlier look's verdict travels with it, the reading rule stamped
+  // before anything computes says which look this is, and the finished verdict
+  // says so too. Nothing is prevented, and no later look can be read back as if
+  // it were the first.
+  const priorLooks = reserveGradesFor(real.id);
+  const look = priorLooks.length + 1;
   // The winner by the STAMPED reading rules: combined test dollars across
   // the three splits, excluded arms out (they refused a floor somewhere).
   const excluded = new Set(real.excludedArms || []);
@@ -1292,16 +1329,27 @@ function startReserveGrade(params) {
         text: 'RESERVE-GRADE CONSTRUCTION: the 19 null draws replay the WINNER\'S schedule only (not best-of-grid) '
           + 'over the sealed reserve — the grid pick already happened on pre-reserve data the reserve never touched, '
           + 'so the reserve verdict prices the winner\'s own walk, not the grid shopping. The winner must exceed '
-          + 'every draw; resolution floor 1 in 20, printed.',
+          + 'every draw; resolution floor 1 in 20, printed.'
+          + (look > 1 ? ` LOOK ${look} OF THIS SLICE: the first grade read data nothing had seen. This one does not — `
+            + `it has been read ${priorLooks.length} time(s) already, so the floor above is the best case and the real `
+            + 'strength of this reading is weaker by an amount nothing here can measure.' : ''),
       },
     },
     mode: 'reserve-grade', replayOf: real.id, arm: 'real',
+    // WHICH LOOK THIS IS, and what the earlier ones said. Stamped into the
+    // run's own parameters so the answer can never be separated from how many
+    // times the slice had already been read when it was taken.
+    reserveLook: look,
+    priorReserveLooks: priorLooks,
     usableEndTs: real.params.reserveToTs, // the walk needs the reserve candles
     splits: [reserveSplit],
     winnerKey,
-    label: params.label || 'reserve-grade',
-    description: `one-touch reserve grade of ${real.id}: winner ${winnerKey} vs reference vs ${NULL_DRAWS_RESERVE} null draws; `
-      + `resolution floor 1 in ${NULL_DRAWS_RESERVE + 1}`,
+    label: params.label || (look === 1 ? 'reserve-grade' : `reserve-grade-look${look}`),
+    description: `reserve grade of ${real.id}, look ${look}: winner ${winnerKey} vs reference vs ${NULL_DRAWS_RESERVE} null draws; `
+      + `resolution floor 1 in ${NULL_DRAWS_RESERVE + 1}`
+      + (look > 1 ? `. LOOK ${look}: this slice had already been read ${priorLooks.length} time(s) before this grade `
+        + `(${priorLooks.map((g) => `${g.id} ${g.passed === null ? g.status : g.passed ? 'PASSED' : 'FAILED'}`).join(', ')}), `
+        + 'so it is no longer data nothing has seen.' : ''),
   };
   return htGradeLaunch(p, winnerDial, referenceDial, reserveSplit);
 }
@@ -1367,14 +1415,23 @@ function htGradeLaunch(p, winnerDial, referenceDial, split) {
     if (w && ref) {
       const beatsRef = w.holdPnl > ref.holdPnl;
       const nullsAbove = nulls.filter((n) => n.holdPnl >= w.holdPnl).length;
+      // WHICH LOOK PRODUCED THIS, in the sentence itself. A stored verdict gets
+      // read back months later by somebody who does not have the run's
+      // parameters in front of them, and a second look that reads like a first
+      // one is a stronger claim than was earned.
+      const look = doc.params.reserveLook || 1;
+      const lookNote = look > 1
+        ? ` LOOK ${look}: this slice had been read ${look - 1} time(s) before this grade, so it was not data nothing had seen and the floor is the best case, not the strength.`
+        : '';
       doc.verdict = {
         winnerHoldPnl: w.holdPnl, referenceHoldPnl: ref.holdPnl,
         nullDraws: nulls.length, nullsAtOrAbove: nullsAbove,
         resolutionFloor: `1 in ${nulls.length + 1}`,
+        reserveLook: look,
         passed: beatsRef && nullsAbove === 0,
-        sentence: beatsRef && nullsAbove === 0
+        sentence: (beatsRef && nullsAbove === 0
           ? `PASSED: the winner beat the reference pass on reserve dollars and no null draw matched it (floor 1 in ${nulls.length + 1}).`
-          : `FAILED: ${!beatsRef ? 'the winner did not beat the reference pass on the reserve' : `${nullsAbove} of ${nulls.length} null draws matched or beat the winner`} — tuning did not strengthen this survivor. A failed reserve is a dead end, never a hint.`,
+          : `FAILED: ${!beatsRef ? 'the winner did not beat the reference pass on the reserve' : `${nullsAbove} of ${nulls.length} null draws matched or beat the winner`} — tuning did not strengthen this survivor. A failed reserve is a dead end, never a hint.`) + lookNote,
       };
     }
     doc.status = doc.cancelRequested ? 'cancelled' : 'done';
@@ -2728,6 +2785,7 @@ module.exports = {
   planFor,
   runContents,
   deleteBatch,
+  reserveGradesFor,
   replayParams,
   resumeContents,
   resumeBracketLab,
