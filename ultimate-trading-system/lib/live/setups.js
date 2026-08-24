@@ -19,7 +19,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const { validateConfig, liveExecutable } = require('./configschema');
-const { FEE_PER_LEG, MAX_FEE_PER_LEG, feeRate } = require('../paper');
+const { FEE_PER_LEG, MAX_FEE_PER_LEG, feeRate, minStopPct, roundTripPct } = require('../paper');
 const { resolveForSetup, targetServes } = require('./targets');
 const { ENGINE_VERSION, SETUP_SCHEMA_VERSION } = require('./version');
 
@@ -39,10 +39,16 @@ const TRANSITIONS = {
   retired: [],
 };
 
-// Same DERIVED floor as the stop-apply endpoint (server.js): a stop tighter
-// than 0.5% triggers on hourly noise and guarantees a net loss vs round-trip
-// fees. One constant meaning in both places.
-const MIN_STOP_PCT = 0.005;
+// THE FLOOR FOLLOWS THIS PROFILE'S OWN FEE (owner order, 2026-08-23). It was
+// the literal 0.005 here and again in server.js, and both comments called it
+// DERIVED from the round-trip fee — true until the fee became a per-profile
+// setting. A profile paying 0.3% a leg has a 0.6% round trip, so a 0.5% stop on
+// it loses money every time it fires, and the old floor called that safe.
+//
+// lib/paper.js owns the derivation now. This is kept as the LAB-RATE floor for
+// the one thing that still needs a number without a profile in front of it: the
+// exported constant other code reads for a default.
+const MIN_STOP_PCT = minStopPct(FEE_PER_LEG);
 
 const ID_RE = /^[a-z0-9][a-z0-9-]{2,40}$/;
 
@@ -111,7 +117,24 @@ function validateOperational(s) {
   }
   if (s.stopPct != null) {
     if (!Number.isFinite(s.stopPct) || s.stopPct >= 1) errors.push('stopPct: fraction of entry < 1, or null for no stop');
-    else if (s.stopPct < MIN_STOP_PCT) errors.push(`stopPct: below the ${MIN_STOP_PCT} floor (0.5%) — triggers on noise`);
+    else {
+      // THIS profile's fee, not the lab rate: what counts as too tight depends
+      // on what this profile pays to trade, and two profiles at two venues do
+      // not have the same floor.
+      // A fee that is itself out of range has ALREADY been collected above, and
+      // asking paper.js to derive a floor from it would throw out of a function
+      // whose job is to gather every error and return them together. Fall back
+      // to the lab rate here; the fee's own error is the one that matters.
+      let fee = setupFee(s);
+      try { minStopPct(fee); } catch (_) { fee = FEE_PER_LEG; }
+      const floor = minStopPct(fee);
+      const pc = (x) => `${(100 * x).toFixed(3)}%`;
+      if (s.stopPct < floor) {
+        errors.push(`stopPct: ${pc(s.stopPct)} is below this profile's ${pc(floor)} floor — twice the ${pc(roundTripPct(fee))} `
+          + `it costs to trade in and out at ${pc(fee)} each way. Tighter than that and the stop fires on ordinary hourly `
+          + 'noise rather than on a real move against the position');
+      }
+    }
   }
   for (const k of ['executionTargetRef', 'keyRef', 'provenanceRef']) {
     if (s[k] != null && typeof s[k] !== 'string') errors.push(`${k}: must be a string or null`);

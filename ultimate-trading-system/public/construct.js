@@ -2363,6 +2363,16 @@ async function drawTune() {
     apiOr('api/pilot/fixed-stop', ({ stopPct: null, chosen: false, why: null })),
   ]);
   const busy = scan.running;
+  // THE FLOOR IS SERVED, NOT RESTATED (owner order, 2026-08-23). This section
+  // used to carry 0.5% in three places — an input's min=, a tooltip and an
+  // alert — kept in step with the server by a test. The server derives it from
+  // the fee now, so a copy here would go stale the moment the fee moves.
+  // Falling back to the served default only if the read failed.
+  const floorPct = applied.floorPct == null ? 0.005 : applied.floorPct;
+  const pcOf = (v) => `${(100 * v).toFixed(3)}%`;
+  const floorPc = pcOf(floorPct);
+  const tripPc = pcOf(applied.roundTripPct == null ? 0.0025 : applied.roundTripPct);
+  const feePc = pcOf(applied.feePerLeg == null ? 0.00125 : applied.feePerLeg);
   const pct = (v) => (v == null ? '—' : (v * 100).toFixed(2) + '%');
   const usd = (v) => money(v);
   // (target prose is resolved below, from the SAME value the launcher uses)
@@ -2429,7 +2439,7 @@ async function drawTune() {
     </select></label>
     <span class="note">${profiles.length} of your setup(s) and ${savedBooks.length} saved book(s) without a protective stop</span></div>
     <div class="row" style="margin-bottom:.4rem">
-      <label class="f" title="apply a stop you chose yourself rather than one off the curve. The box is in percent; the engine stores a fraction. The floor is 0.5% — twice the 0.25% round-trip fee, below which a triggered stop is a guaranteed net loss.">or apply a custom stop<input id="stopCustomPct" type="number" step="0.5" min="0.5" max="99" placeholder="e.g. 25" style="width:5.5rem"> %</label>
+      <label class="f" title="apply a stop you chose yourself rather than one off the curve. The box is in percent; the engine stores a fraction. The floor is ${floorPc}, which is twice the ${tripPc} it costs to trade in and out at ${feePc} each way — tighter than the round trip and a triggered stop is a guaranteed loss, tighter than the floor and it fires on ordinary hourly noise. This button writes the live engine's own risk parameter, so the floor is the lab rate rather than any one profile's fee.">or apply a custom stop<input id="stopCustomPct" type="number" step="0.5" min="${floorPct}" max="99" placeholder="e.g. 25" style="width:5.5rem"> %</label>
       <button id="stopCustomApply">apply custom</button>
       <button id="stopClear" title="run with NO fixed stop. The position then rests on its scheduled exit alone.">No stop (clear)</button>
     </div>
@@ -2520,17 +2530,21 @@ async function drawTune() {
   if (cust) cust.onclick = () => {
     const v = Number($('#stopCustomPct').value);
     if (!Number.isFinite(v) || v <= 0 || v >= 100) { alert('a stop is a percent between 0 and 100'); return; }
-    // The 0.5% FLOOR, stated here as well as on the server (2026-08-18). The
-    // endpoint has always refused below it with a clear 400, so nothing silently
+    // THE FLOOR, stated here as well as on the server (2026-08-18). The endpoint
+    // has always refused below it with a clear 400, so nothing silently
     // succeeded — but the box advertised min="0.1", offering a value the backend
     // rejects, and the refusal only arrived after a round trip. Same rule as the
     // run-id pickers (QC-145): where the answer is knowable on the page, refuse
-    // on the page, in the same words the server uses. Kept in step with
-    // server.js MIN_STOP_PCT by tests/test-uicontracts.js.
-    if (v < 0.5) {
-      alert(`A ${v}% stop is below the 0.5% floor.\n\nThat is twice the 0.25% round-trip fee — tighter than `
-        + 'that and a triggered stop is a guaranteed net loss, stopping out on hourly noise rather than on a '
-        + 'real adverse move. Choose 0.5% or wider, or use "No stop (clear)".');
+    // on the page, in the same words the server uses.
+    //
+    // The number is the SERVED one now (2026-08-23), not a copy: the server
+    // derives it from the fee, and a literal here would be right only until the
+    // fee moved.
+    if (v < 100 * floorPct) {
+      alert(`A ${v}% stop is below the ${floorPc} floor.\n\nThat floor is twice the ${tripPc} it costs to trade in `
+        + `and out at ${feePc} each way. Tighter than the round trip and a triggered stop is a guaranteed net loss; `
+        + 'tighter than the floor and it stops out on hourly noise rather than on a real adverse move.\n\n'
+        + `Choose ${floorPc} or wider, or use "No stop (clear)".`);
       return;
     }
     // BOTH of these write the LIVE engine's risk parameter, whatever the scan

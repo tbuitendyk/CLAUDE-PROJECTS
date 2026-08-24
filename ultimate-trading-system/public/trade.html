@@ -340,7 +340,9 @@ const walletCell=(wb)=>{
 // Below the round-trip fee a triggered stop is a guaranteed net loss, so a
 // value that small is not a tighter stop, it is a broken one. Both cases now
 // say so in the colour that means "look at this".
-const stopCell=(v,choice)=>{
+// trip and floor arrive from the box payload, which takes them from the fee
+// (lib/paper.js). They default to the lab rate only if the payload is old.
+const stopCell=(v,choice,trip,floor)=>{
   // Told apart on purpose: a stop nobody ever set is a gap, a stop deliberately
   // set to none is a decision. Both leave orders unprotected and the screen must
   // not dress either as the other.
@@ -348,7 +350,20 @@ const stopCell=(v,choice)=>{
     return `<span class="muted">none — your choice${choice.why?`: ${esc(choice.why)}`:''}${choice.utc?` <span class="muted">(${esc(String(choice.utc).slice(0,10))})</span>`:''}</span>`;
   if(v==null)return '<span class="warn">none set — orders run with no protective stop, and no choice has been recorded</span>';
   if(v<=0)return '<span class="warn">0.00% — that is NO stop; orders run unprotected</span>';
-  if(v<0.005)return `<span class="warn">${(v*100).toFixed(2)}% — below the 0.25% round-trip fee, so a trigger is a guaranteed loss</span>`;
+  // TWO DIFFERENT THRESHOLDS, and this ran them together (found 2026-08-23).
+  // It warned below 0.5% with the words "below the 0.25% round-trip fee", but
+  // 0.5% is TWICE the round trip — so a 0.4% stop, which clears the round trip
+  // comfortably, was being reported as a guaranteed loss. Both are shown now,
+  // each with what it actually means, and both follow the fee rather than being
+  // written down here.
+  // NO DEFAULTS. The two thresholds arrive with the payload because they follow
+  // the trading fee, and writing a fallback here would be the copy this change
+  // removed — right only until the fee moved. Without them the number is shown
+  // and NOT judged, which is honest; a verdict from a guessed threshold is not.
+  if(trip==null||floor==null)
+    return `<span class="muted">${(v*100).toFixed(2)}% — applied, but this screen was not told what it costs to trade, so it cannot say whether that is wide enough</span>`;
+  if(v<trip)return `<span class="warn">${(v*100).toFixed(2)}% — below the ${(trip*100).toFixed(3)}% it costs to trade in and out, so a trigger is a guaranteed loss</span>`;
+  if(v<floor)return `<span class="warn">${(v*100).toFixed(2)}% — above the ${(trip*100).toFixed(3)}% round trip but below the ${(floor*100).toFixed(3)}% floor, so it will stop out on ordinary hourly noise</span>`;
   return `<span class="pos">${(v*100).toFixed(2)}%</span> applied to every order`;
 };
 const marginCell=(lvl,enforced,requested)=>{
@@ -801,7 +816,7 @@ function boxControls(b){
     ${b.armPending?`<div class="panel" style="font-size:.8rem"><b>Waiting on the box.</b> Your request is written and signed;
       the box collects it on its next sync (up to ~5 minutes) and this turns ${b.armed?'STOPPED':'RUNNING'} when it has.
       Nothing more to press — both buttons are held until it lands.</div>`:''}
-    <div class="panel" style="font-size:.85rem"><b>Protective stop:</b> ${stopCell(b.fixedStopPct,b.fixedStopChoice)} ·
+    <div class="panel" style="font-size:.85rem"><b>Protective stop:</b> ${stopCell(b.fixedStopPct,b.fixedStopChoice,b.fixedStopRoundTripPct,b.fixedStopFloorPct)} ·
       <b>Margin level:</b> ${marginCell(wb.marginLevel,b.marginFloor,b.marginFloorRequested)} ·
       <b>Sub-account wallet:</b> ${walletCell(wb)}</div>
     <div class="panel"><div class="k">Margin floor — the level at which entries stop</div>

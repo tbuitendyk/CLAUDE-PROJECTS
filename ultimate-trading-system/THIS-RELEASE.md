@@ -764,10 +764,16 @@ Two of the seven — 18.4 and 18.6 — are the owner's own earlier rulings quote
 in the code. Those are not defects and are listed only so the owner can see
 every wall in one place and decide which ones stay.
 
-18.2 carries a second, separate defect regardless of what is decided about the
-floor: it is written as the literal `0.005` in two files while its own comment
-derives it from the round-trip fee, and the fee stopped being one system-wide
-number on 2026-08-23. Whatever is decided about overriding it, the floor should
-follow the profile's fee or stop claiming to be derived from it.
+**18.2's second defect is now fixed** (owner order, same day: *"fix the stop
+floor so it follows the profile fee"*). The floor was the literal `0.005` in two
+files while both comments called it derived from the round-trip fee. It is
+derived now — `lib/paper.js` owns it as twice the round trip, so a profile
+paying 0.3% a leg gets a 1.2% floor instead of being told 0.5% was safe when its
+round trip alone is 0.6%. At the lab rate it comes out at exactly 0.005, so
+nothing moved for a profile that has not set its own fee.
+
+**What is still open in 18.2 is the original question, untouched: whether the
+owner may go BELOW the floor at all.** It still refuses. Only the number
+changed, not who decides it.
 
 No code has been written for any of the seven.

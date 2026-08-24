@@ -72,7 +72,21 @@ function derive(events) {
         break;
     }
   }
-  return { armed, armedBy, halted, haltReason, fixedStopPct, marginFloor, walletBalance, lastHeartbeatUtc };
+  // WHAT THE STOP IS JUDGED AGAINST travels with the stop (owner order,
+  // 2026-08-23). The screen used to hold its own 0.005, and it called that
+  // number the round-trip fee when it is twice the round trip — so a 0.4% stop
+  // read as a guaranteed loss when it is not one. Both numbers come from the
+  // fee now, from lib/paper.js, and the page states each for what it is.
+  //
+  // This is the live engine's own stop, not a chosen profile's, so these are
+  // the lab rate. A per-profile stop is validated against that profile's own
+  // fee in lib/live/setups.js.
+  const paper = require('./paper');
+  const fixedStopRoundTripPct = paper.roundTripPct(paper.FEE_PER_LEG);
+  const fixedStopFloorPct = paper.minStopPct(paper.FEE_PER_LEG);
+  return { armed, armedBy, halted, haltReason, fixedStopPct,
+    fixedStopRoundTripPct, fixedStopFloorPct,
+    marginFloor, walletBalance, lastHeartbeatUtc };
 }
 
 function armRequest() {

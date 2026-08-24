@@ -327,34 +327,55 @@ function theFeeTooltipQuotesTheConstantItIsExplaining() {
 module.exports.theFeeTooltipQuotesTheConstantItIsExplaining
   = theFeeTooltipQuotesTheConstantItIsExplaining;
 
-// The custom-stop box must not offer a value the engine's floor refuses.
+// The custom-stop box must not offer a value the engine's floor refuses, and
+// the floor must follow the fee rather than being written down.
 //
-// The server has enforced MIN_STOP_PCT = 0.005 since the 2026-08-11 review and
-// returns a clear 400, so nothing ever silently succeeded — but the input
-// advertised min="0.1" (percent), so the spinner walked the operator down to a
-// value that could only ever be rejected, and the refusal arrived only after a
-// round trip. QC-145's rule: where the page can answer, the page answers.
+// The box once advertised min="0.1" while the engine refused below 0.5%, so the
+// spinner walked the operator down to a value that could only be rejected, and
+// the refusal arrived after a round trip. QC-145's rule: where the page can
+// answer, the page answers.
 //
-// This ties the three statements of the floor together — the input's min, the
-// page's own refusal, and the server constant — so they cannot drift apart. The
-// input and the refusal are in PERCENT; the server constant is a FRACTION.
+// This test used to tie three COPIES of 0.5% together — the input's min, the
+// page's refusal, and a literal in server.js. Keeping copies in step is not the
+// same as having one number. On 2026-08-23 the owner ruled the floor must
+// follow the profile's trading fee, so there is no literal left to tie to: the
+// server derives it and the page reads it. That is what this pins now.
 function theCustomStopBoxOffersNothingTheEngineFloorRefuses() {
   const fs2 = require('fs');
   const path2 = require('path');
   const SRV = fs2.readFileSync(path2.join(ROOT, 'server.js'), 'utf8');
-  const m = SRV.match(/const MIN_STOP_PCT = ([\d.]+)/);
-  assert(m, 'the server no longer declares MIN_STOP_PCT — the floor has no single source');
-  const floorPct = Number(m[1]) * 100;
+  const { FEE_PER_LEG, minStopPct, roundTripPct } = require('../lib/paper');
 
-  const inp = CX.match(/id="stopCustomPct"[^>]*min="([\d.]+)"/);
+  // 1. Nobody writes the number down any more.
+  assert(!/const MIN_STOP_PCT = [\d.]+;/.test(SRV),
+    'the server writes the stop floor as a literal again — its own comment calls it derived from the '
+    + 'round-trip fee, and the fee has been a per-profile setting since 2026-08-23');
+  assert(/paper\.minStopPct\(/.test(SRV), 'the server does not derive the floor from the fee');
+
+  // 2. The derivation is the one the comments have always claimed: twice what
+  //    it costs to trade in and out. At the lab rate that is the 0.005 that was
+  //    hard-coded, so nothing moved for anyone who has not set their own fee.
+  assert(Math.abs(minStopPct(FEE_PER_LEG) - 0.005) < 1e-12,
+    `the floor at the lab rate is ${minStopPct(FEE_PER_LEG)}, not the 0.005 every screen was built around`);
+  assert(Math.abs(minStopPct(FEE_PER_LEG) - 2 * roundTripPct(FEE_PER_LEG)) < 1e-12,
+    'the floor is no longer twice the round trip, which is what every comment about it says it is');
+
+  // 3. And it MOVES with the fee. A floor that does not is the defect.
+  assert(minStopPct(0.003) > minStopPct(FEE_PER_LEG),
+    'a venue charging more than the lab rate gets the same floor — so a stop inside its own round trip '
+    + 'would be accepted as safe');
+
+  // 4. The page reads it rather than restating it. A copy on the screen is
+  //    right only until the fee moves.
+  const inp = CX.match(/id="stopCustomPct"[^>]*min="([^"]+)"/);
   assert(inp, 'the custom-stop input lost its min — the box would offer any value at all');
-  assert(Number(inp[1]) === floorPct,
-    `the custom-stop box offers down to ${inp[1]}% while the engine floor is ${floorPct}% — `
-    + 'it advertises a value the backend can only refuse');
-
-  assert(new RegExp(`v < ${floorPct}`).test(CX),
-    `the page does not refuse below ${floorPct}% itself, so the operator learns the floor only `
-    + 'from a failed round trip');
+  assert(inp[1] === '${floorPct}',
+    `the custom-stop box hard-codes its minimum as "${inp[1]}" instead of using the served floor`);
+  assert(/v < 100 \* floorPct/.test(CX),
+    'the page does not refuse below the served floor itself, so the operator learns it only from a '
+    + 'failed round trip');
+  assert(/floorPct: paper\.minStopPct/.test(SRV),
+    'the floor is not served to the page, so the page has nothing to read and must hold a copy');
 }
 
 module.exports.theCustomStopBoxOffersNothingTheEngineFloorRefuses

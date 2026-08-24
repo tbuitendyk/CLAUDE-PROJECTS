@@ -180,6 +180,61 @@ module.exports = {
     assert.ok(/th\('fee','fee'\)/.test(TRADE), 'the list of profiles does not show what each one costs');
   },
 
+  // THE PROTECTIVE-STOP FLOOR FOLLOWS THIS PROFILE'S FEE (owner order,
+  // 2026-08-23: "fix the stop floor so it follows the profile fee").
+  //
+  // It was the literal 0.005 in two files, and both comments called it DERIVED
+  // from the round-trip fee — true until the fee became per-profile. A venue
+  // charging 0.3% a leg has a 0.6% round trip, so a 0.5% stop there loses money
+  // every time it fires, and the old floor called that safe.
+  //
+  // The same stop, accepted on one profile and refused on another, is the whole
+  // of it. Nothing in the suite checked this until a deliberate break showed
+  // the floor could be pinned back to the lab rate with everything still green.
+  async theStopFloorMovesWithTheProfilesOwnFee() {
+    withRegistry((reg) => {
+      const mk = (id, over) => {
+        try {
+          reg.createSetup({ id, name: id, ownerId: 'o', configSnapshot: snapshot(), clipUsd: 10, ...over });
+          return null;
+        } catch (e) { return e.message; }
+      };
+      // 0.6% stop. At the lab rate (0.125% a leg) the floor is 0.5%, so it is fine.
+      assert.strictEqual(mk('floor-cheap', { stopPct: 0.006 }), null,
+        'a 0.6% stop is above the lab-rate floor of 0.5% and must be accepted');
+      // The same 0.6% stop on a venue charging 0.3% a leg is exactly its round
+      // trip — a trigger there cannot win — and the floor is twice that.
+      const dear = mk('floor-dear', { feePerLeg: 0.003, stopPct: 0.006 });
+      assert.ok(dear, 'a 0.6% stop was accepted on a profile whose round trip IS 0.6% — a trigger cannot win');
+      assert.ok(/1\.200% floor/.test(dear), `the refusal must name THIS profile's floor; got: ${dear}`);
+      assert.ok(/0\.600%/.test(dear) && /0\.300% each way/.test(dear),
+        'the refusal must show the round trip and the fee it came from, or the owner cannot check it');
+      assert.strictEqual(mk('floor-dear-ok', { feePerLeg: 0.003, stopPct: 0.015 }), null,
+        'a 1.5% stop clears that profile\'s 1.2% floor and must be accepted');
+      // And it moves DOWN as well as up: a cheap venue must not be held to a
+      // floor built for an expensive one.
+      assert.strictEqual(mk('floor-tiny', { feePerLeg: 0.0002, stopPct: 0.002 }), null,
+        'a 0.2% stop on a venue charging 0.02% a leg was refused against somebody else\'s floor');
+    });
+  },
+
+  // A fee that is itself out of range must not turn the validator into a throw:
+  // its job is to gather every problem and return them together.
+  async anImpossibleFeeReportsItselfRatherThanBreakingTheStopCheck() {
+    withRegistry((reg) => {
+      let err = null;
+      try {
+        reg.createSetup({ id: 'floor-absurd', name: 'x', ownerId: 'o', configSnapshot: snapshot(),
+          clipUsd: 10, feePerLeg: 0.2, stopPct: 0.006 });
+      } catch (e) { err = e; }
+      assert.ok(err, 'a 20%-a-leg fee was accepted');
+      assert.ok(/feePerLeg/.test(err.message),
+        `the fee is the problem and must be what is reported; got: ${err.message}`);
+      assert.strictEqual(err.code, 'BAD_SETUP',
+        'deriving a floor from an impossible fee threw instead of collecting the error');
+    });
+  },
+
   // RULE TWO: Paper Books and Live Trading are drawn by one path, so the fee
   // cannot appear on one and not the other. The only difference allowed is the
   // deliberate one: a paper book pays no venue fee, and says so.

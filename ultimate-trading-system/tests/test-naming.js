@@ -122,8 +122,30 @@ function aZeroProtectiveStopIsNotShownAsHealthy() {
   const cell = HTML.match(/const stopCell=[\s\S]*?\n\};/)[0];
   assert.ok(/v<=0/.test(cell) && /that is NO stop/.test(cell),
     'a 0.00% stop still takes the healthy branch — green, and "applied to every order", for no protection');
-  assert.ok(/v<0\.005/.test(cell),
-    'a stop below the round-trip fee is shown as protective, but triggering it is a guaranteed loss');
+  // TWO THRESHOLDS, TOLD APART (2026-08-23). This used to require one check at
+  // the literal 0.005 and described it as "below the round-trip fee" — but
+  // 0.005 is TWICE the round trip, so a 0.4% stop, which clears the round trip
+  // comfortably, was reported to the owner as a guaranteed loss. They mean
+  // different things and the screen has to say which is which:
+  //   below the round trip  a trigger cannot win; the fees exceed the move
+  //   below the floor       it fires on ordinary hourly noise
+  assert.ok(/v<trip/.test(cell),
+    'a stop below what it costs to trade in and out is shown as protective, but triggering it is a '
+    + 'guaranteed loss');
+  assert.ok(/v<floor/.test(cell),
+    'a stop above the round trip but below the floor is shown as healthy — it will stop out on noise');
+  assert.ok(/guaranteed loss/.test(cell) && /hourly noise/.test(cell),
+    'the two warnings say the same thing, so the owner cannot tell which problem they have');
+  // Comments stripped: the note explaining why this changed necessarily quotes
+  // the wording that is gone, and a check that cannot tell prose from code
+  // fails on its own documentation.
+  const cellCode = cell.replace(/\/\/[^\n]*/g, '');
+  assert.ok(!/0\.005/.test(cellCode) && !/0\.25% round-trip/.test(cellCode),
+    'the stop cell writes the floor down again — it follows the trading fee now, and a copy on the '
+    + 'screen is right only until the fee moves');
+  assert.ok(/trip==null\|\|floor==null/.test(cellCode),
+    'the cell judges a stop even when it was not told what trading costs — a verdict from a guessed '
+    + 'threshold is worse than no verdict');
   assert.ok(!/\$\{b\.fixedStopPct!=null\?`<span class="pos">/.test(HTML),
     'the old null-only test is back, so zero reads as protected again');
 }

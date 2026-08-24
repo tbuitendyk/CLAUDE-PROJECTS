@@ -75,6 +75,36 @@ function feeFracOf(params, fallback = FEE_PER_LEG) {
   return feeRate(p.feeUnits === 'fraction' ? v : v / NOTIONAL, 'feeFracOf');
 }
 
+// THE PROTECTIVE-STOP FLOOR FOLLOWS THE FEE (owner order, 2026-08-23: "fix the
+// stop floor so it follows the profile fee").
+//
+// It was the literal 0.005 in two files, and both of their comments said it was
+// DERIVED from the round-trip fee — twice 0.25%. That was true on the day it
+// was written and stopped being true when the fee became a per-profile setting
+// (2026-08-23): a profile paying 0.3% a leg has a 0.6% round trip, and a 0.5%
+// stop below it is a guaranteed loss the moment it triggers, while the floor
+// went on saying 0.5% was safe.
+//
+// Two DIFFERENT thresholds, and the screens had been running them together:
+//
+//   round trip (2 x the fee)   a stop tighter than this cannot win. Trigger it
+//                              and the fees alone are bigger than the move.
+//   the floor (2 x that)       tighter than this and the stop fires on ordinary
+//                              hourly noise rather than on a real move against
+//                              the position.
+//
+// At the lab rate the floor comes out at exactly 0.005 — the number that was
+// hard-coded — so nothing moves for a profile that has not set its own fee.
+const STOP_FLOOR_ROUND_TRIPS = 2;      // GUESSED multiple, stated: noise, not arithmetic
+
+function roundTripPct(feePerLeg) {
+  return 2 * feeRate(feePerLeg, 'roundTripPct');
+}
+
+function minStopPct(feePerLeg) {
+  return STOP_FLOOR_ROUND_TRIPS * roundTripPct(feePerLeg);
+}
+
 // WHICH WAY IS THIS TRADE FACING, AND ARE THESE REAL PRICES (hardened
 // 2026-08-21). This asked `direction === 1` and treated literally everything
 // else that was not exactly 0 as a SHORT. The case that matters is not exotic:
@@ -185,4 +215,5 @@ function directionalCall(probs, tau) {
 }
 
 module.exports = { NOTIONAL, FEE_PER_LEG, FEE_ROUND_TRIP, MAX_FEE_PER_LEG,
+  STOP_FLOOR_ROUND_TRIPS, roundTripPct, minStopPct,
   feeRate, feeFracOf, pnlAt, voteOf, superOf, directionalCall };

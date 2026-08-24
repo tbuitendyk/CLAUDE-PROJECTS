@@ -171,6 +171,7 @@ async function backfillDailies(symbol, monthStr, setProgress) {
 }
 
 const planted = require('./lib/planted');
+const paper = require('./lib/paper');
 
 app.post('/api/data/download', (req, res) => {
   const b = req.body || {};
@@ -1387,7 +1388,21 @@ app.post('/api/pilot/stopsweep', (req, res) => {
 // (clear)" button sent 0 and got a 400 every time, so the stop could not be
 // cleared from that tab at all. Zero stays REFUSED on purpose — an empty box
 // parses to 0, and a parse slip must not silently strip a live risk parameter.
-app.get('/api/pilot/fixed-stop', (req, res) => res.json(readFixedStop()));
+// THE FLOOR TRAVELS WITH THE ANSWER (owner order, 2026-08-23). The Tune section
+// used to carry its own copy of 0.5% in an input's min=, a tooltip and an alert,
+// kept in step with the server by a test. A number the screen restates is a
+// number that goes stale; the screen reads it from here now.
+app.get('/api/pilot/fixed-stop', (req, res) => res.json({
+  ...readFixedStop(),
+  feePerLeg: paper.FEE_PER_LEG,
+  roundTripPct: paper.roundTripPct(paper.FEE_PER_LEG),
+  floorPct: paper.minStopPct(paper.FEE_PER_LEG),
+  // WHOSE FEE THIS IS. This control writes the live engine's own risk
+  // parameter, not a chosen profile's, so there is no profile fee to follow
+  // here — it is the lab rate and the screen says so rather than implying the
+  // floor moved with something the owner set.
+  floorFrom: 'lab rate',
+}));
 // csrfGuard, matching POST /api/pilot/margin-floor. This route sets the
 // protective stop on the live rule and had no guard at all while its declared
 // twin did — the difference was an oversight, not a decision.
@@ -1415,13 +1430,24 @@ app.post('/api/pilot/stop-apply', csrfGuard, (req, res) => {
       // MINIMUM-STOP FLOOR (CONTROL BUG 2, 2026-08-11 e2e review). A stop tighter
       // than ordinary hourly noise stops out on microstructure wiggle, not on a
       // real adverse move — it converts winners into fee-paying losses and can
-      // churn a position out on the first tick. DERIVED floor = 0.5%: it is 2x
-      // the 0.25% round-trip fee (below which a triggered stop is a guaranteed
-      // net loss) and sits above typical LTC hourly-bar noise. The scan never
-      // proposes anything this tight; this only guards a hand-typed value.
-      const MIN_STOP_PCT = 0.005;
+      // churn a position out on the first tick. The scan never proposes anything
+      // this tight; this only guards a hand-typed value.
+      //
+      // DERIVED, and now actually derived (owner order, 2026-08-23). This said
+      // "DERIVED floor = 0.5%: it is 2x the 0.25% round-trip fee" and then wrote
+      // the literal 0.005, which stopped being that arithmetic the day the fee
+      // became a per-profile setting. lib/paper.js owns it.
+      //
+      // This route writes the live engine's OWN risk parameter — the scan target
+      // above chooses what is scanned, not what this changes — so there is no
+      // profile here whose fee to follow, and it is the lab rate. Said out loud
+      // rather than left to look like it followed something.
+      const MIN_STOP_PCT = paper.minStopPct(paper.FEE_PER_LEG);
       if (v < MIN_STOP_PCT) {
-        return res.status(400).json({ error: `stopPct ${v} is below the ${MIN_STOP_PCT} floor (0.5%); a tighter stop triggers on noise, not on real moves. Choose a wider stop or clear it.` });
+        const pc = (x) => `${(100 * x).toFixed(3)}%`;
+        return res.status(400).json({ error: `stopPct ${v} is below the ${MIN_STOP_PCT} floor (${pc(MIN_STOP_PCT)}) — `
+          + `twice the ${pc(paper.roundTripPct(paper.FEE_PER_LEG))} round trip at the lab rate of ${pc(paper.FEE_PER_LEG)} `
+          + 'each way. A tighter stop triggers on noise, not on real moves. Choose a wider stop or clear it.' });
       }
     }
     // WHY, not just what. A stop of none is a risk decision; recording the
