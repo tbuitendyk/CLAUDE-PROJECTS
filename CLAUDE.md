@@ -138,7 +138,8 @@ Union Trading Academy website (`uniontradingacademy.com/`).
   to site root, robots opened, `noindex` metas dropped (gracias keeps its);
   domain connected to webspace `/site`; DNS live (apex + www →
   74.208.236.33 / 2607:f1c0:100f:f000::200); WhatsApp click-to-chat ACTIVE
-  (524792265252, owner tap-test confirmed).
+  (524772592167 = +52 477 259 2167, León; replaced the original
+  524792265252 on 2026-08-24 per owner — the old one is dead).
 - **THE SSL ROOT CAUSE — read this before debugging IONOS certs again.**
   The cert never "self-provisions" for a domain added to a contract later.
   Web Hosting Plus includes exactly **2 SSL Starter Wildcard slots**, and

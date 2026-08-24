@@ -7,8 +7,8 @@
 window.UTA_CONFIG = {
   // Número de WhatsApp de la academia, con código de país y sin "+".
   // Si WhatsApp reporta "número inválido" al abrir el chat, probar el
-  // formato antiguo mexicano con "1" tras el 52: "5214792265252".
-  WHATSAPP_NUMBER: "524792265252",
+  // formato antiguo mexicano con "1" tras el 52: "5214772592167".
+  WHATSAPP_NUMBER: "524772592167",
 
   // Texto pre-llenado del chat (general y de confirmación de cita).
   WHATSAPP_TEXT: "Hola, quiero más información sobre la mentoría de Union Trading Academy.",
