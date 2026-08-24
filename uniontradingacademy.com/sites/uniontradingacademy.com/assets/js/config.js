@@ -18,8 +18,9 @@ window.UTA_CONFIG = {
   // "https://calendly.com/uniontradingacademy/sesion-estrategica"
   CALENDLY_URL: "",
 
-  // Video principal de la landing (auto-alojado), p. ej.:
-  // "assets/media/presentacion.mp4"  (relativo a la raíz del sitio)
+  // Video principal (auto-alojado). Se muestra en la portada Y en /agenda/,
+  // así que la ruta DEBE empezar con "/" para funcionar en ambas páginas:
+  // "/assets/media/presentacion.mp4"
   VIDEO_SRC: "",
 
   // Link de pago de Mercado Pago (checkout alojado), cuando exista.

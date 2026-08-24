@@ -44,12 +44,23 @@
 </header>
 
 <main class="wrap" style="padding-bottom:90px">
+  <div class="video-frame" id="video-slot" style="margin-bottom:40px">
+    <span class="video-chip">Video · 10 min</span>
+    <img class="poster" src="../assets/img/hero-art.jpg" alt="Union Trading Academy — leemos el mercado, entendemos el movimiento, operamos con ventaja">
+    <div class="video-overlay">
+      <button class="play-badge" type="button" aria-label="Reproducir video">
+        <svg width="26" height="26" viewBox="0 0 24 24" fill="#fff"><path d="M8 5v14l11-7z"/></svg>
+      </button>
+    </div>
+    <span class="video-pending hidden" id="video-pending">Video en preparación — muy pronto</span>
+  </div>
+
   <div id="calendly-slot" class="calendly-slot">
     <!-- Con UTA_CONFIG.CALENDLY_URL configurado, aquí se monta el calendario. -->
   </div>
   <div id="calendly-fallback" class="panel fallback-panel hidden">
-    <h3>La agenda en línea estará disponible muy pronto</h3>
-    <p>Mientras tanto, escríbenos y coordinamos tu sesión directamente.</p>
+    <h3>Agenda tu sesión ahora por WhatsApp</h3>
+    <p>Escríbenos y coordinamos tu sesión estratégica de inmediato.</p>
     <a class="btn btn-wa" href="#" data-wa data-wa-only>Coordinar por WhatsApp</a>
   </div>
 </main>
