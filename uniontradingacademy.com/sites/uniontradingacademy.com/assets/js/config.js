@@ -21,7 +21,7 @@ window.UTA_CONFIG = {
   // Video principal (auto-alojado). Se muestra en la portada Y en /agenda/,
   // así que la ruta DEBE empezar con "/" para funcionar en ambas páginas:
   // "/assets/media/presentacion.mp4"
-  VIDEO_SRC: "",
+  VIDEO_SRC: "/assets/media/presentacion.mp4",
 
   // Link de pago de Mercado Pago (checkout alojado), cuando exista.
   MERCADOPAGO_LINK: ""
