@@ -24,6 +24,12 @@ const PORT = Number(process.env.PORT || 8094);
 
 const app = express();
 app.use(express.json({ limit: '256kb' }));
+// EVERY REPLY IS MEASURED (owner order, 2026-08-23: "always chunk data PROPERLY
+// to browsers"). There was a 256kb ceiling on what a browser could SEND and
+// nothing at all on what it was sent back — so a reply grew to 99 MB and the
+// only symptom was a screen that never arrived. Installed before the routes so
+// it covers every one of them, including the next one somebody writes.
+require('./lib/payload').installPayloadGuard(app);
 // CACHE MARKER = THE RELEASE. construct.html asked for construct.js?v=1 —
 // a marker fixed at 1 forever. Browsers cache by full URL, so the moment anyone
 // lengthens max-age (it is 0 today, which is the only reason this has not bitten)
@@ -1500,7 +1506,15 @@ app.post('/api/historytuning/reserve-grade', (req, res) => {
 app.get('/api/batch/:id', (req, res) => {
   const doc = batch.getBatch(req.params.id);
   if (!doc) return res.status(404).json({ error: 'unknown batch' });
-  res.json(doc);
+  // THE SAME TRIM AS THE PICKER (owner order, 2026-08-23). One run's document
+  // carries the expanded declared set too — 500 KB on the current run, which no
+  // screen reads. The rows themselves are already left on disk; this is the
+  // last collection in the document that grows with the run's settings.
+  //
+  // `leaders` is deliberately NOT paged here: it is bounded by the board size
+  // the owner set, it is the thing the page is for, and paging it would mean
+  // the board could not be sorted on the screen.
+  res.json({ ...doc, params: batch.screenParams(doc.params) });
 });
 
 app.get('/api/jobs/:id', (req, res) => {

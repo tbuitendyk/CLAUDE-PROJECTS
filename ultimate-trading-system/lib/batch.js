@@ -288,6 +288,31 @@ function monthSpan(a, b) {
   return A != null && B != null && B >= A ? B - A + 1 : null;
 }
 
+// THE PARAMETERS A SCREEN NEEDS, WITHOUT THE ONES IT NEVER READS (owner order,
+// 2026-08-23: "always chunk data PROPERLY to browsers").
+//
+// A run's parameters carry `declaredSet` — every declared configuration the
+// permute ticks expand to, written out in full. On the current run that is
+// 500 KB. It rides on the picker row for EVERY saved run, and the picker is
+// fetched on every draw of three separate sections: eighteen runs made the
+// runs list a 9 MB reply, three times per visit.
+//
+// No screen has ever read it. Nothing in public/ mentions declaredSet at all —
+// the engine needs it, the browser does not. So the screens get a COUNT, which
+// is the only thing about it anyone could act on, and the full list stays on
+// the run where the engine reads it.
+function screenParams(params) {
+  if (!params || typeof params !== 'object') return params;
+  const { declaredSet, ...rest } = params;
+  if (declaredSet === undefined) return params;
+  return {
+    ...rest,
+    // Named so it cannot be mistaken for the list itself, and present even
+    // when the list is empty, so a screen can tell "none" from "not sent".
+    declaredSetCount: Array.isArray(declaredSet) ? declaredSet.length : 0,
+  };
+}
+
 function listRow(d) {
   const runs = Array.isArray(d.runs) ? d.runs : null;
   return {
@@ -304,7 +329,7 @@ function listRow(d) {
     // owner has to already know to go and open.
     error: d.error || null,
     interruptedWhere: d.interruptedWhere || null,
-    params: d.params,
+    params: screenParams(d.params),
   };
 }
 
@@ -2807,6 +2832,7 @@ module.exports = {
   planFor,
   runContents,
   deleteBatch,
+  screenParams,
   reserveGradesFor,
   replayParams,
   resumeContents,

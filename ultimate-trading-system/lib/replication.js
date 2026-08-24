@@ -52,10 +52,21 @@ function rowsOf(doc, fn) {
   return n;
 }
 
-// PER CONFIGURATION, and nothing per row. `detailCap` bounds how many real rows
-// are carried back for the per-asset table a reader can open; the rest stay on
-// disk and are fetched by `detail()` when something actually opens one.
-function rank(doc, { detailCap = 60 } = {}) {
+// PER CONFIGURATION, AND NOTHING PER ROW — now meant literally (owner order,
+// 2026-08-23).
+//
+// This used to carry back up to 60 example rows per configuration so the
+// per-asset table under each line could be drawn without a second request.
+// Fine for one declared configuration. On a run that declares 2,772 of them it
+// is 166,320 rows in one reply: 99 MB, which no browser renders and no screen
+// ever showed, because the request never finished.
+//
+// The rows are not lost and they were never needed here: detail() fetches one
+// configuration's rows, capped and counted, when a reader actually opens that
+// line. So the ranked list is now what its own name says — one summary per
+// configuration — and the reply is bounded by the number of configurations
+// rather than by the number of rows behind them.
+function rank(doc, { detailCap = 0 } = {}) {
   const regions = regionsByAsset(doc.leaders || []);
   const groups = new Map();
   let total = 0;
@@ -98,7 +109,7 @@ function rank(doc, { detailCap = 60 } = {}) {
 
     if (!tagged || r.nullDealSeed == null) {
       g.realsTotal++;
-      if (g.reals.length < detailCap) g.reals.push(r);
+      if (detailCap > 0 && g.reals.length < detailCap) g.reals.push(r);
       g.assets.add(k);
       const reg = regions.get(k);
       if (reg != null) { g.regionSum += reg; g.regionN++; }

@@ -187,7 +187,16 @@ module.exports = {
       assert.strictEqual(g.nullBeat, 2, 'the real 9 beats 2 and 4, not 12');
       assert.strictEqual(g.holdCount, 1, 'the cross-asset count reads real rows only');
       assert.strictEqual(g.sum, 9, 'and money sums the real looks only');
-      assert.strictEqual(g.reals.length, 1, 'the per-asset table shows the real look only, never a copy');
+      // WHERE THIS GUARANTEE NOW LIVES (2026-08-23). The ranked list used to
+      // carry the per-asset rows, so it was checked here. It ships summaries
+      // only since a run declaring 2,772 configurations made that a 99 MB
+      // reply — but the rule is unchanged and still has to hold, so it is
+      // checked on the call that now returns those rows.
+      assert.strictEqual(g.reals.length, 0, 'the ranked list is carrying per-asset rows again');
+      assert.strictEqual(g.realsTotal, 1, 'and the count of them was lost with the rows');
+      const d = replication.detail(batch.getBatch(id), g.label);
+      assert.strictEqual(d.rows.length, 1, 'the per-asset table shows the real look only, never a copy');
+      assert.strictEqual(d.matched, 1, 'and it says how many there were');
     });
   },
 

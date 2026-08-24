@@ -165,6 +165,33 @@ const COL = {
 // cth(label, key[, style]) — a heading always carries its own description.
 const cth = (label, key, style) => `<th${style ? ` style="${style}"` : ''}${COL[key] ? ` title="${esc(COL[key]).replace(/"/g, '&quot;')}"` : ''}>${label}</th>`;
 
+// THE PER-ASSET TABLE, hoisted out of the panel that used to own it (owner
+// order, 2026-08-23). The ranked list no longer carries example rows — a run
+// declaring 2,772 configurations made that a 99 MB reply — so the rows are
+// fetched when a line is opened, and the opened table and the panel have to be
+// drawn by the SAME function or they will come to disagree about what a row
+// means.
+const moreNote = (d) => (d.matched > d.shown
+  ? `<p class="note">showing ${d.shown} of ${d.matched.toLocaleString()} rows for this configuration — the rest are recorded on the run and are not sent to the screen at once.</p>`
+  : '');
+const nullCell = (g) => (g.nullShare == null
+  ? '<span class="muted" title="this run recorded no dealt-vote copies of this configuration">no null copies</span>'
+  : `<b class="${g.nullShare === 1 ? 'pos' : ''}">${g.nullBeat}/${g.nullPairs}</b>`);
+const detail = (rs) => `<div class="scrollx"><table><thead><tr>${cth('asset','asset')}${cth('band','band')}${cth('agree','agree')}
+    <th title="the window the settings were chosen on — flattering by construction">test $</th>
+    <th title="the once-only look on data no search touched — this is what the counts read">held-back $</th>
+    <th title="held-back money minus the same execution forced long every period">vs always-long</th>
+    ${cth('trades','trades')}</tr></thead><tbody>
+  ${rs.map((r) => `<tr><td>${esc(r.trade + (r.ctx1 ? ' + ' + r.ctx1 : '') + (r.ctx2 ? ' + ' + r.ctx2 : ''))}</td>
+    <td>±${r.bandPct != null ? r.bandPct.toFixed(2) : '?'}%</td>
+    <td>${r.quorum}/${r.members}</td>
+    <td class="${(r.pnl || 0) >= 0 ? 'pos' : 'neg'}">${money(r.pnl)}</td>
+    <td class="${r.holdout ? ((r.holdout.pnl || 0) >= 0 ? 'pos' : 'neg') : 'muted'}">${r.holdout ? money(r.holdout.pnl) : '—'}</td>
+    <td class="${r.holdout && r.holdout.vsAlwaysLong != null ? (r.holdout.vsAlwaysLong >= 0 ? 'pos' : 'neg') : 'muted'}">${r.holdout && r.holdout.vsAlwaysLong != null ? money(r.holdout.vsAlwaysLong) : '—'}</td>
+    <td>${r.trades ?? '—'}</td></tr>`).join('')}
+  </tbody></table></div>`;
+
+
 // ---- the replication ranking ------------------------------------------------
 // SCORE AND ORDER THE DECLARED CONFIGURATIONS. Lifted out of the render function
 // on 2026-08-17 so it can be TESTED rather than only read: the previous version
@@ -1365,25 +1392,8 @@ async function drawBoards() {
     // wide run has one real row per asset PER BRANCH, which is thousands — a
     // table nobody scrolls. Showing the first of them silently would be a table
     // that looks complete and is not.
-    const moreNote = (g) => (g.realsTotal > g.realsShown
-      ? `<p class="note">showing ${g.realsShown} of ${g.realsTotal} rows for this configuration — the rest are recorded and can be read from the run's stored rows.</p>`
-      : '');
-    const nullCell = (g) => (g.nullShare == null
-      ? '<span class="muted" title="this run recorded no dealt-vote copies of this configuration">no null copies</span>'
-      : `<b class="${g.nullShare === 1 ? 'pos' : ''}">${g.nullBeat}/${g.nullPairs}</b>`);
-    const detail = (rs) => `<div class="scrollx"><table><thead><tr>${cth('asset','asset')}${cth('band','band')}${cth('agree','agree')}
-        <th title="the window the settings were chosen on — flattering by construction">test $</th>
-        <th title="the once-only look on data no search touched — this is what the counts read">held-back $</th>
-        <th title="held-back money minus the same execution forced long every period">vs always-long</th>
-        ${cth('trades','trades')}</tr></thead><tbody>
-      ${rs.map((r) => `<tr><td>${esc(r.trade + (r.ctx1 ? ' + ' + r.ctx1 : '') + (r.ctx2 ? ' + ' + r.ctx2 : ''))}</td>
-        <td>±${r.bandPct != null ? r.bandPct.toFixed(2) : '?'}%</td>
-        <td>${r.quorum}/${r.members}</td>
-        <td class="${(r.pnl || 0) >= 0 ? 'pos' : 'neg'}">${money(r.pnl)}</td>
-        <td class="${r.holdout ? ((r.holdout.pnl || 0) >= 0 ? 'pos' : 'neg') : 'muted'}">${r.holdout ? money(r.holdout.pnl) : '—'}</td>
-        <td class="${r.holdout && r.holdout.vsAlwaysLong != null ? (r.holdout.vsAlwaysLong >= 0 ? 'pos' : 'neg') : 'muted'}">${r.holdout && r.holdout.vsAlwaysLong != null ? money(r.holdout.vsAlwaysLong) : '—'}</td>
-        <td>${r.trades ?? '—'}</td></tr>`).join('')}
-      </tbody></table></div>`;
+    // NEVER A SHORT LIST THAT LOOKS COMPLETE. The reply says how many rows the
+    // configuration actually has; if fewer were sent, the screen says so.
 
     // ONE declared config: the table on its own, exactly as it was. There is
     // nothing to choose between, so a ranked list would be furniture.
@@ -1405,7 +1415,7 @@ async function drawBoards() {
           <span><span class="k" title="${esc(TIP.money)}">total held-back</span> <b class="${g.sum >= 0 ? 'pos' : 'neg'}">${money(g.sum)}</b></span>
           <span><span class="k">beat always-long</span> <b>${g.vsLPos} / ${g.vsLCount}</b></span>
         </div>
-        ${detail(g.reals)}${moreNote(g)}</div>`;
+        <div class="repdetail" data-label="${esc(g.label)}"><span class="muted">loading this configuration's rows…</span></div></div>`;
     }
 
     // MANY declared configs: the ranked list comes FIRST (owner, 2026-08-17).
@@ -1419,7 +1429,7 @@ async function drawBoards() {
           <span class="note" style="margin-left:.5rem">· beat always-long ${g.vsLPos}/${g.vsLCount}</span>
           <span class="${g.sum >= 0 ? 'pos' : 'neg'}" style="margin-left:.5rem" title="${esc(TIP.money)}">${money(g.sum)}</span>
         </summary>
-        <div style="padding:.3rem .25rem .8rem">${detail(g.reals)}${moreNote(g)}</div>
+        <div class="repdetail" data-label="${esc(g.label)}" style="padding:.3rem .25rem .8rem"><span class="muted">open to load this configuration's rows</span></div>
       </details>`).join('');
     return `<div class="panel"><h3 style="margin-top:0">Replication — ${scored.length} declared configs, ranked</h3>
       <p class="note">KEY — each line is ONE declared configuration scored on every asset. Ranked by <b>how much of its
@@ -1659,6 +1669,33 @@ async function drawBoards() {
     };
   }
   if (!doc) return;
+  // ONE CONFIGURATION'S ROWS, FETCHED WHEN IT IS OPENED (owner order,
+  // 2026-08-23). The ranked list is summaries only now, so each line's
+  // per-asset table arrives on demand. Fetched ONCE per line — a second open
+  // re-shows what is already there rather than asking again — and the reply
+  // says how many rows the configuration really has, so a capped table can
+  // never read as a complete one.
+  $('#bBody').querySelectorAll('.repdetail').forEach((box) => {
+    const load = async () => {
+      if (box.dataset.loaded) return;
+      box.dataset.loaded = '1';
+      box.innerHTML = '<span class="muted">reading this configuration\'s rows…</span>';
+      const d = await apiOr(`api/batch/${encodeURIComponent(doc.id)}/replication-detail`
+        + `?label=${encodeURIComponent(box.dataset.label || '')}`, null);
+      if (!d) {
+        // A failed read must not leave a table that looks empty. Empty and
+        // could-not-ask are different answers and the screen says which.
+        box.dataset.loaded = '';
+        box.innerHTML = '<span class="warn">could not read this configuration\'s rows — nothing is missing from the run, the screen could not ask</span>';
+        return;
+      }
+      box.innerHTML = detail(d.rows || []) + moreNote(d);
+    };
+    const holder = box.closest('details');
+    if (!holder) { load(); return; }              // the single-configuration panel: no line to open
+    holder.addEventListener('toggle', () => { if (holder.open) load(); });
+  });
+
   $('#bBody').querySelectorAll('tr[data-i]').forEach((tr) => {
     tr.onclick = async (ev) => {
       if (ev.target.tagName === 'BUTTON' || ev.target.tagName === 'SUMMARY') return;

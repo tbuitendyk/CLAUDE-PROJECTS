@@ -334,7 +334,12 @@ module.exports.theMeasuredNullIsActuallyMeasured = function () {
   assert.strictEqual(g.nullPairs, 3, 'all three dealt-vote copies must be paired against the real look');
   assert.strictEqual(g.nullBeat, 2, 'the real 9 beats 2 and 4, not 12');
   assert.ok(Math.abs(g.nullShare - 2 / 3) < 1e-9, `nullShare must be measured, got ${g.nullShare}`);
-  assert.strictEqual(g.reals.length, 1, 'the per-asset table shows the real look only, never a null copy');
+  // The ranked list ships summaries only since 2026-08-23 (a 2,772-configuration
+  // run made the old shape a 99 MB reply). The rule that a dealt-vote copy is
+  // machinery and never an asset row is unchanged; tests/test-payload.js checks
+  // it on detail(), which is what returns those rows now.
+  assert.strictEqual(g.reals.length, 0, 'the ranked list is carrying per-asset rows again');
+  assert.strictEqual(g.realsTotal, 1, 'the count of real rows was lost along with the rows');
   assert.strictEqual(g.holdCount, 1, 'the cross-asset count reads real rows only');
   assert.strictEqual(g.pos, 1);
 };
