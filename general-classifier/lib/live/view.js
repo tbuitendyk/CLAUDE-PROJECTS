@@ -17,11 +17,25 @@ const path = require('path');
 // a recorded row — four days and an hour later on this geometry. The owner sat
 // looking at a history with no row for today while the vote sat on disk.
 //
-// STALENESS IS THE TRAP. A preview file is left behind after its entry acts,
-// and a leftover call rendered as "today's" is worse than showing nothing —
-// it is the retired data/pilot/preview.json failure again (that one sat six
-// days stale). So a preview is surfaced ONLY while its own entry is still in
-// the future. Past that it is spent, and spent is reported as spent.
+// STALENESS IS STILL THE TRAP, but the first cut of this drew the line in the
+// wrong place. It expired a call the moment its entry hour arrived — which is
+// exactly when the call matters most and is least visible: the entry has not
+// filled yet, no decision row exists yet, and the owner is watching to see what
+// is about to happen. That produced a blind window between the entry hour and
+// the fill, in which the screen showed nothing at all. Which is the very hole
+// this was written to close.
+//
+// The right rule is not a clock, it is supersession: a preview stands until a
+// DECISION for the same window is recorded, and is then dropped as redundant
+// (setupStatus does that, where the decision list is in hand). Past its entry
+// hour it is marked `acting` so the screen can say "acting now, awaiting fill"
+// rather than pretending it is still pending.
+//
+// A hard bound still applies, because a file left behind by a dead producer
+// must not read as today's call forever: beyond one day past its entry the
+// call is abandoned, not acting.
+const PREVIEW_ABANDONED_MS = 24 * 3600 * 1000;
+
 function previewsDir() {
   return process.env.GC_LIVE_PREVIEWS
     || path.join(__dirname, '..', '..', 'data', 'live', 'previews');
@@ -34,19 +48,19 @@ function loadPreview(setupId, now = Date.now()) {
   } catch (_) { return null; }          // not written yet is a state, not an error
   if (!p || typeof p !== 'object') return null;
   if (!p.available) {
-    // The producer says why it cannot preview yet (window not closed, candle
-    // not cached). Pass the reason through rather than showing nothing.
     return { available: false, note: p.note || null, writtenUtc: p.written_utc || null };
   }
   const entryMs = p.entry_utc ? Date.parse(p.entry_utc) : NaN;
   if (!Number.isFinite(entryMs)) return null;
-  if (entryMs <= now) {
-    return { available: false, spent: true, entryUtc: p.entry_utc,
-             note: 'this call has already reached its entry moment — see the decision history',
+  if (now - entryMs > PREVIEW_ABANDONED_MS) {
+    return { available: false, abandoned: true, entryUtc: p.entry_utc,
+             note: 'this call is more than a day past its entry and never recorded — '
+                 + 'the producer or the executor stopped; it is not today\'s call',
              writtenUtc: p.written_utc || null };
   }
   return {
     available: true,
+    acting: entryMs <= now,             // its moment has come; awaiting the fill
     side: p.side,
     votes: p.per_member || null,
     quorum: p.quorum ?? null,
@@ -453,7 +467,13 @@ function setupStatus(setup, file = journalFile()) {
     ...book,
   };
   // AFTER the spread: the call that is known but has not acted yet.
+  // SUPERSESSION, not a clock: once a decision for the same window is on the
+  // record, the preview has become that row and must not be shown twice.
   out.preview = loadPreview(setup.id);
+  if (out.preview && out.preview.available && out.preview.chunkStart
+      && (out.decisions || []).some((d) => d.chunk_start === out.preview.chunkStart)) {
+    out.preview = null;
+  }
   out.liveStatus = nextActivity(out, setup, Date.now());
   return out;
 }

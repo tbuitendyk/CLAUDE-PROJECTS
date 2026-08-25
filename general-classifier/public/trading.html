@@ -800,8 +800,10 @@ async function drawLive(){
           <div><span class="lbl">call</span> <span class="${lab[1]}"><b>${lab[0]}</b></span></div>
           <div><span class="lbl">member votes</span> ${vtxt}</div>
           <div><span class="lbl">quorum</span> ${esc(String(pv.quorum??'—'))}</div>
-          <div><span class="lbl">acts at (UTC)</span> <span style="white-space:nowrap">${esc(String(pv.entryUtc||'').replace('T',' ').slice(0,16))}</span></div>
-          <div><span class="lbl">in</span> <span style="white-space:nowrap" ${pv.entryUtc?`data-when="${esc(pv.entryUtc)}"`:''}>${pv.entryUtc?'…':'—'}</span></div>
+          <div><span class="lbl">${pv.acting?'acted at (UTC)':'acts at (UTC)'}</span> <span style="white-space:nowrap">${esc(String(pv.entryUtc||'').replace('T',' ').slice(0,16))}</span></div>
+          ${pv.acting
+            ? `<div><span class="lbl">status</span> <b>acting now — awaiting the fill</b></div>`
+            : `<div><span class="lbl">in</span> <span style="white-space:nowrap" ${pv.entryUtc?`data-when="${esc(pv.entryUtc)}"`:''}>${pv.entryUtc?'…':'—'}</span></div>`}
           <div class="muted" style="font-size:.7rem">window ${esc(String(pv.chunkStart||'').slice(0,10))} · computed ${esc(String(pv.computedUtc||'').replace('T',' ').slice(0,16))} UTC</div>
         </div>`;})()}
     </div>

@@ -143,10 +143,35 @@ function recordDecision(setupId, dec) {
           const stamp = new Date(now).toISOString().replace(/[-:]/g, '').slice(0, 15) + 'Z';
           atomicWrite(path.join(OUTBOX, `intent2-${setup.id}-${stamp}.json`), JSON.stringify(out.intent) + '\n');
         }
+        // THE CALL MUST NOT EVAPORATE THE MOMENT IT MATTERS (owner, 2026-08-25).
+        //
+        // computePreview only previews the window between the feature close and
+        // the entry hour. One second past the entry hour it reports "nothing to
+        // preview" — and this used to overwrite the saved call with that, every
+        // tick. So the decided call was readable from 00:00 to 01:00 and then
+        // erased, leaving nothing on screen between the entry hour and the fill:
+        // the exact window in which the owner is watching to see what is about
+        // to happen. The screen went blank at the worst possible minute.
+        //
+        // So an AVAILABLE preview always overwrites; an unavailable one only
+        // writes when there is nothing worth keeping. The saved call is retired
+        // by SUPERSESSION instead — lib/live/view.js drops it once a decision
+        // for the same window is recorded — with a one-day abandonment bound so
+        // a dead producer cannot leave yesterday's call reading as today's.
         const preview = await signal.computePreview(setup, now)
           .catch((e) => ({ available: false, note: 'preview compute failed: ' + (e && e.message) }));
-        atomicWrite(path.join(PREVIEWS, `${setup.id}.json`),
-          JSON.stringify({ ...preview, written_utc: new Date(now).toISOString() }));
+        const previewFile = path.join(PREVIEWS, `${setup.id}.json`);
+        let keepSaved = false;
+        if (!preview.available) {
+          try {
+            const saved = JSON.parse(fs.readFileSync(previewFile, 'utf8'));
+            keepSaved = !!(saved && saved.available);
+          } catch (_) { keepSaved = false; }   // nothing saved — write the reason
+        }
+        if (!keepSaved) {
+          atomicWrite(previewFile,
+            JSON.stringify({ ...preview, written_utc: new Date(now).toISOString() }));
+        }
         // Say out loud when a decision was NOT written down, and why. A
         // silently unrecorded period is exactly the hole this change closes;
         // replacing it with a quieter hole would be no improvement.

@@ -58,16 +58,60 @@ function aDecidedCallIsReadableBeforeItActs() {
   assert.deepStrictEqual(got.votes, [-1, -1, 0, 1], 'the member votes must come through');
 }
 
-function aSpentCallIsNeverShownAsCurrent() {
-  // The retired data/pilot/preview.json sat SIX DAYS stale. A leftover call
-  // rendered as "today's" is worse than an empty panel.
+function aCallStaysVisibleThroughItsOwnEntryHour() {
+  // THE BLIND WINDOW. The first cut expired a call the instant its entry hour
+  // arrived — which is when it matters most and is least visible: not filled
+  // yet, no decision row yet, owner watching. The screen went blank at the
+  // worst minute. A call past its entry is ACTING, not gone.
   const got = withPreview({
     available: true, side: 'LONG', per_member: [1, 1, 1, 1], quorum: 3,
     entry_utc: past(), written_utc: past(),
   }, () => view.loadPreview(SETUP.id));
-  assert.strictEqual(got.available, false,
-    'a call whose entry moment has passed must not render as the current call');
-  assert.strictEqual(got.spent, true, 'and the caller must be able to say WHY it is not showing');
+  assert.strictEqual(got.available, true,
+    'a call whose entry hour has arrived but has not filled must STILL be shown — '
+  + 'blanking here is the blind window this panel exists to close');
+  assert.strictEqual(got.acting, true, 'and it must be marked as acting, not pending');
+}
+
+function aCallAbandonedForADayIsNotTodaysCall() {
+  // The bound that replaces the clock-expiry: a file left by a dead producer
+  // must not read as today's call forever.
+  const old = new Date(Date.now() - 30 * 3600000).toISOString();
+  const got = withPreview({
+    available: true, side: 'LONG', per_member: [1, 1, 1, 1], quorum: 3,
+    entry_utc: old, written_utc: old,
+  }, () => view.loadPreview(SETUP.id));
+  assert.strictEqual(got.available, false, 'a day-old unrecorded call is abandoned, not current');
+  assert.strictEqual(got.abandoned, true, 'and the reason must be nameable');
+}
+
+function aRecordedDecisionSupersedesThePreview() {
+  // Once the call is on the record it IS that history row. Showing the preview
+  // as well would show one decision twice, in two places, disagreeing about
+  // whether it has happened. Driven through setupStatus with a real journal so
+  // this tests the rule and not a fixture.
+  const CHUNK = '2026-08-21T00:00:00.000Z';
+  const jf = process.env.GC_LIVE_JOURNAL;
+  const jpath = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'gcj-')), 'journal.jsonl');
+  fs.writeFileSync(jpath, JSON.stringify({
+    event: 'INTENT_SEEN', setup_id: SETUP.id, chunk_start: CHUNK,
+    side: 'SHORT', utc: '2026-08-25T01:08:00Z',
+  }) + '\n');
+  process.env.GC_LIVE_JOURNAL = jpath;
+  try {
+    const st = withPreview({
+      available: true, side: 'SHORT', per_member: [-1, -1, 0, 1], quorum: 3,
+      chunk_start: CHUNK, entry_utc: future(), written_utc: new Date().toISOString(),
+    }, () => view.setupStatus(SETUP));
+    assert.ok((st.decisions || []).some((d) => d.chunk_start === CHUNK),
+      'fixture sanity: the journal must produce a decision row for this window');
+    assert.strictEqual(st.preview, null,
+      'the preview must be dropped once its window has a recorded decision — otherwise the '
+    + 'same call shows twice, once as pending and once as history');
+  } finally {
+    if (jf === undefined) delete process.env.GC_LIVE_JOURNAL;
+    else process.env.GC_LIVE_JOURNAL = jf;
+  }
 }
 
 function theProducersOwnReasonIsPassedThrough() {
@@ -160,9 +204,28 @@ function undatedRowsSinkToTheBottom() {
   + 'place in the timeline');
 }
 
+function theProducerDoesNotEraseADecidedCall() {
+  // live-produce.js is a script, not a module, so this is a source assertion
+  // rather than a behavioural one — weaker, and said plainly. It exists because
+  // the bug it guards was invisible for the worst possible hour: computePreview
+  // reports "nothing to preview" one second past the entry hour, and writing
+  // that over the saved call blanked the screen exactly when the owner was
+  // watching for the entry.
+  const src = fs.readFileSync(path.join(ROOT, 'live-produce.js'), 'utf8');
+  const code = src.split('\n').filter((l) => !/^\s*\/\//.test(l)).join('\n');
+  assert.ok(/keepSaved/.test(code),
+    'the guard that stops an unavailable preview overwriting a decided call is gone — '
+  + 'the call will vanish from the screen at its entry hour again');
+  assert.ok(/if \(!keepSaved\)/.test(code),
+    'the write is no longer conditional on keepSaved');
+}
+
 module.exports = {
+  theProducerDoesNotEraseADecidedCall,
   aDecidedCallIsReadableBeforeItActs,
-  aSpentCallIsNeverShownAsCurrent,
+  aCallStaysVisibleThroughItsOwnEntryHour,
+  aCallAbandonedForADayIsNotTodaysCall,
+  aRecordedDecisionSupersedesThePreview,
   theProducersOwnReasonIsPassedThrough,
   amissingPreviewFileIsAStateNotACrash,
   theStatusEndpointActuallyCarriesThePreview,
