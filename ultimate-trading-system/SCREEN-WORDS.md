@@ -18,7 +18,7 @@ is the same fault wearing a disguise.
 
 ## Which screen this describes
 
-Generated from **b88fef4ae3b5 — what the box is serving**, not from the working tree.
+Generated from **150bfbae97e5 — what the box is serving**, not from the working tree.
 
 That distinction is the whole point. Between a commit and its deploy the
 two describe different screens, and on 2026-08-22 exactly that happened: a
@@ -44,7 +44,6 @@ deployed, and that is correct** - until then the owner cannot see it.
 - **History**
 - **Tune**
 - **Greenlight**
-- **Service**
 - **Help**
 
 Read from `TABS` in `public/construct.js`.
@@ -267,7 +266,7 @@ again. and asset. back be been below board cache cached comma-sep corrupt curren
 
 # Boards
 
-## What the controls are called (80)
+## What the controls are called (82)
 
 - `— pick a run —`
 - `— watch it on the Sweep section`
@@ -327,6 +326,7 @@ again. and asset. back be been below board cache cached comma-sep corrupt curren
 - `real / null rows`
 - `region`
 - `Replication —`
+- `Restart the service`
 - `Resume run`
 - `rows per page`
 - `save notes`
@@ -338,6 +338,7 @@ again. and asset. back be been below board cache cached comma-sep corrupt curren
 - `still to score`
 - `Survivor board — the promoted rows`
 - `that failed and get another go`
+- `the declared config on every asset`
 - `the inspect record, verbatim`
 - `the run itself`
 - `This run did not finish —`
@@ -354,7 +355,7 @@ again. and asset. back be been below board cache cached comma-sep corrupt curren
 
 _none_
 
-## Sentences the page prints (72)
+## Sentences the page prints (76)
 
 - Asset predictability — best to worst
 - KEY — for each asset: of all real-versus-null match-ups on HELD-BACK money, the share the real
@@ -401,8 +402,12 @@ _none_
 - everything recorded for this row, verbatim
 - no promoted rows (still running, or nothing survived)
 - h — this selection feeds Verify · Tune · Greenlight
+- Totalled by reading every recorded row of this run —
+- of them.
+- On a run this size that takes minutes, and while it runs nothing else on this page answers, so it is opened by hand rather than every time.
 - Menu grid: press a row's button — every execution permutation for that row with the plateau view (one setting moved at a time) on top.
 - the COMPLETE stored settings record for this run, verbatim (nothing invisible)
+- . Give it a few seconds, then reload.
 - ” cannot be picked up — nothing has been started.
 - already scored in full, kept as they are
 - older rows cannot be matched and will be scored again
@@ -429,10 +434,10 @@ _none_
 - one step away it falls apart, so distrust it. Money is TEST-WINDOW money, dollars per $100, the same as the grid
 - below.
 
-## Every word, flat (451)
+## Every word, flat (466)
 
 ```
-about accuracy Accuracy ACCURACY across-asset actually admits admits. again against agreement agreement/entry/hold ahead alike all alone already always-long an and another any anything apart are as Asset asset asset. assets at away back back. badge band be beat beat. been before behind below below. best better board board. box branch button by campaign can cannot cell cell. changes check checked chosen CHOSEN chunk claim clear Click coins collapse Columns combos committee comparable comparison COMPLETE config configs configuration configurations construction construction. CONTEXT context copies copy copy. cost count Counts counts crypto data Data dealt dealt-vote decision declared declared-cell Delete deleted deleted. Deleting denominator detail did distrust do dollar dollars drives dump each earning echoed edge edge. either empty end engine entries es every Every everything evidence exactly excluded. execution exists fail FAILED failed failures falls feeds files fingerprint finish finishes first First first-recorded FIXED flattering flatters for form from full geometry get go goes good got graded Greenlight Greenlight. grid grow has held HELD-BACK held-back here higher History honest how If in INCOMPLETE. independent indistinguishable INFERRED Inside inspect intended. into invisible is IS it It it. its itself judge judged kept KEPT. KEY knife last layout line load loading look looks looks. made make many marked marking marks match-ups matched matters may means measured measured. members menu Menu MICROSCOPE missing moment money Money money. move moved much named near-duplicates needle neighbouring Neighbours neighbours never next no none. not notes nothing null nulls number of of. older on once once-only one ONE one. ones only ONLY open Open opinions or order ordering other otherwise. out own p-value page pairwise panel participation pass per per-member permanently permutation permutations pick picked Picking planted plateau Plateau plus POINTS predictability press prev price profit-and-loss promote promoted proved purpose. QC-142 QC-7 queued quoted ranked Ranked ranking rather read reading real real-versus-null record recorded region register Reload remove removes Replication reporting rest result result. Resume row rows run run. running runs runs. same sample. save saved say saying says scans score scored SCREEN sealed search SEARCHED section section. see SELECT selected selection sentences service setting settings setup setups shape share showed showing shown shows similar sit sits Size slice slim small smaller so so. STAMP started. starts. statistics stay step still stored sturdy sturdy. survived Survivor sweep Sweep table taken tell test TEST-WINDOW than that That the The them them. then These they This this THIS time to together Tool tools top top. total touched traded trades Tune unavailable undone. unit units units. until up verbatim verdict Verify version view vote votes votes. vs watch way were what What where whether which while why widest width will window with without won. works worst yardstick yet yet. you Your your
+about accuracy Accuracy ACCURACY across-asset actually admits admits. again against agreement agreement/entry/hold ahead alike all alone already always-long an and another answers any anything apart are as Asset asset asset. assets at away back back. badge band be beat beat. been before behind below below. best better board board. box branch button by campaign can cannot cell cell. changes check checked chosen CHOSEN chunk claim clear Click coins collapse Columns combos committee comparable comparison COMPLETE config configs configuration configurations construction construction. CONTEXT context copies copy copy. cost count Counts counts crypto data Data dealt dealt-vote decision declared declared-cell Delete deleted deleted. Deleting denominator detail did distrust do dollar dollars drives dump each earning echoed edge edge. either else empty end engine entries es every Every everything evidence exactly excluded. execution exists fail FAILED failed failures falls feeds few files fingerprint finish finishes first First first-recorded FIXED flattering flatters for form from full geometry get Give go goes good got graded Greenlight Greenlight. grid grow hand has held HELD-BACK held-back here higher History honest how If in INCOMPLETE. independent indistinguishable INFERRED Inside inspect intended. into invisible is IS it It it. its itself judge judged kept KEPT. KEY knife last layout line load loading look looks looks. made make many marked marking marks match-ups matched matters may means measured measured. members menu Menu MICROSCOPE minutes missing moment money Money money. move moved much named near-duplicates needle neighbouring Neighbours neighbours never next no none. not notes nothing null nulls number of of. older on On once once-only one ONE one. ones only ONLY open Open opened opinions or order ordering other otherwise. out own p-value page pairwise panel participation pass per per-member permanently permutation permutations pick picked Picking planted plateau Plateau plus POINTS predictability press prev price profit-and-loss promote promoted proved purpose. QC-142 QC-7 queued quoted ranked Ranked ranking rather read reading real real-versus-null record recorded region register Reload reload. remove removes Replication reporting rest Restart result result. Resume row rows run run. running runs runs. same sample. save saved say saying says scans score scored SCREEN sealed search SEARCHED seconds section section. see SELECT selected selection sentences service setting settings setup setups shape share showed showing shown shows similar sit sits Size size slice slim small smaller so so. STAMP started. starts. statistics stay step still stored sturdy sturdy. survived Survivor sweep Sweep table taken takes tell test TEST-WINDOW than that That the The them them. then These they This this THIS time time. to together Tool tools top top. total Totalled touched traded trades Tune unavailable undone. unit units units. until up verbatim verdict Verify version view vote votes votes. vs watch way were what What where whether which while why widest width will window with without won. works worst yardstick yet yet. you Your your
 ```
 
 ---
@@ -775,83 +780,6 @@ aborted about against agree ALL and applied applies apply Apply are as at B. be 
 
 ```
 Activation activation. anchor and appears at be behind being best Boards both campaign can cell chain. changed config configs dash deactivation decision declared each engine ever ever. evidence evidentiary exact Existing fee first fit for found from frozen Greenlight GREENLIGHT greenlight greenlighted greenlights hand-built here is It it live means minted no none not nuked nuking on one Only out per predates priced record recorded. Records region required row row. run select selected sent setting sides starts tab test that the The then there. this to trade Trade under version was way. what WHO/WHEN/WHY whole why widest with yet
-```
-
----
-
-# Service
-
-## What the controls are called (34)
-
-- `" cannot be`
-- `A service can be alive with its`
-- `act on`
-- `alive, does not serve pages`
-- `alive, does not serve pages (`
-- `and nothing is`
-- `answered in`
-- `cannot be stopped from here —`
-- `does it answer`
-- `ed from here —`
-- `ing`
-- `is`
-- `Keep it on my list`
-- `memory`
-- `ms`
-- `narrow the list`
-- `of`
-- `on it now`
-- `on the machine shown`
-- `Read at`
-- `Read it again`
-- `Restart it`
-- `service`
-- `Service`
-- `service(s) took the connection and`
-- `show everything`
-- `Start it`
-- `state`
-- `Stop it`
-- `Take it off my list`
-- `The machine is asked about all`
-- `This tab is answered by`
-- `up for`
-- `your list —`
-
-## What the dropdowns offer (0)
-
-_none_
-
-## Sentences the page prints (23)
-
-- The service control did not answer, so nothing about this machine can be
-- shown. That control is a separate process from the one drawing this page, so this means it
-- is itself down — not that the trading service is.
-- Nothing has been changed. Reload to try again.
-- Service — what is running on this machine, and starting and stopping it
-- Everything here is read from the machine, and it is served by a different
-- process from the one that draws the rest of these pages. That is deliberate: when the
-- trading service stops answering, this tab still does.
-- Running is not the same as answering.
-- address open and still never reply, because the machine accepts the connection on its
-- behalf. The last column asks each one a real question and times the reply, which is the
-- one reading that tells those two apart.
-- Plenty of them are alive and do not serve pages at all — the remote login,
-- the mail service, the tunnel. Those say
-- wrong with them. The one that matters is
-- took the connection and said nothing
-- said nothing.
-- That is the state a restart is for.
-- every time; your list only decides which ones this table leads with.
-- Four cannot be stopped from here, and they are listed rather than hidden.
-- Each one is a way back: stopping it would leave no way to start anything again from this
-- screen. Starting them is allowed; stopping and restarting is not.
-- . Nothing has been done.
-
-## Every word, flat (172)
-
-```
-about accepts act address again again. alive all allowed and answer answered answering answering. anything apart. are as asked asks at back be because been behalf. by can cannot changed. column connection control decides deliberate did different do does does. done. down drawing draws each Each ed every Everything everything for for. Four from has here hidden. in ing is is. it its itself Keep last leads leave list listed login machine mail matters means memory ms my narrow never no not not. nothing Nothing nothing. now of off on one ones only open page pages pages. Plenty process question rather read Read reading real Reload remote reply rest restart Restart restarting running Running said same say screen. separate serve served Service service show shown shown. so Start start starting Starting state still Stop stopped stopping stops tab table Take tells than That that The the them them. these they this This those Those time times to took trading try tunnel. two up way what when which with with. would wrong your
 ```
 
 ---
