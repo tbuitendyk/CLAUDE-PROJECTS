@@ -24,8 +24,8 @@ node <<'JS'
 const db = require('better-sqlite3')('/opt/semi-auto-balancer/data/semi-auto-balancer.sqlite');
 const iso = (ts) => (ts ? new Date(ts).toISOString().replace('T', ' ').slice(0, 16) : '?');
 
-for (const a of db.prepare('SELECT id, venue, enabled, last_sync_at, last_sync_status, last_sync_note FROM exchange_accounts').all()) {
-  console.log(`== account ${a.id} (${a.venue}) enabled=${a.enabled} lastSync=${iso(a.last_sync_at)} status=${a.last_sync_status}`);
+for (const a of db.prepare('SELECT id, venue, enabled, auto_flows, last_sync_at, last_sync_status, last_sync_note FROM exchange_accounts').all()) {
+  console.log(`== account ${a.id} (${a.venue}) enabled=${a.enabled} auto_flows=${a.auto_flows} lastSync=${iso(a.last_sync_at)} status=${a.last_sync_status}`);
   try {
     const n = JSON.parse(a.last_sync_note || '{}');
     console.log(' unmapped:    ' + JSON.stringify(n.unmapped || []));
