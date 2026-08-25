@@ -18,7 +18,7 @@ is the same fault wearing a disguise.
 
 ## Which screen this describes
 
-Generated from **33b183b99d73 — what the box is serving**, not from the working tree.
+Generated from **f5920807d672 — what the box is serving**, not from the working tree.
 
 That distinction is the whole point. Between a commit and its deploy the
 two describe different screens, and on 2026-08-22 exactly that happened: a
@@ -781,11 +781,14 @@ Activation activation. anchor and appears at be behind being best Boards both ca
 
 # Service
 
-## What the controls are called (25)
+## What the controls are called (27)
 
 - `" cannot be`
 - `A service can be alive with its`
 - `act on`
+- `alive, does not serve pages`
+- `alive, does not serve pages (`
+- `and nothing is`
 - `answered in`
 - `cannot be stopped from here —`
 - `does it answer`
@@ -794,14 +797,13 @@ Activation activation. anchor and appears at be behind being best Boards both ca
 - `memory`
 - `ms`
 - `narrow the list`
-- `no answer`
 - `of`
 - `Read at`
 - `Read it again`
 - `Restart it`
 - `service`
 - `Service`
-- `service(s) are running but did not`
+- `service(s) took the connection and`
 - `shown`
 - `Start it`
 - `state`
@@ -813,7 +815,7 @@ Activation activation. anchor and appears at be behind being best Boards both ca
 
 _none_
 
-## Sentences the page prints (18)
+## Sentences the page prints (22)
 
 - The service control did not answer, so nothing about this machine can be
 - shown. That control is a separate process from the one drawing this page, so this means it
@@ -827,17 +829,21 @@ _none_
 - address open and still never reply, because the machine accepts the connection on its
 - behalf. The last column asks each one a real question and times the reply, which is the
 - one reading that tells those two apart.
-- answer.
+- Plenty of them are alive and do not serve pages at all — the remote login,
+- the mail service, the tunnel. Those say
+- wrong with them. The one that matters is
+- took the connection and said nothing
+- said nothing.
 - That is the state a restart is for.
 - Four cannot be stopped from here, and they are listed rather than hidden.
 - Each one is a way back: stopping it would leave no way to start anything again from this
 - screen. Starting them is allowed; stopping and restarting is not.
 - . Nothing has been done.
 
-## Every word, flat (140)
+## Every word, flat (155)
 
 ```
-about accepts act address again again. alive allowed and answer answer. answered answering answering. anything apart. are as asks at back be because been behalf. but by can cannot changed. column connection control deliberate did different does does. done. down drawing draws each Each ed Everything for for. Four from has here hidden. in ing is is. it its itself last leave list listed machine means memory ms narrow never no not not. nothing Nothing of on one open page pages. process question rather read Read reading real Reload reply rest restart Restart restarting running Running same screen. separate served Service service shown shown. so Start start starting Starting state still Stop stopped stopping stops tab tells than That that The the them these they this This those times to trading try two up way what when which with would
+about accepts act address again again. alive all allowed and answer answered answering answering. anything apart. are as asks at back be because been behalf. by can cannot changed. column connection control deliberate did different do does does. done. down drawing draws each Each ed Everything for for. Four from has here hidden. in ing is is. it its itself last leave list listed login machine mail matters means memory ms narrow never no not not. nothing Nothing nothing. of on one open page pages pages. Plenty process question rather read Read reading real Reload remote reply rest restart Restart restarting running Running said same say screen. separate serve served Service service shown shown. so Start start starting Starting state still Stop stopped stopping stops tab tells than That that The the them them. these they this This those Those times to took trading try tunnel. two up way what when which with would wrong
 ```
 
 ---
