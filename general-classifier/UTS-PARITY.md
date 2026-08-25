@@ -403,12 +403,7 @@ claim that was never made is not integrity checking — it is manufacturing drif
   per period wins, so it is upgraded in place, not duplicated). Intent ships.
 - box confirms — `INTENT_SEEN`, and the journal path takes the row over.
 
-**Known wart, NOT fixed here (no permission asked for it).** The two render
-paths use different words for the same outcome: the decision-log path says
-`stand down`, the box-journal path says `flat — no trade`. So the row will
-change its wording about an hour after it first appears. That is the
-vocabulary drift the owner already spotted between the 2026-08-17 and
-2026-08-25 rows. Unifying them is a separate change and is not in this one.
+**The wording split that went with this** is fixed in the fifth pass below.
 
 **A rule worth keeping:** one flag answering two questions is a bug waiting for
 the two answers to differ. They differed the moment the price stopped being
@@ -452,6 +447,80 @@ required for both.
 >    LOCATE that condition (match `if (...) {` followed by `const stamp =`) and
 >    assert about the extracted text. Pinning the literal has now misfired twice.
 > 6. Change nothing else, do not deploy. Report and stop.
+
+---
+
+### 2026-08-25 (fifth pass) — one outcome, one word: "stand down" always
+
+**What the owner said:** *'fix the wording ... "stand down" always. i don't know
+why you changed this but change it back to how it was.'*
+
+**On the record about the premise:** both phrases were born in the same commit,
+`048f9b3`, and never agreed with each other — so this is not a reversion of a
+later change, it is a split that shipped that way and was never noticed until
+the row started appearing from both sources on the same day. Saying so because
+the parity log is only useful if it is accurate about what happened.
+
+**The split.** The decision history is assembled from TWO sources and each named
+the same outcome differently:
+
+| source | when it supplies the row | said |
+|---|---|---|
+| the profile's own decision log | immediately, at decision time | `stand down` |
+| the box journal's `INTENT_SEEN` | once the box confirms, ~1h later | `flat — no trade` |
+
+So a declined day appeared reading `stand down` and then changed to
+`flat — no trade` an hour later, with nothing about the day having changed. On a
+screen whose whole job is to be read for differences, two words for one outcome
+makes the reader ask what changed when nothing did.
+
+**Files changed**
+
+| file | change |
+|---|---|
+| `lib/live/view.js` | the `INTENT_SEEN` path emits `stand down` for a FLAT, matching the decision-log path. One line; the rest is why. |
+| `tests/test-standdowns.js` | three checks, two of them behavioural: both paths are driven through `deriveSetup` and their fates compared to each other, not just to a literal. |
+
+**A rule worth keeping:** when two code paths render the same fact, the test
+asserts they AGREE WITH EACH OTHER, not merely that each matches a string. A
+test per path lets both drift together to something wrong; a test across paths
+cannot.
+
+**Defect found, NOT fixed (no permission asked).** `public/trading.html` line
+620 defines `fateTxt()`, which maps both `'stand down'` and `'flat — no trade'`
+to the string `'no trade taken'`. It is **never called** — the outcome column
+renders `dec.fate` raw (line 830), which is why the owner sees the raw words at
+all. Left in place, but it is a trap: whoever wires it up will silently replace
+the word the owner just made a rule of. The fix is either to delete it or to
+make it return `'stand down'` unchanged. Owner's call.
+
+---
+
+> **PROMPT FOR UTS — one outcome, one word: "stand down" always**
+>
+> 1. `lib/live/view.js` — in the `case 'INTENT_SEEN':` block, change
+>    `fate: e.side === 'FLAT' ? 'flat — no trade' : 'seen',` to
+>    `fate: e.side === 'FLAT' ? 'stand down' : 'seen',`. The decision-log path
+>    further down already says `stand down`; leave it alone. The retired phrase
+>    `'flat — no trade'` must not remain anywhere in the file's live code.
+> 2. `tests/test-standdowns.js` — add `aStandDownIsCalledAStandDownByEveryPath`.
+>    It must be BEHAVIOURAL, not a source grep: call
+>    `view.deriveSetup([], 'a', [{chunk_start, side:'FLAT', ...}])` for the
+>    decision-log path and
+>    `view.deriveSetup([{event:'INTENT_SEEN', setup_id:'a', chunk_start, side:'FLAT', ...}], 'a')`
+>    for the box path, assert each row's `fate === 'stand down'`, AND assert the
+>    two equal each other — that third assertion is the one that catches a future
+>    drift, because a per-path literal check passes while both drift together.
+> 3. Add `aTradedDayIsNotCalledAStandDown` (a SHORT `INTENT_SEEN` must NOT report
+>    `stand down`) — without it, hardcoding the phrase satisfies "stand down
+>    always" and destroys the column — and
+>    `theRetiredFlatWordingIsGoneFromTheRenderedText`. Register all three in the
+>    module exports and watch each fail against its own fault.
+> 4. Check whether your `public/trading.html` also carries the unused `fateTxt()`
+>    at ~line 620 mapping both phrases to `'no trade taken'`. It is dead code
+>    (the outcome cell renders `dec.fate` raw), so it changes nothing on screen —
+>    report it, do not remove it without the owner saying so.
+> 5. Change nothing else, do not deploy. Report and stop.
 
 ---
 

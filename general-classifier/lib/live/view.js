@@ -204,7 +204,18 @@ function deriveSetup(events, setupId, extraDecisions = []) {
           votes: e.per_member || null, quorum: e.quorum ?? null,
           decision_price: e.decision_price ?? null,
           input_hash: e.input_hash || null,
-          fate: e.side === 'FLAT' ? 'flat — no trade' : 'seen',
+          // ONE OUTCOME, ONE WORD (owner, 2026-08-25: '"stand down" always').
+          //
+          // This path and the decision-log path below both describe a day the
+          // committee declined, and they used two different phrases for it.
+          // They were born together in 048f9b3 and never agreed, so the SAME
+          // stand-down read as 'stand down' when it came off the profile's own
+          // log and 'flat — no trade' about an hour later once the box confirmed
+          // it — one row, two words, changing under the owner while they watched.
+          // Two words for one outcome is not a style question on a screen whose
+          // job is to be read for differences: it makes the reader ask what
+          // changed when nothing did.
+          fate: e.side === 'FLAT' ? 'stand down' : 'seen',
         };
         break;
       case 'SETUP_HALT_SET':

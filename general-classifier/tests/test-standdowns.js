@@ -143,6 +143,63 @@ function paperAndLiveAreTreatedIdentically() {
     `the produce loop reads setup.state ${hits} time(s); the paper flag belongs to the intent builder, not here`);
 }
 
+function aStandDownIsCalledAStandDownByEveryPath() {
+  // OWNER, 2026-08-25: '"stand down" always'. The decision history is built from
+  // TWO sources — the profile's own decision log, and the box journal's
+  // INTENT_SEEN once the box confirms — and they used different words for the
+  // same outcome. So a declined day appeared reading 'stand down' and then
+  // changed to 'flat — no trade' about an hour later when the confirmation
+  // arrived. One row, two words, changing under the owner while they watched it.
+  //
+  // Behavioural on purpose: it drives BOTH paths through deriveSetup and reads
+  // the fate each produces, so it cannot be satisfied by the phrase merely
+  // existing somewhere in the file.
+  const view = require(path.join(ROOT, 'lib', 'live', 'view'));
+  const CH = '2026-08-25T00:00:00.000Z';
+
+  // (1) the profile's own decision log, before the box has seen anything
+  const fromLog = view.deriveSetup([], 'a',
+    [{ chunk_start: CH, side: 'FLAT', per_member: [1, -1, 0, 0], quorum: 1,
+      decision_price: null, produced_utc: CH }]);
+  assert.strictEqual(fromLog.decisions.length, 1, 'the logged stand-down produced no row at all');
+  assert.strictEqual(fromLog.decisions[0].fate, 'stand down',
+    `the decision-log path calls a stand-down "${fromLog.decisions[0].fate}"`);
+
+  // (2) the box journal, after the box has confirmed the same period
+  const fromBox = view.deriveSetup(
+    [{ event: 'INTENT_SEEN', setup_id: 'a', chunk_start: CH, side: 'FLAT',
+      per_member: [1, -1, 0, 0], quorum: 1, utc: CH }], 'a');
+  assert.strictEqual(fromBox.decisions.length, 1, 'the confirmed stand-down produced no row at all');
+  assert.strictEqual(fromBox.decisions[0].fate, 'stand down',
+    `the box-journal path calls a stand-down "${fromBox.decisions[0].fate}"`);
+
+  // (3) and the SAME period must not change its wording when the box confirms it
+  assert.strictEqual(fromLog.decisions[0].fate, fromBox.decisions[0].fate,
+    'the two paths disagree, so a row will change its wording an hour after it appears');
+}
+
+function aTradedDayIsNotCalledAStandDown() {
+  // The fault injection for the check above: 'stand down' must be the word for
+  // FLAT specifically, not the word for everything. Hardcoding it would satisfy
+  // "stand down always" and destroy the column.
+  const view = require(path.join(ROOT, 'lib', 'live', 'view'));
+  const CH = '2026-08-24T00:00:00.000Z';
+  const traded = view.deriveSetup(
+    [{ event: 'INTENT_SEEN', setup_id: 'a', chunk_start: CH, side: 'SHORT',
+      per_member: [-1, -1, 0, 1], quorum: 1, utc: CH }], 'a');
+  assert.notStrictEqual(traded.decisions[0].fate, 'stand down',
+    'a SHORT is being reported as a stand-down — the outcome column no longer distinguishes '
+    + 'a day that traded from a day that declined');
+}
+
+function theRetiredFlatWordingIsGoneFromTheRenderedText() {
+  // 'flat — no trade' is retired. It must not come back through either producer.
+  const src = fs.readFileSync(path.join(ROOT, 'lib', 'live', 'view.js'), 'utf8');
+  const live = src.split('\n').filter((l) => !/^\s*\/\//.test(l)).join('\n');
+  assert.ok(!/'flat — no trade'/.test(live),
+    'the retired wording is being produced again by lib/live/view.js');
+}
+
 module.exports = {
   aDeclinedDayIsRecordedNotDiscarded,
   aStandDownIsRecordedTheMomentItIsDecided,
@@ -153,4 +210,7 @@ module.exports = {
   aPricelessIntentIsNeverShipped,
   notRecordingIsSaidOutLoud,
   paperAndLiveAreTreatedIdentically,
+  aStandDownIsCalledAStandDownByEveryPath,
+  aTradedDayIsNotCalledAStandDown,
+  theRetiredFlatWordingIsGoneFromTheRenderedText,
 };
