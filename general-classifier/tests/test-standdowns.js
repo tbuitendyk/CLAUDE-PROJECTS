@@ -42,8 +42,13 @@ function aRecordIsNeverWrittenWithoutItsPrice() {
 function notRecordingIsSaidOutLoud() {
   assert.ok(/decision NOT recorded yet/.test(PRODUCE),
     'a period that went unrecorded is silent — the hole was closed by making a quieter hole');
-  assert.ok(/recorded: !!recordable/.test(code),
-    'the per-setup result does not report whether the decision was written down');
+  // TIGHTENED 2026-08-25. This pinned `!!recordable`, which reports whether the
+  // decision COULD be written, not whether it WAS. Those came apart the moment
+  // shipping was made fail-closed: an intent must only go out when the record
+  // actually landed, so the result has to say what happened, not what was
+  // possible. Same guarantee, stricter subject.
+  assert.ok(/recorded: !!recordedOk/.test(code),
+    'the per-setup result does not report whether the decision was actually written down');
 }
 
 function paperAndLiveAreTreatedIdentically() {
