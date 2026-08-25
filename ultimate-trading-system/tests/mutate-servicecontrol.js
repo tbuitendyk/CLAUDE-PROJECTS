@@ -1,47 +1,30 @@
 #!/usr/bin/env node
-// DOES THE SERVICE CONTROL'S SAFETY NET ACTUALLY CATCH ANYTHING?
+// DOES THE RESTART BUTTON'S SAFETY NET ACTUALLY CATCH ANYTHING?
 //
 //   node tests/mutate-servicecontrol.js              every guard
 //   node tests/mutate-servicecontrol.js <part-of-a-test-name>   just those
 //
-// The service control runs as root and starts and stops services, so almost
-// every test written for it is a refusal: this may not be stopped, that name may
-// not be passed on, nothing happens without the name given twice. A refusal test
-// is the easiest kind to get wrong, because it passes whether or not the guard
-// it names is there — the request fails for some other reason and the test is
-// satisfied.
+// The control runs as root. Most of what is written about it is a refusal, and
+// a refusal test is the easiest kind to get wrong: it passes whether or not the
+// guard it names is there, because the request failed for some other reason.
 //
 // So each guard is deleted in turn and the suite is run against the damage. The
-// test that names that guard has to FAIL. One that does not is not protecting
-// anything, and it is worse than nothing because it reads as protection.
+// test that names that guard has to FAIL. One that does not is protecting
+// nothing, and it is worse than nothing because it reads as protection.
 //
-// It has found two so far, and both were the same mistake wearing different
-// clothes: a test that checks something OTHER than the thing it is named after.
+// IT HAS FOUND THREE, and every one was the same mistake: something checking
+// other than the thing it is named after.
 //
-//   * `aNameThatIsNotAServiceNameNeverReachesSystemctl` accepted "either 400 or
-//     404" — so with the name-shape check deleted, a name like
-//     "nginx.service; rm -rf /" simply fell through to the
-//     does-this-machine-have-it check, was refused by that instead, and the test
-//     noticed nothing. It now asserts WHICH refusal.
+//   * a refusal test that accepted "either of two answers", so deleting one of
+//     the two guards changed nothing it could see;
+//   * a test that GREPPED the page's source for the words it expected instead
+//     of running it, so the words being present somewhere else satisfied it;
+//   * and this harness itself, which broke only the FIRST copy of a guard in a
+//     file. The moment the same check appeared twice it started breaking the
+//     wrong one, and blamed the test.
 //
-//   * the test on the answer column READ the page's source for the words it
-//     expected instead of running it. With the red branch's condition changed
-//     from "took the connection and said nothing" to "anything that did not
-//     answer" — which puts ssh, the mail service and the tunnel back in red —
-//     the words it was grepping for were still there, elsewhere in the same
-//     function, and it passed. It now lifts the function out of the page, calls
-//     it, and asserts the markup that comes back.
-//
-// And once in ITSELF, which is the same mistake a third time. It broke only the
-// FIRST copy of a guard in a file. The moment the same check was written a
-// second time elsewhere in the file it started breaking the wrong copy — the
-// real one still stood, the suite stayed green, and it blamed the test. It
-// breaks every copy now and says how many it broke.
-//
-// This is deliberately not part of `npm test`: it runs the whole suite once per
-// guard. Run it after changing anything in service-control/.
-//
-// It restores every file it touches, including when a run throws.
+// Run it after changing anything in service-control/. It restores every file it
+// touches, including when a run throws.
 const fs = require('fs');
 const path = require('path');
 const { execFileSync } = require('child_process');
@@ -51,34 +34,37 @@ const SVC = path.join(ROOT, 'service-control', 'server.js');
 const CJS = path.join(ROOT, 'public', 'construct.js');
 const UNIT = path.join(ROOT, 'service-control', 'uts-service-control.service');
 
-// file, the text to break, what to break it to, and the test that must notice.
+// file, the text to break, what to break it to, the test that must notice, and
+// what it would cost if nobody did.
 const GUARDS = [
-  [SVC, "['nginx.service', 'this is the web server", "['nginx-BROKEN.service', 'this is the web server",
-    'theWaysBackCannotBeStoppedOrRestarted', 'a way back can be stopped'],
-  [SVC, 'if (confirm !== unit) {', 'if (false) {',
-    'nothingHappensUnlessTheNameIsGivenTwice', 'one mistyped request can stop a service'],
-  [SVC, 'if (!UNIT_RE.test(unit))', 'if (false && !UNIT_RE.test(unit))',
-    'aNameThatIsNotAServiceNameNeverReachesSystemctl', 'any text at all is treated as a service name'],
-  [SVC, 'if (!found) return { code: 404', 'if (false) return { code: 404',
-    'aServiceThisMachineDoesNotHaveIsTurnedAwayByName', 'a name this machine has never heard of is passed on'],
+  [SVC, "const UNIT = process.env.UTS_UNIT || 'ultimate-trading-system.service';",
+    "const UNIT = process.env.UTS_UNIT || 'nginx.service';",
+    'restartingTouchesTheTradingServiceAndNothingElse', 'the button restarts the wrong service'],
+  // THIS ONE ADDS THE DANGER BACK rather than deleting a guard, because there
+  // is no guard to delete: the safety is that no unit can be NAMED in a
+  // request, and an absence cannot be mutated away. So the mutation puts the
+  // name back — which is exactly the regression worth fearing — and the test
+  // has to notice that a body can now aim it somewhere else.
+  [SVC, '    req.resume();\n    return restart().then((r) => send(res, r.code, r.body)).catch((e) => send(res, 500, { error: e.message }));',
+    "    let raw = '';\n    req.on('data', (c) => { raw += c; });\n    req.on('end', () => {\n"
+    + "      let b = {}; try { b = JSON.parse(raw || '{}'); } catch (_) { b = {}; }\n"
+    + "      if (b.unit) { run('systemctl', ['restart', b.unit]).then(() => send(res, 200, { ok: true, unit: b.unit, was: '?', now: '?' })); return; }\n"
+    + '      restart().then((r) => send(res, r.code, r.body)).catch((e) => send(res, 500, { error: e.message }));\n'
+    + '    });\n    return undefined;',
+    'nothingSentInCanAimItAtAnotherService', 'a request body can aim the restart at any service on the machine'],
   [SVC, 'if (want !== PUBLIC_DIR && !want.startsWith(PUBLIC_DIR + path.sep))', 'if (false)',
     'itCannotBeTalkedIntoServingAFileOutsideThePagesFolder', 'any file on the machine can be read out'],
-  [SVC, 'return send(res, 405,', 'return servePublic(res, url); // broken on purpose\n  return send(res, 405,',
+  [SVC, "return send(res, 405,", "return servePublic(res, url); // broken on purpose\n  return send(res, 405,",
     'itAnswersNothingButTheTwoThingsItIsFor', 'it answers methods it was never meant to'],
   [SVC, "url = url.replace(/^\\/svc(?=\\/|$)/, '') || '/';", "url = url || '/';",
-    'theSameRequestWorksFromBothAddresses', 'the tab works from one address and silently not the other'],
-  [CJS, "apiOr('svc/api/services'", "apiOr('api/services'",
-    'theServiceTabAsksTheSeparateProcessAndNotTheMainApp', 'the tab asks the very service that will be down'],
+    'theSameRequestWorksFromBothAddresses', 'the button works from one address and silently not the other — and the other is the one used when the service is down'],
+  [CJS, "tryPost('svc/api/restart'", "tryPost('api/restart'",
+    'theButtonGoesThroughTheSeparateProgramAndNotTheMainApp', 'the button asks the very service that will be down'],
   [UNIT, 'Restart=always', 'Restart=on-failure',
     'theControlsOwnUnitAlwaysRestartsAndIsTiny', 'the one way back does not come back on its own'],
-  [SVC, "return done({ answered: false, state: 'spoke'", "return done({ answered: false, state: 'silent', wrong: true",
-    'somethingAliveThatDoesNotServePagesIsNotReportedAsAFault', 'ssh and the mail service go red every time the tab is opened'],
-  [CJS, "a.state === 'silent'", '!a.answered',
-    'theScreenShowsOnlyTheOneStateThatIsAFaultAsAFault', 'everything that is not a web page is shown as broken'],
-  [SVC, 'const rows = units.map((u) => {', 'const rows = units.filter((u) => !watching.length || watching.includes(u.unit)).map((u) => {',
-    'keepingAListNarrowsWhatIsSHOWNAndNeverWhatIsREPORTED', "the owner's list quietly becomes the only thing the machine will report"],
-  [CJS, 'const onlyKept = kept > 0 && !svcShowAll;', 'const onlyKept = !svcShowAll;',
-    'anEmptyListShowsEverythingRatherThanNothing', 'an empty list draws an empty table, which reads as nothing running'],
+  [SVC, "const server = http.createServer((req, res) => {",
+    "const listUnits = 1; const watching = 1;\nconst server = http.createServer((req, res) => {",
+    'itHasNotGrownBackIntoAServiceBrowser', 'it grows back into the service browser that was thrown out'],
 ];
 
 const only = process.argv[2] || '';
@@ -93,11 +79,7 @@ for (const [file, from, to, testName, consequence] of GUARDS) {
     missed++;
     continue;
   }
-  // EVERY OCCURRENCE, not the first. This used to break only the first, and the
-  // moment the same guard was written a second time somewhere else in the file
-  // the harness started breaking the wrong copy: the real one still stood, the
-  // suite stayed green, and it reported the guard as unchecked when the fault
-  // was its own. Caught by exactly that happening.
+  // EVERY occurrence, not the first — see the header.
   fs.writeFileSync(file, orig.split(from).join(to));
   let out = '';
   try {
@@ -107,8 +89,7 @@ for (const [file, from, to, testName, consequence] of GUARDS) {
   } finally {
     fs.writeFileSync(file, orig);
   }
-  const caught = new RegExp(`FAIL[^\\n]*${testName}`).test(out);
-  if (caught) {
+  if (new RegExp(`FAIL[^\\n]*${testName}`).test(out)) {
     console.log(`ok    ${testName}${hits > 1 ? `  (${hits} copies of that guard broken)` : ''}`);
   } else {
     missed++;
