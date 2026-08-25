@@ -80,8 +80,8 @@ systemctl restart "${SERVICE_NAME}"
 sleep 2
 
 echo "==> Does it answer"
-if curl -sf --max-time 20 "http://127.0.0.1:${PORT}/api/services" -o /tmp/uts-svc-check.json; then
-  echo "    yes: $(python3 -c 'import json;d=json.load(open("/tmp/uts-svc-check.json"));print(len(d["units"]),"service(s) listed,",sum(1 for u in d["units"] if u["ports"]),"holding a port")' 2>/dev/null || echo 'answered')"
+if curl -sf --max-time 20 "http://127.0.0.1:${PORT}/api/state" -o /tmp/uts-svc-check.json; then
+  echo "    yes: $(python3 -c 'import json;d=json.load(open("/tmp/uts-svc-check.json"));print(d["unit"],"is",d["active"],"and",("answering in %s ms"%d["ms"]) if d.get("answering") else ("NOT answering: "+str(d.get("why"))))' 2>/dev/null || echo 'answered')"
 else
   echo "    NO -- it did not answer. Leaving nginx alone; nothing is routed to a service that does not work." >&2
   systemctl --no-pager --lines 20 status "${SERVICE_NAME}" || true
