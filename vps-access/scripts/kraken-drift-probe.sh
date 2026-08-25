@@ -55,6 +55,7 @@ node <<'JS'
     return all;
   }
 
+  await client.fetchBalances(); // loads the asset-alias meta so normalizeCode works
   const ledger = await pageAll('Ledgers', { start: SINCE / 1000 }, 'ledger');
   // per-asset per-type net (amount - fee = true balance effect)
   const byAssetType = new Map();
@@ -71,7 +72,6 @@ node <<'JS'
   console.log(`== ledger entries since Jul 17: ${ledger.length} ==`);
   const assets = [...new Set([...byAssetType.keys()].map((k) => k.split('|')[0]))].sort();
   for (const a of assets) {
-    if (!WATCH.has(a)) continue;
     const parts = [...byAssetType.entries()].filter(([k]) => k.startsWith(a + '|'))
       .map(([k, v]) => `${k.split('|')[1]}=${+v.toFixed(8)}`).join(' ');
     console.log(`  ${a}: ${parts}`);
@@ -96,7 +96,7 @@ node <<'JS'
   for (const t of missing.slice(0, 8)) console.log(`  MISSING ${t.id} ${new Date(t.ts).toISOString().slice(0, 16)} ${t.pair} ${t.side} vol-deltas=${JSON.stringify(t.deltas)}`);
 
   console.log('\n== per-asset: ledger-trade-net vs TradesHistory-normalized net (fee-model check) ==');
-  for (const a of ['pol', 'sc', 'usd', 'fil']) {
+  for (const a of ['pol', 'sc', 'usd', 'fil', 'qtum']) {
     const ledgerTrade = [...byAssetType.entries()].filter(([k]) => k.startsWith(a + '|trade')).reduce((s, [, v]) => s + v, 0);
     const th = venueNet.get(a) || 0;
     const ap = applied.get(a) || 0;
