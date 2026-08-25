@@ -1627,13 +1627,22 @@ async function drawBoards() {
         <b style="color:var(--warn)">This run did not finish — ${esc(doc.status)}.</b>
         <div style="margin-top:.3rem">${esc(doc.error || 'no reason was recorded')}</div></div>` : ''}
       ${doc.description || (doc.params && doc.params.description) ? `<div class="panel note">${esc(doc.description || doc.params.description)}</div>` : ''}
-      <div class="panel"><div class="row" style="align-items:flex-start">
-        <label class="f" style="flex:1">notes — why this run exists, what it showed, what it cost
-          <textarea id="bNotes" rows="3" style="width:100%;font:inherit" ${doc.status === 'running' ? 'disabled' : ''}>${esc(doc.notes || '')}</textarea></label>
-        <button id="bNotesSave" ${doc.status === 'running' ? 'disabled title="notes save after the run finishes — the engine refuses writes while it computes"' : ''}>save notes</button>
-        <button id="bCopySettings" title="fill the Sweep form with THIS run's stored settings — universe, sizes, data range, chunk shape, decision, band, permutes, layout, null boards, trailing, min trades, promote K and the declared config. Nothing launches; the form is just set so a re-run is the same run. The description is NOT copied — a re-run states its own purpose.">copy settings into the form</button>
-        <span id="bNotesMsg" class="note">${doc.notesEditedAt ? `last edited ${esc(String(doc.notesEditedAt).slice(0, 16))}` : ''}</span>
-      </div></div>
+      ${''/* THE BUTTONS LINE UP WITH THE TOP OF THE NOTES BOX (owner order,
+      2026-08-25; standing RULE FOUR). They used to sit in one row with the
+      captioned box, top-aligned to the ROW — which is the top of the caption,
+      one text line above the box they belong to. The caption now sits on its
+      own line (still the box's label, tied by for=), and the box and its
+      buttons share a row whose tops meet by construction, with nothing
+      nudged. */}
+      <div class="panel">
+        <label class="f" for="bNotes">notes — why this run exists, what it showed, what it cost</label>
+        <div class="row" style="align-items:flex-start;margin-top:.15rem">
+          <textarea id="bNotes" rows="3" style="flex:1;font:inherit" ${doc.status === 'running' ? 'disabled' : ''}>${esc(doc.notes || '')}</textarea>
+          <button id="bNotesSave" ${doc.status === 'running' ? 'disabled title="notes save after the run finishes — the engine refuses writes while it computes"' : ''}>save notes</button>
+          <button id="bCopySettings" title="fill the Sweep form with THIS run's stored settings — universe, sizes, data range, chunk shape, decision, band, permutes, layout, null boards, trailing, min trades, promote K and the declared config. Nothing launches; the form is just set so a re-run is the same run. The description is NOT copied — a re-run states its own purpose.">copy settings into the form</button>
+          <span id="bNotesMsg" class="note">${doc.notesEditedAt ? `last edited ${esc(String(doc.notesEditedAt).slice(0, 16))}` : ''}</span>
+        </div>
+      </div>
       ${(() => {
         // THE RUN'S IDENTITY. plan is the units equation written so it equals
         // itself; dataManifest is the fingerprint of every candle file the run
