@@ -1688,9 +1688,9 @@ async function drawBoards() {
       ${assetSummary}
       <div class="panel"><h3 style="margin-top:0">Survivor board — the promoted rows ${hasHold ? '(test window; held-back judges)' : '— NOTHING WAS HELD BACK'}</h3>
       ${hasHold ? '' : '<p class="note"><b>This run held nothing back.</b> Every dollar below is from the window the settings were CHOSEN on, so it flatters itself by construction and cannot say whether anything works out of sample. The null tools are unavailable for this run.</p>'}
-      <p class="note">source: the run's kept top rows — a display list capped at board rows, first-pass and promoted rows
-        together. The COMPLETE records behind it are the scored rows (every unit of the first pass) and one full row per
-        promoted unit of the second pass; nothing authoritative lives only on this capped list.</p>
+      <p class="note">source: the run's kept top rows — a display list capped at the length chosen on Sweep, first-pass
+        and promoted rows together. The COMPLETE records behind it are the scored rows (every unit of the first pass) and
+        one full row per promoted unit of the second pass; nothing authoritative lives only on this capped list.</p>
       <p class="note">KEY — setup: traded + context coins; shape: chunk geometry · decision · band; cell: agreement/entry/hold;
         trades: entries in the test window; test $: profit-and-loss in dollars on the window the settings were CHOSEN on
         (flattering by construction); held-back $: the once-only look that matters; vs nulls: how many of the row's dealt-vote
