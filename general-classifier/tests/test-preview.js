@@ -218,7 +218,7 @@ function theProducerDoesNotReshipAPeriodTheBoxHasSeen() {
   // Tight on purpose: /!alreadySeen/ also matches inside `!!alreadySeen`, so the
   // first version of this check passed with the guard torn out. Assert the
   // SHIPPING CONDITION itself.
-  assert.ok(/out\.actionable && out\.intent && !alreadySeen\)/.test(code),
+  assert.ok(/&& !alreadySeen\)\s*\{/.test(code),
     'the intent write is no longer gated on alreadySeen — re-offers will ship again');
 }
 
@@ -232,6 +232,34 @@ function aFlatIntentIsStillShippedOnItsFirstPass() {
   assert.ok(!/side\s*!==\s*['"]FLAT['"]/.test(code),
     'a FLAT call must NOT be filtered out of shipping — it is how a stand-down reaches the '
   + 'box and becomes a row in the decision history');
+}
+
+function aFlatCallFetchesItsEntryPriceLikeAnyOther() {
+  // THE REASON TODAY'S ROW WAS MISSING. The live entry-open fetch was gated on
+  // `call !== 0`, so a FLAT call never tried for its price. A decision is only
+  // recorded when decision_price is non-null, and the box rejects a priceless
+  // intent (INTENT_INVALID problems:["decision_price"] — twice on 2026-08-25).
+  // So a stand-down was recordable by NEITHER path until its entry candle
+  // closed and cached an hour later: decided 00:00, invisible until 02:08.
+  const src = fs.readFileSync(path.join(ROOT, 'lib', 'live', 'signal.js'), 'utf8');
+  const code = src.split('\n').filter((l) => !/^\s*\/\//.test(l)).join('\n');
+  assert.ok(!/call !== 0 && entryOpen == null && typeof opts\.liveOpenFetcher/.test(code),
+    'the live entry-open fetch is gated on the call being non-FLAT again — a stand-down will '
+  + 'go unpriced, unrecorded and unshippable until its candle caches');
+  assert.ok(/if \(entryOpen == null && typeof opts\.liveOpenFetcher === 'function'\)/.test(code),
+    'the fetch must run whenever the price is missing, whichever way the committee voted');
+}
+
+function noDecisionRecordMeansNoShippedIntent() {
+  // The block comment has always claimed "FAIL CLOSED: no decision record, no
+  // shipped intent" and the code only honoured it when the record WRITE threw.
+  // An unrecordable decision shipped anyway and the box threw it away.
+  const src = fs.readFileSync(path.join(ROOT, 'live-produce.js'), 'utf8');
+  const code = src.split('\n').filter((l) => !/^\s*\/\//.test(l)).join('\n');
+  assert.ok(/recordedOk/.test(code), 'the recorded-ok flag is gone');
+  assert.ok(/out\.actionable && out\.intent && recordedOk && !alreadySeen\)/.test(code),
+    'the intent write is not gated on the decision actually having been recorded — '
+  + 'priceless intents will ship and be rejected as INTENT_INVALID again');
 }
 
 function theProducerDoesNotEraseADecidedCall() {
@@ -252,6 +280,8 @@ function theProducerDoesNotEraseADecidedCall() {
 
 module.exports = {
   theProducerDoesNotEraseADecidedCall,
+  aFlatCallFetchesItsEntryPriceLikeAnyOther,
+  noDecisionRecordMeansNoShippedIntent,
   theProducerDoesNotReshipAPeriodTheBoxHasSeen,
   aFlatIntentIsStillShippedOnItsFirstPass,
   aDecidedCallIsReadableBeforeItActs,

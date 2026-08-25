@@ -299,6 +299,65 @@ against exactly that wrong fix.
 
 ---
 
+### 2026-08-25 (third pass) — why a FLAT day had no row at all
+
+**The chain, end to end.** The committee decided FLAT at 00:00. The row never
+appeared, and the Incidents panel said why:
+
+```
+01:30:05  INTENT_INVALID  {"problems":["decision_price"]}
+01:20:04  INTENT_INVALID  {"problems":["decision_price"]}
+```
+
+1. `signal.js` gated the live entry-open fetch on `call !== 0`, so a FLAT call
+   never tried for its price — the reasoning being that a stand-down places no
+   order, so the price does not matter. It matters for the RECORD.
+2. `live-produce.js` records a decision only when `decision_price` is non-null
+   (correctly — a null price would manufacture a reproduce-check break once the
+   candle caches). So the FLAT decision was not recorded.
+3. It shipped the intent anyway. The block comment has always read "FAIL CLOSED:
+   no decision record, no shipped intent", but that was only enforced when the
+   record *write threw*; an unrecordable decision shipped regardless.
+4. The box rejected the priceless intent — `INTENT_INVALID`, no `INTENT_SEEN`.
+5. Neither path could produce a history row until the 01:00 candle closed and
+   cached, roughly two hours after the call was known.
+
+**Files changed**
+
+| file | change |
+|---|---|
+| `lib/live/signal.js` | the live entry-open fetch runs whenever the price is missing, whichever way the committee voted. |
+| `live-produce.js` | `recordedOk` tracks whether the decision was actually written; an intent ships only if it was. The stated fail-closed rule is now the enforced one. |
+| `tests/test-preview.js` | 16 checks, each watched failing. |
+
+**A rule worth keeping:** a stated invariant the code does not enforce is worse
+than no invariant, because the comment is what the next reader trusts.
+
+---
+
+> **PROMPT FOR UTS — a FLAT day must be recordable when it is decided**
+>
+> 1. `lib/live/signal.js` — change
+>    `if (call !== 0 && entryOpen == null && typeof opts.liveOpenFetcher === 'function')`
+>    to `if (entryOpen == null && typeof opts.liveOpenFetcher === 'function')`.
+>    A FLAT call must fetch its entry price like any other: the decision record
+>    requires a non-null `decision_price`, and the box rejects a priceless intent
+>    with `problems:["decision_price"]`. Leave the following
+>    `if (call !== 0 && entryOpen == null) return not actionable` alone — a FLAT
+>    with no price stays actionable and merely goes unrecorded this tick.
+> 2. `live-produce.js` — add `let recordedOk = false;` beside `recordable`, set it
+>    `true` after a successful `recordDecision`, and gate the intent write on
+>    `out.actionable && out.intent && recordedOk && !alreadySeen`. Journal to
+>    stderr when an intent is withheld for want of a record. This makes the
+>    block's own "FAIL CLOSED: no decision record, no shipped intent" true.
+> 3. Copy `tests/test-preview.js` (16 checks) and watch each fail against its own
+>    fault. Note the re-ship regex must track the shipping condition — it was
+>    written against the old one and silently stopped matching when the condition
+>    gained `recordedOk`.
+> 4. Change nothing else, do not deploy. Report and stop.
+
+---
+
 ## Deploying this change to the running system
 
 ### Why it cannot disturb open positions

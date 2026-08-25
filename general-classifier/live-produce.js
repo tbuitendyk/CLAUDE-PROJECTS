@@ -117,6 +117,7 @@ function recordDecision(setupId, dec) {
         // Applies identically to paper and live setups: this loop does not
         // branch on state, and `paper` is only a flag on the shipped intent.
         const recordable = out.actionable && out.intent && out.intent.decision_price != null;
+        let recordedOk = false;
         if (recordable) {
           // FAIL CLOSED: no decision record, no shipped intent (pilot rule).
           try {
@@ -134,6 +135,7 @@ function recordDecision(setupId, dec) {
               paper: out.intent.paper,
               window_complete: true,
             });
+            recordedOk = true;
           } catch (e) {
             process.stderr.write(`live-produce(${setup.id}): decision record write FAILED, withholding intent: ${e.message}\n`);
             out = { ok: true, actionable: false, note: 'decision record write failed; intent withheld this tick' };
@@ -169,7 +171,18 @@ function recordDecision(setupId, dec) {
               && e.setup_id === setup.id && e.chunk_start === out.intent.chunk_start);
           } catch (_) { alreadySeen = false; }   // unreadable journal: ship, let the box dedupe
         }
-        if (out.actionable && out.intent && !alreadySeen) {
+        // FAIL CLOSED, FOR REAL THIS TIME. The rule above this block has always
+        // said "no decision record, no shipped intent" — but it was only enforced
+        // when the record WRITE threw. When the decision was simply not
+        // recordable (no entry price), the intent shipped anyway, priceless, and
+        // the box rejected it: INTENT_INVALID problems:["decision_price"], twice
+        // today alone. A stated rule that the code does not keep is worse than no
+        // rule, because the comment is what the next reader trusts.
+        if (out.actionable && out.intent && !recordedOk) {
+          process.stderr.write(`live-produce(${setup.id}): decision for ${out.intent.chunk_start} `
+            + 'was not recorded, so no intent is shipped (fail-closed)\n');
+        }
+        if (out.actionable && out.intent && recordedOk && !alreadySeen) {
           const stamp = new Date(now).toISOString().replace(/[-:]/g, '').slice(0, 15) + 'Z';
           atomicWrite(path.join(OUTBOX, `intent2-${setup.id}-${stamp}.json`), JSON.stringify(out.intent) + '\n');
         } else if (alreadySeen) {
@@ -214,7 +227,7 @@ function recordDecision(setupId, dec) {
           : null;
         if (unrecorded) process.stderr.write(`live-produce(${setup.id}): ${unrecorded}\n`);
         results.push({ setup: setup.id, state: setup.state, actionable: !!out.actionable,
-          side: out.intent ? out.intent.side : null, recorded: !!recordable,
+          side: out.intent ? out.intent.side : null, recorded: !!recordedOk,
           reshipSuppressed: !!alreadySeen,
           note: out.note || unrecorded || null });
       } catch (e) {

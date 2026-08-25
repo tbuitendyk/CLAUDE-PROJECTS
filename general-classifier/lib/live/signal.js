@@ -168,7 +168,23 @@ async function computeSignal(setup, now, opts = {}) {
     await committeeCallFor(cfg, target, trainChunks, maps, geo, views, bandPct, freeze.throughMs);
 
   let entryOpen = chooseEntryOpen(priceAt, null);
-  if (call !== 0 && entryOpen == null && typeof opts.liveOpenFetcher === 'function') {
+  // A FLAT CALL NEEDS ITS PRICE TOO (owner, 2026-08-25).
+  //
+  // This fetch used to be gated on `call !== 0`, on the reasoning that a stand-
+  // down places no order so the entry price does not matter. It matters for the
+  // RECORD. live-produce.js only writes a decision when decision_price is
+  // non-null (deliberately — a null price would manufacture a reproduce-check
+  // break once the candle caches), and the box rejects a priceless intent with
+  // problems:["decision_price"]. So a FLAT day could be recorded by neither
+  // path until its entry candle closed and cached, roughly an hour later:
+  // decided at 00:00, invisible until 02:08, while the owner watched an empty
+  // history and the outbox filled with intents the box threw away.
+  //
+  // The fetch is the same one a LONG or SHORT already does, reading the same
+  // candle's open, so the recorded price is arrived at identically whichever way
+  // the committee voted. A FLAT with no price available stays actionable and
+  // simply goes unrecorded this tick, exactly as before.
+  if (entryOpen == null && typeof opts.liveOpenFetcher === 'function') {
     let live = null;
     try {
       live = await opts.liveOpenFetcher(cfg.combo.trade, entryTs);
