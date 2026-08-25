@@ -95,27 +95,10 @@
      frozen block span the full width and carry the page background with it. */
   .pagetop { position:sticky; top:0; z-index:20; background:var(--bg);
     margin:-1.1rem -1.1rem 0; padding:1.1rem 1.1rem 0; }
-  /* THE COMPUTE SECTION CARRIES ITS OWN THEME (owner design, 2026-08-25:
-     "with it's own independently selectable theme"). The tokens cascade, so
-     re-declaring them on the section restyles everything inside it and nothing
-     outside it. "follow the page" sets neither and the page's own choice shows
-     through. The section paints its background itself, or the page's colour
-     would show behind panels whose own colours had switched. */
-  #cwrap { border-radius:8px; }
-  #cwrap[data-ctheme="dark"] {
-    --bg:#0e1116; --fg:#d6dce5; --muted:#6b7686; --dim:#8b96a5;
-    --panel:#12161d; --tile:#171c24; --line:#232a35;
-    --pos:#4ec9a5; --neg:#e06c75; --warn:#e5c07b; --accent:#9db4d0;
-    --tabbg:#171c24; --tabon:#0e1116;
-    background:var(--bg); color:var(--fg); padding:.9rem; margin:0 -.9rem;
-  }
-  #cwrap[data-ctheme="light"] {
-    --bg:#f6f7f9; --fg:#1a2028; --muted:#8a94a2; --dim:#5a6472;
-    --panel:#ffffff; --tile:#ffffff; --line:#dde2e8;
-    --pos:#0a7d55; --neg:#c02a33; --warn:#8a6d00; --accent:#2c5fa8;
-    --tabbg:#eceef1; --tabon:#ffffff;
-    background:var(--bg); color:var(--fg); padding:.9rem; margin:0 -.9rem;
-  }
+  /* NO SECTION-LEVEL THEME. One built here for a day (2026-08-25) and the
+     owner removed it the same day: "YOU'VE ALREADY GOT THEME BUTTONS ON
+     Construct AND Trade THAT WORK THE WAY WE WANT". The theme button in this
+     page's own header is the one mechanism, same key, same behaviour. */
   .loadbar { height:8px; background:var(--line); border-radius:4px; overflow:hidden; margin-top:.3rem; }
   .loadbar > div { height:100%; background:var(--accent); }
 </style>
@@ -227,7 +210,7 @@ function svcCard(u) {
     + '</div>'
     + '<div class="loadbar" title="how much of its allowance it is using right now"><div style="width:' + barPct.toFixed(0) + '%"></div></div>'
     + '<div class="row" style="margin-top:.5rem">'
-    + '<label class="f">ceiling, % of one processor<input data-quota="' + esc(u.unit) + '" type="number" min="10" max="800" step="10" value="' + (quota == null ? '' : quota) + '" style="width:6.5rem" placeholder="none set"></label>'
+    + '<label class="c"><span class="muted">ceiling, % of one processor</span><input data-quota="' + esc(u.unit) + '" type="number" min="10" max="800" step="10" value="' + (quota == null ? '' : quota) + '" style="width:6.5rem" placeholder="none set"></label>'
     + '<button data-setquota="' + esc(u.unit) + '" title="applies immediately to running work, and survives the service being restarted">Set the ceiling</button>'
     + '<span class="spacer"></span>'
     + '<button data-act="start" data-unit="' + esc(u.unit) + '" title="starts it if it is not running; does nothing to one that already is">Start</button>'
@@ -239,33 +222,27 @@ function svcCard(u) {
 }
 
 function drawCompute() {
-  const ct = localStorage.getItem('setup-compute-theme') || '';
   const m = cLoads && cLoads.machine;
   const roles = cCfg && cCfg.rolesOffered ? cCfg.rolesOffered.map((r) => {
     const cur = cCfg.roles[r.key] || {};
     const opts = cCfg.platforms.map((p) => '<option value="' + esc(p.id) + '"' + (cur.inForce === p.id ? ' selected' : '') + '>' + esc(p.label) + '</option>').join('');
     return '<div class="row" style="margin:.3rem 0">'
-      + '<span style="min-width:11rem"><b>' + esc(r.label) + '</b></span>'
-      + '<label class="f">runs on<select data-role="' + esc(r.key) + '">' + opts + '</select></label>'
+      + '<label class="c"><b style="min-width:11rem">' + esc(r.label) + '</b><span class="muted">runs on</span>'
+      + '<select data-role="' + esc(r.key) + '">' + opts + '</select></label>'
       + (cCfg.platforms.length === 1 ? '<span class="note">only this machine exists to point at yet — more appear here when they are registered</span>' : '')
       + '</div>';
   }).join('') : '<p class="note neg">the trading service did not answer, so the choices cannot be shown' + (cErrCfg ? ' — ' + esc(cErrCfg) : '') + '</p>';
 
-  $('#view').innerHTML = '<div id="cwrap"' + (ct ? ' data-ctheme="' + esc(ct) + '"' : '') + '>'
+  $('#view').innerHTML = '<div id="cwrap">'
     + '<div class="row" style="margin-bottom:.6rem">'
     + '<span class="note">Read at ' + (cLoads ? esc(cLoads.at.slice(11, 19)) + ' UTC' : '—') + ' · refreshes every 30 seconds while this tab is open.</span>'
     + '<span class="spacer"></span>'
-    + '<label class="f">this tab&#39;s own theme<select id="cTheme">'
-    + '<option value=""' + (ct === '' ? ' selected' : '') + '>follow the page</option>'
-    + '<option value="dark"' + (ct === 'dark' ? ' selected' : '') + '>dark</option>'
-    + '<option value="light"' + (ct === 'light' ? ' selected' : '') + '>light</option>'
-    + '</select></label>'
     + '<button id="cNow" title="asks again right now instead of waiting for the thirty seconds">Read it again</button>'
     + '</div>'
 
     + '<div class="panel"><h3 style="margin-top:0">Where each part runs</h3>'
     + roles
-    + '<div class="row" style="margin:.3rem 0"><span style="min-width:11rem"><b>trading platform</b></span>'
+    + '<div class="row" style="margin:.3rem 0"><b style="min-width:11rem">trading platform</b>'
     + '<span class="note">chosen on each trading setup on the Trade tab — every setup names its own, '
     + 'so two setups can trade in two places. Nothing about it is set here.</span></div>'
     + '</div>'
@@ -289,8 +266,8 @@ function drawCompute() {
 
     + '<div class="panel"><h3 style="margin-top:0">How much of the machine the sweeps may take</h3>'
     + (cCfg ? '<div class="row">'
-      + '<label class="f">workers<input id="cWorkers" type="number" min="1" max="' + (cCfg.workers.max || 8) + '" step="1" value="' + (cCfg.workers.setting == null ? cCfg.workers.inForce : cCfg.workers.setting) + '" style="width:5.5rem"></label>'
-      + '<label class="f">each worker&#39;s share, %<input id="cPct" type="number" min="0" max="100" step="5" value="' + (cCfg.pct == null ? '' : cCfg.pct) + '" style="width:5.5rem"></label>'
+      + '<label class="c"><span class="muted">workers</span><input id="cWorkers" type="number" min="1" max="' + (cCfg.workers.max || 8) + '" step="1" value="' + (cCfg.workers.setting == null ? cCfg.workers.inForce : cCfg.workers.setting) + '" style="width:5.5rem"></label>'
+      + '<label class="c"><span class="muted">each worker&#39;s share, %</span><input id="cPct" type="number" min="0" max="100" step="5" value="' + (cCfg.pct == null ? '' : cCfg.pct) + '" style="width:5.5rem"></label>'
       + '<button id="cSaveKnobs">Set these</button>'
       + '<span class="note">machine-wide that is workers &times; share — '
       + '<b>' + cCfg.workers.inForce + ' &times; ' + (cCfg.pct == null ? '—' : cCfg.pct + '%') + '</b> right now. '
@@ -302,8 +279,6 @@ function drawCompute() {
     + '</div>';
 
   // wiring
-  const themeSel = $('#cTheme');
-  if (themeSel) themeSel.onchange = () => { localStorage.setItem('setup-compute-theme', themeSel.value); drawCompute(); };
   const now = $('#cNow');
   if (now) now.onclick = () => refreshCompute(true);
   document.querySelectorAll('[data-role]').forEach((sel) => {

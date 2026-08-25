@@ -50,8 +50,26 @@ module.exports = {
     } finally { restore(); }
   },
 
-  // The control never strands the owner: it will not stop or restart itself.
-  async theControlRefusesToStopItselfAndSaysWhy() {
+  // THE PLUMBING IS NOT ON THE MENU (owner ruling, 2026-08-25). The control is
+  // the machinery behind the web interface — "WHY ON EARTH would we expose
+  // that to the end users?" — so by default it is not in the list it serves:
+  // not a row on the Compute tab, not a name an action can touch.
+  async theControlItselfIsNotOnTheListItServes() {
+    const { mod, calls, restore } = withFakeSystemctl();
+    try {
+      assert.ok(!mod.UNITS.includes(mod.SELF_UNIT),
+        'the control lists itself to end users — it is plumbing, not one of their compute resources');
+      const r = await mod.act({ unit: mod.SELF_UNIT, action: 'stop', confirm: mod.SELF_UNIT });
+      assert.strictEqual(r.code, 400, `acting on the unlisted control got ${r.code}`);
+      assert.deepStrictEqual(changed(calls), [], 'it was refused but still ran');
+    } finally { restore(); }
+  },
+
+  // ...and the second wall stands on its own: even on a box whose environment
+  // file DOES list the control, stopping it is refused with the reason. One
+  // wall is a configuration away from gone; two is a decision.
+  async evenWhenListedByHandTheControlRefusesToStopItself() {
+    process.env.UTS_UNITS = 'ultimate-trading-system.service,uts-service-control.service';
     const { mod, calls, restore } = withFakeSystemctl();
     try {
       for (const action of ['stop', 'restart']) {
@@ -64,7 +82,10 @@ module.exports = {
       // starting itself is harmless and allowed (a no-op when already running)
       const ok = await mod.act({ unit: mod.SELF_UNIT, action: 'start', confirm: mod.SELF_UNIT });
       assert.strictEqual(ok.code, 200, JSON.stringify(ok.body));
-    } finally { restore(); }
+    } finally {
+      delete process.env.UTS_UNITS;
+      restore();
+    }
   },
 
   // The two-step, on both kinds of change.
@@ -231,8 +252,20 @@ module.exports = {
     // the thirty-second re-read the owner asked for, only while the tab shows
     assert.ok(/setInterval\(\(\) => refreshCompute\(false\), 30000\)/.test(page),
       'the Compute tab no longer re-reads every thirty seconds');
-    // its own theme, stored under its own name
-    assert.ok(/setup-compute-theme/.test(page), 'the Compute tab no longer keeps its own theme choice');
+    // ONE theme mechanism, the same as every other page (owner, 2026-08-25:
+    // "MAKE THE INTERFACE CONSISTENT FOR THE THEMES AS PER WHAT WE'VE ALREADY
+    // GOT IN PLACE"). A per-tab theme control lived here for a day; it must
+    // not come back, and the page keeps the same button on the same key.
+    assert.ok(!/setup-compute-theme|data-ctheme|cTheme/.test(page),
+      'a second theme mechanism is back on the Compute tab');
+    assert.ok(/cx-theme/.test(page) && /id="themebtn"/.test(page),
+      'the one theme button, on the shared key, is gone from the Setup page');
+    // ALIGNMENT (standing rule): no caption-above-box control sits in these
+    // rows — a caption stacked over its box put buttons and names on a
+    // different line from the box they belong to. Everything is inline.
+    const compute = page.slice(page.indexOf('function svcCard'), page.indexOf('async function refreshCompute'));
+    assert.ok(!/label class="f"/.test(compute),
+      'a caption-above-box control is back on the Compute tab — its neighbours will not line up with it');
     // and the app-side settings go to the app, which owns them
     assert.ok(page.includes("'api/compute-config'"), 'the Compute tab no longer reads the roles and knobs from the trading service');
   },

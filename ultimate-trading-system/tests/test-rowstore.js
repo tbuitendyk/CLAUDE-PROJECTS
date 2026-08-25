@@ -178,7 +178,17 @@ module.exports = {
       fs.writeFileSync(path.join(realData, 'batches', `${id}.json`),
         JSON.stringify({ id, kind: 'bracketlab', status: 'done', startedAt: 'x', params: {}, leaders: [], runs: [] }));
 
+      // THE CONTRACT CHANGED ON 2026-08-25 (owner order: "do the running
+      // tallies now"): rank never reads a store's rows on the answering
+      // thread any more. With no saved tally it reports a build in progress
+      // and freezes nothing; once the tally exists — built here directly, the
+      // way the worker builds it — the same numbers come back instantly.
+      const first = replication.rank(batch.getBatch(id));
+      assert.strictEqual(first.building, true, 'a store with no saved tally must report the build, not stream in-request');
+      assert.strictEqual(first.total, 4, 'the true row count travels even before the tally exists');
+      replication.buildAndSaveTotals(id);
       const out = replication.rank(batch.getBatch(id));
+      assert.strictEqual(out.totals.upToDate, true, 'a fresh tally is served as fresh');
       assert.strictEqual(out.total, 4, 'every recorded row is read');
       assert.strictEqual(out.tagged, true, 'a run that marks its copies is detected');
       assert.strictEqual(out.configs, 1);

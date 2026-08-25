@@ -37,7 +37,7 @@ const GUARDS = [
     '  if (!ACTIONS.includes(action))',
     'aServiceNotOnTheListIsRefusedAndNothingRuns', 'any service on the machine can be stopped from a phone'],
   [SVC, "if (unit === SELF_UNIT && action !== 'start')", 'if (false)',
-    'theControlRefusesToStopItselfAndSaysWhy', 'the owner can strand themselves with one press'],
+    'evenWhenListedByHandTheControlRefusesToStopItself', 'the owner can strand themselves with one press'],
   [SVC, "if (String((body || {}).confirm || '') !== unit) {\n    return { code: 400, body: { error: `to ${action}",
     "if (false) {\n    return { code: 400, body: { error: `to ${action}",
     'nothingHappensUnlessTheNameIsGivenTwice', 'one mistyped request stops a service'],
@@ -58,6 +58,11 @@ const GUARDS = [
   [BATCH, "const elsewhere = require('./compute').sweepRunsHereOr();\n  if (elsewhere) return elsewhere;",
     '',
     'theSweepLauncherReadsTheRoleAndRefusesAnUnreachablePlatform', 'the Compute tab choice becomes a decoration nothing reads'],
+  [path.join(ROOT, 'lib', 'replication.js'), 'if (saved && saved.rowsSeen === rows) {', 'if (saved) {',
+    'aSaveThatIsBehindSaysSoAndAFreshOneServesInstantly', 'a tally from an earlier sitting wears a finished run\'s face'],
+  [path.join(ROOT, 'lib', 'batch.js'), "try { require('./replication').startTotals(doc.id); }",
+    "try { void (doc.id); }",
+    'theBuildRunsOffTheAnsweringThreadAndFiresAtCompletion', 'a finished run is never totalled until somebody waits the minutes for it'],
 ];
 
 const only = process.argv[2] || '';

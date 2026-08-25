@@ -801,15 +801,25 @@ thirty seconds, under its own independently selectable theme.
    which also does start/stop/restart and the half-second-sampled load reading.
 3. The service restart moved here from Boards, where it lived for one day.
 
+**Shipped later the same day, in the owner's loop:**
+
+1. **The tallies.** One definition of the table's arithmetic (tallyOver), a
+   full pass run only in a worker thread at the kindest priority, the result
+   saved beside the rows with the row count it covers, rebuilt automatically
+   when a run finishes and in the background on first open for anything older.
+   A saved tally behind the rows is served marked "as of N rows", never as
+   finished. Decision on the record: a saved result rebuilt off the answering
+   thread, not per-row live state — exact null pairing holds every copy's
+   value, 46 million on the owner's run, and that does not belong inside a
+   1.8 GB heap beside a running sweep for the same numbers a few minutes
+   sooner.
+
 **Parked, with reasons — not dropped:**
 
-1. **Running tallies for the replication table.** The table is still totalled
-   by reading every recorded row on request (minutes, on the thread that
-   answers every page; opened by hand only since 2026-08-25). The agreed fix is
-   to keep the totals as running tallies while rows are written, plus a one-off
-   catch-up for rows already on disk. Parked because it changes the write path
-   of the record while a two-day run is mid-flight; it wants its own quiet
-   window, not a seat on a deploy that is already restarting the service.
+1. **The per-configuration row table (detail()).** Opening one configuration's
+   rows under a line of the replication table still walks every recorded row
+   on the answering thread — the same class of fault as the one the tallies
+   fixed, needing a by-label index beside the rows. Its own piece of work.
 2. **The sweep runner as its own service.** The job contract (settings +
    price-file fingerprint in, rows + progress back, interface owns the record)
    is agreed; the Compute tab is its front end and already speaks in those

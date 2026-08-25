@@ -1476,6 +1476,14 @@ async function drawBoards() {
     if (!rep || !rep.scored || !rep.scored.length) return '';
     const scored = rep.scored;
     const tagged = rep.tagged;
+    // A tally can be honest and behind at once — a run writes on while its
+    // saved totals stand still. Say which rows it covers rather than letting a
+    // partial reading wear a finished one's face.
+    const staleNote = rep.totals && rep.totals.upToDate === false
+      ? `<p class="note warn">These totals cover the first ${Number(rep.totals.asOfRows || 0).toLocaleString()} of `
+        + `${Number(rep.total || 0).toLocaleString()} recorded rows — the run has written more since they were built. `
+        + `They refresh when the run finishes${rep.building ? ', and a fresh totalling is going now' : ''}.</p>`
+      : '';
     const inferredNote = tagged ? '' : `<p class="note"><b>Counts below are INFERRED, not measured.</b> This run recorded ${rep.total}
       declared-cell rows without marking which copy scored them, so each asset's first-recorded row is taken as the
       real one — real copies are queued ahead of every null copy. ${rep.dropped} row(s) were excluded.</p>`;
@@ -1506,7 +1514,7 @@ async function drawBoards() {
           <b>assets held up</b> is CONTEXT ONLY — crypto assets move together, so it is not a count of independent
           looks and no p-value is quoted from it. Money is last on purpose. held-back $ is the once-only look on data
           no search touched; test $ is the window the settings were chosen on and flatters itself by construction.</p>
-        ${inferredNote}
+        ${staleNote}${inferredNote}
         <div><b>${esc(g.label)}</b></div>
         <div class="row" style="gap:1.4rem;margin:.3rem 0 .5rem">
           <span><span class="k" title="${esc(TIP.null)}">beat its own null copies</span> ${nullCell(g)}</span>
@@ -1539,7 +1547,7 @@ async function drawBoards() {
         together, so it is not a count of independent looks. Open a line to see that configuration on every asset.
         These configurations were SEARCHED, not declared, so the honest end is the sealed slice: window layout
         61/13/13/13, graded once in the History section.</p>
-      ${inferredNote}
+      ${staleNote}${inferredNote}
       ${pageBar('repList', rep.page, ' configurations')}
       <div style="max-height:26rem;overflow-y:auto;border:1px solid var(--line);border-radius:6px">${listHtml}</div>
       ${pageBar('repList', rep.page, ' configurations')}</div>`;
@@ -1642,38 +1650,49 @@ async function drawBoards() {
         <button id="bClearSel" style="margin-left:.5rem" title="take the selection off this run. Nothing here could remove one until now, so a row chosen once kept steering Verify, Tune and Greenlight indefinitely.">clear selection</button></p>` : '<p class="note">no row selected yet</p>'}
       </div>
       ${repBlock || (declaredHere ? `<div class="panel"><details id="bRepOpen"><summary style="cursor:pointer"><b>Replication —</b> the declared config on every asset</summary>
-        <p class="note" id="bRepNote">Totalled by reading every recorded row of this run — ${(doc.rowCounts && doc.rowCounts.replication || 0).toLocaleString()} of them.
-          On a run this size that takes minutes, and while it runs nothing else on this page answers, so it is opened by hand rather than every time.</p></details></div>` : '')}
+        <p class="note" id="bRepNote">Totalled once from every recorded row — ${(doc.rowCounts && doc.rowCounts.replication || 0).toLocaleString()} of them — off to the side, so nothing here waits on it.
+          A finished run totals itself; anything older totals in the background the first time this is opened, and this box shows how far that has got.</p></details></div>` : '')}
       <div class="panel" id="gridOut"><span class="muted">Menu grid: press a row's button — every execution permutation for that row with the plateau view (one setting moved at a time) on top.</span></div>
       <div class="panel"><details><summary>the COMPLETE stored settings record for this run, verbatim (nothing invisible)</summary>
         <pre>${esc(JSON.stringify(doc.params || {}, null, 1))}</pre></details></div>`}
     </div>`;
   $('#bOpen').onclick = () => { pickedRun = $('#bPick').value || null; localStorage.setItem('cx-run', pickedRun || ''); pickedDoc = null; drawBoards(); };
-  // OPENED BY HAND. The table is totalled by reading every recorded row, so on
-  // a large run this is minutes and the rest of the page cannot be drawn while
-  // it happens. Asking for it is the owner's press, not a side effect of
-  // arriving on this section.
-  // The service restart lived here for one day (2026-08-25). It moved to the
-  // Compute tab of the Setup page the same day, on the owner's design: the
-  // starting, stopping and restarting of this system's services belongs beside
-  // their loads and their ceilings, not beside a board. The separate small
-  // program that presses it is unchanged, and it still serves these pages at
-  // its own address for when this service is not answering.
+  // STILL OPENED BY HAND, NEVER ON EVERY DRAW — but opening no longer costs
+  // minutes on the thread that answers every page (owner order, 2026-08-25:
+  // "do the running tallies now"). A finished run's totals are already saved
+  // beside its rows; a run recorded before totals existed builds them in the
+  // background on first open, and this box reports that build's progress and
+  // asks again every fifteen seconds until the table arrives.
+  //
+  // (The service restart that sat in this row for one day lives on the Compute
+  // tab of the Setup page now, beside the loads and ceilings, per the owner.)
   const repOpen = $('#bRepOpen');
   if (repOpen) {
-    repOpen.addEventListener('toggle', async () => {
-      if (!repOpen.open || repLoaded.id === doc.id) return;
+    const askRep = async () => {
+      if (!repOpen.open || tab !== 'boards' || repLoaded.id === doc.id) return;
       const note = $('#bRepNote');
-      if (note) note.innerHTML = '<span class="muted">reading every recorded row — this takes minutes on a run this size, and nothing else on this page will answer until it is done</span>';
       const got = await apiOr(`api/batch/${encodeURIComponent(doc.id)}/replication`
         + `?offset=${pageAt.repList.offset}&limit=${pageAt.repList.limit}`, null);
       if (!got) {
         if (note) note.innerHTML = '<span class="warn">could not read it — nothing is missing from the run, the screen could not ask</span>';
         return;
       }
+      if (got.building && !(got.scored && got.scored.length)) {
+        if (note) {
+          note.innerHTML = `<span class="muted">totalling this run's rows in the background — ${Number(got.scanned || 0).toLocaleString()} `
+            + `of ${Number(got.of || 0).toLocaleString()} so far. Everything else keeps answering; this box asks again every fifteen seconds.</span>`;
+        }
+        setTimeout(askRep, 15000);
+        return;
+      }
+      if (got.buildError) {
+        if (note) note.innerHTML = `<span class="warn">${esc(got.buildError)} — open it again to retry</span>`;
+        if (!(got.scored && got.scored.length)) return;
+      }
       repLoaded = { id: doc.id, data: got };
       drawBoards();
-    });
+    };
+    repOpen.addEventListener('toggle', () => { if (repOpen.open) askRep(); });
   }
   // DELETING A RUN takes the model and tuning files that hang off it, so the
   // owner is shown exactly what that is BEFORE answering — the same two-step

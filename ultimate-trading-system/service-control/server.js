@@ -42,10 +42,14 @@ const SELF_UNIT = process.env.SELF_UNIT || 'uts-service-control.service';
 const UNIT = process.env.UTS_UNIT || 'ultimate-trading-system.service';
 const UNIT_PORT = Number(process.env.UTS_UNIT_PORT || 8094);
 
-// THIS SYSTEM'S OWN SERVICES — the only ones reported and the only ones
-// actionable. The control itself is reported (its load is real) but refuses
-// actions on itself, with the reason attached.
-const UNITS = (process.env.UTS_UNITS || `${UNIT},${SELF_UNIT}`)
+// THE SERVICES THAT DO THE USER'S WORK — the only ones reported and the only
+// ones actionable. THE CONTROL ITSELF IS NOT ON THIS LIST (owner ruling,
+// 2026-08-25): it is the plumbing behind the web interface, and "if this
+// program is to be used by multiple clients from OUR web server WHY ON EARTH
+// would we expose that to the end users?" It does the pressing invisibly; it
+// is nobody's compute resource. The self-refusal below is kept as a second
+// wall for the day an environment file lists it anyway.
+const UNITS = (process.env.UTS_UNITS || UNIT)
   .split(',').map((s) => s.trim()).filter(Boolean);
 const ACTIONS = ['start', 'stop', 'restart'];
 const SELF_REFUSAL = 'this is the control itself — stopping it from here would leave nothing able to start anything again';

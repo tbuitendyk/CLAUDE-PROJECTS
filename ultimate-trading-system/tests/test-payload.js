@@ -130,22 +130,17 @@ module.exports = {
 
   // ---- the 99 MB one, as a property ---------------------------------------
   async theRankedListDoesNotGrowWithTheRowsBehindIt() {
-    // SELF-CALIBRATING, so no threshold has to be guessed. The old shape is
-    // still reachable by asking for it, so the test compares the two directly:
-    // give both 8x the rows and the old one must balloon while the new one
-    // must not. A number picked by hand would only ever be right for today's
-    // row size.
+    // This used to calibrate itself against the OLD shape by asking for
+    // per-configuration example rows (detailCap) and watching them balloon.
+    // Since 2026-08-25 that shape is not reachable at all: the tally ships
+    // summaries and nothing else, whatever is asked for — which is the
+    // stronger form of the same guarantee, and it is pinned first.
     const size = (assets, cap) => Buffer.byteLength(JSON.stringify(replication.rank(repDoc(40, assets), { detailCap: cap })));
-    const oldGrowth = size(40, 60) / size(5, 60);      // the shape that reached 99 MB
-    const newGrowth = size(40, 0) / size(5, 0);        // what ships now
-    assert.ok(oldGrowth > 4,
-      `the old shape only grew ${oldGrowth.toFixed(1)}x on 8x the rows — this test is no longer comparing `
-      + 'against the fault it exists to prevent');
+    assert.strictEqual(size(40, 60), size(40, 0),
+      'asking for example rows changed the reply — the shape that reached 99 MB is reachable again');
+    const newGrowth = size(40, 0) / size(5, 0);        // what ships
     assert.ok(newGrowth < 1.25,
       `8x the rows grew the reply ${newGrowth.toFixed(2)}x; it is tracking the rows again`);
-    assert.ok(newGrowth < oldGrowth / 4,
-      `the reply grows ${newGrowth.toFixed(2)}x where the old shape grew ${oldGrowth.toFixed(1)}x — not enough of `
-      + 'a difference to say the rows have stopped riding along');
     // What creep remains is digits, not rows: a count of 5 becomes 40, and a
     // sum of 21 becomes 168.00000000000006 once forty floats have been added.
 

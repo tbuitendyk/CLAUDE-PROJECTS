@@ -53,39 +53,33 @@ function rowsOf(doc, fn) {
   return n;
 }
 
-// PER CONFIGURATION, AND NOTHING PER ROW — now meant literally (owner order,
-// 2026-08-23).
+// THE TALLY HAS ONE DEFINITION (owner order, 2026-08-25: "do the running
+// tallies now"). This function is the only place the table's numbers are
+// computed — the in-request path for small old runs, the background build for
+// stored runs, and every test all call it, so there is no second copy to
+// drift.
 //
-// This used to carry back up to 60 example rows per configuration so the
-// per-asset table under each line could be drawn without a second request.
-// Fine for one declared configuration. On a run that declares 2,772 of them it
-// is 166,320 rows in one reply: 99 MB, which no browser renders and no screen
-// ever showed, because the request never finished.
-//
-// The rows are not lost and they were never needed here: detail() fetches one
-// configuration's rows, capped and counted, when a reader actually opens that
-// line. So the ranked list is now what its own name says — one summary per
-// configuration — and the reply is bounded by the number of configurations
-// rather than by the number of rows behind them.
-function rank(doc, { detailCap = 0, ...query } = {}) {
-  const regions = regionsByAsset(doc.leaders || []);
-  const groups = new Map();
-  let total = 0;
-
-  // TWO PASSES, because the rule depends on something only the rows can say.
+// `each` is called twice: once to learn whether the rows carry the copy tag,
+// once to tally. What comes out is small — one entry per configuration — and
+// it deliberately contains NOTHING that depends on the run document, so it can
+// be saved beside the rows and stay true: plateau widths live on the leader
+// rows and change while a run goes, so the tally keeps a per-asset row count
+// instead and the widths are looked up at reading time.
+function tallyOver(each) {
   // A run recorded before the copy tag existed carries no nullDealSeed on ANY
-  // row, and filtering on it there keeps everything — silently mixing dealt-vote
-  // copies into the cross-asset count. On those runs each asset's FIRST recorded
-  // row is taken as the real one (real copies are queued ahead of every copy)
-  // and the measured null stays absent by fact rather than by accident. The
-  // screen says so rather than presenting an inferred count as a measured one.
+  // row, and filtering on it there keeps everything — silently mixing
+  // dealt-vote copies into the cross-asset count. On those runs each asset's
+  // FIRST recorded row is taken as the real one (real copies are queued ahead
+  // of every copy), and the screen says INFERRED rather than measured.
   let tagged = false;
-  rowsOf(doc, (r) => { if ('nullDealSeed' in r) { tagged = true; return false; } return true; });
+  each((r) => { if ('nullDealSeed' in r) { tagged = true; return false; } return true; });
   const seenUntagged = new Set();
   let dropped = 0;
+  let rowsSeen = 0;
+  const groups = new Map();
 
-  rowsOf(doc, (r) => {
-    total++;
+  each((r) => {
+    rowsSeen++;
     const label = r.declaredLabel || 'declared config';
     if (!tagged) {
       const dk = `${assetKey(r)}|${label}`;
@@ -97,11 +91,11 @@ function rank(doc, { detailCap = 0, ...query } = {}) {
       g = {
         label,
         holdCount: 0, pos: 0, vsLCount: 0, vsLPos: 0, sum: 0,
-        assets: new Set(), regionSum: 0, regionN: 0,
+        assetRows: {},            // assetKey -> real rows seen, for widths later
         nullBeat: 0, nullPairs: 0,
         realHold: new Map(),      // asset -> held-back money, for the pairing
         pendingNulls: new Map(),  // asset -> null money seen before its real row
-        reals: [], realsTotal: 0,
+        realsTotal: 0,
       };
       groups.set(label, g);
     }
@@ -110,10 +104,7 @@ function rank(doc, { detailCap = 0, ...query } = {}) {
 
     if (!tagged || r.nullDealSeed == null) {
       g.realsTotal++;
-      if (detailCap > 0 && g.reals.length < detailCap) g.reals.push(r);
-      g.assets.add(k);
-      const reg = regions.get(k);
-      if (reg != null) { g.regionSum += reg; g.regionN++; }
+      g.assetRows[k] = (g.assetRows[k] || 0) + 1;
       if (hold != null) {
         g.holdCount++;
         g.sum += hold;
@@ -128,31 +119,68 @@ function rank(doc, { detailCap = 0, ...query } = {}) {
         for (const nv of (g.pendingNulls.get(k) || [])) { g.nullPairs++; if (hold > nv) g.nullBeat++; }
       }
     } else if (hold != null) {
-      // `hold` here is the COPY's held-back money; `mine` is the real one.
+      // `hold` here is the COPY\'s held-back money; `mine` is the real one.
       for (const mine of (g.realHold.get(k) || [])) { g.nullPairs++; if (mine > hold) g.nullBeat++; }
       let pend = g.pendingNulls.get(k);
       if (!pend) { pend = []; g.pendingNulls.set(k, pend); }
       pend.push(hold);
     }
+    return true;
   });
 
-  const scored = [...groups.values()].map((g) => ({
-    label: g.label,
-    assets: g.assets.size,
-    holdCount: g.holdCount,
-    pos: g.pos,
-    vsLCount: g.vsLCount,
-    vsLPos: g.vsLPos,
-    sum: g.sum,
-    region: g.regionN ? Math.round(g.regionSum / g.regionN) : null,
-    nullBeat: g.nullBeat,
-    nullPairs: g.nullPairs,
-    nullShare: g.nullPairs ? g.nullBeat / g.nullPairs : null,
-    reals: g.reals,
-    realsTotal: g.realsTotal,
-    realsShown: g.reals.length,
-  }));
+  // The pairing scratch is the expensive part and it is done with: what leaves
+  // this function is one small entry per configuration.
+  return {
+    v: 1,
+    builtAt: new Date().toISOString(),
+    tagged,
+    dropped,
+    rowsSeen,
+    groups: [...groups.values()].map((g) => ({
+      label: g.label,
+      holdCount: g.holdCount,
+      pos: g.pos,
+      vsLCount: g.vsLCount,
+      vsLPos: g.vsLPos,
+      sum: g.sum,
+      assetRows: g.assetRows,
+      nullBeat: g.nullBeat,
+      nullPairs: g.nullPairs,
+      realsTotal: g.realsTotal,
+    })),
+  };
+}
 
+// From a tally to the rows the screen shows: widths joined in from the CURRENT
+// leader rows (they sharpen while a run goes, so they are never baked into a
+// saved tally), then the standing order — measured null, plateau width, share
+// of assets, money last (QC-7, QC-142).
+function renderScored(totals, leaders) {
+  const regions = regionsByAsset(leaders || []);
+  const scored = totals.groups.map((g) => {
+    let regionSum = 0;
+    let regionN = 0;
+    for (const [k, n] of Object.entries(g.assetRows || {})) {
+      const reg = regions.get(k);
+      if (reg != null) { regionSum += reg * n; regionN += n; }
+    }
+    return {
+      label: g.label,
+      assets: Object.keys(g.assetRows || {}).length,
+      holdCount: g.holdCount,
+      pos: g.pos,
+      vsLCount: g.vsLCount,
+      vsLPos: g.vsLPos,
+      sum: g.sum,
+      region: regionN ? Math.round(regionSum / regionN) : null,
+      nullBeat: g.nullBeat,
+      nullPairs: g.nullPairs,
+      nullShare: g.nullPairs ? g.nullBeat / g.nullPairs : null,
+      reals: [],
+      realsTotal: g.realsTotal,
+      realsShown: 0,
+    };
+  });
   // The first key must return 0 when NEITHER side has a measured null, or the
   // `||` chain never reaches plateau width and money. Returning -1 there made a
   // comparator not even consistent with itself, so the order was arbitrary
@@ -163,18 +191,131 @@ function rank(doc, { detailCap = 0, ...query } = {}) {
     || (b.region ?? -1) - (a.region ?? -1)
     || (b.pos / (b.holdCount || 1)) - (a.pos / (a.holdCount || 1))
     || b.sum - a.sum);
+  return scored;
+}
 
-  // PAGED OVER CONFIGURATIONS (owner order, 2026-08-23: "make it sane and
-  // pageable"). Sorted whole first — the ordering is a claim about which row is
-  // better and it has to be made over everything, not over a page — then a
-  // slice of that order is returned. `configs` is the true count either way, so
-  // a page can never read as the whole list.
-  const win = payload.page(scored, query);
-  return {
-    total, tagged, dropped, configs: scored.length,
-    scored: win.rows,
-    page: { offset: win.offset, limit: win.limit, total: win.total, shown: win.shown, more: win.more },
+// ---- the saved tally, and the background build ------------------------------
+//
+// Reading 49,519,009 rows takes about ten minutes, and it used to happen on
+// the one thread that answers every page — opening this table froze the whole
+// site (owner, 2026-08-25). Now the tally is BUILT ONCE, off that thread, and
+// SAVED beside the rows with the row count it covers. Serving it afterwards
+// costs nothing. It is rebuilt automatically when a run finishes, and in the
+// background on first open for anything older.
+const fs = require('fs');
+const path = require('path');
+
+function totalsFile(runId) {
+  return path.join(rowstore.storeDir(runId), 'replication.totals.json');
+}
+
+function readTotals(runId) {
+  try { return JSON.parse(fs.readFileSync(totalsFile(runId), 'utf8')); } catch (_) { return null; }
+}
+
+function writeTotals(runId, totals) {
+  const f = totalsFile(runId);
+  fs.mkdirSync(path.dirname(f), { recursive: true });
+  const tmp = `${f}.tmp${process.pid}`;
+  fs.writeFileSync(tmp, JSON.stringify(totals));
+  fs.renameSync(tmp, f);
+}
+
+// The full pass, streamed from the store. Run this in a worker thread, never
+// on the answering thread — that is the whole point of this file's change.
+function buildAndSaveTotals(runId, onProgress) {
+  let n = 0;
+  const totals = tallyOver((fn) => rowstore.each(runId, 'replication', (r) => {
+    n++;
+    if (onProgress && n % 1000000 === 0) onProgress(n);
+    return fn(r);
+  }));
+  writeTotals(runId, totals);
+  return totals;
+}
+
+// One build per run at a time, in a worker thread, at the kindest priority the
+// box offers. Fire-and-forget: rank() reports its progress, and the run\'s
+// completion fires it so a finished run is already totalled before anybody
+// asks.
+const builds = new Map();   // runId -> { scanned, startedAt, error }
+
+function startTotals(runId) {
+  const going = builds.get(runId);
+  if (going && !going.error) return going;
+  const state = { scanned: 0, startedAt: Date.now(), error: null };
+  builds.set(runId, state);
+  try {
+    const { Worker } = require('worker_threads');
+    const w = new Worker(path.join(__dirname, 'replication-worker.js'), { workerData: { runId } });
+    w.on('message', (m) => {
+      if (m.scanned != null) state.scanned = m.scanned;
+      if (m.error) { state.error = m.error; }
+      if (m.done) builds.delete(runId);
+    });
+    w.on('error', (e) => { state.error = e.message; });
+    w.on('exit', (code) => { if (code === 0) builds.delete(runId); else if (!state.error) state.error = `the build stopped with code ${code}`; });
+    w.unref();
+  } catch (err) {
+    state.error = err.message;
+  }
+  return state;
+}
+
+function rank(doc, { detailCap = 0, ...query } = {}) {
+  void detailCap;   // examples come from detail() since 2026-08-23; kept for callers
+  const pack = (scored, extra) => {
+    const win = payload.page(scored, query);
+    return {
+      tagged: extra.tagged, dropped: extra.dropped, total: extra.total,
+      configs: scored.length,
+      scored: win.rows,
+      page: { offset: win.offset, limit: win.limit, total: win.total, shown: win.shown, more: win.more },
+      ...extra.meta,
+    };
   };
+
+  // A run recorded before the rows moved to disk: small by construction, so it
+  // is tallied here and now — through the SAME definition as everything else.
+  if (!rowstore.exists(doc.id, 'replication')) {
+    const t = tallyOver((fn) => { for (const r of (doc.replication || [])) if (fn(r) === false) return; });
+    return pack(renderScored(t, doc.leaders), {
+      tagged: t.tagged, dropped: t.dropped, total: t.rowsSeen,
+      meta: { totals: { upToDate: true, asOfRows: t.rowsSeen, builtAt: t.builtAt } },
+    });
+  }
+
+  const rows = rowstore.count(doc.id, 'replication');
+  const saved = readTotals(doc.id);
+  if (saved && saved.rowsSeen === rows) {
+    return pack(renderScored(saved, doc.leaders), {
+      tagged: saved.tagged, dropped: saved.dropped, total: rows,
+      meta: { totals: { upToDate: true, asOfRows: rows, builtAt: saved.builtAt } },
+    });
+  }
+
+  // Behind, or never built. While a run is GOING, a tally a few minutes old is
+  // served as what it is — "as of N rows" — and a fresh build is only started
+  // when there is no tally at all, or the run has stopped, or the saved one
+  // has fallen more than fifteen minutes behind. Without that hold-off, every
+  // open during a run would queue another ten-minute pass behind the last.
+  const running = doc.status === 'running';
+  const savedAgeMs = saved ? Date.now() - new Date(saved.builtAt).getTime() : Infinity;
+  const wantBuild = !saved || !running || savedAgeMs > 15 * 60 * 1000;
+  const state = wantBuild ? startTotals(doc.id) : (builds.get(doc.id) || null);
+  const buildingMeta = {
+    building: !!(state && !state.error),
+    scanned: state ? state.scanned : 0,
+    of: rows,
+    ...(state && state.error ? { buildError: `the totalling stopped: ${state.error}` } : {}),
+  };
+  if (saved) {
+    return pack(renderScored(saved, doc.leaders), {
+      tagged: saved.tagged, dropped: saved.dropped, total: rows,
+      meta: { totals: { upToDate: false, asOfRows: saved.rowsSeen, builtAt: saved.builtAt }, ...buildingMeta },
+    });
+  }
+  return { ...buildingMeta, tagged: null, dropped: 0, total: rows, configs: 0, scored: [], page: { offset: 0, limit: 0, total: 0, shown: 0, more: false } };
 }
 
 // Every real row of ONE configuration, for the per-asset table a reader opens.
@@ -207,4 +348,4 @@ function detail(doc, label, { offset = 0, limit = 200 } = {}) {
   };
 }
 
-module.exports = { rank, detail, assetKey };
+module.exports = { rank, detail, assetKey, tallyOver, renderScored, buildAndSaveTotals, startTotals, readTotals, writeTotals, totalsFile };

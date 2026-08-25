@@ -2484,6 +2484,14 @@ function startBracketLab(params, opts) {
     doc.finishedAt = new Date().toISOString();
     doc.progress = '';
     saveBatch(doc);
+    // THE TOTALS ARE READY BEFORE ANYBODY ASKS (owner order, 2026-08-25: "do
+    // the running tallies now"). The replication table used to be totalled by
+    // reading every recorded row on request, on the thread that answers every
+    // page — ten minutes of nothing answering. The pass runs once here, in a
+    // worker thread at the kindest priority, and the saved tally serves every
+    // later open instantly. Fire-and-forget: the run is complete either way,
+    // and a failed build reports itself the first time the table is opened.
+    try { require('./replication').startTotals(doc.id); } catch (_) { /* the table falls back to a background build on open */ }
   })().catch((err) => {
     try { pool.abort(); } catch { /* gone */ }
     if (activePool === pool) activePool = null;
