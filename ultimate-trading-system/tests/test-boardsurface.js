@@ -88,3 +88,16 @@ module.exports = {
     // the Bracket lab is the source of truth for this arithmetic
   },
 };
+// EVERY BOX OF PERMUTATION RESULTS NAMES ITS SOURCE (owner order, 2026-08-25:
+// "you should indicate the actual true source for data rows in every box of
+// permutation results"). Six boxes on Boards show permutation results; a
+// number whose origin is not on the screen gets read as whatever the reader
+// hoped it was. The marker is the literal word the screen prints.
+module.exports.everyPermutationBoxNamesItsSource = function () {
+  const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'public', 'construct.js'), 'utf8');
+  const body = src.slice(src.indexOf('async function drawBoards('), src.indexOf('async function drawVerify('));
+  const sources = (body.match(/source: /g) || []).length;
+  assert.ok(sources >= 6,
+    `the Boards section prints ${sources} source line(s); the board, the ranked list, the single-config panel, `
+    + 'the every-coin box, the opened rows and the menu grid each need one');
+};

@@ -166,7 +166,7 @@ const COL = {
   coin: 'the traded pair this row scores, with its chunk shape. The whole-configuration table above averages across all of these; this row is one coin on its own.',
   coinShare: 'of the head-to-heads on THIS coin between the real decisions and their scrambled copies, the share the real ones won. Half is what guessing scores. Read it with the comparisons column: a high share on few comparisons is luck wearing a score.',
   coinPairs: 'how many head-to-heads are behind the share — every real look on this coin against every one of its scrambled copies. More comparisons make the share worth more.',
-  coinMoney: 'this configuration\'s held-back money on this coin alone, summed over its real looks.',
+  coinMoney: 'this configuration\'s held-back money on this coin — the SUM over the rows counted in the rows column, each one a promoted unit\'s own held-back result on the same history. A coin with 16 rows sums 16 results where one with 8 sums 8, so compare money only between rows whose rows counts match, or lead on the share instead.',
   coinRows: 'how many real looks this configuration recorded on this coin.',
 };
 // cth(label, key[, style]) — a heading always carries its own description.
@@ -1509,6 +1509,11 @@ async function drawBoards() {
       ${d.narrowedOut ? `<p class="note">${d.narrowedOut.toLocaleString()} row(s) narrowed out by the comparisons floor.</p>` : ''}
       ${pageBar('repCoins', d.page, ' coin rows')}`;
     return `<details id="bRepCoins"${repCoins.id === doc.id ? ' open' : ''} style="margin-top:.6rem"><summary style="cursor:pointer"><b>Every coin of every configuration</b> — one row per coin, sortable over the whole data set</summary>
+      <p class="note">source: the same replication rows as the list above — written in the second pass, one for every
+        promoted unit that scored this configuration on this coin. The rows column counts them: one per combination of
+        the boxes permuted on Sweep that share the coin and chunk shape, each scoring the same configuration on its own
+        forecasts. held-back is the SUM over those rows, so coins with more rows sum more results — compare money
+        between rows with equal rows, or lead on the share.</p>
       <div class="row" style="margin:.5rem 0">
         <label class="c"><span class="muted">sort by</span><select id="bCoinSort">
           <option value="share"${repCoins.sort === 'share' ? ' selected' : ''}>beat its own copies</option>
@@ -1572,6 +1577,8 @@ async function drawBoards() {
           looks and no p-value is quoted from it. Money is last on purpose. held-back $ is the once-only look on data
           no search touched; test $ is the window the settings were chosen on and flatters itself by construction.</p>
         ${staleNote}${inferredNote}
+        <p class="note">source: this run's replication rows — written in the second pass, one for every promoted unit
+          that scored the declared config — totalled once off to the side and served from that saved tally.</p>
         <div><b>${esc(g.label)}</b></div>
         <div class="row" style="gap:1.4rem;margin:.3rem 0 .5rem">
           <span><span class="k" title="${esc(TIP.null)}">beat its own null copies</span> ${nullCell(g)}</span>
@@ -1606,6 +1613,8 @@ async function drawBoards() {
         These configurations were SEARCHED, not declared, so the honest end is the sealed slice: window layout
         61/13/13/13, graded once in the History section.</p>
       ${staleNote}${inferredNote}
+      <p class="note">source: this run's replication rows — written in the second pass, one for every promoted unit and
+        every declared config it scored — totalled once off to the side and served from that saved tally.</p>
       ${pageBar('repList', rep.page, ' configurations')}
       <div style="max-height:26rem;overflow-y:auto;border:1px solid var(--line);border-radius:6px">${listHtml}</div>
       ${pageBar('repList', rep.page, ' configurations')}
@@ -1679,6 +1688,9 @@ async function drawBoards() {
       ${assetSummary}
       <div class="panel"><h3 style="margin-top:0">Survivor board — the promoted rows ${hasHold ? '(test window; held-back judges)' : '— NOTHING WAS HELD BACK'}</h3>
       ${hasHold ? '' : '<p class="note"><b>This run held nothing back.</b> Every dollar below is from the window the settings were CHOSEN on, so it flatters itself by construction and cannot say whether anything works out of sample. The null tools are unavailable for this run.</p>'}
+      <p class="note">source: the run's kept top rows — a display list capped at board rows, first-pass and promoted rows
+        together. The COMPLETE records behind it are the scored rows (every unit of the first pass) and one full row per
+        promoted unit of the second pass; nothing authoritative lives only on this capped list.</p>
       <p class="note">KEY — setup: traded + context coins; shape: chunk geometry · decision · band; cell: agreement/entry/hold;
         trades: entries in the test window; test $: profit-and-loss in dollars on the window the settings were CHOSEN on
         (flattering by construction); held-back $: the once-only look that matters; vs nulls: how many of the row's dealt-vote
@@ -1720,7 +1732,8 @@ async function drawBoards() {
       ${repBlock || (declaredHere ? `<div class="panel"><details id="bRepOpen"><summary style="cursor:pointer"><b>Replication —</b> the declared config on every asset</summary>
         <p class="note" id="bRepNote">Totalled once from every recorded row — ${(doc.rowCounts && doc.rowCounts.replication || 0).toLocaleString()} of them — off to the side, so nothing here waits on it.
           A finished run totals itself; anything older totals in the background the first time this is opened, and this box shows how far that has got.</p></details></div>` : '')}
-      <div class="panel" id="gridOut"><span class="muted">Menu grid: press a row's button — every execution permutation for that row with the plateau view (one setting moved at a time) on top.</span></div>
+      <div class="panel" id="gridOut"><span class="muted">Menu grid: press a row's button — every execution permutation for that row with the plateau view (one setting moved at a time) on top.
+        source: computed fresh from the stored price files when pressed — these are not recorded rows, and they are gone when the page redraws.</span></div>
       <div class="panel"><details><summary>the COMPLETE stored settings record for this run, verbatim (nothing invisible)</summary>
         <pre>${esc(JSON.stringify(doc.params || {}, null, 1))}</pre></details></div>`}
     </div>`;
@@ -1979,7 +1992,8 @@ async function drawBoards() {
         box.dataset.loaded = '';
         load();
       };
-      box.innerHTML = detail(d.rows || []) + moreNote(d) + pageBar(key, d.page, ' rows');
+      box.innerHTML = '<p class="note">source: this configuration\'s own replication rows, fetched as you page — the real ones only, its copies are machinery and are not listed.</p>'
+        + detail(d.rows || []) + moreNote(d) + pageBar(key, d.page, ' rows');
     };
     const holder = box.closest('details');
     if (!holder) { load(); return; }              // the single-configuration panel: no line to open
