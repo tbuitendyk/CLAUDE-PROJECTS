@@ -173,6 +173,58 @@ module.exports = {
     assert.ok(doc.finishedAt, 'and when it ended');
   },
 
+  // THE THREE WRONG SENTENCES OF 2026-08-25, pinned so they stay fixed. A stop
+  // during the second pass was reported as "at promote 25704/25704" — the unit
+  // counters count the FIRST pass, which is full for the whole of the second,
+  // so a run 70% through read as finished. And the same message told the owner
+  // it "cannot be resumed: start it again", which was written before Resume run
+  // existed: obeying it would have thrown away two days of computing.
+  aStopDuringTheSecondPassSaysWhereThatPassGotTo() {
+    const { markInterrupted } = require('../lib/batch');
+    const doc = markInterrupted({
+      id: 'r2', kind: 'bracketlab', status: 'running',
+      progress: 'promote 17861/25704: UNIUSDT',
+      perf: { phase: 'promote', unitsDone: 25704, unitsTotal: 25704 },
+    });
+    assert.ok(/17861\/25704/.test(doc.error),
+      `the reason must say how far the SECOND pass got, not repeat the finished first-pass counter: ${doc.error}`);
+    assert.ok(!/at promote 25704\/25704/.test(doc.error),
+      'a run mid-second-pass must not be reported at the first pass\'s full counter — that reads as finished');
+    assert.strictEqual(doc.interruptedWhere, 'promote 17861/25704: UNIUSDT');
+    // and the advice must be the truth: a sweep CAN be picked up
+    assert.ok(/Resume run/.test(doc.error) && /Boards/.test(doc.error),
+      `a stopped sweep must point at Resume run on Boards, not tell the owner to start again: ${doc.error}`);
+    assert.ok(!/cannot be resumed/.test(doc.error),
+      'the message must not claim a sweep cannot be resumed — it can, and the claim nearly cost two days of computing');
+  },
+
+  // ...while a run of a kind that really cannot be picked up keeps the old
+  // advice, because for those it is still the truth.
+  aKindThatCannotBePickedUpDoesNotPromiseResumeRun() {
+    const { markInterrupted } = require('../lib/batch');
+    const doc = markInterrupted({
+      id: 'w1', kind: 'walkforward', status: 'running',
+      perf: { phase: 'running', unitsDone: 3, unitsTotal: 9 },
+    });
+    assert.ok(!/Resume run/.test(doc.error),
+      `a walkforward cannot be picked up, so its message must not promise Resume run: ${doc.error}`);
+    assert.ok(/start it again/.test(doc.error), 'it still says what the owner can do');
+  },
+
+  // The third wrong sentence: a picked-up run's per-unit line counted only this
+  // sitting's share ("promote 55/25704" with 17,867 already done), so the run
+  // read as set back to the start. Pinned in the source because driving the
+  // whole promote pass needs the worker pool; comments are stripped first so
+  // the test cannot be satisfied by its own explanation.
+  aPickedUpRunCountsFromWhereItReallyIs() {
+    const src = fs.readFileSync(path.join(__dirname, '..', 'lib', 'batch.js'), 'utf8')
+      .replace(/\/\/[^\n]*/g, '');
+    assert.ok(src.includes('doc.progress = `promote ${promSkipped + i + 1}/${promote.length}'),
+      'the promote line no longer counts the already-scored units, so a picked-up run reads as starting over');
+    assert.ok(/doc\.perf\.runsDone \+= promote\.reduce\(\(n, l\) => n \+ \(donePromote\.has\(l\.key\)/.test(src),
+      'the trainings counter no longer counts the already-scored units, so the totals read as set back');
+  },
+
   // The reason has to travel to the picker, or the only screen that could show
   // it is the one nobody has a reason to open.
   theRunListCarriesHowARunEnded() {

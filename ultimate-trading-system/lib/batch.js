@@ -118,16 +118,31 @@ function markInterrupted(doc) {
   // only thing anywhere that said so was one word in a dropdown. A run that
   // ends has to leave behind what it was doing when it ended, because by the
   // time anyone looks, the thing that ended it is gone from the screen.
+  // THE RUN'S OWN LAST LINE FIRST, the unit counters only as a fallback
+  // (owner, 2026-08-25). The unit counters count the FIRST pass, and the first
+  // pass is complete for the whole of the second — so a run 70% through the
+  // second pass was reported as "promote 25704/25704", which reads as finished.
+  // doc.progress is the line the run itself wrote as it worked ("promote
+  // 17861/25704: UNIUSDT"), and it is still on the doc at this point because
+  // this is what blanks it.
   const perf = doc.perf || {};
-  const where = perf.unitsTotal
-    ? `${perf.phase || 'running'} ${perf.unitsDone ?? 0}/${perf.unitsTotal}`
-    : (doc.progress || 'in progress');
+  const where = doc.progress
+    || (perf.unitsTotal
+      ? `${perf.phase || 'running'} ${perf.unitsDone ?? 0}/${perf.unitsTotal}`
+      : 'in progress');
   doc.interruptedAt = doc.interruptedAt || doc.finishedAt;
   doc.interruptedWhere = doc.interruptedWhere || where;
+  // "cannot be resumed: start it again" was written before picking a run back
+  // up existed, and it stayed after — so it told the owner to throw away two
+  // days of computing that Resume run would have kept (owner caught it,
+  // 2026-08-25). Only a sweep can be picked up; anything else keeps the old
+  // advice, which for those is still the truth.
   doc.error = doc.error
     || `the service stopped while this run was going — it was at ${where}. `
-    + 'Nothing it had already finished is lost, but the run did not complete and cannot be resumed: '
-    + 'start it again from the Sweep section.';
+    + 'Nothing it had already finished is lost. '
+    + (doc.kind === 'bracketlab'
+      ? 'Open it on Boards and press Resume run — it carries on from where it stopped.'
+      : 'A run of this kind cannot be picked up where it stopped: start it again.');
   doc.progress = '';
   return doc;
 }
@@ -2180,10 +2195,19 @@ function startBracketLab(params, opts) {
       // wastes time, and skipping the wrong one loses a result.
       const donePromote = resume ? keysAlreadyDone(doc, 'census') : new Set();
       const promPending = donePromote.size ? promote.filter((l) => !donePromote.has(l.key)) : promote;
-      if (resume && promPending.length !== promote.length) {
+      // WHAT WAS ALREADY DONE COUNTS AS DONE, on the screen as well as on disk
+      // (owner, 2026-08-25: "the numbers are set back a lot"). A picked-up run
+      // reported "promote 55/25704" — the 55 counted only this sitting's share,
+      // the 17,867 already scored were in no number on the screen, and a run
+      // 70% through read as barely started. The skipped units join the
+      // trainings counter up front, and the line below counts from where the
+      // run really is, so the screen agrees with the record.
+      const promSkipped = promote.length - promPending.length;
+      if (resume && promSkipped) {
         const last = doc.resumes[doc.resumes.length - 1];
-        if (last) { last.skippedPromoted = promote.length - promPending.length; }
-        doc.progress = `picked up: ${promote.length - promPending.length} already scored in full, ${promPending.length} to go`;
+        if (last) { last.skippedPromoted = promSkipped; }
+        doc.perf.runsDone += promote.reduce((n, l) => n + (donePromote.has(l.key) ? slimViewsFor(l.size).length * 2 : 0), 0);
+        doc.progress = `picked up: ${promSkipped} already scored in full, ${promPending.length} to go`;
       }
       saveBatch(doc);
       const promPayloads = promPending.map((l) => ({
@@ -2432,7 +2456,7 @@ function startBracketLab(params, opts) {
           recordFailure(doc, l.key + '|promote', settled.error);
         }
         doc.perf.runsDone += slimViewsFor(l.size).length * 2;
-        doc.progress = `promote ${i + 1}/${promote.length}: ${l.trade}${l.ctx1 ? '+' + l.ctx1 : ''}`;
+        doc.progress = `promote ${promSkipped + i + 1}/${promote.length}: ${l.trade}${l.ctx1 ? '+' + l.ctx1 : ''}`;
         bracketPerfTick(doc);
         saveProgress(doc);
       });
