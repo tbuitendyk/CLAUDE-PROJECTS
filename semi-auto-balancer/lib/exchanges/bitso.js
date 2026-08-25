@@ -12,17 +12,27 @@ const WEB = 'https://bitso.com'; // OHLC lives here, not on api.bitso.com
 // live + historical fiat rates without CoinGecko's bitcoin cross-rate calls.
 const USD_FIAT_BOOKS = new Set(['mxn', 'ars', 'brl', 'cop']);
 
+// Venue truth (user-verified 2026-07): what Bitso labels "USD" in balances,
+// trade legs, fees and fundings IS USDC — there is no fiat-dollar wallet.
+// Canonicalize at the client boundary so account money always lands on real
+// usdc rows and can never synthesize a phantom fiat:usd row again. Market
+// data is untouched: book NAMES ('usd_mxn', 'btc_usd') stay venue-side.
+function canonCode(c) {
+  const l = String(c).toLowerCase();
+  return l === 'usd' ? 'usdc' : l;
+}
+
 // One user_trades entry -> normalized trade. major/minor arrive signed from
 // Bitso (buy: +major/-minor). The fee is applied as its own delta on
 // fees_currency; if the venue turns out to net it into major/minor already,
 // the per-trade error is small and the balance ground-truth snap in the sync
 // engine absorbs it (surfaced in the sync note, not silently wrong).
 function normalizeTrade(t) {
-  const [base, quote] = String(t.book).split('_');
+  const [base, quote] = String(t.book).split('_').map(canonCode);
   const major = Number(t.major);
   const minor = Number(t.minor);
   const fee = Number(t.fees_amount || 0);
-  const feeCur = (t.fees_currency || '').toLowerCase();
+  const feeCur = canonCode(t.fees_currency || '');
   const deltas = [
     { code: base, delta: major },
     { code: quote, delta: minor },
@@ -59,7 +69,7 @@ function normalizeFlow(kind, f) {
     id: String(kind === 'deposit' ? f.fid : f.wid),
     ts: Date.parse(f.created_at),
     kind,
-    code: String(f.currency).toLowerCase(),
+    code: canonCode(f.currency),
     amount: kind === 'deposit' ? amount : -amount,
     raw: f,
   };
@@ -124,7 +134,7 @@ function makeClient({ apiKey, apiSecret }) {
     async fetchBalances() {
       const p = await call('/v3/balance/');
       return (p.balances || [])
-        .map((b) => ({ code: String(b.currency).toLowerCase(), amount: Number(b.total) }))
+        .map((b) => ({ code: canonCode(b.currency), amount: Number(b.total) }))
         .filter((b) => Number.isFinite(b.amount));
     },
 
@@ -213,5 +223,6 @@ module.exports = {
   availableBooks,
   normalizeTrade,
   normalizeFlow,
+  canonCode,
   USD_FIAT_BOOKS,
 };

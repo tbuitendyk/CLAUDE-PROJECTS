@@ -333,7 +333,7 @@ async function syncAccount(accountId, { client = null } = {}) {
           if (b.amount > 1e-8) summary.unmapped.push(b.code);
           continue;
         }
-        if (!(qtyById.get(asset.id) > 0) && !pendingByAsset.get(asset.id) && b.amount > 0) {
+        if (!(qtyById.get(asset.id) > SNAP_NOISE) && !pendingByAsset.get(asset.id) && b.amount > 0) {
           adoptDeltas.push({ asset_id: asset.id, delta: b.amount, symbol: asset.symbol });
           continue;
         }
@@ -649,7 +649,8 @@ async function syncAccountMulti(account, client, profiles) {
         const virtual = holders.reduce((s, h) => s + (qty.get(h.asset.id) || 0), 0);
         const pend = pendingByCode.get(b.code) || 0;
         const queued = queuedByCode.get(b.code) || 0;
-        if (virtual === 0 && !pend && !queued && b.amount > 0 && holders.length === 1) {
+        // A sub-noise float tail is not a holding — it must not block adoption.
+        if (Math.abs(virtual) < SNAP_NOISE && !pend && !queued && b.amount > 0 && holders.length === 1) {
           adoptTargets.push({ profileId: holders[0].profile.id, asset: holders[0].asset, delta: b.amount, symbol: holders[0].asset.symbol });
           continue;
         }
@@ -686,7 +687,9 @@ async function syncAccountMulti(account, client, profiles) {
             }
           }
         } else {
-          summary.unexplained.push({ code: b.code, residual });
+          // symbol matters: the UI renders it, and the single-profile path
+          // has always included it — the shapes must match.
+          summary.unexplained.push({ code: b.code, symbol: holders[0].asset.symbol, residual });
         }
         summary.perCode.push({ code: b.code, physical: b.amount, virtual, pending: pend, queued, residual });
       }

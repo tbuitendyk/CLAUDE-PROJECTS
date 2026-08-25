@@ -1774,8 +1774,10 @@ function renderExchange(x, pendingFlows, profile) {
     warnings.push(`On the venue but not in this profile: ${note.unmapped.map((c) => c.toUpperCase()).join(', ')} — add the asset(s) to include them.`);
   }
   for (const u of note.unexplained || []) {
+    // Older multi-path sync notes lack `symbol` — never let a stored note
+    // shape crash the render (it aborts the whole page, deposit box included).
     warnings.push(
-      `${u.symbol.toUpperCase()}: venue balance differs by ${u.residual >= 0 ? '+' : ''}${u.residual} ` +
+      `${String(u.symbol || u.code || '?').toUpperCase()}: venue balance differs by ${u.residual >= 0 ? '+' : ''}${u.residual} ` +
         `beyond what synced trades/flows explain — record it as a deposit/withdrawal or fix the quantity.`
     );
   }

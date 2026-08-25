@@ -79,4 +79,24 @@ ok(bd.id === 'f1' && bd.code === 'mxn' && approx(bd.amount, 5000), 'funding -> +
 const bw = bitso.normalizeFlow('withdrawal', { wid: 'w1', currency: 'btc', amount: '0.25', created_at: '2026-07-02T01:00:00+00:00' });
 ok(bw.id === 'w1' && approx(bw.amount, -0.25), 'withdrawal -> -amount');
 
+// --- Bitso "USD" IS USDC (venue truth, canonicalized at the boundary) ---
+ok(bitso.canonCode('USD') === 'usdc' && bitso.canonCode('usd') === 'usdc', "canonCode: 'usd' -> 'usdc'");
+ok(bitso.canonCode('mxn') === 'mxn' && bitso.canonCode('BTC') === 'btc', 'canonCode: other codes untouched (lowercased)');
+const bu = bitso.normalizeTrade({
+  book: 'doge_usd', major: '1361', minor: '-100.106994', price: '0.07355',
+  fees_amount: '4.8996', fees_currency: 'doge', side: 'buy',
+  created_at: '2026-07-21T08:13:00+00:00', tid: 125,
+});
+ok(bu.pair === 'DOGE/USDC', 'usd-book pair label reads USDC');
+ok(bu.deltas.some((d) => d.code === 'usdc' && approx(d.delta, -100.106994)), 'usd quote leg lands as usdc');
+ok(!bu.deltas.some((d) => d.code === 'usd'), "no 'usd' code survives normalization");
+const buFee = bitso.normalizeTrade({
+  book: 'usd_mxn', major: '862.21', minor: '-15000', price: '17.4',
+  fees_amount: '6.55', fees_currency: 'usd', side: 'buy',
+  created_at: '2026-07-21T06:48:00+00:00', tid: 126,
+});
+ok(buFee.deltas.filter((d) => d.code === 'usdc').length === 2 && approx(buFee.feePct, (6.55 / 862.21) * 100), 'usd base + usd fee both canonical; feePct still base-relative');
+const bdu = bitso.normalizeFlow('deposit', { fid: 'f2', currency: 'USD', amount: '85.27', created_at: '2026-07-02T02:00:00+00:00' });
+ok(bdu.code === 'usdc' && approx(bdu.amount, 85.27), 'usd funding -> usdc flow');
+
 console.log('exchange normalization tests pass');

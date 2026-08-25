@@ -343,7 +343,7 @@ app.get('/api/profiles/:id/state', (req, res) => {
     flows,
     exchange: exchangeView(profile.id),
     pendingFlows: db
-      .prepare("SELECT id, ts, kind, code, asset_id, amount FROM pending_flows WHERE profile_id = ? AND status = 'pending' ORDER BY ts")
+      .prepare("SELECT id, ts, kind, code, asset_id, amount, profile_id FROM pending_flows WHERE profile_id = ? AND status = 'pending' ORDER BY ts")
       .all(profile.id),
     latestTune: latestResult(profile.id, 'tune-threshold'),
     latestCompose: latestResult(profile.id, 'compose'),

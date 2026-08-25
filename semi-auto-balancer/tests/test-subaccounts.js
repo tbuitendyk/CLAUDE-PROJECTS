@@ -209,6 +209,24 @@ const client = {
   ok(approx(qtyOf(2, 'sol'), 5, 1e-9), 'adoption landed on the only holder (Trial)');
   ok(sub.listTxnLog(account.id).some((r) => r.kind === 'adopt'), 'adoption logged');
 
+  // ---- unexplained entries carry symbol (the toUpper regression) ------------
+  // Multi-path unexplained residuals must ship the same {code, symbol,
+  // residual} shape as the single path — the UI renders symbol on every
+  // refresh and a symbol-less entry crashed the whole page.
+  VENUE.balances = VENUE.balances.map((b2) => (b2.code === 'xrp' ? { code: 'xrp', amount: 1_310 } : b2));
+  s = await sync.syncAccount(account.id, { client });
+  ok(s.unexplained.length === 1 && s.unexplained[0].code === 'xrp', 'out-of-tolerance residual surfaces as unexplained');
+  ok(typeof s.unexplained[0].symbol === 'string' && s.unexplained[0].symbol.toLowerCase() === 'xrp', 'multi-path unexplained entry carries symbol');
+  VENUE.balances = VENUE.balances.map((b2) => (b2.code === 'xrp' ? { code: 'xrp', amount: 1_260 } : b2));
+
+  // ---- sub-noise float tail must not block adoption --------------------------
+  db.prepare("UPDATE assets SET quantity = 1e-12 WHERE profile_id = 2 AND symbol = 'sol'").run();
+  VENUE.balances = VENUE.balances.map((b2) => (b2.code === 'sol' ? { code: 'sol', amount: 7 } : b2));
+  s = await sync.syncAccount(account.id, { client });
+  ok(s.adopted.length === 1 && s.adopted[0].symbol === 'sol', 'sole holder with a 1e-12 tail still adopts the venue balance');
+  ok(approx(qtyOf(2, 'sol'), 7, 1e-9), 'adopted quantity lands despite the tail');
+  VENUE.balances = VENUE.balances.map((b2) => (b2.code === 'sol' ? { code: 'sol', amount: qtyOf(2, 'sol') } : b2));
+
   // ---- rewind: T1 trade → reversed + back in the inbox ----------------------
   const before = { btc: qtyOf(1, 'btc'), usdc: qtyOf(1, 'usdc') };
   let r = await sub.rewindTxn(t1Log.id);
