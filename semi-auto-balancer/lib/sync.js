@@ -29,7 +29,14 @@ const VENUES = { kraken, bitso };
 // is "unexplained"; anything inside is venue dust (fee rounding, precision)
 // and snaps to the venue balance silently.
 const RESIDUAL_ABS = 1e-8;
-const RESIDUAL_REL = 5e-4; // 0.05%
+const RESIDUAL_REL = 5e-4; // 0.05% — visibility floor: true-ups above this write a txn_log entry
+// Universal balance true-up cap (venue-agnostic, user-directed 2026-08): the
+// venue's balance sheet is the truth, and drift within 0.5% per asset —
+// staking crumbs, fee-currency quirks, rounding — is simply booked as
+// performance (quantities move, NO flow splice, so baskets and value indices
+// absorb it as P&L). Anything beyond the cap still surfaces as unexplained:
+// real money is never silently rebranded as profit.
+const TRUEUP_REL = 5e-3; // 0.5%
 // Below this, a residual is double-precision noise, not money: venue
 // quantities carry at most 8 decimals, so real dust is always ≥ 1e-8.
 // Noise residuals are ignored outright — no snap, no txn_log entry, no
@@ -337,14 +344,29 @@ async function syncAccount(accountId, { client = null } = {}) {
           adoptDeltas.push({ asset_id: asset.id, delta: b.amount, symbol: asset.symbol });
           continue;
         }
-        const expected = (qtyById.get(asset.id) || 0) + (pendingByAsset.get(asset.id) || 0);
+        const held = qtyById.get(asset.id) || 0;
+        const expected = held + (pendingByAsset.get(asset.id) || 0);
         const residual = b.amount - expected;
-        const tolerance = Math.max(RESIDUAL_ABS, RESIDUAL_REL * Math.max(Math.abs(b.amount), 1e-8));
-        if (Math.abs(residual) <= tolerance) {
-          if (Math.abs(residual) >= SNAP_NOISE) {
-            const target = b.amount - (pendingByAsset.get(asset.id) || 0);
-            summary.snapped.push({ symbol: asset.symbol, from: qtyById.get(asset.id), to: target });
-            qtyById.set(asset.id, target);
+        const tolerance = Math.max(RESIDUAL_ABS, TRUEUP_REL * Math.max(Math.abs(b.amount), 1e-8));
+        // True up only drift the POSITION itself can plausibly have produced:
+        // small vs the venue balance AND small vs the holding it lands on
+        // (pending/queued money is not ours to absorb into — that bound also
+        // makes a negative target impossible). Never while an endpoint is
+        // degraded: blind of trades/flows, a real deposit or fill would be
+        // booked as fake P&L.
+        const degraded = capability.trades !== 'ok' || capability.flows !== 'ok';
+        if (Math.abs(residual) < SNAP_NOISE) {
+          // float noise — not money
+        } else if (Math.abs(residual) <= tolerance && Math.abs(residual) <= TRUEUP_REL * held && !degraded) {
+          const target = held + residual;
+          summary.snapped.push({ symbol: asset.symbol, from: held, to: target });
+          qtyById.set(asset.id, target);
+          if (Math.abs(residual) > RESIDUAL_REL * Math.max(Math.abs(b.amount), 1e-8)) {
+            require('./subaccounts').logTxn({
+              accountId: account.id, profileId: account.profile_id, kind: 'sweep', ref: null,
+              deltas: [{ asset_id: asset.id, symbol: asset.symbol, delta: residual }],
+              note: `balance true-up vs venue: ${residual > 0 ? '+' : ''}${residual} ${asset.symbol.toUpperCase()}`,
+            });
           }
         } else {
           summary.unexplained.push({ code: b.code, symbol: asset.symbol, residual });
@@ -365,7 +387,7 @@ async function syncAccount(accountId, { client = null } = {}) {
         maxTradeTs,
         maxLedgerTs,
         Date.now(),
-        JSON.stringify({ unmapped: summary.unmapped, unexplained: summary.unexplained, capability }),
+        JSON.stringify({ unmapped: summary.unmapped, unexplained: summary.unexplained, snapped: summary.snapped, capability }),
         account.id
       );
     })();
@@ -656,34 +678,68 @@ async function syncAccountMulti(account, client, profiles) {
         }
         const expected = virtual + pend + queued;
         const residual = b.amount - expected;
-        const tolerance = Math.max(RESIDUAL_ABS, RESIDUAL_REL * Math.max(Math.abs(b.amount), 1e-8));
-        if (Math.abs(residual) <= tolerance) {
-          if (Math.abs(residual) >= SNAP_NOISE && shell) {
-            // Dust lands in the shell — strategy track records never absorb
-            // noise they didn't earn.
+        const tolerance = Math.max(RESIDUAL_ABS, TRUEUP_REL * Math.max(Math.abs(b.amount), 1e-8));
+        const held = holders.filter((h) => (qty.get(h.asset.id) || 0) > 0);
+        const totalHeld = held.reduce((s, h) => s + qty.get(h.asset.id), 0);
+        // True up only drift the POSITIONS themselves can plausibly have
+        // produced: small vs the venue balance AND small vs the holdings it
+        // lands on (pending/queued money is not ours to absorb into — that
+        // bound also keeps every pro-rata share under 0.5% of its holder, so
+        // a clamp can never break the sum-to-residual invariant). Never while
+        // an endpoint is degraded: blind of trades/flows, a real deposit or
+        // fill would be booked as fake P&L.
+        const degraded = capability.trades !== 'ok' || capability.flows !== 'ok';
+        let applied = 0;
+        if (Math.abs(residual) < SNAP_NOISE) {
+          // float noise — not money
+        } else if (
+          Math.abs(residual) <= tolerance &&
+          !degraded &&
+          (held.length > 0 ? Math.abs(residual) <= TRUEUP_REL * totalHeld : residual > 0)
+        ) {
+          // Universal balance true-up: drift within the caps is performance,
+          // spread pro-rata over the profiles that actually HOLD the coin
+          // (staking crumbs and fee quirks belong to whoever holds it). No
+          // flow splice — baskets and value indices absorb it as P&L. If
+          // nobody holds any, positive dust falls to the pool (legacy shell
+          // behavior).
+          const moved = [];
+          if (held.length > 0) {
+            for (const h of held) {
+              const prev = qty.get(h.asset.id);
+              const next = Math.max(0, prev + residual * (prev / totalHeld));
+              if (Math.abs(next - prev) >= SNAP_NOISE) {
+                moved.push({ profileId: h.profile.id, asset: h.asset, from: prev, to: next });
+                qty.set(h.asset.id, next);
+              }
+            }
+          } else if (shell) {
             let sAsset = matchVenueAsset(assetsOf.get(shell.id), b.code);
-            if (!sAsset && residual > 0) {
+            if (!sAsset) {
               sAsset = sub.ensureAsset(shell.id, holders[0].asset);
               assetsOf.get(shell.id).push(sAsset);
               qty.set(sAsset.id, sAsset.quantity);
             }
-            if (sAsset) {
-              const prev = qty.get(sAsset.id) || 0;
-              const next = Math.max(0, prev + residual);
-              // Log what actually moved, not what we wished: a negative
-              // residual against an empty shell clamps to zero applied, and
-              // a zero-applied "snap" must leave no trace or it re-logs on
-              // every sync until the end of time.
-              const applied = next - prev;
-              if (Math.abs(applied) >= SNAP_NOISE) {
-                summary.snapped.push({ symbol: sAsset.symbol, from: prev, to: next });
-                qty.set(sAsset.id, next);
-                sub.logTxn({
-                  accountId: account.id, profileId: shell.id, kind: 'snap', ref: null,
-                  deltas: [{ asset_id: sAsset.id, symbol: sAsset.symbol, delta: applied }],
-                  note: `dust snap ${applied > 0 ? '+' : ''}${applied} ${sAsset.symbol.toUpperCase()} → shell`,
-                });
-              }
+            const prev = qty.get(sAsset.id) || 0;
+            const next = Math.max(0, prev + residual);
+            if (Math.abs(next - prev) >= SNAP_NOISE) {
+              moved.push({ profileId: shell.id, asset: sAsset, from: prev, to: next });
+              qty.set(sAsset.id, next);
+            }
+          }
+          applied = moved.reduce((s, m) => s + (m.to - m.from), 0);
+          for (const m of moved) summary.snapped.push({ symbol: m.asset.symbol, from: m.from, to: m.to });
+          // Visible but not noisy: true-ups beyond 0.05% of the balance
+          // leave a txn_log trail (a slow systematic leak must stay
+          // diagnosable); micro-dust absorbs silently.
+          if (moved.length && Math.abs(residual) > RESIDUAL_REL * Math.max(Math.abs(b.amount), 1e-8)) {
+            for (const m of moved) {
+              const delta = m.to - m.from;
+              sub.logTxn({
+                accountId: account.id, profileId: m.profileId, kind: 'sweep', ref: null,
+                deltas: [{ asset_id: m.asset.id, symbol: m.asset.symbol, delta }],
+                note: `balance true-up vs venue: ${delta > 0 ? '+' : ''}${delta} ${m.asset.symbol.toUpperCase()}`,
+              });
             }
           }
         } else {
@@ -691,7 +747,11 @@ async function syncAccountMulti(account, client, profiles) {
           // has always included it — the shapes must match.
           summary.unexplained.push({ code: b.code, symbol: holders[0].asset.symbol, residual });
         }
-        summary.perCode.push({ code: b.code, physical: b.amount, virtual, pending: pend, queued, residual });
+        // Report the POST-true-up state: the row must show what the books say
+        // NOW, not the drift that was just repaired.
+        summary.perCode.push({
+          code: b.code, physical: b.amount, virtual: virtual + applied, pending: pend, queued, residual: residual - applied,
+        });
       }
 
       // Persist every touched quantity.

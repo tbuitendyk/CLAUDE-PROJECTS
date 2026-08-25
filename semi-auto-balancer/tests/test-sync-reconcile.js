@@ -133,6 +133,21 @@ const client = {
   ok(assetBySym('btc').quantity === 0.17000000234, 'sub-noise residual leaves the stored quantity untouched');
   VENUE.balances = [ { code: 'btc', amount: 0.17000000234 }, { code: 'usdt', amount: 3997.4 } ];
 
+  // --- E3: universal true-up — drift within 0.5% books as performance ---
+  const flowsBefore = db.prepare('SELECT COUNT(*) c FROM flows').get().c;
+  const sweeps = () => db.prepare("SELECT COUNT(*) c FROM txn_log WHERE kind = 'sweep'").get().c;
+  const sweepsBefore = sweeps();
+  VENUE.balances = [ { code: 'btc', amount: 0.1705 }, { code: 'usdt', amount: 3997.4 } ];
+  const s5c = await sync.syncAccount(account.id, { client });
+  ok(s5c.unexplained.length === 0 && s5c.snapped.length === 1, '0.29% drift trues up instead of surfacing');
+  ok(assetBySym('btc').quantity === 0.1705, 'quantity snapped to the venue number');
+  ok(db.prepare('SELECT COUNT(*) c FROM flows').get().c === flowsBefore, 'true-up is P&L — no flow splice recorded');
+  ok(sweeps() === sweepsBefore + 1, 'single-profile true-up above 0.05% leaves a txn_log trail too');
+  VENUE.balances = [ { code: 'btc', amount: 0.17000000234 }, { code: 'usdt', amount: 3997.4 } ];
+  const s5d = await sync.syncAccount(account.id, { client });
+  ok(s5d.snapped.length === 1 && assetBySym('btc').quantity === 0.17000000234, 'true-up follows the venue back down');
+  ok(sweeps() === sweepsBefore + 2, 'the way back is logged as well');
+
   // --- F: venue currencies with no matching asset are reported, not guessed ---
   VENUE.balances = [ { code: 'btc', amount: 0.17000000234 }, { code: 'usdt', amount: 3997.4 }, { code: 'eth', amount: 1.5 } ];
   const s6 = await sync.syncAccount(account.id, { client });

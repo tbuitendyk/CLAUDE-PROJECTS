@@ -163,8 +163,8 @@ const client = {
   const assignLog = sub.listTxnLog(account.id).find((r) => r.ref === 'tr-3' && r.kind === 'trade-assign');
   ok(Boolean(assignLog), 'assignment logged');
 
-  // ---- dust snap lands in the SHELL -----------------------------------------
-  const dust = 0.00002; // within 0.05% of 0.3 btc
+  // ---- universal true-up: dust lands on the HOLDER as performance -----------
+  const dust = 0.00002; // 0.007% of 0.3 btc — within the cap, below visibility
   VENUE.trades = [];
   VENUE.balances = [
     { code: 'usdc', amount: 7_350 },
@@ -173,34 +173,76 @@ const client = {
     { code: 'paxg', amount: 1.0 },
   ];
   s = await sync.syncAccount(account.id, { client });
-  ok(s.snapped.length === 1, 'dust within tolerance snapped');
-  ok(approx(qtyOf(shell.id, 'btc'), dust, 1e-12), 'the SHELL absorbed the dust, not a strategy profile');
-  ok(approx(qtyOf(1, 'btc'), 0.3, 1e-12), 'Main btc clean');
+  ok(s.snapped.length === 1, 'dust within cap trued up');
+  ok(approx(qtyOf(1, 'btc'), 0.3 + dust, 1e-12), 'the HOLDER absorbed the dust as P&L (sole positive holder)');
+  ok(qtyOf(shell.id, 'btc') === undefined, 'the shell never grew a btc row for it');
 
-  // ---- float-noise residuals never snap, never log --------------------------
+  // ---- float-noise residuals never true up, never log -----------------------
   // Observed live: a 1.4e-14 stored-quantity tail produced an identical
-  // "dust snap → shell" txn_log entry every hourly sync, forever.
-  const snapRows = () => db.prepare("SELECT COUNT(*) c FROM txn_log WHERE account_id = ? AND kind = 'snap'").get(account.id).c;
-  const noiseBase = snapRows();
+  // txn_log entry every hourly sync, forever.
+  const sweepRows = () => db.prepare("SELECT COUNT(*) c FROM txn_log WHERE account_id = ? AND kind IN ('snap','sweep')").get(account.id).c;
+  const noiseBase = sweepRows();
   const btcPhys = 0.3 + dust;
   VENUE.balances = VENUE.balances.map((b2) => (b2.code === 'btc' ? { code: 'btc', amount: btcPhys - 1.4e-14 } : b2));
   s = await sync.syncAccount(account.id, { client });
-  ok(s.snapped.length === 0 && s.unexplained.length === 0, 'sub-noise residual neither snaps nor surfaces');
+  ok(s.snapped.length === 0 && s.unexplained.length === 0, 'sub-noise residual neither trues up nor surfaces');
   s = await sync.syncAccount(account.id, { client });
-  ok(snapRows() === noiseBase, 'repeated syncs over a noise residual write NO txn_log entries');
-  ok(approx(qtyOf(shell.id, 'btc'), dust, 1e-12) && approx(qtyOf(1, 'btc'), 0.3, 1e-12), 'noise residual left all quantities untouched');
+  ok(sweepRows() === noiseBase, 'repeated syncs over a noise residual write NO txn_log entries');
+  ok(approx(qtyOf(1, 'btc'), 0.3 + dust, 1e-12), 'noise residual left quantities untouched');
 
-  // ---- negative dust an empty shell can't absorb: silent, not logged --------
-  // Real-size dust (≥ 1e-8) but negative, on an asset the shell holds none
-  // of: the clamp means nothing can move, so nothing may be logged either.
-  VENUE.balances = VENUE.balances.map((b2) => (b2.code === 'xrp' ? { code: 'xrp', amount: 1_260 - 1e-6 } : b2));
+  // ---- pro-rata true-up across several holders, logged when visible ---------
+  VENUE.balances = VENUE.balances.map((b2) => (b2.code === 'xrp' ? { code: 'xrp', amount: 1_258 } : b2)); // −2 of 1260 = 0.16%: within cap, above 0.05% visibility
   s = await sync.syncAccount(account.id, { client });
-  ok(s.snapped.length === 0 && s.unexplained.length === 0, 'unabsorbable negative dust stays silent (within tolerance)');
-  ok(snapRows() === noiseBase, 'zero-applied clamp writes no txn_log entry');
-  ok(approx(qtyOf(1, 'xrp'), 970, 1e-9) && approx(qtyOf(2, 'xrp'), 290, 1e-9), 'strategy xrp untouched by the clamp case');
+  ok(s.unexplained.length === 0 && s.snapped.length === 2, 'within-cap drift trues up instead of surfacing');
+  ok(approx(qtyOf(1, 'xrp'), 970 - 2 * (970 / 1260), 1e-9), 'holder 1 debited pro-rata');
+  ok(approx(qtyOf(2, 'xrp'), 290 - 2 * (290 / 1260), 1e-9), 'holder 2 debited pro-rata');
+  ok(approx(qtyOf(1, 'xrp') + qtyOf(2, 'xrp'), 1_258, 1e-9), 'books equal the venue after the true-up');
+  ok(sweepRows() === noiseBase + 2, 'visible true-up leaves a txn_log trail per touched profile');
+  ok(
+    db.prepare("SELECT COUNT(*) c FROM flows WHERE note LIKE '%true-up%'").get().c === 0,
+    'true-up is P&L — no flow splice recorded'
+  );
+  // sweep back up to the venue (also logged), then micro-dust stays silent
+  VENUE.balances = VENUE.balances.map((b2) => (b2.code === 'xrp' ? { code: 'xrp', amount: 1_260 } : b2));
+  s = await sync.syncAccount(account.id, { client });
+  ok(approx(qtyOf(1, 'xrp'), 970, 1e-6) && approx(qtyOf(2, 'xrp'), 290, 1e-6), 'true-up back to the venue restores holdings');
+  const visBase = sweepRows();
+  VENUE.balances = VENUE.balances.map((b2) => (b2.code === 'xrp' ? { code: 'xrp', amount: 1_260 - 1e-4 } : b2));
+  s = await sync.syncAccount(account.id, { client });
+  ok(s.snapped.length === 2 && sweepRows() === visBase, 'micro-dust below 0.05% trues up silently (no log)');
   VENUE.balances = VENUE.balances.map((b2) =>
     b2.code === 'btc' ? { code: 'btc', amount: btcPhys } : b2.code === 'xrp' ? { code: 'xrp', amount: 1_260 } : b2
   );
+  s = await sync.syncAccount(account.id, { client });
+
+  // ---- true-up refuses when pending money dominates the balance -------------
+  // Cap is 0.5% of the BALANCE and 0.5% of the HOLDINGS: a residual small vs
+  // a deposit-inflated balance but big vs what profiles actually hold must
+  // surface, not be booked as P&L on tiny positions.
+  VENUE.flows.push({ id: 'fl-h', ts: now + 60_000, kind: 'deposit', code: 'paxg', amount: 9, raw: {} });
+  VENUE.balances = VENUE.balances.map((b2) => (b2.code === 'paxg' ? { code: 'paxg', amount: 10.02 } : b2));
+  s = await sync.syncAccount(account.id, { client });
+  ok(s.newPendingFlows === 1, 'the deposit was detected as a pending flow');
+  ok(s.unexplained.length === 1 && s.unexplained[0].code === 'paxg' && typeof s.unexplained[0].symbol === 'string',
+    'residual within balance-cap but beyond holdings-cap surfaces as unexplained');
+  ok(approx(qtyOf(2, 'paxg'), 1.0, 1e-12), 'tiny position NOT inflated by pending-dominated drift');
+  db.prepare("UPDATE pending_flows SET status = 'dismissed' WHERE code = 'paxg'").run();
+  VENUE.flows = VENUE.flows.filter((f) => f.id !== 'fl-h');
+  VENUE.balances = VENUE.balances.map((b2) => (b2.code === 'paxg' ? { code: 'paxg', amount: 1.0 } : b2));
+
+  // ---- true-up refuses while an endpoint is degraded ------------------------
+  // Blind of trades/flows, a real fill or deposit would be booked as fake
+  // P&L — so drift waits, visibly, until the account can see again.
+  const blindClient = { ...client, fetchTradesSince: async () => { throw new Error('no permission'); } };
+  VENUE.balances = VENUE.balances.map((b2) => (b2.code === 'xrp' ? { code: 'xrp', amount: 1_258 } : b2));
+  s = await sync.syncAccount(account.id, { client: blindClient });
+  ok(s.capability.trades !== 'ok', 'degraded endpoint reported');
+  ok(s.snapped.length === 0 && s.unexplained.some((u) => u.code === 'xrp'), 'no true-up while blind — drift surfaces instead');
+  ok(approx(qtyOf(1, 'xrp'), 970, 1e-6) && approx(qtyOf(2, 'xrp'), 290, 1e-6), 'holdings untouched while blind');
+  s = await sync.syncAccount(account.id, { client });
+  ok(s.unexplained.length === 0 && approx(qtyOf(1, 'xrp') + qtyOf(2, 'xrp'), 1_258, 1e-9), 'sight restored → drift trues up normally');
+  VENUE.balances = VENUE.balances.map((b2) => (b2.code === 'xrp' ? { code: 'xrp', amount: 1_260 } : b2));
+  s = await sync.syncAccount(account.id, { client });
 
   // ---- baseline adoption: sole holder only ----------------------------------
   VENUE.balances.push({ code: 'sol', amount: 5 });
@@ -263,12 +305,12 @@ const client = {
   const v1 = valueIndexNow(1);
   const btcAsset = db.prepare('SELECT * FROM assets WHERE profile_id = 1 AND symbol = ?').get('btc');
   const carve = await sub.carveOut(account.id, 1, shell.id, [{ asset_id: btcAsset.id, qty: 0.05 }]);
-  ok(approx(qtyOf(shell.id, 'btc'), dust + 0.05, 1e-9), 'shell received the carved btc');
+  ok(approx(qtyOf(shell.id, 'btc'), 0.05, 1e-9), 'shell received the carved btc');
   ok(approx(valueIndexNow(1), v1, 1e-6), 'carve-out did not move the source value index (splice-continuous)');
   const carveLegs = sub.listTxnLog(account.id).filter((r2) => r2.ref === carve.ref);
   ok(carveLegs.length === 2, 'carve-out logged as a pair');
   await sub.rewindTxn(carveLegs[0].id);
-  ok(approx(qtyOf(shell.id, 'btc'), dust, 1e-9) && approx(qtyOf(1, 'btc'), btcAsset.quantity, 1e-9), 'rewinding one leg reversed BOTH');
+  ok(approx(qtyOf(shell.id, 'btc'), 0, 1e-9) && approx(qtyOf(1, 'btc'), btcAsset.quantity, 1e-9), 'rewinding one leg reversed BOTH');
 
   // ---- account summary: totals across profiles in the VIEW's tether ---------
   const sum1 = sub.accountSummary(account.id, 1, PRICES);

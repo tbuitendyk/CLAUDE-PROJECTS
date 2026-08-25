@@ -512,8 +512,11 @@
       <figcaption>The linked-profiles line and the <strong>reconcile table</strong>: per asset,
       the venue's physical balance must equal the sum of every profile's virtual holding + flows awaiting
       confirmation + fills awaiting attribution. Here 30 XRP sit queued (see inbox below) — the invariant
-      still balances. A residual beyond tolerance is flagged ⚠ and never silently fixed; dust within
-      tolerance snaps into the shell.</figcaption>
+      still balances. A residual beyond the 0.5% true-up cap is flagged ⚠ and never silently fixed;
+      drift within the cap — staking crumbs, fee-currency quirks, rounding — is trued up to the venue
+      number automatically, pro-rata across the profiles holding the asset, and counted as plain
+      profit/loss (no deposit is invented for it). True-ups bigger than 0.05% of the balance leave a
+      "balance true-up" row in the transaction log.</figcaption>
     </figure>
 
     <figure class="fig">
@@ -574,7 +577,10 @@
         fill applies nothing until you assign it. The tether leg always follows the traded asset's
         profile.</li>
       <li><span class="term">Reconcile table</span> — per asset: physical (venue truth) vs Σ virtual vs
-        pending vs queued, with the residual flagged when it exceeds tolerance. Never silently fixed.</li>
+        pending vs queued. Drift within 0.5% of the venue balance — and of the holdings it lands on —
+        is trued up automatically into the holders' quantities as performance (logged above 0.05%).
+        Anything larger, anything landing on positions too small to have produced it, and any drift seen
+        while an API permission is degraded is flagged ⚠ instead and never silently fixed.</li>
       <li><span class="term">Transaction log &amp; Rewind</span> — every applied transaction (auto or
         manual: fills, flows, carve-outs, snaps, adoptions) appears in plain words, newest first, each row
         rewindable once. <strong>Rewind</strong> reverses it (attributed fills return to the inbox);
@@ -664,7 +670,7 @@
       <dt>MAR</dt><dd>CAGR ÷ max drawdown — return per unit of worst pain; the Ladder Lab's ranking score.</dd>
       <dt>Robust score</dt><dd>A ladder config's worst MAR among itself and all one-step grid neighbors. High robust = a plateau member; a lucky spike scores near zero.</dd>
       <dt>Anchor / epoch</dt><dd>The ATH the ladder measures from. A new ATH starts a new epoch (entries re-arm); the first entry of an epoch arms the exit ladder at absolute levels against that anchor.</dd>
-      <dt>Shell profile</dt><dd>The per-account "Unallocated" pool: physical balance = strategy profiles + shell. Absorbs dust, funds carve-outs, never a strategy.</dd>
+      <dt>Shell profile</dt><dd>The per-account "Unallocated" pool: physical balance = strategy profiles + shell. Funds carve-outs, takes dust nobody holds, never a strategy.</dd>
       <dt>Carve-out</dt><dd>A virtual transfer between linked profiles — paired flow splices at live prices, no real trade, both track records continuous.</dd>
       <dt>Attribution</dt><dd>Deciding which linked profile owns a synced fill: unique holder → automatic; advice match (±15%, 36h) → automatic; ambiguous → inbox.</dd>
       <dt>Rewind</dt><dd>One-click reversal of any applied transaction. Appends a compensating entry (history never edited); attributed fills return to the inbox; cross-snapshot corrections annotate the profile visibly.</dd>

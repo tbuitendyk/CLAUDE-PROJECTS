@@ -2147,7 +2147,7 @@ async function loadSubaccounts(x) {
   $('#sub-recon-wrap').classList.toggle('hidden', !data.perCode);
   for (const c of data.perCode || []) {
     const tr = document.createElement('tr');
-    const bad = Math.abs(c.residual) > Math.max(1e-8, 5e-4 * Math.abs(c.physical));
+    const bad = Math.abs(c.residual) > Math.max(1e-8, 5e-3 * Math.abs(c.physical)); // matches TRUEUP_REL
     tr.innerHTML =
       `<td>${c.code.toUpperCase()}</td><td class="num">${c.physical}</td><td class="num">${+c.virtual.toFixed(8)}</td>` +
       `<td class="num">${+(c.pending || 0).toFixed(8)}</td><td class="num">${+(c.queued || 0).toFixed(8)}</td>` +
