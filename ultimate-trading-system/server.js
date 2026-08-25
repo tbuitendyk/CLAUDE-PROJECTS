@@ -123,6 +123,54 @@ app.post('/api/cpu', (req, res) => {
   }
 });
 
+// ---- Compute (owner design, 2026-08-25) -------------------------------------
+// Which platform each role points at, which platforms exist to point at, and
+// the two CPU settings this service already honours live (worker count from
+// data/settings.json at each job launch; per-worker duty cycle re-read every
+// few seconds by running work). The page fills every dropdown from this reply
+// and holds no list of its own (RULE FIVE).
+app.get('/api/compute-config', (req, res) => {
+  try {
+    const cfg = require('./lib/compute').config();
+    res.json({
+      ...cfg,
+      workers: { setting: (() => {
+        try { return JSON.parse(require('fs').readFileSync(path.join(__dirname, 'data', 'settings.json'), 'utf8')).worker_threads ?? null; } catch (_) { return null; }
+      })(),
+      inForce: configuredSize(),
+      max: require('os').cpus().length },
+      pct: throttle.currentCpuPct(),
+    });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/compute-config', (req, res) => {
+  const body = req.body || {};
+  try {
+    const out = {};
+    if (body.role != null) out.role = require('./lib/compute').setRole(String(body.role), String(body.platform || ''));
+    if (body.workers != null) {
+      const n = Math.floor(Number(body.workers));
+      const cores = require('os').cpus().length;
+      if (!Number.isFinite(n) || n < 1 || n > cores) {
+        return res.status(400).json({ error: `workers must be a whole number from 1 to ${cores} — this machine has ${cores} processors` });
+      }
+      // Same file, same atomic write discipline as the duty cycle setting.
+      const file = path.join(__dirname, 'data', 'settings.json');
+      let settings = {};
+      try { settings = JSON.parse(require('fs').readFileSync(file, 'utf8')); } catch (_) { /* first write */ }
+      settings.worker_threads = n;
+      require('fs').mkdirSync(path.dirname(file), { recursive: true });
+      const tmp = `${file}.tmp${process.pid}`;
+      require('fs').writeFileSync(tmp, JSON.stringify(settings, null, 1));
+      require('fs').renameSync(tmp, file);
+      out.workers = { setting: n, inForce: configuredSize(), max: cores };
+    }
+    if (body.pct != null) out.pct = throttle.setCpuPct(body.pct);
+    res.json(out);
+  } catch (err) { res.status(400).json({ error: err.message }); }
+});
+
 // WORKER SELF-TEST. The pool is created per job and torn down after it, so
 // there is no long-lived set of threads to inspect between runs, and `ps` on
 // the host cannot tell the pool's threads apart from any other node thread.

@@ -1,9 +1,10 @@
-// THE RESTART BUTTON, AND THE ONE SERVICE IT MAY TOUCH.
+// THE COMPUTE HAND: this system's own services, and nothing else on the machine.
 //
-// It runs as root, so what matters is that it can do exactly one thing to
-// exactly one service and nothing else can be got out of it. There is no unit
-// parameter any more, which is most of the safety: there is nothing to point
-// somewhere else. These pin that it stays that way.
+// It runs as root, so what matters is the boundary: it acts only on the units
+// on its fixed list, refuses to strand the owner by stopping itself, and no
+// request can widen any of that. Every action test asserts on the argument
+// list handed to systemctl — a reply can lie about what was run, the recorder
+// cannot.
 const path = require('path');
 const http = require('http');
 const fs = require('fs');
@@ -13,68 +14,120 @@ const { assert } = require('./helpers');
 const SVC = path.join(__dirname, '..', 'service-control', 'server.js');
 
 // Load it with child_process.execFile swapped for a recorder, so no systemctl
-// anywhere near a test run and the exact argument list is checked.
-function withFakeSystemctl(stdout = 'active') {
+// anywhere near a test run.
+function withFakeSystemctl(replies = {}) {
   const cp = require('child_process');
   const real = cp.execFile;
   const calls = [];
   cp.execFile = (cmd, args, opts, cb) => {
     const done = typeof opts === 'function' ? opts : cb;
     calls.push([cmd, ...args]);
-    process.nextTick(() => done(null, stdout, ''));
+    const key = `${cmd} ${args[0]}`;
+    process.nextTick(() => done(null, replies[key] ?? 'active', ''));
   };
   delete require.cache[require.resolve(SVC)];
   const mod = require(SVC);
   return { mod, calls, restore: () => { cp.execFile = real; delete require.cache[require.resolve(SVC)]; } };
 }
 
+const changed = (calls) => calls.filter((c) => c[0] === 'systemctl' && ['start', 'stop', 'restart', 'set-property'].includes(c[1]));
+
 module.exports = {
-  // The whole of it: one service, named here and nowhere else.
-  async restartingTouchesTheTradingServiceAndNothingElse() {
+  // The boundary: only the units on the fixed list, ever.
+  async aServiceNotOnTheListIsRefusedAndNothingRuns() {
     const { mod, calls, restore } = withFakeSystemctl();
     try {
-      const r = await mod.restart();
-      assert.strictEqual(r.code, 200, JSON.stringify(r.body));
-      assert.strictEqual(r.body.unit, 'ultimate-trading-system.service');
-      const changed = calls.filter((c) => ['restart', 'stop', 'start'].includes(c[1]));
-      assert.deepStrictEqual(changed, [['systemctl', 'restart', 'ultimate-trading-system.service']],
-        `expected one restart of one service and nothing else, got ${JSON.stringify(changed)}`);
+      for (const unit of ['nginx.service', 'ssh.service', 'general-classifier.service',
+        'nginx.service; rm -rf /', '../../etc/passwd', '']) {
+        calls.length = 0;
+        const r = await mod.act({ unit, action: 'stop', confirm: unit });
+        assert.strictEqual(r.code, 400, `"${unit}" got ${r.code} — it is not one of this system's services`);
+        assert.deepStrictEqual(changed(calls), [], `"${unit}" reached systemctl as ${JSON.stringify(changed(calls))}`);
+        const q = await mod.setQuota({ unit, percent: 100, confirm: unit });
+        assert.strictEqual(q.code, 400, `a ceiling for "${unit}" got ${q.code}`);
+        assert.deepStrictEqual(changed(calls), [], `a ceiling for "${unit}" reached systemctl`);
+      }
     } finally { restore(); }
   },
 
-  // NOTHING IN A REQUEST CAN CHANGE WHAT IT ACTS ON. This is the property that
-  // replaced a name, a pattern to validate it against, a list of services it
-  // was allowed to touch, and a list it was not: there is no name to send.
-  async nothingSentInCanAimItAtAnotherService() {
+  // The control never strands the owner: it will not stop or restart itself.
+  async theControlRefusesToStopItselfAndSaysWhy() {
     const { mod, calls, restore } = withFakeSystemctl();
-    const srv = mod.server;
-    await new Promise((r) => srv.listen(0, '127.0.0.1', r));
-    const port = srv.address().port;
-    const post = (body) => new Promise((resolve) => {
-      const req = http.request({ host: '127.0.0.1', port, method: 'POST', path: '/api/restart', headers: { 'Content-Type': 'application/json' } }, (res) => {
-        let b = ''; res.on('data', (c) => { b += c; }); res.on('end', () => resolve({ code: res.statusCode, b }));
-      });
-      req.on('error', () => resolve({ code: 0, b: '' }));
-      req.end(body);
-    });
     try {
-      for (const body of ['{"unit":"nginx.service"}', '{"unit":"ssh.service","action":"stop"}',
-        '{"unit":"nginx.service; rm -rf /"}', 'not json at all', '']) {
+      for (const action of ['stop', 'restart']) {
         calls.length = 0;
-        const r = await post(body);
-        assert.strictEqual(r.code, 200, `${body} answered ${r.code}`);
-        const changed = calls.filter((c) => ['restart', 'stop', 'start'].includes(c[1]));
-        assert.deepStrictEqual(changed, [['systemctl', 'restart', 'ultimate-trading-system.service']],
-          `sending ${body} made it run ${JSON.stringify(changed)}`);
+        const r = await mod.act({ unit: mod.SELF_UNIT, action, confirm: mod.SELF_UNIT });
+        assert.strictEqual(r.code, 409, `${action} on the control itself got ${r.code}`);
+        assert.ok(/way back|start anything again/.test(r.body.error), `the refusal carries no reason: ${r.body.error}`);
+        assert.deepStrictEqual(changed(calls), [], 'it was refused but still ran');
       }
-    } finally {
-      await new Promise((r) => srv.close(r));
-      restore();
-    }
+      // starting itself is harmless and allowed (a no-op when already running)
+      const ok = await mod.act({ unit: mod.SELF_UNIT, action: 'start', confirm: mod.SELF_UNIT });
+      assert.strictEqual(ok.code, 200, JSON.stringify(ok.body));
+    } finally { restore(); }
   },
 
-  // Only reading, and one kind of change.
-  async itAnswersNothingButTheTwoThingsItIsFor() {
+  // The two-step, on both kinds of change.
+  async nothingHappensUnlessTheNameIsGivenTwice() {
+    const { mod, calls, restore } = withFakeSystemctl();
+    try {
+      for (const confirm of ['', 'something-else', 'ultimate-trading-system']) {
+        calls.length = 0;
+        const r = await mod.act({ unit: mod.UNIT, action: 'restart', confirm });
+        assert.strictEqual(r.code, 400, `confirm "${confirm}" should have been refused`);
+        const q = await mod.setQuota({ unit: mod.UNIT, percent: 100, confirm });
+        assert.strictEqual(q.code, 400, `quota confirm "${confirm}" should have been refused`);
+        assert.deepStrictEqual(changed(calls), [], `confirm "${confirm}" still ran ${JSON.stringify(changed(calls))}`);
+      }
+    } finally { restore(); }
+  },
+
+  // The ordinary case, exactly and only.
+  async restartingTheTradingServiceRunsExactlyThatAndNothingElse() {
+    const { mod, calls, restore } = withFakeSystemctl();
+    try {
+      const r = await mod.act({ unit: mod.UNIT, action: 'restart', confirm: mod.UNIT });
+      assert.strictEqual(r.code, 200, JSON.stringify(r.body));
+      assert.deepStrictEqual(changed(calls), [['systemctl', 'restart', mod.UNIT]],
+        `expected one restart of one service, got ${JSON.stringify(changed(calls))}`);
+    } finally { restore(); }
+  },
+
+  // The ceiling: bounded, named twice, applied with set-property so it reaches
+  // running work AND survives a restart of the unit.
+  async theCeilingIsBoundedAndAppliedWithSetProperty() {
+    const { mod, calls, restore } = withFakeSystemctl();
+    try {
+      for (const bad of [0, 5, 9, -100, 100 * os.cpus().length + 100, NaN, 'lots']) {
+        calls.length = 0;
+        const r = await mod.setQuota({ unit: mod.UNIT, percent: bad, confirm: mod.UNIT });
+        assert.strictEqual(r.code, 400, `a ceiling of ${bad} got ${r.code}`);
+        assert.deepStrictEqual(changed(calls), [], `a ceiling of ${bad} still ran`);
+      }
+      calls.length = 0;
+      const ok = await mod.setQuota({ unit: mod.UNIT, percent: 250, confirm: mod.UNIT });
+      assert.strictEqual(ok.code, 200, JSON.stringify(ok.body));
+      assert.deepStrictEqual(changed(calls), [['systemctl', 'set-property', mod.UNIT, 'CPUQuota=250%']],
+        `expected one set-property, got ${JSON.stringify(changed(calls))}`);
+    } finally { restore(); }
+  },
+
+  // The floor of 10 is not taste: a ceiling near zero starves the service of
+  // the processor time it needs merely to answer, which reads exactly like the
+  // outage this control exists to end.
+  async whatSystemdReportsAsAQuotaIsReadCorrectly() {
+    const { mod, restore } = withFakeSystemctl();
+    try {
+      assert.strictEqual(mod.quotaPct('3s'), 300);
+      assert.strictEqual(mod.quotaPct('1s'), 100);
+      assert.strictEqual(mod.quotaPct('500ms'), 50);
+      assert.strictEqual(mod.quotaPct('infinity'), null, 'no ceiling must read as none, not as a made-up number');
+      assert.strictEqual(mod.quotaPct(''), null);
+    } finally { restore(); }
+  },
+
+  // Only reading, and two kinds of change.
+  async itAnswersNothingButTheThingsItIsFor() {
     const { mod, restore } = withFakeSystemctl();
     const srv = mod.server;
     await new Promise((r) => srv.listen(0, '127.0.0.1', r));
@@ -87,21 +140,21 @@ module.exports = {
       req.end();
     });
     try {
-      assert.strictEqual(await call('DELETE', '/api/restart'), 405, 'DELETE was not turned away');
-      assert.strictEqual(await call('PUT', '/api/state'), 405, 'PUT was not turned away');
-      assert.strictEqual(await call('POST', '/api/anything-else'), 405, 'an unknown change was not turned away');
+      assert.strictEqual(await call('DELETE', '/api/service'), 405);
+      assert.strictEqual(await call('PUT', '/api/compute'), 405);
+      assert.strictEqual(await call('POST', '/api/anything-else'), 405);
     } finally {
       await new Promise((r) => srv.close(r));
       restore();
     }
   },
 
-  // It serves the trading system's pages so the button is reachable when that
-  // service is not answering -- and nothing above them.
+  // The pages it serves so the Compute tab survives an outage — and nothing
+  // above them.
   async itCannotBeTalkedIntoServingAFileOutsideThePagesFolder() {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'uts-svc-'));
     fs.mkdirSync(path.join(dir, 'public'), { recursive: true });
-    fs.writeFileSync(path.join(dir, 'public', 'construct.html'), '<html>the page</html>');
+    fs.writeFileSync(path.join(dir, 'public', 'setup.html'), '<html>the page</html>');
     fs.writeFileSync(path.join(dir, 'secret.html'), 'NOT FOR SERVING');
     const cp = require('child_process');
     const real = cp.execFile;
@@ -113,7 +166,7 @@ module.exports = {
     await new Promise((r) => srv.listen(0, '127.0.0.1', r));
     const port = srv.address().port;
     // Sent raw, because a client library would tidy the dots away before the
-    // request left -- and tidying them away is the thing being tested.
+    // request left — and tidying them away is the thing being tested.
     const get = (p) => new Promise((resolve) => {
       const sock = require('net').connect(port, '127.0.0.1', () => {
         sock.write(`GET ${p} HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n`);
@@ -124,7 +177,7 @@ module.exports = {
       sock.on('error', () => resolve(''));
     });
     try {
-      const ok = await get('/construct.html');
+      const ok = await get('/setup.html');
       assert.ok(/the page/.test(ok), `the ordinary page did not come back: ${ok.slice(0, 200)}`);
       for (const p of ['/../secret.html', '/..%2fsecret.html', '/public/../../secret.html', '/./../secret.html']) {
         const body = await get(p);
@@ -139,27 +192,25 @@ module.exports = {
     }
   },
 
-  // The button is reachable at two addresses and asks by a path relative to
-  // where it was loaded. Both must land on the same handler, or it works from
-  // one and silently not from the other -- and the other is the one that
-  // matters, because it is the one used when the service is down.
+  // Reachable at both addresses, one handler. The second address is the one
+  // used when the trading service is down, which is when this matters.
   async theSameRequestWorksFromBothAddresses() {
     const { mod, restore } = withFakeSystemctl();
     const srv = mod.server;
     await new Promise((r) => srv.listen(0, '127.0.0.1', r));
     const port = srv.address().port;
-    const post = (p) => new Promise((resolve) => {
-      const req = http.request({ host: '127.0.0.1', port, method: 'POST', path: p }, (res) => {
+    const post = (p, body) => new Promise((resolve) => {
+      const req = http.request({ host: '127.0.0.1', port, method: 'POST', path: p, headers: { 'Content-Type': 'application/json' } }, (res) => {
         let b = ''; res.on('data', (c) => { b += c; }); res.on('end', () => resolve({ code: res.statusCode, b }));
       });
       req.on('error', () => resolve({ code: 0, b: '' }));
-      req.end('{}');
+      req.end(JSON.stringify(body || {}));
     });
     try {
-      for (const p of ['/api/restart', '/svc/api/restart']) {
-        const r = await post(p);
-        assert.strictEqual(r.code, 200, `${p} answered ${r.code}`);
-        assert.strictEqual(JSON.parse(r.b).unit, 'ultimate-trading-system.service');
+      for (const p of ['/api/service', '/svc/api/service']) {
+        const r = await post(p, { unit: mod.UNIT, action: 'restart', confirm: mod.UNIT });
+        assert.strictEqual(r.code, 200, `${p} answered ${r.code}: ${r.b}`);
+        assert.strictEqual(JSON.parse(r.b).unit, mod.UNIT);
       }
     } finally {
       await new Promise((r) => srv.close(r));
@@ -167,18 +218,23 @@ module.exports = {
     }
   },
 
-  // The button must go through the SEPARATE program. Pointed back at the main
-  // app it becomes a dead button -- that service is not permitted to run
-  // systemctl, and if it were it would not be answering when this is pressed.
-  async theButtonGoesThroughTheSeparateProgramAndNotTheMainApp() {
-    const src = fs.readFileSync(path.join(__dirname, '..', 'public', 'construct.js'), 'utf8');
-    const at = src.indexOf("const kick = $('#bKick')");
-    assert.ok(at > 0, 'the restart control is gone from Boards');
-    const body = src.slice(at, at + 1600).replace(/\/\/[^\n]*/g, '');
-    assert.ok(/tryPost\('svc\/api\/restart'/.test(body),
-      'the restart control no longer goes through the separate program');
-    assert.ok(!/tryPost\('api\//.test(body),
-      'the restart control goes through the main app, which cannot do it and will be down anyway');
+  // The Compute tab must go through the SEPARATE program for everything that
+  // acts on services. Pointed back at the main app those become dead buttons —
+  // that service is not permitted to run systemctl, and it will be the thing
+  // that is down when they are pressed.
+  async theComputeTabActsThroughTheSeparateProgram() {
+    const page = fs.readFileSync(path.join(__dirname, '..', 'public', 'setup.html'), 'utf8')
+      .replace(/\/\/[^\n]*/g, '');
+    for (const want of ['svc/api/compute', 'svc/api/service', 'svc/api/quota']) {
+      assert.ok(page.includes(`'${want}'`), `the Compute tab no longer asks ${want} of the separate program`);
+    }
+    // the thirty-second re-read the owner asked for, only while the tab shows
+    assert.ok(/setInterval\(\(\) => refreshCompute\(false\), 30000\)/.test(page),
+      'the Compute tab no longer re-reads every thirty seconds');
+    // its own theme, stored under its own name
+    assert.ok(/setup-compute-theme/.test(page), 'the Compute tab no longer keeps its own theme choice');
+    // and the app-side settings go to the app, which owns them
+    assert.ok(page.includes("'api/compute-config'"), 'the Compute tab no longer reads the roles and knobs from the trading service');
   },
 
   // The unit that runs it has to come back on its own: it is the way back.
@@ -201,19 +257,24 @@ module.exports = {
       `the control now depends on ${outside.join(', ')} — it has to start when nothing else can`);
   },
 
-  // AND IT STAYS SMALL. It grew into a screen of its own listing 153 services
-  // with start and stop on every one, which was junk in a trading application
-  // and was thrown out. A ceiling on its size is a cruder guard than a test,
-  // and it is the one that would have caught that.
-  async itHasNotGrownBackIntoAServiceBrowser() {
+  // AND IT STAYS A HAND, NOT A BROWSER. It was once a screen of all 153
+  // services on the machine, thrown out by the owner as junk. The Compute
+  // design (owner, 2026-08-25) grew it back deliberately — loads, ceilings and
+  // actions for THIS SYSTEM'S OWN services, a fixed allow-list — and this pins
+  // that boundary: no enumeration of the machine, no curation file, and a size
+  // that fits the job.
+  async itIsThisSystemsServicesAndNeverTheWholeMachine() {
     const src = fs.readFileSync(SVC, 'utf8');
-    const code = src.split('\n').filter((l) => l.trim() && !l.trim().startsWith('//')).length;
-    assert.ok(code < 120, `the control is ${code} lines of code. It restarts one service; if it needs more than this it has become something else again.`);
-    for (const gone of ['list-units', 'watching', 'CANNOT_STOP', 'UNIT_RE']) {
-      assert.ok(!src.includes(gone), `"${gone}" is back — this is the service browser growing again`);
+    for (const gone of ['list-units', 'watching']) {
+      assert.ok(!src.includes(gone), `"${gone}" is back — this is the machine-wide browser growing again`);
     }
-    const page = fs.readFileSync(path.join(__dirname, '..', 'public', 'construct.js'), 'utf8');
-    assert.ok(!/drawService|svcPick|'service'/.test(page), 'the Service tab is back on the page');
-    assert.ok(!/\['service', 'Service'\]/.test(page), 'the Service tab is back in the tab strip');
+    const code = src.split('\n').filter((l) => l.trim() && !l.trim().startsWith('//')).length;
+    assert.ok(code < 280,
+      `the control is ${code} lines of code. Loads, ceilings and three actions for a fixed list of units fits well inside 280; past that it is becoming something else again.`);
+    const { mod, restore } = withFakeSystemctl();
+    try {
+      assert.ok(Array.isArray(mod.UNITS) && mod.UNITS.length <= 4,
+        `the allow-list holds ${mod.UNITS.length} units — a list that long is a browser wearing a list`);
+    } finally { restore(); }
   },
 };

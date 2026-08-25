@@ -95,6 +95,29 @@
      frozen block span the full width and carry the page background with it. */
   .pagetop { position:sticky; top:0; z-index:20; background:var(--bg);
     margin:-1.1rem -1.1rem 0; padding:1.1rem 1.1rem 0; }
+  /* THE COMPUTE SECTION CARRIES ITS OWN THEME (owner design, 2026-08-25:
+     "with it's own independently selectable theme"). The tokens cascade, so
+     re-declaring them on the section restyles everything inside it and nothing
+     outside it. "follow the page" sets neither and the page's own choice shows
+     through. The section paints its background itself, or the page's colour
+     would show behind panels whose own colours had switched. */
+  #cwrap { border-radius:8px; }
+  #cwrap[data-ctheme="dark"] {
+    --bg:#0e1116; --fg:#d6dce5; --muted:#6b7686; --dim:#8b96a5;
+    --panel:#12161d; --tile:#171c24; --line:#232a35;
+    --pos:#4ec9a5; --neg:#e06c75; --warn:#e5c07b; --accent:#9db4d0;
+    --tabbg:#171c24; --tabon:#0e1116;
+    background:var(--bg); color:var(--fg); padding:.9rem; margin:0 -.9rem;
+  }
+  #cwrap[data-ctheme="light"] {
+    --bg:#f6f7f9; --fg:#1a2028; --muted:#8a94a2; --dim:#5a6472;
+    --panel:#ffffff; --tile:#ffffff; --line:#dde2e8;
+    --pos:#0a7d55; --neg:#c02a33; --warn:#8a6d00; --accent:#2c5fa8;
+    --tabbg:#eceef1; --tabon:#ffffff;
+    background:var(--bg); color:var(--fg); padding:.9rem; margin:0 -.9rem;
+  }
+  .loadbar { height:8px; background:var(--line); border-radius:4px; overflow:hidden; margin-top:.3rem; }
+  .loadbar > div { height:100%; background:var(--accent); }
 </style>
 </head>
 <body>
@@ -110,40 +133,249 @@
       <div class="spacer"></div>
   </div>
 
-  </div>
   <div class="row">
     <h1 style="margin:0">Setup</h1>
     <span id="utcClock" class="muted" style="font-variant-numeric:tabular-nums">&mdash;</span>
     <div class="spacer"></div>
     <button class="themebtn" id="themebtn">&#9686; theme</button>
   </div>
-  <div class="sub">Account and system settings. Nothing is on this page yet &mdash; it is the front door,
-    and what belongs here is still being decided.</div>
-
-  <div id="view">
-    <div class="panel">
-      <div class="empty">This page is deliberately empty. Settings that belong to the whole account
-        &mdash; who you are, where alerts are sent, defaults &mdash; will live here. Settings that
-        belong to one trading configuration live with that configuration, under <b>Trade</b>.</div>
-    </div>
+  <div class="sub">Account and system settings.</div>
+  <div class="tabs">
+    <div class="tab" data-tab="account">Account</div>
+    <div class="tab" data-tab="compute">Compute</div>
+  </div>
   </div>
 
+  <div id="view"></div>
+
 <script>
-// Self-contained: this page carries no application code, so the two things every
-// page shows -- the theme and the clock -- are done here rather than by pulling in
-// a large file for eleven lines of work.
+// Self-contained on purpose: this page must still work when it is served by
+// the small always-up program at its fallback address, with the main service
+// down — so it pulls in nothing.
+const $ = (s, r) => (r || document).querySelector(s);
+const esc = (t) => String(t == null ? '' : t).replace(/&/g, '&amp;').replace(/</g, '&lt;');
 const root = document.documentElement;
-// Same key the Construct page uses, so the choice carries between them. The Trade
-// page still keeps its own key; that split predates this page and is recorded in
-// BUILD-PLAN.md as found-not-fixed rather than changed inside this loop.
+// Same key the Construct page uses, so the choice carries between them.
 root.setAttribute('data-theme', localStorage.getItem('cx-theme') || 'dark');
-document.getElementById('themebtn').onclick = () => {
+$('#themebtn').onclick = () => {
   const n = root.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
   root.setAttribute('data-theme', n); localStorage.setItem('cx-theme', n);
 };
-const clock = document.getElementById('utcClock');
+const clock = $('#utcClock');
 const tick = () => { clock.textContent = new Date().toISOString().slice(0, 19).replace('T', ' ') + ' UTC'; };
 tick(); setInterval(tick, 1000);
+
+// A failed ask and an empty answer are different answers, and every panel
+// below says which it got. Nothing on this page pretends.
+const getJson = async (p) => {
+  const r = await fetch(p);
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.error || ('HTTP ' + r.status));
+  return j;
+};
+const postJson = async (p, body) => {
+  const r = await fetch(p, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}) });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.error || ('HTTP ' + r.status));
+  return j;
+};
+
+let tab = localStorage.getItem('setup-tab') || 'account';
+let cTimer = null;           // the thirty-second re-read, armed only while Compute shows
+let cLoads = null;           // last reading from the small always-up program
+let cCfg = null;             // last reading from the trading service
+let cErrLoads = null;
+let cErrCfg = null;
+
+const mb = (b) => b == null ? '—' : b >= 1073741824 ? (b / 1073741824).toFixed(2) + ' GB' : Math.round(b / 1048576) + ' MB';
+const age = (s) => s == null ? '—' : s < 90 ? s + 's' : s < 5400 ? Math.round(s / 60) + 'm' : s < 172800 ? (s / 3600).toFixed(1) + 'h' : (s / 86400).toFixed(1) + 'd';
+
+function drawAccount() {
+  $('#view').innerHTML = '<div class="panel"><div class="empty">Settings that belong to the whole account '
+    + '&mdash; who you are, where alerts are sent, defaults &mdash; will live here. Settings that '
+    + 'belong to one trading configuration live with that configuration, under <b>Trade</b>.</div></div>';
+}
+
+// ---- Compute (owner design, 2026-08-25) ------------------------------------
+// Where each part of the system runs, what each service is doing right now,
+// and the controls over how much of the machine each may take. The loads come
+// from a separate small program that stays up when the trading service does
+// not, so this tab keeps reporting exactly when the report matters.
+async function loadCompute() {
+  const a = getJson('svc/api/compute').then((d) => { cLoads = d; cErrLoads = null; }, (e) => { cErrLoads = e.message; });
+  const b = getJson('api/compute-config').then((d) => { cCfg = d; cErrCfg = null; }, (e) => { cErrCfg = e.message; });
+  await Promise.all([a, b]);
+}
+
+function svcCard(u) {
+  const state = u.active === 'active' ? '<span class="pos">running</span>'
+    : u.active === 'failed' ? '<span class="neg">stopped badly</span>' : '<span class="muted">' + esc(u.active) + '</span>';
+  const ans = !u.answers ? ''
+    : u.answers.answering
+      ? ' · <span class="pos">answered in ' + u.answers.ms + ' ms</span>'
+      : ' · <span class="neg">did not answer</span> <span class="muted">(' + esc(u.answers.why) + ')</span>';
+  const quota = u.quotaPct == null ? null : u.quotaPct;
+  const barPct = u.cpuPct == null ? 0 : Math.min(100, quota ? (u.cpuPct / quota) * 100 : u.cpuPct);
+  const short = u.unit.replace(/\.service$/, '');
+  return '<div class="tile" style="margin-bottom:.55rem">'
+    + '<div class="row"><b>' + esc(short) + '</b><span class="note">' + esc(u.description) + '</span><span class="spacer"></span>' + state + '<span class="muted">up ' + age(u.upSeconds) + '</span></div>'
+    + '<div class="row" style="margin-top:.35rem; gap:1.2rem">'
+    + '<span title="processor time this service used over the last half second of measuring, as a share of one processor. 100 is one whole processor."><span class="k">using now</span> <b>' + (u.cpuPct == null ? '—' : u.cpuPct + '%') + '</b></span>'
+    + '<span title="the most processor this service is allowed, as a share of one processor — 300 is three processors&#39; worth. Set with the box to the right."><span class="k">allowed</span> <b>' + (quota == null ? 'no ceiling' : quota + '%') + '</b></span>'
+    + '<span title="memory this service is holding right now"><span class="k">memory</span> <b>' + mb(u.memoryBytes) + '</b></span>'
+    + ans
+    + '</div>'
+    + '<div class="loadbar" title="how much of its allowance it is using right now"><div style="width:' + barPct.toFixed(0) + '%"></div></div>'
+    + '<div class="row" style="margin-top:.5rem">'
+    + '<label class="f">ceiling, % of one processor<input data-quota="' + esc(u.unit) + '" type="number" min="10" max="800" step="10" value="' + (quota == null ? '' : quota) + '" style="width:6.5rem" placeholder="none set"></label>'
+    + '<button data-setquota="' + esc(u.unit) + '" title="applies immediately to running work, and survives the service being restarted">Set the ceiling</button>'
+    + '<span class="spacer"></span>'
+    + '<button data-act="start" data-unit="' + esc(u.unit) + '" title="starts it if it is not running; does nothing to one that already is">Start</button>'
+    + '<button data-act="restart" data-unit="' + esc(u.unit) + '" class="danger" title="stops it and starts it again. Anything it was part-way through is lost; a sweep that was going is marked as stopped and can be picked up again with Resume run on the Construct page.">Restart</button>'
+    + '<button data-act="stop" data-unit="' + esc(u.unit) + '" class="danger" title="stops it and leaves it stopped">Stop</button>'
+    + '</div>'
+    + (u.cannotStop ? '<div class="note warn" style="margin-top:.3rem">cannot be stopped or restarted from here — ' + esc(u.cannotStop) + '</div>' : '')
+    + '</div>';
+}
+
+function drawCompute() {
+  const ct = localStorage.getItem('setup-compute-theme') || '';
+  const m = cLoads && cLoads.machine;
+  const roles = cCfg && cCfg.rolesOffered ? cCfg.rolesOffered.map((r) => {
+    const cur = cCfg.roles[r.key] || {};
+    const opts = cCfg.platforms.map((p) => '<option value="' + esc(p.id) + '"' + (cur.inForce === p.id ? ' selected' : '') + '>' + esc(p.label) + '</option>').join('');
+    return '<div class="row" style="margin:.3rem 0">'
+      + '<span style="min-width:11rem"><b>' + esc(r.label) + '</b></span>'
+      + '<label class="f">runs on<select data-role="' + esc(r.key) + '">' + opts + '</select></label>'
+      + (cCfg.platforms.length === 1 ? '<span class="note">only this machine exists to point at yet — more appear here when they are registered</span>' : '')
+      + '</div>';
+  }).join('') : '<p class="note neg">the trading service did not answer, so the choices cannot be shown' + (cErrCfg ? ' — ' + esc(cErrCfg) : '') + '</p>';
+
+  $('#view').innerHTML = '<div id="cwrap"' + (ct ? ' data-ctheme="' + esc(ct) + '"' : '') + '>'
+    + '<div class="row" style="margin-bottom:.6rem">'
+    + '<span class="note">Read at ' + (cLoads ? esc(cLoads.at.slice(11, 19)) + ' UTC' : '—') + ' · refreshes every 30 seconds while this tab is open.</span>'
+    + '<span class="spacer"></span>'
+    + '<label class="f">this tab&#39;s own theme<select id="cTheme">'
+    + '<option value=""' + (ct === '' ? ' selected' : '') + '>follow the page</option>'
+    + '<option value="dark"' + (ct === 'dark' ? ' selected' : '') + '>dark</option>'
+    + '<option value="light"' + (ct === 'light' ? ' selected' : '') + '>light</option>'
+    + '</select></label>'
+    + '<button id="cNow" title="asks again right now instead of waiting for the thirty seconds">Read it again</button>'
+    + '</div>'
+
+    + '<div class="panel"><h3 style="margin-top:0">Where each part runs</h3>'
+    + roles
+    + '<div class="row" style="margin:.3rem 0"><span style="min-width:11rem"><b>trading platform</b></span>'
+    + '<span class="note">chosen on each trading setup on the Trade tab — every setup names its own, '
+    + 'so two setups can trade in two places. Nothing about it is set here.</span></div>'
+    + '</div>'
+
+    + '<div class="panel"><h3 style="margin-top:0">This machine</h3>'
+    + (m ? '<div class="grid">'
+      + '<div class="tile"><div class="k" title="how many processors this machine has">processors</div><div class="v">' + m.processors + '</div></div>'
+      + '<div class="tile"><div class="k" title="how much work is waiting for a processor, averaged over the last minute — below the processor count means there is room, above it means things are queuing">load, last minute</div><div class="v">' + (m.load ? m.load[0].toFixed(2) : '—') + '</div></div>'
+      + '<div class="tile"><div class="k" title="memory not yet spoken for, of the machine&#39;s total">memory free</div><div class="v">' + mb(m.memory && m.memory.availableBytes) + ' <span class="note">of ' + mb(m.memory && m.memory.totalBytes) + '</span></div></div>'
+      + '<div class="tile"><div class="k" title="disk not yet spoken for — the sweeps write their rows here">disk free</div><div class="v">' + mb(m.disk && m.disk.freeBytes) + '</div></div>'
+      + '</div>'
+      : '<p class="note neg">the reporting program did not answer' + (cErrLoads ? ' — ' + esc(cErrLoads) : '') + '. It is separate from everything else here, so this means it is itself down.</p>')
+    + '</div>'
+
+    + '<div class="panel"><h3 style="margin-top:0">The services, and starting and stopping them</h3>'
+    + '<p class="note">These are this system&#39;s own services — not everything on the machine. '
+    + '<b>running</b> is the machine&#39;s word for alive; <b>answered</b> is measured by asking. '
+    + 'A service can be running and not answering, and that is the state a Restart is for.</p>'
+    + (cLoads ? cLoads.units.map(svcCard).join('') : '<p class="note neg">no reading yet</p>')
+    + '</div>'
+
+    + '<div class="panel"><h3 style="margin-top:0">How much of the machine the sweeps may take</h3>'
+    + (cCfg ? '<div class="row">'
+      + '<label class="f">workers<input id="cWorkers" type="number" min="1" max="' + (cCfg.workers.max || 8) + '" step="1" value="' + (cCfg.workers.setting == null ? cCfg.workers.inForce : cCfg.workers.setting) + '" style="width:5.5rem"></label>'
+      + '<label class="f">each worker&#39;s share, %<input id="cPct" type="number" min="0" max="100" step="5" value="' + (cCfg.pct == null ? '' : cCfg.pct) + '" style="width:5.5rem"></label>'
+      + '<button id="cSaveKnobs">Set these</button>'
+      + '<span class="note">machine-wide that is workers &times; share — '
+      + '<b>' + cCfg.workers.inForce + ' &times; ' + (cCfg.pct == null ? '—' : cCfg.pct + '%') + '</b> right now. '
+      + 'The share change reaches running work within seconds; the worker count takes effect when the next job starts. 0% parks running work in place until turned back up.</span>'
+      + '</div>'
+      : '<p class="note neg">the trading service did not answer, so these cannot be shown' + (cErrCfg ? ' — ' + esc(cErrCfg) : '') + '</p>')
+    + '</div>'
+    + '<div id="cOut"></div>'
+    + '</div>';
+
+  // wiring
+  const themeSel = $('#cTheme');
+  if (themeSel) themeSel.onchange = () => { localStorage.setItem('setup-compute-theme', themeSel.value); drawCompute(); };
+  const now = $('#cNow');
+  if (now) now.onclick = () => refreshCompute(true);
+  document.querySelectorAll('[data-role]').forEach((sel) => {
+    sel.onchange = async () => {
+      try {
+        await postJson('api/compute-config', { role: sel.dataset.role, platform: sel.value });
+        $('#cOut').innerHTML = '<p class="note pos">saved — ' + esc(sel.dataset.role) + ' now points at ' + esc(sel.value) + '</p>';
+      } catch (e) { $('#cOut').innerHTML = '<p class="note neg">not saved — ' + esc(e.message) + '</p>'; }
+      refreshCompute(true);
+    };
+  });
+  document.querySelectorAll('[data-setquota]').forEach((b) => {
+    b.onclick = async () => {
+      const unit = b.dataset.setquota;
+      const box = $('[data-quota="' + unit + '"]');
+      const short = unit.replace(/\.service$/, '');
+      if (!confirm('Set the ceiling for "' + short + '" to ' + box.value + '% of one processor?\n\nIt applies immediately, including to running work.')) return;
+      try {
+        const out = await postJson('svc/api/quota', { unit, percent: Number(box.value), confirm: unit });
+        $('#cOut').innerHTML = '<p class="note pos">' + esc(short) + ' is now allowed ' + esc(out.quotaPct) + '%</p>';
+      } catch (e) { $('#cOut').innerHTML = '<p class="note neg">not set — ' + esc(e.message) + '</p>'; }
+      refreshCompute(true);
+    };
+  });
+  document.querySelectorAll('[data-act]').forEach((b) => {
+    b.onclick = async () => {
+      const unit = b.dataset.unit;
+      const action = b.dataset.act;
+      const short = unit.replace(/\.service$/, '');
+      if (!confirm((action === 'start' ? 'Start' : action === 'stop' ? 'Stop' : 'Restart') + ' "' + short + '"?\n\n'
+        + (action === 'start' ? 'It does nothing to one that is already running.'
+          : 'Anything it is part-way through is lost. A sweep that was going is marked as stopped, and can be picked up again with Resume run on the Construct page.')
+        + '\n\nHit Cancel and nothing is done.')) return;
+      try {
+        const out = await postJson('svc/api/service', { unit, action, confirm: unit });
+        $('#cOut').innerHTML = '<p class="note pos">' + esc(short) + ': ' + esc(out.was) + ' &rarr; ' + esc(out.now) + '</p>';
+      } catch (e) { $('#cOut').innerHTML = '<p class="note neg">it did not go through — ' + esc(e.message) + '</p>'; }
+      setTimeout(() => refreshCompute(true), 2500);
+    };
+  });
+  const save = $('#cSaveKnobs');
+  if (save) save.onclick = async () => {
+    try {
+      await postJson('api/compute-config', { workers: Number($('#cWorkers').value), pct: Number($('#cPct').value) });
+      $('#cOut').innerHTML = '<p class="note pos">saved</p>';
+    } catch (e) { $('#cOut').innerHTML = '<p class="note neg">not saved — ' + esc(e.message) + '</p>'; }
+    refreshCompute(true);
+  };
+}
+
+async function refreshCompute(force) {
+  if (tab !== 'compute' && !force) return;
+  await loadCompute();
+  if (tab === 'compute') drawCompute();
+}
+
+function draw() {
+  document.querySelectorAll('.tab').forEach((t) => t.classList.toggle('on', t.dataset.tab === tab));
+  clearInterval(cTimer); cTimer = null;
+  if (tab === 'compute') {
+    $('#view').innerHTML = '<div class="panel"><span class="muted">reading…</span></div>';
+    refreshCompute(true);
+    // every thirty seconds while this tab is open, per the owner's design
+    cTimer = setInterval(() => refreshCompute(false), 30000);
+  } else {
+    drawAccount();
+  }
+}
+document.querySelectorAll('.tab').forEach((t) => {
+  t.onclick = () => { tab = t.dataset.tab; localStorage.setItem('setup-tab', tab); draw(); };
+});
+draw();
 </script>
 </body>
 </html>

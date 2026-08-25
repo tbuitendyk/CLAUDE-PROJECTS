@@ -531,6 +531,12 @@ function launchRefusal() {
   if (activeBatch && activeBatch.status === 'running') return `batch ${activeBatch.id} is already running`;
   const j = require('./jobs').anyJobRunning();
   if (j) return `data/analysis job ${j} is running — a sweep launched over its cache writes would read two datasets`;
+  // The Compute tab's sweep-processor choice is READ here, which is what makes
+  // it a setting rather than a decoration (owner design, 2026-08-25). Today the
+  // only platform is this machine, so this refuses only a hand-edited settings
+  // file — and when a remote runner exists, this is where dispatch will branch.
+  const elsewhere = require('./compute').sweepRunsHereOr();
+  if (elsewhere) return elsewhere;
   return null;
 }
 

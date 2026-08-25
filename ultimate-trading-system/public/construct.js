@@ -1551,7 +1551,6 @@ async function drawBoards() {
       </select></label>
       <button id="bOpen">Open</button>
       <button id="bResume" ${doc && (doc.status === 'interrupted' || doc.status === 'cancelled') ? '' : 'disabled'} title="carries on a run that stopped, from where it stopped. It scores only the units that have no result yet, then finishes as normal. It refuses if the price files or the engine are not the ones the run started under — half a board scored against a different history is not one board.">Resume run</button>
-      <button id="bKick" class="danger" title="restarts the service that runs the sweeps, and nothing else on this machine. For when this page will not answer at all: it is pressed through a separate small program, so it still works when this one has stopped replying. A run that was going is marked as stopped and can be picked up again with Resume run.">Restart the service</button>
       <button id="bDelete" class="danger" ${doc ? '' : 'disabled'} title="permanently removes the open run and the model and tuning files that belong to it. It refuses the run that is going right now — stop it first — and any run a greenlight names as its evidence. You are shown exactly what will go before anything is deleted.">Delete run…</button>
       ${doc ? `<span class="note">campaign: ${esc((doc.params && doc.params.campaign) || '—')} · ${esc(doc.status)} · ${(doc.params && doc.params.windowLayout) || ''}</span>` : ''}
     </div>
@@ -1654,32 +1653,12 @@ async function drawBoards() {
   // a large run this is minutes and the rest of the page cannot be drawn while
   // it happens. Asking for it is the owner's press, not a side effect of
   // arriving on this section.
-  // ONE SERVICE, AND ONLY THAT ONE (owner, 2026-08-25: "IF THERE WAS A SERVICE
-  // NOT RUNNING THAT WAS STOPPING THAT THEN I NEED TO BE ABLE TO CONTROL *ONLY
-  // THAT SERVICE*").
-  //
-  // It goes through a separate small program rather than this one, for two
-  // reasons that both stand on their own: the service that draws these pages
-  // runs under an account that is not permitted to start or stop anything, so
-  // it could not do this; and if it has stopped replying — which is the only
-  // reason to press this — a button it served would not be answering either.
-  const kick = $('#bKick');
-  if (kick) {
-    kick.onclick = async () => {
-      const box = $('#bDelOut');
-      if (!confirm('Restart the service that runs the sweeps?\n\n'
-        + 'Nothing else on the machine is touched.\n\n'
-        + 'A run that is going is marked as stopped, and can be picked up again with Resume run.\n\n'
-        + 'Hit Cancel and nothing is done.')) {
-        box.innerHTML = '<p class="note">cancelled — nothing was done</p>';
-        return;
-      }
-      box.innerHTML = '<p class="note">restarting it…</p>';
-      const out = await tryPost('svc/api/restart', {});
-      if (!out) { box.innerHTML = '<p class="note neg">it did not go through — nothing has been changed</p>'; return; }
-      box.innerHTML = `<p class="note pos">${esc(out.was)} → ${esc(out.now)}. Give it a few seconds, then reload.</p>`;
-    };
-  }
+  // The service restart lived here for one day (2026-08-25). It moved to the
+  // Compute tab of the Setup page the same day, on the owner's design: the
+  // starting, stopping and restarting of this system's services belongs beside
+  // their loads and their ceilings, not beside a board. The separate small
+  // program that presses it is unchanged, and it still serves these pages at
+  // its own address for when this service is not answering.
   const repOpen = $('#bRepOpen');
   if (repOpen) {
     repOpen.addEventListener('toggle', async () => {

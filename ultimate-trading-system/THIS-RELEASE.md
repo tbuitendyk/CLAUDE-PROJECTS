@@ -777,3 +777,40 @@ owner may go BELOW the floor at all.** It still refuses. Only the number
 changed, not who decides it.
 
 No code has been written for any of the seven.
+
+## 19. Compute: the split of compute from the pages, and how far it has got
+
+The owner's design (2026-08-25): compute resources and trading resources go to
+user-selected platforms; the Setup page gets a Compute tab where a future user
+points a sweep processor platform, a trade decision engine platform, and the
+trading platform, with CPU control per resource, starting/stopping/restarting
+of the associated services beside it, and a load reading refreshed about every
+thirty seconds, under its own independently selectable theme.
+
+**Shipped in this release:**
+
+1. The Compute tab, as designed. Roles and platform lists come from the
+   service, never from the page (RULE FIVE); today one platform exists — this
+   machine — and the list grows server-side when a runner is registered. The
+   sweep launcher READS the sweep role and refuses an unreachable platform by
+   name, so the stored choice is enforced, not decorative.
+2. CPU control per resource: the worker count and each worker's share were
+   already live settings (data/settings.json, honoured at launch and within
+   seconds respectively); the tab exposes both, plus a hard per-service
+   processor ceiling applied through systemd by the separate always-up control,
+   which also does start/stop/restart and the half-second-sampled load reading.
+3. The service restart moved here from Boards, where it lived for one day.
+
+**Parked, with reasons — not dropped:**
+
+1. **Running tallies for the replication table.** The table is still totalled
+   by reading every recorded row on request (minutes, on the thread that
+   answers every page; opened by hand only since 2026-08-25). The agreed fix is
+   to keep the totals as running tallies while rows are written, plus a one-off
+   catch-up for rows already on disk. Parked because it changes the write path
+   of the record while a two-day run is mid-flight; it wants its own quiet
+   window, not a seat on a deploy that is already restarting the service.
+2. **The sweep runner as its own service.** The job contract (settings +
+   price-file fingerprint in, rows + progress back, interface owns the record)
+   is agreed; the Compute tab is its front end and already speaks in those
+   terms. Building it is its own body of work.

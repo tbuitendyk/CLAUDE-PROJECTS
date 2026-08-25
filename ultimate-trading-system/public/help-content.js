@@ -245,10 +245,6 @@ window.HELP = {
         what: 'Carries on a run that stopped, from where it stopped. It scores only the units that have no result yet — everything already scored is kept exactly as it is — and then finishes as normal.',
         more: 'It refuses more than it accepts, on purpose. The price files have to fingerprint identically to the ones the run read, and the engine has to be the same version it started under. Half a board worked out from one history and half from another is not one board, and nothing on the finished screen would say so. It also refuses a run that finished, and one that is going now. Anything that failed the first time gets another go, since a failure left no result to keep.',
       },
-      bKick: {
-        what: 'Restarts the part of this machine that runs the sweeps, and nothing else on it. This is for when the page will not answer at all — when it hangs, or times out, rather than when something on it looks wrong.',
-        more: 'It is pressed through a separate small program, not through this one, so it still works when this one has stopped replying — which is the only time you would want it. A run that was going is marked as stopped, and can be picked up again with Resume run.',
-      },
       bDelete: {
         what: 'Permanently removes the run that is open, together with the model and tuning files that belong only to it. You are shown exactly what will go, and then have to type the run id back, before anything is deleted.',
         more: 'It refuses two things. The run that is going right now — stop it first, so a job cannot be writing a file that is being taken away underneath it. And any run a greenlight names as the evidence it came from, because something on the Trade tab may be standing on that evidence. Neither refusal deletes anything; both say which it is.',

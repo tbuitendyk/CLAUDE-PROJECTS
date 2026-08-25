@@ -1,30 +1,32 @@
-// RESTART THE TRADING SERVICE. That is the whole of it.
+// THE COMPUTE HAND: what this system's own services are doing, and starting,
+// stopping and restarting them (owner design, 2026-08-25).
 //
-// Owner, 2026-08-25: "IF THERE WAS A SERVICE NOT RUNNING THAT WAS STOPPING THAT
-// THEN I NEED TO BE ABLE TO CONTROL *ONLY THAT SERVICE*".
+// HISTORY, because this file has been two wrong sizes already. It began as a
+// browser of all 153 services on the machine — thrown out by the owner as junk
+// ("we only care about the uts services"). It was then cut to a single blind
+// restart button. The owner's Compute design is the right middle: THIS SYSTEM'S
+// OWN services — an allow-list of a few names, not a browser — each with its
+// load, its ceiling, and its start/stop/restart, feeding the Compute tab of the
+// Setup page every thirty seconds.
 //
-// An earlier version of this listed all 153 services on the machine and offered
-// to start and stop any of them, with a screen of its own. That was junk in a
-// trading application and the owner threw it out. What is left is one button's
-// worth of machinery: restart ultimate-trading-system, and say whether it is
-// running and answering. There is no unit parameter, so there is nothing to
-// validate and nothing that can be pointed anywhere else.
+// WHY IT IS A SEPARATE PROGRAM, unchanged from day one and still decisive:
 //
-// WHY IT IS A SEPARATE PROGRAM AT ALL, and it is not a preference. Two reasons,
-// either one decisive:
+//   1. The trading service runs as an unprivileged user with
+//      NoNewPrivileges=true and ProtectSystem=strict. It cannot run systemctl
+//      or write a service's CPU ceiling. Not "should not" — cannot.
 //
-//   1. The trading service runs as the unprivileged user `uts` with
-//      NoNewPrivileges=true and ProtectSystem=strict. It cannot run systemctl.
-//      Not "should not" -- cannot. A restart button inside it would be dead.
+//   2. The moment these controls matter is the moment that service has stopped
+//      answering. A control served by it would be stuck in the same queue.
 //
-//   2. The only reason to press this is that the trading service has stopped
-//      answering. A button served BY that service would not be answering
-//      either. A control that goes down with the thing it controls is not a
-//      control.
+// It also serves the trading system's own pages read-only, so the Compute tab
+// is still reachable (…/uts/svc/setup.html) when the main service is not.
 //
-// It also serves the trading system's own pages, read-only, so the button is
-// reachable when that service is not answering. There is no second copy of any
-// screen and no screen of its own.
+// WHAT IT WILL ACT ON: only the units named in UTS_UNITS (default: the trading
+// service). Not a list curated on a screen and not a browser of the machine —
+// the system's own parts, extended by env when the sweep runner exists. The
+// one refusal kept from the old design: it will not stop or restart ITSELF,
+// because it is the way back, and a way back you can close from a phone is not
+// a way back. It says so rather than hiding the fact.
 'use strict';
 const http = require('http');
 const fs = require('fs');
@@ -34,11 +36,19 @@ const { execFile } = require('child_process');
 const PORT = Number(process.env.PORT || 8095);
 const HOST = '127.0.0.1';
 const PUBLIC_DIR = path.resolve(process.env.UTS_PUBLIC || '/opt/ultimate-trading-system/public');
-// THE ONE SERVICE THIS CAN TOUCH. Fixed here on purpose: the owner asked for
-// control of only this one, so there is no name to pass in and no way to aim it
-// at anything else.
+const SELF_UNIT = process.env.SELF_UNIT || 'uts-service-control.service';
+// The service the plain restart route acts on, and the default subject of
+// everything here.
 const UNIT = process.env.UTS_UNIT || 'ultimate-trading-system.service';
 const UNIT_PORT = Number(process.env.UTS_UNIT_PORT || 8094);
+
+// THIS SYSTEM'S OWN SERVICES — the only ones reported and the only ones
+// actionable. The control itself is reported (its load is real) but refuses
+// actions on itself, with the reason attached.
+const UNITS = (process.env.UTS_UNITS || `${UNIT},${SELF_UNIT}`)
+  .split(',').map((s) => s.trim()).filter(Boolean);
+const ACTIONS = ['start', 'stop', 'restart'];
+const SELF_REFUSAL = 'this is the control itself — stopping it from here would leave nothing able to start anything again';
 
 function run(cmd, args, timeoutMs = 60000) {
   return new Promise((resolve) => {
@@ -48,16 +58,16 @@ function run(cmd, args, timeoutMs = 60000) {
   });
 }
 
-// RUNNING IS NOT THE SAME AS ANSWERING, and only the second one matters here.
-// `systemctl is-active` said "active" right through the outage, because the
-// process was alive and its port was open -- the machine accepts the connection
-// whether or not anything will ever read it. So this asks a real question.
-function answers(timeoutMs = 4000) {
+// RUNNING IS NOT THE SAME AS ANSWERING. `systemctl is-active` said "active"
+// straight through an outage, because the machine accepts a connection on a
+// live port whether or not anything will ever read it. So the service that
+// serves pages gets asked a real question and timed.
+function answers(port, timeoutMs = 4000) {
   return new Promise((resolve) => {
     const started = process.hrtime.bigint();
     let settled = false;
     const done = (v) => { if (!settled) { settled = true; resolve(v); } };
-    const req = http.request({ host: '127.0.0.1', port: UNIT_PORT, method: 'GET', path: '/', timeout: timeoutMs }, (res) => {
+    const req = http.request({ host: '127.0.0.1', port, method: 'GET', path: '/', timeout: timeoutMs }, (res) => {
       res.resume();
       res.on('end', () => done({ answering: true, ms: Math.round(Number(process.hrtime.bigint() - started) / 1e5) / 10 }));
     });
@@ -67,22 +77,158 @@ function answers(timeoutMs = 4000) {
   });
 }
 
-async function state() {
-  const active = await run('systemctl', ['is-active', UNIT], 15000);
-  return { unit: UNIT, active: active.stdout || 'unknown', ...(await answers()) };
+const cg = (unit, f) => `/sys/fs/cgroup/system.slice/${unit}/${f}`;
+const readNum = (file) => { try { return Number(fs.readFileSync(file, 'utf8').trim()); } catch (_) { return null; } };
+
+async function show(unit, props) {
+  const r = await run('systemctl', ['show', unit, '--no-pager', `--property=${props.join(',')}`], 15000);
+  const kv = {};
+  for (const line of r.stdout.split('\n')) {
+    const i = line.indexOf('=');
+    if (i > 0) kv[line.slice(0, i)] = line.slice(i + 1);
+  }
+  return kv;
 }
 
-async function restart() {
-  const before = await run('systemctl', ['is-active', UNIT], 15000);
-  const r = await run('systemctl', ['restart', UNIT]);
-  const after = await run('systemctl', ['is-active', UNIT], 15000);
+// The quota systemd holds, as a percentage of one processor. "infinity" means
+// no ceiling and is reported as null rather than a made-up number.
+function quotaPct(v) {
+  if (!v || v === 'infinity') return null;
+  const m = /^([\d.]+)(m?)s$/.exec(v);
+  if (!m) return null;
+  const sec = Number(m[1]) * (m[2] === 'm' ? 0.001 : 1);
+  return Math.round(sec * 100);
+}
+
+// WHAT EVERYTHING IS DOING RIGHT NOW. Processor use is measured, not asked
+// for: the kernel's own running total of each service's processor time, read
+// twice half a second apart. The Compute tab asks for this every thirty
+// seconds.
+async function compute() {
+  let uptime = 0;
+  try { uptime = parseFloat(fs.readFileSync('/proc/uptime', 'utf8').split(' ')[0]) || 0; } catch (_) { /* not linux */ }
+  const usage = (u) => {
+    try {
+      const m = /usage_usec (\d+)/.exec(fs.readFileSync(cg(u, 'cpu.stat'), 'utf8'));
+      return m ? Number(m[1]) : null;
+    } catch (_) { return null; }               // not running: no group to read
+  };
+  const before = new Map(UNITS.map((u) => [u, usage(u)]));
+  const t0 = process.hrtime.bigint();
+  await new Promise((r) => { setTimeout(r, 500); });
+  const windowMs = Number(process.hrtime.bigint() - t0) / 1e6;
+
+  const units = [];
+  for (const unit of UNITS) {
+    const d = await show(unit, ['Description', 'ActiveState', 'SubState', 'ActiveEnterTimestampMonotonic', 'CPUQuotaPerSecUSec', 'MainPID']);
+    let cpuPct = null;
+    const after = usage(unit);
+    const a = before.get(unit);
+    if (after != null && a != null && windowMs > 0) {
+      // usec of processor time over msec of wall time: /1000 aligns the units,
+      // x100 makes it a percentage, and the round keeps one decimal.
+      cpuPct = Math.max(0, Math.round(((after - a) / 1000 / windowMs) * 1000) / 10);
+    }
+    const mono = Number(d.ActiveEnterTimestampMonotonic || 0);
+    units.push({
+      unit,
+      description: d.Description || '',
+      active: d.ActiveState || 'unknown',
+      sub: d.SubState || '',
+      upSeconds: mono > 0 && uptime > 0 && d.ActiveState === 'active' ? Math.max(0, Math.round(uptime - mono / 1e6)) : null,
+      cpuPct,
+      memoryBytes: readNum(cg(unit, 'memory.current')),
+      quotaPct: quotaPct(d.CPUQuotaPerSecUSec),
+      cannotStop: unit === SELF_UNIT ? SELF_REFUSAL : null,
+      ...(unit === UNIT ? { answers: await answers(UNIT_PORT) } : {}),
+      ...(unit === SELF_UNIT ? { answers: { answering: true, ms: 0 } } : {}),
+    });
+  }
+
+  let mem = {};
+  try {
+    const mi = fs.readFileSync('/proc/meminfo', 'utf8');
+    const g = (k) => { const m = new RegExp(`${k}:\\s+(\\d+) kB`).exec(mi); return m ? Number(m[1]) * 1024 : null; };
+    mem = { totalBytes: g('MemTotal'), availableBytes: g('MemAvailable') };
+  } catch (_) { /* not linux */ }
+  let disk = {};
+  try { const s = fs.statfsSync('/'); disk = { freeBytes: s.bavail * s.bsize, totalBytes: s.blocks * s.bsize }; } catch (_) { /* older node */ }
+  let load = null;
+  try { load = fs.readFileSync('/proc/loadavg', 'utf8').split(' ').slice(0, 3).map(Number); } catch (_) { /* not linux */ }
+
+  return {
+    at: new Date().toISOString(),
+    machine: { processors: require('os').cpus().length, load, memory: mem, disk },
+    units,
+    servedBy: { unit: SELF_UNIT, upSeconds: Math.round(process.uptime()) },
+  };
+}
+
+// One action on one of THIS SYSTEM'S services. The name has to be on the
+// fixed list, the action one of three, and the name given twice — the same
+// two-step everything irreversible in this system uses.
+async function act(body) {
+  const unit = String((body || {}).unit || '');
+  const action = String((body || {}).action || '');
+  if (!UNITS.includes(unit)) {
+    return { code: 400, body: { error: `"${unit}" is not one of this system's services (${UNITS.join(', ')})` } };
+  }
+  if (!ACTIONS.includes(action)) return { code: 400, body: { error: `the action has to be one of: ${ACTIONS.join(', ')}` } };
+  if (String((body || {}).confirm || '') !== unit) {
+    return { code: 400, body: { error: `to ${action} "${unit}" the request has to name it twice — nothing has been done` } };
+  }
+  if (unit === SELF_UNIT && action !== 'start') {
+    return { code: 409, body: { error: `"${unit}" cannot be ${action}ed from here: ${SELF_REFUSAL}. Nothing has been done.` } };
+  }
+  const before = await run('systemctl', ['is-active', unit], 15000);
+  const r = await run('systemctl', [action, unit]);
+  const after = await run('systemctl', ['is-active', unit], 15000);
   return {
     code: r.ok ? 200 : 500,
     body: {
-      ok: r.ok, unit: UNIT, was: before.stdout || 'unknown', now: after.stdout || 'unknown',
-      ...(r.ok ? {} : { error: (r.stderr || r.stdout || 'systemctl would not restart it').slice(0, 500) }),
+      ok: r.ok, unit, action, was: before.stdout || 'unknown', now: after.stdout || 'unknown',
+      ...(r.ok ? {} : { error: (r.stderr || r.stdout || `systemctl ${action} would not do it`).slice(0, 500) }),
     },
   };
+}
+
+// The processor ceiling for one of this system's services, as a percentage of
+// one processor (300 = three processors' worth). Written with set-property, so
+// it takes effect immediately AND survives a restart of the unit.
+async function setQuota(body) {
+  const unit = String((body || {}).unit || '');
+  if (!UNITS.includes(unit)) {
+    return { code: 400, body: { error: `"${unit}" is not one of this system's services (${UNITS.join(', ')})` } };
+  }
+  if (String((body || {}).confirm || '') !== unit) {
+    return { code: 400, body: { error: `to change "${unit}"'s ceiling the request has to name it twice — nothing has been done` } };
+  }
+  const cores = require('os').cpus().length;
+  const pct = Math.floor(Number((body || {}).percent));
+  // The floor of 10 is not taste: a ceiling near zero starves the service of
+  // the processor time it needs merely to answer, which reads exactly like the
+  // outage this control exists to fix.
+  if (!Number.isFinite(pct) || pct < 10 || pct > cores * 100) {
+    return { code: 400, body: { error: `the ceiling must be a whole number from 10 to ${cores * 100} — this machine has ${cores} processors, and 100 is one processor's worth` } };
+  }
+  const r = await run('systemctl', ['set-property', unit, `CPUQuota=${pct}%`]);
+  const d = await show(unit, ['CPUQuotaPerSecUSec']);
+  return {
+    code: r.ok ? 200 : 500,
+    body: {
+      ok: r.ok, unit, quotaPct: quotaPct(d.CPUQuotaPerSecUSec),
+      ...(r.ok ? {} : { error: (r.stderr || r.stdout || 'systemctl would not set it').slice(0, 500) }),
+    },
+  };
+}
+
+async function state() {
+  const active = await run('systemctl', ['is-active', UNIT], 15000);
+  return { unit: UNIT, active: active.stdout || 'unknown', ...(await answers(UNIT_PORT)) };
+}
+
+async function restart() {
+  return act({ unit: UNIT, action: 'restart', confirm: UNIT });
 }
 
 const TYPES = {
@@ -100,8 +246,8 @@ function send(res, code, obj) {
   res.end(body);
 }
 
-// The trading system's own pages, read-only, so the button is reachable when
-// that service is not answering.
+// The trading system's own pages, read-only, so the Compute tab still loads
+// when that service is not answering. No second copy of any screen.
 function servePublic(res, rel) {
   const want = path.resolve(PUBLIC_DIR, `.${rel === '/' ? '/construct.html' : rel}`);
   // Resolved FIRST and then checked, so no arrangement of dots escapes.
@@ -115,30 +261,47 @@ function servePublic(res, rel) {
   });
 }
 
+function withBody(req, res, handler) {
+  let raw = '';
+  let tooBig = false;
+  req.on('data', (c) => { raw += c; if (raw.length > 8192) { tooBig = true; req.destroy(); } });
+  req.on('end', () => {
+    if (tooBig) return;
+    let body;
+    try { body = JSON.parse(raw || '{}'); } catch (_) { send(res, 400, { error: 'the request could not be read' }); return; }
+    handler(body).then((r) => send(res, r.code, r.body)).catch((e) => send(res, 500, { error: e.message }));
+  });
+}
+
 const server = http.createServer((req, res) => {
-  // The page is reachable at two addresses -- under the trading system's own
-  // prefix, and directly here when that service is not answering -- and it asks
-  // for this by a path relative to wherever it was loaded from. So one extra
-  // leading "svc/" is accepted and dropped, which lets one page work from both.
+  // The pages are reachable at two addresses — under the trading system's own
+  // prefix, and directly here when that service is not answering — and they ask
+  // for this control by a path relative to wherever they were loaded from. One
+  // extra leading "svc/" is accepted and dropped so one page works from both.
   let url = (req.url || '/').split('?')[0].replace(/\/{2,}/g, '/');
   url = url.replace(/^\/svc(?=\/|$)/, '') || '/';
 
   if (req.method === 'GET' && url === '/api/state') {
     return state().then((s) => send(res, 200, s)).catch((e) => send(res, 500, { error: e.message }));
   }
+  if (req.method === 'GET' && url === '/api/compute') {
+    return compute().then((s) => send(res, 200, s)).catch((e) => send(res, 500, { error: e.message }));
+  }
   if (req.method === 'POST' && url === '/api/restart') {
-    // No body is read and none is needed: there is exactly one thing this can
-    // do to exactly one service, so there is nothing to say.
+    // Kept for anything still pressing the old one-button path. No body is
+    // read: there is exactly one thing this can do to exactly one service.
     req.resume();
     return restart().then((r) => send(res, r.code, r.body)).catch((e) => send(res, 500, { error: e.message }));
   }
+  if (req.method === 'POST' && url === '/api/service') return withBody(req, res, act);
+  if (req.method === 'POST' && url === '/api/quota') return withBody(req, res, setQuota);
   if (req.method === 'GET') return servePublic(res, url);
-  return send(res, 405, { error: 'this answers reads, and one kind of change' });
+  return send(res, 405, { error: 'this answers reads, and two kinds of change' });
 });
 
 if (require.main === module) {
   server.listen(PORT, HOST, () => {
-    process.stdout.write(`uts-service-control listening on ${HOST}:${PORT} for ${UNIT}\n`);
+    process.stdout.write(`uts-service-control listening on ${HOST}:${PORT} for ${UNITS.join(', ')}\n`);
   });
 }
-module.exports = { server, state, restart, answers, UNIT, PUBLIC_DIR };
+module.exports = { server, state, restart, act, setQuota, compute, answers, quotaPct, UNIT, UNITS, SELF_UNIT, ACTIONS, PUBLIC_DIR };
