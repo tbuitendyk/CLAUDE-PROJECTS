@@ -41,6 +41,7 @@ function compareDecision(recorded, recomputed) {
   }
   const rp = recorded.decision_price;
   const cp = recomputed.decision_price;
+  let priceUnrecorded = false;   // the record never claimed a price (a stand-down)
   if (recomputed.price_pending) {
     // The entry candle (+97h) has not closed/cached yet, so the recompute cannot
     // read its open — the live producer records the decision at that open ~1h
@@ -49,6 +50,28 @@ function compareDecision(recorded, recomputed) {
     // fully verified, and once the candle caches (price_pending clears) the normal
     // PRICE_TOL check applies. This does not weaken finding-7: a VANISHED feature
     // window still returns found:false and breaks via the block at the top.
+  } else if (rp == null && recorded.side === 'FLAT') {
+    // A STAND-DOWN IS WRITTEN DOWN THE MOMENT IT IS DECIDED, PRICELESS
+    // (owner, 2026-08-25: "the software used to give the stand down immediately").
+    //
+    // The committee knows its vote just after 00:00 UTC. The entry price is the
+    // open of a candle an hour later, so requiring one before writing the record
+    // meant a declined day sat invisible for that whole hour — the owner watching
+    // an empty decision history for a call the machine had already made.
+    //
+    // A FLAT record carries no price BECAUSE NO TRADE HAPPENS: there is nothing
+    // to fill, nothing to price, and the record makes no claim about a price.
+    // Comparing a claim that was never made is not integrity checking, it is
+    // manufacturing drift. Side, votes and the input hash — which is what a
+    // stand-down actually asserts — are still fully checked below.
+    //
+    // NARROW ON PURPOSE. This skip applies ONLY to a recorded FLAT. A LONG or
+    // SHORT record with no price is still a divergence and still breaks: that
+    // record DOES claim a fill price, and its absence is the fault QC 169 exists
+    // to catch. Priceless non-FLAT records cannot be written by live-produce.js
+    // either — the gate there keeps the price requirement for anything that
+    // trades — so this branch is unreachable for them by two independent means.
+    priceUnrecorded = true;
   } else if (rp != null && cp != null && rp !== 0) {
     const dev = Math.abs(cp - rp) / Math.abs(rp);
     if (dev > PRICE_TOL) reasons.push(`decision_price ${rp} -> ${cp} (${(dev * 100).toFixed(2)}%)`);
@@ -69,6 +92,9 @@ function compareDecision(recorded, recomputed) {
     ok: !isBreak,
     break: isBreak,
     hash_diff: hashDiff,
+    // Surfaced, not silent: a check that quietly skips a field reads exactly like
+    // a check that passed it.
+    price_unrecorded: priceUnrecorded,
     reason: isBreak ? reasons.join('; ') : 'match',
     recorded: { side: recorded.side, per_member: rv, decision_price: rp, input_hash: recorded.input_hash },
     recomputed: { side: recomputed.side, per_member: cv, decision_price: cp, input_hash: recomputed.input_hash },

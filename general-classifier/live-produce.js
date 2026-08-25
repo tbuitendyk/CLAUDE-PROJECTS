@@ -106,17 +106,42 @@ function recordDecision(setupId, dec) {
         // the reproduce-check will catch. Recording it strictly increases what
         // is verified.
         //
-        // GATED ON THE PRICE, not on the side. compareDecision treats a recorded
-        // null price against a recomputed real one as a divergence, so writing a
-        // priceless record now would manufacture a break the moment the entry
-        // candle caches. The entry hour stays actionable for the whole hold
-        // window, so a decline whose candle has not cached yet is simply written
-        // on a later tick this same period — and loadDecisions keeps the last
-        // record per period, so re-recording is harmless.
+        // A STAND-DOWN IS WRITTEN DOWN WHEN IT IS DECIDED, NOT WHEN IT IS PRICED
+        // (owner, 2026-08-25: "the software used to give the stand down
+        // immediately. fix that again").
+        //
+        // Recording used to be gated on the PRICE for every side alike. The
+        // reasoning was sound as far as it went — compareDecision treated a
+        // recorded null price against a recomputed real one as a divergence, so a
+        // priceless record would manufacture a break the moment the entry candle
+        // cached. But the price is the open of a candle an HOUR after the vote is
+        // known, so the effect was that a declined day stayed invisible for that
+        // whole hour while the owner watched an empty decision history.
+        //
+        // The gate now splits in two, because it was always answering two
+        // different questions with one flag:
+        //
+        //   `priced`     — is there a fill price? A LONG or SHORT record claims
+        //                  one, and the box rejects a priceless INTENT outright
+        //                  (INTENT_INVALID problems:["decision_price"]).
+        //   `recordable` — is there something true to write down? A FLAT decision
+        //                  is complete without a price: no order is placed, so
+        //                  there is nothing to fill and nothing to price.
+        //
+        // compareDecision was taught the matching rule — a recorded FLAT with no
+        // price makes no price claim, so there is nothing to compare — and ONLY
+        // for FLAT: a priceless LONG or SHORT record still breaks, which is the
+        // protection QC 169 was written for and it is untouched.
+        //
+        // A FLAT is re-recorded WITH its price on the later tick that can fetch
+        // one, and loadDecisions keeps the last record per period, so the record
+        // is upgraded in place rather than duplicated.
         //
         // Applies identically to paper and live setups: this loop does not
         // branch on state, and `paper` is only a flag on the shipped intent.
-        const recordable = out.actionable && out.intent && out.intent.decision_price != null;
+        const priced = !!(out.actionable && out.intent && out.intent.decision_price != null);
+        const recordable = priced
+          || !!(out.actionable && out.intent && out.intent.side === 'FLAT');
         let recordedOk = false;
         if (recordable) {
           // FAIL CLOSED: no decision record, no shipped intent (pilot rule).
@@ -182,7 +207,17 @@ function recordDecision(setupId, dec) {
           process.stderr.write(`live-produce(${setup.id}): decision for ${out.intent.chunk_start} `
             + 'was not recorded, so no intent is shipped (fail-closed)\n');
         }
-        if (out.actionable && out.intent && recordedOk && !alreadySeen) {
+        // AND A PRICELESS INTENT IS NEVER SHIPPED, recorded or not. The record
+        // and the intent have different requirements and always did: the record
+        // is ours to keep, the intent is a message to the box, and the box
+        // rejects one without a price. Now that a FLAT is recordable before it is
+        // priced, `recordedOk` alone would let exactly the rejected message out
+        // again — the fault this whole change started from.
+        if (out.actionable && out.intent && recordedOk && !priced) {
+          process.stderr.write(`live-produce(${setup.id}): stand-down for ${out.intent.chunk_start} `
+            + 'is recorded but has no entry price yet — the intent waits for the candle\n');
+        }
+        if (out.actionable && out.intent && recordedOk && priced && !alreadySeen) {
           const stamp = new Date(now).toISOString().replace(/[-:]/g, '').slice(0, 15) + 'Z';
           atomicWrite(path.join(OUTBOX, `intent2-${setup.id}-${stamp}.json`), JSON.stringify(out.intent) + '\n');
         } else if (alreadySeen) {

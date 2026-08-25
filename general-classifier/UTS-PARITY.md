@@ -358,6 +358,103 @@ than no invariant, because the comment is what the next reader trusts.
 
 ---
 
+### 2026-08-25 (fourth pass) — a stand-down must post when it is decided
+
+**What the owner said:** *"the software used to give the 'stand down'
+immediately. fix that again"*. They are right, and the third pass above only
+got half of it. It made a FLAT day *eventually* recordable; it still had to wait
+for a price.
+
+**Why the wait existed.** The committee knows its vote just after 00:00 UTC.
+The `decision_price` is the OPEN of the entry candle, an hour later at 01:00.
+Recording was gated on that price for every side alike, so a declined day was
+written down at 01:08 at the earliest — a full hour of the owner looking at a
+decision history with no row in it for a call the machine had already made.
+
+**Why the gate was there, and why it was still wrong.** `compareDecision`
+treated a recorded null price against a recomputed real one as a divergence, so
+writing a priceless record would have manufactured a reproduce-check break — and
+a break halts the profile. Real protection, sound reasoning (QC 169). But it was
+answering two different questions with one flag:
+
+| question | who asks it | answer for a FLAT day |
+|---|---|---|
+| is there a fill price? | the box, which rejects a priceless INTENT | no, not for an hour |
+| is there something true to write down? | the decision record | yes, immediately |
+
+A FLAT record carries no price **because no trade happens**: nothing is filled,
+so nothing is priced, and the record makes no claim about a price. Checking a
+claim that was never made is not integrity checking — it is manufacturing drift.
+
+**Files changed**
+
+| file | change |
+|---|---|
+| `lib/decisioncompare.js` | a recorded FLAT with a null price skips ONLY the price comparison; `price_unrecorded: true` on the result so the skip is visible. Side, votes and input hash still fully checked. A priceless LONG/SHORT still breaks. |
+| `live-produce.js` | the one gate splits into `priced` (is there a fill price) and `recordable` (`priced \|\| side === 'FLAT'`). The intent write gains `&& priced`, so a priceless intent is never shipped and the box never sees `INTENT_INVALID` again. |
+| `tests/test-standdowns.js` | six checks, four of them behavioural against `compareDecision`. Each watched failing against its own fault. |
+| `tests/test-preview.js` | gate assertions now locate the shipping condition by the statement it guards instead of pinning its text. |
+
+**Sequence after the change**, for a day the committee declines:
+
+- `00:08` — vote known, no price yet. Record written (priceless). **The row
+  appears, reading "stand down".** No intent shipped.
+- `01:08` — entry candle cached. Record re-written *with* the price (last record
+  per period wins, so it is upgraded in place, not duplicated). Intent ships.
+- box confirms — `INTENT_SEEN`, and the journal path takes the row over.
+
+**Known wart, NOT fixed here (no permission asked for it).** The two render
+paths use different words for the same outcome: the decision-log path says
+`stand down`, the box-journal path says `flat — no trade`. So the row will
+change its wording about an hour after it first appears. That is the
+vocabulary drift the owner already spotted between the 2026-08-17 and
+2026-08-25 rows. Unifying them is a separate change and is not in this one.
+
+**A rule worth keeping:** one flag answering two questions is a bug waiting for
+the two answers to differ. They differed the moment the price stopped being
+required for both.
+
+---
+
+> **PROMPT FOR UTS — a stand-down must post when it is decided, not when it is priced**
+>
+> Apply the third-pass prompt above first; this builds on it.
+>
+> 1. `lib/decisioncompare.js` — inside `compareDecision`, add
+>    `let priceUnrecorded = false;` beside the `rp`/`cp` locals, and insert a new
+>    branch BETWEEN the `recomputed.price_pending` branch and the
+>    `rp != null && cp != null && rp !== 0` branch:
+>    `} else if (rp == null && recorded.side === 'FLAT') { priceUnrecorded = true; }`.
+>    Add `price_unrecorded: priceUnrecorded` to the returned object. Leave the
+>    trailing `(rp == null) !== (cp == null)` branch exactly as it is — that is
+>    what still breaks on a priceless LONG or SHORT, and the narrowing to FLAT is
+>    the whole safety of this change.
+> 2. `live-produce.js` — replace
+>    `const recordable = out.actionable && out.intent && out.intent.decision_price != null;`
+>    with two flags:
+>    `const priced = !!(out.actionable && out.intent && out.intent.decision_price != null);`
+>    and `const recordable = priced || !!(out.actionable && out.intent && out.intent.side === 'FLAT');`
+> 3. `live-produce.js` — add `&& priced` to the intent-write condition, so it
+>    reads `if (out.actionable && out.intent && recordedOk && priced && !alreadySeen)`.
+>    This is not optional: without it a priceless FLAT is now recordable, so
+>    `recordedOk` alone would ship exactly the intent the box rejects with
+>    `INTENT_INVALID problems:["decision_price"]`. Add a stderr line for the
+>    recorded-but-unpriced case.
+> 4. `tests/test-standdowns.js` — replace `aRecordIsNeverWrittenWithoutItsPrice`
+>    with `aTradedRecordIsNeverWrittenWithoutItsPrice` (it must assert BOTH that
+>    the `(rp == null) !== (cp == null)` rule survives AND that the exemption is
+>    restricted to FLAT), and add `aStandDownIsRecordedTheMomentItIsDecided`,
+>    `aPricelessStandDownIsNotADivergence`, `aPricelessTradedRecordStillBreaks`,
+>    `aStandDownStillHasItsVotesAndHashChecked`, `aPricelessIntentIsNeverShipped`.
+>    Register all of them in the module exports. Watch each one fail against its
+>    own fault before you trust it.
+> 5. Any test that pins the intent-write condition as literal text must instead
+>    LOCATE that condition (match `if (...) {` followed by `const stamp =`) and
+>    assert about the extracted text. Pinning the literal has now misfired twice.
+> 6. Change nothing else, do not deploy. Report and stop.
+
+---
+
 ## Deploying this change to the running system
 
 ### Why it cannot disturb open positions

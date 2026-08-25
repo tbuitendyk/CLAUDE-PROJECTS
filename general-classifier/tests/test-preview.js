@@ -204,6 +204,15 @@ function undatedRowsSinkToTheBottom() {
   + 'place in the timeline');
 }
 
+// The condition guarding the intent write, as source text. Located by the
+// statement it guards rather than by its own shape, so checks about it do not
+// have to be rewritten every time a term is added.
+function shippingGate(code) {
+  const m = code.match(/if \(([^\n]*?)\)\s*\{\s*\n\s*const stamp =/);
+  assert.ok(m, 'the intent-write gate could not be found in live-produce.js at all');
+  return m[1];
+}
+
 function theProducerDoesNotReshipAPeriodTheBoxHasSeen() {
   // Source assertion (live-produce.js is a script). actionableChunk keeps a
   // chunk actionable for its whole 137h hold, so every hourly tick re-offered a
@@ -218,7 +227,7 @@ function theProducerDoesNotReshipAPeriodTheBoxHasSeen() {
   // Tight on purpose: /!alreadySeen/ also matches inside `!!alreadySeen`, so the
   // first version of this check passed with the guard torn out. Assert the
   // SHIPPING CONDITION itself.
-  assert.ok(/&& !alreadySeen\)\s*\{/.test(code),
+  assert.ok(/alreadySeen/.test(shippingGate(code)),
     'the intent write is no longer gated on alreadySeen — re-offers will ship again');
 }
 
@@ -257,9 +266,16 @@ function noDecisionRecordMeansNoShippedIntent() {
   const src = fs.readFileSync(path.join(ROOT, 'live-produce.js'), 'utf8');
   const code = src.split('\n').filter((l) => !/^\s*\/\//.test(l)).join('\n');
   assert.ok(/recordedOk/.test(code), 'the recorded-ok flag is gone');
-  assert.ok(/out\.actionable && out\.intent && recordedOk && !alreadySeen\)/.test(code),
+  // FIND THE SHIPPING GATE, then assert about it — twice now a regex written
+  // against the whole condition has misfired: once matching inside `!!alreadySeen`
+  // with the guard torn out, once ceasing to match when the condition
+  // legitimately gained a term. Anchoring on the statement the gate guards
+  // (`const stamp =`, immediately inside it) survives terms being added and
+  // reordered, and cannot be satisfied by `recordedOk` appearing in some other
+  // condition nearby — which /&& recordedOk &&/ could be.
+  assert.ok(/recordedOk/.test(shippingGate(code)),
     'the intent write is not gated on the decision actually having been recorded — '
-  + 'priceless intents will ship and be rejected as INTENT_INVALID again');
+  + 'unrecorded intents will ship again');
 }
 
 function theProducerDoesNotEraseADecidedCall() {
