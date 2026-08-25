@@ -1,20 +1,20 @@
 {
   "note": "WHAT THE BOX IS SERVING. The closed word list is generated from this commit, not from the working tree, because between a commit and its deploy those describe different screens and the list is the only vocabulary permitted about a screen. NOT every served file can be fingerprinted this way: the server stamps a cache marker into construct.html as it serves it (server.js, so a returning browser cannot keep a stale script), which makes its served bytes 22 longer than its source by design. Hashing it would be a check that can only ever fail, so it is deliberately not listed here \u2014 it carries no screen labels either, they are all in construct.js. Captured by vps-access/scripts/uts-served-fingerprint.sh after every deploy, then `node tests/sweep-words.js --write`.",
-  "commit": "150bfbae97e5403ab86d210bf68869e516f316c5",
-  "subject": "The installer's health check still asked for the address that was removed",
-  "capturedAt": "2026-08-25T03:07:44Z",
+  "commit": "98ed18143a86aad342477360628776424bab570f",
+  "subject": "Compute: where each part runs, how much machine it gets, and its switches",
+  "capturedAt": "2026-08-25T20:06:45Z",
   "files": {
     "public/construct.js": {
-      "sha256": "15509df1d8e710378e414b19deb60e2547c66564c64287f78b15435222f7635c",
-      "bytes": 215240
+      "sha256": "99abb0ddda3db61ea4b9a214c1b4d944a018954551d7645f209231d6240e9a68",
+      "bytes": 213868
     },
     "public/help-content.js": {
-      "sha256": "d751cbb969fab6b28387cba133f2d9e6668a5e1827e4ac475b9f2a0b8abcc3fb",
-      "bytes": 32750
+      "sha256": "3d7a275a850dccdd7fe17dd9ed475031cbf957535404cdfb8a5bb0dee5b94784",
+      "bytes": 32228
     },
     "public/setup.html": {
-      "sha256": "10ab868f18968248fff1aaffbe9c916b5030421effa45343fe71f8864d2dc107",
-      "bytes": 9048
+      "sha256": "07a8557bfcb9b715c056db7837748ab6af883519b4cdc2fd95e173cbd2c2d25e",
+      "bytes": 24293
     },
     "public/trade.html": {
       "sha256": "af837906a92f29e6a8aee09ac42df08d2fb985c3c637e70f2e95f63c6213f743",
