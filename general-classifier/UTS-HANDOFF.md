@@ -460,9 +460,12 @@ the sha256 in `executor/EXECUTOR-SHA256` (§8 step 3).
 you see fit — nothing here starts work by itself):
 
 > Fetch the general-classifier branch and read
-> `general-classifier/UTS-HANDOFF.md` at commit `3cda802`
+> `general-classifier/UTS-HANDOFF.md` from its tip
 > (`git fetch origin general-classifier` then
-> `git show 3cda802:general-classifier/UTS-HANDOFF.md`). Follow it exactly:
+> `git show origin/general-classifier:general-classifier/UTS-HANDOFF.md`) —
+> the document post-dates the `3cda802` code snapshot it describes, so it is
+> not IN that commit; the code refs inside it still all point at `3cda802`.
+> Follow it exactly:
 > its §1 safeguards, §4/§5 integration, §7 screen work, §8 verification. Its
 > instructions supersede the prompt blocks inside `UTS-PARITY.md`. Commit on
 > the UTS branch only. Do not deploy anything. Report per §8 step 7 and stop.
