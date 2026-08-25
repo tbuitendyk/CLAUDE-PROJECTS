@@ -786,6 +786,25 @@ async function drawLive(){
         <td style="text-align:left;vertical-align:top" class="muted">${esc(it.why)}</td></tr>`).join('')
         ||'<tr><td colspan="4" class="empty">nothing scheduled</td></tr>'}
       </tbody></table></div>
+    <div class="panel"><div class="k">Today's call <span style="text-transform:none;letter-spacing:0">— decided, not yet acting</span></div>
+      <div class="muted" style="font-size:.68rem;margin:.3rem 0">The committee knows its call as soon as the feature window closes, which is
+        well before the entry moment. This is that call. It becomes a row in the history below when it acts.</div>
+      ${(()=>{const pv=st.preview;
+        if(!pv) return '<div class="empty">no call computed yet — the producer has not written one for this profile</div>';
+        if(!pv.available) return `<div class="muted">${esc(pv.note||'no call to show yet')}${pv.writtenUtc?` <span style="font-size:.7rem">(checked ${esc(String(pv.writtenUtc).replace('T',' ').slice(0,16))} UTC)</span>`:''}</div>`;
+        const lab=pv.side==='LONG'?['LONG','pos']:pv.side==='SHORT'?['SHORT','neg']:['no trade','muted'];
+        const vtxt=(pv.votes||[]).length
+          ? pv.votes.map(v=>v>0?'<span class="pos">UP</span>':v<0?'<span class="neg">DOWN</span>':'<span class="muted">no call</span>').join(' · ')
+          : '—';
+        return `<div class="row" style="gap:1.2rem;flex-wrap:wrap">
+          <div><span class="lbl">call</span> <span class="${lab[1]}"><b>${lab[0]}</b></span></div>
+          <div><span class="lbl">member votes</span> ${vtxt}</div>
+          <div><span class="lbl">quorum</span> ${esc(String(pv.quorum??'—'))}</div>
+          <div><span class="lbl">acts at (UTC)</span> <span style="white-space:nowrap">${esc(String(pv.entryUtc||'').replace('T',' ').slice(0,16))}</span></div>
+          <div><span class="lbl">in</span> <span style="white-space:nowrap" ${pv.entryUtc?`data-when="${esc(pv.entryUtc)}"`:''}>${pv.entryUtc?'…':'—'}</span></div>
+          <div class="muted" style="font-size:.7rem">window ${esc(String(pv.chunkStart||'').slice(0,10))} · computed ${esc(String(pv.computedUtc||'').replace('T',' ').slice(0,16))} UTC</div>
+        </div>`;})()}
+    </div>
     <div class="panel"><div class="k">Daily decision history <span style="text-transform:none;letter-spacing:0">— one row per decision day, newest first</span></div>
       <div class="muted" style="font-size:.68rem;margin:.3rem 0"><b>entry (UTC)</b> = the moment the call acts (window start + the geometry's entry offset) ·
         <b>window</b> = the feature window it was computed from ·

@@ -8,6 +8,56 @@
 const fs = require('fs');
 const path = require('path');
 
+// TODAY'S CALL, BEFORE IT ACTS (owner, 2026-08-25).
+//
+// The committee knows its vote as soon as the feature window closes, and
+// live-produce.js writes that call to data/live/previews/<id>.json on EVERY
+// tick. Nothing ever read it back: the setup status had no `preview` field, so
+// the screen could not show a call until the entry hour arrived and it became
+// a recorded row — four days and an hour later on this geometry. The owner sat
+// looking at a history with no row for today while the vote sat on disk.
+//
+// STALENESS IS THE TRAP. A preview file is left behind after its entry acts,
+// and a leftover call rendered as "today's" is worse than showing nothing —
+// it is the retired data/pilot/preview.json failure again (that one sat six
+// days stale). So a preview is surfaced ONLY while its own entry is still in
+// the future. Past that it is spent, and spent is reported as spent.
+function previewsDir() {
+  return process.env.GC_LIVE_PREVIEWS
+    || path.join(__dirname, '..', '..', 'data', 'live', 'previews');
+}
+
+function loadPreview(setupId, now = Date.now()) {
+  let p = null;
+  try {
+    p = JSON.parse(fs.readFileSync(path.join(previewsDir(), `${setupId}.json`), 'utf8'));
+  } catch (_) { return null; }          // not written yet is a state, not an error
+  if (!p || typeof p !== 'object') return null;
+  if (!p.available) {
+    // The producer says why it cannot preview yet (window not closed, candle
+    // not cached). Pass the reason through rather than showing nothing.
+    return { available: false, note: p.note || null, writtenUtc: p.written_utc || null };
+  }
+  const entryMs = p.entry_utc ? Date.parse(p.entry_utc) : NaN;
+  if (!Number.isFinite(entryMs)) return null;
+  if (entryMs <= now) {
+    return { available: false, spent: true, entryUtc: p.entry_utc,
+             note: 'this call has already reached its entry moment — see the decision history',
+             writtenUtc: p.written_utc || null };
+  }
+  return {
+    available: true,
+    side: p.side,
+    votes: p.per_member || null,
+    quorum: p.quorum ?? null,
+    chunkStart: p.chunk_start || null,
+    entryUtc: p.entry_utc,
+    computedUtc: p.computed_utc || null,
+    writtenUtc: p.written_utc || null,
+    configVersion: p.config_version || null,
+  };
+}
+
 // The synced box journal; overridable for tests.
 function journalFile() {
   return process.env.GC_LIVE_JOURNAL
@@ -290,6 +340,33 @@ function nextActivity(st, setup, nowMs, tickMinuteUtc = 8) {
     items.push({ what: 'Open a new position', whenUtc: null,
       why: 'this profile is HALTED — new entries are blocked; open positions still exit on schedule.' });
   } else {
+    // THE ENTRY THAT IS ABOUT TO HAPPEN (owner, 2026-08-25). nextEntry was
+    // computed here and then never shown, so the panel could say the next
+    // EVALUATION was a day away while an entry from a call already decided was
+    // minutes away. "What happens next" that omits the next thing to happen is
+    // worse than empty: it reads as an all-clear. When the call is already known
+    // (its feature window has closed) it is named here, so the owner can see a
+    // position is about to open and on what.
+    const pv = st.preview;
+    if (pv && pv.available && pv.entryUtc && Date.parse(pv.entryUtc) > nowMs) {
+      const call = pv.side === 'LONG' || pv.side === 'SHORT' ? pv.side : 'FLAT';
+      items.push({
+        what: call === 'FLAT'
+          ? 'Stand down — the call is FLAT, nothing opens'
+          : `Open a ${call} position ($${st.clipUsd} clip)`,
+        whenUtc: pv.entryUtc,
+        why: call === 'FLAT'
+          ? 'the committee decided no direction for this window; the entry moment passes without an order.'
+          : `the committee already decided ${call} when its ${geo.featureHours || '?'}h feature window `
+            + `closed at ${String(closeHourUtc).padStart(2, '0')}:00 UTC. This is that call acting.`,
+      });
+    } else if (nextEntry < nextEval) {
+      // The window has closed but no call is readable yet — say so rather than
+      // showing nothing at the moment a position could open.
+      items.push({ what: 'Open a position — call not readable yet', whenUtc: iso(nextEntry),
+        why: 'the entry moment is near but no decided call has been written for it yet; '
+          + 'the hourly recompute above is what writes it.' });
+    }
     items.push({ what: 'Evaluate the next entry (LONG / SHORT / FLAT)', whenUtc: iso(nextEval),
       why: `the committee decides when its ${geo.featureHours || '?'}h feature window closes at ${String(closeHourUtc).padStart(2, '0')}:00 UTC; `
         + `the entry then opens a $${st.clipUsd} clip at ${String(entryHourUtc).padStart(2, '0')}:00 UTC only if the call is not FLAT.` });
@@ -304,6 +381,19 @@ function nextActivity(st, setup, nowMs, tickMinuteUtc = 8) {
       whenUtc: iso(p.exit_due_ts * 1000),
       why: `its ${holdH}h hold elapses; scheduled exits run whether the profile is running or stopped.` });
   }
+
+  // CHRONOLOGICAL. The panel is titled "what happens next", so it is sorted by
+  // WHEN, not by the order the code happened to build the rows in. It used to
+  // list the recompute, then the evaluation, then the exits — so an evaluation
+  // 23 hours out sat above an exit 17 hours out and the reader had to re-sort
+  // it by eye. Undated rows ("nothing opens, this profile is stopped") are
+  // states rather than events, so they sink to the bottom instead of claiming
+  // a place in the timeline.
+  items.sort((x, y) => {
+    const a1 = x.whenUtc ? Date.parse(x.whenUtc) : Infinity;
+    const b1 = y.whenUtc ? Date.parse(y.whenUtc) : Infinity;
+    return a1 - b1;
+  });
 
   return {
     serverUtc: iso(nowMs), entryHourUtc, holdHours: holdH,
@@ -362,8 +452,11 @@ function setupStatus(setup, file = journalFile()) {
     runEpochUtc: setup.runEpochUtc || null,
     ...book,
   };
+  // AFTER the spread: the call that is known but has not acted yet.
+  out.preview = loadPreview(setup.id);
   out.liveStatus = nextActivity(out, setup, Date.now());
   return out;
 }
 
-module.exports = { deriveSetup, setupStatus, readJournal, journalFile, nextActivity, decisionEntryUtc };
+module.exports = { deriveSetup, setupStatus, readJournal, journalFile, nextActivity, decisionEntryUtc,
+  loadPreview, previewsDir };

@@ -155,6 +155,83 @@ Paste everything between the lines into a UTS session.
 
 ---
 
+### 2026-08-25 — today's call is visible before it acts
+
+**Why.** On the live `daily-4d` geometry the feature window closes at 00:00 UTC
+and the entry acts at 01:00 UTC, so the committee's call is known a full hour
+before anything happens. `live-produce.js` had been writing that call to
+`data/live/previews/<id>.json` every tick all along — and nothing ever read it
+back. The owner looked at the decision history at 00:58, saw yesterday as the
+newest row, and asked where today's vote was. It was on disk.
+
+The "Current status — what happens next" panel had the matching hole: it
+computed the next entry moment and never listed it, so it announced the next
+*evaluation* a day out while an already-decided entry was two minutes away. It
+also emitted rows in the order the code built them, so a 23-hour item sat above
+a 17-hour one under a heading that promises what happens **next**.
+
+**Files changed**
+
+| file | change |
+|---|---|
+| `lib/live/view.js` | added `previewsDir()` + `loadPreview()`, both exported; `setupStatus()` attaches `out.preview`; `nextActivity()` emits a row for an already-decided entry and sorts all rows chronologically, undated last. |
+| `public/trading.html` | new "Today's call — decided, not yet acting" panel above the decision history. |
+| `tests/test-preview.js` | 9 checks, each watched failing against its own fault. |
+| `tests/run.js` | registered `test-preview.js`. |
+
+**The staleness trap.** A preview file stays on disk after its entry acts.
+Rendering a leftover call as "today's" is worse than an empty panel — that is
+how the retired `data/pilot/preview.json` sat six days stale. `loadPreview()`
+surfaces a call **only while its own `entry_utc` is still in the future**; past
+that it returns `{available:false, spent:true}` with a reason.
+
+---
+
+> **PROMPT FOR UTS — today's call is visible before it acts**
+>
+> Apply the 2026-08-25 change from the General Classifier so this tree stays
+> byte-identical. Only the folder name differs (`general-classifier/` there is
+> `ultimate-trading-system/` here).
+>
+> The problem: `live-produce.js` computes a decision PREVIEW every tick (via
+> `signal.computePreview`) and writes it to `data/live/previews/<setup-id>.json`,
+> but nothing reads it back — so a call known an hour before it acts cannot be
+> displayed until it becomes a recorded history row. On `daily-4d` the feature
+> window closes at 00:00 UTC and the entry acts at 01:00 UTC.
+>
+> 1. In `lib/live/view.js`: add `previewsDir()` (honouring `GC_LIVE_PREVIEWS`,
+>    defaulting to `data/live/previews`) and `loadPreview(setupId, now)`; export
+>    both. `loadPreview` must: return `null` when the file is absent or
+>    unparseable; pass a producer `{available:false, note}` straight through so
+>    the reason is shown rather than silence; **return
+>    `{available:false, spent:true, ...}` when `entry_utc` is already past**, so a
+>    spent call can never render as the current one; otherwise return
+>    `{available:true, side, votes, quorum, chunkStart, entryUtc, computedUtc,
+>    writtenUtc, configVersion}`.
+> 2. In `setupStatus()`, set `out.preview = loadPreview(setup.id)` AFTER the
+>    `...book` spread so it cannot be clobbered.
+> 3. In `nextActivity()`: when `st.preview` is available and its `entryUtc` is
+>    still ahead, push a row for it — `Open a <SIDE> position ($<clip> clip)`, or
+>    `Stand down — the call is FLAT, nothing opens` for FLAT. When the entry is
+>    near but no call is readable, push a row saying so. Then **sort every row by
+>    `whenUtc` ascending, undated rows last** — the panel is titled "what happens
+>    next" and must be in time order.
+> 4. In `public/trading.html`, add a "Today's call — decided, not yet acting"
+>    panel immediately above the "Daily decision history" panel: the call, the
+>    member votes (UP/DOWN/no call, same colours as the history), the quorum, the
+>    acting time, a `data-when` countdown, and the window/computed stamps. Handle
+>    all three states — available, not-yet-available (show the note), no file.
+> 5. Copy `tests/test-preview.js` verbatim and register it in `tests/run.js`.
+>    Watch each check fail by reintroducing its own fault — house rule. One check
+>    exists specifically because the others call `loadPreview()` and
+>    `nextActivity()` directly and would all still pass if `setupStatus()` stopped
+>    attaching the preview; do not drop it.
+> 6. Change nothing else, and do not deploy. Report and stop.
+>
+> Then append the matching entry to `UTS-PARITY.md` here.
+
+---
+
 ## Deploying this change to the running system
 
 ### Why it cannot disturb open positions
