@@ -8,7 +8,7 @@ cd /opt/semi-auto-balancer
 node <<'JS'
 const db = require('better-sqlite3')('/opt/semi-auto-balancer/data/semi-auto-balancer.sqlite');
 const d = (ts) => (ts ? new Date(ts).toISOString().replace('T', ' ').slice(0, 16) : null);
-for (const pid of [6, 2, 5]) {
+for (const pid of [1, 6, 2, 5]) {
   const p = db.prepare('SELECT id, name, basket_base, basket_started_at, value_base, value_snap_rel, value_started_at FROM profiles WHERE id = ?').get(pid);
   console.log(`\n== p${p.id} "${p.name}" ==`);
   console.log(`basket_base=${p.basket_base} basket_started=${d(p.basket_started_at)} value_base=${p.value_base} value_snap_rel=${p.value_snap_rel} value_started=${d(p.value_started_at)}`);

@@ -37,6 +37,10 @@ for (const a of db.prepare('SELECT id, venue, enabled, auto_flows, last_sync_at,
   }
 }
 
+const pf = db.prepare("SELECT status, COUNT(*) c FROM pending_flows GROUP BY status").all();
+console.log('\n== pending_flows by status: ' + JSON.stringify(pf));
+const aq = db.prepare("SELECT status, COUNT(*) c FROM attribution_queue GROUP BY status").all();
+console.log('== attribution_queue by status: ' + JSON.stringify(aq));
 console.log('\n== asset rows (every profile, raw) ==');
 for (const p of db.prepare('SELECT id, name, is_shell, exchange_account_id FROM profiles ORDER BY id').all()) {
   console.log(`profile ${p.id} "${p.name}"${p.is_shell ? ' [SHELL]' : ''} acct=${p.exchange_account_id}`);
