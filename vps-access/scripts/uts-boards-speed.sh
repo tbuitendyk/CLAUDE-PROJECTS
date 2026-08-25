@@ -30,11 +30,21 @@ echo "== and another page, at the same time =="
 printf '  %-46s %ss\n' "/construct.html while Boards is loading" "$(t "$B/construct.html")"
 
 echo "== the restart control (asked, not pressed) =="
-curl -s --max-time 20 http://127.0.0.1:8095/api/state | python3 -c '
-import json, sys
-d = json.load(sys.stdin)
-print(f"  {d[\"unit\"]}: {d[\"active\"]}, " + (f"answering in {d[\"ms\"]} ms" if d.get("answering") else f"NOT answering - {d.get(\"why\")}"))
-' 2>/dev/null || { echo "  the control did not answer"; FAIL=1; }
+# Written to a file and read from there. Inlined, the quoting inside the f-string
+# was a Python syntax error, the `|| echo` caught it, and it reported "the
+# control did not answer" about a control that was answering perfectly. A
+# diagnostic that blames the thing it is measuring for its own fault is worse
+# than no diagnostic.
+if curl -sf --max-time 20 http://127.0.0.1:8095/api/state -o /tmp/uts-state.json; then
+  python3 - <<'PY'
+import json
+d = json.load(open('/tmp/uts-state.json'))
+how = f"answering in {d['ms']} ms" if d.get('answering') else f"NOT answering - {d.get('why')}"
+print(f"  {d['unit']}: {d['active']}, {how}")
+PY
+else
+  echo "  the control did not answer"; FAIL=1
+fi
 
 echo "== the replication table is NOT asked for on a draw =="
 echo "  (it is opened by hand now; asking for it here would cost the ten minutes"
