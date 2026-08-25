@@ -134,27 +134,58 @@ async function listeners() {
 // THE QUESTION systemd CANNOT ANSWER: does it actually reply? A live process
 // with an open port accepts the connection whether or not it will ever read
 // from it, which is exactly how "active" was reported all through an outage.
+//
+// FIVE ANSWERS, NOT TWO, and the difference is the whole worth of this column.
+// The first version had only "answered" and "no answer", so it printed NO
+// ANSWER in red against ssh, the mail service and the tunnel — every one of them
+// perfectly healthy and simply not speaking the web. A screen that cries wolf
+// about ssh every time it is looked at is a screen nobody reads on the day it is
+// right, so:
+//
+//   answered  a web reply came back, and how long it took
+//   spoke     it sent something back that is not a web reply — alive, and this
+//             is not a service that speaks the web. Not a fault.
+//   closed    it hung up without saying anything, which is what a service
+//             expecting some other kind of conversation does. Not a fault.
+//   refused   nothing is listening there at all.
+//   silent    it TOOK the connection and then sent nothing at all. This is the
+//             one. It is the signature of the outage, it is what "active" hides,
+//             and it is the only one of the five that means anything is wrong.
 function ask(host, port, timeoutMs = 4000) {
   return new Promise((resolve) => {
     const started = process.hrtime.bigint();
     let settled = false;
-    const done = (v) => { if (!settled) { settled = true; resolve(v); } };
+    const done = (v) => { if (!settled) { settled = true; resolve({ port, ...v }); } };
     const to = host === '*' || host === '0.0.0.0' || host === '[::]' ? '127.0.0.1' : host.replace(/^\[|\]$/g, '');
     const req = http.request({ host: to, port, method: 'GET', path: '/', timeout: timeoutMs }, (res) => {
       res.resume();
       res.on('end', () => done({
-        port, answered: true, status: res.statusCode,
+        answered: true, state: 'answered', status: res.statusCode,
         ms: Math.round(Number(process.hrtime.bigint() - started) / 1e5) / 10,
       }));
     });
     req.on('timeout', () => {
       req.destroy();
-      done({ port, answered: false, why: `it took the connection but sent nothing back in ${timeoutMs / 1000} seconds` });
+      done({
+        answered: false, state: 'silent', wrong: true,
+        why: `it took the connection and then sent nothing at all for ${timeoutMs / 1000} seconds`,
+      });
     });
-    req.on('error', (e) => done({
-      port, answered: false,
-      why: e.code === 'ECONNREFUSED' ? 'nothing is listening on it' : (e.message || 'it could not be reached'),
-    }));
+    req.on('error', (e) => {
+      const msg = String(e.message || '');
+      if (e.code === 'ECONNREFUSED') {
+        return done({ answered: false, state: 'refused', wrong: true, why: 'nothing is listening there' });
+      }
+      // It answered. Just not in the web's language, which is a fact about what
+      // the service is, not a fault in it.
+      if (/Parse Error|HPE_/.test(msg) || e.code === 'HPE_INVALID_CONSTANT') {
+        return done({ answered: false, state: 'spoke', why: 'it replied, but not in the web\'s language — this one does not serve pages' });
+      }
+      if (e.code === 'ECONNRESET' || /socket hang up/.test(msg)) {
+        return done({ answered: false, state: 'closed', why: 'it hung up without replying, which is what something expecting a different kind of conversation does' });
+      }
+      return done({ answered: false, state: 'unknown', wrong: true, why: msg || 'it could not be reached' });
+    });
     req.end();
   });
 }

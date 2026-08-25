@@ -300,6 +300,115 @@ module.exports = {
     assert.ok(/^MemoryMax=/m.test(unit), 'the control has no ceiling on what it may take');
   },
 
+  // ONLY ONE KIND OF SILENCE IS A FAULT, and the first version of this column
+  // did not know that. It had two states, so it printed a red NO ANSWER against
+  // ssh, the mail service and the tunnel — all healthy, none of them things that
+  // serve pages. Seen on the real machine the moment it was deployed.
+  //
+  // A column that is red about ssh all day is one nobody reads on the day it is
+  // right, so each of these is asked of a real socket behaving in a real way.
+  async somethingAliveThatDoesNotServePagesIsNotReportedAsAFault() {
+    const net = require('net');
+    const cp = require('child_process');
+    const real = cp.execFile;
+    cp.execFile = (c, a, o, cb) => process.nextTick(() => (typeof o === 'function' ? o : cb)(null, '', ''));
+    delete require.cache[require.resolve(SVC)];
+    const mod = require(SVC);
+    const servers = [];
+    const listen = (onConn) => new Promise((res) => {
+      const s = net.createServer(onConn);
+      servers.push(s);
+      s.listen(0, '127.0.0.1', () => res(s.address().port));
+    });
+    try {
+      // Speaks, but not the web -- what ssh and the mail service do.
+      const speaks = await listen((sock) => { sock.write('SSH-2.0-OpenSSH_8.4\r\n'); });
+      // Hangs up without a word -- what the tunnel does.
+      const hangs = await listen((sock) => sock.destroy());
+      // Takes the connection and says nothing. THE FAULT.
+      const silent = await listen(() => { /* deliberately never replies */ });
+      // A real web reply.
+      const web = await listen((sock) => { sock.end('HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nhi'); });
+      // Nothing listening at all.
+      const dead = await listen(() => {});
+      const deadPort = servers[servers.length - 1].address().port;
+      await new Promise((r) => servers.pop().close(r));
+
+      const a = await mod.ask('127.0.0.1', speaks, 1200);
+      assert.strictEqual(a.state, 'spoke', `something that replies in another language read as "${a.state}"`);
+      assert.ok(!a.wrong, 'a healthy service that does not serve pages was marked as something being wrong');
+
+      const b = await mod.ask('127.0.0.1', hangs, 1200);
+      assert.strictEqual(b.state, 'closed', `something that hangs up read as "${b.state}"`);
+      assert.ok(!b.wrong, 'a service that hangs up was marked as something being wrong');
+
+      const c = await mod.ask('127.0.0.1', silent, 1200);
+      assert.strictEqual(c.state, 'silent', `the one state that IS a fault read as "${c.state}"`);
+      assert.strictEqual(c.wrong, true, 'the outage signature was not marked as something being wrong');
+
+      const d = await mod.ask('127.0.0.1', web, 1200);
+      assert.strictEqual(d.state, 'answered', `a real web reply read as "${d.state}"`);
+      assert.ok(typeof d.ms === 'number', 'a web reply came back without how long it took');
+
+      const e = await mod.ask('127.0.0.1', deadPort, 1200);
+      assert.strictEqual(e.state, 'refused', `a closed port read as "${e.state}"`);
+      void dead;
+    } finally {
+      for (const s of servers) { try { s.close(); } catch (_) { /* already shut */ } }
+      cp.execFile = real;
+      delete require.cache[require.resolve(SVC)];
+    }
+  },
+
+  // And the screen must SHOW only that one state as a fault.
+  //
+  // THIS IS RUN, NOT READ. The first version of this test grepped the page's
+  // source for the words it expected and passed while the display was broken:
+  // the mutation harness changed the red branch's condition from `silent` to
+  // "anything that did not answer" — putting ssh, the mail service and the
+  // tunnel back in red — and the grep found its words elsewhere in the function
+  // and was satisfied. So the function is lifted out of the page by name and
+  // called, and what is asserted is the markup it actually produces.
+  async theScreenShowsOnlyTheOneStateThatIsAFaultAsAFault() {
+    const src = fs.readFileSync(path.join(__dirname, '..', 'public', 'construct.js'), 'utf8');
+    const start = src.indexOf('function svcAnswer(');
+    const end = src.indexOf('\nasync function drawService(');
+    assert.ok(start > 0 && end > start, 'the Service tab no longer draws its answer column');
+    // esc() lives outside it, so it is supplied — the same trick the adversarial
+    // suite uses to run one function out of the page.
+    // eslint-disable-next-line no-new-func
+    const svcAnswer = new Function('esc', `${src.slice(start, end)}; return svcAnswer;`)(
+      (t) => String(t ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;'));
+
+    const draw = (a) => svcAnswer({ ports: [a.port], answers: [a] });
+
+    const good = draw({ port: 8094, answered: true, state: 'answered', ms: 11.6 });
+    assert.ok(/class="pos"/.test(good) && /11\.6 ms/.test(good), `a healthy web reply drew: ${good}`);
+
+    // The three that are ALIVE and simply do not serve pages. None may be red.
+    for (const state of ['spoke', 'closed']) {
+      const out = draw({ port: 22, answered: false, state, why: 'it does not serve pages' });
+      assert.ok(!/class="neg"/.test(out),
+        `something alive that does not serve pages ("${state}") was drawn as a fault: ${out}`);
+      assert.ok(/does not serve pages/.test(out),
+        `"${state}" was not drawn as alive-but-not-a-web-page: ${out}`);
+    }
+
+    // THE ONE THAT IS. It must be red and it must say what happened.
+    const bad = draw({ port: 8094, answered: false, state: 'silent', wrong: true, why: 'it took the connection and then sent nothing at all for 4 seconds' });
+    assert.ok(/class="neg"/.test(bad), `the outage signature was not drawn as a fault: ${bad}`);
+    assert.ok(/said nothing/.test(bad), `the outage signature does not say what happened: ${bad}`);
+
+    // Nothing listening is a warning, not a silence and not a pass.
+    const gone = draw({ port: 9999, answered: false, state: 'refused', wrong: true, why: 'nothing is listening there' });
+    assert.ok(/class="warn"/.test(gone) && /nothing is listening/.test(gone), `a closed port drew: ${gone}`);
+
+    // And the banner above the table must count the same one state.
+    const tab = src.slice(src.indexOf('\nasync function drawService('), src.indexOf('async function drawHelp('));
+    assert.ok(/const stuck = [\s\S]{0,200}a\.state === 'silent'/.test(tab.replace(/\/\/[^\n]*/g, '')),
+      'the banner counts something other than the one state that means a restart is needed');
+  },
+
   // It has no dependencies, and that is a property worth keeping: it has to
   // start on a machine where the main app's own install is broken.
   async theControlPullsInNothingButNodeItself() {

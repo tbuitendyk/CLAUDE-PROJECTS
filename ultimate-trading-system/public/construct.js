@@ -2863,13 +2863,28 @@ const svcAge = (s) => {
 };
 const svcMem = (b) => (b == null ? '—' : b >= (1 << 30) ? `${(b / (1 << 30)).toFixed(2)} GB` : `${Math.round(b / (1 << 20))} MB`);
 
-// One row's answer, in words rather than a code. The case that matters is the
-// middle one: running, port open, nothing came back.
+// One row's answer, in words rather than a code.
+//
+// ONLY ONE OF THESE IS A FAULT, and saying so is the point. Written with two
+// states — answered, or no answer — this column printed a red NO ANSWER against
+// ssh, the mail service and the tunnel, every one of them healthy and simply
+// not a thing that serves pages. A column that is red about ssh all day is one
+// nobody reads on the day it is right about something else.
+//
+// So: replied is good; replied in another language, or hung up, is ALIVE and
+// says so quietly; took the connection and then said nothing is the fault, and
+// it is the only one in red.
 function svcAnswer(u) {
   if (!u.ports.length) return '<span class="muted">no address</span>';
   return u.answers.map((a) => {
-    if (a.answered) return `<span class="pos">answered in ${a.ms} ms</span> <span class="muted">(${a.port})</span>`;
-    return `<span class="neg">no answer</span> <span class="muted">(${esc(a.port)} — ${esc(a.why)})</span>`;
+    if (a.answered) return `<span class="pos">answered in ${a.ms} ms</span> <span class="muted">(${esc(a.port)})</span>`;
+    if (a.state === 'spoke' || a.state === 'closed') {
+      return `<span class="muted" title="${esc(a.why)}">alive, does not serve pages (${esc(a.port)})</span>`;
+    }
+    if (a.state === 'silent') {
+      return `<span class="neg">took the connection and said nothing</span> <span class="muted">(${esc(a.port)})</span>`;
+    }
+    return `<span class="warn">${esc(a.why)}</span> <span class="muted">(${esc(a.port)})</span>`;
   }).join('<br>') || '<span class="muted">not asked</span>';
 }
 
@@ -2893,7 +2908,10 @@ async function drawService() {
   shown.sort((a, b) => (b.ports.length ? 1 : 0) - (a.ports.length ? 1 : 0)
     || (b.active === 'active' ? 1 : 0) - (a.active === 'active' ? 1 : 0)
     || a.unit.localeCompare(b.unit));
-  const wedged = d.units.filter((u) => u.active === 'active' && u.answers.some((a) => !a.answered && a.why && a.why.includes('sent nothing back')));
+  // The one state that means something is wrong. Not "did not answer" — a great
+  // many healthy things do not answer a web request, because they are not for
+  // the web. This is the one that took the connection and then said nothing.
+  const stuck = d.units.filter((u) => u.active === 'active' && u.answers.some((a) => a.state === 'silent'));
 
   const rows = shown.map((u) => {
     const state = u.active === 'active' ? `<span class="pos">${esc(u.active)}</span>`
@@ -2919,8 +2937,11 @@ async function drawService() {
         address open and still never reply, because the machine accepts the connection on its
         behalf. The last column asks each one a real question and times the reply, which is the
         one reading that tells those two apart.</p>
-      ${wedged.length ? `<p class="note neg"><b>${wedged.length} service(s) are running but did not
-        answer.</b> That is the state a restart is for.</p>` : ''}
+      <p class="note">Plenty of them are alive and do not serve pages at all — the remote login,
+        the mail service, the tunnel. Those say <b>alive, does not serve pages</b> and nothing is
+        wrong with them. The one that matters is <b>took the connection and said nothing</b>.</p>
+      ${stuck.length ? `<p class="note neg"><b>${stuck.length} service(s) took the connection and
+        said nothing.</b> That is the state a restart is for.</p>` : ''}
     </div>
     <div class="panel">
       <div class="row">

@@ -14,11 +14,22 @@
 // test that names that guard has to FAIL. One that does not is not protecting
 // anything, and it is worse than nothing because it reads as protection.
 //
-// It found one immediately. `aNameThatIsNotAServiceNameNeverReachesSystemctl`
-// accepted "either 400 or 404" — so with the shape check deleted, a name like
-// "nginx.service; rm -rf /" simply fell through to the does-this-machine-have-it
-// check, was refused by that instead, and the test noticed nothing at all. It
-// now asserts WHICH refusal, and fails when the shape check goes.
+// It has found two so far, and both were the same mistake wearing different
+// clothes: a test that checks something OTHER than the thing it is named after.
+//
+//   * `aNameThatIsNotAServiceNameNeverReachesSystemctl` accepted "either 400 or
+//     404" — so with the name-shape check deleted, a name like
+//     "nginx.service; rm -rf /" simply fell through to the
+//     does-this-machine-have-it check, was refused by that instead, and the test
+//     noticed nothing. It now asserts WHICH refusal.
+//
+//   * the test on the answer column READ the page's source for the words it
+//     expected instead of running it. With the red branch's condition changed
+//     from "took the connection and said nothing" to "anything that did not
+//     answer" — which puts ssh, the mail service and the tunnel back in red —
+//     the words it was grepping for were still there, elsewhere in the same
+//     function, and it passed. It now lifts the function out of the page, calls
+//     it, and asserts the markup that comes back.
 //
 // This is deliberately not part of `npm test`: it runs the whole suite once per
 // guard. Run it after changing anything in service-control/.
@@ -53,6 +64,10 @@ const GUARDS = [
     'theServiceTabAsksTheSeparateProcessAndNotTheMainApp', 'the tab asks the very service that will be down'],
   [UNIT, 'Restart=always', 'Restart=on-failure',
     'theControlsOwnUnitAlwaysRestartsAndIsTiny', 'the one way back does not come back on its own'],
+  [SVC, "return done({ answered: false, state: 'spoke'", "return done({ answered: false, state: 'silent', wrong: true",
+    'somethingAliveThatDoesNotServePagesIsNotReportedAsAFault', 'ssh and the mail service go red every time the tab is opened'],
+  [CJS, "a.state === 'silent'", '!a.answered',
+    'theScreenShowsOnlyTheOneStateThatIsAFaultAsAFault', 'everything that is not a web page is shown as broken'],
 ];
 
 let missed = 0;
