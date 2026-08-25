@@ -232,6 +232,73 @@ that it returns `{available:false, spent:true}` with a reason.
 
 ---
 
+### 2026-08-25 (second pass) — the blind window, and the re-shipped intents
+
+**Why.** The first pass expired a call the instant its entry hour arrived —
+which is when it matters most and is least visible: not filled, no decision row
+yet, owner watching. And `live-produce.js` was *erasing* the saved call every
+tick past the entry hour, because `computePreview` reports "nothing to preview"
+outside its window. So the call was readable 00:00–01:00 and then destroyed.
+
+Separately, the owner's Incidents panel showed `INTENT_STALE` ×2 and
+`INTENT_DUPLICATE` ×2: `actionableChunk` keeps a chunk actionable for its whole
+137h hold, so every hourly tick re-offered a period already dealt with. The box
+dedupes, so nothing was double-traded — but on 2026-08-24 it was halted and
+fifteen hours of re-offers surfaced as a burst of stale intents when the halt
+lifted.
+
+**A correction worth recording:** a FLAT intent is **not** a defect and must not
+be suppressed. The executor accepts `FLAT`, places no order, and journals
+`INTENT_SEEN` — which is the event the decision history renders. Filtering FLAT
+would silently delete every declined day from the record. A test now guards
+against exactly that wrong fix.
+
+**Files changed**
+
+| file | change |
+|---|---|
+| `lib/live/view.js` | `loadPreview` marks a past-entry call `acting` instead of dropping it, abandoning only after 24h; `setupStatus` retires it by SUPERSESSION (a recorded decision for the same window) rather than by clock. |
+| `live-produce.js` | an available saved call is no longer clobbered by an unavailable one; an intent is not re-shipped for a period already `INTENT_SEEN` on the box. |
+| `public/trading.html` | the panel reads "acting now — awaiting the fill" past the entry hour. |
+| `tests/test-preview.js` | 14 checks, each watched failing. |
+
+---
+
+> **PROMPT FOR UTS — the blind window and the re-shipped intents**
+>
+> Apply the 2026-08-25 second-pass change so this tree stays byte-identical.
+> Folder name is the only difference.
+>
+> 1. `lib/live/view.js` — `loadPreview(setupId, now)` must NOT expire a call when
+>    its entry hour passes. Return it with `acting: true` instead. Only abandon it
+>    when `now - entry_utc > 24h`, returning `{available:false, abandoned:true, note}`.
+>    Rationale: expiring at the entry hour blanks the screen in the window
+>    between the entry and the fill, which is the hole the panel exists to close.
+> 2. `setupStatus()` — after attaching `out.preview`, set it to `null` if any
+>    entry in `out.decisions` has the same `chunk_start`. Supersession, not a
+>    clock: once the call is a history row, showing it twice makes one decision
+>    appear in two places disagreeing about whether it happened.
+> 3. `live-produce.js` — when `computePreview` returns unavailable, do NOT
+>    overwrite an existing saved preview whose `available` is true (read the file
+>    first; keep it). Only write when there is nothing worth keeping.
+> 4. `live-produce.js` — before writing an intent, read the synced journal
+>    (`lib/live/view`'s `readJournal`/`journalFile`) and skip the write if an
+>    `INTENT_SEEN` event exists with the same `setup_id` and `chunk_start`. This
+>    mirrors the box's own dedupe rule; if the journal is unreadable, ship and let
+>    the box dedupe. **Do NOT filter FLAT** — a FLAT intent places no order and is
+>    how a stand-down becomes an `INTENT_SEEN` row in the history.
+> 5. `public/trading.html` — when `pv.acting`, label the time "acted at (UTC)" and
+>    show `status: acting now — awaiting the fill` instead of a countdown.
+> 6. Copy `tests/test-preview.js` verbatim (14 checks) and keep it registered.
+>    Watch each fail against its own fault. Two of them are source assertions over
+>    `live-produce.js` because it is a script, not a module — that is stated in the
+>    test. Note one regex is deliberately tight (`out\.actionable && out\.intent &&
+>    !alreadySeen\)`) because a looser `/!alreadySeen/` also matches inside
+>    `!!alreadySeen` and passed with the guard torn out.
+> 7. Change nothing else, do not deploy. Report and stop.
+
+---
+
 ## Deploying this change to the running system
 
 ### Why it cannot disturb open positions

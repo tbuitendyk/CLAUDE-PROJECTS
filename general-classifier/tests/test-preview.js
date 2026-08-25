@@ -204,6 +204,36 @@ function undatedRowsSinkToTheBottom() {
   + 'place in the timeline');
 }
 
+function theProducerDoesNotReshipAPeriodTheBoxHasSeen() {
+  // Source assertion (live-produce.js is a script). actionableChunk keeps a
+  // chunk actionable for its whole 137h hold, so every hourly tick re-offered a
+  // period already dealt with. Harmless on a healthy box - it dedupes - but on
+  // 2026-08-24 the box was halted and fifteen hours of re-offers came out as a
+  // burst of INTENT_STALE the moment the halt lifted.
+  const src = fs.readFileSync(path.join(ROOT, 'live-produce.js'), 'utf8');
+  const code = src.split('\n').filter((l) => !/^\s*\/\//.test(l)).join('\n');
+  assert.ok(/alreadySeen/.test(code) && /INTENT_SEEN/.test(code),
+    'the guard mirroring the box\'s own INTENT_SEEN dedupe is gone — the outbox will fill '
+  + 'with re-offers again');
+  // Tight on purpose: /!alreadySeen/ also matches inside `!!alreadySeen`, so the
+  // first version of this check passed with the guard torn out. Assert the
+  // SHIPPING CONDITION itself.
+  assert.ok(/out\.actionable && out\.intent && !alreadySeen\)/.test(code),
+    'the intent write is no longer gated on alreadySeen — re-offers will ship again');
+}
+
+function aFlatIntentIsStillShippedOnItsFirstPass() {
+  // GUARD AGAINST MY OWN WRONG FIX. I called the FLAT intent a defect; it is
+  // not. The executor accepts FLAT, places no order for it, and journals
+  // INTENT_SEEN - which is the event the decision history renders. Suppressing
+  // FLAT would silently delete every declined day from the record.
+  const src = fs.readFileSync(path.join(ROOT, 'live-produce.js'), 'utf8');
+  const code = src.split('\n').filter((l) => !/^\s*\/\//.test(l)).join('\n');
+  assert.ok(!/side\s*!==\s*['"]FLAT['"]/.test(code),
+    'a FLAT call must NOT be filtered out of shipping — it is how a stand-down reaches the '
+  + 'box and becomes a row in the decision history');
+}
+
 function theProducerDoesNotEraseADecidedCall() {
   // live-produce.js is a script, not a module, so this is a source assertion
   // rather than a behavioural one — weaker, and said plainly. It exists because
@@ -222,6 +252,8 @@ function theProducerDoesNotEraseADecidedCall() {
 
 module.exports = {
   theProducerDoesNotEraseADecidedCall,
+  theProducerDoesNotReshipAPeriodTheBoxHasSeen,
+  aFlatIntentIsStillShippedOnItsFirstPass,
   aDecidedCallIsReadableBeforeItActs,
   aCallStaysVisibleThroughItsOwnEntryHour,
   aCallAbandonedForADayIsNotTodaysCall,

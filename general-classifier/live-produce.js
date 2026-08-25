@@ -139,9 +139,42 @@ function recordDecision(setupId, dec) {
             out = { ok: true, actionable: false, note: 'decision record write failed; intent withheld this tick' };
           }
         }
+        // DO NOT RE-SHIP A PERIOD THE BOX HAS ALREADY SEEN (owner, 2026-08-25).
+        //
+        // actionableChunk keeps a chunk actionable for its WHOLE hold — 137h on
+        // this geometry — so every hourly tick re-offered a period that was
+        // already dealt with. The box defends itself (INTENT_DUPLICATE, and the
+        // staleness bound), so nothing was ever double-traded; but the outbox
+        // filled with re-offers, and when the box was halted on 2026-08-24 they
+        // queued for fifteen hours and came out as a burst of INTENT_STALE the
+        // moment the halt lifted. Noise that looks like an incident is a cost:
+        // it trains the reader to skim the incident panel.
+        //
+        // The box's own rule is "have I already seen an INTENT for this setup
+        // and period" — so mirror exactly that here, off the synced journal,
+        // rather than inventing a second rule that can disagree with it. If the
+        // journal is stale we ship and the box dedupes, which is the same
+        // outcome as before: this can only reduce noise, never add risk.
+        //
+        // NOTE a FLAT intent is NOT suppressed on its first pass. It places no
+        // order, and it is how a stand-down reaches the box and becomes the
+        // INTENT_SEEN that the decision history renders. Dropping it would
+        // silently delete every declined day from the record.
+        let alreadySeen = false;
         if (out.actionable && out.intent) {
+          try {
+            const { readJournal, journalFile } = require('./lib/live/view');
+            const { events } = readJournal(journalFile());
+            alreadySeen = events.some((e) => e && e.event === 'INTENT_SEEN'
+              && e.setup_id === setup.id && e.chunk_start === out.intent.chunk_start);
+          } catch (_) { alreadySeen = false; }   // unreadable journal: ship, let the box dedupe
+        }
+        if (out.actionable && out.intent && !alreadySeen) {
           const stamp = new Date(now).toISOString().replace(/[-:]/g, '').slice(0, 15) + 'Z';
           atomicWrite(path.join(OUTBOX, `intent2-${setup.id}-${stamp}.json`), JSON.stringify(out.intent) + '\n');
+        } else if (alreadySeen) {
+          process.stderr.write(`live-produce(${setup.id}): period ${out.intent.chunk_start} already `
+            + 'recorded on the box (INTENT_SEEN) — not re-shipping\n');
         }
         // THE CALL MUST NOT EVAPORATE THE MOMENT IT MATTERS (owner, 2026-08-25).
         //
@@ -182,6 +215,7 @@ function recordDecision(setupId, dec) {
         if (unrecorded) process.stderr.write(`live-produce(${setup.id}): ${unrecorded}\n`);
         results.push({ setup: setup.id, state: setup.state, actionable: !!out.actionable,
           side: out.intent ? out.intent.side : null, recorded: !!recordable,
+          reshipSuppressed: !!alreadySeen,
           note: out.note || unrecorded || null });
       } catch (e) {
         results.push({ setup: setup.id, state: setup.state, error: e.message });
