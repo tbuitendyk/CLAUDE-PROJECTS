@@ -2853,6 +2853,17 @@ let HELPMAP = null;
 let svcSeen = null;          // the last reading, so a redraw does not go quiet
 let svcFilterText = '';
 let svcBusy = false;
+// SHOW EVERYTHING, or only what the owner keeps (owner, 2026-08-25: "we only
+// care about the uts services ... fix that page ... that's just crazy").
+//
+// A hundred and fifty services on one screen is unusable and they are right.
+// The fix is NOT a list of names decided in this file: RULE ZERO says what
+// appears in the interface is the owner's to set, and choosing it here would
+// take that away where they could not see it. So the machine still reports
+// every one, the owner keeps the ones they want, and this tick brings the rest
+// back at any time. Until anything is kept, everything shows — because an empty
+// screen would be worse than a long one.
+let svcShowAll = false;
 
 const svcAge = (s) => {
   if (s == null) return '—';
@@ -2901,8 +2912,11 @@ async function drawService() {
     return;
   }
   const q = svcFilterText.trim().toLowerCase();
-  const shown = d.units.filter((u) => !q
-    || u.unit.toLowerCase().includes(q) || (u.description || '').toLowerCase().includes(q));
+  const kept = (d.watching || []).length;
+  // Nothing kept yet means everything, not nothing.
+  const onlyKept = kept > 0 && !svcShowAll;
+  const shown = d.units.filter((u) => (!onlyKept || u.watched)
+    && (!q || u.unit.toLowerCase().includes(q) || (u.description || '').toLowerCase().includes(q)));
   // The ones holding an address first, then the ones that are up, then the rest:
   // what the owner came here for is at the top without anything being hidden.
   shown.sort((a, b) => (b.ports.length ? 1 : 0) - (a.ports.length ? 1 : 0)
@@ -2918,7 +2932,7 @@ async function drawService() {
       : u.active === 'failed' ? `<span class="neg">${esc(u.active)}</span>`
         : `<span class="muted">${esc(u.active)}</span>`;
     return `<tr>
-      <td style="padding:.3rem .5rem .3rem 0"><b>${esc(u.unit.replace(/\.service$/, ''))}</b>
+      <td style="padding:.3rem .5rem .3rem 0"><b>${u.watched ? '★ ' : ''}${esc(u.unit.replace(/\.service$/, ''))}</b>
         <div class="muted" style="font-size:.76rem">${esc(u.description)}</div>
         ${u.cannotStop ? `<div class="warn" style="font-size:.76rem">cannot be stopped from here — ${esc(u.cannotStop)}</div>` : ''}</td>
       <td style="padding:.3rem .5rem">${state} <span class="muted">${esc(u.sub)}</span></td>
@@ -2954,6 +2968,12 @@ async function drawService() {
         <label class="muted">narrow the list<input id="svcFilter" style="margin-left:.4rem" placeholder="any part of a name" value="${esc(svcFilterText)}"></label>
         <button id="svcRefresh" title="asks the machine again. Nothing on this tab updates on its own — every reading here is from the moment it was asked for.">Read it again</button>
       </div>
+      <div class="row" style="margin-top:.5rem">
+        <button id="svcKeep" title="puts the chosen service on your list, so the table shows it and leaves the rest of the machine out. Nothing is ever removed from what you can reach — show everything brings it all back.">Keep it on my list</button>
+        <button id="svcDrop" title="takes the chosen service off your list. It is still on the machine and still reachable with show everything ticked.">Take it off my list</button>
+        <label class="muted"><input type="checkbox" id="svcAll" ${svcShowAll || !kept ? 'checked' : ''}> show everything</label>
+        <span class="muted">${kept ? `${kept} on your list` : 'nothing on your list yet, so this is everything on the machine'}</span>
+      </div>
       <div id="svcOut"></div>
     </div>
     <div class="panel">
@@ -2965,7 +2985,8 @@ async function drawService() {
           <th style="padding:.3rem .5rem" title="${esc(COL.svcMemory)}">memory</th>
           <th style="padding:.3rem .5rem" title="${esc(COL.svcAnswers)}">does it answer</th></tr></thead>
         <tbody>${rows}</tbody></table></div>
-      <p class="note">${shown.length} of ${d.units.length} shown${q ? `, narrowed by "${esc(svcFilterText)}"` : ''}.
+      <p class="note">${shown.length} of ${d.units.length} on the machine shown${onlyKept ? ', because these are the ones on your list' : ''}${q ? `, narrowed by "${esc(svcFilterText)}"` : ''}.
+        The machine is asked about all ${d.units.length} every time; your list only decides which ones this table leads with.
         Read at ${esc(d.at)}${fresh ? '' : ' — and this reading is the last one that arrived, not a new one'}.</p>
     </div>
     <div class="panel">
@@ -3022,6 +3043,25 @@ async function drawService() {
   if (bStop) bStop.onclick = () => doAct('stop', pick());
   const bRestart = $('#svcRestart');
   if (bRestart) bRestart.onclick = () => doAct('restart', pick());
+
+  // The list is kept on the machine, not in this browser, so it is the same
+  // list from a phone and from a desk.
+  const setWatch = async (on) => {
+    const unit = pick();
+    const box = $('#svcOut');
+    if (!unit) { box.innerHTML = '<p class="note">choose a service first</p>'; return; }
+    const out = await tryPost('svc/api/watch', { unit, watch: on });
+    if (!out) return;
+    box.innerHTML = `<p class="note">${esc(unit.replace(/\.service$/, ''))} is ${on ? 'on' : 'off'} your list — `
+      + `${out.watching.length} on it now</p>`;
+    drawService();
+  };
+  const bKeep = $('#svcKeep');
+  if (bKeep) bKeep.onclick = () => setWatch(true);
+  const bDrop = $('#svcDrop');
+  if (bDrop) bDrop.onclick = () => setWatch(false);
+  const cAll = $('#svcAll');
+  if (cAll) cAll.onchange = () => { svcShowAll = cAll.checked; drawService(); };
 }
 
 async function drawHelp() {

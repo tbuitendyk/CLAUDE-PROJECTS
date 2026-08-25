@@ -67,6 +67,33 @@ const refusalFor = (unit) => (CANNOT_STOP.find(([u]) => u === unit) || [])[1] ||
 const UNIT_RE = /^[A-Za-z0-9:@._-]{1,120}\.service$/;
 const ACTIONS = ['start', 'stop', 'restart'];
 
+// THE LIST OF WHAT THE OWNER WATCHES IS THE OWNER'S (owner, 2026-08-25: "we
+// only care about the uts services ... fix that page ... that's just crazy").
+//
+// A hundred and fifty services on one screen is unusable, and they are right.
+// But the fix is NOT a list of names written in here deciding which ones matter
+// — RULE ZERO: what appears in the interface is a user function, and hardcoding
+// what the owner may choose from takes their decision away invisibly. So the
+// machine still reports every one of them, every time, and WHICH of them the
+// screen leads with is a choice the owner makes on the screen and this file
+// remembers. Nothing is ever removed from what they can reach.
+const WATCH_FILE = process.env.UTS_WATCH || '/opt/uts-service-control/watching.json';
+
+function readWatching() {
+  try {
+    const v = JSON.parse(fs.readFileSync(WATCH_FILE, 'utf8'));
+    return Array.isArray(v) ? v.filter((u) => UNIT_RE.test(u)) : [];
+  } catch (_) { return []; }        // never set, or unreadable: nothing is watched
+}
+
+function writeWatching(list) {
+  const tmp = `${WATCH_FILE}.tmp${process.pid}`;
+  fs.mkdirSync(path.dirname(WATCH_FILE), { recursive: true });
+  fs.writeFileSync(tmp, JSON.stringify(list, null, 1));
+  fs.renameSync(tmp, WATCH_FILE);
+  return list;
+}
+
 function run(cmd, args, timeoutMs = 15000) {
   return new Promise((resolve) => {
     execFile(cmd, args, { timeout: timeoutMs, maxBuffer: 8 << 20 }, (err, stdout, stderr) => {
@@ -205,6 +232,7 @@ async function snapshot() {
   }
   await Promise.all(jobs);
 
+  const watching = readWatching();
   const rows = units.map((u) => {
     const d = det.get(u.unit) || {};
     const mono = Number(d.ActiveEnterTimestampMonotonic || 0);
@@ -227,6 +255,7 @@ async function snapshot() {
       ports: mine.map((p) => p.port),
       answers: mine.slice(0, 4).map((p) => asked.get(`${u.unit}|${p.port}`)).filter(Boolean),
       cannotStop: refusalFor(u.unit),
+      watched: watching.includes(u.unit),
     };
   });
   return {
@@ -234,8 +263,23 @@ async function snapshot() {
     // Said on every reply, because it is what makes this control worth having.
     servedBy: { unit: SELF_UNIT, port: PORT, pid: process.pid, upSeconds: Math.round(process.uptime()) },
     refusals: CANNOT_STOP.map(([unit, why]) => ({ unit, why })),
+    // EVERY service, always. What the screen leads with is the owner's choice;
+    // what this reports is never narrowed by it.
+    watching,
     units: rows,
   };
+}
+
+function watch(body) {
+  const unit = String((body || {}).unit || '');
+  if (!UNIT_RE.test(unit)) return { code: 400, body: { error: `"${unit}" is not the name of a service` } };
+  const on = !!(body || {}).watch;
+  const list = readWatching();
+  const next = on ? [...new Set([...list, unit])].sort() : list.filter((u) => u !== unit);
+  try { writeWatching(next); } catch (err) {
+    return { code: 500, body: { error: `the list could not be saved: ${err.message}` } };
+  }
+  return { code: 200, body: { ok: true, unit, watching: next } };
 }
 
 async function act(body) {
@@ -316,7 +360,8 @@ const server = http.createServer((req, res) => {
   if (req.method === 'GET' && url === '/api/services') {
     return snapshot().then((s) => send(res, 200, s)).catch((e) => send(res, 500, { error: e.message }));
   }
-  if (req.method === 'POST' && url === '/api/service') {
+  if (req.method === 'POST' && (url === '/api/service' || url === '/api/watch')) {
+    const handler = url === '/api/watch' ? (b) => Promise.resolve(watch(b)) : act;
     let raw = '';
     let tooBig = false;
     req.on('data', (c) => { raw += c; if (raw.length > 8192) { tooBig = true; req.destroy(); } });
@@ -324,7 +369,7 @@ const server = http.createServer((req, res) => {
       if (tooBig) return;
       let body;
       try { body = JSON.parse(raw || '{}'); } catch (_) { send(res, 400, { error: 'the request could not be read' }); return; }
-      act(body).then((r) => send(res, r.code, r.body)).catch((e) => send(res, 500, { error: e.message }));
+      handler(body).then((r) => send(res, r.code, r.body)).catch((e) => send(res, 500, { error: e.message }));
     });
     return undefined;
   }
@@ -337,4 +382,4 @@ if (require.main === module) {
     process.stdout.write(`uts-service-control listening on ${HOST}:${PORT}\n`);
   });
 }
-module.exports = { server, snapshot, act, listUnits, listeners, ask, refusalFor, CANNOT_STOP, UNIT_RE, ACTIONS, PUBLIC_DIR };
+module.exports = { server, snapshot, act, watch, readWatching, listUnits, listeners, ask, refusalFor, CANNOT_STOP, UNIT_RE, ACTIONS, PUBLIC_DIR };

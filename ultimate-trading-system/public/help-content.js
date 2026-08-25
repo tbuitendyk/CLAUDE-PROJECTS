@@ -405,6 +405,18 @@ window.HELP = {
         what: 'Asks the machine again and redraws everything with the new answer.',
         more: 'Nothing on this tab changes on its own. Every reading is from the moment it was asked for, and the line under the table says when that was.',
       },
+      svcKeep: {
+        what: 'Puts the chosen one on your list. Once anything is on it, the table shows those and leaves the rest of the machine out, and they are marked with a star.',
+        more: 'The list is kept on the machine, not in this browser, so it is the same list from a phone and from a desk. Nothing is ever taken away from what you can reach — show everything brings all of it back, and the machine is asked about every one of them either way.',
+      },
+      svcDrop: {
+        what: 'Takes the chosen one off your list.',
+        more: 'It carries on running exactly as it was. This only changes what this table leads with.',
+      },
+      svcAll: {
+        what: 'Shows every service on the machine, not only the ones on your list.',
+        more: 'While your list is empty this stays ticked, because an empty table would be worse than a long one. The count under the table always says how many were shown out of how many there are.',
+      },
     },
   },
 };

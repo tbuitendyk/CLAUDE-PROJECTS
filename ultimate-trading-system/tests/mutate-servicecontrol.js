@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 // DOES THE SERVICE CONTROL'S SAFETY NET ACTUALLY CATCH ANYTHING?
 //
-//   node tests/mutate-servicecontrol.js
+//   node tests/mutate-servicecontrol.js              every guard
+//   node tests/mutate-servicecontrol.js <part-of-a-test-name>   just those
 //
 // The service control runs as root and starts and stops services, so almost
 // every test written for it is a refusal: this may not be stopped, that name may
@@ -30,6 +31,12 @@
 //     the words it was grepping for were still there, elsewhere in the same
 //     function, and it passed. It now lifts the function out of the page, calls
 //     it, and asserts the markup that comes back.
+//
+// And once in ITSELF, which is the same mistake a third time. It broke only the
+// FIRST copy of a guard in a file. The moment the same check was written a
+// second time elsewhere in the file it started breaking the wrong copy — the
+// real one still stood, the suite stayed green, and it blamed the test. It
+// breaks every copy now and says how many it broke.
 //
 // This is deliberately not part of `npm test`: it runs the whole suite once per
 // guard. Run it after changing anything in service-control/.
@@ -68,17 +75,30 @@ const GUARDS = [
     'somethingAliveThatDoesNotServePagesIsNotReportedAsAFault', 'ssh and the mail service go red every time the tab is opened'],
   [CJS, "a.state === 'silent'", '!a.answered',
     'theScreenShowsOnlyTheOneStateThatIsAFaultAsAFault', 'everything that is not a web page is shown as broken'],
+  [SVC, 'const rows = units.map((u) => {', 'const rows = units.filter((u) => !watching.length || watching.includes(u.unit)).map((u) => {',
+    'keepingAListNarrowsWhatIsSHOWNAndNeverWhatIsREPORTED', "the owner's list quietly becomes the only thing the machine will report"],
+  [CJS, 'const onlyKept = kept > 0 && !svcShowAll;', 'const onlyKept = !svcShowAll;',
+    'anEmptyListShowsEverythingRatherThanNothing', 'an empty list draws an empty table, which reads as nothing running'],
 ];
+
+const only = process.argv[2] || '';
 
 let missed = 0;
 for (const [file, from, to, testName, consequence] of GUARDS) {
+  if (only && !testName.toLowerCase().includes(only.toLowerCase())) continue;
   const orig = fs.readFileSync(file, 'utf8');
-  if (!orig.includes(from)) {
+  const hits = orig.split(from).length - 1;
+  if (!hits) {
     console.log(`SKIP  ${testName}\n      the guard this breaks is no longer written that way, so nothing was tested`);
     missed++;
     continue;
   }
-  fs.writeFileSync(file, orig.replace(from, to));
+  // EVERY OCCURRENCE, not the first. This used to break only the first, and the
+  // moment the same guard was written a second time somewhere else in the file
+  // the harness started breaking the wrong copy: the real one still stood, the
+  // suite stayed green, and it reported the guard as unchecked when the fault
+  // was its own. Caught by exactly that happening.
+  fs.writeFileSync(file, orig.split(from).join(to));
   let out = '';
   try {
     out = execFileSync('npm', ['test'], { cwd: ROOT, encoding: 'utf8', maxBuffer: 64 << 20 });
@@ -89,7 +109,7 @@ for (const [file, from, to, testName, consequence] of GUARDS) {
   }
   const caught = new RegExp(`FAIL[^\\n]*${testName}`).test(out);
   if (caught) {
-    console.log(`ok    ${testName}`);
+    console.log(`ok    ${testName}${hits > 1 ? `  (${hits} copies of that guard broken)` : ''}`);
   } else {
     missed++;
     console.log(`MISS  ${testName}\n      the guard was deleted and the suite stayed green, so ${consequence}`);

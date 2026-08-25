@@ -409,6 +409,73 @@ module.exports = {
       'the banner counts something other than the one state that means a restart is needed');
   },
 
+  // THE OWNER'S LIST NARROWS THE VIEW AND NEVER THE REACH (RULE ZERO). A screen
+  // that quietly stopped reporting the services not on the list would be the
+  // hardcoded list this was built to avoid, wearing a tick box.
+  async keepingAListNarrowsWhatIsSHOWNAndNeverWhatIsREPORTED() {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'uts-watch-'));
+    const cp = require('child_process');
+    const real = cp.execFile;
+    cp.execFile = (c, a, o, cb) => {
+      const done = typeof o === 'function' ? o : cb;
+      const out = a[0] === 'list-units' ? UNIT_LIST : '';
+      process.nextTick(() => done(null, out, ''));
+    };
+    process.env.UTS_WATCH = path.join(dir, 'watching.json');
+    delete require.cache[require.resolve(SVC)];
+    const mod = require(SVC);
+    try {
+      assert.deepStrictEqual(mod.readWatching(), [], 'a list that was never set is not empty');
+      let s = await mod.snapshot();
+      const total = s.units.length;
+      assert.ok(total >= 6, `only ${total} services came back`);
+      assert.deepStrictEqual(s.watching, [], 'a list that was never set is not empty in the reply');
+      assert.ok(s.units.every((u) => u.watched === false), 'something is on a list nobody made');
+
+      const r = mod.watch({ unit: 'ultimate-trading-system.service', watch: true });
+      assert.strictEqual(r.code, 200, JSON.stringify(r.body));
+      s = await mod.snapshot();
+      assert.deepStrictEqual(s.watching, ['ultimate-trading-system.service']);
+      // THE WHOLE POINT: still every service, with one of them marked.
+      assert.strictEqual(s.units.length, total,
+        'keeping one service stopped the control reporting the others — the list must narrow the VIEW, not the reading');
+      assert.strictEqual(s.units.filter((u) => u.watched).length, 1, 'the mark did not land on exactly one');
+
+      // It survives a restart of the control, because it is on the machine and
+      // not in one browser.
+      delete require.cache[require.resolve(SVC)];
+      const again = require(SVC);
+      assert.deepStrictEqual(again.readWatching(), ['ultimate-trading-system.service'],
+        'the list did not survive the control restarting');
+
+      const off = again.watch({ unit: 'ultimate-trading-system.service', watch: false });
+      assert.strictEqual(off.code, 200);
+      assert.deepStrictEqual(again.readWatching(), [], 'taking it off the list did not take it off');
+
+      // And a name that is not a service name cannot get into the file.
+      const bad = again.watch({ unit: 'nginx.service; rm -rf /', watch: true });
+      assert.strictEqual(bad.code, 400, `a malformed name was accepted onto the list: ${JSON.stringify(bad.body)}`);
+      assert.deepStrictEqual(again.readWatching(), [], 'a malformed name reached the stored list');
+    } finally {
+      cp.execFile = real;
+      delete process.env.UTS_WATCH;
+      delete require.cache[require.resolve(SVC)];
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  },
+
+  // And the screen must show everything while the list is empty. An empty table
+  // is a worse answer than a long one, and it would read as "nothing is running".
+  async anEmptyListShowsEverythingRatherThanNothing() {
+    const src = fs.readFileSync(path.join(__dirname, '..', 'public', 'construct.js'), 'utf8');
+    const tab = src.slice(src.indexOf('\nasync function drawService('), src.indexOf('async function drawHelp('))
+      .replace(/\/\/[^\n]*/g, '');
+    assert.ok(/const onlyKept = kept > 0 && !svcShowAll;/.test(tab),
+      'the table can now be narrowed to an empty list, which would read as nothing running');
+    assert.ok(/!onlyKept \|\| u\.watched/.test(tab),
+      'the table no longer leads with the list the owner kept');
+  },
+
   // It has no dependencies, and that is a property worth keeping: it has to
   // start on a machine where the main app's own install is broken.
   async theControlPullsInNothingButNodeItself() {
