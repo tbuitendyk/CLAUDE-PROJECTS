@@ -90,9 +90,8 @@ function tallyOver(each) {
     if (!g) {
       g = {
         label,
-        holdCount: 0, pos: 0, vsLCount: 0, vsLPos: 0, sum: 0,
-        assetRows: {},            // assetKey -> real rows seen, for widths later
-        nullBeat: 0, nullPairs: 0,
+        vsLCount: 0, vsLPos: 0,
+        assets: new Map(),        // assetKey -> this configuration's score ON THAT COIN
         realHold: new Map(),      // asset -> held-back money, for the pairing
         pendingNulls: new Map(),  // asset -> null money seen before its real row
         realsTotal: 0,
@@ -100,15 +99,17 @@ function tallyOver(each) {
       groups.set(label, g);
     }
     const k = assetKey(r);
+    let a = g.assets.get(k);
+    if (!a) { a = { n: 0, hold: 0, pos: 0, sum: 0, beat: 0, pairs: 0 }; g.assets.set(k, a); }
     const hold = r.holdout && r.holdout.pnl != null ? r.holdout.pnl : null;
 
     if (!tagged || r.nullDealSeed == null) {
       g.realsTotal++;
-      g.assetRows[k] = (g.assetRows[k] || 0) + 1;
+      a.n++;
       if (hold != null) {
-        g.holdCount++;
-        g.sum += hold;
-        if (hold > 0) g.pos++;
+        a.hold++;
+        a.sum += hold;
+        if (hold > 0) a.pos++;
         const vsL = r.holdout.vsAlwaysLong;
         if (vsL != null) { g.vsLCount++; if (vsL > 0) g.vsLPos++; }
         // pair against every copy of this asset already seen, and remember the
@@ -116,11 +117,11 @@ function tallyOver(each) {
         let mine = g.realHold.get(k);
         if (!mine) { mine = []; g.realHold.set(k, mine); }
         mine.push(hold);
-        for (const nv of (g.pendingNulls.get(k) || [])) { g.nullPairs++; if (hold > nv) g.nullBeat++; }
+        for (const nv of (g.pendingNulls.get(k) || [])) { a.pairs++; if (hold > nv) a.beat++; }
       }
     } else if (hold != null) {
       // `hold` here is the COPY\'s held-back money; `mine` is the real one.
-      for (const mine of (g.realHold.get(k) || [])) { g.nullPairs++; if (mine > hold) g.nullBeat++; }
+      for (const mine of (g.realHold.get(k) || [])) { a.pairs++; if (mine > hold) a.beat++; }
       let pend = g.pendingNulls.get(k);
       if (!pend) { pend = []; g.pendingNulls.set(k, pend); }
       pend.push(hold);
@@ -129,27 +130,26 @@ function tallyOver(each) {
   });
 
   // The pairing scratch is the expensive part and it is done with: what leaves
-  // this function is one small entry per configuration.
+  // this function is one entry per configuration carrying ITS SCORE ON EACH
+  // COIN (owner order, 2026-08-25: "we need to add the per-coin score"). The
+  // whole-configuration figures are derived from these at reading time, so the
+  // two views can never disagree — there is one set of counts, sliced twice.
   return {
-    v: 1,
+    v: 2,
     builtAt: new Date().toISOString(),
     tagged,
     dropped,
     rowsSeen,
     groups: [...groups.values()].map((g) => ({
       label: g.label,
-      holdCount: g.holdCount,
-      pos: g.pos,
       vsLCount: g.vsLCount,
       vsLPos: g.vsLPos,
-      sum: g.sum,
-      assetRows: g.assetRows,
-      nullBeat: g.nullBeat,
-      nullPairs: g.nullPairs,
       realsTotal: g.realsTotal,
+      assets: Object.fromEntries(g.assets),
     })),
   };
 }
+const TALLY_V = 2;
 
 // From a tally to the rows the screen shows: widths joined in from the CURRENT
 // leader rows (they sharpen while a run goes, so they are never baked into a
@@ -158,24 +158,38 @@ function tallyOver(each) {
 function renderScored(totals, leaders) {
   const regions = regionsByAsset(leaders || []);
   const scored = totals.groups.map((g) => {
+    // v2 carries the per-coin counts and the whole-configuration figures are
+    // SUMS of them — one set of counts, sliced twice, so the two views cannot
+    // disagree. A v1 save (from before the per-coin score) still renders this
+    // table from its stored group figures until its background rebuild lands.
+    const perAsset = g.assets
+      ? Object.entries(g.assets)
+      : Object.entries(g.assetRows || {}).map(([k, n]) => [k, { n }]);
     let regionSum = 0;
     let regionN = 0;
-    for (const [k, n] of Object.entries(g.assetRows || {})) {
+    let holdCount = 0; let pos = 0; let sum = 0; let nullBeat = 0; let nullPairs = 0;
+    for (const [k, a] of perAsset) {
       const reg = regions.get(k);
-      if (reg != null) { regionSum += reg * n; regionN += n; }
+      if (reg != null) { regionSum += reg * a.n; regionN += a.n; }
+      holdCount += a.hold || 0; pos += a.pos || 0; sum += a.sum || 0;
+      nullBeat += a.beat || 0; nullPairs += a.pairs || 0;
+    }
+    if (!g.assets) {
+      holdCount = g.holdCount; pos = g.pos; sum = g.sum;
+      nullBeat = g.nullBeat; nullPairs = g.nullPairs;
     }
     return {
       label: g.label,
-      assets: Object.keys(g.assetRows || {}).length,
-      holdCount: g.holdCount,
-      pos: g.pos,
+      assets: perAsset.length,
+      holdCount,
+      pos,
       vsLCount: g.vsLCount,
       vsLPos: g.vsLPos,
-      sum: g.sum,
+      sum,
       region: regionN ? Math.round(regionSum / regionN) : null,
-      nullBeat: g.nullBeat,
-      nullPairs: g.nullPairs,
-      nullShare: g.nullPairs ? g.nullBeat / g.nullPairs : null,
+      nullBeat,
+      nullPairs,
+      nullShare: nullPairs ? nullBeat / nullPairs : null,
       reals: [],
       realsTotal: g.realsTotal,
       realsShown: 0,
@@ -260,6 +274,94 @@ function startTotals(runId) {
     state.error = err.message;
   }
   return state;
+}
+
+// EVERY COIN OF EVERY CONFIGURATION, ONE ROW EACH, over the whole data set
+// (owner order, 2026-08-25: "somehow it needs to be easily viewable and
+// sortable FROM THE ENTIRE DATA SET"). The whole-configuration table hides a
+// one-coin winner inside its average; this view un-hides it. The rows come
+// from the same saved tally as the table above — one set of counts, sliced
+// twice — flattened to (configuration, coin), SORTED WHOLE (an ordering is a
+// claim and it is made over everything, never over a page), then paged.
+//
+// The default order leads on the share of head-to-heads won, with more
+// comparisons winning ties — and the comparisons column travels with every
+// row, because a 10-of-10 built on ten comparisons is luck wearing a score.
+// `minPairs` narrows to rows with at least that many comparisons; it defaults
+// to zero so nothing is hidden unless the reader asks, and the reply says how
+// many rows the narrowing removed.
+const COIN_SORTS = ['share', 'pairs', 'money', 'coin', 'configuration'];
+
+function coinsFrom(totals, { sort = 'share', minPairs = 0, ...query } = {}) {
+  const key = COIN_SORTS.includes(String(sort)) ? String(sort) : 'share';
+  const atLeast = Math.max(0, Math.floor(Number(minPairs) || 0));
+  const rows = [];
+  for (const g of totals.groups) {
+    for (const [k, a] of Object.entries(g.assets || {})) {
+      const [trade, ctx1, ctx2, geometry] = k.split('|');
+      rows.push({
+        label: g.label,
+        trade, ctx1, ctx2, geometry,
+        rows: a.n,
+        holdCount: a.hold || 0,
+        pos: a.pos || 0,
+        sum: a.sum || 0,
+        beat: a.beat || 0,
+        pairs: a.pairs || 0,
+        share: a.pairs ? a.beat / a.pairs : null,
+      });
+    }
+  }
+  const kept = atLeast ? rows.filter((r) => r.pairs >= atLeast) : rows;
+  const byShare = (a, b) => (a.share == null && b.share == null ? 0
+    : b.share == null ? -1 : a.share == null ? 1 : b.share - a.share);
+  const orders = {
+    share: (a, b) => byShare(a, b) || b.pairs - a.pairs || b.sum - a.sum,
+    pairs: (a, b) => b.pairs - a.pairs || byShare(a, b),
+    money: (a, b) => b.sum - a.sum || byShare(a, b),
+    coin: (a, b) => a.trade.localeCompare(b.trade) || byShare(a, b),
+    configuration: (a, b) => a.label.localeCompare(b.label) || a.trade.localeCompare(b.trade),
+  };
+  kept.sort(orders[key]);
+  const win = payload.page(kept, query);
+  return {
+    sort: key,
+    minPairs: atLeast,
+    narrowedOut: rows.length - kept.length,
+    rows: win.rows,
+    page: { offset: win.offset, limit: win.limit, total: win.total, shown: win.shown, more: win.more },
+  };
+}
+
+// The endpoint's shape mirrors rank(): fresh serves instantly, anything else
+// reports the background build. A save from before the per-coin score (v1)
+// can draw the table above but not this view, so it counts as behind HERE and
+// a rebuild starts; the table above keeps serving from it meanwhile.
+function coins(doc, query = {}) {
+  if (!rowstore.exists(doc.id, 'replication')) {
+    const t = tallyOver((fn) => { for (const r of (doc.replication || [])) if (fn(r) === false) return; });
+    return { ...coinsFrom(t, query), total: t.rowsSeen, totals: { upToDate: true, asOfRows: t.rowsSeen, builtAt: t.builtAt } };
+  }
+  const rows = rowstore.count(doc.id, 'replication');
+  const saved = readTotals(doc.id);
+  if (saved && saved.v === TALLY_V && saved.rowsSeen === rows) {
+    return { ...coinsFrom(saved, query), total: rows, totals: { upToDate: true, asOfRows: rows, builtAt: saved.builtAt } };
+  }
+  const running = doc.status === 'running';
+  const usable = saved && saved.v === TALLY_V ? saved : null;
+  const savedAgeMs = usable ? Date.now() - new Date(usable.builtAt).getTime() : Infinity;
+  const wantBuild = !usable || !running || savedAgeMs > 15 * 60 * 1000;
+  const state = wantBuild ? startTotals(doc.id) : (builds.get(doc.id) || null);
+  const buildingMeta = {
+    building: !!(state && !state.error),
+    scanned: state ? state.scanned : 0,
+    of: rows,
+    ...(state && state.error ? { buildError: `the totalling stopped: ${state.error}` } : {}),
+  };
+  if (usable) {
+    return { ...coinsFrom(usable, query), total: rows, totals: { upToDate: false, asOfRows: usable.rowsSeen, builtAt: usable.builtAt }, ...buildingMeta };
+  }
+  return { ...buildingMeta, sort: 'share', minPairs: 0, narrowedOut: 0, total: rows, rows: [], page: { offset: 0, limit: 0, total: 0, shown: 0, more: false } };
 }
 
 function rank(doc, { detailCap = 0, ...query } = {}) {
@@ -348,4 +450,4 @@ function detail(doc, label, { offset = 0, limit = 200 } = {}) {
   };
 }
 
-module.exports = { rank, detail, assetKey, tallyOver, renderScored, buildAndSaveTotals, startTotals, readTotals, writeTotals, totalsFile };
+module.exports = { rank, detail, coins, coinsFrom, assetKey, tallyOver, renderScored, buildAndSaveTotals, startTotals, readTotals, writeTotals, totalsFile, TALLY_V, COIN_SORTS };

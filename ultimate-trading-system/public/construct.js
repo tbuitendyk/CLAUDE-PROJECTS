@@ -161,6 +161,13 @@ const COL = {
   why: 'the reason recorded at greenlight time. It is the decision record and is not editable afterwards.',
   minted: 'when the config was greenlighted, UTC.',
   state: 'whether this config is running on either side, and whether it has been revoked.',
+  // Boards — every coin of every configuration
+  coinCfg: 'the settings fixed before the run, by their label. The same label appears once per coin here.',
+  coin: 'the traded pair this row scores, with its chunk shape. The whole-configuration table above averages across all of these; this row is one coin on its own.',
+  coinShare: 'of the head-to-heads on THIS coin between the real decisions and their scrambled copies, the share the real ones won. Half is what guessing scores. Read it with the comparisons column: a high share on few comparisons is luck wearing a score.',
+  coinPairs: 'how many head-to-heads are behind the share — every real look on this coin against every one of its scrambled copies. More comparisons make the share worth more.',
+  coinMoney: 'this configuration\'s held-back money on this coin alone, summed over its real looks.',
+  coinRows: 'how many real looks this configuration recorded on this coin.',
 };
 // cth(label, key[, style]) — a heading always carries its own description.
 const cth = (label, key, style) => `<th${style ? ` style="${style}"` : ''}${COL[key] ? ` title="${esc(COL[key]).replace(/"/g, '&quot;')}"` : ''}>${label}</th>`;
@@ -240,6 +247,7 @@ function pageBar(name, p, extra = '') {
 // saving notes — puts you back on the page you were reading, not at the top.
 const pageAt = {
   repList: { offset: 0, limit: 100 },
+  repCoins: { offset: 0, limit: 100 },
   board: { offset: 0, limit: 50 },
   grid: { offset: 0, limit: 200 },
   repDetail: {},                       // one entry per configuration label
@@ -249,6 +257,9 @@ const PAGERS = {};
 // costs its minutes once and a redraw does not spend them again — and so
 // switching runs cannot show one run's totals under another's name.
 let repLoaded = { id: null, data: null };
+// The per-coin view, fetched when its own box is opened. Sort and narrowing
+// live here so a redraw keeps the reader's place.
+let repCoins = { id: null, data: null, sort: 'share', minPairs: 0 };
 function wirePagers(root) {
   if (!root || root.dataset.pagersWired) return;
   root.dataset.pagersWired = '1';
@@ -1465,6 +1476,52 @@ async function drawBoards() {
   // recorded this; the tab never showed it (the tick's own tooltip promised a
   // table that did not exist here). Null copies also score the declared cell,
   // which is their job, but they must never enter the cross-asset count.
+  // EVERY COIN OF EVERY CONFIGURATION, over the whole data set (owner order,
+  // 2026-08-25). The whole-configuration lines above average across coins, so
+  // a configuration that only works on one coin averages down to nothing and
+  // hides. This box un-hides it: one row per (configuration, coin), sorted
+  // over EVERYTHING — the ordering is made before the page is cut — and the
+  // comparisons column travels with every row because a perfect share on a
+  // handful of comparisons is luck wearing a score.
+  const coinBox = () => {
+    const d = repCoins.id === doc.id ? repCoins.data : null;
+    const rows = d && d.rows ? d.rows : [];
+    const table = !d ? '<p class="note" id="bCoinNote">open to load — served from the same saved totals as the list above</p>'
+      : d.building && !rows.length
+        ? `<p class="note" id="bCoinNote">totalling in the background — ${Number(d.scanned || 0).toLocaleString()} of ${Number(d.of || 0).toLocaleString()} rows so far. This box asks again every fifteen seconds while open.</p>`
+        : `${d.totals && d.totals.upToDate === false ? `<p class="note warn">These rows cover the first ${Number(d.totals.asOfRows || 0).toLocaleString()} of ${Number(d.total || 0).toLocaleString()} recorded rows${d.building ? ' — a fresh totalling is going now' : ''}.</p>` : ''}
+      <div class="scrollx"><table style="width:100%;border-collapse:collapse">
+        <thead><tr style="text-align:left;border-bottom:1px solid var(--line)">
+          <th style="padding:.3rem .5rem .3rem 0" title="${esc(COL.coinCfg)}">configuration</th>
+          <th style="padding:.3rem .5rem" title="${esc(COL.coin)}">coin</th>
+          <th style="padding:.3rem .5rem" title="${esc(COL.coinShare)}">beat its own copies</th>
+          <th style="padding:.3rem .5rem" title="${esc(COL.coinPairs)}">comparisons</th>
+          <th style="padding:.3rem .5rem" title="${esc(COL.coinMoney)}">held-back</th>
+          <th style="padding:.3rem .5rem" title="${esc(COL.coinRows)}">rows</th></tr></thead>
+        <tbody>${rows.map((r) => `<tr>
+          <td style="padding:.25rem .5rem .25rem 0">${esc(r.label)}</td>
+          <td style="padding:.25rem .5rem"><b>${esc(r.trade)}</b>${r.ctx1 ? ` + ${esc(r.ctx1)}` : ''}${r.ctx2 ? ` + ${esc(r.ctx2)}` : ''} <span class="muted">${esc(r.geometry)}</span></td>
+          <td style="padding:.25rem .5rem">${r.share == null ? '<span class="muted">—</span>' : `<b class="${r.share > 0.5 ? 'pos' : ''}">${(r.share * 100).toFixed(1)}%</b> <span class="muted">${r.beat}/${r.pairs}</span>`}</td>
+          <td style="padding:.25rem .5rem">${r.pairs}</td>
+          <td style="padding:.25rem .5rem" class="${r.sum >= 0 ? 'pos' : 'neg'}">${money(r.sum)}</td>
+          <td style="padding:.25rem .5rem">${r.rows}</td></tr>`).join('')
+          || `<tr><td colspan="6" class="empty">nothing ${d.minPairs ? `with at least ${d.minPairs} comparisons` : 'here'}</td></tr>`}</tbody></table></div>
+      ${d.narrowedOut ? `<p class="note">${d.narrowedOut.toLocaleString()} row(s) narrowed out by the comparisons floor.</p>` : ''}
+      ${pageBar('repCoins', d.page, ' coin rows')}`;
+    return `<details id="bRepCoins"${repCoins.id === doc.id ? ' open' : ''} style="margin-top:.6rem"><summary style="cursor:pointer"><b>Every coin of every configuration</b> — one row per coin, sortable over the whole data set</summary>
+      <div class="row" style="margin:.5rem 0">
+        <label class="c"><span class="muted">sort by</span><select id="bCoinSort">
+          <option value="share"${repCoins.sort === 'share' ? ' selected' : ''}>beat its own copies</option>
+          <option value="pairs"${repCoins.sort === 'pairs' ? ' selected' : ''}>comparisons</option>
+          <option value="money"${repCoins.sort === 'money' ? ' selected' : ''}>held-back money</option>
+          <option value="coin"${repCoins.sort === 'coin' ? ' selected' : ''}>coin</option>
+          <option value="configuration"${repCoins.sort === 'configuration' ? ' selected' : ''}>configuration</option>
+        </select></label>
+        <label class="c" title="hide rows whose share rests on fewer head-to-heads than this. Zero hides nothing; the line below the table says how many rows a floor removed."><span class="muted">at least this many comparisons</span><input id="bCoinMin" type="number" min="0" step="10" value="${repCoins.minPairs}" style="width:5.5rem"></label>
+        <button id="bCoinGo" title="asks again with the sort and floor chosen here. The whole data set is sorted before the page is cut, so page one really is the top of everything.">Apply</button>
+      </div>
+      ${table}</details>`;
+  };
   const repBlock = (() => {
     // THE ROWS ARE ON DISK AND THERE CAN BE HUNDREDS OF MILLIONS OF THEM
     // (owner order, 2026-08-22). This used to group and total every recorded
@@ -1523,7 +1580,8 @@ async function drawBoards() {
           <span><span class="k" title="${esc(TIP.money)}">total held-back</span> <b class="${g.sum >= 0 ? 'pos' : 'neg'}">${money(g.sum)}</b></span>
           <span><span class="k">beat always-long</span> <b>${g.vsLPos} / ${g.vsLCount}</b></span>
         </div>
-        <div class="repdetail" data-label="${esc(g.label)}"><span class="muted">loading this configuration's rows…</span></div></div>`;
+        <div class="repdetail" data-label="${esc(g.label)}"><span class="muted">loading this configuration's rows…</span></div>
+        ${coinBox()}</div>`;
     }
 
     // MANY declared configs: the ranked list comes FIRST (owner, 2026-08-17).
@@ -1550,7 +1608,8 @@ async function drawBoards() {
       ${staleNote}${inferredNote}
       ${pageBar('repList', rep.page, ' configurations')}
       <div style="max-height:26rem;overflow-y:auto;border:1px solid var(--line);border-radius:6px">${listHtml}</div>
-      ${pageBar('repList', rep.page, ' configurations')}</div>`;
+      ${pageBar('repList', rep.page, ' configurations')}
+      ${coinBox()}</div>`;
   })();
   $('#view').innerHTML = `<div class="panel"><div class="row" style="align-items:flex-end">
       <label class="f">saved runs<select id="bPick" style="min-width:22rem">
@@ -1693,6 +1752,52 @@ async function drawBoards() {
       drawBoards();
     };
     repOpen.addEventListener('toggle', () => { if (repOpen.open) askRep(); });
+  }
+  // The per-coin box: fetched when opened, refetched on Apply, paged through
+  // the same bars as every other table. The sort and the comparisons floor go
+  // to the other side, because the ordering is made over the whole data set
+  // and a page of a locally-sorted slice would be a lie about the rest.
+  const coinsOpenEl = $('#bRepCoins');
+  if (coinsOpenEl) {
+    const askCoins = async () => {
+      if (!coinsOpenEl.open || tab !== 'boards') return;
+      const q = pageAt.repCoins;
+      const got = await apiOr(`api/batch/${encodeURIComponent(doc.id)}/replication-coins`
+        + `?sort=${encodeURIComponent(repCoins.sort)}&minPairs=${encodeURIComponent(repCoins.minPairs)}`
+        + `&offset=${q.offset}&limit=${q.limit}`, null);
+      if (!got) {
+        const note = $('#bCoinNote');
+        if (note) note.innerHTML = '<span class="warn">could not read it — nothing is missing from the run, the screen could not ask</span>';
+        return;
+      }
+      repCoins = { ...repCoins, id: doc.id, data: got };
+      if (got.building && !(got.rows && got.rows.length)) {
+        const note = $('#bCoinNote');
+        if (note) {
+          note.innerHTML = `<span class="muted">totalling in the background — ${Number(got.scanned || 0).toLocaleString()} `
+            + `of ${Number(got.of || 0).toLocaleString()} rows so far. This box asks again every fifteen seconds while open.</span>`;
+        }
+        setTimeout(askCoins, 15000);
+        return;
+      }
+      drawBoards();
+    };
+    PAGERS.repCoins = ({ offset, limit }) => {
+      pageAt.repCoins = { offset: offset ?? pageAt.repCoins.offset, limit: limit ?? pageAt.repCoins.limit };
+      repCoins.id = null;         // the held page is stale the moment the window moves
+      askCoins();
+    };
+    coinsOpenEl.addEventListener('toggle', () => { if (coinsOpenEl.open && repCoins.id !== doc.id) askCoins(); });
+    const go = $('#bCoinGo');
+    if (go) {
+      go.onclick = () => {
+        repCoins.sort = ($('#bCoinSort') || {}).value || 'share';
+        repCoins.minPairs = Math.max(0, Math.floor(Number(($('#bCoinMin') || {}).value) || 0));
+        pageAt.repCoins = { offset: 0, limit: pageAt.repCoins.limit };
+        repCoins.id = null;
+        askCoins();
+      };
+    }
   }
   // DELETING A RUN takes the model and tuning files that hang off it, so the
   // owner is shown exactly what that is BEFORE answering — the same two-step

@@ -245,6 +245,17 @@ window.HELP = {
         what: 'Carries on a run that stopped, from where it stopped. It scores only the units that have no result yet — everything already scored is kept exactly as it is — and then finishes as normal.',
         more: 'It refuses more than it accepts, on purpose. The price files have to fingerprint identically to the ones the run read, and the engine has to be the same version it started under. Half a board worked out from one history and half from another is not one board, and nothing on the finished screen would say so. It also refuses a run that finished, and one that is going now. Anything that failed the first time gets another go, since a failure left no result to keep.',
       },
+      bCoinSort: {
+        what: 'How the every-coin table is ordered. beat its own copies puts the strongest scores first, with more comparisons winning ties; comparisons puts the best-evidenced rows first; held-back money, coin and configuration order by those.',
+        more: 'The whole data set is sorted before the page is cut, so page one really is the top of everything — never just the top of a page.',
+      },
+      bCoinMin: {
+        what: 'Hides rows whose score rests on fewer head-to-heads than this. Zero hides nothing.',
+        more: 'A perfect score built on ten comparisons is luck wearing a score. The line under the table says how many rows a floor removed, so nothing disappears silently.',
+      },
+      bCoinGo: {
+        what: 'Asks again with the sort and floor chosen beside it.',
+      },
       bDelete: {
         what: 'Permanently removes the run that is open, together with the model and tuning files that belong only to it. You are shown exactly what will go, and then have to type the run id back, before anything is deleted.',
         more: 'It refuses two things. The run that is going right now — stop it first, so a job cannot be writing a file that is being taken away underneath it. And any run a greenlight names as the evidence it came from, because something on the Trade tab may be standing on that evidence. Neither refusal deletes anything; both say which it is.',

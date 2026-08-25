@@ -225,6 +225,11 @@ module.exports = {
       { id: 'swLayout', allowed: backendLayouts(), why: 'lib/batch.js window-layout allow-list' },
       { id: 'swGeom', allowed: Object.keys(GEOMETRIES), why: 'lib/dataset.js GEOMETRIES' },
       { id: 'ht2hl', allowed: Object.keys(HALF_LIVES), why: 'lib/httwo.js HALF_LIVES' },
+      // The every-coin table's order is applied on the other side, so a value
+      // this select offers that the other side does not accept would silently
+      // fall back to the default order — the page would CLAIM one ordering and
+      // show another, which on a ranked table is a lie about which row won.
+      { id: 'bCoinSort', allowed: require('../lib/replication').COIN_SORTS, why: 'lib/replication.js COIN_SORTS' },
     ];
     for (const c of CHECKED) {
       const offered = optionValues(SWEEP, c.id);

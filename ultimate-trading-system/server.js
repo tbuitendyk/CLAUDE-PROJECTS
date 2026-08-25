@@ -435,6 +435,16 @@ app.get('/api/batch/:id/replication', (req, res) => {
 // One configuration's real rows, for the per-asset table a reader opens. Fetched
 // when it is opened rather than shipped with everything else: on a wide run
 // that payload would be the whole problem again.
+// EVERY COIN OF EVERY CONFIGURATION, sortable over the whole data set (owner
+// order, 2026-08-25). Same saved tally as the table, flattened and sorted
+// whole before paging, so the ordering is a claim about everything.
+app.get('/api/batch/:id/replication-coins', (req, res) => {
+  const doc = batch.getBatch(req.params.id);
+  if (!doc) return res.status(404).json({ error: `no run called "${req.params.id}"` });
+  try { res.json(require('./lib/replication').coins(doc, req.query)); }
+  catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 app.get('/api/batch/:id/replication-detail', (req, res) => {
   const doc = batch.getBatch(String(req.params.id || ''));
   if (!doc) return res.status(404).json({ error: 'unknown run' });

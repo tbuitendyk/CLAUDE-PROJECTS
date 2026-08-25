@@ -74,6 +74,92 @@ module.exports = {
     assert.strictEqual(q2.nullBeat, 1);
   },
 
+  // THE PER-COIN SCORE (owner order, 2026-08-25: "we need to add the per-coin
+  // score... easily viewable and sortable FROM THE ENTIRE DATA SET"). Same
+  // pencil, sliced by coin: q1 on AAA is 1 beat of 2 pairs, q1 on BBB is 1 of
+  // 1, and the whole-configuration figures must be exactly the sums of these —
+  // one set of counts, sliced twice, or the two views could disagree.
+  thePerCoinScoreMatchesThePencilAndSumsToTheConfiguration() {
+    const t = tallyFixture(FIXTURE);
+    const flat = replication.coinsFrom(t, {});
+    const at = (label, trade) => flat.rows.find((r) => r.label === label && r.trade === trade);
+    assert.deepStrictEqual(
+      { beat: at('q1', 'AAAUSDT').beat, pairs: at('q1', 'AAAUSDT').pairs },
+      { beat: 1, pairs: 2 }, 'q1 on AAA: real 10 beats the 5, loses to the 15');
+    assert.deepStrictEqual(
+      { beat: at('q1', 'BBBUSDT').beat, pairs: at('q1', 'BBBUSDT').pairs },
+      { beat: 1, pairs: 1 }, 'q1 on BBB: real -4 beats the -6');
+    assert.strictEqual(at('q1', 'CCCUSDT').pairs, 0, 'no money on CCC, no head-to-heads');
+    assert.strictEqual(at('q1', 'CCCUSDT').share, null, 'and no share is invented for it');
+    assert.strictEqual(at('q2', 'AAAUSDT').share, 1, 'q2 on AAA won its only head-to-head');
+    // the whole-configuration line is the sum of its coins, exactly
+    const q1 = replication.renderScored(t, []).find((g) => g.label === 'q1');
+    const q1coins = flat.rows.filter((r) => r.label === 'q1');
+    assert.strictEqual(q1.nullBeat, q1coins.reduce((n, r) => n + r.beat, 0));
+    assert.strictEqual(q1.nullPairs, q1coins.reduce((n, r) => n + r.pairs, 0));
+    assert.strictEqual(q1.sum, q1coins.reduce((n, r) => n + r.sum, 0));
+    // the default order: share first, more comparisons breaking ties, and a
+    // row with no head-to-heads at the bottom rather than sorted as zero
+    assert.deepStrictEqual(flat.rows.map((r) => `${r.label}|${r.trade}`),
+      ['q2|AAAUSDT', 'q1|BBBUSDT', 'q1|AAAUSDT', 'q1|CCCUSDT'],
+      'share desc, then comparisons, the un-measured row last');
+  },
+
+  // The floor hides nothing silently, and the ordering is made over the whole
+  // set before the page is cut — page two continues page one's order.
+  theFloorSaysWhatItRemovedAndPagesContinueOneOrder() {
+    const t = tallyFixture(FIXTURE);
+    const floored = replication.coinsFrom(t, { minPairs: 2 });
+    assert.strictEqual(floored.rows.length, 1, 'only q1 on AAA has two or more head-to-heads');
+    assert.strictEqual(floored.narrowedOut, 3, 'the floor says how many rows it removed');
+    const p1 = replication.coinsFrom(t, { offset: 0, limit: 2 });
+    const p2 = replication.coinsFrom(t, { offset: 2, limit: 2 });
+    // Against the KNOWN order, not against another call of the same function —
+    // compared to itself this passed with the sort deleted outright, because
+    // both sides were equally unsorted (caught by the mutation harness,
+    // 2026-08-25).
+    assert.deepStrictEqual(
+      [...p1.rows, ...p2.rows].map((r) => `${r.label}|${r.trade}`),
+      ['q2|AAAUSDT', 'q1|BBBUSDT', 'q1|AAAUSDT', 'q1|CCCUSDT'],
+      'two pages, one ordering — the sort happens over everything before the cut');
+    assert.strictEqual(p1.page.total, 4, 'a page never hides how many rows there really are');
+    // and an unknown sort name falls back to the default rather than throwing
+    assert.strictEqual(replication.coinsFrom(t, { sort: 'nonsense' }).sort, 'share');
+  },
+
+  // A tally saved before the per-coin score exists (v1) can still draw the
+  // whole-configuration table, but the per-coin view treats it as behind and
+  // rebuilds — served fresh it would show every coin as having no score.
+  aTallyFromBeforeThePerCoinScoreRebuildsForTheCoinView() {
+    const rowstore = require('../lib/rowstore');
+    const runId = `tot-v1-${process.pid}`;
+    const w = rowstore.writer(runId, 'replication');
+    for (const r of FIXTURE) w.push(r);
+    w.close();
+    try {
+      const doc = { id: runId, status: 'done', leaders: [] };
+      replication.writeTotals(runId, {
+        v: 1, builtAt: new Date().toISOString(), tagged: true, dropped: 0, rowsSeen: 8,
+        groups: [{ label: 'q1', holdCount: 2, pos: 1, vsLCount: 2, vsLPos: 1, sum: 6, assetRows: { 'AAAUSDT|||daily-3d': 1, 'BBBUSDT|||daily-3d': 1, 'CCCUSDT|||daily-3d': 1 }, nullBeat: 2, nullPairs: 3, realsTotal: 3 },
+          { label: 'q2', holdCount: 1, pos: 1, vsLCount: 1, vsLPos: 1, sum: 7, assetRows: { 'AAAUSDT|||daily-3d': 1 }, nullBeat: 1, nullPairs: 1, realsTotal: 1 }],
+      });
+      const table = replication.rank(doc, {});
+      assert.strictEqual(table.totals.upToDate, true, 'the old save still draws the table it always drew');
+      assert.strictEqual(table.scored[0].label, 'q2');
+      const flat = replication.coins(doc, {});
+      assert.ok(flat.building || flat.totals === undefined || flat.totals.upToDate !== true,
+        `the per-coin view served a save that predates the per-coin score as fresh: ${JSON.stringify(flat).slice(0, 200)}`);
+      assert.deepStrictEqual(flat.rows, [], 'no per-coin rows exist in a v1 save to serve');
+      // once rebuilt, the view fills in
+      replication.buildAndSaveTotals(runId);
+      const after = replication.coins(doc, {});
+      assert.strictEqual(after.totals.upToDate, true);
+      assert.strictEqual(after.rows.length, 4);
+    } finally {
+      rowstore.remove(runId);
+    }
+  },
+
   // Widths join in at reading time from the CURRENT leader rows — they sharpen
   // while a run goes, so baking them into a saved tally would freeze them.
   theWidthsComeFromTheLeadersAtReadingTimeNotFromTheSave() {
