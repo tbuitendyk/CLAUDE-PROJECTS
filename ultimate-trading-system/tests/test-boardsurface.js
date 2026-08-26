@@ -101,3 +101,44 @@ module.exports.everyPermutationBoxNamesItsSource = function () {
     `the Boards section prints ${sources} source line(s); the board, the ranked list, the single-config panel, `
     + 'the every-coin box, the opened rows and the menu grid each need one');
 };
+
+// THE OPEN RECORDS SURVIVE A REDRAW (owner order, 2026-08-26: "the view
+// needs to stay open and fixed to the same scrolling position"). The records
+// opened below a coin row used to be inserted by hand and die on every
+// redraw — flipping to Sweep and back folded them all, which also shortened
+// the page so the remembered scroll landed somewhere else. Now what came
+// back is kept by row identity and coinBox draws every open one, so a
+// redraw keeps the height and the scroll restore keeps its meaning.
+module.exports.theOpenRecordsSurviveARedraw = function () {
+  const { assert: a } = require('./helpers');
+  const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'public', 'construct.js'), 'utf8');
+  a.ok(/let openRecs = \{ id: null, byKey: new Map\(\) \};/.test(src),
+    'the open-records state is gone — every redraw folds them again');
+  a.ok(/openRecs\.byKey\.has\(coinKeyOf\(r\)\)\s*\?\s*`<tr class="coinsub">/.test(src.replace(/\n/g, ' ')),
+    'coinBox no longer draws the open records from state');
+  a.ok(/openRecs\.byKey\.set\(key, got\)/.test(src), 'opening a row no longer keeps what came back');
+  a.ok(/openRecs\.byKey\.delete\(key\)/.test(src), 'closing a row no longer clears its state, so it springs back open');
+  // ONE builder, used by the state render and the button press alike — a
+  // second copy of that block is the drift the house rules police.
+  const hits = src.split('read straight from the stored rows. Each is one promoted unit').length - 1;
+  a.strictEqual(hits, 1, 'the records block exists in more than one copy (or none)');
+};
+
+// EVERY CONTROL CARRIES ITS HELP AS HOVER TEXT (owner order, 2026-08-26:
+// "where's the tool tip on the decision drop down in Sweep? missing tool
+// tips on many (most?) of the controls"). The hover is wired from the Help
+// tab's entries — which test-help.js forces to exist for every control — so
+// a control cannot be hoverless, and the words cannot drift from the Help
+// tab's. A hand-written title in the template wins over the wired one.
+module.exports.everyControlsHelpBecomesItsHover = function () {
+  const { assert: a } = require('./helpers');
+  const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'public', 'construct.js'), 'utf8');
+  a.ok(/function hoverFromHelp\(key\)/.test(src), 'the wiring function is gone');
+  a.ok(/if \(!el\.title\) el\.title = text;/.test(src),
+    'a hand-written title no longer wins — the sharper in-place warnings get overwritten');
+  a.ok(/if \(lab && !lab\.title\) lab\.title = text;/.test(src),
+    'the caption around a control no longer carries the hover');
+  for (const key of ['data', 'sweep', 'boards', 'verify', 'history', 'tune', 'greenlight']) {
+    a.ok(new RegExp(`hoverFromHelp\\('${key}'\\)`).test(src), `the ${key} draw no longer wires its hovers`);
+  }
+};

@@ -262,6 +262,74 @@ let repLoaded = { id: null, data: null };
 // The per-coin view, fetched when its own box is opened. Sort and narrowing
 // live here so a redraw keeps the reader's place.
 let repCoins = { id: null, data: null, sort: 'share', minPairs: 0 };
+// The records opened below coin rows, by row identity, WITH what came back —
+// so a redraw (tab flip, paging, Apply) draws them open instead of folding
+// them and shortening the page out from under the remembered scroll (owner
+// order, 2026-08-26).
+let openRecs = { id: null, byKey: new Map() };
+const coinKeyOf = (o) => [o.label, o.trade, o.ctx1 || '', o.ctx2 || '', o.geometry].join('|');
+
+// ONE builder for the records shown below a coin row — drawn by coinBox()
+// for every open row on every redraw, and by the button press that opens
+// one. Two copies of this block would be the drift RULE TWO polices.
+function coinRecordsHtml(got) {
+  if (!got) return '<span class="warn">could not read the records — nothing is missing from the run, the screen could not ask</span>';
+  if (got.indexed === false) return `<span class="muted">${esc(got.why || 'the records are not reachable yet')}</span>`;
+  if (!got.rows || !got.rows.length) return '<span class="muted">no records came back for this row</span>';
+  // THE CHOICES ARE NAMED, ALWAYS (owner orders, 2026-08-26: "knowing the
+  // actual choices is essential", then "you need to record that information
+  // for each row. i'm sure it can be recovered"). Rows recorded from today
+  // carry them; older rows are named from the run's own unit records,
+  // matched in the order both were written — the recovery runs in the
+  // background the first time records are asked for, and this box reports
+  // it until the names arrive.
+  const named = got.rows.some((r) => r.decision != null || r.bandMode != null || r.weekdaysOnly != null);
+  const tail = got.namesFrom === 'rows'
+    ? ', and each record names the choices that made it.'
+    : got.namesFrom === 'recovered'
+      ? `, and each record's decision, band and 24/5 were recovered from this run's own unit records, matched in the
+          order both were written down.${got.unnamedRecords ? ` <b>${got.unnamedRecords} record(s) could not be matched and show — instead.</b>` : ''}`
+      : got.recovery && got.recovery.going
+        ? `. <b>The decision, band and 24/5 of each record are being recovered now</b> from this run's own unit
+          records — ${Number(got.recovery.scanned || 0).toLocaleString()} of ${Number(got.recovery.of || 0).toLocaleString()} rows
+          matched so far. Press the records button again when that finishes.`
+        : got.recovery && got.recovery.error
+          ? `. <b>${esc(got.recovery.error)}</b> — press the records button again to retry.`
+          : named
+            ? ', and each record names the choices that made it.'
+            : `. <b>This run's records were written before they carried their decision, band and 24/5 choices, and it kept
+          no unit records to recover them from.</b> The band % below is each record's own; the unnamed boxes show —
+          rather than a guess.`;
+  return `<p class="note" style="margin:.2rem 0">source: the run's replication rows themselves — the ${got.rows.length} record(s)
+          this row averages, read straight from the stored rows. Each is one promoted unit's own scoring of this configuration on this coin,
+          one per combination of the boxes permuted on Sweep that share the coin and chunk shape${tail}</p>
+        <div class="scrollx"><table style="border-collapse:collapse">
+          <thead><tr style="text-align:left;border-bottom:1px solid var(--line)">
+            <th style="padding:.2rem .5rem .2rem 0" title="how the committee's votes become a call — the decision box on Sweep, one of the choices permuted across this coin's records">decision</th>
+            <th style="padding:.2rem .5rem" title="the band % (or auto) box as it was chosen. auto works the width out from the prices, and the band % column shows what it worked out to">band</th>
+            <th style="padding:.2rem .5rem" title="whether this record traded weekdays only — the 24/5 box on Sweep">24/5</th>
+            <th style="padding:.2rem .5rem" title="how far either side of the current price this record set its two levels, as a percentage of price">band %</th>
+            <th style="padding:.2rem .5rem" title="profit-and-loss on the window the settings were CHOSEN on — flattering by construction">test $</th>
+            <th style="padding:.2rem .5rem" title="entries in the test window — the window the settings were chosen on">test trades</th>
+            <th style="padding:.2rem .5rem" title="the once-only look on data no search touched — the number that counts">held-back $</th>
+            <th style="padding:.2rem .5rem" title="entries in the held-back window — the once-only look">held-back trades</th>
+            <th style="padding:.2rem .5rem" title="how many held-back positions closed at their stop">held-back stops</th>
+            <th style="padding:.2rem .5rem" title="this record's held-back money minus just holding the coin over the same window">vs always-long</th></tr></thead>
+          <tbody>${got.rows.map((r) => {
+    const h = r.holdout || null;
+    return `<tr>
+            <td style="padding:.2rem .5rem .2rem 0">${r.decision == null ? '<span class="muted">—</span>' : esc(r.decision)}</td>
+            <td style="padding:.2rem .5rem">${r.bandMode == null ? '<span class="muted">—</span>' : r.bandMode === 'auto' ? 'auto' : `${esc(r.bandMode)}%`}</td>
+            <td style="padding:.2rem .5rem">${r.weekdaysOnly == null ? '<span class="muted">—</span>' : r.weekdaysOnly ? 'yes' : 'no'}</td>
+            <td style="padding:.2rem .5rem">±${r.bandPct ?? '—'}%</td>
+            <td style="padding:.2rem .5rem" class="${(r.pnl || 0) >= 0 ? 'pos' : 'neg'}">${money(r.pnl)}</td>
+            <td style="padding:.2rem .5rem">${r.trades ?? '—'}</td>
+            <td style="padding:.2rem .5rem" class="${h ? ((h.pnl || 0) >= 0 ? 'pos' : 'neg') : 'muted'}">${h ? money(h.pnl) : '—'}</td>
+            <td style="padding:.2rem .5rem">${h && h.trades != null ? h.trades : '—'}</td>
+            <td style="padding:.2rem .5rem">${h && h.stops != null ? h.stops : '—'}</td>
+            <td style="padding:.2rem .5rem" class="${h && h.vsAlwaysLong != null ? (h.vsAlwaysLong >= 0 ? 'pos' : 'neg') : 'muted'}">${h && h.vsAlwaysLong != null ? money(h.vsAlwaysLong) : '—'}</td></tr>`;
+  }).join('')}</tbody></table></div>`;
+}
 function wirePagers(root) {
   if (!root || root.dataset.pagersWired) return;
   root.dataset.pagersWired = '1';
@@ -1469,6 +1537,9 @@ async function drawBoards() {
   const coinBox = () => {
     const d = repCoins.id === doc.id ? repCoins.data : null;
     const rows = d && d.rows ? d.rows : [];
+    // Records opened under another run's rows are that run's — drop them the
+    // moment a different run is drawn.
+    if (openRecs.id !== null && openRecs.id !== doc.id) openRecs = { id: null, byKey: new Map() };
     const table = !d ? '<p class="note" id="bCoinNote">open to load — served from the same saved totals as the list above</p>'
       : d.building && !rows.length
         ? `<p class="note" id="bCoinNote">totalling in the background — ${Number(d.scanned || 0).toLocaleString()} of ${Number(d.of || 0).toLocaleString()} rows so far. This box asks again every fifteen seconds while open.</p>`
@@ -1491,7 +1562,10 @@ async function drawBoards() {
           <td style="padding:.25rem .5rem" class="${(r.avgHold ?? 0) >= 0 ? 'pos' : 'neg'}">${r.avgHold == null ? '<span class="muted">—</span>' : money(r.avgHold)}</td>
           <td style="padding:.25rem .5rem">${r.avgTrades == null ? '<span class="muted">—</span>' : r.avgTrades.toFixed(1)}</td>
           <td style="padding:.25rem .5rem">${r.rows}</td>
-          <td style="padding:.25rem .5rem"><button class="coinopen" data-label="${esc(r.label)}" data-trade="${esc(r.trade)}" data-ctx1="${esc(r.ctx1 || '')}" data-ctx2="${esc(r.ctx2 || '')}" data-geometry="${esc(r.geometry)}" title="${esc(COL.coinRecords)}">▸ records</button></td></tr>`).join('')
+          <td style="padding:.25rem .5rem"><button class="coinopen" data-label="${esc(r.label)}" data-trade="${esc(r.trade)}" data-ctx1="${esc(r.ctx1 || '')}" data-ctx2="${esc(r.ctx2 || '')}" data-geometry="${esc(r.geometry)}" title="${esc(COL.coinRecords)}">${openRecs.byKey.has(coinKeyOf(r)) ? '▾' : '▸'} records</button></td></tr>${
+  openRecs.byKey.has(coinKeyOf(r))
+    ? `<tr class="coinsub"><td colspan="8" style="padding:.25rem .5rem .5rem 1.2rem">${coinRecordsHtml(openRecs.byKey.get(coinKeyOf(r)))}</td></tr>`
+    : ''}`).join('')
           || `<tr><td colspan="8" class="empty">nothing ${d.minPairs ? `with at least ${d.minPairs} comparisons` : 'here'}</td></tr>`}</tbody></table></div>
       ${d.narrowedOut ? `<p class="note">${d.narrowedOut.toLocaleString()} row(s) narrowed out by the comparisons floor.</p>` : ''}
       ${pageBar('repCoins', d.page, ' coin rows')}`;
@@ -1802,84 +1876,36 @@ async function drawBoards() {
     // records button and the rows it averages appear under it, fetched from
     // the other side — which reads ONLY the stored blocks that hold them, so
     // this costs milliseconds however many rows the run recorded. Press again
-    // and they fold away. A redraw (paging, Apply) folds every open one.
+    // and they fold away. What came back is KEPT (owner order, 2026-08-26:
+    // "the view needs to stay open and fixed to the same scrolling
+    // position") — coinBox() draws every open one from that state, so a
+    // redraw (switching tabs and back, paging, Apply) keeps them open and
+    // the page keeps its height, which is what lets the remembered scroll
+    // land where it was.
     coinsOpenEl.addEventListener('click', async (ev) => {
       const btn = ev.target && ev.target.closest ? ev.target.closest('button.coinopen') : null;
       if (!btn) return;
       const tr = btn.closest('tr');
       if (!tr) return;
+      const key = ['label', 'trade', 'ctx1', 'ctx2', 'geometry'].map((f) => btn.dataset[f] || '').join('|');
       const next = tr.nextElementSibling;
-      if (next && next.classList.contains('coinsub')) { next.remove(); btn.textContent = '▸ records'; return; }
+      if (next && next.classList.contains('coinsub')) {
+        next.remove();
+        btn.textContent = '▸ records';
+        openRecs.byKey.delete(key);
+        return;
+      }
       btn.textContent = '… records';
       const q = ['label', 'trade', 'ctx1', 'ctx2', 'geometry']
         .map((f) => `${f}=${encodeURIComponent(btn.dataset[f] || '')}`).join('&');
       const got = await apiOr(`api/batch/${encodeURIComponent(doc.id)}/replication-coin-rows?${q}`, null);
+      if (got) { openRecs.id = doc.id; openRecs.byKey.set(key, got); }
       const sub = document.createElement('tr');
       sub.className = 'coinsub';
       const cell = document.createElement('td');
       cell.colSpan = 8;
       cell.style.padding = '.25rem .5rem .5rem 1.2rem';
-      if (!got) {
-        cell.innerHTML = '<span class="warn">could not read the records — nothing is missing from the run, the screen could not ask</span>';
-      } else if (got.indexed === false) {
-        cell.innerHTML = `<span class="muted">${esc(got.why || 'the records are not reachable yet')}</span>`;
-      } else if (!got.rows || !got.rows.length) {
-        cell.innerHTML = '<span class="muted">no records came back for this row</span>';
-      } else {
-        // THE CHOICES ARE NAMED, ALWAYS (owner orders, 2026-08-26: "knowing
-        // the actual choices is essential", then "you need to record that
-        // information for each row. i'm sure it can be recovered"). Rows
-        // recorded from today carry them; older rows are named from the
-        // run's own unit records, matched in the order both were written —
-        // the recovery runs in the background the first time records are
-        // asked for, and this box reports it until the names arrive.
-        const named = got.rows.some((r) => r.decision != null || r.bandMode != null || r.weekdaysOnly != null);
-        const tail = got.namesFrom === 'rows'
-          ? ', and each record names the choices that made it.'
-          : got.namesFrom === 'recovered'
-            ? `, and each record's decision, band and 24/5 were recovered from this run's own unit records, matched in the
-          order both were written down.${got.unnamedRecords ? ` <b>${got.unnamedRecords} record(s) could not be matched and show — instead.</b>` : ''}`
-            : got.recovery && got.recovery.going
-              ? `. <b>The decision, band and 24/5 of each record are being recovered now</b> from this run's own unit
-          records — ${Number(got.recovery.scanned || 0).toLocaleString()} of ${Number(got.recovery.of || 0).toLocaleString()} rows
-          matched so far. Press the records button again when that finishes.`
-              : got.recovery && got.recovery.error
-                ? `. <b>${esc(got.recovery.error)}</b> — press the records button again to retry.`
-                : named
-                  ? ', and each record names the choices that made it.'
-                  : `. <b>This run's records were written before they carried their decision, band and 24/5 choices, and it kept
-          no unit records to recover them from.</b> The band % below is each record's own; the unnamed boxes show —
-          rather than a guess.`;
-        cell.innerHTML = `<p class="note" style="margin:.2rem 0">source: the run's replication rows themselves — the ${got.rows.length} record(s)
-          this row averages, read straight from the stored rows. Each is one promoted unit's own scoring of this configuration on this coin,
-          one per combination of the boxes permuted on Sweep that share the coin and chunk shape${tail}</p>
-        <div class="scrollx"><table style="border-collapse:collapse">
-          <thead><tr style="text-align:left;border-bottom:1px solid var(--line)">
-            <th style="padding:.2rem .5rem .2rem 0" title="how the committee's votes become a call — the decision box on Sweep, one of the choices permuted across this coin's records">decision</th>
-            <th style="padding:.2rem .5rem" title="the band % (or auto) box as it was chosen. auto works the width out from the prices, and the band % column shows what it worked out to">band</th>
-            <th style="padding:.2rem .5rem" title="whether this record traded weekdays only — the 24/5 box on Sweep">24/5</th>
-            <th style="padding:.2rem .5rem" title="how far either side of the current price this record set its two levels, as a percentage of price">band %</th>
-            <th style="padding:.2rem .5rem" title="profit-and-loss on the window the settings were CHOSEN on — flattering by construction">test $</th>
-            <th style="padding:.2rem .5rem" title="entries in the test window — the window the settings were chosen on">test trades</th>
-            <th style="padding:.2rem .5rem" title="the once-only look on data no search touched — the number that counts">held-back $</th>
-            <th style="padding:.2rem .5rem" title="entries in the held-back window — the once-only look">held-back trades</th>
-            <th style="padding:.2rem .5rem" title="how many held-back positions closed at their stop">held-back stops</th>
-            <th style="padding:.2rem .5rem" title="this record's held-back money minus just holding the coin over the same window">vs always-long</th></tr></thead>
-          <tbody>${got.rows.map((r) => {
-    const h = r.holdout || null;
-    return `<tr>
-            <td style="padding:.2rem .5rem .2rem 0">${r.decision == null ? '<span class="muted">—</span>' : esc(r.decision)}</td>
-            <td style="padding:.2rem .5rem">${r.bandMode == null ? '<span class="muted">—</span>' : r.bandMode === 'auto' ? 'auto' : `${esc(r.bandMode)}%`}</td>
-            <td style="padding:.2rem .5rem">${r.weekdaysOnly == null ? '<span class="muted">—</span>' : r.weekdaysOnly ? 'yes' : 'no'}</td>
-            <td style="padding:.2rem .5rem">±${r.bandPct ?? '—'}%</td>
-            <td style="padding:.2rem .5rem" class="${(r.pnl || 0) >= 0 ? 'pos' : 'neg'}">${money(r.pnl)}</td>
-            <td style="padding:.2rem .5rem">${r.trades ?? '—'}</td>
-            <td style="padding:.2rem .5rem" class="${h ? ((h.pnl || 0) >= 0 ? 'pos' : 'neg') : 'muted'}">${h ? money(h.pnl) : '—'}</td>
-            <td style="padding:.2rem .5rem">${h && h.trades != null ? h.trades : '—'}</td>
-            <td style="padding:.2rem .5rem">${h && h.stops != null ? h.stops : '—'}</td>
-            <td style="padding:.2rem .5rem" class="${h && h.vsAlwaysLong != null ? (h.vsAlwaysLong >= 0 ? 'pos' : 'neg') : 'muted'}">${h && h.vsAlwaysLong != null ? money(h.vsAlwaysLong) : '—'}</td></tr>`;
-  }).join('')}</tbody></table></div>`;
-      }
+      cell.innerHTML = coinRecordsHtml(got);
       sub.appendChild(cell);
       tr.after(sub);
       btn.textContent = '▾ records';
@@ -3191,6 +3217,39 @@ async function drawGreenlight() {
 // tab switched, the exception was swallowed by the console, and not one field
 // was filled: a button that looked like it worked and did nothing (found by the
 // runtime harness, 2026-08-17).
+// EVERY CONTROL CARRIES ITS HELP AS HOVER TEXT (owner order, 2026-08-26:
+// "where's the tool tip on the decision drop down in Sweep? missing tool
+// tips on many (most?) of the controls. fix that"). The Help tab already
+// holds a plain-language entry for every control on every screen —
+// tests/test-help.js refuses a control without one — so the hover is WIRED
+// FROM those entries after every draw, rather than typed a second time
+// beside each control where the two copies would drift. A title written in
+// the template itself wins: it usually carries the sharper in-place
+// warning. The caption around a control gets the same text, because
+// hovering the words beside a small box is how a hover is actually found.
+function hoverFromHelp(key) {
+  const entries = (window.HELP && window.HELP[key] && window.HELP[key].controls) || null;
+  if (!entries) return;
+  for (const [id, e] of Object.entries(entries)) {
+    const el = document.getElementById(id);
+    if (!el || !e || !e.what) continue;
+    const text = e.more ? `${e.what}\n\n${e.more}` : e.what;
+    if (!el.title) el.title = text;
+    const lab = el.closest ? el.closest('label') : null;
+    if (lab && !lab.title) lab.title = text;
+  }
+}
+// Wrapped at the definition, not called at seven tails: the draw functions
+// return early on empty states, and a tail call after an early return is a
+// hover that quietly never arrives.
+drawData = ((fn) => async (...a) => { const r = await fn(...a); hoverFromHelp('data'); return r; })(drawData);
+drawSweep = ((fn) => async (...a) => { const r = await fn(...a); hoverFromHelp('sweep'); return r; })(drawSweep);
+drawBoards = ((fn) => async (...a) => { const r = await fn(...a); hoverFromHelp('boards'); return r; })(drawBoards);
+drawVerify = ((fn) => async (...a) => { const r = await fn(...a); hoverFromHelp('verify'); return r; })(drawVerify);
+drawHistory = ((fn) => async (...a) => { const r = await fn(...a); hoverFromHelp('history'); return r; })(drawHistory);
+drawTune = ((fn) => async (...a) => { const r = await fn(...a); hoverFromHelp('tune'); return r; })(drawTune);
+drawGreenlight = ((fn) => async (...a) => { const r = await fn(...a); hoverFromHelp('greenlight'); return r; })(drawGreenlight);
+
 function draw() {
   renderTabs(); renderStrip();
   // Reset the failure log for THIS render, then band the section afterwards if

@@ -857,6 +857,20 @@ thirty seconds, under its own independently selectable theme.
    all counts are saved and shown. The records say their names were
    recovered, not written.
 
+5. **Open records survive redraws, and every control carries its help as
+   hover text (owner orders, 2026-08-26).** The records opened below coin
+   rows were inserted by hand and died on every redraw — flipping to Sweep
+   and back folded them and shortened the page out from under the remembered
+   scroll. What comes back is now kept by row identity and drawn open on
+   every redraw, so the view stays open and the scroll restore keeps its
+   meaning. And the Construct page's hovers are now WIRED from the Help
+   tab's own entries — which the tests force to exist for every control —
+   so no control can be hoverless and the hover cannot drift from the Help
+   words; a hand-written title in a template still wins. The Construct
+   page's CPU button was removed the same day (one dial, one home — the
+   Compute tab), with its endpoint pair, and the tests now require its
+   absence.
+
 **Parked, with reasons — not dropped:**
 
 1. **The per-configuration row table (detail()).** Opening one configuration's

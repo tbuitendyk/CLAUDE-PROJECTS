@@ -107,6 +107,12 @@ const GUARDS = [
   [path.join(ROOT, 'public', 'construct.html'), '<button class="themebtn" id="themebtn">◐ theme</button>',
     '<button class="themebtn" id="cpubtn">CPU —</button>\n      <button class="themebtn" id="themebtn">◐ theme</button>',
     'theCpuDialLivesOnTheComputeTabAlone', 'the removed CPU button grows back beside the theme button and the dial has two homes again'],
+  [path.join(ROOT, 'public', 'construct.js'), 'openRecs.byKey.set(key, got);', '',
+    'theOpenRecordsSurviveARedraw', 'opened records fold on every redraw again and the remembered scroll lands short'],
+  [path.join(ROOT, 'public', 'construct.js'), 'if (!el.title) el.title = text;', 'el.title = text;',
+    'everyControlsHelpBecomesItsHover', 'the wired hover overwrites every hand-written warning in the templates'],
+  [path.join(ROOT, 'public', 'construct.js'), "drawSweep = ((fn) => async (...a) => { const r = await fn(...a); hoverFromHelp('sweep'); return r; })(drawSweep);", '',
+    'everyControlsHelpBecomesItsHover', 'the Sweep controls go back to having no hovers at all'],
 ];
 
 const only = process.argv[2] || '';
