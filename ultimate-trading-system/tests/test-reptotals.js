@@ -153,10 +153,13 @@ module.exports = {
     const rowstore = require('../lib/rowstore');
     const runId = `tot-blk-${process.pid}`;
     const w = rowstore.writer(runId, 'replication');
-    // Two blocks by hand: q1's rows in the first, q2's in the second.
+    // Two blocks by hand: q1's rows in the first, q2's in the second. The q2
+    // real row carries the named choices a run records from 2026-08-26, so
+    // the roundtrip store -> block read -> screen payload is proved whole.
     for (const r of FIXTURE.slice(0, 6)) w.push(r);
     w.flush();
-    for (const r of FIXTURE.slice(6)) w.push(r);
+    w.push({ ...FIXTURE[6], decision: 'argmax', bandMode: 'auto', weekdaysOnly: false, key: 'AAAUSDT|||daily-3d|argmax|auto|24-7' });
+    w.push(FIXTURE[7]);
     w.close();
     try {
       const blocks = rowstore.blocksOf(runId, 'replication');
@@ -197,6 +200,11 @@ module.exports = {
       assert.strictEqual(got.indexed, true);
       assert.strictEqual(got.rows.length, 1, 'one real row — the copy beside it stays machinery');
       assert.strictEqual(got.rows[0].holdout.pnl, 7);
+      // the named choices ride the record all the way to the screen's payload
+      // (owner order, 2026-08-26: "knowing the actual choices is essential")
+      assert.strictEqual(got.rows[0].decision, 'argmax');
+      assert.strictEqual(got.rows[0].bandMode, 'auto');
+      assert.strictEqual(got.rows[0].weekdaysOnly, false, 'false is a recorded choice, not a missing one');
       // a real row with no held-back money is still a record the reader gets
       const ccc = replication.coinRows(doc, { label: 'q1', trade: 'CCCUSDT', geometry: 'daily-3d' });
       assert.strictEqual(ccc.rows.length, 1);
@@ -235,6 +243,47 @@ module.exports = {
       assert.strictEqual(table.totals.upToDate, true);
     } finally {
       rowstore.remove(runId);
+    }
+  },
+
+  // THE PARSED TALLY IS HELD, NOT RE-PARSED (owner order, 2026-08-26: "do the
+  // totals cache"). Every ask used to parse the 235,620-entry file again on
+  // the answering thread. The slot serves the same parsed object while the
+  // file is unchanged, drops it the moment the file changes — however it
+  // changed, this thread or the build worker — and holds ONE run only.
+  theTotalsAreParsedOnceAndNeverServedStale() {
+    const rowstore = require('../lib/rowstore');
+    const runA = `tot-cch-a-${process.pid}`;
+    const runB = `tot-cch-b-${process.pid}`;
+    try {
+      const t = tallyFixture(FIXTURE);
+      replication.writeTotals(runA, t);
+      const first = replication.readTotals(runA);
+      assert.strictEqual(replication.readTotals(runA), first,
+        'two asks of an unchanged file returned different objects — every ask is paying the parse again');
+      // a write that does NOT go through this thread's writeTotals — the
+      // build worker's write looks exactly like this — must be picked up
+      const changed = { ...t, rowsSeen: 9999 };
+      const fs2 = require('fs');
+      fs2.writeFileSync(replication.totalsFile(runA), JSON.stringify(changed));
+      assert.strictEqual(replication.readTotals(runA).rowsSeen, 9999,
+        'the file changed on disk and the slot served yesterday\'s tally over it');
+      // one slot: asking for another run evicts, and the first still answers
+      // correctly afterwards — from a fresh parse, not from memory
+      replication.writeTotals(runB, { ...t, rowsSeen: 8 });
+      assert.strictEqual(replication.readTotals(runB).rowsSeen, 8);
+      assert.strictEqual(replication.readTotals(runA).rowsSeen, 9999,
+        'after eviction the first run must answer from its file, whole');
+      // ...and that re-parse refills the slot: the next ask serves the same
+      // object, or reading is paying the parse on every ask again
+      assert.strictEqual(replication.readTotals(runA), replication.readTotals(runA),
+        'a re-parse after eviction was not held — every ask parses again');
+      // and a run whose file is gone answers null, dropping anything held
+      rowstore.remove(runA);
+      assert.strictEqual(replication.readTotals(runA), null);
+    } finally {
+      rowstore.remove(runA);
+      rowstore.remove(runB);
     }
   },
 
@@ -378,6 +427,28 @@ module.exports = {
       fs.rmSync(dir, { recursive: true, force: true });
       void realStoreDir;
     }
+  },
+
+  // THE RECORDED ROW NAMES ITS CHOICES (owner order, 2026-08-26: "if i'm
+  // looking at a table to understand what settings appear to generate signal
+  // ... knowing the actual choices is essential"). The write site had the
+  // decision, band and 24/5 choices in hand and never wrote them, so the
+  // records behind a coin were anonymous. Pinned at the write site, and the
+  // screen must say plainly when an older run's rows do not carry them.
+  theRecordedRowNamesItsChoices() {
+    const src = fs.readFileSync(path.join(__dirname, '..', 'lib', 'batch.js'), 'utf8').replace(/\/\/[^\n]*/g, '');
+    const at = src.indexOf('rows.replication.push');
+    const push = src.slice(at, src.indexOf('vsBuyHold', at));
+    assert.ok(/decision: l\.decision \?\? null/.test(push)
+      && /bandMode: l\.bandMode \?\? null/.test(push)
+      && /weekdaysOnly: l\.weekdaysOnly \?\? null/.test(push)
+      && /key: l\.key \?\? null/.test(push),
+      'a recorded replication row no longer names the choices that made it');
+    const page = fs.readFileSync(path.join(__dirname, '..', 'public', 'construct.js'), 'utf8').replace(/\/\/[^\n]*/g, '');
+    assert.ok(/>decision<\/th>/.test(page) && />24\/5<\/th>/.test(page),
+      'the records table no longer shows the decision and 24/5 columns');
+    assert.ok(/recorded before records carried their decision, band and 24\/5 choices/.test(page),
+      'an older run\'s anonymous records are no longer said out loud — a dash with no reason reads as data');
   },
 
   // The full pass belongs OFF the thread that answers pages: the worker file

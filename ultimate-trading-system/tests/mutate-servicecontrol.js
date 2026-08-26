@@ -88,6 +88,14 @@ const GUARDS = [
     'aDeletedRunsVerdictIsNeverRetaken', 'a deleted run\'s kept PASS is retaken with no rows and manufactured into the very UNREADABLE the record exists to outlive'],
   [path.join(ROOT, 'lib', 'batch.js'), "        try { require('./planted').recordGate(hydrate(doc)); } catch (_) { /* the strip re-reads live runs anyway */ }", '',
     'theBootSweepRetakesStaleGateRecords', 'a wrong kept verdict lies in wait until somebody edits notes or deletes the run'],
+  [path.join(ROOT, 'lib', 'replication.js'), '\n    && totalsInHand.mtimeMs === st.mtimeMs && totalsInHand.size === st.size) {', ') {',
+    'theTotalsAreParsedOnceAndNeverServedStale', 'the build worker finishes a fresh tally and every screen keeps serving yesterday\'s from memory'],
+  [path.join(ROOT, 'lib', 'replication.js'), '    totalsInHand = { runId, mtimeMs: st.mtimeMs, size: st.size, totals };\n    return totals;', '    return totals;',
+    'theTotalsAreParsedOnceAndNeverServedStale', 'the cache caches nothing and every ask parses the whole file again'],
+  [BATCH, '              decision: l.decision ?? null, bandMode: l.bandMode ?? null,\n              weekdaysOnly: l.weekdaysOnly ?? null, key: l.key ?? null,', '',
+    'theRecordedRowNamesItsChoices', 'every new run\'s records go back to being anonymous settings in the very table read to learn which settings carry signal'],
+  [path.join(ROOT, 'public', 'construct.js'), 'recorded before records carried their decision, band and 24/5 choices', 'recorded',
+    'theRecordedRowNamesItsChoices', 'an old run\'s dashes read as data instead of as a gap the record is honest about'],
 ];
 
 const only = process.argv[2] || '';

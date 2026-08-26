@@ -229,8 +229,36 @@ function totalsFile(runId) {
   return path.join(rowstore.storeDir(runId), 'replication.totals.json');
 }
 
+// ONE PARSED TALLY IN HAND (owner order, 2026-08-26: "do the totals cache").
+// The saved tally for the owner's run carries 235,620 per-coin entries, and
+// every ask of the table, the coin view or a records button parsed that file
+// again on the answering thread — most of the 820 ms measured on the box.
+// ONE slot, not a map: a parsed tally of that size is real heap beside a
+// 1.8 GB ceiling, and the screens work one run at a time. The slot serves
+// only while the file's stamp AND size still match; a write from anywhere —
+// this thread or the build worker — changes them, and the next ask re-reads.
+// NOTHING MAY WRITE INTO THE SERVED OBJECT: it is handed to every caller,
+// so every reader derives and none mutates (they all already do).
+let totalsInHand = null;   // { runId, mtimeMs, size, totals }
+
 function readTotals(runId) {
-  try { return JSON.parse(fs.readFileSync(totalsFile(runId), 'utf8')); } catch (_) { return null; }
+  let st;
+  try { st = fs.statSync(totalsFile(runId)); } catch (_) {
+    if (totalsInHand && totalsInHand.runId === runId) totalsInHand = null;
+    return null;
+  }
+  if (totalsInHand && totalsInHand.runId === runId
+    && totalsInHand.mtimeMs === st.mtimeMs && totalsInHand.size === st.size) {
+    return totalsInHand.totals;
+  }
+  try {
+    const totals = JSON.parse(fs.readFileSync(totalsFile(runId), 'utf8'));
+    // The stamp was taken BEFORE the read: if the file was replaced between
+    // the two, the mismatch surfaces on the next ask and costs one re-parse
+    // in the safe direction — stale is never served as current.
+    totalsInHand = { runId, mtimeMs: st.mtimeMs, size: st.size, totals };
+    return totals;
+  } catch (_) { return null; }
 }
 
 function writeTotals(runId, totals) {
@@ -239,6 +267,12 @@ function writeTotals(runId, totals) {
   const tmp = `${f}.tmp${process.pid}`;
   fs.writeFileSync(tmp, JSON.stringify(totals));
   fs.renameSync(tmp, f);
+  // The writer already holds the parsed object — hand it to the slot so the
+  // next ask does not pay to re-read what this thread just wrote.
+  try {
+    const st = fs.statSync(f);
+    totalsInHand = { runId, mtimeMs: st.mtimeMs, size: st.size, totals };
+  } catch (_) { totalsInHand = null; }
 }
 
 // The full pass, streamed from the store. Run this in a worker thread, never

@@ -443,8 +443,11 @@ async function renderStrip() {
   if (!el) return s;
   if (!s) { el.innerHTML = 'release <span class="muted">—</span>'; return null; }
   const b = gateBadge(s);
+  // The flag's box sits ON the text bottom (owner order, 2026-08-26): the
+  // class's middle-alignment centred this bordered box on the small text's
+  // line and hung it below the release and time text beside it.
   el.innerHTML = `release ${esc(s.engineVersion || '')} · planted check:
-    <span class="badge ${b.cls}" id="stripBadge" title="${esc(b.tip)}">${esc(b.text.toUpperCase())}</span>`;
+    <span class="badge ${b.cls}" id="stripBadge" style="vertical-align:text-bottom" title="${esc(b.tip)}">${esc(b.text.toUpperCase())}</span>`;
   const btn = $('#stripBadge');
   if (btn) btn.onclick = () => { tab = 'verify'; localStorage.setItem('cx-tab', tab); draw(); };
   // While a gate is in flight, keep the badge honest without the owner having to
@@ -1845,13 +1848,26 @@ async function drawBoards() {
       } else if (!got.rows || !got.rows.length) {
         cell.innerHTML = '<span class="muted">no records came back for this row</span>';
       } else {
+        // THE CHOICES ARE NAMED (owner order, 2026-08-26: "knowing the actual
+        // choices is essential"). Rows recorded from today carry their
+        // decision, band and 24/5 choices; a run recorded before that carries
+        // rows without them, and this says so instead of guessing — settings
+        // conjured onto an old record would poison exactly the reading this
+        // table exists for.
+        const named = got.rows.some((r) => r.decision != null || r.bandMode != null || r.weekdaysOnly != null);
         cell.innerHTML = `<p class="note" style="margin:.2rem 0">source: the run's replication rows themselves — the ${got.rows.length} record(s)
           this row averages, read straight from the stored rows. Each is one promoted unit's own scoring of this configuration on this coin,
-          one per combination of the boxes permuted on Sweep that share the coin and chunk shape. A record was written down with its band %
-          but not the other permuted choices, so records sharing a band % differ by choices the record does not name.</p>
+          one per combination of the boxes permuted on Sweep that share the coin and chunk shape${named
+    ? ', and each record names the choices that made it.'
+    : `. <b>This run was recorded before records carried their decision, band and 24/5 choices</b> — records write them down
+          from 2026-08-26, so a fresh run names every record. The band % below is each record's own; the unnamed boxes show —
+          rather than a guess.`}</p>
         <div class="scrollx"><table style="border-collapse:collapse">
           <thead><tr style="text-align:left;border-bottom:1px solid var(--line)">
-            <th style="padding:.2rem .5rem .2rem 0" title="how far either side of the current price this record set its two levels, as a percentage of price — the one permuted choice the record was written down with">band %</th>
+            <th style="padding:.2rem .5rem .2rem 0" title="how the committee's votes become a call — the decision box on Sweep, one of the choices permuted across this coin's records">decision</th>
+            <th style="padding:.2rem .5rem" title="the band % (or auto) box as it was chosen. auto works the width out from the prices, and the band % column shows what it worked out to">band</th>
+            <th style="padding:.2rem .5rem" title="whether this record traded weekdays only — the 24/5 box on Sweep">24/5</th>
+            <th style="padding:.2rem .5rem" title="how far either side of the current price this record set its two levels, as a percentage of price">band %</th>
             <th style="padding:.2rem .5rem" title="profit-and-loss on the window the settings were CHOSEN on — flattering by construction">test $</th>
             <th style="padding:.2rem .5rem" title="entries in the test window — the window the settings were chosen on">test trades</th>
             <th style="padding:.2rem .5rem" title="the once-only look on data no search touched — the number that counts">held-back $</th>
@@ -1861,7 +1877,10 @@ async function drawBoards() {
           <tbody>${got.rows.map((r) => {
     const h = r.holdout || null;
     return `<tr>
-            <td style="padding:.2rem .5rem .2rem 0">±${r.bandPct ?? '—'}%</td>
+            <td style="padding:.2rem .5rem .2rem 0">${r.decision == null ? '<span class="muted">—</span>' : esc(r.decision)}</td>
+            <td style="padding:.2rem .5rem">${r.bandMode == null ? '<span class="muted">—</span>' : r.bandMode === 'auto' ? 'auto' : `${esc(r.bandMode)}%`}</td>
+            <td style="padding:.2rem .5rem">${r.weekdaysOnly == null ? '<span class="muted">—</span>' : r.weekdaysOnly ? 'yes' : 'no'}</td>
+            <td style="padding:.2rem .5rem">±${r.bandPct ?? '—'}%</td>
             <td style="padding:.2rem .5rem" class="${(r.pnl || 0) >= 0 ? 'pos' : 'neg'}">${money(r.pnl)}</td>
             <td style="padding:.2rem .5rem">${r.trades ?? '—'}</td>
             <td style="padding:.2rem .5rem" class="${h ? ((h.pnl || 0) >= 0 ? 'pos' : 'neg') : 'muted'}">${h ? money(h.pnl) : '—'}</td>

@@ -827,6 +827,19 @@ thirty seconds, under its own independently selectable theme.
    built to end. A v2 save keeps drawing the whole-configuration table while
    its background rebuild brings the averages and the index.
 
+3. **The records name their choices, the tally is held parsed, and the
+   titles sit on the baseline (owner orders, 2026-08-26).** A replication row
+   now records the decision, band and 24/5 choices that made it (they were in
+   hand at the write site and never written) plus the unit's key — so the
+   records behind a coin say WHICH settings scored, which is the entire point
+   of reading them. Rows recorded before this do not carry the choices and
+   the screen says so plainly instead of guessing. The parsed saved tally is
+   held in one memory slot guarded by the file's stamp and size — every ask
+   was re-parsing a 235,620-entry file on the answering thread — and the
+   records button reads its named blocks by exact byte range. The page
+   titles and the check's flag now sit on the text baseline beside the
+   release and time text, on all three pages.
+
 **Parked, with reasons — not dropped:**
 
 1. **The per-configuration row table (detail()).** Opening one configuration's

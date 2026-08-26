@@ -148,7 +148,13 @@
       </nav>
       <div class="spacer"></div>
     </div>
-    <div class="row">
+    <!-- BASELINE, NOT CENTRE (owner order, 2026-08-26). The title is a bigger
+         type size than the release and time text beside it: centring the row
+         hung the title and the check's flag below the small text's bottom.
+         Text of two sizes lines up on its BASELINE — same fix on all three
+         pages, and the flag's box sits on the text bottom for the same
+         reason. -->
+    <div class="row" style="align-items:baseline">
       <h1 style="margin:0">Construct</h1>
       <span id="strip" class="muted" style="font-size:.8rem">release —</span>
       <span id="utcClock" class="muted" style="font-variant-numeric:tabular-nums">—</span>

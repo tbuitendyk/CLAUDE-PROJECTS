@@ -2433,6 +2433,15 @@ function startBracketLab(params, opts) {
               // 2026-08-04 — QC 72).
               nullDealSeed: l.nullDealSeed ?? null,
               trade: l.trade, ctx1: l.ctx1, ctx2: l.ctx2, geometry: l.geometry, bandPct: res.bandPct,
+              // THE CHOICES THAT MADE THE ROW, NAMED (owner order, 2026-08-26:
+              // "knowing the actual choices is essential"). These were always
+              // in hand here and never written, so the 8 or 16 records behind
+              // one coin could not say which decision or 24/5 choice each one
+              // was — anonymous settings in a table read precisely to learn
+              // which settings carry signal. Runs recorded before this carry
+              // rows without them, and the screen says so rather than guessing.
+              decision: l.decision ?? null, bandMode: l.bandMode ?? null,
+              weekdaysOnly: l.weekdaysOnly ?? null, key: l.key ?? null,
               // The stored parameters are the truth. The alternative source
               // was the retired quota layouts, whose fallback stamped 'legacy'
               // on split70 and reserve61 rows (review 2026-08-03).
