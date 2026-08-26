@@ -139,7 +139,7 @@ module.exports.everyControlsHelpBecomesItsHover = function () {
     'a hand-written title no longer wins — the sharper in-place warnings get overwritten');
   a.ok(/if \(lab && !lab\.title\) lab\.title = text;/.test(src),
     'the caption around a control no longer carries the hover');
-  for (const key of ['data', 'sweep', 'boards', 'verify', 'history', 'tune', 'greenlight']) {
+  for (const key of ['data', 'sweep', 'sweep2', 'boards', 'boards2', 'verify', 'history', 'tune', 'greenlight']) {
     a.ok(new RegExp(`hoverFromHelp\\('${key}'\\)`).test(src), `the ${key} draw no longer wires its hovers`);
   }
 };

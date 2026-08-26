@@ -111,7 +111,10 @@ const GUARDS = [
     'theOpenRecordsSurviveARedraw', 'opened records fold on every redraw again and the remembered scroll lands short'],
   [path.join(ROOT, 'public', 'construct.js'), 'if (!el.title) el.title = text;', 'el.title = text;',
     'everyControlsHelpBecomesItsHover', 'the wired hover overwrites every hand-written warning in the templates'],
-  [path.join(ROOT, 'public', 'construct.js'), "drawSweep = ((fn) => async (...a) => { const r = await fn(...a); hoverFromHelp('sweep'); return r; })(drawSweep);", '',
+  // The wrapper gained holdScrollMemory() when the scroll-memory work landed,
+  // and this guard's copy of the line silently stopped matching — a SKIP the
+  // 2026-08-26 run surfaced. A guard that no longer matches tests nothing.
+  [path.join(ROOT, 'public', 'construct.js'), "drawSweep = ((fn) => async (...a) => { holdScrollMemory(); const r = await fn(...a); hoverFromHelp('sweep'); return r; })(drawSweep);", '',
     'everyControlsHelpBecomesItsHover', 'the Sweep controls go back to having no hovers at all'],
   [path.join(ROOT, 'lib', 'replication.js'), 'avgVsLong: a.vln ? (a.vl || 0) / a.vln : null,', 'avgVsLong: a.vl || 0,',
     'theAveragesMatchThePencil', 'the vs always-long column sums instead of averaging and reads 16 times too big'],
@@ -140,6 +143,14 @@ const GUARDS = [
     'theAveragesMatchThePencil', 'a copy arriving after a record never pays it — every record\'s own count under-reads and the sum stops matching the coin row'],
   [path.join(ROOT, 'public', 'construct.js'), '>beat its own copies</th>\n            <th style="padding:.2rem .5rem" title="the once-only look', '>held-back trades x</th>\n            <th style="padding:.2rem .5rem" title="the once-only look',
     'theRecordedRowNamesItsChoices', 'the ordered column the owner placed between test trades and held-back $ vanishes from the records'],
+  [path.join(ROOT, 'public', 'construct.js'), "['sweep2', 'Sweep2'], ", '',
+    'theTwoPrototypeTabsSitWhereTheOwnerPutThem', 'the drawing tab vanishes and the owner has nothing to mark up'],
+  [path.join(ROOT, 'public', 'construct.js'), '<button id="s2Go1" ${dead}>start stage 1</button>', '<button id="s2Go1">start stage 1</button>',
+    'everyControlOnBothPrototypesIsDead', 'a live start button sits on a drawing, waiting to be pressed'],
+  [path.join(ROOT, 'public', 'construct.js'), '<b>Nothing on this page works.</b>', '<b>The page below.</b>',
+    'bothPrototypesSayTheyAreDrawings', 'a drawing full of worked examples reads as a report of real numbers'],
+  [path.join(ROOT, 'public', 'construct.js'), "drawSweep2 = ((fn) => async (...a) => { holdScrollMemory(); const r = await fn(...a); hoverFromHelp('sweep2'); return r; })(drawSweep2);", '',
+    'everyControlsHelpBecomesItsHover', 'the Sweep2 drawing loses every hover that explains what its controls would do'],
 ];
 
 const only = process.argv[2] || '';

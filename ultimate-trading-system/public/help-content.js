@@ -229,6 +229,104 @@ window.HELP = {
     },
   },
 
+  sweep2: {
+    title: 'Sweep2',
+    intro: 'A drawing, not a working screen. Every control on it is switched off, and nothing on it reads or '
+      + 'writes anything. It shows a proposed redesign of the search as three stages you run one at a time, so the '
+      + 'design can be marked up and corrected before any of it is built.',
+    how: [
+      ['Why this page exists, and what the three stages are',
+        'The current sweep does everything in one run: it trains cheaply, trains fully, deals its scrambled copies by '
+        + 'training them again, and prices the declared settings — all inside one job, and asking any new question '
+        + 'afterwards means running the whole thing again.\n\n'
+        + 'The drawing splits that into three stages, each writing a record set the next one reads. Stage 1 trains the '
+        + 'cheap members once for every unit and KEEPS EVERY VOTE they cast. Stage 2 trains the fuller boards, but only '
+        + 'on the rows you carry forward, and reuses the stage 1 members instead of training them a second time. '
+        + 'Stage 3 never trains anything: it prices any setting, or any block of settings, straight from the kept '
+        + 'votes — so the question you think of tomorrow costs minutes, not days.\n\n'
+        + 'The worked example on the page: the run open on Boards today holds 25,704 units and cost 231,336 trainings. '
+        + 'The same work as three stages is 77,112 trainings at stage 1 plus 3,000 at stage 2 — roughly a third — and '
+        + 'every scrambled copy becomes free arithmetic instead of another training.'],
+    ],
+    controls: {
+      s2Uni: { what: 'Which coins stage 1 scores. Leave it blank to use all of the ones held; write them separated by commas to narrow it down.' },
+      s2Singles: { what: 'Include each coin judged on its own price history alone.' },
+      s2Doubles: { what: 'Include each coin judged alongside one other coin.' },
+      s2Triples: { what: 'Include each coin judged alongside two others.' },
+      s2AllData: { what: 'Use every month of price history that is held, rather than a chosen range. With this ticked, start and end are ignored.' },
+      s2Start: { what: 'First month of price history stage 1 works over.' },
+      s2End: { what: 'Last month of price history stage 1 works over.' },
+      s2Geom: { what: 'How long a stretch of prices each decision looks at, and how often a decision is made — same meaning as on Sweep.' },
+      s2PermGeom: {
+        what: 'Train every chunk shape rather than only the one chosen. This is a real multiplier of training, so it lives at stage 1 where the training happens.',
+      },
+      s2Layout: { what: 'How the price history is divided between finding something and testing it — same meaning as on Sweep. The sealed layout is the honest end of a search.' },
+      s2Fee: { what: 'What a trade is assumed to cost, as a percent of the money in the position, charged each way — same meaning as on Sweep.' },
+      s2Dec: {
+        what: 'Part of the one ordering setting: how a forecast becomes a decision when stage 1 scores each unit for the ranking.',
+        more: 'The ordering setting exists because a rank has to be taken under some setting. It is named here, before anything is read, and there is deliberately no permute beside it — blocks of settings belong to stage 3.',
+      },
+      s2Band: { what: 'Part of the one ordering setting: how big a move has to be before it counts as a move at all. auto works it out from each coin\'s own history.' },
+      s2Wk: { what: 'Part of the one ordering setting: score the ranking on weekday activity only.' },
+      s2Entry: { what: 'Part of the one ordering setting: how a position is opened — same meaning as on Sweep.' },
+      s2Gate: { what: 'Part of the one ordering setting: when a position may be opened at all — same meaning as on Sweep.' },
+      s2D: { what: 'Part of the one ordering setting: how far from the starting price the opening level sits — same meaning as on Sweep.' },
+      s2T: { what: 'Part of the one ordering setting: how many hours a position is held before it is closed.' },
+      s2Trail: { what: 'Part of the one ordering setting: which stop it uses. static sits still at the level on the far side of your entry; the others follow the price behind you.' },
+      s2Arm: { what: 'Part of the one ordering setting: how far the price must move in your favour before a following stop starts following.' },
+      s2Q6: { what: 'Part of the one ordering setting: how many of a single coin\'s members must say the same thing before a trade is taken. At stage 1 that is 3 members; the fuller 6 arrive at stage 2.' },
+      s2Q8: { what: 'The same, for a unit judged alongside contexts.' },
+      s2Copies1: {
+        what: 'How many scrambled companions each unit is compared against, dealt from the kept votes after training — so they cost no training at all.',
+        more: 'The share of its copies each unit beats becomes one of the orderings stage 2 can carry forward by. That is the point of copies at this stage: they steer the pick.',
+      },
+      s2Desc1: { what: 'Why this stage 1 exists. Kept on the record set and shown wherever it is named.' },
+      s2Go1: { what: 'Would start stage 1. On this drawing it is switched off, like everything else here.' },
+      s2From2: {
+        what: 'Which stage 1 record set stage 2 carries forward from. A stage 2 record set names this parent forever.',
+        more: 'It refuses a parent built on different price data — the record sets carry fingerprints of the price files and a mismatch refuses rather than mixes.',
+      },
+      s2Order: {
+        what: 'Which stage 1 measure the carry is ordered by: test money, test money against just holding the coin, the share of its own copies each unit beat, or trades.',
+        more: 'The order is taken on the test window only. The held-back window is never read to choose what carries forward.',
+      },
+      s2Carry: { what: 'How many rows carry forward into the fuller training, best first under order by. 0 carries all of them.' },
+      s2Copies2: { what: 'Scrambled companions for the carried rows, dealt from the kept votes of all members — still no extra training.' },
+      s2Desc2: { what: 'Why this stage 2 exists. Kept on the record set.' },
+      s2Go2: { what: 'Would start stage 2. Switched off on this drawing.' },
+      s2From3: {
+        what: 'Which stage 2 record set the pricing reads its kept votes from. A stage 3 record set names this parent forever.',
+      },
+      s2P3Dec: { what: 'The decision to price, or with permute ticked, every decision — arithmetic on the kept votes either way.' },
+      s2P3PermDec: { what: 'Price every way of deciding as its own setting in the block.' },
+      s2P3Band: { what: 'The band to price, or with permute ticked, more than one size of move.' },
+      s2P3PermBand: { what: 'Price more than one band as its own setting in the block.' },
+      s2P3Wk: { what: 'Price weekday-only activity for this setting.' },
+      s2P3PermWk: { what: 'Price it both ways — weekdays only, and every day.' },
+      s2P3Entry: { what: 'The way of opening to price — same meaning as on Sweep.' },
+      s2P3PermEntry: { what: 'Price every way of opening as its own setting in the block.' },
+      s2P3Gate: { what: 'The gate to price — same meaning as on Sweep.' },
+      s2P3PermGate: { what: 'Price every gate as its own setting in the block.' },
+      s2P3D: { what: 'The opening-level distance to price.' },
+      s2P3PermD: { what: 'Price every distance as its own setting in the block.' },
+      s2P3T: { what: 'The holding time to price.' },
+      s2P3PermT: { what: 'Price every holding time as its own setting in the block.' },
+      s2P3Trail: { what: 'The stop to price. static sits still; the others follow the price behind you.' },
+      s2P3PermTrail: { what: 'Price every kind of stop, static included, as its own setting in the block.' },
+      s2P3Arm: { what: 'The starting point for a following stop.' },
+      s2P3PermArm: { what: 'Price every starting point as its own setting in the block.' },
+      s2P3Q6: { what: 'How many of a single coin\'s 6 members must agree, for the setting being priced.' },
+      s2P3Q8: { what: 'The same, for a unit judged alongside contexts — 8 members rather than 6.' },
+      s2P3PermAgree: { what: 'Price every level of agreement as its own setting in the block. It multiplies the block fastest, and here that multiplying costs arithmetic, not training.' },
+      s2P3Copies: {
+        what: 'Scrambled companions per setting, dealt from the kept votes.',
+        more: 'The same deals are used for every setting in the block, so any two settings\' shares are always comparable.',
+      },
+      s2P3Desc: { what: 'Why this stage 3 exists. Kept on the record set.' },
+      s2P3Go: { what: 'Would start stage 3 — pricing only, no training. Switched off on this drawing.' },
+    },
+  },
+
   boards: {
     title: 'Boards',
     how: [
@@ -290,6 +388,37 @@ window.HELP = {
         what: 'Unpicks the row you had selected.',
         more: 'Worth knowing: a row picked once keeps steering the Verify, Tune and Greenlight tabs until it is cleared here.',
       },
+    },
+  },
+
+  boards2: {
+    title: 'Boards2',
+    intro: 'A drawing, not a working screen. Every control on it is switched off and every row on it is a worked '
+      + 'example. It shows how the three stages drawn on Sweep2 would read back: one table per stage, with the chain '
+      + 'between them always on screen.',
+    how: [
+      ['One table per stage, and the chain always visible',
+        'Every record set names the one it came from, so the page always shows the whole chain: which stage 1 the '
+        + 'ranking came from, which stage 2 carried what forward and by which measure, and which stage 3 priced what. '
+        + 'No table mixes two stages, and every number says which record set it belongs to.\n\n'
+        + 'The stage 1 table is the ranking — it shows exactly where the carry-forward cut fell, including the first '
+        + 'row that missed it. The stage 2 table puts each unit\'s cheap score beside its full score, so the fuller '
+        + 'board\'s effect is visible instead of remembered. The stage 3 tables are the pricing: the settings ranked '
+        + 'against each other, and every coin of every setting with its own records opening underneath, the same two '
+        + 'readings Boards offers today.\n\n'
+        + 'The held-back window appears only on stage 3 tables, because only stage 3 prices it — under settings that '
+        + 'were fully named first.'],
+    ],
+    controls: {
+      b2Pick: { what: 'Which record set to read. Every set is listed with its stage, what it holds, and the parent it came from.' },
+      b2Open: { what: 'Would open the chosen record set and draw its chain and tables below. Switched off on this drawing.' },
+      b2MinShare: { what: 'Hides rows whose share of head-to-heads won is below this percent. Empty hides nothing — same meaning as the floor on Boards.' },
+      b2MinHold: { what: 'Hides rows whose avg held-back is below this many dollars. Empty hides nothing.' },
+      b2MinTrades: { what: 'Hides rows whose avg trades is below this. Empty hides nothing.' },
+      b2MinVsLong: { what: 'Hides rows whose avg vs always-long is below this many dollars. Empty hides nothing.' },
+      b2Sort: { what: 'How the every-coin table is ordered — the same choices as on Boards, with setting in place of configuration.' },
+      b2MinPairs: { what: 'Hides rows whose share rests on fewer head-to-heads than this. Zero hides nothing.' },
+      b2Go: { what: 'Would ask again with the sort and floors chosen beside it. Switched off on this drawing.' },
     },
   },
 
