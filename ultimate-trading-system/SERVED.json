@@ -1,12 +1,12 @@
 {
   "note": "WHAT THE BOX IS SERVING. The closed word list is generated from this commit, not from the working tree, because between a commit and its deploy those describe different screens and the list is the only vocabulary permitted about a screen. NOT every served file can be fingerprinted this way: the server stamps a cache marker into construct.html as it serves it (server.js, so a returning browser cannot keep a stale script), which makes its served bytes 22 longer than its source by design. Hashing it would be a check that can only ever fail, so it is deliberately not listed here \u2014 it carries no screen labels either, they are all in construct.js. Captured by vps-access/scripts/uts-served-fingerprint.sh after every deploy, then `node tests/sweep-words.js --write`.",
-  "commit": "39d1492c6cd0ca1d676d484a9cd88d8b730f09cb",
-  "subject": "The Boards view survives leaving the page; four floors on the every-coin table",
-  "capturedAt": "2026-08-26T04:17:56Z",
+  "commit": "6925679f69eb8d9456dd5d00e48aab66919c5925",
+  "subject": "The scroll memory survives the page moving itself; each record shows beat its own copies",
+  "capturedAt": "2026-08-26T04:48:13Z",
   "files": {
     "public/construct.js": {
-      "sha256": "79e8780f96e7884334d8f6bf25f9ba329d4d70fea3c79e32125d58a3b4eb853b",
-      "bytes": 246805
+      "sha256": "e2157ffcb4c3c2941e2bd164064aeb4d7f11c0cba3fdb2c065e3bb4a8ada2f49",
+      "bytes": 248286
     },
     "public/help-content.js": {
       "sha256": "8a04ce0420000042ad4948bb6c10cf6cc6dda44f6a3020bdda99687c3863a5f5",
@@ -17,8 +17,8 @@
       "bytes": 23149
     },
     "public/trade.html": {
-      "sha256": "090fedd6a10456570ce8569bdd4156341cf2dc4a071290e2805bf68409cff71e",
-      "bytes": 82020
+      "sha256": "a325f07eafd12b4e213089e48de714511f4d263f21f815d332d214bc62a244aa",
+      "bytes": 82546
     }
   },
   "htmlNotVerified": "public/construct.html is served with its cache markers rewritten to the content hash of each script, so its served bytes never equal its stored bytes. Nothing is generated from it."
