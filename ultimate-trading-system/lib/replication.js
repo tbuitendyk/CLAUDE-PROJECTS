@@ -100,7 +100,7 @@ function tallyOver(each) {
     }
     const k = assetKey(r);
     let a = g.assets.get(k);
-    if (!a) { a = { n: 0, hold: 0, pos: 0, sum: 0, t: 0, vl: 0, vln: 0, beat: 0, pairs: 0, at: [] }; g.assets.set(k, a); }
+    if (!a) { a = { n: 0, hold: 0, pos: 0, sum: 0, t: 0, vl: 0, vln: 0, beat: 0, pairs: 0, at: [], rb: [] }; g.assets.set(k, a); }
     const hold = r.holdout && r.holdout.pnl != null ? r.holdout.pnl : null;
 
     if (!tagged || r.nullDealSeed == null) {
@@ -122,15 +122,21 @@ function tallyOver(each) {
         // records for each record" of the every-coin table).
         if (vsL != null) { g.vsLCount++; if (vsL > 0) g.vsLPos++; a.vl += vsL; a.vln++; }
         // pair against every copy of this asset already seen, and remember the
-        // real figure so copies arriving later can be paired too
+        // real figure so copies arriving later can be paired too. EACH
+        // record keeps its own count (owner order, 2026-08-26: "we need
+        // BEAT ITS OWN COPIES as a column ... in the expanded rows") — the
+        // coin row's share is exactly the sum of these, decomposed.
         let mine = g.realHold.get(k);
         if (!mine) { mine = []; g.realHold.set(k, mine); }
-        mine.push(hold);
-        for (const nv of (g.pendingNulls.get(k) || [])) { a.pairs++; if (hold > nv) a.beat++; }
+        const rec = a.rb.length;
+        mine.push([hold, rec]);
+        let won = 0;
+        for (const nv of (g.pendingNulls.get(k) || [])) { a.pairs++; if (hold > nv) { a.beat++; won++; } }
+        a.rb.push(won);
       }
     } else if (hold != null) {
       // `hold` here is the COPY\'s held-back money; `mine` is the real one.
-      for (const mine of (g.realHold.get(k) || [])) { a.pairs++; if (mine > hold) a.beat++; }
+      for (const [mv, rec] of (g.realHold.get(k) || [])) { a.pairs++; if (mv > hold) { a.beat++; a.rb[rec]++; } }
       let pend = g.pendingNulls.get(k);
       if (!pend) { pend = []; g.pendingNulls.set(k, pend); }
       pend.push(hold);
@@ -144,7 +150,7 @@ function tallyOver(each) {
   // whole-configuration figures are derived from these at reading time, so the
   // two views can never disagree — there is one set of counts, sliced twice.
   return {
-    v: 4,
+    v: 5,
     builtAt: new Date().toISOString(),
     tagged,
     dropped,
@@ -158,7 +164,7 @@ function tallyOver(each) {
     })),
   };
 }
-const TALLY_V = 4;
+const TALLY_V = 5;
 // The record index (which blocks hold each coin's rows) exists from v3 on —
 // the records button keeps answering from a v3 save while the v4 averages
 // rebuild in the background.
@@ -527,6 +533,24 @@ function coinRows(doc, { label = '', trade = '', ctx1 = '', ctx2 = '', geometry 
     if (saved.tagged ? r.nullDealSeed != null : out.length >= (a.n || 1)) continue;
     out.push(r);
     ats.push(e.at);
+  }
+  // EACH RECORD'S OWN SHARE of the coin's head-to-heads (owner order,
+  // 2026-08-26). The tally kept, per record that recorded held-back money,
+  // how many of the coin's copies it beat — in store order, which is the
+  // order the blocks hand the records back. Every held record faced every
+  // copy once, so the comparisons per record are the coin's pairs over its
+  // held rows, and the coin row's beat/pairs is exactly these summed.
+  if (saved.v >= 5 && Array.isArray(a.rb)) {
+    const perRecord = a.hold ? a.pairs / a.hold : 0;
+    let j = 0;
+    for (const r of out) {
+      if (!(r.holdout && r.holdout.pnl != null)) continue;
+      if (j < a.rb.length) {
+        r.beatCopies = a.rb[j];
+        r.copyPairs = perRecord;
+      }
+      j++;
+    }
   }
 
   // THE CHOICES ON EVERY RECORD (owner order, 2026-08-26: "you need to

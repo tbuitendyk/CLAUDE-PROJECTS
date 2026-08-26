@@ -301,6 +301,7 @@ function coinRecordsHtml(got) {
             <th style="padding:.2rem .5rem" title="how far either side of the current price this record set its two levels, as a percentage of price">band %</th>
             <th style="padding:.2rem .5rem" title="profit-and-loss on the window the settings were CHOSEN on — flattering by construction">test $</th>
             <th style="padding:.2rem .5rem" title="entries in the test window — the window the settings were chosen on">test trades</th>
+            <th style="padding:.2rem .5rem" title="of the head-to-heads between THIS record's held-back money and every scrambled copy of this coin, the share it won. The coin row above sums exactly these records.">beat its own copies</th>
             <th style="padding:.2rem .5rem" title="the once-only look on data no search touched — the number that counts">held-back $</th>
             <th style="padding:.2rem .5rem" title="entries in the held-back window — the once-only look">held-back trades</th>
             <th style="padding:.2rem .5rem" title="how many held-back positions closed at their stop">held-back stops</th>
@@ -314,6 +315,7 @@ function coinRecordsHtml(got) {
             <td style="padding:.2rem .5rem">±${r.bandPct ?? '—'}%</td>
             <td style="padding:.2rem .5rem" class="${(r.pnl || 0) >= 0 ? 'pos' : 'neg'}">${money(r.pnl)}</td>
             <td style="padding:.2rem .5rem">${r.trades ?? '—'}</td>
+            <td style="padding:.2rem .5rem">${r.beatCopies == null || !r.copyPairs ? '<span class="muted">—</span>' : `<b class="${r.beatCopies / r.copyPairs > 0.5 ? 'pos' : ''}">${(r.beatCopies / r.copyPairs * 100).toFixed(1)}%</b> <span class="muted">${r.beatCopies}/${r.copyPairs}</span>`}</td>
             <td style="padding:.2rem .5rem" class="${h ? ((h.pnl || 0) >= 0 ? 'pos' : 'neg') : 'muted'}">${h ? money(h.pnl) : '—'}</td>
             <td style="padding:.2rem .5rem">${h && h.trades != null ? h.trades : '—'}</td>
             <td style="padding:.2rem .5rem">${h && h.stops != null ? h.stops : '—'}</td>
@@ -540,13 +542,25 @@ function rememberScroll(t) {
   try { localStorage.setItem(scrollKeyFor(t), String(Math.round(window.scrollY))); } catch (_) { /* private window */ }
 }
 
+// ONLY THE OWNER'S OWN SCROLLING WRITES THE MEMORY (owner order,
+// 2026-08-26: "the opened table stays open, but the scroll location is
+// lost. fix that throughout"). Scrolling a page that is still short lands
+// clamped at the bottom of what exists — and that landing fires a scroll
+// event exactly like a hand on the wheel, which OVERWROTE the remembered
+// place before the content was rebuilt. So every move the page makes
+// itself — a restore, a redraw — holds the memory shut for a moment, and
+// the listener writes only when no hold is on.
+let scrollMemoryHeldUntil = 0;
+function holdScrollMemory() { scrollMemoryHeldUntil = Date.now() + 600; }
+
 function restoreScroll(t) {
   let y = 0;
   try { y = Number(localStorage.getItem(scrollKeyFor(t))) || 0; } catch (_) { y = 0; }
   // Two frames, not one. The content has only just been put on the page and the
   // browser has not laid it out yet — scrolling before it has means scrolling a
   // page that is still short, which quietly lands at the bottom of nothing.
-  requestAnimationFrame(() => requestAnimationFrame(() => window.scrollTo(0, y)));
+  holdScrollMemory();
+  requestAnimationFrame(() => requestAnimationFrame(() => { holdScrollMemory(); window.scrollTo(0, y); }));
 }
 
 // Keep it current while reading, so a reload lands in the right place too.
@@ -556,7 +570,11 @@ let scrollPending = false;
 window.addEventListener('scroll', () => {
   if (scrollPending) return;
   scrollPending = true;
-  requestAnimationFrame(() => { scrollPending = false; rememberScroll(tab); });
+  requestAnimationFrame(() => {
+    scrollPending = false;
+    if (Date.now() < scrollMemoryHeldUntil) return;   // the page moved itself
+    rememberScroll(tab);
+  });
 }, { passive: true });
 
 function renderTabs() {
@@ -3408,13 +3426,13 @@ function hoverFromHelp(key) {
 // Wrapped at the definition, not called at seven tails: the draw functions
 // return early on empty states, and a tail call after an early return is a
 // hover that quietly never arrives.
-drawData = ((fn) => async (...a) => { const r = await fn(...a); hoverFromHelp('data'); return r; })(drawData);
-drawSweep = ((fn) => async (...a) => { const r = await fn(...a); hoverFromHelp('sweep'); return r; })(drawSweep);
-drawBoards = ((fn) => async (...a) => { const r = await fn(...a); hoverFromHelp('boards'); return r; })(drawBoards);
-drawVerify = ((fn) => async (...a) => { const r = await fn(...a); hoverFromHelp('verify'); return r; })(drawVerify);
-drawHistory = ((fn) => async (...a) => { const r = await fn(...a); hoverFromHelp('history'); return r; })(drawHistory);
-drawTune = ((fn) => async (...a) => { const r = await fn(...a); hoverFromHelp('tune'); return r; })(drawTune);
-drawGreenlight = ((fn) => async (...a) => { const r = await fn(...a); hoverFromHelp('greenlight'); return r; })(drawGreenlight);
+drawData = ((fn) => async (...a) => { holdScrollMemory(); const r = await fn(...a); hoverFromHelp('data'); return r; })(drawData);
+drawSweep = ((fn) => async (...a) => { holdScrollMemory(); const r = await fn(...a); hoverFromHelp('sweep'); return r; })(drawSweep);
+drawBoards = ((fn) => async (...a) => { holdScrollMemory(); const r = await fn(...a); hoverFromHelp('boards'); return r; })(drawBoards);
+drawVerify = ((fn) => async (...a) => { holdScrollMemory(); const r = await fn(...a); hoverFromHelp('verify'); return r; })(drawVerify);
+drawHistory = ((fn) => async (...a) => { holdScrollMemory(); const r = await fn(...a); hoverFromHelp('history'); return r; })(drawHistory);
+drawTune = ((fn) => async (...a) => { holdScrollMemory(); const r = await fn(...a); hoverFromHelp('tune'); return r; })(drawTune);
+drawGreenlight = ((fn) => async (...a) => { holdScrollMemory(); const r = await fn(...a); hoverFromHelp('greenlight'); return r; })(drawGreenlight);
 
 function draw() {
   renderTabs(); renderStrip();

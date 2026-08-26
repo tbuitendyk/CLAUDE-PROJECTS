@@ -59,3 +59,32 @@ module.exports = {
       'the 30-second redraw restores the scroll position — it is a refresh of what is on screen, not a navigation, and moving the view would make it unreadable while it is being read');
   },
 };
+
+
+// THE CLAMP NEVER OVERWRITES THE MEMORY (owner order, 2026-08-26: "the
+// opened table stays open, but the scroll location is lost. fix that
+// throughout"). A page scrolling ITSELF — a restore onto content not yet
+// rebuilt, a redraw that shrinks the page for a moment — lands clamped, and
+// the clamp fires a scroll event that wrote the clamped place over the real
+// one. Every programmatic move now holds the memory shut; only the owner's
+// own scrolling writes it. Both pages, same machinery.
+module.exports.theClampNeverOverwritesTheMemory = async function () {
+  const { assert: a } = require('./helpers');
+  for (const [name, src] of [['the Construct page', CONSTRUCT_NOW()], ['the Trade page', TRADE_NOW()]]) {
+    a.ok(/function holdScrollMemory\(\)/.test(src), `${name} has no hold on its scroll memory`);
+    const restore = src.slice(src.indexOf('function restoreScroll'), src.indexOf('function restoreScroll') + 900);
+    a.ok(/holdScrollMemory\(\);/.test(restore),
+      `${name}'s restore does not hold the memory — the clamped landing overwrites the place it was restoring to`);
+    a.ok(/scrollMemoryHeldUntil\) return;/.test(src),
+      `${name}'s listener writes the memory even while the page is moving itself`);
+  }
+  const cx = CONSTRUCT_NOW();
+  a.ok(/holdScrollMemory\(\); const r = await fn\(/.test(cx),
+    'a redraw on the Construct page no longer holds the memory while the page height moves under it');
+};
+function CONSTRUCT_NOW() {
+  return require('fs').readFileSync(require('path').join(__dirname, '..', 'public', 'construct.js'), 'utf8');
+}
+function TRADE_NOW() {
+  return require('fs').readFileSync(require('path').join(__dirname, '..', 'public', 'trade.html'), 'utf8');
+}

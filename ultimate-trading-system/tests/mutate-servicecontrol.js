@@ -131,6 +131,15 @@ const GUARDS = [
     'theBoardsViewSurvivesLeavingThePage', 'the view record is written and never read — flipping to Setup and back still loses everything'],
   [path.join(ROOT, 'public', 'construct.js'), '        saveBoardsView(doc);\n        askCoins();', '        askCoins();',
     'theBoardsViewSurvivesLeavingThePage', 'the floors and sort chosen with Apply are lost the moment the page is left'],
+  [path.join(ROOT, 'public', 'construct.js'), '    if (Date.now() < scrollMemoryHeldUntil) return;   // the page moved itself', '',
+    'theClampNeverOverwritesTheMemory', 'the clamped landing writes over the remembered place and every restore restores the wrong spot'],
+  [path.join(ROOT, 'public', 'construct.js'), '  holdScrollMemory();\n  requestAnimationFrame(() => requestAnimationFrame(() => { holdScrollMemory(); window.scrollTo(0, y); }));', '  requestAnimationFrame(() => requestAnimationFrame(() => window.scrollTo(0, y)));',
+    'theClampNeverOverwritesTheMemory', 'the restore itself is what destroys the memory it restores from'],
+  [path.join(ROOT, 'lib', 'replication.js'), 'for (const [mv, rec] of (g.realHold.get(k) || [])) { a.pairs++; if (mv > hold) { a.beat++; a.rb[rec]++; } }',
+    'for (const [mv, rec] of (g.realHold.get(k) || [])) { a.pairs++; if (mv > hold) { a.beat++; } void rec; }',
+    'theAveragesMatchThePencil', 'a copy arriving after a record never pays it — every record\'s own count under-reads and the sum stops matching the coin row'],
+  [path.join(ROOT, 'public', 'construct.js'), '>beat its own copies</th>\n            <th style="padding:.2rem .5rem" title="the once-only look', '>held-back trades x</th>\n            <th style="padding:.2rem .5rem" title="the once-only look',
+    'theRecordedRowNamesItsChoices', 'the ordered column the owner placed between test trades and held-back $ vanishes from the records'],
 ];
 
 const only = process.argv[2] || '';

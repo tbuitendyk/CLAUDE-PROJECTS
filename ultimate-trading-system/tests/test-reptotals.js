@@ -152,6 +152,17 @@ module.exports = {
     assert.strictEqual(q2two.avgHold, 5, '(7 + 3) / 2 — the average divides, it does not sum');
     assert.strictEqual(q2two.avgTrades, 4, '(6 + 2) / 2');
     assert.strictEqual(q2two.avgVsLong, 1.5, '(2 + 1) / 2 — the vs always-long average divides too');
+    // EACH RECORD'S OWN COUNT (owner order, 2026-08-26: "we need BEAT ITS
+    // OWN COPIES as a column ... in the expanded rows"): the real at 7 beat
+    // the copy at 6 that arrived after it; the real at 3 did not — and the
+    // coin's beat is exactly these summed. Order carries the attribution:
+    // a copy pays every real already seen, a real pays every copy pending.
+    const q2rb = two.groups.find((g) => g.label === 'q2').assets['AAAUSDT|||daily-3d'];
+    assert.deepStrictEqual(q2rb.rb, [1, 0], 'per-record beats, in store order');
+    assert.strictEqual(q2rb.rb.reduce((n, b) => n + b, 0), q2rb.beat,
+      'the coin row is the sum of its records — decomposed, never re-counted');
+    const q1rb = two.groups.find((g) => g.label === 'q1').assets['AAAUSDT|||daily-3d'];
+    assert.deepStrictEqual(q1rb.rb, [1], 'the real 10 beat the 5 already pending, then lost to the 15 that came later');
   },
 
   // A v3 save (from before the vs-always-long average) is behind for the
@@ -248,6 +259,12 @@ module.exports = {
       assert.strictEqual(got.rows[0].decision, 'argmax');
       assert.strictEqual(got.rows[0].bandMode, 'auto');
       assert.strictEqual(got.rows[0].weekdaysOnly, false, 'false is a recorded choice, not a missing one');
+      // the record's own share of the coin's head-to-heads travels with it
+      assert.strictEqual(got.rows[0].beatCopies, 1, "this record beat the coin's one copy");
+      assert.strictEqual(got.rows[0].copyPairs, 1, 'and faced exactly the copies the coin has per held record');
+      // a record that recorded no held-back money carries no share
+      const cccShare = replication.coinRows(doc, { label: 'q1', trade: 'CCCUSDT', geometry: 'daily-3d' });
+      assert.strictEqual(cccShare.rows[0].beatCopies, undefined, 'an unmeasured record wears no share');
       // a real row with no held-back money is still a record the reader gets
       const ccc = replication.coinRows(doc, { label: 'q1', trade: 'CCCUSDT', geometry: 'daily-3d' });
       assert.strictEqual(ccc.rows.length, 1);
@@ -533,6 +550,14 @@ module.exports = {
     const page = fs.readFileSync(path.join(__dirname, '..', 'public', 'construct.js'), 'utf8').replace(/\/\/[^\n]*/g, '');
     assert.ok(/>decision<\/th>/.test(page) && />24\/5<\/th>/.test(page),
       'the records table no longer shows the decision and 24/5 columns');
+    // beat its own copies sits BETWEEN test trades and held-back $ (owner
+    // order, 2026-08-26), inside the records table's own head
+    const head = page.slice(page.indexOf('function coinRecordsHtml'), page.indexOf('function coinHeadHtml'));
+    const tt = head.indexOf('>test trades</th>');
+    const bc = head.indexOf('>beat its own copies</th>');
+    const hb = head.indexOf('>held-back $</th>');
+    assert.ok(tt >= 0 && bc >= 0 && hb >= 0 && tt < bc && bc < hb,
+      'the records\' beat its own copies column is missing or out of its ordered place');
     assert.ok(/were recovered from this run's own unit records/.test(page)
       && /are being recovered now/.test(page)
       && /kept\s+no unit records to recover them from/.test(page),
