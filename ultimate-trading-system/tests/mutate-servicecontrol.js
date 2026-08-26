@@ -94,8 +94,16 @@ const GUARDS = [
     'theTotalsAreParsedOnceAndNeverServedStale', 'the cache caches nothing and every ask parses the whole file again'],
   [BATCH, '              decision: l.decision ?? null, bandMode: l.bandMode ?? null,\n              weekdaysOnly: l.weekdaysOnly ?? null, key: l.key ?? null,', '',
     'theRecordedRowNamesItsChoices', 'every new run\'s records go back to being anonymous settings in the very table read to learn which settings carry signal'],
-  [path.join(ROOT, 'public', 'construct.js'), 'recorded before records carried their decision, band and 24/5 choices', 'recorded',
-    'theRecordedRowNamesItsChoices', 'an old run\'s dashes read as data instead of as a gap the record is honest about'],
+  [path.join(ROOT, 'public', 'construct.js'), "were recovered from this run's own unit records", 'are shown',
+    'theRecordedRowNamesItsChoices', 'recovered names wear the face of written ones — the reader cannot weigh what kind of fact they are'],
+  [path.join(ROOT, 'lib', 'choices.js'), '|| cur.labels.has(label)', '',
+    'theOrderNamesWhatNoFieldCan', 'two same-signature units melt into one span and the vote wears the argmax\'s name'],
+  [path.join(ROOT, 'lib', 'choices.js'), 'if (census[j].sig === cur.sig) { hit = j; break; }', 'if (true) { hit = j; break; }',
+    'theOrderNamesWhatNoFieldCan', 'a span claims whatever census record the pointer happens to sit on, fields be damned'],
+  [path.join(ROOT, 'lib', 'choices.js'), 'if (list.length <= 1) continue;', 'if (true) continue;',
+    'duplicateClaimsInOneGroupAreBothStripped', 'a proven misalignment keeps its names and one unit wears another\'s choices'],
+  [path.join(ROOT, 'lib', 'replication.js'), 'const s = choices.namesAt(units, ats[i]);', 'const s = choices.namesAt(units, i);',
+    'theRecordsServeTheRecoveredNamesAndSaySo', 'records are named by their position IN THE ANSWER instead of in the store — every expansion past the first block lies'],
 ];
 
 const only = process.argv[2] || '';

@@ -287,6 +287,10 @@ function eachSquashed(runId, name, file, fn, startBlock = 0) {
 // page. This reads the sidecar ONCE and each named block by its exact byte
 // range, nothing else. Null when the collection is not squashed or has no
 // block index — the caller says so rather than falling back to a walk.
+//
+// Each entry is { at, row }: the row AND its position in the whole
+// collection, because a caller holding a positional index over the rows
+// (the recovered choices, lib/choices.js) has to know which row it fetched.
 function readBlocks(runId, name, indexes) {
   const file = storeFile(runId, name);
   if (!isGz(file)) return null;
@@ -305,8 +309,10 @@ function readBlocks(runId, name, indexes) {
       let text;
       try { text = zlib.gunzipSync(buf).toString('utf8'); } catch (_) { continue; }
       // Each block is a complete little file beginning with its own header,
-      // decoded exactly the way eachSquashed decodes it.
+      // decoded exactly the way eachSquashed decodes it. Positions count
+      // data rows only — headers are shape, not rows.
       let cols = null;
+      let at = b.firstRow;
       for (const line of text.split('\n')) {
         if (!line) continue;
         if (line[0] === '{') {
@@ -318,7 +324,8 @@ function readBlocks(runId, name, indexes) {
         try { arr = JSON.parse(line); } catch (_) { continue; }
         const o = {};
         for (let i = 0; i < cols.length; i++) o[cols[i]] = arr[i];
-        out.push(o);
+        out.push({ at, row: o });
+        at++;
       }
     }
   } finally { try { fs.closeSync(fd); } catch (_) { /* already shut */ } }

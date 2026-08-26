@@ -476,12 +476,56 @@ function coinRows(doc, { label = '', trade = '', ctx1 = '', ctx2 = '', geometry 
     return pack([], { indexed: false, why: 'this run\'s rows are stored in a form the record index does not cover' });
   }
   const out = [];
-  for (const r of got) {
+  const ats = [];
+  for (const e of got) {
+    const r = e.row;
     if (!wanted(r)) continue;
     if (saved.tagged ? r.nullDealSeed != null : out.length >= (a.n || 1)) continue;
     out.push(r);
+    ats.push(e.at);
   }
-  return pack(out, { indexed: true });
+
+  // THE CHOICES ON EVERY RECORD (owner order, 2026-08-26: "you need to
+  // record that information for each row. i'm sure it can be recovered").
+  // Rows written from 2026-08-26 carry them; older rows are named from the
+  // recovered spans (lib/choices.js — the run's own census records, matched
+  // in the order both were written). No sidecar yet means the recovery is
+  // kicked here, in the background, and this answer says so.
+  let namesFrom = null;
+  let recovery = null;
+  if (out.length) {
+    if (out.every((r) => r.decision != null)) {
+      namesFrom = 'rows';
+    } else {
+      const choices = require('./choices');
+      const units = choices.readUnits(doc.id);
+      if (units) {
+        let filled = 0;
+        out.forEach((r, i) => {
+          if (r.decision != null) return;
+          const s = choices.namesAt(units, ats[i]);
+          if (s && (s.d != null || s.b != null || s.w != null)) {
+            r.decision = s.d;
+            r.bandMode = s.b;
+            r.weekdaysOnly = s.w;
+            if (r.key == null && s.k != null) r.key = s.k;
+            filled++;
+          }
+        });
+        if (filled) namesFrom = 'recovered';
+      } else if (rowstore.exists(doc.id, 'census')) {
+        const st = choices.startUnits(doc.id);
+        recovery = {
+          going: !!(st && !st.error),
+          scanned: st ? st.scanned : 0,
+          of: saved.rowsSeen || 0,
+          ...(st && st.error ? { error: `the recovery stopped: ${st.error}` } : {}),
+        };
+      }
+    }
+  }
+  const unnamedRecords = out.filter((r) => r.decision == null).length;
+  return pack(out, { indexed: true, namesFrom, unnamedRecords, ...(recovery ? { recovery } : {}) });
 }
 
 function rank(doc, { detailCap = 0, ...query } = {}) {

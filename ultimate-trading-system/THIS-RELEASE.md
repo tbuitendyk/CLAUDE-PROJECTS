@@ -840,6 +840,23 @@ thirty seconds, under its own independently selectable theme.
    titles and the check's flag now sit on the text baseline beside the
    release and time text, on all three pages.
 
+4. **The existing run's records get their choices back (owner, 2026-08-26:
+   "you need to record that information for each row. i'm sure it can be
+   recovered" — the owner was right, and an earlier answer claiming
+   otherwise had checked only field matching and stated the dead end as an
+   impossibility).** The recovery key is WRITE ORDER: one loop appended a
+   unit's census record and then its replication rows into two append-only
+   files, so both hold the same units in the same order, and lockstep
+   matching names every record — including the fixed-band variants that
+   agree on every recorded field and can only be told apart by position.
+   The names live in a small sidecar of unit spans beside the rows (the
+   rows stay byte-identical); it builds in the background off the answering
+   thread, kicked by the first press of a records button; a span is named
+   only by a census record matching every shared field, skips are bounded,
+   duplicate claims within a coin-and-copy group strip every claimant, and
+   all counts are saved and shown. The records say their names were
+   recovered, not written.
+
 **Parked, with reasons — not dropped:**
 
 1. **The per-configuration row table (detail()).** Opening one configuration's

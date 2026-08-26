@@ -1848,20 +1848,33 @@ async function drawBoards() {
       } else if (!got.rows || !got.rows.length) {
         cell.innerHTML = '<span class="muted">no records came back for this row</span>';
       } else {
-        // THE CHOICES ARE NAMED (owner order, 2026-08-26: "knowing the actual
-        // choices is essential"). Rows recorded from today carry their
-        // decision, band and 24/5 choices; a run recorded before that carries
-        // rows without them, and this says so instead of guessing — settings
-        // conjured onto an old record would poison exactly the reading this
-        // table exists for.
+        // THE CHOICES ARE NAMED, ALWAYS (owner orders, 2026-08-26: "knowing
+        // the actual choices is essential", then "you need to record that
+        // information for each row. i'm sure it can be recovered"). Rows
+        // recorded from today carry them; older rows are named from the
+        // run's own unit records, matched in the order both were written —
+        // the recovery runs in the background the first time records are
+        // asked for, and this box reports it until the names arrive.
         const named = got.rows.some((r) => r.decision != null || r.bandMode != null || r.weekdaysOnly != null);
+        const tail = got.namesFrom === 'rows'
+          ? ', and each record names the choices that made it.'
+          : got.namesFrom === 'recovered'
+            ? `, and each record's decision, band and 24/5 were recovered from this run's own unit records, matched in the
+          order both were written down.${got.unnamedRecords ? ` <b>${got.unnamedRecords} record(s) could not be matched and show — instead.</b>` : ''}`
+            : got.recovery && got.recovery.going
+              ? `. <b>The decision, band and 24/5 of each record are being recovered now</b> from this run's own unit
+          records — ${Number(got.recovery.scanned || 0).toLocaleString()} of ${Number(got.recovery.of || 0).toLocaleString()} rows
+          matched so far. Press the records button again when that finishes.`
+              : got.recovery && got.recovery.error
+                ? `. <b>${esc(got.recovery.error)}</b> — press the records button again to retry.`
+                : named
+                  ? ', and each record names the choices that made it.'
+                  : `. <b>This run's records were written before they carried their decision, band and 24/5 choices, and it kept
+          no unit records to recover them from.</b> The band % below is each record's own; the unnamed boxes show —
+          rather than a guess.`;
         cell.innerHTML = `<p class="note" style="margin:.2rem 0">source: the run's replication rows themselves — the ${got.rows.length} record(s)
           this row averages, read straight from the stored rows. Each is one promoted unit's own scoring of this configuration on this coin,
-          one per combination of the boxes permuted on Sweep that share the coin and chunk shape${named
-    ? ', and each record names the choices that made it.'
-    : `. <b>This run was recorded before records carried their decision, band and 24/5 choices</b> — records write them down
-          from 2026-08-26, so a fresh run names every record. The band % below is each record's own; the unnamed boxes show —
-          rather than a guess.`}</p>
+          one per combination of the boxes permuted on Sweep that share the coin and chunk shape${tail}</p>
         <div class="scrollx"><table style="border-collapse:collapse">
           <thead><tr style="text-align:left;border-bottom:1px solid var(--line)">
             <th style="padding:.2rem .5rem .2rem 0" title="how the committee's votes become a call — the decision box on Sweep, one of the choices permuted across this coin's records">decision</th>

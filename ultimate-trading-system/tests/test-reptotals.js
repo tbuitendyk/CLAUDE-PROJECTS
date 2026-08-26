@@ -171,11 +171,14 @@ module.exports = {
       assert.strictEqual(q2a.t, 6, 'the held-back trades travel with the tally');
       const q1a = totals.groups.find((g) => g.label === 'q1').assets['AAAUSDT|||daily-3d'];
       assert.deepStrictEqual(q1a.b, [0]);
-      // readBlocks itself: the named block's rows, decoded exactly.
+      // readBlocks itself: the named block's rows, decoded exactly, each
+      // with its position in the whole collection — the recovered choices
+      // are a positional index, so a wrong position names the wrong unit.
       const second = rowstore.readBlocks(runId, 'replication', [1]);
       assert.strictEqual(second.length, 2, 'the second block holds the two q2 rows');
-      assert.strictEqual(second[0].holdout.pnl, 7, 'rows decode with their nulls and nesting intact');
-      assert.strictEqual(second[0].nullDealSeed, null, 'a written null reads back as null, not as missing');
+      assert.deepStrictEqual(second.map((e) => e.at), [6, 7], 'positions continue across blocks, headers not counted');
+      assert.strictEqual(second[0].row.holdout.pnl, 7, 'rows decode with their nulls and nesting intact');
+      assert.strictEqual(second[0].row.nullDealSeed, null, 'a written null reads back as null, not as missing');
       // coinRows reads ONLY the blocks the save names, through ONE readBlocks
       // call — never page() or each(), whose per-call sidecar parse is what
       // cost three seconds for sixteen records on the box.
@@ -447,8 +450,10 @@ module.exports = {
     const page = fs.readFileSync(path.join(__dirname, '..', 'public', 'construct.js'), 'utf8').replace(/\/\/[^\n]*/g, '');
     assert.ok(/>decision<\/th>/.test(page) && />24\/5<\/th>/.test(page),
       'the records table no longer shows the decision and 24/5 columns');
-    assert.ok(/recorded before records carried their decision, band and 24\/5 choices/.test(page),
-      'an older run\'s anonymous records are no longer said out loud — a dash with no reason reads as data');
+    assert.ok(/were recovered from this run's own unit records/.test(page)
+      && /are being recovered now/.test(page)
+      && /kept\s+no unit records to recover them from/.test(page),
+      'the records\' naming states are no longer said out loud — recovered, recovering, or honestly unrecoverable');
   },
 
   // The full pass belongs OFF the thread that answers pages: the worker file
