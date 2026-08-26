@@ -997,7 +997,7 @@ async function drawSweep() {
         <label class="c" id="swPermDecArmWrap" title="score EVERY arm distance as its own declared config"><input type="checkbox" id="swPermDecArm"> permute</label>
       </div>
       <div id="swGrpAgree" style="display:flex;align-items:flex-end;gap:.45rem">
-        <label class="f" id="swDecQ6Wrap" title="How many of a SINGLE coin's 6 members must agree. A single-coin committee is 3 data views (everything / prices only / volume only) × 2 model types.">agree
+        <label class="f" id="swDecQ6Wrap" title="How many of a SINGLE coin's 6 members must agree. The 6 are 3 views (full / prices / volume) × 2 models (logreg and boost — the view and model columns the inspect button on Boards shows).">agree
         <select id="swDecQ6">${vocabOptions('quorumOf6', '2')}</select></label>
         <label class="f" id="swDecQ8Wrap" title="How many of a CONTEXT combo's 8 members must agree. Adding one or two context coins adds a fourth data view — how this coin moves against them — so those committees hold 8 members.">with contexts
         <select id="swDecQ8">${vocabOptions('quorumOf8', '3')}</select></label>

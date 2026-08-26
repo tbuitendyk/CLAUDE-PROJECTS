@@ -291,10 +291,29 @@ function optionWords(body) {
   return out;
 }
 
+// VALUES THE SCREEN SHOWS AS DATA (owner order, 2026-08-26). The panel the
+// inspect button opens lists every member's view and model — values out of
+// the engine, printed in table cells, which the label reader above cannot
+// see. Twice now this blindness was repeated to the owner as fact ("slim",
+// then "logreg"/"boost" declared to be on no screen while sitting in a
+// column in front of them). So wherever a screen's own code prints these
+// spec values, the value sets are read from the engine — the same way the
+// dropdown choices already are.
+function dataValueWords(body) {
+  if (!/m\.spec\s*&&\s*m\.spec\.(view|model)/.test(body)) return [];
+  const bw = require(path.join(ROOT, 'lib', 'bracketwork'));
+  const out = new Set();
+  for (const v of bw.slimViewsFor(1)) out.add(v);
+  for (const v of bw.slimViewsFor(2)) out.add(v);
+  for (const spec of bw.specsFor(1, 'promoted')) out.add(spec.model);
+  return [...out];
+}
+
 function collect(fnName = 'drawSweep') {
   const body = drawBody(fnName);
   const said = phrases(htmlTemplates(body).map(readableText).join('\n'));
   const opts = optionWords(body);
+  const dataValues = dataValueWords(body);
 
   // Split into what a control is CALLED and what the page SAYS. The first is
   // the vocabulary that matters most: those are the things the owner clicks.
@@ -305,7 +324,7 @@ function collect(fnName = 'drawSweep') {
   }
 
   const words = new Set();
-  for (const p of [...said, ...opts]) {
+  for (const p of [...said, ...opts, ...dataValues]) {
     for (const w of p.split(/[^A-Za-z0-9%/.\-]+/)) {
       if (w && /[A-Za-z]/.test(w) && w.length > 1) words.add(w);
     }
@@ -313,6 +332,7 @@ function collect(fnName = 'drawSweep') {
   return {
     controls: [...new Set(controls)].sort((a, b) => a.localeCompare(b)),
     options: [...new Set(opts)].sort((a, b) => a.localeCompare(b)),
+    dataValues: [...new Set(dataValues)].sort((a, b) => a.localeCompare(b)),
     prose: [...new Set(prose)],
     words: [...words].sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase())),
   };
@@ -382,6 +402,10 @@ if (require.main === module) {
       out.push(...(g.controls.length ? g.controls.map((c) => '- `' + c + '`') : ['_none_']));
       out.push('', `## What the dropdowns offer (${g.options.length})`, '');
       out.push(...(g.options.length ? g.options.map((o) => '- `' + o + '`') : ['_none_']));
+      if ((g.dataValues || []).length) {
+        out.push('', `## Values the screen shows as data (${g.dataValues.length})`, '');
+        out.push(...g.dataValues.map((o) => '- `' + o + '`'));
+      }
       out.push('', `## Sentences the page prints (${g.prose.length})`, '');
       out.push(...(g.prose.length ? g.prose.map((x) => '- ' + x) : ['_none_']));
       out.push('', `## Every word, flat (${g.words.length})`, '', '```', g.words.join(' '), '```', '');

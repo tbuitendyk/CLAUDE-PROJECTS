@@ -210,7 +210,7 @@ window.HELP = {
       swPermDecArm: { what: 'Score every starting point as its own fixed set of settings.' },
       swDecQ6: {
         what: 'How many of the 6 must say the same thing before a trade is taken, for an asset judged on its own.',
-        more: 'Several separate forecasts are made for each asset and they vote. What makes up the 6 has no name on this screen; only this fraction is shown.',
+        more: 'The 6 are 3 views (full / prices / volume) × 2 models (logreg and boost). Those names are on the Boards screen: press a Survivor board row\'s inspect button and its view and model columns list them, one line per member.',
       },
       swDecQ8: { what: 'The same, for an asset judged alongside others — there are 8 to agree rather than 6.' },
       swPermDecAgree: {

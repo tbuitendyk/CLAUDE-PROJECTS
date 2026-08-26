@@ -154,7 +154,7 @@ module.exports = {
     const known = new Set();
     for (const t of tabs()) {
       const g = collect(t.fn);
-      for (const x of [...g.controls, ...g.options]) known.add(x);
+      for (const x of [...g.controls, ...g.options, ...(g.dataValues || [])]) known.add(x);
     }
     const listed = [...md.matchAll(/^- `(.+)`$/gm)].map((m) => m[1]);
     const extra = listed.filter((x) => !known.has(x));
@@ -181,12 +181,19 @@ module.exports = {
   // A word can be legal on one screen and forbidden on another. The list is the
   // authority; this records where each of these stands.
   async theInternalNamesThatBurnedUsAreOnlyWhereTheScreenPutsThem() {
-    const NOWHERE = ['logreg', 'boost', 'combo'];
+    // Third correction, 2026-08-26: 'logreg' and 'boost' are on BOARDS — the
+    // model column of the panel the inspect button opens shows them for every
+    // member. They sat there as data values, which the collector could not
+    // see, so this test agreed they were nowhere and the owner was told so as
+    // fact — the slim blindness repeated word for word. The collector now
+    // reads the values a screen prints as data from the engine, the same way
+    // it reads the dropdown choices.
+    const NOWHERE = ['combo'];
     // 'slim' and 'promote' became SWEEP words on 2026-08-22, when the owner
     // asked for the two passes to be drawn as two boxes and named. That is the
     // honest resolution of the whole tangle about those words: they are on the
     // screen now, so they can be used about that screen.
-    const ONLY_ON = { slim: ['Boards', 'Sweep'] };
+    const ONLY_ON = { slim: ['Boards', 'Sweep'], logreg: ['Boards'], boost: ['Boards'] };
     const where = {};
     for (const t of tabs()) {
       for (const w of collect(t.fn).words) {

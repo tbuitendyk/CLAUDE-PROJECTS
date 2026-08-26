@@ -37,7 +37,11 @@ function allowedWords() {
 
 // The four that appear on NO screen. An explanation containing one of these is
 // the original fault wearing a help page.
-const NEVER = ['logreg', 'boost', 'combo', 'slim'];
+// 'logreg' and 'boost' left this list on 2026-08-26 (owner order): they ARE
+// on a screen — the model column of the panel the inspect button opens — and
+// the agree help now names them there on purpose. Declaring them unusable
+// here while the owner can read them in a column was the slim fault again.
+const NEVER = ['combo', 'slim'];
 
 module.exports = {
   // Nothing left out, ever.
