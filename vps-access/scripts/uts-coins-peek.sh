@@ -5,8 +5,24 @@
 # unrelated page during the ask. Changes nothing else.
 set -uo pipefail
 B=http://127.0.0.1:8094
-ID=$(curl -sf --max-time 20 "$B/api/batches" | python3 -c 'import json,sys;print((json.load(sys.stdin).get("batches") or [{}])[0].get("id",""))')
+# The run with the MOST replication rows, not the newest — the newest can be
+# a tiny calibration run with none at all (caught 2026-08-26: the planted
+# gate run sat newest and this peek read "FRESH: 0 coin rows" off it).
+ID=$(curl -sf --max-time 20 "$B/api/batches" | python3 -c '
+import json, sys, urllib.request
+ids = [b.get("id") for b in (json.load(sys.stdin).get("batches") or []) if b.get("id")]
+best, most = "", -1
+for i in ids[:10]:
+    try:
+        d = json.load(urllib.request.urlopen(f"http://127.0.0.1:8094/api/batch/{i}", timeout=15))
+        doc = d.get("batch") or d
+        n = ((doc.get("rowCounts") or {}).get("replication")) or 0
+    except Exception:
+        n = 0
+    if n > most: best, most = i, n
+print(best)')
 [ -n "$ID" ] || { echo "no run"; exit 1; }
+echo "run: $ID"
 T0=$(date +%s%N)
 curl -sf --max-time 30 "$B/api/batch/$ID/replication-coins?sort=share&minPairs=100&offset=0&limit=5" -o /tmp/uts-cn.json \
   || { echo "the every-coin endpoint did not answer"; exit 1; }
