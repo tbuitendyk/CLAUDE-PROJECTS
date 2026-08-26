@@ -18,7 +18,7 @@ is the same fault wearing a disguise.
 
 ## Which screen this describes
 
-Generated from **a1b162d70a77 — what the box is serving**, not from the working tree.
+Generated from **e07e116cc450 — what the box is serving**, not from the working tree.
 
 That distinction is the whole point. Between a commit and its deploy the
 two describe different screens, and on 2026-08-22 exactly that happened: a
@@ -39,7 +39,9 @@ deployed, and that is correct** - until then the owner cannot see it.
 
 - **Data**
 - **Sweep**
+- **Sweep2**
 - **Boards**
+- **Boards2**
 - **Verify**
 - **History**
 - **Tune**
@@ -260,6 +262,180 @@ again. and asset. back be been below board cache cached comma-sep corrupt curren
 
 ```
 1-day 1-in- 113h 137h 161h 17h 2-day 3-day 4-day 41h 65h 8-day 89h about above active adds against agree alike all also always and any are argmax arm asset asset. ASSETS at attaches auto band be beating Beating been belonging below. best between blank Board board board. boards Boards Both box boxes. branch breakout but by bytes Campaign campaign campaigns cannot carry ceiling chain chunk claim contexts copies copy cost cpus Currently Daily data decision decoded default Delete deleted. Deleting deployed. description did directional disk does doubles each end entry ETA Every every everything evidence exam existing exists expect fee figure files FIND finish first for forever free from gate greenlight greenlights grow happens has heading hold holds how however ignores in instead into is it it. its job jobs keeps larger last launched layout legacy list loaded locked luck managed many market MB memory min minted models moving name never new No no not nothing now null of on once ONE one only Open or out own pairs parent pass pass. passes per permanently permute Phase prices promote Promote queue Rate real record refused remove Removed replication result Retire rides rounds row rows run RUN Running running. runs saved scans. score scored sealed search searched second section see sends set Set setting settings settings. setup setups. shape shapes singles slim so start Start static still Stop stops sweep sweeps tab that the The them them. then there thing this This those through time to top Trade trades trail trainings Trainings travels tree triples try tuning two undone. unit units Units universe View way Weekly What what while whole why wide will window with With work worked worker. workers working would yet you zero
+```
+
+---
+
+# Sweep2
+
+## What the controls are called (84)
+
+- `— one, or a declared block`
+- `— the data and the units`
+- `: stage 1 already holds them,`
+- `(full / prices / volume) — and`
+- `113h`
+- `137h`
+- `161h`
+- `17h`
+- `2,772 settings`
+- `3,000 trainings`
+- `41h`
+- `61/13/13/13 (sealed exam)`
+- `65h`
+- `77,112 trainings`
+- `89h`
+- `a stage 1 record set`
+- `a stage 2 record set`
+- `a stage 3 record set`
+- `active`
+- `agree`
+- `all loaded data`
+- `always`
+- `argmax`
+- `arm`
+- `band % (or auto)`
+- `beat its own copies %`
+- `breakout`
+- `carry forward`
+- `chunk shape`
+- `copies per setting`
+- `copies per unit`
+- `d`
+- `Daily 1-day`
+- `Daily 2-day`
+- `Daily 3-day`
+- `Daily 4-day`
+- `decision`
+- `declared:`
+- `description`
+- `directional`
+- `doubles`
+- `end`
+- `entry`
+- `fee % each way`
+- `from stage 1 record set`
+- `from stage 2 record set`
+- `gate`
+- `gets its 3 boost members trained —`
+- `is one combination of the boxes —`
+- `Kept votes are what`
+- `legacy 80/20 (never evidence)`
+- `market`
+- `name like`
+- `no trainings at all`
+- `One`
+- `order by`
+- `permute`
+- `S1 #7`
+- `S2 #2 — all 4,896 of S1 #6`
+- `setting`
+- `singles`
+- `start`
+- `start stage 1`
+- `start stage 2`
+- `start stage 3`
+- `static`
+- `t`
+- `test $`
+- `test trades`
+- `that names its parent — S2 #3, out`
+- `The idea in one line:`
+- `The ordering setting`
+- `The rails every stage runs on`
+- `The settings to price`
+- `trail`
+- `triples`
+- `unit`
+- `vs always-long $`
+- `Weekly 8-day`
+- `What carries forward`
+- `What to score`
+- `window layout`
+- `with contexts`
+- `Writes:`
+
+## What the dropdowns offer (0)
+
+_none_
+
+## Sentences the page prints (70)
+
+- Sweep2 — a drawing of the three-stage design
+- Nothing on this page works.
+- Every control is switched off, and the page reads and writes
+- nothing. It is a full-size drawing of a proposed redesign, here so you can look at it, point at anything, and
+- change it before any of it is built. Every number on it is a worked example, not a measurement.
+- train once, keep every vote, and make everything after that arithmetic.
+- Stage 1 scores every unit once, cheaply, and keeps every vote its members cast. Stage 2 trains the fuller boards,
+- but only on the rows you carry forward, and reuses the stage 1 members instead of training them again. Stage 3
+- prices any settings you like straight from the kept votes — no training at all, minutes not days. Each stage
+- writes a record set the next stage reads, and every record set names the one it came from.
+- One word used everywhere on these two pages: a
+- decision, band % (or auto), 24/5, entry, gate, d, t, trail, arm and agree. Today's screens say configuration in
+- some places and cell in others; this drawing proposes one word for it, on every screen alike.
+- Stage 1 — score everything once, cheaply, and keep the votes
+- is one coin judged on its own, or judged alongside the one or two other coins it is
+- read against, under one chunk shape. Every unit gets its 3 slim members trained — logreg on each of the 3 views
+- every vote each member casts is kept with the record.
+- make stage 2 cheaper and stage 3 free.
+- universe (blank = all 17 default pairs)
+- — one setting, named before anything is read, used only to put the units in order
+- Stage 1's job is to rank, not to measure. The rank has to be taken
+- under some setting, so exactly one is named here. There are no permute ticks in this box on purpose: an
+- ordering shopped across many settings is the fault the rest of the design exists to avoid. Blocks of settings
+- are stage 3's job, where they cost arithmetic instead of training.
+- companions dealt from the kept votes, after training — so 19 copies cost no training at all.
+- The share of its copies each unit beats becomes an ordering stage 2 can carry forward by. Copies at this stage
+- exist to steer the pick; a copy nothing picks by is wasted work, so here they are never wasted and never trained.
+- What this stage costs, and what it writes
+- — a worked example, not a measurement
+- The run open on Boards today holds 25,704 units. Here that is 25,704 × 3 =
+- votes kept for every one, copies free. Today's page trains that same run 231,336 times — 9 per unit — and keeps
+- no votes, so every later question starts the training again.
+- — one record per unit, carrying its
+- scores under the ordering setting, its share against its own copies, and the kept votes. The record set gets a
+- and appears on Boards2 with everything that was ever built from it.
+- description — why this stage 1 exists (rides on the record set forever)
+- Stage 2 — the fuller boards, only on the rows you carry forward
+- Reads a stage 1 record set. You choose the order and how many rows carry forward. Each carried unit
+- the 3 logreg members are not trained again
+- votes and all. After this a single coin's unit holds 6 members' kept votes, and a unit judged alongside contexts
+- holds 8.
+- S1 #7 — 2026-08-24 — 25,704 units, votes kept
+- S1 #6 — 2026-08-19 — 4,896 units, votes kept
+- rows, best first under order by — 0 carries all of them
+- The order is taken on the test window only. The held-back window is never
+- read to choose what carries forward — reading it here would spend the one honest look it holds.
+- dealt from the kept votes of all 6 members (8 with contexts), after training — still no extra training
+- carry forward 1,000 of S1 #7's 25,704 → 1,000 × 3 new trainings =
+- Nothing is trained twice; nothing that was not carried costs anything.
+- of S1 #7 by test $ — one record per carried unit, all votes kept. It appears on Boards2 with its whole chain.
+- Stage 3 — price any settings from the kept votes, with no training
+- Reads a stage 2 record set. Everything below is arithmetic on the kept votes: name one setting, or
+- tick permute and declare a block, and every declared setting is priced on every carried unit — test window and
+- held-back window both — in minutes. Ask a different block tomorrow and it is still minutes, because the votes are
+- already on disk. Nothing here ever trains anything.
+- S2 #3 — top 1,000 of S1 #7 by test $
+- — the count follows the ticks, worked out before anything runs (worked example)
+- the same deals are used for every setting in the block, so any two settings' shares are always comparable
+- 2,772 settings × 1,000 units × 20 readings each (the real one and 19 copies) = arithmetic only,
+- . The pricing that today rides on a multi-day run re-asks in minutes.
+- — S3 #12, out of S2 #3 — one record
+- per setting per coin. The tables Boards2 shows are read from these.
+- A stage refuses a parent built on different price data: every record set carries the fingerprint of
+- the price files it was built from, and a mismatch refuses rather than mixes.
+- The held-back window is priced only under settings fully named before it is read, and every record
+- says which record set first read it.
+- Re-running stage 3 on the same parent gives the same numbers, because nothing is retrained. A record
+- set is a record, not a rerun.
+- Deleting a record set that another set names as its parent is refused by name — the same way runs a
+- greenlight leans on are protected today.
+
+## Every word, flat (379)
+
+```
+1-day 113h 137h 161h 17h 2-day 3-day 4-day 41h 65h 8-day 89h across active after After again again. against agree agree. alike. all all. alongside already always always-long an and another any anything anything. appears are argmax arithmetic arithmetic. arm as Ask at auto avoid. band be beat beats because becomes before below best blank block Blocks boards Boards Boards2 boost both box boxes breakout built built. but by by. came can carried carries carry carrying cast. casts cell chain. change cheaper cheaply choose chunk coin coin. coins combination companions comparable configuration contexts control copies Copies copy cost costs count Daily data days. deals dealt decision declare declared default Deleting description design different directional disk. doubles drawing Each each end entry ever Every every everything Everything everywhere evidence exactly exam example exist exists extra fault fee files fingerprint first follows for forever forward forward. free. from from. full full-size fuller fully gate gets gives greenlight has held-back here Here here. holds holds. honest how idea in instead is It it it. its job judged keep keeps kept Kept kept. later layout leans legacy like line loaded logreg look make many market measure. measurement measurement. member members minutes minutes. mismatch mixes. multi-day name named names never new next no not Nothing nothing nothing. number numbers of off on once one One only only. open or order ordering other others out own page pages pairs parent per permute pick picks places point price priced prices pricing proposed proposes protected purpose put question rails rank rather re-asks Re-running read reading readings reads Reads real record record. redesign refused refuses rerun. rest retrained. reuses rides rows run runs S1 S2 S3 same say says score scores screen screens sealed set set. setting settings shape shape. share shares shopped shows single singles slim so some spend Stage stage start starts static steer still straight Sweep2 switched tables taken test than that the The them There these these. they this three-stage tick ticks times to Today today today. tomorrow top trades trail train trained trained. training training. trainings trains triples twice two under unit units units. universe used views volume vote votes votes. vs was wasted way Weekly what What where which whole why window with word work worked works. would writes Writes you You
 ```
 
 ---
@@ -515,6 +691,152 @@ _none_
 
 ```
 about above accuracy Accuracy ACCURACY across-asset actually admits admits. again against agreement agreement/entry/hold ahead alike alike. all alone already always-long an and another answering any anything apart Apply are as asks Asset asset asset. assets at authoritative AVERAGES averages avg away back back. background badge band be beat beat. been before behind being below below. best better board board. boost both box boxes branch button by campaign can cannot capped carried cell cell. changes check checked choices chosen CHOSEN chunk claim clear Click coin coin. coins collapse column Columns combination combos committee comparable comparison comparisons COMPLETE computed config configs configuration configurations construction construction. CONTEXT context copies copy copy. cost could count Counts counts cover cross crypto data Data dealt dealt-vote decision declared declared-cell Delete deleted deleted. Deleting denominator detail did display distrust divided do dollar dollars down. drives dump each Each earning echoed edge edge. either else empty end engine entries es every Every everything Everything evidence exactly excluded. execution exists fail FAILED failed failures falls far far. feeds fifteen files fingerprint finish finished finishes finishes. first First first-pass first-recorded FIXED flattering flatters floor. for forecasts. form fresh from from. full geometry get go goes gone good got got. graded Greenlight Greenlight. grid grow guess. has held HELD-BACK held-back here higher History honest how If in INCOMPLETE. independent indistinguishable INFERRED Inside inspect instead. intended. into invisible is IS it It it. its itself judge judged keeps kept KEPT. KEY knife last layout least length line list list. little lives load loading logreg look looks looks. made make many marked marking marks match-ups matched matters may means measured measured. members menu Menu MICROSCOPE missing moment money Money money. move moved much named narrowed near-duplicates needle neighbouring Neighbours neighbours never next no none. not notes nothing now null nulls number of of. off older on once once-only one ONE one. ones only ONLY open Open open. opened opens opinions or order ordering other otherwise. out over own p-value page pairwise panel participation pass per per-member permanently permutation permutations permuted pick picked Picking planted plateau Plateau plus POINTS predictability press Press pressed prev price prices profit-and-loss promote promoted proved purpose. QC-142 QC-7 queued quoted ranked Ranked ranking rather read reading real real-versus-null record recorded records recover recovered redraws. refresh region register Reload remove removes replication Replication reporting rest result result. Resume retry retry. row rows rows. run run. running runs runs. same sample. save saved say saying says scans score scored scoring SCREEN sealed search SEARCHED second seconds seconds. section section. see SELECT selected selection sentences served service set setting settings setup setups shape share show showed showing shown shows side similar sit sits Size slice slim small smaller so so. sort sortable source STAMP started. starts. statistics stay step still stops stored straight sturdy sturdy. sum survived Survivor sweep Sweep table taken tally. tell test TEST-WINDOW than that That the The their them them. themselves themselves. then These these They they This this THIS those time to together together. Tool tools top top. total totalled Totalled totalling totals touched traded trades Tune unavailable undone. unit units units. unnamed until up verbatim verdict Verify version view volume vote votes votes. vs waits watch way were what What when where whether which while while. whole why widest width will window with without won. works worst written yardstick yet yet. you Your your
+```
+
+---
+
+# Boards2
+
+## What the controls are called (90)
+
+- `… 14 more records …`
+- `… 2,769 more settings …`
+- `… 235,618 more coin rows …`
+- `… 996 more rows …`
+- `… 997 more rows …`
+- `▾ records`
+- `41h`
+- `6 — 3 logreg + 3 boost`
+- `65h`
+- `89h`
+- `active`
+- `ADAUSDT`
+- `agree`
+- `alongside`
+- `Apply`
+- `argmax`
+- `arm`
+- `at least this many comparisons`
+- `auto`
+- `AVAXUSDT`
+- `avg held-back`
+- `avg held-back $`
+- `avg held-back at least, $`
+- `avg held-back trades`
+- `avg test $`
+- `avg trades`
+- `avg trades at least`
+- `avg vs always-long`
+- `avg vs always-long $`
+- `avg vs always-long at least, $`
+- `band`
+- `band %`
+- `BCHUSDT`
+- `beat its own copies`
+- `beat its own copies at least, %`
+- `breakout`
+- `BTCUSDT`
+- `carried`
+- `chunk shape`
+- `coin`
+- `coins`
+- `comparisons`
+- `d`
+- `Daily 1-day`
+- `Daily 2-day`
+- `Daily 3-day`
+- `Daily 4-day`
+- `decision`
+- `directional`
+- `DOGEUSDT`
+- `entry`
+- `ETHUSDT`
+- `Every coin of every setting`
+- `fuller board helped?`
+- `gate`
+- `held-back $`
+- `held-back stops`
+- `held-back trades`
+- `LTCUSDT`
+- `market`
+- `members`
+- `no`
+- `no — the first one out`
+- `open`
+- `order`
+- `q2/6 breakout t89h`
+- `record set`
+- `records`
+- `rows`
+- `S1 #7`
+- `S2 #3`
+- `S3 #12`
+- `setting`
+- `Settings, ranked`
+- `SOLUSDT`
+- `sort by`
+- `static`
+- `t`
+- `test $`
+- `test $ at stage 1`
+- `test $ in full`
+- `test trades`
+- `The record chain`
+- `trail`
+- `vs always-long`
+- `vs always-long $`
+- `Weekly 8-day`
+- `XRPUSDT`
+- `yes`
+- `yes — the last one in`
+
+## What the dropdowns offer (0)
+
+_none_
+
+## Sentences the page prints (36)
+
+- Boards2 — a drawing of how the three stages read back
+- Nothing on this page works.
+- Every control is switched off, and the page reads and writes
+- nothing. It is the reading half of the drawing on Sweep2. Every row below is a worked example, not a measurement.
+- One reading table per stage, and the chain between them always on screen. Nothing mixes two stages
+- in one table: every number says which stage wrote it and which record set it belongs to.
+- S3 #12 — 2,772 settings priced on S2 #3 — 2026-08-26
+- S2 #3 — top 1,000 of S1 #7 by test $ — 2026-08-25
+- S1 #7 — 25,704 units, votes kept — 2026-08-24
+- S1 #6 — 4,896 units, votes kept — 2026-08-19
+- (25,704 units · 77,112 trainings · votes kept)
+- (carried 1,000 by test $ · 3,000 new trainings)
+- (2,772 settings · no training) · price files fingerprint-checked the whole way
+- Stage 1 — every unit, scored once (S1 #7)
+- One row per unit, under the ordering setting stage 1 was launched with. This is the ranking stage 2
+- carried forward from — the carried column shows exactly where the cut fell.
+- ordered by test $ — the order by choice made when stage 2 was launched. The held-back window is not
+- on this table because stage 1 never reads it.
+- Stage 2 — the carried rows, in full (S2 #3, out of S1 #7)
+- The same units, now with all their members. The stage 1 column sits beside the full column so the
+- fuller board's effect is visible instead of remembered.
+- 8 — 4 logreg + 4 boost (contexts add the cross view)
+- Still no held-back column: a stage 2 record holds members and votes, and pricing belongs to stage 3 —
+- where the setting being priced is named first.
+- Stage 3 — settings priced from the kept votes (S3 #12, out of S2 #3)
+- Two tables, the same two ways of reading the pricing that Boards offers today: the settings ranked
+- against each other, and every coin of every setting with its own records underneath.
+- — one row per declared setting, averaged over its coins
+- — one row per coin, its records opening below it
+- the 16 records this row averages — each is one carried unit's own pricing
+- of this setting on this coin. Every record also names the stage 2 record it was priced from.
+- Where today's screens go, if this design goes ahead
+- Sweep's two passes become stage 1 and stage 2, and its replication box becomes stage 3. The Survivor
+- board's job — ranking what was tried — is the stage 1 table. The replication tables Boards shows today are the
+- stage 3 tables. Nothing the current screens report is lost; every table gains the line saying which record set it
+- came from, and the whole pricing layer stops costing training.
+
+## Every word, flat (255)
+
+```
+1-day 2-day 3-day 4-day 41h 65h 8-day 89h active ADAUSDT add against agree ahead all alongside also always always-long and Apply are argmax arm at auto AVAXUSDT averaged averages avg back band BCHUSDT beat because become becomes being belongs below beside between board Boards Boards2 boost box breakout BTCUSDT by came carried chain choice chunk coin coin. coins column comparisons contexts control copies costing cross current cut Daily decision declared design directional DOGEUSDT drawing each effect entry ETHUSDT Every every exactly example fell. files fingerprint-checked first first. forward from from. full fuller gains gate go goes half held-back helped holds how if in instead is It it it. its job kept last launched launched. layer least line logreg lost LTCUSDT made many market measurement. members members. mixes more named names never new no not Nothing nothing. now number of off offers on once One one open opening order ordered ordering other out over own page passes per price priced pricing q2/6 ranked ranking read reading reads record records remembered. replication report row rows S1 S2 S3 same saying says scored screen. screens set setting settings Settings shape shows sits so SOLUSDT sort stage Stage stages static Still stops Survivor Sweep Sweep2. switched t89h table table. tables tables. test that the The their them this This three to to. today top trades trail training training. trainings tried two Two under underneath. unit units view visible votes vs was way ways Weekly what when where Where which whole window with with. worked works. writes wrote XRPUSDT yes
 ```
 
 ---

@@ -193,7 +193,15 @@ module.exports = {
     // asked for the two passes to be drawn as two boxes and named. That is the
     // honest resolution of the whole tangle about those words: they are on the
     // screen now, so they can be used about that screen.
-    const ONLY_ON = { slim: ['Boards', 'Sweep'], logreg: ['Boards'], boost: ['Boards'] };
+    //
+    // 2026-08-26: the Sweep2 and Boards2 drawings of the three-stage design
+    // name things on purpose that the working screens kept dark — stage 1 is
+    // the slim scoring and trains logreg, stage 2 adds boost, and the Boards2
+    // members column spells both out — because the owner asked, of the old
+    // page, why the model in use was not being named. Placements below were
+    // read back out of the generator, not typed from memory.
+    const ONLY_ON = { slim: ['Boards', 'Sweep', 'Sweep2'],
+      logreg: ['Boards', 'Boards2', 'Sweep2'], boost: ['Boards', 'Boards2', 'Sweep2'] };
     const where = {};
     for (const t of tabs()) {
       for (const w of collect(t.fn).words) {
