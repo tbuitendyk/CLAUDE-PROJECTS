@@ -158,6 +158,16 @@ function markInterrupted(doc) {
     const file = path.join(BATCH_DIR, f);
     try {
       const doc = JSON.parse(fs.readFileSync(file, 'utf8'));
+      // A planted-check verdict kept by an older reader is retaken at boot,
+      // while the rows still exist (2026-08-26, owner order "fix all"). The
+      // reader that could not see rows in the store wrote "UNREADABLE" — a
+      // FAIL — off a healthy gate run, and nothing else would have touched
+      // that record until the run's next save or its deletion. recordGate
+      // itself decides: current-reader records and deleted-run records are
+      // one string comparison and no work at all.
+      if (doc.params && doc.params.plantedGate && doc.status !== 'running') {
+        try { require('./planted').recordGate(hydrate(doc)); } catch (_) { /* the strip re-reads live runs anyway */ }
+      }
       if (doc.status !== 'running') continue;
       {
         const tmp = `${file}.tmp${process.pid}-boot`;

@@ -79,6 +79,14 @@ const GUARDS = [
     'theRecordsBehindACoinRowComeFromOnlyItsBlocks', 'no save ever carries the record index, so the records button answers nothing forever'],
   [path.join(ROOT, 'lib', 'replication.js'), '      delete a.at;', '',
     'theRecordsBehindACoinRowComeFromOnlyItsBlocks', 'millions of row positions ride along in a file that is read back on every open'],
+  [path.join(ROOT, 'lib', 'planted.js'), "  if ((!doc.edgeCensus || !doc.edgeCensus.length) && rowstore.exists(doc.id, 'census')) {", 'if (false) {',
+    'theVerdictReadsRowsTheDocumentOnlyCounts', 'every gate run since the rows moved to disk reads UNREADABLE and the planted check fails healthy engines forever'],
+  [path.join(ROOT, 'lib', 'planted.js'), '  if (prev && prev.readerV === GATE_READER_V\n    && prev.status === doc.status', '  if (prev && prev.status === doc.status',
+    'aKeptVerdictFromTheOldReaderIsRetakenWhileTheRowsExist', 'the wrong FAIL kept by the blind reader is trusted until the run is deleted'],
+  [path.join(ROOT, 'lib', 'planted.js'), '  if (prev && prev.runDeleted) return prev;', '',
+    'aDeletedRunsVerdictIsNeverRetaken', 'a deleted run\'s kept PASS is retaken with no rows and manufactured into the very UNREADABLE the record exists to outlive'],
+  [path.join(ROOT, 'lib', 'batch.js'), "        try { require('./planted').recordGate(hydrate(doc)); } catch (_) { /* the strip re-reads live runs anyway */ }", '',
+    'theBootSweepRetakesStaleGateRecords', 'a wrong kept verdict lies in wait until somebody edits notes or deletes the run'],
 ];
 
 const only = process.argv[2] || '';

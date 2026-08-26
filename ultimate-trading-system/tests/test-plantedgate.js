@@ -259,6 +259,107 @@ module.exports = {
     }
   },
 
+  // THE VERDICT READS ROWS THE DOCUMENT ONLY COUNTS (owner order, 2026-08-26:
+  // "fix all"). Since the rows moved to disk, a finished run's document
+  // carries counts, not rows — and the two readers that took documents at
+  // face value (the completion-time record, the strip's re-read of runs on
+  // disk) called a healthy gate UNREADABLE, which counts as FAIL. The owner's
+  // gate of 2026-08-25 failed exactly this way: +$293.92 real, every copy
+  // negative, verdict "no real (unscrambled) money rows".
+  async theVerdictReadsRowsTheDocumentOnlyCounts() {
+    const doc = gateDoc(`bracketlab-20990401-${process.pid}-planted-gate`, '9.9.4', [1, 2, 3, 4]);
+    const rows = doc.edgeCensus;
+    delete doc.edgeCensus;                       // the document counts, the store holds
+    const runs = fs.mkdtempSync(path.join(os.tmpdir(), 'planted-runs-'));
+    const recs = fs.mkdtempSync(path.join(os.tmpdir(), 'planted-recs-'));
+    try {
+      const w = rowstore.writer(doc.id, 'census');
+      for (const r of rows) w.push(r);
+      w.close();
+      // the reader a bare document reaches — recordGate at completion
+      const v = planted.gateVerdict(doc);
+      assert.ok(!v.sentences.some((x) => /UNREADABLE/.test(x)),
+        `a healthy gate whose rows live in the store read as unreadable: ${v.sentences.join(' | ')}`);
+      assert.strictEqual(v.pass, true, 'and it is the pass the rows plainly are');
+      // the reader the strip reaches — a raw file parse of the run on disk
+      fs.writeFileSync(path.join(runs, `${doc.id}.json`), JSON.stringify(doc));
+      const strip = planted.gateStatus('9.9.4', runs, recs);
+      assert.strictEqual(strip.state, 'PASS',
+        `the strip re-read the run from disk and said ${strip.state}: ${strip.detail}`);
+    } finally {
+      rowstore.remove(doc.id);
+      fs.rmSync(runs, { recursive: true, force: true });
+      fs.rmSync(recs, { recursive: true, force: true });
+    }
+  },
+
+  // A verdict kept by the reader that could not see stored rows is retaken
+  // while the rows still exist — trusted, it would hold its wrong FAIL until
+  // deletion. The retake happens inside recordGate, so every caller heals it:
+  // the next save, the delete, and the boot sweep.
+  async aKeptVerdictFromTheOldReaderIsRetakenWhileTheRowsExist() {
+    const doc = gateDoc(`bracketlab-20990402-${process.pid}-planted-gate`, '9.9.3', [1, 2, 3, 4]);
+    const rows = doc.edgeCensus;
+    delete doc.edgeCensus;
+    const recs = fs.mkdtempSync(path.join(os.tmpdir(), 'planted-recs-'));
+    try {
+      const w = rowstore.writer(doc.id, 'census');
+      for (const r of rows) w.push(r);
+      w.close();
+      fs.writeFileSync(path.join(recs, `${doc.id}.json`), JSON.stringify({
+        id: doc.id, engineVersion: '9.9.3', status: 'done',
+        startedAt: doc.startedAt, finishedAt: doc.finishedAt,
+        pass: false, checks: [], sentences: [`UNREADABLE: ${doc.id} has no real (unscrambled) money rows`],
+        recordedAt: doc.finishedAt, runDeleted: false, deletedAt: null,
+      }));
+      const rec = planted.recordGate(doc, recs);
+      assert.strictEqual(rec.pass, true, 'the wrong FAIL was trusted instead of retaken');
+      assert.ok(!rec.sentences.some((x) => /UNREADABLE/.test(x)), 'the unreadable sentence survived the retake');
+      const onDisk = JSON.parse(fs.readFileSync(path.join(recs, `${doc.id}.json`), 'utf8'));
+      assert.strictEqual(onDisk.pass, true, 'the retaken verdict reached the kept file');
+      // and a record the CURRENT reader wrote is one comparison, no work
+      const again = planted.recordGate(doc, recs);
+      assert.strictEqual(again.recordedAt, rec.recordedAt,
+        'a current-reader record was rebuilt on an ordinary save — the cheap comparison is gone');
+    } finally {
+      rowstore.remove(doc.id);
+      fs.rmSync(recs, { recursive: true, force: true });
+    }
+  },
+
+  // A record whose run is deleted is never retaken, whatever reader wrote it:
+  // its rows are gone, so a retake could only manufacture the UNREADABLE the
+  // kept record exists to outlive.
+  async aDeletedRunsVerdictIsNeverRetaken() {
+    const doc = gateDoc(`bracketlab-20990403-${process.pid}-planted-gate`, '9.9.2', [1]);
+    delete doc.edgeCensus;                       // no rows anywhere: they are gone
+    const recs = fs.mkdtempSync(path.join(os.tmpdir(), 'planted-recs-'));
+    try {
+      fs.writeFileSync(path.join(recs, `${doc.id}.json`), JSON.stringify({
+        id: doc.id, engineVersion: '9.9.2', status: 'done',
+        startedAt: doc.startedAt, finishedAt: doc.finishedAt,
+        pass: true, checks: [], sentences: ['PLANTED CHECK PASS on engine 9.9.2: kept'],
+        recordedAt: doc.finishedAt, runDeleted: true, deletedAt: doc.finishedAt,
+      }));
+      const rec = planted.recordGate(doc, recs);
+      assert.strictEqual(rec.pass, true, 'a deleted run\'s kept PASS was retaken into a manufactured failure');
+      assert.strictEqual(rec.recordedAt, doc.finishedAt, 'the kept record was rewritten');
+    } finally {
+      fs.rmSync(recs, { recursive: true, force: true });
+    }
+  },
+
+  // The boot sweep is the third healer: a stale-reader record left by an old
+  // service heals the moment the new one starts, not when somebody edits
+  // notes or deletes the run. Source-pinned the same way the completion hook
+  // is — the sweep runs at module load, which a test cannot re-run.
+  theBootSweepRetakesStaleGateRecords() {
+    const src = fs.readFileSync(path.join(__dirname, '..', 'lib', 'batch.js'), 'utf8').replace(/\/\/[^\n]*/g, '');
+    const sweep = src.slice(0, src.indexOf('let saveSeq'));
+    assert.ok(/plantedGate/.test(sweep) && /recordGate\(hydrate\(doc\)\)/.test(sweep),
+      'the boot sweep no longer retakes gate records — a wrong kept verdict waits for a save or a delete');
+  },
+
   // What the badge at the top of the page reads once the run is gone.
   async theStatusIsReadFromTheKeptVerdictWhenTheRunIsGone() {
     const runs = fs.mkdtempSync(path.join(os.tmpdir(), 'planted-gate-'));

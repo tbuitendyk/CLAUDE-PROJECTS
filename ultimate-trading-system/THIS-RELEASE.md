@@ -840,3 +840,41 @@ thirty seconds, under its own independently selectable theme.
    price-file fingerprint in, rows + progress back, interface owns the record)
    is agreed; the Compute tab is its front end and already speaks in those
    terms. Building it is its own body of work.
+
+## 20. The planted check failed a healthy engine — the reader was blind, not the pipeline
+
+Owner, 2026-08-25: "check what's going on with the failed planted check";
+2026-08-26: "fix all GO NOW!"
+
+**What happened.** The gate run of 2026-08-25 was a clean pass on its stored
+rows: the real board made +$293.92 on the held-back window, every one of its
+four dealt-vote copies lost money, it beat always-long by more than $400, and
+no unit failed. The verdict said `UNREADABLE: ... has no real (unscrambled)
+money rows`, and UNREADABLE counts as FAIL — correctly, for a run that truly
+cannot be read; wrongly here, because the rows were there all along.
+
+**Why.** When the big collections moved to the row store (2026-08-22), a
+finished run's document stopped carrying its rows — readers go through a
+store-aware layer. Two of the planted check's readers never did: the
+completion-time record (saveBatch hands the live document straight over) and
+the status readout's re-read of runs still on disk (a raw file parse). Both
+saw a document with row counts and no rows. The delete path was the only one
+that read properly, which is exactly backwards — the verdict was taken
+correctly only at the moment the rows were being destroyed.
+
+**The fix, three layers, each pinned by test and mutation guard:**
+
+1. `gateVerdict` materialises the rows from the store whenever the document
+   has none. Every caller now reads the same board however it came by the
+   document. (A gate run is one pair and a handful of boards — this is never
+   the ten-million-row materialisation the lazy getters exist to avoid.)
+2. The kept record carries the reader's version. A record written by the
+   blind reader is retaken on the next occasion `recordGate` runs — while the
+   rows still exist. A record whose run is deleted is NEVER retaken, whatever
+   wrote it: its rows are gone, and retaking it could only manufacture the
+   UNREADABLE the kept record exists to outlive.
+3. The boot sweep retakes stale-reader records at service start, so the
+   wrong FAIL heals on deploy rather than lying in wait for a notes edit.
+
+**What did not need doing:** no re-run. The run on disk is the evidence; once
+the reader could see it, the same rows produced the PASS they always were.

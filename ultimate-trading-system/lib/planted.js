@@ -22,6 +22,7 @@ const fs = require('fs');
 const path = require('path');
 const { mulberry32 } = require('./rng');
 const { cacheState, cachedMonths, HOUR_MS } = require('./binance');
+const rowstore = require('./rowstore');
 
 const CACHE_DIR = path.join(__dirname, '..', 'data', 'cache');
 let tmpSeq = 0;
@@ -249,8 +250,26 @@ function gateParams() {
 // Apply the stamped rules to a finished gate doc. Pure arithmetic on the
 // stored board — the same rows and the same reader (lib/verdict.js) the
 // owner's Tool 2 uses.
+//
+// THE ROWS LIVE ON DISK (fixed 2026-08-26, owner order "fix all"). Since the
+// big collections moved to the row store (2026-08-22), a finished run's
+// document carries only row COUNTS — the rows themselves are read back
+// through a store-aware reader. Two callers handed this function a bare
+// document: the completion-time record (saveBatch passes the live document)
+// and the status strip's re-read of runs still on disk (a raw file parse).
+// Both got "UNREADABLE: no real (unscrambled) money rows" off a healthy run,
+// and UNREADABLE counts as FAIL — the owner's gate of 2026-08-25 failed
+// exactly this way while its stored rows were a clean pass. So the rows are
+// materialised HERE, from the store, whenever the document has none: every
+// caller is then reading the same board, however it came by the document.
+// A gate run is one pair and a handful of boards, so holding its rows is
+// nothing — this is never the ten-million-row materialisation the getters
+// in lib/batch.js exist to avoid.
 function gateVerdict(doc) {
   const { nullVerdict, realRows } = require('./verdict');
+  if ((!doc.edgeCensus || !doc.edgeCensus.length) && rowstore.exists(doc.id, 'census')) {
+    doc = { ...doc, edgeCensus: rowstore.readAll(doc.id, 'census') };
+  }
   const out = { id: doc.id, engineVersion: doc.params?.engineVersion || 'unknown', pass: false, checks: [], sentences: [] };
   if (doc.status !== 'done') {
     out.sentences.push(`gate run ${doc.id} is ${doc.status} — no verdict until it finishes`);
@@ -362,6 +381,15 @@ function readGateRecords(dir) {
 // gate run, so it does the cheap comparison first: re-reading the board to
 // build the verdict costs real work, and a finished run gets saved again every
 // time its notes are edited.
+//
+// THE READER HAS A VERSION (2026-08-26). Version 2 is the reader that
+// materialises the rows from the store; version 1 (implicit — those records
+// carry no readerV at all) could not see stored rows and kept "UNREADABLE"
+// verdicts off healthy runs. A kept record from an older reader is retaken
+// rather than trusted, WHILE THE ROWS STILL EXIST — a record whose run is
+// deleted is never retaken by anything, whatever wrote it: its rows are gone,
+// so retaking it could only ever manufacture the very UNREADABLE it kept.
+const GATE_READER_V = 2;
 function recordGate(doc, recordsDir) {
   if (!doc || doc.kind !== 'bracketlab') return null;
   if (!(doc.params && doc.params.plantedGate)) return null;
@@ -371,7 +399,9 @@ function recordGate(doc, recordsDir) {
   const file = path.join(dir, `${doc.id}.json`);
   let prev = null;
   try { prev = JSON.parse(fs.readFileSync(file, 'utf8')); } catch { prev = null; }
-  if (prev && prev.status === doc.status && prev.finishedAt === (doc.finishedAt || null)) return prev;
+  if (prev && prev.runDeleted) return prev;
+  if (prev && prev.readerV === GATE_READER_V
+    && prev.status === doc.status && prev.finishedAt === (doc.finishedAt || null)) return prev;
 
   const verdict = gateVerdict(doc);
   const rec = {
@@ -383,6 +413,7 @@ function recordGate(doc, recordsDir) {
     pass: verdict.pass,
     checks: verdict.checks,
     sentences: verdict.sentences,
+    readerV: GATE_READER_V,
     recordedAt: new Date().toISOString(),
     // Set by markGateRunDeleted, and never unset: the run's rows are gone, so
     // this reading can never be taken again.
