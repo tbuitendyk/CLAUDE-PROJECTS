@@ -345,6 +345,34 @@ module.exports = {
     assert.strictEqual(floored.narrowedOut, 2, 'the floor\'s removed-count is within this configuration, not the whole set');
   },
 
+  // FOUR MORE FLOORS (owner order, 2026-08-26): share, avg held-back, avg
+  // trades, avg vs always-long. Empty removes nothing; a set floor also
+  // removes rows that never recorded the number — an unmeasured row cannot
+  // clear a bar. Worked on the same pencil as everything else.
+  theFourFloorsMatchThePencil() {
+    const t = tallyFixture(FIXTURE);
+    // shares: q2|AAA 100%, q1|BBB 100%, q1|AAA 50%, q1|CCC unmeasured
+    const byShare = replication.coinsFrom(t, { minShare: 60 });
+    assert.deepStrictEqual(byShare.rows.map((r) => `${r.label}|${r.trade}`).sort(),
+      ['q1|BBBUSDT', 'q2|AAAUSDT'], 'a 60% share floor keeps the two perfect rows only');
+    assert.strictEqual(byShare.narrowedOut, 2, 'the 50% row and the unmeasured row are counted out');
+    // avg held-back: 10, 7, -4, none — a floor of 0 removes the loss and the unmeasured
+    const byHold = replication.coinsFrom(t, { minHold: 0 });
+    assert.deepStrictEqual(byHold.rows.map((r) => r.avgHold).sort((a, b) => a - b), [7, 10]);
+    // avg trades: 4, 2, 6 — a floor of 5 keeps only the six
+    const byTrades = replication.coinsFrom(t, { minTrades: 5 });
+    assert.deepStrictEqual(byTrades.rows.map((r) => `${r.label}|${r.trade}`), ['q2|AAAUSDT']);
+    // avg vs always-long: 3, -1, 2, none — a floor of 0 keeps the two that beat holding
+    const byVsL = replication.coinsFrom(t, { minVsLong: 0 });
+    assert.deepStrictEqual(byVsL.rows.map((r) => r.avgVsLong).sort((a, b) => a - b), [2, 3]);
+    // empty strings are OFF, not zero — nothing is hidden by an untouched box
+    const off = replication.coinsFrom(t, { minShare: '', minHold: '', minTrades: '', minVsLong: '' });
+    assert.strictEqual(off.page.total, 4, 'an empty floor box must hide nothing');
+    // and the floors compose with the label narrowing
+    const both = replication.coinsFrom(t, { label: 'q1', minVsLong: 0 });
+    assert.deepStrictEqual(both.rows.map((r) => `${r.label}|${r.trade}`), ['q1|AAAUSDT']);
+  },
+
   // The floor hides nothing silently, and the ordering is made over the whole
   // set before the page is cut — page two continues page one's order.
   theFloorSaysWhatItRemovedAndPagesContinueOneOrder() {

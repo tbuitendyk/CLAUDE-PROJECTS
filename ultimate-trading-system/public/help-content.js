@@ -253,6 +253,22 @@ window.HELP = {
         what: 'Hides rows whose score rests on fewer head-to-heads than this. Zero hides nothing.',
         more: 'A perfect score built on ten comparisons is luck wearing a score. The line under the table says how many rows a floor removed, so nothing disappears silently.',
       },
+      bCoinMinShare: {
+        what: 'Hides rows whose share of head-to-heads won is below this percent. Empty hides nothing.',
+        more: 'A set floor also hides rows with no share at all — a row that was never measured cannot clear a bar, and letting it through would smuggle unmeasured rows past every filter.',
+      },
+      bCoinMinHold: {
+        what: 'Hides rows whose avg held-back is below this many dollars. Empty hides nothing.',
+        more: 'A set floor also hides rows that recorded no held-back money.',
+      },
+      bCoinMinTrades: {
+        what: 'Hides rows whose avg trades is below this. Empty hides nothing.',
+        more: 'A row whose money rests on a handful of trades is thin evidence however good the other columns look.',
+      },
+      bCoinMinVsLong: {
+        what: 'Hides rows whose avg vs always-long is below this many dollars. Empty hides nothing.',
+        more: 'Zero keeps only rows that beat just holding the coin, on average.',
+      },
       bCoinGo: {
         what: 'Asks again with the sort and floor chosen beside it.',
       },

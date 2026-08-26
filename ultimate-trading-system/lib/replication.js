@@ -394,7 +394,27 @@ function coinsFrom(totals, { sort = 'share', minPairs = 0, ...query } = {}) {
   // the web server's time limit and froze every page while it lasted).
   const only = query.label != null && String(query.label) !== '' ? String(query.label) : null;
   const scoped = only ? rows.filter((r) => r.label === only) : rows;
-  const kept = atLeast ? scoped.filter((r) => r.pairs >= atLeast) : scoped;
+  // FOUR MORE FLOORS (owner order, 2026-08-26): least share of head-to-heads
+  // won (as the percent the column shows), least avg held-back, least avg
+  // trades, least avg vs always-long. An empty floor removes nothing; a set
+  // floor also removes rows that never recorded that number — a row with no
+  // measurement cannot clear a bar, and keeping it would smuggle unmeasured
+  // rows through every filter.
+  const bar = (v) => {
+    if (v == null || String(v).trim() === '') return null;
+    const n = Number(v);
+    return Number.isFinite(n) ? n : null;
+  };
+  const minShare = bar(query.minShare);
+  const minHold = bar(query.minHold);
+  const minTrades = bar(query.minTrades);
+  const minVsLong = bar(query.minVsLong);
+  const clears = (r) => (atLeast ? r.pairs >= atLeast : true)
+    && (minShare == null || (r.share != null && r.share * 100 >= minShare))
+    && (minHold == null || (r.avgHold != null && r.avgHold >= minHold))
+    && (minTrades == null || (r.avgTrades != null && r.avgTrades >= minTrades))
+    && (minVsLong == null || (r.avgVsLong != null && r.avgVsLong >= minVsLong));
+  const kept = scoped.filter(clears);
   const byShare = (a, b) => (a.share == null && b.share == null ? 0
     : b.share == null ? -1 : a.share == null ? 1 : b.share - a.share);
   const byAvg = (a, b) => (b.avgHold ?? -Infinity) - (a.avgHold ?? -Infinity);
@@ -413,6 +433,10 @@ function coinsFrom(totals, { sort = 'share', minPairs = 0, ...query } = {}) {
     sort: key,
     minPairs: atLeast,
     ...(only ? { label: only } : {}),
+    ...(minShare != null ? { minShare } : {}),
+    ...(minHold != null ? { minHold } : {}),
+    ...(minTrades != null ? { minTrades } : {}),
+    ...(minVsLong != null ? { minVsLong } : {}),
     narrowedOut: scoped.length - kept.length,
     rows: win.rows,
     page: { offset: win.offset, limit: win.limit, total: win.total, shown: win.shown, more: win.more },

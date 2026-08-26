@@ -871,6 +871,23 @@ thirty seconds, under its own independently selectable theme.
    Compute tab), with its endpoint pair, and the tests now require its
    absence.
 
+6. **The Boards view survives leaving the page, and the every-coin table
+   gains four floors (owner orders, 2026-08-26: "I EXPECT ALL PAGES TO
+   PERSIST THEIR VIEW AND LOCATION WHEN FLIPPING AROUND. *ALWAYS*").** The
+   earlier fix kept open records across this page's own section flips;
+   going to the Setup page unloads the whole script, so memory state died.
+   The Boards view — the Replication box, the opened ranked lines, the
+   every-coin box with its sort, floors and page, and every opened record —
+   is now written to the same browser store that already carries the
+   section, the run and the scroll, saved at every point it changes, and
+   rebuilt once on load with the scroll put back on a page at its full
+   height. Setup already remembered its tab, Trade its branch and view and
+   scroll, Sweep its form. And the every-coin table gains four floors,
+   before the sort by row: beat its own copies (least %), avg held-back
+   (least $), avg trades (least), avg vs always-long (least $) — empty
+   hides nothing, a set floor also hides rows that never recorded the
+   number, and every removal is counted in the line under the table.
+
 **Parked items closed:**
 
 1. **detail() is RETIRED (owner go, 2026-08-26).** The owner hit the parked

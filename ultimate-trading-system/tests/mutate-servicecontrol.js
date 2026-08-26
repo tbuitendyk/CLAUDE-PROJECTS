@@ -125,6 +125,12 @@ const GUARDS = [
     'aLabelNarrowsToOneConfigurationsCoins', 'an opened line shows every configuration\'s coins under one configuration\'s name'],
   [path.join(ROOT, 'public', 'construct.js'), 'Replication — ${Number(rep.configs || 0).toLocaleString()} declared configs, ranked', 'Replication — ${scored.length} declared configs, ranked',
     'theRankedHeadingCountsEveryConfigurationNotThePage', 'the heading names the page length as the number of configurations the run declared'],
+  [path.join(ROOT, 'lib', 'replication.js'), '  const kept = scoped.filter(clears);', '  const kept = atLeast ? scoped.filter((r) => r.pairs >= atLeast) : scoped;',
+    'theFourFloorsMatchThePencil', 'four floor boxes that filter nothing — every bar typed into them is silently ignored'],
+  [path.join(ROOT, 'public', 'construct.js'), '  applyBoardsView(doc);', '',
+    'theBoardsViewSurvivesLeavingThePage', 'the view record is written and never read — flipping to Setup and back still loses everything'],
+  [path.join(ROOT, 'public', 'construct.js'), '        saveBoardsView(doc);\n        askCoins();', '        askCoins();',
+    'theBoardsViewSurvivesLeavingThePage', 'the floors and sort chosen with Apply are lost the moment the page is left'],
 ];
 
 const only = process.argv[2] || '';

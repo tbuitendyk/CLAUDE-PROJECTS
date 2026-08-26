@@ -250,7 +250,7 @@ const PAGERS = {};
 let repLoaded = { id: null, data: null };
 // The per-coin view, fetched when its own box is opened. Sort and narrowing
 // live here so a redraw keeps the reader's place.
-let repCoins = { id: null, data: null, sort: 'share', minPairs: 0 };
+let repCoins = { id: null, data: null, sort: 'share', minPairs: 0, minShare: '', minHold: '', minTrades: '', minVsLong: '' };
 // The records opened below coin rows, by row identity, WITH what came back —
 // so a redraw (tab flip, paging, Apply) draws them open instead of folding
 // them and shortening the page out from under the remembered scroll (owner
@@ -262,6 +262,7 @@ const coinKeyOf = (o) => [o.label, o.trade, o.ctx1 || '', o.ctx2 || '', o.geomet
 // for every open row on every redraw, and by the button press that opens
 // one. Two copies of this block would be the drift RULE TWO polices.
 function coinRecordsHtml(got) {
+  if (got && got.loading) return '<span class="muted">loading the records…</span>';
   if (!got) return '<span class="warn">could not read the records — nothing is missing from the run, the screen could not ask</span>';
   if (got.indexed === false) return `<span class="muted">${esc(got.why || 'the records are not reachable yet')}</span>`;
   if (!got.rows || !got.rows.length) return '<span class="muted">no records came back for this row</span>';
@@ -351,6 +352,104 @@ function coinRowHtml(r, withConfig) {
   open
     ? `<tr class="coinsub"><td colspan="${span}" style="padding:.25rem .5rem .5rem 1.2rem">${coinRecordsHtml(openRecs.byKey.get(coinKeyOf(r)))}</td></tr>`
     : ''}`;
+}
+
+// FLIPPING AWAY LOSES NOTHING (owner order, 2026-08-26: "I EXPECT ALL PAGES
+// TO PERSIST THEIR VIEW AND LOCATION WHEN FLIPPING AROUND. *ALWAYS*").
+// Moving to another PAGE (Setup, Trade) unloads this whole script, so state
+// held only in memory dies with it — which is why the earlier fix survived
+// flips between this page's own sections and not a trip to Setup and back.
+// What the Boards section looks like is now written down the same way the
+// page already writes down its section, its run and its scroll — and
+// rebuilt from that record when the page loads.
+const BOARDS_VIEW_KEY = 'cx-boards-view';
+let repViewOpen = false;        // the Replication box has been opened
+let coinsViewOpen = false;      // the every-coin box is open
+let openLabels = new Set();     // ranked lines held open, by configuration
+let boardsViewApplied = false;  // the rebuild runs once per page load
+
+function saveBoardsView(doc) {
+  try {
+    localStorage.setItem(BOARDS_VIEW_KEY, JSON.stringify({
+      runId: doc.id,
+      repOpen: repViewOpen,
+      repList: pageAt.repList,
+      openLabels: [...openLabels].slice(0, 20),
+      coinsOpen: coinsViewOpen,
+      coins: {
+        sort: repCoins.sort, minPairs: repCoins.minPairs, minShare: repCoins.minShare,
+        minHold: repCoins.minHold, minTrades: repCoins.minTrades, minVsLong: repCoins.minVsLong,
+        offset: pageAt.repCoins.offset, limit: pageAt.repCoins.limit,
+      },
+      recKeys: [...openRecs.byKey.keys()].slice(0, 40),
+    }));
+  } catch (_) { /* private window */ }
+}
+function resetBoardsView() {
+  repViewOpen = false; coinsViewOpen = false; openLabels = new Set();
+  openRecs = { id: null, byKey: new Map() };
+  try { localStorage.removeItem(BOARDS_VIEW_KEY); } catch (_) { /* private window */ }
+}
+// Seed the knobs from the record at load, so the first draw already agrees
+// with what the owner last saw; the data behind it is fetched by
+// applyBoardsView after that draw.
+const storedBoardsView = (() => {
+  try { return JSON.parse(localStorage.getItem(BOARDS_VIEW_KEY) || 'null'); } catch (_) { return null; }
+})();
+if (storedBoardsView && storedBoardsView.runId) {
+  repViewOpen = !!storedBoardsView.repOpen;
+  coinsViewOpen = !!storedBoardsView.coinsOpen;
+  openLabels = new Set(storedBoardsView.openLabels || []);
+  if (storedBoardsView.repList) {
+    pageAt.repList = { offset: Number(storedBoardsView.repList.offset) || 0, limit: Number(storedBoardsView.repList.limit) || pageAt.repList.limit };
+  }
+  const c = storedBoardsView.coins || {};
+  repCoins.sort = c.sort || repCoins.sort;
+  repCoins.minPairs = Number(c.minPairs) || 0;
+  repCoins.minShare = c.minShare ?? '';
+  repCoins.minHold = c.minHold ?? '';
+  repCoins.minTrades = c.minTrades ?? '';
+  repCoins.minVsLong = c.minVsLong ?? '';
+  pageAt.repCoins = { offset: Number(c.offset) || 0, limit: Number(c.limit) || pageAt.repCoins.limit };
+  openRecs.id = storedBoardsView.runId;
+  for (const k of (storedBoardsView.recKeys || [])) openRecs.byKey.set(k, { loading: true });
+}
+
+// The one-shot rebuild: fetch what the record says was open, then draw once
+// and put the scroll back — the height is finally the height the owner left.
+async function applyBoardsView(doc) {
+  if (boardsViewApplied) return;
+  boardsViewApplied = true;
+  const v = storedBoardsView;
+  if (!v || v.runId !== doc.id) return;
+  let changed = false;
+  if (repViewOpen && repLoaded.id !== doc.id) {
+    const got = await apiOr(`api/batch/${encodeURIComponent(doc.id)}/replication`
+      + `?offset=${pageAt.repList.offset}&limit=${pageAt.repList.limit}`, null);
+    if (got && got.scored && got.scored.length) { repLoaded = { id: doc.id, data: got }; changed = true; }
+  }
+  if (coinsViewOpen && repCoins.id !== doc.id) {
+    const q = pageAt.repCoins;
+    const got = await apiOr(`api/batch/${encodeURIComponent(doc.id)}/replication-coins`
+      + `?sort=${encodeURIComponent(repCoins.sort)}&minPairs=${encodeURIComponent(repCoins.minPairs)}`
+      + `&minShare=${encodeURIComponent(repCoins.minShare)}&minHold=${encodeURIComponent(repCoins.minHold)}`
+      + `&minTrades=${encodeURIComponent(repCoins.minTrades)}&minVsLong=${encodeURIComponent(repCoins.minVsLong)}`
+      + `&offset=${q.offset}&limit=${q.limit}`, null);
+    if (got) { repCoins = { ...repCoins, id: doc.id, data: got }; changed = true; }
+  }
+  for (const [key, held] of openRecs.byKey) {
+    if (!held || !held.loading) continue;
+    const [label, trade, ctx1, ctx2, geometry] = key.split('|');
+    const got = await apiOr(`api/batch/${encodeURIComponent(doc.id)}/replication-coin-rows`
+      + `?label=${encodeURIComponent(label)}&trade=${encodeURIComponent(trade)}&ctx1=${encodeURIComponent(ctx1)}`
+      + `&ctx2=${encodeURIComponent(ctx2)}&geometry=${encodeURIComponent(geometry)}`, null);
+    if (got) { openRecs.byKey.set(key, got); changed = true; }
+    else openRecs.byKey.delete(key);
+  }
+  if (changed) {
+    drawBoards();
+    requestAnimationFrame(() => requestAnimationFrame(() => restoreScroll(tab)));
+  }
 }
 function wirePagers(root) {
   if (!root || root.dataset.pagersWired) return;
@@ -1559,9 +1658,9 @@ async function drawBoards() {
   const coinBox = () => {
     const d = repCoins.id === doc.id ? repCoins.data : null;
     const rows = d && d.rows ? d.rows : [];
-    // Records opened under another run's rows are that run's — drop them the
+    // A view held for another run is that run's — drop the whole record the
     // moment a different run is drawn.
-    if (openRecs.id !== null && openRecs.id !== doc.id) openRecs = { id: null, byKey: new Map() };
+    if (openRecs.id !== null && openRecs.id !== doc.id) resetBoardsView();
     const table = !d ? '<p class="note" id="bCoinNote">open to load — served from the same saved totals as the list above</p>'
       : d.building && !rows.length
         ? `<p class="note" id="bCoinNote">totalling in the background — ${Number(d.scanned || 0).toLocaleString()} of ${Number(d.of || 0).toLocaleString()} rows so far. This box asks again every fifteen seconds while open.</p>`
@@ -1572,13 +1671,25 @@ async function drawBoards() {
           || `<tr><td colspan="9" class="empty">nothing ${d.minPairs ? `with at least ${d.minPairs} comparisons` : 'here'}</td></tr>`}</tbody></table></div>
       ${d.narrowedOut ? `<p class="note">${d.narrowedOut.toLocaleString()} row(s) narrowed out by the comparisons floor.</p>` : ''}
       ${pageBar('repCoins', d.page, ' coin rows')}`;
-    return `<details id="bRepCoins"${repCoins.id === doc.id ? ' open' : ''} style="margin-top:.6rem"><summary style="cursor:pointer"><b>Every coin of every configuration</b> — one row per coin, sortable over the whole data set</summary>
+    return `<details id="bRepCoins"${repCoins.id === doc.id || coinsViewOpen ? ' open' : ''} style="margin-top:.6rem"><summary style="cursor:pointer"><b>Every coin of every configuration</b> — one row per coin, sortable over the whole data set</summary>
       <p class="note">source: the same replication rows as the list above — written in the second pass, one for every
         promoted unit that scored this configuration on this coin. The rows column counts them: one per combination of
         the boxes permuted on Sweep that share the coin and chunk shape, each scoring the same configuration on its own
         forecasts. avg held-back, avg trades and avg vs always-long are AVERAGES over those rows — each sum divided
         by the rows that recorded it — so a coin with 16 rows and one with 8 read alike. The records button on each row
         opens those rows themselves.</p>
+      <div class="row" style="margin:.5rem 0 0">
+        <label class="c" title="hide rows whose share of head-to-heads won is below this percent. Empty hides nothing; a set floor also hides rows with no share at all — an unmeasured row cannot clear a bar."><span class="muted">beat its own copies at least, %</span><input id="bCoinMinShare" type="number" min="0" max="100" step="1" value="${esc(repCoins.minShare)}" style="width:5.5rem"></label>
+      </div>
+      <div class="row" style="margin:.15rem 0 0">
+        <label class="c" title="hide rows whose avg held-back is below this many dollars. Empty hides nothing; a set floor also hides rows that recorded no held-back money."><span class="muted">avg held-back at least, $</span><input id="bCoinMinHold" type="number" step="1" value="${esc(repCoins.minHold)}" style="width:5.5rem"></label>
+      </div>
+      <div class="row" style="margin:.15rem 0 0">
+        <label class="c" title="hide rows whose avg trades is below this. Empty hides nothing. A row whose money rests on a handful of trades is thin evidence however good it looks."><span class="muted">avg trades at least</span><input id="bCoinMinTrades" type="number" min="0" step="1" value="${esc(repCoins.minTrades)}" style="width:5.5rem"></label>
+      </div>
+      <div class="row" style="margin:.15rem 0 0">
+        <label class="c" title="hide rows whose avg vs always-long is below this many dollars — 0 keeps only rows that beat just holding the coin, on average. Empty hides nothing."><span class="muted">avg vs always-long at least, $</span><input id="bCoinMinVsLong" type="number" step="1" value="${esc(repCoins.minVsLong)}" style="width:5.5rem"></label>
+      </div>
       <div class="row" style="margin:.5rem 0">
         <label class="c"><span class="muted">sort by</span><select id="bCoinSort">
           <option value="share"${repCoins.sort === 'share' ? ' selected' : ''}>beat its own copies</option>
@@ -1659,7 +1770,7 @@ async function drawBoards() {
 
     // MANY declared configs: the ranked list comes FIRST (owner, 2026-08-17).
     // One line per configuration, scrollable; open a line for its per-asset table.
-    const listHtml = scored.map((g, i) => `<details style="border-bottom:1px solid var(--line)">
+    const listHtml = scored.map((g, i) => `<details${openLabels.has(g.label) ? ' open' : ''} style="border-bottom:1px solid var(--line)">
         <summary style="padding:.4rem .25rem;cursor:pointer">
           <span class="k" style="margin-right:.5rem">#${i + 1}</span><b>${esc(g.label)}</b>
           <span style="margin-left:.6rem" title="${esc(TIP.null)}">beat its own nulls ${nullCell(g)}</span>
@@ -1795,7 +1906,7 @@ async function drawBoards() {
       ${sel ? `<p class="note">selected: <b>${esc(comboOf(sel))}</b> ${esc(sel.geometry)} ${esc(sel.decision)} q${sel.quorum} ${sel.tHours}h — this selection feeds Verify · Tune · Greenlight
         <button id="bClearSel" style="margin-left:.5rem" title="take the selection off this run. Nothing here could remove one until now, so a row chosen once kept steering Verify, Tune and Greenlight indefinitely.">clear selection</button></p>` : '<p class="note">no row selected yet</p>'}
       </div>
-      ${repBlock || (declaredHere ? `<div class="panel"><details id="bRepOpen"><summary style="cursor:pointer"><b>Replication —</b> the declared config on every asset</summary>
+      ${repBlock || (declaredHere ? `<div class="panel"><details id="bRepOpen"${repViewOpen ? ' open' : ''}><summary style="cursor:pointer"><b>Replication —</b> the declared config on every asset</summary>
         <p class="note" id="bRepNote">Totalled once from every recorded row — ${(doc.rowCounts && doc.rowCounts.replication || 0).toLocaleString()} of them — off to the side, so nothing here waits on it.
           A finished run totals itself; anything older totals in the background the first time this is opened, and this box shows how far that has got.</p></details></div>` : '')}
       <div class="panel" id="gridOut"><span class="muted">Menu grid: press a row's button — every execution permutation for that row with the plateau view (one setting moved at a time) on top.
@@ -1837,9 +1948,18 @@ async function drawBoards() {
         if (!(got.scored && got.scored.length)) return;
       }
       repLoaded = { id: doc.id, data: got };
+      repViewOpen = true;
+      saveBoardsView(doc);
       drawBoards();
     };
-    repOpen.addEventListener('toggle', () => { if (repOpen.open) askRep(); });
+    repOpen.addEventListener('toggle', () => {
+      repViewOpen = repOpen.open;
+      saveBoardsView(doc);
+      if (repOpen.open) askRep();
+    });
+    // Rendered already-open from the view record: the toggle never fires, so
+    // the ask is made here.
+    if (repOpen.open && repLoaded.id !== doc.id && boardsViewApplied) askRep();
   }
   // The per-coin box: fetched when opened, refetched on Apply, paged through
   // the same bars as every other table. The sort and the comparisons floor go
@@ -1852,6 +1972,8 @@ async function drawBoards() {
       const q = pageAt.repCoins;
       const got = await apiOr(`api/batch/${encodeURIComponent(doc.id)}/replication-coins`
         + `?sort=${encodeURIComponent(repCoins.sort)}&minPairs=${encodeURIComponent(repCoins.minPairs)}`
+        + `&minShare=${encodeURIComponent(repCoins.minShare)}&minHold=${encodeURIComponent(repCoins.minHold)}`
+        + `&minTrades=${encodeURIComponent(repCoins.minTrades)}&minVsLong=${encodeURIComponent(repCoins.minVsLong)}`
         + `&offset=${q.offset}&limit=${q.limit}`, null);
       if (!got) {
         const note = $('#bCoinNote');
@@ -1873,16 +1995,26 @@ async function drawBoards() {
     PAGERS.repCoins = ({ offset, limit }) => {
       pageAt.repCoins = { offset: offset ?? pageAt.repCoins.offset, limit: limit ?? pageAt.repCoins.limit };
       repCoins.id = null;         // the held page is stale the moment the window moves
+      saveBoardsView(doc);
       askCoins();
     };
-    coinsOpenEl.addEventListener('toggle', () => { if (coinsOpenEl.open && repCoins.id !== doc.id) askCoins(); });
+    coinsOpenEl.addEventListener('toggle', () => {
+      coinsViewOpen = coinsOpenEl.open;
+      saveBoardsView(doc);
+      if (coinsOpenEl.open && repCoins.id !== doc.id) askCoins();
+    });
     const go = $('#bCoinGo');
     if (go) {
       go.onclick = () => {
         repCoins.sort = ($('#bCoinSort') || {}).value || 'share';
         repCoins.minPairs = Math.max(0, Math.floor(Number(($('#bCoinMin') || {}).value) || 0));
+        repCoins.minShare = ($('#bCoinMinShare') || {}).value ?? '';
+        repCoins.minHold = ($('#bCoinMinHold') || {}).value ?? '';
+        repCoins.minTrades = ($('#bCoinMinTrades') || {}).value ?? '';
+        repCoins.minVsLong = ($('#bCoinMinVsLong') || {}).value ?? '';
         pageAt.repCoins = { offset: 0, limit: pageAt.repCoins.limit };
         repCoins.id = null;
+        saveBoardsView(doc);
         askCoins();
       };
     }
@@ -1911,13 +2043,14 @@ async function drawBoards() {
       next.remove();
       btn.textContent = '▸ records';
       openRecs.byKey.delete(key);
+      saveBoardsView(doc);
       return;
     }
     btn.textContent = '… records';
     const q = ['label', 'trade', 'ctx1', 'ctx2', 'geometry']
       .map((f) => `${f}=${encodeURIComponent(btn.dataset[f] || '')}`).join('&');
     const got = await apiOr(`api/batch/${encodeURIComponent(doc.id)}/replication-coin-rows?${q}`, null);
-    if (got) { openRecs.id = doc.id; openRecs.byKey.set(key, got); }
+    if (got) { openRecs.id = doc.id; openRecs.byKey.set(key, got); saveBoardsView(doc); }
     const sub = document.createElement('tr');
     sub.className = 'coinsub';
     const cell = document.createElement('td');
@@ -2069,6 +2202,7 @@ async function drawBoards() {
   // own redraw function is in scope.
   PAGERS.repList = ({ offset, limit }) => {
     pageAt.repList = { offset: offset ?? pageAt.repList.offset, limit: limit ?? pageAt.repList.limit };
+    saveBoardsView(doc);
     drawBoards();
   };
   PAGERS.board = ({ offset, limit }) => {
@@ -2076,6 +2210,10 @@ async function drawBoards() {
     drawBoards();
   };
   wirePagers($('#view'));
+  // Rebuild what the view record says was open — once per page load, after
+  // which this call is a no-op (owner order, 2026-08-26: pages persist their
+  // view and location when flipping around, always).
+  applyBoardsView(doc);
 
   $('#bBody').querySelectorAll('.repdetail').forEach((box) => {
     const load = async () => {
@@ -2118,7 +2256,14 @@ async function drawBoards() {
     };
     const holder = box.closest('details');
     if (!holder) { load(); return; }              // the single-configuration panel: no line to open
-    holder.addEventListener('toggle', () => { if (holder.open) load(); });
+    holder.addEventListener('toggle', () => {
+      const label = box.dataset.label || '';
+      if (holder.open) openLabels.add(label); else openLabels.delete(label);
+      saveBoardsView(doc);
+      if (holder.open) load();
+    });
+    // Restored open from the view record: the toggle never fires, so load now.
+    if (holder.open) load();
   });
 
   $('#bBody').querySelectorAll('tr[data-i]').forEach((tr) => {

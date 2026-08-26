@@ -156,3 +156,43 @@ module.exports.theRankedHeadingCountsEveryConfigurationNotThePage = function () 
   a.ok(!/Replication — \$\{scored\.length\} declared configs/.test(src),
     'the page-length count crept back into the heading');
 };
+
+
+// THE BOARDS VIEW SURVIVES LEAVING THE PAGE (owner order, 2026-08-26: "I
+// EXPECT ALL PAGES TO PERSIST THEIR VIEW AND LOCATION WHEN FLIPPING AROUND.
+// *ALWAYS*"). Flipping to Setup unloads the whole script, so the open boxes,
+// open lines, open records, floors and pages are written to the same store
+// that already carries the section, the run and the scroll — and rebuilt
+// once on load, after which the scroll is put back on a page whose height is
+// the height the owner left.
+module.exports.theBoardsViewSurvivesLeavingThePage = function () {
+  const { assert: a } = require('./helpers');
+  const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'public', 'construct.js'), 'utf8');
+  a.ok(/const BOARDS_VIEW_KEY = 'cx-boards-view';/.test(src), 'the view record has no home');
+  a.ok((src.match(/saveBoardsView\(doc\);/g) || []).length >= 9,
+    'the view record is not saved at every point the view can change');
+  a.ok(/applyBoardsView\(doc\);/.test(src), 'nothing rebuilds the view on load');
+  a.ok(/restoreScroll\(tab\)/.test(src.slice(src.indexOf('async function applyBoardsView'), src.indexOf('async function applyBoardsView') + 3000)),
+    'the scroll is not put back after the rebuild — it lands on a page still short');
+  a.ok(/openRecs\.byKey\.set\(k, \{ loading: true \}\)/.test(src),
+    'restored-open records are not held open while their rows are fetched back');
+  a.ok(/if \(holder\.open\) load\(\);/.test(src),
+    'a ranked line restored open never loads its table — the toggle only fires on a press');
+};
+
+// The four floors sit BEFORE the sort by row, in the order the owner named
+// them (owner order, 2026-08-26).
+module.exports.theFourFloorsSitBeforeTheSortRow = function () {
+  const { assert: a } = require('./helpers');
+  const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'public', 'construct.js'), 'utf8');
+  const at = (m) => { const i = src.indexOf(m); a.ok(i >= 0, m + ' is not on the page'); return i; };
+  const share = at('id="bCoinMinShare"');
+  const hold = at('id="bCoinMinHold"');
+  const trades = at('id="bCoinMinTrades"');
+  const vsl = at('id="bCoinMinVsLong"');
+  const sort = at('id="bCoinSort"');
+  a.ok(share < hold && hold < trades && trades < vsl && vsl < sort,
+    'the four floors are not in the ordered place — before the sort by row, in the order named');
+  a.ok(/minShare=\$\{encodeURIComponent\(repCoins\.minShare\)\}/.test(src),
+    'the floors never reach the other side — the boxes are decoration');
+};
