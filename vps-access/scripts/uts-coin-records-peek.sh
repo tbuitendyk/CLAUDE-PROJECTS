@@ -71,10 +71,12 @@ else:
     for r in (d.get('rows') or [])[:20]:
         h = r.get('holdout') or {}
         w = r.get('weekdaysOnly')
-        print("  %-7s band=%-5s 24/5=%-4s  band %s%%  held-back $%.2f/%st"
+        bc = r.get('beatCopies'); cp = r.get('copyPairs')
+        share = '-' if bc is None or not cp else ('%.1f%% (%s/%s)' % (bc * 100.0 / cp, bc, cp))
+        print("  %-7s band=%-5s 24/5=%-4s  band %s%%  beatCopies %-18s held-back $%.2f/%st"
               % (r.get('decision') or '-', r.get('bandMode') if r.get('bandMode') is not None else '-',
                  '-' if w is None else ('yes' if w else 'no'),
-                 r.get('bandPct'), (h.get('pnl') or 0), h.get('trades')))
+                 r.get('bandPct'), share, (h.get('pnl') or 0), h.get('trades')))
 PY
 printf 'an unrelated page during this: '
 curl -s -o /dev/null -w 'HTTP %{http_code} in %{time_total}s\n' --max-time 15 "$B/construct.html" || echo 'no answer in 15s'
