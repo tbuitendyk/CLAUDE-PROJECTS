@@ -104,6 +104,9 @@ const GUARDS = [
     'duplicateClaimsInOneGroupAreBothStripped', 'a proven misalignment keeps its names and one unit wears another\'s choices'],
   [path.join(ROOT, 'lib', 'replication.js'), 'const s = choices.namesAt(units, ats[i]);', 'const s = choices.namesAt(units, i);',
     'theRecordsServeTheRecoveredNamesAndSaySo', 'records are named by their position IN THE ANSWER instead of in the store — every expansion past the first block lies'],
+  [path.join(ROOT, 'public', 'construct.html'), '<button class="themebtn" id="themebtn">◐ theme</button>',
+    '<button class="themebtn" id="cpubtn">CPU —</button>\n      <button class="themebtn" id="themebtn">◐ theme</button>',
+    'theCpuDialLivesOnTheComputeTabAlone', 'the removed CPU button grows back beside the theme button and the dial has two homes again'],
 ];
 
 const only = process.argv[2] || '';

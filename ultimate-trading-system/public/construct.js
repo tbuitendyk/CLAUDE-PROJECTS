@@ -323,33 +323,11 @@ $('#themebtn').onclick = () => {
   root.setAttribute('data-theme', n); localStorage.setItem('cx-theme', n);
 };
 
-// CPU CAP — service-wide, shared by every job on the box. It lived only in the
-// old app's topbar, so from this tab there was no way to see or change what the
-// machine was allowed to spend (owner sweep, 2026-08-17).
-const CPU_STEPS = [100, 90, 75, 50, 25, 10, 0];
-let cpuPct = null;
-let cpuThreads = 1;
-function showCpu() {
-  const b = $('#cpubtn');
-  if (!b) return;
-  b.textContent = cpuPct == null ? 'CPU —' : cpuThreads > 1 ? `CPU ${cpuPct}% x${cpuThreads}` : `CPU ${cpuPct}%`;
-}
-async function loadCpu() {
-  try {
-    const body = await api('api/cpu');
-    cpuPct = body.pct; cpuThreads = body.threads || 1;
-  } catch (_) { cpuPct = null; }
-  showCpu();
-}
-if ($('#cpubtn')) {
-  $('#cpubtn').onclick = async () => {
-    const idx = CPU_STEPS.indexOf(cpuPct);
-    const next = CPU_STEPS[(idx + 1) % CPU_STEPS.length];
-    const out = await tryPost('api/cpu', { pct: next });
-    if (out) { cpuPct = out.pct; cpuThreads = out.threads || 1; showCpu(); }
-  };
-  loadCpu();
-}
+// The CPU button that cycled the per-worker duty cycle from this page is
+// GONE (owner order, 2026-08-26: "Remove the obsolete CPU button"). It was
+// the same dial as the Compute tab's share box on the Setup page, shown in
+// a second place under a hover that misdescribed it — one dial, one home,
+// one name.
 
 // ---- navigation ------------------------------------------------------------
 const TABS = [['data', 'Data'], ['sweep', 'Sweep'], ['boards', 'Boards'], ['verify', 'Verify'],

@@ -107,21 +107,9 @@ app.get('/api/vocabulary', (req, res) => {
 
 app.get('/api/healthz', (req, res) => res.json({ ok: true, cpuPct: throttle.currentCpuPct() }));
 
-// ---- CPU throttle (semi-auto balancer pattern) ------------------------------
-
-// The cap is a PER-WORKER duty cycle, so the machine-wide draw is
-// threads x pct. Report the pool size alongside it so the button can say so
-// instead of quietly redefining the number the owner has been reading.
-app.get('/api/cpu', (req, res) =>
-  res.json({ pct: throttle.currentCpuPct(), threads: configuredSize() }));
-
-app.post('/api/cpu', (req, res) => {
-  try {
-    res.json({ pct: throttle.setCpuPct((req.body || {}).pct), threads: configuredSize() });
-  } catch (err) {
-    res.status(400).json({ error: err.message });
-  }
-});
+// The /api/cpu pair that served the Construct page's CPU button is GONE with
+// the button (owner order, 2026-08-26). The duty cycle's one home is the
+// Compute tab, through /api/compute-config below — same throttle, one door.
 
 // ---- Compute (owner design, 2026-08-25) -------------------------------------
 // Which platform each role points at, which platforms exist to point at, and

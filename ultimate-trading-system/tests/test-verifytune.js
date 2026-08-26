@@ -108,9 +108,15 @@ module.exports = {
     assert.ok(/lastGate\.sentences/.test(UI), 'and the last gate\'s own verdict sentences');
   },
 
-  theCpuCapIsReachableFromThisTab() {
-    assert.ok(/id="cpubtn"/.test(HTML), 'the topbar must carry the CPU cap');
-    assert.ok(/api\/cpu/.test(UI), 'wired to the endpoint');
-    assert.ok(/service-wide/.test(HTML), 'and it must say the cap is shared by every job on the box');
+  // Inverted 2026-08-26 (owner order: "Remove the obsolete CPU button"). The
+  // button cycled the same per-worker duty cycle the Compute tab's share box
+  // sets — one dial shown in two places, under a hover that misdescribed it
+  // as a worker cap. One dial, one home: it must never grow back here, and
+  // neither may the endpoint pair that existed only to serve it.
+  theCpuDialLivesOnTheComputeTabAlone() {
+    assert.ok(!/id="cpubtn"/.test(HTML), 'the CPU button grew back on the Construct page');
+    assert.ok(!/api\/cpu['"`]/.test(UI) && !/'api\/cpu'/.test(UI), 'the page still asks the retired endpoint');
+    const server = require('fs').readFileSync(require('path').join(__dirname, '..', 'server.js'), 'utf8').replace(/\/\/[^\n]*/g, '');
+    assert.ok(!/['"`]\/api\/cpu['"`]/.test(server), 'the retired endpoint pair is still served');
   },
 };
