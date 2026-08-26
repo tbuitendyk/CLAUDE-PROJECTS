@@ -280,6 +280,51 @@ function eachSquashed(runId, name, file, fn, startBlock = 0) {
   } finally { try { fs.closeSync(fd); } catch (_) { /* already shut */ } }
 }
 
+// THE NAMED BLOCKS, EXACTLY (owner order, 2026-08-26: "fix all"). The
+// every-coin records need a handful of blocks out of tens of thousands, and
+// fetching them through page() re-parsed the whole sidecar once per block —
+// sixteen records cost three seconds of the one thread that answers every
+// page. This reads the sidecar ONCE and each named block by its exact byte
+// range, nothing else. Null when the collection is not squashed or has no
+// block index — the caller says so rather than falling back to a walk.
+function readBlocks(runId, name, indexes) {
+  const file = storeFile(runId, name);
+  if (!isGz(file)) return null;
+  const m = readMeta(runId, name);
+  const blocks = m && Array.isArray(m.blocks) ? m.blocks : null;
+  if (!blocks) return null;
+  let fd;
+  try { fd = fs.openSync(file, 'r'); } catch (_) { return null; }
+  const out = [];
+  try {
+    for (const bi of indexes) {
+      const b = blocks[bi];
+      if (!b) continue;
+      const buf = Buffer.alloc(b.bytes);
+      fs.readSync(fd, buf, 0, b.bytes, b.at);
+      let text;
+      try { text = zlib.gunzipSync(buf).toString('utf8'); } catch (_) { continue; }
+      // Each block is a complete little file beginning with its own header,
+      // decoded exactly the way eachSquashed decodes it.
+      let cols = null;
+      for (const line of text.split('\n')) {
+        if (!line) continue;
+        if (line[0] === '{') {
+          try { cols = JSON.parse(line).cols; } catch (_) { /* a torn header ends this block */ }
+          continue;
+        }
+        if (!cols) continue;
+        let arr;
+        try { arr = JSON.parse(line); } catch (_) { continue; }
+        const o = {};
+        for (let i = 0; i < cols.length; i++) o[cols[i]] = arr[i];
+        out.push(o);
+      }
+    }
+  } finally { try { fs.closeSync(fd); } catch (_) { /* already shut */ } }
+  return out;
+}
+
 // The sidecar is an index, not the record. When it is missing or behind, the
 // file itself answers — slowly, once — and the sidecar is written back.
 function rebuildMeta(runId, name) {
@@ -363,4 +408,4 @@ function blocksOf(runId, name) {
   return m && Array.isArray(m.blocks) ? m.blocks : null;
 }
 
-module.exports = { storeDir, storeFile, plainFile, gzFile, formatOf, writer, each, readAll, page, count, exists, bytes, remove, rebuildMeta, blocksOf };
+module.exports = { storeDir, storeFile, plainFile, gzFile, formatOf, writer, each, readAll, page, count, exists, bytes, remove, rebuildMeta, blocksOf, readBlocks };

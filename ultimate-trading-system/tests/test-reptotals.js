@@ -168,18 +168,31 @@ module.exports = {
       assert.strictEqual(q2a.t, 6, 'the held-back trades travel with the tally');
       const q1a = totals.groups.find((g) => g.label === 'q1').assets['AAAUSDT|||daily-3d'];
       assert.deepStrictEqual(q1a.b, [0]);
-      // coinRows reads ONLY the blocks the save names.
+      // readBlocks itself: the named block's rows, decoded exactly.
+      const second = rowstore.readBlocks(runId, 'replication', [1]);
+      assert.strictEqual(second.length, 2, 'the second block holds the two q2 rows');
+      assert.strictEqual(second[0].holdout.pnl, 7, 'rows decode with their nulls and nesting intact');
+      assert.strictEqual(second[0].nullDealSeed, null, 'a written null reads back as null, not as missing');
+      // coinRows reads ONLY the blocks the save names, through ONE readBlocks
+      // call — never page() or each(), whose per-call sidecar parse is what
+      // cost three seconds for sixteen records on the box.
       const doc = { id: runId, status: 'done', leaders: [] };
       const asked = [];
+      const realRead = rowstore.readBlocks;
       const realPage = rowstore.page;
-      rowstore.page = (id, name, from, n) => { asked.push({ from, n }); return realPage(id, name, from, n); };
+      const realEach = rowstore.each;
+      rowstore.readBlocks = (id, name, indexes) => { asked.push(indexes); return realRead(id, name, indexes); };
+      rowstore.page = () => { throw new Error('coinRows went through page()'); };
+      rowstore.each = () => { throw new Error('coinRows walked the store'); };
       let got;
       try {
         got = replication.coinRows(doc, { label: 'q2', trade: 'AAAUSDT', geometry: 'daily-3d' });
       } finally {
+        rowstore.readBlocks = realRead;
         rowstore.page = realPage;
+        rowstore.each = realEach;
       }
-      assert.deepStrictEqual(asked, [{ from: blocks[1].firstRow, n: blocks[1].rows }],
+      assert.deepStrictEqual(asked, [[1]],
         'the records were not read from exactly the one block that holds them');
       assert.strictEqual(got.indexed, true);
       assert.strictEqual(got.rows.length, 1, 'one real row — the copy beside it stays machinery');

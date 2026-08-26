@@ -433,16 +433,19 @@ function coinRows(doc, { label = '', trade = '', ctx1 = '', ctx2 = '', geometry 
   if (!Array.isArray(a.b) || !a.b.length) {
     return pack([], { indexed: false, why: 'this run\'s rows are stored in a form the record index does not cover' });
   }
-  const blocks = rowstore.blocksOf(doc.id, 'replication');
+  // The named blocks, exactly — one sidecar read, one byte-range read each.
+  // Going through page() re-parsed the whole sidecar once per block, and
+  // sixteen records cost three seconds of the answering thread (measured on
+  // the box, 2026-08-26).
+  const got = rowstore.readBlocks(doc.id, 'replication', a.b);
+  if (!got) {
+    return pack([], { indexed: false, why: 'this run\'s rows are stored in a form the record index does not cover' });
+  }
   const out = [];
-  for (const bi of a.b) {
-    const blk = blocks && blocks[bi];
-    if (!blk) continue;
-    for (const r of rowstore.page(doc.id, 'replication', blk.firstRow, blk.rows).rows) {
-      if (!wanted(r)) continue;
-      if (saved.tagged ? r.nullDealSeed != null : out.length >= (a.n || 1)) continue;
-      out.push(r);
-    }
+  for (const r of got) {
+    if (!wanted(r)) continue;
+    if (saved.tagged ? r.nullDealSeed != null : out.length >= (a.n || 1)) continue;
+    out.push(r);
   }
   return pack(out, { indexed: true });
 }
