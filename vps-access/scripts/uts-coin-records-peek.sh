@@ -62,12 +62,19 @@ d = json.load(open('/tmp/uts-cr2.json'))
 if d.get('indexed') is False:
     print("records not reachable:", d.get('why'))
 else:
-    print("records: %s row(s) in %s ms" % (d.get('shown'), sys.argv[1]))
+    print("records: %s row(s) in %s ms  namesFrom=%s  unnamed=%s" % (d.get('shown'), sys.argv[1], d.get('namesFrom'), d.get('unnamedRecords')))
+    rec = d.get('recovery')
+    if rec:
+        print("recovery: going=%s  %s of %s rows" % (rec.get('going'), format(rec.get('scanned', 0), ','), format(rec.get('of', 0), ',')))
+        if rec.get('error'):
+            print("RECOVERY ERROR:", rec['error'])
     for r in (d.get('rows') or [])[:20]:
         h = r.get('holdout') or {}
-        print("  band %s%%  test $%.2f/%st  held-back $%.2f/%st  stops %s  vsL %s"
-              % (r.get('bandPct'), (r.get('pnl') or 0), r.get('trades'),
-                 (h.get('pnl') or 0), h.get('trades'), h.get('stops'), h.get('vsAlwaysLong')))
+        w = r.get('weekdaysOnly')
+        print("  %-7s band=%-5s 24/5=%-4s  band %s%%  held-back $%.2f/%st"
+              % (r.get('decision') or '-', r.get('bandMode') if r.get('bandMode') is not None else '-',
+                 '-' if w is None else ('yes' if w else 'no'),
+                 r.get('bandPct'), (h.get('pnl') or 0), h.get('trades')))
 PY
 printf 'an unrelated page during this: '
 curl -s -o /dev/null -w 'HTTP %{http_code} in %{time_total}s\n' --max-time 15 "$B/construct.html" || echo 'no answer in 15s'
