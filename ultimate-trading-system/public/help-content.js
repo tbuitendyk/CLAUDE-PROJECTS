@@ -246,7 +246,7 @@ window.HELP = {
         more: 'It refuses more than it accepts, on purpose. The price files have to fingerprint identically to the ones the run read, and the engine has to be the same version it started under. Half a board worked out from one history and half from another is not one board, and nothing on the finished screen would say so. It also refuses a run that finished, and one that is going now. Anything that failed the first time gets another go, since a failure left no result to keep.',
       },
       bCoinSort: {
-        what: 'How the every-coin table is ordered. beat its own copies puts the strongest scores first, with more comparisons winning ties; comparisons puts the best-evidenced rows first; held-back money, coin and configuration order by those.',
+        what: 'How the every-coin table is ordered. beat its own copies puts the strongest scores first, with more comparisons winning ties; comparisons puts the best-evidenced rows first; avg held-back, coin and configuration order by those.',
         more: 'The whole data set is sorted before the page is cut, so page one really is the top of everything — never just the top of a page.',
       },
       bCoinMin: {

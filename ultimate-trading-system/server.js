@@ -445,6 +445,17 @@ app.get('/api/batch/:id/replication-coins', (req, res) => {
   catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// THE RECORDS BEHIND ONE COIN ROW (owner order, 2026-08-25). Served from the
+// saved tally's per-coin block index — only the blocks that hold this coin's
+// real rows are unpacked, never the whole store, so opening a row costs
+// milliseconds however many rows the run recorded.
+app.get('/api/batch/:id/replication-coin-rows', (req, res) => {
+  const doc = batch.getBatch(req.params.id);
+  if (!doc) return res.status(404).json({ error: `no run called "${req.params.id}"` });
+  try { res.json(require('./lib/replication').coinRows(doc, req.query)); }
+  catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 app.get('/api/batch/:id/replication-detail', (req, res) => {
   const doc = batch.getBatch(String(req.params.id || ''));
   if (!doc) return res.status(404).json({ error: 'unknown run' });

@@ -67,6 +67,18 @@ const GUARDS = [
     'theFloorSaysWhatItRemovedAndPagesContinueOneOrder', 'page one of the every-coin table is whatever order the tally fell out in, presented as the top'],
   [path.join(ROOT, 'lib', 'replication.js'), 'if (saved && saved.v === TALLY_V && saved.rowsSeen === rows) {', 'if (saved && saved.rowsSeen === rows) {',
     'aTallyFromBeforeThePerCoinScoreRebuildsForTheCoinView', 'a save with no per-coin counts is served to the per-coin view as fresh, showing every coin unscored'],
+  [path.join(ROOT, 'lib', 'replication.js'), 'avgHold: a.hold ? (a.sum || 0) / a.hold : null,', 'avgHold: a.sum || 0,',
+    'theAveragesMatchThePencil', 'a 16-row sum is shown under the heading that says average, which is the exact uselessness the owner ordered out'],
+  [path.join(ROOT, 'lib', 'replication.js'), 'avgTrades: a.hold ? (a.t || 0) / a.hold : null,', 'avgTrades: a.t || 0,',
+    'theAveragesMatchThePencil', 'the trades column sums instead of averaging and reads 16 times too big'],
+  [path.join(ROOT, 'lib', 'replication.js'), '    } else if (hold != null) {', "    } else if (hold != null) {\n      a.t += (r.holdout.trades || 0);",
+    'theAveragesMatchThePencil', 'the scrambled copies\' trades pour into the average, which then measures the machinery instead of the coin'],
+  [path.join(ROOT, 'lib', 'replication.js'), '  for (const bi of a.b) {', '  for (let bi = 0; bi < (blocks || []).length; bi++) {',
+    'theRecordsBehindACoinRowComeFromOnlyItsBlocks', 'opening one coin\'s records unpacks the whole store — the ten-minute freeze back under a new button'],
+  [path.join(ROOT, 'lib', 'replication.js'), '      if (starts && starts.length) a.b = [...new Set(a.at.map(blockOfRow))].sort((x, y) => x - y);', '',
+    'theRecordsBehindACoinRowComeFromOnlyItsBlocks', 'no save ever carries the record index, so the records button answers nothing forever'],
+  [path.join(ROOT, 'lib', 'replication.js'), '      delete a.at;', '',
+    'theRecordsBehindACoinRowComeFromOnlyItsBlocks', 'millions of row positions ride along in a file that is read back on every open'],
 ];
 
 const only = process.argv[2] || '';

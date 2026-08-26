@@ -814,12 +814,28 @@ thirty seconds, under its own independently selectable theme.
    1.8 GB heap beside a running sweep for the same numbers a few minutes
    sooner.
 
+2. **The averages and the records (owner order, 2026-08-25: "change the
+   held-back column to avg held-back … show also the avg trades … allow an
+   open-records-below arrow").** The every-coin table's money column now
+   averages over the rows that recorded a held-back result instead of summing
+   them — so a 16-row coin and an 8-row coin read alike — with avg trades
+   beside it, and every row carries a records button that unfolds the 8 or 16
+   rows themselves underneath. What makes the button affordable: the saved
+   tally (now v3) remembers, per coin, WHICH squashed blocks of the store hold
+   its real rows, so opening one row unpacks only those blocks — never the
+   whole store, whose full walk is the ten-minute freeze the tallies were
+   built to end. A v2 save keeps drawing the whole-configuration table while
+   its background rebuild brings the averages and the index.
+
 **Parked, with reasons — not dropped:**
 
 1. **The per-configuration row table (detail()).** Opening one configuration's
    rows under a line of the replication table still walks every recorded row
    on the answering thread — the same class of fault as the one the tallies
    fixed, needing a by-label index beside the rows. Its own piece of work.
+   (The per-COIN case is now solved by the v3 block index; the per-
+   configuration case still needs its own, since one configuration's rows
+   touch nearly every block.)
 2. **The sweep runner as its own service.** The job contract (settings +
    price-file fingerprint in, rows + progress back, interface owns the record)
    is agreed; the Compute tab is its front end and already speaks in those

@@ -78,7 +78,7 @@ function tallyOver(each) {
   let rowsSeen = 0;
   const groups = new Map();
 
-  each((r) => {
+  each((r, at) => {
     rowsSeen++;
     const label = r.declaredLabel || 'declared config';
     if (!tagged) {
@@ -100,15 +100,21 @@ function tallyOver(each) {
     }
     const k = assetKey(r);
     let a = g.assets.get(k);
-    if (!a) { a = { n: 0, hold: 0, pos: 0, sum: 0, beat: 0, pairs: 0 }; g.assets.set(k, a); }
+    if (!a) { a = { n: 0, hold: 0, pos: 0, sum: 0, t: 0, beat: 0, pairs: 0, at: [] }; g.assets.set(k, a); }
     const hold = r.holdout && r.holdout.pnl != null ? r.holdout.pnl : null;
 
     if (!tagged || r.nullDealSeed == null) {
       g.realsTotal++;
       a.n++;
+      // WHERE the row sits, so a reader can be handed the records themselves
+      // (owner order, 2026-08-25: "allow an open-records-below arrow that
+      // expands to the detail records"). Saved as BLOCK positions, never row
+      // positions — buildAndSaveTotals makes that swap before writing.
+      if (typeof at === 'number') a.at.push(at);
       if (hold != null) {
         a.hold++;
         a.sum += hold;
+        a.t += (r.holdout.trades || 0);
         if (hold > 0) a.pos++;
         const vsL = r.holdout.vsAlwaysLong;
         if (vsL != null) { g.vsLCount++; if (vsL > 0) g.vsLPos++; }
@@ -135,7 +141,7 @@ function tallyOver(each) {
   // whole-configuration figures are derived from these at reading time, so the
   // two views can never disagree — there is one set of counts, sliced twice.
   return {
-    v: 2,
+    v: 3,
     builtAt: new Date().toISOString(),
     tagged,
     dropped,
@@ -149,7 +155,7 @@ function tallyOver(each) {
     })),
   };
 }
-const TALLY_V = 2;
+const TALLY_V = 3;
 
 // From a tally to the rows the screen shows: widths joined in from the CURRENT
 // leader rows (they sharpen while a run goes, so they are never baked into a
@@ -239,11 +245,29 @@ function writeTotals(runId, totals) {
 // on the answering thread — that is the whole point of this file's change.
 function buildAndSaveTotals(runId, onProgress) {
   let n = 0;
-  const totals = tallyOver((fn) => rowstore.each(runId, 'replication', (r) => {
+  const totals = tallyOver((fn) => rowstore.each(runId, 'replication', (r, at) => {
     n++;
     if (onProgress && n % 1000000 === 0) onProgress(n);
-    return fn(r);
+    return fn(r, at);
   }));
+  // ROW positions become BLOCK positions before the tally is saved. The block
+  // is the unit a reader can actually fetch, and a coin's rows land in a
+  // handful of them — where a list of every real row's position would put
+  // millions of numbers in a file that is read back on every open.
+  const blocks = rowstore.blocksOf(runId, 'replication');
+  const starts = blocks ? blocks.map((b) => b.firstRow) : null;
+  const blockOfRow = (at) => {
+    let lo = 0; let hi = starts.length - 1;
+    while (lo < hi) { const mid = (lo + hi + 1) >> 1; if (starts[mid] <= at) lo = mid; else hi = mid - 1; }
+    return lo;
+  };
+  for (const g of totals.groups) {
+    for (const a of Object.values(g.assets || {})) {
+      if (!Array.isArray(a.at)) continue;
+      if (starts && starts.length) a.b = [...new Set(a.at.map(blockOfRow))].sort((x, y) => x - y);
+      delete a.at;
+    }
+  }
   writeTotals(runId, totals);
   return totals;
 }
@@ -306,6 +330,13 @@ function coinsFrom(totals, { sort = 'share', minPairs = 0, ...query } = {}) {
         holdCount: a.hold || 0,
         pos: a.pos || 0,
         sum: a.sum || 0,
+        // PER-ROW AVERAGES, not sums (owner order, 2026-08-25: "change the
+        // held-back column to avg held-back so we're dividing by 16 or 8 and
+        // the info becomes useful. show also the avg trades"). The divisor is
+        // the rows that recorded a held-back number — every row, on a
+        // finished run — so a coin with 16 rows and one with 8 read alike.
+        avgHold: a.hold ? (a.sum || 0) / a.hold : null,
+        avgTrades: a.hold ? (a.t || 0) / a.hold : null,
         beat: a.beat || 0,
         pairs: a.pairs || 0,
         share: a.pairs ? a.beat / a.pairs : null,
@@ -315,10 +346,11 @@ function coinsFrom(totals, { sort = 'share', minPairs = 0, ...query } = {}) {
   const kept = atLeast ? rows.filter((r) => r.pairs >= atLeast) : rows;
   const byShare = (a, b) => (a.share == null && b.share == null ? 0
     : b.share == null ? -1 : a.share == null ? 1 : b.share - a.share);
+  const byAvg = (a, b) => (b.avgHold ?? -Infinity) - (a.avgHold ?? -Infinity);
   const orders = {
-    share: (a, b) => byShare(a, b) || b.pairs - a.pairs || b.sum - a.sum,
+    share: (a, b) => byShare(a, b) || b.pairs - a.pairs || byAvg(a, b),
     pairs: (a, b) => b.pairs - a.pairs || byShare(a, b),
-    money: (a, b) => b.sum - a.sum || byShare(a, b),
+    money: (a, b) => byAvg(a, b) || byShare(a, b),
     coin: (a, b) => a.trade.localeCompare(b.trade) || byShare(a, b),
     configuration: (a, b) => a.label.localeCompare(b.label) || a.trade.localeCompare(b.trade),
   };
@@ -362,6 +394,57 @@ function coins(doc, query = {}) {
     return { ...coinsFrom(usable, query), total: rows, totals: { upToDate: false, asOfRows: usable.rowsSeen, builtAt: usable.builtAt }, ...buildingMeta };
   }
   return { ...buildingMeta, sort: 'share', minPairs: 0, narrowedOut: 0, total: rows, rows: [], page: { offset: 0, limit: 0, total: 0, shown: 0, more: false } };
+}
+
+// THE RECORDS BEHIND ONE COIN ROW (owner order, 2026-08-25: "allow an
+// open-records-below arrow that expands to the detail records (either 8 or 16
+// in this case)"). NEVER a walk over the whole store — that walk is ten
+// minutes on the one thread that answers every page, and freezing the site to
+// show sixteen rows is the exact fault this file exists to prevent. The saved
+// tally carries, per coin, WHICH blocks of the store hold its real rows; only
+// those blocks are unpacked, and everything else on disk stays untouched.
+function coinRows(doc, { label = '', trade = '', ctx1 = '', ctx2 = '', geometry = '' } = {}) {
+  const k = `${trade}|${ctx1 || ''}|${ctx2 || ''}|${geometry}`;
+  const wanted = (r) => (r.declaredLabel || 'declared config') === label && assetKey(r) === k;
+  const pack = (rows, extra) => ({ label, coin: { trade, ctx1, ctx2, geometry }, rows, shown: rows.length, ...extra });
+
+  // A run recorded before the rows moved to disk: small by construction, so
+  // it is read here and now — under the tally's own untagged rule (the first
+  // recorded row per coin is the real one).
+  if (!rowstore.exists(doc.id, 'replication')) {
+    let tagged = false;
+    for (const r of (doc.replication || [])) if ('nullDealSeed' in r) { tagged = true; break; }
+    const out = [];
+    for (const r of (doc.replication || [])) {
+      if (!wanted(r)) continue;
+      if (tagged ? r.nullDealSeed != null : out.length > 0) continue;
+      out.push(r);
+    }
+    return pack(out, { indexed: true });
+  }
+
+  const saved = readTotals(doc.id);
+  if (!saved || saved.v !== TALLY_V) {
+    return pack([], { indexed: false, why: 'the saved totals predate the per-coin record index — the fresh totalling now going brings it' });
+  }
+  const g = (saved.groups || []).find((x) => x.label === label);
+  const a = g && g.assets ? g.assets[k] : null;
+  if (!a) return pack([], { indexed: true });
+  if (!Array.isArray(a.b) || !a.b.length) {
+    return pack([], { indexed: false, why: 'this run\'s rows are stored in a form the record index does not cover' });
+  }
+  const blocks = rowstore.blocksOf(doc.id, 'replication');
+  const out = [];
+  for (const bi of a.b) {
+    const blk = blocks && blocks[bi];
+    if (!blk) continue;
+    for (const r of rowstore.page(doc.id, 'replication', blk.firstRow, blk.rows).rows) {
+      if (!wanted(r)) continue;
+      if (saved.tagged ? r.nullDealSeed != null : out.length >= (a.n || 1)) continue;
+      out.push(r);
+    }
+  }
+  return pack(out, { indexed: true });
 }
 
 function rank(doc, { detailCap = 0, ...query } = {}) {
@@ -450,4 +533,4 @@ function detail(doc, label, { offset = 0, limit = 200 } = {}) {
   };
 }
 
-module.exports = { rank, detail, coins, coinsFrom, assetKey, tallyOver, renderScored, buildAndSaveTotals, startTotals, readTotals, writeTotals, totalsFile, TALLY_V, COIN_SORTS };
+module.exports = { rank, detail, coins, coinsFrom, coinRows, assetKey, tallyOver, renderScored, buildAndSaveTotals, startTotals, readTotals, writeTotals, totalsFile, TALLY_V, COIN_SORTS };

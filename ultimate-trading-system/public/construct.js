@@ -166,8 +166,10 @@ const COL = {
   coin: 'the traded pair this row scores, with its chunk shape. The whole-configuration table above averages across all of these; this row is one coin on its own.',
   coinShare: 'of the head-to-heads on THIS coin between the real decisions and their scrambled copies, the share the real ones won. Half is what guessing scores. Read it with the comparisons column: a high share on few comparisons is luck wearing a score.',
   coinPairs: 'how many head-to-heads are behind the share — every real look on this coin against every one of its scrambled copies. More comparisons make the share worth more.',
-  coinMoney: 'this configuration\'s held-back money on this coin — the SUM over the rows counted in the rows column, each one a promoted unit\'s own held-back result on the same history. A coin with 16 rows sums 16 results where one with 8 sums 8, so compare money only between rows whose rows counts match, or lead on the share instead.',
+  coinMoney: 'this configuration\'s held-back money on this coin, AVERAGED over the rows counted in the rows column — the sum divided by the rows that recorded a held-back result (all of them, on a finished run). Averaging is what lets a coin with 16 rows and one with 8 be read side by side.',
+  coinTrades: 'the average number of held-back trades per row on this coin — how much trading is behind each row\'s held-back result. An average near zero means the money rests on a handful of trades.',
   coinRows: 'how many real looks this configuration recorded on this coin.',
+  coinRecords: 'opens this row\'s records below it — the rows counted in the rows column, each one a promoted unit\'s own scoring of this configuration on this coin, read straight from the stored rows.',
 };
 // cth(label, key[, style]) — a heading always carries its own description.
 const cth = (label, key, style) => `<th${style ? ` style="${style}"` : ''}${COL[key] ? ` title="${esc(COL[key]).replace(/"/g, '&quot;')}"` : ''}>${label}</th>`;
@@ -1496,29 +1498,34 @@ async function drawBoards() {
           <th style="padding:.3rem .5rem" title="${esc(COL.coin)}">coin</th>
           <th style="padding:.3rem .5rem" title="${esc(COL.coinShare)}">beat its own copies</th>
           <th style="padding:.3rem .5rem" title="${esc(COL.coinPairs)}">comparisons</th>
-          <th style="padding:.3rem .5rem" title="${esc(COL.coinMoney)}">held-back</th>
-          <th style="padding:.3rem .5rem" title="${esc(COL.coinRows)}">rows</th></tr></thead>
+          <th style="padding:.3rem .5rem" title="${esc(COL.coinMoney)}">avg held-back</th>
+          <th style="padding:.3rem .5rem" title="${esc(COL.coinTrades)}">avg trades</th>
+          <th style="padding:.3rem .5rem" title="${esc(COL.coinRows)}">rows</th>
+          <th style="padding:.3rem .5rem" title="${esc(COL.coinRecords)}">records</th></tr></thead>
         <tbody>${rows.map((r) => `<tr>
           <td style="padding:.25rem .5rem .25rem 0">${esc(r.label)}</td>
           <td style="padding:.25rem .5rem"><b>${esc(r.trade)}</b>${r.ctx1 ? ` + ${esc(r.ctx1)}` : ''}${r.ctx2 ? ` + ${esc(r.ctx2)}` : ''} <span class="muted">${esc(r.geometry)}</span></td>
           <td style="padding:.25rem .5rem">${r.share == null ? '<span class="muted">—</span>' : `<b class="${r.share > 0.5 ? 'pos' : ''}">${(r.share * 100).toFixed(1)}%</b> <span class="muted">${r.beat}/${r.pairs}</span>`}</td>
           <td style="padding:.25rem .5rem">${r.pairs}</td>
-          <td style="padding:.25rem .5rem" class="${r.sum >= 0 ? 'pos' : 'neg'}">${money(r.sum)}</td>
-          <td style="padding:.25rem .5rem">${r.rows}</td></tr>`).join('')
-          || `<tr><td colspan="6" class="empty">nothing ${d.minPairs ? `with at least ${d.minPairs} comparisons` : 'here'}</td></tr>`}</tbody></table></div>
+          <td style="padding:.25rem .5rem" class="${(r.avgHold ?? 0) >= 0 ? 'pos' : 'neg'}">${r.avgHold == null ? '<span class="muted">—</span>' : money(r.avgHold)}</td>
+          <td style="padding:.25rem .5rem">${r.avgTrades == null ? '<span class="muted">—</span>' : r.avgTrades.toFixed(1)}</td>
+          <td style="padding:.25rem .5rem">${r.rows}</td>
+          <td style="padding:.25rem .5rem"><button class="coinopen" data-label="${esc(r.label)}" data-trade="${esc(r.trade)}" data-ctx1="${esc(r.ctx1 || '')}" data-ctx2="${esc(r.ctx2 || '')}" data-geometry="${esc(r.geometry)}" title="${esc(COL.coinRecords)}">▸ records</button></td></tr>`).join('')
+          || `<tr><td colspan="8" class="empty">nothing ${d.minPairs ? `with at least ${d.minPairs} comparisons` : 'here'}</td></tr>`}</tbody></table></div>
       ${d.narrowedOut ? `<p class="note">${d.narrowedOut.toLocaleString()} row(s) narrowed out by the comparisons floor.</p>` : ''}
       ${pageBar('repCoins', d.page, ' coin rows')}`;
     return `<details id="bRepCoins"${repCoins.id === doc.id ? ' open' : ''} style="margin-top:.6rem"><summary style="cursor:pointer"><b>Every coin of every configuration</b> — one row per coin, sortable over the whole data set</summary>
       <p class="note">source: the same replication rows as the list above — written in the second pass, one for every
         promoted unit that scored this configuration on this coin. The rows column counts them: one per combination of
         the boxes permuted on Sweep that share the coin and chunk shape, each scoring the same configuration on its own
-        forecasts. held-back is the SUM over those rows, so coins with more rows sum more results — compare money
-        between rows with equal rows, or lead on the share.</p>
+        forecasts. avg held-back and avg trades are AVERAGES over those rows — the sum divided by the rows that
+        recorded a held-back result — so a coin with 16 rows and one with 8 read alike. The records button on each row
+        opens those rows themselves.</p>
       <div class="row" style="margin:.5rem 0">
         <label class="c"><span class="muted">sort by</span><select id="bCoinSort">
           <option value="share"${repCoins.sort === 'share' ? ' selected' : ''}>beat its own copies</option>
           <option value="pairs"${repCoins.sort === 'pairs' ? ' selected' : ''}>comparisons</option>
-          <option value="money"${repCoins.sort === 'money' ? ' selected' : ''}>held-back money</option>
+          <option value="money"${repCoins.sort === 'money' ? ' selected' : ''}>avg held-back</option>
           <option value="coin"${repCoins.sort === 'coin' ? ' selected' : ''}>coin</option>
           <option value="configuration"${repCoins.sort === 'configuration' ? ' selected' : ''}>configuration</option>
         </select></label>
@@ -1810,6 +1817,63 @@ async function drawBoards() {
       askCoins();
     };
     coinsOpenEl.addEventListener('toggle', () => { if (coinsOpenEl.open && repCoins.id !== doc.id) askCoins(); });
+    // THE RECORDS BELOW A ROW (owner order, 2026-08-25). Press the row's
+    // records button and the rows it averages appear under it, fetched from
+    // the other side — which reads ONLY the stored blocks that hold them, so
+    // this costs milliseconds however many rows the run recorded. Press again
+    // and they fold away. A redraw (paging, Apply) folds every open one.
+    coinsOpenEl.addEventListener('click', async (ev) => {
+      const btn = ev.target && ev.target.closest ? ev.target.closest('button.coinopen') : null;
+      if (!btn) return;
+      const tr = btn.closest('tr');
+      if (!tr) return;
+      const next = tr.nextElementSibling;
+      if (next && next.classList.contains('coinsub')) { next.remove(); btn.textContent = '▸ records'; return; }
+      btn.textContent = '… records';
+      const q = ['label', 'trade', 'ctx1', 'ctx2', 'geometry']
+        .map((f) => `${f}=${encodeURIComponent(btn.dataset[f] || '')}`).join('&');
+      const got = await apiOr(`api/batch/${encodeURIComponent(doc.id)}/replication-coin-rows?${q}`, null);
+      const sub = document.createElement('tr');
+      sub.className = 'coinsub';
+      const cell = document.createElement('td');
+      cell.colSpan = 8;
+      cell.style.padding = '.25rem .5rem .5rem 1.2rem';
+      if (!got) {
+        cell.innerHTML = '<span class="warn">could not read the records — nothing is missing from the run, the screen could not ask</span>';
+      } else if (got.indexed === false) {
+        cell.innerHTML = `<span class="muted">${esc(got.why || 'the records are not reachable yet')}</span>`;
+      } else if (!got.rows || !got.rows.length) {
+        cell.innerHTML = '<span class="muted">no records came back for this row</span>';
+      } else {
+        cell.innerHTML = `<p class="note" style="margin:.2rem 0">source: the run's replication rows themselves — the ${got.rows.length} record(s)
+          this row averages, read straight from the stored rows. Each is one promoted unit's own scoring of this configuration on this coin,
+          one per combination of the boxes permuted on Sweep that share the coin and chunk shape. A record was written down with its band %
+          but not the other permuted choices, so records sharing a band % differ by choices the record does not name.</p>
+        <div class="scrollx"><table style="border-collapse:collapse">
+          <thead><tr style="text-align:left;border-bottom:1px solid var(--line)">
+            <th style="padding:.2rem .5rem .2rem 0" title="how far either side of the current price this record set its two levels, as a percentage of price — the one permuted choice the record was written down with">band %</th>
+            <th style="padding:.2rem .5rem" title="profit-and-loss on the window the settings were CHOSEN on — flattering by construction">test $</th>
+            <th style="padding:.2rem .5rem" title="entries in the test window — the window the settings were chosen on">test trades</th>
+            <th style="padding:.2rem .5rem" title="the once-only look on data no search touched — the number that counts">held-back $</th>
+            <th style="padding:.2rem .5rem" title="entries in the held-back window — the once-only look">held-back trades</th>
+            <th style="padding:.2rem .5rem" title="how many held-back positions closed at their stop">held-back stops</th>
+            <th style="padding:.2rem .5rem" title="this record's held-back money minus just holding the coin over the same window">vs always-long</th></tr></thead>
+          <tbody>${got.rows.map((r) => {
+    const h = r.holdout || null;
+    return `<tr>
+            <td style="padding:.2rem .5rem .2rem 0">±${r.bandPct ?? '—'}%</td>
+            <td style="padding:.2rem .5rem" class="${(r.pnl || 0) >= 0 ? 'pos' : 'neg'}">${money(r.pnl)}</td>
+            <td style="padding:.2rem .5rem">${r.trades ?? '—'}</td>
+            <td style="padding:.2rem .5rem" class="${h ? ((h.pnl || 0) >= 0 ? 'pos' : 'neg') : 'muted'}">${h ? money(h.pnl) : '—'}</td>
+            <td style="padding:.2rem .5rem">${h && h.trades != null ? h.trades : '—'}</td>
+            <td style="padding:.2rem .5rem">${h && h.stops != null ? h.stops : '—'}</td>
+            <td style="padding:.2rem .5rem" class="${h && h.vsAlwaysLong != null ? (h.vsAlwaysLong >= 0 ? 'pos' : 'neg') : 'muted'}">${h && h.vsAlwaysLong != null ? money(h.vsAlwaysLong) : '—'}</td></tr>`;
+  }).join('')}</tbody></table></div>`;
+      }
+      sub.appendChild(cell);
+      tr.after(sub);
+      btn.textContent = '▾ records';
+    });
     const go = $('#bCoinGo');
     if (go) {
       go.onclick = () => {

@@ -356,4 +356,11 @@ function remove(runId) {
   try { fs.rmSync(storeDir(runId), { recursive: true, force: true }); } catch (_) { /* nothing there */ }
 }
 
-module.exports = { storeDir, storeFile, plainFile, gzFile, formatOf, writer, each, readAll, page, count, exists, bytes, remove, rebuildMeta };
+// The block layout, for callers that keep their own map of which blocks hold
+// what (the replication totals do). Read-only: the sidecar is the index.
+function blocksOf(runId, name) {
+  const m = readMeta(runId, name);
+  return m && Array.isArray(m.blocks) ? m.blocks : null;
+}
+
+module.exports = { storeDir, storeFile, plainFile, gzFile, formatOf, writer, each, readAll, page, count, exists, bytes, remove, rebuildMeta, blocksOf };
