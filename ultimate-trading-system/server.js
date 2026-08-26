@@ -444,12 +444,9 @@ app.get('/api/batch/:id/replication-coin-rows', (req, res) => {
   catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-app.get('/api/batch/:id/replication-detail', (req, res) => {
-  const doc = batch.getBatch(String(req.params.id || ''));
-  if (!doc) return res.status(404).json({ error: 'unknown run' });
-  try { res.json(require('./lib/replication').detail(doc, String(req.query.label || ''), req.query)); }
-  catch (err) { res.status(400).json({ error: err.message }); }
-});
+// /api/batch/:id/replication-detail is RETIRED with detail() (owner go,
+// 2026-08-26) — the ranked list's open line asks /replication-coins with a
+// label instead, served from the saved tally in milliseconds.
 
 // Any of a run's stored row collections, a page at a time. The rows ARE the
 // record (QC 74) and this is how they are read back without holding them.

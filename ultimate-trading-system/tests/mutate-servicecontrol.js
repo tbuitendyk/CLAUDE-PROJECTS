@@ -121,6 +121,10 @@ const GUARDS = [
     'theAveragesMatchThePencil', 'the new sort choice silently orders by nothing'],
   [path.join(ROOT, 'lib', 'replication.js'), 'if (!saved || !(saved.v >= SPANS_FROM_V)) {', 'if (!saved || saved.v !== TALLY_V) {',
     'aV3SaveKeepsTheRecordsWorkingWhileTheAveragesRebuild', 'every records button goes dark for the whole fifteen-minute rebuild after any tally change'],
+  [path.join(ROOT, 'lib', 'replication.js'), 'const scoped = only ? rows.filter((r) => r.label === only) : rows;', 'const scoped = rows;',
+    'aLabelNarrowsToOneConfigurationsCoins', 'an opened line shows every configuration\'s coins under one configuration\'s name'],
+  [path.join(ROOT, 'public', 'construct.js'), 'Replication — ${Number(rep.configs || 0).toLocaleString()} declared configs, ranked', 'Replication — ${scored.length} declared configs, ranked',
+    'theRankedHeadingCountsEveryConfigurationNotThePage', 'the heading names the page length as the number of configurations the run declared'],
 ];
 
 const only = process.argv[2] || '';

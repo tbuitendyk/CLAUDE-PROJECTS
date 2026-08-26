@@ -204,9 +204,10 @@ module.exports = {
       // checked on the call that now returns those rows.
       assert.strictEqual(g.reals.length, 0, 'the ranked list is carrying per-asset rows again');
       assert.strictEqual(g.realsTotal, 1, 'and the count of them was lost with the rows');
-      const d = replication.detail(batch.getBatch(id), g.label);
-      assert.strictEqual(d.rows.length, 1, 'the per-asset table shows the real look only, never a copy');
-      assert.strictEqual(d.matched, 1, 'and it says how many there were');
+      const d = replication.coinRows(batch.getBatch(id), { label: g.label, trade: 'LTCUSDT', geometry: 'daily-3d' });
+      assert.strictEqual(d.rows.length, 1, 'the records show the real look only, never a copy');
+      const c = replication.coins(batch.getBatch(id), { label: g.label });
+      assert.strictEqual(c.page.total, 1, 'and the line\'s own coin table says how many coins there are');
     });
   },
 

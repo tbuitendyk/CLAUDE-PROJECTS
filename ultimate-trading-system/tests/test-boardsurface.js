@@ -114,8 +114,9 @@ module.exports.theOpenRecordsSurviveARedraw = function () {
   const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'public', 'construct.js'), 'utf8');
   a.ok(/let openRecs = \{ id: null, byKey: new Map\(\) \};/.test(src),
     'the open-records state is gone — every redraw folds them again');
-  a.ok(/openRecs\.byKey\.has\(coinKeyOf\(r\)\)\s*\?\s*`<tr class="coinsub">/.test(src.replace(/\n/g, ' ')),
-    'coinBox no longer draws the open records from state');
+  a.ok(/const open = openRecs\.byKey\.has\(coinKeyOf\(r\)\);/.test(src)
+    && /open\s*\?\s*`<tr class="coinsub">/.test(src.replace(/\n/g, ' ')),
+    'the shared coin row no longer draws the open records from state');
   a.ok(/openRecs\.byKey\.set\(key, got\)/.test(src), 'opening a row no longer keeps what came back');
   a.ok(/openRecs\.byKey\.delete\(key\)/.test(src), 'closing a row no longer clears its state, so it springs back open');
   // ONE builder, used by the state render and the button press alike — a
@@ -141,4 +142,17 @@ module.exports.everyControlsHelpBecomesItsHover = function () {
   for (const key of ['data', 'sweep', 'boards', 'verify', 'history', 'tune', 'greenlight']) {
     a.ok(new RegExp(`hoverFromHelp\\('${key}'\\)`).test(src), `the ${key} draw no longer wires its hovers`);
   }
+};
+
+
+// The ranked list's heading counts EVERY configuration the run declared,
+// not the hundred the page happens to show (owner caught it, 2026-08-26:
+// "why is this table '100 declared configs' when we permuted thousands?").
+module.exports.theRankedHeadingCountsEveryConfigurationNotThePage = function () {
+  const { assert: a } = require('./helpers');
+  const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'public', 'construct.js'), 'utf8');
+  a.ok(/Replication — \$\{Number\(rep\.configs \|\| 0\)\.toLocaleString\(\)\} declared configs, ranked/.test(src),
+    'the heading is back to counting the page instead of the run');
+  a.ok(!/Replication — \$\{scored\.length\} declared configs/.test(src),
+    'the page-length count crept back into the heading');
 };

@@ -871,15 +871,18 @@ thirty seconds, under its own independently selectable theme.
    Compute tab), with its endpoint pair, and the tests now require its
    absence.
 
-**Parked, with reasons — not dropped:**
+**Parked items closed:**
 
-1. **The per-configuration row table (detail()).** Opening one configuration's
-   rows under a line of the replication table still walks every recorded row
-   on the answering thread — the same class of fault as the one the tallies
-   fixed, needing a by-label index beside the rows. Its own piece of work.
-   (The per-COIN case is now solved by the v3 block index; the per-
-   configuration case still needs its own, since one configuration's rows
-   touch nearly every block.)
+1. **detail() is RETIRED (owner go, 2026-08-26).** The owner hit the parked
+   fault live: opening a ranked line walked all 71 million rows on the
+   answering thread, outlived the web server's time limit, answered nothing
+   and froze the site while it walked. An opened line now serves per-coin
+   summaries from the same saved tally as the every-coin view, narrowed to
+   that configuration — same columns, same records buttons, milliseconds —
+   and the per-row walk plus its endpoint are gone, with tests requiring
+   their absence. The ranked list's heading now counts every configuration
+   the run declared instead of the hundred the page shows (owner caught the
+   mislabel the same day).
 2. **The sweep runner as its own service.** The job contract (settings +
    price-file fingerprint in, rows + progress back, interface owns the record)
    is agreed; the Compute tab is its front end and already speaks in those

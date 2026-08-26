@@ -330,6 +330,21 @@ module.exports = {
     }
   },
 
+  // ONE configuration's coins, by name — what the ranked list's open line
+  // asks for since the per-row walk retired (owner go, 2026-08-26). The
+  // narrowing happens before the floor, so the removed-count speaks about
+  // this configuration only.
+  aLabelNarrowsToOneConfigurationsCoins() {
+    const t = tallyFixture(FIXTURE);
+    const one = replication.coinsFrom(t, { label: 'q1' });
+    assert.strictEqual(one.page.total, 3, 'q1 has three coins');
+    assert.ok(one.rows.every((r) => r.label === 'q1'), 'another configuration\'s coins leaked into the line');
+    assert.strictEqual(one.label, 'q1', 'the reply names the configuration it was narrowed to');
+    const floored = replication.coinsFrom(t, { label: 'q1', minPairs: 2 });
+    assert.strictEqual(floored.rows.length, 1, 'only q1 on AAA clears a floor of two');
+    assert.strictEqual(floored.narrowedOut, 2, 'the floor\'s removed-count is within this configuration, not the whole set');
+  },
+
   // The floor hides nothing silently, and the ordering is made over the whole
   // set before the page is cut — page two continues page one's order.
   theFloorSaysWhatItRemovedAndPagesContinueOneOrder() {

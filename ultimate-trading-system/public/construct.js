@@ -181,25 +181,13 @@ const cth = (label, key, style) => `<th${style ? ` style="${style}"` : ''}${COL[
 // fetched when a line is opened, and the opened table and the panel have to be
 // drawn by the SAME function or they will come to disagree about what a row
 // means.
-const moreNote = (d) => (d.matched > d.shown
-  ? `<p class="note">showing ${d.shown} of ${d.matched.toLocaleString()} rows for this configuration — the rest are recorded on the run and are not sent to the screen at once.</p>`
-  : '');
 const nullCell = (g) => (g.nullShare == null
   ? '<span class="muted" title="this run recorded no dealt-vote copies of this configuration">no null copies</span>'
   : `<b class="${g.nullShare === 1 ? 'pos' : ''}">${g.nullBeat}/${g.nullPairs}</b>`);
-const detail = (rs) => `<div class="scrollx"><table><thead><tr>${cth('asset','asset')}${cth('band','band')}${cth('agree','agree')}
-    <th title="the window the settings were chosen on — flattering by construction">test $</th>
-    <th title="the once-only look on data no search touched — this is what the counts read">held-back $</th>
-    <th title="held-back money minus the same execution forced long every period">vs always-long</th>
-    ${cth('trades','trades')}</tr></thead><tbody>
-  ${rs.map((r) => `<tr><td>${esc(r.trade + (r.ctx1 ? ' + ' + r.ctx1 : '') + (r.ctx2 ? ' + ' + r.ctx2 : ''))}</td>
-    <td>±${r.bandPct != null ? r.bandPct.toFixed(2) : '?'}%</td>
-    <td>${r.quorum}/${r.members}</td>
-    <td class="${(r.pnl || 0) >= 0 ? 'pos' : 'neg'}">${money(r.pnl)}</td>
-    <td class="${r.holdout ? ((r.holdout.pnl || 0) >= 0 ? 'pos' : 'neg') : 'muted'}">${r.holdout ? money(r.holdout.pnl) : '—'}</td>
-    <td class="${r.holdout && r.holdout.vsAlwaysLong != null ? (r.holdout.vsAlwaysLong >= 0 ? 'pos' : 'neg') : 'muted'}">${r.holdout && r.holdout.vsAlwaysLong != null ? money(r.holdout.vsAlwaysLong) : '—'}</td>
-    <td>${r.trades ?? '—'}</td></tr>`).join('')}
-  </tbody></table></div>`;
+// The old per-asset row renderer and its more-note are RETIRED with the row
+// walk that fed them (owner go, 2026-08-26) — an opened line now draws
+// per-coin summaries with coinHeadHtml/coinRowHtml, the same columns the
+// every-coin table draws, from the same saved tally.
 
 
 // ---- ONE PAGING BAR, USED BY EVERY TABLE THAT CAN GROW ----------------------
@@ -330,6 +318,39 @@ function coinRecordsHtml(got) {
             <td style="padding:.2rem .5rem">${h && h.stops != null ? h.stops : '—'}</td>
             <td style="padding:.2rem .5rem" class="${h && h.vsAlwaysLong != null ? (h.vsAlwaysLong >= 0 ? 'pos' : 'neg') : 'muted'}">${h && h.vsAlwaysLong != null ? money(h.vsAlwaysLong) : '—'}</td></tr>`;
   }).join('')}</tbody></table></div>`;
+}
+
+// ONE set of coin-row columns, drawn with or without the configuration
+// column in front — the every-coin table and a ranked line's own table must
+// never come to disagree about what a column means.
+function coinHeadHtml(withConfig) {
+  return `<thead><tr style="text-align:left;border-bottom:1px solid var(--line)">
+          ${withConfig ? `<th style="padding:.3rem .5rem .3rem 0" title="${esc(COL.coinCfg)}">configuration</th>` : ''}
+          <th style="padding:.3rem .5rem${withConfig ? '' : ' .3rem 0'}" title="${esc(COL.coin)}">coin</th>
+          <th style="padding:.3rem .5rem" title="${esc(COL.coinShare)}">beat its own copies</th>
+          <th style="padding:.3rem .5rem" title="${esc(COL.coinPairs)}">comparisons</th>
+          <th style="padding:.3rem .5rem" title="${esc(COL.coinMoney)}">avg held-back</th>
+          <th style="padding:.3rem .5rem" title="${esc(COL.coinTrades)}">avg trades</th>
+          <th style="padding:.3rem .5rem" title="${esc(COL.coinVsLong)}">avg vs always-long</th>
+          <th style="padding:.3rem .5rem" title="${esc(COL.coinRows)}">rows</th>
+          <th style="padding:.3rem .5rem" title="${esc(COL.coinRecords)}">records</th></tr></thead>`;
+}
+function coinRowHtml(r, withConfig) {
+  const span = withConfig ? 9 : 8;
+  const open = openRecs.byKey.has(coinKeyOf(r));
+  return `<tr>
+          ${withConfig ? `<td style="padding:.25rem .5rem .25rem 0">${esc(r.label)}</td>` : ''}
+          <td style="padding:.25rem .5rem${withConfig ? '' : ' .25rem 0'}"><b>${esc(r.trade)}</b>${r.ctx1 ? ` + ${esc(r.ctx1)}` : ''}${r.ctx2 ? ` + ${esc(r.ctx2)}` : ''} <span class="muted">${esc(r.geometry)}</span></td>
+          <td style="padding:.25rem .5rem">${r.share == null ? '<span class="muted">—</span>' : `<b class="${r.share > 0.5 ? 'pos' : ''}">${(r.share * 100).toFixed(1)}%</b> <span class="muted">${r.beat}/${r.pairs}</span>`}</td>
+          <td style="padding:.25rem .5rem">${r.pairs}</td>
+          <td style="padding:.25rem .5rem" class="${(r.avgHold ?? 0) >= 0 ? 'pos' : 'neg'}">${r.avgHold == null ? '<span class="muted">—</span>' : money(r.avgHold)}</td>
+          <td style="padding:.25rem .5rem">${r.avgTrades == null ? '<span class="muted">—</span>' : r.avgTrades.toFixed(1)}</td>
+          <td style="padding:.25rem .5rem" class="${(r.avgVsLong ?? 0) >= 0 ? 'pos' : 'neg'}">${r.avgVsLong == null ? '<span class="muted">—</span>' : money(r.avgVsLong)}</td>
+          <td style="padding:.25rem .5rem">${r.rows}</td>
+          <td style="padding:.25rem .5rem"><button class="coinopen" data-label="${esc(r.label)}" data-trade="${esc(r.trade)}" data-ctx1="${esc(r.ctx1 || '')}" data-ctx2="${esc(r.ctx2 || '')}" data-geometry="${esc(r.geometry)}" title="${esc(COL.coinRecords)}">${open ? '▾' : '▸'} records</button></td></tr>${
+  open
+    ? `<tr class="coinsub"><td colspan="${span}" style="padding:.25rem .5rem .5rem 1.2rem">${coinRecordsHtml(openRecs.byKey.get(coinKeyOf(r)))}</td></tr>`
+    : ''}`;
 }
 function wirePagers(root) {
   if (!root || root.dataset.pagersWired) return;
@@ -1546,29 +1567,8 @@ async function drawBoards() {
         ? `<p class="note" id="bCoinNote">totalling in the background — ${Number(d.scanned || 0).toLocaleString()} of ${Number(d.of || 0).toLocaleString()} rows so far. This box asks again every fifteen seconds while open.</p>`
         : `${d.totals && d.totals.upToDate === false ? `<p class="note warn">These rows cover the first ${Number(d.totals.asOfRows || 0).toLocaleString()} of ${Number(d.total || 0).toLocaleString()} recorded rows${d.building ? ' — a fresh totalling is going now' : ''}.</p>` : ''}
       <div class="scrollx"><table style="width:100%;border-collapse:collapse">
-        <thead><tr style="text-align:left;border-bottom:1px solid var(--line)">
-          <th style="padding:.3rem .5rem .3rem 0" title="${esc(COL.coinCfg)}">configuration</th>
-          <th style="padding:.3rem .5rem" title="${esc(COL.coin)}">coin</th>
-          <th style="padding:.3rem .5rem" title="${esc(COL.coinShare)}">beat its own copies</th>
-          <th style="padding:.3rem .5rem" title="${esc(COL.coinPairs)}">comparisons</th>
-          <th style="padding:.3rem .5rem" title="${esc(COL.coinMoney)}">avg held-back</th>
-          <th style="padding:.3rem .5rem" title="${esc(COL.coinTrades)}">avg trades</th>
-          <th style="padding:.3rem .5rem" title="${esc(COL.coinVsLong)}">avg vs always-long</th>
-          <th style="padding:.3rem .5rem" title="${esc(COL.coinRows)}">rows</th>
-          <th style="padding:.3rem .5rem" title="${esc(COL.coinRecords)}">records</th></tr></thead>
-        <tbody>${rows.map((r) => `<tr>
-          <td style="padding:.25rem .5rem .25rem 0">${esc(r.label)}</td>
-          <td style="padding:.25rem .5rem"><b>${esc(r.trade)}</b>${r.ctx1 ? ` + ${esc(r.ctx1)}` : ''}${r.ctx2 ? ` + ${esc(r.ctx2)}` : ''} <span class="muted">${esc(r.geometry)}</span></td>
-          <td style="padding:.25rem .5rem">${r.share == null ? '<span class="muted">—</span>' : `<b class="${r.share > 0.5 ? 'pos' : ''}">${(r.share * 100).toFixed(1)}%</b> <span class="muted">${r.beat}/${r.pairs}</span>`}</td>
-          <td style="padding:.25rem .5rem">${r.pairs}</td>
-          <td style="padding:.25rem .5rem" class="${(r.avgHold ?? 0) >= 0 ? 'pos' : 'neg'}">${r.avgHold == null ? '<span class="muted">—</span>' : money(r.avgHold)}</td>
-          <td style="padding:.25rem .5rem">${r.avgTrades == null ? '<span class="muted">—</span>' : r.avgTrades.toFixed(1)}</td>
-          <td style="padding:.25rem .5rem" class="${(r.avgVsLong ?? 0) >= 0 ? 'pos' : 'neg'}">${r.avgVsLong == null ? '<span class="muted">—</span>' : money(r.avgVsLong)}</td>
-          <td style="padding:.25rem .5rem">${r.rows}</td>
-          <td style="padding:.25rem .5rem"><button class="coinopen" data-label="${esc(r.label)}" data-trade="${esc(r.trade)}" data-ctx1="${esc(r.ctx1 || '')}" data-ctx2="${esc(r.ctx2 || '')}" data-geometry="${esc(r.geometry)}" title="${esc(COL.coinRecords)}">${openRecs.byKey.has(coinKeyOf(r)) ? '▾' : '▸'} records</button></td></tr>${
-  openRecs.byKey.has(coinKeyOf(r))
-    ? `<tr class="coinsub"><td colspan="9" style="padding:.25rem .5rem .5rem 1.2rem">${coinRecordsHtml(openRecs.byKey.get(coinKeyOf(r)))}</td></tr>`
-    : ''}`).join('')
+        ${coinHeadHtml(true)}
+        <tbody>${rows.map((r) => coinRowHtml(r, true)).join('')
           || `<tr><td colspan="9" class="empty">nothing ${d.minPairs ? `with at least ${d.minPairs} comparisons` : 'here'}</td></tr>`}</tbody></table></div>
       ${d.narrowedOut ? `<p class="note">${d.narrowedOut.toLocaleString()} row(s) narrowed out by the comparisons floor.</p>` : ''}
       ${pageBar('repCoins', d.page, ' coin rows')}`;
@@ -1670,7 +1670,7 @@ async function drawBoards() {
         </summary>
         <div class="repdetail" data-label="${esc(g.label)}" style="padding:.3rem .25rem .8rem"><span class="muted">open to load this configuration's rows</span></div>
       </details>`).join('');
-    return `<div class="panel"><h3 style="margin-top:0">Replication — ${scored.length} declared configs, ranked</h3>
+    return `<div class="panel"><h3 style="margin-top:0">Replication — ${Number(rep.configs || 0).toLocaleString()} declared configs, ranked</h3>
       <p class="note">KEY — each line is ONE declared configuration scored on every asset. Ranked by <b>how much of its
         own measured null it beat</b> first, then by <b>plateau width</b>, then by the across-asset share, then by money.
         That order is the register's: an ordering is a claim about which row is better, so only statistics the register
@@ -1876,44 +1876,6 @@ async function drawBoards() {
       askCoins();
     };
     coinsOpenEl.addEventListener('toggle', () => { if (coinsOpenEl.open && repCoins.id !== doc.id) askCoins(); });
-    // THE RECORDS BELOW A ROW (owner order, 2026-08-25). Press the row's
-    // records button and the rows it averages appear under it, fetched from
-    // the other side — which reads ONLY the stored blocks that hold them, so
-    // this costs milliseconds however many rows the run recorded. Press again
-    // and they fold away. What came back is KEPT (owner order, 2026-08-26:
-    // "the view needs to stay open and fixed to the same scrolling
-    // position") — coinBox() draws every open one from that state, so a
-    // redraw (switching tabs and back, paging, Apply) keeps them open and
-    // the page keeps its height, which is what lets the remembered scroll
-    // land where it was.
-    coinsOpenEl.addEventListener('click', async (ev) => {
-      const btn = ev.target && ev.target.closest ? ev.target.closest('button.coinopen') : null;
-      if (!btn) return;
-      const tr = btn.closest('tr');
-      if (!tr) return;
-      const key = ['label', 'trade', 'ctx1', 'ctx2', 'geometry'].map((f) => btn.dataset[f] || '').join('|');
-      const next = tr.nextElementSibling;
-      if (next && next.classList.contains('coinsub')) {
-        next.remove();
-        btn.textContent = '▸ records';
-        openRecs.byKey.delete(key);
-        return;
-      }
-      btn.textContent = '… records';
-      const q = ['label', 'trade', 'ctx1', 'ctx2', 'geometry']
-        .map((f) => `${f}=${encodeURIComponent(btn.dataset[f] || '')}`).join('&');
-      const got = await apiOr(`api/batch/${encodeURIComponent(doc.id)}/replication-coin-rows?${q}`, null);
-      if (got) { openRecs.id = doc.id; openRecs.byKey.set(key, got); }
-      const sub = document.createElement('tr');
-      sub.className = 'coinsub';
-      const cell = document.createElement('td');
-      cell.colSpan = 9;
-      cell.style.padding = '.25rem .5rem .5rem 1.2rem';
-      cell.innerHTML = coinRecordsHtml(got);
-      sub.appendChild(cell);
-      tr.after(sub);
-      btn.textContent = '▾ records';
-    });
     const go = $('#bCoinGo');
     if (go) {
       go.onclick = () => {
@@ -1925,6 +1887,49 @@ async function drawBoards() {
       };
     }
   }
+  // THE RECORDS BELOW A ROW (owner order, 2026-08-25). Press the row's
+  // records button and the rows it averages appear under it, fetched from
+  // the other side — which reads ONLY the stored blocks that hold them, so
+  // this costs milliseconds however many rows the run recorded. Press again
+  // and they fold away. Bound to the whole Boards body (fresh each draw),
+  // so the buttons inside an opened ranked line work too (owner go,
+  // 2026-08-26). What came back is KEPT (owner order, 2026-08-26:
+  // "the view needs to stay open and fixed to the same scrolling
+  // position") — coinBox() draws every open one from that state, so a
+  // redraw (switching tabs and back, paging, Apply) keeps them open and
+  // the page keeps its height, which is what lets the remembered scroll
+  // land where it was.
+  const recHost = $('#bBody');
+  if (recHost) recHost.addEventListener('click', async (ev) => {
+    const btn = ev.target && ev.target.closest ? ev.target.closest('button.coinopen') : null;
+    if (!btn) return;
+    const tr = btn.closest('tr');
+    if (!tr) return;
+    const key = ['label', 'trade', 'ctx1', 'ctx2', 'geometry'].map((f) => btn.dataset[f] || '').join('|');
+    const next = tr.nextElementSibling;
+    if (next && next.classList.contains('coinsub')) {
+      next.remove();
+      btn.textContent = '▸ records';
+      openRecs.byKey.delete(key);
+      return;
+    }
+    btn.textContent = '… records';
+    const q = ['label', 'trade', 'ctx1', 'ctx2', 'geometry']
+      .map((f) => `${f}=${encodeURIComponent(btn.dataset[f] || '')}`).join('&');
+    const got = await apiOr(`api/batch/${encodeURIComponent(doc.id)}/replication-coin-rows?${q}`, null);
+    if (got) { openRecs.id = doc.id; openRecs.byKey.set(key, got); }
+    const sub = document.createElement('tr');
+    sub.className = 'coinsub';
+    const cell = document.createElement('td');
+    // As wide as the row it opens under — the every-coin table has nine
+    // columns, a ranked line's own table eight.
+    cell.colSpan = tr.children.length;
+    cell.style.padding = '.25rem .5rem .5rem 1.2rem';
+    cell.innerHTML = coinRecordsHtml(got);
+    sub.appendChild(cell);
+    tr.after(sub);
+    btn.textContent = '▾ records';
+  });
   // DELETING A RUN takes the model and tuning files that hang off it, so the
   // owner is shown exactly what that is BEFORE answering — the same two-step
   // the campaign delete uses, and for the same reason: a count given after the
@@ -2078,13 +2083,23 @@ async function drawBoards() {
       box.dataset.loaded = '1';
       box.innerHTML = '<span class="muted">reading this configuration\'s rows…</span>';
       const at = pageAt.repDetail[box.dataset.label] || { offset: 0, limit: 200 };
-      const d = await apiOr(`api/batch/${encodeURIComponent(doc.id)}/replication-detail`
+      // Served from the SAME saved tally as the every-coin table, narrowed to
+      // this configuration (owner go, 2026-08-26). The old ask walked every
+      // recorded row on the answering thread — on the owner's run that walk
+      // outlived the web server's time limit, answered nothing, and froze
+      // every page while it lasted.
+      const d = await apiOr(`api/batch/${encodeURIComponent(doc.id)}/replication-coins`
         + `?label=${encodeURIComponent(box.dataset.label || '')}&offset=${at.offset}&limit=${at.limit}`, null);
       if (!d) {
         // A failed read must not leave a table that looks empty. Empty and
         // could-not-ask are different answers and the screen says which.
         box.dataset.loaded = '';
-        box.innerHTML = '<span class="warn">could not read this configuration\'s rows — nothing is missing from the run, the screen could not ask</span>';
+        box.innerHTML = '<span class="warn">could not read this configuration\'s coins — nothing is missing from the run, the screen could not ask</span>';
+        return;
+      }
+      if (d.building && !(d.rows && d.rows.length)) {
+        box.dataset.loaded = '';
+        box.innerHTML = `<span class="muted">totalling in the background — ${Number(d.scanned || 0).toLocaleString()} of ${Number(d.of || 0).toLocaleString()} rows so far. Open this line again in a little while.</span>`;
         return;
       }
       // Its own pager, named after the configuration, so several open lines
@@ -2096,8 +2111,10 @@ async function drawBoards() {
         box.dataset.loaded = '';
         load();
       };
-      box.innerHTML = '<p class="note">source: this configuration\'s own replication rows, fetched as you page — the real ones only, its copies are machinery and are not listed.</p>'
-        + detail(d.rows || []) + moreNote(d) + pageBar(key, d.page, ' rows');
+      box.innerHTML = '<p class="note">source: the same saved tally as the every-coin table, narrowed to this configuration — one row per coin, the records button opens the actual stored rows behind it.</p>'
+        + `<div class="scrollx"><table style="width:100%;border-collapse:collapse">${coinHeadHtml(false)}<tbody>${
+          (d.rows || []).map((r) => coinRowHtml(r, false)).join('') || '<tr><td colspan="8" class="empty">nothing here</td></tr>'
+        }</tbody></table></div>` + pageBar(key, d.page, ' coins');
     };
     const holder = box.closest('details');
     if (!holder) { load(); return; }              // the single-configuration panel: no line to open

@@ -157,22 +157,25 @@ module.exports = {
     assert.strictEqual(g.realsTotal, 7, 'the count of rows behind a configuration was lost with the rows');
   },
 
-  // The rows are not gone — they are fetched for one configuration at a time,
-  // and that reply says how many there really are.
-  async oneConfigurationsRowsAreStillReachableAndStillCounted() {
+  // The rows are not gone — an opened line asks the saved tally for ONE
+  // configuration's coins (owner go, 2026-08-26: the per-row walk is
+  // retired), and that reply pages honestly and says how many there are.
+  async oneConfigurationsCoinsAreReachableAndCounted() {
     const doc = repDoc(3, 40);
     const label = replication.rank(doc).scored[0].label;
-    const d = replication.detail(doc, label, { limit: 10 });
-    assert.strictEqual(d.shown, 10, 'the detail reply is capped');
-    assert.strictEqual(d.matched, 40, 'and it says how many it did not send');
-    assert.ok(d.matched > d.shown, 'this is the case the screen must report, or a capped table reads as complete');
-    assert.ok(!d.rows.some((r) => r.nullDealSeed != null), 'a dealt-vote copy is machinery and never an asset row');
+    const d = replication.coins(doc, { label, limit: 10 });
+    assert.strictEqual(d.rows.length, 10, 'the reply pages');
+    assert.strictEqual(d.page.total, 40, 'and it says how many coins it did not send');
+    assert.ok(d.rows.every((r) => r.label === label), 'another configuration\'s coins leaked into the line');
   },
 
-  async theScreenFetchesThoseRowsWhenALineIsOpened() {
-    assert.ok(/class="repdetail"/.test(CX), 'the screen has nowhere to put a configuration\'s rows');
-    assert.ok(/replication-detail/.test(CX), 'the screen never asks for them, so the tables are empty');
-    assert.ok(/addEventListener\('toggle'/.test(CX), 'the rows are fetched up front again rather than on opening a line');
+  async theScreenFetchesThoseCoinsWhenALineIsOpened() {
+    assert.ok(/class="repdetail"/.test(CX), 'the screen has nowhere to put a configuration\'s coins');
+    assert.ok(/replication-coins`\n\s*\+ `\?label=/.test(CX),
+      'an opened line no longer asks the saved tally for its coins');
+    assert.ok(!/replication-detail/.test(CX),
+      'the screen still asks the retired per-row walk — the ask that died at the web server\'s time limit and froze the site');
+    assert.ok(/addEventListener\('toggle'/.test(CX), 'the coins are fetched up front again rather than on opening a line');
     assert.ok(/if \(box\.dataset\.loaded\) return;/.test(CX),
       'opening a line twice asks the server twice');
     assert.ok(/could not read this configuration/.test(CX),
@@ -263,15 +266,15 @@ module.exports = {
       'paging the grid re-asks the server for arithmetic it already did');
   },
 
-  // The rows behind one configuration are reachable to the last one.
-  async aConfigurationsRowsCanBeWalkedToTheEnd() {
+  // The coins behind one configuration are reachable to the last one.
+  async aConfigurationsCoinsCanBeWalkedToTheEnd() {
     const doc = repDoc(2, 250);
     const label = replication.rank(doc).scored[0].label;
     const seen = new Set();
     let offset = 0;
     let guard = 0;
     for (;;) {
-      const d = replication.detail(doc, label, { offset, limit: 40 });
+      const d = replication.coins(doc, { label, offset, limit: 40 });
       assert.strictEqual(d.page.total, 250, 'a page must say how many there are in total, on every page');
       d.rows.forEach((r) => seen.add(r.trade));
       if (!d.page.more) break;
@@ -279,7 +282,7 @@ module.exports = {
       assert.ok(++guard < 50, 'paging never reached the end — it is looping');
     }
     assert.strictEqual(seen.size, 250,
-      `walked the pages and saw ${seen.size} of 250 rows — some are unreachable from the screen`);
+      `walked the pages and saw ${seen.size} of 250 coins — some are unreachable from the screen`);
   },
 
   async theRankedListCanBeWalkedToTheEnd() {

@@ -388,7 +388,13 @@ function coinsFrom(totals, { sort = 'share', minPairs = 0, ...query } = {}) {
       });
     }
   }
-  const kept = atLeast ? rows.filter((r) => r.pairs >= atLeast) : rows;
+  // ONE configuration's coins, when asked by name (owner order, 2026-08-26:
+  // the ranked list's open line now serves per-coin summaries from this same
+  // saved tally, instead of walking every recorded row — a walk that died at
+  // the web server's time limit and froze every page while it lasted).
+  const only = query.label != null && String(query.label) !== '' ? String(query.label) : null;
+  const scoped = only ? rows.filter((r) => r.label === only) : rows;
+  const kept = atLeast ? scoped.filter((r) => r.pairs >= atLeast) : scoped;
   const byShare = (a, b) => (a.share == null && b.share == null ? 0
     : b.share == null ? -1 : a.share == null ? 1 : b.share - a.share);
   const byAvg = (a, b) => (b.avgHold ?? -Infinity) - (a.avgHold ?? -Infinity);
@@ -406,7 +412,8 @@ function coinsFrom(totals, { sort = 'share', minPairs = 0, ...query } = {}) {
   return {
     sort: key,
     minPairs: atLeast,
-    narrowedOut: rows.length - kept.length,
+    ...(only ? { label: only } : {}),
+    narrowedOut: scoped.length - kept.length,
     rows: win.rows,
     page: { offset: win.offset, limit: win.limit, total: win.total, shown: win.shown, more: win.more },
   };
@@ -597,34 +604,11 @@ function rank(doc, { detailCap = 0, ...query } = {}) {
   return { ...buildingMeta, tagged: null, dropped: 0, total: rows, configs: 0, scored: [], page: { offset: 0, limit: 0, total: 0, shown: 0, more: false } };
 }
 
-// Every real row of ONE configuration, for the per-asset table a reader opens.
-//
-// PAGED, NOT CAPPED (owner order, 2026-08-23). It used to hand back the first
-// 500 and say how many it had left behind — honest, but there was no way to
-// ask for the 501st, so four fifths of a configuration's rows were simply
-// unreachable from the screen. It walks to `offset` and returns `limit` from
-// there, streaming throughout: nothing but the page being built is ever held.
-function detail(doc, label, { offset = 0, limit = 200 } = {}) {
-  const from = Math.max(0, Math.floor(Number(offset) || 0));
-  const take = Math.min(1000, Math.max(1, Math.floor(Number(limit) || 200)));
-  const out = [];
-  let matched = 0;
-  rowsOf(doc, (r) => {
-    if ((r.declaredLabel || 'declared config') !== label) return true;
-    if (r.nullDealSeed != null) return true;   // a copy is machinery, never an asset row
-    matched++;
-    // matched keeps counting past the page so `total` is the real total — a
-    // reader has to be able to see how far they have to go.
-    if (matched > from && out.length < take) out.push(r);
-    return true;
-  });
-  return {
-    label,
-    rows: out,
-    matched,
-    shown: out.length,
-    page: { offset: from, limit: take, total: matched, shown: out.length, more: from + out.length < matched },
-  };
-}
+// detail() — the per-configuration row walk — is RETIRED (owner go,
+// 2026-08-26). It walked every recorded row on the answering thread for
+// each opened line; on the owner's run that walk outlived the web server's
+// time limit and froze every page while it lasted. The line's table is now
+// per-coin summaries from the saved tally (coins() with a label), and the
+// rows themselves come one coin at a time through coinRows(), block-exact.
 
-module.exports = { rank, detail, coins, coinsFrom, coinRows, assetKey, tallyOver, renderScored, buildAndSaveTotals, startTotals, readTotals, writeTotals, totalsFile, TALLY_V, SPANS_FROM_V, COIN_SORTS };
+module.exports = { rank, coins, coinsFrom, coinRows, assetKey, tallyOver, renderScored, buildAndSaveTotals, startTotals, readTotals, writeTotals, totalsFile, TALLY_V, SPANS_FROM_V, COIN_SORTS };
