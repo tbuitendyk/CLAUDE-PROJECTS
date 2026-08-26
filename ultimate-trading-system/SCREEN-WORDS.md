@@ -18,7 +18,7 @@ is the same fault wearing a disguise.
 
 ## Which screen this describes
 
-Generated from **9908b758aed2 — what the box is serving**, not from the working tree.
+Generated from **a260b3a4082a — what the box is serving**, not from the working tree.
 
 That distinction is the whole point. Between a commit and its deploy the
 two describe different screens, and on 2026-08-22 exactly that happened: a
@@ -266,7 +266,7 @@ again. and asset. back be been below board cache cached comma-sep corrupt curren
 
 # Boards
 
-## What the controls are called (99)
+## What the controls are called (109)
 
 - `— open it again to retry`
 - `— pick a run —`
@@ -277,6 +277,7 @@ again. and asset. back be been below board cache cached comma-sep corrupt curren
 - `” will permanently remove:`
 - `” will score what it never got to:`
 - `(context)`
+- `▸ records`
 - `accuracy`
 - `all failures`
 - `already scored, kept as they are`
@@ -285,6 +286,9 @@ again. and asset. back be been below board cache cached comma-sep corrupt curren
 - `assets held up (context)`
 - `at agreement`
 - `at least this many comparisons`
+- `avg held-back`
+- `avg trades`
+- `band %`
 - `beat always-long`
 - `beat its own copies`
 - `beat its own null copies`
@@ -307,8 +311,9 @@ again. and asset. back be been below board cache cached comma-sep corrupt curren
 - `first`
 - `first, then by`
 - `h`
-- `held-back`
-- `held-back money`
+- `held-back $`
+- `held-back stops`
+- `held-back trades`
 - `how much of its`
 - `inspect`
 - `last`
@@ -335,7 +340,9 @@ again. and asset. back be been below board cache cached comma-sep corrupt curren
 - `q`
 - `read(s) failed, so any panel`
 - `real / null rows`
+- `record(s)`
 - `recorded rows`
+- `records`
 - `region`
 - `Replication —`
 - `Resume run`
@@ -350,6 +357,8 @@ again. and asset. back be been below board cache cached comma-sep corrupt curren
 - `sort by`
 - `still to score`
 - `Survivor board — the promoted rows`
+- `test $`
+- `test trades`
 - `that failed and get another go`
 - `the declared config on every asset`
 - `the inspect record, verbatim`
@@ -365,6 +374,7 @@ again. and asset. back be been below board cache cached comma-sep corrupt curren
 - `totalling in the background —`
 - `unit(s) FAILED`
 - `units ·`
+- `vs always-long`
 - `What this run actually is`
 - `Your cell sits at #`
 
@@ -372,7 +382,7 @@ again. and asset. back be been below board cache cached comma-sep corrupt curren
 
 _none_
 
-## Sentences the page prints (93)
+## Sentences the page prints (98)
 
 - Asset predictability — best to worst
 - KEY — for each asset: of all real-versus-null match-ups on HELD-BACK money, the share the real
@@ -385,8 +395,9 @@ _none_
 - source: the same replication rows as the list above — written in the second pass, one for every
 - promoted unit that scored this configuration on this coin. The rows column counts them: one per combination of
 - the boxes permuted on Sweep that share the coin and chunk shape, each scoring the same configuration on its own
-- forecasts. held-back is the SUM over those rows, so coins with more rows sum more results — compare money
-- between rows with equal rows, or lead on the share.
+- forecasts. avg held-back and avg trades are AVERAGES over those rows — the sum divided by the rows that
+- recorded a held-back result — so a coin with 16 rows and one with 8 read alike. The records button on each row
+- opens those rows themselves.
 - Counts below are INFERRED, not measured.
 - declared-cell rows without marking which copy scored them, so each asset's first-recorded row is taken as the
 - real one — real copies are queued ahead of every null copy.
@@ -442,6 +453,10 @@ _none_
 - the COMPLETE stored settings record for this run, verbatim (nothing invisible)
 - totalling this run's rows in the background —
 - so far. Everything else keeps answering; this box asks again every fifteen seconds.
+- source: the run's replication rows themselves — the
+- this row averages, read straight from the stored rows. Each is one promoted unit's own scoring of this configuration on this coin,
+- one per combination of the boxes permuted on Sweep that share the coin and chunk shape. A record was written down with its band %
+- but not the other permuted choices, so records sharing a band % differ by choices the record does not name.
 - ” cannot be picked up — nothing has been started.
 - already scored in full, kept as they are
 - older rows cannot be matched and will be scored again
@@ -468,10 +483,10 @@ _none_
 - one step away it falls apart, so distrust it. Money is TEST-WINDOW money, dollars per $100, the same as the grid
 - below.
 
-## Every word, flat (529)
+## Every word, flat (542)
 
 ```
-about above accuracy Accuracy ACCURACY across-asset actually admits admits. again against agreement agreement/entry/hold ahead alike all alone already always-long an and another answering any anything apart Apply are as asks Asset asset asset. assets at authoritative away back back. background badge band be beat beat. been before behind below below. best better between board board. box boxes branch button by campaign can cannot capped cell cell. changes check checked chosen CHOSEN chunk claim clear Click coin coin. coins collapse column Columns combination combos committee comparable compare comparison comparisons COMPLETE computed config configs configuration configurations construction construction. CONTEXT context copies copy copy. cost count Counts counts cover crypto data Data dealt dealt-vote decision declared declared-cell Delete deleted deleted. Deleting denominator detail did display distrust do dollar dollars drives dump each earning echoed edge edge. either else empty end engine entries equal es every Every everything Everything evidence exactly excluded. execution exists fail FAILED failed failures falls far far. feeds fifteen files fingerprint finish finished finishes first First first-pass first-recorded FIXED flattering flatters floor. for forecasts. form fresh from full geometry get go goes gone good got got. graded Greenlight Greenlight. grid grow has held HELD-BACK held-back here higher History honest how If in INCOMPLETE. independent indistinguishable INFERRED Inside inspect intended. into invisible is IS it It it. its itself judge judged keeps kept KEPT. KEY knife last layout lead least length line list list. lives load loading look looks looks. made make many marked marking marks match-ups matched matters may means measured measured. members menu Menu MICROSCOPE missing moment money Money money. more move moved much named narrowed near-duplicates needle neighbouring Neighbours neighbours never next no none. not notes nothing null nulls number of of. off older on once once-only one ONE one. ones only ONLY open Open open. opened opinions or order ordering other otherwise. out over own p-value page pairwise panel participation pass per per-member permanently permutation permutations permuted pick picked Picking planted plateau Plateau plus POINTS predictability press pressed prev price profit-and-loss promote promoted proved purpose. QC-142 QC-7 queued quoted ranked Ranked ranking rather read reading real real-versus-null record recorded records redraws. refresh region register Reload remove removes replication Replication reporting rest result result. results Resume retry row rows run run. running runs runs. same sample. save saved say saying says scans score scored scoring SCREEN sealed search SEARCHED second seconds seconds. section section. see SELECT selected selection sentences served service set setting settings setup setups shape share share. showed showing shown shows side similar sit sits Size slice slim small smaller so so. sort sortable source STAMP started. starts. statistics stay step still stored sturdy sturdy. SUM sum survived Survivor sweep Sweep table taken tally. tell test TEST-WINDOW than that That the The them them. then These these They they This this THIS those time to together together. Tool tools top top. total totalled Totalled totalling totals touched traded trades Tune unavailable undone. unit units units. until up verbatim verdict Verify version view vote votes votes. vs waits watch way were what What when where whether which while whole why widest width will window with without won. works worst written yardstick yet yet. you Your your
+about above accuracy Accuracy ACCURACY across-asset actually admits admits. again against agreement agreement/entry/hold ahead alike alike. all alone already always-long an and another answering any anything apart Apply are as asks Asset asset asset. assets at authoritative AVERAGES averages avg away back back. background badge band be beat beat. been before behind below below. best better board board. box boxes branch but button by campaign can cannot capped cell cell. changes check checked choices chosen CHOSEN chunk claim clear Click coin coin. coins collapse column Columns combination combos committee comparable comparison comparisons COMPLETE computed config configs configuration configurations construction construction. CONTEXT context copies copy copy. cost count Counts counts cover crypto data Data dealt dealt-vote decision declared declared-cell Delete deleted deleted. Deleting denominator detail did differ display distrust divided do does dollar dollars down drives dump each Each earning echoed edge edge. either else empty end engine entries es every Every everything Everything evidence exactly excluded. execution exists fail FAILED failed failures falls far far. feeds fifteen files fingerprint finish finished finishes first First first-pass first-recorded FIXED flattering flatters floor. for forecasts. form fresh from full geometry get go goes gone good got got. graded Greenlight Greenlight. grid grow has held HELD-BACK held-back here higher History honest how If in INCOMPLETE. independent indistinguishable INFERRED Inside inspect intended. into invisible is IS it It it. its itself judge judged keeps kept KEPT. KEY knife last layout least length line list list. lives load loading look looks looks. made make many marked marking marks match-ups matched matters may means measured measured. members menu Menu MICROSCOPE missing moment money Money money. move moved much name. named narrowed near-duplicates needle neighbouring Neighbours neighbours never next no none. not notes nothing null nulls number of of. off older on once once-only one ONE one. ones only ONLY open Open open. opened opens opinions or order ordering other otherwise. out over own p-value page pairwise panel participation pass per per-member permanently permutation permutations permuted pick picked Picking planted plateau Plateau plus POINTS predictability press pressed prev price profit-and-loss promote promoted proved purpose. QC-142 QC-7 queued quoted ranked Ranked ranking rather read reading real real-versus-null record recorded records redraws. refresh region register Reload remove removes replication Replication reporting rest result result. Resume retry row rows rows. run run. running runs runs. same sample. save saved say saying says scans score scored scoring SCREEN sealed search SEARCHED second seconds seconds. section section. see SELECT selected selection sentences served service set setting settings setup setups shape shape. share sharing showed showing shown shows side similar sit sits Size slice slim small smaller so so. sort sortable source STAMP started. starts. statistics stay step still stops stored straight sturdy sturdy. sum survived Survivor sweep Sweep table taken tally. tell test TEST-WINDOW than that That the The them them. themselves themselves. then These these They they This this THIS those time to together together. Tool tools top top. total totalled Totalled totalling totals touched traded trades Tune unavailable undone. unit units units. until up verbatim verdict Verify version view vote votes votes. vs waits was watch way were what What when where whether which while whole why widest width will window with without won. works worst written yardstick yet yet. you Your your
 ```
 
 ---
