@@ -1,12 +1,12 @@
 {
   "note": "WHAT THE BOX IS SERVING. The closed word list is generated from this commit, not from the working tree, because between a commit and its deploy those describe different screens and the list is the only vocabulary permitted about a screen. NOT every served file can be fingerprinted this way: the server stamps a cache marker into construct.html as it serves it (server.js, so a returning browser cannot keep a stale script), which makes its served bytes 22 longer than its source by design. Hashing it would be a check that can only ever fail, so it is deliberately not listed here \u2014 it carries no screen labels either, they are all in construct.js. Captured by vps-access/scripts/uts-served-fingerprint.sh after every deploy, then `node tests/sweep-words.js --write`.",
-  "commit": "4453e3e5b9e305c644a81a42e35b5c20eab4b70d",
-  "subject": "The Construct page's CPU button is gone \u2014 the duty-cycle dial has one home, the Compute tab",
-  "capturedAt": "2026-08-26T02:17:14Z",
+  "commit": "e4dfe403391fb3bd20321b7c9c428c2548d43d15",
+  "subject": "Open records survive redraws; every control's help is its hover",
+  "capturedAt": "2026-08-26T02:33:11Z",
   "files": {
     "public/construct.js": {
-      "sha256": "1dc0c71392b808b94bf36da9916acb3b35da0b4ecb6b4d8f6b40ccf674e53d2a",
-      "bytes": 233530
+      "sha256": "b9ec8aef4f7b9465192e5c69eb09858360c6e9f8c39d904cba5a9ebd49de12f8",
+      "bytes": 237243
     },
     "public/help-content.js": {
       "sha256": "29c9f4538ec52b00f35fd64da4c3e948eb983e148bfee024ecce5f27561e3a05",

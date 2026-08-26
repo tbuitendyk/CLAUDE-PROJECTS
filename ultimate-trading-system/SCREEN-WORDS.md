@@ -18,7 +18,7 @@ is the same fault wearing a disguise.
 
 ## Which screen this describes
 
-Generated from **4453e3e5b9e3 — what the box is serving**, not from the working tree.
+Generated from **e4dfe403391f — what the box is serving**, not from the working tree.
 
 That distinction is the whole point. Between a commit and its deploy the
 two describe different screens, and on 2026-08-22 exactly that happened: a
@@ -266,7 +266,7 @@ again. and asset. back be been below board cache cached comma-sep corrupt curren
 
 # Boards
 
-## What the controls are called (113)
+## What the controls are called (112)
 
 - `— open it again to retry`
 - `— pick a run —`
@@ -277,7 +277,6 @@ again. and asset. back be been below board cache cached comma-sep corrupt curren
 - `” will permanently remove:`
 - `” will score what it never got to:`
 - `(context)`
-- `▸ records`
 - `accuracy`
 - `all failures`
 - `already scored, kept as they are`
@@ -457,19 +456,6 @@ _none_
 - the COMPLETE stored settings record for this run, verbatim (nothing invisible)
 - totalling this run's rows in the background —
 - so far. Everything else keeps answering; this box asks again every fifteen seconds.
-- , and each record's decision, band and 24/5 were recovered from this run's own unit records, matched in the
-- order both were written down.
-- record(s) could not be matched and show — instead.
-- The decision, band and 24/5 of each record are being recovered now
-- matched so far. Press the records button again when that finishes.
-- — press the records button again to retry.
-- This run's records were written before they carried their decision, band and 24/5 choices, and it kept
-- no unit records to recover them from.
-- The band % below is each record's own; the unnamed boxes show —
-- rather than a guess.
-- source: the run's replication rows themselves — the
-- this row averages, read straight from the stored rows. Each is one promoted unit's own scoring of this configuration on this coin,
-- one per combination of the boxes permuted on Sweep that share the coin and chunk shape
 - ” cannot be picked up — nothing has been started.
 - already scored in full, kept as they are
 - older rows cannot be matched and will be scored again
@@ -487,6 +473,19 @@ _none_
 - Accuracy and edge are ACCURACY POINTS, never money.
 - how alike the members are (pairwise agreement) — near-duplicates make an agreement count read higher than the number of independent opinions behind it
 - in the table below (marked ▶).
+- , and each record's decision, band and 24/5 were recovered from this run's own unit records, matched in the
+- order both were written down.
+- record(s) could not be matched and show — instead.
+- The decision, band and 24/5 of each record are being recovered now
+- matched so far. Press the records button again when that finishes.
+- — press the records button again to retry.
+- This run's records were written before they carried their decision, band and 24/5 choices, and it kept
+- no unit records to recover them from.
+- The band % below is each record's own; the unnamed boxes show —
+- rather than a guess.
+- source: the run's replication rows themselves — the
+- this row averages, read straight from the stored rows. Each is one promoted unit's own scoring of this configuration on this coin,
+- one per combination of the boxes permuted on Sweep that share the coin and chunk shape
 - THIS SCREEN IS INCOMPLETE.
 - below that looks empty may be missing data rather than reporting none. Reload once the service is back;
 - do not read an empty panel here as a result.
