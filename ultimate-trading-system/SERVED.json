@@ -1,12 +1,12 @@
 {
   "note": "WHAT THE BOX IS SERVING. The closed word list is generated from this commit, not from the working tree, because between a commit and its deploy those describe different screens and the list is the only vocabulary permitted about a screen. NOT every served file can be fingerprinted this way: the server stamps a cache marker into construct.html as it serves it (server.js, so a returning browser cannot keep a stale script), which makes its served bytes 22 longer than its source by design. Hashing it would be a check that can only ever fail, so it is deliberately not listed here \u2014 it carries no screen labels either, they are all in construct.js. Captured by vps-access/scripts/uts-served-fingerprint.sh after every deploy, then `node tests/sweep-words.js --write`.",
-  "commit": "8c58ed72a99bf3ca9ca4d0c9e397ad5616654a10",
-  "subject": "Records name their choices; the tally is held parsed; titles sit on the baseline",
-  "capturedAt": "2026-08-26T00:56:07Z",
+  "commit": "c28d16df2c9d55c1bab0df5011007b2c0f3076df",
+  "subject": "The existing run's records get their choices back, recovered from write order",
+  "capturedAt": "2026-08-26T01:23:56Z",
   "files": {
     "public/construct.js": {
-      "sha256": "dd3ee19d10999161a7a39f2a0c5ad11abfeddb8f665fd595650155c03f480824",
-      "bytes": 233103
+      "sha256": "bfffea833419b6e1a9684084fa9dbc41985eedfc73b60fc7031751d11e2b31dc",
+      "bytes": 234197
     },
     "public/help-content.js": {
       "sha256": "29c9f4538ec52b00f35fd64da4c3e948eb983e148bfee024ecce5f27561e3a05",
