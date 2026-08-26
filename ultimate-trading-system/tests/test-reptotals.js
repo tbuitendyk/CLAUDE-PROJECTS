@@ -126,6 +126,15 @@ module.exports = {
     assert.strictEqual(at('q1', 'CCCUSDT').avgTrades, null);
     assert.strictEqual(at('q2', 'AAAUSDT').avgHold, 7);
     assert.strictEqual(at('q2', 'AAAUSDT').avgTrades, 6, "the copy's 99 trades stayed out of the average");
+    // vs always-long, averaged per coin (owner order, 2026-08-26) — the
+    // copies never recorded the comparison and must not thin the average
+    assert.strictEqual(at('q1', 'AAAUSDT').avgVsLong, 3);
+    assert.strictEqual(at('q1', 'BBBUSDT').avgVsLong, -1);
+    assert.strictEqual(at('q1', 'CCCUSDT').avgVsLong, null, 'no comparison recorded, none invented');
+    assert.strictEqual(at('q2', 'AAAUSDT').avgVsLong, 2);
+    assert.deepStrictEqual(replication.coinsFrom(t, { sort: 'vslong' }).rows.map((r) => `${r.label}|${r.trade}`),
+      ['q1|AAAUSDT', 'q2|AAAUSDT', 'q1|BBBUSDT', 'q1|CCCUSDT'],
+      'avg vs always-long descending, the un-measured row last');
     // the money order leads on the AVERAGE, so a 16-row coin cannot outrank an
     // 8-row coin just by having more rows to sum
     assert.deepStrictEqual(replication.coinsFrom(t, { sort: 'money' }).rows.map((r) => `${r.label}|${r.trade}`),
@@ -142,6 +151,37 @@ module.exports = {
     assert.strictEqual(q2two.sum, 10, 'the sum still travels with the row');
     assert.strictEqual(q2two.avgHold, 5, '(7 + 3) / 2 — the average divides, it does not sum');
     assert.strictEqual(q2two.avgTrades, 4, '(6 + 2) / 2');
+    assert.strictEqual(q2two.avgVsLong, 1.5, '(2 + 1) / 2 — the vs always-long average divides too');
+  },
+
+  // A v3 save (from before the vs-always-long average) is behind for the
+  // coin view — the rebuild brings the new column — but it already carries
+  // the record index, and the records button must keep answering from it
+  // while the rebuild goes. A rebuild that silences the records for fifteen
+  // minutes would turn every improvement into an outage.
+  aV3SaveKeepsTheRecordsWorkingWhileTheAveragesRebuild() {
+    const rowstore = require('../lib/rowstore');
+    const runId = `tot-v3-${process.pid}`;
+    const w = rowstore.writer(runId, 'replication');
+    for (const r of FIXTURE) w.push(r);
+    w.close();
+    try {
+      const doc = { id: runId, status: 'done', leaders: [] };
+      replication.writeTotals(runId, {
+        v: 3, builtAt: new Date().toISOString(), tagged: true, dropped: 0, rowsSeen: 8,
+        groups: [{ label: 'q2', vsLCount: 1, vsLPos: 1, realsTotal: 1,
+          assets: { 'AAAUSDT|||daily-3d': { n: 1, hold: 1, pos: 1, sum: 7, t: 6, beat: 1, pairs: 1, b: [0] } } }],
+      });
+      const flat = replication.coins(doc, {});
+      assert.ok(!(flat.totals && flat.totals.upToDate === true),
+        'a save from before the vs-always-long average was served to the coin view as fresh');
+      const rec = replication.coinRows(doc, { label: 'q2', trade: 'AAAUSDT', geometry: 'daily-3d' });
+      assert.strictEqual(rec.indexed, true, 'the v3 record index went dark during the rebuild window');
+      assert.strictEqual(rec.rows.length, 1);
+      assert.strictEqual(rec.rows[0].holdout.pnl, 7);
+    } finally {
+      rowstore.remove(runId);
+    }
   },
 
   // THE RECORDS BEHIND ONE COIN ROW (owner order, 2026-08-25: "allow an

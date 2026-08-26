@@ -168,6 +168,7 @@ const COL = {
   coinPairs: 'how many head-to-heads are behind the share — every real look on this coin against every one of its scrambled copies. More comparisons make the share worth more.',
   coinMoney: 'this configuration\'s held-back money on this coin, AVERAGED over the rows counted in the rows column — the sum divided by the rows that recorded a held-back result (all of them, on a finished run). Averaging is what lets a coin with 16 rows and one with 8 be read side by side.',
   coinTrades: 'the average number of held-back trades per row on this coin — how much trading is behind each row\'s held-back result. An average near zero means the money rests on a handful of trades.',
+  coinVsLong: 'this configuration\'s held-back money against just holding the coin over the same window, averaged over the rows that recorded the comparison. Positive means it beat holding, on average.',
   coinRows: 'how many real looks this configuration recorded on this coin.',
   coinRecords: 'opens this row\'s records below it — the rows counted in the rows column, each one a promoted unit\'s own scoring of this configuration on this coin, read straight from the stored rows.',
 };
@@ -1552,6 +1553,7 @@ async function drawBoards() {
           <th style="padding:.3rem .5rem" title="${esc(COL.coinPairs)}">comparisons</th>
           <th style="padding:.3rem .5rem" title="${esc(COL.coinMoney)}">avg held-back</th>
           <th style="padding:.3rem .5rem" title="${esc(COL.coinTrades)}">avg trades</th>
+          <th style="padding:.3rem .5rem" title="${esc(COL.coinVsLong)}">avg vs always-long</th>
           <th style="padding:.3rem .5rem" title="${esc(COL.coinRows)}">rows</th>
           <th style="padding:.3rem .5rem" title="${esc(COL.coinRecords)}">records</th></tr></thead>
         <tbody>${rows.map((r) => `<tr>
@@ -1561,26 +1563,28 @@ async function drawBoards() {
           <td style="padding:.25rem .5rem">${r.pairs}</td>
           <td style="padding:.25rem .5rem" class="${(r.avgHold ?? 0) >= 0 ? 'pos' : 'neg'}">${r.avgHold == null ? '<span class="muted">—</span>' : money(r.avgHold)}</td>
           <td style="padding:.25rem .5rem">${r.avgTrades == null ? '<span class="muted">—</span>' : r.avgTrades.toFixed(1)}</td>
+          <td style="padding:.25rem .5rem" class="${(r.avgVsLong ?? 0) >= 0 ? 'pos' : 'neg'}">${r.avgVsLong == null ? '<span class="muted">—</span>' : money(r.avgVsLong)}</td>
           <td style="padding:.25rem .5rem">${r.rows}</td>
           <td style="padding:.25rem .5rem"><button class="coinopen" data-label="${esc(r.label)}" data-trade="${esc(r.trade)}" data-ctx1="${esc(r.ctx1 || '')}" data-ctx2="${esc(r.ctx2 || '')}" data-geometry="${esc(r.geometry)}" title="${esc(COL.coinRecords)}">${openRecs.byKey.has(coinKeyOf(r)) ? '▾' : '▸'} records</button></td></tr>${
   openRecs.byKey.has(coinKeyOf(r))
-    ? `<tr class="coinsub"><td colspan="8" style="padding:.25rem .5rem .5rem 1.2rem">${coinRecordsHtml(openRecs.byKey.get(coinKeyOf(r)))}</td></tr>`
+    ? `<tr class="coinsub"><td colspan="9" style="padding:.25rem .5rem .5rem 1.2rem">${coinRecordsHtml(openRecs.byKey.get(coinKeyOf(r)))}</td></tr>`
     : ''}`).join('')
-          || `<tr><td colspan="8" class="empty">nothing ${d.minPairs ? `with at least ${d.minPairs} comparisons` : 'here'}</td></tr>`}</tbody></table></div>
+          || `<tr><td colspan="9" class="empty">nothing ${d.minPairs ? `with at least ${d.minPairs} comparisons` : 'here'}</td></tr>`}</tbody></table></div>
       ${d.narrowedOut ? `<p class="note">${d.narrowedOut.toLocaleString()} row(s) narrowed out by the comparisons floor.</p>` : ''}
       ${pageBar('repCoins', d.page, ' coin rows')}`;
     return `<details id="bRepCoins"${repCoins.id === doc.id ? ' open' : ''} style="margin-top:.6rem"><summary style="cursor:pointer"><b>Every coin of every configuration</b> — one row per coin, sortable over the whole data set</summary>
       <p class="note">source: the same replication rows as the list above — written in the second pass, one for every
         promoted unit that scored this configuration on this coin. The rows column counts them: one per combination of
         the boxes permuted on Sweep that share the coin and chunk shape, each scoring the same configuration on its own
-        forecasts. avg held-back and avg trades are AVERAGES over those rows — the sum divided by the rows that
-        recorded a held-back result — so a coin with 16 rows and one with 8 read alike. The records button on each row
+        forecasts. avg held-back, avg trades and avg vs always-long are AVERAGES over those rows — each sum divided
+        by the rows that recorded it — so a coin with 16 rows and one with 8 read alike. The records button on each row
         opens those rows themselves.</p>
       <div class="row" style="margin:.5rem 0">
         <label class="c"><span class="muted">sort by</span><select id="bCoinSort">
           <option value="share"${repCoins.sort === 'share' ? ' selected' : ''}>beat its own copies</option>
           <option value="pairs"${repCoins.sort === 'pairs' ? ' selected' : ''}>comparisons</option>
           <option value="money"${repCoins.sort === 'money' ? ' selected' : ''}>avg held-back</option>
+          <option value="vslong"${repCoins.sort === 'vslong' ? ' selected' : ''}>avg vs always-long</option>
           <option value="coin"${repCoins.sort === 'coin' ? ' selected' : ''}>coin</option>
           <option value="configuration"${repCoins.sort === 'configuration' ? ' selected' : ''}>configuration</option>
         </select></label>
@@ -1903,7 +1907,7 @@ async function drawBoards() {
       const sub = document.createElement('tr');
       sub.className = 'coinsub';
       const cell = document.createElement('td');
-      cell.colSpan = 8;
+      cell.colSpan = 9;
       cell.style.padding = '.25rem .5rem .5rem 1.2rem';
       cell.innerHTML = coinRecordsHtml(got);
       sub.appendChild(cell);

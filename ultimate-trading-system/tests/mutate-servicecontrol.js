@@ -113,6 +113,14 @@ const GUARDS = [
     'everyControlsHelpBecomesItsHover', 'the wired hover overwrites every hand-written warning in the templates'],
   [path.join(ROOT, 'public', 'construct.js'), "drawSweep = ((fn) => async (...a) => { const r = await fn(...a); hoverFromHelp('sweep'); return r; })(drawSweep);", '',
     'everyControlsHelpBecomesItsHover', 'the Sweep controls go back to having no hovers at all'],
+  [path.join(ROOT, 'lib', 'replication.js'), 'avgVsLong: a.vln ? (a.vl || 0) / a.vln : null,', 'avgVsLong: a.vl || 0,',
+    'theAveragesMatchThePencil', 'the vs always-long column sums instead of averaging and reads 16 times too big'],
+  [path.join(ROOT, 'lib', 'replication.js'), '    } else if (hold != null) {', "    } else if (hold != null) {\n      a.vl += (r.holdout.vsAlwaysLong || 0); a.vln++;",
+    'theAveragesMatchThePencil', 'the scrambled copies thin the vs always-long average toward zero'],
+  [path.join(ROOT, 'lib', 'replication.js'), '    vslong: (a, b) => byVsL(a, b) || byShare(a, b),\n', '',
+    'theAveragesMatchThePencil', 'the new sort choice silently orders by nothing'],
+  [path.join(ROOT, 'lib', 'replication.js'), 'if (!saved || !(saved.v >= SPANS_FROM_V)) {', 'if (!saved || saved.v !== TALLY_V) {',
+    'aV3SaveKeepsTheRecordsWorkingWhileTheAveragesRebuild', 'every records button goes dark for the whole fifteen-minute rebuild after any tally change'],
 ];
 
 const only = process.argv[2] || '';

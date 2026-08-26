@@ -100,7 +100,7 @@ function tallyOver(each) {
     }
     const k = assetKey(r);
     let a = g.assets.get(k);
-    if (!a) { a = { n: 0, hold: 0, pos: 0, sum: 0, t: 0, beat: 0, pairs: 0, at: [] }; g.assets.set(k, a); }
+    if (!a) { a = { n: 0, hold: 0, pos: 0, sum: 0, t: 0, vl: 0, vln: 0, beat: 0, pairs: 0, at: [] }; g.assets.set(k, a); }
     const hold = r.holdout && r.holdout.pnl != null ? r.holdout.pnl : null;
 
     if (!tagged || r.nullDealSeed == null) {
@@ -117,7 +117,10 @@ function tallyOver(each) {
         a.t += (r.holdout.trades || 0);
         if (hold > 0) a.pos++;
         const vsL = r.holdout.vsAlwaysLong;
-        if (vsL != null) { g.vsLCount++; if (vsL > 0) g.vsLPos++; }
+        // Kept per coin as well as per configuration (owner order,
+        // 2026-08-26: "expose the average vs always-long of the underlying
+        // records for each record" of the every-coin table).
+        if (vsL != null) { g.vsLCount++; if (vsL > 0) g.vsLPos++; a.vl += vsL; a.vln++; }
         // pair against every copy of this asset already seen, and remember the
         // real figure so copies arriving later can be paired too
         let mine = g.realHold.get(k);
@@ -141,7 +144,7 @@ function tallyOver(each) {
   // whole-configuration figures are derived from these at reading time, so the
   // two views can never disagree — there is one set of counts, sliced twice.
   return {
-    v: 3,
+    v: 4,
     builtAt: new Date().toISOString(),
     tagged,
     dropped,
@@ -155,7 +158,11 @@ function tallyOver(each) {
     })),
   };
 }
-const TALLY_V = 3;
+const TALLY_V = 4;
+// The record index (which blocks hold each coin's rows) exists from v3 on —
+// the records button keeps answering from a v3 save while the v4 averages
+// rebuild in the background.
+const SPANS_FROM_V = 3;
 
 // From a tally to the rows the screen shows: widths joined in from the CURRENT
 // leader rows (they sharpen while a run goes, so they are never baked into a
@@ -348,7 +355,7 @@ function startTotals(runId) {
 // `minPairs` narrows to rows with at least that many comparisons; it defaults
 // to zero so nothing is hidden unless the reader asks, and the reply says how
 // many rows the narrowing removed.
-const COIN_SORTS = ['share', 'pairs', 'money', 'coin', 'configuration'];
+const COIN_SORTS = ['share', 'pairs', 'money', 'vslong', 'coin', 'configuration'];
 
 function coinsFrom(totals, { sort = 'share', minPairs = 0, ...query } = {}) {
   const key = COIN_SORTS.includes(String(sort)) ? String(sort) : 'share';
@@ -371,6 +378,10 @@ function coinsFrom(totals, { sort = 'share', minPairs = 0, ...query } = {}) {
         // finished run — so a coin with 16 rows and one with 8 read alike.
         avgHold: a.hold ? (a.sum || 0) / a.hold : null,
         avgTrades: a.hold ? (a.t || 0) / a.hold : null,
+        // Against just holding the coin, averaged over the rows that
+        // recorded the comparison (owner order, 2026-08-26). Positive means
+        // the configuration beat holding on this coin, on average.
+        avgVsLong: a.vln ? (a.vl || 0) / a.vln : null,
         beat: a.beat || 0,
         pairs: a.pairs || 0,
         share: a.pairs ? a.beat / a.pairs : null,
@@ -381,10 +392,12 @@ function coinsFrom(totals, { sort = 'share', minPairs = 0, ...query } = {}) {
   const byShare = (a, b) => (a.share == null && b.share == null ? 0
     : b.share == null ? -1 : a.share == null ? 1 : b.share - a.share);
   const byAvg = (a, b) => (b.avgHold ?? -Infinity) - (a.avgHold ?? -Infinity);
+  const byVsL = (a, b) => (b.avgVsLong ?? -Infinity) - (a.avgVsLong ?? -Infinity);
   const orders = {
     share: (a, b) => byShare(a, b) || b.pairs - a.pairs || byAvg(a, b),
     pairs: (a, b) => b.pairs - a.pairs || byShare(a, b),
     money: (a, b) => byAvg(a, b) || byShare(a, b),
+    vslong: (a, b) => byVsL(a, b) || byShare(a, b),
     coin: (a, b) => a.trade.localeCompare(b.trade) || byShare(a, b),
     configuration: (a, b) => a.label.localeCompare(b.label) || a.trade.localeCompare(b.trade),
   };
@@ -458,7 +471,7 @@ function coinRows(doc, { label = '', trade = '', ctx1 = '', ctx2 = '', geometry 
   }
 
   const saved = readTotals(doc.id);
-  if (!saved || saved.v !== TALLY_V) {
+  if (!saved || !(saved.v >= SPANS_FROM_V)) {
     return pack([], { indexed: false, why: 'the saved totals predate the per-coin record index — the fresh totalling now going brings it' });
   }
   const g = (saved.groups || []).find((x) => x.label === label);
@@ -614,4 +627,4 @@ function detail(doc, label, { offset = 0, limit = 200 } = {}) {
   };
 }
 
-module.exports = { rank, detail, coins, coinsFrom, coinRows, assetKey, tallyOver, renderScored, buildAndSaveTotals, startTotals, readTotals, writeTotals, totalsFile, TALLY_V, COIN_SORTS };
+module.exports = { rank, detail, coins, coinsFrom, coinRows, assetKey, tallyOver, renderScored, buildAndSaveTotals, startTotals, readTotals, writeTotals, totalsFile, TALLY_V, SPANS_FROM_V, COIN_SORTS };
