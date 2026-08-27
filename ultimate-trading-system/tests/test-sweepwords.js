@@ -200,7 +200,10 @@ module.exports = {
     // members column spells both out — because the owner asked, of the old
     // page, why the model in use was not being named. Placements below were
     // read back out of the generator, not typed from memory.
-    const ONLY_ON = { slim: ['Boards', 'Sweep', 'Sweep2'],
+    // 2026-08-27: the crunch order ("remove all that verbiage") took 'slim'
+    // off Sweep2 again — its compact stage 1 line names logreg and the
+    // stage, not the old pass name. Read back out of the generator.
+    const ONLY_ON = { slim: ['Boards', 'Sweep'],
       logreg: ['Boards', 'Boards2', 'Sweep2'], boost: ['Boards', 'Boards2', 'Sweep2'] };
     const where = {};
     for (const t of tabs()) {
