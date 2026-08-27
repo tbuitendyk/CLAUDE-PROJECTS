@@ -3871,14 +3871,21 @@ async function s3Counts() {
   }
   const c3 = $('#s3Count');
   if (c3) {
-    const got = await askPost('api/stage3-count', s3BlockParams(), null);
+    const sets = s3SetsCache || [];
+    const parent = sets.find((x) => x.id === $('#s3From3').value);
+    const carry = Number($('#s3Carry3') && $('#s3Carry3').value) || 0;
+    const units = parent ? (carry > 0 ? Math.min(carry, parent.plan.units) : parent.plan.units) : null;
+    const coins = parent && parent.params && Array.isArray(parent.params.universe) ? parent.params.universe.length : null;
+    const got = await askPost('api/stage3-count', { ...s3BlockParams(), units: units || 0, coins: coins || 1 }, null);
     if (got && !got.error) {
-      const sets = s3SetsCache || [];
-      const parent = sets.find((x) => x.id === $('#s3From3').value);
-      const carry = Number($('#s3Carry3') && $('#s3Carry3').value) || 0;
-      const units = parent ? (carry > 0 ? Math.min(carry, parent.plan.units) : parent.plan.units) : null;
       const sims = units ? got.settings * units * (1 + (Number($('#s3Null3').value) || 0)) : null;
-      c3.innerHTML = `declared: <b>${got.settings.toLocaleString()} settings</b>${units ? ` × ${units.toLocaleString()} units × ${(1 + (Number($('#s3Null3').value) || 0)).toLocaleString()} readings ≈ ${sims.toLocaleString()} pricings — no trainings` : ''}`;
+      // the budget verdict comes from the SAME arithmetic the launch enforces:
+      // a refusal is said here, before the button is pressed
+      const refuse = (got.heap && got.heap.band === 'refuse' && got.heap) || (got.disk && got.disk.band === 'refuse' && got.disk) || null;
+      const tight = !refuse ? ((got.heap && got.heap.band === 'tight' && got.heap) || (got.disk && got.disk.band === 'tight' && got.disk) || null) : null;
+      c3.innerHTML = `declared: <b>${got.settings.toLocaleString()} settings</b>${units ? ` × ${units.toLocaleString()} units × ${(1 + (Number($('#s3Null3').value) || 0)).toLocaleString()} readings ≈ ${sims.toLocaleString()} pricings — no trainings` : ''}`
+        + (refuse ? `<br><b class="neg">start stage 3 will refuse: ${esc(refuse.message)}</b>`
+          : tight ? `<br><span class="warn">${esc(tight.message)}</span>` : '');
     } else {
       c3.innerHTML = `<span class="warn">${esc((got && got.error) || 'the counter could not be asked')}</span>`;
     }

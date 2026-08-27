@@ -116,13 +116,13 @@ function cancelStage(id) {
 }
 // Service restarts leave 'running' sets stranded; the boot sweep marks them
 // so the screen never shows a corpse as alive (same contract as the sweeps).
-function markInterrupted() {
+function markInterrupted(reason) {
   for (const row of listSets()) {
     if (row.status !== 'running') continue;
     const doc = getSet(row.id);
     if (!doc) continue;
     doc.status = 'interrupted';
-    doc.progress = 'the service restarted while this set was being written';
+    doc.progress = `the service restarted while this set was being written${reason ? ` — ${reason}` : ''}`;
     saveSet(doc);
   }
 }
@@ -643,6 +643,14 @@ function startStage3(params) {
   }
   if (!parentRecords.length) throw new Error(`${parent.name} holds no records — nothing to price`);
 
+  // the budget gate: the whole plan is known here, so a block that cannot
+  // fit is refused NOW, with the arithmetic, never discovered mid-total
+  const coinsN = new Set(parentRecords.map((r) => r.trade)).size;
+  const heapGate = tallyBudgetFor({ settings: settings.length, coins: coinsN });
+  if (heapGate.band === 'refuse') throw new Error(heapGate.message);
+  const diskGate = storeBudgetFor({ rows: settings.length * parentRecords.length });
+  if (diskGate.band === 'refuse') throw new Error(diskGate.message);
+
   const seq = seqFor(3);
   const id = `s3-${Date.now().toString(36)}-${seq}`;
   const doc = {
@@ -745,13 +753,15 @@ function startStage3(params) {
     doc.status = okN === parentRecords.length ? 'done' : 'incomplete';
     doc.progress = doc.status === 'incomplete' ? `finished with ${doc.failures.length} unit(s) missing — the set does not match its own plan` : 'totalling the tables';
     saveSet(doc);
+    const tallyGate = tallyBudgetFor({ settings: settings.length, coins: coinsN });
     let lastTallySave = 0;
     const tallyNote = (dn, tn) => {
       doc.progress = `totalling the tables: ${dn} of ${tn} parts`;
       const now = Date.now();
       if (now - lastTallySave > 1000 || dn === tn) { lastTallySave = now; saveSet(doc); }
     };
-    try { await buildTally(doc, pool, tallyNote); } catch (err) { doc.tallyError = String(err.message || err); }
+    if (tallyGate.band === 'refuse') doc.tallyError = tallyGate.message;
+    else { try { await buildTally(doc, pool, tallyNote); } catch (err) { doc.tallyError = String(err.message || err); } }
     doc.progress = doc.status === 'incomplete' ? doc.progress : '';
     doc.finishedAt = new Date().toISOString();
     saveSet(doc);
@@ -774,6 +784,62 @@ const tallyFile = (id) => path.join(SETS_DIR, `${String(id).replace(/[^A-Za-z0-9
 // worked example is 2,772 settings); above this bound the totalling runs
 // inline — one accumulator, one streaming pass — which is what fits.
 const SHARD_SETTINGS_LIMIT = 5000;
+
+// ---- THE BUDGET GATE (owner order, 2026-08-27: "detect ... warn, flag,
+// stop, give meaningful messages ... if they select too large of a dataset").
+// Every stage job is plan-first, so the numbers that decide memory and disk
+// are all known BEFORE anything runs — the gate does the arithmetic then and
+// says it in the cost line, in the refusal, and on the set.
+//
+// The memory model is CALIBRATED, not guessed: the 177,408-setting × 17-coin
+// block that killed the old totalling fits under the reshaped one at about
+// 1.2 GB, which reads back as ~400 bytes per setting-and-coin atom with all
+// object overhead in, plus a per-setting base. tests/test-stages.js holds
+// the disk figure against a real store the same way.
+const TALLY_ATOM_BYTES = 400;        // one setting × one coin, object overhead in
+const TALLY_SETTING_BASE_BYTES = 600; // one ranked entry's own fields
+const S3_RECORD_DISK_BYTES = 500;     // one stage 3 record row on disk, gz block share in
+const HEAP_REFUSE_SHARE = 0.8;        // above this share of the ceiling: refuse
+const HEAP_WARN_SHARE = 0.45;         // above this share: run, but say it is tight
+const DISK_REFUSE_SHARE = 0.8;        // of the free disk, for the records store
+
+const gbWords = (bytes) => (bytes >= 1073741824 ? `${(bytes / 1073741824).toFixed(1)} GB` : `${Math.max(1, Math.round(bytes / 1048576))} MB`);
+
+function tallyBudgetFor({ settings, coins, heapLimitBytes = null }) {
+  let heap = heapLimitBytes;
+  if (heap == null) {
+    const r = require('./estimate').boxResources();
+    heap = (r.heapCeilingMb || 1792) * 1048576;
+  }
+  const bytes = Math.round(settings * (TALLY_SETTING_BASE_BYTES + Math.max(1, coins) * TALLY_ATOM_BYTES));
+  const share = bytes / heap;
+  const band = share > HEAP_REFUSE_SHARE ? 'refuse' : (share > HEAP_WARN_SHARE ? 'tight' : 'fits');
+  const message = band === 'fits' ? null
+    : band === 'tight'
+      ? `these tables will need about ${gbWords(bytes)} of the ${gbWords(heap)} the service has — it will run, but it is tight`
+      : `these tables would need about ${gbWords(bytes)} and the service has ${gbWords(heap)} in all — anything above `
+        + `${gbWords(Math.round(heap * HEAP_REFUSE_SHARE))} refuses rather than dying mid-total. Shrink the block: fewer settings, `
+        + 'a smaller carry forward, or fewer coins.';
+  return { bytes, heapBytes: heap, share, band, message };
+}
+
+function storeBudgetFor({ rows, freeBytes = null }) {
+  let free = freeBytes;
+  if (free == null) {
+    const r = require('./estimate').boxResources();
+    free = r.diskFreeBytes == null ? null : r.diskFreeBytes;
+  }
+  const bytes = Math.round(rows * S3_RECORD_DISK_BYTES);
+  if (free == null) return { bytes, freeBytes: null, band: 'fits', message: null };
+  const share = bytes / free;
+  const band = share > DISK_REFUSE_SHARE ? 'refuse' : (share > HEAP_WARN_SHARE ? 'tight' : 'fits');
+  const message = band === 'fits' ? null
+    : band === 'tight'
+      ? `the records will take about ${gbWords(bytes)} of the ${gbWords(free)} free on disk`
+      : `the records would take about ${gbWords(bytes)} and only ${gbWords(free)} is free on disk — the launch refuses `
+        + 'rather than filling the machine. Shrink the block, or clear old record sets first.';
+  return { bytes, freeBytes: free, band, share, message };
+}
 async function buildTally(doc, pool = null, note = null) {
   const id = doc.id;
   const sw = require('./stagework');
@@ -811,38 +877,50 @@ async function buildTally(doc, pool = null, note = null) {
       await new Promise((resolve) => { setImmediate(resolve); });
     }
   }
-  const ranked = [...acc.perSetting.values()].map((st) => {
-    const coins = [...st.perCoin.values()];
+  // THE ACCUMULATOR IS DRAINED AS THE TABLES ARE BUILT (2026-08-27, the
+  // second out-of-memory death): the fold of the 177,408-setting block fit,
+  // and then building the finished tables ON TOP of the still-whole
+  // accumulator doubled the footprint and died. Each entry is deleted the
+  // moment its row exists, so the peak is one copy plus flat rows, never two
+  // copies of the widest structure.
+  const ranked = [];
+  for (const [key, st] of acc.perSetting) {
+    const coinCells = [...st.perCoin.values()];
     const mean = (f) => {
-      const vals = coins.map(f).filter((v) => v != null);
+      const vals = coinCells.map(f).filter((v) => v != null);
       return vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : null;
     };
-    const coinHold = coins.map((c) => (c.holdN ? c.hold / c.holdN : null));
-    return {
+    const coinHold = coinCells.map((c) => (c.holdN ? c.hold / c.holdN : null));
+    ranked.push({
       si: st.si, label: st.label,
       decision: st.decision, bandMode: st.bandMode, weekdaysOnly: st.weekdaysOnly,
       entry: st.entry, gate: st.gate, dMult: st.dMult, tHours: st.tHours, trailMult: st.trailMult, armMult: st.armMult,
       quorum: st.quorum, members: st.members,
-      coins: coins.length,
+      coins: coinCells.length,
       coinsInMoney: coinHold.filter((v) => v != null && v > 0).length,
       avgTest: mean((c) => (c.testN ? c.test / c.testN : null)),
       avgHold: mean((c) => (c.holdN ? c.hold / c.holdN : null)),
       avgTrades: mean((c) => (c.holdN ? c.trades / c.holdN : null)),
       avgVsLong: mean((c) => (c.vsln ? c.vsl / c.vsln : null)),
       avgLead: mean((c) => (c.ldN ? c.ld / c.ldN : null)),
-      beat: [...st.perCoin.values()].reduce((a, c) => a + c.beat, 0),
-      pairs: [...st.perCoin.values()].reduce((a, c) => a + c.pairs, 0),
-    };
-  });
+      beat: coinCells.reduce((a, c) => a + c.beat, 0),
+      pairs: coinCells.reduce((a, c) => a + c.pairs, 0),
+    });
+    acc.perSetting.delete(key);
+  }
   ranked.sort((a, b) => ((b.pairs ? b.beat / b.pairs : -1) - (a.pairs ? a.beat / a.pairs : -1)) || (a.si - b.si));
-  const coins = [...acc.perCoin.values()].map((k) => ({
-    cellLabel: k.cellLabel, trade: k.trade, ctx1: k.ctx1, ctx2: k.ctx2, geometry: k.geometry,
-    share: k.pairs ? k.beat / k.pairs : null, beat: k.beat, pairs: k.pairs,
-    avgHold: k.holdN ? k.hold / k.holdN : null,
-    avgTrades: k.tradesN ? k.trades / k.tradesN : null,
-    avgVsLong: k.vsln ? k.vsl / k.vsln : null,
-    rows: k.rows, b: [...k.b].sort((x, y) => x - y),
-  }));
+  const coins = [];
+  for (const [key, k] of acc.perCoin) {
+    coins.push({
+      cellLabel: k.cellLabel, trade: k.trade, ctx1: k.ctx1, ctx2: k.ctx2, geometry: k.geometry,
+      share: k.pairs ? k.beat / k.pairs : null, beat: k.beat, pairs: k.pairs,
+      avgHold: k.holdN ? k.hold / k.holdN : null,
+      avgTrades: k.tradesN ? k.trades / k.tradesN : null,
+      avgVsLong: k.vsln ? k.vsl / k.vsln : null,
+      rows: k.rows, b: [...k.b].sort((x, y) => x - y),
+    });
+    acc.perCoin.delete(key);
+  }
   const out = { v: 1, builtAt: new Date().toISOString(), rows: acc.rows, ranked, coins };
   // WRITTEN STREAMING, entry by entry. Stringifying a 177,408-setting tally
   // in one piece is a second whole copy of it at the worst moment — part of
@@ -886,6 +964,16 @@ function ensureTally(id) {
   }
   if (batch.batchRunning() || activeSet) {
     return { waiting: 'a run is going — the tables total when the box is free' };
+  }
+  // over-budget tables refuse HERE too — an out-of-memory death cannot be
+  // caught in software, so the gate is the protection, said on the screen
+  const gate = tallyBudgetFor({
+    settings: (doc.plan || {}).settings || 0,
+    coins: Array.isArray((doc.params || {}).universe) ? doc.params.universe.length : 1,
+  });
+  if (gate.band === 'refuse') {
+    if (doc.tallyError !== gate.message) { doc.tallyError = gate.message; saveSet(doc); }
+    return { failed: gate.message };
   }
   const run = { id, done: 0, total: 0, startedAt: Date.now(), error: null, promise: null };
   tallyRun = run;
@@ -1108,5 +1196,5 @@ module.exports = {
   stage1Table, stage2Table, stage3Ranked, stage3Coins, stage3CoinRows,
   settingsFor, unitsFor, buildTally, readTally, seedOf, S3_SORTS, deleteSet, childrenOf,
   setSetNotes, setSetSort, applySort, validateSort, sortLabel,
-  ensureTally, tallyWait,
+  ensureTally, tallyWait, tallyBudgetFor, storeBudgetFor,
 };

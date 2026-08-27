@@ -195,6 +195,10 @@ const GUARDS = [
     'theTwoScreensDrawTheSharedPanelsFromOneFunction', 'the stage 1 title stays green whatever the boxes show — the provenance flag stops flagging'],
   [path.join(ROOT, 'lib', 'stages.js'), "  try { if (fs.existsSync(tallyFile(id))) return { ready: true }; } catch (_) { /* fall through */ }", '  return { ready: true };',
     'theTablesRebuildThemselvesWhenOpened', 'a set stranded without its tables reads as ready forever and the stage 3 tables stay empty'],
+  [path.join(ROOT, 'lib', 'stages.js'), "const band = share > HEAP_REFUSE_SHARE ? 'refuse' : (share > HEAP_WARN_SHARE ? 'tight' : 'fits');", "const band = 'fits';",
+    'theBudgetGateDoesTheArithmeticUpFront', 'every block reads as fitting and the service dies out of memory instead of refusing with the arithmetic'],
+  [path.join(ROOT, 'lib', 'stages.js'), "if (gate.band === 'refuse') {", 'if (false) {',
+    'theOverBudgetTablesAreRefusedNotAttempted', 'an impossible totalling is attempted anyway — the exact out-of-memory death the gate exists to stop'],
 ];
 
 const only = process.argv[2] || '';

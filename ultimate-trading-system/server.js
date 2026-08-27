@@ -785,8 +785,20 @@ app.post('/api/stage1-count', (req, res) => {
   } catch (err) { return res.status(400).json({ error: err.message }); }
 });
 app.post('/api/stage3-count', (req, res) => {
-  try { return res.json({ settings: stages.settingsFor(req.body || {}).length }); }
-  catch (err) { return res.status(400).json({ error: err.message }); }
+  try {
+    const b = req.body || {};
+    const settings = stages.settingsFor(b).length;
+    const out = { settings };
+    // the budget arithmetic rides the SAME answer the launch will enforce,
+    // so the cost line and the refusal can never be two different numbers
+    const units = Math.max(0, Math.floor(Number(b.units) || 0));
+    const coins = Math.max(1, Math.floor(Number(b.coins) || 1));
+    if (units > 0) {
+      out.heap = stages.tallyBudgetFor({ settings, coins });
+      out.disk = stages.storeBudgetFor({ rows: settings * units });
+    }
+    return res.json(out);
+  } catch (err) { return res.status(400).json({ error: err.message }); }
 });
 
 app.post('/api/stage1', (req, res) => {
@@ -1704,6 +1716,30 @@ app.use((err, req, res, next) => {
   const msg = err && err.message ? String(err.message).slice(0, 200) : 'server error';
   res.status(status).json({ error: msg });
 });
+
+// A DEATH LEAVES A NOTE (owner order, 2026-08-27). At boot, ask the separate
+// control program what the machine recorded about this service's last stop;
+// a set stranded mid-write then says WHY the service restarted, in the
+// machine's own words, instead of leaving a silent hole. Best-effort: when
+// no control program answers, the sets still get the plain marking.
+(() => {
+  const svcPort = Number(process.env.UTS_SVC_PORT || 8095);
+  const unitName = process.env.UTS_UNIT_NAME || 'ultimate-trading-system.service';
+  const mark = (plain) => { try { stages.markInterrupted(plain || undefined); } catch (_) { /* the lazy marking covers it */ } };
+  const req = require('http').get({
+    host: '127.0.0.1', port: svcPort, path: `/api/last-death?unit=${encodeURIComponent(unitName)}`, timeout: 1500,
+  }, (r) => {
+    let raw = '';
+    r.on('data', (c) => { raw += c; });
+    r.on('end', () => {
+      let plain = null;
+      try { const d = JSON.parse(raw); if (d && d.died && d.plain) plain = d.plain; } catch (_) { /* plain marking */ }
+      mark(plain);
+    });
+  });
+  req.on('timeout', () => { req.destroy(); });
+  req.on('error', () => mark(null));
+})();
 
 app.listen(PORT, '127.0.0.1', () => {
   console.log(`ultimate-trading-system listening on 127.0.0.1:${PORT}`);

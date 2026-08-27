@@ -238,6 +238,32 @@ work — the owner reviews decisions in the morning, not at 3am.
     controls, one per stage header, working folded or open; the notes box
     stays one per page on the deepest selection.
 
+## The budget gate (owner GO, 2026-08-27 night: "detect ... warn, flag,
+## stop, give meaningful messages ... if they select too large of a dataset")
+
+35. **Every heavy start does its memory and disk arithmetic first.** The
+    plan-first design means the deciding numbers exist before anything
+    runs: the stage 3 cost line says the verdict as you set the block
+    (plain when it fits, a warning when tight, "start stage 3 will refuse:
+    …" in red when it cannot fit), the launch refuses over-budget blocks
+    with the same words, the totalling and its rebuild refuse the same way
+    (recorded on the set and said on the screen), and the cost line and the
+    refusal share ONE arithmetic served by the engine. The heap model is
+    calibrated on the 177,408 × 17 block (reads "tight"); the disk figure
+    is held against a real store by a test. Stage 1's disk gate is PARKED:
+    its store size depends on chunk counts not known before the data is
+    read.
+36. **A death leaves a note.** At boot the service asks the separate
+    control program what the machine recorded about its last stop
+    (oom-kill, an abort mid-work, a signal), and any set stranded
+    mid-write is marked with that reason in plain words — never a silent
+    restart.
+37. **The second out-of-memory death, and the fix.** The reshaped fold fit
+    the 177,408-setting block — and then building the finished tables ON
+    TOP of the still-whole accumulator doubled the footprint and died. The
+    accumulator is now drained as the tables are built: each entry deleted
+    the moment its row exists, so the peak is one copy plus flat rows.
+
 ## Recorded intent, no action taken
 
 Owner, 2026-08-27: "once I've confirmed that the new 3 stage sweep and

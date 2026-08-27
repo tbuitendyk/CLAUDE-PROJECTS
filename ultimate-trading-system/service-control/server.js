@@ -104,6 +104,28 @@ function quotaPct(v) {
   return Math.round(sec * 100);
 }
 
+// WHAT THE MACHINE SAYS ABOUT A SERVICE'S LAST DEATH — its own record, read
+// back so a stranded record set can say WHY the service restarted instead of
+// leaving a silent hole (owner order, 2026-08-27). A memory-ceiling death
+// aborts the process (code 134) or is killed by the machine (oom-kill);
+// both are said in plain words, and a clean stop says nothing.
+async function lastDeath(unit) {
+  if (!UNITS.includes(unit)) {
+    return { code: 400, body: { error: `"${unit}" is not one of this system's services (${UNITS.join(', ')})` } };
+  }
+  const d = await show(unit, ['Result', 'ExecMainStatus', 'ExecMainCode', 'NRestarts', 'ActiveState']);
+  const result = d.Result || '';
+  const status = Number(d.ExecMainStatus || 0);
+  const died = !!result && result !== 'success';
+  let plain = null;
+  if (died) {
+    if (result === 'oom-kill') plain = 'the machine killed it for using too much memory';
+    else if (status === 134) plain = 'it stopped itself mid-work; a memory ceiling death looks exactly like this';
+    else plain = `it did not stop cleanly (${result}, code ${status})`;
+  }
+  return { code: 200, body: { unit, died, result, status, restarts: Number(d.NRestarts || 0), plain } };
+}
+
 // WHAT EVERYTHING IS DOING RIGHT NOW. Processor use is measured, not asked
 // for: the kernel's own running total of each service's processor time, read
 // twice half a second apart. The Compute tab asks for this every thirty
@@ -303,6 +325,10 @@ const server = http.createServer((req, res) => {
   if (req.method === 'GET' && url === '/api/state') {
     return state().then((s) => send(res, 200, s)).catch((e) => send(res, 500, { error: e.message }));
   }
+  if (req.method === 'GET' && url === '/api/last-death') {
+    const unit = new URLSearchParams((req.url || '').split('?')[1] || '').get('unit') || UNIT;
+    return lastDeath(unit).then((r) => send(res, r.code, r.body));
+  }
   if (req.method === 'GET' && url === '/api/compute') {
     return compute().then((s) => send(res, 200, s)).catch((e) => send(res, 500, { error: e.message }));
   }
@@ -323,4 +349,4 @@ if (require.main === module) {
     process.stdout.write(`uts-service-control listening on ${HOST}:${PORT} for ${UNITS.join(', ')}\n`);
   });
 }
-module.exports = { server, state, restart, act, setQuota, compute, answers, quotaPct, UNIT, UNITS, SELF_UNIT, ACTIONS, PUBLIC_DIR };
+module.exports = { server, state, restart, act, setQuota, compute, answers, quotaPct, lastDeath, UNIT, UNITS, SELF_UNIT, ACTIONS, PUBLIC_DIR };

@@ -646,6 +646,62 @@ module.exports = {
     }
   },
 
+  // The budget gate does its arithmetic BEFORE anything runs (owner order,
+  // 2026-08-27: warn, flag, stop, with meaningful messages — never a crash
+  // or a silent restart because a block was too wide).
+  async theBudgetGateDoesTheArithmeticUpFront() {
+    const GB = 1073741824;
+    // fits / tight / refuse, with the numbers said in the message
+    const fits = stages.tallyBudgetFor({ settings: 2772, coins: 17, heapLimitBytes: 1792 * 1048576 });
+    assert.strictEqual(fits.band, 'fits', 'the design-scale block fits without comment');
+    assert.strictEqual(fits.message, null);
+    // the calibration pin: the exact block that killed the old totalling
+    // reads as TIGHT under the reshaped one — it runs, and it says so
+    const owners = stages.tallyBudgetFor({ settings: 177408, coins: 17, heapLimitBytes: 1792 * 1048576 });
+    assert.strictEqual(owners.band, 'tight', `the 177,408 × 17 block must read tight, got ${owners.band} at share ${owners.share}`);
+    assert.ok(/it will run, but it is tight/.test(owners.message));
+    const over = stages.tallyBudgetFor({ settings: 1000000, coins: 17, heapLimitBytes: 1792 * 1048576 });
+    assert.strictEqual(over.band, 'refuse');
+    assert.ok(/refuses rather than dying mid-total/.test(over.message) && /Shrink the block/.test(over.message),
+      'the refusal says why and what to shrink');
+    assert.ok(/GB/.test(over.message), 'the refusal carries the arithmetic, not just a verdict');
+    // disk: rows against what is actually free
+    const disk = stages.storeBudgetFor({ rows: 10000000, freeBytes: 4 * GB });
+    assert.strictEqual(disk.band, 'refuse');
+    assert.ok(/free on disk/.test(disk.message) && /clear old record sets/.test(disk.message));
+    assert.strictEqual(stages.storeBudgetFor({ rows: 1000, freeBytes: 4 * GB }).band, 'fits');
+    // and the launch is wired to both gates — the throws must exist in source
+    const src = fs.readFileSync(path.join(ROOT, 'lib', 'stages.js'), 'utf8');
+    assert.ok(src.includes("if (heapGate.band === 'refuse') throw new Error(heapGate.message);"),
+      'start stage 3 must refuse an over-budget block by the gate own words');
+    assert.ok(src.includes("if (diskGate.band === 'refuse') throw new Error(diskGate.message);"),
+      'and the disk gate too');
+  },
+
+  // A finished set whose tables would not fit is refused with the arithmetic
+  // — said on the set and on the screen — never attempted into the same wall.
+  async theOverBudgetTablesAreRefusedNotAttempted() {
+    const stamp = Date.now().toString(36);
+    const id = `s3-test-${stamp}-ob`;
+    const file = path.join(SETS_DIR, `${id}.json`);
+    const doc = {
+      id, stage: 3, seq: 999987, name: 'S3 #ob', status: 'done', createdAt: new Date().toISOString(),
+      plan: { units: 1, settings: 50000000 },
+      params: { nullN: 9, universe: Array.from({ length: 17 }, (_, i) => `C${i}USDT`) },
+    };
+    try {
+      fs.mkdirSync(SETS_DIR, { recursive: true });
+      fs.writeFileSync(file, JSON.stringify(doc));
+      const out = stages.ensureTally(id);
+      assert.ok(out.failed, 'an impossible totalling must refuse, not start');
+      assert.ok(/Shrink the block/.test(out.failed), 'and say what to shrink');
+      const back = stages.getSet(id);
+      assert.ok(/Shrink the block/.test(back.tallyError || ''), 'the refusal is recorded on the set itself');
+    } finally {
+      try { fs.rmSync(file, { force: true }); } catch (_) { /* fixture */ }
+    }
+  },
+
   // The votes a stage keeps must round-trip the store byte-exactly at the
   // 4-decimal grain, so a stored vote can never read differently on reload.
   async theKeptVotesRoundTripTheStore() {
