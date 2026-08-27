@@ -3423,10 +3423,12 @@ async function drawSweep2() {
       nothing. It is a full-size drawing of a proposed redesign, here so you can look at it, point at anything, and
       change it before any of it is built. Every number on it is a worked example, not a measurement.</p>
     <p class="note">The idea in one line: <b>train once, keep every vote, and make everything after that arithmetic.</b>
-      Stage 1 scores every unit once, cheaply, and keeps every vote its members cast. Stage 2 trains the fuller boards,
-      but only on the rows you carry forward, and reuses the stage 1 members instead of training them again. Stage 3
-      prices any settings you like straight from the kept votes — no training at all, minutes not days. Each stage
-      writes a record set the next stage reads, and every record set names the one it came from.</p>
+      Stage 1 trains every unit once, cheaply, keeps every vote its members cast, and ranks the units by whether those
+      votes beat their own scrambled copies at plain forecasting — no trade settings involved. Stage 2 trains the fuller
+      boards, but only on the rows you carry forward, and reuses the stage 1 members instead of training them again.
+      Stage 3 prices any settings you like straight from the kept votes — no training at all, minutes not days, and it
+      is the first stage where money is asked about. Each stage writes a record set the next stage reads, and every
+      record set names the one it came from.</p>
     <p class="note">One word used everywhere on these two pages: a <b>setting</b> is one combination of the boxes —
       decision, band % (or auto), 24/5, entry, gate, d, t, trail, arm and agree. Today's screens say configuration in
       some places and cell in others; this drawing proposes one word for it, on every screen alike.</p>
@@ -3435,9 +3437,9 @@ async function drawSweep2() {
   <div class="panel">
     <h3 style="margin-top:0">Stage 1 — score everything once, cheaply, and keep the votes</h3>
     <p class="note">One <b>unit</b> is one coin judged on its own, or judged alongside the one or two other coins it is
-      read against, under one chunk shape. Every unit gets its 3 slim members trained — logreg on each of the 3 views
-      (full / prices / volume) — and <b>every vote each member casts is kept with the record.</b> Kept votes are what
-      make stage 2 cheaper and stage 3 free.</p>
+      read against, under one chunk shape. A coin on its own gets 3 slim members trained — logreg on each of full /
+      prices / volume; a unit read alongside others gets a fourth, the cross view. <b>Every vote each member casts is
+      kept with the record.</b> Kept votes are what make stage 2 cheaper and stage 3 free.</p>
     <div class="passbox">
       <div class="passname"><b>What to score</b> — the data and the units</div>
       <div class="row" style="align-items:flex-end">
@@ -3453,42 +3455,36 @@ async function drawSweep2() {
         <label class="f">chunk shape<select id="s2Geom" ${dead}><option>Weekly 8-day</option><option>Daily 1-day</option><option>Daily 2-day</option><option>Daily 3-day</option><option selected>Daily 4-day</option></select></label>
         <label class="c"><input type="checkbox" id="s2PermGeom" checked ${dead}> permute</label>
         <label class="f">window layout<select id="s2Layout" ${dead}><option>70/15/15</option><option selected>61/13/13/13 (sealed exam)</option><option>legacy 80/20 (never evidence)</option></select></label>
-        <label class="f">fee % each way<input id="s2Fee" type="number" value="0.125" style="width:5.5rem" ${dead}></label>
       </div>
+      <p class="note" style="margin:.4rem 0 0">No fee box here, and none of the trade boxes either — stage 1 never
+        prices a trade. Money enters the process at stage 3, and the fee lives there now.</p>
     </div>
     <div class="passbox" style="margin-top:.6rem">
-      <div class="passname"><b>The ordering setting</b> — one setting, named before anything is read, used only to put the units in order</div>
-      <p class="note" style="margin:.2rem 0 .4rem">Stage 1's job is to rank, not to measure. The rank has to be taken
-        under some setting, so exactly one is named here. There are no permute ticks in this box on purpose: an
-        ordering shopped across many settings is the fault the rest of the design exists to avoid. Blocks of settings
-        are stage 3's job, where they cost arithmetic instead of training.</p>
+      <div class="passname"><b>The ordering</b> — worked out from the votes and their copies; nothing here is chosen</div>
+      <p class="note" style="margin:.2rem 0 .4rem">Stage 1's job is to rank, and the rank is not taken under any trade
+        setting: no decision, no entry, gate, d, t, trail or arm, no agree, no fee — nothing to guess. One fixed rule,
+        the same for every unit, written into the plan before anything runs:</p>
+      <p class="note" style="margin:.2rem 0 .4rem">For each chunk of the test window, the members' votes are pooled —
+        their average sureness that price goes up, nowhere or down. The unit's <b>forecast score</b> adds up the
+        sureness the pooled vote placed on <b>what actually happened</b>, chunk after chunk. What actually happened is
+        read under the auto band — the width worked out from each coin's own history, a formula, not a number anybody
+        picks. Knowing something scores high; guessing scores middling; confident-and-wrong scores worst.</p>
       <div class="row" style="align-items:flex-end">
-        <label class="f">decision<select id="s2Dec" ${dead}><option selected>argmax</option><option>directional</option></select></label>
-        <label class="f">band % (or auto)<input id="s2Band" value="auto" style="width:5rem" ${dead}></label>
-        <label class="c"><input type="checkbox" id="s2Wk" ${dead}> 24/5</label>
-        <label class="f">entry<select id="s2Entry" ${dead}><option selected>breakout</option><option>market</option></select></label>
-        <label class="f">gate<select id="s2Gate" ${dead}><option>always</option><option>active</option><option selected>directional</option></select></label>
-        <label class="f">d<select id="s2D" ${dead}><option>0.25×</option><option>0.5×</option><option>0.75×</option><option>1×</option><option selected>1.5×</option></select></label>
-        <label class="f">t<select id="s2T" ${dead}><option>17h</option><option>41h</option><option selected>65h</option><option>89h</option><option>113h</option><option>137h</option><option>161h</option></select></label>
-        <label class="f">trail<select id="s2Trail" ${dead}><option selected>static</option><option>0.5×</option><option>1×</option><option>1.5×</option><option>2×</option></select></label>
-        <label class="f">arm<select id="s2Arm" ${dead}><option selected>0×</option><option>0.5×</option><option>1×</option></select></label>
-        <label class="f">agree<select id="s2Q6" ${dead}><option>1/6</option><option selected>2/6</option><option>3/6</option><option>4/6</option><option>5/6</option><option>6/6</option></select></label>
-        <label class="f">with contexts<select id="s2Q8" ${dead}><option>1/8</option><option>2/8</option><option selected>3/8</option><option>4/8</option><option>5/8</option><option>6/8</option><option>7/8</option><option>8/8</option></select></label>
-      </div>
-      <div class="row" style="margin-top:.5rem;align-items:flex-end">
         <label class="f">copies per unit<input id="s2Copies1" type="number" value="19" style="width:4.5rem" ${dead}></label>
-        <span class="note">companions dealt from the kept votes, after training — so 19 copies cost no training at all.
-          The share of its copies each unit beats becomes an ordering stage 2 can carry forward by. Copies at this stage
-          exist to steer the pick; a copy nothing picks by is wasted work, so here they are never wasted and never trained.</span>
+        <span class="note">each copy is the same kept votes with the calendar shuffled away, given the same forecast
+          score. The unit's place in the order is <b>beat its own copies</b> — ties broken by <b>lead over copies</b>,
+          how far above its copies' typical score the real one sits, against the copies' own spread. The ordering IS
+          the against-copies result, so the copies always feed the pick, and they are never trained.</span>
       </div>
     </div>
     <div class="passbox" style="margin-top:.6rem">
       <div class="passname"><b>What this stage costs, and what it writes</b> — a worked example, not a measurement</div>
-      <div class="note">The run open on Boards today holds 25,704 units. Here that is 25,704 × 3 = <b>77,112 trainings</b>,
-        votes kept for every one, copies free. Today's page trains that same run 231,336 times — 9 per unit — and keeps
-        no votes, so every later question starts the training again.</div>
+      <div class="note">The run open on Boards today holds 25,704 units and cost 231,336 trainings — 9 per unit — and
+        kept no votes. Under this design each unit trains once: 25,704 × 3 = <b>77,112 trainings</b> (that run's units
+        are all coins on their own; a unit read alongside others trains 4, not 3), votes kept for every one, and the
+        whole ordering — copies included — is free arithmetic on top.</div>
       <div class="note" style="margin-top:.3rem">Writes: <b>a stage 1 record set</b> — one record per unit, carrying its
-        scores under the ordering setting, its share against its own copies, and the kept votes. The record set gets a
+        forecast score, beat its own copies, lead over copies, and the kept votes. The record set gets a
         name like <b>S1 #7</b> and appears on Boards2 with everything that was ever built from it.</div>
     </div>
     <div class="row" style="margin-top:.5rem;align-items:flex-end">
@@ -3499,10 +3495,10 @@ async function drawSweep2() {
 
   <div class="panel">
     <h3 style="margin-top:0">Stage 2 — the fuller boards, only on the rows you carry forward</h3>
-    <p class="note">Reads a stage 1 record set. You choose the order and how many rows carry forward. Each carried unit
-      gets its 3 boost members trained — <b>the 3 logreg members are not trained again</b>: stage 1 already holds them,
-      votes and all. After this a single coin's unit holds 6 members' kept votes, and a unit judged alongside contexts
-      holds 8.</p>
+    <p class="note">Reads a stage 1 record set. You choose how many rows carry forward, in the order stage 1 worked
+      out. Each carried unit gets its boost members trained — <b>the logreg members are not trained again</b>: stage 1
+      already holds them, votes and all. After this a single coin's unit holds 6 members' kept votes, and a unit judged
+      alongside contexts holds 8.</p>
     <div class="passbox">
       <div class="passname"><b>What carries forward</b></div>
       <div class="row" style="align-items:flex-end">
@@ -3510,23 +3506,24 @@ async function drawSweep2() {
           <option selected>S1 #7 — 2026-08-24 — 25,704 units, votes kept</option>
           <option>S1 #6 — 2026-08-19 — 4,896 units, votes kept</option></select></label>
         <label class="f">order by<select id="s2Order" ${dead}>
-          <option selected>test $</option><option>vs always-long $</option><option>beat its own copies %</option><option>test trades</option></select></label>
+          <option selected>beat its own copies</option><option>lead over copies</option></select></label>
         <label class="f">carry forward<input id="s2Carry" type="number" value="1000" style="width:5.5rem" ${dead}></label>
         <span class="note">rows, best first under order by — 0 carries all of them</span>
       </div>
-      <p class="note" style="margin:.4rem 0 0">The order is taken on the test window only. The held-back window is never
-        read to choose what carries forward — reading it here would spend the one honest look it holds.</p>
-      <div class="row" style="margin-top:.5rem;align-items:flex-end">
-        <label class="f">copies per unit<input id="s2Copies2" type="number" value="19" style="width:4.5rem" ${dead}></label>
-        <span class="note">dealt from the kept votes of all 6 members (8 with contexts), after training — still no extra training</span>
-      </div>
+      <p class="note" style="margin:.4rem 0 0">Both orderings are stage 1's own against-copies results, taken on the
+        test window only. The held-back window is never read to choose what carries forward — reading it here would
+        spend the one honest look it holds. And the cut is for shedding the clearly-dead, not for picking winners:
+        forecast skill is not money, so carry generously and let stage 3's pricing be the judge.</p>
     </div>
     <div class="passbox" style="margin-top:.6rem">
       <div class="passname"><b>What this stage costs, and what it writes</b> — a worked example, not a measurement</div>
-      <div class="note">carry forward 1,000 of S1 #7's 25,704 → 1,000 × 3 new trainings = <b>3,000 trainings</b>.
+      <div class="note">carry forward 1,000 of S1 #7's 25,704 → 1,000 × 3 new trainings = <b>3,000 trainings</b>
+        (3 boost members for a coin on its own, 4 for a unit read alongside others).
         Nothing is trained twice; nothing that was not carried costs anything.</div>
       <div class="note" style="margin-top:.3rem">Writes: <b>a stage 2 record set</b> that names its parent — S2 #3, out
-        of S1 #7 by test $ — one record per carried unit, all votes kept. It appears on Boards2 with its whole chain.</div>
+        of S1 #7 by beat its own copies — one record per carried unit, all votes kept. It appears on Boards2 with its
+        whole chain. A stage 2 record is training inventory — members and kept votes; no copies are dealt at this
+        stage, because stage 2 picks nothing by them, and money has not been asked about yet.</div>
     </div>
     <div class="row" style="margin-top:.5rem;align-items:flex-end">
       <label class="f" style="flex:1">description<input id="s2Desc2" style="width:100%" ${dead}></label>
@@ -3544,7 +3541,7 @@ async function drawSweep2() {
       <div class="passname"><b>The settings to price</b> — one, or a declared block</div>
       <div class="row" style="align-items:flex-end">
         <label class="f">from stage 2 record set<select id="s2From3" ${dead}>
-          <option selected>S2 #3 — top 1,000 of S1 #7 by test $</option>
+          <option selected>S2 #3 — top 1,000 of S1 #7 by beat its own copies</option>
           <option>S2 #2 — all 4,896 of S1 #6</option></select></label>
       </div>
       <div class="row" style="margin-top:.5rem;align-items:flex-end">
@@ -3597,7 +3594,10 @@ async function drawSweep2() {
       </div>
       <div class="row" style="margin-top:.5rem;align-items:flex-end">
         <label class="f">copies per setting<input id="s2P3Copies" type="number" value="19" style="width:4.5rem" ${dead}></label>
-        <span class="note">the same deals are used for every setting in the block, so any two settings' shares are always comparable</span>
+        <label class="f">fee % each way<input id="s2P3Fee" type="number" value="0.125" style="width:5.5rem" ${dead}></label>
+        <span class="note">the same deals are used for every setting in the block, so any two settings' shares are always
+          comparable. The fee lives here because this is the first stage that prices a trade — re-pricing at another fee
+          is arithmetic, never a retrain.</span>
       </div>
     </div>
     <div class="passbox" style="margin-top:.6rem">
@@ -3641,65 +3641,66 @@ async function drawBoards2() {
     <div class="row" style="align-items:flex-end">
       <label class="f">record set<select id="b2Pick" ${dead}>
         <option selected>S3 #12 — 2,772 settings priced on S2 #3 — 2026-08-26</option>
-        <option>S2 #3 — top 1,000 of S1 #7 by test $ — 2026-08-25</option>
+        <option>S2 #3 — top 1,000 of S1 #7 by beat its own copies — 2026-08-25</option>
         <option>S1 #7 — 25,704 units, votes kept — 2026-08-24</option>
         <option>S1 #6 — 4,896 units, votes kept — 2026-08-19</option></select></label>
       <button id="b2Open" ${dead}>open</button>
     </div>
     <p class="note" style="margin-top:.5rem"><b>S1 #7</b> (25,704 units · 77,112 trainings · votes kept)
-      → <b>S2 #3</b> (carried 1,000 by test $ · 3,000 new trainings)
+      → <b>S2 #3</b> (carried 1,000 by beat its own copies · 3,000 new trainings)
       → <b>S3 #12</b> (2,772 settings · no training) · price files fingerprint-checked the whole way</p>
   </div>
 
   <div class="panel">
     <h3 style="margin-top:0">Stage 1 — every unit, scored once (S1 #7)</h3>
-    <p class="note">One row per unit, under the ordering setting stage 1 was launched with. This is the ranking stage 2
-      carried forward from — the carried column shows exactly where the cut fell.</p>
+    <p class="note">One row per unit, under stage 1's one fixed rule — no trade settings exist at this stage. This is
+      the ranking stage 2 carried forward from; the carried column shows exactly where the cut fell, and the tie right
+      at the cut shows the tie-break doing its job.</p>
     <div class="scrollx"><table style="border-collapse:collapse">
       <thead><tr style="text-align:left;border-bottom:1px solid var(--line)">
-        <th style="padding:.3rem .5rem .3rem 0" title="this unit's place under the ordering measure stage 2 used">order</th>
+        <th style="padding:.3rem .5rem .3rem 0" title="this unit's place under stage 1's fixed rule: beat its own copies, ties broken by lead over copies">order</th>
         <th style="padding:.3rem .5rem" title="the traded coin. Anything listed under alongside is context only — read against, never bought or sold.">coin</th>
         <th style="padding:.3rem .5rem" title="the one or two coins this unit is read against — blank for a coin judged on its own">alongside</th>
         <th style="padding:.3rem .5rem" title="how long a stretch of prices each decision looks at, and how often a decision is made — fixed when the unit was trained.">chunk shape</th>
-        <th style="padding:.3rem .5rem" title="money on the window the ordering is taken on">test $</th>
-        <th style="padding:.3rem .5rem" title="entries in the test window — the window the ordering is taken on.">test trades</th>
-        <th style="padding:.3rem .5rem" title="test money minus just holding the coin over the same window">vs always-long $</th>
-        <th style="padding:.3rem .5rem" title="of its 19 copies dealt from the kept votes, how many this unit beat on the test window">beat its own copies</th>
+        <th style="padding:.3rem .5rem" title="the sureness the pooled votes placed on what actually happened, summed over the test window. Comparable only among units of the same chunk shape — the two copies columns are what compare across shapes.">forecast score</th>
+        <th style="padding:.3rem .5rem" title="of its copies — the same kept votes with the calendar shuffled away — how many this unit's forecast score beat">beat its own copies</th>
+        <th style="padding:.3rem .5rem" title="how far above its copies' typical forecast score the real one sits, against the copies' own spread — the tie-break">lead over copies</th>
         <th style="padding:.3rem .5rem" title="whether this row carried forward into S2 #3">carried</th></tr></thead>
       <tbody>
-        <tr><td style="padding:.25rem .5rem .25rem 0">1</td><td style="padding:.25rem .5rem"><b>LTCUSDT</b></td><td style="padding:.25rem .5rem" class="muted">—</td><td style="padding:.25rem .5rem">Daily 4-day</td><td style="padding:.25rem .5rem" class="pos">$412</td><td style="padding:.25rem .5rem">61</td><td style="padding:.25rem .5rem" class="pos">$128</td><td style="padding:.25rem .5rem"><b class="pos">78.9%</b> <span class="muted">15/19</span></td><td style="padding:.25rem .5rem" class="pos">yes</td></tr>
-        <tr><td style="padding:.25rem .5rem .25rem 0">2</td><td style="padding:.25rem .5rem"><b>XRPUSDT</b></td><td style="padding:.25rem .5rem">BTCUSDT</td><td style="padding:.25rem .5rem">Daily 3-day</td><td style="padding:.25rem .5rem" class="pos">$388</td><td style="padding:.25rem .5rem">47</td><td style="padding:.25rem .5rem" class="pos">$96</td><td style="padding:.25rem .5rem"><b class="pos">73.7%</b> <span class="muted">14/19</span></td><td style="padding:.25rem .5rem" class="pos">yes</td></tr>
-        <tr><td style="padding:.25rem .5rem .25rem 0">3</td><td style="padding:.25rem .5rem"><b>BCHUSDT</b></td><td style="padding:.25rem .5rem" class="muted">—</td><td style="padding:.25rem .5rem">Weekly 8-day</td><td style="padding:.25rem .5rem" class="pos">$351</td><td style="padding:.25rem .5rem">22</td><td style="padding:.25rem .5rem" class="pos">$88</td><td style="padding:.25rem .5rem"><b class="pos">73.7%</b> <span class="muted">14/19</span></td><td style="padding:.25rem .5rem" class="pos">yes</td></tr>
-        <tr><td colspan="9" class="muted" style="padding:.25rem .5rem">… 996 more rows …</td></tr>
-        <tr><td style="padding:.25rem .5rem .25rem 0">1,000</td><td style="padding:.25rem .5rem"><b>ADAUSDT</b></td><td style="padding:.25rem .5rem">ETHUSDT</td><td style="padding:.25rem .5rem">Daily 4-day</td><td style="padding:.25rem .5rem" class="pos">$118</td><td style="padding:.25rem .5rem">39</td><td style="padding:.25rem .5rem" class="pos">$12</td><td style="padding:.25rem .5rem">57.9% <span class="muted">11/19</span></td><td style="padding:.25rem .5rem" class="pos">yes — the last one in</td></tr>
-        <tr><td style="padding:.25rem .5rem .25rem 0">1,001</td><td style="padding:.25rem .5rem"><b>ETHUSDT</b></td><td style="padding:.25rem .5rem" class="muted">—</td><td style="padding:.25rem .5rem">Daily 2-day</td><td style="padding:.25rem .5rem" class="pos">$117</td><td style="padding:.25rem .5rem">44</td><td style="padding:.25rem .5rem" class="pos">$11</td><td style="padding:.25rem .5rem">57.9% <span class="muted">11/19</span></td><td style="padding:.25rem .5rem" class="muted">no — the first one out</td></tr>
-        <tr><td style="padding:.25rem .5rem .25rem 0">25,704</td><td style="padding:.25rem .5rem"><b>DOGEUSDT</b></td><td style="padding:.25rem .5rem">SOLUSDT</td><td style="padding:.25rem .5rem">Daily 1-day</td><td style="padding:.25rem .5rem" class="neg">-$302</td><td style="padding:.25rem .5rem">71</td><td style="padding:.25rem .5rem" class="neg">-$164</td><td style="padding:.25rem .5rem">15.8% <span class="muted">3/19</span></td><td style="padding:.25rem .5rem" class="muted">no</td></tr>
+        <tr><td style="padding:.25rem .5rem .25rem 0">1</td><td style="padding:.25rem .5rem"><b>LTCUSDT</b></td><td style="padding:.25rem .5rem" class="muted">—</td><td style="padding:.25rem .5rem">Daily 4-day</td><td style="padding:.25rem .5rem">96.4</td><td style="padding:.25rem .5rem"><b class="pos">100.0%</b> <span class="muted">19/19</span></td><td style="padding:.25rem .5rem" class="pos">×3.1</td><td style="padding:.25rem .5rem" class="pos">yes</td></tr>
+        <tr><td style="padding:.25rem .5rem .25rem 0">2</td><td style="padding:.25rem .5rem"><b>XRPUSDT</b></td><td style="padding:.25rem .5rem">BTCUSDT</td><td style="padding:.25rem .5rem">Daily 3-day</td><td style="padding:.25rem .5rem">91.8</td><td style="padding:.25rem .5rem"><b class="pos">100.0%</b> <span class="muted">19/19</span></td><td style="padding:.25rem .5rem" class="pos">×2.6</td><td style="padding:.25rem .5rem" class="pos">yes</td></tr>
+        <tr><td style="padding:.25rem .5rem .25rem 0">3</td><td style="padding:.25rem .5rem"><b>BCHUSDT</b></td><td style="padding:.25rem .5rem" class="muted">—</td><td style="padding:.25rem .5rem">Weekly 8-day</td><td style="padding:.25rem .5rem">24.1</td><td style="padding:.25rem .5rem"><b class="pos">94.7%</b> <span class="muted">18/19</span></td><td style="padding:.25rem .5rem" class="pos">×2.2</td><td style="padding:.25rem .5rem" class="pos">yes</td></tr>
+        <tr><td colspan="8" class="muted" style="padding:.25rem .5rem">… 996 more rows …</td></tr>
+        <tr><td style="padding:.25rem .5rem .25rem 0">1,000</td><td style="padding:.25rem .5rem"><b>ADAUSDT</b></td><td style="padding:.25rem .5rem">ETHUSDT</td><td style="padding:.25rem .5rem">Daily 4-day</td><td style="padding:.25rem .5rem">78.9</td><td style="padding:.25rem .5rem">68.4% <span class="muted">13/19</span></td><td style="padding:.25rem .5rem">×0.8</td><td style="padding:.25rem .5rem" class="pos">yes — the last one in</td></tr>
+        <tr><td style="padding:.25rem .5rem .25rem 0">1,001</td><td style="padding:.25rem .5rem"><b>ETHUSDT</b></td><td style="padding:.25rem .5rem" class="muted">—</td><td style="padding:.25rem .5rem">Daily 2-day</td><td style="padding:.25rem .5rem">80.1</td><td style="padding:.25rem .5rem">68.4% <span class="muted">13/19</span></td><td style="padding:.25rem .5rem">×0.7</td><td style="padding:.25rem .5rem" class="muted">no — the first one out, on the tie-break</td></tr>
+        <tr><td style="padding:.25rem .5rem .25rem 0">25,704</td><td style="padding:.25rem .5rem"><b>DOGEUSDT</b></td><td style="padding:.25rem .5rem">SOLUSDT</td><td style="padding:.25rem .5rem">Daily 1-day</td><td style="padding:.25rem .5rem">61.0</td><td style="padding:.25rem .5rem">10.5% <span class="muted">2/19</span></td><td style="padding:.25rem .5rem" class="neg">×-1.4</td><td style="padding:.25rem .5rem" class="muted">no</td></tr>
       </tbody></table></div>
-    <p class="note">ordered by test $ — the order by choice made when stage 2 was launched. The held-back window is not
-      on this table because stage 1 never reads it.</p>
+    <p class="note">ordered by beat its own copies, ties broken by lead over copies — the fixed rule, the same for every
+      run. No money on this table because stage 1 never prices a trade, and no held-back column because stage 1 never
+      reads that window.</p>
   </div>
 
   <div class="panel">
     <h3 style="margin-top:0">Stage 2 — the carried rows, in full (S2 #3, out of S1 #7)</h3>
-    <p class="note">The same units, now with all their members. The stage 1 column sits beside the full column so the
-      fuller board's effect is visible instead of remembered.</p>
+    <p class="note">The same units, now with all their members. The stage 1 score sits beside the all-members score so
+      the fuller board's effect is visible instead of remembered — same fixed rule, nothing priced.</p>
     <div class="scrollx"><table style="border-collapse:collapse">
       <thead><tr style="text-align:left;border-bottom:1px solid var(--line)">
         <th style="padding:.3rem .5rem .3rem 0" title="the traded coin. Anything listed under alongside is context only — read against, never bought or sold.">coin</th>
         <th style="padding:.3rem .5rem" title="the one or two coins this unit is read against — blank for a coin judged on its own">alongside</th>
         <th style="padding:.3rem .5rem" title="how many members vote for this unit now, and what they are">members</th>
-        <th style="padding:.3rem .5rem" title="this unit's test money at stage 1, with 3 members">test $ at stage 1</th>
-        <th style="padding:.3rem .5rem" title="the same window priced with all members voting">test $ in full</th>
-        <th style="padding:.3rem .5rem" title="test $ in full minus test $ at stage 1">fuller board helped?</th>
-        <th style="padding:.3rem .5rem" title="of its 19 copies dealt from the kept votes of all members, how many this unit beat on the test window">beat its own copies</th></tr></thead>
+        <th style="padding:.3rem .5rem" title="the unit's forecast score with only the stage 1 members pooled">forecast score — stage 1 members</th>
+        <th style="padding:.3rem .5rem" title="the same fixed score with every member pooled, boost included">forecast score — all members</th>
+        <th style="padding:.3rem .5rem" title="all-members score minus stage-1-members score — what the boost members bought, before any pricing">fuller board helped?</th></tr></thead>
       <tbody>
-        <tr><td style="padding:.25rem .5rem .25rem 0"><b>LTCUSDT</b></td><td style="padding:.25rem .5rem" class="muted">—</td><td style="padding:.25rem .5rem">6 — 3 logreg + 3 boost</td><td style="padding:.25rem .5rem" class="pos">$412</td><td style="padding:.25rem .5rem" class="pos">$455</td><td style="padding:.25rem .5rem" class="pos">+$43</td><td style="padding:.25rem .5rem"><b class="pos">84.2%</b> <span class="muted">16/19</span></td></tr>
-        <tr><td style="padding:.25rem .5rem .25rem 0"><b>XRPUSDT</b></td><td style="padding:.25rem .5rem">BTCUSDT</td><td style="padding:.25rem .5rem">8 — 4 logreg + 4 boost (contexts add the cross view)</td><td style="padding:.25rem .5rem" class="pos">$388</td><td style="padding:.25rem .5rem" class="pos">$371</td><td style="padding:.25rem .5rem" class="neg">-$17</td><td style="padding:.25rem .5rem"><b class="pos">68.4%</b> <span class="muted">13/19</span></td></tr>
-        <tr><td style="padding:.25rem .5rem .25rem 0"><b>BCHUSDT</b></td><td style="padding:.25rem .5rem" class="muted">—</td><td style="padding:.25rem .5rem">6 — 3 logreg + 3 boost</td><td style="padding:.25rem .5rem" class="pos">$351</td><td style="padding:.25rem .5rem" class="pos">$402</td><td style="padding:.25rem .5rem" class="pos">+$51</td><td style="padding:.25rem .5rem"><b class="pos">78.9%</b> <span class="muted">15/19</span></td></tr>
-        <tr><td colspan="7" class="muted" style="padding:.25rem .5rem">… 997 more rows …</td></tr>
+        <tr><td style="padding:.25rem .5rem .25rem 0"><b>LTCUSDT</b></td><td style="padding:.25rem .5rem" class="muted">—</td><td style="padding:.25rem .5rem">6 — 3 logreg + 3 boost</td><td style="padding:.25rem .5rem">96.4</td><td style="padding:.25rem .5rem">103.9</td><td style="padding:.25rem .5rem" class="pos">+7.5</td></tr>
+        <tr><td style="padding:.25rem .5rem .25rem 0"><b>XRPUSDT</b></td><td style="padding:.25rem .5rem">BTCUSDT</td><td style="padding:.25rem .5rem">8 — 4 logreg + 4 boost (contexts add the cross view)</td><td style="padding:.25rem .5rem">91.8</td><td style="padding:.25rem .5rem">90.2</td><td style="padding:.25rem .5rem" class="neg">-1.6</td></tr>
+        <tr><td style="padding:.25rem .5rem .25rem 0"><b>BCHUSDT</b></td><td style="padding:.25rem .5rem" class="muted">—</td><td style="padding:.25rem .5rem">6 — 3 logreg + 3 boost</td><td style="padding:.25rem .5rem">24.1</td><td style="padding:.25rem .5rem">27.7</td><td style="padding:.25rem .5rem" class="pos">+3.6</td></tr>
+        <tr><td colspan="6" class="muted" style="padding:.25rem .5rem">… 997 more rows …</td></tr>
       </tbody></table></div>
-    <p class="note">Still no held-back column: a stage 2 record holds members and votes, and pricing belongs to stage 3 —
-      where the setting being priced is named first.</p>
+    <p class="note">No money and no copies on this table: a stage 2 record is training inventory — members and kept
+      votes. Pricing, copies and the held-back window all belong to stage 3, where the setting being priced is named
+      first.</p>
   </div>
 
   <div class="panel">

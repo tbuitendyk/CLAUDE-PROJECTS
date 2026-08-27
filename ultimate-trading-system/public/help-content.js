@@ -240,7 +240,7 @@ window.HELP = {
         + 'training them again, and prices the declared settings — all inside one job, and asking any new question '
         + 'afterwards means running the whole thing again.\n\n'
         + 'The drawing splits that into three stages, each writing a record set the next one reads. Stage 1 trains the '
-        + 'cheap members once for every unit and KEEPS EVERY VOTE they cast. Stage 2 trains the fuller boards, but only '
+        + 'cheap members once for every unit and KEEPS EVERY VOTE they cast, then ranks every unit with one fixed rule — did those votes beat their own calendar-shuffled copies at plain forecasting — so nothing about the ordering is chosen or guessed, and no trade setting exists until stage 3. Stage 2 trains the fuller boards, but only '
         + 'on the rows you carry forward, and reuses the stage 1 members instead of training them a second time. '
         + 'Stage 3 never trains anything: it prices any setting, or any block of settings, straight from the kept '
         + 'votes — so the question you think of tomorrow costs minutes, not days.\n\n'
@@ -261,24 +261,9 @@ window.HELP = {
         what: 'Train every chunk shape rather than only the one chosen. This is a real multiplier of training, so it lives at stage 1 where the training happens.',
       },
       s2Layout: { what: 'How the price history is divided between finding something and testing it — same meaning as on Sweep. The sealed layout is the honest end of a search.' },
-      s2Fee: { what: 'What a trade is assumed to cost, as a percent of the money in the position, charged each way — same meaning as on Sweep.' },
-      s2Dec: {
-        what: 'Part of the one ordering setting: how a forecast becomes a decision when stage 1 scores each unit for the ranking.',
-        more: 'The ordering setting exists because a rank has to be taken under some setting. It is named here, before anything is read, and there is deliberately no permute beside it — blocks of settings belong to stage 3.',
-      },
-      s2Band: { what: 'Part of the one ordering setting: how big a move has to be before it counts as a move at all. auto works it out from each coin\'s own history.' },
-      s2Wk: { what: 'Part of the one ordering setting: score the ranking on weekday activity only.' },
-      s2Entry: { what: 'Part of the one ordering setting: how a position is opened — same meaning as on Sweep.' },
-      s2Gate: { what: 'Part of the one ordering setting: when a position may be opened at all — same meaning as on Sweep.' },
-      s2D: { what: 'Part of the one ordering setting: how far from the starting price the opening level sits — same meaning as on Sweep.' },
-      s2T: { what: 'Part of the one ordering setting: how many hours a position is held before it is closed.' },
-      s2Trail: { what: 'Part of the one ordering setting: which stop it uses. static sits still at the level on the far side of your entry; the others follow the price behind you.' },
-      s2Arm: { what: 'Part of the one ordering setting: how far the price must move in your favour before a following stop starts following.' },
-      s2Q6: { what: 'Part of the one ordering setting: how many of a single coin\'s members must say the same thing before a trade is taken. At stage 1 that is 3 members; the fuller 6 arrive at stage 2.' },
-      s2Q8: { what: 'The same, for a unit judged alongside contexts.' },
       s2Copies1: {
-        what: 'How many scrambled companions each unit is compared against, dealt from the kept votes after training — so they cost no training at all.',
-        more: 'The share of its copies each unit beats becomes one of the orderings stage 2 can carry forward by. That is the point of copies at this stage: they steer the pick.',
+        what: 'How many calendar-shuffled copies each unit is measured against. Every copy is the same kept votes with their dates shuffled away, given the same forecast score — no training, ever.',
+        more: 'The ordering IS the against-copies result: beat its own copies, ties broken by lead over copies. So the copies always feed the pick — there is no way to deal copies that nothing reads.',
       },
       s2Desc1: { what: 'Why this stage 1 exists. Kept on the record set and shown wherever it is named.' },
       s2Go1: { what: 'Would start stage 1. On this drawing it is switched off, like everything else here.' },
@@ -287,11 +272,13 @@ window.HELP = {
         more: 'It refuses a parent built on different price data — the record sets carry fingerprints of the price files and a mismatch refuses rather than mixes.',
       },
       s2Order: {
-        what: 'Which stage 1 measure the carry is ordered by: test money, test money against just holding the coin, the share of its own copies each unit beat, or trades.',
-        more: 'The order is taken on the test window only. The held-back window is never read to choose what carries forward.',
+        what: 'Which of stage 1\'s two against-copies results the carry is taken in: beat its own copies, or lead over copies — how far above its copies\' typical forecast score the real one sits.',
+        more: 'Both come from stage 1\'s one fixed rule, on the test window only. There is no money ordering to pick, because stage 1 never prices a trade, and the held-back window is never read here.',
       },
-      s2Carry: { what: 'How many rows carry forward into the fuller training, best first under order by. 0 carries all of them.' },
-      s2Copies2: { what: 'Scrambled companions for the carried rows, dealt from the kept votes of all members — still no extra training.' },
+      s2Carry: {
+        what: 'How many rows carry forward into the fuller training, best first under order by. 0 carries all of them.',
+        more: 'Carry generously: the cut is for shedding the clearly-dead, not for picking winners. Forecast skill is not money — stage 3\'s pricing is the judge.',
+      },
       s2Desc2: { what: 'Why this stage 2 exists. Kept on the record set.' },
       s2Go2: { what: 'Would start stage 2. Switched off on this drawing.' },
       s2From3: {
@@ -318,6 +305,10 @@ window.HELP = {
       s2P3Q6: { what: 'How many of a single coin\'s 6 members must agree, for the setting being priced.' },
       s2P3Q8: { what: 'The same, for a unit judged alongside contexts — 8 members rather than 6.' },
       s2P3PermAgree: { what: 'Price every level of agreement as its own setting in the block. It multiplies the block fastest, and here that multiplying costs arithmetic, not training.' },
+      s2P3Fee: {
+        what: 'What a trade is assumed to cost, as a percent of the money in the position, charged each way. It lives at this stage because stage 3 is the first place a trade is priced.',
+        more: 'Re-pricing the same block at a different fee is arithmetic on the kept votes — never a retrain.',
+      },
       s2P3Copies: {
         what: 'Scrambled companions per setting, dealt from the kept votes.',
         more: 'The same deals are used for every setting in the block, so any two settings\' shares are always comparable.',
