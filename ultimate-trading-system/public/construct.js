@@ -3844,7 +3844,9 @@ async function drawSweep3() {
   ${campaignPanelHtml(camp, names)}
 
   <div class="panel">
-    <h3 style="margin-top:0">Stage 1 — train once, keep every vote, rank against the null set</h3>
+    <h3 style="margin-top:0">Stage 1 — train the logreg members once, keep every vote, rank against the null set</h3>
+    <p class="note" style="margin:.2rem 0 .4rem">every member is a logreg forecast — 3 per coin on its own, 4 alongside others — trained with the plain
+      argmax fit. No trade, no fee and no decision exist here; those are priced later, at stage 3, from the votes this stage keeps.</p>
     <div class="row" style="align-items:flex-end">
       <label class="f">universe (blank = all 17 default pairs)<input id="s3Uni" placeholder="LTCUSDT,XRPUSDT,BCHUSDT" style="width:20rem"></label>
       <label class="c"><input type="checkbox" id="s3Singles" checked> singles</label>
@@ -3879,7 +3881,9 @@ async function drawSweep3() {
       <label class="f" style="flex:1">description<input id="s3Desc2" style="width:100%"></label>
       <button id="s3Go2" class="pri">start stage 2</button>
     </div>
-    <p class="note" style="margin:.4rem 0 0">logreg members reused, never retrained — only the boost members train (3 per coin on its own, 4 alongside others)</p>
+    <p class="note" style="margin:.4rem 0 0">boost is the second kind of member — a different way of working out a forecast from the same prices.
+      The logreg members are reused, never retrained; only the boost members train (3 per coin on its own, 4 alongside others),
+      so a carried unit ends up with both kinds voting side by side.</p>
     <div id="s3Out2"></div>
   </div>
 
@@ -4104,7 +4108,7 @@ async function b3DrawStage1(doc, incomplete, view) {
   const t = await apiOr(`api/stageset/${doc.id}/stage1?from=${from}&n=100`, null);
   const rows = (t && t.rows) || [];
   $('#b3Body').innerHTML = `${incomplete}<div class="panel">
-    <h3 style="margin-top:0">Stage 1 — every unit, scored once (${esc(doc.name)})</h3>
+    <h3 style="margin-top:0">Stage 1 — every unit's logreg members, scored once (${esc(doc.name)})</h3>
     <div class="scrollx"><table style="border-collapse:collapse">
       <thead><tr style="text-align:left;border-bottom:1px solid var(--line)">
         <th ${b3th.replace('.3rem .5rem', '.3rem .5rem .3rem 0')} title="this unit's place under stage 1's fixed rule: beat its own null set, ties broken by lead over null set">order</th>
@@ -4134,7 +4138,7 @@ async function b3DrawStage2(doc, incomplete, view) {
   const t = await apiOr(`api/stageset/${doc.id}/stage2?from=${from}&n=100`, null);
   const rows = (t && t.rows) || [];
   $('#b3Body').innerHTML = `${incomplete}<div class="panel">
-    <h3 style="margin-top:0">Stage 2 — the carried rows, in full (${esc(doc.name)}${doc.parent ? `, out of ${esc(doc.parent.name)}` : ''})</h3>
+    <h3 style="margin-top:0">Stage 2 — the carried rows, logreg joined by boost (${esc(doc.name)}${doc.parent ? `, out of ${esc(doc.parent.name)}` : ''})</h3>
     <div class="scrollx"><table style="border-collapse:collapse">
       <thead><tr style="text-align:left;border-bottom:1px solid var(--line)">
         <th ${b3th.replace('.3rem .5rem', '.3rem .5rem .3rem 0')} title="this unit's place in the carry — the order it went through in">carried</th>
