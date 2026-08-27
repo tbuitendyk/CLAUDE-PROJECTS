@@ -230,8 +230,9 @@ module.exports = {
       // fall back to the default order — the page would CLAIM one ordering and
       // show another, which on a ranked table is a lie about which row won.
       { id: 'bCoinSort', allowed: require('../lib/replication').COIN_SORTS, why: 'lib/replication.js COIN_SORTS' },
-      // the stage pages' own orderings, same fault class as bCoinSort
-      { id: 's3Order', allowed: require('../lib/stagework').S2_ORDERINGS.map((o) => o.value), why: 'lib/stagework.js S2_ORDERINGS — the launch refuses anything else by name' },
+      // the stage pages' own orderings, same fault class as bCoinSort.
+      // (s3Order left this list 2026-08-27 with the control itself: the carry
+      // follows the sort saved on the parent's table now.)
       { id: 'b3Sort', allowed: require('../lib/stages').S3_SORTS, why: 'lib/stages.js S3_SORTS' },
     ];
     for (const c of CHECKED) {

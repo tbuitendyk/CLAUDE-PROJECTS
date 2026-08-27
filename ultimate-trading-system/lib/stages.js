@@ -21,7 +21,6 @@ const { stampManifest, manifestDiff } = require('./manifest');
 const { GEOMETRIES } = require('./dataset');
 const bracketLib = require('./bracket');
 const batch = require('./batch');
-const { S2_ORDERINGS } = require('./stagework');
 
 const ENGINE_VERSION = require('../package.json').version;
 const SETS_DIR = path.join(__dirname, '..', 'data', 'stagesets');
@@ -335,23 +334,119 @@ function allRecords(id) {
 }
 function rankingOf(id) { return rowstore.readAll(id, 'ranking'); }
 
+// ---- saved sort orders (owner order, 2026-08-27) ---------------------------------
+// The stage 1 and stage 2 tables sort by up to three columns, clicked into
+// first/second/third priority on Boards3 and SAVED ON THE RECORD SET —
+// because the next stage's carry forward reads this exact order to decide
+// what it takes. One closed list of what may be sorted, per stage; a key not
+// on it is refused by name, never guessed.
+const SORT_KEYS = {
+  1: { trade: 's', ctx: 's', geometry: 's', score: 'n', beat: 'share', lead: 'n' },
+  2: {
+    s1rank: 'n', trade: 's', ctx: 's', geometry: 's', members: 'n',
+    score3: 'n', scoreAll: 'n', helped: 'n', beat: 'share', lead: 'n',
+  },
+};
+// The words the screens use for those keys, for the chain line — read the
+// column headings back, never invented.
+const SORT_WORDS = {
+  trade: 'coin', ctx: 'alongside', geometry: 'chunk shape', score: 'forecast score',
+  beat: 'beat its own null set', lead: 'lead over null set',
+  s1rank: 'stage 1 order', members: 'members',
+  score3: 'forecast score — stage 1 members', scoreAll: 'forecast score — all members',
+  helped: 'fuller board helped?',
+};
+function sortLabel(spec) {
+  return (spec || []).map((s) => `${SORT_WORDS[s.key] || s.key} ${s.dir === 'desc' ? 'high to low' : 'low to high'}`).join(', ');
+}
+function validateSort(stage, spec) {
+  const keys = SORT_KEYS[stage];
+  if (!keys) throw new Error(`stage ${stage} tables carry no saved sort`);
+  if (!Array.isArray(spec)) throw new Error('the sort is a list of up to three columns');
+  if (spec.length > 3) throw new Error('three sort priorities at most');
+  const seen = new Set();
+  return spec.map((s) => {
+    const key = String((s || {}).key || '');
+    const dir = (s || {}).dir === 'asc' ? 'asc' : ((s || {}).dir === 'desc' ? 'desc' : null);
+    if (!keys[key]) throw new Error(`"${key}" is not a column these tables sort by (${Object.keys(keys).join('/')})`);
+    if (!dir) throw new Error(`"${key}" needs a direction, asc or desc`);
+    if (seen.has(key)) throw new Error(`"${key}" is picked twice`);
+    seen.add(key);
+    return { key, dir };
+  });
+}
+function sortValue(kind, key, row) {
+  if (kind === 's') return key === 'ctx' ? `${row.ctx1 || ''}${row.ctx2 ? ` + ${row.ctx2}` : ''}` : String(row[key] ?? '');
+  if (kind === 'share') return row.pairs ? row.beat / row.pairs : null;
+  const v = row[key];
+  return v == null || !Number.isFinite(Number(v)) ? null : Number(v);
+}
+// A missing value sits LAST whichever way the column points, and the stage's
+// own base order breaks every remaining tie — a saved sort is still a TOTAL
+// order, so two reads of the same set page identically.
+function applySort(stage, rows, spec, baseCmp) {
+  const keys = SORT_KEYS[stage];
+  const cleaned = validateSort(stage, spec || []);
+  const out = rows.slice();
+  out.sort((a, b) => {
+    for (const { key, dir } of cleaned) {
+      const kind = keys[key];
+      const va = sortValue(kind, key, a);
+      const vb = sortValue(kind, key, b);
+      if (va == null || vb == null) {
+        if (va == null && vb == null) continue;
+        return va == null ? 1 : -1;
+      }
+      let c = typeof va === 'string' ? va.localeCompare(vb) : va - vb;
+      if (c === 0 && kind === 'share') c = (a.beat || 0) - (b.beat || 0);
+      if (c) return dir === 'desc' ? -c : c;
+    }
+    return baseCmp(a, b);
+  });
+  return out;
+}
+// Saving the sort, the same contract notes have: refused while the set is
+// being written; an empty list puts the saved sort away.
+function setSetSort(id, spec) {
+  const doc = getSet(String(id || ''));
+  if (!doc) throw new Error('unknown record set');
+  if (doc.stage !== 1 && doc.stage !== 2) {
+    throw new Error('saved sorts live on stage 1 and stage 2 record sets — the stage 3 tables have their own sort by');
+  }
+  if (doc.status === 'running') throw new Error('the record set is still being written — the sort saves after it finishes');
+  doc.sort = validateSort(doc.stage, Array.isArray(spec) ? spec : []);
+  saveSet(doc);
+  return { id: doc.id, sort: doc.sort };
+}
+
 // ---- STAGE 2 --------------------------------------------------------------------
 function startStage2(params) {
   claimOrRefuse();
-  const orderBy = params.orderBy === undefined || params.orderBy === '' ? 'beat' : String(params.orderBy);
-  if (!S2_ORDERINGS.some((o) => o.value === orderBy)) {
-    throw new Error(`order by must be one of ${S2_ORDERINGS.map((o) => o.value).join('/')} — "${orderBy}" is not an ordering stage 1 wrote`);
+  if (params.orderBy !== undefined) {
+    throw new Error('order by is gone — the carry follows the sort saved on the parent record set\'s table '
+      + '(the fixed rule when none is saved). Pick the sort on Boards3.');
   }
   const parent = parentOrRefuse(params.from, 1);
   const carry = Math.max(0, Math.floor(num(params.carry, 0)));
   const ranking = rankingOf(parent.id);
   if (!ranking.length) throw new Error(`${parent.name} holds no ranking — nothing to carry`);
-  let ordered = ranking.slice();
-  if (orderBy === 'lead') {
-    ordered.sort((a, b) => ((b.lead ?? -1e9) - (a.lead ?? -1e9)) || (b.beat - a.beat) || (a.u - b.u));
-  } // 'beat' is the stored rank order already
-  const carried = carry > 0 ? ordered.slice(0, carry) : ordered;
   const parentRecords = new Map(allRecords(parent.id).map((r) => [r.u, r]));
+  // The carry takes the parent's table in ITS OWN saved order — the exact
+  // order the owner sees on Boards3 — and the fixed rule (the recorded
+  // ranking) when no sort is saved.
+  const saved = Array.isArray(parent.sort) && parent.sort.length ? parent.sort : null;
+  let ordered = ranking.slice();
+  if (saved) {
+    const merged = ranking.map((row, i) => {
+      const r = parentRecords.get(row.u) || {};
+      return {
+        _i: i, u: row.u, beat: row.beat, pairs: row.pairs, lead: row.lead, score: row.score,
+        trade: r.trade, ctx1: r.ctx1, ctx2: r.ctx2, geometry: r.geometry,
+      };
+    });
+    ordered = applySort(1, merged, saved, (a, b) => a._i - b._i);
+  }
+  const carried = carry > 0 ? ordered.slice(0, carry) : ordered;
 
   const seq = seqFor(2);
   const id = `s2-${Date.now().toString(36)}-${seq}`;
@@ -361,10 +456,13 @@ function startStage2(params) {
     status: 'running', progress: 'writing the plan',
     desc: String(params.desc || ''),
     engineVersion: ENGINE_VERSION,
-    parent: { id: parent.id, name: parent.name, orderBy, carry: carried.length, of: ranking.length },
+    parent: {
+      id: parent.id, name: parent.name, carry: carried.length, of: ranking.length,
+      sortedBy: saved ? sortLabel(saved) : 'the fixed rule',
+    },
     // ...parent.params carries the parent's campaign in; the campaign in use
     // AT THIS LAUNCH wins, the same rule every other launch follows.
-    params: { ...parent.params, orderBy, carry: carried.length, from: parent.id, campaign: require('./campaign').getCampaign() || null },
+    params: { ...parent.params, carry: carried.length, from: parent.id, campaign: require('./campaign').getCampaign() || null },
     seed: seedOf(id),
     plan: { units: carried.length },
     perf: { unitsDone: 0, unitsTotal: carried.length, elapsedMs: 0, etaMs: null, workers: null },
@@ -509,13 +607,22 @@ function startStage3(params) {
   if (!settings.length) throw new Error('the block declared no settings');
   // carry forward (owner order, 2026-08-27): 0 prices every carried unit; a
   // positive count takes the top of the parent in the SAME order its table
-  // shows — forecast score with all members, ties by carry position.
+  // shows — the sort saved on it, or forecast score with all members when
+  // none is saved, ties by carry position either way.
   const carry = Math.max(0, Math.floor(num(params.carry, 0)));
   let parentRecords = allRecords(parent.id);
+  const savedS2 = Array.isArray(parent.sort) && parent.sort.length ? parent.sort : null;
   if (carry > 0) {
-    parentRecords = parentRecords.slice()
-      .sort((a, b) => ((b.scoreAll ?? -1e9) - (a.scoreAll ?? -1e9)) || (a.carriedRank - b.carriedRank))
-      .slice(0, carry);
+    let ordered;
+    if (savedS2) {
+      ordered = applySort(2,
+        parentRecords.map((r) => ({ ...r, members: (r.specs || []).length })),
+        savedS2, (a, b) => a.carriedRank - b.carriedRank);
+    } else {
+      ordered = parentRecords.slice()
+        .sort((a, b) => ((b.scoreAll ?? -1e9) - (a.scoreAll ?? -1e9)) || (a.carriedRank - b.carriedRank));
+    }
+    parentRecords = ordered.slice(0, carry);
   }
   if (!parentRecords.length) throw new Error(`${parent.name} holds no records — nothing to price`);
 
@@ -527,7 +634,13 @@ function startStage3(params) {
     status: 'running', progress: 'writing the plan',
     desc: String(params.desc || ''),
     engineVersion: ENGINE_VERSION,
-    parent: { id: parent.id, name: parent.name },
+    parent: {
+      id: parent.id, name: parent.name,
+      ...(carry > 0 ? {
+        carry: parentRecords.length, of: allRecords(parent.id).length,
+        sortedBy: savedS2 ? sortLabel(savedS2) : 'forecast score — all members high to low',
+      } : {}),
+    },
     params: {
       ...parent.params, from: parent.id, fee, nullN, carry: carry > 0 ? parentRecords.length : 0,
       cell: params.cell, cellPermute: params.cellPermute || null,
@@ -749,7 +862,7 @@ function chainOf(id) {
       id: cur.id, stage: cur.stage, name: cur.name, status: cur.status,
       createdAt: cur.createdAt, desc: cur.desc || '',
       plan: cur.plan ? { units: cur.plan.units || 0, settings: cur.plan.settings || 0 } : null,
-      counts: cur.counts, parent: cur.parent ? { id: cur.parent.id, name: cur.parent.name, orderBy: cur.parent.orderBy || null, carry: cur.parent.carry ?? null } : null,
+      counts: cur.counts, parent: cur.parent ? { id: cur.parent.id, name: cur.parent.name, orderBy: cur.parent.orderBy || null, carry: cur.parent.carry ?? null, sortedBy: cur.parent.sortedBy || null } : null,
       manifestDigest: cur.dataManifest && cur.dataManifest.overallDigest ? cur.dataManifest.overallDigest.slice(0, 12) : null,
       params: publicParams(cur),
     });
@@ -763,36 +876,55 @@ function stage1Table(id, from, n) {
   if (!doc) return null;
   const ranking = rankingOf(id);
   const byU = new Map(allRecords(id).map((r) => [r.u, r]));
-  const page = ranking.slice(from, from + n).map((row) => {
+  let rows = ranking.map((row, i) => {
     const r = byU.get(row.u) || {};
     return {
-      rank: row.rank, u: row.u,
+      _i: i, u: row.u,
       trade: r.trade, ctx1: r.ctx1, ctx2: r.ctx2, geometry: r.geometry,
       score: row.score, beat: row.beat, pairs: row.pairs, lead: row.lead,
     };
   });
-  return { total: ranking.length, from, rows: page };
+  // the saved sort orders the whole table; the recorded ranking (the fixed
+  // rule) when none is saved. rank is the row's place under the order SERVED
+  // — sequential, so the first column always reads with the sort in use.
+  if (Array.isArray(doc.sort) && doc.sort.length) rows = applySort(1, rows, doc.sort, (a, b) => a._i - b._i);
+  return {
+    total: rows.length, from, sort: doc.sort || [],
+    rows: rows.slice(from, from + n).map((r, i) => {
+      const { _i, ...rest } = r;
+      return { rank: from + i + 1, ...rest };
+    }),
+  };
 }
 
 function stage2Table(id, from, n) {
   const doc = getSet(id);
   if (!doc) return null;
-  // Best all-members forecast score first (owner order, 2026-08-27); ties by
-  // carry position, so the order is total and two reads page identically.
-  const rows = allRecords(id).slice().sort((a, b) => ((b.scoreAll ?? -1e9) - (a.scoreAll ?? -1e9)) || (a.carriedRank - b.carriedRank));
+  let rows = allRecords(id).map((r) => ({
+    carriedRank: r.carriedRank, s1rank: r.s1rank,
+    trade: r.trade, ctx1: r.ctx1, ctx2: r.ctx2, geometry: r.geometry,
+    members: r.specs.length,
+    logreg: r.specs.filter((s) => s.model === 'logreg').length,
+    boost: r.specs.filter((s) => s.model === 'boost').length,
+    score3: r.score3, scoreAll: r.scoreAll, helped: r.helped,
+    beat: r.beat, pairs: r.pairs, lead: r.lead,
+  }));
+  // the saved sort orders the whole table; best all-members forecast score
+  // first when none is saved. Ties keep their carry position either way, so
+  // the order is total and two reads page identically. rank is sequential
+  // under the order SERVED (owner, 2026-08-27) — never an echo of a stored
+  // column.
+  if (Array.isArray(doc.sort) && doc.sort.length) {
+    rows = applySort(2, rows, doc.sort, (a, b) => a.carriedRank - b.carriedRank);
+  } else {
+    rows.sort((a, b) => ((b.scoreAll ?? -1e9) - (a.scoreAll ?? -1e9)) || (a.carriedRank - b.carriedRank));
+  }
   return {
-    total: rows.length, from,
-    // rank is the row's place under THIS table's own order — sequential, so
-    // it cannot echo the stage 1 order column beside it (owner, 2026-08-27)
-    rows: rows.slice(from, from + n).map((r, i) => ({
-      rank: from + i + 1, s1rank: r.s1rank,
-      trade: r.trade, ctx1: r.ctx1, ctx2: r.ctx2, geometry: r.geometry,
-      members: r.specs.length,
-      logreg: r.specs.filter((s) => s.model === 'logreg').length,
-      boost: r.specs.filter((s) => s.model === 'boost').length,
-      score3: r.score3, scoreAll: r.scoreAll, helped: r.helped,
-      beat: r.beat, pairs: r.pairs, lead: r.lead,
-    })),
+    total: rows.length, from, sort: doc.sort || [],
+    rows: rows.slice(from, from + n).map((r, i) => {
+      const { carriedRank, ...rest } = r;
+      return { rank: from + i + 1, ...rest };
+    }),
   };
 }
 
@@ -856,5 +988,5 @@ module.exports = {
   startStage1, startStage2, startStage3,
   stage1Table, stage2Table, stage3Ranked, stage3Coins, stage3CoinRows,
   settingsFor, unitsFor, buildTally, readTally, seedOf, S3_SORTS, deleteSet, childrenOf,
-  setSetNotes,
+  setSetNotes, setSetSort, applySort, validateSort, sortLabel,
 };

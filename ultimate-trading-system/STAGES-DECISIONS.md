@@ -160,6 +160,33 @@ work — the owner reviews decisions in the morning, not at 3am.
     `record sets`** on both screens that draw it — the panel is shared, so
     Sweep shows the line too. A count line appears only when it is not zero.
 
+## Saved sorts steer the carry (owner GO, 2026-08-27: "apply sort ordering
+## arbitrarily to the stage 1 and stage 2 tables ... save the selected sort
+## order ... the carry forward functions just pick up on the selected and
+## saved sort order ... get rid of the order by on stage 2")
+
+26. **The sort lives ON the record set, not in the browser.** Up to three
+    priorities, clicked on the columns (first press high-to-low for numbers
+    and A-to-Z for words, second press flips, third puts it away), saved via
+    `POST /api/stageset/:id/sort` — because the next stage's carry reads it,
+    it has to live where the launch can see it. Refused while the set is
+    being written; a key not on the stage's closed list (lib/stages.js
+    SORT_KEYS) is refused by name. Missing values sort last either way, and
+    the stage's own base order breaks every remaining tie, so a saved sort
+    is still a TOTAL order.
+27. **The carry takes the parent's table in its saved order** — stage 2 from
+    a stage 1 set, stage 3's carry forward from a stage 2 set — and the
+    record set's parent line names what was used (`sortedBy`, printed in the
+    chain line), "the fixed rule" / all-members score when nothing is saved.
+    The end-to-end exam proves it on a real launch: lead low-to-high hands a
+    carry of 1 the FAIR coin.
+28. **order by is gone from the stage 2 box, and refused if an old caller
+    still sends it** — a silently ignored parameter is how a declared launch
+    stops meaning what its author thought. `S2_ORDERINGS` stays exported for
+    exactly one deploy (the word-list generator compiles the SERVED commit's
+    vocabulary, which still asks for it at load); it comes out in the
+    post-deploy commit.
+
 ## Recorded intent, no action taken
 
 Owner, 2026-08-27: "once I've confirmed that the new 3 stage sweep and

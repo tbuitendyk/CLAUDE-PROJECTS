@@ -106,7 +106,7 @@ async function waitDone(id, label) {
   assert.ok(table1.rows[0].lead >= table1.rows[1].lead - 1e-9, 'rank 1 cannot trail rank 2 on the tie-break');
 
   console.log('stage 2...');
-  const s2 = stages.startStage2({ from: s1.id, orderBy: 'beat', carry: 0, desc: 'adversarial end-to-end' });
+  const s2 = stages.startStage2({ from: s1.id, carry: 0, desc: 'adversarial end-to-end' });
   made.push(s2.id);
   const d2 = await waitDone(s2.id, 'stage 2');
   assert.strictEqual(d2.status, 'done', `stage 2 ended ${d2.status}: ${JSON.stringify(d2.failures)}`);
@@ -167,6 +167,21 @@ async function waitDone(id, label) {
     assert.strictEqual(row.kind, kind);
   }
   assert.strictEqual(tr.runs.find((r) => r.id === s3.id).parentRunId, s2.id, 'the tree links each set to the parent it read');
+
+  // the carry reads the SORT SAVED ON THE PARENT (owner order, 2026-08-27):
+  // lead low to high puts the fair coin first, so a carry of 1 must take it —
+  // the saved sort steering a real launch, not just a table
+  console.log('stage 2 from a saved sort (lead over null set, low to high)...');
+  stages.setSetSort(s1.id, [{ key: 'lead', dir: 'asc' }]);
+  const s2r = stages.startStage2({ from: s1.id, carry: 1, desc: 'adversarial end-to-end (saved sort)' });
+  made.push(s2r.id);
+  const d2r = await waitDone(s2r.id, 'stage 2 (saved sort)');
+  assert.strictEqual(d2r.status, 'done', `stage 2 (saved sort) ended ${d2r.status}: ${JSON.stringify(d2r.failures)}`);
+  assert.strictEqual(d2r.parent.sortedBy, 'lead over null set low to high', 'the record names the order the carry used');
+  const rec2r = rowstore.readAll(s2r.id, 'records');
+  assert.strictEqual(rec2r.length, 1);
+  assert.strictEqual(rec2r[0].trade, B, 'carry 1 under lead low-to-high must take the fair coin — the saved sort, not the fixed rule');
+  stages.setSetSort(s1.id, []);   // put the sort away so nothing later inherits it
 
   // carry forward at stage 3 takes the TOP of the stage 2 table — the
   // all-members forecast score order — and prices nothing else

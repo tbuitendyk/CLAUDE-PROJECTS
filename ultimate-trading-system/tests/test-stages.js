@@ -204,8 +204,8 @@ module.exports = {
       const drifted = mkSet({});
       cleanup.push(drifted.id);
       assert.throws(() => stages.startStage2({ from: drifted.id }), /price files changed|refuses/i);
-      assert.throws(() => stages.startStage2({ from: drifted.id, orderBy: 'money' }), /is not an ordering stage 1 wrote/i,
-        'an ordering stage 1 never wrote must be refused by name, before anything else is read');
+      assert.throws(() => stages.startStage2({ from: drifted.id, orderBy: 'beat' }), /order by is gone/i,
+        'the removed order by must be refused loudly, never silently ignored — the carry follows the saved sort now');
     } finally {
       for (const id of cleanup) { try { fs.rmSync(path.join(SETS_DIR, `${id}.json`), { force: true }); } catch (_) { /* fixture */ } }
     }
@@ -409,6 +409,68 @@ module.exports = {
       assert.ok(fs.existsSync(file(p2)), 'the protected set document must still be there');
     } finally {
       for (const d of [s1, s2, p2, foreign]) { try { fs.rmSync(file(d), { force: true }); } catch (_) { /* fixture */ } }
+    }
+  },
+
+  // The sort picked on a stage table saves ON the record set, orders the
+  // whole served table with the first column sequential under it, refuses
+  // junk by name, and is exactly what the carry order reads (owner order,
+  // 2026-08-27). The carry itself is proved on a real launch by the
+  // end-to-end exam; here the saved spec and the served tables are held.
+  async theSavedSortOrdersTheTablesAndTheFirstColumnFollows() {
+    const stamp = Date.now().toString(36);
+    const s1 = { id: `s1-test-${stamp}-ss`, stage: 1, seq: 999989, name: 'S1 #ss', status: 'running', createdAt: new Date().toISOString(), plan: { units: 3 } };
+    const s2 = { id: `s2-test-${stamp}-ss`, stage: 2, seq: 999989, name: 'S2 #ss', status: 'done', createdAt: new Date().toISOString(), plan: { units: 3 } };
+    const file = (d) => path.join(SETS_DIR, `${d.id}.json`);
+    try {
+      fs.mkdirSync(SETS_DIR, { recursive: true });
+      fs.writeFileSync(file(s1), JSON.stringify(s1));
+      fs.writeFileSync(file(s2), JSON.stringify(s2));
+      // refused while the set is being written, and junk refused by name
+      assert.throws(() => stages.setSetSort(s1.id, [{ key: 'lead', dir: 'asc' }]), /still being written/);
+      s1.status = 'done';
+      fs.writeFileSync(file(s1), JSON.stringify(s1));
+      assert.throws(() => stages.setSetSort(s1.id, [{ key: 'money', dir: 'desc' }]), /is not a column these tables sort by/,
+        'a column these tables never had must be refused by name');
+      assert.throws(() => stages.setSetSort(s1.id, [{ key: 'lead' }]), /needs a direction/);
+      assert.throws(() => stages.setSetSort(s1.id, [{ key: 'lead', dir: 'asc' }, { key: 'lead', dir: 'desc' }]), /picked twice/);
+      assert.throws(() => stages.setSetSort(s1.id, [1, 2, 3, 4].map((k) => ({ key: 'lead', dir: 'asc' }))), /three sort priorities at most/);
+
+      // stage 1: ranking order is the default; a saved sort reorders and the
+      // first number stays sequential
+      const rk = rowstore.writer(s1.id, 'ranking');
+      rk.push({ rank: 1, u: 0, beat: 9, pairs: 9, lead: 1.0, score: 5 });
+      rk.push({ rank: 2, u: 1, beat: 8, pairs: 9, lead: 3.0, score: 4 });
+      rk.push({ rank: 3, u: 2, beat: 7, pairs: 9, lead: 2.0, score: 6 });
+      rk.close();
+      const rec = rowstore.writer(s1.id, 'records');
+      for (let u = 0; u < 3; u++) rec.push({ u, trade: `C${u}`, ctx1: null, ctx2: null, size: 1, geometry: 'daily-4d', specs: [], blocks: {} });
+      rec.close();
+      const saved = stages.setSetSort(s1.id, [{ key: 'lead', dir: 'asc' }]);
+      assert.deepStrictEqual(saved.sort, [{ key: 'lead', dir: 'asc' }], 'the sort round-trips the save');
+      const t1 = stages.stage1Table(s1.id, 0, 10);
+      assert.deepStrictEqual(t1.rows.map((r) => r.trade), ['C0', 'C2', 'C1'], 'lead low to high');
+      assert.deepStrictEqual(t1.rows.map((r) => r.rank), [1, 2, 3], 'the first number is sequential under the saved sort');
+      stages.setSetSort(s1.id, []);
+      const t1b = stages.stage1Table(s1.id, 0, 10);
+      assert.deepStrictEqual(t1b.rows.map((r) => r.trade), ['C0', 'C1', 'C2'], 'an empty save puts the fixed rule back');
+
+      // stage 2: two priorities, string then number, and the base tie holds
+      const rec2 = rowstore.writer(s2.id, 'records');
+      rec2.push({ u: 0, carriedRank: 1, s1rank: 1, trade: 'BBB', ctx1: null, ctx2: null, geometry: 'daily-4d', specs: [], score3: 1, scoreAll: 2, helped: 1, beat: 5, pairs: 9, lead: 0.5 });
+      rec2.push({ u: 1, carriedRank: 2, s1rank: 2, trade: 'AAA', ctx1: null, ctx2: null, geometry: 'daily-4d', specs: [], score3: 1, scoreAll: 3, helped: 2, beat: 6, pairs: 9, lead: 0.7 });
+      rec2.push({ u: 2, carriedRank: 3, s1rank: 3, trade: 'AAA', ctx1: null, ctx2: null, geometry: 'daily-4d', specs: [], score3: 1, scoreAll: 1, helped: 0, beat: 7, pairs: 9, lead: 0.9 });
+      rec2.close();
+      stages.setSetSort(s2.id, [{ key: 'trade', dir: 'asc' }, { key: 'helped', dir: 'desc' }]);
+      const t2 = stages.stage2Table(s2.id, 0, 10);
+      assert.deepStrictEqual(t2.rows.map((r) => [r.trade, r.helped]), [['AAA', 2], ['AAA', 0], ['BBB', 1]],
+        'first priority coin A to Z, second fuller board helped high to low');
+      assert.deepStrictEqual(t2.rows.map((r) => r.rank), [1, 2, 3]);
+    } finally {
+      for (const d of [s1, s2]) {
+        try { fs.rmSync(file(d), { force: true }); } catch (_) { /* fixture */ }
+        try { fs.rmSync(rowstore.storeDir(d.id), { recursive: true, force: true }); } catch (_) { /* fixture */ }
+      }
     }
   },
 

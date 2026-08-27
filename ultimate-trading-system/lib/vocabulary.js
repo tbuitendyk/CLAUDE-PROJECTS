@@ -70,7 +70,6 @@ function vocabulary() {
       { value: 'legacy80', label: 'legacy 80/20 (never evidence)' },
     ],
     // Stage 2's carry orderings — read from the stage engine, complete.
-    stageOrder: require('./stagework').S2_ORDERINGS.map((o) => ({ ...o })),
     greenlightAnchor: [
       { value: 'declared', label: 'declared cell' },
       { value: 'best', label: 'best cell' },

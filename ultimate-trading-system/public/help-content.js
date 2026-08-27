@@ -346,9 +346,9 @@ window.HELP = {
         + 'held-back windows, and ranks the units by one fixed rule: did the pooled votes beat their own null set, '
         + 'the same votes with the calendar shuffled away, at plain forecasting on the test window. No trade box '
         + 'and no fee exist at stage 1, so there is nothing to guess.\n\n'
-        + 'Stage 2 reads a finished stage 1 record set, carries the best rows forward in the against-null-set '
-        + 'order, and trains only the BOOST members for them. The LOGREG members are never retrained; after this '
-        + 'a carried unit holds all its members\' votes.\n\n'
+        + 'Stage 2 reads a finished stage 1 record set, carries the best rows forward in the sort saved on its '
+        + 'table on Boards3 (the against-null-set rule when none is saved), and trains only the BOOST members for '
+        + 'them. The LOGREG members are never retrained; after this a carried unit holds all its members\' votes.\n\n'
         + 'Stage 3 reads a finished stage 2 record set and prices any block of settings from the kept votes: '
         + 'decision, band, 24/5, agree, entry, gate, d, t, trail, arm and the fee are all applied here, as '
         + 'arithmetic — test window and held-back window both, with the null set dealt from the same votes and '
@@ -383,17 +383,16 @@ window.HELP = {
         what: 'Which finished stage 1 record set stage 2 carries forward from. A stage 2 set names this parent forever.',
         more: 'The launch refuses when the price files no longer fingerprint identically to the ones the parent read — a mismatch refuses, it never mixes.',
       },
-      s3Order: { what: 'Which of stage 1\'s two against-null-set results the carry is taken in: beat its own null set — the count — or lead over null set, the tie-break margin.' },
       s3Carry: {
-        what: 'How many rows carry forward into the BOOST training, best first under order by. 0 carries all of them.',
-        more: 'Carry generously: the cut is for shedding the clearly-dead, not for picking winners. Forecast skill is not money — stage 3\'s pricing is the judge.',
+        what: 'How many rows carry forward into the BOOST training, from the top of the parent\'s table in the sort saved on it. 0 carries all of them.',
+        more: 'Pick the sort on Boards3 — its columns save first/second/third priorities onto the record set, and the carry takes exactly that order. With nothing saved it is the fixed rule: beat its own null set, ties by lead over null set. Carry generously: the cut is for shedding the clearly-dead, not for picking winners.',
       },
       s3Desc2: { what: 'Why this stage 2 exists. Kept on the record set.' },
       s3Go2: { what: 'Starts stage 2 on the chosen parent. Only the BOOST members train.' },
       s3From3: { what: 'Which finished stage 2 record set the pricing reads its kept votes from. A stage 3 set names this parent forever.' },
       s3Carry3: {
-        what: 'How many of the parent\'s units get priced, best first by forecast score — all members. 0 prices all of them.',
-        more: 'The same order the stage 2 table on Boards3 shows, ties keeping their carry order — so the top of that table is exactly what a count here takes.',
+        what: 'How many of the parent\'s units get priced, from the top of its table in the sort saved on it. 0 prices all of them.',
+        more: 'The stage 2 table\'s columns on Boards3 save first/second/third sort priorities onto the record set, and a count here takes exactly that order. With nothing saved: forecast score — all members, best first, ties keeping their carry order.',
       },
       s3Fee: {
         what: 'What a trade is assumed to cost, as a percent of the money in the position, charged each way. It lives at this stage because stage 3 is the first place a trade is priced.',

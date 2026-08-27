@@ -500,10 +500,14 @@ async function s3TallyShardTask({ id, blocks }) {
   return serializeTallyAcc(acc);
 }
 
-// The two carry orderings stage 1 writes and stage 2 reads — published here
-// (the engine side) so the dropdown, the launch validation and the contract
-// test all read ONE list (RULE FIVE: menus come from the code that
-// implements them).
+// A RELIC WITH ONE DEPLOY LEFT TO LIVE (2026-08-27). The owner replaced the
+// two-way order by with sorts picked on the tables themselves and saved on
+// the set (lib/stages.js SORT_KEYS) — the carry reads the saved sort, so the
+// launch-side ordering menu is gone and NOTHING in this tree reads this list
+// any more. It stays exported for exactly one reason: the word-list
+// generator compiles the SERVED commit's lib/vocabulary.js, and until this
+// commit deploys, that vocabulary still asks for it at load. Delete it in
+// the post-deploy commit, when the served vocabulary no longer names it.
 const S2_ORDERINGS = [
   { value: 'beat', label: 'beat its own null set' },
   { value: 'lead', label: 'lead over null set' },

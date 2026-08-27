@@ -3868,7 +3868,6 @@ function fillStageForm(doc) {
   }
   if (doc.stage === 2) {
     if (doc.parent) setV('#s3From2', doc.parent.id);
-    setV('#s3Order', p.orderBy || 'beat');
     setV('#s3Carry', p.carry ?? 0);
     setV('#s3Desc2', doc.desc || '');
   }
@@ -3943,8 +3942,7 @@ async function drawSweep3() {
     <h3 style="margin-top:0">Stage 2 — carry the best forward, add the BOOST members</h3>
     <div class="row" style="align-items:flex-end">
       <label class="f">from stage 1 record set<select id="s3From2" style="min-width:24rem">${s3SetOptions(sets, 1, null)}</select></label>
-      <label class="f">carry forward (0 = all)<input id="s3Carry" type="number" value="0" min="0" style="width:5.5rem"></label>
-      <label class="f">order by<select id="s3Order">${vocabOptions('stageOrder', 'beat')}</select></label>
+      <label class="f" title="the carry takes the top of the parent's table in the sort saved on it — pick the sort on Boards3. The fixed rule (beat its own null set, ties by lead over null set) when none is saved.">carry forward (0 = all)<input id="s3Carry" type="number" value="0" min="0" style="width:5.5rem"></label>
     </div>
     <div class="row" style="margin-top:.5rem;align-items:flex-end">
       <label class="f" style="flex:1">description<input id="s3Desc2" style="width:100%"></label>
@@ -4032,7 +4030,7 @@ async function drawSweep3() {
   };
   $('#s3Go2').onclick = async () => {
     const got = await tryPost('api/stage2', {
-      from: $('#s3From2').value, orderBy: $('#s3Order').value,
+      from: $('#s3From2').value,
       carry: Number($('#s3Carry').value) || 0, desc: $('#s3Desc2').value,
     });
     if (got) { say('#s3Out2', `started <b>${esc(got.name)}</b> — ${got.units.toLocaleString()} carried units.`); s3Progress(); }
@@ -4142,7 +4140,9 @@ async function drawBoards3() {
   $('#b3Chain').innerHTML = `<p class="note" style="margin-top:.5rem">${chain.map((c) => `<b>${esc(c.name)}</b> (${[
     c.plan && c.plan.units ? `${Number(c.plan.units).toLocaleString()} units` : null,
     c.plan && c.plan.settings ? `${Number(c.plan.settings).toLocaleString()} settings` : null,
-    c.parent && c.parent.orderBy ? `carried ${Number(c.parent.carry).toLocaleString()} by ${c.parent.orderBy === 'lead' ? 'lead over null set' : 'beat its own null set'}` : null,
+    c.parent && (c.parent.sortedBy || c.parent.orderBy)
+      ? `carried ${Number(c.parent.carry).toLocaleString()} by ${c.parent.sortedBy || (c.parent.orderBy === 'lead' ? 'lead over null set' : 'beat its own null set')}`
+      : null,
     esc(c.status),
   ].filter(Boolean).join(' · ')})`).join(' → ')}${chain.length > 1 ? ' · price files fingerprint-checked at every launch' : ''}</p>`;
   if (doc.status !== 'done' && doc.status !== 'incomplete') {
@@ -4169,6 +4169,39 @@ function b3Pager(total, from, n, key) {
     <button data-b3page="${key}:${Math.max(0, from - n)}">prev</button>
     <button data-b3page="${key}:${Math.min((pages - 1) * n, from + n)}">next</button></p>`;
 }
+// THE SORT SELECTORS ON THE STAGE TABLES (owner order, 2026-08-27). Each
+// sortable column carries a small button: click sorts by it, click again
+// flips the direction, a third click puts it away; the number on the button
+// is the sort's priority — first, second, third, three at most. What is
+// picked here SAVES ON THE RECORD SET, because it is the exact order the
+// next stage's carry forward takes the top of.
+function b3SortBtn(doc, key, firstDir) {
+  const spec = Array.isArray(doc.sort) ? doc.sort : [];
+  const at = spec.findIndex((s) => s.key === key);
+  const state = at < 0 ? '·' : `${at + 1} ${spec[at].dir === 'desc' ? '↓' : '↑'}`;
+  return ` <button data-b3sortkey="${key}" data-b3sortdir="${firstDir}" style="min-width:2.2rem;padding:0 .25rem"
+    title="click to sort the whole table by this column${firstDir === 'desc' ? ' (high to low first)' : ' (A to Z / low to high first)'}; click again to flip it, a third click puts it away. Its number is the sort's priority — first, second, third. The saved order is exactly what carry forward reads at the next stage's launch.">${state}</button>`;
+}
+function b3WireSort(doc) {
+  $('#b3Body').querySelectorAll('[data-b3sortkey]').forEach((btn) => {
+    btn.onclick = async () => {
+      const key = btn.dataset.b3sortkey;
+      const spec = (Array.isArray(doc.sort) ? doc.sort : []).map((s) => ({ ...s }));
+      const at = spec.findIndex((s) => s.key === key);
+      if (at < 0) {
+        if (spec.length >= 3) { alert('three sort priorities at most — click one of the numbered columns to put it away first'); return; }
+        spec.push({ key, dir: btn.dataset.b3sortdir === 'asc' ? 'asc' : 'desc' });
+      } else if (spec[at].dir === (btn.dataset.b3sortdir === 'asc' ? 'asc' : 'desc')) {
+        spec[at].dir = spec[at].dir === 'desc' ? 'asc' : 'desc';
+      } else {
+        spec.splice(at, 1);
+      }
+      const out = await tryPost(`api/stageset/${encodeURIComponent(doc.id)}/sort`, { sort: spec });
+      if (out) drawBoards3().then(() => restoreScroll(tab));
+    };
+  });
+}
+
 function b3WirePager() {
   $('#b3Body').querySelectorAll('[data-b3page]').forEach((btn) => {
     btn.onclick = () => {
@@ -4188,13 +4221,13 @@ async function b3DrawStage1(doc, incomplete, view) {
     <h3 style="margin-top:0">Stage 1 — every unit's LOGREG members, scored once (${esc(doc.name)})</h3>
     <div class="scrollx"><table style="border-collapse:collapse">
       <thead><tr style="text-align:left;border-bottom:1px solid var(--line)">
-        <th ${b3th.replace('.3rem .5rem', '.3rem .5rem .3rem 0')} title="this unit's place under stage 1's fixed rule: beat its own null set, ties broken by lead over null set">order</th>
-        <th ${b3th} title="the traded coin. Anything listed under alongside is context only — read against, never bought or sold.">coin</th>
-        <th ${b3th} title="the one or two coins this unit is read against — blank for a coin judged on its own">alongside</th>
-        <th ${b3th} title="how long a stretch of prices each decision looks at, and how often a decision is made — fixed when the unit was trained.">chunk shape</th>
-        <th ${b3th} title="the sureness the pooled votes placed on what actually happened, summed over the test window. Comparable only among units of the same chunk shape — the two null-set columns are what compare across shapes.">forecast score</th>
-        <th ${b3th} title="of its null set — the same kept votes with the calendar shuffled away — how many this unit's forecast score beat">beat its own null set</th>
-        <th ${b3th} title="how far above its null set's typical forecast score the real one sits, against the null set's own spread — the tie-break">lead over null set</th></tr></thead>
+        <th ${b3th.replace('.3rem .5rem', '.3rem .5rem .3rem 0')} title="this unit's place under the sort picked on the columns — sequential. The fixed rule (beat its own null set, ties broken by lead over null set) when nothing is picked.">order</th>
+        <th ${b3th} title="the traded coin. Anything listed under alongside is context only — read against, never bought or sold.">coin${b3SortBtn(doc, 'trade', 'asc')}</th>
+        <th ${b3th} title="the one or two coins this unit is read against — blank for a coin judged on its own">alongside${b3SortBtn(doc, 'ctx', 'asc')}</th>
+        <th ${b3th} title="how long a stretch of prices each decision looks at, and how often a decision is made — fixed when the unit was trained.">chunk shape${b3SortBtn(doc, 'geometry', 'asc')}</th>
+        <th ${b3th} title="the sureness the pooled votes placed on what actually happened, summed over the test window. Comparable only among units of the same chunk shape — the two null-set columns are what compare across shapes.">forecast score${b3SortBtn(doc, 'score', 'desc')}</th>
+        <th ${b3th} title="of its null set — the same kept votes with the calendar shuffled away — how many this unit's forecast score beat">beat its own null set${b3SortBtn(doc, 'beat', 'desc')}</th>
+        <th ${b3th} title="how far above its null set's typical forecast score the real one sits, against the null set's own spread — the tie-break">lead over null set${b3SortBtn(doc, 'lead', 'desc')}</th></tr></thead>
       <tbody>${rows.map((r) => `<tr>
         <td ${b3td0}>${Number(r.rank).toLocaleString()}</td>
         <td ${b3td}>${b3Coin(r)}</td>
@@ -4204,10 +4237,13 @@ async function b3DrawStage1(doc, incomplete, view) {
         <td ${b3td}>${b3Share(r.pairs ? r.beat / r.pairs : null, r.beat, r.pairs)}</td>
         <td ${b3td}>${b3Lead(r.lead)}</td></tr>`).join('') || '<tr><td colspan="7" class="empty">nothing here</td></tr>'}</tbody></table></div>
     ${b3Pager((t && t.total) || 0, from, 100, 'S1')}
-    <p class="note">ordered by beat its own null set, ties broken by lead over null set — the fixed rule. No money on
-      this table because stage 1 never prices a trade, and no held-back column because stage 1 never reads that window.</p>
+    <p class="note">Ordered by the sort picked on the columns — saved on this record set, and exactly what a stage 2
+      carry forward takes the top of. With nothing picked: beat its own null set, ties broken by lead over null set —
+      the fixed rule. No money on this table because stage 1 never prices a trade, and no held-back column because
+      stage 1 never reads that window.</p>
   </div>`;
   b3WirePager();
+  b3WireSort(doc);
 }
 
 async function b3DrawStage2(doc, incomplete, view) {
@@ -4218,17 +4254,17 @@ async function b3DrawStage2(doc, incomplete, view) {
     <h3 style="margin-top:0">Stage 2 — the carried rows, LOGREG joined by BOOST (${esc(doc.name)}${doc.parent ? `, out of ${esc(doc.parent.name)}` : ''})</h3>
     <div class="scrollx"><table style="border-collapse:collapse">
       <thead><tr style="text-align:left;border-bottom:1px solid var(--line)">
-        <th ${b3th.replace('.3rem .5rem', '.3rem .5rem .3rem 0')} title="this unit's place under the table's own order — forecast score with all members, best first">stage 2 order</th>
-        <th ${b3th} title="where the same unit ranked at stage 1">stage 1 order</th>
-        <th ${b3th} title="the traded coin. Anything listed under alongside is context only — read against, never bought or sold.">coin</th>
-        <th ${b3th} title="the one or two coins this unit is read against — blank for a coin judged on its own">alongside</th>
-        <th ${b3th} title="how long a stretch of prices each decision looks at, and how often a decision is made — fixed when the unit was trained.">chunk shape</th>
-        <th ${b3th} title="how many members vote for this unit now, and what they are">members</th>
-        <th ${b3th} title="the unit's forecast score with only the stage 1 members pooled">forecast score — stage 1 members</th>
-        <th ${b3th} title="the same fixed score with every member pooled, BOOST included">forecast score — all members</th>
-        <th ${b3th} title="all-members score minus stage-1-members score — what the BOOST members bought, before any pricing">fuller board helped?</th>
-        <th ${b3th} title="of its null set — the same kept votes with the calendar shuffled away — how many this unit's forecast score beat, as stage 1 read it. Carried with the unit; the BOOST members never face a null set.">beat its own null set</th>
-        <th ${b3th} title="how far above its null set's typical forecast score the real one sits, against the null set's own spread — the stage 1 tie-break, carried with the unit">lead over null set</th></tr></thead>
+        <th ${b3th.replace('.3rem .5rem', '.3rem .5rem .3rem 0')} title="this unit's place under the sort picked on the columns — sequential. Forecast score with all members, best first, when nothing is picked.">stage 2 order</th>
+        <th ${b3th} title="where the same unit ranked at stage 1">stage 1 order${b3SortBtn(doc, 's1rank', 'asc')}</th>
+        <th ${b3th} title="the traded coin. Anything listed under alongside is context only — read against, never bought or sold.">coin${b3SortBtn(doc, 'trade', 'asc')}</th>
+        <th ${b3th} title="the one or two coins this unit is read against — blank for a coin judged on its own">alongside${b3SortBtn(doc, 'ctx', 'asc')}</th>
+        <th ${b3th} title="how long a stretch of prices each decision looks at, and how often a decision is made — fixed when the unit was trained.">chunk shape${b3SortBtn(doc, 'geometry', 'asc')}</th>
+        <th ${b3th} title="how many members vote for this unit now, and what they are">members${b3SortBtn(doc, 'members', 'desc')}</th>
+        <th ${b3th} title="the unit's forecast score with only the stage 1 members pooled">forecast score — stage 1 members${b3SortBtn(doc, 'score3', 'desc')}</th>
+        <th ${b3th} title="the same fixed score with every member pooled, BOOST included">forecast score — all members${b3SortBtn(doc, 'scoreAll', 'desc')}</th>
+        <th ${b3th} title="all-members score minus stage-1-members score — what the BOOST members bought, before any pricing">fuller board helped?${b3SortBtn(doc, 'helped', 'desc')}</th>
+        <th ${b3th} title="of its null set — the same kept votes with the calendar shuffled away — how many this unit's forecast score beat, as stage 1 read it. Carried with the unit; the BOOST members never face a null set.">beat its own null set${b3SortBtn(doc, 'beat', 'desc')}</th>
+        <th ${b3th} title="how far above its null set's typical forecast score the real one sits, against the null set's own spread — the stage 1 tie-break, carried with the unit">lead over null set${b3SortBtn(doc, 'lead', 'desc')}</th></tr></thead>
       <tbody>${rows.map((r) => `<tr>
         <td ${b3td0}>${Number(r.rank).toLocaleString()}</td>
         <td ${b3td}>${r.s1rank == null ? '—' : Number(r.s1rank).toLocaleString()}</td>
@@ -4242,11 +4278,14 @@ async function b3DrawStage2(doc, incomplete, view) {
         <td ${b3td}>${b3Share(r.pairs ? r.beat / r.pairs : null, r.beat, r.pairs)}</td>
         <td ${b3td}>${b3Lead(r.lead)}</td></tr>`).join('') || '<tr><td colspan="11" class="empty">nothing here</td></tr>'}</tbody></table></div>
     ${b3Pager((t && t.total) || 0, from, 100, 'S2')}
-    <p class="note">Ordered by forecast score — all members, best first; ties keep their carry order. The null set
-      columns are the unit's stage 1 reading, carried with it. No money on this table: a stage 2 record is training
-      inventory — members and kept votes. Pricing and the held-back window belong to stage 3.</p>
+    <p class="note">Ordered by the sort picked on the columns — saved on this record set, and exactly what a stage 3
+      carry forward takes the top of. With nothing picked: forecast score — all members, best first; ties keep their
+      carry order either way. The null set columns are the unit's stage 1 reading, carried with it. No money on this
+      table: a stage 2 record is training inventory — members and kept votes. Pricing and the held-back window belong
+      to stage 3.</p>
   </div>`;
   b3WirePager();
+  b3WireSort(doc);
 }
 
 async function b3DrawStage3(doc, incomplete, view) {
