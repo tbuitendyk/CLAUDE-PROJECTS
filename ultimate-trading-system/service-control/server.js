@@ -126,9 +126,14 @@ async function compute() {
   // ceiling displayed a few percent above it. The counters are now read for
   // every unit in one pass, immediately either side of the sleep, and the
   // slow systemctl asks happen outside the measured window.
+  // Two seconds, not half a one: the kernel doles the ceiling out in 100ms
+  // slices, so the shorter the window the more one slice's alignment wobbles
+  // the reading — at half a second a service pinned at 390% still read ~392.
+  // The page only asks every thirty seconds; two seconds of patience buys a
+  // number that sits on the ceiling instead of dancing around it.
   const t0 = process.hrtime.bigint();
   const before = new Map(UNITS.map((u) => [u, usage(u)]));
-  await new Promise((r) => { setTimeout(r, 500); });
+  await new Promise((r) => { setTimeout(r, 2000); });
   const afterAll = new Map(UNITS.map((u) => [u, usage(u)]));
   const windowMs = Number(process.hrtime.bigint() - t0) / 1e6;
 

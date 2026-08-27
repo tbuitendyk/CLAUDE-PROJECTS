@@ -206,7 +206,7 @@ function svcCard(u) {
   return '<div class="tile" style="margin-bottom:.55rem">'
     + '<div class="row"><b>' + esc(short) + '</b><span class="note">' + esc(u.description) + '</span><span class="spacer"></span>' + state + '<span class="muted">up ' + age(u.upSeconds) + '</span></div>'
     + '<div class="row" style="margin-top:.35rem; gap:1.2rem">'
-    + '<span title="processor time this service used over the last half second of measuring, as a share of one processor. 100 is one whole processor."><span class="k">using now</span> <b>' + (u.cpuPct == null ? '—' : u.cpuPct + '%') + '</b></span>'
+    + '<span title="processor time this service used over the last two seconds of measuring, as a share of one processor. 100 is one whole processor."><span class="k">using now</span> <b>' + (u.cpuPct == null ? '—' : u.cpuPct + '%') + '</b></span>'
     + '<span title="the most processor this service is allowed, as a share of one processor — 300 is three processors&#39; worth. Set with the box to the right."><span class="k">allowed</span> <b>' + (quota == null ? 'no ceiling' : quota + '%') + '</b></span>'
     + '<span title="memory this service is holding right now"><span class="k">memory</span> <b>' + mb(u.memoryBytes) + '</b></span>'
     + ans
